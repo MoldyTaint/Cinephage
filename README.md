@@ -51,6 +51,7 @@ Self-hosted media management. Search torrents, grab downloads, organize your lib
 - [Contributing](#contributing)
 - [Support](#support)
 - [Acknowledgments](#acknowledgments)
+- [AI Disclosure](#ai-disclosure)
 - [License](#license)
 
 ---
@@ -817,6 +818,12 @@ Inspired by and learned from:
 - **[Dictionarry](https://github.com/Dictionarry-Hub/database)** - Quality scoring database
 
 Uses TMDB for metadata and qBittorrent for downloads.
+
+---
+
+## AI Disclosure
+
+This project was built with and continues to use AI assistance. As a solo developer who's still learning, AI makes it possible to tackle a project of this scope - something that would otherwise require a team. It's a personal project, and AI is a tool that helps bridge the gap between ambition and experience. It's not perfect, but neither am I. We believe in being upfront about how this project is built.
 
 ---
 
