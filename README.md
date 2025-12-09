@@ -17,8 +17,9 @@
   Think Radarr + Sonarr + Prowlarr + Bazarr, but built from scratch as a single application.
 </p>
 
-<!-- TODO: Add screenshot when ready -->
-<!-- <p align="center"><img src="docs/images/screenshot.png" alt="Cinephage Screenshot" width="800"></p> -->
+<p align="center">
+  <img src="docs/images/dashboard.png" alt="Cinephage Dashboard" width="800">
+</p>
 
 ---
 
