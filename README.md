@@ -7,6 +7,7 @@
 <p align="center">
   <a href="https://www.gnu.org/licenses/gpl-3.0"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen" alt="Node.js Version"></a>
+  <a href="#"><img src="https://img.shields.io/badge/status-Work%20in%20Progress-yellow" alt="Status: Work in Progress"></a>
   <a href="https://github.com/MoldyTaint/Cinephage/issues"><img src="https://img.shields.io/github/issues/MoldyTaint/Cinephage" alt="GitHub Issues"></a>
   <a href="https://github.com/MoldyTaint/Cinephage"><img src="https://img.shields.io/github/last-commit/MoldyTaint/Cinephage" alt="Last Commit"></a>
 </p>
@@ -94,17 +95,19 @@ See [Configuration Guide](docs/CONFIGURATION.md) for detailed setup.
 
 ## Documentation
 
+Full documentation is available in the [docs/](docs/) folder.
+
 | Guide | Description |
 |-------|-------------|
 | [Configuration](docs/CONFIGURATION.md) | Environment variables, first-run setup |
-| [Quality Profiles](docs/QUALITY-PROFILES.md) | Scoring system, built-in profiles |
+| [Deployment](docs/DEPLOYMENT.md) | Production setup, systemd, reverse proxy |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and solutions |
 | [Indexers](docs/INDEXERS.md) | Built-in indexers, Torznab, custom definitions |
+| [Quality Profiles](docs/QUALITY-PROFILES.md) | Scoring system, built-in profiles |
 | [Monitoring](docs/MONITORING.md) | Automated tasks configuration |
 | [Subtitles](docs/SUBTITLES.md) | Providers, language profiles |
 | [API Reference](docs/API.md) | REST API endpoints |
 | [Roadmap](docs/ROADMAP.md) | Planned features, known limitations |
-| [Deployment](DEPLOYMENT.md) | Production setup, systemd, reverse proxy |
-| [Troubleshooting](TROUBLESHOOTING.md) | Common issues and solutions |
 
 ---
 
@@ -123,10 +126,21 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
 
 ---
 
+## Project Governance
+
+| Document | Description |
+|----------|-------------|
+| [Contributing](CONTRIBUTING.md) | Development guidelines and workflow |
+| [Code of Conduct](CODE_OF_CONDUCT.md) | Community standards |
+| [Security Policy](SECURITY.md) | Vulnerability reporting |
+| [Changelog](CHANGELOG.md) | Version history |
+
+---
+
 ## Support
 
-- [GitHub Issues](https://github.com/MoldyTaint/cinephage/issues) — Bug reports and feature requests
-- [Troubleshooting Guide](TROUBLESHOOTING.md) — Common issues and solutions
+- [GitHub Issues](https://github.com/MoldyTaint/cinephage/issues) - Bug reports and feature requests
+- [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and solutions
 
 ---
 

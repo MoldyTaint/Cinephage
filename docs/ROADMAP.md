@@ -10,18 +10,18 @@ For completed features and changes, see the [CHANGELOG](../CHANGELOG.md).
 
 | Status | Meaning |
 |--------|---------|
-| `[In Progress]` | Actively being worked on |
-| `[Planned]` | Confirmed for future development |
-| `[Under Consideration]` | Being evaluated, not yet committed |
-| `[Known Limitation]` | Acknowledged gap or incomplete feature |
+| In Progress | Actively being worked on |
+| Planned | Confirmed for future development |
+| Under Consideration | Being evaluated, not yet committed |
+| Known Limitation | Acknowledged gap or incomplete feature |
 
 ## Priority Legend
 
 | Priority | Meaning |
 |----------|---------|
-| `High` | Core functionality, significant user impact |
-| `Medium` | Important enhancement, moderate impact |
-| `Low` | Nice to have, minor improvement |
+| High | Core functionality, significant user impact |
+| Medium | Important enhancement, moderate impact |
+| Low | Nice to have, minor improvement |
 
 ---
 
@@ -31,7 +31,7 @@ Features actively being developed.
 
 ### Streaming Provider Settings Integration
 
-`[In Progress]` `High` | **Area**: Streaming
+In Progress | High | **Area**: Streaming
 
 Complete the integration of streaming providers with the settings system.
 
@@ -45,7 +45,7 @@ Features confirmed for upcoming releases.
 
 ### Usenet Client Support
 
-`[Planned]` `High` | **Area**: Download Clients
+Planned | High | **Area**: Download Clients
 
 Add support for Usenet download clients: SABnzbd and NZBGet.
 
@@ -57,7 +57,7 @@ Add support for Usenet download clients: SABnzbd and NZBGet.
 
 ### Tag-Based Monitoring Profiles
 
-`[Planned]` `Medium` | **Area**: Monitoring
+Planned | Medium | **Area**: Monitoring
 
 Implement tag matching for content-specific delay and upgrade profiles.
 
@@ -67,7 +67,7 @@ Implement tag matching for content-specific delay and upgrade profiles.
 
 ### Additional Public Indexers
 
-`[Planned]` `Medium` | **Area**: Indexers
+Planned | Medium | **Area**: Indexers
 
 Continue expanding built-in indexer support:
 - The Pirate Bay
@@ -82,7 +82,7 @@ Continue expanding built-in indexer support:
 
 ### Notifications System
 
-`[Planned]` `Medium` | **Area**: Infrastructure
+Planned | Medium | **Area**: Infrastructure
 
 Implement notification support for various events:
 - Download started/completed
@@ -102,7 +102,7 @@ Implement notification support for various events:
 
 ### Import Lists
 
-`[Planned]` `Medium` | **Area**: Library
+Planned | Medium | **Area**: Library
 
 Sync watchlists from external services:
 - Trakt
@@ -116,7 +116,7 @@ Sync watchlists from external services:
 
 ### Calendar View
 
-`[Planned]` `Medium` | **Area**: UI/UX
+Planned | Medium | **Area**: UI/UX
 
 Visual calendar showing upcoming releases for monitored content.
 
@@ -130,7 +130,7 @@ Longer-term features under consideration.
 
 ### Multi-User Support
 
-`[Under Consideration]` `Medium` | **Area**: Infrastructure
+Under Consideration | Medium | **Area**: Infrastructure
 
 Add user authentication and multi-user support:
 - User accounts with login
@@ -146,7 +146,7 @@ Add user authentication and multi-user support:
 
 ### Additional Download Clients
 
-`[Under Consideration]` `Medium` | **Area**: Download Clients
+Under Consideration | Medium | **Area**: Download Clients
 
 Support for additional torrent clients:
 - Transmission
@@ -160,7 +160,7 @@ Support for additional torrent clients:
 
 ### Docker Official Image
 
-`[Under Consideration]` `Medium` | **Area**: Infrastructure
+Under Consideration | Medium | **Area**: Infrastructure
 
 Create and publish an official Docker image.
 
@@ -170,7 +170,7 @@ Create and publish an official Docker image.
 
 ### Music Support
 
-`[Under Consideration]` `Low` | **Area**: Library
+Under Consideration | Low | **Area**: Library
 
 Lidarr-style music library management:
 - Artist/album discovery
@@ -184,7 +184,7 @@ Lidarr-style music library management:
 
 ### Books Support
 
-`[Under Consideration]` `Low` | **Area**: Library
+Under Consideration | Low | **Area**: Library
 
 Readarr-style book and audiobook management:
 - Author/book discovery
@@ -201,7 +201,7 @@ Current acknowledged gaps and their workarounds.
 
 ### Torrent-Only Downloads
 
-`[Known Limitation]` `High`
+Known Limitation | High
 
 Cinephage currently only supports torrent downloads. Usenet is not yet supported.
 
@@ -211,7 +211,7 @@ Cinephage currently only supports torrent downloads. Usenet is not yet supported
 
 ### Single User Only
 
-`[Known Limitation]` `Medium`
+Known Limitation | Medium
 
 No built-in user authentication or multi-user support.
 
@@ -221,7 +221,7 @@ No built-in user authentication or multi-user support.
 
 ### qBittorrent Only
 
-`[Known Limitation]` `Medium`
+Known Limitation | Medium
 
 qBittorrent is the only supported download client.
 

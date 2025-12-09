@@ -161,4 +161,4 @@ For production deployment including:
 - SSL/TLS configuration
 - Database backup procedures
 
-See [DEPLOYMENT.md](../DEPLOYMENT.md).
+See the [Deployment Guide](DEPLOYMENT.md).
