@@ -312,6 +312,16 @@ This guide covers common issues and their solutions when using Cinephage.
    - Movies: `Movie Name (Year)/Movie Name (Year).mkv`
    - TV: `Series Name/Season 01/Series Name - S01E01.mkv`
 
+3. Use external IDs in folder names for guaranteed matching:
+   - TV Shows (TVDB): `Breaking Bad {tvdb-81189}/Season 01/`
+   - Movies (TMDB): `Inception {tmdb-27205}/Inception (2010).mkv`
+   - IMDB: `The.Godfather.1972.tt0068646.1080p.BluRay.mkv`
+
+   Supported formats: `{id-12345}`, `[id-12345]`, `.id-12345.`, `id-12345`
+
+   This works automatically with libraries organized by Sonarr, Radarr, or Plex
+   that include external IDs in folder names.
+
 ### Scan takes too long
 
 **Symptoms**: Library scan is very slow
