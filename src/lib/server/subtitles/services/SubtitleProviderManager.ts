@@ -332,17 +332,33 @@ export class SubtitleProviderManager {
 	}
 
 	/**
-	 * Record a successful operation (resets failure count)
+	 * Record a successful operation (resets failure count and clears error state)
 	 */
 	async recordSuccess(id: string): Promise<void> {
+		const config = await this.getProvider(id);
+		const wasThrottled = config && this.isThrottled(config);
+		const hadErrors = config && config.consecutiveFailures > 0;
+
 		await db
 			.update(subtitleProviders)
 			.set({
 				consecutiveFailures: 0,
 				throttledUntil: null,
+				lastError: null,
+				lastErrorAt: null,
 				updatedAt: new Date().toISOString()
 			})
 			.where(eq(subtitleProviders.id, id));
+
+		// Log recovery from error state
+		if (wasThrottled || hadErrors) {
+			logger.info('Provider recovered from error state', {
+				providerId: id,
+				providerName: config?.name,
+				wasThrottled,
+				previousFailures: config?.consecutiveFailures
+			});
+		}
 	}
 
 	/**

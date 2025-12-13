@@ -32,13 +32,17 @@ export {
 	type SyncOptions
 } from './SubtitleSyncService';
 
-export { SubtitleScheduler, getSubtitleScheduler } from './SubtitleScheduler';
+export {
+	searchSubtitlesForNewMedia,
+	searchSubtitlesForMediaBatch,
+	type ImportSearchResult,
+	type BatchSearchResult
+} from './SubtitleImportService';
 
 export { SubtitleScannerService, getSubtitleScannerService } from './SubtitleScannerService';
 
 export {
 	SubtitleSettingsService,
 	getSubtitleSettingsService,
-	type SubtitleSettingsData,
-	type SearchTrigger
+	type SubtitleSettingsData
 } from './SubtitleSettingsService';

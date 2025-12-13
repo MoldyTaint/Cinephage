@@ -10,6 +10,7 @@ import { movies, series, episodes, subtitleHistory } from '$lib/server/db/schema
 import { eq, and, isNotNull } from 'drizzle-orm';
 import { getSubtitleSearchService } from '$lib/server/subtitles/services/SubtitleSearchService.js';
 import { getSubtitleDownloadService } from '$lib/server/subtitles/services/SubtitleDownloadService.js';
+import { getSubtitleProviderManager } from '$lib/server/subtitles/services/SubtitleProviderManager.js';
 import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
 import { logger } from '$lib/logging/index.js';
 import type { TaskResult } from '../MonitoringScheduler.js';
@@ -25,11 +26,74 @@ const DEFAULT_MIN_SCORE = 80;
 const MAX_CONCURRENT_SEARCHES = 3;
 
 /**
+ * Delay in milliseconds between search batches to prevent rate limiting
+ */
+const BATCH_DELAY_MS = 1000;
+
+/**
+ * Delay in milliseconds between individual searches within a batch
+ */
+const SEARCH_DELAY_MS = 200;
+
+/**
+ * Sleep utility
+ */
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
  * Execute missing subtitles search task
  */
 export async function executeMissingSubtitlesTask(): Promise<TaskResult> {
 	const executedAt = new Date();
 	logger.info('[MissingSubtitlesTask] Starting missing subtitles search');
+
+	// Check provider health status
+	const providerManager = getSubtitleProviderManager();
+	const healthStatus = await providerManager.getHealthStatus();
+	const throttledProviders = healthStatus.filter((h) => h.isThrottled);
+	const unhealthyProviders = healthStatus.filter((h) => !h.isHealthy && !h.isThrottled);
+
+	// Log provider health for observability
+	if (throttledProviders.length > 0) {
+		logger.info('[MissingSubtitlesTask] Throttled providers', {
+			count: throttledProviders.length,
+			providers: throttledProviders.map((p) => ({
+				name: p.providerName,
+				until: p.throttledUntil,
+				error: p.throttleErrorType
+			}))
+		});
+	}
+
+	if (unhealthyProviders.length > 0) {
+		logger.info('[MissingSubtitlesTask] Unhealthy providers', {
+			count: unhealthyProviders.length,
+			providers: unhealthyProviders.map((p) => ({
+				name: p.providerName,
+				failures: p.consecutiveFailures,
+				lastError: p.lastError
+			}))
+		});
+	}
+
+	const availableProviders = await providerManager.getEnabledProviders();
+
+	if (availableProviders.length === 0) {
+		logger.warn('[MissingSubtitlesTask] No subtitle providers available (all throttled or disabled), skipping search');
+		return {
+			taskType: 'missingSubtitles',
+			itemsProcessed: 0,
+			itemsGrabbed: 0,
+			errors: 0,
+			executedAt
+		};
+	}
+
+	logger.info('[MissingSubtitlesTask] Available providers', {
+		count: availableProviders.length,
+		providers: availableProviders.map((p) => p.name),
+		totalConfigured: healthStatus.length
+	});
 
 	let itemsProcessed = 0;
 	let itemsGrabbed = 0;
@@ -130,9 +194,19 @@ async function searchMissingMovieSubtitles(
 	for (let i = 0; i < moviesWithProfiles.length; i += MAX_CONCURRENT_SEARCHES) {
 		const batch = moviesWithProfiles.slice(i, i + MAX_CONCURRENT_SEARCHES);
 
+		// Add delay between batches to prevent rate limiting (skip first batch)
+		if (i > 0) {
+			await sleep(BATCH_DELAY_MS);
+		}
+
 		await Promise.all(
-			batch.map(async (movie) => {
+			batch.map(async (movie, batchIndex) => {
 				if (!movie.languageProfileId) return;
+
+				// Stagger searches within batch
+				if (batchIndex > 0) {
+					await sleep(SEARCH_DELAY_MS * batchIndex);
+				}
 
 				try {
 					// Check if subtitles are missing
@@ -157,9 +231,27 @@ async function searchMissingMovieSubtitles(
 
 					// Download best match for each missing language
 					for (const missing of status.missing) {
-						const bestMatch = results.results.find(
-							(r) => r.language === missing.code && r.matchScore >= minScore
-						);
+						// Get all results for this language
+						const languageResults = results.results.filter((r) => r.language === missing.code);
+
+						// Filter for minimum score, then sort by score descending
+						const matches = languageResults
+							.filter((r) => r.matchScore >= minScore)
+							.sort((a, b) => b.matchScore - a.matchScore);
+						const bestMatch = matches[0];
+
+						// Log when we have results but none meet minimum score
+						if (!bestMatch && languageResults.length > 0) {
+							const bestScore = Math.max(...languageResults.map((r) => r.matchScore));
+							logger.debug('[MissingSubtitlesTask] No match meets minimum score for movie', {
+								movieId: movie.id,
+								title: movie.title,
+								language: missing.code,
+								resultsFound: languageResults.length,
+								bestScore,
+								minScore
+							});
+						}
 
 						if (bestMatch) {
 							try {
@@ -250,8 +342,18 @@ async function searchMissingEpisodeSubtitles(
 			for (let i = 0; i < episodesMissing.length; i += MAX_CONCURRENT_SEARCHES) {
 				const batch = episodesMissing.slice(i, i + MAX_CONCURRENT_SEARCHES);
 
+				// Add delay between batches to prevent rate limiting (skip first batch)
+				if (i > 0) {
+					await sleep(BATCH_DELAY_MS);
+				}
+
 				await Promise.all(
-					batch.map(async (episodeId) => {
+					batch.map(async (episodeId, batchIndex) => {
+						// Stagger searches within batch
+						if (batchIndex > 0) {
+							await sleep(SEARCH_DELAY_MS * batchIndex);
+						}
+
 						try {
 							// Check if episode has explicitly disabled subtitles
 							const episodeData = await db.query.episodes.findFirst({
@@ -272,9 +374,26 @@ async function searchMissingEpisodeSubtitles(
 							const status = await profileService.getEpisodeSubtitleStatus(episodeId);
 
 							for (const missing of status.missing) {
-								const bestMatch = results.results.find(
-									(r) => r.language === missing.code && r.matchScore >= minScore
-								);
+								// Get all results for this language
+								const languageResults = results.results.filter((r) => r.language === missing.code);
+
+								// Filter for minimum score, then sort by score descending
+								const matches = languageResults
+									.filter((r) => r.matchScore >= minScore)
+									.sort((a, b) => b.matchScore - a.matchScore);
+								const bestMatch = matches[0];
+
+								// Log when we have results but none meet minimum score
+								if (!bestMatch && languageResults.length > 0) {
+									const bestScore = Math.max(...languageResults.map((r) => r.matchScore));
+									logger.debug('[MissingSubtitlesTask] No match meets minimum score for episode', {
+										episodeId,
+										language: missing.code,
+										resultsFound: languageResults.length,
+										bestScore,
+										minScore
+									});
+								}
 
 								if (bestMatch) {
 									try {

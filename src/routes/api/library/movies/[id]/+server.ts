@@ -5,6 +5,8 @@ import { movies, movieFiles, rootFolders, subtitles } from '$lib/server/db/schem
 import { eq } from 'drizzle-orm';
 import { mediaInfoService } from '$lib/server/library/index.js';
 import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
+import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
+import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
 import { unlink, rmdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { logger } from '$lib/logging';
@@ -122,6 +124,16 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			languageProfileId
 		} = body;
 
+		// Capture current state before update (for subtitle trigger detection)
+		const [currentMovie] = await db
+			.select({
+				wantsSubtitles: movies.wantsSubtitles,
+				languageProfileId: movies.languageProfileId,
+				hasFile: movies.hasFile
+			})
+			.from(movies)
+			.where(eq(movies.id, params.id));
+
 		const updateData: Record<string, unknown> = {};
 
 		if (typeof monitored === 'boolean') {
@@ -148,6 +160,31 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		}
 
 		await db.update(movies).set(updateData).where(eq(movies.id, params.id));
+
+		// Check if subtitle monitoring was just enabled
+		if (currentMovie?.hasFile) {
+			const wasEnabled = currentMovie.wantsSubtitles === true && currentMovie.languageProfileId;
+			const newWantsSubtitles = wantsSubtitles ?? currentMovie.wantsSubtitles;
+			const newProfileId = languageProfileId ?? currentMovie.languageProfileId;
+			const isNowEnabled = newWantsSubtitles === true && newProfileId;
+
+			// Trigger subtitle search if just enabled (wasn't before, is now)
+			if (!wasEnabled && isNowEnabled) {
+				const settings = await monitoringScheduler.getSettings();
+				if (settings.subtitleSearchOnImportEnabled) {
+					logger.info('[API] Subtitle monitoring enabled for movie, triggering search', {
+						movieId: params.id
+					});
+					// Fire-and-forget: don't await
+					searchSubtitlesForNewMedia('movie', params.id).catch((err) => {
+						logger.warn('[API] Background subtitle search failed', {
+							movieId: params.id,
+							error: err instanceof Error ? err.message : String(err)
+						});
+					});
+				}
+			}
+		}
 
 		return json({ success: true });
 	} catch (error) {

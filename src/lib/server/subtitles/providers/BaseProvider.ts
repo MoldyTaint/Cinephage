@@ -10,6 +10,7 @@ import type {
 	ProviderSearchOptions,
 	LanguageCode
 } from '../types';
+import { TimeoutError, ConnectionError } from '../errors/ProviderErrors';
 import { logger } from '$lib/logging';
 
 /**
@@ -99,6 +100,7 @@ export abstract class BaseSubtitleProvider implements ISubtitleProvider {
 
 	/**
 	 * Helper: Make HTTP request with error handling
+	 * Converts network errors to typed ProviderErrors for proper throttling
 	 */
 	protected async fetchWithTimeout(
 		url: string,
@@ -115,6 +117,24 @@ export abstract class BaseSubtitleProvider implements ISubtitleProvider {
 				signal: controller.signal
 			});
 			return response;
+		} catch (error) {
+			// Convert network errors to typed errors for proper throttling
+			if (error instanceof Error) {
+				// AbortError from timeout
+				if (error.name === 'AbortError') {
+					throw new TimeoutError(this.implementation, timeout);
+				}
+				// Network errors (DNS, connection refused, etc.)
+				if (
+					error.message.includes('fetch failed') ||
+					error.message.includes('ECONNREFUSED') ||
+					error.message.includes('ENOTFOUND') ||
+					error.message.includes('network')
+				) {
+					throw new ConnectionError(this.implementation, error.message);
+				}
+			}
+			throw error;
 		} finally {
 			clearTimeout(timeoutId);
 		}

@@ -22,7 +22,8 @@ import { tmdb, type SearchResult } from '$lib/server/tmdb.js';
 import { mediaInfoService } from './media-info.js';
 import { basename, dirname, extname } from 'path';
 import { getSubtitleSettingsService } from '$lib/server/subtitles/services/SubtitleSettingsService.js';
-import { getSubtitleScheduler } from '$lib/server/subtitles/services/SubtitleScheduler.js';
+import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
+import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
 import { logger } from '$lib/logging/index.js';
 import { parseRelease, extractExternalIds } from '$lib/server/indexers/parser/ReleaseParser.js';
 
@@ -835,18 +836,23 @@ export class MediaMatcherService {
 		mediaType: 'movie' | 'episode',
 		mediaId: string
 	): Promise<void> {
-		const settings = getSubtitleSettingsService();
+		// Use consolidated settings from MonitoringScheduler
+		const settings = await monitoringScheduler.getSettings();
 
-		// Check if should trigger on 'after_metadata' (called after TMDB fetch)
-		const shouldSearch = await settings.shouldTriggerSearch('after_metadata');
-		if (!shouldSearch) {
+		// Check if subtitle search on import is enabled
+		if (!settings.subtitleSearchOnImportEnabled) {
+			return;
+		}
+
+		// Check if trigger timing matches 'after_metadata' (called after TMDB fetch)
+		const trigger = settings.subtitleSearchTrigger;
+		if (trigger !== 'after_metadata' && trigger !== 'both') {
 			return;
 		}
 
 		logger.info('[MediaMatcher] Triggering subtitle search for new media', { mediaType, mediaId });
 
-		const scheduler = getSubtitleScheduler();
-		await scheduler.processNewMedia(mediaType, mediaId);
+		await searchSubtitlesForNewMedia(mediaType, mediaId);
 	}
 }
 

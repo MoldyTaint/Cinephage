@@ -617,21 +617,15 @@ export const subtitleBlacklistSchema = z.object({
 // ============================================================
 
 /**
- * Schema for search trigger options.
- */
-export const searchTriggerSchema = z.enum(['immediate', 'after_metadata', 'both']);
-
-/**
  * Schema for updating subtitle settings.
+ *
+ * NOTE: Scheduling-related settings (searchOnImport, searchTrigger, intervals)
+ * have been consolidated into MonitoringScheduler settings.
  */
 export const subtitleSettingsUpdateSchema = z.object({
-	searchOnImport: z.boolean().optional(),
-	searchTrigger: searchTriggerSchema.optional(),
-	searchIntervalHours: z.number().int().min(1).max(168).optional(), // 1 hour to 1 week
-	upgradeIntervalHours: z.number().int().min(1).max(168).optional(),
 	autoSyncEnabled: z.boolean().optional(),
-	minimumScore: z.number().int().min(0).max(360).optional(),
-	defaultLanguageProfileId: z.string().uuid().nullable().optional()
+	defaultLanguageProfileId: z.string().uuid().nullable().optional(),
+	defaultFallbackLanguage: z.string().min(2).max(5).optional()
 });
 
 // Subtitle Type Exports
@@ -647,4 +641,3 @@ export type SubtitleDownloadRequest = z.infer<typeof subtitleDownloadSchema>;
 export type SubtitleSyncRequest = z.infer<typeof subtitleSyncSchema>;
 export type SubtitleBlacklistRequest = z.infer<typeof subtitleBlacklistSchema>;
 export type SubtitleSettingsUpdate = z.infer<typeof subtitleSettingsUpdateSchema>;
-export type SearchTrigger = z.infer<typeof searchTriggerSchema>;

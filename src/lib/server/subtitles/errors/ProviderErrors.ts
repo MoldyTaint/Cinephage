@@ -171,25 +171,37 @@ export type ThrottleableErrorType =
 	| 'ConnectionError';
 
 /**
+ * List of throttleable error type names
+ */
+const THROTTLEABLE_ERROR_NAMES = [
+	'TooManyRequests',
+	'DownloadLimitExceeded',
+	'ServiceUnavailable',
+	'APIThrottled',
+	'ParseResponseError',
+	'IPAddressBlocked',
+	'AuthenticationError',
+	'ConfigurationError',
+	'SearchLimitReached',
+	'TimeoutError',
+	'ConnectionError'
+] as const;
+
+/**
  * Type guard for throttleable errors
+ * Uses both instanceof check and name-based check as fallback
+ * (instanceof can fail in some bundling scenarios)
  */
 export function isThrottleableError(error: unknown): error is ThrottleableError {
-	return (
-		error instanceof ProviderError &&
-		[
-			'TooManyRequests',
-			'DownloadLimitExceeded',
-			'ServiceUnavailable',
-			'APIThrottled',
-			'ParseResponseError',
-			'IPAddressBlocked',
-			'AuthenticationError',
-			'ConfigurationError',
-			'SearchLimitReached',
-			'TimeoutError',
-			'ConnectionError'
-		].includes(error.name)
-	);
+	if (error instanceof ProviderError) {
+		return THROTTLEABLE_ERROR_NAMES.includes(error.name as (typeof THROTTLEABLE_ERROR_NAMES)[number]);
+	}
+	// Fallback: check if it's an Error with a throttleable name
+	// This handles cases where instanceof fails due to bundling issues
+	if (error instanceof Error && 'provider' in error) {
+		return THROTTLEABLE_ERROR_NAMES.includes(error.name as (typeof THROTTLEABLE_ERROR_NAMES)[number]);
+	}
+	return false;
 }
 
 /**

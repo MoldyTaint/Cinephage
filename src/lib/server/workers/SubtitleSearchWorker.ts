@@ -6,7 +6,7 @@
 
 import { TaskWorker } from './TaskWorker.js';
 import type { WorkerType, SubtitleSearchWorkerMetadata } from './types.js';
-import { getSubtitleScheduler } from '$lib/server/subtitles/services/SubtitleScheduler.js';
+import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
 
 /**
  * Options for creating a SubtitleSearchWorker.
@@ -20,7 +20,7 @@ export interface SubtitleSearchWorkerOptions {
 
 /**
  * SubtitleSearchWorker runs a subtitle search operation in the background.
- * Uses the SubtitleScheduler's processNewMedia method for the actual search.
+ * Uses the SubtitleImportService for the actual search.
  */
 export class SubtitleSearchWorker extends TaskWorker<SubtitleSearchWorkerMetadata> {
 	readonly type: WorkerType = 'subtitle-search';
@@ -46,10 +46,8 @@ export class SubtitleSearchWorker extends TaskWorker<SubtitleSearchWorkerMetadat
 		);
 
 		try {
-			const scheduler = getSubtitleScheduler();
-
 			if (this._metadata.mediaType === 'movie') {
-				const result = await scheduler.processNewMedia('movie', this._metadata.mediaId);
+				const result = await searchSubtitlesForNewMedia('movie', this._metadata.mediaId);
 
 				this.updateMetadata({
 					subtitlesDownloaded: result.downloaded,
@@ -61,10 +59,10 @@ export class SubtitleSearchWorker extends TaskWorker<SubtitleSearchWorkerMetadat
 					errors: result.errors.length
 				});
 			} else {
-				// For series, we process it as a whole - the scheduler will handle episodes
+				// For series, we process it as a whole - episodes are searched individually
 				// Note: Series subtitle search happens per-episode when files arrive,
 				// but we can trigger a full series search here
-				const result = await scheduler.processNewMedia('episode', this._metadata.mediaId);
+				const result = await searchSubtitlesForNewMedia('episode', this._metadata.mediaId);
 
 				this.updateMetadata({
 					subtitlesDownloaded: result.downloaded,

@@ -2,9 +2,11 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
 import { db } from '$lib/server/db';
-import { movies, series } from '$lib/server/db/schema';
-import { inArray } from 'drizzle-orm';
+import { movies, series, episodes } from '$lib/server/db/schema';
+import { inArray, and, eq } from 'drizzle-orm';
 import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService';
+import { searchSubtitlesForMediaBatch } from '$lib/server/subtitles/services/SubtitleImportService';
+import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler';
 import { logger } from '$lib/logging';
 
 /**
@@ -69,6 +71,9 @@ export const POST: RequestHandler = async ({ request }) => {
 			updateData.wantsSubtitles = true;
 		}
 
+		// Determine if we should trigger subtitle searches
+		const shouldEnableSubtitles = languageProfileId && (wantsSubtitles ?? true);
+
 		if (mediaType === 'movie') {
 			await db.update(movies).set(updateData).where(inArray(movies.id, mediaIds));
 
@@ -76,6 +81,36 @@ export const POST: RequestHandler = async ({ request }) => {
 				count: mediaIds.length,
 				languageProfileId
 			});
+
+			// Trigger subtitle search for movies with files
+			if (shouldEnableSubtitles) {
+				const settings = await monitoringScheduler.getSettings();
+				if (settings.subtitleSearchOnImportEnabled) {
+					// Get movies that have files
+					const moviesWithFiles = await db
+						.select({ id: movies.id })
+						.from(movies)
+						.where(and(inArray(movies.id, mediaIds), eq(movies.hasFile, true)));
+
+					if (moviesWithFiles.length > 0) {
+						logger.info('[BulkAssign] Triggering subtitle search for movies', {
+							count: moviesWithFiles.length
+						});
+
+						const items = moviesWithFiles.map((m) => ({
+							mediaType: 'movie' as const,
+							mediaId: m.id
+						}));
+
+						// Fire-and-forget
+						searchSubtitlesForMediaBatch(items).catch((err) => {
+							logger.warn('[BulkAssign] Background subtitle search failed for movies', {
+								error: err instanceof Error ? err.message : String(err)
+							});
+						});
+					}
+				}
+			}
 		} else {
 			await db.update(series).set(updateData).where(inArray(series.id, mediaIds));
 
@@ -83,6 +118,37 @@ export const POST: RequestHandler = async ({ request }) => {
 				count: mediaIds.length,
 				languageProfileId
 			});
+
+			// Trigger subtitle search for episodes with files
+			if (shouldEnableSubtitles) {
+				const settings = await monitoringScheduler.getSettings();
+				if (settings.subtitleSearchOnImportEnabled) {
+					// Get all episodes with files from these series
+					const episodesWithFiles = await db
+						.select({ id: episodes.id })
+						.from(episodes)
+						.where(and(inArray(episodes.seriesId, mediaIds), eq(episodes.hasFile, true)));
+
+					if (episodesWithFiles.length > 0) {
+						logger.info('[BulkAssign] Triggering subtitle search for episodes', {
+							seriesCount: mediaIds.length,
+							episodeCount: episodesWithFiles.length
+						});
+
+						const items = episodesWithFiles.map((ep) => ({
+							mediaType: 'episode' as const,
+							mediaId: ep.id
+						}));
+
+						// Fire-and-forget
+						searchSubtitlesForMediaBatch(items).catch((err) => {
+							logger.warn('[BulkAssign] Background subtitle search failed for episodes', {
+								error: err instanceof Error ? err.message : String(err)
+							});
+						});
+					}
+				}
+			}
 		}
 
 		return json({

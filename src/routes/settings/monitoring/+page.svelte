@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { invalidate } from '$app/navigation';
-	import { CheckCircle, Play, RefreshCw, Subtitles, XCircle } from 'lucide-svelte';
+	import { CheckCircle, Play, RefreshCw, XCircle } from 'lucide-svelte';
 	import type { PageData } from './$types.js';
 
 	let { data }: { data: PageData } = $props();
@@ -18,13 +18,6 @@
 		cutoffUnmetSearchIntervalHours: 24
 	});
 
-	// Subtitle settings - initialize with defaults
-	let subtitleSettings = $state({
-		enabled: true,
-		searchIntervalHours: 6,
-		minScoreForAutoDownload: 80
-	});
-
 	// Sync settings from props
 	$effect(() => {
 		if (data.status?.tasks) {
@@ -33,13 +26,6 @@
 				upgradeSearchIntervalHours: data.status.tasks.upgrade.intervalHours ?? 168,
 				newEpisodeCheckIntervalHours: data.status.tasks.newEpisode.intervalHours ?? 1,
 				cutoffUnmetSearchIntervalHours: data.status.tasks.cutoffUnmet.intervalHours ?? 24
-			};
-		}
-		if (data.subtitleSettings) {
-			subtitleSettings = {
-				enabled: data.subtitleSettings.enabled ?? true,
-				searchIntervalHours: data.subtitleSettings.searchIntervalHours ?? 6,
-				minScoreForAutoDownload: data.subtitleSettings.minScoreForAutoDownload ?? 80
 			};
 		}
 	});
@@ -117,66 +103,6 @@
 			await invalidate('app:monitoring');
 		} catch (error) {
 			errorMessage = error instanceof Error ? error.message : `Failed to run ${taskType} task`;
-		} finally {
-			isRunningTask = null;
-		}
-	}
-
-	/**
-	 * Save subtitle settings
-	 */
-	async function saveSubtitleSettings() {
-		isSaving = true;
-		errorMessage = null;
-		successMessage = null;
-
-		try {
-			const response = await fetch('/api/subtitles/scheduler/settings', {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(subtitleSettings)
-			});
-
-			const result = await response.json();
-
-			if (!result.success) {
-				throw new Error(result.error || 'Failed to save subtitle settings');
-			}
-
-			successMessage = 'Subtitle settings saved successfully';
-			await invalidate('app:monitoring');
-		} catch (error) {
-			errorMessage = error instanceof Error ? error.message : 'Failed to save subtitle settings';
-		} finally {
-			isSaving = false;
-		}
-	}
-
-	/**
-	 * Manually trigger subtitle search
-	 */
-	async function runSubtitleSearch() {
-		isRunningTask = 'subtitles';
-		errorMessage = null;
-		successMessage = null;
-
-		try {
-			const response = await fetch('/api/subtitles/scheduler/run', {
-				method: 'POST'
-			});
-
-			const result = await response.json();
-
-			if (!result.success) {
-				throw new Error(result.error || 'Failed to run subtitle search');
-			}
-
-			const { processed, downloaded } = result;
-			successMessage = `Subtitle search completed: ${downloaded} downloaded from ${processed} processed`;
-
-			await invalidate('app:monitoring');
-		} catch (error) {
-			errorMessage = error instanceof Error ? error.message : 'Failed to run subtitle search';
 		} finally {
 			isRunningTask = null;
 		}
@@ -322,91 +248,6 @@
 						<span class="loading loading-sm loading-spinner"></span>
 					{/if}
 					Save Settings
-				</button>
-			</div>
-		</div>
-	</div>
-
-	<!-- Subtitle Settings Card -->
-	<div class="card mb-6 bg-base-200">
-		<div class="card-body">
-			<h2 class="card-title flex items-center gap-2">
-				<Subtitles class="h-5 w-5" />
-				Subtitle Scheduler
-			</h2>
-
-			<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-				<div class="form-control">
-					<label class="label cursor-pointer justify-start gap-4">
-						<input
-							type="checkbox"
-							class="toggle toggle-primary"
-							bind:checked={subtitleSettings.enabled}
-						/>
-						<div>
-							<span class="label-text font-medium">Enable Subtitle Scheduler</span>
-							<p class="text-xs text-base-content/60">Automatically search for subtitles</p>
-						</div>
-					</label>
-				</div>
-
-				<div class="form-control">
-					<label class="label" for="subtitle-search-interval">
-						<span class="label-text font-medium">Search Interval</span>
-					</label>
-					<input
-						id="subtitle-search-interval"
-						type="number"
-						class="input-bordered input"
-						bind:value={subtitleSettings.searchIntervalHours}
-						min="1"
-						step="1"
-						disabled={!subtitleSettings.enabled}
-					/>
-					<div class="label">
-						<span class="label-text-alt text-base-content/60">Hours between searches</span>
-					</div>
-				</div>
-
-				<div class="form-control">
-					<label class="label" for="subtitle-min-score">
-						<span class="label-text font-medium">Minimum Score</span>
-					</label>
-					<input
-						id="subtitle-min-score"
-						type="number"
-						class="input-bordered input"
-						bind:value={subtitleSettings.minScoreForAutoDownload}
-						min="0"
-						max="100"
-						step="5"
-						disabled={!subtitleSettings.enabled}
-					/>
-					<div class="label">
-						<span class="label-text-alt text-base-content/60">Minimum match score (0-100)</span>
-					</div>
-				</div>
-			</div>
-
-			<div class="mt-4 flex items-center justify-between">
-				<button
-					class="btn btn-outline btn-sm"
-					onclick={runSubtitleSearch}
-					disabled={isRunningTask !== null || !subtitleSettings.enabled}
-				>
-					{#if isRunningTask === 'subtitles'}
-						<span class="loading loading-sm loading-spinner"></span>
-					{:else}
-						<Play class="h-4 w-4" />
-					{/if}
-					Run Subtitle Search Now
-				</button>
-
-				<button class="btn btn-primary" onclick={saveSubtitleSettings} disabled={isSaving}>
-					{#if isSaving}
-						<span class="loading loading-sm loading-spinner"></span>
-					{/if}
-					Save Subtitle Settings
 				</button>
 			</div>
 		</div>

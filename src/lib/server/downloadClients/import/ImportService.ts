@@ -46,7 +46,7 @@ import { logger } from '$lib/logging';
 import { DOWNLOAD, EXCLUDED_FILE_PATTERNS } from '$lib/config/constants';
 import { ImportWorker, workerManager } from '$lib/server/workers';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
-import { getSubtitleScheduler } from '$lib/server/subtitles/services/SubtitleScheduler.js';
+import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
 
 /**
  * Import result for a single file
@@ -1155,9 +1155,8 @@ export class ImportService extends EventEmitter {
 				return;
 			}
 
-			// Use the existing SubtitleScheduler.processNewMedia() method
-			const subtitleScheduler = getSubtitleScheduler();
-			const result = await subtitleScheduler.processNewMedia(mediaType, mediaId);
+			// Use the standalone import service for subtitle search
+			const result = await searchSubtitlesForNewMedia(mediaType, mediaId);
 
 			logger.info('[ImportService] Post-import subtitle search completed', {
 				mediaType,
@@ -1208,13 +1207,12 @@ export class ImportService extends EventEmitter {
 		}
 
 		// Trigger subtitle search for each episode
-		const subtitleScheduler = getSubtitleScheduler();
 		let totalDownloaded = 0;
 		let totalErrors = 0;
 
 		for (const episodeId of uniqueEpisodeIds) {
 			try {
-				const result = await subtitleScheduler.processNewMedia('episode', episodeId);
+				const result = await searchSubtitlesForNewMedia('episode', episodeId);
 				totalDownloaded += result.downloaded;
 				totalErrors += result.errors.length;
 			} catch (error) {

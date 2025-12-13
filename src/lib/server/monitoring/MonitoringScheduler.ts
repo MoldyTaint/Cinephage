@@ -47,6 +47,11 @@ const SCHEDULER_POLL_INTERVAL_MS = 30 * 1000;
 const STARTUP_GRACE_PERIOD_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
+ * When to trigger subtitle search during import
+ */
+export type SubtitleSearchTrigger = 'immediate' | 'after_metadata' | 'both';
+
+/**
  * Monitoring settings interface
  */
 export interface MonitoringSettings {
@@ -60,6 +65,7 @@ export interface MonitoringSettings {
 	missingSubtitlesIntervalHours: number;
 	subtitleUpgradeIntervalHours: number;
 	subtitleSearchOnImportEnabled: boolean;
+	subtitleSearchTrigger: SubtitleSearchTrigger;
 }
 
 /**
@@ -130,7 +136,7 @@ export class MonitoringScheduler extends EventEmitter {
 		const settings = await db.select().from(monitoringSettings);
 		const settingsMap = new Map(settings.map((s) => [s.key, s.value]));
 
-		const taskTypes = ['missing', 'upgrade', 'newEpisode', 'cutoffUnmet', 'missingSubtitles', 'subtitleUpgrade'];
+		const taskTypes = ['missing', 'upgrade', 'newEpisode', 'cutoffUnmet', 'pendingRelease', 'missingSubtitles', 'subtitleUpgrade'];
 		for (const taskType of taskTypes) {
 			const key = `last_run_${taskType}`;
 			const value = settingsMap.get(key);
@@ -152,10 +158,24 @@ export class MonitoringScheduler extends EventEmitter {
 	 */
 	private async saveLastRunTime(taskType: string, time: Date): Promise<void> {
 		const key = `last_run_${taskType}`;
-		await db
-			.insert(monitoringSettings)
-			.values({ key, value: time.toISOString() })
-			.onConflictDoUpdate({ target: monitoringSettings.key, set: { value: time.toISOString() } });
+		try {
+			await db
+				.insert(monitoringSettings)
+				.values({ key, value: time.toISOString() })
+				.onConflictDoUpdate({ target: monitoringSettings.key, set: { value: time.toISOString() } });
+			logger.debug(`[MonitoringScheduler] Saved last run time for ${taskType}`, {
+				taskType,
+				key,
+				time: time.toISOString()
+			});
+		} catch (error) {
+			logger.error(`[MonitoringScheduler] Failed to save last run time for ${taskType}`, error, {
+				taskType,
+				key,
+				time: time.toISOString()
+			});
+			throw error;
+		}
 	}
 
 	/**
@@ -191,7 +211,8 @@ export class MonitoringScheduler extends EventEmitter {
 				settingsMap.get('subtitle_upgrade_interval_hours') ||
 					String(DEFAULT_INTERVALS.subtitleUpgrade)
 			),
-			subtitleSearchOnImportEnabled: settingsMap.get('subtitle_search_on_import_enabled') !== 'false'
+			subtitleSearchOnImportEnabled: settingsMap.get('subtitle_search_on_import_enabled') !== 'false',
+			subtitleSearchTrigger: (settingsMap.get('subtitle_search_trigger') as SubtitleSearchTrigger) || 'after_metadata'
 		};
 	}
 
@@ -251,6 +272,12 @@ export class MonitoringScheduler extends EventEmitter {
 			updates.push({
 				key: 'subtitle_search_on_import_enabled',
 				value: String(settings.subtitleSearchOnImportEnabled)
+			});
+		}
+		if (settings.subtitleSearchTrigger !== undefined) {
+			updates.push({
+				key: 'subtitle_search_trigger',
+				value: settings.subtitleSearchTrigger
 			});
 		}
 

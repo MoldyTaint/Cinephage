@@ -127,11 +127,14 @@ Enable automatic subtitle search when media is imported.
 
 ### Configuration
 
-Enable in Settings > General > Subtitles:
+Enable in Settings > Monitoring:
 
-- **Auto-search on import**: Enable/disable
-- **Overwrite existing**: Replace existing subtitles
-- **Minimum score**: Only download if match confidence is high enough
+- **Auto-search on import**: Enable/disable automatic subtitle search
+- **Search trigger**: When to search for subtitles during import
+  - `After metadata` (default): Search after TMDB matching completes
+  - `Immediate`: Search as soon as file is imported
+  - `Both`: Search at both stages
+- **Minimum score**: Only download if match confidence is high enough (set per language profile)
 
 ---
 

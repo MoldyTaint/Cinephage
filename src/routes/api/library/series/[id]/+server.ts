@@ -9,11 +9,12 @@ import {
 	rootFolders,
 	subtitles
 } from '$lib/server/db/schema.js';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, and, isNotNull } from 'drizzle-orm';
 import { unlink, rmdir, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { logger } from '$lib/logging';
 import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
+import { searchSubtitlesForMediaBatch } from '$lib/server/subtitles/services/SubtitleImportService.js';
 import { searchOnAdd } from '$lib/server/library/searchOnAdd.js';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
 
@@ -167,15 +168,16 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		} = body;
 
 		// Get current series state BEFORE update to detect monitoring changes
-		let wasUnmonitored = false;
-		if (typeof monitored === 'boolean' && monitored === true) {
-			const [currentSeries] = await db
-				.select({ monitored: series.monitored })
-				.from(series)
-				.where(eq(series.id, params.id));
+		const [currentSeries] = await db
+			.select({
+				monitored: series.monitored,
+				wantsSubtitles: series.wantsSubtitles,
+				languageProfileId: series.languageProfileId
+			})
+			.from(series)
+			.where(eq(series.id, params.id));
 
-			wasUnmonitored = currentSeries ? !currentSeries.monitored : false;
-		}
+		const wasUnmonitored = currentSeries ? !currentSeries.monitored : false;
 
 		const updateData: Record<string, unknown> = {};
 
@@ -220,6 +222,50 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 				logger.info('[API] Triggered search on monitor enable for series', {
 					seriesId: params.id
 				});
+			}
+		}
+
+		// Check if subtitle monitoring was just enabled
+		if (currentSeries) {
+			const wasSubtitlesEnabled =
+				currentSeries.wantsSubtitles === true && currentSeries.languageProfileId;
+			const newWantsSubtitles = wantsSubtitles ?? currentSeries.wantsSubtitles;
+			const newProfileId = languageProfileId ?? currentSeries.languageProfileId;
+			const isNowSubtitlesEnabled = newWantsSubtitles === true && newProfileId;
+
+			// Trigger subtitle search for all episodes with files if just enabled
+			if (!wasSubtitlesEnabled && isNowSubtitlesEnabled) {
+				const settings = await monitoringScheduler.getSettings();
+
+				if (settings.subtitleSearchOnImportEnabled) {
+					// Get all episodes with files
+					const episodesWithFiles = await db
+						.select({ id: episodes.id })
+						.from(episodes)
+						.where(
+							and(eq(episodes.seriesId, params.id), eq(episodes.hasFile, true))
+						);
+
+					if (episodesWithFiles.length > 0) {
+						logger.info('[API] Subtitle monitoring enabled for series, triggering search', {
+							seriesId: params.id,
+							episodeCount: episodesWithFiles.length
+						});
+
+						// Fire-and-forget: batch search all episodes
+						const items = episodesWithFiles.map((ep) => ({
+							mediaType: 'episode' as const,
+							mediaId: ep.id
+						}));
+
+						searchSubtitlesForMediaBatch(items).catch((err) => {
+							logger.warn('[API] Background subtitle batch search failed', {
+								seriesId: params.id,
+								error: err instanceof Error ? err.message : String(err)
+							});
+						});
+					}
+				}
 			}
 		}
 
