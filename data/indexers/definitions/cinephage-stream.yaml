@@ -17,6 +17,13 @@ encoding: UTF-8
 links:
   - http://localhost
 
+settings:
+  - name: baseUrl
+    type: text
+    label: Base URL
+    default: http://localhost:5173
+    helpText: External URL for streaming access. Used in .strm files to point to your Cinephage instance. Set this to your public URL or reverse proxy address (e.g., https://media.example.com).
+
 # Protocol-specific configuration for streaming
 protocolConfig:
   streaming:

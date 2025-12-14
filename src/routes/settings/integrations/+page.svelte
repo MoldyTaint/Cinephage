@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
+	import { enhance } from '$app/forms';
 	import { resolvePath } from '$lib/utils/routing';
 	import {
 		Database,
@@ -9,11 +9,26 @@
 		AlertCircle,
 		ChevronRight,
 		Languages,
-		Film
+		Film,
+		X
 	} from 'lucide-svelte';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
+
+	// TMDB modal state
+	let tmdbModalOpen = $state(false);
+	let tmdbApiKey = $state('');
+	let saving = $state(false);
+
+	function openTmdbModal() {
+		tmdbApiKey = data.tmdb.apiKey || '';
+		tmdbModalOpen = true;
+	}
+
+	function closeTmdbModal() {
+		tmdbModalOpen = false;
+	}
 
 	interface IntegrationCard {
 		title: string;
@@ -120,10 +135,10 @@
 								Not Configured
 							</div>
 						{/if}
-						<a href={resolve('/settings/general')} class="btn btn-ghost btn-sm">
+						<button onclick={openTmdbModal} class="btn btn-ghost btn-sm">
 							Configure
 							<ChevronRight class="h-4 w-4" />
-						</a>
+						</button>
 					</div>
 				</div>
 			</div>
@@ -196,3 +211,55 @@
 		</div>
 	{/if}
 </div>
+
+<!-- TMDB API Key Modal -->
+{#if tmdbModalOpen}
+	<div class="modal modal-open">
+		<div class="modal-box">
+			<button onclick={closeTmdbModal} class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">
+				<X class="h-4 w-4" />
+			</button>
+			<h3 class="text-lg font-bold">TMDB API Key</h3>
+			<p class="py-2 text-sm text-base-content/70">
+				Enter your TMDB API key to fetch movie and TV show metadata.
+				Get a free key at <a href="https://www.themoviedb.org/settings/api" target="_blank" class="link link-primary">themoviedb.org</a>.
+			</p>
+			<form
+				method="POST"
+				action="?/saveTmdbApiKey"
+				use:enhance={() => {
+					saving = true;
+					return async ({ update }) => {
+						await update();
+						saving = false;
+						closeTmdbModal();
+					};
+				}}
+			>
+				<div class="form-control w-full">
+					<label class="label" for="apiKey">
+						<span class="label-text">API Key</span>
+					</label>
+					<input
+						type="text"
+						id="apiKey"
+						name="apiKey"
+						bind:value={tmdbApiKey}
+						placeholder="Enter your TMDB API key"
+						class="input input-bordered w-full"
+					/>
+				</div>
+				<div class="modal-action">
+					<button type="button" onclick={closeTmdbModal} class="btn btn-ghost">Cancel</button>
+					<button type="submit" class="btn btn-primary" disabled={saving}>
+						{#if saving}
+							<span class="loading loading-spinner loading-sm"></span>
+						{/if}
+						Save
+					</button>
+				</div>
+			</form>
+		</div>
+		<button type="button" class="modal-backdrop" onclick={closeTmdbModal} aria-label="Close modal"></button>
+	</div>
+{/if}

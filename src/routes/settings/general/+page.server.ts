@@ -39,8 +39,8 @@ export const actions: Actions = {
 		const service = getRootFolderService();
 
 		try {
-			await service.createFolder(result.data);
-			return { rootFolderSuccess: true };
+			const folder = await service.createFolder(result.data);
+			return { rootFolderSuccess: true, createdFolderId: folder.id };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
 			return fail(500, { rootFolderError: message });

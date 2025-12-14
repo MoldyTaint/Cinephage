@@ -12,6 +12,7 @@ import {
 } from '$lib/server/tasks/UnifiedTaskRegistry';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler';
 import { taskHistoryService } from '$lib/server/tasks/TaskHistoryService';
+import { librarySchedulerService } from '$lib/server/library/index';
 import type { TaskHistoryEntry } from '$lib/types/task';
 
 export const load: PageServerLoad = async ({ depends }) => {
@@ -38,7 +39,13 @@ export const load: PageServerLoad = async ({ depends }) => {
 			} else {
 				// Get status from TaskHistoryService for maintenance tasks
 				const lastRun = await taskHistoryService.getLastRunForTask(def.id);
-				const isRunning = taskHistoryService.isTaskRunning(def.id);
+				let isRunning = taskHistoryService.isTaskRunning(def.id);
+
+				// Special handling for library-scan: check librarySchedulerService for actual running state
+				if (def.id === 'library-scan') {
+					const libStatus = await librarySchedulerService.getStatus();
+					isRunning = libStatus.scanning;
+				}
 
 				return {
 					...def,

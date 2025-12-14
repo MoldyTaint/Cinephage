@@ -38,10 +38,11 @@ import { unlink } from 'fs/promises';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
 import { mediaInfoService } from '$lib/server/library/media-info';
 import {
-	namingService,
+	NamingService,
 	releaseToNamingInfo,
 	type MediaNamingInfo
 } from '$lib/server/library/naming/NamingService';
+import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService';
 import { logger } from '$lib/logging';
 import { DOWNLOAD, EXCLUDED_FILE_PATTERNS } from '$lib/config/constants';
 import { ImportWorker, workerManager } from '$lib/server/workers';
@@ -893,6 +894,14 @@ export class ImportService extends EventEmitter {
 	}
 
 	/**
+	 * Get a NamingService instance with current database config
+	 */
+	private getNamingService(): NamingService {
+		const config = namingSettingsService.getConfigSync();
+		return new NamingService(config);
+	}
+
+	/**
 	 * Build a movie filename using the naming service
 	 */
 	private buildMovieFileName(
@@ -911,7 +920,7 @@ export class ImportService extends EventEmitter {
 			...releaseToNamingInfo(parsed, sourcePath)
 		};
 
-		return namingService.generateMovieFileName(namingInfo);
+		return this.getNamingService().generateMovieFileName(namingInfo);
 	}
 
 	/**
@@ -940,7 +949,7 @@ export class ImportService extends EventEmitter {
 			episodeTitle: episodeTitle
 		};
 
-		return namingService.generateEpisodeFileName(namingInfo);
+		return this.getNamingService().generateEpisodeFileName(namingInfo);
 	}
 
 	/**

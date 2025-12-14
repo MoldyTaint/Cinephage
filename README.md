@@ -105,11 +105,11 @@ git clone https://github.com/MoldyTaint/cinephage.git
 cd cinephage
 npm install
 
-# Initialize database
-npm run db:push
+# Build the application
+npm run build
 
-# Start development server
-npm run dev
+# Start production server (database auto-initializes on first run)
+npm start
 ```
 
 Open http://localhost:5173 and complete first-run setup:

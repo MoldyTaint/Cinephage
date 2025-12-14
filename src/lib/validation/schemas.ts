@@ -641,3 +641,62 @@ export type SubtitleDownloadRequest = z.infer<typeof subtitleDownloadSchema>;
 export type SubtitleSyncRequest = z.infer<typeof subtitleSyncSchema>;
 export type SubtitleBlacklistRequest = z.infer<typeof subtitleBlacklistSchema>;
 export type SubtitleSettingsUpdate = z.infer<typeof subtitleSettingsUpdateSchema>;
+
+// ============================================================
+// Naming Settings Schemas
+// ============================================================
+
+/**
+ * Multi-episode style options for naming.
+ */
+export const multiEpisodeStyleSchema = z.enum(['extend', 'duplicate', 'repeat', 'scene', 'range']);
+
+/**
+ * Colon replacement options for naming.
+ */
+export const colonReplacementSchema = z.enum([
+	'delete',
+	'dash',
+	'spaceDash',
+	'spaceDashSpace',
+	'smart'
+]);
+
+/**
+ * Media server ID format options.
+ * - plex: {tmdb-12345} or {tvdb-12345}
+ * - jellyfin: [tmdbid-12345] or [tvdbid-12345]
+ */
+export const mediaServerIdFormatSchema = z.enum(['plex', 'jellyfin']);
+
+/**
+ * Schema for updating naming settings.
+ * All fields are optional - only provided fields will be updated.
+ */
+export const namingConfigUpdateSchema = z.object({
+	// Movie formats
+	movieFolderFormat: z.string().min(1).max(500).optional(),
+	movieFileFormat: z.string().min(1).max(500).optional(),
+
+	// TV formats
+	seriesFolderFormat: z.string().min(1).max(500).optional(),
+	seasonFolderFormat: z.string().min(1).max(200).optional(),
+	episodeFileFormat: z.string().min(1).max(500).optional(),
+	dailyEpisodeFormat: z.string().min(1).max(500).optional(),
+	animeEpisodeFormat: z.string().min(1).max(500).optional(),
+	multiEpisodeStyle: multiEpisodeStyleSchema.optional(),
+
+	// Options
+	replaceSpacesWith: z.string().max(10).optional(),
+	colonReplacement: colonReplacementSchema.optional(),
+	mediaServerIdFormat: mediaServerIdFormatSchema.optional(),
+	includeQuality: z.boolean().optional(),
+	includeMediaInfo: z.boolean().optional(),
+	includeReleaseGroup: z.boolean().optional()
+});
+
+// Naming Type Exports
+export type MultiEpisodeStyle = z.infer<typeof multiEpisodeStyleSchema>;
+export type ColonReplacement = z.infer<typeof colonReplacementSchema>;
+export type MediaServerIdFormat = z.infer<typeof mediaServerIdFormatSchema>;
+export type NamingConfigUpdate = z.infer<typeof namingConfigUpdateSchema>;

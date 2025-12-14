@@ -122,6 +122,14 @@ const SCHEDULED_TASKS: UnifiedTaskDefinition[] = [
  */
 const MAINTENANCE_TASKS: UnifiedTaskDefinition[] = [
 	{
+		id: 'library-scan',
+		name: 'Library Scan',
+		description:
+			'Scan root folders for media files. Run this after adding folders or if media is missing.',
+		category: 'maintenance',
+		runEndpoint: '/api/library/scan'
+	},
+	{
 		id: 'update-strm-urls',
 		name: 'Update .strm URLs',
 		description:

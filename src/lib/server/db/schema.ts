@@ -756,6 +756,31 @@ export const librarySettings = sqliteTable('library_settings', {
 	value: text('value').notNull()
 });
 
+/**
+ * Naming Settings - Configuration for file and folder naming conventions
+ * Follows TRaSH Guides naming recommendations for media server compatibility
+ *
+ * Settings keys:
+ * - 'movie_folder_format': string - Format for movie folder names
+ * - 'movie_file_format': string - Format for movie file names
+ * - 'series_folder_format': string - Format for series folder names
+ * - 'season_folder_format': string - Format for season folder names
+ * - 'episode_file_format': string - Format for episode file names
+ * - 'daily_episode_format': string - Format for daily show episodes
+ * - 'anime_episode_format': string - Format for anime episodes
+ * - 'multi_episode_style': 'extend' | 'duplicate' | 'repeat' | 'scene' | 'range'
+ * - 'colon_replacement': 'delete' | 'dash' | 'spaceDash' | 'spaceDashSpace' | 'smart'
+ * - 'replace_spaces_with': string | null
+ * - 'media_server_id_format': 'plex' | 'jellyfin' - Controls ID format in folder names
+ * - 'include_quality': boolean
+ * - 'include_media_info': boolean
+ * - 'include_release_group': boolean
+ */
+export const namingSettings = sqliteTable('naming_settings', {
+	key: text('key').primaryKey(),
+	value: text('value').notNull()
+});
+
 // Default library settings keys:
 // - 'scan_interval_hours': How often to run periodic scans (default: 12)
 // - 'watch_enabled': Whether filesystem watching is enabled (default: true)

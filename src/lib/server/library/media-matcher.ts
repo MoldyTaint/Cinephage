@@ -711,11 +711,27 @@ export class MediaMatcherService {
 				title: tmdbSeries.name,
 				languageProfileId: defaultProfileId
 			});
+
+			// Populate all seasons and episodes from TMDB
+			// This ensures consistent behavior with "Add to Library" flow
+			await this.populateSeriesEpisodes(seriesId, tmdbId, tmdbSeries);
 		}
 
 		// Determine season and episode from parsed info
 		const seasonNumber = file.parsedSeason || 1;
 		const episodeNumber = file.parsedEpisode || 1;
+
+		// Fetch season details from TMDB (needed for both season and episode metadata)
+		let tmdbSeason: Awaited<ReturnType<typeof tmdb.getSeason>> | null = null;
+		try {
+			tmdbSeason = await tmdb.getSeason(tmdbId, seasonNumber);
+		} catch {
+			// Season might not exist in TMDB
+			logger.debug('[MediaMatcher] Could not fetch TMDB season data', {
+				tmdbId,
+				seasonNumber
+			});
+		}
 
 		// Ensure season exists
 		let [season] = await db
@@ -724,9 +740,7 @@ export class MediaMatcherService {
 			.where(and(eq(seasons.seriesId, seriesId), eq(seasons.seasonNumber, seasonNumber)));
 
 		if (!season) {
-			// Fetch season details from TMDB
-			try {
-				const tmdbSeason = await tmdb.getSeason(tmdbId, seasonNumber);
+			if (tmdbSeason) {
 				[season] = await db
 					.insert(seasons)
 					.values({
@@ -738,8 +752,8 @@ export class MediaMatcherService {
 						airDate: tmdbSeason.air_date
 					})
 					.returning();
-			} catch {
-				// Season might not exist in TMDB, create basic entry
+			} else {
+				// Create basic entry without TMDB data
 				[season] = await db
 					.insert(seasons)
 					.values({
@@ -749,6 +763,9 @@ export class MediaMatcherService {
 					.returning();
 			}
 		}
+
+		// Find episode details from TMDB season data
+		const tmdbEpisode = tmdbSeason?.episodes?.find((e) => e.episode_number === episodeNumber);
 
 		// Ensure episode exists
 		let [episode] = await db
@@ -763,7 +780,7 @@ export class MediaMatcherService {
 			);
 
 		if (!episode) {
-			// Create basic episode entry
+			// Create episode entry with TMDB metadata if available
 			[episode] = await db
 				.insert(episodes)
 				.values({
@@ -771,12 +788,23 @@ export class MediaMatcherService {
 					seasonId: season.id,
 					seasonNumber,
 					episodeNumber,
+					title: tmdbEpisode?.name ?? undefined,
+					overview: tmdbEpisode?.overview ?? undefined,
+					airDate: tmdbEpisode?.air_date ?? undefined,
+					runtime: tmdbEpisode?.runtime ?? undefined,
 					hasFile: true
 				})
 				.returning();
 		} else {
-			// Update hasFile
-			await db.update(episodes).set({ hasFile: true }).where(eq(episodes.id, episode.id));
+			// Update hasFile (and fill in missing metadata if we have it)
+			const updates: Record<string, unknown> = { hasFile: true };
+			if (tmdbEpisode && !episode.title) {
+				updates.title = tmdbEpisode.name;
+				updates.overview = tmdbEpisode.overview;
+				updates.airDate = tmdbEpisode.air_date;
+				updates.runtime = tmdbEpisode.runtime;
+			}
+			await db.update(episodes).set(updates).where(eq(episodes.id, episode.id));
 		}
 
 		// Create episode file entry
@@ -799,6 +827,109 @@ export class MediaMatcherService {
 				episodeId: episode.id,
 				error: err instanceof Error ? err.message : String(err)
 			});
+		});
+	}
+
+	/**
+	 * Populate all seasons and episodes from TMDB for a newly created series
+	 * This ensures consistent behavior with "Add to Library" flow
+	 */
+	private async populateSeriesEpisodes(
+		seriesId: string,
+		tmdbId: number,
+		tmdbSeries: Awaited<ReturnType<typeof tmdb.getTVShow>>
+	): Promise<void> {
+		if (!tmdbSeries.seasons || tmdbSeries.seasons.length === 0) {
+			logger.debug('[MediaMatcher] No seasons found for series', { tmdbId });
+			return;
+		}
+
+		for (const seasonInfo of tmdbSeries.seasons) {
+			// Skip season 0 (specials) by default - can be added later
+			const isSpecials = seasonInfo.season_number === 0;
+
+			// Check if season already exists
+			const [existingSeason] = await db
+				.select()
+				.from(seasons)
+				.where(
+					and(eq(seasons.seriesId, seriesId), eq(seasons.seasonNumber, seasonInfo.season_number))
+				);
+
+			let seasonId: string;
+
+			if (existingSeason) {
+				seasonId = existingSeason.id;
+			} else {
+				// Create season record
+				const [newSeason] = await db
+					.insert(seasons)
+					.values({
+						seriesId,
+						seasonNumber: seasonInfo.season_number,
+						name: seasonInfo.name,
+						overview: seasonInfo.overview,
+						posterPath: seasonInfo.poster_path,
+						airDate: seasonInfo.air_date,
+						episodeCount: seasonInfo.episode_count ?? 0,
+						episodeFileCount: 0,
+						monitored: !isSpecials // Monitor non-specials by default
+					})
+					.returning();
+				seasonId = newSeason.id;
+			}
+
+			// Fetch full season details to get episodes
+			try {
+				const fullSeason = await tmdb.getSeason(tmdbId, seasonInfo.season_number);
+
+				if (fullSeason.episodes && fullSeason.episodes.length > 0) {
+					for (const ep of fullSeason.episodes) {
+						// Check if episode already exists
+						const [existingEpisode] = await db
+							.select()
+							.from(episodes)
+							.where(
+								and(
+									eq(episodes.seriesId, seriesId),
+									eq(episodes.seasonNumber, ep.season_number),
+									eq(episodes.episodeNumber, ep.episode_number)
+								)
+							);
+
+						if (!existingEpisode) {
+							// Create episode with TMDB metadata
+							await db.insert(episodes).values({
+								seriesId,
+								seasonId,
+								tmdbId: ep.id,
+								seasonNumber: ep.season_number,
+								episodeNumber: ep.episode_number,
+								title: ep.name,
+								overview: ep.overview,
+								airDate: ep.air_date,
+								runtime: ep.runtime,
+								monitored: !isSpecials, // Monitor non-specials by default
+								hasFile: false
+							});
+						}
+					}
+				}
+
+				// Small delay to avoid TMDB rate limiting
+				await new Promise((resolve) => setTimeout(resolve, 50));
+			} catch (err) {
+				logger.warn('[MediaMatcher] Failed to fetch episodes for season', {
+					seasonNumber: seasonInfo.season_number,
+					error: err instanceof Error ? err.message : String(err)
+				});
+			}
+		}
+
+		logger.info('[MediaMatcher] Populated all episodes from TMDB for series', {
+			seriesId,
+			tmdbId,
+			title: tmdbSeries.name
 		});
 	}
 

@@ -74,37 +74,41 @@ export interface NamingConfig {
 	// Options
 	replaceSpacesWith?: string;
 	colonReplacement: 'delete' | 'dash' | 'spaceDash' | 'spaceDashSpace' | 'smart';
+	mediaServerIdFormat: 'plex' | 'jellyfin';
 	includeQuality: boolean;
 	includeMediaInfo: boolean;
 	includeReleaseGroup: boolean;
 }
 
 /**
- * Default naming configuration (TRaSH-inspired)
+ * Default naming configuration (TRaSH Guides aligned)
+ * @see https://trash-guides.info/Radarr/Radarr-recommended-naming-scheme/
+ * @see https://trash-guides.info/Sonarr/Sonarr-recommended-naming-scheme/
  */
 export const DEFAULT_NAMING_CONFIG: NamingConfig = {
-	// Movie: "Movie Title (2024) {tmdb-12345}"
-	movieFolderFormat: '{Title} ({Year}) {tmdb-{TmdbId}}',
-	// Movie: "Movie Title (2024) {edition-Extended} [Bluray-1080p][DV HDR10][DTS-HD MA 7.1][x265]-GROUP"
+	// Movie folder: "Movie Title (2024) {tmdb-12345}" (Plex) or "[tmdbid-12345]" (Jellyfin)
+	movieFolderFormat: '{CleanTitle} ({Year}) {MediaId}',
+	// Movie file: "Movie Title (2024) {edition-Extended} [Bluray-1080p][DV HDR10][DTS-HD MA 7.1][x265]-GROUP"
 	movieFileFormat:
-		'{Title} ({Year}) {edition-{Edition}} [{Quality}]{[{HDR}]}{[{AudioCodec} {AudioChannels}]}{[{VideoCodec}]}{-{ReleaseGroup}}',
+		'{CleanTitle} ({Year}) {edition-{Edition}} [{QualityFull}]{[{HDR}]}{[{AudioCodec} {AudioChannels}]}{[{VideoCodec}]}{-{ReleaseGroup}}',
 
-	// Series: "Series Title (2024) {tvdb-12345}"
-	seriesFolderFormat: '{Title} ({Year}) {tvdb-{TvdbId}}',
+	// Series folder: "Series Title (2024) {tvdb-12345}" (Plex) or "[tvdbid-12345]" (Jellyfin)
+	seriesFolderFormat: '{CleanTitle} ({Year}) {SeriesId}',
 	// Season: "Season 01"
 	seasonFolderFormat: 'Season {Season:00}',
-	// Episode: "Series Title (2024) - S01E01 - Episode Title [Bluray-1080p][x265]-GROUP"
+	// Episode: "Series Title (2024) - S01E01 - Episode Title [Bluray-1080p][DTS-HD MA 5.1][x265]-GROUP"
 	episodeFileFormat:
-		'{SeriesTitle} ({Year}) - S{Season:00}E{Episode:00} - {EpisodeTitle} [{Quality}]{[{HDR}]}{[{VideoCodec}]}{-{ReleaseGroup}}',
+		'{SeriesCleanTitle} ({Year}) - S{Season:00}E{Episode:00} - {EpisodeCleanTitle} [{QualityFull}]{[{HDR}]}{[{AudioCodec} {AudioChannels}]}{[{VideoCodec}]}{-{ReleaseGroup}}',
 	// Daily: "Series Title (2024) - 2024-01-15 - Episode Title [Quality]"
 	dailyEpisodeFormat:
-		'{SeriesTitle} ({Year}) - {AirDate} - {EpisodeTitle} [{Quality}]{[{VideoCodec}]}{-{ReleaseGroup}}',
+		'{SeriesCleanTitle} ({Year}) - {AirDate} - {EpisodeCleanTitle} [{QualityFull}]{[{VideoCodec}]}{-{ReleaseGroup}}',
 	// Anime: "Series Title (2024) - S01E01 - 001 - Episode Title [Quality][10bit][x265]-GROUP"
 	animeEpisodeFormat:
-		'{SeriesTitle} ({Year}) - S{Season:00}E{Episode:00} - {Absolute:000} - {EpisodeTitle} [{Quality}]{[{HDR}]}{[{BitDepth}bit]}{[{VideoCodec}]}{[{AudioCodec} {AudioChannels}]}{-{ReleaseGroup}}',
+		'{SeriesCleanTitle} ({Year}) - S{Season:00}E{Episode:00} - {Absolute:000} - {EpisodeCleanTitle} [{QualityFull}]{[{HDR}]}{[{BitDepth}bit]}{[{VideoCodec}]}{[{AudioCodec} {AudioChannels}]}{-{ReleaseGroup}}',
 	multiEpisodeStyle: 'range',
 
 	colonReplacement: 'smart',
+	mediaServerIdFormat: 'plex',
 	includeQuality: true,
 	includeMediaInfo: true,
 	includeReleaseGroup: true
@@ -134,6 +138,20 @@ export class NamingService {
 
 	constructor(config: Partial<NamingConfig> = {}) {
 		this.config = { ...DEFAULT_NAMING_CONFIG, ...config };
+	}
+
+	/**
+	 * Get the current naming configuration
+	 */
+	getConfig(): NamingConfig {
+		return { ...this.config };
+	}
+
+	/**
+	 * Update the naming configuration
+	 */
+	updateConfig(config: Partial<NamingConfig>): void {
+		this.config = { ...this.config, ...config };
 	}
 
 	/**
@@ -251,6 +269,11 @@ export class NamingService {
 			case 'seriestitle':
 				value = info.title;
 				break;
+			case 'cleantitle':
+			case 'moviecleantitle':
+			case 'seriescleantitle':
+				value = this.generateCleanTitle(info.title);
+				break;
 			case 'year':
 				value = info.year;
 				break;
@@ -264,6 +287,20 @@ export class NamingService {
 				value = info.imdbId;
 				break;
 
+			// Media Server IDs (format based on config)
+			case 'mediaid':
+			case 'movieid':
+				value = this.formatMediaId(info.tmdbId, 'tmdb');
+				break;
+			case 'seriesid':
+				// Prefer TVDB for series, fall back to TMDB
+				if (info.tvdbId) {
+					value = this.formatMediaId(info.tvdbId, 'tvdb');
+				} else if (info.tmdbId) {
+					value = this.formatMediaId(info.tmdbId, 'tmdb');
+				}
+				break;
+
 			// Edition
 			case 'edition':
 				value = info.edition;
@@ -273,11 +310,22 @@ export class NamingService {
 			case 'quality':
 				value = this.buildQualityString(info);
 				break;
+			case 'qualityfull':
+				value = this.buildQualityFullString(info);
+				break;
 			case 'resolution':
 				value = info.resolution;
 				break;
 			case 'source':
 				value = info.source;
+				break;
+
+			// Proper/Repack markers
+			case 'proper':
+				value = info.proper ? 'PROPER' : undefined;
+				break;
+			case 'repack':
+				value = info.repack ? 'REPACK' : undefined;
 				break;
 
 			// Video
@@ -325,6 +373,9 @@ export class NamingService {
 			case 'episodetitle':
 				value = info.episodeTitle;
 				break;
+			case 'episodecleantitle':
+				value = info.episodeTitle ? this.generateCleanTitle(info.episodeTitle) : undefined;
+				break;
 			case 'airdate':
 				value = info.airDate;
 				break;
@@ -360,6 +411,50 @@ export class NamingService {
 		}
 
 		return parts.join('-');
+	}
+
+	/**
+	 * Build full quality string with Proper/Repack markers
+	 * e.g., "PROPER Bluray-1080p" or "REPACK WEB-DL-2160p"
+	 */
+	private buildQualityFullString(info: MediaNamingInfo): string {
+		const parts: string[] = [];
+
+		// Add Proper/Repack markers first (per Trash-Guides)
+		if (info.proper) parts.push('Proper');
+		if (info.repack) parts.push('Repack');
+
+		// Then quality
+		const quality = this.buildQualityString(info);
+		if (quality) parts.push(quality);
+
+		return parts.join(' ');
+	}
+
+	/**
+	 * Generate a clean title by removing special characters for filesystem compatibility
+	 * Following Trash-Guides: strips characters like : / \ ? * " < > |
+	 */
+	private generateCleanTitle(title: string): string {
+		return title
+			.replace(/[:/\\?*"<>|]/g, '') // Remove filesystem-unsafe chars
+			.replace(/\s+/g, ' ') // Normalize whitespace
+			.trim();
+	}
+
+	/**
+	 * Format media ID based on configured media server format
+	 * Plex/Emby: {tmdb-12345} or {tvdb-12345}
+	 * Jellyfin: [tmdbid-12345] or [tvdbid-12345]
+	 */
+	private formatMediaId(id: number | undefined, type: 'tmdb' | 'tvdb'): string | undefined {
+		if (!id) return undefined;
+
+		if (this.config.mediaServerIdFormat === 'jellyfin') {
+			return `[${type}id-${id}]`;
+		}
+		// Plex/Emby format (default)
+		return `{${type}-${id}}`;
 	}
 
 	/**

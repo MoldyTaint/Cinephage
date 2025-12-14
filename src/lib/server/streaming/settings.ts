@@ -80,8 +80,9 @@ export interface StreamingIndexerSettings {
  * Get the streaming indexer's settings from the database.
  * Returns undefined if indexer not found or has no settings.
  *
- * The baseUrl is read from the indexer's base_url column (not the JSON settings)
- * since this is the user-configurable external URL for streaming access.
+ * Priority for baseUrl:
+ * 1. JSON settings field (user-configured in indexer settings form)
+ * 2. indexer's base_url column (selected from links array)
  */
 export async function getStreamingIndexerSettings(): Promise<StreamingIndexerSettings | undefined> {
 	const rows = await db
@@ -99,9 +100,9 @@ export async function getStreamingIndexerSettings(): Promise<StreamingIndexerSet
 
 	const settings = (rows[0].settings as StreamingIndexerSettings) ?? {};
 
-	// Use the indexer's base_url column as the authoritative source for baseUrl
-	// This is the external URL configured through the indexer settings UI
-	if (rows[0].baseUrl) {
+	// Use JSON settings baseUrl if configured, otherwise fall back to column
+	// This allows users to override the base URL in the indexer settings form
+	if (!settings.baseUrl && rows[0].baseUrl) {
 		settings.baseUrl = rows[0].baseUrl;
 	}
 

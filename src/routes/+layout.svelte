@@ -20,7 +20,8 @@
 		Filter,
 		Download,
 		Shield,
-		ListTodo
+		ListTodo,
+		FileSignature
 	} from 'lucide-svelte';
 
 	let { children } = $props();
@@ -42,6 +43,7 @@
 			icon: Settings,
 			children: [
 				{ href: '/settings/general', label: 'General', icon: Settings },
+				{ href: '/settings/naming', label: 'Naming', icon: FileSignature },
 				{ href: '/settings/profiles', label: 'Quality Profiles', icon: Shield },
 				{ href: '/settings/integrations', label: 'Integrations', icon: Compass },
 				{ href: '/settings/tasks', label: 'Tasks', icon: ListTodo },

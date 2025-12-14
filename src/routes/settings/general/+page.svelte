@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
-	import { Plus } from 'lucide-svelte';
+	import { invalidateAll, goto } from '$app/navigation';
+	import { Plus, HardDrive, RefreshCw, CheckCircle, AlertCircle, ExternalLink } from 'lucide-svelte';
 	import type { PageData, ActionData } from './$types';
 	import type {
 		RootFolder,
@@ -11,6 +11,105 @@
 	import { RootFolderModal, RootFolderList } from '$lib/components/rootFolders';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
+
+	// Library Scan state
+	interface ScanProgress {
+		phase: string;
+		rootFolderId?: string;
+		rootFolderPath?: string;
+		filesFound: number;
+		filesProcessed: number;
+		filesAdded: number;
+		filesUpdated: number;
+		filesRemoved: number;
+		unmatchedCount: number;
+		currentFile?: string;
+	}
+
+	let scanning = $state(false);
+	let scanProgress = $state<ScanProgress | null>(null);
+	let scanError = $state<string | null>(null);
+	let scanSuccess = $state<{ message: string; unmatchedCount: number } | null>(null);
+	let eventSource = $state<EventSource | null>(null);
+
+	// Cleanup SSE on unmount
+	$effect(() => {
+		return () => {
+			if (eventSource) {
+				eventSource.close();
+			}
+		};
+	});
+
+	async function triggerLibraryScan(rootFolderId?: string) {
+		scanning = true;
+		scanError = null;
+		scanSuccess = null;
+		scanProgress = null;
+
+		// Connect to SSE for progress updates
+		eventSource = new EventSource('/api/library/scan/status');
+
+		eventSource.addEventListener('progress', (e) => {
+			scanProgress = JSON.parse(e.data);
+		});
+
+		eventSource.addEventListener('scanComplete', (e) => {
+			const result = JSON.parse(e.data);
+			const totalUnmatched = result.results?.reduce(
+				(sum: number, r: { unmatchedFiles?: number }) => sum + (r.unmatchedFiles ?? 0),
+				0
+			) ?? 0;
+			scanSuccess = {
+				message: `Scan complete: ${result.results?.length ?? 0} folder(s) scanned`,
+				unmatchedCount: totalUnmatched
+			};
+			scanning = false;
+			scanProgress = null;
+			eventSource?.close();
+			eventSource = null;
+		});
+
+		eventSource.addEventListener('scanError', (e) => {
+			const result = JSON.parse(e.data);
+			scanError = result.error?.message ?? 'Scan failed';
+			scanning = false;
+			scanProgress = null;
+			eventSource?.close();
+			eventSource = null;
+		});
+
+		eventSource.onerror = () => {
+			// SSE connection error - scan may have completed or server restarted
+			if (scanning) {
+				scanning = false;
+				scanProgress = null;
+			}
+			eventSource?.close();
+			eventSource = null;
+		};
+
+		// Trigger the scan
+		try {
+			const body = rootFolderId ? { rootFolderId } : { fullScan: true };
+			const response = await fetch('/api/library/scan', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(body)
+			});
+
+			if (!response.ok) {
+				const result = await response.json();
+				throw new Error(result.error || 'Failed to start scan');
+			}
+		} catch (error) {
+			scanError = error instanceof Error ? error.message : 'Failed to start scan';
+			scanning = false;
+			scanProgress = null;
+			eventSource?.close();
+			eventSource = null;
+		}
+	}
 
 	// Root Folder state
 	let folderModalOpen = $state(false);
@@ -68,6 +167,7 @@
 			form.append('data', JSON.stringify(formData));
 
 			let response: Response;
+			const isCreating = folderModalMode === 'add';
 			if (folderModalMode === 'edit' && editingFolder) {
 				form.append('id', editingFolder.id);
 				response = await fetch(`?/updateRootFolder`, {
@@ -93,6 +193,11 @@
 
 			await invalidateAll();
 			closeFolderModal();
+
+			// Auto-scan newly created folder
+			if (isCreating && result.data?.createdFolderId) {
+				triggerLibraryScan(result.data.createdFolderId);
+			}
 		} catch (error) {
 			folderSaveError = error instanceof Error ? error.message : 'An unexpected error occurred';
 		} finally {
@@ -171,6 +276,94 @@
 			onEdit={openEditFolderModal}
 			onDelete={confirmFolderDelete}
 		/>
+	</div>
+
+	<div class="divider"></div>
+
+	<!-- Library Scan Section -->
+	<div class="mb-8">
+		<div class="mb-4 flex items-center justify-between">
+			<div>
+				<h2 class="text-2xl font-bold">Library Scan</h2>
+				<p class="text-base-content/70">
+					Scan root folders to discover media files and match them to your library.
+				</p>
+			</div>
+			<button
+				class="btn btn-primary gap-2"
+				onclick={() => triggerLibraryScan()}
+				disabled={scanning || data.rootFolders.length === 0}
+			>
+				{#if scanning}
+					<RefreshCw class="h-4 w-4 animate-spin" />
+					Scanning...
+				{:else}
+					<HardDrive class="h-4 w-4" />
+					Scan Library
+				{/if}
+			</button>
+		</div>
+
+		{#if data.rootFolders.length === 0}
+			<div class="alert alert-warning mb-4">
+				<AlertCircle class="h-5 w-5" />
+				<span>Add a root folder above before scanning your library.</span>
+			</div>
+		{/if}
+
+		{#if scanError}
+			<div class="alert alert-error mb-4">
+				<AlertCircle class="h-5 w-5" />
+				<span>{scanError}</span>
+			</div>
+		{/if}
+
+		{#if scanSuccess}
+			<div class="alert alert-success mb-4">
+				<CheckCircle class="h-5 w-5" />
+				<div class="flex flex-1 items-center justify-between">
+					<span>{scanSuccess.message}</span>
+					{#if scanSuccess.unmatchedCount > 0}
+						<a href="/library/unmatched" class="btn btn-sm btn-ghost gap-1">
+							{scanSuccess.unmatchedCount} unmatched file{scanSuccess.unmatchedCount !== 1 ? 's' : ''}
+							<ExternalLink class="h-3 w-3" />
+						</a>
+					{/if}
+				</div>
+			</div>
+		{/if}
+
+		{#if scanning && scanProgress}
+			<div class="card bg-base-200 p-4">
+				<div class="mb-2 flex justify-between text-sm">
+					<span class="truncate max-w-md">
+						{scanProgress.phase === 'scanning' ? 'Discovering files...' : ''}
+						{scanProgress.phase === 'processing' ? 'Processing...' : ''}
+						{scanProgress.phase === 'matching' ? 'Matching files...' : ''}
+						{scanProgress.rootFolderPath ?? ''}
+					</span>
+					<span class="text-base-content/60">
+						{scanProgress.filesProcessed} / {scanProgress.filesFound} files
+					</span>
+				</div>
+				<progress
+					class="progress progress-primary w-full"
+					value={scanProgress.filesProcessed}
+					max={scanProgress.filesFound || 1}
+				></progress>
+				<div class="mt-2 flex gap-4 text-xs text-base-content/60">
+					<span>Added: {scanProgress.filesAdded}</span>
+					<span>Updated: {scanProgress.filesUpdated}</span>
+					<span>Removed: {scanProgress.filesRemoved}</span>
+					<span>Unmatched: {scanProgress.unmatchedCount}</span>
+				</div>
+				{#if scanProgress.currentFile}
+					<div class="mt-2 truncate text-xs text-base-content/50">
+						{scanProgress.currentFile}
+					</div>
+				{/if}
+			</div>
+		{/if}
 	</div>
 </div>
 

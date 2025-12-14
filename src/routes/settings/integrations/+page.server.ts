@@ -1,4 +1,4 @@
-import type { PageServerLoad } from './$types';
+import type { PageServerLoad, Actions } from './$types';
 import { db } from '$lib/server/db';
 import { settings } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
@@ -37,7 +37,8 @@ export const load: PageServerLoad = async () => {
 	return {
 		tmdb: {
 			hasApiKey: !!apiKeySetting,
-			configured: !!apiKeySetting
+			configured: !!apiKeySetting,
+			apiKey: apiKeySetting?.value || ''
 		},
 		indexers: {
 			total: indexers.length,
@@ -57,4 +58,22 @@ export const load: PageServerLoad = async () => {
 			hasDefault: !!defaultProfile
 		}
 	};
+};
+
+export const actions: Actions = {
+	saveTmdbApiKey: async ({ request }) => {
+		const formData = await request.formData();
+		const apiKey = formData.get('apiKey') as string;
+
+		if (apiKey) {
+			await db
+				.insert(settings)
+				.values({ key: 'tmdb_api_key', value: apiKey })
+				.onConflictDoUpdate({ target: settings.key, set: { value: apiKey } });
+		} else {
+			await db.delete(settings).where(eq(settings.key, 'tmdb_api_key'));
+		}
+
+		return { success: true };
+	}
 };
