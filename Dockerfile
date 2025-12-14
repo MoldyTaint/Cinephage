@@ -39,6 +39,8 @@ COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/build ./build
 COPY --from=builder --chown=node:node /app/package.json ./package.json
 COPY --from=builder --chown=node:node /app/drizzle ./drizzle
+COPY --from=builder --chown=node:node /app/drizzle.config.ts ./drizzle.config.ts
+COPY --from=builder --chown=node:node /app/src ./src
 # Copy internal indexer definitions if they exist in data/indexers/definitions in source
 COPY --from=builder --chown=node:node /app/data/indexers ./data/indexers
 
@@ -56,4 +58,4 @@ USER node
 EXPOSE 3000
 
 # Start the application
-CMD ["node", "npm run db:push && node build/index.js"]
+CMD ["/bin/sh", "-c", "npm run db:push && node build/index.js"]
