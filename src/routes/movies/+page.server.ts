@@ -125,3 +125,18 @@ export const load: PageServerLoad = async ({ url }) => {
 		};
 	}
 };
+
+export const actions = {
+	toggleAllMonitored: async ({ request }) => {
+		const formData = await request.formData();
+		const monitored = formData.get('monitored') === 'true';
+
+		try {
+			await db.update(movies).set({ monitored });
+			return { success: true };
+		} catch (error) {
+			logger.error('[Movies] Failed to toggle all monitored', error instanceof Error ? error : undefined);
+			return { success: false, error: 'Failed to update movies' };
+		}
+	}
+};

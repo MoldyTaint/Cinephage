@@ -118,6 +118,14 @@ export class NZBGetClient implements IDownloadClient {
             { Name: 'x-category', Value: category }
         ];
 
+        logger.info('[NZBGet] Adding download', {
+            name,
+            category,
+            priority,
+            hasNzbFile: !!options.nzbFile,
+            hasUrl: !!options.downloadUrl
+        });
+
         let nzbId: number;
 
         if (options.nzbFile) {
@@ -152,6 +160,7 @@ export class NZBGetClient implements IDownloadClient {
         }
 
         if (nzbId > 0) {
+            logger.info('[NZBGet] Download added successfully', { nzbId });
             return nzbId.toString();
         } else {
             throw new Error('NZBGet failed to add download');
@@ -166,11 +175,20 @@ export class NZBGetClient implements IDownloadClient {
 
         const results: DownloadInfo[] = [];
 
+        logger.debug(`[NZBGet] Fetched ${groups.length} groups and ${history.length} history items`, { categoryFilter: category });
+
         // Map active downloads (groups)
         for (const task of groups) {
             // Type assertion hack because nzbget types are loose and response varies by version
             const item = task as any;
-            if (category && item.Category && item.Category !== category) continue;
+
+            logger.debug(`[NZBGet] Group item`, {
+                NZBID: item.NZBID,
+                NZBName: item.NZBName,
+                Category: item.Category
+            });
+
+            if (category && item.Category && item.Category.toLowerCase() !== category.toLowerCase()) continue;
 
             results.push({
                 id: item.NZBID.toString(),
@@ -191,7 +209,13 @@ export class NZBGetClient implements IDownloadClient {
 
         // Map history
         for (const item of history) {
-            if (category && item.Category && item.Category !== category) continue;
+            logger.debug(`[NZBGet] History item`, {
+                ID: item.ID,
+                Name: item.Name,
+                Category: item.Category
+            });
+
+            if (category && item.Category && item.Category.toLowerCase() !== category.toLowerCase()) continue;
 
             results.push({
                 id: item.ID.toString(),

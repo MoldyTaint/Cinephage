@@ -140,12 +140,16 @@ export class SABnzbdProxy {
 	async downloadNzbByUrl(
 		url: string,
 		category: string,
-		priority: number
+		priority: number,
+		nzbName?: string
 	): Promise<SabnzbdAddResponse> {
 		const params = new URLSearchParams();
 		params.set('name', url);
 		params.set('cat', category);
 		params.set('priority', priority.toString());
+		if (nzbName) {
+			params.set('nzbname', nzbName);
+		}
 
 		const response = await this.executeRequest<SabnzbdAddResponse | SabnzbdErrorResponse>(
 			'addurl',
@@ -319,8 +323,8 @@ export class SABnzbdProxy {
 		parts.push(
 			Buffer.from(
 				`--${boundary}\r\n` +
-					`Content-Disposition: form-data; name="${file.name}"; filename="${file.filename}"\r\n` +
-					`Content-Type: ${file.contentType}\r\n\r\n`
+				`Content-Disposition: form-data; name="${file.name}"; filename="${file.filename}"\r\n` +
+				`Content-Type: ${file.contentType}\r\n\r\n`
 			)
 		);
 		parts.push(file.data);
