@@ -5,7 +5,7 @@ services:
     container_name: cinephage
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - '3000:3000'
     volumes:
       # Persist the SQLite database and settings
       - ./data:/app/data
@@ -17,10 +17,10 @@ services:
       # REQUIRED: Set this to your server's access URL for CSRF protection
       # Examples: http://localhost:3000, https://cinephage.yourdomain.com
       - ORIGIN=http://localhost:3000
-      
+
       - LOG_TO_FILE=true
       - TZ=UTC
-      
+
       # Optional: Worker configuration (defaults shown)
       # - WORKER_MAX_STREAMS=10
       # - WORKER_MAX_IMPORTS=5
