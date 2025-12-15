@@ -1,7 +1,7 @@
 # ==========================================
 # Build Stage
 # ==========================================
-FROM node:22-alpine AS builder
+FROM node:22-alpine3.21 AS builder
 
 WORKDIR /app
 
@@ -23,7 +23,7 @@ RUN npm run build
 # ==========================================
 # Runtime Stage
 # ==========================================
-FROM node:22-alpine AS runner
+FROM node:22-alpine3.21 AS runner
 
 WORKDIR /app
 
@@ -41,15 +41,20 @@ COPY --from=builder --chown=node:node /app/package.json ./package.json
 COPY --from=builder --chown=node:node /app/drizzle ./drizzle
 COPY --from=builder --chown=node:node /app/drizzle.config.ts ./drizzle.config.ts
 COPY --from=builder --chown=node:node /app/src ./src
-# Copy internal indexer definitions if they exist in data/indexers/definitions in source
-COPY --from=builder --chown=node:node /app/data/indexers ./data/indexers
+
+# Copy bundled indexers to separate location (not shadowed by volume mount)
+COPY --from=builder --chown=node:node /app/data/indexers ./bundled-indexers
+
+# Copy and set up entrypoint script
+COPY --chown=node:node docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
 
 # Set environment variables
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3000
-# Tell Cinephage where to find ffprobe (Alpine installs it here)
 ENV FFPROBE_PATH=/usr/bin/ffprobe
+ENV BROWSER_SOLVER_ENABLED=false
 
 # Switch to non-root user
 USER node
@@ -57,5 +62,10 @@ USER node
 # Expose the application port
 EXPOSE 3000
 
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
+
 # Start the application
-CMD ["/bin/sh", "-c", "npm run db:push && node build/index.js"]
+ENTRYPOINT ["./docker-entrypoint.sh"]
+CMD ["node", "build/index.js"]

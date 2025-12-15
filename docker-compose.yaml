@@ -4,6 +4,8 @@ services:
     image: cinephage:latest
     container_name: cinephage
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     ports:
       - '3000:3000'
     volumes:
@@ -17,11 +19,20 @@ services:
       # REQUIRED: Set this to your server's access URL for CSRF protection
       # Examples: http://localhost:3000, https://cinephage.yourdomain.com
       - ORIGIN=http://localhost:3000
-
       - LOG_TO_FILE=true
       - TZ=UTC
-
-      # Optional: Worker configuration (defaults shown)
+      # Browser solver (Cloudflare bypass) - requires Chromium, not included in image
+      # - BROWSER_SOLVER_ENABLED=true
+      # Worker limits (optional):
       # - WORKER_MAX_STREAMS=10
       # - WORKER_MAX_IMPORTS=5
       # - WORKER_MAX_SCANS=2
+    # Uncomment to set resource limits:
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '2'
+    #       memory: 2G
+    #     reservations:
+    #       cpus: '0.5'
+    #       memory: 512M
