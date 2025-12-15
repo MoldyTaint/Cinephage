@@ -5,7 +5,8 @@ dist
 .gitignore
 .gitattributes
 logs
-data
+data/*
+!data/indexers
 .env
 .env.*
 !.env.example
