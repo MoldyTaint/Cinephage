@@ -1,3 +1,5 @@
+[< Back to Index](../INDEX.md) | [Quality Profiles](quality-profiles.md) | [Subtitles](subtitles.md)
+
 # Indexers
 
 Cinephage uses a YAML-based indexer engine with Cardigann-compatible definitions. Currently, four public indexers (BitSearch, EZTV, Knaben, YTS) and two private trackers (OldToons.World, SceneTime) are fully supported, with more being added. For indexers not yet built in, use Torznab or Newznab integration with [Prowlarr](https://prowlarr.com/) or [Jackett](https://github.com/Jackett/Jackett).
@@ -9,7 +11,7 @@ Cinephage uses a YAML-based indexer engine with Cardigann-compatible definitions
 ## Status Legend
 
 | Status             | Meaning                                          |
-| ------------------ | ------------------------------------------------ |
+|--------------------|--------------------------------------------------|
 | Supported          | Built-in definition, tested and working          |
 | In Progress        | Converting to new YAML format                    |
 | Planned            | On the roadmap for future support                |
@@ -25,7 +27,7 @@ Cinephage uses a YAML-based indexer engine with Cardigann-compatible definitions
 ### General / Multi-Category
 
 | Indexer          | Content                     | Status      | Notes                                  |
-| ---------------- | --------------------------- | ----------- | -------------------------------------- |
+|------------------|-----------------------------|-------------|----------------------------------------|
 | 1337x            | Movies, TV, Games, Software | Planned     | Cloudflare protected, use FlareSolverr |
 | The Pirate Bay   | All content types           | Planned     | Historic, intermittent blocks          |
 | TorrentGalaxy    | Movies, TV, Games           | In Progress | Converting to YAML                     |
@@ -40,7 +42,7 @@ Cinephage uses a YAML-based indexer engine with Cardigann-compatible definitions
 ### Movies
 
 | Indexer      | Content                   | Status        | Notes                            |
-| ------------ | ------------------------- | ------------- | -------------------------------- |
+|--------------|---------------------------|---------------|----------------------------------|
 | YTS / YIFY   | Movies (720p/1080p/2160p) | **Supported** | Compressed encodes, huge library |
 | YifyTorrents | Movies                    | Planned       | YTS alternative                  |
 | PublicHD     | HD Movies                 | Planned       | Quality-focused                  |
@@ -48,7 +50,7 @@ Cinephage uses a YAML-based indexer engine with Cardigann-compatible definitions
 ### TV Shows
 
 | Indexer    | Content  | Status        | Notes                           |
-| ---------- | -------- | ------------- | ------------------------------- |
+|------------|----------|---------------|---------------------------------|
 | EZTV       | TV Shows | **Supported** | Large TV library, fast releases |
 | EZTVx      | TV Shows | Planned       | EZTV mirror                     |
 | TVTorrents | TV Shows | Planned       | TV-focused                      |
@@ -57,7 +59,7 @@ Cinephage uses a YAML-based indexer engine with Cardigann-compatible definitions
 ### Anime
 
 | Indexer        | Content               | Status          | Notes                 |
-| -------------- | --------------------- | --------------- | --------------------- |
+|----------------|-----------------------|-----------------|-----------------------|
 | Nyaa.si        | Anime, Manga, LNs     | In Progress     | Converting to YAML    |
 | SubsPlease     | Anime simulcasts      | In Progress     | Converting to YAML    |
 | Anidex         | Multi-language anime  | In Progress     | Converting to YAML    |
@@ -71,7 +73,7 @@ Cinephage uses a YAML-based indexer engine with Cardigann-compatible definitions
 ### XXX / Adult
 
 | Indexer   | Content | Status          | Notes                  |
-| --------- | ------- | --------------- | ---------------------- |
+|-----------|---------|-----------------|------------------------|
 | Pornolab  | Adult   | Planned         | Russian, large library |
 | PornBay   | Adult   | Planned         | General adult content  |
 | Empornium | Adult   | Torznab/Newznab | Private tracker        |
@@ -79,14 +81,14 @@ Cinephage uses a YAML-based indexer engine with Cardigann-compatible definitions
 ### Music
 
 | Indexer       | Content                 | Status  | Notes                    |
-| ------------- | ----------------------- | ------- | ------------------------ |
+|---------------|-------------------------|---------|--------------------------|
 | RuTracker     | Music, Movies, Software | Planned | Russian, excellent music |
 | Metal Tracker | Metal music             | Planned | Genre-specific           |
 
 ### Software / Games
 
 | Indexer         | Content        | Status  | Notes                   |
-| --------------- | -------------- | ------- | ----------------------- |
+|-----------------|----------------|---------|-------------------------|
 | FitGirl Repacks | Games          | Planned | Compressed game repacks |
 | DODI Repacks    | Games          | Planned | Game repacks            |
 | GOG Games       | DRM-free games | Planned | GOG releases            |
@@ -94,7 +96,7 @@ Cinephage uses a YAML-based indexer engine with Cardigann-compatible definitions
 ### Books / Educational
 
 | Indexer            | Content           | Status          | Notes                |
-| ------------------ | ----------------- | --------------- | -------------------- |
+|--------------------|-------------------|-----------------|----------------------|
 | Library Genesis    | Books, Academic   | Planned         | Massive book archive |
 | Z-Library          | Books             | Planned         | Shadow library       |
 | MAM (MyAnonaMouse) | Books, Audiobooks | Torznab/Newznab | Private, excellent   |
@@ -107,7 +109,7 @@ Cinephage uses a YAML-based indexer engine with Cardigann-compatible definitions
 DHT search engines and multi-tracker aggregators.
 
 | Indexer          | Type         | Status        | Notes                     |
-| ---------------- | ------------ | ------------- | ------------------------- |
+|------------------|--------------|---------------|---------------------------|
 | BTDig            | DHT search   | In Progress   | Converting to YAML        |
 | BitSearch        | DHT search   | **Supported** | Formerly SolidTorrents    |
 | Knaben           | Aggregator   | **Supported** | Multi-tracker aggregator  |
@@ -128,7 +130,7 @@ Private trackers require invitation or application. Use Torznab/Newznab integrat
 ### General
 
 | Tracker      | Content        | Status        | Notes                                     |
-| ------------ | -------------- | ------------- | ----------------------------------------- |
+|--------------|----------------|---------------|-------------------------------------------|
 | IPTorrents   | General        | In Progress   | Converting to YAML                        |
 | TorrentLeech | General, 0DAY  | Planned       | Fast pre-times                            |
 | TorrentDay   | General        | In Progress   | Converting to YAML                        |
@@ -142,7 +144,7 @@ Private trackers require invitation or application. Use Torznab/Newznab integrat
 ### Movies
 
 | Tracker              | Content         | Status          | Notes                      |
-| -------------------- | --------------- | --------------- | -------------------------- |
+|----------------------|-----------------|-----------------|----------------------------|
 | PassThePopcorn (PTP) | Movies          | Torznab/Newznab | Elite, closed registration |
 | BeyondHD             | HD/UHD Movies   | In Progress     | Converting to YAML         |
 | HDBits               | Elite HD        | Torznab/Newznab | Top-tier, very exclusive   |
@@ -156,7 +158,7 @@ Private trackers require invitation or application. Use Torznab/Newznab integrat
 ### TV
 
 | Tracker              | Content         | Status          | Notes            |
-| -------------------- | --------------- | --------------- | ---------------- |
+|----------------------|-----------------|-----------------|------------------|
 | BroadcasTheNet (BTN) | TV Shows        | Torznab/Newznab | Elite TV tracker |
 | MoreThanTV (MTV)     | TV Shows        | Torznab/Newznab | Quality TV       |
 | TVVault              | Classic/Rare TV | Torznab/Newznab | Archive focus    |
@@ -166,7 +168,7 @@ Private trackers require invitation or application. Use Torznab/Newznab integrat
 ### Anime
 
 | Tracker         | Content                 | Status          | Notes             |
-| --------------- | ----------------------- | --------------- | ----------------- |
+|-----------------|-------------------------|-----------------|-------------------|
 | AnimeBytes (AB) | Anime                   | Torznab/Newznab | Top anime tracker |
 | AnimeTorrents   | Anime                   | Planned         |                   |
 | BakaBT          | Anime (complete series) | Planned         | Quality-focused   |
@@ -175,7 +177,7 @@ Private trackers require invitation or application. Use Torznab/Newznab integrat
 ### Music
 
 | Tracker        | Content      | Status          | Notes             |
-| -------------- | ------------ | --------------- | ----------------- |
+|----------------|--------------|-----------------|-------------------|
 | RED (Redacted) | Music (FLAC) | Torznab/Newznab | Top music tracker |
 | Orpheus        | Music (FLAC) | Torznab/Newznab | RED alternative   |
 | Libble         | Music        | Planned         |                   |
@@ -184,14 +186,14 @@ Private trackers require invitation or application. Use Torznab/Newznab integrat
 ### Games
 
 | Tracker            | Content     | Status          | Notes             |
-| ------------------ | ----------- | --------------- | ----------------- |
+|--------------------|-------------|-----------------|-------------------|
 | GazelleGames (GGn) | Games       | Torznab/Newznab | Top games tracker |
 | PixelCove          | Retro games | Planned         |                   |
 
 ### Specialized
 
 | Tracker        | Content            | Status        | Notes                      |
-| -------------- | ------------------ | ------------- | -------------------------- |
+|----------------|--------------------|---------------|----------------------------|
 | OldToons.World | Classic cartoons   | **Supported** | UNIT3D-based, API key auth |
 | HD-Space       | HD content         | Planned       |                            |
 | HDTorrents     | HD content         | Planned       |                            |
@@ -206,10 +208,10 @@ Private trackers require invitation or application. Use Torznab/Newznab integrat
 
 ## Usenet Indexers (NZB)
 
-Cinephage now supports Newznab-compatible usenet indexers via the built-in Newznab template.
+Cinephage supports Newznab-compatible usenet indexers via the built-in Newznab template.
 
 | Indexer     | Type      | Status        | Notes                |
-| ----------- | --------- | ------------- | -------------------- |
+|-------------|-----------|---------------|----------------------|
 | NZBGeek     | Paid      | **Supported** | Via Newznab template |
 | DrunkenSlug | Paid      | **Supported** | Via Newznab template |
 | NZB Finder  | Paid      | **Supported** | Via Newznab template |
@@ -238,7 +240,7 @@ Cinephage now supports Newznab-compatible usenet indexers via the built-in Newzn
 ### Adding Newznab Indexers (Usenet)
 
 1. Navigate to **Settings > Integrations > Indexers**
-2. Click **Add Indexer** → **Newznab**
+2. Click **Add Indexer** > **Newznab**
 3. Enter connection details:
    - **Name**: Display name
    - **URL**: Your indexer's API URL
@@ -252,7 +254,7 @@ Cinephage now supports Newznab-compatible usenet indexers via the built-in Newzn
 Connect to Prowlarr or Jackett for torrent indexers:
 
 1. Navigate to **Settings > Integrations > Indexers**
-2. Click **Add Indexer** → **Torznab**
+2. Click **Add Indexer** > **Torznab**
 3. Enter connection details:
    - **Name**: Display name
    - **URL**: Prowlarr/Jackett URL
@@ -325,7 +327,7 @@ search:
 ### Definition Structure
 
 | Section       | Purpose                                |
-| ------------- | -------------------------------------- |
+|---------------|----------------------------------------|
 | `id`          | Unique identifier                      |
 | `name`        | Display name                           |
 | `description` | Brief description                      |
@@ -355,7 +357,7 @@ Each indexer has configurable rate limits:
 Indexers that repeatedly fail are automatically disabled with exponential backoff:
 
 | Failure | Cooldown       |
-| ------- | -------------- |
+|---------|----------------|
 | 1st     | 5 minutes      |
 | 2nd     | 15 minutes     |
 | 3rd     | 1 hour         |
@@ -406,10 +408,14 @@ In the search results UI, releases from multiple indexers display all sources (e
 
 ## Contributing Indexers
 
-Want to add support for an indexer? See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines on:
+Want to add support for an indexer? See the [Contributing Guide](../development/contributing.md) for guidelines on:
 
 - Writing Cardigann YAML definitions
 - Testing indexer definitions
 - Submitting pull requests
 
 The Prowlarr project maintains an extensive collection of indexer definitions that can serve as reference: [Prowlarr/Indexers](https://github.com/Prowlarr/Indexers)
+
+---
+
+**See also:** [Quality Profiles](quality-profiles.md) | [Monitoring](monitoring.md) | [Troubleshooting](../troubleshooting.md)

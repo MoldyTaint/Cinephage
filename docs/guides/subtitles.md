@@ -1,3 +1,5 @@
+[< Back to Index](../INDEX.md) | [Quality Profiles](quality-profiles.md) | [Monitoring](monitoring.md)
+
 # Subtitle System
 
 Cinephage includes comprehensive subtitle management with 6 built-in providers and support for 80+ languages.
@@ -5,7 +7,7 @@ Cinephage includes comprehensive subtitle management with 6 built-in providers a
 ## Providers
 
 | Provider       | Type    | Features                        |
-| -------------- | ------- | ------------------------------- |
+|----------------|---------|---------------------------------|
 | OpenSubtitles  | API     | Hash matching, largest database |
 | Addic7ed       | Scraper | TV focus, multiple languages    |
 | SubDL          | API     | Modern API, good quality        |
@@ -250,10 +252,14 @@ Blacklist poor quality subtitles:
 Each provider has built-in rate limiting:
 
 | Provider      | Limit                        |
-| ------------- | ---------------------------- |
+|---------------|------------------------------|
 | OpenSubtitles | 20/day (free), 200/day (VIP) |
 | Addic7ed      | 40/day                       |
 | SubDL         | 100/hour                     |
 | Others        | Provider-specific            |
 
 Cinephage automatically respects these limits and queues requests when needed.
+
+---
+
+**See also:** [Quality Profiles](quality-profiles.md) | [Monitoring](monitoring.md) | [Troubleshooting](../troubleshooting.md)

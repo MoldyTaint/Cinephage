@@ -148,23 +148,26 @@ See [Configuration Guide](docs/CONFIGURATION.md) for detailed setup instructions
 
 ## Documentation
 
-**Getting Started**
+See the [Documentation Index](docs/INDEX.md) for the complete guide.
 
-- [Configuration](docs/CONFIGURATION.md) — Environment variables and first-run setup
-- [Deployment](docs/DEPLOYMENT.md) — Production setup, systemd, reverse proxy
-- [Troubleshooting](docs/TROUBLESHOOTING.md) — Common issues and solutions
+**Quick Links**
+
+- [Installation](docs/getting-started/installation.md) - Get up and running
+- [Configuration](docs/getting-started/configuration.md) - First-run setup
+- [Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
 
 **Feature Guides**
 
-- [Indexers](docs/INDEXERS.md) — Built-in indexers, Torznab, custom definitions
-- [Quality Profiles](docs/QUALITY-PROFILES.md) — Scoring system and built-in profiles
-- [Monitoring](docs/MONITORING.md) — Automated tasks and scheduling
-- [Subtitles](docs/SUBTITLES.md) — Providers and language profiles
+- [Library Management](docs/guides/library-management.md) - Scanning, matching, organizing
+- [Indexers](docs/guides/indexers.md) - Built-in indexers, Torznab, custom definitions
+- [Quality Profiles](docs/guides/quality-profiles.md) - Scoring system and built-in profiles
+- [Monitoring](docs/guides/monitoring.md) - Automated tasks and scheduling
+- [Subtitles](docs/guides/subtitles.md) - Providers and language profiles
 
 **Reference**
 
-- [API Reference](docs/API.md) — REST API endpoints
-- [Roadmap](docs/ROADMAP.md) — Planned features and known limitations
+- [API Reference](docs/reference/api.md) - REST API endpoints
+- [Roadmap](docs/roadmap.md) - Planned features and known limitations
 
 ## Development
 

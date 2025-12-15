@@ -1,4 +1,6 @@
-# Deployment Guide
+[< Back to Index](../INDEX.md) | [Installation](../getting-started/installation.md) | [Configuration](../getting-started/configuration.md)
+
+# Production Deployment
 
 This guide covers deploying Cinephage in a production environment.
 
@@ -266,7 +268,7 @@ Caddy automatically provisions and renews SSL certificates. No additional config
 ### Production Environment Variables
 
 | Variable          | Recommended Value     | Description                                             |
-| ----------------- | --------------------- | ------------------------------------------------------- |
+|-------------------|-----------------------|---------------------------------------------------------|
 | `HOST`            | `127.0.0.1`           | Bind to localhost only (reverse proxy handles external) |
 | `PORT`            | `3000`                | Application port                                        |
 | `ORIGIN`          | `https://your.domain` | Your public URL for CSRF protection                     |
@@ -474,3 +476,7 @@ sudo lsof -i :3000
 ```
 
 Change the port in `.env` if needed.
+
+---
+
+**See also:** [Installation](../getting-started/installation.md) | [Environment Variables](../reference/environment-variables.md) | [Troubleshooting](../troubleshooting.md)

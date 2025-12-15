@@ -1,3 +1,5 @@
+[< Back to Index](INDEX.md) | [FAQ](faq.md)
+
 # Troubleshooting Guide
 
 This guide covers common issues and their solutions when using Cinephage.
@@ -15,7 +17,6 @@ This guide covers common issues and their solutions when using Cinephage.
 - [Log Files](#log-files)
 - [Debug Mode](#debug-mode)
 - [Getting Help](#getting-help)
-- [FAQ](#faq)
 
 ---
 
@@ -575,46 +576,4 @@ When opening a GitHub issue, include:
 
 ---
 
-## FAQ
-
-### How do I reset everything?
-
-```bash
-# Stop the application
-# Backup your data first if needed
-rm -rf data/cinephage.db
-npm run db:push
-# Restart the application
-```
-
-### How do I change the port?
-
-Edit `.env`:
-
-```
-PORT=8080
-```
-
-Restart the application.
-
-### Can I run multiple instances?
-
-Not recommended - SQLite does not handle multiple writers well. Use a single instance.
-
-### How do I backup my configuration?
-
-Important files to backup:
-
-- `data/cinephage.db` - All settings, library, queue
-- `.env` - Environment configuration
-- `data/indexers/definitions/` - Custom indexer definitions
-
-### Where is data stored?
-
-- Database: `data/cinephage.db`
-- Logs: `logs/` (or configured directory)
-- Indexer definitions: `data/indexers/definitions/`
-
-### How do I update?
-
-See [DEPLOYMENT.md](DEPLOYMENT.md#updating-cinephage) for update instructions.
+**See also:** [FAQ](faq.md) | [Installation](getting-started/installation.md) | [Production Deployment](deployment/production.md)

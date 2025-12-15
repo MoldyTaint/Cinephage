@@ -1,3 +1,5 @@
+[< Back to Index](../INDEX.md) | [Indexers](indexers.md) | [Subtitles](subtitles.md)
+
 # Quality Profiles
 
 Cinephage uses a scoring system to evaluate and compare torrent releases, helping you get the best quality for your preferences.
@@ -7,7 +9,7 @@ Cinephage uses a scoring system to evaluate and compare torrent releases, helpin
 Four profiles cover common use cases:
 
 | Profile       | Focus                           | Use Case                               |
-| ------------- | ------------------------------- | -------------------------------------- |
+|---------------|---------------------------------|----------------------------------------|
 | **Best**      | Maximum quality                 | Remux, lossless audio, quality purists |
 | **Efficient** | Quality with efficient encoding | x265/HEVC from quality groups          |
 | **Micro**     | Quality-focused micro encodes   | Small files, good quality              |
@@ -52,7 +54,7 @@ Releases are scored based on multiple factors. Higher scores indicate better qua
 ### Resolution + Source (0-20000 points)
 
 | Quality      | Score |
-| ------------ | ----- |
+|--------------|-------|
 | 2160p Remux  | 20000 |
 | 2160p BluRay | 18000 |
 | 2160p Web-DL | 15000 |
@@ -65,7 +67,7 @@ Releases are scored based on multiple factors. Higher scores indicate better qua
 ### Audio Codec (0-2000 points)
 
 | Codec        | Score |
-| ------------ | ----- |
+|--------------|-------|
 | TrueHD Atmos | 2000  |
 | DTS-HD MA    | 1800  |
 | TrueHD       | 1600  |
@@ -78,7 +80,7 @@ Releases are scored based on multiple factors. Higher scores indicate better qua
 ### HDR Format (0-1000 points)
 
 | Format       | Score |
-| ------------ | ----- |
+|--------------|-------|
 | Dolby Vision | 1000  |
 | HDR10+       | 800   |
 | HDR10        | 600   |
@@ -86,7 +88,7 @@ Releases are scored based on multiple factors. Higher scores indicate better qua
 ### Release Group Tiers (0-500 points)
 
 | Tier    | Examples        | Score |
-| ------- | --------------- | ----- |
+|---------|-----------------|-------|
 | Tier 1  | FraMeSToR, etc. | 500   |
 | Tier 2  | SPARKS, etc.    | 300   |
 | Tier 3  | RARBG, etc.     | 100   |
@@ -95,7 +97,7 @@ Releases are scored based on multiple factors. Higher scores indicate better qua
 ### Penalties
 
 | Condition         | Score  |
-| ----------------- | ------ |
+|-------------------|--------|
 | Banned groups     | -10000 |
 | Cam/Screener      | -5000  |
 | Low quality audio | -500   |
@@ -108,3 +110,7 @@ Releases are scored based on multiple factors. Higher scores indicate better qua
 > **Work in Progress**: Custom profiles are under active development and not fully tested. Use with caution.
 
 The UI in Settings > Profiles allows basic profile creation, but this feature is incomplete. The 4 built-in profiles (Best, Efficient, Micro, Streaming) are the recommended option for now.
+
+---
+
+**See also:** [Indexers](indexers.md) | [Monitoring](monitoring.md) | [Troubleshooting](../troubleshooting.md)

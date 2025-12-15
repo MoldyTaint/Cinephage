@@ -1,3 +1,5 @@
+[< Back to Index](../INDEX.md) | [Subtitles](subtitles.md) | [Library Management](library-management.md)
+
 # Monitoring Tasks
 
 Cinephage includes automated monitoring tasks that run in the background to keep your library up-to-date.
@@ -7,7 +9,7 @@ Cinephage includes automated monitoring tasks that run in the background to keep
 ## Task Overview
 
 | Task                    | Default Interval | Description                                         |
-| ----------------------- | ---------------- | --------------------------------------------------- |
+|-------------------------|------------------|-----------------------------------------------------|
 | Missing Content         | 24 hours         | Searches for movies/series without files            |
 | Upgrade Monitoring      | Weekly           | Detects when better quality is available            |
 | New Episode Detection   | 1 hour           | Monitors for newly released episodes                |
@@ -198,3 +200,7 @@ Track monitoring task activity:
 - **Queue**: Current download queue with status
 
 Access via the Activity menu in the navigation.
+
+---
+
+**See also:** [Quality Profiles](quality-profiles.md) | [Subtitles](subtitles.md) | [Monitoring Internals](../development/monitoring-internals.md)

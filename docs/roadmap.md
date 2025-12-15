@@ -1,15 +1,17 @@
+[< Back to Index](INDEX.md)
+
 # Roadmap
 
 This document outlines planned features, work in progress, and known limitations for Cinephage. It's intended to give users and contributors visibility into the project's direction.
 
-For completed features and changes, see the [CHANGELOG](../CHANGELOG.md).
+For completed features and changes, see the [Changelog](../CHANGELOG.md).
 
 ---
 
 ## Status Legend
 
 | Status              | Meaning                                        |
-| ------------------- | ---------------------------------------------- |
+|---------------------|------------------------------------------------|
 | In Progress         | Actively being worked on                       |
 | Planned             | Confirmed for future development               |
 | Not Yet Started     | On the horizon but not actively in development |
@@ -19,7 +21,7 @@ For completed features and changes, see the [CHANGELOG](../CHANGELOG.md).
 ## Priority Legend
 
 | Priority | Meaning                                     |
-| -------- | ------------------------------------------- |
+|----------|---------------------------------------------|
 | High     | Core functionality, significant user impact |
 | Medium   | Important enhancement, moderate impact      |
 | Low      | Nice to have, minor improvement             |
@@ -289,10 +291,10 @@ Have a feature request or found something missing?
 
 1. **Check existing issues**: Your idea may already be tracked on [GitHub Issues](https://github.com/MoldyTaint/Cinephage/issues)
 2. **Open a new issue**: Use the feature request template to describe your idea
-3. **Contribute code**: See [CONTRIBUTING.md](../CONTRIBUTING.md) for development guidelines
+3. **Contribute code**: See the [Contributing Guide](development/contributing.md) for development guidelines
 
 We welcome community input on prioritization and new feature ideas!
 
 ---
 
-_Last updated: December 2025_
+**See also:** [Changelog](../CHANGELOG.md) | [Contributing](development/contributing.md)

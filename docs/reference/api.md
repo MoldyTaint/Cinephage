@@ -1,3 +1,5 @@
+[< Back to Index](../INDEX.md) | [Environment Variables](environment-variables.md)
+
 # API Reference
 
 Cinephage provides a REST API for all functionality. The API is used internally by the web UI and can be used for external integrations.
@@ -15,7 +17,7 @@ Replace `localhost:3000` with your Cinephage instance address.
 ## Endpoint Categories
 
 | Category   | Base Path         | Description            |
-| ---------- | ----------------- | ---------------------- |
+|------------|-------------------|------------------------|
 | Discovery  | `/api/discover`   | TMDB search and browse |
 | Library    | `/api/library`    | Library management     |
 | Indexers   | `/api/indexers`   | Indexer configuration  |
@@ -42,7 +44,7 @@ GET /api/discover
 Query parameters:
 
 | Parameter | Type   | Description              |
-| --------- | ------ | ------------------------ |
+|-----------|--------|--------------------------|
 | `type`    | string | `movie` or `tv`          |
 | `page`    | number | Page number (default: 1) |
 
@@ -55,7 +57,7 @@ GET /api/discover/search
 Query parameters:
 
 | Parameter | Type   | Description     |
-| --------- | ------ | --------------- |
+|-----------|--------|-----------------|
 | `query`   | string | Search query    |
 | `type`    | string | `movie` or `tv` |
 | `year`    | number | Filter by year  |
@@ -69,7 +71,7 @@ GET /api/discover/:type/:id
 Path parameters:
 
 | Parameter | Type   | Description     |
-| --------- | ------ | --------------- |
+|-----------|--------|-----------------|
 | `type`    | string | `movie` or `tv` |
 | `id`      | number | TMDB ID         |
 
@@ -88,7 +90,7 @@ GET /api/library/movies
 Query parameters:
 
 | Parameter   | Type    | Description                |
-| ----------- | ------- | -------------------------- |
+|-------------|---------|----------------------------|
 | `page`      | number  | Page number                |
 | `limit`     | number  | Items per page             |
 | `sort`      | string  | Sort field                 |
@@ -112,10 +114,10 @@ Request body:
 
 ```json
 {
-	"tmdbId": 123456,
-	"qualityProfileId": 1,
-	"rootFolderId": 1,
-	"monitored": true
+  "tmdbId": 123456,
+  "qualityProfileId": 1,
+  "rootFolderId": 1,
+  "monitored": true
 }
 ```
 
@@ -129,7 +131,7 @@ Request body:
 
 ```json
 {
-	"path": "/optional/specific/path"
+  "path": "/optional/specific/path"
 }
 ```
 
@@ -155,10 +157,10 @@ Request body:
 
 ```json
 {
-	"query": "Movie Name 2023",
-	"type": "movie",
-	"tmdbId": 123456,
-	"indexerIds": [1, 2, 3]
+  "query": "Movie Name 2023",
+  "type": "movie",
+  "tmdbId": 123456,
+  "indexerIds": [1, 2, 3]
 }
 ```
 
@@ -187,7 +189,7 @@ GET /api/queue/history
 Query parameters:
 
 | Parameter | Type   | Description    |
-| --------- | ------ | -------------- |
+|-----------|--------|----------------|
 | `page`    | number | Page number    |
 | `limit`   | number | Items per page |
 
@@ -200,7 +202,7 @@ DELETE /api/queue/:id
 Query parameters:
 
 | Parameter          | Type    | Description                      |
-| ------------------ | ------- | -------------------------------- |
+|--------------------|---------|----------------------------------|
 | `removeFromClient` | boolean | Also remove from download client |
 | `blocklist`        | boolean | Add release to blocklist         |
 
@@ -234,7 +236,7 @@ Request body:
 
 ```json
 {
-	"id": 1
+  "id": 1
 }
 ```
 
@@ -242,9 +244,9 @@ Or for new indexer:
 
 ```json
 {
-	"type": "torznab",
-	"url": "http://...",
-	"apiKey": "..."
+  "type": "torznab",
+  "url": "http://...",
+  "apiKey": "..."
 }
 ```
 
@@ -276,9 +278,9 @@ Request body:
 
 ```json
 {
-	"mediaId": 123,
-	"mediaType": "movie",
-	"languages": ["en", "es"]
+  "mediaId": 123,
+  "mediaType": "movie",
+  "languages": ["en", "es"]
 }
 ```
 
@@ -292,9 +294,9 @@ Request body:
 
 ```json
 {
-	"mediaId": 123,
-	"subtitleId": "provider-specific-id",
-	"provider": "opensubtitles"
+  "mediaId": 123,
+  "subtitleId": "provider-specific-id",
+  "provider": "opensubtitles"
 }
 ```
 
@@ -314,10 +316,10 @@ Request body:
 
 ```json
 {
-	"releaseId": "indexer-release-id",
-	"indexerId": 1,
-	"mediaId": 123,
-	"mediaType": "movie"
+  "releaseId": "indexer-release-id",
+  "indexerId": 1,
+  "mediaId": 123,
+  "mediaType": "movie"
 }
 ```
 
@@ -366,11 +368,11 @@ All endpoints return JSON with consistent structure:
 
 ```json
 {
-	"success": false,
-	"error": {
-		"message": "Error description",
-		"code": "ERROR_CODE"
-	}
+  "success": false,
+  "error": {
+    "message": "Error description",
+    "code": "ERROR_CODE"
+  }
 }
 ```
 
@@ -379,10 +381,14 @@ All endpoints return JSON with consistent structure:
 ## Error Codes
 
 | Code                    | Description                          |
-| ----------------------- | ------------------------------------ |
+|-------------------------|--------------------------------------|
 | `NOT_FOUND`             | Resource not found                   |
 | `VALIDATION_ERROR`      | Invalid request data                 |
 | `INDEXER_ERROR`         | Indexer communication failed         |
 | `DOWNLOAD_CLIENT_ERROR` | Download client communication failed |
 | `TMDB_ERROR`            | TMDB API error                       |
 | `RATE_LIMITED`          | Too many requests                    |
+
+---
+
+**See also:** [Environment Variables](environment-variables.md) | [Troubleshooting](../troubleshooting.md)
