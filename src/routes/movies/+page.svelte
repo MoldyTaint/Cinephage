@@ -57,6 +57,9 @@
 		monitored: data.filters.monitored,
 		fileStatus: data.filters.fileStatus
 	});
+
+    import { enhance } from '$app/forms';
+    import { ChevronDown } from 'lucide-svelte';
 </script>
 
 <div class="min-h-screen bg-base-100 pb-20">
@@ -75,15 +78,39 @@
 				{/if}
 			</div>
 
-			<LibraryControls
-				{sortOptions}
-				{filterOptions}
-				currentSort={data.filters.sort}
-				{currentFilters}
-				onSortChange={(sort) => updateUrlParam('sort', sort)}
-				onFilterChange={(key, value) => updateUrlParam(key, value)}
-				onClearFilters={clearFilters}
-			/>
+            <div class="flex items-center gap-2">
+                <div class="dropdown dropdown-end">
+                    <div tabindex="0" role="button" class="btn btn-ghost gap-2">
+                        Actions
+                        <ChevronDown class="h-4 w-4" />
+                    </div>
+                    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+                    <ul tabindex="0" class="dropdown-content z-[2] menu p-2 shadow-lg bg-base-200 rounded-box w-52 border border-base-content/10">
+                        <li>
+                            <form action="?/toggleAllMonitored" method="POST" use:enhance>
+                                <input type="hidden" name="monitored" value="true" />
+                                <button type="submit" class="w-full text-left">Monitor All</button>
+                            </form>
+                        </li>
+                        <li>
+                            <form action="?/toggleAllMonitored" method="POST" use:enhance>
+                                <input type="hidden" name="monitored" value="false" />
+                                <button type="submit" class="w-full text-left">Unmonitor All</button>
+                            </form>
+                        </li>
+                    </ul>
+                </div>
+
+                <LibraryControls
+                    {sortOptions}
+                    {filterOptions}
+                    currentSort={data.filters.sort}
+                    {currentFilters}
+                    onSortChange={(sort) => updateUrlParam('sort', sort)}
+                    onFilterChange={(key, value) => updateUrlParam(key, value)}
+                    onClearFilters={clearFilters}
+                />
+            </div>
 		</div>
 	</div>
 

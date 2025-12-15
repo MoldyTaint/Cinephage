@@ -123,13 +123,21 @@ export class SABnzbdProxy {
 		const params = new URLSearchParams();
 		params.set('cat', category);
 		params.set('priority', priority.toString());
+		params.set('nzbname', filename);
 
-		const response = await this.executeMultipartRequest('addfile', params, {
-			name: 'name',
-			filename,
-			data: nzbData,
-			contentType: 'application/x-nzb'
-		});
+		const response = await this.executeMultipartRequest(
+			'addfile',
+			params,
+			{
+				name: 'name',
+				filename,
+				data: nzbData,
+				contentType: 'application/x-nzb'
+			},
+			{
+				nzbname: filename
+			}
+		);
 
 		return this.parseAddResponse(response);
 	}
@@ -140,12 +148,16 @@ export class SABnzbdProxy {
 	async downloadNzbByUrl(
 		url: string,
 		category: string,
-		priority: number
+		priority: number,
+		nzbName?: string
 	): Promise<SabnzbdAddResponse> {
 		const params = new URLSearchParams();
 		params.set('name', url);
 		params.set('cat', category);
 		params.set('priority', priority.toString());
+		if (nzbName) {
+			params.set('nzbname', nzbName);
+		}
 
 		const response = await this.executeRequest<SabnzbdAddResponse | SabnzbdErrorResponse>(
 			'addurl',
@@ -299,7 +311,8 @@ export class SABnzbdProxy {
 	private async executeMultipartRequest(
 		mode: string,
 		additionalParams: URLSearchParams,
-		file: { name: string; filename: string; data: Buffer; contentType: string }
+		file: { name: string; filename: string; data: Buffer; contentType: string },
+		fields?: Record<string, string>
 	): Promise<unknown> {
 		const url = new URL(this.getBaseUrl('api'));
 
@@ -319,12 +332,23 @@ export class SABnzbdProxy {
 		parts.push(
 			Buffer.from(
 				`--${boundary}\r\n` +
-					`Content-Disposition: form-data; name="${file.name}"; filename="${file.filename}"\r\n` +
-					`Content-Type: ${file.contentType}\r\n\r\n`
+				`Content-Disposition: form-data; name="${file.name}"; filename="${file.filename}"\r\n` +
+				`Content-Type: ${file.contentType}\r\n\r\n`
 			)
 		);
 		parts.push(file.data);
 		parts.push(Buffer.from('\r\n'));
+
+		// Add additional fields if provided
+		if (fields) {
+			for (const [key, value] of Object.entries(fields)) {
+				parts.push(
+					Buffer.from(
+						`--${boundary}\r\n` + `Content-Disposition: form-data; name="${key}"\r\n\r\n` + `${value}\r\n`
+					)
+				);
+			}
+		}
 
 		// End boundary
 		parts.push(Buffer.from(`--${boundary}--\r\n`));

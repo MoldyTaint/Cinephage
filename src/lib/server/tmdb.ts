@@ -42,131 +42,134 @@ export const tmdb = {
 
 		// Create the actual request as a promise
 		const requestPromise = (async () => {
-			const [apiKeySetting, filtersSetting] = await Promise.all([
-				db.query.settings.findFirst({ where: eq(settings.key, 'tmdb_api_key') }),
-				db.query.settings.findFirst({ where: eq(settings.key, 'global_filters') })
-			]);
+			try {
+				const [apiKeySetting, filtersSetting] = await Promise.all([
+					db.query.settings.findFirst({ where: eq(settings.key, 'tmdb_api_key') }),
+					db.query.settings.findFirst({ where: eq(settings.key, 'global_filters') })
+				]);
 
-			if (!apiKeySetting) {
-				throw new Error('TMDB API Key not configured');
-			}
-
-			let filters: GlobalTmdbFilters | null = null;
-			if (filtersSetting) {
-				try {
-					filters = JSON.parse(filtersSetting.value);
-				} catch (e) {
-					logger.error('Failed to parse global filters', e);
-				}
-			}
-
-			const url = new URL(TMDB.BASE_URL + path);
-
-			// Add API key
-			url.searchParams.set('api_key', apiKeySetting.value);
-
-			// Apply Global Filters (Pre-request)
-			if (filters) {
-				if (filters.include_adult !== undefined) {
-					url.searchParams.set('include_adult', String(filters.include_adult));
-				}
-				if (filters.language) {
-					url.searchParams.set('language', filters.language);
-				}
-				if (filters.region) {
-					url.searchParams.set('region', filters.region);
+				if (!apiKeySetting) {
+					throw new Error('TMDB API Key not configured');
 				}
 
-				// Apply Discover-specific filters
-				if (path.includes('/discover/')) {
-					if (filters.min_vote_average > 0) {
-						url.searchParams.set('vote_average.gte', String(filters.min_vote_average));
-					}
-					if (filters.min_vote_count > 0) {
-						url.searchParams.set('vote_count.gte', String(filters.min_vote_count));
-					}
-					if (filters.excluded_genre_ids && filters.excluded_genre_ids.length > 0) {
-						// TMDB uses without_genres
-						url.searchParams.set('without_genres', filters.excluded_genre_ids.join(','));
+				let filters: GlobalTmdbFilters | null = null;
+				if (filtersSetting) {
+					try {
+						filters = JSON.parse(filtersSetting.value);
+					} catch (e) {
+						logger.error('Failed to parse global filters', e);
 					}
 				}
-			}
 
-			const res = await fetch(url.toString(), options);
+				const url = new URL(TMDB.BASE_URL + path);
 
-			if (!res.ok) {
-				let errorMessage = `TMDB Error: ${res.status} ${res.statusText}`;
-				try {
-					const errorBody = await res.json();
-					if (errorBody.status_message) {
-						errorMessage = `TMDB Error: ${errorBody.status_message}`;
+				// Add API key
+				url.searchParams.set('api_key', apiKeySetting.value);
+
+				// Apply Global Filters (Pre-request)
+				if (filters) {
+					if (filters.include_adult !== undefined) {
+						url.searchParams.set('include_adult', String(filters.include_adult));
 					}
-				} catch {
-					// ignore json parse error
-				}
-				throw new Error(errorMessage);
-			}
-
-			const data = await res.json();
-
-			// Apply Global Filters (Post-request / Response Filtering)
-			// This is crucial for Search endpoints which ignore some discover params
-			// Skip filtering when skipFilters=true (used by media matcher to see all results)
-			if (!skipFilters && filters && data.results && Array.isArray(data.results)) {
-				interface FilterableItem {
-					vote_average?: number;
-					vote_count?: number;
-					genre_ids?: number[];
-					adult?: boolean;
-				}
-
-				data.results = data.results.filter((item: FilterableItem) => {
-					// Filter by Score
-					if (
-						filters!.min_vote_average > 0 &&
-						(item.vote_average ?? 0) < filters!.min_vote_average
-					) {
-						return false;
+					if (filters.language) {
+						url.searchParams.set('language', filters.language);
 					}
-					// Filter by Vote Count
-					if (filters!.min_vote_count > 0 && (item.vote_count ?? 0) < filters!.min_vote_count) {
-						return false;
+					if (filters.region) {
+						url.searchParams.set('region', filters.region);
 					}
-					// Filter by Excluded Genres
-					if (
-						filters!.excluded_genre_ids &&
-						filters!.excluded_genre_ids.length > 0 &&
-						item.genre_ids
-					) {
-						const hasExcludedGenre = item.genre_ids.some((id) =>
-							filters!.excluded_genre_ids.includes(id)
-						);
-						if (hasExcludedGenre) {
-							return false;
+
+					// Apply Discover-specific filters
+					if (path.includes('/discover/')) {
+						if (filters.min_vote_average > 0) {
+							url.searchParams.set('vote_average.gte', String(filters.min_vote_average));
+						}
+						if (filters.min_vote_count > 0) {
+							url.searchParams.set('vote_count.gte', String(filters.min_vote_count));
+						}
+						if (filters.excluded_genre_ids && filters.excluded_genre_ids.length > 0) {
+							// TMDB uses without_genres
+							url.searchParams.set('without_genres', filters.excluded_genre_ids.join(','));
 						}
 					}
-					// Filter by Adult (Double check)
-					if (!filters!.include_adult && item.adult) {
-						return false;
+				}
+
+				const res = await fetch(url.toString(), options);
+
+				if (!res.ok) {
+					let errorMessage = `TMDB Error: ${res.status} ${res.statusText}`;
+					try {
+						const errorBody = await res.json();
+						if (errorBody.status_message) {
+							errorMessage = `TMDB Error: ${errorBody.status_message}`;
+						}
+					} catch {
+						// ignore json parse error
 					}
-					return true;
-				});
-			}
+					throw new Error(errorMessage);
+				}
 
-			// Cache successful response (after filtering)
-			if (isGetRequest) {
-				tmdbCache.set(cacheKey, data, path);
-			}
+				const data = await res.json();
 
-			return data;
+				// Apply Global Filters (Post-request / Response Filtering)
+				// This is crucial for Search endpoints which ignore some discover params
+				// Skip filtering when skipFilters=true (used by media matcher to see all results)
+				if (!skipFilters && filters && data.results && Array.isArray(data.results)) {
+					interface FilterableItem {
+						vote_average?: number;
+						vote_count?: number;
+						genre_ids?: number[];
+						adult?: boolean;
+					}
+
+					data.results = data.results.filter((item: FilterableItem) => {
+						// Filter by Score
+						if (
+							filters!.min_vote_average > 0 &&
+							(item.vote_average ?? 0) < filters!.min_vote_average
+						) {
+							return false;
+						}
+						// Filter by Vote Count
+						if (filters!.min_vote_count > 0 && (item.vote_count ?? 0) < filters!.min_vote_count) {
+							return false;
+						}
+						// Filter by Excluded Genres
+						if (
+							filters!.excluded_genre_ids &&
+							filters!.excluded_genre_ids.length > 0 &&
+							item.genre_ids
+						) {
+							const hasExcludedGenre = item.genre_ids.some((id) =>
+								filters!.excluded_genre_ids.includes(id)
+							);
+							if (hasExcludedGenre) {
+								return false;
+							}
+						}
+						// Filter by Adult (Double check)
+						if (!filters!.include_adult && item.adult) {
+							return false;
+						}
+						return true;
+					});
+				}
+
+				// Cache successful response (after filtering)
+				if (isGetRequest) {
+					tmdbCache.set(cacheKey, data, path);
+				}
+
+				return data;
+			} finally {
+				if (isGetRequest) {
+					inFlightRequests.delete(cacheKey);
+				}
+			}
 		})();
 
 		// Store in-flight promise for deduplication (GET requests only)
 		if (isGetRequest) {
 			inFlightRequests.set(cacheKey, requestPromise);
-			requestPromise.finally(() => {
-				inFlightRequests.delete(cacheKey);
-			});
 		}
 
 		return requestPromise;

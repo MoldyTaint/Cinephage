@@ -107,10 +107,12 @@ export class SABnzbdClient implements IDownloadClient {
 		const priority = mapPriorityToSabnzbd(options.priority);
 
 		logger.info('[SABnzbd] Adding download', {
+			title: options.title,
 			category: options.category,
 			priority,
 			hasNzbFile: !!(options.nzbFile || options.torrentFile),
-			hasUrl: !!options.downloadUrl
+			hasUrl: !!options.downloadUrl,
+			optionsKeys: Object.keys(options)
 		});
 
 		try {
@@ -119,13 +121,17 @@ export class SABnzbdClient implements IDownloadClient {
 			// Check for NZB file content
 			const nzbContent = options.nzbFile || options.torrentFile;
 			if (nzbContent) {
-				const filename = options.title ? `${options.title}.nzb` : 'download.nzb';
+				const safeTitle = options.title && options.title.trim().length > 0 ? options.title : `SABnzbd_Grab_${Date.now()}`;
+				const filename = `${safeTitle}.nzb`;
 				response = await this.proxy.downloadNzb(nzbContent, filename, options.category, priority);
 			} else if (options.downloadUrl) {
+				const safeTitle = options.title && options.title.trim().length > 0 ? options.title : `SABnzbd_Grab_${Date.now()}`;
+				const filename = `${safeTitle}.nzb`;
 				response = await this.proxy.downloadNzbByUrl(
 					options.downloadUrl,
 					options.category,
-					priority
+					priority,
+					filename
 				);
 			} else {
 				throw new Error('Must provide either NZB file content or download URL');
@@ -160,7 +166,14 @@ export class SABnzbdClient implements IDownloadClient {
 		try {
 			// Get queue items
 			const queue = await this.proxy.getQueue(0, 1000);
+			logger.debug(`[SABnzbd] Fetched ${queue.slots.length} queue items`, { categoryFilter: category });
 			for (const item of queue.slots) {
+				logger.debug(`[SABnzbd] Queue item`, {
+					nzo_id: item.nzo_id,
+					filename: item.filename,
+					cat: item.cat,
+					status: item.status
+				});
 				if (!category || item.cat === category) {
 					downloads.push(this.mapQueueItem(item));
 				}
@@ -168,7 +181,14 @@ export class SABnzbdClient implements IDownloadClient {
 
 			// Get recent history items (completed downloads)
 			const history = await this.proxy.getHistory(0, 100, category);
+			logger.debug(`[SABnzbd] Fetched ${history.slots.length} history items`);
 			for (const item of history.slots) {
+				logger.debug(`[SABnzbd] History item`, {
+					nzo_id: item.nzo_id,
+					name: item.name,
+					category: item.category,
+					status: item.status
+				});
 				// Only include completed items
 				if (item.status === 'Completed') {
 					downloads.push(this.mapHistoryItem(item));
