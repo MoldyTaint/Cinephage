@@ -39,7 +39,7 @@
 		"daisyui": "^5.5.5",
 		"dotenv": "^17.2.3",
 		"drizzle-kit": "^0.31.7",
-		"drizzle-orm": "^0.44.6",
+		"drizzle-orm": "^0.45.1",
 		"eslint": "^9.39.2",
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-plugin-svelte": "^3.12.4",
