@@ -5,6 +5,7 @@
  * Loads and saves naming preferences from the namingSettings table.
  */
 
+import { logger } from '$lib/logging';
 import { db } from '$lib/server/db';
 import { namingSettings } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
@@ -63,7 +64,7 @@ export class NamingSettingsService {
 	private static instance: NamingSettingsService;
 	private cachedConfig: NamingConfig | null = null;
 
-	private constructor() {}
+	private constructor() { }
 
 	static getInstance(): NamingSettingsService {
 		if (!NamingSettingsService.instance) {
@@ -81,7 +82,19 @@ export class NamingSettingsService {
 			return { ...this.cachedConfig };
 		}
 
-		const settings = db.select().from(namingSettings).all();
+		let settings: { key: string; value: string }[] = [];
+		try {
+			settings = db.select().from(namingSettings).all();
+		} catch (error) {
+			logger.warn('[NamingSettingsService] Failed to load settings from DB (using defaults)', {
+				error: error instanceof Error ? error.message : String(error)
+			});
+			// Determine if table is missing
+			if (String(error).includes('no such table')) {
+				logger.error('[NamingSettingsService] CRITICAL: naming_settings table is missing! Please run migrations.');
+			}
+		}
+
 		const settingsMap = new Map(settings.map((s) => [s.key, s.value]));
 
 		// Build config from database settings, falling back to defaults
@@ -116,7 +129,17 @@ export class NamingSettingsService {
 		}
 
 		// Load synchronously for immediate use
-		const settings = db.select().from(namingSettings).all();
+		let settings: { key: string; value: string }[] = [];
+		try {
+			settings = db.select().from(namingSettings).all();
+		} catch (error) {
+			// Cannot log async here easily if logger.warn is async, but usually it's safe.
+			// Just suppress specifically for missing table or sync issues.
+			if (String(error).includes('no such table')) {
+				console.error('[NamingSettingsService] CRITICAL: naming_settings table missing (sync load)');
+			}
+		}
+
 		const settingsMap = new Map(settings.map((s) => [s.key, s.value]));
 
 		const config: NamingConfig = { ...DEFAULT_NAMING_CONFIG };

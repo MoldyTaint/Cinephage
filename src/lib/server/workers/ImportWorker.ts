@@ -40,11 +40,15 @@ export class ImportWorker extends TaskWorker<ImportWorkerMetadata> {
 			totalFiles: options.totalFiles || 0
 		});
 
+
 		// Create a promise that resolves when the import ends
 		this.resolvePromise = new Promise((resolve, reject) => {
 			this.resolveResolve = resolve;
 			this.resolveReject = reject;
 		});
+
+		// Prevent unhandled rejection crash if fail() is called before execute() awaits
+		this.resolvePromise.catch(() => { });
 	}
 
 	/**

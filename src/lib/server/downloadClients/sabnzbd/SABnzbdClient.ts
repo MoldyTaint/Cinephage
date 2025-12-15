@@ -107,10 +107,12 @@ export class SABnzbdClient implements IDownloadClient {
 		const priority = mapPriorityToSabnzbd(options.priority);
 
 		logger.info('[SABnzbd] Adding download', {
+			title: options.title,
 			category: options.category,
 			priority,
 			hasNzbFile: !!(options.nzbFile || options.torrentFile),
-			hasUrl: !!options.downloadUrl
+			hasUrl: !!options.downloadUrl,
+			optionsKeys: Object.keys(options)
 		});
 
 		try {
@@ -119,10 +121,12 @@ export class SABnzbdClient implements IDownloadClient {
 			// Check for NZB file content
 			const nzbContent = options.nzbFile || options.torrentFile;
 			if (nzbContent) {
-				const filename = options.title ? `${options.title}.nzb` : 'download.nzb';
+				const safeTitle = options.title && options.title.trim().length > 0 ? options.title : `SABnzbd_Grab_${Date.now()}`;
+				const filename = `${safeTitle}.nzb`;
 				response = await this.proxy.downloadNzb(nzbContent, filename, options.category, priority);
 			} else if (options.downloadUrl) {
-				const filename = options.title || 'download.nzb';
+				const safeTitle = options.title && options.title.trim().length > 0 ? options.title : `SABnzbd_Grab_${Date.now()}`;
+				const filename = `${safeTitle}.nzb`;
 				response = await this.proxy.downloadNzbByUrl(
 					options.downloadUrl,
 					options.category,

@@ -379,6 +379,12 @@ class ReleaseGrabService {
 		// Add to usenet client
 		let nzoId: string;
 		try {
+			logger.info('[ReleaseGrab] Sending to client (pre-add)', {
+				title: release.title,
+				hasNzb: !!nzbContent,
+				client: clientConfig.name
+			});
+
 			nzoId = await clientInstance.addDownload({
 				nzbFile: nzbContent,
 				downloadUrl: nzbContent ? undefined : release.downloadUrl,
