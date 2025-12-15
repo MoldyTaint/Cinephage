@@ -33,7 +33,7 @@
 		"@types/adm-zip": "^0.5.7",
 		"@types/better-sqlite3": "^7.6.13",
 		"@types/js-yaml": "^4.0.9",
-		"@types/node": "^24",
+		"@types/node": "^25",
 		"@types/parse-torrent": "^5.8.8",
 		"@vitest/browser-playwright": "^4.0.5",
 		"daisyui": "^5.5.14",
