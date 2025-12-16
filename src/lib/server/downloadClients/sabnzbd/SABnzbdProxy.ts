@@ -123,7 +123,6 @@ export class SABnzbdProxy {
 		const params = new URLSearchParams();
 		params.set('cat', category);
 		params.set('priority', priority.toString());
-		params.set('nzbname', filename);
 
 		const response = await this.executeMultipartRequest(
 			'addfile',
