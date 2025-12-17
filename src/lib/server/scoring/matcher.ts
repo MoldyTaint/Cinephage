@@ -76,6 +76,60 @@ export function evaluateCondition(
 				rawMatch = false;
 			}
 			break;
+
+		case 'codec':
+			rawMatch = condition.codec === release.codec;
+			break;
+
+		case 'audio':
+			// Special handling: 'atmos' can match either the audio field directly
+			// or check for Atmos in the release title (since Atmos is a modifier)
+			if (condition.audio === 'atmos') {
+				rawMatch = release.audio === 'atmos' || /\batmos\b/i.test(release.title);
+			} else {
+				rawMatch = condition.audio === release.audio;
+			}
+			break;
+
+		case 'hdr':
+			// Handle null HDR (SDR) matching
+			if (condition.hdr === null || condition.hdr === 'sdr') {
+				rawMatch = release.hdr === null || release.hdr === 'sdr';
+			} else {
+				rawMatch = condition.hdr === release.hdr;
+			}
+			break;
+
+		case 'streaming_service':
+			rawMatch =
+				condition.streamingService?.toLowerCase() === release.streamingService?.toLowerCase();
+			break;
+
+		case 'flag':
+			switch (condition.flag) {
+				case 'isRemux':
+					rawMatch = release.isRemux;
+					break;
+				case 'isRepack':
+					rawMatch = release.isRepack;
+					break;
+				case 'isProper':
+					rawMatch = release.isProper;
+					break;
+				case 'is3d':
+					rawMatch = release.is3d;
+					break;
+				default:
+					rawMatch = false;
+			}
+			break;
+
+		case 'indexer':
+			// Match by indexer name (case-insensitive)
+			if (condition.indexer && release.indexerName) {
+				rawMatch = condition.indexer.toLowerCase() === release.indexerName.toLowerCase();
+			}
+			break;
 	}
 
 	// Apply negation

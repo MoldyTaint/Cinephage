@@ -6,7 +6,7 @@
  */
 
 import { scoreRelease } from '$lib/server/scoring/scorer.js';
-import { getProfile } from '$lib/server/scoring/profiles.js';
+import { qualityFilter } from '$lib/server/quality';
 import type {
 	IMonitoringSpecification,
 	MovieContext,
@@ -48,7 +48,7 @@ export class MovieCutoffUnmetSpecification implements IMonitoringSpecification<M
 		}
 
 		// Get the full profile with format scores
-		const fullProfile = getProfile(context.profile.id);
+		const fullProfile = await qualityFilter.getProfile(context.profile.id);
 		if (!fullProfile) {
 			return reject(RejectionReason.NO_PROFILE);
 		}
@@ -97,7 +97,7 @@ export class EpisodeCutoffUnmetSpecification implements IMonitoringSpecification
 		}
 
 		// Get the full profile with format scores
-		const fullProfile = getProfile(context.profile.id);
+		const fullProfile = await qualityFilter.getProfile(context.profile.id);
 		if (!fullProfile) {
 			return reject(RejectionReason.NO_PROFILE);
 		}

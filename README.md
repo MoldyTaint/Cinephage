@@ -109,7 +109,7 @@ See [Configuration Guide](docs/getting-started/configuration.md) for detailed se
 
 - **Content Discovery** — Browse TMDB for movies and TV shows, view trending, trailers, and watch providers
 - **Indexer Search** — 4 public + 2 private trackers built-in, plus Torznab/Newznab support for external indexers
-- **Quality Scoring** — 4 built-in profiles (Best, Efficient, Micro, Streaming) scoring 100+ release attributes
+- **Quality Scoring** — 4 built-in profiles (Quality, Balanced, Compact, Streamer) scoring 100+ release attributes
 - **Library Management** — Real-time file watching, scheduled scans, auto-match to TMDB metadata
 - **Download Automation** — qBittorrent/SABnzbd integration with categories, priority handling, auto-import
 - **Subtitles** — 6 providers, 80+ languages, auto-search on import
@@ -144,7 +144,6 @@ npm run build        # Build for production
 npm run check        # TypeScript checking
 npm run lint         # ESLint + Prettier
 npm run test         # Run tests
-npm run db:studio    # Drizzle Studio
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.

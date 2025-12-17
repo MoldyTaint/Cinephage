@@ -23,7 +23,7 @@ import { db } from '../db/index.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ module: 'QualityFilter' });
-import { qualityPresets, scoringProfiles } from '../db/schema.js';
+import { qualityPresets, scoringProfiles, profileSizeLimits } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { DEFAULT_PRESETS } from './types.js';
 
@@ -34,7 +34,7 @@ import {
 	isUpgrade,
 	getProfile,
 	DEFAULT_PROFILES,
-	EFFICIENT_PROFILE,
+	BALANCED_PROFILE,
 	type ScoringProfile,
 	type ScoringResult,
 	type ReleaseAttributes,
@@ -75,9 +75,16 @@ export class QualityFilter {
 	 */
 	clearProfileCache(profileId?: string): void {
 		if (profileId) {
+			const hadCached = this.profilesCache.has(profileId);
 			this.profilesCache.delete(profileId);
+			logger.debug('[QualityFilter] Cache cleared for profile', {
+				profileId,
+				wasCached: hadCached
+			});
 		} else {
+			const count = this.profilesCache.size;
 			this.profilesCache.clear();
+			logger.debug('[QualityFilter] All profile cache cleared', { count });
 		}
 		this.defaultProfile = null;
 	}
@@ -109,23 +116,77 @@ export class QualityFilter {
 	async getProfile(id: string): Promise<ScoringProfile | null> {
 		// Check cache first
 		if (this.profilesCache.has(id)) {
-			return this.profilesCache.get(id)!;
+			const cached = this.profilesCache.get(id)!;
+			logger.debug('[QualityFilter.getProfile] Cache hit', {
+				id,
+				cachedName: cached.name,
+				formatScoresCount: Object.keys(cached.formatScores).length
+			});
+			return cached;
 		}
 
-		// Try database first
+		// Check if this is a built-in profile ID
+		const builtIn = getProfile(id);
+
+		// Try database first (custom profiles or seeded built-in profiles)
 		const result = await db.select().from(scoringProfiles).where(eq(scoringProfiles.id, id)).get();
 
+		logger.debug('[QualityFilter.getProfile] Loading profile', {
+			id,
+			foundInDb: !!result,
+			dbFormatScoresCount: result?.formatScores ? Object.keys(result.formatScores).length : 0,
+			dbFormatScoresSample: result?.formatScores
+				? Object.keys(result.formatScores).slice(0, 3)
+				: [],
+			isBuiltIn: !!builtIn
+		});
+
 		if (result) {
-			const profile = this.mapDbToProfile(result);
+			let profile = this.mapDbToProfile(result);
+
+			// For built-in profiles, merge size limits from profileSizeLimits table
+			// (Size limits are stored separately from the seeded profile data)
+			if (builtIn) {
+				const sizeLimits = await db
+					.select()
+					.from(profileSizeLimits)
+					.where(eq(profileSizeLimits.profileId, id))
+					.get();
+
+				if (sizeLimits) {
+					profile = {
+						...profile,
+						movieMinSizeGb: sizeLimits.movieMinSizeGb ?? profile.movieMinSizeGb,
+						movieMaxSizeGb: sizeLimits.movieMaxSizeGb ?? profile.movieMaxSizeGb,
+						episodeMinSizeMb: sizeLimits.episodeMinSizeMb ?? profile.episodeMinSizeMb,
+						episodeMaxSizeMb: sizeLimits.episodeMaxSizeMb ?? profile.episodeMaxSizeMb
+					};
+				}
+			}
+
 			this.profilesCache.set(id, profile);
 			return profile;
 		}
 
-		// Fall back to built-in profiles
-		const builtIn = getProfile(id);
+		// Fall back to built-in profiles (not in database)
 		if (builtIn) {
-			this.profilesCache.set(id, builtIn);
-			return builtIn;
+			// Check for size limit overrides in profileSizeLimits table
+			const sizeLimits = await db
+				.select()
+				.from(profileSizeLimits)
+				.where(eq(profileSizeLimits.profileId, id))
+				.get();
+
+			const mergedProfile: ScoringProfile = {
+				...builtIn,
+				movieMinSizeGb: sizeLimits?.movieMinSizeGb ?? null,
+				movieMaxSizeGb: sizeLimits?.movieMaxSizeGb ?? null,
+				episodeMinSizeMb: sizeLimits?.episodeMinSizeMb ?? null,
+				episodeMaxSizeMb: sizeLimits?.episodeMaxSizeMb ?? null
+			};
+
+			this.profilesCache.set(id, mergedProfile);
+			return mergedProfile;
 		}
 
 		return null;
@@ -163,7 +224,7 @@ export class QualityFilter {
 			return this.defaultProfile;
 		}
 
-		// Check database for default profile
+		// Check database for default custom profile
 		const result = await db
 			.select()
 			.from(scoringProfiles)
@@ -175,8 +236,41 @@ export class QualityFilter {
 			return this.defaultProfile;
 		}
 
-		// Fall back to built-in Efficient profile if no default in DB
-		this.defaultProfile = EFFICIENT_PROFILE;
+		// Check if a built-in profile is set as default in profileSizeLimits
+		const defaultOverride = await db
+			.select()
+			.from(profileSizeLimits)
+			.where(eq(profileSizeLimits.isDefault, true))
+			.get();
+
+		if (defaultOverride) {
+			const builtIn = getProfile(defaultOverride.profileId);
+			if (builtIn) {
+				this.defaultProfile = {
+					...builtIn,
+					movieMinSizeGb: defaultOverride.movieMinSizeGb ?? null,
+					movieMaxSizeGb: defaultOverride.movieMaxSizeGb ?? null,
+					episodeMinSizeMb: defaultOverride.episodeMinSizeMb ?? null,
+					episodeMaxSizeMb: defaultOverride.episodeMaxSizeMb ?? null
+				};
+				return this.defaultProfile;
+			}
+		}
+
+		// Fall back to built-in Balanced profile with size limits if available
+		const balancedLimits = await db
+			.select()
+			.from(profileSizeLimits)
+			.where(eq(profileSizeLimits.profileId, 'balanced'))
+			.get();
+
+		this.defaultProfile = {
+			...BALANCED_PROFILE,
+			movieMinSizeGb: balancedLimits?.movieMinSizeGb ?? null,
+			movieMaxSizeGb: balancedLimits?.movieMaxSizeGb ?? null,
+			episodeMinSizeMb: balancedLimits?.episodeMinSizeMb ?? null,
+			episodeMaxSizeMb: balancedLimits?.episodeMaxSizeMb ?? null
+		};
 		return this.defaultProfile;
 	}
 
@@ -234,7 +328,7 @@ export class QualityFilter {
 
 	/**
 	 * Seed default scoring profiles to database if they don't exist.
-	 * This ensures built-in profile IDs (best, efficient, micro, streaming) are valid
+	 * This ensures built-in profile IDs (quality, balanced, compact, streamer) are valid
 	 * foreign key targets when users assign them to movies/series.
 	 */
 	async seedDefaultScoringProfiles(): Promise<void> {
@@ -253,15 +347,14 @@ export class QualityFilter {
 				id: profile.id,
 				name: profile.name,
 				description: profile.description ?? null,
-				baseProfileId: null, // Built-in profiles don't have a base
 				tags: profile.tags ?? [],
 				upgradesAllowed: profile.upgradesAllowed ?? true,
 				minScore: profile.minScore ?? 0,
 				upgradeUntilScore: profile.upgradeUntilScore ?? -1,
 				minScoreIncrement: profile.minScoreIncrement ?? 0,
 				resolutionOrder: profile.resolutionOrder ?? null,
-				formatScores: null, // Don't store formatScores - use code defaults
-				isDefault: profile.id === 'best' // Best is the default profile
+				formatScores: profile.formatScores ?? null,
+				isDefault: profile.id === 'balanced' // Balanced is the default profile
 			});
 			seeded++;
 		}
@@ -370,7 +463,8 @@ export class QualityFilter {
 		preset: QualityPreset,
 		profile: ScoringProfile,
 		fileSizeBytes?: number,
-		sizeContext?: SizeValidationContext
+		sizeContext?: SizeValidationContext,
+		indexerName?: string
 	): EnhancedQualityResult {
 		// First, check preset requirements (pass/fail filter)
 		const minCheck = this.meetsMinimum(parsed, preset);
@@ -389,6 +483,7 @@ export class QualityFilter {
 			streamingService: undefined, // Detected from title in scoring engine
 			edition: parsed.edition,
 			languages: parsed.languages,
+			indexerName, // Pass indexer name for indexer-based matching
 			isRemux: parsed.isRemux,
 			isRepack: parsed.isRepack,
 			isProper: parsed.isProper,
@@ -697,17 +792,13 @@ export class QualityFilter {
 
 	/**
 	 * Map database row to ScoringProfile
+	 *
+	 * Profiles are standalone - no runtime inheritance. If a DB profile doesn't
+	 * have formatScores, check if it's a built-in profile ID and use those scores.
 	 */
 	private mapDbToProfile(row: typeof scoringProfiles.$inferSelect): ScoringProfile {
-		// Get base profile if specified, OR if the ID matches a built-in profile
-		// This handles the case where DB profiles were created without formatScores
-		let baseProfile = row.baseProfileId ? getProfile(row.baseProfileId) : null;
-
-		// If no explicit base and this ID matches a built-in, use the built-in as base
-		// This ensures DB profiles inherit format scores from their matching built-in
-		if (!baseProfile && !row.formatScores) {
-			baseProfile = getProfile(row.id) ?? null;
-		}
+		// If this ID matches a built-in profile and DB has no formatScores, use built-in scores
+		let builtInProfile = getProfile(row.id);
 
 		return {
 			id: row.id,
@@ -718,10 +809,10 @@ export class QualityFilter {
 			minScore: row.minScore ?? 0,
 			upgradeUntilScore: row.upgradeUntilScore ?? -1,
 			minScoreIncrement: row.minScoreIncrement ?? 0,
-			movieMinSizeGb: row.movieMinSizeGb ? Number(row.movieMinSizeGb) : null,
-			movieMaxSizeGb: row.movieMaxSizeGb ? Number(row.movieMaxSizeGb) : null,
-			episodeMinSizeMb: row.episodeMinSizeMb ? Number(row.episodeMinSizeMb) : null,
-			episodeMaxSizeMb: row.episodeMaxSizeMb ? Number(row.episodeMaxSizeMb) : null,
+			movieMinSizeGb: row.movieMinSizeGb ?? null,
+			movieMaxSizeGb: row.movieMaxSizeGb ?? null,
+			episodeMinSizeMb: row.episodeMinSizeMb ?? null,
+			episodeMaxSizeMb: row.episodeMaxSizeMb ?? null,
 			resolutionOrder: (row.resolutionOrder as Resolution[]) ?? [
 				'2160p',
 				'1080p',
@@ -729,13 +820,11 @@ export class QualityFilter {
 				'480p',
 				'unknown'
 			],
-			// allowedProtocols: use DB value, fall back to base profile, then default to torrent/usenet only
+			// allowedProtocols: use DB value, fall back to built-in profile, then default
 			allowedProtocols: row.allowedProtocols ??
-				baseProfile?.allowedProtocols ?? ['torrent', 'usenet'],
-			formatScores: {
-				...(baseProfile?.formatScores ?? {}),
-				...(row.formatScores ?? {})
-			}
+				builtInProfile?.allowedProtocols ?? ['torrent', 'usenet'],
+			// formatScores: use DB value if present, otherwise use built-in scores, otherwise empty
+			formatScores: row.formatScores ?? builtInProfile?.formatScores ?? {}
 		};
 	}
 }

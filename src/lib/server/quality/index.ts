@@ -36,12 +36,14 @@ export type {
 
 export {
 	DEFAULT_PROFILES,
-	BEST_PROFILE,
-	EFFICIENT_PROFILE,
-	MICRO_PROFILE,
-	STREAMING_PROFILE,
+	QUALITY_PROFILE,
+	BALANCED_PROFILE,
+	COMPACT_PROFILE,
+	STREAMER_PROFILE,
 	scoreRelease,
 	rankReleases,
 	isUpgrade,
-	getProfile
+	getProfile,
+	isBuiltInProfile,
+	getBuiltInProfileIds
 } from '../scoring/index.js';

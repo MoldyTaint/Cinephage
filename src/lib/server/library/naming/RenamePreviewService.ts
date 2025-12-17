@@ -6,7 +6,14 @@
  */
 
 import { db } from '$lib/server/db';
-import { movies, movieFiles, series, episodes, episodeFiles, rootFolders } from '$lib/server/db/schema';
+import {
+	movies,
+	movieFiles,
+	series,
+	episodes,
+	episodeFiles,
+	rootFolders
+} from '$lib/server/db/schema';
 import { eq, inArray } from 'drizzle-orm';
 import { extname, join, dirname, basename } from 'path';
 import { logger } from '$lib/logging';
@@ -217,7 +224,11 @@ export class RenamePreviewService {
 		// Get root folder path
 		let rootFolderPath = '';
 		if (movie.rootFolderId) {
-			const rootFolder = db.select().from(rootFolders).where(eq(rootFolders.id, movie.rootFolderId)).get();
+			const rootFolder = db
+				.select()
+				.from(rootFolders)
+				.where(eq(rootFolders.id, movie.rootFolderId))
+				.get();
 			if (rootFolder) {
 				rootFolderPath = rootFolder.path;
 			}
@@ -263,7 +274,11 @@ export class RenamePreviewService {
 		// Get root folder path
 		let rootFolderPath = '';
 		if (show.rootFolderId) {
-			const rootFolder = db.select().from(rootFolders).where(eq(rootFolders.id, show.rootFolderId)).get();
+			const rootFolder = db
+				.select()
+				.from(rootFolders)
+				.where(eq(rootFolders.id, show.rootFolderId))
+				.get();
 			if (rootFolder) {
 				rootFolderPath = rootFolder.path;
 			}
@@ -537,8 +552,7 @@ export class RenamePreviewService {
 				// Video info: prefer release parsing, fall back to filename, then mediaInfo
 				resolution: file.quality?.resolution ?? parsedFromFilename.resolution,
 				source: file.quality?.source ?? parsedFromFilename.source,
-				codec:
-					file.quality?.codec ?? parsedFromFilename.codec ?? file.mediaInfo?.videoCodec,
+				codec: file.quality?.codec ?? parsedFromFilename.codec ?? file.mediaInfo?.videoCodec,
 				hdr: file.quality?.hdr ?? parsedFromFilename.hdr ?? file.mediaInfo?.videoHdrFormat,
 				bitDepth: file.mediaInfo?.videoBitDepth?.toString(),
 
@@ -546,8 +560,7 @@ export class RenamePreviewService {
 				// This ensures renamed files reflect the true audio codec, not mislabeled release names
 				audioCodec: file.mediaInfo?.audioCodec ?? parsedFromFilename.audioCodec,
 				audioChannels:
-					formatAudioChannels(file.mediaInfo?.audioChannels) ??
-					parsedFromFilename.audioChannels,
+					formatAudioChannels(file.mediaInfo?.audioChannels) ?? parsedFromFilename.audioChannels,
 				audioLanguages: file.mediaInfo?.audioLanguages,
 
 				releaseGroup: file.releaseGroup ?? parsedFromFilename.releaseGroup,
@@ -654,8 +667,7 @@ export class RenamePreviewService {
 				// Video info: prefer release parsing, fall back to filename, then mediaInfo
 				resolution: file.quality?.resolution ?? parsedFromFilename.resolution,
 				source: file.quality?.source ?? parsedFromFilename.source,
-				codec:
-					file.quality?.codec ?? parsedFromFilename.codec ?? file.mediaInfo?.videoCodec,
+				codec: file.quality?.codec ?? parsedFromFilename.codec ?? file.mediaInfo?.videoCodec,
 				hdr: file.quality?.hdr ?? parsedFromFilename.hdr ?? file.mediaInfo?.videoHdrFormat,
 				bitDepth: file.mediaInfo?.videoBitDepth?.toString(),
 
@@ -663,8 +675,7 @@ export class RenamePreviewService {
 				// This ensures renamed files reflect the true audio codec, not mislabeled release names
 				audioCodec: file.mediaInfo?.audioCodec ?? parsedFromFilename.audioCodec,
 				audioChannels:
-					formatAudioChannels(file.mediaInfo?.audioChannels) ??
-					parsedFromFilename.audioChannels,
+					formatAudioChannels(file.mediaInfo?.audioChannels) ?? parsedFromFilename.audioChannels,
 				audioLanguages: file.mediaInfo?.audioLanguages,
 				releaseGroup: file.releaseGroup ?? parsedFromFilename.releaseGroup,
 				originalExtension: extname(file.relativePath)

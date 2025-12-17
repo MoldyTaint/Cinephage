@@ -23,7 +23,17 @@ export type { Resolution, Source, Codec, HdrFormat, AudioFormat };
 /**
  * Types of conditions that can be used in custom format matching
  */
-export type ConditionType = 'resolution' | 'source' | 'release_title' | 'release_group';
+export type ConditionType =
+	| 'resolution'
+	| 'source'
+	| 'release_title'
+	| 'release_group'
+	| 'codec'
+	| 'audio'
+	| 'hdr'
+	| 'streaming_service'
+	| 'flag'
+	| 'indexer';
 
 /**
  * A single condition within a custom format definition
@@ -56,6 +66,24 @@ export interface FormatCondition {
 
 	/** Regex pattern for release_title or release_group conditions */
 	pattern?: string;
+
+	/** For codec conditions */
+	codec?: Codec;
+
+	/** For audio conditions */
+	audio?: AudioFormat;
+
+	/** For HDR conditions */
+	hdr?: HdrFormat;
+
+	/** For streaming service conditions */
+	streamingService?: string;
+
+	/** For flag conditions (isRemux, isRepack, isProper, is3d) */
+	flag?: 'isRemux' | 'isRepack' | 'isProper' | 'is3d';
+
+	/** For indexer conditions (match by indexer name) */
+	indexer?: string;
 }
 
 // =============================================================================
@@ -80,6 +108,9 @@ export type FormatCategory =
 
 /**
  * A custom format definition that can match against releases
+ *
+ * Note: Formats define WHAT to match (conditions), not HOW to score.
+ * Scores are defined per-profile in ScoringProfile.formatScores.
  */
 export interface CustomFormat {
 	/** Unique identifier for this format */
@@ -96,9 +127,6 @@ export interface CustomFormat {
 
 	/** Tags for filtering/searching */
 	tags: string[];
-
-	/** Default score when no profile score is specified */
-	defaultScore: number;
 
 	/** Conditions that determine if this format matches a release */
 	conditions: FormatCondition[];
@@ -163,6 +191,9 @@ export interface ReleaseAttributes {
 	streamingService?: string;
 	edition?: string;
 	languages: string[];
+
+	// Source indexer info (for matching releases by indexer origin)
+	indexerName?: string;
 
 	// Flags
 	isRemux: boolean;
@@ -387,6 +418,12 @@ export interface ScoringResult {
 
 	/** Reason for size rejection if applicable */
 	sizeRejectionReason?: string;
+
+	/** Whether this release was rejected due to protocol mismatch */
+	protocolRejected: boolean;
+
+	/** Reason for protocol rejection if applicable */
+	protocolRejectionReason?: string;
 }
 
 /**

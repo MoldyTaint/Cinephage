@@ -191,6 +191,14 @@ export class DatabaseQueryExecutor {
 		// Only query monitored movies
 		conditions.push(eq(movies.monitored, true));
 
+		this.log.info('[DatabaseQueryExecutor] Executing movie query', {
+			indexer: context.indexerName,
+			tmdbId: criteria.tmdbId,
+			imdbId: criteria.imdbId,
+			query: criteria.query,
+			conditionsCount: conditions.length
+		});
+
 		let results: (typeof movies.$inferSelect)[];
 		if (conditions.length > 0) {
 			results = await db
@@ -202,6 +210,12 @@ export class DatabaseQueryExecutor {
 			results = await db.select().from(movies).where(eq(movies.monitored, true)).limit(100);
 		}
 
+		this.log.info('[DatabaseQueryExecutor] Movie query results', {
+			indexer: context.indexerName,
+			resultsCount: results.length,
+			movies: results.slice(0, 5).map((m) => ({ id: m.id, title: m.title, tmdbId: m.tmdbId }))
+		});
+
 		const releaseResults: ReleaseResult[] = [];
 
 		for (const movie of results) {
@@ -210,7 +224,7 @@ export class DatabaseQueryExecutor {
 				guid: `stream-movie-${movie.tmdbId}`,
 				title: `${movie.title} (${movie.year || 'N/A'}) [Streaming]`,
 				downloadUrl: `stream://movie/${movie.tmdbId}`,
-				size: this.estimateMovieSize(movie.runtime ?? 120),
+				size: this.STREAMING_FILE_SIZE,
 				publishDate: movie.added ? new Date(movie.added) : new Date(),
 				indexerId: context.indexerId,
 				indexerName: context.indexerName,
@@ -361,7 +375,7 @@ export class DatabaseQueryExecutor {
 			guid: `stream-tv-${show.tmdbId}-s${seasonStr}e${episodeStr}`,
 			title: `${show.title} S${seasonStr}E${episodeStr} - ${episode.title || 'Episode'} [Streaming]`,
 			downloadUrl: `stream://tv/${show.tmdbId}/${episode.seasonNumber}/${episode.episodeNumber}`,
-			size: this.estimateEpisodeSize(this.DEFAULT_TV_RUNTIME),
+			size: this.STREAMING_FILE_SIZE,
 			publishDate: episode.airDate ? new Date(episode.airDate) : new Date(),
 			indexerId: context.indexerId,
 			indexerName: context.indexerName,
@@ -403,7 +417,7 @@ export class DatabaseQueryExecutor {
 			guid: `stream-tv-${show.tmdbId}-s${seasonStr}`,
 			title: `${show.title} Season ${seasonNumber} [Streaming]`,
 			downloadUrl: `stream://tv/${show.tmdbId}/${seasonNumber}`,
-			size: this.estimateSeasonSize(episodeCount, this.DEFAULT_TV_RUNTIME),
+			size: this.STREAMING_FILE_SIZE,
 			publishDate: latestAirDate.getTime() > 0 ? latestAirDate : new Date(),
 			indexerId: context.indexerId,
 			indexerName: context.indexerName,
@@ -454,7 +468,7 @@ export class DatabaseQueryExecutor {
 			guid: `stream-tv-${show.tmdbId}-complete`,
 			title: `${show.title} ${seasonsStr} Complete Series [Streaming]`,
 			downloadUrl: `stream://tv/${show.tmdbId}/all`,
-			size: this.estimateSeriesSize(totalEpisodes, this.DEFAULT_TV_RUNTIME),
+			size: this.STREAMING_FILE_SIZE,
 			publishDate: latestAirDate.getTime() > 0 ? latestAirDate : new Date(),
 			indexerId: context.indexerId,
 			indexerName: context.indexerName,
@@ -591,7 +605,7 @@ export class DatabaseQueryExecutor {
 					guid,
 					title: `${title} [Streaming]`,
 					downloadUrl,
-					size: size || this.estimateMovieSize(90), // Default 90 min estimate
+					size: this.STREAMING_FILE_SIZE,
 					publishDate: new Date(),
 					indexerId: context.indexerId,
 					indexerName: context.indexerName,
@@ -610,44 +624,8 @@ export class DatabaseQueryExecutor {
 		return releaseResults;
 	}
 
-	// =========================================================================
-	// SIZE ESTIMATION
-	// Use 1080p streaming estimates as baseline (quality determined at playback)
-	// =========================================================================
-
-	/** Bytes per minute for 1080p streaming (reasonable average) */
-	private readonly BYTES_PER_MINUTE = 50 * 1024 * 1024; // ~50 MB/min
-
-	/** Default TV episode runtime in minutes */
-	private readonly DEFAULT_TV_RUNTIME = 45;
-
-	/**
-	 * Estimate movie size based on runtime
-	 */
-	private estimateMovieSize(runtimeMinutes: number): number {
-		return this.BYTES_PER_MINUTE * runtimeMinutes;
-	}
-
-	/**
-	 * Estimate single episode size based on runtime
-	 */
-	private estimateEpisodeSize(runtimeMinutes: number): number {
-		return this.BYTES_PER_MINUTE * runtimeMinutes;
-	}
-
-	/**
-	 * Estimate season pack size based on episode count and average runtime
-	 */
-	private estimateSeasonSize(episodeCount: number, avgRuntimeMinutes: number): number {
-		return this.BYTES_PER_MINUTE * avgRuntimeMinutes * episodeCount;
-	}
-
-	/**
-	 * Estimate complete series size based on total episodes and average runtime
-	 */
-	private estimateSeriesSize(totalEpisodes: number, avgRuntimeMinutes: number): number {
-		return this.BYTES_PER_MINUTE * avgRuntimeMinutes * totalEpisodes;
-	}
+	/** Actual .strm file size (~100 bytes - just a text file with a URL) */
+	private readonly STREAMING_FILE_SIZE = 100;
 }
 
 /**

@@ -1,6 +1,11 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import { LibraryMovieHeader, MovieFilesTab, MovieEditModal, RenamePreviewModal } from '$lib/components/library';
+	import {
+		LibraryMovieHeader,
+		MovieFilesTab,
+		MovieEditModal,
+		RenamePreviewModal
+	} from '$lib/components/library';
 	import { InteractiveSearchModal } from '$lib/components/search';
 	import { SubtitleSearchModal } from '$lib/components/subtitles';
 	import type { MovieEditData } from '$lib/components/library/MovieEditModal.svelte';
@@ -267,10 +272,7 @@
 				<div class="mb-4 flex items-center justify-between">
 					<h2 class="text-lg font-semibold">Files</h2>
 					{#if data.movie.files.length > 0}
-						<button
-							class="btn btn-ghost btn-sm gap-1"
-							onclick={() => (isRenameModalOpen = true)}
-						>
+						<button class="btn gap-1 btn-ghost btn-sm" onclick={() => (isRenameModalOpen = true)}>
 							<FileEdit class="h-4 w-4" />
 							Rename
 						</button>

@@ -33,7 +33,6 @@ export const LOSSLESS_AUDIO_FORMATS: CustomFormat[] = [
 		description: 'Dolby TrueHD lossless audio codec',
 		category: 'audio',
 		tags: ['Audio', 'Lossless', 'Dolby'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'TrueHD',
@@ -80,7 +79,6 @@ export const LOSSLESS_AUDIO_FORMATS: CustomFormat[] = [
 		description: 'Detects TrueHD releases with non-standard labeling (TrueHDA from BTN groups)',
 		category: 'audio',
 		tags: ['Audio', 'Lossless', 'Dolby', 'Missing'],
-		defaultScore: 0,
 		conditions: [
 			// BTN naming convention: TrueHDA7.1 = TrueHD Atmos 7.1 (but without explicit TrueHD)
 			{
@@ -119,7 +117,6 @@ export const LOSSLESS_AUDIO_FORMATS: CustomFormat[] = [
 		description: 'DTS:X object-based immersive audio',
 		category: 'audio',
 		tags: ['Audio', 'Lossless', 'DTS', 'Object Audio'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'DTS-X',
@@ -184,7 +181,6 @@ export const LOSSLESS_AUDIO_FORMATS: CustomFormat[] = [
 		description: 'DTS-HD Master Audio lossless',
 		category: 'audio',
 		tags: ['Audio', 'Lossless', 'DTS'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'DTS-HD MA',
@@ -263,7 +259,6 @@ export const LOSSLESS_AUDIO_FORMATS: CustomFormat[] = [
 		description: 'Uncompressed PCM audio',
 		category: 'audio',
 		tags: ['Audio', 'Lossless', 'Uncompressed'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'PCM',
@@ -285,7 +280,6 @@ export const LOSSLESS_AUDIO_FORMATS: CustomFormat[] = [
 		description: 'FLAC lossless audio',
 		category: 'audio',
 		tags: ['Audio', 'Lossless'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'FLAC',
@@ -358,7 +352,6 @@ export const ATMOS_FORMATS: CustomFormat[] = [
 		description: 'Dolby Atmos object-based audio (stackable modifier)',
 		category: 'audio',
 		tags: ['Audio', 'Atmos', 'Dolby', 'Object Audio'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'Atmos',
@@ -392,7 +385,6 @@ export const ATMOS_FORMATS: CustomFormat[] = [
 		description: 'Detects Atmos in releases with non-standard labeling',
 		category: 'audio',
 		tags: ['Audio', 'Atmos', 'Dolby', 'Missing'],
-		defaultScore: 0,
 		conditions: [
 			// 2160p releases from certain groups often have Atmos without explicit label
 			{
@@ -439,7 +431,6 @@ export const HQ_LOSSY_AUDIO_FORMATS: CustomFormat[] = [
 		description: 'DTS-HD High Resolution Audio',
 		category: 'audio',
 		tags: ['Audio', 'Lossy', 'DTS', 'High Quality'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'DTS-HD HRA',
@@ -476,7 +467,6 @@ export const HQ_LOSSY_AUDIO_FORMATS: CustomFormat[] = [
 		description: 'DTS Extended Surround (6.1)',
 		category: 'audio',
 		tags: ['Audio', 'Lossy', 'DTS', 'Legacy'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'DTS-ES',
@@ -498,7 +488,6 @@ export const HQ_LOSSY_AUDIO_FORMATS: CustomFormat[] = [
 		description: 'Opus audio codec (modern, efficient)',
 		category: 'audio',
 		tags: ['Audio', 'Lossy', 'Modern', 'Efficient'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'Opus',
@@ -530,7 +519,6 @@ export const STANDARD_AUDIO_FORMATS: CustomFormat[] = [
 		description: 'Dolby Digital Plus (E-AC-3)',
 		category: 'audio',
 		tags: ['Audio', 'Lossy', 'Dolby'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'DD+/EAC3',
@@ -589,7 +577,6 @@ export const STANDARD_AUDIO_FORMATS: CustomFormat[] = [
 		description: 'Standard DTS audio',
 		category: 'audio',
 		tags: ['Audio', 'Lossy', 'DTS'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'DTS',
@@ -640,7 +627,6 @@ export const STANDARD_AUDIO_FORMATS: CustomFormat[] = [
 		description: 'Dolby Digital (AC-3)',
 		category: 'audio',
 		tags: ['Audio', 'Lossy', 'Dolby'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'DD/AC3',
@@ -669,7 +655,6 @@ export const STANDARD_AUDIO_FORMATS: CustomFormat[] = [
 		description: 'Advanced Audio Coding',
 		category: 'audio',
 		tags: ['Audio', 'Lossy'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'AAC',
@@ -690,7 +675,6 @@ export const STANDARD_AUDIO_FORMATS: CustomFormat[] = [
 		description: 'MP3 audio (low quality)',
 		category: 'audio',
 		tags: ['Audio', 'Lossy', 'Low Quality'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'MP3',
@@ -718,7 +702,6 @@ export const LOSSLESS_AUDIO_GROUP: CustomFormat = {
 	description: 'Matches any lossless audio track not in 2160p (for size-conscious profiles)',
 	category: 'audio',
 	tags: ['Audio', 'Lossless', 'Group'],
-	defaultScore: 0,
 	conditions: [
 		{
 			name: 'Not 2160p',

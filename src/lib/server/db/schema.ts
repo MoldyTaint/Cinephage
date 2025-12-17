@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text, primaryKey, index } from 'drizzle-orm/sqlite-core';
+import { integer, real, sqliteTable, text, primaryKey, index } from 'drizzle-orm/sqlite-core';
 import { relations } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
@@ -293,8 +293,10 @@ export const qualityPresets = sqliteTable('quality_presets', {
  * formats (resolution, source, audio, HDR, release groups, etc.) that
  * determine release quality rankings.
  *
- * Default profiles (Best, Efficient, Micro) are provided by the
- * scoring engine. Custom profiles can be stored here with overrides.
+ * Built-in profiles (Quality, Balanced, Compact, Streamer) are defined in code
+ * and serve as templates. Custom profiles are stored here and are standalone
+ * (no runtime inheritance). Users can create custom profiles from scratch or
+ * by copying from built-in or other custom profiles.
  */
 export const scoringProfiles = sqliteTable('scoring_profiles', {
 	id: text('id')
@@ -302,9 +304,6 @@ export const scoringProfiles = sqliteTable('scoring_profiles', {
 		.$defaultFn(() => randomUUID()),
 	name: text('name').notNull(),
 	description: text('description'),
-	// Base profile ID (e.g., 'best', 'efficient', 'micro')
-	// If null, this is a fully custom profile
-	baseProfileId: text('base_profile_id'),
 	// Tags for filtering/searching
 	tags: text('tags', { mode: 'json' }).$type<string[]>(),
 	// Whether upgrades are allowed with this profile
@@ -330,14 +329,96 @@ export const scoringProfiles = sqliteTable('scoring_profiles', {
 	isDefault: integer('is_default', { mode: 'boolean' }).default(false),
 	// Media-specific file size limits (null = no limit)
 	// Movie limits in GB
-	movieMinSizeGb: text('movie_min_size_gb'),
-	movieMaxSizeGb: text('movie_max_size_gb'),
+	movieMinSizeGb: real('movie_min_size_gb'),
+	movieMaxSizeGb: real('movie_max_size_gb'),
 	// Episode limits in MB (for per-episode validation, season packs use average)
-	episodeMinSizeMb: text('episode_min_size_mb'),
-	episodeMaxSizeMb: text('episode_max_size_mb'),
+	episodeMinSizeMb: real('episode_min_size_mb'),
+	episodeMaxSizeMb: real('episode_max_size_mb'),
 	createdAt: text('created_at').$defaultFn(() => new Date().toISOString()),
 	updatedAt: text('updated_at').$defaultFn(() => new Date().toISOString())
 });
+
+/**
+ * Profile Size Limits - User-configured overrides for built-in profiles
+ *
+ * Built-in profiles (Quality, Balanced, Compact, Streamer) are defined in code.
+ * This table stores size limit overrides and default status for them.
+ * Custom profiles store everything directly in the scoringProfiles table.
+ */
+export const profileSizeLimits = sqliteTable('profile_size_limits', {
+	// Built-in profile ID (e.g., 'quality', 'balanced', 'compact', 'streamer')
+	profileId: text('profile_id').primaryKey(),
+	// Movie limits in GB
+	movieMinSizeGb: real('movie_min_size_gb'),
+	movieMaxSizeGb: real('movie_max_size_gb'),
+	// Episode limits in MB
+	episodeMinSizeMb: real('episode_min_size_mb'),
+	episodeMaxSizeMb: real('episode_max_size_mb'),
+	// Is this the default profile
+	isDefault: integer('is_default', { mode: 'boolean' }).default(false),
+	updatedAt: text('updated_at').$defaultFn(() => new Date().toISOString())
+});
+
+export type ProfileSizeLimitsRecord = typeof profileSizeLimits.$inferSelect;
+export type NewProfileSizeLimitsRecord = typeof profileSizeLimits.$inferInsert;
+
+/**
+ * Custom Formats - User-defined format matching rules
+ *
+ * These extend the built-in formats with custom conditions.
+ * Each format has conditions that determine when it matches a release.
+ */
+export const customFormats = sqliteTable('custom_formats', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => randomUUID()),
+	name: text('name').notNull(),
+	description: text('description'),
+	// Category for UI grouping
+	category: text('category', {
+		enum: [
+			'resolution',
+			'release_group_tier',
+			'audio',
+			'hdr',
+			'streaming',
+			'micro',
+			'low_quality',
+			'banned',
+			'enhancement',
+			'codec',
+			'other'
+		]
+	})
+		.notNull()
+		.default('other'),
+	// Tags for filtering/searching
+	tags: text('tags', { mode: 'json' }).$type<string[]>(),
+	// Conditions as JSON array (FormatCondition[])
+	conditions: text('conditions', { mode: 'json' }).$type<
+		Array<{
+			name: string;
+			type: string;
+			required: boolean;
+			negate: boolean;
+			resolution?: string;
+			source?: string;
+			pattern?: string;
+			codec?: string;
+			audio?: string;
+			hdr?: string | null;
+			streamingService?: string;
+			flag?: string;
+		}>
+	>(),
+	// Whether this format is active
+	enabled: integer('enabled', { mode: 'boolean' }).default(true),
+	createdAt: text('created_at').$defaultFn(() => new Date().toISOString()),
+	updatedAt: text('updated_at').$defaultFn(() => new Date().toISOString())
+});
+
+export type CustomFormatRecord = typeof customFormats.$inferSelect;
+export type NewCustomFormatRecord = typeof customFormats.$inferInsert;
 
 /**
  * External ID Cache - Cache TMDB external IDs (IMDB, TVDB) to reduce API calls

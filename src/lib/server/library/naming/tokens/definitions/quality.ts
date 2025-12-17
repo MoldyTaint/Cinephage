@@ -51,8 +51,7 @@ export const qualityTokens: TokenDefinition[] = [
 		description: 'Quality with Proper/Repack markers',
 		example: 'Proper Bluray-1080p',
 		applicability: ['movie', 'episode'],
-		render: (info) =>
-			buildQualityFullString(info.source, info.resolution, info.proper, info.repack)
+		render: (info) => buildQualityFullString(info.source, info.resolution, info.proper, info.repack)
 	},
 	{
 		name: 'Resolution',

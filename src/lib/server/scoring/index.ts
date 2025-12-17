@@ -9,27 +9,30 @@
  * - Formats: Custom format definitions (resolution, audio, groups, etc.)
  * - Matcher: Evaluates releases against format conditions
  * - Scorer: Calculates total scores based on matched formats and profile
- * - Profiles: Pre-configured scoring philosophies (Best, Efficient, Micro)
+ * - Profiles: Pre-configured scoring philosophies (Quality, Balanced, Compact, Streamer)
+ *
+ * Profiles are standalone - they define complete format->score mappings.
+ * Formats no longer have defaultScore; scores are entirely defined by profiles.
  *
  * Usage:
  * ```typescript
- * import { scoreRelease, EFFICIENT_PROFILE, rankReleases } from './scoring';
+ * import { scoreRelease, BALANCED_PROFILE, rankReleases } from './scoring';
  *
  * // Score a single release
- * const result = scoreRelease('Movie.2024.2160p.BluRay.REMUX.HEVC.TrueHD.Atmos-FGT', EFFICIENT_PROFILE);
+ * const result = scoreRelease('Movie.2024.2160p.BluRay.REMUX.HEVC.TrueHD.Atmos-FGT', BALANCED_PROFILE);
  * console.log(result.totalScore); // High score
  * console.log(result.breakdown); // Score by category
  *
  * // Compare releases
- * const comparison = compareReleases(release1, release2, BEST_PROFILE);
+ * const comparison = compareReleases(release1, release2, QUALITY_PROFILE);
  * console.log(comparison.winner); // 'release1' | 'release2' | 'tie'
  *
  * // Rank multiple releases
- * const ranked = rankReleases([{ name: release1 }, { name: release2 }], MICRO_PROFILE);
+ * const ranked = rankReleases([{ name: release1 }, { name: release2 }], COMPACT_PROFILE);
  * console.log(ranked[0].rank); // Best release is rank 1
  *
  * // Check for upgrade
- * const upgrade = isUpgrade(existingRelease, candidateRelease, EFFICIENT_PROFILE);
+ * const upgrade = isUpgrade(existingRelease, candidateRelease, BALANCED_PROFILE);
  * console.log(upgrade.isUpgrade); // true if candidate is better
  * ```
  */
@@ -128,10 +131,10 @@ export {
 
 export {
 	// Default profiles
-	BEST_PROFILE,
-	EFFICIENT_PROFILE,
-	MICRO_PROFILE,
-	STREAMING_PROFILE,
+	QUALITY_PROFILE,
+	BALANCED_PROFILE,
+	COMPACT_PROFILE,
+	STREAMER_PROFILE,
 
 	// Profile collections
 	DEFAULT_PROFILES,
@@ -139,7 +142,8 @@ export {
 
 	// Profile utilities
 	getProfile,
-	createCustomProfile
+	getBuiltInProfileIds,
+	isBuiltInProfile
 } from './profiles.js';
 
 // =============================================================================
@@ -164,14 +168,11 @@ export {
 	RESOLUTION_SD_FORMATS,
 	ALL_RESOLUTION_FORMATS,
 
-	// Release group tiers
-	QUALITY_2160P_TIERS,
-	QUALITY_1080P_TIERS,
-	EFFICIENT_1080P_TIERS,
-	REMUX_TIERS,
-	WEBDL_TIERS,
-	QUALITY_720P_TIERS,
+	// Release groups (individual detection, no tiers)
+	RELEASE_GROUP_FORMATS,
+	RELEASE_GROUP_NAMES,
 	ALL_GROUP_TIER_FORMATS,
+	isKnownGroup,
 
 	// Audio formats
 	LOSSLESS_AUDIO_FORMATS,
@@ -203,19 +204,6 @@ export {
 	STANDARD_STREAMING_FORMATS,
 	INTERNATIONAL_STREAMING_FORMATS,
 	ALL_STREAMING_FORMATS,
-
-	// Micro encoders
-	PRIMARY_MICRO_FORMATS,
-	SECONDARY_MICRO_FORMATS,
-	ALL_MICRO_FORMATS,
-	MICRO_ENCODER_GROUPS,
-	isMicroEncoder,
-
-	// Low quality groups (not banned, just penalized)
-	LOW_QUALITY_GROUPS,
-	ALL_LOW_QUALITY_FORMATS,
-	LOW_QUALITY_GROUP_NAMES,
-	isLowQualityGroup,
 
 	// Banned/deceptive (hard blocked)
 	BANNED_RETAGGING,

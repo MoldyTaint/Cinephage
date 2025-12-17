@@ -35,8 +35,8 @@ import { unlink } from 'node:fs/promises';
 import { relative, join } from 'node:path';
 import type { SearchCriteria, EnhancedReleaseResult } from '$lib/server/indexers/types';
 import { scoreRelease } from '$lib/server/scoring/scorer.js';
-import { getProfile } from '$lib/server/scoring/profiles.js';
 import type { ScoringProfile } from '$lib/server/scoring/types.js';
+import { qualityFilter } from '$lib/server/quality';
 
 // Specifications
 import {
@@ -733,7 +733,7 @@ export class MonitoringSearchService {
 			// Load scoring profile for explicit validation
 			let profile: ScoringProfile | undefined;
 			if (seriesData.scoringProfileId) {
-				profile = getProfile(seriesData.scoringProfileId);
+				profile = (await qualityFilter.getProfile(seriesData.scoringProfileId)) ?? undefined;
 			}
 
 			for (const release of seasonPacks) {
@@ -1142,7 +1142,7 @@ export class MonitoringSearchService {
 			// Load scoring profile for explicit validation
 			let profile: ScoringProfile | undefined;
 			if (movie.scoringProfile) {
-				profile = getProfile(movie.scoringProfile.id);
+				profile = (await qualityFilter.getProfile(movie.scoringProfile.id)) ?? undefined;
 			}
 
 			for (const release of searchResult.releases) {
@@ -1304,7 +1304,7 @@ export class MonitoringSearchService {
 			// Load scoring profile for explicit validation
 			let profile: ScoringProfile | undefined;
 			if (seriesData.scoringProfileId) {
-				profile = getProfile(seriesData.scoringProfileId);
+				profile = (await qualityFilter.getProfile(seriesData.scoringProfileId)) ?? undefined;
 			}
 
 			for (const release of searchResult.releases) {
@@ -1580,7 +1580,7 @@ export class MonitoringSearchService {
 			// Load scoring profile for explicit validation
 			let profile: ScoringProfile | undefined;
 			if (movie.scoringProfile) {
-				profile = getProfile(movie.scoringProfile.id);
+				profile = (await qualityFilter.getProfile(movie.scoringProfile.id)) ?? undefined;
 			}
 
 			for (const release of searchResult.releases) {
@@ -1744,7 +1744,7 @@ export class MonitoringSearchService {
 			// Load scoring profile for explicit validation
 			let profile: ScoringProfile | undefined;
 			if (seriesData.scoringProfileId) {
-				profile = getProfile(seriesData.scoringProfileId);
+				profile = (await qualityFilter.getProfile(seriesData.scoringProfileId)) ?? undefined;
 			}
 
 			for (const release of searchResult.releases) {

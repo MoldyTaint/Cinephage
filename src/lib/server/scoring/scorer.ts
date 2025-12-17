@@ -18,6 +18,7 @@ import type {
 import { matchFormats, extractAttributes } from './matcher.js';
 import { ALL_FORMATS } from './formats/index.js';
 import { ReleaseParser } from '../indexers/parser/ReleaseParser.js';
+import { logger } from '$lib/logging';
 
 // Singleton parser instance
 const parser = new ReleaseParser();
@@ -37,13 +38,15 @@ export function parseRelease(releaseName: string): ReleaseAttributes {
  * @param attributes - Optional pre-parsed attributes
  * @param fileSizeBytes - Optional file size in bytes for size filtering
  * @param sizeContext - Optional context for media-specific size validation
+ * @param protocol - Optional protocol type (torrent, usenet, streaming) for filtering
  */
 export function scoreRelease(
 	releaseName: string,
 	profile: ScoringProfile,
 	attributes?: ReleaseAttributes,
 	fileSizeBytes?: number,
-	sizeContext?: SizeValidationContext
+	sizeContext?: SizeValidationContext,
+	protocol?: 'torrent' | 'usenet' | 'streaming'
 ): ScoringResult {
 	// 1. Extract attributes if not provided
 	const attrs = attributes ?? parseRelease(releaseName);
@@ -56,6 +59,26 @@ export function scoreRelease(
 
 	// 3. Calculate scores based on profile
 	const scoredFormats = calculateFormatScores(matchedFormats, profile);
+
+	// Debug logging for scoring issues
+	const formatScoresCount = Object.keys(profile.formatScores).length;
+	if (formatScoresCount > 0 && formatScoresCount < 20) {
+		// Only log for custom profiles (small number of format scores)
+		logger.debug('[Scorer] Scoring release', {
+			releaseName: releaseName.substring(0, 50),
+			profileId: profile.id,
+			profileName: profile.name,
+			formatScoresCount,
+			formatScoresKeys: Object.keys(profile.formatScores),
+			matchedFormatIds: matchedFormats.map((f) => f.format.id),
+			scoredFormats: scoredFormats.map((f) => ({
+				id: f.format.id,
+				name: f.format.name,
+				score: f.score,
+				profileHasScore: profile.formatScores[f.format.id] !== undefined
+			}))
+		});
+	}
 
 	// 4. Build score breakdown by category
 	const breakdown = buildBreakdown(scoredFormats);
@@ -77,8 +100,8 @@ export function scoreRelease(
 
 		if (sizeContext.mediaType === 'movie') {
 			// Movie validation (in GB)
-			const minSize = profile.movieMinSizeGb ? Number(profile.movieMinSizeGb) : null;
-			const maxSize = profile.movieMaxSizeGb ? Number(profile.movieMaxSizeGb) : null;
+			const minSize = profile.movieMinSizeGb ?? null;
+			const maxSize = profile.movieMaxSizeGb ?? null;
 
 			if (minSize !== null && fileSizeGb < minSize) {
 				sizeRejected = true;
@@ -89,8 +112,8 @@ export function scoreRelease(
 			}
 		} else if (sizeContext.mediaType === 'tv') {
 			// TV validation (in MB per episode)
-			const minSizeMb = profile.episodeMinSizeMb ? Number(profile.episodeMinSizeMb) : null;
-			const maxSizeMb = profile.episodeMaxSizeMb ? Number(profile.episodeMaxSizeMb) : null;
+			const minSizeMb = profile.episodeMinSizeMb ?? null;
+			const maxSizeMb = profile.episodeMaxSizeMb ?? null;
 
 			let effectiveSizeMb = fileSizeMb;
 
@@ -121,8 +144,20 @@ export function scoreRelease(
 		}
 	}
 
-	// 8. Determine if release meets minimum quality threshold
-	const meetsMinimum = !isBanned && !sizeRejected && totalScore >= (profile.minScore ?? 0);
+	// 8. Check protocol restrictions
+	let protocolRejected = false;
+	let protocolRejectionReason: string | undefined;
+
+	if (protocol && profile.allowedProtocols && profile.allowedProtocols.length > 0) {
+		if (!profile.allowedProtocols.includes(protocol)) {
+			protocolRejected = true;
+			protocolRejectionReason = `Protocol '${protocol}' not allowed. Profile accepts: ${profile.allowedProtocols.join(', ')}`;
+		}
+	}
+
+	// 9. Determine if release meets minimum quality threshold
+	const meetsMinimum =
+		!isBanned && !sizeRejected && !protocolRejected && totalScore >= (profile.minScore ?? 0);
 
 	return {
 		releaseName,
@@ -134,7 +169,9 @@ export function scoreRelease(
 		isBanned,
 		bannedReasons,
 		sizeRejected,
-		sizeRejectionReason
+		sizeRejectionReason,
+		protocolRejected,
+		protocolRejectionReason
 	};
 }
 
@@ -188,15 +225,17 @@ function applyMutualExclusivity(
 
 /**
  * Calculate scores for matched formats based on profile configuration
+ *
+ * Scores are defined per-profile. If a profile doesn't specify a score
+ * for a format, that format contributes 0 to the total score.
  */
 function calculateFormatScores(
 	matchedFormats: MatchedFormat[],
 	profile: ScoringProfile
 ): ScoredFormat[] {
 	return matchedFormats.map((mf) => {
-		// Get score from profile, fallback to format's default
-		const profileScore = profile.formatScores[mf.format.id];
-		const score = profileScore ?? mf.format.defaultScore;
+		// Get score from profile, default to 0 if not specified
+		const score = profile.formatScores[mf.format.id] ?? 0;
 
 		return {
 			format: mf.format,
@@ -204,6 +243,29 @@ function calculateFormatScores(
 			score
 		};
 	});
+}
+
+/**
+ * Map format category names to breakdown keys
+ * Format categories use snake_case, breakdown uses camelCase
+ */
+function categoryToBreakdownKey(category: string): keyof ScoreBreakdown | null {
+	const mapping: Record<string, keyof ScoreBreakdown> = {
+		resolution: 'resolution',
+		source: 'source',
+		codec: 'codec',
+		audio: 'audio',
+		hdr: 'hdr',
+		streaming: 'streaming',
+		enhancement: 'enhancement',
+		banned: 'banned',
+		// Map snake_case categories to camelCase breakdown keys
+		release_group_tier: 'releaseGroupTier',
+		// Micro and low_quality are types of release groups
+		micro: 'releaseGroupTier',
+		low_quality: 'releaseGroupTier'
+	};
+	return mapping[category] ?? null;
 }
 
 /**
@@ -223,10 +285,10 @@ function buildBreakdown(scoredFormats: ScoredFormat[]): ScoreBreakdown {
 	};
 
 	for (const mf of scoredFormats) {
-		const cat = mf.format.category;
-		if (cat in breakdown) {
-			breakdown[cat as keyof ScoreBreakdown].score += mf.score;
-			breakdown[cat as keyof ScoreBreakdown].formats.push(mf.format.name);
+		const breakdownKey = categoryToBreakdownKey(mf.format.category);
+		if (breakdownKey) {
+			breakdown[breakdownKey].score += mf.score;
+			breakdown[breakdownKey].formats.push(mf.format.name);
 		}
 	}
 
@@ -281,10 +343,12 @@ export function rankReleases(
 ): Array<ScoringResult & { rank: number }> {
 	const scored = releases.map((r) => scoreRelease(r.name, profile, r.attributes, r.sizeBytes));
 
-	// Sort by score descending, banned/size-rejected releases go to the end
+	// Sort by score descending, banned/size-rejected/protocol-rejected releases go to the end
 	scored.sort((a, b) => {
-		if ((a.isBanned || a.sizeRejected) && !(b.isBanned || b.sizeRejected)) return 1;
-		if (!(a.isBanned || a.sizeRejected) && (b.isBanned || b.sizeRejected)) return -1;
+		const aRejected = a.isBanned || a.sizeRejected || a.protocolRejected;
+		const bRejected = b.isBanned || b.sizeRejected || b.protocolRejected;
+		if (aRejected && !bRejected) return 1;
+		if (!aRejected && bRejected) return -1;
 		return b.totalScore - a.totalScore;
 	});
 
@@ -303,7 +367,7 @@ export function filterQualityReleases(
 ): ScoringResult[] {
 	return releases
 		.map((r) => scoreRelease(r.name, profile, r.attributes, r.sizeBytes))
-		.filter((r) => r.meetsMinimum && !r.isBanned && !r.sizeRejected);
+		.filter((r) => r.meetsMinimum && !r.isBanned && !r.sizeRejected && !r.protocolRejected);
 }
 
 /**
@@ -342,8 +406,13 @@ export function isUpgrade(
 		options.candidateSizeBytes
 	);
 
-	// Never upgrade to a banned, size-rejected, or below-minimum release
-	if (candidate.isBanned || candidate.sizeRejected || !candidate.meetsMinimum) {
+	// Never upgrade to a banned, size-rejected, protocol-rejected, or below-minimum release
+	if (
+		candidate.isBanned ||
+		candidate.sizeRejected ||
+		candidate.protocolRejected ||
+		!candidate.meetsMinimum
+	) {
 		return { isUpgrade: false, improvement: 0, existing, candidate };
 	}
 
@@ -376,14 +445,20 @@ export function explainScore(result: ScoringResult): string {
 	lines.push('');
 
 	if (result.isBanned) {
-		lines.push('⛔ BANNED');
+		lines.push('BANNED');
 		lines.push(`Reasons: ${result.bannedReasons.join(', ')}`);
 		lines.push('');
 	}
 
 	if (result.sizeRejected) {
-		lines.push('📦 SIZE REJECTED');
+		lines.push('SIZE REJECTED');
 		lines.push(`Reason: ${result.sizeRejectionReason}`);
+		lines.push('');
+	}
+
+	if (result.protocolRejected) {
+		lines.push('PROTOCOL REJECTED');
+		lines.push(`Reason: ${result.protocolRejectionReason}`);
 		lines.push('');
 	}
 

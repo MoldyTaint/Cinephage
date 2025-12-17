@@ -17,12 +17,14 @@ export type ProfileCategory = 'quality' | 'efficient' | 'micro' | 'streaming' | 
 
 /**
  * Base scoring profile structure
+ *
+ * Profiles are standalone - they define complete format->score mappings
+ * without any runtime inheritance from base profiles.
  */
 export interface ScoringProfile {
 	id: string;
 	name: string;
 	description: string;
-	baseProfileId?: string | null;
 	tags: string[];
 	/** Icon name for UI display (lucide icon) */
 	icon?: string;
@@ -35,14 +37,15 @@ export interface ScoringProfile {
 	upgradeUntilScore: number;
 	minScoreIncrement: number;
 	resolutionOrder: Resolution[];
+	/** Format score mappings (formatId -> score). All scores are defined here. */
 	formatScores: Record<string, number>;
 	isDefault: boolean;
 	isBuiltIn?: boolean;
 	// Media-specific file size limits
-	movieMinSizeGb?: string | null;
-	movieMaxSizeGb?: string | null;
-	episodeMinSizeMb?: string | null;
-	episodeMaxSizeMb?: string | null;
+	movieMinSizeGb?: number | null;
+	movieMaxSizeGb?: number | null;
+	episodeMinSizeMb?: number | null;
+	episodeMaxSizeMb?: number | null;
 	createdAt?: string;
 	updatedAt?: string;
 }
@@ -54,7 +57,8 @@ export interface ScoringProfileFormData {
 	id?: string;
 	name: string;
 	description?: string;
-	baseProfileId?: string | null;
+	/** Copy format scores from this profile (built-in or custom ID) */
+	copyFromId?: string;
 	tags?: string[];
 	upgradesAllowed?: boolean;
 	minScore?: number;
@@ -63,10 +67,10 @@ export interface ScoringProfileFormData {
 	resolutionOrder?: Resolution[];
 	formatScores?: Record<string, number>;
 	isDefault?: boolean;
-	movieMinSizeGb?: string | null;
-	movieMaxSizeGb?: string | null;
-	episodeMinSizeMb?: string | null;
-	episodeMaxSizeMb?: string | null;
+	movieMinSizeGb?: number | null;
+	movieMaxSizeGb?: number | null;
+	episodeMinSizeMb?: number | null;
+	episodeMaxSizeMb?: number | null;
 }
 
 // =============================================================================
@@ -90,6 +94,8 @@ export type FormatCategory =
 
 /**
  * Custom format for display in the profile editor
+ *
+ * Note: Formats no longer have defaultScore. Scores are defined per-profile.
  */
 export interface CustomFormatUI {
 	id: string;
@@ -97,7 +103,6 @@ export interface CustomFormatUI {
 	description?: string;
 	category: FormatCategory;
 	tags: string[];
-	defaultScore: number;
 	score?: number; // Current score in the selected profile
 }
 

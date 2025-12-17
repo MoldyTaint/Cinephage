@@ -35,13 +35,7 @@ Want to contribute to Cinephage? Here's everything you need to know.
    cp .env.example .env
    ```
 
-4. Run database migrations:
-
-   ```bash
-   npx drizzle-kit push
-   ```
-
-5. Start the development server:
+4. Start the development server:
    ```bash
    npm run dev
    ```

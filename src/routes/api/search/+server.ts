@@ -8,7 +8,8 @@ import {
 	searchCriteriaSchema,
 	enrichmentOptionsSchema
 } from '$lib/validation/schemas';
-import type { EnrichmentOptions } from '$lib/server/quality';
+import { qualityFilter, type EnrichmentOptions } from '$lib/server/quality';
+import { logger } from '$lib/logging';
 
 /**
  * GET /api/search?q=query&searchType=movie&imdbId=tt1234567&categories=2000
@@ -103,8 +104,27 @@ export const GET: RequestHandler = async ({ url }) => {
 
 	// Use enhanced search if enrichment is requested
 	if (enrich) {
+		const effectiveProfileId = scoringProfileId ?? qualityPresetId;
+
+		// Load the scoring profile to get allowedProtocols for indexer filtering
+		let protocolFilter: string[] | undefined;
+		if (effectiveProfileId) {
+			const profile = await qualityFilter.getProfile(effectiveProfileId);
+			if (profile?.allowedProtocols && profile.allowedProtocols.length > 0) {
+				protocolFilter = profile.allowedProtocols;
+			}
+		}
+
+		// Debug logging for profile issues
+		logger.info('[SearchAPI] Enrichment requested', {
+			scoringProfileId,
+			qualityPresetId,
+			effectiveProfileId: effectiveProfileId ?? 'none',
+			protocolFilter
+		});
+
 		const enrichmentOpts: EnrichmentOptions = {
-			scoringProfileId: scoringProfileId ?? qualityPresetId, // Support legacy qualityPresetId
+			scoringProfileId: effectiveProfileId, // Support legacy qualityPresetId
 			matchToTmdb: matchToTmdb ?? false,
 			filterRejected: filterRejected ?? false,
 			minScore,
@@ -122,7 +142,8 @@ export const GET: RequestHandler = async ({ url }) => {
 
 		const searchResult = await manager.searchEnhanced(criteria, {
 			searchSource: 'interactive',
-			enrichment: enrichmentOpts
+			enrichment: enrichmentOpts,
+			protocolFilter
 		});
 
 		return json({
@@ -231,6 +252,16 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 
+		// Load the scoring profile to get allowedProtocols for indexer filtering
+		let protocolFilter: string[] | undefined;
+		const effectiveProfileId = enrichmentResult.data.scoringProfileId;
+		if (effectiveProfileId) {
+			const profile = await qualityFilter.getProfile(effectiveProfileId);
+			if (profile?.allowedProtocols && profile.allowedProtocols.length > 0) {
+				protocolFilter = profile.allowedProtocols;
+			}
+		}
+
 		const enrichmentOpts: EnrichmentOptions = {
 			...enrichmentResult.data,
 			// Pass TMDB hint from criteria if available
@@ -247,7 +278,8 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		const searchResult = await manager.searchEnhanced(criteria, {
 			searchSource: 'interactive',
-			enrichment: enrichmentOpts
+			enrichment: enrichmentOpts,
+			protocolFilter
 		});
 
 		return json({

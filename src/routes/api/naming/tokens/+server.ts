@@ -5,7 +5,11 @@ import { tokenRegistry } from '$lib/server/library/naming/tokens';
 /**
  * Convert token metadata to the API response format
  */
-function formatTokenForApi(token: { name: string; description: string; supportsFormatSpec?: boolean }) {
+function formatTokenForApi(token: {
+	name: string;
+	description: string;
+	supportsFormatSpec?: boolean;
+}) {
 	const formatSpec = token.supportsFormatSpec ? ':00' : '';
 	return {
 		token: `{${token.name}${formatSpec}}`,
@@ -23,7 +27,9 @@ function buildTokensResponse() {
 	const tokens = {
 		movie: [
 			...metadata.core.filter((t) => t.applicability.includes('movie')).map(formatTokenForApi),
-			...metadata.mediaId.filter((t) => t.name === 'TmdbId' || t.name === 'ImdbId' || t.name === 'MediaId').map(formatTokenForApi),
+			...metadata.mediaId
+				.filter((t) => t.name === 'TmdbId' || t.name === 'ImdbId' || t.name === 'MediaId')
+				.map(formatTokenForApi),
 			...metadata.release.filter((t) => t.name === 'Edition').map(formatTokenForApi)
 		],
 		quality: metadata.quality.map(formatTokenForApi),

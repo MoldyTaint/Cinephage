@@ -21,7 +21,10 @@
 import { db } from '../src/lib/server/db/index.js';
 import { movies, movieFiles, series, episodes, episodeFiles } from '../src/lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { NamingService, type MediaNamingInfo } from '../src/lib/server/library/naming/NamingService.js';
+import {
+	NamingService,
+	type MediaNamingInfo
+} from '../src/lib/server/library/naming/NamingService.js';
 import {
 	BUILT_IN_PRESETS,
 	getBuiltInPreset,
@@ -213,7 +216,7 @@ async function testPreset(
 					const episodeIds = file.episodeIds || [];
 					const fileEpisodes = episodeIds
 						.map((id) => episodeMap.get(id))
-						.filter((ep): ep is typeof allEpisodes[0] => ep !== undefined)
+						.filter((ep): ep is (typeof allEpisodes)[0] => ep !== undefined)
 						.sort((a, b) => a.episodeNumber - b.episodeNumber);
 
 					if (fileEpisodes.length === 0) {
@@ -343,7 +346,9 @@ function printPresetResult(result: PresetResult, options: { verbose: boolean; li
 				console.log(`      ${colors.green}${item.newPath}${colors.reset}`);
 			}
 			if (movieChanges.length > options.limit) {
-				console.log(`    ${colors.dim}... and ${movieChanges.length - options.limit} more${colors.reset}`);
+				console.log(
+					`    ${colors.dim}... and ${movieChanges.length - options.limit} more${colors.reset}`
+				);
 			}
 		}
 
@@ -370,7 +375,9 @@ function printPresetResult(result: PresetResult, options: { verbose: boolean; li
 	if (result.episodes.total > 0) {
 		console.log(`\n${colors.bright}Episodes:${colors.reset}`);
 		console.log(`  Total: ${result.episodes.total}`);
-		console.log(`  ${colors.green}Already correct: ${result.episodes.alreadyCorrect}${colors.reset}`);
+		console.log(
+			`  ${colors.green}Already correct: ${result.episodes.alreadyCorrect}${colors.reset}`
+		);
 		console.log(`  ${colors.yellow}Will change: ${result.episodes.willChange}${colors.reset}`);
 		if (result.episodes.collisions > 0) {
 			console.log(`  ${colors.red}Collisions: ${result.episodes.collisions}${colors.reset}`);
@@ -389,7 +396,9 @@ function printPresetResult(result: PresetResult, options: { verbose: boolean; li
 				console.log(`      ${colors.green}${item.newPath}${colors.reset}`);
 			}
 			if (episodeChanges.length > options.limit) {
-				console.log(`    ${colors.dim}... and ${episodeChanges.length - options.limit} more${colors.reset}`);
+				console.log(
+					`    ${colors.dim}... and ${episodeChanges.length - options.limit} more${colors.reset}`
+				);
 			}
 		}
 
@@ -462,9 +471,7 @@ async function main() {
 	if (options.presetId) {
 		const preset = getBuiltInPreset(options.presetId);
 		if (!preset) {
-			console.log(
-				`${colors.red}Unknown preset: ${options.presetId}${colors.reset}`
-			);
+			console.log(`${colors.red}Unknown preset: ${options.presetId}${colors.reset}`);
 			console.log(`Available presets: ${BUILT_IN_PRESETS.map((p) => p.id).join(', ')}`);
 			process.exit(1);
 		}

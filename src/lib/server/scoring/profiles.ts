@@ -1,697 +1,700 @@
 /**
- * Default Scoring Profiles
+ * Built-in Scoring Profiles
  *
- * Three quality-focused profiles with different philosophies:
+ * Philosophy: Formats DETECT, Profiles SCORE.
  *
- * - Best: Absolute best quality, no compromise. Remux, lossless audio,
- *   top-tier groups. Will always upgrade to better quality.
+ * Four profiles with distinct philosophies:
  *
- * - Efficient: High quality with efficient encoding. Prioritizes x265/HEVC
- *   from quality groups like Tigole, QxR, TAoE. Doesn't sacrifice quality
- *   but uses efficient codecs. Think Dictionarry/Profilarry efficient.
+ * - Quality: Maximum quality, no compromise. Remux, lossless audio, HDR, top groups.
+ * - Balanced: High quality with efficient encoding. x265/AV1, good encodes, reasonable size.
+ * - Compact: Small files with decent quality. Micro encoders, lossy audio acceptable.
+ * - Streamer: Streaming-only via .strm files. No downloads.
  *
- * - Micro: Quality-focused micro encodes. Prioritizes the BEST micro
- *   encoders (Tigole, QxR) over lower quality ones (YTS). Still about
- *   getting good quality, just in smaller packages (~2.5GB or less).
- *
- * File size limits are NOT baked into profiles - users set those per-profile.
- * These profiles define QUALITY preferences, not size restrictions.
+ * Group scoring philosophy:
+ * - Profiles include scores for NOTABLE groups that embody the profile's philosophy
+ * - Not every group needs a score - unscored groups get 0 (neutral)
+ * - Users can customize any group score in their own profiles
  */
 
 import type { ScoringProfile } from './types.js';
 import { BANNED_SCORE, DEFAULT_RESOLUTION_ORDER } from './types.js';
 
 // =============================================================================
-// Best Profile - Maximum Quality
+// Shared Constants
 // =============================================================================
 
 /**
- * Best Profile: Absolute best quality, no compromise
+ * Banned formats applied to ALL profiles
+ * These are deceptive, unusable, or unwanted content that should always be blocked
+ */
+const UNIVERSAL_BANNED_FORMATS: Record<string, number> = {
+	// Deceptive groups (retagging, fake HDR)
+	'banned-aroma': BANNED_SCORE,
+	'banned-lama': BANNED_SCORE,
+	'banned-telly': BANNED_SCORE,
+	'banned-vd0n': BANNED_SCORE,
+	'banned-bitor': BANNED_SCORE,
+	'banned-visionxpert': BANNED_SCORE,
+	'banned-sasukeduck': BANNED_SCORE,
+	'banned-jennaortegauhd': BANNED_SCORE,
+
+	// Unusable sources
+	'banned-cam': BANNED_SCORE,
+	'banned-telesync': BANNED_SCORE,
+	'banned-telecine': BANNED_SCORE,
+	'banned-screener': BANNED_SCORE,
+
+	// Unwanted content
+	'banned-extras': BANNED_SCORE,
+	'banned-sample': BANNED_SCORE,
+
+	// Technical issues
+	'banned-upscaled': BANNED_SCORE,
+	'banned-ai-tv': BANNED_SCORE,
+	'banned-ai-movie': BANNED_SCORE,
+	'banned-full-disc': BANNED_SCORE,
+	'banned-xvid': BANNED_SCORE
+};
+
+// =============================================================================
+// Quality Profile - Maximum Quality
+// =============================================================================
+
+/**
+ * Quality Profile: Absolute best quality, no compromise
  *
- * Philosophy: Get the highest quality available, period. Remux over encode,
- * lossless audio over lossy, HDR over SDR, 4K over 1080p. Storage is not
- * a concern. Will continuously upgrade until hitting the best possible.
+ * Target: 4K Remux with lossless audio and HDR
+ * - Remux > Encode (preserves original quality)
+ * - Lossless audio (TrueHD, DTS-HD MA) highly valued
+ * - HDR/DV essential for 4K content
+ * - Top-tier encoding groups valued
+ * - File size is not a concern
  *
  * Ideal for: Home theater enthusiasts, quality purists, unlimited storage
  */
-export const BEST_PROFILE: ScoringProfile = {
-	id: 'best',
-	name: 'Best',
-	description: 'Absolute best quality - Remux, lossless audio, no compromise',
-	tags: ['quality', 'remux', 'lossless', 'no-compromise'],
+export const QUALITY_PROFILE: ScoringProfile = {
+	id: 'quality',
+	name: 'Quality',
+	description: 'Maximum quality - Remux, lossless audio, HDR, no compromise',
+	tags: ['quality', 'remux', 'lossless', '4k', 'hdr'],
 	icon: 'Star',
 	color: 'text-yellow-500',
 	category: 'quality',
 	upgradesAllowed: true,
 	minScore: 0,
-	upgradeUntilScore: 100000, // Effectively unlimited - always upgrade
-	minScoreIncrement: 500, // Meaningful upgrades only
+	upgradeUntilScore: 100000,
+	minScoreIncrement: 500,
 	resolutionOrder: DEFAULT_RESOLUTION_ORDER,
-	allowedProtocols: ['torrent', 'usenet'], // No streaming - torrents/usenet only
+	allowedProtocols: ['torrent', 'usenet'],
 	formatScores: {
-		// Resolution + Source (highest priority for Remux and Bluray)
-		'2160p-remux': 20000,
-		'2160p-bluray': 15000,
-		'2160p-webdl': 8000,
-		'2160p-webrip': 5000,
-		'1080p-remux': 12000,
-		'1080p-bluray': 8000,
-		'1080p-webdl': 4000,
-		'1080p-webdl-hevc': 4500,
-		'1080p-webrip': 2000,
-		'1080p-hdtv': 1000,
-		'720p-bluray': 3000,
-		'720p-webdl': 1500,
-		'720p-webrip': 800,
-		'720p-hdtv': 500,
-		'480p-webdl': 100,
-		dvd: 50,
-		'dvd-remux': 150,
+		// ===========================================
+		// Resolution + Source (Primary scoring factor)
+		// ===========================================
+		// 4K - Highest priority
+		'2160p-remux': 25000,
+		'2160p-bluray': 18000,
+		'2160p-webdl': 12000,
+		'2160p-webrip': 8000,
 
-		// Release Group Tiers - 2160p (high scores for quality groups)
-		'2160p-quality-tier-1': 2000,
-		'2160p-quality-tier-2': 1500,
-		'2160p-quality-tier-3': 1000,
+		// 1080p - Good quality tier
+		'1080p-remux': 15000,
+		'1080p-bluray': 10000,
+		'1080p-webdl': 6000,
+		'1080p-webdl-hevc': 6500,
+		'1080p-webrip': 4000,
+		'1080p-hdtv': 2000,
 
-		// Release Group Tiers - 1080p Quality
-		'1080p-quality-tier-1': 1800,
-		'1080p-quality-tier-2': 1400,
-		'1080p-quality-tier-3': 1000,
-		'1080p-quality-tier-4': 700,
-		'1080p-quality-tier-5': 400,
-		'1080p-quality-tier-6': 200,
+		// 720p - Acceptable
+		'720p-bluray': 4000,
+		'720p-webdl': 2500,
+		'720p-webrip': 1500,
+		'720p-hdtv': 1000,
 
-		// Release Group Tiers - 1080p Efficient (slightly lower for Best profile)
-		'1080p-efficient-tier-1': 1200,
-		'1080p-efficient-tier-2': 900,
-		'1080p-efficient-tier-3': 600,
-		'1080p-efficient-tier-4': 400,
-		'1080p-efficient-tier-5': 200,
+		// SD - Last resort
+		'576p-bluray': 800,
+		'576p-webdl': 600,
+		'576p-dvd': 400,
+		'480p-webdl': 300,
+		dvd: 200,
+		'dvd-remux': 500,
 
-		// Remux Tiers (high value in Best profile)
-		'remux-tier-1': 2500,
-		'remux-tier-2': 2000,
-		'remux-tier-3': 1500,
+		// ===========================================
+		// Audio - Lossless highly valued
+		// ===========================================
+		'audio-truehd': 3000,
+		'audio-dts-x': 3500,
+		'audio-dts-hdma': 2800,
+		'audio-pcm': 2500,
+		'audio-flac': 2200,
 
-		// WEB-DL Tiers
-		'webdl-tier-1': 1000,
-		'webdl-tier-2': 700,
-		'webdl-tier-3': 400,
+		// HQ Lossy - Good alternatives
+		'audio-atmos': 2000,
+		'audio-dts-hd-hra': 1200,
+		'audio-dts-es': 800,
+		'audio-opus': 600,
+		'audio-ddplus': 1000,
+		'audio-dts': 600,
+		'audio-dd': 500,
 
-		// 720p Tiers
-		'720p-quality-tier-1': 800,
-		'720p-quality-tier-2': 500,
+		// Standard - Acceptable
+		'audio-aac': 200,
+		'audio-mp3': 100,
 
-		// Audio - Lossless (very high scores)
-		'audio-truehd-atmos': 3000,
-		'audio-truehd': 2500,
-		'audio-dts-x': 2800,
-		'audio-dts-hdma': 2400,
-		'audio-flac': 1800,
-		'audio-pcm': 2000,
+		// ===========================================
+		// HDR - Essential for 4K
+		// ===========================================
+		'hdr-dolby-vision': 3000,
+		'hdr-dolby-vision-no-fallback': 2000,
+		'hdr-hdr10plus': 2500,
+		'hdr-hdr10': 2000,
+		'hdr-generic': 1500,
+		'hdr-hlg': 1000,
+		'hdr-pq': 800,
+		'hdr-sdr': 0,
 
-		// Audio - HQ Lossy (moderate scores)
-		'audio-atmos': 1500,
-		'audio-dts-hd-hra': 1000,
-		'audio-dts-hd': 900,
-		'audio-dts-es': 600,
-		'audio-ddplus': 800,
-		'audio-dts': 500,
-		'audio-dd51': 400,
+		// ===========================================
+		// Release Groups - Top tier valued
+		// ===========================================
+		// Premier remux groups
+		'group-framestor': 3000,
+		'group-cinephiles': 2500,
+		'group-epsilon': 2200,
+		'group-sicfoi': 2000,
+		'group-wildcat': 1800,
+		'group-bluranium': 1600,
+		'group-bizkit': 1400,
+		'group-3l': 1200,
 
-		// Audio - Standard (lower scores)
-		'audio-aac': 100,
-		'audio-mp3': 50,
+		// Top encode groups
+		'group-don': 2500,
+		'group-d-z0n3': 2500,
+		'group-ebp': 2200,
+		'group-ctrlhd': 2000,
+		'group-decibel': 2000,
+		'group-playbd': 1800,
+		'group-ea': 1600,
+		'group-hifi': 1400,
 
-		// HDR (all valued in Best)
-		'hdr-dv-p5': 2500, // DV Profile 5 (with HDR10 fallback)
-		'hdr-dv-p8': 2000, // DV Profile 8 (HDR10 base)
-		'hdr-dv': 1800, // DV Generic
-		'hdr-hdr10plus': 1600,
-		'hdr-hdr10': 1200,
-		'hdr-hlg': 800,
-		'hdr-sdr': 0, // SDR is baseline
+		// Quality 4K groups
+		'group-sa89': 2000,
+		'group-reborn': 2000,
+		'group-solar': 1800,
+		'group-hqmux': 1600,
+		'group-ift': 1600,
+		'group-zq': 1400,
+		'group-w4nk3r': 1200,
 
-		// Streaming Services (premium valued higher)
-		'streaming-amzn': 500,
-		'streaming-nf': 500,
-		'streaming-atvp': 700,
-		'streaming-dsnp': 500,
-		'streaming-hbo': 500,
+		// Quality WEB-DL groups
+		'group-ntb': 1400,
+		'group-ntg': 1200,
+		'group-flux': 1000,
+		'group-cmrg': 800,
+		'group-thefarm': 1000,
+
+		// Efficient encoders (less valued in Quality - not lossless)
+		'group-tigole': 400,
+		'group-qxr': 300,
+		'group-taoe': 200,
+
+		// Micro encoders (heavily penalized - sacrifices quality)
+		'group-yts': -8000,
+		'group-yify': -8000,
+		'group-rarbg': -1000,
+		'group-psa': -2000,
+		'group-galaxyrg': -2000,
+
+		// Low quality groups (penalized)
+		'group-nahom': -3000,
+		'group-nogroup': -3000,
+		'group-stuttershit': -3000,
+
+		// ===========================================
+		// Streaming Services - Premium valued
+		// ===========================================
+		'streaming-atvp': 800,
+		'streaming-amzn': 600,
+		'streaming-nf': 600,
+		'streaming-dsnp': 600,
 		'streaming-hmax': 500,
 		'streaming-max': 500,
-		'streaming-pcok': 400,
-		'streaming-pmtp': 400,
-		'streaming-hulu': 300,
-		'streaming-it': 400,
-		'streaming-stan': 300,
-		'streaming-crav': 300,
-		'streaming-now': 200,
-		'streaming-sho': 300,
-		'streaming-roku': 200,
+		'streaming-bcore': 700,
+		'streaming-crit': 600,
+		'streaming-mubi': 500,
 
-		// Micro Encoders - PENALIZED in Best profile (not preferred)
-		'micro-yts': -5000,
-		'micro-yify': -5000,
-		'micro-rarbg': -2000,
-		'micro-psa': -3000,
-		'micro-megusta': -3000,
-		'micro-galaxyrg': -2500,
-		'micro-tigole': -1500, // Tigole is higher quality for micro
-		'micro-qxr': -1000, // QxR is decent quality
+		// ===========================================
+		// Editions & Enhancements
+		// ===========================================
+		'edition-imax-enhanced': 1000,
+		'edition-imax': 600,
+		'edition-criterion': 800,
+		'edition-directors-cut': 400,
+		'edition-extended': 300,
+		'edition-remastered': 400,
+		'edition-theatrical': 100,
+		'edition-unrated': 200,
+		'edition-open-matte': 300,
+		'edition-hybrid': 400,
+		'edition-final-cut': 300,
 
-		// Enhancements
-		repack: 500,
-		proper: 500,
-		remastered: 300,
-		unrated: 100,
-		extended: 200,
-		imax: 400,
-		theatrical: 100,
-		'directors-cut': 150,
-		hybrid: 300,
-		'codec-x265': 200, // Slight bonus for HEVC in Best (efficient)
+		'repack-3': 800,
+		'repack-2': 600,
+		'repack-1': 400,
+		proper: 400,
+
+		// Codecs
+		'codec-x265': 300,
 		'codec-x264': 100,
-		'codec-av1': 300, // Future-proof codec
-		daily: 0,
-		anime: 0,
+		'codec-av1': 500,
 
-		// Low Quality Groups - HEAVILY PENALIZED in Best profile
-		'lq-nahom': -5000,
-		'lq-oeplus': -5000,
-		'lq-4k4u': -5000,
-		'lq-aoc': -5000,
-		'lq-beyondhd-encode': -4000,
-		'lq-hds': -5000,
-		'lq-d3g': -5000,
-		'lq-flights': -5000,
-		'lq-classicalhd': -4000,
-		'lq-creative24': -4000,
-		'lq-depraved': -4000,
-		'lq-devisive': -4000,
-		'lq-drx': -4000,
-		'lq-blasphemy': -4000,
-		'lq-bols': -4000,
-		'lq-btm': -4000,
-		'lq-fgt': -4000,
-		'lq-ivy': -4000,
-		'lq-kc': -4000,
+		// 3D - Penalized (not banned, but usually unwanted)
+		'banned-3d': -5000,
 
-		// Banned formats (deceptive/unusable - hard blocked)
-		'banned-aroma': BANNED_SCORE,
-		'banned-lama': BANNED_SCORE,
-		'banned-telly': BANNED_SCORE,
-		'banned-bitor': BANNED_SCORE,
-		'banned-visionxpert': BANNED_SCORE,
-		'banned-sasukeduck': BANNED_SCORE,
-		'banned-jennaortegauhd': BANNED_SCORE,
-		'banned-extras': BANNED_SCORE,
-		'banned-sample': BANNED_SCORE,
-		'banned-upscaled': BANNED_SCORE,
-		'banned-3d': BANNED_SCORE,
-		'banned-cam': BANNED_SCORE,
-		'banned-telesync': BANNED_SCORE,
-		'banned-telecine': BANNED_SCORE,
-		'banned-screener': BANNED_SCORE
+		// x264 at 2160p - Penalized (inefficient)
+		'banned-x264-2160p': -10000,
+
+		// Banned formats
+		...UNIVERSAL_BANNED_FORMATS
 	}
 };
 
 // =============================================================================
-// Efficient Profile - Quality with Size Consideration
+// Balanced Profile - Quality with Efficient Encoding
 // =============================================================================
 
 /**
- * Efficient Profile: High quality with efficient encoding
+ * Balanced Profile: High quality with efficient encoding
  *
- * Philosophy: Get excellent quality but prefer efficient x265/HEVC encodes.
- * Think Dictionarry/Profilarry "Efficient" - quality groups that use modern
- * codecs. Tigole, QxR, TAoE, BHDStudio are the target. Doesn't sacrifice
- * quality, just prefers smart encoding over bloated files.
+ * Target: Quality x265/AV1 encodes with good audio
+ * - Encodes > Remux (efficient use of space)
+ * - x265/AV1 highly valued for efficiency
+ * - DD+ Atmos over TrueHD (transparent at smaller size)
+ * - Quality encode groups prioritized
  *
- * Bluray encodes > Remux (because Remux is wasteful for this philosophy)
- * x265 > x264 (more efficient at same quality)
- * DD+ Atmos > TrueHD (transparent at fraction of size)
- *
- * Ideal for: Quality-conscious users with reasonable storage, streamers
+ * Ideal for: Quality-conscious users with reasonable storage
  */
-export const EFFICIENT_PROFILE: ScoringProfile = {
-	id: 'efficient',
-	name: 'Efficient',
-	description: 'High quality with efficient encoding - x265, quality groups',
-	tags: ['quality', 'x265', 'efficient', 'tigole'],
+export const BALANCED_PROFILE: ScoringProfile = {
+	id: 'balanced',
+	name: 'Balanced',
+	description: 'High quality with efficient encoding - x265/AV1, quality groups',
+	tags: ['quality', 'efficient', 'x265', 'av1'],
 	icon: 'Zap',
 	color: 'text-green-500',
 	category: 'efficient',
 	upgradesAllowed: true,
 	minScore: 0,
-	upgradeUntilScore: 25000,
-	minScoreIncrement: 50,
+	upgradeUntilScore: 30000,
+	minScoreIncrement: 100,
 	resolutionOrder: DEFAULT_RESOLUTION_ORDER,
-	allowedProtocols: ['torrent', 'usenet'], // No streaming - torrents/usenet only
+	allowedProtocols: ['torrent', 'usenet'],
 	formatScores: {
-		// Resolution + Source (HEVC variants get bonus)
-		'2160p-remux': 10000,
-		'2160p-bluray': 15000, // Encodes preferred over Remux for size
-		'2160p-webdl': 12000,
-		'2160p-webrip': 8000,
-		'1080p-remux': 5000,
-		'1080p-bluray': 8000,
-		'1080p-webdl': 6000,
-		'1080p-webdl-hevc': 9000, // HEVC WEB-DL gets bonus
-		'1080p-webrip': 4000,
-		'1080p-hdtv': 2000,
-		'720p-bluray': 3000,
-		'720p-webdl': 2500,
-		'720p-webrip': 1500,
-		'720p-hdtv': 1000,
-		'480p-webdl': 200,
-		dvd: 100,
-		'dvd-remux': 50, // DVD Remux less valuable - prefer encodes
+		// ===========================================
+		// Resolution + Source (Encodes preferred)
+		// ===========================================
+		// 4K - Encodes preferred over Remux
+		'2160p-bluray': 20000,
+		'2160p-webdl': 18000,
+		'2160p-webrip': 14000,
+		'2160p-remux': 12000, // Lower than encode (too big)
 
-		// Release Group Tiers - 2160p
-		'2160p-quality-tier-1': 1500,
-		'2160p-quality-tier-2': 1200,
-		'2160p-quality-tier-3': 800,
+		// 1080p - Sweet spot for Balanced
+		'1080p-bluray': 12000,
+		'1080p-webdl-hevc': 14000, // HEVC bonus
+		'1080p-webdl': 10000,
+		'1080p-webrip': 8000,
+		'1080p-hdtv': 4000,
+		'1080p-remux': 6000, // Lower than encode
 
-		// Release Group Tiers - 1080p Quality (valued but not as much)
-		'1080p-quality-tier-1': 1000,
-		'1080p-quality-tier-2': 800,
-		'1080p-quality-tier-3': 600,
-		'1080p-quality-tier-4': 400,
-		'1080p-quality-tier-5': 200,
-		'1080p-quality-tier-6': 100,
+		// 720p
+		'720p-webdl': 5000,
+		'720p-webrip': 4000,
+		'720p-bluray': 4500,
+		'720p-hdtv': 2500,
 
-		// Release Group Tiers - 1080p Efficient (HIGHLY VALUED)
-		'1080p-efficient-tier-1': 2000,
-		'1080p-efficient-tier-2': 1700,
-		'1080p-efficient-tier-3': 1400,
-		'1080p-efficient-tier-4': 1000,
-		'1080p-efficient-tier-5': 600,
+		// SD
+		'576p-webdl': 1500,
+		'576p-bluray': 1200,
+		'576p-dvd': 800,
+		'480p-webdl': 600,
+		dvd: 400,
+		'dvd-remux': 300,
 
-		// Remux Tiers (lower value - we prefer encodes)
-		'remux-tier-1': 800,
-		'remux-tier-2': 600,
-		'remux-tier-3': 400,
+		// ===========================================
+		// Audio - Efficient formats valued
+		// ===========================================
+		// HQ Lossy preferred for efficiency
+		'audio-atmos': 2500,
+		'audio-ddplus': 2000,
+		'audio-opus': 1500,
 
-		// WEB-DL Tiers
-		'webdl-tier-1': 1200,
-		'webdl-tier-2': 900,
-		'webdl-tier-3': 600,
+		// Lossless - Good but not essential
+		'audio-truehd': 1800,
+		'audio-dts-x': 2000,
+		'audio-dts-hdma': 1600,
+		'audio-pcm': 1200,
+		'audio-flac': 1400,
 
-		// 720p Tiers
-		'720p-quality-tier-1': 600,
-		'720p-quality-tier-2': 400,
+		// Standard lossy
+		'audio-dts-hd-hra': 1200,
+		'audio-dts-es': 800,
+		'audio-dts': 600,
+		'audio-dd': 800,
+		'audio-aac': 500,
+		'audio-mp3': 200,
 
-		// Audio - Lossless (moderate - we accept some quality loss for size)
-		'audio-truehd-atmos': 2000,
-		'audio-truehd': 1500,
-		'audio-dts-x': 1800,
-		'audio-dts-hdma': 1400,
-		'audio-flac': 1200,
-		'audio-pcm': 1000,
-
-		// Audio - HQ Lossy (good value in Efficient)
-		'audio-atmos': 1800, // Atmos without TrueHD is great for efficiency
-		'audio-dts-hd-hra': 1000,
-		'audio-dts-hd': 800,
-		'audio-dts-es': 500,
-		'audio-ddplus': 1200, // DD+ is very efficient
-		'audio-dts': 400,
-		'audio-dd51': 500,
-
-		// Audio - Standard
-		'audio-aac': 300,
-		'audio-mp3': 100,
-
+		// ===========================================
 		// HDR
-		'hdr-dv-p5': 2000,
-		'hdr-dv-p8': 1800,
-		'hdr-dv': 1500,
-		'hdr-hdr10plus': 1400,
-		'hdr-hdr10': 1000,
-		'hdr-hlg': 600,
+		// ===========================================
+		'hdr-dolby-vision': 2500,
+		'hdr-dolby-vision-no-fallback': 1800,
+		'hdr-hdr10plus': 2200,
+		'hdr-hdr10': 1600,
+		'hdr-generic': 1000,
+		'hdr-hlg': 800,
+		'hdr-pq': 600,
 		'hdr-sdr': 0,
 
+		// ===========================================
+		// Release Groups - Efficient encoders highly valued
+		// ===========================================
+		// Efficient x265 masters
+		'group-tigole': 4000,
+		'group-qxr': 3500,
+		'group-taoe': 3000,
+		'group-darq': 2500,
+		'group-dkore': 2500,
+		'group-edge2020': 2200,
+		'group-grimm': 2200,
+		'group-lst': 2200,
+		'group-nan0': 2200,
+		'group-ralphy': 2200,
+		'group-rcvr': 2200,
+		'group-sampa': 2200,
+		'group-silence': 2200,
+		'group-tonato': 2200,
+		'group-vialle': 2200,
+		'group-vyndros': 2200,
+		'group-yello': 2200,
+
+		// Quality encode groups
+		'group-don': 2000,
+		'group-d-z0n3': 2000,
+		'group-ebp': 1800,
+		'group-ctrlhd': 1600,
+		'group-decibel': 1600,
+		'group-playbd': 1400,
+		'group-ea': 1200,
+		'group-hifi': 1000,
+
+		// Remux groups (still good, just not optimal)
+		'group-framestor': 1200,
+		'group-cinephiles': 1000,
+		'group-epsilon': 800,
+
+		// WEB-DL groups
+		'group-ntb': 1400,
+		'group-ntg': 1200,
+		'group-flux': 1000,
+		'group-cmrg': 800,
+		'group-thefarm': 1000,
+
+		// Micro encoders (neutral to slight penalty)
+		'group-rarbg': 500,
+		'group-yts': -500,
+		'group-yify': -500,
+		'group-psa': 0,
+		'group-galaxyrg': 200,
+
+		// Low quality groups
+		'group-nahom': -2000,
+		'group-nogroup': -2000,
+		'group-stuttershit': -2000,
+
+		// ===========================================
 		// Streaming Services
-		'streaming-amzn': 600,
-		'streaming-nf': 600,
-		'streaming-atvp': 800,
-		'streaming-dsnp': 500,
-		'streaming-hbo': 500,
-		'streaming-hmax': 500,
-		'streaming-max': 500,
-		'streaming-pcok': 400,
-		'streaming-pmtp': 400,
-		'streaming-hulu': 300,
-		'streaming-it': 400,
-		'streaming-stan': 300,
-		'streaming-crav': 300,
-		'streaming-now': 200,
-		'streaming-sho': 300,
-		'streaming-roku': 200,
+		// ===========================================
+		'streaming-atvp': 900,
+		'streaming-amzn': 700,
+		'streaming-nf': 700,
+		'streaming-dsnp': 600,
+		'streaming-hmax': 600,
+		'streaming-max': 600,
+		'streaming-bcore': 800,
+		'streaming-crit': 500,
+		'streaming-mubi': 500,
 
-		// Micro Encoders - Quality micros are great here!
-		'micro-tigole': 3500, // Tigole is PERFECT for Efficient
-		'micro-qxr': 3000, // QxR is excellent
-		'micro-rarbg': 500, // RARBG is acceptable
-		'micro-yts': -2000, // YTS sacrifices too much quality
-		'micro-yify': -2000,
-		'micro-psa': -500,
-		'micro-megusta': -500,
-		'micro-galaxyrg': 0,
+		// ===========================================
+		// Editions & Enhancements
+		// ===========================================
+		'edition-imax-enhanced': 1000,
+		'edition-imax': 600,
+		'edition-criterion': 600,
+		'edition-directors-cut': 400,
+		'edition-extended': 300,
+		'edition-remastered': 400,
+		'edition-theatrical': 100,
+		'edition-hybrid': 500,
 
-		// Enhancements - x265 is the key
-		repack: 600,
-		proper: 600,
-		remastered: 400,
-		unrated: 150,
-		extended: 250,
-		imax: 500,
-		theatrical: 150,
-		'directors-cut': 250,
-		hybrid: 400,
-		'codec-x265': 2500, // MAJOR bonus for HEVC
+		'repack-3': 800,
+		'repack-2': 600,
+		'repack-1': 400,
+		proper: 400,
+
+		// Codecs - x265/AV1 highly valued
+		'codec-x265': 3000,
+		'codec-av1': 4000,
 		'codec-x264': 0,
-		'codec-av1': 3000, // AV1 is even more efficient
-		daily: 0,
-		anime: 0,
 
-		// Low Quality Groups - Penalized but not as harshly
-		'lq-nahom': -3000,
-		'lq-oeplus': -3000,
-		'lq-4k4u': -3000,
-		'lq-aoc': -3000,
-		'lq-beyondhd-encode': -2000,
-		'lq-hds': -3000,
-		'lq-d3g': -3000,
-		'lq-flights': -3000,
-		'lq-classicalhd': -2500,
-		'lq-creative24': -2500,
-		'lq-depraved': -2500,
-		'lq-devisive': -2500,
-		'lq-drx': -2500,
-		'lq-blasphemy': -2500,
-		'lq-bols': -2500,
-		'lq-btm': -2500,
-		'lq-fgt': -2500,
-		'lq-ivy': -2500,
-		'lq-kc': -2500,
+		// 3D
+		'banned-3d': -5000,
+		'banned-x264-2160p': -10000,
 
-		// Banned formats (deceptive/unusable - hard blocked)
-		'banned-aroma': BANNED_SCORE,
-		'banned-lama': BANNED_SCORE,
-		'banned-telly': BANNED_SCORE,
-		'banned-bitor': BANNED_SCORE,
-		'banned-visionxpert': BANNED_SCORE,
-		'banned-sasukeduck': BANNED_SCORE,
-		'banned-jennaortegauhd': BANNED_SCORE,
-		'banned-extras': BANNED_SCORE,
-		'banned-sample': BANNED_SCORE,
-		'banned-upscaled': BANNED_SCORE,
-		'banned-3d': BANNED_SCORE,
-		'banned-cam': BANNED_SCORE,
-		'banned-telesync': BANNED_SCORE,
-		'banned-telecine': BANNED_SCORE,
-		'banned-screener': BANNED_SCORE
+		// Banned formats
+		...UNIVERSAL_BANNED_FORMATS
 	}
 };
 
 // =============================================================================
-// Micro Profile - Quality Micro Encodes
+// Compact Profile - Small Files, Decent Quality
 // =============================================================================
 
 /**
- * Micro Profile: Quality-focused micro encodes
+ * Compact Profile: Quality-focused micro encodes
  *
- * Philosophy: Get the BEST quality possible in small packages (~2.5GB or less).
- * This is NOT about accepting garbage - it's about finding the best micro
- * encoders. Tigole > QxR > RARBG > YTS. A good Tigole encode beats a bad Remux.
+ * Target: Best quality in small packages (~1-4GB)
+ * - Micro encoders are heroes (Tigole, QxR)
+ * - x265/AV1 essential for efficiency
+ * - Lossy audio is fine (AAC, DD+)
+ * - Remux/lossless penalized (too big)
  *
- * Prioritizes:
- * - Quality micro groups (Tigole, QxR)
- * - x265/HEVC for efficiency
- * - Good streaming sources
- * - 1080p > 720p (quality still matters)
- *
- * Deprioritizes:
- * - Remux (way too big)
- * - Lossless audio (unnecessary bloat)
- * - Low-tier YTS/YIFY (too compressed)
- *
- * Ideal for: Limited storage, large libraries, quality-conscious streamers
+ * Ideal for: Limited storage, large libraries, Plex/streaming to devices
  */
-export const MICRO_PROFILE: ScoringProfile = {
-	id: 'micro',
-	name: 'Micro',
-	description: 'Quality micro encodes - Tigole, QxR, efficient x265',
-	tags: ['micro', 'efficient', 'tigole', 'qxr', 'small'],
+export const COMPACT_PROFILE: ScoringProfile = {
+	id: 'compact',
+	name: 'Compact',
+	description: 'Small files with decent quality - micro encoders, efficient codecs',
+	tags: ['compact', 'micro', 'efficient', 'small'],
 	icon: 'Minimize2',
 	color: 'text-purple-500',
 	category: 'micro',
 	upgradesAllowed: true,
-	minScore: -5000, // Accept lower quality
-	upgradeUntilScore: 10000,
-	minScoreIncrement: 10,
+	minScore: -5000,
+	upgradeUntilScore: 15000,
+	minScoreIncrement: 50,
 	resolutionOrder: DEFAULT_RESOLUTION_ORDER,
-	allowedProtocols: ['torrent', 'usenet'], // No streaming - torrents/usenet only
+	allowedProtocols: ['torrent', 'usenet'],
 	formatScores: {
-		// Resolution + Source
-		// IMPORTANT: Resolution hierarchy is preserved (1080p > 720p > 480p)
-		// Within each resolution, prefer efficient sources (webrip/webdl > bluray > remux)
+		// ===========================================
+		// Resolution + Source (WEB preferred, Remux penalized)
+		// ===========================================
+		// 4K - WEB sources only (encodes too big)
+		'2160p-webdl': 8000,
+		'2160p-webrip': 10000,
+		'2160p-bluray': 2000,
+		'2160p-remux': -5000, // Way too big
 
-		// 4K - Generally too big for Micro, but accept efficient encodes
-		'2160p-remux': -5000, // WAY too big
-		'2160p-bluray': -2000, // Still too big
-		'2160p-webdl': 3000, // Acceptable if efficient
-		'2160p-webrip': 3500, // Better - usually smaller
+		// 1080p - Primary target
+		'1080p-webdl-hevc': 12000,
+		'1080p-webrip': 10000,
+		'1080p-webdl': 9000,
+		'1080p-bluray': 7000,
+		'1080p-hdtv': 6000,
+		'1080p-remux': -3000, // Too big
 
-		// 1080p - Good quality tier for Micro (base: 5000-8000)
-		'1080p-webdl-hevc': 8000, // HEVC WEB-DL is ideal for Micro
-		'1080p-webrip': 7000, // WEBRip great - usually small
-		'1080p-webdl': 6500, // WEB-DL good
-		'1080p-bluray': 5500, // Bluray acceptable but larger
-		'1080p-hdtv': 5000, // HDTV fine
-		'1080p-remux': -3000, // Too big for Micro
+		// 720p - Perfectly acceptable
+		'720p-webdl': 7000,
+		'720p-webrip': 6500,
+		'720p-bluray': 5500,
+		'720p-hdtv': 5000,
 
-		// 720p - Acceptable tier for Micro (base: 3000-4500)
-		'720p-webdl': 4500, // Best 720p option
-		'720p-webrip': 4000, // Good
-		'720p-bluray': 3500, // Acceptable
-		'720p-hdtv': 3000, // Fine
+		// SD - Fine for space saving
+		'576p-webdl': 4000,
+		'576p-bluray': 3500,
+		'576p-dvd': 3000,
+		'480p-webdl': 3500,
+		dvd: 2500,
+		'dvd-remux': 2000,
 
-		// SD - Last resort but acceptable (base: 1000-2500)
-		'480p-webdl': 2500,
-		dvd: 2000,
-		'dvd-remux': 1500,
-
-		// Release Group Tiers - 2160p (penalized - too big)
-		'2160p-quality-tier-1': -500,
-		'2160p-quality-tier-2': -300,
-		'2160p-quality-tier-3': -100,
-
-		// Release Group Tiers - 1080p Quality (moderate value)
-		'1080p-quality-tier-1': 400,
-		'1080p-quality-tier-2': 350,
-		'1080p-quality-tier-3': 300,
-		'1080p-quality-tier-4': 250,
-		'1080p-quality-tier-5': 200,
-		'1080p-quality-tier-6': 150,
-
-		// Release Group Tiers - 1080p Efficient (highly valued in Micro)
-		'1080p-efficient-tier-1': 2500,
-		'1080p-efficient-tier-2': 2200,
-		'1080p-efficient-tier-3': 1800,
-		'1080p-efficient-tier-4': 1400,
-		'1080p-efficient-tier-5': 1000,
-
-		// Remux Tiers (negative - way too big)
-		'remux-tier-1': -2000,
-		'remux-tier-2': -1500,
-		'remux-tier-3': -1000,
-
-		// WEB-DL Tiers (valued in Micro)
-		'webdl-tier-1': 1200,
-		'webdl-tier-2': 900,
-		'webdl-tier-3': 600,
-
-		// 720p Tiers (moderate value)
-		'720p-quality-tier-1': 800,
-		'720p-quality-tier-2': 600,
-
-		// Audio - Lossless (penalized - too big)
-		'audio-truehd-atmos': -1000,
-		'audio-truehd': -800,
-		'audio-dts-x': -900,
-		'audio-dts-hdma': -700,
-		'audio-flac': -500,
-		'audio-pcm': -600,
-
-		// Audio - HQ Lossy (neutral to positive)
-		'audio-atmos': 500,
-		'audio-dts-hd-hra': 200,
-		'audio-dts-hd': 100,
-		'audio-dts-es': 100,
-		'audio-ddplus': 1000, // DD+ preferred
-		'audio-dts': 200,
-		'audio-dd51': 600,
-
-		// Audio - Standard (preferred for Micro)
-		'audio-aac': 1500, // AAC is perfect
+		// ===========================================
+		// Audio - Efficient formats preferred
+		// ===========================================
+		// Small/efficient preferred
+		'audio-aac': 2000,
+		'audio-opus': 2500,
+		'audio-ddplus': 1500,
+		'audio-dd': 1200,
 		'audio-mp3': 1000,
 
-		// HDR (slight value but not priority)
-		'hdr-dv-p5': 600,
-		'hdr-dv-p8': 500,
-		'hdr-dv': 400,
-		'hdr-hdr10plus': 450,
-		'hdr-hdr10': 350,
+		// Lossy surround
+		'audio-atmos': 800,
+		'audio-dts': 600,
+		'audio-dts-es': 400,
+		'audio-dts-hd-hra': 200,
+
+		// Lossless - Penalized (too big)
+		'audio-truehd': -500,
+		'audio-dts-x': -600,
+		'audio-dts-hdma': -400,
+		'audio-pcm': -400,
+		'audio-flac': -300,
+
+		// ===========================================
+		// HDR - Nice to have, not essential
+		// ===========================================
+		'hdr-dolby-vision': 800,
+		'hdr-dolby-vision-no-fallback': 500,
+		'hdr-hdr10plus': 700,
+		'hdr-hdr10': 500,
+		'hdr-generic': 300,
 		'hdr-hlg': 200,
+		'hdr-pq': 100,
 		'hdr-sdr': 0,
 
-		// Streaming Services (lower priority)
-		'streaming-amzn': 300,
-		'streaming-nf': 300,
-		'streaming-atvp': 400,
-		'streaming-dsnp': 300,
-		'streaming-hbo': 300,
+		// ===========================================
+		// Release Groups - Micro encoders are kings
+		// ===========================================
+		// Quality micro encoders
+		'group-tigole': 8000,
+		'group-qxr': 7000,
+		'group-taoe': 5000,
+
+		// Efficient x265 encoders
+		'group-darq': 4500,
+		'group-dkore': 4500,
+		'group-edge2020': 4000,
+		'group-grimm': 4000,
+		'group-lst': 4000,
+		'group-nan0': 4000,
+		'group-ralphy': 4000,
+		'group-rcvr': 4000,
+		'group-sampa': 4000,
+		'group-silence': 4000,
+		'group-tonato': 4000,
+		'group-vialle': 4000,
+		'group-vyndros': 4000,
+		'group-yello': 4000,
+
+		// Public tracker micro encoders
+		'group-rarbg': 4000,
+		'group-yts': 3000,
+		'group-yify': 2500,
+		'group-psa': 3500,
+		'group-galaxyrg': 3500,
+		'group-megusta': 3000,
+		'group-tgx': 2500,
+		'group-etrg': 2500,
+		'group-ettv': 2500,
+		'group-eztv': 2500,
+		'group-x0r': 2500,
+		'group-ion10': 2500,
+
+		// WEB-DL groups (good, usually reasonable size)
+		'group-ntb': 2000,
+		'group-ntg': 1800,
+		'group-flux': 1500,
+		'group-cmrg': 1200,
+		'group-thefarm': 1500,
+
+		// Quality encode groups (files might be big)
+		'group-don': 500,
+		'group-d-z0n3': 500,
+		'group-ebp': 400,
+		'group-ctrlhd': 400,
+
+		// Remux groups (penalized - too big)
+		'group-framestor': -1500,
+		'group-cinephiles': -1200,
+		'group-epsilon': -1000,
+
+		// Low quality - Still acceptable in Compact (small files)
+		'group-nahom': 500,
+		'group-nogroup': 200,
+		'group-stuttershit': 0,
+
+		// ===========================================
+		// Streaming Services
+		// ===========================================
+		'streaming-atvp': 500,
+		'streaming-amzn': 400,
+		'streaming-nf': 400,
+		'streaming-dsnp': 400,
 		'streaming-hmax': 300,
 		'streaming-max': 300,
-		'streaming-pcok': 200,
-		'streaming-pmtp': 200,
-		'streaming-hulu': 150,
-		'streaming-it': 200,
-		'streaming-stan': 150,
-		'streaming-crav': 150,
-		'streaming-now': 100,
-		'streaming-sho': 150,
-		'streaming-roku': 100,
 
-		// Micro Encoders - THE HEART OF THIS PROFILE
-		// Quality micros are highly valued, low-quality ones less so
-		'micro-tigole': 8000, // Tigole is THE BEST micro encoder
-		'micro-qxr': 7000, // QxR is excellent
-		'micro-rarbg': 4000, // RARBG is solid
-		'micro-psa': 3000, // PSA is decent
-		'micro-megusta': 2500,
-		'micro-galaxyrg': 3000,
-		'micro-yts': 2000, // YTS is acceptable (not great)
-		'micro-yify': 1500, // YIFY is lower quality
+		// ===========================================
+		// Editions & Enhancements
+		// ===========================================
+		'edition-imax-enhanced': 300,
+		'edition-imax': 200,
+		'edition-directors-cut': 100,
+		'edition-extended': 100,
+		'edition-remastered': 100,
 
-		// Enhancements
-		repack: 200,
+		'repack-3': 400,
+		'repack-2': 300,
+		'repack-1': 200,
 		proper: 200,
-		remastered: 100,
-		unrated: 25,
-		extended: 50,
-		imax: 100,
-		theatrical: 25,
-		'directors-cut': 50,
-		hybrid: 100,
-		'codec-x265': 3000, // HEVC essential for Micro
+
+		// Codecs - x265/AV1 essential
+		'codec-x265': 4000,
+		'codec-av1': 5000,
 		'codec-x264': 0,
-		'codec-av1': 4000, // AV1 is even better
-		daily: 0,
-		anime: 0,
 
-		// Low Quality Groups - ACCEPTABLE in Micro (neutral to positive)
-		// These groups often produce small files which is perfect for Micro
-		'lq-nahom': 0,
-		'lq-oeplus': 0,
-		'lq-4k4u': 0,
-		'lq-aoc': 0,
-		'lq-beyondhd-encode': 200,
-		'lq-hds': 0,
-		'lq-d3g': 0,
-		'lq-flights': 0,
-		'lq-classicalhd': 100,
-		'lq-creative24': 100,
-		'lq-depraved': 100,
-		'lq-devisive': 100,
-		'lq-drx': 100,
-		'lq-blasphemy': 100,
-		'lq-bols': 100,
-		'lq-btm': 100,
-		'lq-fgt': 100,
-		'lq-ivy': 100,
-		'lq-kc': 100,
+		// 3D
+		'banned-3d': -5000,
+		'banned-x264-2160p': -8000,
 
-		// Banned formats (even Micro has standards - deceptive/unusable)
-		'banned-aroma': BANNED_SCORE,
-		'banned-lama': BANNED_SCORE,
-		'banned-telly': BANNED_SCORE,
-		'banned-bitor': BANNED_SCORE,
-		'banned-visionxpert': BANNED_SCORE,
-		'banned-sasukeduck': BANNED_SCORE,
-		'banned-jennaortegauhd': BANNED_SCORE,
-		'banned-extras': BANNED_SCORE,
-		'banned-sample': BANNED_SCORE,
-		'banned-upscaled': BANNED_SCORE,
-		'banned-3d': BANNED_SCORE,
-		'banned-cam': BANNED_SCORE,
-		'banned-telesync': BANNED_SCORE,
-		'banned-telecine': BANNED_SCORE,
-		'banned-screener': BANNED_SCORE
+		// Banned formats
+		...UNIVERSAL_BANNED_FORMATS
 	}
 };
 
 // =============================================================================
-// Streaming Profile - Placeholder Quality
+// Streamer Profile - Streaming Only
 // =============================================================================
 
 /**
- * Streaming Profile: Instant availability, always upgradeable
+ * Streamer Profile: Streaming-only via .strm files
  *
- * Philosophy: Get something watchable immediately via free streaming sources.
- * This is the lowest tier of quality - it exists purely to provide instant
- * playback while waiting for higher quality torrents to download.
+ * Target: Instant playback from streaming sources
+ * - Only accepts streaming protocol releases
+ * - Rejects torrents and usenet completely
+ * - No local storage required
  *
- * The streaming indexer assigns a fixed score of 10 to all streaming releases.
- * This profile ensures:
- * 1. Streaming releases are always accepted (minScore: 0)
- * 2. Upgrades are always allowed and encouraged (upgradesAllowed: true)
- * 3. Any torrent will trigger an upgrade (upgradeUntilScore: 100000)
- * 4. Even small improvements trigger upgrades (minScoreIncrement: 1)
- *
- * The formatScores are minimal since streaming releases don't have traditional
- * quality indicators - they're transcoded by the streaming source.
- *
- * Ideal for: Users who want instant access, will auto-upgrade to torrents
+ * Ideal for: Users who want streaming-only, no downloads
  */
-export const STREAMING_PROFILE: ScoringProfile = {
-	id: 'streaming',
-	name: 'Streaming',
-	description: 'Instant streaming with auto-upgrade to higher quality',
-	tags: ['streaming', 'instant', 'placeholder', 'auto-upgrade'],
+export const STREAMER_PROFILE: ScoringProfile = {
+	id: 'streamer',
+	name: 'Streamer',
+	description: 'Streaming-only via .strm files - instant playback, no downloads',
+	tags: ['streaming', 'instant', 'strm', 'cloud'],
 	icon: 'Play',
 	color: 'text-cyan-500',
 	category: 'streaming',
-	upgradesAllowed: true,
-	minScore: 0, // Accept any streaming release
-	upgradeUntilScore: 100000, // Always upgrade - streaming is just a placeholder
-	minScoreIncrement: 1, // Any improvement triggers upgrade
+	upgradesAllowed: false,
+	minScore: 0,
+	upgradeUntilScore: 0,
+	minScoreIncrement: 0,
 	resolutionOrder: DEFAULT_RESOLUTION_ORDER,
-	allowedProtocols: ['streaming'], // ONLY streaming - torrents rejected
+	allowedProtocols: ['streaming'],
 	formatScores: {
-		// Streaming protocol releases get a proper score
-		// This is the primary format for the streaming-only profile
+		// Streaming protocol is the only thing that matters
 		'streaming-protocol': 50000,
 
-		// Banned formats - reject even for streaming
-		'banned-aroma': BANNED_SCORE,
-		'banned-lama': BANNED_SCORE,
-		'banned-telly': BANNED_SCORE,
-		'banned-bitor': BANNED_SCORE,
-		'banned-visionxpert': BANNED_SCORE,
-		'banned-sasukeduck': BANNED_SCORE,
-		'banned-jennaortegauhd': BANNED_SCORE,
-		'banned-extras': BANNED_SCORE,
-		'banned-sample': BANNED_SCORE,
-		'banned-upscaled': BANNED_SCORE,
-		'banned-3d': BANNED_SCORE,
-		'banned-cam': BANNED_SCORE,
-		'banned-telesync': BANNED_SCORE,
-		'banned-telecine': BANNED_SCORE,
-		'banned-screener': BANNED_SCORE
+		// Resolution preferences (if available)
+		'2160p-webdl': 4000,
+		'2160p-webrip': 3500,
+		'1080p-webdl': 3000,
+		'1080p-webrip': 2500,
+		'720p-webdl': 2000,
+		'720p-webrip': 1500,
+
+		// HDR is nice
+		'hdr-dolby-vision': 1000,
+		'hdr-hdr10plus': 800,
+		'hdr-hdr10': 600,
+
+		// Banned formats - still apply
+		...UNIVERSAL_BANNED_FORMATS
 	}
 };
 
@@ -700,13 +703,13 @@ export const STREAMING_PROFILE: ScoringProfile = {
 // =============================================================================
 
 /**
- * All default profiles
+ * All built-in profiles
  */
 export const DEFAULT_PROFILES: ScoringProfile[] = [
-	BEST_PROFILE,
-	EFFICIENT_PROFILE,
-	MICRO_PROFILE,
-	STREAMING_PROFILE
+	QUALITY_PROFILE,
+	BALANCED_PROFILE,
+	COMPACT_PROFILE,
+	STREAMER_PROFILE
 ];
 
 /**
@@ -717,27 +720,22 @@ export const PROFILE_BY_ID: Map<string, ScoringProfile> = new Map(
 );
 
 /**
- * Get a profile by ID
+ * Get a built-in profile by ID
  */
 export function getProfile(id: string): ScoringProfile | undefined {
 	return PROFILE_BY_ID.get(id);
 }
 
 /**
- * Create a custom profile from a base profile
+ * Get all built-in profile IDs
  */
-export function createCustomProfile(
-	base: ScoringProfile,
-	overrides: Partial<ScoringProfile>
-): ScoringProfile {
-	return {
-		...base,
-		...overrides,
-		id: overrides.id ?? `${base.id}-custom`,
-		name: overrides.name ?? `${base.name} (Custom)`,
-		formatScores: {
-			...base.formatScores,
-			...(overrides.formatScores ?? {})
-		}
-	};
+export function getBuiltInProfileIds(): string[] {
+	return DEFAULT_PROFILES.map((p) => p.id);
+}
+
+/**
+ * Check if a profile ID is a built-in profile
+ */
+export function isBuiltInProfile(id: string): boolean {
+	return PROFILE_BY_ID.has(id);
 }

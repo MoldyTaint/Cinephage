@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { QualityFilter } from './QualityFilter';
 import type { QualityPreset } from './types';
 import { parseRelease } from '../indexers/parser';
-import { EFFICIENT_PROFILE, MICRO_PROFILE, BEST_PROFILE } from '../scoring';
+import { BALANCED_PROFILE, COMPACT_PROFILE, QUALITY_PROFILE } from '../scoring';
 
 // Create a test preset instead of using the database
 const testPresets: Record<string, QualityPreset> = {
@@ -171,7 +171,7 @@ describe('QualityFilter', () => {
 	describe('calculateEnhancedScore', () => {
 		it('should use scoring engine with profile', () => {
 			const parsed = parseRelease('Movie.2023.1080p.BluRay.x264.DTS-FGT');
-			const result = filter.calculateEnhancedScore(parsed, testPresets.any, EFFICIENT_PROFILE);
+			const result = filter.calculateEnhancedScore(parsed, testPresets.any, BALANCED_PROFILE);
 
 			expect(result.accepted).toBe(true);
 			expect(result.scoringResult).toBeDefined();
@@ -184,11 +184,11 @@ describe('QualityFilter', () => {
 			const parsedNtb = parseRelease('Movie.2023.1080p.WEB-DL.x264-NTb');
 			const parsedUnknown = parseRelease('Movie.2023.1080p.WEB-DL.x264-UNKNOWN');
 
-			const resultNtb = filter.calculateEnhancedScore(parsedNtb, testPresets.any, BEST_PROFILE);
+			const resultNtb = filter.calculateEnhancedScore(parsedNtb, testPresets.any, QUALITY_PROFILE);
 			const resultUnknown = filter.calculateEnhancedScore(
 				parsedUnknown,
 				testPresets.any,
-				BEST_PROFILE
+				QUALITY_PROFILE
 			);
 
 			// NTb should have group tier detected and score higher
@@ -200,7 +200,7 @@ describe('QualityFilter', () => {
 		it('should reject releases with banned score', () => {
 			// Create a mock banned release (add known banned pattern to test)
 			const parsed = parseRelease('Movie.2023.1080p.WEB-DL.x264-STUTTERSHIT');
-			const result = filter.calculateEnhancedScore(parsed, testPresets.any, EFFICIENT_PROFILE);
+			const result = filter.calculateEnhancedScore(parsed, testPresets.any, BALANCED_PROFILE);
 
 			// STUTTERSHIT should be banned
 			if (result.scoringResult?.isBanned) {
@@ -213,8 +213,12 @@ describe('QualityFilter', () => {
 			const parsedRemux = parseRelease('Movie.2023.2160p.REMUX.AVC.TrueHD.Atmos-GROUP');
 			const parsedWeb = parseRelease('Movie.2023.2160p.WEB-DL.x264.AAC-GROUP');
 
-			const resultRemux = filter.calculateEnhancedScore(parsedRemux, testPresets.any, BEST_PROFILE);
-			const resultWeb = filter.calculateEnhancedScore(parsedWeb, testPresets.any, BEST_PROFILE);
+			const resultRemux = filter.calculateEnhancedScore(
+				parsedRemux,
+				testPresets.any,
+				QUALITY_PROFILE
+			);
+			const resultWeb = filter.calculateEnhancedScore(parsedWeb, testPresets.any, QUALITY_PROFILE);
 
 			expect(resultRemux.scoringResult!.totalScore).toBeGreaterThan(
 				resultWeb.scoringResult!.totalScore
@@ -228,12 +232,12 @@ describe('QualityFilter', () => {
 			const resultX265 = filter.calculateEnhancedScore(
 				parsedX265,
 				testPresets.any,
-				EFFICIENT_PROFILE
+				BALANCED_PROFILE
 			);
 			const resultX264 = filter.calculateEnhancedScore(
 				parsedX264,
 				testPresets.any,
-				EFFICIENT_PROFILE
+				BALANCED_PROFILE
 			);
 
 			// x265 should score higher in Efficient profile
@@ -244,7 +248,7 @@ describe('QualityFilter', () => {
 
 		it('should accept micro encoders in Micro profile', () => {
 			const parsedYts = parseRelease('Movie.2023.1080p.BluRay.x264-YTS');
-			const result = filter.calculateEnhancedScore(parsedYts, testPresets.any, MICRO_PROFILE);
+			const result = filter.calculateEnhancedScore(parsedYts, testPresets.any, COMPACT_PROFILE);
 
 			// YTS should NOT be banned in Micro profile
 			expect(result.scoringResult?.isBanned).toBeFalsy();
@@ -255,11 +259,11 @@ describe('QualityFilter', () => {
 			const parsedYts = parseRelease('Movie.2023.1080p.BluRay.x264-YTS');
 			const parsedNormal = parseRelease('Movie.2023.1080p.BluRay.x264-FGT');
 
-			const resultYts = filter.calculateEnhancedScore(parsedYts, testPresets.any, MICRO_PROFILE);
+			const resultYts = filter.calculateEnhancedScore(parsedYts, testPresets.any, COMPACT_PROFILE);
 			const resultNormal = filter.calculateEnhancedScore(
 				parsedNormal,
 				testPresets.any,
-				MICRO_PROFILE
+				COMPACT_PROFILE
 			);
 
 			// YTS should score higher in Micro profile
@@ -276,12 +280,12 @@ describe('QualityFilter', () => {
 			const result1080p = filter.calculateEnhancedScore(
 				parsed1080pWeb,
 				testPresets.any,
-				MICRO_PROFILE
+				COMPACT_PROFILE
 			);
 			const result720p = filter.calculateEnhancedScore(
 				parsed720pWeb,
 				testPresets.any,
-				MICRO_PROFILE
+				COMPACT_PROFILE
 			);
 
 			expect(result1080p.scoringResult!.totalScore).toBeGreaterThan(
@@ -297,12 +301,12 @@ describe('QualityFilter', () => {
 			const result1080p = filter.calculateEnhancedScore(
 				parsed1080pBluray,
 				testPresets.any,
-				MICRO_PROFILE
+				COMPACT_PROFILE
 			);
 			const result720p = filter.calculateEnhancedScore(
 				parsed720pWebrip,
 				testPresets.any,
-				MICRO_PROFILE
+				COMPACT_PROFILE
 			);
 
 			expect(result1080p.scoringResult!.totalScore).toBeGreaterThan(
@@ -318,12 +322,12 @@ describe('QualityFilter', () => {
 			const resultWebrip = filter.calculateEnhancedScore(
 				parsed1080pWebrip,
 				testPresets.any,
-				MICRO_PROFILE
+				COMPACT_PROFILE
 			);
 			const resultBluray = filter.calculateEnhancedScore(
 				parsed1080pBluray,
 				testPresets.any,
-				MICRO_PROFILE
+				COMPACT_PROFILE
 			);
 
 			expect(resultWebrip.scoringResult!.totalScore).toBeGreaterThan(
@@ -349,7 +353,7 @@ describe('QualityFilter', () => {
 				}
 			];
 
-			const ranked = filter.rankReleases(releases, BEST_PROFILE);
+			const ranked = filter.rankReleases(releases, QUALITY_PROFILE);
 
 			expect(ranked.length).toBe(3);
 			expect(ranked[0].rank).toBe(1);
@@ -363,7 +367,7 @@ describe('QualityFilter', () => {
 			const existing = parseRelease('Movie.2023.1080p.WEB-DL.x264-GROUP');
 			const candidate = parseRelease('Movie.2023.2160p.REMUX.HEVC-GROUP');
 
-			const result = filter.checkUpgrade(existing, candidate, BEST_PROFILE);
+			const result = filter.checkUpgrade(existing, candidate, QUALITY_PROFILE);
 
 			expect(result.isUpgrade).toBe(true);
 			expect(result.improvement).toBeGreaterThan(0);
@@ -373,7 +377,7 @@ describe('QualityFilter', () => {
 			const existing = parseRelease('Movie.2023.2160p.REMUX.HEVC-GROUP');
 			const candidate = parseRelease('Movie.2023.1080p.WEB-DL.x264-GROUP');
 
-			const result = filter.checkUpgrade(existing, candidate, BEST_PROFILE);
+			const result = filter.checkUpgrade(existing, candidate, QUALITY_PROFILE);
 
 			expect(result.isUpgrade).toBe(false);
 			expect(result.improvement).toBeLessThan(0);

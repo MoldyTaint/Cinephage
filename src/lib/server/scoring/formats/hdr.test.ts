@@ -338,49 +338,6 @@ describe('HDR Format Matching', () => {
 	});
 
 	// ==========================================================================
-	// SCORE HIERARCHY TESTS
-	// ==========================================================================
-	describe('Score Hierarchy', () => {
-		it('should have DV with highest score (with fallback)', () => {
-			expect(DOLBY_VISION_FORMAT.defaultScore).toBeGreaterThan(HDR10_PLUS_FORMAT.defaultScore);
-		});
-
-		it('should have HDR10+ with higher score than HDR10', () => {
-			expect(HDR10_PLUS_FORMAT.defaultScore).toBeGreaterThan(HDR10_FORMAT.defaultScore);
-		});
-
-		it('should have HDR10 with higher score than generic HDR', () => {
-			expect(HDR10_FORMAT.defaultScore).toBeGreaterThan(HDR_GENERIC_FORMAT.defaultScore);
-		});
-
-		it('should have DV without fallback with lower score due to compatibility', () => {
-			expect(DOLBY_VISION_NO_FALLBACK_FORMAT.defaultScore).toBeLessThan(
-				DOLBY_VISION_FORMAT.defaultScore
-			);
-		});
-
-		it('should have SDR with baseline score of 0', () => {
-			expect(SDR_FORMAT.defaultScore).toBe(0);
-		});
-
-		it('should score formats from highest to lowest: DV > HDR10+ > HDR10 > HDR > HLG > PQ > SDR', () => {
-			const scores = [
-				{ name: 'DV', score: DOLBY_VISION_FORMAT.defaultScore },
-				{ name: 'HDR10+', score: HDR10_PLUS_FORMAT.defaultScore },
-				{ name: 'HDR10', score: HDR10_FORMAT.defaultScore },
-				{ name: 'HDR', score: HDR_GENERIC_FORMAT.defaultScore },
-				{ name: 'HLG', score: HLG_FORMAT.defaultScore },
-				{ name: 'PQ', score: PQ_FORMAT.defaultScore },
-				{ name: 'SDR', score: SDR_FORMAT.defaultScore }
-			];
-
-			for (let i = 0; i < scores.length - 1; i++) {
-				expect(scores[i].score).toBeGreaterThan(scores[i + 1].score);
-			}
-		});
-	});
-
-	// ==========================================================================
 	// FORMAT REGISTRY TESTS
 	// ==========================================================================
 	describe('Format Registry', () => {

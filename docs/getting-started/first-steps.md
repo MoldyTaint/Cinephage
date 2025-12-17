@@ -19,7 +19,7 @@ After completing installation and configuration, this guide walks you through ad
 1. On the movie detail page, click **Add to Library**
 2. Configure options:
    - **Root Folder**: Where to store the file (e.g., `/media/movies`)
-   - **Quality Profile**: Which profile to use (Best, Efficient, Micro, or Streaming)
+   - **Quality Profile**: Which profile to use (Quality, Balanced, Compact, or Streamer)
    - **Monitored**: Enable to automatically search for releases
 3. Click **Add**
 

@@ -45,7 +45,7 @@
 			children: [
 				{ href: '/settings/general', label: 'General', icon: Settings },
 				{ href: '/settings/naming', label: 'Naming', icon: FileSignature },
-				{ href: '/settings/profiles', label: 'Quality Profiles', icon: Shield },
+				{ href: '/settings/quality', label: 'Quality Settings', icon: Shield },
 				{ href: '/settings/integrations', label: 'Integrations', icon: Compass },
 				{ href: '/settings/tasks', label: 'Tasks', icon: ListTodo },
 				{ href: '/settings/filters', label: 'Global Filters', icon: Filter },

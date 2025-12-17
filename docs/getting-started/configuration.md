@@ -76,7 +76,7 @@ See [Indexers Guide](../guides/indexers.md) for detailed indexer setup.
 Review and customize quality preferences.
 
 1. Navigate to **Settings > Profiles**
-2. Review built-in profiles (Best, Efficient, Micro, Streaming)
+2. Review built-in profiles (Quality, Balanced, Compact, Streamer)
 3. Create custom profiles if the defaults don't fit your needs
 
 See [Quality Profiles Guide](../guides/quality-profiles.md) for scoring details.

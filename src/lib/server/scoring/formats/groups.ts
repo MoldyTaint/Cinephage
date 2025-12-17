@@ -1,643 +1,283 @@
 /**
- * Release Group Tier Formats
+ * Release Group Format Definitions
  *
- * Defines tiered release groups for quality scoring.
- * Groups are organized by their encode quality reputation.
+ * Individual detection formats for release groups.
+ * No tiers or quality judgments - just detection.
+ * Users assign scores in their profiles based on their preferences.
+ *
+ * Philosophy: Formats DETECT, Profiles SCORE.
  */
 
 import type { CustomFormat } from '../types.js';
 
+/**
+ * Helper to create a simple release group format
+ */
+function createGroupFormat(name: string, description?: string, tags: string[] = []): CustomFormat {
+	// Keep hyphens in ID for readability, remove other special chars
+	const id = `group-${name.toLowerCase().replace(/[^a-z0-9-]/g, '')}`;
+	return {
+		id,
+		name,
+		description: description || `${name} release group`,
+		category: 'release_group_tier',
+		tags: ['Release Group', ...tags],
+		conditions: [
+			{
+				name,
+				type: 'release_group',
+				pattern: `^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`,
+				required: true,
+				negate: false
+			}
+		]
+	};
+}
+
 // =============================================================================
-// Quality Tiers (Best transparent encodes - GPPi based)
+// RELEASE GROUPS - Alphabetically organized for maintainability
 // =============================================================================
 
 /**
- * 2160p Quality Release Group Tiers
+ * All release group definitions
+ * Organized alphabetically - no quality judgments, just detection
  */
-export const QUALITY_2160P_TIERS: CustomFormat[] = [
-	{
-		id: '2160p-quality-tier-1',
-		name: '2160p Quality Tier 1',
-		description: 'Top tier 4K encode groups',
-		category: 'release_group_tier',
-		tags: ['2160p', 'Quality', 'Tier 1'],
-		defaultScore: 0,
-		conditions: [
-			{ name: '2160p', type: 'resolution', resolution: '2160p', required: true, negate: false },
-			{ name: 'Bluray', type: 'source', source: 'bluray', required: true, negate: false },
-			{
-				name: 'Not Remux',
-				type: 'release_title',
-				pattern: '\\bRemux\\b',
-				required: true,
-				negate: true
-			},
-			// Tier 1 groups
-			{ name: 'DON', type: 'release_group', pattern: '^DON$', required: false, negate: false },
-			{ name: 'SA89', type: 'release_group', pattern: '^SA89$', required: false, negate: false },
-			{
-				name: 'REBORN',
-				type: 'release_group',
-				pattern: '^REBORN$',
-				required: false,
-				negate: false
-			},
-			{ name: 'SoLaR', type: 'release_group', pattern: '^SoLaR$', required: false, negate: false }
-		]
-	},
-	{
-		id: '2160p-quality-tier-2',
-		name: '2160p Quality Tier 2',
-		description: 'High quality 4K encode groups',
-		category: 'release_group_tier',
-		tags: ['2160p', 'Quality', 'Tier 2'],
-		defaultScore: 0,
-		conditions: [
-			{ name: '2160p', type: 'resolution', resolution: '2160p', required: true, negate: false },
-			{ name: 'Bluray', type: 'source', source: 'bluray', required: true, negate: false },
-			{
-				name: 'Not Remux',
-				type: 'release_title',
-				pattern: '\\bRemux\\b',
-				required: true,
-				negate: true
-			},
-			{ name: 'FLUX', type: 'release_group', pattern: '^FLUX$', required: false, negate: false },
-			{
-				name: 'W4NK3R',
-				type: 'release_group',
-				pattern: '^W4NK3R$',
-				required: false,
-				negate: false
-			},
-			{ name: 'playBD', type: 'release_group', pattern: '^playBD$', required: false, negate: false }
-		]
-	},
-	{
-		id: '2160p-quality-tier-3',
-		name: '2160p Quality Tier 3',
-		description: 'Quality 4K encode groups',
-		category: 'release_group_tier',
-		tags: ['2160p', 'Quality', 'Tier 3'],
-		defaultScore: 0,
-		conditions: [
-			{ name: '2160p', type: 'resolution', resolution: '2160p', required: true, negate: false },
-			{ name: 'Bluray', type: 'source', source: 'bluray', required: true, negate: false },
-			{
-				name: 'Not Remux',
-				type: 'release_title',
-				pattern: '\\bRemux\\b',
-				required: true,
-				negate: true
-			},
-			{ name: 'iFT', type: 'release_group', pattern: '^iFT$', required: false, negate: false },
-			{ name: 'HQMUX', type: 'release_group', pattern: '^HQMUX$', required: false, negate: false },
-			{ name: 'ZQ', type: 'release_group', pattern: '^ZQ$', required: false, negate: false }
-		]
-	}
-];
+export const RELEASE_GROUP_FORMATS: CustomFormat[] = [
+	// A
+	createGroupFormat('3L', 'Quality remux group'),
+	createGroupFormat('4K4U'),
+	createGroupFormat('AMIABLE', 'Scene group'),
+	createGroupFormat('AOC'),
+	createGroupFormat('Arid', 'Anime group', ['Anime']),
 
-/**
- * 1080p Quality Release Group Tiers
- */
-export const QUALITY_1080P_TIERS: CustomFormat[] = [
+	// B
+	createGroupFormat('BiZKiT', 'Remux group'),
+	createGroupFormat('BLASPHEMY'),
+	createGroupFormat('BLURANiUM', 'Remux group'),
+	createGroupFormat('BOLS'),
+	createGroupFormat('BTM'),
+	createGroupFormat('BeyondHD', 'Encode group (not their remuxes)'),
+
+	// C
+	createGroupFormat('CBT', 'Anime group', ['Anime']),
+	createGroupFormat('CiNEPHiLES', 'Remux group'),
+	createGroupFormat('CLASSiCALHD'),
+	createGroupFormat('CMRG', 'WEB-DL group'),
+	createGroupFormat('CREATiVE24'),
+	createGroupFormat('CTR', 'Anime group', ['Anime']),
+	createGroupFormat('CtrlHD', 'Quality encode group'),
+
+	// D
+	createGroupFormat('D-Z0N3', 'Top tier encode group'),
+	createGroupFormat('DarQ', 'Efficient x265 encoder'),
+	createGroupFormat('d3g'),
+	createGroupFormat('decibeL', 'Quality encode/remux group'),
+	createGroupFormat('Dekinai', 'Anime group', ['Anime']),
+	createGroupFormat('DepraveD'),
+	createGroupFormat('DeViSiVE'),
+	createGroupFormat('dkore', 'Efficient x265 encoder'),
+	createGroupFormat('DON', 'Top tier encode group'),
+	createGroupFormat('Drag', 'Anime group', ['Anime']),
+	createGroupFormat('DRONES', 'Scene group'),
+	createGroupFormat('DRX'),
+
+	// E
+	createGroupFormat('EA', 'Quality encode group'),
+	createGroupFormat('EbP', 'Top tier encode group'),
+	createGroupFormat('edge2020', 'Efficient x265 encoder'),
+	createGroupFormat('EPSiLON', 'Remux group'),
+	createGroupFormat('Erai-raws', 'Anime WEB source', ['Anime']),
+	createGroupFormat('ETRG', 'Micro encoder', ['Micro']),
+	createGroupFormat('ETTV', 'Micro encoder', ['Micro']),
+	createGroupFormat('EXP', 'Anime group', ['Anime']),
+	createGroupFormat('EZTV', 'Micro encoder', ['Micro']),
+
+	// F
+	createGroupFormat('FGT'),
+	createGroupFormat('Flights'),
+	createGroupFormat('Flugel', 'Anime group', ['Anime']),
+	createGroupFormat('FLUX', 'Quality WEB-DL/encode group'),
+	createGroupFormat('FraMeSToR', 'Top tier remux group'),
+
+	// G
+	createGroupFormat('GalaxyRG', 'Micro encoder', ['Micro']),
+	createGroupFormat('GECKOS', 'Scene group'),
+	createGroupFormat('GRiMM', 'Efficient x265 encoder'),
+
+	// H
+	createGroupFormat('hallowed', 'Scene group'),
+	createGroupFormat('HDS'),
+	createGroupFormat('Headpatter', 'Anime group', ['Anime']),
+	createGroupFormat('HiFi', 'Quality encode group'),
+	createGroupFormat('Holomux', 'Anime group', ['Anime']),
+	createGroupFormat('HorribleSubs', 'Anime WEB source', ['Anime']),
+	createGroupFormat('HQMUX', 'Quality 4K encode group'),
+	createGroupFormat('hydes', 'Anime group', ['Anime']),
+
+	// I
+	createGroupFormat('iFT', 'Quality 4K encode group'),
+	createGroupFormat('IK', 'Anime group', ['Anime']),
+	createGroupFormat('ION10', 'Micro encoder', ['Micro']),
+	createGroupFormat('iVy'),
+
+	// K
+	createGroupFormat('Kametsu', 'Anime group', ['Anime']),
+	createGroupFormat('KC'),
+	createGroupFormat('KH', 'Anime group', ['Anime']),
+	createGroupFormat('kuchikirukia', 'Anime group', ['Anime']),
+
+	// L
+	createGroupFormat('LSt', 'Efficient x265 encoder'),
+	createGroupFormat('Lulu', 'Anime group', ['Anime']),
+	createGroupFormat('LYS1TH3A', 'Top tier anime group', ['Anime']),
+
+	// M
+	createGroupFormat('MeGusta', 'Micro encoder', ['Micro']),
+	createGroupFormat('MgB'),
+	createGroupFormat('MTBB', 'Top tier anime group', ['Anime']),
+	createGroupFormat('Mysteria', 'Anime group', ['Anime']),
+
+	// N
+	createGroupFormat('NAHOM'),
+	createGroupFormat('NAN0', 'Efficient x265 encoder'),
+	createGroupFormat('Netaro', 'Anime group', ['Anime']),
+	createGroupFormat('NhaNc3'),
+	createGroupFormat('NoGroup'),
+	createGroupFormat('NTb', 'Quality WEB-DL group'),
+	createGroupFormat('NTG', 'Quality WEB-DL group'),
+
+	// O
+	createGroupFormat('OEPlus'),
+	createGroupFormat('Okay-Subs', 'Anime group', ['Anime']),
+	createGroupFormat('OZR', 'Top tier anime group', ['Anime']),
+
+	// P
+	createGroupFormat('PECULATE', 'WEB-DL group'),
+	createGroupFormat('PiRaTeS'),
+	createGroupFormat('playBD', 'Quality encode/remux group'),
+	createGroupFormat('pog42', 'Anime group', ['Anime']),
+	createGroupFormat('Pookie', 'Anime group', ['Anime']),
+	createGroupFormat('PSA', 'Micro encoder', ['Micro']),
+	createGroupFormat('PTer', 'Quality encode group'),
+
+	// Q
+	createGroupFormat('Quetzal', 'Anime group', ['Anime']),
+	createGroupFormat('QxR', 'Quality micro encoder', ['Micro']),
+
+	// R
+	createGroupFormat('Ralphy', 'Efficient x265 encoder'),
+	createGroupFormat('RARBG', 'Popular scene group', ['Micro']),
+	createGroupFormat('Rasetsu', 'Anime group', ['Anime']),
+	createGroupFormat('RCVR', 'Efficient x265 encoder'),
+	createGroupFormat('REBORN', 'Top tier 4K encode group'),
+
+	// S
+	createGroupFormat('SA89', 'Top tier 4K encode group'),
+	createGroupFormat('sam', 'Top tier anime group', ['Anime']),
+	createGroupFormat('SAMPA', 'Efficient x265 encoder'),
+	createGroupFormat('SbR', 'Quality encode group'),
+	createGroupFormat('SCY', 'Top tier anime group', ['Anime']),
+	createGroupFormat('SECTOR7', 'Scene group'),
+	createGroupFormat('Senjou', 'Anime group', ['Anime']),
+	createGroupFormat('SHD'),
+	createGroupFormat('ShieldBearer'),
+	createGroupFormat('SiCFoI', 'Remux group'),
+	createGroupFormat('SiGMA', 'WEB-DL group'),
+	createGroupFormat('Silence', 'Efficient x265 encoder'),
+	createGroupFormat('smol', 'Top tier anime group', ['Anime']),
+	createGroupFormat('SMURF', 'WEB-DL group'),
+	createGroupFormat('SoLaR', 'Top tier 4K encode group'),
+	createGroupFormat('SPARKS', 'Scene group'),
+	createGroupFormat('STUTTERSHIT'),
+	createGroupFormat('SubsPlease', 'Anime WEB source', ['Anime']),
+
+	// T
+	createGroupFormat('TAoE', 'Quality efficient encoder'),
+	createGroupFormat('tarunk9c'),
+	createGroupFormat('TeamSyndicate', 'Quality encode group'),
+	createGroupFormat('TEKNO3D'),
+	createGroupFormat('TEPES', 'WEB-DL group'),
+	createGroupFormat('TGx', 'Micro encoder', ['Micro']),
+	createGroupFormat('TheFarm', 'Quality WEB-DL group'),
+	createGroupFormat('Tigole', 'Quality micro encoder', ['Micro']),
+	createGroupFormat('ToNaTo', 'Efficient x265 encoder'),
+	createGroupFormat('TvR'),
+
+	// U
+	createGroupFormat('UDF', 'Anime group', ['Anime']),
+	createGroupFormat('UnKn0wn'),
+
+	// V
+	createGroupFormat('VECTOR'),
+	createGroupFormat('Vialle', 'Efficient x265 encoder'),
+	createGroupFormat('VietHD', 'Quality encode group'),
+	createGroupFormat('Vodes', 'Top tier anime group', ['Anime']),
+	createGroupFormat('Vyndros', 'Efficient x265 encoder'),
+
+	// W
+	createGroupFormat('W4NK3R', 'Quality 4K encode group'),
+	createGroupFormat('WBDP', 'Anime group', ['Anime']),
+	createGroupFormat('WiLDCAT', 'Remux group'),
+
+	// X
+	createGroupFormat('x0r', 'Micro encoder', ['Micro']),
+
+	// Y
+	createGroupFormat('YELLO', 'Efficient x265 encoder'),
+	createGroupFormat('YIFY', 'Micro encoder', ['Micro']),
+	// YTS with all variants (YTS.MX, YTS.LT, YTS.AG)
 	{
-		id: '1080p-quality-tier-1',
-		name: '1080p Quality Tier 1',
-		description: 'Top tier 1080p encode groups (GPPi)',
+		id: 'group-yts',
+		name: 'YTS',
+		description: 'YTS/YIFY - Popular micro encoder',
 		category: 'release_group_tier',
-		tags: ['1080p', 'Quality', 'Tier 1', 'GPPi'],
-		defaultScore: 0,
+		tags: ['Release Group', 'Micro'],
 		conditions: [
-			{ name: '1080p', type: 'resolution', resolution: '1080p', required: true, negate: false },
 			{
-				name: 'Not Remux',
+				name: 'YTS',
+				type: 'release_group',
+				pattern: '^YTS(\\.MX|\\.LT|\\.AG)?$',
+				required: false,
+				negate: false
+			},
+			{
+				name: 'YTS Title',
 				type: 'release_title',
-				pattern: '\\bRemux\\b',
-				required: true,
-				negate: true
-			},
-			// Tier 1 groups (GPPi top performers)
-			{ name: 'DON', type: 'release_group', pattern: '^DON$', required: false, negate: false },
-			{
-				name: 'D-Z0N3',
-				type: 'release_group',
-				pattern: '^D-Z0N3$',
-				required: false,
-				negate: false
-			},
-			{ name: 'EbP', type: 'release_group', pattern: '^EbP$', required: false, negate: false },
-			{
-				name: 'CtrlHD',
-				type: 'release_group',
-				pattern: '^CtrlHD$',
+				pattern: '\\bYTS(\\.MX|\\.LT|\\.AG)?\\b',
 				required: false,
 				negate: false
 			},
 			{
-				name: 'ZoroSenpai',
-				type: 'release_group',
-				pattern: '^ZoroSenpai$',
+				name: 'YTS Indexer',
+				type: 'indexer',
+				indexer: 'YTS',
 				required: false,
 				negate: false
 			}
 		]
 	},
-	{
-		id: '1080p-quality-tier-2',
-		name: '1080p Quality Tier 2',
-		description: 'High quality 1080p encode groups',
-		category: 'release_group_tier',
-		tags: ['1080p', 'Quality', 'Tier 2'],
-		defaultScore: 0,
-		conditions: [
-			{ name: '1080p', type: 'resolution', resolution: '1080p', required: true, negate: false },
-			{
-				name: 'Not Remux',
-				type: 'release_title',
-				pattern: '\\bRemux\\b',
-				required: true,
-				negate: true
-			},
-			{ name: 'EA', type: 'release_group', pattern: '^EA$', required: false, negate: false },
-			{ name: 'HiFi', type: 'release_group', pattern: '^HiFi$', required: false, negate: false },
-			{ name: 'NTb', type: 'release_group', pattern: '^NTb$', required: false, negate: false },
-			{ name: 'SbR', type: 'release_group', pattern: '^SbR$', required: false, negate: false }
-		]
-	},
-	{
-		id: '1080p-quality-tier-3',
-		name: '1080p Quality Tier 3',
-		description: 'Quality 1080p encode groups',
-		category: 'release_group_tier',
-		tags: ['1080p', 'Quality', 'Tier 3'],
-		defaultScore: 0,
-		conditions: [
-			{ name: '1080p', type: 'resolution', resolution: '1080p', required: true, negate: false },
-			{
-				name: 'Not Remux',
-				type: 'release_title',
-				pattern: '\\bRemux\\b',
-				required: true,
-				negate: true
-			},
-			{
-				name: 'decibeL',
-				type: 'release_group',
-				pattern: '^decibeL$',
-				required: false,
-				negate: false
-			},
-			{ name: 'PTer', type: 'release_group', pattern: '^PTer$', required: false, negate: false },
-			{ name: 'VietHD', type: 'release_group', pattern: '^VietHD$', required: false, negate: false }
-		]
-	},
-	{
-		id: '1080p-quality-tier-4',
-		name: '1080p Quality Tier 4',
-		description: 'Good quality 1080p encode groups',
-		category: 'release_group_tier',
-		tags: ['1080p', 'Quality', 'Tier 4'],
-		defaultScore: 0,
-		conditions: [
-			{ name: '1080p', type: 'resolution', resolution: '1080p', required: true, negate: false },
-			{
-				name: 'Not Remux',
-				type: 'release_title',
-				pattern: '\\bRemux\\b',
-				required: true,
-				negate: true
-			},
-			{
-				name: 'hallowed',
-				type: 'release_group',
-				pattern: '^hallowed$',
-				required: false,
-				negate: false
-			},
-			{
-				name: 'SPARKS',
-				type: 'release_group',
-				pattern: '^SPARKS$',
-				required: false,
-				negate: false
-			},
-			{
-				name: 'AMIABLE',
-				type: 'release_group',
-				pattern: '^AMIABLE$',
-				required: false,
-				negate: false
-			}
-		]
-	},
-	{
-		id: '1080p-quality-tier-5',
-		name: '1080p Quality Tier 5',
-		description: 'Acceptable quality 1080p encode groups',
-		category: 'release_group_tier',
-		tags: ['1080p', 'Quality', 'Tier 5'],
-		defaultScore: 0,
-		conditions: [
-			{ name: '1080p', type: 'resolution', resolution: '1080p', required: true, negate: false },
-			{
-				name: 'Not Remux',
-				type: 'release_title',
-				pattern: '\\bRemux\\b',
-				required: true,
-				negate: true
-			},
-			{
-				name: 'GECKOS',
-				type: 'release_group',
-				pattern: '^GECKOS$',
-				required: false,
-				negate: false
-			},
-			{ name: 'DRONES', type: 'release_group', pattern: '^DRONES$', required: false, negate: false }
-		]
-	},
-	{
-		id: '1080p-quality-tier-6',
-		name: '1080p Quality Tier 6',
-		description: 'Lower quality 1080p encode groups',
-		category: 'release_group_tier',
-		tags: ['1080p', 'Quality', 'Tier 6'],
-		defaultScore: 0,
-		conditions: [
-			{ name: '1080p', type: 'resolution', resolution: '1080p', required: true, negate: false },
-			{
-				name: 'Not Remux',
-				type: 'release_title',
-				pattern: '\\bRemux\\b',
-				required: true,
-				negate: true
-			},
-			{
-				name: 'SECTOR7',
-				type: 'release_group',
-				pattern: '^SECTOR7$',
-				required: false,
-				negate: false
-			}
-		]
-	}
-];
+	createGroupFormat('YURI', 'Anime group', ['Anime']),
 
-// =============================================================================
-// Efficient Tiers (Best x265/HEVC encodes - size efficient)
-// =============================================================================
-
-/**
- * 1080p Efficient Release Group Tiers (x265)
- */
-export const EFFICIENT_1080P_TIERS: CustomFormat[] = [
-	{
-		id: '1080p-efficient-tier-1',
-		name: '1080p Efficient Tier 1',
-		description: 'Top tier x265 encode groups',
-		category: 'release_group_tier',
-		tags: ['1080p', 'Efficient', 'x265', 'Tier 1'],
-		defaultScore: 0,
-		conditions: [
-			{ name: '1080p', type: 'resolution', resolution: '1080p', required: true, negate: false },
-			{
-				name: 'x265/HEVC',
-				type: 'release_title',
-				pattern: '\\b(x265|HEVC)\\b',
-				required: true,
-				negate: false
-			},
-			{
-				name: 'QxR',
-				type: 'release_group',
-				pattern: '^(QxR|Tigole|RCVR|SAMPA|Silence)$',
-				required: false,
-				negate: false
-			},
-			{ name: 'TAoE', type: 'release_group', pattern: '^TAoE$', required: false, negate: false },
-			{ name: 'NAN0', type: 'release_group', pattern: '^NAN0$', required: false, negate: false }
-		]
-	},
-	{
-		id: '1080p-efficient-tier-2',
-		name: '1080p Efficient Tier 2',
-		description: 'High quality x265 encode groups',
-		category: 'release_group_tier',
-		tags: ['1080p', 'Efficient', 'x265', 'Tier 2'],
-		defaultScore: 0,
-		conditions: [
-			{ name: '1080p', type: 'resolution', resolution: '1080p', required: true, negate: false },
-			{
-				name: 'x265/HEVC',
-				type: 'release_title',
-				pattern: '\\b(x265|HEVC)\\b',
-				required: true,
-				negate: false
-			},
-			{ name: 'DarQ', type: 'release_group', pattern: '^DarQ$', required: false, negate: false },
-			{ name: 'dkore', type: 'release_group', pattern: '^dkore$', required: false, negate: false },
-			{ name: 'Vialle', type: 'release_group', pattern: '^Vialle$', required: false, negate: false }
-		]
-	},
-	{
-		id: '1080p-efficient-tier-3',
-		name: '1080p Efficient Tier 3',
-		description: 'Quality x265 encode groups',
-		category: 'release_group_tier',
-		tags: ['1080p', 'Efficient', 'x265', 'Tier 3'],
-		defaultScore: 0,
-		conditions: [
-			{ name: '1080p', type: 'resolution', resolution: '1080p', required: true, negate: false },
-			{
-				name: 'x265/HEVC',
-				type: 'release_title',
-				pattern: '\\b(x265|HEVC)\\b',
-				required: true,
-				negate: false
-			},
-			{ name: 'GRiMM', type: 'release_group', pattern: '^GRiMM$', required: false, negate: false },
-			{ name: 'LSt', type: 'release_group', pattern: '^LSt$', required: false, negate: false },
-			{ name: 'ToNaTo', type: 'release_group', pattern: '^ToNaTo$', required: false, negate: false }
-		]
-	},
-	{
-		id: '1080p-efficient-tier-4',
-		name: '1080p Efficient Tier 4',
-		description: 'Good x265 encode groups',
-		category: 'release_group_tier',
-		tags: ['1080p', 'Efficient', 'x265', 'Tier 4'],
-		defaultScore: 0,
-		conditions: [
-			{ name: '1080p', type: 'resolution', resolution: '1080p', required: true, negate: false },
-			{
-				name: 'x265/HEVC',
-				type: 'release_title',
-				pattern: '\\b(x265|HEVC)\\b',
-				required: true,
-				negate: false
-			},
-			{
-				name: 'edge2020',
-				type: 'release_group',
-				pattern: '^edge2020$',
-				required: false,
-				negate: false
-			},
-			{
-				name: 'Ralphy',
-				type: 'release_group',
-				pattern: '^Ralphy$',
-				required: false,
-				negate: false
-			},
-			{ name: 'YELLO', type: 'release_group', pattern: '^YELLO$', required: false, negate: false }
-		]
-	},
-	{
-		id: '1080p-efficient-tier-5',
-		name: '1080p Efficient Tier 5',
-		description: 'Acceptable x265 encode groups',
-		category: 'release_group_tier',
-		tags: ['1080p', 'Efficient', 'x265', 'Tier 5'],
-		defaultScore: 0,
-		conditions: [
-			{ name: '1080p', type: 'resolution', resolution: '1080p', required: true, negate: false },
-			{
-				name: 'x265/HEVC',
-				type: 'release_title',
-				pattern: '\\b(x265|HEVC)\\b',
-				required: true,
-				negate: false
-			},
-			{
-				name: 'Vyndros',
-				type: 'release_group',
-				pattern: '^Vyndros$',
-				required: false,
-				negate: false
-			},
-			{ name: 'iVy', type: 'release_group', pattern: '^iVy$', required: false, negate: false }
-		]
-	}
-];
-
-// =============================================================================
-// Remux Tiers
-// =============================================================================
-
-export const REMUX_TIERS: CustomFormat[] = [
-	{
-		id: 'remux-tier-1',
-		name: 'Remux Tier 1',
-		description: 'Top tier remux groups',
-		category: 'release_group_tier',
-		tags: ['Remux', 'Tier 1', 'Lossless'],
-		defaultScore: 0,
-		conditions: [
-			{
-				name: 'Remux',
-				type: 'release_title',
-				pattern: '\\bRemux\\b',
-				required: true,
-				negate: false
-			},
-			{ name: 'Not DVD', type: 'source', source: 'dvd', required: true, negate: true },
-			{ name: '3L', type: 'release_group', pattern: '^3L$', required: false, negate: false },
-			{
-				name: 'BiZKiT',
-				type: 'release_group',
-				pattern: '^BiZKiT$',
-				required: false,
-				negate: false
-			},
-			{
-				name: 'BLURANiUM',
-				type: 'release_group',
-				pattern: '^BLURANiUM$',
-				required: false,
-				negate: false
-			},
-			{
-				name: 'CiNEPHiLES',
-				type: 'release_group',
-				pattern: '^CiNEPHiLES$',
-				required: false,
-				negate: false
-			},
-			{
-				name: 'FraMeSToR',
-				type: 'release_group',
-				pattern: '^FraMeSToR$',
-				required: false,
-				negate: false
-			},
-			{
-				name: 'WiLDCAT',
-				type: 'release_group',
-				pattern: '^WiLDCAT$',
-				required: false,
-				negate: false
-			}
-		]
-	},
-	{
-		id: 'remux-tier-2',
-		name: 'Remux Tier 2',
-		description: 'High quality remux groups',
-		category: 'release_group_tier',
-		tags: ['Remux', 'Tier 2', 'Lossless'],
-		defaultScore: 0,
-		conditions: [
-			{
-				name: 'Remux',
-				type: 'release_title',
-				pattern: '\\bRemux\\b',
-				required: true,
-				negate: false
-			},
-			{ name: 'Not DVD', type: 'source', source: 'dvd', required: true, negate: true },
-			{
-				name: 'EPSiLON',
-				type: 'release_group',
-				pattern: '^EPSiLON$',
-				required: false,
-				negate: false
-			},
-			{
-				name: 'decibeL',
-				type: 'release_group',
-				pattern: '^decibeL$',
-				required: false,
-				negate: false
-			},
-			{ name: 'SiCFoI', type: 'release_group', pattern: '^SiCFoI$', required: false, negate: false }
-		]
-	},
-	{
-		id: 'remux-tier-3',
-		name: 'Remux Tier 3',
-		description: 'Quality remux groups',
-		category: 'release_group_tier',
-		tags: ['Remux', 'Tier 3', 'Lossless'],
-		defaultScore: 0,
-		conditions: [
-			{
-				name: 'Remux',
-				type: 'release_title',
-				pattern: '\\bRemux\\b',
-				required: true,
-				negate: false
-			},
-			{ name: 'Not DVD', type: 'source', source: 'dvd', required: true, negate: true },
-			{ name: 'FLUX', type: 'release_group', pattern: '^FLUX$', required: false, negate: false },
-			{ name: 'playBD', type: 'release_group', pattern: '^playBD$', required: false, negate: false }
-		]
-	}
-];
-
-// =============================================================================
-// WEB-DL Tiers
-// =============================================================================
-
-export const WEBDL_TIERS: CustomFormat[] = [
-	{
-		id: 'webdl-tier-1',
-		name: 'WEB-DL Tier 1',
-		description: 'Top tier WEB-DL groups',
-		category: 'release_group_tier',
-		tags: ['WEB-DL', 'Tier 1'],
-		defaultScore: 0,
-		conditions: [
-			{ name: 'WEB-DL', type: 'source', source: 'webdl', required: true, negate: false },
-			{ name: 'FLUX', type: 'release_group', pattern: '^FLUX$', required: false, negate: false },
-			{ name: 'NTb', type: 'release_group', pattern: '^NTb$', required: false, negate: false },
-			{ name: 'NTG', type: 'release_group', pattern: '^NTG$', required: false, negate: false }
-		]
-	},
-	{
-		id: 'webdl-tier-2',
-		name: 'WEB-DL Tier 2',
-		description: 'High quality WEB-DL groups',
-		category: 'release_group_tier',
-		tags: ['WEB-DL', 'Tier 2'],
-		defaultScore: 0,
-		conditions: [
-			{ name: 'WEB-DL', type: 'source', source: 'webdl', required: true, negate: false },
-			{ name: 'CMRG', type: 'release_group', pattern: '^CMRG$', required: false, negate: false },
-			{ name: 'TEPES', type: 'release_group', pattern: '^TEPES$', required: false, negate: false },
-			{ name: 'SiGMA', type: 'release_group', pattern: '^SiGMA$', required: false, negate: false }
-		]
-	},
-	{
-		id: 'webdl-tier-3',
-		name: 'WEB-DL Tier 3',
-		description: 'Quality WEB-DL groups',
-		category: 'release_group_tier',
-		tags: ['WEB-DL', 'Tier 3'],
-		defaultScore: 0,
-		conditions: [
-			{ name: 'WEB-DL', type: 'source', source: 'webdl', required: true, negate: false },
-			{
-				name: 'PECULATE',
-				type: 'release_group',
-				pattern: '^PECULATE$',
-				required: false,
-				negate: false
-			},
-			{ name: 'SMURF', type: 'release_group', pattern: '^SMURF$', required: false, negate: false }
-		]
-	}
-];
-
-// =============================================================================
-// 720p Quality Tiers
-// =============================================================================
-
-export const QUALITY_720P_TIERS: CustomFormat[] = [
-	{
-		id: '720p-quality-tier-1',
-		name: '720p Quality Tier 1',
-		description: 'Top tier 720p encode groups',
-		category: 'release_group_tier',
-		tags: ['720p', 'Quality', 'Tier 1'],
-		defaultScore: 0,
-		conditions: [
-			{ name: '720p', type: 'resolution', resolution: '720p', required: true, negate: false },
-			{ name: 'DON', type: 'release_group', pattern: '^DON$', required: false, negate: false },
-			{
-				name: 'CtrlHD',
-				type: 'release_group',
-				pattern: '^CtrlHD$',
-				required: false,
-				negate: false
-			},
-			{ name: 'EbP', type: 'release_group', pattern: '^EbP$', required: false, negate: false }
-		]
-	},
-	{
-		id: '720p-quality-tier-2',
-		name: '720p Quality Tier 2',
-		description: 'High quality 720p encode groups',
-		category: 'release_group_tier',
-		tags: ['720p', 'Quality', 'Tier 2'],
-		defaultScore: 0,
-		conditions: [
-			{ name: '720p', type: 'resolution', resolution: '720p', required: true, negate: false },
-			{ name: 'NTb', type: 'release_group', pattern: '^NTb$', required: false, negate: false },
-			{ name: 'HiFi', type: 'release_group', pattern: '^HiFi$', required: false, negate: false }
-		]
-	}
+	// Z
+	createGroupFormat('ZoroSenpai', 'Quality encode group'),
+	createGroupFormat('ZQ', 'Quality 4K encode group'),
+	createGroupFormat('ZR', 'Anime group', ['Anime'])
 ];
 
 /**
- * All release group tier formats
+ * All release group tier formats (for backwards compat with index.ts)
  */
-export const ALL_GROUP_TIER_FORMATS: CustomFormat[] = [
-	...QUALITY_2160P_TIERS,
-	...QUALITY_1080P_TIERS,
-	...EFFICIENT_1080P_TIERS,
-	...REMUX_TIERS,
-	...WEBDL_TIERS,
-	...QUALITY_720P_TIERS
-];
+export const ALL_GROUP_TIER_FORMATS: CustomFormat[] = RELEASE_GROUP_FORMATS;
+
+/**
+ * Get all group names for quick lookup
+ */
+export const RELEASE_GROUP_NAMES = RELEASE_GROUP_FORMATS.map((f) => f.name);
+
+/**
+ * Check if a release group is known
+ */
+export function isKnownGroup(group: string | undefined): boolean {
+	if (!group) return false;
+	return RELEASE_GROUP_NAMES.some((name) => group.toLowerCase() === name.toLowerCase());
+}

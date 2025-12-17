@@ -121,12 +121,7 @@ export class TokenRegistry {
 	/**
 	 * Render a token value
 	 */
-	render(
-		name: string,
-		info: MediaNamingInfo,
-		config: NamingConfig,
-		formatSpec?: string
-	): string {
+	render(name: string, info: MediaNamingInfo, config: NamingConfig, formatSpec?: string): string {
 		const token = this.get(name);
 		if (!token) {
 			return '';

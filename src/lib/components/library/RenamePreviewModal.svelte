@@ -102,9 +102,7 @@
 			if (result.failed > 0) {
 				// Get specific error messages from failed results
 				const failedResults = result.results?.filter((r: { success: boolean }) => !r.success) || [];
-				const errorMessages = failedResults
-					.map((r: { error?: string }) => r.error)
-					.filter(Boolean);
+				const errorMessages = failedResults.map((r: { error?: string }) => r.error).filter(Boolean);
 
 				if (errorMessages.length > 0) {
 					error = `Failed to rename ${result.failed} file(s): ${errorMessages.join(', ')}`;
@@ -159,9 +157,9 @@
 	></div>
 
 	<!-- Modal -->
-	<div class="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+	<div class="pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-4">
 		<div
-			class="bg-base-100 rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col pointer-events-auto"
+			class="pointer-events-auto flex max-h-[80vh] w-full max-w-2xl flex-col rounded-xl bg-base-100 shadow-2xl"
 			onclick={(e) => e.stopPropagation()}
 			onkeydown={(e) => e.stopPropagation()}
 			role="dialog"
@@ -169,7 +167,7 @@
 			aria-labelledby="modal-title"
 		>
 			<!-- Header -->
-			<div class="flex items-center justify-between p-4 border-b border-base-300">
+			<div class="flex items-center justify-between border-b border-base-300 p-4">
 				<div class="flex items-center gap-3">
 					{#if mediaType === 'movie'}
 						<Film class="h-5 w-5 text-primary" />
@@ -181,7 +179,7 @@
 						<p class="text-sm text-base-content/60">{mediaTitle}</p>
 					</div>
 				</div>
-				<button class="btn btn-ghost btn-sm btn-square" onclick={onClose} aria-label="Close">
+				<button class="btn btn-square btn-ghost btn-sm" onclick={onClose} aria-label="Close">
 					<X class="h-5 w-5" />
 				</button>
 			</div>
@@ -193,7 +191,7 @@
 						<RefreshCw class="h-6 w-6 animate-spin text-primary" />
 					</div>
 				{:else if error}
-					<div class="alert alert-error mb-4">
+					<div class="mb-4 alert alert-error">
 						<AlertTriangle class="h-5 w-5" />
 						<span>{error}</span>
 					</div>
@@ -216,12 +214,12 @@
 					</div>
 
 					{#if preview.totalFiles === 0}
-						<div class="text-center py-10 text-base-content/60">
+						<div class="py-10 text-center text-base-content/60">
 							No files found for this {mediaType}.
 						</div>
 					{:else if !hasChanges}
-						<div class="text-center py-10 text-base-content/60">
-							<CheckCircle class="h-8 w-8 mx-auto mb-2 text-success" />
+						<div class="py-10 text-center text-base-content/60">
+							<CheckCircle class="mx-auto mb-2 h-8 w-8 text-success" />
 							All files are already correctly named.
 						</div>
 					{:else}
@@ -235,9 +233,12 @@
 									class:ring-2={item.status === 'will_change' && selectedIds.has(item.fileId)}
 									class:ring-primary={item.status === 'will_change' && selectedIds.has(item.fileId)}
 									onclick={() => item.status === 'will_change' && toggleSelect(item.fileId)}
-									onkeydown={(e) => e.key === 'Enter' && item.status === 'will_change' && toggleSelect(item.fileId)}
+									onkeydown={(e) =>
+										e.key === 'Enter' && item.status === 'will_change' && toggleSelect(item.fileId)}
 									role={item.status === 'will_change' ? 'checkbox' : 'listitem'}
-									aria-checked={item.status === 'will_change' ? selectedIds.has(item.fileId) : undefined}
+									aria-checked={item.status === 'will_change'
+										? selectedIds.has(item.fileId)
+										: undefined}
 									tabindex={item.status === 'will_change' ? 0 : -1}
 								>
 									<div class="card-body p-3">
@@ -245,42 +246,50 @@
 											{#if item.status === 'will_change'}
 												<input
 													type="checkbox"
-													class="checkbox checkbox-primary checkbox-sm mt-1"
+													class="checkbox mt-1 checkbox-sm checkbox-primary"
 													checked={selectedIds.has(item.fileId)}
 													onclick={(e) => e.stopPropagation()}
 													onchange={() => toggleSelect(item.fileId)}
 												/>
 											{/if}
 
-											<div class="flex-1 min-w-0">
+											<div class="min-w-0 flex-1">
 												{#if item.status === 'will_change' || item.status === 'collision'}
-													<div class="text-sm space-y-1">
+													<div class="space-y-1 text-sm">
 														<div class="flex items-center gap-2">
-															<code class="bg-base-300 px-1.5 py-0.5 rounded text-xs text-error break-all">{item.currentRelativePath}</code>
+															<code
+																class="rounded bg-base-300 px-1.5 py-0.5 text-xs break-all text-error"
+																>{item.currentRelativePath}</code
+															>
 														</div>
 														<div class="flex items-center gap-2">
-															<ArrowRight class="h-3 w-3 text-base-content/40 flex-shrink-0" />
-															<code class="bg-base-300 px-1.5 py-0.5 rounded text-xs text-success break-all">{item.newRelativePath}</code>
+															<ArrowRight class="h-3 w-3 flex-shrink-0 text-base-content/40" />
+															<code
+																class="rounded bg-base-300 px-1.5 py-0.5 text-xs break-all text-success"
+																>{item.newRelativePath}</code
+															>
 														</div>
 													</div>
 												{:else}
-													<code class="bg-base-300 px-1.5 py-0.5 rounded text-xs break-all">{item.currentRelativePath}</code>
+													<code class="rounded bg-base-300 px-1.5 py-0.5 text-xs break-all"
+														>{item.currentRelativePath}</code
+													>
 												{/if}
 
 												{#if item.error}
-													<div class="text-xs text-error mt-1">{item.error}</div>
+													<div class="mt-1 text-xs text-error">{item.error}</div>
 												{/if}
 											</div>
 
 											<div class="flex-shrink-0">
 												{#if item.status === 'will_change'}
-													<span class="badge badge-info badge-sm">Change</span>
+													<span class="badge badge-sm badge-info">Change</span>
 												{:else if item.status === 'already_correct'}
-													<span class="badge badge-success badge-sm">Correct</span>
+													<span class="badge badge-sm badge-success">Correct</span>
 												{:else if item.status === 'collision'}
-													<span class="badge badge-warning badge-sm">Collision</span>
+													<span class="badge badge-sm badge-warning">Collision</span>
 												{:else if item.status === 'error'}
-													<span class="badge badge-error badge-sm">Error</span>
+													<span class="badge badge-sm badge-error">Error</span>
 												{/if}
 											</div>
 										</div>
@@ -293,10 +302,10 @@
 			</div>
 
 			<!-- Footer -->
-			<div class="flex items-center justify-between p-4 border-t border-base-300">
+			<div class="flex items-center justify-between border-t border-base-300 p-4">
 				<button class="btn btn-ghost" onclick={onClose}>Cancel</button>
 				<button
-					class="btn btn-primary gap-2"
+					class="btn gap-2 btn-primary"
 					onclick={executeRenames}
 					disabled={executing || selectedIds.size === 0}
 				>

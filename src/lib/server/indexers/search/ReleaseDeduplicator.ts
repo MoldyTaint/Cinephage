@@ -98,15 +98,22 @@ export class ReleaseDeduplicator {
 
 	/**
 	 * Gets the deduplication key for a release.
-	 * Priority: infoHash > normalized title
+	 * Priority: infoHash > streaming guid > normalized title
 	 */
 	private getDedupeKey(release: ReleaseResult): string {
-		// Use infoHash if available (most reliable)
+		// Use infoHash if available (most reliable for torrents)
 		if (release.infoHash) {
 			return `hash:${release.infoHash.toLowerCase()}`;
 		}
 
-		// Fallback to normalized title
+		// For streaming, use guid to create a separate dedup namespace
+		// Streaming GUIDs are already unique per content (e.g., stream-movie-{tmdbId})
+		// This prevents streaming releases from colliding with torrent/usenet releases
+		if (release.protocol === 'streaming') {
+			return `streaming:${release.guid}`;
+		}
+
+		// Fallback to normalized title for torrent/usenet without infoHash
 		return `title:${this.normalizeTitle(release.title)}`;
 	}
 

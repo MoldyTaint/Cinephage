@@ -45,9 +45,7 @@ describe('NamingService', () => {
 				originalExtension: '.mkv'
 			};
 			const result = service.generateMovieFileName(info);
-			expect(result).toBe(
-				'The Dark Knight (2008) [Bluray-1080p][DTS-HD MA][x265]-GROUP.mkv'
-			);
+			expect(result).toBe('The Dark Knight (2008) [Bluray-1080p][DTS-HD MA][x265]-GROUP.mkv');
 		});
 
 		it('should include HDR in movie file name when present', () => {
@@ -161,9 +159,7 @@ describe('NamingService', () => {
 				originalExtension: '.mkv'
 			};
 			const result = service.generateEpisodeFileName(info);
-			expect(result).toBe(
-				'Breaking Bad (2008) - S01E01 - Pilot [Bluray-1080p][x264]-NTb.mkv'
-			);
+			expect(result).toBe('Breaking Bad (2008) - S01E01 - Pilot [Bluray-1080p][x264]-NTb.mkv');
 		});
 
 		it('should generate daily episode file name', () => {

@@ -15,72 +15,83 @@ import {
 import type { MovieContext, EpisodeContext } from './types.js';
 import { RejectionReason } from './types.js';
 
-// Mock getProfile to return test profiles
-vi.mock('$lib/server/scoring/profiles.js', () => ({
-	getProfile: vi.fn((id: string) => {
-		if (id === 'best') {
-			return {
-				id: 'best',
-				name: 'Best',
-				upgradesAllowed: true,
-				minScore: 0,
-				upgradeUntilScore: 15000, // Stop upgrading at 15000 points
-				minScoreIncrement: 100,
-				formatScores: {
-					'2160p-remux': 20000,
-					'2160p-bluray': 15000,
-					'2160p-webdl': 8000,
-					'1080p-remux': 12000,
-					'1080p-bluray': 8000,
-					'1080p-webdl': 4000,
-					'720p-webdl': 1500,
-					'audio-truehd-atmos': 3000
-				}
-			};
+// Test profiles for mocking
+const TEST_PROFILES: Record<string, any> = {
+	best: {
+		id: 'best',
+		name: 'Best',
+		upgradesAllowed: true,
+		minScore: 0,
+		upgradeUntilScore: 15000,
+		minScoreIncrement: 100,
+		formatScores: {
+			'2160p-remux': 20000,
+			'2160p-bluray': 15000,
+			'2160p-webdl': 8000,
+			'1080p-remux': 12000,
+			'1080p-bluray': 8000,
+			'1080p-webdl': 4000,
+			'720p-webdl': 1500,
+			'audio-truehd-atmos': 3000
 		}
-		if (id === 'no-cutoff') {
-			return {
-				id: 'no-cutoff',
-				name: 'No Cutoff',
-				upgradesAllowed: true,
-				minScore: 0,
-				upgradeUntilScore: -1, // No cutoff, upgrade forever
-				minScoreIncrement: 0,
-				formatScores: {
-					'2160p-remux': 20000,
-					'1080p-webdl': 4000
-				}
-			};
+	},
+	'no-cutoff': {
+		id: 'no-cutoff',
+		name: 'No Cutoff',
+		upgradesAllowed: true,
+		minScore: 0,
+		upgradeUntilScore: -1,
+		minScoreIncrement: 0,
+		formatScores: {
+			'2160p-remux': 20000,
+			'1080p-webdl': 4000
 		}
-		if (id === 'no-upgrades') {
-			return {
-				id: 'no-upgrades',
-				name: 'No Upgrades',
-				upgradesAllowed: false,
-				minScore: 0,
-				upgradeUntilScore: 15000,
-				minScoreIncrement: 0,
-				formatScores: {}
-			};
+	},
+	'no-upgrades': {
+		id: 'no-upgrades',
+		name: 'No Upgrades',
+		upgradesAllowed: false,
+		minScore: 0,
+		upgradeUntilScore: 15000,
+		minScoreIncrement: 0,
+		formatScores: {}
+	},
+	'low-cutoff': {
+		id: 'low-cutoff',
+		name: 'Low Cutoff',
+		upgradesAllowed: true,
+		minScore: 0,
+		upgradeUntilScore: 5000,
+		minScoreIncrement: 0,
+		formatScores: {
+			'2160p-remux': 20000,
+			'1080p-bluray': 8000,
+			'1080p-webdl': 4000,
+			'720p-webdl': 1500
 		}
-		if (id === 'low-cutoff') {
-			return {
-				id: 'low-cutoff',
-				name: 'Low Cutoff',
-				upgradesAllowed: true,
-				minScore: 0,
-				upgradeUntilScore: 5000, // Low cutoff
-				minScoreIncrement: 0,
-				formatScores: {
-					'2160p-remux': 20000,
-					'1080p-bluray': 8000,
-					'1080p-webdl': 4000,
-					'720p-webdl': 1500
-				}
-			};
+	},
+	'custom-profile': {
+		id: 'custom-profile',
+		name: 'Custom Profile',
+		upgradesAllowed: true,
+		minScore: 0,
+		upgradeUntilScore: 12000,
+		minScoreIncrement: 100,
+		formatScores: {
+			'2160p-remux': 25000,
+			'2160p-bluray': 18000,
+			'1080p-bluray': 10000,
+			'1080p-webdl': 5000,
+			'720p-webdl': 2000
 		}
-		return null;
-	})
+	}
+};
+
+// Mock qualityFilter.getProfile to return test profiles (handles both built-in and custom)
+vi.mock('$lib/server/quality', () => ({
+	qualityFilter: {
+		getProfile: vi.fn(async (id: string) => TEST_PROFILES[id] ?? null)
+	}
 }));
 
 describe('MovieCutoffUnmetSpecification', () => {
@@ -305,5 +316,53 @@ describe('EpisodeCutoffUnmetSpecification', () => {
 
 		expect(typeof result).toBe('boolean');
 		expect(result).toBe(true);
+	});
+});
+
+describe('Custom Profile Support', () => {
+	let spec: MovieCutoffUnmetSpecification;
+
+	beforeEach(() => {
+		spec = new MovieCutoffUnmetSpecification();
+	});
+
+	it('should work with custom profiles (non-built-in)', async () => {
+		const context: MovieContext = {
+			movie: { id: '1', title: 'Test Movie' } as any,
+			// 720p WebDL should be below the custom profile cutoff of 12000
+			existingFile: { sceneName: 'Test.Movie.2024.720p.WEB-DL-GROUP' } as any,
+			profile: { id: 'custom-profile', upgradesAllowed: true, upgradeUntilScore: 12000 } as any
+		};
+
+		const result = await spec.isSatisfied(context);
+
+		expect(result.accepted).toBe(true);
+	});
+
+	it('should reject when at cutoff with custom profile', async () => {
+		const context: MovieContext = {
+			movie: { id: '1', title: 'Test Movie' } as any,
+			// 2160p BluRay (18000) should be above the custom profile cutoff of 12000
+			existingFile: { sceneName: 'Test.Movie.2024.2160p.UHD.BluRay.x265-GROUP' } as any,
+			profile: { id: 'custom-profile', upgradesAllowed: true, upgradeUntilScore: 12000 } as any
+		};
+
+		const result = await spec.isSatisfied(context);
+
+		expect(result.accepted).toBe(false);
+		expect(result.reason).toBe(RejectionReason.ALREADY_AT_CUTOFF);
+	});
+
+	it('should reject unknown custom profile IDs', async () => {
+		const context: MovieContext = {
+			movie: { id: '1', title: 'Test Movie' } as any,
+			existingFile: { sceneName: 'Test.Movie.2024.1080p.WEB-DL-GROUP' } as any,
+			profile: { id: 'nonexistent-profile', upgradesAllowed: true, upgradeUntilScore: 15000 } as any
+		};
+
+		const result = await spec.isSatisfied(context);
+
+		expect(result.accepted).toBe(false);
+		expect(result.reason).toBe(RejectionReason.NO_PROFILE);
 	});
 });

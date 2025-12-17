@@ -17,7 +17,6 @@ export const PREMIUM_STREAMING_FORMATS: CustomFormat[] = [
 		description: 'Apple TV+ - Known for high bitrate encodes',
 		category: 'streaming',
 		tags: ['Streaming', 'Premium', 'Apple'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'ATVP',
@@ -34,7 +33,6 @@ export const PREMIUM_STREAMING_FORMATS: CustomFormat[] = [
 		description: 'Amazon Prime Video',
 		category: 'streaming',
 		tags: ['Streaming', 'Premium', 'Amazon'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'AMZN',
@@ -51,7 +49,6 @@ export const PREMIUM_STREAMING_FORMATS: CustomFormat[] = [
 		description: 'Netflix',
 		category: 'streaming',
 		tags: ['Streaming', 'Premium', 'Netflix'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'NF',
@@ -68,7 +65,6 @@ export const PREMIUM_STREAMING_FORMATS: CustomFormat[] = [
 		description: 'Disney+',
 		category: 'streaming',
 		tags: ['Streaming', 'Premium', 'Disney'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'DSNP',
@@ -91,7 +87,6 @@ export const HBO_STREAMING_FORMATS: CustomFormat[] = [
 		description: 'HBO Max (legacy)',
 		category: 'streaming',
 		tags: ['Streaming', 'HBO'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'HMAX',
@@ -108,7 +103,6 @@ export const HBO_STREAMING_FORMATS: CustomFormat[] = [
 		description: 'Max (formerly HBO Max)',
 		category: 'streaming',
 		tags: ['Streaming', 'HBO', 'Max'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'MAX',
@@ -138,7 +132,6 @@ export const STANDARD_STREAMING_FORMATS: CustomFormat[] = [
 		description: 'Peacock',
 		category: 'streaming',
 		tags: ['Streaming', 'Peacock'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'PCOK',
@@ -155,7 +148,6 @@ export const STANDARD_STREAMING_FORMATS: CustomFormat[] = [
 		description: 'Paramount+',
 		category: 'streaming',
 		tags: ['Streaming', 'Paramount'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'PMTP',
@@ -172,7 +164,6 @@ export const STANDARD_STREAMING_FORMATS: CustomFormat[] = [
 		description: 'Hulu',
 		category: 'streaming',
 		tags: ['Streaming', 'Hulu'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'HULU',
@@ -189,7 +180,6 @@ export const STANDARD_STREAMING_FORMATS: CustomFormat[] = [
 		description: 'iTunes',
 		category: 'streaming',
 		tags: ['Streaming', 'iTunes', 'Apple'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'iT',
@@ -206,7 +196,6 @@ export const STANDARD_STREAMING_FORMATS: CustomFormat[] = [
 		description: 'Stan (Australian)',
 		category: 'streaming',
 		tags: ['Streaming', 'Stan', 'Australia'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'STAN',
@@ -223,7 +212,6 @@ export const STANDARD_STREAMING_FORMATS: CustomFormat[] = [
 		description: 'Crave (Canadian)',
 		category: 'streaming',
 		tags: ['Streaming', 'Crave', 'Canada'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'CRAV',
@@ -240,7 +228,6 @@ export const STANDARD_STREAMING_FORMATS: CustomFormat[] = [
 		description: 'NOW TV',
 		category: 'streaming',
 		tags: ['Streaming', 'NOW'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'NOW',
@@ -257,7 +244,6 @@ export const STANDARD_STREAMING_FORMATS: CustomFormat[] = [
 		description: 'Showtime',
 		category: 'streaming',
 		tags: ['Streaming', 'Showtime'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'SHO',
@@ -274,12 +260,183 @@ export const STANDARD_STREAMING_FORMATS: CustomFormat[] = [
 		description: 'Roku Channel',
 		category: 'streaming',
 		tags: ['Streaming', 'Roku'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'ROKU',
 				type: 'release_title',
 				pattern: '\\bROKU\\b',
+				required: true,
+				negate: false
+			}
+		]
+	}
+];
+
+/**
+ * Specialty Streaming Services
+ */
+export const SPECIALTY_STREAMING_FORMATS: CustomFormat[] = [
+	{
+		id: 'streaming-mubi',
+		name: 'MUBI',
+		description: 'MUBI - Arthouse/indie film streaming',
+		category: 'streaming',
+		tags: ['Streaming', 'MUBI', 'Arthouse'],
+		conditions: [
+			{
+				name: 'MUBI',
+				type: 'release_title',
+				pattern: '\\bMUBI\\b',
+				required: true,
+				negate: false
+			}
+		]
+	},
+	{
+		id: 'streaming-crit',
+		name: 'CRIT',
+		description: 'Criterion Channel',
+		category: 'streaming',
+		tags: ['Streaming', 'Criterion', 'Arthouse'],
+		conditions: [
+			{
+				name: 'CRIT',
+				type: 'release_title',
+				pattern: '\\b(CRIT|Criterion)\\b',
+				required: true,
+				negate: false
+			}
+		]
+	},
+	{
+		id: 'streaming-ds4k',
+		name: 'DS4K',
+		description: 'Disney 4K (distinct from DSNP)',
+		category: 'streaming',
+		tags: ['Streaming', 'Disney', '4K'],
+		conditions: [
+			{
+				name: 'DS4K',
+				type: 'release_title',
+				pattern: '\\bDS4K\\b',
+				required: true,
+				negate: false
+			}
+		]
+	}
+];
+
+/**
+ * Asian Streaming Services
+ */
+export const ASIAN_STREAMING_FORMATS: CustomFormat[] = [
+	{
+		id: 'streaming-iqiyi',
+		name: 'iQIYI',
+		description: 'iQIYI - Chinese streaming platform',
+		category: 'streaming',
+		tags: ['Streaming', 'iQIYI', 'China'],
+		conditions: [
+			{
+				name: 'iQIYI',
+				type: 'release_title',
+				pattern: '\\b(iQIYI|IQIYI)\\b',
+				required: true,
+				negate: false
+			}
+		]
+	},
+	{
+		id: 'streaming-tving',
+		name: 'TVING',
+		description: 'TVING - Korean streaming platform',
+		category: 'streaming',
+		tags: ['Streaming', 'TVING', 'Korea'],
+		conditions: [
+			{
+				name: 'TVING',
+				type: 'release_title',
+				pattern: '\\bTVING\\b',
+				required: true,
+				negate: false
+			}
+		]
+	},
+	{
+		id: 'streaming-viki',
+		name: 'VIKI',
+		description: 'Viki - Asian drama streaming',
+		category: 'streaming',
+		tags: ['Streaming', 'VIKI', 'Asian'],
+		conditions: [
+			{
+				name: 'VIKI',
+				type: 'release_title',
+				pattern: '\\bVIKI\\b',
+				required: true,
+				negate: false
+			}
+		]
+	},
+	{
+		id: 'streaming-viu',
+		name: 'VIU',
+		description: 'Viu - Asian content streaming',
+		category: 'streaming',
+		tags: ['Streaming', 'VIU', 'Asian'],
+		conditions: [
+			{
+				name: 'VIU',
+				type: 'release_title',
+				pattern: '\\bVIU\\b',
+				required: true,
+				negate: false
+			}
+		]
+	},
+	{
+		id: 'streaming-wavve',
+		name: 'WAVVE',
+		description: 'Wavve - Korean streaming platform',
+		category: 'streaming',
+		tags: ['Streaming', 'WAVVE', 'Korea'],
+		conditions: [
+			{
+				name: 'WAVVE',
+				type: 'release_title',
+				pattern: '\\bWAVVE\\b',
+				required: true,
+				negate: false
+			}
+		]
+	},
+	{
+		id: 'streaming-wetv',
+		name: 'WeTV',
+		description: 'WeTV - Tencent Asian streaming',
+		category: 'streaming',
+		tags: ['Streaming', 'WeTV', 'Asian', 'Tencent'],
+		conditions: [
+			{
+				name: 'WeTV',
+				type: 'release_title',
+				pattern: '\\bWeTV\\b',
+				required: true,
+				negate: false
+			}
+		]
+	},
+	{
+		id: 'streaming-kocowa',
+		name: 'KOCOWA',
+		description: 'KOCOWA - Korean content streaming',
+		category: 'streaming',
+		tags: ['Streaming', 'KOCOWA', 'Korea'],
+		conditions: [
+			{
+				name: 'KOCOWA',
+				type: 'release_title',
+				pattern: '\\b(KOCOWA|KCW)\\b',
 				required: true,
 				negate: false
 			}
@@ -297,7 +454,6 @@ export const INTERNATIONAL_STREAMING_FORMATS: CustomFormat[] = [
 		description: 'Bravia Core (Sony)',
 		category: 'streaming',
 		tags: ['Streaming', 'Sony', 'Premium'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'BCORE',
@@ -314,7 +470,6 @@ export const INTERNATIONAL_STREAMING_FORMATS: CustomFormat[] = [
 		description: 'Movies Anywhere',
 		category: 'streaming',
 		tags: ['Streaming', 'Movies Anywhere'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'MA',
@@ -337,7 +492,6 @@ export const STREAMING_PROTOCOL_FORMAT: CustomFormat = {
 	description: 'Release from CinephageStream indexer - instant playback via .strm files',
 	category: 'streaming',
 	tags: ['Streaming', 'Protocol', 'Instant'],
-	defaultScore: 0, // Set per-profile
 	conditions: [
 		{
 			name: 'Streaming Tag',
@@ -356,6 +510,8 @@ export const ALL_STREAMING_FORMATS: CustomFormat[] = [
 	...PREMIUM_STREAMING_FORMATS,
 	...HBO_STREAMING_FORMATS,
 	...STANDARD_STREAMING_FORMATS,
+	...SPECIALTY_STREAMING_FORMATS,
+	...ASIAN_STREAMING_FORMATS,
 	...INTERNATIONAL_STREAMING_FORMATS,
 	STREAMING_PROTOCOL_FORMAT
 ];

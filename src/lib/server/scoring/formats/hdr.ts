@@ -39,7 +39,6 @@ export const DOLBY_VISION_FORMAT: CustomFormat = {
 		'Dolby Vision HDR with dynamic metadata. Best when combined with HDR10 fallback layer.',
 	category: 'hdr',
 	tags: ['Colour Grade', 'HDR', 'Dolby Vision', 'DV'],
-	defaultScore: 3500,
 	conditions: [
 		{
 			name: 'Dolby Vision',
@@ -70,7 +69,6 @@ export const DOLBY_VISION_NO_FALLBACK_FORMAT: CustomFormat = {
 		'Dolby Vision without HDR10 fallback layer. May have compatibility issues on non-DV devices.',
 	category: 'hdr',
 	tags: ['Colour Grade', 'HDR', 'Dolby Vision', 'DV', 'No Fallback'],
-	defaultScore: 1000, // Lower score due to compatibility concerns
 	conditions: [
 		{
 			name: 'Dolby Vision',
@@ -143,7 +141,6 @@ export const HDR10_PLUS_FORMAT: CustomFormat = {
 	description: 'HDR10+ with dynamic metadata. Scene-by-scene optimization.',
 	category: 'hdr',
 	tags: ['Colour Grade', 'HDR', 'HDR10+', 'Dynamic'],
-	defaultScore: 2500,
 	conditions: [
 		{
 			name: 'HDR10+',
@@ -192,7 +189,6 @@ export const HDR10_FORMAT: CustomFormat = {
 	description: 'HDR10 with static metadata. Universal HDR support.',
 	category: 'hdr',
 	tags: ['Colour Grade', 'HDR', 'HDR10'],
-	defaultScore: 2000,
 	conditions: [
 		{
 			name: 'HDR10',
@@ -248,7 +244,6 @@ export const HDR_GENERIC_FORMAT: CustomFormat = {
 	description: 'Generic HDR (unspecified type). May be HDR10 or other HDR variant.',
 	category: 'hdr',
 	tags: ['Colour Grade', 'HDR'],
-	defaultScore: 1500,
 	conditions: [
 		{
 			name: 'HDR',
@@ -315,7 +310,6 @@ export const HLG_FORMAT: CustomFormat = {
 	description: 'Hybrid Log-Gamma HDR. Broadcast-compatible HDR format.',
 	category: 'hdr',
 	tags: ['Colour Grade', 'HDR', 'HLG', 'Broadcast'],
-	defaultScore: 800,
 	conditions: [
 		{
 			name: 'HLG',
@@ -378,7 +372,6 @@ export const PQ_FORMAT: CustomFormat = {
 	description: 'Perceptual Quantizer HDR transfer function.',
 	category: 'hdr',
 	tags: ['Colour Grade', 'HDR', 'PQ'],
-	defaultScore: 500,
 	conditions: [
 		{
 			name: 'PQ',
@@ -444,7 +437,6 @@ export const SDR_FORMAT: CustomFormat = {
 	description: 'Standard Dynamic Range. Non-HDR content.',
 	category: 'hdr',
 	tags: ['Colour Grade', 'SDR'],
-	defaultScore: 0,
 	conditions: [
 		{
 			name: 'SDR',
@@ -501,7 +493,6 @@ export const HDR_MISSING_FORMAT: CustomFormat = {
 	description: 'DV encode likely has HDR but not labeled. Applies to 1080p DV x265 Bluray encodes.',
 	category: 'hdr',
 	tags: ['Colour Grade', 'HDR', 'Missing'],
-	defaultScore: 1500, // Assume HDR quality
 	conditions: [
 		{
 			name: 'Has Dolby Vision',
@@ -576,7 +567,6 @@ export const HDR10_MISSING_FORMAT: CustomFormat = {
 		'UHD Bluray encode likely has HDR10 but not labeled. Applies to 2160p Bluray x265 encodes only.',
 	category: 'hdr',
 	tags: ['Colour Grade', 'HDR', 'HDR10', 'Missing'],
-	defaultScore: 2000, // Assume HDR10 quality
 	conditions: [
 		{
 			name: 'Is 2160p',

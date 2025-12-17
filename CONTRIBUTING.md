@@ -31,13 +31,7 @@ Want to contribute? Here's how to get set up.
    cp .env.example .env
    ```
 
-4. Run database migrations:
-
-   ```bash
-   npx drizzle-kit push
-   ```
-
-5. Start the development server:
+4. Start the development server:
    ```bash
    npm run dev
    ```
@@ -93,7 +87,6 @@ src/
 ├── test/            # Test setup and utilities
 data/
 ├── indexers/        # Cardigann YAML indexer definitions
-drizzle/             # Database migrations
 ```
 
 ## Svelte 5 Patterns

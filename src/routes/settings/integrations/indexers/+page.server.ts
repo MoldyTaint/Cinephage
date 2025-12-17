@@ -71,10 +71,8 @@ export const load: PageServerLoad = async () => {
 
 export const actions: Actions = {
 	createIndexer: async ({ request }) => {
-		console.log('[createIndexer] Action called');
 		const data = await request.formData();
 		const jsonData = data.get('data');
-		console.log('[createIndexer] jsonData:', jsonData);
 
 		if (!jsonData || typeof jsonData !== 'string') {
 			return fail(400, { indexerError: 'Invalid request data' });

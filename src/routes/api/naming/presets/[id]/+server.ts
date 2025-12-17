@@ -24,10 +24,7 @@ export const GET: RequestHandler = async ({ params }) => {
 		}
 
 		// Check custom presets
-		const [customPreset] = await db
-			.select()
-			.from(namingPresets)
-			.where(eq(namingPresets.id, id));
+		const [customPreset] = await db.select().from(namingPresets).where(eq(namingPresets.id, id));
 
 		if (!customPreset) {
 			return json({ error: 'Preset not found' }, { status: 404 });

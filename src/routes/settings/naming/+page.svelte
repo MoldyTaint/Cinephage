@@ -286,7 +286,7 @@
 			</p>
 		</div>
 		<div class="flex gap-2">
-			<a href="/settings/naming/rename" class="btn btn-ghost gap-2">
+			<a href="/settings/naming/rename" class="btn gap-2 btn-ghost">
 				<FileEdit class="h-4 w-4" />
 				Rename Files
 			</a>
@@ -316,9 +316,9 @@
 	{/if}
 
 	<!-- Options Row -->
-	<div class="card bg-base-200 mb-6">
+	<div class="card mb-6 bg-base-200">
 		<div class="card-body p-4">
-			<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+			<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
 				<!-- Media Server ID Format -->
 				<div class="form-control">
 					<label class="label py-1" for="mediaServerIdFormat">
@@ -375,11 +375,12 @@
 
 	<!-- Custom Presets (collapsed by default) -->
 	{#if customPresets.length > 0 || true}
-		<div class="card bg-base-200 mb-6">
+		<div class="card mb-6 bg-base-200">
 			<div
 				class="card-body cursor-pointer p-4"
 				onclick={() => (customPresetsSectionOpen = !customPresetsSectionOpen)}
-				onkeydown={(e) => e.key === 'Enter' && (customPresetsSectionOpen = !customPresetsSectionOpen)}
+				onkeydown={(e) =>
+					e.key === 'Enter' && (customPresetsSectionOpen = !customPresetsSectionOpen)}
 				role="button"
 				tabindex="0"
 			>
@@ -397,9 +398,9 @@
 			</div>
 			{#if customPresetsSectionOpen}
 				<div class="card-body border-t border-base-300 pt-4 pb-4">
-					<div class="flex items-center gap-4 flex-wrap">
+					<div class="flex flex-wrap items-center gap-4">
 						{#if customPresets.length > 0}
-							<div class="form-control flex-1 min-w-[200px]">
+							<div class="form-control min-w-[200px] flex-1">
 								<select
 									id="customPresetSelect"
 									class="select-bordered select select-sm"
@@ -413,7 +414,7 @@
 								</select>
 							</div>
 							<button
-								class="btn btn-sm btn-primary gap-1"
+								class="btn gap-1 btn-sm btn-primary"
 								onclick={applyCustomPreset}
 								disabled={!selectedPresetId}
 							>
@@ -422,7 +423,7 @@
 							</button>
 							{#if selectedPresetId}
 								<button
-									class="btn btn-sm btn-ghost btn-error gap-1"
+									class="btn gap-1 btn-ghost btn-sm btn-error"
 									onclick={() => {
 										const preset = customPresets.find((p) => p.id === selectedPresetId);
 										if (preset) deletePreset(preset.id, preset.name);
@@ -434,10 +435,7 @@
 						{:else}
 							<p class="text-sm text-base-content/60">No custom presets yet.</p>
 						{/if}
-						<button
-							class="btn btn-sm btn-ghost gap-1"
-							onclick={() => (showSavePresetModal = true)}
-						>
+						<button class="btn gap-1 btn-ghost btn-sm" onclick={() => (showSavePresetModal = true)}>
 							<Plus class="h-4 w-4" />
 							Save Current as Preset
 						</button>
@@ -445,7 +443,7 @@
 					{#if selectedPresetId}
 						{@const selectedPreset = customPresets.find((p) => p.id === selectedPresetId)}
 						{#if selectedPreset?.description}
-							<p class="text-sm text-base-content/70 mt-2">{selectedPreset.description}</p>
+							<p class="mt-2 text-sm text-base-content/70">{selectedPreset.description}</p>
 						{/if}
 					{/if}
 				</div>
@@ -496,7 +494,7 @@
 								bind:value={config.movieFolderFormat}
 							/>
 							{#if previews?.movie?.folder}
-								<div class="mt-1 font-mono text-xs text-success/80 truncate">
+								<div class="mt-1 truncate font-mono text-xs text-success/80">
 									{previews.movie.folder}
 								</div>
 							{/if}
@@ -516,7 +514,7 @@
 								bind:value={config.movieFileFormat}
 							></textarea>
 							{#if previews?.movie?.file}
-								<div class="mt-1 font-mono text-xs text-success/80 break-all">
+								<div class="mt-1 font-mono text-xs break-all text-success/80">
 									{previews.movie.file}
 								</div>
 							{/if}
@@ -565,7 +563,7 @@
 								bind:value={config.seriesFolderFormat}
 							/>
 							{#if previews?.series?.folder}
-								<div class="mt-1 font-mono text-xs text-success/80 truncate">
+								<div class="mt-1 truncate font-mono text-xs text-success/80">
 									{previews.series.folder}
 								</div>
 							{/if}
@@ -588,7 +586,7 @@
 								bind:value={config.seasonFolderFormat}
 							/>
 							{#if previews?.series?.season}
-								<div class="mt-1 font-mono text-xs text-success/80 truncate">
+								<div class="mt-1 truncate font-mono text-xs text-success/80">
 									{previews.series.season}
 								</div>
 							{/if}
@@ -611,7 +609,7 @@
 								bind:value={config.episodeFileFormat}
 							></textarea>
 							{#if previews?.episode?.file}
-								<div class="mt-1 font-mono text-xs text-success/80 break-all">
+								<div class="mt-1 font-mono text-xs break-all text-success/80">
 									{previews.episode.file}
 								</div>
 							{/if}
@@ -634,7 +632,7 @@
 								bind:value={config.dailyEpisodeFormat}
 							></textarea>
 							{#if previews?.daily?.file}
-								<div class="mt-1 font-mono text-xs text-success/80 break-all">
+								<div class="mt-1 font-mono text-xs break-all text-success/80">
 									{previews.daily.file}
 								</div>
 							{/if}
@@ -657,7 +655,7 @@
 								bind:value={config.animeEpisodeFormat}
 							></textarea>
 							{#if previews?.anime?.file}
-								<div class="mt-1 font-mono text-xs text-success/80 break-all">
+								<div class="mt-1 font-mono text-xs break-all text-success/80">
 									{previews.anime.file}
 								</div>
 							{/if}
@@ -823,9 +821,9 @@
 
 <!-- Save Preset Modal -->
 {#if showSavePresetModal}
-	<div class="modal modal-open">
+	<div class="modal-open modal">
 		<div class="modal-box">
-			<h3 class="font-bold text-lg mb-4">Save Current Settings as Preset</h3>
+			<h3 class="mb-4 text-lg font-bold">Save Current Settings as Preset</h3>
 			<div class="form-control mb-4">
 				<label class="label" for="newPresetName">
 					<span class="label-text">Preset Name</span>
@@ -833,7 +831,7 @@
 				<input
 					id="newPresetName"
 					type="text"
-					class="input input-bordered"
+					class="input-bordered input"
 					placeholder="My Custom Preset"
 					bind:value={newPresetName}
 				/>
@@ -844,7 +842,7 @@
 				</label>
 				<textarea
 					id="newPresetDescription"
-					class="textarea textarea-bordered"
+					class="textarea-bordered textarea"
 					placeholder="Description of this preset..."
 					bind:value={newPresetDescription}
 				></textarea>
@@ -866,7 +864,7 @@
 					disabled={!newPresetName.trim() || savingPreset}
 				>
 					{#if savingPreset}
-						<RefreshCw class="h-4 w-4 animate-spin mr-2" />
+						<RefreshCw class="mr-2 h-4 w-4 animate-spin" />
 						Saving...
 					{:else}
 						Save Preset

@@ -52,6 +52,8 @@ export interface SearchOrchestratorOptions {
 	useCache?: boolean;
 	/** Enrichment options for quality filtering and TMDB matching */
 	enrichment?: EnrichmentOptions;
+	/** Filter indexers by protocol (from scoring profile's allowedProtocols) */
+	protocolFilter?: string[];
 }
 
 /** Enhanced search result with enriched releases */
@@ -80,13 +82,16 @@ export interface EnhancedSearchResult {
 
 /** Resolved options after merging with defaults */
 type ResolvedSearchOptions = Required<
-	Omit<SearchOrchestratorOptions, 'enrichment' | 'searchSource'>
+	Omit<SearchOrchestratorOptions, 'enrichment' | 'searchSource' | 'protocolFilter'>
 > & {
 	enrichment?: EnrichmentOptions;
 	searchSource?: 'interactive' | 'automatic';
+	protocolFilter?: string[];
 };
 
-const DEFAULT_OPTIONS: Required<Omit<SearchOrchestratorOptions, 'enrichment' | 'searchSource'>> = {
+const DEFAULT_OPTIONS: Required<
+	Omit<SearchOrchestratorOptions, 'enrichment' | 'searchSource' | 'protocolFilter'>
+> = {
 	respectEnabled: true,
 	respectBackoff: true,
 	useTieredSearch: true,
@@ -471,6 +476,24 @@ export class SearchOrchestrator {
 				continue;
 			}
 
+			// Check protocol filter (from scoring profile's allowedProtocols)
+			if (options.protocolFilter && options.protocolFilter.length > 0) {
+				if (!options.protocolFilter.includes(indexer.protocol)) {
+					rejected.push({
+						indexerId: indexer.id,
+						indexerName: indexer.name,
+						reason: 'protocol',
+						message: `Protocol '${indexer.protocol}' not in allowed protocols: ${options.protocolFilter.join(', ')}`
+					});
+					logger.debug(`Indexer ${indexer.name} rejected: protocol not allowed`, {
+						indexerId: indexer.id,
+						protocol: indexer.protocol,
+						allowedProtocols: options.protocolFilter
+					});
+					continue;
+				}
+			}
+
 			logger.debug(`Indexer ${indexer.name} eligible for search`, {
 				indexerId: indexer.id
 			});
@@ -499,6 +522,7 @@ export class SearchOrchestrator {
 				rejectedByDisabled: rejectedByReason.disabled,
 				rejectedByBackoff: rejectedByReason.backoff,
 				rejectedByFilter: rejectedByReason.indexerFilter,
+				rejectedByProtocol: rejectedByReason.protocol,
 				eligibleIndexers: eligible.map((i) => i.name)
 			});
 		}

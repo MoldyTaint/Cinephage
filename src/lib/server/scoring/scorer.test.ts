@@ -4,7 +4,7 @@ import { DEFAULT_PROFILES } from './profiles';
 import type { ScoringProfile } from './types';
 
 // Profiles that support torrent-based release scoring (excludes streaming-only)
-const TORRENT_PROFILES = DEFAULT_PROFILES.filter((p) => p.id !== 'streaming');
+const TORRENT_PROFILES = DEFAULT_PROFILES.filter((p) => p.id !== 'streamer');
 
 /**
  * Comprehensive tests for the scoring/upgrade system.
@@ -128,9 +128,9 @@ describe('Scoring System - All Profiles', () => {
 				const score1080p = scoreRelease(TEST_RELEASES['1080p-webdl'], profile);
 
 				// Most profiles prefer 4K over 1080p
-				// But MICRO prefers smaller files, so 1080p > 4K
-				if (profile.name === 'Micro') {
-					// Micro profile: 1080p scores higher than 4K
+				// But Compact prefers smaller files, so 1080p > 4K
+				if (profile.name === 'Compact') {
+					// Compact profile: 1080p scores higher than 4K
 					expect(score1080p.breakdown.resolution.score).toBeGreaterThan(
 						score4k.breakdown.resolution.score
 					);
@@ -181,7 +181,7 @@ describe('Upgrade Detection - Torrent Profiles', () => {
 				const result = isUpgrade(TEST_RELEASES['1080p-webdl'], TEST_RELEASES['4k-webdl'], profile);
 				// Whether this is an upgrade depends on the profile
 				// ALL profiles now consider 4K HEVC WEB-DL as good or better than 1080p
-				// Even Micro: 4K HEVC WEB-DL is efficient and acceptable
+				// Even Compact: 4K HEVC WEB-DL is efficient and acceptable
 				expect(result.isUpgrade).toBe(true);
 				expect(result.improvement).toBeGreaterThan(0);
 			});
@@ -295,24 +295,24 @@ describe('Edge Cases - All Profiles', () => {
 
 describe('Profile-Specific Behavior', () => {
 	it('should have different scoring strategies across profiles', () => {
-		const bestProfile = DEFAULT_PROFILES.find((p) => p.name === 'Best');
-		const microProfile = DEFAULT_PROFILES.find((p) => p.name === 'Micro');
+		const qualityProfile = DEFAULT_PROFILES.find((p) => p.name === 'Quality');
+		const compactProfile = DEFAULT_PROFILES.find((p) => p.name === 'Compact');
 
-		expect(bestProfile).toBeDefined();
-		expect(microProfile).toBeDefined();
+		expect(qualityProfile).toBeDefined();
+		expect(compactProfile).toBeDefined();
 
-		if (bestProfile && microProfile) {
-			// YTS gets +5000 in MICRO, -5000 in BEST
+		if (qualityProfile && compactProfile) {
+			// YTS is valued more in Compact profile than Quality profile
 			// This tests the formatScores differ between profiles
-			const ytsInBest = scoreRelease(TEST_RELEASES['yts-1080p'], bestProfile);
-			const ytsInMicro = scoreRelease(TEST_RELEASES['yts-1080p'], microProfile);
+			const ytsInQuality = scoreRelease(TEST_RELEASES['yts-1080p'], qualityProfile);
+			const ytsInCompact = scoreRelease(TEST_RELEASES['yts-1080p'], compactProfile);
 
 			// Both NOT banned
-			expect(ytsInBest.isBanned).toBe(false);
-			expect(ytsInMicro.isBanned).toBe(false);
+			expect(ytsInQuality.isBanned).toBe(false);
+			expect(ytsInCompact.isBanned).toBe(false);
 
 			// But different total scores
-			expect(ytsInMicro.totalScore).toBeGreaterThan(ytsInBest.totalScore);
+			expect(ytsInCompact.totalScore).toBeGreaterThan(ytsInQuality.totalScore);
 		}
 	});
 
@@ -328,13 +328,14 @@ describe('Profile-Specific Behavior', () => {
 		});
 	});
 
-	it('all 3 default profiles should exist', () => {
-		expect(DEFAULT_PROFILES.length).toBeGreaterThanOrEqual(3);
+	it('all 4 default profiles should exist', () => {
+		expect(DEFAULT_PROFILES.length).toBeGreaterThanOrEqual(4);
 
 		const profileNames = DEFAULT_PROFILES.map((p) => p.name);
-		expect(profileNames).toContain('Best');
-		expect(profileNames).toContain('Efficient');
-		expect(profileNames).toContain('Micro');
+		expect(profileNames).toContain('Quality');
+		expect(profileNames).toContain('Balanced');
+		expect(profileNames).toContain('Compact');
+		expect(profileNames).toContain('Streamer');
 	});
 });
 
@@ -399,5 +400,222 @@ describe('Size Validation - All Profiles', () => {
 			// This allows the release through - user can evaluate size manually
 			expect(result.sizeRejected).toBe(false);
 		});
+	});
+});
+
+describe('Protocol Restrictions', () => {
+	// Create a test profile with explicit protocol restrictions
+	function createTestProfile(
+		allowedProtocols: ('torrent' | 'usenet' | 'streaming')[]
+	): ScoringProfile {
+		const balanced = DEFAULT_PROFILES.find((p) => p.name === 'Balanced')!;
+		return {
+			id: 'test-protocol-profile',
+			name: 'Test Protocol Profile',
+			description: balanced.description,
+			upgradesAllowed: balanced.upgradesAllowed,
+			minScore: balanced.minScore,
+			upgradeUntilScore: balanced.upgradeUntilScore,
+			minScoreIncrement: balanced.minScoreIncrement,
+			formatScores: balanced.formatScores,
+			allowedProtocols
+		};
+	}
+
+	it('should reject torrent when profile only allows usenet', () => {
+		const usenetOnlyProfile = createTestProfile(['usenet']);
+
+		// Note: protocol is the 6th parameter: (releaseName, profile, attributes, fileSizeBytes, sizeContext, protocol)
+		const result = scoreRelease(
+			TEST_RELEASES['1080p-bluray'],
+			usenetOnlyProfile,
+			undefined, // attributes
+			undefined, // fileSizeBytes
+			undefined, // sizeContext
+			'torrent' // protocol
+		);
+
+		expect(result.protocolRejected).toBe(true);
+		expect(result.protocolRejectionReason).toContain('torrent');
+		expect(result.protocolRejectionReason).toContain('usenet');
+	});
+
+	it('should accept usenet when profile allows usenet', () => {
+		const usenetOnlyProfile = createTestProfile(['usenet']);
+
+		const result = scoreRelease(
+			TEST_RELEASES['1080p-bluray'],
+			usenetOnlyProfile,
+			undefined,
+			undefined,
+			undefined,
+			'usenet'
+		);
+
+		expect(result.protocolRejected).toBe(false);
+		expect(result.protocolRejectionReason).toBeUndefined();
+	});
+
+	it('should accept any protocol when no restriction is set', () => {
+		// Default profiles don't have allowedProtocols set
+		const noRestrictionProfile = DEFAULT_PROFILES.find((p) => p.name === 'Balanced')!;
+
+		const torrentResult = scoreRelease(
+			TEST_RELEASES['1080p-bluray'],
+			noRestrictionProfile,
+			undefined,
+			undefined,
+			undefined,
+			'torrent'
+		);
+		const usenetResult = scoreRelease(
+			TEST_RELEASES['1080p-bluray'],
+			noRestrictionProfile,
+			undefined,
+			undefined,
+			undefined,
+			'usenet'
+		);
+
+		expect(torrentResult.protocolRejected).toBe(false);
+		expect(usenetResult.protocolRejected).toBe(false);
+	});
+
+	it('should accept streaming protocol when profile allows streaming', () => {
+		const streamingProfile = createTestProfile(['streaming']);
+
+		const result = scoreRelease(
+			TEST_RELEASES['1080p-webdl'],
+			streamingProfile,
+			undefined,
+			undefined,
+			undefined,
+			'streaming'
+		);
+
+		expect(result.protocolRejected).toBe(false);
+	});
+
+	it('should reject streaming when profile only allows torrent and usenet', () => {
+		const downloadOnlyProfile = createTestProfile(['torrent', 'usenet']);
+
+		const result = scoreRelease(
+			TEST_RELEASES['1080p-webdl'],
+			downloadOnlyProfile,
+			undefined,
+			undefined,
+			undefined,
+			'streaming'
+		);
+
+		expect(result.protocolRejected).toBe(true);
+	});
+
+	it('protocol-rejected releases should not meet minimum requirements', () => {
+		const usenetOnlyProfile = createTestProfile(['usenet']);
+
+		const result = scoreRelease(
+			TEST_RELEASES['1080p-bluray'],
+			usenetOnlyProfile,
+			undefined,
+			undefined,
+			undefined,
+			'torrent'
+		);
+
+		expect(result.protocolRejected).toBe(true);
+		expect(result.meetsMinimum).toBe(false);
+	});
+});
+
+describe('Season Pack and Episode Scoring', () => {
+	// Note: Pack preference bonuses (complete series, multi-season, single season)
+	// are defined in types.ts but not currently applied in scorer.ts.
+	// These tests verify the current scoring behavior.
+
+	describe.each(TORRENT_PROFILES)('Profile: $name', (profile: ScoringProfile) => {
+		it('should score TV releases consistently', () => {
+			const regularEpisode = scoreRelease(
+				'Show.S01E01.1080p.WEB-DL.x264-GROUP',
+				profile,
+				undefined,
+				undefined,
+				{ mediaType: 'tv', isSeasonPack: false }
+			);
+
+			const seasonPack = scoreRelease(
+				'Show.S01.1080p.WEB-DL.x264-GROUP',
+				profile,
+				undefined,
+				undefined,
+				{ mediaType: 'tv', isSeasonPack: true }
+			);
+
+			// Both should be valid scored releases
+			expect(regularEpisode.isBanned).toBe(false);
+			expect(seasonPack.isBanned).toBe(false);
+			expect(regularEpisode.totalScore).toBeGreaterThan(0);
+			expect(seasonPack.totalScore).toBeGreaterThan(0);
+		});
+
+		it('should score individual episodes consistently', () => {
+			const episode1 = scoreRelease(
+				'Show.S01E01.1080p.WEB-DL.x264-GROUP',
+				profile,
+				undefined,
+				undefined,
+				{ mediaType: 'tv', isSeasonPack: false }
+			);
+
+			const episode2 = scoreRelease(
+				'Show.S01E02.1080p.WEB-DL.x264-GROUP',
+				profile,
+				undefined,
+				undefined,
+				{ mediaType: 'tv', isSeasonPack: false }
+			);
+
+			// Individual episodes with same quality should have identical scores
+			expect(episode1.totalScore).toBe(episode2.totalScore);
+		});
+
+		it('should handle season pack size context for validation', () => {
+			// Season pack with valid size should not be rejected for size
+			const result = scoreRelease(
+				'Show.S01.1080p.WEB-DL.x264-GROUP',
+				profile,
+				undefined,
+				5 * 1024 * 1024 * 1024, // 5GB total
+				{ mediaType: 'tv', isSeasonPack: true, episodeCount: 10 } // 500MB per episode
+			);
+
+			expect(result).toBeDefined();
+			// Size validation uses per-episode calculation for season packs
+			expect(typeof result.sizeRejected).toBe('boolean');
+		});
+	});
+
+	it('should score same quality releases equally regardless of pack type', () => {
+		const profile = DEFAULT_PROFILES.find((p) => p.name === 'Balanced')!;
+
+		const singleEpisode = scoreRelease(
+			'Show.S01E01.1080p.WEB-DL.x264-GROUP',
+			profile,
+			undefined,
+			undefined,
+			{ mediaType: 'tv', isSeasonPack: false }
+		);
+
+		const seasonPack = scoreRelease(
+			'Show.S01.1080p.WEB-DL.x264-GROUP',
+			profile,
+			undefined,
+			undefined,
+			{ mediaType: 'tv', isSeasonPack: true }
+		);
+
+		// Current implementation: same quality = same score
+		// (Pack bonuses are not applied in current scorer implementation)
+		expect(singleEpisode.totalScore).toBe(seasonPack.totalScore);
 	});
 });

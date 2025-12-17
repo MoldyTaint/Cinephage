@@ -833,10 +833,58 @@
 								</label>
 							</div>
 						{/if}
+
+						<!-- Movie-specific: Monitored Toggle -->
+						<div class="form-control">
+							<label class="label cursor-pointer justify-start gap-4">
+								<input type="checkbox" class="toggle toggle-primary" bind:checked={monitored} />
+								<div>
+									<span class="label-text flex items-center gap-2 font-medium">
+										<Eye class="h-4 w-4" />
+										Monitored
+									</span>
+									<span class="label-text-alt text-base-content/60">
+										{monitored
+											? 'Will search for releases and upgrades automatically'
+											: 'Will not search for releases automatically'}
+									</span>
+								</div>
+							</label>
+						</div>
 					{/if}
 
-					<!-- TV-specific: Monitor Type -->
+					<!-- TV-specific options -->
 					{#if mediaType === 'tv'}
+						<!-- Monitored Toggle -->
+						<div class="form-control">
+							<label class="label cursor-pointer justify-start gap-4">
+								<input
+									type="checkbox"
+									class="toggle toggle-primary"
+									checked={monitorType !== 'none'}
+									onchange={(e) => {
+										if (!e.currentTarget.checked) {
+											monitorType = 'none';
+										} else {
+											monitorType = 'all';
+										}
+									}}
+								/>
+								<div>
+									<span class="label-text flex items-center gap-2 font-medium">
+										<Eye class="h-4 w-4" />
+										Monitored
+									</span>
+									<span class="label-text-alt text-base-content/60">
+										{monitorType !== 'none'
+											? 'Will search for releases and upgrades automatically'
+											: 'Will not search for releases automatically'}
+									</span>
+								</div>
+							</label>
+						</div>
+
+						<!-- Monitor Type -->
 						<div class="form-control">
 							<label class="label" for="monitor-type">
 								<span class="label-text flex items-center gap-2 font-medium">

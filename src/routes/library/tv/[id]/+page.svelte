@@ -1,6 +1,11 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import { LibrarySeriesHeader, SeasonAccordion, SeriesEditModal, RenamePreviewModal } from '$lib/components/library';
+	import {
+		LibrarySeriesHeader,
+		SeasonAccordion,
+		SeriesEditModal,
+		RenamePreviewModal
+	} from '$lib/components/library';
 	import { TVSeriesSidebar, BulkActionBar } from '$lib/components/library/tv';
 	import { InteractiveSearchModal } from '$lib/components/search';
 	import { SubtitleSearchModal } from '$lib/components/subtitles';
@@ -722,7 +727,7 @@
 				<h2 class="text-lg font-semibold">Seasons</h2>
 				<div class="flex gap-1">
 					<button
-						class="btn btn-ghost btn-sm gap-1"
+						class="btn gap-1 btn-ghost btn-sm"
 						onclick={() => (isRenameModalOpen = true)}
 						title="Rename files"
 					>

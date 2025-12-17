@@ -83,9 +83,9 @@ This guide covers common issues and their solutions when using Cinephage.
 
 2. Kill the conflicting process or change the port in `.env`
 
-3. Verify database is initialized:
+3. Verify database is initialized (database is created automatically on startup):
    ```bash
-   npm run db:push
+   npm run dev
    ```
 
 ---
@@ -132,29 +132,21 @@ This guide covers common issues and their solutions when using Cinephage.
 
 3. If no backup, reset the database:
    ```bash
-   rm data/cinephage.db
-   npm run db:push
+   npm run db:reset
+   npm run dev  # Recreates database on startup
    ```
    Note: This will lose all data.
 
-### Migration errors
+### Schema sync errors
 
-**Symptoms**: Errors during `npm run db:push`
+**Symptoms**: Errors during database schema sync on startup
 
 **Solutions**:
 
-1. Check for schema conflicts:
-
-   ```bash
-   npm run db:generate
-   ```
-
-2. Review generated migrations in `drizzle/`
-
-3. For major issues, backup data and reset:
+1. For database issues, backup data and reset:
    ```bash
    mv data/cinephage.db data/cinephage.db.old
-   npm run db:push
+   npm run dev  # Creates fresh database
    ```
 
 ---
@@ -544,10 +536,7 @@ For additional debugging information:
 
 1. Check browser developer console (F12)
 2. Review server logs in real-time
-3. Use Drizzle Studio to inspect database:
-   ```bash
-   npm run db:studio
-   ```
+3. Use a SQLite browser to inspect the database at `data/cinephage.db`
 
 ---
 

@@ -16,8 +16,9 @@ import { logger } from '$lib/logging';
 /**
  * Current schema version - increment when adding schema changes
  * Version 1: Initial complete schema
+ * Version 2: Added profile_size_limits, custom_formats, naming_presets tables
  */
-export const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 2;
 
 /**
  * All table definitions with CREATE TABLE IF NOT EXISTS
@@ -84,7 +85,6 @@ const TABLE_DEFINITIONS: string[] = [
 		"id" text PRIMARY KEY NOT NULL,
 		"name" text NOT NULL,
 		"description" text,
-		"base_profile_id" text,
 		"tags" text,
 		"upgrades_allowed" integer DEFAULT true,
 		"min_score" integer DEFAULT 0,
@@ -98,6 +98,28 @@ const TABLE_DEFINITIONS: string[] = [
 		"movie_max_size_gb" text,
 		"episode_min_size_mb" text,
 		"episode_max_size_mb" text,
+		"created_at" text,
+		"updated_at" text
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS "profile_size_limits" (
+		"profile_id" text PRIMARY KEY NOT NULL,
+		"movie_min_size_gb" real,
+		"movie_max_size_gb" real,
+		"episode_min_size_mb" real,
+		"episode_max_size_mb" real,
+		"is_default" integer DEFAULT false,
+		"updated_at" text
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS "custom_formats" (
+		"id" text PRIMARY KEY NOT NULL,
+		"name" text NOT NULL,
+		"description" text,
+		"category" text NOT NULL DEFAULT 'other',
+		"tags" text,
+		"conditions" text,
+		"enabled" integer DEFAULT true,
 		"created_at" text,
 		"updated_at" text
 	)`,
@@ -201,6 +223,15 @@ const TABLE_DEFINITIONS: string[] = [
 	`CREATE TABLE IF NOT EXISTS "naming_settings" (
 		"key" text PRIMARY KEY NOT NULL,
 		"value" text NOT NULL
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS "naming_presets" (
+		"id" text PRIMARY KEY NOT NULL,
+		"name" text NOT NULL,
+		"description" text,
+		"config" text NOT NULL,
+		"is_built_in" integer DEFAULT false,
+		"created_at" integer
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS "monitoring_settings" (
@@ -701,10 +732,51 @@ const INDEX_DEFINITIONS: string[] = [
  */
 const SCHEMA_UPDATES: Record<number, (sqlite: Database.Database) => void> = {
 	// Version 1 is the initial schema - handled by TABLE_DEFINITIONS
-	// Future updates go here:
-	// 2: (sqlite) => {
-	//   sqlite.prepare(`ALTER TABLE movies ADD COLUMN new_field TEXT`).run();
-	// },
+	// Version 2: Add missing tables that were defined in schema.ts but not in schema-sync.ts
+	2: (sqlite) => {
+		sqlite
+			.prepare(
+				`CREATE TABLE IF NOT EXISTS "profile_size_limits" (
+			"profile_id" text PRIMARY KEY NOT NULL,
+			"movie_min_size_gb" real,
+			"movie_max_size_gb" real,
+			"episode_min_size_mb" real,
+			"episode_max_size_mb" real,
+			"is_default" integer DEFAULT false,
+			"updated_at" text
+		)`
+			)
+			.run();
+
+		sqlite
+			.prepare(
+				`CREATE TABLE IF NOT EXISTS "custom_formats" (
+			"id" text PRIMARY KEY NOT NULL,
+			"name" text NOT NULL,
+			"description" text,
+			"category" text NOT NULL DEFAULT 'other',
+			"tags" text,
+			"conditions" text,
+			"enabled" integer DEFAULT true,
+			"created_at" text,
+			"updated_at" text
+		)`
+			)
+			.run();
+
+		sqlite
+			.prepare(
+				`CREATE TABLE IF NOT EXISTS "naming_presets" (
+			"id" text PRIMARY KEY NOT NULL,
+			"name" text NOT NULL,
+			"description" text,
+			"config" text NOT NULL,
+			"is_built_in" integer DEFAULT false,
+			"created_at" integer
+		)`
+			)
+			.run();
+	}
 };
 
 /**
@@ -727,9 +799,7 @@ function getSchemaVersion(sqlite: Database.Database): number {
  */
 function setSchemaVersion(sqlite: Database.Database, version: number): void {
 	sqlite
-		.prepare(
-			`INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_version', ?)`
-		)
+		.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_version', ?)`)
 		.run(version.toString());
 }
 

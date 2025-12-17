@@ -8,42 +8,45 @@ Cinephage uses a scoring system to evaluate and compare torrent releases, helpin
 
 Four profiles cover common use cases:
 
-| Profile       | Focus                           | Use Case                               |
-| ------------- | ------------------------------- | -------------------------------------- |
-| **Best**      | Maximum quality                 | Remux, lossless audio, quality purists |
-| **Efficient** | Quality with efficient encoding | x265/HEVC from quality groups          |
-| **Micro**     | Quality-focused micro encodes   | Small files, good quality              |
-| **Streaming** | Instant availability            | Stream providers, auto-upgradeable     |
+| Profile      | Focus                           | Use Case                               |
+| ------------ | ------------------------------- | -------------------------------------- |
+| **Quality**  | Maximum quality                 | Remux, lossless audio, quality purists |
+| **Balanced** | Quality with efficient encoding | x265/AV1 from quality groups           |
+| **Compact**  | Small files, decent quality     | Micro encodes, limited storage         |
+| **Streamer** | Streaming only                  | .strm files, instant playback          |
 
-### Best Profile
+### Quality Profile
 
 - Prioritizes highest quality regardless of file size
 - Prefers Remux, then BluRay encodes
 - Values lossless audio (TrueHD, DTS-HD MA)
 - Prefers HDR formats (Dolby Vision, HDR10+)
 - Uses top-tier release groups
+- Continuously upgrades until hitting the best possible
 
-### Efficient Profile
+### Balanced Profile
 
-- Balances quality with file size
-- Prefers x265/HEVC encoding
-- Accepts lossy but high-quality audio (DTS, Atmos)
-- Values efficient encoding from quality groups
-- Good for limited storage with quality priority
+- High quality with efficient encoding
+- Prefers x265/HEVC and AV1 codecs
+- Values quality encoding groups
+- Good balance of quality and file size
+- Suitable for limited storage with quality priority
 
-### Micro Profile
+### Compact Profile
 
-- Quality-focused with smaller file sizes
-- Prefers top micro-encode groups (Tigole, QxR)
+- Small files with decent quality
+- Prefers efficient micro-encode groups
 - Accepts standard audio codecs
-- Good balance for moderate storage
+- Lowest minScore threshold (-5000) for flexibility
+- Ideal for limited storage or bandwidth
 
-### Streaming Profile
+### Streamer Profile
 
-- Instant availability via stream providers
-- Auto-upgradeable to torrent when available
-- Multiple streaming sources
-- Mobile and quick-access scenarios
+- Streaming-only via .strm files
+- Instant playback with no downloads
+- No upgrades (streams don't upgrade)
+- Only uses streaming protocol
+- Ideal for cloud-based media consumption
 
 ---
 
@@ -109,7 +112,7 @@ Releases are scored based on multiple factors. Higher scores indicate better qua
 
 > **Work in Progress**: Custom profiles are under active development and not fully tested. Use with caution.
 
-The UI in Settings > Profiles allows basic profile creation, but this feature is incomplete. The 4 built-in profiles (Best, Efficient, Micro, Streaming) are the recommended option for now.
+The UI in Settings > Profiles allows basic profile creation, but this feature is incomplete. The 4 built-in profiles (Quality, Balanced, Compact, Streamer) are the recommended option for now.
 
 ---
 

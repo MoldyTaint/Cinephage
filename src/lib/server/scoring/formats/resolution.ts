@@ -17,7 +17,6 @@ export const RESOLUTION_2160P_FORMATS: CustomFormat[] = [
 		description: '4K Remux - Lossless extraction from UHD Blu-ray',
 		category: 'resolution',
 		tags: ['2160p', '4K', 'Remux', 'Lossless'],
-		defaultScore: 0,
 		conditions: [
 			{ name: '2160p', type: 'resolution', resolution: '2160p', required: true, negate: false },
 			{
@@ -35,7 +34,6 @@ export const RESOLUTION_2160P_FORMATS: CustomFormat[] = [
 		description: '4K Blu-ray encode (not remux)',
 		category: 'resolution',
 		tags: ['2160p', '4K', 'Bluray', 'Encode'],
-		defaultScore: 0,
 		conditions: [
 			{ name: '2160p', type: 'resolution', resolution: '2160p', required: true, negate: false },
 			{ name: 'Bluray', type: 'source', source: 'bluray', required: true, negate: false },
@@ -54,7 +52,6 @@ export const RESOLUTION_2160P_FORMATS: CustomFormat[] = [
 		description: '4K WEB-DL from streaming services',
 		category: 'resolution',
 		tags: ['2160p', '4K', 'WEB-DL', 'Streaming'],
-		defaultScore: 0,
 		conditions: [
 			{ name: '2160p', type: 'resolution', resolution: '2160p', required: true, negate: false },
 			{ name: 'WEB-DL', type: 'source', source: 'webdl', required: true, negate: false }
@@ -66,7 +63,6 @@ export const RESOLUTION_2160P_FORMATS: CustomFormat[] = [
 		description: '4K WEBRip (re-encoded from streaming)',
 		category: 'resolution',
 		tags: ['2160p', '4K', 'WEBRip'],
-		defaultScore: 0,
 		conditions: [
 			{ name: '2160p', type: 'resolution', resolution: '2160p', required: true, negate: false },
 			{ name: 'WEBRip', type: 'source', source: 'webrip', required: true, negate: false }
@@ -84,7 +80,6 @@ export const RESOLUTION_1080P_FORMATS: CustomFormat[] = [
 		description: '1080p Remux - Lossless extraction from Blu-ray',
 		category: 'resolution',
 		tags: ['1080p', 'Remux', 'Lossless'],
-		defaultScore: 0,
 		conditions: [
 			{ name: '1080p', type: 'resolution', resolution: '1080p', required: true, negate: false },
 			{
@@ -102,7 +97,6 @@ export const RESOLUTION_1080P_FORMATS: CustomFormat[] = [
 		description: '1080p Blu-ray encode (not remux)',
 		category: 'resolution',
 		tags: ['1080p', 'Bluray', 'Encode'],
-		defaultScore: 0,
 		conditions: [
 			{ name: '1080p', type: 'resolution', resolution: '1080p', required: true, negate: false },
 			{ name: 'Bluray', type: 'source', source: 'bluray', required: true, negate: false },
@@ -121,7 +115,6 @@ export const RESOLUTION_1080P_FORMATS: CustomFormat[] = [
 		description: '1080p WEB-DL from streaming services',
 		category: 'resolution',
 		tags: ['1080p', 'WEB-DL', 'Streaming'],
-		defaultScore: 0,
 		conditions: [
 			{ name: '1080p', type: 'resolution', resolution: '1080p', required: true, negate: false },
 			{ name: 'WEB-DL', type: 'source', source: 'webdl', required: true, negate: false }
@@ -133,7 +126,6 @@ export const RESOLUTION_1080P_FORMATS: CustomFormat[] = [
 		description: '1080p WEB-DL with HEVC/x265 encoding',
 		category: 'resolution',
 		tags: ['1080p', 'WEB-DL', 'HEVC', 'x265'],
-		defaultScore: 0,
 		conditions: [
 			{ name: '1080p', type: 'resolution', resolution: '1080p', required: true, negate: false },
 			{ name: 'WEB-DL', type: 'source', source: 'webdl', required: true, negate: false },
@@ -152,7 +144,6 @@ export const RESOLUTION_1080P_FORMATS: CustomFormat[] = [
 		description: '1080p WEBRip (re-encoded from streaming)',
 		category: 'resolution',
 		tags: ['1080p', 'WEBRip'],
-		defaultScore: 0,
 		conditions: [
 			{ name: '1080p', type: 'resolution', resolution: '1080p', required: true, negate: false },
 			{ name: 'WEBRip', type: 'source', source: 'webrip', required: true, negate: false }
@@ -164,7 +155,6 @@ export const RESOLUTION_1080P_FORMATS: CustomFormat[] = [
 		description: '1080p HDTV capture',
 		category: 'resolution',
 		tags: ['1080p', 'HDTV'],
-		defaultScore: 0,
 		conditions: [
 			{ name: '1080p', type: 'resolution', resolution: '1080p', required: true, negate: false },
 			{ name: 'HDTV', type: 'source', source: 'hdtv', required: true, negate: false }
@@ -182,7 +172,6 @@ export const RESOLUTION_720P_FORMATS: CustomFormat[] = [
 		description: '720p Blu-ray encode',
 		category: 'resolution',
 		tags: ['720p', 'Bluray'],
-		defaultScore: 0,
 		conditions: [
 			{ name: '720p', type: 'resolution', resolution: '720p', required: true, negate: false },
 			{ name: 'Bluray', type: 'source', source: 'bluray', required: true, negate: false }
@@ -194,7 +183,6 @@ export const RESOLUTION_720P_FORMATS: CustomFormat[] = [
 		description: '720p WEB-DL from streaming services',
 		category: 'resolution',
 		tags: ['720p', 'WEB-DL'],
-		defaultScore: 0,
 		conditions: [
 			{ name: '720p', type: 'resolution', resolution: '720p', required: true, negate: false },
 			{ name: 'WEB-DL', type: 'source', source: 'webdl', required: true, negate: false }
@@ -206,7 +194,6 @@ export const RESOLUTION_720P_FORMATS: CustomFormat[] = [
 		description: '720p WEBRip',
 		category: 'resolution',
 		tags: ['720p', 'WEBRip'],
-		defaultScore: 0,
 		conditions: [
 			{ name: '720p', type: 'resolution', resolution: '720p', required: true, negate: false },
 			{ name: 'WEBRip', type: 'source', source: 'webrip', required: true, negate: false }
@@ -218,10 +205,66 @@ export const RESOLUTION_720P_FORMATS: CustomFormat[] = [
 		description: '720p HDTV capture',
 		category: 'resolution',
 		tags: ['720p', 'HDTV'],
-		defaultScore: 0,
 		conditions: [
 			{ name: '720p', type: 'resolution', resolution: '720p', required: true, negate: false },
 			{ name: 'HDTV', type: 'source', source: 'hdtv', required: true, negate: false }
+		]
+	}
+];
+
+/**
+ * 576p (PAL SD) Resolution Formats
+ */
+export const RESOLUTION_576P_FORMATS: CustomFormat[] = [
+	{
+		id: '576p-bluray',
+		name: '576p Bluray',
+		description: '576p PAL Blu-ray encode',
+		category: 'resolution',
+		tags: ['576p', 'PAL', 'SD', 'Bluray'],
+		conditions: [
+			{
+				name: '576p',
+				type: 'release_title',
+				pattern: '\\b576[pi]\\b',
+				required: true,
+				negate: false
+			},
+			{ name: 'Bluray', type: 'source', source: 'bluray', required: true, negate: false }
+		]
+	},
+	{
+		id: '576p-webdl',
+		name: '576p WEB-DL',
+		description: '576p PAL WEB-DL from streaming services',
+		category: 'resolution',
+		tags: ['576p', 'PAL', 'SD', 'WEB-DL'],
+		conditions: [
+			{
+				name: '576p',
+				type: 'release_title',
+				pattern: '\\b576[pi]\\b',
+				required: true,
+				negate: false
+			},
+			{ name: 'WEB-DL', type: 'source', source: 'webdl', required: true, negate: false }
+		]
+	},
+	{
+		id: '576p-dvd',
+		name: '576p DVD',
+		description: '576p PAL DVD source',
+		category: 'resolution',
+		tags: ['576p', 'PAL', 'SD', 'DVD'],
+		conditions: [
+			{
+				name: '576p',
+				type: 'release_title',
+				pattern: '\\b576[pi]\\b',
+				required: true,
+				negate: false
+			},
+			{ name: 'DVD', type: 'source', source: 'dvd', required: true, negate: false }
 		]
 	}
 ];
@@ -236,7 +279,6 @@ export const RESOLUTION_SD_FORMATS: CustomFormat[] = [
 		description: '480p WEB-DL from streaming services',
 		category: 'resolution',
 		tags: ['480p', 'SD', 'WEB-DL'],
-		defaultScore: 0,
 		conditions: [
 			{ name: '480p', type: 'resolution', resolution: '480p', required: true, negate: false },
 			{ name: 'WEB-DL', type: 'source', source: 'webdl', required: true, negate: false }
@@ -248,7 +290,6 @@ export const RESOLUTION_SD_FORMATS: CustomFormat[] = [
 		description: 'DVD source',
 		category: 'resolution',
 		tags: ['DVD', 'SD'],
-		defaultScore: 0,
 		conditions: [
 			{ name: 'DVD', type: 'source', source: 'dvd', required: true, negate: false },
 			{
@@ -266,7 +307,6 @@ export const RESOLUTION_SD_FORMATS: CustomFormat[] = [
 		description: 'DVD Remux - Lossless extraction from DVD',
 		category: 'resolution',
 		tags: ['DVD', 'SD', 'Remux'],
-		defaultScore: 0,
 		conditions: [
 			{ name: 'DVD', type: 'source', source: 'dvd', required: true, negate: false },
 			{
@@ -287,5 +327,6 @@ export const ALL_RESOLUTION_FORMATS: CustomFormat[] = [
 	...RESOLUTION_2160P_FORMATS,
 	...RESOLUTION_1080P_FORMATS,
 	...RESOLUTION_720P_FORMATS,
+	...RESOLUTION_576P_FORMATS,
 	...RESOLUTION_SD_FORMATS
 ];

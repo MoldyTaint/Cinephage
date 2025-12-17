@@ -76,7 +76,8 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					fileIds: Array.from(selectedIds),
-					mediaType: mediaTypeFilter === 'all' ? 'mixed' : mediaTypeFilter === 'movie' ? 'movie' : 'episode'
+					mediaType:
+						mediaTypeFilter === 'all' ? 'mixed' : mediaTypeFilter === 'movie' ? 'movie' : 'episode'
 				})
 			});
 
@@ -93,10 +94,9 @@
 
 			if (executeResult && executeResult.failed > 0) {
 				// Get specific error messages from failed results
-				const failedResults = executeResult.results?.filter((r: { success: boolean }) => !r.success) || [];
-				const errorMessages = failedResults
-					.map((r: { error?: string }) => r.error)
-					.filter(Boolean);
+				const failedResults =
+					executeResult.results?.filter((r: { success: boolean }) => !r.success) || [];
+				const errorMessages = failedResults.map((r: { error?: string }) => r.error).filter(Boolean);
 
 				if (errorMessages.length > 0) {
 					error = `Failed to rename ${executeResult.failed} file(s): ${errorMessages.join(', ')}`;
@@ -162,22 +162,24 @@
 	<!-- Header -->
 	<div class="mb-6 flex items-center justify-between">
 		<div class="flex items-center gap-4">
-			<a href="/settings/naming" class="btn btn-ghost btn-sm gap-2">
+			<a href="/settings/naming" class="btn gap-2 btn-ghost btn-sm">
 				<ChevronLeft class="h-4 w-4" />
 				Back
 			</a>
 			<div>
 				<h1 class="text-3xl font-bold">Rename Files</h1>
-				<p class="text-base-content/70">Preview and apply naming convention changes to existing library files.</p>
+				<p class="text-base-content/70">
+					Preview and apply naming convention changes to existing library files.
+				</p>
 			</div>
 		</div>
 		<div class="flex gap-2">
-			<button class="btn btn-ghost gap-2" onclick={loadPreview} disabled={loading}>
+			<button class="btn gap-2 btn-ghost" onclick={loadPreview} disabled={loading}>
 				<RefreshCw class="h-4 w-4 {loading ? 'animate-spin' : ''}" />
 				Refresh Preview
 			</button>
 			<button
-				class="btn btn-primary gap-2"
+				class="btn gap-2 btn-primary"
 				onclick={executeRenames}
 				disabled={executing || selectedIds.size === 0}
 			>
@@ -213,24 +215,33 @@
 			class="btn btn-sm"
 			class:btn-primary={mediaTypeFilter === 'all'}
 			class:btn-ghost={mediaTypeFilter !== 'all'}
-			onclick={() => { mediaTypeFilter = 'all'; loadPreview(); }}
+			onclick={() => {
+				mediaTypeFilter = 'all';
+				loadPreview();
+			}}
 		>
 			All
 		</button>
 		<button
-			class="btn btn-sm gap-1"
+			class="btn gap-1 btn-sm"
 			class:btn-primary={mediaTypeFilter === 'movie'}
 			class:btn-ghost={mediaTypeFilter !== 'movie'}
-			onclick={() => { mediaTypeFilter = 'movie'; loadPreview(); }}
+			onclick={() => {
+				mediaTypeFilter = 'movie';
+				loadPreview();
+			}}
 		>
 			<Film class="h-4 w-4" />
 			Movies
 		</button>
 		<button
-			class="btn btn-sm gap-1"
+			class="btn gap-1 btn-sm"
 			class:btn-primary={mediaTypeFilter === 'tv'}
 			class:btn-ghost={mediaTypeFilter !== 'tv'}
-			onclick={() => { mediaTypeFilter = 'tv'; loadPreview(); }}
+			onclick={() => {
+				mediaTypeFilter = 'tv';
+				loadPreview();
+			}}
 		>
 			<Tv class="h-4 w-4" />
 			TV
@@ -245,26 +256,26 @@
 	{:else if preview}
 		<!-- Summary Stats -->
 		<div class="mb-6 grid grid-cols-4 gap-4">
-			<div class="stat bg-base-200 rounded-box">
+			<div class="stat rounded-box bg-base-200">
 				<div class="stat-title">Total Files</div>
 				<div class="stat-value text-2xl">{preview.totalFiles}</div>
 			</div>
-			<div class="stat bg-base-200 rounded-box">
+			<div class="stat rounded-box bg-base-200">
 				<div class="stat-title">Will Change</div>
 				<div class="stat-value text-2xl text-info">{preview.totalWillChange}</div>
 			</div>
-			<div class="stat bg-base-200 rounded-box">
+			<div class="stat rounded-box bg-base-200">
 				<div class="stat-title">Already Correct</div>
 				<div class="stat-value text-2xl text-success">{preview.totalAlreadyCorrect}</div>
 			</div>
-			<div class="stat bg-base-200 rounded-box">
+			<div class="stat rounded-box bg-base-200">
 				<div class="stat-title">Collisions</div>
 				<div class="stat-value text-2xl text-warning">{preview.totalCollisions}</div>
 			</div>
 		</div>
 
 		<!-- Tabs -->
-		<div class="tabs tabs-boxed mb-4 w-fit">
+		<div class="tabs-boxed mb-4 tabs w-fit">
 			<button
 				class="tab gap-2"
 				class:tab-active={activeTab === 'willChange'}
@@ -302,9 +313,9 @@
 		<!-- Selection Controls (only for willChange tab) -->
 		{#if activeTab === 'willChange' && counts.willChange > 0}
 			<div class="mb-4 flex gap-2">
-				<button class="btn btn-sm btn-ghost" onclick={selectAll}>Select All</button>
-				<button class="btn btn-sm btn-ghost" onclick={selectNone}>Select None</button>
-				<span class="text-sm text-base-content/60 self-center ml-2">
+				<button class="btn btn-ghost btn-sm" onclick={selectAll}>Select All</button>
+				<button class="btn btn-ghost btn-sm" onclick={selectNone}>Select None</button>
+				<span class="ml-2 self-center text-sm text-base-content/60">
 					{selectedIds.size} of {counts.willChange} selected
 				</span>
 			</div>
@@ -314,11 +325,12 @@
 		<div class="space-y-2">
 			{#each currentItems() as item (item.fileId)}
 				<div
-					class="card bg-base-200 cursor-pointer hover:bg-base-300 transition-colors"
+					class="card cursor-pointer bg-base-200 transition-colors hover:bg-base-300"
 					class:ring-2={activeTab === 'willChange' && selectedIds.has(item.fileId)}
 					class:ring-primary={activeTab === 'willChange' && selectedIds.has(item.fileId)}
 					onclick={() => activeTab === 'willChange' && toggleSelect(item.fileId)}
-					onkeydown={(e) => e.key === 'Enter' && activeTab === 'willChange' && toggleSelect(item.fileId)}
+					onkeydown={(e) =>
+						e.key === 'Enter' && activeTab === 'willChange' && toggleSelect(item.fileId)}
 					role={activeTab === 'willChange' ? 'checkbox' : 'listitem'}
 					aria-checked={activeTab === 'willChange' ? selectedIds.has(item.fileId) : undefined}
 					tabindex="0"
@@ -348,28 +360,36 @@
 							</div>
 
 							<!-- Content -->
-							<div class="flex-1 min-w-0">
+							<div class="min-w-0 flex-1">
 								<div class="font-medium">{item.mediaTitle}</div>
 
 								{#if activeTab === 'willChange' || activeTab === 'collisions'}
 									<div class="mt-2 space-y-1">
 										<div class="flex items-center gap-2 text-sm">
-											<span class="text-base-content/60 w-12">From:</span>
-											<code class="bg-base-300 px-2 py-0.5 rounded text-error break-all">{item.currentRelativePath}</code>
+											<span class="w-12 text-base-content/60">From:</span>
+											<code class="rounded bg-base-300 px-2 py-0.5 break-all text-error"
+												>{item.currentRelativePath}</code
+											>
 										</div>
 										<div class="flex items-center gap-2 text-sm">
-											<span class="text-base-content/60 w-12">To:</span>
-											<code class="bg-base-300 px-2 py-0.5 rounded text-success break-all">{item.newRelativePath}</code>
+											<span class="w-12 text-base-content/60">To:</span>
+											<code class="rounded bg-base-300 px-2 py-0.5 break-all text-success"
+												>{item.newRelativePath}</code
+											>
 										</div>
 									</div>
 								{:else if activeTab === 'alreadyCorrect'}
 									<div class="mt-2 text-sm">
-										<code class="bg-base-300 px-2 py-0.5 rounded break-all">{item.currentRelativePath}</code>
+										<code class="rounded bg-base-300 px-2 py-0.5 break-all"
+											>{item.currentRelativePath}</code
+										>
 									</div>
 								{:else if activeTab === 'errors'}
 									<div class="mt-2 space-y-1">
 										<div class="text-sm">
-											<code class="bg-base-300 px-2 py-0.5 rounded break-all">{item.currentRelativePath}</code>
+											<code class="rounded bg-base-300 px-2 py-0.5 break-all"
+												>{item.currentRelativePath}</code
+											>
 										</div>
 										{#if item.error}
 											<div class="text-sm text-error">{item.error}</div>
@@ -379,7 +399,10 @@
 
 								{#if item.status === 'collision' && item.collisionsWith}
 									<div class="mt-2 text-sm text-warning">
-										Conflicts with {item.collisionsWith.length} other file{item.collisionsWith.length !== 1 ? 's' : ''}
+										Conflicts with {item.collisionsWith.length} other file{item.collisionsWith
+											.length !== 1
+											? 's'
+											: ''}
 									</div>
 								{/if}
 							</div>
@@ -414,7 +437,7 @@
 			{/each}
 		</div>
 	{:else}
-		<div class="text-center py-20 text-base-content/60">
+		<div class="py-20 text-center text-base-content/60">
 			No preview data available. Click "Refresh Preview" to load.
 		</div>
 	{/if}

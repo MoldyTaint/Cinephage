@@ -8,9 +8,9 @@
  * - Unwanted content (Extras, Samples)
  * - Upscaled content (fake resolution)
  *
- * NOTE: "Poor quality" groups are NOT in this file anymore.
- * They've been moved to low-quality.ts where they receive
- * negative scores but are NOT hard-blocked.
+ * NOTE: "Poor quality" groups are NOT in this file.
+ * They are defined in groups.ts with neutral base scores,
+ * allowing profiles to score them appropriately (positive or negative).
  */
 
 import type { CustomFormat } from '../types.js';
@@ -26,7 +26,6 @@ export const BANNED_RETAGGING: CustomFormat[] = [
 		description: 'Banned for retagging',
 		category: 'banned',
 		tags: ['Banned', 'Retagging', 'Deceptive'],
-		defaultScore: 0,
 		conditions: [
 			{ name: 'AROMA', type: 'release_group', pattern: '^AROMA$', required: true, negate: false }
 		]
@@ -37,7 +36,6 @@ export const BANNED_RETAGGING: CustomFormat[] = [
 		description: 'Banned for retagging',
 		category: 'banned',
 		tags: ['Banned', 'Retagging', 'Deceptive'],
-		defaultScore: 0,
 		conditions: [
 			{ name: 'LAMA', type: 'release_group', pattern: '^LAMA$', required: true, negate: false }
 		]
@@ -48,9 +46,18 @@ export const BANNED_RETAGGING: CustomFormat[] = [
 		description: 'Banned for retagging',
 		category: 'banned',
 		tags: ['Banned', 'Retagging', 'Deceptive'],
-		defaultScore: 0,
 		conditions: [
 			{ name: 'Telly', type: 'release_group', pattern: '^Telly$', required: true, negate: false }
+		]
+	},
+	{
+		id: 'banned-vd0n',
+		name: 'VD0N',
+		description: 'Banned for imitating DON releases (deceptive)',
+		category: 'banned',
+		tags: ['Banned', 'Retagging', 'Deceptive'],
+		conditions: [
+			{ name: 'VD0N', type: 'release_group', pattern: '^VD0N$', required: true, negate: false }
 		]
 	}
 ];
@@ -66,7 +73,6 @@ export const BANNED_FAKE_HDR: CustomFormat[] = [
 		description: 'Banned for fake DV/HDR layer',
 		category: 'banned',
 		tags: ['Banned', 'Fake HDR', 'Deceptive'],
-		defaultScore: 0,
 		conditions: [
 			{ name: 'BiTOR', type: 'release_group', pattern: '^BiTOR$', required: true, negate: false }
 		]
@@ -77,7 +83,6 @@ export const BANNED_FAKE_HDR: CustomFormat[] = [
 		description: 'Banned for fake DV/HDR layer',
 		category: 'banned',
 		tags: ['Banned', 'Fake HDR', 'Deceptive'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'VisionXpert',
@@ -94,7 +99,6 @@ export const BANNED_FAKE_HDR: CustomFormat[] = [
 		description: 'Banned for fake DV/HDR layer',
 		category: 'banned',
 		tags: ['Banned', 'Fake HDR', 'Deceptive'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'SasukeducK',
@@ -111,7 +115,6 @@ export const BANNED_FAKE_HDR: CustomFormat[] = [
 		description: 'Banned for fake DV/HDR layer',
 		category: 'banned',
 		tags: ['Banned', 'Fake HDR', 'Deceptive'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'jennaortegaUHD',
@@ -125,7 +128,8 @@ export const BANNED_FAKE_HDR: CustomFormat[] = [
 ];
 
 /**
- * Content to avoid (extras, samples, upscaled)
+ * Content to avoid (extras, samples)
+ * Note: Upscaled and 3D are defined in enhancement.ts with more comprehensive patterns
  */
 export const BANNED_CONTENT: CustomFormat[] = [
 	{
@@ -134,7 +138,6 @@ export const BANNED_CONTENT: CustomFormat[] = [
 		description: 'Bonus content / extras',
 		category: 'banned',
 		tags: ['Banned', 'Extras'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'Extras',
@@ -151,46 +154,11 @@ export const BANNED_CONTENT: CustomFormat[] = [
 		description: 'Sample files',
 		category: 'banned',
 		tags: ['Banned', 'Sample'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'Sample',
 				type: 'release_title',
 				pattern: '\\bSample\\b',
-				required: true,
-				negate: false
-			}
-		]
-	},
-	{
-		id: 'banned-upscaled',
-		name: 'Upscaled',
-		description: 'Upscaled content (fake resolution - deceptive)',
-		category: 'banned',
-		tags: ['Banned', 'Upscaled', 'Deceptive'],
-		defaultScore: 0,
-		conditions: [
-			{
-				name: 'Upscaled',
-				type: 'release_title',
-				pattern: '\\b(Upscaled?|AI[. ]?Upscale)\\b',
-				required: true,
-				negate: false
-			}
-		]
-	},
-	{
-		id: 'banned-3d',
-		name: '3D',
-		description: '3D releases (unless specifically wanted)',
-		category: 'banned',
-		tags: ['Banned', '3D'],
-		defaultScore: 0,
-		conditions: [
-			{
-				name: '3D',
-				type: 'release_title',
-				pattern: '\\b3D\\b',
 				required: true,
 				negate: false
 			}
@@ -209,7 +177,6 @@ export const BANNED_SOURCES: CustomFormat[] = [
 		description: 'Camera recording from theater',
 		category: 'banned',
 		tags: ['Banned', 'CAM', 'Unusable'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'CAM',
@@ -226,7 +193,6 @@ export const BANNED_SOURCES: CustomFormat[] = [
 		description: 'Telesync recording',
 		category: 'banned',
 		tags: ['Banned', 'TS', 'Unusable'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'Telesync',
@@ -243,7 +209,6 @@ export const BANNED_SOURCES: CustomFormat[] = [
 		description: 'Telecine recording',
 		category: 'banned',
 		tags: ['Banned', 'TC', 'Unusable'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'Telecine',
@@ -260,7 +225,6 @@ export const BANNED_SOURCES: CustomFormat[] = [
 		description: 'Screener copy',
 		category: 'banned',
 		tags: ['Banned', 'Screener', 'Unusable'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'Screener',
@@ -288,11 +252,12 @@ export const ALL_BANNED_FORMATS: CustomFormat[] = [
  * Only includes deceptive groups (retagging, fake HDR)
  */
 export const BANNED_GROUP_NAMES = [
-	// Retagging groups
+	// Retagging groups (deceptive - claim to be other groups)
 	'AROMA',
 	'LAMA',
 	'Telly',
-	// Fake HDR groups
+	'VD0N',
+	// Fake HDR groups (deceptive - inject fake HDR metadata)
 	'BiTOR',
 	'VisionXpert',
 	'SasukeducK',

@@ -76,6 +76,9 @@ async function initializeLibrary() {
 		// Seed default scoring profiles to database (ensures foreign key targets exist)
 		await qualityFilter.seedDefaultScoringProfiles();
 
+		// Clear profile cache to ensure fresh profiles with size limits are loaded
+		qualityFilter.clearCache();
+
 		// Check ffprobe availability in background (informational only, doesn't block)
 		checkFFprobe().catch((e) => logger.error('FFprobe check failed', e));
 

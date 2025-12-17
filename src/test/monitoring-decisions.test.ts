@@ -12,7 +12,11 @@
 
 import { describe, it, expect } from 'vitest';
 import { scoreRelease, isUpgrade, rankReleases } from '$lib/server/scoring/scorer.js';
-import { BEST_PROFILE, EFFICIENT_PROFILE, MICRO_PROFILE } from '$lib/server/scoring/profiles.js';
+import {
+	QUALITY_PROFILE,
+	BALANCED_PROFILE,
+	COMPACT_PROFILE
+} from '$lib/server/scoring/profiles.js';
 import type { ScoringProfile, ScoringResult } from '$lib/server/scoring/types.js';
 
 /**
@@ -145,7 +149,7 @@ describe('Monitoring Decisions - Real-World Scenarios', () => {
 			const decision = simulateMovieGrabDecision(
 				'Movie.2024.1080p.WEB-DL.DDP5.1.H.264-GROUP',
 				4 * 1024 * 1024 * 1024, // 4GB
-				BEST_PROFILE
+				QUALITY_PROFILE
 			);
 
 			expect(decision.shouldGrab).toBe(true);
@@ -157,19 +161,19 @@ describe('Monitoring Decisions - Real-World Scenarios', () => {
 			const decision = simulateMovieGrabDecision(
 				'Movie.2024.1080p.CAM-GROUP',
 				1.5 * 1024 * 1024 * 1024, // 1.5GB
-				BEST_PROFILE
+				QUALITY_PROFILE
 			);
 
 			expect(decision.shouldGrab).toBe(false);
 			expect(decision.reason).toContain('Banned');
 		});
 
-		it('should grab YTS release for missing movie in MICRO_PROFILE', () => {
+		it('should grab YTS release for missing movie in COMPACT_PROFILE', () => {
 			// YTS is highly valued in Micro profile
 			const decision = simulateMovieGrabDecision(
 				'Movie.2024.1080p.BluRay.x265-YTS',
 				2 * 1024 * 1024 * 1024, // 2GB
-				MICRO_PROFILE
+				COMPACT_PROFILE
 			);
 
 			expect(decision.shouldGrab).toBe(true);
@@ -178,7 +182,7 @@ describe('Monitoring Decisions - Real-World Scenarios', () => {
 
 		it('should NOT grab oversized release for missing movie', () => {
 			const profile: ScoringProfile = {
-				...BEST_PROFILE,
+				...QUALITY_PROFILE,
 				id: 'test-size',
 				name: 'Test Size',
 				movieMaxSizeGb: 20
@@ -200,7 +204,7 @@ describe('Monitoring Decisions - Real-World Scenarios', () => {
 			const decision = simulateMovieGrabDecision(
 				'Movie.2024.2160p.UHD.BluRay.REMUX.HDR.HEVC.TrueHD.Atmos-GROUP',
 				45 * 1024 * 1024 * 1024, // 45GB
-				BEST_PROFILE,
+				QUALITY_PROFILE,
 				'Movie.2024.1080p.WEB-DL.DDP5.1.H.264-GROUP',
 				4 * 1024 * 1024 * 1024 // 4GB
 			);
@@ -214,7 +218,7 @@ describe('Monitoring Decisions - Real-World Scenarios', () => {
 			const decision = simulateMovieGrabDecision(
 				'Movie.2024.1080p.WEB-DL.DDP5.1.H.264-GROUP',
 				4 * 1024 * 1024 * 1024, // 4GB
-				BEST_PROFILE,
+				QUALITY_PROFILE,
 				'Movie.2024.2160p.UHD.BluRay.REMUX.HDR.HEVC.TrueHD.Atmos-GROUP',
 				45 * 1024 * 1024 * 1024 // 45GB
 			);
@@ -225,7 +229,7 @@ describe('Monitoring Decisions - Real-World Scenarios', () => {
 
 		it('should NOT upgrade when already at cutoff', () => {
 			const lowCutoffProfile: ScoringProfile = {
-				...BEST_PROFILE,
+				...QUALITY_PROFILE,
 				id: 'low-cutoff',
 				name: 'Low Cutoff',
 				upgradeUntilScore: 10000 // Stop at 10000
@@ -248,7 +252,7 @@ describe('Monitoring Decisions - Real-World Scenarios', () => {
 
 		it('should reject upgrade with insufficient improvement', () => {
 			const highIncrementProfile: ScoringProfile = {
-				...BEST_PROFILE,
+				...QUALITY_PROFILE,
 				id: 'high-increment',
 				name: 'High Increment',
 				minScoreIncrement: 10000 // Require huge improvement
@@ -281,20 +285,20 @@ describe('Monitoring Decisions - Real-World Scenarios', () => {
 			{ name: 'Movie.2024.720p.WEB-DL-GROUP', size: 2 * 1024 * 1024 * 1024 }
 		];
 
-		it('BEST_PROFILE should rank Remux first', () => {
+		it('QUALITY_PROFILE should rank Remux first', () => {
 			const ranked = rankReleases(
 				releases.map((r) => ({ name: r.name, sizeBytes: r.size })),
-				BEST_PROFILE
+				QUALITY_PROFILE
 			);
 
 			expect(ranked[0].releaseName).toContain('REMUX');
 			expect(ranked[0].rank).toBe(1);
 		});
 
-		it('EFFICIENT_PROFILE should rank x265 encodes highly', () => {
+		it('BALANCED_PROFILE should rank x265 encodes highly', () => {
 			const ranked = rankReleases(
 				releases.map((r) => ({ name: r.name, sizeBytes: r.size })),
-				EFFICIENT_PROFILE
+				BALANCED_PROFILE
 			);
 
 			// x265 should be competitive
@@ -303,9 +307,9 @@ describe('Monitoring Decisions - Real-World Scenarios', () => {
 			expect(x265Release!.rank).toBeLessThanOrEqual(3);
 		});
 
-		it('MICRO_PROFILE should accept smaller files', () => {
+		it('COMPACT_PROFILE should accept smaller files', () => {
 			const microWithSizeLimit: ScoringProfile = {
-				...MICRO_PROFILE,
+				...COMPACT_PROFILE,
 				id: 'micro-limited',
 				name: 'Micro Limited',
 				movieMaxSizeGb: 10
@@ -332,7 +336,7 @@ describe('Monitoring Decisions - Real-World Scenarios', () => {
 	describe('Scenario: TV Episode Size Validation', () => {
 		it('should validate single episode size', () => {
 			const profile: ScoringProfile = {
-				...EFFICIENT_PROFILE,
+				...BALANCED_PROFILE,
 				id: 'tv-profile',
 				name: 'TV Profile',
 				episodeMinSizeMb: 200,
@@ -372,7 +376,7 @@ describe('Monitoring Decisions - Real-World Scenarios', () => {
 
 		it('should validate season pack per-episode average', () => {
 			const profile: ScoringProfile = {
-				...EFFICIENT_PROFILE,
+				...BALANCED_PROFILE,
 				id: 'tv-pack-profile',
 				name: 'TV Pack Profile',
 				episodeMinSizeMb: 200,
@@ -416,7 +420,7 @@ describe('Monitoring Decisions - Real-World Scenarios', () => {
 				{ name: 'Movie.2024.1080p.WEB-DL.DDP5.1-NTb', sizeBytes: 4 * 1024 * 1024 * 1024 }
 			];
 
-			const ranked = rankReleases(candidates, BEST_PROFILE);
+			const ranked = rankReleases(candidates, QUALITY_PROFILE);
 
 			// Top release should be the 2160p Remux with top tier group
 			expect(ranked[0].releaseName).toContain('2160p');
@@ -436,7 +440,7 @@ describe('Monitoring Decisions - Real-World Scenarios', () => {
 				{ name: 'Movie.2024.1080p.WEB-DL-GROUP', sizeBytes: 4 * 1024 * 1024 * 1024 }
 			];
 
-			const ranked = rankReleases(candidates, BEST_PROFILE);
+			const ranked = rankReleases(candidates, QUALITY_PROFILE);
 
 			// CAM release should be ranked last due to ban
 			expect(ranked[0].releaseName).not.toContain('CAM');
@@ -449,13 +453,13 @@ describe('Monitoring Decisions - Real-World Scenarios', () => {
 				{ name: 'Movie.2024.1080p.WEB-DL-GROUP', sizeBytes: 4 * 1024 * 1024 * 1024 }
 			];
 
-			// BEST_PROFILE penalizes YTS
-			const rankedBest = rankReleases(candidates, BEST_PROFILE);
+			// QUALITY_PROFILE penalizes YTS
+			const rankedBest = rankReleases(candidates, QUALITY_PROFILE);
 			expect(rankedBest[0].releaseName).not.toContain('YTS');
 			expect(rankedBest[0].isBanned).toBe(false); // NOT banned, just lower score
 
-			// MICRO_PROFILE values YTS
-			const rankedMicro = rankReleases(candidates, MICRO_PROFILE);
+			// COMPACT_PROFILE values YTS
+			const rankedMicro = rankReleases(candidates, COMPACT_PROFILE);
 			expect(rankedMicro[0].releaseName).toContain('YTS');
 			expect(rankedMicro[0].isBanned).toBe(false);
 		});
@@ -473,7 +477,7 @@ describe('Monitoring Decisions - Real-World Scenarios', () => {
 			// Score all releases
 			const scores = releases.map((r) => ({
 				release: r,
-				score: scoreRelease(r, BEST_PROFILE).totalScore
+				score: scoreRelease(r, QUALITY_PROFILE).totalScore
 			}));
 
 			// Verify each step is an improvement
@@ -483,7 +487,7 @@ describe('Monitoring Decisions - Real-World Scenarios', () => {
 
 			// Verify upgrade detection at each step
 			for (let i = 1; i < releases.length; i++) {
-				const result = isUpgrade(releases[i - 1], releases[i], BEST_PROFILE);
+				const result = isUpgrade(releases[i - 1], releases[i], QUALITY_PROFILE);
 				expect(result.isUpgrade).toBe(true);
 				expect(result.improvement).toBeGreaterThan(0);
 			}
@@ -493,7 +497,7 @@ describe('Monitoring Decisions - Real-World Scenarios', () => {
 
 describe('Edge Cases', () => {
 	it('should handle release with no recognizable quality markers', () => {
-		const result = scoreRelease('some.random.file.name.mkv', BEST_PROFILE);
+		const result = scoreRelease('some.random.file.name.mkv', QUALITY_PROFILE);
 
 		// Should still return a result, just with low/zero score
 		expect(result).toBeDefined();
@@ -501,7 +505,7 @@ describe('Edge Cases', () => {
 	});
 
 	it('should handle empty release name', () => {
-		const result = scoreRelease('', BEST_PROFILE);
+		const result = scoreRelease('', QUALITY_PROFILE);
 
 		expect(result).toBeDefined();
 		expect(result.totalScore).toBeDefined();
@@ -510,14 +514,14 @@ describe('Edge Cases', () => {
 	it('should handle very long release names', () => {
 		const longName =
 			'Movie.With.A.Very.Long.Title.That.Goes.On.And.On.2024.2160p.UHD.BluRay.REMUX.HDR10.Plus.Dolby.Vision.TrueHD.7.1.Atmos.HEVC-SuperLongGroupName';
-		const result = scoreRelease(longName, BEST_PROFILE);
+		const result = scoreRelease(longName, QUALITY_PROFILE);
 
 		expect(result).toBeDefined();
 		expect(result.meetsMinimum).toBe(true);
 	});
 
 	it('should handle unicode in release names', () => {
-		const result = scoreRelease('Movie.日本語.2024.1080p.WEB-DL-GROUP', BEST_PROFILE);
+		const result = scoreRelease('Movie.日本語.2024.1080p.WEB-DL-GROUP', QUALITY_PROFILE);
 
 		expect(result).toBeDefined();
 	});

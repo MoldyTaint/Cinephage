@@ -41,7 +41,6 @@ export const UPSCALED_FORMAT: CustomFormat = {
 	description: 'Upscaled content from lower resolution. Fake 4K should be avoided.',
 	category: 'banned',
 	tags: ['Banned', 'Enhancement', 'Upscale'],
-	defaultScore: -999999,
 	conditions: [
 		{
 			name: 'Upscaled',
@@ -67,7 +66,6 @@ export const AI_UPSCALED_TV_FORMAT: CustomFormat = {
 	description: 'AI upscaled TV content. Usually poor quality.',
 	category: 'banned',
 	tags: ['Banned', 'Enhancement', 'AI', 'TV'],
-	defaultScore: -999999,
 	conditions: [
 		{
 			name: 'Has Season indicator',
@@ -99,7 +97,6 @@ export const AI_UPSCALED_MOVIE_FORMAT: CustomFormat = {
 	description: 'AI upscaled movie content. Usually poor quality.',
 	category: 'banned',
 	tags: ['Banned', 'Enhancement', 'AI', 'Movie'],
-	defaultScore: -999999,
 	conditions: [
 		{
 			name: 'Has Year',
@@ -131,7 +128,6 @@ export const THREE_D_FORMAT: CustomFormat = {
 	description: '3D content. Usually unwanted for standard displays.',
 	category: 'banned',
 	tags: ['Banned', 'Enhancement', '3D'],
-	defaultScore: -999999,
 	conditions: [
 		{
 			name: '3D Format',
@@ -157,7 +153,6 @@ export const FULL_DISC_FORMAT: CustomFormat = {
 	description: 'Full disc release without encoding. Not compatible with most players.',
 	category: 'banned',
 	tags: ['Banned', 'Storage', 'Full Disc'],
-	defaultScore: -999999,
 	conditions: [
 		{
 			name: 'Full Disc indicators',
@@ -204,7 +199,6 @@ export const X264_2160P_FORMAT: CustomFormat = {
 	description: 'x264 codec at 4K resolution. Inefficient and usually poor quality.',
 	category: 'banned',
 	tags: ['Banned', 'Codec', 'x264', '2160p'],
-	defaultScore: -999999,
 	conditions: [
 		{
 			name: '2160p resolution',
@@ -243,7 +237,6 @@ export const XVID_FORMAT: CustomFormat = {
 	description: 'Xvid legacy codec. Very outdated, poor quality.',
 	category: 'banned',
 	tags: ['Banned', 'Codec', 'Xvid', 'Legacy'],
-	defaultScore: -999999,
 	conditions: [
 		{
 			name: 'Xvid',
@@ -284,7 +277,6 @@ export const REPACK_FORMATS: CustomFormat[] = [
 		description: 'Third repack release - most fixes applied',
 		category: 'enhancement',
 		tags: ['Repack', 'Fix'],
-		defaultScore: 6,
 		conditions: [
 			{
 				name: 'Repack3',
@@ -301,7 +293,6 @@ export const REPACK_FORMATS: CustomFormat[] = [
 		description: 'Second repack release - multiple fixes',
 		category: 'enhancement',
 		tags: ['Repack', 'Fix'],
-		defaultScore: 4,
 		conditions: [
 			{
 				name: 'Repack2',
@@ -318,7 +309,6 @@ export const REPACK_FORMATS: CustomFormat[] = [
 		description: 'Repack release - fixes issues with original',
 		category: 'enhancement',
 		tags: ['Repack', 'Fix'],
-		defaultScore: 2,
 		conditions: [
 			{
 				name: 'Repack',
@@ -342,7 +332,6 @@ export const REPACK_FORMATS: CustomFormat[] = [
 		description: 'Proper release - fixes issues with original from another group',
 		category: 'enhancement',
 		tags: ['Proper', 'Fix'],
-		defaultScore: 2,
 		conditions: [
 			{
 				name: 'Proper',
@@ -373,7 +362,6 @@ export const IMAX_ENHANCED_FORMAT: CustomFormat = {
 	description: 'IMAX Enhanced from Disney+ or Bravia Core. Premium aspect ratio and audio.',
 	category: 'enhancement',
 	tags: ['Edition', 'IMAX', 'Enhanced', 'Premium'],
-	defaultScore: 800,
 	conditions: [
 		{
 			name: 'From Disney+ or Bravia Core',
@@ -412,7 +400,6 @@ export const IMAX_FORMAT: CustomFormat = {
 	description: 'IMAX version with enhanced aspect ratio.',
 	category: 'enhancement',
 	tags: ['Edition', 'IMAX'],
-	defaultScore: 400,
 	conditions: [
 		{
 			name: 'IMAX (not NON-IMAX)',
@@ -450,7 +437,6 @@ export const EDITION_FORMATS: CustomFormat[] = [
 		description: "Director's Cut edition - filmmaker's preferred version",
 		category: 'enhancement',
 		tags: ['Edition', 'Directors Cut'],
-		defaultScore: 200,
 		conditions: [
 			{
 				name: 'Directors Cut',
@@ -467,7 +453,6 @@ export const EDITION_FORMATS: CustomFormat[] = [
 		description: 'Extended edition - additional scenes',
 		category: 'enhancement',
 		tags: ['Edition', 'Extended'],
-		defaultScore: 100,
 		conditions: [
 			{
 				name: 'Extended',
@@ -484,7 +469,6 @@ export const EDITION_FORMATS: CustomFormat[] = [
 		description: 'Unrated edition - uncensored content',
 		category: 'enhancement',
 		tags: ['Edition', 'Unrated'],
-		defaultScore: 100,
 		conditions: [
 			{
 				name: 'Unrated',
@@ -501,7 +485,6 @@ export const EDITION_FORMATS: CustomFormat[] = [
 		description: 'Theatrical release version - original cinema cut',
 		category: 'enhancement',
 		tags: ['Edition', 'Theatrical'],
-		defaultScore: 50,
 		conditions: [
 			{
 				name: 'Theatrical',
@@ -518,7 +501,6 @@ export const EDITION_FORMATS: CustomFormat[] = [
 		description: 'Remastered version - improved quality from original source',
 		category: 'enhancement',
 		tags: ['Edition', 'Remastered'],
-		defaultScore: 150,
 		conditions: [
 			{
 				name: 'Remastered',
@@ -535,7 +517,6 @@ export const EDITION_FORMATS: CustomFormat[] = [
 		description: 'Special Edition - bonus content or unique version',
 		category: 'enhancement',
 		tags: ['Edition', 'Special'],
-		defaultScore: 50,
 		conditions: [
 			{
 				name: 'Special Edition',
@@ -552,7 +533,6 @@ export const EDITION_FORMATS: CustomFormat[] = [
 		description: 'Criterion Collection - premium restoration',
 		category: 'enhancement',
 		tags: ['Edition', 'Criterion', 'Premium'],
-		defaultScore: 250,
 		conditions: [
 			{
 				name: 'Criterion',
@@ -569,12 +549,91 @@ export const EDITION_FORMATS: CustomFormat[] = [
 		description: 'Open Matte version - full frame without letterboxing',
 		category: 'enhancement',
 		tags: ['Edition', 'Open Matte', 'Aspect Ratio'],
-		defaultScore: 100,
 		conditions: [
 			{
 				name: 'Open Matte',
 				type: 'release_title',
 				pattern: '\\bOpen[-. ]?Matte\\b',
+				required: true,
+				negate: false
+			}
+		]
+	},
+	{
+		id: 'edition-sing-along',
+		name: 'Sing Along',
+		description: 'Sing Along version - includes on-screen lyrics',
+		category: 'enhancement',
+		tags: ['Edition', 'Sing Along'],
+		conditions: [
+			{
+				name: 'Sing Along',
+				type: 'release_title',
+				pattern: '\\bSing[-. ]?Along\\b',
+				required: true,
+				negate: false
+			}
+		]
+	},
+	{
+		id: 'edition-bw',
+		name: 'Black & White',
+		description: 'Black & White version - monochrome presentation',
+		category: 'enhancement',
+		tags: ['Edition', 'B&W', 'Black White'],
+		conditions: [
+			{
+				name: 'Black & White',
+				type: 'release_title',
+				pattern: '\\b(B&W|Black[-. ]?(and[-. ]?)?White|Noir[-. ]?et[-. ]?Blanc)\\b',
+				required: true,
+				negate: false
+			}
+		]
+	},
+	{
+		id: 'edition-hybrid',
+		name: 'Hybrid',
+		description: 'Hybrid release - combines multiple sources for best quality',
+		category: 'enhancement',
+		tags: ['Edition', 'Hybrid'],
+		conditions: [
+			{
+				name: 'Hybrid',
+				type: 'release_title',
+				pattern: '\\bHybrid\\b',
+				required: true,
+				negate: false
+			}
+		]
+	},
+	{
+		id: 'edition-final-cut',
+		name: 'Final Cut',
+		description: 'Final Cut edition - definitive version',
+		category: 'enhancement',
+		tags: ['Edition', 'Final Cut'],
+		conditions: [
+			{
+				name: 'Final Cut',
+				type: 'release_title',
+				pattern: '\\bFinal[-. ]?Cut\\b',
+				required: true,
+				negate: false
+			}
+		]
+	},
+	{
+		id: 'edition-ultimate',
+		name: 'Ultimate Edition',
+		description: 'Ultimate Edition - most complete version',
+		category: 'enhancement',
+		tags: ['Edition', 'Ultimate'],
+		conditions: [
+			{
+				name: 'Ultimate',
+				type: 'release_title',
+				pattern: '\\bUltimate[-. ]?(Edition|Cut)?\\b',
 				required: true,
 				negate: false
 			}
@@ -591,12 +650,27 @@ export const EDITION_FORMATS: CustomFormat[] = [
  */
 export const CODEC_FORMATS: CustomFormat[] = [
 	{
+		id: 'codec-vvc',
+		name: 'VVC',
+		description: 'VVC/H.266 codec - newest standard, bleeding edge efficiency',
+		category: 'codec',
+		tags: ['Codec', 'VVC', 'H.266', 'Bleeding Edge'],
+		conditions: [
+			{
+				name: 'VVC',
+				type: 'release_title',
+				pattern: '\\b(VVC|H\\.?266)\\b',
+				required: true,
+				negate: false
+			}
+		]
+	},
+	{
 		id: 'codec-av1',
 		name: 'AV1',
 		description: 'AV1 codec - next-gen efficiency, excellent quality at lower bitrates',
 		category: 'codec',
 		tags: ['Codec', 'AV1', 'Modern', 'Efficient'],
-		defaultScore: 100,
 		conditions: [
 			{
 				name: 'AV1',
@@ -613,7 +687,6 @@ export const CODEC_FORMATS: CustomFormat[] = [
 		description: 'VP9 codec - good efficiency, YouTube standard',
 		category: 'codec',
 		tags: ['Codec', 'VP9'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'VP9',
@@ -630,7 +703,6 @@ export const CODEC_FORMATS: CustomFormat[] = [
 		description: 'x265/HEVC codec - efficient encoding, good for 4K',
 		category: 'codec',
 		tags: ['Codec', 'x265', 'HEVC', 'Efficient'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'x265',
@@ -647,7 +719,6 @@ export const CODEC_FORMATS: CustomFormat[] = [
 		description: 'x264/AVC codec - universal compatibility',
 		category: 'codec',
 		tags: ['Codec', 'x264', 'AVC'],
-		defaultScore: 0,
 		conditions: [
 			{
 				name: 'x264',
@@ -681,7 +752,6 @@ export const TV_FORMATS: CustomFormat[] = [
 		description: 'Full season pack - convenient for series collection',
 		category: 'other',
 		tags: ['TV', 'Season Pack'],
-		defaultScore: 50,
 		conditions: [
 			{
 				name: 'Season Pack',
@@ -698,7 +768,6 @@ export const TV_FORMATS: CustomFormat[] = [
 		description: 'Complete series pack - full show in one release',
 		category: 'other',
 		tags: ['TV', 'Complete Series'],
-		defaultScore: 100,
 		conditions: [
 			{
 				name: 'Complete',
@@ -725,7 +794,6 @@ export const LANGUAGE_FORMATS: CustomFormat[] = [
 		description: 'Multiple audio tracks - good for international releases',
 		category: 'other',
 		tags: ['Language', 'Multi'],
-		defaultScore: 50,
 		conditions: [
 			{
 				name: 'Multi',
@@ -742,7 +810,6 @@ export const LANGUAGE_FORMATS: CustomFormat[] = [
 		description: 'Dual audio tracks - typically English + original language',
 		category: 'other',
 		tags: ['Language', 'Dual'],
-		defaultScore: 50,
 		conditions: [
 			{
 				name: 'Dual Audio',
@@ -770,7 +837,6 @@ export const EXTRAS_FORMAT: CustomFormat = {
 	description: 'Bonus content like behind-the-scenes, deleted scenes. Usually unwanted.',
 	category: 'banned',
 	tags: ['Unwanted', 'Extras'],
-	defaultScore: -999999,
 	conditions: [
 		{
 			name: 'Extras',

@@ -16,11 +16,9 @@
 		"lint": "prettier --check . && eslint .",
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run",
-		"db:push": "drizzle-kit push",
-		"db:generate": "drizzle-kit generate",
-		"db:migrate": "drizzle-kit migrate",
-		"db:studio": "drizzle-kit studio",
-		"migrate:remove-enabled": "tsx scripts/remove-monitoring-enabled.ts"
+		"migrate:remove-enabled": "tsx scripts/remove-monitoring-enabled.ts",
+		"db:reset": "rm -f data/cinephage.db && echo 'Database deleted. Will be recreated on next startup.'",
+		"db:info": "sqlite3 data/cinephage.db \"SELECT value FROM settings WHERE key='schema_version'\" 2>/dev/null || echo 'No database found'"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.0.0",
@@ -38,7 +36,6 @@
 		"@vitest/browser-playwright": "^4.0.5",
 		"daisyui": "^5.5.14",
 		"dotenv": "^17.2.3",
-		"drizzle-kit": "^0.31.7",
 		"drizzle-orm": "^0.45.1",
 		"eslint": "^9.39.2",
 		"eslint-config-prettier": "^10.1.8",

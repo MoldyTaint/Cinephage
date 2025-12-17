@@ -108,6 +108,15 @@ export class ReleaseEnricher {
 			if (!profile) {
 				profile = await this.filter.getDefaultScoringProfile();
 			}
+
+			// Debug logging for profile scoring issues
+			logger.info('[ReleaseEnricher] Using profile', {
+				requestedId: options.scoringProfileId,
+				loadedId: profile?.id,
+				loadedName: profile?.name,
+				formatScoresCount: profile ? Object.keys(profile.formatScores).length : 0,
+				sampleKeys: profile ? Object.keys(profile.formatScores).slice(0, 5) : []
+			});
 		}
 
 		// Enrich each release
@@ -178,7 +187,8 @@ export class ReleaseEnricher {
 				preset,
 				profile,
 				release.size,
-				sizeContext
+				sizeContext,
+				release.indexerName
 			);
 		} else {
 			// Fallback to legacy scoring
