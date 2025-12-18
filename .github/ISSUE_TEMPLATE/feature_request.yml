@@ -37,7 +37,6 @@ body:
         - Notifications
         - Import/Export
         - Integration (external services)
-        - Documentation
         - Other
     validations:
       required: true

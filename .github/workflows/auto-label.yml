@@ -37,8 +37,7 @@ jobs:
               'Quality Profiles': 'Area: Quality',
               'Notifications': 'Area: Notifications',
               'Import/Export': 'Area: Integrations',
-              'Integration (external services)': 'Area: Integrations',
-              'Documentation': 'Area: UI'
+              'Integration (external services)': 'Area: Integrations'
             };
 
             // Severity to priority mapping (for bugs)
@@ -47,6 +46,14 @@ jobs:
               'Major (feature broken, no workaround)': 'Priority: High',
               'Minor (feature broken, workaround exists)': 'Priority: Medium',
               'Cosmetic (visual issue, typo)': 'Priority: Low'
+            };
+
+            // Impact level to priority mapping (for features)
+            const impactMap = {
+              'Critical - blocking my adoption of Cinephage': 'Priority: Critical',
+              'Important for my use case': 'Priority: High',
+              'Would improve my workflow': 'Priority: Medium',
+              'Nice to have': 'Priority: Low'
             };
 
             // Parse area from issue body
@@ -65,6 +72,15 @@ jobs:
               const severityValue = severityMatch[1].trim();
               if (severityMap[severityValue]) {
                 labels.push(severityMap[severityValue]);
+              }
+            }
+
+            // Parse impact level from feature requests
+            const impactMatch = body.match(/### Impact Level\s*\n\n([^\n]+)/);
+            if (impactMatch) {
+              const impactValue = impactMatch[1].trim();
+              if (impactMap[impactValue]) {
+                labels.push(impactMap[impactValue]);
               }
             }
 
