@@ -1,7 +1,7 @@
 name: Documentation Issue
 description: Report an error in the documentation or suggest an improvement
 title: '[Docs]: '
-labels: ['documentation']
+labels: ['Type: Docs']
 body:
   - type: markdown
     attributes:

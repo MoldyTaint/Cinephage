@@ -7,7 +7,8 @@ updates:
       day: 'monday'
     open-pull-requests-limit: 10
     labels:
-      - 'dependencies'
+      - 'Type: Chore'
+      - 'Dependencies'
     assignees:
       - 'MoldyTaint'
     commit-message:
@@ -38,8 +39,8 @@ updates:
       interval: 'weekly'
       day: 'monday'
     labels:
-      - 'dependencies'
-      - 'github-actions'
+      - 'Type: Chore'
+      - 'Dependencies'
     assignees:
       - 'MoldyTaint'
     commit-message:

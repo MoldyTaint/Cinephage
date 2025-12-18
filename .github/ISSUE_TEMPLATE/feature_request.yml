@@ -1,7 +1,7 @@
 name: Feature Request
 description: Suggest a new feature or improvement for Cinephage
 title: '[Feature]: '
-labels: ['enhancement', 'needs-triage']
+labels: ['Type: Feature']
 body:
   - type: markdown
     attributes:

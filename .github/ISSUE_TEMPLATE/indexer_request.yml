@@ -1,7 +1,7 @@
 name: Indexer Request
 description: Request support for a new indexer/tracker
 title: '[Indexer]: '
-labels: ['indexer-request']
+labels: ['Type: Indexer']
 body:
   - type: markdown
     attributes:

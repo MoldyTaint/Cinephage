@@ -1,0 +1,82 @@
+# Security Note: This workflow uses actions/github-script which executes JavaScript.
+# Issue body is accessed via context.payload in JS context, not shell interpolation.
+# This is a safe pattern - no run: commands use untrusted input.
+
+name: Auto Label Issues
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  auto-label:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Auto-label based on form fields
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body || '';
+            const labels = [];
+
+            // Area mapping (dropdown value -> label)
+            const areaMap = {
+              'UI/Frontend': 'Area: UI',
+              'API/Backend': 'Area: API',
+              'Indexers/Search': 'Area: Indexers',
+              'Download Clients': 'Area: Downloads',
+              'Library Management': 'Area: Library',
+              'Subtitles': 'Area: Subtitles',
+              'Monitoring/Scheduler': 'Area: Monitoring',
+              'Monitoring/Automation': 'Area: Monitoring',
+              'Database': 'Area: Database',
+              'Docker/Deployment': 'Area: Docker',
+              'Quality Profiles': 'Area: Quality',
+              'Notifications': 'Area: Notifications',
+              'Import/Export': 'Area: Integrations',
+              'Integration (external services)': 'Area: Integrations',
+              'Documentation': 'Area: UI'
+            };
+
+            // Severity to priority mapping (for bugs)
+            const severityMap = {
+              'Critical (app crashes, data loss, security issue)': 'Priority: Critical',
+              'Major (feature broken, no workaround)': 'Priority: High',
+              'Minor (feature broken, workaround exists)': 'Priority: Medium',
+              'Cosmetic (visual issue, typo)': 'Priority: Low'
+            };
+
+            // Parse area from issue body
+            // Form fields appear as "### Label\n\nValue"
+            const areaMatch = body.match(/### (?:Affected Area|Feature Area)\s*\n\n([^\n]+)/);
+            if (areaMatch) {
+              const areaValue = areaMatch[1].trim();
+              if (areaMap[areaValue]) {
+                labels.push(areaMap[areaValue]);
+              }
+            }
+
+            // Parse severity from bug reports
+            const severityMatch = body.match(/### Severity\s*\n\n([^\n]+)/);
+            if (severityMatch) {
+              const severityValue = severityMatch[1].trim();
+              if (severityMap[severityValue]) {
+                labels.push(severityMap[severityValue]);
+              }
+            }
+
+            // Apply labels if any were found
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: labels
+              });
+              console.log(`Added labels: ${labels.join(', ')}`);
+            } else {
+              console.log('No matching labels found in issue body');
+            }
