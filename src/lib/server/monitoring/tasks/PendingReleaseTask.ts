@@ -19,6 +19,7 @@ import { delayProfileService } from '../specifications/DelaySpecification.js';
 import { blocklistService } from '../specifications/BlocklistSpecification.js';
 import { logger } from '$lib/logging/index.js';
 import type { TaskResult } from '../MonitoringScheduler.js';
+import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
 
 /**
  * Statistics for pending release processing
@@ -33,10 +34,13 @@ interface ProcessingStats {
 
 /**
  * Execute the pending release processing task
- * @param taskHistoryId - Optional ID linking to taskHistory for activity tracking
+ * @param ctx - Execution context for cancellation support and activity tracking
  */
-export async function executePendingReleaseTask(taskHistoryId?: string): Promise<TaskResult> {
+export async function executePendingReleaseTask(
+	ctx: TaskExecutionContext | null
+): Promise<TaskResult> {
 	const startTime = Date.now();
+	const taskHistoryId = ctx?.historyId;
 	logger.info('[PendingReleaseTask] Starting pending release processing', { taskHistoryId });
 
 	const stats: ProcessingStats = {
@@ -48,11 +52,16 @@ export async function executePendingReleaseTask(taskHistoryId?: string): Promise
 	};
 
 	try {
+		// Check for cancellation before starting
+		ctx?.checkCancelled();
+
 		// Get releases ready to process
 		const readyReleases = await delayProfileService.getReadyReleases();
 		logger.info('[PendingReleaseTask] Found ready releases', { count: readyReleases.length });
 
-		for (const release of readyReleases) {
+		// Process releases with cancellation support
+		const releases = ctx ? ctx.iterate(readyReleases) : readyReleases;
+		for await (const release of releases) {
 			stats.processed++;
 
 			try {

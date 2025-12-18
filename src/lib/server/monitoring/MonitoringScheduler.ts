@@ -16,6 +16,8 @@ import { monitoringSettings } from '$lib/server/db/schema.js';
 import { EventEmitter } from 'events';
 import { logger } from '$lib/logging';
 import { taskHistoryService } from '$lib/server/tasks/TaskHistoryService.js';
+import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
+import { TaskCancelledException } from '$lib/server/tasks/TaskCancelledException.js';
 import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service.js';
 
 /**
@@ -548,27 +550,27 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 
 		logger.info(`[MonitoringScheduler] Executing ${taskType} task...`, { taskType });
 
-		// Start history tracking
-		let historyId: string | null = null;
+		// Create execution context (includes history tracking and cancellation support)
+		let ctx: TaskExecutionContext | null = null;
 		try {
-			historyId = await taskHistoryService.startTask(taskType);
+			ctx = await taskHistoryService.createExecutionContext(taskType);
 		} catch (historyError) {
 			// Log but don't fail the task if history recording fails
-			logger.warn(`[MonitoringScheduler] Failed to start history tracking for ${taskType}`, {
+			logger.warn(`[MonitoringScheduler] Failed to create execution context for ${taskType}`, {
 				taskType,
 				error: historyError
 			});
 		}
 
 		try {
-			// Pass historyId to task so it can record per-item activity
-			const result = await this.runTask(taskType, historyId ?? undefined);
+			// Pass context to task for cancellation support and per-item activity tracking
+			const result = await this.runTask(taskType, ctx);
 			const completionTime = new Date();
 
 			// Record success in history
-			if (historyId) {
+			if (ctx) {
 				try {
-					await taskHistoryService.completeTask(historyId, {
+					await taskHistoryService.completeTask(ctx.historyId, {
 						itemsProcessed: result.itemsProcessed,
 						itemsGrabbed: result.itemsGrabbed,
 						errors: result.errors
@@ -576,7 +578,7 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 				} catch (historyError) {
 					logger.warn(`[MonitoringScheduler] Failed to complete history for ${taskType}`, {
 						taskType,
-						historyId,
+						historyId: ctx.historyId,
 						error: historyError
 					});
 				}
@@ -604,15 +606,23 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 				itemsProcessed: result.itemsProcessed
 			});
 		} catch (error) {
+			// Handle cancellation separately - don't treat as failure
+			if (TaskCancelledException.isTaskCancelled(error)) {
+				logger.info(`[MonitoringScheduler] ${taskType} task was cancelled`, { taskType });
+				this.emit('taskCancelled', taskType);
+				// History is already marked as cancelled by cancelTask()
+				return;
+			}
+
 			// Record failure in history
-			if (historyId) {
+			if (ctx) {
 				try {
 					const errorMessage = error instanceof Error ? error.message : String(error);
-					await taskHistoryService.failTask(historyId, [errorMessage]);
+					await taskHistoryService.failTask(ctx.historyId, [errorMessage]);
 				} catch (historyError) {
 					logger.warn(`[MonitoringScheduler] Failed to record failure history for ${taskType}`, {
 						taskType,
-						historyId,
+						historyId: ctx.historyId,
 						error: historyError
 					});
 				}
@@ -628,46 +638,43 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 	/**
 	 * Run a specific task
 	 * @param taskType - The type of task to run
-	 * @param taskHistoryId - Optional ID linking to taskHistory for activity tracking
+	 * @param ctx - Optional execution context for cancellation support and activity tracking
 	 */
-	private async runTask(taskType: string, taskHistoryId?: string): Promise<TaskResult> {
+	private async runTask(taskType: string, ctx: TaskExecutionContext | null): Promise<TaskResult> {
 		const settings = await this.getSettings();
 
 		switch (taskType) {
 			case 'missing': {
 				const { executeMissingContentTask } = await import('./tasks/MissingContentTask.js');
-				return await executeMissingContentTask(taskHistoryId);
+				return await executeMissingContentTask(ctx);
 			}
 			case 'upgrade': {
 				const { executeUpgradeMonitorTask } = await import('./tasks/UpgradeMonitorTask.js');
-				return await executeUpgradeMonitorTask(taskHistoryId);
+				return await executeUpgradeMonitorTask(ctx);
 			}
 			case 'newEpisode': {
 				const { executeNewEpisodeMonitorTask } = await import('./tasks/NewEpisodeMonitorTask.js');
-				return await executeNewEpisodeMonitorTask(
-					settings.newEpisodeCheckIntervalHours,
-					taskHistoryId
-				);
+				return await executeNewEpisodeMonitorTask(settings.newEpisodeCheckIntervalHours, ctx);
 			}
 			case 'cutoffUnmet': {
 				const { executeCutoffUnmetTask } = await import('./tasks/CutoffUnmetTask.js');
-				return await executeCutoffUnmetTask(taskHistoryId);
+				return await executeCutoffUnmetTask(ctx);
 			}
 			case 'pendingRelease': {
 				const { executePendingReleaseTask } = await import('./tasks/PendingReleaseTask.js');
-				return await executePendingReleaseTask(taskHistoryId);
+				return await executePendingReleaseTask(ctx);
 			}
 			case 'missingSubtitles': {
 				const { executeMissingSubtitlesTask } = await import('./tasks/MissingSubtitlesTask.js');
-				return await executeMissingSubtitlesTask(taskHistoryId);
+				return await executeMissingSubtitlesTask(ctx);
 			}
 			case 'subtitleUpgrade': {
 				const { executeSubtitleUpgradeTask } = await import('./tasks/SubtitleUpgradeTask.js');
-				return await executeSubtitleUpgradeTask(taskHistoryId);
+				return await executeSubtitleUpgradeTask(ctx);
 			}
 			case 'smartListRefresh': {
 				const { executeSmartListRefreshTask } = await import('./tasks/SmartListRefreshTask.js');
-				return await executeSmartListRefreshTask(taskHistoryId);
+				return await executeSmartListRefreshTask(ctx);
 			}
 			default:
 				throw new Error(`Unknown task type: ${taskType}`);
@@ -724,27 +731,27 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 		logger.info(`[MonitoringScheduler] Manually executing ${taskType} task...`, { taskType });
 		this.emit('manualTaskStarted', taskType);
 
-		// Start history tracking
-		let historyId: string | null = null;
+		// Create execution context (includes history tracking and cancellation support)
+		let ctx: TaskExecutionContext | null = null;
 		try {
-			historyId = await taskHistoryService.startTask(taskType);
+			ctx = await taskHistoryService.createExecutionContext(taskType);
 		} catch (historyError) {
 			// Log but don't fail the task if history recording fails
-			logger.warn(`[MonitoringScheduler] Failed to start history tracking for manual ${taskType}`, {
+			logger.warn(`[MonitoringScheduler] Failed to create execution context for manual ${taskType}`, {
 				taskType,
 				error: historyError
 			});
 		}
 
 		try {
-			// Pass historyId to task so it can record per-item activity
-			const result = await this.runTask(taskType, historyId ?? undefined);
+			// Pass context to task for cancellation support and per-item activity tracking
+			const result = await this.runTask(taskType, ctx);
 			const completionTime = new Date();
 
 			// Record success in history
-			if (historyId) {
+			if (ctx) {
 				try {
-					await taskHistoryService.completeTask(historyId, {
+					await taskHistoryService.completeTask(ctx.historyId, {
 						itemsProcessed: result.itemsProcessed,
 						itemsGrabbed: result.itemsGrabbed,
 						errors: result.errors
@@ -752,7 +759,7 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 				} catch (historyError) {
 					logger.warn(`[MonitoringScheduler] Failed to complete history for manual ${taskType}`, {
 						taskType,
-						historyId,
+						historyId: ctx.historyId,
 						error: historyError
 					});
 				}
@@ -773,17 +780,25 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 			this.emit('manualTaskCompleted', taskType, result);
 			return result;
 		} catch (error) {
+			// Handle cancellation separately - don't treat as failure
+			if (TaskCancelledException.isTaskCancelled(error)) {
+				logger.info(`[MonitoringScheduler] Manual ${taskType} task was cancelled`, { taskType });
+				this.emit('manualTaskCancelled', taskType);
+				// History is already marked as cancelled by cancelTask()
+				throw error; // Re-throw so caller knows it was cancelled
+			}
+
 			// Record failure in history
-			if (historyId) {
+			if (ctx) {
 				try {
 					const errorMessage = error instanceof Error ? error.message : String(error);
-					await taskHistoryService.failTask(historyId, [errorMessage]);
+					await taskHistoryService.failTask(ctx.historyId, [errorMessage]);
 				} catch (historyError) {
 					logger.warn(
 						`[MonitoringScheduler] Failed to record failure history for manual ${taskType}`,
 						{
 							taskType,
-							historyId,
+							historyId: ctx.historyId,
 							error: historyError
 						}
 					);

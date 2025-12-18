@@ -20,6 +20,7 @@ import { getSubtitleDownloadService } from '$lib/server/subtitles/services/Subti
 import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
 import { logger } from '$lib/logging/index.js';
 import type { TaskResult } from '../MonitoringScheduler.js';
+import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
 
 /**
  * Maximum subtitles to process per run to prevent overwhelming providers
@@ -38,10 +39,13 @@ const MIN_SCORE_IMPROVEMENT = 10;
 
 /**
  * Execute subtitle upgrade task
- * @param taskHistoryId - Optional ID linking to taskHistory for activity tracking
+ * @param ctx - Execution context for cancellation support and activity tracking
  */
-export async function executeSubtitleUpgradeTask(taskHistoryId?: string): Promise<TaskResult> {
+export async function executeSubtitleUpgradeTask(
+	ctx: TaskExecutionContext | null
+): Promise<TaskResult> {
 	const executedAt = new Date();
+	const taskHistoryId = ctx?.historyId;
 	logger.info('[SubtitleUpgradeTask] Starting subtitle upgrade search', { taskHistoryId });
 
 	let itemsProcessed = 0;
@@ -53,6 +57,9 @@ export async function executeSubtitleUpgradeTask(taskHistoryId?: string): Promis
 	const profileService = LanguageProfileService.getInstance();
 
 	try {
+		// Check for cancellation before starting
+		ctx?.checkCancelled();
+
 		// Process movie subtitle upgrades
 		logger.info('[SubtitleUpgradeTask] Searching for movie subtitle upgrades');
 		const movieResults = await searchMovieSubtitleUpgrades(
@@ -60,7 +67,8 @@ export async function executeSubtitleUpgradeTask(taskHistoryId?: string): Promis
 			downloadService,
 			profileService,
 			executedAt,
-			taskHistoryId
+			taskHistoryId,
+			ctx
 		);
 
 		itemsProcessed += movieResults.processed;
@@ -73,6 +81,9 @@ export async function executeSubtitleUpgradeTask(taskHistoryId?: string): Promis
 			errors: movieResults.errors
 		});
 
+		// Check for cancellation before episode upgrades
+		ctx?.checkCancelled();
+
 		// Process episode subtitle upgrades
 		logger.info('[SubtitleUpgradeTask] Searching for episode subtitle upgrades');
 		const episodeResults = await searchEpisodeSubtitleUpgrades(
@@ -80,7 +91,8 @@ export async function executeSubtitleUpgradeTask(taskHistoryId?: string): Promis
 			downloadService,
 			profileService,
 			executedAt,
-			taskHistoryId
+			taskHistoryId,
+			ctx
 		);
 
 		itemsProcessed += episodeResults.processed;
@@ -120,7 +132,8 @@ async function searchMovieSubtitleUpgrades(
 	downloadService: ReturnType<typeof getSubtitleDownloadService>,
 	profileService: LanguageProfileService,
 	executedAt: Date,
-	taskHistoryId?: string
+	taskHistoryId?: string,
+	ctx?: TaskExecutionContext | null
 ): Promise<{ processed: number; upgraded: number; errors: number }> {
 	let processed = 0;
 	let upgraded = 0;
@@ -165,6 +178,9 @@ async function searchMovieSubtitleUpgrades(
 	// Process movies
 	const movieEntries = Array.from(movieMap.values());
 	for (let i = 0; i < movieEntries.length; i += MAX_CONCURRENT_SEARCHES) {
+		// Check for cancellation between batches
+		ctx?.checkCancelled();
+
 		const batch = movieEntries.slice(i, i + MAX_CONCURRENT_SEARCHES);
 
 		await Promise.all(
@@ -291,7 +307,8 @@ async function searchEpisodeSubtitleUpgrades(
 	downloadService: ReturnType<typeof getSubtitleDownloadService>,
 	profileService: LanguageProfileService,
 	executedAt: Date,
-	taskHistoryId?: string
+	taskHistoryId?: string,
+	ctx?: TaskExecutionContext | null
 ): Promise<{ processed: number; upgraded: number; errors: number }> {
 	let processed = 0;
 	let upgraded = 0;
@@ -339,6 +356,9 @@ async function searchEpisodeSubtitleUpgrades(
 	// Process episodes
 	const episodeEntries = Array.from(episodeMap.values());
 	for (let i = 0; i < episodeEntries.length; i += MAX_CONCURRENT_SEARCHES) {
+		// Check for cancellation between batches
+		ctx?.checkCancelled();
+
 		const batch = episodeEntries.slice(i, i + MAX_CONCURRENT_SEARCHES);
 
 		await Promise.all(

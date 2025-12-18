@@ -10,7 +10,8 @@
 		Tv,
 		Download,
 		Search,
-		AlertTriangle
+		AlertTriangle,
+		Ban
 	} from 'lucide-svelte';
 	import type { TaskHistoryEntry } from '$lib/types/task';
 
@@ -251,6 +252,8 @@
 							<XCircle class="h-4 w-4 text-error" />
 						{:else if entry.status === 'running'}
 							<Clock class="h-4 w-4 text-warning" />
+						{:else if entry.status === 'cancelled'}
+							<Ban class="h-4 w-4 text-warning" />
 						{:else}
 							<AlertCircle class="h-4 w-4 text-base-content/50" />
 						{/if}

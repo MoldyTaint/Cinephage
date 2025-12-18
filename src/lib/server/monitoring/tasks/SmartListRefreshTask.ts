@@ -8,9 +8,20 @@
 import { getSmartListService } from '$lib/server/smartlists/index.js';
 import { logger } from '$lib/logging';
 import type { TaskResult } from '../MonitoringScheduler.js';
+import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
 
-export async function executeSmartListRefreshTask(_taskHistoryId?: string): Promise<TaskResult> {
-	logger.info('[SmartListRefreshTask] Starting smart list refresh task');
+/**
+ * Execute smart list refresh task
+ * @param ctx - Execution context for cancellation support and activity tracking
+ */
+export async function executeSmartListRefreshTask(
+	ctx: TaskExecutionContext | null
+): Promise<TaskResult> {
+	const taskHistoryId = ctx?.historyId;
+	logger.info('[SmartListRefreshTask] Starting smart list refresh task', { taskHistoryId });
+
+	// Check for cancellation before starting
+	ctx?.checkCancelled();
 
 	const service = getSmartListService();
 

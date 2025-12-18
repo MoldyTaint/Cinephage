@@ -10,13 +10,17 @@ import { monitoringHistory } from '$lib/server/db/schema.js';
 import { monitoringSearchService } from '../search/MonitoringSearchService.js';
 import { logger } from '$lib/logging/index.js';
 import type { TaskResult } from '../MonitoringScheduler.js';
+import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
 
 /**
  * Execute missing content search task
- * @param taskHistoryId - Optional ID linking to taskHistory for activity tracking
+ * @param ctx - Execution context for cancellation support and activity tracking
  */
-export async function executeMissingContentTask(taskHistoryId?: string): Promise<TaskResult> {
+export async function executeMissingContentTask(
+	ctx: TaskExecutionContext | null
+): Promise<TaskResult> {
 	const executedAt = new Date();
+	const taskHistoryId = ctx?.historyId;
 	logger.info('[MissingContentTask] Starting missing content search', { taskHistoryId });
 
 	let itemsProcessed = 0;
@@ -24,9 +28,12 @@ export async function executeMissingContentTask(taskHistoryId?: string): Promise
 	let errors = 0;
 
 	try {
+		// Check for cancellation before starting
+		ctx?.checkCancelled();
+
 		// Search for missing movies
 		logger.info('[MissingContentTask] Searching for missing movies');
-		const movieResults = await monitoringSearchService.searchMissingMovies();
+		const movieResults = await monitoringSearchService.searchMissingMovies(ctx?.abortSignal);
 
 		itemsProcessed += movieResults.summary.searched;
 		itemsGrabbed += movieResults.summary.grabbed;
@@ -38,33 +45,62 @@ export async function executeMissingContentTask(taskHistoryId?: string): Promise
 			errors: movieResults.summary.errors
 		});
 
-		// Record history for each movie
-		for (const item of movieResults.items) {
-			if (!item.searched && item.skipped) continue; // Skip recording skipped items
+		// Record history for each movie (with cancellation checks)
+		if (ctx) {
+			for await (const item of ctx.iterate(movieResults.items)) {
+				if (!item.searched && item.skipped) continue; // Skip recording skipped items
 
-			await db.insert(monitoringHistory).values({
-				taskHistoryId,
-				taskType: 'missing',
-				movieId: item.itemType === 'movie' ? item.itemId : undefined,
-				status: item.grabbed
-					? 'grabbed'
-					: item.error
-						? 'error'
-						: item.releasesFound > 0
-							? 'found'
-							: 'no_results',
-				releasesFound: item.releasesFound,
-				releaseGrabbed: item.grabbedRelease,
-				queueItemId: item.queueItemId,
-				isUpgrade: false,
-				errorMessage: item.error,
-				executedAt: executedAt.toISOString()
-			});
+				await db.insert(monitoringHistory).values({
+					taskHistoryId,
+					taskType: 'missing',
+					movieId: item.itemType === 'movie' ? item.itemId : undefined,
+					status: item.grabbed
+						? 'grabbed'
+						: item.error
+							? 'error'
+							: item.releasesFound > 0
+								? 'found'
+								: 'no_results',
+					releasesFound: item.releasesFound,
+					releaseGrabbed: item.grabbedRelease,
+					queueItemId: item.queueItemId,
+					isUpgrade: false,
+					errorMessage: item.error,
+					executedAt: executedAt.toISOString()
+				});
+			}
+		} else {
+			// No context - record without cancellation checks
+			for (const item of movieResults.items) {
+				if (!item.searched && item.skipped) continue;
+
+				await db.insert(monitoringHistory).values({
+					taskHistoryId,
+					taskType: 'missing',
+					movieId: item.itemType === 'movie' ? item.itemId : undefined,
+					status: item.grabbed
+						? 'grabbed'
+						: item.error
+							? 'error'
+							: item.releasesFound > 0
+								? 'found'
+								: 'no_results',
+					releasesFound: item.releasesFound,
+					releaseGrabbed: item.grabbedRelease,
+					queueItemId: item.queueItemId,
+					isUpgrade: false,
+					errorMessage: item.error,
+					executedAt: executedAt.toISOString()
+				});
+			}
 		}
+
+		// Check for cancellation before episode search
+		ctx?.checkCancelled();
 
 		// Search for missing episodes
 		logger.info('[MissingContentTask] Searching for missing episodes');
-		const episodeResults = await monitoringSearchService.searchMissingEpisodes();
+		const episodeResults = await monitoringSearchService.searchMissingEpisodes(ctx?.abortSignal);
 
 		itemsProcessed += episodeResults.summary.searched;
 		itemsGrabbed += episodeResults.summary.grabbed;
@@ -76,28 +112,53 @@ export async function executeMissingContentTask(taskHistoryId?: string): Promise
 			errors: episodeResults.summary.errors
 		});
 
-		// Record history for each episode
-		for (const item of episodeResults.items) {
-			if (!item.searched && item.skipped) continue;
+		// Record history for each episode (with cancellation checks)
+		if (ctx) {
+			for await (const item of ctx.iterate(episodeResults.items)) {
+				if (!item.searched && item.skipped) continue;
 
-			await db.insert(monitoringHistory).values({
-				taskHistoryId,
-				taskType: 'missing',
-				episodeId: item.itemType === 'episode' ? item.itemId : undefined,
-				status: item.grabbed
-					? 'grabbed'
-					: item.error
-						? 'error'
-						: item.releasesFound > 0
-							? 'found'
-							: 'no_results',
-				releasesFound: item.releasesFound,
-				releaseGrabbed: item.grabbedRelease,
-				queueItemId: item.queueItemId,
-				isUpgrade: false,
-				errorMessage: item.error,
-				executedAt: executedAt.toISOString()
-			});
+				await db.insert(monitoringHistory).values({
+					taskHistoryId,
+					taskType: 'missing',
+					episodeId: item.itemType === 'episode' ? item.itemId : undefined,
+					status: item.grabbed
+						? 'grabbed'
+						: item.error
+							? 'error'
+							: item.releasesFound > 0
+								? 'found'
+								: 'no_results',
+					releasesFound: item.releasesFound,
+					releaseGrabbed: item.grabbedRelease,
+					queueItemId: item.queueItemId,
+					isUpgrade: false,
+					errorMessage: item.error,
+					executedAt: executedAt.toISOString()
+				});
+			}
+		} else {
+			for (const item of episodeResults.items) {
+				if (!item.searched && item.skipped) continue;
+
+				await db.insert(monitoringHistory).values({
+					taskHistoryId,
+					taskType: 'missing',
+					episodeId: item.itemType === 'episode' ? item.itemId : undefined,
+					status: item.grabbed
+						? 'grabbed'
+						: item.error
+							? 'error'
+							: item.releasesFound > 0
+								? 'found'
+								: 'no_results',
+					releasesFound: item.releasesFound,
+					releaseGrabbed: item.grabbedRelease,
+					queueItemId: item.queueItemId,
+					isUpgrade: false,
+					errorMessage: item.error,
+					executedAt: executedAt.toISOString()
+				});
+			}
 		}
 
 		logger.info('[MissingContentTask] Missing content task completed', {

@@ -13,13 +13,17 @@ import { monitoringHistory } from '$lib/server/db/schema.js';
 import { monitoringSearchService } from '../search/MonitoringSearchService.js';
 import { logger } from '$lib/logging/index.js';
 import type { TaskResult } from '../MonitoringScheduler.js';
+import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
 
 /**
  * Execute cutoff unmet search task
- * @param taskHistoryId - Optional ID linking to taskHistory for activity tracking
+ * @param ctx - Execution context for cancellation support and activity tracking
  */
-export async function executeCutoffUnmetTask(taskHistoryId?: string): Promise<TaskResult> {
+export async function executeCutoffUnmetTask(
+	ctx: TaskExecutionContext | null
+): Promise<TaskResult> {
 	const executedAt = new Date();
+	const taskHistoryId = ctx?.historyId;
 	logger.info('[CutoffUnmetTask] Starting cutoff unmet search', { taskHistoryId });
 
 	let itemsProcessed = 0;
@@ -27,11 +31,15 @@ export async function executeCutoffUnmetTask(taskHistoryId?: string): Promise<Ta
 	let errors = 0;
 
 	try {
+		// Check for cancellation before starting
+		ctx?.checkCancelled();
+
 		// Search for items below quality cutoff only
 		// cutoffUnmetOnly: true means we only search items that haven't reached target quality
 		const cutoffResults = await monitoringSearchService.searchForUpgrades({
 			maxItems: 50,
-			cutoffUnmetOnly: true // Only search items below cutoff
+			cutoffUnmetOnly: true, // Only search items below cutoff
+			signal: ctx?.abortSignal
 		});
 
 		itemsProcessed = cutoffResults.summary.searched;
@@ -44,29 +52,55 @@ export async function executeCutoffUnmetTask(taskHistoryId?: string): Promise<Ta
 			errors: cutoffResults.summary.errors
 		});
 
-		// Record history for each item
-		for (const item of cutoffResults.items) {
-			if (!item.searched && item.skipped) continue;
+		// Record history for each item (with cancellation checks)
+		if (ctx) {
+			for await (const item of ctx.iterate(cutoffResults.items)) {
+				if (!item.searched && item.skipped) continue;
 
-			await db.insert(monitoringHistory).values({
-				taskHistoryId,
-				taskType: 'cutoffUnmet',
-				movieId: item.itemType === 'movie' ? item.itemId : undefined,
-				episodeId: item.itemType === 'episode' ? item.itemId : undefined,
-				status: item.grabbed
-					? 'grabbed'
-					: item.error
-						? 'error'
-						: item.releasesFound > 0
-							? 'found'
-							: 'no_results',
-				releasesFound: item.releasesFound,
-				releaseGrabbed: item.grabbedRelease,
-				queueItemId: item.queueItemId,
-				isUpgrade: true,
-				errorMessage: item.error,
-				executedAt: executedAt.toISOString()
-			});
+				await db.insert(monitoringHistory).values({
+					taskHistoryId,
+					taskType: 'cutoffUnmet',
+					movieId: item.itemType === 'movie' ? item.itemId : undefined,
+					episodeId: item.itemType === 'episode' ? item.itemId : undefined,
+					status: item.grabbed
+						? 'grabbed'
+						: item.error
+							? 'error'
+							: item.releasesFound > 0
+								? 'found'
+								: 'no_results',
+					releasesFound: item.releasesFound,
+					releaseGrabbed: item.grabbedRelease,
+					queueItemId: item.queueItemId,
+					isUpgrade: true,
+					errorMessage: item.error,
+					executedAt: executedAt.toISOString()
+				});
+			}
+		} else {
+			for (const item of cutoffResults.items) {
+				if (!item.searched && item.skipped) continue;
+
+				await db.insert(monitoringHistory).values({
+					taskHistoryId,
+					taskType: 'cutoffUnmet',
+					movieId: item.itemType === 'movie' ? item.itemId : undefined,
+					episodeId: item.itemType === 'episode' ? item.itemId : undefined,
+					status: item.grabbed
+						? 'grabbed'
+						: item.error
+							? 'error'
+							: item.releasesFound > 0
+								? 'found'
+								: 'no_results',
+					releasesFound: item.releasesFound,
+					releaseGrabbed: item.grabbedRelease,
+					queueItemId: item.queueItemId,
+					isUpgrade: true,
+					errorMessage: item.error,
+					executedAt: executedAt.toISOString()
+				});
+			}
 		}
 
 		logger.info('[CutoffUnmetTask] Cutoff unmet task completed', {

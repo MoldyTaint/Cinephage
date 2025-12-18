@@ -9,7 +9,8 @@
 		ChevronUp,
 		CheckCircle,
 		XCircle,
-		AlertCircle
+		AlertCircle,
+		Square
 	} from 'lucide-svelte';
 	import type { UnifiedTask } from '$lib/server/tasks/UnifiedTaskRegistry';
 	import type { TaskHistoryEntry } from '$lib/types/task';
@@ -20,11 +21,13 @@
 		task: UnifiedTask;
 		history?: TaskHistoryEntry[];
 		onRunTask?: (taskId: string) => Promise<void>;
+		onCancelTask?: (taskId: string) => Promise<void>;
 	}
 
-	let { task, history = [], onRunTask }: Props = $props();
+	let { task, history = [], onRunTask, onCancelTask }: Props = $props();
 
 	let isRunning = $state(false);
+	let isCancelling = $state(false);
 	let isExpanded = $state(false);
 	let loadingHistory = $state(false);
 	let taskHistory = $state<TaskHistoryEntry[]>([]);
@@ -33,6 +36,10 @@
 	$effect(() => {
 		isRunning = task.isRunning;
 		taskHistory = history;
+		// Reset cancelling state when task stops running
+		if (!task.isRunning) {
+			isCancelling = false;
+		}
 	});
 
 	/**
@@ -99,6 +106,32 @@
 		} finally {
 			isRunning = false;
 		}
+	}
+
+	/**
+	 * Cancel the running task
+	 */
+	async function cancelTask() {
+		if (!isRunning || isCancelling) return;
+
+		isCancelling = true;
+
+		try {
+			if (onCancelTask) {
+				await onCancelTask(task.id);
+			} else {
+				// Default behavior: call the cancel endpoint
+				const response = await fetch(`/api/tasks/${task.id}/cancel`, { method: 'POST' });
+				const result = await response.json();
+				if (!result.success) {
+					throw new Error(result.error || 'Failed to cancel task');
+				}
+			}
+			await invalidate('app:tasks');
+		} catch (error) {
+			console.error('Failed to cancel task:', error);
+		}
+		// Note: isCancelling is reset in the $effect when task.isRunning becomes false
 	}
 
 	/**
@@ -238,16 +271,29 @@
 				History
 			</button>
 
-			<!-- Run Button -->
-			<button class="btn gap-1 btn-sm btn-primary" onclick={runTask} disabled={isRunning}>
+			<!-- Run/Cancel Buttons -->
+			<div class="flex gap-2">
 				{#if isRunning}
-					<span class="loading loading-xs loading-spinner"></span>
-					Running...
+					<button
+						class="btn gap-1 btn-sm btn-error"
+						onclick={cancelTask}
+						disabled={isCancelling}
+					>
+						{#if isCancelling}
+							<span class="loading loading-xs loading-spinner"></span>
+							Cancelling...
+						{:else}
+							<Square class="h-4 w-4" />
+							Cancel
+						{/if}
+					</button>
 				{:else}
-					<Play class="h-4 w-4" />
-					Run Now
+					<button class="btn gap-1 btn-sm btn-primary" onclick={runTask}>
+						<Play class="h-4 w-4" />
+						Run Now
+					</button>
 				{/if}
-			</button>
+			</div>
 		</div>
 
 		<!-- Expandable History -->

@@ -27,7 +27,7 @@ export interface TaskDefinition {
 export interface TaskHistoryEntry {
 	id: string;
 	taskId: string;
-	status: 'running' | 'completed' | 'failed';
+	status: 'running' | 'completed' | 'failed' | 'cancelled';
 	results: Record<string, unknown> | null;
 	errors: string[] | null;
 	startedAt: string;

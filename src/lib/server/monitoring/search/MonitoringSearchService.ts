@@ -37,6 +37,7 @@ import type { SearchCriteria, EnhancedReleaseResult } from '$lib/server/indexers
 import { scoreRelease } from '$lib/server/scoring/scorer.js';
 import type { ScoringProfile } from '$lib/server/scoring/types.js';
 import { qualityFilter } from '$lib/server/quality';
+import { TaskCancelledException } from '$lib/server/tasks/TaskCancelledException.js';
 
 // Specifications
 import {
@@ -106,6 +107,10 @@ export interface UpgradeSearchOptions {
 	 * Default: true (matches legacy behavior)
 	 */
 	cutoffUnmetOnly?: boolean;
+	/**
+	 * Optional AbortSignal for cancellation support
+	 */
+	signal?: AbortSignal;
 }
 
 /**
@@ -249,13 +254,20 @@ export class MonitoringSearchService {
 
 	/**
 	 * Search for missing movies
+	 * @param signal - Optional AbortSignal for cancellation support
 	 */
-	async searchMissingMovies(): Promise<SearchResults> {
+	async searchMissingMovies(signal?: AbortSignal): Promise<SearchResults> {
 		logger.info('[MonitoringSearch] Starting missing movies search');
 
 		const results: ItemSearchResult[] = [];
 
 		try {
+			// Check for cancellation
+			if (signal?.aborted) {
+				logger.info('[MonitoringSearch] Missing movies search cancelled');
+				throw new TaskCancelledException('search');
+			}
+
 			// Query monitored movies without files
 			const missingMovies = await db.query.movies.findMany({
 				where: and(eq(movies.monitored, true), eq(movies.hasFile, false)),
@@ -274,6 +286,11 @@ export class MonitoringSearchService {
 			const cooldownSpec = new MovieSearchCooldownSpecification();
 
 			for (const movie of missingMovies) {
+				// Check for cancellation before processing each movie
+				if (signal?.aborted) {
+					logger.info('[MonitoringSearch] Missing movies search cancelled during processing');
+					throw new TaskCancelledException('search');
+				}
 				const context: MovieContext = {
 					movie,
 					profile: movie.scoringProfile ?? undefined
@@ -381,29 +398,27 @@ export class MonitoringSearchService {
 
 	/**
 	 * Search for missing episodes in a series or all series
-	 * Uses cascading search strategy: series packs → season packs → individual episodes
+	 * Uses cascading search strategy: series packs -> season packs -> individual episodes
+	 * @param signal - Optional AbortSignal for cancellation support
 	 */
-	async searchMissingEpisodes(seriesId?: string): Promise<SearchResults> {
-		logger.info('[MonitoringSearch] Starting missing episodes search with cascading strategy', {
-			seriesId
-		});
+	async searchMissingEpisodes(signal?: AbortSignal): Promise<SearchResults> {
+		logger.info('[MonitoringSearch] Starting missing episodes search with cascading strategy');
 
 		const results: ItemSearchResult[] = [];
 
 		try {
+			// Check for cancellation
+			if (signal?.aborted) {
+				logger.info('[MonitoringSearch] Missing episodes search cancelled');
+				throw new TaskCancelledException('search');
+			}
+
 			// Query monitored episodes without files
-			const query = seriesId
-				? and(
-						eq(episodes.seriesId, seriesId),
-						eq(episodes.monitored, true),
-						eq(episodes.hasFile, false),
-						lte(episodes.airDate, new Date().toISOString()) // Only aired episodes
-					)
-				: and(
-						eq(episodes.monitored, true),
-						eq(episodes.hasFile, false),
-						lte(episodes.airDate, new Date().toISOString())
-					);
+			const query = and(
+				eq(episodes.monitored, true),
+				eq(episodes.hasFile, false),
+				lte(episodes.airDate, new Date().toISOString()) // Only aired episodes
+			);
 
 			const missingEpisodes = await db.query.episodes.findMany({
 				where: query,
@@ -430,6 +445,12 @@ export class MonitoringSearchService {
 			const seriesDataMap = new Map<string, (typeof missingEpisodes)[0]['series']>();
 
 			for (const episode of missingEpisodes) {
+				// Check for cancellation before processing each episode
+				if (signal?.aborted) {
+					logger.info('[MonitoringSearch] Missing episodes search cancelled during processing');
+					throw new TaskCancelledException('search');
+				}
+
 				if (!episode.series) continue;
 
 				const context: EpisodeContext = {
@@ -522,10 +543,20 @@ export class MonitoringSearchService {
 
 			// Process each series with cascading strategy
 			for (const [currentSeriesId, seasonMap] of episodesBySeriesAndSeason) {
+				// Check for cancellation before each series
+				if (signal?.aborted) {
+					logger.info('[MonitoringSearch] Missing episodes search cancelled between series');
+					throw new TaskCancelledException('search');
+				}
+
 				const seriesData = seriesDataMap.get(currentSeriesId);
 				if (!seriesData) continue;
 
-				const seriesResults = await this.searchSeriesWithCascadingStrategy(seriesData, seasonMap);
+				const seriesResults = await this.searchSeriesWithCascadingStrategy(
+					seriesData,
+					seasonMap,
+					signal
+				);
 				results.push(...seriesResults);
 			}
 		} catch (error) {
@@ -541,12 +572,14 @@ export class MonitoringSearchService {
 	/**
 	 * Search for a series using cascading strategy: season packs first, then individual episodes
 	 * This prioritizes efficient downloads that get multiple episodes at once
+	 * @param signal - Optional AbortSignal for cancellation support
 	 */
 	private async searchSeriesWithCascadingStrategy(
 		seriesData: NonNullable<
 			typeof series.$inferSelect & { scoringProfile?: typeof scoringProfiles.$inferSelect | null }
 		>,
-		seasonMap: Map<number, Array<typeof episodes.$inferSelect>>
+		seasonMap: Map<number, Array<typeof episodes.$inferSelect>>,
+		signal?: AbortSignal
 	): Promise<ItemSearchResult[]> {
 		const results: ItemSearchResult[] = [];
 		const grabbedEpisodeIds = new Set<string>();
@@ -568,6 +601,11 @@ export class MonitoringSearchService {
 		// Strategy 1: Try season pack search for seasons with many missing episodes
 		// Only try pack search if >= 50% of season is missing
 		for (const [seasonNumber, missingEpisodes] of seasonMap) {
+			// Check for cancellation before each season
+			if (signal?.aborted) {
+				throw new TaskCancelledException('search');
+			}
+
 			const totalEpisodes = seasonEpisodeCounts.get(seasonNumber) ?? missingEpisodes.length;
 			const missingPercent = (missingEpisodes.length / totalEpisodes) * 100;
 
@@ -640,6 +678,11 @@ export class MonitoringSearchService {
 		// Strategy 2: Search for remaining individual episodes
 		for (const [seasonNumber, missingEpisodes] of seasonMap) {
 			for (const episode of missingEpisodes) {
+				// Check for cancellation before each episode
+				if (signal?.aborted) {
+					throw new TaskCancelledException('search');
+				}
+
 				// Skip if already grabbed via pack
 				if (grabbedEpisodeIds.has(episode.id)) {
 					continue;
@@ -855,23 +898,38 @@ export class MonitoringSearchService {
 	/**
 	 * Search for upgrades (movies/episodes with files below cutoff or all items)
 	 * @param options.cutoffUnmetOnly - If true, only search items below cutoff. If false, search all items.
+	 * @param options.signal - Optional AbortSignal for cancellation support
 	 */
 	async searchForUpgrades(options: UpgradeSearchOptions = {}): Promise<SearchResults> {
 		const cutoffUnmetOnly = options.cutoffUnmetOnly ?? true; // Default to legacy behavior
+		const signal = options.signal;
 		logger.info('[MonitoringSearch] Starting upgrade search', { ...options, cutoffUnmetOnly });
 
 		const results: ItemSearchResult[] = [];
 		const maxItems = options.maxItems || 50; // Limit to prevent overwhelming indexers
 
 		try {
+			// Check for cancellation
+			if (signal?.aborted) {
+				logger.info('[MonitoringSearch] Upgrade search cancelled');
+				throw new TaskCancelledException('search');
+			}
+
 			// Search for movie upgrades
 			if (!options.seriesIds) {
 				const movieResults = await this.searchMovieUpgrades(
 					options.movieIds,
 					maxItems,
-					cutoffUnmetOnly
+					cutoffUnmetOnly,
+					signal
 				);
 				results.push(...movieResults);
+			}
+
+			// Check for cancellation between movie and episode search
+			if (signal?.aborted) {
+				logger.info('[MonitoringSearch] Upgrade search cancelled after movies');
+				throw new TaskCancelledException('search');
 			}
 
 			// Search for episode upgrades
@@ -879,11 +937,15 @@ export class MonitoringSearchService {
 				const episodeResults = await this.searchEpisodeUpgrades(
 					options.seriesIds,
 					maxItems,
-					cutoffUnmetOnly
+					cutoffUnmetOnly,
+					signal
 				);
 				results.push(...episodeResults);
 			}
 		} catch (error) {
+			if (TaskCancelledException.isTaskCancelled(error)) {
+				throw error;
+			}
 			logger.error('[MonitoringSearch] Upgrade search failed', error);
 		}
 
@@ -893,15 +955,22 @@ export class MonitoringSearchService {
 	/**
 	 * Search for movie upgrades
 	 * @param cutoffUnmetOnly - If true, only search items below cutoff. If false, search all items with files.
+	 * @param signal - Optional AbortSignal for cancellation support
 	 */
 	private async searchMovieUpgrades(
 		movieIds?: string[],
 		maxItems: number = 50,
-		cutoffUnmetOnly: boolean = true
+		cutoffUnmetOnly: boolean = true,
+		signal?: AbortSignal
 	): Promise<ItemSearchResult[]> {
 		const results: ItemSearchResult[] = [];
 
 		try {
+			// Check for cancellation
+			if (signal?.aborted) {
+				throw new TaskCancelledException('search');
+			}
+
 			// Query monitored movies WITH files
 			const query =
 				movieIds && movieIds.length > 0
@@ -928,6 +997,11 @@ export class MonitoringSearchService {
 			const cooldownSpec = new MovieSearchCooldownSpecification();
 
 			for (const movie of moviesWithFiles) {
+				// Check for cancellation before each movie
+				if (signal?.aborted) {
+					throw new TaskCancelledException('search');
+				}
+
 				// Get existing file
 				const existingFiles = await db.query.movieFiles.findMany({
 					where: eq(movieFiles.movieId, movie.id),
@@ -1031,15 +1105,22 @@ export class MonitoringSearchService {
 	/**
 	 * Search for episode upgrades
 	 * @param cutoffUnmetOnly - If true, only search items below cutoff. If false, search all items with files.
+	 * @param signal - Optional AbortSignal for cancellation support
 	 */
 	private async searchEpisodeUpgrades(
 		seriesIds?: string[],
 		maxItems: number = 50,
-		cutoffUnmetOnly: boolean = true
+		cutoffUnmetOnly: boolean = true,
+		signal?: AbortSignal
 	): Promise<ItemSearchResult[]> {
 		const results: ItemSearchResult[] = [];
 
 		try {
+			// Check for cancellation
+			if (signal?.aborted) {
+				throw new TaskCancelledException('search');
+			}
+
 			// Query monitored episodes WITH files
 			const query =
 				seriesIds && seriesIds.length > 0
@@ -1078,6 +1159,11 @@ export class MonitoringSearchService {
 			const cooldownSpec = new EpisodeSearchCooldownSpecification();
 
 			for (const episode of episodesWithFiles) {
+				// Check for cancellation before each episode
+				if (signal?.aborted) {
+					throw new TaskCancelledException('search');
+				}
+
 				if (!episode.series) continue;
 
 				// Get existing file
@@ -1479,13 +1565,21 @@ export class MonitoringSearchService {
 
 	/**
 	 * Search for newly aired episodes
+	 * @param intervalHours - How far back to look for new episodes
+	 * @param signal - Optional AbortSignal for cancellation support
 	 */
-	async searchNewEpisodes(intervalHours: number): Promise<SearchResults> {
+	async searchNewEpisodes(intervalHours: number, signal?: AbortSignal): Promise<SearchResults> {
 		logger.info('[MonitoringSearch] Starting new episode search', { intervalHours });
 
 		const results: ItemSearchResult[] = [];
 
 		try {
+			// Check for cancellation
+			if (signal?.aborted) {
+				logger.info('[MonitoringSearch] New episode search cancelled');
+				throw new TaskCancelledException('search');
+			}
+
 			// Calculate cutoff date
 			const cutoffDate = new Date();
 			cutoffDate.setHours(cutoffDate.getHours() - intervalHours);
@@ -1522,6 +1616,11 @@ export class MonitoringSearchService {
 			const readOnlySpec = new EpisodeReadOnlyFolderSpecification();
 
 			for (const episode of recentEpisodes) {
+				// Check for cancellation before each episode
+				if (signal?.aborted) {
+					throw new TaskCancelledException('search');
+				}
+
 				if (!episode.series) continue;
 
 				const context: EpisodeContext = {

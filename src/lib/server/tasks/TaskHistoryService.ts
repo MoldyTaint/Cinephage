@@ -10,6 +10,7 @@ import { taskHistory } from '$lib/server/db/schema';
 import { eq, desc, inArray, sql, and, ne, lt } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
 import type { TaskHistoryEntry } from '$lib/types/task';
+import { TaskExecutionContext } from './TaskExecutionContext.js';
 
 const logger = createChildLogger({ module: 'TaskHistoryService' });
 
@@ -21,6 +22,9 @@ class TaskHistoryService {
 
 	/** In-memory set of currently running task IDs */
 	private runningTasks: Set<string> = new Set();
+
+	/** AbortControllers for running tasks (for cancellation support) */
+	private abortControllers: Map<string, { controller: AbortController; historyId: string }> = new Map();
 
 	private constructor() {}
 
@@ -38,7 +42,7 @@ class TaskHistoryService {
 
 	/**
 	 * Start tracking a task execution.
-	 * Creates a history entry with status='running'.
+	 * Creates a history entry with status='running' and an AbortController for cancellation.
 	 *
 	 * @throws Error if the task is already running
 	 */
@@ -49,6 +53,9 @@ class TaskHistoryService {
 
 		this.runningTasks.add(taskId);
 
+		// Create AbortController for cancellation support
+		const controller = new AbortController();
+
 		const [entry] = await db
 			.insert(taskHistory)
 			.values({
@@ -57,9 +64,31 @@ class TaskHistoryService {
 			})
 			.returning({ id: taskHistory.id });
 
+		// Store controller with historyId so we can cancel the correct entry
+		this.abortControllers.set(taskId, { controller, historyId: entry.id });
+
 		logger.info('[TaskHistoryService] Task started', { taskId, historyId: entry.id });
 
 		return entry.id;
+	}
+
+	/**
+	 * Start a task and create an execution context.
+	 * This is the preferred way to start tasks as it provides a context
+	 * with built-in cancellation support.
+	 *
+	 * @throws Error if the task is already running
+	 */
+	async createExecutionContext(taskId: string): Promise<TaskExecutionContext> {
+		const historyId = await this.startTask(taskId);
+		const signal = this.getAbortSignal(taskId);
+
+		if (!signal) {
+			// This should never happen since startTask creates the controller
+			throw new Error(`No abort signal available for task '${taskId}'`);
+		}
+
+		return new TaskExecutionContext(taskId, historyId, signal);
 	}
 
 	/**
@@ -78,6 +107,7 @@ class TaskHistoryService {
 
 		if (entry) {
 			this.runningTasks.delete(entry.taskId);
+			this.abortControllers.delete(entry.taskId);
 			logger.info('[TaskHistoryService] Task completed', { historyId, taskId: entry.taskId });
 		}
 	}
@@ -98,6 +128,7 @@ class TaskHistoryService {
 
 		if (entry) {
 			this.runningTasks.delete(entry.taskId);
+			this.abortControllers.delete(entry.taskId);
 			logger.error('[TaskHistoryService] Task failed', {
 				historyId,
 				taskId: entry.taskId,
@@ -122,7 +153,7 @@ class TaskHistoryService {
 		return {
 			id: entry.id,
 			taskId: entry.taskId,
-			status: entry.status as 'running' | 'completed' | 'failed',
+			status: entry.status as 'running' | 'completed' | 'failed' | 'cancelled',
 			results: entry.results,
 			errors: entry.errors,
 			startedAt: entry.startedAt!,
@@ -143,7 +174,7 @@ class TaskHistoryService {
 		return entries.map((entry) => ({
 			id: entry.id,
 			taskId: entry.taskId,
-			status: entry.status as 'running' | 'completed' | 'failed',
+			status: entry.status as 'running' | 'completed' | 'failed' | 'cancelled',
 			results: entry.results,
 			errors: entry.errors,
 			startedAt: entry.startedAt!,
@@ -156,6 +187,47 @@ class TaskHistoryService {
 	 */
 	isTaskRunning(taskId: string): boolean {
 		return this.runningTasks.has(taskId);
+	}
+
+	/**
+	 * Get the AbortSignal for a running task.
+	 * Tasks should check this signal periodically to support cancellation.
+	 */
+	getAbortSignal(taskId: string): AbortSignal | undefined {
+		return this.abortControllers.get(taskId)?.controller.signal;
+	}
+
+	/**
+	 * Cancel a running task.
+	 * Aborts the task's AbortController and marks it as cancelled in the database.
+	 *
+	 * @returns true if task was cancelled, false if task was not running
+	 */
+	async cancelTask(taskId: string): Promise<boolean> {
+		const controllerData = this.abortControllers.get(taskId);
+		if (!controllerData || !this.runningTasks.has(taskId)) {
+			return false;
+		}
+
+		// Abort the controller to signal cancellation
+		controllerData.controller.abort();
+
+		// Update the specific history entry we created when starting this task
+		await db
+			.update(taskHistory)
+			.set({
+				status: 'cancelled',
+				completedAt: new Date().toISOString()
+			})
+			.where(eq(taskHistory.id, controllerData.historyId));
+
+		logger.info('[TaskHistoryService] Task cancelled', { taskId, historyId: controllerData.historyId });
+
+		// Clean up in-memory state
+		this.runningTasks.delete(taskId);
+		this.abortControllers.delete(taskId);
+
+		return true;
 	}
 
 	/**
@@ -180,8 +252,9 @@ class TaskHistoryService {
 			});
 		}
 
-		// Clear in-memory running set
+		// Clear in-memory state
 		this.runningTasks.clear();
+		this.abortControllers.clear();
 	}
 
 	/**
@@ -210,7 +283,7 @@ class TaskHistoryService {
 			entries: entries.map((entry) => ({
 				id: entry.id,
 				taskId: entry.taskId,
-				status: entry.status as 'running' | 'completed' | 'failed',
+				status: entry.status as 'running' | 'completed' | 'failed' | 'cancelled',
 				results: entry.results,
 				errors: entry.errors,
 				startedAt: entry.startedAt!,
@@ -253,7 +326,7 @@ class TaskHistoryService {
 				taskEntries.push({
 					id: entry.id,
 					taskId: entry.taskId,
-					status: entry.status as 'running' | 'completed' | 'failed',
+					status: entry.status as 'running' | 'completed' | 'failed' | 'cancelled',
 					results: entry.results,
 					errors: entry.errors,
 					startedAt: entry.startedAt!,
@@ -282,7 +355,7 @@ class TaskHistoryService {
 		return {
 			id: entry.id,
 			taskId: entry.taskId,
-			status: entry.status as 'running' | 'completed' | 'failed',
+			status: entry.status as 'running' | 'completed' | 'failed' | 'cancelled',
 			results: entry.results,
 			errors: entry.errors,
 			startedAt: entry.startedAt!,

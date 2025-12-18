@@ -20,6 +20,7 @@ import { getSubtitleProviderManager } from '$lib/server/subtitles/services/Subti
 import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
 import { logger } from '$lib/logging/index.js';
 import type { TaskResult } from '../MonitoringScheduler.js';
+import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
 
 /**
  * Default minimum score for auto-download (used if profile doesn't specify)
@@ -48,11 +49,17 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Execute missing subtitles search task
- * @param taskHistoryId - Optional ID linking to taskHistory for activity tracking
+ * @param ctx - Execution context for cancellation support and activity tracking
  */
-export async function executeMissingSubtitlesTask(taskHistoryId?: string): Promise<TaskResult> {
+export async function executeMissingSubtitlesTask(
+	ctx: TaskExecutionContext | null
+): Promise<TaskResult> {
 	const executedAt = new Date();
+	const taskHistoryId = ctx?.historyId;
 	logger.info('[MissingSubtitlesTask] Starting missing subtitles search', { taskHistoryId });
+
+	// Check for cancellation before starting
+	ctx?.checkCancelled();
 
 	// Check provider health status
 	const providerManager = getSubtitleProviderManager();
@@ -120,7 +127,8 @@ export async function executeMissingSubtitlesTask(taskHistoryId?: string): Promi
 			downloadService,
 			profileService,
 			executedAt,
-			taskHistoryId
+			taskHistoryId,
+			ctx
 		);
 
 		itemsProcessed += movieResults.processed;
@@ -133,6 +141,9 @@ export async function executeMissingSubtitlesTask(taskHistoryId?: string): Promi
 			errors: movieResults.errors
 		});
 
+		// Check for cancellation before episode search
+		ctx?.checkCancelled();
+
 		// Search for missing subtitles on episodes
 		logger.info('[MissingSubtitlesTask] Searching for missing episode subtitles');
 		const episodeResults = await searchMissingEpisodeSubtitles(
@@ -140,7 +151,8 @@ export async function executeMissingSubtitlesTask(taskHistoryId?: string): Promi
 			downloadService,
 			profileService,
 			executedAt,
-			taskHistoryId
+			taskHistoryId,
+			ctx
 		);
 
 		itemsProcessed += episodeResults.processed;
@@ -180,7 +192,8 @@ async function searchMissingMovieSubtitles(
 	downloadService: ReturnType<typeof getSubtitleDownloadService>,
 	profileService: LanguageProfileService,
 	executedAt: Date,
-	taskHistoryId?: string
+	taskHistoryId?: string,
+	ctx?: TaskExecutionContext | null
 ): Promise<{ processed: number; downloaded: number; errors: number }> {
 	let processed = 0;
 	let downloaded = 0;
@@ -204,11 +217,18 @@ async function searchMissingMovieSubtitles(
 
 	// Process movies in batches to limit concurrency
 	for (let i = 0; i < moviesWithProfiles.length; i += MAX_CONCURRENT_SEARCHES) {
+		// Check for cancellation between batches
+		ctx?.checkCancelled();
+
 		const batch = moviesWithProfiles.slice(i, i + MAX_CONCURRENT_SEARCHES);
 
 		// Add delay between batches to prevent rate limiting (skip first batch)
 		if (i > 0) {
-			await sleep(BATCH_DELAY_MS);
+			if (ctx) {
+				await ctx.delay(BATCH_DELAY_MS);
+			} else {
+				await sleep(BATCH_DELAY_MS);
+			}
 		}
 
 		await Promise.all(
@@ -351,7 +371,8 @@ async function searchMissingEpisodeSubtitles(
 	downloadService: ReturnType<typeof getSubtitleDownloadService>,
 	profileService: LanguageProfileService,
 	executedAt: Date,
-	taskHistoryId?: string
+	taskHistoryId?: string,
+	ctx?: TaskExecutionContext | null
 ): Promise<{ processed: number; downloaded: number; errors: number }> {
 	let processed = 0;
 	let downloaded = 0;
@@ -385,11 +406,18 @@ async function searchMissingEpisodeSubtitles(
 
 			// Process episodes in batches
 			for (let i = 0; i < episodesMissing.length; i += MAX_CONCURRENT_SEARCHES) {
+				// Check for cancellation between batches
+				ctx?.checkCancelled();
+
 				const batch = episodesMissing.slice(i, i + MAX_CONCURRENT_SEARCHES);
 
 				// Add delay between batches to prevent rate limiting (skip first batch)
 				if (i > 0) {
-					await sleep(BATCH_DELAY_MS);
+					if (ctx) {
+						await ctx.delay(BATCH_DELAY_MS);
+					} else {
+						await sleep(BATCH_DELAY_MS);
+					}
 				}
 
 				await Promise.all(
