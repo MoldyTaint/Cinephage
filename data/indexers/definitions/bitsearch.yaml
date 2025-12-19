@@ -53,7 +53,7 @@ search:
     type: html
 
   rows:
-    selector: div.bg-white.rounded-lg.shadow-sm.border.border-gray-200
+    selector: div.bg-white.rounded-lg.shadow-sm.border.border-gray-200.p-6
 
   fields:
     title:

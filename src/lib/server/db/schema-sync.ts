@@ -18,8 +18,9 @@ import { logger } from '$lib/logging';
  * Version 1: Initial complete schema
  * Version 2: Added profile_size_limits, custom_formats, naming_presets tables
  * Version 3: Added read_only column to root_folders for virtual mount support (NZBDav)
+ * Version 4: Fix invalid scoring profile references and ensure default profile exists
  */
-export const CURRENT_SCHEMA_VERSION = 3;
+export const CURRENT_SCHEMA_VERSION = 4;
 
 /**
  * All table definitions with CREATE TABLE IF NOT EXISTS
@@ -785,6 +786,55 @@ const SCHEMA_UPDATES: Record<number, (sqlite: Database.Database) => void> = {
 		// Only add column if it doesn't exist (may already exist from fresh TABLE_DEFINITIONS)
 		if (!columnExists(sqlite, 'root_folders', 'read_only')) {
 			sqlite.prepare(`ALTER TABLE root_folders ADD COLUMN read_only INTEGER DEFAULT 0`).run();
+		}
+	},
+
+	// Version 4: Fix invalid scoring profile references and ensure default profile exists
+	4: (sqlite) => {
+		// Ensure a default profile exists (set 'compact' as default if none)
+		const hasDefault = sqlite
+			.prepare(`SELECT id FROM scoring_profiles WHERE is_default = 1`)
+			.get();
+
+		if (!hasDefault) {
+			const validProfiles = sqlite
+				.prepare(`SELECT id FROM scoring_profiles`)
+				.all() as { id: string }[];
+			const validIds = new Set(validProfiles.map((p) => p.id));
+
+			if (validProfiles.length > 0) {
+				const defaultId = validIds.has('compact') ? 'compact' : validProfiles[0].id;
+				sqlite.prepare(`UPDATE scoring_profiles SET is_default = 1 WHERE id = ?`).run(defaultId);
+				logger.info(`[SchemaSync] Set default scoring profile to '${defaultId}'`);
+			}
+		}
+
+		// Clear invalid profile references (set to NULL so user can choose)
+		// This prevents auto-downloads with unwanted profiles
+		const invalidMovies = sqlite
+			.prepare(
+				`UPDATE movies SET scoring_profile_id = NULL
+				 WHERE scoring_profile_id IS NOT NULL
+				 AND scoring_profile_id != ''
+				 AND scoring_profile_id NOT IN (SELECT id FROM scoring_profiles)`
+			)
+			.run();
+
+		if (invalidMovies.changes > 0) {
+			logger.info(`[SchemaSync] Cleared ${invalidMovies.changes} movies with invalid profile references`);
+		}
+
+		const invalidSeries = sqlite
+			.prepare(
+				`UPDATE series SET scoring_profile_id = NULL
+				 WHERE scoring_profile_id IS NOT NULL
+				 AND scoring_profile_id != ''
+				 AND scoring_profile_id NOT IN (SELECT id FROM scoring_profiles)`
+			)
+			.run();
+
+		if (invalidSeries.changes > 0) {
+			logger.info(`[SchemaSync] Cleared ${invalidSeries.changes} series with invalid profile references`);
 		}
 	}
 };

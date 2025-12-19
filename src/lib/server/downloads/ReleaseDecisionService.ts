@@ -1096,6 +1096,7 @@ class ReleaseDecisionService {
 
 	/**
 	 * Get effective profile (media's profile or default)
+	 * Falls back gracefully: specified profile -> default profile -> first available profile
 	 */
 	private async getEffectiveProfile(
 		profileId: string | null | undefined
@@ -1105,6 +1106,9 @@ class ReleaseDecisionService {
 				where: eq(scoringProfiles.id, profileId)
 			});
 			if (profile) return profile;
+
+			// Profile ID specified but not found - log warning and fall through
+			logger.warn('Specified profile not found, falling back', { profileId });
 		}
 
 		// Get default profile
@@ -1112,7 +1116,15 @@ class ReleaseDecisionService {
 			where: eq(scoringProfiles.isDefault, true)
 		});
 
-		return defaultProfile || null;
+		if (defaultProfile) return defaultProfile;
+
+		// No default set - fall back to first available profile
+		const anyProfile = await db.query.scoringProfiles.findFirst();
+		if (anyProfile) {
+			logger.warn('No default profile set, using first available', { profileId: anyProfile.id });
+		}
+
+		return anyProfile || null;
 	}
 
 	/**
