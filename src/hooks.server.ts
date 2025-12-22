@@ -271,7 +271,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const startTime = performance.now();
 
 	try {
-		const response = await resolve(event);
+		// Disable JS modulepreload Link headers to reduce response header size.
+		// With 270+ JS chunks, these headers can exceed nginx's default buffer (4KB).
+		// Preload hints are still included in HTML <link> tags, so no functional impact.
+		const response = await resolve(event, {
+			preload: ({ type }) => type !== 'js'
+		});
 
 		// Add correlation ID to response headers
 		response.headers.set('x-correlation-id', correlationId);
