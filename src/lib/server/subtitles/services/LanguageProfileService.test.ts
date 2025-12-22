@@ -1,13 +1,39 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { LanguageProfileService, getLanguageProfileService } from './LanguageProfileService';
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
+import { initTestDb, closeTestDb, getTestDb } from '../../../../test/db-helper';
 import type { LanguageProfile } from './LanguageProfileService';
 import type { SubtitleStatus } from '../types';
+
+// Initialize the test database FIRST before any mocks
+initTestDb();
+
+// Must mock before importing the services that use db
+vi.mock('$lib/server/db', async () => {
+	const { getTestDb } = await import('../../../../test/db-helper');
+	return {
+		get db() {
+			return getTestDb().db;
+		},
+		get sqlite() {
+			return getTestDb().sqlite;
+		},
+		initializeDatabase: vi.fn().mockResolvedValue(undefined)
+	};
+});
+
+// Import after mocking
+const { LanguageProfileService, getLanguageProfileService } = await import(
+	'./LanguageProfileService'
+);
 
 describe('LanguageProfileService', () => {
 	let profileService: LanguageProfileService;
 
 	beforeEach(() => {
 		profileService = LanguageProfileService.getInstance();
+	});
+
+	afterAll(() => {
+		closeTestDb();
 	});
 
 	describe('Singleton pattern', () => {

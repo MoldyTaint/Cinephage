@@ -2,19 +2,23 @@ import { describe, it, expect } from 'vitest';
 import { tmdb } from './tmdb';
 import type { CastMember } from '$lib/types/tmdb';
 
-// We need to mock the database call if we want to run this in CI without a real DB,
-// BUT the user asked for a "robust" test that checks if it "works", implying integration.
-// However, running against a real DB in a test file can be flaky if the environment isn't set up perfectly.
-// Given the user's request to "test these before we start building", they likely want to verify the REAL connection.
-
-// To make this work with SvelteKit's virtual modules in a test environment,
-// we rely on Vitest's ability to resolve aliases via vite.config.ts.
-// However, $env/dynamic/private needs to be available.
-// If the user has a .env file, Vitest usually loads it.
+// These are live API tests requiring a TMDB API key stored in the database.
+// Skip in CI environments where no database/API key is available.
+// Run locally with: npm run test -- src/lib/server/tmdb.test.ts
 
 type TmdbResponse = any;
 
-describe('TMDB Integration', () => {
+// Check if we can actually run these tests (API key is configured)
+const canRunTests = async () => {
+	try {
+		const config = await tmdb.fetch('/configuration');
+		return config !== null;
+	} catch {
+		return false;
+	}
+};
+
+describe.skipIf(process.env.CI)('TMDB Integration', () => {
 	it('should fetch configuration', async () => {
 		const config = (await tmdb.fetch('/configuration')) as TmdbResponse;
 		expect(config).not.toBeNull();

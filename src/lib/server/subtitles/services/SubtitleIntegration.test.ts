@@ -8,15 +8,34 @@
  * - Download flow (mocked to avoid hitting real APIs repeatedly)
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { SubtitleProviderManager } from './SubtitleProviderManager';
-import { SubtitleSearchService } from './SubtitleSearchService';
-import { SubtitleScoringService } from './SubtitleScoringService';
-import { getSubtitleProviderFactory } from '../providers/SubtitleProviderFactory';
-import type { SubtitleSearchCriteria } from '../types';
-import { db } from '$lib/server/db';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { initTestDb, closeTestDb, getTestDb } from '../../../../test/db-helper';
 import { subtitleProviders } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
+import type { SubtitleSearchCriteria } from '../types';
+
+// Initialize the test database FIRST before any mocks
+initTestDb();
+
+// Must mock before importing the services that use db
+vi.mock('$lib/server/db', async () => {
+	const { getTestDb } = await import('../../../../test/db-helper');
+	return {
+		get db() {
+			return getTestDb().db;
+		},
+		get sqlite() {
+			return getTestDb().sqlite;
+		},
+		initializeDatabase: vi.fn().mockResolvedValue(undefined)
+	};
+});
+
+// Import after mocking
+const { SubtitleProviderManager } = await import('./SubtitleProviderManager');
+const { SubtitleSearchService } = await import('./SubtitleSearchService');
+const { SubtitleScoringService } = await import('./SubtitleScoringService');
+const { getSubtitleProviderFactory } = await import('../providers/SubtitleProviderFactory');
 
 describe('Subtitle System Integration', () => {
 	let providerManager: SubtitleProviderManager;
@@ -33,8 +52,10 @@ describe('Subtitle System Integration', () => {
 	afterAll(async () => {
 		// Clean up test provider if created
 		if (testProviderId) {
+			const { db } = getTestDb();
 			await db.delete(subtitleProviders).where(eq(subtitleProviders.id, testProviderId));
 		}
+		closeTestDb();
 	});
 
 	describe('Provider Factory', () => {
