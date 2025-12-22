@@ -81,12 +81,14 @@ The Docker image runs as a non-root user for security. The container never runs 
 **Setup (match your media library permissions):**
 
 1. Find your media library's owner:
+
    ```bash
    ls -la /path/to/your/media
    # Note the UID:GID (e.g., 1000:1000 or 911:911)
    ```
 
 2. Set `CINEPHAGE_UID` and `CINEPHAGE_GID` in your `.env` to match:
+
    ```bash
    CINEPHAGE_UID=1000
    CINEPHAGE_GID=1000
@@ -99,12 +101,14 @@ The Docker image runs as a non-root user for security. The container never runs 
    ```
 
 **Security features:**
+
 - `security_opt: no-new-privileges:true` prevents privilege escalation
 - Container user is created at build time (not dynamically at runtime)
 
 **Migration from PUID/PGID:**
 
 If upgrading from a previous version that used PUID/PGID environment variables:
+
 1. Remove `PUID` and `PGID` from your environment
 2. Set `CINEPHAGE_UID` and `CINEPHAGE_GID` to match your media library ownership
 3. Ensure data/logs directories are owned by the same UID/GID

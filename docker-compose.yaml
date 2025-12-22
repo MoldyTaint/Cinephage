@@ -3,11 +3,11 @@ services:
     image: ghcr.io/moldytaint/cinephage:latest
     container_name: cinephage
     restart: unless-stopped
-    user: "${CINEPHAGE_UID:-1000}:${CINEPHAGE_GID:-1000}"
+    user: '${CINEPHAGE_UID:-1000}:${CINEPHAGE_GID:-1000}'
     security_opt:
       - no-new-privileges:true
     ports:
-      - "${CINEPHAGE_PORT:-3000}:3000"
+      - '${CINEPHAGE_PORT:-3000}:3000'
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
