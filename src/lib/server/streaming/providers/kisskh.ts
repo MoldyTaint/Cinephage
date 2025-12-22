@@ -3,7 +3,7 @@
  *
  * Specialized provider for Asian dramas (Korean, Japanese, Chinese, etc.)
  *
- * Pattern: Lookup episode ID → Encrypt → Fetch video data → Get subtitles → Decrypt subtitles
+ * Pattern: Lookup episode ID -> Encrypt -> Fetch video data
  */
 
 import { logger } from '$lib/logging';
@@ -20,13 +20,6 @@ const streamLog = { logCategory: 'streams' as const };
 interface KissKHVideoResponse {
 	Video?: string;
 	thirdParty?: boolean;
-}
-
-interface KissKHSubtitle {
-	src: string;
-	label: string;
-	land?: string;
-	default?: boolean;
 }
 
 // ============================================================================
@@ -114,51 +107,10 @@ export class KissKHProvider extends BaseProvider {
 			return [];
 		}
 
-		// Step 2: Get subtitles
-		const subKey = await this.encDec.encryptKissKH({
-			text: contentId,
-			type: 'sub'
-		});
-
-		const subUrl = `https://kisskh.do/api/Sub/${contentId}?kkey=${subKey}`;
-		let subtitles: StreamResult['subtitles'];
-
-		try {
-			const subtitleResponse = await this.fetchGet<KissKHSubtitle[]>(subUrl);
-
-			if (subtitleResponse && subtitleResponse.length > 0) {
-				// Decrypt subtitle URLs
-				const decryptedSubs = await Promise.all(
-					subtitleResponse.slice(0, 5).map(async (sub) => {
-						try {
-							const decryptedUrl = await this.encDec.decryptKissKHSubtitle({
-								url: sub.src
-							});
-							return {
-								url: decryptedUrl,
-								language: sub.land ?? 'en',
-								label: sub.label
-							};
-						} catch {
-							return null;
-						}
-					})
-				);
-
-				subtitles = decryptedSubs.filter((s): s is NonNullable<typeof s> => s !== null);
-			}
-		} catch (error) {
-			logger.debug('Failed to get KissKH subtitles', {
-				error: error instanceof Error ? error.message : String(error),
-				...streamLog
-			});
-		}
-
 		return [
 			this.createStreamResult(videoResponse.Video, {
 				quality: 'Auto',
-				title: 'KissKH Stream',
-				subtitles
+				title: 'KissKH Stream'
 			})
 		];
 	}

@@ -6,7 +6,13 @@
 
 import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
 import { initTestDb, closeTestDb, clearTestDb, getTestDb } from '../../../test/db-helper';
-import { api, type ProfilesListResponse, type ErrorResponse } from '../../../test/api-helper';
+import {
+	api,
+	type ProfilesListResponse,
+	type ProfileResponse,
+	type ErrorResponse,
+	type DeleteResponse
+} from '../../../test/api-helper';
 import { scoringProfiles, profileSizeLimits } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 
@@ -157,7 +163,7 @@ describe('Scoring Profiles API', () => {
 	// =========================================================================
 	describe('POST /api/scoring-profiles', () => {
 		it('creates profile with required fields only', async () => {
-			const { status, data } = await api.post(POST, {
+			const { status, data } = await api.post<ProfileResponse>(POST, {
 				name: 'Test Profile'
 			});
 
@@ -167,7 +173,7 @@ describe('Scoring Profiles API', () => {
 		});
 
 		it('creates profile with custom ID', async () => {
-			const { status, data } = await api.post(POST, {
+			const { status, data } = await api.post<ProfileResponse>(POST, {
 				id: 'custom-id',
 				name: 'Custom ID Profile'
 			});
@@ -177,7 +183,7 @@ describe('Scoring Profiles API', () => {
 		});
 
 		it('creates profile with all optional fields', async () => {
-			const { status, data } = await api.post(POST, {
+			const { status, data } = await api.post<ProfileResponse>(POST, {
 				id: 'full-profile',
 				name: 'Full Profile',
 				description: 'A complete profile',
@@ -204,7 +210,7 @@ describe('Scoring Profiles API', () => {
 		});
 
 		it('copies formatScores from built-in profile', async () => {
-			const { status, data } = await api.post(POST, {
+			const { status, data } = await api.post<ProfileResponse>(POST, {
 				name: 'Copy of Quality',
 				copyFromId: 'quality'
 			});
@@ -212,29 +218,29 @@ describe('Scoring Profiles API', () => {
 			expect(status).toBe(201);
 			// Should have copied formatScores from quality profile
 			expect(data.formatScores).toBeDefined();
-			expect(Object.keys(data.formatScores).length).toBeGreaterThan(0);
+			expect(Object.keys(data.formatScores!).length).toBeGreaterThan(0);
 		});
 
 		it('copies formatScores from custom profile', async () => {
 			// First create a custom profile with scores
-			await api.post(POST, {
+			await api.post<ProfileResponse>(POST, {
 				id: 'source-profile',
 				name: 'Source',
 				formatScores: { 'my-format': 1000 }
 			});
 
 			// Now copy from it
-			const { status, data } = await api.post(POST, {
+			const { status, data } = await api.post<ProfileResponse>(POST, {
 				name: 'Copy of Source',
 				copyFromId: 'source-profile'
 			});
 
 			expect(status).toBe(201);
-			expect(data.formatScores['my-format']).toBe(1000);
+			expect(data.formatScores!['my-format']).toBe(1000);
 		});
 
 		it('merges explicit formatScores with copied scores', async () => {
-			const { status, data } = await api.post(POST, {
+			const { status, data } = await api.post<ProfileResponse>(POST, {
 				name: 'Merged Profile',
 				copyFromId: 'quality',
 				formatScores: { 'custom-format': 999 }
@@ -242,9 +248,9 @@ describe('Scoring Profiles API', () => {
 
 			expect(status).toBe(201);
 			// Should have the custom format score
-			expect(data.formatScores['custom-format']).toBe(999);
+			expect(data.formatScores!['custom-format']).toBe(999);
 			// Should also have scores from quality (verify at least one exists)
-			expect(Object.keys(data.formatScores).length).toBeGreaterThan(1);
+			expect(Object.keys(data.formatScores!).length).toBeGreaterThan(1);
 		});
 
 		it('rejects reserved profile IDs', async () => {
@@ -259,7 +265,7 @@ describe('Scoring Profiles API', () => {
 
 		it('rejects duplicate profile IDs', async () => {
 			// Create first profile
-			await api.post(POST, { id: 'duplicate-test', name: 'First' });
+			await api.post<ProfileResponse>(POST, { id: 'duplicate-test', name: 'First' });
 
 			// Try to create second with same ID
 			const { status, data } = await api.post<ErrorResponse>(POST, {
@@ -283,14 +289,14 @@ describe('Scoring Profiles API', () => {
 
 		it('sets isDefault and clears other defaults', async () => {
 			// Create first profile as default
-			await api.post(POST, {
+			await api.post<ProfileResponse>(POST, {
 				id: 'first-default',
 				name: 'First Default',
 				isDefault: true
 			});
 
 			// Create second profile as default
-			const { data: second } = await api.post(POST, {
+			const { data: second } = await api.post<ProfileResponse>(POST, {
 				id: 'second-default',
 				name: 'Second Default',
 				isDefault: true
@@ -323,13 +329,13 @@ describe('Scoring Profiles API', () => {
 	describe('PUT /api/scoring-profiles', () => {
 		it('updates custom profile fields', async () => {
 			// Create a profile
-			const { data: created } = await api.post(POST, {
+			await api.post<ProfileResponse>(POST, {
 				id: 'update-test',
 				name: 'Original Name'
 			});
 
 			// Update it
-			const { status, data } = await api.put(PUT, {
+			const { status, data } = await api.put<ProfileResponse>(PUT, {
 				id: 'update-test',
 				name: 'Updated Name',
 				description: 'New description'
@@ -342,7 +348,7 @@ describe('Scoring Profiles API', () => {
 
 		it('partial update preserves existing fields', async () => {
 			// Create profile with multiple fields
-			await api.post(POST, {
+			await api.post<ProfileResponse>(POST, {
 				id: 'partial-test',
 				name: 'Original',
 				description: 'Original description',
@@ -351,7 +357,7 @@ describe('Scoring Profiles API', () => {
 			});
 
 			// Update only name
-			const { data } = await api.put(PUT, {
+			const { data } = await api.put<ProfileResponse>(PUT, {
 				id: 'partial-test',
 				name: 'Updated'
 			});
@@ -363,7 +369,7 @@ describe('Scoring Profiles API', () => {
 		});
 
 		it('updates built-in profile size limits only', async () => {
-			const { status, data } = await api.put(PUT, {
+			const { status, data } = await api.put<ProfileResponse>(PUT, {
 				id: 'balanced',
 				movieMinSizeGb: 2,
 				movieMaxSizeGb: 80
@@ -377,14 +383,14 @@ describe('Scoring Profiles API', () => {
 
 		it('sets isDefault on built-in profile', async () => {
 			// First set a custom profile as default
-			await api.post(POST, {
+			await api.post<ProfileResponse>(POST, {
 				id: 'temp-default',
 				name: 'Temp Default',
 				isDefault: true
 			});
 
 			// Now set balanced as default
-			const { data } = await api.put(PUT, {
+			const { data } = await api.put<ProfileResponse>(PUT, {
 				id: 'balanced',
 				isDefault: true
 			});
@@ -420,13 +426,13 @@ describe('Scoring Profiles API', () => {
 		});
 
 		it('updates formatScores', async () => {
-			await api.post(POST, {
+			await api.post<ProfileResponse>(POST, {
 				id: 'format-test',
 				name: 'Format Test',
 				formatScores: { old: 100 }
 			});
 
-			const { data } = await api.put(PUT, {
+			const { data } = await api.put<ProfileResponse>(PUT, {
 				id: 'format-test',
 				formatScores: { new: 500 }
 			});
@@ -440,12 +446,12 @@ describe('Scoring Profiles API', () => {
 	// =========================================================================
 	describe('DELETE /api/scoring-profiles', () => {
 		it('deletes custom profile', async () => {
-			await api.post(POST, {
+			await api.post<ProfileResponse>(POST, {
 				id: 'delete-me',
 				name: 'Delete Me'
 			});
 
-			const { status, data } = await api.delete(DELETE, { id: 'delete-me' });
+			const { status, data } = await api.delete<DeleteResponse>(DELETE, { id: 'delete-me' });
 
 			expect(status).toBe(200);
 			expect(data.success).toBe(true);

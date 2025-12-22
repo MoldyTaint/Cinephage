@@ -172,7 +172,6 @@ export class YFlixProvider extends BaseProvider {
 			return this.resolveEmbedUrl(streamUrl);
 		}
 
-
 		return [
 			{
 				url: streamUrl,

@@ -727,7 +727,7 @@ export class UnifiedIndexer implements IIndexer {
 			}
 
 			if (!response.ok) {
-				const errorText = await response.text().catch(() => '');
+				const _errorText = await response.text().catch(() => '');
 				return {
 					success: false,
 					error: `HTTP ${response.status}: ${response.statusText}`,

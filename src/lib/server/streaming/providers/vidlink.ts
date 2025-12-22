@@ -19,11 +19,6 @@ const streamLog = { logCategory: 'streams' as const };
 interface VidlinkStreamResponse {
 	stream?: {
 		playlist: string;
-		subtitles?: Array<{
-			file: string;
-			label: string;
-			kind?: string;
-		}>;
 	};
 	status?: boolean;
 }
@@ -36,7 +31,7 @@ export class VidlinkProvider extends BaseProvider {
 	readonly config: ProviderConfig = {
 		id: 'vidlink',
 		name: 'Vidlink',
-		priority: 5, // Higher than Videasy to try first
+		priority: 5, // Higher than Videasy to try first (faster)
 		enabledByDefault: true,
 		supportsMovies: true,
 		supportsTv: true,
@@ -75,44 +70,12 @@ export class VidlinkProvider extends BaseProvider {
 			return [];
 		}
 
-		// Build subtitle tracks
-		const subtitles = response.stream.subtitles?.map((sub) => ({
-			url: sub.file,
-			language: this.extractLanguageCode(sub.label),
-			label: sub.label
-		}));
-
 		return [
 			this.createStreamResult(response.stream.playlist, {
 				quality: 'Auto',
 				title: 'Vidlink Stream',
-				language: 'en', // Vidlink sources English-language content
-				subtitles
+				language: 'en' // Vidlink sources English-language content
 			})
 		];
-	}
-
-	private extractLanguageCode(label: string): string {
-		const labelLower = label.toLowerCase();
-		const codes: Record<string, string> = {
-			english: 'en',
-			spanish: 'es',
-			french: 'fr',
-			german: 'de',
-			italian: 'it',
-			portuguese: 'pt',
-			russian: 'ru',
-			japanese: 'ja',
-			korean: 'ko',
-			chinese: 'zh',
-			arabic: 'ar',
-			hindi: 'hi'
-		};
-
-		for (const [name, code] of Object.entries(codes)) {
-			if (labelLower.includes(name)) return code;
-		}
-
-		return label.substring(0, 2).toLowerCase();
 	}
 }

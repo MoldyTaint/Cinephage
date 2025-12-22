@@ -413,6 +413,8 @@ describe('Protocol Restrictions', () => {
 			id: 'test-protocol-profile',
 			name: 'Test Protocol Profile',
 			description: balanced.description,
+			tags: balanced.tags,
+			resolutionOrder: balanced.resolutionOrder,
 			upgradesAllowed: balanced.upgradesAllowed,
 			minScore: balanced.minScore,
 			upgradeUntilScore: balanced.upgradeUntilScore,

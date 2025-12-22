@@ -24,7 +24,6 @@ export type {
 
 	// Results
 	StreamResult,
-	SubtitleTrack,
 	ProviderResult,
 
 	// Provider interface

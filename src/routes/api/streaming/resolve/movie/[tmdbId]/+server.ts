@@ -150,11 +150,8 @@ export const GET: RequestHandler = async ({ params, request }) => {
 		for (const source of matching) {
 			try {
 				const bestResult = await getBestQualityStreamUrl(source.url, source.referer);
-				const response = await fetchAndRewritePlaylist(
-					bestResult.rawUrl,
-					source.referer,
-					baseUrl
-				);
+
+				const response = await fetchAndRewritePlaylist(bestResult.rawUrl, source.referer, baseUrl);
 
 				// Success with preferred language
 				logger.info('Using stream source', {
@@ -190,6 +187,7 @@ export const GET: RequestHandler = async ({ params, request }) => {
 			for (const source of fallback) {
 				try {
 					const bestResult = await getBestQualityStreamUrl(source.url, source.referer);
+
 					const response = await fetchAndRewritePlaylist(
 						bestResult.rawUrl,
 						source.referer,

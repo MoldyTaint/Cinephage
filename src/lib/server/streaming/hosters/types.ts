@@ -75,6 +75,16 @@ export interface HosterStreamSource {
 }
 
 /**
+ * Internal result from doResolve() - includes both sources and subtitles
+ */
+export interface HosterExtraction {
+	/** Extracted stream sources */
+	sources: HosterStreamSource[];
+	/** Extracted subtitles (optional) */
+	subtitles?: HosterSubtitle[];
+}
+
+/**
  * Result from hoster extraction
  */
 export interface HosterResult {
@@ -163,10 +173,11 @@ export abstract class BaseHoster implements IHoster {
 		const startTime = Date.now();
 
 		try {
-			const sources = await this.doResolve(embedUrl);
+			const extraction = await this.doResolve(embedUrl);
 			return {
-				success: sources.length > 0,
-				sources,
+				success: extraction.sources.length > 0,
+				sources: extraction.sources,
+				subtitles: extraction.subtitles,
 				durationMs: Date.now() - startTime,
 				hoster: this.config.id
 			};
@@ -183,8 +194,9 @@ export abstract class BaseHoster implements IHoster {
 
 	/**
 	 * Actual resolution logic - must be implemented by subclass
+	 * Returns both stream sources and optional subtitle tracks
 	 */
-	protected abstract doResolve(embedUrl: string): Promise<HosterStreamSource[]>;
+	protected abstract doResolve(embedUrl: string): Promise<HosterExtraction>;
 
 	/**
 	 * Convert embed URL to media URL

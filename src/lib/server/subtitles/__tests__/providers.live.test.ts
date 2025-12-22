@@ -52,7 +52,7 @@ const PROVIDER_TEST_TIMEOUT_MS = 15000;
 const SEARCH_TIMEOUT_MS = 60000;
 
 /** Download operation timeout */
-const DOWNLOAD_TIMEOUT_MS = 45000;
+const _DOWNLOAD_TIMEOUT_MS = 45000;
 
 /** Full flow timeout (test + search + download) */
 const FULL_FLOW_TIMEOUT_MS = 120000;
@@ -724,7 +724,7 @@ describe('Live Subtitle Provider Tests', () => {
 // ============================================================================
 
 describe('Individual Provider Deep Tests', () => {
-	const factory = getSubtitleProviderFactory();
+	const _factory = getSubtitleProviderFactory();
 
 	// Test each provider with appropriate content
 	const providerTests: Array<{

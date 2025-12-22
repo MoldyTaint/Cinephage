@@ -36,6 +36,7 @@ export class NZBGetClient implements IDownloadClient {
 		return url;
 	}
 
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	private async request<T>(method: string, params: any[] = []): Promise<T> {
 		try {
 			const headers: Record<string, string> = {
@@ -81,7 +82,7 @@ export class NZBGetClient implements IDownloadClient {
 
 	async test(): Promise<ConnectionTestResult> {
 		try {
-			const status = await this.request<NzbgetStatus>('status');
+			const _status = await this.request<NzbgetStatus>('status');
 			const version = await this.request<string>('version');
 
 			// Try to get MainDir from config
@@ -182,6 +183,7 @@ export class NZBGetClient implements IDownloadClient {
 		// Map active downloads (groups)
 		for (const task of groups) {
 			// Type assertion hack because nzbget types are loose and response varies by version
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			const item = task as any;
 
 			logger.debug(`[NZBGet] Group item`, {
@@ -249,7 +251,7 @@ export class NZBGetClient implements IDownloadClient {
 		return downloads.find((d) => d.id === id) || null;
 	}
 
-	async removeDownload(id: string, deleteFiles: boolean = false): Promise<void> {
+	async removeDownload(id: string, _deleteFiles: boolean = false): Promise<void> {
 		// Remove from history
 		const historySuccess = await this.request<boolean>('editqueue', [
 			'HistoryDelete',
@@ -283,9 +285,10 @@ export class NZBGetClient implements IDownloadClient {
 
 	async getCategories(): Promise<string[]> {
 		try {
-			const configMap = await this.request<any[]>('config');
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const _configMap = await this.request<any[]>('config');
 			// Categories are defined as Category1.Name, Category2.Name etc
-			const categories: string[] = [];
+			const _categories: string[] = [];
 			// This is complex to parse from the flat config list, simple fallback for now:
 			return [];
 		} catch {
@@ -293,7 +296,7 @@ export class NZBGetClient implements IDownloadClient {
 		}
 	}
 
-	async ensureCategory(name: string, savePath?: string): Promise<void> {
+	async ensureCategory(_name: string, _savePath?: string): Promise<void> {
 		// NZBGet config is complex to update via API, strict implementation skipped for MVP
 		return;
 	}

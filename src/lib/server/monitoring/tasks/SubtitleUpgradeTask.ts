@@ -345,7 +345,7 @@ async function searchEpisodeSubtitleUpgrades(
 	}
 
 	// Get series profiles for all episodes
-	const seriesIds = [...new Set(episodeSubtitles.map((r) => r.episode.seriesId))];
+	const _seriesIds = [...new Set(episodeSubtitles.map((r) => r.episode.seriesId))];
 	const seriesData = await db
 		.select()
 		.from(series)

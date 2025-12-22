@@ -21,11 +21,8 @@ import {
 } from '$lib/server/db/schema.js';
 import { eq, and, lte, gte, inArray } from 'drizzle-orm';
 import { getIndexerManager } from '$lib/server/indexers/IndexerManager.js';
-import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager.js';
 import { getReleaseGrabService } from '$lib/server/downloads/ReleaseGrabService.js';
-import { downloadMonitor } from '$lib/server/downloadClients/monitoring/index.js';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser.js';
-import { extractInfoHash } from '$lib/server/downloadClients/utils/hashUtils.js';
 import { strmService, StrmService, getStreamingBaseUrl } from '$lib/server/streaming/index.js';
 import { fileExists } from '$lib/server/downloadClients/import/index.js';
 import { mediaInfoService } from '$lib/server/library/media-info.js';

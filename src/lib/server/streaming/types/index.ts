@@ -10,7 +10,6 @@
 // ============================================================================
 
 export type {
-	SubtitleTrack,
 	StreamType,
 	StreamStatus,
 	StreamSource,

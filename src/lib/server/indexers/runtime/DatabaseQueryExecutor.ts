@@ -75,7 +75,7 @@ export class DatabaseQueryExecutor {
 				return this.executeMovieQuery(criteria as unknown as MovieSearchCriteria, context);
 			case 'tv':
 				return this.executeTvQuery(criteria as unknown as TvSearchCriteria, context);
-			default:
+			default: {
 				// For basic search, try both movie and TV
 				const movieResults = await this.executeMovieQuery(
 					criteria as unknown as MovieSearchCriteria,
@@ -86,6 +86,7 @@ export class DatabaseQueryExecutor {
 					context
 				);
 				return [...movieResults, ...tvResults];
+			}
 		}
 	}
 
@@ -509,7 +510,7 @@ export class DatabaseQueryExecutor {
 	 */
 	private buildConditions(
 		conditionDefs: QueryCondition[],
-		criteria: SearchCriteria
+		_criteria: SearchCriteria
 	): ReturnType<typeof eq>[] {
 		const conditions: ReturnType<typeof eq>[] = [];
 
@@ -591,13 +592,13 @@ export class DatabaseQueryExecutor {
 				const title = this.templateEngine.expand(mapping.title);
 				const downloadUrl = this.templateEngine.expand(mapping.downloadUrl);
 
-				let size = 0;
+				let _size = 0;
 				if (mapping.size) {
 					if (typeof mapping.size === 'number') {
-						size = mapping.size;
+						_size = mapping.size;
 					} else {
 						const expandedSize = this.templateEngine.expand(mapping.size);
-						size = parseInt(expandedSize, 10) || 0;
+						_size = parseInt(expandedSize, 10) || 0;
 					}
 				}
 

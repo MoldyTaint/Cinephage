@@ -15,7 +15,7 @@
  */
 
 import { logger } from '$lib/logging';
-import { BaseHoster, type HosterConfig, type HosterStreamSource } from './types';
+import { BaseHoster, type HosterConfig, type HosterExtraction, type HosterSubtitle } from './types';
 
 const streamLog = { logCategory: 'streams' as const };
 
@@ -42,7 +42,7 @@ export class RapidshareHoster extends BaseHoster {
 		timeout: 15000
 	};
 
-	protected async doResolve(embedUrl: string): Promise<HosterStreamSource[]> {
+	protected async doResolve(embedUrl: string): Promise<HosterExtraction> {
 		logger.debug('Rapidshare resolving embed', { embedUrl, ...streamLog });
 
 		// Step 1: Convert embed URL to media URL
@@ -54,7 +54,7 @@ export class RapidshareHoster extends BaseHoster {
 
 		if (!mediaResponse.result) {
 			logger.debug('Rapidshare no result in response', { ...streamLog });
-			return [];
+			return { sources: [] };
 		}
 
 		// Step 3: Decrypt via enc-dec.app
@@ -64,7 +64,7 @@ export class RapidshareHoster extends BaseHoster {
 		});
 
 		// Step 4: Extract stream URL(s)
-		const sources: HosterStreamSource[] = [];
+		const sources: HosterExtraction['sources'] = [];
 
 		// Check for sources array first
 		if (decrypted.sources && decrypted.sources.length > 0) {
@@ -89,7 +89,59 @@ export class RapidshareHoster extends BaseHoster {
 			});
 		}
 
+		// Step 5: Extract subtitle tracks
+		let subtitles: HosterSubtitle[] | undefined;
+		if (decrypted.tracks && decrypted.tracks.length > 0) {
+			subtitles = decrypted.tracks
+				.filter((track) => track.kind === 'captions' || !track.kind)
+				.map((track) => ({
+					url: track.file,
+					label: track.label,
+					language: this.extractLanguageCode(track.label)
+				}));
+
+			if (subtitles.length > 0) {
+				logger.debug('Rapidshare extracted subtitles', { count: subtitles.length, ...streamLog });
+			} else {
+				subtitles = undefined;
+			}
+		}
+
 		logger.debug('Rapidshare resolved streams', { count: sources.length, ...streamLog });
-		return sources;
+		return { sources, subtitles };
+	}
+
+	/**
+	 * Extract language code from label text
+	 */
+	private extractLanguageCode(label: string): string {
+		const lower = label.toLowerCase();
+		const langMap: Record<string, string> = {
+			english: 'en',
+			spanish: 'es',
+			french: 'fr',
+			german: 'de',
+			italian: 'it',
+			portuguese: 'pt',
+			russian: 'ru',
+			japanese: 'ja',
+			korean: 'ko',
+			chinese: 'zh',
+			arabic: 'ar',
+			hindi: 'hi',
+			dutch: 'nl',
+			polish: 'pl',
+			turkish: 'tr',
+			thai: 'th',
+			vietnamese: 'vi',
+			indonesian: 'id',
+			malay: 'ms'
+		};
+
+		for (const [name, code] of Object.entries(langMap)) {
+			if (lower.includes(name)) return code;
+		}
+
+		return 'und'; // undefined language
 	}
 }

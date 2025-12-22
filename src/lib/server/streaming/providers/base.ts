@@ -254,7 +254,6 @@ export abstract class BaseProvider implements IStreamProvider {
 			server?: string;
 			language?: string;
 			streamType?: 'hls' | 'm3u8' | 'mp4';
-			subtitles?: StreamResult['subtitles'];
 			headers?: Record<string, string>;
 			referer?: string;
 		} = {}
@@ -267,7 +266,6 @@ export abstract class BaseProvider implements IStreamProvider {
 			referer: options.referer ?? this.config.referer,
 			server: options.server,
 			language: options.language,
-			subtitles: options.subtitles,
 			headers: options.headers
 		};
 	}

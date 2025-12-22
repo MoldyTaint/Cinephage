@@ -26,10 +26,6 @@ interface HexaDecryptedResponse {
 		server?: string;
 		type?: string;
 	}>;
-	subtitles?: Array<{
-		url: string;
-		lang: string;
-	}>;
 }
 
 // ============================================================================
@@ -100,19 +96,11 @@ export class HexaProvider extends BaseProvider {
 			return [];
 		}
 
-		// Build subtitle tracks
-		const subtitles = decrypted.subtitles?.map((sub) => ({
-			url: sub.url,
-			language: sub.lang,
-			label: this.getLanguageLabel(sub.lang)
-		}));
-
 		return [
 			this.createStreamResult(streamUrl, {
 				quality: 'Auto',
 				title: 'Hexa Stream',
 				language: 'en', // Hexa sources English-language content
-				subtitles,
 				referer: '' // Hexa CDN rejects requests with referer headers
 			})
 		];
@@ -124,23 +112,5 @@ export class HexaProvider extends BaseProvider {
 		return Array.from(array)
 			.map((b) => b.toString(16).padStart(2, '0'))
 			.join('');
-	}
-
-	private getLanguageLabel(code: string): string {
-		const labels: Record<string, string> = {
-			en: 'English',
-			es: 'Spanish',
-			fr: 'French',
-			de: 'German',
-			it: 'Italian',
-			pt: 'Portuguese',
-			ru: 'Russian',
-			ja: 'Japanese',
-			ko: 'Korean',
-			zh: 'Chinese',
-			ar: 'Arabic',
-			hi: 'Hindi'
-		};
-		return labels[code] ?? code;
 	}
 }

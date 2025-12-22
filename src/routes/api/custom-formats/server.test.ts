@@ -6,7 +6,13 @@
 
 import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
 import { initTestDb, closeTestDb, clearTestDb, getTestDb } from '../../../test/db-helper';
-import { api, type ErrorResponse } from '../../../test/api-helper';
+import {
+	api,
+	type ErrorResponse,
+	type DeleteResponse,
+	type FormatResponse,
+	type FormatsListResponse
+} from '../../../test/api-helper';
 import { customFormats } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 
@@ -38,33 +44,6 @@ vi.mock('$lib/logging', () => ({
 
 // Import handlers after mocks are set up
 const { GET, POST, PUT, DELETE } = await import('./+server');
-
-// Type definitions for test responses
-interface FormatsListResponse {
-	formats: Array<{
-		id: string;
-		name: string;
-		description?: string;
-		category: string;
-		tags: string[];
-		conditions: unknown[];
-		enabled: boolean;
-		isBuiltIn: boolean;
-	}>;
-	count: number;
-	builtInCount: number;
-	customCount: number;
-}
-
-interface FormatResponse {
-	id: string;
-	name: string;
-	description?: string;
-	category: string;
-	tags: string[];
-	conditions: unknown[];
-	enabled: boolean;
-}
 
 // Valid condition for tests
 const validCondition = {
@@ -188,7 +167,7 @@ describe('Custom Formats API', () => {
 				const matches =
 					f.name.toLowerCase().includes('truehd') ||
 					f.description?.toLowerCase().includes('truehd') ||
-					f.tags.some((t) => t.toLowerCase().includes('truehd'));
+					f.tags?.some((t) => t.toLowerCase().includes('truehd'));
 				expect(matches).toBe(true);
 			});
 		});
@@ -247,7 +226,7 @@ describe('Custom Formats API', () => {
 			expect(status).toBe(201);
 			expect(data.description).toBe('A complete format');
 			expect(data.tags).toEqual(['tier1', 'hdr']);
-			expect(data.conditions.length).toBe(2);
+			expect(data.conditions!.length).toBe(2);
 			expect(data.enabled).toBe(false);
 		});
 
@@ -285,7 +264,7 @@ describe('Custom Formats API', () => {
 
 		it('rejects duplicate format IDs', async () => {
 			// Create first format
-			await api.post(POST, {
+			await api.post<FormatResponse>(POST, {
 				id: 'duplicate-test',
 				name: 'First',
 				category: 'other',
@@ -343,7 +322,7 @@ describe('Custom Formats API', () => {
 	describe('PUT /api/custom-formats', () => {
 		it('updates custom format fields', async () => {
 			// Create a format
-			await api.post(POST, {
+			await api.post<FormatResponse>(POST, {
 				id: 'update-test',
 				name: 'Original Name',
 				category: 'other',
@@ -365,7 +344,7 @@ describe('Custom Formats API', () => {
 		});
 
 		it('updates conditions', async () => {
-			await api.post(POST, {
+			await api.post<FormatResponse>(POST, {
 				id: 'conditions-test',
 				name: 'Conditions Test',
 				category: 'other',
@@ -388,7 +367,7 @@ describe('Custom Formats API', () => {
 			});
 
 			expect(status).toBe(200);
-			expect(data.conditions.length).toBe(1);
+			expect(data.conditions!.length).toBe(1);
 		});
 
 		it('rejects updates to built-in formats', async () => {
@@ -432,14 +411,14 @@ describe('Custom Formats API', () => {
 	// =========================================================================
 	describe('DELETE /api/custom-formats', () => {
 		it('deletes custom format', async () => {
-			await api.post(POST, {
+			await api.post<FormatResponse>(POST, {
 				id: 'delete-me',
 				name: 'Delete Me',
 				category: 'other',
 				conditions: [validCondition]
 			});
 
-			const { status, data } = await api.delete(DELETE, { id: 'delete-me' });
+			const { status, data } = await api.delete<DeleteResponse>(DELETE, { id: 'delete-me' });
 
 			expect(status).toBe(200);
 			expect(data.success).toBe(true);

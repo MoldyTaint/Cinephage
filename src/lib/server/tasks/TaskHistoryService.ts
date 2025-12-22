@@ -24,7 +24,8 @@ class TaskHistoryService {
 	private runningTasks: Set<string> = new Set();
 
 	/** AbortControllers for running tasks (for cancellation support) */
-	private abortControllers: Map<string, { controller: AbortController; historyId: string }> = new Map();
+	private abortControllers: Map<string, { controller: AbortController; historyId: string }> =
+		new Map();
 
 	private constructor() {}
 
@@ -221,7 +222,10 @@ class TaskHistoryService {
 			})
 			.where(eq(taskHistory.id, controllerData.historyId));
 
-		logger.info('[TaskHistoryService] Task cancelled', { taskId, historyId: controllerData.historyId });
+		logger.info('[TaskHistoryService] Task cancelled', {
+			taskId,
+			historyId: controllerData.historyId
+		});
 
 		// Clean up in-memory state
 		this.runningTasks.delete(taskId);

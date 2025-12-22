@@ -1,26 +1,8 @@
 /**
  * Stream Types
  *
- * Core type definitions for streams, subtitles, and extraction results.
+ * Core type definitions for streams and extraction results.
  */
-
-// ============================================================================
-// Subtitle Types
-// ============================================================================
-
-/**
- * A subtitle track associated with a stream
- */
-export interface SubtitleTrack {
-	/** Subtitle file URL */
-	url: string;
-
-	/** Language code (e.g., 'en', 'es') */
-	language: string;
-
-	/** Display label (e.g., 'English', 'Spanish') */
-	label: string;
-}
 
 // ============================================================================
 // Stream Source Types
@@ -67,9 +49,6 @@ export interface StreamSource {
 	/** Language of the content (ISO 639-1 code) */
 	language?: string;
 
-	/** Associated subtitle tracks */
-	subtitles?: SubtitleTrack[];
-
 	/** Additional headers needed for playback */
 	headers?: Record<string, string>;
 
@@ -105,9 +84,6 @@ export interface StreamResult {
 
 	/** Language of the content */
 	language?: string;
-
-	/** Associated subtitle tracks */
-	subtitles?: SubtitleTrack[];
 
 	/** Additional headers needed for playback */
 	headers?: Record<string, string>;

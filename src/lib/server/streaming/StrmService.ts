@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, writeFileSync, unlinkSync, readFileSync, readdir
 import { join, dirname, resolve, relative } from 'path';
 import { createChildLogger } from '$lib/logging';
 import { db } from '$lib/server/db';
-import { movies, series, episodes, seasons, rootFolders } from '$lib/server/db/schema';
+import { movies, series, episodes, rootFolders } from '$lib/server/db/schema';
 import { eq, and, asc } from 'drizzle-orm';
 
 const logger = createChildLogger({ module: 'StrmService' });

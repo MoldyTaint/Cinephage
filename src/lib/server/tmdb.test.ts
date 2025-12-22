@@ -12,7 +12,6 @@ import type { CastMember } from '$lib/types/tmdb';
 // However, $env/dynamic/private needs to be available.
 // If the user has a .env file, Vitest usually loads it.
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TmdbResponse = any;
 
 describe('TMDB Integration', () => {

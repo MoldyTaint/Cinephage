@@ -5,7 +5,9 @@
  * Creates mock Request objects and parses Response objects for assertions.
  */
 
-import type { RequestEvent } from '@sveltejs/kit';
+import type { RequestEvent, RequestHandler } from '@sveltejs/kit';
+
+type AnyRequestHandler = RequestHandler<any, any>;
 
 /**
  * Create a mock Request object for testing
@@ -68,7 +70,7 @@ export function createRequestEvent(
  * Helper to call an API handler and get parsed response
  */
 export async function callHandler<T = unknown>(
-	handler: (event: RequestEvent) => Promise<Response>,
+	handler: AnyRequestHandler,
 	method: string,
 	body?: unknown,
 	options?: {
@@ -91,14 +93,14 @@ export async function callHandler<T = unknown>(
  */
 export const api = {
 	async get<T = unknown>(
-		handler: (event: RequestEvent) => Promise<Response>,
+		handler: AnyRequestHandler,
 		options?: { url?: string; params?: Record<string, string> }
 	): Promise<{ status: number; data: T }> {
 		return callHandler<T>(handler, 'GET', undefined, options);
 	},
 
 	async post<T = unknown>(
-		handler: (event: RequestEvent) => Promise<Response>,
+		handler: AnyRequestHandler,
 		body: unknown,
 		options?: { url?: string; params?: Record<string, string> }
 	): Promise<{ status: number; data: T }> {
@@ -106,7 +108,7 @@ export const api = {
 	},
 
 	async put<T = unknown>(
-		handler: (event: RequestEvent) => Promise<Response>,
+		handler: AnyRequestHandler,
 		body: unknown,
 		options?: { url?: string; params?: Record<string, string> }
 	): Promise<{ status: number; data: T }> {
@@ -114,7 +116,7 @@ export const api = {
 	},
 
 	async delete<T = unknown>(
-		handler: (event: RequestEvent) => Promise<Response>,
+		handler: AnyRequestHandler,
 		body: unknown,
 		options?: { url?: string; params?: Record<string, string> }
 	): Promise<{ status: number; data: T }> {
@@ -148,6 +150,15 @@ export interface ProfileResponse {
 	description?: string;
 	formatScores?: Record<string, number>;
 	isDefault?: boolean;
+	isBuiltIn?: boolean;
+	upgradesAllowed?: boolean;
+	minScore?: number;
+	upgradeUntilScore?: number;
+	minScoreIncrement?: number;
+	movieMinSizeGb?: number | null;
+	movieMaxSizeGb?: number | null;
+	episodeMinSizeMb?: number | null;
+	episodeMaxSizeMb?: number | null;
 }
 
 export interface ErrorResponse {
@@ -157,5 +168,23 @@ export interface ErrorResponse {
 
 export interface DeleteResponse {
 	success: boolean;
-	deleted: unknown;
+	deleted: { id: string; [key: string]: unknown };
+}
+
+export interface FormatResponse {
+	id: string;
+	name: string;
+	description?: string;
+	category?: string;
+	tags?: string[];
+	conditions?: unknown[];
+	isBuiltIn?: boolean;
+	enabled?: boolean;
+}
+
+export interface FormatsListResponse {
+	formats: FormatResponse[];
+	count?: number;
+	builtInCount: number;
+	customCount: number;
 }

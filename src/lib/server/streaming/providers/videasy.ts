@@ -70,10 +70,6 @@ interface VideasyDecryptedResponse {
 		quality?: string;
 		type?: string;
 	}>;
-	subtitles?: Array<{
-		url: string;
-		lang: string;
-	}>;
 }
 
 // ============================================================================
@@ -218,37 +214,11 @@ export class VideasyProvider extends BaseProvider {
 			return null;
 		}
 
-		// Build subtitle tracks
-		const subtitles = decrypted.subtitles?.map((sub) => ({
-			url: sub.url,
-			language: sub.lang,
-			label: this.getLanguageLabel(sub.lang)
-		}));
-
 		return this.createStreamResult(streamUrl, {
 			quality: 'Auto',
 			title: `Videasy - ${server.name}`,
 			server: server.name,
-			language: server.language,
-			subtitles
+			language: server.language
 		});
-	}
-
-	private getLanguageLabel(code: string): string {
-		const labels: Record<string, string> = {
-			en: 'English',
-			es: 'Spanish',
-			'es-419': 'Latin Spanish',
-			pt: 'Portuguese',
-			'pt-BR': 'Brazilian Portuguese',
-			fr: 'French',
-			de: 'German',
-			it: 'Italian',
-			hi: 'Hindi',
-			ja: 'Japanese',
-			ko: 'Korean',
-			zh: 'Chinese'
-		};
-		return labels[code] ?? code;
 	}
 }

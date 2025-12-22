@@ -22,8 +22,8 @@ function createRelease(overrides: Partial<ReleaseAttributes> = {}): ReleaseAttri
 		year: 2024,
 		resolution: '2160p',
 		source: 'bluray',
-		codec: 'hevc',
-		hdr: 'DV',
+		codec: 'h265',
+		hdr: 'dolby-vision',
 		audio: 'truehd',
 		releaseGroup: 'GROUP',
 		isRemux: true,
@@ -191,8 +191,8 @@ describe('Matcher', () => {
 
 		describe('codec', () => {
 			it('matches exact codec', () => {
-				const condition = createCondition({ type: 'codec', codec: 'hevc' });
-				const release = createRelease({ codec: 'hevc' });
+				const condition = createCondition({ type: 'codec', codec: 'h265' });
+				const release = createRelease({ codec: 'h265' });
 
 				const result = evaluateCondition(condition, release);
 				expect(result.matches).toBe(true);
@@ -230,8 +230,8 @@ describe('Matcher', () => {
 
 		describe('hdr', () => {
 			it('matches exact HDR type', () => {
-				const condition = createCondition({ type: 'hdr', hdr: 'DV' });
-				const release = createRelease({ hdr: 'DV' });
+				const condition = createCondition({ type: 'hdr', hdr: 'dolby-vision' });
+				const release = createRelease({ hdr: 'dolby-vision' });
 
 				const result = evaluateCondition(condition, release);
 				expect(result.matches).toBe(true);
@@ -254,8 +254,8 @@ describe('Matcher', () => {
 			});
 
 			it('does not match when HDR types differ', () => {
-				const condition = createCondition({ type: 'hdr', hdr: 'HDR10' });
-				const release = createRelease({ hdr: 'DV' });
+				const condition = createCondition({ type: 'hdr', hdr: 'hdr10' });
+				const release = createRelease({ hdr: 'dolby-vision' });
 
 				const result = evaluateCondition(condition, release);
 				expect(result.matches).toBe(false);
@@ -404,10 +404,10 @@ describe('Matcher', () => {
 			it('matches when at least one optional condition matches', () => {
 				const format = createFormat([
 					createCondition({ type: 'resolution', resolution: '2160p', required: true }),
-					createCondition({ type: 'hdr', hdr: 'DV', required: false }),
-					createCondition({ type: 'hdr', hdr: 'HDR10', required: false })
+					createCondition({ type: 'hdr', hdr: 'dolby-vision', required: false }),
+					createCondition({ type: 'hdr', hdr: 'hdr10', required: false })
 				]);
-				const release = createRelease({ resolution: '2160p', hdr: 'DV' });
+				const release = createRelease({ resolution: '2160p', hdr: 'dolby-vision' });
 
 				const { matches } = evaluateFormat(format, release);
 				expect(matches).toBe(true);
@@ -416,10 +416,10 @@ describe('Matcher', () => {
 			it('does not match when no optional conditions match', () => {
 				const format = createFormat([
 					createCondition({ type: 'resolution', resolution: '2160p', required: true }),
-					createCondition({ type: 'hdr', hdr: 'DV', required: false }),
-					createCondition({ type: 'hdr', hdr: 'HDR10', required: false })
+					createCondition({ type: 'hdr', hdr: 'dolby-vision', required: false }),
+					createCondition({ type: 'hdr', hdr: 'hdr10', required: false })
 				]);
-				const release = createRelease({ resolution: '2160p', hdr: 'HLG' });
+				const release = createRelease({ resolution: '2160p', hdr: 'hlg' });
 
 				const { matches } = evaluateFormat(format, release);
 				expect(matches).toBe(false);
@@ -430,9 +430,9 @@ describe('Matcher', () => {
 			it('fails if required fails even when optional matches', () => {
 				const format = createFormat([
 					createCondition({ type: 'resolution', resolution: '2160p', required: true }),
-					createCondition({ type: 'hdr', hdr: 'DV', required: false })
+					createCondition({ type: 'hdr', hdr: 'dolby-vision', required: false })
 				]);
-				const release = createRelease({ resolution: '1080p', hdr: 'DV' });
+				const release = createRelease({ resolution: '1080p', hdr: 'dolby-vision' });
 
 				const { matches } = evaluateFormat(format, release);
 				expect(matches).toBe(false);

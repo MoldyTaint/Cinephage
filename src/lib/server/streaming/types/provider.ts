@@ -4,7 +4,7 @@
  * Type definitions for streaming providers and their configurations.
  */
 
-import type { StreamResult, SubtitleTrack } from './stream';
+import type { StreamResult } from './stream';
 
 // ============================================================================
 // Provider Identifiers
@@ -66,9 +66,6 @@ export interface ProviderCapabilities {
 
 	/** Supports language-based stream selection */
 	supportsLanguageSelection: boolean;
-
-	/** Supports embedded subtitles */
-	supportsSubtitles: boolean;
 }
 
 // ============================================================================
@@ -267,7 +264,7 @@ export interface IStreamProvider {
 }
 
 // ============================================================================
-// Re-export SubtitleTrack for convenience
+// Re-exports
 // ============================================================================
 
-export type { SubtitleTrack, StreamResult };
+export type { StreamResult };

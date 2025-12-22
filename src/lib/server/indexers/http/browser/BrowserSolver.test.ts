@@ -7,7 +7,7 @@
  * and test against real Cloudflare-protected sites.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import {
 	BrowserSolver,
 	BrowserPool,
@@ -17,7 +17,7 @@ import {
 	getConfig,
 	DEFAULT_CONFIG
 } from './index';
-import type { BrowserSolverConfig, SolveOptions } from './types';
+import type { BrowserSolverConfig } from './types';
 
 /**
  * Unit tests - no network required

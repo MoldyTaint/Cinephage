@@ -7,12 +7,8 @@
  * - Real-world regression suite (scene releases, multi-episode, anime, etc.)
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import {
-	RenamePreviewService,
-	type RenamePreviewItem,
-	type RenamePreviewResult
-} from './RenamePreviewService';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { RenamePreviewService, type RenamePreviewResult } from './RenamePreviewService';
 import { NamingService, type MediaNamingInfo, DEFAULT_NAMING_CONFIG } from './NamingService';
 
 describe('RenamePreviewService', () => {
@@ -960,7 +956,7 @@ describe('RenamePreviewService', () => {
 			};
 
 			// Use the service's collision detection
-			const service = new RenamePreviewService();
+			const _service = new RenamePreviewService();
 			// Access private method via prototype or create test helper
 			// For testing, we'll verify the structure and expected behavior
 

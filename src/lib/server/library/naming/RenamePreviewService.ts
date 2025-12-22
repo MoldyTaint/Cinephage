@@ -805,7 +805,7 @@ export class RenamePreviewService {
 		}
 
 		// Find collisions (paths with more than one item)
-		for (const [path, items] of pathMap) {
+		for (const [_path, items] of pathMap) {
 			if (items.length > 1) {
 				// Mark all items as collisions
 				for (const item of items) {

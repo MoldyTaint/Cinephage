@@ -102,8 +102,7 @@ export function filterStreamsByLanguage<T extends { language?: string }>(
 	for (const stream of streams) {
 		// Check if stream language matches any preferred language
 		const hasMatch =
-			stream.language &&
-			preferredLanguages.some((pref) => languageMatches(stream.language, pref));
+			stream.language && preferredLanguages.some((pref) => languageMatches(stream.language, pref));
 
 		if (hasMatch) {
 			matching.push(stream);

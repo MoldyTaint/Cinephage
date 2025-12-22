@@ -30,11 +30,6 @@ interface XPrimeDecryptedResponse {
 		file: string;
 		type?: string;
 	}>;
-	subtitles?: Array<{
-		url: string;
-		label: string;
-		lang?: string;
-	}>;
 }
 
 // ============================================================================
@@ -128,27 +123,10 @@ export class XPrimeProvider extends BaseProvider {
 			return null;
 		}
 
-		// Build subtitle tracks
-		const subtitles = decrypted.subtitles?.map((sub) => ({
-			url: sub.url,
-			language: sub.lang ?? this.extractLanguageCode(sub.label),
-			label: sub.label
-		}));
-
 		return this.createStreamResult(streamUrl, {
 			quality: 'Auto',
 			title: `XPrime - ${server}`,
-			server,
-			subtitles
+			server
 		});
-	}
-
-	private extractLanguageCode(label: string): string {
-		const labelLower = label.toLowerCase();
-		if (labelLower.includes('english')) return 'en';
-		if (labelLower.includes('spanish')) return 'es';
-		if (labelLower.includes('french')) return 'fr';
-		if (labelLower.includes('german')) return 'de';
-		return label.substring(0, 2).toLowerCase();
 	}
 }

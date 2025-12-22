@@ -7,7 +7,7 @@ services:
     init: true
     stop_grace_period: 30s
     ports:
-      - "${CINEPHAGE_PORT:-3000}:3000"
+      - '${CINEPHAGE_PORT:-3000}:3000'
     volumes:
       # Persist the SQLite database and settings
       - ${CINEPHAGE_DATA_PATH:-./data}:/app/data

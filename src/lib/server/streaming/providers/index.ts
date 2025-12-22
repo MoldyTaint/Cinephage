@@ -340,7 +340,6 @@ function toStreamSource(result: StreamResult, providerId: StreamingProviderId): 
 		status: 'working',
 		server: result.server,
 		language: result.language,
-		subtitles: result.subtitles,
 		headers: result.headers,
 		provider: providerId
 	};
@@ -641,8 +640,7 @@ async function doParallelExtraction(
 	}
 
 	const skippedNote = skipped.length > 0 ? ` (circuit-broken: ${skipped.join(', ')})` : '';
-	const unsupportedNote =
-		unsupported.length > 0 ? ` (unsupported: ${unsupported.join(', ')})` : '';
+	const unsupportedNote = unsupported.length > 0 ? ` (unsupported: ${unsupported.join(', ')})` : '';
 
 	return {
 		success: false,

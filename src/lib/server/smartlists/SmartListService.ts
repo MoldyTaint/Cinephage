@@ -1186,7 +1186,7 @@ export class SmartListService {
 							totalEpisodes += episodesToInsert.length;
 						}
 					}
-				} catch (err) {
+				} catch (_err) {
 					logger.warn('[SmartListService] Failed to fetch season details', {
 						tmdbId,
 						seasonNumber: seasonInfo.season_number

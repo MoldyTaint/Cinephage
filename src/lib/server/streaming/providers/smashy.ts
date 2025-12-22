@@ -195,16 +195,10 @@ export class SmashyProvider extends BaseProvider {
 				const streamUrl = this.extractStreamUrl(decrypted);
 				if (!streamUrl) continue;
 
-				// Parse subtitles if available
-				const subtitles = response.data.tracks
-					? this.parseSubtitlesList(response.data.tracks)
-					: undefined;
-
 				return this.createStreamResult(streamUrl, {
 					quality: 'Auto',
 					title: `Smashystream - ${server}`,
-					server,
-					subtitles
+					server
 				});
 			} catch (error) {
 				logger.debug('Smashy Type 2 server failed', {
@@ -269,34 +263,5 @@ export class SmashyProvider extends BaseProvider {
 		}
 
 		return null;
-	}
-
-	private parseSubtitlesList(tracks: string): StreamResult['subtitles'] {
-		const items = tracks.split(',').map((s) => s.trim());
-		const subtitles: StreamResult['subtitles'] = [];
-
-		for (const item of items) {
-			if (item.startsWith('[') && item.includes(']')) {
-				const [label, url] = item.substring(1).split(']');
-				if (url && label) {
-					subtitles.push({
-						url: url.trim(),
-						label: label.trim(),
-						language: this.extractLanguageCode(label)
-					});
-				}
-			}
-		}
-
-		return subtitles.length > 0 ? subtitles : undefined;
-	}
-
-	private extractLanguageCode(label: string): string {
-		const labelLower = label.toLowerCase();
-		if (labelLower.includes('english')) return 'en';
-		if (labelLower.includes('spanish')) return 'es';
-		if (labelLower.includes('french')) return 'fr';
-		if (labelLower.includes('german')) return 'de';
-		return 'en';
 	}
 }

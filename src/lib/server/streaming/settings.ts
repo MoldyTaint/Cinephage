@@ -32,11 +32,7 @@ export type StreamingProvider =
 /**
  * Default enabled providers (primary movie/TV sources)
  */
-const DEFAULT_ENABLED_PROVIDERS: StreamingProvider[] = [
-	'videasy',
-	'vidlink',
-	'hexa'
-];
+const DEFAULT_ENABLED_PROVIDERS: StreamingProvider[] = ['videasy', 'vidlink', 'hexa'];
 
 // ============================================================================
 // Settings Interface
