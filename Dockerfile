@@ -30,24 +30,20 @@ WORKDIR /app
 # Install runtime dependencies (ffmpeg for ffprobe media analysis)
 RUN apk add --no-cache ffmpeg
 
-# Create app user with fixed UID/GID (can be overridden with docker --user)
-RUN addgroup -g 1000 cinephage && \
-    adduser -u 1000 -G cinephage -h /app -D cinephage
-
-# Create necessary directories with correct ownership
-RUN mkdir -p data logs && chown -R cinephage:cinephage data logs
+# Create necessary directories with correct ownership (node user is UID 1000)
+RUN mkdir -p data logs && chown -R node:node data logs
 
 # Copy production dependencies and built artifacts from builder
-COPY --from=builder --chown=cinephage:cinephage /app/node_modules ./node_modules
-COPY --from=builder --chown=cinephage:cinephage /app/build ./build
-COPY --from=builder --chown=cinephage:cinephage /app/package.json ./package.json
-COPY --from=builder --chown=cinephage:cinephage /app/src ./src
+COPY --from=builder --chown=node:node /app/node_modules ./node_modules
+COPY --from=builder --chown=node:node /app/build ./build
+COPY --from=builder --chown=node:node /app/package.json ./package.json
+COPY --from=builder --chown=node:node /app/src ./src
 
 # Copy bundled indexers to separate location (not shadowed by volume mount)
-COPY --from=builder --chown=cinephage:cinephage /app/data/indexers ./bundled-indexers
+COPY --from=builder --chown=node:node /app/data/indexers ./bundled-indexers
 
 # Copy and set up entrypoint script
-COPY --chown=cinephage:cinephage docker-entrypoint.sh ./docker-entrypoint.sh
+COPY --chown=node:node docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x ./docker-entrypoint.sh
 
 # Set environment variables
@@ -64,8 +60,8 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
 
-# Run as non-root user (rootless)
-USER cinephage
+# Run as non-root user (rootless) - node user is UID 1000
+USER node
 
 # Start the application
 ENTRYPOINT ["./docker-entrypoint.sh"]
