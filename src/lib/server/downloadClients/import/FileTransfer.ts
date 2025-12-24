@@ -5,14 +5,14 @@
  * Prefers hardlinks to save disk space while keeping files for seeding.
  */
 
-import { link, copyFile, mkdir, stat, readdir, unlink, rename } from 'fs/promises';
+import { link, copyFile, mkdir, stat, readdir, unlink, rename, lstat, readlink, symlink } from 'fs/promises';
 import { join, dirname, basename, extname } from 'path';
 import { logger } from '$lib/logging';
 
 /**
  * Transfer mode for files
  */
-export type TransferMode = 'hardlink' | 'copy' | 'move';
+export type TransferMode = 'hardlink' | 'copy' | 'move' | 'symlink';
 
 /**
  * Result of a file transfer operation
@@ -76,17 +76,31 @@ export async function getFileSize(filePath: string): Promise<number> {
 }
 
 /**
- * Transfer a single file using hardlink (preferred) or copy
+ * Check if a path is a symbolic link
+ */
+export async function isSymlink(filePath: string): Promise<boolean> {
+	try {
+		const stats = await lstat(filePath);
+		return stats.isSymbolicLink();
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Transfer a single file using hardlink (preferred), symlink preservation, or copy
  *
  * @param source - Source file path
  * @param dest - Destination file path
  * @param preferHardlink - Whether to try hardlink first (default: true)
+ * @param preserveSymlinks - Whether to preserve symlinks instead of copying content (default: false)
  * @returns Transfer result
  */
 export async function transferFile(
 	source: string,
 	dest: string,
-	preferHardlink = true
+	preferHardlink = true,
+	preserveSymlinks = false
 ): Promise<TransferResult> {
 	try {
 		// Ensure destination directory exists
@@ -96,6 +110,25 @@ export async function transferFile(
 		if (await fileExists(dest)) {
 			logger.warn('Destination file already exists, will overwrite', { dest });
 			await unlink(dest);
+		}
+
+		// Check if source is a symlink and preservation is enabled
+		if (preserveSymlinks && (await isSymlink(source))) {
+			const linkTarget = await readlink(source);
+			await symlink(linkTarget, dest);
+
+			// Get size from the actual target for reporting (stat follows symlinks)
+			const sizeBytes = await getFileSize(source);
+
+			logger.debug('Symlink preserved', { source, dest, target: linkTarget });
+
+			return {
+				success: true,
+				sourcePath: source,
+				destPath: dest,
+				mode: 'symlink',
+				sizeBytes
+			};
 		}
 
 		// Get file size

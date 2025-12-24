@@ -26,6 +26,7 @@ export interface RootFolderInput {
 	mediaType: RootFolderMediaType;
 	isDefault?: boolean;
 	readOnly?: boolean;
+	preserveSymlinks?: boolean;
 }
 
 /**
@@ -115,6 +116,7 @@ export class RootFolderService {
 			mediaType: input.mediaType,
 			isDefault: input.isDefault ?? false,
 			readOnly: input.readOnly ?? false,
+			preserveSymlinks: input.preserveSymlinks ?? false,
 			freeSpaceBytes: input.readOnly ? null : validation.freeSpaceBytes,
 			lastCheckedAt: now,
 			createdAt: now
@@ -124,7 +126,8 @@ export class RootFolderService {
 			id,
 			name: input.name,
 			path: input.path,
-			readOnly: input.readOnly ?? false
+			readOnly: input.readOnly ?? false,
+			preserveSymlinks: input.preserveSymlinks ?? false
 		});
 
 		const created = await this.getFolder(id);
@@ -170,6 +173,7 @@ export class RootFolderService {
 		if (updates.mediaType !== undefined) updateData.mediaType = updates.mediaType;
 		if (updates.isDefault !== undefined) updateData.isDefault = updates.isDefault;
 		if (updates.readOnly !== undefined) updateData.readOnly = updates.readOnly;
+		if (updates.preserveSymlinks !== undefined) updateData.preserveSymlinks = updates.preserveSymlinks;
 
 		await db.update(rootFoldersTable).set(updateData).where(eq(rootFoldersTable.id, id));
 
@@ -405,6 +409,7 @@ export class RootFolderService {
 			mediaType: row.mediaType as RootFolderMediaType,
 			isDefault: !!row.isDefault,
 			readOnly: isReadOnly,
+			preserveSymlinks: !!row.preserveSymlinks,
 			freeSpaceBytes,
 			freeSpaceFormatted,
 			accessible,

@@ -37,6 +37,7 @@
 	let mediaType = $state<'movie' | 'tv'>('movie');
 	let isDefault = $state(false);
 	let readOnly = $state(false);
+	let preserveSymlinks = $state(false);
 
 	// UI state
 	let validating = $state(false);
@@ -54,6 +55,7 @@
 			mediaType = folder?.mediaType ?? 'movie';
 			isDefault = folder?.isDefault ?? false;
 			readOnly = folder?.readOnly ?? false;
+			preserveSymlinks = folder?.preserveSymlinks ?? false;
 			validationResult = null;
 			showFolderBrowser = false;
 		}
@@ -65,7 +67,8 @@
 			path,
 			mediaType,
 			isDefault,
-			readOnly
+			readOnly,
+			preserveSymlinks
 		};
 	}
 
@@ -210,6 +213,39 @@
 							<span class="label-text">Read-only folder (catalog only, no imports)</span>
 						</label>
 					</div>
+
+					<div class="form-control">
+						<label class="label cursor-pointer justify-start gap-3">
+							<input type="checkbox" class="checkbox checkbox-sm" bind:checked={preserveSymlinks} />
+							<span class="label-text">Preserve symlinks (for NZBDav/rclone mounts)</span>
+						</label>
+					</div>
+
+					{#if preserveSymlinks}
+						<div class="alert alert-info">
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								fill="none"
+								viewBox="0 0 24 24"
+								class="h-6 w-6 shrink-0 stroke-current"
+							>
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+								></path>
+							</svg>
+							<div>
+								<div class="font-medium">Symlink preservation enabled</div>
+								<div class="text-sm opacity-80">
+									Symlinks will be recreated at the destination instead of copying file contents.
+									This is useful when the source folder contains symlinks to files on network mounts
+									(NZBDav, rclone).
+								</div>
+							</div>
+						</div>
+					{/if}
 
 					{#if readOnly}
 						<div class="alert alert-info">

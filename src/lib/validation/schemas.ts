@@ -431,7 +431,8 @@ export const rootFolderCreateSchema = z.object({
 	path: z.string().min(1, 'Path is required'),
 	mediaType: rootFolderMediaTypeSchema,
 	isDefault: z.boolean().default(false),
-	readOnly: z.boolean().default(false)
+	readOnly: z.boolean().default(false),
+	preserveSymlinks: z.boolean().default(false)
 });
 
 /**

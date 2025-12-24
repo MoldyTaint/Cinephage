@@ -361,7 +361,8 @@ export class ImportService extends EventEmitter {
 
 		// Transfer the file FIRST (keep old file until new one is successfully imported)
 		worker.log('info', `Transferring file to: ${destPath}`);
-		const transferResult = await transferFile(mainFile.path, destPath, true);
+		const preserveSymlinks = rootFolder.preserveSymlinks ?? false;
+		const transferResult = await transferFile(mainFile.path, destPath, true, preserveSymlinks);
 
 		if (!transferResult.success) {
 			result.failedFiles.push({
@@ -377,7 +378,7 @@ export class ImportService extends EventEmitter {
 
 		worker.fileTransferred(
 			basename(mainFile.path),
-			transferResult.mode === 'hardlink' ? 'hardlink' : 'copy'
+			transferResult.mode === 'symlink' ? 'symlink' : transferResult.mode === 'hardlink' ? 'hardlink' : 'copy'
 		);
 		worker.setDestinationPath(destPath);
 
@@ -707,7 +708,8 @@ export class ImportService extends EventEmitter {
 		await ensureDirectory(seasonFolder);
 
 		// Transfer file
-		const transferResult = await transferFile(videoFile.path, destPath, true);
+		const preserveSymlinks = rootFolder.preserveSymlinks ?? false;
+		const transferResult = await transferFile(videoFile.path, destPath, true, preserveSymlinks);
 
 		if (!transferResult.success) {
 			return {

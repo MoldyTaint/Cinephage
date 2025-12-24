@@ -493,6 +493,8 @@ export const rootFolders = sqliteTable('root_folders', {
 	isDefault: integer('is_default', { mode: 'boolean' }).default(false),
 	// Read-only folder (for virtual mounts like NZBDav - catalog only, no imports)
 	readOnly: integer('read_only', { mode: 'boolean' }).default(false),
+	// Preserve symlinks during import (for NZBDav/rclone - recreate symlinks instead of copying content)
+	preserveSymlinks: integer('preserve_symlinks', { mode: 'boolean' }).default(false),
 	// Cached free space in bytes (updated periodically)
 	freeSpaceBytes: integer('free_space_bytes'),
 	// Last time free space was checked

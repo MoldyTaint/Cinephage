@@ -100,6 +100,7 @@ export interface RootFolder {
 	mediaType: RootFolderMediaType;
 	isDefault: boolean;
 	readOnly: boolean;
+	preserveSymlinks: boolean;
 	freeSpaceBytes?: number | null;
 	freeSpaceFormatted?: string;
 	accessible: boolean;
@@ -116,6 +117,7 @@ export interface RootFolderFormData {
 	mediaType: RootFolderMediaType;
 	isDefault: boolean;
 	readOnly?: boolean;
+	preserveSymlinks?: boolean;
 }
 
 /**

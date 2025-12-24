@@ -19,8 +19,9 @@ import { logger } from '$lib/logging';
  * Version 2: Added profile_size_limits, custom_formats, naming_presets tables
  * Version 3: Added read_only column to root_folders for virtual mount support (NZBDav)
  * Version 4: Fix invalid scoring profile references and ensure default profile exists
+ * Version 5: Added preserve_symlinks column to root_folders for NZBDav/rclone symlink preservation
  */
-export const CURRENT_SCHEMA_VERSION = 4;
+export const CURRENT_SCHEMA_VERSION = 5;
 
 /**
  * All table definitions with CREATE TABLE IF NOT EXISTS
@@ -166,6 +167,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"media_type" text NOT NULL,
 		"is_default" integer DEFAULT false,
 		"read_only" integer DEFAULT false,
+		"preserve_symlinks" integer DEFAULT false,
 		"free_space_bytes" integer,
 		"last_checked_at" text,
 		"created_at" text
@@ -837,6 +839,17 @@ const SCHEMA_UPDATES: Record<number, (sqlite: Database.Database) => void> = {
 			logger.info(
 				`[SchemaSync] Cleared ${invalidSeries.changes} series with invalid profile references`
 			);
+		}
+	},
+
+	// Version 5: Add preserve_symlinks column to root_folders for NZBDav/rclone symlink preservation
+	5: (sqlite) => {
+		// Only add column if it doesn't exist (may already exist from fresh TABLE_DEFINITIONS)
+		if (!columnExists(sqlite, 'root_folders', 'preserve_symlinks')) {
+			sqlite
+				.prepare(`ALTER TABLE root_folders ADD COLUMN preserve_symlinks INTEGER DEFAULT 0`)
+				.run();
+			logger.info('[SchemaSync] Added preserve_symlinks column to root_folders');
 		}
 	}
 };

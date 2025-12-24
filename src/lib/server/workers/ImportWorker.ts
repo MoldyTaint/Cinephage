@@ -93,10 +93,11 @@ export class ImportWorker extends TaskWorker<ImportWorkerMetadata> {
 	}
 
 	/**
-	 * Record a hardlink/copy operation.
+	 * Record a hardlink/copy/symlink operation.
 	 */
-	fileTransferred(filename: string, method: 'hardlink' | 'copy'): void {
-		this.log('debug', `${method === 'hardlink' ? 'Hardlinked' : 'Copied'}: ${filename}`);
+	fileTransferred(filename: string, method: 'hardlink' | 'copy' | 'symlink'): void {
+		const action = method === 'hardlink' ? 'Hardlinked' : method === 'symlink' ? 'Symlinked' : 'Copied';
+		this.log('debug', `${action}: ${filename}`);
 	}
 
 	/**
