@@ -8,12 +8,15 @@ import {
 	seasons,
 	movieFiles,
 	episodes,
-	episodeFiles
+	episodeFiles,
+	rootFolders
 } from '$lib/server/db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
 import { mediaInfoService } from '$lib/server/library/index.js';
 import path from 'path';
+import { unlink, rmdir } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { logger } from '$lib/logging';
 
 /**
@@ -254,24 +257,65 @@ export const POST: RequestHandler = async ({ params, request }) => {
 
 /**
  * DELETE /api/library/unmatched/[id]
- * Remove a file from the unmatched list (ignore it)
+ * Remove a file from the unmatched list (optionally delete from disk)
  */
-export const DELETE: RequestHandler = async ({ params }) => {
+export const DELETE: RequestHandler = async ({ params, url }) => {
 	try {
 		const id = params.id;
 		if (!id) {
 			return json({ success: false, error: 'Invalid ID' }, { status: 400 });
 		}
 
-		const [deleted] = await db.delete(unmatchedFiles).where(eq(unmatchedFiles.id, id)).returning();
+		const deleteFile = url.searchParams.get('deleteFile') === 'true';
 
-		if (!deleted) {
+		// Get file with root folder info
+		const [file] = await db
+			.select({
+				id: unmatchedFiles.id,
+				path: unmatchedFiles.path,
+				rootFolderReadOnly: rootFolders.readOnly
+			})
+			.from(unmatchedFiles)
+			.leftJoin(rootFolders, eq(unmatchedFiles.rootFolderId, rootFolders.id))
+			.where(eq(unmatchedFiles.id, id));
+
+		if (!file) {
 			return json({ success: false, error: 'Unmatched file not found' }, { status: 404 });
 		}
 
+		// Block file deletion from read-only folders
+		if (deleteFile && file.rootFolderReadOnly) {
+			return json(
+				{ success: false, error: 'Cannot delete files from read-only folder' },
+				{ status: 400 }
+			);
+		}
+
+		// Delete file from disk if requested
+		if (deleteFile && file.path) {
+			try {
+				await unlink(file.path);
+				logger.debug('[API] Deleted unmatched file from disk', { path: file.path });
+
+				// Try to remove empty parent directory
+				try {
+					await rmdir(dirname(file.path));
+				} catch {
+					// Directory not empty or doesn't exist
+				}
+			} catch {
+				logger.warn('[API] Could not delete unmatched file from disk', { path: file.path });
+			}
+		}
+
+		// Delete from database
+		await db.delete(unmatchedFiles).where(eq(unmatchedFiles.id, id));
+
 		return json({
 			success: true,
-			message: 'File removed from unmatched list'
+			message: deleteFile
+				? 'File deleted from disk and removed from list'
+				: 'File removed from unmatched list'
 		});
 	} catch (error) {
 		logger.error('[API] Error deleting unmatched file', error instanceof Error ? error : undefined);

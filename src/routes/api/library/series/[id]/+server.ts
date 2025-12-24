@@ -285,7 +285,7 @@ export const PUT: RequestHandler = PATCH;
 
 /**
  * DELETE /api/library/series/[id]
- * Remove a series from the library
+ * Delete files for a series (keeps metadata, marks episodes as missing)
  */
 export const DELETE: RequestHandler = async ({ params, url }) => {
 	try {
@@ -307,6 +307,16 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 			return json({ success: false, error: 'Series not found' }, { status: 404 });
 		}
 
+		// Get all episode files for this series
+		const files = await db
+			.select()
+			.from(episodeFiles)
+			.where(eq(episodeFiles.seriesId, params.id));
+
+		if (files.length === 0) {
+			return json({ success: false, error: 'Series has no files to delete' }, { status: 400 });
+		}
+
 		// Block file deletion from read-only folders
 		if (deleteFiles && seriesItem.rootFolderReadOnly) {
 			return json(
@@ -315,14 +325,8 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 			);
 		}
 
+		// Delete files from disk if requested
 		if (deleteFiles && seriesItem.rootFolderPath && seriesItem.path) {
-			// Get all episode files for this series
-			const files = await db
-				.select()
-				.from(episodeFiles)
-				.where(eq(episodeFiles.seriesId, params.id));
-
-			// Delete each file
 			for (const file of files) {
 				const fullPath = join(seriesItem.rootFolderPath, seriesItem.path, file.relativePath);
 				try {
@@ -336,7 +340,6 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 			// Try to remove empty season folders and the series folder
 			const seriesFolder = join(seriesItem.rootFolderPath, seriesItem.path);
 			try {
-				// Get all subdirectories (season folders)
 				const entries = await readdir(seriesFolder, { withFileTypes: true });
 				for (const entry of entries) {
 					if (entry.isDirectory()) {
@@ -356,16 +359,35 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 			}
 		}
 
-		// Delete series from database (cascade will delete seasons, episodes, files)
-		await db.delete(series).where(eq(series.id, params.id));
+		// Delete all episode file records from database
+		await db.delete(episodeFiles).where(eq(episodeFiles.seriesId, params.id));
 
+		// Update all episodes in this series to hasFile=false
+		await db
+			.update(episodes)
+			.set({ hasFile: false })
+			.where(eq(episodes.seriesId, params.id));
+
+		// Update all seasons' episode file count to 0
+		await db
+			.update(seasons)
+			.set({ episodeFileCount: 0 })
+			.where(eq(seasons.seriesId, params.id));
+
+		// Update series episode file count
+		await db
+			.update(series)
+			.set({ episodeFileCount: 0 })
+			.where(eq(series.id, params.id));
+
+		// Note: Series, season, and episode metadata is kept - episodes will show as "missing"
 		return json({ success: true });
 	} catch (error) {
-		logger.error('[API] Error deleting series', error instanceof Error ? error : undefined);
+		logger.error('[API] Error deleting series files', error instanceof Error ? error : undefined);
 		return json(
 			{
 				success: false,
-				error: error instanceof Error ? error.message : 'Failed to delete series'
+				error: error instanceof Error ? error.message : 'Failed to delete series files'
 			},
 			{ status: 500 }
 		);

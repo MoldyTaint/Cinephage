@@ -9,6 +9,8 @@
 	import { TVSeriesSidebar, BulkActionBar } from '$lib/components/library/tv';
 	import { InteractiveSearchModal } from '$lib/components/search';
 	import { SubtitleSearchModal } from '$lib/components/subtitles';
+	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
+	import { toasts } from '$lib/stores/toast.svelte';
 	import type { SeriesEditData } from '$lib/components/library/SeriesEditModal.svelte';
 	import type { SearchMode } from '$lib/components/search/InteractiveSearchModal.svelte';
 	import { CheckSquare, FileEdit } from 'lucide-svelte';
@@ -20,10 +22,11 @@
 	let isEditModalOpen = $state(false);
 	let isSearchModalOpen = $state(false);
 	let isRenameModalOpen = $state(false);
+	let isDeleteModalOpen = $state(false);
 	let isSaving = $state(false);
 	let isRefreshing = $state(false);
 	let refreshProgress = $state<{ current: number; total: number; message: string } | null>(null);
-	let _isDeleting = $state(false);
+	let isDeleting = $state(false);
 
 	// Selection state
 	let selectedEpisodes = new SvelteSet<string>();
@@ -61,6 +64,16 @@
 		episode?: number;
 		searchMode?: SearchMode;
 	} | null>(null);
+
+	// Season/Episode delete state
+	let isSeasonDeleteModalOpen = $state(false);
+	let isEpisodeDeleteModalOpen = $state(false);
+	let deletingSeasonId = $state<string | null>(null);
+	let deletingSeasonName = $state<string>('');
+	let deletingEpisodeId = $state<string | null>(null);
+	let deletingEpisodeName = $state<string>('');
+	let isDeletingSeason = $state(false);
+	let isDeletingEpisode = $state(false);
 
 	// Find quality profile name (use default if none set)
 	const qualityProfileName = $derived.by(() => {
@@ -258,24 +271,128 @@
 		}
 	}
 
-	async function handleDelete() {
-		if (!confirm(`Are you sure you want to remove "${data.series.title}" from your library?`)) {
-			return;
-		}
+	function handleDelete() {
+		isDeleteModalOpen = true;
+	}
 
-		_isDeleting = true;
+	async function performDelete(deleteFiles: boolean) {
+		isDeleting = true;
 		try {
-			const response = await fetch(`/api/library/series/${data.series.id}`, {
-				method: 'DELETE'
-			});
+			const response = await fetch(
+				`/api/library/series/${data.series.id}?deleteFiles=${deleteFiles}`,
+				{ method: 'DELETE' }
+			);
+			const result = await response.json();
 
-			if (response.ok) {
-				window.location.href = '/tv';
+			if (result.success) {
+				toasts.success('Series files deleted');
+				// Reload to show updated state (all episodes now missing)
+				window.location.reload();
+			} else {
+				toasts.error('Failed to delete series files', { description: result.error });
 			}
 		} catch (error) {
 			console.error('Failed to delete series:', error);
+			toasts.error('Failed to delete series');
 		} finally {
-			_isDeleting = false;
+			isDeleting = false;
+			isDeleteModalOpen = false;
+		}
+	}
+
+	// Season deletion handlers
+	interface Season {
+		id: string;
+		seasonNumber: number;
+		name: string | null;
+	}
+
+	function handleSeasonDelete(season: Season) {
+		deletingSeasonId = season.id;
+		deletingSeasonName = season.name || `Season ${season.seasonNumber}`;
+		isSeasonDeleteModalOpen = true;
+	}
+
+	async function performSeasonDelete(deleteFiles: boolean) {
+		if (!deletingSeasonId) return;
+
+		isDeletingSeason = true;
+		try {
+			const response = await fetch(
+				`/api/library/seasons/${deletingSeasonId}?deleteFiles=${deleteFiles}`,
+				{ method: 'DELETE' }
+			);
+			const result = await response.json();
+
+			if (result.success) {
+				toasts.success('Season files deleted');
+				// Mark all episodes in this season as missing
+				data.seasons = data.seasons.map((s) =>
+					s.id === deletingSeasonId
+						? {
+								...s,
+								episodes: s.episodes.map((e) => ({ ...e, hasFile: false, file: undefined }))
+							}
+						: s
+				);
+			} else {
+				toasts.error('Failed to delete season files', { description: result.error });
+			}
+		} catch (error) {
+			console.error('Failed to delete season:', error);
+			toasts.error('Failed to delete season');
+		} finally {
+			isDeletingSeason = false;
+			isSeasonDeleteModalOpen = false;
+			deletingSeasonId = null;
+		}
+	}
+
+	// Episode deletion handlers
+	interface Episode {
+		id: string;
+		seasonNumber: number;
+		episodeNumber: number;
+		title: string | null;
+	}
+
+	function handleEpisodeDelete(episode: Episode) {
+		deletingEpisodeId = episode.id;
+		const epTitle = episode.title || `Episode ${episode.episodeNumber}`;
+		deletingEpisodeName = `S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')} - ${epTitle}`;
+		isEpisodeDeleteModalOpen = true;
+	}
+
+	async function performEpisodeDelete(deleteFiles: boolean) {
+		if (!deletingEpisodeId) return;
+
+		isDeletingEpisode = true;
+		try {
+			const response = await fetch(
+				`/api/library/episodes/${deletingEpisodeId}?deleteFiles=${deleteFiles}`,
+				{ method: 'DELETE' }
+			);
+			const result = await response.json();
+
+			if (result.success) {
+				toasts.success('Episode files deleted');
+				// Mark episode as missing (hasFile: false) instead of removing it
+				data.seasons = data.seasons.map((season) => ({
+					...season,
+					episodes: season.episodes.map((e) =>
+						e.id === deletingEpisodeId ? { ...e, hasFile: false, file: undefined } : e
+					)
+				}));
+			} else {
+				toasts.error('Failed to delete episode files', { description: result.error });
+			}
+		} catch (error) {
+			console.error('Failed to delete episode:', error);
+			toasts.error('Failed to delete episode');
+		} finally {
+			isDeletingEpisode = false;
+			isEpisodeDeleteModalOpen = false;
+			deletingEpisodeId = null;
 		}
 	}
 
@@ -831,6 +948,8 @@
 						onSelectAllInSeason={handleSelectAllInSeason}
 						onSubtitleSearch={handleSubtitleSearch}
 						onSubtitleAutoSearch={handleSubtitleAutoSearch}
+						onSeasonDelete={handleSeasonDelete}
+						onEpisodeDelete={handleEpisodeDelete}
 					/>
 				{/each}
 			{/if}
@@ -899,4 +1018,34 @@
 	mediaTitle={data.series.title}
 	onClose={() => (isRenameModalOpen = false)}
 	onRenamed={() => location.reload()}
+/>
+
+<!-- Delete Confirmation Modal -->
+<DeleteConfirmationModal
+	open={isDeleteModalOpen}
+	title="Delete Series"
+	itemName={data.series.title}
+	loading={isDeleting}
+	onConfirm={performDelete}
+	onCancel={() => (isDeleteModalOpen = false)}
+/>
+
+<!-- Season Delete Confirmation Modal -->
+<DeleteConfirmationModal
+	open={isSeasonDeleteModalOpen}
+	title="Delete Season"
+	itemName={deletingSeasonName}
+	loading={isDeletingSeason}
+	onConfirm={performSeasonDelete}
+	onCancel={() => (isSeasonDeleteModalOpen = false)}
+/>
+
+<!-- Episode Delete Confirmation Modal -->
+<DeleteConfirmationModal
+	open={isEpisodeDeleteModalOpen}
+	title="Delete Episode"
+	itemName={deletingEpisodeName}
+	loading={isDeletingEpisode}
+	onConfirm={performEpisodeDelete}
+	onCancel={() => (isEpisodeDeleteModalOpen = false)}
 />

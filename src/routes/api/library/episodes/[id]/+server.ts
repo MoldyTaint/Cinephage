@@ -1,8 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { db } from '$lib/server/db/index.js';
-import { episodes } from '$lib/server/db/schema.js';
+import { episodes, episodeFiles, series, seasons, rootFolders } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
+import { unlink, rmdir } from 'node:fs/promises';
+import { join, dirname } from 'node:path';
 import { logger } from '$lib/logging';
 import { searchOnAdd } from '$lib/server/library/searchOnAdd.js';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
@@ -78,3 +80,138 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 
 // Alias PUT to PATCH for convenience
 export const PUT: RequestHandler = PATCH;
+
+/**
+ * DELETE /api/library/episodes/[id]
+ * Delete files for an episode (keeps metadata, marks as missing)
+ */
+export const DELETE: RequestHandler = async ({ params, url }) => {
+	try {
+		const deleteFiles = url.searchParams.get('deleteFiles') === 'true';
+
+		// Get episode with series and root folder info
+		const [episode] = await db
+			.select({
+				id: episodes.id,
+				seriesId: episodes.seriesId,
+				seasonId: episodes.seasonId,
+				hasFile: episodes.hasFile,
+				seriesPath: series.path,
+				rootFolderPath: rootFolders.path,
+				rootFolderReadOnly: rootFolders.readOnly
+			})
+			.from(episodes)
+			.innerJoin(series, eq(episodes.seriesId, series.id))
+			.leftJoin(rootFolders, eq(series.rootFolderId, rootFolders.id))
+			.where(eq(episodes.id, params.id));
+
+		if (!episode) {
+			return json({ success: false, error: 'Episode not found' }, { status: 404 });
+		}
+
+		if (!episode.hasFile) {
+			return json({ success: false, error: 'Episode has no files to delete' }, { status: 400 });
+		}
+
+		// Block file deletion from read-only folders
+		if (deleteFiles && episode.rootFolderReadOnly) {
+			return json(
+				{ success: false, error: 'Cannot delete files from read-only folder' },
+				{ status: 400 }
+			);
+		}
+
+		// Find files that include this episode
+		const allFiles = await db
+			.select()
+			.from(episodeFiles)
+			.where(eq(episodeFiles.seriesId, episode.seriesId));
+
+		const episodeFilesToDelete = allFiles.filter(
+			(f) => f.episodeIds && f.episodeIds.includes(params.id)
+		);
+
+		// Delete files from disk if requested
+		if (deleteFiles && episode.rootFolderPath && episode.seriesPath) {
+			for (const file of episodeFilesToDelete) {
+				const fullPath = join(episode.rootFolderPath, episode.seriesPath, file.relativePath);
+				try {
+					await unlink(fullPath);
+					logger.debug('[API] Deleted episode file', { fullPath });
+
+					// Try to remove empty parent directories
+					let currentDir = dirname(fullPath);
+					const seriesFolder = join(episode.rootFolderPath, episode.seriesPath);
+					while (currentDir !== seriesFolder && currentDir.startsWith(seriesFolder)) {
+						try {
+							await rmdir(currentDir);
+							currentDir = dirname(currentDir);
+						} catch {
+							break;
+						}
+					}
+				} catch {
+					logger.warn('[API] Could not delete episode file', { fullPath });
+				}
+			}
+		}
+
+		// Delete file records from database and update hasFile for affected episodes
+		for (const file of episodeFilesToDelete) {
+			await db.delete(episodeFiles).where(eq(episodeFiles.id, file.id));
+
+			// Update hasFile for all episodes that were covered by this file
+			for (const epId of file.episodeIds || []) {
+				// Check if this episode still has other files
+				const remainingFiles = await db
+					.select({ episodeIds: episodeFiles.episodeIds })
+					.from(episodeFiles)
+					.where(eq(episodeFiles.seriesId, episode.seriesId));
+
+				const stillHasFile = remainingFiles.some(
+					(f) => f.episodeIds && f.episodeIds.includes(epId)
+				);
+
+				if (!stillHasFile) {
+					await db.update(episodes).set({ hasFile: false }).where(eq(episodes.id, epId));
+				}
+			}
+		}
+
+		// Recalculate season episodeFileCount (count episodes with hasFile=true)
+		const seasonEpisodesWithFiles = await db
+			.select({ hasFile: episodes.hasFile })
+			.from(episodes)
+			.where(eq(episodes.seasonId, episode.seasonId))
+			.then((eps) => eps.filter((e) => e.hasFile).length);
+
+		await db
+			.update(seasons)
+			.set({ episodeFileCount: seasonEpisodesWithFiles })
+			.where(eq(seasons.id, episode.seasonId));
+
+		// Recalculate series episodeFileCount
+		const seriesEpisodesWithFiles = await db
+			.select({ hasFile: episodes.hasFile })
+			.from(episodes)
+			.where(eq(episodes.seriesId, episode.seriesId))
+			.then((eps) => eps.filter((e) => e.hasFile).length);
+
+		await db
+			.update(series)
+			.set({ episodeFileCount: seriesEpisodesWithFiles })
+			.where(eq(series.id, episode.seriesId));
+
+		// Note: Episode metadata is kept - it will show as "missing"
+		return json({ success: true });
+	} catch (error) {
+		logger.error('[API] Error deleting episode files', error instanceof Error ? error : undefined);
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to delete episode files'
+			},
+			{ status: 500 }
+		);
+	}
+};

@@ -1,5 +1,14 @@
 <script lang="ts">
-	import { ChevronDown, ChevronRight, Eye, EyeOff, Search, Download, Loader2 } from 'lucide-svelte';
+	import {
+		ChevronDown,
+		ChevronRight,
+		Eye,
+		EyeOff,
+		Search,
+		Download,
+		Loader2,
+		Trash2
+	} from 'lucide-svelte';
 	import EpisodeRow from './EpisodeRow.svelte';
 	import AutoSearchStatus from './AutoSearchStatus.svelte';
 
@@ -85,6 +94,8 @@
 		onSelectAllInSeason?: (seasonId: string, selectAll: boolean) => void;
 		onSubtitleSearch?: (episode: Episode) => void;
 		onSubtitleAutoSearch?: (episode: Episode) => void;
+		onSeasonDelete?: (season: Season) => void;
+		onEpisodeDelete?: (episode: Episode) => void;
 	}
 
 	let {
@@ -109,7 +120,9 @@
 		onEpisodeSelectChange,
 		onSelectAllInSeason,
 		onSubtitleSearch,
-		onSubtitleAutoSearch
+		onSubtitleAutoSearch,
+		onSeasonDelete,
+		onEpisodeDelete
 	}: Props = $props();
 
 	// Track accordion open state
@@ -168,6 +181,12 @@
 		const target = event.target as HTMLInputElement;
 		if (onSelectAllInSeason) {
 			onSelectAllInSeason(season.id, target.checked);
+		}
+	}
+
+	function handleSeasonDelete() {
+		if (onSeasonDelete) {
+			onSeasonDelete(season);
 		}
 	}
 </script>
@@ -244,6 +263,17 @@
 			>
 				<Search size={16} />
 			</button>
+
+			<!-- Delete season -->
+			{#if onSeasonDelete}
+				<button
+					class="btn btn-ghost btn-sm text-error"
+					onclick={handleSeasonDelete}
+					title="Delete season"
+				>
+					<Trash2 size={16} />
+				</button>
+			{/if}
 		</div>
 	</div>
 
@@ -295,6 +325,7 @@
 									onSelectChange={onEpisodeSelectChange}
 									{onSubtitleSearch}
 									{onSubtitleAutoSearch}
+									onDelete={onEpisodeDelete}
 								/>
 							{/each}
 						</tbody>

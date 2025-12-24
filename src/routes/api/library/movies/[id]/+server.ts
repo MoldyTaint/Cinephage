@@ -204,7 +204,7 @@ export const PUT: RequestHandler = PATCH;
 
 /**
  * DELETE /api/library/movies/[id]
- * Remove a movie from the library (optionally delete files)
+ * Delete files for a movie (keeps metadata, marks as missing)
  */
 export const DELETE: RequestHandler = async ({ params, url }) => {
 	try {
@@ -215,6 +215,7 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 			.select({
 				id: movies.id,
 				path: movies.path,
+				hasFile: movies.hasFile,
 				rootFolderPath: rootFolders.path,
 				rootFolderReadOnly: rootFolders.readOnly
 			})
@@ -226,6 +227,13 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 			return json({ success: false, error: 'Movie not found' }, { status: 404 });
 		}
 
+		// Get all files for this movie
+		const files = await db.select().from(movieFiles).where(eq(movieFiles.movieId, params.id));
+
+		if (files.length === 0) {
+			return json({ success: false, error: 'Movie has no files to delete' }, { status: 400 });
+		}
+
 		// Block file deletion from read-only folders
 		if (deleteFiles && movie.rootFolderReadOnly) {
 			return json(
@@ -234,18 +242,14 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 			);
 		}
 
+		// Delete files from disk if requested
 		if (deleteFiles && movie.rootFolderPath && movie.path) {
-			// Get all files for this movie
-			const files = await db.select().from(movieFiles).where(eq(movieFiles.movieId, params.id));
-
-			// Delete each file
 			for (const file of files) {
 				const fullPath = join(movie.rootFolderPath, movie.path, file.relativePath);
 				try {
 					await unlink(fullPath);
 					logger.debug('[API] Deleted file', { fullPath });
 				} catch {
-					// File might already be deleted or inaccessible
 					logger.warn('[API] Could not delete file', { fullPath });
 				}
 			}
@@ -260,16 +264,23 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 			}
 		}
 
-		// Delete movie from database (cascade will delete movie_files records)
-		await db.delete(movies).where(eq(movies.id, params.id));
+		// Delete movie file records from database
+		await db.delete(movieFiles).where(eq(movieFiles.movieId, params.id));
 
+		// Update movie to show as missing
+		await db
+			.update(movies)
+			.set({ hasFile: false })
+			.where(eq(movies.id, params.id));
+
+		// Note: Movie metadata is kept - it will show as "missing"
 		return json({ success: true });
 	} catch (error) {
-		logger.error('[API] Error deleting movie', error instanceof Error ? error : undefined);
+		logger.error('[API] Error deleting movie files', error instanceof Error ? error : undefined);
 		return json(
 			{
 				success: false,
-				error: error instanceof Error ? error.message : 'Failed to delete movie'
+				error: error instanceof Error ? error.message : 'Failed to delete movie files'
 			},
 			{ status: 500 }
 		);

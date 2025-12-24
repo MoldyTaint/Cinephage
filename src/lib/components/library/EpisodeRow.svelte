@@ -10,7 +10,8 @@
 		Download,
 		ChevronDown,
 		Loader2,
-		Subtitles
+		Subtitles,
+		Trash2
 	} from 'lucide-svelte';
 	import QualityBadge from './QualityBadge.svelte';
 	import AutoSearchStatus from './AutoSearchStatus.svelte';
@@ -82,6 +83,7 @@
 		onSelectChange?: (episodeId: string, selected: boolean) => void;
 		onSubtitleSearch?: (episode: Episode) => void;
 		onSubtitleAutoSearch?: (episode: Episode) => void;
+		onDelete?: (episode: Episode) => void;
 	}
 
 	let {
@@ -98,7 +100,8 @@
 		onAutoSearch,
 		onSelectChange,
 		onSubtitleSearch,
-		onSubtitleAutoSearch
+		onSubtitleAutoSearch,
+		onDelete
 	}: Props = $props();
 
 	// Derive auto-search status for the status indicator
@@ -204,6 +207,12 @@
 	function handleSubtitleAutoSearchClick() {
 		if (onSubtitleAutoSearch) {
 			onSubtitleAutoSearch(episode);
+		}
+	}
+
+	function handleDeleteClick() {
+		if (onDelete) {
+			onDelete(episode);
 		}
 	}
 </script>
@@ -409,6 +418,17 @@
 						</div>
 					</div>
 				</div>
+			{/if}
+
+			<!-- Delete episode -->
+			{#if onDelete}
+				<button
+					class="btn btn-ghost btn-xs text-error"
+					onclick={handleDeleteClick}
+					title="Delete episode"
+				>
+					<Trash2 size={14} />
+				</button>
 			{/if}
 		</div>
 	</td>

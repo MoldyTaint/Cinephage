@@ -12,6 +12,7 @@
 	} from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import MatchFileModal from '$lib/components/library/MatchFileModal.svelte';
+	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
 
 	let { data } = $props();
 
@@ -22,6 +23,12 @@
 	let isProcessing = $state(false);
 	let selectedFile = $state<(typeof files)[0] | null>(null);
 	let matchModalOpen = $state(false);
+
+	// Delete modal state
+	let deleteModalOpen = $state(false);
+	let deletingFileId = $state<string | null>(null);
+	let deletingFileName = $state<string>('');
+	let isDeleting = $state(false);
 
 	// Filtered files based on filter selection
 	const filteredFiles = $derived(() => {
@@ -76,20 +83,37 @@
 		}
 	}
 
-	// Ignore/dismiss a file
-	async function ignoreFile(fileId: string) {
+	// Show delete confirmation modal
+	function confirmDelete(file: (typeof files)[0]) {
+		deletingFileId = file.id;
+		deletingFileName = file.path.split('/').pop() || file.path;
+		deleteModalOpen = true;
+	}
+
+	// Perform deletion with optional file delete
+	async function performDelete(deleteFile: boolean) {
+		if (!deletingFileId) return;
+
+		isDeleting = true;
 		try {
-			const response = await fetch(`/api/library/unmatched/${fileId}`, { method: 'DELETE' });
+			const url = deleteFile
+				? `/api/library/unmatched/${deletingFileId}?deleteFile=true`
+				: `/api/library/unmatched/${deletingFileId}`;
+			const response = await fetch(url, { method: 'DELETE' });
 			const result = await response.json();
 
 			if (result.success) {
-				toasts.success('File removed from list');
-				files = files.filter((f) => f.id !== fileId);
+				toasts.success(deleteFile ? 'File deleted from disk' : 'File removed from list');
+				files = files.filter((f) => f.id !== deletingFileId);
 			} else {
 				toasts.error('Failed to remove file', { description: result.error });
 			}
 		} catch {
 			toasts.error('Error removing file');
+		} finally {
+			isDeleting = false;
+			deleteModalOpen = false;
+			deletingFileId = null;
 		}
 	}
 
@@ -270,8 +294,8 @@
 									</button>
 									<button
 										class="btn text-error btn-ghost btn-sm"
-										onclick={() => ignoreFile(file.id)}
-										title="Remove from list"
+										onclick={() => confirmDelete(file)}
+										title="Delete file"
 									>
 										<Trash2 class="h-4 w-4" />
 									</button>
@@ -294,3 +318,13 @@
 		onSuccess={handleMatchSuccess}
 	/>
 {/if}
+
+<!-- Delete Confirmation Modal -->
+<DeleteConfirmationModal
+	open={deleteModalOpen}
+	title="Delete File"
+	itemName={deletingFileName}
+	loading={isDeleting}
+	onConfirm={performDelete}
+	onCancel={() => (deleteModalOpen = false)}
+/>

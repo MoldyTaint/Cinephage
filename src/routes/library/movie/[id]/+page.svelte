@@ -8,6 +8,8 @@
 	} from '$lib/components/library';
 	import { InteractiveSearchModal } from '$lib/components/search';
 	import { SubtitleSearchModal } from '$lib/components/subtitles';
+	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
+	import { toasts } from '$lib/stores/toast.svelte';
 	import type { MovieEditData } from '$lib/components/library/MovieEditModal.svelte';
 	import { FileEdit } from 'lucide-svelte';
 
@@ -18,8 +20,9 @@
 	let isSearchModalOpen = $state(false);
 	let isSubtitleSearchModalOpen = $state(false);
 	let isRenameModalOpen = $state(false);
+	let isDeleteModalOpen = $state(false);
 	let isSaving = $state(false);
-	let _isDeleting = $state(false);
+	let isDeleting = $state(false);
 	let subtitleAutoSearching = $state(false);
 	let autoSearching = $state(false);
 	let autoSearchResult = $state<{
@@ -169,25 +172,32 @@
 		}
 	}
 
-	async function handleDelete() {
-		if (!confirm(`Are you sure you want to remove "${data.movie.title}" from your library?`)) {
-			return;
-		}
+	function handleDelete() {
+		isDeleteModalOpen = true;
+	}
 
-		_isDeleting = true;
+	async function performDelete(deleteFiles: boolean) {
+		isDeleting = true;
 		try {
-			const response = await fetch(`/api/library/movies/${data.movie.id}`, {
-				method: 'DELETE'
-			});
+			const response = await fetch(
+				`/api/library/movies/${data.movie.id}?deleteFiles=${deleteFiles}`,
+				{ method: 'DELETE' }
+			);
+			const result = await response.json();
 
-			if (response.ok) {
-				// Navigate back to library
-				window.location.href = '/movies';
+			if (result.success) {
+				toasts.success('Movie files deleted');
+				// Reload to show updated state (movie now missing)
+				window.location.reload();
+			} else {
+				toasts.error('Failed to delete movie files', { description: result.error });
 			}
 		} catch (error) {
 			console.error('Failed to delete movie:', error);
+			toasts.error('Failed to delete movie');
 		} finally {
-			_isDeleting = false;
+			isDeleting = false;
+			isDeleteModalOpen = false;
 		}
 	}
 
@@ -200,14 +210,18 @@
 			const response = await fetch(`/api/library/movies/${data.movie.id}/files/${fileId}`, {
 				method: 'DELETE'
 			});
+			const result = await response.json();
 
-			if (response.ok) {
-				// Remove from local state
+			if (result.success) {
+				toasts.success('File deleted');
 				data.movie.files = data.movie.files.filter((f) => f.id !== fileId);
 				data.movie.hasFile = data.movie.files.length > 0;
+			} else {
+				toasts.error('Failed to delete file', { description: result.error });
 			}
 		} catch (error) {
 			console.error('Failed to delete file:', error);
+			toasts.error('Failed to delete file');
 		}
 	}
 
@@ -412,4 +426,14 @@
 	mediaTitle={data.movie.title}
 	onClose={() => (isRenameModalOpen = false)}
 	onRenamed={() => location.reload()}
+/>
+
+<!-- Delete Confirmation Modal -->
+<DeleteConfirmationModal
+	open={isDeleteModalOpen}
+	title="Delete Movie"
+	itemName={data.movie.title}
+	loading={isDeleting}
+	onConfirm={performDelete}
+	onCancel={() => (isDeleteModalOpen = false)}
 />
