@@ -38,7 +38,12 @@ export class KissKHProvider extends BaseProvider {
 		supportsAsianDrama: true,
 		requiresProxy: true,
 		referer: 'https://kisskh.do/',
-		timeout: 15000
+		timeout: 15000,
+		requirements: {
+			imdbId: false,
+			title: true,
+			year: true
+		}
 	};
 
 	canHandle(params: SearchParams): boolean {

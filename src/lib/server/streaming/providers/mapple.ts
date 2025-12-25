@@ -59,7 +59,12 @@ export class MappleProvider extends BaseProvider {
 		supportsAsianDrama: false,
 		requiresProxy: true,
 		referer: 'https://mapple.uk/',
-		timeout: 15000
+		timeout: 15000,
+		requirements: {
+			imdbId: false,
+			title: false,
+			year: false
+		}
 	};
 
 	protected async doExtract(params: SearchParams): Promise<StreamResult[]> {

@@ -1967,6 +1967,67 @@ export type SmartListRefreshHistoryRecord = typeof smartListRefreshHistory.$infe
 export type NewSmartListRefreshHistoryRecord = typeof smartListRefreshHistory.$inferInsert;
 
 // ============================================================================
+// STREAMING CACHE TABLES
+// ============================================================================
+
+/**
+ * Stream Extraction Cache - Persistent cache for successful stream extractions
+ *
+ * Survives server restarts by persisting popular cache entries to SQLite.
+ * On startup, in-memory cache is warmed from the top entries by hit count.
+ */
+export const streamExtractionCache = sqliteTable(
+	'stream_extraction_cache',
+	{
+		// Cache key (same format as in-memory cache: stream:tmdbId:type:s1:e2:provider)
+		id: text('id').primaryKey(),
+
+		// Media identification for queries
+		tmdbId: integer('tmdb_id').notNull(),
+		mediaType: text('media_type', { enum: ['movie', 'tv'] }).notNull(),
+		seasonNumber: integer('season_number'),
+		episodeNumber: integer('episode_number'),
+
+		// The actual extraction result as JSON (ExtractionResult structure)
+		extractionResult: text('extraction_result', { mode: 'json' }).$type<{
+			success: boolean;
+			sources: Array<{
+				url: string;
+				referer: string;
+				provider: string;
+				server?: string;
+				quality?: string;
+				language?: string;
+				subtitles?: Array<{
+					url: string;
+					language: string;
+					format?: string;
+				}>;
+			}>;
+		}>(),
+
+		// Which provider produced this result
+		provider: text('provider'),
+
+		// Timestamps
+		cachedAt: text('cached_at').$defaultFn(() => new Date().toISOString()),
+		expiresAt: text('expires_at').notNull(),
+
+		// Access tracking for cache warming priority
+		hitCount: integer('hit_count').default(0),
+		lastAccessAt: text('last_access_at')
+	},
+	(table) => [
+		index('idx_stream_cache_tmdb').on(table.tmdbId, table.mediaType),
+		index('idx_stream_cache_expires').on(table.expiresAt),
+		index('idx_stream_cache_hit_count').on(table.hitCount)
+	]
+);
+
+export type StreamExtractionCacheRecord = typeof streamExtractionCache.$inferSelect;
+export type NewStreamExtractionCacheRecord = typeof streamExtractionCache.$inferInsert;
+
+// ============================================================================
 // SMART LISTS RELATIONS
 // ============================================================================
 

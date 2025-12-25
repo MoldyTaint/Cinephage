@@ -88,7 +88,12 @@ export class VideasyProvider extends BaseProvider {
 		supportsAsianDrama: false,
 		requiresProxy: true,
 		referer: 'https://videasy.net/',
-		timeout: 15000
+		timeout: 20000,
+		requirements: {
+			imdbId: false,
+			title: true,
+			year: true
+		}
 	};
 
 	protected async doExtract(params: SearchParams): Promise<StreamResult[]> {

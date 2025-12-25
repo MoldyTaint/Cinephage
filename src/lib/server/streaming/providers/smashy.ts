@@ -67,7 +67,12 @@ export class SmashyProvider extends BaseProvider {
 		supportsAsianDrama: false,
 		requiresProxy: true,
 		referer: 'https://smashystream.top/',
-		timeout: 15000
+		timeout: 15000,
+		requirements: {
+			imdbId: true, // Falls back to TMDB ID if not provided
+			title: false,
+			year: false
+		}
 	};
 
 	protected async doExtract(params: SearchParams): Promise<StreamResult[]> {

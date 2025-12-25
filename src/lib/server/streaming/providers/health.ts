@@ -200,12 +200,13 @@ class ProviderHealthTracker {
 			return 50;
 		}
 
-		// Score based on success rate (0-70 points)
-		const successScore = health.successRate * 70;
+		// Score based on success rate (0-50 points)
+		// Rebalanced from 70 to give more weight to latency for streaming
+		const successScore = health.successRate * 50;
 
-		// Score based on latency (0-30 points, lower latency = higher score)
-		// Assume 5000ms is very slow, 500ms is fast
-		const latencyScore = Math.max(0, 30 - (health.averageLatencyMs / 5000) * 30);
+		// Score based on latency (0-50 points, lower latency = higher score)
+		// Assume 3000ms is very slow, fast providers should rank higher
+		const latencyScore = Math.max(0, 50 - (health.averageLatencyMs / 3000) * 50);
 
 		return successScore + latencyScore;
 	}

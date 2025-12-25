@@ -5,6 +5,15 @@
 	import SectionRow from '$lib/components/discover/SectionRow.svelte';
 
 	let { data }: { data: PageData } = $props();
+
+	// Prefetch stream when page loads (warms cache for faster playback)
+	$effect(() => {
+		if (data.movie?.id) {
+			fetch(`/api/streaming/resolve/movie/${data.movie.id}`, {
+				signal: AbortSignal.timeout(5000)
+			}).catch(() => {});
+		}
+	});
 </script>
 
 <svelte:head>

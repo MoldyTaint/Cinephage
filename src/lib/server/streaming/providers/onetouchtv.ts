@@ -43,7 +43,12 @@ export class OneTouchTVProvider extends BaseProvider {
 		supportsAsianDrama: true, // Asian dramas only
 		requiresProxy: true,
 		referer: 'https://onetouchtv.me/',
-		timeout: 15000
+		timeout: 15000,
+		requirements: {
+			imdbId: false,
+			title: true,
+			year: true
+		}
 	};
 
 	protected async doExtract(params: SearchParams): Promise<StreamResult[]> {

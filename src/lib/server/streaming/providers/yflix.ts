@@ -59,7 +59,13 @@ export class YFlixProvider extends BaseProvider {
 		supportsAsianDrama: false,
 		requiresProxy: true,
 		referer: 'https://yflix.to/',
-		timeout: 20000
+		timeout: 20000,
+		requirements: {
+			imdbId: false,
+			title: true,
+			year: true,
+			alternativeTitles: true
+		}
 	};
 
 	protected async doExtract(params: SearchParams): Promise<StreamResult[]> {

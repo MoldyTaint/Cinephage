@@ -59,7 +59,15 @@ export class AnimeKaiProvider extends BaseProvider {
 		supportsAsianDrama: false,
 		requiresProxy: true,
 		referer: 'https://animekai.to/',
-		timeout: 20000
+		timeout: 20000,
+		requirements: {
+			imdbId: false,
+			title: true,
+			year: true,
+			alternativeTitles: true,
+			malId: true,
+			anilistId: true
+		}
 	};
 
 	canHandle(_params: SearchParams): boolean {

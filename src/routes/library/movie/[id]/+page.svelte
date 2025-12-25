@@ -15,6 +15,15 @@
 
 	let { data }: { data: PageData } = $props();
 
+	// Prefetch stream when page loads (warms cache for faster playback)
+	$effect(() => {
+		if (data.movie?.tmdbId) {
+			fetch(`/api/streaming/resolve/movie/${data.movie.tmdbId}`, {
+				signal: AbortSignal.timeout(5000)
+			}).catch(() => {});
+		}
+	});
+
 	// State
 	let isEditModalOpen = $state(false);
 	let isSearchModalOpen = $state(false);

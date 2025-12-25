@@ -50,3 +50,7 @@ export {
 	checkStreamAvailability,
 	checkHlsAvailability
 } from './utils';
+
+// Stream resolution service
+export { resolveStream } from './StreamResolveService';
+export type { ResolveParams } from './StreamResolveService';

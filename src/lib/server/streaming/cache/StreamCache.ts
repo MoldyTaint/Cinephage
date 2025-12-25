@@ -25,6 +25,36 @@ const VALIDATION_CACHE_TTL_MS = 5 * 60 * 1000;
 /** Default TTL for negative cache (2 minutes) */
 const NEGATIVE_CACHE_TTL_MS = 2 * 60 * 1000;
 
+// ============================================================================
+// Failure Type TTLs
+// ============================================================================
+
+/** Types of extraction failures with different retry strategies */
+export type FailureType =
+	| 'provider_offline'    // Provider unavailable - retry in 5 min
+	| 'content_not_found'   // Content doesn't exist - retry in 24 hours
+	| 'timeout'             // Network timeout - retry quickly (30 sec)
+	| 'validation_failed'   // HLS validation failed - retry in 2 min
+	| 'rate_limited'        // Rate limited - retry in 5 min
+	| 'unknown';            // Unknown failure - default 2 min
+
+/** TTLs for each failure type (in ms) */
+const FAILURE_TYPE_TTLS: Record<FailureType, number> = {
+	'provider_offline': 5 * 60 * 1000,        // 5 minutes
+	'content_not_found': 24 * 60 * 60 * 1000, // 24 hours
+	'timeout': 30 * 1000,                      // 30 seconds
+	'validation_failed': 2 * 60 * 1000,        // 2 minutes
+	'rate_limited': 5 * 60 * 1000,             // 5 minutes
+	'unknown': 2 * 60 * 1000                   // 2 minutes (default)
+};
+
+/**
+ * Get the TTL for a specific failure type
+ */
+export function getFailureTtl(failureType: FailureType): number {
+	return FAILURE_TYPE_TTLS[failureType] ?? NEGATIVE_CACHE_TTL_MS;
+}
+
 /** Max entries per cache level */
 const STREAM_CACHE_MAX_SIZE = 500;
 const VALIDATION_CACHE_MAX_SIZE = 200;
@@ -53,6 +83,7 @@ interface ValidationCacheEntry {
 interface NegativeCacheEntry {
 	reason: string;
 	failedAt: number;
+	failureType?: FailureType;
 	provider?: string;
 }
 
@@ -277,6 +308,46 @@ export class MultiLevelStreamCache {
 			ttlMs: ttlMs ?? this.negativeTtl,
 			...streamLog
 		});
+	}
+
+	/**
+	 * Add a negative cache entry with automatic TTL based on failure type
+	 * This is the preferred method for setting negative cache entries
+	 */
+	setNegativeWithType(
+		key: string,
+		reason: string,
+		failureType: FailureType,
+		provider?: string
+	): void {
+		const ttlMs = getFailureTtl(failureType);
+		this.evictIfNeeded(this.negativeCache, this.negativeMaxSize);
+
+		this.negativeCache.set(key, {
+			value: { reason, failedAt: Date.now(), failureType, provider },
+			expires: Date.now() + ttlMs,
+			createdAt: Date.now()
+		});
+
+		logger.debug('Added negative cache entry with failure type', {
+			key,
+			reason,
+			failureType,
+			provider,
+			ttlMs,
+			...streamLog
+		});
+	}
+
+	/**
+	 * Get failure type for a negative cache entry
+	 */
+	getNegativeFailureType(key: string): FailureType | null {
+		const entry = this.negativeCache.get(key);
+		if (!entry || Date.now() > entry.expires) {
+			return null;
+		}
+		return entry.value.failureType ?? null;
 	}
 
 	/**

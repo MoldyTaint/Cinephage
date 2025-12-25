@@ -18,6 +18,7 @@ import { isAppError } from '$lib/errors';
 import { initializeDatabase } from '$lib/server/db';
 import { getBrowserSolver } from '$lib/server/indexers/http/browser';
 import { getServiceManager } from '$lib/server/services/service-manager.js';
+import { initPersistentStreamCache } from '$lib/server/streaming/cache';
 
 /**
  * Content Security Policy header.
@@ -168,6 +169,11 @@ setImmediate(async () => {
 		// 1. Run database migrations FIRST - creates/updates tables as needed
 		// This is the only truly blocking operation (other services depend on DB schema)
 		await initializeDatabase();
+
+		// 1b. Warm the stream cache from database (fast, improves first playback)
+		initPersistentStreamCache().catch((e) =>
+			logger.error('Stream cache warming failed', e)
+		);
 
 		// 2. Register all services with ServiceManager for centralized lifecycle management
 		const serviceManager = getServiceManager();

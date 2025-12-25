@@ -6,6 +6,19 @@
 	import SectionRow from '$lib/components/discover/SectionRow.svelte';
 
 	let { data }: { data: PageData } = $props();
+
+	// Prefetch stream for first episode when page loads (warms cache for faster playback)
+	$effect(() => {
+		if (data.tv?.id && data.tv.seasons?.length > 0) {
+			// Find first season with episodes (skip specials/season 0)
+			const firstSeason = data.tv.seasons.find((s) => s.season_number > 0 && s.episode_count > 0);
+			if (firstSeason) {
+				fetch(`/api/streaming/resolve/tv/${data.tv.id}/${firstSeason.season_number}/1`, {
+					signal: AbortSignal.timeout(5000)
+				}).catch(() => {});
+			}
+		}
+	});
 </script>
 
 <svelte:head>

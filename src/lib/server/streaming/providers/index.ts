@@ -521,8 +521,19 @@ async function doSequentialExtraction(
 }
 
 /**
+ * Extraction outcome from a single provider
+ */
+interface ExtractionOutcome {
+	providerId: StreamingProviderId;
+	result: ProviderResult;
+	durationMs: number;
+	success: boolean;
+}
+
+/**
  * Internal extraction logic with parallel mode
- * Tries top N providers simultaneously, returns first success
+ * Returns immediately when first provider succeeds (first-success-wins pattern)
+ * Other providers continue in background for health tracking
  */
 async function doParallelExtraction(
 	options: ExtractOptions,
@@ -543,18 +554,16 @@ async function doParallelExtraction(
 
 	// Take top N providers for parallel execution
 	const parallelProviders = compatible.slice(0, PARALLEL_PROVIDER_COUNT);
-	logger.debug('Starting parallel extraction', {
+	logger.debug('Starting parallel extraction (first-success-wins)', {
 		providers: parallelProviders,
 		...streamLog
 	});
 
-	// Create abort controllers for cancellation
-	const controllers = new Map<StreamingProviderId, AbortController>();
+	// Track if we've already found a winner
+	let hasWinner = false;
 
 	// Start all extractions in parallel
-	const promises = parallelProviders.map(async (providerId) => {
-		const controller = new AbortController();
-		controllers.set(providerId, controller);
+	const extractionPromises = parallelProviders.map(async (providerId): Promise<ExtractionOutcome> => {
 		const startTime = Date.now();
 
 		try {
@@ -562,11 +571,11 @@ async function doParallelExtraction(
 
 			if (result.success && result.streams.length > 0) {
 				recordSuccess(providerId, durationMs);
-				return { providerId, result, durationMs, success: true as const };
+				return { providerId, result, durationMs, success: true };
 			}
 
 			recordFailure(providerId, durationMs);
-			return { providerId, result, durationMs, success: false as const };
+			return { providerId, result, durationMs, success: false };
 		} catch (error) {
 			const durationMs = Date.now() - startTime;
 			recordFailure(providerId, durationMs);
@@ -579,58 +588,56 @@ async function doParallelExtraction(
 					error: error instanceof Error ? error.message : String(error)
 				},
 				durationMs,
-				success: false as const
+				success: false
 			};
 		}
 	});
 
-	// Wait for all providers to complete and collect ALL successful streams
-	const results = await Promise.all(promises);
-	const successfulResults = results.filter((r) => r.success);
-	const failedResults = results.filter((r) => !r.success);
+	// Create a promise that resolves with the first successful extraction
+	// or null if all fail
+	const firstSuccessPromise = new Promise<ExtractionOutcome | null>((resolve) => {
+		let completedCount = 0;
+		const errors: string[] = [];
 
-	if (successfulResults.length > 0) {
-		// Merge all successful streams from all providers
-		const allStreams: StreamResult[] = [];
-		const providerIds: StreamingProviderId[] = [];
+		for (const promise of extractionPromises) {
+			promise.then((outcome) => {
+				completedCount++;
 
-		for (const result of successfulResults) {
-			providerIds.push(result.providerId);
-			for (const stream of result.result.streams) {
-				allStreams.push({
-					...stream,
-					provider: result.providerId
-				});
-			}
+				// If this is successful and we don't have a winner yet, this is the winner
+				if (outcome.success && !hasWinner) {
+					hasWinner = true;
+					logger.debug('First provider succeeded (returning immediately)', {
+						provider: outcome.providerId,
+						durationMs: outcome.durationMs,
+						...streamLog
+					});
+					resolve(outcome);
+				} else if (!outcome.success && outcome.result.error) {
+					errors.push(`${outcome.providerId}: ${outcome.result.error}`);
+				}
+
+				// If all providers have completed and none succeeded, resolve with null
+				if (completedCount === parallelProviders.length && !hasWinner) {
+					logger.debug('All parallel providers failed', {
+						providers: parallelProviders,
+						errors,
+						...streamLog
+					});
+					resolve(null);
+				}
+			});
 		}
-
-		logger.debug('Parallel extraction succeeded', {
-			providers: providerIds,
-			streamCount: allStreams.length,
-			...streamLog
-		});
-
-		// Create merged result
-		const mergedResult: ProviderResult = {
-			success: true,
-			streams: allStreams,
-			provider: providerIds[0] // Primary provider for logging
-		};
-
-		return toExtractionResult(mergedResult, options.preferredLanguages);
-	}
-
-	// All parallel providers failed - collect errors
-	const errors = failedResults
-		.filter((r) => r.result.error)
-		.map((r) => `${r.providerId}: ${r.result.error}`);
-
-	logger.debug('All parallel providers failed', {
-		providers: parallelProviders,
-		...streamLog
 	});
 
-	// Fall back to remaining providers sequentially
+	// Wait for first success or all failures
+	const winner = await firstSuccessPromise;
+
+	if (winner) {
+		// Return immediately with the winning provider's streams
+		return toExtractionResult(winner.result, options.preferredLanguages);
+	}
+
+	// All parallel providers failed - try remaining providers sequentially
 	const remainingProviders = compatible.slice(PARALLEL_PROVIDER_COUNT);
 	if (remainingProviders.length > 0) {
 		logger.debug('Falling back to sequential extraction', {
@@ -639,6 +646,12 @@ async function doParallelExtraction(
 		});
 		return doSequentialExtraction(options, remainingProviders);
 	}
+
+	// Collect errors from all failed providers
+	const allOutcomes = await Promise.all(extractionPromises);
+	const errors = allOutcomes
+		.filter((r) => !r.success && r.result.error)
+		.map((r) => `${r.providerId}: ${r.result.error}`);
 
 	const skippedNote = skipped.length > 0 ? ` (circuit-broken: ${skipped.join(', ')})` : '';
 	const unsupportedNote = unsupported.length > 0 ? ` (unsupported: ${unsupported.join(', ')})` : '';

@@ -104,6 +104,31 @@ export interface TimeoutConfig {
 }
 
 /**
+ * Metadata requirements for a provider.
+ * Declares what external metadata the provider needs to function.
+ * This allows the resolve service to only fetch required data.
+ */
+export interface MetadataRequirements {
+	/** Whether the provider needs IMDB ID (from TMDB external IDs API) */
+	imdbId: boolean;
+
+	/** Whether the provider needs the content title */
+	title: boolean;
+
+	/** Whether the provider needs the release year */
+	year: boolean;
+
+	/** Whether the provider needs alternative titles for lookup */
+	alternativeTitles?: boolean;
+
+	/** Whether the provider needs MyAnimeList ID */
+	malId?: boolean;
+
+	/** Whether the provider needs AniList ID */
+	anilistId?: boolean;
+}
+
+/**
  * Static configuration for a provider
  */
 export interface ProviderConfig {
@@ -142,6 +167,9 @@ export interface ProviderConfig {
 
 	/** Optional timeout configuration (uses defaults if not specified) */
 	timeouts?: TimeoutConfig;
+
+	/** Metadata requirements - what external data this provider needs */
+	requirements: MetadataRequirements;
 }
 
 // ============================================================================

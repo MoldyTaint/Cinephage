@@ -293,7 +293,7 @@ export async function getBestQualityStreamUrl(
 		// Note: Don't send Origin header - some CDNs reject it
 		const response = await fetchWithTimeout(masterUrl, {
 			referer,
-			timeout: 15000,
+			timeout: 8000,
 			headers: {
 				Accept: '*/*'
 			}

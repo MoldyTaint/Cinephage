@@ -18,6 +18,20 @@
 
 	let { data }: { data: PageData } = $props();
 
+	// Prefetch stream for first episode when page loads (warms cache for faster playback)
+	$effect(() => {
+		if (data.series?.tmdbId && data.seasons?.length > 0) {
+			// Find first season with episodes (skip specials/season 0)
+			const firstSeason = data.seasons.find((s) => s.seasonNumber > 0 && s.episodes?.length > 0);
+			if (firstSeason && firstSeason.episodes?.[0]) {
+				const ep = firstSeason.episodes[0];
+				fetch(`/api/streaming/resolve/tv/${data.series.tmdbId}/${ep.seasonNumber}/${ep.episodeNumber}`, {
+					signal: AbortSignal.timeout(5000)
+				}).catch(() => {});
+			}
+		}
+	});
+
 	// State
 	let isEditModalOpen = $state(false);
 	let isSearchModalOpen = $state(false);

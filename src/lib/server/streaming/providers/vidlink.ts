@@ -39,7 +39,12 @@ export class VidlinkProvider extends BaseProvider {
 		supportsAsianDrama: false,
 		requiresProxy: true,
 		referer: 'https://vidlink.pro/',
-		timeout: 15000
+		timeout: 8000,
+		requirements: {
+			imdbId: false,
+			title: false,
+			year: false
+		}
 	};
 
 	protected async doExtract(params: SearchParams): Promise<StreamResult[]> {

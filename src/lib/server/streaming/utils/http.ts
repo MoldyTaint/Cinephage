@@ -334,7 +334,7 @@ export async function fetchAndRewritePlaylist(
 	// Note: Don't send Origin header - some CDNs reject it
 	const response = await fetchWithTimeout(playlistUrl, {
 		referer,
-		timeout: 15000,
+		timeout: 8000,
 		headers: {
 			Accept: '*/*'
 		}

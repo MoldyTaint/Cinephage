@@ -686,6 +686,21 @@ const TABLE_DEFINITIONS: string[] = [
 		"completed_at" text,
 		"duration_ms" integer,
 		"error_message" text
+	)`,
+
+	// Streaming cache
+	`CREATE TABLE IF NOT EXISTS "stream_extraction_cache" (
+		"id" text PRIMARY KEY NOT NULL,
+		"tmdb_id" integer NOT NULL,
+		"media_type" text NOT NULL CHECK ("media_type" IN ('movie', 'tv')),
+		"season_number" integer,
+		"episode_number" integer,
+		"extraction_result" text,
+		"provider" text,
+		"cached_at" text,
+		"expires_at" text NOT NULL,
+		"hit_count" integer DEFAULT 0,
+		"last_access_at" text
 	)`
 ];
 
@@ -723,7 +738,11 @@ const INDEX_DEFINITIONS: string[] = [
 	`CREATE INDEX IF NOT EXISTS "idx_smart_list_items_in_library" ON "smart_list_items" ("in_library")`,
 	`CREATE INDEX IF NOT EXISTS "idx_smart_list_items_position" ON "smart_list_items" ("smart_list_id", "position")`,
 	`CREATE INDEX IF NOT EXISTS "idx_smart_list_refresh_history_list" ON "smart_list_refresh_history" ("smart_list_id")`,
-	`CREATE INDEX IF NOT EXISTS "idx_smart_list_refresh_history_status" ON "smart_list_refresh_history" ("status")`
+	`CREATE INDEX IF NOT EXISTS "idx_smart_list_refresh_history_status" ON "smart_list_refresh_history" ("status")`,
+	// Stream extraction cache indexes
+	`CREATE INDEX IF NOT EXISTS "idx_stream_cache_tmdb" ON "stream_extraction_cache" ("tmdb_id", "media_type")`,
+	`CREATE INDEX IF NOT EXISTS "idx_stream_cache_expires" ON "stream_extraction_cache" ("expires_at")`,
+	`CREATE INDEX IF NOT EXISTS "idx_stream_cache_hit_count" ON "stream_extraction_cache" ("hit_count")`
 ];
 
 /**

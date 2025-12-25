@@ -48,7 +48,12 @@ export class XPrimeProvider extends BaseProvider {
 		supportsAsianDrama: false,
 		requiresProxy: true,
 		referer: 'https://xprime.tv/',
-		timeout: 15000
+		timeout: 15000,
+		requirements: {
+			imdbId: true,
+			title: true,
+			year: true
+		}
 	};
 
 	protected async doExtract(params: SearchParams): Promise<StreamResult[]> {
