@@ -18,12 +18,18 @@ links:
   - http://localhost
 
 settings:
-  - name: baseUrl
+  - name: useHttps
+    type: checkbox
+    label: Use HTTPS
+    default: false
+    helpText: 'Enable if your server uses SSL/HTTPS'
+
+  - name: externalHost
     type: text
-    label: External URL
+    label: External Host
     default: ''
-    placeholder: 'http://192.168.1.100:3000'
-    helpText: 'External URL for streaming access (include port). Used in .strm files. Example: http://192.168.1.100:3000 or https://media.example.com'
+    placeholder: '192.168.1.100:3000'
+    helpText: 'External hostname and port for streaming access. Example: 192.168.1.100:3000 or media.example.com'
 
 # Protocol-specific configuration for streaming
 protocolConfig:

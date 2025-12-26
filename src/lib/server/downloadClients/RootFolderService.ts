@@ -10,6 +10,8 @@ import { randomUUID } from 'node:crypto';
 import { logger } from '$lib/logging';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { getLibraryScheduler } from '$lib/server/library/library-scheduler.js';
+import { libraryWatcherService } from '$lib/server/library/library-watcher.js';
 
 import type {
 	RootFolder,
@@ -130,6 +132,18 @@ export class RootFolderService {
 			preserveSymlinks: input.preserveSymlinks ?? false
 		});
 
+		// Trigger initial scan for the new folder (non-blocking)
+		const scheduler = getLibraryScheduler();
+		scheduler.queueFolderScan(id);
+
+		// Start watching this folder for changes
+		libraryWatcherService.watchFolder(id, input.path).catch((error) => {
+			logger.warn('Failed to start watching new folder', {
+				id,
+				error: error instanceof Error ? error.message : String(error)
+			});
+		});
+
 		const created = await this.getFolder(id);
 		if (!created) {
 			throw new Error('Failed to create root folder');
@@ -192,6 +206,9 @@ export class RootFolderService {
 	 * Delete a root folder.
 	 */
 	async deleteFolder(id: string): Promise<void> {
+		// Stop watching before delete
+		await libraryWatcherService.unwatchFolder(id);
+
 		await db.delete(rootFoldersTable).where(eq(rootFoldersTable.id, id));
 		logger.info('Root folder deleted', { id });
 	}

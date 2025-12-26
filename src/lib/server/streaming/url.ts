@@ -74,12 +74,12 @@ export function getBaseUrl(request: Request): string {
  * 2. X-Forwarded headers (for reverse proxy setups like nginx/traefik)
  * 3. Request URL (fallback to request origin)
  *
- * IMPORTANT: Localhost URLs are rejected since they won't work for external clients.
- * Users must configure an external URL in the Cinephage Stream indexer settings.
+ * Note: Localhost URLs will work for local testing but not for external clients.
+ * Users should configure an external URL in the Cinephage Stream indexer settings
+ * for streaming to work from external devices.
  *
  * @param request - The incoming request object
  * @returns The base URL to use for generating stream/proxy URLs
- * @throws Error if the resolved URL is localhost (configuration required)
  */
 export async function getBaseUrlAsync(request: Request): Promise<string> {
 	// 1. Check database settings (and update cache)
@@ -87,17 +87,15 @@ export async function getBaseUrlAsync(request: Request): Promise<string> {
 	if (settings?.baseUrl) {
 		const baseUrl = settings.baseUrl.replace(/\/$/, '');
 
-		// Reject localhost URLs - they won't work for external clients
+		// Warn about localhost but allow it (useful for local testing)
 		if (isLocalhostUrl(baseUrl)) {
-			logger.error(
-				'Streaming base URL is set to localhost which will not work for external clients',
+			logger.warn(
+				'Streaming base URL is set to localhost - this will not work for external clients',
 				{
 					configuredUrl: baseUrl,
+					hint: 'Configure External Host in Settings -> Integrations -> Indexers -> Cinephage Stream',
 					...streamLog
 				}
-			);
-			throw new Error(
-				'Streaming base URL cannot be localhost. Please configure the external URL in Settings → Integrations → Indexers → Cinephage Stream.'
 			);
 		}
 
@@ -112,23 +110,19 @@ export async function getBaseUrlAsync(request: Request): Promise<string> {
 
 	if (forwardedHost) {
 		const proxyUrl = `${forwardedProto}://${forwardedHost}`;
-		if (!isLocalhostUrl(proxyUrl)) {
-			return proxyUrl;
-		}
+		return proxyUrl;
 	}
 
-	// 3. Fallback to request URL origin - but reject localhost
+	// 3. Fallback to request URL origin
 	const url = new URL(request.url);
 	const fallbackUrl = `${url.protocol}//${url.host}`;
 
 	if (isLocalhostUrl(fallbackUrl)) {
-		logger.error('No external URL configured for streaming and request came from localhost', {
+		logger.warn('Using localhost URL for streaming - configure External Host for external access', {
 			requestUrl: request.url,
+			hint: 'Settings -> Integrations -> Indexers -> Cinephage Stream',
 			...streamLog
 		});
-		throw new Error(
-			'Streaming requires an external URL. Please configure the External URL in Settings → Integrations → Indexers → Cinephage Stream.'
-		);
 	}
 
 	return fallbackUrl;

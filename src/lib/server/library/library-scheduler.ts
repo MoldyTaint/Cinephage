@@ -6,11 +6,12 @@
  */
 
 import { db } from '$lib/server/db/index.js';
-import { librarySettings, libraryScanHistory } from '$lib/server/db/schema.js';
-import { eq, desc } from 'drizzle-orm';
+import { librarySettings, libraryScanHistory, rootFolders, series } from '$lib/server/db/schema.js';
+import { eq, desc, and } from 'drizzle-orm';
 import { diskScanService, type ScanResult } from './disk-scan.js';
 import { mediaMatcherService } from './media-matcher.js';
 import { libraryWatcherService } from './library-watcher.js';
+import { getImportService } from '$lib/server/downloadClients/import/ImportService.js';
 import { EventEmitter } from 'events';
 import { logger } from '$lib/logging';
 import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service.js';
@@ -162,25 +163,46 @@ export class LibrarySchedulerService extends EventEmitter implements BackgroundS
 		// Check if we should scan on startup
 		const scanOnStartup = await this.shouldScanOnStartup();
 		if (scanOnStartup) {
-			// Check when the last scan was
-			const lastScan = await this.getLastScanTime();
-			const hoursSinceLastScan = lastScan
-				? (Date.now() - lastScan.getTime()) / (1000 * 60 * 60)
-				: Infinity;
+			// Get all root folders
+			const allFolders = await db.select({ id: rootFolders.id }).from(rootFolders);
 
-			const scanInterval = await this.getScanIntervalHours();
+			// Find folders that have NEVER been successfully scanned
+			const unscannedFolders: string[] = [];
+			for (const folder of allFolders) {
+				const wasScanned = await this.hasFolderBeenScanned(folder.id);
+				if (!wasScanned) {
+					unscannedFolders.push(folder.id);
+				}
+			}
 
-			// Only scan if it's been longer than the scan interval
-			if (hoursSinceLastScan >= scanInterval) {
-				logger.info('[LibraryScheduler] Starting startup scan...');
-				// Run scan in background (don't await)
-				this.runFullScan().catch((error) => {
-					logger.error('[LibraryScheduler] Startup scan failed', error);
+			if (unscannedFolders.length > 0) {
+				logger.info('[LibraryScheduler] Scanning folders that have never been scanned', {
+					count: unscannedFolders.length
 				});
-			} else {
-				logger.debug('[LibraryScheduler] Skipping startup scan', {
-					hoursSinceLastScan: hoursSinceLastScan.toFixed(1)
-				});
+
+				// Scan unscanned folders in background
+				for (const folderId of unscannedFolders) {
+					this.queueFolderScan(folderId);
+				}
+			} else if (allFolders.length > 0) {
+				// All folders have been scanned at least once - check if periodic scan is due
+				const lastScan = await this.getLastScanTime();
+				const hoursSinceLastScan = lastScan
+					? (Date.now() - lastScan.getTime()) / (1000 * 60 * 60)
+					: Infinity;
+
+				const scanInterval = await this.getScanIntervalHours();
+
+				if (hoursSinceLastScan >= scanInterval) {
+					logger.info('[LibraryScheduler] Periodic scan is due, starting startup scan...');
+					this.runFullScan().catch((error) => {
+						logger.error('[LibraryScheduler] Startup scan failed', error);
+					});
+				} else {
+					logger.debug('[LibraryScheduler] No startup scan needed', {
+						hoursSinceLastScan: hoursSinceLastScan.toFixed(1)
+					});
+				}
 			}
 		}
 
@@ -260,6 +282,9 @@ export class LibrarySchedulerService extends EventEmitter implements BackgroundS
 			logger.info('[LibraryScheduler] Processing unmatched files...');
 			await mediaMatcherService.processAllUnmatched();
 
+			// Update series stats (cached episode counts)
+			await this.updateAllSeriesStats();
+
 			this.emit('scanComplete', { type: 'full', results });
 			return results;
 		} catch (error) {
@@ -285,6 +310,9 @@ export class LibrarySchedulerService extends EventEmitter implements BackgroundS
 			// Process unmatched files
 			await mediaMatcherService.processAllUnmatched();
 
+			// Update series stats (cached episode counts)
+			await this.updateAllSeriesStats();
+
 			this.emit('scanComplete', { type: 'folder', rootFolderId, result });
 			return result;
 		} catch (error) {
@@ -309,6 +337,62 @@ export class LibrarySchedulerService extends EventEmitter implements BackgroundS
 		}
 
 		return null;
+	}
+
+	/**
+	 * Check if a folder has ever had a successful scan
+	 */
+	async hasFolderBeenScanned(rootFolderId: string): Promise<boolean> {
+		const result = await db
+			.select({ id: libraryScanHistory.id })
+			.from(libraryScanHistory)
+			.where(
+				and(
+					eq(libraryScanHistory.rootFolderId, rootFolderId),
+					eq(libraryScanHistory.status, 'completed')
+				)
+			)
+			.limit(1);
+
+		return result.length > 0;
+	}
+
+	/**
+	 * Queue a scan for a specific folder (non-blocking).
+	 * If a scan is already running, the request is skipped (periodic scan will catch it).
+	 */
+	queueFolderScan(rootFolderId: string): void {
+		if (diskScanService.scanning) {
+			logger.debug(
+				'[LibraryScheduler] Scan already in progress, folder will be caught on next scan',
+				{
+					rootFolderId
+				}
+			);
+			return;
+		}
+
+		this.runFolderScan(rootFolderId).catch((error) => {
+			logger.error('[LibraryScheduler] Queued folder scan failed', error, { rootFolderId });
+		});
+	}
+
+	/**
+	 * Update cached episode counts for all series.
+	 * Called after scans to ensure season/series counts are accurate.
+	 */
+	private async updateAllSeriesStats(): Promise<void> {
+		const allSeries = await db.select({ id: series.id }).from(series);
+		if (allSeries.length === 0) return;
+
+		logger.info('[LibraryScheduler] Updating series stats...', { count: allSeries.length });
+
+		const importService = getImportService();
+		for (const s of allSeries) {
+			await importService.updateSeriesStats(s.id);
+		}
+
+		logger.info('[LibraryScheduler] Series stats updated');
 	}
 
 	/**

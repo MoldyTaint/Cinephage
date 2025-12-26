@@ -39,7 +39,13 @@ const DEFAULT_ENABLED_PROVIDERS: StreamingProvider[] = ['videasy', 'vidlink', 'h
 // ============================================================================
 
 export interface StreamingIndexerSettings {
-	/** Base URL for streaming endpoints */
+	/** Whether to use HTTPS (new split URL format) */
+	useHttps?: boolean | 'true' | 'false';
+
+	/** External host:port (new split URL format) */
+	externalHost?: string;
+
+	/** Base URL for streaming endpoints (legacy, reconstructed from useHttps + externalHost) */
 	baseUrl?: string;
 
 	/** Comma-separated list of enabled providers */
@@ -94,9 +100,15 @@ export async function getStreamingIndexerSettings(): Promise<StreamingIndexerSet
 
 	const settings = (rows[0].settings as StreamingIndexerSettings) ?? {};
 
-	// Use JSON settings baseUrl if configured, otherwise fall back to column
-	// This allows users to override the base URL in the indexer settings form
-	if (!settings.baseUrl && rows[0].baseUrl) {
+	// Reconstruct baseUrl from new split fields (useHttps + externalHost)
+	if (settings.externalHost) {
+		const host = settings.externalHost.replace(/^https?:\/\//, ''); // Strip protocol if accidentally included
+		const useHttps = settings.useHttps === true || settings.useHttps === 'true';
+		const protocol = useHttps ? 'https' : 'http';
+		settings.baseUrl = `${protocol}://${host}`;
+	}
+	// Fall back to legacy baseUrl in settings JSON
+	else if (!settings.baseUrl && rows[0].baseUrl) {
 		settings.baseUrl = rows[0].baseUrl;
 	}
 

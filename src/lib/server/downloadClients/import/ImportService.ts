@@ -980,9 +980,10 @@ export class ImportService extends EventEmitter {
 	}
 
 	/**
-	 * Update series and season episode counts
+	 * Update series and season episode counts.
+	 * Public so it can be called after library scans to refresh cached counts.
 	 */
-	private async updateSeriesStats(seriesId: string): Promise<void> {
+	async updateSeriesStats(seriesId: string): Promise<void> {
 		// Get all episodes for this series
 		const allEpisodes = await db.select().from(episodes).where(eq(episodes.seriesId, seriesId));
 
