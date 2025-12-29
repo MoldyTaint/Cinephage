@@ -10,14 +10,14 @@
 		CheckCircle2,
 		XCircle
 	} from 'lucide-svelte';
-	import type { DownloadClient } from '$lib/types/downloadClient';
+	import type { DownloadClientImplementation } from '$lib/types/downloadClient';
 
 	// Unified client item that can be either a download client or NNTP server
 	interface UnifiedClientItem {
 		id: string;
 		name: string;
 		type: 'download-client' | 'nntp-server';
-		implementation: string;
+		implementation: DownloadClientImplementation;
 		host: string;
 		port: number;
 		useSsl: boolean | null;

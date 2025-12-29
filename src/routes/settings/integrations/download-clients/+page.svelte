@@ -3,8 +3,8 @@
 	import { Plus } from 'lucide-svelte';
 	import type { PageData, ActionData } from './$types';
 	import type {
-		DownloadClient,
 		DownloadClientFormData,
+		DownloadClientImplementation,
 		ConnectionTestResult
 	} from '$lib/types/downloadClient';
 
@@ -29,7 +29,7 @@
 		id: string;
 		name: string;
 		type: 'download-client' | 'nntp-server';
-		implementation: string;
+		implementation: DownloadClientImplementation;
 		host: string;
 		port: number;
 		useSsl: boolean | null;
@@ -329,7 +329,7 @@
 <DownloadClientModal
 	open={modalOpen}
 	mode={modalMode}
-	client={editingClient as any}
+	client={editingClient as unknown as import('$lib/types/downloadClient').DownloadClient | null}
 	{saving}
 	error={saveError}
 	onClose={closeModal}
