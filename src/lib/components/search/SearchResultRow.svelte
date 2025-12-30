@@ -187,8 +187,8 @@
 					<button
 						class="btn btn-sm btn-accent"
 						onclick={handleStream}
-						disabled={grabbing || streaming || release.rejected}
-						title={release.rejected ? 'Rejected by quality filter' : 'Stream (NNTP)'}
+						disabled={grabbing || streaming}
+						title="Stream (NNTP)"
 					>
 						{#if streaming}
 							<Loader2 size={16} class="animate-spin" />
@@ -200,8 +200,8 @@
 				<button
 					class="btn btn-sm btn-primary"
 					onclick={handleGrab}
-					disabled={grabbing || streaming || release.rejected}
-					title={release.rejected ? 'Rejected by quality filter' : 'Download'}
+					disabled={grabbing || streaming}
+					title="Download"
 				>
 					{#if grabbing}
 						<Loader2 size={16} class="animate-spin" />

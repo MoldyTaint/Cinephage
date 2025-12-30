@@ -9,7 +9,7 @@ import type { GrabRequest, GrabResponse } from '$lib/types/queue';
 import { getDownloadResolutionService, releaseDecisionService } from '$lib/server/downloads';
 import type { DownloadInfo } from '$lib/server/downloadClients/core/interfaces';
 import { strmService, StrmService, getStreamingBaseUrl } from '$lib/server/streaming';
-import { getNzbMountManager } from '$lib/server/streaming/nzb';
+import { getNzbMountManager, getNzbStreamService } from '$lib/server/streaming/nzb';
 import { mediaInfoService } from '$lib/server/library/media-info';
 import { db } from '$lib/server/db';
 import {
@@ -1134,6 +1134,42 @@ async function handleNzbStreamingGrab(data: GrabRequest): Promise<Response> {
 			seasonNumber,
 			episodeIds
 		});
+
+		// Check if content is streamable or requires extraction
+		const streamService = getNzbStreamService();
+		const streamability = await streamService.checkStreamability(mount.id);
+
+		// If extraction is required, return early with mount info
+		// The client can then trigger extraction and poll for progress
+		if (streamability.requiresExtraction) {
+			logger.info('[Grab] NZB requires extraction', {
+				title,
+				mountId: mount.id,
+				archiveType: streamability.archiveType,
+				compressionMethod: streamability.compressionMethod
+			});
+
+			return json({
+				success: true,
+				data: {
+					queueId: mount.id,
+					hash: mount.nzbHash,
+					clientId: 'nzb-streaming',
+					clientName: 'NZB Streaming',
+					category: mediaType === 'movie' ? 'movies' : 'tv',
+					wasDuplicate: false,
+					isUpgrade: false,
+					requiresExtraction: true,
+					mountId: mount.id,
+					streamability: {
+						canStream: streamability.canStream,
+						requiresExtraction: streamability.requiresExtraction,
+						archiveType: streamability.archiveType,
+						error: streamability.error
+					}
+				}
+			} satisfies GrabResponse);
+		}
 
 		// Determine base URL for .strm files
 		const baseUrl = await getStreamingBaseUrl('http://localhost:5173');

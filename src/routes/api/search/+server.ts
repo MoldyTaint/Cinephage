@@ -62,7 +62,6 @@ export const GET: RequestHandler = async ({ url }) => {
 		episode,
 		enrich,
 		scoringProfileId,
-		qualityPresetId,
 		matchToTmdb,
 		filterRejected,
 		minScore
@@ -116,12 +115,10 @@ export const GET: RequestHandler = async ({ url }) => {
 
 	// Use enhanced search if enrichment is requested
 	if (enrich) {
-		const effectiveProfileId = scoringProfileId ?? qualityPresetId;
-
 		// Load the scoring profile to get allowedProtocols for indexer filtering
 		let protocolFilter: string[] | undefined;
-		if (effectiveProfileId) {
-			const profile = await qualityFilter.getProfile(effectiveProfileId);
+		if (scoringProfileId) {
+			const profile = await qualityFilter.getProfile(scoringProfileId);
 			if (profile?.allowedProtocols && profile.allowedProtocols.length > 0) {
 				protocolFilter = profile.allowedProtocols;
 			}
@@ -129,14 +126,12 @@ export const GET: RequestHandler = async ({ url }) => {
 
 		// Debug logging for profile issues
 		logger.info('[SearchAPI] Enrichment requested', {
-			scoringProfileId,
-			qualityPresetId,
-			effectiveProfileId: effectiveProfileId ?? 'none',
+			scoringProfileId: scoringProfileId ?? 'none',
 			protocolFilter
 		});
 
 		const enrichmentOpts: EnrichmentOptions = {
-			scoringProfileId: effectiveProfileId, // Support legacy qualityPresetId
+			scoringProfileId,
 			matchToTmdb: matchToTmdb ?? false,
 			filterRejected: filterRejected ?? false,
 			minScore,

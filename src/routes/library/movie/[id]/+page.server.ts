@@ -61,7 +61,6 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 			path: movies.path,
 			rootFolderId: movies.rootFolderId,
 			rootFolderPath: rootFolders.path,
-			qualityPresetId: movies.qualityPresetId,
 			scoringProfileId: movies.scoringProfileId,
 			monitored: movies.monitored,
 			minimumAvailability: movies.minimumAvailability,

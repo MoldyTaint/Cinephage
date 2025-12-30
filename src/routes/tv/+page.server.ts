@@ -1,8 +1,8 @@
 import { db } from '$lib/server/db/index.js';
-import { series, rootFolders, scoringProfiles } from '$lib/server/db/schema.js';
+import { series, rootFolders, scoringProfiles, episodeFiles } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
-import type { LibrarySeries } from '$lib/types/library';
+import type { LibrarySeries, EpisodeFile } from '$lib/types/library';
 import { logger } from '$lib/logging';
 import { DEFAULT_PROFILES } from '$lib/server/scoring/profiles.js';
 
@@ -20,6 +20,10 @@ export const load: PageServerLoad = async ({ url }) => {
 	const monitored = url.searchParams.get('monitored') || 'all';
 	const status = url.searchParams.get('status') || 'all';
 	const progress = url.searchParams.get('progress') || 'all';
+	const qualityProfile = url.searchParams.get('qualityProfile') || 'all';
+	const resolution = url.searchParams.get('resolution') || 'all';
+	const videoCodec = url.searchParams.get('videoCodec') || 'all';
+	const hdrFormat = url.searchParams.get('hdrFormat') || 'all';
 
 	try {
 		// Fetch all series with their root folder info
@@ -41,7 +45,6 @@ export const load: PageServerLoad = async ({ url }) => {
 				path: series.path,
 				rootFolderId: series.rootFolderId,
 				rootFolderPath: rootFolders.path,
-				qualityPresetId: series.qualityPresetId,
 				scoringProfileId: series.scoringProfileId,
 				monitored: series.monitored,
 				seasonFolder: series.seasonFolder,
@@ -61,6 +64,52 @@ export const load: PageServerLoad = async ({ url }) => {
 					? Math.round(((s.episodeFileCount || 0) / s.episodeCount) * 100)
 					: 0
 		})) as LibrarySeries[];
+
+		// Fetch all episode files for file-type filtering
+		const allEpisodeFiles = await db
+			.select({
+				seriesId: episodeFiles.seriesId,
+				quality: episodeFiles.quality,
+				mediaInfo: episodeFiles.mediaInfo
+			})
+			.from(episodeFiles);
+
+		// Extract unique file attribute values for filter dropdowns
+		const uniqueResolutions = new Set<string>();
+		const uniqueCodecs = new Set<string>();
+		const uniqueHdrFormats = new Set<string>();
+
+		for (const file of allEpisodeFiles) {
+			const quality = file.quality as EpisodeFile['quality'];
+			const mediaInfo = file.mediaInfo as EpisodeFile['mediaInfo'];
+			if (quality?.resolution) uniqueResolutions.add(quality.resolution);
+			if (mediaInfo?.videoCodec) uniqueCodecs.add(mediaInfo.videoCodec);
+			if (mediaInfo?.hdrFormat) uniqueHdrFormats.add(mediaInfo.hdrFormat);
+		}
+
+		// Build sets of series IDs that have matching files (for filtering)
+		const seriesWithResolution = new Set<string>();
+		const seriesWithCodec = new Set<string>();
+		const seriesWithHdr = new Set<string>();
+		const seriesWithSdr = new Set<string>();
+
+		for (const file of allEpisodeFiles) {
+			const quality = file.quality as EpisodeFile['quality'];
+			const mediaInfo = file.mediaInfo as EpisodeFile['mediaInfo'];
+
+			if (resolution !== 'all' && quality?.resolution === resolution) {
+				seriesWithResolution.add(file.seriesId);
+			}
+			if (videoCodec !== 'all' && mediaInfo?.videoCodec === videoCodec) {
+				seriesWithCodec.add(file.seriesId);
+			}
+			if (!mediaInfo?.hdrFormat) {
+				seriesWithSdr.add(file.seriesId);
+			}
+			if (hdrFormat !== 'all' && hdrFormat !== 'sdr' && mediaInfo?.hdrFormat === hdrFormat) {
+				seriesWithHdr.add(file.seriesId);
+			}
+		}
 
 		// Apply filters
 		let filteredSeries = seriesWithStats;
@@ -94,6 +143,30 @@ export const load: PageServerLoad = async ({ url }) => {
 			);
 		} else if (progress === 'notStarted') {
 			filteredSeries = filteredSeries.filter((s) => s.percentComplete === 0);
+		}
+
+		// Filter by quality profile
+		if (qualityProfile === 'default') {
+			filteredSeries = filteredSeries.filter((s) => s.scoringProfileId === null);
+		} else if (qualityProfile !== 'all') {
+			filteredSeries = filteredSeries.filter((s) => s.scoringProfileId === qualityProfile);
+		}
+
+		// Filter by resolution
+		if (resolution !== 'all') {
+			filteredSeries = filteredSeries.filter((s) => seriesWithResolution.has(s.id));
+		}
+
+		// Filter by video codec
+		if (videoCodec !== 'all') {
+			filteredSeries = filteredSeries.filter((s) => seriesWithCodec.has(s.id));
+		}
+
+		// Filter by HDR format
+		if (hdrFormat === 'sdr') {
+			filteredSeries = filteredSeries.filter((s) => seriesWithSdr.has(s.id));
+		} else if (hdrFormat !== 'all') {
+			filteredSeries = filteredSeries.filter((s) => seriesWithHdr.has(s.id));
 		}
 
 		// Apply sorting
@@ -152,6 +225,14 @@ export const load: PageServerLoad = async ({ url }) => {
 			}))
 		];
 
+		// Sort unique values for consistent dropdown ordering
+		const resolutionOrder = ['2160p', '1080p', '720p', '576p', '480p'];
+		const sortedResolutions = [...uniqueResolutions].sort(
+			(a, b) =>
+				(resolutionOrder.indexOf(a) === -1 ? 999 : resolutionOrder.indexOf(a)) -
+				(resolutionOrder.indexOf(b) === -1 ? 999 : resolutionOrder.indexOf(b))
+		);
+
 		return {
 			series: filteredSeries,
 			total: filteredSeries.length,
@@ -160,9 +241,16 @@ export const load: PageServerLoad = async ({ url }) => {
 				sort,
 				monitored,
 				status,
-				progress
+				progress,
+				qualityProfile,
+				resolution,
+				videoCodec,
+				hdrFormat
 			},
-			qualityProfiles
+			qualityProfiles,
+			uniqueResolutions: sortedResolutions,
+			uniqueCodecs: [...uniqueCodecs].sort(),
+			uniqueHdrFormats: [...uniqueHdrFormats].sort()
 		};
 	} catch (error) {
 		logger.error('[TV Page] Error loading series', error instanceof Error ? error : undefined);
@@ -174,9 +262,16 @@ export const load: PageServerLoad = async ({ url }) => {
 				sort,
 				monitored,
 				status,
-				progress
+				progress,
+				qualityProfile,
+				resolution,
+				videoCodec,
+				hdrFormat
 			},
 			qualityProfiles: [],
+			uniqueResolutions: [],
+			uniqueCodecs: [],
+			uniqueHdrFormats: [],
 			error: 'Failed to load TV shows'
 		};
 	}

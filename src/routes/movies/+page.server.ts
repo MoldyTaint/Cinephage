@@ -19,6 +19,10 @@ export const load: PageServerLoad = async ({ url }) => {
 	const sort = url.searchParams.get('sort') || 'title-asc';
 	const monitored = url.searchParams.get('monitored') || 'all';
 	const fileStatus = url.searchParams.get('fileStatus') || 'all';
+	const qualityProfile = url.searchParams.get('qualityProfile') || 'all';
+	const resolution = url.searchParams.get('resolution') || 'all';
+	const videoCodec = url.searchParams.get('videoCodec') || 'all';
+	const hdrFormat = url.searchParams.get('hdrFormat') || 'all';
 
 	try {
 		// Fetch all movies with their root folder info
@@ -38,7 +42,6 @@ export const load: PageServerLoad = async ({ url }) => {
 				path: movies.path,
 				rootFolderId: movies.rootFolderId,
 				rootFolderPath: rootFolders.path,
-				qualityPresetId: movies.qualityPresetId,
 				scoringProfileId: movies.scoringProfileId,
 				monitored: movies.monitored,
 				minimumAvailability: movies.minimumAvailability,
@@ -70,6 +73,19 @@ export const load: PageServerLoad = async ({ url }) => {
 			})
 		);
 
+		// Extract unique file attribute values for filter dropdowns
+		const uniqueResolutions = new Set<string>();
+		const uniqueCodecs = new Set<string>();
+		const uniqueHdrFormats = new Set<string>();
+
+		for (const movie of moviesWithFiles) {
+			for (const file of movie.files) {
+				if (file.quality?.resolution) uniqueResolutions.add(file.quality.resolution);
+				if (file.mediaInfo?.videoCodec) uniqueCodecs.add(file.mediaInfo.videoCodec);
+				if (file.mediaInfo?.hdrFormat) uniqueHdrFormats.add(file.mediaInfo.hdrFormat);
+			}
+		}
+
 		// Apply filters
 		let filteredMovies = moviesWithFiles;
 
@@ -85,6 +101,36 @@ export const load: PageServerLoad = async ({ url }) => {
 			filteredMovies = filteredMovies.filter((m) => m.hasFile);
 		} else if (fileStatus === 'missingFile') {
 			filteredMovies = filteredMovies.filter((m) => !m.hasFile);
+		}
+
+		// Filter by quality profile
+		if (qualityProfile === 'default') {
+			filteredMovies = filteredMovies.filter((m) => m.scoringProfileId === null);
+		} else if (qualityProfile !== 'all') {
+			filteredMovies = filteredMovies.filter((m) => m.scoringProfileId === qualityProfile);
+		}
+
+		// Filter by resolution
+		if (resolution !== 'all') {
+			filteredMovies = filteredMovies.filter((m) =>
+				m.files.some((f) => f.quality?.resolution === resolution)
+			);
+		}
+
+		// Filter by video codec
+		if (videoCodec !== 'all') {
+			filteredMovies = filteredMovies.filter((m) =>
+				m.files.some((f) => f.mediaInfo?.videoCodec === videoCodec)
+			);
+		}
+
+		// Filter by HDR format
+		if (hdrFormat === 'sdr') {
+			filteredMovies = filteredMovies.filter((m) => m.files.some((f) => !f.mediaInfo?.hdrFormat));
+		} else if (hdrFormat !== 'all') {
+			filteredMovies = filteredMovies.filter((m) =>
+				m.files.some((f) => f.mediaInfo?.hdrFormat === hdrFormat)
+			);
 		}
 
 		// Apply sorting
@@ -140,6 +186,14 @@ export const load: PageServerLoad = async ({ url }) => {
 			}))
 		];
 
+		// Sort unique values for consistent dropdown ordering
+		const resolutionOrder = ['2160p', '1080p', '720p', '576p', '480p'];
+		const sortedResolutions = [...uniqueResolutions].sort(
+			(a, b) =>
+				(resolutionOrder.indexOf(a) === -1 ? 999 : resolutionOrder.indexOf(a)) -
+				(resolutionOrder.indexOf(b) === -1 ? 999 : resolutionOrder.indexOf(b))
+		);
+
 		return {
 			movies: filteredMovies,
 			total: filteredMovies.length,
@@ -147,9 +201,16 @@ export const load: PageServerLoad = async ({ url }) => {
 			filters: {
 				sort,
 				monitored,
-				fileStatus
+				fileStatus,
+				qualityProfile,
+				resolution,
+				videoCodec,
+				hdrFormat
 			},
-			qualityProfiles
+			qualityProfiles,
+			uniqueResolutions: sortedResolutions,
+			uniqueCodecs: [...uniqueCodecs].sort(),
+			uniqueHdrFormats: [...uniqueHdrFormats].sort()
 		};
 	} catch (error) {
 		logger.error('[Movies Page] Error loading movies', error instanceof Error ? error : undefined);
@@ -160,9 +221,16 @@ export const load: PageServerLoad = async ({ url }) => {
 			filters: {
 				sort,
 				monitored,
-				fileStatus
+				fileStatus,
+				qualityProfile,
+				resolution,
+				videoCodec,
+				hdrFormat
 			},
 			qualityProfiles: [],
+			uniqueResolutions: [],
+			uniqueCodecs: [],
+			uniqueHdrFormats: [],
 			error: 'Failed to load movies'
 		};
 	}

@@ -172,7 +172,7 @@
 		{ value: 'year-asc', label: 'Year (Oldest)' }
 	];
 
-	const filterOptions = [
+	const filterOptions = $derived([
 		{
 			key: 'monitored',
 			label: 'Monitored',
@@ -200,8 +200,54 @@
 				{ value: 'inProgress', label: 'In Progress' },
 				{ value: 'notStarted', label: 'Not Started (0%)' }
 			]
-		}
-	];
+		},
+		{
+			key: 'qualityProfile',
+			label: 'Quality Profile',
+			options: [
+				{ value: 'all', label: 'All' },
+				{ value: 'default', label: 'Using Default' },
+				...data.qualityProfiles.map((p) => ({ value: p.id, label: p.name }))
+			]
+		},
+		...(data.uniqueResolutions.length > 0
+			? [
+					{
+						key: 'resolution',
+						label: 'Resolution',
+						options: [
+							{ value: 'all', label: 'All' },
+							...data.uniqueResolutions.map((r) => ({ value: r, label: r }))
+						]
+					}
+				]
+			: []),
+		...(data.uniqueCodecs.length > 0
+			? [
+					{
+						key: 'videoCodec',
+						label: 'Video Codec',
+						options: [
+							{ value: 'all', label: 'All' },
+							...data.uniqueCodecs.map((c) => ({ value: c, label: c }))
+						]
+					}
+				]
+			: []),
+		...(data.uniqueHdrFormats.length > 0
+			? [
+					{
+						key: 'hdrFormat',
+						label: 'HDR',
+						options: [
+							{ value: 'all', label: 'All' },
+							{ value: 'sdr', label: 'SDR' },
+							...data.uniqueHdrFormats.map((h) => ({ value: h, label: h }))
+						]
+					}
+				]
+			: [])
+	]);
 
 	function updateUrlParam(key: string, value: string) {
 		const url = new URL($page.url);
@@ -220,7 +266,11 @@
 	const currentFilters = $derived({
 		monitored: data.filters.monitored,
 		status: data.filters.status,
-		progress: data.filters.progress
+		progress: data.filters.progress,
+		qualityProfile: data.filters.qualityProfile,
+		resolution: data.filters.resolution,
+		videoCodec: data.filters.videoCodec,
+		hdrFormat: data.filters.hdrFormat
 	});
 
 	import { enhance } from '$app/forms';

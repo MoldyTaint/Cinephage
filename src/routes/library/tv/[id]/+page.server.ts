@@ -118,7 +118,6 @@ export interface LibrarySeriesPageData {
 		path: string;
 		rootFolderId: string | null;
 		rootFolderPath: string | null;
-		qualityPresetId: string | null;
 		scoringProfileId: string | null;
 		monitored: boolean | null;
 		seasonFolder: boolean | null;
@@ -162,7 +161,6 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 			path: series.path,
 			rootFolderId: series.rootFolderId,
 			rootFolderPath: rootFolders.path,
-			qualityPresetId: series.qualityPresetId,
 			scoringProfileId: series.scoringProfileId,
 			monitored: series.monitored,
 			seasonFolder: series.seasonFolder,
