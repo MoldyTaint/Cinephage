@@ -1,101 +1,16 @@
 <script lang="ts">
-	import { X, Loader2, XCircle, FolderOpen } from 'lucide-svelte';
+	import { X, Loader2, XCircle } from 'lucide-svelte';
 	import type {
 		DownloadClient,
 		DownloadClientFormData,
 		DownloadClientImplementation,
-		DownloadClientDefinition,
 		ConnectionTestResult
 	} from '$lib/types/downloadClient';
 	import FolderBrowser from '$lib/components/FolderBrowser.svelte';
 	import { SectionHeader, TestResult } from '$lib/components/ui/modal';
-
-	// Available download client definitions
-	const clientDefinitions: DownloadClientDefinition[] = [
-		// Torrent clients
-		{
-			id: 'qbittorrent',
-			name: 'qBittorrent',
-			description: 'Popular open-source BitTorrent client with web interface',
-			defaultPort: 8080,
-			protocol: 'torrent',
-			supportsCategories: true,
-			supportsPriority: true,
-			supportsSeedingLimits: true
-		},
-		{
-			id: 'transmission',
-			name: 'Transmission',
-			description: 'Lightweight, cross-platform BitTorrent client',
-			defaultPort: 9091,
-			protocol: 'torrent',
-			supportsCategories: false,
-			supportsPriority: true,
-			supportsSeedingLimits: true
-		},
-		{
-			id: 'deluge',
-			name: 'Deluge',
-			description: 'Feature-rich BitTorrent client with plugin support',
-			defaultPort: 8112,
-			protocol: 'torrent',
-			supportsCategories: true,
-			supportsPriority: true,
-			supportsSeedingLimits: true
-		},
-		{
-			id: 'rtorrent',
-			name: 'rTorrent',
-			description: 'Text-based ncurses BitTorrent client (ruTorrent web UI)',
-			defaultPort: 8080,
-			protocol: 'torrent',
-			supportsCategories: true,
-			supportsPriority: false,
-			supportsSeedingLimits: true
-		},
-		{
-			id: 'aria2',
-			name: 'aria2',
-			description: 'Lightweight multi-protocol download utility',
-			defaultPort: 6800,
-			protocol: 'torrent',
-			supportsCategories: false,
-			supportsPriority: false,
-			supportsSeedingLimits: false
-		},
-		// Usenet clients
-		{
-			id: 'sabnzbd',
-			name: 'SABnzbd',
-			description: 'Popular open-source Usenet downloader with web interface',
-			defaultPort: 8080,
-			protocol: 'usenet',
-			supportsCategories: true,
-			supportsPriority: true,
-			supportsSeedingLimits: false
-		},
-		{
-			id: 'nzbget',
-			name: 'NZBGet',
-			description: 'Lightweight, high-performance Usenet downloader',
-			defaultPort: 6789,
-			protocol: 'usenet',
-			supportsCategories: true,
-			supportsPriority: true,
-			supportsSeedingLimits: false
-		},
-		// Direct NNTP
-		{
-			id: 'nntp',
-			name: 'NNTP Server',
-			description: 'Direct Usenet server connection for NZB streaming',
-			defaultPort: 563,
-			protocol: 'nntp',
-			supportsCategories: false,
-			supportsPriority: false,
-			supportsSeedingLimits: false
-		}
-	];
+	import { clientDefinitions } from './forms/clientDefinitions';
+	import NntpServerSettings from './forms/NntpServerSettings.svelte';
+	import DownloadClientSettings from './forms/DownloadClientSettings.svelte';
 
 	// NNTP server form data type
 	interface NntpServerFormData {
@@ -536,166 +451,19 @@
 
 						<!-- Right Column: Settings -->
 						<div class="space-y-4">
-							<!-- NNTP Server Settings -->
 							{#if isNntpServer}
-								<SectionHeader title="Server Settings" />
-
-								<div class="form-control">
-									<label class="label py-1" for="maxConnections">
-										<span class="label-text">Max Connections</span>
-									</label>
-									<input
-										id="maxConnections"
-										type="number"
-										class="input-bordered input input-sm"
-										bind:value={maxConnections}
-										min="1"
-										max="50"
-									/>
-									<div class="label py-1">
-										<span class="label-text-alt text-xs">
-											Check your usenet provider for connection limits (usually 10-50)
-										</span>
-									</div>
-								</div>
-
-								<div class="form-control">
-									<label class="label py-1" for="priority">
-										<span class="label-text">Priority</span>
-									</label>
-									<input
-										id="priority"
-										type="number"
-										class="input-bordered input input-sm"
-										bind:value={priority}
-										min="0"
-										max="99"
-									/>
-									<div class="label py-1">
-										<span class="label-text-alt text-xs">
-											Lower values = higher priority. Use for server failover.
-										</span>
-									</div>
-								</div>
+								<NntpServerSettings bind:maxConnections bind:priority />
 							{:else}
-								<!-- Categories (if supported) -->
-								{#if selectedDefinition?.supportsCategories}
-									<SectionHeader title="Categories" />
-
-									<div class="grid grid-cols-2 gap-3">
-										<div class="form-control">
-											<label class="label py-1" for="movieCategory">
-												<span class="label-text">Movies</span>
-											</label>
-											<input
-												id="movieCategory"
-												type="text"
-												class="input-bordered input input-sm"
-												bind:value={movieCategory}
-												placeholder="movies"
-											/>
-										</div>
-
-										<div class="form-control">
-											<label class="label py-1" for="tvCategory">
-												<span class="label-text">TV Shows</span>
-											</label>
-											<input
-												id="tvCategory"
-												type="text"
-												class="input-bordered input input-sm"
-												bind:value={tvCategory}
-												placeholder="tv"
-											/>
-										</div>
-									</div>
-								{/if}
-
-								<!-- Priority & Initial State (if supported) -->
-								{#if selectedDefinition?.supportsPriority}
-									<SectionHeader
-										title="Download Behavior"
-										class={selectedDefinition?.supportsCategories ? 'mt-4' : ''}
-									/>
-
-									<div class="grid grid-cols-3 gap-3">
-										<div class="form-control">
-											<label class="label py-1" for="recentPriority">
-												<span class="label-text text-xs">Recent</span>
-											</label>
-											<select
-												id="recentPriority"
-												class="select-bordered select select-sm"
-												bind:value={recentPriority}
-											>
-												<option value="normal">Normal</option>
-												<option value="high">High</option>
-												<option value="force">Force</option>
-											</select>
-										</div>
-
-										<div class="form-control">
-											<label class="label py-1" for="olderPriority">
-												<span class="label-text text-xs">Older</span>
-											</label>
-											<select
-												id="olderPriority"
-												class="select-bordered select select-sm"
-												bind:value={olderPriority}
-											>
-												<option value="normal">Normal</option>
-												<option value="high">High</option>
-												<option value="force">Force</option>
-											</select>
-										</div>
-
-										<div class="form-control">
-											<label class="label py-1" for="initialState">
-												<span class="label-text text-xs">Start As</span>
-											</label>
-											<select
-												id="initialState"
-												class="select-bordered select select-sm"
-												bind:value={initialState}
-											>
-												<option value="start">Start</option>
-												<option value="pause">Paused</option>
-												<option value="force">Force</option>
-											</select>
-										</div>
-									</div>
-								{/if}
-
-								<!-- Path Mapping -->
-								<SectionHeader title="Path Mapping" class="mt-4" />
-
-								<div class="form-control">
-									<label class="label py-1" for="downloadPathLocal">
-										<span class="label-text">Local Download Path</span>
-									</label>
-									<div class="join w-full">
-										<input
-											id="downloadPathLocal"
-											type="text"
-											class="input-bordered input input-sm join-item flex-1"
-											bind:value={downloadPathLocal}
-											placeholder="/path/to/downloads"
-										/>
-										<button
-											type="button"
-											class="btn join-item border border-base-300 btn-ghost btn-sm"
-											onclick={() => (showFolderBrowser = true)}
-											title="Browse folders"
-										>
-											<FolderOpen class="h-4 w-4" />
-										</button>
-									</div>
-									<div class="label py-1">
-										<span class="label-text-alt text-xs">
-											Where downloads appear on THIS server (may differ from client's view)
-										</span>
-									</div>
-								</div>
+								<DownloadClientSettings
+									definition={selectedDefinition}
+									bind:movieCategory
+									bind:tvCategory
+									bind:recentPriority
+									bind:olderPriority
+									bind:initialState
+									bind:downloadPathLocal
+									onBrowse={() => (showFolderBrowser = true)}
+								/>
 							{/if}
 						</div>
 					</div>
