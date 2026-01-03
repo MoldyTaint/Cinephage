@@ -27,15 +27,33 @@ export type SabnzbdDownloadStatus =
 
 /**
  * SABnzbd priority levels.
- * -100 = Default, -2 = Paused, -1 = Low, 0 = Normal, 1 = High, 2 = Force
+ * -100 = Default, -3 = Duplicate, -2 = Paused, -1 = Low, 0 = Normal, 1 = High, 2 = Force
  */
 export enum SabnzbdPriority {
 	Default = -100,
+	Duplicate = -3,
 	Paused = -2,
 	Low = -1,
 	Normal = 0,
 	High = 1,
 	Force = 2
+}
+
+/**
+ * SABnzbd post-processing options.
+ * Controls what actions are taken after download completes.
+ */
+export enum SabnzbdPostProcessing {
+	/** Use category default */
+	Default = -1,
+	/** No post-processing */
+	None = 0,
+	/** Repair only */
+	Repair = 1,
+	/** Repair and unpack */
+	RepairUnpack = 2,
+	/** Repair, unpack, and delete archives */
+	RepairUnpackDelete = 3
 }
 
 /**
@@ -86,8 +104,10 @@ export interface SabnzbdHistoryItem {
 	nzb_name: string;
 	/** Category name */
 	category: string;
-	/** Final storage path */
+	/** Final storage path (may be empty/incomplete during post-processing) */
 	storage: string;
+	/** Alternative path field */
+	path?: string;
 	/** Size in bytes */
 	bytes: number;
 	/** Download status */
@@ -104,6 +124,10 @@ export interface SabnzbdHistoryItem {
 	stage_log?: SabnzbdStageLog[];
 	/** URL source if downloaded from URL */
 	url?: string;
+	/** Whether this was from an archive */
+	archive?: boolean;
+	/** Archive extraction password used */
+	password?: string;
 }
 
 /**

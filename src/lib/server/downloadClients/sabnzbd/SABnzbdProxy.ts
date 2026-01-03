@@ -4,6 +4,15 @@
  */
 
 import { logger } from '$lib/logging';
+
+/** Default timeout for SABnzbd API requests in milliseconds */
+const API_TIMEOUT_MS = 20_000; // 20 seconds (increased for reliability)
+
+/** Extended timeout for file uploads */
+const UPLOAD_TIMEOUT_MS = 45_000; // 45 seconds
+
+/** Maximum retry attempts for transient failures */
+const MAX_RETRIES = 2;
 import type {
 	SabnzbdSettings,
 	SabnzbdAddResponse,
@@ -28,6 +37,18 @@ export class SabnzbdApiError extends Error {
 		super(message);
 		this.name = 'SabnzbdApiError';
 	}
+}
+
+/**
+ * Options for adding NZB downloads per SABnzbd API 4.5.
+ */
+export interface AddNzbOptions {
+	/** Post-processing option (-1=default, 0=none, 1=repair, 2=repair/unpack, 3=repair/unpack/delete) */
+	pp?: number;
+	/** Archive extraction password */
+	password?: string;
+	/** Post-processing script to run */
+	script?: string;
 }
 
 /**
@@ -82,18 +103,20 @@ export class SABnzbdProxy {
 
 	/**
 	 * Get the download queue.
+	 * Uses retry logic for reliability during heavy load.
 	 */
 	async getQueue(start: number = 0, limit: number = 100): Promise<SabnzbdQueue> {
 		const params = new URLSearchParams();
 		params.set('start', start.toString());
 		params.set('limit', limit.toString());
 
-		const response = await this.executeRequest<{ queue: SabnzbdQueue }>('queue', params);
+		const response = await this.executeRequestWithRetry<{ queue: SabnzbdQueue }>('queue', params);
 		return response.queue;
 	}
 
 	/**
 	 * Get download history.
+	 * Uses retry logic for reliability during heavy load.
 	 */
 	async getHistory(
 		start: number = 0,
@@ -107,22 +130,38 @@ export class SABnzbdProxy {
 			params.set('category', category);
 		}
 
-		const response = await this.executeRequest<{ history: SabnzbdHistory }>('history', params);
+		const response = await this.executeRequestWithRetry<{ history: SabnzbdHistory }>(
+			'history',
+			params
+		);
 		return response.history;
 	}
 
 	/**
 	 * Add NZB by uploading file content.
+	 * Supports SABnzbd API 4.5 parameters.
 	 */
 	async downloadNzb(
 		nzbData: Buffer,
 		filename: string,
 		category: string,
-		priority: number
+		priority: number,
+		options?: AddNzbOptions
 	): Promise<SabnzbdAddResponse> {
 		const params = new URLSearchParams();
 		params.set('cat', category);
 		params.set('priority', priority.toString());
+
+		// Add optional API 4.5 parameters
+		if (options?.pp !== undefined) {
+			params.set('pp', options.pp.toString());
+		}
+		if (options?.password) {
+			params.set('password', options.password);
+		}
+		if (options?.script) {
+			params.set('script', options.script);
+		}
 
 		const response = await this.executeMultipartRequest(
 			'addfile',
@@ -143,12 +182,14 @@ export class SABnzbdProxy {
 
 	/**
 	 * Add NZB by URL.
+	 * Supports SABnzbd API 4.5 parameters.
 	 */
 	async downloadNzbByUrl(
 		url: string,
 		category: string,
 		priority: number,
-		nzbName?: string
+		nzbName?: string,
+		options?: AddNzbOptions
 	): Promise<SabnzbdAddResponse> {
 		const params = new URLSearchParams();
 		params.set('name', url);
@@ -156,6 +197,17 @@ export class SABnzbdProxy {
 		params.set('priority', priority.toString());
 		if (nzbName) {
 			params.set('nzbname', nzbName);
+		}
+
+		// Add optional API 4.5 parameters
+		if (options?.pp !== undefined) {
+			params.set('pp', options.pp.toString());
+		}
+		if (options?.password) {
+			params.set('password', options.password);
+		}
+		if (options?.script) {
+			params.set('script', options.script);
 		}
 
 		const response = await this.executeRequest<SabnzbdAddResponse | SabnzbdErrorResponse>(
@@ -275,12 +327,17 @@ export class SABnzbdProxy {
 			url: url.toString().replace(/apikey=[^&]+/, 'apikey=***')
 		});
 
+		// Create abort controller with timeout
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
 		try {
 			const response = await fetch(url.toString(), {
 				method,
 				headers: {
 					Accept: 'application/json'
-				}
+				},
+				signal: controller.signal
 			});
 
 			if (!response.ok) {
@@ -298,9 +355,15 @@ export class SABnzbdProxy {
 			if (error instanceof SabnzbdApiError) {
 				throw error;
 			}
+			// Handle abort/timeout specifically
+			if (error instanceof Error && error.name === 'AbortError') {
+				throw new SabnzbdApiError(`SABnzbd API request timed out after ${API_TIMEOUT_MS}ms`);
+			}
 			throw new SabnzbdApiError(
 				`Failed to connect to SABnzbd: ${error instanceof Error ? error.message : 'Unknown error'}`
 			);
+		} finally {
+			clearTimeout(timeoutId);
 		}
 	}
 
@@ -356,6 +419,10 @@ export class SABnzbdProxy {
 
 		const body = Buffer.concat(parts);
 
+		// Create abort controller with timeout (longer for file uploads)
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+
 		try {
 			const response = await fetch(url.toString(), {
 				method: 'POST',
@@ -363,7 +430,8 @@ export class SABnzbdProxy {
 					'Content-Type': `multipart/form-data; boundary=${boundary}`,
 					Accept: 'application/json'
 				},
-				body
+				body,
+				signal: controller.signal
 			});
 
 			if (!response.ok) {
@@ -381,9 +449,15 @@ export class SABnzbdProxy {
 			if (error instanceof SabnzbdApiError) {
 				throw error;
 			}
+			// Handle abort/timeout specifically
+			if (error instanceof Error && error.name === 'AbortError') {
+				throw new SabnzbdApiError(`SABnzbd upload request timed out`);
+			}
 			throw new SabnzbdApiError(
 				`Failed to upload to SABnzbd: ${error instanceof Error ? error.message : 'Unknown error'}`
 			);
+		} finally {
+			clearTimeout(timeoutId);
 		}
 	}
 
@@ -408,6 +482,48 @@ export class SABnzbdProxy {
 				throw e;
 			}
 		}
+	}
+
+	/**
+	 * Execute a request with retry logic for transient failures.
+	 * Retries on timeout or server errors (5xx), not on client errors (4xx).
+	 */
+	private async executeRequestWithRetry<T>(
+		mode: string,
+		additionalParams?: URLSearchParams,
+		method: 'GET' | 'POST' = 'GET'
+	): Promise<T> {
+		let lastError: Error | null = null;
+
+		for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+			try {
+				return await this.executeRequest<T>(mode, additionalParams, method);
+			} catch (error) {
+				lastError = error instanceof Error ? error : new Error(String(error));
+
+				// Don't retry on auth errors or client errors (4xx)
+				if (lastError instanceof SabnzbdApiError && lastError.statusCode) {
+					if (lastError.statusCode >= 400 && lastError.statusCode < 500) {
+						throw lastError;
+					}
+				}
+
+				// Log retry attempt
+				if (attempt < MAX_RETRIES) {
+					const delayMs = 1000 * (attempt + 1);
+					logger.debug('[SABnzbd] Request failed, retrying...', {
+						mode,
+						attempt: attempt + 1,
+						maxRetries: MAX_RETRIES,
+						delayMs,
+						error: lastError.message
+					});
+					await new Promise((r) => setTimeout(r, delayMs));
+				}
+			}
+		}
+
+		throw lastError!;
 	}
 
 	/**

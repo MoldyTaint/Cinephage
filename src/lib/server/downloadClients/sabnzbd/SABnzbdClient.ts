@@ -17,9 +17,13 @@ import type {
 	SabnzbdSettings,
 	SabnzbdQueueItem,
 	SabnzbdHistoryItem,
-	SabnzbdDownloadStatus
+	SabnzbdDownloadStatus,
+	SabnzbdConfig as SabnzbdConfigResponse
 } from './types';
 import { mapPriorityToSabnzbd } from './types';
+
+/** Config cache TTL in milliseconds (1 minute) */
+const CONFIG_CACHE_TTL = 60_000;
 
 /**
  * Extended config for SABnzbd that includes API key.
@@ -30,6 +34,14 @@ export interface SABnzbdConfig extends DownloadClientConfig {
 }
 
 /**
+ * Cached SABnzbd config with timestamp.
+ */
+interface ConfigCache {
+	data: SabnzbdConfigResponse;
+	fetchedAt: number;
+}
+
+/**
  * SABnzbd download client implementation.
  */
 export class SABnzbdClient implements IDownloadClient {
@@ -37,10 +49,99 @@ export class SABnzbdClient implements IDownloadClient {
 
 	private proxy: SABnzbdProxy;
 	private config: SABnzbdConfig;
+	private configCache: ConfigCache | null = null;
 
 	constructor(config: SABnzbdConfig) {
 		this.config = config;
 		this.proxy = new SABnzbdProxy(this.buildSettings());
+	}
+
+	/**
+	 * Get SABnzbd config with caching to reduce API calls.
+	 */
+	private async getCachedConfig(): Promise<SabnzbdConfigResponse> {
+		const now = Date.now();
+
+		// Return cached config if still valid
+		if (this.configCache && now - this.configCache.fetchedAt < CONFIG_CACHE_TTL) {
+			return this.configCache.data;
+		}
+
+		// Fetch fresh config
+		const config = await this.proxy.getConfig();
+		this.configCache = { data: config, fetchedAt: now };
+		return config;
+	}
+
+	/**
+	 * Clear the config cache (e.g., after settings change).
+	 */
+	clearConfigCache(): void {
+		this.configCache = null;
+	}
+
+	/**
+	 * Validate that a storage path is a valid subfolder, not just the base directory.
+	 * This prevents importing from the base download folder which would scan all files.
+	 */
+	private isValidStoragePath(storage: string | undefined, completeDir: string): boolean {
+		if (!storage || storage.length === 0) return false;
+
+		// Normalize paths (remove trailing slashes)
+		const normalizedStorage = storage.replace(/\/+$/, '');
+		const normalizedBase = completeDir.replace(/\/+$/, '');
+
+		// Must be longer than base (contains subfolder)
+		if (normalizedStorage.length <= normalizedBase.length) return false;
+
+		// Must start with base path
+		if (!normalizedStorage.startsWith(normalizedBase)) return false;
+
+		return true;
+	}
+
+	/**
+	 * Resolve the output path for a history item.
+	 * Falls back to constructing from base + category + name if storage is invalid.
+	 */
+	private async resolveOutputPath(
+		item: SabnzbdHistoryItem,
+		sabConfig: SabnzbdConfigResponse
+	): Promise<string> {
+		const baseDir = sabConfig.misc.complete_dir;
+
+		// Use storage if it's valid (not just the base directory)
+		if (this.isValidStoragePath(item.storage, baseDir)) {
+			return item.storage;
+		}
+
+		// Try the alternative path field
+		if (item.path && this.isValidStoragePath(item.path, baseDir)) {
+			return item.path;
+		}
+
+		// Fallback: construct from base + category dir + name
+		const category = sabConfig.categories.find(
+			(c) => c.name.toLowerCase() === item.category?.toLowerCase()
+		);
+		let outputDir = baseDir;
+
+		if (category?.dir) {
+			// Category may have relative or absolute path
+			outputDir = category.dir.startsWith('/')
+				? category.dir
+				: `${baseDir.replace(/\/+$/, '')}/${category.dir}`;
+		}
+
+		const constructedPath = `${outputDir.replace(/\/+$/, '')}/${item.name}`;
+		logger.debug('[SABnzbd] Constructed output path from name', {
+			nzo_id: item.nzo_id,
+			originalStorage: item.storage,
+			constructedPath,
+			category: item.category
+		});
+
+		return constructedPath;
 	}
 
 	/**
@@ -166,12 +267,16 @@ export class SABnzbdClient implements IDownloadClient {
 
 	/**
 	 * Get all downloads from both queue and history.
+	 * History items are mapped asynchronously to validate storage paths.
 	 */
 	async getDownloads(category?: string): Promise<DownloadInfo[]> {
 		const downloads: DownloadInfo[] = [];
 
 		try {
-			// Get queue items
+			// Fetch config once for storage path validation (uses cache)
+			const sabConfig = await this.getCachedConfig();
+
+			// Get queue items (synchronous mapping - no path available)
 			const queue = await this.proxy.getQueue(0, 1000);
 			logger.debug(`[SABnzbd] Fetched ${queue.slots.length} queue items`, {
 				categoryFilter: category
@@ -188,7 +293,7 @@ export class SABnzbdClient implements IDownloadClient {
 				}
 			}
 
-			// Get recent history items (completed downloads)
+			// Get recent history items (async mapping - needs config for validation)
 			const history = await this.proxy.getHistory(0, 100, category);
 			logger.debug(`[SABnzbd] Fetched ${history.slots.length} history items`);
 			for (const item of history.slots) {
@@ -196,12 +301,13 @@ export class SABnzbdClient implements IDownloadClient {
 					nzo_id: item.nzo_id,
 					name: item.name,
 					category: item.category,
-					status: item.status
+					status: item.status,
+					storage: item.storage
 				});
-				// Only include completed items
-				if (item.status === 'Completed') {
-					downloads.push(this.mapHistoryItem(item));
-				}
+				// Include all history items - post-processing items have status like 'Extracting'
+				// Only items with valid storage AND 'Completed' status will trigger import
+				const mappedItem = await this.mapHistoryItemAsync(item, sabConfig);
+				downloads.push(mappedItem);
 			}
 
 			return downloads;
@@ -222,10 +328,11 @@ export class SABnzbdClient implements IDownloadClient {
 				return this.mapQueueItem(queueItem);
 			}
 
-			// Check history
+			// Check history (needs async mapping for storage validation)
 			const historyItem = await this.proxy.getHistoryItem(id);
 			if (historyItem) {
-				return this.mapHistoryItem(historyItem);
+				const sabConfig = await this.getCachedConfig();
+				return this.mapHistoryItemAsync(historyItem, sabConfig);
 			}
 
 			return null;
@@ -397,23 +504,46 @@ export class SABnzbdClient implements IDownloadClient {
 	}
 
 	/**
-	 * Map SABnzbd history item to DownloadInfo.
+	 * Map SABnzbd history item to DownloadInfo with storage path validation.
+	 * Only marks as completed if both status is 'Completed' AND storage path is valid.
+	 * This prevents premature imports when the path is still the base directory.
 	 */
-	private mapHistoryItem(item: SabnzbdHistoryItem): DownloadInfo {
+	private async mapHistoryItemAsync(
+		item: SabnzbdHistoryItem,
+		sabConfig: SabnzbdConfigResponse
+	): Promise<DownloadInfo> {
+		const baseDir = sabConfig.misc.complete_dir;
+		const hasValidStorage = this.isValidStoragePath(item.storage, baseDir);
+		const outputPath = await this.resolveOutputPath(item, sabConfig);
+
+		// Only truly completed if status is 'Completed' AND storage path is valid
+		// This prevents premature imports when storage is just the base directory
+		const isCompleted = item.status === 'Completed' && hasValidStorage;
+
+		if (item.status === 'Completed' && !hasValidStorage) {
+			logger.warn('[SABnzbd] Item marked Completed but storage path is invalid', {
+				nzo_id: item.nzo_id,
+				name: item.name,
+				storage: item.storage,
+				baseDir,
+				resolvedPath: outputPath
+			});
+		}
+
 		return {
 			id: item.nzo_id,
 			name: item.name,
 			hash: item.nzo_id,
-			progress: item.status === 'Completed' ? 100 : 0,
-			status: this.mapStatus(item.status, item.status === 'Completed' ? 100 : 0),
+			progress: isCompleted ? 100 : 0,
+			status: isCompleted ? 'completed' : this.mapStatus(item.status, 0),
 			size: item.bytes,
 			downloadSpeed: 0,
 			uploadSpeed: 0,
-			savePath: item.storage,
-			contentPath: item.storage,
+			savePath: outputPath,
+			contentPath: outputPath,
 			category: item.category,
 			completedOn: item.completed ? new Date(item.completed * 1000) : undefined,
-			canBeRemoved: item.status === 'Completed'
+			canBeRemoved: isCompleted
 		};
 	}
 
