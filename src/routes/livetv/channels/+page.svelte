@@ -35,7 +35,8 @@
 
 	// Loading states
 	let addingToLineup = $state(false);
-	let _removingFromLineup = $state(false);
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars -- Reserved for loading UI
+	let removingFromLineup = $state(false);
 
 	// Category management state
 	let categoryModalOpen = $state(false);
