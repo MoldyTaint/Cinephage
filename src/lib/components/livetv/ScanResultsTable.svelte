@@ -11,6 +11,7 @@
 		Trash2
 	} from 'lucide-svelte';
 	import { onMount } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 
 	interface ScanResult {
 		id: string;
@@ -40,7 +41,7 @@
 	let results = $state<ScanResult[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
-	let selectedIds = $state<Set<string>>(new Set());
+	let selectedIds = new SvelteSet<string>();
 	let approving = $state(false);
 	let ignoring = $state(false);
 	let clearing = $state(false);
@@ -80,20 +81,19 @@
 	}
 
 	function toggleSelection(id: string) {
-		const newSet = new Set(selectedIds);
-		if (newSet.has(id)) {
-			newSet.delete(id);
+		if (selectedIds.has(id)) {
+			selectedIds.delete(id);
 		} else {
-			newSet.add(id);
+			selectedIds.add(id);
 		}
-		selectedIds = newSet;
 	}
 
 	function toggleSelectAll() {
 		if (allSelected) {
-			selectedIds = new Set();
+			selectedIds.clear();
 		} else {
-			selectedIds = new Set(filteredResults.map((r) => r.id));
+			selectedIds.clear();
+			filteredResults.forEach((r) => selectedIds.add(r.id));
 		}
 	}
 
@@ -113,7 +113,7 @@
 				throw new Error(data.error || 'Failed to approve results');
 			}
 
-			selectedIds = new Set();
+			selectedIds.clear();
 			await loadResults();
 			onAccountsCreated();
 		} catch (e) {
@@ -139,7 +139,7 @@
 				throw new Error(data.error || 'Failed to ignore results');
 			}
 
-			selectedIds = new Set();
+			selectedIds.clear();
 			await loadResults();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to ignore results';
@@ -461,7 +461,7 @@
 										<button
 											class="btn text-success btn-ghost btn-sm"
 											onclick={() => {
-												selectedIds = new Set([result.id]);
+												selectedIds = new SvelteSet([result.id]);
 												approveSelected();
 											}}
 											disabled={approving || ignoring}
@@ -472,7 +472,7 @@
 										<button
 											class="btn btn-ghost btn-sm"
 											onclick={() => {
-												selectedIds = new Set([result.id]);
+												selectedIds = new SvelteSet([result.id]);
 												ignoreSelected();
 											}}
 											disabled={approving || ignoring}

@@ -42,7 +42,7 @@
 	// Derived values
 	const isActive = $derived(worker?.status === 'pending' || worker?.status === 'running');
 	const isCompleted = $derived(worker?.status === 'completed');
-	const isFailed = $derived(worker?.status === 'failed');
+	const _isFailed = $derived(worker?.status === 'failed');
 	const isCancelled = $derived(worker?.status === 'cancelled');
 
 	const progressPercent = $derived(worker?.progress ?? 0);

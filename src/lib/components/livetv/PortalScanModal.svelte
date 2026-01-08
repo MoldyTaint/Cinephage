@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { X, Loader2, Search, ChevronRight, ChevronLeft, Radio } from 'lucide-svelte';
-	import { onMount } from 'svelte';
 
 	interface StalkerPortal {
 		id: string;
@@ -149,7 +148,7 @@
 				throw new Error(data.error || 'Failed to detect portal');
 			}
 
-			const data = await response.json();
+			await response.json();
 			// Auto-generate name from URL if not set
 			if (!newPortalName.trim()) {
 				try {
@@ -475,7 +474,7 @@
 									class="select-bordered select select-sm"
 									bind:value={macPrefix}
 								>
-									{#each macPrefixes as { prefix, name }}
+									{#each macPrefixes as { prefix, name } (prefix)}
 										<option value={prefix}>{prefix} - {name}</option>
 									{/each}
 								</select>

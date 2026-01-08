@@ -313,7 +313,7 @@ export class StalkerPortalManager {
 						};
 					}
 				}
-			} catch (error) {
+			} catch {
 				// Try next endpoint
 				continue;
 			}
@@ -338,7 +338,7 @@ export class StalkerPortalManager {
 					endpoint: 'portal.php'
 				};
 			}
-		} catch (error) {
+		} catch {
 			// Fallback failed
 		}
 
@@ -360,7 +360,7 @@ export class StalkerPortalManager {
 					endpoint: 'stalker_portal/server/load.php'
 				};
 			}
-		} catch (error) {
+		} catch {
 			// Final fallback failed
 		}
 

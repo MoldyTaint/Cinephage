@@ -277,7 +277,7 @@ export class PortalScanWorker extends TaskWorker<PortalScanWorkerMetadata> {
 			});
 
 			return true;
-		} catch (error) {
+		} catch {
 			// MAC is invalid or portal returned error
 			return false;
 		}
