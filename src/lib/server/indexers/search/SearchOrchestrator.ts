@@ -20,7 +20,9 @@ import {
 	supportsParam,
 	isMovieSearch,
 	isTvSearch,
-	indexerHasCategoriesForSearchType
+	indexerHasCategoriesForSearchType,
+	categoryMatchesSearchType,
+	getCategoryContentType
 } from '../types';
 import { getPersistentStatusTracker, type PersistentStatusTracker } from '../status';
 import { getRateLimitRegistry, type RateLimitRegistry } from '../ratelimit';
@@ -194,7 +196,13 @@ export class SearchOrchestrator {
 		const { releases: deduped } = this.deduplicator.deduplicate(allReleases);
 
 		// Filter by season/episode if specified (use original criteria for filtering)
-		const filtered = this.filterBySeasonEpisode(deduped, criteria);
+		let filtered = this.filterBySeasonEpisode(deduped, criteria);
+
+		// Filter by category match (reject releases in wrong categories)
+		if (criteria.searchType !== 'basic') {
+			const searchType = criteria.searchType as 'movie' | 'tv' | 'music' | 'book';
+			filtered = this.filterByCategoryMatch(filtered, searchType);
+		}
 
 		// Rank
 		const ranked = this.ranker.rank(filtered);
@@ -300,7 +308,13 @@ export class SearchOrchestrator {
 		});
 
 		// Filter by season/episode if specified
-		const filtered = this.filterBySeasonEpisode(deduped, enrichedCriteria);
+		let filtered = this.filterBySeasonEpisode(deduped, enrichedCriteria);
+
+		// Filter by category match (reject releases in wrong categories)
+		if (enrichedCriteria.searchType !== 'basic') {
+			const searchType = enrichedCriteria.searchType as 'movie' | 'tv' | 'music' | 'book';
+			filtered = this.filterByCategoryMatch(filtered, searchType);
+		}
 
 		// Enrich with quality scoring and optional TMDB matching
 		// Determine media type from search criteria for size validation
@@ -882,6 +896,40 @@ export class SearchOrchestrator {
 			}
 
 			return true;
+		});
+	}
+
+	/**
+	 * Filter releases by category match.
+	 * Rejects releases where the category doesn't match the search type
+	 * (e.g., audio releases for movie searches).
+	 */
+	private filterByCategoryMatch(
+		releases: ReleaseResult[],
+		searchType: 'movie' | 'tv' | 'music' | 'book'
+	): ReleaseResult[] {
+		return releases.filter((release) => {
+			// If release has no categories, allow it (benefit of the doubt)
+			if (!release.categories || release.categories.length === 0) {
+				return true;
+			}
+
+			// Check if ANY of the release's categories match the search type
+			const hasMatchingCategory = release.categories.some((cat) =>
+				categoryMatchesSearchType(cat, searchType)
+			);
+
+			if (!hasMatchingCategory) {
+				const actualContentType = getCategoryContentType(release.categories[0]);
+				logger.debug('[SearchOrchestrator] Rejecting release due to category mismatch', {
+					title: release.title,
+					categories: release.categories,
+					expectedSearchType: searchType,
+					actualContentType
+				});
+			}
+
+			return hasMatchingCategory;
 		});
 	}
 

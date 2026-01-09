@@ -38,6 +38,7 @@ import { statSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { unlink } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import type { EnhancedReleaseResult } from '$lib/server/indexers/types';
+import { categoryMatchesSearchType, getCategoryContentType } from '$lib/server/indexers/types';
 import type { DownloadInfo } from '$lib/server/downloadClients/core/interfaces.js';
 
 const logger = createChildLogger({ module: 'ReleaseGrabService' });
@@ -94,6 +95,29 @@ class ReleaseGrabService {
 	 */
 	async grabRelease(release: EnhancedReleaseResult, options: GrabOptions): Promise<GrabResult> {
 		const { mediaType } = options;
+
+		// Safety check: validate release category matches media type
+		// This prevents downloading audio/music releases for movie/TV searches
+		if (release.categories && release.categories.length > 0) {
+			const searchType = mediaType === 'movie' ? 'movie' : 'tv';
+			const hasMatchingCategory = release.categories.some((cat) =>
+				categoryMatchesSearchType(cat, searchType)
+			);
+
+			if (!hasMatchingCategory) {
+				const actualContentType = getCategoryContentType(release.categories[0]);
+				logger.error('[ReleaseGrab] BLOCKED: Release category mismatch - potential wrong content type', {
+					title: release.title,
+					expectedType: mediaType,
+					actualContentType,
+					categories: release.categories
+				});
+				return {
+					success: false,
+					error: `Category mismatch: ${actualContentType} release cannot be grabbed for ${mediaType}`
+				};
+			}
+		}
 
 		logger.info('[ReleaseGrab] Grabbing release', {
 			title: release.title,

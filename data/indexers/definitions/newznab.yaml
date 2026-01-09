@@ -115,7 +115,8 @@ search:
       attribute: value
       optional: true
     category:
-      selector: category
+      selector: "newznab|attr[name='category']"
+      attribute: value
       optional: true
     imdbid:
       selector: "newznab|attr[name='imdb']"
