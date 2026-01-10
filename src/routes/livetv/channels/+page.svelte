@@ -7,7 +7,6 @@
 		ChannelCategoryManagerModal,
 		ChannelBulkActionBar,
 		ChannelBrowserModal,
-		EpgStatusCard,
 		EpgSourcePickerModal,
 		ChannelScheduleModal
 	} from '$lib/components/livetv';
@@ -16,8 +15,7 @@
 		ChannelCategory,
 		UpdateChannelRequest,
 		EpgProgram,
-		EpgProgramWithProgress,
-		EpgStatus
+		EpgProgramWithProgress
 	} from '$lib/types/livetv';
 	import { onMount, onDestroy } from 'svelte';
 
@@ -85,12 +83,6 @@
 	let epgData = new SvelteMap<string, NowNextEntry>();
 	let epgInterval: ReturnType<typeof setInterval> | null = null;
 
-	// EPG status state (sync status)
-	let epgStatus = $state<EpgStatus | null>(null);
-	let epgStatusLoading = $state(true);
-	let epgSyncing = $state(false);
-	let epgStatusPollInterval: ReturnType<typeof setInterval> | null = null;
-
 	// Derived: Group channels by category
 	const groupedChannels = $derived.by(() => {
 		const groups = new SvelteMap<string | null, ChannelLineupItemWithDetails[]>();
@@ -139,7 +131,6 @@
 	onMount(() => {
 		loadData();
 		fetchEpgData();
-		fetchEpgStatus();
 		// Refresh EPG data every 60 seconds
 		epgInterval = setInterval(fetchEpgData, 60000);
 	});
@@ -149,7 +140,6 @@
 			clearInterval(epgInterval);
 			epgInterval = null;
 		}
-		stopEpgStatusPoll();
 	});
 
 	async function fetchEpgData() {
@@ -166,52 +156,6 @@
 			}
 		} catch {
 			// Silent failure - EPG is not critical
-		}
-	}
-
-	async function fetchEpgStatus() {
-		try {
-			const res = await fetch('/api/livetv/epg/status');
-			if (res.ok) {
-				epgStatus = await res.json();
-				epgSyncing = epgStatus?.isSyncing ?? false;
-
-				// If sync is in progress, keep polling
-				if (epgSyncing && !epgStatusPollInterval) {
-					startEpgStatusPoll();
-				} else if (!epgSyncing && epgStatusPollInterval) {
-					stopEpgStatusPoll();
-					// Refresh EPG data after sync completes
-					fetchEpgData();
-				}
-			}
-		} catch {
-			// Silent failure
-		} finally {
-			epgStatusLoading = false;
-		}
-	}
-
-	async function triggerEpgSync() {
-		epgSyncing = true;
-		try {
-			await fetch('/api/livetv/epg/sync', { method: 'POST' });
-			// Start polling for status updates
-			startEpgStatusPoll();
-		} catch {
-			epgSyncing = false;
-		}
-	}
-
-	function startEpgStatusPoll() {
-		if (epgStatusPollInterval) return;
-		epgStatusPollInterval = setInterval(fetchEpgStatus, 3000);
-	}
-
-	function stopEpgStatusPoll() {
-		if (epgStatusPollInterval) {
-			clearInterval(epgStatusPollInterval);
-			epgStatusPollInterval = null;
 		}
 	}
 
@@ -755,14 +699,6 @@
 			</button>
 		</div>
 	</div>
-
-	<!-- EPG Status Card -->
-	<EpgStatusCard
-		status={epgStatus}
-		loading={epgStatusLoading}
-		syncing={epgSyncing}
-		onSync={triggerEpgSync}
-	/>
 
 	<!-- Content -->
 	{#if loading}

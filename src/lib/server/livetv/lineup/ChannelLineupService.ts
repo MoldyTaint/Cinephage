@@ -420,19 +420,20 @@ class ChannelLineupService {
 
 	/**
 	 * Add a backup link to a lineup item
+	 * Returns null with reason logged if validation fails
 	 */
 	async addBackup(
 		lineupItemId: string,
 		accountId: string,
 		channelId: string
-	): Promise<ChannelBackupLink | null> {
+	): Promise<{ backup: ChannelBackupLink | null; error?: string }> {
 		// Get the lineup item to check it exists and that we're not adding primary as backup
 		const item = await this.getChannelById(lineupItemId);
 		if (!item) {
 			logger.warn('[ChannelLineupService] Cannot add backup: lineup item not found', {
 				lineupItemId
 			});
-			return null;
+			return { backup: null, error: 'Lineup item not found' };
 		}
 
 		// Prevent adding the primary channel as a backup
@@ -441,7 +442,55 @@ class ChannelLineupService {
 				lineupItemId,
 				channelId
 			});
-			return null;
+			return { backup: null, error: 'Cannot add primary channel as backup' };
+		}
+
+		// Validate account exists and is enabled
+		const account = db
+			.select({ id: stalkerAccounts.id, enabled: stalkerAccounts.enabled })
+			.from(stalkerAccounts)
+			.where(eq(stalkerAccounts.id, accountId))
+			.get();
+
+		if (!account) {
+			logger.warn('[ChannelLineupService] Cannot add backup: account not found', {
+				lineupItemId,
+				accountId
+			});
+			return { backup: null, error: 'Account not found' };
+		}
+
+		if (!account.enabled) {
+			logger.warn('[ChannelLineupService] Cannot add backup: account is disabled', {
+				lineupItemId,
+				accountId
+			});
+			return { backup: null, error: 'Account is disabled' };
+		}
+
+		// Validate channel exists and belongs to the specified account
+		const channel = db
+			.select({ id: stalkerChannels.id, accountId: stalkerChannels.accountId })
+			.from(stalkerChannels)
+			.where(eq(stalkerChannels.id, channelId))
+			.get();
+
+		if (!channel) {
+			logger.warn('[ChannelLineupService] Cannot add backup: channel not found', {
+				lineupItemId,
+				channelId
+			});
+			return { backup: null, error: 'Channel not found' };
+		}
+
+		if (channel.accountId !== accountId) {
+			logger.warn('[ChannelLineupService] Cannot add backup: channel does not belong to account', {
+				lineupItemId,
+				channelId,
+				expectedAccountId: accountId,
+				actualAccountId: channel.accountId
+			});
+			return { backup: null, error: 'Channel does not belong to specified account' };
 		}
 
 		// Get next priority (max + 1)
@@ -473,7 +522,8 @@ class ChannelLineupService {
 
 			// Return the newly created backup with joined data
 			const backups = await this.getBackups(lineupItemId);
-			return backups.find((b) => b.id === id) || null;
+			const backup = backups.find((b) => b.id === id) || null;
+			return { backup };
 		} catch (error) {
 			// Unique constraint violation - backup already exists
 			if (error instanceof Error && error.message.includes('UNIQUE constraint')) {
@@ -481,25 +531,62 @@ class ChannelLineupService {
 					lineupItemId,
 					channelId
 				});
-				return null;
+				return { backup: null, error: 'Backup already exists' };
 			}
 			throw error;
 		}
 	}
 
 	/**
-	 * Remove a backup link
+	 * Remove a backup link and renormalize remaining priorities
 	 */
 	async removeBackup(backupId: string): Promise<boolean> {
+		// Get the backup first to know which lineup item it belongs to
+		const backup = db
+			.select({ lineupItemId: channelLineupBackups.lineupItemId })
+			.from(channelLineupBackups)
+			.where(eq(channelLineupBackups.id, backupId))
+			.get();
+
+		if (!backup) {
+			return false;
+		}
+
 		const result = await db
 			.delete(channelLineupBackups)
 			.where(eq(channelLineupBackups.id, backupId));
 
 		if (result.changes > 0) {
 			logger.info('[ChannelLineupService] Removed backup link', { backupId });
+
+			// Renormalize priorities for remaining backups
+			await this.normalizePriorities(backup.lineupItemId);
+
 			return true;
 		}
 		return false;
+	}
+
+	/**
+	 * Renormalize backup priorities to be sequential (1, 2, 3...)
+	 */
+	private async normalizePriorities(lineupItemId: string): Promise<void> {
+		const backups = db
+			.select({ id: channelLineupBackups.id })
+			.from(channelLineupBackups)
+			.where(eq(channelLineupBackups.lineupItemId, lineupItemId))
+			.orderBy(asc(channelLineupBackups.priority))
+			.all();
+
+		if (backups.length === 0) return;
+
+		const now = new Date().toISOString();
+		for (let i = 0; i < backups.length; i++) {
+			db.update(channelLineupBackups)
+				.set({ priority: i + 1, updatedAt: now })
+				.where(eq(channelLineupBackups.id, backups[i].id))
+				.run();
+		}
 	}
 
 	/**

@@ -329,12 +329,10 @@
 
 				<!-- Category -->
 				<div>
-					<label class="mb-1 block text-sm text-base-content/70" for="category">
-						Category
-					</label>
+					<label class="mb-1 block text-sm text-base-content/70" for="category"> Category </label>
 					<select
 						id="category"
-						class="select-bordered select select-sm w-full"
+						class="select-bordered select w-full select-sm"
 						bind:value={categoryId}
 					>
 						<option value={null}>Uncategorized</option>
@@ -376,9 +374,7 @@
 
 				<!-- EPG ID -->
 				<div>
-					<label class="mb-1 block text-sm text-base-content/70" for="epgId">
-						EPG ID
-					</label>
+					<label class="mb-1 block text-sm text-base-content/70" for="epgId"> EPG ID </label>
 					<input
 						type="text"
 						id="epgId"
@@ -391,9 +387,7 @@
 
 				<!-- EPG Source Override -->
 				<div>
-					<label class="mb-1 block text-sm text-base-content/70">
-						EPG Source Override
-					</label>
+					<label class="mb-1 block text-sm text-base-content/70"> EPG Source Override </label>
 					{#if epgSourceChannelId && channel.epgSourceChannel}
 						<div class="flex items-center gap-2 rounded-lg bg-base-200 px-3 py-2">
 							{#if channel.epgSourceChannel.logo}
@@ -537,7 +531,7 @@
 				</button>
 				<div class="collapse-content px-3 pb-3">
 					{#if backupError}
-						<div class="alert mb-2 py-2 alert-error">
+						<div class="mb-2 alert py-2 alert-error">
 							<AlertCircle class="h-4 w-4" />
 							<span class="text-sm">{backupError}</span>
 						</div>
@@ -620,17 +614,13 @@
 			<!-- Footer -->
 			<div class="modal-action mt-4">
 				{#if onDelete}
-					<button class="btn mr-auto btn-outline btn-error btn-sm" onclick={onDelete}>
+					<button class="btn mr-auto btn-outline btn-sm btn-error" onclick={onDelete}>
 						Delete
 					</button>
 				{/if}
 
 				<button class="btn btn-ghost btn-sm" onclick={onClose} disabled={saving}>Cancel</button>
-				<button
-					class="btn btn-primary btn-sm"
-					onclick={handleSubmit}
-					disabled={saving || !isValid}
-				>
+				<button class="btn btn-sm btn-primary" onclick={handleSubmit} disabled={saving || !isValid}>
 					{#if saving}
 						<Loader2 class="h-4 w-4 animate-spin" />
 					{/if}

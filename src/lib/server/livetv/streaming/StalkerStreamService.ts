@@ -156,6 +156,21 @@ export class StalkerStreamService {
 	): Promise<FetchStreamResult> {
 		const { accountId, channelId, cmd } = source;
 
+		// Validate account exists and is enabled before attempting fetch
+		const account = db
+			.select({ id: stalkerAccounts.id, enabled: stalkerAccounts.enabled })
+			.from(stalkerAccounts)
+			.where(eq(stalkerAccounts.id, accountId))
+			.get();
+
+		if (!account) {
+			throw this.createError('ACCOUNT_NOT_FOUND', `Account not found: ${accountId}`, accountId);
+		}
+
+		if (!account.enabled) {
+			throw new Error(`Account is disabled: ${accountId}`);
+		}
+
 		// Extract stream URL directly from cmd (skip broken create_link)
 		// The cmd format is "ffmpeg http://..." - we just need the URL part
 		const streamUrl = this.extractUrlFromCmd(cmd);

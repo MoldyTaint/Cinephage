@@ -22,5 +22,8 @@ export { default as ChannelBrowserModal } from './ChannelBrowserModal.svelte';
 
 // EPG
 export { default as EpgStatusCard } from './EpgStatusCard.svelte';
+export { default as EpgStatusPanel } from './EpgStatusPanel.svelte';
 export { default as EpgSourcePickerModal } from './EpgSourcePickerModal.svelte';
+export { default as EpgCoverageTable } from './EpgCoverageTable.svelte';
+export { default as EpgGuideGrid } from './EpgGuideGrid.svelte';
 export { default as ChannelScheduleModal } from './ChannelScheduleModal.svelte';

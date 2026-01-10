@@ -48,16 +48,12 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		return json({ error: 'Missing required fields: accountId, channelId' }, { status: 400 });
 	}
 
-	// Prevent adding primary channel as backup
-	if (body.channelId === item.channelId) {
-		return json({ error: 'Cannot add primary channel as backup' }, { status: 400 });
+	// Service handles all validation including primary channel check
+	const result = await channelLineupService.addBackup(id, body.accountId, body.channelId);
+
+	if (!result.backup) {
+		return json({ error: result.error || 'Failed to add backup' }, { status: 400 });
 	}
 
-	const backup = await channelLineupService.addBackup(id, body.accountId, body.channelId);
-
-	if (!backup) {
-		return json({ error: 'Failed to add backup. It may already exist.' }, { status: 400 });
-	}
-
-	return json(backup, { status: 201 });
+	return json(result.backup, { status: 201 });
 };
