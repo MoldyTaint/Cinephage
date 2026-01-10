@@ -189,10 +189,7 @@ export class NntpConnection {
 						onConnect
 					);
 				} else {
-					this.socket = net.connect(
-						{ host: this.config.host, port: this.config.port },
-						onConnect
-					);
+					this.socket = net.connect({ host: this.config.host, port: this.config.port }, onConnect);
 				}
 
 				this.socket.on('data', onData);
@@ -476,15 +473,18 @@ export class NntpConnection {
 	 */
 	private startKeepalive(): void {
 		// Send DATE command every 5 minutes to keep connection alive
-		this.keepaliveInterval = setInterval(async () => {
-			if (this._state === 'ready' && this.idleTimeMs > 60000) {
-				try {
-					await this.sendCommand('DATE', this.timeouts.command);
-				} catch {
-					// Ignore keepalive errors
+		this.keepaliveInterval = setInterval(
+			async () => {
+				if (this._state === 'ready' && this.idleTimeMs > 60000) {
+					try {
+						await this.sendCommand('DATE', this.timeouts.command);
+					} catch {
+						// Ignore keepalive errors
+					}
 				}
-			}
-		}, 5 * 60 * 1000);
+			},
+			5 * 60 * 1000
+		);
 	}
 
 	/**

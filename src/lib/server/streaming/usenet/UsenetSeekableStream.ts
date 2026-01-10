@@ -87,7 +87,8 @@ export class UsenetSeekableStream extends Readable {
 
 		if (this.range) {
 			const startByte = this.range.start;
-			const endByte = this.range.end === -1 ? totalSize - 1 : Math.min(this.range.end, totalSize - 1);
+			const endByte =
+				this.range.end === -1 ? totalSize - 1 : Math.min(this.range.end, totalSize - 1);
 
 			const startLoc = this.store.findSegmentForOffset(startByte);
 			if (!startLoc) {

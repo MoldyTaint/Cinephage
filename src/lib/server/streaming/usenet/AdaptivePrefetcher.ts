@@ -315,12 +315,10 @@ export class AdaptivePrefetcher {
 		}
 
 		// Create fetch promise
-		const fetchPromise = this.nntpManager
-			.getDecodedArticle(segment.messageId)
-			.then((result) => {
-				this.store.cacheSegment(index, result.data);
-				return result.data;
-			});
+		const fetchPromise = this.nntpManager.getDecodedArticle(segment.messageId).then((result) => {
+			this.store.cacheSegment(index, result.data);
+			return result.data;
+		});
 
 		// Track as pending
 		this.pendingFetches.set(index, {

@@ -9,7 +9,6 @@
  * - Clean resource cleanup
  */
 
-import { Readable } from 'node:stream';
 import { createReadStream, existsSync, statSync } from 'fs';
 import { basename } from 'path';
 import { logger } from '$lib/logging';
