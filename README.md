@@ -212,7 +212,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
 ## Contributors
 
 <a href="https://github.com/MoldyTaint/Cinephage/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=MoldyTaint/Cinephage" />
+  <img src="https://contrib.rocks/image?repo=MoldyTaint/Cinephage&max=500&anon=1" />
 </a>
 
 ---
