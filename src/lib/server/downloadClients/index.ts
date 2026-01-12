@@ -20,6 +20,7 @@ export {
 export type { RootFolderInput } from './RootFolderService';
 
 export { QBittorrentClient } from './qbittorrent/QBittorrentClient';
+export { NZBMountClient } from './nzbmount/NZBMountClient';
 
 export type {
 	IDownloadClient,

@@ -35,6 +35,7 @@ const NZB_FETCH_USER_AGENT =
 export interface SABnzbdConfig extends DownloadClientConfig {
 	apiKey?: string | null;
 	urlBase?: string;
+	normalizeCategoryDir?: boolean;
 }
 
 /**
@@ -212,9 +213,21 @@ export class SABnzbdClient implements IDownloadClient {
 
 		if (category?.dir) {
 			// Category may have relative or absolute path
-			outputDir = category.dir.startsWith('/')
-				? category.dir
-				: `${baseDir.replace(/\/+$/, '')}/${category.dir}`;
+			if (category.dir.startsWith('/')) {
+				outputDir = category.dir;
+			} else if (this.config.normalizeCategoryDir) {
+				const normalizedBase = baseDir.replace(/\/+$/, '');
+				const baseName = normalizedBase.split('/').pop();
+				let relativeDir = category.dir.replace(/^\/+/, '');
+
+				if (baseName && relativeDir.startsWith(`${baseName}/`)) {
+					relativeDir = relativeDir.slice(baseName.length + 1);
+				}
+
+				outputDir = relativeDir ? `${normalizedBase}/${relativeDir}` : normalizedBase;
+			} else {
+				outputDir = `${baseDir.replace(/\/+$/, '')}/${category.dir}`;
+			}
 		}
 
 		const constructedPath = `${outputDir.replace(/\/+$/, '')}/${item.name}`;
@@ -250,7 +263,8 @@ export class SABnzbdClient implements IDownloadClient {
 		try {
 			logger.debug('[SABnzbd] Testing connection', {
 				host: this.config.host,
-				port: this.config.port
+				port: this.config.port,
+				urlBase: this.config.urlBase ?? ''
 			});
 
 			// Get version to test connectivity
@@ -756,6 +770,17 @@ export class SABnzbdClient implements IDownloadClient {
 		const baseDir = sabConfig.misc.complete_dir;
 		const hasValidStorage = this.isValidStoragePath(item.storage, baseDir);
 		const outputPath = await this.resolveOutputPath(item, sabConfig);
+
+		if (this.config.normalizeCategoryDir) {
+			logger.debug('[SABnzbd] Resolved output path (normalized)', {
+				nzo_id: item.nzo_id,
+				storage: item.storage,
+				path: item.path,
+				category: item.category,
+				baseDir,
+				outputPath
+			});
+		}
 
 		// Only truly completed if status is 'Completed' AND storage path is valid
 		// This prevents premature imports when storage is just the base directory

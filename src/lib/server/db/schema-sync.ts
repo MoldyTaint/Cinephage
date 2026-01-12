@@ -49,8 +49,9 @@ import { logger } from '$lib/logging';
  * Version 32: Add EPG tracking columns to stalker_accounts for visibility and sync status
  * Version 33: Add EPG source override column to channel_lineup_items
  * Version 34: Add url_base column to download_clients
+ * Version 35: Add mount_mode column to download_clients
  */
-export const CURRENT_SCHEMA_VERSION = 34;
+export const CURRENT_SCHEMA_VERSION = 35;
 
 /**
  * All table definitions with CREATE TABLE IF NOT EXISTS
@@ -147,6 +148,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"username" text,
 		"password" text,
 		"url_base" text,
+		"mount_mode" text,
 		"movie_category" text DEFAULT 'movies',
 		"tv_category" text DEFAULT 'tv',
 		"recent_priority" text DEFAULT 'normal',
@@ -2570,6 +2572,14 @@ const SCHEMA_UPDATES: Record<number, (sqlite: Database.Database) => void> = {
 		if (!columnExists(sqlite, 'download_clients', 'url_base')) {
 			sqlite.prepare(`ALTER TABLE "download_clients" ADD COLUMN "url_base" text`).run();
 			logger.info('[SchemaSync] Added url_base column to download_clients');
+		}
+	},
+
+	// Version 35: Add mount_mode column to download_clients
+	35: (sqlite) => {
+		if (!columnExists(sqlite, 'download_clients', 'mount_mode')) {
+			sqlite.prepare(`ALTER TABLE "download_clients" ADD COLUMN "mount_mode" text`).run();
+			logger.info('[SchemaSync] Added mount_mode column to download_clients');
 		}
 	}
 };

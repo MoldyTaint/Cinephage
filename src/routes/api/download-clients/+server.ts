@@ -52,6 +52,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			port: validated.port,
 			useSsl: validated.useSsl,
 			urlBase: validated.urlBase,
+			mountMode: validated.mountMode,
 			username: validated.username,
 			password: validated.password,
 			movieCategory: validated.movieCategory,

@@ -8,12 +8,14 @@ export type DownloadClientImplementation =
 	| 'deluge'
 	| 'rtorrent'
 	| 'aria2'
+	| 'nzb-mount'
 	| 'sabnzbd'
 	| 'nzbget'
 	| 'nntp';
 export type DownloadPriority = 'normal' | 'high' | 'force';
 export type DownloadInitialState = 'start' | 'pause' | 'force';
 export type RootFolderMediaType = 'movie' | 'tv';
+export type DownloadClientMountMode = 'nzbdav' | 'altmount';
 
 /**
  * Download client definition - metadata about each client type
@@ -43,6 +45,7 @@ export interface DownloadClient {
 	port: number;
 	useSsl: boolean;
 	urlBase?: string | null;
+	mountMode?: DownloadClientMountMode | null;
 	username?: string | null;
 	// Note: password not returned to frontend for security
 	hasPassword: boolean;
@@ -83,6 +86,7 @@ export interface DownloadClientFormData {
 	port: number;
 	useSsl: boolean;
 	urlBase: string | null;
+	mountMode?: DownloadClientMountMode | null;
 	username: string | null;
 	password: string | null;
 	movieCategory: string;
@@ -211,6 +215,7 @@ export interface UnifiedClientItem {
 	port: number;
 	useSsl: boolean | null;
 	urlBase?: string | null;
+	mountMode?: DownloadClientMountMode | null;
 	enabled: boolean | null;
 	username?: string | null;
 	hasPassword?: boolean;

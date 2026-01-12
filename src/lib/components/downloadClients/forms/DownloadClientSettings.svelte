@@ -15,6 +15,7 @@
 		tempPathLocal?: string;
 		tempPathRemote?: string;
 		isSabnzbd?: boolean;
+		isNzbMount?: boolean;
 		onBrowse?: (field: 'downloadPathLocal' | 'tempPathLocal') => void;
 		mode?: 'connection' | 'settings';
 		urlBaseEnabled?: boolean;
@@ -22,6 +23,8 @@
 		urlBaseLabel?: string;
 		urlBaseDescription?: string;
 		urlBasePlaceholder?: string;
+		showMountMode?: boolean;
+		mountMode?: 'nzbdav' | 'altmount';
 	}
 
 	let {
@@ -36,13 +39,16 @@
 		tempPathLocal = $bindable(),
 		tempPathRemote = $bindable(),
 		isSabnzbd = false,
+		isNzbMount = false,
 		onBrowse = () => {},
 		mode = 'settings',
 		urlBaseEnabled = $bindable(),
 		urlBase = $bindable(),
 		urlBaseLabel = 'URL Base',
 		urlBaseDescription = 'Path prefix added after host and port.',
-		urlBasePlaceholder = 'sabnzbd'
+		urlBasePlaceholder = 'sabnzbd',
+		showMountMode = false,
+		mountMode = $bindable()
 	}: Props = $props();
 
 	const urlBaseToggleId = 'url-base-toggle';
@@ -82,6 +88,23 @@
 				/>
 				<div class="label py-1">
 					<span class="label-text-alt text-xs text-base-content/60">{urlBaseDescription}</span>
+				</div>
+			</div>
+		{/if}
+
+		{#if showMountMode}
+			<div class="mt-3">
+				<label class="label py-1" for="mountMode">
+					<span class="label-text">API Variant</span>
+				</label>
+				<select id="mountMode" class="select-bordered select select-sm" bind:value={mountMode}>
+					<option value="nzbdav">NZBDav</option>
+					<option value="altmount">Altmount</option>
+				</select>
+				<div class="label py-1">
+					<span class="label-text-alt text-xs text-base-content/60">
+						Select the API variant to tailor the connection test.
+					</span>
 				</div>
 			</div>
 		{/if}
@@ -225,7 +248,7 @@
 	</div>
 
 	<!-- Temp Downloads Path Mapping (SABnzbd only) -->
-	{#if isSabnzbd}
+	{#if isSabnzbd && !isNzbMount}
 		<div class="rounded-lg bg-base-200/50 p-3">
 			<div class="mb-2 text-xs font-medium text-base-content/80">Temporary Download Folder</div>
 

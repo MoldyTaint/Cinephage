@@ -67,6 +67,17 @@ export const clientDefinitions: DownloadClientDefinition[] = [
 		supportsSeedingLimits: false
 	},
 	{
+		id: 'nzb-mount',
+		name: 'NZB-Mount',
+		description:
+			'SABnzbd-compatible NZB mount API for streaming via virtual filesystem (NZBDav/Altmount)',
+		defaultPort: 3000,
+		protocol: 'usenet',
+		supportsCategories: true,
+		supportsPriority: true,
+		supportsSeedingLimits: false
+	},
+	{
 		id: 'nzbget',
 		name: 'NZBGet',
 		description: 'Lightweight, high-performance Usenet downloader',

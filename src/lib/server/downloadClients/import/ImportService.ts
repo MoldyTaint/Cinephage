@@ -75,6 +75,11 @@ export interface ImportJobResult {
 	error?: string;
 }
 
+interface ImportableFileOptions {
+	allowStrmSmall?: boolean;
+	preferNonStrm?: boolean;
+}
+
 /**
  * Import Service
  *
@@ -230,6 +235,16 @@ export class ImportService extends EventEmitter {
 			};
 		}
 
+		// Load download client for import options (if available)
+		const [client] = queueItem.downloadClientId
+			? await db
+					.select()
+					.from(downloadClients)
+					.where(eq(downloadClients.id, queueItem.downloadClientId))
+					.limit(1)
+			: [];
+		const importOptions = this.getImportOptions(client);
+
 		// Create ImportWorker for tracking
 		const mediaType = queueItem.movieId ? 'movie' : 'episode';
 		const worker = new ImportWorker({
@@ -262,9 +277,9 @@ export class ImportService extends EventEmitter {
 			// Determine what to import based on linked media
 			let result: ImportJobResult;
 			if (queueItem.movieId) {
-				result = await this.importMovie(queueItem, worker);
+				result = await this.importMovie(queueItem, worker, importOptions);
 			} else if (queueItem.seriesId) {
-				result = await this.importSeries(queueItem, worker);
+				result = await this.importSeries(queueItem, worker, importOptions);
 			} else {
 				throw new Error('No linked movie or series');
 			}
@@ -302,7 +317,8 @@ export class ImportService extends EventEmitter {
 	 */
 	private async importMovie(
 		queueItem: typeof downloadQueue.$inferSelect,
-		worker: ImportWorker
+		worker: ImportWorker,
+		importOptions: ImportableFileOptions
 	): Promise<ImportJobResult> {
 		const result: ImportJobResult = {
 			success: false,
@@ -355,7 +371,7 @@ export class ImportService extends EventEmitter {
 		}
 
 		// Find video files in download
-		const videoFiles = await this.findImportableFiles(downloadPath);
+		const videoFiles = await this.findImportableFiles(downloadPath, importOptions);
 
 		if (videoFiles.length === 0) {
 			result.error = 'No video files found in download';
@@ -366,7 +382,17 @@ export class ImportService extends EventEmitter {
 		worker.setTotalFiles(1); // Movies typically have 1 main file
 
 		// For movies, typically take the largest file
-		const mainFile = videoFiles.sort((a, b) => b.size - a.size)[0];
+		const mainFile = await this.resolveImportFile(
+			videoFiles.sort((a, b) => b.size - a.size)[0],
+			downloadPath,
+			importOptions
+		);
+
+		if (!mainFile) {
+			result.error = 'No importable files found in download';
+			await downloadMonitor.markFailed(queueItem.id, result.error);
+			return result;
+		}
 
 		// Build destination path
 		const movieFolder = join(rootFolder.path, movie.path);
@@ -554,7 +580,8 @@ export class ImportService extends EventEmitter {
 	 */
 	private async importSeries(
 		queueItem: typeof downloadQueue.$inferSelect,
-		worker: ImportWorker
+		worker: ImportWorker,
+		importOptions: ImportableFileOptions
 	): Promise<ImportJobResult> {
 		const result: ImportJobResult = {
 			success: false,
@@ -611,7 +638,7 @@ export class ImportService extends EventEmitter {
 		}
 
 		// Find video files
-		const videoFiles = await this.findImportableFiles(downloadPath);
+		const videoFiles = await this.findImportableFiles(downloadPath, importOptions);
 
 		if (videoFiles.length === 0) {
 			result.error = 'No video files found in download';
@@ -626,8 +653,27 @@ export class ImportService extends EventEmitter {
 
 		for (const videoFile of videoFiles) {
 			try {
+				const resolvedFile = await this.resolveImportFile(videoFile, downloadPath, importOptions);
+				if (!resolvedFile) {
+					const errorMessage = 'Source file not found';
+					result.failedFiles.push({
+						success: false,
+						sourcePath: videoFile.path,
+						error: errorMessage
+					});
+					worker.fileProcessed(basename(videoFile.path), false, errorMessage);
+					logger.warn('Failed to import episode file', {
+						seriesId: seriesData.id,
+						seriesTitle: seriesData.title,
+						sourcePath: videoFile.path,
+						error: errorMessage,
+						category: 'imports'
+					});
+					continue;
+				}
+
 				const importResult = await this.importEpisodeFile(
-					videoFile,
+					resolvedFile,
 					seriesData,
 					rootFolder,
 					queueItem
@@ -635,13 +681,16 @@ export class ImportService extends EventEmitter {
 
 				if (importResult.success) {
 					result.importedFiles.push(importResult);
-					result.totalSize += videoFile.size;
+					result.totalSize += resolvedFile.size;
 					if (importResult.fileId) {
 						importedFileIds.push(importResult.fileId);
 					}
-					worker.fileProcessed(basename(videoFile.path), true);
+					worker.fileProcessed(basename(resolvedFile.path), true);
 					if (importResult.wasUpgrade) {
-						worker.upgrade('previous version', basename(importResult.destPath || videoFile.path));
+						worker.upgrade(
+							'previous version',
+							basename(importResult.destPath || resolvedFile.path)
+						);
 					}
 				} else {
 					result.failedFiles.push(importResult);
@@ -907,7 +956,8 @@ export class ImportService extends EventEmitter {
 	 * Find importable video files in a directory
 	 */
 	private async findImportableFiles(
-		downloadPath: string
+		downloadPath: string,
+		options: ImportableFileOptions
 	): Promise<Array<{ path: string; size: number }>> {
 		const files: Array<{ path: string; size: number }> = [];
 
@@ -916,7 +966,7 @@ export class ImportService extends EventEmitter {
 
 			if (stats.isFile()) {
 				// Single file download
-				if (this.isImportableFile(downloadPath, stats.size)) {
+				if (this.isImportableFile(downloadPath, stats.size, options)) {
 					files.push({ path: downloadPath, size: stats.size });
 				}
 			} else if (stats.isDirectory()) {
@@ -926,7 +976,7 @@ export class ImportService extends EventEmitter {
 				for (const filePath of videoFiles) {
 					try {
 						const fileStats = await stat(filePath);
-						if (this.isImportableFile(filePath, fileStats.size)) {
+						if (this.isImportableFile(filePath, fileStats.size, options)) {
 							files.push({ path: filePath, size: fileStats.size });
 						}
 					} catch {
@@ -941,20 +991,74 @@ export class ImportService extends EventEmitter {
 			});
 		}
 
+		if (options.preferNonStrm) {
+			const hasNonStrm = files.some((file) => extname(file.path).toLowerCase() !== '.strm');
+			if (hasNonStrm) {
+				return files.filter((file) => extname(file.path).toLowerCase() !== '.strm');
+			}
+		}
+
 		return files;
+	}
+
+	private getImportOptions(client?: typeof downloadClients.$inferSelect): ImportableFileOptions {
+		const isNzbMount = client?.implementation === 'nzb-mount';
+		return {
+			allowStrmSmall: isNzbMount,
+			preferNonStrm: isNzbMount
+		};
+	}
+
+	private async resolveImportFile(
+		file: { path: string; size: number },
+		downloadPath: string,
+		options: ImportableFileOptions
+	): Promise<{ path: string; size: number } | null> {
+		if (await fileExists(file.path)) {
+			return file;
+		}
+
+		if (!options.allowStrmSmall) {
+			return null;
+		}
+
+		const ext = extname(file.path).toLowerCase();
+		if (ext !== '.strm') {
+			return null;
+		}
+
+		const refreshed = await this.findImportableFiles(downloadPath, options);
+		const candidate =
+			refreshed.find((item) => extname(item.path).toLowerCase() === '.strm') ?? refreshed[0];
+
+		if (!candidate) {
+			return null;
+		}
+
+		logger.debug('[ImportService] Retrying missing .strm file with refreshed scan', {
+			originalPath: file.path,
+			candidatePath: candidate.path,
+			downloadPath
+		});
+
+		return (await fileExists(candidate.path)) ? candidate : null;
 	}
 
 	/**
 	 * Check if a file should be imported
 	 */
-	private isImportableFile(filePath: string, size: number): boolean {
+	private isImportableFile(
+		filePath: string,
+		size: number,
+		options: ImportableFileOptions
+	): boolean {
 		// Check size
-		if (size < DOWNLOAD.MIN_IMPORT_SIZE_BYTES) {
+		const ext = extname(filePath).toLowerCase();
+		if (!(options.allowStrmSmall && ext === '.strm') && size < DOWNLOAD.MIN_IMPORT_SIZE_BYTES) {
 			return false;
 		}
 
 		// Check extension
-		const ext = extname(filePath).toLowerCase();
 		if (!VIDEO_EXTENSIONS.includes(ext)) {
 			return false;
 		}

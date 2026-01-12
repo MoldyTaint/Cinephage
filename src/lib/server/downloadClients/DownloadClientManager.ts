@@ -18,6 +18,7 @@ import type {
 import { QBittorrentClient } from './qbittorrent/QBittorrentClient';
 import { SABnzbdClient, type SABnzbdConfig } from './sabnzbd';
 import { NZBGetClient } from './nzbget';
+import { NZBMountClient } from './nzbmount/NZBMountClient';
 
 /**
  * Protocol type for download clients.
@@ -34,6 +35,7 @@ const IMPLEMENTATION_PROTOCOL_MAP: Record<string, DownloadClientProtocol> = {
 	rtorrent: 'torrent',
 	aria2: 'torrent',
 	sabnzbd: 'usenet',
+	'nzb-mount': 'usenet',
 	nzbget: 'usenet'
 };
 
@@ -48,6 +50,7 @@ export interface DownloadClientInput {
 	port: number;
 	useSsl?: boolean;
 	urlBase?: string | null;
+	mountMode?: 'nzbdav' | 'altmount' | null;
 	username?: string | null;
 	password?: string | null;
 	movieCategory?: string;
@@ -125,6 +128,7 @@ export class DownloadClientManager {
 			port: input.port,
 			useSsl: input.useSsl ?? false,
 			urlBase: input.urlBase ?? null,
+			mountMode: input.mountMode ?? null,
 			username: input.username,
 			password: input.password,
 			movieCategory: input.movieCategory ?? 'movies',
@@ -173,6 +177,7 @@ export class DownloadClientManager {
 		if (updates.port !== undefined) updateData.port = updates.port;
 		if (updates.useSsl !== undefined) updateData.useSsl = updates.useSsl;
 		if (updates.urlBase !== undefined) updateData.urlBase = updates.urlBase;
+		if (updates.mountMode !== undefined) updateData.mountMode = updates.mountMode;
 		if (updates.username !== undefined) updateData.username = updates.username;
 		// Only update password if explicitly provided with a non-empty value
 		// (null or empty string means "keep existing password")
@@ -256,10 +261,14 @@ export class DownloadClientManager {
 			port: clientConfig.port,
 			useSsl: clientConfig.useSsl,
 			urlBase: clientConfig.urlBase ?? null,
+			mountMode: clientConfig.mountMode ?? null,
 			username: clientConfig.username,
 			password: clientConfig.password,
 			implementation: clientConfig.implementation,
-			apiKey: clientConfig.implementation === 'sabnzbd' ? clientConfig.password : undefined
+			apiKey:
+				clientConfig.implementation === 'sabnzbd' || clientConfig.implementation === 'nzb-mount'
+					? clientConfig.password
+					: undefined
 		});
 	}
 
@@ -281,11 +290,15 @@ export class DownloadClientManager {
 			port: config.port,
 			useSsl: config.useSsl,
 			urlBase: config.urlBase ?? null,
+			mountMode: config.mountMode ?? null,
 			username: config.username,
 			password: config.password,
 			implementation: config.implementation,
-			// For SABnzbd, the API key is stored in the password field
-			apiKey: config.implementation === 'sabnzbd' ? config.password : undefined
+			// For SABnzbd/NZB-Mount, the API key is stored in the password field
+			apiKey:
+				config.implementation === 'sabnzbd' || config.implementation === 'nzb-mount'
+					? config.password
+					: undefined
 		});
 
 		if (instance) {
@@ -365,6 +378,8 @@ export class DownloadClientManager {
 
 			case 'nzbget':
 				return new NZBGetClient(config);
+			case 'nzb-mount':
+				return new NZBMountClient(config);
 
 			// Future implementations
 			// case 'transmission':
@@ -380,6 +395,9 @@ export class DownloadClientManager {
 	 * Convert database row to DownloadClient (without password).
 	 */
 	private rowToClient(row: typeof downloadClientsTable.$inferSelect): DownloadClient {
+		const mountMode =
+			row.mountMode === 'nzbdav' || row.mountMode === 'altmount' ? row.mountMode : null;
+
 		return {
 			id: row.id,
 			name: row.name,
@@ -389,6 +407,7 @@ export class DownloadClientManager {
 			port: row.port,
 			useSsl: !!row.useSsl,
 			urlBase: row.urlBase ?? null,
+			mountMode,
 			username: row.username,
 			hasPassword: !!row.password,
 			movieCategory: row.movieCategory ?? 'movies',

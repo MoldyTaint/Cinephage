@@ -6,6 +6,24 @@
 	}
 
 	let { series }: Props = $props();
+
+	const seriesStoragePath = $derived.by(() => {
+		const rootPath = series.rootFolderPath ?? '';
+		const relativePath = series.path ?? '';
+
+		if (!rootPath) {
+			return relativePath;
+		}
+
+		if (!relativePath) {
+			return rootPath;
+		}
+
+		const normalizedRoot = rootPath.endsWith('/') ? rootPath.slice(0, -1) : rootPath;
+		const normalizedRelative = relativePath.startsWith('/') ? relativePath.slice(1) : relativePath;
+
+		return `${normalizedRoot}/${normalizedRelative}`;
+	});
 </script>
 
 <div class="space-y-6">
@@ -100,7 +118,7 @@
 			<div>
 				<dt class="text-base-content/60">Path</dt>
 				<dd class="mt-1 font-mono text-xs break-all">
-					{series.rootFolderPath}{series.path}
+					{seriesStoragePath}
 				</dd>
 			</div>
 			<div class="flex justify-between">

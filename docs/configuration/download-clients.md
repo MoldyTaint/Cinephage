@@ -1,6 +1,6 @@
 # Download Clients
 
-Cinephage supports three download clients for grabbing releases from indexers.
+Cinephage supports four download clients for grabbing releases from indexers.
 
 ---
 
@@ -11,6 +11,7 @@ Cinephage supports three download clients for grabbing releases from indexers.
 | qBittorrent | Torrent  | Popular open-source torrent client |
 | SABnzbd     | Usenet   | Python-based usenet downloader     |
 | NZBGet      | Usenet   | Efficient C++ usenet downloader    |
+| NZB-Mount   | Usenet   | SABnzbd-compatible NZB mount API   |
 
 ---
 
@@ -94,6 +95,30 @@ SABnzbd is recommended for usenet downloads.
 5. Click **Test Connection**
 6. Save
 
+### SABnzbd Path Mapping Best Practices
+
+For best compatibility with Cinephage imports:
+
+- Set the **Completed Download Folder** and **Temporary Download Folder** client paths in Cinephage to match the exact paths configured in **SABnzbd > Config > Folders**.
+- In **SABnzbd > Config > Categories**, map each category to the intended output subfolder (for example, `movies` and `tv`) so the completed path matches your Cinephage category names.
+
+#### Example
+
+SABnzbd settings:
+
+- **Completed Download Folder:** `/downloads/complete`
+- **Temporary Download Folder:** `/downloads/incomplete`
+- **Categories:**
+  - `movies` -> `movies`
+  - `tv` -> `tv`
+
+Cinephage path mapping:
+
+| Folder Type | Client Path             | Local Path                |
+| ----------- | ----------------------- | ------------------------- |
+| Completed   | `/downloads/complete`   | `/mnt/sabnzbd/complete`   |
+| Temporary   | `/downloads/incomplete` | `/mnt/sabnzbd/incomplete` |
+
 ### SABnzbd Category Setup
 
 Create a category for Cinephage downloads:
@@ -102,6 +127,72 @@ Create a category for Cinephage downloads:
 2. Add a new category named `cinephage`
 3. Set the output folder path
 4. Save
+
+---
+
+## NZB-Mount Setup
+
+NZB-Mount is a SABnzbd-compatible API for NZB mounts (NZBDav/Altmount). It exposes a completed path that Cinephage imports from (typically `.strm` files or symlinked media).
+
+### Get API Key
+
+1. Open your NZB-Mount web interface
+2. Locate the API key for SABnzbd compatibility
+
+### Add to Cinephage
+
+1. Navigate to **Settings > Integrations > Download Clients**
+2. Click **Add Download Client**
+3. Select **NZB-Mount**
+4. Configure:
+
+| Setting     | Value                            |
+| ----------- | -------------------------------- |
+| Name        | NZB-Mount (or custom name)       |
+| Host        | `localhost` or IP address        |
+| Port        | `3000` (or your configured port) |
+| API Key     | Your NZB-Mount API key           |
+| API Variant | NZBDav or Altmount               |
+| Category    | `cinephage` (optional)           |
+
+5. Click **Test Connection**
+6. Save
+
+### Altmount Symlink Path Mapping
+
+When using **Altmount** with the import strategy set to **symlinks**, map the **Client Path** to the symlink base directory rather than the completed folder. This ensures Cinephage resolves the symlinked content correctly.
+
+Example:
+
+- Altmount **Complete directory**: `/complete`
+- Altmount **Symlink import directory**: `/symlinks`
+- RClone mount path: `/mnt/altmountrem`
+- Cinephage path mapping:
+
+| Client Path | Local Path         |
+| ----------- | ------------------ |
+| `/symlinks` | `/mnt/altmountrem` |
+
+Also enable **Preserve symlinks (for NZBDav/rclone mounts)** on the destination root folder in **Settings > General**, so Cinephage recreates symlinks in the media folder instead of copying the target file. This applies to both NZBDav and Altmount when using the symlink import strategy.
+
+Best practice: avoid using the same directory name for both the symlink import directory and the complete directory to prevent duplicate path segments during import.
+
+### Altmount STRM Import Path Mapping
+
+When using **Altmount** with the import strategy set to **STRM files**, avoid writing STRM files directly to a root folder. Due to how Altmount reports completed paths, place STRM files under a subfolder and map the base mount path in Cinephage.
+
+Example:
+
+- Altmount mount: `/mnt/altmount:/altmount/complete`
+- Altmount **STRM directory**: `/altmount/complete`
+- Altmount **Complete directory**: `/complete`
+- Cinephage path mapping:
+
+| Client Path          | Local Path      |
+| -------------------- | --------------- |
+| `/altmount/complete` | `/mnt/altmount` |
+
+Warning: RClone must be disabled in Altmount when using the STRM import strategy.
 
 ---
 
@@ -157,13 +248,17 @@ When your download client and Cinephage see files at different paths, configure 
    - **Local Path**: Path as seen by Cinephage
 4. Save
 
+### Important for NZB-Mount and SABnzbd
+
+If the client reports a completed path that already includes a category subfolder (e.g., `/completed-downloads/movies`), make sure the **Client Path** in Cinephage matches the full path reported by the client. This prevents duplicated path segments during import.
+
 ### Example
 
-If qBittorrent saves to `/downloads/movies` but Cinephage sees `/media/movies`:
+If NZB-Mount or SABnzbd reports `/completed-downloads/movies` but Cinephage sees `/mnt/nzbdav/completed-downloads/movies`:
 
-| Remote Path  | Local Path |
-| ------------ | ---------- |
-| `/downloads` | `/media`   |
+| Remote Path                   | Local Path                               |
+| ----------------------------- | ---------------------------------------- |
+| `/completed-downloads/movies` | `/mnt/nzbdav/completed-downloads/movies` |
 
 ---
 

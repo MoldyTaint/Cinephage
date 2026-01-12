@@ -299,7 +299,11 @@ describe('Path Construction Fallback (Issue #51 Fix)', () => {
 		return true;
 	}
 
-	function resolveOutputPath(item: SabnzbdHistoryItem, config: SabnzbdConfig): string {
+	function resolveOutputPath(
+		item: SabnzbdHistoryItem,
+		config: SabnzbdConfig,
+		normalizeCategoryDir: boolean
+	): string {
 		const baseDir = config.misc.complete_dir;
 
 		// Use storage if valid
@@ -319,9 +323,21 @@ describe('Path Construction Fallback (Issue #51 Fix)', () => {
 		let outputDir = baseDir;
 
 		if (category?.dir) {
-			outputDir = category.dir.startsWith('/')
-				? category.dir
-				: `${baseDir.replace(/\/+$/, '')}/${category.dir}`;
+			if (category.dir.startsWith('/')) {
+				outputDir = category.dir;
+			} else if (normalizeCategoryDir) {
+				const normalizedBase = baseDir.replace(/\/+$/, '');
+				const baseName = normalizedBase.split('/').pop();
+				let relativeDir = category.dir.replace(/^\/+/, '');
+
+				if (baseName && relativeDir.startsWith(`${baseName}/`)) {
+					relativeDir = relativeDir.slice(baseName.length + 1);
+				}
+
+				outputDir = relativeDir ? `${normalizedBase}/${relativeDir}` : normalizedBase;
+			} else {
+				outputDir = `${baseDir.replace(/\/+$/, '')}/${category.dir}`;
+			}
 		}
 
 		return `${outputDir.replace(/\/+$/, '')}/${item.name}`;
@@ -339,7 +355,7 @@ describe('Path Construction Fallback (Issue #51 Fix)', () => {
 			categories: []
 		};
 
-		expect(resolveOutputPath(item, config)).toBe('/mnt/sabnzbd/Movie.2024');
+		expect(resolveOutputPath(item, config, false)).toBe('/mnt/sabnzbd/Movie.2024');
 	});
 
 	it('should construct path from base + name when storage is empty', () => {
@@ -354,7 +370,7 @@ describe('Path Construction Fallback (Issue #51 Fix)', () => {
 			categories: []
 		};
 
-		expect(resolveOutputPath(item, config)).toBe('/mnt/sabnzbd/Movie.2024');
+		expect(resolveOutputPath(item, config, false)).toBe('/mnt/sabnzbd/Movie.2024');
 	});
 
 	it('should construct path from base + name when storage equals base dir', () => {
@@ -369,7 +385,7 @@ describe('Path Construction Fallback (Issue #51 Fix)', () => {
 			categories: []
 		};
 
-		expect(resolveOutputPath(item, config)).toBe('/mnt/sabnzbd/Movie.2024');
+		expect(resolveOutputPath(item, config, false)).toBe('/mnt/sabnzbd/Movie.2024');
 	});
 
 	it('should use category dir when set (relative path)', () => {
@@ -384,7 +400,7 @@ describe('Path Construction Fallback (Issue #51 Fix)', () => {
 			categories: [{ name: 'movies', dir: 'films' }]
 		};
 
-		expect(resolveOutputPath(item, config)).toBe('/mnt/sabnzbd/films/Movie.2024');
+		expect(resolveOutputPath(item, config, false)).toBe('/mnt/sabnzbd/films/Movie.2024');
 	});
 
 	it('should use category dir when set (absolute path)', () => {
@@ -399,7 +415,7 @@ describe('Path Construction Fallback (Issue #51 Fix)', () => {
 			categories: [{ name: 'movies', dir: '/custom/films' }]
 		};
 
-		expect(resolveOutputPath(item, config)).toBe('/custom/films/Movie.2024');
+		expect(resolveOutputPath(item, config, false)).toBe('/custom/films/Movie.2024');
 	});
 
 	it('should use alternative path field if storage is invalid but path is valid', () => {
@@ -415,7 +431,24 @@ describe('Path Construction Fallback (Issue #51 Fix)', () => {
 			categories: []
 		};
 
-		expect(resolveOutputPath(item, config)).toBe('/mnt/sabnzbd/alternate/Movie.2024');
+		expect(resolveOutputPath(item, config, false)).toBe('/mnt/sabnzbd/alternate/Movie.2024');
+	});
+
+	it('should normalize category dir when enabled', () => {
+		const item: SabnzbdHistoryItem = {
+			nzo_id: '1',
+			name: 'Movie.2024',
+			storage: '',
+			category: 'movies'
+		};
+		const config: SabnzbdConfig = {
+			misc: { complete_dir: '/mnt/nzbdav/completed-downloads' },
+			categories: [{ name: 'movies', dir: 'completed-downloads/movies' }]
+		};
+
+		expect(resolveOutputPath(item, config, true)).toBe(
+			'/mnt/nzbdav/completed-downloads/movies/Movie.2024'
+		);
 	});
 });
 

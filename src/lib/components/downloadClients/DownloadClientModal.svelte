@@ -77,6 +77,7 @@
 	let useSsl = $state(false);
 	let urlBase = $state('');
 	let urlBaseEnabled = $state(false);
+	let mountMode = $state<'nzbdav' | 'altmount'>('nzbdav');
 	let username = $state('');
 	let password = $state('');
 
@@ -116,15 +117,19 @@
 	);
 	// Check if selected client uses API key auth (SABnzbd)
 	const usesApiKey = $derived(
-		selectedDefinition?.protocol === 'usenet' && selectedDefinition?.id === 'sabnzbd'
+		selectedDefinition?.protocol === 'usenet' &&
+			['sabnzbd', 'nzb-mount'].includes(selectedDefinition?.id ?? '')
 	);
 	// Check if this is an NNTP server
 	const isNntpServer = $derived(implementation === 'nntp');
+	const isNzbMount = $derived(implementation === 'nzb-mount');
 	const urlBasePlaceholder = $derived(
 		(() => {
 			switch (selectedDefinition?.id) {
 				case 'sabnzbd':
 					return 'sabnzbd';
+				case 'nzb-mount':
+					return 'nzbmount';
 				case 'nzbget':
 					return 'nzbget';
 				case 'qbittorrent':
@@ -157,6 +162,7 @@
 			const clientUrlBase = (client as DownloadClient | undefined)?.urlBase ?? '';
 			urlBase = clientUrlBase;
 			urlBaseEnabled = !!clientUrlBase;
+			mountMode = (client as DownloadClient | undefined)?.mountMode ?? 'nzbdav';
 			username = client?.username ?? '';
 			password = '';
 
@@ -194,6 +200,9 @@
 				// NNTP defaults to SSL on
 				if (newImpl === 'nntp') {
 					useSsl = true;
+				}
+				if (newImpl === 'nzb-mount') {
+					mountMode = 'nzbdav';
 				}
 			}
 		}
@@ -235,6 +244,7 @@
 			port,
 			useSsl,
 			urlBase: urlBaseEnabled ? normalizedUrlBase || null : null,
+			mountMode: implementation === 'nzb-mount' ? mountMode : null,
 			username: username || null,
 			password: password || null,
 			movieCategory,
@@ -429,6 +439,8 @@
 									bind:urlBaseEnabled
 									bind:urlBase
 									{urlBasePlaceholder}
+									showMountMode={isNzbMount}
+									bind:mountMode
 								/>
 							{/if}
 
@@ -529,6 +541,7 @@
 									bind:tempPathLocal
 									bind:tempPathRemote
 									isSabnzbd={usesApiKey}
+									{isNzbMount}
 									onBrowse={openFolderBrowser}
 								/>
 							{/if}

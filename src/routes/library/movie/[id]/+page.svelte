@@ -55,6 +55,24 @@
 		return defaultProfile ? `${defaultProfile.name} (Default)` : null;
 	});
 
+	const movieStoragePath = $derived.by(() => {
+		const rootPath = data.movie.rootFolderPath ?? '';
+		const relativePath = data.movie.path ?? '';
+
+		if (!rootPath) {
+			return relativePath;
+		}
+
+		if (!relativePath) {
+			return rootPath;
+		}
+
+		const normalizedRoot = rootPath.endsWith('/') ? rootPath.slice(0, -1) : rootPath;
+		const normalizedRelative = relativePath.startsWith('/') ? relativePath.slice(1) : relativePath;
+
+		return `${normalizedRoot}/${normalizedRelative}`;
+	});
+
 	// Handlers
 	async function handleMonitorToggle(newValue: boolean) {
 		isSaving = true;
@@ -404,7 +422,7 @@
 					<div>
 						<dt class="text-base-content/60">Path</dt>
 						<dd class="mt-1 font-mono text-xs break-all">
-							{data.movie.rootFolderPath}{data.movie.path}
+							{movieStoragePath}
 						</dd>
 					</div>
 				</dl>

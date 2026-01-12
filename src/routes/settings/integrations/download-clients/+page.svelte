@@ -109,6 +109,7 @@
 						port: dcFormData.port,
 						useSsl: dcFormData.useSsl,
 						urlBase: dcFormData.urlBase,
+						mountMode: dcFormData.mountMode,
 						username: dcFormData.username || null,
 						password: dcFormData.password || null
 					})

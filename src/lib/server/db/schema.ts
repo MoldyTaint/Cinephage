@@ -402,6 +402,7 @@ export const downloadClients = sqliteTable('download_clients', {
 	username: text('username'),
 	password: text('password'),
 	urlBase: text('url_base'),
+	mountMode: text('mount_mode'),
 
 	// Category settings (separate for movie/tv)
 	movieCategory: text('movie_category').default('movies'),

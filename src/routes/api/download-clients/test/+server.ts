@@ -36,10 +36,14 @@ export const POST: RequestHandler = async ({ request }) => {
 			port: validated.port,
 			useSsl: validated.useSsl,
 			urlBase: validated.urlBase,
+			mountMode: validated.mountMode,
 			username: validated.username,
 			password: validated.password,
 			implementation: validated.implementation,
-			apiKey: validated.implementation === 'sabnzbd' ? validated.password : undefined
+			apiKey:
+				validated.implementation === 'sabnzbd' || validated.implementation === 'nzb-mount'
+					? validated.password
+					: undefined
 		});
 
 		return json(testResult);
