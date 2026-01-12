@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseRelease } from './ReleaseParser';
+import { parseRelease, extractExternalIds } from './ReleaseParser';
 import { isTvRelease } from './patterns/episode';
 import { extractResolution } from './patterns/resolution';
 import { extractSource } from './patterns/source';
@@ -384,6 +384,264 @@ describe('ReleaseParser', () => {
 
 			expect(result.cleanTitle).toContain('Demon Slayer');
 			expect(result.resolution).toBe('1080p');
+		});
+	});
+
+	describe('extractExternalIds', () => {
+		describe('IMDB ID extraction', () => {
+			it('should extract IMDB ID from curly brace format {imdb-tt1234567}', () => {
+				const result = extractExternalIds('Movie {imdb-tt1234567}');
+				expect(result.imdbId).toBe('tt1234567');
+			});
+
+			it('should extract IMDB ID from square bracket format [imdb-tt1234567]', () => {
+				const result = extractExternalIds('Movie [imdb-tt1234567]');
+				expect(result.imdbId).toBe('tt1234567');
+			});
+
+			it('should extract IMDB ID from Jellyfin format [imdbid-tt1234567]', () => {
+				const result = extractExternalIds('The Rats A Witchers Tale (2025) [imdbid-tt28283547]');
+				expect(result.imdbId).toBe('tt28283547');
+			});
+
+			it('should extract IMDB ID from Jellyfin equals format [imdbid=tt1234567]', () => {
+				const result = extractExternalIds('Movie (2023) [imdbid=tt9876543]');
+				expect(result.imdbId).toBe('tt9876543');
+			});
+
+			it('should extract IMDB ID from dot-separated format .tt1234567.', () => {
+				const result = extractExternalIds('Movie.2023.tt0068646.1080p.BluRay.mkv');
+				expect(result.imdbId).toBe('tt0068646');
+			});
+
+			it('should extract bare IMDB ID with 7+ digits', () => {
+				const result = extractExternalIds('Movie 2023 tt1234567 1080p');
+				expect(result.imdbId).toBe('tt1234567');
+			});
+
+			it('should extract IMDB ID with 8 digits', () => {
+				const result = extractExternalIds('Movie tt12345678');
+				expect(result.imdbId).toBe('tt12345678');
+			});
+
+			it('should be case insensitive for IMDB formats', () => {
+				const result1 = extractExternalIds('Movie {IMDB-TT1234567}');
+				expect(result1.imdbId).toBe('TT1234567');
+
+				const result2 = extractExternalIds('Movie [IMDBID-TT9876543]');
+				expect(result2.imdbId).toBe('TT9876543');
+			});
+
+			it('should extract from full file path with folder name', () => {
+				const result = extractExternalIds(
+					'/media/movies/The Godfather (1972) [imdbid-tt0068646]/The Godfather.mkv'
+				);
+				expect(result.imdbId).toBe('tt0068646');
+			});
+		});
+
+		describe('TMDB ID extraction', () => {
+			it('should extract TMDB ID from curly brace format {tmdb-12345}', () => {
+				const result = extractExternalIds('Inception {tmdb-27205} (2010)');
+				expect(result.tmdbId).toBe(27205);
+			});
+
+			it('should extract TMDB ID from square bracket format [tmdb-12345]', () => {
+				const result = extractExternalIds('Movie [tmdb-12345]');
+				expect(result.tmdbId).toBe(12345);
+			});
+
+			it('should extract TMDB ID from [tmdbid-12345] format', () => {
+				const result = extractExternalIds('Movie [tmdbid-54321]');
+				expect(result.tmdbId).toBe(54321);
+			});
+
+			it('should extract TMDB ID from [tmdbid=12345] format', () => {
+				const result = extractExternalIds('Movie [tmdbid=99999]');
+				expect(result.tmdbId).toBe(99999);
+			});
+
+			it('should extract TMDB ID from dot-separated format .tmdbid-12345.', () => {
+				const result = extractExternalIds('Movie.2023.tmdbid-12345.1080p.mkv');
+				expect(result.tmdbId).toBe(12345);
+			});
+
+			it('should extract TMDB ID from simple tmdb-12345 format', () => {
+				const result = extractExternalIds('Movie tmdb-67890');
+				expect(result.tmdbId).toBe(67890);
+			});
+
+			it('should be case insensitive for TMDB formats', () => {
+				const result = extractExternalIds('Movie {TMDB-12345}');
+				expect(result.tmdbId).toBe(12345);
+			});
+		});
+
+		describe('TVDB ID extraction', () => {
+			it('should extract TVDB ID from curly brace format {tvdb-81189}', () => {
+				const result = extractExternalIds('Breaking Bad {tvdb-81189}/Season 01/');
+				expect(result.tvdbId).toBe(81189);
+			});
+
+			it('should extract TVDB ID from square bracket format [tvdb-81189]', () => {
+				const result = extractExternalIds('Show [tvdb-12345]');
+				expect(result.tvdbId).toBe(12345);
+			});
+
+			it('should extract TVDB ID from [tvdbid-81189] format', () => {
+				const result = extractExternalIds('Show [tvdbid-81189]');
+				expect(result.tvdbId).toBe(81189);
+			});
+
+			it('should extract TVDB ID from [tvdbid=81189] format', () => {
+				const result = extractExternalIds('Show [tvdbid=81189]');
+				expect(result.tvdbId).toBe(81189);
+			});
+
+			it('should extract TVDB ID from dot-separated format .tvdbid-81189.', () => {
+				const result = extractExternalIds('Show.tvdbid-81189.S01E01.mkv');
+				expect(result.tvdbId).toBe(81189);
+			});
+
+			it('should extract TVDB ID from simple tvdb-81189 format', () => {
+				const result = extractExternalIds('Show tvdb-81189');
+				expect(result.tvdbId).toBe(81189);
+			});
+
+			it('should be case insensitive for TVDB formats', () => {
+				const result = extractExternalIds('Show {TVDB-81189}');
+				expect(result.tvdbId).toBe(81189);
+			});
+		});
+
+		describe('Multiple ID extraction', () => {
+			it('should extract all three ID types from a single input', () => {
+				const result = extractExternalIds(
+					'Movie {tmdb-12345} {tvdb-81189} {imdb-tt1234567}'
+				);
+				expect(result.tmdbId).toBe(12345);
+				expect(result.tvdbId).toBe(81189);
+				expect(result.imdbId).toBe('tt1234567');
+			});
+
+			it('should extract TMDB and IMDB when both present', () => {
+				const result = extractExternalIds('Movie {tmdb-12345} [imdbid-tt9876543]');
+				expect(result.tmdbId).toBe(12345);
+				expect(result.imdbId).toBe('tt9876543');
+				expect(result.tvdbId).toBeUndefined();
+			});
+
+			it('should extract TVDB and IMDB when both present', () => {
+				const result = extractExternalIds('Show {tvdb-81189} tt1234567');
+				expect(result.tvdbId).toBe(81189);
+				expect(result.imdbId).toBe('tt1234567');
+				expect(result.tmdbId).toBeUndefined();
+			});
+		});
+
+		describe('Edge cases', () => {
+			it('should NOT match IMDB IDs with less than 7 digits', () => {
+				const result = extractExternalIds('Movie tt123456');
+				expect(result.imdbId).toBeUndefined();
+			});
+
+			it('should return empty object for input with no IDs', () => {
+				const result = extractExternalIds('Just a regular movie title 2023');
+				expect(result.tmdbId).toBeUndefined();
+				expect(result.tvdbId).toBeUndefined();
+				expect(result.imdbId).toBeUndefined();
+			});
+
+			it('should handle empty string input', () => {
+				const result = extractExternalIds('');
+				expect(result.tmdbId).toBeUndefined();
+				expect(result.tvdbId).toBeUndefined();
+				expect(result.imdbId).toBeUndefined();
+			});
+
+			it('should handle input with similar but invalid patterns', () => {
+				const result = extractExternalIds('tmdb_not_valid imdb-invalid tvdb-abc');
+				expect(result.tmdbId).toBeUndefined();
+				expect(result.imdbId).toBeUndefined();
+				expect(result.tvdbId).toBeUndefined();
+			});
+
+			it('should extract first matching ID when multiple of same type present', () => {
+				const result = extractExternalIds('{tmdb-11111} {tmdb-22222}');
+				expect(result.tmdbId).toBe(11111);
+			});
+
+			it('should handle Windows-style paths with backslashes', () => {
+				const result = extractExternalIds(
+					'C:\\Movies\\The Matrix (1999) {tmdb-603}\\The Matrix.mkv'
+				);
+				expect(result.tmdbId).toBe(603);
+			});
+
+			it('should handle IDs at start of string', () => {
+				const result = extractExternalIds('{tmdb-12345} Movie Title');
+				expect(result.tmdbId).toBe(12345);
+			});
+
+			it('should handle IDs at end of string', () => {
+				const result = extractExternalIds('Movie Title {tmdb-12345}');
+				expect(result.tmdbId).toBe(12345);
+			});
+
+			it('should handle underscore separator in tvdb_id format', () => {
+				const result = extractExternalIds('Show tvdb_id=81189');
+				expect(result.tvdbId).toBe(81189);
+			});
+
+			it('should handle tmdbid without separator', () => {
+				const result = extractExternalIds('Movie tmdbid12345');
+				expect(result.tmdbId).toBe(12345);
+			});
+		});
+
+		describe('Real-world paths', () => {
+			it('should extract from Radarr-style path', () => {
+				const result = extractExternalIds(
+					'/media/movies/Inception (2010) {tmdb-27205}/Inception.2010.1080p.BluRay.mkv'
+				);
+				expect(result.tmdbId).toBe(27205);
+			});
+
+			it('should extract from Sonarr-style path', () => {
+				const result = extractExternalIds(
+					'/media/tv/Breaking Bad {tvdb-81189}/Season 01/Breaking.Bad.S01E01.mkv'
+				);
+				expect(result.tvdbId).toBe(81189);
+			});
+
+			it('should extract from Jellyfin-style path', () => {
+				const result = extractExternalIds(
+					'/media/movies/The Rats A Witchers Tale (2025) [imdbid-tt28283547]/movie.mkv'
+				);
+				expect(result.imdbId).toBe('tt28283547');
+			});
+
+			it('should extract from scene release filename', () => {
+				const result = extractExternalIds(
+					'The.Godfather.1972.tt0068646.REMASTERED.1080p.BluRay.x265-RARBG.mkv'
+				);
+				expect(result.imdbId).toBe('tt0068646');
+			});
+
+			it('should extract from path with multiple folder levels', () => {
+				const result = extractExternalIds(
+					'/data/media/movies/Action/The Matrix (1999) {tmdb-603} {imdb-tt0133093}/The.Matrix.1999.2160p.mkv'
+				);
+				expect(result.tmdbId).toBe(603);
+				expect(result.imdbId).toBe('tt0133093');
+			});
+
+			it('should extract from path with special characters in title', () => {
+				const result = extractExternalIds(
+					"/media/movies/Schindler's List (1993) {tmdb-424}/movie.mkv"
+				);
+				expect(result.tmdbId).toBe(424);
+			});
 		});
 	});
 });
