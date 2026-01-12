@@ -29,7 +29,12 @@ describe('ImportService NZB-Mount selection', () => {
 
 			const service = ImportService.getInstance();
 			const files = await (
-				service as unknown as { findImportableFiles: Function }
+				service as unknown as {
+					findImportableFiles: (
+						downloadPath: string,
+						options: { allowStrmSmall: boolean; preferNonStrm: boolean }
+					) => Promise<Array<{ path: string; size: number }>>;
+				}
 			).findImportableFiles(dir, { allowStrmSmall: true, preferNonStrm: true });
 
 			expect(files).toHaveLength(1);
@@ -47,7 +52,12 @@ describe('ImportService NZB-Mount selection', () => {
 
 			const service = ImportService.getInstance();
 			const files = await (
-				service as unknown as { findImportableFiles: Function }
+				service as unknown as {
+					findImportableFiles: (
+						downloadPath: string,
+						options: { allowStrmSmall: boolean; preferNonStrm: boolean }
+					) => Promise<Array<{ path: string; size: number }>>;
+				}
 			).findImportableFiles(dir, { allowStrmSmall: true, preferNonStrm: true });
 
 			expect(files).toHaveLength(1);
@@ -65,7 +75,12 @@ describe('ImportService NZB-Mount selection', () => {
 
 			const service = ImportService.getInstance();
 			const files = await (
-				service as unknown as { findImportableFiles: Function }
+				service as unknown as {
+					findImportableFiles: (
+						downloadPath: string,
+						options: { allowStrmSmall: boolean; preferNonStrm: boolean }
+					) => Promise<Array<{ path: string; size: number }>>;
+				}
 			).findImportableFiles(dir, { allowStrmSmall: false, preferNonStrm: false });
 
 			expect(files).toHaveLength(0);
