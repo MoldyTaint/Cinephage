@@ -192,7 +192,7 @@ Example:
 | -------------------- | --------------- |
 | `/altmount/complete` | `/mnt/altmount` |
 
-Warning: RClone must be disabled in Altmount when using the STRM import strategy.
+Warning: rclone must be disabled in Altmount when using the STRM import strategy.
 
 ---
 
