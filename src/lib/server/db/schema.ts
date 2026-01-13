@@ -718,6 +718,45 @@ export const episodeFiles = sqliteTable('episode_files', {
 	languages: text('languages', { mode: 'json' }).$type<string[]>()
 });
 
+// ============================================================================
+// Alternate Titles - For multi-title search support
+// ============================================================================
+
+/**
+ * Alternate Titles - Stores alternate/translated titles for movies and series.
+ * Used to search with multiple title variants for better results on regional trackers.
+ * Titles can be auto-fetched from TMDB or manually added by users.
+ */
+export const alternateTitles = sqliteTable(
+	'alternate_titles',
+	{
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		// Media type: 'movie' or 'series'
+		mediaType: text('media_type', { enum: ['movie', 'series'] }).notNull(),
+		// Foreign key to movies.id or series.id (text UUID)
+		mediaId: text('media_id').notNull(),
+		// The alternate title
+		title: text('title').notNull(),
+		// Normalized title for matching (lowercase, no special chars)
+		cleanTitle: text('clean_title').notNull(),
+		// Source of this title: 'tmdb' (auto-fetched) or 'user' (manually added)
+		source: text('source', { enum: ['tmdb', 'user'] }).notNull(),
+		// ISO 639-1 language code (e.g., 'en', 'cs', 'de')
+		language: text('language'),
+		// ISO 3166-1 country code (e.g., 'US', 'CZ', 'DE')
+		country: text('country'),
+		// When this title was added
+		createdAt: text('created_at').$defaultFn(() => new Date().toISOString())
+	},
+	(table) => [
+		index('idx_alternate_titles_media').on(table.mediaType, table.mediaId),
+		index('idx_alternate_titles_source').on(table.source)
+	]
+);
+
+export type AlternateTitle = typeof alternateTitles.$inferSelect;
+export type NewAlternateTitle = typeof alternateTitles.$inferInsert;
+
 /**
  * Unmatched Files - Files found on disk that couldn't be auto-matched
  */

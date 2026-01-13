@@ -62,8 +62,9 @@ interface MigrationDefinition {
  * Version 35: Add mount_mode column to download_clients
  * Version 36: Add nzb_segment_cache table for persistent prefetched segments
  * Version 37: Add stream_url_type column to stalker_accounts for tracking URL resolution method
+ * Version 38: Add alternate_titles table for multi-title search support
  */
-export const CURRENT_SCHEMA_VERSION = 37;
+export const CURRENT_SCHEMA_VERSION = 38;
 
 /**
  * All table definitions with CREATE TABLE IF NOT EXISTS
@@ -434,6 +435,18 @@ const TABLE_DEFINITIONS: string[] = [
 		"quality" text,
 		"media_info" text,
 		"languages" text
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS "alternate_titles" (
+		"id" integer PRIMARY KEY AUTOINCREMENT,
+		"media_type" text NOT NULL CHECK ("media_type" IN ('movie', 'series')),
+		"media_id" text NOT NULL,
+		"title" text NOT NULL,
+		"clean_title" text NOT NULL,
+		"source" text NOT NULL CHECK ("source" IN ('tmdb', 'user')),
+		"language" text,
+		"country" text,
+		"created_at" text
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS "unmatched_files" (
@@ -1065,7 +1078,10 @@ const INDEX_DEFINITIONS: string[] = [
 	// Channel lineup backups indexes
 	`CREATE INDEX IF NOT EXISTS "idx_lineup_backups_item" ON "channel_lineup_backups" ("lineup_item_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_lineup_backups_priority" ON "channel_lineup_backups" ("lineup_item_id", "priority")`,
-	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_lineup_backups_unique" ON "channel_lineup_backups" ("lineup_item_id", "channel_id")`
+	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_lineup_backups_unique" ON "channel_lineup_backups" ("lineup_item_id", "channel_id")`,
+	// Alternate titles indexes for multi-title search
+	`CREATE INDEX IF NOT EXISTS "idx_alternate_titles_media" ON "alternate_titles" ("media_type", "media_id")`,
+	`CREATE INDEX IF NOT EXISTS "idx_alternate_titles_source" ON "alternate_titles" ("source")`
 ];
 
 /**
@@ -2816,6 +2832,43 @@ const MIGRATIONS: MigrationDefinition[] = [
 			logger.info(
 				'[SchemaSync] Added stream_url_type column to stalker_accounts for URL resolution tracking'
 			);
+		}
+	},
+	// Version 38: Add alternate_titles table for multi-title search support
+	{
+		version: 38,
+		name: 'add_alternate_titles',
+		apply: (sqlite) => {
+			// Create the alternate_titles table if it doesn't exist
+			if (!tableExists(sqlite, 'alternate_titles')) {
+				sqlite
+					.prepare(
+						`CREATE TABLE "alternate_titles" (
+							"id" integer PRIMARY KEY AUTOINCREMENT,
+							"media_type" text NOT NULL CHECK ("media_type" IN ('movie', 'series')),
+							"media_id" text NOT NULL,
+							"title" text NOT NULL,
+							"clean_title" text NOT NULL,
+							"source" text NOT NULL CHECK ("source" IN ('tmdb', 'user')),
+							"language" text,
+							"country" text,
+							"created_at" text
+						)`
+					)
+					.run();
+
+				// Create indexes for efficient lookup
+				sqlite
+					.prepare(
+						`CREATE INDEX "idx_alternate_titles_media" ON "alternate_titles" ("media_type", "media_id")`
+					)
+					.run();
+				sqlite
+					.prepare(`CREATE INDEX "idx_alternate_titles_source" ON "alternate_titles" ("source")`)
+					.run();
+
+				logger.info('[SchemaSync] Created alternate_titles table for multi-title search support');
+			}
 		}
 	}
 ];

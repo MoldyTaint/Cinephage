@@ -231,6 +231,22 @@ export const tmdb = {
 	},
 
 	/**
+	 * Get alternate titles for a movie
+	 */
+	async getMovieAlternateTitles(tmdbId: number): Promise<MovieAlternateTitlesResponse> {
+		return this.fetch(
+			`/movie/${tmdbId}/alternative_titles`
+		) as Promise<MovieAlternateTitlesResponse>;
+	},
+
+	/**
+	 * Get alternate titles for a TV show
+	 */
+	async getTvAlternateTitles(tmdbId: number): Promise<TvAlternateTitlesResponse> {
+		return this.fetch(`/tv/${tmdbId}/alternative_titles`) as Promise<TvAlternateTitlesResponse>;
+	},
+
+	/**
 	 * Find media by external ID (IMDB or TVDB)
 	 */
 	async findByExternalId(
@@ -405,6 +421,31 @@ export interface ExternalIds {
 	facebook_id: string | null;
 	instagram_id: string | null;
 	twitter_id: string | null;
+}
+
+/**
+ * Single alternate title from TMDB
+ */
+export interface TmdbAlternateTitle {
+	iso_3166_1: string; // Country code (e.g., 'US', 'CZ', 'DE')
+	title: string; // The alternate title
+	type: string; // Type of title (e.g., '', 'DVD title', 'working title')
+}
+
+/**
+ * Movie alternate titles response from TMDB
+ */
+export interface MovieAlternateTitlesResponse {
+	id: number;
+	titles: TmdbAlternateTitle[];
+}
+
+/**
+ * TV alternate titles response from TMDB (uses 'results' instead of 'titles')
+ */
+export interface TvAlternateTitlesResponse {
+	id: number;
+	results: TmdbAlternateTitle[];
 }
 
 /**

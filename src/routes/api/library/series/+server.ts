@@ -14,6 +14,7 @@ import {
 	fetchSeriesExternalIds,
 	triggerSeriesSearch
 } from '$lib/server/library/LibraryAddService.js';
+import { fetchAndStoreSeriesAlternateTitles } from '$lib/server/services/AlternateTitleService.js';
 import { ValidationError } from '$lib/errors';
 import { logger } from '$lib/logging';
 
@@ -224,6 +225,15 @@ export const POST: RequestHandler = async ({ request }) => {
 				languageProfileId
 			})
 			.returning();
+
+		// Fetch and store alternate titles from TMDB (non-blocking)
+		fetchAndStoreSeriesAlternateTitles(newSeries.id, tmdbId).catch((err) => {
+			logger.warn('Failed to fetch alternate titles for series', {
+				seriesId: newSeries.id,
+				tmdbId,
+				error: err instanceof Error ? err.message : String(err)
+			});
+		});
 
 		// Insert seasons and episodes
 		if (tvDetails.seasons && tvDetails.seasons.length > 0) {

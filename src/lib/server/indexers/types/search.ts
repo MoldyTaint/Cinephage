@@ -34,6 +34,12 @@ export interface BaseSearchCriteria {
 	offset?: number;
 	/** Specific indexer IDs to search (empty = all enabled) */
 	indexerIds?: string[];
+	/**
+	 * Multiple titles to search with (for multi-title search).
+	 * Includes primary title, original title, and alternate titles.
+	 * Used for text-based fallback when ID-based search fails.
+	 */
+	searchTitles?: string[];
 }
 
 // =============================================================================

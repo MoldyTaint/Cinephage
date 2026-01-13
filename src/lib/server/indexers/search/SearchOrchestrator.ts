@@ -698,19 +698,119 @@ export class SearchOrchestrator {
 			return { releases, searchMethod: 'id' };
 		}
 
-		// Tier 2: Fall back to text search if we have a query
+		// Tier 2: Fall back to text search with multi-title support
 		// This allows text-only indexers (like 1337x) to participate
-		if (criteria.query) {
-			const textCriteria = createTextOnlyCriteria(criteria);
-			const releases = await indexer.search(textCriteria);
-			return { releases, searchMethod: 'text' };
+		// and searches with multiple titles for better regional tracker coverage
+		const allReleases = await this.executeMultiTitleTextSearch(indexer, criteria);
+
+		if (allReleases.length > 0) {
+			return { releases: allReleases, searchMethod: 'text' };
 		}
 
-		// No IDs supported and no query text - can't search
-		logger.debug('Skipping indexer: no supported IDs and no query text', {
-			indexer: indexer.name
-		});
+		// No results from any title variant
+		if (!criteria.query && (!criteria.searchTitles || criteria.searchTitles.length === 0)) {
+			logger.debug('Skipping indexer: no supported IDs and no query text', {
+				indexer: indexer.name
+			});
+		}
 		return { releases: [], searchMethod: 'text' };
+	}
+
+	/**
+	 * Execute text search with multiple title variants.
+	 * For TV searches, also tries alternative episode formats (1x05 in addition to S01E05).
+	 */
+	private async executeMultiTitleTextSearch(
+		indexer: IIndexer,
+		criteria: SearchCriteria
+	): Promise<ReleaseResult[]> {
+		const allReleases: ReleaseResult[] = [];
+		const seenGuids = new Set<string>();
+
+		// Build list of titles to search
+		const titlesToSearch: string[] = [];
+		if (criteria.searchTitles && criteria.searchTitles.length > 0) {
+			titlesToSearch.push(...criteria.searchTitles);
+		} else if (criteria.query) {
+			titlesToSearch.push(criteria.query);
+		}
+
+		if (titlesToSearch.length === 0) {
+			return [];
+		}
+
+		// For TV searches, build episode format variants
+		const episodeFormats: string[] = [];
+		if (isTvSearch(criteria) && criteria.season !== undefined && criteria.episode !== undefined) {
+			// Standard format: S01E05
+			episodeFormats.push(
+				`S${String(criteria.season).padStart(2, '0')}E${String(criteria.episode).padStart(2, '0')}`
+			);
+			// European format: 1x05
+			episodeFormats.push(`${criteria.season}x${String(criteria.episode).padStart(2, '0')}`);
+			// Compact format: 105 (season + episode as single number)
+			// For S01E05 -> "105", for S10E05 -> "1005"
+			episodeFormats.push(`${criteria.season}${String(criteria.episode).padStart(2, '0')}`);
+		} else if (isTvSearch(criteria) && criteria.season !== undefined) {
+			// Season only format: S01
+			episodeFormats.push(`S${String(criteria.season).padStart(2, '0')}`);
+		}
+
+		// Search with each title variant (limit to 3 titles to avoid excessive queries)
+		for (const title of titlesToSearch.slice(0, 3)) {
+			try {
+				if (episodeFormats.length > 0) {
+					// TV search: try each episode format
+					for (const epFormat of episodeFormats) {
+						const textCriteria = createTextOnlyCriteria({
+							...criteria,
+							query: `${title} ${epFormat}`
+						});
+						const releases = await indexer.search(textCriteria);
+
+						// Add unique releases (dedupe by guid)
+						for (const release of releases) {
+							if (!seenGuids.has(release.guid)) {
+								seenGuids.add(release.guid);
+								allReleases.push(release);
+							}
+						}
+					}
+				} else {
+					// Movie/other search: just use title
+					const textCriteria = createTextOnlyCriteria({
+						...criteria,
+						query: title
+					});
+					const releases = await indexer.search(textCriteria);
+
+					// Add unique releases
+					for (const release of releases) {
+						if (!seenGuids.has(release.guid)) {
+							seenGuids.add(release.guid);
+							allReleases.push(release);
+						}
+					}
+				}
+			} catch (error) {
+				logger.debug('Multi-title search variant failed', {
+					indexer: indexer.name,
+					title,
+					error: error instanceof Error ? error.message : String(error)
+				});
+			}
+		}
+
+		if (allReleases.length > 0) {
+			logger.debug('Multi-title search completed', {
+				indexer: indexer.name,
+				titlesSearched: Math.min(titlesToSearch.length, 3),
+				formatsUsed: episodeFormats.length || 1,
+				totalResults: allReleases.length
+			});
+		}
+
+		return allReleases;
 	}
 
 	/** Check if the indexer supports the specific IDs in the search criteria */

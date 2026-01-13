@@ -13,6 +13,7 @@ import {
 	fetchMovieExternalIds,
 	triggerMovieSearch
 } from '$lib/server/library/LibraryAddService.js';
+import { fetchAndStoreMovieAlternateTitles } from '$lib/server/services/AlternateTitleService.js';
 import { ValidationError } from '$lib/errors';
 import { logger } from '$lib/logging';
 
@@ -207,6 +208,15 @@ export const POST: RequestHandler = async ({ request }) => {
 				languageProfileId
 			})
 			.returning();
+
+		// Fetch and store alternate titles from TMDB (non-blocking)
+		fetchAndStoreMovieAlternateTitles(newMovie.id, tmdbId).catch((err) => {
+			logger.warn('Failed to fetch alternate titles for movie', {
+				movieId: newMovie.id,
+				tmdbId,
+				error: err instanceof Error ? err.message : String(err)
+			});
+		});
 
 		// Trigger search if requested and movie is monitored (shared logic)
 		let searchTriggered = false;

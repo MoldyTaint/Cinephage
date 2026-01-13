@@ -36,6 +36,10 @@ import { scoreRelease, isUpgrade } from '$lib/server/scoring/scorer.js';
 import type { ScoringProfile } from '$lib/server/scoring/types.js';
 import { qualityFilter } from '$lib/server/quality';
 import { TaskCancelledException } from '$lib/server/tasks/TaskCancelledException.js';
+import {
+	getMovieSearchTitles,
+	getSeriesSearchTitles
+} from '$lib/server/services/AlternateTitleService.js';
 
 // Specifications
 import {
@@ -781,6 +785,9 @@ export class MonitoringSearchService {
 			// Get episode count for the target season (for season pack size validation)
 			const seasonEpisodeCount = await this.getSeasonEpisodeCount(seriesData.id, seasonNumber);
 
+			// Get all search titles (primary + original + alternates)
+			const searchTitles = await getSeriesSearchTitles(seriesData.id);
+
 			// Build search criteria - season only (no episode number) to get packs
 			const criteria: SearchCriteria = {
 				searchType: 'tv',
@@ -788,7 +795,8 @@ export class MonitoringSearchService {
 				tmdbId: seriesData.tmdbId,
 				tvdbId: seriesData.tvdbId ?? undefined,
 				imdbId: seriesData.imdbId ?? undefined,
-				season: seasonNumber
+				season: seasonNumber,
+				searchTitles
 				// Note: No episode number - this will return season packs
 			};
 
@@ -1352,13 +1360,17 @@ export class MonitoringSearchService {
 		try {
 			const indexerManager = await getIndexerManager();
 
+			// Get all search titles (primary + original + alternates)
+			const searchTitles = await getMovieSearchTitles(movie.id);
+
 			// Build search criteria
 			const criteria: SearchCriteria = {
 				searchType: 'movie',
 				query: movie.title,
 				tmdbId: movie.tmdbId,
 				imdbId: movie.imdbId ?? undefined,
-				year: movie.year ?? undefined
+				year: movie.year ?? undefined,
+				searchTitles
 			};
 
 			// Perform enriched search (automatic - background monitoring)
@@ -1724,6 +1736,9 @@ export class MonitoringSearchService {
 				episode.seasonNumber
 			);
 
+			// Get all search titles (primary + original + alternates)
+			const searchTitles = await getSeriesSearchTitles(seriesData.id);
+
 			// Build search criteria
 			const criteria: SearchCriteria = {
 				searchType: 'tv',
@@ -1732,7 +1747,8 @@ export class MonitoringSearchService {
 				tvdbId: seriesData.tvdbId ?? undefined,
 				imdbId: seriesData.imdbId ?? undefined,
 				season: episode.seasonNumber,
-				episode: episode.episodeNumber
+				episode: episode.episodeNumber,
+				searchTitles
 			};
 
 			// Perform enriched search (automatic - background monitoring)
@@ -2204,13 +2220,17 @@ export class MonitoringSearchService {
 
 			const indexerManager = await getIndexerManager();
 
+			// Get all search titles (primary + original + alternates)
+			const searchTitles = await getMovieSearchTitles(movie.id);
+
 			// Build search criteria
 			const criteria: SearchCriteria = {
 				searchType: 'movie',
 				query: movie.title,
 				tmdbId: movie.tmdbId,
 				imdbId: movie.imdbId ?? undefined,
-				year: movie.year ?? undefined
+				year: movie.year ?? undefined,
+				searchTitles
 			};
 
 			// Perform enriched search (automatic - background monitoring)
@@ -2377,6 +2397,9 @@ export class MonitoringSearchService {
 				episode.seasonNumber
 			);
 
+			// Get all search titles (primary + original + alternates)
+			const searchTitles = await getSeriesSearchTitles(seriesData.id);
+
 			// Build search criteria
 			const criteria: SearchCriteria = {
 				searchType: 'tv',
@@ -2385,7 +2408,8 @@ export class MonitoringSearchService {
 				tvdbId: seriesData.tvdbId ?? undefined,
 				imdbId: seriesData.imdbId ?? undefined,
 				season: episode.seasonNumber,
-				episode: episode.episodeNumber
+				episode: episode.episodeNumber,
+				searchTitles
 			};
 
 			// Perform enriched search (automatic - background monitoring)
