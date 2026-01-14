@@ -200,6 +200,8 @@ export interface GrabRequest {
 	protocol?: string;
 	/** Release categories from indexer (for content type validation) */
 	categories?: number[];
+	/** Release size in bytes */
+	size?: number;
 
 	// Target media (at least one required)
 	movieId?: string;
