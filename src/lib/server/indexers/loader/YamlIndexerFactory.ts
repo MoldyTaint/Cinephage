@@ -11,6 +11,7 @@ import type { YamlDefinition } from '../schema/yamlDefinition';
 import type { IndexerRecord } from '$lib/server/db/schema';
 import { UnifiedIndexer } from '../runtime/UnifiedIndexer';
 import { YamlDefinitionLoader, getYamlDefinitionLoader } from './YamlDefinitionLoader';
+import { yamlToUnifiedDefinition } from './types';
 import { createChildLogger } from '$lib/logging';
 import { getNewznabCapabilitiesProvider } from '../newznab/NewznabCapabilitiesProvider';
 
@@ -199,6 +200,7 @@ export class YamlIndexerFactory implements IIndexerFactory {
 
 	/**
 	 * Get required settings fields for a definition.
+	 * Uses the unified conversion which handles login-based defaults.
 	 */
 	getRequiredSettings(definitionId: string): Array<{
 		name: string;
@@ -209,38 +211,10 @@ export class YamlIndexerFactory implements IIndexerFactory {
 		const definition = this.definitionLoader.getDefinition(definitionId);
 		if (!definition) return [];
 
-		const settings = definition.settings ?? [];
+		// Use unified conversion which handles login defaults centrally
+		const unified = yamlToUnifiedDefinition(definition);
 
-		// If no settings defined but login requires credentials, add defaults
-		if (settings.length === 0 && definition.login) {
-			const method = definition.login.method?.toLowerCase() ?? 'post';
-
-			if (method === 'cookie') {
-				return [
-					{
-						name: 'cookie',
-						type: 'text',
-						label: 'Cookie'
-					}
-				];
-			} else if (method !== 'oneurl') {
-				// Most login methods need username/password
-				return [
-					{
-						name: 'username',
-						type: 'text',
-						label: 'Username'
-					},
-					{
-						name: 'password',
-						type: 'password',
-						label: 'Password'
-					}
-				];
-			}
-		}
-
-		return settings.map((s) => ({
+		return unified.settings.map((s) => ({
 			name: s.name,
 			type: s.type ?? 'text',
 			label: s.label ?? s.name,

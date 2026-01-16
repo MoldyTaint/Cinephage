@@ -23,7 +23,7 @@ import {
 } from './RetryPolicy';
 import { getRateLimitRegistry, getHostRateLimiter } from '../ratelimit';
 import type { RateLimitConfig } from '../ratelimit/types';
-import { getBrowserSolver } from './browser';
+import { getCaptchaSolver } from '$lib/server/captcha';
 import { CloudflareBypassError } from '$lib/errors';
 
 /** HTTP request options */
@@ -244,7 +244,7 @@ export class IndexerHttp {
 		url: string,
 		options: ResolvedHttpOptions,
 		headers: Record<string, string>,
-		skipBrowserSolver = false
+		skipCaptchaSolver = false
 	): Promise<HttpResponse> {
 		const controller = new AbortController();
 		const timeoutId = setTimeout(() => controller.abort(), options.timeout);
@@ -264,54 +264,54 @@ export class IndexerHttp {
 			if (isCloudflareProtected(response.status, response.headers, body)) {
 				const host = new URL(url).hostname;
 
-				// Try browser solver if available and not already attempted
-				if (!skipBrowserSolver) {
-					const browserSolver = getBrowserSolver();
+				// Try browser fetch if available (bypasses TLS fingerprinting)
+				if (!skipCaptchaSolver) {
+					const captchaSolver = getCaptchaSolver();
 
-					if (browserSolver.isEnabled()) {
-						this.log.info('Cloudflare detected, attempting browser solve', { url, host });
+					if (captchaSolver.isAvailable()) {
+						this.log.info('Cloudflare detected, fetching through browser', { url, host });
 
-						const solveResult = await browserSolver.solve({
+						// Fetch directly through the browser - this bypasses JA3/TLS fingerprinting
+						// that prevents Node.js fetch from working even with valid cookies
+						const fetchResult = await captchaSolver.fetch({
 							url,
 							method: options.method,
-							headers,
 							body: options.body?.toString(),
-							indexerId: this.config.indexerId,
-							timeout: Math.max(options.timeout, 60000)
+							timeout: Math.max(options.timeout / 1000, 60)
 						});
 
-						if (solveResult.success) {
-							// Store solved cookies
-							this.setCookies(solveResult.cookies);
-
-							this.log.info('Browser solve succeeded, retrying request', {
+						if (fetchResult.success) {
+							this.log.info('Browser fetch succeeded', {
 								host,
-								solveTimeMs: solveResult.solveTimeMs,
-								challengeType: solveResult.challengeType
+								status: fetchResult.status,
+								bodyLength: fetchResult.body.length,
+								timeMs: fetchResult.timeMs
 							});
 
-							// Retry the original request with new cookies
-							// Pass skipBrowserSolver=true to avoid infinite loop
-							const newHeaders = this.buildRequestHeaders(url, headers);
-							return await this.doFetch(url, options, newHeaders, true);
+							// Return the browser-fetched response
+							return {
+								body: fetchResult.body,
+								status: fetchResult.status,
+								headers: new Headers(), // Browser doesn't expose response headers easily
+								url: fetchResult.url
+							};
 						}
 
-						// Browser solver failed
-						this.log.warn('Browser solve failed', {
+						// Browser fetch failed
+						this.log.warn('Browser fetch failed', {
 							host,
-							error: solveResult.error,
-							challengeType: solveResult.challengeType
+							error: fetchResult.error
 						});
 
 						throw new CloudflareBypassError(
 							host,
-							solveResult.error ?? 'Browser solver failed',
-							solveResult.challengeType
+							fetchResult.error ?? 'Browser fetch failed',
+							'cloudflare'
 						);
 					}
 				}
 
-				// Browser solver not available or already tried, throw original error
+				// Captcha solver not available or already tried, throw original error
 				throw new CloudflareProtectedError(host, response.status);
 			}
 
@@ -418,7 +418,7 @@ export class IndexerHttp {
 			};
 		}
 
-		// Don't retry CloudflareBypassError - browser solver already tried
+		// Don't retry CloudflareBypassError - captcha solver already tried
 		if (error instanceof CloudflareBypassError) {
 			return {
 				shouldRetry: false,

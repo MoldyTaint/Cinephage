@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Captcha Solver** - Built-in Cloudflare/challenge bypass using Camoufox (anti-detect Firefox browser)
+  - Automatic challenge detection and solving for protected indexers
+  - Cookie caching to minimize solves
+  - Settings UI at Settings > Integrations > Captcha Solver
+  - Statistics tracking (success rate, solve times)
 - **Smart Lists** - Dynamic TMDB Discover-based lists with 50+ filter options, auto-add to library, scheduled refresh, and quality/language profile assignment
 - **Movie collection bulk-add** - Add entire TMDB collections to library at once
 - **Task execution history** - All monitoring tasks now record per-item activity to the history database
@@ -33,6 +38,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Docker base image changed from Alpine to Debian** - Required for Camoufox browser support. Existing users should pull the new image and recreate containers. See [Migration Notes](#migration-notes) below.
 - **Unified Tasks page** - Consolidated monitoring settings into Settings > Tasks (removed separate Monitoring page)
 - **CutoffUnmet task** - Now specifically targets items below quality cutoff (daily frequency)
 - **Upgrade task** - Now searches ALL items for potential upgrades, not just below cutoff (weekly frequency)
@@ -52,6 +58,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Removed
 
+- **Browser Solver** - Replaced by new Captcha Solver using Camoufox (more reliable, better anti-detection)
+- **BROWSER*SOLVER*\* environment variables** - Captcha Solver is now configured via the UI
 - **Monitoring settings page** - Consolidated into unified Tasks page
 - **Duplicate task registry** - Removed registry.ts in favor of UnifiedTaskRegistry
 - Native TypeScript indexer implementations (replaced by YAML definitions)
@@ -68,6 +76,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - HLS streams starting from end instead of beginning (missing VOD markers)
 - HLS segment detection for providers using obfuscated URLs with fake extensions
+
+### Migration Notes
+
+#### Docker Image Change (Alpine to Debian)
+
+The Docker image has changed from `node:22-alpine` to `node:22-slim` (Debian). This change was required to support the new Camoufox-based Captcha Solver, which needs Firefox browser dependencies that are not available on Alpine Linux.
+
+**What you need to do:**
+
+1. Pull the new image:
+
+   ```bash
+   docker compose pull
+   ```
+
+2. Recreate your container:
+   ```bash
+   docker compose up -d --force-recreate
+   ```
+
+**What's different:**
+
+- Image size increased by ~40MB (180MB -> 220MB)
+- First startup will download the Camoufox browser (~80MB, stored in data volume)
+- The `BROWSER_SOLVER_ENABLED` environment variable is no longer used (remove from your `.env`)
+- Captcha Solver is now configured via Settings > Integrations > Captcha Solver
+
+**Your data is safe:** The SQLite database, logs, and configuration are stored in the mounted `/app/data` volume and will not be affected.
 
 ---
 

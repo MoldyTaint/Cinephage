@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { resolvePath } from '$lib/utils/routing';
 	import { page } from '$app/stores';
-	import { Database, Download, Subtitles, Languages, Monitor } from 'lucide-svelte';
+	import { Database, Download, Subtitles, Languages, Monitor, Shield } from 'lucide-svelte';
 
 	let { children } = $props();
 
@@ -36,6 +36,11 @@
 			href: '/settings/integrations/media-browsers',
 			label: 'Media Servers',
 			icon: Monitor
+		},
+		{
+			href: '/settings/integrations/captcha',
+			label: 'Captcha Solver',
+			icon: Shield
 		}
 	];
 

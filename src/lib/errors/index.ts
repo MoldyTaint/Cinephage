@@ -108,39 +108,6 @@ export class CloudflareBypassError extends AppError {
 }
 
 /**
- * Error thrown when browser pool is exhausted and request times out.
- */
-export class BrowserPoolExhaustedError extends AppError {
-	constructor(public readonly queuePosition: number) {
-		super('Browser pool exhausted, request timed out', 'BROWSER_POOL_EXHAUSTED', 503, {
-			queuePosition
-		});
-		this.name = 'BrowserPoolExhaustedError';
-	}
-}
-
-/**
- * Error thrown when browser solving times out.
- */
-export class BrowserSolveTimeoutError extends AppError {
-	constructor(
-		public readonly host: string,
-		public readonly timeoutMs: number
-	) {
-		super(
-			`Browser solve timed out for ${host} after ${timeoutMs}ms`,
-			'BROWSER_SOLVE_TIMEOUT',
-			504,
-			{
-				host,
-				timeoutMs
-			}
-		);
-		this.name = 'BrowserSolveTimeoutError';
-	}
-}
-
-/**
  * Type guard to check if an error is an AppError.
  */
 export function isAppError(error: unknown): error is AppError {

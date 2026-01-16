@@ -193,9 +193,12 @@ See existing definitions in `data/indexers/definitions/` for examples.
 
 Some indexers use Cloudflare protection. Cinephage includes:
 
-- Automatic Cloudflare bypass for supported indexers
-- FlareSolverr integration for challenging sites
+- Built-in Captcha Solver using Camoufox (anti-detect Firefox browser)
+- Automatic challenge detection and solving
+- Cookie caching to minimize solves
 - Fallback to alternative indexers when blocked
+
+Configure the Captcha Solver in Settings > Integrations > Captcha Solver.
 
 ---
 

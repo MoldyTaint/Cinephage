@@ -1,23 +1,15 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import {
-	getDefinitionLoader,
-	initializeDefinitions,
-	toUIDefinition
-} from '$lib/server/indexers/loader';
+import { getIndexerManager } from '$lib/server/indexers/IndexerManager';
+import { toUIDefinition } from '$lib/server/indexers/loader';
 
 /**
  * GET /api/indexers/definitions/:id
  * Returns a specific indexer definition (native or Cardigann).
  */
 export const GET: RequestHandler = async ({ params }) => {
-	// Get definition loader
-	const loader = getDefinitionLoader();
-	if (!loader.isLoaded()) {
-		await initializeDefinitions();
-	}
-
-	const definition = loader.get(params.id);
+	const manager = await getIndexerManager();
+	const definition = manager.getUnifiedDefinition(params.id);
 
 	if (!definition) {
 		return json({ error: 'Definition not found' }, { status: 404 });

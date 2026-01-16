@@ -8,6 +8,12 @@ Production deployment guide for Cinephage.
 
 Docker is the simplest way to deploy Cinephage in production.
 
+### Docker Image
+
+Cinephage uses `node:22-slim` (Debian) as its base image. This provides compatibility with the Camoufox browser used for Cloudflare bypass.
+
+> **Note for existing users:** If you're upgrading from an older version that used Alpine, see the [Migration Notes in CHANGELOG.md](../../CHANGELOG.md#migration-notes) for upgrade instructions.
+
 ### Quick Start
 
 ```bash
@@ -32,6 +38,15 @@ Start:
 ```bash
 docker compose up -d
 ```
+
+### First Run
+
+On first startup, the container will:
+
+1. Initialize indexer definitions from bundled files
+2. Download the Camoufox browser (~80MB) for Cloudflare bypass
+
+This may take a minute or two. Check logs with `docker compose logs -f` to monitor progress.
 
 ### File Permissions
 

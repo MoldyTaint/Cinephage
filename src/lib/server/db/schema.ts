@@ -1058,6 +1058,28 @@ export const monitoringSettings = sqliteTable('monitoring_settings', {
 // - 'auto_replace_enabled': boolean - Auto-replace with better quality (default: true)
 // - 'search_on_monitor_enabled': boolean - Search when item first monitored (default: true)
 
+// ============================================================================
+// CAPTCHA SOLVER SETTINGS
+// ============================================================================
+
+/**
+ * Captcha Solver Settings - Configuration for anti-bot/captcha bypass system
+ * Controls browser automation settings for solving Cloudflare, Turnstile, etc.
+ *
+ * Settings keys:
+ * - 'enabled': boolean - Master toggle for captcha solving (default: true)
+ * - 'timeout_seconds': number - Max time to wait for challenge solve (default: 60)
+ * - 'cache_ttl_seconds': number - How long to cache solved cookies (default: 3600)
+ * - 'headless': boolean - Run browser in headless mode (default: true)
+ * - 'proxy_url': string - Optional proxy URL for browser requests
+ * - 'proxy_username': string - Proxy authentication username
+ * - 'proxy_password': string - Proxy authentication password
+ */
+export const captchaSolverSettings = sqliteTable('captcha_solver_settings', {
+	key: text('key').primaryKey(),
+	value: text('value').notNull()
+});
+
 /**
  * Monitoring History - Audit trail of monitoring system activity
  * Tracks searches, grabs, and decisions made by the automated monitoring system

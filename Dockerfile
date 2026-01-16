@@ -1,12 +1,12 @@
 # ==========================================
 # Build Stage
 # ==========================================
-FROM node:22-alpine3.21 AS builder
+FROM node:22-slim AS builder
 
 WORKDIR /app
 
 # Install build tools required for native modules (better-sqlite3)
-RUN apk add --no-cache python3 make g++
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 
 # Copy package files first to leverage Docker cache
 COPY package*.json ./
@@ -23,12 +23,36 @@ RUN npm run build
 # ==========================================
 # Runtime Stage
 # ==========================================
-FROM node:22-alpine3.21 AS runner
+FROM node:22-slim AS runner
 
 WORKDIR /app
 
-# Install runtime dependencies (ffmpeg for ffprobe media analysis)
-RUN apk add --no-cache ffmpeg
+# Install runtime dependencies:
+# - ffmpeg: for ffprobe media analysis
+# - Camoufox browser dependencies (Firefox/GTK libs)
+# - wget: for health check
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    wget \
+    libgtk-3-0 \
+    libx11-xcb1 \
+    libasound2 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libgbm1 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxshmfence1 \
+    libxkbcommon0 \
+    fonts-liberation \
+    libdbus-glib-1-2 \
+    libxt6 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create necessary directories with correct ownership (node user is UID 1000)
 RUN mkdir -p data logs && chown -R node:node data logs
@@ -52,7 +76,6 @@ ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3000
 ENV FFPROBE_PATH=/usr/bin/ffprobe
-ENV BROWSER_SOLVER_ENABLED=false
 
 # Expose the application port
 EXPOSE 3000

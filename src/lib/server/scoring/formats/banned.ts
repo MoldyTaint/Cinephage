@@ -163,6 +163,22 @@ export const BANNED_CONTENT: CustomFormat[] = [
 				negate: false
 			}
 		]
+	},
+	{
+		id: 'banned-disc-image',
+		name: 'Disc Image',
+		description: 'ISO/disc image files (not directly playable)',
+		category: 'banned',
+		tags: ['Banned', 'ISO', 'Disc'],
+		conditions: [
+			{
+				name: 'Disc Image',
+				type: 'release_title',
+				pattern: '\\.(iso|img|bin|nrg|mdf)\\b|\\b(DVD|BD|Blu-?ray)[. -]?ISO\\b',
+				required: true,
+				negate: false
+			}
+		]
 	}
 ];
 
@@ -182,7 +198,31 @@ export const BANNED_MUSIC: CustomFormat[] = [
 				name: 'Soundtrack',
 				type: 'release_title',
 				pattern:
-					'\\b(OST|Original[. ](Motion[. ]Picture|Television|Series)[. ]Soundtrack|Soundtrack)\\b',
+					'\\b(OST|O\\.?S\\.?T\\.?|Original[. ]?(Motion[. ]?Picture|Television|Series|Film|Game)?[. ]?Soundtrack|Soundtrack|Film[. ]?Score|Motion[. ]?Picture[. ]?Score)\\b|-OST-',
+				required: true,
+				negate: false
+			}
+		]
+	}
+];
+
+/**
+ * Game/Software releases
+ * These are not video content - should be blocked for movie/TV searches
+ */
+export const BANNED_GAMES: CustomFormat[] = [
+	{
+		id: 'banned-game-repack',
+		name: 'Game Repack',
+		description: 'Game repack releases (not video content)',
+		category: 'banned',
+		tags: ['Banned', 'Game', 'Software'],
+		conditions: [
+			{
+				name: 'Game Repack',
+				type: 'release_title',
+				pattern:
+					'\\b(FitGirl|DODI|ElAmigos|CODEX|SKIDROW|PLAZA|GOG|Goldberg|TiNYiSO|EMPRESS|RUNE|CPY|RELOADED|DARKSiDERS|HOODLUM|RAZOR1911)\\b|\\bRePack\\b.*\\b(PC|Game)\\b|\\b(PC|Game)[. ]RePack\\b',
 				required: true,
 				negate: false
 			}
@@ -269,6 +309,7 @@ export const ALL_BANNED_FORMATS: CustomFormat[] = [
 	...BANNED_FAKE_HDR,
 	...BANNED_CONTENT,
 	...BANNED_MUSIC,
+	...BANNED_GAMES,
 	...BANNED_SOURCES
 ];
 

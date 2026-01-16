@@ -64,8 +64,9 @@ interface MigrationDefinition {
  * Version 37: Add stream_url_type column to stalker_accounts for tracking URL resolution method
  * Version 38: Add alternate_titles table for multi-title search support
  * Version 39: Add release_group column to download_queue and download_history
+ * Version 40: Add captcha_solver_settings table for anti-bot configuration
  */
-export const CURRENT_SCHEMA_VERSION = 39;
+export const CURRENT_SCHEMA_VERSION = 40;
 
 /**
  * All table definitions with CREATE TABLE IF NOT EXISTS
@@ -269,6 +270,11 @@ const TABLE_DEFINITIONS: string[] = [
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS "monitoring_settings" (
+		"key" text PRIMARY KEY NOT NULL,
+		"value" text NOT NULL
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS "captcha_solver_settings" (
 		"key" text PRIMARY KEY NOT NULL,
 		"value" text NOT NULL
 	)`,
@@ -2887,6 +2893,24 @@ const MIGRATIONS: MigrationDefinition[] = [
 			if (!columnExists(sqlite, 'download_history', 'release_group')) {
 				sqlite.prepare(`ALTER TABLE "download_history" ADD COLUMN "release_group" text`).run();
 				logger.info('[SchemaSync] Added release_group column to download_history');
+			}
+		}
+	},
+	// Version 40: Add captcha_solver_settings table for anti-bot configuration
+	{
+		version: 40,
+		name: 'add_captcha_solver_settings',
+		apply: (sqlite) => {
+			if (!tableExists(sqlite, 'captcha_solver_settings')) {
+				sqlite
+					.prepare(
+						`CREATE TABLE IF NOT EXISTS "captcha_solver_settings" (
+						"key" text PRIMARY KEY NOT NULL,
+						"value" text NOT NULL
+					)`
+					)
+					.run();
+				logger.info('[SchemaSync] Created captcha_solver_settings table');
 			}
 		}
 	}

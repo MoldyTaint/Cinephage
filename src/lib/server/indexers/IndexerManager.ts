@@ -85,6 +85,26 @@ export class IndexerManager {
 		return this.definitionLoader.getAll();
 	}
 
+	/** Get all definitions converted to unified format for UI */
+	getUnifiedDefinitions(): import('./loader').IndexerDefinition[] {
+		return this.definitionLoader.getAllUnified();
+	}
+
+	/** Get a unified definition by ID */
+	getUnifiedDefinition(id: string): import('./loader').IndexerDefinition | undefined {
+		return this.definitionLoader.getUnified(id);
+	}
+
+	/** Get definition loading errors */
+	getDefinitionErrors(): Array<{ filePath: string; error: string }> {
+		return this.definitionLoader.getErrors();
+	}
+
+	/** Check if definitions have been loaded */
+	isDefinitionsLoaded(): boolean {
+		return this.definitionLoader.isLoaded();
+	}
+
 	/** Get a specific definition by ID (YAML-only) */
 	getDefinition(id: string): YamlDefinition | undefined {
 		return this.definitionLoader.get(id);

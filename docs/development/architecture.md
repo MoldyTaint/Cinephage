@@ -138,7 +138,7 @@ gantt
     External ID Service          :5, 6
 
     section Delayed (10s)
-    Browser Solver               :10, 11
+    Captcha Solver               :10, 11
 ```
 
 This staggered initialization is defined in `hooks.server.ts`:
@@ -146,7 +146,7 @@ This staggered initialization is defined in `hooks.server.ts`:
 1. **Database migrations** (blocking) - Must complete before anything else
 2. **Library scheduler + Download monitor** (immediate) - Core functionality
 3. **Monitoring scheduler + External ID service** (5s delay) - Background tasks
-4. **Browser solver** (10s delay) - Resource-intensive Cloudflare handling
+4. **Captcha solver** (10s delay) - Cloudflare/challenge handling with Camoufox
 
 ---
 
@@ -182,7 +182,7 @@ This pattern is used for:
 - `getRootFolderService()`
 - `getDownloadClientManager()`
 - `getExternalIdService()`
-- `getBrowserSolver()`
+- `getCaptchaSolver()`
 
 ### Specification Pattern
 

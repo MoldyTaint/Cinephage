@@ -17,7 +17,7 @@ import { getDataRepairService } from '$lib/server/services/DataRepairService.js'
 import { qualityFilter } from '$lib/server/quality';
 import { isAppError } from '$lib/errors';
 import { initializeDatabase } from '$lib/server/db';
-import { getBrowserSolver } from '$lib/server/indexers/http/browser';
+import { getCaptchaSolver } from '$lib/server/captcha';
 import { getServiceManager } from '$lib/server/services/service-manager.js';
 import { initPersistentStreamCache } from '$lib/server/streaming/cache/PersistentStreamCache';
 import { getNntpManager } from '$lib/server/streaming/usenet/NntpManager';
@@ -57,7 +57,7 @@ let libraryInitialized = false;
 let downloadMonitorInitialized = false;
 let monitoringInitialized = false;
 let externalIdServiceInitialized = false;
-let browserSolverInitialized = false;
+let captchaSolverInitialized = false;
 let nntpManagerInitialized = false;
 let dataRepairServiceInitialized = false;
 let mediaBrowserNotifierInitialized = false;
@@ -155,18 +155,18 @@ async function initializeExternalIdService() {
 	}
 }
 
-async function initializeBrowserSolver() {
-	if (browserSolverInitialized) return;
+async function initializeCaptchaSolver() {
+	if (captchaSolverInitialized) return;
 
 	try {
-		const browserSolver = getBrowserSolver();
-		await browserSolver.initialize();
-		browserSolverInitialized = true;
-		logger.info('BrowserSolver initialized for Cloudflare bypass');
+		const captchaSolver = getCaptchaSolver();
+		captchaSolver.start();
+		captchaSolverInitialized = true;
+		logger.info('CaptchaSolver initialized for anti-bot bypass');
 	} catch (error) {
 		// Non-fatal - application continues without browser solving
 		// Users can still manually configure cookies for protected indexers
-		logger.error('Failed to initialize BrowserSolver (Cloudflare bypass disabled)', error);
+		logger.error('Failed to initialize CaptchaSolver (anti-bot bypass disabled)', error);
 	}
 }
 
@@ -308,10 +308,10 @@ setImmediate(async () => {
 			initializeEpgScheduler().catch((e) => logger.error('EPG scheduler init failed', e));
 		}, 5000);
 
-		// 5. Browser solver starts after other services (resource-intensive, lower priority)
+		// 5. Captcha solver starts after other services (resource-intensive, lower priority)
 		// This is delayed to allow core services to stabilize first
 		setTimeout(() => {
-			initializeBrowserSolver().catch((e) => logger.error('BrowserSolver init failed', e));
+			initializeCaptchaSolver().catch((e) => logger.error('CaptchaSolver init failed', e));
 		}, 10000);
 
 		logger.info('All services registered with ServiceManager');
@@ -334,12 +334,12 @@ async function gracefulShutdown(signal: string) {
 			.catch((e) => logger.error('Error stopping services via ServiceManager', e))
 	);
 
-	// Stop browser solver (not a BackgroundService, handled separately)
-	if (browserSolverInitialized) {
+	// Stop captcha solver (BackgroundService interface)
+	if (captchaSolverInitialized) {
 		shutdownPromises.push(
-			getBrowserSolver()
-				.shutdown()
-				.catch((e) => logger.error('Error shutting down BrowserSolver', e))
+			getCaptchaSolver()
+				.stop()
+				.catch((e: Error) => logger.error('Error shutting down CaptchaSolver', e))
 		);
 	}
 

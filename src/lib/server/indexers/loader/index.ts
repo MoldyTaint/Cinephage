@@ -2,6 +2,11 @@
  * Indexer Definition System
  *
  * Provides loading and factory functionality for indexer definitions.
+ *
+ * ARCHITECTURE NOTE: Use IndexerManager.getUnifiedDefinitions() instead of
+ * DefinitionLoader directly. The DefinitionLoader is deprecated and will be
+ * removed in a future version. All definition loading should go through
+ * IndexerManager to ensure consistent initialization and caching.
  */
 
 // Types
@@ -22,10 +27,11 @@ export {
 	getRequiredSettings,
 	requiresAuth,
 	toDefinitionSummary,
-	toUIDefinition
+	toUIDefinition,
+	yamlToUnifiedDefinition
 } from './types';
 
-// Definition Loader (unified)
+// Definition Loader (DEPRECATED - use IndexerManager.getUnifiedDefinitions() instead)
 export {
 	DefinitionLoader,
 	getDefinitionLoader,
@@ -36,7 +42,7 @@ export {
 // Factory (unified)
 export { IndexerFactory, getIndexerFactory } from './IndexerFactory';
 
-// YAML Definition Loader
+// YAML Definition Loader (primary loader - used by IndexerManager)
 export {
 	YamlDefinitionLoader,
 	getYamlDefinitionLoader,

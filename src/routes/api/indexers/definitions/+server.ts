@@ -1,9 +1,6 @@
 import { json } from '@sveltejs/kit';
-import {
-	getDefinitionLoader,
-	initializeDefinitions,
-	toUIDefinition
-} from '$lib/server/indexers/loader';
+import { getIndexerManager } from '$lib/server/indexers/IndexerManager';
+import { toUIDefinition } from '$lib/server/indexers/loader';
 
 /**
  * GET /api/indexers/definitions
@@ -11,14 +8,10 @@ import {
  * Internal/auto-managed indexers (like streaming) are excluded from this list.
  */
 export async function GET() {
-	// Ensure definitions are loaded
-	const loader = getDefinitionLoader();
-	if (!loader.isLoaded()) {
-		await initializeDefinitions();
-	}
+	const manager = await getIndexerManager();
 
 	// Get all definitions and convert to UI format
-	const allDefinitions = loader.getAll();
+	const allDefinitions = manager.getUnifiedDefinitions();
 
 	// Map to API response format, excluding internal indexers
 	const definitions = allDefinitions

@@ -350,6 +350,24 @@
 		</button>
 	</div>
 
+	{#if data.definitionErrors && data.definitionErrors.length > 0}
+		<div class="mb-4 alert alert-warning">
+			<div>
+				<span class="font-semibold"
+					>{data.definitionErrors.length} indexer definition(s) failed to load:</span
+				>
+				<ul class="mt-1 list-inside list-disc text-sm">
+					{#each data.definitionErrors.slice(0, 3) as error}
+						<li class="truncate">{error.filePath}: {error.error}</li>
+					{/each}
+					{#if data.definitionErrors.length > 3}
+						<li>... and {data.definitionErrors.length - 3} more</li>
+					{/if}
+				</ul>
+			</div>
+		</div>
+	{/if}
+
 	{#if form?.indexerError}
 		<div class="mb-4 alert alert-error">
 			<span>{form.indexerError}</span>

@@ -289,6 +289,152 @@ export interface UIIndexerDefinition {
 }
 
 /**
+ * Convert a raw YAML definition to unified IndexerDefinition format.
+ * This centralizes the conversion logic that was duplicated in DefinitionLoader.
+ */
+export function yamlToUnifiedDefinition(
+	def: import('../schema/yamlDefinition').YamlDefinition,
+	filePath?: string
+): IndexerDefinition {
+	// Map YAML setting type to unified type
+	const mapSettingType = (type: string): SettingFieldType => {
+		const map: Record<string, SettingFieldType> = {
+			text: 'text',
+			password: 'password',
+			checkbox: 'checkbox',
+			select: 'select',
+			info: 'info',
+			info_cookie: 'info_cookie',
+			info_cloudflare: 'info_cloudflare',
+			info_useragent: 'info_useragent'
+		};
+		return map[type] ?? 'text';
+	};
+
+	// Map Cardigann type to IndexerAccessType
+	const mapAccessType = (type: string): 'public' | 'private' | 'semi-private' => {
+		if (type === 'private') return 'private';
+		if (type === 'semi-private') return 'semi-private';
+		return 'public';
+	};
+
+	// Build capabilities from Cardigann modes
+	const buildCapabilities = (
+		modes: Record<string, string[]>
+	): IndexerDefinition['capabilities'] => {
+		const toParams = (params?: string[]) =>
+			(params ?? ['q']) as Array<
+				| 'q'
+				| 'imdbId'
+				| 'tmdbId'
+				| 'tvdbId'
+				| 'season'
+				| 'ep'
+				| 'year'
+				| 'genre'
+				| 'artist'
+				| 'album'
+				| 'author'
+				| 'title'
+				| 'tvMazeId'
+				| 'traktId'
+			>;
+
+		return {
+			search: {
+				available: !!modes['search'],
+				supportedParams: toParams(modes['search'])
+			},
+			tvSearch: {
+				available: !!modes['tv-search'],
+				supportedParams: toParams(modes['tv-search'])
+			},
+			movieSearch: {
+				available: !!modes['movie-search'],
+				supportedParams: toParams(modes['movie-search'])
+			},
+			musicSearch: {
+				available: !!modes['music-search'],
+				supportedParams: toParams(modes['music-search'])
+			},
+			bookSearch: {
+				available: !!modes['book-search'],
+				supportedParams: toParams(modes['book-search'])
+			},
+			categories: new Map(),
+			supportsPagination: true,
+			supportsInfoHash: false,
+			limitMax: 100,
+			limitDefault: 50
+		};
+	};
+
+	// Convert settings
+	const settings: SettingField[] = (def.settings ?? [])
+		.filter((s) => !s.type.startsWith('info')) // Skip info-only fields
+		.map((s) => ({
+			name: s.name,
+			type: mapSettingType(s.type),
+			label: s.label,
+			default: s.default,
+			options: s.options,
+			required: s.type === 'password' || s.type === 'text'
+		}));
+
+	// If no settings but login exists, add defaults
+	if (settings.length === 0 && def.login) {
+		const method = def.login.method?.toLowerCase() ?? 'post';
+		if (method === 'cookie') {
+			settings.push({
+				name: 'cookie',
+				type: 'text',
+				label: 'Cookie',
+				required: true
+			});
+		} else if (method !== 'oneurl' && method !== 'apikey' && method !== 'none') {
+			settings.push(
+				{ name: 'username', type: 'text', label: 'Username', required: true },
+				{ name: 'password', type: 'password', label: 'Password', required: true }
+			);
+		}
+	}
+
+	// Convert category mappings
+	const categories: CategoryMapping[] = (def.caps.categorymappings ?? []).map((cm) => ({
+		trackerId: cm.id,
+		newznabId: parseInt(cm.cat ?? '8000', 10),
+		description: cm.desc ?? cm.id,
+		default: cm.default
+	}));
+
+	// Get supported Newznab categories
+	const supportedCategories = [...new Set(categories.map((c) => c.newznabId))];
+
+	// Build capabilities
+	const modes = def.caps.modes ?? {};
+	const capabilities = buildCapabilities(modes);
+
+	return {
+		id: def.id,
+		name: def.name,
+		description: def.description ?? `${def.name} indexer`,
+		language: def.language ?? 'en-US',
+		type: mapAccessType(def.type),
+		protocol: def.protocol ?? 'torrent',
+		source: 'yaml',
+		urls: def.links ?? [],
+		legacyUrls: def.legacylinks,
+		settings,
+		categories,
+		supportedCategories,
+		capabilities,
+		requestDelay: def.requestdelay,
+		loadedAt: new Date(),
+		filePath
+	};
+}
+
+/**
  * Convert unified definition to UI-compatible format.
  */
 export function toUIDefinition(def: IndexerDefinition): UIIndexerDefinition {

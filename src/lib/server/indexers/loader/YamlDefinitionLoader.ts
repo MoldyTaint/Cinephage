@@ -12,13 +12,16 @@ import {
 	safeValidateCardigannDefinition
 } from '../schema/yamlDefinition';
 import { createChildLogger } from '$lib/logging';
+import { yamlToUnifiedDefinition, type IndexerDefinition } from './types';
 
 const log = createChildLogger({ module: 'YamlDefinitionLoader' });
 
 /**
  * Default definitions directory path.
+ * Can be overridden via INDEXER_DEFINITIONS_PATH environment variable.
  */
-const DEFAULT_DEFINITIONS_PATH = 'data/indexers/definitions';
+const DEFAULT_DEFINITIONS_PATH =
+	process.env.INDEXER_DEFINITIONS_PATH ?? 'data/indexers/definitions';
 
 /**
  * Result of loading a single definition file.
@@ -130,7 +133,7 @@ export class YamlDefinitionLoader {
 					error: `Validation failed: ${errorMessage}`
 				});
 
-				log.debug('Definition validation failed', { filePath, error: errorMessage });
+				log.warn('Definition validation failed', { filePath, error: errorMessage });
 				return null;
 			}
 
@@ -149,7 +152,7 @@ export class YamlDefinitionLoader {
 				filePath,
 				error: errorMsg
 			});
-			log.debug('Failed to load definition', { filePath, error: errorMsg });
+			log.warn('Failed to load definition', { filePath, error: errorMsg });
 			return null;
 		}
 	}
@@ -269,6 +272,35 @@ export class YamlDefinitionLoader {
 		mode: 'search' | 'tv-search' | 'movie-search' | 'music-search' | 'book-search'
 	): YamlDefinition[] {
 		return this.getAllDefinitions().filter((def) => def.caps.modes && mode in def.caps.modes);
+	}
+
+	// =========================================================================
+	// Unified Definition API
+	// =========================================================================
+
+	/**
+	 * Check if definitions have been loaded.
+	 */
+	isLoaded(): boolean {
+		return this.cache.size > 0 || this.errors.length > 0;
+	}
+
+	/**
+	 * Get all definitions converted to unified IndexerDefinition format.
+	 */
+	getAllUnified(): IndexerDefinition[] {
+		return this.getAllResults().map((result) =>
+			yamlToUnifiedDefinition(result.definition, result.filePath)
+		);
+	}
+
+	/**
+	 * Get a single definition converted to unified IndexerDefinition format.
+	 */
+	getUnified(id: string): IndexerDefinition | undefined {
+		const result = this.cache.get(id);
+		if (!result) return undefined;
+		return yamlToUnifiedDefinition(result.definition, result.filePath);
 	}
 }
 

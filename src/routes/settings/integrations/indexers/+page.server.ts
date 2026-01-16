@@ -2,22 +2,12 @@ import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { indexerCreateSchema, indexerUpdateSchema } from '$lib/validation/schemas';
 import { getIndexerManager } from '$lib/server/indexers/IndexerManager';
-import {
-	getDefinitionLoader,
-	initializeDefinitions,
-	toUIDefinition
-} from '$lib/server/indexers/loader';
+import { toUIDefinition } from '$lib/server/indexers/loader';
 import type { IndexerDefinition, Indexer } from '$lib/types/indexer';
 
 export const load: PageServerLoad = async () => {
 	const manager = await getIndexerManager();
 	const indexerConfigs = await manager.getIndexers();
-
-	// Initialize definition loader (if not already)
-	const definitionLoader = getDefinitionLoader();
-	if (!definitionLoader.isLoaded()) {
-		await initializeDefinitions();
-	}
 
 	// Helper to convert settings to string values only
 	const toStringSettings = (
@@ -58,15 +48,19 @@ export const load: PageServerLoad = async () => {
 		rejectDeadTorrents: config.rejectDeadTorrents
 	}));
 
-	// Get all definitions from unified loader and convert to UI format
-	const allDefinitions = definitionLoader.getAll();
+	// Get all definitions from manager and convert to UI format
+	const allDefinitions = manager.getUnifiedDefinitions();
 	const definitions: IndexerDefinition[] = allDefinitions
 		.map(toUIDefinition)
 		.sort((a, b) => a.name.localeCompare(b.name));
 
+	// Get any definition loading errors to surface to UI
+	const definitionErrors = manager.getDefinitionErrors();
+
 	return {
 		indexers,
-		definitions
+		definitions,
+		definitionErrors
 	};
 };
 

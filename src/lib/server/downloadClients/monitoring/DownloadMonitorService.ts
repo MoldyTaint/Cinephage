@@ -117,7 +117,9 @@ function mapDownloadStatusToQueueStatus(
 		case 'paused':
 			return 'paused';
 		case 'seeding':
-			return safeProgress >= 1 ? 'seeding' : 'downloading';
+			// Trust the client - if it says seeding, it's seeding
+			// Zero progress can happen with empty/skipped torrents
+			return 'seeding';
 		case 'completed':
 			return 'completed';
 		case 'postprocessing':
@@ -1062,23 +1064,32 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 		// Update status if changed
 		if (statusChanged) {
-			updates.status = newStatus;
+			// Preserve "sticky" statuses that shouldn't be overwritten by download client polling
+			// - 'failed': Only recover if download becomes actively downloading/queued again
+			// - 'importing': Don't interrupt active import process
+			const stickyStatuses = ['failed', 'importing'];
+			const isRecovering = newStatus === 'downloading' || newStatus === 'queued';
+			const shouldPreserveStatus = stickyStatuses.includes(queueItem.status) && !isRecovering;
 
-			// Set startedAt on first download progress
-			if (newStatus === 'downloading' && !queueItem.startedAt) {
-				updates.startedAt = now;
-			}
+			if (!shouldPreserveStatus) {
+				updates.status = newStatus;
 
-			// Set completedAt when finished downloading
-			if (newStatus === 'completed' || newStatus === 'seeding') {
-				if (!queueItem.completedAt) {
-					updates.completedAt = now;
+				// Set startedAt on first download progress
+				if (newStatus === 'downloading' && !queueItem.startedAt) {
+					updates.startedAt = now;
 				}
-			}
 
-			// Capture error message when download fails
-			if (newStatus === 'failed' && download.errorMessage) {
-				updates.errorMessage = download.errorMessage;
+				// Set completedAt when finished downloading
+				if (newStatus === 'completed' || newStatus === 'seeding') {
+					if (!queueItem.completedAt) {
+						updates.completedAt = now;
+					}
+				}
+
+				// Capture error message when download fails
+				if (newStatus === 'failed' && download.errorMessage) {
+					updates.errorMessage = download.errorMessage;
+				}
 			}
 		}
 

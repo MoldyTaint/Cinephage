@@ -15,7 +15,8 @@ import {
 	rename,
 	lstat,
 	readlink,
-	symlink
+	symlink,
+	open
 } from 'fs/promises';
 import { join, dirname, basename, extname } from 'path';
 import { logger } from '$lib/logging';
@@ -367,6 +368,10 @@ async function findFilesRecursive(dir: string, extensions?: string[]): Promise<s
 				if (extensions && extensions.length > 0) {
 					const ext = extname(entry.name).toLowerCase();
 					if (!extensions.includes(ext)) {
+						// Fallback: check magic numbers for extensionless files
+						if (ext === '' && (await isVideoFileByMagic(fullPath))) {
+							files.push(fullPath);
+						}
 						continue;
 					}
 				}
@@ -408,6 +413,61 @@ export const VIDEO_EXTENSIONS = [
 export function isVideoFile(filePath: string): boolean {
 	const ext = extname(filePath).toLowerCase();
 	return VIDEO_EXTENSIONS.includes(ext);
+}
+
+/**
+ * Video file magic number signatures for fallback detection
+ */
+interface MagicSignature {
+	magic: Buffer;
+	offset: number;
+	format: string;
+	extra?: { magic: Buffer; offset: number };
+}
+
+const VIDEO_MAGIC_SIGNATURES: MagicSignature[] = [
+	{ magic: Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), offset: 0, format: 'mkv/webm' },
+	{ magic: Buffer.from('ftyp'), offset: 4, format: 'mp4/mov/m4v' },
+	{
+		magic: Buffer.from('RIFF'),
+		offset: 0,
+		format: 'avi',
+		extra: { magic: Buffer.from('AVI '), offset: 8 }
+	},
+	{ magic: Buffer.from('FLV'), offset: 0, format: 'flv' }
+];
+
+/**
+ * Check if a file is a video by reading its magic bytes.
+ * Used as fallback when file has no extension.
+ */
+export async function isVideoFileByMagic(filePath: string): Promise<boolean> {
+	let fd;
+	try {
+		fd = await open(filePath, 'r');
+		const buffer = Buffer.alloc(12);
+		await fd.read(buffer, 0, 12, 0);
+
+		for (const sig of VIDEO_MAGIC_SIGNATURES) {
+			const slice = buffer.subarray(sig.offset, sig.offset + sig.magic.length);
+			if (slice.equals(sig.magic)) {
+				// Additional check for formats that need secondary verification (like AVI)
+				if (sig.extra) {
+					const extraSlice = buffer.subarray(
+						sig.extra.offset,
+						sig.extra.offset + sig.extra.magic.length
+					);
+					if (!extraSlice.equals(sig.extra.magic)) continue;
+				}
+				return true;
+			}
+		}
+		return false;
+	} catch {
+		return false;
+	} finally {
+		await fd?.close();
+	}
 }
 
 /**
