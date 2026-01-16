@@ -213,6 +213,9 @@ export class CaptchaSolver implements BackgroundService {
 				body: '',
 				url: request.url,
 				status: 0,
+				headers: {},
+				cookies: [],
+				userAgent: '',
 				error: 'Captcha solver is disabled',
 				timeMs: 0
 			};
@@ -224,6 +227,9 @@ export class CaptchaSolver implements BackgroundService {
 				body: '',
 				url: request.url,
 				status: 0,
+				headers: {},
+				cookies: [],
+				userAgent: '',
 				error: 'Browser not available',
 				timeMs: 0
 			};

@@ -316,6 +316,9 @@ export async function browserFetch(
 				body: '',
 				url: request.url,
 				status: 0,
+				headers: {},
+				cookies: [],
+				userAgent: '',
 				error: 'No response received',
 				timeMs: Date.now() - startTime
 			};
@@ -337,6 +340,15 @@ export async function browserFetch(
 			timeMs: Date.now() - startTime
 		});
 
+		const userAgent = await page
+			.evaluate(() => navigator.userAgent)
+			.catch(
+				() => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0'
+			);
+
+		const cookies = await camoufoxManager.extractCookies(managed.context, [finalUrl]);
+		const headers = response.headers();
+
 		// Return 200 status - the initial response status may have been 403/503
 		// but after solving the challenge we have successful content
 		return {
@@ -344,6 +356,9 @@ export async function browserFetch(
 			body,
 			url: finalUrl,
 			status: 200,
+			headers,
+			cookies,
+			userAgent,
 			timeMs: Date.now() - startTime
 		};
 	} catch (error) {
@@ -354,6 +369,9 @@ export async function browserFetch(
 			body: '',
 			url: request.url,
 			status: 0,
+			headers: {},
+			cookies: [],
+			userAgent: '',
 			error: errorMessage,
 			timeMs: Date.now() - startTime
 		};

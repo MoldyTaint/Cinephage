@@ -151,6 +151,12 @@ export interface BrowserFetchResult {
 	url: string;
 	/** HTTP status code */
 	status: number;
+	/** Response headers */
+	headers?: Record<string, string | undefined>;
+	/** Cookies captured from the browser */
+	cookies?: Cookie[];
+	/** User-Agent string used for the request */
+	userAgent?: string;
 	/** Error message if fetch failed */
 	error?: string;
 	/** Time taken in milliseconds */

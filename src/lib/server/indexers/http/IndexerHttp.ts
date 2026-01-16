@@ -23,7 +23,7 @@ import {
 } from './RetryPolicy';
 import { getRateLimitRegistry, getHostRateLimiter } from '../ratelimit';
 import type { RateLimitConfig } from '../ratelimit/types';
-import { getCaptchaSolver } from '$lib/server/captcha';
+import { captchaSolverSettingsService, getCaptchaSolver } from '$lib/server/captcha';
 import { CloudflareBypassError } from '$lib/errors';
 
 /** HTTP request options */
@@ -267,6 +267,12 @@ export class IndexerHttp {
 				// Try browser fetch if available (bypasses TLS fingerprinting)
 				if (!skipCaptchaSolver) {
 					const captchaSolver = getCaptchaSolver();
+					const captchaEnabled = captchaSolverSettingsService.isEnabled();
+
+					if (!captchaEnabled) {
+						this.log.info('Cloudflare detected, captcha solver disabled', { url, host });
+						throw new CloudflareProtectedError(host, response.status);
+					}
 
 					if (captchaSolver.isAvailable()) {
 						this.log.info('Cloudflare detected, fetching through browser', { url, host });
@@ -288,11 +294,20 @@ export class IndexerHttp {
 								timeMs: fetchResult.timeMs
 							});
 
+							const responseHeaders = new Headers();
+							if (fetchResult.headers) {
+								for (const [key, value] of Object.entries(fetchResult.headers)) {
+									if (value !== undefined) {
+										responseHeaders.set(key, value);
+									}
+								}
+							}
+
 							// Return the browser-fetched response
 							return {
 								body: fetchResult.body,
 								status: fetchResult.status,
-								headers: new Headers(), // Browser doesn't expose response headers easily
+								headers: responseHeaders,
 								url: fetchResult.url
 							};
 						}

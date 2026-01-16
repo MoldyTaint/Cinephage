@@ -9,7 +9,7 @@
  */
 
 import { isCloudflareProtected } from './CloudflareDetection';
-import { getCaptchaSolver } from '$lib/server/captcha';
+import { captchaSolverSettingsService, getCaptchaSolver } from '$lib/server/captcha';
 import { logger } from '$lib/logging';
 
 export interface CloudflareFetchOptions {
@@ -77,7 +77,12 @@ export async function cloudflareFetch(
 
 			// Try browser fallback
 			const solver = getCaptchaSolver();
-			if (solver.isAvailable()) {
+			const captchaEnabled = captchaSolverSettingsService.isEnabled();
+			if (!captchaEnabled) {
+				logger.info('[cloudflareFetch] Cloudflare detected, captcha solver disabled', {
+					url
+				});
+			} else if (solver.isAvailable()) {
 				const host = new URL(url).hostname;
 				logger.info('[cloudflareFetch] Cloudflare detected, using browser fallback', {
 					url,
@@ -98,10 +103,19 @@ export async function cloudflareFetch(
 						bodyLength: browserResult.body.length
 					});
 
+					const responseHeaders = new Headers();
+					if (browserResult.headers) {
+						for (const [key, value] of Object.entries(browserResult.headers)) {
+							if (value !== undefined) {
+								responseHeaders.set(key, value);
+							}
+						}
+					}
+
 					return {
 						body: browserResult.body,
 						status: browserResult.status,
-						headers: new Headers(),
+						headers: responseHeaders,
 						url: browserResult.url,
 						usedBrowser: true
 					};
