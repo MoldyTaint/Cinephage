@@ -15,7 +15,8 @@ export type QueueStatus =
 	| 'importing' // Import in progress
 	| 'imported' // Successfully imported to library
 	| 'failed' // Failed (download or import)
-	| 'seeding' // Download complete, still seeding
+	| 'seeding' // Download complete, still seeding (pre-import)
+	| 'seeding-imported' // Imported to library, torrent still seeding
 	| 'removed'; // Removed from queue
 
 /**
