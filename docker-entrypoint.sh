@@ -34,6 +34,7 @@ if [ ! -f "$CAMOUFOX_MARKER" ]; then
   mkdir -p "$CAMOUFOX_CACHE_DIR"
   if ./node_modules/.bin/camoufox-js fetch; then
     echo "Camoufox browser installed successfully"
+    touch "$CAMOUFOX_MARKER"
   else
     echo "Warning: Failed to download Camoufox browser. Captcha solving will be unavailable."
   fi
