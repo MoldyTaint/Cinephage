@@ -24,7 +24,8 @@ vi.mock('./CaptchaSolverSettings', () => ({
 // Mock solver functions
 vi.mock('./browser/CamoufoxSolver', () => ({
 	solveChallenge: vi.fn(),
-	testForChallenge: vi.fn()
+	testForChallenge: vi.fn(),
+	browserFetch: vi.fn()
 }));
 
 // Mock manager
@@ -51,7 +52,7 @@ vi.mock('$lib/logging', () => ({
 
 // Import after mocking
 const { CaptchaSolver, getCaptchaSolver } = await import('./CaptchaSolver');
-const { solveChallenge, testForChallenge } = await import('./browser/CamoufoxSolver');
+const { solveChallenge, testForChallenge, browserFetch } = await import('./browser/CamoufoxSolver');
 const { captchaSolverSettingsService } = await import('./CaptchaSolverSettings');
 
 /**
@@ -331,6 +332,55 @@ describe('CaptchaSolver', () => {
 		});
 	});
 
+	describe('fetch', () => {
+		beforeEach(async () => {
+			await startAndWaitReady(solver);
+			(browserFetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+				success: true,
+				body: '<html></html>',
+				url: 'https://example.com',
+				status: 200,
+				headers: { 'content-type': 'text/html' },
+				cookies: [],
+				userAgent: 'Test',
+				error: undefined,
+				timeMs: 1234
+			});
+		});
+
+		it('should update stats on successful fetch', async () => {
+			await solver.fetch({ url: 'https://example.com' });
+
+			const stats = solver.getStats();
+			expect(stats.fetchAttempts).toBe(1);
+			expect(stats.fetchSuccessCount).toBe(1);
+			expect(stats.fetchFailureCount).toBe(0);
+			expect(stats.avgFetchTimeMs).toBeGreaterThan(0);
+		});
+
+		it('should update stats on failed fetch', async () => {
+			(browserFetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+				success: false,
+				body: '',
+				url: 'https://example.com',
+				status: 0,
+				headers: {},
+				cookies: [],
+				userAgent: '',
+				error: 'Failed',
+				timeMs: 500
+			});
+
+			await solver.fetch({ url: 'https://example.com' });
+
+			const stats = solver.getStats();
+			expect(stats.fetchAttempts).toBe(1);
+			expect(stats.fetchSuccessCount).toBe(0);
+			expect(stats.fetchFailureCount).toBe(1);
+			expect(stats.lastError).toBe('Failed');
+		});
+	});
+
 	describe('Cache management', () => {
 		beforeEach(async () => {
 			await startAndWaitReady(solver);
@@ -517,6 +567,10 @@ describe('CaptchaSolver', () => {
 			expect(stats.failureCount).toBe(0);
 			expect(stats.cacheHits).toBe(0);
 			expect(stats.avgSolveTimeMs).toBe(0);
+			expect(stats.fetchAttempts).toBe(0);
+			expect(stats.fetchSuccessCount).toBe(0);
+			expect(stats.fetchFailureCount).toBe(0);
+			expect(stats.avgFetchTimeMs).toBe(0);
 		});
 
 		it('should preserve cache size in stats', async () => {
@@ -527,6 +581,7 @@ describe('CaptchaSolver', () => {
 
 			const stats = solver.getStats();
 			expect(stats.cacheSize).toBe(1); // Cache still has entry
+			expect(stats.fetchAttempts).toBe(0);
 		});
 	});
 

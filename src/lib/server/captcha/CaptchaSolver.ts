@@ -41,7 +41,11 @@ export class CaptchaSolver implements BackgroundService {
 		failureCount: 0,
 		cacheHits: 0,
 		avgSolveTimeMs: 0,
-		cacheSize: 0
+		cacheSize: 0,
+		fetchAttempts: 0,
+		fetchSuccessCount: 0,
+		fetchFailureCount: 0,
+		avgFetchTimeMs: 0
 	};
 
 	// Running solves (to prevent duplicate concurrent solves for same domain)
@@ -235,10 +239,26 @@ export class CaptchaSolver implements BackgroundService {
 			};
 		}
 
-		return browserFetch(request, {
+		const fetchStart = Date.now();
+		this.stats.fetchAttempts++;
+
+		const result = await browserFetch(request, {
 			headless: config.headless,
 			timeoutSeconds: request.timeout ?? config.timeoutSeconds
 		});
+
+		if (result.success) {
+			this.stats.fetchSuccessCount++;
+		} else {
+			this.stats.fetchFailureCount++;
+			this.stats.lastError = result.error;
+		}
+
+		const fetchTime = Math.max(Date.now() - fetchStart, result.timeMs, 1);
+		this.updateAvgFetchTime(fetchTime);
+		this.stats.lastFetchAt = new Date();
+
+		return result;
 	}
 
 	/**
@@ -344,6 +364,18 @@ export class CaptchaSolver implements BackgroundService {
 	}
 
 	/**
+	 * Update average fetch time
+	 */
+	private updateAvgFetchTime(newTime: number): void {
+		const total = this.stats.fetchSuccessCount + this.stats.fetchFailureCount;
+		if (total === 1) {
+			this.stats.avgFetchTimeMs = newTime;
+		} else {
+			this.stats.avgFetchTimeMs = Math.round(this.stats.avgFetchTimeMs * 0.8 + newTime * 0.2);
+		}
+	}
+
+	/**
 	 * Get service health status
 	 */
 	getHealth(): SolverHealth {
@@ -396,7 +428,11 @@ export class CaptchaSolver implements BackgroundService {
 			failureCount: 0,
 			cacheHits: 0,
 			avgSolveTimeMs: 0,
-			cacheSize: this.cache.size
+			cacheSize: this.cache.size,
+			fetchAttempts: 0,
+			fetchSuccessCount: 0,
+			fetchFailureCount: 0,
+			avgFetchTimeMs: 0
 		};
 	}
 }

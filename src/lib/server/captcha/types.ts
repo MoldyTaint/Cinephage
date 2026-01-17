@@ -179,8 +179,18 @@ export interface SolverStats {
 	avgSolveTimeMs: number;
 	/** Current cache size */
 	cacheSize: number;
+	/** Total browser fetch attempts */
+	fetchAttempts: number;
+	/** Successful browser fetches */
+	fetchSuccessCount: number;
+	/** Failed browser fetches */
+	fetchFailureCount: number;
+	/** Average fetch time in ms */
+	avgFetchTimeMs: number;
 	/** Last solve timestamp */
 	lastSolveAt?: Date;
+	/** Last fetch timestamp */
+	lastFetchAt?: Date;
 	/** Last error if any */
 	lastError?: string;
 }
