@@ -103,7 +103,6 @@ When using Docker, configure via `.env` or environment variables:
 
 <br>
 
-
 | Variable               | Default | Description                 |
 | ---------------------- | ------- | --------------------------- |
 | `CINEPHAGE_PORT`       | `3000`  | External port mapping       |
