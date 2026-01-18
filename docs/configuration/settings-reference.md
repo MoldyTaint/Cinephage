@@ -98,19 +98,21 @@ When using Docker, configure via `.env` or environment variables:
 
 ### Docker-Specific Variables
 
-> [!NOTE]
-> The variables listed below are helper variables for Docker and Docker Compose. They are not application configuration keys used directly by Cinephage. Docker and Docker Compose use them to control things like port mappings, volume paths, and container user IDs. You can optionally define them in a `.env` file for convenience. The variable names themselves are not required or hard-coded — they are provided as a documented convention to make Docker setups clearer and easier to manage.
+> [!IMPORTANT]
+> When using Docker Compose with a `.env` file, use the `CINEPHAGE_*` prefixed variables listed below. Docker Compose maps these to the application variables that Cinephage actually consumes (e.g., `CINEPHAGE_ORIGIN` → `ORIGIN`). This prefix convention prevents variable name collisions when running multiple services.
+>
+> If using `docker run` directly, pass the unprefixed application variables (`ORIGIN`, `TZ`) since there's no `.env` file involved.
 
 <br>
 
-| Variable               | Default | Description                 |
-| ---------------------- | ------- | --------------------------- |
-| `CINEPHAGE_PORT`       | `3000`  | External port mapping       |
-| `CINEPHAGE_MEDIA_PATH` | -       | Path to media on host       |
-| `CINEPHAGE_UID`        | `1000`  | User ID for file ownership  |
-| `CINEPHAGE_GID`        | `1000`  | Group ID for file ownership |
-| `CINEPHAGE_ORIGIN`     | -       | External URL for CSRF       |
-| `CINEPHAGE_TZ`         | `UTC`   | Timezone                    |
+| Variable               | Default                 | Description                 |
+| ---------------------- | ----------------------- | --------------------------- |
+| `CINEPHAGE_MEDIA_PATH` | -                       | Path to media on host       |
+| `CINEPHAGE_PORT`       | `3000`                  | External port mapping       |
+| `CINEPHAGE_UID`        | `1000`                  | User ID for file ownership  |
+| `CINEPHAGE_GID`        | `1000`                  | Group ID for file ownership |
+| `CINEPHAGE_ORIGIN`     | `http://localhost:3000` | External URL for CSRF       |
+| `CINEPHAGE_TZ`         | `UTC`                   | Timezone                    |
 
 ### Example docker-compose.yaml
 

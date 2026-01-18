@@ -48,7 +48,7 @@ Docker provides the simplest setup and automatic updates.
 3. Edit `.env` and set your media path:
 
    ```bash
-   MEDIA_PATH=/path/to/your/media
+   CINEPHAGE_MEDIA_PATH=/path/to/your/media
    ```
 
 4. Start Cinephage:
@@ -61,18 +61,20 @@ Open http://localhost:3000
 
 ### Configuration Options
 
-All settings go in `.env`:
+All settings go in `.env`. All Docker variables use the `CINEPHAGE_` prefix:
 
-| Variable     | Required | Default               | Description                   |
-| ------------ | -------- | --------------------- | ----------------------------- |
-| `MEDIA_PATH` | Yes      | -                     | Path to your media library    |
-| `PUID`       | No       | 1000                  | User ID for file permissions  |
-| `PGID`       | No       | 1000                  | Group ID for file permissions |
-| `PORT`       | No       | 3000                  | Port to expose                |
-| `ORIGIN`     | No       | http://localhost:3000 | Your access URL               |
-| `TZ`         | No       | UTC                   | Timezone                      |
+| Variable               | Required | Default               | Description                   |
+| ---------------------- | -------- | --------------------- | ----------------------------- |
+| `CINEPHAGE_MEDIA_PATH` | Yes      | -                     | Path to your media library    |
+| `CINEPHAGE_UID`        | No       | 1000                  | User ID for file permissions  |
+| `CINEPHAGE_GID`        | No       | 1000                  | Group ID for file permissions |
+| `CINEPHAGE_PORT`       | No       | 3000                  | Port to expose                |
+| `CINEPHAGE_ORIGIN`     | No       | http://localhost:3000 | Your access URL               |
+| `CINEPHAGE_TZ`         | No       | UTC                   | Timezone                      |
 
 ### Using Docker Run
+
+When using `docker run` directly, pass the application variables (`ORIGIN`, `TZ`) since there's no `.env` file:
 
 ```bash
 docker run -d \
@@ -87,6 +89,8 @@ docker run -d \
   -e TZ=UTC \
   ghcr.io/moldytaint/cinephage:latest
 ```
+
+> **Note:** The `CINEPHAGE_*` prefix is only used in `.env` files for Docker Compose. When using `docker run`, pass the actual application variables (`ORIGIN`, `TZ`) directly.
 
 ### Building from Source
 

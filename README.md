@@ -96,6 +96,8 @@ docker compose up -d
 
 **Using Docker Run:**
 
+When using `docker run`, pass the application variables directly (without `CINEPHAGE_` prefix):
+
 ```bash
 docker run -d \
   --name cinephage \

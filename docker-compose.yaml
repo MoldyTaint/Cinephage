@@ -7,7 +7,7 @@
 #   2. Run: docker compose up -d
 #   3. Open: http://localhost:3000
 #
-# All settings have sensible defaults. Only MEDIA_PATH is required.
+# All settings have sensible defaults. Only CINEPHAGE_MEDIA_PATH is required.
 #
 # To build from source instead of pulling the image:
 #   Uncomment "build: ." and comment out "image:" below
@@ -24,19 +24,19 @@ services:
     # USER PERMISSIONS
     # Run as your user to avoid file permission issues
     # Find your IDs with: id -u && id -g
-    # Set via: PUID and PGID in .env
+    # Set via: CINEPHAGE_UID and CINEPHAGE_GID in .env
     # -------------------------------------------------------------------------
-    user: '${PUID:-1000}:${PGID:-1000}'
+    user: '${CINEPHAGE_UID:-1000}:${CINEPHAGE_GID:-1000}'
 
     security_opt:
       - no-new-privileges:true
 
     # -------------------------------------------------------------------------
     # PORT
-    # Default: 3000. Override with PORT in .env
+    # Default: 3000. Override with CINEPHAGE_PORT in .env
     # -------------------------------------------------------------------------
     ports:
-      - '${PORT:-3000}:3000'
+      - '${CINEPHAGE_PORT:-3000}:3000'
 
     # -------------------------------------------------------------------------
     # VOLUMES
@@ -44,13 +44,13 @@ services:
     volumes:
       - ./data:/app/data # Database and config (auto-created)
       - ./logs:/app/logs # Log files (auto-created)
-      - ${MEDIA_PATH:?Set MEDIA_PATH in .env}:/media # Your media library
+      - ${CINEPHAGE_MEDIA_PATH:?Set CINEPHAGE_MEDIA_PATH in .env}:/media # Your media library
 
     # -------------------------------------------------------------------------
     # ENVIRONMENT
     # -------------------------------------------------------------------------
     environment:
       # Required if accessing via IP/hostname other than localhost
-      - ORIGIN=${ORIGIN:-http://localhost:3000}
+      - ORIGIN=${CINEPHAGE_ORIGIN:-http://localhost:3000}
       # Timezone for scheduled tasks (timedatectl list-timezones)
-      - TZ=${TZ:-UTC}
+      - TZ=${CINEPHAGE_TZ:-UTC}

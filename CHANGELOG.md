@@ -38,6 +38,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **BREAKING: Docker environment variables renamed to CINEPHAGE\_\* prefix** - All Docker Compose `.env` variables now use the `CINEPHAGE_` prefix for consistency and to avoid conflicts with other services. Update your `.env` file:
+  - `MEDIA_PATH` → `CINEPHAGE_MEDIA_PATH`
+  - `PUID` → `CINEPHAGE_UID`
+  - `PGID` → `CINEPHAGE_GID`
+  - `PORT` → `CINEPHAGE_PORT`
+  - `ORIGIN` → `CINEPHAGE_ORIGIN`
+  - `TZ` → `CINEPHAGE_TZ`
 - **Docker base image changed from Alpine to Debian** - Required for Camoufox browser support. Existing users should pull the new image and recreate containers. See [Migration Notes](#migration-notes) below.
 - **Unified Tasks page** - Consolidated monitoring settings into Settings > Tasks (removed separate Monitoring page)
 - **CutoffUnmet task** - Now specifically targets items below quality cutoff (daily frequency)
