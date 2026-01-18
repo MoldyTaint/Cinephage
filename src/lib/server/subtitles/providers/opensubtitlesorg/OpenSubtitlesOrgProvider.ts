@@ -5,7 +5,7 @@
  * Based on Bazarr's subliminal_patch/providers/opensubtitles.py
  */
 
-import { BaseSubtitleProvider, type ProviderCapabilities } from '../BaseProvider';
+import { BaseSubtitleProvider } from '../BaseProvider';
 import type { ISubtitleProvider, ProviderTestResult } from '../interfaces';
 import type {
 	SubtitleSearchCriteria,
@@ -166,8 +166,7 @@ export class OpenSubtitlesOrgProvider extends BaseSubtitleProvider implements IS
 		criteria: SubtitleSearchCriteria,
 		options?: ProviderSearchOptions
 	): Promise<SubtitleSearchResult[]> {
-		const token = await this.ensureToken();
-		const results: SubtitleSearchResult[] = [];
+		let token = await this.ensureToken();
 		const maxResults = options?.maxResults ?? 50;
 
 		// Convert languages to XML-RPC format
@@ -230,13 +229,21 @@ export class OpenSubtitlesOrgProvider extends BaseSubtitleProvider implements IS
 		}
 
 		try {
-			const response = await this.xmlRpcCall('SearchSubtitles', [token, queries, { limit: maxResults }]);
+			const response = await this.xmlRpcCall('SearchSubtitles', [
+				token,
+				queries,
+				{ limit: maxResults }
+			]);
 
 			if (response.status === '401 Unauthorized') {
 				// Token expired, retry with fresh login
 				this.token = undefined;
-				const newToken = await this.ensureToken();
-				const retryResponse = await this.xmlRpcCall('SearchSubtitles', [newToken, queries, { limit: maxResults }]);
+				token = await this.ensureToken();
+				const retryResponse = await this.xmlRpcCall('SearchSubtitles', [
+					token,
+					queries,
+					{ limit: maxResults }
+				]);
 				return this.parseResults((retryResponse.data ?? []) as OrgSubtitleResult[], criteria);
 			}
 
@@ -254,9 +261,11 @@ export class OpenSubtitlesOrgProvider extends BaseSubtitleProvider implements IS
 
 			return [];
 		} catch (error) {
-			if (error instanceof AuthenticationError ||
+			if (
+				error instanceof AuthenticationError ||
 				error instanceof DownloadLimitExceeded ||
-				error instanceof TooManyRequests) {
+				error instanceof TooManyRequests
+			) {
 				throw error;
 			}
 			this.logError('Search', error);
@@ -339,7 +348,10 @@ export class OpenSubtitlesOrgProvider extends BaseSubtitleProvider implements IS
 	async download(result: SubtitleSearchResult): Promise<Buffer> {
 		const token = await this.ensureToken();
 
-		const response = await this.xmlRpcCall('DownloadSubtitles', [token, [result.providerSubtitleId]]);
+		const response = await this.xmlRpcCall('DownloadSubtitles', [
+			token,
+			[result.providerSubtitleId]
+		]);
 
 		if (response.status === '407 Download limit reached') {
 			throw new DownloadLimitExceeded('opensubtitlesorg');
@@ -394,7 +406,10 @@ export class OpenSubtitlesOrgProvider extends BaseSubtitleProvider implements IS
 	 * Note: This is a simplified implementation.
 	 * In production, use a proper XML-RPC library.
 	 */
-	private async xmlRpcCall(method: string, params: unknown[]): Promise<{ status: string; token?: string; data?: unknown[] }> {
+	private async xmlRpcCall(
+		method: string,
+		params: unknown[]
+	): Promise<{ status: string; token?: string; data?: unknown[] }> {
 		// Build XML-RPC request
 		const xml = this.buildXmlRpcRequest(method, params);
 
@@ -479,9 +494,15 @@ export class OpenSubtitlesOrgProvider extends BaseSubtitleProvider implements IS
 	/**
 	 * Parse XML-RPC response
 	 */
-	private parseXmlRpcResponse(xml: string): { status: string; token?: string; data?: OrgSubtitleResult[] } {
+	private parseXmlRpcResponse(xml: string): {
+		status: string;
+		token?: string;
+		data?: OrgSubtitleResult[];
+	} {
 		// Simple regex-based parsing (in production, use proper XML parser)
-		const statusMatch = xml.match(/<name>status<\/name>\s*<value><string>([^<]+)<\/string><\/value>/);
+		const statusMatch = xml.match(
+			/<name>status<\/name>\s*<value><string>([^<]+)<\/string><\/value>/
+		);
 		const status = statusMatch?.[1] ?? 'Unknown';
 
 		const tokenMatch = xml.match(/<name>token<\/name>\s*<value><string>([^<]+)<\/string><\/value>/);

@@ -52,8 +52,8 @@
 		{#if removeFromLibrary}
 			Remove <strong>"{itemName}"</strong> from your library entirely?
 		{:else}
-			Delete files for <strong>"{itemName}"</strong>? The item will remain in your library but show as
-			missing.
+			Delete files for <strong>"{itemName}"</strong>? The item will remain in your library but show
+			as missing.
 		{/if}
 	</p>
 
@@ -63,7 +63,11 @@
 	</label>
 
 	<label class="flex cursor-pointer items-center gap-3 py-2">
-		<input type="checkbox" class="checkbox shrink-0 checkbox-error" bind:checked={removeFromLibrary} />
+		<input
+			type="checkbox"
+			class="checkbox shrink-0 checkbox-error"
+			bind:checked={removeFromLibrary}
+		/>
 		<span class="text-sm">Remove from library entirely</span>
 	</label>
 
@@ -71,7 +75,8 @@
 		<div class="mt-3 alert alert-error">
 			<Trash2 class="h-4 w-4" />
 			<span class="text-sm"
-				>This will permanently remove the item from your library. All metadata, history, and settings will be lost. This cannot be undone.</span
+				>This will permanently remove the item from your library. All metadata, history, and
+				settings will be lost. This cannot be undone.</span
 			>
 		</div>
 	{:else if deleteFiles}

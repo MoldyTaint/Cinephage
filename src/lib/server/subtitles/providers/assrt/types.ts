@@ -60,10 +60,10 @@ export const ASSRT_LANGUAGES = ['zh', 'zh-cn', 'zh-tw', 'en'];
 
 /** Language code mapping to Assrt codes */
 export const ASSRT_LANGUAGE_MAP: Record<string, string> = {
-	'zh': 'chs',
+	zh: 'chs',
 	'zh-cn': 'chs',
 	'zh-tw': 'cht',
-	'en': 'eng'
+	en: 'eng'
 };
 
 /** API base URL */

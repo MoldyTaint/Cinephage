@@ -11,10 +11,39 @@ export { Addic7edProvider } from './Addic7edProvider';
 
 /** Supported languages */
 const ADDIC7ED_SUPPORTED_LANGUAGES = [
-	'en', 'es', 'fr', 'de', 'it', 'pt', 'pt-br', 'nl', 'pl', 'ru',
-	'ar', 'he', 'tr', 'el', 'hu', 'ro', 'cs', 'sv', 'da', 'fi',
-	'no', 'ja', 'ko', 'zh', 'vi', 'bg', 'hr', 'sr', 'sk', 'sl',
-	'uk', 'ca', 'eu'
+	'en',
+	'es',
+	'fr',
+	'de',
+	'it',
+	'pt',
+	'pt-br',
+	'nl',
+	'pl',
+	'ru',
+	'ar',
+	'he',
+	'tr',
+	'el',
+	'hu',
+	'ro',
+	'cs',
+	'sv',
+	'da',
+	'fi',
+	'no',
+	'ja',
+	'ko',
+	'zh',
+	'vi',
+	'bg',
+	'hr',
+	'sr',
+	'sk',
+	'sl',
+	'uk',
+	'ca',
+	'eu'
 ];
 
 /**

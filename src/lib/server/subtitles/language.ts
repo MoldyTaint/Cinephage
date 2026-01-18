@@ -150,9 +150,7 @@ export class Language {
 	 */
 	isEquivalent(other: Language): boolean {
 		return (
-			this.alpha2 === other.alpha2 &&
-			this.country === other.country &&
-			this.script === other.script
+			this.alpha2 === other.alpha2 && this.country === other.country && this.script === other.script
 		);
 	}
 
@@ -302,7 +300,9 @@ export class LanguageEquivalence {
 			for (const equiv of equivalents) {
 				if (!seenCodes.has(equiv)) {
 					seenCodes.add(equiv);
-					result.push(lang.rebuild({ country: equiv.includes('-') ? equiv.split('-')[1] : undefined }));
+					result.push(
+						lang.rebuild({ country: equiv.includes('-') ? equiv.split('-')[1] : undefined })
+					);
 				}
 			}
 		}

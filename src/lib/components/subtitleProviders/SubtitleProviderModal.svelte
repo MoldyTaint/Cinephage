@@ -1,7 +1,18 @@
 <script lang="ts">
-	import { X, Loader2, CheckCircle2, Globe, Key, Hash, Search, User, Crown, CreditCard } from 'lucide-svelte';
+	import {
+		X,
+		Loader2,
+		CheckCircle2,
+		Globe,
+		Key,
+		Hash,
+		Search,
+		User,
+		Crown,
+		CreditCard
+	} from 'lucide-svelte';
 	import type { SubtitleProviderConfig, ProviderImplementation } from '$lib/server/subtitles/types';
-	import type { ProviderDefinition, ProviderAccessType } from '$lib/server/subtitles/providers/interfaces';
+	import type { ProviderDefinition } from '$lib/server/subtitles/providers/interfaces';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import { SectionHeader, TestResult } from '$lib/components/ui/modal';
 
@@ -14,7 +25,9 @@
 		badge: string;
 		badgeClass: string;
 	} {
-		const accessType = def.accessType ?? (def.requiresApiKey ? 'api-key' : def.requiresCredentials ? 'free-account' : 'free');
+		const accessType =
+			def.accessType ??
+			(def.requiresApiKey ? 'api-key' : def.requiresCredentials ? 'free-account' : 'free');
 
 		switch (accessType) {
 			case 'free':
@@ -272,12 +285,17 @@
 			<div class="mb-6 flex items-center justify-between rounded-lg bg-base-200 px-4 py-3">
 				<div class="flex items-center gap-3">
 					<div class="rounded-lg bg-base-300 p-2">
-						<svelte:component this={selectedAccessInfo.icon} class="h-5 w-5 {selectedAccessInfo.iconClass}" />
+						<svelte:component
+							this={selectedAccessInfo.icon}
+							class="h-5 w-5 {selectedAccessInfo.iconClass}"
+						/>
 					</div>
 					<div>
 						<div class="flex items-center gap-2">
 							<span class="font-semibold">{selectedDefinition.name}</span>
-							<span class="badge badge-xs {selectedAccessInfo.badgeClass}">{selectedAccessInfo.badge}</span>
+							<span class="badge badge-xs {selectedAccessInfo.badgeClass}"
+								>{selectedAccessInfo.badge}</span
+							>
 						</div>
 						<div class="text-sm text-base-content/60">{selectedDefinition.description}</div>
 					</div>

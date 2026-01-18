@@ -13,11 +13,7 @@ export type { ProviderCapabilities } from './BaseProvider';
 export { SubtitleProviderFactory, getSubtitleProviderFactory } from './SubtitleProviderFactory';
 
 // Provider Registry (auto-discovery)
-export {
-	providerRegistry,
-	registerBuiltinProviders,
-	ensureProvidersRegistered
-} from './registry';
+export { providerRegistry, registerBuiltinProviders, ensureProvidersRegistered } from './registry';
 export type { ProviderInfo, ProviderConstructor } from './registry';
 
 // Mixins

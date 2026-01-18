@@ -27,7 +27,7 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { getSubtitleProviderFactory } from '../providers/SubtitleProviderFactory';
+import { getSubtitleProviderFactory, initializeProviderFactory } from '../providers/SubtitleProviderFactory';
 import type { ISubtitleProvider } from '../providers/interfaces';
 import type {
 	SubtitleSearchCriteria,
@@ -211,11 +211,15 @@ function createProviderSafe(implementation: ProviderImplementation): ISubtitlePr
 // ============================================================================
 
 describe('Live Subtitle Provider Tests', () => {
-	const factory = getSubtitleProviderFactory();
+	let factory: ReturnType<typeof getSubtitleProviderFactory>;
 	let testMovie: MovieTestContent;
 	let testTvShow: TvTestContent;
 
-	beforeAll(() => {
+	beforeAll(async () => {
+		// Initialize provider factory to register all built-in providers
+		await initializeProviderFactory();
+		factory = getSubtitleProviderFactory();
+		
 		testMovie = getPrimaryTestMovie(); // Inception
 		testTvShow = getPrimaryTestTvShow(); // Breaking Bad S01E01
 	});

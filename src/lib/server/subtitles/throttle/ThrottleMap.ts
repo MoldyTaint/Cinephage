@@ -295,7 +295,9 @@ export class ThrottleManager {
 			// Persist state
 			this.persistData();
 
-			logger.warn(`Provider ${providerName} throttled for ${config.description} after ${FAILURE_THRESHOLD} failures`);
+			logger.warn(
+				`Provider ${providerName} throttled for ${config.description} after ${FAILURE_THRESHOLD} failures`
+			);
 
 			return {
 				shouldThrottle: true,

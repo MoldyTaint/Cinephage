@@ -10,7 +10,7 @@
  */
 
 import type { ISubtitleProvider, ProviderDefinition } from './interfaces';
-import type { SubtitleProviderConfig, ProviderImplementation } from '../types';
+import type { SubtitleProviderConfig } from '../types';
 import { logger } from '$lib/logging';
 
 /** Provider constructor type */

@@ -11,10 +11,44 @@ export { PodnapisiProvider } from './PodnapisiProvider';
 
 /** Supported languages */
 const PODNAPISI_LANGUAGES = [
-	'en', 'sl', 'hr', 'sr', 'bs', 'mk', 'bg', 'cs', 'sk', 'pl',
-	'hu', 'ro', 'de', 'es', 'fr', 'it', 'pt', 'nl', 'ru', 'el',
-	'tr', 'ar', 'he', 'vi', 'zh', 'ja', 'ko', 'sv', 'no', 'da',
-	'fi', 'uk', 'fa', 'id', 'th', 'et', 'lv', 'lt'
+	'en',
+	'sl',
+	'hr',
+	'sr',
+	'bs',
+	'mk',
+	'bg',
+	'cs',
+	'sk',
+	'pl',
+	'hu',
+	'ro',
+	'de',
+	'es',
+	'fr',
+	'it',
+	'pt',
+	'nl',
+	'ru',
+	'el',
+	'tr',
+	'ar',
+	'he',
+	'vi',
+	'zh',
+	'ja',
+	'ko',
+	'sv',
+	'no',
+	'da',
+	'fi',
+	'uk',
+	'fa',
+	'id',
+	'th',
+	'et',
+	'lv',
+	'lt'
 ];
 
 /**

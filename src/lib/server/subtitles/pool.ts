@@ -14,7 +14,7 @@ import type { SubtitleProviderConfig, LanguageCode } from './types';
 import type { Subtitle } from './subtitle';
 import type { Video } from './video';
 import type { LanguageEquivalencePair } from './language';
-import { BaseSubtitleProvider, ProviderState } from './providers/BaseProvider';
+import { BaseSubtitleProvider } from './providers/BaseProvider';
 import { logger } from '$lib/logging';
 
 /**
@@ -64,19 +64,12 @@ export interface BanList {
 /**
  * Throttle callback type
  */
-export type ThrottleCallback = (
-	providerName: string,
-	error: Error,
-	throttleUntil: Date
-) => void;
+export type ThrottleCallback = (providerName: string, error: Error, throttleUntil: Date) => void;
 
 /**
  * Pre-download hook type
  */
-export type PreDownloadHook = (
-	subtitle: Subtitle,
-	video: Video
-) => Promise<boolean>; // Return false to cancel download
+export type PreDownloadHook = (subtitle: Subtitle, video: Video) => Promise<boolean>; // Return false to cancel download
 
 /**
  * Post-download hook type
@@ -385,9 +378,12 @@ export class PoolManager {
 		this.createPoolConfig = createPoolConfig;
 
 		// Start cleanup interval (every 30 minutes)
-		this.cleanupInterval = setInterval(() => {
-			this.cleanupExpiredPools();
-		}, 30 * 60 * 1000);
+		this.cleanupInterval = setInterval(
+			() => {
+				this.cleanupExpiredPools();
+			},
+			30 * 60 * 1000
+		);
 	}
 
 	/**

@@ -8,8 +8,6 @@
  * - Convert formats
  */
 
-import { logger } from '$lib/logging';
-
 /**
  * Modification types
  */
@@ -126,7 +124,10 @@ function formatSrtTime(ms: number): string {
 /**
  * Apply modifications to subtitle content
  */
-export function applyModifications(content: string, options: ModificationOptions): ModificationResult {
+export function applyModifications(
+	content: string,
+	options: ModificationOptions
+): ModificationResult {
 	let modified = content;
 	const appliedMods: ModificationType[] = [];
 
@@ -215,7 +216,10 @@ export function removeHearingImpaired(content: string): string {
 	// Remove sound descriptions in parentheses (MUSIC PLAYING)
 	// But keep regular dialogue in parentheses
 	result = result.replace(/\([A-Z][A-Z\s]*\)/g, '');
-	result = result.replace(/\([^)]*(?:MUSIC|SINGING|LAUGHING|CRYING|SIGHING|GASPING|GROANING|SCREAMING|APPLAUSE|CHEERING|THUNDER|RINGING|BUZZING|BEEPING|CLICKING|KNOCKING|DOOR|PHONE)[^)]*\)/gi, '');
+	result = result.replace(
+		/\([^)]*(?:MUSIC|SINGING|LAUGHING|CRYING|SIGHING|GASPING|GROANING|SCREAMING|APPLAUSE|CHEERING|THUNDER|RINGING|BUZZING|BEEPING|CLICKING|KNOCKING|DOOR|PHONE)[^)]*\)/gi,
+		''
+	);
 
 	// Remove music notes
 	result = result.replace(/♪[^♪]*♪/g, '');
@@ -347,7 +351,7 @@ export function fixPunctuationSpacing(content: string): string {
  */
 export function removeAssStyling(content: string): string {
 	// Remove override tags
-	let result = content.replace(/\{[^}]*\}/g, '');
+	const result = content.replace(/\{[^}]*\}/g, '');
 
 	// Extract just the dialogue text from ASS format
 	const lines = result.split('\n');
@@ -494,6 +498,8 @@ export function splitLongCues(content: string, maxDurationMs = 7000): string {
 /**
  * Create a modification pipeline
  */
-export function createModificationPipeline(options: ModificationOptions): (content: string) => string {
+export function createModificationPipeline(
+	options: ModificationOptions
+): (content: string) => string {
 	return (content: string) => applyModifications(content, options).content;
 }

@@ -18,7 +18,6 @@ import { GenericSubtitle } from '../../subtitle';
 import { Language } from '../../language';
 import {
 	ASSRT_LANGUAGES,
-	ASSRT_LANGUAGE_MAP,
 	ASSRT_API_URL,
 	type AssrtConfig,
 	type AssrtSearchResponse,
@@ -93,12 +92,10 @@ export class AssrtProvider extends BaseSubtitleProvider implements ISubtitleProv
 	 */
 	async search(
 		criteria: SubtitleSearchCriteria,
-		options?: ProviderSearchOptions
+		_options?: ProviderSearchOptions
 	): Promise<SubtitleSearchResult[]> {
 		// Filter to supported languages
-		const languages = criteria.languages.filter((l) =>
-			ASSRT_LANGUAGES.includes(l)
-		);
+		const languages = criteria.languages.filter((l) => ASSRT_LANGUAGES.includes(l));
 		if (languages.length === 0) {
 			return [];
 		}

@@ -9,7 +9,14 @@
  * - Streaming service
  */
 
-import type { Video, VideoSource, VideoResolution, VideoCodec, AudioCodec, StreamingService } from './video';
+import type {
+	Video,
+	VideoSource,
+	VideoResolution,
+	VideoCodec,
+	AudioCodec,
+	StreamingService
+} from './video';
 import { Movie, Episode } from './video';
 import { logger } from '$lib/logging';
 
@@ -65,11 +72,7 @@ export function parseReleaseNameFallback(releaseName: string): GuessitResult {
 	const result: GuessitResult = {};
 
 	// Normalize
-	const normalized = releaseName
-		.replace(/\./g, ' ')
-		.replace(/_/g, ' ')
-		.replace(/-/g, ' ')
-		.trim();
+	const normalized = releaseName.replace(/\./g, ' ').replace(/_/g, ' ').replace(/-/g, ' ').trim();
 
 	// Detect type and extract season/episode
 	const episodeMatch = normalized.match(/[Ss](\d{1,2})[Ee](\d{1,2})(?:[Ee](\d{1,2}))?/);
@@ -263,18 +266,18 @@ export async function refineVideo(video: Video, releaseName?: string): Promise<V
  */
 function mapSource(source: string): VideoSource {
 	const mapping: Record<string, VideoSource> = {
-		'BluRay': 'BluRay',
+		BluRay: 'BluRay',
 		'Blu-ray': 'BluRay',
-		'Web': 'Web',
+		Web: 'Web',
 		'WEB-DL': 'Web',
-		'WEBRip': 'Web',
-		'HDTV': 'HDTV',
-		'PDTV': 'PDTV',
-		'DVD': 'DVD',
-		'DVDRip': 'DVD',
-		'CAM': 'CAM',
-		'Screener': 'Screener',
-		'VOD': 'VOD'
+		WEBRip: 'Web',
+		HDTV: 'HDTV',
+		PDTV: 'PDTV',
+		DVD: 'DVD',
+		DVDRip: 'DVD',
+		CAM: 'CAM',
+		Screener: 'Screener',
+		VOD: 'VOD'
 	};
 	return mapping[source] ?? 'unknown';
 }
@@ -299,19 +302,19 @@ function mapResolution(resolution: string): VideoResolution {
  */
 function mapVideoCodec(codec: string): VideoCodec {
 	const mapping: Record<string, VideoCodec> = {
-		'HEVC': 'H.265',
+		HEVC: 'H.265',
 		'H.265': 'H.265',
-		'x265': 'H.265',
+		x265: 'H.265',
 		'H.264': 'H.264',
-		'x264': 'H.264',
-		'AVC': 'H.264',
+		x264: 'H.264',
+		AVC: 'H.264',
 		'MPEG-4': 'MPEG-4',
 		'MPEG-2': 'MPEG-2',
-		'XviD': 'XviD',
-		'DivX': 'DivX',
+		XviD: 'XviD',
+		DivX: 'DivX',
 		'VC-1': 'VC-1',
-		'VP9': 'VP9',
-		'AV1': 'AV1'
+		VP9: 'VP9',
+		AV1: 'AV1'
 	};
 	return mapping[codec] ?? 'unknown';
 }
@@ -323,18 +326,18 @@ function mapAudioCodec(codec: string): AudioCodec {
 	const mapping: Record<string, AudioCodec> = {
 		'DTS-HD MA': 'DTS-HD MA',
 		'DTS-HD': 'DTS-HD',
-		'DTS': 'DTS',
-		'TrueHD': 'TrueHD',
+		DTS: 'DTS',
+		TrueHD: 'TrueHD',
 		'Dolby Atmos': 'Dolby Atmos',
 		'DD+': 'DD+',
 		'E-AC3': 'DD+',
-		'DD': 'DD',
-		'AC3': 'DD',
-		'AAC': 'AAC',
-		'FLAC': 'FLAC',
-		'MP3': 'MP3',
-		'PCM': 'PCM',
-		'Opus': 'Opus'
+		DD: 'DD',
+		AC3: 'DD',
+		AAC: 'AAC',
+		FLAC: 'FLAC',
+		MP3: 'MP3',
+		PCM: 'PCM',
+		Opus: 'Opus'
 	};
 	return mapping[codec] ?? 'unknown';
 }
@@ -344,19 +347,19 @@ function mapAudioCodec(codec: string): AudioCodec {
  */
 function mapStreamingService(service: string): StreamingService {
 	const mapping: Record<string, StreamingService> = {
-		'Netflix': 'Netflix',
+		Netflix: 'Netflix',
 		'Amazon Prime': 'Amazon Prime',
-		'Amazon': 'Amazon Prime',
+		Amazon: 'Amazon Prime',
 		'Disney+': 'Disney+',
 		'Disney Plus': 'Disney+',
 		'Apple TV+': 'Apple TV+',
 		'AppleTV+': 'Apple TV+',
 		'HBO Max': 'HBO Max',
-		'Hulu': 'Hulu',
-		'Peacock': 'Peacock',
+		Hulu: 'Hulu',
+		Peacock: 'Peacock',
 		'Paramount+': 'Paramount+',
-		'Crunchyroll': 'Crunchyroll',
-		'Funimation': 'Funimation'
+		Crunchyroll: 'Crunchyroll',
+		Funimation: 'Funimation'
 	};
 	return mapping[service] ?? 'unknown';
 }

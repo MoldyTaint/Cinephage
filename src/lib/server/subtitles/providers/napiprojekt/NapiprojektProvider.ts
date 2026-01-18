@@ -73,7 +73,7 @@ export class NapiprojektProvider extends BaseSubtitleProvider implements ISubtit
 	 */
 	async search(
 		criteria: SubtitleSearchCriteria,
-		options?: ProviderSearchOptions
+		_options?: ProviderSearchOptions
 	): Promise<SubtitleSearchResult[]> {
 		const results: SubtitleSearchResult[] = [];
 
@@ -219,8 +219,7 @@ export class NapiprojektProvider extends BaseSubtitleProvider implements ISubtit
 				if (this.onlyRealNames) {
 					// Check for real name pattern (2+ uppercase letters and at least one lowercase)
 					const hasRealName =
-						/^(?=(?:.*[A-Z]){2})(?=.*[a-z]).*$/.test(author) ||
-						/^\w+\s\w+$/.test(author);
+						/^(?=(?:.*[A-Z]){2})(?=.*[a-z]).*$/.test(author) || /^\w+\s\w+$/.test(author);
 					if (!hasRealName) {
 						return;
 					}
@@ -234,14 +233,7 @@ export class NapiprojektProvider extends BaseSubtitleProvider implements ISubtit
 				const fps = fpsMatch ? fpsMatch[1].trim() : '';
 
 				// Build release info
-				const releaseInfo = [
-					author && `Autor: ${author}`,
-					resolution,
-					fps,
-					size,
-					added,
-					length
-				]
+				const releaseInfo = [author && `Autor: ${author}`, resolution, fps, size, added, length]
 					.filter(Boolean)
 					.join(' | ');
 
@@ -300,7 +292,9 @@ export class NapiprojektProvider extends BaseSubtitleProvider implements ISubtit
 					if (href.startsWith('napisy-')) {
 						return {
 							slug: href.substring('napisy-'.length),
-							matches: new Set(isEpisode ? ['series', 'year', 'series_imdb_id'] : ['title', 'year', 'imdb_id'])
+							matches: new Set(
+								isEpisode ? ['series', 'year', 'series_imdb_id'] : ['title', 'year', 'imdb_id']
+							)
 						};
 					}
 				}
@@ -368,10 +362,10 @@ export class NapiprojektProvider extends BaseSubtitleProvider implements ISubtit
 
 		try {
 			// Test with a known movie hash
-			const response = await this.fetchWithTimeout(
-				`${SEARCH_URL}?queryString=test&queryKind=2`,
-				{ method: 'POST', timeout: 5000 }
-			);
+			const response = await this.fetchWithTimeout(`${SEARCH_URL}?queryString=test&queryKind=2`, {
+				method: 'POST',
+				timeout: 5000
+			});
 
 			if (!response.ok) {
 				throw new Error(`HTTP ${response.status}`);

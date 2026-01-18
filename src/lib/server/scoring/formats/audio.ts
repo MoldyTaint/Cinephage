@@ -121,8 +121,8 @@ export const LOSSLESS_AUDIO_FORMATS: CustomFormat[] = [
 			{
 				name: 'DTS-X',
 				type: 'release_title',
-				// Profilarr pattern: DTS-X
-				pattern: '\\bDTS[ ._-]?X\\b',
+				// Profilarr pattern: DTS-X (also supports colon notation DTS:X)
+				pattern: '\\bDTS[ ._:-]?X\\b',
 				required: true,
 				negate: false
 			},

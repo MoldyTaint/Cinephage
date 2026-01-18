@@ -11,10 +11,42 @@ export { SubsceneProvider } from './SubsceneProvider';
 
 /** Supported languages */
 const SUBSCENE_LANGUAGES = [
-	'en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'pl', 'ru', 'ar',
-	'he', 'tr', 'el', 'hu', 'ro', 'cs', 'sv', 'da', 'fi', 'no',
-	'ja', 'ko', 'zh', 'vi', 'th', 'id', 'ms', 'fa', 'hi', 'bn',
-	'uk', 'bg', 'hr', 'sr', 'sk', 'sl'
+	'en',
+	'es',
+	'fr',
+	'de',
+	'it',
+	'pt',
+	'nl',
+	'pl',
+	'ru',
+	'ar',
+	'he',
+	'tr',
+	'el',
+	'hu',
+	'ro',
+	'cs',
+	'sv',
+	'da',
+	'fi',
+	'no',
+	'ja',
+	'ko',
+	'zh',
+	'vi',
+	'th',
+	'id',
+	'ms',
+	'fa',
+	'hi',
+	'bn',
+	'uk',
+	'bg',
+	'hr',
+	'sr',
+	'sk',
+	'sl'
 ];
 
 /**

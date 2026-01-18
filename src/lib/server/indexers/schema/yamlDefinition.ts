@@ -166,7 +166,13 @@ export type ProtocolConfig = z.infer<typeof protocolConfigSchema>;
  * - daily: 2024.01.15 (for daily shows)
  * - absolute: 125 (absolute episode number, for anime)
  */
-export const episodeFormatTypeSchema = z.enum(['standard', 'european', 'compact', 'daily', 'absolute']);
+export const episodeFormatTypeSchema = z.enum([
+	'standard',
+	'european',
+	'compact',
+	'daily',
+	'absolute'
+]);
 
 /**
  * Movie format types for search.
@@ -176,12 +182,14 @@ export const movieFormatTypeSchema = z.enum(['standard', 'yearOnly', 'noYear']);
 /**
  * Search format configuration for an indexer.
  */
-export const searchFormatsSchema = z.object({
-	/** Episode format preferences, in order of preference */
-	episode: z.array(episodeFormatTypeSchema).optional(),
-	/** Movie format preferences */
-	movie: z.array(movieFormatTypeSchema).optional()
-}).optional();
+export const searchFormatsSchema = z
+	.object({
+		/** Episode format preferences, in order of preference */
+		episode: z.array(episodeFormatTypeSchema).optional(),
+		/** Movie format preferences */
+		movie: z.array(movieFormatTypeSchema).optional()
+	})
+	.optional();
 
 export const capabilitiesBlockSchema = z.object({
 	categories: z.record(z.string(), z.string()).optional(),

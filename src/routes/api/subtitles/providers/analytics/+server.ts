@@ -7,8 +7,14 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestEvent } from '@sveltejs/kit';
-import { getThrottleManager, type ProviderAnalytics } from '$lib/server/subtitles/throttle/ThrottleMap';
-import { ensureProvidersRegistered, providerRegistry } from '$lib/server/subtitles/providers/registry';
+import {
+	getThrottleManager,
+	type ProviderAnalytics
+} from '$lib/server/subtitles/throttle/ThrottleMap';
+import {
+	ensureProvidersRegistered,
+	providerRegistry
+} from '$lib/server/subtitles/providers/registry';
 
 export interface ProviderAnalyticsResponse {
 	/** Provider implementation name */
@@ -55,9 +61,6 @@ export async function GET(): Promise<Response> {
 
 		// Build response for each provider
 		for (const impl of implementations) {
-			const definition = providerRegistry.getDefinition(impl);
-			const providerName = definition?.name ?? impl;
-
 			// Get analytics (may be undefined if never used)
 			let analytics = allAnalytics.get(impl);
 			if (!analytics) {
@@ -70,13 +73,13 @@ export async function GET(): Promise<Response> {
 			}
 
 			// Calculate derived metrics
-			const averageResponseTimeMs = analytics.requestCount > 0
-				? analytics.totalResponseTimeMs / analytics.requestCount
-				: undefined;
+			const averageResponseTimeMs =
+				analytics.requestCount > 0
+					? analytics.totalResponseTimeMs / analytics.requestCount
+					: undefined;
 
-			const successRate = analytics.requestCount > 0
-				? analytics.successCount / analytics.requestCount
-				: undefined;
+			const successRate =
+				analytics.requestCount > 0 ? analytics.successCount / analytics.requestCount : undefined;
 
 			// Check throttle status
 			const throttleStatus = throttleManager.isThrottled(impl);
@@ -119,7 +122,7 @@ export async function GET(): Promise<Response> {
 			{ status: 500 }
 		);
 	}
-};
+}
 
 /**
  * DELETE - Clear throttle for a specific provider
@@ -159,4 +162,4 @@ export async function DELETE({ url }: RequestEvent): Promise<Response> {
 			{ status: 500 }
 		);
 	}
-};
+}

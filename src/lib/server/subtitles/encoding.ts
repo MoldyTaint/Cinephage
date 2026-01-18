@@ -23,19 +23,19 @@ const ENCODING_ALIASES: Record<string, string> = {
 	'iso-8859-2': 'latin2',
 	'iso-8859-15': 'latin9',
 	// UTF
-	'utf8': 'utf-8',
-	'utf16': 'utf-16',
+	utf8: 'utf-8',
+	utf16: 'utf-16',
 	'utf-16le': 'utf-16le',
 	'utf-16be': 'utf-16be',
 	// Other
-	'ascii': 'ascii',
-	'gb2312': 'gb2312',
-	'gbk': 'gbk',
-	'gb18030': 'gb18030',
-	'big5': 'big5',
+	ascii: 'ascii',
+	gb2312: 'gb2312',
+	gbk: 'gbk',
+	gb18030: 'gb18030',
+	big5: 'big5',
 	'euc-kr': 'euc-kr',
 	'euc-jp': 'euc-jp',
-	'shift_jis': 'shift-jis',
+	shift_jis: 'shift-jis',
 	'koi8-r': 'koi8-r'
 };
 
@@ -245,7 +245,7 @@ export function decodeToUtf8(buffer: Buffer, encoding?: string): string {
  */
 export function encodeFromUtf8(text: string, encoding = 'utf-8'): Buffer {
 	const encoder = new TextEncoder();
-	
+
 	if (encoding.toLowerCase() === 'utf-8' || encoding.toLowerCase() === 'utf8') {
 		return Buffer.from(encoder.encode(text));
 	}
@@ -280,10 +280,10 @@ export function addUtf8Bom(buffer: Buffer): Buffer {
 export function normalizeEncoding(buffer: Buffer): NormalizedContent {
 	const detection = guessEncoding(buffer);
 	const text = decodeToUtf8(buffer, detection.encoding);
-	
+
 	// Re-encode as UTF-8
 	const utf8Buffer = Buffer.from(text, 'utf-8');
-	
+
 	return {
 		content: utf8Buffer,
 		text,

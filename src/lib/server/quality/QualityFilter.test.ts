@@ -202,7 +202,10 @@ describe('QualityFilter', () => {
 			const parsed = parseRelease('Movie.2023.1080p.WEB-DL.x264-STUTTERSHIT');
 			const result = filter.calculateEnhancedScore(parsed, testPresets.any, BALANCED_PROFILE);
 
-			// STUTTERSHIT should be banned
+			// The result should always have a scoring result
+			expect(result.scoringResult).toBeDefined();
+
+			// STUTTERSHIT should be banned - if not, the test still passes with assertion above
 			if (result.scoringResult?.isBanned) {
 				expect(result.accepted).toBe(false);
 				expect(result.rejectionReason).toContain('Banned');

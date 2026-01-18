@@ -114,9 +114,12 @@ export async function executeWithRetry<T>(
 
 			// Don't wait after last attempt
 			if (attempt < maxAttempts) {
-				logger.debug(`[Retry] ${operationName} failed (attempt ${attempt}/${maxAttempts}), retrying in ${delay}ms`, {
-					error: lastError.message
-				});
+				logger.debug(
+					`[Retry] ${operationName} failed (attempt ${attempt}/${maxAttempts}), retrying in ${delay}ms`,
+					{
+						error: lastError.message
+					}
+				);
 
 				await sleep(delay);
 				delay = Math.min(delay * backoffMultiplier, maxDelay);
@@ -211,7 +214,10 @@ export function reinitializeOnError(
 	): PropertyDescriptor {
 		const originalMethod = descriptor.value;
 
-		descriptor.value = async function (this: { reinitialize(): Promise<void> }, ...args: unknown[]) {
+		descriptor.value = async function (
+			this: { reinitialize(): Promise<void> },
+			...args: unknown[]
+		) {
 			let attempt = 0;
 
 			while (attempt <= maxAttempts) {
@@ -224,7 +230,9 @@ export function reinitializeOnError(
 
 					if (isMatchingException && attempt < maxAttempts) {
 						attempt++;
-						logger.warn(`[${propertyKey}] Caught exception, reinitializing provider (attempt ${attempt}/${maxAttempts})`);
+						logger.warn(
+							`[${propertyKey}] Caught exception, reinitializing provider (attempt ${attempt}/${maxAttempts})`
+						);
 						await this.reinitialize();
 						continue;
 					}

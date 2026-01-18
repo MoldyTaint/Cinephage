@@ -6,7 +6,7 @@
  */
 
 import { Language } from './language';
-import { Video, Movie, Episode, isEpisode, isMovie } from './video';
+import { Video, isEpisode, isMovie } from './video';
 import type { SubtitleFormat, LanguageCode } from './types';
 
 /**
@@ -149,11 +149,7 @@ export abstract class Subtitle {
 	/** Episode number that was asked for */
 	askedForEpisode?: number;
 
-	constructor(
-		id: string,
-		language: Language,
-		options: SubtitleOptions = {}
-	) {
+	constructor(id: string, language: Language, options: SubtitleOptions = {}) {
 		this.id = id;
 		this.language = language;
 		this.pageLink = options.pageLink;
@@ -299,7 +295,8 @@ export abstract class Subtitle {
 	 */
 	private validateSrt(text: string): boolean {
 		// Check for typical SRT patterns: sequence number, timestamp, text
-		const srtPattern = /^\d+\s*\r?\n\d{1,2}:\d{2}:\d{2}[,\.]\d{3}\s*-->\s*\d{1,2}:\d{2}:\d{2}[,\.]\d{3}/m;
+		const srtPattern =
+			/^\d+\s*\r?\n\d{1,2}:\d{2}:\d{2}[,.]\d{3}\s*-->\s*\d{1,2}:\d{2}:\d{2}[,.]\d{3}/m;
 		return srtPattern.test(text);
 	}
 
@@ -448,15 +445,15 @@ export abstract class Subtitle {
 		return patterns.some((p) => p.test(this.releaseInfo!));
 	}
 
-	protected matchesImdbId(imdbId: string): boolean {
+	protected matchesImdbId(_imdbId: string): boolean {
 		return false; // Override in subclass if provider returns IMDB ID
 	}
 
-	protected matchesTmdbId(tmdbId: number): boolean {
+	protected matchesTmdbId(_tmdbId: number): boolean {
 		return false; // Override in subclass if provider returns TMDB ID
 	}
 
-	protected matchesTvdbId(tvdbId: number): boolean {
+	protected matchesTvdbId(_tvdbId: number): boolean {
 		return false; // Override in subclass if provider returns TVDB ID
 	}
 

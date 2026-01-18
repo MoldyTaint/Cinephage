@@ -268,11 +268,11 @@ export class RequestBuilder {
 
 	/**
 	 * Build keywords string from search criteria.
-	 * 
+	 *
 	 * Note: Episode tokens are now handled by TemplateEngine.setQuery() which
 	 * sets .Keywords to include the episode token based on criteria.preferredEpisodeFormat.
 	 * This method is kept for backwards compatibility and for the movie year case.
-	 * 
+	 *
 	 * The actual .Keywords value used in templates comes from TemplateEngine,
 	 * not from this method's return value (see buildSearchRequests where we
 	 * call templateEngine.setQuery() first).
@@ -292,7 +292,7 @@ export class RequestBuilder {
 				}
 			}
 		}
-		
+
 		// Note: TV episode tokens are NOT added here anymore.
 		// TemplateEngine is the sole source of truth for episode token composition.
 		// It uses criteria.preferredEpisodeFormat to determine which format to add.

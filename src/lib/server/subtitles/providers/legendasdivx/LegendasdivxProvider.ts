@@ -16,12 +16,7 @@ import type {
 } from '../../types';
 import { GenericSubtitle } from '../../subtitle';
 import { Language } from '../../language';
-import {
-	LEGENDASDIVX_LANGUAGES,
-	LEGENDASDIVX_BASE_URL,
-	type LegendasdivxConfig,
-	type LegendasdivxResult
-} from './types';
+import { LEGENDASDIVX_LANGUAGES, LEGENDASDIVX_BASE_URL, type LegendasdivxConfig } from './types';
 import { logger } from '$lib/logging';
 import * as cheerio from 'cheerio';
 import { extractFromZip } from '../mixins';
@@ -119,7 +114,7 @@ export class LegendasdivxProvider extends BaseSubtitleProvider implements ISubti
 	 */
 	async search(
 		criteria: SubtitleSearchCriteria,
-		options?: ProviderSearchOptions
+		_options?: ProviderSearchOptions
 	): Promise<SubtitleSearchResult[]> {
 		// Only Portuguese supported
 		const languages = criteria.languages.filter((l) => l === 'pt');
@@ -166,11 +161,7 @@ export class LegendasdivxProvider extends BaseSubtitleProvider implements ISubti
 			story: imdbId
 		});
 
-		return this.parseSearchResults(
-			`${SEARCH_URL}?${params.toString()}`,
-			criteria,
-			language
-		);
+		return this.parseSearchResults(`${SEARCH_URL}?${params.toString()}`, criteria, language);
 	}
 
 	/**
@@ -197,11 +188,7 @@ export class LegendasdivxProvider extends BaseSubtitleProvider implements ISubti
 			story: query
 		});
 
-		return this.parseSearchResults(
-			`${SEARCH_URL}?${params.toString()}`,
-			criteria,
-			language
-		);
+		return this.parseSearchResults(`${SEARCH_URL}?${params.toString()}`, criteria, language);
 	}
 
 	/**
@@ -240,7 +227,7 @@ export class LegendasdivxProvider extends BaseSubtitleProvider implements ISubti
 			const description = $box.find('.sub_titulo').text().trim();
 
 			// Get uploader
-			const uploader = $box.find('a[href*="userdetails"]').text().trim();
+			const _uploader = $box.find('a[href*="userdetails"]').text().trim();
 
 			// Get downloads/hits
 			const hitsMatch = $box.text().match(/(\d+)\s*downloads?/i);
@@ -286,8 +273,9 @@ export class LegendasdivxProvider extends BaseSubtitleProvider implements ISubti
 		await this.login();
 
 		// Get download page
-		const pageLink = (result as unknown as { _pageLink?: string })._pageLink
-			|| `${SEARCH_URL}?name=Downloads&d_op=getit&lid=${result.providerSubtitleId}`;
+		const pageLink =
+			(result as unknown as { _pageLink?: string })._pageLink ||
+			`${SEARCH_URL}?name=Downloads&d_op=getit&lid=${result.providerSubtitleId}`;
 
 		const response = await this.fetchWithTimeout(pageLink, {
 			headers: {

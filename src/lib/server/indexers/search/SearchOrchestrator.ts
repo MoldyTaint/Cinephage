@@ -24,7 +24,7 @@ import {
 	categoryMatchesSearchType,
 	getCategoryContentType
 } from '../types';
-import type { EpisodeFormatType } from '../types';
+
 import {
 	getEffectiveEpisodeFormats,
 	getEpisodeFormats,
@@ -780,11 +780,11 @@ export class SearchOrchestrator {
 	/**
 	 * Execute text search with multiple title variants.
 	 * For TV searches, tries different episode format types based on indexer capabilities.
-	 * 
+	 *
 	 * Architecture note: Episode format handling is now driven by:
 	 * 1. Indexer's searchFormats.episode capability (if specified in YAML)
 	 * 2. Default fallback to all common formats (standard, european, compact)
-	 * 
+	 *
 	 * The query passed downstream is CLEAN (just the title). TemplateEngine is the
 	 * sole component responsible for composing the final search keywords by adding
 	 * the appropriate episode token to .Keywords.
@@ -834,7 +834,7 @@ export class SearchOrchestrator {
 							// Tell TemplateEngine which format to use for this request
 							preferredEpisodeFormat: format.type
 						});
-						
+
 						const releases = await indexer.search(textCriteria);
 
 						// Add unique releases (dedupe by guid)

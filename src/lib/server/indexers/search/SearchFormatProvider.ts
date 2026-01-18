@@ -9,7 +9,7 @@
  * indexer capabilities or requested format types.
  */
 
-import type { TvSearchCriteria, MovieSearchCriteria, SearchCriteria } from '../types';
+import type { TvSearchCriteria, SearchCriteria } from '../types';
 import { isTvSearch, isMovieSearch } from '../types';
 
 // =============================================================================

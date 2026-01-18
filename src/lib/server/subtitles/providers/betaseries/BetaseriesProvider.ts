@@ -23,7 +23,6 @@ import {
 	type BetaseriesResponse,
 	type BetaseriesSubtitle
 } from './types';
-import { logger } from '$lib/logging';
 import { extractFromZip } from '../mixins';
 import { AuthenticationError, ConfigurationError } from '../../errors/ProviderErrors';
 
@@ -72,7 +71,7 @@ export class BetaseriesProvider extends BaseSubtitleProvider implements ISubtitl
 	 */
 	async search(
 		criteria: SubtitleSearchCriteria,
-		options?: ProviderSearchOptions
+		_options?: ProviderSearchOptions
 	): Promise<SubtitleSearchResult[]> {
 		// TV shows only
 		if (criteria.season === undefined || criteria.episode === undefined) {
@@ -80,9 +79,7 @@ export class BetaseriesProvider extends BaseSubtitleProvider implements ISubtitl
 		}
 
 		// Filter to supported languages
-		const languages = criteria.languages.filter((l) =>
-			BETASERIES_LANGUAGES.includes(l)
-		);
+		const languages = criteria.languages.filter((l) => BETASERIES_LANGUAGES.includes(l));
 		if (languages.length === 0) {
 			return [];
 		}
@@ -200,12 +197,7 @@ export class BetaseriesProvider extends BaseSubtitleProvider implements ISubtitl
 
 		const episodeData: BetaseriesResponse = await episodeResponse.json();
 
-		return this.parseSubtitles(
-			episodeData.episode?.subtitles ?? [],
-			criteria,
-			languages,
-			matches
-		);
+		return this.parseSubtitles(episodeData.episode?.subtitles ?? [], criteria, languages, matches);
 	}
 
 	/**
@@ -215,7 +207,7 @@ export class BetaseriesProvider extends BaseSubtitleProvider implements ISubtitl
 		subtitles: BetaseriesSubtitle[],
 		criteria: SubtitleSearchCriteria,
 		languages: LanguageCode[],
-		matches: Set<string>
+		_matches: Set<string>
 	): SubtitleSearchResult[] {
 		const results: SubtitleSearchResult[] = [];
 
@@ -259,8 +251,7 @@ export class BetaseriesProvider extends BaseSubtitleProvider implements ISubtitl
 	 */
 	async download(result: SubtitleSearchResult): Promise<Buffer> {
 		const downloadUrl =
-			(result as unknown as { _downloadUrl?: string })._downloadUrl ??
-			result.pageLink;
+			(result as unknown as { _downloadUrl?: string })._downloadUrl ?? result.pageLink;
 
 		if (!downloadUrl) {
 			throw new Error('No download URL available');

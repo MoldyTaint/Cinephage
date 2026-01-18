@@ -110,6 +110,10 @@ describe('Live Provider Tests', () => {
 				};
 
 				const result = await extractStreams(options);
+				
+				// Always make an assertion about the result structure
+				expect(result).toBeDefined();
+				expect(typeof result.success).toBe('boolean');
 
 				if (result.success && result.sources.length > 0) {
 					const source = result.sources[0];

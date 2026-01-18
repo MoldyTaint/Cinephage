@@ -105,8 +105,10 @@ describe('Audio Format Matching', () => {
 
 		for (const tc of atmosWordTestCases) {
 			it(`${tc.shouldMatch ? 'matches' : 'does not match'}: ${tc.desc}`, () => {
+				expect(atmos).toBeDefined();
 				if (!atmos) return;
 				const pattern = atmos.conditions.find((c) => c.name === 'Atmos')?.pattern;
+				expect(pattern).toBeDefined();
 				if (!pattern) return;
 				const regex = new RegExp(pattern, 'i');
 				expect(regex.test(tc.input)).toBe(tc.shouldMatch);
@@ -129,8 +131,10 @@ describe('Audio Format Matching', () => {
 
 		for (const tc of ddpaTestCases) {
 			it(`DDPA ${tc.shouldMatch ? 'matches' : 'does not match'}: ${tc.desc}`, () => {
+				expect(atmos).toBeDefined();
 				if (!atmos) return;
 				const pattern = atmos.conditions.find((c) => c.name === 'DDPA (DD+ Atmos)')?.pattern;
+				expect(pattern).toBeDefined();
 				if (!pattern) return;
 				const regex = new RegExp(pattern, 'i');
 				expect(regex.test(tc.input)).toBe(tc.shouldMatch);
@@ -163,8 +167,10 @@ describe('Audio Format Matching', () => {
 
 		for (const tc of btnAtmosTestCases) {
 			it(`BTN Atmos ${tc.shouldMatch ? 'matches' : 'does not match'}: ${tc.desc}`, () => {
+				expect(atmosMissing).toBeDefined();
 				if (!atmosMissing) return;
-				const pattern = atmosMissing.conditions.find((c) => c.name === 'BTN Atmos')?.pattern;
+				const pattern = atmosMissing.conditions.find((c) => c.name === 'BTN Atmos Convention')?.pattern;
+				expect(pattern).toBeDefined();
 				if (!pattern) return;
 				const regex = new RegExp(pattern, 'i');
 				expect(regex.test(tc.input)).toBe(tc.shouldMatch);
@@ -255,8 +261,10 @@ describe('Audio Format Matching', () => {
 
 		for (const tc of testCases) {
 			it(`${tc.shouldMatch ? 'matches' : 'does not match'}: ${tc.desc}`, () => {
+				expect(dtsx).toBeDefined();
 				if (!dtsx) return;
-				const pattern = dtsx.conditions.find((c) => c.name === 'DTS:X')?.pattern;
+				const pattern = dtsx.conditions.find((c) => c.name === 'DTS-X')?.pattern;
+				expect(pattern).toBeDefined();
 				if (!pattern) return;
 				const regex = new RegExp(pattern, 'i');
 				expect(regex.test(tc.input)).toBe(tc.shouldMatch);
@@ -303,8 +311,10 @@ describe('Audio Format Matching', () => {
 
 		for (const tc of testCases) {
 			it(`${tc.shouldMatch ? 'matches' : 'does not match'}: ${tc.desc}`, () => {
+				expect(ddplus).toBeDefined();
 				if (!ddplus) return;
-				const pattern = ddplus.conditions.find((c) => c.name === 'DD+')?.pattern;
+				const pattern = ddplus.conditions.find((c) => c.name === 'DD+/EAC3')?.pattern;
+				expect(pattern).toBeDefined();
 				if (!pattern) return;
 				const regex = new RegExp(pattern, 'i');
 				expect(regex.test(tc.input)).toBe(tc.shouldMatch);

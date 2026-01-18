@@ -47,7 +47,9 @@
 
 <ModalWrapper {open} onClose={handleClose} maxWidth="md" labelledBy="bulk-delete-modal-title">
 	<div class="mb-4 flex items-center justify-between">
-		<h3 id="bulk-delete-modal-title" class="text-lg font-bold">{removeFromLibrary ? 'Remove from Library' : 'Delete Files'}</h3>
+		<h3 id="bulk-delete-modal-title" class="text-lg font-bold">
+			{removeFromLibrary ? 'Remove from Library' : 'Delete Files'}
+		</h3>
 		<button
 			type="button"
 			class="btn btn-circle btn-ghost btn-sm"
@@ -73,7 +75,11 @@
 	</label>
 
 	<label class="flex cursor-pointer items-center gap-3 py-2">
-		<input type="checkbox" class="checkbox shrink-0 checkbox-error" bind:checked={removeFromLibrary} />
+		<input
+			type="checkbox"
+			class="checkbox shrink-0 checkbox-error"
+			bind:checked={removeFromLibrary}
+		/>
 		<span class="text-sm">Remove from library entirely</span>
 	</label>
 
@@ -81,7 +87,9 @@
 		<div class="mt-3 alert alert-error">
 			<Trash2 class="h-4 w-4" />
 			<span class="text-sm"
-				>This will permanently remove {selectedCount} {itemLabel} from your library. All metadata, history, and settings will be lost. This cannot be undone.</span
+				>This will permanently remove {selectedCount}
+				{itemLabel} from your library. All metadata, history, and settings will be lost. This cannot be
+				undone.</span
 			>
 		</div>
 	{:else if deleteFiles}
@@ -107,7 +115,8 @@
 			{#if loading}
 				<Loader2 class="h-4 w-4 animate-spin" />
 			{/if}
-			{removeFromLibrary ? 'Remove' : 'Delete'} {selectedCount}
+			{removeFromLibrary ? 'Remove' : 'Delete'}
+			{selectedCount}
 			{itemLabel}
 		</button>
 	</div>

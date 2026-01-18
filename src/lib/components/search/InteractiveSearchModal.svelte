@@ -419,7 +419,7 @@
 			<!-- Pipeline breakdown panel -->
 			{#if showPipelineDetails && (meta.afterDedup || meta.afterFiltering || meta.afterEnrichment)}
 				<div class="rounded-lg bg-base-200 p-3 text-sm">
-					<div class="font-medium text-base-content/80 mb-2">Filtering Pipeline:</div>
+					<div class="mb-2 font-medium text-base-content/80">Filtering Pipeline:</div>
 					<div class="space-y-1">
 						<div class="flex justify-between">
 							<span>1. Raw from indexers:</span>
@@ -462,7 +462,7 @@
 								<span class="font-mono">{meta.rejectedCount}</span>
 							</div>
 						{/if}
-						<div class="flex justify-between border-t border-base-300 pt-1 mt-1">
+						<div class="mt-1 flex justify-between border-t border-base-300 pt-1">
 							<span class="font-medium">5. Displayed (after limit):</span>
 							<span class="font-mono font-medium">{releases.length}</span>
 						</div>
@@ -524,9 +524,9 @@
 			{/if}
 
 			<!-- Debug tools -->
-			<div class="flex gap-2 mt-2">
+			<div class="mt-2 flex gap-2">
 				<button
-					class="btn btn-xs btn-ghost gap-1"
+					class="btn gap-1 btn-ghost btn-xs"
 					onclick={downloadDebugJson}
 					title="Download full debug JSON with all release details"
 				>
@@ -534,7 +534,7 @@
 					Download Debug JSON
 				</button>
 				<button
-					class="btn btn-xs btn-ghost gap-1"
+					class="btn gap-1 btn-ghost btn-xs"
 					onclick={() => (showDebugPanel = !showDebugPanel)}
 					title="View raw JSON data"
 				>
@@ -546,7 +546,7 @@
 			<!-- Debug panel -->
 			{#if showDebugPanel}
 				<div class="mt-2 rounded-lg bg-base-300 p-3">
-					<div class="flex gap-2 mb-2">
+					<div class="mb-2 flex gap-2">
 						<button
 							class="btn btn-xs {selectedDebugRelease === null ? 'btn-primary' : 'btn-ghost'}"
 							onclick={() => (selectedDebugRelease = null)}
@@ -559,12 +559,16 @@
 							</span>
 						{/if}
 					</div>
-					<div class="text-xs text-base-content/60 mb-2">
+					<div class="mb-2 text-xs text-base-content/60">
 						Click on any release row below to view its detailed JSON here
 					</div>
 					<pre
-						class="max-h-96 overflow-auto rounded bg-base-100 p-2 text-xs font-mono whitespace-pre-wrap">{JSON.stringify(
-							selectedDebugRelease ?? { meta, releases: releases.slice(0, 10), note: 'Showing first 10 releases. Download JSON for full data.' },
+						class="max-h-96 overflow-auto rounded bg-base-100 p-2 font-mono text-xs whitespace-pre-wrap">{JSON.stringify(
+							selectedDebugRelease ?? {
+								meta,
+								releases: releases.slice(0, 10),
+								note: 'Showing first 10 releases. Download JSON for full data.'
+							},
 							null,
 							2
 						)}</pre>

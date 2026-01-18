@@ -106,10 +106,14 @@ export const POST: RequestHandler = async ({ request }) => {
 	// Validate release title matches target series (prevents wrong series being grabbed)
 	// Only for automatic grabs - manual grabs are user's choice
 	if (data.seriesId && data.isAutomatic) {
-		const targetSeries = await db.select().from(series).where(eq(series.id, data.seriesId)).limit(1);
+		const targetSeries = await db
+			.select()
+			.from(series)
+			.where(eq(series.id, data.seriesId))
+			.limit(1);
 		if (targetSeries.length > 0) {
 			const parsed = parser.parse(data.title);
-			const parsedTitle = (parsed.title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+			const parsedTitle = (parsed.cleanTitle || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 			const targetTitle = targetSeries[0].title.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 			// Check if titles have reasonable overlap
@@ -122,7 +126,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			if (!titlesMatch && parsedTitle.length > 0) {
 				logger.error('[Grab] BLOCKED: Release title does not match target series', {
 					releaseTitle: data.title,
-					parsedTitle: parsed.title,
+					parsedTitle: parsed.cleanTitle,
 					normalizedParsed: parsedTitle,
 					targetTitle: targetSeries[0].title,
 					normalizedTarget: targetTitle,
@@ -131,7 +135,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				return json(
 					{
 						success: false,
-						error: `Title mismatch: "${parsed.title || data.title}" does not match series "${targetSeries[0].title}"`
+						error: `Title mismatch: "${parsed.cleanTitle || data.title}" does not match series "${targetSeries[0].title}"`
 					} satisfies GrabResponse,
 					{ status: 422 }
 				);
