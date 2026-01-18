@@ -25,21 +25,20 @@ else
   echo "Warning: Bundled indexers directory not found at $BUNDLED_DIR"
 fi
 
-# Download Camoufox browser if not already present
-# This is done at runtime to reduce image size and allow updates
-CAMOUFOX_CACHE_DIR="/home/node/.cache/camoufox"
-CAMOUFOX_MARKER="$CAMOUFOX_CACHE_DIR/version.json"
-if [ ! -f "$CAMOUFOX_MARKER" ]; then
-  echo "Downloading Camoufox browser (first run only, ~80MB)..."
-  mkdir -p "$CAMOUFOX_CACHE_DIR"
+# Verify Camoufox browser is present (downloaded at build time)
+# HOME is set to /app in Dockerfile, so cache is at /app/.cache/camoufox
+CAMOUFOX_MARKER="$HOME/.cache/camoufox/version.json"
+if [ -f "$CAMOUFOX_MARKER" ]; then
+  echo "Camoufox browser ready"
+else
+  # Fallback: attempt runtime download if somehow missing
+  echo "Warning: Camoufox browser not found, attempting download..."
+  mkdir -p "$HOME/.cache/camoufox"
   if ./node_modules/.bin/camoufox-js fetch; then
     echo "Camoufox browser installed successfully"
-    touch "$CAMOUFOX_MARKER"
   else
     echo "Warning: Failed to download Camoufox browser. Captcha solving will be unavailable."
   fi
-else
-  echo "Camoufox browser already installed"
 fi
 
 echo "Starting Cinephage..."

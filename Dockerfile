@@ -20,6 +20,11 @@ COPY . .
 # Build the SvelteKit application
 RUN npm run build
 
+# Download Camoufox browser at build time (avoids runtime permission issues)
+# Set HOME to /app so camoufox caches to /app/.cache/camoufox
+ENV HOME=/app
+RUN mkdir -p /app/.cache && npx camoufox-js fetch
+
 # ==========================================
 # Runtime Stage
 # ==========================================
@@ -56,6 +61,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Create necessary directories with correct ownership (node user is UID 1000)
 RUN mkdir -p data logs && chown -R node:node data logs
+
+# Set HOME to /app for consistent cache location regardless of runtime UID
+# This ensures camoufox-js finds the browser at /app/.cache/camoufox
+ENV HOME=/app
+
+# Copy pre-downloaded Camoufox browser from builder
+COPY --from=builder --chown=node:node /app/.cache ./.cache
 
 # Copy production dependencies and built artifacts from builder
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules
