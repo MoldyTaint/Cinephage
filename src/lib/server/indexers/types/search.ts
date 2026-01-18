@@ -62,6 +62,12 @@ export interface MovieSearchCriteria extends BaseSearchCriteria {
 }
 
 /**
+ * Episode format type for search.
+ * Re-exported from definition.ts for convenience.
+ */
+export type { EpisodeFormatType } from './definition';
+
+/**
  * TV-specific search criteria
  */
 export interface TvSearchCriteria extends BaseSearchCriteria {
@@ -82,6 +88,13 @@ export interface TvSearchCriteria extends BaseSearchCriteria {
 	episode?: number;
 	/** Release year */
 	year?: number;
+	/**
+	 * Preferred episode format for this search request.
+	 * Used by SearchOrchestrator to specify which format to use when iterating
+	 * over multiple formats. TemplateEngine uses this to set .Query.Episode.
+	 * If not specified, defaults to 'standard' (S01E05).
+	 */
+	preferredEpisodeFormat?: import('./definition').EpisodeFormatType;
 }
 
 /**
@@ -164,6 +177,74 @@ export function isBookSearch(criteria: SearchCriteria): criteria is BookSearchCr
  */
 export function isBasicSearch(criteria: SearchCriteria): criteria is BasicSearchCriteria {
 	return criteria.searchType === 'basic';
+}
+
+// =============================================================================
+// EPISODE TOKEN HELPERS
+// =============================================================================
+
+/**
+ * Generate all common episode token formats for a given season/episode.
+ * Used to check if query already contains an episode token.
+ */
+export function generateEpisodeTokenFormats(
+	season: number,
+	episode?: number
+): { patterns: RegExp[]; tokens: string[] } {
+	const seasonPadded = String(season).padStart(2, '0');
+	const tokens: string[] = [];
+	const patterns: RegExp[] = [];
+
+	if (episode !== undefined) {
+		const episodePadded = String(episode).padStart(2, '0');
+		// Standard: S01E05, s01e05
+		tokens.push(`S${seasonPadded}E${episodePadded}`);
+		// European: 1x05, 01x05
+		tokens.push(`${season}x${episodePadded}`);
+		tokens.push(`${seasonPadded}x${episodePadded}`);
+		// Compact: 105 (only if unambiguous - season < 10)
+		if (season < 10) {
+			tokens.push(`${season}${episodePadded}`);
+		}
+		// Regex patterns (case-insensitive, word boundaries)
+		patterns.push(new RegExp(`\\bS${seasonPadded}E${episodePadded}\\b`, 'i'));
+		patterns.push(new RegExp(`\\b${season}x${episodePadded}\\b`, 'i'));
+		patterns.push(new RegExp(`\\b${seasonPadded}x${episodePadded}\\b`, 'i'));
+	} else {
+		// Season-only: S01, s01
+		tokens.push(`S${seasonPadded}`);
+		patterns.push(new RegExp(`\\bS${seasonPadded}\\b`, 'i'));
+	}
+
+	return { patterns, tokens };
+}
+
+/**
+ * Check if a query string already contains an episode token for the given season/episode.
+ * This prevents duplicate episode tokens from being added to search queries.
+ */
+export function queryContainsEpisodeToken(
+	query: string | undefined,
+	season: number,
+	episode?: number
+): boolean {
+	if (!query) return false;
+
+	const { patterns } = generateEpisodeTokenFormats(season, episode);
+	return patterns.some((pattern) => pattern.test(query));
+}
+
+/**
+ * Check if a keywords array already contains an episode token for the given season/episode.
+ */
+export function keywordsContainEpisodeToken(
+	keywords: string[],
+	season: number,
+	episode?: number
+): boolean {
+	const { tokens } = generateEpisodeTokenFormats(season, episode);
+	const keywordsLower = keywords.map((k) => k.toLowerCase());
+	return tokens.some((token) => keywordsLower.includes(token.toLowerCase()));
 }
 
 // =============================================================================

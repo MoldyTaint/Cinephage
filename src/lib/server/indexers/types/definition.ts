@@ -95,6 +95,29 @@ export interface SearchMode {
 }
 
 /**
+ * Episode format types for search.
+ * Matches SearchFormatProvider.EpisodeFormatType.
+ */
+export type EpisodeFormatType = 'standard' | 'european' | 'compact' | 'daily' | 'absolute';
+
+/**
+ * Movie format types for search.
+ * Matches SearchFormatProvider.MovieFormatType.
+ */
+export type MovieFormatType = 'standard' | 'yearOnly' | 'noYear';
+
+/**
+ * Search format configuration for an indexer.
+ * Specifies which format types the indexer prefers/supports.
+ */
+export interface SearchFormats {
+	/** Episode format preferences, in order of preference */
+	episode?: EpisodeFormatType[];
+	/** Movie format preferences */
+	movie?: MovieFormatType[];
+}
+
+/**
  * Indexer capabilities declaration
  */
 export interface IndexerCapabilities {
@@ -123,6 +146,13 @@ export interface IndexerCapabilities {
 
 	/** Default result limit */
 	limitDefault: number;
+
+	/**
+	 * Search format preferences for this indexer.
+	 * Specifies which episode/movie formats the indexer expects.
+	 * If not specified, defaults are used (standard format only).
+	 */
+	searchFormats?: SearchFormats;
 }
 
 // =============================================================================

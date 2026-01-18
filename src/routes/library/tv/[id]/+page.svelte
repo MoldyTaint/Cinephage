@@ -847,17 +847,10 @@
 		}
 	}
 
-	// Build search title with season/episode info
+	// Get search title - just the series title, no episode token embedded
+	// Season/episode info is passed separately and the backend handles format composition
 	const searchTitle = $derived(() => {
-		if (!searchContext) return data.series.title;
-		let title = data.series.title;
-		if (searchContext.season !== undefined) {
-			title += ` S${String(searchContext.season).padStart(2, '0')}`;
-			if (searchContext.episode !== undefined) {
-				title += `E${String(searchContext.episode).padStart(2, '0')}`;
-			}
-		}
-		return title;
+		return data.series.title;
 	});
 </script>
 

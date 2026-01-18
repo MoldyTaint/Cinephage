@@ -318,9 +318,10 @@ export function yamlToUnifiedDefinition(
 		return 'public';
 	};
 
-	// Build capabilities from Cardigann modes
+	// Build capabilities from Cardigann modes and searchFormats
 	const buildCapabilities = (
-		modes: Record<string, string[]>
+		modes: Record<string, string[]>,
+		searchFormats?: { episode?: string[]; movie?: string[] }
 	): IndexerDefinition['capabilities'] => {
 		const toParams = (params?: string[]) =>
 			(params ?? ['q']) as Array<
@@ -365,7 +366,16 @@ export function yamlToUnifiedDefinition(
 			supportsPagination: true,
 			supportsInfoHash: false,
 			limitMax: 100,
-			limitDefault: 50
+			limitDefault: 50,
+			// Include searchFormats if specified in YAML
+			searchFormats: searchFormats
+				? {
+						episode: searchFormats.episode as
+							| ('standard' | 'european' | 'compact' | 'daily' | 'absolute')[]
+							| undefined,
+						movie: searchFormats.movie as ('standard' | 'yearOnly' | 'noYear')[] | undefined
+					}
+				: undefined
 		};
 	};
 
@@ -410,9 +420,10 @@ export function yamlToUnifiedDefinition(
 	// Get supported Newznab categories
 	const supportedCategories = [...new Set(categories.map((c) => c.newznabId))];
 
-	// Build capabilities
+	// Build capabilities with searchFormats from YAML if specified
 	const modes = def.caps.modes ?? {};
-	const capabilities = buildCapabilities(modes);
+	const searchFormats = def.caps.searchFormats;
+	const capabilities = buildCapabilities(modes, searchFormats);
 
 	return {
 		id: def.id,

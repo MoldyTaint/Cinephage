@@ -10,6 +10,7 @@ import type {
 	MusicSearchCriteria,
 	BookSearchCriteria
 } from '../types';
+import { generateEpisodeFormat } from '../search/SearchFormatProvider';
 import type { FilterBlock } from '../schema/yamlDefinition';
 import { createSafeRegex, safeReplace } from './safeRegex';
 import { logger } from '$lib/logging';
@@ -154,6 +155,9 @@ export class TemplateEngine {
 			'TVRageID',
 			'TVMazeID',
 			'Episode',
+			'Episode.Standard',
+			'Episode.European',
+			'Episode.Compact',
 			// Music
 			'Album',
 			'Artist',
@@ -196,17 +200,47 @@ export class TemplateEngine {
 	}
 
 	private setTvQueryVariables(criteria: TvSearchCriteria, keywords: string[]): void {
+		const season = criteria.season ?? 1;
+		// Use preferred format if specified, otherwise default to 'standard'
+		const preferredFormat = criteria.preferredEpisodeFormat ?? 'standard';
+
 		if (criteria.season !== undefined) {
 			this.variables.set('.Query.Season', criteria.season.toString());
 		}
 
 		if (criteria.episode !== undefined) {
 			this.variables.set('.Query.Ep', criteria.episode.toString());
-			// Episode search string like "S01E02"
-			const seasonStr = criteria.season?.toString().padStart(2, '0') ?? '01';
-			const epStr = criteria.episode.toString().padStart(2, '0');
-			this.variables.set('.Query.Episode', `S${seasonStr}E${epStr}`);
-			keywords.push(`S${seasonStr}E${epStr}`);
+
+			// Generate all episode format variants using SearchFormatProvider
+			const standardFormat = generateEpisodeFormat(season, criteria.episode, 'standard');
+			const europeanFormat = generateEpisodeFormat(season, criteria.episode, 'european');
+			const compactFormat = generateEpisodeFormat(season, criteria.episode, 'compact');
+
+			// Set format-specific variables for YAML templates
+			this.variables.set('.Query.Episode.Standard', standardFormat);
+			this.variables.set('.Query.Episode.European', europeanFormat);
+			this.variables.set('.Query.Episode.Compact', compactFormat);
+
+			// Get the preferred format value for .Query.Episode and keywords
+			const preferredFormatValue = generateEpisodeFormat(season, criteria.episode, preferredFormat);
+
+			// Default .Query.Episode uses the preferred format (or falls back to standard)
+			this.variables.set('.Query.Episode', preferredFormatValue ?? standardFormat);
+
+			// Add episode token to keywords using preferred format
+			// No duplicate checking needed - SearchOrchestrator now passes clean queries
+			const keywordFormat = preferredFormatValue ?? standardFormat;
+			if (keywordFormat) {
+				keywords.push(keywordFormat);
+			}
+		} else if (criteria.season !== undefined) {
+			// Season-only search (e.g., "S01")
+			const seasonOnlyFormat = generateEpisodeFormat(season, undefined, 'standard');
+			this.variables.set('.Query.Episode', seasonOnlyFormat);
+			this.variables.set('.Query.Episode.Standard', seasonOnlyFormat);
+			if (seasonOnlyFormat) {
+				keywords.push(seasonOnlyFormat);
+			}
 		}
 
 		if (criteria.year) {

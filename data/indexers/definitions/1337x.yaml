@@ -1,0 +1,483 @@
+---
+# 1337x Public Torrent Tracker
+# Popular public torrent site with verified uploads
+# Note: Cloudflare protected - captcha solver handles bypass automatically
+id: 1337x
+name: 1337x
+description: Public torrent site with verified torrent downloads for movies, TV, music, games, and more
+type: public
+protocol: torrent
+language: en-US
+encoding: UTF-8
+requestdelay: 2
+
+# Primary and fallback domains - get status at https://1337x-status.org/
+links:
+  - https://1337x.to/
+  - https://1337x.st/
+  - https://x1337x.ws/
+  - https://x1337x.eu/
+  - https://x1337x.cc/
+
+legacylinks:
+  - https://1337x.is/
+  - https://1337x.gd/
+  - https://1337x.so/
+  - https://x1337x.se/
+
+settings:
+  - name: uploader
+    type: text
+    label: Filter by Uploader
+    placeholder: 'Username (case-sensitive)'
+    helpText: 'Filter results to a specific uploader. Leave empty for all results. Note: this is the username, not the group name that appears at the end of release titles.'
+  - name: info_cloudflare
+    type: info_cloudflare
+    label: Cloudflare Protection
+  - name: downloadlink
+    type: select
+    label: Download link
+    default: 'magnet:'
+    options:
+      'http://itorrents.org/': iTorrents.org
+      'magnet:': Magnet link
+  - name: downloadlink2
+    type: select
+    label: Download link (fallback)
+    default: 'http://itorrents.org/'
+    options:
+      'http://itorrents.org/': iTorrents.org
+      'magnet:': Magnet link
+  - name: disablesort
+    type: checkbox
+    label: Disable sorting
+    default: false
+    helpText: '1337x prevents sorting during high server load. Enable this if searches return zero results.'
+  - name: sort
+    type: select
+    label: Sort results by
+    default: time
+    options:
+      time: Upload Date
+      seeders: Seeders
+      size: Size
+  - name: type
+    type: select
+    label: Sort order
+    default: desc
+    options:
+      desc: Descending
+      asc: Ascending
+
+caps:
+  modes:
+    search: [q]
+    movie-search: [q]
+    tv-search: [q, season, ep]
+    music-search: [q]
+    book-search: [q]
+  allowrawsearch: true
+  categories:
+    # Newznab standard categories
+    '2000': Movies
+    '2030': Movies/SD
+    '2040': Movies/HD
+    '2045': Movies/UHD
+    '2060': Movies/3D
+    '2010': Movies/Foreign
+    '5000': TV
+    '5040': TV/HD
+    '5030': TV/SD
+    '5070': TV/Anime
+    '5080': TV/Documentary
+    '3000': Audio
+    '3010': Audio/MP3
+    '3040': Audio/Lossless
+    '3020': Audio/Video
+    '4000': PC
+    '4050': PC/Games
+    '4020': PC/Mac
+    '1000': Console
+    '7000': Books
+    '7020': Books/EBook
+    '7030': Books/Comics
+    '7010': Audio/Audiobook
+    '8000': Other
+  categorymappings:
+    # Anime
+    - id: '28'
+      cat: '5070'
+      desc: Anime/Anime
+    - id: '78'
+      cat: '5070'
+      desc: Anime/Dual Audio
+    - id: '79'
+      cat: '5070'
+      desc: Anime/Dubbed
+    - id: '80'
+      cat: '5070'
+      desc: Anime/Subbed
+    - id: '81'
+      cat: '5070'
+      desc: Anime/Raw
+    # Audio/Music
+    - id: '22'
+      cat: '3010'
+      desc: Music/MP3
+    - id: '23'
+      cat: '3040'
+      desc: Music/Lossless
+    - id: '24'
+      cat: '3000'
+      desc: Music/DVD
+    - id: '25'
+      cat: '3020'
+      desc: Music/Video
+    - id: '26'
+      cat: '3000'
+      desc: Music/Radio
+    - id: '27'
+      cat: '3000'
+      desc: Music/Other
+    - id: '53'
+      cat: '3000'
+      desc: Music/Album
+    - id: '58'
+      cat: '3000'
+      desc: Music/Box set
+    - id: '59'
+      cat: '3000'
+      desc: Music/Discography
+    - id: '60'
+      cat: '3000'
+      desc: Music/Single
+    - id: '68'
+      cat: '3000'
+      desc: Music/Concerts
+    - id: '69'
+      cat: '3000'
+      desc: Music/AAC
+    # Movies
+    - id: '1'
+      cat: '2030'
+      desc: Movies/DVD
+    - id: '2'
+      cat: '2030'
+      desc: Movies/Divx/Xvid
+    - id: '3'
+      cat: '2030'
+      desc: Movies/SVCD/VCD
+    - id: '4'
+      cat: '2010'
+      desc: Movies/Dubs/Dual Audio
+    - id: '42'
+      cat: '2040'
+      desc: Movies/HD
+      default: true
+    - id: '54'
+      cat: '2040'
+      desc: Movies/h.264/x264
+    - id: '55'
+      cat: '2030'
+      desc: Movies/Mp4
+    - id: '66'
+      cat: '2060'
+      desc: Movies/3D
+    - id: '70'
+      cat: '2040'
+      desc: Movies/HEVC/x265
+    - id: '73'
+      cat: '2010'
+      desc: Movies/Bollywood
+    - id: '76'
+      cat: '2045'
+      desc: Movies/UHD
+    # TV
+    - id: '5'
+      cat: '5030'
+      desc: TV/DVD
+    - id: '6'
+      cat: '5030'
+      desc: TV/Divx/Xvid
+    - id: '7'
+      cat: '5030'
+      desc: TV/SVCD/VCD
+    - id: '41'
+      cat: '5040'
+      desc: TV/HD
+    - id: '71'
+      cat: '5040'
+      desc: TV/HEVC/x265
+    - id: '74'
+      cat: '5070'
+      desc: TV/Cartoons
+    - id: '75'
+      cat: '5030'
+      desc: TV/SD
+    - id: '9'
+      cat: '5080'
+      desc: TV/Documentary
+    # Apps
+    - id: '18'
+      cat: '4000'
+      desc: Apps/PC Software
+    - id: '19'
+      cat: '4020'
+      desc: Apps/Mac
+    - id: '20'
+      cat: '4000'
+      desc: Apps/Linux
+    - id: '21'
+      cat: '4000'
+      desc: Apps/Other
+    - id: '56'
+      cat: '4000'
+      desc: Apps/Android
+    - id: '57'
+      cat: '4000'
+      desc: Apps/iOS
+    # Games
+    - id: '10'
+      cat: '4050'
+      desc: Games/PC Game
+    - id: '11'
+      cat: '1000'
+      desc: Games/PS2
+    - id: '12'
+      cat: '1000'
+      desc: Games/PSP
+    - id: '13'
+      cat: '1000'
+      desc: Games/Xbox
+    - id: '14'
+      cat: '1000'
+      desc: Games/Xbox360
+    - id: '15'
+      cat: '1000'
+      desc: Games/PS1
+    - id: '16'
+      cat: '1000'
+      desc: Games/Dreamcast
+    - id: '17'
+      cat: '1000'
+      desc: Games/Other
+    - id: '43'
+      cat: '1000'
+      desc: Games/PS3
+    - id: '44'
+      cat: '1000'
+      desc: Games/Wii
+    - id: '45'
+      cat: '1000'
+      desc: Games/DS
+    - id: '46'
+      cat: '1000'
+      desc: Games/GameCube
+    - id: '72'
+      cat: '1000'
+      desc: Games/3DS
+    - id: '77'
+      cat: '1000'
+      desc: Games/PS4
+    - id: '82'
+      cat: '1000'
+      desc: Games/Switch
+    # Books/Other
+    - id: '33'
+      cat: '8000'
+      desc: Other/Emulation
+    - id: '34'
+      cat: '7000'
+      desc: Other/Tutorial
+    - id: '35'
+      cat: '8000'
+      desc: Other/Sounds
+    - id: '36'
+      cat: '7020'
+      desc: Other/E-books
+    - id: '37'
+      cat: '8000'
+      desc: Other/Images
+    - id: '38'
+      cat: '8000'
+      desc: Other/Mobile Phone
+    - id: '39'
+      cat: '7030'
+      desc: Other/Comics
+    - id: '40'
+      cat: '8000'
+      desc: Other/Other
+    - id: '47'
+      cat: '8000'
+      desc: Other/Nulled Script
+    - id: '52'
+      cat: '7010'
+      desc: Other/Audiobook
+    # XXX (included for completeness but typically filtered)
+    - id: '48'
+      cat: '8000'
+      desc: XXX/Video
+    - id: '49'
+      cat: '8000'
+      desc: XXX/Picture
+    - id: '50'
+      cat: '8000'
+      desc: XXX/Magazine
+    - id: '51'
+      cat: '8000'
+      desc: XXX/Hentai
+    - id: '67'
+      cat: '8000'
+      desc: XXX/Games
+
+download:
+  # The .torrent URL and magnet URI are on the details page
+  selectors:
+    - selector: ul li a[href^="{{ .Config.downloadlink }}"]
+      attribute: href
+    - selector: ul li a[href^="{{ .Config.downloadlink2 }}"]
+      attribute: href
+
+search:
+  paths:
+    # Simplified search paths - always use sorting with defaults
+    # Path format: sort-search/{query}/{sort}/{order}/{page}/ OR search/{query}/{page}/
+    # For browsing: cat/{category}/{page}/
+
+    # Page 1: Movies (or keyword search page 1)
+    - path: 'sort-search/{{ .Keywords }}/time/desc/1/'
+      method: get
+    # Page 2: TV (or keyword search page 2)
+    - path: 'sort-search/{{ .Keywords }}/time/desc/2/'
+      method: get
+    # Page 3: Music (or keyword search page 3)
+    - path: 'sort-search/{{ .Keywords }}/time/desc/3/'
+      method: get
+    # Page 4: Other (or keyword search page 4)
+    - path: 'sort-search/{{ .Keywords }}/time/desc/4/'
+      method: get
+
+  keywordsfilters:
+    - name: re_replace
+      # Daily standard S2023 → 2023 for year-based searches
+      args: ['\\bS(20\\d{2})\\b', '$1']
+
+  response:
+    type: html
+
+  rows:
+    selector: 'tr:has(a[href^="/torrent/"]){{ if .Config.uploader }}:has(td[class^="coll-5"]:contains({{ .Config.uploader }})){{ else }}{{ end }}'
+
+  fields:
+    title_default:
+      # Standard title from the table row
+      selector: td[class^="coll-1"] a[href^="/torrent/"]
+    title_optional:
+      # Movies, TV, and music pages abbreviate the title - extract from href instead
+      selector: td[class^="coll-1"] a[href^="/torrent/"]:contains("...")
+      attribute: href
+      optional: true
+      filters:
+        - name: urldecode
+        - name: split
+          args: ['/', '3']
+    title:
+      # Use title_optional if available (handles abbreviated titles), otherwise title_default
+      text: '{{ if .Result.title_optional }}{{ .Result.title_optional }}{{ else }}{{ .Result.title_default }}{{ end }}'
+      filters:
+        # Cleanup for release group extraction
+        - name: re_replace
+          args: ['-([\\w]+(?:[\\[\\]\\(\\)\\w]+)?)$', '~$1']
+        - name: replace
+          args: ['-', ' ']
+        - name: re_replace
+          args: ['~([\\w]+(?:[\\[\\]\\(\\)\\w]+)?)$', '-$1']
+        - name: replace
+          # Remove unwanted control character
+          args: ["\u000f", '']
+        # Cleanup for Sonarr episode parsing
+        - name: re_replace
+          # EP 3 4 → E3-4
+          args: ['(?i)\\sEP\\s(\\d{1,2})\\s(E?\\s?\\d{1,2})\\s', ' E$1-$2 ']
+        - name: re_replace
+          # S02E04 05 → S02E04-05
+          args: ['(?i)\\sS(\\d{1,2})\\s?E\\s?(\\d{1,2})\\s(E?\\s?\\d{1,2})\\s', ' S$1E$2-$3 ']
+        # Audio codec cleanup
+        - name: re_replace
+          args: ['(?i)AC3\\s?(\\d)\\s(\\d)', 'AC3 $1.$2']
+        - name: re_replace
+          args: ['(?i) DD\\s?(\\d)\\s(\\d)', ' DD $1.$2']
+        - name: re_replace
+          args: ['(?i) DDP\\s?(\\d)\\s(\\d)', ' DDP $1.$2']
+        - name: re_replace
+          args: ['(?i)\\sE\\s?AC3', ' EAC3']
+        # Video source cleanup
+        - name: re_replace
+          args: ['(?i)WEB\\sDL', 'WEB-DL']
+        - name: re_replace
+          args: ['(?i)HDTVRIP', 'HDTV']
+    category_optional:
+      selector: td[class^="coll-1"] a[href^="/sub/"]
+      attribute: href
+      optional: true
+      filters:
+        - name: split
+          args: ['/', '2']
+    category:
+      # Default to "Other" category (40) if not found
+      text: '{{ if .Result.category_optional }}{{ .Result.category_optional }}{{ else }}40{{ end }}'
+    details:
+      selector: td[class^="coll-1"] a[href^="/torrent/"]
+      attribute: href
+    download:
+      # .torrent link is on the details page (requires followRedirect)
+      selector: td[class^="coll-1"] a[href^="/torrent/"]
+      attribute: href
+    # Date parsing - 1337x has three date formats
+    date_year:
+      # Within this year: "7am Sep. 14th"
+      optional: true
+      selector: td[class^="coll-date"]:not(:contains(":")):not(:contains("'"))
+      filters:
+        - name: re_replace
+          args: ['st|nd|rd|th', '']
+        - name: dateparse
+          args: 'htt MMM. d'
+    date_years:
+      # More than a year ago: "Apr. 18th '11"
+      optional: true
+      selector: td[class^="coll-date"]:contains("'")
+      filters:
+        - name: replace
+          args: ["'", '']
+        - name: re_replace
+          args: ['st|nd|rd|th', '']
+        - name: dateparse
+          args: 'MMM. d yy'
+    date_today:
+      # Today: "12:25am"
+      optional: true
+      selector: td[class^="coll-date"]:contains(":")
+      filters:
+        - name: fuzzytime
+    date:
+      text: '{{ if or .Result.date_year .Result.date_years .Result.date_today }}{{ or .Result.date_year .Result.date_years .Result.date_today }}{{ else }}now{{ end }}'
+    size:
+      selector: td[class^="coll-4"]
+    seeders:
+      selector: td[class^="coll-2"]
+    leechers:
+      selector: td[class^="coll-3"]
+    _username:
+      selector: td[class^="coll-5"]
+    description:
+      text: 'Uploader: {{ .Result._username }}'
+    downloadvolumefactor:
+      # Public tracker - always free
+      selector: body
+      optional: true
+      case:
+        '*': '0'
+      default: '0'
+    uploadvolumefactor:
+      text: '1'

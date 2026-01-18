@@ -9,7 +9,7 @@ import type {
 	SearchPathBlock
 } from '../schema/yamlDefinition';
 import type { SearchCriteria } from '../types';
-import { isMovieSearch, isTvSearch } from '../types';
+import { isMovieSearch } from '../types';
 import { TemplateEngine } from '../engine/TemplateEngine';
 import { FilterEngine } from '../engine/FilterEngine';
 import { logger } from '$lib/logging';
@@ -268,6 +268,14 @@ export class RequestBuilder {
 
 	/**
 	 * Build keywords string from search criteria.
+	 * 
+	 * Note: Episode tokens are now handled by TemplateEngine.setQuery() which
+	 * sets .Keywords to include the episode token based on criteria.preferredEpisodeFormat.
+	 * This method is kept for backwards compatibility and for the movie year case.
+	 * 
+	 * The actual .Keywords value used in templates comes from TemplateEngine,
+	 * not from this method's return value (see buildSearchRequests where we
+	 * call templateEngine.setQuery() first).
 	 */
 	private buildKeywords(criteria: SearchCriteria): string {
 		const parts: string[] = [];
@@ -276,20 +284,18 @@ export class RequestBuilder {
 			parts.push(criteria.query);
 		}
 
-		// Add type-specific parts using proper type guards
+		// Movie year handling - add year if not already in query
 		if (isMovieSearch(criteria)) {
 			if (criteria.year) {
-				parts.push(String(criteria.year));
-			}
-		} else if (isTvSearch(criteria)) {
-			if (criteria.season !== undefined && criteria.episode !== undefined) {
-				parts.push(
-					`S${String(criteria.season).padStart(2, '0')}E${String(criteria.episode).padStart(2, '0')}`
-				);
-			} else if (criteria.season !== undefined) {
-				parts.push(`S${String(criteria.season).padStart(2, '0')}`);
+				if (!criteria.query?.includes(String(criteria.year))) {
+					parts.push(String(criteria.year));
+				}
 			}
 		}
+		
+		// Note: TV episode tokens are NOT added here anymore.
+		// TemplateEngine is the sole source of truth for episode token composition.
+		// It uses criteria.preferredEpisodeFormat to determine which format to add.
 
 		return parts.join(' ');
 	}
@@ -430,6 +436,7 @@ export class RequestBuilder {
 
 		// Skip paths that have no meaningful search criteria after filtering
 		// (only standard params like t, apikey, limit, cat remain - no actual search params)
+		// EXCEPTION: If the path template contains .Keywords, the search is embedded in the URL path
 		const meaningfulSearchParams = [
 			'q',
 			'query',
@@ -454,10 +461,13 @@ export class RequestBuilder {
 			'author',
 			'title'
 		];
-		const hasSearchCriteria = Object.keys(filteredInputs).some((key) =>
+		const hasInputSearchCriteria = Object.keys(filteredInputs).some((key) =>
 			meaningfulSearchParams.includes(key.toLowerCase())
 		);
-		if (!hasSearchCriteria) {
+		// Check if the path template contains keywords placeholder (e.g., {{ .Keywords }})
+		// This allows indexers like 1337x that embed search in the URL path
+		const pathHasKeywords = path.path?.includes('.Keywords') ?? false;
+		if (!hasInputSearchCriteria && !pathHasKeywords) {
 			return null;
 		}
 

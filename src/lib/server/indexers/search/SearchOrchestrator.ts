@@ -24,6 +24,12 @@ import {
 	categoryMatchesSearchType,
 	getCategoryContentType
 } from '../types';
+import type { EpisodeFormatType } from '../types';
+import {
+	getEffectiveEpisodeFormats,
+	getEpisodeFormats,
+	type EpisodeFormat
+} from './SearchFormatProvider';
 import { getPersistentStatusTracker, type PersistentStatusTracker } from '../status';
 import { getRateLimitRegistry, type RateLimitRegistry } from '../ratelimit';
 import { getHostRateLimiter, type HostRateLimiter } from '../ratelimit/HostRateLimiter';
@@ -734,7 +740,15 @@ export class SearchOrchestrator {
 
 	/**
 	 * Execute text search with multiple title variants.
-	 * For TV searches, also tries alternative episode formats (1x05 in addition to S01E05).
+	 * For TV searches, tries different episode format types based on indexer capabilities.
+	 * 
+	 * Architecture note: Episode format handling is now driven by:
+	 * 1. Indexer's searchFormats.episode capability (if specified in YAML)
+	 * 2. Default fallback to all common formats (standard, european, compact)
+	 * 
+	 * The query passed downstream is CLEAN (just the title). TemplateEngine is the
+	 * sole component responsible for composing the final search keywords by adding
+	 * the appropriate episode token to .Keywords.
 	 */
 	private async executeMultiTitleTextSearch(
 		indexer: IIndexer,
@@ -755,21 +769,15 @@ export class SearchOrchestrator {
 			return [];
 		}
 
-		// For TV searches, build episode format variants
-		const episodeFormats: string[] = [];
-		if (isTvSearch(criteria) && criteria.season !== undefined && criteria.episode !== undefined) {
-			// Standard format: S01E05
-			episodeFormats.push(
-				`S${String(criteria.season).padStart(2, '0')}E${String(criteria.episode).padStart(2, '0')}`
+		// Get episode formats to try based on indexer capabilities
+		let episodeFormats: EpisodeFormat[] = [];
+		if (isTvSearch(criteria) && criteria.season !== undefined) {
+			// Get format types from indexer capabilities, or use all formats as fallback
+			const formatTypes = getEffectiveEpisodeFormats(
+				indexer.capabilities.searchFormats?.episode,
+				true // useAllFormats fallback for backwards compatibility
 			);
-			// European format: 1x05
-			episodeFormats.push(`${criteria.season}x${String(criteria.episode).padStart(2, '0')}`);
-			// Compact format: 105 (season + episode as single number)
-			// For S01E05 -> "105", for S10E05 -> "1005"
-			episodeFormats.push(`${criteria.season}${String(criteria.episode).padStart(2, '0')}`);
-		} else if (isTvSearch(criteria) && criteria.season !== undefined) {
-			// Season only format: S01
-			episodeFormats.push(`S${String(criteria.season).padStart(2, '0')}`);
+			episodeFormats = getEpisodeFormats(criteria, formatTypes);
 		}
 
 		// Search with each title variant (limit to 3 titles to avoid excessive queries)
@@ -777,11 +785,17 @@ export class SearchOrchestrator {
 			try {
 				if (episodeFormats.length > 0) {
 					// TV search: try each episode format
-					for (const epFormat of episodeFormats) {
+					// Pass CLEAN query (just title) with preferredEpisodeFormat set
+					// TemplateEngine uses preferredEpisodeFormat to add the correct token
+					for (const format of episodeFormats) {
 						const textCriteria = createTextOnlyCriteria({
 							...criteria,
-							query: `${title} ${epFormat}`
+							// Clean query: just the title, no episode token embedded
+							query: title,
+							// Tell TemplateEngine which format to use for this request
+							preferredEpisodeFormat: format.type
 						});
+						
 						const releases = await indexer.search(textCriteria);
 
 						// Add unique releases (dedupe by guid)

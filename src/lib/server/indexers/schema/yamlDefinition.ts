@@ -158,11 +158,41 @@ export type ProtocolConfig = z.infer<typeof protocolConfigSchema>;
 // Capabilities Block
 // ============================================================================
 
+/**
+ * Episode format types for search.
+ * - standard: S01E05 (most common)
+ * - european: 1x05 (used by some European trackers)
+ * - compact: 105 (season + episode as single number)
+ * - daily: 2024.01.15 (for daily shows)
+ * - absolute: 125 (absolute episode number, for anime)
+ */
+export const episodeFormatTypeSchema = z.enum(['standard', 'european', 'compact', 'daily', 'absolute']);
+
+/**
+ * Movie format types for search.
+ */
+export const movieFormatTypeSchema = z.enum(['standard', 'yearOnly', 'noYear']);
+
+/**
+ * Search format configuration for an indexer.
+ */
+export const searchFormatsSchema = z.object({
+	/** Episode format preferences, in order of preference */
+	episode: z.array(episodeFormatTypeSchema).optional(),
+	/** Movie format preferences */
+	movie: z.array(movieFormatTypeSchema).optional()
+}).optional();
+
 export const capabilitiesBlockSchema = z.object({
 	categories: z.record(z.string(), z.string()).optional(),
 	categorymappings: z.array(categoryMappingSchema).optional(),
 	modes: z.record(z.string(), z.array(z.string())).optional(),
-	allowrawsearch: z.boolean().optional()
+	allowrawsearch: z.boolean().optional(),
+	/**
+	 * Search format preferences for this indexer.
+	 * Specifies which episode/movie formats the indexer expects.
+	 */
+	searchFormats: searchFormatsSchema
 });
 
 export type CapabilitiesBlock = z.infer<typeof capabilitiesBlockSchema>;

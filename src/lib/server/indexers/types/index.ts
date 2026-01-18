@@ -153,6 +153,9 @@ export {
 	type SearchParam,
 	type SearchMode,
 	type IndexerCapabilities,
+	type EpisodeFormatType,
+	type MovieFormatType,
+	type SearchFormats,
 	type DefinitionSource,
 	type BaseIndexerDefinition,
 	type NativeIndexerDefinition,
@@ -248,7 +251,19 @@ export {
 	criteriaToString,
 	createMovieSearchCriteria,
 	createTvSearchCriteria,
-	createBasicSearchCriteria
+	createBasicSearchCriteria,
+	// Episode token helpers (legacy - prefer SearchFormatProvider for new code)
+	generateEpisodeTokenFormats,
+	/**
+	 * @deprecated Use SearchFormatProvider and preferredEpisodeFormat instead.
+	 * Episode token composition is now handled by TemplateEngine.
+	 */
+	queryContainsEpisodeToken,
+	/**
+	 * @deprecated Use SearchFormatProvider and preferredEpisodeFormat instead.
+	 * Episode token composition is now handled by TemplateEngine.
+	 */
+	keywordsContainEpisodeToken
 } from './search';
 
 // =============================================================================

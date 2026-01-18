@@ -246,8 +246,8 @@
 			if (season !== undefined) params.set('season', season.toString());
 			if (episode !== undefined) params.set('episode', episode.toString());
 
-			// Always send title as query for text search fallback
-			// (title includes S##E## format for TV episode searches)
+			// Title is just the clean series/movie title
+			// Season/episode are passed separately and backend handles format composition
 			params.set('q', title);
 
 			const response = await fetch(`/api/search?${params}`);
