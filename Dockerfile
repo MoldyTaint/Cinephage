@@ -20,11 +20,6 @@ COPY . .
 # Build the SvelteKit application
 RUN npm run build
 
-# Download Camoufox browser at build time (avoids runtime permission issues)
-# Set HOME to /app so camoufox caches to /app/.cache/camoufox
-ENV HOME=/app
-RUN mkdir -p /app/.cache && npx camoufox-js fetch
-
 # ==========================================
 # Runtime Stage
 # ==========================================
@@ -57,24 +52,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-liberation \
     libdbus-glib-1-2 \
     libxt6 \
-    # GLX/Mesa libraries for Camoufox GPU detection (glxtest)
-    xvfb \
-    libgl1-mesa-dri \
-    libgl1-mesa-glx \
     && rm -rf /var/lib/apt/lists/*
-
-# Install all Firefox browser dependencies (same approach as Byparr)
-RUN npx playwright install-deps firefox
 
 # Create necessary directories with correct ownership (node user is UID 1000)
 RUN mkdir -p data logs && chown -R node:node data logs
-
-# Set HOME to /app for consistent cache location regardless of runtime UID
-# This ensures camoufox-js finds the browser at /app/.cache/camoufox
-ENV HOME=/app
-
-# Copy pre-downloaded Camoufox browser from builder
-COPY --from=builder --chown=node:node /app/.cache ./.cache
 
 # Copy production dependencies and built artifacts from builder
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules
@@ -90,6 +71,11 @@ COPY --from=builder --chown=node:node /app/data/indexers ./bundled-indexers
 COPY --chown=node:node docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x ./docker-entrypoint.sh
 
+# Pre-fetch Camoufox browser binaries into the node user's cache
+RUN mkdir -p /home/node/.cache && chown -R node:node /home/node/.cache
+USER node
+RUN ./node_modules/.bin/camoufox fetch
+
 # Set environment variables
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
@@ -102,9 +88,6 @@ EXPOSE 3000
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1
-
-# Run as non-root user (rootless) - node user is UID 1000
-USER node
 
 # Start the application
 ENTRYPOINT ["./docker-entrypoint.sh"]
