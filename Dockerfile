@@ -71,7 +71,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Create necessary directories with correct ownership (node user is UID 1000)
-RUN mkdir -p data logs .cache && chown -R node:node data logs .cache
+RUN mkdir -p data logs && chown -R node:node data logs
 
 # Copy production dependencies and built artifacts from builder
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules
@@ -81,13 +81,6 @@ COPY --from=builder --chown=node:node /app/server.js ./server.js
 
 # Copy bundled indexers to separate location (not shadowed by volume mount)
 COPY --from=builder --chown=node:node /app/data/indexers ./bundled-indexers
-
-# Set HOME to /app for consistent cache location regardless of runtime UID
-# This ensures camoufox-js finds the browser at /app/camoufox
-ENV HOME=/app
-ENV CAMOUFOX_CACHE_DIR=/app/.cache/camoufox
-USER node
-RUN ./node_modules/.bin/camoufox-js fetch
 
 # Copy and set up entrypoint script
 COPY --chown=node:node docker-entrypoint.sh ./docker-entrypoint.sh
@@ -105,6 +98,9 @@ EXPOSE 3000
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1
+
+  # Run as non-root user (rootless) - node user is UID 1000
+USER node
 
 # Start the application
 ENTRYPOINT ["./docker-entrypoint.sh"]

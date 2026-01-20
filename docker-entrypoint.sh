@@ -19,7 +19,7 @@ if [ "$(id -u)" = "0" ] && [ -z "${CINEPHAGE_REEXEC:-}" ]; then
     usermod -o -u "$TARGET_UID" -g "$TARGET_GID" node
   fi
 
-  chown -R node:node /app/data /app/logs /app/camoufox 2>/dev/null || true
+  chown -R node:node /app/data /app/logs 2>/dev/null || true
 
   export CINEPHAGE_REEXEC=1
   exec gosu node "$0" "$@"
@@ -43,7 +43,7 @@ check_permissions() {
       echo "To fix this, ensure the host directory has correct ownership:"
       echo "  sudo chown -R $(id -u):$(id -g) $(dirname $dir)"
       echo ""
-      echo "Or set CINEPHAGE_UID and CINEPHAGE_GID in your .env file to match"
+      echo "Or set PUID and PGID in your .env file to match"
       echo "your host user (run 'id -u' and 'id -g' to find your IDs)."
       exit 1
     fi
@@ -58,7 +58,7 @@ check_permissions() {
     echo "To fix this, update the host directory ownership:"
     echo "  sudo chown -R $(id -u):$(id -g) $dir"
     echo ""
-    echo "Or set CINEPHAGE_UID and CINEPHAGE_GID in your .env file to match"
+    echo "Or set PUID and PGID in your .env file to match"
     echo "your host user (run 'id -u' and 'id -g' to find your IDs)."
     exit 1
   fi
@@ -92,22 +92,19 @@ else
   echo "Warning: Bundled indexers directory not found at $BUNDLED_DIR"
 fi
 
-# Verify Camoufox browser is present (downloaded at build time)
-# Cache is stored in /app/camoufox for non-standard UID/GID compatibility
-CAMOUFOX_CACHE_DIR="${CAMOUFOX_CACHE_DIR:-/app/.cache/camoufox}"
-CAMOUFOX_MARKER="$CAMOUFOX_CACHE_DIR/version.json"
-if [ -f "$CAMOUFOX_MARKER" ]; then
-  echo "Camoufox browser ready"
-else
-  # Fallback: attempt runtime download if somehow missing
-  echo "Warning: Camoufox browser not found, attempting download..."
-  mkdir -p "$CAMOUFOX_CACHE_DIR"
-  if ./node_modules/.bin/camoufox-js fetch; then
-    echo "Camoufox browser installed successfully"
+# Download Camoufox browser if not already present
+# This is done at runtime to reduce image size and allow updates
+CAMOUFOX_MARKER="/app/data/.camoufox-installed"
+if [ ! -f "$CAMOUFOX_MARKER" ]; then
+  echo "Downloading Camoufox browser (first run only, ~80MB)..."
+  if ./node_modules/.bin/camoufox-js fetch --path /app/data/camoufox 2>/dev/null; then
     touch "$CAMOUFOX_MARKER"
+    echo "Camoufox browser installed successfully"
   else
     echo "Warning: Failed to download Camoufox browser. Captcha solving will be unavailable."
   fi
+else
+  echo "Camoufox browser already installed"
 fi
 
 echo "Starting Cinephage..."
