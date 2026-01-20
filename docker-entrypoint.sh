@@ -96,43 +96,16 @@ fi
 # This is done at runtime to reduce image size and allow updates
 CAMOUFOX_CACHE_DIR="/home/node/.cache/camoufox"
 CAMOUFOX_MARKER="$CAMOUFOX_CACHE_DIR/version.json"
-
-spinner() {
-	if [ ! -t 1 ]; then
-		return 0
-	fi
-	while true; do
-		printf "\rDownloading Camoufox... %s" "-\\|/"
-		sleep 0.2
-	done
-}
-
 if [ ! -f "$CAMOUFOX_MARKER" ]; then
-	echo "Downloading Camoufox browser (first run only, ~80MB)..."
-	mkdir -p "$CAMOUFOX_CACHE_DIR"
-
-	spinner &
-	SPINNER_PID=$!
-
-	if ./node_modules/.bin/camoufox-js fetch; then
-		kill "$SPINNER_PID" >/dev/null 2>&1 || true
-		if [ -t 1 ]; then
-			printf "\rDownloading Camoufox... done\n"
-		else
-			echo "Downloading Camoufox... done"
-		fi
-		echo "Camoufox browser installed successfully"
-	else
-		kill "$SPINNER_PID" >/dev/null 2>&1 || true
-		if [ -t 1 ]; then
-			printf "\rDownloading Camoufox... failed\n"
-		else
-			echo "Downloading Camoufox... failed"
-		fi
-		echo "Warning: Failed to download Camoufox browser. Captcha solving will be unavailable."
-	fi
+  echo "Downloading Camoufox browser (first run only, ~80MB)..."
+  mkdir -p "$CAMOUFOX_CACHE_DIR"
+  if ./node_modules/.bin/camoufox-js fetch; then
+    echo "Camoufox browser installed successfully"
+  else
+    echo "Warning: Failed to download Camoufox browser. Captcha solving will be unavailable."
+  fi
 else
-	echo "Camoufox browser already installed"
+  echo "Camoufox browser already installed"
 fi
 
 echo "Starting Cinephage..."

@@ -467,6 +467,7 @@
 			<button
 				class="btn btn-ghost btn-xs {episode.monitored ? 'text-success' : 'text-base-content/40'}"
 				onclick={handleMonitorClick}
+				disabled={seriesMonitored}
 				title={episode.monitored ? 'Monitored' : 'Not monitored'}
 			>
 				{#if episode.monitored}
