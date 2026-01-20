@@ -98,6 +98,9 @@ CAMOUFOX_CACHE_DIR="/home/node/.cache/camoufox"
 CAMOUFOX_MARKER="$CAMOUFOX_CACHE_DIR/version.json"
 
 spinner() {
+	if [ ! -t 1 ]; then
+		return 0
+	fi
 	while true; do
 		printf "\rDownloading Camoufox... %s" "-\\|/"
 		sleep 0.2
@@ -113,11 +116,19 @@ if [ ! -f "$CAMOUFOX_MARKER" ]; then
 
 	if ./node_modules/.bin/camoufox-js fetch; then
 		kill "$SPINNER_PID" >/dev/null 2>&1 || true
-		printf "\rDownloading Camoufox... done\n"
+		if [ -t 1 ]; then
+			printf "\rDownloading Camoufox... done\n"
+		else
+			echo "Downloading Camoufox... done"
+		fi
 		echo "Camoufox browser installed successfully"
 	else
 		kill "$SPINNER_PID" >/dev/null 2>&1 || true
-		printf "\rDownloading Camoufox... failed\n"
+		if [ -t 1 ]; then
+			printf "\rDownloading Camoufox... failed\n"
+		else
+			echo "Downloading Camoufox... failed"
+		fi
 		echo "Warning: Failed to download Camoufox browser. Captcha solving will be unavailable."
 	fi
 else
