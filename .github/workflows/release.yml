@@ -1,0 +1,424 @@
+# Create versioned releases with Docker image tagging and changelog generation
+#
+# Triggers:
+# - Manual workflow_dispatch from main branch only
+#
+# This workflow:
+# 1. Builds and tags Docker image with version and latest tags
+# 2. Generates changelog from commits since last release
+# 3. Creates GitHub release with changelog and custom notes
+# 4. Cleans up old untagged images from GHCR
+
+name: Release
+
+on:
+  workflow_dispatch:
+    branches:
+      - main
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        type: string
+      release_notes:
+        description: 'Additional release notes (optional)'
+        required: false
+        type: string
+        default: ''
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Validate version format
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+            echo "⚠️  Warning: Version format doesn't match semantic versioning (e.g., v1.0.0 or 1.0.0)"
+            echo "Continuing anyway..."
+          fi
+
+      - name: Check if tag already exists
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "❌ Tag $VERSION already exists!"
+            exit 1
+          fi
+          echo "✅ Tag $VERSION is available"
+
+  build-amd64:
+    name: Build amd64
+    runs-on: ubuntu-latest
+    needs: [validate]
+    if: always() && (needs.validate.result == 'skipped' || needs.validate.result == 'success')
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      digest: ${{ steps.build-push.outputs.digest }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Full history for changelog generation
+
+      - name: Set lowercase image name
+        run: echo "IMAGE_NAME_LC=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build test image
+        run: docker buildx build --load -t cinephage:test --build-arg APP_VERSION=${{ github.event.inputs.version }} .
+
+      - name: Test Docker image
+        run: |
+          docker run -d --name cinephage-test \
+            -p 3000:3000 \
+            -e ORIGIN=http://localhost:3000 \
+            cinephage:test
+
+          for i in {1..12}; do
+            if curl -sf http://localhost:3000/api/health; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Waiting for container... ($i/12)"
+            sleep 5
+          done
+
+          echo "Health check failed"
+          docker logs cinephage-test
+          exit 1
+
+      - name: Cleanup test container
+        if: always()
+        run: docker rm -f cinephage-test || true
+
+      - name: Build and push Docker image
+        id: build-push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:amd64
+          build-args: |
+            APP_VERSION=${{ github.event.inputs.version }}
+          cache-from: type=gha,scope=amd64
+          cache-to: type=gha,mode=max,scope=amd64
+
+  build-arm64:
+    name: Build arm64
+    runs-on: ubuntu-24.04-arm
+    needs: [validate]
+    if: always() && (needs.validate.result == 'skipped' || needs.validate.result == 'success')
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      digest: ${{ steps.build-push.outputs.digest }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set lowercase image name
+        run: echo "IMAGE_NAME_LC=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        id: build-push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:arm64
+          build-args: |
+            APP_VERSION=${{ github.event.inputs.version }}
+          cache-from: type=gha,scope=arm64
+          cache-to: type=gha,mode=max,scope=arm64
+
+  generate-changelog:
+    name: Generate Changelog
+    runs-on: ubuntu-latest
+    needs: [validate]
+    if: always() && (needs.validate.result == 'skipped' || needs.validate.result == 'success')
+    permissions:
+      contents: read
+
+    outputs:
+      changelog: ${{ steps.generate.outputs.changelog }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog from commits
+        id: generate
+        run: |
+          # Get the last release tag, or use the first commit if no releases exist
+          LAST_TAG=$(git describe --tags --abbrev=0 --match "v*" 2>/dev/null || git describe --tags --abbrev=0 2>/dev/null || echo "")
+          
+          if [ -z "$LAST_TAG" ]; then
+            # No previous release, get all commits
+            COMMIT_RANGE="HEAD"
+            echo "No previous release found, generating changelog from all commits"
+          else
+            COMMIT_RANGE="${LAST_TAG}..HEAD"
+            echo "Generating changelog from ${LAST_TAG} to HEAD"
+          fi
+          
+          # Generate changelog sections
+          CHANGELOG=""
+          
+          # Features (conventional commits: feat:, feature:, add:)
+          FEATURES=$(git log --pretty=format:"- %s (%h)" "$COMMIT_RANGE" --grep="^feat" --grep="^feature" --grep="^add" -iE 2>/dev/null | head -30 || true)
+          if [ -n "$FEATURES" ]; then
+            CHANGELOG="${CHANGELOG}### 🎉 New Features\n\n${FEATURES}\n\n"
+          fi
+          
+          # Fixes (conventional commits: fix:, bug:, bugfix:)
+          FIXES=$(git log --pretty=format:"- %s (%h)" "$COMMIT_RANGE" --grep="^fix" --grep="^bug" --grep="^bugfix" -iE 2>/dev/null | head -30 || true)
+          if [ -n "$FIXES" ]; then
+            CHANGELOG="${CHANGELOG}### 🐛 Bug Fixes\n\n${FIXES}\n\n"
+          fi
+          
+          # Other changes (exclude merge commits, chore, ci, docs, style, refactor, test, perf, build)
+          OTHERS=$(git log --pretty=format:"- %s (%h)" "$COMMIT_RANGE" --grep="^Merge" -i --invert-grep 2>/dev/null | \
+            grep -vE "^(feat|fix|feature|add|bug|bugfix|chore|ci|docs|style|refactor|test|perf|build)(\(.+\))?:" -i | \
+            head -20 || true)
+          if [ -n "$OTHERS" ]; then
+            CHANGELOG="${CHANGELOG}### 📝 Other Changes\n\n${OTHERS}\n\n"
+          fi
+          
+          # If no changelog generated, add a default message with commit list
+          if [ -z "$CHANGELOG" ]; then
+            COMMIT_COUNT=$(git rev-list --count "$COMMIT_RANGE" 2>/dev/null || echo "0")
+            COMMIT_LIST=$(git log --pretty=format:"- %s (%h)" "$COMMIT_RANGE" --no-merges 2>/dev/null | head -20 || true)
+            CHANGELOG="### 📦 Release\n\nThis release includes ${COMMIT_COUNT} commit(s) since the last release.\n\n"
+            if [ -n "$COMMIT_LIST" ]; then
+              CHANGELOG="${CHANGELOG}${COMMIT_LIST}\n\n"
+            fi
+          fi
+          
+          # Escape for GitHub Actions output (multiline)
+          {
+            echo "changelog<<EOF"
+            echo -e "$CHANGELOG"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          
+          echo "Generated changelog:"
+          echo -e "$CHANGELOG"
+
+  manifest:
+    name: Create Multi-Arch Manifest
+    runs-on: ubuntu-latest
+    needs: [build-amd64, build-arm64, generate-changelog]
+    permissions:
+      contents: write
+      packages: write
+      attestations: write
+      id-token: write
+
+    steps:
+      - name: Set lowercase image name
+        run: echo "IMAGE_NAME_LC=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create and push multi-arch manifest
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+          AMD64_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:amd64
+          ARM64_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:arm64
+        run: |
+          # Tag with version
+          docker buildx imagetools create -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:${VERSION}" "$AMD64_IMAGE" "$ARM64_IMAGE"
+          
+          # Tag as latest
+          docker buildx imagetools create -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:latest" "$AMD64_IMAGE" "$ARM64_IMAGE"
+          
+          echo "✅ Tagged image with ${VERSION} and latest"
+
+      - name: Get manifest digest
+        id: digest
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:${{ github.event.inputs.version }}
+        run: |
+          digest=$(docker buildx imagetools inspect "$IMAGE" --format '{{json .Manifest.Digest}}' | xargs)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}
+          subject-digest: ${{ steps.digest.outputs.digest }}
+          push-to-registry: true
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [manifest, generate-changelog]
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Create Git tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Create and push tag
+          if git rev-parse "${{ github.event.inputs.version }}" >/dev/null 2>&1; then
+            echo "⚠️  Tag already exists, skipping tag creation"
+          else
+            git tag -a "${{ github.event.inputs.version }}" -m "Release ${{ github.event.inputs.version }}"
+            git push origin "${{ github.event.inputs.version }}"
+            echo "✅ Created and pushed tag ${{ github.event.inputs.version }}"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          name: Release ${{ github.event.inputs.version }}
+          body: |
+            ${{ needs.generate-changelog.outputs.changelog }}
+            
+            ---
+            
+            ${{ github.event.inputs.release_notes }}
+          draft: false
+          prerelease: false
+
+  cleanup-images:
+    name: Cleanup Old Images
+    runs-on: ubuntu-latest
+    needs: [manifest]
+    if: success()
+    permissions:
+      packages: write
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set lowercase image name
+        run: echo "IMAGE_NAME_LC=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - name: Cleanup untagged images
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PACKAGE_NAME: ${{ env.IMAGE_NAME_LC }}
+        run: |
+          echo "🧹 Cleaning up old untagged images..."
+          
+          # Get package versions using GitHub API
+          API_RESPONSE=$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            "https://api.github.com/user/packages/container/${PACKAGE_NAME}/versions")
+          
+          # Check if API call was successful
+          if echo "$API_RESPONSE" | jq -e '.message' > /dev/null 2>&1; then
+            echo "⚠️  API Error: $(echo "$API_RESPONSE" | jq -r '.message')"
+            echo "Skipping cleanup..."
+            exit 0
+          fi
+          
+          # Get untagged versions (versions with no tags)
+          UNTAGGED_VERSIONS=$(echo "$API_RESPONSE" | jq -r '.[] | select(.metadata.container.tags | length == 0) | .id' | sort -rn)
+          
+          if [ -z "$UNTAGGED_VERSIONS" ]; then
+            echo "✅ No untagged images found to clean up"
+            exit 0
+          fi
+          
+          # Count untagged versions
+          COUNT=$(echo "$UNTAGGED_VERSIONS" | grep -c . || echo "0")
+          echo "Found ${COUNT} untagged image version(s)"
+          
+          # Keep the last 5 untagged versions for safety, delete the rest
+          TO_DELETE=$(echo "$UNTAGGED_VERSIONS" | tail -n +6)
+          
+          if [ -z "$TO_DELETE" ]; then
+            echo "✅ All untagged images are within the safety threshold (keeping last 5)"
+            exit 0
+          fi
+          
+          DELETE_COUNT=$(echo "$TO_DELETE" | grep -c . || echo "0")
+          echo "Deleting ${DELETE_COUNT} old untagged version(s) (keeping last 5)..."
+          
+          # Delete untagged versions
+          echo "$TO_DELETE" | while read -r version_id; do
+            if [ -n "$version_id" ] && [ "$version_id" != "null" ]; then
+              echo "  Deleting version: ${version_id}"
+              DELETE_RESPONSE=$(curl -s -w "\n%{http_code}" -X DELETE \
+                -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                "https://api.github.com/user/packages/container/${PACKAGE_NAME}/versions/${version_id}")
+              
+              HTTP_CODE=$(echo "$DELETE_RESPONSE" | tail -n 1)
+              if [ "$HTTP_CODE" = "204" ]; then
+                echo "    ✅ Deleted successfully"
+              else
+                echo "    ⚠️  Failed to delete (HTTP ${HTTP_CODE})"
+              fi
+            fi
+          done
+          
+          echo "✅ Cleanup complete"
