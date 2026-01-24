@@ -135,16 +135,15 @@
 			if (result.success || result.deletedCount > 0 || result.removedCount > 0) {
 				if (removeFromLibrary && result.removedCount > 0) {
 					// Remove from local data entirely
-					data.movies = data.movies.filter((movie) => !selectedMovies.has(movie.id));
+					const updatedMovies = data.movies.filter((movie) => !selectedMovies.has(movie.id));
+					data = { ...data, movies: updatedMovies };
 					toasts.success(`Removed ${result.removedCount} movies from library`);
 				} else {
 					// Update local data - mark as missing
-					for (const movie of data.movies) {
-						if (selectedMovies.has(movie.id)) {
-							movie.hasFile = false;
-							movie.files = [];
-						}
-					}
+					const updatedMovies = data.movies.map((movie) =>
+						selectedMovies.has(movie.id) ? { ...movie, hasFile: false, files: [] } : movie
+					);
+					data = { ...data, movies: updatedMovies };
 					toasts.success(`Deleted files for ${result.deletedCount} movies`);
 				}
 				selectedMovies.clear();

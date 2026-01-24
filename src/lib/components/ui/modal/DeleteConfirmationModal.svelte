@@ -6,12 +6,21 @@
 		open: boolean;
 		title?: string;
 		itemName: string;
+		allowRemoveFromLibrary?: boolean;
 		loading?: boolean;
 		onConfirm: (deleteFiles: boolean, removeFromLibrary: boolean) => void;
 		onCancel: () => void;
 	}
 
-	let { open, title = 'Delete', itemName, loading = false, onConfirm, onCancel }: Props = $props();
+	let {
+		open,
+		title = 'Delete',
+		itemName,
+		allowRemoveFromLibrary = true,
+		loading = false,
+		onConfirm,
+		onCancel
+	}: Props = $props();
 
 	let deleteFiles = $state(false);
 	let removeFromLibrary = $state(false);
@@ -20,6 +29,12 @@
 	$effect(() => {
 		if (!open) {
 			deleteFiles = false;
+			removeFromLibrary = false;
+		}
+	});
+
+	$effect(() => {
+		if (!allowRemoveFromLibrary) {
 			removeFromLibrary = false;
 		}
 	});
@@ -62,14 +77,16 @@
 		<span class="text-sm">Delete files from disk</span>
 	</label>
 
-	<label class="flex cursor-pointer items-center gap-3 py-2">
-		<input
-			type="checkbox"
-			class="checkbox shrink-0 checkbox-error"
-			bind:checked={removeFromLibrary}
-		/>
-		<span class="text-sm">Remove from library entirely</span>
-	</label>
+	{#if allowRemoveFromLibrary}
+		<label class="flex cursor-pointer items-center gap-3 py-2">
+			<input
+				type="checkbox"
+				class="checkbox shrink-0 checkbox-error"
+				bind:checked={removeFromLibrary}
+			/>
+			<span class="text-sm">Remove from library entirely</span>
+		</label>
+	{/if}
 
 	{#if removeFromLibrary}
 		<div class="mt-3 alert alert-error">

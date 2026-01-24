@@ -308,7 +308,7 @@
 				if (removeFromLibrary) {
 					toasts.success('Series removed from library');
 					// Navigate to library since the series no longer exists
-					window.location.href = '/library';
+					window.location.href = '/library/tv';
 				} else {
 					toasts.success('Series files deleted');
 					// Reload to show updated state (all episodes now missing)
@@ -407,12 +407,45 @@
 			if (result.success) {
 				toasts.success('Episode files deleted');
 				// Mark episode as missing (hasFile: false) instead of removing it
-				data.seasons = data.seasons.map((season) => ({
-					...season,
-					episodes: season.episodes.map((e) =>
+				const updatedSeasons = data.seasons.map((season) => {
+					const hasEpisode = season.episodes.some((e) => e.id === deletingEpisodeId);
+					if (!hasEpisode) {
+						return season;
+					}
+
+					const updatedEpisodes = season.episodes.map((e) =>
 						e.id === deletingEpisodeId ? { ...e, hasFile: false as boolean | null, file: null } : e
-					)
-				}));
+					);
+					const updatedEpisodeFileCount = updatedEpisodes.filter((e) => e.hasFile).length;
+					const updatedEpisodeCount = updatedEpisodes.length;
+
+					return {
+						...season,
+						episodes: updatedEpisodes,
+						episodeFileCount: updatedEpisodeFileCount,
+						episodeCount: updatedEpisodeCount
+					};
+				});
+				const totalEpisodes = updatedSeasons.reduce(
+					(sum, season) => sum + (season.episodeCount ?? season.episodes.length),
+					0
+				);
+				const totalFiles = updatedSeasons.reduce((sum, season) => {
+					if (typeof season.episodeFileCount === 'number') {
+						return sum + season.episodeFileCount;
+					}
+					return sum + season.episodes.filter((e) => e.hasFile).length;
+				}, 0);
+
+				data = {
+					...data,
+					seasons: updatedSeasons,
+					series: {
+						...data.series,
+						episodeCount: totalEpisodes,
+						episodeFileCount: totalFiles
+					}
+				};
 			} else {
 				toasts.error('Failed to delete episode files', { description: result.error });
 			}
@@ -1050,6 +1083,7 @@
 	open={isSeasonDeleteModalOpen}
 	title="Delete Season"
 	itemName={deletingSeasonName}
+	allowRemoveFromLibrary={false}
 	loading={isDeletingSeason}
 	onConfirm={performSeasonDelete}
 	onCancel={() => (isSeasonDeleteModalOpen = false)}
@@ -1060,6 +1094,7 @@
 	open={isEpisodeDeleteModalOpen}
 	title="Delete Episode"
 	itemName={deletingEpisodeName}
+	allowRemoveFromLibrary={false}
 	loading={isDeletingEpisode}
 	onConfirm={performEpisodeDelete}
 	onCancel={() => (isEpisodeDeleteModalOpen = false)}

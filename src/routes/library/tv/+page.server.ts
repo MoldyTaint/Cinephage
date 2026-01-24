@@ -254,8 +254,11 @@ export const load: PageServerLoad = async ({ url }) => {
 		};
 	} catch (error) {
 		logger.error('[TV Page] Error loading series', error instanceof Error ? error : undefined);
+		const emptySeries: LibrarySeries[] = [];
+		const emptyProfiles: QualityProfileSummary[] = [];
+		const emptyStrings: string[] = [];
 		return {
-			series: [],
+			series: emptySeries,
 			total: 0,
 			totalUnfiltered: 0,
 			filters: {
@@ -268,10 +271,10 @@ export const load: PageServerLoad = async ({ url }) => {
 				videoCodec,
 				hdrFormat
 			},
-			qualityProfiles: [],
-			uniqueResolutions: [],
-			uniqueCodecs: [],
-			uniqueHdrFormats: [],
+			qualityProfiles: emptyProfiles,
+			uniqueResolutions: emptyStrings,
+			uniqueCodecs: emptyStrings,
+			uniqueHdrFormats: emptyStrings,
 			error: 'Failed to load TV shows'
 		};
 	}

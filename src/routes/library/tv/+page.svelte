@@ -135,16 +135,17 @@
 			if (result.success || result.deletedCount > 0 || result.removedCount > 0) {
 				if (removeFromLibrary && result.removedCount > 0) {
 					// Remove from local data entirely
-					data.series = data.series.filter((show) => !selectedSeries.has(show.id));
+					const updatedSeries = data.series.filter((show) => !selectedSeries.has(show.id));
+					data = { ...data, series: updatedSeries };
 					toasts.success(`Removed ${result.removedCount} series from library`);
 				} else {
 					// Update local data - mark as having no files
-					for (const show of data.series) {
-						if (selectedSeries.has(show.id)) {
-							show.episodeFileCount = 0;
-							show.percentComplete = 0;
-						}
-					}
+					const updatedSeries = data.series.map((show) =>
+						selectedSeries.has(show.id)
+							? { ...show, episodeFileCount: 0, percentComplete: 0 }
+							: show
+					);
+					data = { ...data, series: updatedSeries };
 					toasts.success(`Deleted files for ${result.deletedCount} series`);
 				}
 				selectedSeries.clear();

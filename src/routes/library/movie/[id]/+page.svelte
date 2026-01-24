@@ -239,7 +239,7 @@
 				if (removeFromLibrary) {
 					toasts.success('Movie removed from library');
 					// Navigate to library since the movie no longer exists
-					window.location.href = '/library';
+					window.location.href = '/library/movies';
 				} else {
 					toasts.success('Movie files deleted');
 					// Reload to show updated state (movie now missing)
@@ -270,8 +270,15 @@
 
 			if (result.success) {
 				toasts.success('File deleted');
-				data.movie.files = data.movie.files.filter((f) => f.id !== fileId);
-				data.movie.hasFile = data.movie.files.length > 0;
+				const updatedFiles = data.movie.files.filter((f) => f.id !== fileId);
+				data = {
+					...data,
+					movie: {
+						...data.movie,
+						files: updatedFiles,
+						hasFile: updatedFiles.length > 0
+					}
+				};
 			} else {
 				toasts.error('Failed to delete file', { description: result.error });
 			}

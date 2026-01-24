@@ -19,6 +19,7 @@ import { getSubtitleSearchService } from '$lib/server/subtitles/services/Subtitl
 import { getSubtitleDownloadService } from '$lib/server/subtitles/services/SubtitleDownloadService.js';
 import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
 import { logger } from '$lib/logging/index.js';
+import { normalizeLanguageCode } from '$lib/shared/languages';
 import type { TaskResult } from '../MonitoringScheduler.js';
 import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
 
@@ -210,11 +211,12 @@ async function searchMovieSubtitleUpgrades(
 					// Check each existing subtitle for upgrades
 					for (const existingSub of movieSubs) {
 						const currentScore = existingSub.matchScore ?? 0;
+						const normalizedExisting = normalizeLanguageCode(existingSub.language);
 
 						// Find a better match for this language
 						const betterMatch = results.results.find(
 							(r) =>
-								r.language === existingSub.language &&
+								normalizeLanguageCode(r.language) === normalizedExisting &&
 								r.matchScore > currentScore + MIN_SCORE_IMPROVEMENT
 						);
 
@@ -227,10 +229,11 @@ async function searchMovieSubtitleUpgrades(
 								movieUpgraded++;
 
 								// Record upgrade in subtitle history
+								const normalizedLanguage = normalizeLanguageCode(betterMatch.language);
 								await db.insert(subtitleHistory).values({
 									movieId: movie.id,
 									action: 'upgraded',
-									language: betterMatch.language,
+									language: normalizedLanguage,
 									providerId: betterMatch.providerId,
 									providerName: betterMatch.providerName,
 									providerSubtitleId: betterMatch.providerSubtitleId,
@@ -241,7 +244,7 @@ async function searchMovieSubtitleUpgrades(
 
 								logger.info('[SubtitleUpgradeTask] Upgraded movie subtitle', {
 									movieId: movie.id,
-									language: betterMatch.language,
+									language: normalizedLanguage,
 									oldScore,
 									newScore: betterMatch.matchScore
 								});
@@ -251,7 +254,7 @@ async function searchMovieSubtitleUpgrades(
 									downloadError instanceof Error ? downloadError.message : String(downloadError);
 								logger.warn('[SubtitleUpgradeTask] Failed to download upgraded subtitle', {
 									movieId: movie.id,
-									language: existingSub.language,
+									language: normalizedExisting,
 									error: movieError
 								});
 							}
@@ -394,11 +397,12 @@ async function searchEpisodeSubtitleUpgrades(
 					// Check each existing subtitle for upgrades
 					for (const existingSub of episodeSubs) {
 						const currentScore = existingSub.matchScore ?? 0;
+						const normalizedExisting = normalizeLanguageCode(existingSub.language);
 
 						// Find a better match for this language
 						const betterMatch = results.results.find(
 							(r) =>
-								r.language === existingSub.language &&
+								normalizeLanguageCode(r.language) === normalizedExisting &&
 								r.matchScore > currentScore + MIN_SCORE_IMPROVEMENT
 						);
 
@@ -411,10 +415,11 @@ async function searchEpisodeSubtitleUpgrades(
 								episodeUpgraded++;
 
 								// Record upgrade in subtitle history
+								const normalizedLanguage = normalizeLanguageCode(betterMatch.language);
 								await db.insert(subtitleHistory).values({
 									episodeId: episode.id,
 									action: 'upgraded',
-									language: betterMatch.language,
+									language: normalizedLanguage,
 									providerId: betterMatch.providerId,
 									providerName: betterMatch.providerName,
 									providerSubtitleId: betterMatch.providerSubtitleId,
@@ -425,7 +430,7 @@ async function searchEpisodeSubtitleUpgrades(
 
 								logger.info('[SubtitleUpgradeTask] Upgraded episode subtitle', {
 									episodeId: episode.id,
-									language: betterMatch.language,
+									language: normalizedLanguage,
 									oldScore,
 									newScore: betterMatch.matchScore
 								});
@@ -435,7 +440,7 @@ async function searchEpisodeSubtitleUpgrades(
 									downloadError instanceof Error ? downloadError.message : String(downloadError);
 								logger.warn('[SubtitleUpgradeTask] Failed to download upgraded subtitle', {
 									episodeId: episode.id,
-									language: existingSub.language,
+									language: normalizedExisting,
 									error: episodeError
 								});
 							}

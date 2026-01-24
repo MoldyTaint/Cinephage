@@ -17,12 +17,13 @@ import {
 	episodeFiles,
 	rootFolders
 } from '$lib/server/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { writeFile, mkdir, unlink } from 'fs/promises';
 import { existsSync } from 'fs';
 import { dirname, join, basename, extname } from 'path';
 import { logger } from '$lib/logging';
+import { normalizeLanguageCode } from '$lib/shared/languages';
 import type {
 	SubtitleSearchResult,
 	SubtitleDownloadResult,
@@ -250,10 +251,12 @@ export class SubtitleDownloadService {
 			content = await this.extractFromZip(content);
 		}
 
+		const normalizedLanguage = normalizeLanguageCode(result.language);
+
 		// Generate filename
 		const subtitleFileName = this.generateFileName(
 			options.videoFileName,
-			result.language,
+			normalizedLanguage,
 			result.isForced,
 			result.isHearingImpaired,
 			result.format
@@ -275,7 +278,7 @@ export class SubtitleDownloadService {
 		const existingSubtitle = await this.findExistingSubtitle(
 			options.movieId,
 			options.episodeId,
-			result.language,
+			normalizedLanguage,
 			result.isForced,
 			result.isHearingImpaired
 		);
@@ -304,7 +307,7 @@ export class SubtitleDownloadService {
 			movieId: options.movieId,
 			episodeId: options.episodeId,
 			relativePath: subtitleFileName,
-			language: result.language,
+			language: normalizedLanguage,
 			isForced: result.isForced,
 			isHearingImpaired: result.isHearingImpaired,
 			format: result.format,
@@ -320,7 +323,7 @@ export class SubtitleDownloadService {
 			movieId: options.movieId,
 			episodeId: options.episodeId,
 			action: wasUpgrade ? 'upgraded' : 'downloaded',
-			language: result.language,
+			language: normalizedLanguage,
 			providerId: result.providerId,
 			providerName: result.providerName,
 			providerSubtitleId: result.providerSubtitleId,
@@ -332,14 +335,14 @@ export class SubtitleDownloadService {
 		logger.info('Subtitle downloaded', {
 			subtitleId,
 			provider: result.providerName,
-			language: result.language,
+			language: normalizedLanguage,
 			wasUpgrade
 		});
 
 		return {
 			subtitleId,
 			path: subtitlePath,
-			language: result.language,
+			language: normalizedLanguage,
 			format: result.format,
 			wasUpgrade,
 			replacedSubtitleId
@@ -406,8 +409,12 @@ export class SubtitleDownloadService {
 		isForced: boolean,
 		isHi: boolean
 	): Promise<typeof subtitles.$inferSelect | null> {
+		const normalizedLanguage = normalizeLanguageCode(language);
+		const languageValues =
+			normalizedLanguage === language ? [language] : [language, normalizedLanguage];
+
 		const conditions = [
-			eq(subtitles.language, language),
+			inArray(subtitles.language, languageValues),
 			eq(subtitles.isForced, isForced),
 			eq(subtitles.isHearingImpaired, isHi)
 		];

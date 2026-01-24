@@ -214,8 +214,11 @@ export const load: PageServerLoad = async ({ url }) => {
 		};
 	} catch (error) {
 		logger.error('[Movies Page] Error loading movies', error instanceof Error ? error : undefined);
+		const emptyMovies: LibraryMovie[] = [];
+		const emptyProfiles: QualityProfileSummary[] = [];
+		const emptyStrings: string[] = [];
 		return {
-			movies: [],
+			movies: emptyMovies,
 			total: 0,
 			totalUnfiltered: 0,
 			filters: {
@@ -227,10 +230,10 @@ export const load: PageServerLoad = async ({ url }) => {
 				videoCodec,
 				hdrFormat
 			},
-			qualityProfiles: [],
-			uniqueResolutions: [],
-			uniqueCodecs: [],
-			uniqueHdrFormats: [],
+			qualityProfiles: emptyProfiles,
+			uniqueResolutions: emptyStrings,
+			uniqueCodecs: emptyStrings,
+			uniqueHdrFormats: emptyStrings,
 			error: 'Failed to load movies'
 		};
 	}

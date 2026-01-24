@@ -49,7 +49,7 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 		let recentActivity: UnifiedActivity[] = [];
 		try {
 			const activityUrl = new URL('/api/activity', url.origin);
-			activityUrl.searchParams.set('limit', '15');
+			activityUrl.searchParams.set('limit', '10');
 			const activityResponse = await fetch(activityUrl.toString());
 			const activityData = await activityResponse.json();
 			if (activityData.success && activityData.activities) {

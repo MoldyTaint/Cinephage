@@ -379,7 +379,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// Route standardization redirects
 	const pathname = event.url.pathname;
 
-	if (pathname === '/movies' || pathname === '/movies/') {
+	if (
+		pathname === '/movies' ||
+		pathname === '/movies/' ||
+		pathname === '/library/movie' ||
+		pathname === '/library/movie/'
+	) {
 		throw redirect(308, '/library/movies');
 	}
 	if (pathname === '/tv' || pathname === '/tv/') {

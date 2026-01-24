@@ -13,6 +13,7 @@ import { getSubtitleSearchService } from './SubtitleSearchService.js';
 import { getSubtitleDownloadService } from './SubtitleDownloadService.js';
 import { LanguageProfileService } from './LanguageProfileService.js';
 import { logger } from '$lib/logging';
+import { normalizeLanguageCode } from '$lib/shared/languages';
 
 /**
  * Default minimum score for auto-download (used if profile doesn't specify)
@@ -103,21 +104,35 @@ async function searchForMovie(
 		return result;
 	}
 
-	if (!movie.languageProfileId || movie.wantsSubtitles === false) {
-		logger.debug('[SubtitleImportService] Movie does not want subtitles or has no profile', {
+	if (movie.wantsSubtitles === false) {
+		logger.debug('[SubtitleImportService] Movie does not want subtitles', {
 			movieId,
 			title: movie.title,
-			wantsSubtitles: movie.wantsSubtitles,
-			hasProfile: !!movie.languageProfileId
+			wantsSubtitles: movie.wantsSubtitles
 		});
 		return result;
 	}
 
-	const profile = await profileService.getProfile(movie.languageProfileId);
+	let profileId = movie.languageProfileId ?? null;
+	if (!profileId) {
+		const defaultProfile = await profileService.getDefaultProfile();
+		if (defaultProfile) {
+			profileId = defaultProfile.id;
+			await db.update(movies).set({ languageProfileId: profileId }).where(eq(movies.id, movieId));
+		} else {
+			logger.debug('[SubtitleImportService] Movie has subtitles enabled but no profile', {
+				movieId,
+				title: movie.title
+			});
+			return result;
+		}
+	}
+
+	const profile = await profileService.getProfile(profileId);
 	if (!profile) {
 		logger.warn('[SubtitleImportService] Language profile not found', {
 			movieId,
-			profileId: movie.languageProfileId
+			profileId
 		});
 		return result;
 	}
@@ -152,7 +167,9 @@ async function searchForMovie(
 	// Download best match for each missing language
 	for (const missing of status.missing) {
 		// Get all results for this language that meet minimum score
-		const languageResults = searchResults.results.filter((r) => r.language === missing.code);
+		const languageResults = searchResults.results.filter(
+			(r) => normalizeLanguageCode(r.language) === missing.code
+		);
 		const matches = languageResults
 			.filter((r) => r.matchScore >= minScore)
 			.sort((a, b) => b.matchScore - a.matchScore);
@@ -177,10 +194,11 @@ async function searchForMovie(
 				result.downloaded++;
 
 				// Record in subtitle history
+				const normalizedLanguage = normalizeLanguageCode(bestMatch.language);
 				await db.insert(subtitleHistory).values({
 					movieId,
 					action: 'downloaded',
-					language: bestMatch.language,
+					language: normalizedLanguage,
 					providerId: bestMatch.providerId,
 					providerName: bestMatch.providerName,
 					providerSubtitleId: bestMatch.providerSubtitleId,
@@ -191,7 +209,7 @@ async function searchForMovie(
 				logger.info('[SubtitleImportService] Downloaded subtitle for movie', {
 					movieId,
 					title: movie.title,
-					language: bestMatch.language,
+					language: normalizedLanguage,
 					provider: bestMatch.providerName,
 					score: bestMatch.matchScore
 				});
@@ -253,23 +271,41 @@ async function searchForEpisode(
 		return result;
 	}
 
-	if (!seriesData.languageProfileId || seriesData.wantsSubtitles === false) {
-		logger.debug('[SubtitleImportService] Series does not want subtitles or has no profile', {
+	if (seriesData.wantsSubtitles === false) {
+		logger.debug('[SubtitleImportService] Series does not want subtitles', {
 			episodeId,
 			seriesId: seriesData.id,
 			seriesTitle: seriesData.title,
-			wantsSubtitles: seriesData.wantsSubtitles,
-			hasProfile: !!seriesData.languageProfileId
+			wantsSubtitles: seriesData.wantsSubtitles
 		});
 		return result;
 	}
 
-	const profile = await profileService.getProfile(seriesData.languageProfileId);
+	let profileId = seriesData.languageProfileId ?? null;
+	if (!profileId) {
+		const defaultProfile = await profileService.getDefaultProfile();
+		if (defaultProfile) {
+			profileId = defaultProfile.id;
+			await db
+				.update(series)
+				.set({ languageProfileId: profileId })
+				.where(eq(series.id, seriesData.id));
+		} else {
+			logger.debug('[SubtitleImportService] Series has subtitles enabled but no profile', {
+				episodeId,
+				seriesId: seriesData.id,
+				seriesTitle: seriesData.title
+			});
+			return result;
+		}
+	}
+
+	const profile = await profileService.getProfile(profileId);
 	if (!profile) {
 		logger.warn('[SubtitleImportService] Language profile not found for series', {
 			episodeId,
 			seriesId: seriesData.id,
-			profileId: seriesData.languageProfileId
+			profileId
 		});
 		return result;
 	}
@@ -308,7 +344,9 @@ async function searchForEpisode(
 	// Download best match for each missing language
 	for (const missing of status.missing) {
 		// Get all results for this language that meet minimum score
-		const languageResults = searchResults.results.filter((r) => r.language === missing.code);
+		const languageResults = searchResults.results.filter(
+			(r) => normalizeLanguageCode(r.language) === missing.code
+		);
 		const matches = languageResults
 			.filter((r) => r.matchScore >= minScore)
 			.sort((a, b) => b.matchScore - a.matchScore);
@@ -335,10 +373,11 @@ async function searchForEpisode(
 				result.downloaded++;
 
 				// Record in subtitle history
+				const normalizedLanguage = normalizeLanguageCode(bestMatch.language);
 				await db.insert(subtitleHistory).values({
 					episodeId,
 					action: 'downloaded',
-					language: bestMatch.language,
+					language: normalizedLanguage,
 					providerId: bestMatch.providerId,
 					providerName: bestMatch.providerName,
 					providerSubtitleId: bestMatch.providerSubtitleId,
@@ -351,7 +390,7 @@ async function searchForEpisode(
 					seriesTitle: seriesData.title,
 					season: episode.seasonNumber,
 					episode: episode.episodeNumber,
-					language: bestMatch.language,
+					language: normalizedLanguage,
 					provider: bestMatch.providerName,
 					score: bestMatch.matchScore
 				});

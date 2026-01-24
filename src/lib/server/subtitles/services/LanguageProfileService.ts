@@ -403,8 +403,13 @@ export class LanguageProfileService {
 		existingSubtitles: Array<typeof subtitles.$inferSelect>,
 		embeddedLanguages: string[] = []
 	): SubtitleStatus {
-		const existing: SubtitleStatus['existing'] = existingSubtitles.map((sub) => ({
-			language: sub.language,
+		const normalizedExisting = existingSubtitles.map((sub) => ({
+			...sub,
+			normalizedLanguage: normalizeLanguageCode(sub.language)
+		}));
+
+		const existing: SubtitleStatus['existing'] = normalizedExisting.map((sub) => ({
+			language: sub.normalizedLanguage,
 			subtitleId: sub.id,
 			isForced: sub.isForced ?? false,
 			isHearingImpaired: sub.isHearingImpaired ?? false,
@@ -421,9 +426,9 @@ export class LanguageProfileService {
 			const langPref = profile.languages[i];
 
 			// Check if we have this language in external subtitle files
-			const hasExternal = existingSubtitles.some(
+			const hasExternal = normalizedExisting.some(
 				(sub) =>
-					sub.language === langPref.code &&
+					sub.normalizedLanguage === langPref.code &&
 					(sub.isForced ?? false) === langPref.forced &&
 					(!langPref.excludeHi || !(sub.isHearingImpaired ?? false))
 			);
@@ -471,6 +476,11 @@ export class LanguageProfileService {
 		existingSubtitles: Array<typeof subtitles.$inferSelect>,
 		embeddedLanguages: string[] = []
 	): boolean {
+		const normalizedExisting = existingSubtitles.map((sub) => ({
+			...sub,
+			normalizedLanguage: normalizeLanguageCode(sub.language)
+		}));
+
 		// Normalize embedded language codes (e.g., "eng" -> "en")
 		const normalizedEmbedded = embeddedLanguages.map((lang) => normalizeLanguageCode(lang));
 
@@ -478,9 +488,9 @@ export class LanguageProfileService {
 			const langPref = profile.languages[i];
 
 			// Check external subtitles
-			const hasExternal = existingSubtitles.some(
+			const hasExternal = normalizedExisting.some(
 				(sub) =>
-					sub.language === langPref.code &&
+					sub.normalizedLanguage === langPref.code &&
 					(sub.isForced ?? false) === langPref.forced &&
 					(!langPref.excludeHi || !(sub.isHearingImpaired ?? false))
 			);
@@ -498,8 +508,10 @@ export class LanguageProfileService {
 		// Check if cutoff index language is satisfied
 		if (profile.languages[profile.cutoffIndex]) {
 			const cutoffLang = profile.languages[profile.cutoffIndex];
-			const hasExternal = existingSubtitles.some(
-				(sub) => sub.language === cutoffLang.code && (sub.isForced ?? false) === cutoffLang.forced
+			const hasExternal = normalizedExisting.some(
+				(sub) =>
+					sub.normalizedLanguage === cutoffLang.code &&
+					(sub.isForced ?? false) === cutoffLang.forced
 			);
 			const hasEmbedded = !cutoffLang.forced && normalizedEmbedded.includes(cutoffLang.code);
 			return hasExternal || hasEmbedded;

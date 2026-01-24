@@ -22,6 +22,8 @@ import { getNzbMountManager } from '$lib/server/streaming/nzb/index.js';
 import { isMediaFile } from '$lib/server/streaming/usenet/types';
 import { fileExists } from '$lib/server/downloadClients/import/index.js';
 import { mediaInfoService } from '$lib/server/library/media-info.js';
+import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
+import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
 import { getIndexerManager } from '$lib/server/indexers/IndexerManager.js';
 import { createChildLogger } from '$lib/logging';
 import { db } from '$lib/server/db/index.js';
@@ -1006,6 +1008,8 @@ class ReleaseGrabService {
 			relativePath
 		});
 
+		void this.triggerSubtitleSearch('movie', movieId);
+
 		return {
 			success: true,
 			releaseName: release.title
@@ -1120,6 +1124,8 @@ class ReleaseGrabService {
 			fileId,
 			relativePath
 		});
+
+		void this.triggerSubtitleSearch('episode', episodeRow.id);
 
 		return {
 			success: true,
@@ -1410,11 +1416,62 @@ class ReleaseGrabService {
 			totalEpisodes: strmResult.results.length
 		});
 
+		void this.triggerSubtitleSearchForEpisodes(createdEpisodeIds);
+
 		return {
 			success: true,
 			releaseName: release.title,
 			episodesCovered: createdEpisodeIds
 		};
+	}
+
+	private async triggerSubtitleSearch(
+		mediaType: 'movie' | 'episode',
+		mediaId: string
+	): Promise<void> {
+		try {
+			const settings = await monitoringScheduler.getSettings();
+			if (!settings.subtitleSearchOnImportEnabled) {
+				return;
+			}
+			await searchSubtitlesForNewMedia(mediaType, mediaId);
+		} catch (error) {
+			logger.warn('[ReleaseGrab] Subtitle search on import failed', {
+				mediaType,
+				mediaId,
+				error: error instanceof Error ? error.message : String(error)
+			});
+		}
+	}
+
+	private async triggerSubtitleSearchForEpisodes(episodeIds: string[]): Promise<void> {
+		if (episodeIds.length === 0) {
+			return;
+		}
+
+		try {
+			const settings = await monitoringScheduler.getSettings();
+			if (!settings.subtitleSearchOnImportEnabled) {
+				return;
+			}
+
+			const results = await Promise.allSettled(
+				episodeIds.map((episodeId) => searchSubtitlesForNewMedia('episode', episodeId))
+			);
+			const failed = results.filter((result) => result.status === 'rejected');
+
+			if (failed.length > 0) {
+				logger.warn('[ReleaseGrab] Subtitle search failed for some episodes', {
+					total: episodeIds.length,
+					failed: failed.length
+				});
+			}
+		} catch (error) {
+			logger.warn('[ReleaseGrab] Subtitle search on import failed for episodes', {
+				total: episodeIds.length,
+				error: error instanceof Error ? error.message : String(error)
+			});
+		}
 	}
 
 	/**
