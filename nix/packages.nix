@@ -21,7 +21,7 @@
       path: type:
       let
         baseName = baseNameOf path;
-        relPath = lib.removePrefix (toString ./.) path;
+        relPath = lib.removePrefix (toString ./..) path;
       in
       # Include essential source files
       (lib.hasPrefix "src/" relPath)
@@ -88,7 +88,7 @@
     src = ../.;
   };
 
-  npmDepsHash = "sha256-z69FKqg71nmnsZkd+ahTbUSd9hkT/koCnKMQ8P4LwXA=";
+  npmDepsHash = "sha256-DYdRywwG/KPKTv/47n4gdYKfArZGmjAg1FtW9JgX6xM=";
 
   buildPhase = ''
     runHook preBuild
