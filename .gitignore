@@ -70,3 +70,6 @@ dist/
 
 # Nix build result
 result
+
+# Local compose files
+cine-local.yaml

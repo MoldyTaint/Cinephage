@@ -1,5 +1,19 @@
 {
 	"files.associations": {
 		"*.css": "tailwind"
+	},
+	"editor.formatOnSave": true,
+	"editor.defaultFormatter": "esbenp.prettier-vscode",
+	"editor.codeActionsOnSave": {
+		"source.fixAll.eslint": "explicit"
+	},
+	"svelte.enable-ts-plugin": true,
+	"tailwindCSS.includeLanguages": {
+		"svelte": "html"
+	},
+	"typescript.preferences.importModuleSpecifier": "relative",
+	"files.exclude": {
+		"**/.svelte-kit": true,
+		"**/node_modules": true
 	}
 }

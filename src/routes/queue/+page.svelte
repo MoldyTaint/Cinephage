@@ -5,7 +5,7 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import { onMount, onDestroy } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
-	import { Download, History, Filter, CheckSquare, X } from 'lucide-svelte';
+	import { Download, History, Filter, CheckSquare, X, Trash2, Loader2 } from 'lucide-svelte';
 	import type { PageData } from './$types';
 	import QueueTable from '$lib/components/queue/QueueTable.svelte';
 	import QueueStats from '$lib/components/queue/QueueStats.svelte';
@@ -18,6 +18,8 @@
 	let { data }: { data: PageData } = $props();
 
 	let activeTab = $state<'queue' | 'history'>('queue');
+	let clearingFailed = $state(false);
+	const failedCount = $derived(data.queueItems.filter((item) => item.status === 'failed').length);
 
 	// Queue selection state (for bulk remove)
 	let selectedQueueIds = new SvelteSet<string>();
@@ -101,6 +103,32 @@
 			invalidateAll();
 			invalidateTimeout = null;
 		}, INVALIDATE_DEBOUNCE_MS);
+	}
+
+	async function clearFailedDownloads() {
+		if (clearingFailed || failedCount === 0) return;
+
+		const proceed = confirm(
+			`Remove ${failedCount} failed download${failedCount === 1 ? '' : 's'} from the queue?`
+		);
+		if (!proceed) return;
+
+		clearingFailed = true;
+		try {
+			const response = await fetch('/api/queue/clear-failed', { method: 'POST' });
+			if (!response.ok) {
+				const errorData = await response.json().catch(() => ({}));
+				throw new Error(errorData.error || response.statusText);
+			}
+			toasts.success('Failed downloads cleared from queue');
+			invalidateAll();
+		} catch (error) {
+			toasts.error('Unable to clear failed downloads', {
+				description: error instanceof Error ? error.message : 'Unknown error'
+			});
+		} finally {
+			clearingFailed = false;
+		}
 	}
 
 	function connectSSE() {
@@ -327,6 +355,24 @@
 						<option value={client.id}>{client.name}</option>
 					{/each}
 				</select>
+			{/if}
+
+			{#if failedCount > 0}
+				<div class="ml-auto flex items-center gap-2">
+					<button
+						class="btn btn-sm btn-error"
+						disabled={clearingFailed}
+						onclick={clearFailedDownloads}
+					>
+						{#if clearingFailed}
+							<Loader2 class="h-4 w-4 animate-spin" />
+							Clearing…
+						{:else}
+							<Trash2 class="h-4 w-4" />
+							Clear Failed ({failedCount})
+						{/if}
+					</button>
+				</div>
 			{/if}
 		</div>
 
