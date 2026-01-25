@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, Loader2, CheckCircle2, XCircle, FolderOpen } from 'lucide-svelte';
+	import { X, Loader2, CheckCircle2, XCircle, FolderOpen, Info } from 'lucide-svelte';
 	import type {
 		RootFolder,
 		RootFolderFormData,
@@ -39,6 +39,7 @@
 	let isDefault = $state(false);
 	let readOnly = $state(false);
 	let preserveSymlinks = $state(false);
+	let defaultMonitored = $state(true);
 
 	// UI state
 	let validating = $state(false);
@@ -57,6 +58,7 @@
 			isDefault = folder?.isDefault ?? false;
 			readOnly = folder?.readOnly ?? false;
 			preserveSymlinks = folder?.preserveSymlinks ?? false;
+			defaultMonitored = folder?.defaultMonitored ?? true;
 			validationResult = null;
 			showFolderBrowser = false;
 		}
@@ -69,7 +71,8 @@
 			mediaType,
 			isDefault,
 			readOnly,
-			preserveSymlinks
+			preserveSymlinks,
+			defaultMonitored
 		};
 	}
 
@@ -200,6 +203,24 @@
 					bind:checked={preserveSymlinks}
 				/>
 				<span class="text-sm">Preserve symlinks (for NZBDav/rclone mounts)</span>
+			</label>
+
+			<label class="flex cursor-pointer items-center gap-3 py-2">
+				<input
+					type="checkbox"
+					class="checkbox shrink-0 checkbox-sm"
+					bind:checked={defaultMonitored}
+				/>
+				<span class="min-w-0 text-sm">Monitor new content</span>
+				<span
+					class="tooltip tooltip-right shrink-0"
+					data-tip="When off, content added by library scan or manual match will be unmonitored (no auto-download of missing episodes/seasons)."
+					onclick={(e) => e.stopPropagation()}
+					role="img"
+					aria-label="More information"
+				>
+					<Info class="h-3.5 w-3.5 shrink-0 cursor-help text-base-content/50" />
+				</span>
 			</label>
 
 			{#if preserveSymlinks}

@@ -29,6 +29,7 @@ export interface RootFolderInput {
 	isDefault?: boolean;
 	readOnly?: boolean;
 	preserveSymlinks?: boolean;
+	defaultMonitored?: boolean;
 }
 
 /**
@@ -119,6 +120,7 @@ export class RootFolderService {
 			isDefault: input.isDefault ?? false,
 			readOnly: input.readOnly ?? false,
 			preserveSymlinks: input.preserveSymlinks ?? false,
+			defaultMonitored: input.defaultMonitored ?? true,
 			freeSpaceBytes: input.readOnly ? null : validation.freeSpaceBytes,
 			lastCheckedAt: now,
 			createdAt: now
@@ -189,6 +191,8 @@ export class RootFolderService {
 		if (updates.readOnly !== undefined) updateData.readOnly = updates.readOnly;
 		if (updates.preserveSymlinks !== undefined)
 			updateData.preserveSymlinks = updates.preserveSymlinks;
+		if (updates.defaultMonitored !== undefined)
+			updateData.defaultMonitored = updates.defaultMonitored;
 
 		await db.update(rootFoldersTable).set(updateData).where(eq(rootFoldersTable.id, id));
 
@@ -428,6 +432,7 @@ export class RootFolderService {
 			isDefault: !!row.isDefault,
 			readOnly: isReadOnly,
 			preserveSymlinks: !!row.preserveSymlinks,
+			defaultMonitored: row.defaultMonitored ?? true,
 			freeSpaceBytes,
 			freeSpaceFormatted,
 			accessible,

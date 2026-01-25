@@ -619,6 +619,7 @@ export class MediaMatcherService {
 					path: movieFolder || fileName,
 					rootFolderId: rootFolder.id,
 					hasFile: true,
+					monitored: rootFolder.defaultMonitored ?? true,
 					languageProfileId: defaultProfileId,
 					wantsSubtitles: defaultProfileId ? true : undefined
 				})
@@ -733,6 +734,7 @@ export class MediaMatcherService {
 					genres: tmdbSeries.genres?.map((g) => g.name),
 					path: seriesFolder,
 					rootFolderId: rootFolder.id,
+					monitored: rootFolder.defaultMonitored ?? true,
 					languageProfileId: defaultProfileId,
 					wantsSubtitles: defaultProfileId ? true : undefined
 				})
@@ -747,7 +749,12 @@ export class MediaMatcherService {
 
 			// Populate all seasons and episodes from TMDB
 			// This ensures consistent behavior with "Add to Library" flow
-			await this.populateSeriesEpisodes(seriesId, tmdbId, tmdbSeries);
+			await this.populateSeriesEpisodes(
+				seriesId,
+				tmdbId,
+				tmdbSeries,
+				rootFolder.defaultMonitored ?? true
+			);
 		}
 
 		// Determine season and episode from parsed info
@@ -773,6 +780,7 @@ export class MediaMatcherService {
 			.where(and(eq(seasons.seriesId, seriesId), eq(seasons.seasonNumber, seasonNumber)));
 
 		if (!season) {
+			const defaultMon = rootFolder.defaultMonitored ?? true;
 			if (tmdbSeason) {
 				[season] = await db
 					.insert(seasons)
@@ -782,7 +790,8 @@ export class MediaMatcherService {
 						name: tmdbSeason.name,
 						overview: tmdbSeason.overview,
 						posterPath: tmdbSeason.poster_path,
-						airDate: tmdbSeason.air_date
+						airDate: tmdbSeason.air_date,
+						monitored: defaultMon && seasonNumber !== 0
 					})
 					.returning();
 			} else {
@@ -791,7 +800,8 @@ export class MediaMatcherService {
 					.insert(seasons)
 					.values({
 						seriesId,
-						seasonNumber
+						seasonNumber,
+						monitored: defaultMon && seasonNumber !== 0
 					})
 					.returning();
 			}
@@ -825,7 +835,8 @@ export class MediaMatcherService {
 					overview: tmdbEpisode?.overview ?? undefined,
 					airDate: tmdbEpisode?.air_date ?? undefined,
 					runtime: tmdbEpisode?.runtime ?? undefined,
-					hasFile: true
+					hasFile: true,
+					monitored: (rootFolder.defaultMonitored ?? true) && seasonNumber !== 0
 				})
 				.returning();
 		} else {
@@ -880,7 +891,8 @@ export class MediaMatcherService {
 	private async populateSeriesEpisodes(
 		seriesId: string,
 		tmdbId: number,
-		tmdbSeries: Awaited<ReturnType<typeof tmdb.getTVShow>>
+		tmdbSeries: Awaited<ReturnType<typeof tmdb.getTVShow>>,
+		defaultMonitored: boolean = true
 	): Promise<void> {
 		if (!tmdbSeries.seasons || tmdbSeries.seasons.length === 0) {
 			logger.debug('[MediaMatcher] No seasons found for series', { tmdbId });
@@ -916,7 +928,7 @@ export class MediaMatcherService {
 						airDate: seasonInfo.air_date,
 						episodeCount: seasonInfo.episode_count ?? 0,
 						episodeFileCount: 0,
-						monitored: !isSpecials // Monitor non-specials by default
+						monitored: defaultMonitored && !isSpecials
 					})
 					.returning();
 				seasonId = newSeason.id;
@@ -952,7 +964,7 @@ export class MediaMatcherService {
 								overview: ep.overview,
 								airDate: ep.air_date,
 								runtime: ep.runtime,
-								monitored: !isSpecials, // Monitor non-specials by default
+								monitored: defaultMonitored && !isSpecials,
 								hasFile: false
 							});
 						}

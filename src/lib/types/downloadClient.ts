@@ -114,6 +114,7 @@ export interface RootFolder {
 	isDefault: boolean;
 	readOnly: boolean;
 	preserveSymlinks: boolean;
+	defaultMonitored: boolean;
 	freeSpaceBytes?: number | null;
 	freeSpaceFormatted?: string;
 	accessible: boolean;
@@ -131,6 +132,7 @@ export interface RootFolderFormData {
 	isDefault: boolean;
 	readOnly?: boolean;
 	preserveSymlinks?: boolean;
+	defaultMonitored?: boolean;
 }
 
 /**

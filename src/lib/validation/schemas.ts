@@ -430,7 +430,8 @@ export const rootFolderCreateSchema = z.object({
 	mediaType: rootFolderMediaTypeSchema,
 	isDefault: z.boolean().default(false),
 	readOnly: z.boolean().default(false),
-	preserveSymlinks: z.boolean().default(false)
+	preserveSymlinks: z.boolean().default(false),
+	defaultMonitored: z.boolean().default(true)
 });
 
 /**

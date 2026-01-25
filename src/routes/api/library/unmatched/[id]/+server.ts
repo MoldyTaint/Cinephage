@@ -82,6 +82,17 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			return json({ success: false, error: 'Unmatched file not found' }, { status: 404 });
 		}
 
+		// Resolve defaultMonitored from root folder (for new movie/series/season/episode created by this match)
+		let defaultMonitored = true;
+		if (unmatchedFile.rootFolderId) {
+			const [rootRow] = await db
+				.select({ defaultMonitored: rootFolders.defaultMonitored })
+				.from(rootFolders)
+				.where(eq(rootFolders.id, unmatchedFile.rootFolderId))
+				.limit(1);
+			defaultMonitored = rootRow?.defaultMonitored ?? true;
+		}
+
 		// Get media info
 		const mediaInfo = await mediaInfoService.extractMediaInfo(unmatchedFile.path);
 
@@ -106,7 +117,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 						backdropPath: details.backdrop_path,
 						path: path.dirname(unmatchedFile.path),
 						rootFolderId: unmatchedFile.rootFolderId,
-						monitored: true
+						monitored: defaultMonitored
 					})
 					.returning();
 				existingMovie = newMovie;
@@ -162,7 +173,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 						backdropPath: details.backdrop_path,
 						path: path.dirname(path.dirname(unmatchedFile.path)), // Go up two levels (file -> season folder -> series folder)
 						rootFolderId: unmatchedFile.rootFolderId,
-						monitored: true
+						monitored: defaultMonitored
 					})
 					.returning();
 				existingSeries = newSeries;
@@ -187,7 +198,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 									airDate: seasonInfo.air_date,
 									episodeCount: seasonInfo.episode_count ?? 0,
 									episodeFileCount: 0,
-									monitored: !isSpecials
+									monitored: defaultMonitored && !isSpecials
 								})
 								.returning();
 
@@ -204,7 +215,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 										overview: ep.overview,
 										airDate: ep.air_date,
 										runtime: ep.runtime,
-										monitored: !isSpecials,
+										monitored: defaultMonitored && !isSpecials,
 										hasFile: false
 									});
 								}
@@ -245,7 +256,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 					.values({
 						seriesId: existingSeries.id,
 						seasonNumber: season,
-						monitored: true
+						monitored: defaultMonitored && season !== 0
 					})
 					.returning();
 				existingSeason = newSeason;
@@ -276,7 +287,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 						seasonNumber: season,
 						episodeNumber: episode,
 						title: `Season ${season} Episode ${episode}`,
-						monitored: true,
+						monitored: defaultMonitored && season !== 0,
 						hasFile: true
 					})
 					.returning();

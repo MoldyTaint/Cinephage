@@ -448,6 +448,8 @@ export const rootFolders = sqliteTable('root_folders', {
 	readOnly: integer('read_only', { mode: 'boolean' }).default(false),
 	// Preserve symlinks during import (for NZBDav/rclone - recreate symlinks instead of copying content)
 	preserveSymlinks: integer('preserve_symlinks', { mode: 'boolean' }).default(false),
+	// When true, content added by scan or manual match is monitored; when false, unmonitored (Issue #81)
+	defaultMonitored: integer('default_monitored', { mode: 'boolean' }).default(true),
 	// Cached free space in bytes (updated periodically)
 	freeSpaceBytes: integer('free_space_bytes'),
 	// Last time free space was checked
