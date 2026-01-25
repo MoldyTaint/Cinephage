@@ -30,7 +30,11 @@
 	let failedModalOpen = $state(false);
 	let failedModalLoading = $state(false);
 
-	function handleFailedModalDone(opts: { success: boolean; removedCount?: number; error?: string }) {
+	function handleFailedModalDone(opts: {
+		success: boolean;
+		removedCount?: number;
+		error?: string;
+	}) {
 		failedModalLoading = false;
 		if (opts.success) {
 			failedModalOpen = false;
