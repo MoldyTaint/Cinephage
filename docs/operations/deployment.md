@@ -110,7 +110,7 @@ deploy:
      media = [
         "/media/movies"
         "/media/series"
-        /media/Downloads"
+        "/media/Downloads"
      ];
 
      # Optional: Configure media paths
