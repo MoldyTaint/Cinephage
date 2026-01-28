@@ -92,6 +92,109 @@ docker run -d \
 
 > **Note:** The `CINEPHAGE_*` prefix is only used in `.env` files for Docker Compose. When using `docker run`, pass the actual application variables (`ORIGIN`, `TZ`) directly.
 
+### Synology NAS Users
+
+Synology's Docker implementation has a known quirk with the `HOME` directory environment variable that can cause installation failures. When using the user: flag with a custom UID/GID, Synology doesn't properly preserve the container's HOME directory, leading to permission errors during Camoufox installation.
+
+#### Recommended Configuration Options
+
+###### Ensure all bind-mounted directories exist and have proper permissions before starting the container.
+
+##### Option 1: Use PUID/PGID Environment Variables (Recommended)
+The container automatically configures UID/GID to `1000:1000` by default. You can either set these explicitly via environment variables or omit them entirely - both approaches work. Do not use the `user:` flag with this method.
+
+> **Note:** Synology uses its own ACL system that doesn't translate directly to Unix permissions. Even if you pass your Synology UID/GID via environment variables, the container will default to `1000:1000` due to permission mapping quirks.
+
+```yml
+services:
+  cinephage:
+    image: ghcr.io/moldytaint/cinephage:latest
+    container_name: cinephage
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - 3000:3000
+    environment:
+      - TZ=America/New_York
+      - ORIGIN=http://localhost:3000
+    volumes:
+      - /volume1/docker/cinephage/config:/app/data
+      - /volume1/docker/cinephage/logs:/app/logs
+      - /volume1/docker/media:/media
+      - /volume1/docker/downloads:/downloads
+    networks:
+      - backend
+
+networks:
+  backend:
+    external: true
+```
+
+##### Option 2: Run with Specific User Flag
+
+If you prefer using the `user:` flag, your options are limited to `0:0` (root) or `1000:1000` (non-root). The container will automatically downgrade to the non-root user `1000:1000` at runtime even if you set the user flag to `0:0`.
+
+```yml
+services:
+  cinephage:
+    image: ghcr.io/moldytaint/cinephage:latest
+    container_name: cinephage
+    restart: unless-stopped
+    user: 1000:1000
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - 3000:3000
+    environment:
+      - TZ=America/New_York
+      - ORIGIN=http://localhost:3000
+    volumes:
+      - /volume1/docker/cinephage/config:/app/data
+      - /volume1/docker/cinephage/logs:/app/logs
+      - /volume1/docker/media:/media
+      - /volume1/docker/downloads:/downloads
+    networks:
+      - backend
+
+networks:
+  backend:
+    external: true
+```
+
+##### Option 3: Root User with Custom Synology UID/GID
+
+This workaround starts the container as root (allowing the entrypoint script to run properly) then safely downgrades to your specified Synology UID/GID.
+
+```yml
+services:
+  cinephage:
+    image: ghcr.io/moldytaint/cinephage:latest
+    container_name: cinephage
+    restart: unless-stopped
+    user: 0:0
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - 3000:3000
+    environment:
+      - PUID=1026  # Your Synology user ID
+      - PGID=100   # Your Synology group ID
+      - TZ=America/New_York
+      - ORIGIN=http://localhost:3000
+    volumes:
+      - /volume1/docker/cinephage/config:/app/data
+      - /volume1/docker/cinephage/logs:/app/logs
+      - /volume1/docker/media:/media
+      - /volume1/docker/downloads:/downloads
+    networks:
+      - backend
+
+networks:
+  backend:
+    external: true
+```
+
 ### Building from Source
 
 To build the Docker image yourself instead of using the pre-built image:
