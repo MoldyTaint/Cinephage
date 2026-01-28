@@ -123,12 +123,6 @@ services:
       - /volume1/docker/cinephage/logs:/app/logs
       - /volume1/docker/media:/media
       - /volume1/docker/downloads:/downloads
-    networks:
-      - backend
-
-networks:
-  backend:
-    external: true
 ```
 
 ##### Option 2: Run with Specific User Flag
@@ -154,12 +148,6 @@ services:
       - /volume1/docker/cinephage/logs:/app/logs
       - /volume1/docker/media:/media
       - /volume1/docker/downloads:/downloads
-    networks:
-      - backend
-
-networks:
-  backend:
-    external: true
 ```
 
 ##### Option 3: Root User with Custom Synology UID/GID
@@ -187,12 +175,6 @@ services:
       - /volume1/docker/cinephage/logs:/app/logs
       - /volume1/docker/media:/media
       - /volume1/docker/downloads:/downloads
-    networks:
-      - backend
-
-networks:
-  backend:
-    external: true
 ```
 
 ### Building from Source
