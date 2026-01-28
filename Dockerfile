@@ -72,9 +72,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb \
     libgl1-mesa-dri \
     libgl1-mesa-glx \
-    mesa-utils \
-    # D-Bus for Camoufox browser (dbus-launch)
-    dbus-x11 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create necessary directories with correct ownership (node user is UID 1000)

@@ -330,7 +330,7 @@ export class ImdbListProvider implements ExternalListProvider {
 						});
 					}
 				}
-			} catch {
+			} catch (error) {
 				// Silently skip invalid JSON
 				logger.debug('[ImdbListProvider] Failed to parse JSON-LD script');
 			}

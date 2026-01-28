@@ -365,7 +365,7 @@
 				<span class="font-medium">Quick Presets</span>
 			</div>
 			<div class="flex flex-wrap gap-2">
-				{#each filterPresets.filter((p) => p.appliesTo.includes(mediaType)) as preset (preset.id)}
+				{#each filterPresets.filter((p) => p.appliesTo.includes(mediaType)) as preset}
 					<button
 						class="btn btn-sm {selectedPresetId === preset.id ? 'btn-primary' : 'btn-outline'}"
 						onclick={() => {
