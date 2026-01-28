@@ -188,7 +188,7 @@ Wait for rate limit to reset (usually 1-5 minutes). Reduce search frequency or e
 Some sites require browser-based solving. Options:
 
 - Try accessing site manually first
-- Configure FlareSolverr integration
+- Configure Captcha Solver in Settings > Integrations
 - Try a different indexer
 
 ### Indexer disabled

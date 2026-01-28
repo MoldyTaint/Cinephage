@@ -159,7 +159,7 @@ When monitoring is enabled:
 
 ### Which providers are supported?
 
-8 providers: OpenSubtitles, Addic7ed, SubDL, YIFY Subtitles, Gestdown, Subf2m, Subscene, Podnapisi
+6 global providers: OpenSubtitles, Addic7ed, SubDL, YIFY Subtitles, Gestdown, Subf2m
 
 ### Why aren't subtitles found?
 

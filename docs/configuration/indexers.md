@@ -1,6 +1,6 @@
 # Indexers
 
-Cinephage searches indexers to find releases for your movies and TV shows. It includes 7 built-in indexers plus templates for connecting external sources.
+Cinephage searches indexers to find releases for your movies and TV shows. It includes 8 built-in indexers plus templates for connecting external sources.
 
 ---
 

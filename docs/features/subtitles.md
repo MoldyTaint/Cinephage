@@ -1,6 +1,6 @@
 # Subtitles
 
-Cinephage includes comprehensive subtitle management with 8 providers and support for 80+ languages.
+Cinephage includes comprehensive subtitle management with 6 global providers and support for 80+ languages.
 
 ---
 
@@ -14,8 +14,6 @@ Cinephage includes comprehensive subtitle management with 8 providers and suppor
 | YIFY Subtitles | Scraper | YTS movie focus                 |
 | Gestdown       | API     | Addic7ed alternative            |
 | Subf2m         | Scraper | Wide coverage                   |
-| Subscene       | Scraper | Large community database        |
-| Podnapisi      | API     | Slovenian origin, good coverage |
 
 ### Provider Details
 
@@ -58,18 +56,6 @@ Cinephage includes comprehensive subtitle management with 8 providers and suppor
 - Wide language coverage
 - Community-driven
 - Supports both movies and TV
-
-**Subscene**
-
-- Large community database
-- Extensive language support
-- Both movies and TV shows
-
-**Podnapisi**
-
-- Originally Slovenian, now international
-- API-based access
-- Good quality subtitles
 
 ---
 
