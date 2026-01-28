@@ -100,10 +100,10 @@ Synology's Docker implementation has a known quirk with the `HOME` directory env
 
 ###### Ensure all bind-mounted directories exist and have proper permissions before starting the container.
 
-##### Option 1: Use PUID/PGID Environment Variables (Recommended)
-The container automatically configures UID/GID to `1000:1000` by default. You can either set these explicitly via environment variables or omit them entirely - both approaches work. Do not use the `user:` flag with this method.
+##### Option 1: Run as Default 1000:1000 User (Recommended)
+The container automatically runs as UID/GID `1000:1000` by default. For this option, do **not** set a `user:` flag **and** do **not** define `PUID`/`PGID` environment variables; simply rely on the built-in user.
 
-> **Note:** Synology uses its own ACL system that doesn't translate directly to Unix permissions. Even if you pass your Synology UID/GID via environment variables, the container will default to `1000:1000` due to permission mapping quirks.
+> **Note:** Synology uses its own ACL system that doesn't translate directly to Unix permissions. Even if you pass your Synology UID/GID or PUID/PGID via environment variables, the container will still effectively run as `1000:1000` inside the container due to permission mapping quirks.
 
 ```yml
 services:
