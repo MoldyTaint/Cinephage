@@ -98,7 +98,7 @@ Synology's Docker implementation has a known quirk with the `HOME` directory env
 
 #### Recommended Configuration Options
 
-###### Ensure all bind-mounted directories exist and have proper permissions before starting the container.
+> **Note:** Ensure all bind-mounted directories exist and have proper permissions before starting the container.
 
 ##### Option 1: Run as Default 1000:1000 User (Recommended)
 The container automatically runs as UID/GID `1000:1000` by default. For this option, do **not** set a `user:` flag **and** do **not** define `PUID`/`PGID` environment variables; simply rely on the built-in user.
