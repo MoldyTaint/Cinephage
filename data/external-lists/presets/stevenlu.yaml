@@ -1,0 +1,83 @@
+---
+provider: external-json
+name: StevenLu Popular Movies
+description: Popular movies curated by Steven Lu using LLM-based evaluation
+icon: globe
+baseUrl: https://popular-movies-data.stevenlu.com/movies.json
+
+# Available presets (variations of the same source)
+presets:
+  - id: standard
+    name: Standard
+    description: Default StevenLu popular movies list - algorithmically curated popular movies
+    url: https://popular-movies-data.stevenlu.com/movies.json
+    default: true
+
+  - id: imdb-min5
+    name: IMDb - Min Score 5
+    description: Movies with a minimum score of 5 on IMDb
+    url: https://popular-movies-data.stevenlu.com/movies-imdb-min5.json
+
+  - id: imdb-min6
+    name: IMDb - Min Score 6
+    description: Movies with a minimum score of 6 on IMDb
+    url: https://popular-movies-data.stevenlu.com/movies-imdb-min6.json
+
+  - id: imdb-min7
+    name: IMDb - Min Score 7
+    description: Movies with a minimum score of 7 on IMDb
+    url: https://popular-movies-data.stevenlu.com/movies-imdb-min7.json
+
+  - id: imdb-min8
+    name: IMDb - Min Score 8
+    description: Movies with a minimum score of 8 on IMDb
+    url: https://popular-movies-data.stevenlu.com/movies-imdb-min8.json
+
+  - id: metacritic-min50
+    name: Metacritic - Min Score 50
+    description: Movies with a minimum score of 50 on Metacritic
+    url: https://popular-movies-data.stevenlu.com/movies-metacritic-min50.json
+
+  - id: metacritic-min60
+    name: Metacritic - Min Score 60
+    description: Movies with a minimum score of 60 on Metacritic
+    url: https://popular-movies-data.stevenlu.com/movies-metacritic-min60.json
+
+  - id: metacritic-min70
+    name: Metacritic - Min Score 70
+    description: Movies with a minimum score of 70 on Metacritic
+    url: https://popular-movies-data.stevenlu.com/movies-metacritic-min70.json
+
+  - id: metacritic-min80
+    name: Metacritic - Min Score 80
+    description: Movies with a minimum score of 80 on Metacritic
+    url: https://popular-movies-data.stevenlu.com/movies-metacritic-min80.json
+
+  - id: rottentomatoes-min50
+    name: Rotten Tomatoes - Min Score 50
+    description: Movies with a minimum score of 50 on Rotten Tomatoes
+    url: https://popular-movies-data.stevenlu.com/movies-rottentomatoes-min50.json
+
+  - id: rottentomatoes-min60
+    name: Rotten Tomatoes - Min Score 60
+    description: Movies with a minimum score of 60 on Rotten Tomatoes
+    url: https://popular-movies-data.stevenlu.com/movies-rottentomatoes-min60.json
+
+  - id: rottentomatoes-min70
+    name: Rotten Tomatoes - Min Score 70
+    description: Movies with a minimum score of 70 on Rotten Tomatoes
+    url: https://popular-movies-data.stevenlu.com/movies-rottentomatoes-min70.json
+
+  - id: rottentomatoes-min80
+    name: Rotten Tomatoes - Min Score 80
+    description: Movies with a minimum score of 80 on Rotten Tomatoes
+    url: https://popular-movies-data.stevenlu.com/movies-rottentomatoes-min80.json
+
+  - id: all-movies
+    name: All Movies
+    description: All movies without filtering or evaluation
+    url: https://popular-movies-data.stevenlu.com/all-movies.json
+
+# Settings schema for this provider
+# Note: The min score is now handled by selecting different presets rather than a configurable setting
+settings: []

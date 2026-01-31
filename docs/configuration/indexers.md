@@ -1,6 +1,6 @@
 # Indexers
 
-Cinephage searches indexers to find releases for your movies and TV shows. It includes 7 built-in indexers plus templates for connecting external sources.
+Cinephage searches indexers to find releases for your movies and TV shows. It includes 8 built-in indexers plus templates for connecting external sources.
 
 ---
 
@@ -141,7 +141,7 @@ Advanced users can create custom YAML definitions.
 
 ### Location
 
-Place definitions in: `data/indexers/definitions/`
+Place definitions in: `data/indexers/definitions/` (Docker: `/config/data/indexers/definitions/`)
 
 ### Format
 
@@ -185,7 +185,7 @@ search:
       selector: seeds
 ```
 
-See existing definitions in `data/indexers/definitions/` for examples.
+See existing definitions in `data/indexers/definitions/` for examples (Docker: `/config/data/indexers/definitions/`).
 
 ---
 

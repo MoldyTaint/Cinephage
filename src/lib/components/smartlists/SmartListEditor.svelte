@@ -5,6 +5,7 @@
 	import FilterBuilder from './FilterBuilder.svelte';
 	import PreviewPanel from './PreviewPanel.svelte';
 	import SettingsPanel from './SettingsPanel.svelte';
+	import ExternalSourceConfig from './ExternalSourceConfig.svelte';
 
 	interface RootFolder {
 		id: string;
@@ -45,6 +46,22 @@
 	let description = $state('');
 	let mediaType = $state<'movie' | 'tv'>('movie');
 
+	// List source type
+	let listSourceType = $state<'tmdb-discover' | 'external-json'>('tmdb-discover');
+
+	// External source config
+	let externalSourceConfig = $state<{
+		url?: string;
+		headers?: Record<string, string>;
+		listId?: string;
+		username?: string;
+	}>({});
+
+	// Preset configuration
+	let presetId = $state<string | undefined>(undefined);
+	let presetProvider = $state<string | undefined>(undefined);
+	let presetSettings = $state<Record<string, unknown>>(Object.create(null));
+
 	// Filters
 	let filters = $state<SmartListFilters>({});
 
@@ -66,6 +83,11 @@
 			name = list.name ?? '';
 			description = list.description ?? '';
 			mediaType = (list.mediaType as 'movie' | 'tv') ?? 'movie';
+			listSourceType = (list.listSourceType as typeof listSourceType) ?? 'tmdb-discover';
+			externalSourceConfig = list.externalSourceConfig ?? {};
+			presetId = list.presetId ?? undefined;
+			presetProvider = list.presetProvider ?? undefined;
+			presetSettings = (list.presetSettings as Record<string, unknown>) ?? Object.create(null);
 			filters = list.filters ?? {};
 			sortBy = list.sortBy ?? 'popularity.desc';
 			itemLimit = list.itemLimit ?? 100;
@@ -87,6 +109,15 @@
 	let previewTotalResults = $state(0);
 	let previewTotalPages = $state(0);
 	let previewUnfilteredTotal = $state(0);
+	let previewDebugData = $state<
+		| {
+				failedItems?: Array<{ imdbId?: string; title: string; year?: number; error?: string }>;
+				resolvedCount?: number;
+				failedCount?: number;
+				duplicatesRemoved?: number;
+		  }
+		| undefined
+	>(undefined);
 
 	// Debounce timer
 	let debounceTimer: ReturnType<typeof setTimeout>;
@@ -95,6 +126,7 @@
 	async function fetchPreview() {
 		previewLoading = true;
 		previewError = null;
+		previewItems = []; // Clear old items immediately to prevent showing stale data
 
 		try {
 			const res = await fetch('/api/smartlists/preview', {
@@ -119,6 +151,52 @@
 			previewTotalResults = data.totalResults;
 			previewTotalPages = data.totalPages;
 			previewUnfilteredTotal = data.unfilteredTotal ?? data.totalResults;
+			previewDebugData = undefined; // No debug data for TMDB discover
+		} catch (e) {
+			previewError = e instanceof Error ? e.message : 'An error occurred';
+		} finally {
+			previewLoading = false;
+		}
+	}
+
+	// Fetch external list preview
+	async function fetchExternalPreview() {
+		previewLoading = true;
+		previewError = null;
+		previewItems = []; // Clear old items immediately to prevent showing stale data
+
+		try {
+			const res = await fetch('/api/smartlists/external/preview', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					mediaType,
+					url: externalSourceConfig.url,
+					headers: externalSourceConfig.headers,
+					presetId,
+					config: presetSettings,
+					itemLimit,
+					page: previewPage
+				})
+			});
+
+			if (!res.ok) {
+				const data = await res.json();
+				throw new Error(data.error || 'Preview failed');
+			}
+
+			const data = await res.json();
+			previewItems = data.items;
+			previewTotalResults = data.totalResults;
+			previewTotalPages = data.totalPages;
+			previewUnfilteredTotal = data.unfilteredTotal ?? data.totalResults;
+			// Capture debug data for external lists
+			previewDebugData = {
+				failedItems: data.failedItems,
+				resolvedCount: data.resolvedCount,
+				failedCount: data.failedCount,
+				duplicatesRemoved: data.duplicatesRemoved
+			};
 		} catch (e) {
 			previewError = e instanceof Error ? e.message : 'An error occurred';
 		} finally {
@@ -130,12 +208,18 @@
 	$effect(() => {
 		// Deep track filters by serializing (shallow tracking doesn't detect nested property changes)
 		const _filtersJson = JSON.stringify(filters);
-		void [sortBy, mediaType, itemLimit];
+		const _externalConfigJson = JSON.stringify(externalSourceConfig);
+		const _presetSettingsJson = JSON.stringify(presetSettings);
+		void [sortBy, mediaType, itemLimit, listSourceType, presetId, presetProvider];
 
 		clearTimeout(debounceTimer);
 		debounceTimer = setTimeout(() => {
 			previewPage = 1;
-			fetchPreview();
+			if (listSourceType === 'external-json') {
+				fetchExternalPreview();
+			} else {
+				fetchPreview();
+			}
 		}, 300);
 
 		return () => clearTimeout(debounceTimer);
@@ -144,7 +228,11 @@
 	// Fetch on page change (no debounce needed)
 	function handlePageChange(newPage: number) {
 		previewPage = newPage;
-		fetchPreview();
+		if (listSourceType === 'external-json') {
+			fetchExternalPreview();
+		} else {
+			fetchPreview();
+		}
 	}
 
 	// Handle media type change - reset filters
@@ -172,6 +260,11 @@
 				name,
 				description: description || undefined,
 				mediaType,
+				listSourceType,
+				externalSourceConfig,
+				presetId,
+				presetProvider,
+				presetSettings,
 				filters,
 				sortBy,
 				itemLimit,
@@ -292,8 +385,29 @@
 				></textarea>
 			</div>
 
-			<!-- Filters -->
-			<FilterBuilder {mediaType} bind:filters />
+			<!-- Source Configuration -->
+			<ExternalSourceConfig
+				bind:sourceType={listSourceType}
+				bind:presetId
+				bind:presetProvider
+				bind:presetSettings
+				customUrl={externalSourceConfig.url}
+				customHeaders={externalSourceConfig.headers}
+				{mediaType}
+				onChange={(data) => {
+					externalSourceConfig.url = data.customUrl;
+					externalSourceConfig.headers = data.customHeaders;
+				}}
+			/>
+
+			<!-- Filters (only for TMDB Discover) -->
+			{#if listSourceType === 'tmdb-discover'}
+				<FilterBuilder
+					{mediaType}
+					bind:filters
+					on:sortByChange={(e) => (sortBy = e.detail.sortBy)}
+				/>
+			{/if}
 
 			<!-- Settings -->
 			<SettingsPanel
@@ -307,6 +421,7 @@
 				bind:autoAddMonitored
 				{rootFolders}
 				{scoringProfiles}
+				{listSourceType}
 			/>
 		</div>
 
@@ -324,6 +439,36 @@
 				unfilteredTotal={previewUnfilteredTotal}
 				onPageChange={handlePageChange}
 				onRetry={fetchPreview}
+				debugData={{
+					timestamp: new Date().toISOString(),
+					listType: listSourceType,
+					configuration: {
+						mediaType,
+						filters: filters as Record<string, unknown>,
+						sortBy,
+						itemLimit,
+						excludeInLibrary,
+						listSourceType,
+						presetId,
+						presetProvider,
+						externalSourceConfig
+					},
+					pagination: {
+						page: previewPage,
+						totalPages: previewTotalPages,
+						totalResults: previewTotalResults,
+						unfilteredTotal: previewUnfilteredTotal
+					},
+					items: previewItems,
+					failedItems: previewDebugData?.failedItems,
+					metadata: previewDebugData
+						? {
+								resolvedCount: previewDebugData.resolvedCount,
+								failedCount: previewDebugData.failedCount,
+								duplicatesRemoved: previewDebugData.duplicatesRemoved
+							}
+						: undefined
+				}}
 			/>
 		</div>
 	</div>

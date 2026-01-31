@@ -22,6 +22,7 @@
 		autoAddMonitored: boolean;
 		rootFolders: RootFolder[];
 		scoringProfiles: ScoringProfile[];
+		listSourceType?: 'tmdb-discover' | 'external-json';
 	}
 
 	let {
@@ -34,7 +35,8 @@
 		scoringProfileId = $bindable(),
 		autoAddMonitored = $bindable(),
 		rootFolders,
-		scoringProfiles
+		scoringProfiles,
+		listSourceType = 'tmdb-discover'
 	}: Props = $props();
 
 	let showSettings = $state(true);
@@ -70,38 +72,40 @@
 	</div>
 	<div class="collapse-content">
 		<div class="space-y-4 pt-2">
-			<!-- Sort & Limit -->
-			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-				<div class="form-control">
-					<label class="label py-1" for="sortBy">
-						<span
-							class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-							>Sort By</span
-						>
-					</label>
-					<select id="sortBy" bind:value={sortBy} class="select-bordered select w-full select-sm">
-						{#each sortOptions as opt (opt.value)}
-							<option value={opt.value}>{opt.label}</option>
-						{/each}
-					</select>
+			<!-- Sort & Limit (only for TMDB Discover) -->
+			{#if listSourceType === 'tmdb-discover'}
+				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+					<div class="form-control">
+						<label class="label py-1" for="sortBy">
+							<span
+								class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
+								>Sort By</span
+							>
+						</label>
+						<select id="sortBy" bind:value={sortBy} class="select-bordered select w-full select-sm">
+							{#each sortOptions as opt (opt.value)}
+								<option value={opt.value}>{opt.label}</option>
+							{/each}
+						</select>
+					</div>
+					<div class="form-control">
+						<label class="label py-1" for="itemLimit">
+							<span
+								class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
+								>Max Items</span
+							>
+						</label>
+						<input
+							type="number"
+							id="itemLimit"
+							bind:value={itemLimit}
+							min="1"
+							max="1000"
+							class="input-bordered input input-sm w-full"
+						/>
+					</div>
 				</div>
-				<div class="form-control">
-					<label class="label py-1" for="itemLimit">
-						<span
-							class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-							>Max Items</span
-						>
-					</label>
-					<input
-						type="number"
-						id="itemLimit"
-						bind:value={itemLimit}
-						min="1"
-						max="1000"
-						class="input-bordered input input-sm w-full"
-					/>
-				</div>
-			</div>
+			{/if}
 
 			<!-- Refresh Interval -->
 			<div class="form-control">

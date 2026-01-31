@@ -40,6 +40,10 @@ import type {
 	ItemQueryOptions,
 	BulkAddResult
 } from './types.js';
+import { providerRegistry } from './providers/ProviderRegistry.js';
+import { externalIdResolver } from './ExternalIdResolver.js';
+import { presetService } from './presets/PresetService.js';
+import type { ExternalListItem } from './providers/types.js';
 
 export class SmartListService {
 	private static instance: SmartListService | null = null;
@@ -63,6 +67,39 @@ export class SmartListService {
 			Date.now() + (input.refreshIntervalHours ?? 24) * 60 * 60 * 1000
 		).toISOString();
 
+		// Determine list source type and URL
+		const listSourceType = input.listSourceType ?? 'tmdb-discover';
+		let externalSourceConfig:
+			| { url?: string; headers?: Record<string, string>; listId?: string; username?: string }
+			| undefined;
+
+		// If using a preset, resolve the URL
+		if (listSourceType === 'external-json' && input.presetId) {
+			const presetUrl = presetService.getListUrl(input.presetId, input.externalSourceConfig?.url);
+			if (presetUrl) {
+				externalSourceConfig = {
+					url: presetUrl,
+					headers: input.externalSourceConfig?.headers as Record<string, string> | undefined,
+					listId: input.externalSourceConfig?.listId,
+					username: input.externalSourceConfig?.username
+				};
+			} else if (input.externalSourceConfig) {
+				externalSourceConfig = {
+					url: input.externalSourceConfig.url,
+					headers: input.externalSourceConfig.headers as Record<string, string> | undefined,
+					listId: input.externalSourceConfig.listId,
+					username: input.externalSourceConfig.username
+				};
+			}
+		} else if (input.externalSourceConfig) {
+			externalSourceConfig = {
+				url: input.externalSourceConfig.url,
+				headers: input.externalSourceConfig.headers as Record<string, string> | undefined,
+				listId: input.externalSourceConfig.listId,
+				username: input.externalSourceConfig.username
+			};
+		}
+
 		const [result] = await db
 			.insert(smartLists)
 			.values({
@@ -84,6 +121,11 @@ export class SmartListService {
 				languageProfileId: input.languageProfileId,
 				refreshIntervalHours: input.refreshIntervalHours ?? 24,
 				enabled: input.enabled ?? true,
+				listSourceType,
+				externalSourceConfig,
+				presetId: input.presetId,
+				presetProvider: input.presetProvider,
+				presetSettings: input.presetSettings,
 				nextRefreshTime: nextRefresh,
 				createdAt: now,
 				updatedAt: now
@@ -131,6 +173,57 @@ export class SmartListService {
 			).toISOString();
 		}
 		if (input.enabled !== undefined) updates.enabled = input.enabled;
+		if (input.listSourceType !== undefined) updates.listSourceType = input.listSourceType;
+		if (input.presetId !== undefined) updates.presetId = input.presetId;
+		if (input.presetProvider !== undefined) updates.presetProvider = input.presetProvider;
+		if (input.presetSettings !== undefined) updates.presetSettings = input.presetSettings;
+
+		// Handle external source config - resolve preset URL if needed
+		if (input.externalSourceConfig !== undefined) {
+			const listSourceType = input.listSourceType ?? existing.listSourceType;
+			const presetId = input.presetId ?? existing.presetId;
+			const inputConfig = input.externalSourceConfig;
+
+			if (listSourceType === 'external-json' && presetId) {
+				const presetUrl = presetService.getListUrl(presetId, inputConfig?.url);
+				if (presetUrl) {
+					updates.externalSourceConfig = {
+						url: presetUrl,
+						headers: inputConfig?.headers as Record<string, string> | undefined,
+						listId: inputConfig?.listId,
+						username: inputConfig?.username
+					};
+				} else {
+					updates.externalSourceConfig = {
+						url: inputConfig?.url,
+						headers: inputConfig?.headers as Record<string, string> | undefined,
+						listId: inputConfig?.listId,
+						username: inputConfig?.username
+					};
+				}
+			} else {
+				updates.externalSourceConfig = {
+					url: inputConfig?.url,
+					headers: inputConfig?.headers as Record<string, string> | undefined,
+					listId: inputConfig?.listId,
+					username: inputConfig?.username
+				};
+			}
+		} else if (input.presetId !== undefined && existing.listSourceType === 'external-json') {
+			// If preset changed but config not provided, resolve URL from new preset
+			const presetUrl = presetService.getListUrl(
+				input.presetId,
+				existing.externalSourceConfig?.url
+			);
+			if (presetUrl) {
+				updates.externalSourceConfig = {
+					url: presetUrl,
+					headers: existing.externalSourceConfig?.headers,
+					listId: existing.externalSourceConfig?.listId,
+					username: existing.externalSourceConfig?.username
+				};
+			}
+		}
 
 		const [result] = await db
 			.update(smartLists)
@@ -174,12 +267,31 @@ export class SmartListService {
 	// =========================================================================
 
 	async refreshSmartList(id: string, refreshType: 'automatic' | 'manual'): Promise<RefreshResult> {
-		const startTime = Date.now();
 		const list = await this.getSmartList(id);
 
 		if (!list) {
 			throw new Error(`Smart list not found: ${id}`);
 		}
+
+		// Route to appropriate refresh method based on source type
+		if (list.listSourceType === 'tmdb-discover') {
+			return this.refreshTmdbDiscoverList(list, refreshType);
+		} else if (list.listSourceType === 'external-json') {
+			return this.syncExternalList(list, refreshType);
+		}
+
+		throw new Error(`Unsupported list source type: ${list.listSourceType}`);
+	}
+
+	/**
+	 * Refresh a TMDB Discover-based list
+	 */
+	private async refreshTmdbDiscoverList(
+		list: SmartListRecord,
+		refreshType: 'automatic' | 'manual'
+	): Promise<RefreshResult> {
+		const startTime = Date.now();
+		const id = list.id;
 
 		// Create history entry
 		const [historyEntry] = await db
@@ -1207,6 +1319,380 @@ export class SmartListService {
 				tmdbId
 			});
 		}
+	}
+
+	// =========================================================================
+	// External List Operations
+	// =========================================================================
+
+	/**
+	 * Sync an external list (JSON URL, Trakt, etc.)
+	 */
+	private async syncExternalList(
+		list: SmartListRecord,
+		refreshType: 'automatic' | 'manual'
+	): Promise<RefreshResult> {
+		const startTime = Date.now();
+		const id = list.id;
+
+		// Build external source config from preset and user settings
+		let externalSourceConfig = list.externalSourceConfig ?? {};
+		if (list.presetId) {
+			const preset = presetService.getPreset(list.presetId);
+			if (preset) {
+				// Start with preset config (for providers like tmdb-popular)
+				externalSourceConfig = {
+					...preset.config,
+					...externalSourceConfig
+				};
+
+				// Merge user settings from presetSettings (for custom presets like tmdb-list:custom)
+				if (list.presetSettings) {
+					externalSourceConfig = {
+						...externalSourceConfig,
+						...list.presetSettings
+					};
+				}
+
+				// Add URL if preset has one (for external-json provider)
+				if (preset.url) {
+					externalSourceConfig.url = preset.url;
+				}
+
+				logger.info('[SmartListService] Using preset config', {
+					presetId: list.presetId,
+					config: externalSourceConfig
+				});
+			}
+		}
+
+		logger.info('[SmartListService] Starting external list sync', {
+			id,
+			sourceType: list.listSourceType,
+			url: externalSourceConfig?.url,
+			presetId: list.presetId
+		});
+
+		// Create history entry
+		const [historyEntry] = await db
+			.insert(smartListRefreshHistory)
+			.values({
+				smartListId: id,
+				refreshType,
+				status: 'running',
+				startedAt: new Date().toISOString()
+			})
+			.returning();
+
+		try {
+			// Get the appropriate provider
+			const provider = providerRegistry.get(list.listSourceType);
+			if (!provider) {
+				throw new Error(`No provider registered for source type: ${list.listSourceType}`);
+			}
+
+			// Validate config
+			if (!provider.validateConfig(externalSourceConfig)) {
+				throw new Error('Invalid external source configuration');
+			}
+
+			// Fetch items from external source
+			// For external lists, we pass empty string to show all content types (movies and TV)
+			const externalResult = await provider.fetchItems(externalSourceConfig, '');
+
+			if (externalResult.error) {
+				throw new Error(`External fetch failed: ${externalResult.error}`);
+			}
+
+			logger.info('[SmartListService] Fetched external items', {
+				id,
+				totalCount: externalResult.totalCount,
+				failedCount: externalResult.failedCount
+			});
+
+			// Resolve external items to TMDB items
+			const resolvedItems = await this.resolveExternalItems(
+				externalResult.items,
+				list.mediaType as 'movie' | 'tv',
+				id
+			);
+
+			logger.info('[SmartListService] Resolved external items to TMDB', {
+				id,
+				resolvedCount: resolvedItems.length,
+				totalExternal: externalResult.items.length
+			});
+
+			// Get existing items for this list
+			const existingItems = await db.query.smartListItems.findMany({
+				where: eq(smartListItems.smartListId, id)
+			});
+			const existingTmdbIds = new Set(existingItems.map((item) => item.tmdbId));
+
+			// Process items
+			let itemsNew = 0;
+			let itemsRemoved = 0;
+			const itemsFailed = 0;
+			const newTmdbIds = new Set(resolvedItems.map((item) => item.tmdbId));
+
+			// Add new items
+			const itemsToInsert: Array<typeof smartListItems.$inferInsert> = [];
+			const now = new Date().toISOString();
+
+			for (let i = 0; i < resolvedItems.length; i++) {
+				const item = resolvedItems[i];
+				if (!existingTmdbIds.has(item.tmdbId)) {
+					itemsNew++;
+					itemsToInsert.push({
+						smartListId: id,
+						mediaType: list.mediaType as 'movie' | 'tv',
+						tmdbId: item.tmdbId,
+						title: item.title,
+						originalTitle: item.title,
+						overview: item.overview,
+						posterPath: item.posterPath,
+						releaseDate: item.releaseDate,
+						year: item.year,
+						voteAverage: item.voteAverage ? String(item.voteAverage) : null,
+						voteCount: item.voteCount,
+						popularity: null,
+						genreIds: item.genreIds,
+						originalLanguage: item.originalLanguage,
+						position: i,
+						firstSeenAt: now,
+						lastSeenAt: now,
+						updatedAt: now
+					});
+				}
+			}
+
+			// Insert new items in batches
+			if (itemsToInsert.length > 0) {
+				const batchSize = 50;
+				for (let i = 0; i < itemsToInsert.length; i += batchSize) {
+					const batch = itemsToInsert.slice(i, i + batchSize);
+					await db.insert(smartListItems).values(batch);
+				}
+			}
+
+			// Update positions for existing items
+			for (let i = 0; i < resolvedItems.length; i++) {
+				const item = resolvedItems[i];
+				if (existingTmdbIds.has(item.tmdbId)) {
+					await db
+						.update(smartListItems)
+						.set({
+							position: i,
+							lastSeenAt: now,
+							updatedAt: now
+						})
+						.where(and(eq(smartListItems.smartListId, id), eq(smartListItems.tmdbId, item.tmdbId)));
+				}
+			}
+
+			// Mark items not in new results as removed
+			for (const existing of existingItems) {
+				if (!newTmdbIds.has(existing.tmdbId)) {
+					itemsRemoved++;
+					await db
+						.update(smartListItems)
+						.set({
+							position: 9999,
+							updatedAt: now
+						})
+						.where(eq(smartListItems.id, existing.id));
+				}
+			}
+
+			// Update library status for all items
+			await this.updateLibraryStatus(id, list.mediaType as 'movie' | 'tv');
+
+			// Handle auto-add if enabled
+			let itemsAutoAdded = 0;
+			if (list.autoAddBehavior !== 'disabled' && list.rootFolderId) {
+				const result = await this.autoAddItems(list);
+				itemsAutoAdded = result.added;
+			}
+
+			// Update list stats
+			const finalItemCount = await db
+				.select({ count: sql<number>`count(*)` })
+				.from(smartListItems)
+				.where(and(eq(smartListItems.smartListId, id), eq(smartListItems.position, sql`< 9999`)));
+
+			const inLibraryCount = await db
+				.select({ count: sql<number>`count(*)` })
+				.from(smartListItems)
+				.where(and(eq(smartListItems.smartListId, id), eq(smartListItems.inLibrary, true)));
+
+			const completedAt = new Date().toISOString();
+			const durationMs = Date.now() - startTime;
+
+			await db
+				.update(smartLists)
+				.set({
+					lastRefreshTime: completedAt,
+					lastRefreshStatus: 'success',
+					lastRefreshError: null,
+					lastExternalSyncTime: completedAt,
+					externalSyncError: null,
+					nextRefreshTime: new Date(
+						Date.now() + list.refreshIntervalHours * 60 * 60 * 1000
+					).toISOString(),
+					cachedItemCount: finalItemCount[0]?.count ?? 0,
+					itemsInLibrary: inLibraryCount[0]?.count ?? 0,
+					itemsAutoAdded: (list.itemsAutoAdded ?? 0) + itemsAutoAdded,
+					updatedAt: completedAt
+				})
+				.where(eq(smartLists.id, id));
+
+			// Update history
+			await db
+				.update(smartListRefreshHistory)
+				.set({
+					status: 'success',
+					itemsFound: resolvedItems.length,
+					itemsNew,
+					itemsRemoved,
+					itemsAutoAdded,
+					itemsFailed,
+					completedAt,
+					durationMs
+				})
+				.where(eq(smartListRefreshHistory.id, historyEntry.id));
+
+			logger.info('[SmartListService] External sync completed', {
+				id,
+				itemsFound: resolvedItems.length,
+				itemsNew,
+				itemsRemoved,
+				itemsAutoAdded,
+				durationMs
+			});
+
+			return {
+				smartListId: id,
+				status: 'success',
+				itemsFound: resolvedItems.length,
+				itemsNew,
+				itemsRemoved,
+				itemsAutoAdded,
+				itemsFailed,
+				durationMs
+			};
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			const durationMs = Date.now() - startTime;
+
+			await db
+				.update(smartLists)
+				.set({
+					lastRefreshStatus: 'failed',
+					lastRefreshError: errorMessage,
+					externalSyncError: errorMessage,
+					updatedAt: new Date().toISOString()
+				})
+				.where(eq(smartLists.id, id));
+
+			await db
+				.update(smartListRefreshHistory)
+				.set({
+					status: 'failed',
+					errorMessage,
+					completedAt: new Date().toISOString(),
+					durationMs
+				})
+				.where(eq(smartListRefreshHistory.id, historyEntry.id));
+
+			logger.error('[SmartListService] External sync failed', error, { id });
+
+			return {
+				smartListId: id,
+				status: 'failed',
+				itemsFound: 0,
+				itemsNew: 0,
+				itemsRemoved: 0,
+				itemsAutoAdded: 0,
+				itemsFailed: 0,
+				durationMs,
+				errorMessage
+			};
+		}
+	}
+
+	/**
+	 * Resolve external list items to TMDB items
+	 * Uses concurrent batch processing for much faster resolution
+	 */
+	private async resolveExternalItems(
+		items: ExternalListItem[],
+		mediaType: 'movie' | 'tv',
+		listId: string
+	): Promise<
+		Array<{
+			tmdbId: number;
+			title: string;
+			overview?: string;
+			posterPath?: string | null;
+			releaseDate?: string;
+			year?: number;
+			voteAverage?: number;
+			voteCount?: number;
+			genreIds?: number[];
+			originalLanguage?: string;
+		}>
+	> {
+		logger.info('[SmartListService] Starting external item resolution', {
+			listId,
+			itemCount: items.length,
+			mediaType
+		});
+
+		const startTime = Date.now();
+
+		// Use batch resolution with concurrency for much faster processing
+		const results = await externalIdResolver.resolveItemsBatch(items, mediaType, 10);
+
+		const resolved: ReturnType<typeof this.resolveExternalItems> extends Promise<infer T>
+			? T
+			: never = [];
+
+		for (let i = 0; i < items.length; i++) {
+			const item = items[i];
+			const result = results[i];
+
+			if (result.success && result.tmdbId) {
+				resolved.push({
+					tmdbId: result.tmdbId,
+					title: result.title || item.title,
+					overview: item.overview,
+					posterPath: item.posterPath ?? result.posterPath,
+					year: result.year ?? item.year,
+					voteAverage: item.voteAverage,
+					voteCount: item.voteCount,
+					genreIds: item.genreIds,
+					originalLanguage: item.originalLanguage
+				});
+			} else {
+				logger.warn('[SmartListService] Failed to resolve external item', {
+					listId,
+					index: i,
+					title: item.title,
+					error: result.error
+				});
+			}
+		}
+
+		const duration = Date.now() - startTime;
+		logger.info('[SmartListService] External item resolution complete', {
+			listId,
+			totalItems: items.length,
+			resolvedCount: resolved.length,
+			failedCount: items.length - resolved.length,
+			durationMs: duration
+		});
+
+		return resolved;
 	}
 }
 

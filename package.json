@@ -26,8 +26,8 @@
 		"@eslint/compat": "^2.0.1",
 		"@eslint/js": "^9.39.2",
 		"@sveltejs/adapter-auto": "^7.0.0",
-		"@sveltejs/adapter-node": "^5.5.1",
-		"@sveltejs/kit": "^2.50.0",
+		"@sveltejs/adapter-node": "^5.5.2",
+		"@sveltejs/kit": "^2.50.1",
 		"@sveltejs/vite-plugin-svelte": "^6.2.4",
 		"@tailwindcss/vite": "^4.1.18",
 		"@types/adm-zip": "^0.5.7",
@@ -42,19 +42,19 @@
 		"eslint": "^9.39.2",
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-plugin-svelte": "^3.14.0",
-		"globals": "^17.0.0",
-		"lucide-svelte": "^0.562.0",
-		"prettier": "^3.8.0",
+		"globals": "^17.1.0",
+		"lucide-svelte": "^0.563.0",
+		"prettier": "^3.8.1",
 		"prettier-plugin-svelte": "^3.4.1",
 		"prettier-plugin-tailwindcss": "^0.7.1",
-		"svelte": "^5.47.0",
+		"svelte": "^5.48.2",
 		"svelte-check": "^4.3.5",
 		"tailwindcss": "^4.1.14",
 		"typescript": "^5.9.3",
-		"typescript-eslint": "^8.53.0",
+		"typescript-eslint": "^8.53.1",
 		"vite": "^7.3.1",
 		"vite-plugin-devtools-json": "^1.0.0",
-		"vitest": "^4.0.5"
+		"vitest": "^4.0.18"
 	},
 	"overrides": {
 		"cookie": "^0.7.0"
@@ -66,7 +66,7 @@
 		"adm-zip": "^0.5.16",
 		"better-sqlite3": "^12.6.2",
 		"camoufox-js": "^0.8.5",
-		"cheerio": "^1.1.2",
+		"cheerio": "^1.2.0",
 		"chokidar": "^5.0.0",
 		"crypto-js": "^4.2.0",
 		"fast-xml-parser": "^5.3.3",
@@ -77,6 +77,6 @@
 		"parse-torrent": "^11.0.19",
 		"sax": "^1.4.4",
 		"unzipper": "^0.12.3",
-		"zod": "^4.3.5"
+		"zod": "^4.3.6"
 	}
 }

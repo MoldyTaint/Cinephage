@@ -12,7 +12,9 @@
 		Check,
 		Loader2,
 		Star,
-		Library
+		Library,
+		Globe,
+		Database
 	} from 'lucide-svelte';
 	import type { PageData } from './$types';
 
@@ -43,7 +45,7 @@
 			await fetch(`/api/smartlists/${data.list.id}/items`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'add-to-library', tmdbIds: [tmdbId] })
+				body: JSON.stringify({ action: 'addToLibrary', tmdbIds: [tmdbId] })
 			});
 			await invalidateAll();
 		} finally {
@@ -94,7 +96,7 @@
 			await fetch(`/api/smartlists/${data.list.id}/items`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'add-to-library', tmdbIds })
+				body: JSON.stringify({ action: 'addToLibrary', tmdbIds })
 			});
 			await invalidateAll();
 		} finally {
@@ -157,12 +159,31 @@
 				{#if data.list.autoAddBehavior !== 'disabled'}
 					<div class="badge badge-outline badge-info">Auto-add enabled</div>
 				{/if}
+				{#if data.list.listSourceType === 'external-json'}
+					<div class="badge flex items-center gap-1 badge-outline badge-secondary">
+						<Globe class="h-3 w-3" />
+						External JSON
+					</div>
+				{:else if data.list.listSourceType === 'trakt-list'}
+					<div class="badge badge-outline badge-accent">Trakt List</div>
+				{:else if data.list.listSourceType === 'custom-manual'}
+					<div class="badge badge-outline badge-warning">Custom</div>
+				{:else}
+					<div class="badge flex items-center gap-1 badge-outline badge-primary">
+						<Database class="h-3 w-3" />
+						TMDB Discover
+					</div>
+				{/if}
 			</div>
 		</div>
 		<div class="flex gap-2">
 			<button class="btn btn-outline btn-sm" onclick={refreshList} disabled={refreshing}>
 				<RefreshCw class="h-4 w-4 {refreshing ? 'animate-spin' : ''}" />
-				Refresh
+				{#if data.list.listSourceType === 'external-json'}
+					Sync
+				{:else}
+					Refresh
+				{/if}
 			</button>
 			<button class="btn btn-sm btn-primary" onclick={addAllToLibrary} disabled={bulkAdding}>
 				{#if bulkAdding}

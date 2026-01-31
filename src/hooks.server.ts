@@ -36,7 +36,7 @@ const CSP_HEADER = [
 	"default-src 'self'",
 	"script-src 'self' 'unsafe-inline'",
 	"style-src 'self' 'unsafe-inline'",
-	"img-src 'self' data: https://image.tmdb.org https://api.cdn-live.tv",
+	"img-src 'self' data: https://image.tmdb.org https://api.cdn-live.tv https://m.media-amazon.com",
 	"connect-src 'self'",
 	"font-src 'self'"
 ].join('; ');

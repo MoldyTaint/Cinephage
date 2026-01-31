@@ -1,0 +1,30 @@
+---
+provider: imdb-list
+name: IMDb List
+description: Import movies from IMDb user lists by scraping the list page
+icon: star
+baseUrl: https://www.imdb.com/list
+
+# No presets - user provides their own list ID
+presets: []
+
+# Settings schema for this provider
+settings:
+  - name: listId
+    label: List ID
+    type: string
+    required: true
+    helpText: "IMDb list ID from the URL (e.g., 'ls060044601' from https://www.imdb.com/list/ls060044601/)"
+
+  - name: mediaType
+    label: Media Type Filter
+    type: select
+    options:
+      - value: ''
+        label: 'All (Movies & TV)'
+      - value: 'movie'
+        label: 'Movies Only'
+      - value: 'tv'
+        label: 'TV Shows Only'
+    default: ''
+    helpText: 'Filter the list to only include specific media types'

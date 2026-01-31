@@ -110,7 +110,7 @@ The Docker image has changed from `node:22-alpine` to `node:22-slim` (Debian). T
 - The `BROWSER_SOLVER_ENABLED` environment variable is no longer used (remove from your `.env`)
 - Captcha Solver is now configured via Settings > Integrations > Captcha Solver
 
-**Your data is safe:** The SQLite database, logs, and configuration are stored in the mounted `/app/data` volume and will not be affected.
+**Your data is safe:** The SQLite database, logs, and configuration are stored in the mounted `/config` volume and will not be affected.
 
 ---
 

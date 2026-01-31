@@ -43,8 +43,7 @@ services:
     # VOLUMES
     # -------------------------------------------------------------------------
     volumes:
-      - ./data:/app/data # Database and config (auto-created)
-      - ./logs:/app/logs # Log files (auto-created)
+      - ./config:/config # App data, config, and logs (auto-created)
       - ${CINEPHAGE_MEDIA_PATH:?Set CINEPHAGE_MEDIA_PATH in .env}:/media # Your media library
 
     # -------------------------------------------------------------------------

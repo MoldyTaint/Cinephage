@@ -1,6 +1,8 @@
 <script lang="ts">
-	import { Loader2, X, Plus } from 'lucide-svelte';
+	import { Loader2, X, Plus, Sparkles } from 'lucide-svelte';
 	import type { SmartListFilters } from '$lib/server/db/schema.js';
+
+	import { createEventDispatcher } from 'svelte';
 
 	interface Props {
 		mediaType: 'movie' | 'tv';
@@ -8,6 +10,10 @@
 	}
 
 	let { mediaType, filters = $bindable() }: Props = $props();
+
+	const dispatch = createEventDispatcher<{
+		sortByChange: { sortBy: string };
+	}>();
 
 	// Section collapse state
 	let openSections = $state<Set<string>>(new Set(['basic']));
@@ -35,6 +41,64 @@
 	let keywordResults = $state<Array<{ id: number; name: string }>>([]);
 	let searchingKeywords = $state(false);
 	let selectedKeywords = $state<Array<{ id: number; name: string; exclude: boolean }>>([]);
+
+	// Preset templates
+	interface FilterPreset {
+		id: string;
+		name: string;
+		description: string;
+		filters: Partial<SmartListFilters>;
+		sortBy: string;
+		appliesTo: ('movie' | 'tv')[];
+	}
+
+	const filterPresets: FilterPreset[] = [
+		{
+			id: 'popular',
+			name: 'Popular',
+			description: 'Most popular right now',
+			filters: {},
+			sortBy: 'popularity.desc',
+			appliesTo: ['movie', 'tv']
+		},
+		{
+			id: 'top-rated',
+			name: 'Top Rated',
+			description: 'Highest rated',
+			filters: { voteCountMin: 100 },
+			sortBy: 'vote_average.desc',
+			appliesTo: ['movie', 'tv']
+		},
+		{
+			id: 'new-releases',
+			name: 'New Releases',
+			description: 'Recently released',
+			filters: {},
+			sortBy: 'primary_release_date.desc',
+			appliesTo: ['movie']
+		},
+		{
+			id: 'new-episodes',
+			name: 'New Episodes',
+			description: 'Recently aired',
+			filters: {},
+			sortBy: 'first_air_date.desc',
+			appliesTo: ['tv']
+		}
+	];
+
+	let selectedPresetId = $state<string>('');
+
+	function applyPreset(presetId: string) {
+		const preset = filterPresets.find((p) => p.id === presetId);
+		if (!preset) return;
+
+		// Apply preset filters
+		filters = { ...preset.filters };
+
+		// Dispatch event to update sortBy in parent
+		dispatch('sortByChange', { sortBy: preset.sortBy });
+	}
 
 	function toggleSection(section: string) {
 		if (openSections.has(section)) {
@@ -293,6 +357,41 @@
 </script>
 
 <div class="space-y-3">
+	<!-- Quick Presets -->
+	{#if filterPresets.some((p) => p.appliesTo.includes(mediaType))}
+		<div class="rounded-lg border border-base-300 bg-base-100 p-4">
+			<div class="mb-3 flex items-center gap-2">
+				<Sparkles class="h-4 w-4 text-primary" />
+				<span class="font-medium">Quick Presets</span>
+			</div>
+			<div class="flex flex-wrap gap-2">
+				{#each filterPresets.filter((p) => p.appliesTo.includes(mediaType)) as preset (preset.id)}
+					<button
+						class="btn btn-sm {selectedPresetId === preset.id ? 'btn-primary' : 'btn-outline'}"
+						onclick={() => {
+							selectedPresetId = preset.id;
+							applyPreset(preset.id);
+						}}
+						title={preset.description}
+					>
+						{preset.name}
+					</button>
+				{/each}
+			</div>
+			{#if selectedPresetId}
+				<button
+					class="btn mt-2 btn-ghost btn-xs"
+					onclick={() => {
+						selectedPresetId = '';
+						filters = {};
+					}}
+				>
+					Clear Preset
+				</button>
+			{/if}
+		</div>
+	{/if}
+
 	<!-- Basic Filters -->
 	<div class="collapse-arrow collapse rounded-lg border border-base-300 bg-base-100">
 		<input

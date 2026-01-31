@@ -75,7 +75,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Create necessary directories with correct ownership (node user is UID 1000)
-RUN mkdir -p data logs && chown -R node:node data logs
+RUN mkdir -p /config/data /config/logs && chown -R node:node /config
 
 # Copy production dependencies and built artifacts from builder
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules
@@ -98,6 +98,9 @@ ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3000
 ENV FFPROBE_PATH=/usr/bin/ffprobe
+ENV DATA_DIR=/config/data
+ENV LOG_DIR=/config/logs
+ENV INDEXER_DEFINITIONS_PATH=/config/data/indexers/definitions
 
 # Expose the application port
 EXPOSE 3000
@@ -105,9 +108,6 @@ EXPOSE 3000
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1
-
-  # Run as non-root user (rootless) - node user is UID 1000
-USER node
 
 # Start the application
 ENTRYPOINT ["./docker-entrypoint.sh"]

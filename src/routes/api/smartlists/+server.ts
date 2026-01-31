@@ -68,7 +68,21 @@ const createSchema = z.object({
 	wantsSubtitles: z.boolean().optional(),
 	languageProfileId: z.string().optional(),
 	refreshIntervalHours: z.number().min(1).max(168).optional(),
-	enabled: z.boolean().optional()
+	enabled: z.boolean().optional(),
+	listSourceType: z
+		.enum(['tmdb-discover', 'external-json', 'trakt-list', 'custom-manual'])
+		.optional(),
+	externalSourceConfig: z
+		.object({
+			url: z.string().optional(),
+			headers: z.record(z.string(), z.unknown()).optional(),
+			listId: z.string().optional(),
+			username: z.string().optional()
+		})
+		.optional(),
+	presetId: z.string().optional(),
+	presetProvider: z.string().optional(),
+	presetSettings: z.record(z.string(), z.unknown()).optional()
 });
 
 export const GET: RequestHandler = async () => {

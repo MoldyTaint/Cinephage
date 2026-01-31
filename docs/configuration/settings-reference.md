@@ -125,8 +125,7 @@ services:
     ports:
       - '${CINEPHAGE_PORT:-3000}:3000'
     volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
+      - ./config:/config
       - ${CINEPHAGE_MEDIA_PATH}:/media
     environment:
       - ORIGIN=${CINEPHAGE_ORIGIN:-http://localhost:3000}

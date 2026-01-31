@@ -34,6 +34,7 @@ export type SmartListSortBy =
 export type AutoAddBehavior = 'disabled' | 'add_only' | 'add_and_search';
 export type SmartListMediaType = 'movie' | 'tv';
 export type RefreshStatus = 'running' | 'success' | 'partial' | 'failed';
+export type ListSourceType = 'tmdb-discover' | 'external-json' | 'trakt-list' | 'custom-manual';
 
 export interface CreateSmartListInput {
 	name: string;
@@ -54,6 +55,16 @@ export interface CreateSmartListInput {
 	languageProfileId?: string;
 	refreshIntervalHours?: number;
 	enabled?: boolean;
+	listSourceType?: ListSourceType;
+	externalSourceConfig?: {
+		url?: string;
+		headers?: Record<string, unknown>;
+		listId?: string;
+		username?: string;
+	};
+	presetId?: string;
+	presetProvider?: string;
+	presetSettings?: Record<string, unknown>;
 }
 
 export interface UpdateSmartListInput {
@@ -74,6 +85,16 @@ export interface UpdateSmartListInput {
 	languageProfileId?: string | null;
 	refreshIntervalHours?: number;
 	enabled?: boolean;
+	listSourceType?: ListSourceType;
+	externalSourceConfig?: {
+		url?: string;
+		headers?: Record<string, unknown>;
+		listId?: string;
+		username?: string;
+	};
+	presetId?: string;
+	presetProvider?: string;
+	presetSettings?: Record<string, unknown>;
 }
 
 export interface RefreshResult {

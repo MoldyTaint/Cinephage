@@ -90,12 +90,12 @@ For Docker installations:
 
 ```bash
 # Backup data directory
-docker exec cinephage sqlite3 /app/data/cinephage.db ".backup /app/data/backup.db"
-cp ./data/backup.db /backup/cinephage-$(date +%Y%m%d).db
-rm ./data/backup.db
+docker exec cinephage sqlite3 /config/data/cinephage.db ".backup /config/data/backup.db"
+cp ./config/data/backup.db /backup/cinephage-$(date +%Y%m%d).db
+rm ./config/data/backup.db
 
 # Or copy directly
-cp ./data/cinephage.db /backup/cinephage-$(date +%Y%m%d).db
+cp ./config/data/cinephage.db /backup/cinephage-$(date +%Y%m%d).db
 ```
 
 ---

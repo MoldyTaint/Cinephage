@@ -1,0 +1,17 @@
+---
+provider: tmdb-list
+name: TMDb List
+description: Import movies from a specific TMDb list by ID
+icon: list
+baseUrl: https://api.themoviedb.org/3
+
+# No presets - user provides their own list ID
+presets: []
+
+# Settings schema for this provider
+settings:
+  - name: listId
+    label: List ID
+    type: string
+    required: true
+    helpText: "TMDb list ID (e.g., '12345' from https://www.themoviedb.org/list/12345)"

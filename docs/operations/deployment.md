@@ -91,40 +91,34 @@ deploy:
 
 1. **Add Flake to System Configuration**
 
-   Edit your `/etc/nixos/configuration.nix` to include the Cinephage flake:
+   Include the flake
 
    ```nix
-   {
-     description = "My NixOS System";
+   inputs.cinephage.url = "github:MoldyTaint/Cinephage";
+   ```
 
-     inputs = {
-       nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-       cinephage.url = "github:MoldyTaint/Cinephage";
+   And this to your system config
+
+   ```nix
+   # Import the Cinephage NixOS module
+   imports = [ self.inputs.cinephage.nixosModules.default ];
+
+   # Enable Cinephage service
+   services.cinephage = {
+     enable = true;
+     ffmpeg.enable = true;
+     media = [
+        "/media/movies"
+        "/media/series"
+        "/media/Downloads"
+     ];
+
+     # Optional: Configure media paths
+     environment = {
+       MEDIA_PATH = "/path/to/your/media";
+       # Override any default settings if needed
      };
-
-     outputs = { self, nixpkgs, ... }: {
-       nixosConfigurations = {
-         my-host = nixpkgs.lib.nixosSystem {
-           system.stateVersion = "24.11";
-
-           # Import the Cinephage NixOS module
-           imports = [ self.inputs.cinephage.nixosModules.default ];
-
-           # Enable Cinephage service
-           services.cinephage = {
-             enable = true;
-             ffmpeg.enable = true;
-
-             # Optional: Configure media paths
-             environment = {
-               MEDIA_PATH = "/path/to/your/media";
-               # Override any default settings if needed
-             };
-           };
-         };
-       };
-     };
-   }
+   };
    ```
 
 ---

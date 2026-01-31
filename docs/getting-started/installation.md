@@ -72,6 +72,21 @@ All settings go in `.env`. All Docker variables use the `CINEPHAGE_` prefix:
 | `CINEPHAGE_ORIGIN`     | No       | http://localhost:3000 | Your access URL               |
 | `CINEPHAGE_TZ`         | No       | UTC                   | Timezone                      |
 
+Data, configuration, and logs are stored under `/config` in the container. Mount a host directory to `/config` to persist them. Avoid mounting `/app`, which contains the application files.
+
+> **Upgrade note:** If you previously mounted `/app/data` and `/app/logs`, run one start with both the old mounts **and** `/config` mounted. The entrypoint will copy existing data/logs into `/config`, then you can remove the old mounts. If migration fails due to permissions, rerun once as root (`user: 0:0` or `--user 0:0`) and set `PUID`/`PGID`.
+
+#### Entrypoint Ownership (Advanced)
+
+These variables are read directly by the container entrypoint (no `CINEPHAGE_` prefix). They only take effect when the container starts as root (for example, no `user:` flag in Compose or `--user` in `docker run`).
+
+| Variable | Required | Default | Description                 |
+| -------- | -------- | ------- | --------------------------- |
+| `PUID`   | No       | 1000    | Runtime user ID to drop to  |
+| `PGID`   | No       | 1000    | Runtime group ID to drop to |
+
+At startup, the entrypoint ensures ownership for `/config` and `/home/node/.cache` matches the runtime UID/GID, which covers config/data/logs and cached browser downloads.
+
 ### Using Docker Run
 
 When using `docker run` directly, pass the application variables (`ORIGIN`, `TZ`) since there's no `.env` file:
@@ -82,8 +97,7 @@ docker run -d \
   --restart unless-stopped \
   --user 1000:1000 \
   -p 3000:3000 \
-  -v ./data:/app/data \
-  -v ./logs:/app/logs \
+  -v ./config:/config \
   -v /path/to/your/media:/media \
   -e ORIGIN=http://localhost:3000 \
   -e TZ=UTC \
@@ -91,6 +105,91 @@ docker run -d \
 ```
 
 > **Note:** The `CINEPHAGE_*` prefix is only used in `.env` files for Docker Compose. When using `docker run`, pass the actual application variables (`ORIGIN`, `TZ`) directly.
+>
+> If you need the entrypoint to fix ownership on bind mounts, start the container as root (omit `--user`) and set `PUID`/`PGID`.
+
+### Synology NAS Users
+
+Synology's Docker implementation has a known quirk with the `HOME` directory environment variable that can cause installation failures. When using the user: flag with a custom UID/GID, Synology doesn't properly preserve the container's HOME directory, leading to permission errors during Camoufox installation.
+
+#### Recommended Configuration Options
+
+> **Note:** Ensure all bind-mounted directories exist and have proper permissions before starting the container.
+
+##### Option 1: Run as Default 1000:1000 User (Recommended)
+
+The container automatically runs as UID/GID `1000:1000` by default. For this option, do **not** set a `user:` flag **and** do **not** define `PUID`/`PGID` environment variables; simply rely on the built-in user.
+
+> **Note:** Synology uses its own ACL system that doesn't translate directly to Unix permissions. Even if you pass your Synology UID/GID or PUID/PGID via environment variables, the container will still effectively run as `1000:1000` inside the container due to permission mapping quirks.
+
+```yml
+services:
+  cinephage:
+    image: ghcr.io/moldytaint/cinephage:latest
+    container_name: cinephage
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - 3000:3000
+    environment:
+      - TZ=America/New_York
+      - ORIGIN=http://localhost:3000
+    volumes:
+      - /volume1/docker/cinephage/config:/config
+      - /volume1/docker/media:/media
+      - /volume1/docker/downloads:/downloads
+```
+
+##### Option 2: Run with Specific User Flag
+
+If you prefer using the `user:` flag, your options are limited to `0:0` (root) or `1000:1000` (non-root). The container will automatically downgrade to the non-root user `1000:1000` at runtime even if you set the user flag to `0:0`.
+
+```yml
+services:
+  cinephage:
+    image: ghcr.io/moldytaint/cinephage:latest
+    container_name: cinephage
+    restart: unless-stopped
+    user: 1000:1000
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - 3000:3000
+    environment:
+      - TZ=America/New_York
+      - ORIGIN=http://localhost:3000
+    volumes:
+      - /volume1/docker/cinephage/config:/config
+      - /volume1/docker/media:/media
+      - /volume1/docker/downloads:/downloads
+```
+
+##### Option 3: Root User with Custom Synology UID/GID
+
+This workaround starts the container as root (allowing the entrypoint script to run properly) then safely downgrades to your specified Synology UID/GID.
+
+```yml
+services:
+  cinephage:
+    image: ghcr.io/moldytaint/cinephage:latest
+    container_name: cinephage
+    restart: unless-stopped
+    user: 0:0
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - 3000:3000
+    environment:
+      - PUID=1026 # Your Synology user ID
+      - PGID=100 # Your Synology group ID
+      - TZ=America/New_York
+      - ORIGIN=http://localhost:3000
+    volumes:
+      - /volume1/docker/cinephage/config:/config
+      - /volume1/docker/media:/media
+      - /volume1/docker/downloads:/downloads
+```
 
 ### Building from Source
 

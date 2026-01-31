@@ -152,6 +152,23 @@
 							{#if list.autoAddBehavior !== 'disabled'}
 								<div class="badge badge-outline badge-info">Auto-add</div>
 							{/if}
+							{#if list.listSourceType === 'external-json'}
+								{#if list.presetProvider === 'imdb-list'}
+									<div class="badge badge-outline badge-secondary">IMDb</div>
+								{:else if list.presetProvider === 'tmdb-list'}
+									<div class="badge badge-outline badge-primary">TMDB List</div>
+								{:else if list.presetProvider === 'stevenlu'}
+									<div class="badge badge-outline badge-success">StevenLu</div>
+								{:else}
+									<div class="badge badge-outline badge-secondary">External</div>
+								{/if}
+							{:else if list.listSourceType === 'trakt-list'}
+								<div class="badge badge-outline badge-accent">Trakt</div>
+							{:else if list.listSourceType === 'custom-manual'}
+								<div class="badge badge-outline badge-warning">Custom</div>
+							{:else if list.listSourceType === 'tmdb-discover'}
+								<div class="badge badge-outline badge-primary">TMDB Discover</div>
+							{/if}
 						</div>
 
 						<div class="divider my-2"></div>
