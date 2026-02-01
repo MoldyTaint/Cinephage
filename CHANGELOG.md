@@ -29,7 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Clear failed downloads** - Bulk remove failed items from download queue with confirmation modal
 - **Newznab protocol** - Generic usenet indexer integration with dynamic capability discovery
 - **NZB validation service** - XML structure validation and metadata extraction
-- **TV subtitle path fix script** - Script to correct misplaced TV subtitle paths (`fix-tv-subtitle-paths.ts`)
+- **TV subtitle path fix script** - Script to correct misplaced TV subtitle paths (`scripts/fix-tv-subtitle-paths.js`)
 - **Unified indexer architecture** - YAML-only design with protocol handlers (torrent/usenet/streaming)
 - **Dynamic capability discovery** - Fetches `/api?t=caps` at indexer creation to determine supported search parameters
 - **Streaming infrastructure** - Circuit breaker, health monitoring, multi-level caching
