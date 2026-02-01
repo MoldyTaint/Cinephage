@@ -1,0 +1,151 @@
+---
+# LimeTorrents Public Torrent Indexer
+# Based on Prowlarr community definition, adapted for Cinephage
+id: limetorrents
+name: LimeTorrents
+description: LimeTorrents is a Public general torrent index with mostly verified torrents
+language: en-US
+type: public
+encoding: UTF-8
+protocol: torrent
+requestdelay: 2
+
+links:
+  - https://www.limetorrents.fun/
+  - https://limetorrents.unblockninja.com/
+  - https://limetorrents.proxyninja.org/
+
+legacylinks:
+  - https://www.limetorrents.lol/
+  - https://limetorrents.mrunblock.bond/
+  - https://limetorrents.nocensor.cloud/
+
+settings:
+  - name: downloadlink
+    type: select
+    label: Download link
+    default: 'magnet:'
+    options:
+      'magnet:': Magnet Link
+      'https://itorrents.net/': iTorrents.net (.torrent)
+  - name: downloadlink2
+    type: select
+    label: Download link (fallback)
+    default: 'https://itorrents.net/'
+    options:
+      'https://itorrents.net/': iTorrents.net (.torrent)
+      'magnet:': Magnet Link
+  - name: info_download
+    type: info
+    label: About Download Links
+    default: 'The .torrent download links on this site can sometimes fail. Set a fallback option to automatically try an alternate source.'
+  - name: sort
+    type: select
+    label: Sort results by
+    default: date
+    options:
+      date: Upload Date
+      seeds: Seeders
+      size: Size
+
+caps:
+  categories:
+    '2000': Movies
+    '5000': TV
+    '5070': TV/Anime
+
+  categorymappings:
+    - id: Movies
+      cat: '2000'
+      desc: Movies
+      default: true
+    - id: 'TV shows'
+      cat: '5000'
+      desc: TV Shows
+    - id: Anime
+      cat: '5070'
+      desc: Anime
+
+  modes:
+    search: [q]
+    tv-search: [q, season, ep]
+    movie-search: [q]
+
+download:
+  # Download URL points to details page - extract actual download link from there
+  selectors:
+    - selector: a.csprite_dltorrent[href^="{{ .Config.downloadlink }}"]
+      attribute: href
+    - selector: a.csprite_dltorrent[href^="{{ .Config.downloadlink2 }}"]
+      attribute: href
+
+search:
+  paths:
+    - path: '{{ if .Keywords }}search/all/{{ .Keywords }}/{{ .Config.sort }}/1/{{ else }}latest100{{ end }}'
+
+  keywordsfilters:
+    # Remove orphan season tags without episode (e.g., "S01" but not "S01E01")
+    - name: re_replace
+      args: ['S[0-9]{2}([^E]|$)', '']
+
+  rows:
+    # No tbody in HTML - select rows with itorrents links (real results, not sponsored)
+    selector: .table2 tr[bgcolor]:has(a[href*="itorrents"])
+
+  fields:
+    # Title from link text (preserves formatting like WEB-DL, H.264-BLOOM, etc.)
+    title:
+      selector: div.tt-name > a[href^="/"]
+
+    # Derived field to detect TV shows by S##E## pattern
+    category_is_tv_show:
+      text: '{{ .Result.title }}'
+      filters:
+        - name: regexp
+          args: '\b(S\d+(?:E\d+)?)\b'
+
+    # Category from page text, with fallback based on TV detection
+    category:
+      selector: td:nth-child(2)
+      optional: true
+      default: '{{ if .Result.category_is_tv_show }}TV shows{{ else }}Movies{{ end }}'
+      filters:
+        - name: regexp
+          args: ' in (.+?)[.]?$'
+
+    details:
+      selector: div.tt-name > a[href^="/"]
+      attribute: href
+
+    # Download points to details page - actual URL extracted via download.selectors
+    download:
+      selector: div.tt-name > a[href^="/"]
+      attribute: href
+
+    # Date parsing: "4 days ago - in Movies" -> "4 days ago"
+    date:
+      selector: td:nth-child(2)
+      filters:
+        - name: split
+          args: ['-', '0']
+        - name: replace
+          args: ['Last Month', '1 month ago']
+        - name: replace
+          args: ['+', ' ago']
+        - name: fuzzytime
+
+    size:
+      selector: td:nth-child(3)
+
+    seeders:
+      selector: .tdseed
+
+    leechers:
+      selector: .tdleech
+
+    # Public tracker - always free to download/upload
+    downloadvolumefactor:
+      text: '0'
+
+    uploadvolumefactor:
+      text: '1'

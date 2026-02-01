@@ -28,7 +28,7 @@ settings:
   - name: info_cookie
     type: info_cookie
     label: How to get these values
-    default: 'Login to SceneTime in your browser -> Open DevTools (F12) -> Network tab -> Refresh page -> Click any request -> Find "Cookie:" header -> Copy the uid and pass values. Do NOT include cf_clearance - the captcha solver handles Cloudflare automatically.'
+    default: 'Login to SceneTime in your browser -> Open DevTools (F12) -> Application/Storage tab -> Cookies -> scenetime.com -> Copy the "uid" and "pass" values separately. Do NOT include cf_clearance - the captcha solver handles Cloudflare automatically.'
   - name: freeleech
     type: checkbox
     label: Search freeleech only
