@@ -51,9 +51,19 @@ Yes. A free API key is required. Get one at [themoviedb.org/settings/api](https:
 
 ### How do I change the port?
 
-Edit `.env`:
+**If using Docker Compose with `env_file`:** Edit `.env` and set `PORT=8080`
 
+**If using Docker Compose with environment variables in the compose file:** Change the value directly in `docker-compose.yaml`:
+
+```yaml
+environment:
+  - PORT=8080
 ```
+
+**If running without Docker (manual npm/node install):** Set `PORT` in `.env`:
+
+```bash
+# In .env file
 PORT=8080
 ```
 
@@ -91,6 +101,27 @@ Not recommended. SQLite doesn't handle multiple writers well.
 2. Check file extensions are supported (.mkv, .mp4, .avi)
 3. Trigger manual scan in Settings
 4. Check logs for errors
+
+### Why aren't downloads being imported?
+
+**Most common issue:** Download directory not mounted to Cinephage container.
+
+**Solution:**
+
+1. Ensure `/downloads` (or your download path) is mounted in `docker-compose.yaml`:
+   ```yaml
+   volumes:
+     - /path/to/downloads:/downloads
+   ```
+2. Verify the path matches your download client's output directory
+3. Check both containers can access the same files:
+   ```bash
+   docker exec cinephage ls /downloads
+   docker exec qbittorrent ls /downloads
+   ```
+4. Configure path mapping if container paths differ (Settings > Download Clients)
+
+See [Download Clients Configuration](../configuration/download-clients.md#docker-volume-requirements) for detailed setup.
 
 ### How does file matching work?
 

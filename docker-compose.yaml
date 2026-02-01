@@ -1,14 +1,7 @@
 # =============================================================================
 # Cinephage Docker Compose
 # =============================================================================
-#
-# Quick Start:
-#   1. Copy .env.example to .env and edit your settings
-#   2. Run: docker compose up -d
-#   3. Open: http://localhost:3000
-#
-# All settings have sensible defaults. Only CINEPHAGE_MEDIA_PATH is required.
-#
+# Official image: ghcr.io/moldytaint/cinephage:latest
 # To build from source instead of pulling the image:
 #   Uncomment "build: ." and comment out "image:" below
 # =============================================================================
@@ -20,37 +13,16 @@ services:
     container_name: cinephage
     restart: unless-stopped
     init: true # Use tini to prevent zombie browser processes
-
-    # -------------------------------------------------------------------------
-    # USER PERMISSIONS
-    # Run as your user to avoid file permission issues
-    # Find your IDs with: id -u && id -g
-    # Set via: CINEPHAGE_UID and CINEPHAGE_GID in .env
-    # -------------------------------------------------------------------------
-    user: '${CINEPHAGE_UID:-1000}:${CINEPHAGE_GID:-1000}'
-
     security_opt:
       - no-new-privileges:true
-
-    # -------------------------------------------------------------------------
-    # PORT
-    # Default: 3000. Override with CINEPHAGE_PORT in .env
-    # -------------------------------------------------------------------------
     ports:
-      - '${CINEPHAGE_PORT:-3000}:3000'
-
-    # -------------------------------------------------------------------------
-    # VOLUMES
-    # -------------------------------------------------------------------------
-    volumes:
-      - ./config:/config # App data, config, and logs (auto-created)
-      - ${CINEPHAGE_MEDIA_PATH:?Set CINEPHAGE_MEDIA_PATH in .env}:/media # Your media library
-
-    # -------------------------------------------------------------------------
-    # ENVIRONMENT
-    # -------------------------------------------------------------------------
+      - '3000:3000'
     environment:
-      # Required if accessing via IP/hostname other than localhost
-      - ORIGIN=${CINEPHAGE_ORIGIN:-http://localhost:3000}
-      # Timezone for scheduled tasks (timedatectl list-timezones)
-      - TZ=${CINEPHAGE_TZ:-UTC}
+      - PUID=1000 # Your user ID (run: id -u)
+      - PGID=1000 # Your group ID (run: id -g)
+      - TZ=UTC # Your timezone
+      - ORIGIN=http://localhost:3000 # Your access URL (required if using IP/FQDN)
+    volumes:
+      - ./config:/config
+      - /path/to/media:/media # REQUIRED: Your media library
+      - /path/to/downloads:/downloads # REQUIRED: Download client output folder

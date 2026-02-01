@@ -6,32 +6,28 @@ Complete reference for all environment variables supported by Cinephage.
 
 ## Docker-Specific Variables
 
-These variables use the `CINEPHAGE_` prefix when passed to Docker, but the prefix is stripped internally.
-
-| Variable               | Description                  | Default               | Required |
-| ---------------------- | ---------------------------- | --------------------- | -------- |
-| `CINEPHAGE_MEDIA_PATH` | Path to your media library   | -                     | **Yes**  |
-| `CINEPHAGE_PORT`       | HTTP port to listen on       | 3000                  | No       |
-| `CINEPHAGE_UID`        | User ID to run as            | 1000                  | No       |
-| `CINEPHAGE_GID`        | Group ID to run as           | 1000                  | No       |
-| `CINEPHAGE_ORIGIN`     | External URL (with protocol) | http://localhost:3000 | No       |
-| `CINEPHAGE_TZ`         | Timezone                     | UTC                   | No       |
+| Variable | Description                   | Default               | Required |
+| -------- | ----------------------------- | --------------------- | -------- |
+| `PORT`   | HTTP port to listen on        | 3000                  | No       |
+| `PUID`   | User ID for file permissions  | 1000                  | No       |
+| `PGID`   | Group ID for file permissions | 1000                  | No       |
+| `ORIGIN` | External URL (with protocol)  | http://localhost:3000 | No       |
+| `TZ`     | Timezone                      | UTC                   | No       |
 
 ### Example Docker Compose
 
 ```yaml
 environment:
-  CINEPHAGE_MEDIA_PATH: /media
-  CINEPHAGE_PORT: 3000
-  CINEPHAGE_UID: 1000
-  CINEPHAGE_GID: 1000
-  CINEPHAGE_ORIGIN: http://192.168.1.100:3000
-  CINEPHAGE_TZ: America/New_York
+  PORT: 3000
+  PUID: 1000
+  PGID: 1000
+  ORIGIN: http://192.168.1.100:3000
+  TZ: America/New_York
 ```
 
 ---
 
-## Server Configuration
+## Server Configuration (Manual Install)
 
 | Variable   | Description                | Default               |
 | ---------- | -------------------------- | --------------------- |
@@ -294,27 +290,22 @@ SHUTDOWN_TIMEOUT=30
 services:
   cinephage:
     image: ghcr.io/moldytaint/cinephage:latest
+    ports:
+      - '3000:3000'
     environment:
-      # Required
-      CINEPHAGE_MEDIA_PATH: /media
-
       # Server
       ORIGIN: http://192.168.1.100:3000
       TZ: America/New_York
-
       # Workers (tuned for 4GB RAM)
       WORKER_MAX_STREAMS: 5
       WORKER_MAX_IMPORTS: 3
       WORKER_MAX_SCANS: 1
-
       # Streaming
       PROXY_FETCH_TIMEOUT_MS: 60000
-
     volumes:
       - ./config:/config
       - /path/to/media:/media
-    ports:
-      - '3000:3000'
+      - /path/to/downloads:/downloads
 ```
 
 ---
@@ -323,10 +314,15 @@ services:
 
 Variables are loaded in this order (later overrides earlier):
 
-1. **Default values** — Hardcoded defaults
-2. **.env file** — Loaded from project root
-3. **Environment** — System environment variables
-4. **Docker env** — Docker-specific variables (CINEPHAGE\_\* prefix stripped)
+1. **Default values** — Hardcoded application defaults
+2. **.env file** — Loaded automatically when running manually with npm/node, or in Docker Compose when using `env_file` directive or mounting the file
+3. **Environment variables** — System environment variables or those passed directly via Docker Compose `environment:` section or `docker run -e`
+
+**Note for Docker users:**
+
+- If using `env_file: .env` in `docker-compose.yml`, the `.env` file is loaded into the container
+- If passing variables directly via `environment:` in the compose file or `-e` flags in `docker run`, those take precedence over `.env`
+- The `.env` file is NOT automatically available inside the container unless explicitly mounted or loaded via `env_file`
 
 ---
 

@@ -24,8 +24,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Subtitle search on import** - Triggers automatic subtitle search when media files are imported
 - **OldToons.World indexer** - Private UNIT3D tracker for classic animated content with API key authentication
 - **SABnzbd download client** - Full usenet downloader support with queue/history monitoring
+- **NZB-Mount download client** - WebDAV-mounted NZB streaming with STRM/Symlink import support and mount modes (nzbdav/altmount)
+- **Download client URL base support** - Optional URL base configuration for reverse proxy setups
+- **Clear failed downloads** - Bulk remove failed items from download queue with confirmation modal
 - **Newznab protocol** - Generic usenet indexer integration with dynamic capability discovery
 - **NZB validation service** - XML structure validation and metadata extraction
+- **TV subtitle path fix script** - Script to correct misplaced TV subtitle paths (`fix-tv-subtitle-paths.ts`)
 - **Unified indexer architecture** - YAML-only design with protocol handlers (torrent/usenet/streaming)
 - **Dynamic capability discovery** - Fetches `/api?t=caps` at indexer creation to determine supported search parameters
 - **Streaming infrastructure** - Circuit breaker, health monitoring, multi-level caching
@@ -38,17 +42,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- **BREAKING: Docker environment variables renamed to CINEPHAGE\_\* prefix** - All Docker Compose `.env` variables now use the `CINEPHAGE_` prefix for consistency and to avoid conflicts with other services. Update your `.env` file:
-  - `MEDIA_PATH` → `CINEPHAGE_MEDIA_PATH`
-  - `PUID` → `CINEPHAGE_UID`
-  - `PGID` → `CINEPHAGE_GID`
-  - `PORT` → `CINEPHAGE_PORT`
-  - `ORIGIN` → `CINEPHAGE_ORIGIN`
-  - `TZ` → `CINEPHAGE_TZ`
 - **Docker base image changed from Alpine to Debian** - Required for Camoufox browser support. Existing users should pull the new image and recreate containers. See [Migration Notes](#migration-notes) below.
 - **Unified Tasks page** - Consolidated monitoring settings into Settings > Tasks (removed separate Monitoring page)
 - **CutoffUnmet task** - Now specifically targets items below quality cutoff (daily frequency)
 - **Upgrade task** - Now searches ALL items for potential upgrades, not just below cutoff (weekly frequency)
+- **Standardized library/discover routes** - Library moved to `/library/movies` and `/library/tv`, discover details to `/discover/movie/:id` and `/discover/tv/:id`, with legacy redirects from old paths
+- **Subtitle search on import** - Automatically triggers subtitle search when movies/episodes are imported to library
+- **Library deletion UX** - Immediate status updates on file/media deletion without page refresh, auto-redirect to library lists after removal
+- **Mobile UI responsiveness** - Activity table mobile card view, live TV channel search in modal, improved responsive layouts across all pages
+- **Series monitoring locked state** - Disabled season/episode monitoring toggles when parent series is unmonitored, with visual lock indicators and status banners
 - **Subtitle task activity** - MissingSubtitles and SubtitleUpgrade tasks now record detailed per-item history
 - RequestBuilder now recognizes `name` and `search` as valid search parameters (for UNIT3D trackers)
 - Migrated from native TypeScript indexers to YAML-only definitions
@@ -80,11 +82,57 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Svelte state warnings** - Fixed TaskCard and IntervalEditor components capturing initial prop values
 - **Language profile assignment** - Fixed default language profile not being assigned when adding media with subtitles enabled (query pattern issue)
 - **Subf2m subtitle provider** - Updated CSS selectors to match current site structure
-
+- **Docker entrypoint syntax** - Fixed shell script syntax error in docker-entrypoint.sh
+- **Docker USER directive** - Removed conflicting USER directive for proper entrypoint privilege dropping
+- **Activity table links** - Fixed paths from `/movies/{id}` to `/library/movie/{id}` and `/tv/{id}` to `/library/tv/{id}`
+- **Queue client filter** - Fixed queue and history client filtering behavior on mobile
+- **Series monitor icon** - Fixed series header icon to update instantly on monitor toggle without page refresh
+- **NPM memory leak prevention** - Added `.npmrc` settings and Docker memory limits to prevent build failures
 - HLS streams starting from end instead of beginning (missing VOD markers)
 - HLS segment detection for providers using obfuscated URLs with fake extensions
 
 ### Migration Notes
+
+#### Volume Mount Change (/app/data → /config)
+
+**BREAKING CHANGE:** Docker volume mounts have been consolidated to a single `/config` directory to avoid mounting `/app` and reduce the risk of overwriting application files.
+
+**What changed:**
+
+- Old: `./data:/app/data` and `./logs:/app/logs`
+- New: `./config:/config` (single mount for data, logs, and indexer definitions)
+
+**Automatic migration:**
+
+If you previously used `/app/data` and `/app/logs` mounts, the entrypoint script will automatically migrate your data when you add the `/config` mount alongside the old mounts:
+
+1. Update your `docker-compose.yaml` to add `/config` mount (keep old mounts temporarily):
+
+   ```yaml
+   volumes:
+     - ./config:/config # NEW: Add this
+     - ./data:/app/data # Keep temporarily
+     - ./logs:/app/logs # Keep temporarily
+     - ${CINEPHAGE_MEDIA_PATH}:/media
+   ```
+
+2. Start container - migration happens automatically:
+
+   ```bash
+   docker compose up -d
+   docker compose logs cinephage | grep -i migrat
+   ```
+
+3. After successful migration, remove old mounts:
+   ```yaml
+   volumes:
+     - ./config:/config # Keep only this
+     - ${CINEPHAGE_MEDIA_PATH}:/media
+   ```
+
+**If migration fails due to permissions:** Run container once as root with `user: 0:0` and set `PUID`/`PGID` environment variables. See [Troubleshooting Guide](docs/support/troubleshooting.md#migration-from-legacy-appdata-and-applogs-mounts).
+
+**Your data is safe:** The migration copies (not moves) your data, so your original files remain untouched until you remove the old mounts.
 
 #### Docker Image Change (Alpine to Debian)
 
