@@ -113,7 +113,8 @@ If you previously used `/app/data` and `/app/logs` mounts, the entrypoint script
      - ./config:/config # NEW: Add this
      - ./data:/app/data # Keep temporarily
      - ./logs:/app/logs # Keep temporarily
-     - ${CINEPHAGE_MEDIA_PATH}:/media
+     - /path/to/media:/media # REQUIRED: Your media library
+     - /path/to/downloads:/downloads # REQUIRED: Download client output folder
    ```
 
 2. Start container - migration happens automatically:
@@ -127,7 +128,8 @@ If you previously used `/app/data` and `/app/logs` mounts, the entrypoint script
    ```yaml
    volumes:
      - ./config:/config # Keep only this
-     - ${CINEPHAGE_MEDIA_PATH}:/media
+     - /path/to/media:/media # REQUIRED: Your media library
+     - /path/to/downloads:/downloads # REQUIRED: Download client output folder
    ```
 
 **If migration fails due to permissions:** Run container once as root with `user: 0:0` and set `PUID`/`PGID` environment variables. See [Troubleshooting Guide](docs/support/troubleshooting.md#migration-from-legacy-appdata-and-applogs-mounts).
