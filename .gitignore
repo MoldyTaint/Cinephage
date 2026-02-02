@@ -73,3 +73,6 @@ result
 
 # Local compose files
 cine-local.yaml
+
+# Docs
+docs/notes/

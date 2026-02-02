@@ -65,6 +65,7 @@ Running Cinephage in production:
 | ------------------------------------------------ | ------------------------------------ |
 | [Deployment](operations/deployment.md)           | Docker, systemd, reverse proxy, SSL  |
 | [Backup & Restore](operations/backup-restore.md) | Database backup and recovery         |
+| [Migration](operations/migration.md)             | Upgrading from older versions        |
 | [Updating](operations/updating.md)               | Update procedures and best practices |
 
 ---

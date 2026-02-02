@@ -17,11 +17,18 @@ Get Cinephage up and running with Docker (recommended) or manual installation.
 
 ### System
 
-| Resource | Minimum          | Recommended      |
-| -------- | ---------------- | ---------------- |
-| RAM      | 512 MB           | 1 GB             |
-| Disk     | 100 MB + library | 500 MB + library |
-| CPU      | 1 core           | 2+ cores         |
+| Resource | Docker (Min) | Docker (Recommended) | Manual Install (Min) | Manual Install (Recommended) |
+| -------- | ------------ | -------------------- | -------------------- | ---------------------------- |
+| RAM      | 512 MB       | 1 GB                 | 1 GB                 | 2 GB                         |
+| Disk     | 500 MB       | 2 GB                 | 2 GB                 | 4 GB                         |
+| CPU      | 1 core       | 2+ cores             | 1 core               | 2+ cores                     |
+
+**Disk space breakdown:**
+
+- **Docker:** Image (~220MB) + database + logs + cache + Camoufox (~80MB)
+- **Manual:** node_modules (~500-800MB) + build artifacts + database + logs + cache + Camoufox
+
+> **Note:** Disk space above is for Cinephage itself. Your media library and downloads are stored separately and mounted/accessed by the application.
 
 ---
 
@@ -31,46 +38,58 @@ Docker provides the simplest setup and automatic updates.
 
 ### Quick Start
 
-1. Download the files:
+Create a `docker-compose.yaml` file:
 
-   ```bash
-   mkdir cinephage && cd cinephage
-   curl -O https://raw.githubusercontent.com/MoldyTaint/cinephage/main/docker-compose.yaml
-   curl -O https://raw.githubusercontent.com/MoldyTaint/cinephage/main/.env.example
-   ```
+```yaml
+services:
+  cinephage:
+    image: ghcr.io/moldytaint/cinephage:latest
+    container_name: cinephage
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - '3000:3000'
+    environment:
+      - PUID=1000 # Your user ID (run: id -u)
+      - PGID=1000 # Your group ID (run: id -g)
+      - TZ=UTC # Your timezone
+      - ORIGIN=http://localhost:3000 # Your access URL (required if using IP/FQDN)
+    volumes:
+      - ./config:/config
+      - /path/to/media:/media # REQUIRED: Your media library
+      - /path/to/downloads:/downloads # REQUIRED: Download client output folder
+```
 
-2. Create your configuration:
+Start Cinephage:
 
-   ```bash
-   cp .env.example .env
-   ```
+```bash
+docker compose up -d
+```
 
-3. Edit `.env` and set your media path:
+Open http://localhost:3000 and follow the setup wizard.
 
-   ```bash
-   CINEPHAGE_MEDIA_PATH=/path/to/your/media
-   ```
+### Configuration Reference
 
-4. Start Cinephage:
+All configuration is done via environment variables in `docker-compose.yaml`:
 
-   ```bash
-   docker compose up -d
-   ```
+| Variable | Required | Default               | Description                                 |
+| -------- | -------- | --------------------- | ------------------------------------------- |
+| `PORT`   | No       | 3000                  | Port to expose/listen on                    |
+| `PUID`   | No       | 1000                  | User ID for file permissions                |
+| `PGID`   | No       | 1000                  | Group ID for file permissions               |
+| `TZ`     | No       | UTC                   | Timezone (e.g., America/New_York)           |
+| `ORIGIN` | No       | http://localhost:3000 | Your access URL (required if using IP/FQDN) |
 
-Open http://localhost:3000
+**Volume Mounts:**
 
-### Configuration Options
+| Path         | Required | Description                                  |
+| ------------ | -------- | -------------------------------------------- |
+| `/config`    | Yes      | App data, database, and logs                 |
+| `/media`     | Yes      | Your media library                           |
+| `/downloads` | Yes      | Download client output (for importing files) |
 
-All settings go in `.env`. All Docker variables use the `CINEPHAGE_` prefix:
-
-| Variable               | Required | Default               | Description                   |
-| ---------------------- | -------- | --------------------- | ----------------------------- |
-| `CINEPHAGE_MEDIA_PATH` | Yes      | -                     | Path to your media library    |
-| `CINEPHAGE_UID`        | No       | 1000                  | User ID for file permissions  |
-| `CINEPHAGE_GID`        | No       | 1000                  | Group ID for file permissions |
-| `CINEPHAGE_PORT`       | No       | 3000                  | Port to expose                |
-| `CINEPHAGE_ORIGIN`     | No       | http://localhost:3000 | Your access URL               |
-| `CINEPHAGE_TZ`         | No       | UTC                   | Timezone                      |
+> **Important:** Both Cinephage and your download client must mount the same download directory. See [Download Clients Configuration](../configuration/download-clients.md#docker-volume-requirements).
 
 Data, configuration, and logs are stored under `/config` in the container. Mount a host directory to `/config` to persist them. Avoid mounting `/app`, which contains the application files.
 
@@ -78,118 +97,35 @@ Data, configuration, and logs are stored under `/config` in the container. Mount
 
 #### Entrypoint Ownership (Advanced)
 
-These variables are read directly by the container entrypoint (no `CINEPHAGE_` prefix). They only take effect when the container starts as root (for example, no `user:` flag in Compose or `--user` in `docker run`).
+These variables are read directly by the container entrypoint. They only take effect when the container starts as root (for example, no `user:` flag in Compose or `--user` in `docker run`).
 
 | Variable | Required | Default | Description                 |
 | -------- | -------- | ------- | --------------------------- |
 | `PUID`   | No       | 1000    | Runtime user ID to drop to  |
 | `PGID`   | No       | 1000    | Runtime group ID to drop to |
 
-At startup, the entrypoint ensures ownership for `/config` and `/home/node/.cache` matches the runtime UID/GID, which covers config/data/logs and cached browser downloads.
+At startup, the entrypoint ensures ownership of `/config` and `/home/node/.cache` matches the runtime UID/GID, which covers config/data/logs and cached browser downloads.
 
 ### Using Docker Run
-
-When using `docker run` directly, pass the application variables (`ORIGIN`, `TZ`) since there's no `.env` file:
 
 ```bash
 docker run -d \
   --name cinephage \
   --restart unless-stopped \
-  --user 1000:1000 \
   -p 3000:3000 \
   -v ./config:/config \
   -v /path/to/your/media:/media \
+  -v /path/to/your/downloads:/downloads \
+  -e PUID=1000 \
+  -e PGID=1000 \
   -e ORIGIN=http://localhost:3000 \
   -e TZ=UTC \
   ghcr.io/moldytaint/cinephage:latest
 ```
 
-> **Note:** The `CINEPHAGE_*` prefix is only used in `.env` files for Docker Compose. When using `docker run`, pass the actual application variables (`ORIGIN`, `TZ`) directly.
+> **Note:** When using `docker run`, pass the actual application variables (`ORIGIN`, `TZ`, `PUID`, `PGID`) directly.
 >
-> If you need the entrypoint to fix ownership on bind mounts, start the container as root (omit `--user`) and set `PUID`/`PGID`.
-
-### Synology NAS Users
-
-Synology's Docker implementation has a known quirk with the `HOME` directory environment variable that can cause installation failures. When using the user: flag with a custom UID/GID, Synology doesn't properly preserve the container's HOME directory, leading to permission errors during Camoufox installation.
-
-#### Recommended Configuration Options
-
-> **Note:** Ensure all bind-mounted directories exist and have proper permissions before starting the container.
-
-##### Option 1: Run as Default 1000:1000 User (Recommended)
-
-The container automatically runs as UID/GID `1000:1000` by default. For this option, do **not** set a `user:` flag **and** do **not** define `PUID`/`PGID` environment variables; simply rely on the built-in user.
-
-> **Note:** Synology uses its own ACL system that doesn't translate directly to Unix permissions. Even if you pass your Synology UID/GID or PUID/PGID via environment variables, the container will still effectively run as `1000:1000` inside the container due to permission mapping quirks.
-
-```yml
-services:
-  cinephage:
-    image: ghcr.io/moldytaint/cinephage:latest
-    container_name: cinephage
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    ports:
-      - 3000:3000
-    environment:
-      - TZ=America/New_York
-      - ORIGIN=http://localhost:3000
-    volumes:
-      - /volume1/docker/cinephage/config:/config
-      - /volume1/docker/media:/media
-      - /volume1/docker/downloads:/downloads
-```
-
-##### Option 2: Run with Specific User Flag
-
-If you prefer using the `user:` flag, your options are limited to `0:0` (root) or `1000:1000` (non-root). The container will automatically downgrade to the non-root user `1000:1000` at runtime even if you set the user flag to `0:0`.
-
-```yml
-services:
-  cinephage:
-    image: ghcr.io/moldytaint/cinephage:latest
-    container_name: cinephage
-    restart: unless-stopped
-    user: 1000:1000
-    security_opt:
-      - no-new-privileges:true
-    ports:
-      - 3000:3000
-    environment:
-      - TZ=America/New_York
-      - ORIGIN=http://localhost:3000
-    volumes:
-      - /volume1/docker/cinephage/config:/config
-      - /volume1/docker/media:/media
-      - /volume1/docker/downloads:/downloads
-```
-
-##### Option 3: Root User with Custom Synology UID/GID
-
-This workaround starts the container as root (allowing the entrypoint script to run properly) then safely downgrades to your specified Synology UID/GID.
-
-```yml
-services:
-  cinephage:
-    image: ghcr.io/moldytaint/cinephage:latest
-    container_name: cinephage
-    restart: unless-stopped
-    user: 0:0
-    security_opt:
-      - no-new-privileges:true
-    ports:
-      - 3000:3000
-    environment:
-      - PUID=1026 # Your Synology user ID
-      - PGID=100 # Your Synology group ID
-      - TZ=America/New_York
-      - ORIGIN=http://localhost:3000
-    volumes:
-      - /volume1/docker/cinephage/config:/config
-      - /volume1/docker/media:/media
-      - /volume1/docker/downloads:/downloads
-```
+> The container starts as root, then the entrypoint automatically drops privileges to `PUID:PGID` (default: 1000:1000) and fixes ownership of `/config` and cache directories.
 
 ### Building from Source
 
@@ -199,7 +135,6 @@ To build the Docker image yourself instead of using the pre-built image:
 git clone https://github.com/MoldyTaint/cinephage.git
 cd cinephage
 cp .env.example .env
-# Edit .env to set MEDIA_PATH
 # Then edit docker-compose.yaml: uncomment "build: ." and comment out "image:"
 docker compose up -d --build
 ```
