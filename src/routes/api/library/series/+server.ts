@@ -5,7 +5,8 @@ import { series, seasons, episodes, rootFolders } from '$lib/server/db/schema.js
 import { eq } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
 import { z } from 'zod';
-import { namingService, type MediaNamingInfo } from '$lib/server/library/naming/NamingService.js';
+import { NamingService, type MediaNamingInfo } from '$lib/server/library/naming/NamingService.js';
+import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
 import {
 	validateRootFolder,
 	getEffectiveScoringProfileId,
@@ -50,8 +51,11 @@ const addSeriesSchema = z.object({
 
 /**
  * Generate a folder name for a series using the naming service
+ * Uses database naming configuration instead of defaults
  */
 function generateSeriesFolderName(title: string, year?: number, tvdbId?: number): string {
+	const config = namingSettingsService.getConfigSync();
+	const namingService = new NamingService(config);
 	const info: MediaNamingInfo = {
 		title,
 		year,

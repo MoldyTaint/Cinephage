@@ -652,13 +652,14 @@ export class MediaMatcherService {
 		const originalFilename = basename(file.path, extname(file.path));
 		const parsedQuality = parseRelease(originalFilename);
 
-		// Create movie file entry with proper sceneName and quality data
+		// Create movie file entry with proper sceneName, releaseGroup, and quality data
 		await db.insert(movieFiles).values({
 			movieId,
 			relativePath: fileName,
 			size: file.size,
 			mediaInfo,
 			sceneName: originalFilename,
+			releaseGroup: parsedQuality.releaseGroup ?? undefined,
 			quality: {
 				resolution: parsedQuality.resolution ?? undefined,
 				source: parsedQuality.source ?? undefined,
@@ -855,7 +856,7 @@ export class MediaMatcherService {
 		const originalFilename = basename(file.path, extname(file.path));
 		const parsedQuality = parseRelease(originalFilename);
 
-		// Create episode file entry with proper sceneName and quality data
+		// Create episode file entry with proper sceneName, releaseGroup, and quality data
 		await db.insert(episodeFiles).values({
 			seriesId,
 			seasonNumber,
@@ -864,6 +865,7 @@ export class MediaMatcherService {
 			size: file.size,
 			mediaInfo,
 			sceneName: originalFilename,
+			releaseGroup: parsedQuality.releaseGroup ?? undefined,
 			quality: {
 				resolution: parsedQuality.resolution ?? undefined,
 				source: parsedQuality.source ?? undefined,
