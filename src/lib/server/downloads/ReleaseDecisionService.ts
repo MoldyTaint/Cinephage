@@ -212,6 +212,17 @@ class ReleaseDecisionService {
 			}
 
 			// Existing file found - this is an upgrade scenario
+			// Check if this is literally the same release (same torrent hash)
+			if (existingFile.infoHash && release.infoHash) {
+				if (existingFile.infoHash.toLowerCase() === release.infoHash.toLowerCase()) {
+					return this.createRejectedResult(
+						'Same release already downloaded (matching torrent hash)',
+						'same_hash',
+						'rejected'
+					);
+				}
+			}
+
 			// When forced, skip validation but still mark as upgrade so old file gets replaced
 			if (options.force) {
 				return this.createAcceptedResult('upgrade', 'Force override - replacing existing file', {
@@ -340,6 +351,17 @@ class ReleaseDecisionService {
 			}
 
 			// Existing file found - this is an upgrade scenario
+			// Check if this is literally the same release (same torrent hash)
+			if (existingFile.infoHash && release.infoHash) {
+				if (existingFile.infoHash.toLowerCase() === release.infoHash.toLowerCase()) {
+					return this.createRejectedResult(
+						'Same release already downloaded (matching torrent hash)',
+						'same_hash',
+						'rejected'
+					);
+				}
+			}
+
 			// When forced, skip validation but still mark as upgrade so old file gets replaced
 			if (options.force) {
 				return this.createAcceptedResult('upgrade', 'Force override - replacing existing file', {

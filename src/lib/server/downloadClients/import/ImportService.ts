@@ -819,7 +819,8 @@ export class ImportService extends EventEmitter {
 				codec: parsed.codec ?? undefined,
 				hdr: parsed.hdr ?? undefined
 			},
-			mediaInfo
+			mediaInfo,
+			infoHash: queueItem.infoHash ?? undefined
 		};
 
 		let fileId: string;
@@ -1278,7 +1279,8 @@ export class ImportService extends EventEmitter {
 				codec: parsed.codec ?? undefined,
 				hdr: parsed.hdr ?? undefined
 			},
-			mediaInfo
+			mediaInfo,
+			infoHash: queueItem.infoHash ?? undefined
 		};
 
 		if (existingFileRecord.length > 0) {

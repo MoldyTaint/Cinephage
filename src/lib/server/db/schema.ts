@@ -552,7 +552,9 @@ export const movieFiles = sqliteTable('movie_files', {
 	// Edition info (Director's Cut, Extended, etc.)
 	edition: text('edition'),
 	// Languages detected in file
-	languages: text('languages', { mode: 'json' }).$type<string[]>()
+	languages: text('languages', { mode: 'json' }).$type<string[]>(),
+	// Info hash of the torrent used to download this file (for duplicate detection)
+	infoHash: text('info_hash')
 });
 
 /**
@@ -717,7 +719,9 @@ export const episodeFiles = sqliteTable('episode_files', {
 		subtitleLanguages?: string[];
 	}>(),
 	// Languages detected in file
-	languages: text('languages', { mode: 'json' }).$type<string[]>()
+	languages: text('languages', { mode: 'json' }).$type<string[]>(),
+	// Info hash of the torrent used to download this file (for duplicate detection)
+	infoHash: text('info_hash')
 });
 
 // ============================================================================
