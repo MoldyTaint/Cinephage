@@ -246,6 +246,17 @@ function printResult(result: TestResult, verbose = false): void {
 	if (result.valid && result.features.length > 0) {
 		console.log(`   ${colors.cyan}Features: ${result.features.join(', ')}${colors.reset}`);
 	}
+
+	if (verbose) {
+		console.log(`   ${colors.dim}Details:${colors.reset}`);
+		console.log(`     - ID: ${result.id}`);
+		console.log(`     - Name: ${result.name}`);
+		console.log(`     - File: ${result.file}`);
+		console.log(`     - Valid: ${result.valid}`);
+		console.log(`     - Errors: ${result.errors.length}`);
+		console.log(`     - Warnings: ${result.warnings.length}`);
+		console.log(`     - Features: ${result.features.length}`);
+	}
 }
 
 /**

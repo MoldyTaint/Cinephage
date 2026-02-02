@@ -6,7 +6,7 @@
  * if upgrades are allowed by the profile.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
 	MovieCutoffUnmetSpecification,
 	EpisodeCutoffUnmetSpecification,
@@ -296,6 +296,31 @@ describe('Profile upgradesAllowed is the key factor', () => {
 		};
 
 		const result = await movieSpec.isSatisfied(context);
+		expect(result.accepted).toBe(false);
+		expect(result.reason).toBe(RejectionReason.UPGRADES_NOT_ALLOWED);
+	});
+
+	it('should accept episode when upgradesAllowed is true', async () => {
+		const context: EpisodeContext = {
+			series: { id: '1', title: 'Test Series' } as any,
+			episode: { id: '1', title: 'Test Episode' } as any,
+			existingFile: { sceneName: 'Test.Show.S01E01.1080p.WEB-DL' } as any,
+			profile: { id: 'custom', upgradesAllowed: true, upgradeUntilScore: 15000 } as any
+		};
+
+		const result = await episodeSpec.isSatisfied(context);
+		expect(result.accepted).toBe(true);
+	});
+
+	it('should reject episode when upgradesAllowed is false', async () => {
+		const context: EpisodeContext = {
+			series: { id: '1', title: 'Test Series' } as any,
+			episode: { id: '1', title: 'Test Episode' } as any,
+			existingFile: { sceneName: 'Test.Show.S01E01.1080p.WEB-DL' } as any,
+			profile: { id: 'custom', upgradesAllowed: false, upgradeUntilScore: 15000 } as any
+		};
+
+		const result = await episodeSpec.isSatisfied(context);
 		expect(result.accepted).toBe(false);
 		expect(result.reason).toBe(RejectionReason.UPGRADES_NOT_ALLOWED);
 	});

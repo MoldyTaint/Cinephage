@@ -10,7 +10,7 @@
  */
 
 import { getYamlIndexerFactory } from '../src/lib/server/indexers/loader/YamlIndexerFactory.js';
-import type { IIndexer } from '../src/lib/server/indexers/types/index.js';
+import type { IIndexer, ReleaseResult } from '../src/lib/server/indexers/types/index.js';
 
 // ANSI colors
 const c = {
@@ -74,9 +74,9 @@ async function testIndexer(
 			new Promise<never>((_, reject) =>
 				setTimeout(() => reject(new Error('Timeout after 30s')), 30000)
 			)
-		])) as { releases?: any[] } | any[];
+		])) as { releases?: ReleaseResult[] } | ReleaseResult[];
 
-		const releases = Array.isArray(results) ? results : results?.releases || [];
+		const releases: ReleaseResult[] = Array.isArray(results) ? results : results?.releases || [];
 		const duration = Date.now() - startTime;
 
 		if (releases.length === 0) {
@@ -93,7 +93,7 @@ async function testIndexer(
 		// Validate result structure
 		const firstResult = releases[0];
 		const hasTitle = !!firstResult.title;
-		const hasDownload = !!(firstResult.downloadUrl || firstResult.magnetUrl || firstResult.link);
+		const hasDownload = !!(firstResult.downloadUrl || firstResult.torrent?.magnetUrl);
 
 		if (!hasTitle) {
 			return {
@@ -118,11 +118,25 @@ async function testIndexer(
 		}
 
 		// Sample results for verbose output
-		const sampleResults = releases.slice(0, 3).map((r: any) => ({
+		const sampleResults = releases.slice(0, 3).map((r: ReleaseResult) => ({
 			title: r.title?.substring(0, 60) + (r.title?.length > 60 ? '...' : ''),
 			size: r.size ? formatBytes(r.size) : undefined,
-			seeders: r.seeders
+			seeders: r.torrent?.seeders ?? r.seeders
 		}));
+
+		if (verbose) {
+			console.log(`  ${c.dim}Detailed results:${c.reset}`);
+			for (const r of releases.slice(0, 5)) {
+				console.log(`    - ${r.title?.substring(0, 60)}`);
+				console.log(
+					`      Size: ${formatBytes(r.size)}, Seeders: ${r.torrent?.seeders ?? r.seeders ?? 'N/A'}`
+				);
+				console.log(`      URL: ${r.downloadUrl?.substring(0, 80)}...`);
+			}
+			if (releases.length > 5) {
+				console.log(`    ... and ${releases.length - 5} more`);
+			}
+		}
 
 		return {
 			indexerId,
