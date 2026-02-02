@@ -36,7 +36,7 @@
 		"@types/node": "^25",
 		"@types/parse-torrent": "^5.8.8",
 		"@types/unzipper": "^0.10.11",
-		"daisyui": "^5.5.14",
+		"daisyui": "^5.5.16",
 		"dotenv": "^17.2.3",
 		"drizzle-orm": "^0.45.1",
 		"eslint": "^9.39.2",
