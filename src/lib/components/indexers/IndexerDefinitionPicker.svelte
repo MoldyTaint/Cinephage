@@ -69,6 +69,9 @@
 						<div class="flex items-center gap-2">
 							<span class="font-semibold">{def.name}</span>
 							<span class="badge badge-ghost badge-xs">{def.protocol}</span>
+							{#if def.isCustom}
+								<span class="badge badge-ghost badge-xs">custom</span>
+							{/if}
 						</div>
 						{#if def.description}
 							<p class="mt-0.5 truncate text-sm text-base-content/60">{def.description}</p>
@@ -101,6 +104,9 @@
 						<div class="flex items-center gap-2">
 							<span class="font-semibold">{def.name}</span>
 							<span class="badge badge-ghost badge-xs">{def.protocol}</span>
+							{#if def.isCustom}
+								<span class="badge badge-ghost badge-xs">custom</span>
+							{/if}
 						</div>
 						{#if def.description}
 							<p class="mt-0.5 truncate text-sm text-base-content/60">{def.description}</p>
@@ -136,6 +142,9 @@
 						<div class="flex items-center gap-2">
 							<span class="font-semibold">{def.name}</span>
 							<span class="badge badge-ghost badge-xs">streaming</span>
+							{#if def.isCustom}
+								<span class="badge badge-ghost badge-xs">custom</span>
+							{/if}
 						</div>
 						{#if def.description}
 							<p class="mt-0.5 truncate text-sm text-base-content/60">{def.description}</p>

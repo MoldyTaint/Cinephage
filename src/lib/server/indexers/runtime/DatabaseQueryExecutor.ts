@@ -178,6 +178,7 @@ export class DatabaseQueryExecutor {
 		context: DatabaseQueryContext
 	): Promise<ReleaseResult[]> {
 		const conditions = [];
+		const isInteractive = criteria.searchSource === 'interactive';
 
 		if (criteria.tmdbId) {
 			conditions.push(eq(movies.tmdbId, criteria.tmdbId));
@@ -189,14 +190,17 @@ export class DatabaseQueryExecutor {
 			conditions.push(like(movies.title, `%${criteria.query}%`));
 		}
 
-		// Only query monitored movies
-		conditions.push(eq(movies.monitored, true));
+		// Only query monitored movies for automatic searches
+		if (!isInteractive) {
+			conditions.push(eq(movies.monitored, true));
+		}
 
 		this.log.info('[DatabaseQueryExecutor] Executing movie query', {
 			indexer: context.indexerName,
 			tmdbId: criteria.tmdbId,
 			imdbId: criteria.imdbId,
 			query: criteria.query,
+			searchSource: criteria.searchSource,
 			conditionsCount: conditions.length
 		});
 
@@ -207,8 +211,10 @@ export class DatabaseQueryExecutor {
 				.from(movies)
 				.where(and(...conditions))
 				.limit(100);
-		} else {
+		} else if (!isInteractive) {
 			results = await db.select().from(movies).where(eq(movies.monitored, true)).limit(100);
+		} else {
+			results = await db.select().from(movies).limit(100);
 		}
 
 		this.log.info('[DatabaseQueryExecutor] Movie query results', {
@@ -258,6 +264,7 @@ export class DatabaseQueryExecutor {
 	): Promise<ReleaseResult[]> {
 		// First get the series
 		const seriesConditions = [];
+		const isInteractive = criteria.searchSource === 'interactive';
 
 		if (criteria.tmdbId) {
 			seriesConditions.push(eq(series.tmdbId, criteria.tmdbId));
@@ -272,7 +279,9 @@ export class DatabaseQueryExecutor {
 			seriesConditions.push(like(series.title, `%${criteria.query}%`));
 		}
 
-		seriesConditions.push(eq(series.monitored, true));
+		if (!isInteractive) {
+			seriesConditions.push(eq(series.monitored, true));
+		}
 
 		let seriesResults: (typeof series.$inferSelect)[];
 		if (seriesConditions.length > 0) {
@@ -281,8 +290,10 @@ export class DatabaseQueryExecutor {
 				.from(series)
 				.where(and(...seriesConditions))
 				.limit(50);
-		} else {
+		} else if (!isInteractive) {
 			seriesResults = await db.select().from(series).where(eq(series.monitored, true)).limit(50);
+		} else {
+			seriesResults = await db.select().from(series).limit(50);
 		}
 
 		if (seriesResults.length === 0) {

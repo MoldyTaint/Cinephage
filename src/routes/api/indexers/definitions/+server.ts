@@ -27,7 +27,8 @@ export async function GET() {
 				siteUrl: uiDef.siteUrl,
 				alternateUrls: uiDef.alternateUrls,
 				capabilities: uiDef.capabilities,
-				settings: uiDef.settings
+				settings: uiDef.settings,
+				isCustom: uiDef.isCustom
 			};
 		})
 		.sort((a, b) => a.name.localeCompare(b.name));

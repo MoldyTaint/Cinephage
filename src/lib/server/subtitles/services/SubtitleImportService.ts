@@ -14,6 +14,7 @@ import { getSubtitleDownloadService } from './SubtitleDownloadService.js';
 import { LanguageProfileService } from './LanguageProfileService.js';
 import { logger } from '$lib/logging';
 import { normalizeLanguageCode } from '$lib/shared/languages';
+import { isMovieMonitored } from '$lib/server/monitoring/specifications/MonitoredSpecification.js';
 
 /**
  * Default minimum score for auto-download (used if profile doesn't specify)
@@ -109,6 +110,15 @@ async function searchForMovie(
 			movieId,
 			title: movie.title,
 			wantsSubtitles: movie.wantsSubtitles
+		});
+		return result;
+	}
+
+	const isMonitored = await isMovieMonitored({ movie });
+	if (!isMonitored) {
+		logger.debug('[SubtitleImportService] Movie is not monitored; skipping subtitles', {
+			movieId,
+			title: movie.title
 		});
 		return result;
 	}
@@ -277,6 +287,16 @@ async function searchForEpisode(
 			seriesId: seriesData.id,
 			seriesTitle: seriesData.title,
 			wantsSubtitles: seriesData.wantsSubtitles
+		});
+		return result;
+	}
+
+	if (!seriesData.monitored || !episode.monitored) {
+		logger.debug('[SubtitleImportService] Episode is not monitored; skipping subtitles', {
+			episodeId,
+			seriesTitle: seriesData.title,
+			season: episode.seasonNumber,
+			episode: episode.episodeNumber
 		});
 		return result;
 	}

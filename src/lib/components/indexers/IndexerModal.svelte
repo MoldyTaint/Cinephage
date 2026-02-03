@@ -236,6 +236,9 @@
 						<div class="flex items-center gap-2">
 							<span class="font-semibold">{selectedDefinition.name}</span>
 							<span class="badge badge-ghost badge-sm">{selectedDefinition.protocol}</span>
+							{#if selectedDefinition.isCustom}
+								<span class="badge badge-ghost badge-sm">custom</span>
+							{/if}
 						</div>
 						{#if selectedDefinition.description}
 							<div class="text-sm text-base-content/60">{selectedDefinition.description}</div>

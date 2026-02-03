@@ -7,6 +7,7 @@ cd /app
 CONFIG_ROOT="/config"
 LEGACY_DATA_DIR="/app/data"
 LEGACY_LOG_DIR="/app/logs"
+BUNDLED_DATA_DIR="/app/bundled-data"
 
 CONFIG_MOUNTED=0
 LEGACY_DATA_MOUNTED=0
@@ -24,6 +25,7 @@ fi
 DEFAULT_DATA_DIR="${CONFIG_ROOT}/data"
 DEFAULT_LOG_DIR="${CONFIG_ROOT}/logs"
 DEFAULT_INDEXER_DEFINITIONS_PATH="${DEFAULT_DATA_DIR}/indexers/definitions"
+DEFAULT_EXTERNAL_LISTS_PRESETS_PATH="${DEFAULT_DATA_DIR}/external-lists/presets"
 
 DATA_DIR="${DATA_DIR:-${DEFAULT_DATA_DIR}}"
 LOG_DIR="${LOG_DIR:-${DEFAULT_LOG_DIR}}"
@@ -39,7 +41,13 @@ fi
 if [ -z "${INDEXER_DEFINITIONS_PATH:-}" ] || [ "$INDEXER_DEFINITIONS_PATH" = "$DEFAULT_INDEXER_DEFINITIONS_PATH" ]; then
   INDEXER_DEFINITIONS_PATH="${DATA_DIR}/indexers/definitions"
 fi
-export DATA_DIR LOG_DIR INDEXER_DEFINITIONS_PATH
+if [ -z "${EXTERNAL_LISTS_PRESETS_PATH:-}" ] || [ "$EXTERNAL_LISTS_PRESETS_PATH" = "$DEFAULT_EXTERNAL_LISTS_PRESETS_PATH" ]; then
+  EXTERNAL_LISTS_PRESETS_PATH="${DATA_DIR}/external-lists/presets"
+fi
+INDEXER_CUSTOM_DEFINITIONS_PATH="${INDEXER_CUSTOM_DEFINITIONS_PATH:-${INDEXER_DEFINITIONS_PATH}/custom}"
+EXTERNAL_LISTS_CUSTOM_PRESETS_PATH="${EXTERNAL_LISTS_CUSTOM_PRESETS_PATH:-${EXTERNAL_LISTS_PRESETS_PATH}/custom}"
+export DATA_DIR LOG_DIR INDEXER_DEFINITIONS_PATH EXTERNAL_LISTS_PRESETS_PATH \
+  INDEXER_CUSTOM_DEFINITIONS_PATH EXTERNAL_LISTS_CUSTOM_PRESETS_PATH
 
 has_contents() {
   [ -d "$1" ] && [ -n "$(ls -A "$1" 2>/dev/null)" ]
@@ -85,7 +93,8 @@ if [ "$(id -u)" = "0" ] && [ -z "${CINEPHAGE_REEXEC:-}" ]; then
   fi
   
   # Create known critical directories as root BEFORE dropping privileges
-  mkdir -p "$DATA_DIR" "$LOG_DIR" /home/node/.cache
+  mkdir -p "$DATA_DIR" "$LOG_DIR" "$INDEXER_DEFINITIONS_PATH" "$EXTERNAL_LISTS_PRESETS_PATH" \
+    "$INDEXER_CUSTOM_DEFINITIONS_PATH" "$EXTERNAL_LISTS_CUSTOM_PRESETS_PATH" /home/node/.cache
 
   if [ "$CONFIG_MOUNTED" = "1" ]; then
     migrate_dir "$LEGACY_DATA_DIR" "$DATA_DIR" "data"
@@ -156,30 +165,36 @@ check_permissions() {
 echo "Checking directory permissions..."
 check_permissions "$DATA_DIR" "data"
 check_permissions "$LOG_DIR" "logs"
+check_permissions "$INDEXER_DEFINITIONS_PATH" "indexer definitions"
+check_permissions "$EXTERNAL_LISTS_PRESETS_PATH" "external list presets"
 echo "Directory permissions OK"
 
-# Copy bundled indexers if definitions directory is empty or missing
-# Use absolute paths to avoid working directory issues
-DEFINITIONS_DIR="$INDEXER_DEFINITIONS_PATH"
-INDEXERS_DIR="$(dirname "$DEFINITIONS_DIR")"
-BUNDLED_DIR="/app/bundled-indexers"
+# Sync bundled data into DATA_DIR (adds missing files only, never overwrites)
+sync_bundled_data() {
+  local src="$1"
+  local dest="$2"
+  local label="$3"
 
-if [ -d "$BUNDLED_DIR" ]; then
-  # Check if definitions directory is missing or empty
-  if [ ! -d "$DEFINITIONS_DIR" ] || [ -z "$(ls -A "$DEFINITIONS_DIR" 2>/dev/null)" ]; then
-    echo "Initializing indexer definitions from bundled files..."
-    # Create parent directories if needed
-    mkdir -p "$INDEXERS_DIR"
-    
-    # Copy contents of bundled-indexers to indexers directory
-    cp -r "$BUNDLED_DIR"/* "$INDEXERS_DIR"/
-    echo "Copied $(ls -1 "$DEFINITIONS_DIR" 2>/dev/null | wc -l) indexer definitions"
-  else
-    echo "Indexer definitions already present ($(ls -1 "$DEFINITIONS_DIR" | wc -l) files)"
+  if [ "$src" = "$dest" ]; then
+    return 0
   fi
-else
-  echo "Warning: Bundled indexers directory not found at $BUNDLED_DIR"
-fi
+
+  if [ -d "$src" ]; then
+    mkdir -p "$dest"
+    if ! cp -a "$src"/. "$dest"/; then
+      echo "Warning: Failed to sync ${label} into ${dest}"
+    fi
+  else
+    echo "Warning: Bundled ${label} directory not found at ${src}"
+  fi
+}
+
+# Sync only whitelisted bundled data (avoid touching DB/logs)
+sync_bundled_data "$BUNDLED_DATA_DIR/indexers" "$DATA_DIR/indexers" "indexers"
+sync_bundled_data "$BUNDLED_DATA_DIR/external-lists" "$DATA_DIR/external-lists" "external lists"
+
+# Ensure custom folders exist for user-defined overrides
+mkdir -p "$INDEXER_CUSTOM_DEFINITIONS_PATH" "$EXTERNAL_LISTS_CUSTOM_PRESETS_PATH"
 
 # Download Camoufox browser if not already present
 # This is done at runtime to reduce image size and allow updates

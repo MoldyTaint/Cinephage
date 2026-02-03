@@ -4,13 +4,17 @@
  * Loads and parses external list preset definitions from YAML files
  */
 
-import { readFileSync, readdirSync } from 'fs';
+import { existsSync, readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { load } from 'js-yaml';
 import { logger } from '$lib/logging';
 import type { PresetProvider, ExternalListPreset } from './types.js';
 
-const PRESETS_DIR = join(process.cwd(), 'data', 'external-lists', 'presets');
+const DEFAULT_PRESETS_DIR = join(process.cwd(), 'data', 'external-lists', 'presets');
+const PRESETS_DIR = process.env.EXTERNAL_LISTS_PRESETS_PATH ?? DEFAULT_PRESETS_DIR;
+const CUSTOM_PRESETS_DIR =
+	process.env.EXTERNAL_LISTS_CUSTOM_PRESETS_PATH ?? join(PRESETS_DIR, 'custom');
+const PRESET_DIRS = [PRESETS_DIR, CUSTOM_PRESETS_DIR];
 
 export class PresetLoader {
 	private presets: Map<string, ExternalListPreset> = new Map();
@@ -23,69 +27,76 @@ export class PresetLoader {
 	loadPresets(): void {
 		if (this.loaded) return;
 
-		logger.info('[PresetLoader] Loading external list presets from ' + PRESETS_DIR);
+		logger.info('[PresetLoader] Loading external list presets', { dirs: PRESET_DIRS });
 
 		try {
-			const files = readdirSync(PRESETS_DIR).filter(
-				(f) => f.endsWith('.yaml') || f.endsWith('.yml')
-			);
-
-			for (const file of files) {
-				try {
-					const content = readFileSync(join(PRESETS_DIR, file), 'utf-8');
-					const provider = load(content) as PresetProvider;
-
-					// Store provider
-					this.providers.set(provider.provider, provider);
-
-					// Create individual presets from provider
-					for (const preset of provider.presets) {
-						const fullPreset: ExternalListPreset = {
-							id: `${provider.provider}:${preset.id}`,
-							provider: provider.provider,
-							providerName: provider.name,
-							name: preset.name,
-							description: preset.description,
-							icon: provider.icon,
-							url: preset.url,
-							config: preset.config,
-							isDefault: preset.default ?? false,
-							settings: provider.settings
-						};
-
-						this.presets.set(fullPreset.id, fullPreset);
-						logger.debug('[PresetLoader] Loaded preset', {
-							id: fullPreset.id,
-							name: fullPreset.name
-						});
+			for (const dir of PRESET_DIRS) {
+				if (!existsSync(dir)) {
+					if (dir === PRESETS_DIR) {
+						logger.warn('[PresetLoader] Presets directory not found', { dir });
 					}
+					continue;
+				}
 
-					// Create a "custom" preset for providers that allow user-defined lists
-					if (provider.settings.length > 0 && provider.presets.length === 0) {
-						const customPreset: ExternalListPreset = {
-							id: `${provider.provider}:custom`,
+				const files = readdirSync(dir).filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'));
+
+				for (const file of files) {
+					try {
+						const content = readFileSync(join(dir, file), 'utf-8');
+						const provider = load(content) as PresetProvider;
+
+						// Store provider
+						this.providers.set(provider.provider, provider);
+
+						// Create individual presets from provider
+						for (const preset of provider.presets) {
+							const fullPreset: ExternalListPreset = {
+								id: `${provider.provider}:${preset.id}`,
+								provider: provider.provider,
+								providerName: provider.name,
+								name: preset.name,
+								description: preset.description,
+								icon: provider.icon,
+								url: preset.url,
+								config: preset.config,
+								isDefault: preset.default ?? false,
+								settings: provider.settings
+							};
+
+							this.presets.set(fullPreset.id, fullPreset);
+							logger.debug('[PresetLoader] Loaded preset', {
+								id: fullPreset.id,
+								name: fullPreset.name
+							});
+						}
+
+						// Create a "custom" preset for providers that allow user-defined lists
+						if (provider.settings.length > 0 && provider.presets.length === 0) {
+							const customPreset: ExternalListPreset = {
+								id: `${provider.provider}:custom`,
+								provider: provider.provider,
+								providerName: provider.name,
+								name: `Custom ${provider.name}`,
+								description: `Create a custom ${provider.name} with your own settings`,
+								icon: provider.icon,
+								isDefault: false,
+								settings: provider.settings
+							};
+
+							this.presets.set(customPreset.id, customPreset);
+							logger.debug('[PresetLoader] Loaded custom preset', {
+								id: customPreset.id,
+								provider: provider.provider
+							});
+						}
+
+						logger.info('[PresetLoader] Loaded provider', {
 							provider: provider.provider,
-							providerName: provider.name,
-							name: `Custom ${provider.name}`,
-							description: `Create a custom ${provider.name} with your own settings`,
-							icon: provider.icon,
-							isDefault: false,
-							settings: provider.settings
-						};
-
-						this.presets.set(customPreset.id, customPreset);
-						logger.debug('[PresetLoader] Loaded custom preset', {
-							id: customPreset.id,
-							provider: provider.provider
+							presetCount: provider.presets.length
 						});
+					} catch (error) {
+						logger.error('[PresetLoader] Failed to load preset file', { file, error });
 					}
-
-					logger.info('[PresetLoader] Loaded provider', {
-						provider: provider.provider,
-						presetCount: provider.presets.length
-					});
-				} catch (error) {
-					logger.error('[PresetLoader] Failed to load preset file', { file, error });
 				}
 			}
 

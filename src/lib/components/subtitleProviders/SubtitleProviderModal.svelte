@@ -239,13 +239,16 @@
 			<div class="max-h-[400px] overflow-y-auto rounded-lg border border-base-300">
 				{#each filteredDefinitions() as def (def.implementation)}
 					{@const accessInfo = getAccessTypeInfo(def)}
+					{@const AccessIcon = accessInfo.icon}
 					<button
 						type="button"
 						class="flex w-full items-center gap-4 border-b border-base-200 p-4 text-left transition-colors last:border-b-0 hover:bg-base-200"
 						onclick={() => handleImplementationChange(def.implementation as ProviderImplementation)}
 					>
 						<div class="rounded-lg bg-base-300 p-2">
-							<svelte:component this={accessInfo.icon} class="h-5 w-5 {accessInfo.iconClass}" />
+							{#if AccessIcon}
+								<AccessIcon class="h-5 w-5 {accessInfo.iconClass}" />
+							{/if}
 						</div>
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-2">
@@ -282,13 +285,13 @@
 		<!-- Selected provider header (in add mode) -->
 		{#if mode === 'add' && selectedDefinition}
 			{@const selectedAccessInfo = getAccessTypeInfo(selectedDefinition)}
+			{@const SelectedAccessIcon = selectedAccessInfo.icon}
 			<div class="mb-6 flex items-center justify-between rounded-lg bg-base-200 px-4 py-3">
 				<div class="flex items-center gap-3">
 					<div class="rounded-lg bg-base-300 p-2">
-						<svelte:component
-							this={selectedAccessInfo.icon}
-							class="h-5 w-5 {selectedAccessInfo.iconClass}"
-						/>
+						{#if SelectedAccessIcon}
+							<SelectedAccessIcon class="h-5 w-5 {selectedAccessInfo.iconClass}" />
+						{/if}
 					</div>
 					<div>
 						<div class="flex items-center gap-2">

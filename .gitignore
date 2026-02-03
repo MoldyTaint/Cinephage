@@ -76,3 +76,8 @@ cine-local.yaml
 
 # Docs
 docs/notes/
+
+#Local test folders
+data/indexers/definitions/custom/
+data/external-lists/presets/custom/
+

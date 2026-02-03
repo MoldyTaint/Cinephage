@@ -11,6 +11,7 @@
 	import { InteractiveSearchModal } from '$lib/components/search';
 	import { SubtitleSearchModal } from '$lib/components/subtitles';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
+	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import type { MovieEditData } from '$lib/components/library/MovieEditModal.svelte';
 	import { FileEdit } from 'lucide-svelte';
@@ -32,9 +33,13 @@
 	let isSubtitleSearchModalOpen = $state(false);
 	let isRenameModalOpen = $state(false);
 	let isDeleteModalOpen = $state(false);
+	let isDeleteFileModalOpen = $state(false);
+	let deletingFileId = $state<string | null>(null);
+	let deletingFileName = $state<string | null>(null);
 	let isScoreModalOpen = $state(false);
 	let isSaving = $state(false);
 	let isDeleting = $state(false);
+	let isDeletingFile = $state(false);
 	let subtitleAutoSearching = $state(false);
 	let autoSearching = $state(false);
 	let autoSearchResult = $state<{
@@ -84,6 +89,10 @@
 
 		return `${normalizedRoot}/${normalizedRelative}`;
 	});
+
+	function getFileName(path: string): string {
+		return path.split('/').pop() || path;
+	}
 
 	// Handlers
 	async function handleMonitorToggle(newValue: boolean) {
@@ -258,19 +267,34 @@
 	}
 
 	async function handleDeleteFile(fileId: string) {
-		if (!confirm('Are you sure you want to delete this file? This cannot be undone.')) {
+		const file = data.movie.files.find((f) => f.id === fileId);
+		deletingFileId = fileId;
+		deletingFileName = file ? getFileName(file.relativePath) : 'this file';
+		isDeleteFileModalOpen = true;
+	}
+
+	function closeDeleteFileModal() {
+		isDeleteFileModalOpen = false;
+		deletingFileId = null;
+		deletingFileName = null;
+	}
+
+	async function confirmDeleteFile() {
+		if (!deletingFileId) {
+			closeDeleteFileModal();
 			return;
 		}
 
+		isDeletingFile = true;
 		try {
-			const response = await fetch(`/api/library/movies/${data.movie.id}/files/${fileId}`, {
+			const response = await fetch(`/api/library/movies/${data.movie.id}/files/${deletingFileId}`, {
 				method: 'DELETE'
 			});
 			const result = await response.json();
 
 			if (result.success) {
 				toasts.success('File deleted');
-				const updatedFiles = data.movie.files.filter((f) => f.id !== fileId);
+				const updatedFiles = data.movie.files.filter((f) => f.id !== deletingFileId);
 				data = {
 					...data,
 					movie: {
@@ -279,12 +303,15 @@
 						hasFile: updatedFiles.length > 0
 					}
 				};
+				closeDeleteFileModal();
 			} else {
 				toasts.error('Failed to delete file', { description: result.error });
 			}
 		} catch (error) {
 			console.error('Failed to delete file:', error);
 			toasts.error('Failed to delete file');
+		} finally {
+			isDeletingFile = false;
 		}
 	}
 
@@ -552,6 +579,18 @@
 	loading={isDeleting}
 	onConfirm={performDelete}
 	onCancel={() => (isDeleteModalOpen = false)}
+/>
+
+<!-- File Delete Confirmation Modal -->
+<ConfirmationModal
+	open={isDeleteFileModalOpen}
+	title="Delete File"
+	message={`Are you sure you want to delete "${deletingFileName ?? 'this file'}"? This cannot be undone.`}
+	confirmLabel="Delete"
+	confirmVariant="error"
+	loading={isDeletingFile}
+	onConfirm={confirmDeleteFile}
+	onCancel={closeDeleteFileModal}
 />
 
 <!-- Score Detail Modal -->

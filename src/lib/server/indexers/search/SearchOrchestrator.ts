@@ -147,15 +147,18 @@ export class SearchOrchestrator {
 		const startTime = Date.now();
 		const opts = { ...DEFAULT_OPTIONS, ...options };
 		const indexerResults: IndexerSearchResult[] = [];
+		const criteriaWithSource = opts.searchSource
+			? { ...criteria, searchSource: opts.searchSource }
+			: criteria;
 
 		logger.debug('Starting search orchestration', {
-			criteria: criteriaToString(criteria),
+			criteria: criteriaToString(criteriaWithSource),
 			indexerCount: indexers.length,
 			options: opts
 		});
 
 		// Enrich criteria with missing IDs (e.g., look up IMDB ID from TMDB ID)
-		const enrichedCriteria = await this.enrichCriteriaWithIds(criteria);
+		const enrichedCriteria = await this.enrichCriteriaWithIds(criteriaWithSource);
 
 		// Check cache first (use enriched criteria for cache key)
 		if (opts.useCache) {
@@ -261,15 +264,18 @@ export class SearchOrchestrator {
 		const startTime = Date.now();
 		const opts = { ...DEFAULT_OPTIONS, ...options };
 		const indexerResults: IndexerSearchResult[] = [];
+		const criteriaWithSource = opts.searchSource
+			? { ...criteria, searchSource: opts.searchSource }
+			: criteria;
 
 		logger.debug('Starting enhanced search orchestration', {
-			criteria: criteriaToString(criteria),
+			criteria: criteriaToString(criteriaWithSource),
 			indexerCount: indexers.length,
 			enrichment: opts.enrichment
 		});
 
 		// Enrich criteria with missing IDs (e.g., look up IMDB ID from TMDB ID)
-		const enrichedCriteria = await this.enrichCriteriaWithIds(criteria);
+		const enrichedCriteria = await this.enrichCriteriaWithIds(criteriaWithSource);
 
 		// Filter indexers
 		const { eligible: eligibleIndexers, rejected: rejectedIndexers } = this.filterIndexers(

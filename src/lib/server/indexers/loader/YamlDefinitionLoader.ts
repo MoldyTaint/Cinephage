@@ -22,6 +22,20 @@ const log = createChildLogger({ module: 'YamlDefinitionLoader' });
  */
 const DEFAULT_DEFINITIONS_PATH =
 	process.env.INDEXER_DEFINITIONS_PATH ?? 'data/indexers/definitions';
+const CUSTOM_DEFINITIONS_PATH = process.env.INDEXER_CUSTOM_DEFINITIONS_PATH;
+
+const DEFAULT_DIRECTORIES = [DEFAULT_DEFINITIONS_PATH, CUSTOM_DEFINITIONS_PATH].filter(
+	Boolean
+) as string[];
+
+const normalizeDirectories = (input: string[] = DEFAULT_DIRECTORIES): string[] => {
+	const unique = new Set<string>();
+	for (const dir of input) {
+		if (!dir) continue;
+		if (!unique.has(dir)) unique.add(dir);
+	}
+	return [...unique];
+};
 
 /**
  * Result of loading a single definition file.
@@ -48,11 +62,12 @@ export class YamlDefinitionLoader {
 	private errors: DefinitionLoadError[] = [];
 	private directories: string[] = [];
 
-	constructor(definitionsPath?: string) {
+	constructor(definitionsPath?: string | string[]) {
 		if (definitionsPath) {
-			this.directories = [definitionsPath];
+			const dirs = Array.isArray(definitionsPath) ? definitionsPath : [definitionsPath];
+			this.directories = normalizeDirectories(dirs);
 		} else {
-			this.directories = [DEFAULT_DEFINITIONS_PATH];
+			this.directories = normalizeDirectories();
 		}
 	}
 
@@ -62,7 +77,7 @@ export class YamlDefinitionLoader {
 	 */
 	async loadAll(directories?: string[]): Promise<DefinitionLoadResult[]> {
 		if (directories) {
-			this.directories = directories;
+			this.directories = normalizeDirectories(directories);
 		}
 		this.cache.clear();
 		this.errors = [];

@@ -212,15 +212,15 @@
 					bind:checked={defaultMonitored}
 				/>
 				<span class="min-w-0 text-sm">Monitor new content</span>
-				<span
-					class="tooltip tooltip-right shrink-0"
+				<button
+					type="button"
+					class="tooltip btn tooltip-right shrink-0 btn-ghost btn-xs"
 					data-tip="When off, content added by library scan or manual match will be unmonitored (no auto-download of missing episodes/seasons)."
 					onclick={(e) => e.stopPropagation()}
-					role="img"
-					aria-label="More information"
+					aria-label="More information about monitor new content"
 				>
-					<Info class="h-3.5 w-3.5 shrink-0 cursor-help text-base-content/50" />
-				</span>
+					<Info class="h-3.5 w-3.5 shrink-0 text-base-content/50" aria-hidden="true" />
+				</button>
 			</label>
 
 			{#if preserveSymlinks}

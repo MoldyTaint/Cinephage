@@ -26,6 +26,8 @@ export type SearchType = 'basic' | 'movie' | 'tv' | 'music' | 'book';
 export interface BaseSearchCriteria {
 	/** Text query (optional for ID-based searches) */
 	query?: string;
+	/** Search source: 'interactive' (manual) or 'automatic' (background) */
+	searchSource?: 'interactive' | 'automatic';
 	/** Categories to filter */
 	categories?: Category[];
 	/** Limit results */

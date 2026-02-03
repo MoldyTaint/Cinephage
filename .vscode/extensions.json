@@ -1,0 +1,13 @@
+{
+	"recommendations": [
+		"ms-azuretools.vscode-containers",
+		"svelte.svelte-vscode",
+		"bradlc.vscode-tailwindcss",
+		"dbaeumer.vscode-eslint",
+		"esbenp.prettier-vscode",
+		"vitest.explorer",
+		"ms-vscode.vscode-typescript-next",
+		"formulahendry.auto-rename-tag",
+		"christian-kohler.path-intellisense"
+	]
+}

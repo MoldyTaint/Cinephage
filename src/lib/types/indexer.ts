@@ -95,6 +95,8 @@ export interface IndexerDefinition {
 	siteUrl: string;
 	/** Known alternate/mirror URLs from definition */
 	alternateUrls: string[];
+	/** Whether this definition comes from the custom definitions folder */
+	isCustom?: boolean;
 	capabilities: IndexerCapabilities;
 	settings: UIDefinitionSetting[];
 	/** Pre-computed UI hints for dynamic form rendering */

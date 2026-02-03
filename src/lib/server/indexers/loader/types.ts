@@ -11,6 +11,7 @@
 
 import type { IndexerCapabilities, IndexerProtocol, IndexerAccessType } from '../types';
 import { resolveCategoryId } from '../schema/yamlDefinition';
+import path from 'path';
 
 // ============================================================================
 // Settings Field Types
@@ -281,6 +282,7 @@ export interface UIIndexerDefinition {
 	protocol: IndexerProtocol;
 	siteUrl: string;
 	alternateUrls: string[];
+	isCustom?: boolean;
 	capabilities: {
 		search?: { available: boolean; supportedParams: string[] };
 		movieSearch?: { available: boolean; supportedParams: string[] };
@@ -456,6 +458,18 @@ export function yamlToUnifiedDefinition(
  * Convert unified definition to UI-compatible format.
  */
 export function toUIDefinition(def: IndexerDefinition): UIIndexerDefinition {
+	const baseDefinitionsPath = process.env.INDEXER_DEFINITIONS_PATH ?? 'data/indexers/definitions';
+	const customDefinitionsPath =
+		process.env.INDEXER_CUSTOM_DEFINITIONS_PATH ?? path.join(baseDefinitionsPath, 'custom');
+	const resolvedCustomDir = path.resolve(customDefinitionsPath);
+	const isCustomDefinition = (filePath?: string): boolean => {
+		if (!filePath) return false;
+		const resolvedPath = path.resolve(filePath);
+		return (
+			resolvedPath === resolvedCustomDir || resolvedPath.startsWith(resolvedCustomDir + path.sep)
+		);
+	};
+
 	// Map setting type to UI-compatible type
 	const mapSettingType = (type: SettingFieldType): UISettingType => {
 		const typeMap: Record<SettingFieldType, UISettingType> = {
@@ -531,6 +545,7 @@ export function toUIDefinition(def: IndexerDefinition): UIIndexerDefinition {
 		protocol: def.protocol,
 		siteUrl: def.urls[0] ?? '',
 		alternateUrls: def.urls.slice(1).concat(def.legacyUrls ?? []),
+		isCustom: isCustomDefinition(def.filePath),
 		capabilities,
 		settings
 	};
