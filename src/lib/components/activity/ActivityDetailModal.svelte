@@ -20,7 +20,6 @@
 		Folder
 	} from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
-	import { logger } from '$lib/logging';
 
 	interface Props {
 		activity: UnifiedActivity | null;
@@ -76,9 +75,7 @@
 			await onPause(activity.queueItemId);
 			toasts.success('Download paused');
 		} catch (error) {
-			logger.error('Failed to pause download', error, {
-				queueItemId: activity?.queueItemId
-			});
+			console.error('Failed to pause download:', error);
 			const message = error instanceof Error ? error.message : 'Failed to pause download';
 			toasts.error(message);
 		} finally {
@@ -93,9 +90,7 @@
 			await onResume(activity.queueItemId);
 			toasts.success('Download resumed');
 		} catch (error) {
-			logger.error('Failed to resume download', error, {
-				queueItemId: activity?.queueItemId
-			});
+			console.error('Failed to resume download:', error);
 			const message = error instanceof Error ? error.message : 'Failed to resume download';
 			toasts.error(message);
 		} finally {
@@ -111,9 +106,7 @@
 			toasts.success('Download removed');
 			onClose();
 		} catch (error) {
-			logger.error('Failed to remove download', error, {
-				queueItemId: activity?.queueItemId
-			});
+			console.error('Failed to remove download:', error);
 			const message = error instanceof Error ? error.message : 'Failed to remove download';
 			toasts.error(message);
 		} finally {
@@ -128,9 +121,7 @@
 			await onRetry(activity.queueItemId);
 			toasts.success('Download retry initiated');
 		} catch (error) {
-			logger.error('Failed to retry download', error, {
-				queueItemId: activity?.queueItemId
-			});
+			console.error('Failed to retry download:', error);
 			const message = error instanceof Error ? error.message : 'Failed to retry download';
 			toasts.error(message);
 		} finally {
