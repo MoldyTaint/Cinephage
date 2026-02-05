@@ -84,26 +84,39 @@ export const POST: RequestHandler = async ({ request }) => {
 
 			const scanResult = await diskScanService.scanRootFolder(rootFolderId);
 
+			const scanResultData = scanResult ? (scanResult as unknown as Record<string, unknown>) : {};
+			const { success: _ignored, ...safeScanResultData } = scanResultData;
 			return json({
 				success: true,
 				message: `Scan completed for ${rootFolder.path}`,
-				result: scanResult
+				result: scanResult,
+				...safeScanResultData
 			});
 		} else if (fullScan) {
 			// Full library scan
-			await librarySchedulerService.runFullScan();
+			const results = await librarySchedulerService.runFullScan();
+			const summary = summarizeScanResults(results);
 
+			const summaryData = summary ? (summary as unknown as Record<string, unknown>) : {};
+			const { success: _ignored, ...safeSummaryData } = summaryData;
 			return json({
 				success: true,
-				message: 'Full library scan triggered'
+				message: 'Full library scan completed',
+				result: summary,
+				...safeSummaryData
 			});
 		} else {
 			// Default: trigger manual scan through scheduler
-			await librarySchedulerService.runFullScan();
+			const results = await librarySchedulerService.runFullScan();
+			const summary = summarizeScanResults(results);
 
+			const summaryData = summary ? (summary as unknown as Record<string, unknown>) : {};
+			const { success: _ignored, ...safeSummaryData } = summaryData;
 			return json({
 				success: true,
-				message: 'Library scan triggered'
+				message: 'Library scan completed',
+				result: summary,
+				...safeSummaryData
 			});
 		}
 	} catch (error) {
@@ -117,3 +130,31 @@ export const POST: RequestHandler = async ({ request }) => {
 		);
 	}
 };
+
+function summarizeScanResults(
+	results: Array<{
+		filesScanned: number;
+		filesAdded: number;
+		filesUpdated: number;
+		filesRemoved: number;
+		unmatchedFiles: number;
+	}>
+) {
+	return results.reduce(
+		(acc, item) => {
+			acc.filesScanned += item.filesScanned ?? 0;
+			acc.filesAdded += item.filesAdded ?? 0;
+			acc.filesUpdated += item.filesUpdated ?? 0;
+			acc.filesRemoved += item.filesRemoved ?? 0;
+			acc.unmatchedFiles += item.unmatchedFiles ?? 0;
+			return acc;
+		},
+		{
+			filesScanned: 0,
+			filesAdded: 0,
+			filesUpdated: 0,
+			filesRemoved: 0,
+			unmatchedFiles: 0
+		}
+	);
+}

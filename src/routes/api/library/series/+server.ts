@@ -88,6 +88,7 @@ export const GET: RequestHandler = async () => {
 				path: series.path,
 				rootFolderId: series.rootFolderId,
 				rootFolderPath: rootFolders.path,
+				rootFolderMediaType: rootFolders.mediaType,
 				scoringProfileId: series.scoringProfileId,
 				monitored: series.monitored,
 				seasonFolder: series.seasonFolder,
@@ -101,6 +102,7 @@ export const GET: RequestHandler = async () => {
 		// Calculate percentages and format data
 		const seriesWithStats = allSeries.map((s) => ({
 			...s,
+			missingRootFolder: !s.rootFolderId || !s.rootFolderPath || s.rootFolderMediaType !== 'tv',
 			percentComplete:
 				s.episodeCount && s.episodeCount > 0
 					? Math.round(((s.episodeFileCount || 0) / s.episodeCount) * 100)

@@ -790,8 +790,9 @@ export class ImportService extends EventEmitter {
 		);
 		worker.setDestinationPath(destPath);
 
-		// Extract media info
-		const mediaInfo = await mediaInfoService.extractMediaInfo(destPath);
+		// Extract media info (skip STRM probing for streamer profile)
+		const allowStrmProbe = movie.scoringProfileId !== 'streamer';
+		const mediaInfo = await mediaInfoService.extractMediaInfo(destPath, { allowStrmProbe });
 
 		// Parse quality from release name
 		const parsed = this.parser.parse(queueItem.title);
@@ -1207,8 +1208,9 @@ export class ImportService extends EventEmitter {
 			};
 		}
 
-		// Extract media info
-		const mediaInfo = await mediaInfoService.extractMediaInfo(destPath);
+		// Extract media info (skip STRM probing for streamer profile)
+		const allowStrmProbe = seriesData.scoringProfileId !== 'streamer';
+		const mediaInfo = await mediaInfoService.extractMediaInfo(destPath, { allowStrmProbe });
 
 		// Find matching episodes in database
 		const matchingEpisodes = await db

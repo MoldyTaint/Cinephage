@@ -1,6 +1,13 @@
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
-import { movies, series, episodes, downloadQueue, unmatchedFiles } from '$lib/server/db/schema';
+import {
+	movies,
+	series,
+	episodes,
+	downloadQueue,
+	unmatchedFiles,
+	rootFolders
+} from '$lib/server/db/schema';
 import { count, eq, desc, and, not, inArray, sql, gte } from 'drizzle-orm';
 import { logger } from '$lib/logging';
 import type { UnifiedActivity } from '$lib/types/activity';
@@ -44,6 +51,50 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 
 		// Get unmatched files count
 		const [unmatchedCount] = await db.select({ count: count() }).from(unmatchedFiles);
+
+		// Get missing root folder count (movies + series)
+		const [missingMovieRoots, missingSeriesRoots] = await Promise.all([
+			db.select({ count: count() }).from(movies).where(sql`
+					${movies.rootFolderId} IS NULL
+					OR ${movies.rootFolderId} = ''
+					OR ${movies.rootFolderId} = 'null'
+					OR NOT EXISTS (
+						SELECT 1 FROM ${rootFolders} rf WHERE rf.id = ${movies.rootFolderId}
+					)
+					OR EXISTS (
+						SELECT 1 FROM ${rootFolders} rf
+						WHERE rf.id = ${movies.rootFolderId} AND rf.media_type != 'movie'
+					)
+				`),
+			db.select({ count: count() }).from(series).where(sql`
+					${series.rootFolderId} IS NULL
+					OR ${series.rootFolderId} = ''
+					OR ${series.rootFolderId} = 'null'
+					OR NOT EXISTS (
+						SELECT 1 FROM ${rootFolders} rf WHERE rf.id = ${series.rootFolderId}
+					)
+					OR EXISTS (
+						SELECT 1 FROM ${rootFolders} rf
+						WHERE rf.id = ${series.rootFolderId} AND rf.media_type != 'tv'
+					)
+				`)
+		]);
+
+		let missingRootFolderFallback = 0;
+		try {
+			const issuesUrl = new URL('/api/library/unmatched', url.origin);
+			const issuesResponse = await fetch(issuesUrl.toString());
+			if (issuesResponse.ok) {
+				const issuesData = await issuesResponse.json();
+				missingRootFolderFallback =
+					issuesData.libraryItemTotal ??
+					(Array.isArray(issuesData.libraryItems) ? issuesData.libraryItems.length : 0);
+			}
+		} catch (error) {
+			logger.warn('[Dashboard] Failed to fetch library issues count', {
+				error: error instanceof Error ? error.message : String(error)
+			});
+		}
 
 		// Get recent activity - consolidated from activity API
 		let recentActivity: UnifiedActivity[] = [];
@@ -161,7 +212,11 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 					monitored: episodeStats?.monitored || 0
 				},
 				activeDownloads: activeDownloads?.count || 0,
-				unmatchedFiles: unmatchedCount?.count || 0
+				unmatchedFiles: unmatchedCount?.count || 0,
+				missingRootFolders: Math.max(
+					(missingMovieRoots?.[0]?.count || 0) + (missingSeriesRoots?.[0]?.count || 0),
+					missingRootFolderFallback
+				)
 			},
 			recentActivity,
 			recentlyAdded: {
@@ -181,7 +236,8 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 				series: { total: 0, monitored: 0 },
 				episodes: { total: 0, withFile: 0, missing: 0, monitored: 0 },
 				activeDownloads: 0,
-				unmatchedFiles: 0
+				unmatchedFiles: 0,
+				missingRootFolders: 0
 			},
 			recentActivity: [] as UnifiedActivity[],
 			recentlyAdded: {

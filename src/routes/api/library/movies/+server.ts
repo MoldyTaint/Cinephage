@@ -69,6 +69,7 @@ export const GET: RequestHandler = async () => {
 				path: movies.path,
 				rootFolderId: movies.rootFolderId,
 				rootFolderPath: rootFolders.path,
+				rootFolderMediaType: rootFolders.mediaType,
 				scoringProfileId: movies.scoringProfileId,
 				monitored: movies.monitored,
 				minimumAvailability: movies.minimumAvailability,
@@ -94,6 +95,8 @@ export const GET: RequestHandler = async () => {
 			const files = filesByMovieId.get(movie.id) || [];
 			return {
 				...movie,
+				missingRootFolder:
+					!movie.rootFolderId || !movie.rootFolderPath || movie.rootFolderMediaType !== 'movie',
 				files: files.map((f) => ({
 					id: f.id,
 					relativePath: f.relativePath,

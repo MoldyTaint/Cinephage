@@ -645,7 +645,6 @@ async function handleStreamingGrab(data: GrabRequest): Promise<Response> {
 	try {
 		// Get file stats
 		const stats = statSync(result.filePath);
-		const mediaInfo = await mediaInfoService.extractMediaInfo(result.filePath);
 
 		// Parse quality from release title - for streaming, quality is determined at playback
 		const parsedRelease = parser.parse(title);
@@ -671,6 +670,11 @@ async function handleStreamingGrab(data: GrabRequest): Promise<Response> {
 					{ status: 404 }
 				);
 			}
+
+			const allowStrmProbe = movie.scoringProfileId !== 'streamer';
+			const mediaInfo = await mediaInfoService.extractMediaInfo(result.filePath, {
+				allowStrmProbe
+			});
 
 			// Calculate relative path from root folder
 			const relativePath = relative(movie.rootFolder.path, result.filePath);
@@ -731,6 +735,11 @@ async function handleStreamingGrab(data: GrabRequest): Promise<Response> {
 					{ status: 404 }
 				);
 			}
+
+			const allowStrmProbe = show.scoringProfileId !== 'streamer';
+			const mediaInfo = await mediaInfoService.extractMediaInfo(result.filePath, {
+				allowStrmProbe
+			});
 
 			// Find the episode
 			const episodeRow = await db.query.episodes.findFirst({
@@ -873,6 +882,7 @@ async function handleStreamingSeasonPack(
 			{ status: 404 }
 		);
 	}
+	const allowStrmProbe = show.scoringProfileId !== 'streamer';
 
 	// Create .strm files for all episodes in the season
 	const strmResult = await strmService.createSeasonStrmFiles({
@@ -938,7 +948,9 @@ async function handleStreamingSeasonPack(
 
 		try {
 			const stats = statSync(epResult.filePath);
-			const mediaInfo = await mediaInfoService.extractMediaInfo(epResult.filePath);
+			const mediaInfo = await mediaInfoService.extractMediaInfo(epResult.filePath, {
+				allowStrmProbe
+			});
 			const relativePath = relative(show.rootFolder.path, epResult.filePath);
 			const fileId = randomUUID();
 
@@ -1066,6 +1078,7 @@ async function handleStreamingCompleteSeries(
 			{ status: 404 }
 		);
 	}
+	const allowStrmProbe = show.scoringProfileId !== 'streamer';
 
 	// Create .strm files for all episodes in all seasons
 	const strmResult = await strmService.createSeriesStrmFiles({
@@ -1131,7 +1144,9 @@ async function handleStreamingCompleteSeries(
 
 			try {
 				const stats = statSync(epResult.filePath);
-				const mediaInfo = await mediaInfoService.extractMediaInfo(epResult.filePath);
+				const mediaInfo = await mediaInfoService.extractMediaInfo(epResult.filePath, {
+					allowStrmProbe
+				});
 				const relativePath = relative(show.rootFolder.path, epResult.filePath);
 				const fileId = randomUUID();
 
@@ -1365,6 +1380,7 @@ async function handleNzbStreamingGrab(data: GrabRequest): Promise<Response> {
 					{ status: 404 }
 				);
 			}
+			const allowStrmProbe = movie.scoringProfileId !== 'streamer';
 
 			// Create .strm file for the primary media file (first in list)
 			if (mount.mediaFiles.length > 0) {
@@ -1378,7 +1394,9 @@ async function handleNzbStreamingGrab(data: GrabRequest): Promise<Response> {
 
 				if (strmResult.success && strmResult.filePath) {
 					const stats = statSync(strmResult.filePath);
-					const mediaInfo = await mediaInfoService.extractMediaInfo(strmResult.filePath);
+					const mediaInfo = await mediaInfoService.extractMediaInfo(strmResult.filePath, {
+						allowStrmProbe
+					});
 					const relativePath = relative(movie.rootFolder.path, strmResult.filePath);
 					const fileId = randomUUID();
 
@@ -1430,6 +1448,7 @@ async function handleNzbStreamingGrab(data: GrabRequest): Promise<Response> {
 					{ status: 404 }
 				);
 			}
+			const allowStrmProbe = show.scoringProfileId !== 'streamer';
 
 			// For each media file, try to match it to an episode
 			for (const mediaFile of mount.mediaFiles) {
@@ -1477,7 +1496,9 @@ async function handleNzbStreamingGrab(data: GrabRequest): Promise<Response> {
 
 				if (strmResult.success && strmResult.filePath) {
 					const stats = statSync(strmResult.filePath);
-					const mediaInfo = await mediaInfoService.extractMediaInfo(strmResult.filePath);
+					const mediaInfo = await mediaInfoService.extractMediaInfo(strmResult.filePath, {
+						allowStrmProbe
+					});
 					const relativePath = relative(show.rootFolder.path, strmResult.filePath);
 					const fileId = randomUUID();
 

@@ -16,7 +16,7 @@
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 	<ul
 		tabindex="0"
-		class="dropdown-content z-[1] h-96 w-52 overflow-y-auto rounded-box bg-base-300 p-2 shadow-2xl"
+		class="dropdown-content z-60 h-96 w-52 overflow-y-auto rounded-box bg-base-300 p-2 shadow-2xl"
 	>
 		{#each themes as t (t)}
 			<li>

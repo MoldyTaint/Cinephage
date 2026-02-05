@@ -278,7 +278,7 @@ async function searchMissingMovieSubtitles(
 					if (languages.length === 0) return;
 
 					const missingCodes = status.missing.map((m) => m.code).join(', ');
-					const missingLabel = missingCodes ? `Missing subtitles: ${missingCodes}` : undefined;
+					const missingLabel = missingCodes ? `Subtitles: ${missingCodes}` : undefined;
 
 					// Search for subtitles
 					const results = await searchService.searchForMovie(movie.id, languages);
@@ -488,7 +488,7 @@ async function searchMissingEpisodeSubtitles(
 							// Get status for this episode
 							const status = await profileService.getEpisodeSubtitleStatus(episodeId);
 							const missingCodes = status.missing.map((m) => m.code).join(', ');
-							const missingLabel = missingCodes ? `Missing subtitles: ${missingCodes}` : undefined;
+							const missingLabel = missingCodes ? `Subtitles: ${missingCodes}` : undefined;
 
 							// Search for subtitles
 							const results = await searchService.searchForEpisode(episodeId, languages);

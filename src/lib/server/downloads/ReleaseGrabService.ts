@@ -883,7 +883,19 @@ class ReleaseGrabService {
 			// Get file stats
 			const stats = statSync(filePath);
 			const fileSize = Number(stats.size);
-			const mediaInfo = await mediaInfoService.extractMediaInfo(filePath);
+			let allowStrmProbe = true;
+			if (mediaType === 'movie' && movieId) {
+				const movie = await db.query.movies.findFirst({
+					where: eq(movies.id, movieId)
+				});
+				allowStrmProbe = movie?.scoringProfileId !== 'streamer';
+			} else if (mediaType === 'tv' && seriesId) {
+				const show = await db.query.series.findFirst({
+					where: eq(series.id, seriesId)
+				});
+				allowStrmProbe = show?.scoringProfileId !== 'streamer';
+			}
+			const mediaInfo = await mediaInfoService.extractMediaInfo(filePath, { allowStrmProbe });
 
 			// Parse quality from release title
 			const parsedRelease = parser.parse(release.title);
@@ -1165,6 +1177,7 @@ class ReleaseGrabService {
 		if (!show || !show.rootFolder) {
 			return { success: false, error: 'Series or root folder not found' };
 		}
+		const allowStrmProbe = show.scoringProfileId !== 'streamer';
 
 		// Check which episodes already have files (to avoid race condition with watcher)
 		const seasonEpisodes = await db.query.episodes.findMany({
@@ -1237,7 +1250,9 @@ class ReleaseGrabService {
 
 			try {
 				const stats = statSync(epResult.filePath);
-				const mediaInfo = await mediaInfoService.extractMediaInfo(epResult.filePath);
+				const mediaInfo = await mediaInfoService.extractMediaInfo(epResult.filePath, {
+					allowStrmProbe
+				});
 				const relativePath = relative(show.rootFolder!.path, epResult.filePath);
 
 				episodeFileData.push({

@@ -4,6 +4,7 @@
 		Tv,
 		Download,
 		AlertCircle,
+		AlertTriangle,
 		Clock,
 		CheckCircle,
 		XCircle,
@@ -185,8 +186,41 @@
 							<div class="text-2xl font-bold">{data.stats.unmatchedFiles}</div>
 							<div class="text-sm text-base-content/70">Unmatched</div>
 						</div>
+						{#if data.stats.missingRootFolders > 0}
+							<div class="ml-auto rounded-full bg-warning/10 p-1">
+								<AlertTriangle class="h-4 w-4 text-warning" />
+							</div>
+						{/if}
 					</div>
 					<div class="mt-2 text-xs text-base-content/50">Files need attention</div>
+					{#if data.stats.missingRootFolders > 0}
+						<div class="mt-2 text-xs">
+							<span class="badge badge-sm badge-warning">Root folder issues</span>
+						</div>
+					{/if}
+				</div>
+			</a>
+		{:else if data.stats.missingRootFolders > 0}
+			<a
+				href={resolve('/library/unmatched')}
+				class="card bg-base-200 transition-colors hover:bg-base-300"
+			>
+				<div class="card-body p-4">
+					<div class="flex items-center gap-3">
+						<div class="rounded-lg bg-warning/10 p-2">
+							<AlertCircle class="h-6 w-6 text-warning" />
+						</div>
+						<div>
+							<div class="text-2xl font-bold">0</div>
+							<div class="text-sm text-base-content/70">Unmatched</div>
+						</div>
+						<div class="ml-auto rounded-full bg-warning/10 p-1">
+							<AlertTriangle class="h-4 w-4 text-warning" />
+						</div>
+					</div>
+					<div class="mt-2 text-xs">
+						<span class="badge badge-sm badge-warning">Root folder issues</span>
+					</div>
 				</div>
 			</a>
 		{:else}
@@ -228,7 +262,7 @@
 							{#each data.recentlyAdded.movies as movie (movie.id)}
 								<a
 									href={resolve(`/library/movie/${movie.id}`)}
-									class="group relative aspect-[2/3] overflow-hidden rounded-lg"
+									class="group relative aspect-2/3 overflow-hidden rounded-lg"
 								>
 									<TmdbImage
 										path={movie.posterPath}
@@ -237,7 +271,7 @@
 										class="h-full w-full object-cover transition-transform group-hover:scale-105"
 									/>
 									<div
-										class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100"
+										class="absolute inset-0 bg-linear-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100"
 									>
 										<div class="absolute right-0 bottom-0 left-0 p-2">
 											<p class="truncate text-xs font-medium text-white">{movie.title}</p>
@@ -273,7 +307,7 @@
 							{#each data.recentlyAdded.series as show (show.id)}
 								<a
 									href={resolve(`/library/tv/${show.id}`)}
-									class="group relative aspect-[2/3] overflow-hidden rounded-lg"
+									class="group relative aspect-2/3 overflow-hidden rounded-lg"
 								>
 									<TmdbImage
 										path={show.posterPath}
@@ -282,7 +316,7 @@
 										class="h-full w-full object-cover transition-transform group-hover:scale-105"
 									/>
 									<div
-										class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100"
+										class="absolute inset-0 bg-linear-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100"
 									>
 										<div class="absolute right-0 bottom-0 left-0 p-2">
 											<p class="truncate text-xs font-medium text-white">{show.title}</p>
@@ -317,7 +351,7 @@
 							{#each data.missingEpisodes.slice(0, 5) as episode (episode.id)}
 								<div class="flex items-center gap-3 py-2">
 									{#if episode.series?.posterPath}
-										<div class="h-12 w-8 flex-shrink-0 overflow-hidden rounded">
+										<div class="h-12 w-8 shrink-0 overflow-hidden rounded">
 											<TmdbImage
 												path={episode.series.posterPath}
 												alt={episode.series.title || ''}

@@ -37,7 +37,7 @@
 		successMessage = null;
 
 		try {
-			const response = await fetch(task.runEndpoint, { method: 'POST' });
+			const response = await fetch(`/api/tasks/${taskId}/run`, { method: 'POST' });
 			const result = await response.json();
 
 			if (!response.ok || !result.success) {

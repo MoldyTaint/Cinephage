@@ -2,7 +2,7 @@
 	import type { LibraryMovie, LibrarySeries } from '$lib/types/library';
 	import { isLibraryMovie, getBestQualityFromFiles } from '$lib/types/library';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
-	import { Eye, EyeOff, Check, X, Download } from 'lucide-svelte';
+	import { Eye, EyeOff, Check, X, Download, AlertTriangle } from 'lucide-svelte';
 	import { resolvePath } from '$lib/utils/routing';
 
 	type LibraryItem = LibraryMovie | LibrarySeries;
@@ -38,15 +38,20 @@
 		isMovie ? getBestQualityFromFiles((item as LibraryMovie).files) : null
 	);
 	const hasFile = $derived(isMovie ? (item as LibraryMovie).hasFile : false);
+	const isStreamerProfile = $derived(
+		isMovie && (item as LibraryMovie).scoringProfileId === 'streamer'
+	);
 
 	// For series: get progress
 	const seriesProgress = $derived(!isMovie ? (item as LibrarySeries).percentComplete : 0);
 	const episodeCount = $derived(!isMovie ? (item as LibrarySeries).episodeCount : 0);
 	const episodeFileCount = $derived(!isMovie ? (item as LibrarySeries).episodeFileCount : 0);
+	const missingRootFolder = $derived(item.missingRootFolder === true);
 
 	// Quality badge display
 	const qualityBadge = $derived(() => {
 		if (!isMovie || !movieQuality) return null;
+		if (isStreamerProfile) return 'Auto';
 		const parts: string[] = [];
 		if (movieQuality.quality) parts.push(movieQuality.quality);
 		if (movieQuality.hdr) parts.push(movieQuality.hdr);
@@ -160,6 +165,16 @@
 						: 'bg-base-300'}"
 				style="width: {seriesProgress}%"
 			></div>
+		</div>
+	{/if}
+
+	<!-- Missing root folder warning -->
+	{#if missingRootFolder}
+		<div
+			class="absolute right-2 bottom-2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-warning/90 text-warning-content shadow-sm"
+			title="Root folder not set"
+		>
+			<AlertTriangle class="h-3.5 w-3.5" />
 		</div>
 	{/if}
 

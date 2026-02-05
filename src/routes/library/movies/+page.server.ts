@@ -42,6 +42,7 @@ export const load: PageServerLoad = async ({ url }) => {
 				path: movies.path,
 				rootFolderId: movies.rootFolderId,
 				rootFolderPath: rootFolders.path,
+				rootFolderMediaType: rootFolders.mediaType,
 				scoringProfileId: movies.scoringProfileId,
 				monitored: movies.monitored,
 				minimumAvailability: movies.minimumAvailability,
@@ -59,6 +60,8 @@ export const load: PageServerLoad = async ({ url }) => {
 
 				return {
 					...movie,
+					missingRootFolder:
+						!movie.rootFolderId || !movie.rootFolderPath || movie.rootFolderMediaType !== 'movie',
 					files: files.map((f) => ({
 						id: f.id,
 						relativePath: f.relativePath,

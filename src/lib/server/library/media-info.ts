@@ -23,6 +23,7 @@ import {
 	type FFprobeStream,
 	type FFprobeOutput
 } from './ffprobe.js';
+import { readFile } from 'node:fs/promises';
 import type { movieFiles } from '$lib/server/db/schema.js';
 import { logger } from '$lib/logging';
 
@@ -77,6 +78,16 @@ export function isVideoFile(filePath: string): boolean {
 function getLanguageFromStream(stream: FFprobeStream): string | undefined {
 	const tags = stream.tags || {};
 	return tags.language || tags.LANGUAGE || undefined;
+}
+
+function parseStrmUrl(content: string): string | null {
+	const lines = content.split(/\r?\n/);
+	for (const rawLine of lines) {
+		const line = rawLine.trim();
+		if (!line || line.startsWith('#')) continue;
+		return line;
+	}
+	return null;
 }
 
 /**
@@ -278,14 +289,52 @@ export class MediaInfoService {
 	 * Extract media information from a video file
 	 *
 	 * @param filePath - Full path to the video file
+	 * @param options - Extraction options
 	 * @returns MediaInfo object or null if extraction fails
 	 */
-	async extractMediaInfo(filePath: string): Promise<MediaInfo | null> {
+	async extractMediaInfo(
+		filePath: string,
+		options: { allowStrmProbe?: boolean } = {}
+	): Promise<MediaInfo | null> {
 		try {
+			const { allowStrmProbe = true } = options;
 			// Handle .strm files specially - they are streaming placeholders, not real video files
 			const ext = filePath.toLowerCase().slice(filePath.lastIndexOf('.'));
 			if (ext === '.strm') {
-				return this.getStrmMediaInfo();
+				if (!allowStrmProbe) {
+					return this.getStrmMediaInfo();
+				}
+				try {
+					const content = await readFile(filePath, 'utf8');
+					const strmUrl = parseStrmUrl(content);
+					if (!strmUrl) {
+						return this.getStrmMediaInfo();
+					}
+
+					const parsedUrl = new URL(strmUrl);
+					if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+						return this.getStrmMediaInfo();
+					}
+
+					const output = await runFFprobe(strmUrl, {
+						timeout: 8000,
+						rwTimeoutMs: 8000,
+						probeSize: 5_000_000,
+						analyzeDuration: 5_000_000
+					});
+
+					if (!output) {
+						return this.getStrmMediaInfo();
+					}
+
+					return this.parseFFprobeOutput(output);
+				} catch (error) {
+					logger.debug('[MediaInfoService] STRM probe failed', {
+						filePath,
+						error: error instanceof Error ? error.message : String(error)
+					});
+					return this.getStrmMediaInfo();
+				}
 			}
 
 			// Run ffprobe on the file

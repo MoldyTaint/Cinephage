@@ -15,6 +15,8 @@
 	import type { SearchMode } from '$lib/components/search/InteractiveSearchModal.svelte';
 	import { CheckSquare, FileEdit } from 'lucide-svelte';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
+	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
 
 	let { data }: { data: PageData } = $props();
 
@@ -91,6 +93,12 @@
 	let deletingEpisodeName = $state<string>('');
 	let isDeletingSeason = $state(false);
 	let isDeletingEpisode = $state(false);
+
+	$effect(() => {
+		if ($page.url.searchParams.get('edit') === '1') {
+			isEditModalOpen = true;
+		}
+	});
 
 	// Find quality profile name (use default if none set)
 	const qualityProfileName = $derived.by(() => {
@@ -187,6 +195,13 @@
 
 	function handleEdit() {
 		isEditModalOpen = true;
+	}
+
+	function handleEditClose() {
+		isEditModalOpen = false;
+		if ($page.url.searchParams.get('edit') === '1') {
+			goto($page.url.pathname, { replaceState: true, keepFocus: true, noScroll: true });
+		}
 	}
 
 	async function handleRefresh() {
@@ -976,6 +991,7 @@
 					<SeasonAccordion
 						{season}
 						seriesMonitored={data.series.monitored ?? false}
+						isStreamerProfile={data.series.scoringProfileId === 'streamer'}
 						defaultOpen={false}
 						{selectedEpisodes}
 						{showCheckboxes}
@@ -1023,7 +1039,7 @@
 	qualityProfiles={data.qualityProfiles}
 	rootFolders={data.rootFolders}
 	saving={isSaving}
-	onClose={() => (isEditModalOpen = false)}
+	onClose={handleEditClose}
 	onSave={handleEditSave}
 />
 

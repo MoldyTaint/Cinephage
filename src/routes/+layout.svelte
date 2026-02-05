@@ -77,7 +77,7 @@
 	<input id="main-drawer" type="checkbox" class="drawer-toggle" />
 	<div class="drawer-content flex min-h-screen flex-col bg-base-100 text-base-content">
 		<!-- Mobile Header -->
-		<header class="navbar sticky top-0 z-30 bg-base-200 shadow-sm lg:hidden">
+		<header class="navbar sticky top-0 z-50 bg-base-200 shadow-sm lg:hidden">
 			<div class="flex-none">
 				<label for="main-drawer" aria-label="open sidebar" class="btn btn-square btn-ghost">
 					<Menu class="h-6 w-6" />

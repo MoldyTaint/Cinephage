@@ -69,7 +69,7 @@
 					0
 				) ?? 0;
 			scanSuccess = {
-				message: `Scan complete: ${result.results?.length ?? 0} folder(s) scanned`,
+				message: `Scan complete: ${result.results?.length ?? 0} folders scanned`,
 				unmatchedCount: totalUnmatched
 			};
 			scanning = false;
@@ -333,7 +333,7 @@
 					<span>{scanSuccess.message}</span>
 					{#if scanSuccess.unmatchedCount > 0}
 						<a href="/library/unmatched" class="btn gap-1 btn-ghost btn-sm">
-							{scanSuccess.unmatchedCount} unmatched file{scanSuccess.unmatchedCount !== 1
+							View {scanSuccess.unmatchedCount} unmatched file{scanSuccess.unmatchedCount !== 1
 								? 's'
 								: ''}
 							<ExternalLink class="h-3 w-3" />

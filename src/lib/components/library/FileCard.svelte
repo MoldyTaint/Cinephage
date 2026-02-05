@@ -19,6 +19,7 @@
 	interface Props {
 		file: MovieFile;
 		subtitles?: Subtitle[];
+		isStreamerProfile?: boolean;
 		onDelete?: (fileId: string) => void;
 		onSubtitleSearch?: () => void;
 		onSubtitleAutoSearch?: () => void;
@@ -28,6 +29,7 @@
 	let {
 		file,
 		subtitles = [],
+		isStreamerProfile = false,
 		onDelete,
 		onSubtitleSearch,
 		onSubtitleAutoSearch,
@@ -121,8 +123,15 @@
 
 	<!-- Info row -->
 	<div class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2 md:gap-x-4">
+		<!-- Streaming tag before size for streamer profiles -->
+		{#if isStreamerProfile}
+			<span class="badge max-w-full truncate badge-sm badge-secondary">Streaming</span>
+		{/if}
+
 		<!-- Quality badges -->
-		<QualityBadge quality={file.quality} mediaInfo={file.mediaInfo} size="sm" />
+		{#if !isStreamerProfile}
+			<QualityBadge quality={file.quality} mediaInfo={file.mediaInfo} size="sm" />
+		{/if}
 
 		<!-- Size -->
 		<div class="flex items-center gap-1 text-sm text-base-content/70">
@@ -137,7 +146,7 @@
 		</div>
 
 		<!-- Release group -->
-		{#if file.releaseGroup}
+		{#if file.releaseGroup && !isStreamerProfile}
 			<span class="badge max-w-full truncate badge-outline badge-sm" title={file.releaseGroup}>
 				{file.releaseGroup}
 			</span>

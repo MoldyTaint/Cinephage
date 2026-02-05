@@ -2651,7 +2651,6 @@ export class MonitoringSearchService {
 		try {
 			// Get file stats
 			const stats = statSync(result.filePath);
-			const mediaInfo = await mediaInfoService.extractMediaInfo(result.filePath);
 
 			// Parse quality from release title
 			const parsedRelease = parser.parse(release.title);
@@ -2672,6 +2671,11 @@ export class MonitoringSearchService {
 				if (!movie || !movie.rootFolder) {
 					return { success: false, error: 'Movie or root folder not found' };
 				}
+
+				const allowStrmProbe = movie.scoringProfileId !== 'streamer';
+				const mediaInfo = await mediaInfoService.extractMediaInfo(result.filePath, {
+					allowStrmProbe
+				});
 
 				// Calculate relative path from root folder
 				const relativePath = relative(movie.rootFolder.path, result.filePath);
@@ -2760,6 +2764,11 @@ export class MonitoringSearchService {
 				if (!show || !show.rootFolder) {
 					return { success: false, error: 'Series or root folder not found' };
 				}
+
+				const allowStrmProbe = show.scoringProfileId !== 'streamer';
+				const mediaInfo = await mediaInfoService.extractMediaInfo(result.filePath, {
+					allowStrmProbe
+				});
 
 				// Find the episode
 				const episodeRow = await db.query.episodes.findFirst({
@@ -2908,6 +2917,7 @@ export class MonitoringSearchService {
 		if (!show || !show.rootFolder) {
 			return { success: false, error: 'Series or root folder not found' };
 		}
+		const allowStrmProbe = show.scoringProfileId !== 'streamer';
 
 		// Create .strm files for all episodes in the season
 		const strmResult = await strmService.createSeasonStrmFiles({
@@ -2958,7 +2968,9 @@ export class MonitoringSearchService {
 
 			try {
 				const stats = statSync(epResult.filePath);
-				const mediaInfo = await mediaInfoService.extractMediaInfo(epResult.filePath);
+				const mediaInfo = await mediaInfoService.extractMediaInfo(epResult.filePath, {
+					allowStrmProbe
+				});
 				const relativePath = relative(show.rootFolder!.path, epResult.filePath);
 
 				episodeFileData.push({

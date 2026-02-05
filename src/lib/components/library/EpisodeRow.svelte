@@ -72,6 +72,7 @@
 	interface Props {
 		episode: Episode;
 		seriesMonitored: boolean;
+		isStreamerProfile?: boolean;
 		selected?: boolean;
 		showCheckbox?: boolean;
 		isDownloading?: boolean;
@@ -90,6 +91,7 @@
 	let {
 		episode,
 		seriesMonitored,
+		isStreamerProfile = false,
 		selected = false,
 		showCheckbox = false,
 		isDownloading = false,
@@ -251,7 +253,7 @@
 		<div class="flex min-w-0 flex-col">
 			<div class="flex items-start justify-between gap-2">
 				<span
-					class={`min-w-0 flex-1 font-medium break-words ${!episode.title ? 'text-base-content/60' : ''}`}
+					class={`wrap-break-words min-w-0 flex-1 font-medium ${!episode.title ? 'text-base-content/60' : ''}`}
 				>
 					{episode.title || 'TBA'}
 				</span>
@@ -369,8 +371,8 @@
 									{#if episode.file.mediaInfo.subtitleLanguages?.length}
 										<div>Subs: {episode.file.mediaInfo.subtitleLanguages.join(', ')}</div>
 									{/if}
-									{#if episode.file.releaseGroup}
-										<div>Group: {episode.file.releaseGroup}</div>
+									{#if episode.file.releaseGroup || isStreamerProfile}
+										<div>Group: {episode.file.releaseGroup || 'Streaming'}</div>
 									{/if}
 								</div>
 							</div>
@@ -389,7 +391,7 @@
 			</div>
 			{#if episode.file}
 				<span
-					class="block max-w-full text-xs break-words text-base-content/50 sm:whitespace-normal"
+					class="wrap-break-words block max-w-full text-xs text-base-content/50 sm:whitespace-normal"
 					title={episode.file.relativePath}
 				>
 					{episode.file.relativePath.split('/').pop()}
@@ -418,7 +420,11 @@
 			</div>
 			{#if episode.hasFile && episode.file}
 				<div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-base-content/60 sm:hidden">
-					<QualityBadge quality={episode.file.quality} mediaInfo={null} size="sm" />
+					{#if isStreamerProfile}
+						<span class="badge badge-xs badge-secondary">Streaming</span>
+					{:else}
+						<QualityBadge quality={episode.file.quality} mediaInfo={null} size="sm" />
+					{/if}
 					{#if allSubtitles.length > 0}
 						<div class="flex items-center gap-1">
 							<Subtitles size={12} class="text-base-content/50" />
@@ -441,7 +447,11 @@
 			<div class="flex flex-col gap-1">
 				<div class="flex items-center gap-2">
 					<CheckCircle size={16} class="text-success" />
-					<QualityBadge quality={episode.file.quality} mediaInfo={null} size="sm" />
+					{#if isStreamerProfile}
+						<span class="badge badge-xs badge-secondary">Streaming</span>
+					{:else}
+						<QualityBadge quality={episode.file.quality} mediaInfo={null} size="sm" />
+					{/if}
 				</div>
 				{#if allSubtitles.length > 0}
 					<div class="flex items-center gap-1">
@@ -593,8 +603,8 @@
 							{#if episode.file.mediaInfo.subtitleLanguages?.length}
 								<div>Subs: {episode.file.mediaInfo.subtitleLanguages.join(', ')}</div>
 							{/if}
-							{#if episode.file.releaseGroup}
-								<div>Group: {episode.file.releaseGroup}</div>
+							{#if episode.file.releaseGroup || isStreamerProfile}
+								<div>Group: {episode.file.releaseGroup || 'Streaming'}</div>
 							{/if}
 						</div>
 					</div>

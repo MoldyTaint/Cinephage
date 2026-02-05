@@ -141,10 +141,22 @@
 	<div
 		class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
 		onclick={onClose}
+		role="button"
+		tabindex="0"
+		onkeydown={(e) => {
+			if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+				e.preventDefault();
+				onClose();
+			}
+		}}
 	>
 		<div
 			class="max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-2xl bg-base-100 shadow-2xl"
 			onclick={(e) => e.stopPropagation()}
+			role="dialog"
+			aria-modal="true"
+			tabindex="0"
+			onkeydown={(e) => e.stopPropagation()}
 		>
 			<!-- Header -->
 			<div class="border-b border-base-200 bg-base-100 p-6">

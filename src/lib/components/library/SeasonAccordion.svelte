@@ -75,6 +75,7 @@
 	interface Props {
 		season: Season;
 		seriesMonitored: boolean;
+		isStreamerProfile?: boolean;
 		defaultOpen?: boolean;
 		selectedEpisodes?: Set<string>;
 		showCheckboxes?: boolean;
@@ -102,6 +103,7 @@
 	let {
 		season,
 		seriesMonitored,
+		isStreamerProfile = false,
 		defaultOpen = false,
 		selectedEpisodes = new Set(),
 		showCheckboxes = false,
@@ -333,6 +335,7 @@
 								<EpisodeRow
 									{episode}
 									{seriesMonitored}
+									{isStreamerProfile}
 									selected={selectedEpisodes.has(episode.id)}
 									showCheckbox={showCheckboxes}
 									isDownloading={downloadingEpisodeIds.has(episode.id) ||

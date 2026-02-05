@@ -14,6 +14,7 @@
 	interface Props {
 		files: MovieFile[];
 		subtitles?: Subtitle[];
+		isStreamerProfile?: boolean;
 		onDeleteFile?: (fileId: string) => void;
 		onSearch?: () => void;
 		onSubtitleSearch?: () => void;
@@ -24,6 +25,7 @@
 	let {
 		files,
 		subtitles = [],
+		isStreamerProfile = false,
 		onDeleteFile,
 		onSearch,
 		onSubtitleSearch,
@@ -66,6 +68,7 @@
 				<FileCard
 					{file}
 					{subtitles}
+					{isStreamerProfile}
 					onDelete={onDeleteFile}
 					{onSubtitleSearch}
 					{onSubtitleAutoSearch}

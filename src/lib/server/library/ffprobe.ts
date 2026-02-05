@@ -165,6 +165,8 @@ export interface FFprobeOptions {
 	probeSize?: number;
 	/** Analyze duration in microseconds */
 	analyzeDuration?: number;
+	/** Network read/write timeout in milliseconds (applies to http/https) */
+	rwTimeoutMs?: number;
 }
 
 // =============================================================================
@@ -263,12 +265,16 @@ export async function runFFprobe(
 		timeout = DEFAULT_TIMEOUT,
 		ffprobePath = DEFAULT_FFPROBE_PATH,
 		probeSize = DEFAULT_PROBE_SIZE,
-		analyzeDuration
+		analyzeDuration,
+		rwTimeoutMs
 	} = options;
 
 	// Verify file exists first
 	try {
-		await access(filePath);
+		const isRemote = /^https?:\/\//i.test(filePath);
+		if (!isRemote) {
+			await access(filePath);
+		}
 	} catch {
 		logger.error('[FFprobe] File not accessible', undefined, { filePath });
 		return null;
@@ -288,6 +294,10 @@ export async function runFFprobe(
 
 	if (analyzeDuration) {
 		args.push('-analyzeduration', analyzeDuration.toString());
+	}
+	if (rwTimeoutMs && rwTimeoutMs > 0) {
+		// ffprobe expects microseconds
+		args.push('-rw_timeout', String(Math.floor(rwTimeoutMs * 1000)));
 	}
 
 	args.push(filePath);
@@ -315,7 +325,12 @@ export async function runFFprobe(
 
 		proc.on('close', (code) => {
 			if (code !== 0) {
-				logger.error('[FFprobe] Exited with non-zero code', undefined, { code, stderr });
+				const isRemote = /^https?:\/\//i.test(filePath);
+				if (isRemote) {
+					logger.debug('[FFprobe] Exited with non-zero code', { code, stderr });
+				} else {
+					logger.error('[FFprobe] Exited with non-zero code', undefined, { code, stderr });
+				}
 				resolve(null);
 				return;
 			}

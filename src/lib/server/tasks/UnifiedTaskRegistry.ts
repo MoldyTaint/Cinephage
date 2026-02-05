@@ -136,6 +136,14 @@ const MAINTENANCE_TASKS: UnifiedTaskDefinition[] = [
 			'Update all .strm files with the current streaming base URL. Run this after changing your server address, port, or domain.',
 		category: 'maintenance',
 		runEndpoint: '/api/streaming/strm/update'
+	},
+	{
+		id: 'reprobe-strm-media-info',
+		name: 'Reprobe .strm Media Info',
+		description:
+			'Reprobe existing .strm files to refresh media info, excluding Streamer Profile .strm files.',
+		category: 'maintenance',
+		runEndpoint: '/api/streaming/strm/reprobe'
 	}
 ];
 

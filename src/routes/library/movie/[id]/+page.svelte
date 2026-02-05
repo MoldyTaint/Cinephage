@@ -15,6 +15,8 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import type { MovieEditData } from '$lib/components/library/MovieEditModal.svelte';
 	import { FileEdit } from 'lucide-svelte';
+	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
 
 	let { data }: { data: PageData } = $props();
 
@@ -51,6 +53,12 @@
 	let scoreData = $state<FileScoreResponse | null>(null);
 	let scoreLoading = $state(false);
 	let scoreFetched = $state(false);
+
+	$effect(() => {
+		if ($page.url.searchParams.get('edit') === '1') {
+			isEditModalOpen = true;
+		}
+	});
 
 	// Derived score info for header badge (use normalized score for comparison with search results)
 	const scoreInfo = $derived.by(() => {
@@ -199,6 +207,13 @@
 
 	function handleEdit() {
 		isEditModalOpen = true;
+	}
+
+	function handleEditClose() {
+		isEditModalOpen = false;
+		if ($page.url.searchParams.get('edit') === '1') {
+			goto($page.url.pathname, { replaceState: true, keepFocus: true, noScroll: true });
+		}
 	}
 
 	async function handleEditSave(editData: MovieEditData) {
@@ -438,6 +453,7 @@
 				<MovieFilesTab
 					files={data.movie.files}
 					subtitles={data.movie.subtitles}
+					isStreamerProfile={data.movie.scoringProfileId === 'streamer'}
 					onDeleteFile={handleDeleteFile}
 					onSearch={handleSearch}
 					onSubtitleSearch={handleSubtitleSearch}
@@ -535,7 +551,7 @@
 	qualityProfiles={data.qualityProfiles}
 	rootFolders={data.rootFolders}
 	saving={isSaving}
-	onClose={() => (isEditModalOpen = false)}
+	onClose={handleEditClose}
 	onSave={handleEditSave}
 />
 
