@@ -62,6 +62,10 @@
 	"overrides": {
 		"cookie": "^0.7.0"
 	},
+	"optionalDependencies": {
+		"@rollup/rollup-linux-arm64-gnu": "^4.30.0",
+		"@rollup/rollup-linux-x64-gnu": "^4.30.0"
+	},
 	"dependencies": {
 		"@types/crypto-js": "^4.2.2",
 		"@types/sax": "^1.2.7",
