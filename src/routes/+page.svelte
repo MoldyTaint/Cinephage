@@ -361,10 +361,10 @@
 										</div>
 									{/if}
 									<div class="min-w-0 flex-1">
-										<p class="truncate font-medium">
+										<p class="font-medium break-words whitespace-normal">
 											{episode.series?.title || 'Unknown Series'}
 										</p>
-										<p class="text-sm text-base-content/70">
+										<p class="text-sm break-words whitespace-normal text-base-content/70">
 											S{String(episode.seasonNumber).padStart(2, '0')}E{String(
 												episode.episodeNumber
 											).padStart(2, '0')}

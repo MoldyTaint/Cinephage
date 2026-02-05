@@ -37,7 +37,7 @@
 	let searchQuery = $state('');
 	let filterType = $state<'all' | 'builtin' | 'custom'>('all');
 	let filterCategory = $state<FormatCategory | 'all'>('all');
-	const expandedCategories = new SvelteSet<FormatCategory>(FORMAT_CATEGORY_ORDER);
+	const expandedCategories = new SvelteSet<FormatCategory>();
 
 	// Filtered formats
 	const filteredFormats = $derived(() => {
@@ -102,6 +102,7 @@
 		if (expandedCategories.has(category)) {
 			expandedCategories.delete(category);
 		} else {
+			expandedCategories.clear();
 			expandedCategories.add(category);
 		}
 	}

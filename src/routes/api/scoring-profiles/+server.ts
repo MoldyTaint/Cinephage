@@ -258,10 +258,22 @@ export const PUT: RequestHandler = async ({ request }) => {
 				await db
 					.update(profileSizeLimits)
 					.set({
-						movieMinSizeGb: updateData.movieMinSizeGb ?? existing[0].movieMinSizeGb,
-						movieMaxSizeGb: updateData.movieMaxSizeGb ?? existing[0].movieMaxSizeGb,
-						episodeMinSizeMb: updateData.episodeMinSizeMb ?? existing[0].episodeMinSizeMb,
-						episodeMaxSizeMb: updateData.episodeMaxSizeMb ?? existing[0].episodeMaxSizeMb,
+						movieMinSizeGb:
+							updateData.movieMinSizeGb !== undefined
+								? updateData.movieMinSizeGb
+								: existing[0].movieMinSizeGb,
+						movieMaxSizeGb:
+							updateData.movieMaxSizeGb !== undefined
+								? updateData.movieMaxSizeGb
+								: existing[0].movieMaxSizeGb,
+						episodeMinSizeMb:
+							updateData.episodeMinSizeMb !== undefined
+								? updateData.episodeMinSizeMb
+								: existing[0].episodeMinSizeMb,
+						episodeMaxSizeMb:
+							updateData.episodeMaxSizeMb !== undefined
+								? updateData.episodeMaxSizeMb
+								: existing[0].episodeMaxSizeMb,
 						isDefault: updateData.isDefault ?? existing[0].isDefault,
 						updatedAt: new Date().toISOString()
 					})

@@ -91,6 +91,10 @@ Not recommended. SQLite doesn't handle multiple writers well.
 | Logs            | `logs/` (Docker: `/config/logs/`)                                           |
 | Custom indexers | `data/indexers/definitions/` (Docker: `/config/data/indexers/definitions/`) |
 
+### Why can't I configure size limits for the Streamer profile?
+
+The Streamer profile plays media from external streaming sources rather than local files. Stream quality and file size can vary by provider, region, or time of request, so hard size limits don't make sense and can cause false rejections. For that reason, Streamer size limits are locked and shown as `Auto`.
+
 ---
 
 ## Library

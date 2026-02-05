@@ -50,6 +50,7 @@
 	// Selection state
 	let selectedEpisodes = new SvelteSet<string>();
 	let showCheckboxes = $state(false);
+	let openSeasonId = $state<string | null>(null);
 
 	// Auto-search state
 	let autoSearchingEpisodes = new SvelteSet<string>();
@@ -799,6 +800,10 @@
 		selectedEpisodes.clear();
 	}
 
+	function handleSeasonToggle(seasonId: string) {
+		openSeasonId = openSeasonId === seasonId ? null : seasonId;
+	}
+
 	interface Release {
 		guid: string;
 		title: string;
@@ -992,7 +997,7 @@
 						{season}
 						seriesMonitored={data.series.monitored ?? false}
 						isStreamerProfile={data.series.scoringProfileId === 'streamer'}
-						defaultOpen={false}
+						defaultOpen={openSeasonId === season.id}
 						{selectedEpisodes}
 						{showCheckboxes}
 						{downloadingEpisodeIds}
@@ -1002,6 +1007,7 @@
 						{autoSearchingEpisodes}
 						{autoSearchEpisodeResults}
 						{subtitleAutoSearchingEpisodes}
+						onToggleOpen={handleSeasonToggle}
 						onSeasonMonitorToggle={handleSeasonMonitorToggle}
 						onEpisodeMonitorToggle={handleEpisodeMonitorToggle}
 						onSeasonSearch={handleSeasonSearch}

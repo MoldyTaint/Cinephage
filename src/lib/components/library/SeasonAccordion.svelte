@@ -86,6 +86,7 @@
 		autoSearchingEpisodes?: Set<string>;
 		autoSearchEpisodeResults?: Map<string, AutoSearchResult>;
 		subtitleAutoSearchingEpisodes?: Set<string>;
+		onToggleOpen?: (seasonId: string) => void;
 		onSeasonMonitorToggle?: (seasonId: string, newValue: boolean) => void;
 		onEpisodeMonitorToggle?: (episodeId: string, newValue: boolean) => void;
 		onSeasonSearch?: (season: Season) => void;
@@ -114,6 +115,7 @@
 		autoSearchingEpisodes = new Set(),
 		autoSearchEpisodeResults = new Map(),
 		subtitleAutoSearchingEpisodes = new Set(),
+		onToggleOpen,
 		onSeasonMonitorToggle,
 		onEpisodeMonitorToggle,
 		onSeasonSearch,
@@ -215,7 +217,13 @@
 		<div class="flex w-full flex-wrap items-start gap-3 sm:flex-nowrap sm:items-center">
 			<button
 				class="flex min-w-0 flex-1 items-center gap-3 text-left"
-				onclick={() => (isOpen = !isOpen)}
+				onclick={() => {
+					if (onToggleOpen) {
+						onToggleOpen(season.id);
+					} else {
+						isOpen = !isOpen;
+					}
+				}}
 			>
 				{#if isOpen}
 					<ChevronDown size={20} class="text-base-content/50" />

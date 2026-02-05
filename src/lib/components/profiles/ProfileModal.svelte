@@ -43,14 +43,33 @@
 	let description = $state('');
 	let copyFromId = $state<string>('');
 	let upgradesAllowed = $state(true);
-	// Media-specific size limits (null = no limit)
-	let movieMinSizeGb = $state<number | null>(null);
-	let movieMaxSizeGb = $state<number | null>(null);
-	let episodeMinSizeMb = $state<number | null>(null);
-	let episodeMaxSizeMb = $state<number | null>(null);
+	// Media-specific size limits (string inputs to preserve cursor/editing)
+	let movieMinSizeGbInput = $state('');
+	let movieMaxSizeGbInput = $state('');
+	let episodeMinSizeMbInput = $state('');
+	let episodeMaxSizeMbInput = $state('');
 	let isDefault = $state(false);
 	// Format scores state
 	let formatScores = $state<Record<string, number>>({});
+
+	function coerceLimit(value: number | string | null | undefined): number | null {
+		if (value === null || value === undefined) return null;
+		if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+		const trimmed = value.trim();
+		if (!trimmed) return null;
+		const parsed = Number(trimmed);
+		return Number.isFinite(parsed) ? parsed : null;
+	}
+
+	const movieMinSizeGbValue = $derived(parseNumberInput(movieMinSizeGbInput));
+	const movieMaxSizeGbValue = $derived(parseNumberInput(movieMaxSizeGbInput));
+	const episodeMinSizeMbValue = $derived(parseNumberInput(episodeMinSizeMbInput));
+	const episodeMaxSizeMbValue = $derived(parseNumberInput(episodeMaxSizeMbInput));
+
+	function stringifyLimit(value: number | null | undefined): string {
+		if (value === null || value === undefined) return '';
+		return Number.isFinite(value) ? String(value) : '';
+	}
 
 	// Initialize form when profile changes
 	$effect(() => {
@@ -60,10 +79,10 @@
 				description = profile.description || '';
 				copyFromId = ''; // No copy when editing existing profile
 				upgradesAllowed = profile.upgradesAllowed;
-				movieMinSizeGb = profile.movieMinSizeGb ?? null;
-				movieMaxSizeGb = profile.movieMaxSizeGb ?? null;
-				episodeMinSizeMb = profile.episodeMinSizeMb ?? null;
-				episodeMaxSizeMb = profile.episodeMaxSizeMb ?? null;
+				movieMinSizeGbInput = stringifyLimit(coerceLimit(profile.movieMinSizeGb));
+				movieMaxSizeGbInput = stringifyLimit(coerceLimit(profile.movieMaxSizeGb));
+				episodeMinSizeMbInput = stringifyLimit(coerceLimit(profile.episodeMinSizeMb));
+				episodeMaxSizeMbInput = stringifyLimit(coerceLimit(profile.episodeMaxSizeMb));
 				isDefault = profile.isDefault;
 				// Initialize format scores from profile
 				formatScores = { ...(profile.formatScores ?? {}) };
@@ -73,10 +92,10 @@
 				description = '';
 				copyFromId = defaultCopyFromId;
 				upgradesAllowed = true;
-				movieMinSizeGb = null;
-				movieMaxSizeGb = null;
-				episodeMinSizeMb = null;
-				episodeMaxSizeMb = null;
+				movieMinSizeGbInput = '';
+				movieMaxSizeGbInput = '';
+				episodeMinSizeMbInput = '';
+				episodeMaxSizeMbInput = '';
 				isDefault = false;
 				// For new profiles, start with empty scores (copyFrom is handled server-side)
 				formatScores = {};
@@ -85,6 +104,9 @@
 			activeTab = 'general';
 		}
 	});
+
+	const maxDescriptionLength = 70;
+	const descriptionTooLong = $derived(description.length > maxDescriptionLength);
 
 	// Convert Record<string, number> to Map<FormatCategory, FormatScoreEntry[]> for accordion
 	const groupedFormatScores = $derived(() => {
@@ -106,16 +128,118 @@
 		formatScores = { ...formatScores, [formatId]: score };
 	}
 
+	function normalizeLimit(value: number | string | null | undefined) {
+		const coerced = coerceLimit(value);
+		if (coerced === null) return null;
+		if (coerced === 0 || Number.isNaN(coerced)) return null;
+		return coerced;
+	}
+
+	function normalizeGbLimit(value: number | string | null | undefined) {
+		const coerced = normalizeLimit(value);
+		if (coerced === null) return null;
+		return Number(coerced.toFixed(2));
+	}
+
+	function normalizeMbLimit(value: number | string | null | undefined) {
+		const coerced = normalizeLimit(value);
+		if (coerced === null) return null;
+		return Math.round(coerced);
+	}
+
+	function parseNumberInput(value: string): number | null {
+		const trimmed = value.trim();
+		if (!trimmed) return null;
+		if (!/^\d*(\.\d*)?$/.test(trimmed)) return null;
+		const parsed = Number(trimmed);
+		return Number.isFinite(parsed) ? parsed : null;
+	}
+
+	function sanitizeDecimalInput(value: string, maxDecimals: number): string {
+		// Keep only digits and a single dot; enforce max decimals.
+		let cleaned = '';
+		let dotSeen = false;
+		let decimals = 0;
+		for (const ch of value) {
+			if (ch >= '0' && ch <= '9') {
+				if (dotSeen) {
+					if (decimals >= maxDecimals) continue;
+					decimals += 1;
+				}
+				cleaned += ch;
+				continue;
+			}
+			if (ch === '.' && !dotSeen && maxDecimals > 0) {
+				cleaned += ch;
+				dotSeen = true;
+			}
+		}
+		return cleaned;
+	}
+
+	function allowDecimalKey(event: KeyboardEvent, currentValue: string, maxDecimals: number) {
+		const key = event.key;
+		if (event.ctrlKey || event.metaKey || event.altKey) return;
+		if (
+			key === 'Backspace' ||
+			key === 'Delete' ||
+			key === 'ArrowLeft' ||
+			key === 'ArrowRight' ||
+			key === 'ArrowUp' ||
+			key === 'ArrowDown' ||
+			key === 'Home' ||
+			key === 'End' ||
+			key === 'Tab'
+		) {
+			return;
+		}
+		if (key === '.') {
+			if (maxDecimals === 0 || currentValue.includes('.')) {
+				event.preventDefault();
+			}
+			return;
+		}
+		if (key >= '0' && key <= '9') {
+			if (maxDecimals === 0 && currentValue.includes('.')) {
+				event.preventDefault();
+				return;
+			}
+			const dotIndex = currentValue.indexOf('.');
+			if (dotIndex !== -1 && currentValue.length - dotIndex - 1 >= maxDecimals) {
+				event.preventDefault();
+				return;
+			}
+			return;
+		}
+		event.preventDefault();
+	}
+
+	function sanitizePaste(
+		event: ClipboardEvent,
+		setter: (value: string) => void,
+		maxDecimals: number
+	) {
+		const text = event.clipboardData?.getData('text') ?? '';
+		const cleaned = sanitizeDecimalInput(text, maxDecimals);
+		if (cleaned !== text) {
+			event.preventDefault();
+			setter(cleaned);
+		}
+	}
+
 	function handleSave() {
+		if (descriptionTooLong) {
+			return;
+		}
 		onSave({
 			name,
 			description: description || undefined,
 			copyFromId: copyFromId || undefined, // Only include if creating new profile
 			upgradesAllowed,
-			movieMinSizeGb: movieMinSizeGb || null,
-			movieMaxSizeGb: movieMaxSizeGb || null,
-			episodeMinSizeMb: episodeMinSizeMb || null,
-			episodeMaxSizeMb: episodeMaxSizeMb || null,
+			movieMinSizeGb: normalizeGbLimit(movieMinSizeGbValue),
+			movieMaxSizeGb: normalizeGbLimit(movieMaxSizeGbValue),
+			episodeMinSizeMb: normalizeMbLimit(episodeMinSizeMbValue),
+			episodeMaxSizeMb: normalizeMbLimit(episodeMaxSizeMbValue),
 			isDefault,
 			// Include format scores (filter out zeros to keep payload lean)
 			formatScores: Object.fromEntries(
@@ -127,6 +251,7 @@
 	const isCoreReadonly = $derived(mode === 'view' || (profile?.isBuiltIn ?? false));
 	const isFullyReadonly = $derived(mode === 'view');
 	const isNewProfile = $derived(mode === 'add');
+	const isStreamerProfile = $derived(profile?.id === 'streamer');
 	const modalTitle = $derived(
 		mode === 'add' ? 'Create Profile' : profile?.isBuiltIn ? 'Edit Size Limits' : 'Edit Profile'
 	);
@@ -206,11 +331,24 @@
 					</label>
 					<textarea
 						id="profile-description"
-						class="textarea-bordered textarea h-20 textarea-sm"
+						class="textarea-bordered textarea h-20 resize-none textarea-sm"
 						bind:value={description}
 						disabled={isCoreReadonly}
+						maxlength={maxDescriptionLength}
 						placeholder="Describe what this profile is for..."
 					></textarea>
+					{#if !isCoreReadonly}
+						<div class="label py-1">
+							<span class="label-text-alt text-xs {descriptionTooLong ? 'text-error' : ''}">
+								{description.length}/{maxDescriptionLength}
+							</span>
+							{#if descriptionTooLong}
+								<span class="label-text-alt text-xs text-error">
+									Max {maxDescriptionLength} characters.
+								</span>
+							{/if}
+						</div>
+					{/if}
 				</div>
 
 				<!-- Copy From (only shown when creating new profile) -->
@@ -276,87 +414,142 @@
 			<div class="space-y-4">
 				<SectionHeader title="Size Limits" />
 
-				<div class="grid grid-cols-2 gap-2 sm:gap-3">
-					<div class="form-control">
-						<label class="label py-1" for="movie-min-size">
-							<span class="label-text">Movie Min (GB)</span>
-						</label>
-						<input
-							id="movie-min-size"
-							type="number"
-							step="0.1"
-							min="0"
-							class="input-bordered input input-sm"
-							bind:value={movieMinSizeGb}
-							disabled={isFullyReadonly}
-							placeholder="No min"
-						/>
+				{#if isStreamerProfile}
+					<div class="rounded-lg bg-base-200 p-3 text-xs text-base-content/70">
+						<Info class="mr-1 inline h-3 w-3" />
+						Streaming profiles use external sources, so size limits are not configurable.
+					</div>
+				{:else}
+					<div class="grid grid-cols-2 gap-2 sm:gap-3">
+						<div class="form-control">
+							<label class="label py-1" for="movie-min-size">
+								<span class="label-text">Movie Min (GB)</span>
+							</label>
+							<input
+								id="movie-min-size"
+								type="text"
+								inputmode="decimal"
+								class="input-bordered input input-sm"
+								value={movieMinSizeGbInput}
+								oninput={(event) => {
+									const target = event.currentTarget as HTMLInputElement;
+									movieMinSizeGbInput = sanitizeDecimalInput(target.value, 2);
+								}}
+								onkeydown={(event) => allowDecimalKey(event, movieMinSizeGbInput, 2)}
+								onpaste={(event) =>
+									sanitizePaste(
+										event,
+										(value) => {
+											movieMinSizeGbInput = value;
+										},
+										2
+									)}
+								disabled={isFullyReadonly}
+								placeholder="No min"
+							/>
+						</div>
+
+						<div class="form-control">
+							<label class="label py-1" for="movie-max-size">
+								<span class="label-text">Movie Max (GB)</span>
+							</label>
+							<input
+								id="movie-max-size"
+								type="text"
+								inputmode="decimal"
+								class="input-bordered input input-sm"
+								value={movieMaxSizeGbInput}
+								oninput={(event) => {
+									const target = event.currentTarget as HTMLInputElement;
+									movieMaxSizeGbInput = sanitizeDecimalInput(target.value, 2);
+								}}
+								onkeydown={(event) => allowDecimalKey(event, movieMaxSizeGbInput, 2)}
+								onpaste={(event) =>
+									sanitizePaste(
+										event,
+										(value) => {
+											movieMaxSizeGbInput = value;
+										},
+										2
+									)}
+								disabled={isFullyReadonly}
+								placeholder="No max"
+							/>
+						</div>
 					</div>
 
-					<div class="form-control">
-						<label class="label py-1" for="movie-max-size">
-							<span class="label-text">Movie Max (GB)</span>
-						</label>
-						<input
-							id="movie-max-size"
-							type="number"
-							step="0.1"
-							min="0"
-							class="input-bordered input input-sm"
-							bind:value={movieMaxSizeGb}
-							disabled={isFullyReadonly}
-							placeholder="No max"
-						/>
-					</div>
-				</div>
+					<div class="grid grid-cols-2 gap-2 sm:gap-3">
+						<div class="form-control">
+							<label class="label py-1" for="episode-min-size">
+								<span class="label-text">Episode Min (MB)</span>
+							</label>
+							<input
+								id="episode-min-size"
+								type="text"
+								inputmode="decimal"
+								class="input-bordered input input-sm"
+								value={episodeMinSizeMbInput}
+								oninput={(event) => {
+									const target = event.currentTarget as HTMLInputElement;
+									episodeMinSizeMbInput = sanitizeDecimalInput(target.value, 0);
+								}}
+								onkeydown={(event) => allowDecimalKey(event, episodeMinSizeMbInput, 0)}
+								onpaste={(event) =>
+									sanitizePaste(
+										event,
+										(value) => {
+											episodeMinSizeMbInput = value;
+										},
+										0
+									)}
+								disabled={isFullyReadonly}
+								placeholder="No min"
+							/>
+							{#if episodeMinSizeMbValue}
+								<div class="label py-0">
+									<span class="label-text-alt text-xs">
+										= {(episodeMinSizeMbValue / 1024).toFixed(2)} GB
+									</span>
+								</div>
+							{/if}
+						</div>
 
-				<div class="grid grid-cols-2 gap-2 sm:gap-3">
-					<div class="form-control">
-						<label class="label py-1" for="episode-min-size">
-							<span class="label-text">Episode Min (MB)</span>
-						</label>
-						<input
-							id="episode-min-size"
-							type="number"
-							step="10"
-							min="0"
-							class="input-bordered input input-sm"
-							bind:value={episodeMinSizeMb}
-							disabled={isFullyReadonly}
-							placeholder="No min"
-						/>
-						{#if episodeMinSizeMb}
-							<div class="label py-0">
-								<span class="label-text-alt text-xs">
-									= {(episodeMinSizeMb / 1024).toFixed(2)} GB
-								</span>
-							</div>
-						{/if}
+						<div class="form-control">
+							<label class="label py-1" for="episode-max-size">
+								<span class="label-text">Episode Max (MB)</span>
+							</label>
+							<input
+								id="episode-max-size"
+								type="text"
+								inputmode="decimal"
+								class="input-bordered input input-sm"
+								value={episodeMaxSizeMbInput}
+								oninput={(event) => {
+									const target = event.currentTarget as HTMLInputElement;
+									episodeMaxSizeMbInput = sanitizeDecimalInput(target.value, 0);
+								}}
+								onkeydown={(event) => allowDecimalKey(event, episodeMaxSizeMbInput, 0)}
+								onpaste={(event) =>
+									sanitizePaste(
+										event,
+										(value) => {
+											episodeMaxSizeMbInput = value;
+										},
+										0
+									)}
+								disabled={isFullyReadonly}
+								placeholder="No max"
+							/>
+							{#if episodeMaxSizeMbValue}
+								<div class="label py-0">
+									<span class="label-text-alt text-xs">
+										= {(episodeMaxSizeMbValue / 1024).toFixed(2)} GB
+									</span>
+								</div>
+							{/if}
+						</div>
 					</div>
-
-					<div class="form-control">
-						<label class="label py-1" for="episode-max-size">
-							<span class="label-text">Episode Max (MB)</span>
-						</label>
-						<input
-							id="episode-max-size"
-							type="number"
-							step="10"
-							min="0"
-							class="input-bordered input input-sm"
-							bind:value={episodeMaxSizeMb}
-							disabled={isFullyReadonly}
-							placeholder="No max"
-						/>
-						{#if episodeMaxSizeMb}
-							<div class="label py-0">
-								<span class="label-text-alt text-xs">
-									= {(episodeMaxSizeMb / 1024).toFixed(2)} GB
-								</span>
-							</div>
-						{/if}
-					</div>
-				</div>
+				{/if}
 
 				<div class="rounded-lg bg-base-200 p-3 text-xs text-base-content/70">
 					<Info class="mr-1 inline h-3 w-3" />
@@ -389,7 +582,11 @@
 			{isFullyReadonly ? 'Close' : 'Cancel'}
 		</button>
 		{#if !isFullyReadonly}
-			<button class="btn gap-2 btn-primary" onclick={handleSave} disabled={saving || !name}>
+			<button
+				class="btn gap-2 btn-primary"
+				onclick={handleSave}
+				disabled={saving || !name || descriptionTooLong}
+			>
 				{#if saving}
 					<Loader2 class="h-4 w-4 animate-spin" />
 				{:else}
