@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Search, X, Clapperboard, Tv, Check, Loader2, Folder, FileVideo } from 'lucide-svelte';
+	import { Search, X, Clapperboard, Tv, Check, Loader2, Folder } from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
@@ -213,7 +213,7 @@
 			<div>
 				<p class="mb-2 text-sm font-medium">Files will be matched:</p>
 				<div class="max-h-48 space-y-1 overflow-y-auto rounded-lg bg-base-200 p-2">
-					{#each matchPreview.slice(0, 10) as item}
+					{#each matchPreview.slice(0, 10) as item, index (`${item.file}-${index}`)}
 						<div class="flex items-center justify-between rounded bg-base-300/50 px-2 py-1 text-sm">
 							<span class="flex-1 truncate" title={item.file}>{item.file}</span>
 							{#if item.season !== undefined && item.episode !== undefined}
@@ -293,7 +293,7 @@
 				<p class="mb-2 text-sm text-base-content/70">
 					Click a result to select it and preview the match
 				</p>
-				{#each searchResults as result}
+				{#each searchResults as result (result.id)}
 					<button
 						class="flex w-full items-center gap-3 rounded-lg bg-base-200 p-3 text-left transition-colors hover:bg-base-300"
 						onclick={() => selectMedia(result)}

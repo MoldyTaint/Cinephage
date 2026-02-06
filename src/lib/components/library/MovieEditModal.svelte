@@ -51,7 +51,11 @@
 	$effect(() => {
 		if (open) {
 			monitored = movie.monitored ?? true;
-			qualityProfileId = movie.scoringProfileId ?? '';
+			const defaultProfileId = qualityProfiles.find((p) => p.isDefault)?.id;
+			qualityProfileId =
+				movie.scoringProfileId && movie.scoringProfileId !== defaultProfileId
+					? movie.scoringProfileId
+					: '';
 			rootFolderId = movie.rootFolderId ?? '';
 			minimumAvailability = movie.minimumAvailability ?? 'released';
 			wantsSubtitles = movie.wantsSubtitles ?? true;
@@ -69,8 +73,12 @@
 		{ value: 'preDb', label: 'PreDB', description: 'Search when movie appears on PreDB' }
 	];
 
-	// Get the current quality profile for description display
-	let currentProfile = $derived(qualityProfiles.find((p) => p.id === qualityProfileId));
+	// Get profile data for labels/description
+	let defaultProfile = $derived(qualityProfiles.find((p) => p.isDefault));
+	let nonDefaultProfiles = $derived(qualityProfiles.filter((p) => p.id !== defaultProfile?.id));
+	let currentProfile = $derived(
+		qualityProfiles.find((p) => p.id === qualityProfileId) ?? defaultProfile
+	);
 
 	function formatBytes(bytes: number | null): string {
 		if (!bytes) return 'Unknown';
@@ -136,14 +144,9 @@
 				bind:value={qualityProfileId}
 				class="select-bordered select w-full"
 			>
-				<option value=""
-					>Default ({qualityProfiles.find((p) => p.isDefault)?.name ?? 'System Default'})</option
-				>
-				{#each qualityProfiles as profile (profile.id)}
-					<option value={profile.id}>
-						{profile.name}
-						{profile.isBuiltIn ? '' : '(Custom)'}
-					</option>
+				<option value="">{defaultProfile?.name ?? 'System Default'} (Default)</option>
+				{#each nonDefaultProfiles as profile (profile.id)}
+					<option value={profile.id}>{profile.name}</option>
 				{/each}
 			</select>
 			<div class="label">

@@ -19,6 +19,32 @@ import { unlink, rmdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { logger } from '$lib/logging';
 
+type EpisodeFileUpsertInput = Omit<typeof episodeFiles.$inferInsert, 'id'>;
+
+async function upsertEpisodeFileByPath(record: EpisodeFileUpsertInput): Promise<string> {
+	const existing = await db
+		.select({ id: episodeFiles.id })
+		.from(episodeFiles)
+		.where(
+			and(
+				eq(episodeFiles.seriesId, record.seriesId),
+				eq(episodeFiles.relativePath, record.relativePath)
+			)
+		)
+		.limit(1);
+
+	if (existing.length > 0) {
+		await db.update(episodeFiles).set(record).where(eq(episodeFiles.id, existing[0].id));
+		return existing[0].id;
+	}
+
+	const [inserted] = await db
+		.insert(episodeFiles)
+		.values(record)
+		.returning({ id: episodeFiles.id });
+	return inserted.id;
+}
+
 /**
  * GET /api/library/unmatched/[id]
  * Get details for a specific unmatched file
@@ -93,15 +119,16 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			defaultMonitored = rootRow?.defaultMonitored ?? true;
 		}
 
-		// Get media info
-		const mediaInfo = await mediaInfoService.extractMediaInfo(unmatchedFile.path);
-
 		if (mediaType === 'movie') {
 			// Get movie details from TMDB
 			const details = await tmdb.getMovie(tmdbId);
 
 			// Check if movie already exists
 			let [existingMovie] = await db.select().from(movies).where(eq(movies.tmdbId, tmdbId));
+			const allowStrmProbe = existingMovie?.scoringProfileId !== 'streamer';
+			const mediaInfo = await mediaInfoService.extractMediaInfo(unmatchedFile.path, {
+				allowStrmProbe
+			});
 
 			if (!existingMovie) {
 				// Create new movie entry
@@ -156,6 +183,10 @@ export const POST: RequestHandler = async ({ params, request }) => {
 
 			// Check if series already exists
 			let [existingSeries] = await db.select().from(series).where(eq(series.tmdbId, tmdbId));
+			const allowStrmProbe = existingSeries?.scoringProfileId !== 'streamer';
+			const mediaInfo = await mediaInfoService.extractMediaInfo(unmatchedFile.path, {
+				allowStrmProbe
+			});
 
 			if (!existingSeries) {
 				// Create new series entry
@@ -294,8 +325,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 				episodeId = newEpisode.id;
 			}
 
-			// Add the episode file
-			await db.insert(episodeFiles).values({
+			// Add/update the episode file
+			await upsertEpisodeFileByPath({
 				seriesId: existingSeries.id,
 				seasonNumber: season,
 				episodeIds: [episodeId],

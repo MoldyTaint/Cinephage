@@ -615,7 +615,7 @@
 											<span class="badge badge-outline badge-sm">
 												{folder.mediaType === 'movie' ? 'Movie' : 'TV'}
 											</span>
-											{#each folder.reasons as reason}
+											{#each folder.reasons as reason, index (`${reason}-${index}`)}
 												<span class="badge badge-sm badge-warning">{reason}</span>
 											{/each}
 										</div>
@@ -649,7 +649,7 @@
 								<div class="mt-4 border-t border-base-300 pt-4">
 									<p class="mb-2 text-xs font-medium text-base-content/60">Files in this folder:</p>
 									<div class="space-y-1">
-										{#each folder.files as file}
+										{#each folder.files as file (file.path)}
 											<div
 												class="flex items-center justify-between rounded bg-base-300/50 px-3 py-2 text-sm"
 											>

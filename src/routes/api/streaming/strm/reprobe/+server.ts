@@ -13,7 +13,7 @@ import { db } from '$lib/server/db';
 import { movieFiles, movies, episodeFiles, series, rootFolders } from '$lib/server/db/schema';
 import { mediaInfoService } from '$lib/server/library/media-info';
 import { createChildLogger } from '$lib/logging';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 
@@ -27,6 +27,7 @@ type ReprobeResult = {
 	failed: number;
 	skipped: number;
 	skippedStreamer: number;
+	collapsedDuplicates: number;
 	errors: Array<{ id: string; path: string; error: string }>;
 };
 
@@ -55,61 +56,78 @@ export const POST: RequestHandler = async () => {
 			failed: 0,
 			skipped: 0,
 			skippedStreamer: 0,
+			collapsedDuplicates: 0,
 			errors: []
 		};
 		const distinctPaths = new Set<string>();
+		const movieGroups = new Map<string, string[]>();
+		const episodeGroups = new Map<string, string[]>();
 
-		const strmLike = sql`lower(${movieFiles.relativePath}) like '%.strm'`;
+		const movieStrmLike = sql`lower(${movieFiles.relativePath}) like '%.strm'`;
+		const episodeStrmLike = sql`lower(${episodeFiles.relativePath}) like '%.strm'`;
+		const nonStreamerMovieProfile = or(
+			isNull(movies.scoringProfileId),
+			ne(movies.scoringProfileId, 'streamer')
+		);
+		const nonStreamerSeriesProfile = or(
+			isNull(series.scoringProfileId),
+			ne(series.scoringProfileId, 'streamer')
+		);
+
+		// Count streamer-profile STRM rows for reporting, but do not load/process them.
+		const [movieStreamerCountRows, episodeStreamerCountRows] = await Promise.all([
+			db
+				.select({ count: sql<number>`count(*)` })
+				.from(movieFiles)
+				.leftJoin(movies, eq(movieFiles.movieId, movies.id))
+				.where(and(movieStrmLike, eq(movies.scoringProfileId, 'streamer'))),
+			db
+				.select({ count: sql<number>`count(*)` })
+				.from(episodeFiles)
+				.leftJoin(series, eq(episodeFiles.seriesId, series.id))
+				.where(and(episodeStrmLike, eq(series.scoringProfileId, 'streamer')))
+		]);
+		result.skippedStreamer =
+			Number(movieStreamerCountRows[0]?.count ?? 0) +
+			Number(episodeStreamerCountRows[0]?.count ?? 0);
+
 		const movieStrmFiles = await db
 			.select({
 				id: movieFiles.id,
 				relativePath: movieFiles.relativePath,
 				moviePath: movies.path,
-				rootPath: rootFolders.path,
-				scoringProfileId: movies.scoringProfileId
+				rootPath: rootFolders.path
 			})
 			.from(movieFiles)
 			.leftJoin(movies, eq(movieFiles.movieId, movies.id))
 			.leftJoin(rootFolders, eq(movies.rootFolderId, rootFolders.id))
-			.where(strmLike);
+			.where(and(movieStrmLike, nonStreamerMovieProfile));
 
 		const episodeStrmFiles = await db
 			.select({
 				id: episodeFiles.id,
 				relativePath: episodeFiles.relativePath,
 				seriesPath: series.path,
-				rootPath: rootFolders.path,
-				scoringProfileId: series.scoringProfileId
+				rootPath: rootFolders.path
 			})
 			.from(episodeFiles)
 			.leftJoin(series, eq(episodeFiles.seriesId, series.id))
 			.leftJoin(rootFolders, eq(series.rootFolderId, rootFolders.id))
-			.where(sql`lower(${episodeFiles.relativePath}) like '%.strm'`);
+			.where(and(episodeStrmLike, nonStreamerSeriesProfile));
 
 		for (const file of movieStrmFiles) {
 			if (!file.rootPath || !file.moviePath) {
 				result.skipped += 1;
 				continue;
 			}
-			if (file.scoringProfileId === 'streamer') {
-				result.skippedStreamer += 1;
-				continue;
-			}
 			const fullPath = resolveMediaPath(file.rootPath, file.moviePath, file.relativePath);
 			if (!existsSync(fullPath)) {
 				continue;
 			}
-			distinctPaths.add(fullPath);
-			result.total += 1;
-			try {
-				const mediaInfo = await mediaInfoService.extractMediaInfo(fullPath);
-				await db.update(movieFiles).set({ mediaInfo }).where(eq(movieFiles.id, file.id));
-				result.updated += 1;
-			} catch (error) {
-				result.failed += 1;
-				const message = error instanceof Error ? error.message : String(error);
-				result.errors.push({ id: file.id, path: fullPath, error: message });
+			if (!movieGroups.has(fullPath)) {
+				movieGroups.set(fullPath, []);
 			}
+			movieGroups.get(fullPath)!.push(file.id);
 		}
 
 		for (const file of episodeStrmFiles) {
@@ -117,33 +135,56 @@ export const POST: RequestHandler = async () => {
 				result.skipped += 1;
 				continue;
 			}
-			if (file.scoringProfileId === 'streamer') {
-				result.skippedStreamer += 1;
-				continue;
-			}
 			const fullPath = resolveMediaPath(file.rootPath, file.seriesPath, file.relativePath);
 			if (!existsSync(fullPath)) {
 				continue;
 			}
+			if (!episodeGroups.has(fullPath)) {
+				episodeGroups.set(fullPath, []);
+			}
+			episodeGroups.get(fullPath)!.push(file.id);
+		}
+
+		for (const [fullPath, ids] of movieGroups) {
 			distinctPaths.add(fullPath);
-			result.total += 1;
 			try {
 				const mediaInfo = await mediaInfoService.extractMediaInfo(fullPath);
-				await db.update(episodeFiles).set({ mediaInfo }).where(eq(episodeFiles.id, file.id));
+				await db.update(movieFiles).set({ mediaInfo }).where(inArray(movieFiles.id, ids));
 				result.updated += 1;
 			} catch (error) {
 				result.failed += 1;
 				const message = error instanceof Error ? error.message : String(error);
-				result.errors.push({ id: file.id, path: fullPath, error: message });
+				result.errors.push({ id: ids[0], path: fullPath, error: message });
 			}
 		}
+
+		for (const [fullPath, ids] of episodeGroups) {
+			distinctPaths.add(fullPath);
+			try {
+				const mediaInfo = await mediaInfoService.extractMediaInfo(fullPath);
+				await db.update(episodeFiles).set({ mediaInfo }).where(inArray(episodeFiles.id, ids));
+				result.updated += 1;
+			} catch (error) {
+				result.failed += 1;
+				const message = error instanceof Error ? error.message : String(error);
+				result.errors.push({ id: ids[0], path: fullPath, error: message });
+			}
+		}
+
+		result.total = distinctPaths.size;
+		const scannedRowCount =
+			Array.from(movieGroups.values()).reduce((sum, ids) => sum + ids.length, 0) +
+			Array.from(episodeGroups.values()).reduce((sum, ids) => sum + ids.length, 0);
+		result.collapsedDuplicates = scannedRowCount - result.total;
 
 		logger.info('[StrmReprobeAPI] Completed', {
 			total: result.total,
 			distinctTotal: distinctPaths.size,
 			updated: result.updated,
 			failed: result.failed,
-			skipped: result.skipped
+			skipped: result.skipped,
+			skippedStreamer: result.skippedStreamer,
+			collapsedDuplicates: result.collapsedDuplicates
 		});
 
 		result.distinctTotal = distinctPaths.size;
@@ -159,6 +200,8 @@ export const POST: RequestHandler = async () => {
 				updated: 0,
 				failed: 0,
 				skipped: 0,
+				skippedStreamer: 0,
+				collapsedDuplicates: 0,
 				errors: [{ id: 'global', path: 'global', error: message }]
 			},
 			{ status: 500 }

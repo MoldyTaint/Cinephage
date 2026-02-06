@@ -32,7 +32,11 @@
 		}
 	});
 
-	const currentProfile = $derived(qualityProfiles.find((p) => p.id === qualityProfileId));
+	const defaultProfile = $derived(qualityProfiles.find((p) => p.isDefault));
+	const nonDefaultProfiles = $derived(qualityProfiles.filter((p) => p.id !== defaultProfile?.id));
+	const currentProfile = $derived(
+		qualityProfiles.find((p) => p.id === qualityProfileId) ?? defaultProfile
+	);
 
 	const itemLabel = $derived(
 		mediaType === 'movie'
@@ -81,14 +85,9 @@
 			bind:value={qualityProfileId}
 			class="select-bordered select w-full"
 		>
-			<option value=""
-				>Default ({qualityProfiles.find((p) => p.isDefault)?.name ?? 'System Default'})</option
-			>
-			{#each qualityProfiles as profile (profile.id)}
-				<option value={profile.id}>
-					{profile.name}
-					{profile.isBuiltIn ? '' : '(Custom)'}
-				</option>
+			<option value="">{defaultProfile?.name ?? 'System Default'} (Default)</option>
+			{#each nonDefaultProfiles as profile (profile.id)}
+				<option value={profile.id}>{profile.name}</option>
 			{/each}
 		</select>
 		<div class="label">

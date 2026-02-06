@@ -1,5 +1,11 @@
 import { db } from '$lib/server/db/index.js';
-import { series, rootFolders, scoringProfiles, episodeFiles } from '$lib/server/db/schema.js';
+import {
+	series,
+	rootFolders,
+	scoringProfiles,
+	profileSizeLimits,
+	episodeFiles
+} from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 import type { LibrarySeries, EpisodeFile } from '$lib/types/library';
@@ -219,9 +225,19 @@ export const load: PageServerLoad = async ({ url }) => {
 			})
 			.from(scoringProfiles);
 
+		const defaultBuiltInOverride = await db
+			.select({ profileId: profileSizeLimits.profileId })
+			.from(profileSizeLimits)
+			.where(eq(profileSizeLimits.isDefault, true))
+			.limit(1);
+
 		const BUILT_IN_IDS = DEFAULT_PROFILES.map((p) => p.id);
 		const dbIds = new Set(dbProfiles.map((p) => p.id));
-		const hasDbDefault = dbProfiles.some((p) => Boolean(p.isDefault));
+		const customDefaultId = dbProfiles.find(
+			(p) => !BUILT_IN_IDS.includes(p.id) && Boolean(p.isDefault)
+		)?.id;
+		const builtInDefaultId = defaultBuiltInOverride[0]?.profileId;
+		const resolvedDefaultId = customDefaultId ?? builtInDefaultId ?? 'balanced';
 
 		const qualityProfiles: QualityProfileSummary[] = [
 			...DEFAULT_PROFILES.filter((p) => !dbIds.has(p.id)).map((p) => ({
@@ -229,14 +245,14 @@ export const load: PageServerLoad = async ({ url }) => {
 				name: p.name,
 				description: p.description,
 				isBuiltIn: true,
-				isDefault: !hasDbDefault && p.id === 'efficient'
+				isDefault: p.id === resolvedDefaultId
 			})),
 			...dbProfiles.map((p) => ({
 				id: p.id,
 				name: p.name,
 				description: p.description ?? '',
 				isBuiltIn: BUILT_IN_IDS.includes(p.id),
-				isDefault: Boolean(p.isDefault)
+				isDefault: p.id === resolvedDefaultId
 			}))
 		];
 

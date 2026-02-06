@@ -327,7 +327,15 @@ export async function runFFprobe(
 			if (code !== 0) {
 				const isRemote = /^https?:\/\//i.test(filePath);
 				if (isRemote) {
-					logger.debug('[FFprobe] Exited with non-zero code', { code, stderr });
+					const stderrText = stderr.trim();
+					// STRM URL probes often fail and fall back to placeholder media info.
+					// Silence expected remote failures unless ffprobe emitted useful diagnostics.
+					if (stderrText) {
+						logger.debug('[FFprobe] Remote probe exited with non-zero code', {
+							code,
+							stderr: stderrText
+						});
+					}
 				} else {
 					logger.error('[FFprobe] Exited with non-zero code', undefined, { code, stderr });
 				}

@@ -65,6 +65,39 @@ import {
 
 const parser = new ReleaseParser();
 
+type EpisodeFileUpsertInput = Omit<typeof episodeFiles.$inferInsert, 'id'> & { id?: string };
+type EpisodeFileWriteExecutor = Pick<typeof db, 'select' | 'update' | 'insert'>;
+
+/**
+ * Upsert episode file by (seriesId, relativePath) and return canonical row id.
+ */
+async function upsertEpisodeFileByPath(
+	executor: EpisodeFileWriteExecutor,
+	record: EpisodeFileUpsertInput
+): Promise<string> {
+	const { id: requestedId, ...values } = record;
+
+	const existing = await executor
+		.select({ id: episodeFiles.id })
+		.from(episodeFiles)
+		.where(
+			and(
+				eq(episodeFiles.seriesId, record.seriesId),
+				eq(episodeFiles.relativePath, record.relativePath)
+			)
+		)
+		.limit(1);
+
+	if (existing.length > 0) {
+		await executor.update(episodeFiles).set(values).where(eq(episodeFiles.id, existing[0].id));
+		return existing[0].id;
+	}
+
+	const id = requestedId ?? randomUUID();
+	await executor.insert(episodeFiles).values({ id, ...values });
+	return id;
+}
+
 /**
  * Search result for individual item
  */
@@ -2825,10 +2858,8 @@ export class MonitoringSearchService {
 					}
 				}
 
-				// Create episode file record
-				const fileId = randomUUID();
-				await db.insert(episodeFiles).values({
-					id: fileId,
+				// Create/update episode file record
+				const fileId = await upsertEpisodeFileByPath(db, {
 					seriesId,
 					seasonNumber: parsed.season,
 					episodeIds: [episodeRow.id],
@@ -3052,10 +3083,8 @@ export class MonitoringSearchService {
 						}
 					}
 
-					// Create episode file record
-					const fileId = randomUUID();
-					await tx.insert(episodeFiles).values({
-						id: fileId,
+					// Create/update episode file record
+					const fileId = await upsertEpisodeFileByPath(tx, {
 						seriesId,
 						seasonNumber,
 						episodeIds: [epData.episodeId],

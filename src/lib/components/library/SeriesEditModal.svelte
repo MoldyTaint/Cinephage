@@ -60,15 +60,23 @@
 	$effect(() => {
 		if (open) {
 			monitored = series.monitored ?? true;
-			qualityProfileId = series.scoringProfileId ?? '';
+			const defaultProfileId = qualityProfiles.find((p) => p.isDefault)?.id;
+			qualityProfileId =
+				series.scoringProfileId && series.scoringProfileId !== defaultProfileId
+					? series.scoringProfileId
+					: '';
 			rootFolderId = series.rootFolderId ?? '';
 			seasonFolder = series.seasonFolder ?? true;
 			wantsSubtitles = series.wantsSubtitles ?? true;
 		}
 	});
 
-	// Get the current quality profile for description display
-	let currentProfile = $derived(qualityProfiles.find((p) => p.id === qualityProfileId));
+	// Get profile data for labels/description
+	let defaultProfile = $derived(qualityProfiles.find((p) => p.isDefault));
+	let nonDefaultProfiles = $derived(qualityProfiles.filter((p) => p.id !== defaultProfile?.id));
+	let currentProfile = $derived(
+		qualityProfiles.find((p) => p.id === qualityProfileId) ?? defaultProfile
+	);
 
 	function formatBytes(bytes: number | null): string {
 		if (!bytes) return 'Unknown';
@@ -143,14 +151,9 @@
 				bind:value={qualityProfileId}
 				class="select-bordered select w-full"
 			>
-				<option value=""
-					>Default ({qualityProfiles.find((p) => p.isDefault)?.name ?? 'System Default'})</option
-				>
-				{#each qualityProfiles as profile (profile.id)}
-					<option value={profile.id}>
-						{profile.name}
-						{profile.isBuiltIn ? '' : '(Custom)'}
-					</option>
+				<option value="">{defaultProfile?.name ?? 'System Default'} (Default)</option>
+				{#each nonDefaultProfiles as profile (profile.id)}
+					<option value={profile.id}>{profile.name}</option>
 				{/each}
 			</select>
 			<div class="label">
