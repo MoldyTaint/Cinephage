@@ -263,7 +263,6 @@
 		}
 		try {
 			for (const item of selectedItems) {
-				// eslint-disable-next-line no-await-in-loop
 				await updateRootFolder(item, rootFolderId, { silent: true });
 			}
 			toasts.success('Root folder updated for selected items');

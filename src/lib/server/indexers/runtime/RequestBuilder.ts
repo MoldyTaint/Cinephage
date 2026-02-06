@@ -10,7 +10,7 @@ import type {
 } from '../schema/yamlDefinition';
 import { resolveCategoryId } from '../schema/yamlDefinition';
 import type { SearchCriteria } from '../types';
-import { isMovieSearch } from '../types';
+import { getCategoriesForSearchType, isMovieSearch } from '../types';
 import { TemplateEngine } from '../engine/TemplateEngine';
 import { FilterEngine } from '../engine/FilterEngine';
 import { logger } from '$lib/logging';
@@ -234,30 +234,31 @@ export class RequestBuilder {
 		const search = this.definition.search;
 		const requests: HttpRequest[] = [];
 		const seenUrls = new Set<string>();
+		const effectiveCriteria = this.withDefaultCategories(criteria);
 
 		// Set query variables
-		this.templateEngine.setQuery(criteria);
+		this.templateEngine.setQuery(effectiveCriteria);
 
 		// Map categories
-		const newznabCategories = criteria.categories ?? [];
+		const newznabCategories = effectiveCriteria.categories ?? [];
 		const trackerCategories = this.categoryMapper.mapToTracker(newznabCategories);
 		this.templateEngine.setCategories(trackerCategories);
 
 		// Build keywords (combining various query parts)
-		const keywords = this.buildKeywords(criteria);
+		const keywords = this.buildKeywords(effectiveCriteria);
 		this.templateEngine.setVariable('.Query.Keywords', keywords);
 		this.templateEngine.setVariable('.Keywords', this.applyKeywordsFilters(keywords, search));
 		this.templateEngine.setVariable('.Categories', trackerCategories);
 
 		// Get search paths
 		const paths = this.getSearchPaths(search);
+		const filteredPaths = this.filterPathsForSearchType(
+			paths,
+			effectiveCriteria,
+			trackerCategories
+		);
 
-		for (const path of paths) {
-			// Check if path categories match
-			if (!this.pathMatchesCategories(path, trackerCategories)) {
-				continue;
-			}
-
+		for (const path of filteredPaths) {
 			const request = this.buildRequestForPath(path, search, trackerCategories);
 			if (request && !seenUrls.has(request.url)) {
 				seenUrls.add(request.url);
@@ -266,6 +267,63 @@ export class RequestBuilder {
 		}
 
 		return requests;
+	}
+
+	/**
+	 * Apply category defaults from search type when caller does not provide categories.
+	 *
+	 * Without this fallback, RequestBuilder falls back to indexer category defaults
+	 * (from categorymappings.default), which can select the wrong content type.
+	 */
+	private withDefaultCategories(criteria: SearchCriteria): SearchCriteria {
+		if (criteria.categories && criteria.categories.length > 0) {
+			return criteria;
+		}
+
+		if (criteria.searchType === 'basic') {
+			return criteria;
+		}
+
+		return {
+			...criteria,
+			categories: getCategoriesForSearchType(criteria.searchType)
+		};
+	}
+
+	/**
+	 * Filter candidate paths for a search.
+	 *
+	 * For typed searches (movie/tv/music/book), prefer category-scoped paths when available.
+	 * This avoids firing both specific and generic fallback paths in the same request cycle.
+	 */
+	private filterPathsForSearchType(
+		paths: SearchPathBlock[],
+		criteria: SearchCriteria,
+		trackerCategories: string[]
+	): SearchPathBlock[] {
+		const matchingPaths = paths.filter((path) =>
+			this.pathMatchesCategories(path, trackerCategories)
+		);
+
+		if (criteria.searchType === 'basic') {
+			const genericPaths = matchingPaths.filter(
+				(path) => !Array.isArray(path.categories) || path.categories.length === 0
+			);
+			// For plain text search, prefer generic paths and avoid category-specific variants.
+			return genericPaths.length > 0 ? genericPaths : matchingPaths;
+		}
+
+		const categoryScopedPaths = matchingPaths.filter(
+			(path) =>
+				Array.isArray(path.categories) && path.categories.length > 0 && path.categories[0] !== '!'
+		);
+
+		// If specific category-scoped paths exist, skip generic fallbacks.
+		if (categoryScopedPaths.length > 0) {
+			return categoryScopedPaths;
+		}
+
+		return matchingPaths;
 	}
 
 	/**

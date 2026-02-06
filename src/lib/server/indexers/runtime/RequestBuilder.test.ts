@@ -1,0 +1,118 @@
+import { describe, expect, it } from 'vitest';
+import { createFilterEngine } from '../engine/FilterEngine';
+import { createTemplateEngine } from '../engine/TemplateEngine';
+import { RequestBuilder } from './RequestBuilder';
+import type { SearchCriteria } from '../types';
+
+function createTestRequestBuilder(): RequestBuilder {
+	const definition = {
+		id: 'test-indexer',
+		name: 'Test Indexer',
+		type: 'private',
+		protocol: 'usenet',
+		links: ['https://example.test'],
+		caps: {
+			categories: {
+				'2000': 'Movies',
+				'5000': 'TV'
+			},
+			categorymappings: [
+				{ id: '2000', cat: 'Movies' },
+				{ id: '5000', cat: 'TV', default: true }
+			]
+		},
+		search: {
+			paths: [
+				{
+					path: '/api',
+					method: 'get',
+					categories: ['Movies'],
+					inputs: {
+						t: 'movie',
+						cat: '{{ join .Categories "," }}',
+						q: '{{ .Keywords }}'
+					}
+				},
+				{
+					path: '/api',
+					method: 'get',
+					categories: ['TV'],
+					inputs: {
+						t: 'tvsearch',
+						cat: '{{ join .Categories "," }}',
+						q: '{{ .Keywords }}'
+					}
+				},
+				{
+					path: '/api',
+					method: 'get',
+					inputs: {
+						t: 'search',
+						cat: '{{ join .Categories "," }}',
+						q: '{{ .Keywords }}'
+					}
+				}
+			],
+			response: { type: 'xml' },
+			rows: { selector: 'rss channel item' },
+			fields: {
+				title: { selector: 'title' }
+			}
+		}
+	} as any;
+
+	return new RequestBuilder(definition, createTemplateEngine(), createFilterEngine());
+}
+
+function getParam(url: string, key: string): string | null {
+	return new URL(url).searchParams.get(key);
+}
+
+describe('RequestBuilder category defaults', () => {
+	it('uses movie categories for movie search when categories are omitted', () => {
+		const builder = createTestRequestBuilder();
+		const criteria: SearchCriteria = {
+			searchType: 'movie',
+			query: 'The Wrecking Crew',
+			year: 2026
+		};
+
+		const requests = builder.buildSearchRequests(criteria);
+
+		expect(requests).toHaveLength(1);
+		expect(getParam(requests[0].url, 't')).toBe('movie');
+		expect(getParam(requests[0].url, 'cat')).toBe('2000');
+	});
+
+	it('uses TV categories for tv search when categories are omitted', () => {
+		const builder = createTestRequestBuilder();
+		const criteria: SearchCriteria = {
+			searchType: 'tv',
+			query: 'The Wrecking Crew',
+			season: 1,
+			episode: 1
+		};
+
+		const requests = builder.buildSearchRequests(criteria);
+
+		expect(requests).toHaveLength(1);
+		expect(getParam(requests[0].url, 't')).toBe('tvsearch');
+		expect(getParam(requests[0].url, 'cat')).toBe('5000');
+	});
+
+	it('keeps generic path for basic search', () => {
+		const builder = createTestRequestBuilder();
+		const criteria: SearchCriteria = {
+			searchType: 'basic',
+			query: 'Trap House 2025'
+		};
+
+		const requests = builder.buildSearchRequests(criteria);
+		const modes = requests
+			.map((request) => getParam(request.url, 't'))
+			.filter((mode): mode is string => Boolean(mode));
+
+		expect(requests).toHaveLength(1);
+		expect(modes).toContain('search');
+	});
+});

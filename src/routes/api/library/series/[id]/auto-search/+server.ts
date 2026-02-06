@@ -45,7 +45,10 @@ export const POST: RequestHandler = async ({ params, request }) => {
 					);
 				}
 
-				const result = await searchOnAdd.searchForEpisode({ episodeId });
+				const result = await searchOnAdd.searchForEpisode({
+					episodeId,
+					bypassMonitoring: true
+				});
 
 				return json({
 					success: result.success,

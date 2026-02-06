@@ -67,6 +67,8 @@ interface GrabResult {
 /** Parameters for searching a specific episode */
 interface SearchForEpisodeParams {
 	episodeId: string;
+	/** Bypass monitoring checks for manual user-triggered searches */
+	bypassMonitoring?: boolean;
 }
 
 /** Parameters for searching a season pack */
@@ -396,7 +398,7 @@ class SearchOnAddService {
 	 * - OR release is an upgrade over existing file
 	 */
 	async searchForEpisode(params: SearchForEpisodeParams): Promise<GrabResult> {
-		const { episodeId } = params;
+		const { episodeId, bypassMonitoring = false } = params;
 
 		logger.info('[SearchOnAdd] Starting episode search', { episodeId });
 
@@ -418,7 +420,7 @@ class SearchOnAddService {
 				return { success: false, error: 'Series not found' };
 			}
 
-			if (!seriesData.monitored) {
+			if (!bypassMonitoring && !seriesData.monitored) {
 				logger.info('[SearchOnAdd] Skipping episode search for unmonitored series', {
 					episodeId,
 					seriesId: seriesData.id
