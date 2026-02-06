@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { SvelteURLSearchParams } from 'svelte/reactivity';
-	import { onMount, onDestroy } from 'svelte';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
+	import { createSSE } from '$lib/sse';
 	import ActivityTable from '$lib/components/activity/ActivityTable.svelte';
 	import ActivityDetailModal from '$lib/components/activity/ActivityDetailModal.svelte';
 	import ActivityFilters from '$lib/components/activity/ActivityFilters.svelte';
@@ -12,7 +12,7 @@
 		ActivityDetails,
 		ActivityFilters as FiltersType
 	} from '$lib/types/activity';
-	import { Activity, RefreshCw, Loader2 } from 'lucide-svelte';
+	import { Activity, Loader2, Wifi, WifiOff } from 'lucide-svelte';
 
 	let { data } = $props();
 
@@ -35,9 +35,6 @@
 	let isLoading = $state(false);
 	let isLoadingMore = $state(false);
 
-	// SSE connection
-	let eventSource: EventSource | null = null;
-
 	let hasInitialized = $state(false);
 
 	// Detail modal state
@@ -56,49 +53,29 @@
 		}
 	});
 
-	// Set up SSE connection
-	onMount(() => {
-		connectSSE();
-	});
-
-	onDestroy(() => {
-		if (eventSource) {
-			eventSource.close();
-		}
-	});
-
-	function connectSSE() {
-		eventSource = new EventSource(resolvePath('/api/activity/stream'));
-
-		eventSource.addEventListener('activity:new', (event) => {
-			const newActivity = JSON.parse(event.data) as UnifiedActivity;
+	// Set up SSE connection with reactive rune
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const sse = createSSE<Record<string, any>>(resolvePath('/api/activity/stream'), {
+		'activity:new': (newActivity: UnifiedActivity) => {
 			// Add to beginning of list
 			activities = [newActivity, ...activities.filter((a) => a.id !== newActivity.id)];
 			total += 1;
-		});
-
-		eventSource.addEventListener('activity:updated', (event) => {
-			const updated = JSON.parse(event.data) as Partial<UnifiedActivity>;
+		},
+		'activity:updated': (updated: Partial<UnifiedActivity>) => {
 			activities = activities.map((a) => (a.id === updated.id ? { ...a, ...updated } : a));
-		});
-
-		eventSource.addEventListener('activity:progress', (event) => {
-			const { id, progress, status } = JSON.parse(event.data);
+		},
+		'activity:progress': (data: { id: string; progress: number; status?: string }) => {
 			activities = activities.map((a) =>
-				a.id === id ? { ...a, downloadProgress: progress, status: status || a.status } : a
+				a.id === data.id
+					? {
+							...a,
+							downloadProgress: data.progress,
+							status: (data.status as UnifiedActivity['status']) || a.status
+						}
+					: a
 			);
-		});
-
-		eventSource.onerror = () => {
-			// Try to reconnect after a delay
-			setTimeout(() => {
-				if (eventSource) {
-					eventSource.close();
-				}
-				connectSSE();
-			}, 5000);
-		};
-	}
+		}
+	});
 
 	// Apply filters via URL navigation
 	async function applyFilters(newFilters: FiltersType) {
@@ -226,13 +203,6 @@
 		}
 	}
 
-	// Refresh data
-	async function refresh() {
-		isLoading = true;
-		await invalidateAll();
-		isLoading = false;
-	}
-
 	// Open detail modal
 	async function openDetailModal(activity: UnifiedActivity) {
 		selectedActivity = activity;
@@ -301,10 +271,23 @@
 			</h1>
 			<p class="text-base-content/70">Download and search history</p>
 		</div>
-		<button class="btn btn-ghost btn-sm" onclick={refresh} disabled={isLoading}>
-			<RefreshCw class="h-4 w-4 {isLoading ? 'animate-spin' : ''}" />
-			Refresh
-		</button>
+		<!-- Connection Status -->
+		{#if sse.isConnected}
+			<span class="badge gap-1 badge-success">
+				<Wifi class="h-3 w-3" />
+				Live
+			</span>
+		{:else if sse.status === 'connecting' || sse.status === 'error'}
+			<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
+				<Loader2 class="h-3 w-3 animate-spin" />
+				{sse.status === 'error' ? 'Reconnecting...' : 'Connecting...'}
+			</span>
+		{:else}
+			<span class="badge gap-1 badge-ghost">
+				<WifiOff class="h-3 w-3" />
+				Disconnected
+			</span>
+		{/if}
 	</div>
 
 	<!-- Filters Component -->

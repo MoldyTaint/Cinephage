@@ -23,6 +23,8 @@ export interface UnifiedTaskDefinition {
 	minIntervalHours?: number;
 	/** Whether the interval can be edited by users (false for system tasks like pendingRelease) */
 	intervalEditable?: boolean;
+	/** Whether the task is enabled and should run automatically */
+	enabled?: boolean;
 }
 
 /**
@@ -33,6 +35,7 @@ export interface UnifiedTask extends UnifiedTaskDefinition {
 	nextRunTime: string | null;
 	intervalHours: number | null;
 	isRunning: boolean;
+	enabled: boolean;
 }
 
 /**
@@ -89,9 +92,21 @@ const SCHEDULED_TASKS: UnifiedTaskDefinition[] = [
 		description: 'Process releases waiting in the delay profile queue',
 		category: 'scheduled',
 		runEndpoint: '/api/monitoring/search/pending-releases',
+		intervalKey: 'pending_release_interval_hours',
 		defaultIntervalHours: 0.25, // 15 minutes
 		minIntervalHours: 0.25,
-		intervalEditable: false // System task, not user-configurable
+		intervalEditable: true
+	},
+	{
+		id: 'smartListRefresh',
+		name: 'Smart List Refresh',
+		description: 'Check and update smart lists based on their configured refresh intervals',
+		category: 'scheduled',
+		runEndpoint: '/api/smart-lists/refresh-all',
+		intervalKey: 'smart_list_refresh_interval_hours',
+		defaultIntervalHours: 1, // Hourly
+		minIntervalHours: 0.25,
+		intervalEditable: true
 	},
 	{
 		id: 'missingSubtitles',

@@ -17,14 +17,79 @@
 		PlayCircle,
 		ArrowRight,
 		Loader2,
-		Minus
+		Minus,
+		Wifi
 	} from 'lucide-svelte';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
 	import { resolve } from '$app/paths';
 	import { resolvePath } from '$lib/utils/routing';
 	import type { UnifiedActivity } from '$lib/types/activity';
+	import { createSSE } from '$lib/sse';
 
 	let { data } = $props();
+
+	// Local reactive state for SSE updates
+	let stats = $state(data.stats);
+	let recentActivity = $state<UnifiedActivity[]>(data.recentActivity);
+	let recentlyAdded = $state(data.recentlyAdded);
+	let missingEpisodes = $state(data.missingEpisodes);
+
+	// Sync from server data when it changes (e.g., on navigation)
+	$effect(() => {
+		stats = data.stats;
+		recentActivity = data.recentActivity;
+		recentlyAdded = data.recentlyAdded;
+		missingEpisodes = data.missingEpisodes;
+	});
+
+	// Set up SSE connection
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const sse = createSSE<Record<string, any>>(resolvePath('/api/dashboard/stream'), {
+		'dashboard:initial': (payload) => {
+			const data = payload as {
+				stats: typeof stats;
+				recentlyAdded: typeof recentlyAdded;
+				missingEpisodes: typeof missingEpisodes;
+				recentActivity: UnifiedActivity[];
+			};
+			stats = data.stats;
+			recentlyAdded = data.recentlyAdded;
+			missingEpisodes = data.missingEpisodes;
+			recentActivity = data.recentActivity;
+		},
+		'dashboard:stats': (newStats) => {
+			stats = newStats as typeof stats;
+		},
+		'dashboard:recentlyAdded': (newRecentlyAdded) => {
+			recentlyAdded = newRecentlyAdded as typeof recentlyAdded;
+		},
+		'dashboard:missingEpisodes': (newMissingEpisodes) => {
+			missingEpisodes = newMissingEpisodes as typeof missingEpisodes;
+		},
+		'activity:new': (newActivity) => {
+			const activity = newActivity as UnifiedActivity;
+			recentActivity = [activity, ...recentActivity.filter((a) => a.id !== activity.id)].slice(
+				0,
+				10
+			);
+		},
+		'activity:updated': (updated) => {
+			const update = updated as Partial<UnifiedActivity>;
+			recentActivity = recentActivity.map((a) => (a.id === update.id ? { ...a, ...update } : a));
+		},
+		'activity:progress': (progressData) => {
+			const data = progressData as { id: string; progress: number; status?: string };
+			recentActivity = recentActivity.map((a) =>
+				a.id === data.id
+					? {
+							...a,
+							downloadProgress: data.progress,
+							status: (data.status as UnifiedActivity['status']) || a.status
+						}
+					: a
+			);
+		}
+	});
 
 	// Format relative time
 	function formatRelativeTime(dateStr: string | null): string {
@@ -78,7 +143,17 @@
 			<h1 class="text-3xl font-bold">Dashboard</h1>
 			<p class="text-base-content/70">Welcome to Cinephage</p>
 		</div>
-		<div class="flex gap-2">
+		<div class="flex items-center gap-2">
+			{#if sse.isConnected}
+				<span class="badge gap-1 badge-success">
+					<Wifi class="h-3 w-3" />
+					Live
+				</span>
+			{:else if sse.status === 'connecting' || sse.status === 'error'}
+				<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
+					{sse.status === 'error' ? 'Reconnecting...' : 'Connecting...'}
+				</span>
+			{/if}
 			<a href={resolve('/discover')} class="btn btn-primary">
 				<Plus class="h-4 w-4" />
 				Add Content
@@ -99,14 +174,14 @@
 						<Clapperboard class="h-6 w-6 text-primary" />
 					</div>
 					<div>
-						<div class="text-2xl font-bold">{data.stats.movies.total}</div>
+						<div class="text-2xl font-bold">{stats.movies.total}</div>
 						<div class="text-sm text-base-content/70">Movies</div>
 					</div>
 				</div>
 				<div class="mt-2 flex flex-wrap gap-2 text-xs">
-					<span class="badge badge-sm badge-success">{data.stats.movies.withFile} files</span>
-					{#if data.stats.movies.missing > 0}
-						<span class="badge badge-sm badge-warning">{data.stats.movies.missing} missing</span>
+					<span class="badge badge-sm badge-success">{stats.movies.withFile} files</span>
+					{#if stats.movies.missing > 0}
+						<span class="badge badge-sm badge-warning">{stats.movies.missing} missing</span>
 					{/if}
 				</div>
 			</div>
@@ -120,14 +195,14 @@
 						<Tv class="h-6 w-6 text-secondary" />
 					</div>
 					<div>
-						<div class="text-2xl font-bold">{data.stats.series.total}</div>
+						<div class="text-2xl font-bold">{stats.series.total}</div>
 						<div class="text-sm text-base-content/70">TV Shows</div>
 					</div>
 				</div>
 				<div class="mt-2 flex flex-wrap gap-2 text-xs">
-					<span class="badge badge-sm badge-info">{data.stats.episodes.withFile} files</span>
-					{#if data.stats.episodes.missing > 0}
-						<span class="badge badge-sm badge-warning">{data.stats.episodes.missing} missing</span>
+					<span class="badge badge-sm badge-info">{stats.episodes.withFile} files</span>
+					{#if stats.episodes.missing > 0}
+						<span class="badge badge-sm badge-warning">{stats.episodes.missing} missing</span>
 					{/if}
 				</div>
 			</div>
@@ -141,12 +216,12 @@
 						<Download class="h-6 w-6 text-accent" />
 					</div>
 					<div>
-						<div class="text-2xl font-bold">{data.stats.activeDownloads}</div>
+						<div class="text-2xl font-bold">{stats.activeDownloads}</div>
 						<div class="text-sm text-base-content/70">Downloads</div>
 					</div>
 				</div>
 				<div class="mt-2 text-xs">
-					{#if data.stats.activeDownloads > 0}
+					{#if stats.activeDownloads > 0}
 						<span class="badge badge-sm badge-accent">Active</span>
 					{:else}
 						<span class="text-base-content/50">No active downloads</span>
@@ -163,7 +238,7 @@
 						<Calendar class="h-6 w-6 text-warning" />
 					</div>
 					<div>
-						<div class="text-2xl font-bold">{data.missingEpisodes.length}</div>
+						<div class="text-2xl font-bold">{missingEpisodes.length}</div>
 						<div class="text-sm text-base-content/70">Missing Episodes</div>
 					</div>
 				</div>
@@ -172,7 +247,7 @@
 		</div>
 
 		<!-- Unmatched Files -->
-		{#if data.stats.unmatchedFiles > 0}
+		{#if stats.unmatchedFiles > 0}
 			<a
 				href={resolve('/library/unmatched')}
 				class="card bg-base-200 transition-colors hover:bg-base-300"
@@ -183,24 +258,24 @@
 							<FileQuestion class="h-6 w-6 text-error" />
 						</div>
 						<div>
-							<div class="text-2xl font-bold">{data.stats.unmatchedFiles}</div>
+							<div class="text-2xl font-bold">{stats.unmatchedFiles}</div>
 							<div class="text-sm text-base-content/70">Unmatched</div>
 						</div>
-						{#if data.stats.missingRootFolders > 0}
+						{#if stats.missingRootFolders > 0}
 							<div class="ml-auto rounded-full bg-warning/10 p-1">
 								<AlertTriangle class="h-4 w-4 text-warning" />
 							</div>
 						{/if}
 					</div>
 					<div class="mt-2 text-xs text-base-content/50">Files need attention</div>
-					{#if data.stats.missingRootFolders > 0}
+					{#if stats.missingRootFolders > 0}
 						<div class="mt-2 text-xs">
 							<span class="badge badge-sm badge-warning">Root folder issues</span>
 						</div>
 					{/if}
 				</div>
 			</a>
-		{:else if data.stats.missingRootFolders > 0}
+		{:else if stats.missingRootFolders > 0}
 			<a
 				href={resolve('/library/unmatched')}
 				class="card bg-base-200 transition-colors hover:bg-base-300"
@@ -246,7 +321,7 @@
 		<!-- Recently Added Section (2/3 width) -->
 		<div class="space-y-6 lg:col-span-2">
 			<!-- Recently Added Movies -->
-			{#if data.recentlyAdded.movies.length > 0}
+			{#if recentlyAdded.movies.length > 0}
 				<div class="card bg-base-200">
 					<div class="card-body">
 						<div class="flex items-center justify-between">
@@ -259,7 +334,7 @@
 						<div
 							class="grid grid-cols-3 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-6"
 						>
-							{#each data.recentlyAdded.movies as movie (movie.id)}
+							{#each recentlyAdded.movies as movie (movie.id)}
 								<a
 									href={resolve(`/library/movie/${movie.id}`)}
 									class="group relative aspect-2/3 overflow-hidden rounded-lg"
@@ -291,7 +366,7 @@
 			{/if}
 
 			<!-- Recently Added TV Shows -->
-			{#if data.recentlyAdded.series.length > 0}
+			{#if recentlyAdded.series.length > 0}
 				<div class="card bg-base-200">
 					<div class="card-body">
 						<div class="flex items-center justify-between">
@@ -304,7 +379,7 @@
 						<div
 							class="grid grid-cols-3 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-6"
 						>
-							{#each data.recentlyAdded.series as show (show.id)}
+							{#each recentlyAdded.series as show (show.id)}
 								<a
 									href={resolve(`/library/tv/${show.id}`)}
 									class="group relative aspect-2/3 overflow-hidden rounded-lg"
@@ -340,7 +415,7 @@
 			{/if}
 
 			<!-- Missing Episodes Section -->
-			{#if data.missingEpisodes.length > 0}
+			{#if missingEpisodes.length > 0}
 				<div class="card bg-base-200">
 					<div class="card-body">
 						<h2 class="card-title">
@@ -348,7 +423,7 @@
 							Missing Episodes
 						</h2>
 						<div class="divide-y divide-base-300">
-							{#each data.missingEpisodes.slice(0, 5) as episode (episode.id)}
+							{#each missingEpisodes.slice(0, 5) as episode (episode.id)}
 								<div class="flex items-center gap-3 py-2">
 									{#if episode.series?.posterPath}
 										<div class="h-12 w-8 shrink-0 overflow-hidden rounded">
@@ -382,7 +457,7 @@
 			{/if}
 
 			<!-- Empty State -->
-			{#if data.recentlyAdded.movies.length === 0 && data.recentlyAdded.series.length === 0}
+			{#if recentlyAdded.movies.length === 0 && recentlyAdded.series.length === 0}
 				<div class="card bg-base-200">
 					<div class="card-body items-center text-center">
 						<div class="rounded-full bg-base-300 p-4">
@@ -414,7 +489,7 @@
 						<ArrowRight class="h-3 w-3" />
 					</a>
 				</div>
-				{#if data.recentActivity.length > 0}
+				{#if recentActivity.length > 0}
 					<div class="-mx-4 overflow-x-auto">
 						<table class="table table-xs">
 							<thead>
@@ -426,7 +501,7 @@
 								</tr>
 							</thead>
 							<tbody>
-								{#each data.recentActivity as activity (activity.id)}
+								{#each recentActivity as activity (activity.id)}
 									{@const config = statusConfig[activity.status] || statusConfig.no_results}
 									{@const StatusIcon = config.icon}
 									<tr class="hover">

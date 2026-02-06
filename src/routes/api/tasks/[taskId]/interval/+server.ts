@@ -11,22 +11,13 @@ import {
 	isScheduledTask,
 	isIntervalEditable
 } from '$lib/server/tasks/UnifiedTaskRegistry';
-import {
-	monitoringScheduler,
-	type MonitoringSettings
-} from '$lib/server/monitoring/MonitoringScheduler';
+import { taskSettingsService } from '$lib/server/tasks/TaskSettingsService';
+import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler';
 import { z } from 'zod';
 
 const bodySchema = z.object({
 	intervalHours: z.number().positive()
 });
-
-/**
- * Convert snake_case database key to camelCase settings key
- */
-function snakeToCamel(str: string): string {
-	return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-}
 
 /**
  * PUT /api/tasks/[taskId]/interval
@@ -42,17 +33,17 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 	// Verify task exists
 	const task = getUnifiedTaskById(taskId);
 	if (!task) {
-		throw error(404, { message: `Task '${taskId}' not found` });
+		throw error(404, `Task '${taskId}' not found`);
 	}
 
 	// Verify it's a scheduled task
 	if (!isScheduledTask(taskId)) {
-		throw error(400, { message: `Task '${taskId}' is not a scheduled task` });
+		throw error(400, `Task '${taskId}' is not a scheduled task`);
 	}
 
 	// Verify interval is editable
 	if (!isIntervalEditable(taskId)) {
-		throw error(400, { message: `Task '${taskId}' interval cannot be edited` });
+		throw error(400, `Task '${taskId}' interval cannot be edited`);
 	}
 
 	// Parse body
@@ -60,12 +51,12 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 	try {
 		body = await request.json();
 	} catch {
-		throw error(400, { message: 'Invalid JSON body' });
+		throw error(400, 'Invalid JSON body');
 	}
 
 	const parseResult = bodySchema.safeParse(body);
 	if (!parseResult.success) {
-		throw error(400, { message: parseResult.error.issues[0]?.message ?? 'Invalid interval' });
+		throw error(400, parseResult.error.issues[0]?.message ?? 'Invalid interval');
 	}
 
 	const { intervalHours } = parseResult.data;
@@ -73,20 +64,28 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 	// Validate minimum interval
 	const minInterval = task.minIntervalHours ?? 0.25;
 	if (intervalHours < minInterval) {
-		throw error(400, {
-			message: `Interval must be at least ${minInterval} hours (${minInterval * 60} minutes)`
-		});
+		throw error(
+			400,
+			`Interval must be at least ${minInterval} hours (${minInterval * 60} minutes)`
+		);
 	}
 
-	// Get settings key from registry (convert snake_case intervalKey to camelCase)
-	if (!task.intervalKey) {
-		throw error(400, { message: `Task '${taskId}' does not have a configurable interval` });
+	// Update the setting using TaskSettingsService
+	try {
+		await taskSettingsService.setTaskInterval(taskId, intervalHours);
+	} catch (err) {
+		const message = err instanceof Error ? err.message : 'Failed to update interval';
+		throw error(400, message);
 	}
-	const settingsKey = snakeToCamel(task.intervalKey) as keyof MonitoringSettings;
 
-	// Update the setting
-	await monitoringScheduler.updateSettings({
-		[settingsKey]: intervalHours
+	// Get the updated next run time to send to SSE clients
+	const nextRunTime = await taskSettingsService.getNextRunTime(taskId);
+
+	// Emit settings change event for SSE clients
+	monitoringScheduler.emit('taskSettingsUpdated', {
+		taskId,
+		intervalHours,
+		nextRunTime
 	});
 
 	return json({

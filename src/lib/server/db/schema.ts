@@ -1702,6 +1702,32 @@ export const taskHistory = sqliteTable('task_history', {
 	completedAt: text('completed_at')
 });
 
+/**
+ * Task Settings - Configuration for automated tasks
+ * Stores per-task settings like enabled status, intervals, and schedule info
+ * Replaces the key-value monitoring_settings table for task-specific config
+ */
+export const taskSettings = sqliteTable(
+	'task_settings',
+	{
+		id: text('id').primaryKey(), // Task identifier (e.g., 'missing', 'upgrade', 'pendingRelease')
+		enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+		intervalHours: real('interval_hours'), // Null for manual tasks
+		minIntervalHours: real('min_interval_hours').notNull().default(0.25),
+		lastRunAt: text('last_run_at'), // ISO timestamp
+		nextRunAt: text('next_run_at'), // ISO timestamp
+		createdAt: text('created_at').$defaultFn(() => new Date().toISOString()),
+		updatedAt: text('updated_at').$defaultFn(() => new Date().toISOString())
+	},
+	(table) => [
+		index('idx_task_settings_enabled').on(table.enabled),
+		index('idx_task_settings_next_run').on(table.nextRunAt)
+	]
+);
+
+export type TaskSettingsRecord = typeof taskSettings.$inferSelect;
+export type NewTaskSettingsRecord = typeof taskSettings.$inferInsert;
+
 // ============================================================================
 // RELATIONS
 // ============================================================================
