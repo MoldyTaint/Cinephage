@@ -42,7 +42,7 @@
 		missingEpisodes = data.missingEpisodes;
 	});
 
-	// Set up SSE connection
+	// SSE Connection - internally handles browser/SSR
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const sse = createSSE<Record<string, any>>(resolvePath('/api/dashboard/stream'), {
 		'dashboard:initial': (payload) => {

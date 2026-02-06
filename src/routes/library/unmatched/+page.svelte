@@ -11,10 +11,14 @@
 		CheckCircle,
 		ChevronDown,
 		ChevronRight,
-		AlertTriangle
+		AlertTriangle,
+		Folder,
+		List,
+		ChevronsUpDown
 	} from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import MatchFileModal from '$lib/components/library/MatchFileModal.svelte';
+	import MatchFolderModal from '$lib/components/library/MatchFolderModal.svelte';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import type { PageData } from './$types';
@@ -24,18 +28,24 @@
 	// Local state for files (so we can update after actions)
 	// Initialized from props, refreshed via refreshList()
 	let files = $state<PageData['files']>([]);
+	let folders = $state<PageData['folders']>([]);
 	let libraryItems = $state<PageData['libraryItems']>([]);
 	let rootFolders = $state<PageData['rootFolders']>([]);
 	$effect(() => {
 		files = data.files;
+		folders = data.folders ?? [];
 		libraryItems = data.libraryItems ?? [];
 		rootFolders = data.rootFolders ?? [];
 		libraryIssuesOpen = (data.files?.length ?? 0) === 0;
 	});
 	let filter = $state<'all' | 'movie' | 'tv'>('all');
+	let viewMode = $state<'list' | 'folder'>('list');
 	let isProcessing = $state(false);
 	let selectedFile = $state<(typeof files)[0] | null>(null);
 	let matchModalOpen = $state(false);
+	let matchFolderModalOpen = $state(false);
+	let selectedFolder = $state<(typeof folders)[0] | null>(null);
+	let expandedFolders = $state<Set<string>>(new Set());
 	let libraryIssuesOpen = $state(false);
 	let savingIssues = new SvelteMap<string, boolean>();
 	let selectedIssues = $state<string[]>([]);
@@ -54,6 +64,12 @@
 	const filteredLibraryItems = $derived(() =>
 		libraryItems.filter((item) => item.mediaType === libraryIssuesFilter)
 	);
+
+	// Filter folders based on media type
+	const filteredFolders = $derived(() => {
+		if (filter === 'all') return folders;
+		return folders.filter((f) => f.mediaType === filter);
+	});
 
 	$effect(() => {
 		if (movieIssueCount > 0 && tvIssueCount === 0 && libraryIssuesFilter !== 'movie') {
@@ -166,11 +182,37 @@
 		matchModalOpen = true;
 	}
 
+	// Open match modal for a folder
+	function openFolderMatchModal(folder: (typeof folders)[0]) {
+		selectedFolder = folder;
+		matchFolderModalOpen = true;
+	}
+
 	// Handle successful match
 	function handleMatchSuccess(fileId: string) {
 		files = files.filter((f) => f.id !== fileId);
 		matchModalOpen = false;
 		selectedFile = null;
+	}
+
+	// Handle successful folder match
+	function handleFolderMatchSuccess(folderPath: string) {
+		// Remove all files in the matched folder
+		files = files.filter((f) => !f.path.startsWith(folderPath));
+		// Remove the folder from the list
+		folders = folders.filter((f) => f.folderPath !== folderPath);
+		matchFolderModalOpen = false;
+		selectedFolder = null;
+	}
+
+	// Toggle folder expansion
+	function toggleFolderExpansion(folderPath: string) {
+		if (expandedFolders.has(folderPath)) {
+			expandedFolders.delete(folderPath);
+		} else {
+			expandedFolders.add(folderPath);
+		}
+		expandedFolders = expandedFolders; // Trigger reactivity
 	}
 
 	// Refresh file list
@@ -301,28 +343,56 @@
 		</div>
 	</div>
 
-	<!-- Filters -->
-	<div class="flex gap-2">
-		<button
-			class="btn btn-sm {filter === 'all' ? 'btn-primary' : 'btn-ghost'}"
-			onclick={() => (filter = 'all')}
-		>
-			All ({files.length})
-		</button>
-		<button
-			class="btn btn-sm {filter === 'movie' ? 'btn-primary' : 'btn-ghost'}"
-			onclick={() => (filter = 'movie')}
-		>
-			<Clapperboard class="h-4 w-4" />
-			Movies ({files.filter((f) => f.mediaType === 'movie').length})
-		</button>
-		<button
-			class="btn btn-sm {filter === 'tv' ? 'btn-primary' : 'btn-ghost'}"
-			onclick={() => (filter = 'tv')}
-		>
-			<Tv class="h-4 w-4" />
-			TV Shows ({files.filter((f) => f.mediaType === 'tv').length})
-		</button>
+	<!-- Filters and View Toggle -->
+	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+		<div class="flex gap-2">
+			<button
+				class="btn btn-sm {filter === 'all' ? 'btn-primary' : 'btn-ghost'}"
+				onclick={() => (filter = 'all')}
+			>
+				All ({viewMode === 'folder' ? folders.length : files.length})
+			</button>
+			<button
+				class="btn btn-sm {filter === 'movie' ? 'btn-primary' : 'btn-ghost'}"
+				onclick={() => (filter = 'movie')}
+			>
+				<Clapperboard class="h-4 w-4" />
+				Movies ({viewMode === 'folder'
+					? folders.filter((f) => f.mediaType === 'movie').length
+					: files.filter((f) => f.mediaType === 'movie').length})
+			</button>
+			<button
+				class="btn btn-sm {filter === 'tv' ? 'btn-primary' : 'btn-ghost'}"
+				onclick={() => (filter = 'tv')}
+			>
+				<Tv class="h-4 w-4" />
+				TV Shows ({viewMode === 'folder'
+					? folders.filter((f) => f.mediaType === 'tv').length
+					: files.filter((f) => f.mediaType === 'tv').length})
+			</button>
+		</div>
+
+		<!-- View Mode Toggle -->
+		{#if folders.length > 0}
+			<div class="flex gap-1 rounded-lg bg-base-200 p-1">
+				<button
+					class="btn btn-sm {viewMode === 'list' ? 'btn-primary' : 'btn-ghost'}"
+					onclick={() => (viewMode = 'list')}
+					title="List View - Individual files"
+				>
+					<List class="h-4 w-4" />
+					<span class="hidden sm:inline">List</span>
+				</button>
+				<button
+					class="btn btn-sm {viewMode === 'folder' ? 'btn-primary' : 'btn-ghost'}"
+					onclick={() => (viewMode = 'folder')}
+					title="Folder View - Grouped by folder"
+				>
+					<Folder class="h-4 w-4" />
+					<span class="hidden sm:inline">Folders</span>
+				</button>
+			</div>
+		{/if}
 	</div>
 
 	<!-- Library Issues (separate from unmatched files) -->
@@ -510,6 +580,115 @@
 		</div>
 	{/if}
 
+	<!-- Folder View -->
+	{#if viewMode === 'folder' && filteredFolders().length > 0}
+		<div class="space-y-4">
+			<div class="flex items-center justify-between">
+				<h2 class="text-xl font-semibold">Folders with Unmatched Files</h2>
+				<p class="text-sm text-base-content/70">
+					{filteredFolders().length} folder{filteredFolders().length !== 1 ? 's' : ''}
+				</p>
+			</div>
+
+			<!-- Folder Cards -->
+			<div class="space-y-3">
+				{#each filteredFolders() as folder (folder.folderPath)}
+					<div class="card bg-base-200">
+						<!-- Folder Header -->
+						<div class="card-body p-4">
+							<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+								<div class="flex items-start gap-3">
+									<div class="rounded-lg bg-base-300 p-2">
+										<Folder class="h-5 w-5 text-primary" />
+									</div>
+									<div class="min-w-0 flex-1">
+										<h3 class="truncate font-medium" title={folder.folderPath}>
+											{folder.folderName}
+										</h3>
+										<p class="truncate text-sm text-base-content/60">
+											{folder.folderPath}
+										</p>
+										<div class="mt-1 flex flex-wrap items-center gap-2 text-xs">
+											<span class="badge badge-sm">
+												{folder.fileCount} file{folder.fileCount !== 1 ? 's' : ''}
+											</span>
+											<span class="badge badge-outline badge-sm">
+												{folder.mediaType === 'movie' ? 'Movie' : 'TV'}
+											</span>
+											{#each folder.reasons as reason}
+												<span class="badge badge-sm badge-warning">{reason}</span>
+											{/each}
+										</div>
+										{#if folder.commonParsedTitle}
+											<p class="mt-1 text-xs text-base-content/50">
+												Parsed: {folder.commonParsedTitle}
+											</p>
+										{/if}
+									</div>
+								</div>
+								<div class="flex items-center gap-2">
+									<button
+										class="btn btn-ghost btn-sm"
+										onclick={() => toggleFolderExpansion(folder.folderPath)}
+									>
+										<ChevronsUpDown class="h-4 w-4" />
+										{expandedFolders.has(folder.folderPath) ? 'Collapse' : 'Expand'}
+									</button>
+									<button
+										class="btn btn-sm btn-primary"
+										onclick={() => openFolderMatchModal(folder)}
+									>
+										<Link class="h-4 w-4" />
+										Match Folder
+									</button>
+								</div>
+							</div>
+
+							<!-- Expanded Files List -->
+							{#if expandedFolders.has(folder.folderPath)}
+								<div class="mt-4 border-t border-base-300 pt-4">
+									<p class="mb-2 text-xs font-medium text-base-content/60">Files in this folder:</p>
+									<div class="space-y-1">
+										{#each folder.files as file}
+											<div
+												class="flex items-center justify-between rounded bg-base-300/50 px-3 py-2 text-sm"
+											>
+												<div class="flex min-w-0 flex-1 items-center gap-2">
+													{#if file.mediaType === 'movie'}
+														<Clapperboard class="h-3 w-3 shrink-0 text-primary" />
+													{:else}
+														<Tv class="h-3 w-3 shrink-0 text-secondary" />
+													{/if}
+													<span class="truncate">{file.path.split('/').pop()}</span>
+												</div>
+												<div class="flex shrink-0 items-center gap-2">
+													{#if file.parsedSeason !== null && file.parsedEpisode !== null}
+														<span class="badge badge-sm badge-secondary">
+															S{String(file.parsedSeason).padStart(2, '0')}E{String(
+																file.parsedEpisode
+															).padStart(2, '0')}
+														</span>
+													{/if}
+													<span class="text-xs text-base-content/50">{formatSize(file.size)}</span>
+												</div>
+											</div>
+										{/each}
+									</div>
+								</div>
+							{/if}
+						</div>
+					</div>
+				{/each}
+			</div>
+		</div>
+	{:else if viewMode === 'folder' && filteredFolders().length === 0}
+		<div class="card bg-base-200">
+			<div class="card-body items-center py-12 text-center">
+				<p class="text-base-content/70">No folders to show with current filter</p>
+			</div>
+		</div>
+	{/if}
+
 	<!-- Empty State -->
 	{#if files.length === 0}
 		<div class="card bg-base-200">
@@ -529,7 +708,7 @@
 				<p class="text-base-content/70">No {filter === 'movie' ? 'movie' : 'TV'} files to show</p>
 			</div>
 		</div>
-	{:else}
+	{:else if viewMode === 'list'}
 		<!-- Mobile list -->
 		<div class="space-y-3 md:hidden">
 			{#each filteredFiles() as file (file.id)}
@@ -691,17 +870,27 @@
 			</table>
 		</div>
 	{/if}
-</div>
 
-<!-- Match Modal -->
-{#if selectedFile}
-	<MatchFileModal
-		open={matchModalOpen}
-		file={selectedFile}
-		onClose={() => (matchModalOpen = false)}
-		onSuccess={handleMatchSuccess}
-	/>
-{/if}
+	<!-- Match Modal -->
+	{#if selectedFile}
+		<MatchFileModal
+			open={matchModalOpen}
+			file={selectedFile}
+			onClose={() => (matchModalOpen = false)}
+			onSuccess={handleMatchSuccess}
+		/>
+	{/if}
+
+	<!-- Match Folder Modal -->
+	{#if selectedFolder}
+		<MatchFolderModal
+			open={matchFolderModalOpen}
+			folder={selectedFolder}
+			onClose={() => (matchFolderModalOpen = false)}
+			onSuccess={handleFolderMatchSuccess}
+		/>
+	{/if}
+</div>
 
 <!-- Delete Confirmation Modal -->
 <DeleteConfirmationModal

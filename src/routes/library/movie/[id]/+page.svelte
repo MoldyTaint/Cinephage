@@ -26,7 +26,7 @@
 	let movie = $state<LibraryMovie>(data.movie);
 	let queueItem = $state<PageData['queueItem']>(data.queueItem);
 
-	// SSE Connection for real-time updates
+	// SSE Connection - internally handles browser/SSR
 	const sse = createSSE<{
 		'media:initial': { movie: LibraryMovie; queueItem: PageData['queueItem'] };
 		'queue:updated': { id: string; title: string; status: string; progress: number | null };

@@ -27,7 +27,7 @@
 	let seasons = $state(data.seasons);
 	let queueItems = $state(data.queueItems);
 
-	// SSE Connection for real-time updates
+	// SSE Connection - internally handles browser/SSR
 	const sse = createSSE<{
 		'media:initial': {
 			series: typeof series;

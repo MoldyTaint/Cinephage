@@ -2,6 +2,7 @@ import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
 import { unmatchedFiles, rootFolders, movies, series } from '$lib/server/db/schema';
 import { eq, sql } from 'drizzle-orm';
+import { dirname, basename } from 'path';
 
 export const load: PageServerLoad = async () => {
 	const [files, movieItems, seriesItems, rootFolderOptions] = await Promise.all([
@@ -76,10 +77,84 @@ export const load: PageServerLoad = async () => {
 		...seriesItems.map((item) => ({ ...item, mediaType: 'tv' as const }))
 	];
 
+	// Group files by parent folder for folder view
+	const folderMap = new Map<
+		string,
+		{
+			folderPath: string;
+			folderName: string;
+			mediaType: string;
+			files: typeof files;
+			reasons: string[];
+		}
+	>();
+
+	for (const file of files) {
+		// Get the parent folder of the file
+		const parentPath = dirname(file.path);
+		const folderName = basename(parentPath);
+
+		if (!folderMap.has(parentPath)) {
+			folderMap.set(parentPath, {
+				folderPath: parentPath,
+				folderName,
+				mediaType: file.mediaType,
+				files: [],
+				reasons: []
+			});
+		}
+
+		const folder = folderMap.get(parentPath)!;
+		folder.files.push(file);
+		if (file.reason && !folder.reasons.includes(file.reason)) {
+			folder.reasons.push(file.reason);
+		}
+	}
+
+	// Convert to array and sort by file count (descending)
+	const folders = Array.from(folderMap.values())
+		.map((folder) => ({
+			folderPath: folder.folderPath,
+			folderName: folder.folderName,
+			mediaType: folder.mediaType,
+			fileCount: folder.files.length,
+			files: folder.files,
+			reasons: folder.reasons,
+			commonParsedTitle: getMostCommonParsedTitle(folder.files)
+		}))
+		.sort((a, b) => b.fileCount - a.fileCount);
+
 	return {
 		files,
+		folders,
 		libraryItems,
 		rootFolders: rootFolderOptions,
-		total: files.length
+		total: files.length,
+		totalFolders: folders.length
 	};
 };
+
+/**
+ * Get the most common parsed title from a list of files
+ */
+function getMostCommonParsedTitle(files: Array<{ parsedTitle: string | null }>): string | null {
+	const titleCounts = new Map<string, number>();
+
+	for (const file of files) {
+		if (file.parsedTitle) {
+			titleCounts.set(file.parsedTitle, (titleCounts.get(file.parsedTitle) || 0) + 1);
+		}
+	}
+
+	let mostCommonTitle: string | null = null;
+	let maxCount = 0;
+
+	for (const [title, count] of titleCounts) {
+		if (count > maxCount) {
+			mostCommonTitle = title;
+			maxCount = count;
+		}
+	}
+
+	return mostCommonTitle;
+}

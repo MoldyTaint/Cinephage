@@ -5,6 +5,7 @@ import type {
 	SSEConnectedEvent,
 	SSEHeartbeatEvent
 } from '$lib/types/sse';
+import { browser } from '$app/environment';
 
 /**
  * Default SSE configuration values
@@ -45,124 +46,127 @@ export function createSSE<T extends Record<string, unknown>>(
 	/** Close the connection manually */
 	close: () => void;
 } {
-	// Reactive state
-	let status = $state<SSEConnectionStatus>('connecting');
+	// Reactive state (works in both SSR and browser)
+	let status = $state<SSEConnectionStatus>('disconnected');
 	let reconnectAttempts = $state(0);
 
-	// Private state (not exposed)
-	let eventSource: EventSource | null = null;
-	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-	let isManuallyClosed = false;
+	// Use $effect for browser-only connection and cleanup
+	$effect(() => {
+		if (!browser) return;
 
-	const initialDelay = options.initialReconnectDelay ?? DEFAULT_CONFIG.initialReconnectDelay;
-	const maxDelay = options.maxReconnectDelay ?? DEFAULT_CONFIG.maxReconnectDelay;
+		// Private state (browser-only)
+		let eventSource: EventSource | null = null;
+		let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+		let isManuallyClosed = false;
 
-	/**
-	 * Calculate reconnection delay with exponential backoff
-	 */
-	function getReconnectDelay(): number {
-		const delay = Math.min(initialDelay * Math.pow(2, reconnectAttempts), maxDelay);
-		return delay;
-	}
+		const initialDelay = options.initialReconnectDelay ?? DEFAULT_CONFIG.initialReconnectDelay;
+		const maxDelay = options.maxReconnectDelay ?? DEFAULT_CONFIG.maxReconnectDelay;
 
-	/**
-	 * Connect to the SSE endpoint
-	 */
-	function connect(): void {
-		if (isManuallyClosed) return;
+		/**
+		 * Calculate reconnection delay with exponential backoff
+		 */
+		function getReconnectDelay(): number {
+			const delay = Math.min(initialDelay * Math.pow(2, reconnectAttempts), maxDelay);
+			return delay;
+		}
 
-		status = 'connecting';
+		/**
+		 * Connect to the SSE endpoint
+		 */
+		function connect(): void {
+			if (isManuallyClosed) return;
 
-		try {
-			eventSource = new EventSource(url);
+			status = 'connecting';
 
-			// Handle connection open
-			eventSource.addEventListener('connected', (_e: MessageEvent) => {
-				const event = _e as MessageEvent<string>;
-				const data = JSON.parse(event.data) as SSEConnectedEvent;
-				status = 'connected';
-				reconnectAttempts = 0;
-				handlers.connected?.(data as T['connected']);
-			});
+			try {
+				eventSource = new EventSource(url);
 
-			// Set up heartbeat handler
-			eventSource.addEventListener('heartbeat', (_e: MessageEvent) => {
-				const event = _e as MessageEvent<string>;
-				const data = JSON.parse(event.data) as SSEHeartbeatEvent;
-				handlers.heartbeat?.(data as T['heartbeat']);
-			});
-
-			// Wire up custom event handlers
-			for (const [eventName, handler] of Object.entries(handlers)) {
-				if (eventName === 'connected' || eventName === 'heartbeat') continue;
-
-				eventSource.addEventListener(eventName, (_e: MessageEvent) => {
+				// Handle connection open
+				eventSource.addEventListener('connected', (_e: MessageEvent) => {
 					const event = _e as MessageEvent<string>;
-					try {
-						const data = JSON.parse(event.data);
-						handler?.(data);
-					} catch (error) {
-						console.error(`[SSE] Failed to parse event "${eventName}":`, error);
-					}
+					const data = JSON.parse(event.data) as SSEConnectedEvent;
+					status = 'connected';
+					reconnectAttempts = 0;
+					handlers.connected?.(data as T['connected']);
 				});
-			}
 
-			// Handle errors and reconnection
-			eventSource.onerror = () => {
-				if (isManuallyClosed) return;
+				// Set up heartbeat handler
+				eventSource.addEventListener('heartbeat', (_e: MessageEvent) => {
+					const event = _e as MessageEvent<string>;
+					const data = JSON.parse(event.data) as SSEHeartbeatEvent;
+					handlers.heartbeat?.(data as T['heartbeat']);
+				});
 
-				status = 'error';
+				// Wire up custom event handlers
+				for (const [eventName, handler] of Object.entries(handlers)) {
+					if (eventName === 'connected' || eventName === 'heartbeat') continue;
 
-				// Close current connection
-				if (eventSource) {
-					eventSource.close();
-					eventSource = null;
+					eventSource.addEventListener(eventName, (_e: MessageEvent) => {
+						const event = _e as MessageEvent<string>;
+						try {
+							const data = JSON.parse(event.data);
+							handler?.(data);
+						} catch (error) {
+							console.error(`[SSE] Failed to parse event "${eventName}":`, error);
+						}
+					});
 				}
 
-				// Schedule reconnection with exponential backoff
+				// Handle errors and reconnection
+				eventSource.onerror = () => {
+					if (isManuallyClosed) return;
+
+					status = 'error';
+
+					// Close current connection
+					if (eventSource) {
+						eventSource.close();
+						eventSource = null;
+					}
+
+					// Schedule reconnection with exponential backoff
+					const delay = getReconnectDelay();
+					reconnectTimer = setTimeout(() => {
+						reconnectAttempts++;
+						connect();
+					}, delay);
+				};
+			} catch (error) {
+				console.error('[SSE] Failed to connect:', error);
+				status = 'error';
+
+				// Schedule reconnection
 				const delay = getReconnectDelay();
 				reconnectTimer = setTimeout(() => {
 					reconnectAttempts++;
 					connect();
 				}, delay);
-			};
-		} catch (error) {
-			console.error('[SSE] Failed to connect:', error);
-			status = 'error';
-
-			// Schedule reconnection
-			const delay = getReconnectDelay();
-			reconnectTimer = setTimeout(() => {
-				reconnectAttempts++;
-				connect();
-			}, delay);
-		}
-	}
-
-	/**
-	 * Close the connection manually
-	 */
-	function close(): void {
-		isManuallyClosed = true;
-
-		if (reconnectTimer) {
-			clearTimeout(reconnectTimer);
-			reconnectTimer = null;
+			}
 		}
 
-		if (eventSource) {
-			eventSource.close();
-			eventSource = null;
+		/**
+		 * Close the connection manually
+		 */
+		function close(): void {
+			isManuallyClosed = true;
+
+			if (reconnectTimer) {
+				clearTimeout(reconnectTimer);
+				reconnectTimer = null;
+			}
+
+			if (eventSource) {
+				eventSource.close();
+				eventSource = null;
+			}
+
+			status = 'disconnected';
 		}
 
-		status = 'disconnected';
-	}
+		// Start connection
+		connect();
 
-	// Auto-connect on initialization
-	connect();
-
-	// Cleanup on component destruction
-	$effect(() => {
+		// Cleanup function (runs on unmount)
 		return () => {
 			close();
 		};
@@ -179,7 +183,9 @@ export function createSSE<T extends Record<string, unknown>>(
 		get isConnected() {
 			return status === 'connected';
 		},
-		close
+		close: () => {
+			// No-op during SSR, actual close handled by $effect cleanup
+		}
 	};
 }
 
