@@ -123,3 +123,19 @@ export async function enrichWithLibraryStatus<T extends { id: number }>(
 		};
 	});
 }
+
+/**
+ * Filter out items already in library.
+ * Generic utility to remove code duplication across discover views.
+ *
+ * @param items - Array of items with library status
+ * @param exclude - Whether to exclude items in library (true = filter them out)
+ * @returns Filtered array
+ */
+export function filterInLibrary<T extends { inLibrary?: boolean }>(
+	items: T[],
+	exclude: boolean
+): T[] {
+	if (!exclude) return items;
+	return items.filter((item) => !item.inLibrary);
+}

@@ -14,7 +14,7 @@
 	import TmdbConfigRequired from '$lib/components/ui/TmdbConfigRequired.svelte';
 	import { UI } from '$lib/config/constants';
 	import { parseProviderIds, parseGenreIds, extractYear } from '$lib/utils/discoverParams';
-	import { Search } from 'lucide-svelte';
+	import { Search, Eye, EyeOff } from 'lucide-svelte';
 	import { getMediaTypeLabel } from '$lib/types/tmdb-guards';
 
 	let { data } = $props();
@@ -167,6 +167,7 @@
 	let minYear = $derived(extractYear($page.url.searchParams.get('primary_release_date.gte')));
 	let maxYear = $derived(extractYear($page.url.searchParams.get('primary_release_date.lte')));
 	let minRating = $derived(Number($page.url.searchParams.get('vote_average.gte')) || 0);
+	let excludeInLibrary = $derived($page.url.searchParams.get('exclude_in_library') === 'true');
 
 	function updateFilter(key: string, value: string | null) {
 		const url = new URL($page.url);
@@ -212,6 +213,10 @@
 			current.add(genreId);
 		}
 		updateFilter('with_genres', Array.from(current).join(','));
+	}
+
+	function toggleExcludeInLibrary() {
+		updateFilter('exclude_in_library', excludeInLibrary ? null : 'true');
 	}
 
 	let isFilterOpen = $state(false);
@@ -356,6 +361,21 @@
 						<button class="btn text-error btn-ghost btn-xs" onclick={resetFilters}>Clear</button>
 					</div>
 				{/if}
+
+				<!-- Hide In Library Toggle -->
+				<button
+					class="btn btn-circle btn-sm {excludeInLibrary
+						? 'btn-primary'
+						: 'border border-base-300 btn-ghost'}"
+					onclick={toggleExcludeInLibrary}
+					title={excludeInLibrary ? 'Show items in library' : 'Hide items in library'}
+				>
+					{#if excludeInLibrary}
+						<EyeOff class="h-4 w-4" />
+					{:else}
+						<Eye class="h-4 w-4" />
+					{/if}
+				</button>
 
 				<button
 					class="btn gap-2 shadow-lg shadow-primary/20 btn-sm btn-primary"

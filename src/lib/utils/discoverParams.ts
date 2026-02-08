@@ -14,6 +14,7 @@ export interface DiscoverParams {
 	minDate: string | null;
 	maxDate: string | null;
 	minRating: string | null;
+	excludeInLibrary: boolean;
 }
 
 /**
@@ -30,7 +31,8 @@ export function parseDiscoverParams(searchParams: URLSearchParams): DiscoverPara
 		withGenres: searchParams.get('with_genres') || '',
 		minDate: searchParams.get('primary_release_date.gte') || null,
 		maxDate: searchParams.get('primary_release_date.lte') || null,
-		minRating: searchParams.get('vote_average.gte') || null
+		minRating: searchParams.get('vote_average.gte') || null,
+		excludeInLibrary: searchParams.get('exclude_in_library') === 'true'
 	};
 }
 

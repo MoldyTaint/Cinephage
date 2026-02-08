@@ -1,6 +1,6 @@
 import { tmdb } from '$lib/server/tmdb';
 import { getDiscoverResults } from '$lib/server/discover';
-import { enrichWithLibraryStatus } from '$lib/server/library/status';
+import { enrichWithLibraryStatus, filterInLibrary } from '$lib/server/library/status';
 import type { WatchProvider } from '$lib/types/tmdb';
 import { logger } from '$lib/logging';
 import { parseDiscoverParams, isDefaultView as checkDefaultView } from '$lib/utils/discoverParams';
@@ -19,7 +19,8 @@ export const load: PageServerLoad = async ({ url }) => {
 		withGenres,
 		minDate,
 		maxDate,
-		minRating
+		minRating,
+		excludeInLibrary
 	} = params;
 	const isDefaultViewCheck = checkDefaultView(url.searchParams, params);
 
@@ -36,7 +37,8 @@ export const load: PageServerLoad = async ({ url }) => {
 				sort_by: sortBy,
 				trending,
 				with_watch_providers: withWatchProviders,
-				with_genres: withGenres
+				with_genres: withGenres,
+				exclude_in_library: excludeInLibrary
 			}
 		};
 	}
@@ -63,7 +65,8 @@ export const load: PageServerLoad = async ({ url }) => {
 					sort_by: sortBy,
 					trending,
 					with_watch_providers: withWatchProviders,
-					with_genres: withGenres
+					with_genres: withGenres,
+					exclude_in_library: excludeInLibrary
 				}
 			};
 		}
@@ -90,11 +93,12 @@ export const load: PageServerLoad = async ({ url }) => {
 			)) as TmdbPaginatedResult;
 
 			const enrichedResults = await enrichWithLibraryStatus(trendingResults.results);
+			const filteredResults = filterInLibrary(enrichedResults, excludeInLibrary);
 
 			return {
 				viewType: 'grid',
 				tmdbConfigured: true,
-				results: enrichedResults,
+				results: filteredResults,
 				pagination: {
 					page: trendingResults.page,
 					total_pages: trendingResults.total_pages,
@@ -107,7 +111,8 @@ export const load: PageServerLoad = async ({ url }) => {
 					sort_by: sortBy,
 					trending,
 					with_watch_providers: withWatchProviders,
-					with_genres: withGenres
+					with_genres: withGenres,
+					exclude_in_library: excludeInLibrary
 				}
 			};
 		}
@@ -142,11 +147,11 @@ export const load: PageServerLoad = async ({ url }) => {
 				viewType: 'dashboard',
 				tmdbConfigured: true,
 				sections: {
-					trendingDay: enrichedTrendingDay,
-					trendingWeek: enrichedTrendingWeek,
-					popularMovies: enrichedPopularMovies,
-					popularTV: enrichedPopularTV,
-					topRatedMovies: enrichedTopRatedMovies
+					trendingDay: filterInLibrary(enrichedTrendingDay, excludeInLibrary),
+					trendingWeek: filterInLibrary(enrichedTrendingWeek, excludeInLibrary),
+					popularMovies: filterInLibrary(enrichedPopularMovies, excludeInLibrary),
+					popularTV: filterInLibrary(enrichedPopularTV, excludeInLibrary),
+					topRatedMovies: filterInLibrary(enrichedTopRatedMovies, excludeInLibrary)
 				},
 				providers,
 				genres,
@@ -155,7 +160,8 @@ export const load: PageServerLoad = async ({ url }) => {
 					sort_by: sortBy,
 					trending,
 					with_watch_providers: withWatchProviders,
-					with_genres: withGenres
+					with_genres: withGenres,
+					exclude_in_library: excludeInLibrary
 				}
 			};
 		} else {
@@ -175,11 +181,12 @@ export const load: PageServerLoad = async ({ url }) => {
 			// Enrich results with library status
 			const mediaTypeFilter = type === 'movie' ? 'movie' : type === 'tv' ? 'tv' : 'all';
 			const enrichedResults = await enrichWithLibraryStatus(results, mediaTypeFilter);
+			const filteredResults = filterInLibrary(enrichedResults, excludeInLibrary);
 
 			return {
 				viewType: 'grid',
 				tmdbConfigured: true,
-				results: enrichedResults,
+				results: filteredResults,
 				pagination,
 				providers,
 				genres,
@@ -188,7 +195,8 @@ export const load: PageServerLoad = async ({ url }) => {
 					sort_by: sortBy,
 					trending,
 					with_watch_providers: withWatchProviders,
-					with_genres: withGenres
+					with_genres: withGenres,
+					exclude_in_library: excludeInLibrary
 				}
 			};
 		}
@@ -205,7 +213,8 @@ export const load: PageServerLoad = async ({ url }) => {
 				sort_by: sortBy,
 				trending,
 				with_watch_providers: withWatchProviders,
-				with_genres: withGenres
+				with_genres: withGenres,
+				exclude_in_library: excludeInLibrary
 			}
 		};
 	}

@@ -1,5 +1,5 @@
 import { getDiscoverResults } from '$lib/server/discover';
-import { enrichWithLibraryStatus } from '$lib/server/library/status';
+import { enrichWithLibraryStatus, filterInLibrary } from '$lib/server/library/status';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
@@ -18,7 +18,8 @@ const discoverQuerySchema = z.object({
 	with_genres: z.string().default(''),
 	'primary_release_date.gte': z.string().nullable().default(null),
 	'primary_release_date.lte': z.string().nullable().default(null),
-	'vote_average.gte': z.string().nullable().default(null)
+	'vote_average.gte': z.string().nullable().default(null),
+	exclude_in_library: z.enum(['true', 'false']).optional()
 });
 
 export const GET: RequestHandler = async ({ url }) => {
@@ -55,9 +56,11 @@ export const GET: RequestHandler = async ({ url }) => {
 		// Enrich results with library status
 		const mediaTypeFilter = params.type === 'movie' ? 'movie' : params.type === 'tv' ? 'tv' : 'all';
 		const enrichedResults = await enrichWithLibraryStatus(results, mediaTypeFilter);
+		const shouldExcludeInLibrary = params.exclude_in_library === 'true';
+		const filteredResults = filterInLibrary(enrichedResults, shouldExcludeInLibrary);
 
 		return json({
-			results: enrichedResults,
+			results: filteredResults,
 			pagination
 		});
 	} catch (e) {
