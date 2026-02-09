@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Search, X, Globe, Loader2 } from 'lucide-svelte';
+	import { X, Globe, Loader2, Search } from 'lucide-svelte';
 	import { onMount } from 'svelte';
 
 	interface Country {
@@ -19,10 +19,7 @@
 	let countries = $state<Country[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
-
-	// Search state
 	let searchQuery = $state('');
-	let isDropdownOpen = $state(false);
 
 	// Filtered countries based on search
 	const filteredCountries = $derived(
@@ -59,12 +56,11 @@
 		}
 	});
 
-	function toggleCountry(code: string) {
-		if (selectedCountries.includes(code)) {
-			onChange(selectedCountries.filter((c) => c !== code));
-		} else {
-			onChange([...selectedCountries, code]);
-		}
+	function handleSelectChange(event: Event) {
+		const select = event.target as HTMLSelectElement;
+		const selectedOptions = Array.from(select.selectedOptions);
+		const codes = selectedOptions.map((opt) => opt.value);
+		onChange(codes);
 	}
 
 	function removeCountry(code: string) {
@@ -74,22 +70,6 @@
 	function clearAll() {
 		onChange([]);
 	}
-
-	function handleDropdownClick(event: Event) {
-		event.stopPropagation();
-	}
-
-	function handleDocumentClick() {
-		isDropdownOpen = false;
-	}
-
-	// Close dropdown when clicking outside
-	$effect(() => {
-		if (isDropdownOpen) {
-			document.addEventListener('click', handleDocumentClick);
-			return () => document.removeEventListener('click', handleDocumentClick);
-		}
-	});
 </script>
 
 {#if loading}
@@ -103,7 +83,7 @@
 	</div>
 {:else}
 	<div class="form-control">
-		<label class="label py-1">
+		<label class="label py-1" for="country-select">
 			<span class="label-text flex items-center gap-2">
 				<Globe class="h-4 w-4" />
 				Countries
@@ -114,7 +94,7 @@
 		<!-- Selected Countries Tags -->
 		{#if selectedCountryObjects.length > 0}
 			<div class="mb-2 flex flex-wrap gap-1">
-				{#each selectedCountryObjects as country}
+				{#each selectedCountryObjects as country (country.code)}
 					<span class="badge gap-1 badge-sm badge-primary">
 						<span>{country.flag}</span>
 						<span>{country.name}</span>
@@ -122,89 +102,62 @@
 							class="ml-1 hover:text-error"
 							onclick={() => removeCountry(country.code)}
 							type="button"
+							aria-label="Remove {country.name}"
 						>
 							<X class="h-3 w-3" />
 						</button>
 					</span>
 				{/each}
 				{#if selectedCountryObjects.length > 1}
-					<button class="btn btn-ghost btn-xs" onclick={clearAll} type="button"> Clear all </button>
+					<button class="btn btn-ghost btn-xs" onclick={clearAll} type="button">Clear all</button>
 				{/if}
 			</div>
 		{/if}
 
 		<!-- Search Input -->
-		<div class="dropdown w-full" class:dropdown-open={isDropdownOpen}>
-			<div class="relative">
-				<Search class="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/50" />
-				<input
-					type="text"
-					class="input-bordered input input-sm w-full pl-9"
-					placeholder="Search countries..."
-					bind:value={searchQuery}
-					onclick={() => (isDropdownOpen = true)}
-					onfocus={() => (isDropdownOpen = true)}
-					onkeydown={(e) => {
-						if (e.key === 'Escape') {
-							isDropdownOpen = false;
-						}
-					}}
-				/>
-				{#if searchQuery}
-					<button
-						class="absolute top-1/2 right-2 -translate-y-1/2 text-base-content/50 hover:text-base-content"
-						onclick={() => (searchQuery = '')}
-						type="button"
-					>
-						<X class="h-4 w-4" />
-					</button>
-				{/if}
-			</div>
-
-			<!-- Dropdown Menu -->
-			<div
-				class="dropdown-content menu absolute z-50 mt-1 max-h-64 w-full flex-col overflow-y-auto menu-sm rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
-				onclick={handleDropdownClick}
-				role="listbox"
-				tabindex="0"
-				onkeydown={(e) => {
-					if (e.key === 'Escape') {
-						isDropdownOpen = false;
-					}
-				}}
-			>
-				{#if filteredCountries.length === 0}
-					<div class="px-3 py-2 text-sm text-base-content/60">No countries found</div>
-				{:else}
-					{#each filteredCountries.slice(0, 100) as country (country.code)}
-						<label
-							class="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-base-200"
-						>
-							<input
-								type="checkbox"
-								class="checkbox checkbox-sm"
-								checked={selectedCountries.includes(country.code)}
-								onchange={() => toggleCountry(country.code)}
-							/>
-							<span class="text-lg">{country.flag}</span>
-							<span class="flex-1 text-sm">{country.name}</span>
-							<span class="text-xs text-base-content/50">{country.code}</span>
-						</label>
-					{/each}
-					{#if filteredCountries.length > 100}
-						<div class="px-3 py-2 text-xs text-base-content/50">
-							+{filteredCountries.length - 100} more countries
-						</div>
-					{/if}
-				{/if}
-			</div>
+		<div class="relative mb-2">
+			<Search class="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/50" />
+			<input
+				type="text"
+				class="input-bordered input input-sm w-full pl-9"
+				placeholder="Search countries..."
+				bind:value={searchQuery}
+			/>
+			{#if searchQuery}
+				<button
+					class="absolute top-1/2 right-2 -translate-y-1/2 text-base-content/50 hover:text-base-content"
+					onclick={() => (searchQuery = '')}
+					type="button"
+				>
+					<X class="h-4 w-4" />
+				</button>
+			{/if}
 		</div>
+
+		<!-- Native Multi-Select - browser handles positioning automatically -->
+		<select
+			id="country-select"
+			multiple
+			class="select-bordered select h-48 w-full overflow-y-auto select-sm"
+			onchange={handleSelectChange}
+		>
+			{#each filteredCountries as country (country.code)}
+				<option value={country.code} selected={selectedCountries.includes(country.code)}>
+					{country.flag}
+					{country.name} ({country.code})
+				</option>
+			{/each}
+		</select>
 
 		<div class="label py-1">
 			<span class="label-text-alt text-xs">
-				{selectedCountries.length === 0
-					? 'Select one or more countries to import channels'
-					: `${selectedCountries.length} countr${selectedCountries.length === 1 ? 'y' : 'ies'} selected`}
+				{#if searchQuery}
+					{filteredCountries.length} of {countries.length} countries shown
+				{:else if selectedCountries.length === 0}
+					Select one or more countries (Ctrl/Cmd+click for multiple)
+				{:else}
+					{selectedCountries.length} countr{selectedCountries.length === 1 ? 'y' : 'ies'} selected
+				{/if}
 			</span>
 		</div>
 	</div>
