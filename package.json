@@ -40,7 +40,7 @@
 		"@vitest/browser": "^4.0.18",
 		"@vitest/browser-playwright": "^4.0.18",
 		"daisyui": "^5.5.16",
-		"dotenv": "^17.2.3",
+		"dotenv": "^17.2.4",
 		"drizzle-orm": "^0.45.1",
 		"eslint": "^9.39.2",
 		"eslint-config-prettier": "^10.1.8",
@@ -64,7 +64,7 @@
 	},
 	"optionalDependencies": {
 		"@rollup/rollup-linux-arm64-gnu": "^4.30.0",
-		"@rollup/rollup-linux-x64-gnu": "^4.30.0"
+		"@rollup/rollup-linux-x64-gnu": "^4.57.1"
 	},
 	"dependencies": {
 		"@types/crypto-js": "^4.2.2",
@@ -76,7 +76,7 @@
 		"cheerio": "^1.2.0",
 		"chokidar": "^5.0.0",
 		"crypto-js": "^4.2.0",
-		"fast-xml-parser": "^5.3.4",
+		"fast-xml-parser": "^5.3.5",
 		"fflate": "^0.8.2",
 		"guessit-js": "^1.0.1",
 		"iconv-lite": "^0.7.2",
