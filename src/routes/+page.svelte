@@ -25,21 +25,27 @@
 	import { resolvePath } from '$lib/utils/routing';
 	import type { UnifiedActivity } from '$lib/types/activity';
 	import { createSSE } from '$lib/sse';
+	import { mobileSSEStatus } from '$lib/sse/mobileStatus.svelte';
 
 	let { data } = $props();
 
-	// Local reactive state for SSE updates
-	let stats = $state(data.stats);
-	let recentActivity = $state<UnifiedActivity[]>(data.recentActivity);
-	let recentlyAdded = $state(data.recentlyAdded);
-	let missingEpisodes = $state(data.missingEpisodes);
+	// Local SSE-overridable state; derived values fall back to server props for SSR/initial render.
+	let statsState = $state<typeof data.stats | null>(null);
+	let recentActivityState = $state<UnifiedActivity[] | null>(null);
+	let recentlyAddedState = $state<typeof data.recentlyAdded | null>(null);
+	let missingEpisodesState = $state<typeof data.missingEpisodes | null>(null);
+
+	const stats = $derived(statsState ?? data.stats);
+	const recentActivity = $derived(recentActivityState ?? data.recentActivity);
+	const recentlyAdded = $derived(recentlyAddedState ?? data.recentlyAdded);
+	const missingEpisodes = $derived(missingEpisodesState ?? data.missingEpisodes);
 
 	// Sync from server data when it changes (e.g., on navigation)
 	$effect(() => {
-		stats = data.stats;
-		recentActivity = data.recentActivity;
-		recentlyAdded = data.recentlyAdded;
-		missingEpisodes = data.missingEpisodes;
+		statsState = data.stats;
+		recentActivityState = data.recentActivity;
+		recentlyAddedState = data.recentlyAdded;
+		missingEpisodesState = data.missingEpisodes;
 	});
 
 	// SSE Connection - internally handles browser/SSR
@@ -52,43 +58,57 @@
 				missingEpisodes: typeof missingEpisodes;
 				recentActivity: UnifiedActivity[];
 			};
-			stats = data.stats;
-			recentlyAdded = data.recentlyAdded;
-			missingEpisodes = data.missingEpisodes;
-			recentActivity = data.recentActivity;
+			statsState = data.stats;
+			recentlyAddedState = data.recentlyAdded;
+			missingEpisodesState = data.missingEpisodes;
+			recentActivityState = data.recentActivity;
 		},
 		'dashboard:stats': (newStats) => {
-			stats = newStats as typeof stats;
+			statsState = newStats as typeof stats;
 		},
 		'dashboard:recentlyAdded': (newRecentlyAdded) => {
-			recentlyAdded = newRecentlyAdded as typeof recentlyAdded;
+			recentlyAddedState = newRecentlyAdded as typeof recentlyAdded;
 		},
 		'dashboard:missingEpisodes': (newMissingEpisodes) => {
-			missingEpisodes = newMissingEpisodes as typeof missingEpisodes;
+			missingEpisodesState = newMissingEpisodes as typeof missingEpisodes;
 		},
 		'activity:new': (newActivity) => {
 			const activity = newActivity as UnifiedActivity;
-			recentActivity = [activity, ...recentActivity.filter((a) => a.id !== activity.id)].slice(
-				0,
-				10
-			);
+			const currentRecentActivity = recentActivityState ?? data.recentActivity;
+			recentActivityState = [
+				activity,
+				...currentRecentActivity.filter((a) => a.id !== activity.id)
+			].slice(0, 10);
 		},
 		'activity:updated': (updated) => {
 			const update = updated as Partial<UnifiedActivity>;
-			recentActivity = recentActivity.map((a) => (a.id === update.id ? { ...a, ...update } : a));
+			const currentRecentActivity = recentActivityState ?? data.recentActivity;
+			recentActivityState = currentRecentActivity.map((a) =>
+				a.id === update.id ? { ...a, ...update } : a
+			);
 		},
 		'activity:progress': (progressData) => {
-			const data = progressData as { id: string; progress: number; status?: string };
-			recentActivity = recentActivity.map((a) =>
-				a.id === data.id
+			const progress = progressData as { id: string; progress: number; status?: string };
+			const currentRecentActivity = recentActivityState ?? data.recentActivity;
+			recentActivityState = currentRecentActivity.map((a) =>
+				a.id === progress.id
 					? {
 							...a,
-							downloadProgress: data.progress,
-							status: (data.status as UnifiedActivity['status']) || a.status
+							downloadProgress: progress.progress,
+							status: (progress.status as UnifiedActivity['status']) || a.status
 						}
 					: a
 			);
 		}
+	});
+
+	const MOBILE_SSE_SOURCE = 'dashboard';
+
+	$effect(() => {
+		mobileSSEStatus.publish(MOBILE_SSE_SOURCE, sse.status);
+		return () => {
+			mobileSSEStatus.clear(MOBILE_SSE_SOURCE);
+		};
 	});
 
 	// Format relative time
@@ -134,6 +154,12 @@
 		}
 		return resolvePath(`/library/tv/${activity.seriesId || activity.mediaId}`);
 	}
+
+	function canLinkToMedia(activity: UnifiedActivity): boolean {
+		if (activity.status === 'removed') return false;
+		if (activity.mediaType === 'movie') return Boolean(activity.mediaId);
+		return Boolean(activity.seriesId || activity.mediaId);
+	}
 </script>
 
 <div class="space-y-6">
@@ -144,16 +170,18 @@
 			<p class="text-base-content/70">Welcome to Cinephage</p>
 		</div>
 		<div class="flex items-center gap-2">
-			{#if sse.isConnected}
-				<span class="badge gap-1 badge-success">
-					<Wifi class="h-3 w-3" />
-					Live
-				</span>
-			{:else if sse.status === 'connecting' || sse.status === 'error'}
-				<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
-					{sse.status === 'error' ? 'Reconnecting...' : 'Connecting...'}
-				</span>
-			{/if}
+			<div class="hidden items-center gap-2 sm:flex">
+				{#if sse.isConnected}
+					<span class="badge gap-1 badge-success">
+						<Wifi class="h-3 w-3" />
+						Live
+					</span>
+				{:else if sse.status === 'connecting' || sse.status === 'error'}
+					<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
+						{sse.status === 'error' ? 'Reconnecting...' : 'Connecting...'}
+					</span>
+				{/if}
+			</div>
 			<a href={resolve('/discover')} class="btn btn-primary">
 				<Plus class="h-4 w-4" />
 				Add Content
@@ -216,13 +244,22 @@
 						<Download class="h-6 w-6 text-accent" />
 					</div>
 					<div>
-						<div class="text-2xl font-bold">{stats.activeDownloads}</div>
+						<div class="text-2xl font-bold">
+							{stats.activeDownloads + (stats.failedDownloads || 0)}
+						</div>
 						<div class="text-sm text-base-content/70">Downloads</div>
 					</div>
 				</div>
 				<div class="mt-2 text-xs">
-					{#if stats.activeDownloads > 0}
-						<span class="badge badge-sm badge-accent">Active</span>
+					{#if stats.activeDownloads > 0 || (stats.failedDownloads || 0) > 0}
+						<div class="flex flex-wrap gap-2">
+							{#if stats.activeDownloads > 0}
+								<span class="badge badge-sm badge-accent">{stats.activeDownloads} active</span>
+							{/if}
+							{#if (stats.failedDownloads || 0) > 0}
+								<span class="badge badge-sm badge-error">{stats.failedDownloads} failed</span>
+							{/if}
+						</div>
 					{:else}
 						<span class="text-base-content/50">No active downloads</span>
 					{/if}
@@ -436,10 +473,10 @@
 										</div>
 									{/if}
 									<div class="min-w-0 flex-1">
-										<p class="font-medium break-words whitespace-normal">
+										<p class="font-medium wrap-break-word whitespace-normal">
 											{episode.series?.title || 'Unknown Series'}
 										</p>
-										<p class="text-sm break-words whitespace-normal text-base-content/70">
+										<p class="wrap-break-words text-sm whitespace-normal text-base-content/70">
 											S{String(episode.seasonNumber).padStart(2, '0')}E{String(
 												episode.episodeNumber
 											).padStart(2, '0')}
@@ -521,19 +558,32 @@
 											</span>
 										</td>
 										<td>
-											<a
-												href={getMediaLink(activity)}
-												class="flex items-center gap-1 hover:text-primary"
-											>
-												{#if activity.mediaType === 'movie'}
-													<Clapperboard class="h-3 w-3 shrink-0" />
-												{:else}
-													<Tv class="h-3 w-3 shrink-0" />
-												{/if}
-												<span class="max-w-24 truncate text-xs" title={activity.mediaTitle}>
-													{activity.mediaTitle}
-												</span>
-											</a>
+											{#if canLinkToMedia(activity)}
+												<a
+													href={getMediaLink(activity)}
+													class="flex items-center gap-1 hover:text-primary"
+												>
+													{#if activity.mediaType === 'movie'}
+														<Clapperboard class="h-3 w-3 shrink-0" />
+													{:else}
+														<Tv class="h-3 w-3 shrink-0" />
+													{/if}
+													<span class="max-w-24 truncate text-xs" title={activity.mediaTitle}>
+														{activity.mediaTitle}
+													</span>
+												</a>
+											{:else}
+												<div class="flex items-center gap-1">
+													{#if activity.mediaType === 'movie'}
+														<Clapperboard class="h-3 w-3 shrink-0" />
+													{:else}
+														<Tv class="h-3 w-3 shrink-0" />
+													{/if}
+													<span class="max-w-24 truncate text-xs" title={activity.mediaTitle}>
+														{activity.mediaTitle}
+													</span>
+												</div>
+											{/if}
 										</td>
 										<td>
 											{#if activity.status === 'downloading' && activity.downloadProgress !== undefined}
@@ -542,7 +592,7 @@
 													value={activity.downloadProgress}
 													max="100"
 												></progress>
-											{:else if activity.statusReason}
+											{:else if activity.statusReason && activity.status !== 'failed'}
 												<span
 													class="max-w-16 truncate text-xs text-base-content/50"
 													title={activity.statusReason}

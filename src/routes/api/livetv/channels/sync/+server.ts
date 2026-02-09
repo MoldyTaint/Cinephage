@@ -6,11 +6,12 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getStalkerChannelSyncService, getStalkerAccountManager } from '$lib/server/livetv/stalker';
+import { getLiveTvChannelService, getLiveTvAccountManager } from '$lib/server/livetv';
+import { logger } from '$lib/logging';
 
 export const POST: RequestHandler = async ({ request }) => {
-	const syncService = getStalkerChannelSyncService();
-	const accountManager = getStalkerAccountManager();
+	const channelService = getLiveTvChannelService();
+	const accountManager = getLiveTvAccountManager();
 
 	try {
 		const body = await request.json().catch(() => ({}));
@@ -18,14 +19,18 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		// If no specific accounts, sync all enabled accounts
 		if (!accountIds || accountIds.length === 0) {
-			const results = await syncService.syncAllAccounts();
+			const accounts = await accountManager.getAccounts();
+			const results: Record<string, unknown> = {};
 
-			const resultsObj: Record<string, unknown> = {};
-			for (const [id, result] of results) {
-				resultsObj[id] = result;
+			for (const account of accounts.filter((a: (typeof accounts)[0]) => a.enabled)) {
+				const result = await channelService.syncChannels(account.id);
+				results[account.id] = result;
 			}
 
-			return json({ results: resultsObj });
+			return json({
+				success: true,
+				results
+			});
 		}
 
 		// Sync specific accounts
@@ -42,13 +47,22 @@ export const POST: RequestHandler = async ({ request }) => {
 				continue;
 			}
 
-			const result = await syncService.syncAccount(accountId);
+			const result = await channelService.syncChannels(accountId);
 			results[accountId] = result;
 		}
 
-		return json({ results });
+		return json({
+			success: true,
+			results
+		});
 	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Unknown error';
-		return json({ error: message }, { status: 500 });
+		logger.error('[API] Failed to sync channels', error instanceof Error ? error : undefined);
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to sync channels'
+			},
+			{ status: 500 }
+		);
 	}
 };

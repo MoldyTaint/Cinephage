@@ -22,7 +22,8 @@ export type LogCategory =
 	| 'monitoring'
 	| 'scans'
 	| 'indexers'
-	| 'subtitles';
+	| 'subtitles'
+	| 'livetv';
 
 export interface FileLoggerConfig {
 	logDir: string;

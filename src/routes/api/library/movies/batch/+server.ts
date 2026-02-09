@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { db } from '$lib/server/db/index.js';
-import { movies, movieFiles, rootFolders } from '$lib/server/db/schema.js';
+import { downloadHistory, movies, movieFiles, rootFolders } from '$lib/server/db/schema.js';
 import { eq, inArray } from 'drizzle-orm';
 import { unlink, rmdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -154,6 +154,12 @@ export const DELETE: RequestHandler = async ({ request }) => {
 				}
 
 				if (removeFromLibrary) {
+					// Preserve activity audit trail after media rows are deleted (FKs become null on delete)
+					await db
+						.update(downloadHistory)
+						.set({ status: 'removed', statusReason: null })
+						.where(eq(downloadHistory.movieId, movieId));
+
 					// Delete alternate titles (not cascaded automatically)
 					await deleteAllAlternateTitles('movie', movieId);
 

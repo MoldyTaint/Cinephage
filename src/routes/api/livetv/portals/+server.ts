@@ -10,6 +10,7 @@ import type { RequestHandler } from './$types';
 import { getStalkerPortalManager } from '$lib/server/livetv/stalker';
 import { stalkerPortalCreateSchema } from '$lib/validation/schemas';
 import { logger } from '$lib/logging';
+import { ValidationError } from '$lib/errors';
 
 /**
  * List all portals
@@ -19,13 +20,20 @@ export const GET: RequestHandler = async () => {
 		const manager = getStalkerPortalManager();
 		const portals = await manager.getPortals();
 
-		return json(portals);
-	} catch (error) {
-		logger.error('[API] Failed to list portals', {
-			error: error instanceof Error ? error.message : String(error)
+		return json({
+			success: true,
+			portals
 		});
+	} catch (error) {
+		logger.error('[API] Failed to list portals', error instanceof Error ? error : undefined);
 
-		return json({ error: 'Failed to list portals' }, { status: 500 });
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to list portals'
+			},
+			{ status: 500 }
+		);
 	}
 };
 
@@ -39,13 +47,9 @@ export const POST: RequestHandler = async ({ request }) => {
 		// Validate input
 		const parsed = stalkerPortalCreateSchema.safeParse(body);
 		if (!parsed.success) {
-			return json(
-				{
-					error: 'Validation failed',
-					details: parsed.error.flatten().fieldErrors
-				},
-				{ status: 400 }
-			);
+			throw new ValidationError('Validation failed', {
+				details: parsed.error.flatten()
+			});
 		}
 
 		const manager = getStalkerPortalManager();
@@ -55,22 +59,59 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		const portal = await manager.createPortal(parsed.data, detectType);
 
-		return json(portal, { status: 201 });
+		return json(
+			{
+				success: true,
+				portal
+			},
+			{ status: 201 }
+		);
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		logger.error('[API] Failed to create portal', error instanceof Error ? error : undefined);
 
-		logger.error('[API] Failed to create portal', { error: message });
+		// Validation errors
+		if (error instanceof ValidationError) {
+			return json(
+				{
+					success: false,
+					error: error.message,
+					code: error.code,
+					context: error.context
+				},
+				{ status: error.statusCode }
+			);
+		}
+
+		const message = error instanceof Error ? error.message : String(error);
 
 		// Duplicate URL
 		if (message.includes('already exists')) {
-			return json({ error: message }, { status: 409 });
+			return json(
+				{
+					success: false,
+					error: message
+				},
+				{ status: 409 }
+			);
 		}
 
 		// Unique constraint violation
 		if (message.includes('UNIQUE constraint failed')) {
-			return json({ error: 'A portal with this URL already exists' }, { status: 409 });
+			return json(
+				{
+					success: false,
+					error: 'A portal with this URL already exists'
+				},
+				{ status: 409 }
+			);
 		}
 
-		return json({ error: 'Failed to create portal' }, { status: 500 });
+		return json(
+			{
+				success: false,
+				error: message || 'Failed to create portal'
+			},
+			{ status: 500 }
+		);
 	}
 };

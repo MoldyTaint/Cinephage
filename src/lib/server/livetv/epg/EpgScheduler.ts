@@ -6,7 +6,9 @@
  */
 
 import { EventEmitter } from 'events';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'EpgScheduler' });
 import { db } from '$lib/server/db';
 import { settings } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
@@ -79,7 +81,7 @@ export class EpgScheduler extends EventEmitter implements BackgroundService {
 	 */
 	start(): void {
 		if (this.isInitialized) {
-			logger.warn('[EpgScheduler] Already initialized');
+			logger.warn('Already initialized');
 			return;
 		}
 
@@ -91,7 +93,7 @@ export class EpgScheduler extends EventEmitter implements BackgroundService {
 	 * Stop the scheduler
 	 */
 	async stop(): Promise<void> {
-		logger.info('[EpgScheduler] Stopping');
+		logger.info('Stopping');
 
 		if (this.schedulerTimer) {
 			clearInterval(this.schedulerTimer);
@@ -109,7 +111,7 @@ export class EpgScheduler extends EventEmitter implements BackgroundService {
 		try {
 			this.startupTime = new Date();
 
-			logger.info('[EpgScheduler] Starting', {
+			logger.info('Starting', {
 				pollInterval: SCHEDULER_POLL_INTERVAL_MS,
 				graceMinutes: STARTUP_GRACE_PERIOD_MS / 60000
 			});
@@ -120,12 +122,12 @@ export class EpgScheduler extends EventEmitter implements BackgroundService {
 			this.isInitialized = true;
 			this._status = 'ready';
 
-			logger.info('[EpgScheduler] Ready');
+			logger.info('Ready');
 			this.emit('ready');
 		} catch (error) {
 			this._error = error instanceof Error ? error : new Error(String(error));
 			this._status = 'error';
-			logger.error('[EpgScheduler] Failed to initialize', { error: this._error.message });
+			logger.error('Failed to initialize', { error: this._error.message });
 		}
 	}
 
@@ -195,7 +197,7 @@ export class EpgScheduler extends EventEmitter implements BackgroundService {
 		this.isSyncing = true;
 
 		try {
-			logger.info('[EpgScheduler] Starting scheduled EPG sync');
+			logger.info('Starting scheduled EPG sync');
 
 			const epgService = getEpgService();
 			const results = await epgService.syncAll();
@@ -207,7 +209,7 @@ export class EpgScheduler extends EventEmitter implements BackgroundService {
 			// Update last sync time
 			this.setSetting(SETTINGS_KEYS.lastSyncAt, new Date().toISOString());
 
-			logger.info('[EpgScheduler] Scheduled EPG sync complete', {
+			logger.info('Scheduled EPG sync complete', {
 				accounts: results.length,
 				successful,
 				totalAdded,
@@ -216,7 +218,7 @@ export class EpgScheduler extends EventEmitter implements BackgroundService {
 
 			this.emit('sync-complete', { results });
 		} catch (error) {
-			logger.error('[EpgScheduler] Scheduled EPG sync failed', {
+			logger.error('Scheduled EPG sync failed', {
 				error: error instanceof Error ? error.message : 'Unknown error'
 			});
 		} finally {
@@ -239,10 +241,10 @@ export class EpgScheduler extends EventEmitter implements BackgroundService {
 			this.setSetting(SETTINGS_KEYS.lastCleanupAt, new Date().toISOString());
 
 			if (deleted > 0) {
-				logger.info('[EpgScheduler] EPG cleanup complete', { deleted });
+				logger.info('EPG cleanup complete', { deleted });
 			}
 		} catch (error) {
-			logger.error('[EpgScheduler] EPG cleanup failed', {
+			logger.error('EPG cleanup failed', {
 				error: error instanceof Error ? error.message : 'Unknown error'
 			});
 		} finally {
@@ -291,7 +293,7 @@ export class EpgScheduler extends EventEmitter implements BackgroundService {
 				})
 				.run();
 		} catch (error) {
-			logger.error('[EpgScheduler] Failed to set setting', { key, error });
+			logger.error('Failed to set setting', { key, error });
 		}
 	}
 
@@ -333,7 +335,7 @@ export class EpgScheduler extends EventEmitter implements BackgroundService {
 	 */
 	async triggerSync(): Promise<void> {
 		if (this.isSyncing) {
-			logger.warn('[EpgScheduler] Sync already in progress');
+			logger.warn('Sync already in progress');
 			return;
 		}
 		await this.runSync();

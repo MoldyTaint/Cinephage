@@ -8,6 +8,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { channelLineupService } from '$lib/server/livetv/lineup';
 import { ValidationError } from '$lib/errors';
+import { logger } from '$lib/logging';
 
 interface BulkSetCategoryRequest {
 	itemIds: string[];
@@ -23,7 +24,10 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		if (body.itemIds.length === 0) {
-			return json({ updated: 0 });
+			return json({
+				success: true,
+				updated: 0
+			});
 		}
 
 		// categoryId can be null (for uncategorized) or a string
@@ -31,12 +35,29 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		const updated = await channelLineupService.bulkSetCategory(body.itemIds, categoryId);
 
-		return json({ updated });
+		return json({
+			success: true,
+			updated
+		});
 	} catch (error) {
+		// Validation errors
 		if (error instanceof ValidationError) {
-			return json({ error: error.message }, { status: 400 });
+			return json(
+				{
+					success: false,
+					error: error.message,
+					code: error.code
+				},
+				{ status: error.statusCode }
+			);
 		}
-		console.error('[API] Failed to bulk set category:', error);
-		return json({ error: 'Failed to update categories' }, { status: 500 });
+		logger.error('[API] Failed to bulk set category', error instanceof Error ? error : undefined);
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to update categories'
+			},
+			{ status: 500 }
+		);
 	}
 };

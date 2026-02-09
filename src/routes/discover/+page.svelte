@@ -91,7 +91,7 @@
 		isSearching = true;
 		try {
 			const res = await fetch(
-				`/api/discover/search?query=${encodeURIComponent(normalizedQuery)}&type=${type}`
+				`/api/discover/search?query=${encodeURIComponent(normalizedQuery)}&type=${type}${excludeInLibrary ? '&exclude_in_library=true' : ''}`
 			);
 			if (!res.ok) throw new Error('Search failed');
 
@@ -114,7 +114,7 @@
 		try {
 			const nextPage = searchPagination.page + 1;
 			const res = await fetch(
-				`/api/discover/search?query=${encodeURIComponent(normalizedSearchQuery)}&type=${type}&page=${nextPage}`
+				`/api/discover/search?query=${encodeURIComponent(normalizedSearchQuery)}&type=${type}&page=${nextPage}${excludeInLibrary ? '&exclude_in_library=true' : ''}`
 			);
 			if (!res.ok) return;
 
@@ -132,9 +132,10 @@
 		}
 	}
 
-	// Re-run search when type filter changes
+	// Re-run search when type or excludeInLibrary filter changes
 	$effect(() => {
 		if (searchQuery && type) {
+			void excludeInLibrary;
 			handleSearch(searchQuery);
 		}
 	});
@@ -478,37 +479,58 @@
 				<SectionRow
 					title="Trending Today"
 					items={data.sections.trendingDay}
-					link="/discover?trending=day"
+					link="/discover?trending=day{excludeInLibrary ? '&exclude_in_library=true' : ''}"
 					endpoint="trending/all/day"
 					onAddToLibrary={handleAddToLibrary}
+					{excludeInLibrary}
 				/>
 				<SectionRow
 					title="Trending This Week"
 					items={data.sections.trendingWeek}
-					link="/discover?trending=week"
+					link="/discover?trending=week{excludeInLibrary ? '&exclude_in_library=true' : ''}"
 					endpoint="trending/all/week"
 					onAddToLibrary={handleAddToLibrary}
+					{excludeInLibrary}
 				/>
 				<SectionRow
 					title="Popular Movies"
 					items={data.sections.popularMovies}
-					link="/discover?type=movie&sort_by=popularity.desc"
+					link="/discover?type=movie&sort_by=popularity.desc{excludeInLibrary
+						? '&exclude_in_library=true'
+						: ''}"
 					endpoint="movie/popular"
 					onAddToLibrary={handleAddToLibrary}
+					{excludeInLibrary}
 				/>
 				<SectionRow
 					title="Popular TV Shows"
 					items={data.sections.popularTV}
-					link="/discover?type=tv&sort_by=popularity.desc"
+					link="/discover?type=tv&sort_by=popularity.desc{excludeInLibrary
+						? '&exclude_in_library=true'
+						: ''}"
 					endpoint="tv/popular"
 					onAddToLibrary={handleAddToLibrary}
+					{excludeInLibrary}
 				/>
 				<SectionRow
 					title="Top Rated Movies"
 					items={data.sections.topRatedMovies}
-					link="/discover?type=movie&sort_by=vote_average.desc"
+					link="/discover?type=movie&top_rated=true{excludeInLibrary
+						? '&exclude_in_library=true'
+						: ''}"
 					endpoint="movie/top_rated"
 					onAddToLibrary={handleAddToLibrary}
+					{excludeInLibrary}
+				/>
+				<SectionRow
+					title="Top Rated TV Shows"
+					items={data.sections.topRatedTV}
+					link="/discover?type=tv&top_rated=true{excludeInLibrary
+						? '&exclude_in_library=true'
+						: ''}"
+					endpoint="tv/top_rated"
+					onAddToLibrary={handleAddToLibrary}
+					{excludeInLibrary}
 				/>
 			</div>
 		{:else if data.viewType === 'grid' && data.results}

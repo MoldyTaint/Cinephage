@@ -8,6 +8,7 @@
  */
 
 import { logger } from '$lib/logging';
+import { DEFAULT_USER_AGENT } from '../constants';
 import { fetchWithTimeout, type FetchOptions } from '../utils/http';
 import { validatePlaylist, sanitizePlaylist, parseHLSMaster, isHLSPlaylist } from '../hls';
 import type {
@@ -517,10 +518,22 @@ export async function quickValidateStream(
 	referer?: string,
 	timeout = 3000
 ): Promise<boolean> {
+	const headers: HeadersInit = {
+		'User-Agent': DEFAULT_USER_AGENT,
+		Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+	};
+	if (referer) {
+		headers['Referer'] = referer;
+	}
+
+	const controller = new AbortController();
+	const timeoutId = setTimeout(() => controller.abort(), timeout);
+
 	try {
-		const response = await fetchWithTimeout(url, {
-			timeout,
-			referer
+		const response = await fetch(url, {
+			method: 'GET',
+			headers,
+			signal: controller.signal
 		});
 
 		if (!response.ok) return false;
@@ -529,5 +542,7 @@ export async function quickValidateStream(
 		return isHLSPlaylist(content);
 	} catch {
 		return false;
+	} finally {
+		clearTimeout(timeoutId);
 	}
 }

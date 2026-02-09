@@ -15,19 +15,31 @@
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import type { MovieEditData } from '$lib/components/library/MovieEditModal.svelte';
-	import { FileEdit, Radio, WifiOff, Loader2 } from 'lucide-svelte';
+	import { FileEdit, Wifi, WifiOff, Loader2 } from 'lucide-svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { createSSE } from '$lib/sse';
+	import { createDynamicSSE } from '$lib/sse';
+	import { mobileSSEStatus } from '$lib/sse/mobileStatus.svelte';
 
 	let { data }: { data: PageData } = $props();
 
 	// Reactive data that will be updated via SSE
-	let movie = $state<LibraryMovie>(data.movie);
-	let queueItem = $state<PageData['queueItem']>(data.queueItem);
+	let movieState = $state<LibraryMovie | null>(null);
+	let queueItemState = $state<PageData['queueItem'] | undefined>(undefined);
+	const movie = $derived(movieState ?? data.movie);
+	const queueItem = $derived(queueItemState === undefined ? data.queueItem : queueItemState);
+
+	$effect(() => {
+		if (movieState === null) {
+			movieState = $state.snapshot(data.movie);
+		}
+		if (queueItemState === undefined) {
+			queueItemState = $state.snapshot(data.queueItem);
+		}
+	});
 
 	// SSE Connection - internally handles browser/SSR
-	const sse = createSSE<{
+	const sse = createDynamicSSE<{
 		'media:initial': { movie: LibraryMovie; queueItem: PageData['queueItem'] };
 		'queue:updated': { id: string; title: string; status: string; progress: number | null };
 		'file:added': {
@@ -36,10 +48,10 @@
 			replacedFileIds?: string[];
 		};
 		'file:removed': { fileId: string };
-	}>(`/api/library/movies/${movie.id}/stream`, {
+	}>(() => `/api/library/movies/${movie.id}/stream`, {
 		'media:initial': (payload) => {
-			movie = payload.movie;
-			queueItem = payload.queueItem;
+			movieState = payload.movie;
+			queueItemState = payload.queueItem;
 		},
 		'queue:updated': (payload) => {
 			if (
@@ -47,9 +59,9 @@
 				payload.status === 'removed' ||
 				payload.status === 'failed'
 			) {
-				queueItem = null;
+				queueItemState = null;
 			} else {
-				queueItem = {
+				queueItemState = {
 					id: payload.id,
 					title: payload.title,
 					status: payload.status,
@@ -70,12 +82,21 @@
 				movie.files = [...movie.files, payload.file];
 			}
 			movie.hasFile = movie.files.length > 0;
-			queueItem = null;
+			queueItemState = null;
 		},
 		'file:removed': (payload) => {
 			movie.files = movie.files.filter((f) => f.id !== payload.fileId);
 			movie.hasFile = movie.files.length > 0;
 		}
+	});
+
+	const MOBILE_SSE_SOURCE = 'library-movie';
+
+	$effect(() => {
+		mobileSSEStatus.publish(MOBILE_SSE_SOURCE, sse.status);
+		return () => {
+			mobileSSEStatus.clear(MOBILE_SSE_SOURCE);
+		};
 	});
 
 	// Prefetch stream when page loads (warms cache for faster playback)
@@ -160,6 +181,25 @@
 		return path.split('/').pop() || path;
 	}
 
+	async function refreshMovieFromApi(): Promise<void> {
+		try {
+			const response = await fetch(`/api/library/movies/${movie.id}`);
+			if (!response.ok) return;
+			const result = await response.json();
+			if (!result.success || !result.movie) return;
+
+			const refreshed = result.movie as LibraryMovie;
+			movieState = {
+				...movie,
+				...refreshed,
+				files: refreshed.files ?? [],
+				subtitles: refreshed.subtitles ?? []
+			};
+		} catch (error) {
+			console.error('Failed to refresh movie state:', error);
+		}
+	}
+
 	// Handlers
 	async function handleMonitorToggle(newValue: boolean) {
 		isSaving = true;
@@ -171,10 +211,7 @@
 			});
 
 			if (response.ok) {
-				data = {
-					...data,
-					movie: { ...movie, monitored: newValue }
-				};
+				movie.monitored = newValue;
 			}
 		} catch (error) {
 			console.error('Failed to update monitored status:', error);
@@ -324,8 +361,9 @@
 					window.location.href = '/library/movies';
 				} else {
 					toasts.success('Movie files deleted');
-					// Reload to show updated state (movie now missing)
-					window.location.reload();
+					movie.files = [];
+					movie.hasFile = false;
+					queueItemState = null;
 				}
 			} else {
 				toasts.error('Failed to delete movie', { description: result.error });
@@ -368,14 +406,8 @@
 			if (result.success) {
 				toasts.success('File deleted');
 				const updatedFiles = movie.files.filter((f) => f.id !== deletingFileId);
-				data = {
-					...data,
-					movie: {
-						...movie,
-						files: updatedFiles,
-						hasFile: updatedFiles.length > 0
-					}
-				};
+				movie.files = updatedFiles;
+				movie.hasFile = updatedFiles.length > 0;
 				closeDeleteFileModal();
 			} else {
 				toasts.error('Failed to delete file', { description: result.error });
@@ -405,8 +437,16 @@
 			const result = await response.json();
 
 			if (result.success && result.subtitle) {
-				// Refresh subtitles by adding the new one
-				movie.subtitles = [...(movie.subtitles || []), result.subtitle];
+				const subtitleId = result.subtitle.id ?? result.subtitle.subtitleId;
+				if (subtitleId) {
+					handleSubtitleDownloaded({
+						id: subtitleId,
+						language: result.subtitle.language ?? 'unknown',
+						isForced: result.subtitle.isForced,
+						isHearingImpaired: result.subtitle.isHearingImpaired,
+						format: result.subtitle.format
+					});
+				}
 			}
 		} catch (error) {
 			console.error('Failed to auto-search subtitles:', error);
@@ -415,10 +455,20 @@
 		}
 	}
 
-	function handleSubtitleDownloaded() {
-		// Refresh the page data to get updated subtitles
-		// In a more sophisticated app, we'd invalidate the server load
-		window.location.reload();
+	function handleSubtitleDownloaded(subtitle: {
+		id: string;
+		language: string;
+		isForced?: boolean;
+		isHearingImpaired?: boolean;
+		format?: string;
+	}) {
+		if (!movie.subtitles) {
+			movie.subtitles = [];
+		}
+		if (movie.subtitles.some((s) => s.id === subtitle.id)) {
+			return;
+		}
+		movie.subtitles = [...movie.subtitles, subtitle];
 	}
 
 	// Score handlers
@@ -469,32 +519,45 @@
 				? 'bg-success/80'
 				: 'bg-error/80'}"
 		>
-			<div class="flex items-center justify-between">
-				{#if movie.monitored}
-					Monitoring enabled.
-				{:else}
-					<div>
-						Monitoring is disabled.
-						<span class="block text-xs font-normal text-base-100/90">
-							Automatic downloads and upgrades will not occur.
-						</span>
-					</div>
-				{/if}
-
-				<!-- SSE Connection Status -->
-				<div class="flex items-center gap-2 text-xs">
+			<div class="flex items-start justify-between gap-3">
+				<div class="min-w-0">
+					{#if movie.monitored}
+						Monitoring enabled.
+					{:else}
+						<div>
+							Monitoring is disabled.
+							<span class="block text-xs font-normal text-base-100/90">
+								Automatic downloads and upgrades will not occur.
+							</span>
+						</div>
+					{/if}
+				</div>
+				<div class="hidden shrink-0 items-center sm:flex">
 					{#if sse.isConnected}
-						<span class="flex items-center gap-1">
-							<Radio class="h-3 w-3" />
+						<span
+							class="inline-flex items-center gap-1 rounded-full border border-success/70 bg-success/90 px-2.5 py-1 text-xs font-medium text-success-content shadow-sm"
+						>
+							<Wifi class="h-3 w-3" />
 							Live
 						</span>
 					{:else if sse.status === 'error'}
-						<span class="flex items-center gap-1 text-base-100/70">
+						<span
+							class="inline-flex items-center gap-1 rounded-full border border-warning/70 bg-warning/90 px-2.5 py-1 text-xs font-medium text-warning-content shadow-sm"
+						>
 							<Loader2 class="h-3 w-3 animate-spin" />
-							Reconnecting...
+							Reconnecting
+						</span>
+					{:else if sse.status === 'connecting'}
+						<span
+							class="inline-flex items-center gap-1 rounded-full border border-info/70 bg-info/90 px-2.5 py-1 text-xs font-medium text-info-content shadow-sm"
+						>
+							<Loader2 class="h-3 w-3 animate-spin" />
+							Connecting
 						</span>
 					{:else}
-						<span class="flex items-center gap-1 text-base-100/70">
+						<span
+							class="inline-flex items-center gap-1 rounded-full border border-base-100/35 bg-base-100/20 px-2.5 py-1 text-xs font-medium text-base-100 shadow-sm"
+						>
 							<WifiOff class="h-3 w-3" />
 							Offline
 						</span>
@@ -668,7 +731,10 @@
 	mediaId={movie.id}
 	mediaTitle={movie.title}
 	onClose={() => (isRenameModalOpen = false)}
-	onRenamed={() => location.reload()}
+	onRenamed={() => {
+		isRenameModalOpen = false;
+		void refreshMovieFromApi();
+	}}
 />
 
 <!-- Delete Confirmation Modal -->

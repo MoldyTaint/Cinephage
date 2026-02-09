@@ -31,13 +31,21 @@
 		}>;
 	}
 
+	interface DownloadedSubtitle {
+		id: string;
+		language: string;
+		isForced?: boolean;
+		isHearingImpaired?: boolean;
+		format?: string;
+	}
+
 	interface Props {
 		open: boolean;
 		title: string;
 		movieId?: string;
 		episodeId?: string;
 		onClose: () => void;
-		onDownloaded?: () => void;
+		onDownloaded?: (subtitle: DownloadedSubtitle) => void;
 	}
 
 	let { open, title, movieId, episodeId, onClose, onDownloaded }: Props = $props();
@@ -181,7 +189,13 @@
 			}
 
 			downloadedIds.add(key);
-			onDownloaded?.();
+			onDownloaded?.({
+				id: data.subtitle?.subtitleId ?? key,
+				language: data.subtitle?.language ?? result.language,
+				isForced: result.isForced,
+				isHearingImpaired: result.isHearingImpaired,
+				format: data.subtitle?.format ?? result.format
+			});
 		} catch (err) {
 			downloadErrors.set(key, err instanceof Error ? err.message : 'Download failed');
 		} finally {

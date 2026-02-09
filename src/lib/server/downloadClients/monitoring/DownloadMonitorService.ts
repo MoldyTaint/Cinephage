@@ -9,7 +9,7 @@
 import { EventEmitter } from 'events';
 import { randomUUID } from 'node:crypto';
 import { db } from '$lib/server/db';
-import { downloadQueue } from '$lib/server/db/schema';
+import { downloadQueue, downloadHistory, downloadClients } from '$lib/server/db/schema';
 import { eq, and, inArray, not, notInArray } from 'drizzle-orm';
 import { getDownloadClientManager } from '../DownloadClientManager';
 import { mapClientPathToLocal } from './PathMapping';
@@ -770,7 +770,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			return;
 		}
 
-		// Get queue items that need polling (exclude terminal AND post-import statuses)
+		// Get queue items that need polling (exclude terminal, post-import, and failed statuses)
 		// Post-import items are handled by removeCompletedDownloads(), not regular polling
 		const queueItems = await db
 			.select()
@@ -778,7 +778,8 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			.where(
 				and(
 					not(inArray(downloadQueue.status, TERMINAL_STATUSES)),
-					not(inArray(downloadQueue.status, POST_IMPORT_STATUSES))
+					not(inArray(downloadQueue.status, POST_IMPORT_STATUSES)),
+					not(eq(downloadQueue.status, 'failed'))
 				)
 			);
 
@@ -1112,6 +1113,18 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			// Emit update event
 			const updatedItem = await this.getQueueItem(queueItem.id);
 			if (updatedItem) {
+				const transitionedToFailed =
+					queueItem.status !== 'failed' && updatedItem.status === 'failed';
+				if (transitionedToFailed) {
+					await this.createFailedHistoryRecord(
+						updatedItem,
+						updatedItem.errorMessage ?? 'Download client reported an error'
+					);
+					this.emit('queue:failed', updatedItem);
+					this.emitSSE('queue:failed', updatedItem);
+					return;
+				}
+
 				this.emit('queue:updated', updatedItem);
 				this.emitSSE('queue:updated', updatedItem);
 			}
@@ -1182,21 +1195,8 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			return;
 		}
 
-		// If already failed, don't re-warn on every poll cycle
-		// Just mark as removed so it stops being polled
+		// Failed items are retained for user visibility and action.
 		if (queueItem.status === 'failed') {
-			logger.debug('Failed download no longer in client, marking as removed', {
-				title: queueItem.title,
-				downloadId: queueItem.downloadId
-			});
-
-			await db
-				.update(downloadQueue)
-				.set({ status: 'removed' })
-				.where(eq(downloadQueue.id, queueItem.id));
-
-			this.emit('queue:removed', queueItem.id);
-			this.emitSSE('queue:removed', { id: queueItem.id });
 			return;
 		}
 
@@ -1221,6 +1221,10 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 		const updatedItem = await this.getQueueItem(queueItem.id);
 		if (updatedItem) {
+			await this.createFailedHistoryRecord(
+				updatedItem,
+				updatedItem.errorMessage ?? 'Download removed from client unexpectedly'
+			);
 			this.emit('queue:failed', updatedItem);
 			this.emitSSE('queue:failed', updatedItem);
 		}
@@ -1648,8 +1652,80 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 		const updatedItem = await this.getQueueItem(id);
 		if (updatedItem) {
+			await this.createFailedHistoryRecord(updatedItem, errorMessage);
 			this.emit('queue:failed', updatedItem);
 			this.emitSSE('queue:failed', updatedItem);
+		}
+	}
+
+	/**
+	 * Persist failed queue items to download history so they remain visible in Activity
+	 * even if the queue item is later auto-marked removed.
+	 */
+	private async createFailedHistoryRecord(
+		queueItem: QueueItem,
+		errorMessage: string
+	): Promise<void> {
+		try {
+			// Prevent duplicate failed history records for the same queue attempt.
+			const [existing] = await db
+				.select({ id: downloadHistory.id })
+				.from(downloadHistory)
+				.where(
+					and(
+						eq(downloadHistory.status, 'failed'),
+						eq(downloadHistory.title, queueItem.title),
+						eq(downloadHistory.grabbedAt, queueItem.addedAt)
+					)
+				)
+				.limit(1);
+
+			if (existing) {
+				return;
+			}
+
+			const [client] = await db
+				.select({ name: downloadClients.name })
+				.from(downloadClients)
+				.where(eq(downloadClients.id, queueItem.downloadClientId))
+				.limit(1);
+
+			let downloadTimeSeconds: number | undefined;
+			if (queueItem.startedAt && queueItem.completedAt) {
+				const startTime = new Date(queueItem.startedAt).getTime();
+				const endTime = new Date(queueItem.completedAt).getTime();
+				downloadTimeSeconds = Math.max(0, Math.floor((endTime - startTime) / 1000));
+			}
+
+			await db.insert(downloadHistory).values({
+				downloadClientId: queueItem.downloadClientId,
+				downloadClientName: client?.name,
+				downloadId: queueItem.downloadId,
+				title: queueItem.title,
+				indexerId: queueItem.indexerId,
+				indexerName: queueItem.indexerName,
+				protocol: queueItem.protocol,
+				movieId: queueItem.movieId,
+				seriesId: queueItem.seriesId,
+				episodeIds: queueItem.episodeIds ?? undefined,
+				seasonNumber: queueItem.seasonNumber,
+				status: 'failed',
+				statusReason: errorMessage,
+				size: queueItem.size ?? undefined,
+				downloadTimeSeconds,
+				finalRatio: String(queueItem.ratio ?? 0),
+				quality: queueItem.quality,
+				releaseGroup: queueItem.releaseGroup,
+				grabbedAt: queueItem.addedAt,
+				completedAt: queueItem.completedAt ?? undefined,
+				importedAt: undefined
+			});
+		} catch (error) {
+			logger.warn('Failed to create failed download history record', {
+				queueItemId: queueItem.id,
+				title: queueItem.title,
+				error: error instanceof Error ? error.message : String(error)
+			});
 		}
 	}
 }

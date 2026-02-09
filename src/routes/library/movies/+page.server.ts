@@ -95,6 +95,49 @@ export const load: PageServerLoad = async ({ url }) => {
 			}
 		}
 
+		// Fetch quality profiles and resolve the effective default profile ID
+		const dbProfiles = await db
+			.select({
+				id: scoringProfiles.id,
+				name: scoringProfiles.name,
+				description: scoringProfiles.description,
+				isDefault: scoringProfiles.isDefault
+			})
+			.from(scoringProfiles);
+
+		const defaultBuiltInOverride = await db
+			.select({ profileId: profileSizeLimits.profileId })
+			.from(profileSizeLimits)
+			.where(eq(profileSizeLimits.isDefault, true))
+			.limit(1);
+
+		const BUILT_IN_IDS = DEFAULT_PROFILES.map((p) => p.id);
+		const dbIds = new Set(dbProfiles.map((p) => p.id));
+		const customDefaultId = dbProfiles.find(
+			(p) => !BUILT_IN_IDS.includes(p.id) && Boolean(p.isDefault)
+		)?.id;
+		const builtInDefaultId = defaultBuiltInOverride[0]?.profileId;
+		const resolvedDefaultId = customDefaultId ?? builtInDefaultId ?? 'balanced';
+		const effectiveQualityProfileFilter =
+			qualityProfile === 'default' ? resolvedDefaultId : qualityProfile;
+
+		const qualityProfiles: QualityProfileSummary[] = [
+			...DEFAULT_PROFILES.filter((p) => !dbIds.has(p.id)).map((p) => ({
+				id: p.id,
+				name: p.name,
+				description: p.description,
+				isBuiltIn: true,
+				isDefault: p.id === resolvedDefaultId
+			})),
+			...dbProfiles.map((p) => ({
+				id: p.id,
+				name: p.name,
+				description: p.description ?? '',
+				isBuiltIn: BUILT_IN_IDS.includes(p.id),
+				isDefault: p.id === resolvedDefaultId
+			}))
+		];
+
 		// Apply filters
 		let filteredMovies = moviesWithFiles;
 
@@ -112,11 +155,11 @@ export const load: PageServerLoad = async ({ url }) => {
 			filteredMovies = filteredMovies.filter((m) => !m.hasFile);
 		}
 
-		// Filter by quality profile
-		if (qualityProfile === 'default') {
-			filteredMovies = filteredMovies.filter((m) => m.scoringProfileId === null);
-		} else if (qualityProfile !== 'all') {
-			filteredMovies = filteredMovies.filter((m) => m.scoringProfileId === qualityProfile);
+		// Filter by quality profile (treat null as "uses resolved default profile")
+		if (effectiveQualityProfileFilter !== 'all') {
+			filteredMovies = filteredMovies.filter(
+				(m) => (m.scoringProfileId ?? resolvedDefaultId) === effectiveQualityProfileFilter
+			);
 		}
 
 		// Filter by resolution
@@ -169,47 +212,6 @@ export const load: PageServerLoad = async ({ url }) => {
 			return sortDir === 'desc' ? -comparison : comparison;
 		});
 
-		// Fetch quality profiles
-		const dbProfiles = await db
-			.select({
-				id: scoringProfiles.id,
-				name: scoringProfiles.name,
-				description: scoringProfiles.description,
-				isDefault: scoringProfiles.isDefault
-			})
-			.from(scoringProfiles);
-
-		const defaultBuiltInOverride = await db
-			.select({ profileId: profileSizeLimits.profileId })
-			.from(profileSizeLimits)
-			.where(eq(profileSizeLimits.isDefault, true))
-			.limit(1);
-
-		const BUILT_IN_IDS = DEFAULT_PROFILES.map((p) => p.id);
-		const dbIds = new Set(dbProfiles.map((p) => p.id));
-		const customDefaultId = dbProfiles.find(
-			(p) => !BUILT_IN_IDS.includes(p.id) && Boolean(p.isDefault)
-		)?.id;
-		const builtInDefaultId = defaultBuiltInOverride[0]?.profileId;
-		const resolvedDefaultId = customDefaultId ?? builtInDefaultId ?? 'balanced';
-
-		const qualityProfiles: QualityProfileSummary[] = [
-			...DEFAULT_PROFILES.filter((p) => !dbIds.has(p.id)).map((p) => ({
-				id: p.id,
-				name: p.name,
-				description: p.description,
-				isBuiltIn: true,
-				isDefault: p.id === resolvedDefaultId
-			})),
-			...dbProfiles.map((p) => ({
-				id: p.id,
-				name: p.name,
-				description: p.description ?? '',
-				isBuiltIn: BUILT_IN_IDS.includes(p.id),
-				isDefault: p.id === resolvedDefaultId
-			}))
-		];
-
 		// Sort unique values for consistent dropdown ordering
 		const resolutionOrder = ['2160p', '1080p', '720p', '576p', '480p'];
 		const sortedResolutions = [...uniqueResolutions].sort(
@@ -226,7 +228,7 @@ export const load: PageServerLoad = async ({ url }) => {
 				sort,
 				monitored,
 				fileStatus,
-				qualityProfile,
+				qualityProfile: effectiveQualityProfileFilter,
 				resolution,
 				videoCodec,
 				hdrFormat

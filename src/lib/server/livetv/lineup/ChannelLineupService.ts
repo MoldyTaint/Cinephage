@@ -1,6 +1,7 @@
 /**
  * ChannelLineupService - Manages user's custom channel lineup for Live TV.
  * Provides CRUD operations and ordering for lineup items.
+ * Updated for multi-provider support (Stalker, XStream, M3U).
  */
 
 import { db } from '$lib/server/db';
@@ -8,12 +9,12 @@ import {
 	channelLineupItems,
 	channelLineupBackups,
 	channelCategories,
-	stalkerAccounts,
-	stalkerChannels,
-	stalkerCategories,
+	livetvAccounts,
+	livetvChannels,
+	livetvCategories,
 	type ChannelLineupItemRecord,
 	type ChannelCategoryRecord,
-	type StalkerChannelRecord
+	type LivetvChannelRecord
 } from '$lib/server/db/schema';
 import { eq, asc, inArray, sql, and } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
@@ -46,29 +47,42 @@ function toCategoryResponse(record: ChannelCategoryRecord | null): ChannelCatego
 }
 
 /**
- * Convert channel record to cached channel format
+ * Convert channel record to cached channel format with provider-specific data
  */
 function toChannelResponse(
-	record: StalkerChannelRecord,
+	record: LivetvChannelRecord,
 	categoryTitle: string | null
 ): CachedChannel {
 	const normalizedName = record.name.replace(/#+/g, ' ').replace(/\s+/g, ' ').trim();
-	return {
+
+	// Build provider-specific data based on provider type
+	const providerData: CachedChannel = {
 		id: record.id,
 		accountId: record.accountId,
-		stalkerId: record.stalkerId,
+		providerType: record.providerType,
+		externalId: record.externalId,
 		name: normalizedName,
 		number: record.number,
 		logo: record.logo,
 		categoryId: record.categoryId,
 		categoryTitle,
-		stalkerGenreId: record.stalkerGenreId,
-		cmd: record.cmd,
-		tvArchive: record.tvArchive ?? false,
-		archiveDuration: record.archiveDuration ?? 0,
+		providerCategoryId: record.providerCategoryId,
 		createdAt: record.createdAt || new Date().toISOString(),
 		updatedAt: record.updatedAt || new Date().toISOString()
 	};
+
+	// Add provider-specific fields
+	if (record.stalkerData) {
+		providerData.stalker = record.stalkerData;
+	}
+	if (record.xstreamData) {
+		providerData.xstream = record.xstreamData;
+	}
+	if (record.m3uData) {
+		providerData.m3u = record.m3uData;
+	}
+
+	return providerData;
 }
 
 /**
@@ -77,10 +91,11 @@ function toChannelResponse(
 function toLineupItem(
 	record: ChannelLineupItemRecord,
 	accountName: string,
-	channel: StalkerChannelRecord,
+	providerType: string,
+	channel: LivetvChannelRecord,
 	channelCategoryTitle: string | null,
 	category: ChannelCategoryRecord | null = null,
-	epgSourceChannel: StalkerChannelRecord | null = null,
+	epgSourceChannel: LivetvChannelRecord | null = null,
 	epgSourceCategoryTitle: string | null = null,
 	epgSourceAccountName: string | null = null
 ): ChannelLineupItemWithDetails {
@@ -99,6 +114,7 @@ function toLineupItem(
 		categoryId: record.categoryId,
 		addedAt: record.addedAt || new Date().toISOString(),
 		updatedAt: record.updatedAt || new Date().toISOString(),
+		providerType: providerType as 'stalker' | 'xstream' | 'm3u' | 'iptvorg',
 		channel: channelData,
 		accountName,
 		category: toCategoryResponse(category),
@@ -117,21 +133,22 @@ class ChannelLineupService {
 	 */
 	async getLineup(): Promise<ChannelLineupItemWithDetails[]> {
 		// Create aliases for EPG source channel joins
-		const epgSourceChannels = alias(stalkerChannels, 'epgSourceChannels');
-		const epgSourceAccounts = alias(stalkerAccounts, 'epgSourceAccounts');
+		const epgSourceChannels = alias(livetvChannels, 'epgSourceChannels');
+		const epgSourceAccounts = alias(livetvAccounts, 'epgSourceAccounts');
 
 		const items = await db
 			.select({
 				item: channelLineupItems,
-				accountName: stalkerAccounts.name,
-				channel: stalkerChannels,
+				accountName: livetvAccounts.name,
+				providerType: livetvAccounts.providerType,
+				channel: livetvChannels,
 				category: channelCategories,
 				epgSourceChannel: epgSourceChannels,
 				epgSourceAccountName: epgSourceAccounts.name
 			})
 			.from(channelLineupItems)
-			.innerJoin(stalkerAccounts, eq(channelLineupItems.accountId, stalkerAccounts.id))
-			.innerJoin(stalkerChannels, eq(channelLineupItems.channelId, stalkerChannels.id))
+			.innerJoin(livetvAccounts, eq(channelLineupItems.accountId, livetvAccounts.id))
+			.innerJoin(livetvChannels, eq(channelLineupItems.channelId, livetvChannels.id))
 			.leftJoin(channelCategories, eq(channelLineupItems.categoryId, channelCategories.id))
 			.leftJoin(epgSourceChannels, eq(channelLineupItems.epgSourceChannelId, epgSourceChannels.id))
 			.leftJoin(epgSourceAccounts, eq(epgSourceChannels.accountId, epgSourceAccounts.id))
@@ -148,9 +165,9 @@ class ChannelLineupService {
 
 		if (allCategoryIds.length > 0) {
 			const cats = await db
-				.select({ id: stalkerCategories.id, title: stalkerCategories.title })
-				.from(stalkerCategories)
-				.where(inArray(stalkerCategories.id, allCategoryIds as string[]));
+				.select({ id: livetvCategories.id, title: livetvCategories.title })
+				.from(livetvCategories)
+				.where(inArray(livetvCategories.id, allCategoryIds as string[]));
 			for (const cat of cats) {
 				channelCategoriesMap.set(cat.id, cat.title);
 			}
@@ -160,6 +177,7 @@ class ChannelLineupService {
 			toLineupItem(
 				row.item,
 				row.accountName || 'Unknown Account',
+				row.providerType || 'stalker',
 				row.channel,
 				row.channel.categoryId ? channelCategoriesMap.get(row.channel.categoryId) || null : null,
 				row.category,
@@ -177,21 +195,22 @@ class ChannelLineupService {
 	 */
 	async getChannelById(id: string): Promise<ChannelLineupItemWithDetails | null> {
 		// Create aliases for EPG source channel joins
-		const epgSourceChannels = alias(stalkerChannels, 'epgSourceChannels');
-		const epgSourceAccounts = alias(stalkerAccounts, 'epgSourceAccounts');
+		const epgSourceChannels = alias(livetvChannels, 'epgSourceChannels');
+		const epgSourceAccounts = alias(livetvAccounts, 'epgSourceAccounts');
 
 		const items = await db
 			.select({
 				item: channelLineupItems,
-				accountName: stalkerAccounts.name,
-				channel: stalkerChannels,
+				accountName: livetvAccounts.name,
+				providerType: livetvAccounts.providerType,
+				channel: livetvChannels,
 				category: channelCategories,
 				epgSourceChannel: epgSourceChannels,
 				epgSourceAccountName: epgSourceAccounts.name
 			})
 			.from(channelLineupItems)
-			.innerJoin(stalkerAccounts, eq(channelLineupItems.accountId, stalkerAccounts.id))
-			.innerJoin(stalkerChannels, eq(channelLineupItems.channelId, stalkerChannels.id))
+			.innerJoin(livetvAccounts, eq(channelLineupItems.accountId, livetvAccounts.id))
+			.innerJoin(livetvChannels, eq(channelLineupItems.channelId, livetvChannels.id))
 			.leftJoin(channelCategories, eq(channelLineupItems.categoryId, channelCategories.id))
 			.leftJoin(epgSourceChannels, eq(channelLineupItems.epgSourceChannelId, epgSourceChannels.id))
 			.leftJoin(epgSourceAccounts, eq(epgSourceChannels.accountId, epgSourceAccounts.id))
@@ -208,9 +227,9 @@ class ChannelLineupService {
 
 		if (categoryIds.length > 0) {
 			const cats = await db
-				.select({ id: stalkerCategories.id, title: stalkerCategories.title })
-				.from(stalkerCategories)
-				.where(inArray(stalkerCategories.id, categoryIds as string[]));
+				.select({ id: livetvCategories.id, title: livetvCategories.title })
+				.from(livetvCategories)
+				.where(inArray(livetvCategories.id, categoryIds as string[]));
 			for (const cat of cats) {
 				categoriesMap.set(cat.id, cat.title);
 			}
@@ -219,6 +238,7 @@ class ChannelLineupService {
 		return toLineupItem(
 			row.item,
 			row.accountName || 'Unknown Account',
+			row.providerType || 'stalker',
 			row.channel,
 			row.channel.categoryId ? categoriesMap.get(row.channel.categoryId) || null : null,
 			row.category,
@@ -395,14 +415,15 @@ class ChannelLineupService {
 		const rows = await db
 			.select({
 				backup: channelLineupBackups,
-				channel: stalkerChannels,
-				accountName: stalkerAccounts.name,
-				categoryTitle: stalkerCategories.title
+				channel: livetvChannels,
+				accountName: livetvAccounts.name,
+				providerType: livetvAccounts.providerType,
+				categoryTitle: livetvCategories.title
 			})
 			.from(channelLineupBackups)
-			.innerJoin(stalkerChannels, eq(channelLineupBackups.channelId, stalkerChannels.id))
-			.innerJoin(stalkerAccounts, eq(channelLineupBackups.accountId, stalkerAccounts.id))
-			.leftJoin(stalkerCategories, eq(stalkerChannels.categoryId, stalkerCategories.id))
+			.innerJoin(livetvChannels, eq(channelLineupBackups.channelId, livetvChannels.id))
+			.innerJoin(livetvAccounts, eq(channelLineupBackups.accountId, livetvAccounts.id))
+			.leftJoin(livetvCategories, eq(livetvChannels.categoryId, livetvCategories.id))
 			.where(eq(channelLineupBackups.lineupItemId, lineupItemId))
 			.orderBy(asc(channelLineupBackups.priority));
 
@@ -414,6 +435,7 @@ class ChannelLineupService {
 			priority: row.backup.priority,
 			createdAt: row.backup.createdAt || new Date().toISOString(),
 			updatedAt: row.backup.updatedAt || new Date().toISOString(),
+			providerType: row.providerType as 'stalker' | 'xstream' | 'm3u' | 'iptvorg',
 			channel: toChannelResponse(row.channel, row.categoryTitle || null),
 			accountName: row.accountName || 'Unknown Account'
 		}));
@@ -421,7 +443,6 @@ class ChannelLineupService {
 
 	/**
 	 * Add a backup link to a lineup item
-	 * Returns null with reason logged if validation fails
 	 */
 	async addBackup(
 		lineupItemId: string,
@@ -447,11 +468,12 @@ class ChannelLineupService {
 		}
 
 		// Validate account exists and is enabled
-		const account = db
-			.select({ id: stalkerAccounts.id, enabled: stalkerAccounts.enabled })
-			.from(stalkerAccounts)
-			.where(eq(stalkerAccounts.id, accountId))
-			.get();
+		const account = await db
+			.select({ id: livetvAccounts.id, enabled: livetvAccounts.enabled })
+			.from(livetvAccounts)
+			.where(eq(livetvAccounts.id, accountId))
+			.limit(1)
+			.then((rows) => rows[0]);
 
 		if (!account) {
 			logger.warn('[ChannelLineupService] Cannot add backup: account not found', {
@@ -470,11 +492,12 @@ class ChannelLineupService {
 		}
 
 		// Validate channel exists and belongs to the specified account
-		const channel = db
-			.select({ id: stalkerChannels.id, accountId: stalkerChannels.accountId })
-			.from(stalkerChannels)
-			.where(eq(stalkerChannels.id, channelId))
-			.get();
+		const channel = await db
+			.select({ id: livetvChannels.id, accountId: livetvChannels.accountId })
+			.from(livetvChannels)
+			.where(eq(livetvChannels.id, channelId))
+			.limit(1)
+			.then((rows) => rows[0]);
 
 		if (!channel) {
 			logger.warn('[ChannelLineupService] Cannot add backup: channel not found', {
@@ -543,11 +566,12 @@ class ChannelLineupService {
 	 */
 	async removeBackup(backupId: string): Promise<boolean> {
 		// Get the backup first to know which lineup item it belongs to
-		const backup = db
+		const backup = await db
 			.select({ lineupItemId: channelLineupBackups.lineupItemId })
 			.from(channelLineupBackups)
 			.where(eq(channelLineupBackups.id, backupId))
-			.get();
+			.limit(1)
+			.then((rows) => rows[0]);
 
 		if (!backup) {
 			return false;
@@ -572,21 +596,20 @@ class ChannelLineupService {
 	 * Renormalize backup priorities to be sequential (1, 2, 3...)
 	 */
 	private async normalizePriorities(lineupItemId: string): Promise<void> {
-		const backups = db
+		const backups = await db
 			.select({ id: channelLineupBackups.id })
 			.from(channelLineupBackups)
 			.where(eq(channelLineupBackups.lineupItemId, lineupItemId))
-			.orderBy(asc(channelLineupBackups.priority))
-			.all();
+			.orderBy(asc(channelLineupBackups.priority));
 
 		if (backups.length === 0) return;
 
 		const now = new Date().toISOString();
 		for (let i = 0; i < backups.length; i++) {
-			db.update(channelLineupBackups)
+			await db
+				.update(channelLineupBackups)
 				.set({ priority: i + 1, updatedAt: now })
-				.where(eq(channelLineupBackups.id, backups[i].id))
-				.run();
+				.where(eq(channelLineupBackups.id, backups[i].id));
 		}
 	}
 
@@ -642,4 +665,15 @@ class ChannelLineupService {
 	}
 }
 
-export const channelLineupService = new ChannelLineupService();
+// Singleton instance
+let lineupServiceInstance: ChannelLineupService | null = null;
+
+export function getChannelLineupService(): ChannelLineupService {
+	if (!lineupServiceInstance) {
+		lineupServiceInstance = new ChannelLineupService();
+	}
+	return lineupServiceInstance;
+}
+
+// Backward compatibility export
+export const channelLineupService = getChannelLineupService();

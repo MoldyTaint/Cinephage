@@ -8,6 +8,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { channelLineupService } from '$lib/server/livetv/lineup';
 import { ValidationError } from '$lib/errors';
+import { logger } from '$lib/logging';
 import type { ReorderLineupRequest } from '$lib/types/livetv';
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -19,17 +20,35 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		if (body.itemIds.length === 0) {
-			return json({ success: true });
+			return json({
+				success: true
+			});
 		}
 
 		await channelLineupService.reorderLineup(body.itemIds);
 
-		return json({ success: true });
+		return json({
+			success: true
+		});
 	} catch (error) {
+		// Validation errors
 		if (error instanceof ValidationError) {
-			return json({ error: error.message }, { status: 400 });
+			return json(
+				{
+					success: false,
+					error: error.message,
+					code: error.code
+				},
+				{ status: error.statusCode }
+			);
 		}
-		console.error('[API] Failed to reorder lineup:', error);
-		return json({ error: 'Failed to reorder lineup' }, { status: 500 });
+		logger.error('[API] Failed to reorder lineup', error instanceof Error ? error : undefined);
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to reorder lineup'
+			},
+			{ status: 500 }
+		);
 	}
 };

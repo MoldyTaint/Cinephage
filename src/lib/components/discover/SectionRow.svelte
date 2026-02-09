@@ -5,15 +5,17 @@
 	import { fade } from 'svelte/transition';
 	import { resolvePath } from '$lib/utils/routing';
 
-	let { title, items, link, endpoint, cardSnippet, onAddToLibrary, itemClass } = $props<{
-		title: string;
-		items: T[];
-		link?: string;
-		endpoint?: string;
-		cardSnippet?: Snippet<[T]>;
-		onAddToLibrary?: (item: T) => void;
-		itemClass?: string;
-	}>();
+	let { title, items, link, endpoint, cardSnippet, onAddToLibrary, itemClass, excludeInLibrary } =
+		$props<{
+			title: string;
+			items: T[];
+			link?: string;
+			endpoint?: string;
+			cardSnippet?: Snippet<[T]>;
+			onAddToLibrary?: (item: T) => void;
+			itemClass?: string;
+			excludeInLibrary?: boolean;
+		}>();
 
 	const resolvedItemClass = $derived(
 		itemClass ?? 'w-[calc((100%-2*0.75rem)/3)] sm:w-36 md:w-40 lg:w-44'
@@ -44,10 +46,15 @@
 				if (data.results && data.results.length > 0) {
 					// Filter out duplicates
 					const existingIds = new Set(displayedItems.map((i: T) => i.id));
-					const uniqueNewResults = data.results.filter((i: T) => !existingIds.has(i.id));
+					let newResults = data.results.filter((i: T) => !existingIds.has(i.id));
 
-					if (uniqueNewResults.length > 0) {
-						displayedItems = [...displayedItems, ...uniqueNewResults];
+					// Filter out items in library if excludeInLibrary is true
+					if (excludeInLibrary) {
+						newResults = newResults.filter((i: T & { inLibrary?: boolean }) => !i.inLibrary);
+					}
+
+					if (newResults.length > 0) {
+						displayedItems = [...displayedItems, ...newResults];
 						page = next;
 					}
 				}

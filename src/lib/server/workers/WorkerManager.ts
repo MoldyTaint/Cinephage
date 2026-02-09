@@ -290,7 +290,8 @@ class WorkerManagerImpl extends EventEmitter {
 			monitoring: { active: 0, completed: 0, failed: 0 },
 			search: { active: 0, completed: 0, failed: 0 },
 			'subtitle-search': { active: 0, completed: 0, failed: 0 },
-			'portal-scan': { active: 0, completed: 0, failed: 0 }
+			'portal-scan': { active: 0, completed: 0, failed: 0 },
+			'channel-sync': { active: 0, completed: 0, failed: 0 }
 		};
 
 		for (const worker of this.workers.values()) {

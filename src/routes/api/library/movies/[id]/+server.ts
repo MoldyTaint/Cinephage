@@ -1,7 +1,13 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { db } from '$lib/server/db/index.js';
-import { movies, movieFiles, rootFolders, subtitles } from '$lib/server/db/schema.js';
+import {
+	downloadHistory,
+	movies,
+	movieFiles,
+	rootFolders,
+	subtitles
+} from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { mediaInfoService } from '$lib/server/library/index.js';
 import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
@@ -11,6 +17,7 @@ import { deleteAllAlternateTitles } from '$lib/server/services/index.js';
 import { unlink, rmdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { logger } from '$lib/logging';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 
 /**
  * GET /api/library/movies/[id]
@@ -187,6 +194,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			}
 		}
 
+		libraryMediaEvents.emitMovieUpdated(params.id);
+
 		return json({ success: true });
 	} catch (error) {
 		logger.error('[API] Error updating movie', error instanceof Error ? error : undefined);
@@ -274,18 +283,26 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 		}
 
 		if (removeFromLibrary) {
+			// Preserve activity audit trail after media row is deleted (FKs become null on delete)
+			await db
+				.update(downloadHistory)
+				.set({ status: 'removed', statusReason: null })
+				.where(eq(downloadHistory.movieId, params.id));
+
 			// Delete alternate titles (not cascaded automatically)
 			await deleteAllAlternateTitles('movie', params.id);
 
 			// Delete the movie from database - CASCADE will handle:
 			// - subtitles, downloadQueue, pendingReleases, blocklist, etc.
 			await db.delete(movies).where(eq(movies.id, params.id));
+			libraryMediaEvents.emitMovieUpdated(params.id);
 
 			logger.info('[API] Removed movie from library', { movieId: params.id });
 			return json({ success: true, removed: true });
 		} else {
 			// Update movie to show as missing
 			await db.update(movies).set({ hasFile: false }).where(eq(movies.id, params.id));
+			libraryMediaEvents.emitMovieUpdated(params.id);
 
 			// Note: Movie metadata is kept - it will show as "missing"
 			return json({ success: true });

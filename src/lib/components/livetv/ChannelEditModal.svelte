@@ -174,9 +174,9 @@
 
 	// Copy stream command to clipboard
 	async function copyStreamCommand() {
-		if (!channel?.channel.cmd) return;
+		if (!channel?.channel.stalker?.cmd) return;
 		try {
-			await navigator.clipboard.writeText(channel.channel.cmd);
+			await navigator.clipboard.writeText(channel.channel.stalker.cmd);
 			copiedCmd = true;
 			setTimeout(() => {
 				copiedCmd = false;
@@ -265,7 +265,7 @@
 			<div class="min-w-0 flex-1">
 				<div class="flex items-center gap-2">
 					<span class="truncate font-medium">{channel.channel.name}</span>
-					{#if channel.channel.tvArchive}
+					{#if channel.channel.stalker?.tvArchive}
 						<span class="badge gap-1 badge-xs badge-info">
 							<Archive class="h-3 w-3" />
 							Archive
@@ -466,8 +466,8 @@
 					<div class="flex justify-between">
 						<span class="text-base-content/50">Archive</span>
 						<span class="font-medium">
-							{#if channel.channel.tvArchive}
-								Yes ({formatArchiveDuration(channel.channel.archiveDuration)})
+							{#if channel.channel.stalker?.tvArchive}
+								Yes ({formatArchiveDuration(channel.channel.stalker?.archiveDuration)})
 							{:else}
 								No
 							{/if}
@@ -478,9 +478,9 @@
 						<div class="mt-1 flex items-center gap-2">
 							<code
 								class="flex-1 truncate rounded bg-base-300 px-2 py-1 font-mono text-xs"
-								title={channel.channel.cmd}
+								title={channel.channel.stalker?.cmd}
 							>
-								{channel.channel.cmd}
+								{channel.channel.stalker?.cmd}
 							</code>
 							<button
 								type="button"

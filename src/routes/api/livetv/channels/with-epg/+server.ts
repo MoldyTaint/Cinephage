@@ -11,12 +11,13 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import {
-	stalkerChannels,
-	stalkerAccounts,
-	stalkerCategories,
+	livetvChannels,
+	livetvAccounts,
+	livetvCategories,
 	epgPrograms
 } from '$lib/server/db/schema';
 import { eq, like, sql, and, gt } from 'drizzle-orm';
+import { logger } from '$lib/logging';
 
 interface ChannelWithEpgInfo {
 	id: string;
@@ -50,21 +51,21 @@ export const GET: RequestHandler = async ({ url }) => {
 		// Build the query
 		let query = db
 			.select({
-				id: stalkerChannels.id,
-				accountId: stalkerChannels.accountId,
-				name: stalkerChannels.name,
-				number: stalkerChannels.number,
-				logo: stalkerChannels.logo,
-				categoryTitle: stalkerCategories.title,
-				accountName: stalkerAccounts.name,
+				id: livetvChannels.id,
+				accountId: livetvChannels.accountId,
+				name: livetvChannels.name,
+				number: livetvChannels.number,
+				logo: livetvChannels.logo,
+				categoryTitle: livetvCategories.title,
+				accountName: livetvAccounts.name,
 				programCount: programCountSubquery.count
 			})
-			.from(stalkerChannels)
-			.innerJoin(programCountSubquery, eq(stalkerChannels.id, programCountSubquery.channelId))
-			.innerJoin(stalkerAccounts, eq(stalkerChannels.accountId, stalkerAccounts.id))
-			.leftJoin(stalkerCategories, eq(stalkerChannels.categoryId, stalkerCategories.id))
+			.from(livetvChannels)
+			.innerJoin(programCountSubquery, eq(livetvChannels.id, programCountSubquery.channelId))
+			.innerJoin(livetvAccounts, eq(livetvChannels.accountId, livetvAccounts.id))
+			.leftJoin(livetvCategories, eq(livetvChannels.categoryId, livetvCategories.id))
 			.where(gt(programCountSubquery.count, 0))
-			.orderBy(stalkerChannels.name)
+			.orderBy(livetvChannels.name)
 			.limit(pageSize)
 			.offset(offset);
 
@@ -72,21 +73,21 @@ export const GET: RequestHandler = async ({ url }) => {
 		if (search) {
 			query = db
 				.select({
-					id: stalkerChannels.id,
-					accountId: stalkerChannels.accountId,
-					name: stalkerChannels.name,
-					number: stalkerChannels.number,
-					logo: stalkerChannels.logo,
-					categoryTitle: stalkerCategories.title,
-					accountName: stalkerAccounts.name,
+					id: livetvChannels.id,
+					accountId: livetvChannels.accountId,
+					name: livetvChannels.name,
+					number: livetvChannels.number,
+					logo: livetvChannels.logo,
+					categoryTitle: livetvCategories.title,
+					accountName: livetvAccounts.name,
 					programCount: programCountSubquery.count
 				})
-				.from(stalkerChannels)
-				.innerJoin(programCountSubquery, eq(stalkerChannels.id, programCountSubquery.channelId))
-				.innerJoin(stalkerAccounts, eq(stalkerChannels.accountId, stalkerAccounts.id))
-				.leftJoin(stalkerCategories, eq(stalkerChannels.categoryId, stalkerCategories.id))
-				.where(and(gt(programCountSubquery.count, 0), like(stalkerChannels.name, `%${search}%`)))
-				.orderBy(stalkerChannels.name)
+				.from(livetvChannels)
+				.innerJoin(programCountSubquery, eq(livetvChannels.id, programCountSubquery.channelId))
+				.innerJoin(livetvAccounts, eq(livetvChannels.accountId, livetvAccounts.id))
+				.leftJoin(livetvCategories, eq(livetvChannels.categoryId, livetvCategories.id))
+				.where(and(gt(programCountSubquery.count, 0), like(livetvChannels.name, `%${search}%`)))
+				.orderBy(livetvChannels.name)
 				.limit(pageSize)
 				.offset(offset);
 		}
@@ -96,14 +97,14 @@ export const GET: RequestHandler = async ({ url }) => {
 		// Get total count for pagination
 		const countQuery = search
 			? db
-					.select({ count: sql<number>`count(distinct ${stalkerChannels.id})` })
-					.from(stalkerChannels)
-					.innerJoin(epgPrograms, eq(stalkerChannels.id, epgPrograms.channelId))
-					.where(like(stalkerChannels.name, `%${search}%`))
+					.select({ count: sql<number>`count(distinct ${livetvChannels.id})` })
+					.from(livetvChannels)
+					.innerJoin(epgPrograms, eq(livetvChannels.id, epgPrograms.channelId))
+					.where(like(livetvChannels.name, `%${search}%`))
 			: db
-					.select({ count: sql<number>`count(distinct ${stalkerChannels.id})` })
-					.from(stalkerChannels)
-					.innerJoin(epgPrograms, eq(stalkerChannels.id, epgPrograms.channelId));
+					.select({ count: sql<number>`count(distinct ${livetvChannels.id})` })
+					.from(livetvChannels)
+					.innerJoin(epgPrograms, eq(livetvChannels.id, epgPrograms.channelId));
 
 		const [countResult] = await countQuery;
 		const total = countResult?.count || 0;
@@ -120,6 +121,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		}));
 
 		return json({
+			success: true,
 			items: response,
 			total,
 			page,
@@ -127,7 +129,16 @@ export const GET: RequestHandler = async ({ url }) => {
 			totalPages: Math.ceil(total / pageSize)
 		});
 	} catch (error) {
-		console.error('[API] Failed to get channels with EPG:', error);
-		return json({ error: 'Failed to get channels with EPG' }, { status: 500 });
+		logger.error(
+			'[API] Failed to get channels with EPG',
+			error instanceof Error ? error : undefined
+		);
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to get channels with EPG'
+			},
+			{ status: 500 }
+		);
 	}
 };

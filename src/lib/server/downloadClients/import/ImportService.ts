@@ -55,6 +55,7 @@ import {
 import { ImportWorker, workerManager } from '$lib/server/workers';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
 import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 
 /**
  * Import result for a single file
@@ -926,6 +927,7 @@ export class ImportService extends EventEmitter {
 			wasUpgrade: isUpgrade,
 			replacedFileIds: deletedFileIds.length > 0 ? deletedFileIds : undefined
 		});
+		libraryMediaEvents.emitMovieUpdated(movie.id);
 
 		// Trigger subtitle search asynchronously (don't await to avoid blocking)
 		this.triggerSubtitleSearch('movie', movie.id).catch((err) => {
@@ -1348,6 +1350,7 @@ export class ImportService extends EventEmitter {
 			wasUpgrade: isUpgrade,
 			replacedFileIds: filesToReplace.length > 0 ? filesToReplace : undefined
 		});
+		libraryMediaEvents.emitSeriesUpdated(seriesData.id);
 
 		// Delete old files if this was an upgrade
 		if (filesToReplace.length > 0) {

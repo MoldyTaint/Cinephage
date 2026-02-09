@@ -91,10 +91,13 @@
 		<div class="flex min-w-0 flex-1 items-start gap-3">
 			<File size={20} class="mt-0.5 shrink-0 text-base-content/50" />
 			<div class="min-w-0 flex-1">
-				<div class="font-mono text-sm break-all sm:truncate" title={file.relativePath}>
+				<div
+					class="font-mono text-sm break-all sm:truncate"
+					title={isStreamerProfile ? getFileName(file.relativePath) : file.relativePath}
+				>
 					{getFileName(file.relativePath)}
 				</div>
-				{#if file.relativePath !== getFileName(file.relativePath)}
+				{#if !isStreamerProfile && file.relativePath !== getFileName(file.relativePath)}
 					<div
 						class="mt-1 text-xs break-all text-base-content/50 sm:truncate"
 						title={file.relativePath}

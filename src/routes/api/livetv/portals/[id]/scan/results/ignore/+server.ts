@@ -8,6 +8,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getPortalScannerService } from '$lib/server/livetv/stalker';
 import { logger } from '$lib/logging';
+import { ValidationError } from '$lib/errors';
 import { z } from 'zod';
 
 const ignoreSchema = z.object({
@@ -17,36 +18,47 @@ const ignoreSchema = z.object({
 /**
  * Ignore scan results
  */
-export const POST: RequestHandler = async ({ params, request }) => {
+export const POST: RequestHandler = async ({ request }) => {
 	try {
 		const body = await request.json();
 
 		// Validate input
 		const parsed = ignoreSchema.safeParse(body);
 		if (!parsed.success) {
-			return json(
-				{
-					error: 'Validation failed',
-					details: parsed.error.flatten().fieldErrors
-				},
-				{ status: 400 }
-			);
+			throw new ValidationError('Validation failed', {
+				details: parsed.error.flatten()
+			});
 		}
 
 		const scannerService = getPortalScannerService();
 		await scannerService.ignoreMultiple(parsed.data.resultIds);
 
 		return json({
+			success: true,
 			ignored: parsed.data.resultIds.length
 		});
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		logger.error('[API] Failed to ignore scan results', error instanceof Error ? error : undefined);
 
-		logger.error('[API] Failed to ignore scan results', {
-			portalId: params.id,
-			error: message
-		});
+		// Validation errors
+		if (error instanceof ValidationError) {
+			return json(
+				{
+					success: false,
+					error: error.message,
+					code: error.code,
+					context: error.context
+				},
+				{ status: error.statusCode }
+			);
+		}
 
-		return json({ error: 'Failed to ignore scan results' }, { status: 500 });
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to ignore scan results'
+			},
+			{ status: 500 }
+		);
 	}
 };

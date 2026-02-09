@@ -45,6 +45,7 @@ import type { EnhancedReleaseResult } from '$lib/server/indexers/types';
 import { categoryMatchesSearchType, getCategoryContentType } from '$lib/server/indexers/types';
 import type { DownloadInfo } from '$lib/server/downloadClients/core/interfaces.js';
 import { blocklistService } from '$lib/server/monitoring/specifications/BlocklistSpecification.js';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 
 const logger = createChildLogger({ module: 'ReleaseGrabService' });
 const parser = new ReleaseParser();
@@ -1052,6 +1053,7 @@ class ReleaseGrabService {
 			fileId,
 			relativePath
 		});
+		libraryMediaEvents.emitMovieUpdated(movieId);
 
 		void this.triggerSubtitleSearch('movie', movieId);
 
@@ -1167,6 +1169,7 @@ class ReleaseGrabService {
 			fileId,
 			relativePath
 		});
+		libraryMediaEvents.emitSeriesUpdated(seriesId);
 
 		void this.triggerSubtitleSearch('episode', episodeRow.id);
 
@@ -1459,6 +1462,7 @@ class ReleaseGrabService {
 			episodesCreated: createdFileIds.length,
 			totalEpisodes: strmResult.results.length
 		});
+		libraryMediaEvents.emitSeriesUpdated(seriesId);
 
 		void this.triggerSubtitleSearchForEpisodes(createdEpisodeIds);
 

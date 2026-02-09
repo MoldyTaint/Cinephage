@@ -13,6 +13,7 @@ import {
 } from '$lib/server/db/schema';
 import { eq, asc, inArray } from 'drizzle-orm';
 import type { RequestHandler } from '@sveltejs/kit';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 
 // Local type definitions
 interface EpisodeFileInfo {
@@ -387,16 +388,25 @@ export const GET: RequestHandler = async ({ params }) => {
 			}
 		};
 
+		// Handle metadata/subtitle/settings updates for this series
+		const onSeriesUpdated = (event: { seriesId: string }) => {
+			if (event.seriesId === seriesId) {
+				sendInitialState();
+			}
+		};
+
 		// Register handlers
 		downloadMonitor.on('queue:updated', onQueueUpdated);
 		importService.on('file:imported', onFileImported);
 		importService.on('file:deleted', onFileDeleted);
+		libraryMediaEvents.onSeriesUpdated(onSeriesUpdated);
 
 		// Return cleanup function
 		return () => {
 			downloadMonitor.off('queue:updated', onQueueUpdated);
 			importService.off('file:imported', onFileImported);
 			importService.off('file:deleted', onFileDeleted);
+			libraryMediaEvents.offSeriesUpdated(onSeriesUpdated);
 		};
 	});
 };

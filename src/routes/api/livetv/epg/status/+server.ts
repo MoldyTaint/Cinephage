@@ -8,8 +8,9 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getEpgService, getEpgScheduler } from '$lib/server/livetv/epg';
 import { db } from '$lib/server/db';
-import { stalkerAccounts } from '$lib/server/db/schema';
+import { livetvAccounts } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
+import { logger } from '$lib/logging';
 
 export const GET: RequestHandler = async () => {
 	try {
@@ -25,21 +26,23 @@ export const GET: RequestHandler = async () => {
 		// Get all enabled accounts with EPG tracking columns
 		const accounts = db
 			.select({
-				id: stalkerAccounts.id,
-				name: stalkerAccounts.name,
-				lastEpgSyncAt: stalkerAccounts.lastEpgSyncAt,
-				lastEpgSyncError: stalkerAccounts.lastEpgSyncError,
-				epgProgramCount: stalkerAccounts.epgProgramCount,
-				hasEpg: stalkerAccounts.hasEpg
+				id: livetvAccounts.id,
+				name: livetvAccounts.name,
+				providerType: livetvAccounts.providerType,
+				lastEpgSyncAt: livetvAccounts.lastEpgSyncAt,
+				lastEpgSyncError: livetvAccounts.lastEpgSyncError,
+				epgProgramCount: livetvAccounts.epgProgramCount,
+				hasEpg: livetvAccounts.hasEpg
 			})
-			.from(stalkerAccounts)
-			.where(eq(stalkerAccounts.enabled, true))
+			.from(livetvAccounts)
+			.where(eq(livetvAccounts.enabled, true))
 			.all();
 
 		// Build account status list
 		const accountStatuses = accounts.map((account) => ({
 			id: account.id,
 			name: account.name,
+			providerType: account.providerType,
 			lastEpgSyncAt: account.lastEpgSyncAt ?? null,
 			programCount: account.epgProgramCount ?? 0,
 			hasEpg: account.hasEpg ?? null,
@@ -47,6 +50,7 @@ export const GET: RequestHandler = async () => {
 		}));
 
 		return json({
+			success: true,
 			isEnabled: true,
 			isSyncing: schedulerStatus.isSyncing,
 			syncIntervalHours: schedulerStatus.syncIntervalHours,
@@ -57,7 +61,13 @@ export const GET: RequestHandler = async () => {
 			accounts: accountStatuses
 		});
 	} catch (error) {
-		console.error('[API] Failed to get EPG status:', error);
-		return json({ error: 'Failed to get EPG status' }, { status: 500 });
+		logger.error('[API] Failed to get EPG status', error instanceof Error ? error : undefined);
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to get EPG status'
+			},
+			{ status: 500 }
+		);
 	}
 };

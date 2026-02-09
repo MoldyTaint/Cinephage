@@ -45,6 +45,7 @@ export const POST: RequestHandler = async ({ url }) => {
 	});
 
 	return json({
+		success: true,
 		started: true,
 		message: accountId
 			? `EPG sync started for account ${accountId}`

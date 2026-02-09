@@ -3,6 +3,7 @@
 	import { ThemeSelector } from '$lib/components/ui';
 	import Toasts from '$lib/components/ui/Toasts.svelte';
 	import { layoutState } from '$lib/layout.svelte';
+	import { mobileSSEStatus } from '$lib/sse/mobileStatus.svelte';
 	import { page } from '$app/stores';
 	import { resolvePath } from '$lib/utils/routing';
 	import { env } from '$env/dynamic/public';
@@ -24,10 +25,18 @@
 		List,
 		Radio,
 		Calendar,
-		Activity
+		Activity,
+		Loader2,
+		Wifi,
+		WifiOff
 	} from 'lucide-svelte';
 
 	let { children } = $props();
+	let isMobileDrawerOpen = $state(false);
+
+	function closeMobileDrawer(): void {
+		isMobileDrawerOpen = false;
+	}
 
 	const menuItems = [
 		{ href: '/', label: 'Home', icon: Home },
@@ -74,7 +83,7 @@
 </svelte:head>
 
 <div class="drawer lg:drawer-open">
-	<input id="main-drawer" type="checkbox" class="drawer-toggle" />
+	<input id="main-drawer" type="checkbox" class="drawer-toggle" bind:checked={isMobileDrawerOpen} />
 	<div class="drawer-content flex min-h-screen flex-col bg-base-100 text-base-content">
 		<!-- Mobile Header -->
 		<header class="navbar sticky top-0 z-50 bg-base-200 shadow-sm lg:hidden">
@@ -87,7 +96,30 @@
 				<img src="/logo.png" alt="" class="h-7 w-7" />
 				<span class="text-xl font-bold">Cinephage</span>
 			</div>
-			<div class="flex-none">
+			<div class="flex flex-none items-center gap-2">
+				{#if mobileSSEStatus.visible}
+					{#if mobileSSEStatus.status === 'connected'}
+						<span class="badge gap-1 badge-sm badge-success">
+							<Wifi class="h-3 w-3" />
+							Live
+						</span>
+					{:else if mobileSSEStatus.status === 'error'}
+						<span class="badge gap-1 badge-sm badge-error">
+							<Loader2 class="h-3 w-3 animate-spin" />
+							Reconnecting...
+						</span>
+					{:else if mobileSSEStatus.status === 'connecting'}
+						<span class="badge gap-1 badge-sm badge-warning">
+							<Loader2 class="h-3 w-3 animate-spin" />
+							Connecting...
+						</span>
+					{:else}
+						<span class="badge gap-1 badge-ghost badge-sm">
+							<WifiOff class="h-3 w-3" />
+							Offline
+						</span>
+					{/if}
+				{/if}
 				<ThemeSelector showLabel={false} />
 			</div>
 		</header>
@@ -150,6 +182,7 @@
 													href={resolvePath(child.href)}
 													class="flex items-center gap-4 px-4 py-2"
 													class:active={$page.url.pathname === child.href}
+													onclick={closeMobileDrawer}
 												>
 													{#if child.icon}<child.icon class="h-4 w-4 shrink-0" />{/if}
 													<span class="truncate">{child.label}</span>
@@ -173,6 +206,7 @@
 								class="flex items-center gap-4 px-4 py-3"
 								class:active={$page.url.pathname === item.href}
 								title={!layoutState.isSidebarExpanded ? item.label : ''}
+								onclick={closeMobileDrawer}
 							>
 								<item.icon class="h-5 w-5 shrink-0" />
 								{#if layoutState.isSidebarExpanded}

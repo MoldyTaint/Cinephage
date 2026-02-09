@@ -1,14 +1,15 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { tmdb } from '$lib/server/tmdb';
-import { enrichWithLibraryStatus } from '$lib/server/library/status';
+import { enrichWithLibraryStatus, filterInLibrary } from '$lib/server/library/status';
 import { z } from 'zod';
 import { logger } from '$lib/logging';
 
 const searchQuerySchema = z.object({
 	query: z.string().min(1, 'Search query is required'),
 	type: z.enum(['all', 'movie', 'tv', 'person']).default('all'),
-	page: z.coerce.number().int().min(1).default(1)
+	page: z.coerce.number().int().min(1).default(1),
+	exclude_in_library: z.enum(['true', 'false']).optional()
 });
 
 export const GET: RequestHandler = async ({ url }) => {
@@ -19,7 +20,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		return json({ error: 'Invalid parameters', details: result.error.flatten() }, { status: 400 });
 	}
 
-	const { query, type, page } = result.data;
+	const { query, type, page, exclude_in_library } = result.data;
 
 	// Check if TMDB is configured
 	const tmdbConfigured = await tmdb.isConfigured();
@@ -77,9 +78,11 @@ export const GET: RequestHandler = async ({ url }) => {
 		// Enrich with library status
 		const mediaTypeFilter = type === 'movie' ? 'movie' : type === 'tv' ? 'tv' : 'all';
 		const enrichedResults = await enrichWithLibraryStatus(results, mediaTypeFilter);
+		const shouldExcludeInLibrary = exclude_in_library === 'true';
+		const filteredResults = filterInLibrary(enrichedResults, shouldExcludeInLibrary);
 
 		return json({
-			results: enrichedResults,
+			results: filteredResults,
 			pagination: {
 				page,
 				total_pages: totalPages,

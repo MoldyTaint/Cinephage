@@ -15,7 +15,8 @@ export type WorkerType =
 	| 'monitoring'
 	| 'search'
 	| 'subtitle-search'
-	| 'portal-scan';
+	| 'portal-scan'
+	| 'channel-sync';
 
 /**
  * Worker lifecycle status.
@@ -80,7 +81,8 @@ export const DEFAULT_WORKER_CONFIG: WorkerManagerConfig = {
 		monitoring: parseInt(process.env.WORKER_MAX_MONITORING || '5', 10) || 5,
 		search: parseInt(process.env.WORKER_MAX_SEARCH || '3', 10) || 3,
 		'subtitle-search': parseInt(process.env.WORKER_MAX_SUBTITLE_SEARCH || '3', 10) || 3,
-		'portal-scan': parseInt(process.env.WORKER_MAX_PORTAL_SCANS || '2', 10) || 2
+		'portal-scan': parseInt(process.env.WORKER_MAX_PORTAL_SCANS || '2', 10) || 2,
+		'channel-sync': parseInt(process.env.WORKER_MAX_CHANNEL_SYNCS || '3', 10) || 3
 	},
 	cleanupAfterMs: parseInt(process.env.WORKER_CLEANUP_MS || '1800000', 10) || 1800000, // 30 minutes
 	maxLogsPerWorker: parseInt(process.env.WORKER_MAX_LOGS || '1000', 10) || 1000
@@ -118,6 +120,8 @@ export function workerTypeToLogCategory(type: WorkerType): LogCategory {
 			return 'subtitles';
 		case 'portal-scan':
 			return 'scans';
+		case 'channel-sync':
+			return 'livetv';
 		default:
 			return 'main';
 	}
@@ -219,5 +223,21 @@ export interface PortalScanWorkerMetadata {
 	currentMac?: string;
 	rateLimit: number;
 	historyId?: string;
+	[key: string]: unknown;
+}
+
+/**
+ * Channel sync worker specific metadata.
+ */
+export interface ChannelSyncWorkerMetadata {
+	accountId: string;
+	accountName: string;
+	providerType: string;
+	channelsSynced: number;
+	channelsAdded: number;
+	channelsUpdated: number;
+	channelsRemoved: number;
+	categoriesSynced: number;
+	error?: string;
 	[key: string]: unknown;
 }

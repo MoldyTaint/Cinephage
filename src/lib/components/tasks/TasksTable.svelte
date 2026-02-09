@@ -2,6 +2,7 @@
 	import type { UnifiedTask } from '$lib/server/tasks/UnifiedTaskRegistry';
 	import type { TaskHistoryEntry } from '$lib/types/task';
 	import TaskTableRow from './TaskTableRow.svelte';
+	import TaskCard from './TaskCard.svelte';
 	import TaskHistoryModal from './TaskHistoryModal.svelte';
 
 	interface Props {
@@ -42,7 +43,7 @@
 	{#if scheduledTasks.length > 0}
 		<div class="overflow-hidden rounded-lg bg-base-200">
 			<button
-				class="flex w-full items-center justify-between bg-base-300 px-4 py-3 transition-colors hover:bg-base-300/80"
+				class="flex w-full items-center justify-between bg-base-300 px-3 py-2.5 transition-colors hover:bg-base-300/80 sm:px-4 sm:py-3"
 				onclick={() => (scheduledExpanded = !scheduledExpanded)}
 			>
 				<div class="flex items-center gap-3">
@@ -81,7 +82,19 @@
 			</button>
 
 			{#if scheduledExpanded}
-				<div class="overflow-x-auto">
+				<div class="space-y-2 p-3 md:hidden">
+					{#each scheduledTasks as task (task.id)}
+						<TaskCard
+							{task}
+							history={taskHistory[task.id] ?? []}
+							{onRunTask}
+							{onCancelTask}
+							{onToggleEnabled}
+							onShowHistory={() => openHistory(task)}
+						/>
+					{/each}
+				</div>
+				<div class="hidden overflow-x-auto md:block">
 					<table class="table w-full table-zebra">
 						<thead>
 							<tr>
@@ -115,7 +128,7 @@
 	{#if maintenanceTasks.length > 0}
 		<div class="overflow-hidden rounded-lg bg-base-200">
 			<button
-				class="flex w-full items-center justify-between bg-base-300 px-4 py-3 transition-colors hover:bg-base-300/80"
+				class="flex w-full items-center justify-between bg-base-300 px-3 py-2.5 transition-colors hover:bg-base-300/80 sm:px-4 sm:py-3"
 				onclick={() => (maintenanceExpanded = !maintenanceExpanded)}
 			>
 				<div class="flex items-center gap-3">
@@ -155,7 +168,19 @@
 			</button>
 
 			{#if maintenanceExpanded}
-				<div class="overflow-x-auto">
+				<div class="space-y-2 p-3 md:hidden">
+					{#each maintenanceTasks as task (task.id)}
+						<TaskCard
+							{task}
+							history={taskHistory[task.id] ?? []}
+							{onRunTask}
+							{onCancelTask}
+							{onToggleEnabled}
+							onShowHistory={() => openHistory(task)}
+						/>
+					{/each}
+				</div>
+				<div class="hidden overflow-x-auto md:block">
 					<table class="table w-full table-zebra">
 						<thead>
 							<tr>

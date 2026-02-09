@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import type { UnifiedTask } from '$lib/server/tasks/UnifiedTaskRegistry';
 
 	interface Props {
@@ -8,8 +9,9 @@
 	let { task }: Props = $props();
 
 	let isEditing = $state(false);
-	let editValue = $state(task.intervalHours ?? task.defaultIntervalHours ?? 1);
+	let editValue = $state(1);
 	let isSaving = $state(false);
+	let editInput = $state<HTMLInputElement | null>(null);
 
 	function formatInterval(hours: number | null): string {
 		if (hours === null) return 'Manual';
@@ -45,6 +47,10 @@
 		if (!task.intervalEditable) return;
 		editValue = task.intervalHours ?? task.defaultIntervalHours ?? 1;
 		isEditing = true;
+		void tick().then(() => {
+			editInput?.focus();
+			editInput?.select();
+		});
 	}
 
 	function cancelEditing() {
@@ -66,10 +72,10 @@
 			type="number"
 			step="0.25"
 			min={task.minIntervalHours ?? 0.25}
+			bind:this={editInput}
 			bind:value={editValue}
 			onkeydown={handleKeydown}
 			class="input-bordered input input-xs w-20"
-			autofocus
 		/>
 		<span class="text-xs">h</span>
 		<button

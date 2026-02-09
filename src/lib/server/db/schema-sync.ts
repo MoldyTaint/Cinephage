@@ -73,8 +73,13 @@ interface MigrationDefinition {
  * Version 46: Add activities and activity_details tables for unified activity tracking
  * Version 47: Add task_settings table for per-task configuration with migration from monitoring_settings
  * Version 48: Dedupe episode_files and enforce unique series/path constraint
+ * Version 49: Backfill orphaned download_history imported/streaming rows to removed status
+ * Version 50: Fresh start for Live TV with multi-provider support (Stalker, XStream, M3U)
+ * Version 51: Fix channel lineup foreign key references
+ * Version 52: Fix epg_programs table schema for multi-provider support
+ * Version 53: Add iptv_org_config column to livetv_accounts for IPTV-Org provider support
  */
-export const CURRENT_SCHEMA_VERSION = 48;
+export const CURRENT_SCHEMA_VERSION = 53;
 
 /**
  * All table definitions with CREATE TABLE IF NOT EXISTS
@@ -1037,14 +1042,14 @@ const TABLE_DEFINITIONS: string[] = [
 	// Live TV - User Channel Lineup
 	`CREATE TABLE IF NOT EXISTS "channel_lineup_items" (
 		"id" text PRIMARY KEY NOT NULL,
-		"account_id" text NOT NULL REFERENCES "stalker_accounts"("id") ON DELETE CASCADE,
-		"channel_id" text NOT NULL REFERENCES "stalker_channels"("id") ON DELETE CASCADE,
+		"account_id" text NOT NULL REFERENCES "livetv_accounts"("id") ON DELETE CASCADE,
+		"channel_id" text NOT NULL REFERENCES "livetv_channels"("id") ON DELETE CASCADE,
 		"position" integer NOT NULL,
 		"channel_number" integer,
 		"custom_name" text,
 		"custom_logo" text,
 		"epg_id" text,
-		"epg_source_channel_id" text REFERENCES "stalker_channels"("id") ON DELETE SET NULL,
+		"epg_source_channel_id" text REFERENCES "livetv_channels"("id") ON DELETE SET NULL,
 		"category_id" text REFERENCES "channel_categories"("id") ON DELETE SET NULL,
 		"added_at" text,
 		"updated_at" text
@@ -1073,8 +1078,8 @@ const TABLE_DEFINITIONS: string[] = [
 	`CREATE TABLE IF NOT EXISTS "channel_lineup_backups" (
 		"id" text PRIMARY KEY NOT NULL,
 		"lineup_item_id" text NOT NULL REFERENCES "channel_lineup_items"("id") ON DELETE CASCADE,
-		"account_id" text NOT NULL REFERENCES "stalker_accounts"("id") ON DELETE CASCADE,
-		"channel_id" text NOT NULL REFERENCES "stalker_channels"("id") ON DELETE CASCADE,
+		"account_id" text NOT NULL REFERENCES "livetv_accounts"("id") ON DELETE CASCADE,
+		"channel_id" text NOT NULL REFERENCES "livetv_channels"("id") ON DELETE CASCADE,
 		"priority" integer NOT NULL,
 		"created_at" text,
 		"updated_at" text
@@ -2851,7 +2856,7 @@ const MIGRATIONS: MigrationDefinition[] = [
 			if (!columnExists(sqlite, 'channel_lineup_items', 'epg_source_channel_id')) {
 				sqlite
 					.prepare(
-						`ALTER TABLE "channel_lineup_items" ADD COLUMN "epg_source_channel_id" text REFERENCES "stalker_channels"("id") ON DELETE SET NULL`
+						`ALTER TABLE "channel_lineup_items" ADD COLUMN "epg_source_channel_id" text REFERENCES "livetv_channels"("id") ON DELETE SET NULL`
 					)
 					.run();
 				logger.info('[SchemaSync] Added epg_source_channel_id column to channel_lineup_items');
@@ -3561,6 +3566,468 @@ const MIGRATIONS: MigrationDefinition[] = [
 				downloadHistoryRowsUpdated,
 				activityDetailsRowsUpdated
 			});
+		}
+	},
+
+	// Migration 49: Mark orphaned imported/streaming history rows as removed
+	{
+		version: 49,
+		name: 'backfill_orphaned_download_history_to_removed',
+		apply: (sqlite) => {
+			const result = sqlite
+				.prepare(
+					`
+						UPDATE download_history
+						SET status = 'removed',
+							status_reason = NULL
+						WHERE movie_id IS NULL
+							AND series_id IS NULL
+							AND status IN ('imported', 'streaming')
+					`
+				)
+				.run();
+
+			logger.info('[SchemaSync] Backfilled orphaned download_history rows to removed', {
+				rowsUpdated: result.changes
+			});
+		}
+	},
+
+	// Migration 50: Fresh start for Live TV with multi-provider support (Stalker, XStream, M3U)
+	{
+		version: 50,
+		name: 'livetv_fresh_start_multiprovider',
+		apply: (sqlite) => {
+			logger.info('[SchemaSync] Starting fresh Live TV setup with multi-provider support');
+
+			// Drop all existing Live TV tables (both old and new)
+			const tablesToDrop = [
+				// New unified tables
+				'livetv_accounts',
+				'livetv_channels',
+				'livetv_categories',
+				// Old Stalker tables
+				'stalker_accounts',
+				'stalker_channels',
+				'stalker_categories',
+				'stalker_portals',
+				'portal_scan_results',
+				'portal_scan_history',
+				// Other Live TV tables
+				'livetv_lineup',
+				'livetv_lineup_backups',
+				'livetv_epg_programs',
+				'livetv_channel_categories',
+				'livetv_cache',
+				'livetv_sources',
+				'livetv_events',
+				'livetv_health',
+				'livetv_epg_sources',
+				'livetv_epg_channel_map',
+				'livetv_epg_programs'
+			];
+
+			for (const table of tablesToDrop) {
+				try {
+					sqlite.prepare(`DROP TABLE IF EXISTS "${table}"`).run();
+					logger.info(`[SchemaSync] Dropped table: ${table}`);
+				} catch {
+					// Table might not exist, that's fine
+				}
+			}
+
+			// Drop all related indexes
+			const indexesToDrop = [
+				'idx_livetv_accounts_enabled',
+				'idx_livetv_accounts_type',
+				'idx_livetv_channels_account',
+				'idx_livetv_channels_type',
+				'idx_livetv_channels_external',
+				'idx_livetv_channels_name',
+				'idx_livetv_channels_unique',
+				'idx_livetv_categories_account',
+				'idx_livetv_categories_unique',
+				'idx_stalker_accounts_portal_url',
+				'idx_stalker_accounts_portal_id',
+				'idx_stalker_accounts_enabled',
+				'idx_stalker_channels_account',
+				'idx_stalker_channels_stalker_id',
+				'idx_stalker_channels_category',
+				'idx_stalker_categories_account',
+				'idx_epg_programs_channel',
+				'idx_epg_programs_channel_time',
+				'idx_epg_programs_account',
+				'idx_epg_programs_end',
+				'idx_epg_programs_unique'
+			];
+
+			for (const index of indexesToDrop) {
+				try {
+					sqlite.prepare(`DROP INDEX IF EXISTS "${index}"`).run();
+				} catch {
+					// Index might not exist, that's fine
+				}
+			}
+
+			logger.info('[SchemaSync] Creating fresh Live TV tables');
+
+			// Create livetv_accounts
+			sqlite
+				.prepare(
+					`
+				CREATE TABLE IF NOT EXISTS "livetv_accounts" (
+					"id" text PRIMARY KEY NOT NULL,
+					"name" text NOT NULL,
+					"provider_type" text NOT NULL,
+					"enabled" integer DEFAULT 1,
+			"stalker_config" text,
+				"xstream_config" text,
+				"m3u_config" text,
+				"iptv_org_config" text,
+					"playback_limit" integer,
+					"channel_count" integer,
+					"category_count" integer,
+					"expires_at" text,
+					"server_timezone" text,
+					"last_tested_at" text,
+					"last_test_success" integer,
+					"last_test_error" text,
+					"last_sync_at" text,
+					"last_sync_error" text,
+					"sync_status" text DEFAULT 'never',
+					"last_epg_sync_at" text,
+					"last_epg_sync_error" text,
+					"epg_program_count" integer DEFAULT 0,
+					"has_epg" integer,
+					"created_at" text,
+					"updated_at" text
+				)
+			`
+				)
+				.run();
+
+			// Create livetv_channels
+			sqlite
+				.prepare(
+					`
+				CREATE TABLE IF NOT EXISTS "livetv_channels" (
+					"id" text PRIMARY KEY NOT NULL,
+					"account_id" text NOT NULL,
+					"provider_type" text NOT NULL,
+					"external_id" text NOT NULL,
+					"name" text NOT NULL,
+					"number" text,
+					"logo" text,
+					"category_id" text,
+					"provider_category_id" text,
+					"stalker_data" text,
+					"xstream_data" text,
+					"m3u_data" text,
+					"epg_id" text,
+					"created_at" text,
+					"updated_at" text,
+					FOREIGN KEY ("account_id") REFERENCES "livetv_accounts"("id") ON DELETE CASCADE
+				)
+			`
+				)
+				.run();
+
+			// Create livetv_categories
+			sqlite
+				.prepare(
+					`
+				CREATE TABLE IF NOT EXISTS "livetv_categories" (
+					"id" text PRIMARY KEY NOT NULL,
+					"account_id" text NOT NULL,
+					"provider_type" text NOT NULL,
+					"external_id" text NOT NULL,
+					"title" text NOT NULL,
+					"alias" text,
+					"censored" integer DEFAULT 0,
+					"channel_count" integer DEFAULT 0,
+					"provider_data" text,
+					"created_at" text,
+					"updated_at" text,
+					FOREIGN KEY ("account_id") REFERENCES "livetv_accounts"("id") ON DELETE CASCADE
+				)
+			`
+				)
+				.run();
+
+			// Create indexes
+			sqlite
+				.prepare(
+					`CREATE INDEX IF NOT EXISTS "idx_livetv_accounts_enabled" ON "livetv_accounts" ("enabled")`
+				)
+				.run();
+			sqlite
+				.prepare(
+					`CREATE INDEX IF NOT EXISTS "idx_livetv_accounts_type" ON "livetv_accounts" ("provider_type")`
+				)
+				.run();
+
+			sqlite
+				.prepare(
+					`CREATE INDEX IF NOT EXISTS "idx_livetv_channels_account" ON "livetv_channels" ("account_id")`
+				)
+				.run();
+			sqlite
+				.prepare(
+					`CREATE INDEX IF NOT EXISTS "idx_livetv_channels_type" ON "livetv_channels" ("provider_type")`
+				)
+				.run();
+			sqlite
+				.prepare(
+					`CREATE INDEX IF NOT EXISTS "idx_livetv_channels_external" ON "livetv_channels" ("external_id")`
+				)
+				.run();
+			sqlite
+				.prepare(
+					`CREATE INDEX IF NOT EXISTS "idx_livetv_channels_name" ON "livetv_channels" ("name")`
+				)
+				.run();
+			sqlite
+				.prepare(
+					`CREATE UNIQUE INDEX IF NOT EXISTS "idx_livetv_channels_unique" ON "livetv_channels" ("account_id", "external_id")`
+				)
+				.run();
+			sqlite
+				.prepare(
+					`CREATE INDEX IF NOT EXISTS "idx_livetv_categories_account" ON "livetv_categories" ("account_id")`
+				)
+				.run();
+			sqlite
+				.prepare(
+					`CREATE UNIQUE INDEX IF NOT EXISTS "idx_livetv_categories_unique" ON "livetv_categories" ("account_id", "external_id")`
+				)
+				.run();
+
+			logger.info('[SchemaSync] Fresh Live TV multi-provider setup completed successfully');
+		}
+	},
+
+	// Migration 51: Fix channel_lineup_items and channel_lineup_backups foreign key references
+	{
+		version: 51,
+		name: 'fix_lineup_foreign_keys',
+		apply: (sqlite) => {
+			logger.info('[SchemaSync] Fixing channel lineup foreign key references');
+
+			// Drop and recreate channel_lineup_items with correct references
+			if (tableExists(sqlite, 'channel_lineup_items')) {
+				// Backup existing data if any
+				const hasData = sqlite
+					.prepare('SELECT COUNT(*) as count FROM channel_lineup_items')
+					.get() as { count: number };
+				if (hasData.count > 0) {
+					logger.info(
+						`[SchemaSync] Warning: channel_lineup_items has ${hasData.count} rows that will be lost`
+					);
+				}
+
+				// Drop the table
+				sqlite.prepare('DROP TABLE IF EXISTS "channel_lineup_items"').run();
+				logger.info('[SchemaSync] Dropped old channel_lineup_items table');
+			}
+
+			// Create new channel_lineup_items with correct references to livetv_* tables
+			sqlite
+				.prepare(
+					`
+				CREATE TABLE "channel_lineup_items" (
+					"id" text PRIMARY KEY NOT NULL,
+					"account_id" text NOT NULL REFERENCES "livetv_accounts"("id") ON DELETE CASCADE,
+					"channel_id" text NOT NULL REFERENCES "livetv_channels"("id") ON DELETE CASCADE,
+					"position" integer NOT NULL,
+					"channel_number" integer,
+					"custom_name" text,
+					"custom_logo" text,
+					"epg_id" text,
+					"epg_source_channel_id" text REFERENCES "livetv_channels"("id") ON DELETE SET NULL,
+					"category_id" text REFERENCES "channel_categories"("id") ON DELETE SET NULL,
+					"added_at" text,
+					"updated_at" text
+				)
+			`
+				)
+				.run();
+			logger.info('[SchemaSync] Created channel_lineup_items with correct foreign keys');
+
+			// Create indexes
+			sqlite
+				.prepare(
+					`CREATE UNIQUE INDEX "idx_lineup_account_channel" ON "channel_lineup_items" ("account_id", "channel_id")`
+				)
+				.run();
+			sqlite
+				.prepare(`CREATE INDEX "idx_lineup_position" ON "channel_lineup_items" ("position")`)
+				.run();
+			sqlite
+				.prepare(`CREATE INDEX "idx_lineup_account" ON "channel_lineup_items" ("account_id")`)
+				.run();
+			sqlite
+				.prepare(`CREATE INDEX "idx_lineup_category" ON "channel_lineup_items" ("category_id")`)
+				.run();
+
+			// Drop and recreate channel_lineup_backups with correct references
+			if (tableExists(sqlite, 'channel_lineup_backups')) {
+				const hasData = sqlite
+					.prepare('SELECT COUNT(*) as count FROM channel_lineup_backups')
+					.get() as { count: number };
+				if (hasData.count > 0) {
+					logger.info(
+						`[SchemaSync] Warning: channel_lineup_backups has ${hasData.count} rows that will be lost`
+					);
+				}
+
+				sqlite.prepare('DROP TABLE IF EXISTS "channel_lineup_backups"').run();
+				logger.info('[SchemaSync] Dropped old channel_lineup_backups table');
+			}
+
+			// Create new channel_lineup_backups with correct references
+			sqlite
+				.prepare(
+					`
+				CREATE TABLE "channel_lineup_backups" (
+					"id" text PRIMARY KEY NOT NULL,
+					"lineup_item_id" text NOT NULL REFERENCES "channel_lineup_items"("id") ON DELETE CASCADE,
+					"account_id" text NOT NULL REFERENCES "livetv_accounts"("id") ON DELETE CASCADE,
+					"channel_id" text NOT NULL REFERENCES "livetv_channels"("id") ON DELETE CASCADE,
+					"priority" integer NOT NULL,
+					"created_at" text,
+					"updated_at" text
+				)
+			`
+				)
+				.run();
+			logger.info('[SchemaSync] Created channel_lineup_backups with correct foreign keys');
+
+			// Create indexes for backups
+			sqlite
+				.prepare(
+					`CREATE INDEX "idx_lineup_backups_item" ON "channel_lineup_backups" ("lineup_item_id")`
+				)
+				.run();
+			sqlite
+				.prepare(
+					`CREATE INDEX "idx_lineup_backups_priority" ON "channel_lineup_backups" ("lineup_item_id", "priority")`
+				)
+				.run();
+			sqlite
+				.prepare(
+					`CREATE UNIQUE INDEX "idx_lineup_backups_unique" ON "channel_lineup_backups" ("lineup_item_id", "channel_id")`
+				)
+				.run();
+
+			logger.info('[SchemaSync] Channel lineup foreign key references fixed successfully');
+		}
+	},
+
+	// Migration 52: Fix epg_programs table schema for multi-provider support
+	{
+		version: 52,
+		name: 'fix_epg_programs_schema',
+		apply: (sqlite) => {
+			logger.info('[SchemaSync] Fixing epg_programs table schema for multi-provider support');
+
+			// Check if epg_programs exists with old schema
+			if (tableExists(sqlite, 'epg_programs')) {
+				const hasOldColumn = columnExists(sqlite, 'epg_programs', 'stalker_channel_id');
+
+				if (hasOldColumn) {
+					logger.info('[SchemaSync] Found old epg_programs schema, recreating table');
+
+					// Drop old indexes
+					const oldIndexes = [
+						'idx_epg_programs_channel',
+						'idx_epg_programs_channel_time',
+						'idx_epg_programs_account',
+						'idx_epg_programs_end',
+						'idx_epg_programs_unique'
+					];
+
+					for (const index of oldIndexes) {
+						try {
+							sqlite.prepare(`DROP INDEX IF EXISTS "${index}"`).run();
+						} catch {
+							// Index might not exist
+						}
+					}
+
+					// Drop old table
+					sqlite.prepare('DROP TABLE IF EXISTS "epg_programs"').run();
+					logger.info('[SchemaSync] Dropped old epg_programs table');
+				}
+			}
+
+			// Create new epg_programs table with correct schema
+			sqlite
+				.prepare(
+					`
+				CREATE TABLE IF NOT EXISTS "epg_programs" (
+					"id" text PRIMARY KEY NOT NULL,
+					"channel_id" text NOT NULL REFERENCES "livetv_channels"("id") ON DELETE CASCADE,
+					"external_channel_id" text NOT NULL,
+					"account_id" text NOT NULL REFERENCES "livetv_accounts"("id") ON DELETE CASCADE,
+					"provider_type" text NOT NULL,
+					"title" text NOT NULL,
+					"description" text,
+					"category" text,
+					"director" text,
+					"actor" text,
+					"start_time" text NOT NULL,
+					"end_time" text NOT NULL,
+					"duration" integer NOT NULL,
+					"has_archive" integer DEFAULT 0,
+					"cached_at" text,
+					"updated_at" text
+				)
+				`
+				)
+				.run();
+			logger.info('[SchemaSync] Created epg_programs table with multi-provider schema');
+
+			// Create indexes
+			sqlite
+				.prepare(
+					`CREATE INDEX IF NOT EXISTS "idx_epg_programs_channel" ON "epg_programs" ("channel_id")`
+				)
+				.run();
+			sqlite
+				.prepare(
+					`CREATE INDEX IF NOT EXISTS "idx_epg_programs_channel_time" ON "epg_programs" ("channel_id", "start_time")`
+				)
+				.run();
+			sqlite
+				.prepare(
+					`CREATE INDEX IF NOT EXISTS "idx_epg_programs_account" ON "epg_programs" ("account_id")`
+				)
+				.run();
+			sqlite
+				.prepare(`CREATE INDEX IF NOT EXISTS "idx_epg_programs_end" ON "epg_programs" ("end_time")`)
+				.run();
+			sqlite
+				.prepare(
+					`CREATE UNIQUE INDEX IF NOT EXISTS "idx_epg_programs_unique" ON "epg_programs" ("account_id", "external_channel_id", "start_time")`
+				)
+				.run();
+			logger.info('[SchemaSync] Created epg_programs indexes');
+
+			logger.info('[SchemaSync] epg_programs table schema fixed successfully');
+		}
+	},
+
+	// Migration 53: Add iptv_org_config column to livetv_accounts for IPTV-Org provider support
+	{
+		version: 53,
+		name: 'add_iptv_org_config_column',
+		apply: (sqlite) => {
+			if (!columnExists(sqlite, 'livetv_accounts', 'iptv_org_config')) {
+				sqlite.prepare(`ALTER TABLE "livetv_accounts" ADD COLUMN "iptv_org_config" text`).run();
+				logger.info('[SchemaSync] Added iptv_org_config column to livetv_accounts');
+			} else {
+				logger.info('[SchemaSync] iptv_org_config column already exists in livetv_accounts');
+			}
 		}
 	}
 ];

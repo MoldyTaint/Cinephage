@@ -2,26 +2,29 @@
  * EPG Service
  *
  * Manages Electronic Program Guide (EPG) data for Live TV.
- * Fetches EPG from Stalker portal accounts and provides query methods.
+ * Fetches EPG from provider accounts (Stalker, XStream) and provides query methods.
+ * Updated for multi-provider support.
  */
 
 import { eq, and, gte, lte, inArray, sql } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { db } from '$lib/server/db';
 import {
-	stalkerAccounts,
-	stalkerChannels,
+	livetvAccounts,
+	livetvChannels,
 	epgPrograms,
 	type EpgProgramRecord
 } from '$lib/server/db/schema';
-import { logger } from '$lib/logging';
-import { StalkerPortalClient, type StalkerPortalConfig } from '../stalker/StalkerPortalClient';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'EpgService' });
+import { getProvider } from '../providers';
 import type {
 	EpgProgram,
 	EpgProgramWithProgress,
 	EpgSyncResult,
 	ChannelNowNext,
-	EpgProgramRaw
+	LiveTvAccount
 } from '$lib/types/livetv';
 
 const BATCH_SIZE = 1000;
@@ -32,7 +35,7 @@ export class EpgService {
 	/**
 	 * Update account EPG tracking columns after sync
 	 */
-	private updateAccountEpgStatus(
+	private async updateAccountEpgStatus(
 		accountId: string,
 		status: {
 			success: boolean;
@@ -40,10 +43,11 @@ export class EpgService {
 			hasEpg?: boolean;
 			error?: string;
 		}
-	): void {
+	): Promise<void> {
 		const now = new Date().toISOString();
 
-		db.update(stalkerAccounts)
+		await db
+			.update(livetvAccounts)
 			.set({
 				lastEpgSyncAt: now,
 				lastEpgSyncError: status.success ? null : (status.error ?? null),
@@ -51,8 +55,7 @@ export class EpgService {
 				...(status.hasEpg !== undefined && { hasEpg: status.hasEpg }),
 				updatedAt: now
 			})
-			.where(eq(stalkerAccounts.id, accountId))
-			.run();
+			.where(eq(livetvAccounts.id, accountId));
 	}
 
 	/**
@@ -61,18 +64,20 @@ export class EpgService {
 	async syncAccount(accountId: string): Promise<EpgSyncResult> {
 		const startTime = Date.now();
 
-		// Get account
-		const account = db
+		// Get account from new unified table
+		const account = await db
 			.select()
-			.from(stalkerAccounts)
-			.where(eq(stalkerAccounts.id, accountId))
-			.get();
+			.from(livetvAccounts)
+			.where(eq(livetvAccounts.id, accountId))
+			.limit(1)
+			.then((rows) => rows[0]);
 
 		if (!account) {
 			return {
 				success: false,
 				accountId,
 				accountName: 'Unknown',
+				providerType: 'stalker',
 				programsAdded: 0,
 				programsUpdated: 0,
 				programsRemoved: 0,
@@ -86,6 +91,7 @@ export class EpgService {
 				success: false,
 				accountId,
 				accountName: account.name,
+				providerType: account.providerType,
 				programsAdded: 0,
 				programsUpdated: 0,
 				programsRemoved: 0,
@@ -94,37 +100,74 @@ export class EpgService {
 			};
 		}
 
-		try {
-			logger.info('[EpgService] Starting EPG sync', { accountId, name: account.name });
+		// Get the appropriate provider
+		const provider = getProvider(account.providerType);
 
-			// Build client config from account record
-			const config: StalkerPortalConfig = {
-				portalUrl: account.portalUrl,
-				macAddress: account.macAddress,
-				serialNumber: account.serialNumber || this.generateSerialNumber(),
-				deviceId: account.deviceId || this.generateDeviceId(),
-				deviceId2: account.deviceId2 || this.generateDeviceId(),
-				model: account.model || 'MAG254',
-				timezone: account.timezone || 'Europe/London',
-				token: account.token || undefined,
-				username: account.username || undefined,
-				password: account.password || undefined
+		// Check if provider supports EPG
+		if (!provider.hasEpgSupport()) {
+			return {
+				success: true,
+				accountId,
+				accountName: account.name,
+				providerType: account.providerType,
+				programsAdded: 0,
+				programsUpdated: 0,
+				programsRemoved: 0,
+				duration: Date.now() - startTime
+			};
+		}
+
+		try {
+			logger.info('Starting EPG sync', {
+				accountId,
+				name: account.name,
+				providerType: account.providerType
+			});
+
+			// Convert account record to LiveTvAccount type
+			const liveTvAccount: LiveTvAccount = {
+				id: account.id,
+				name: account.name,
+				providerType: account.providerType,
+				enabled: account.enabled ?? true,
+				stalkerConfig: account.stalkerConfig ?? undefined,
+				xstreamConfig: account.xstreamConfig ?? undefined,
+				m3uConfig: account.m3uConfig ?? undefined,
+				playbackLimit: account.playbackLimit ?? null,
+				channelCount: account.channelCount ?? null,
+				categoryCount: account.categoryCount ?? null,
+				expiresAt: account.expiresAt ?? null,
+				serverTimezone: account.serverTimezone ?? null,
+				lastTestedAt: account.lastTestedAt ?? null,
+				lastTestSuccess: account.lastTestSuccess ?? null,
+				lastTestError: account.lastTestError ?? null,
+				lastSyncAt: account.lastSyncAt ?? null,
+				lastSyncError: account.lastSyncError ?? null,
+				syncStatus: account.syncStatus ?? 'never',
+				lastEpgSyncAt: account.lastEpgSyncAt ?? null,
+				lastEpgSyncError: account.lastEpgSyncError ?? null,
+				epgProgramCount: account.epgProgramCount ?? 0,
+				hasEpg: account.hasEpg ?? null,
+				createdAt: account.createdAt ?? new Date().toISOString(),
+				updatedAt: account.updatedAt ?? new Date().toISOString()
 			};
 
-			const client = new StalkerPortalClient(config);
-			await client.start();
+			// Calculate time range
+			const now = new Date();
+			const endTime = new Date(now.getTime() + DEFAULT_LOOKAHEAD_HOURS * 60 * 60 * 1000);
 
-			// Fetch EPG data from portal
-			const epgData = await client.getEpgInfo(DEFAULT_LOOKAHEAD_HOURS);
+			// Fetch EPG data from provider
+			const epgPrograms = await provider.fetchEpg!(liveTvAccount, now, endTime);
 
-			if (epgData.size === 0) {
-				logger.info('[EpgService] No EPG data returned from portal', {
+			if (epgPrograms.length === 0) {
+				logger.info('No EPG data returned from provider', {
 					accountId,
-					name: account.name
+					name: account.name,
+					providerType: account.providerType
 				});
 
-				// Update account status - portal has no EPG data
-				this.updateAccountEpgStatus(accountId, {
+				// Update account status - provider has no EPG data
+				await this.updateAccountEpgStatus(accountId, {
 					success: true,
 					programCount: 0,
 					hasEpg: false
@@ -134,6 +177,7 @@ export class EpgService {
 					success: true,
 					accountId,
 					accountName: account.name,
+					providerType: account.providerType,
 					programsAdded: 0,
 					programsUpdated: 0,
 					programsRemoved: 0,
@@ -141,33 +185,33 @@ export class EpgService {
 				};
 			}
 
-			// Build a map of stalker channel IDs to our local channel IDs
-			const channels = db
-				.select({ id: stalkerChannels.id, stalkerId: stalkerChannels.stalkerId })
-				.from(stalkerChannels)
-				.where(eq(stalkerChannels.accountId, accountId))
-				.all();
+			// Build a map of external channel IDs to our local channel IDs
+			const channels = await db
+				.select({ id: livetvChannels.id, externalId: livetvChannels.externalId })
+				.from(livetvChannels)
+				.where(eq(livetvChannels.accountId, accountId));
 
 			const channelMap = new Map<string, string>();
 			for (const ch of channels) {
-				channelMap.set(ch.stalkerId, ch.id);
+				channelMap.set(ch.externalId, ch.id);
 			}
 
 			// Process and store EPG data
-			const result = await this.storeEpgData(accountId, epgData, channelMap);
+			const result = await this.storeEpgData(accountId, epgPrograms, channelMap);
 
-			logger.info('[EpgService] EPG sync complete', {
+			logger.info('EPG sync complete', {
 				accountId,
 				name: account.name,
+				providerType: account.providerType,
 				...result,
 				duration: Date.now() - startTime
 			});
 
 			// Update account status - successful sync with EPG data
 			const totalPrograms = result.programsAdded + result.programsUpdated;
-			this.updateAccountEpgStatus(accountId, {
+			await this.updateAccountEpgStatus(accountId, {
 				success: true,
-				programCount: totalPrograms > 0 ? this.getAccountProgramCount(accountId) : 0,
+				programCount: totalPrograms > 0 ? await this.getAccountProgramCount(accountId) : 0,
 				hasEpg: true
 			});
 
@@ -175,19 +219,21 @@ export class EpgService {
 				success: true,
 				accountId,
 				accountName: account.name,
+				providerType: account.providerType,
 				...result,
 				duration: Date.now() - startTime
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[EpgService] EPG sync failed', {
+			logger.error('EPG sync failed', {
 				accountId,
 				name: account.name,
+				providerType: account.providerType,
 				error: message
 			});
 
 			// Update account status - sync failed
-			this.updateAccountEpgStatus(accountId, {
+			await this.updateAccountEpgStatus(accountId, {
 				success: false,
 				error: message
 			});
@@ -196,6 +242,7 @@ export class EpgService {
 				success: false,
 				accountId,
 				accountName: account.name,
+				providerType: account.providerType,
 				programsAdded: 0,
 				programsUpdated: 0,
 				programsRemoved: 0,
@@ -206,31 +253,30 @@ export class EpgService {
 	}
 
 	/**
-	 * Sync EPG data for all enabled accounts
+	 * Sync EPG data for all enabled accounts that support EPG
 	 */
 	async syncAll(): Promise<EpgSyncResult[]> {
-		const accounts = db
-			.select()
-			.from(stalkerAccounts)
-			.where(eq(stalkerAccounts.enabled, true))
-			.all();
+		const accounts = await db.select().from(livetvAccounts).where(eq(livetvAccounts.enabled, true));
 
-		logger.info('[EpgService] Starting EPG sync for all accounts', {
+		logger.info('Starting EPG sync for all accounts', {
 			accountCount: accounts.length
 		});
 
 		const results: EpgSyncResult[] = [];
 
 		for (const account of accounts) {
-			const result = await this.syncAccount(account.id);
-			results.push(result);
+			const provider = getProvider(account.providerType);
+			if (provider.hasEpgSupport()) {
+				const result = await this.syncAccount(account.id);
+				results.push(result);
+			}
 		}
 
 		const totalAdded = results.reduce((sum, r) => sum + r.programsAdded, 0);
 		const totalUpdated = results.reduce((sum, r) => sum + r.programsUpdated, 0);
 		const successful = results.filter((r) => r.success).length;
 
-		logger.info('[EpgService] EPG sync complete for all accounts', {
+		logger.info('EPG sync complete for all accounts', {
 			accounts: accounts.length,
 			successful,
 			totalAdded,
@@ -245,7 +291,7 @@ export class EpgService {
 	 */
 	private async storeEpgData(
 		accountId: string,
-		epgData: Map<string, EpgProgramRaw[]>,
+		epgProgramsData: EpgProgram[],
 		channelMap: Map<string, string>
 	): Promise<{ programsAdded: number; programsUpdated: number; programsRemoved: number }> {
 		let programsAdded = 0;
@@ -256,8 +302,9 @@ export class EpgService {
 		const allPrograms: {
 			id: string;
 			channelId: string;
-			stalkerChannelId: string;
+			externalChannelId: string;
 			accountId: string;
+			providerType: string;
 			title: string;
 			description: string | null;
 			category: string | null;
@@ -271,36 +318,31 @@ export class EpgService {
 			updatedAt: string;
 		}[] = [];
 
-		for (const [stalkerChannelId, programs] of epgData) {
-			const localChannelId = channelMap.get(stalkerChannelId);
+		for (const program of epgProgramsData) {
+			const localChannelId = channelMap.get(program.externalChannelId);
 			if (!localChannelId) {
 				// Channel not in our database, skip
 				continue;
 			}
 
-			for (const program of programs) {
-				// Convert portal timestamps to ISO strings
-				const startTime = new Date(program.start_timestamp * 1000).toISOString();
-				const endTime = new Date(program.stop_timestamp * 1000).toISOString();
-
-				allPrograms.push({
-					id: randomUUID(),
-					channelId: localChannelId,
-					stalkerChannelId,
-					accountId,
-					title: program.name,
-					description: program.descr || null,
-					category: program.category || null,
-					director: program.director || null,
-					actor: program.actor || null,
-					startTime,
-					endTime,
-					duration: program.duration,
-					hasArchive: program.mark_archive === 1,
-					cachedAt: now,
-					updatedAt: now
-				});
-			}
+			allPrograms.push({
+				id: randomUUID(),
+				channelId: localChannelId,
+				externalChannelId: program.externalChannelId,
+				accountId,
+				providerType: program.providerType,
+				title: program.title,
+				description: program.description,
+				category: program.category,
+				director: program.director,
+				actor: program.actor,
+				startTime: program.startTime,
+				endTime: program.endTime,
+				duration: program.duration,
+				hasArchive: program.hasArchive,
+				cachedAt: now,
+				updatedAt: now
+			});
 		}
 
 		// Upsert programs in batches
@@ -309,22 +351,24 @@ export class EpgService {
 
 			// Use INSERT OR REPLACE for upsert behavior
 			for (const program of batch) {
-				// Check if program exists (by unique constraint: account_id, stalker_channel_id, start_time)
-				const existing = db
+				// Check if program exists (by unique constraint: account_id, external_channel_id, start_time)
+				const existing = await db
 					.select({ id: epgPrograms.id })
 					.from(epgPrograms)
 					.where(
 						and(
 							eq(epgPrograms.accountId, program.accountId),
-							eq(epgPrograms.stalkerChannelId, program.stalkerChannelId),
+							eq(epgPrograms.externalChannelId, program.externalChannelId),
 							eq(epgPrograms.startTime, program.startTime)
 						)
 					)
-					.get();
+					.limit(1)
+					.then((rows) => rows[0]);
 
 				if (existing) {
 					// Update existing
-					db.update(epgPrograms)
+					await db
+						.update(epgPrograms)
 						.set({
 							title: program.title,
 							description: program.description,
@@ -336,12 +380,14 @@ export class EpgService {
 							hasArchive: program.hasArchive,
 							updatedAt: now
 						})
-						.where(eq(epgPrograms.id, existing.id))
-						.run();
+						.where(eq(epgPrograms.id, existing.id));
 					programsUpdated++;
 				} else {
 					// Insert new
-					db.insert(epgPrograms).values(program).run();
+					await db.insert(epgPrograms).values({
+						...program,
+						providerType: program.providerType as 'stalker' | 'xstream' | 'm3u' | 'iptvorg'
+					});
 					programsAdded++;
 				}
 			}
@@ -351,15 +397,14 @@ export class EpgService {
 		const cutoffTime = new Date(
 			Date.now() - DEFAULT_RETENTION_HOURS * 60 * 60 * 1000
 		).toISOString();
-		const deleted = db
+		const deleted = await db
 			.delete(epgPrograms)
-			.where(and(eq(epgPrograms.accountId, accountId), lte(epgPrograms.endTime, cutoffTime)))
-			.run();
+			.where(and(eq(epgPrograms.accountId, accountId), lte(epgPrograms.endTime, cutoffTime)));
 
 		return {
 			programsAdded,
 			programsUpdated,
-			programsRemoved: deleted.changes
+			programsRemoved: deleted.changes ?? 0
 		};
 	}
 
@@ -512,13 +557,13 @@ export class EpgService {
 		const deleted = db.delete(epgPrograms).where(lte(epgPrograms.endTime, cutoffTime)).run();
 
 		if (deleted.changes > 0) {
-			logger.info('[EpgService] Cleaned up old EPG programs', {
+			logger.info('Cleaned up old EPG programs', {
 				deleted: deleted.changes,
 				cutoffTime
 			});
 		}
 
-		return deleted.changes;
+		return deleted.changes ?? 0;
 	}
 
 	/**
@@ -555,12 +600,12 @@ export class EpgService {
 	/**
 	 * Get program count for a specific account
 	 */
-	private getAccountProgramCount(accountId: string): number {
-		const result = db
+	private async getAccountProgramCount(accountId: string): Promise<number> {
+		const result = await db
 			.select({ count: sql<number>`count(*)` })
 			.from(epgPrograms)
 			.where(eq(epgPrograms.accountId, accountId))
-			.get();
+			.then((rows) => rows[0]);
 		return result?.count ?? 0;
 	}
 
@@ -571,8 +616,9 @@ export class EpgService {
 		return {
 			id: record.id,
 			channelId: record.channelId,
-			stalkerChannelId: record.stalkerChannelId,
+			externalChannelId: record.externalChannelId,
 			accountId: record.accountId,
+			providerType: record.providerType as 'stalker' | 'xstream' | 'm3u' | 'iptvorg',
 			title: record.title,
 			description: record.description,
 			category: record.category,
@@ -606,30 +652,6 @@ export class EpgService {
 			isLive: true,
 			remainingMinutes
 		};
-	}
-
-	/**
-	 * Generate a random serial number
-	 */
-	private generateSerialNumber(): string {
-		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-		let sn = '';
-		for (let i = 0; i < 12; i++) {
-			sn += chars[Math.floor(Math.random() * chars.length)];
-		}
-		return sn;
-	}
-
-	/**
-	 * Generate a random device ID
-	 */
-	private generateDeviceId(): string {
-		const chars = 'ABCDEF0123456789';
-		let id = '';
-		for (let i = 0; i < 32; i++) {
-			id += chars[Math.floor(Math.random() * chars.length)];
-		}
-		return id;
 	}
 }
 

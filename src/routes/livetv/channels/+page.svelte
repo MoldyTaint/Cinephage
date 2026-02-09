@@ -751,7 +751,7 @@
 		<div class="flex flex-col items-center justify-center py-12 text-base-content/50">
 			<Tv class="mb-4 h-12 w-12" />
 			<p class="text-lg font-medium">No channels in your lineup</p>
-			<p class="text-sm">Add channels from your Stalker accounts to build your lineup</p>
+			<p class="text-sm">Add channels from your accounts to build your lineup</p>
 			<a href="/livetv/accounts" class="btn mt-4 btn-primary">Manage Accounts</a>
 		</div>
 	{:else}

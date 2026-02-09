@@ -83,8 +83,11 @@
 		try {
 			const res = await fetch('/api/livetv/epg/status');
 			if (res.ok) {
-				epgStatus = await res.json();
-				epgSyncing = epgStatus?.isSyncing ?? false;
+				const data = await res.json();
+				if (data.success) {
+					epgStatus = data;
+					epgSyncing = data.isSyncing ?? false;
+				}
 
 				if (epgSyncing && !epgStatusPollInterval) {
 					startEpgStatusPoll();

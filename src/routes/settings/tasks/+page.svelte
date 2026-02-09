@@ -2,6 +2,7 @@
 	import { browser } from '$app/environment';
 	import { onMount, onDestroy } from 'svelte';
 	import type { PageData } from './$types';
+	import { mobileSSEStatus } from '$lib/sse/mobileStatus.svelte';
 	import type { UnifiedTask } from '$lib/server/tasks/UnifiedTaskRegistry';
 	import type { TaskHistoryEntry } from '$lib/types/task';
 	import TasksTable from '$lib/components/tasks/TasksTable.svelte';
@@ -13,14 +14,14 @@
 	let successMessage = $state<string | null>(null);
 	let showCreateModal = $state(false);
 	let sseConnected = $state(false);
+	let sseStatus = $state<'connecting' | 'connected' | 'disconnected' | 'error'>('connecting');
+	const MOBILE_SSE_SOURCE = 'settings-tasks';
 
 	// --- Reactive local task state (seeded from server, updated by SSE) ---
 
 	// Use a reactive object for better Svelte 5 performance
-	let taskState = $state<Record<string, UnifiedTask>>(
-		Object.fromEntries(data.tasks.map((t) => [t.id, { ...t }]))
-	);
-	let taskHistory = $state<Record<string, TaskHistoryEntry[]>>({ ...data.taskHistory });
+	let taskState = $state<Record<string, UnifiedTask>>({});
+	let taskHistory = $state<Record<string, TaskHistoryEntry[]>>({});
 
 	// Track if we've initialized to avoid overwriting SSE updates on initial load
 	let hasInitialized = $state(false);
@@ -52,6 +53,13 @@
 	let reconnectAttempts = $state(0);
 	const MAX_RECONNECT_DELAY = 30000;
 
+	$effect(() => {
+		mobileSSEStatus.publish(MOBILE_SSE_SOURCE, sseStatus);
+		return () => {
+			mobileSSEStatus.clear(MOBILE_SSE_SOURCE);
+		};
+	});
+
 	onMount(() => {
 		if (!browser) return;
 		connectSSE();
@@ -62,10 +70,12 @@
 	});
 
 	function connectSSE() {
+		sseStatus = 'connecting';
 		eventSource = new EventSource('/api/tasks/stream');
 
 		eventSource.addEventListener('connected', () => {
 			sseConnected = true;
+			sseStatus = 'connected';
 			reconnectAttempts = 0;
 		});
 
@@ -167,6 +177,7 @@
 
 		eventSource.onerror = () => {
 			sseConnected = false;
+			sseStatus = 'error';
 			if (eventSource) {
 				eventSource.close();
 				eventSource = null;
@@ -181,6 +192,7 @@
 
 	function disconnectSSE() {
 		sseConnected = false;
+		sseStatus = 'disconnected';
 		if (reconnectTimer) {
 			clearTimeout(reconnectTimer);
 			reconnectTimer = null;
@@ -349,21 +361,24 @@
 
 <div class="w-full space-y-6">
 	<!-- Header -->
-	<div class="flex items-center justify-between">
+	<div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
 		<div>
 			<h1 class="text-2xl font-bold">Tasks</h1>
 			<p class="mt-1 text-base-content/60">
 				Scheduled and maintenance tasks for your Cinephage instance
 			</p>
 		</div>
-		<div class="flex items-center gap-3">
+		<div class="flex items-center gap-2 sm:gap-3">
 			{#if sseConnected}
-				<span class="badge gap-1 badge-ghost badge-sm">
+				<span class="badge hidden gap-1 badge-ghost badge-sm sm:inline-flex">
 					<span class="inline-block h-1.5 w-1.5 rounded-full bg-success"></span>
 					Live
 				</span>
 			{/if}
-			<button class="btn gap-2 btn-sm btn-primary" onclick={() => (showCreateModal = true)}>
+			<button
+				class="btn w-full gap-2 btn-sm btn-primary sm:w-auto"
+				onclick={() => (showCreateModal = true)}
+			>
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
 					width="16"
@@ -385,7 +400,7 @@
 
 	<!-- Alerts -->
 	{#if errorMessage}
-		<div class="alert-sm alert alert-error">
+		<div class="alert-sm alert items-start alert-error sm:items-center">
 			<svg
 				xmlns="http://www.w3.org/2000/svg"
 				width="20"
@@ -401,7 +416,7 @@
 				<line x1="15" y1="9" x2="9" y2="15" />
 				<line x1="9" y1="9" x2="15" y2="15" />
 			</svg>
-			<span>{errorMessage}</span>
+			<span class="wrap-break-word">{errorMessage}</span>
 			<button class="btn ml-auto btn-ghost btn-xs" onclick={() => (errorMessage = null)}
 				>Dismiss</button
 			>
@@ -409,7 +424,7 @@
 	{/if}
 
 	{#if successMessage}
-		<div class="alert-sm alert alert-success">
+		<div class="alert-sm alert items-start alert-success sm:items-center">
 			<svg
 				xmlns="http://www.w3.org/2000/svg"
 				width="20"
@@ -424,7 +439,7 @@
 				<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
 				<polyline points="22 4 12 14.01 9 11.01" />
 			</svg>
-			<span>{successMessage}</span>
+			<span class="wrap-break-word">{successMessage}</span>
 			<button class="btn ml-auto btn-ghost btn-xs" onclick={() => (successMessage = null)}
 				>Dismiss</button
 			>

@@ -202,8 +202,10 @@
 			label: 'Quality Profile',
 			options: [
 				{ value: 'all', label: 'All' },
-				{ value: 'default', label: 'Using Default' },
-				...data.qualityProfiles.map((p) => ({ value: p.id, label: p.name }))
+				...data.qualityProfiles.map((p) => ({
+					value: p.id,
+					label: p.isDefault ? `${p.name} (Default)` : p.name
+				}))
 			]
 		},
 		...(data.uniqueResolutions.length > 0

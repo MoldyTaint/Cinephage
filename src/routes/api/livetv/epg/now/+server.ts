@@ -11,6 +11,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getEpgService } from '$lib/server/livetv/epg';
 import { channelLineupService } from '$lib/server/livetv/lineup';
+import { logger } from '$lib/logging';
 import type { EpgProgram, EpgProgramWithProgress } from '$lib/types/livetv';
 
 interface NowNextEntry {
@@ -26,7 +27,10 @@ export const GET: RequestHandler = async () => {
 		const lineup = await channelLineupService.getLineup();
 
 		if (lineup.length === 0) {
-			return json({ channels: {} });
+			return json({
+				success: true,
+				channels: {}
+			});
 		}
 
 		// Build mapping: original channel ID -> EPG source channel ID
@@ -56,9 +60,18 @@ export const GET: RequestHandler = async () => {
 			};
 		}
 
-		return json({ channels });
+		return json({
+			success: true,
+			channels
+		});
 	} catch (error) {
-		console.error('[API] Failed to get EPG now/next:', error);
-		return json({ error: 'Failed to get EPG data' }, { status: 500 });
+		logger.error('[API] Failed to get EPG now/next', error instanceof Error ? error : undefined);
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to get EPG data'
+			},
+			{ status: 500 }
+		);
 	}
 };

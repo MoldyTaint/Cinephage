@@ -1,17 +1,12 @@
 <script lang="ts">
-	import { Plus, RefreshCw, Loader2, Search } from 'lucide-svelte';
-	import {
-		StalkerAccountTable,
-		StalkerAccountModal,
-		PortalScanModal,
-		PortalScanProgress,
-		ScanResultsTable
-	} from '$lib/components/livetv';
-	import type { StalkerAccount, StalkerAccountTestResult } from '$lib/types/livetv';
+	import { Plus, RefreshCw, Loader2 } from 'lucide-svelte';
+	import { LiveTvAccountTable, LiveTvAccountModal } from '$lib/components/livetv';
+	import type { LiveTvAccount, LiveTvAccountTestResult } from '$lib/types/livetv';
+	import type { FormData, TestConfig } from '$lib/components/livetv/LiveTvAccountModal.svelte';
 	import { onMount } from 'svelte';
 
 	// State
-	let accounts = $state<StalkerAccount[]>([]);
+	let accounts = $state<LiveTvAccount[]>([]);
 	let loading = $state(true);
 	let refreshing = $state(false);
 	let saving = $state(false);
@@ -20,7 +15,7 @@
 	// Modal state
 	let modalOpen = $state(false);
 	let modalMode = $state<'add' | 'edit'>('add');
-	let editingAccount = $state<StalkerAccount | null>(null);
+	let editingAccount = $state<LiveTvAccount | null>(null);
 	let modalError = $state<string | null>(null);
 
 	// Testing state
@@ -28,12 +23,6 @@
 
 	// Syncing state
 	let syncingId = $state<string | null>(null);
-
-	// Scanner state
-	type ScannerView = 'none' | 'modal' | 'progress' | 'results';
-	let scannerView = $state<ScannerView>('none');
-	let activeWorkerId = $state<string | null>(null);
-	let activePortalId = $state<string | null>(null);
 
 	// Load accounts on mount
 	onMount(() => {
@@ -49,7 +38,8 @@
 			if (!response.ok) {
 				throw new Error('Failed to load accounts');
 			}
-			accounts = await response.json();
+			const data = await response.json();
+			accounts = data.accounts;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load accounts';
 		} finally {
@@ -70,7 +60,7 @@
 		modalOpen = true;
 	}
 
-	function openEditModal(account: StalkerAccount) {
+	function openEditModal(account: LiveTvAccount) {
 		modalMode = 'edit';
 		editingAccount = account;
 		modalError = null;
@@ -83,25 +73,61 @@
 		modalError = null;
 	}
 
-	async function handleSave(data: {
-		name: string;
-		portalUrl: string;
-		macAddress: string;
-		enabled: boolean;
-	}) {
+	async function handleSave(data: FormData) {
 		saving = true;
 		modalError = null;
 
 		try {
 			const url =
 				modalMode === 'add' ? '/api/livetv/accounts' : `/api/livetv/accounts/${editingAccount!.id}`;
-
 			const method = modalMode === 'add' ? 'POST' : 'PUT';
+
+			// Build request body based on provider type
+			const body: Record<string, unknown> = {
+				name: data.name,
+				providerType: data.providerType,
+				enabled: data.enabled
+			};
+
+			switch (data.providerType) {
+				case 'stalker':
+					body.stalkerConfig = {
+						portalUrl: data.portalUrl,
+						macAddress: data.macAddress,
+						epgUrl: data.epgUrl || undefined
+					};
+					break;
+				case 'xstream':
+					body.xstreamConfig = {
+						baseUrl: data.baseUrl,
+						username: data.username,
+						password: data.password,
+						epgUrl: data.epgUrl || undefined
+					};
+					break;
+				case 'm3u':
+					if (data.selectedCountries?.length) {
+						// IPTV-Org mode
+						body.providerType = 'iptvorg';
+						body.iptvOrgConfig = {
+							countries: data.selectedCountries
+						};
+					} else {
+						// Regular M3U mode
+						body.m3uConfig = {
+							url: data.url || undefined,
+							fileContent: data.fileContent || undefined,
+							epgUrl: data.epgUrl || undefined,
+							autoRefresh: data.autoRefresh
+						};
+					}
+					break;
+			}
 
 			const response = await fetch(url, {
 				method,
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(data)
+				body: JSON.stringify(body)
 			});
 
 			if (!response.ok) {
@@ -146,7 +172,7 @@
 		}
 	}
 
-	async function handleToggle(account: StalkerAccount) {
+	async function handleToggle(account: LiveTvAccount) {
 		try {
 			const response = await fetch(`/api/livetv/accounts/${account.id}`, {
 				method: 'PUT',
@@ -164,7 +190,7 @@
 		}
 	}
 
-	async function handleTest(account: StalkerAccount) {
+	async function handleTest(account: LiveTvAccount) {
 		testingId = account.id;
 
 		try {
@@ -176,7 +202,6 @@
 				throw new Error('Failed to test account');
 			}
 
-			// Reload to get updated test results
 			await loadAccounts();
 		} catch (e) {
 			console.error('Failed to test account:', e);
@@ -185,7 +210,7 @@
 		}
 	}
 
-	async function handleSync(account: StalkerAccount) {
+	async function handleSync(account: LiveTvAccount) {
 		syncingId = account.id;
 
 		try {
@@ -199,7 +224,6 @@
 				throw new Error('Failed to sync account');
 			}
 
-			// Reload to get updated sync results
 			await loadAccounts();
 		} catch (e) {
 			console.error('Failed to sync account:', e);
@@ -208,55 +232,60 @@
 		}
 	}
 
-	async function handleTestConfig(config: {
-		portalUrl: string;
-		macAddress: string;
-	}): Promise<StalkerAccountTestResult> {
+	async function handleTestConfig(config: TestConfig): Promise<LiveTvAccountTestResult> {
+		const body: Record<string, unknown> = {
+			providerType: config.providerType
+		};
+
+		switch (config.providerType) {
+			case 'stalker':
+				body.stalkerConfig = {
+					portalUrl: config.portalUrl,
+					macAddress: config.macAddress
+				};
+				break;
+			case 'xstream':
+				body.xstreamConfig = {
+					baseUrl: config.baseUrl,
+					username: config.username,
+					password: config.password
+				};
+				break;
+			case 'm3u':
+				if (config.countries) {
+					body.providerType = 'iptvorg';
+					body.iptvOrgConfig = {
+						countries: config.countries
+					};
+				} else {
+					body.m3uConfig = {
+						url: config.url,
+						fileContent: config.fileContent
+					};
+				}
+				break;
+		}
+
 		const response = await fetch('/api/livetv/accounts/test', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(config)
+			body: JSON.stringify(body)
 		});
 
 		return response.json();
 	}
-
-	// Scanner functions
-	function openScanner() {
-		scannerView = 'modal';
-	}
-
-	function closeScanner() {
-		scannerView = 'none';
-		activeWorkerId = null;
-		activePortalId = null;
-	}
-
-	function handleScanStarted(workerId: string, portalId: string) {
-		activeWorkerId = workerId;
-		activePortalId = portalId;
-		scannerView = 'progress';
-	}
-
-	function handleScanComplete() {
-		scannerView = 'results';
-	}
-
-	function handleAccountsCreated() {
-		loadAccounts();
-	}
 </script>
 
 <svelte:head>
-	<title>Stalker Accounts - Live TV - Cinephage</title>
+	<title>Live TV Accounts - Cinephage</title>
 </svelte:head>
 
 <div class="space-y-6">
 	<!-- Header -->
 	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 		<div>
-			<h1 class="text-2xl font-bold">Stalker Accounts</h1>
-			<p class="mt-1 text-base-content/60">Manage your Stalker Portal IPTV accounts</p>
+			<h1 class="text-2xl font-bold">Live TV Accounts</h1>
+			<p class="mt-1 text-base-content/60">Manage your IPTV accounts (Stalker, XStream, M3U)</p>
 		</div>
 		<div class="flex gap-2">
 			<button
@@ -270,10 +299,6 @@
 				{:else}
 					<RefreshCw class="h-4 w-4" />
 				{/if}
-			</button>
-			<button class="btn btn-ghost btn-sm" onclick={openScanner}>
-				<Search class="h-4 w-4" />
-				Scan for Accounts
 			</button>
 			<button class="btn btn-sm btn-primary" onclick={openAddModal}>
 				<Plus class="h-4 w-4" />
@@ -293,7 +318,7 @@
 			<button class="btn btn-ghost btn-sm" onclick={loadAccounts}>Retry</button>
 		</div>
 	{:else}
-		<StalkerAccountTable
+		<LiveTvAccountTable
 			{accounts}
 			onEdit={openEditModal}
 			onDelete={(account) => {
@@ -309,8 +334,8 @@
 	{/if}
 </div>
 
-<!-- Modal -->
-<StalkerAccountModal
+<!-- Account Modal -->
+<LiveTvAccountModal
 	open={modalOpen}
 	mode={modalMode}
 	account={editingAccount}
@@ -321,32 +346,3 @@
 	onDelete={handleDelete}
 	onTest={handleTestConfig}
 />
-
-<!-- Scanner Modal -->
-<PortalScanModal
-	open={scannerView === 'modal'}
-	onClose={closeScanner}
-	onScanStarted={handleScanStarted}
-/>
-
-<!-- Scanner Progress -->
-{#if scannerView === 'progress' && activeWorkerId}
-	<div class="mt-6">
-		<PortalScanProgress
-			workerId={activeWorkerId}
-			onClose={closeScanner}
-			onComplete={handleScanComplete}
-		/>
-	</div>
-{/if}
-
-<!-- Scan Results -->
-{#if scannerView === 'results' && activePortalId}
-	<div class="mt-6">
-		<ScanResultsTable
-			portalId={activePortalId}
-			onClose={closeScanner}
-			onAccountsCreated={handleAccountsCreated}
-		/>
-	</div>
-{/if}

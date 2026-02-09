@@ -213,4 +213,15 @@ class ChannelCategoryService {
 	}
 }
 
-export const channelCategoryService = new ChannelCategoryService();
+// Singleton instance
+let categoryServiceInstance: ChannelCategoryService | null = null;
+
+export function getChannelCategoryService(): ChannelCategoryService {
+	if (!categoryServiceInstance) {
+		categoryServiceInstance = new ChannelCategoryService();
+	}
+	return categoryServiceInstance;
+}
+
+// Backward compatibility export
+export const channelCategoryService = getChannelCategoryService();

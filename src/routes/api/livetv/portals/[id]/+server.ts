@@ -11,6 +11,7 @@ import type { RequestHandler } from './$types';
 import { getStalkerPortalManager } from '$lib/server/livetv/stalker';
 import { stalkerPortalUpdateSchema } from '$lib/validation/schemas';
 import { logger } from '$lib/logging';
+import { ValidationError } from '$lib/errors';
 
 /**
  * Get a portal by ID
@@ -21,17 +22,29 @@ export const GET: RequestHandler = async ({ params }) => {
 		const portal = await manager.getPortal(params.id);
 
 		if (!portal) {
-			return json({ error: 'Portal not found' }, { status: 404 });
+			return json(
+				{
+					success: false,
+					error: 'Portal not found'
+				},
+				{ status: 404 }
+			);
 		}
 
-		return json(portal);
-	} catch (error) {
-		logger.error('[API] Failed to get portal', {
-			id: params.id,
-			error: error instanceof Error ? error.message : String(error)
+		return json({
+			success: true,
+			portal
 		});
+	} catch (error) {
+		logger.error('[API] Failed to get portal', error instanceof Error ? error : undefined);
 
-		return json({ error: 'Failed to get portal' }, { status: 500 });
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to get portal'
+			},
+			{ status: 500 }
+		);
 	}
 };
 
@@ -45,36 +58,63 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		// Validate input
 		const parsed = stalkerPortalUpdateSchema.safeParse(body);
 		if (!parsed.success) {
-			return json(
-				{
-					error: 'Validation failed',
-					details: parsed.error.flatten().fieldErrors
-				},
-				{ status: 400 }
-			);
+			throw new ValidationError('Validation failed', {
+				details: parsed.error.flatten()
+			});
 		}
 
 		const manager = getStalkerPortalManager();
 		const portal = await manager.updatePortal(params.id, parsed.data);
 
-		return json(portal);
+		return json({
+			success: true,
+			portal
+		});
 	} catch (error) {
+		logger.error('[API] Failed to update portal', error instanceof Error ? error : undefined);
+
+		// Validation errors
+		if (error instanceof ValidationError) {
+			return json(
+				{
+					success: false,
+					error: error.message,
+					code: error.code,
+					context: error.context
+				},
+				{ status: error.statusCode }
+			);
+		}
+
 		const message = error instanceof Error ? error.message : String(error);
 
-		logger.error('[API] Failed to update portal', {
-			id: params.id,
-			error: message
-		});
-
 		if (message.includes('not found')) {
-			return json({ error: 'Portal not found' }, { status: 404 });
+			return json(
+				{
+					success: false,
+					error: 'Portal not found'
+				},
+				{ status: 404 }
+			);
 		}
 
 		if (message.includes('already exists')) {
-			return json({ error: message }, { status: 409 });
+			return json(
+				{
+					success: false,
+					error: message
+				},
+				{ status: 409 }
+			);
 		}
 
-		return json({ error: 'Failed to update portal' }, { status: 500 });
+		return json(
+			{
+				success: false,
+				error: message || 'Failed to update portal'
+			},
+			{ status: 500 }
+		);
 	}
 };
 
@@ -86,19 +126,30 @@ export const DELETE: RequestHandler = async ({ params }) => {
 		const manager = getStalkerPortalManager();
 		await manager.deletePortal(params.id);
 
-		return new Response(null, { status: 204 });
+		return json({
+			success: true
+		});
 	} catch (error) {
+		logger.error('[API] Failed to delete portal', error instanceof Error ? error : undefined);
+
 		const message = error instanceof Error ? error.message : String(error);
 
-		logger.error('[API] Failed to delete portal', {
-			id: params.id,
-			error: message
-		});
-
 		if (message.includes('not found')) {
-			return json({ error: 'Portal not found' }, { status: 404 });
+			return json(
+				{
+					success: false,
+					error: 'Portal not found'
+				},
+				{ status: 404 }
+			);
 		}
 
-		return json({ error: 'Failed to delete portal' }, { status: 500 });
+		return json(
+			{
+				success: false,
+				error: message || 'Failed to delete portal'
+			},
+			{ status: 500 }
+		);
 	}
 };

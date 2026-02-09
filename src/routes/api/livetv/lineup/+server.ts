@@ -9,6 +9,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { channelLineupService } from '$lib/server/livetv/lineup';
 import { ValidationError } from '$lib/errors';
+import { logger } from '$lib/logging';
 import type { AddToLineupRequest } from '$lib/types/livetv';
 
 export const GET: RequestHandler = async () => {
@@ -17,13 +18,20 @@ export const GET: RequestHandler = async () => {
 		const lineupChannelIds = await channelLineupService.getLineupChannelIds();
 
 		return json({
+			success: true,
 			lineup,
 			lineupChannelIds: Array.from(lineupChannelIds),
 			total: lineup.length
 		});
 	} catch (error) {
-		console.error('[API] Failed to get lineup:', error);
-		return json({ error: 'Failed to get lineup' }, { status: 500 });
+		logger.error('[API] Failed to get lineup', error instanceof Error ? error : undefined);
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to get lineup'
+			},
+			{ status: 500 }
+		);
 	}
 };
 
@@ -36,7 +44,11 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		if (body.channels.length === 0) {
-			return json({ added: 0, skipped: 0 });
+			return json({
+				success: true,
+				added: 0,
+				skipped: 0
+			});
 		}
 
 		// Validate each channel has required fields
@@ -48,12 +60,32 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		const result = await channelLineupService.addToLineup(body);
 
-		return json(result, { status: 201 });
+		return json(
+			{
+				success: true,
+				...result
+			},
+			{ status: 201 }
+		);
 	} catch (error) {
+		// Validation errors
 		if (error instanceof ValidationError) {
-			return json({ error: error.message }, { status: 400 });
+			return json(
+				{
+					success: false,
+					error: error.message,
+					code: error.code
+				},
+				{ status: error.statusCode }
+			);
 		}
-		console.error('[API] Failed to add to lineup:', error);
-		return json({ error: 'Failed to add to lineup' }, { status: 500 });
+		logger.error('[API] Failed to add to lineup', error instanceof Error ? error : undefined);
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to add to lineup'
+			},
+			{ status: 500 }
+		);
 	}
 };

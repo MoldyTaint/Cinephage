@@ -8,6 +8,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { channelCategoryService } from '$lib/server/livetv/categories';
 import { ValidationError } from '$lib/errors';
+import { logger } from '$lib/logging';
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
@@ -18,17 +19,38 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		if (body.categoryIds.length === 0) {
-			return json({ success: true });
+			return json({
+				success: true
+			});
 		}
 
 		await channelCategoryService.reorderCategories(body.categoryIds);
 
-		return json({ success: true });
+		return json({
+			success: true
+		});
 	} catch (error) {
+		// Validation errors
 		if (error instanceof ValidationError) {
-			return json({ error: error.message }, { status: 400 });
+			return json(
+				{
+					success: false,
+					error: error.message,
+					code: error.code
+				},
+				{ status: error.statusCode }
+			);
 		}
-		console.error('[API] Failed to reorder channel categories:', error);
-		return json({ error: 'Failed to reorder channel categories' }, { status: 500 });
+		logger.error(
+			'[API] Failed to reorder channel categories',
+			error instanceof Error ? error : undefined
+		);
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to reorder channel categories'
+			},
+			{ status: 500 }
+		);
 	}
 };

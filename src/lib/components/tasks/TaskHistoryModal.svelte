@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { UnifiedTask } from '$lib/server/tasks/UnifiedTaskRegistry';
 	import type { TaskHistoryEntry } from '$lib/types/task';
+	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 
 	interface Props {
 		task: UnifiedTask;
@@ -45,11 +46,11 @@
 	}
 </script>
 
-<div class="modal-open modal">
-	<div class="modal-box max-w-4xl">
+<ModalWrapper open={true} {onClose} maxWidth="4xl" labelledBy="task-history-modal-title">
+	<div>
 		<div class="mb-4 flex items-center justify-between">
 			<div>
-				<h3 class="text-lg font-bold">{task.name} - History</h3>
+				<h3 id="task-history-modal-title" class="text-lg font-bold">{task.name} - History</h3>
 				<p class="text-sm text-base-content/60">{task.description}</p>
 			</div>
 			<button class="btn btn-circle btn-ghost btn-sm" onclick={onClose}>✕</button>
@@ -142,5 +143,4 @@
 			<button class="btn btn-primary" onclick={onClose}>Close</button>
 		</div>
 	</div>
-	<div class="modal-backdrop" onclick={onClose}></div>
-</div>
+</ModalWrapper>

@@ -20,14 +20,20 @@ export const GET: RequestHandler = async ({ params, url }) => {
 		const scannerService = getPortalScannerService();
 		const results = await scannerService.getScanResults(params.id, status || undefined);
 
-		return json(results);
-	} catch (error) {
-		logger.error('[API] Failed to get scan results', {
-			portalId: params.id,
-			error: error instanceof Error ? error.message : String(error)
+		return json({
+			success: true,
+			results
 		});
+	} catch (error) {
+		logger.error('[API] Failed to get scan results', error instanceof Error ? error : undefined);
 
-		return json({ error: 'Failed to get scan results' }, { status: 500 });
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to get scan results'
+			},
+			{ status: 500 }
+		);
 	}
 };
 
@@ -41,13 +47,19 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 		const scannerService = getPortalScannerService();
 		const deleted = await scannerService.clearResults(params.id, status || undefined);
 
-		return json({ deleted });
-	} catch (error) {
-		logger.error('[API] Failed to clear scan results', {
-			portalId: params.id,
-			error: error instanceof Error ? error.message : String(error)
+		return json({
+			success: true,
+			deleted
 		});
+	} catch (error) {
+		logger.error('[API] Failed to clear scan results', error instanceof Error ? error : undefined);
 
-		return json({ error: 'Failed to clear scan results' }, { status: 500 });
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to clear scan results'
+			},
+			{ status: 500 }
+		);
 	}
 };

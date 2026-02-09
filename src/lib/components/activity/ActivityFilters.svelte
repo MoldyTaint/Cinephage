@@ -82,6 +82,7 @@
 		{ value: 'success', label: 'Success', color: 'badge-success' },
 		{ value: 'downloading', label: 'Downloading', color: 'badge-info' },
 		{ value: 'failed', label: 'Failed', color: 'badge-error' },
+		{ value: 'removed', label: 'Removed', color: 'badge-ghost' },
 		{ value: 'rejected', label: 'Rejected', color: 'badge-warning' },
 		{ value: 'no_results', label: 'No Results', color: 'badge-ghost' }
 	];
@@ -135,7 +136,7 @@
 		<!-- Always visible: Quick filters -->
 		<div class="mt-4 flex flex-wrap items-center gap-2">
 			<!-- Search -->
-			<div class="form-control min-w-[200px] flex-1">
+			<div class="form-control min-w-50 flex-1">
 				<div class="relative">
 					<Search class="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/50" />
 					<input

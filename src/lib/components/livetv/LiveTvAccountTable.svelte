@@ -5,20 +5,22 @@
 		ToggleLeft,
 		ToggleRight,
 		Tv,
+		Radio,
+		List,
 		FlaskConical,
 		Loader2,
 		Calendar,
 		RefreshCw
 	} from 'lucide-svelte';
-	import type { StalkerAccount } from '$lib/types/livetv';
+	import type { LiveTvAccount, LiveTvProviderType } from '$lib/types/livetv';
 
 	interface Props {
-		accounts: StalkerAccount[];
-		onEdit: (account: StalkerAccount) => void;
-		onDelete: (account: StalkerAccount) => void;
-		onToggle: (account: StalkerAccount) => void;
-		onTest: (account: StalkerAccount) => Promise<void>;
-		onSync: (account: StalkerAccount) => Promise<void>;
+		accounts: LiveTvAccount[];
+		onEdit: (account: LiveTvAccount) => void;
+		onDelete: (account: LiveTvAccount) => void;
+		onToggle: (account: LiveTvAccount) => void;
+		onTest: (account: LiveTvAccount) => Promise<void>;
+		onSync: (account: LiveTvAccount) => Promise<void>;
 		testingId?: string | null;
 		syncingId?: string | null;
 	}
@@ -53,7 +55,24 @@
 		return `${parts[0]}:${parts[1]}:${parts[2]}:**:**:**`;
 	}
 
-	function getStatusBadge(account: StalkerAccount): { class: string; text: string } {
+	function getProviderBadge(type: LiveTvProviderType): {
+		class: string;
+		text: string;
+		icon: typeof Tv;
+	} {
+		switch (type) {
+			case 'stalker':
+				return { class: 'badge-primary', text: 'Stalker', icon: Tv };
+			case 'xstream':
+				return { class: 'badge-secondary', text: 'XStream', icon: Radio };
+			case 'm3u':
+				return { class: 'badge-accent', text: 'M3U', icon: List };
+			default:
+				return { class: 'badge-ghost', text: type, icon: Tv };
+		}
+	}
+
+	function getStatusBadge(account: LiveTvAccount): { class: string; text: string } {
 		if (account.lastTestSuccess === false) {
 			return { class: 'badge-error', text: 'Error' };
 		}
@@ -77,7 +96,7 @@
 		return { class: 'badge-success', text: 'Active' };
 	}
 
-	function getSyncStatusBadge(account: StalkerAccount): { class: string; text: string } {
+	function getSyncStatusBadge(account: LiveTvAccount): { class: string; text: string } {
 		const status = account.syncStatus ?? 'never';
 
 		switch (status) {
@@ -106,12 +125,53 @@
 			return '';
 		}
 	}
+
+	function getAccountSubtitle(account: LiveTvAccount): string {
+		switch (account.providerType) {
+			case 'stalker':
+				return account.stalkerConfig?.macAddress
+					? maskMac(account.stalkerConfig.macAddress)
+					: 'No MAC';
+			case 'xstream':
+				return account.xstreamConfig?.username ?? 'No username';
+			case 'm3u':
+				return account.m3uConfig?.url ? 'URL Source' : 'File Upload';
+			default:
+				return '';
+		}
+	}
+
+	function getProviderUrl(account: LiveTvAccount): string {
+		switch (account.providerType) {
+			case 'stalker':
+				return account.stalkerConfig?.portalUrl ?? '';
+			case 'xstream':
+				return account.xstreamConfig?.baseUrl ?? '';
+			case 'm3u':
+				return account.m3uConfig?.url ?? '';
+			default:
+				return '';
+		}
+	}
+
+	function getProviderLabel(type: LiveTvProviderType): string {
+		switch (type) {
+			case 'stalker':
+				return 'Portal';
+			case 'xstream':
+				return 'Server';
+			case 'm3u':
+				return 'Source';
+			default:
+				return 'Source';
+		}
+	}
 </script>
 
 {#if accounts.length === 0}
 	<div class="py-12 text-center text-base-content/60">
 		<Tv class="mx-auto mb-4 h-12 w-12 opacity-40" />
-		<p class="text-lg font-medium">No Stalker accounts configured</p>
+		<p class="text-lg font-medium">No Live TV accounts configured</p>
 		<p class="mt-1 text-sm">Add an account to start using Live TV</p>
 	</div>
 {:else}
@@ -120,7 +180,8 @@
 			<thead>
 				<tr>
 					<th>Account</th>
-					<th>Portal</th>
+					<th>Type</th>
+					<th>{getProviderLabel(accounts[0]?.providerType ?? 'stalker')}</th>
 					<th>Channels</th>
 					<th>Sync</th>
 					<th>Expires</th>
@@ -132,6 +193,9 @@
 				{#each accounts as account (account.id)}
 					{@const status = getStatusBadge(account)}
 					{@const syncStatus = getSyncStatusBadge(account)}
+					{@const providerBadge = getProviderBadge(account.providerType)}
+					{@const providerUrl = getProviderUrl(account)}
+					{@const ProviderIcon = providerBadge.icon}
 					<tr class="hover">
 						<td>
 							<div class="flex items-center gap-3">
@@ -139,21 +203,31 @@
 									<div
 										class="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-content"
 									>
-										<Tv class="h-5 w-5" />
+										<ProviderIcon class="h-5 w-5" />
 									</div>
 								</div>
 								<div>
 									<div class="font-bold">{account.name}</div>
 									<div class="font-mono text-xs opacity-50">
-										{maskMac(account.macAddress)}
+										{getAccountSubtitle(account)}
 									</div>
 								</div>
 							</div>
 						</td>
 						<td>
-							<div class="max-w-xs truncate font-mono text-sm" title={account.portalUrl}>
-								{account.portalUrl}
-							</div>
+							<span class="badge {providerBadge.class} gap-1 badge-sm">
+								<ProviderIcon class="h-3 w-3" />
+								{providerBadge.text}
+							</span>
+						</td>
+						<td>
+							{#if providerUrl}
+								<div class="max-w-xs truncate font-mono text-sm" title={providerUrl}>
+									{providerUrl}
+								</div>
+							{:else}
+								<span class="text-sm opacity-50">-</span>
+							{/if}
 						</td>
 						<td>
 							{#if account.channelCount !== null}
