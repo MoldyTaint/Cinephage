@@ -43,11 +43,19 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 			})
 			.from(episodes);
 
-		// Get active download count (non-terminal status)
-		const [activeDownloads] = await db
-			.select({ count: count() })
-			.from(downloadQueue)
-			.where(not(inArray(downloadQueue.status, TERMINAL_STATUSES)));
+		// Get active and failed download counts
+		const [activeDownloads, failedDownloads] = await Promise.all([
+			db
+				.select({ count: count() })
+				.from(downloadQueue)
+				.where(
+					and(
+						not(inArray(downloadQueue.status, TERMINAL_STATUSES)),
+						not(eq(downloadQueue.status, 'failed'))
+					)
+				),
+			db.select({ count: count() }).from(downloadQueue).where(eq(downloadQueue.status, 'failed'))
+		]);
 
 		// Get unmatched files count
 		const [unmatchedCount] = await db.select({ count: count() }).from(unmatchedFiles);
@@ -211,7 +219,8 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 					missing: (episodeStats?.total || 0) - (episodeStats?.withFile || 0),
 					monitored: episodeStats?.monitored || 0
 				},
-				activeDownloads: activeDownloads?.count || 0,
+				activeDownloads: activeDownloads?.[0]?.count || 0,
+				failedDownloads: failedDownloads?.[0]?.count || 0,
 				unmatchedFiles: unmatchedCount?.count || 0,
 				missingRootFolders: Math.max(
 					(missingMovieRoots?.[0]?.count || 0) + (missingSeriesRoots?.[0]?.count || 0),
@@ -236,6 +245,7 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 				series: { total: 0, monitored: 0 },
 				episodes: { total: 0, withFile: 0, missing: 0, monitored: 0 },
 				activeDownloads: 0,
+				failedDownloads: 0,
 				unmatchedFiles: 0,
 				missingRootFolders: 0
 			},

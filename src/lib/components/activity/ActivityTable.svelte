@@ -6,6 +6,7 @@
 		XCircle,
 		AlertCircle,
 		Loader2,
+		MessageSquare,
 		Minus,
 		Clapperboard,
 		Tv,
@@ -38,12 +39,21 @@
 
 	// Track expanded rows
 	let expandedRows = new SvelteSet<string>();
+	let failedReasonExpandedRows = new SvelteSet<string>();
 
 	function toggleRow(id: string) {
 		if (expandedRows.has(id)) {
 			expandedRows.delete(id);
 		} else {
 			expandedRows.add(id);
+		}
+	}
+
+	function toggleFailedReason(id: string) {
+		if (failedReasonExpandedRows.has(id)) {
+			failedReasonExpandedRows.delete(id);
+		} else {
+			failedReasonExpandedRows.add(id);
 		}
 	}
 
@@ -94,6 +104,13 @@
 		return resolvePath(`/library/tv/${activity.seriesId || activity.mediaId}`);
 	}
 
+	function canLinkToMedia(activity: UnifiedActivity): boolean {
+		// Removed items should remain readable in history but should not deep-link to deleted media.
+		if (activity.status === 'removed') return false;
+		if (activity.mediaType === 'movie') return Boolean(activity.mediaId);
+		return Boolean(activity.seriesId || activity.mediaId);
+	}
+
 	// Protocol labels
 	const protocolLabels: Record<string, string> = {
 		torrent: 'torrent',
@@ -113,6 +130,22 @@
 		if (sortField !== field) return ArrowUpDown;
 		return sortDirection === 'asc' ? ArrowUp : ArrowDown;
 	}
+
+	function getResolutionBadge(activity: UnifiedActivity): string | null {
+		const rawResolution = activity.quality?.resolution?.trim();
+		if (rawResolution && rawResolution.toLowerCase() !== 'unknown') {
+			return rawResolution;
+		}
+
+		const isCinephageLibraryStream =
+			activity.protocol === 'streaming' &&
+			(activity.indexerName?.toLowerCase().includes('cinephage library') ?? false);
+		if (isCinephageLibraryStream) {
+			return 'Auto';
+		}
+
+		return null;
+	}
 </script>
 
 {#if activities.length === 0}
@@ -128,6 +161,7 @@
 			{@const config = statusConfig[activity.status] || statusConfig.no_results}
 			{@const StatusIcon = config.icon}
 			{@const isExpanded = expandedRows.has(activity.id)}
+			{@const isFailedReasonExpanded = failedReasonExpandedRows.has(activity.id)}
 			<div class="rounded-xl bg-base-200 p-4">
 				<div class="flex items-start justify-between gap-2">
 					<span class="badge gap-1 {config.variant}">
@@ -148,19 +182,35 @@
 				</div>
 
 				<div class="mt-2">
-					<a href={getMediaLink(activity)} class="flex items-center gap-2 hover:text-primary">
-						{#if activity.mediaType === 'movie'}
-							<Clapperboard class="h-4 w-4 shrink-0" />
-						{:else}
-							<Tv class="h-4 w-4 shrink-0" />
-						{/if}
-						<span class="min-w-0 flex-1 truncate" title={activity.mediaTitle}>
-							{activity.mediaTitle}
-							{#if activity.mediaYear}
-								<span class="text-base-content/60">({activity.mediaYear})</span>
+					{#if canLinkToMedia(activity)}
+						<a href={getMediaLink(activity)} class="flex items-center gap-2 hover:text-primary">
+							{#if activity.mediaType === 'movie'}
+								<Clapperboard class="h-4 w-4 shrink-0" />
+							{:else}
+								<Tv class="h-4 w-4 shrink-0" />
 							{/if}
-						</span>
-					</a>
+							<span class="min-w-0 flex-1 truncate" title={activity.mediaTitle}>
+								{activity.mediaTitle}
+								{#if activity.mediaYear}
+									<span class="text-base-content/60">({activity.mediaYear})</span>
+								{/if}
+							</span>
+						</a>
+					{:else}
+						<div class="flex items-center gap-2">
+							{#if activity.mediaType === 'movie'}
+								<Clapperboard class="h-4 w-4 shrink-0" />
+							{:else}
+								<Tv class="h-4 w-4 shrink-0" />
+							{/if}
+							<span class="min-w-0 flex-1 truncate" title={activity.mediaTitle}>
+								{activity.mediaTitle}
+								{#if activity.mediaYear}
+									<span class="text-base-content/60">({activity.mediaYear})</span>
+								{/if}
+							</span>
+						</div>
+					{/if}
 					{#if activity.releaseTitle}
 						<div
 							class="mt-1 line-clamp-2 text-xs text-base-content/60"
@@ -173,8 +223,8 @@
 
 				{#if !compact}
 					<div class="mt-2 flex flex-wrap items-center gap-1">
-						{#if activity.quality?.resolution}
-							<span class="badge badge-outline badge-xs">{activity.quality.resolution}</span>
+						{#if getResolutionBadge(activity)}
+							<span class="badge badge-outline badge-xs">{getResolutionBadge(activity)}</span>
 						{/if}
 						{#if activity.quality?.source}
 							<span class="badge badge-outline badge-xs">{activity.quality.source}</span>
@@ -211,12 +261,26 @@
 							value={activity.downloadProgress}
 							max="100"
 						></progress>
-					{:else if activity.statusReason}
+					{:else if activity.status === 'failed' && activity.statusReason}
+						<button
+							class="btn gap-1 btn-ghost btn-xs"
+							onclick={() => toggleFailedReason(activity.id)}
+							aria-label={isFailedReasonExpanded ? 'Hide failure reason' : 'Show failure reason'}
+						>
+							<MessageSquare class="h-3 w-3" />
+							{isFailedReasonExpanded ? 'Hide reason' : 'Reason'}
+						</button>
+						{#if isFailedReasonExpanded}
+							<div class="mt-2 rounded-md bg-base-300/60 p-2 text-xs text-base-content/70">
+								{activity.statusReason}
+							</div>
+						{/if}
+					{:else if activity.statusReason && activity.status !== 'failed'}
 						<div class="text-xs text-base-content/60">{activity.statusReason}</div>
 					{/if}
 				</div>
 
-				{#if activity.timeline.length > 0}
+				{#if (activity.timeline?.length ?? 0) > 0}
 					<button
 						class="mt-2 flex items-center gap-1 text-xs text-base-content/60 hover:text-base-content"
 						onclick={() => toggleRow(activity.id)}
@@ -231,14 +295,14 @@
 					</button>
 				{/if}
 
-				{#if isExpanded && activity.timeline.length > 0}
+				{#if isExpanded && (activity.timeline?.length ?? 0) > 0}
 					<div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
-						{#each activity.timeline as event, i (event.timestamp + event.type)}
+						{#each activity.timeline ?? [] as event, i (event.timestamp + event.type)}
 							<span class="flex items-center gap-1 rounded bg-base-300 px-2 py-1">
 								<span class="capitalize">{event.type}</span>
 								<span class="text-base-content/50">({formatTimestamp(event.timestamp)})</span>
 							</span>
-							{#if i < activity.timeline.length - 1}
+							{#if i < (activity.timeline?.length ?? 0) - 1}
 								<span class="text-base-content/30">→</span>
 							{/if}
 						{/each}
@@ -339,7 +403,7 @@
 					>
 						<!-- Expand indicator -->
 						<td class="w-10">
-							{#if activity.timeline.length > 0}
+							{#if (activity.timeline?.length ?? 0) > 0}
 								{#if isExpanded}
 									<ChevronUp class="h-4 w-4 text-base-content/50" />
 								{:else}
@@ -367,23 +431,39 @@
 
 						<!-- Media -->
 						<td>
-							<a
-								href={getMediaLink(activity)}
-								class="flex items-center gap-2 hover:text-primary"
-								onclick={(e) => e.stopPropagation()}
-							>
-								{#if activity.mediaType === 'movie'}
-									<Clapperboard class="h-4 w-4 shrink-0" />
-								{:else}
-									<Tv class="h-4 w-4 shrink-0" />
-								{/if}
-								<span class="max-w-48 truncate" title={activity.mediaTitle}>
-									{activity.mediaTitle}
-									{#if activity.mediaYear}
-										<span class="text-base-content/60">({activity.mediaYear})</span>
+							{#if canLinkToMedia(activity)}
+								<a
+									href={getMediaLink(activity)}
+									class="flex items-center gap-2 hover:text-primary"
+									onclick={(e) => e.stopPropagation()}
+								>
+									{#if activity.mediaType === 'movie'}
+										<Clapperboard class="h-4 w-4 shrink-0" />
+									{:else}
+										<Tv class="h-4 w-4 shrink-0" />
 									{/if}
-								</span>
-							</a>
+									<span class="max-w-48 truncate" title={activity.mediaTitle}>
+										{activity.mediaTitle}
+										{#if activity.mediaYear}
+											<span class="text-base-content/60">({activity.mediaYear})</span>
+										{/if}
+									</span>
+								</a>
+							{:else}
+								<div class="flex items-center gap-2">
+									{#if activity.mediaType === 'movie'}
+										<Clapperboard class="h-4 w-4 shrink-0" />
+									{:else}
+										<Tv class="h-4 w-4 shrink-0" />
+									{/if}
+									<span class="max-w-48 truncate" title={activity.mediaTitle}>
+										{activity.mediaTitle}
+										{#if activity.mediaYear}
+											<span class="text-base-content/60">({activity.mediaYear})</span>
+										{/if}
+									</span>
+								</div>
+							{/if}
 						</td>
 
 						{#if !compact}
@@ -398,8 +478,9 @@
 							<td>
 								{#if activity.quality}
 									<div class="flex flex-wrap gap-1">
-										{#if activity.quality.resolution}
-											<span class="badge badge-outline badge-xs">{activity.quality.resolution}</span
+										{#if getResolutionBadge(activity)}
+											<span class="badge badge-outline badge-xs"
+												>{getResolutionBadge(activity)}</span
 											>
 										{/if}
 										{#if activity.quality.source}
@@ -454,7 +535,7 @@
 										max="100"
 									></progress>
 								</div>
-							{:else if activity.statusReason}
+							{:else if activity.statusReason && activity.status !== 'failed'}
 								<span
 									class="max-w-32 truncate text-xs text-base-content/60"
 									title={activity.statusReason}
@@ -475,20 +556,20 @@
 					</tr>
 
 					<!-- Expanded row with timeline -->
-					{#if isExpanded && activity.timeline.length > 0}
+					{#if isExpanded && (activity.timeline?.length ?? 0) > 0}
 						<tr class="bg-base-200/50">
 							<td colspan={compact ? 5 : 10} class="py-3">
 								<div class="px-4">
 									<div class="mb-2 text-sm font-medium">Timeline</div>
 									<div class="flex flex-wrap items-center gap-2 text-xs">
-										{#each activity.timeline as event, i (event.timestamp + event.type)}
+										{#each activity.timeline ?? [] as event, i (event.timestamp + event.type)}
 											<span class="flex items-center gap-1 rounded bg-base-300 px-2 py-1">
 												<span class="capitalize">{event.type}</span>
 												<span class="text-base-content/50"
 													>({formatTimestamp(event.timestamp)})</span
 												>
 											</span>
-											{#if i < activity.timeline.length - 1}
+											{#if i < (activity.timeline?.length ?? 0) - 1}
 												<span class="text-base-content/30">→</span>
 											{/if}
 										{/each}

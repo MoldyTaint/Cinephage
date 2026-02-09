@@ -2,6 +2,7 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import { X, RefreshCw, CheckCircle, AlertTriangle, ArrowRight, Film, Tv } from 'lucide-svelte';
 	import type { RenamePreviewResult } from '$lib/server/library/naming/RenamePreviewService';
+	import { createFocusTrap, lockBodyScroll } from '$lib/utils/focus';
 
 	interface Props {
 		open: boolean;
@@ -21,6 +22,10 @@
 	let success = $state<string | null>(null);
 	let preview = $state<RenamePreviewResult | null>(null);
 	const selectedIds = new SvelteSet<string>();
+	let modalRef = $state<HTMLElement | null>(null);
+	let contentRef = $state<HTMLElement | null>(null);
+	let cleanupFocusTrap: (() => void) | null = null;
+	let cleanupScrollLock: (() => void) | null = null;
 
 	// Load preview when modal opens
 	$effect(() => {
@@ -126,11 +131,76 @@
 		}
 	}
 
+	function isInteractiveTarget(target: EventTarget | null): boolean {
+		const element = target instanceof HTMLElement ? target : null;
+		if (!element) return false;
+		return (
+			element.closest(
+				'button, a[href], input, textarea, select, [role="button"], [role="checkbox"], [role="switch"], [role="tab"], [contenteditable="true"]'
+			) !== null
+		);
+	}
+
 	function handleKeydown(e: KeyboardEvent) {
+		if (!open) return;
+
 		if (e.key === 'Escape') {
+			e.preventDefault();
 			onClose();
+			return;
+		}
+
+		if (!contentRef || isInteractiveTarget(e.target)) return;
+
+		const pageStep = Math.max(Math.floor(contentRef.clientHeight * 0.9), 120);
+
+		if (e.key === ' ') {
+			e.preventDefault();
+			contentRef.scrollBy({ top: e.shiftKey ? -pageStep : pageStep, behavior: 'smooth' });
+			return;
+		}
+
+		if (e.key === 'PageDown') {
+			e.preventDefault();
+			contentRef.scrollBy({ top: pageStep, behavior: 'smooth' });
+			return;
+		}
+
+		if (e.key === 'PageUp') {
+			e.preventDefault();
+			contentRef.scrollBy({ top: -pageStep, behavior: 'smooth' });
+			return;
+		}
+
+		if (e.key === 'Home') {
+			e.preventDefault();
+			contentRef.scrollTo({ top: 0, behavior: 'smooth' });
+			return;
+		}
+
+		if (e.key === 'End') {
+			e.preventDefault();
+			contentRef.scrollTo({ top: contentRef.scrollHeight, behavior: 'smooth' });
 		}
 	}
+
+	$effect(() => {
+		if (open && modalRef) {
+			cleanupScrollLock = lockBodyScroll();
+			cleanupFocusTrap = createFocusTrap(modalRef);
+		}
+
+		return () => {
+			if (cleanupFocusTrap) {
+				cleanupFocusTrap();
+				cleanupFocusTrap = null;
+			}
+			if (cleanupScrollLock) {
+				cleanupScrollLock();
+				cleanupScrollLock = null;
+			}
+		};
+	});
 
 	// Computed
 	const hasChanges = $derived((preview?.totalWillChange || 0) > 0);
@@ -142,29 +212,21 @@
 	]);
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
-
 {#if open}
 	<!-- Backdrop -->
-	<div
-		class="fixed inset-0 z-50 bg-black/50"
-		onclick={onClose}
-		onkeydown={(e) => e.key === 'Enter' && onClose()}
-		role="button"
-		tabindex="-1"
-		aria-label="Close modal"
-	></div>
+	<div class="fixed inset-0 z-50 bg-black/50" onclick={onClose} role="presentation"></div>
 
 	<!-- Modal -->
 	<div class="pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-4">
 		<div
+			bind:this={modalRef}
 			class="pointer-events-auto flex max-h-[80vh] w-full max-w-2xl flex-col rounded-xl bg-base-100 shadow-2xl"
 			onclick={(e) => e.stopPropagation()}
-			onkeydown={(e) => e.stopPropagation()}
+			onkeydown={handleKeydown}
 			role="dialog"
 			aria-modal="true"
 			aria-labelledby="modal-title"
-			tabindex="-1"
+			tabindex="0"
 		>
 			<!-- Header -->
 			<div class="flex items-center justify-between border-b border-base-300 p-4">
@@ -185,7 +247,7 @@
 			</div>
 
 			<!-- Content -->
-			<div class="flex-1 overflow-y-auto p-4">
+			<div bind:this={contentRef} class="flex-1 overflow-y-auto p-4">
 				{#if loading}
 					<div class="flex items-center justify-center py-10">
 						<RefreshCw class="h-6 w-6 animate-spin text-primary" />

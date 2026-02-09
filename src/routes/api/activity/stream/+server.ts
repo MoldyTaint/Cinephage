@@ -7,6 +7,7 @@ import type { UnifiedActivity, ActivityStatus } from '$lib/types/activity';
 
 interface QueueItem {
 	id: string;
+	downloadClientId?: string | null;
 	title: string;
 	movieId?: string | null;
 	seriesId?: string | null;
@@ -19,10 +20,51 @@ interface QueueItem {
 	indexerName?: string | null;
 	protocol?: string | null;
 	quality?: { resolution?: string; source?: string; codec?: string; hdr?: string } | null;
+	releaseGroup?: string | null;
 	addedAt: string;
+	startedAt?: string | null;
 	completedAt?: string | null;
 	errorMessage?: string | null;
 	isUpgrade?: boolean;
+}
+
+type QueueEventPayload = QueueItem | { queueItem?: QueueItem; error?: string };
+
+function isQueueItem(value: unknown): value is QueueItem {
+	if (!value || typeof value !== 'object') return false;
+	const maybe = value as Partial<QueueItem>;
+	return typeof maybe.id === 'string' && typeof maybe.title === 'string';
+}
+
+function getQueueItemFromPayload(payload: unknown): QueueItem | null {
+	if (isQueueItem(payload)) return payload;
+
+	if (payload && typeof payload === 'object' && 'queueItem' in payload) {
+		const wrapped = (payload as QueueEventPayload).queueItem;
+		if (isQueueItem(wrapped)) return wrapped;
+	}
+
+	return null;
+}
+
+function getQueueErrorFromPayload(payload: unknown): string | undefined {
+	if (!payload || typeof payload !== 'object') return undefined;
+	const maybeError = (payload as QueueEventPayload).error;
+	return typeof maybeError === 'string' ? maybeError : undefined;
+}
+
+function mapQueueStatusToActivityStatus(status: string): ActivityStatus {
+	switch (status) {
+		case 'failed':
+			return 'failed';
+		case 'imported':
+		case 'seeding-imported':
+			return 'imported';
+		case 'removed':
+			return 'removed';
+		default:
+			return 'downloading';
+	}
 }
 
 /**
@@ -36,7 +78,7 @@ interface QueueItem {
 export const GET: RequestHandler = async () => {
 	return createSSEStream((send) => {
 		// Helper to convert queue item to activity using shared resolver
-		const queueItemToActivity = async (item: QueueItem): Promise<Partial<UnifiedActivity>> => {
+		const queueItemToActivity = async (item: QueueItem): Promise<UnifiedActivity> => {
 			const mediaInfo = await mediaResolver.resolveDownloadMediaInfo({
 				movieId: item.movieId,
 				seriesId: item.seriesId,
@@ -44,13 +86,16 @@ export const GET: RequestHandler = async () => {
 				seasonNumber: item.seasonNumber
 			});
 
-			// Map status
-			let status: ActivityStatus = 'downloading';
-			if (item.status === 'failed') status = 'failed';
-			else if (item.status === 'imported') status = 'imported';
-			else if (item.status === 'removed') status = 'removed';
-
 			const releaseGroup = extractReleaseGroup(item.title);
+			const startedAt = item.startedAt ?? item.addedAt;
+			const timeline: UnifiedActivity['timeline'] = [{ type: 'grabbed', timestamp: item.addedAt }];
+			if (item.startedAt) {
+				timeline.push({ type: 'downloading', timestamp: item.startedAt });
+			}
+			if (item.completedAt) {
+				timeline.push({ type: 'completed', timestamp: item.completedAt });
+			}
+			timeline.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
 			return {
 				id: `queue-${item.id}`,
@@ -58,21 +103,25 @@ export const GET: RequestHandler = async () => {
 				mediaId: mediaInfo.mediaId,
 				mediaTitle: mediaInfo.mediaTitle,
 				mediaYear: mediaInfo.mediaYear,
+				seriesId: mediaInfo.seriesId,
 				seriesTitle: mediaInfo.seriesTitle,
 				seasonNumber: mediaInfo.seasonNumber,
 				episodeNumber: mediaInfo.episodeNumber,
+				episodeIds: item.episodeIds ?? undefined,
 				releaseTitle: item.title,
 				quality: item.quality ?? null,
-				releaseGroup: releaseGroup?.group ?? null,
+				releaseGroup: item.releaseGroup ?? releaseGroup?.group ?? null,
 				size: item.size ?? null,
 				indexerId: item.indexerId ?? null,
 				indexerName: item.indexerName ?? null,
 				protocol: (item.protocol as 'torrent' | 'usenet' | 'streaming') ?? null,
-				status,
+				downloadClientId: item.downloadClientId ?? null,
+				status: mapQueueStatusToActivityStatus(item.status),
 				statusReason: item.errorMessage ?? undefined,
 				downloadProgress: Math.round((item.progress ?? 0) * 100),
 				isUpgrade: item.isUpgrade ?? false,
-				startedAt: item.addedAt,
+				timeline,
+				startedAt,
 				completedAt: item.completedAt ?? null,
 				queueItemId: item.id
 			};
@@ -81,7 +130,9 @@ export const GET: RequestHandler = async () => {
 		// Event handlers
 		const onQueueAdded = async (item: unknown) => {
 			try {
-				const activity = await queueItemToActivity(item as QueueItem);
+				const queueItem = getQueueItemFromPayload(item);
+				if (!queueItem) return;
+				const activity = await queueItemToActivity(queueItem);
 				send('activity:new', activity);
 			} catch {
 				// Error converting item
@@ -90,12 +141,15 @@ export const GET: RequestHandler = async () => {
 
 		const onQueueUpdated = async (item: unknown) => {
 			try {
-				const typedItem = item as QueueItem;
+				const queueItem = getQueueItemFromPayload(item);
+				if (!queueItem) return;
+				const activity = await queueItemToActivity(queueItem);
+				send('activity:updated', activity);
 				// For progress updates, send minimal data
 				send('activity:progress', {
-					id: `queue-${typedItem.id}`,
-					progress: Math.round((typedItem.progress ?? 0) * 100),
-					status: typedItem.status
+					id: `queue-${queueItem.id}`,
+					progress: Math.round((queueItem.progress ?? 0) * 100),
+					status: activity.status
 				});
 			} catch {
 				// Error
@@ -104,8 +158,10 @@ export const GET: RequestHandler = async () => {
 
 		const onQueueCompleted = async (item: unknown) => {
 			try {
-				const activity = await queueItemToActivity(item as QueueItem);
-				send('activity:updated', { ...activity, status: 'downloading' });
+				const queueItem = getQueueItemFromPayload(item);
+				if (!queueItem) return;
+				const activity = await queueItemToActivity(queueItem);
+				send('activity:updated', activity);
 			} catch {
 				// Error
 			}
@@ -113,9 +169,10 @@ export const GET: RequestHandler = async () => {
 
 		const onQueueImported = async (data: unknown) => {
 			try {
-				const typedData = data as { queueItem: QueueItem };
-				const activity = await queueItemToActivity(typedData.queueItem);
-				send('activity:updated', { ...activity, status: 'imported' });
+				const queueItem = getQueueItemFromPayload(data);
+				if (!queueItem) return;
+				const activity = await queueItemToActivity(queueItem);
+				send('activity:updated', activity);
 			} catch {
 				// Error
 			}
@@ -123,17 +180,34 @@ export const GET: RequestHandler = async () => {
 
 		const onQueueFailed = async (data: unknown) => {
 			try {
-				const typedData = data as { queueItem: QueueItem; error: string };
-				const activity = await queueItemToActivity(typedData.queueItem);
+				const queueItem = getQueueItemFromPayload(data);
+				if (!queueItem) return;
+				const activity = await queueItemToActivity(queueItem);
 				send('activity:updated', {
 					...activity,
 					status: 'failed',
-					statusReason: typedData.error
+					statusReason: getQueueErrorFromPayload(data) ?? activity.statusReason
 				});
 			} catch {
 				// Error
 			}
 		};
+
+		// Seed active in-progress downloads so activity rows are visible even if queue:added happened before subscribe.
+		const sendInitialQueueItems = async () => {
+			try {
+				const queueItems = await downloadMonitor.getQueue();
+				for (const queueItem of queueItems) {
+					const activity = await queueItemToActivity(queueItem as QueueItem);
+					if (activity.status !== 'downloading') continue;
+					send('activity:new', activity);
+				}
+			} catch {
+				// Error loading initial queue state
+			}
+		};
+
+		void sendInitialQueueItems();
 
 		// Register handlers
 		downloadMonitor.on('queue:added', onQueueAdded);

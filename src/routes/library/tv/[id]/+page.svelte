@@ -14,11 +14,12 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import type { SeriesEditData } from '$lib/components/library/SeriesEditModal.svelte';
 	import type { SearchMode } from '$lib/components/search/InteractiveSearchModal.svelte';
-	import { CheckSquare, FileEdit, Radio, WifiOff, Loader2 } from 'lucide-svelte';
+	import { CheckSquare, FileEdit, Wifi, WifiOff, Loader2 } from 'lucide-svelte';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { createSSE } from '$lib/sse';
+	import { mobileSSEStatus } from '$lib/sse/mobileStatus.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -128,6 +129,15 @@
 			series.percentComplete =
 				totalEpisodes > 0 ? Math.round((totalFiles / totalEpisodes) * 100) : 0;
 		}
+	});
+
+	const MOBILE_SSE_SOURCE = 'library-series';
+
+	$effect(() => {
+		mobileSSEStatus.publish(MOBILE_SSE_SOURCE, sse.status);
+		return () => {
+			mobileSSEStatus.clear(MOBILE_SSE_SOURCE);
+		};
 	});
 
 	// Prefetch stream for first episode when page loads (warms cache for faster playback)
@@ -280,10 +290,7 @@
 			});
 
 			if (response.ok) {
-				data = {
-					...data,
-					series: { ...series, monitored: newValue }
-				};
+				series.monitored = newValue;
 			}
 		} catch (error) {
 			console.error('Failed to update monitored status:', error);
@@ -309,6 +316,46 @@
 		isEditModalOpen = false;
 		if ($page.url.searchParams.get('edit') === '1') {
 			goto($page.url.pathname, { replaceState: true, keepFocus: true, noScroll: true });
+		}
+	}
+
+	function updateSeriesStatsFromSeasons(updatedSeasons: typeof seasons): void {
+		const totalEpisodes = updatedSeasons.reduce(
+			(sum, season) => sum + (season.episodeCount ?? season.episodes.length),
+			0
+		);
+		const totalFiles = updatedSeasons.reduce(
+			(sum, season) =>
+				sum +
+				(typeof season.episodeFileCount === 'number'
+					? season.episodeFileCount
+					: season.episodes.filter((episode) => episode.hasFile).length),
+			0
+		);
+
+		series = {
+			...series,
+			episodeCount: totalEpisodes,
+			episodeFileCount: totalFiles,
+			percentComplete: totalEpisodes > 0 ? Math.round((totalFiles / totalEpisodes) * 100) : 0
+		};
+	}
+
+	async function refreshSeriesFromApi(): Promise<void> {
+		try {
+			const response = await fetch(`/api/library/series/${series.id}`);
+			if (!response.ok) return;
+
+			const result = await response.json();
+			if (!result.success || !result.series) return;
+
+			const { seasons: refreshedSeasons, ...seriesFields } = result.series;
+			series = { ...series, ...seriesFields };
+			if (Array.isArray(refreshedSeasons)) {
+				seasons = refreshedSeasons;
+			}
+		} catch (error) {
+			console.error('Failed to refresh series state:', error);
 		}
 	}
 
@@ -375,8 +422,7 @@
 			}
 
 			if (completed) {
-				// Reload the page to get updated data
-				window.location.reload();
+				await refreshSeriesFromApi();
 			}
 		} catch (error) {
 			console.error('Failed to refresh series:', error);
@@ -434,8 +480,18 @@
 					window.location.href = '/library/tv';
 				} else {
 					toasts.success('Series files deleted');
-					// Reload to show updated state (all episodes now missing)
-					window.location.reload();
+					const updatedSeasons = seasons.map((season) => ({
+						...season,
+						episodeFileCount: 0,
+						episodes: season.episodes.map((episode) => ({
+							...episode,
+							hasFile: false as boolean | null,
+							file: null
+						}))
+					}));
+					seasons = updatedSeasons;
+					updateSeriesStatsFromSeasons(updatedSeasons);
+					queueItems = [];
 				}
 			} else {
 				toasts.error('Failed to delete series', { description: result.error });
@@ -476,10 +532,11 @@
 			if (result.success) {
 				toasts.success('Season files deleted');
 				// Mark all episodes in this season as missing
-				seasons = seasons.map((s) =>
+				const updatedSeasons = seasons.map((s) =>
 					s.id === deletingSeasonId
 						? {
 								...s,
+								episodeFileCount: 0,
 								episodes: s.episodes.map((e) => ({
 									...e,
 									hasFile: false as boolean | null,
@@ -488,6 +545,8 @@
 							}
 						: s
 				);
+				seasons = updatedSeasons;
+				updateSeriesStatsFromSeasons(updatedSeasons);
 			} else {
 				toasts.error('Failed to delete season files', { description: result.error });
 			}
@@ -549,26 +608,8 @@
 						episodeCount: updatedEpisodeCount
 					};
 				});
-				const totalEpisodes = updatedSeasons.reduce(
-					(sum, season) => sum + (season.episodeCount ?? season.episodes.length),
-					0
-				);
-				const totalFiles = updatedSeasons.reduce((sum, season) => {
-					if (typeof season.episodeFileCount === 'number') {
-						return sum + season.episodeFileCount;
-					}
-					return sum + season.episodes.filter((e) => e.hasFile).length;
-				}, 0);
-
-				data = {
-					...data,
-					seasons: updatedSeasons,
-					series: {
-						...series,
-						episodeCount: totalEpisodes,
-						episodeFileCount: totalFiles
-					}
-				};
+				seasons = updatedSeasons;
+				updateSeriesStatsFromSeasons(updatedSeasons);
 			} else {
 				toasts.error('Failed to delete episode files', { description: result.error });
 			}
@@ -591,18 +632,15 @@
 			});
 
 			if (response.ok) {
-				data = {
-					...data,
-					seasons: seasons.map((season) =>
-						season.id === seasonId
-							? {
-									...season,
-									monitored: newValue,
-									episodes: season.episodes.map((ep) => ({ ...ep, monitored: newValue }))
-								}
-							: season
-					)
-				};
+				seasons = seasons.map((season) =>
+					season.id === seasonId
+						? {
+								...season,
+								monitored: newValue,
+								episodes: season.episodes.map((ep) => ({ ...ep, monitored: newValue }))
+							}
+						: season
+				);
 			}
 		} catch (error) {
 			console.error('Failed to update season monitored status:', error);
@@ -618,15 +656,12 @@
 			});
 
 			if (response.ok) {
-				data = {
-					...data,
-					seasons: seasons.map((season) => ({
-						...season,
-						episodes: season.episodes.map((ep) =>
-							ep.id === episodeId ? { ...ep, monitored: newValue } : ep
-						)
-					}))
-				};
+				seasons = seasons.map((season) => ({
+					...season,
+					episodes: season.episodes.map((ep) =>
+						ep.id === episodeId ? { ...ep, monitored: newValue } : ep
+					)
+				}));
 			}
 		} catch (error) {
 			console.error('Failed to update episode monitored status:', error);
@@ -827,6 +862,43 @@
 		episodeNumber: number;
 	}
 
+	interface DownloadedSubtitle {
+		id?: string;
+		subtitleId?: string;
+		language?: string;
+		isForced?: boolean;
+		isHearingImpaired?: boolean;
+		format?: string;
+	}
+
+	function appendSubtitleToEpisode(episodeId: string, subtitle: DownloadedSubtitle): void {
+		const subtitleId = subtitle.id ?? subtitle.subtitleId;
+		if (!subtitleId) return;
+
+		const normalizedSubtitle = {
+			id: subtitleId,
+			language: subtitle.language ?? 'unknown',
+			isForced: subtitle.isForced ?? false,
+			isHearingImpaired: subtitle.isHearingImpaired ?? false,
+			format: subtitle.format
+		};
+
+		seasons = seasons.map((season) => ({
+			...season,
+			episodes: season.episodes.map((episode) => {
+				if (episode.id !== episodeId) return episode;
+				const existingSubtitles = episode.subtitles ?? [];
+				if (existingSubtitles.some((existing) => existing.id === subtitleId)) {
+					return episode;
+				}
+				return {
+					...episode,
+					subtitles: [...existingSubtitles, normalizedSubtitle]
+				};
+			})
+		}));
+	}
+
 	function handleSubtitleSearch(episode: EpisodeForSubtitle) {
 		const episodeTitle = episode.title || `Episode ${episode.episodeNumber}`;
 		subtitleSearchContext = {
@@ -849,14 +921,7 @@
 			const result = await response.json();
 
 			if (result.success && result.subtitle) {
-				// Find and update the episode's subtitles in local state
-				for (const season of seasons) {
-					const ep = season.episodes.find((e) => e.id === episode.id);
-					if (ep) {
-						ep.subtitles = [...(ep.subtitles || []), result.subtitle];
-						break;
-					}
-				}
+				appendSubtitleToEpisode(episode.id, result.subtitle);
 			}
 		} catch (error) {
 			console.error('Failed to auto-search subtitles:', error);
@@ -865,9 +930,10 @@
 		}
 	}
 
-	function handleSubtitleDownloaded() {
-		// Refresh the page data to get updated subtitles
-		window.location.reload();
+	function handleSubtitleDownloaded(subtitle: DownloadedSubtitle) {
+		const episodeId = subtitleSearchContext?.episodeId;
+		if (!episodeId) return;
+		appendSubtitleToEpisode(episodeId, subtitle);
 	}
 
 	// Selection handlers
@@ -1010,7 +1076,9 @@
 
 			// For streaming grabs, refresh the page since files are created instantly
 			if (result.success && (release.protocol === 'streaming' || streaming)) {
-				setTimeout(() => window.location.reload(), 500);
+				setTimeout(() => {
+					void refreshSeriesFromApi();
+				}, 500);
 			}
 
 			return { success: result.success, error: result.error };
@@ -1041,32 +1109,45 @@
 				? 'bg-success/80'
 				: 'bg-error/80'}"
 		>
-			<div class="flex items-center justify-between">
-				{#if series.monitored}
-					Series monitoring is enabled.
-				{:else}
-					<div>
-						Monitoring is disabled.
-						<span class="block text-xs font-normal text-base-100/90">
-							Season and episode toggles are locked. Enable series monitoring to unlock them.
-						</span>
-					</div>
-				{/if}
-
-				<!-- SSE Connection Status -->
-				<div class="flex items-center gap-2 text-xs">
+			<div class="flex items-start justify-between gap-3">
+				<div class="min-w-0">
+					{#if series.monitored}
+						Series monitoring is enabled.
+					{:else}
+						<div>
+							Monitoring is disabled.
+							<span class="block text-xs font-normal text-base-100/90">
+								Season and episode toggles are locked. Enable series monitoring to unlock them.
+							</span>
+						</div>
+					{/if}
+				</div>
+				<div class="hidden shrink-0 items-center sm:flex">
 					{#if sse.isConnected}
-						<span class="flex items-center gap-1">
-							<Radio class="h-3 w-3" />
+						<span
+							class="inline-flex items-center gap-1 rounded-full border border-success/70 bg-success/90 px-2.5 py-1 text-xs font-medium text-success-content shadow-sm"
+						>
+							<Wifi class="h-3 w-3" />
 							Live
 						</span>
 					{:else if sse.status === 'error'}
-						<span class="flex items-center gap-1 text-base-100/70">
+						<span
+							class="inline-flex items-center gap-1 rounded-full border border-warning/70 bg-warning/90 px-2.5 py-1 text-xs font-medium text-warning-content shadow-sm"
+						>
 							<Loader2 class="h-3 w-3 animate-spin" />
-							Reconnecting...
+							Reconnecting
+						</span>
+					{:else if sse.status === 'connecting'}
+						<span
+							class="inline-flex items-center gap-1 rounded-full border border-info/70 bg-info/90 px-2.5 py-1 text-xs font-medium text-info-content shadow-sm"
+						>
+							<Loader2 class="h-3 w-3 animate-spin" />
+							Connecting
 						</span>
 					{:else}
-						<span class="flex items-center gap-1 text-base-100/70">
+						<span
+							class="inline-flex items-center gap-1 rounded-full border border-base-100/35 bg-base-100/20 px-2.5 py-1 text-xs font-medium text-base-100 shadow-sm"
+						>
 							<WifiOff class="h-3 w-3" />
 							Offline
 						</span>
@@ -1220,7 +1301,10 @@
 	mediaId={series.id}
 	mediaTitle={series.title}
 	onClose={() => (isRenameModalOpen = false)}
-	onRenamed={() => location.reload()}
+	onRenamed={() => {
+		isRenameModalOpen = false;
+		void refreshSeriesFromApi();
+	}}
 />
 
 <!-- Delete Confirmation Modal -->

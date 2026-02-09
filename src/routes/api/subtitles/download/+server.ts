@@ -6,6 +6,7 @@ import { db } from '$lib/server/db';
 import { movies, episodes } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import type { SubtitleSearchResult, SubtitleFormat } from '$lib/server/subtitles/types';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 
 /**
  * POST /api/subtitles/download
@@ -63,6 +64,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				validated.movieId,
 				searchResult
 			);
+			libraryMediaEvents.emitMovieUpdated(validated.movieId);
 
 			return json({
 				success: true,
@@ -84,6 +86,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				validated.episodeId,
 				searchResult
 			);
+			libraryMediaEvents.emitSeriesUpdated(episode.seriesId);
 
 			return json({
 				success: true,

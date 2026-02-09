@@ -4,11 +4,12 @@
 
 	interface Props {
 		filters: ActivityFilters;
+		downloadClients?: Array<{ id: string; name: string }>;
 		onFilterRemove: (key: keyof ActivityFilters) => void;
 		onClearAll: () => void;
 	}
 
-	let { filters, onFilterRemove, onClearAll }: Props = $props();
+	let { filters, downloadClients = [], onFilterRemove, onClearAll }: Props = $props();
 
 	// Helper to format filter values for display
 	function getFilterDisplay(key: keyof ActivityFilters, value: unknown): string {
@@ -33,6 +34,10 @@
 				return `To ${value}`;
 			case 'search':
 				return `Search: "${value}"`;
+			case 'downloadClientId': {
+				const client = downloadClients.find((entry) => entry.id === value);
+				return client ? `Client: ${client.name}` : `Client: ${value}`;
+			}
 			default:
 				return String(value);
 		}
@@ -53,6 +58,8 @@
 				return Users;
 			case 'resolution':
 				return HardDrive;
+			case 'downloadClientId':
+				return Monitor;
 			case 'isUpgrade':
 				return ArrowUpCircle;
 			case 'startDate':

@@ -6,6 +6,7 @@ import {
 	seasons,
 	episodes,
 	episodeFiles,
+	downloadHistory,
 	rootFolders,
 	subtitles
 } from '$lib/server/db/schema.js';
@@ -18,6 +19,7 @@ import { searchSubtitlesForMediaBatch } from '$lib/server/subtitles/services/Sub
 import { searchOnAdd } from '$lib/server/library/searchOnAdd.js';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
 import { deleteAllAlternateTitles } from '$lib/server/services/index.js';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 
 /**
  * GET /api/library/series/[id]
@@ -268,6 +270,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			}
 		}
 
+		libraryMediaEvents.emitSeriesUpdated(params.id);
+
 		return json({ success: true });
 	} catch (error) {
 		logger.error('[API] Error updating series', error instanceof Error ? error : undefined);
@@ -366,12 +370,19 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 		}
 
 		if (removeFromLibrary) {
+			// Preserve activity audit trail after media row is deleted (FKs become null on delete)
+			await db
+				.update(downloadHistory)
+				.set({ status: 'removed', statusReason: null })
+				.where(eq(downloadHistory.seriesId, params.id));
+
 			// Delete alternate titles (not cascaded automatically)
 			await deleteAllAlternateTitles('series', params.id);
 
 			// Delete the series from database - CASCADE will handle:
 			// - seasons, episodes, subtitles, downloadQueue, pendingReleases, blocklist, etc.
 			await db.delete(series).where(eq(series.id, params.id));
+			libraryMediaEvents.emitSeriesUpdated(params.id);
 
 			logger.info('[API] Removed series from library', { seriesId: params.id });
 			return json({ success: true, removed: true });
@@ -384,6 +395,7 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 
 			// Update series episode file count
 			await db.update(series).set({ episodeFileCount: 0 }).where(eq(series.id, params.id));
+			libraryMediaEvents.emitSeriesUpdated(params.id);
 
 			// Note: Series, season, and episode metadata is kept - episodes will show as "missing"
 			return json({ success: true });

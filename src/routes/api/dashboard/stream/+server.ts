@@ -39,6 +39,45 @@ interface QueueItem {
 
 const TERMINAL_STATUSES = ['imported', 'removed'];
 
+type QueueEventPayload = QueueItem | { queueItem?: QueueItem; error?: string };
+
+function isQueueItem(value: unknown): value is QueueItem {
+	if (!value || typeof value !== 'object') return false;
+	const maybe = value as Partial<QueueItem>;
+	return typeof maybe.id === 'string' && typeof maybe.title === 'string';
+}
+
+function getQueueItemFromPayload(payload: unknown): QueueItem | null {
+	if (isQueueItem(payload)) return payload;
+
+	if (payload && typeof payload === 'object' && 'queueItem' in payload) {
+		const wrapped = (payload as QueueEventPayload).queueItem;
+		if (isQueueItem(wrapped)) return wrapped;
+	}
+
+	return null;
+}
+
+function getQueueErrorFromPayload(payload: unknown): string | undefined {
+	if (!payload || typeof payload !== 'object') return undefined;
+	const maybeError = (payload as QueueEventPayload).error;
+	return typeof maybeError === 'string' ? maybeError : undefined;
+}
+
+function mapQueueStatusToActivityStatus(status: string): ActivityStatus {
+	switch (status) {
+		case 'failed':
+			return 'failed';
+		case 'imported':
+		case 'seeding-imported':
+			return 'imported';
+		case 'removed':
+			return 'removed';
+		default:
+			return 'downloading';
+	}
+}
+
 /**
  * Get dashboard stats
  */
@@ -66,10 +105,18 @@ async function getDashboardStats() {
 		})
 		.from(episodes);
 
-	const [activeDownloads] = await db
-		.select({ count: count() })
-		.from(downloadQueue)
-		.where(not(inArray(downloadQueue.status, TERMINAL_STATUSES)));
+	const [activeDownloads, failedDownloads] = await Promise.all([
+		db
+			.select({ count: count() })
+			.from(downloadQueue)
+			.where(
+				and(
+					not(inArray(downloadQueue.status, TERMINAL_STATUSES)),
+					not(eq(downloadQueue.status, 'failed'))
+				)
+			),
+		db.select({ count: count() }).from(downloadQueue).where(eq(downloadQueue.status, 'failed'))
+	]);
 
 	const [unmatchedCount] = await db.select({ count: count() }).from(unmatchedFiles);
 
@@ -117,7 +164,8 @@ async function getDashboardStats() {
 			missing: (episodeStats?.total || 0) - (episodeStats?.withFile || 0),
 			monitored: episodeStats?.monitored || 0
 		},
-		activeDownloads: activeDownloads?.count || 0,
+		activeDownloads: activeDownloads?.[0]?.count || 0,
+		failedDownloads: failedDownloads?.[0]?.count || 0,
 		unmatchedFiles: unmatchedCount?.count || 0,
 		missingRootFolders: (missingMovieRoots?.[0]?.count || 0) + (missingSeriesRoots?.[0]?.count || 0)
 	};
@@ -236,10 +284,7 @@ async function queueItemToActivity(item: QueueItem): Promise<Partial<UnifiedActi
 		seasonNumber: item.seasonNumber
 	});
 
-	let status: ActivityStatus = 'downloading';
-	if (item.status === 'failed') status = 'failed';
-	else if (item.status === 'imported') status = 'imported';
-	else if (item.status === 'removed') status = 'removed';
+	const status = mapQueueStatusToActivityStatus(item.status);
 
 	const releaseGroup = extractReleaseGroup(item.title);
 
@@ -327,7 +372,9 @@ export const GET: RequestHandler = async () => {
 		// Event handlers for download monitor
 		const onQueueAdded = async (item: unknown) => {
 			try {
-				const activity = await queueItemToActivity(item as QueueItem);
+				const queueItem = getQueueItemFromPayload(item);
+				if (!queueItem) return;
+				const activity = await queueItemToActivity(queueItem);
 				send('activity:new', activity);
 			} catch {
 				// Error converting item
@@ -336,22 +383,24 @@ export const GET: RequestHandler = async () => {
 
 		const onQueueUpdated = async (item: unknown) => {
 			try {
-				const typedItem = item as QueueItem;
+				const queueItem = getQueueItemFromPayload(item);
+				if (!queueItem) return;
 				send('activity:progress', {
-					id: `queue-${typedItem.id}`,
-					progress: Math.round((typedItem.progress ?? 0) * 100),
-					status: typedItem.status
+					id: `queue-${queueItem.id}`,
+					progress: Math.round((queueItem.progress ?? 0) * 100),
+					status: mapQueueStatusToActivityStatus(queueItem.status)
 				});
 			} catch {
 				// Error
 			}
 		};
 
-		const onQueueImported = async (_data: unknown) => {
+		const onQueueImported = async (data: unknown) => {
 			// Send activity update
 			try {
-				const typedData = _data as { queueItem: QueueItem };
-				const activity = await queueItemToActivity(typedData.queueItem);
+				const queueItem = getQueueItemFromPayload(data);
+				if (!queueItem) return;
+				const activity = await queueItemToActivity(queueItem);
 				send('activity:updated', { ...activity, status: 'imported' });
 			} catch {
 				// Error
@@ -361,14 +410,15 @@ export const GET: RequestHandler = async () => {
 			await sendDashboardUpdate();
 		};
 
-		const onQueueFailed = async (_data: unknown) => {
+		const onQueueFailed = async (data: unknown) => {
 			try {
-				const typedData = _data as { queueItem: QueueItem; error: string };
-				const activity = await queueItemToActivity(typedData.queueItem);
+				const queueItem = getQueueItemFromPayload(data);
+				if (!queueItem) return;
+				const activity = await queueItemToActivity(queueItem);
 				send('activity:updated', {
 					...activity,
 					status: 'failed',
-					statusReason: typedData.error
+					statusReason: getQueueErrorFromPayload(data) ?? activity.statusReason
 				});
 			} catch {
 				// Error

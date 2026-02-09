@@ -29,6 +29,7 @@ import { randomUUID } from 'node:crypto';
 import { statSync } from 'node:fs';
 import { relative } from 'node:path';
 import { redactUrl } from '$lib/server/utils/urlSecurity';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 
 const parser = new ReleaseParser();
 
@@ -747,6 +748,7 @@ async function handleStreamingGrab(data: GrabRequest): Promise<Response> {
 				fileId,
 				relativePath
 			});
+			libraryMediaEvents.emitMovieUpdated(movieId);
 		} else if (
 			mediaType === 'tv' &&
 			seriesId &&
@@ -834,6 +836,7 @@ async function handleStreamingGrab(data: GrabRequest): Promise<Response> {
 				fileId,
 				relativePath
 			});
+			libraryMediaEvents.emitSeriesUpdated(seriesId);
 		} else {
 			return json(
 				{
@@ -1055,6 +1058,7 @@ async function handleStreamingSeasonPack(
 		episodesCreated: createdFileIds.length,
 		totalEpisodes: strmResult.results.length
 	});
+	libraryMediaEvents.emitSeriesUpdated(seriesId);
 
 	return json({
 		success: true,
@@ -1258,6 +1262,7 @@ async function handleStreamingCompleteSeries(
 		seasonsProcessed: strmResult.results.length,
 		episodesCreated: createdFileIds.length
 	});
+	libraryMediaEvents.emitSeriesUpdated(seriesId);
 
 	return json({
 		success: true,
@@ -1592,6 +1597,11 @@ async function handleNzbStreamingGrab(data: GrabRequest): Promise<Response> {
 			filesCreated: createdFiles.length,
 			mediaFiles: mount.mediaFiles.length
 		});
+		if (mediaType === 'movie' && movieId) {
+			libraryMediaEvents.emitMovieUpdated(movieId);
+		} else if (mediaType === 'tv' && seriesId) {
+			libraryMediaEvents.emitSeriesUpdated(seriesId);
+		}
 
 		return json({
 			success: true,

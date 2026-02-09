@@ -75,13 +75,48 @@
 		return `${Math.floor(diffDays / 365)} years`;
 	}
 
+	function isKnownBadge(value?: string): value is string {
+		return Boolean(value && value.trim() && value.trim().toLowerCase() !== 'unknown');
+	}
+
 	function getQualityBadges(release: Release): string[] {
 		const badges: string[] = [];
-		if (release.parsed?.resolution) badges.push(release.parsed.resolution);
-		if (release.parsed?.source) badges.push(release.parsed.source);
-		if (release.parsed?.codec) badges.push(release.parsed.codec);
-		if (release.parsed?.hdr) badges.push(release.parsed.hdr);
+		const seen: string[] = [];
+		const addBadge = (value?: string) => {
+			if (!isKnownBadge(value)) return;
+			const label = value.trim();
+			const normalized = label.toLowerCase();
+			if (seen.includes(normalized)) return;
+			seen.push(normalized);
+			badges.push(label);
+		};
+
+		if (release.protocol === 'streaming') {
+			if (isKnownBadge(release.parsed?.resolution)) {
+				addBadge(release.parsed.resolution);
+			} else {
+				addBadge('Auto');
+			}
+			addBadge(release.parsed?.codec);
+			addBadge(release.parsed?.hdr);
+			return badges;
+		}
+
+		addBadge(release.parsed?.resolution);
+		addBadge(release.parsed?.source);
+		addBadge(release.parsed?.codec);
+		addBadge(release.parsed?.hdr);
 		return badges;
+	}
+
+	function getReleaseGroupBadge(release: Release): string | null {
+		if (isKnownBadge(release.parsed?.releaseGroup)) {
+			return release.parsed.releaseGroup.trim();
+		}
+		if (release.protocol === 'streaming') {
+			return 'Streaming';
+		}
+		return null;
 	}
 
 	function getRatioBadges(release: Release): { text: string; class: string }[] {
@@ -132,8 +167,8 @@
 				{#each getQualityBadges(release) as badge, i (`${badge}-${i}`)}
 					<span class="badge badge-xs badge-primary">{badge}</span>
 				{/each}
-				{#if release.parsed?.releaseGroup}
-					<span class="badge badge-ghost badge-xs">{release.parsed.releaseGroup}</span>
+				{#if getReleaseGroupBadge(release)}
+					<span class="badge badge-ghost badge-xs">{getReleaseGroupBadge(release)}</span>
 				{/if}
 				{#each getRatioBadges(release) as badge (badge.text)}
 					<span class="badge badge-xs {badge.class}">{badge.text}</span>

@@ -78,7 +78,11 @@ export const POST: RequestHandler = async ({ params, request }) => {
 					);
 				}
 
-				const result = await searchOnAdd.searchForSeason({ seriesId, seasonNumber });
+				const result = await searchOnAdd.searchForSeason({
+					seriesId,
+					seasonNumber,
+					bypassMonitoring: true
+				});
 
 				return json({
 					success: result.success,

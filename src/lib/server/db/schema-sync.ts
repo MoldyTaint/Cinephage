@@ -73,8 +73,9 @@ interface MigrationDefinition {
  * Version 46: Add activities and activity_details tables for unified activity tracking
  * Version 47: Add task_settings table for per-task configuration with migration from monitoring_settings
  * Version 48: Dedupe episode_files and enforce unique series/path constraint
+ * Version 49: Backfill orphaned download_history imported/streaming rows to removed status
  */
-export const CURRENT_SCHEMA_VERSION = 48;
+export const CURRENT_SCHEMA_VERSION = 49;
 
 /**
  * All table definitions with CREATE TABLE IF NOT EXISTS
@@ -3560,6 +3561,30 @@ const MIGRATIONS: MigrationDefinition[] = [
 				canonicalRowsUpdated,
 				downloadHistoryRowsUpdated,
 				activityDetailsRowsUpdated
+			});
+		}
+	},
+
+	// Migration 49: Mark orphaned imported/streaming history rows as removed
+	{
+		version: 49,
+		name: 'backfill_orphaned_download_history_to_removed',
+		apply: (sqlite) => {
+			const result = sqlite
+				.prepare(
+					`
+						UPDATE download_history
+						SET status = 'removed',
+							status_reason = NULL
+						WHERE movie_id IS NULL
+							AND series_id IS NULL
+							AND status IN ('imported', 'streaming')
+					`
+				)
+				.run();
+
+			logger.info('[SchemaSync] Backfilled orphaned download_history rows to removed', {
+				rowsUpdated: result.changes
 			});
 		}
 	}

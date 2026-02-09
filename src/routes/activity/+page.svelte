@@ -3,6 +3,7 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
 	import { createSSE } from '$lib/sse';
+	import { mobileSSEStatus } from '$lib/sse/mobileStatus.svelte';
 	import ActivityTable from '$lib/components/activity/ActivityTable.svelte';
 	import ActivityDetailModal from '$lib/components/activity/ActivityDetailModal.svelte';
 	import ActivityFilters from '$lib/components/activity/ActivityFilters.svelte';
@@ -10,7 +11,8 @@
 	import type {
 		UnifiedActivity,
 		ActivityDetails,
-		ActivityFilters as FiltersType
+		ActivityFilters as FiltersType,
+		ActivityStatus
 	} from '$lib/types/activity';
 	import { Activity, Loader2, Wifi, WifiOff } from 'lucide-svelte';
 
@@ -37,6 +39,158 @@
 
 	let hasInitialized = $state(false);
 
+	function normalizeActivityStatus(status: unknown): ActivityStatus {
+		switch (status) {
+			case 'imported':
+			case 'streaming':
+			case 'downloading':
+			case 'failed':
+			case 'rejected':
+			case 'removed':
+			case 'no_results':
+			case 'searching':
+				return status;
+			default:
+				return 'downloading';
+		}
+	}
+
+	function normalizeActivity(activity: Partial<UnifiedActivity>): UnifiedActivity | null {
+		if (!activity.id) return null;
+
+		return {
+			id: activity.id,
+			mediaType: activity.mediaType === 'episode' ? 'episode' : 'movie',
+			mediaId: activity.mediaId ?? '',
+			mediaTitle: activity.mediaTitle ?? 'Unknown',
+			mediaYear: activity.mediaYear ?? null,
+			seriesId: activity.seriesId,
+			seriesTitle: activity.seriesTitle,
+			seasonNumber: activity.seasonNumber,
+			episodeNumber: activity.episodeNumber,
+			episodeIds: activity.episodeIds,
+			releaseTitle: activity.releaseTitle ?? null,
+			quality: activity.quality ?? null,
+			releaseGroup: activity.releaseGroup ?? null,
+			size: activity.size ?? null,
+			indexerId: activity.indexerId ?? null,
+			indexerName: activity.indexerName ?? null,
+			protocol: activity.protocol ?? null,
+			downloadClientId: activity.downloadClientId ?? null,
+			downloadClientName: activity.downloadClientName ?? null,
+			status: normalizeActivityStatus(activity.status),
+			statusReason: activity.statusReason,
+			downloadProgress: activity.downloadProgress,
+			isUpgrade: activity.isUpgrade ?? false,
+			oldScore: activity.oldScore,
+			newScore: activity.newScore,
+			timeline: Array.isArray(activity.timeline) ? activity.timeline : [],
+			startedAt: activity.startedAt ?? new Date().toISOString(),
+			completedAt: activity.completedAt ?? null,
+			queueItemId: activity.queueItemId,
+			downloadHistoryId: activity.downloadHistoryId,
+			monitoringHistoryId: activity.monitoringHistoryId,
+			importedPath: activity.importedPath
+		};
+	}
+
+	function matchesLiveFilters(activity: UnifiedActivity): boolean {
+		// Status
+		if (filters.status && filters.status !== 'all') {
+			if (filters.status === 'success') {
+				if (activity.status !== 'imported' && activity.status !== 'streaming') return false;
+			} else if (activity.status !== filters.status) {
+				return false;
+			}
+		}
+
+		// Media type
+		if (filters.mediaType === 'movie' && activity.mediaType !== 'movie') return false;
+		if (filters.mediaType === 'tv' && activity.mediaType !== 'episode') return false;
+
+		// Search
+		if (filters.search) {
+			const needle = filters.search.toLowerCase();
+			const matches =
+				activity.mediaTitle.toLowerCase().includes(needle) ||
+				activity.releaseTitle?.toLowerCase().includes(needle) ||
+				activity.seriesTitle?.toLowerCase().includes(needle) ||
+				activity.releaseGroup?.toLowerCase().includes(needle) ||
+				activity.indexerName?.toLowerCase().includes(needle);
+			if (!matches) return false;
+		}
+
+		// Protocol
+		if (filters.protocol && filters.protocol !== 'all' && activity.protocol !== filters.protocol) {
+			return false;
+		}
+
+		// Download client
+		if (filters.downloadClientId && activity.downloadClientId !== filters.downloadClientId) {
+			return false;
+		}
+
+		// Indexer
+		if (filters.indexer && activity.indexerName?.toLowerCase() !== filters.indexer.toLowerCase()) {
+			return false;
+		}
+
+		// Release group
+		if (
+			filters.releaseGroup &&
+			!activity.releaseGroup?.toLowerCase().includes(filters.releaseGroup.toLowerCase())
+		) {
+			return false;
+		}
+
+		// Resolution
+		if (
+			filters.resolution &&
+			activity.quality?.resolution?.toLowerCase() !== filters.resolution.toLowerCase()
+		) {
+			return false;
+		}
+
+		// Upgrade flag
+		if (filters.isUpgrade !== undefined && activity.isUpgrade !== filters.isUpgrade) return false;
+
+		// Date range
+		if (filters.startDate) {
+			const startTime = new Date(filters.startDate).getTime();
+			if (new Date(activity.startedAt).getTime() < startTime) return false;
+		}
+		if (filters.endDate) {
+			const endTime = new Date(filters.endDate).getTime();
+			if (new Date(activity.startedAt).getTime() > endTime) return false;
+		}
+
+		return true;
+	}
+
+	function upsertActivity(activity: Partial<UnifiedActivity>): void {
+		const normalized = normalizeActivity(activity);
+		if (!normalized) return;
+
+		const existingIndex = activities.findIndex((a) => a.id === normalized.id);
+		const matchesFilters = matchesLiveFilters(normalized);
+
+		if (!matchesFilters) {
+			if (existingIndex >= 0) {
+				activities = activities.filter((a) => a.id !== normalized.id);
+				total = Math.max(0, total - 1);
+			}
+			return;
+		}
+
+		if (existingIndex >= 0) {
+			activities[existingIndex] = { ...activities[existingIndex], ...normalized };
+			return;
+		}
+
+		activities = [normalized, ...activities];
+		total += 1;
+	}
+
 	// Detail modal state
 	let selectedActivity = $state<UnifiedActivity | null>(null);
 	let activityDetails = $state<ActivityDetails | null>(null);
@@ -56,25 +210,44 @@
 	// SSE Connection - internally handles browser/SSR
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const sse = createSSE<Record<string, any>>(resolvePath('/api/activity/stream'), {
-		'activity:new': (newActivity: UnifiedActivity) => {
-			// Add to beginning of list
-			activities = [newActivity, ...activities.filter((a) => a.id !== newActivity.id)];
-			total += 1;
+		'activity:new': (newActivity: Partial<UnifiedActivity>) => {
+			upsertActivity(newActivity);
 		},
 		'activity:updated': (updated: Partial<UnifiedActivity>) => {
-			activities = activities.map((a) => (a.id === updated.id ? { ...a, ...updated } : a));
+			upsertActivity(updated);
 		},
 		'activity:progress': (data: { id: string; progress: number; status?: string }) => {
-			activities = activities.map((a) =>
-				a.id === data.id
-					? {
-							...a,
-							downloadProgress: data.progress,
-							status: (data.status as UnifiedActivity['status']) || a.status
-						}
-					: a
-			);
+			let removed = false;
+			activities = activities.flatMap((a) => {
+				if (a.id !== data.id) return [a];
+
+				const updated = {
+					...a,
+					downloadProgress: data.progress,
+					status: data.status ? normalizeActivityStatus(data.status) : a.status
+				};
+
+				if (!matchesLiveFilters(updated)) {
+					removed = true;
+					return [];
+				}
+
+				return [updated];
+			});
+
+			if (removed) {
+				total = Math.max(0, total - 1);
+			}
 		}
+	});
+
+	const MOBILE_SSE_SOURCE = 'activity';
+
+	$effect(() => {
+		mobileSSEStatus.publish(MOBILE_SSE_SOURCE, sse.status);
+		return () => {
+			mobileSSEStatus.clear(MOBILE_SSE_SOURCE);
+		};
 	});
 
 	// Apply filters via URL navigation
@@ -272,22 +445,24 @@
 			<p class="text-base-content/70">Download and search history</p>
 		</div>
 		<!-- Connection Status -->
-		{#if sse.isConnected}
-			<span class="badge gap-1 badge-success">
-				<Wifi class="h-3 w-3" />
-				Live
-			</span>
-		{:else if sse.status === 'connecting' || sse.status === 'error'}
-			<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
-				<Loader2 class="h-3 w-3 animate-spin" />
-				{sse.status === 'error' ? 'Reconnecting...' : 'Connecting...'}
-			</span>
-		{:else}
-			<span class="badge gap-1 badge-ghost">
-				<WifiOff class="h-3 w-3" />
-				Disconnected
-			</span>
-		{/if}
+		<div class="hidden sm:block">
+			{#if sse.isConnected}
+				<span class="badge gap-1 badge-success">
+					<Wifi class="h-3 w-3" />
+					Live
+				</span>
+			{:else if sse.status === 'connecting' || sse.status === 'error'}
+				<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
+					<Loader2 class="h-3 w-3 animate-spin" />
+					{sse.status === 'error' ? 'Reconnecting...' : 'Connecting...'}
+				</span>
+			{:else}
+				<span class="badge gap-1 badge-ghost">
+					<WifiOff class="h-3 w-3" />
+					Disconnected
+				</span>
+			{/if}
+		</div>
 	</div>
 
 	<!-- Filters Component -->
@@ -299,7 +474,12 @@
 	/>
 
 	<!-- Active Filters Display -->
-	<ActiveFilters {filters} onFilterRemove={removeFilter} onClearAll={clearAllFilters} />
+	<ActiveFilters
+		{filters}
+		downloadClients={data.filterOptions.downloadClients}
+		onFilterRemove={removeFilter}
+		onClearAll={clearAllFilters}
+	/>
 
 	<!-- Activity Stats -->
 	<div class="flex items-center gap-4 text-sm text-base-content/70">

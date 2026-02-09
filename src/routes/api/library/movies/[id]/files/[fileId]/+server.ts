@@ -6,6 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import { unlink, rmdir } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { logger } from '$lib/logging';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 
 /**
  * DELETE /api/library/movies/[id]/files/[fileId]
@@ -78,6 +79,8 @@ export const DELETE: RequestHandler = async ({ params }) => {
 		if (remainingFiles.length === 0) {
 			await db.update(movies).set({ hasFile: false }).where(eq(movies.id, movieId));
 		}
+
+		libraryMediaEvents.emitMovieUpdated(movieId);
 
 		return json({ success: true });
 	} catch (error) {

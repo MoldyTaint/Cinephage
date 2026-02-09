@@ -6,6 +6,7 @@ import { movies, movieFiles, rootFolders, downloadQueue, subtitles } from '$lib/
 import { eq } from 'drizzle-orm';
 import type { RequestHandler } from '@sveltejs/kit';
 import type { LibraryMovie, MovieFile } from '$lib/types/library';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 
 interface QueueItem {
 	id: string;
@@ -208,16 +209,25 @@ export const GET: RequestHandler = async ({ params }) => {
 			}
 		};
 
+		// Handle metadata/subtitle/settings updates for this movie
+		const onMovieUpdated = (event: { movieId: string }) => {
+			if (event.movieId === movieId) {
+				sendInitialState();
+			}
+		};
+
 		// Register handlers
 		downloadMonitor.on('queue:updated', onQueueUpdated);
 		importService.on('file:imported', onFileImported);
 		importService.on('file:deleted', onFileDeleted);
+		libraryMediaEvents.onMovieUpdated(onMovieUpdated);
 
 		// Return cleanup function
 		return () => {
 			downloadMonitor.off('queue:updated', onQueueUpdated);
 			importService.off('file:imported', onFileImported);
 			importService.off('file:deleted', onFileDeleted);
+			libraryMediaEvents.offMovieUpdated(onMovieUpdated);
 		};
 	});
 };

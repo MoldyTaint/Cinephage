@@ -70,6 +70,8 @@ export interface UnifiedActivity {
 	indexerId: string | null;
 	indexerName: string | null;
 	protocol: 'torrent' | 'usenet' | 'streaming' | null;
+	downloadClientId?: string | null;
+	downloadClientName?: string | null;
 
 	// Status
 	status: ActivityStatus;

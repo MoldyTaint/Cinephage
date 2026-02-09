@@ -11,6 +11,7 @@ import {
 } from '$lib/server/db/schema';
 import { desc, inArray, eq } from 'drizzle-orm';
 import { extractReleaseGroup } from '$lib/server/indexers/parser/patterns/releaseGroup';
+import { parseRelease } from '$lib/server/indexers/parser/ReleaseParser';
 import type {
 	UnifiedActivity,
 	ActivityEvent,
@@ -256,6 +257,7 @@ export class ActivityService {
 			indexerId: download.indexerId ?? null,
 			indexerName: download.indexerName ?? null,
 			protocol: (download.protocol as 'torrent' | 'usenet' | 'streaming') ?? null,
+			downloadClientId: download.downloadClientId ?? null,
 			status,
 			statusReason: download.errorMessage ?? undefined,
 			downloadProgress: Math.round((Number(download.progress) || 0) * 100),
@@ -301,6 +303,8 @@ export class ActivityService {
 			indexerId: history.indexerId ?? null,
 			indexerName: history.indexerName ?? null,
 			protocol: (history.protocol as 'torrent' | 'usenet' | 'streaming') ?? null,
+			downloadClientId: history.downloadClientId ?? null,
+			downloadClientName: history.downloadClientName ?? null,
 			status: history.status as ActivityStatus,
 			statusReason: history.statusReason ?? undefined,
 			isUpgrade: false,
@@ -676,10 +680,11 @@ export class ActivityService {
 		}
 
 		return {
-			mediaType: 'movie',
-			mediaId: item.movieId || '',
-			mediaTitle: 'Unknown',
-			mediaYear: null
+			...this.deriveFallbackMediaInfo(
+				item.title,
+				Boolean(item.seriesId || (item.episodeIds?.length ?? 0) > 0 || item.seasonNumber)
+			),
+			mediaId: ''
 		};
 	}
 
@@ -736,10 +741,73 @@ export class ActivityService {
 		}
 
 		return {
-			mediaType: 'movie',
-			mediaId: mon.movieId || '',
-			mediaTitle: 'Unknown',
-			mediaYear: null
+			...this.deriveFallbackMediaInfo(mon.releaseGrabbed, Boolean(mon.seriesId || mon.episodeId)),
+			mediaId: ''
+		};
+	}
+
+	private deriveFallbackMediaInfo(
+		releaseTitle: string | null | undefined,
+		isEpisode: boolean
+	): {
+		mediaType: 'movie' | 'episode';
+		mediaId: string;
+		mediaTitle: string;
+		mediaYear: number | null;
+		seasonNumber?: number;
+		episodeNumber?: number;
+	} {
+		if (!releaseTitle) {
+			return {
+				mediaType: isEpisode ? 'episode' : 'movie',
+				mediaId: '',
+				mediaTitle: 'Unknown',
+				mediaYear: null
+			};
+		}
+
+		const parsed = parseRelease(releaseTitle);
+		const fallbackTitle = releaseTitle.replace(/[._]/g, ' ').replace(/\s+/g, ' ').trim();
+		const baseTitle = parsed.cleanTitle?.trim() || fallbackTitle || 'Unknown';
+
+		if (!isEpisode) {
+			return {
+				mediaType: 'movie',
+				mediaId: '',
+				mediaTitle: baseTitle,
+				mediaYear: parsed.year ?? null
+			};
+		}
+
+		const seasonNumber = parsed.episode?.season;
+		const episodeNumbers = parsed.episode?.episodes;
+		const firstEpisode = episodeNumbers?.[0];
+		const lastEpisode =
+			episodeNumbers && episodeNumbers.length > 0
+				? episodeNumbers[episodeNumbers.length - 1]
+				: undefined;
+
+		let mediaTitle = baseTitle;
+		if (seasonNumber && firstEpisode) {
+			const season = String(seasonNumber).padStart(2, '0');
+			const startEpisode = String(firstEpisode).padStart(2, '0');
+			if (lastEpisode && lastEpisode !== firstEpisode) {
+				const endEpisode = String(lastEpisode).padStart(2, '0');
+				mediaTitle = `${baseTitle} S${season}E${startEpisode}-E${endEpisode}`;
+			} else {
+				mediaTitle = `${baseTitle} S${season}E${startEpisode}`;
+			}
+		} else if (seasonNumber && parsed.episode?.isSeasonPack) {
+			mediaTitle = `${baseTitle} Season ${seasonNumber}`;
+		}
+
+		return {
+			mediaType: 'episode',
+			mediaId: '',
+			mediaTitle,
+			mediaYear: parsed.year ?? null,
+			seasonNumber: seasonNumber ?? undefined,
+			episodeNumber: firstEpisode ?? undefined
 		};
 	}
 
@@ -835,6 +903,11 @@ export class ActivityService {
 			filtered = filtered.filter(
 				(a) => a.quality?.resolution?.toLowerCase() === filters.resolution?.toLowerCase()
 			);
+		}
+
+		// Download client filter
+		if (filters.downloadClientId) {
+			filtered = filtered.filter((a) => a.downloadClientId === filters.downloadClientId);
 		}
 
 		// Is upgrade filter
