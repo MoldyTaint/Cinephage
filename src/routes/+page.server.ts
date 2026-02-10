@@ -8,7 +8,7 @@ import {
 	unmatchedFiles,
 	rootFolders
 } from '$lib/server/db/schema';
-import { count, eq, desc, and, not, inArray, sql, gte } from 'drizzle-orm';
+import { count, eq, desc, and, not, inArray, sql, gte, ne } from 'drizzle-orm';
 import { logger } from '$lib/logging';
 import type { UnifiedActivity } from '$lib/types/activity';
 
@@ -52,9 +52,8 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 				.innerJoin(series, eq(episodes.seriesId, series.id))
 				.where(
 					and(
-						eq(episodes.monitored, true),
 						eq(episodes.hasFile, false),
-						eq(series.monitored, true),
+						ne(episodes.seasonNumber, 0),
 						sql`${episodes.airDate} <= ${today}`
 					)
 				),
@@ -64,9 +63,8 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 				.innerJoin(series, eq(episodes.seriesId, series.id))
 				.where(
 					and(
-						eq(episodes.monitored, true),
 						eq(episodes.hasFile, false),
-						eq(series.monitored, true),
+						ne(episodes.seasonNumber, 0),
 						sql`${episodes.airDate} > ${today}`
 					)
 				)
@@ -193,6 +191,7 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 							and(
 								inArray(episodes.seriesId, recentlyAddedSeriesIds),
 								eq(episodes.hasFile, false),
+								ne(episodes.seasonNumber, 0),
 								sql`${episodes.airDate} <= ${today}`
 							)
 						)

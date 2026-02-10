@@ -11,7 +11,7 @@ import {
 	unmatchedFiles,
 	rootFolders
 } from '$lib/server/db/schema';
-import { count, eq, desc, and, not, inArray, sql, gte } from 'drizzle-orm';
+import { count, eq, desc, and, not, inArray, sql, gte, ne } from 'drizzle-orm';
 import { activityService, mediaResolver } from '$lib/server/activity';
 import { extractReleaseGroup } from '$lib/server/indexers/parser/patterns/releaseGroup';
 import type { UnifiedActivity, ActivityStatus } from '$lib/types/activity';
@@ -112,9 +112,8 @@ async function getDashboardStats() {
 			.innerJoin(series, eq(episodes.seriesId, series.id))
 			.where(
 				and(
-					eq(episodes.monitored, true),
 					eq(episodes.hasFile, false),
-					eq(series.monitored, true),
+					ne(episodes.seasonNumber, 0),
 					sql`${episodes.airDate} <= ${today}`
 				)
 			),
@@ -124,9 +123,8 @@ async function getDashboardStats() {
 			.innerJoin(series, eq(episodes.seriesId, series.id))
 			.where(
 				and(
-					eq(episodes.monitored, true),
 					eq(episodes.hasFile, false),
-					eq(series.monitored, true),
+					ne(episodes.seasonNumber, 0),
 					sql`${episodes.airDate} > ${today}`
 				)
 			)
@@ -246,6 +244,7 @@ async function getRecentlyAdded() {
 						and(
 							inArray(episodes.seriesId, recentlyAddedSeriesIds),
 							eq(episodes.hasFile, false),
+							ne(episodes.seasonNumber, 0),
 							sql`${episodes.airDate} <= ${today}`
 						)
 					)
