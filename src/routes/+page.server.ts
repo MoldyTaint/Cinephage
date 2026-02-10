@@ -8,7 +8,7 @@ import {
 	unmatchedFiles,
 	rootFolders
 } from '$lib/server/db/schema';
-import { count, eq, desc, and, not, inArray, sql, gte } from 'drizzle-orm';
+import { count, eq, desc, and, not, inArray, sql, gte, ne } from 'drizzle-orm';
 import { logger } from '$lib/logging';
 import type { UnifiedActivity } from '$lib/types/activity';
 
@@ -42,6 +42,33 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 				monitored: count(sql`CASE WHEN ${episodes.monitored} = 1 THEN 1 END`)
 			})
 			.from(episodes);
+
+		const today = new Date().toISOString().split('T')[0];
+
+		const [airedMissingEpisodes, unairedEpisodes] = await Promise.all([
+			db
+				.select({ count: count() })
+				.from(episodes)
+				.innerJoin(series, eq(episodes.seriesId, series.id))
+				.where(
+					and(
+						eq(episodes.hasFile, false),
+						ne(episodes.seasonNumber, 0),
+						sql`${episodes.airDate} <= ${today}`
+					)
+				),
+			db
+				.select({ count: count() })
+				.from(episodes)
+				.innerJoin(series, eq(episodes.seriesId, series.id))
+				.where(
+					and(
+						eq(episodes.hasFile, false),
+						ne(episodes.seasonNumber, 0),
+						sql`${episodes.airDate} > ${today}`
+					)
+				)
+		]);
 
 		// Get active and failed download counts
 		const [activeDownloads, failedDownloads] = await Promise.all([
@@ -151,8 +178,34 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 			.orderBy(desc(series.added))
 			.limit(6);
 
-		// Get upcoming/missing episodes (aired but no file, for monitored series)
-		const today = new Date().toISOString().split('T')[0];
+		const recentlyAddedSeriesIds = recentlyAddedSeries.map((s) => s.id);
+		const recentlyAddedSeriesMissingCounts =
+			recentlyAddedSeriesIds.length > 0
+				? await db
+						.select({
+							seriesId: episodes.seriesId,
+							count: count()
+						})
+						.from(episodes)
+						.where(
+							and(
+								inArray(episodes.seriesId, recentlyAddedSeriesIds),
+								eq(episodes.hasFile, false),
+								ne(episodes.seasonNumber, 0),
+								sql`${episodes.airDate} <= ${today}`
+							)
+						)
+						.groupBy(episodes.seriesId)
+				: [];
+		const recentlyAddedSeriesMissingMap = new Map(
+			recentlyAddedSeriesMissingCounts.map((row) => [row.seriesId, row.count])
+		);
+		const recentlyAddedSeriesWithMissing = recentlyAddedSeries.map((show) => ({
+			...show,
+			airedMissingCount: recentlyAddedSeriesMissingMap.get(show.id) ?? 0
+		}));
+
+		// Get missing episodes (aired but no file, for monitored series)
 		const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
 			.toISOString()
 			.split('T')[0];
@@ -216,7 +269,8 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 				episodes: {
 					total: episodeStats?.total || 0,
 					withFile: episodeStats?.withFile || 0,
-					missing: (episodeStats?.total || 0) - (episodeStats?.withFile || 0),
+					missing: airedMissingEpisodes?.[0]?.count || 0,
+					unaired: unairedEpisodes?.[0]?.count || 0,
 					monitored: episodeStats?.monitored || 0
 				},
 				activeDownloads: activeDownloads?.[0]?.count || 0,
@@ -230,7 +284,7 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 			recentActivity,
 			recentlyAdded: {
 				movies: recentlyAddedMovies,
-				series: recentlyAddedSeries
+				series: recentlyAddedSeriesWithMissing
 			},
 			missingEpisodes: missingEpisodesWithSeries
 		};
@@ -243,7 +297,7 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 			stats: {
 				movies: { total: 0, withFile: 0, missing: 0, monitored: 0 },
 				series: { total: 0, monitored: 0 },
-				episodes: { total: 0, withFile: 0, missing: 0, monitored: 0 },
+				episodes: { total: 0, withFile: 0, missing: 0, unaired: 0, monitored: 0 },
 				activeDownloads: 0,
 				failedDownloads: 0,
 				unmatchedFiles: 0,

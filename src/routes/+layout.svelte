@@ -125,7 +125,7 @@
 		</header>
 
 		<!-- Page Content -->
-		<main class="w-full flex-grow p-4">
+		<main class="w-full grow p-4">
 			{@render children()}
 		</main>
 	</div>
@@ -165,7 +165,7 @@
 			</div>
 
 			<!-- Navigation -->
-			<ul class="menu flex-grow flex-nowrap gap-2 p-2">
+			<ul class="menu grow flex-nowrap gap-2 p-2">
 				{#each menuItems as item (item.label)}
 					<li>
 						{#if item.children}

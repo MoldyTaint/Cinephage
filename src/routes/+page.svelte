@@ -232,6 +232,9 @@
 					{#if stats.episodes.missing > 0}
 						<span class="badge badge-sm badge-warning">{stats.episodes.missing} missing</span>
 					{/if}
+					{#if (stats.episodes.unaired || 0) > 0}
+						<span class="badge badge-sm badge-secondary">{stats.episodes.unaired} unaired</span>
+					{/if}
 				</div>
 			</div>
 		</a>
@@ -437,10 +440,10 @@
 											</p>
 										</div>
 									</div>
-									{#if (show.episodeFileCount ?? 0) < (show.episodeCount ?? 0)}
+									{#if (show.airedMissingCount ?? 0) > 0}
 										<div class="absolute top-1 right-1">
 											<span class="badge badge-xs badge-warning">
-												{(show.episodeCount ?? 0) - (show.episodeFileCount ?? 0)} missing
+												{show.airedMissingCount} missing
 											</span>
 										</div>
 									{/if}
