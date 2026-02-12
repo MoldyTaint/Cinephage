@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { ChevronDown, ChevronRight, MessageSquare } from 'lucide-svelte';
 	import type { UnifiedTask } from '$lib/server/tasks/UnifiedTaskRegistry';
 	import type { TaskHistoryEntry } from '$lib/types/task';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
@@ -10,6 +11,7 @@
 	}
 
 	let { task, history, onClose }: Props = $props();
+	let expandedResultErrors = $state<Record<string, boolean>>({});
 
 	function formatDate(dateStr: string): string {
 		const date = new Date(dateStr);
@@ -43,6 +45,58 @@
 			default:
 				return 'badge-ghost';
 		}
+	}
+
+	function getSummarySource(
+		results: Record<string, unknown> | null
+	): Record<string, unknown> | null {
+		if (!results) return null;
+		if (typeof results.result === 'object' && results.result !== null) {
+			return results.result as Record<string, unknown>;
+		}
+		return results;
+	}
+
+	function asNumber(value: unknown): number | null {
+		return typeof value === 'number' ? value : null;
+	}
+
+	function getErrorCount(summary: Record<string, unknown> | null): number | null {
+		if (!summary) return null;
+		const errors = summary.errors;
+		if (typeof errors === 'number') return errors;
+		if (Array.isArray(errors)) return errors.length;
+		return null;
+	}
+
+	function getResultErrorItems(
+		summary: Record<string, unknown> | null
+	): Array<{ error: string; path?: string }> {
+		if (!summary || !Array.isArray(summary.errors)) return [];
+		const items: Array<{ error: string; path?: string }> = [];
+
+		for (const entry of summary.errors) {
+			if (typeof entry === 'string') {
+				items.push({ error: entry });
+				continue;
+			}
+			if (!entry || typeof entry !== 'object') continue;
+
+			const maybeError = 'error' in entry ? entry.error : undefined;
+			const maybePath = 'path' in entry ? entry.path : undefined;
+			const error = typeof maybeError === 'string' ? maybeError : 'Unknown error';
+			const path = typeof maybePath === 'string' ? maybePath : undefined;
+			items.push({ error, path });
+		}
+
+		return items;
+	}
+
+	function toggleResultErrors(entryId: string): void {
+		expandedResultErrors = {
+			...expandedResultErrors,
+			[entryId]: !expandedResultErrors[entryId]
+		};
 	}
 </script>
 
@@ -88,6 +142,19 @@
 					</thead>
 					<tbody>
 						{#each history as entry (entry.id)}
+							{@const summary = getSummarySource(entry.results)}
+							{@const itemsProcessed = asNumber(summary?.itemsProcessed)}
+							{@const itemsGrabbed = asNumber(summary?.itemsGrabbed)}
+							{@const updatedFiles = asNumber(summary?.updatedFiles ?? summary?.updated)}
+							{@const filesScanned = asNumber(summary?.filesScanned)}
+							{@const filesAdded = asNumber(summary?.filesAdded)}
+							{@const filesUpdated = asNumber(summary?.filesUpdated)}
+							{@const filesRemoved = asNumber(summary?.filesRemoved)}
+							{@const unmatchedFiles = asNumber(summary?.unmatchedFiles)}
+							{@const probeFallbackUsed = asNumber(summary?.probeFallbackUsed)}
+							{@const errorCount = getErrorCount(summary)}
+							{@const resultErrorItems = getResultErrorItems(summary)}
+							{@const showResultErrors = !!expandedResultErrors[entry.id]}
 							<tr>
 								<td>
 									<span class="badge badge-sm {getStatusColor(entry.status)}">
@@ -101,19 +168,50 @@
 								<td class="text-sm">
 									{#if entry.results}
 										<div class="space-y-0.5 text-xs">
-											{#if 'itemsProcessed' in entry.results}
-												<div>Processed: {entry.results.itemsProcessed}</div>
+											{#if itemsProcessed !== null}
+												<div>Processed: {itemsProcessed}</div>
 											{/if}
-											{#if 'itemsGrabbed' in entry.results}
-												<div>Grabbed: {entry.results.itemsGrabbed}</div>
+											{#if itemsGrabbed !== null}
+												<div>Grabbed: {itemsGrabbed}</div>
 											{/if}
-											{#if 'errors' in entry.results && (entry.results as { errors?: number }).errors}
-												<div class="text-error">
-													Errors: {(entry.results as { errors?: number }).errors}
-												</div>
+											{#if updatedFiles !== null}
+												<div>Updated: {updatedFiles}</div>
 											{/if}
-											{#if 'updatedFiles' in entry.results}
-												<div>Updated: {entry.results.updatedFiles}</div>
+											{#if filesScanned !== null}
+												<div>Scanned: {filesScanned}</div>
+											{/if}
+											{#if filesAdded !== null && filesAdded > 0}
+												<div>Added: {filesAdded}</div>
+											{/if}
+											{#if filesUpdated !== null && filesUpdated > 0}
+												<div>Updated files: {filesUpdated}</div>
+											{/if}
+											{#if filesRemoved !== null && filesRemoved > 0}
+												<div>Removed: {filesRemoved}</div>
+											{/if}
+											{#if unmatchedFiles !== null && unmatchedFiles > 0}
+												<div>Unmatched: {unmatchedFiles}</div>
+											{/if}
+											{#if probeFallbackUsed !== null && probeFallbackUsed > 0}
+												<div>Fallback used: {probeFallbackUsed}</div>
+											{/if}
+											{#if errorCount !== null && errorCount > 0}
+												<div class="text-error">Errors: {errorCount}</div>
+											{/if}
+											{#if resultErrorItems.length > 0}
+												<button
+													type="button"
+													class="btn mt-1 h-6 min-h-0 gap-1 px-1.5 btn-ghost btn-xs"
+													onclick={() => toggleResultErrors(entry.id)}
+												>
+													{#if showResultErrors}
+														<ChevronDown class="h-3 w-3" />
+													{:else}
+														<ChevronRight class="h-3 w-3" />
+													{/if}
+													<MessageSquare class="h-3 w-3" />
+													View failed items
+												</button>
 											{/if}
 										</div>
 									{:else}
@@ -121,6 +219,24 @@
 									{/if}
 								</td>
 							</tr>
+							{#if resultErrorItems.length > 0 && showResultErrors}
+								<tr class="bg-base-200/40">
+									<td colspan="4" class="text-sm">
+										<div class="max-h-56 space-y-2 overflow-y-auto pr-1">
+											{#each resultErrorItems as item, index (`${entry.id}-${index}-${item.path ?? item.error}`)}
+												<div class="rounded bg-base-100 p-2 text-xs">
+													<div class="font-medium text-error">{item.error}</div>
+													{#if item.path}
+														<div class="mt-1 font-mono break-all text-base-content/60">
+															{item.path}
+														</div>
+													{/if}
+												</div>
+											{/each}
+										</div>
+									</td>
+								</tr>
+							{/if}
 							{#if entry.errors && Array.isArray(entry.errors) && entry.errors.length > 0}
 								<tr class="bg-error/5">
 									<td colspan="4" class="text-sm">

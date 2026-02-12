@@ -6,12 +6,19 @@
  * to locate and play streaming content.
  */
 
-import { existsSync, mkdirSync, writeFileSync, unlinkSync, readFileSync, readdirSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, unlinkSync, readFileSync } from 'fs';
 import { join, dirname, resolve, relative } from 'path';
 import { createChildLogger } from '$lib/logging';
 import { db } from '$lib/server/db';
-import { movies, series, episodes, rootFolders } from '$lib/server/db/schema';
-import { eq, and, asc } from 'drizzle-orm';
+import {
+	movies,
+	series,
+	episodes,
+	rootFolders,
+	movieFiles,
+	episodeFiles
+} from '$lib/server/db/schema';
+import { eq, and, asc, sql } from 'drizzle-orm';
 
 const logger = createChildLogger({ module: 'StrmService' });
 
@@ -345,6 +352,27 @@ export class StrmService {
 	}
 
 	/**
+	 * Resolve a media file path from DB root folder + media path + relative file path.
+	 * Handles both canonical relative paths and already-prefixed relative paths.
+	 */
+	private resolveMediaPath(
+		rootPath: string,
+		parentPath: string | null,
+		relativePath: string
+	): string {
+		const cleanedParent = (parentPath ?? '').replace(/^[/\\]+/, '');
+		if (
+			cleanedParent &&
+			(relativePath === cleanedParent ||
+				relativePath.startsWith(`${cleanedParent}/`) ||
+				relativePath.startsWith(`${cleanedParent}\\`))
+		) {
+			return join(rootPath, relativePath);
+		}
+		return join(rootPath, cleanedParent, relativePath);
+	}
+
+	/**
 	 * Parse an HTTP URL from a .strm file to extract media parameters.
 	 * This is used when bulk-updating .strm files to understand what content they point to.
 	 *
@@ -382,31 +410,7 @@ export class StrmService {
 	}
 
 	/**
-	 * Recursively find all .strm files in a directory
-	 */
-	private findStrmFiles(dir: string): string[] {
-		const results: string[] = [];
-
-		try {
-			const entries = readdirSync(dir, { withFileTypes: true });
-			for (const entry of entries) {
-				const fullPath = join(dir, entry.name);
-				if (entry.isDirectory()) {
-					results.push(...this.findStrmFiles(fullPath));
-				} else if (entry.isFile() && entry.name.endsWith('.strm')) {
-					results.push(fullPath);
-				}
-			}
-		} catch (error) {
-			// Directory might not be accessible, skip it
-			logger.warn('[StrmService] Could not read directory', { dir, error });
-		}
-
-		return results;
-	}
-
-	/**
-	 * Bulk update all .strm files across all root folders with a new base URL.
+	 * Bulk update streamer-profile .strm files with a new base URL.
 	 * This is useful when the server's IP/port/domain changes.
 	 *
 	 * @param newBaseUrl - The new base URL to use in .strm files
@@ -428,27 +432,64 @@ export class StrmService {
 		logger.info('[StrmService] Starting bulk .strm URL update', { newBaseUrl: baseUrl });
 
 		try {
-			// Get all root folders from database
-			const allRootFolders = await db.query.rootFolders.findMany();
+			const movieStrmLike = sql`lower(${movieFiles.relativePath}) like '%.strm'`;
+			const episodeStrmLike = sql`lower(${episodeFiles.relativePath}) like '%.strm'`;
 
-			if (allRootFolders.length === 0) {
-				logger.info('[StrmService] No root folders configured, nothing to update');
-				return { success: true, totalFiles: 0, updatedFiles: 0, errors: [] };
-			}
+			// Only process library entries currently on the Streamer profile.
+			// This prevents touching external/manual .strm files under non-streamer profiles.
+			const [movieStrmRows, episodeStrmRows] = await Promise.all([
+				db
+					.select({
+						relativePath: movieFiles.relativePath,
+						parentPath: movies.path,
+						rootPath: rootFolders.path
+					})
+					.from(movieFiles)
+					.leftJoin(movies, eq(movieFiles.movieId, movies.id))
+					.leftJoin(rootFolders, eq(movies.rootFolderId, rootFolders.id))
+					.where(and(movieStrmLike, eq(movies.scoringProfileId, 'streamer'))),
+				db
+					.select({
+						relativePath: episodeFiles.relativePath,
+						parentPath: series.path,
+						rootPath: rootFolders.path
+					})
+					.from(episodeFiles)
+					.leftJoin(series, eq(episodeFiles.seriesId, series.id))
+					.leftJoin(rootFolders, eq(series.rootFolderId, rootFolders.id))
+					.where(and(episodeStrmLike, eq(series.scoringProfileId, 'streamer')))
+			]);
 
-			// Find all .strm files across all root folders
-			const strmFiles: string[] = [];
-			for (const folder of allRootFolders) {
-				if (existsSync(folder.path)) {
-					const files = this.findStrmFiles(folder.path);
-					strmFiles.push(...files);
-				} else {
-					logger.warn('[StrmService] Root folder does not exist', { path: folder.path });
+			const strmFiles = new Set<string>();
+			let skippedMissingMetadata = 0;
+
+			for (const row of movieStrmRows) {
+				if (!row.rootPath || !row.parentPath) {
+					skippedMissingMetadata += 1;
+					continue;
+				}
+				const fullPath = this.resolveMediaPath(row.rootPath, row.parentPath, row.relativePath);
+				if (existsSync(fullPath)) {
+					strmFiles.add(fullPath);
 				}
 			}
 
-			totalFiles = strmFiles.length;
-			logger.info('[StrmService] Found .strm files to process', { count: totalFiles });
+			for (const row of episodeStrmRows) {
+				if (!row.rootPath || !row.parentPath) {
+					skippedMissingMetadata += 1;
+					continue;
+				}
+				const fullPath = this.resolveMediaPath(row.rootPath, row.parentPath, row.relativePath);
+				if (existsSync(fullPath)) {
+					strmFiles.add(fullPath);
+				}
+			}
+
+			totalFiles = strmFiles.size;
+			logger.info('[StrmService] Found streamer .strm files to process', {
+				count: totalFiles,
+				skippedMissingMetadata
+			});
 
 			// Process each .strm file
 			for (const filePath of strmFiles) {

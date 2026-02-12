@@ -167,9 +167,9 @@ export class StreamPrefetchService {
 			// Build the resolve URL
 			let resolveUrl: string;
 			if (mediaType === 'movie') {
-				resolveUrl = `/api/streaming/resolve/movie/${tmdbId}`;
+				resolveUrl = `/api/streaming/resolve/movie/${tmdbId}?prefetch=1`;
 			} else {
-				resolveUrl = `/api/streaming/resolve/tv/${tmdbId}/${season}/${episode}`;
+				resolveUrl = `/api/streaming/resolve/tv/${tmdbId}/${season}/${episode}?prefetch=1`;
 			}
 
 			// Make the prefetch request

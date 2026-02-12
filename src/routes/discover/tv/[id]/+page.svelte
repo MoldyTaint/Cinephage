@@ -13,8 +13,9 @@
 			// Find first season with episodes (skip specials/season 0)
 			const firstSeason = data.tv.seasons.find((s) => s.season_number > 0 && s.episode_count > 0);
 			if (firstSeason) {
-				fetch(`/api/streaming/resolve/tv/${data.tv.id}/${firstSeason.season_number}/1`, {
-					signal: AbortSignal.timeout(5000)
+				fetch(`/api/streaming/resolve/tv/${data.tv.id}/${firstSeason.season_number}/1?prefetch=1`, {
+					signal: AbortSignal.timeout(5000),
+					headers: { 'X-Prefetch': 'true' }
 				}).catch(() => {});
 			}
 		}

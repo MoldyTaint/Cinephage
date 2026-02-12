@@ -24,6 +24,7 @@ type ReprobeResult = {
 	total: number;
 	distinctTotal: number;
 	updated: number;
+	probeFallbackUsed: number;
 	failed: number;
 	skipped: number;
 	skippedStreamer: number;
@@ -53,6 +54,7 @@ export const POST: RequestHandler = async () => {
 			total: 0,
 			distinctTotal: 0,
 			updated: 0,
+			probeFallbackUsed: 0,
 			failed: 0,
 			skipped: 0,
 			skippedStreamer: 0,
@@ -148,9 +150,19 @@ export const POST: RequestHandler = async () => {
 		for (const [fullPath, ids] of movieGroups) {
 			distinctPaths.add(fullPath);
 			try {
-				const mediaInfo = await mediaInfoService.extractMediaInfo(fullPath);
+				let fallbackUsed = false;
+				const mediaInfo = await mediaInfoService.extractMediaInfo(fullPath, {
+					failOnInvalidStrmUrl: true,
+					onStrmProbeFallback: () => {
+						fallbackUsed = true;
+					}
+				});
+				if (!mediaInfo) {
+					throw new Error('Probe failed and fallback media info could not be generated');
+				}
 				await db.update(movieFiles).set({ mediaInfo }).where(inArray(movieFiles.id, ids));
 				result.updated += 1;
+				if (fallbackUsed) result.probeFallbackUsed += 1;
 			} catch (error) {
 				result.failed += 1;
 				const message = error instanceof Error ? error.message : String(error);
@@ -161,9 +173,19 @@ export const POST: RequestHandler = async () => {
 		for (const [fullPath, ids] of episodeGroups) {
 			distinctPaths.add(fullPath);
 			try {
-				const mediaInfo = await mediaInfoService.extractMediaInfo(fullPath);
+				let fallbackUsed = false;
+				const mediaInfo = await mediaInfoService.extractMediaInfo(fullPath, {
+					failOnInvalidStrmUrl: true,
+					onStrmProbeFallback: () => {
+						fallbackUsed = true;
+					}
+				});
+				if (!mediaInfo) {
+					throw new Error('Probe failed and fallback media info could not be generated');
+				}
 				await db.update(episodeFiles).set({ mediaInfo }).where(inArray(episodeFiles.id, ids));
 				result.updated += 1;
+				if (fallbackUsed) result.probeFallbackUsed += 1;
 			} catch (error) {
 				result.failed += 1;
 				const message = error instanceof Error ? error.message : String(error);
@@ -181,6 +203,7 @@ export const POST: RequestHandler = async () => {
 			total: result.total,
 			distinctTotal: distinctPaths.size,
 			updated: result.updated,
+			probeFallbackUsed: result.probeFallbackUsed,
 			failed: result.failed,
 			skipped: result.skipped,
 			skippedStreamer: result.skippedStreamer,
@@ -198,6 +221,7 @@ export const POST: RequestHandler = async () => {
 				total: 0,
 				distinctTotal: 0,
 				updated: 0,
+				probeFallbackUsed: 0,
 				failed: 0,
 				skipped: 0,
 				skippedStreamer: 0,

@@ -95,13 +95,22 @@
 		};
 	});
 
+	const prefetchProfileId = $derived.by(
+		() => movie.scoringProfileId ?? data.qualityProfiles.find((p) => p.isDefault)?.id ?? null
+	);
+	let prefetchedStreamKey = $state<string | null>(null);
+
 	// Prefetch stream when page loads (warms cache for faster playback)
 	$effect(() => {
-		if (movie?.tmdbId) {
-			fetch(`/api/streaming/resolve/movie/${movie.tmdbId}`, {
-				signal: AbortSignal.timeout(5000)
-			}).catch(() => {});
-		}
+		if (!(prefetchProfileId === 'streamer' && movie?.tmdbId)) return;
+		const key = `movie:${movie.tmdbId}`;
+		if (prefetchedStreamKey === key) return;
+		prefetchedStreamKey = key;
+
+		fetch(`/api/streaming/resolve/movie/${movie.tmdbId}?prefetch=1`, {
+			signal: AbortSignal.timeout(5000),
+			headers: { 'X-Prefetch': 'true' }
+		}).catch(() => {});
 	});
 
 	// State

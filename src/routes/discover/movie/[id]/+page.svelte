@@ -9,8 +9,9 @@
 	// Prefetch stream when page loads (warms cache for faster playback)
 	$effect(() => {
 		if (data.movie?.id) {
-			fetch(`/api/streaming/resolve/movie/${data.movie.id}`, {
-				signal: AbortSignal.timeout(5000)
+			fetch(`/api/streaming/resolve/movie/${data.movie.id}?prefetch=1`, {
+				signal: AbortSignal.timeout(5000),
+				headers: { 'X-Prefetch': 'true' }
 			}).catch(() => {});
 		}
 	});

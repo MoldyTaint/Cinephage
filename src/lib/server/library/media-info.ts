@@ -294,28 +294,51 @@ export class MediaInfoService {
 	 */
 	async extractMediaInfo(
 		filePath: string,
-		options: { allowStrmProbe?: boolean } = {}
+		options: {
+			allowStrmProbe?: boolean;
+			onStrmProbeFallback?: (reason: string) => void;
+			failOnInvalidStrmUrl?: boolean;
+		} = {}
 	): Promise<MediaInfo | null> {
 		try {
-			const { allowStrmProbe = true } = options;
+			const { allowStrmProbe = true, onStrmProbeFallback, failOnInvalidStrmUrl = false } = options;
 			// Handle .strm files specially - they are streaming placeholders, not real video files
 			const ext = filePath.toLowerCase().slice(filePath.lastIndexOf('.'));
 			if (ext === '.strm') {
 				if (!allowStrmProbe) {
+					onStrmProbeFallback?.('STRM probing disabled');
 					return this.getStrmMediaInfo();
 				}
+				const content = await readFile(filePath, 'utf8');
+				const strmUrl = parseStrmUrl(content);
+				if (!strmUrl) {
+					if (failOnInvalidStrmUrl) {
+						throw new Error('STRM file has no URL');
+					}
+					onStrmProbeFallback?.('STRM file has no URL');
+					return this.getStrmMediaInfo();
+				}
+
+				let parsedUrl: URL;
 				try {
-					const content = await readFile(filePath, 'utf8');
-					const strmUrl = parseStrmUrl(content);
-					if (!strmUrl) {
-						return this.getStrmMediaInfo();
+					parsedUrl = new URL(strmUrl);
+				} catch {
+					if (failOnInvalidStrmUrl) {
+						throw new Error('Invalid STRM URL');
 					}
+					onStrmProbeFallback?.('Invalid STRM URL');
+					return this.getStrmMediaInfo();
+				}
 
-					const parsedUrl = new URL(strmUrl);
-					if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-						return this.getStrmMediaInfo();
+				if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+					if (failOnInvalidStrmUrl) {
+						throw new Error(`Unsupported STRM URL protocol: ${parsedUrl.protocol}`);
 					}
+					onStrmProbeFallback?.(`Unsupported STRM URL protocol: ${parsedUrl.protocol}`);
+					return this.getStrmMediaInfo();
+				}
 
+				try {
 					const output = await runFFprobe(strmUrl, {
 						timeout: 8000,
 						rwTimeoutMs: 8000,
@@ -324,6 +347,7 @@ export class MediaInfoService {
 					});
 
 					if (!output) {
+						onStrmProbeFallback?.('FFprobe returned no output');
 						return this.getStrmMediaInfo();
 					}
 
@@ -333,6 +357,9 @@ export class MediaInfoService {
 						filePath,
 						error: error instanceof Error ? error.message : String(error)
 					});
+					onStrmProbeFallback?.(
+						error instanceof Error ? error.message : 'Unknown STRM probe error'
+					);
 					return this.getStrmMediaInfo();
 				}
 			}
@@ -361,6 +388,10 @@ export class MediaInfoService {
 				error instanceof Error ? error : undefined,
 				{ filePath }
 			);
+			// Allow callers (e.g. reprobe task) to treat malformed .strm URLs as hard failures.
+			if (options.failOnInvalidStrmUrl) {
+				throw error instanceof Error ? error : new Error(String(error));
+			}
 			return null;
 		}
 	}

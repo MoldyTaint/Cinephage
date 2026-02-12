@@ -32,10 +32,14 @@ export function createSSEStream(
 	} = {}
 ): Response {
 	const heartbeatIntervalMs = options.heartbeatInterval ?? 30000;
+	let cleanupStream: (() => void) | null = null;
 
 	const stream = new ReadableStream({
 		start(controller) {
 			const encoder = new TextEncoder();
+			let cleanedUp = false;
+			let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+			let userCleanup: () => void = () => {};
 
 			/**
 			 * Send an SSE event
@@ -45,29 +49,19 @@ export function createSSEStream(
 					controller.enqueue(encoder.encode(`event: ${event}\n`));
 					controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
 				} catch {
-					// Connection closed, will be cleaned up by abort handler
+					// Connection closed, clean up listeners/timers immediately
+					cleanup();
 				}
 			};
 
-			// Send initial connection event
-			send('connected', { timestamp: new Date().toISOString() });
-
-			// Set up heartbeat
-			const heartbeatInterval = setInterval(() => {
-				try {
-					send('heartbeat', { timestamp: new Date().toISOString() });
-				} catch {
+			const cleanup = () => {
+				if (cleanedUp) return;
+				cleanedUp = true;
+				if (heartbeatInterval) {
 					clearInterval(heartbeatInterval);
 				}
-			}, heartbeatIntervalMs);
-
-			// Set up event handlers and get cleanup function
-			const userCleanup = setup(send);
-
-			// Store cleanup for abort handling
-			const cleanup = () => {
-				clearInterval(heartbeatInterval);
 				userCleanup();
+				cleanupStream = null;
 				try {
 					controller.close();
 				} catch {
@@ -75,9 +69,22 @@ export function createSSEStream(
 				}
 			};
 
-			// Note: We return the cleanup function for the stream close
-			// The abort signal is handled by SvelteKit's request
-			return cleanup;
+			// Send initial connection event
+			send('connected', { timestamp: new Date().toISOString() });
+
+			// Set up heartbeat
+			heartbeatInterval = setInterval(() => {
+				send('heartbeat', { timestamp: new Date().toISOString() });
+			}, heartbeatIntervalMs);
+
+			// Set up event handlers and get cleanup function
+			userCleanup = setup(send);
+
+			// ReadableStream.start() return value is ignored; use cancel() for cleanup
+			cleanupStream = cleanup;
+		},
+		cancel() {
+			cleanupStream?.();
 		}
 	});
 

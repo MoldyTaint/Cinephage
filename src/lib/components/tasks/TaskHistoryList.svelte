@@ -145,10 +145,15 @@
 		if (typeof summarySource.updatedFiles === 'number') {
 			parts.push(`${summarySource.updatedFiles}/${summarySource.totalFiles ?? 0} files updated`);
 		}
-
 		// STRM reprobe results
 		if (typeof summarySource.updated === 'number') {
 			parts.push(`${summarySource.updated}/${summarySource.total ?? 0} files updated`);
+		}
+		if (
+			typeof summarySource.probeFallbackUsed === 'number' &&
+			summarySource.probeFallbackUsed > 0
+		) {
+			parts.push(`${summarySource.probeFallbackUsed} fallback`);
 		}
 		if (typeof summarySource.failed === 'number' && summarySource.failed > 0) {
 			parts.push(`${summarySource.failed} failed`);
@@ -177,6 +182,9 @@
 		// Errors count
 		if (typeof summarySource.errors === 'number' && summarySource.errors > 0) {
 			parts.push(`${summarySource.errors} errors`);
+		}
+		if (Array.isArray(summarySource.errors) && summarySource.errors.length > 0) {
+			parts.push(`${summarySource.errors.length} errors`);
 		}
 
 		return parts.join(', ');

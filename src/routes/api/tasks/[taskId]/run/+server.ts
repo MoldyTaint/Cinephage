@@ -22,6 +22,58 @@ import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ module: 'TaskRunAPI' });
 
+function getSummarySource(result: Record<string, unknown>): Record<string, unknown> {
+	if (typeof result.result === 'object' && result.result !== null) {
+		return result.result as Record<string, unknown>;
+	}
+	return result;
+}
+
+function getErrorCount(errorsValue: unknown): number {
+	if (typeof errorsValue === 'number') return errorsValue;
+	if (Array.isArray(errorsValue)) return errorsValue.length;
+	return 0;
+}
+
+function toNumber(value: unknown): number | undefined {
+	return typeof value === 'number' ? value : undefined;
+}
+
+function buildResultSummary(result: Record<string, unknown>): Record<string, unknown> {
+	const source = getSummarySource(result);
+	const summary: Record<string, unknown> = { success: result.success };
+
+	const numericKeys = [
+		'itemsProcessed',
+		'itemsGrabbed',
+		'totalFiles',
+		'updatedFiles',
+		'filesScanned',
+		'filesAdded',
+		'filesUpdated',
+		'filesRemoved',
+		'unmatchedFiles',
+		'total',
+		'updated',
+		'failed',
+		'skipped'
+	] as const;
+
+	for (const key of numericKeys) {
+		const value = toNumber(source[key]);
+		if (value !== undefined) {
+			summary[key] = value;
+		}
+	}
+
+	const errors = getErrorCount(source.errors);
+	if (errors > 0) {
+		summary.errors = errors;
+	}
+
+	return summary;
+}
+
 export const POST: RequestHandler = async ({ params, fetch, request }) => {
 	const { taskId } = params;
 
@@ -65,14 +117,16 @@ export const POST: RequestHandler = async ({ params, fetch, request }) => {
 
 		if (result.success) {
 			await taskHistoryService.completeTask(historyId, result);
-			logger.info('[TaskRunAPI] Task completed successfully', { taskId, result });
+			const summary = buildResultSummary(result as Record<string, unknown>);
+			logger.info('[TaskRunAPI] Task completed successfully', { taskId, summary });
 
 			// Emit SSE event: task completed
 			// Build a TaskResult-compatible object for the SSE handler
+			const summarySource = getSummarySource(result as Record<string, unknown>);
 			monitoringScheduler.emit('manualTaskCompleted', taskId, {
-				itemsProcessed: result.itemsProcessed ?? result.totalFiles ?? 0,
-				itemsGrabbed: result.itemsGrabbed ?? result.updatedFiles ?? 0,
-				errors: result.errors ?? 0
+				itemsProcessed: toNumber(summarySource.itemsProcessed ?? summarySource.totalFiles) ?? 0,
+				itemsGrabbed: toNumber(summarySource.itemsGrabbed ?? summarySource.updatedFiles) ?? 0,
+				errors: getErrorCount(summarySource.errors)
 			});
 
 			return json({ success: true, historyId, ...result });
