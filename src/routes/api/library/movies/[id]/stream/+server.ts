@@ -3,7 +3,7 @@ import { downloadMonitor } from '$lib/server/downloadClients/monitoring';
 import { importService } from '$lib/server/downloadClients/import';
 import { db } from '$lib/server/db';
 import { movies, movieFiles, rootFolders, downloadQueue, subtitles } from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import type { RequestHandler } from '@sveltejs/kit';
 import type { LibraryMovie, MovieFile } from '$lib/types/library';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
@@ -120,7 +120,7 @@ async function getQueueItem(movieId: string): Promise<QueueItem | null> {
 			progress: downloadQueue.progress
 		})
 		.from(downloadQueue)
-		.where(eq(downloadQueue.movieId, movieId));
+		.where(and(eq(downloadQueue.movieId, movieId), eq(downloadQueue.status, 'downloading')));
 
 	if (!queueItem) return null;
 

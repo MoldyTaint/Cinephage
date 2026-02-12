@@ -73,12 +73,8 @@
 			queueItemsState = payload.queueItems;
 		},
 		'queue:updated': (payload) => {
-			if (
-				payload.status === 'imported' ||
-				payload.status === 'removed' ||
-				payload.status === 'failed'
-			) {
-				// Remove from queue if terminal state
+			if (payload.status !== 'downloading') {
+				// Keep local queue state aligned to actively downloading items only
 				queueItemsState = queueItems.filter((q) => q.id !== payload.id);
 			} else {
 				// Update or add queue item
@@ -1137,7 +1133,7 @@
 						</div>
 					{/if}
 				</div>
-				<div class="hidden shrink-0 items-center sm:flex">
+				<div class="hidden shrink-0 items-center lg:flex">
 					{#if sse.isConnected}
 						<span
 							class="inline-flex items-center gap-1 rounded-full border border-success/70 bg-success/90 px-2.5 py-1 text-xs font-medium text-success-content shadow-sm"

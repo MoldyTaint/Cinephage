@@ -109,6 +109,13 @@ export interface LibraryIssue {
 	issue: 'missing_root_folder' | 'invalid_root_folder';
 }
 
+export interface RootFolderOption {
+	id: string;
+	name: string;
+	path: string;
+	mediaType: 'movie' | 'tv';
+}
+
 export interface UnmatchedState {
 	files: UnmatchedFile[];
 	folders: UnmatchedFolder[];

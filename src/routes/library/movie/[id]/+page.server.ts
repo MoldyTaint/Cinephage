@@ -8,7 +8,7 @@ import {
 	downloadQueue,
 	subtitles
 } from '$lib/server/db/schema.js';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import type { LibraryMovie, MovieFile } from '$lib/types/library';
@@ -183,7 +183,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 			progress: downloadQueue.progress
 		})
 		.from(downloadQueue)
-		.where(eq(downloadQueue.movieId, id));
+		.where(and(eq(downloadQueue.movieId, id), eq(downloadQueue.status, 'downloading')));
 
 	const queueItem: QueueItemInfo | null =
 		queueResults.length > 0

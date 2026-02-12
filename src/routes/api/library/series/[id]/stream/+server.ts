@@ -11,7 +11,7 @@ import {
 	downloadQueue,
 	subtitles
 } from '$lib/server/db/schema';
-import { eq, asc, inArray } from 'drizzle-orm';
+import { eq, asc, inArray, and } from 'drizzle-orm';
 import type { RequestHandler } from '@sveltejs/kit';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 
@@ -292,7 +292,7 @@ async function getQueueItems(seriesId: string): Promise<QueueItem[]> {
 			seasonNumber: downloadQueue.seasonNumber
 		})
 		.from(downloadQueue)
-		.where(eq(downloadQueue.seriesId, seriesId));
+		.where(and(eq(downloadQueue.seriesId, seriesId), eq(downloadQueue.status, 'downloading')));
 
 	return results.map((q) => ({
 		id: q.id,

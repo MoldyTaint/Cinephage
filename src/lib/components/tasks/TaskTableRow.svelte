@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { History } from 'lucide-svelte';
 	import type { UnifiedTask } from '$lib/server/tasks/UnifiedTaskRegistry';
 	import type { TaskHistoryEntry } from '$lib/types/task';
 	import TaskIntervalCell from './TaskIntervalCell.svelte';
@@ -138,9 +139,9 @@
 					Running
 				</span>
 			{:else if lastRunStatus === 'completed'}
-				<span class="badge badge-sm badge-success"></span>
+				<span class="badge badge-sm badge-success">OK</span>
 			{:else if lastRunStatus === 'failed'}
-				<span class="badge badge-sm badge-error"></span>
+				<span class="badge badge-sm badge-error">Failed</span>
 			{/if}
 		</div>
 	</td>
@@ -254,20 +255,7 @@
 			{/if}
 
 			<button class="btn btn-square btn-ghost btn-xs" onclick={onShowHistory} title="View History">
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					width="16"
-					height="16"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-				>
-					<polyline points="9 11 12 14 22 4" />
-					<path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-				</svg>
+				<History class="h-4 w-4" />
 			</button>
 		</div>
 	</td>

@@ -10,7 +10,7 @@ import {
 	downloadQueue,
 	subtitles
 } from '$lib/server/db/schema.js';
-import { eq, asc, inArray } from 'drizzle-orm';
+import { eq, asc, inArray, and } from 'drizzle-orm';
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { DEFAULT_PROFILES } from '$lib/server/scoring/profiles.js';
@@ -361,7 +361,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 			seasonNumber: downloadQueue.seasonNumber
 		})
 		.from(downloadQueue)
-		.where(eq(downloadQueue.seriesId, id));
+		.where(and(eq(downloadQueue.seriesId, id), eq(downloadQueue.status, 'downloading')));
 
 	const queueItems: QueueItemInfo[] = queueResults.map((q) => ({
 		id: q.id,

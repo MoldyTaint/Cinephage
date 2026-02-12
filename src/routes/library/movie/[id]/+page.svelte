@@ -54,11 +54,7 @@
 			queueItemState = payload.queueItem;
 		},
 		'queue:updated': (payload) => {
-			if (
-				payload.status === 'imported' ||
-				payload.status === 'removed' ||
-				payload.status === 'failed'
-			) {
+			if (payload.status !== 'downloading') {
 				queueItemState = null;
 			} else {
 				queueItemState = {
@@ -532,7 +528,7 @@
 						</div>
 					{/if}
 				</div>
-				<div class="hidden shrink-0 items-center sm:flex">
+				<div class="hidden shrink-0 items-center lg:flex">
 					{#if sse.isConnected}
 						<span
 							class="inline-flex items-center gap-1 rounded-full border border-success/70 bg-success/90 px-2.5 py-1 text-xs font-medium text-success-content shadow-sm"

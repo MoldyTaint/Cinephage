@@ -7,6 +7,7 @@
 	import type { TaskHistoryEntry } from '$lib/types/task';
 	import TasksTable from '$lib/components/tasks/TasksTable.svelte';
 	import CreateTaskPlaceholder from '$lib/components/tasks/CreateTaskPlaceholder.svelte';
+	import { Wifi } from 'lucide-svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -369,12 +370,18 @@
 			</p>
 		</div>
 		<div class="flex items-center gap-2 sm:gap-3">
-			{#if sseConnected}
-				<span class="badge hidden gap-1 badge-ghost badge-sm sm:inline-flex">
-					<span class="inline-block h-1.5 w-1.5 rounded-full bg-success"></span>
-					Live
-				</span>
-			{/if}
+			<div class="hidden items-center gap-2 lg:flex">
+				{#if sseConnected}
+					<span class="badge gap-1 badge-success">
+						<Wifi class="h-3 w-3" />
+						Live
+					</span>
+				{:else if sseStatus === 'connecting' || sseStatus === 'error'}
+					<span class="badge gap-1 {sseStatus === 'error' ? 'badge-error' : 'badge-warning'}">
+						{sseStatus === 'error' ? 'Reconnecting...' : 'Connecting...'}
+					</span>
+				{/if}
+			</div>
 			<button
 				class="btn w-full gap-2 btn-sm btn-primary sm:w-auto"
 				onclick={() => (showCreateModal = true)}

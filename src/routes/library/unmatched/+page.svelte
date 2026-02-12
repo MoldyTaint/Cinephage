@@ -8,7 +8,8 @@
 		UnmatchedFilters,
 		UnmatchedBulkActions,
 		UnmatchedEmptyState,
-		UnmatchedPagination
+		UnmatchedPagination,
+		UnmatchedLibraryIssues
 	} from '$lib/components/unmatched';
 	import MatchFileModal from '$lib/components/library/MatchFileModal.svelte';
 	import MatchFolderModal from '$lib/components/library/MatchFolderModal.svelte';
@@ -176,6 +177,9 @@
 			showCheckboxes = showing;
 		}}
 	/>
+
+	<!-- Library issues panel (missing/invalid root folders) -->
+	<UnmatchedLibraryIssues unmatchedFileCount={pagination.total} />
 
 	<!-- Loading State -->
 	{#if loading}

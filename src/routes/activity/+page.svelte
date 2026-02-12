@@ -445,7 +445,7 @@
 			<p class="text-base-content/70">Download and search history</p>
 		</div>
 		<!-- Connection Status -->
-		<div class="hidden sm:block">
+		<div class="hidden lg:block">
 			{#if sse.isConnected}
 				<span class="badge gap-1 badge-success">
 					<Wifi class="h-3 w-3" />

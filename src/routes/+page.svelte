@@ -4,7 +4,6 @@
 		Tv,
 		Download,
 		AlertCircle,
-		AlertTriangle,
 		Clock,
 		CheckCircle,
 		XCircle,
@@ -170,7 +169,7 @@
 			<p class="text-base-content/70">Welcome to Cinephage</p>
 		</div>
 		<div class="flex items-center gap-2">
-			<div class="hidden items-center gap-2 sm:flex">
+			<div class="hidden items-center gap-2 lg:flex">
 				{#if sse.isConnected}
 					<span class="badge gap-1 badge-success">
 						<Wifi class="h-3 w-3" />
@@ -290,22 +289,17 @@
 		{#if stats.unmatchedFiles > 0}
 			<a
 				href={resolve('/library/unmatched')}
-				class="card bg-base-200 transition-colors hover:bg-base-300"
+				class="card overflow-hidden bg-base-200 transition-colors hover:bg-base-300"
 			>
 				<div class="card-body p-4">
-					<div class="flex items-center gap-3">
-						<div class="rounded-lg bg-error/10 p-2">
+					<div class="flex min-w-0 items-center gap-3">
+						<div class="shrink-0 rounded-lg bg-error/10 p-2">
 							<FileQuestion class="h-6 w-6 text-error" />
 						</div>
-						<div>
+						<div class="min-w-0">
 							<div class="text-2xl font-bold">{stats.unmatchedFiles}</div>
 							<div class="text-sm text-base-content/70">Unmatched</div>
 						</div>
-						{#if stats.missingRootFolders > 0}
-							<div class="ml-auto rounded-full bg-warning/10 p-1">
-								<AlertTriangle class="h-4 w-4 text-warning" />
-							</div>
-						{/if}
 					</div>
 					<div class="mt-2 text-xs text-base-content/50">Files need attention</div>
 					{#if stats.missingRootFolders > 0}
@@ -318,19 +312,16 @@
 		{:else if stats.missingRootFolders > 0}
 			<a
 				href={resolve('/library/unmatched')}
-				class="card bg-base-200 transition-colors hover:bg-base-300"
+				class="card overflow-hidden bg-base-200 transition-colors hover:bg-base-300"
 			>
 				<div class="card-body p-4">
-					<div class="flex items-center gap-3">
-						<div class="rounded-lg bg-warning/10 p-2">
+					<div class="flex min-w-0 items-center gap-3">
+						<div class="shrink-0 rounded-lg bg-warning/10 p-2">
 							<AlertCircle class="h-6 w-6 text-warning" />
 						</div>
-						<div>
+						<div class="min-w-0">
 							<div class="text-2xl font-bold">0</div>
 							<div class="text-sm text-base-content/70">Unmatched</div>
-						</div>
-						<div class="ml-auto rounded-full bg-warning/10 p-1">
-							<AlertTriangle class="h-4 w-4 text-warning" />
 						</div>
 					</div>
 					<div class="mt-2 text-xs">
