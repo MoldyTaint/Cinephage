@@ -315,7 +315,7 @@
 				<div class="p-8 text-center text-base-content/60">No episodes in this season</div>
 			{:else}
 				<div class="w-full max-w-full overflow-x-hidden sm:overflow-x-auto">
-					<table class="table w-full table-sm sm:min-w-[640px] sm:table-auto">
+					<table class="table w-full table-sm sm:min-w-160 sm:table-auto">
 						<thead>
 							<tr class="text-xs text-base-content/60">
 								{#if showCheckboxes}

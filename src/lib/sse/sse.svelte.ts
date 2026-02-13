@@ -49,6 +49,7 @@ export function createSSE<T extends Record<string, unknown>>(
 	// Reactive state (works in both SSR and browser)
 	let status = $state<SSEConnectionStatus>('disconnected');
 	let reconnectAttempts = $state(0);
+	let externalClose: () => void = () => {};
 
 	// Use $effect for browser-only connection and cleanup
 	$effect(() => {
@@ -163,12 +164,15 @@ export function createSSE<T extends Record<string, unknown>>(
 			status = 'disconnected';
 		}
 
+		externalClose = close;
+
 		// Start connection
 		connect();
 
 		// Cleanup function (runs on unmount)
 		return () => {
 			close();
+			externalClose = () => {};
 		};
 	});
 
@@ -183,9 +187,7 @@ export function createSSE<T extends Record<string, unknown>>(
 		get isConnected() {
 			return status === 'connected';
 		},
-		close: () => {
-			// No-op during SSR, actual close handled by $effect cleanup
-		}
+		close: () => externalClose()
 	};
 }
 

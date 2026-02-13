@@ -56,9 +56,6 @@
 
 	$effect(() => {
 		mobileSSEStatus.publish(MOBILE_SSE_SOURCE, sseStatus);
-		return () => {
-			mobileSSEStatus.clear(MOBILE_SSE_SOURCE);
-		};
 	});
 
 	onMount(() => {
@@ -68,6 +65,7 @@
 
 	onDestroy(() => {
 		disconnectSSE();
+		mobileSSEStatus.clear(MOBILE_SSE_SOURCE);
 	});
 
 	function connectSSE() {

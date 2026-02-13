@@ -6,6 +6,13 @@ import { sql } from 'drizzle-orm';
 import { logger } from '$lib/logging';
 import type { LibraryIssue, RootFolderOption } from '$lib/types/unmatched.js';
 
+function resolveIssue(rootFolderId: string | null): LibraryIssue['issue'] {
+	if (rootFolderId === null || rootFolderId === '' || rootFolderId === 'null') {
+		return 'missing_root_folder';
+	}
+	return 'invalid_root_folder';
+}
+
 /**
  * GET /api/library/unmatched/issues
  * Return library items with missing/invalid root folder assignments.
@@ -18,7 +25,8 @@ export const GET: RequestHandler = async () => {
 					id: movies.id,
 					title: movies.title,
 					year: movies.year,
-					posterPath: movies.posterPath
+					posterPath: movies.posterPath,
+					rootFolderId: movies.rootFolderId
 				})
 				.from(movies).where(sql`
 					${movies.rootFolderId} IS NULL
@@ -37,7 +45,8 @@ export const GET: RequestHandler = async () => {
 					id: series.id,
 					title: series.title,
 					year: series.year,
-					posterPath: series.posterPath
+					posterPath: series.posterPath,
+					rootFolderId: series.rootFolderId
 				})
 				.from(series).where(sql`
 					${series.rootFolderId} IS NULL
@@ -62,15 +71,15 @@ export const GET: RequestHandler = async () => {
 		]);
 
 		const libraryItems: LibraryIssue[] = [
-			...movieItems.map((item) => ({
+			...movieItems.map(({ rootFolderId, ...item }) => ({
 				...item,
 				mediaType: 'movie' as const,
-				issue: 'missing_root_folder' as const
+				issue: resolveIssue(rootFolderId)
 			})),
-			...seriesItems.map((item) => ({
+			...seriesItems.map(({ rootFolderId, ...item }) => ({
 				...item,
 				mediaType: 'tv' as const,
-				issue: 'missing_root_folder' as const
+				issue: resolveIssue(rootFolderId)
 			}))
 		];
 

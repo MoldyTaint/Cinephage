@@ -26,15 +26,16 @@
 	// Reactive data that will be updated via SSE
 	let movieState = $state<LibraryMovie | null>(null);
 	let queueItemState = $state<PageData['queueItem'] | undefined>(undefined);
+	let lastMovieId = $state<string | null>(null);
 	const movie = $derived(movieState ?? data.movie);
 	const queueItem = $derived(queueItemState === undefined ? data.queueItem : queueItemState);
 
 	$effect(() => {
-		if (movieState === null) {
+		const incomingMovieId = data.movie.id;
+		if (lastMovieId !== incomingMovieId) {
 			movieState = $state.snapshot(data.movie);
-		}
-		if (queueItemState === undefined) {
 			queueItemState = $state.snapshot(data.queueItem);
+			lastMovieId = incomingMovieId;
 		}
 	});
 

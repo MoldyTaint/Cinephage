@@ -35,12 +35,42 @@
 		libraryItems.filter((item) => item.mediaType === 'movie').length
 	);
 	const tvIssueCount = $derived(libraryItems.filter((item) => item.mediaType === 'tv').length);
-	const selectedCount = $derived(selectedIssues.length);
+	const missingIssueCount = $derived(
+		libraryItems.filter((item) => item.issue === 'missing_root_folder').length
+	);
+	const invalidIssueCount = $derived(
+		libraryItems.filter((item) => item.issue === 'invalid_root_folder').length
+	);
+	const selectedMovieCount = $derived(
+		libraryItems.filter((item) => item.mediaType === 'movie' && selectedIssues.includes(item.id))
+			.length
+	);
+	const selectedTvCount = $derived(
+		libraryItems.filter((item) => item.mediaType === 'tv' && selectedIssues.includes(item.id))
+			.length
+	);
+	const selectedFilteredCount = $derived(
+		libraryIssuesFilter === 'movie' ? selectedMovieCount : selectedTvCount
+	);
 	const movieFolders = $derived(rootFolders.filter((folder) => folder.mediaType === 'movie'));
 	const tvFolders = $derived(rootFolders.filter((folder) => folder.mediaType === 'tv'));
 	const filteredLibraryItems = $derived(
 		libraryItems.filter((item) => item.mediaType === libraryIssuesFilter)
 	);
+	const issueSummaryLabel = $derived.by(() => {
+		if (missingIssueCount > 0 && invalidIssueCount > 0) return 'Missing or invalid root folder';
+		if (invalidIssueCount > 0) return 'Invalid root folder assignment';
+		return 'Missing root folder';
+	});
+	const issueDetailLabel = $derived.by(() => {
+		if (missingIssueCount > 0 && invalidIssueCount > 0) {
+			return 'These library items have missing or invalid root folder assignments. Select a root folder to fix them.';
+		}
+		if (invalidIssueCount > 0) {
+			return 'These library items have invalid root folder assignments. Select a valid root folder to fix them.';
+		}
+		return 'These library items have no root folder set. Select a root folder to fix them.';
+	});
 
 	onMount(() => {
 		void loadIssues();
@@ -162,6 +192,16 @@
 		selectedIssues = [];
 	}
 
+	function getIssueLabel(issue: LibraryIssue['issue']): string {
+		return issue === 'invalid_root_folder'
+			? 'Invalid root folder assignment'
+			: 'Root folder not set';
+	}
+
+	function getIssueTextClass(issue: LibraryIssue['issue']): string {
+		return issue === 'invalid_root_folder' ? 'text-error' : 'text-warning';
+	}
+
 	async function bulkAssignRootFolder(mediaType: 'movie' | 'tv'): Promise<void> {
 		const rootFolderId = mediaType === 'movie' ? bulkMovieRootFolder : bulkTvRootFolder;
 		if (!rootFolderId) {
@@ -243,7 +283,7 @@
 				<div>
 					<div class="font-semibold">Library Issues</div>
 					<div class="text-xs text-base-content/60">
-						Missing root folder on {libraryItems.length} item{libraryItems.length !== 1 ? 's' : ''}
+						{issueSummaryLabel} on {libraryItems.length} item{libraryItems.length !== 1 ? 's' : ''}
 					</div>
 				</div>
 			</div>
@@ -256,9 +296,7 @@
 
 		{#if libraryIssuesOpen}
 			<div class="border-t border-base-300 px-4 pb-4">
-				<p class="pt-3 text-xs text-base-content/60">
-					These library items have no root folder set. Select a root folder to fix them.
-				</p>
+				<p class="pt-3 text-xs text-base-content/60">{issueDetailLabel}</p>
 
 				<div class="mt-3 flex flex-wrap gap-2">
 					<button
@@ -279,7 +317,7 @@
 
 				<div class="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
 					<div class="flex flex-wrap items-center gap-2 text-xs text-base-content/60">
-						<span>{selectedCount} selected</span>
+						<span>{selectedFilteredCount} selected</span>
 						{#if libraryIssuesFilter === 'movie'}
 							<button class="btn btn-ghost btn-xs" onclick={() => selectAllIssues('movie')}>
 								Select all Movies
@@ -307,7 +345,7 @@
 								</select>
 								<button
 									class="btn btn-outline btn-xs"
-									disabled={!bulkMovieRootFolder || bulkSavingMovie || selectedCount === 0}
+									disabled={!bulkMovieRootFolder || bulkSavingMovie || selectedMovieCount === 0}
 									onclick={() => bulkAssignRootFolder('movie')}
 								>
 									{#if bulkSavingMovie}
@@ -337,7 +375,7 @@
 								</select>
 								<button
 									class="btn btn-outline btn-xs"
-									disabled={!bulkTvRootFolder || bulkSavingTv || selectedCount === 0}
+									disabled={!bulkTvRootFolder || bulkSavingTv || selectedTvCount === 0}
 									onclick={() => bulkAssignRootFolder('tv')}
 								>
 									{#if bulkSavingTv}
@@ -380,9 +418,15 @@
 												<span class="text-base-content/70">({item.year})</span>
 											{/if}
 										</div>
-										<div class="mt-0.5 flex items-center gap-1 text-xs text-warning">
-											<AlertTriangle class="h-3.5 w-3.5" />
-											Root folder not set
+										<div
+											class="mt-0.5 flex items-center gap-1 text-xs {getIssueTextClass(item.issue)}"
+										>
+											{#if item.issue === 'invalid_root_folder'}
+												<AlertCircle class="h-3.5 w-3.5" />
+											{:else}
+												<AlertTriangle class="h-3.5 w-3.5" />
+											{/if}
+											{getIssueLabel(item.issue)}
 										</div>
 									</div>
 								</div>

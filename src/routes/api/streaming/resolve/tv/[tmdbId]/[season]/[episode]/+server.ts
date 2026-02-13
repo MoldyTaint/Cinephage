@@ -50,9 +50,8 @@ export const GET: RequestHandler = async ({ params, request }) => {
 			});
 
 			try {
-				workerManager.spawn(newWorker);
-				streamWorkerRegistry.register(newWorker);
 				workerManager.spawnInBackground(newWorker);
+				streamWorkerRegistry.register(newWorker);
 				worker = newWorker;
 			} catch (e) {
 				newWorker.log(

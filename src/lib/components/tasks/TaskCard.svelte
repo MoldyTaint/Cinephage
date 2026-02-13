@@ -5,6 +5,7 @@
 
 	interface Props {
 		task: UnifiedTask;
+		now: number;
 		history: TaskHistoryEntry[];
 		onRunTask: (taskId: string) => Promise<void>;
 		onCancelTask?: (taskId: string) => Promise<void>;
@@ -12,17 +13,10 @@
 		onShowHistory: () => void;
 	}
 
-	let { task, history, onRunTask, onCancelTask, onToggleEnabled, onShowHistory }: Props = $props();
+	let { task, now, history, onRunTask, onCancelTask, onToggleEnabled, onShowHistory }: Props =
+		$props();
 
 	let isCancelling = $state(false);
-	let now = $state(Date.now());
-
-	$effect(() => {
-		const interval = setInterval(() => {
-			now = Date.now();
-		}, 1000);
-		return () => clearInterval(interval);
-	});
 
 	$effect(() => {
 		if (!task.isRunning) {

@@ -518,12 +518,12 @@ export async function quickValidateStream(
 	referer?: string,
 	timeout = 3000
 ): Promise<boolean> {
-	const headers: HeadersInit = {
+	const headers: Record<string, string> = {
 		'User-Agent': DEFAULT_USER_AGENT,
 		Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
 	};
 	if (referer) {
-		headers['Referer'] = referer;
+		headers.Referer = referer;
 	}
 
 	const controller = new AbortController();

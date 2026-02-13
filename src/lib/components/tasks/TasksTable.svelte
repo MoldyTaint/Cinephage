@@ -26,6 +26,14 @@
 	// History modal state
 	let selectedTask: UnifiedTask | null = $state(null);
 	let showHistoryModal = $state(false);
+	let now = $state(Date.now());
+
+	$effect(() => {
+		const interval = setInterval(() => {
+			now = Date.now();
+		}, 1000);
+		return () => clearInterval(interval);
+	});
 
 	function openHistory(task: UnifiedTask) {
 		selectedTask = task;
@@ -86,6 +94,7 @@
 					{#each scheduledTasks as task (task.id)}
 						<TaskCard
 							{task}
+							{now}
 							history={taskHistory[task.id] ?? []}
 							{onRunTask}
 							{onCancelTask}
@@ -110,6 +119,7 @@
 							{#each scheduledTasks as task (task.id)}
 								<TaskTableRow
 									{task}
+									{now}
 									history={taskHistory[task.id] ?? []}
 									{onRunTask}
 									{onCancelTask}
@@ -172,6 +182,7 @@
 					{#each maintenanceTasks as task (task.id)}
 						<TaskCard
 							{task}
+							{now}
 							history={taskHistory[task.id] ?? []}
 							{onRunTask}
 							{onCancelTask}
@@ -195,6 +206,7 @@
 							{#each maintenanceTasks as task (task.id)}
 								<TaskTableRow
 									{task}
+									{now}
 									history={taskHistory[task.id] ?? []}
 									{onRunTask}
 									{onCancelTask}

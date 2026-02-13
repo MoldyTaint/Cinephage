@@ -11,6 +11,7 @@ import {
 import { count, eq, desc, and, not, inArray, sql, gte, ne } from 'drizzle-orm';
 import { logger } from '$lib/logging';
 import type { UnifiedActivity } from '$lib/types/activity';
+import { getMovieAvailabilityLevel, isMovieReleased } from '$lib/utils/movieAvailability';
 
 /**
  * Terminal download statuses (items that are done processing)
@@ -45,30 +46,73 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 
 		const today = new Date().toISOString().split('T')[0];
 
-		const [airedMissingEpisodes, unairedEpisodes] = await Promise.all([
-			db
-				.select({ count: count() })
-				.from(episodes)
-				.innerJoin(series, eq(episodes.seriesId, series.id))
-				.where(
-					and(
-						eq(episodes.hasFile, false),
-						ne(episodes.seasonNumber, 0),
-						sql`${episodes.airDate} <= ${today}`
-					)
-				),
-			db
-				.select({ count: count() })
-				.from(episodes)
-				.innerJoin(series, eq(episodes.seriesId, series.id))
-				.where(
-					and(
-						eq(episodes.hasFile, false),
-						ne(episodes.seasonNumber, 0),
-						sql`${episodes.airDate} > ${today}`
-					)
-				)
-		]);
+		// Primary counters are monitored-only (actionable). We also keep a secondary
+		// unmonitored missing counter for visibility ("ignored" in UI).
+		const [airedMissingEpisodes, unairedEpisodes, unmonitoredAiredMissingEpisodes, missingMovies] =
+			await Promise.all([
+				db
+					.select({ count: count() })
+					.from(episodes)
+					.innerJoin(series, eq(episodes.seriesId, series.id))
+					.where(
+						and(
+							eq(episodes.hasFile, false),
+							eq(episodes.monitored, true),
+							eq(series.monitored, true),
+							ne(episodes.seasonNumber, 0),
+							sql`${episodes.airDate} <= ${today}`
+						)
+					),
+				db
+					.select({ count: count() })
+					.from(episodes)
+					.innerJoin(series, eq(episodes.seriesId, series.id))
+					.where(
+						and(
+							eq(episodes.hasFile, false),
+							eq(episodes.monitored, true),
+							eq(series.monitored, true),
+							ne(episodes.seasonNumber, 0),
+							sql`${episodes.airDate} > ${today}`
+						)
+					),
+				db
+					.select({ count: count() })
+					.from(episodes)
+					.innerJoin(series, eq(episodes.seriesId, series.id))
+					.where(
+						and(
+							eq(episodes.hasFile, false),
+							ne(episodes.seasonNumber, 0),
+							sql`${episodes.airDate} <= ${today}`,
+							sql`(${episodes.monitored} = 0 OR ${series.monitored} = 0)`
+						)
+					),
+				db
+					.select({
+						monitored: movies.monitored,
+						year: movies.year,
+						added: movies.added
+					})
+					.from(movies)
+					.where(eq(movies.hasFile, false))
+			]);
+
+		let monitoredReleasedMissingMovies = 0;
+		let monitoredUnreleasedMovies = 0;
+		let unmonitoredMissingMovies = 0;
+
+		for (const movie of missingMovies) {
+			if (movie.monitored) {
+				if (isMovieReleased(movie)) {
+					monitoredReleasedMissingMovies += 1;
+				} else {
+					monitoredUnreleasedMovies += 1;
+				}
+			} else {
+				unmonitoredMissingMovies += 1;
+			}
+		}
 
 		// Get active and failed download counts
 		const [activeDownloads, failedDownloads] = await Promise.all([
@@ -157,11 +201,20 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 				year: movies.year,
 				posterPath: movies.posterPath,
 				hasFile: movies.hasFile,
+				monitored: movies.monitored,
 				added: movies.added
 			})
 			.from(movies)
 			.orderBy(desc(movies.added))
 			.limit(6);
+		const recentlyAddedMoviesWithAvailability = recentlyAddedMovies.map((movie) => {
+			const availability = getMovieAvailabilityLevel(movie);
+			return {
+				...movie,
+				availability,
+				isReleased: availability === 'released'
+			};
+		});
 
 		const recentlyAddedSeries = await db
 			.select({
@@ -187,10 +240,14 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 							count: count()
 						})
 						.from(episodes)
+						.innerJoin(series, eq(episodes.seriesId, series.id))
 						.where(
 							and(
 								inArray(episodes.seriesId, recentlyAddedSeriesIds),
 								eq(episodes.hasFile, false),
+								// Poster "missing" badge is actionable only: monitored series + monitored episode.
+								eq(episodes.monitored, true),
+								eq(series.monitored, true),
 								ne(episodes.seasonNumber, 0),
 								sql`${episodes.airDate} <= ${today}`
 							)
@@ -259,7 +316,9 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 				movies: {
 					total: movieStats?.total || 0,
 					withFile: movieStats?.withFile || 0,
-					missing: (movieStats?.total || 0) - (movieStats?.withFile || 0),
+					missing: monitoredReleasedMissingMovies,
+					unreleased: monitoredUnreleasedMovies,
+					unmonitoredMissing: unmonitoredMissingMovies,
 					monitored: movieStats?.monitored || 0
 				},
 				series: {
@@ -271,6 +330,7 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 					withFile: episodeStats?.withFile || 0,
 					missing: airedMissingEpisodes?.[0]?.count || 0,
 					unaired: unairedEpisodes?.[0]?.count || 0,
+					unmonitoredMissing: unmonitoredAiredMissingEpisodes?.[0]?.count || 0,
 					monitored: episodeStats?.monitored || 0
 				},
 				activeDownloads: activeDownloads?.[0]?.count || 0,
@@ -283,7 +343,7 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 			},
 			recentActivity,
 			recentlyAdded: {
-				movies: recentlyAddedMovies,
+				movies: recentlyAddedMoviesWithAvailability,
 				series: recentlyAddedSeriesWithMissing
 			},
 			missingEpisodes: missingEpisodesWithSeries
@@ -295,9 +355,23 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 		);
 		return {
 			stats: {
-				movies: { total: 0, withFile: 0, missing: 0, monitored: 0 },
+				movies: {
+					total: 0,
+					withFile: 0,
+					missing: 0,
+					unreleased: 0,
+					unmonitoredMissing: 0,
+					monitored: 0
+				},
 				series: { total: 0, monitored: 0 },
-				episodes: { total: 0, withFile: 0, missing: 0, unaired: 0, monitored: 0 },
+				episodes: {
+					total: 0,
+					withFile: 0,
+					missing: 0,
+					unaired: 0,
+					unmonitoredMissing: 0,
+					monitored: 0
+				},
 				activeDownloads: 0,
 				failedDownloads: 0,
 				unmatchedFiles: 0,

@@ -210,6 +210,14 @@
 					{#if stats.movies.missing > 0}
 						<span class="badge badge-sm badge-warning">{stats.movies.missing} missing</span>
 					{/if}
+					{#if (stats.movies.unreleased || 0) > 0}
+						<span class="badge badge-sm badge-secondary">{stats.movies.unreleased} unreleased</span>
+					{/if}
+					{#if (stats.movies.unmonitoredMissing || 0) > 0}
+						<span class="badge badge-sm badge-accent"
+							>{stats.movies.unmonitoredMissing} ignored</span
+						>
+					{/if}
 				</div>
 			</div>
 		</a>
@@ -227,12 +235,17 @@
 					</div>
 				</div>
 				<div class="mt-2 flex flex-wrap gap-2 text-xs">
-					<span class="badge badge-sm badge-info">{stats.episodes.withFile} files</span>
+					<span class="badge badge-sm badge-success">{stats.episodes.withFile} files</span>
 					{#if stats.episodes.missing > 0}
 						<span class="badge badge-sm badge-warning">{stats.episodes.missing} missing</span>
 					{/if}
 					{#if (stats.episodes.unaired || 0) > 0}
 						<span class="badge badge-sm badge-secondary">{stats.episodes.unaired} unaired</span>
+					{/if}
+					{#if (stats.episodes.unmonitoredMissing || 0) > 0}
+						<span class="badge badge-sm badge-accent">
+							{stats.episodes.unmonitoredMissing} ignored
+						</span>
 					{/if}
 				</div>
 			</div>
@@ -384,9 +397,15 @@
 											<p class="text-xs text-white/70">{movie.year}</p>
 										</div>
 									</div>
-									{#if !movie.hasFile}
+									{#if !movie.hasFile && movie.monitored}
 										<div class="absolute top-1 right-1">
-											<span class="badge badge-xs badge-warning">Missing</span>
+											<span
+												class="badge badge-xs {movie.isReleased
+													? 'badge-warning'
+													: 'badge-secondary'}"
+											>
+												{movie.isReleased ? 'Missing' : 'Unreleased'}
+											</span>
 										</div>
 									{/if}
 								</a>

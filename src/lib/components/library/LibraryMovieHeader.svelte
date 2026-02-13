@@ -6,12 +6,14 @@
 	import StatusIndicator from './StatusIndicator.svelte';
 	import QualityBadge from './QualityBadge.svelte';
 	import ScoreBadge from './ScoreBadge.svelte';
+	import { getMovieAvailabilityLevel } from '$lib/utils/movieAvailability';
 	import {
 		Search,
 		Settings,
 		Trash2,
 		ExternalLink,
 		Download,
+		Clock,
 		Loader2,
 		Check,
 		X
@@ -70,6 +72,10 @@
 		return 'missing';
 	});
 	const totalSize = $derived(movie.files.reduce((sum, f) => sum + (f.size || 0), 0));
+	const movieAvailability = $derived(getMovieAvailabilityLevel(movie));
+	const showUnreleasedBadge = $derived(
+		!movie.hasFile && Boolean(movie.monitored) && movieAvailability !== 'released'
+	);
 	const statusQualityText = $derived.by(() => {
 		if (isStreamerProfile && movie.hasFile) return 'Auto';
 		if (!bestQuality.quality) return null;
@@ -225,6 +231,14 @@
 			<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 				<div class="flex flex-wrap items-center gap-2 sm:gap-4">
 					<StatusIndicator status={fileStatus} qualityText={statusQualityText} />
+					{#if showUnreleasedBadge}
+						<div
+							class="inline-flex items-center gap-2 rounded-lg bg-error/5 px-3 py-1.5 text-sm text-error/80 ring-1 ring-error/25"
+						>
+							<Clock size={16} />
+							<span class="font-medium">Unreleased</span>
+						</div>
+					{/if}
 					{#if movie.hasFile && totalSize > 0}
 						<span class="text-sm text-base-content/70">
 							{formatBytes(totalSize)}

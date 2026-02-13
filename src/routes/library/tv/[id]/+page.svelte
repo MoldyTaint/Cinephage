@@ -27,19 +27,18 @@
 	let seriesState = $state<PageData['series'] | null>(null);
 	let seasonsState = $state<PageData['seasons'] | null>(null);
 	let queueItemsState = $state<PageData['queueItems'] | null>(null);
+	let lastSeriesId = $state<string | null>(null);
 	const series = $derived(seriesState ?? data.series);
 	const seasons = $derived(seasonsState ?? data.seasons);
 	const queueItems = $derived(queueItemsState ?? data.queueItems);
 
 	$effect(() => {
-		if (seriesState === null) {
+		const incomingSeriesId = data.series.id;
+		if (lastSeriesId !== incomingSeriesId) {
 			seriesState = $state.snapshot(data.series);
-		}
-		if (seasonsState === null) {
 			seasonsState = $state.snapshot(data.seasons);
-		}
-		if (queueItemsState === null) {
 			queueItemsState = $state.snapshot(data.queueItems);
+			lastSeriesId = incomingSeriesId;
 		}
 	});
 
