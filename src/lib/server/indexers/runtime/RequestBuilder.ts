@@ -504,6 +504,7 @@ export class RequestBuilder {
 			'name', // UNIT3D trackers use 'name' for keyword search
 			'search',
 			'nm', // RuTracker uses 'nm' for keyword search
+			'mire', // nCore uses 'mire' for keyword search
 			'imdb', // Some trackers use 'imdb' instead of 'imdbid'
 			'imdbid',
 			'imdb_id',

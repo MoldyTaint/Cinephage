@@ -11,6 +11,7 @@ import {
 import { eq, asc, sql } from 'drizzle-orm';
 import { logger } from '$lib/logging';
 import { randomUUID } from 'crypto';
+import { liveTvEvents } from '../LiveTvEvents';
 import type { ChannelCategory, ChannelCategoryFormData } from '$lib/types/livetv';
 
 /**
@@ -84,6 +85,7 @@ class ChannelCategoryService {
 		});
 
 		logger.info('[ChannelCategoryService] Created category', { id, name: data.name });
+		liveTvEvents.emitCategoriesUpdated();
 
 		return this.getCategoryById(id) as Promise<ChannelCategory>;
 	}
@@ -105,6 +107,7 @@ class ChannelCategoryService {
 			.where(eq(channelCategories.id, id));
 
 		logger.info('[ChannelCategoryService] Updated category', { id, name: data.name });
+		liveTvEvents.emitCategoriesUpdated();
 
 		return this.getCategoryById(id);
 	}
@@ -118,6 +121,7 @@ class ChannelCategoryService {
 
 		if (result.changes > 0) {
 			logger.info('[ChannelCategoryService] Deleted category', { id });
+			liveTvEvents.emitCategoriesUpdated();
 			return true;
 		}
 		return false;
@@ -137,6 +141,7 @@ class ChannelCategoryService {
 		}
 
 		logger.info('[ChannelCategoryService] Reordered categories', { count: categoryIds.length });
+		liveTvEvents.emitCategoriesUpdated();
 	}
 
 	/**
@@ -160,6 +165,7 @@ class ChannelCategoryService {
 			.set({ position: newPosition, updatedAt: now })
 			.where(eq(channelCategories.id, id));
 
+		liveTvEvents.emitCategoriesUpdated();
 		return true;
 	}
 
@@ -187,6 +193,7 @@ class ChannelCategoryService {
 			.set({ position: newPosition, updatedAt: now })
 			.where(eq(channelCategories.id, id));
 
+		liveTvEvents.emitCategoriesUpdated();
 		return true;
 	}
 

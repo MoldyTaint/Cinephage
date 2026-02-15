@@ -272,6 +272,7 @@ export {
 export {
 	// Types
 	type IIndexer,
+	type DownloadTorrentOptions,
 	type IndexerDownloadResult,
 	type IndexerRequest,
 	type IIndexerRequestGenerator,

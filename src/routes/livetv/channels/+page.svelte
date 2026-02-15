@@ -1,6 +1,17 @@
 <script lang="ts">
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
-	import { RefreshCw, Loader2, FolderOpen, Tv, Search, Download, Copy, Check } from 'lucide-svelte';
+	import {
+		RefreshCw,
+		Loader2,
+		FolderOpen,
+		Tv,
+		Search,
+		Download,
+		Copy,
+		Check,
+		Wifi,
+		WifiOff
+	} from 'lucide-svelte';
 	import {
 		ChannelLineupTable,
 		ChannelEditModal,
@@ -17,7 +28,10 @@
 		EpgProgram,
 		EpgProgramWithProgress
 	} from '$lib/types/livetv';
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount } from 'svelte';
+	import { createSSE } from '$lib/sse';
+	import { mobileSSEStatus } from '$lib/sse/mobileStatus.svelte';
+	import { resolvePath } from '$lib/utils/routing';
 
 	interface NowNextEntry {
 		now: EpgProgramWithProgress | null;
@@ -81,8 +95,53 @@
 
 	// EPG state (now/next programs)
 	let epgData = new SvelteMap<string, NowNextEntry>();
-	let epgInterval: ReturnType<typeof setInterval> | null = null;
 	let channelSearch = $state('');
+
+	// SSE Connection - internally handles browser/SSR
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const sse = createSSE<Record<string, any>>(resolvePath('/api/livetv/channels/stream'), {
+		'livetv:initial': (payload) => {
+			lineup = payload.lineup || [];
+			categories = payload.categories || [];
+			lineupChannelIds.clear();
+			for (const item of lineup) {
+				lineupChannelIds.add(item.channelId);
+			}
+			updateEpgData(payload.epgNowNext || {});
+			loading = false;
+		},
+		'lineup:updated': (payload) => {
+			lineup = payload.lineup || [];
+			lineupChannelIds.clear();
+			for (const item of lineup) {
+				lineupChannelIds.add(item.channelId);
+			}
+		},
+		'categories:updated': (payload) => {
+			categories = payload.categories || [];
+		},
+		'epg:nowNext': (payload) => {
+			updateEpgData(payload.channels || {});
+		},
+		'channels:syncStarted': (payload) => {
+			console.log('Channel sync started:', payload.accountId);
+		},
+		'channels:syncCompleted': (payload) => {
+			console.log('Channel sync completed:', payload.accountId);
+		},
+		'channels:syncFailed': (payload) => {
+			console.error('Channel sync failed:', payload.accountId, payload.error);
+		}
+	});
+
+	const MOBILE_SSE_SOURCE = 'livetv-channels';
+
+	$effect(() => {
+		mobileSSEStatus.publish(MOBILE_SSE_SOURCE, sse.status);
+		return () => {
+			mobileSSEStatus.clear(MOBILE_SSE_SOURCE);
+		};
+	});
 
 	const normalizedSearch = $derived(channelSearch.trim().toLowerCase());
 	const filteredLineup = $derived(
@@ -143,16 +202,18 @@
 	onMount(() => {
 		loadData();
 		fetchEpgData();
-		// Refresh EPG data every 60 seconds
-		epgInterval = setInterval(fetchEpgData, 60000);
+
+		return () => {
+			sse.close();
+		};
 	});
 
-	onDestroy(() => {
-		if (epgInterval) {
-			clearInterval(epgInterval);
-			epgInterval = null;
+	function updateEpgData(epgNowNext: Record<string, NowNextEntry>) {
+		epgData.clear();
+		for (const [channelId, entry] of Object.entries(epgNowNext)) {
+			epgData.set(channelId, entry as NowNextEntry);
 		}
-	});
+	}
 
 	async function fetchEpgData() {
 		try {
@@ -160,11 +221,7 @@
 			if (!res.ok) return;
 			const data = await res.json();
 			if (data.channels) {
-				// Update map in-place for proper reactivity
-				epgData.clear();
-				for (const [channelId, entry] of Object.entries(data.channels)) {
-					epgData.set(channelId, entry as NowNextEntry);
-				}
+				updateEpgData(data.channels);
 			}
 		} catch {
 			// Silent failure - EPG is not critical
@@ -608,6 +665,25 @@
 			<p class="mt-1 text-base-content/60">Organize your channel lineup</p>
 		</div>
 		<div class="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+			<!-- Connection Status -->
+			<div class="hidden lg:block">
+				{#if sse.isConnected}
+					<span class="badge gap-1 badge-success">
+						<Wifi class="h-3 w-3" />
+						Live
+					</span>
+				{:else if sse.status === 'connecting' || sse.status === 'error'}
+					<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
+						<Loader2 class="h-3 w-3 animate-spin" />
+						{sse.status === 'error' ? 'Reconnecting...' : 'Connecting...'}
+					</span>
+				{:else}
+					<span class="badge gap-1 badge-ghost">
+						<WifiOff class="h-3 w-3" />
+						Disconnected
+					</span>
+				{/if}
+			</div>
 			<button
 				class="btn btn-ghost btn-sm"
 				onclick={refreshData}

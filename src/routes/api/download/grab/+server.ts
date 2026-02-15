@@ -480,7 +480,8 @@ export const POST: RequestHandler = async ({ request }) => {
 				magnetUrl: data.magnetUrl,
 				infoHash: data.infoHash,
 				indexerId: data.indexerId,
-				title: data.title
+				title: data.title,
+				commentsUrl: data.commentsUrl
 			});
 
 			if (!resolved.success) {
@@ -1329,7 +1330,9 @@ async function handleNzbStreamingGrab(data: GrabRequest): Promise<Response> {
 
 		if (indexer && indexer.downloadTorrent) {
 			// Use indexer's download method (works for NZB too)
-			const result = await indexer.downloadTorrent(downloadUrl);
+			const result = await indexer.downloadTorrent(downloadUrl, {
+				releaseDetailsUrl: data.commentsUrl
+			});
 			if (result.success && result.data) {
 				nzbContent = result.data;
 			}

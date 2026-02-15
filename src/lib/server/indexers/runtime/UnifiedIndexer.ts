@@ -21,7 +21,8 @@ import type {
 	ReleaseResult,
 	IndexerProtocol,
 	IndexerAccessType,
-	IndexerDownloadResult
+	IndexerDownloadResult,
+	DownloadTorrentOptions
 } from '../types';
 import type { YamlDefinition } from '../schema/yamlDefinition';
 import { resolveCategoryId } from '../schema/yamlDefinition';
@@ -625,53 +626,6 @@ export class UnifiedIndexer implements IIndexer {
 	}
 
 	/**
-	 * Get download URL for a release
-	 */
-	async getDownloadUrl(release: ReleaseResult): Promise<string> {
-		// For streaming protocol, return the stream URL as-is
-		if (this.protocol === 'streaming') {
-			return release.downloadUrl || '';
-		}
-
-		// Handle torrent magnet preference
-		if (this.protocol === 'torrent') {
-			const torrentSettings = this._protocolSettings as { preferMagnetUrl?: boolean } | undefined;
-			if (torrentSettings?.preferMagnetUrl && release.magnetUrl) {
-				return release.magnetUrl;
-			}
-		}
-
-		const downloadUrl = release.downloadUrl ?? release.magnetUrl;
-		if (!downloadUrl) {
-			throw new Error('No download URL available');
-		}
-
-		if (downloadUrl.startsWith('magnet:') || downloadUrl.startsWith('stream://')) {
-			return downloadUrl;
-		}
-
-		if (!this.downloadHandler.needsResolution()) {
-			return downloadUrl;
-		}
-
-		const context = {
-			baseUrl: this.requestBuilder.getBaseUrl(),
-			cookies: this.cookies,
-			settings: this.settings,
-			encoding: this.definition.encoding
-		};
-
-		const result = await this.downloadHandler.resolveDownload(downloadUrl, context);
-
-		if (!result.success) {
-			this.log.warn('Download resolution failed', { error: result.error });
-			return downloadUrl;
-		}
-
-		return result.magnetUrl ?? result.request?.url ?? downloadUrl;
-	}
-
-	/**
 	 * Reconstruct a download URL that was redacted for security.
 	 * This restores the API key from indexer settings when the URL contains [REDACTED].
 	 * Handles both plain [REDACTED] and URL-encoded %5BREDACTED%5D.
@@ -719,7 +673,10 @@ export class UnifiedIndexer implements IIndexer {
 	/**
 	 * Download a torrent/NZB file from the indexer
 	 */
-	async downloadTorrent(url: string): Promise<IndexerDownloadResult> {
+	async downloadTorrent(
+		url: string,
+		options?: DownloadTorrentOptions
+	): Promise<IndexerDownloadResult> {
 		const startTime = Date.now();
 
 		this.log.debug('Downloading content', { url: url.substring(0, 100) });
@@ -731,7 +688,7 @@ export class UnifiedIndexer implements IIndexer {
 			if (url.startsWith('magnet:')) {
 				const { extractInfoHashFromMagnet } =
 					await import('$lib/server/downloadClients/utils/torrentParser');
-				const infoHash = extractInfoHashFromMagnet(url);
+				const infoHash = await extractInfoHashFromMagnet(url);
 				return {
 					success: true,
 					magnetUrl: url,
@@ -765,7 +722,10 @@ export class UnifiedIndexer implements IIndexer {
 					baseUrl: this.requestBuilder.getBaseUrl(),
 					cookies: this.cookies,
 					settings: this.settings,
-					encoding: this.definition.encoding
+					encoding: this.definition.encoding,
+					releaseDetailsUrl: options?.releaseDetailsUrl ?? url,
+					releaseGuid: options?.releaseGuid,
+					releaseTitle: options?.releaseTitle
 				};
 
 				this.log.debug('Calling resolveDownload', {
@@ -793,11 +753,56 @@ export class UnifiedIndexer implements IIndexer {
 						});
 						const { extractInfoHashFromMagnet } =
 							await import('$lib/server/downloadClients/utils/torrentParser');
-						const infoHash = extractInfoHashFromMagnet(resolution.magnetUrl);
+						const infoHash = await extractInfoHashFromMagnet(resolution.magnetUrl);
 						return {
 							success: true,
 							magnetUrl: resolution.magnetUrl,
 							infoHash,
+							responseTimeMs: Date.now() - startTime
+						};
+					}
+
+					// If resolution already has cached torrent data (from testTorrentLink validation),
+					// use it directly — avoids a redundant second fetch that would fail with
+					// one-time download tokens (e.g., nCore's &key= parameter)
+					if (resolution.torrentData) {
+						this.log.debug('Using cached torrent data from resolution', {
+							dataSize: resolution.torrentData.length
+						});
+
+						if (this.protocol === 'usenet') {
+							return {
+								success: true,
+								data: resolution.torrentData,
+								responseTimeMs: Date.now() - startTime
+							};
+						}
+
+						const { parseTorrentFile } =
+							await import('$lib/server/downloadClients/utils/torrentParser');
+						const parseResult = await parseTorrentFile(resolution.torrentData);
+
+						if (!parseResult.success) {
+							return {
+								success: false,
+								error: parseResult.error,
+								responseTimeMs: Date.now() - startTime
+							};
+						}
+
+						if (parseResult.magnetUrl) {
+							return {
+								success: true,
+								magnetUrl: parseResult.magnetUrl,
+								infoHash: parseResult.infoHash,
+								responseTimeMs: Date.now() - startTime
+							};
+						}
+
+						return {
+							success: true,
+							data: resolution.torrentData,
+							infoHash: parseResult.infoHash,
 							responseTimeMs: Date.now() - startTime
 						};
 					}
@@ -814,7 +819,7 @@ export class UnifiedIndexer implements IIndexer {
 						if (url.startsWith('magnet:')) {
 							const { extractInfoHashFromMagnet } =
 								await import('$lib/server/downloadClients/utils/torrentParser');
-							const infoHash = extractInfoHashFromMagnet(url);
+							const infoHash = await extractInfoHashFromMagnet(url);
 							return {
 								success: true,
 								magnetUrl: url,
@@ -871,7 +876,7 @@ export class UnifiedIndexer implements IIndexer {
 					if (location.startsWith('magnet:')) {
 						const { extractInfoHashFromMagnet } =
 							await import('$lib/server/downloadClients/utils/torrentParser');
-						const infoHash = extractInfoHashFromMagnet(location);
+						const infoHash = await extractInfoHashFromMagnet(location);
 						return {
 							success: true,
 							magnetUrl: location,
@@ -918,7 +923,7 @@ export class UnifiedIndexer implements IIndexer {
 
 			// For torrent, parse the file
 			const { parseTorrentFile } = await import('$lib/server/downloadClients/utils/torrentParser');
-			const parseResult = parseTorrentFile(data);
+			const parseResult = await parseTorrentFile(data);
 
 			if (!parseResult.success) {
 				return {

@@ -215,17 +215,39 @@ export class AuthManager {
 			}
 		}
 
-		// Execute request
-		const response = await fetch(loginUrl, {
+		// Execute request with manual redirect to capture cookies from 302 response
+		let response = await fetch(loginUrl, {
 			method: 'POST',
 			headers,
 			body: formData,
-			redirect: 'follow'
+			redirect: 'manual'
 		});
 
-		// Extract cookies from response
+		// Extract cookies from the initial response (important for 302 redirects with Set-Cookie)
 		const extracted = CookieStore.extractCookiesFromResponse(response);
 		this.cookies = CookieStore.mergeCookies(requestCookies, extracted.cookies);
+
+		// Handle manual redirect if we got a 302/301
+		if (response.status === 302 || response.status === 301) {
+			const location = response.headers.get('location');
+			if (location) {
+				const redirectUrl = this.resolveUrl(location, context.baseUrl);
+
+				// Follow redirect with captured cookies
+				response = await fetch(redirectUrl, {
+					method: 'GET',
+					headers: {
+						Referer: loginUrl,
+						Cookie: CookieStore.buildCookieHeader(this.cookies)
+					},
+					redirect: 'manual'
+				});
+
+				// Extract any additional cookies from redirect response
+				const redirectExtracted = CookieStore.extractCookiesFromResponse(response);
+				this.cookies = CookieStore.mergeCookies(this.cookies, redirectExtracted.cookies);
+			}
+		}
 
 		// Check for errors - decode with proper encoding
 		const arrayBuffer = await response.arrayBuffer();

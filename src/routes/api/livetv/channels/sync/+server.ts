@@ -7,6 +7,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getLiveTvChannelService, getLiveTvAccountManager } from '$lib/server/livetv';
+import { liveTvEvents } from '$lib/server/livetv/LiveTvEvents';
 import { logger } from '$lib/logging';
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -23,8 +24,21 @@ export const POST: RequestHandler = async ({ request }) => {
 			const results: Record<string, unknown> = {};
 
 			for (const account of accounts.filter((a: (typeof accounts)[0]) => a.enabled)) {
-				const result = await channelService.syncChannels(account.id);
-				results[account.id] = result;
+				liveTvEvents.emitChannelsSyncStarted(account.id);
+				try {
+					const result = await channelService.syncChannels(account.id);
+					results[account.id] = result;
+					liveTvEvents.emitChannelsSyncCompleted(account.id, result);
+				} catch (err) {
+					liveTvEvents.emitChannelsSyncFailed(
+						account.id,
+						err instanceof Error ? err.message : 'Unknown error'
+					);
+					results[account.id] = {
+						success: false,
+						error: err instanceof Error ? err.message : 'Unknown error'
+					};
+				}
 			}
 
 			return json({
@@ -47,8 +61,21 @@ export const POST: RequestHandler = async ({ request }) => {
 				continue;
 			}
 
-			const result = await channelService.syncChannels(accountId);
-			results[accountId] = result;
+			liveTvEvents.emitChannelsSyncStarted(accountId);
+			try {
+				const result = await channelService.syncChannels(accountId);
+				results[accountId] = result;
+				liveTvEvents.emitChannelsSyncCompleted(accountId, result);
+			} catch (err) {
+				liveTvEvents.emitChannelsSyncFailed(
+					accountId,
+					err instanceof Error ? err.message : 'Unknown error'
+				);
+				results[accountId] = {
+					success: false,
+					error: err instanceof Error ? err.message : 'Unknown error'
+				};
+			}
 		}
 
 		return json({

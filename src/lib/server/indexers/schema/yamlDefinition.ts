@@ -533,6 +533,16 @@ export const infohashBlockSchema = z.object({
 export type InfohashBlock = z.infer<typeof infohashBlockSchema>;
 
 // ============================================================================
+// Download Variable (for extracting dynamic values from details page)
+// ============================================================================
+
+export const downloadVariableSchema = selectorFieldSchema.extend({
+	name: z.string()
+});
+
+export type DownloadVariable = z.infer<typeof downloadVariableSchema>;
+
+// ============================================================================
 // Download Block
 // ============================================================================
 
@@ -541,7 +551,9 @@ export const downloadBlockSchema = z.object({
 	method: z.string().optional(),
 	before: beforeBlockSchema.optional(),
 	infohash: infohashBlockSchema.optional(),
-	headers: z.record(z.string(), z.array(z.string())).optional()
+	headers: z.record(z.string(), z.array(z.string())).optional(),
+	downloadVariables: z.array(downloadVariableSchema).optional(),
+	downloadVariablesFrom: z.enum(['details', 'search']).optional()
 });
 
 export type DownloadBlock = z.infer<typeof downloadBlockSchema>;

@@ -11,6 +11,7 @@ import { livetvAccounts, type LivetvAccountRecord } from '$lib/server/db/schema'
 import { createChildLogger } from '$lib/logging';
 import { randomUUID } from 'crypto';
 import { getProvider, getProviderForAccount } from './providers';
+import { liveTvEvents } from './LiveTvEvents';
 import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service.js';
 import { ExternalServiceError } from '$lib/errors';
 import type {
@@ -300,6 +301,7 @@ export class LiveTvAccountManager implements BackgroundService {
 			providerType: record.providerType
 		});
 
+		liveTvEvents.emitAccountCreated(record.id);
 		return recordToAccount(record);
 	}
 
@@ -367,6 +369,7 @@ export class LiveTvAccountManager implements BackgroundService {
 		}
 
 		logger.info('Updated account', { id, name: record.name });
+		liveTvEvents.emitAccountUpdated(id);
 		return recordToAccount(record);
 	}
 
@@ -379,6 +382,7 @@ export class LiveTvAccountManager implements BackgroundService {
 
 		if (deleted) {
 			logger.info('Deleted account', { id });
+			liveTvEvents.emitAccountDeleted(id);
 		}
 
 		return deleted;
@@ -421,6 +425,7 @@ export class LiveTvAccountManager implements BackgroundService {
 				})
 				.where(eq(livetvAccounts.id, id));
 
+			liveTvEvents.emitAccountUpdated(id);
 			return result;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
@@ -453,6 +458,7 @@ export class LiveTvAccountManager implements BackgroundService {
 			name: record.name
 		});
 
+		liveTvEvents.emitAccountUpdated(id);
 		return recordToAccount(record);
 	}
 
@@ -474,6 +480,8 @@ export class LiveTvAccountManager implements BackgroundService {
 				updatedAt: now
 			})
 			.where(eq(livetvAccounts.id, id));
+
+		liveTvEvents.emitAccountUpdated(id);
 	}
 
 	/**

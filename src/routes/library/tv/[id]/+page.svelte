@@ -1019,6 +1019,7 @@
 		indexerId: string;
 		indexerName: string;
 		protocol: string;
+		commentsUrl?: string;
 		episodeMatch?: {
 			season?: number;
 			seasons?: number[];
@@ -1101,7 +1102,8 @@
 					mediaType: 'tv',
 					seasonNumber,
 					episodeIds,
-					streamUsenet: streaming && release.protocol === 'usenet'
+					streamUsenet: streaming && release.protocol === 'usenet',
+					commentsUrl: release.commentsUrl
 				})
 			});
 

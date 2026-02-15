@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { SvelteMap } from 'svelte/reactivity';
-	import { Calendar, LayoutGrid, Settings } from 'lucide-svelte';
+	import { Calendar, LayoutGrid, Settings, Wifi, WifiOff, Loader2 } from 'lucide-svelte';
 	import {
 		EpgStatusPanel,
 		EpgCoverageTable,
@@ -14,7 +14,10 @@
 		EpgProgramWithProgress,
 		UpdateChannelRequest
 	} from '$lib/types/livetv';
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount } from 'svelte';
+	import { createSSE } from '$lib/sse';
+	import { mobileSSEStatus } from '$lib/sse/mobileStatus.svelte';
+	import { resolvePath } from '$lib/utils/routing';
 
 	type TabId = 'status' | 'coverage' | 'guide';
 
@@ -34,11 +37,9 @@
 	let epgStatus = $state<EpgStatus | null>(null);
 	let epgStatusLoading = $state(true);
 	let epgSyncing = $state(false);
-	let epgStatusPollInterval: ReturnType<typeof setInterval> | null = null;
 
 	// EPG now/next data for coverage tab
 	let epgData = new SvelteMap<string, NowNextEntry>();
-	let epgDataInterval: ReturnType<typeof setInterval> | null = null;
 
 	// EPG source picker state
 	let epgSourcePickerOpen = $state(false);
@@ -50,18 +51,66 @@
 		{ id: 'guide', label: 'Guide', icon: Calendar }
 	];
 
-	onMount(() => {
-		loadLineup();
-		fetchEpgStatus();
-		fetchEpgData();
-		epgDataInterval = setInterval(fetchEpgData, 60000);
+	// SSE Connection - internally handles browser/SSR
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const sse = createSSE<Record<string, any>>(resolvePath('/api/livetv/epg/stream'), {
+		'epg:initial': (payload) => {
+			epgStatus = payload.status;
+			epgSyncing = payload.status?.isSyncing ?? false;
+			lineup = payload.lineup || [];
+			loadingLineup = false;
+			epgStatusLoading = false;
+		},
+		'epg:syncStarted': (payload) => {
+			epgSyncing = true;
+			if (payload.status) {
+				epgStatus = payload.status;
+			}
+		},
+		'epg:syncCompleted': (payload) => {
+			epgSyncing = false;
+			if (payload.status) {
+				epgStatus = payload.status;
+			}
+			if (payload.lineup) {
+				lineup = payload.lineup;
+			}
+			fetchEpgData();
+		},
+		'epg:syncFailed': (payload) => {
+			epgSyncing = false;
+			if (payload.status) {
+				epgStatus = payload.status;
+			}
+		},
+		'lineup:updated': (payload) => {
+			if (payload.lineup) {
+				lineup = payload.lineup;
+			}
+		}
 	});
 
-	onDestroy(() => {
-		stopEpgStatusPoll();
-		if (epgDataInterval) {
-			clearInterval(epgDataInterval);
-		}
+	const MOBILE_SSE_SOURCE = 'livetv-epg';
+
+	$effect(() => {
+		mobileSSEStatus.publish(MOBILE_SSE_SOURCE, sse.status);
+		return () => {
+			mobileSSEStatus.clear(MOBILE_SSE_SOURCE);
+		};
+	});
+
+	onMount(() => {
+		loadLineup();
+		fetchEpgData();
+
+		// Set loading to false after a timeout in case SSE never connects
+		setTimeout(() => {
+			epgStatusLoading = false;
+		}, 5000);
+
+		return () => {
+			sse.close();
+		};
 	});
 
 	async function loadLineup() {
@@ -76,30 +125,6 @@
 			// Silent failure
 		} finally {
 			loadingLineup = false;
-		}
-	}
-
-	async function fetchEpgStatus() {
-		try {
-			const res = await fetch('/api/livetv/epg/status');
-			if (res.ok) {
-				const data = await res.json();
-				if (data.success) {
-					epgStatus = data;
-					epgSyncing = data.isSyncing ?? false;
-				}
-
-				if (epgSyncing && !epgStatusPollInterval) {
-					startEpgStatusPoll();
-				} else if (!epgSyncing && epgStatusPollInterval) {
-					stopEpgStatusPoll();
-					fetchEpgData();
-				}
-			}
-		} catch {
-			// Silent failure
-		} finally {
-			epgStatusLoading = false;
 		}
 	}
 
@@ -123,7 +148,6 @@
 		epgSyncing = true;
 		try {
 			await fetch('/api/livetv/epg/sync', { method: 'POST' });
-			startEpgStatusPoll();
 		} catch {
 			epgSyncing = false;
 		}
@@ -132,21 +156,8 @@
 	async function triggerAccountSync(accountId: string) {
 		try {
 			await fetch(`/api/livetv/epg/sync?accountId=${accountId}`, { method: 'POST' });
-			startEpgStatusPoll();
 		} catch {
 			// Silent failure
-		}
-	}
-
-	function startEpgStatusPoll() {
-		if (epgStatusPollInterval) return;
-		epgStatusPollInterval = setInterval(fetchEpgStatus, 3000);
-	}
-
-	function stopEpgStatusPoll() {
-		if (epgStatusPollInterval) {
-			clearInterval(epgStatusPollInterval);
-			epgStatusPollInterval = null;
 		}
 	}
 
@@ -193,6 +204,25 @@
 		<div>
 			<h1 class="text-2xl font-bold">EPG</h1>
 			<p class="mt-1 text-base-content/60">Electronic Program Guide</p>
+		</div>
+		<!-- Connection Status -->
+		<div class="hidden lg:block">
+			{#if sse.isConnected}
+				<span class="badge gap-1 badge-success">
+					<Wifi class="h-3 w-3" />
+					Live
+				</span>
+			{:else if sse.status === 'connecting' || sse.status === 'error'}
+				<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
+					<Loader2 class="h-3 w-3 animate-spin" />
+					{sse.status === 'error' ? 'Reconnecting...' : 'Connecting...'}
+				</span>
+			{:else}
+				<span class="badge gap-1 badge-ghost">
+					<WifiOff class="h-3 w-3" />
+					Disconnected
+				</span>
+			{/if}
 		</div>
 	</div>
 

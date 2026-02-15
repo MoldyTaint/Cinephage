@@ -32,6 +32,8 @@ export interface ResolveDownloadInput {
 	indexerId?: string | null;
 	/** Release title (for building magnet links) */
 	title: string;
+	/** URL to the release details/comments page (needed by some indexers for download resolution) */
+	commentsUrl?: string | null;
 }
 
 /**
@@ -68,7 +70,7 @@ class DownloadResolutionService {
 	 * @returns Resolved download with magnet URL or torrent file
 	 */
 	async resolve(input: ResolveDownloadInput): Promise<ResolvedDownload> {
-		const { downloadUrl, magnetUrl, infoHash, indexerId, title } = input;
+		const { downloadUrl, magnetUrl, infoHash, indexerId, title, commentsUrl } = input;
 
 		logger.debug('Resolving download', {
 			title,
@@ -80,7 +82,7 @@ class DownloadResolutionService {
 
 		// Strategy 1: Use existing magnet URL
 		if (magnetUrl) {
-			const extractedHash = extractInfoHashFromMagnet(magnetUrl) || infoHash || undefined;
+			const extractedHash = (await extractInfoHashFromMagnet(magnetUrl)) || infoHash || undefined;
 			logger.debug('Using provided magnet URL', { infoHash: extractedHash });
 			return {
 				success: true,
@@ -102,7 +104,7 @@ class DownloadResolutionService {
 
 		// Strategy 3: Fetch torrent file through indexer
 		if (downloadUrl && indexerId) {
-			return this.fetchThroughIndexer(downloadUrl, indexerId, title);
+			return this.fetchThroughIndexer(downloadUrl, indexerId, title, commentsUrl ?? undefined);
 		}
 
 		// Strategy 4: Fallback - return the URL as-is and let download client handle it
@@ -115,7 +117,7 @@ class DownloadResolutionService {
 
 			// Check if downloadUrl is already a magnet
 			if (downloadUrl.startsWith('magnet:')) {
-				const extractedHash = extractInfoHashFromMagnet(downloadUrl);
+				const extractedHash = await extractInfoHashFromMagnet(downloadUrl);
 				return {
 					success: true,
 					magnetUrl: downloadUrl,
@@ -144,7 +146,8 @@ class DownloadResolutionService {
 	private async fetchThroughIndexer(
 		downloadUrl: string,
 		indexerId: string,
-		title: string
+		title: string,
+		commentsUrl?: string
 	): Promise<ResolvedDownload> {
 		logger.debug('Fetching torrent through indexer', {
 			indexerId,
@@ -169,7 +172,9 @@ class DownloadResolutionService {
 			}
 
 			// Use the indexer's downloadTorrent method
-			const result = await indexer.downloadTorrent(downloadUrl);
+			const result = await indexer.downloadTorrent(downloadUrl, {
+				releaseDetailsUrl: commentsUrl
+			});
 
 			if (!result.success) {
 				logger.warn('Indexer download failed, trying direct fetch', {
@@ -234,7 +239,7 @@ class DownloadResolutionService {
 
 		// Check if it's already a magnet
 		if (downloadUrl.startsWith('magnet:')) {
-			const infoHash = extractInfoHashFromMagnet(downloadUrl);
+			const infoHash = await extractInfoHashFromMagnet(downloadUrl);
 			return {
 				success: true,
 				magnetUrl: downloadUrl,
@@ -271,7 +276,7 @@ class DownloadResolutionService {
 					}
 
 					if (location.startsWith('magnet:')) {
-						const infoHash = extractInfoHashFromMagnet(location);
+						const infoHash = await extractInfoHashFromMagnet(location);
 						return {
 							success: true,
 							magnetUrl: location,
@@ -293,7 +298,7 @@ class DownloadResolutionService {
 				}
 
 				const data = Buffer.from(await response.arrayBuffer());
-				const parseResult = parseTorrentFile(data);
+				const parseResult = await parseTorrentFile(data);
 
 				if (!parseResult.success) {
 					return {

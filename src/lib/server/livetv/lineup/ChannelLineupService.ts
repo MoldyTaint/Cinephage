@@ -20,6 +20,7 @@ import { eq, asc, inArray, sql, and } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import { logger } from '$lib/logging';
 import { randomUUID } from 'crypto';
+import { liveTvEvents } from '../LiveTvEvents';
 import type {
 	ChannelLineupItemWithDetails,
 	ChannelLineupItemWithBackups,
@@ -324,6 +325,9 @@ class ChannelLineupService {
 		}
 
 		logger.info('[ChannelLineupService] Added channels to lineup', { added, skipped });
+		if (added > 0) {
+			liveTvEvents.emitLineupUpdated();
+		}
 		return { added, skipped };
 	}
 
@@ -332,6 +336,9 @@ class ChannelLineupService {
 	 */
 	async removeFromLineup(id: string): Promise<boolean> {
 		const result = await db.delete(channelLineupItems).where(eq(channelLineupItems.id, id));
+		if (result.changes > 0) {
+			liveTvEvents.emitLineupUpdated();
+		}
 		return result.changes > 0;
 	}
 
@@ -344,6 +351,9 @@ class ChannelLineupService {
 		const result = await db.delete(channelLineupItems).where(inArray(channelLineupItems.id, ids));
 
 		logger.info('[ChannelLineupService] Removed channels from lineup', { count: result.changes });
+		if (result.changes > 0) {
+			liveTvEvents.emitLineupUpdated();
+		}
 		return result.changes;
 	}
 
@@ -369,6 +379,7 @@ class ChannelLineupService {
 			})
 			.where(eq(channelLineupItems.id, id));
 
+		liveTvEvents.emitLineupUpdated();
 		return this.getChannelById(id);
 	}
 
@@ -387,6 +398,7 @@ class ChannelLineupService {
 		}
 
 		logger.info('[ChannelLineupService] Reordered lineup', { count: itemIds.length });
+		liveTvEvents.emitLineupUpdated();
 	}
 
 	/**
@@ -401,6 +413,9 @@ class ChannelLineupService {
 			.set({ categoryId, updatedAt: now })
 			.where(inArray(channelLineupItems.id, itemIds));
 
+		if (result.changes > 0) {
+			liveTvEvents.emitLineupUpdated();
+		}
 		return result.changes;
 	}
 
@@ -547,6 +562,7 @@ class ChannelLineupService {
 			// Return the newly created backup with joined data
 			const backups = await this.getBackups(lineupItemId);
 			const backup = backups.find((b) => b.id === id) || null;
+			liveTvEvents.emitLineupUpdated();
 			return { backup };
 		} catch (error) {
 			// Unique constraint violation - backup already exists
@@ -586,6 +602,7 @@ class ChannelLineupService {
 
 			// Renormalize priorities for remaining backups
 			await this.normalizePriorities(backup.lineupItemId);
+			liveTvEvents.emitLineupUpdated();
 
 			return true;
 		}
@@ -636,6 +653,7 @@ class ChannelLineupService {
 			lineupItemId,
 			count: backupIds.length
 		});
+		liveTvEvents.emitLineupUpdated();
 	}
 
 	/**

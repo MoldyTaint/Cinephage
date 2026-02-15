@@ -1,9 +1,12 @@
 <script lang="ts">
-	import { Plus, RefreshCw, Loader2 } from 'lucide-svelte';
+	import { Plus, RefreshCw, Loader2, Wifi, WifiOff } from 'lucide-svelte';
 	import { LiveTvAccountTable, LiveTvAccountModal } from '$lib/components/livetv';
 	import type { LiveTvAccount, LiveTvAccountTestResult } from '$lib/types/livetv';
 	import type { FormData, TestConfig } from '$lib/components/livetv/LiveTvAccountModal.svelte';
 	import { onMount } from 'svelte';
+	import { createSSE } from '$lib/sse';
+	import { mobileSSEStatus } from '$lib/sse/mobileStatus.svelte';
+	import { resolvePath } from '$lib/utils/routing';
 
 	// State
 	let accounts = $state<LiveTvAccount[]>([]);
@@ -24,9 +27,53 @@
 	// Syncing state
 	let syncingId = $state<string | null>(null);
 
+	// SSE Connection - internally handles browser/SSR
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const sse = createSSE<Record<string, any>>(resolvePath('/api/livetv/accounts/stream'), {
+		'accounts:initial': (payload) => {
+			accounts = payload.accounts || [];
+			loading = false;
+		},
+		'account:created': (payload) => {
+			accounts = payload.accounts || [];
+		},
+		'account:updated': (payload) => {
+			accounts = payload.accounts || [];
+		},
+		'account:deleted': (payload) => {
+			accounts = payload.accounts || [];
+		},
+		'channels:syncStarted': (payload) => {
+			syncingId = payload.accountId;
+		},
+		'channels:syncCompleted': (payload) => {
+			if (syncingId === payload.accountId) {
+				syncingId = null;
+			}
+		},
+		'channels:syncFailed': (payload) => {
+			if (syncingId === payload.accountId) {
+				syncingId = null;
+			}
+		}
+	});
+
+	const MOBILE_SSE_SOURCE = 'livetv-accounts';
+
+	$effect(() => {
+		mobileSSEStatus.publish(MOBILE_SSE_SOURCE, sse.status);
+		return () => {
+			mobileSSEStatus.clear(MOBILE_SSE_SOURCE);
+		};
+	});
+
 	// Load accounts on mount
 	onMount(() => {
 		loadAccounts();
+
+		return () => {
+			sse.close();
+		};
 	});
 
 	async function loadAccounts() {
@@ -287,7 +334,26 @@
 			<h1 class="text-2xl font-bold">Live TV Accounts</h1>
 			<p class="mt-1 text-base-content/60">Manage your IPTV accounts (Stalker, XStream, M3U)</p>
 		</div>
-		<div class="flex gap-2">
+		<div class="flex items-center gap-2">
+			<!-- Connection Status -->
+			<div class="hidden lg:block">
+				{#if sse.isConnected}
+					<span class="badge gap-1 badge-success">
+						<Wifi class="h-3 w-3" />
+						Live
+					</span>
+				{:else if sse.status === 'connecting' || sse.status === 'error'}
+					<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
+						<Loader2 class="h-3 w-3 animate-spin" />
+						{sse.status === 'error' ? 'Reconnecting...' : 'Connecting...'}
+					</span>
+				{:else}
+					<span class="badge gap-1 badge-ghost">
+						<WifiOff class="h-3 w-3" />
+						Disconnected
+					</span>
+				{/if}
+			</div>
 			<button
 				class="btn btn-ghost btn-sm"
 				onclick={refreshAccounts}
