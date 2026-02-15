@@ -99,9 +99,13 @@ login:
     selector: a[href*="profile.php"]
 
 download:
-  selectors:
-    - selector: a[href^="torrents.php?action=download&id="]
+  downloadVariablesFrom: details
+  downloadVariables:
+    - name: fullDownloadUrl
+      selector: a[href*="action=download"]
       attribute: href
+  selectors:
+    - selector: '{{ .Variables.fullDownloadUrl }}'
 
 search:
   paths:

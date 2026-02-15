@@ -203,6 +203,8 @@ export interface GrabRequest {
 	categories?: number[];
 	/** Release size in bytes */
 	size?: number;
+	/** URL to the release details/comments page (needed by some indexers for download resolution) */
+	commentsUrl?: string;
 
 	// Target media (at least one required)
 	movieId?: string;

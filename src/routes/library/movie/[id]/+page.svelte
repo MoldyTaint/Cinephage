@@ -271,6 +271,7 @@
 		indexerId: string;
 		indexerName: string;
 		protocol: string;
+		commentsUrl?: string;
 	}
 
 	async function handleGrab(
@@ -291,7 +292,8 @@
 					protocol: release.protocol,
 					movieId: movie.id,
 					mediaType: 'movie',
-					streamUsenet: streaming && release.protocol === 'usenet'
+					streamUsenet: streaming && release.protocol === 'usenet',
+					commentsUrl: release.commentsUrl
 				})
 			});
 

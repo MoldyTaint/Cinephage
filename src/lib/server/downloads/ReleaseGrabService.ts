@@ -258,7 +258,8 @@ class ReleaseGrabService {
 			magnetUrl: release.magnetUrl,
 			infoHash: release.infoHash,
 			indexerId: release.indexerId,
-			title: release.title
+			title: release.title,
+			commentsUrl: release.commentsUrl
 		});
 
 		if (!resolved.success) {
@@ -414,7 +415,9 @@ class ReleaseGrabService {
 
 			if (indexer && indexer.downloadTorrent) {
 				try {
-					const downloadResult = await indexer.downloadTorrent(release.downloadUrl);
+					const downloadResult = await indexer.downloadTorrent(release.downloadUrl, {
+						releaseDetailsUrl: release.commentsUrl
+					});
 					if (downloadResult.success && downloadResult.data) {
 						nzbContent = downloadResult.data;
 
@@ -607,7 +610,9 @@ class ReleaseGrabService {
 
 		if (indexer && indexer.downloadTorrent) {
 			try {
-				const downloadResult = await indexer.downloadTorrent(release.downloadUrl);
+				const downloadResult = await indexer.downloadTorrent(release.downloadUrl, {
+					releaseDetailsUrl: release.commentsUrl
+				});
 				if (downloadResult.success && downloadResult.data) {
 					nzbContent = downloadResult.data;
 				} else {

@@ -95,6 +95,7 @@ export {
 	type LoginBlock,
 	type SearchBlock,
 	type DownloadBlock,
+	type DownloadVariable,
 	type SelectorBlock,
 	type FilterBlock,
 	type CapabilitiesBlock,
