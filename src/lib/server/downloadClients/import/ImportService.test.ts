@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mkdtemp, writeFile, rm, truncate } from 'fs/promises';
+import { mkdtemp, writeFile, rm, truncate, symlink } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { ImportService } from './ImportService';
@@ -86,6 +86,33 @@ describe('ImportService NZB-Mount selection', () => {
 			expect(files).toHaveLength(0);
 		} finally {
 			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it('includes symlinked video files when scanning import candidates', async () => {
+		const sourceDir = await createTempDir();
+		const downloadDir = await createTempDir();
+		try {
+			const targetPath = join(sourceDir, 'actual-video.mkv');
+			const symlinkPath = join(downloadDir, 'linked-video.mkv');
+			await createSizedFile(targetPath, 60 * 1024 * 1024);
+			await symlink(targetPath, symlinkPath);
+
+			const service = ImportService.getInstance();
+			const files = await (
+				service as unknown as {
+					findImportableFiles: (
+						downloadPath: string,
+						options: { allowStrmSmall: boolean; preferNonStrm: boolean }
+					) => Promise<Array<{ path: string; size: number }>>;
+				}
+			).findImportableFiles(downloadDir, { allowStrmSmall: false, preferNonStrm: false });
+
+			expect(files).toHaveLength(1);
+			expect(files[0].path).toBe(symlinkPath);
+		} finally {
+			await rm(sourceDir, { recursive: true, force: true });
+			await rm(downloadDir, { recursive: true, force: true });
 		}
 	});
 });

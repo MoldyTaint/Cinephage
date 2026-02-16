@@ -202,7 +202,7 @@
 					class="checkbox shrink-0 checkbox-sm"
 					bind:checked={preserveSymlinks}
 				/>
-				<span class="text-sm">Preserve symlinks (for NZBDav/rclone mounts)</span>
+				<span class="text-sm">Preserve symlinks (for Rclone mounts)</span>
 			</label>
 
 			<label class="flex cursor-pointer items-center gap-3 py-2">
@@ -242,8 +242,8 @@
 						<div class="font-medium">Symlink preservation enabled</div>
 						<div class="text-sm opacity-80">
 							Symlinks will be recreated at the destination instead of copying file contents. This
-							is useful when the source folder contains symlinks to files on network mounts (NZBDav,
-							rclone).
+							is useful when the source folder contains symlinks to files on network mounts
+							(NZB-Mount: NZBDav/Altmount Rclone).
 						</div>
 					</div>
 				</div>

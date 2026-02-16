@@ -223,7 +223,7 @@ Example:
 | ----------- | ------------------ |
 | `/symlinks` | `/mnt/altmountrem` |
 
-Also enable **Preserve symlinks (for NZBDav/rclone mounts)** on the destination root folder in **Settings > General**, so Cinephage recreates symlinks in the media folder instead of copying the target file. This applies to both NZBDav and Altmount when using the symlink import strategy.
+Also enable **Preserve symlinks (for Rclone mounts)** on the destination root folder in **Settings > General**, so Cinephage recreates symlinks in the media folder instead of copying the target file. This applies to both NZBDav and Altmount when using the symlink import strategy.
 
 Best practice: avoid using the same directory name for both the symlink import directory and the complete directory to prevent duplicate path segments during import.
 
