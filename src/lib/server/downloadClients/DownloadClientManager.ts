@@ -13,7 +13,8 @@ import type { IDownloadClient, DownloadClientConfig } from './core/interfaces';
 import type {
 	DownloadClient,
 	ConnectionTestResult,
-	DownloadClientImplementation
+	DownloadClientImplementation,
+	DownloadClientHealth
 } from '$lib/types/downloadClient';
 import { QBittorrentClient } from './qbittorrent/QBittorrentClient';
 import { SABnzbdClient, type SABnzbdConfig } from './sabnzbd';
@@ -37,6 +38,34 @@ const IMPLEMENTATION_PROTOCOL_MAP: Record<string, DownloadClientProtocol> = {
 	sabnzbd: 'usenet',
 	'nzb-mount': 'usenet',
 	nzbget: 'usenet'
+};
+
+const LEGACY_DOWNLOAD_CLIENT_SELECT = {
+	id: downloadClientsTable.id,
+	name: downloadClientsTable.name,
+	implementation: downloadClientsTable.implementation,
+	enabled: downloadClientsTable.enabled,
+	host: downloadClientsTable.host,
+	port: downloadClientsTable.port,
+	useSsl: downloadClientsTable.useSsl,
+	username: downloadClientsTable.username,
+	password: downloadClientsTable.password,
+	urlBase: downloadClientsTable.urlBase,
+	mountMode: downloadClientsTable.mountMode,
+	movieCategory: downloadClientsTable.movieCategory,
+	tvCategory: downloadClientsTable.tvCategory,
+	recentPriority: downloadClientsTable.recentPriority,
+	olderPriority: downloadClientsTable.olderPriority,
+	initialState: downloadClientsTable.initialState,
+	seedRatioLimit: downloadClientsTable.seedRatioLimit,
+	seedTimeLimit: downloadClientsTable.seedTimeLimit,
+	downloadPathLocal: downloadClientsTable.downloadPathLocal,
+	downloadPathRemote: downloadClientsTable.downloadPathRemote,
+	tempPathLocal: downloadClientsTable.tempPathLocal,
+	tempPathRemote: downloadClientsTable.tempPathRemote,
+	priority: downloadClientsTable.priority,
+	createdAt: downloadClientsTable.createdAt,
+	updatedAt: downloadClientsTable.updatedAt
 };
 
 /**
@@ -72,13 +101,70 @@ export interface DownloadClientInput {
  */
 export class DownloadClientManager {
 	private clientInstances: Map<string, IDownloadClient> = new Map();
+	private downloadClientHealthColumnsAvailable = true;
+
+	private isMissingDownloadClientHealthColumnsError(error: unknown): boolean {
+		const message = this.toErrorMessage(error).toLowerCase();
+		if (!message.includes('no such column')) return false;
+		return (
+			message.includes('health') ||
+			message.includes('consecutive_failures') ||
+			message.includes('last_success') ||
+			message.includes('last_failure') ||
+			message.includes('last_failure_message') ||
+			message.includes('last_checked_at')
+		);
+	}
+
+	private async selectClientRows(): Promise<Array<typeof downloadClientsTable.$inferSelect>> {
+		if (this.downloadClientHealthColumnsAvailable) {
+			try {
+				return await db.select().from(downloadClientsTable);
+			} catch (error) {
+				if (!this.isMissingDownloadClientHealthColumnsError(error)) {
+					throw error;
+				}
+				this.downloadClientHealthColumnsAvailable = false;
+				logger.warn(
+					'[DownloadClientManager] Missing download client health columns; using legacy row mapping'
+				);
+			}
+		}
+
+		const rows = await db.select(LEGACY_DOWNLOAD_CLIENT_SELECT).from(downloadClientsTable);
+		return rows as Array<typeof downloadClientsTable.$inferSelect>;
+	}
+
+	private async selectClientRowsById(
+		id: string
+	): Promise<Array<typeof downloadClientsTable.$inferSelect>> {
+		if (this.downloadClientHealthColumnsAvailable) {
+			try {
+				return await db.select().from(downloadClientsTable).where(eq(downloadClientsTable.id, id));
+			} catch (error) {
+				if (!this.isMissingDownloadClientHealthColumnsError(error)) {
+					throw error;
+				}
+				this.downloadClientHealthColumnsAvailable = false;
+				logger.warn(
+					'[DownloadClientManager] Missing download client health columns; using legacy row mapping'
+				);
+			}
+		}
+
+		const rows = await db
+			.select(LEGACY_DOWNLOAD_CLIENT_SELECT)
+			.from(downloadClientsTable)
+			.where(eq(downloadClientsTable.id, id));
+		return rows as Array<typeof downloadClientsTable.$inferSelect>;
+	}
 
 	/**
 	 * Get all configured download clients from database.
 	 * Passwords are not returned for security.
 	 */
 	async getClients(): Promise<DownloadClient[]> {
-		const rows = await db.select().from(downloadClientsTable);
+		const rows = await this.selectClientRows();
 		return rows.map((row) => this.rowToClient(row));
 	}
 
@@ -86,10 +172,7 @@ export class DownloadClientManager {
 	 * Get a specific client config by ID.
 	 */
 	async getClient(id: string): Promise<DownloadClient | undefined> {
-		const rows = await db
-			.select()
-			.from(downloadClientsTable)
-			.where(eq(downloadClientsTable.id, id));
+		const rows = await this.selectClientRowsById(id);
 		return rows[0] ? this.rowToClient(rows[0]) : undefined;
 	}
 
@@ -99,10 +182,7 @@ export class DownloadClientManager {
 	private async getClientWithPassword(
 		id: string
 	): Promise<(DownloadClient & { password?: string | null }) | undefined> {
-		const rows = await db
-			.select()
-			.from(downloadClientsTable)
-			.where(eq(downloadClientsTable.id, id));
+		const rows = await this.selectClientRowsById(id);
 		if (!rows[0]) return undefined;
 
 		const client = this.rowToClient(rows[0]);
@@ -256,7 +336,7 @@ export class DownloadClientManager {
 			};
 		}
 
-		return this.testClient({
+		const result = await this.testClient({
 			host: clientConfig.host,
 			port: clientConfig.port,
 			useSsl: clientConfig.useSsl,
@@ -270,6 +350,58 @@ export class DownloadClientManager {
 					? clientConfig.password
 					: undefined
 		});
+
+		if (result.success) {
+			await this.recordHealthSuccess(id);
+		} else {
+			await this.recordHealthFailure(id, result.error ?? 'Connection test failed');
+		}
+
+		return result;
+	}
+
+	/**
+	 * Test using updated config values while falling back to stored credentials when password/api key is omitted.
+	 */
+	async testClientWithCredentialFallback(
+		id: string,
+		overrides: Partial<DownloadClientConfig>
+	): Promise<ConnectionTestResult> {
+		const clientConfig = await this.getClientWithPassword(id);
+		if (!clientConfig) {
+			return {
+				success: false,
+				error: `Download client not found: ${id}`
+			};
+		}
+
+		const hasPasswordOverride =
+			typeof overrides.password === 'string' && overrides.password.trim().length > 0;
+		const effectivePassword = hasPasswordOverride ? overrides.password : clientConfig.password;
+		const implementation = overrides.implementation ?? clientConfig.implementation;
+
+		const result = await this.testClient({
+			host: overrides.host ?? clientConfig.host,
+			port: overrides.port ?? clientConfig.port,
+			useSsl: overrides.useSsl ?? clientConfig.useSsl,
+			urlBase: overrides.urlBase ?? clientConfig.urlBase ?? null,
+			mountMode: overrides.mountMode ?? clientConfig.mountMode ?? null,
+			username: overrides.username ?? clientConfig.username,
+			password: effectivePassword,
+			implementation,
+			apiKey:
+				implementation === 'sabnzbd' || implementation === 'nzb-mount'
+					? effectivePassword
+					: undefined
+		});
+
+		if (result.success) {
+			await this.recordHealthSuccess(id);
+		} else {
+			await this.recordHealthFailure(id, result.error ?? 'Connection test failed');
+		}
+
+		return result;
 	}
 
 	/**
@@ -302,10 +434,11 @@ export class DownloadClientManager {
 		});
 
 		if (instance) {
-			this.clientInstances.set(id, instance);
+			const wrappedInstance = this.wrapClientInstance(id, instance);
+			this.clientInstances.set(id, wrappedInstance);
 		}
 
-		return instance;
+		return this.clientInstances.get(id);
 	}
 
 	/**
@@ -391,6 +524,139 @@ export class DownloadClientManager {
 		}
 	}
 
+	private wrapClientInstance(id: string, instance: IDownloadClient): IDownloadClient {
+		const trackedMethods = new Set<string>([
+			'test',
+			'addDownload',
+			'getDownloads',
+			'getDownload',
+			'removeDownload',
+			'pauseDownload',
+			'resumeDownload',
+			'getDefaultSavePath',
+			'getCategories',
+			'ensureCategory',
+			'retryDownload',
+			'getNntpServers',
+			'getBasePath',
+			'markItemAsImported',
+			'setSeedingConfig'
+		]);
+
+		return new Proxy(instance, {
+			get: (target, prop, receiver) => {
+				const value = Reflect.get(target, prop, receiver);
+				if (typeof prop !== 'string' || typeof value !== 'function' || !trackedMethods.has(prop)) {
+					return value;
+				}
+
+				return async (...args: unknown[]) => {
+					try {
+						const result = await value.apply(target, args);
+						await this.recordHealthSuccess(id);
+						return result;
+					} catch (error) {
+						// Only mark unhealthy for connectivity/auth/API availability issues.
+						if (this.isHealthFailure(error)) {
+							await this.recordHealthFailure(id, this.toErrorMessage(error));
+						}
+						throw error;
+					}
+				};
+			}
+		}) as IDownloadClient;
+	}
+
+	private toErrorMessage(error: unknown): string {
+		return error instanceof Error ? error.message : String(error);
+	}
+
+	private isHealthFailure(error: unknown): boolean {
+		const message = this.toErrorMessage(error).toLowerCase();
+
+		// Runtime operation errors that indicate app/business conditions rather than connectivity.
+		const nonHealthPatterns = [
+			'already exists',
+			'not found',
+			'invalid category',
+			'invalid state',
+			'duplicate'
+		];
+		if (nonHealthPatterns.some((pattern) => message.includes(pattern))) {
+			return false;
+		}
+
+		// Most runtime exceptions from client calls indicate connection/auth/API availability failures.
+		return true;
+	}
+
+	private async recordHealthSuccess(id: string): Promise<void> {
+		if (!this.downloadClientHealthColumnsAvailable) {
+			return;
+		}
+
+		const now = new Date().toISOString();
+		try {
+			await db
+				.update(downloadClientsTable)
+				.set({
+					health: 'healthy',
+					consecutiveFailures: 0,
+					lastSuccess: now,
+					lastCheckedAt: now,
+					updatedAt: now
+				})
+				.where(eq(downloadClientsTable.id, id));
+		} catch (error) {
+			if (this.isMissingDownloadClientHealthColumnsError(error)) {
+				this.downloadClientHealthColumnsAvailable = false;
+				return;
+			}
+			logger.debug('Failed to record download client success state', {
+				id,
+				error: this.toErrorMessage(error)
+			});
+		}
+	}
+
+	private async recordHealthFailure(id: string, message: string): Promise<void> {
+		if (!this.downloadClientHealthColumnsAvailable) {
+			return;
+		}
+
+		const now = new Date().toISOString();
+		try {
+			const [row] = await db
+				.select({ consecutiveFailures: downloadClientsTable.consecutiveFailures })
+				.from(downloadClientsTable)
+				.where(eq(downloadClientsTable.id, id));
+
+			const consecutiveFailures = (row?.consecutiveFailures ?? 0) + 1;
+			const health: DownloadClientHealth = consecutiveFailures >= 3 ? 'failing' : 'warning';
+
+			await db
+				.update(downloadClientsTable)
+				.set({
+					health,
+					consecutiveFailures,
+					lastFailure: now,
+					lastFailureMessage: message,
+					lastCheckedAt: now,
+					updatedAt: now
+				})
+				.where(eq(downloadClientsTable.id, id));
+		} catch (error) {
+			if (this.isMissingDownloadClientHealthColumnsError(error)) {
+				this.downloadClientHealthColumnsAvailable = false;
+				return;
+			}
+			logger.debug('Failed to record download client failure state', {
+				id,
+				error: this.toErrorMessage(error)
+			});
+		}
+	}
+
 	/**
 	 * Convert database row to DownloadClient (without password).
 	 */
@@ -422,6 +688,14 @@ export class DownloadClientManager {
 			tempPathLocal: row.tempPathLocal,
 			tempPathRemote: row.tempPathRemote,
 			priority: row.priority ?? 1,
+			status: {
+				health: (row.health as DownloadClientHealth) ?? 'healthy',
+				consecutiveFailures: row.consecutiveFailures ?? 0,
+				lastSuccess: row.lastSuccess ?? undefined,
+				lastFailure: row.lastFailure ?? undefined,
+				lastFailureMessage: row.lastFailureMessage ?? undefined,
+				lastCheckedAt: row.lastCheckedAt ?? undefined
+			},
 			createdAt: row.createdAt ?? undefined,
 			updatedAt: row.updatedAt ?? undefined
 		};

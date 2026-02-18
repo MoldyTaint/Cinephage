@@ -3,11 +3,22 @@ import type { Actions, PageServerLoad } from './$types';
 import { indexerCreateSchema, indexerUpdateSchema } from '$lib/validation/schemas';
 import { getIndexerManager } from '$lib/server/indexers/IndexerManager';
 import { toUIDefinition } from '$lib/server/indexers/loader';
-import type { IndexerDefinition, Indexer } from '$lib/types/indexer';
+import { getPersistentStatusTracker } from '$lib/server/indexers/status';
+import { CINEPHAGE_STREAM_DEFINITION_ID } from '$lib/server/indexers/types';
+import type { IndexerDefinition, IndexerWithStatus } from '$lib/types/indexer';
 
 export const load: PageServerLoad = async () => {
 	const manager = await getIndexerManager();
 	const indexerConfigs = await manager.getIndexers();
+	const statusTracker = getPersistentStatusTracker();
+
+	// Load runtime health status for each indexer from persistent tracker.
+	const statusEntries = await Promise.all(
+		indexerConfigs.map(
+			async (config) => [config.id, await statusTracker.getStatus(config.id)] as const
+		)
+	);
+	const statusByIndexerId = new Map(statusEntries);
 
 	// Helper to convert settings to string values only
 	const toStringSettings = (
@@ -23,29 +34,68 @@ export const load: PageServerLoad = async () => {
 		return Object.keys(result).length > 0 ? result : null;
 	};
 
+	// For the built-in streaming indexer, display the configured external host (if present)
+	// instead of the static internal base URL.
+	const getDisplayBaseUrl = (
+		config: (typeof indexerConfigs)[number],
+		settings: Record<string, string> | null
+	): string => {
+		if (config.definitionId !== CINEPHAGE_STREAM_DEFINITION_ID || !settings?.externalHost) {
+			return config.baseUrl;
+		}
+
+		const host = settings.externalHost.trim().replace(/^https?:\/\//i, '');
+		if (!host) return config.baseUrl;
+
+		const useHttps =
+			settings.useHttps === 'true' ||
+			settings.useHttps === '1' ||
+			settings.useHttps?.toLowerCase() === 'yes';
+		const protocol = useHttps ? 'https' : 'http';
+
+		return `${protocol}://${host}`.replace(/\/$/, '');
+	};
+
 	// Map to UI types
-	const indexers: Indexer[] = indexerConfigs.map((config) => ({
-		id: config.id,
-		name: config.name,
-		definitionId: config.definitionId,
-		enabled: config.enabled,
-		baseUrl: config.baseUrl,
-		alternateUrls: config.alternateUrls,
-		priority: config.priority,
-		protocol: config.protocol,
-		settings: toStringSettings(config.settings),
+	const indexers: IndexerWithStatus[] = indexerConfigs.map((config) => {
+		const status = statusByIndexerId.get(config.id);
+		const settings = toStringSettings(config.settings);
+		const displayBaseUrl = getDisplayBaseUrl(config, settings);
 
-		// Search capability toggles
-		enableAutomaticSearch: config.enableAutomaticSearch,
-		enableInteractiveSearch: config.enableInteractiveSearch,
+		return {
+			id: config.id,
+			name: config.name,
+			definitionId: config.definitionId,
+			enabled: config.enabled,
+			baseUrl: displayBaseUrl,
+			alternateUrls: config.alternateUrls,
+			priority: config.priority,
+			protocol: config.protocol,
+			settings,
 
-		// Torrent seeding settings
-		minimumSeeders: config.minimumSeeders,
-		seedRatio: config.seedRatio,
-		seedTime: config.seedTime,
-		packSeedTime: config.packSeedTime,
-		rejectDeadTorrents: config.rejectDeadTorrents
-	}));
+			// Search capability toggles
+			enableAutomaticSearch: config.enableAutomaticSearch,
+			enableInteractiveSearch: config.enableInteractiveSearch,
+
+			// Torrent seeding settings
+			minimumSeeders: config.minimumSeeders,
+			seedRatio: config.seedRatio,
+			seedTime: config.seedTime,
+			packSeedTime: config.packSeedTime,
+			rejectDeadTorrents: config.rejectDeadTorrents,
+
+			status: status
+				? {
+						healthy: status.health === 'healthy',
+						enabled: status.isEnabled,
+						consecutiveFailures: status.consecutiveFailures,
+						lastFailure: status.lastFailure?.toISOString(),
+						disabledUntil: status.disabledUntil?.toISOString(),
+						averageResponseTime: status.avgResponseTime
+					}
+				: undefined
+		};
+	});
 
 	// Get all definitions from manager and convert to UI format
 	const allDefinitions = manager.getUnifiedDefinitions();
@@ -192,6 +242,58 @@ export const actions: Actions = {
 
 		try {
 			await manager.deleteIndexer(id);
+			return { indexerSuccess: true };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown error';
+			return fail(500, { indexerError: message });
+		}
+	},
+
+	toggleIndexer: async ({ request }) => {
+		const data = await request.formData();
+		const id = data.get('id');
+		const enabled = data.get('enabled') === 'true';
+
+		if (!id || typeof id !== 'string') {
+			return fail(400, { indexerError: 'Missing indexer ID' });
+		}
+
+		const manager = await getIndexerManager();
+
+		try {
+			await manager.updateIndexer(id, { enabled });
+			return { indexerSuccess: true };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown error';
+			return fail(500, { indexerError: message });
+		}
+	},
+
+	reorderPriorities: async ({ request }) => {
+		const data = await request.formData();
+		const idsJson = data.get('ids');
+
+		if (!idsJson || typeof idsJson !== 'string') {
+			return fail(400, { indexerError: 'Missing indexer IDs' });
+		}
+
+		let ids: unknown;
+		try {
+			ids = JSON.parse(idsJson);
+		} catch {
+			return fail(400, { indexerError: 'Invalid IDs format' });
+		}
+
+		if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string')) {
+			return fail(400, { indexerError: 'Invalid IDs payload' });
+		}
+
+		const manager = await getIndexerManager();
+
+		try {
+			for (const [index, id] of ids.entries()) {
+				await manager.updateIndexer(id, { priority: index + 1 });
+			}
 			return { indexerSuccess: true };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';

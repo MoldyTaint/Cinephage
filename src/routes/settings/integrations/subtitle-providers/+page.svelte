@@ -6,8 +6,13 @@
 	import type { SubtitleProviderConfig } from '$lib/server/subtitles/types';
 	import type { ProviderDefinition } from '$lib/server/subtitles/providers/interfaces';
 
-	import { SubtitleProviderTable, SubtitleProviderModal } from '$lib/components/subtitleProviders';
+	import {
+		SubtitleProviderTable,
+		SubtitleProviderModal,
+		SubtitleProviderBulkActions
+	} from '$lib/components/subtitleProviders';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import { ConfirmationModal } from '$lib/components/ui/modal';
 
 	interface SubtitleProviderFormData {
 		name: string;
@@ -36,10 +41,13 @@
 
 	// Test state
 	let testingIds = new SvelteSet<string>();
+	let bulkLoading = $state(false);
+	let selectedIds = new SvelteSet<string>();
 
 	// Confirmation dialog state
 	let confirmDeleteOpen = $state(false);
 	let deleteTarget = $state<SubtitleProviderWithDefinition | null>(null);
+	let confirmBulkDeleteOpen = $state(false);
 
 	// Sort state
 	type SortColumn = 'name' | 'priority' | 'enabled';
@@ -48,9 +56,51 @@
 		direction: 'asc'
 	});
 
-	// Derived: sorted providers
-	const sortedProviders = $derived(() => {
+	interface SubtitleProviderPageFilters {
+		status: 'all' | 'enabled' | 'disabled';
+		search: string;
+	}
+
+	let filters = $state<SubtitleProviderPageFilters>({
+		status: 'all',
+		search: ''
+	});
+
+	function updateFilter<K extends keyof SubtitleProviderPageFilters>(
+		key: K,
+		value: SubtitleProviderPageFilters[K]
+	) {
+		filters = { ...filters, [key]: value };
+	}
+
+	const filteredProviders = $derived(() => {
 		let result = [...data.providers] as SubtitleProviderWithDefinition[];
+
+		if (filters.status === 'enabled') {
+			result = result.filter((provider) => !!provider.enabled);
+		} else if (filters.status === 'disabled') {
+			result = result.filter((provider) => !provider.enabled);
+		}
+
+		const query = filters.search.trim().toLowerCase();
+		if (query) {
+			result = result.filter((provider) => {
+				const definitionName =
+					provider.definitionName ?? provider.definition?.name ?? provider.implementation;
+				return (
+					provider.name.toLowerCase().includes(query) ||
+					provider.implementation.toLowerCase().includes(query) ||
+					definitionName.toLowerCase().includes(query)
+				);
+			});
+		}
+
+		return result;
+	});
+
+	// Derived: filtered + sorted providers
+	const sortedProviders = $derived(() => {
+		let result = [...filteredProviders()] as SubtitleProviderWithDefinition[];
 
 		result.sort((a, b) => {
 			let comparison = 0;
@@ -70,6 +120,8 @@
 
 		return result;
 	});
+
+	const canReorder = $derived(() => filters.status === 'all' && filters.search.trim().length === 0);
 
 	// Functions
 	function openAddModal() {
@@ -102,22 +154,44 @@
 		confirmDeleteOpen = true;
 	}
 
+	function handleSelect(id: string, selected: boolean) {
+		if (selected) {
+			selectedIds.add(id);
+		} else {
+			selectedIds.delete(id);
+		}
+	}
+
+	function handleSelectAll(selected: boolean) {
+		if (selected) {
+			for (const provider of sortedProviders()) {
+				selectedIds.add(provider.id);
+			}
+		} else {
+			selectedIds.clear();
+		}
+	}
+
+	async function testProviderConnection(provider: SubtitleProviderWithDefinition) {
+		const response = await fetch('/api/subtitles/providers/test', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				implementation: provider.implementation,
+				apiKey: provider.apiKey,
+				username: provider.username,
+				password: provider.password
+			})
+		});
+		return response.json();
+	}
+
 	async function handleTest(provider: SubtitleProviderWithDefinition) {
 		testingIds.add(provider.id);
 		try {
-			const response = await fetch('/api/subtitles/providers/test', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					implementation: provider.implementation,
-					apiKey: provider.apiKey,
-					username: provider.username,
-					password: provider.password
-				})
-			});
-			const result = await response.json();
+			const result = await testProviderConnection(provider);
 			if (!result.success) {
-				toasts.error(`Test failed: ${result.error}`);
+				toasts.error(`Test failed: ${result.message || result.error || 'Connection test failed'}`);
 			} else {
 				toasts.success(`Connection successful! (${result.responseTime}ms)`);
 			}
@@ -125,6 +199,126 @@
 			toasts.error(`Test failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
 		} finally {
 			testingIds.delete(provider.id);
+		}
+	}
+
+	async function handleToggle(provider: SubtitleProviderWithDefinition) {
+		try {
+			const form = new FormData();
+			form.append('id', provider.id);
+			form.append('enabled', (!provider.enabled).toString());
+			await fetch(`?/toggleProvider`, {
+				method: 'POST',
+				body: form
+			});
+			await invalidateAll();
+		} catch (e) {
+			toasts.error(e instanceof Error ? e.message : 'Failed to update provider state');
+		}
+	}
+
+	async function handleBulkEnable() {
+		if (selectedIds.size === 0) return;
+		bulkLoading = true;
+		try {
+			const form = new FormData();
+			form.append('ids', JSON.stringify([...selectedIds]));
+			const response = await fetch(`?/bulkEnable`, { method: 'POST', body: form });
+			if (!response.ok) {
+				const result = await response.json();
+				toasts.error(result?.data?.providerError ?? 'Failed to enable selected providers');
+				return;
+			}
+
+			await invalidateAll();
+			selectedIds.clear();
+		} catch (e) {
+			toasts.error(e instanceof Error ? e.message : 'Failed to enable selected providers');
+		} finally {
+			bulkLoading = false;
+		}
+	}
+
+	async function handleBulkDisable() {
+		if (selectedIds.size === 0) return;
+		bulkLoading = true;
+		try {
+			const form = new FormData();
+			form.append('ids', JSON.stringify([...selectedIds]));
+			const response = await fetch(`?/bulkDisable`, { method: 'POST', body: form });
+			if (!response.ok) {
+				const result = await response.json();
+				toasts.error(result?.data?.providerError ?? 'Failed to disable selected providers');
+				return;
+			}
+
+			await invalidateAll();
+			selectedIds.clear();
+		} catch (e) {
+			toasts.error(e instanceof Error ? e.message : 'Failed to disable selected providers');
+		} finally {
+			bulkLoading = false;
+		}
+	}
+
+	async function handleBulkDelete() {
+		if (selectedIds.size === 0) return;
+		confirmBulkDeleteOpen = true;
+	}
+
+	async function handleConfirmBulkDelete() {
+		if (selectedIds.size === 0) {
+			confirmBulkDeleteOpen = false;
+			return;
+		}
+
+		bulkLoading = true;
+		try {
+			const form = new FormData();
+			form.append('ids', JSON.stringify([...selectedIds]));
+			const response = await fetch(`?/bulkDelete`, { method: 'POST', body: form });
+			if (!response.ok) {
+				const result = await response.json();
+				toasts.error(result?.data?.providerError ?? 'Failed to delete selected providers');
+				return;
+			}
+
+			await invalidateAll();
+			selectedIds.clear();
+			confirmBulkDeleteOpen = false;
+		} catch (e) {
+			toasts.error(e instanceof Error ? e.message : 'Failed to delete selected providers');
+		} finally {
+			bulkLoading = false;
+		}
+	}
+
+	async function handleBulkTest() {
+		if (selectedIds.size === 0) return;
+		bulkLoading = true;
+
+		let successCount = 0;
+		let failCount = 0;
+		try {
+			for (const id of selectedIds) {
+				const provider = data.providers.find((p) => p.id === id) as
+					| SubtitleProviderWithDefinition
+					| undefined;
+				if (!provider) continue;
+
+				const result = await testProviderConnection(provider);
+				if (result.success) {
+					successCount += 1;
+				} else {
+					failCount += 1;
+				}
+			}
+
+			toasts.info(`Bulk test complete: ${successCount} passed, ${failCount} failed`);
+		} catch (e) {
+			toasts.error(e instanceof Error ? e.message : 'Failed to test selected providers');
+		} finally {
+			bulkLoading = false;
 		}
 	}
 
@@ -235,6 +429,42 @@
 		</button>
 	</div>
 
+	<div class="mb-4 flex flex-wrap items-center gap-4">
+		<div class="form-control w-full sm:w-48">
+			<input
+				type="text"
+				placeholder="Search providers..."
+				class="input-bordered input input-sm w-full pl-9"
+				value={filters.search}
+				oninput={(e) => updateFilter('search', e.currentTarget.value)}
+			/>
+		</div>
+
+		<div class="join">
+			<button
+				class="btn join-item btn-sm"
+				class:btn-active={filters.status === 'all'}
+				onclick={() => updateFilter('status', 'all')}
+			>
+				All
+			</button>
+			<button
+				class="btn join-item btn-sm"
+				class:btn-active={filters.status === 'enabled'}
+				onclick={() => updateFilter('status', 'enabled')}
+			>
+				Enabled
+			</button>
+			<button
+				class="btn join-item btn-sm"
+				class:btn-active={filters.status === 'disabled'}
+				onclick={() => updateFilter('status', 'disabled')}
+			>
+				Disabled
+			</button>
+		</div>
+	</div>
+
 	{#if form?.providerError}
 		<div class="mb-4 alert alert-error">
 			<span>{form.providerError}</span>
@@ -247,17 +477,32 @@
 		</div>
 	{/if}
 
+	{#if selectedIds.size > 0}
+		<SubtitleProviderBulkActions
+			selectedCount={selectedIds.size}
+			loading={bulkLoading}
+			onEnable={handleBulkEnable}
+			onDisable={handleBulkDisable}
+			onDelete={handleBulkDelete}
+			onTestAll={handleBulkTest}
+		/>
+	{/if}
+
 	<div class="card bg-base-100 shadow-xl">
 		<div class="card-body p-0">
 			<SubtitleProviderTable
 				providers={sortedProviders()}
+				{selectedIds}
 				{sort}
 				{testingIds}
+				onSelect={handleSelect}
+				onSelectAll={handleSelectAll}
 				onSort={handleSort}
 				onEdit={openEditModal}
 				onDelete={confirmDelete}
 				onTest={handleTest}
-				onReorder={handleReorder}
+				onToggle={handleToggle}
+				onReorder={canReorder() ? handleReorder : undefined}
 			/>
 		</div>
 	</div>
@@ -298,3 +543,16 @@
 		></button>
 	</div>
 {/if}
+
+<ConfirmationModal
+	open={confirmBulkDeleteOpen}
+	title="Confirm Delete"
+	messagePrefix="Are you sure you want to delete "
+	messageEmphasis={`${selectedIds.size} subtitle provider(s)`}
+	messageSuffix="? This action cannot be undone."
+	confirmLabel="Delete"
+	confirmVariant="error"
+	loading={bulkLoading}
+	onConfirm={handleConfirmBulkDelete}
+	onCancel={() => (confirmBulkDeleteOpen = false)}
+/>

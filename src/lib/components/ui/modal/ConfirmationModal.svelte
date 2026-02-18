@@ -5,7 +5,10 @@
 	interface Props {
 		open: boolean;
 		title?: string;
-		message: string;
+		message?: string;
+		messagePrefix?: string;
+		messageEmphasis?: string;
+		messageSuffix?: string;
 		confirmLabel?: string;
 		cancelLabel?: string;
 		confirmVariant?: 'error' | 'warning' | 'primary';
@@ -17,7 +20,10 @@
 	let {
 		open,
 		title = 'Confirm',
-		message,
+		message = '',
+		messagePrefix,
+		messageEmphasis,
+		messageSuffix,
 		confirmLabel = 'Confirm',
 		cancelLabel = 'Cancel',
 		confirmVariant = 'primary',
@@ -32,6 +38,11 @@
 			: confirmVariant === 'warning'
 				? 'btn-warning'
 				: 'btn-primary'
+	);
+
+	const hasEmphasisMessage = $derived(
+		typeof messageEmphasis === 'string' &&
+			(messagePrefix !== undefined || messageSuffix !== undefined)
 	);
 </script>
 
@@ -48,7 +59,13 @@
 		</button>
 	</div>
 
-	<p class="py-2">{message}</p>
+	{#if hasEmphasisMessage}
+		<p class="py-2">
+			{messagePrefix ?? ''}<strong>{messageEmphasis}</strong>{messageSuffix ?? ''}
+		</p>
+	{:else}
+		<p class="py-2">{message}</p>
+	{/if}
 
 	<div class="modal-action">
 		<button type="button" class="btn btn-ghost" onclick={onCancel} disabled={loading}>

@@ -22,6 +22,7 @@
 		isStreaming: boolean;
 		hasAuthSettings: boolean;
 		definitionUrls: string[];
+		alternateUrls: string[];
 		onNameChange: (value: string) => void;
 		onUrlChange: (value: string) => void;
 		onUrlBlur: () => void;
@@ -56,6 +57,7 @@
 		isStreaming,
 		hasAuthSettings,
 		definitionUrls,
+		alternateUrls,
 		onNameChange,
 		onUrlChange,
 		onUrlBlur,
@@ -70,8 +72,6 @@
 		onPackSeedTimeChange,
 		onRejectDeadTorrentsChange
 	}: Props = $props();
-
-	const alternateUrls = $derived(definitionUrls.filter((u) => u !== url));
 </script>
 
 <!-- Main Form - Two Column Layout -->

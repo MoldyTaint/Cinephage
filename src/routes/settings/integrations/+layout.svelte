@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { resolvePath } from '$lib/utils/routing';
 	import { page } from '$app/stores';
-	import { Database, Download, Subtitles, Languages, Monitor, Shield } from 'lucide-svelte';
+	import { Database, Download, Server, Subtitles, Languages, Monitor, Shield } from 'lucide-svelte';
 
 	let { children } = $props();
 
@@ -21,6 +21,11 @@
 			href: '/settings/integrations/download-clients',
 			label: 'Download Clients',
 			icon: Download
+		},
+		{
+			href: '/settings/integrations/nntp-servers',
+			label: 'NNTP Servers',
+			icon: Server
 		},
 		{
 			href: '/settings/integrations/subtitle-providers',

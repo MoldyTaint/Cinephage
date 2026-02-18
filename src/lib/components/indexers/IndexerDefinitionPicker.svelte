@@ -27,7 +27,9 @@
 		const filtered = filteredDefinitions();
 		return {
 			public: filtered.filter((d) => d.type === 'public' && d.protocol !== 'streaming'),
-			private: filtered.filter((d) => d.type === 'private' || d.type === 'semi-private'),
+			private: filtered.filter(
+				(d) => (d.type === 'private' || d.type === 'semi-private') && d.protocol !== 'streaming'
+			),
 			streaming: filtered.filter((d) => d.protocol === 'streaming')
 		};
 	});
@@ -48,7 +50,7 @@
 	</div>
 
 	<!-- Definition List -->
-	<div class="max-h-[400px] overflow-y-auto rounded-lg border border-base-300">
+	<div class="max-h-100 overflow-y-auto rounded-lg border border-base-300">
 		{#if groupedDefinitions().public.length > 0}
 			<div class="sticky top-0 z-10 border-b border-base-300 bg-base-200 px-4 py-2">
 				<span class="flex items-center gap-2 text-sm font-medium text-base-content/70">

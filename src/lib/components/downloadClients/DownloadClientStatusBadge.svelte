@@ -1,17 +1,22 @@
 <script lang="ts">
 	import { AlertTriangle, CheckCircle, XCircle } from 'lucide-svelte';
+	import type { DownloadClientHealth } from '$lib/types/downloadClient';
 
 	interface Props {
-		enabled: boolean;
+		enabled: boolean | null;
+		health?: DownloadClientHealth;
 		consecutiveFailures?: number;
 		lastFailure?: string;
-		disabledUntil?: string;
+		lastFailureMessage?: string;
 	}
 
-	let { enabled, consecutiveFailures = 0, lastFailure, disabledUntil }: Props = $props();
-
-	const hasFailures = $derived(consecutiveFailures > 0);
-	const isAutoDisabled = $derived(!!disabledUntil && new Date(disabledUntil) > new Date());
+	let {
+		enabled,
+		health = 'healthy',
+		consecutiveFailures = 0,
+		lastFailure,
+		lastFailureMessage: _lastFailureMessage
+	}: Props = $props();
 
 	const statusInfo = $derived.by(() => {
 		if (!enabled) {
@@ -19,32 +24,35 @@
 				text: 'Disabled',
 				class: 'badge-ghost',
 				icon: XCircle,
-				tooltip: 'Indexer is disabled by user'
+				tooltip: 'Download client is disabled by user'
 			};
 		}
-		if (isAutoDisabled) {
-			const until = disabledUntil ? new Date(disabledUntil).toLocaleString() : 'Unknown';
+
+		if (health === 'failing' || consecutiveFailures >= 3) {
+			const failureTime = lastFailure ? new Date(lastFailure).toLocaleString() : 'Unknown';
 			return {
 				text: 'Unhealthy',
 				class: 'badge-error',
 				icon: AlertTriangle,
-				tooltip: `Auto-disabled until ${until} due to ${consecutiveFailures} consecutive failures`
+				tooltip: `${consecutiveFailures} consecutive failures. Last: ${failureTime}`
 			};
 		}
-		if (hasFailures) {
+
+		if (health === 'warning' || consecutiveFailures >= 1) {
 			const failureTime = lastFailure ? new Date(lastFailure).toLocaleString() : 'Unknown';
 			return {
 				text: 'Degraded',
 				class: 'badge-warning',
 				icon: AlertTriangle,
-				tooltip: `${consecutiveFailures} consecutive failure(s). Last failure: ${failureTime}`
+				tooltip: `${consecutiveFailures} recent failures. Last: ${failureTime}`
 			};
 		}
+
 		return {
 			text: 'Healthy',
 			class: 'badge-success',
 			icon: CheckCircle,
-			tooltip: 'Indexer is healthy and operational'
+			tooltip: 'Download client is healthy and reachable'
 		};
 	});
 

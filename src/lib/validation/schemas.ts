@@ -59,6 +59,7 @@ export const indexerUpdateSchema = indexerCreateSchema.partial();
  * Schema for testing an indexer connection.
  */
 export const indexerTestSchema = z.object({
+	indexerId: z.string().uuid().optional(),
 	name: z.string().min(1),
 	definitionId: z.string().regex(/^[a-z0-9-]+$/),
 	baseUrl: z.string().url(),

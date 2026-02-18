@@ -527,7 +527,7 @@ export class SearchOrchestrator {
 						indexerId: indexer.id,
 						indexerName: indexer.name,
 						reason: 'backoff',
-						message: 'Indexer is in backoff due to recent failures'
+						message: 'Indexer auto-disabled due to repeated failures'
 					});
 					logger.debug(`Indexer ${indexer.name} rejected: in backoff period`, {
 						indexerId: indexer.id
@@ -694,7 +694,7 @@ export class SearchOrchestrator {
 			// Record success for both indexer and host rate limits
 			limiter.recordRequest();
 			this.hostRateLimiter.recordRequest(indexer.baseUrl);
-			this.statusTracker.recordSuccess(indexer.id, Date.now() - startTime);
+			await this.statusTracker.recordSuccess(indexer.id, Date.now() - startTime);
 
 			// Attach indexer priority to each release for Radarr-style deduplication
 			// Lower priority number = higher preference (1 is highest priority)
@@ -723,7 +723,10 @@ export class SearchOrchestrator {
 				});
 
 				// Record failure with Cloudflare-specific message
-				this.statusTracker.recordFailure(indexer.id, `Cloudflare protection on ${error.host}`);
+				await this.statusTracker.recordFailure(
+					indexer.id,
+					`Cloudflare protection on ${error.host}`
+				);
 
 				return {
 					indexerId: indexer.id,
@@ -740,7 +743,7 @@ export class SearchOrchestrator {
 			});
 
 			// Record failure
-			this.statusTracker.recordFailure(indexer.id, message);
+			await this.statusTracker.recordFailure(indexer.id, message);
 
 			return {
 				indexerId: indexer.id,
@@ -827,23 +830,29 @@ export class SearchOrchestrator {
 			episodeFormats = getEpisodeFormats(criteria, formatTypes);
 		}
 
+		let attemptedVariants = 0;
+		let successfulVariants = 0;
+		const variantErrors: string[] = [];
+
 		// Search with each title variant (limit to 3 titles to avoid excessive queries)
 		for (const title of titlesToSearch.slice(0, 3)) {
-			try {
-				if (episodeFormats.length > 0) {
-					// TV search: try each episode format
-					// Pass CLEAN query (just title) with preferredEpisodeFormat set
-					// TemplateEngine uses preferredEpisodeFormat to add the correct token
-					for (const format of episodeFormats) {
-						const textCriteria = createTextOnlyCriteria({
-							...criteria,
-							// Clean query: just the title, no episode token embedded
-							query: title,
-							// Tell TemplateEngine which format to use for this request
-							preferredEpisodeFormat: format.type
-						});
+			if (episodeFormats.length > 0) {
+				// TV search: try each episode format
+				// Pass CLEAN query (just title) with preferredEpisodeFormat set
+				// TemplateEngine uses preferredEpisodeFormat to add the correct token
+				for (const format of episodeFormats) {
+					const textCriteria = createTextOnlyCriteria({
+						...criteria,
+						// Clean query: just the title, no episode token embedded
+						query: title,
+						// Tell TemplateEngine which format to use for this request
+						preferredEpisodeFormat: format.type
+					});
 
+					attemptedVariants++;
+					try {
 						const releases = await indexer.search(textCriteria);
+						successfulVariants++;
 
 						// Add unique releases (dedupe by guid)
 						for (const release of releases) {
@@ -852,14 +861,28 @@ export class SearchOrchestrator {
 								allReleases.push(release);
 							}
 						}
+					} catch (error) {
+						const message = error instanceof Error ? error.message : String(error);
+						variantErrors.push(message);
+						logger.debug('Multi-title search variant failed', {
+							indexer: indexer.name,
+							title,
+							format: format.type,
+							error: message
+						});
 					}
-				} else {
-					// Movie/other search: just use title
-					const textCriteria = createTextOnlyCriteria({
-						...criteria,
-						query: title
-					});
+				}
+			} else {
+				// Movie/other search: just use title
+				const textCriteria = createTextOnlyCriteria({
+					...criteria,
+					query: title
+				});
+
+				attemptedVariants++;
+				try {
 					const releases = await indexer.search(textCriteria);
+					successfulVariants++;
 
 					// Add unique releases
 					for (const release of releases) {
@@ -868,14 +891,22 @@ export class SearchOrchestrator {
 							allReleases.push(release);
 						}
 					}
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					variantErrors.push(message);
+					logger.debug('Multi-title search variant failed', {
+						indexer: indexer.name,
+						title,
+						error: message
+					});
 				}
-			} catch (error) {
-				logger.debug('Multi-title search variant failed', {
-					indexer: indexer.name,
-					title,
-					error: error instanceof Error ? error.message : String(error)
-				});
 			}
+		}
+
+		// If every variant failed, surface failure so status tracking records it.
+		if (attemptedVariants > 0 && successfulVariants === 0 && variantErrors.length > 0) {
+			const uniqueErrors = [...new Set(variantErrors.filter(Boolean))];
+			throw new Error(uniqueErrors.slice(0, 2).join('; ') || 'All text search attempts failed');
 		}
 
 		if (allReleases.length > 0) {

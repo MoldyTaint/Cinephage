@@ -14,9 +14,7 @@
 </script>
 
 <div class="mb-4 flex items-center gap-2 rounded-lg bg-base-200 p-3">
-	<span class="text-sm font-medium">
-		{selectedCount} selected
-	</span>
+	<span class="text-sm font-medium">{selectedCount} selected</span>
 
 	<div class="divider mx-1 divider-horizontal"></div>
 

@@ -164,5 +164,106 @@ export const actions: Actions = {
 			const message = error instanceof Error ? error.message : 'Unknown error';
 			return fail(500, { providerError: message });
 		}
+	},
+
+	toggleProvider: async ({ request }) => {
+		const data = await request.formData();
+		const id = data.get('id');
+		const enabled = data.get('enabled') === 'true';
+
+		if (!id || typeof id !== 'string') {
+			return fail(400, { providerError: 'Missing provider ID' });
+		}
+
+		const manager = getSubtitleProviderManager();
+
+		try {
+			await manager.updateProvider(id, { enabled });
+			return { providerSuccess: true };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown error';
+			return fail(500, { providerError: message });
+		}
+	},
+
+	bulkEnable: async ({ request }) => {
+		const data = await request.formData();
+		const idsJson = data.get('ids');
+
+		if (!idsJson || typeof idsJson !== 'string') {
+			return fail(400, { providerError: 'Missing provider IDs' });
+		}
+
+		let ids: string[];
+		try {
+			ids = JSON.parse(idsJson);
+		} catch {
+			return fail(400, { providerError: 'Invalid IDs format' });
+		}
+
+		const manager = getSubtitleProviderManager();
+		try {
+			for (const id of ids) {
+				await manager.updateProvider(id, { enabled: true });
+			}
+			return { providerSuccess: true };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown error';
+			return fail(500, { providerError: message });
+		}
+	},
+
+	bulkDisable: async ({ request }) => {
+		const data = await request.formData();
+		const idsJson = data.get('ids');
+
+		if (!idsJson || typeof idsJson !== 'string') {
+			return fail(400, { providerError: 'Missing provider IDs' });
+		}
+
+		let ids: string[];
+		try {
+			ids = JSON.parse(idsJson);
+		} catch {
+			return fail(400, { providerError: 'Invalid IDs format' });
+		}
+
+		const manager = getSubtitleProviderManager();
+		try {
+			for (const id of ids) {
+				await manager.updateProvider(id, { enabled: false });
+			}
+			return { providerSuccess: true };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown error';
+			return fail(500, { providerError: message });
+		}
+	},
+
+	bulkDelete: async ({ request }) => {
+		const data = await request.formData();
+		const idsJson = data.get('ids');
+
+		if (!idsJson || typeof idsJson !== 'string') {
+			return fail(400, { providerError: 'Missing provider IDs' });
+		}
+
+		let ids: string[];
+		try {
+			ids = JSON.parse(idsJson);
+		} catch {
+			return fail(400, { providerError: 'Invalid IDs format' });
+		}
+
+		const manager = getSubtitleProviderManager();
+		try {
+			for (const id of ids) {
+				await manager.deleteProvider(id);
+			}
+			return { providerSuccess: true };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown error';
+			return fail(500, { providerError: message });
+		}
 	}
 };

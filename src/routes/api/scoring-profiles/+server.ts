@@ -38,6 +38,18 @@ const scoringProfileUpdateSchema = scoringProfileSchema.partial();
 // Built-in profile IDs - derived from DEFAULT_PROFILES for single source of truth
 const BUILT_IN_IDS = DEFAULT_PROFILES.map((p) => p.id);
 
+function toNullableNumber(value: unknown): number | null {
+	if (value === null || value === undefined) return null;
+	if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+	if (typeof value === 'string') {
+		const trimmed = value.trim();
+		if (!trimmed) return null;
+		const parsed = Number(trimmed);
+		return Number.isFinite(parsed) ? parsed : null;
+	}
+	return null;
+}
+
 /**
  * GET /api/scoring-profiles
  * Returns all scoring profiles (built-in + custom)
@@ -74,10 +86,10 @@ export const GET: RequestHandler = async () => {
 		upgradeUntilScore: p.upgradeUntilScore ?? -1,
 		minScoreIncrement: p.minScoreIncrement ?? 0,
 		formatScores: p.formatScores ?? {},
-		movieMinSizeGb: p.movieMinSizeGb ?? null,
-		movieMaxSizeGb: p.movieMaxSizeGb ?? null,
-		episodeMinSizeMb: p.episodeMinSizeMb ?? null,
-		episodeMaxSizeMb: p.episodeMaxSizeMb ?? null,
+		movieMinSizeGb: toNullableNumber(p.movieMinSizeGb),
+		movieMaxSizeGb: toNullableNumber(p.movieMaxSizeGb),
+		episodeMinSizeMb: toNullableNumber(p.episodeMinSizeMb),
+		episodeMaxSizeMb: toNullableNumber(p.episodeMaxSizeMb),
 		isDefault: p.isDefault ?? false,
 		isBuiltIn: false
 	}));
@@ -91,10 +103,10 @@ export const GET: RequestHandler = async () => {
 
 		return {
 			...p,
-			movieMinSizeGb: profileOverrides?.movieMinSizeGb ?? null,
-			movieMaxSizeGb: profileOverrides?.movieMaxSizeGb ?? null,
-			episodeMinSizeMb: profileOverrides?.episodeMinSizeMb ?? null,
-			episodeMaxSizeMb: profileOverrides?.episodeMaxSizeMb ?? null,
+			movieMinSizeGb: toNullableNumber(profileOverrides?.movieMinSizeGb),
+			movieMaxSizeGb: toNullableNumber(profileOverrides?.movieMaxSizeGb),
+			episodeMinSizeMb: toNullableNumber(profileOverrides?.episodeMinSizeMb),
+			episodeMaxSizeMb: toNullableNumber(profileOverrides?.episodeMaxSizeMb),
 			isBuiltIn: true,
 			// Default to Balanced only if no DB default is set
 			isDefault: dbDefaultId === p.id || (!dbDefaultId && p.id === 'balanced')
@@ -211,7 +223,17 @@ export const POST: RequestHandler = async ({ request }) => {
 		// Clear the profile cache so new profile is used
 		qualityFilter.clearProfileCache();
 
-		return json(newProfile[0], { status: 201 });
+		const created = newProfile[0];
+		return json(
+			{
+				...created,
+				movieMinSizeGb: toNullableNumber(created.movieMinSizeGb),
+				movieMaxSizeGb: toNullableNumber(created.movieMaxSizeGb),
+				episodeMinSizeMb: toNullableNumber(created.episodeMinSizeMb),
+				episodeMaxSizeMb: toNullableNumber(created.episodeMaxSizeMb)
+			},
+			{ status: 201 }
+		);
 	} catch (error) {
 		logger.error('Error creating scoring profile', error instanceof Error ? error : undefined);
 		return json({ error: 'Internal server error' }, { status: 500 });
@@ -260,20 +282,20 @@ export const PUT: RequestHandler = async ({ request }) => {
 					.set({
 						movieMinSizeGb:
 							updateData.movieMinSizeGb !== undefined
-								? updateData.movieMinSizeGb
-								: existing[0].movieMinSizeGb,
+								? toNullableNumber(updateData.movieMinSizeGb)
+								: toNullableNumber(existing[0].movieMinSizeGb),
 						movieMaxSizeGb:
 							updateData.movieMaxSizeGb !== undefined
-								? updateData.movieMaxSizeGb
-								: existing[0].movieMaxSizeGb,
+								? toNullableNumber(updateData.movieMaxSizeGb)
+								: toNullableNumber(existing[0].movieMaxSizeGb),
 						episodeMinSizeMb:
 							updateData.episodeMinSizeMb !== undefined
-								? updateData.episodeMinSizeMb
-								: existing[0].episodeMinSizeMb,
+								? toNullableNumber(updateData.episodeMinSizeMb)
+								: toNullableNumber(existing[0].episodeMinSizeMb),
 						episodeMaxSizeMb:
 							updateData.episodeMaxSizeMb !== undefined
-								? updateData.episodeMaxSizeMb
-								: existing[0].episodeMaxSizeMb,
+								? toNullableNumber(updateData.episodeMaxSizeMb)
+								: toNullableNumber(existing[0].episodeMaxSizeMb),
 						isDefault: updateData.isDefault ?? existing[0].isDefault,
 						updatedAt: new Date().toISOString()
 					})
@@ -282,10 +304,10 @@ export const PUT: RequestHandler = async ({ request }) => {
 				// Insert new overrides entry
 				await db.insert(profileSizeLimits).values({
 					profileId: id,
-					movieMinSizeGb: updateData.movieMinSizeGb ?? null,
-					movieMaxSizeGb: updateData.movieMaxSizeGb ?? null,
-					episodeMinSizeMb: updateData.episodeMinSizeMb ?? null,
-					episodeMaxSizeMb: updateData.episodeMaxSizeMb ?? null,
+					movieMinSizeGb: toNullableNumber(updateData.movieMinSizeGb),
+					movieMaxSizeGb: toNullableNumber(updateData.movieMaxSizeGb),
+					episodeMinSizeMb: toNullableNumber(updateData.episodeMinSizeMb),
+					episodeMaxSizeMb: toNullableNumber(updateData.episodeMaxSizeMb),
 					isDefault: updateData.isDefault ?? false,
 					updatedAt: new Date().toISOString()
 				});
@@ -302,10 +324,10 @@ export const PUT: RequestHandler = async ({ request }) => {
 
 			return json({
 				...builtIn,
-				movieMinSizeGb: limits[0]?.movieMinSizeGb ?? null,
-				movieMaxSizeGb: limits[0]?.movieMaxSizeGb ?? null,
-				episodeMinSizeMb: limits[0]?.episodeMinSizeMb ?? null,
-				episodeMaxSizeMb: limits[0]?.episodeMaxSizeMb ?? null,
+				movieMinSizeGb: toNullableNumber(limits[0]?.movieMinSizeGb),
+				movieMaxSizeGb: toNullableNumber(limits[0]?.movieMaxSizeGb),
+				episodeMinSizeMb: toNullableNumber(limits[0]?.episodeMinSizeMb),
+				episodeMaxSizeMb: toNullableNumber(limits[0]?.episodeMaxSizeMb),
 				isBuiltIn: true,
 				isDefault: limits[0]?.isDefault ?? false
 			});
@@ -363,7 +385,14 @@ export const PUT: RequestHandler = async ({ request }) => {
 		// Clear cache after update
 		qualityFilter.clearProfileCache(id);
 
-		return json(updated[0]);
+		const updatedProfile = updated[0];
+		return json({
+			...updatedProfile,
+			movieMinSizeGb: toNullableNumber(updatedProfile.movieMinSizeGb),
+			movieMaxSizeGb: toNullableNumber(updatedProfile.movieMaxSizeGb),
+			episodeMinSizeMb: toNullableNumber(updatedProfile.episodeMinSizeMb),
+			episodeMaxSizeMb: toNullableNumber(updatedProfile.episodeMaxSizeMb)
+		});
 	} catch (error) {
 		logger.error('Error updating scoring profile', error instanceof Error ? error : undefined);
 		return json({ error: 'Internal server error' }, { status: 500 });

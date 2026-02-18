@@ -1,27 +1,93 @@
 <script lang="ts">
 	import {
+		ChevronDown,
+		ChevronUp,
 		Settings,
 		Trash2,
 		ToggleLeft,
 		ToggleRight,
 		Server,
 		FlaskConical,
-		Loader2,
-		CheckCircle2,
-		XCircle
+		Loader2
 	} from 'lucide-svelte';
 	import type { UnifiedClientItem } from '$lib/types/downloadClient';
+	import DownloadClientStatusBadge from './DownloadClientStatusBadge.svelte';
 
 	interface Props {
 		clients: UnifiedClientItem[];
+		selectedIds: Set<string>;
+		onSelect: (id: string, selected: boolean) => void;
+		onSelectAll: (selected: boolean) => void;
 		onEdit: (client: UnifiedClientItem) => void;
 		onDelete: (client: UnifiedClientItem) => void;
 		onToggle: (client: UnifiedClientItem) => void;
+		sort: {
+			column: 'status' | 'name' | 'protocol';
+			direction: 'asc' | 'desc';
+		};
+		onSort: (column: 'status' | 'name' | 'protocol') => void;
 		onTest?: (client: UnifiedClientItem) => Promise<void>;
 		testingId?: string | null;
 	}
 
-	let { clients, onEdit, onDelete, onToggle, onTest, testingId = null }: Props = $props();
+	let {
+		clients,
+		selectedIds,
+		onSelect,
+		onSelectAll,
+		onEdit,
+		onDelete,
+		onToggle,
+		sort,
+		onSort,
+		onTest,
+		testingId = null
+	}: Props = $props();
+
+	function getProtocolLabel(implementation: UnifiedClientItem['implementation']): string {
+		switch (implementation) {
+			case 'sabnzbd':
+			case 'nzbget':
+			case 'nzb-mount':
+				return 'Usenet';
+			default:
+				return 'Torrent';
+		}
+	}
+
+	function getDownloaderTypeLabel(implementation: UnifiedClientItem['implementation']): string {
+		switch (implementation) {
+			case 'qbittorrent':
+				return 'qBittorrent';
+			case 'sabnzbd':
+				return 'SABnzbd';
+			case 'nzbget':
+				return 'NZBGet';
+			case 'nzb-mount':
+				return 'NZB-Mount';
+			case 'transmission':
+				return 'Transmission';
+			case 'deluge':
+				return 'Deluge';
+			case 'rtorrent':
+				return 'rTorrent';
+			case 'aria2':
+				return 'aria2';
+			default:
+				return implementation;
+		}
+	}
+
+	function isSortedBy(column: 'status' | 'name' | 'protocol'): boolean {
+		return sort.column === column;
+	}
+
+	function isAscending(): boolean {
+		return sort.direction === 'asc';
+	}
+
+	const allSelected = $derived(clients.length > 0 && clients.every((c) => selectedIds.has(c.id)));
+	const someSelected = $derived(clients.some((c) => selectedIds.has(c.id)) && !allSelected);
 </script>
 
 {#if clients.length === 0}
@@ -31,105 +97,120 @@
 		<p class="mt-1 text-sm">Add a download client to start managing downloads</p>
 	</div>
 {:else}
+	<div class="h-11 border-b border-base-300"></div>
 	<div class="overflow-x-auto">
-		<table class="table">
+		<table class="table table-sm">
 			<thead>
 				<tr>
-					<th>Name</th>
+					<th class="w-10">
+						<input
+							type="checkbox"
+							class="checkbox checkbox-sm"
+							checked={allSelected}
+							indeterminate={someSelected}
+							onchange={(e) => onSelectAll(e.currentTarget.checked)}
+						/>
+					</th>
+					<th>
+						<button
+							class="flex items-center gap-1 hover:text-primary"
+							onclick={() => onSort('status')}
+						>
+							Status
+							{#if isSortedBy('status')}
+								{#if isAscending()}
+									<ChevronUp class="h-3 w-3" />
+								{:else}
+									<ChevronDown class="h-3 w-3" />
+								{/if}
+							{/if}
+						</button>
+					</th>
+					<th>
+						<button
+							class="flex items-center gap-1 hover:text-primary"
+							onclick={() => onSort('name')}
+						>
+							Name
+							{#if isSortedBy('name')}
+								{#if isAscending()}
+									<ChevronUp class="h-3 w-3" />
+								{:else}
+									<ChevronDown class="h-3 w-3" />
+								{/if}
+							{/if}
+						</button>
+					</th>
+					<th>Downloader</th>
+					<th>
+						<button
+							class="flex items-center gap-1 hover:text-primary"
+							onclick={() => onSort('protocol')}
+						>
+							Protocol
+							{#if isSortedBy('protocol')}
+								{#if isAscending()}
+									<ChevronUp class="h-3 w-3" />
+								{:else}
+									<ChevronDown class="h-3 w-3" />
+								{/if}
+							{/if}
+						</button>
+					</th>
 					<th>Host</th>
-					<th>Details</th>
-					<th>Test</th>
-					<th>Status</th>
-					<th class="text-right">Actions</th>
+					<th>Categories</th>
+					<th class="pl-4! text-start">Actions</th>
 				</tr>
 			</thead>
 			<tbody>
 				{#each clients as client (client.id)}
 					<tr class="hover">
+						<td class="w-10">
+							<input
+								type="checkbox"
+								class="checkbox checkbox-sm"
+								checked={selectedIds.has(client.id)}
+								onchange={(e) => onSelect(client.id, e.currentTarget.checked)}
+							/>
+						</td>
 						<td>
-							<div class="flex items-center gap-3">
-								<div class="placeholder avatar">
-									<div
-										class="flex h-10 w-10 items-center justify-center rounded-full {client.type ===
-										'nntp-server'
-											? 'bg-secondary text-secondary-content'
-											: 'bg-neutral text-neutral-content'}"
-									>
-										{#if client.type === 'nntp-server'}
-											<Server class="h-5 w-5" />
-										{:else}
-											<span class="text-xs uppercase">{client.implementation.slice(0, 2)}</span>
-										{/if}
-									</div>
-								</div>
-								<div>
-									<div class="font-bold">{client.name}</div>
-									<div class="text-sm capitalize opacity-50">
-										{client.type === 'nntp-server' ? 'NNTP Server' : client.implementation}
-									</div>
-								</div>
+							<DownloadClientStatusBadge
+								enabled={client.enabled}
+								health={client.status?.health}
+								consecutiveFailures={client.status?.consecutiveFailures}
+								lastFailure={client.status?.lastFailure}
+								lastFailureMessage={client.status?.lastFailureMessage}
+							/>
+						</td>
+						<td>
+							<div>
+								<div class="font-bold">{client.name}</div>
 							</div>
+						</td>
+						<td>{getDownloaderTypeLabel(client.implementation)}</td>
+						<td>
+							<span class="badge badge-outline badge-sm"
+								>{getProtocolLabel(client.implementation)}</span
+							>
 						</td>
 						<td>
 							<div class="font-mono text-sm">
-								{#if client.type === 'nntp-server'}
-									{client.useSsl ? 'nntps' : 'nntp'}://{client.host}:{client.port}
-								{:else}
-									{client.useSsl ? 'https' : 'http'}://{client.host}:{client.port}{client.urlBase
-										? `/${client.urlBase}`
-										: ''}
-								{/if}
+								{client.useSsl ? 'https' : 'http'}://{client.host}:{client.port}{client.urlBase
+									? `/${client.urlBase}`
+									: ''}
 							</div>
 						</td>
 						<td>
-							{#if client.type === 'nntp-server'}
-								<div class="flex flex-col gap-1">
-									<span class="badge badge-ghost badge-sm"
-										>Connections: {client.maxConnections ?? 10}</span
-									>
-									<span class="badge badge-outline badge-sm">Priority: {client.priority ?? 1}</span>
-								</div>
-							{:else}
-								<div class="flex flex-col gap-1">
-									<span class="badge badge-ghost badge-sm">Movies: {client.movieCategory}</span>
-									<span class="badge badge-ghost badge-sm">TV: {client.tvCategory}</span>
-								</div>
-							{/if}
+							<div class="flex flex-col gap-1">
+								<span class="badge badge-ghost badge-sm">Movies: {client.movieCategory}</span>
+								<span class="badge badge-ghost badge-sm">TV: {client.tvCategory}</span>
+							</div>
 						</td>
-						<td>
-							{#if client.type === 'nntp-server'}
-								{#if testingId === client.id}
-									<span class="badge gap-1 badge-ghost badge-sm">
-										<Loader2 class="h-3 w-3 animate-spin" />
-										Testing
-									</span>
-								{:else if client.testResult === 'success'}
-									<span class="badge gap-1 badge-sm badge-success">
-										<CheckCircle2 class="h-3 w-3" />
-										OK
-									</span>
-								{:else if client.testResult === 'failed'}
-									<span class="badge gap-1 badge-sm badge-error">
-										<XCircle class="h-3 w-3" />
-										Failed
-									</span>
-								{:else}
-									<span class="badge badge-ghost badge-sm">-</span>
-								{/if}
-							{:else}
-								<span class="badge badge-ghost badge-sm">-</span>
-							{/if}
-						</td>
-						<td>
-							<span class="badge {client.enabled ? 'badge-success' : 'badge-ghost'}">
-								{client.enabled ? 'Enabled' : 'Disabled'}
-							</span>
-						</td>
-						<td>
-							<div class="flex justify-end gap-1">
-								{#if client.type === 'nntp-server' && onTest}
+						<td class="pl-2!">
+							<div class="flex gap-0">
+								{#if onTest}
 									<button
-										class="btn btn-ghost btn-sm"
+										class="btn btn-ghost btn-xs"
 										onclick={() => onTest(client)}
 										title="Test connection"
 										disabled={testingId === client.id}
@@ -142,9 +223,10 @@
 									</button>
 								{/if}
 								<button
-									class="btn btn-ghost btn-sm"
+									class="btn btn-ghost btn-xs"
 									onclick={() => onToggle(client)}
 									title={client.enabled ? 'Disable' : 'Enable'}
+									disabled={testingId === client.id}
 								>
 									{#if client.enabled}
 										<ToggleRight class="h-4 w-4 text-success" />
@@ -152,13 +234,17 @@
 										<ToggleLeft class="h-4 w-4" />
 									{/if}
 								</button>
-								<button class="btn btn-ghost btn-sm" onclick={() => onEdit(client)} title="Edit">
+								<button
+									class="btn btn-ghost btn-xs"
+									onclick={() => onEdit(client)}
+									title="Edit client"
+								>
 									<Settings class="h-4 w-4" />
 								</button>
 								<button
-									class="btn text-error btn-ghost btn-sm"
+									class="btn text-error btn-ghost btn-xs"
 									onclick={() => onDelete(client)}
-									title="Delete"
+									title="Delete client"
 								>
 									<Trash2 class="h-4 w-4" />
 								</button>

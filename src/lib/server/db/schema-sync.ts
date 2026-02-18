@@ -79,8 +79,9 @@ interface MigrationDefinition {
  * Version 52: Fix epg_programs table schema for multi-provider support
  * Version 53: Add iptv_org_config column to livetv_accounts for IPTV-Org provider support
  * Version 54: Add cookies and cookies_expiration_date columns to indexer_status for persistent session storage
+ * Version 55: Add health tracking columns to download_clients
  */
-export const CURRENT_SCHEMA_VERSION = 54;
+export const CURRENT_SCHEMA_VERSION = 55;
 
 /**
  * All table definitions with CREATE TABLE IF NOT EXISTS
@@ -137,10 +138,10 @@ const TABLE_DEFINITIONS: string[] = [
 		"format_scores" text,
 		"allowed_protocols" text,
 		"is_default" integer DEFAULT false,
-		"movie_min_size_gb" text,
-		"movie_max_size_gb" text,
-		"episode_min_size_mb" text,
-		"episode_max_size_mb" text,
+		"movie_min_size_gb" real,
+		"movie_max_size_gb" real,
+		"episode_min_size_mb" real,
+		"episode_max_size_mb" real,
 		"created_at" text,
 		"updated_at" text
 	)`,
@@ -200,6 +201,12 @@ const TABLE_DEFINITIONS: string[] = [
 		"temp_path_local" text,
 		"temp_path_remote" text,
 		"priority" integer DEFAULT 1,
+		"health" text DEFAULT 'healthy',
+		"consecutive_failures" integer DEFAULT 0,
+		"last_success" text,
+		"last_failure" text,
+		"last_failure_message" text,
+		"last_checked_at" text,
 		"created_at" text,
 		"updated_at" text
 	)`,
@@ -4057,6 +4064,46 @@ const MIGRATIONS: MigrationDefinition[] = [
 				logger.info('[SchemaSync] cookies_expiration_date column already exists in indexer_status');
 			}
 		}
+	},
+
+	// Migration 55: Add health tracking columns to download_clients
+	{
+		version: 55,
+		name: 'add_download_client_health_columns',
+		apply: (sqlite) => {
+			if (!columnExists(sqlite, 'download_clients', 'health')) {
+				sqlite
+					.prepare(`ALTER TABLE "download_clients" ADD COLUMN "health" text DEFAULT 'healthy'`)
+					.run();
+				logger.info('[SchemaSync] Added health column to download_clients');
+			}
+			if (!columnExists(sqlite, 'download_clients', 'consecutive_failures')) {
+				sqlite
+					.prepare(
+						`ALTER TABLE "download_clients" ADD COLUMN "consecutive_failures" integer DEFAULT 0`
+					)
+					.run();
+				logger.info('[SchemaSync] Added consecutive_failures column to download_clients');
+			}
+			if (!columnExists(sqlite, 'download_clients', 'last_success')) {
+				sqlite.prepare(`ALTER TABLE "download_clients" ADD COLUMN "last_success" text`).run();
+				logger.info('[SchemaSync] Added last_success column to download_clients');
+			}
+			if (!columnExists(sqlite, 'download_clients', 'last_failure')) {
+				sqlite.prepare(`ALTER TABLE "download_clients" ADD COLUMN "last_failure" text`).run();
+				logger.info('[SchemaSync] Added last_failure column to download_clients');
+			}
+			if (!columnExists(sqlite, 'download_clients', 'last_failure_message')) {
+				sqlite
+					.prepare(`ALTER TABLE "download_clients" ADD COLUMN "last_failure_message" text`)
+					.run();
+				logger.info('[SchemaSync] Added last_failure_message column to download_clients');
+			}
+			if (!columnExists(sqlite, 'download_clients', 'last_checked_at')) {
+				sqlite.prepare(`ALTER TABLE "download_clients" ADD COLUMN "last_checked_at" text`).run();
+				logger.info('[SchemaSync] Added last_checked_at column to download_clients');
+			}
+		}
 	}
 ];
 
@@ -4200,7 +4247,17 @@ function cleanupLiveTvTables(sqlite: Database.Database): void {
  * Used to verify schema integrity after migrations.
  */
 const CRITICAL_COLUMNS: Record<string, string[]> = {
-	download_clients: ['id', 'name', 'implementation', 'host', 'port', 'url_base', 'mount_mode'],
+	download_clients: [
+		'id',
+		'name',
+		'implementation',
+		'host',
+		'port',
+		'url_base',
+		'mount_mode',
+		'health',
+		'consecutive_failures'
+	],
 	root_folders: ['id', 'path', 'read_only', 'preserve_symlinks'],
 	movies: ['id', 'tmdb_id', 'title', 'path', 'monitored'],
 	series: ['id', 'tmdb_id', 'title', 'path', 'monitored'],
@@ -4277,7 +4334,15 @@ const MIGRATION_COLUMN_MAP: Record<number, Array<{ table: string; column: string
 		{ table: 'download_clients', column: 'temp_path_remote' }
 	],
 	34: [{ table: 'download_clients', column: 'url_base' }],
-	35: [{ table: 'download_clients', column: 'mount_mode' }]
+	35: [{ table: 'download_clients', column: 'mount_mode' }],
+	55: [
+		{ table: 'download_clients', column: 'health' },
+		{ table: 'download_clients', column: 'consecutive_failures' },
+		{ table: 'download_clients', column: 'last_success' },
+		{ table: 'download_clients', column: 'last_failure' },
+		{ table: 'download_clients', column: 'last_failure_message' },
+		{ table: 'download_clients', column: 'last_checked_at' }
+	]
 };
 
 /**

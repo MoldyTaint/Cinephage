@@ -507,7 +507,7 @@
 							<div class="mt-1 flex flex-wrap gap-2">
 								{#each meta.rejectedIndexers as rejected (rejected.indexerId)}
 									<div
-										class="tooltip badge gap-1 badge-outline badge-warning"
+										class="tooltip tooltip-right badge gap-1 badge-outline badge-warning before:max-w-72 before:text-left before:whitespace-normal"
 										data-tip={rejected.message}
 									>
 										<XCircle size={12} />

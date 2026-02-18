@@ -421,16 +421,27 @@ export class UnifiedIndexer implements IIndexer {
 
 		// Execute requests and collect results
 		const allResults: ReleaseResult[] = [];
+		let successfulRequests = 0;
+		const requestErrors: string[] = [];
 
 		for (const request of requests) {
 			this.log.debug('Executing search request', { url: request.url, method: request.method });
 			try {
 				const results = await this.executeSearchRequest(request);
 				allResults.push(...results);
+				successfulRequests += 1;
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				this.log.warn('Search request failed', { url: request.url, error: message });
+				requestErrors.push(this.normalizeTestRequestError(message));
 			}
+		}
+
+		// If all requests failed, surface the error so orchestrator can mark
+		// indexer health as failed instead of treating this as a successful empty result.
+		if (successfulRequests === 0 && requestErrors.length > 0) {
+			const uniqueErrors = [...new Set(requestErrors.filter(Boolean))];
+			throw new Error(uniqueErrors.slice(0, 2).join('; ') || 'All search requests failed');
 		}
 
 		const duration = Date.now() - startTime;
@@ -486,6 +497,11 @@ export class UnifiedIndexer implements IIndexer {
 			headers: response.headers
 		});
 
+		const apiError = this.detectProviderError(response.body);
+		if (apiError) {
+			throw new Error(apiError);
+		}
+
 		if (this.authManager.checkLoginNeeded(mockResponse, response.body)) {
 			this.log.info('Login needed, re-authenticating');
 			this.isLoggedIn = false;
@@ -504,6 +520,11 @@ export class UnifiedIndexer implements IIndexer {
 							followRedirects: this.definition.followredirect ?? true
 						});
 
+			const retryApiError = this.detectProviderError(retryResponse.body);
+			if (retryApiError) {
+				throw new Error(retryApiError);
+			}
+
 			return this.parseResponse(retryResponse.body, request.searchPath);
 		}
 
@@ -519,6 +540,29 @@ export class UnifiedIndexer implements IIndexer {
 		}
 
 		return this.parseResponse(response.body, request.searchPath);
+	}
+
+	/**
+	 * Detect provider-specific API errors represented in successful HTTP responses.
+	 * Example: Newznab returns <error code="100" description="..." /> with HTTP 200.
+	 */
+	private detectProviderError(content: string): string | null {
+		// Newznab-compatible providers commonly return structured API errors in XML.
+		if (this.definition.id === 'newznab') {
+			const errorMatch = content.match(/<error\b([^>]*)\/?>/i);
+			if (!errorMatch) return null;
+
+			const attrs = errorMatch[1] ?? '';
+			const codeMatch = attrs.match(/\bcode=(['"]?)([^'" >]+)\1/i);
+			const descQuotedMatch = attrs.match(/\bdescription=(['"])(.*?)\1/i);
+			const descBareMatch = attrs.match(/\bdescription=([^'" >]+)/i);
+
+			const code = codeMatch?.[2] ?? 'unknown';
+			const description = descQuotedMatch?.[2] ?? descBareMatch?.[1] ?? 'Unknown API error';
+			return `Indexer API error ${code}: ${description}`;
+		}
+
+		return null;
 	}
 
 	/**
@@ -615,25 +659,187 @@ export class UnifiedIndexer implements IIndexer {
 
 		try {
 			if (this.isInternalStreamingIndexer()) {
-				// For internal indexers, just verify the executor is set up
+				// For internal streaming indexers, validate URL settings format.
+				// They don't perform remote indexer I/O, so configuration validation is the test.
+				await this.validateInternalStreamingSettings();
 				this.log.info('Internal streaming indexer test successful');
 				return;
 			}
 
-			await this.ensureLoggedIn();
-
-			const results = await this.search({
+			const testCriteria: SearchCriteria = {
 				searchType: 'basic',
 				query: 'test',
 				limit: 1
-			});
+			};
 
-			this.log.info('Indexer test successful', { resultCount: results.length });
+			// Ensure test will actually perform at least one HTTP request.
+			// Otherwise test could return a false positive.
+			const requests = this.requestBuilder.buildSearchRequests(testCriteria);
+			if (requests.length === 0) {
+				throw new Error('No test request could be generated for this indexer definition');
+			}
+
+			await this.ensureLoggedIn();
+			let successfulRequests = 0;
+			let resultCount = 0;
+			const requestErrors: string[] = [];
+
+			for (const request of requests) {
+				try {
+					const results = await this.executeSearchRequest(request);
+					successfulRequests += 1;
+					resultCount += results.length;
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					requestErrors.push(this.normalizeTestRequestError(message));
+				}
+			}
+
+			if (successfulRequests === 0) {
+				const uniqueErrors = [...new Set(requestErrors.filter(Boolean))];
+				const summary =
+					uniqueErrors.length > 0
+						? uniqueErrors.slice(0, 2).join('; ')
+						: 'All test requests failed';
+				throw new Error(summary);
+			}
+
+			this.log.info('Indexer test successful', {
+				requestCount: successfulRequests,
+				resultCount
+			});
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			this.log.error('Indexer test failed', { error: message });
-			throw new Error(`Indexer test failed: ${message}`, { cause: error });
+			throw error instanceof Error ? error : new Error(message);
 		}
+	}
+
+	/**
+	 * Validate settings used by the internal streaming indexer.
+	 * Ensures malformed External Host values fail the connection test.
+	 */
+	private async validateInternalStreamingSettings(): Promise<void> {
+		const rawExternalHost = this.settings.externalHost;
+		if (typeof rawExternalHost !== 'string') {
+			return;
+		}
+
+		const externalHost = rawExternalHost.trim();
+		if (!externalHost) {
+			return;
+		}
+
+		const useHttpsValue = this.settings.useHttps;
+		const useHttps =
+			useHttpsValue === true || (typeof useHttpsValue === 'string' && useHttpsValue === 'true');
+		const defaultProtocol = useHttps ? 'https' : 'http';
+		const hasProtocol = /^[a-z][a-z0-9+.-]*:\/\//i.test(externalHost);
+		const candidate = hasProtocol ? externalHost : `${defaultProtocol}://${externalHost}`;
+
+		let parsed: URL;
+		try {
+			parsed = new URL(candidate);
+		} catch {
+			throw new Error(
+				'Invalid External Host format. Use hostname[:port] (example: 192.168.1.100:3000).'
+			);
+		}
+
+		if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+			throw new Error('Invalid External Host protocol. Only http and https are supported.');
+		}
+
+		if (!parsed.hostname) {
+			throw new Error('Invalid External Host. Hostname is required.');
+		}
+
+		if (parsed.pathname !== '/' || parsed.search || parsed.hash) {
+			throw new Error('Invalid External Host. Do not include a path, query, or fragment.');
+		}
+
+		await this.probeInternalStreamingHost(parsed);
+	}
+
+	/**
+	 * Probe external host reachability for internal streaming indexer config.
+	 * Any HTTP response counts as reachable; network/TLS/DNS failures do not.
+	 */
+	private async probeInternalStreamingHost(baseUrl: URL): Promise<void> {
+		const probeUrl = new URL('/api/health', baseUrl);
+		const timeoutMs = 5000;
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+		try {
+			await fetch(probeUrl.toString(), {
+				method: 'GET',
+				redirect: 'manual',
+				signal: controller.signal,
+				headers: {
+					Accept: 'application/json, text/plain, */*',
+					'User-Agent': 'Cinephage/1.0'
+				}
+			});
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			throw new Error(
+				`External Host is unreachable (${baseUrl.host}). Check host, port, and protocol. (${message})`
+			);
+		} finally {
+			clearTimeout(timeoutId);
+		}
+	}
+
+	/**
+	 * Normalize low-level request errors into concise test-level messages.
+	 * Avoids leaking full request URLs/query params in user-facing errors.
+	 */
+	private normalizeTestRequestError(message: string): string {
+		const normalized = message.trim();
+		const lower = normalized.toLowerCase();
+
+		if (lower.includes('indexer api error')) {
+			const apiErrorMatch = normalized.match(/Indexer API error[^;]+/i);
+			return apiErrorMatch?.[0]?.trim() ?? 'Indexer API error';
+		}
+
+		if (
+			lower.includes('wrong api key') ||
+			lower.includes('invalid api key') ||
+			lower.includes('missing api key')
+		) {
+			return 'Authentication failed: invalid API key';
+		}
+
+		if (
+			lower.includes('fetch failed') ||
+			lower.includes('all urls failed') ||
+			lower.includes('econnrefused') ||
+			lower.includes('enotfound') ||
+			lower.includes('eai_again') ||
+			lower.includes('etimedout') ||
+			lower.includes('timeout') ||
+			lower.includes('timed out') ||
+			lower.includes('unable to reach')
+		) {
+			return 'Unable to reach indexer server';
+		}
+
+		if (lower.includes('cloudflare')) {
+			return 'Cloudflare protection blocked the request';
+		}
+
+		if (
+			lower.includes('login failed') ||
+			lower.includes('authentication') ||
+			lower.includes('unauthorized') ||
+			lower.includes('forbidden')
+		) {
+			return 'Authentication failed';
+		}
+
+		return normalized;
 	}
 
 	/**

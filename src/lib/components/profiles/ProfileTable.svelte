@@ -11,11 +11,23 @@
 
 	let { profiles, onEdit, onDelete, onSetDefault }: Props = $props();
 
+	function toNullableNumber(value: unknown): number | null {
+		if (value === null || value === undefined) return null;
+		if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+		if (typeof value === 'string') {
+			const trimmed = value.trim();
+			if (!trimmed) return null;
+			const parsed = Number(trimmed);
+			return Number.isFinite(parsed) ? parsed : null;
+		}
+		return null;
+	}
+
 	// Format size limit display
 	function formatMovieSize(profile: ScoringProfile): string {
 		if (profile.id === 'streamer') return 'Auto';
-		const min = profile.movieMinSizeGb;
-		const max = profile.movieMaxSizeGb;
+		const min = toNullableNumber(profile.movieMinSizeGb);
+		const max = toNullableNumber(profile.movieMaxSizeGb);
 		const formatValue = (value: number) => {
 			if (value < 1) {
 				const mb = value * 1024;
@@ -26,7 +38,7 @@
 			return `${label} GB`;
 		};
 
-		if (min && max) {
+		if (min !== null && max !== null) {
 			const minLabel = formatValue(min);
 			const maxLabel = formatValue(max);
 			const sameUnit = (min < 1 && max < 1) || (min >= 1 && max >= 1);
@@ -50,25 +62,26 @@
 
 			return `${minLabel} - ${maxLabel}`;
 		}
-		if (min) return `${formatValue(min)}+`;
-		if (max) return `< ${formatValue(max)}`;
+		if (min !== null) return `${formatValue(min)}+`;
+		if (max !== null) return `< ${formatValue(max)}`;
 		return '-';
 	}
 
 	function formatEpisodeSize(profile: ScoringProfile): string {
 		if (profile.id === 'streamer') return 'Auto';
-		const min = profile.episodeMinSizeMb;
-		const max = profile.episodeMaxSizeMb;
+		const min = toNullableNumber(profile.episodeMinSizeMb);
+		const max = toNullableNumber(profile.episodeMaxSizeMb);
 		const formatValue = (value: number) => {
 			if (value >= 1024) {
 				const gb = value / 1024;
 				const label = Number.isInteger(gb) ? gb.toString() : gb.toFixed(1);
 				return `${label} GB`;
 			}
-			return `${value} MB`;
+			const label = Number.isInteger(value) ? value.toString() : value.toFixed(0);
+			return `${label} MB`;
 		};
 
-		if (min && max) {
+		if (min !== null && max !== null) {
 			const minLabel = formatValue(min);
 			const maxLabel = formatValue(max);
 			const sameUnit = (min < 1024 && max < 1024) || (min >= 1024 && max >= 1024);
@@ -84,8 +97,8 @@
 
 			return `${minLabel} - ${maxLabel}`;
 		}
-		if (min) return `${formatValue(min)}+`;
-		if (max) return `< ${formatValue(max)}`;
+		if (min !== null) return `${formatValue(min)}+`;
+		if (max !== null) return `< ${formatValue(max)}`;
 		return '-';
 	}
 </script>

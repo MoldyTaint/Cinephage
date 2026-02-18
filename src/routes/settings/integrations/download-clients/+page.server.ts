@@ -2,18 +2,13 @@ import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { downloadClientCreateSchema, downloadClientUpdateSchema } from '$lib/validation/schemas';
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
-import { getNntpServerService } from '$lib/server/streaming/nzb/NntpServerService';
 
 export const load: PageServerLoad = async () => {
 	const downloadClientManager = getDownloadClientManager();
 	const downloadClients = await downloadClientManager.getClients();
 
-	const nntpService = getNntpServerService();
-	const nntpServers = await nntpService.getServers();
-
 	return {
-		downloadClients,
-		nntpServers
+		downloadClients
 	};
 };
 
@@ -121,6 +116,90 @@ export const actions: Actions = {
 
 		try {
 			await manager.updateClient(id, { enabled });
+			return { downloadClientSuccess: true };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown error';
+			return fail(500, { downloadClientError: message });
+		}
+	},
+
+	bulkEnable: async ({ request }) => {
+		const data = await request.formData();
+		const idsJson = data.get('ids');
+
+		if (!idsJson || typeof idsJson !== 'string') {
+			return fail(400, { downloadClientError: 'Missing client IDs' });
+		}
+
+		let ids: string[];
+		try {
+			ids = JSON.parse(idsJson);
+		} catch {
+			return fail(400, { downloadClientError: 'Invalid IDs format' });
+		}
+
+		const manager = getDownloadClientManager();
+
+		try {
+			for (const id of ids) {
+				await manager.updateClient(id, { enabled: true });
+			}
+			return { downloadClientSuccess: true };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown error';
+			return fail(500, { downloadClientError: message });
+		}
+	},
+
+	bulkDisable: async ({ request }) => {
+		const data = await request.formData();
+		const idsJson = data.get('ids');
+
+		if (!idsJson || typeof idsJson !== 'string') {
+			return fail(400, { downloadClientError: 'Missing client IDs' });
+		}
+
+		let ids: string[];
+		try {
+			ids = JSON.parse(idsJson);
+		} catch {
+			return fail(400, { downloadClientError: 'Invalid IDs format' });
+		}
+
+		const manager = getDownloadClientManager();
+
+		try {
+			for (const id of ids) {
+				await manager.updateClient(id, { enabled: false });
+			}
+			return { downloadClientSuccess: true };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown error';
+			return fail(500, { downloadClientError: message });
+		}
+	},
+
+	bulkDelete: async ({ request }) => {
+		const data = await request.formData();
+		const idsJson = data.get('ids');
+
+		if (!idsJson || typeof idsJson !== 'string') {
+			return fail(400, { downloadClientError: 'Missing client IDs' });
+		}
+
+		let ids: string[];
+		try {
+			ids = JSON.parse(idsJson);
+		} catch {
+			return fail(400, { downloadClientError: 'Invalid IDs format' });
+		}
+
+		const manager = getDownloadClientManager();
+
+		try {
+			for (const id of ids) {
+				await manager.deleteClient(id);
+			}
 			return { downloadClientSuccess: true };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';

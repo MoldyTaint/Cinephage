@@ -7,6 +7,18 @@ import { DEFAULT_PROFILES, DEFAULT_RESOLUTION_ORDER, ALL_FORMATS } from '$lib/se
 // Built-in profile IDs - derived from DEFAULT_PROFILES for single source of truth
 const BUILT_IN_PROFILE_IDS = DEFAULT_PROFILES.map((p) => p.id);
 
+function toNullableNumber(value: unknown): number | null {
+	if (value === null || value === undefined) return null;
+	if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+	if (typeof value === 'string') {
+		const trimmed = value.trim();
+		if (!trimmed) return null;
+		const parsed = Number(trimmed);
+		return Number.isFinite(parsed) ? parsed : null;
+	}
+	return null;
+}
+
 export const load: PageServerLoad = async ({ url }) => {
 	// Get active tab from URL params (default to profiles)
 	const activeTab = url.searchParams.get('tab') || 'profiles';
@@ -47,10 +59,10 @@ export const load: PageServerLoad = async ({ url }) => {
 		minScoreIncrement: p.minScoreIncrement ?? 0,
 		resolutionOrder: (p.resolutionOrder as Resolution[] | null) ?? DEFAULT_RESOLUTION_ORDER,
 		formatScores: p.formatScores ?? {},
-		movieMinSizeGb: p.movieMinSizeGb ?? null,
-		movieMaxSizeGb: p.movieMaxSizeGb ?? null,
-		episodeMinSizeMb: p.episodeMinSizeMb ?? null,
-		episodeMaxSizeMb: p.episodeMaxSizeMb ?? null,
+		movieMinSizeGb: toNullableNumber(p.movieMinSizeGb),
+		movieMaxSizeGb: toNullableNumber(p.movieMaxSizeGb),
+		episodeMinSizeMb: toNullableNumber(p.episodeMinSizeMb),
+		episodeMaxSizeMb: toNullableNumber(p.episodeMaxSizeMb),
 		isDefault: p.isDefault ?? false,
 		isBuiltIn: false
 	}));
@@ -61,10 +73,10 @@ export const load: PageServerLoad = async ({ url }) => {
 
 		return {
 			...p,
-			movieMinSizeGb: profileOverrides?.movieMinSizeGb ?? null,
-			movieMaxSizeGb: profileOverrides?.movieMaxSizeGb ?? null,
-			episodeMinSizeMb: profileOverrides?.episodeMinSizeMb ?? null,
-			episodeMaxSizeMb: profileOverrides?.episodeMaxSizeMb ?? null,
+			movieMinSizeGb: toNullableNumber(profileOverrides?.movieMinSizeGb),
+			movieMaxSizeGb: toNullableNumber(profileOverrides?.movieMaxSizeGb),
+			episodeMinSizeMb: toNullableNumber(profileOverrides?.episodeMinSizeMb),
+			episodeMaxSizeMb: toNullableNumber(profileOverrides?.episodeMaxSizeMb),
 			isBuiltIn: true,
 			// Default to Balanced only if no DB default is set
 			isDefault: dbDefaultId === p.id || (!dbDefaultId && p.id === 'balanced')
