@@ -116,6 +116,11 @@ const DEFAULT_OPTIONS: Required<
 	useCache: true
 };
 
+interface TvEpisodeCounts {
+	seriesEpisodeCount?: number;
+	seasonEpisodeCounts: Map<number, number>;
+}
+
 /**
  * Orchestrates searches across multiple indexers with tiered strategy.
  */
@@ -123,6 +128,8 @@ export class SearchOrchestrator {
 	private statusTracker: PersistentStatusTracker;
 	/** Cache for season episode counts (tmdbId:season -> count) */
 	private seasonEpisodeCountCache: Map<string, number> = new Map();
+	/** Cache for TV show episode counts (tmdbId -> aggregate + per-season counts) */
+	private tvEpisodeCountsCache: Map<number, TvEpisodeCounts> = new Map();
 	private rateLimitRegistry: RateLimitRegistry;
 	private hostRateLimiter: HostRateLimiter;
 	private deduplicator: ReleaseDeduplicator;
@@ -214,8 +221,10 @@ export class SearchOrchestrator {
 		// Deduplicate
 		const { releases: deduped } = this.deduplicator.deduplicate(allReleases);
 
-		// Filter by season/episode if specified (use original criteria for filtering)
-		let filtered = this.filterBySeasonEpisode(deduped, criteria);
+		// Filter by season/episode if specified.
+		// Use criteriaWithSource so interactive/automatic behavior is respected.
+		// (season/episode fields are unchanged from original criteria)
+		let filtered = this.filterBySeasonEpisode(deduped, criteriaWithSource);
 
 		// Filter by category match (reject releases in wrong categories)
 		if (criteria.searchType !== 'basic') {
@@ -354,15 +363,33 @@ export class SearchOrchestrator {
 					? 'tv'
 					: undefined;
 
-		// Get season episode count for TV season searches (for season pack size validation)
-		// Use provided value, or fetch from TMDB if we have tmdbId + season
+		// Get TV episode counts from TMDB for season-pack size validation.
+		// Needed for:
+		// - Targeted season searches (single season pack average size)
+		// - Multi-season/complete-series searches (sum episodes across matched seasons)
+		let seriesEpisodeCount = opts.enrichment?.seriesEpisodeCount;
+		let seasonEpisodeCounts = opts.enrichment?.seasonEpisodeCounts;
+		if (
+			isTvSearch(enrichedCriteria) &&
+			enrichedCriteria.tmdbId &&
+			(seriesEpisodeCount === undefined || !seasonEpisodeCounts || seasonEpisodeCounts.size === 0)
+		) {
+			const tvCounts = await this.getTvEpisodeCounts(enrichedCriteria.tmdbId);
+			if (tvCounts) {
+				seriesEpisodeCount ??= tvCounts.seriesEpisodeCount;
+				seasonEpisodeCounts ??= tvCounts.seasonEpisodeCounts;
+			}
+		}
+
 		let seasonEpisodeCount = opts.enrichment?.seasonEpisodeCount;
 		if (
 			seasonEpisodeCount === undefined &&
 			isTvSearch(enrichedCriteria) &&
 			enrichedCriteria.season !== undefined
 		) {
-			seasonEpisodeCount = await this.getSeasonEpisodeCount(enrichedCriteria);
+			seasonEpisodeCount =
+				seasonEpisodeCounts?.get(enrichedCriteria.season) ??
+				(await this.getSeasonEpisodeCount(enrichedCriteria));
 		}
 
 		// Build indexer config map for protocol-specific rejection (seeder minimums, dead torrents, etc.)
@@ -385,6 +412,8 @@ export class SearchOrchestrator {
 			useEnhancedScoring: opts.enrichment?.useEnhancedScoring,
 			mediaType,
 			seasonEpisodeCount,
+			seriesEpisodeCount,
+			seasonEpisodeCounts,
 			indexerConfigs
 		};
 
@@ -768,11 +797,33 @@ export class SearchOrchestrator {
 		// Check if criteria has IDs AND if the indexer supports those specific IDs
 		const indexerSupportsIds = this.indexerSupportsSearchIds(indexer, criteria);
 
-		// Tier 1: If criteria has searchable IDs AND indexer supports them, use ID search
+		// Tier 1: If criteria has searchable IDs AND indexer supports them, use ID search.
+		// If the ID query returns no results, fall back to text search for providers
+		// with incomplete ID mapping (common on some Newznab instances).
 		if (hasSearchableIds(criteria) && indexerSupportsIds) {
 			const idCriteria = createIdOnlyCriteria(criteria);
-			const releases = await indexer.search(idCriteria);
-			return { releases, searchMethod: 'id' };
+			const idReleases = await indexer.search(idCriteria);
+
+			if (idReleases.length > 0) {
+				return { releases: idReleases, searchMethod: 'id' };
+			}
+
+			const hasTextFallbackSource =
+				!!criteria.query || !!(criteria.searchTitles && criteria.searchTitles.length > 0);
+
+			if (!hasTextFallbackSource) {
+				return { releases: [], searchMethod: 'id' };
+			}
+
+			logger.debug('ID search returned no results, falling back to text search', {
+				indexer: indexer.name,
+				searchType: criteria.searchType,
+				query: criteria.query,
+				hasSearchTitles: !!criteria.searchTitles?.length
+			});
+
+			const fallbackReleases = await this.executeMultiTitleTextSearch(indexer, criteria);
+			return { releases: fallbackReleases, searchMethod: 'text' };
 		}
 
 		// Tier 2: Fall back to text search with multi-title support
@@ -1005,8 +1056,12 @@ export class SearchOrchestrator {
 	 * For TV searches with season/episode specified:
 	 * - Season-only search: Returns single-season packs that exactly match the target season
 	 *   (multi-season packs and complete series are excluded to avoid cluttering results)
-	 * - Season+episode search: Returns matching individual episodes AND single-season packs
-	 *   for the target season (Season packs scored higher via pack bonus)
+	 * - Season+episode search:
+	 *   - interactive: Returns matching individual episodes only (no season packs)
+	 *   - automatic: Returns matching individual episodes AND single-season packs
+	 * - Episode-only search:
+	 *   - interactive: Returns matching individual episodes only
+	 *   - automatic: Returns matching individual episodes and season packs
 	 *
 	 * Optimization: Caches parsed results on releases to avoid re-parsing in enricher.
 	 */
@@ -1043,6 +1098,7 @@ export class SearchOrchestrator {
 
 		const targetSeason = criteria.season;
 		const targetEpisode = criteria.episode;
+		const isInteractiveSearch = criteria.searchSource === 'interactive';
 
 		// If no season/episode specified, return all
 		if (targetSeason === undefined && targetEpisode === undefined) {
@@ -1085,13 +1141,12 @@ export class SearchOrchestrator {
 				return episodeInfo.isSeasonPack && isSingleSeasonMatch();
 			}
 
-			// Season + episode search: include BOTH specific episodes AND single-season packs
-			// Season packs will get a higher score via pack bonus, so they'll naturally
-			// rank higher than individual episodes of similar quality
+			// Season + episode search:
+			// - interactive: exact episode matches only
+			// - automatic: allow single-season packs as candidates
 			if (targetSeason !== undefined && targetEpisode !== undefined) {
-				// Include single-season packs that match the target season
 				if (episodeInfo.isSeasonPack) {
-					return isSingleSeasonMatch();
+					return !isInteractiveSearch && isSingleSeasonMatch();
 				}
 				// Include individual episodes that match exactly
 				return (
@@ -1101,10 +1156,12 @@ export class SearchOrchestrator {
 				);
 			}
 
-			// Episode-only search (rare): match episode number or include any season pack
+			// Episode-only search (rare):
+			// - interactive: exact episode match only
+			// - automatic: include season packs as broad candidates
 			if (targetEpisode !== undefined) {
 				if (episodeInfo.isSeasonPack) {
-					return true; // Season packs always match episode-only searches
+					return !isInteractiveSearch;
 				}
 				return episodeInfo.episodes?.includes(targetEpisode);
 			}
@@ -1221,6 +1278,53 @@ export class SearchOrchestrator {
 	}
 
 	/**
+	 * Get aggregate and per-season episode counts for a TV show from TMDB.
+	 * Excludes specials (season 0) from series totals to match library sizing semantics.
+	 */
+	private async getTvEpisodeCounts(tmdbId: number): Promise<TvEpisodeCounts | undefined> {
+		if (this.tvEpisodeCountsCache.has(tmdbId)) {
+			return this.tvEpisodeCountsCache.get(tmdbId);
+		}
+
+		try {
+			const show = await tmdb.getTVShow(tmdbId);
+			const seasonEpisodeCounts = new Map<number, number>();
+
+			for (const season of show.seasons ?? []) {
+				const seasonNumber = season.season_number;
+				const episodeCount = season.episode_count;
+				if (seasonNumber > 0 && episodeCount > 0) {
+					seasonEpisodeCounts.set(seasonNumber, episodeCount);
+				}
+			}
+
+			let seriesEpisodeCount = Array.from(seasonEpisodeCounts.values()).reduce(
+				(total, count) => total + count,
+				0
+			);
+
+			// Fallback to TMDB aggregate count if seasons were unavailable
+			if (seriesEpisodeCount <= 0 && show.number_of_episodes > 0) {
+				seriesEpisodeCount = show.number_of_episodes;
+			}
+
+			const counts: TvEpisodeCounts = {
+				seriesEpisodeCount: seriesEpisodeCount > 0 ? seriesEpisodeCount : undefined,
+				seasonEpisodeCounts
+			};
+
+			this.tvEpisodeCountsCache.set(tmdbId, counts);
+			return counts;
+		} catch (error) {
+			logger.warn('Failed to fetch TV episode counts from TMDB', {
+				tmdbId,
+				error: error instanceof Error ? error.message : String(error)
+			});
+			return undefined;
+		}
+	}
+
+	/**
 	 * Get episode count for a TV season from TMDB.
 	 * Used for season pack size validation (per-episode size calculation).
 	 * Returns undefined if unable to fetch (allows search to proceed without size validation).
@@ -1235,6 +1339,15 @@ export class SearchOrchestrator {
 		const tmdbId = criteria.tmdbId;
 		if (!tmdbId) {
 			return undefined;
+		}
+
+		// Reuse cached TV episode counts if available
+		const cachedTvCounts = this.tvEpisodeCountsCache.get(tmdbId);
+		if (cachedTvCounts) {
+			const cachedSeasonCount = cachedTvCounts.seasonEpisodeCounts.get(criteria.season);
+			if (cachedSeasonCount && cachedSeasonCount > 0) {
+				return cachedSeasonCount;
+			}
 		}
 
 		// Check cache first

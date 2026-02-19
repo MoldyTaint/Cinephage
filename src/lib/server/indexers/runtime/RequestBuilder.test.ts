@@ -100,6 +100,22 @@ describe('RequestBuilder category defaults', () => {
 		expect(getParam(requests[0].url, 'cat')).toBe('5000');
 	});
 
+	it('includes preferred episode token in TV keyword query', () => {
+		const builder = createTestRequestBuilder();
+		const criteria: SearchCriteria = {
+			searchType: 'tv',
+			query: 'Smallville',
+			season: 1,
+			episode: 1,
+			preferredEpisodeFormat: 'standard'
+		};
+
+		const requests = builder.buildSearchRequests(criteria);
+
+		expect(requests).toHaveLength(1);
+		expect(getParam(requests[0].url, 'q')).toBe('Smallville S01E01');
+	});
+
 	it('keeps generic path for basic search', () => {
 		const builder = createTestRequestBuilder();
 		const criteria: SearchCriteria = {

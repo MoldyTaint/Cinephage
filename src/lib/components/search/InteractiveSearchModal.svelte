@@ -5,7 +5,6 @@
 		Search,
 		Loader2,
 		RefreshCw,
-		Filter,
 		Package,
 		AlertCircle,
 		CheckCircle2,
@@ -252,6 +251,39 @@
 		return result;
 	});
 
+	// Releases scoped to the active reporting mode
+	const modeBaseReleases = $derived.by(() => {
+		if (searchMode === 'multiSeasonPack') {
+			return releases.filter(isMultiSeasonPack);
+		}
+		return releases;
+	});
+
+	const modeRejectedCount = $derived.by(() => modeBaseReleases.filter((r) => r.rejected).length);
+
+	const reportedIndexerResults = $derived.by(() => {
+		if (!meta?.indexerResults) {
+			return [];
+		}
+
+		const modeCountsByIndexer = new SvelteMap<string, number>();
+		if (searchMode === 'multiSeasonPack') {
+			for (const release of modeBaseReleases) {
+				modeCountsByIndexer.set(
+					release.indexerId,
+					(modeCountsByIndexer.get(release.indexerId) ?? 0) + 1
+				);
+			}
+		}
+
+		return Object.entries(meta.indexerResults).map(([indexerId, result]) => ({
+			indexerId,
+			...result,
+			displayCount:
+				searchMode === 'multiSeasonPack' ? (modeCountsByIndexer.get(indexerId) ?? 0) : result.count
+		}));
+	});
+
 	// Auto-search when modal opens
 	$effect(() => {
 		if (open && releases.length === 0 && !searching && !searchTriggered) {
@@ -266,6 +298,7 @@
 			releases = [];
 			meta = null;
 			searchError = null;
+			showRejected = false;
 			grabbingIds.clear();
 			grabbedIds.clear();
 			streamingIds.clear();
@@ -386,9 +419,18 @@
 	{#if meta}
 		<div class="mb-4 space-y-2">
 			<div class="flex flex-wrap items-center gap-4 text-sm text-base-content/70">
-				<span>{releases.length} of {meta.afterEnrichment ?? meta.totalResults} results</span>
-				{#if meta.rejectedCount}
-					<span class="text-warning">{meta.rejectedCount} rejected</span>
+				{#if searchMode === 'multiSeasonPack'}
+					<span>{filteredReleases.length} of {modeBaseReleases.length} results</span>
+					{#if modeRejectedCount}
+						<span class="text-warning">{modeRejectedCount} rejected</span>
+					{/if}
+				{:else}
+					<span
+						>{filteredReleases.length} of {meta.afterEnrichment ?? meta.totalResults} results</span
+					>
+					{#if meta.rejectedCount}
+						<span class="text-warning">{meta.rejectedCount} rejected</span>
+					{/if}
 				{/if}
 				<span>Search: {meta.searchTimeMs}ms</span>
 				{#if meta.enrichTimeMs}
@@ -408,7 +450,7 @@
 					</button>
 				{/if}
 				<!-- Pipeline details button -->
-				{#if meta.afterDedup || meta.afterFiltering || meta.afterEnrichment}
+				{#if searchMode === 'multiSeasonPack' || meta.afterDedup || meta.afterFiltering || meta.afterEnrichment}
 					<button
 						class="btn gap-1 btn-ghost btn-xs"
 						onclick={() => (showPipelineDetails = !showPipelineDetails)}
@@ -424,56 +466,78 @@
 			</div>
 
 			<!-- Pipeline breakdown panel -->
-			{#if showPipelineDetails && (meta.afterDedup || meta.afterFiltering || meta.afterEnrichment)}
+			{#if showPipelineDetails && (searchMode === 'multiSeasonPack' || meta.afterDedup || meta.afterFiltering || meta.afterEnrichment)}
 				<div class="rounded-lg bg-base-200 p-3 text-sm">
-					<div class="mb-2 font-medium text-base-content/80">Filtering Pipeline:</div>
-					<div class="space-y-1">
-						<div class="flex justify-between">
-							<span>1. Raw from indexers:</span>
-							<span class="font-mono">{meta.totalResults}</span>
-						</div>
-						{#if meta.afterDedup !== undefined}
-							<div class="flex justify-between">
-								<span>2. After deduplication:</span>
-								<span class="font-mono"
-									>{meta.afterDedup}
-									<span class="text-error">(-{meta.totalResults - meta.afterDedup})</span></span
-								>
-							</div>
-						{/if}
-						{#if meta.afterFiltering !== undefined}
-							<div class="flex justify-between">
-								<span>3. After season/category filter:</span>
-								<span class="font-mono"
-									>{meta.afterFiltering}
-									{#if meta.afterDedup !== undefined && meta.afterFiltering < meta.afterDedup}
-										<span class="text-error">(-{meta.afterDedup - meta.afterFiltering})</span>
-									{/if}</span
-								>
-							</div>
-						{/if}
-						{#if meta.afterEnrichment !== undefined}
-							<div class="flex justify-between">
-								<span>4. After quality scoring & smart dedup:</span>
-								<span class="font-mono"
-									>{meta.afterEnrichment}
-									{#if meta.afterFiltering !== undefined && meta.afterEnrichment < meta.afterFiltering}
-										<span class="text-error">(-{meta.afterFiltering - meta.afterEnrichment})</span>
-									{/if}</span
-								>
-							</div>
-						{/if}
-						{#if meta.rejectedCount}
-							<div class="flex justify-between text-warning">
-								<span>└ Quality rejected (hidden by default):</span>
-								<span class="font-mono">{meta.rejectedCount}</span>
-							</div>
-						{/if}
-						<div class="mt-1 flex justify-between border-t border-base-300 pt-1">
-							<span class="font-medium">5. Displayed (after limit):</span>
-							<span class="font-mono font-medium">{releases.length}</span>
-						</div>
+					<div class="mb-2 font-medium text-base-content/80">
+						{searchMode === 'multiSeasonPack' ? 'Multi-Pack Pipeline:' : 'Filtering Pipeline:'}
 					</div>
+					{#if searchMode === 'multiSeasonPack'}
+						<div class="space-y-1">
+							<div class="flex justify-between">
+								<span>1. Multi-pack candidates:</span>
+								<span class="font-mono">{modeBaseReleases.length}</span>
+							</div>
+							{#if modeRejectedCount}
+								<div class="flex justify-between text-warning">
+									<span>2. Quality rejected (hidden by default):</span>
+									<span class="font-mono">{modeRejectedCount}</span>
+								</div>
+							{/if}
+							<div class="mt-1 flex justify-between border-t border-base-300 pt-1">
+								<span class="font-medium">3. Displayed (after limit):</span>
+								<span class="font-mono font-medium">{filteredReleases.length}</span>
+							</div>
+						</div>
+					{:else}
+						<div class="space-y-1">
+							<div class="flex justify-between">
+								<span>1. Raw from indexers:</span>
+								<span class="font-mono">{meta.totalResults}</span>
+							</div>
+							{#if meta.afterDedup !== undefined}
+								<div class="flex justify-between">
+									<span>2. After deduplication:</span>
+									<span class="font-mono"
+										>{meta.afterDedup}
+										<span class="text-error">(-{meta.totalResults - meta.afterDedup})</span></span
+									>
+								</div>
+							{/if}
+							{#if meta.afterFiltering !== undefined}
+								<div class="flex justify-between">
+									<span>3. After season/category filter:</span>
+									<span class="font-mono"
+										>{meta.afterFiltering}
+										{#if meta.afterDedup !== undefined && meta.afterFiltering < meta.afterDedup}
+											<span class="text-error">(-{meta.afterDedup - meta.afterFiltering})</span>
+										{/if}</span
+									>
+								</div>
+							{/if}
+							{#if meta.afterEnrichment !== undefined}
+								<div class="flex justify-between">
+									<span>4. After quality scoring & smart dedup:</span>
+									<span class="font-mono"
+										>{meta.afterEnrichment}
+										{#if meta.afterFiltering !== undefined && meta.afterEnrichment < meta.afterFiltering}
+											<span class="text-error">(-{meta.afterFiltering - meta.afterEnrichment})</span
+											>
+										{/if}</span
+									>
+								</div>
+							{/if}
+							{#if meta.rejectedCount}
+								<div class="flex justify-between text-warning">
+									<span>└ Quality rejected (hidden by default):</span>
+									<span class="font-mono">{meta.rejectedCount}</span>
+								</div>
+							{/if}
+							<div class="mt-1 flex justify-between border-t border-base-300 pt-1">
+								<span class="font-medium">5. Displayed (after limit):</span>
+								<span class="font-mono font-medium">{filteredReleases.length}</span>
+							</div>
+						</div>
+					{/if}
 				</div>
 			{/if}
 
@@ -481,24 +545,28 @@
 			{#if showIndexerDetails && (meta.indexerResults || meta.rejectedIndexers?.length)}
 				<div class="rounded-lg bg-base-200 p-3 text-sm">
 					<!-- Searched indexers -->
-					{#if meta.indexerResults}
+					{#if reportedIndexerResults.length > 0}
 						<div class="mb-2">
-							<span class="font-medium text-base-content/80">Searched:</span>
+							<span class="font-medium text-base-content/80"
+								>{searchMode === 'multiSeasonPack'
+									? 'Searched (multi-pack matches):'
+									: 'Searched:'}</span
+							>
 							<div class="mt-1 flex flex-wrap gap-2">
-								{#each Object.entries(meta.indexerResults) as [indexerId, result] (indexerId)}
+								{#each reportedIndexerResults as result (result.indexerId)}
 									<div
 										class="badge gap-1 {result.error
 											? 'badge-error'
-											: result.count > 0
+											: result.displayCount > 0
 												? 'badge-success'
 												: 'badge-ghost'}"
 									>
 										{#if result.error}
 											<XCircle size={12} />
-										{:else if result.count > 0}
+										{:else if result.displayCount > 0}
 											<CheckCircle2 size={12} />
 										{/if}
-										{result.name}: {result.count}
+										{result.name}: {result.displayCount}
 										{#if result.error}
 											<span class="tooltip" data-tip={result.error}>
 												<AlertCircle size={12} />
@@ -584,16 +652,13 @@
 		</div>
 	{/if}
 
-	<!-- Filters -->
+	<!-- Search -->
 	<div class="mb-4 flex flex-wrap items-center gap-4">
 		<div class="form-control">
 			<div class="input-group input-group-sm">
-				<span class="bg-base-200">
-					<Filter size={14} />
-				</span>
 				<input
 					type="text"
-					placeholder="Filter results..."
+					placeholder="Search results..."
 					class="input-bordered input input-sm w-full sm:w-48"
 					bind:value={filterQuery}
 				/>

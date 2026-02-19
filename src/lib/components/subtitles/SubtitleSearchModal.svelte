@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
-	import { X, Search, Loader2, RefreshCw, Filter, Subtitles } from 'lucide-svelte';
+	import { X, Search, Loader2, RefreshCw, Subtitles } from 'lucide-svelte';
 	import SubtitleSearchResultRow from './SubtitleSearchResultRow.svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 
@@ -254,9 +254,6 @@
 	<div class="mb-4 flex flex-wrap items-center gap-4">
 		<div class="form-control">
 			<div class="input-group input-group-sm">
-				<span class="bg-base-200">
-					<Filter size={14} />
-				</span>
 				<input
 					type="text"
 					placeholder="Filter results..."

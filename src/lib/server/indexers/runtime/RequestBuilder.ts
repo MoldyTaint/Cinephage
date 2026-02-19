@@ -244,10 +244,16 @@ export class RequestBuilder {
 		const trackerCategories = this.categoryMapper.mapToTracker(newznabCategories);
 		this.templateEngine.setCategories(trackerCategories);
 
-		// Build keywords (combining various query parts)
-		const keywords = this.buildKeywords(effectiveCriteria);
-		this.templateEngine.setVariable('.Query.Keywords', keywords);
-		this.templateEngine.setVariable('.Keywords', this.applyKeywordsFilters(keywords, search));
+		// Use keywords produced by TemplateEngine.setQuery() as the source of truth.
+		// This preserves TV episode tokens (e.g., S01E05 / 1x05 / 105) that are
+		// injected based on preferredEpisodeFormat.
+		const queryKeywordsVar = this.templateEngine.getVariable('.Query.Keywords');
+		const queryKeywords =
+			typeof queryKeywordsVar === 'string' && queryKeywordsVar.length > 0
+				? queryKeywordsVar
+				: this.buildKeywords(effectiveCriteria);
+		this.templateEngine.setVariable('.Query.Keywords', queryKeywords);
+		this.templateEngine.setVariable('.Keywords', this.applyKeywordsFilters(queryKeywords, search));
 		this.templateEngine.setVariable('.Categories', trackerCategories);
 
 		// Get search paths

@@ -10,6 +10,7 @@
 
 import type { ReleaseResult, EnhancedReleaseResult, IndexerProtocol } from '../indexers/types';
 import { parseRelease } from '../indexers/parser/index.js';
+import type { EpisodeInfo } from '../indexers/parser/types.js';
 import { qualityFilter, QualityFilter, type EnhancedQualityResult } from './QualityFilter.js';
 import { tmdbMatcher, TmdbMatcher, type TmdbHint } from './TmdbMatcher.js';
 import type { QualityPreset, ScoreComponents } from './types.js';
@@ -56,6 +57,12 @@ export interface EnrichmentOptions {
 
 	/** Episode count for the target season (used for season pack size validation) */
 	seasonEpisodeCount?: number;
+
+	/** Total episode count for the target series (excluding specials) */
+	seriesEpisodeCount?: number;
+
+	/** Episode counts per season for the target series (season number -> episode count) */
+	seasonEpisodeCounts?: Map<number, number>;
 
 	/** Indexer configs for protocol-specific rejection (seeder minimums, dead torrents, etc.) */
 	indexerConfigs?: Map<string, IndexerConfigForEnrichment>;
@@ -176,12 +183,13 @@ export class ReleaseEnricher {
 			let sizeContext: SizeValidationContext | undefined;
 			if (options.mediaType) {
 				const isSeasonPack = parsed.episode?.isSeasonPack ?? false;
+				const episodeCount = isSeasonPack
+					? this.resolveSeasonPackEpisodeCount(parsed.episode, options)
+					: undefined;
 				sizeContext = {
 					mediaType: options.mediaType,
 					isSeasonPack,
-					// For season packs, use the provided episode count
-					// If not provided and it's a season pack, validation will reject it
-					episodeCount: isSeasonPack ? options.seasonEpisodeCount : undefined
+					episodeCount
 				};
 			}
 			quality = this.filter.calculateEnhancedScore(
@@ -316,6 +324,63 @@ export class ReleaseEnricher {
 		}
 
 		return enhanced;
+	}
+
+	/**
+	 * Resolve episode count for season-pack size validation.
+	 * Priority:
+	 * 1. Explicit seasonEpisodeCount (targeted season search)
+	 * 2. seriesEpisodeCount for complete-series packs
+	 * 3. Sum of seasonEpisodeCounts for parsed seasons in multi-season packs
+	 */
+	private resolveSeasonPackEpisodeCount(
+		episodeInfo: EpisodeInfo | undefined,
+		options: EnrichmentOptions
+	): number | undefined {
+		if (options.seasonEpisodeCount && options.seasonEpisodeCount > 0) {
+			return options.seasonEpisodeCount;
+		}
+
+		if (!episodeInfo) {
+			return undefined;
+		}
+
+		if (
+			episodeInfo.isCompleteSeries &&
+			options.seriesEpisodeCount &&
+			options.seriesEpisodeCount > 0
+		) {
+			return options.seriesEpisodeCount;
+		}
+
+		const parsedSeasons =
+			episodeInfo.seasons && episodeInfo.seasons.length > 0
+				? episodeInfo.seasons
+				: episodeInfo.season !== undefined
+					? [episodeInfo.season]
+					: [];
+		const seasons = parsedSeasons.filter(
+			(seasonNumber) => Number.isInteger(seasonNumber) && seasonNumber > 0
+		);
+
+		if (
+			seasons.length === 0 ||
+			!options.seasonEpisodeCounts ||
+			options.seasonEpisodeCounts.size === 0
+		) {
+			return undefined;
+		}
+
+		let totalEpisodes = 0;
+		for (const seasonNumber of seasons) {
+			const seasonCount = options.seasonEpisodeCounts.get(seasonNumber);
+			if (!seasonCount || seasonCount <= 0) {
+				return undefined;
+			}
+			totalEpisodes += seasonCount;
+		}
+
+		return totalEpisodes > 0 ? totalEpisodes : undefined;
 	}
 
 	/**
