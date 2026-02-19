@@ -10,6 +10,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { channelLineupService } from '$lib/server/livetv/lineup';
 import { ValidationError } from '$lib/errors';
+import { logger } from '$lib/logging';
 import type { UpdateChannelRequest } from '$lib/types/livetv';
 
 export const GET: RequestHandler = async ({ params }) => {
@@ -17,13 +18,28 @@ export const GET: RequestHandler = async ({ params }) => {
 		const item = await channelLineupService.getChannelById(params.id);
 
 		if (!item) {
-			return json({ error: 'Lineup item not found' }, { status: 404 });
+			return json(
+				{
+					success: false,
+					error: 'Lineup item not found'
+				},
+				{ status: 404 }
+			);
 		}
 
-		return json(item);
+		return json({
+			success: true,
+			item
+		});
 	} catch (error) {
-		console.error('[API] Failed to get lineup item:', error);
-		return json({ error: 'Failed to get lineup item' }, { status: 500 });
+		logger.error('[API] Failed to get lineup item', error instanceof Error ? error : undefined);
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to get lineup item'
+			},
+			{ status: 500 }
+		);
 	}
 };
 
@@ -34,16 +50,39 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 		const item = await channelLineupService.updateChannel(params.id, body);
 
 		if (!item) {
-			return json({ error: 'Lineup item not found' }, { status: 404 });
+			return json(
+				{
+					success: false,
+					error: 'Lineup item not found'
+				},
+				{ status: 404 }
+			);
 		}
 
-		return json(item);
+		return json({
+			success: true,
+			item
+		});
 	} catch (error) {
+		// Validation errors
 		if (error instanceof ValidationError) {
-			return json({ error: error.message }, { status: 400 });
+			return json(
+				{
+					success: false,
+					error: error.message,
+					code: error.code
+				},
+				{ status: error.statusCode }
+			);
 		}
-		console.error('[API] Failed to update lineup item:', error);
-		return json({ error: 'Failed to update lineup item' }, { status: 500 });
+		logger.error('[API] Failed to update lineup item', error instanceof Error ? error : undefined);
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to update lineup item'
+			},
+			{ status: 500 }
+		);
 	}
 };
 
@@ -52,12 +91,26 @@ export const DELETE: RequestHandler = async ({ params }) => {
 		const success = await channelLineupService.removeFromLineup(params.id);
 
 		if (!success) {
-			return json({ error: 'Lineup item not found' }, { status: 404 });
+			return json(
+				{
+					success: false,
+					error: 'Lineup item not found'
+				},
+				{ status: 404 }
+			);
 		}
 
-		return json({ success: true });
+		return json({
+			success: true
+		});
 	} catch (error) {
-		console.error('[API] Failed to remove from lineup:', error);
-		return json({ error: 'Failed to remove from lineup' }, { status: 500 });
+		logger.error('[API] Failed to remove from lineup', error instanceof Error ? error : undefined);
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to remove from lineup'
+			},
+			{ status: 500 }
+		);
 	}
 };

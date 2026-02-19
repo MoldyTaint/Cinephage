@@ -126,24 +126,65 @@
 	function formatResults(results: Record<string, unknown> | null): string {
 		if (!results) return '';
 
+		const summarySource =
+			typeof results.result === 'object' && results.result !== null
+				? (results.result as Record<string, unknown>)
+				: results;
+
 		const parts: string[] = [];
 
 		// Monitoring task results
-		if (typeof results.itemsProcessed === 'number') {
-			parts.push(`${results.itemsProcessed} processed`);
+		if (typeof summarySource.itemsProcessed === 'number') {
+			parts.push(`${summarySource.itemsProcessed} processed`);
 		}
-		if (typeof results.itemsGrabbed === 'number' && results.itemsGrabbed > 0) {
-			parts.push(`${results.itemsGrabbed} grabbed`);
+		if (typeof summarySource.itemsGrabbed === 'number' && summarySource.itemsGrabbed > 0) {
+			parts.push(`${summarySource.itemsGrabbed} grabbed`);
 		}
 
 		// STRM update results
-		if (typeof results.updatedFiles === 'number') {
-			parts.push(`${results.updatedFiles}/${results.totalFiles ?? 0} files updated`);
+		if (typeof summarySource.updatedFiles === 'number') {
+			parts.push(`${summarySource.updatedFiles}/${summarySource.totalFiles ?? 0} files updated`);
+		}
+		// STRM reprobe results
+		if (typeof summarySource.updated === 'number') {
+			parts.push(`${summarySource.updated}/${summarySource.total ?? 0} files updated`);
+		}
+		if (
+			typeof summarySource.probeFallbackUsed === 'number' &&
+			summarySource.probeFallbackUsed > 0
+		) {
+			parts.push(`${summarySource.probeFallbackUsed} fallback`);
+		}
+		if (typeof summarySource.failed === 'number' && summarySource.failed > 0) {
+			parts.push(`${summarySource.failed} failed`);
+		}
+		if (typeof summarySource.skipped === 'number' && summarySource.skipped > 0) {
+			parts.push(`${summarySource.skipped} skipped`);
+		}
+
+		// Library scan results
+		if (typeof summarySource.filesScanned === 'number') {
+			parts.push(`${summarySource.filesScanned} scanned`);
+		}
+		if (typeof summarySource.filesAdded === 'number' && summarySource.filesAdded > 0) {
+			parts.push(`${summarySource.filesAdded} added`);
+		}
+		if (typeof summarySource.filesUpdated === 'number' && summarySource.filesUpdated > 0) {
+			parts.push(`${summarySource.filesUpdated} updated`);
+		}
+		if (typeof summarySource.filesRemoved === 'number' && summarySource.filesRemoved > 0) {
+			parts.push(`${summarySource.filesRemoved} removed`);
+		}
+		if (typeof summarySource.unmatchedFiles === 'number' && summarySource.unmatchedFiles > 0) {
+			parts.push(`${summarySource.unmatchedFiles} unmatched`);
 		}
 
 		// Errors count
-		if (typeof results.errors === 'number' && results.errors > 0) {
-			parts.push(`${results.errors} errors`);
+		if (typeof summarySource.errors === 'number' && summarySource.errors > 0) {
+			parts.push(`${summarySource.errors} errors`);
+		}
+		if (Array.isArray(summarySource.errors) && summarySource.errors.length > 0) {
+			parts.push(`${summarySource.errors.length} errors`);
 		}
 
 		return parts.join(', ');

@@ -124,14 +124,29 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 			throw error(404, 'Queue item not found');
 		}
 
-		// Remove from download client if requested
-		if (removeFromClient && queueItem.downloadClientId && queueItem.infoHash) {
+		// Remove from download client first (required when removeFromClient=true).
+		if (removeFromClient) {
+			if (!queueItem.downloadClientId) {
+				throw error(400, 'Queue item is missing a download client');
+			}
+
+			// Torrents usually use infoHash while usenet clients use downloadId (e.g. nzo_id).
+			const isTorrent = queueItem.protocol === 'torrent';
+			const clientDownloadId = isTorrent
+				? queueItem.infoHash || queueItem.downloadId
+				: queueItem.downloadId || queueItem.infoHash;
+			if (!clientDownloadId) {
+				throw error(400, 'Queue item is missing a client download identifier');
+			}
+
 			const clientInstance = await getDownloadClientManager().getClientInstance(
 				queueItem.downloadClientId
 			);
-			if (clientInstance) {
-				await clientInstance.removeDownload(queueItem.infoHash, deleteFiles);
+			if (!clientInstance) {
+				throw error(503, 'Download client is unavailable');
 			}
+
+			await clientInstance.removeDownload(clientDownloadId, deleteFiles);
 		}
 
 		// Add to blocklist if requested

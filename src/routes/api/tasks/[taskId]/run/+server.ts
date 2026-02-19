@@ -5,15 +5,74 @@
  *
  * Executes a registered system task and tracks its execution in history.
  * Prevents concurrent runs of the same task.
+ * Emits SSE events via monitoringScheduler for real-time UI updates.
+ *
+ * Designed primarily for maintenance tasks (library-scan, update-strm-urls)
+ * that don't go through MonitoringScheduler's executeTaskManually flow.
+ * Scheduled tasks should be run via their direct runEndpoint instead
+ * (which triggers MonitoringScheduler event emission natively).
  */
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getUnifiedTaskById } from '$lib/server/tasks/UnifiedTaskRegistry';
 import { taskHistoryService } from '$lib/server/tasks/TaskHistoryService';
+import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ module: 'TaskRunAPI' });
+
+function getSummarySource(result: Record<string, unknown>): Record<string, unknown> {
+	if (typeof result.result === 'object' && result.result !== null) {
+		return result.result as Record<string, unknown>;
+	}
+	return result;
+}
+
+function getErrorCount(errorsValue: unknown): number {
+	if (typeof errorsValue === 'number') return errorsValue;
+	if (Array.isArray(errorsValue)) return errorsValue.length;
+	return 0;
+}
+
+function toNumber(value: unknown): number | undefined {
+	return typeof value === 'number' ? value : undefined;
+}
+
+function buildResultSummary(result: Record<string, unknown>): Record<string, unknown> {
+	const source = getSummarySource(result);
+	const summary: Record<string, unknown> = { success: result.success };
+
+	const numericKeys = [
+		'itemsProcessed',
+		'itemsGrabbed',
+		'totalFiles',
+		'updatedFiles',
+		'filesScanned',
+		'filesAdded',
+		'filesUpdated',
+		'filesRemoved',
+		'unmatchedFiles',
+		'total',
+		'updated',
+		'failed',
+		'skipped'
+	] as const;
+
+	for (const key of numericKeys) {
+		const value = toNumber(source[key]);
+		if (value !== undefined) {
+			summary[key] = value;
+		}
+	}
+
+	const errors = getErrorCount(source.errors);
+	if (errors > 0) {
+		summary.errors = errors;
+	}
+
+	return summary;
+}
 
 export const POST: RequestHandler = async ({ params, fetch, request }) => {
 	const { taskId } = params;
@@ -40,6 +99,9 @@ export const POST: RequestHandler = async ({ params, fetch, request }) => {
 		return json({ success: false, error: message }, { status: 500 });
 	}
 
+	// Emit SSE event: task started
+	monitoringScheduler.emit('manualTaskStarted', taskId);
+
 	try {
 		// Execute the task's endpoint
 		const response = await fetch(taskDef.runEndpoint, {
@@ -55,18 +117,37 @@ export const POST: RequestHandler = async ({ params, fetch, request }) => {
 
 		if (result.success) {
 			await taskHistoryService.completeTask(historyId, result);
-			logger.info('[TaskRunAPI] Task completed successfully', { taskId, result });
+			const summary = buildResultSummary(result as Record<string, unknown>);
+			logger.info('[TaskRunAPI] Task completed successfully', { taskId, summary });
+
+			// Emit SSE event: task completed
+			// Build a TaskResult-compatible object for the SSE handler
+			const summarySource = getSummarySource(result as Record<string, unknown>);
+			monitoringScheduler.emit('manualTaskCompleted', taskId, {
+				itemsProcessed: toNumber(summarySource.itemsProcessed ?? summarySource.totalFiles) ?? 0,
+				itemsGrabbed: toNumber(summarySource.itemsGrabbed ?? summarySource.updatedFiles) ?? 0,
+				errors: getErrorCount(summarySource.errors)
+			});
+
 			return json({ success: true, historyId, ...result });
 		} else {
 			const errors = [result.error || 'Task endpoint returned failure'];
 			await taskHistoryService.failTask(historyId, errors);
 			logger.error('[TaskRunAPI] Task failed', { taskId, errors });
+
+			// Emit SSE event: task failed
+			monitoringScheduler.emit('manualTaskFailed', taskId, new Error(errors[0]));
+
 			return json({ success: false, historyId, ...result });
 		}
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
 		await taskHistoryService.failTask(historyId, [message]);
 		logger.error('[TaskRunAPI] Task execution error', { taskId, error: message });
+
+		// Emit SSE event: task failed
+		monitoringScheduler.emit('manualTaskFailed', taskId, error);
+
 		return json({ success: false, historyId, error: message }, { status: 500 });
 	}
 };

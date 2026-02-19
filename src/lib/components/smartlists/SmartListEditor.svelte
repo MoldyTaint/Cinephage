@@ -373,7 +373,7 @@
 	{/if}
 
 	<!-- Main content - side by side -->
-	<div class="flex flex-col gap-6 lg:flex-row">
+	<div class="flex flex-col items-start gap-6 lg:flex-row">
 		<!-- Left Panel: Filters -->
 		<div class="w-full space-y-4 lg:w-2/5">
 			<!-- Description -->

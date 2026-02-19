@@ -197,6 +197,7 @@
 						{isDragging && draggedItemId === channel.id ? 'bg-base-300/70' : ''}
 						{dragOverIndex === index && draggedItemId !== channel.id ? 'bg-primary/10' : ''}
 						{selectedIds.has(channel.id) ? 'bg-base-300/50' : ''}"
+					role="listitem"
 					draggable="true"
 					ondragstart={(e) => onDragStart(e, channel.id)}
 					ondragover={(e) => handleRowDragOver(e, index)}

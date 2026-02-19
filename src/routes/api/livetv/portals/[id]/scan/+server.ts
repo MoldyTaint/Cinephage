@@ -8,6 +8,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getPortalScannerService } from '$lib/server/livetv/stalker';
 import { logger } from '$lib/logging';
+import { ValidationError } from '$lib/errors';
 import { z } from 'zod';
 
 const randomScanSchema = z.object({
@@ -46,13 +47,9 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		// Validate input
 		const parsed = scanRequestSchema.safeParse(body);
 		if (!parsed.success) {
-			return json(
-				{
-					error: 'Validation failed',
-					details: parsed.error.flatten().fieldErrors
-				},
-				{ status: 400 }
-			);
+			throw new ValidationError('Validation failed', {
+				details: parsed.error.flatten()
+			});
 		}
 
 		const scannerService = getPortalScannerService();
@@ -85,6 +82,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 
 		return json(
 			{
+				success: true,
 				workerId: worker.id,
 				status: 'started',
 				metadata: worker.metadata
@@ -92,28 +90,59 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			{ status: 202 }
 		);
 	} catch (error) {
+		logger.error('[API] Failed to start portal scan', error instanceof Error ? error : undefined);
+
+		// Validation errors
+		if (error instanceof ValidationError) {
+			return json(
+				{
+					success: false,
+					error: error.message,
+					code: error.code,
+					context: error.context
+				},
+				{ status: error.statusCode }
+			);
+		}
+
 		const message = error instanceof Error ? error.message : String(error);
 
-		logger.error('[API] Failed to start portal scan', {
-			portalId: params.id,
-			error: message
-		});
-
 		if (message.includes('not found')) {
-			return json({ error: 'Portal not found' }, { status: 404 });
+			return json(
+				{
+					success: false,
+					error: 'Portal not found'
+				},
+				{ status: 404 }
+			);
 		}
 
 		if (message.includes('too large') || message.includes('Maximum')) {
-			return json({ error: message }, { status: 400 });
+			return json(
+				{
+					success: false,
+					error: message
+				},
+				{ status: 400 }
+			);
 		}
 
 		if (message.includes('concurrency') || message.includes('Concurrency')) {
 			return json(
-				{ error: 'Too many scans running. Please wait for an existing scan to complete.' },
+				{
+					success: false,
+					error: 'Too many scans running. Please wait for an existing scan to complete.'
+				},
 				{ status: 429 }
 			);
 		}
 
-		return json({ error: 'Failed to start scan' }, { status: 500 });
+		return json(
+			{
+				success: false,
+				error: message || 'Failed to start scan'
+			},
+			{ status: 500 }
+		);
 	}
 };

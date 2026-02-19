@@ -2,15 +2,11 @@
  * Stalker Portal Module
  *
  * Exports for Stalker/Ministra protocol IPTV integration.
+ * This module provides portal scanning and MAC address discovery functionality.
  */
 
+// Portal-specific functionality (used for portal scanning)
 export { StalkerPortalClient, createStalkerClient } from './StalkerPortalClient';
-export { StalkerAccountManager, getStalkerAccountManager } from './StalkerAccountManager';
-export {
-	StalkerChannelSyncService,
-	getStalkerChannelSyncService
-} from './StalkerChannelSyncService';
-export { StalkerChannelService, getStalkerChannelService } from './StalkerChannelService';
 export { StalkerPortalManager, getStalkerPortalManager } from './StalkerPortalManager';
 export type {
 	StalkerPortal,

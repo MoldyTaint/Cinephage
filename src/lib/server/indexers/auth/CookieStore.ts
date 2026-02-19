@@ -5,9 +5,13 @@
  * - Per-cookie expiration tracking
  * - Automatic cleanup of expired cookies
  * - Expiration warning callbacks for proactive refresh
+ * - Database persistence across server restarts (NEW!)
  */
 
 import { createChildLogger } from '$lib/logging';
+import { db } from '$lib/server/db';
+import { indexerStatus } from '$lib/server/db/schema';
+import { eq } from 'drizzle-orm';
 
 const log = createChildLogger({ module: 'CookieStore' });
 
@@ -83,6 +87,7 @@ export class CookieStore {
 
 	/**
 	 * Save cookies for an indexer with per-cookie expiration tracking.
+	 * Persists to database for survival across server restarts.
 	 */
 	async save(
 		indexerId: string,
@@ -99,6 +104,7 @@ export class CookieStore {
 			? { ...existing.expirations, ...(perCookieExpirations ?? {}) }
 			: (perCookieExpirations ?? {});
 
+		// Update in-memory cache
 		cookieMemoryStore.set(indexerId, {
 			cookies: mergedCookies,
 			expirations: mergedExpirations,
@@ -106,18 +112,98 @@ export class CookieStore {
 			updatedAt: new Date()
 		});
 
-		log.debug('Saved cookies', {
-			indexerId,
-			cookieCount: Object.keys(mergedCookies).length,
-			expiry: expiry.toISOString()
-		});
+		// Persist to database
+		try {
+			// Check if record exists
+			const existingRecord = await db.query.indexerStatus.findFirst({
+				where: eq(indexerStatus.indexerId, indexerId)
+			});
+
+			if (existingRecord) {
+				// Update existing record
+				await db
+					.update(indexerStatus)
+					.set({
+						cookies: mergedCookies,
+						cookiesExpirationDate: expiry.toISOString(),
+						updatedAt: new Date().toISOString()
+					})
+					.where(eq(indexerStatus.indexerId, indexerId));
+			} else {
+				// Create new record
+				await db.insert(indexerStatus).values({
+					indexerId,
+					cookies: mergedCookies,
+					cookiesExpirationDate: expiry.toISOString(),
+					health: 'healthy',
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString()
+				});
+			}
+
+			log.debug('Saved cookies to database', {
+				indexerId,
+				cookieCount: Object.keys(mergedCookies).length,
+				expiry: expiry.toISOString()
+			});
+		} catch (error) {
+			log.error('Failed to persist cookies to database', {
+				indexerId,
+				error: error instanceof Error ? error.message : String(error)
+			});
+			// Still keep in memory even if DB fails
+		}
 	}
 
 	/**
 	 * Load cookies for an indexer, filtering out expired ones.
+	 * First checks in-memory cache, then falls back to database.
 	 */
 	async load(indexerId: string): Promise<StoredCookies | null> {
-		const stored = cookieMemoryStore.get(indexerId);
+		// First check in-memory cache
+		let stored = cookieMemoryStore.get(indexerId);
+
+		// If not in memory, try to load from database
+		if (!stored) {
+			try {
+				const record = await db.query.indexerStatus.findFirst({
+					where: eq(indexerStatus.indexerId, indexerId),
+					columns: {
+						cookies: true,
+						cookiesExpirationDate: true,
+						updatedAt: true
+					}
+				});
+
+				if (record?.cookies && record.cookiesExpirationDate) {
+					// Parse stored cookies
+					const cookies = record.cookies as Record<string, string>;
+					const expiry = new Date(record.cookiesExpirationDate);
+
+					// Create stored cookies object (without per-cookie expirations - stored as overall expiry)
+					stored = {
+						cookies,
+						expirations: {},
+						expiry,
+						updatedAt: record.updatedAt ? new Date(record.updatedAt) : new Date()
+					};
+
+					// Populate cache
+					cookieMemoryStore.set(indexerId, stored);
+
+					log.debug('Loaded cookies from database', {
+						indexerId,
+						cookieCount: Object.keys(cookies).length,
+						expiry: expiry.toISOString()
+					});
+				}
+			} catch (error) {
+				log.error('Failed to load cookies from database', {
+					indexerId,
+					error: error instanceof Error ? error.message : String(error)
+				});
+			}
+		}
 
 		if (!stored) {
 			return null;
@@ -245,17 +331,56 @@ export class CookieStore {
 
 	/**
 	 * Clear cookies for an indexer.
+	 * Clears both in-memory cache and database.
 	 */
 	async clear(indexerId: string): Promise<void> {
+		// Clear from memory
 		cookieMemoryStore.delete(indexerId);
-		log.debug('Cleared cookies', { indexerId });
+
+		// Clear from database
+		try {
+			await db
+				.update(indexerStatus)
+				.set({
+					cookies: null,
+					cookiesExpirationDate: null,
+					updatedAt: new Date().toISOString()
+				})
+				.where(eq(indexerStatus.indexerId, indexerId));
+
+			log.debug('Cleared cookies from database', { indexerId });
+		} catch (error) {
+			log.error('Failed to clear cookies from database', {
+				indexerId,
+				error: error instanceof Error ? error.message : String(error)
+			});
+		}
 	}
 
 	/**
-	 * Clear all stored cookies.
+	 * Clear all stored cookies from both memory and database.
 	 */
 	async clearAll(): Promise<void> {
+		// Clear from memory
 		cookieMemoryStore.clear();
+
+		// Clear from database - update all records that have cookies
+		try {
+			await db
+				.update(indexerStatus)
+				.set({
+					cookies: null,
+					cookiesExpirationDate: null,
+					updatedAt: new Date().toISOString()
+				})
+				.where(eq(indexerStatus.indexerId, indexerStatus.indexerId)); // Update all rows
+
+			log.debug('Cleared all cookies from database');
+		} catch (error) {
+			log.error('Failed to clear all cookies from database', {
+				error: error instanceof Error ? error.message : String(error)
+			});
+		}
 	}
 
 	/**

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { PageData } from './$types';
+	import type { EpisodeFileInfo } from './+page.server';
 	import {
 		LibrarySeriesHeader,
 		SeasonAccordion,
@@ -13,26 +14,188 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import type { SeriesEditData } from '$lib/components/library/SeriesEditModal.svelte';
 	import type { SearchMode } from '$lib/components/search/InteractiveSearchModal.svelte';
-	import { CheckSquare, FileEdit } from 'lucide-svelte';
+	import { CheckSquare, FileEdit, Wifi, WifiOff, Loader2 } from 'lucide-svelte';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
+	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
+	import { createDynamicSSE } from '$lib/sse';
+	import { mobileSSEStatus } from '$lib/sse/mobileStatus.svelte';
 
 	let { data }: { data: PageData } = $props();
 
+	// Reactive data that will be updated via SSE
+	let seriesState = $state<PageData['series'] | null>(null);
+	let seasonsState = $state<PageData['seasons'] | null>(null);
+	let queueItemsState = $state<PageData['queueItems'] | null>(null);
+	let lastSeriesId = $state<string | null>(null);
+	const series = $derived(seriesState ?? data.series);
+	const seasons = $derived(seasonsState ?? data.seasons);
+	const queueItems = $derived(queueItemsState ?? data.queueItems);
+
+	function computeSeriesEpisodeStats(seasonList: PageData['seasons']) {
+		const regularSeasons = seasonList.filter((season) => season.seasonNumber > 0);
+		const totalEpisodes = regularSeasons.reduce((sum, season) => sum + season.episodes.length, 0);
+		const totalFiles = regularSeasons.reduce(
+			(sum, season) => sum + season.episodes.filter((episode) => episode.file !== null).length,
+			0
+		);
+		const percentComplete = totalEpisodes > 0 ? Math.round((totalFiles / totalEpisodes) * 100) : 0;
+
+		return { totalEpisodes, totalFiles, percentComplete };
+	}
+
+	// Keep series completion counters aligned with the actual episode rows shown in seasons.
+	const seriesForDisplay = $derived.by(() => {
+		const { totalEpisodes, totalFiles, percentComplete } = computeSeriesEpisodeStats(seasons);
+		return {
+			...series,
+			episodeCount: totalEpisodes,
+			episodeFileCount: totalFiles,
+			percentComplete
+		};
+	});
+
+	$effect(() => {
+		const incomingSeriesId = data.series.id;
+		if (lastSeriesId !== incomingSeriesId) {
+			seriesState = $state.snapshot(data.series);
+			seasonsState = $state.snapshot(data.seasons);
+			queueItemsState = $state.snapshot(data.queueItems);
+			lastSeriesId = incomingSeriesId;
+		}
+	});
+
+	// SSE Connection - internally handles browser/SSR
+	const sse = createDynamicSSE<{
+		'media:initial': {
+			series: typeof series;
+			seasons: typeof seasons;
+			queueItems: typeof queueItems;
+		};
+		'queue:updated': {
+			id: string;
+			title: string;
+			status: string;
+			progress: number | null;
+			episodeIds?: string[];
+			seasonNumber?: number;
+		};
+		'file:added': {
+			file: EpisodeFileInfo;
+			episodeIds: string[];
+			seasonNumber: number;
+			wasUpgrade: boolean;
+			replacedFileIds?: string[];
+		};
+		'file:removed': { fileId: string; episodeIds: string[] };
+	}>(() => `/api/library/series/${series.id}/stream`, {
+		'media:initial': (payload) => {
+			seriesState = payload.series;
+			seasonsState = payload.seasons;
+			queueItemsState = payload.queueItems;
+		},
+		'queue:updated': (payload) => {
+			if (payload.status !== 'downloading') {
+				// Keep local queue state aligned to actively downloading items only
+				queueItemsState = queueItems.filter((q) => q.id !== payload.id);
+			} else {
+				// Update or add queue item
+				const existingIndex = queueItems.findIndex((q) => q.id === payload.id);
+				const newQueueItem = {
+					id: payload.id,
+					title: payload.title,
+					status: payload.status,
+					progress: payload.progress,
+					episodeIds: payload.episodeIds || null,
+					seasonNumber: payload.seasonNumber || null
+				};
+				if (existingIndex >= 0) {
+					queueItems[existingIndex] = newQueueItem;
+				} else {
+					queueItemsState = [...queueItems, newQueueItem];
+				}
+			}
+		},
+		'file:added': (payload) => {
+			// Find the season
+			const seasonIndex = seasons.findIndex((s) => s.seasonNumber === payload.seasonNumber);
+			if (seasonIndex === -1) return;
+
+			// Update episodes with the new file
+			for (const episodeId of payload.episodeIds) {
+				const episodeIndex = seasons[seasonIndex].episodes.findIndex((e) => e.id === episodeId);
+				if (episodeIndex !== -1) {
+					seasons[seasonIndex].episodes[episodeIndex].file = payload.file;
+					seasons[seasonIndex].episodes[episodeIndex].hasFile = true;
+				}
+			}
+
+			// Update season stats
+			seasons[seasonIndex].episodeFileCount = seasons[seasonIndex].episodes.filter(
+				(e) => e.file !== null
+			).length;
+
+			// Update series stats
+			const { totalEpisodes, totalFiles } = computeSeriesEpisodeStats(seasons);
+			series.episodeFileCount = totalFiles;
+			series.percentComplete =
+				totalEpisodes > 0 ? Math.round((totalFiles / totalEpisodes) * 100) : 0;
+		},
+		'file:removed': (payload) => {
+			// Update episodes that had this file
+			for (const season of seasons) {
+				for (const episode of season.episodes) {
+					if (episode.file?.id === payload.fileId) {
+						episode.file = null;
+						episode.hasFile = false;
+					}
+				}
+				// Update season stats
+				season.episodeFileCount = season.episodes.filter((e) => e.file !== null).length;
+			}
+
+			// Update series stats
+			const { totalEpisodes, totalFiles } = computeSeriesEpisodeStats(seasons);
+			series.episodeFileCount = totalFiles;
+			series.percentComplete =
+				totalEpisodes > 0 ? Math.round((totalFiles / totalEpisodes) * 100) : 0;
+		}
+	});
+
+	const MOBILE_SSE_SOURCE = 'library-series';
+
+	$effect(() => {
+		mobileSSEStatus.publish(MOBILE_SSE_SOURCE, sse.status);
+		return () => {
+			mobileSSEStatus.clear(MOBILE_SSE_SOURCE);
+		};
+	});
+
+	const prefetchProfileId = $derived.by(
+		() => series.scoringProfileId ?? data.qualityProfiles.find((p) => p.isDefault)?.id ?? null
+	);
+	let prefetchedStreamKey = $state<string | null>(null);
+
 	// Prefetch stream for first episode when page loads (warms cache for faster playback)
 	$effect(() => {
-		if (data.series?.tmdbId && data.seasons?.length > 0) {
-			// Find first season with episodes (skip specials/season 0)
-			const firstSeason = data.seasons.find((s) => s.seasonNumber > 0 && s.episodes?.length > 0);
-			if (firstSeason && firstSeason.episodes?.[0]) {
-				const ep = firstSeason.episodes[0];
-				fetch(
-					`/api/streaming/resolve/tv/${data.series.tmdbId}/${ep.seasonNumber}/${ep.episodeNumber}`,
-					{
-						signal: AbortSignal.timeout(5000)
-					}
-				).catch(() => {});
+		if (!(prefetchProfileId === 'streamer' && series?.tmdbId && seasons?.length > 0)) return;
+
+		// Find first season with episodes (skip specials/season 0)
+		const firstSeason = seasons.find((s) => s.seasonNumber > 0 && s.episodes?.length > 0);
+		if (!firstSeason || !firstSeason.episodes?.[0]) return;
+
+		const ep = firstSeason.episodes[0];
+		const key = `tv:${series.tmdbId}:${ep.seasonNumber}:${ep.episodeNumber}`;
+		if (prefetchedStreamKey === key) return;
+		prefetchedStreamKey = key;
+
+		fetch(
+			`/api/streaming/resolve/tv/${series.tmdbId}/${ep.seasonNumber}/${ep.episodeNumber}?prefetch=1`,
+			{
+				signal: AbortSignal.timeout(5000),
+				headers: { 'X-Prefetch': 'true' }
 			}
-		}
+		).catch(() => {});
 	});
 
 	// State
@@ -48,6 +211,7 @@
 	// Selection state
 	let selectedEpisodes = new SvelteSet<string>();
 	let showCheckboxes = $state(false);
+	let openSeasonId = $state<string | null>(null);
 
 	// Auto-search state
 	let autoSearchingEpisodes = new SvelteSet<string>();
@@ -92,10 +256,16 @@
 	let isDeletingSeason = $state(false);
 	let isDeletingEpisode = $state(false);
 
+	$effect(() => {
+		if ($page.url.searchParams.get('edit') === '1') {
+			isEditModalOpen = true;
+		}
+	});
+
 	// Find quality profile name (use default if none set)
 	const qualityProfileName = $derived.by(() => {
-		if (data.series.scoringProfileId) {
-			return data.qualityProfiles.find((p) => p.id === data.series.scoringProfileId)?.name ?? null;
+		if (series.scoringProfileId) {
+			return data.qualityProfiles.find((p) => p.id === series.scoringProfileId)?.name ?? null;
 		}
 		// No profile set - show the default
 		const defaultProfile = data.qualityProfiles.find((p) => p.isDefault);
@@ -105,7 +275,7 @@
 	// Build a set of episode IDs that are currently downloading
 	const downloadingEpisodeIds = $derived.by(() => {
 		const ids = new SvelteSet<string>();
-		for (const item of data.queueItems) {
+		for (const item of queueItems) {
 			if (item.episodeIds) {
 				for (const epId of item.episodeIds) {
 					ids.add(epId);
@@ -118,7 +288,7 @@
 	// Build a set of season numbers that have a season pack downloading
 	const downloadingSeasons = $derived.by(() => {
 		const seasons = new SvelteSet<number>();
-		for (const item of data.queueItems) {
+		for (const item of queueItems) {
 			// Season pack: has seasonNumber but no specific episodeIds
 			if (item.seasonNumber !== null && (!item.episodeIds || item.episodeIds.length === 0)) {
 				seasons.add(item.seasonNumber);
@@ -131,9 +301,9 @@
 	const missingEpisodeCount = $derived.by(() => {
 		const now = new Date().toISOString().split('T')[0];
 		let count = 0;
-		for (const season of data.seasons) {
+		for (const season of seasons) {
 			for (const episode of season.episodes) {
-				if (episode.monitored && !episode.hasFile && episode.airDate && episode.airDate <= now) {
+				if (episode.monitored && !episode.file && episode.airDate && episode.airDate <= now) {
 					// Don't count as missing if it's downloading
 					if (
 						!downloadingEpisodeIds.has(episode.id) &&
@@ -148,7 +318,7 @@
 	});
 
 	// Calculate downloading count
-	const downloadingCount = $derived(data.queueItems.length);
+	const downloadingCount = $derived(queueItems.length);
 
 	// Derive selection count
 	const selectedCount = $derived(selectedEpisodes.size);
@@ -157,17 +327,14 @@
 	async function handleMonitorToggle(newValue: boolean) {
 		isSaving = true;
 		try {
-			const response = await fetch(`/api/library/series/${data.series.id}`, {
+			const response = await fetch(`/api/library/series/${series.id}`, {
 				method: 'PUT',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ monitored: newValue })
 			});
 
 			if (response.ok) {
-				data = {
-					...data,
-					series: { ...data.series, monitored: newValue }
-				};
+				series.monitored = newValue;
 			}
 		} catch (error) {
 			console.error('Failed to update monitored status:', error);
@@ -179,7 +346,7 @@
 	function handleSearch() {
 		// Top-level search is for multi-season packs / complete series only
 		searchContext = {
-			title: data.series.title,
+			title: series.title,
 			searchMode: 'multiSeasonPack'
 		};
 		isSearchModalOpen = true;
@@ -189,12 +356,48 @@
 		isEditModalOpen = true;
 	}
 
+	function handleEditClose() {
+		isEditModalOpen = false;
+		if ($page.url.searchParams.get('edit') === '1') {
+			goto($page.url.pathname, { replaceState: true, keepFocus: true, noScroll: true });
+		}
+	}
+
+	function updateSeriesStatsFromSeasons(updatedSeasons: typeof seasons): void {
+		const { totalEpisodes, totalFiles } = computeSeriesEpisodeStats(updatedSeasons);
+
+		seriesState = {
+			...series,
+			episodeCount: totalEpisodes,
+			episodeFileCount: totalFiles,
+			percentComplete: totalEpisodes > 0 ? Math.round((totalFiles / totalEpisodes) * 100) : 0
+		};
+	}
+
+	async function refreshSeriesFromApi(): Promise<void> {
+		try {
+			const response = await fetch(`/api/library/series/${series.id}`);
+			if (!response.ok) return;
+
+			const result = await response.json();
+			if (!result.success || !result.series) return;
+
+			const { seasons: refreshedSeasons, ...seriesFields } = result.series;
+			seriesState = { ...series, ...seriesFields };
+			if (Array.isArray(refreshedSeasons)) {
+				seasonsState = refreshedSeasons;
+			}
+		} catch (error) {
+			console.error('Failed to refresh series state:', error);
+		}
+	}
+
 	async function handleRefresh() {
 		isRefreshing = true;
 		refreshProgress = null;
 
 		try {
-			const response = await fetch(`/api/library/series/${data.series.id}/refresh`, {
+			const response = await fetch(`/api/library/series/${series.id}/refresh`, {
 				method: 'POST'
 			});
 
@@ -252,8 +455,7 @@
 			}
 
 			if (completed) {
-				// Reload the page to get updated data
-				window.location.reload();
+				await refreshSeriesFromApi();
 			}
 		} catch (error) {
 			console.error('Failed to refresh series:', error);
@@ -266,21 +468,21 @@
 	async function handleEditSave(editData: SeriesEditData) {
 		isSaving = true;
 		try {
-			const response = await fetch(`/api/library/series/${data.series.id}`, {
+			const response = await fetch(`/api/library/series/${series.id}`, {
 				method: 'PUT',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(editData)
 			});
 
 			if (response.ok) {
-				data.series.monitored = editData.monitored;
-				data.series.scoringProfileId = editData.scoringProfileId;
-				data.series.rootFolderId = editData.rootFolderId;
-				data.series.seasonFolder = editData.seasonFolder;
-				data.series.wantsSubtitles = editData.wantsSubtitles;
+				series.monitored = editData.monitored;
+				series.scoringProfileId = editData.scoringProfileId;
+				series.rootFolderId = editData.rootFolderId;
+				series.seasonFolder = editData.seasonFolder;
+				series.wantsSubtitles = editData.wantsSubtitles;
 
 				const newFolder = data.rootFolders.find((f) => f.id === editData.rootFolderId);
-				data.series.rootFolderPath = newFolder?.path ?? null;
+				series.rootFolderPath = newFolder?.path ?? null;
 
 				isEditModalOpen = false;
 			}
@@ -299,7 +501,7 @@
 		isDeleting = true;
 		try {
 			const response = await fetch(
-				`/api/library/series/${data.series.id}?deleteFiles=${deleteFiles}&removeFromLibrary=${removeFromLibrary}`,
+				`/api/library/series/${series.id}?deleteFiles=${deleteFiles}&removeFromLibrary=${removeFromLibrary}`,
 				{ method: 'DELETE' }
 			);
 			const result = await response.json();
@@ -311,8 +513,18 @@
 					window.location.href = '/library/tv';
 				} else {
 					toasts.success('Series files deleted');
-					// Reload to show updated state (all episodes now missing)
-					window.location.reload();
+					const updatedSeasons = seasons.map((season) => ({
+						...season,
+						episodeFileCount: 0,
+						episodes: season.episodes.map((episode) => ({
+							...episode,
+							hasFile: false as boolean | null,
+							file: null
+						}))
+					}));
+					seasonsState = updatedSeasons;
+					updateSeriesStatsFromSeasons(updatedSeasons);
+					queueItemsState = [];
 				}
 			} else {
 				toasts.error('Failed to delete series', { description: result.error });
@@ -353,10 +565,11 @@
 			if (result.success) {
 				toasts.success('Season files deleted');
 				// Mark all episodes in this season as missing
-				data.seasons = data.seasons.map((s) =>
+				const updatedSeasons = seasons.map((s) =>
 					s.id === deletingSeasonId
 						? {
 								...s,
+								episodeFileCount: 0,
 								episodes: s.episodes.map((e) => ({
 									...e,
 									hasFile: false as boolean | null,
@@ -365,6 +578,8 @@
 							}
 						: s
 				);
+				seasonsState = updatedSeasons;
+				updateSeriesStatsFromSeasons(updatedSeasons);
 			} else {
 				toasts.error('Failed to delete season files', { description: result.error });
 			}
@@ -407,7 +622,7 @@
 			if (result.success) {
 				toasts.success('Episode files deleted');
 				// Mark episode as missing (hasFile: false) instead of removing it
-				const updatedSeasons = data.seasons.map((season) => {
+				const updatedSeasons = seasons.map((season) => {
 					const hasEpisode = season.episodes.some((e) => e.id === deletingEpisodeId);
 					if (!hasEpisode) {
 						return season;
@@ -416,7 +631,7 @@
 					const updatedEpisodes = season.episodes.map((e) =>
 						e.id === deletingEpisodeId ? { ...e, hasFile: false as boolean | null, file: null } : e
 					);
-					const updatedEpisodeFileCount = updatedEpisodes.filter((e) => e.hasFile).length;
+					const updatedEpisodeFileCount = updatedEpisodes.filter((e) => e.file !== null).length;
 					const updatedEpisodeCount = updatedEpisodes.length;
 
 					return {
@@ -426,26 +641,8 @@
 						episodeCount: updatedEpisodeCount
 					};
 				});
-				const totalEpisodes = updatedSeasons.reduce(
-					(sum, season) => sum + (season.episodeCount ?? season.episodes.length),
-					0
-				);
-				const totalFiles = updatedSeasons.reduce((sum, season) => {
-					if (typeof season.episodeFileCount === 'number') {
-						return sum + season.episodeFileCount;
-					}
-					return sum + season.episodes.filter((e) => e.hasFile).length;
-				}, 0);
-
-				data = {
-					...data,
-					seasons: updatedSeasons,
-					series: {
-						...data.series,
-						episodeCount: totalEpisodes,
-						episodeFileCount: totalFiles
-					}
-				};
+				seasonsState = updatedSeasons;
+				updateSeriesStatsFromSeasons(updatedSeasons);
 			} else {
 				toasts.error('Failed to delete episode files', { description: result.error });
 			}
@@ -468,18 +665,15 @@
 			});
 
 			if (response.ok) {
-				data = {
-					...data,
-					seasons: data.seasons.map((season) =>
-						season.id === seasonId
-							? {
-									...season,
-									monitored: newValue,
-									episodes: season.episodes.map((ep) => ({ ...ep, monitored: newValue }))
-								}
-							: season
-					)
-				};
+				seasonsState = seasons.map((season) =>
+					season.id === seasonId
+						? {
+								...season,
+								monitored: newValue,
+								episodes: season.episodes.map((ep) => ({ ...ep, monitored: newValue }))
+							}
+						: season
+				);
 			}
 		} catch (error) {
 			console.error('Failed to update season monitored status:', error);
@@ -495,15 +689,12 @@
 			});
 
 			if (response.ok) {
-				data = {
-					...data,
-					seasons: data.seasons.map((season) => ({
-						...season,
-						episodes: season.episodes.map((ep) =>
-							ep.id === episodeId ? { ...ep, monitored: newValue } : ep
-						)
-					}))
-				};
+				seasonsState = seasons.map((season) => ({
+					...season,
+					episodes: season.episodes.map((ep) =>
+						ep.id === episodeId ? { ...ep, monitored: newValue } : ep
+					)
+				}));
 			}
 		} catch (error) {
 			console.error('Failed to update episode monitored status:', error);
@@ -522,7 +713,7 @@
 
 	function handleSeasonSearch(season: Season) {
 		searchContext = {
-			title: data.series.title,
+			title: series.title,
 			season: season.seasonNumber
 		};
 		isSearchModalOpen = true;
@@ -530,7 +721,7 @@
 
 	function handleEpisodeSearch(episode: Episode) {
 		searchContext = {
-			title: data.series.title,
+			title: series.title,
 			season: episode.seasonNumber,
 			episode: episode.episodeNumber
 		};
@@ -542,7 +733,7 @@
 		autoSearchingEpisodes.add(episode.id);
 
 		try {
-			const response = await fetch(`/api/library/series/${data.series.id}/auto-search`, {
+			const response = await fetch(`/api/library/series/${series.id}/auto-search`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -580,7 +771,7 @@
 		autoSearchingSeasons.add(season.id);
 
 		try {
-			const response = await fetch(`/api/library/series/${data.series.id}/auto-search`, {
+			const response = await fetch(`/api/library/series/${series.id}/auto-search`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -620,7 +811,7 @@
 		missingSearchResult = null;
 
 		try {
-			const response = await fetch(`/api/library/series/${data.series.id}/auto-search`, {
+			const response = await fetch(`/api/library/series/${series.id}/auto-search`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ type: 'missing' })
@@ -656,7 +847,7 @@
 		}
 
 		try {
-			const response = await fetch(`/api/library/series/${data.series.id}/auto-search`, {
+			const response = await fetch(`/api/library/series/${series.id}/auto-search`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -704,11 +895,48 @@
 		episodeNumber: number;
 	}
 
+	interface DownloadedSubtitle {
+		id?: string;
+		subtitleId?: string;
+		language?: string;
+		isForced?: boolean;
+		isHearingImpaired?: boolean;
+		format?: string;
+	}
+
+	function appendSubtitleToEpisode(episodeId: string, subtitle: DownloadedSubtitle): void {
+		const subtitleId = subtitle.id ?? subtitle.subtitleId;
+		if (!subtitleId) return;
+
+		const normalizedSubtitle = {
+			id: subtitleId,
+			language: subtitle.language ?? 'unknown',
+			isForced: subtitle.isForced ?? false,
+			isHearingImpaired: subtitle.isHearingImpaired ?? false,
+			format: subtitle.format
+		};
+
+		seasonsState = seasons.map((season) => ({
+			...season,
+			episodes: season.episodes.map((episode) => {
+				if (episode.id !== episodeId) return episode;
+				const existingSubtitles = episode.subtitles ?? [];
+				if (existingSubtitles.some((existing) => existing.id === subtitleId)) {
+					return episode;
+				}
+				return {
+					...episode,
+					subtitles: [...existingSubtitles, normalizedSubtitle]
+				};
+			})
+		}));
+	}
+
 	function handleSubtitleSearch(episode: EpisodeForSubtitle) {
 		const episodeTitle = episode.title || `Episode ${episode.episodeNumber}`;
 		subtitleSearchContext = {
 			episodeId: episode.id,
-			title: `${data.series.title} S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')} - ${episodeTitle}`
+			title: `${series.title} S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')} - ${episodeTitle}`
 		};
 		isSubtitleSearchModalOpen = true;
 	}
@@ -726,14 +954,7 @@
 			const result = await response.json();
 
 			if (result.success && result.subtitle) {
-				// Find and update the episode's subtitles in local state
-				for (const season of data.seasons) {
-					const ep = season.episodes.find((e) => e.id === episode.id);
-					if (ep) {
-						ep.subtitles = [...(ep.subtitles || []), result.subtitle];
-						break;
-					}
-				}
+				appendSubtitleToEpisode(episode.id, result.subtitle);
 			}
 		} catch (error) {
 			console.error('Failed to auto-search subtitles:', error);
@@ -742,9 +963,10 @@
 		}
 	}
 
-	function handleSubtitleDownloaded() {
-		// Refresh the page data to get updated subtitles
-		window.location.reload();
+	function handleSubtitleDownloaded(subtitle: DownloadedSubtitle) {
+		const episodeId = subtitleSearchContext?.episodeId;
+		if (!episodeId) return;
+		appendSubtitleToEpisode(episodeId, subtitle);
 	}
 
 	// Selection handlers
@@ -757,7 +979,7 @@
 	}
 
 	function handleSelectAllInSeason(seasonId: string, selectAll: boolean) {
-		const season = data.seasons.find((s) => s.id === seasonId);
+		const season = seasons.find((s) => s.id === seasonId);
 		if (!season) return;
 
 		const episodeIds = season.episodes.map((e) => e.id);
@@ -784,6 +1006,10 @@
 		selectedEpisodes.clear();
 	}
 
+	function handleSeasonToggle(seasonId: string) {
+		openSeasonId = openSeasonId === seasonId ? null : seasonId;
+	}
+
 	interface Release {
 		guid: string;
 		title: string;
@@ -793,6 +1019,7 @@
 		indexerId: string;
 		indexerName: string;
 		protocol: string;
+		commentsUrl?: string;
 		episodeMatch?: {
 			season?: number;
 			seasons?: number[];
@@ -814,7 +1041,7 @@
 	// Helper function to look up episode IDs from local data
 	function lookupEpisodeIds(season: number, episodes: number[]): string[] {
 		const ids: string[] = [];
-		for (const seasonData of data.seasons) {
+		for (const seasonData of seasons) {
 			if (seasonData.seasonNumber === season) {
 				for (const ep of seasonData.episodes) {
 					if (episodes.includes(ep.episodeNumber)) {
@@ -871,11 +1098,12 @@
 					indexerId: release.indexerId,
 					indexerName: release.indexerName,
 					protocol: release.protocol,
-					seriesId: data.series.id,
+					seriesId: series.id,
 					mediaType: 'tv',
 					seasonNumber,
 					episodeIds,
-					streamUsenet: streaming && release.protocol === 'usenet'
+					streamUsenet: streaming && release.protocol === 'usenet',
+					commentsUrl: release.commentsUrl
 				})
 			});
 
@@ -883,7 +1111,9 @@
 
 			// For streaming grabs, refresh the page since files are created instantly
 			if (result.success && (release.protocol === 'streaming' || streaming)) {
-				setTimeout(() => window.location.reload(), 500);
+				setTimeout(() => {
+					void refreshSeriesFromApi();
+				}, 500);
 			}
 
 			return { success: result.success, error: result.error };
@@ -898,33 +1128,72 @@
 	// Get search title - just the series title, no episode token embedded
 	// Season/episode info is passed separately and the backend handles format composition
 	const searchTitle = $derived(() => {
-		return data.series.title;
+		return series.title;
 	});
 </script>
 
 <svelte:head>
-	<title>{data.series.title} - Library - Cinephage</title>
+	<title>{series.title} - Library - Cinephage</title>
 </svelte:head>
 
 <div class="flex w-full flex-col gap-4 px-4 pb-20 md:gap-6 md:overflow-x-hidden md:px-6 lg:px-8">
-	<div
-		class="rounded-lg px-3 py-2 text-sm font-medium text-base-100 md:px-4 md:py-3 {data.series
-			.monitored
-			? 'bg-success/80'
-			: 'bg-error/80'}"
-	>
-		{#if data.series.monitored}
-			Series monitoring is enabled.
-		{:else}
-			Monitoring is disabled.
-			<span class="block text-xs font-normal text-base-100/90">
-				Season and episode toggles are locked. Enable series monitoring to unlock them.
-			</span>
-		{/if}
+	<div class="flex flex-col gap-2">
+		<!-- Monitoring Status Banner -->
+		<div
+			class="rounded-lg px-3 py-2 text-sm font-medium text-base-100 md:px-4 md:py-3 {series.monitored
+				? 'bg-success/80'
+				: 'bg-error/80'}"
+		>
+			<div class="flex items-start justify-between gap-3">
+				<div class="min-w-0">
+					{#if series.monitored}
+						Series monitoring is enabled.
+					{:else}
+						<div>
+							Monitoring is disabled.
+							<span class="block text-xs font-normal text-base-100/90">
+								Season and episode toggles are locked. Enable series monitoring to unlock them.
+							</span>
+						</div>
+					{/if}
+				</div>
+				<div class="hidden shrink-0 items-center lg:flex">
+					{#if sse.isConnected}
+						<span
+							class="inline-flex items-center gap-1 rounded-full border border-success/70 bg-success/90 px-2.5 py-1 text-xs font-medium text-success-content shadow-sm"
+						>
+							<Wifi class="h-3 w-3" />
+							Live
+						</span>
+					{:else if sse.status === 'error'}
+						<span
+							class="inline-flex items-center gap-1 rounded-full border border-warning/70 bg-warning/90 px-2.5 py-1 text-xs font-medium text-warning-content shadow-sm"
+						>
+							<Loader2 class="h-3 w-3 animate-spin" />
+							Reconnecting
+						</span>
+					{:else if sse.status === 'connecting'}
+						<span
+							class="inline-flex items-center gap-1 rounded-full border border-info/70 bg-info/90 px-2.5 py-1 text-xs font-medium text-info-content shadow-sm"
+						>
+							<Loader2 class="h-3 w-3 animate-spin" />
+							Connecting
+						</span>
+					{:else}
+						<span
+							class="inline-flex items-center gap-1 rounded-full border border-base-100/35 bg-base-100/20 px-2.5 py-1 text-xs font-medium text-base-100 shadow-sm"
+						>
+							<WifiOff class="h-3 w-3" />
+							Offline
+						</span>
+					{/if}
+				</div>
+			</div>
+		</div>
 	</div>
 	<!-- Header -->
 	<LibrarySeriesHeader
-		series={data.series}
+		series={seriesForDisplay}
 		{qualityProfileName}
 		refreshing={isRefreshing}
 		{refreshProgress}
@@ -967,16 +1236,17 @@
 				</div>
 			</div>
 
-			{#if data.seasons.length === 0}
+			{#if seasons.length === 0}
 				<div class="rounded-xl bg-base-200 p-8 text-center text-base-content/60">
 					No seasons found
 				</div>
 			{:else}
-				{#each data.seasons as season (season.id)}
+				{#each seasons as season (season.id)}
 					<SeasonAccordion
 						{season}
-						seriesMonitored={data.series.monitored ?? false}
-						defaultOpen={false}
+						seriesMonitored={series.monitored ?? false}
+						isStreamerProfile={series.scoringProfileId === 'streamer'}
+						defaultOpen={openSeasonId === season.id}
 						{selectedEpisodes}
 						{showCheckboxes}
 						{downloadingEpisodeIds}
@@ -986,6 +1256,7 @@
 						{autoSearchingEpisodes}
 						{autoSearchEpisodeResults}
 						{subtitleAutoSearchingEpisodes}
+						onToggleOpen={handleSeasonToggle}
 						onSeasonMonitorToggle={handleSeasonMonitorToggle}
 						onEpisodeMonitorToggle={handleEpisodeMonitorToggle}
 						onSeasonSearch={handleSeasonSearch}
@@ -1004,7 +1275,7 @@
 		</div>
 
 		<!-- Sidebar -->
-		<TVSeriesSidebar series={data.series} />
+		<TVSeriesSidebar series={seriesForDisplay} />
 	</div>
 </div>
 
@@ -1019,11 +1290,11 @@
 <!-- Edit Modal -->
 <SeriesEditModal
 	open={isEditModalOpen}
-	series={data.series}
+	{series}
 	qualityProfiles={data.qualityProfiles}
 	rootFolders={data.rootFolders}
 	saving={isSaving}
-	onClose={() => (isEditModalOpen = false)}
+	onClose={handleEditClose}
 	onSave={handleEditSave}
 />
 
@@ -1031,11 +1302,11 @@
 <InteractiveSearchModal
 	open={isSearchModalOpen}
 	title={searchTitle()}
-	tmdbId={data.series.tmdbId}
-	imdbId={data.series.imdbId}
-	year={data.series.year}
+	tmdbId={series.tmdbId}
+	imdbId={series.imdbId}
+	year={series.year}
 	mediaType="tv"
-	scoringProfileId={data.series.scoringProfileId}
+	scoringProfileId={series.scoringProfileId}
 	season={searchContext?.season}
 	episode={searchContext?.episode}
 	searchMode={searchContext?.searchMode ?? 'all'}
@@ -1062,17 +1333,20 @@
 <RenamePreviewModal
 	open={isRenameModalOpen}
 	mediaType="series"
-	mediaId={data.series.id}
-	mediaTitle={data.series.title}
+	mediaId={series.id}
+	mediaTitle={series.title}
 	onClose={() => (isRenameModalOpen = false)}
-	onRenamed={() => location.reload()}
+	onRenamed={() => {
+		isRenameModalOpen = false;
+		void refreshSeriesFromApi();
+	}}
 />
 
 <!-- Delete Confirmation Modal -->
 <DeleteConfirmationModal
 	open={isDeleteModalOpen}
 	title="Delete Series"
-	itemName={data.series.title}
+	itemName={series.title}
 	loading={isDeleting}
 	onConfirm={performDelete}
 	onCancel={() => (isDeleteModalOpen = false)}

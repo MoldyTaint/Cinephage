@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Check, X, AlertTriangle } from 'lucide-svelte';
+	import { AlertTriangle, CheckCircle, XCircle } from 'lucide-svelte';
 
 	interface Props {
 		enabled: boolean;
@@ -10,49 +10,50 @@
 
 	let { enabled, consecutiveFailures = 0, lastFailure, disabledUntil }: Props = $props();
 
-	// Use $derived for reactive computed values from props
 	const hasFailures = $derived(consecutiveFailures > 0);
 	const isAutoDisabled = $derived(!!disabledUntil && new Date(disabledUntil) > new Date());
 
-	const badgeClass = $derived(() => {
-		if (!enabled) return 'badge-ghost';
-		if (isAutoDisabled) return 'badge-error';
-		if (hasFailures) return 'badge-warning';
-		return 'badge-success';
-	});
-
-	const statusText = $derived(() => {
-		if (!enabled) return 'Disabled';
-		if (isAutoDisabled) return 'Auto-disabled';
-		if (hasFailures) return 'Degraded';
-		return 'Healthy';
-	});
-
-	const tooltipText = $derived(() => {
-		if (!enabled) return 'Indexer is disabled by user';
+	const statusInfo = $derived.by(() => {
+		if (!enabled) {
+			return {
+				text: 'Disabled',
+				class: 'badge-ghost',
+				icon: XCircle,
+				tooltip: 'Indexer is disabled by user'
+			};
+		}
 		if (isAutoDisabled) {
-			const until = new Date(disabledUntil!).toLocaleString();
-			return `Auto-disabled until ${until} due to ${consecutiveFailures} consecutive failures`;
+			const until = disabledUntil ? new Date(disabledUntil).toLocaleString() : 'Unknown';
+			return {
+				text: 'Unhealthy',
+				class: 'badge-error',
+				icon: AlertTriangle,
+				tooltip: `Auto-disabled until ${until} due to ${consecutiveFailures} consecutive failures`
+			};
 		}
 		if (hasFailures) {
 			const failureTime = lastFailure ? new Date(lastFailure).toLocaleString() : 'Unknown';
-			return `${consecutiveFailures} consecutive failure(s). Last failure: ${failureTime}`;
+			return {
+				text: 'Degraded',
+				class: 'badge-warning',
+				icon: AlertTriangle,
+				tooltip: `${consecutiveFailures} consecutive failure(s). Last failure: ${failureTime}`
+			};
 		}
-		return 'Indexer is healthy and operational';
+		return {
+			text: 'Healthy',
+			class: 'badge-success',
+			icon: CheckCircle,
+			tooltip: 'Indexer is healthy and operational'
+		};
 	});
+
+	const Icon = $derived(statusInfo.icon);
 </script>
 
-<div class="tooltip tooltip-right" data-tip={tooltipText()}>
-	<div class="badge {badgeClass()} gap-1">
-		{#if !enabled}
-			<X class="h-3 w-3" />
-		{:else if isAutoDisabled}
-			<AlertTriangle class="h-3 w-3" />
-		{:else if hasFailures}
-			<AlertTriangle class="h-3 w-3" />
-		{:else}
-			<Check class="h-3 w-3" />
-		{/if}
-		<span class="text-xs">{statusText()}</span>
+<div class="tooltip tooltip-right" data-tip={statusInfo.tooltip}>
+	<div class="badge gap-1 {statusInfo.class}">
+		<Icon class="h-3 w-3" />
+		<span class="text-xs">{statusInfo.text}</span>
 	</div>
 </div>

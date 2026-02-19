@@ -18,7 +18,13 @@ import { z } from 'zod';
 
 export const filterBlockSchema = z.object({
 	name: z.string(),
-	args: z.union([z.string(), z.array(z.string()), z.number()]).optional()
+	args: z
+		.union([
+			z.string(),
+			z.number(),
+			z.array(z.union([z.string(), z.number()])) // Array can contain strings or numbers
+		])
+		.optional()
 });
 
 export type FilterBlock = z.infer<typeof filterBlockSchema>;
@@ -30,8 +36,8 @@ export type FilterBlock = z.infer<typeof filterBlockSchema>;
 export const selectorBlockSchema = z.object({
 	selector: z.string().optional(),
 	optional: z.boolean().optional(),
-	default: z.string().optional(),
-	text: z.string().optional(),
+	default: z.union([z.string(), z.number()]).optional(), // Can be string or number (e.g., default: 0)
+	text: z.union([z.string(), z.number()]).optional(), // Can be string or number (e.g., text: 0)
 	attribute: z.string().optional(),
 	remove: z.string().optional(),
 	filters: z.array(filterBlockSchema).optional(),
@@ -54,11 +60,12 @@ export const settingsFieldSchema = z.object({
 		'info',
 		'info_cookie',
 		'info_cloudflare',
+		'info_flaresolverr', // Prowlarr's name for Cloudflare/FlareSolverr warning
 		'info_useragent',
 		'info_category_8000',
 		'cardigannCaptcha'
 	]),
-	label: z.string(),
+	label: z.string().optional(), // Optional for info_* types which often lack labels
 	default: z.union([z.string(), z.boolean(), z.number()]).optional(),
 	defaults: z.array(z.string()).optional(),
 	options: z.record(z.string(), z.string()).optional()
@@ -71,7 +78,7 @@ export type SettingsField = z.infer<typeof settingsFieldSchema>;
 // ============================================================================
 
 export const categoryMappingSchema = z.object({
-	id: z.string(),
+	id: z.union([z.string(), z.number()]).transform((v) => String(v)), // Prowlarr uses numeric IDs, coerce to string
 	cat: z.string().optional(),
 	desc: z.string().optional(),
 	default: z.boolean().optional()
@@ -526,6 +533,16 @@ export const infohashBlockSchema = z.object({
 export type InfohashBlock = z.infer<typeof infohashBlockSchema>;
 
 // ============================================================================
+// Download Variable (for extracting dynamic values from details page)
+// ============================================================================
+
+export const downloadVariableSchema = selectorFieldSchema.extend({
+	name: z.string()
+});
+
+export type DownloadVariable = z.infer<typeof downloadVariableSchema>;
+
+// ============================================================================
 // Download Block
 // ============================================================================
 
@@ -534,7 +551,9 @@ export const downloadBlockSchema = z.object({
 	method: z.string().optional(),
 	before: beforeBlockSchema.optional(),
 	infohash: infohashBlockSchema.optional(),
-	headers: z.record(z.string(), z.array(z.string())).optional()
+	headers: z.record(z.string(), z.array(z.string())).optional(),
+	downloadVariables: z.array(downloadVariableSchema).optional(),
+	downloadVariablesFrom: z.enum(['details', 'search']).optional()
 });
 
 export type DownloadBlock = z.infer<typeof downloadBlockSchema>;
@@ -546,6 +565,8 @@ export type DownloadBlock = z.infer<typeof downloadBlockSchema>;
 export const yamlDefinitionSchema = z.object({
 	// Metadata
 	id: z.string(),
+	// Indexer IDs this definition replaces (for migration purposes)
+	replaces: z.array(z.string()).optional(),
 	name: z.string(),
 	description: z.string().optional(),
 	type: z.enum(['public', 'semi-private', 'private']).default('public'),
@@ -725,4 +746,28 @@ export function getCategoryById(id: number): { id: number; name: string } | null
 		if (cat.id === id) return cat;
 	}
 	return null;
+}
+
+/**
+ * Resolve a category value (numeric ID string or name like "Movies/Foreign")
+ * to a Newznab numeric ID.
+ *
+ * This function handles both:
+ * - Numeric strings: "2010" -> 2010
+ * - Category names: "Movies/Foreign" -> 2010
+ *
+ * @param cat - The category value from YAML (can be numeric string or category name)
+ * @returns The Newznab numeric category ID, or 8000 (Other) if not found
+ */
+export function resolveCategoryId(cat: string | undefined): number {
+	if (!cat) return 8000; // Default to "Other"
+
+	// If already numeric, parse directly
+	if (/^\d+$/.test(cat)) {
+		return parseInt(cat, 10);
+	}
+
+	// Look up by name in NEWZNAB_CATEGORIES
+	const info = NEWZNAB_CATEGORIES[cat];
+	return info?.id ?? 8000;
 }

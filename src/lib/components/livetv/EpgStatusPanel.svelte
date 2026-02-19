@@ -5,14 +5,13 @@
 	interface Props {
 		status: EpgStatus | null;
 		loading: boolean;
-		syncing: boolean;
+		syncingAll: boolean;
+		syncingAccountIds: string[];
 		onSync: () => void;
 		onSyncAccount: (accountId: string) => void;
 	}
 
-	let { status, loading, syncing, onSync, onSyncAccount }: Props = $props();
-
-	let syncingAccountId = $state<string | null>(null);
+	let { status, loading, syncingAll, syncingAccountIds, onSync, onSyncAccount }: Props = $props();
 
 	function formatRelativeTime(isoDate: string | null): string {
 		if (!isoDate) return 'Never';
@@ -45,15 +44,42 @@
 		return `in ${Math.floor(diffHours / 24)}d`;
 	}
 
-	async function handleSyncAccount(accountId: string) {
-		syncingAccountId = accountId;
-		await onSyncAccount(accountId);
-		syncingAccountId = null;
+	function compactMessage(message: string | undefined, maxLength = 140): string {
+		if (!message) return 'Unknown error';
+		const compact = message.replace(/\s+/g, ' ').trim();
+		if (compact.length <= maxLength) return compact;
+		return `${compact.slice(0, maxLength - 1)}...`;
 	}
+
+	async function handleSyncAccount(accountId: string) {
+		await onSyncAccount(accountId);
+	}
+
+	const syncingAccountIdSet = $derived(new Set(syncingAccountIds));
+	const hasAccountSyncRunning = $derived(syncingAccountIds.length > 0);
+	const anySyncing = $derived(syncingAll || hasAccountSyncRunning);
 
 	const accountsWithError = $derived(status?.accounts.filter((a) => a.error).length ?? 0);
 	const accountsWithoutEpg = $derived(
 		status?.accounts.filter((a) => a.hasEpg === false).length ?? 0
+	);
+	const syncErrors = $derived(
+		status?.accounts
+			.filter((a) => Boolean(a.error))
+			.map((a) => ({
+				id: a.id,
+				name: a.name,
+				message: compactMessage(a.error)
+			})) ?? []
+	);
+	const syncWarnings = $derived(
+		status?.accounts
+			.filter((a) => !a.error && a.hasEpg === false)
+			.map((a) => ({
+				id: a.id,
+				name: a.name,
+				message: 'No EPG data was returned during the last sync'
+			})) ?? []
 	);
 </script>
 
@@ -108,6 +134,58 @@
 			</div>
 		</div>
 
+		{#if syncErrors.length > 0 || syncWarnings.length > 0}
+			<div class="space-y-2">
+				{#if syncErrors.length > 0}
+					<div class="alert alert-error">
+						<AlertTriangle class="h-5 w-5 shrink-0" />
+						<div class="min-w-0 space-y-1">
+							<div class="font-medium">
+								Last sync completed with {syncErrors.length} error{syncErrors.length === 1
+									? ''
+									: 's'}
+							</div>
+							<div class="space-y-1 text-sm">
+								{#each syncErrors.slice(0, 3) as issue (issue.id)}
+									<div class="truncate">
+										<span class="font-medium">{issue.name}:</span>
+										{issue.message}
+									</div>
+								{/each}
+								{#if syncErrors.length > 3}
+									<div class="text-xs opacity-80">+{syncErrors.length - 3} more account issues</div>
+								{/if}
+							</div>
+						</div>
+					</div>
+				{/if}
+
+				{#if syncWarnings.length > 0}
+					<div class="alert alert-warning">
+						<Info class="h-5 w-5 shrink-0" />
+						<div class="min-w-0 space-y-1">
+							<div class="font-medium">
+								Last sync warning{syncWarnings.length === 1 ? '' : 's'} ({syncWarnings.length})
+							</div>
+							<div class="space-y-1 text-sm">
+								{#each syncWarnings.slice(0, 3) as issue (issue.id)}
+									<div class="truncate">
+										<span class="font-medium">{issue.name}:</span>
+										{issue.message}
+									</div>
+								{/each}
+								{#if syncWarnings.length > 3}
+									<div class="text-xs opacity-80">
+										+{syncWarnings.length - 3} more account warnings
+									</div>
+								{/if}
+							</div>
+						</div>
+					</div>
+				{/if}
+			</div>
+		{/if}
+
 		<!-- Sync all button -->
 		<div class="flex items-center justify-between">
 			<div class="flex items-center gap-2">
@@ -119,10 +197,13 @@
 					<div class="badge badge-sm badge-warning">{accountsWithoutEpg} no EPG</div>
 				{/if}
 			</div>
-			<button class="btn btn-sm btn-primary" onclick={onSync} disabled={syncing}>
-				{#if syncing}
+			<button class="btn btn-sm btn-primary" onclick={onSync} disabled={anySyncing}>
+				{#if syncingAll}
 					<Loader2 class="h-4 w-4 animate-spin" />
 					Syncing All...
+				{:else if hasAccountSyncRunning}
+					<Loader2 class="h-4 w-4 animate-spin" />
+					Sync In Progress...
 				{:else}
 					<RefreshCw class="h-4 w-4" />
 					Sync All Accounts
@@ -134,6 +215,7 @@
 		{#if status.accounts && status.accounts.length > 0}
 			<div class="space-y-2">
 				{#each status.accounts as account (account.id)}
+					{@const isAccountSyncing = syncingAccountIdSet.has(account.id)}
 					<div class="card bg-base-200">
 						<div class="card-body flex-row items-center justify-between p-4">
 							<div class="flex items-center gap-4">
@@ -165,10 +247,10 @@
 							<button
 								class="btn btn-ghost btn-sm"
 								onclick={() => handleSyncAccount(account.id)}
-								disabled={syncing || syncingAccountId === account.id || account.hasEpg === false}
-								title={account.hasEpg === false ? 'Portal has no EPG' : 'Sync this account'}
+								disabled={syncingAll || isAccountSyncing}
+								title={syncingAll ? 'Sync all is currently running' : 'Sync this account'}
 							>
-								{#if syncingAccountId === account.id}
+								{#if isAccountSyncing}
 									<Loader2 class="h-4 w-4 animate-spin" />
 								{:else}
 									<RefreshCw class="h-4 w-4" />

@@ -508,6 +508,32 @@ async function findFilesRecursive(dir: string, extensions?: string[]): Promise<s
 					}
 				}
 				files.push(fullPath);
+			} else if (entry.isSymbolicLink()) {
+				// Dirent symlinks are neither files nor directories.
+				// Include symlinked files (useful for Altmount/NZBDav Rclone mounts),
+				// but avoid recursing through symlinked directories.
+				try {
+					const targetStats = await stat(fullPath);
+					if (!targetStats.isFile()) {
+						continue;
+					}
+				} catch {
+					// Broken/unreadable symlink - skip
+					continue;
+				}
+
+				// Filter by extension if specified
+				if (extensions && extensions.length > 0) {
+					const ext = extname(entry.name).toLowerCase();
+					if (!extensions.includes(ext)) {
+						// Fallback: check magic numbers for extensionless symlinked files
+						if (ext === '' && (await isVideoFileByMagic(fullPath))) {
+							files.push(fullPath);
+						}
+						continue;
+					}
+				}
+				files.push(fullPath);
 			}
 		}
 	} catch (error) {

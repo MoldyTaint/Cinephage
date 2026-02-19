@@ -22,8 +22,8 @@
 		{#each folders as folder (folder.id)}
 			<div class="card bg-base-200 shadow-sm">
 				<div class="card-body p-4">
-					<div class="flex items-start justify-between">
-						<div class="flex items-center gap-3">
+					<div class="flex items-start justify-between gap-3">
+						<div class="flex min-w-0 items-center gap-3">
 							<div
 								class="rounded-lg p-2 {folder.mediaType === 'movie'
 									? 'bg-primary/20 text-primary'
@@ -35,7 +35,7 @@
 									<Tv class="h-5 w-5" />
 								{/if}
 							</div>
-							<div>
+							<div class="min-w-0">
 								<h3 class="flex items-center gap-2 font-semibold">
 									{folder.name}
 									{#if folder.isDefault}
@@ -51,7 +51,9 @@
 										</span>
 									{/if}
 								</h3>
-								<p class="font-mono text-sm text-base-content/60">{folder.path}</p>
+								<p class="max-w-full font-mono text-sm break-all text-base-content/60">
+									{folder.path}
+								</p>
 							</div>
 						</div>
 

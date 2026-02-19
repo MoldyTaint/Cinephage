@@ -155,22 +155,16 @@ export class TorrentProtocolHandler extends BaseProtocolHandler implements ITorr
 	}
 
 	/**
-	 * Generate download URL (may prefer magnet based on settings)
+	 * Generate download URL
+	 * Always returns the direct download URL to ensure private tracker compatibility.
+	 * We never prefer magnet links as they break private trackers like nCore.
 	 */
 	override async generateDownloadUrl(
 		result: ReleaseResult,
-		context: ProtocolContext
+		_context: ProtocolContext
 	): Promise<string> {
-		const settings = context.settings as TorrentProtocolSettings;
-
-		// Check if we should prefer magnet
-		if (settings.preferMagnetUrl) {
-			const magnet = this.getMagnetUrl(result);
-			if (magnet) {
-				return magnet;
-			}
-		}
-
+		// Always use the direct download URL
+		// This ensures we get the .torrent file with private tracker announce URLs
 		return result.downloadUrl;
 	}
 

@@ -56,9 +56,9 @@ search:
       inputs:
         t: movie
         cat: '{{ join .Categories "," }}'
-        imdbid: '{{ .Query.IMDBID }}'
+        imdbid: '{{ .Query.IMDBIDShort }}'
         tmdbid: '{{ .Query.TMDBID }}'
-        q: '{{ .Keywords }}'
+        q: '{{ if .Query.IMDBIDShort }}{{ else }}{{ .Keywords }}{{ end }}'
         apikey: '{{ .Config.apikey }}'
         limit: '100'
 
@@ -69,11 +69,11 @@ search:
       inputs:
         t: tvsearch
         cat: '{{ join .Categories "," }}'
-        imdbid: '{{ .Query.IMDBID }}'
+        imdbid: '{{ .Query.IMDBIDShort }}'
         tvdbid: '{{ .Query.TVDBID }}'
         season: '{{ .Query.Season }}'
         ep: '{{ .Query.Ep }}'
-        q: '{{ .Keywords }}'
+        q: '{{ if .Query.IMDBIDShort }}{{ else }}{{ .Keywords }}{{ end }}'
         apikey: '{{ .Config.apikey }}'
         limit: '100'
 

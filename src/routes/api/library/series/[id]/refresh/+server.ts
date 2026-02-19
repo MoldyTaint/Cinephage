@@ -15,6 +15,7 @@ import { series, seasons, episodes } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
 import { logger } from '$lib/logging';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 
 interface ProgressEvent {
 	type: 'progress';
@@ -267,6 +268,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 						})
 						.where(eq(seasons.id, seasonId));
 				}
+
+				libraryMediaEvents.emitSeriesUpdated(id);
 
 				// Send completion event
 				send({

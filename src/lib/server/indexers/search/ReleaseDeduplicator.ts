@@ -1,5 +1,6 @@
 import type { ReleaseResult, EnhancedReleaseResult } from '../types';
 import { logger } from '$lib/logging';
+import { extractInfoHash } from '$lib/server/downloadClients/utils/hashUtils';
 
 /**
  * Result of deduplication operation.
@@ -19,17 +20,12 @@ export interface EnhancedDeduplicationResult {
 
 /**
  * Pre-compiled regex patterns for title normalization.
- * Defined at module level to avoid recompilation per call.
+ * Less aggressive than before to avoid false positive deduplication.
  */
-const QUALITY_PATTERN =
-	/\b(720p|1080p|2160p|4k|uhd|hdr|hdr10|hdr10\+|dolby|dts|dts-hd|dts-x|atmos|truehd)\b/gi;
-const CODEC_PATTERN = /\b(x264|x265|h264|h265|hevc|avc|xvid|divx|av1|vp9)\b/gi;
-const SOURCE_PATTERN =
-	/\b(bluray|blu-ray|bdrip|brrip|webrip|web-rip|webdl|web-dl|hdtv|dvdrip|hdrip|remux|dvdscr|screener|cam|ts|telesync|hdcam)\b/gi;
+const RELEASE_GROUP_PATTERN = /-\s*[a-z0-9]+$/i;
 const BRACKET_PATTERN = /\[.*?\]/g;
-const GROUP_PATTERN = /-[a-z0-9]+$/i;
-const SPECIAL_CHARS_PATTERN = /[^a-z0-9\s]/g;
-const WHITESPACE_PATTERN = /\s+/g;
+const PAREN_PATTERN = /\(.*?\)/g;
+const EXTRA_WHITESPACE_PATTERN = /\s+/g;
 
 /**
  * Maximum size for title normalization cache.
@@ -37,15 +33,16 @@ const WHITESPACE_PATTERN = /\s+/g;
 const MAX_NORMALIZE_CACHE_SIZE = 5000;
 
 /**
- * Deduplicates releases by infoHash or normalized title.
- * Uses pre-compiled regex and memoization for performance.
+ * Deduplicates releases using a single-pass approach with smart key generation.
+ * Handles both basic and enhanced releases efficiently.
  */
 export class ReleaseDeduplicator {
-	/** Cache for normalized titles to avoid redundant regex operations */
+	/** Cache for normalized titles to avoid redundant operations */
 	private normalizeCache: Map<string, string> = new Map();
+
 	/**
-	 * Deduplicates releases, preferring those with more seeders.
-	 * Tracks all source indexers that returned the same release (by infoHash).
+	 * Deduplicates releases using infoHash, GUID, or normalized title as keys.
+	 * Prefers releases with more seeders, then larger size, then newer date.
 	 */
 	deduplicate(releases: ReleaseResult[]): DeduplicationResult {
 		const seen = new Map<string, ReleaseResult>();
@@ -105,13 +102,14 @@ export class ReleaseDeduplicator {
 	}
 
 	/**
-	 * Deduplicates enhanced releases using Radarr-style preference logic.
+	 * Deduplicates enhanced releases using quality-aware preference logic.
 	 * Called AFTER enrichment when we have rejection counts and scores.
 	 *
-	 * Preference order (like Radarr):
+	 * Preference order:
 	 * 1. Fewer rejections wins (non-rejected preferred over rejected)
 	 * 2. Higher indexer priority wins (lower priority number = higher preference)
-	 * 3. Fallback to legacy logic (seeders > size > age)
+	 * 3. Higher quality score wins
+	 * 4. Fallback to legacy logic (seeders > size > age)
 	 */
 	deduplicateEnhanced(releases: EnhancedReleaseResult[]): EnhancedDeduplicationResult {
 		const seen = new Map<string, EnhancedReleaseResult>();
@@ -170,12 +168,25 @@ export class ReleaseDeduplicator {
 
 	/**
 	 * Gets the deduplication key for a release.
-	 * Priority: infoHash > streaming guid > normalized title
+	 * Priority: infoHash > magnet URL hash > streaming guid > normalized title
+	 *
+	 * The key is designed to:
+	 * - Match identical torrents across different indexers (via infoHash)
+	 * - Match the same content from streaming sources (via GUID)
+	 * - Match similar releases with minor title variations (via normalized title)
 	 */
 	private getDedupeKey(release: ReleaseResult): string {
 		// Use infoHash if available (most reliable for torrents)
 		if (release.infoHash) {
 			return `hash:${release.infoHash.toLowerCase()}`;
+		}
+
+		// Try to extract infoHash from magnet URL if available
+		if (release.magnetUrl) {
+			const hashFromMagnet = extractInfoHash(release.magnetUrl);
+			if (hashFromMagnet) {
+				return `hash:${hashFromMagnet.toLowerCase()}`;
+			}
 		}
 
 		// For streaming, use guid to create a separate dedup namespace
@@ -185,14 +196,24 @@ export class ReleaseDeduplicator {
 			return `streaming:${release.guid}`;
 		}
 
-		// Fallback to normalized title for torrent/usenet without infoHash
+		// For usenet, use GUID since NZBs don't have infoHashes
+		if (release.protocol === 'usenet') {
+			return `usenet:${release.guid}`;
+		}
+
+		// Fallback to normalized title for torrents without infoHash or magnet
+		// This is less reliable but better than nothing
 		return `title:${this.normalizeTitle(release.title)}`;
 	}
 
 	/**
 	 * Normalizes a title for comparison.
-	 * Removes common variations, quality indicators, release groups, etc.
-	 * Uses pre-compiled regex patterns and memoization for performance.
+	 * Removes release group tags and extra whitespace but keeps quality/source indicators.
+	 * This is less aggressive than before to avoid false positive deduplication.
+	 *
+	 * Examples:
+	 * - "Movie.Name.2024.1080p.BluRay.x264-Group" -> "movie name 2024 1080p bluray x264"
+	 * - "Movie.Name.2024.1080p.BluRay.x264-OtherGroup" -> "movie name 2024 1080p bluray x264" (same!)
 	 */
 	private normalizeTitle(title: string): string {
 		// Check memoization cache first
@@ -203,19 +224,16 @@ export class ReleaseDeduplicator {
 
 		const normalized = title
 			.toLowerCase()
-			// Remove quality indicators (pre-compiled pattern)
-			.replace(QUALITY_PATTERN, '')
-			// Remove codec indicators (pre-compiled pattern)
-			.replace(CODEC_PATTERN, '')
-			// Remove source indicators (pre-compiled pattern)
-			.replace(SOURCE_PATTERN, '')
-			// Remove release group tags (pre-compiled patterns)
+			// Remove release group at the end (e.g., "-Group", "-RARBG")
+			.replace(RELEASE_GROUP_PATTERN, '')
+			// Remove bracketed content (e.g., "[Freeleech]", "[HDR]")
 			.replace(BRACKET_PATTERN, '')
-			.replace(GROUP_PATTERN, '')
-			// Remove special characters (pre-compiled pattern)
-			.replace(SPECIAL_CHARS_PATTERN, '')
-			// Collapse whitespace (pre-compiled pattern)
-			.replace(WHITESPACE_PATTERN, ' ')
+			// Remove parenthetical content (e.g., "(2024)", "(4K)")
+			.replace(PAREN_PATTERN, '')
+			// Replace special characters with spaces (keep more than before)
+			.replace(/[._-]/g, ' ')
+			// Collapse multiple whitespace
+			.replace(EXTRA_WHITESPACE_PATTERN, ' ')
 			.trim();
 
 		// LRU-style eviction: remove oldest entry if at capacity
@@ -241,6 +259,7 @@ export class ReleaseDeduplicator {
 
 	/**
 	 * Determines if the candidate release should be preferred over the existing one.
+	 * Prefers: more seeders > larger size > newer date
 	 */
 	private shouldPrefer(candidate: ReleaseResult, existing: ReleaseResult): boolean {
 		const candidateSeeders = candidate.seeders ?? 0;
@@ -262,10 +281,11 @@ export class ReleaseDeduplicator {
 
 	/**
 	 * Determines if the candidate enhanced release should be preferred over the existing one.
-	 * Uses Radarr-style preference logic:
-	 * 1. Fewer rejections wins (non-rejected over rejected)
+	 * Preference order:
+	 * 1. Fewer rejections wins (non-rejected preferred over rejected)
 	 * 2. Higher indexer priority wins (lower number = higher preference)
-	 * 3. Fallback to legacy logic (seeders > size > age)
+	 * 3. Higher quality score wins
+	 * 4. Fallback to legacy logic (seeders > size > age)
 	 */
 	private shouldPreferEnhanced(
 		candidate: EnhancedReleaseResult,
@@ -280,14 +300,20 @@ export class ReleaseDeduplicator {
 		}
 
 		// 2. Prefer higher priority indexer (lower number = higher priority)
-		// Default priority is 25 if not set
 		const candidatePriority = candidate.indexerPriority ?? 25;
 		const existingPriority = existing.indexerPriority ?? 25;
 		if (candidatePriority !== existingPriority) {
 			return candidatePriority < existingPriority;
 		}
 
-		// 3. Fallback to legacy logic: seeders > size > age
+		// 3. Prefer higher quality score
+		const candidateScore = candidate.totalScore ?? 0;
+		const existingScore = existing.totalScore ?? 0;
+		if (candidateScore !== existingScore) {
+			return candidateScore > existingScore;
+		}
+
+		// 4. Fallback to legacy logic: seeders > size > age
 		const candidateSeeders = candidate.seeders ?? 0;
 		const existingSeeders = existing.seeders ?? 0;
 		if (candidateSeeders !== existingSeeders) {

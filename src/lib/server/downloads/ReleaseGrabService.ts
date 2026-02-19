@@ -45,9 +45,43 @@ import type { EnhancedReleaseResult } from '$lib/server/indexers/types';
 import { categoryMatchesSearchType, getCategoryContentType } from '$lib/server/indexers/types';
 import type { DownloadInfo } from '$lib/server/downloadClients/core/interfaces.js';
 import { blocklistService } from '$lib/server/monitoring/specifications/BlocklistSpecification.js';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 
 const logger = createChildLogger({ module: 'ReleaseGrabService' });
 const parser = new ReleaseParser();
+
+type EpisodeFileUpsertInput = Omit<typeof episodeFiles.$inferInsert, 'id'> & { id?: string };
+type EpisodeFileWriteExecutor = Pick<typeof db, 'select' | 'update' | 'insert'>;
+
+/**
+ * Upsert episode file by (seriesId, relativePath) and return canonical row id.
+ */
+async function upsertEpisodeFileByPath(
+	executor: EpisodeFileWriteExecutor,
+	record: EpisodeFileUpsertInput
+): Promise<string> {
+	const { id: requestedId, ...values } = record;
+
+	const existing = await executor
+		.select({ id: episodeFiles.id })
+		.from(episodeFiles)
+		.where(
+			and(
+				eq(episodeFiles.seriesId, record.seriesId),
+				eq(episodeFiles.relativePath, record.relativePath)
+			)
+		)
+		.limit(1);
+
+	if (existing.length > 0) {
+		await executor.update(episodeFiles).set(values).where(eq(episodeFiles.id, existing[0].id));
+		return existing[0].id;
+	}
+
+	const id = requestedId ?? randomUUID();
+	await executor.insert(episodeFiles).values({ id, ...values });
+	return id;
+}
 
 /**
  * Options for grabbing a release
@@ -224,7 +258,8 @@ class ReleaseGrabService {
 			magnetUrl: release.magnetUrl,
 			infoHash: release.infoHash,
 			indexerId: release.indexerId,
-			title: release.title
+			title: release.title,
+			commentsUrl: release.commentsUrl
 		});
 
 		if (!resolved.success) {
@@ -380,7 +415,9 @@ class ReleaseGrabService {
 
 			if (indexer && indexer.downloadTorrent) {
 				try {
-					const downloadResult = await indexer.downloadTorrent(release.downloadUrl);
+					const downloadResult = await indexer.downloadTorrent(release.downloadUrl, {
+						releaseDetailsUrl: release.commentsUrl
+					});
 					if (downloadResult.success && downloadResult.data) {
 						nzbContent = downloadResult.data;
 
@@ -573,7 +610,9 @@ class ReleaseGrabService {
 
 		if (indexer && indexer.downloadTorrent) {
 			try {
-				const downloadResult = await indexer.downloadTorrent(release.downloadUrl);
+				const downloadResult = await indexer.downloadTorrent(release.downloadUrl, {
+					releaseDetailsUrl: release.commentsUrl
+				});
 				if (downloadResult.success && downloadResult.data) {
 					nzbContent = downloadResult.data;
 				} else {
@@ -883,7 +922,19 @@ class ReleaseGrabService {
 			// Get file stats
 			const stats = statSync(filePath);
 			const fileSize = Number(stats.size);
-			const mediaInfo = await mediaInfoService.extractMediaInfo(filePath);
+			let allowStrmProbe = true;
+			if (mediaType === 'movie' && movieId) {
+				const movie = await db.query.movies.findFirst({
+					where: eq(movies.id, movieId)
+				});
+				allowStrmProbe = movie?.scoringProfileId !== 'streamer';
+			} else if (mediaType === 'tv' && seriesId) {
+				const show = await db.query.series.findFirst({
+					where: eq(series.id, seriesId)
+				});
+				allowStrmProbe = show?.scoringProfileId !== 'streamer';
+			}
+			const mediaInfo = await mediaInfoService.extractMediaInfo(filePath, { allowStrmProbe });
 
 			// Parse quality from release title
 			const parsedRelease = parser.parse(release.title);
@@ -1007,6 +1058,7 @@ class ReleaseGrabService {
 			fileId,
 			relativePath
 		});
+		libraryMediaEvents.emitMovieUpdated(movieId);
 
 		void this.triggerSubtitleSearch('movie', movieId);
 
@@ -1081,10 +1133,8 @@ class ReleaseGrabService {
 			);
 		}
 
-		// Create episode file record
-		const fileId = randomUUID();
-		await db.insert(episodeFiles).values({
-			id: fileId,
+		// Create/update episode file record
+		const fileId = await upsertEpisodeFileByPath(db, {
 			seriesId,
 			seasonNumber: season,
 			episodeIds: [episodeRow.id],
@@ -1124,6 +1174,7 @@ class ReleaseGrabService {
 			fileId,
 			relativePath
 		});
+		libraryMediaEvents.emitSeriesUpdated(seriesId);
 
 		void this.triggerSubtitleSearch('episode', episodeRow.id);
 
@@ -1165,6 +1216,7 @@ class ReleaseGrabService {
 		if (!show || !show.rootFolder) {
 			return { success: false, error: 'Series or root folder not found' };
 		}
+		const allowStrmProbe = show.scoringProfileId !== 'streamer';
 
 		// Check which episodes already have files (to avoid race condition with watcher)
 		const seasonEpisodes = await db.query.episodes.findMany({
@@ -1237,7 +1289,9 @@ class ReleaseGrabService {
 
 			try {
 				const stats = statSync(epResult.filePath);
-				const mediaInfo = await mediaInfoService.extractMediaInfo(epResult.filePath);
+				const mediaInfo = await mediaInfoService.extractMediaInfo(epResult.filePath, {
+					allowStrmProbe
+				});
 				const relativePath = relative(show.rootFolder!.path, epResult.filePath);
 
 				episodeFileData.push({
@@ -1335,10 +1389,8 @@ class ReleaseGrabService {
 						}
 					}
 
-					// Create episode file record
-					const fileId = randomUUID();
-					await tx.insert(episodeFiles).values({
-						id: fileId,
+					// Create/update episode file record
+					const fileId = await upsertEpisodeFileByPath(tx, {
 						seriesId,
 						seasonNumber,
 						episodeIds: [epData.episodeId],
@@ -1415,6 +1467,7 @@ class ReleaseGrabService {
 			episodesCreated: createdFileIds.length,
 			totalEpisodes: strmResult.results.length
 		});
+		libraryMediaEvents.emitSeriesUpdated(seriesId);
 
 		void this.triggerSubtitleSearchForEpisodes(createdEpisodeIds);
 

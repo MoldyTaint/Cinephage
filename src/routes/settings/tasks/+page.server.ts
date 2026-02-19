@@ -14,6 +14,7 @@ import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler'
 import { taskHistoryService } from '$lib/server/tasks/TaskHistoryService';
 import { librarySchedulerService } from '$lib/server/library/index';
 import type { TaskHistoryEntry } from '$lib/types/task';
+import { taskSettingsService } from '$lib/server/tasks/TaskSettingsService';
 
 export const load: PageServerLoad = async ({ depends }) => {
 	depends('app:tasks');
@@ -24,6 +25,10 @@ export const load: PageServerLoad = async ({ depends }) => {
 	// Build unified task list with status
 	const tasks: UnifiedTask[] = await Promise.all(
 		UNIFIED_TASK_DEFINITIONS.map(async (def: UnifiedTaskDefinition) => {
+			// Get settings from TaskSettingsService
+			const settings = await taskSettingsService.getTaskSettings(def.id);
+			const enabled = settings?.enabled ?? true;
+
 			if (def.category === 'scheduled') {
 				// Get status from MonitoringScheduler
 				const taskKey = def.id as keyof typeof monitoringStatus.tasks;
@@ -33,8 +38,10 @@ export const load: PageServerLoad = async ({ depends }) => {
 					...def,
 					lastRunTime: status?.lastRunTime?.toISOString() ?? null,
 					nextRunTime: status?.nextRunTime?.toISOString() ?? null,
-					intervalHours: status?.intervalHours ?? def.defaultIntervalHours ?? null,
-					isRunning: status?.isRunning ?? false
+					intervalHours:
+						settings?.intervalHours ?? status?.intervalHours ?? def.defaultIntervalHours ?? null,
+					isRunning: status?.isRunning ?? false,
+					enabled
 				};
 			} else {
 				// Get status from TaskHistoryService for maintenance tasks
@@ -52,7 +59,8 @@ export const load: PageServerLoad = async ({ depends }) => {
 					lastRunTime: lastRun?.completedAt ?? lastRun?.startedAt ?? null,
 					nextRunTime: null,
 					intervalHours: null,
-					isRunning
+					isRunning,
+					enabled
 				};
 			}
 		})

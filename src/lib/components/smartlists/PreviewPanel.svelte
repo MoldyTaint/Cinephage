@@ -104,43 +104,47 @@
 		return item.title ?? item.name ?? 'Unknown';
 	}
 
-	function getYear(item: PreviewItem): string {
-		const date = item.release_date ?? item.first_air_date;
-		if (!date) return '';
-		return date.substring(0, 4);
-	}
-
 	function getPosterUrl(path: string | null): string {
 		if (!path) return '';
 		// Check if it's already a full URL (e.g., from IMDb)
 		if (path.startsWith('http://') || path.startsWith('https://')) {
 			return path;
 		}
-		// Otherwise, treat as TMDB path
+		// Otherwise, treat as TMDB path - use w185 for smaller posters
 		return `https://image.tmdb.org/t/p/w185${path}`;
 	}
 
+	function getRatingColor(rating: number): string {
+		if (rating >= 7.5) return 'bg-success/90 text-success-content';
+		if (rating >= 6) return 'bg-warning/90 text-warning-content';
+		return 'bg-base-300/90 text-base-content';
+	}
+
 	const mediaLabel = $derived(mediaType === 'movie' ? 'movies' : 'TV shows');
+	const hasMultiplePages = $derived(totalPages > 1);
 </script>
 
-<div class="card h-full bg-base-100 shadow-xl">
-	<div class="card-body p-4">
+<div class="card bg-base-100 shadow-xl">
+	<div class="card-body p-4 sm:p-6">
 		<!-- Header -->
-		<div class="flex items-center justify-between">
-			<h2 class="card-title text-lg">
-				Preview
+		<div class="mb-4 flex items-center justify-between">
+			<div class="flex items-center gap-3">
+				<h2 class="card-title text-lg sm:text-xl">Preview</h2>
 				{#if !loading && !error}
 					{#if isLimited}
-						<span class="badge badge-ghost"
-							>{totalResults.toLocaleString()} of {unfilteredTotal.toLocaleString()}
-							{mediaLabel}</span
-						>
-						<span class="badge badge-outline badge-sm">limited to {itemLimit}</span>
+						<span class="badge badge-ghost badge-sm">
+							{totalResults.toLocaleString()} of {unfilteredTotal.toLocaleString()}
+							{mediaLabel}
+						</span>
+						<span class="badge badge-outline badge-xs">limited to {itemLimit}</span>
 					{:else}
-						<span class="badge badge-ghost">{totalResults.toLocaleString()} {mediaLabel}</span>
+						<span class="badge badge-ghost badge-sm">
+							{totalResults.toLocaleString()}
+							{mediaLabel}
+						</span>
 					{/if}
 				{/if}
-			</h2>
+			</div>
 			<div class="flex items-center gap-2">
 				{#if debugData && !loading}
 					<button
@@ -159,7 +163,7 @@
 		</div>
 
 		<!-- Content -->
-		<div class="flex-1 overflow-y-auto">
+		<div class="min-h-[400px]">
 			{#if error}
 				<div class="flex h-64 flex-col items-center justify-center gap-4">
 					<AlertCircle class="h-12 w-12 text-error" />
@@ -171,11 +175,10 @@
 				</div>
 			{:else if loading && items.length === 0}
 				<!-- Loading skeleton -->
-				<div class="grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] gap-2 sm:gap-3">
-					{#each Array(12) as _, i (i)}
+				<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5">
+					{#each Array(20) as _, i (i)}
 						<div class="animate-pulse">
-							<div class="aspect-[2/3] rounded bg-base-300"></div>
-							<div class="mt-1 h-3 w-3/4 rounded bg-base-300"></div>
+							<div class="aspect-[2/3] rounded-lg bg-base-300"></div>
 						</div>
 					{/each}
 				</div>
@@ -190,37 +193,45 @@
 				<div class="relative">
 					<!-- Loading overlay -->
 					{#if loading}
-						<div class="absolute inset-0 z-10 flex items-center justify-center bg-base-100/70">
-							<div class="flex flex-col items-center gap-2">
-								<RefreshCw class="h-8 w-8 animate-spin text-primary" />
+						<div
+							class="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-base-100/80 backdrop-blur-sm"
+						>
+							<div class="flex flex-col items-center gap-3">
+								<RefreshCw class="h-10 w-10 animate-spin text-primary" />
 								<span class="text-sm text-base-content/70">Loading...</span>
 							</div>
 						</div>
 					{/if}
-					<div class="grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] gap-2 sm:gap-3">
+
+					<!-- Grid -->
+					<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5">
 						{#each items as item (item.id)}
 							<div class="group relative">
-								<!-- Poster -->
-								<div class="aspect-[2/3] overflow-hidden rounded bg-base-300">
+								<!-- Poster Card -->
+								<div
+									class="relative aspect-[2/3] overflow-hidden rounded-lg bg-base-300 shadow-sm transition-all duration-200 group-hover:shadow-lg"
+								>
 									{#if item.poster_path}
 										<img
 											src={getPosterUrl(item.poster_path)}
 											alt={getTitle(item)}
-											class="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+											class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
 											loading="lazy"
 										/>
 									{:else}
-										<div class="flex h-full w-full items-center justify-center">
-											<Image class="h-8 w-8 text-base-content/30" />
+										<div class="flex h-full w-full items-center justify-center bg-base-200">
+											<Image class="h-8 w-8 text-base-content/20" />
 										</div>
 									{/if}
 
 									<!-- Rating badge -->
 									{#if item.vote_average > 0}
 										<div
-											class="absolute top-0.5 right-0.5 flex items-center gap-0.5 rounded bg-black/70 px-1 py-0.5 text-[10px] text-white"
+											class="absolute top-1.5 right-1.5 flex items-center gap-0.5 rounded-md px-1 py-0.5 text-[10px] font-semibold shadow-md {getRatingColor(
+												item.vote_average
+											)}"
 										>
-											<Star class="h-2.5 w-2.5 fill-yellow-400 text-yellow-400" />
+											<Star class="h-2.5 w-2.5 fill-current" />
 											{item.vote_average.toFixed(1)}
 										</div>
 									{/if}
@@ -228,23 +239,13 @@
 									<!-- In library overlay -->
 									{#if item.inLibrary}
 										<div
-											class="absolute inset-0 flex items-center justify-center bg-success/40"
+											class="absolute inset-0 flex items-center justify-center bg-success/30 backdrop-blur-[1px]"
 											title="In library"
 										>
 											<div class="rounded-full bg-success p-1.5 shadow-lg">
-												<Check class="h-5 w-5 text-success-content" />
+												<Check class="h-4 w-4 text-success-content" />
 											</div>
 										</div>
-									{/if}
-								</div>
-
-								<!-- Title -->
-								<div class="mt-1">
-									<p class="line-clamp-1 text-xs font-medium" title={getTitle(item)}>
-										{getTitle(item)}
-									</p>
-									{#if getYear(item)}
-										<p class="text-[10px] text-base-content/60">{getYear(item)}</p>
 									{/if}
 								</div>
 							</div>
@@ -255,25 +256,28 @@
 		</div>
 
 		<!-- Pagination -->
-		{#if totalPages > 1 && !error}
-			<div class="mt-4 flex items-center justify-between border-t border-base-300 pt-4">
+		{#if hasMultiplePages && !error && items.length > 0}
+			<div class="mt-6 flex items-center justify-center gap-3 border-t border-base-200 pt-4">
 				<button
-					class="btn btn-ghost btn-sm"
+					class="btn gap-1 btn-ghost btn-sm"
 					onclick={() => onPageChange(page - 1)}
 					disabled={page <= 1 || loading}
+					aria-label="Previous page"
 				>
 					<ChevronLeft class="h-4 w-4" />
-					Previous
+					Prev
 				</button>
 
-				<span class="text-sm text-base-content/70">
-					Page {page} of {totalPages}
-				</span>
+				<div class="flex items-center gap-2 rounded-full bg-base-200 px-4 py-1">
+					<span class="text-sm font-medium text-base-content">Page {page}</span>
+					<span class="text-sm text-base-content/50">of {totalPages}</span>
+				</div>
 
 				<button
-					class="btn btn-ghost btn-sm"
+					class="btn gap-1 btn-ghost btn-sm"
 					onclick={() => onPageChange(page + 1)}
 					disabled={page >= totalPages || loading}
+					aria-label="Next page"
 				>
 					Next
 					<ChevronRight class="h-4 w-4" />

@@ -123,7 +123,9 @@
 		try {
 			const response = await fetch('/api/livetv/portals');
 			if (!response.ok) throw new Error('Failed to load portals');
-			portals = await response.json();
+			const result = await response.json();
+			if (!result.success) throw new Error(result.error || 'Failed to load portals');
+			portals = result.portals || [];
 		} catch (e) {
 			portalError = e instanceof Error ? e.message : 'Failed to load portals';
 		} finally {

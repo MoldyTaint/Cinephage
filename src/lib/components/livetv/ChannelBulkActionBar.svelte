@@ -5,6 +5,7 @@
 	interface Props {
 		selectedCount: number;
 		categories: ChannelCategory[];
+		excludedCategoryIds?: Set<string | null>;
 		loading: boolean;
 		currentAction: 'category' | 'remove' | null;
 		onSetCategory: (categoryId: string | null) => void;
@@ -15,6 +16,7 @@
 	let {
 		selectedCount,
 		categories,
+		excludedCategoryIds = new Set<string | null>(),
 		loading,
 		currentAction,
 		onSetCategory,
@@ -29,13 +31,27 @@
 		onSetCategory(categoryId);
 	}
 
+	const availableCategories = $derived(
+		categories.filter((cat) => !excludedCategoryIds.has(cat.id))
+	);
+	const hasUncategorizedOption = $derived(!excludedCategoryIds.has(null));
+	const hasCategoryTargets = $derived(availableCategories.length > 0);
+	const canMoveToAnotherCategory = $derived(hasUncategorizedOption || hasCategoryTargets);
 	const channelLabel = $derived(selectedCount === 1 ? 'channel' : 'channels');
+
+	$effect(() => {
+		if (dropdownOpen && !canMoveToAnotherCategory) {
+			dropdownOpen = false;
+		}
+	});
 </script>
 
 {#if selectedCount > 0}
-	<div class="fixed bottom-4 left-1/2 z-50 -translate-x-1/2">
+	<div
+		class="fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 z-50 mx-auto max-w-fit"
+	>
 		<div
-			class="flex items-center gap-3 rounded-full border border-base-content/10 bg-base-300 px-4 py-2.5 shadow-xl"
+			class="flex items-center gap-2 rounded-full border border-base-content/10 bg-base-300 px-3 py-2 shadow-xl sm:gap-3 sm:px-4 sm:py-2.5"
 		>
 			<span class="text-sm font-medium">
 				{selectedCount}
@@ -46,12 +62,13 @@
 
 			<div class="flex items-center gap-1">
 				<!-- Set Category Dropdown -->
-				<div class="dropdown dropdown-top">
+				<div class="relative">
 					<button
 						class="btn gap-1.5 btn-ghost btn-sm"
 						onclick={() => (dropdownOpen = !dropdownOpen)}
-						disabled={loading}
-						tabindex="0"
+						disabled={loading || !canMoveToAnotherCategory}
+						aria-expanded={dropdownOpen}
+						aria-haspopup="menu"
 					>
 						{#if loading && currentAction === 'category'}
 							<Loader2 size={16} class="animate-spin" />
@@ -62,36 +79,38 @@
 					</button>
 
 					{#if dropdownOpen}
-						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-						<ul
-							class="dropdown-content menu z-50 mb-2 w-52 rounded-box bg-base-200 p-2 shadow-lg"
-							tabindex="0"
+						<div
+							class="absolute bottom-full left-1/2 z-60 mb-2 w-52 -translate-x-1/2 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
 						>
-							<li>
-								<button onclick={() => handleCategorySelect(null)}>
-									<span class="h-3 w-3 rounded-full bg-base-content/20"></span>
-									Uncategorized
-								</button>
-							</li>
-							{#if categories.length > 0}
-								<li class="menu-title">
-									<span>Categories</span>
-								</li>
-								{#each categories as cat (cat.id)}
+							<ul class="menu p-0">
+								{#if hasUncategorizedOption}
 									<li>
-										<button onclick={() => handleCategorySelect(cat.id)}>
-											{#if cat.color}
-												<span class="h-3 w-3 rounded-full" style="background-color: {cat.color}"
-												></span>
-											{:else}
-												<span class="h-3 w-3 rounded-full bg-base-content/20"></span>
-											{/if}
-											{cat.name}
+										<button onclick={() => handleCategorySelect(null)}>
+											<span class="h-3 w-3 rounded-full bg-base-content/20"></span>
+											Uncategorized
 										</button>
 									</li>
-								{/each}
-							{/if}
-						</ul>
+								{/if}
+								{#if hasCategoryTargets}
+									<li class="menu-title">
+										<span>Categories</span>
+									</li>
+									{#each availableCategories as cat (cat.id)}
+										<li>
+											<button onclick={() => handleCategorySelect(cat.id)}>
+												{#if cat.color}
+													<span class="h-3 w-3 rounded-full" style="background-color: {cat.color}"
+													></span>
+												{:else}
+													<span class="h-3 w-3 rounded-full bg-base-content/20"></span>
+												{/if}
+												{cat.name}
+											</button>
+										</li>
+									{/each}
+								{/if}
+							</ul>
+						</div>
 					{/if}
 				</div>
 

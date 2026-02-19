@@ -95,6 +95,8 @@ export interface IndexerDefinition {
 	siteUrl: string;
 	/** Known alternate/mirror URLs from definition */
 	alternateUrls: string[];
+	/** Whether this definition comes from the custom definitions folder */
+	isCustom?: boolean;
 	capabilities: IndexerCapabilities;
 	settings: UIDefinitionSetting[];
 	/** Pre-computed UI hints for dynamic form rendering */
@@ -145,7 +147,6 @@ export interface Indexer {
 	seedRatio?: string | null; // Decimal stored as string (e.g., "1.0")
 	seedTime?: number | null; // Minutes
 	packSeedTime?: number | null; // Minutes for season packs
-	preferMagnetUrl?: boolean;
 	rejectDeadTorrents?: boolean; // Reject torrents with 0 seeders
 }
 
@@ -199,7 +200,6 @@ export interface IndexerFormData {
 	seedRatio?: string | null;
 	seedTime?: number | null;
 	packSeedTime?: number | null;
-	preferMagnetUrl: boolean;
 	rejectDeadTorrents: boolean;
 }
 

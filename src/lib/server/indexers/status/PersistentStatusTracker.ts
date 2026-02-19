@@ -203,11 +203,10 @@ export class PersistentStatusTracker {
 	 */
 	async recordSuccess(indexerId: string, responseTimeMs?: number): Promise<void> {
 		const status = await this.getOrCreateStatus(indexerId);
+		const previousFailures = status.consecutiveFailures;
 
 		status.totalRequests++;
-		status.consecutiveFailures = 0;
 		status.lastSuccess = new Date();
-		status.health = this.calculateHealth(status);
 
 		// Re-enable if it was auto-disabled
 		if (status.isDisabled) {
@@ -216,6 +215,11 @@ export class PersistentStatusTracker {
 			status.disabledUntil = undefined;
 			logger.info('Indexer re-enabled after success', { indexerId });
 		}
+
+		// Recover gradually instead of instantly flipping healthy after one success.
+		// This avoids masking intermittent/recent connectivity issues.
+		status.consecutiveFailures = previousFailures > 0 ? Math.max(0, previousFailures - 1) : 0;
+		status.health = this.calculateHealth(status);
 
 		// Track response time
 		if (responseTimeMs !== undefined) {
@@ -303,8 +307,9 @@ export class PersistentStatusTracker {
 		if (status.disabledUntil && new Date() >= status.disabledUntil) {
 			// Reset for retry
 			status.isDisabled = false;
-			// Halve the failure count to give it another chance
-			status.consecutiveFailures = Math.floor(status.consecutiveFailures / 2);
+			// Keep failure history in warning state after backoff so status does not
+			// jump directly back to healthy without sustained successful requests.
+			status.consecutiveFailures = Math.max(2, Math.floor(status.consecutiveFailures / 2));
 			status.health = this.calculateHealth(status);
 			this.markDirty(indexerId);
 			logger.info('Indexer backoff period expired, re-enabling for retry', { indexerId });

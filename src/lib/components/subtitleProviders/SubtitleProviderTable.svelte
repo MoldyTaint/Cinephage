@@ -14,22 +14,43 @@
 
 	interface Props {
 		providers: SubtitleProviderWithDefinition[];
+		selectedIds: Set<string>;
 		sort: { column: SortColumn; direction: SortDirection };
 		testingIds: Set<string>;
+		onSelect: (id: string, selected: boolean) => void;
+		onSelectAll: (selected: boolean) => void;
 		onSort: (column: SortColumn) => void;
 		onEdit: (provider: SubtitleProviderWithDefinition) => void;
 		onDelete: (provider: SubtitleProviderWithDefinition) => void;
 		onTest: (provider: SubtitleProviderWithDefinition) => void;
+		onToggle: (provider: SubtitleProviderWithDefinition) => void;
 		onReorder?: (providerIds: string[]) => void;
 	}
 
-	let { providers, sort, testingIds, onSort, onEdit, onDelete, onTest, onReorder }: Props =
-		$props();
+	let {
+		providers,
+		selectedIds,
+		sort,
+		testingIds,
+		onSelect,
+		onSelectAll,
+		onSort,
+		onEdit,
+		onDelete,
+		onTest,
+		onToggle,
+		onReorder
+	}: Props = $props();
 
 	// Drag and drop state
 	let draggedIndex = $state<number | null>(null);
 	let dragOverIndex = $state<number | null>(null);
 	let reorderMode = $state(false);
+
+	const allSelected = $derived(
+		providers.length > 0 && providers.every((p) => selectedIds.has(p.id))
+	);
+	const someSelected = $derived(providers.some((p) => selectedIds.has(p.id)) && !allSelected);
 
 	function isSortedBy(column: SortColumn): boolean {
 		return sort.column === column;
@@ -120,9 +141,19 @@
 		<table class="table table-sm">
 			<thead>
 				<tr>
-					{#if reorderMode}
-						<th class="w-10"></th>
-					{/if}
+					<th class="w-10">
+						{#if reorderMode}
+							<GripVertical class="mx-auto h-4 w-4 text-base-content/50" />
+						{:else}
+							<input
+								type="checkbox"
+								class="checkbox checkbox-sm"
+								checked={allSelected}
+								indeterminate={someSelected}
+								onchange={(e) => onSelectAll(e.currentTarget.checked)}
+							/>
+						{/if}
+					</th>
 					<th class="w-24">
 						<button
 							class="flex items-center gap-1 hover:text-primary"
@@ -174,16 +205,15 @@
 						</button>
 					</th>
 					<th class="text-center">Rate Limit</th>
-					<th>Actions</th>
+					<th class="pl-4! text-start">Actions</th>
 				</tr>
 			</thead>
 			<tbody>
 				{#each providers as provider, index (provider.id)}
 					<tr
-						class="transition-colors {draggedIndex === index ? 'opacity-50' : ''} {dragOverIndex ===
-						index
-							? 'bg-primary/10'
-							: ''}"
+						class="hover transition-colors {draggedIndex === index
+							? 'opacity-70'
+							: ''} {dragOverIndex === index ? 'bg-primary/5' : ''}"
 						draggable={reorderMode}
 						ondragstart={(e) => handleDragStart(e, index)}
 						ondragover={(e) => handleDragOver(e, index)}
@@ -191,17 +221,27 @@
 						ondrop={(e) => handleDrop(e, index)}
 						ondragend={handleDragEnd}
 					>
-						{#if reorderMode}
-							<td class="cursor-grab">
-								<GripVertical class="h-4 w-4 text-base-content/50" />
-							</td>
-						{/if}
+						<td class="w-10">
+							{#if reorderMode}
+								<div class="flex justify-center">
+									<GripVertical class="h-4 w-4 cursor-grab text-base-content/50" />
+								</div>
+							{:else}
+								<input
+									type="checkbox"
+									class="checkbox checkbox-sm"
+									checked={selectedIds.has(provider.id)}
+									onchange={(e) => onSelect(provider.id, e.currentTarget.checked)}
+								/>
+							{/if}
+						</td>
 						<SubtitleProviderRow
 							{provider}
 							testing={testingIds.has(provider.id)}
 							{onEdit}
 							{onDelete}
 							{onTest}
+							{onToggle}
 						/>
 					</tr>
 				{/each}

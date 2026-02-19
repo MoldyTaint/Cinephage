@@ -25,6 +25,7 @@ import { getRateLimitRegistry, getHostRateLimiter } from '../ratelimit';
 import type { RateLimitConfig } from '../ratelimit/types';
 import { captchaSolverSettingsService, getCaptchaSolver } from '$lib/server/captcha';
 import { CloudflareBypassError } from '$lib/errors';
+import { decodeBuffer } from './EncodingUtils';
 
 /** HTTP request options */
 export interface HttpRequestOptions {
@@ -81,6 +82,8 @@ export interface IndexerHttpConfig {
 	retry?: RetryConfig;
 	/** Default request timeout in ms */
 	defaultTimeout?: number;
+	/** Response encoding (default: UTF-8) */
+	encoding?: string;
 }
 
 /** Cookie jar per indexer */
@@ -111,7 +114,8 @@ export class IndexerHttp {
 			userAgent: config.userAgent ?? 'Cinephage/1.0',
 			rateLimit: config.rateLimit ?? { requests: 30, periodMs: 60_000 },
 			retry: config.retry ?? { maxRetries: 2, initialDelayMs: 1000 },
-			defaultTimeout: config.defaultTimeout ?? 30000
+			defaultTimeout: config.defaultTimeout ?? 30000,
+			encoding: config.encoding ?? 'UTF-8'
 		};
 
 		this.log = createChildLogger({
@@ -258,7 +262,10 @@ export class IndexerHttp {
 				signal: controller.signal
 			});
 
-			const body = await response.text();
+			// Get raw buffer and decode with proper encoding
+			const arrayBuffer = await response.arrayBuffer();
+			const buffer = Buffer.from(arrayBuffer);
+			const { text: body } = decodeBuffer(buffer, this.config.encoding);
 
 			// Check for Cloudflare challenge
 			if (isCloudflareProtected(response.status, response.headers, body)) {

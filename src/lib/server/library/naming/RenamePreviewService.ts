@@ -543,8 +543,11 @@ export class RenamePreviewService {
 			// Get current filename for fallback parsing
 			const currentFileName = basename(file.relativePath);
 
-			// Parse current filename to extract quality info as a fallback
-			const parsedFromFilename = this.parseFilenameForQuality(currentFileName);
+			// Parse for quality info - prefer sceneName (original release name) over current filename
+			// The sceneName contains the original release info (e.g., "Movie.2024.1080p.BluRay.x264-GROUP")
+			// while relativePath may have been renamed and lost metadata (e.g., "Movie (2024) [BluRay-1080p].mkv")
+			const parseSource = file.sceneName || currentFileName;
+			const parsedFromFilename = this.parseFilenameForQuality(parseSource);
 
 			// Build MediaNamingInfo with the following priority:
 			//
@@ -634,8 +637,11 @@ export class RenamePreviewService {
 			// Get current filename for fallback parsing
 			const currentFileName = basename(file.relativePath);
 
-			// Parse current filename to extract quality info when stored data is missing
-			const parsedFromFilename = this.parseFilenameForQuality(currentFileName);
+			// Parse for quality info - prefer sceneName (original release name) over current filename
+			// The sceneName contains the original release info (e.g., "Show.S01E01.1080p.WEB-DL.x264-GROUP")
+			// while relativePath may have been renamed and lost metadata
+			const parseSource = file.sceneName || currentFileName;
+			const parsedFromFilename = this.parseFilenameForQuality(parseSource);
 
 			// Get episode info from the file's episode IDs
 			const episodeIds = file.episodeIds || [];

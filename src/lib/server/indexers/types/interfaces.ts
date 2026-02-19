@@ -61,8 +61,9 @@ export interface IIndexer {
 	 * Get the download URL for a release (resolves if needed)
 	 * @param release - The release to get download URL for
 	 * @returns The download URL
+	 * @deprecated Use downloadTorrent() instead, which handles full download resolution
 	 */
-	getDownloadUrl(release: ReleaseResult): Promise<string>;
+	getDownloadUrl?(release: ReleaseResult): Promise<string>;
 
 	/**
 	 * Check if this indexer can handle the given search criteria
@@ -83,9 +84,28 @@ export interface IIndexer {
 	 * Download a torrent/NZB file from the indexer.
 	 * Handles authentication, cookies, and redirect following (including magnet: redirects).
 	 * @param url - The download URL (torrent file URL, not magnet)
+	 * @param options - Optional context for download resolution (e.g., release details URL)
 	 * @returns Download result with file data or magnet redirect
 	 */
-	downloadTorrent?(url: string): Promise<IndexerDownloadResult>;
+	downloadTorrent?(url: string, options?: DownloadTorrentOptions): Promise<IndexerDownloadResult>;
+}
+
+// =============================================================================
+// DOWNLOAD OPTIONS
+// =============================================================================
+
+/**
+ * Optional context passed to downloadTorrent for YAML-based download resolution.
+ * Provides release metadata that may be needed to resolve the actual download URL
+ * (e.g., indexers that require fetching a details page first).
+ */
+export interface DownloadTorrentOptions {
+	/** URL to the release details/comments page (used by downloadVariablesFrom: details) */
+	releaseDetailsUrl?: string;
+	/** Release GUID for template variable substitution */
+	releaseGuid?: string;
+	/** Release title for template variable substitution */
+	releaseTitle?: string;
 }
 
 // =============================================================================

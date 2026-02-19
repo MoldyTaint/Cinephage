@@ -12,6 +12,7 @@ export type ActivityStatus =
 	| 'imported' // Successfully imported to library
 	| 'streaming' // Streaming source (no download)
 	| 'downloading' // Currently downloading
+	| 'paused' // Download paused
 	| 'failed' // Download or import failed
 	| 'rejected' // Release rejected (quality, blocklist, etc.)
 	| 'removed' // Removed from queue
@@ -70,6 +71,8 @@ export interface UnifiedActivity {
 	indexerId: string | null;
 	indexerName: string | null;
 	protocol: 'torrent' | 'usenet' | 'streaming' | null;
+	downloadClientId?: string | null;
+	downloadClientName?: string | null;
 
 	// Status
 	status: ActivityStatus;
@@ -104,6 +107,23 @@ export interface ActivityFilters {
 	search?: string;
 	startDate?: string;
 	endDate?: string;
+	protocol?: 'torrent' | 'usenet' | 'streaming' | 'all';
+	indexer?: string;
+	releaseGroup?: string;
+	resolution?: string;
+	isUpgrade?: boolean;
+	downloadClientId?: string;
+	includeNoResults?: boolean;
+}
+
+/**
+ * Available filter options for dropdowns
+ */
+export interface FilterOptions {
+	indexers: Array<{ id: string; name: string }>;
+	downloadClients: Array<{ id: string; name: string }>;
+	releaseGroups: string[];
+	resolutions: string[];
 }
 
 /**
@@ -139,4 +159,107 @@ export interface ActivityResponse {
 	activities: UnifiedActivity[];
 	total: number;
 	hasMore: boolean;
+}
+
+/**
+ * Score breakdown for activity details
+ */
+export interface ScoreBreakdown {
+	resolution?: { old: number; new: number };
+	source?: { old: number; new: number };
+	codec?: { old: number; new: number };
+	hdr?: { old: number; new: number };
+	audio?: { old: number; new: number };
+	releaseGroup?: { old: number; new: number };
+	customFormats?: Array<{ name: string; old: number; new: number }>;
+}
+
+/**
+ * Search result entry for audit trail
+ */
+export interface SearchResultEntry {
+	title: string;
+	indexer: string;
+	score: number;
+	size: number;
+	protocol: string;
+	rejected: boolean;
+	rejectionReason?: string;
+}
+
+/**
+ * Import log entry
+ */
+export interface ImportLogEntry {
+	step: string;
+	timestamp: string;
+	message: string;
+	success: boolean;
+}
+
+/**
+ * File import entry
+ */
+export interface FileImportEntry {
+	path: string;
+	size: number;
+	quality: string;
+}
+
+/**
+ * File deletion entry
+ */
+export interface FileDeletionEntry {
+	path: string;
+	reason: string;
+}
+
+/**
+ * Release info metadata
+ */
+export interface ReleaseInfo {
+	indexerId?: string;
+	indexerName?: string;
+	downloadUrl?: string;
+	magnetUrl?: string;
+	seeders?: number;
+	leechers?: number;
+	age?: string;
+}
+
+/**
+ * Replaced file info
+ */
+export interface ReplacedFileInfo {
+	id: string;
+	path: string;
+	size: number | null;
+	quality: QueueQualityInfo | null;
+	releaseGroup: string | null;
+}
+
+/**
+ * Activity details with full scoring breakdown and audit trail
+ */
+export interface ActivityDetails {
+	id: string;
+	activityId: string;
+	scoreBreakdown?: ScoreBreakdown;
+	replacedFileInfo?: ReplacedFileInfo;
+	replacedFilePath?: string | null;
+	replacedFileQuality?: QueueQualityInfo | null;
+	replacedFileScore?: number | null;
+	replacedFileSize?: number | null;
+	searchResults?: SearchResultEntry[];
+	selectionReason?: string | null;
+	importLog?: ImportLogEntry[];
+	filesImported?: FileImportEntry[];
+	filesDeleted?: FileDeletionEntry[];
+	downloadClientName?: string | null;
+	downloadClientType?: string | null;
+	downloadId?: string | null;
+	infoHash?: string | null;
+	releaseInfo?: ReleaseInfo;
+	createdAt: string;
+	updatedAt: string;
 }

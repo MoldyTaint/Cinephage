@@ -1,6 +1,13 @@
 import { db } from '$lib/server/db/index.js';
-import { series, rootFolders, scoringProfiles, episodeFiles } from '$lib/server/db/schema.js';
-import { eq } from 'drizzle-orm';
+import {
+	series,
+	episodes,
+	rootFolders,
+	scoringProfiles,
+	profileSizeLimits,
+	episodeFiles
+} from '$lib/server/db/schema.js';
+import { eq, and, inArray, ne } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 import type { LibrarySeries, EpisodeFile } from '$lib/types/library';
 import { logger } from '$lib/logging';
@@ -45,6 +52,7 @@ export const load: PageServerLoad = async ({ url }) => {
 				path: series.path,
 				rootFolderId: series.rootFolderId,
 				rootFolderPath: rootFolders.path,
+				rootFolderMediaType: rootFolders.mediaType,
 				scoringProfileId: series.scoringProfileId,
 				monitored: series.monitored,
 				seasonFolder: series.seasonFolder,
@@ -56,24 +64,69 @@ export const load: PageServerLoad = async ({ url }) => {
 			.from(series)
 			.leftJoin(rootFolders, eq(series.rootFolderId, rootFolders.id));
 
-		// Calculate percentages and format data
-		const seriesWithStats: LibrarySeries[] = allSeries.map((s) => ({
-			...s,
-			percentComplete:
-				s.episodeCount && s.episodeCount > 0
-					? Math.round(((s.episodeFileCount || 0) / s.episodeCount) * 100)
-					: 0
-		})) as LibrarySeries[];
+		const seriesIds = allSeries.map((s) => s.id);
+		const allRegularEpisodes =
+			seriesIds.length > 0
+				? await db
+						.select({
+							id: episodes.id,
+							seriesId: episodes.seriesId
+						})
+						.from(episodes)
+						.where(and(inArray(episodes.seriesId, seriesIds), ne(episodes.seasonNumber, 0)))
+				: [];
+		const regularEpisodeIdToSeries = new Map(allRegularEpisodes.map((ep) => [ep.id, ep.seriesId]));
+		const episodeTotalsBySeries = new Map<string, number>();
+		for (const episode of allRegularEpisodes) {
+			episodeTotalsBySeries.set(
+				episode.seriesId,
+				(episodeTotalsBySeries.get(episode.seriesId) ?? 0) + 1
+			);
+		}
 
-		// Fetch all episode files for file-type filtering and size aggregation
+		// Fetch all episode files for file-type filtering, size aggregation, and derived episode-file counts.
 		const allEpisodeFiles = await db
 			.select({
 				seriesId: episodeFiles.seriesId,
+				episodeIds: episodeFiles.episodeIds,
 				size: episodeFiles.size,
 				quality: episodeFiles.quality,
 				mediaInfo: episodeFiles.mediaInfo
 			})
 			.from(episodeFiles);
+
+		const episodeFilesBySeries = new Map<string, Set<string>>();
+		for (const file of allEpisodeFiles) {
+			const linkedEpisodeIds = (file.episodeIds as string[] | null) ?? [];
+			if (linkedEpisodeIds.length === 0) continue;
+			const seriesId = file.seriesId;
+			let tracked = episodeFilesBySeries.get(seriesId);
+			if (!tracked) {
+				tracked = new Set<string>();
+				episodeFilesBySeries.set(seriesId, tracked);
+			}
+			for (const episodeId of linkedEpisodeIds) {
+				if (regularEpisodeIdToSeries.get(episodeId) === seriesId) {
+					tracked.add(episodeId);
+				}
+			}
+		}
+
+		// Calculate percentages and format data using derived episode/file linkage (source of truth).
+		const seriesWithStats: LibrarySeries[] = allSeries.map((s) => {
+			const derivedEpisodeCount = episodeTotalsBySeries.get(s.id) ?? 0;
+			const derivedEpisodeFileCount = episodeFilesBySeries.get(s.id)?.size ?? 0;
+			return {
+				...s,
+				episodeCount: derivedEpisodeCount,
+				episodeFileCount: derivedEpisodeFileCount,
+				missingRootFolder: !s.rootFolderId || !s.rootFolderPath || s.rootFolderMediaType !== 'tv',
+				percentComplete:
+					derivedEpisodeCount > 0
+						? Math.round((derivedEpisodeFileCount / derivedEpisodeCount) * 100)
+						: 0
+			};
+		}) as LibrarySeries[];
 
 		// Build seriesId -> total size map for sort-by-size
 		const seriesTotalSizeMap = new Map<string, number>();
@@ -96,6 +149,49 @@ export const load: PageServerLoad = async ({ url }) => {
 			if (mediaInfo?.videoCodec) uniqueCodecs.add(mediaInfo.videoCodec);
 			if (mediaInfo?.hdrFormat) uniqueHdrFormats.add(mediaInfo.hdrFormat);
 		}
+
+		// Fetch quality profiles and resolve the effective default profile ID
+		const dbProfiles = await db
+			.select({
+				id: scoringProfiles.id,
+				name: scoringProfiles.name,
+				description: scoringProfiles.description,
+				isDefault: scoringProfiles.isDefault
+			})
+			.from(scoringProfiles);
+
+		const defaultBuiltInOverride = await db
+			.select({ profileId: profileSizeLimits.profileId })
+			.from(profileSizeLimits)
+			.where(eq(profileSizeLimits.isDefault, true))
+			.limit(1);
+
+		const BUILT_IN_IDS = DEFAULT_PROFILES.map((p) => p.id);
+		const dbIds = new Set(dbProfiles.map((p) => p.id));
+		const customDefaultId = dbProfiles.find(
+			(p) => !BUILT_IN_IDS.includes(p.id) && Boolean(p.isDefault)
+		)?.id;
+		const builtInDefaultId = defaultBuiltInOverride[0]?.profileId;
+		const resolvedDefaultId = customDefaultId ?? builtInDefaultId ?? 'balanced';
+		const effectiveQualityProfileFilter =
+			qualityProfile === 'default' ? resolvedDefaultId : qualityProfile;
+
+		const qualityProfiles: QualityProfileSummary[] = [
+			...DEFAULT_PROFILES.filter((p) => !dbIds.has(p.id)).map((p) => ({
+				id: p.id,
+				name: p.name,
+				description: p.description,
+				isBuiltIn: true,
+				isDefault: p.id === resolvedDefaultId
+			})),
+			...dbProfiles.map((p) => ({
+				id: p.id,
+				name: p.name,
+				description: p.description ?? '',
+				isBuiltIn: BUILT_IN_IDS.includes(p.id),
+				isDefault: p.id === resolvedDefaultId
+			}))
+		];
 
 		// Build sets of series IDs that have matching files (for filtering)
 		const seriesWithResolution = new Set<string>();
@@ -155,11 +251,11 @@ export const load: PageServerLoad = async ({ url }) => {
 			filteredSeries = filteredSeries.filter((s) => s.percentComplete === 0);
 		}
 
-		// Filter by quality profile
-		if (qualityProfile === 'default') {
-			filteredSeries = filteredSeries.filter((s) => s.scoringProfileId === null);
-		} else if (qualityProfile !== 'all') {
-			filteredSeries = filteredSeries.filter((s) => s.scoringProfileId === qualityProfile);
+		// Filter by quality profile (treat null as "uses resolved default profile")
+		if (effectiveQualityProfileFilter !== 'all') {
+			filteredSeries = filteredSeries.filter(
+				(s) => (s.scoringProfileId ?? resolvedDefaultId) === effectiveQualityProfileFilter
+			);
 		}
 
 		// Filter by resolution
@@ -182,7 +278,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		// Apply sorting
 		const [sortField, sortDir] = sort.split('-') as [string, 'asc' | 'desc'];
 		filteredSeries.sort((a, b) => {
-			let comparison = 0;
+			let comparison: number;
 
 			switch (sortField) {
 				case 'title':
@@ -207,37 +303,6 @@ export const load: PageServerLoad = async ({ url }) => {
 			return sortDir === 'desc' ? -comparison : comparison;
 		});
 
-		// Fetch quality profiles
-		const dbProfiles = await db
-			.select({
-				id: scoringProfiles.id,
-				name: scoringProfiles.name,
-				description: scoringProfiles.description,
-				isDefault: scoringProfiles.isDefault
-			})
-			.from(scoringProfiles);
-
-		const BUILT_IN_IDS = DEFAULT_PROFILES.map((p) => p.id);
-		const dbIds = new Set(dbProfiles.map((p) => p.id));
-		const hasDbDefault = dbProfiles.some((p) => Boolean(p.isDefault));
-
-		const qualityProfiles: QualityProfileSummary[] = [
-			...DEFAULT_PROFILES.filter((p) => !dbIds.has(p.id)).map((p) => ({
-				id: p.id,
-				name: p.name,
-				description: p.description,
-				isBuiltIn: true,
-				isDefault: !hasDbDefault && p.id === 'efficient'
-			})),
-			...dbProfiles.map((p) => ({
-				id: p.id,
-				name: p.name,
-				description: p.description ?? '',
-				isBuiltIn: BUILT_IN_IDS.includes(p.id),
-				isDefault: Boolean(p.isDefault)
-			}))
-		];
-
 		// Sort unique values for consistent dropdown ordering
 		const resolutionOrder = ['2160p', '1080p', '720p', '576p', '480p'];
 		const sortedResolutions = [...uniqueResolutions].sort(
@@ -255,7 +320,7 @@ export const load: PageServerLoad = async ({ url }) => {
 				monitored,
 				status,
 				progress,
-				qualityProfile,
+				qualityProfile: effectiveQualityProfileFilter,
 				resolution,
 				videoCodec,
 				hdrFormat

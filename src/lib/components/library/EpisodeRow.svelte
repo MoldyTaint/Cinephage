@@ -72,6 +72,7 @@
 	interface Props {
 		episode: Episode;
 		seriesMonitored: boolean;
+		isStreamerProfile?: boolean;
 		selected?: boolean;
 		showCheckbox?: boolean;
 		isDownloading?: boolean;
@@ -90,6 +91,7 @@
 	let {
 		episode,
 		seriesMonitored,
+		isStreamerProfile = false,
 		selected = false,
 		showCheckbox = false,
 		isDownloading = false,
@@ -149,6 +151,7 @@
 				: 'Not monitored'
 			: 'Series is unmonitored. Enable series monitoring to monitor episodes.'
 	);
+	const hasEpisodeFile = $derived(episode.file !== null);
 
 	function formatAirDate(dateString: string | null): string {
 		if (!dateString) return 'TBA';
@@ -228,7 +231,7 @@
 	}
 </script>
 
-<tr class="hover" class:opacity-60={!isAired(episode.airDate) && !episode.hasFile}>
+<tr class="hover" class:opacity-60={!isAired(episode.airDate) && !hasEpisodeFile}>
 	<!-- Checkbox for selection -->
 	{#if showCheckbox}
 		<td class="w-10">
@@ -251,7 +254,7 @@
 		<div class="flex min-w-0 flex-col">
 			<div class="flex items-start justify-between gap-2">
 				<span
-					class={`min-w-0 flex-1 font-medium break-words ${!episode.title ? 'text-base-content/60' : ''}`}
+					class={`wrap-break-words min-w-0 flex-1 font-medium ${!episode.title ? 'text-base-content/60' : ''}`}
 				>
 					{episode.title || 'TBA'}
 				</span>
@@ -311,7 +314,7 @@
 									Interactive search
 								</button>
 							</li>
-							{#if episode.hasFile && (onSubtitleSearch || onSubtitleAutoSearch)}
+							{#if hasEpisodeFile && (onSubtitleSearch || onSubtitleAutoSearch)}
 								<li class="menu-title">
 									<span>Subtitles</span>
 								</li>
@@ -369,8 +372,8 @@
 									{#if episode.file.mediaInfo.subtitleLanguages?.length}
 										<div>Subs: {episode.file.mediaInfo.subtitleLanguages.join(', ')}</div>
 									{/if}
-									{#if episode.file.releaseGroup}
-										<div>Group: {episode.file.releaseGroup}</div>
+									{#if episode.file.releaseGroup || isStreamerProfile}
+										<div>Group: {episode.file.releaseGroup || 'Streaming'}</div>
 									{/if}
 								</div>
 							</div>
@@ -389,7 +392,7 @@
 			</div>
 			{#if episode.file}
 				<span
-					class="block max-w-full text-xs break-words text-base-content/50 sm:whitespace-normal"
+					class="wrap-break-words block max-w-full text-xs text-base-content/50 sm:whitespace-normal"
 					title={episode.file.relativePath}
 				>
 					{episode.file.relativePath.split('/').pop()}
@@ -398,7 +401,7 @@
 			<div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-base-content/60 sm:hidden">
 				<span>{formatAirDate(episode.airDate)}</span>
 				<span class="text-base-content/40">•</span>
-				{#if episode.hasFile && episode.file}
+				{#if hasEpisodeFile}
 					<span class="text-success">Downloaded</span>
 				{:else if isDownloading}
 					<span class="text-warning">Downloading</span>
@@ -416,9 +419,13 @@
 					{/if}
 				</span>
 			</div>
-			{#if episode.hasFile && episode.file}
+			{#if hasEpisodeFile}
 				<div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-base-content/60 sm:hidden">
-					<QualityBadge quality={episode.file.quality} mediaInfo={null} size="sm" />
+					{#if isStreamerProfile}
+						<span class="badge badge-xs badge-secondary">Streaming</span>
+					{:else}
+						<QualityBadge quality={episode.file?.quality ?? null} mediaInfo={null} size="sm" />
+					{/if}
 					{#if allSubtitles.length > 0}
 						<div class="flex items-center gap-1">
 							<Subtitles size={12} class="text-base-content/50" />
@@ -437,11 +444,15 @@
 
 	<!-- Status -->
 	<td class="hidden sm:table-cell">
-		{#if episode.hasFile && episode.file}
+		{#if hasEpisodeFile}
 			<div class="flex flex-col gap-1">
 				<div class="flex items-center gap-2">
 					<CheckCircle size={16} class="text-success" />
-					<QualityBadge quality={episode.file.quality} mediaInfo={null} size="sm" />
+					{#if isStreamerProfile}
+						<span class="badge badge-xs badge-secondary">Streaming</span>
+					{:else}
+						<QualityBadge quality={episode.file?.quality ?? null} mediaInfo={null} size="sm" />
+					{/if}
 				</div>
 				{#if allSubtitles.length > 0}
 					<div class="flex items-center gap-1">
@@ -536,7 +547,7 @@
 							Interactive search
 						</button>
 					</li>
-					{#if episode.hasFile && (onSubtitleSearch || onSubtitleAutoSearch)}
+					{#if hasEpisodeFile && (onSubtitleSearch || onSubtitleAutoSearch)}
 						<li class="menu-title">
 							<span>Subtitles</span>
 						</li>
@@ -593,8 +604,8 @@
 							{#if episode.file.mediaInfo.subtitleLanguages?.length}
 								<div>Subs: {episode.file.mediaInfo.subtitleLanguages.join(', ')}</div>
 							{/if}
-							{#if episode.file.releaseGroup}
-								<div>Group: {episode.file.releaseGroup}</div>
+							{#if episode.file.releaseGroup || isStreamerProfile}
+								<div>Group: {episode.file.releaseGroup || 'Streaming'}</div>
 							{/if}
 						</div>
 					</div>

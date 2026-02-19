@@ -1,48 +1,73 @@
 ---
+# EZTV - Native Cinephage Definition
+# Uses the official EZTV JSON API for reliable TV show searching
+# Supports IMDB ID lookup for Sonarr integration
+
 id: eztv
 name: EZTV
-description: TV show torrents via JSON API
+description: EZTV is a public torrent site for TV shows with IMDB lookup support
 type: public
+protocol: torrent
 language: en-US
 encoding: UTF-8
 requestdelay: 2
 
 links:
-  - https://eztv.yt
+  - https://eztvx.to/
+  - https://eztv.wf/
+  - https://eztv.tf/
+
 legacylinks:
-  - https://eztvx.to
-  - https://eztv.re
-  - https://eztv.wf
-  - https://eztv.tf
-  - https://eztv.ch
+  - https://eztv.re/
+  - https://eztv.ag/
+  - https://eztv.io/
+  - https://eztv.it/
+  - https://eztv.ch/
 
 caps:
   modes:
     search: [q]
-    tv-search: [q, imdbid]
-  categories:
-    '5000': TV
+    tv-search: [q, imdbid, season, ep]
+
   categorymappings:
-    - id: TV
-      cat: '5000'
+    - id: '1'
+      cat: TV
       desc: TV Shows
       default: true
+    - id: 'tv-hd'
+      cat: TV/HD
+      desc: TV HD
+    - id: 'tv-sd'
+      cat: TV/SD
+      desc: TV SD
+
+settings:
+  - name: limit
+    type: select
+    label: Results per page
+    default: '100'
+    options:
+      '50': '50'
+      '100': '100'
 
 search:
   paths:
-    # IMDB lookup via API - if imdb_id is empty, returns recent torrents
+    # IMDB search - preferred for Sonarr/Radarr integration
     - path: /api/get-torrents
       method: get
       inputs:
         imdb_id: '{{ .Query.IMDBIDShort }}'
-        limit: '100'
+        limit: '{{ .Config.limit }}'
+
+    # Page-based browsing fallback (no keyword search supported by API)
+    - path: /api/get-torrents
+      method: get
+      inputs:
+        q: ''
+        limit: '{{ .Config.limit }}'
         page: '1'
-    - path: /api/get-torrents
-      method: get
-      inputs:
-        imdb_id: '{{ .Query.IMDBIDShort }}'
-        limit: '100'
-        page: '2'
+
+  allowEmptyInputs: true
 
   response:
     type: json
@@ -51,34 +76,63 @@ search:
     selector: torrents
 
   fields:
+    _id:
+      selector: id
+
+    category:
+      text: '1'
+
     title:
       selector: title
+
     details:
-      selector: id
-      filters:
-        - name: prepend
-          args: 'https://eztv.yt/ep/'
-    download:
-      selector: torrent_url
+      text: '{{ .Config.sitelink }}ep/{{ .Result._id }}'
+
     magnet:
       selector: magnet_url
+
     infohash:
       selector: hash
+
+    imdbid:
+      selector: imdb_id
+      optional: true
+      filters:
+        - name: prepend
+          args: 'tt'
+
+    season:
+      selector: season
+      optional: true
+
+    episode:
+      selector: episode
+      optional: true
+
     date:
       selector: date_released_unix
       filters:
         - name: dateparse
           args: unix
+
     size:
       selector: size_bytes
+
     seeders:
       selector: seeds
+
     leechers:
       selector: peers
-    imdbid:
-      selector: imdb_id
+
+    poster:
+      selector: small_screenshot
+      optional: true
       filters:
         - name: prepend
-          args: 'tt'
-    category:
-      text: TV
+          args: 'https:'
+
+    downloadvolumefactor:
+      text: '0'
+
+    uploadvolumefactor:
+      text: '1'

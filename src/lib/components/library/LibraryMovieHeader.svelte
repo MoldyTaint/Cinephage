@@ -6,12 +6,14 @@
 	import StatusIndicator from './StatusIndicator.svelte';
 	import QualityBadge from './QualityBadge.svelte';
 	import ScoreBadge from './ScoreBadge.svelte';
+	import { getMovieAvailabilityLevel } from '$lib/utils/movieAvailability';
 	import {
 		Search,
 		Settings,
 		Trash2,
 		ExternalLink,
 		Download,
+		Clock,
 		Loader2,
 		Check,
 		X
@@ -63,12 +65,22 @@
 	}: Props = $props();
 
 	const bestQuality = $derived(getBestQualityFromFiles(movie.files));
+	const isStreamerProfile = $derived(movie.scoringProfileId === 'streamer');
 	const fileStatus = $derived.by(() => {
 		if (movie.hasFile) return 'downloaded';
 		if (isDownloading) return 'downloading';
 		return 'missing';
 	});
 	const totalSize = $derived(movie.files.reduce((sum, f) => sum + (f.size || 0), 0));
+	const movieAvailability = $derived(getMovieAvailabilityLevel(movie));
+	const showUnreleasedBadge = $derived(
+		!movie.hasFile && Boolean(movie.monitored) && movieAvailability !== 'released'
+	);
+	const statusQualityText = $derived.by(() => {
+		if (isStreamerProfile && movie.hasFile) return 'Auto';
+		if (!bestQuality.quality) return null;
+		return `${bestQuality.quality}${bestQuality.hdr ? ` ${bestQuality.hdr}` : ''}`;
+	});
 
 	function formatBytes(bytes: number): string {
 		if (bytes === 0) return '0 B';
@@ -106,7 +118,7 @@
 			/>
 		{/if}
 		<div
-			class="absolute inset-0 bg-gradient-to-r from-base-200/80 via-base-200/75 to-base-200/60 sm:from-base-200 sm:via-base-200/95 sm:to-base-200/80"
+			class="absolute inset-0 bg-linear-to-r from-base-200/80 via-base-200/75 to-base-200/60 sm:from-base-200 sm:via-base-200/95 sm:to-base-200/80"
 		></div>
 	</div>
 
@@ -200,9 +212,14 @@
 				</div>
 				<div class="max-w-full min-w-0">
 					<span class="shrink-0 text-base-content/50">Root Folder:</span>
-					<span class="ml-1 truncate font-medium" title={movie.rootFolderPath || 'Not set'}
-						>{movie.rootFolderPath || 'Not set'}</span
+					<span
+						class="ml-1 truncate font-medium {movie.rootFolderId
+							? ''
+							: 'rounded-md bg-warning/20 px-2 py-0.5 text-warning'}"
+						title={movie.rootFolderPath || 'Not set'}
 					>
+						{movie.rootFolderPath || 'Not set'}
+					</span>
 				</div>
 				<div>
 					<span class="text-base-content/50">Added:</span>
@@ -213,31 +230,40 @@
 			<!-- Bottom row: Status and external links -->
 			<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 				<div class="flex flex-wrap items-center gap-2 sm:gap-4">
-					<StatusIndicator
-						status={fileStatus}
-						qualityText={bestQuality.quality
-							? `${bestQuality.quality}${bestQuality.hdr ? ` ${bestQuality.hdr}` : ''}`
-							: null}
-					/>
+					<StatusIndicator status={fileStatus} qualityText={statusQualityText} />
+					{#if showUnreleasedBadge}
+						<div
+							class="inline-flex items-center gap-2 rounded-lg bg-error/5 px-3 py-1.5 text-sm text-error/80 ring-1 ring-error/25"
+						>
+							<Clock size={16} />
+							<span class="font-medium">Unreleased</span>
+						</div>
+					{/if}
 					{#if movie.hasFile && totalSize > 0}
 						<span class="text-sm text-base-content/70">
 							{formatBytes(totalSize)}
 						</span>
 					{/if}
 					{#if movie.hasFile && movie.files.length > 0}
-						<QualityBadge
-							quality={movie.files[0].quality}
-							mediaInfo={movie.files[0].mediaInfo}
-							size="md"
-						/>
-						<ScoreBadge
-							score={scoreInfo?.score ?? null}
-							isAtCutoff={scoreInfo?.isAtCutoff ?? false}
-							upgradesAllowed={scoreInfo?.upgradesAllowed ?? true}
-							loading={scoreLoading}
-							size="md"
-							onclick={onScoreClick}
-						/>
+						{#if isStreamerProfile}
+							<span class="badge badge-sm badge-secondary">Streaming</span>
+						{:else}
+							<QualityBadge
+								quality={movie.files[0].quality}
+								mediaInfo={movie.files[0].mediaInfo}
+								size="md"
+							/>
+						{/if}
+						{#if !isStreamerProfile}
+							<ScoreBadge
+								score={scoreInfo?.score ?? null}
+								isAtCutoff={scoreInfo?.isAtCutoff ?? false}
+								upgradesAllowed={scoreInfo?.upgradesAllowed ?? true}
+								loading={scoreLoading}
+								size="md"
+								onclick={onScoreClick}
+							/>
+						{/if}
 					{/if}
 				</div>
 

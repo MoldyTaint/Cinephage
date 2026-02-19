@@ -68,11 +68,15 @@ function normalizeScore(score: number): number {
 export interface UpgradeStatus {
 	/** Whether upgrades are allowed for this profile */
 	upgradesAllowed: boolean;
-	/** Score threshold to stop searching for upgrades (-1 = unlimited) */
+	/** Score threshold (kept for display purposes, but no longer enforced as hard stop) */
 	upgradeUntilScore: number;
 	/** Current file's score */
 	currentScore: number;
-	/** Whether file is at or above cutoff */
+	/**
+	 * Whether file is at or above cutoff threshold
+	 * NOTE: This is now informational only - cutoffs are no longer enforced as hard stops.
+	 * Upgrades will still be searched for and grabbed if they provide meaningful improvement.
+	 */
 	isAtCutoff: boolean;
 	/** Whether file meets minimum score threshold */
 	meetsMinimum: boolean;
@@ -307,6 +311,10 @@ async function getProfileForMedia(scoringProfileId: string | null): Promise<Scor
 
 /**
  * Calculate upgrade status from scoring result and profile
+ *
+ * NOTE: isAtCutoff is now informational only - hard cutoffs have been removed.
+ * Upgrades will always be searched for as long as upgradesAllowed is true.
+ * The minScoreIncrement ensures only meaningful improvements are grabbed.
  */
 function calculateUpgradeStatus(
 	scoringResult: ScoringResult,
@@ -315,7 +323,8 @@ function calculateUpgradeStatus(
 	const currentScore = scoringResult.totalScore;
 	const upgradeUntilScore = profile.upgradeUntilScore ?? -1;
 
-	// At cutoff if score >= threshold (and threshold is positive)
+	// Calculate if at threshold for informational/display purposes only
+	// This no longer prevents upgrade searching - it's just a visual indicator
 	const isAtCutoff = upgradeUntilScore > 0 && currentScore >= upgradeUntilScore;
 
 	return {

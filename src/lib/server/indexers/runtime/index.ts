@@ -2,7 +2,7 @@
  * Runtime module exports.
  *
  * Provides indexer runtime components:
- * - YamlIndexer: Full-featured YAML-based indexer implementation
+ * - UnifiedIndexer: Full-featured YAML-based indexer implementation
  * - RequestBuilder: HTTP request construction
  * - ResponseParser: HTML/JSON/XML parsing
  * - DownloadHandler: Download URL resolution
@@ -10,7 +10,6 @@
  */
 
 // YAML-based indexer runtime
-export { YamlIndexer, createYamlIndexer, type YamlIndexerConfig } from './YamlIndexer';
 export {
 	RequestBuilder,
 	createRequestBuilder,

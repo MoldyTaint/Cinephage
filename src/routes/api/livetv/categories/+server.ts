@@ -6,20 +6,36 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getStalkerChannelService } from '$lib/server/livetv/stalker';
+import { getLiveTvChannelService } from '$lib/server/livetv/LiveTvChannelService';
+import { logger } from '$lib/logging';
 
 export const GET: RequestHandler = async ({ url }) => {
-	const channelService = getStalkerChannelService();
+	const channelService = getLiveTvChannelService();
 
 	// Parse query parameters
 	const accountIdsParam = url.searchParams.get('accountIds');
-	const accountIds = accountIdsParam ? accountIdsParam.split(',').filter(Boolean) : undefined;
+	const accountIdParam = url.searchParams.get('accountId');
+
+	const accountIds =
+		accountIdsParam
+			?.split(',')
+			.map((v) => v.trim())
+			.filter(Boolean) ?? (accountIdParam ? [accountIdParam] : undefined);
 
 	try {
 		const categories = await channelService.getCategories(accountIds);
-		return json({ categories });
+		return json({
+			success: true,
+			categories
+		});
 	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Unknown error';
-		return json({ error: message }, { status: 500 });
+		logger.error('[API] Failed to get categories', error instanceof Error ? error : undefined);
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to get categories'
+			},
+			{ status: 500 }
+		);
 	}
 };

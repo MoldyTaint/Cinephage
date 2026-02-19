@@ -1,90 +1,100 @@
 ---
-# BitSearch (formerly SolidTorrents)
-# DHT torrent search engine - solidtorrents.net domain is now parked
-# BitSearch.to is the active site with the same underlying search engine
-# Note: solidtorrents.to and solidtorrents.eu are now dead (Dec 2024)
 id: bitsearch
+replaces:
+  - solidtorrents
 name: BitSearch
-description: DHT torrent search engine (formerly SolidTorrents) with 45M+ indexed torrents
-type: public
-protocol: torrent
+description: 'BitSearch (Solid Torrents) is a Public torrent meta-search engine'
 language: en-US
+type: public
 encoding: UTF-8
 requestdelay: 2
-
 links:
-  - https://bitsearch.to
+  - https://bitsearch.to/
+  - https://solidtorrents.eu/
+legacylinks:
+  - https://bitsearch.nocensor.cloud/
+  - https://bitsearch.mrunblock.bond/
+  - https://solidtorrents.net/
+  - https://solidtorrents.nocensor.cloud/
+  - https://solidtorrents.to/
 
 caps:
-  modes:
-    search: [q]
-    movie-search: [q]
-    tv-search: [q]
   categories:
-    '2000': Movies
-    '5000': TV
-    '8000': Other
+    2000: Movies
+    5000: TV
+
   categorymappings:
-    - id: Other/Video
-      cat: '2000'
-      desc: Video content
-      default: true
-    - id: Video
-      cat: '2000'
-      desc: Video
     - id: Movies
       cat: '2000'
       desc: Movies
+      default: true
     - id: TV
       cat: '5000'
-      desc: TV Shows
+      desc: TV
+      default: true
+
+  modes:
+    search: [q]
+    tv-search: [q, season, ep]
+    movie-search: [q]
+    music-search: [q]
+    book-search: [q]
+
+download:
+  selectors:
+    - selector: a[href^="magnet:?xt"]
+      attribute: href
 
 search:
   paths:
-    - path: /search
-      method: get
-      inputs:
-        q: '{{ .Keywords }}'
-        sort: seeders
+    # https://bitsearch.to/search?q=spongebob&sortBy=created&order=desc&page=1
+    - path: 'search?q={{ .Keywords }}&sortBy=created&order=desc&page=1'
 
-  response:
-    type: html
+  keywordsfilters:
+    - name: re_replace
+      args: ["\\.", ' ']
 
   rows:
-    selector: div.bg-white.rounded-lg.shadow-sm.border.border-gray-200.p-6
+    selector: div.space-y-4 > div.bg-white > div.items-start
 
   fields:
+    category:
+      # latest, search
+      selector: div.space-y-2 > span:nth-child(1), span.space-x-1:nth-child(1)
     title:
-      selector: h3 a
+      selector: h3 > a
     details:
-      selector: h3 a
-      attribute: href
-    magnet:
-      selector: a[href^="magnet:"]
+      selector: h3 > a
       attribute: href
     download:
-      selector: a[href^="/download/torrent/"]
+      selector: h3 > a
       attribute: href
-      optional: true
+    magnet:
+      selector: a[href^="magnet:?xt"]
+      attribute: href
     size:
-      selector: span:has(i.fa-download) span:not(.font-medium)
-      filters:
-        - name: replace
-          args: ['GB', ' GB']
-        - name: replace
-          args: ['MB', ' MB']
-    date:
-      selector: span:has(i.fa-calendar) span
+      selector: div.space-y-2 > span:nth-child(2), span.space-x-1:nth-child(2)
+    date_year:
+      selector: div.space-y-2 > span:nth-child(3):contains("/"), span.space-x-1:nth-child(3):contains("/")
+      optional: true
       filters:
         - name: dateparse
-          args: '1/2/2006'
+          args: 'M/d/yyyy'
+    date_ago:
+      selector: div.space-y-2 > span:nth-child(3):contains("ago"), span.space-x-1:nth-child(3):contains("ago")
+      optional: true
+      filters:
+        - name: fuzzytime
+    date:
+      text: '{{ if or .Result.date_year .Result.date_ago }}{{ or .Result.date_year .Result.date_ago }}{{ else }}now{{ end }}'
     seeders:
-      selector: span.text-green-600 span.font-medium
+      selector: div.space-x-3 > span:nth-child(1), span:contains("seeders")
     leechers:
-      selector: span.text-red-600 span.font-medium
+      selector: div.space-x-3 > span:nth-child(2), span:contains("leechers")
     grabs:
-      selector: span.text-blue-600 span.font-medium
+      selector: span:contains("downloads")
       optional: true
-    category:
-      selector: span:has(i.fa-video) span
-      optional: true
+    downloadvolumefactor:
+      text: '0'
+    uploadvolumefactor:
+      text: '1'

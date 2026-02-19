@@ -1,11 +1,21 @@
 <script lang="ts">
 	import { SvelteURLSearchParams } from 'svelte/reactivity';
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount } from 'svelte';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
+	import { createSSE } from '$lib/sse';
+	import { mobileSSEStatus } from '$lib/sse/mobileStatus.svelte';
 	import ActivityTable from '$lib/components/activity/ActivityTable.svelte';
-	import type { UnifiedActivity } from '$lib/types/activity';
-	import { Activity, Search, RefreshCw, Loader2 } from 'lucide-svelte';
+	import ActivityDetailModal from '$lib/components/activity/ActivityDetailModal.svelte';
+	import ActivityFilters from '$lib/components/activity/ActivityFilters.svelte';
+	import ActiveFilters from '$lib/components/activity/ActiveFilters.svelte';
+	import type {
+		UnifiedActivity,
+		ActivityDetails,
+		ActivityFilters as FiltersType,
+		ActivityStatus
+	} from '$lib/types/activity';
+	import { Activity, Loader2, Wifi, WifiOff } from 'lucide-svelte';
 
 	let { data } = $props();
 
@@ -13,10 +23,12 @@
 	let activities = $state<UnifiedActivity[]>([]);
 	let total = $state(0);
 
-	// Filter state
-	let statusFilter = $state('all');
-	let mediaTypeFilter = $state('all');
-	let searchQuery = $state('');
+	// Filter state - initialize from URL/data
+	let filters = $state<FiltersType>({
+		status: 'all',
+		mediaType: 'all',
+		protocol: 'all'
+	});
 
 	// Sort state
 	let sortField = $state('time');
@@ -26,74 +38,284 @@
 	let isLoading = $state(false);
 	let isLoadingMore = $state(false);
 
-	// SSE connection
-	let eventSource: EventSource | null = null;
-
 	let hasInitialized = $state(false);
+	let refreshInFlight = $state(false);
+
+	function normalizeActivityStatus(status: unknown): ActivityStatus {
+		switch (status) {
+			case 'imported':
+			case 'streaming':
+			case 'downloading':
+			case 'paused':
+			case 'failed':
+			case 'rejected':
+			case 'removed':
+			case 'no_results':
+			case 'searching':
+				return status;
+			default:
+				return 'downloading';
+		}
+	}
+
+	function normalizeActivity(activity: Partial<UnifiedActivity>): UnifiedActivity | null {
+		if (!activity.id) return null;
+
+		return {
+			id: activity.id,
+			mediaType: activity.mediaType === 'episode' ? 'episode' : 'movie',
+			mediaId: activity.mediaId ?? '',
+			mediaTitle: activity.mediaTitle ?? 'Unknown',
+			mediaYear: activity.mediaYear ?? null,
+			seriesId: activity.seriesId,
+			seriesTitle: activity.seriesTitle,
+			seasonNumber: activity.seasonNumber,
+			episodeNumber: activity.episodeNumber,
+			episodeIds: activity.episodeIds,
+			releaseTitle: activity.releaseTitle ?? null,
+			quality: activity.quality ?? null,
+			releaseGroup: activity.releaseGroup ?? null,
+			size: activity.size ?? null,
+			indexerId: activity.indexerId ?? null,
+			indexerName: activity.indexerName ?? null,
+			protocol: activity.protocol ?? null,
+			downloadClientId: activity.downloadClientId ?? null,
+			downloadClientName: activity.downloadClientName ?? null,
+			status: normalizeActivityStatus(activity.status),
+			statusReason: activity.statusReason,
+			downloadProgress: activity.downloadProgress,
+			isUpgrade: activity.isUpgrade ?? false,
+			oldScore: activity.oldScore,
+			newScore: activity.newScore,
+			timeline: Array.isArray(activity.timeline) ? activity.timeline : [],
+			startedAt: activity.startedAt ?? new Date().toISOString(),
+			completedAt: activity.completedAt ?? null,
+			queueItemId: activity.queueItemId,
+			downloadHistoryId: activity.downloadHistoryId,
+			monitoringHistoryId: activity.monitoringHistoryId,
+			importedPath: activity.importedPath
+		};
+	}
+
+	function matchesLiveFilters(activity: UnifiedActivity): boolean {
+		// Status
+		if (filters.status && filters.status !== 'all') {
+			if (filters.status === 'success') {
+				if (activity.status !== 'imported' && activity.status !== 'streaming') return false;
+			} else if (activity.status !== filters.status) {
+				return false;
+			}
+		}
+
+		// Media type
+		if (filters.mediaType === 'movie' && activity.mediaType !== 'movie') return false;
+		if (filters.mediaType === 'tv' && activity.mediaType !== 'episode') return false;
+
+		// Search
+		if (filters.search) {
+			const needle = filters.search.toLowerCase();
+			const matches =
+				activity.mediaTitle.toLowerCase().includes(needle) ||
+				activity.releaseTitle?.toLowerCase().includes(needle) ||
+				activity.seriesTitle?.toLowerCase().includes(needle) ||
+				activity.releaseGroup?.toLowerCase().includes(needle) ||
+				activity.indexerName?.toLowerCase().includes(needle);
+			if (!matches) return false;
+		}
+
+		// Protocol
+		if (filters.protocol && filters.protocol !== 'all' && activity.protocol !== filters.protocol) {
+			return false;
+		}
+
+		// Download client
+		if (filters.downloadClientId && activity.downloadClientId !== filters.downloadClientId) {
+			return false;
+		}
+
+		// Indexer
+		if (filters.indexer && activity.indexerName?.toLowerCase() !== filters.indexer.toLowerCase()) {
+			return false;
+		}
+
+		// Release group
+		if (
+			filters.releaseGroup &&
+			!activity.releaseGroup?.toLowerCase().includes(filters.releaseGroup.toLowerCase())
+		) {
+			return false;
+		}
+
+		// Resolution
+		if (
+			filters.resolution &&
+			activity.quality?.resolution?.toLowerCase() !== filters.resolution.toLowerCase()
+		) {
+			return false;
+		}
+
+		// Upgrade flag
+		if (filters.isUpgrade !== undefined && activity.isUpgrade !== filters.isUpgrade) return false;
+
+		// Date range
+		if (filters.startDate) {
+			const startTime = new Date(filters.startDate).getTime();
+			if (new Date(activity.startedAt).getTime() < startTime) return false;
+		}
+		if (filters.endDate) {
+			const endTime = new Date(filters.endDate).getTime();
+			if (new Date(activity.startedAt).getTime() > endTime) return false;
+		}
+
+		return true;
+	}
+
+	function upsertActivity(activity: Partial<UnifiedActivity>): void {
+		const normalized = normalizeActivity(activity);
+		if (!normalized) return;
+
+		const existingIndex = activities.findIndex((a) => a.id === normalized.id);
+		const matchesFilters = matchesLiveFilters(normalized);
+
+		if (!matchesFilters) {
+			if (existingIndex >= 0) {
+				activities = activities.filter((a) => a.id !== normalized.id);
+				total = Math.max(0, total - 1);
+				if (selectedActivity?.id === normalized.id) {
+					selectedActivity = null;
+					activityDetails = null;
+					isModalOpen = false;
+				}
+			}
+			return;
+		}
+
+		if (existingIndex >= 0) {
+			const existing = activities[existingIndex];
+			Object.assign(existing, normalized);
+			if (selectedActivity?.id === existing.id && selectedActivity !== existing) {
+				selectedActivity = existing;
+			}
+			return;
+		}
+
+		activities = [normalized, ...activities];
+		total += 1;
+	}
+
+	// Detail modal state
+	let selectedActivity = $state<UnifiedActivity | null>(null);
+	let activityDetails = $state<ActivityDetails | null>(null);
+	let detailsLoading = $state(false);
+	let isModalOpen = $state(false);
 
 	// Update activities when data changes (navigation)
 	$effect(() => {
 		activities = data.activities;
 		total = data.total;
-		if (!hasInitialized) {
-			statusFilter = data.filters.status || 'all';
-			mediaTypeFilter = data.filters.mediaType || 'all';
-			searchQuery = data.filters.search || '';
+		if (!hasInitialized && data.filters) {
+			filters = { ...data.filters };
 			hasInitialized = true;
 		}
 	});
 
-	// Set up SSE connection
-	onMount(() => {
-		connectSSE();
-	});
+	// SSE Connection - internally handles browser/SSR
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const sse = createSSE<Record<string, any>>(resolvePath('/api/activity/stream'), {
+		'activity:new': (newActivity: Partial<UnifiedActivity>) => {
+			upsertActivity(newActivity);
+		},
+		'activity:updated': (updated: Partial<UnifiedActivity>) => {
+			upsertActivity(updated);
+		},
+		'activity:progress': (data: { id: string; progress: number; status?: string }) => {
+			let removed = false;
+			activities = activities.flatMap((a) => {
+				if (a.id !== data.id) return [a];
 
-	onDestroy(() => {
-		if (eventSource) {
-			eventSource.close();
+				a.downloadProgress = data.progress;
+				a.status = data.status ? normalizeActivityStatus(data.status) : a.status;
+
+				if (!matchesLiveFilters(a)) {
+					removed = true;
+					return [];
+				}
+
+				return [a];
+			});
+
+			if (removed) {
+				total = Math.max(0, total - 1);
+			}
 		}
 	});
 
-	function connectSSE() {
-		eventSource = new EventSource(resolvePath('/api/activity/stream'));
+	const MOBILE_SSE_SOURCE = 'activity';
 
-		eventSource.addEventListener('activity:new', (event) => {
-			const newActivity = JSON.parse(event.data) as UnifiedActivity;
-			// Add to beginning of list
-			activities = [newActivity, ...activities.filter((a) => a.id !== newActivity.id)];
-			total += 1;
-		});
-
-		eventSource.addEventListener('activity:updated', (event) => {
-			const updated = JSON.parse(event.data) as Partial<UnifiedActivity>;
-			activities = activities.map((a) => (a.id === updated.id ? { ...a, ...updated } : a));
-		});
-
-		eventSource.addEventListener('activity:progress', (event) => {
-			const { id, progress, status } = JSON.parse(event.data);
-			activities = activities.map((a) =>
-				a.id === id ? { ...a, downloadProgress: progress, status: status || a.status } : a
-			);
-		});
-
-		eventSource.onerror = () => {
-			// Try to reconnect after a delay
-			setTimeout(() => {
-				if (eventSource) {
-					eventSource.close();
-				}
-				connectSSE();
-			}, 5000);
-		};
+	async function refreshActivityData(): Promise<void> {
+		if (refreshInFlight) return;
+		refreshInFlight = true;
+		try {
+			await invalidateAll();
+		} finally {
+			refreshInFlight = false;
+		}
 	}
 
+	onMount(() => {
+		// Ensure we don't show stale client-side snapshot state after route back/forward.
+		void refreshActivityData();
+
+		const handleFocus = () => {
+			void refreshActivityData();
+		};
+
+		const handleVisibilityChange = () => {
+			if (document.visibilityState === 'visible') {
+				void refreshActivityData();
+			}
+		};
+
+		const handlePageShow = () => {
+			void refreshActivityData();
+		};
+
+		window.addEventListener('focus', handleFocus);
+		document.addEventListener('visibilitychange', handleVisibilityChange);
+		window.addEventListener('pageshow', handlePageShow);
+
+		return () => {
+			window.removeEventListener('focus', handleFocus);
+			document.removeEventListener('visibilitychange', handleVisibilityChange);
+			window.removeEventListener('pageshow', handlePageShow);
+		};
+	});
+
+	$effect(() => {
+		mobileSSEStatus.publish(MOBILE_SSE_SOURCE, sse.status);
+		return () => {
+			mobileSSEStatus.clear(MOBILE_SSE_SOURCE);
+		};
+	});
+
 	// Apply filters via URL navigation
-	async function applyFilters() {
+	async function applyFilters(newFilters: FiltersType) {
+		filters = newFilters;
 		isLoading = true;
+
 		const params = new SvelteURLSearchParams();
-		if (statusFilter !== 'all') params.set('status', statusFilter);
-		if (mediaTypeFilter !== 'all') params.set('mediaType', mediaTypeFilter);
-		if (searchQuery) params.set('search', searchQuery);
+		if (filters.status !== 'all') params.set('status', filters.status!);
+		if (filters.mediaType !== 'all') params.set('mediaType', filters.mediaType!);
+		if (filters.search) params.set('search', filters.search);
+		if (filters.protocol !== 'all') params.set('protocol', filters.protocol!);
+		if (filters.indexer) params.set('indexer', filters.indexer);
+		if (filters.releaseGroup) params.set('releaseGroup', filters.releaseGroup);
+		if (filters.resolution) params.set('resolution', filters.resolution);
+		if (filters.isUpgrade) params.set('isUpgrade', 'true');
+		if (filters.includeNoResults) params.set('includeNoResults', 'true');
+		if (filters.downloadClientId) params.set('downloadClientId', filters.downloadClientId);
+		if (filters.startDate) params.set('startDate', filters.startDate);
+		if (filters.endDate) params.set('endDate', filters.endDate);
 
 		const queryString = params.toString();
 		await goto(resolvePath(`/activity${queryString ? `?${queryString}` : ''}`), {
@@ -102,13 +324,24 @@
 		isLoading = false;
 	}
 
-	// Handle search input
-	let searchTimeout: ReturnType<typeof setTimeout>;
-	function handleSearchInput() {
-		clearTimeout(searchTimeout);
-		searchTimeout = setTimeout(() => {
-			applyFilters();
-		}, 300);
+	// Remove a specific filter
+	async function removeFilter(key: keyof FiltersType) {
+		const newFilters = { ...filters };
+		if (key === 'status' || key === 'mediaType' || key === 'protocol') {
+			newFilters[key] = 'all';
+		} else {
+			delete newFilters[key];
+		}
+		await applyFilters(newFilters);
+	}
+
+	// Clear all filters
+	async function clearAllFilters() {
+		await applyFilters({
+			status: 'all',
+			mediaType: 'all',
+			protocol: 'all'
+		});
 	}
 
 	// Handle sort
@@ -164,9 +397,19 @@
 			const apiUrl = new URL('/api/activity', window.location.origin);
 			apiUrl.searchParams.set('limit', '50');
 			apiUrl.searchParams.set('offset', String(activities.length));
-			if (statusFilter !== 'all') apiUrl.searchParams.set('status', statusFilter);
-			if (mediaTypeFilter !== 'all') apiUrl.searchParams.set('mediaType', mediaTypeFilter);
-			if (searchQuery) apiUrl.searchParams.set('search', searchQuery);
+			if (filters.status !== 'all') apiUrl.searchParams.set('status', filters.status!);
+			if (filters.mediaType !== 'all') apiUrl.searchParams.set('mediaType', filters.mediaType!);
+			if (filters.search) apiUrl.searchParams.set('search', filters.search);
+			if (filters.protocol !== 'all') apiUrl.searchParams.set('protocol', filters.protocol!);
+			if (filters.indexer) apiUrl.searchParams.set('indexer', filters.indexer);
+			if (filters.releaseGroup) apiUrl.searchParams.set('releaseGroup', filters.releaseGroup);
+			if (filters.resolution) apiUrl.searchParams.set('resolution', filters.resolution);
+			if (filters.isUpgrade) apiUrl.searchParams.set('isUpgrade', 'true');
+			if (filters.includeNoResults) apiUrl.searchParams.set('includeNoResults', 'true');
+			if (filters.downloadClientId)
+				apiUrl.searchParams.set('downloadClientId', filters.downloadClientId);
+			if (filters.startDate) apiUrl.searchParams.set('startDate', filters.startDate);
+			if (filters.endDate) apiUrl.searchParams.set('endDate', filters.endDate);
 
 			const response = await fetch(apiUrl.toString());
 			const result = await response.json();
@@ -181,11 +424,98 @@
 		}
 	}
 
-	// Refresh data
-	async function refresh() {
-		isLoading = true;
+	// Open detail modal
+	async function openDetailModal(activity: UnifiedActivity) {
+		selectedActivity = activity;
+		isModalOpen = true;
+		detailsLoading = true;
+		activityDetails = null;
+
+		// Fetch activity details
+		try {
+			const response = await fetch(`/api/activity/${activity.id}/details`);
+			if (response.ok) {
+				const data = await response.json();
+				activityDetails = data.details;
+			}
+		} catch (error) {
+			console.error('Failed to fetch activity details:', error);
+		}
+
+		detailsLoading = false;
+	}
+
+	function closeModal() {
+		isModalOpen = false;
+		selectedActivity = null;
+		activityDetails = null;
+	}
+
+	function applyQueueStatusLocally(id: string, status: ActivityStatus) {
+		for (const activity of activities) {
+			if (activity.queueItemId === id) {
+				activity.status = status;
+			}
+		}
+		if (selectedActivity?.queueItemId === id) {
+			selectedActivity.status = status;
+		}
+	}
+
+	async function runQueueAction(id: string, action: 'pause' | 'resume') {
+		const response = await fetch(`/api/queue/${id}`, {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ action })
+		});
+		if (!response.ok) {
+			let message = `Failed to ${action}`;
+			try {
+				const payload = await response.json();
+				if (payload?.message && typeof payload.message === 'string') {
+					message = payload.message;
+				}
+			} catch {
+				// Ignore JSON parse errors and fall back to default message.
+			}
+			throw new Error(message);
+		}
+		applyQueueStatusLocally(id, action === 'pause' ? 'paused' : 'downloading');
+	}
+
+	// Queue actions
+	async function handlePause(id: string) {
+		await runQueueAction(id, 'pause');
+	}
+
+	async function handleResume(id: string) {
+		await runQueueAction(id, 'resume');
+	}
+
+	async function handleRemove(id: string) {
+		const response = await fetch(`/api/queue/${id}`, { method: 'DELETE' });
+		if (!response.ok) {
+			let message = 'Failed to remove';
+			try {
+				const payload = await response.json();
+				if (payload?.message && typeof payload.message === 'string') {
+					message = payload.message;
+				} else if (payload?.error && typeof payload.error === 'string') {
+					message = payload.error;
+				}
+			} catch {
+				// Ignore JSON parse errors and fall back to default message.
+			}
+			throw new Error(message);
+		}
 		await invalidateAll();
-		isLoading = false;
+		closeModal();
+	}
+
+	async function handleRetry(id: string) {
+		const response = await fetch(`/api/queue/${id}/retry`, { method: 'POST' });
+		if (!response.ok) throw new Error('Failed to retry');
+		await invalidateAll();
 	}
 </script>
 
@@ -203,73 +533,42 @@
 			</h1>
 			<p class="text-base-content/70">Download and search history</p>
 		</div>
-		<button class="btn btn-ghost btn-sm" onclick={refresh} disabled={isLoading}>
-			<RefreshCw class="h-4 w-4 {isLoading ? 'animate-spin' : ''}" />
-			Refresh
-		</button>
-	</div>
-
-	<!-- Filters -->
-	<div class="card bg-base-200">
-		<div class="card-body p-4">
-			<div class="flex flex-wrap items-center gap-4">
-				<!-- Media Type Filter -->
-				<div class="form-control">
-					<label class="label py-0" for="activity-media-type">
-						<span class="label-text text-xs">Media Type</span>
-					</label>
-					<select
-						id="activity-media-type"
-						class="select-bordered select select-sm"
-						bind:value={mediaTypeFilter}
-						onchange={applyFilters}
-					>
-						<option value="all">All</option>
-						<option value="movie">Movies</option>
-						<option value="tv">TV Shows</option>
-					</select>
-				</div>
-
-				<!-- Status Filter -->
-				<div class="form-control">
-					<label class="label py-0" for="activity-status">
-						<span class="label-text text-xs">Status</span>
-					</label>
-					<select
-						id="activity-status"
-						class="select-bordered select select-sm"
-						bind:value={statusFilter}
-						onchange={applyFilters}
-					>
-						<option value="all">All</option>
-						<option value="success">Success</option>
-						<option value="downloading">Downloading</option>
-						<option value="failed">Failed</option>
-						<option value="rejected">Rejected</option>
-						<option value="no_results">No Results</option>
-					</select>
-				</div>
-
-				<!-- Search -->
-				<div class="form-control flex-1">
-					<label class="label py-0" for="activity-search">
-						<span class="label-text text-xs">Search</span>
-					</label>
-					<div class="relative">
-						<Search class="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/50" />
-						<input
-							id="activity-search"
-							type="text"
-							placeholder="Search media or release..."
-							class="input-bordered input input-sm w-full pl-9"
-							bind:value={searchQuery}
-							oninput={handleSearchInput}
-						/>
-					</div>
-				</div>
-			</div>
+		<!-- Connection Status -->
+		<div class="hidden lg:block">
+			{#if sse.isConnected}
+				<span class="badge gap-1 badge-success">
+					<Wifi class="h-3 w-3" />
+					Live
+				</span>
+			{:else if sse.status === 'connecting' || sse.status === 'error'}
+				<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
+					<Loader2 class="h-3 w-3 animate-spin" />
+					{sse.status === 'error' ? 'Reconnecting...' : 'Connecting...'}
+				</span>
+			{:else}
+				<span class="badge gap-1 badge-ghost">
+					<WifiOff class="h-3 w-3" />
+					Disconnected
+				</span>
+			{/if}
 		</div>
 	</div>
+
+	<!-- Filters Component -->
+	<ActivityFilters
+		{filters}
+		filterOptions={data.filterOptions}
+		onFiltersChange={applyFilters}
+		onClearFilters={clearAllFilters}
+	/>
+
+	<!-- Active Filters Display -->
+	<ActiveFilters
+		{filters}
+		downloadClients={data.filterOptions.downloadClients}
+		onFilterRemove={removeFilter}
+		onClearAll={clearAllFilters}
+	/>
 
 	<!-- Activity Stats -->
 	<div class="flex items-center gap-4 text-sm text-base-content/70">
@@ -288,7 +587,17 @@
 			<Loader2 class="h-8 w-8 animate-spin" />
 		</div>
 	{:else}
-		<ActivityTable {activities} {sortField} {sortDirection} onSort={handleSort} />
+		<ActivityTable
+			{activities}
+			{sortField}
+			{sortDirection}
+			onSort={handleSort}
+			onRowClick={openDetailModal}
+			onPause={handlePause}
+			onResume={handleResume}
+			onRemove={handleRemove}
+			onRetry={handleRetry}
+		/>
 
 		<!-- Load More -->
 		{#if data.hasMore}
@@ -303,3 +612,17 @@
 		{/if}
 	{/if}
 </div>
+
+<!-- Detail Modal -->
+{#if isModalOpen && selectedActivity}
+	<ActivityDetailModal
+		activity={selectedActivity}
+		details={activityDetails}
+		loading={detailsLoading}
+		onClose={closeModal}
+		onPause={handlePause}
+		onResume={handleResume}
+		onRemove={handleRemove}
+		onRetry={handleRetry}
+	/>
+{/if}

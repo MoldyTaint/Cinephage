@@ -447,7 +447,7 @@ export class SABnzbdClient implements IDownloadClient {
 						url: sanitizedUrl,
 						error: message
 					});
-					throw new Error(`Network error fetching NZB: ${message}`);
+					throw new Error(`Network error fetching NZB: ${message}`, { cause: fetchError });
 				}
 
 				if (!nzbResponse.ok) {

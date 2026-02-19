@@ -8,6 +8,7 @@ import { join, dirname } from 'node:path';
 import { logger } from '$lib/logging';
 import { searchOnAdd } from '$lib/server/library/searchOnAdd.js';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 
 /**
  * PATCH /api/library/episodes/[id]
@@ -78,6 +79,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 				});
 			}
 		}
+
+		libraryMediaEvents.emitSeriesUpdated(episode.seriesId);
 
 		return json({ success: true });
 	} catch (error) {
@@ -222,6 +225,8 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 			.update(series)
 			.set({ episodeFileCount: seriesEpisodesWithFiles })
 			.where(eq(series.id, episode.seriesId));
+
+		libraryMediaEvents.emitSeriesUpdated(episode.seriesId);
 
 		// Note: Episode metadata is kept - it will show as "missing"
 		return json({ success: true });

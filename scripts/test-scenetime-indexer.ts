@@ -206,12 +206,24 @@ async function main() {
 			if (release.downloadUrl) {
 				console.log(`  ✓ Download URL present: ${release.downloadUrl.substring(0, 60)}...`);
 
-				// Try to get resolved download URL
+				// Try to download through the indexer
 				try {
-					const downloadUrl = await indexer.getDownloadUrl(release);
-					console.log(`  ✓ Resolved URL: ${downloadUrl.substring(0, 60)}...`);
+					if (indexer.downloadTorrent) {
+						const result = await indexer.downloadTorrent(release.downloadUrl, {
+							releaseDetailsUrl: release.commentsUrl
+						});
+						if (result.success) {
+							console.log(
+								`  ✓ Download resolved: magnet=${!!result.magnetUrl}, data=${!!result.data}, infoHash=${result.infoHash?.substring(0, 16)}...`
+							);
+						} else {
+							console.log(`  ⚠ Download failed: ${result.error}`);
+						}
+					} else {
+						console.log(`  ⚠ Indexer does not support downloadTorrent`);
+					}
 				} catch (err) {
-					console.log(`  ⚠ URL resolution: ${err instanceof Error ? err.message : err}`);
+					console.log(`  ⚠ Download error: ${err instanceof Error ? err.message : err}`);
 				}
 			} else {
 				console.log('  ✗ No download URL in release');

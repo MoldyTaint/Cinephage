@@ -11,6 +11,7 @@
 import { isCloudflareProtected } from './CloudflareDetection';
 import { captchaSolverSettingsService, getCaptchaSolver } from '$lib/server/captcha';
 import { logger } from '$lib/logging';
+import { decodeBuffer } from './EncodingUtils';
 
 export interface CloudflareFetchOptions {
 	method?: 'GET' | 'POST';
@@ -19,6 +20,8 @@ export interface CloudflareFetchOptions {
 	timeout?: number;
 	/** If true, skip browser fallback and just return the CF-protected response */
 	skipBrowserFallback?: boolean;
+	/** Response encoding (default: UTF-8) */
+	encoding?: string;
 }
 
 export interface CloudflareFetchResult {
@@ -45,7 +48,8 @@ export async function cloudflareFetch(
 		headers = {},
 		body,
 		timeout = 30000,
-		skipBrowserFallback = false
+		skipBrowserFallback = false,
+		encoding = 'UTF-8'
 	} = options;
 
 	// Try normal fetch first
@@ -61,7 +65,10 @@ export async function cloudflareFetch(
 			redirect: 'follow'
 		});
 
-		const responseBody = await response.text();
+		// Get raw buffer and decode with proper encoding
+		const arrayBuffer = await response.arrayBuffer();
+		const buffer = Buffer.from(arrayBuffer);
+		const { text: responseBody } = decodeBuffer(buffer, encoding);
 
 		// Check for Cloudflare
 		if (isCloudflareProtected(response.status, response.headers, responseBody)) {

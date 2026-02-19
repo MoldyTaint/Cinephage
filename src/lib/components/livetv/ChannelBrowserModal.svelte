@@ -1,12 +1,19 @@
 <script lang="ts">
 	import { SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
-	import { X, Loader2, Search, Tv, Plus, Check, ChevronLeft, ChevronRight } from 'lucide-svelte';
-	import type {
-		StalkerAccount,
-		CachedCategory,
-		CachedChannel,
-		PaginatedChannelResponse
-	} from '$lib/types/livetv';
+	import {
+		X,
+		Loader2,
+		Search,
+		Tv,
+		Radio,
+		List,
+		Plus,
+		Check,
+		ChevronLeft,
+		ChevronRight
+	} from 'lucide-svelte';
+	import type { LiveTvProviderType } from '$lib/types/livetv';
+	import type { LiveTvAccount, LiveTvCategory, CachedChannel } from '$lib/types/livetv';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 
 	type BrowserMode = 'add-to-lineup' | 'select-backup';
@@ -38,8 +45,8 @@
 	const isBackupMode = $derived(mode === 'select-backup');
 
 	// Data state
-	let accounts = $state<StalkerAccount[]>([]);
-	let stalkerCategories = $state<CachedCategory[]>([]);
+	let accounts = $state<LiveTvAccount[]>([]);
+	let categories = $state<LiveTvCategory[]>([]);
 	let channels = $state<CachedChannel[]>([]);
 	let loading = $state(false);
 	let error = $state<string | null>(null);
@@ -61,6 +68,7 @@
 	let selectedIds = new SvelteSet<string>();
 	let addingIds = new SvelteSet<string>();
 	let bulkAdding = $state(false);
+	let addingCategory = $state(false);
 
 	// Local copy of lineup IDs (updated after successful adds)
 	let localLineupIds = new SvelteSet<string>();
@@ -98,6 +106,9 @@
 
 	const someVisibleSelected = $derived(
 		selectableChannels.some((c) => selectedIds.has(c.id)) && !allVisibleSelected
+	);
+	const selectedCategory = $derived(
+		categories.find((category) => category.id === selectedCategoryId)
 	);
 
 	// Reset state only when modal OPENS (transition from closed to open)
@@ -151,7 +162,7 @@
 			if (selectedAccountId) {
 				loadCategories(selectedAccountId);
 			} else {
-				stalkerCategories = [];
+				categories = [];
 				selectedCategoryId = '';
 			}
 		}
@@ -173,8 +184,8 @@
 		try {
 			const response = await fetch('/api/livetv/accounts');
 			if (response.ok) {
-				const data: StalkerAccount[] = await response.json();
-				accounts = data.filter((a) => a.enabled);
+				const result = await response.json();
+				accounts = result.accounts?.filter((a: LiveTvAccount) => a.enabled) || [];
 			}
 		} catch (e) {
 			console.error('Failed to load accounts:', e);
@@ -183,15 +194,15 @@
 
 	async function loadCategories(accountId: string) {
 		try {
-			const response = await fetch(`/api/livetv/categories?accountIds=${accountId}`);
+			const response = await fetch(`/api/livetv/categories?accountId=${accountId}`);
 			if (response.ok) {
 				const data = await response.json();
-				stalkerCategories = data.categories || [];
+				categories = data.categories || [];
 				selectedCategoryId = '';
 			}
 		} catch (e) {
 			console.error('Failed to load categories:', e);
-			stalkerCategories = [];
+			categories = [];
 		}
 	}
 
@@ -217,13 +228,14 @@
 			const response = await fetch(`/api/livetv/channels?${params}`);
 			if (!response.ok) throw new Error('Failed to load channels');
 
-			const data: PaginatedChannelResponse = await response.json();
-			channels = data.items;
-			total = data.total;
-			totalPages = data.totalPages;
+			const result = await response.json();
+			if (!result.success) throw new Error(result.error || 'Failed to load channels');
+			channels = result.channels || [];
+			total = result.total || 0;
+			totalPages = result.totalPages || 1;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load channels';
-			channels = [];
+			channels = [] as CachedChannel[];
 		} finally {
 			loading = false;
 		}
@@ -321,6 +333,136 @@
 		}
 	}
 
+	async function getAllChannelsForSelectedCategory(): Promise<CachedChannel[]> {
+		if (!selectedAccountId || !selectedCategoryId) {
+			return [];
+		}
+
+		const categoryChannels: CachedChannel[] = [];
+		let currentPage = 1;
+		let hasMore = true;
+		const fetchPageSize = 500;
+
+		while (hasMore) {
+			const params = new SvelteURLSearchParams();
+			params.set('page', String(currentPage));
+			params.set('pageSize', String(fetchPageSize));
+			params.set('accountIds', selectedAccountId);
+			params.set('categoryIds', selectedCategoryId);
+
+			const response = await fetch(`/api/livetv/channels?${params.toString()}`);
+			if (!response.ok) {
+				throw new Error('Failed to load category channels');
+			}
+
+			const result = await response.json();
+			if (!result.success) {
+				throw new Error(result.error || 'Failed to load category channels');
+			}
+
+			const pageChannels = (result.channels ?? []) as CachedChannel[];
+			categoryChannels.push(...pageChannels);
+
+			const totalPagesForQuery = Math.max(1, Number(result.totalPages || 1));
+			currentPage++;
+			hasMore = currentPage <= totalPagesForQuery;
+		}
+
+		return categoryChannels;
+	}
+
+	async function getOrCreateLineupCategoryId(name: string): Promise<string> {
+		const normalizedName = name.trim();
+		if (!normalizedName) {
+			throw new Error('Selected category has no name');
+		}
+
+		const existingResponse = await fetch('/api/livetv/channel-categories');
+		if (!existingResponse.ok) {
+			throw new Error('Failed to load Cinephage categories');
+		}
+
+		const existingData = await existingResponse.json();
+		const existingCategories = (existingData.categories ?? []) as Array<{
+			id: string;
+			name: string;
+		}>;
+		const existing = existingCategories.find(
+			(category) => category.name?.trim().toLowerCase() === normalizedName.toLowerCase()
+		);
+		if (existing?.id) {
+			return existing.id;
+		}
+
+		const createResponse = await fetch('/api/livetv/channel-categories', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ name: normalizedName })
+		});
+
+		if (!createResponse.ok) {
+			const data = await createResponse.json().catch(() => ({}));
+			throw new Error(data.error || 'Failed to create Cinephage category');
+		}
+
+		const createData = await createResponse.json();
+		const categoryId = createData.category?.id as string | undefined;
+		if (!categoryId) {
+			throw new Error('Created category did not return an ID');
+		}
+
+		return categoryId;
+	}
+
+	async function addSelectedCategoryChannels() {
+		if (!selectedAccountId || !selectedCategoryId || addingCategory) return;
+
+		addingCategory = true;
+		error = null;
+
+		try {
+			const lineupCategoryName = selectedCategory?.title?.trim();
+			if (!lineupCategoryName) {
+				throw new Error('Please select a valid provider category first');
+			}
+			const lineupCategoryId = await getOrCreateLineupCategoryId(lineupCategoryName);
+			const categoryChannels = await getAllChannelsForSelectedCategory();
+
+			if (categoryChannels.length === 0) {
+				return;
+			}
+
+			const response = await fetch('/api/livetv/lineup', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					channels: categoryChannels.map((channel) => ({
+						accountId: channel.accountId,
+						channelId: channel.id,
+						categoryId: lineupCategoryId
+					}))
+				})
+			});
+
+			if (!response.ok) {
+				const data = await response.json().catch(() => ({}));
+				throw new Error(data.error || 'Failed to add category channels');
+			}
+
+			for (const channel of categoryChannels) {
+				localLineupIds.add(channel.id);
+				selectedIds.delete(channel.id);
+			}
+
+			onChannelsAdded();
+			await loadChannels();
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to add category channels';
+		} finally {
+			addingCategory = false;
+		}
+	}
+
 	// Add a channel as backup (backup mode only)
 	async function selectAsBackup(channel: CachedChannel) {
 		if (!lineupItemId || !onBackupSelected || addingBackup) return;
@@ -359,6 +501,27 @@
 	function formatChannelName(name: string): string {
 		return name.replace(/#+/g, ' ').replace(/\s+/g, ' ').trim();
 	}
+
+	// Helper to get category display name (handles M3U group-title)
+	function getCategoryDisplayName(channel: CachedChannel): string {
+		if (channel.categoryTitle) return channel.categoryTitle;
+		if (channel.m3u?.groupTitle) return channel.m3u.groupTitle;
+		return '-';
+	}
+
+	// Helper to get provider badge info
+	function getProviderBadgeInfo(type: LiveTvProviderType) {
+		switch (type) {
+			case 'stalker':
+				return { class: 'badge-primary', icon: Tv, label: 'Stalker' };
+			case 'xstream':
+				return { class: 'badge-secondary', icon: Radio, label: 'XStream' };
+			case 'm3u':
+				return { class: 'badge-accent', icon: List, label: 'M3U' };
+			default:
+				return { class: 'badge-ghost', icon: Tv, label: type };
+		}
+	}
 </script>
 
 <ModalWrapper {open} {onClose} maxWidth="5xl" labelledBy="channel-browser-modal-title">
@@ -369,9 +532,7 @@
 				{isBackupMode ? 'Select Backup Channel' : 'Browse Channels'}
 			</h3>
 			<p class="text-sm text-base-content/60">
-				{isBackupMode
-					? 'Select an alternative channel source'
-					: 'Add channels from your Stalker accounts'}
+				{isBackupMode ? 'Select an alternative channel source' : 'Add channels from your accounts'}
 			</p>
 		</div>
 		<button class="btn btn-circle btn-ghost btn-sm" onclick={onClose}>
@@ -404,7 +565,7 @@
 			disabled={!selectedAccountId}
 		>
 			<option value="">All Categories</option>
-			{#each stalkerCategories as category (category.id)}
+			{#each categories as category (category.id)}
 				<option value={category.id}>
 					{category.title}
 					({category.channelCount})
@@ -449,6 +610,24 @@
 				/>
 				Show already added
 			</label>
+			{#if selectedAccountId && selectedCategoryId}
+				<button
+					class="btn btn-outline btn-sm"
+					onclick={addSelectedCategoryChannels}
+					disabled={addingCategory || loading}
+					title="Add all channels in this provider category"
+				>
+					{#if addingCategory}
+						<Loader2 class="h-4 w-4 animate-spin" />
+					{:else}
+						<Plus class="h-4 w-4" />
+					{/if}
+					Add Entire Category
+					{#if selectedCategory}
+						({selectedCategory.channelCount})
+					{/if}
+				</button>
+			{/if}
 			{#if selectedIds.size > 0}
 				<div class="flex gap-2">
 					<button class="btn btn-ghost btn-xs" onclick={clearSelection}>Clear</button>
@@ -508,6 +687,7 @@
 					{@const inLineup = isInLineup(channel.id)}
 					{@const isSelected = selectedIds.has(channel.id)}
 					{@const isAdding = addingIds.has(channel.id)}
+					{@const providerBadge = getProviderBadgeInfo(channel.providerType)}
 					<div class="rounded-xl bg-base-200 p-3 {excluded ? 'opacity-60' : ''}">
 						<div class="flex items-start gap-3">
 							{#if !isBackupMode}
@@ -539,9 +719,14 @@
 										#{channel.number}
 										<span class="text-base-content/40">•</span>
 									{/if}
-									{channel.categoryTitle || '-'}
+									{getCategoryDisplayName(channel)}
 									<span class="text-base-content/40">•</span>
 									{channel.accountName || '-'}
+									<span class="text-base-content/40">•</span>
+									<span class="badge {providerBadge.class} gap-1 badge-xs">
+										<providerBadge.icon class="h-3 w-3" />
+										{providerBadge.label}
+									</span>
 								</div>
 							</div>
 							<div class="flex items-center gap-2">
@@ -607,6 +792,7 @@
 							<th>Channel</th>
 							<th>Category</th>
 							<th>Account</th>
+							<th>Provider</th>
 							<th class="w-24">Actions</th>
 						</tr>
 					</thead>
@@ -616,6 +802,7 @@
 							{@const inLineup = isInLineup(channel.id)}
 							{@const isSelected = selectedIds.has(channel.id)}
 							{@const isAdding = addingIds.has(channel.id)}
+							{@const providerBadge = getProviderBadgeInfo(channel.providerType)}
 
 							<tr class={excluded ? 'bg-base-200/50 opacity-50' : ''}>
 								{#if !isBackupMode}
@@ -652,8 +839,14 @@
 										</div>
 									</div>
 								</td>
-								<td class="text-sm">{channel.categoryTitle || '-'}</td>
+								<td class="text-sm">{getCategoryDisplayName(channel)}</td>
 								<td class="text-sm">{channel.accountName || '-'}</td>
+								<td>
+									<span class="badge {providerBadge.class} gap-1 badge-sm">
+										<providerBadge.icon class="h-3 w-3" />
+										{providerBadge.label}
+									</span>
+								</td>
 								<td>
 									{#if isBackupMode}
 										{#if excluded}

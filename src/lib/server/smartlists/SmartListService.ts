@@ -32,7 +32,8 @@ import {
 	triggerMovieSearch,
 	triggerSeriesSearch
 } from '$lib/server/library/LibraryAddService.js';
-import { namingService, type MediaNamingInfo } from '$lib/server/library/naming/NamingService.js';
+import { NamingService, type MediaNamingInfo } from '$lib/server/library/naming/NamingService.js';
+import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
 import type {
 	CreateSmartListInput,
 	UpdateSmartListInput,
@@ -973,7 +974,7 @@ export class SmartListService {
 		const monitored = list.autoAddMonitored ?? true;
 		const wantsSubtitles = list.wantsSubtitles ?? true;
 
-		let addedCount = 0;
+		let addedCount: number;
 
 		if (mediaType === 'movie') {
 			addedCount = await this.autoAddMovies(
@@ -1031,10 +1032,12 @@ export class SmartListService {
 				// Fetch movie details from TMDB
 				const movieDetails = await fetchMovieDetails(item.tmdbId);
 
-				// Generate folder path
+				// Generate folder path using database naming configuration
 				const year = movieDetails.release_date
 					? new Date(movieDetails.release_date).getFullYear()
 					: undefined;
+				const config = namingSettingsService.getConfigSync();
+				const namingService = new NamingService(config);
 				const folderName = namingService.generateMovieFolderName({
 					title: movieDetails.title,
 					year,
@@ -1149,7 +1152,7 @@ export class SmartListService {
 				// Fetch series details from TMDB
 				const seriesDetails = await fetchSeriesDetails(item.tmdbId);
 
-				// Generate folder path
+				// Generate folder path using database naming configuration
 				const year = seriesDetails.first_air_date
 					? new Date(seriesDetails.first_air_date).getFullYear()
 					: undefined;
@@ -1157,6 +1160,8 @@ export class SmartListService {
 				// Get external IDs
 				const { tvdbId, imdbId } = await fetchSeriesExternalIds(item.tmdbId);
 
+				const config = namingSettingsService.getConfigSync();
+				const namingService = new NamingService(config);
 				const folderName = namingService.generateSeriesFolderName({
 					title: seriesDetails.name,
 					year,

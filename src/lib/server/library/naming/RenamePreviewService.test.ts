@@ -105,9 +105,9 @@ describe('RenamePreviewService', () => {
 
 				const result = service.generateMovieFileName(info);
 				expect(result).not.toContain(':');
-				// Note: CleanTitle token removes colons before colon replacement applies
-				// So the result is "Star Wars The Force Awakens" not "Star Wars - The Force Awakens"
-				expect(result).toContain('Star Wars The Force Awakens');
+				// CleanTitle now respects colonReplacement setting
+				// Smart replacement converts ": " to " - "
+				expect(result).toContain('Star Wars - The Force Awakens');
 			});
 
 			it('should delete colons when configured', () => {

@@ -8,7 +8,11 @@
 import { eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { stalkerPortals, type StalkerPortalRecord } from '$lib/server/db/schema';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service.js';
+import { ValidationError, NotFoundError } from '$lib/errors';
+
+const logger = createChildLogger({ module: 'StalkerPortalManager' });
 
 export interface StalkerPortal {
 	id: string;
@@ -106,7 +110,53 @@ function normalizePortalUrl(url: string): string {
 	return normalized;
 }
 
-export class StalkerPortalManager {
+export class StalkerPortalManager implements BackgroundService {
+	readonly name = 'StalkerPortalManager';
+	private _status: ServiceStatus = 'pending';
+	private _error?: Error;
+
+	get status(): ServiceStatus {
+		return this._status;
+	}
+
+	get error(): Error | undefined {
+		return this._error;
+	}
+
+	/**
+	 * Start the service (non-blocking)
+	 * Implements BackgroundService.start()
+	 */
+	start(): void {
+		if (this._status === 'ready' || this._status === 'starting') {
+			logger.debug('StalkerPortalManager already running');
+			return;
+		}
+
+		this._status = 'starting';
+		logger.info('Starting StalkerPortalManager');
+
+		// Service initialization is synchronous for this manager
+		setImmediate(() => {
+			this._status = 'ready';
+			logger.info('StalkerPortalManager ready');
+		});
+	}
+
+	/**
+	 * Stop the service gracefully
+	 * Implements BackgroundService.stop()
+	 */
+	async stop(): Promise<void> {
+		if (this._status === 'pending') {
+			return;
+		}
+
+		logger.info('Stopping StalkerPortalManager');
+		this._status = 'pending';
+		logger.info('StalkerPortalManager stopped');
+	}
+
 	/**
 	 * Get all portals
 	 */
@@ -161,7 +211,7 @@ export class StalkerPortalManager {
 		// Check for duplicates
 		const existing = await this.getPortalByUrl(normalizedUrl);
 		if (existing) {
-			throw new Error(`Portal already exists: ${existing.name}`);
+			throw new ValidationError(`Portal already exists: ${existing.name}`);
 		}
 
 		// Detect portal type if requested
@@ -189,7 +239,7 @@ export class StalkerPortalManager {
 
 		const record = db.insert(stalkerPortals).values(insertData).returning().get();
 
-		logger.info('[StalkerPortalManager] Created portal', {
+		logger.info('Created portal', {
 			id: record.id,
 			name: record.name,
 			url: record.url,
@@ -205,7 +255,7 @@ export class StalkerPortalManager {
 	async updatePortal(id: string, updates: UpdatePortalInput): Promise<StalkerPortal> {
 		const existing = await this.getPortal(id);
 		if (!existing) {
-			throw new Error(`Portal not found: ${id}`);
+			throw new NotFoundError('Portal', id);
 		}
 
 		const now = new Date().toISOString();
@@ -223,7 +273,7 @@ export class StalkerPortalManager {
 			// Check for duplicates (excluding self)
 			const duplicate = await this.getPortalByUrl(normalizedUrl);
 			if (duplicate && duplicate.id !== id) {
-				throw new Error(`Portal URL already exists: ${duplicate.name}`);
+				throw new ValidationError(`Portal URL already exists: ${duplicate.name}`);
 			}
 
 			updateData.url = normalizedUrl;
@@ -247,7 +297,7 @@ export class StalkerPortalManager {
 			.returning()
 			.get();
 
-		logger.info('[StalkerPortalManager] Updated portal', {
+		logger.info('Updated portal', {
 			id: record.id,
 			name: record.name
 		});
@@ -262,12 +312,12 @@ export class StalkerPortalManager {
 	async deletePortal(id: string): Promise<void> {
 		const existing = await this.getPortal(id);
 		if (!existing) {
-			throw new Error(`Portal not found: ${id}`);
+			throw new NotFoundError('Portal', id);
 		}
 
 		db.delete(stalkerPortals).where(eq(stalkerPortals.id, id)).run();
 
-		logger.info('[StalkerPortalManager] Deleted portal', {
+		logger.info('Deleted portal', {
 			id,
 			name: existing.name
 		});
@@ -302,7 +352,7 @@ export class StalkerPortalManager {
 					const text = await response.text();
 					// Check for version string pattern
 					if (text.includes('var ver') || text.includes('version')) {
-						logger.debug('[StalkerPortalManager] Detected portal type', {
+						logger.debug('Detected portal type', {
 							url: normalizedUrl,
 							endpoint
 						});
@@ -412,7 +462,7 @@ export class StalkerPortalManager {
 	async refreshPortalDetection(id: string): Promise<StalkerPortal> {
 		const existing = await this.getPortal(id);
 		if (!existing) {
-			throw new Error(`Portal not found: ${id}`);
+			throw new NotFoundError('Portal', id);
 		}
 
 		const detection = await this.detectPortalType(existing.url);

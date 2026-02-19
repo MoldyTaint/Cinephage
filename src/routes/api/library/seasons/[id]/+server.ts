@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { unlink, rmdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { logger } from '$lib/logging';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 
 /**
  * PATCH /api/library/seasons/[id]
@@ -40,6 +41,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		if (typeof monitored === 'boolean' && body.updateEpisodes === true) {
 			await db.update(episodes).set({ monitored }).where(eq(episodes.seasonId, params.id));
 		}
+
+		libraryMediaEvents.emitSeriesUpdated(season.seriesId);
 
 		return json({ success: true });
 	} catch (error) {
@@ -152,6 +155,8 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 			.update(series)
 			.set({ episodeFileCount: remainingFilesCount })
 			.where(eq(series.id, season.seriesId));
+
+		libraryMediaEvents.emitSeriesUpdated(season.seriesId);
 
 		// Note: Season and episode metadata is kept - episodes will show as "missing"
 		return json({ success: true });

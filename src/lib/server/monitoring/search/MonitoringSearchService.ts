@@ -65,6 +65,39 @@ import {
 
 const parser = new ReleaseParser();
 
+type EpisodeFileUpsertInput = Omit<typeof episodeFiles.$inferInsert, 'id'> & { id?: string };
+type EpisodeFileWriteExecutor = Pick<typeof db, 'select' | 'update' | 'insert'>;
+
+/**
+ * Upsert episode file by (seriesId, relativePath) and return canonical row id.
+ */
+async function upsertEpisodeFileByPath(
+	executor: EpisodeFileWriteExecutor,
+	record: EpisodeFileUpsertInput
+): Promise<string> {
+	const { id: requestedId, ...values } = record;
+
+	const existing = await executor
+		.select({ id: episodeFiles.id })
+		.from(episodeFiles)
+		.where(
+			and(
+				eq(episodeFiles.seriesId, record.seriesId),
+				eq(episodeFiles.relativePath, record.relativePath)
+			)
+		)
+		.limit(1);
+
+	if (existing.length > 0) {
+		await executor.update(episodeFiles).set(values).where(eq(episodeFiles.id, existing[0].id));
+		return existing[0].id;
+	}
+
+	const id = requestedId ?? randomUUID();
+	await executor.insert(episodeFiles).values({ id, ...values });
+	return id;
+}
+
 /**
  * Search result for individual item
  */
@@ -2651,7 +2684,6 @@ export class MonitoringSearchService {
 		try {
 			// Get file stats
 			const stats = statSync(result.filePath);
-			const mediaInfo = await mediaInfoService.extractMediaInfo(result.filePath);
 
 			// Parse quality from release title
 			const parsedRelease = parser.parse(release.title);
@@ -2672,6 +2704,11 @@ export class MonitoringSearchService {
 				if (!movie || !movie.rootFolder) {
 					return { success: false, error: 'Movie or root folder not found' };
 				}
+
+				const allowStrmProbe = movie.scoringProfileId !== 'streamer';
+				const mediaInfo = await mediaInfoService.extractMediaInfo(result.filePath, {
+					allowStrmProbe
+				});
 
 				// Calculate relative path from root folder
 				const relativePath = relative(movie.rootFolder.path, result.filePath);
@@ -2761,6 +2798,11 @@ export class MonitoringSearchService {
 					return { success: false, error: 'Series or root folder not found' };
 				}
 
+				const allowStrmProbe = show.scoringProfileId !== 'streamer';
+				const mediaInfo = await mediaInfoService.extractMediaInfo(result.filePath, {
+					allowStrmProbe
+				});
+
 				// Find the episode
 				const episodeRow = await db.query.episodes.findFirst({
 					where: and(
@@ -2816,10 +2858,8 @@ export class MonitoringSearchService {
 					}
 				}
 
-				// Create episode file record
-				const fileId = randomUUID();
-				await db.insert(episodeFiles).values({
-					id: fileId,
+				// Create/update episode file record
+				const fileId = await upsertEpisodeFileByPath(db, {
 					seriesId,
 					seasonNumber: parsed.season,
 					episodeIds: [episodeRow.id],
@@ -2908,6 +2948,7 @@ export class MonitoringSearchService {
 		if (!show || !show.rootFolder) {
 			return { success: false, error: 'Series or root folder not found' };
 		}
+		const allowStrmProbe = show.scoringProfileId !== 'streamer';
 
 		// Create .strm files for all episodes in the season
 		const strmResult = await strmService.createSeasonStrmFiles({
@@ -2958,7 +2999,9 @@ export class MonitoringSearchService {
 
 			try {
 				const stats = statSync(epResult.filePath);
-				const mediaInfo = await mediaInfoService.extractMediaInfo(epResult.filePath);
+				const mediaInfo = await mediaInfoService.extractMediaInfo(epResult.filePath, {
+					allowStrmProbe
+				});
 				const relativePath = relative(show.rootFolder!.path, epResult.filePath);
 
 				episodeFileData.push({
@@ -3040,10 +3083,8 @@ export class MonitoringSearchService {
 						}
 					}
 
-					// Create episode file record
-					const fileId = randomUUID();
-					await tx.insert(episodeFiles).values({
-						id: fileId,
+					// Create/update episode file record
+					const fileId = await upsertEpisodeFileByPath(tx, {
 						seriesId,
 						seasonNumber,
 						episodeIds: [epData.episodeId],

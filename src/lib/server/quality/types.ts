@@ -8,19 +8,13 @@ import type { Resolution, Source } from '../indexers/parser/types.js';
 
 /**
  * Score components breakdown for transparency
- * Separates quality-based scoring from availability/freshness bonuses
+ * Only includes intrinsic quality factors that persist with the file
  */
 export interface ScoreComponents {
 	/** Raw score from scoring engine (unbounded, profile-dependent) */
 	rawQualityScore: number;
 	/** Quality score normalized to 0-1000 range */
 	normalizedQualityScore: number;
-	/** Bonus from seeders/availability (0-100) */
-	availabilityBonus: number;
-	/** Bonus from freshness (0-50) */
-	freshnessBonus: number;
-	/** Bonus from parsing confidence (0-50) */
-	confidenceBonus: number;
 	/** Bonus for PROPER/REPACK (0-20) */
 	enhancementBonus: number;
 	/** Bonus for season/series packs (0-100) */

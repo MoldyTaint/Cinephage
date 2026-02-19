@@ -1,0 +1,252 @@
+---
+# The Pirate Bay - Native Cinephage Definition
+# Uses the official apibay.org JSON API
+# No HTML scraping, no Go regex - clean and reliable
+
+id: thepiratebay
+name: The Pirate Bay
+description: The Pirate Bay - The galaxy's most resilient public BitTorrent site
+type: public
+protocol: torrent
+language: en-US
+encoding: UTF-8
+requestdelay: 2
+
+links:
+  - https://thepiratebay.org/
+  - https://thepiratebay.party/
+  - https://piratebay.live/
+
+caps:
+  modes:
+    search: [q]
+    tv-search: [q]
+    movie-search: [q]
+    music-search: [q]
+    book-search: [q]
+
+  categorymappings:
+    # Audio (100)
+    - id: '100'
+      cat: Audio
+      desc: Audio - All
+    - id: '101'
+      cat: Audio
+      desc: Music
+    - id: '102'
+      cat: Audio/Audiobook
+      desc: Audio Books
+    - id: '103'
+      cat: Audio
+      desc: Sound Clips
+    - id: '104'
+      cat: Audio/Lossless
+      desc: FLAC
+    - id: '199'
+      cat: Audio/Other
+      desc: Audio Other
+    # Video (200)
+    - id: '200'
+      cat: Movies
+      desc: Video - All
+      default: true
+    - id: '201'
+      cat: Movies
+      desc: Movies
+    - id: '202'
+      cat: Movies/DVD
+      desc: Movies DVDR
+    - id: '203'
+      cat: Audio/Video
+      desc: Music Videos
+    - id: '204'
+      cat: Movies/Other
+      desc: Movie Clips
+    - id: '205'
+      cat: TV
+      desc: TV Shows
+      default: true
+    - id: '206'
+      cat: TV/Other
+      desc: Handheld
+    - id: '207'
+      cat: Movies/HD
+      desc: HD - Movies
+    - id: '208'
+      cat: TV/HD
+      desc: HD - TV Shows
+    - id: '209'
+      cat: Movies/3D
+      desc: 3D
+    - id: '210'
+      cat: Movies/SD
+      desc: CAM/TS
+    - id: '211'
+      cat: Movies/UHD
+      desc: UHD/4k - Movies
+    - id: '212'
+      cat: TV/UHD
+      desc: UHD/4k - TV Shows
+    - id: '299'
+      cat: Movies/Other
+      desc: Video Other
+    # Applications (300)
+    - id: '300'
+      cat: PC
+      desc: Applications - All
+    - id: '301'
+      cat: PC
+      desc: Windows
+    - id: '302'
+      cat: PC/Mac
+      desc: Mac
+    - id: '303'
+      cat: PC
+      desc: UNIX
+    - id: '304'
+      cat: PC/Mobile-Other
+      desc: Handheld
+    - id: '305'
+      cat: PC/Mobile-iOS
+      desc: iOS
+    - id: '306'
+      cat: PC/Mobile-Android
+      desc: Android
+    - id: '399'
+      cat: PC
+      desc: Other OS
+    # Games (400)
+    - id: '400'
+      cat: Console
+      desc: Games - All
+    - id: '401'
+      cat: PC/Games
+      desc: PC Games
+    - id: '402'
+      cat: PC/Mac
+      desc: Mac Games
+    - id: '403'
+      cat: Console/PS4
+      desc: PlayStation
+    - id: '404'
+      cat: Console/XBox
+      desc: Xbox
+    - id: '405'
+      cat: Console/Wii
+      desc: Wii
+    - id: '406'
+      cat: Console/Other
+      desc: Handheld Games
+    - id: '407'
+      cat: Console/Other
+      desc: iOS Games
+    - id: '408'
+      cat: Console/Other
+      desc: Android Games
+    - id: '499'
+      cat: Console/Other
+      desc: Games Other
+    # Other (600)
+    - id: '600'
+      cat: Other
+      desc: Other - All
+    - id: '601'
+      cat: Books/EBook
+      desc: E-books
+    - id: '602'
+      cat: Books/Comics
+      desc: Comics
+    - id: '603'
+      cat: Books
+      desc: Pictures
+    - id: '604'
+      cat: Books
+      desc: Covers
+    - id: '605'
+      cat: Books
+      desc: Physibles
+    - id: '699'
+      cat: Books/Other
+      desc: Other
+
+settings:
+  - name: info_api
+    type: info
+    label: About this Indexer
+    default: This indexer uses the official API at apibay.org. Choose any TPB mirror link to view torrent details.
+
+search:
+  paths:
+    # Search with keywords
+    - path: https://apibay.org/q.php
+      method: get
+      inputs:
+        q: '{{ .Keywords }}'
+
+    # Fallback: Top 100 recent when no keywords
+    - path: https://apibay.org/precompiled/data_top100_recent.json
+      method: get
+      inputs: {}
+
+  response:
+    type: json
+
+  rows:
+    selector: $
+    # TPB returns [{"id":"0","name":"No results..."}] for no results
+    count:
+      selector: $[0].id
+
+  fields:
+    _id:
+      selector: id
+
+    category:
+      selector: category
+
+    title:
+      selector: name
+
+    details:
+      text: 'https://thepiratebay.org/description.php?id={{ .Result._id }}'
+
+    infohash:
+      selector: info_hash
+
+    # Generate magnet URL from infohash
+    # Using well-known trackers for TPB torrents
+    magnet:
+      text: 'magnet:?xt=urn:btih:{{ .Result.info_hash }}&dn={{ .Result.name }}&tr=udp://tracker.opentrackr.org:1337/announce&tr=udp://open.stealth.si:80/announce&tr=udp://tracker.torrent.eu.org:451/announce&tr=udp://tracker.bittorent.site:1337/announce&tr=udp://tracker.openbittorrent.com:6969/announce'
+
+    imdbid:
+      selector: imdb
+      optional: true
+
+    date:
+      selector: added
+      filters:
+        - name: dateparse
+          args: unix
+
+    size:
+      selector: size
+
+    files:
+      selector: num_files
+      optional: true
+
+    seeders:
+      selector: seeders
+
+    leechers:
+      selector: leechers
+
+    _username:
+      selector: username
+      optional: true
+
+    downloadvolumefactor:
+      text: '0'
+
+    uploadvolumefactor:
+      text: '1'

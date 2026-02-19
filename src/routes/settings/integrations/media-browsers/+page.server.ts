@@ -41,6 +41,23 @@ export const actions: Actions = {
 		const manager = getMediaBrowserManager();
 
 		try {
+			const shouldValidateConnection = result.data.enabled ?? true;
+			if (shouldValidateConnection) {
+				const testResult = await manager.testServerConfig({
+					host: result.data.host,
+					apiKey: result.data.apiKey,
+					serverType: result.data.serverType
+				});
+
+				if (!testResult.success) {
+					return fail(400, {
+						serverError: testResult.error
+							? `Connection test failed: ${testResult.error}`
+							: 'Connection test failed'
+					});
+				}
+			}
+
 			await manager.createServer(result.data);
 			return { serverSuccess: true };
 		} catch (error) {
@@ -79,6 +96,32 @@ export const actions: Actions = {
 		const manager = getMediaBrowserManager();
 
 		try {
+			const existing = await manager.getServerRecord(id);
+			if (!existing) {
+				return fail(404, { serverError: 'Server not found' });
+			}
+
+			const effectiveEnabled = result.data.enabled ?? existing.enabled ?? true;
+			if (effectiveEnabled) {
+				const host = result.data.host ?? existing.host;
+				const apiKey = result.data.apiKey ?? existing.apiKey;
+				const serverType = (result.data.serverType ?? existing.serverType) as 'jellyfin' | 'emby';
+
+				const testResult = await manager.testServerConfig({
+					host,
+					apiKey,
+					serverType
+				});
+
+				if (!testResult.success) {
+					return fail(400, {
+						serverError: testResult.error
+							? `Connection test failed: ${testResult.error}`
+							: 'Connection test failed'
+					});
+				}
+			}
+
 			await manager.updateServer(id, result.data);
 			return { serverSuccess: true };
 		} catch (error) {
@@ -119,6 +162,90 @@ export const actions: Actions = {
 
 		try {
 			await manager.updateServer(id, { enabled });
+			return { serverSuccess: true };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown error';
+			return fail(500, { serverError: message });
+		}
+	},
+
+	bulkEnable: async ({ request }) => {
+		const data = await request.formData();
+		const idsJson = data.get('ids');
+
+		if (!idsJson || typeof idsJson !== 'string') {
+			return fail(400, { serverError: 'Missing server IDs' });
+		}
+
+		let ids: string[];
+		try {
+			ids = JSON.parse(idsJson);
+		} catch {
+			return fail(400, { serverError: 'Invalid IDs format' });
+		}
+
+		const manager = getMediaBrowserManager();
+
+		try {
+			for (const id of ids) {
+				await manager.updateServer(id, { enabled: true });
+			}
+			return { serverSuccess: true };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown error';
+			return fail(500, { serverError: message });
+		}
+	},
+
+	bulkDisable: async ({ request }) => {
+		const data = await request.formData();
+		const idsJson = data.get('ids');
+
+		if (!idsJson || typeof idsJson !== 'string') {
+			return fail(400, { serverError: 'Missing server IDs' });
+		}
+
+		let ids: string[];
+		try {
+			ids = JSON.parse(idsJson);
+		} catch {
+			return fail(400, { serverError: 'Invalid IDs format' });
+		}
+
+		const manager = getMediaBrowserManager();
+
+		try {
+			for (const id of ids) {
+				await manager.updateServer(id, { enabled: false });
+			}
+			return { serverSuccess: true };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown error';
+			return fail(500, { serverError: message });
+		}
+	},
+
+	bulkDelete: async ({ request }) => {
+		const data = await request.formData();
+		const idsJson = data.get('ids');
+
+		if (!idsJson || typeof idsJson !== 'string') {
+			return fail(400, { serverError: 'Missing server IDs' });
+		}
+
+		let ids: string[];
+		try {
+			ids = JSON.parse(idsJson);
+		} catch {
+			return fail(400, { serverError: 'Invalid IDs format' });
+		}
+
+		const manager = getMediaBrowserManager();
+
+		try {
+			for (const id of ids) {
+				await manager.deleteServer(id);
+			}
 			return { serverSuccess: true };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';

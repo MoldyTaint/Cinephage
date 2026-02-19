@@ -105,9 +105,9 @@ export async function getDiscoverResults(params: DiscoverParams) {
 	const fetchMovies = () => tmdb.fetch(fetchOptions('/discover/movie'));
 	const fetchTV = () => tmdb.fetch(fetchOptions('/discover/tv'));
 
-	let results: (Movie | TVShow)[] = [];
-	let totalPages = 0;
-	let totalResults = 0;
+	let results: (Movie | TVShow)[];
+	let totalPages: number;
+	let totalResults: number;
 
 	if (trending === 'day' || trending === 'week') {
 		const trendingEndpoint = `/trending/all/${trending}`;

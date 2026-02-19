@@ -35,22 +35,200 @@ interface LogEntry {
 	[key: string]: unknown;
 }
 
+const REDACTED = '[REDACTED]';
+
+const SENSITIVE_QUERY_KEYS = [
+	'apikey',
+	'api_key',
+	'api-key',
+	'apiKey',
+	'password',
+	'passwd',
+	'pwd',
+	'passkey',
+	'secret',
+	'token',
+	'access_token',
+	'auth',
+	'authorization',
+	'cookie',
+	'session',
+	'credential',
+	'key'
+];
+
+const SENSITIVE_OBJECT_KEYS = [
+	'apikey',
+	'api_key',
+	'api-key',
+	'apiKey',
+	'password',
+	'passwd',
+	'pwd',
+	'passkey',
+	'secret',
+	'token',
+	'access_token',
+	'auth',
+	'authorization',
+	'cookie',
+	'session',
+	'credential'
+];
+
+function isSensitiveObjectKey(key: string): boolean {
+	if (isRedactionBypassed()) return false;
+	const lower = key.toLowerCase();
+	return SENSITIVE_OBJECT_KEYS.some((sensitiveKey) => {
+		const sensitiveLower = sensitiveKey.toLowerCase();
+		return (
+			lower === sensitiveLower ||
+			lower.endsWith(`_${sensitiveLower}`) ||
+			lower.endsWith(`-${sensitiveLower}`)
+		);
+	});
+}
+
+/**
+ * Whether log redaction is bypassed.
+ * Set LOG_SENSITIVE=true to disable redaction for debugging.
+ * Default: false (redaction enabled).
+ */
+function isRedactionBypassed(): boolean {
+	return process.env.LOG_SENSITIVE === 'true';
+}
+
+function redactString(input: string): string {
+	if (!input) return input;
+	if (isRedactionBypassed()) return input;
+
+	const queryKeyPattern = SENSITIVE_QUERY_KEYS.map((key) =>
+		key.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')
+	).join('|');
+
+	let redacted = input;
+
+	// Redact credentials in URLs like protocol://user:pass@host
+	redacted = redacted.replace(
+		/(https?:\/\/)([^/\s:@]+):([^/\s@]+)@/gi,
+		(_match, protocol: string) => `${protocol}${REDACTED}:${REDACTED}@`
+	);
+
+	// Redact sensitive query parameters in URLs and URL-like strings.
+	redacted = redacted.replace(
+		new RegExp(`([?&](?:${queryKeyPattern})=)[^&\\s;]+`, 'gi'),
+		(_match, prefix: string) => `${prefix}${REDACTED}`
+	);
+
+	// Redact common key-value pairs that may appear in plain text.
+	redacted = redacted.replace(
+		new RegExp(`\\b(${queryKeyPattern})\\b\\s*[:=]\\s*([^\\s,;]+)`, 'gi'),
+		(_match, key: string) => `${key}=${REDACTED}`
+	);
+
+	// Redact authorization-style headers.
+	redacted = redacted.replace(
+		/\b(authorization|proxy-authorization)\b\s*[:=]\s*(bearer\s+)?([^\s,;]+)/gi,
+		(_match, header: string, bearerPrefix?: string) =>
+			`${header}: ${(bearerPrefix ?? '').trim()}${bearerPrefix ? ' ' : ''}${REDACTED}`.trim()
+	);
+
+	return redacted;
+}
+
+function sanitizeLogValue(value: unknown, seen: WeakSet<object>): unknown {
+	if (value === null || value === undefined) return value;
+
+	if (typeof value === 'string') {
+		return redactString(value);
+	}
+
+	if (typeof value !== 'object') {
+		return value;
+	}
+
+	if (value instanceof Date) {
+		return value.toISOString();
+	}
+
+	if (value instanceof URL) {
+		return redactString(value.toString());
+	}
+
+	if (value instanceof Error) {
+		return {
+			name: value.name,
+			message: redactString(value.message),
+			...(shouldIncludeErrorStack() && value.stack ? { stack: redactString(value.stack) } : {})
+		};
+	}
+
+	if (Array.isArray(value)) {
+		return value.map((item) => sanitizeLogValue(item, seen));
+	}
+
+	if (seen.has(value as object)) {
+		return '[Circular]';
+	}
+	seen.add(value as object);
+
+	const objectValue = value as Record<string, unknown>;
+	const sanitized: Record<string, unknown> = {};
+	for (const [key, nestedValue] of Object.entries(objectValue)) {
+		if (isSensitiveObjectKey(key)) {
+			sanitized[key] = REDACTED;
+			continue;
+		}
+		sanitized[key] = sanitizeLogValue(nestedValue, seen);
+	}
+
+	return sanitized;
+}
+
+function sanitizeLogContext(context: LogContext): LogContext {
+	return sanitizeLogValue(context, new WeakSet<object>()) as LogContext;
+}
+
+/**
+ * Check if we're in development mode.
+ */
+function isDev(): boolean {
+	try {
+		return import.meta.env?.DEV ?? process.env.NODE_ENV === 'development';
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Whether error stack traces should be included in log output.
+ * Defaults to enabled in development, disabled in production.
+ * Override with LOG_INCLUDE_STACK=true|false.
+ */
+function shouldIncludeErrorStack(): boolean {
+	const configured = process.env.LOG_INCLUDE_STACK;
+	if (configured === 'true') return true;
+	if (configured === 'false') return false;
+	return isDev();
+}
+
 /**
  * Formats a log entry as JSON string.
  */
 function formatLog(level: LogLevel, message: string, context: LogContext, error?: Error): string {
+	const sanitizedContext = sanitizeLogContext(context);
 	const entry: LogEntry = {
 		timestamp: new Date().toISOString(),
 		level,
-		message,
-		...context
+		message: redactString(message),
+		...sanitizedContext
 	};
 
 	if (error) {
 		entry.error = {
-			message: error.message,
+			message: redactString(error.message),
 			name: error.name,
-			stack: error.stack
+			...(shouldIncludeErrorStack() && error.stack ? { stack: redactString(error.stack) } : {})
 		};
 	}
 
@@ -63,17 +241,6 @@ function formatLog(level: LogLevel, message: string, context: LogContext, error?
 function writeToFile(formatted: string, context: LogContext): void {
 	const category = context.logCategory || 'main';
 	fileLogger.write(category, formatted);
-}
-
-/**
- * Check if we're in development mode.
- */
-function isDev(): boolean {
-	try {
-		return import.meta.env?.DEV ?? process.env.NODE_ENV === 'development';
-	} catch {
-		return false;
-	}
 }
 
 /**

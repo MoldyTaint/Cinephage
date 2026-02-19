@@ -17,6 +17,12 @@
 		protocol: string;
 		commentsUrl?: string;
 		sourceIndexers?: string[];
+		// Torrent ratio fields
+		torrent?: {
+			freeleech?: boolean;
+			downloadFactor?: number;
+			uploadFactor?: number;
+		};
 		// Enhanced fields
 		parsed?: {
 			resolution?: string;
@@ -69,12 +75,70 @@
 		return `${Math.floor(diffDays / 365)} years`;
 	}
 
+	function isKnownBadge(value?: string): value is string {
+		return Boolean(value && value.trim() && value.trim().toLowerCase() !== 'unknown');
+	}
+
 	function getQualityBadges(release: Release): string[] {
 		const badges: string[] = [];
-		if (release.parsed?.resolution) badges.push(release.parsed.resolution);
-		if (release.parsed?.source) badges.push(release.parsed.source);
-		if (release.parsed?.codec) badges.push(release.parsed.codec);
-		if (release.parsed?.hdr) badges.push(release.parsed.hdr);
+		const seen: string[] = [];
+		const addBadge = (value?: string) => {
+			if (!isKnownBadge(value)) return;
+			const label = value.trim();
+			const normalized = label.toLowerCase();
+			if (seen.includes(normalized)) return;
+			seen.push(normalized);
+			badges.push(label);
+		};
+
+		if (release.protocol === 'streaming') {
+			if (isKnownBadge(release.parsed?.resolution)) {
+				addBadge(release.parsed.resolution);
+			} else {
+				addBadge('Auto');
+			}
+			addBadge(release.parsed?.codec);
+			addBadge(release.parsed?.hdr);
+			return badges;
+		}
+
+		addBadge(release.parsed?.resolution);
+		addBadge(release.parsed?.source);
+		addBadge(release.parsed?.codec);
+		addBadge(release.parsed?.hdr);
+		return badges;
+	}
+
+	function getReleaseGroupBadge(release: Release): string | null {
+		if (isKnownBadge(release.parsed?.releaseGroup)) {
+			return release.parsed.releaseGroup.trim();
+		}
+		if (release.protocol === 'streaming') {
+			return 'Streaming';
+		}
+		return null;
+	}
+
+	function getRatioBadges(release: Release): { text: string; class: string }[] {
+		const badges: { text: string; class: string }[] = [];
+
+		// Freeleech badge
+		if (release.torrent?.freeleech || release.torrent?.downloadFactor === 0) {
+			badges.push({ text: 'Freeleech', class: 'badge-success' });
+		} else if (
+			release.torrent?.downloadFactor !== undefined &&
+			release.torrent.downloadFactor < 1
+		) {
+			// Partial freeleech (e.g., 50% = 0.5)
+			const percentage = Math.round((1 - release.torrent.downloadFactor) * 100);
+			badges.push({ text: `${percentage}% Freeleech`, class: 'badge-success badge-outline' });
+		}
+
+		// Upload multiplier badge (if > 1x)
+		if (release.torrent?.uploadFactor !== undefined && release.torrent.uploadFactor > 1) {
+			badges.push({ text: `${release.torrent.uploadFactor}x Upload`, class: 'badge-info' });
+		}
+
 		return badges;
 	}
 
@@ -103,9 +167,12 @@
 				{#each getQualityBadges(release) as badge, i (`${badge}-${i}`)}
 					<span class="badge badge-xs badge-primary">{badge}</span>
 				{/each}
-				{#if release.parsed?.releaseGroup}
-					<span class="badge badge-ghost badge-xs">{release.parsed.releaseGroup}</span>
+				{#if getReleaseGroupBadge(release)}
+					<span class="badge badge-ghost badge-xs">{getReleaseGroupBadge(release)}</span>
 				{/if}
+				{#each getRatioBadges(release) as badge (badge.text)}
+					<span class="badge badge-xs {badge.class}">{badge.text}</span>
+				{/each}
 			</div>
 		</div>
 	</td>

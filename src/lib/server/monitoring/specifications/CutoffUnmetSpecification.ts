@@ -1,12 +1,16 @@
 /**
  * CutoffUnmetSpecification
  *
- * Checks if an existing file's quality is below the profile's upgradeUntilScore cutoff.
- * This identifies content that has room for improvement.
+ * Previously checked if an existing file's quality was below the profile's upgradeUntilScore cutoff.
+ *
+ * UPDATED: Hard cutoffs have been removed. As long as upgrades are allowed by the profile,
+ * this specification will always return accepted. The minScoreIncrement check in
+ * ReleaseDecisionService will prevent frivolous upgrades by requiring meaningful improvement.
+ *
+ * This allows the system to always search for and grab better quality releases,
+ * rather than stopping at an arbitrary score threshold.
  */
 
-import { scoreRelease } from '$lib/server/scoring/scorer.js';
-import { qualityFilter } from '$lib/server/quality';
 import type {
 	IMonitoringSpecification,
 	MovieContext,
@@ -15,18 +19,20 @@ import type {
 	ReleaseCandidate
 } from './types.js';
 import { reject, accept, RejectionReason } from './types.js';
-import type { ScoringProfile } from '$lib/server/scoring/types.js';
-import { buildExistingAttrs } from './utils.js';
 
 /**
- * Check if a movie's existing file is below the quality cutoff
+ * Check if a movie's existing file is eligible for upgrade searching
+ *
+ * Now simply checks if upgrades are allowed - no hard cutoff enforcement.
+ * Better releases will always be considered; the score comparison logic
+ * ensures only genuine improvements are grabbed.
  */
 export class MovieCutoffUnmetSpecification implements IMonitoringSpecification<MovieContext> {
 	async isSatisfied(
 		context: MovieContext,
 		_release?: ReleaseCandidate
 	): Promise<SpecificationResult> {
-		// Must have existing file to evaluate
+		// Must have existing file to evaluate (otherwise it's missing, not upgrade)
 		if (!context.existingFile) {
 			return reject('no_existing_file');
 		}
@@ -36,51 +42,30 @@ export class MovieCutoffUnmetSpecification implements IMonitoringSpecification<M
 			return reject(RejectionReason.NO_PROFILE);
 		}
 
-		// Check if upgrades are allowed
+		// Check if upgrades are allowed by the profile
 		if (!context.profile.upgradesAllowed) {
 			return reject(RejectionReason.UPGRADES_NOT_ALLOWED);
 		}
 
-		// Get upgradeUntilScore cutoff
-		const upgradeUntilScore = context.profile.upgradeUntilScore || -1;
-		if (upgradeUntilScore <= 0) {
-			// No cutoff defined (upgrade forever)
-			return accept();
-		}
-
-		// Get the full profile with format scores
-		const fullProfile = await qualityFilter.getProfile(context.profile.id);
-		if (!fullProfile) {
-			return reject(RejectionReason.NO_PROFILE);
-		}
-
-		// Score the existing file using stored quality data if available
-		const existingFileName = context.existingFile.sceneName || context.existingFile.relativePath;
-		const existingAttrs = buildExistingAttrs(context.existingFile);
-		const existingScore = scoreRelease(
-			existingFileName,
-			fullProfile as ScoringProfile,
-			existingAttrs
-		);
-
-		// Check if below cutoff
-		if (existingScore.totalScore >= upgradeUntilScore) {
-			return reject(RejectionReason.ALREADY_AT_CUTOFF);
-		}
-
+		// Always allow searching for upgrades - the minScoreIncrement check
+		// in ReleaseDecisionService will ensure only meaningful improvements are grabbed
 		return accept();
 	}
 }
 
 /**
- * Check if an episode's existing file is below the quality cutoff
+ * Check if an episode's existing file is eligible for upgrade searching
+ *
+ * Now simply checks if upgrades are allowed - no hard cutoff enforcement.
+ * Better releases will always be considered; the score comparison logic
+ * ensures only genuine improvements are grabbed.
  */
 export class EpisodeCutoffUnmetSpecification implements IMonitoringSpecification<EpisodeContext> {
 	async isSatisfied(
 		context: EpisodeContext,
 		_release?: ReleaseCandidate
 	): Promise<SpecificationResult> {
-		// Must have existing file to evaluate
+		// Must have existing file to evaluate (otherwise it's missing, not upgrade)
 		if (!context.existingFile) {
 			return reject('no_existing_file');
 		}
@@ -90,44 +75,19 @@ export class EpisodeCutoffUnmetSpecification implements IMonitoringSpecification
 			return reject(RejectionReason.NO_PROFILE);
 		}
 
-		// Check if upgrades are allowed
+		// Check if upgrades are allowed by the profile
 		if (!context.profile.upgradesAllowed) {
 			return reject(RejectionReason.UPGRADES_NOT_ALLOWED);
 		}
 
-		// Get upgradeUntilScore cutoff
-		const upgradeUntilScore = context.profile.upgradeUntilScore || -1;
-		if (upgradeUntilScore <= 0) {
-			// No cutoff defined (upgrade forever)
-			return accept();
-		}
-
-		// Get the full profile with format scores
-		const fullProfile = await qualityFilter.getProfile(context.profile.id);
-		if (!fullProfile) {
-			return reject(RejectionReason.NO_PROFILE);
-		}
-
-		// Score the existing file using stored quality data if available
-		const existingFileName = context.existingFile.sceneName || context.existingFile.relativePath;
-		const existingAttrs = buildExistingAttrs(context.existingFile);
-		const existingScore = scoreRelease(
-			existingFileName,
-			fullProfile as ScoringProfile,
-			existingAttrs
-		);
-
-		// Check if below cutoff
-		if (existingScore.totalScore >= upgradeUntilScore) {
-			return reject(RejectionReason.ALREADY_AT_CUTOFF);
-		}
-
+		// Always allow searching for upgrades - the minScoreIncrement check
+		// in ReleaseDecisionService will ensure only meaningful improvements are grabbed
 		return accept();
 	}
 }
 
 /**
- * Convenience function to check if a movie's cutoff is unmet
+ * Convenience function to check if a movie is eligible for upgrade searching
  */
 export async function isMovieCutoffUnmet(context: MovieContext): Promise<boolean> {
 	const spec = new MovieCutoffUnmetSpecification();
@@ -136,7 +96,7 @@ export async function isMovieCutoffUnmet(context: MovieContext): Promise<boolean
 }
 
 /**
- * Convenience function to check if an episode's cutoff is unmet
+ * Convenience function to check if an episode is eligible for upgrade searching
  */
 export async function isEpisodeCutoffUnmet(context: EpisodeContext): Promise<boolean> {
 	const spec = new EpisodeCutoffUnmetSpecification();

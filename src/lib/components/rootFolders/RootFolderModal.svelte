@@ -202,7 +202,7 @@
 					class="checkbox shrink-0 checkbox-sm"
 					bind:checked={preserveSymlinks}
 				/>
-				<span class="text-sm">Preserve symlinks (for NZBDav/rclone mounts)</span>
+				<span class="text-sm">Preserve symlinks (for Rclone mounts)</span>
 			</label>
 
 			<label class="flex cursor-pointer items-center gap-3 py-2">
@@ -212,15 +212,15 @@
 					bind:checked={defaultMonitored}
 				/>
 				<span class="min-w-0 text-sm">Monitor new content</span>
-				<span
-					class="tooltip tooltip-right shrink-0"
+				<button
+					type="button"
+					class="tooltip btn tooltip-right shrink-0 btn-ghost btn-xs"
 					data-tip="When off, content added by library scan or manual match will be unmonitored (no auto-download of missing episodes/seasons)."
 					onclick={(e) => e.stopPropagation()}
-					role="img"
-					aria-label="More information"
+					aria-label="More information about monitor new content"
 				>
-					<Info class="h-3.5 w-3.5 shrink-0 cursor-help text-base-content/50" />
-				</span>
+					<Info class="h-3.5 w-3.5 shrink-0 text-base-content/50" aria-hidden="true" />
+				</button>
 			</label>
 
 			{#if preserveSymlinks}
@@ -242,8 +242,8 @@
 						<div class="font-medium">Symlink preservation enabled</div>
 						<div class="text-sm opacity-80">
 							Symlinks will be recreated at the destination instead of copying file contents. This
-							is useful when the source folder contains symlinks to files on network mounts (NZBDav,
-							rclone).
+							is useful when the source folder contains symlinks to files on network mounts
+							(NZB-Mount: NZBDav/Altmount Rclone).
 						</div>
 					</div>
 				</div>

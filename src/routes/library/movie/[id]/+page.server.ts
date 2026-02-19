@@ -4,10 +4,11 @@ import {
 	movieFiles,
 	rootFolders,
 	scoringProfiles,
+	profileSizeLimits,
 	downloadQueue,
 	subtitles
 } from '$lib/server/db/schema.js';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import type { LibraryMovie, MovieFile } from '$lib/types/library';
@@ -126,10 +127,20 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 		})
 		.from(scoringProfiles);
 
+	const defaultBuiltInOverride = await db
+		.select({ profileId: profileSizeLimits.profileId })
+		.from(profileSizeLimits)
+		.where(eq(profileSizeLimits.isDefault, true))
+		.limit(1);
+
 	// Built-in profile IDs - derived from DEFAULT_PROFILES
 	const BUILT_IN_IDS = DEFAULT_PROFILES.map((p) => p.id);
 	const dbIds = new Set(dbProfiles.map((p) => p.id));
-	const hasDbDefault = dbProfiles.some((p) => Boolean(p.isDefault));
+	const customDefaultId = dbProfiles.find(
+		(p) => !BUILT_IN_IDS.includes(p.id) && Boolean(p.isDefault)
+	)?.id;
+	const builtInDefaultId = defaultBuiltInOverride[0]?.profileId;
+	const resolvedDefaultId = customDefaultId ?? builtInDefaultId ?? 'balanced';
 
 	// Merge built-in profiles with database profiles (avoiding duplicates)
 	const allQualityProfiles: QualityProfileSummary[] = [
@@ -139,8 +150,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 			name: p.name,
 			description: p.description,
 			isBuiltIn: true,
-			// Efficient is default only if no DB default is set
-			isDefault: !hasDbDefault && p.id === 'efficient'
+			isDefault: p.id === resolvedDefaultId
 		})),
 		// Database profiles (correctly mark built-ins stored in DB)
 		...dbProfiles.map((p) => ({
@@ -148,7 +158,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 			name: p.name,
 			description: p.description ?? '',
 			isBuiltIn: BUILT_IN_IDS.includes(p.id),
-			isDefault: Boolean(p.isDefault)
+			isDefault: p.id === resolvedDefaultId
 		}))
 	];
 
@@ -173,7 +183,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 			progress: downloadQueue.progress
 		})
 		.from(downloadQueue)
-		.where(eq(downloadQueue.movieId, id));
+		.where(and(eq(downloadQueue.movieId, id), eq(downloadQueue.status, 'downloading')));
 
 	const queueItem: QueueItemInfo | null =
 		queueResults.length > 0

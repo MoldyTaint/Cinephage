@@ -71,7 +71,17 @@ WORKER_MAX_PORTAL_SCANS=2      # Portal scans
 
 ### Adjusting Limits
 
-Edit in `.env` file:
+**If using Docker Compose with `env_file`:** Edit `.env` and adjust worker limits
+
+**If using Docker Compose with environment variables in the compose file:** Add/change values directly in `docker-compose.yaml`:
+
+```yaml
+environment:
+  - WORKER_MAX_IMPORTS=3
+  - WORKER_MAX_STREAMS=5
+```
+
+**If running without Docker (manual npm/node install):** Set worker limits in `.env`:
 
 ```bash
 # Reduce if low on memory

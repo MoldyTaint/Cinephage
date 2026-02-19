@@ -3,8 +3,12 @@
  *
  * Resolves release download URLs to actual torrent data or magnet links.
  * Following the Radarr/Prowlarr pattern, this service fetches torrent files
- * server-side through the indexer (with proper auth/cookies) and extracts
- * info hashes, rather than passing raw URLs directly to download clients.
+ * server-side through the indexer (with proper auth/cookies).
+ *
+ * CRITICAL: We always prefer torrent files over magnet links, especially for
+ * private trackers like nCore. Torrent files contain the private tracker
+ * announce URL which is required for the torrent to work. Magnet links built
+ * from info hashes only contain public trackers, which breaks private trackers.
  */
 
 import { getIndexerManager } from '$lib/server/indexers/IndexerManager';
@@ -32,6 +36,8 @@ export interface ResolveDownloadInput {
 	indexerId?: string | null;
 	/** Release title (for building magnet links) */
 	title: string;
+	/** URL to the release details/comments page (needed by some indexers for download resolution) */
+	commentsUrl?: string | null;
 }
 
 /**
@@ -40,9 +46,9 @@ export interface ResolveDownloadInput {
 export interface ResolvedDownload {
 	/** Whether resolution was successful */
 	success: boolean;
-	/** Magnet URL to use (preferred for download clients) */
+	/** Magnet URL to use (only for public trackers without torrent file) */
 	magnetUrl?: string;
-	/** Torrent file data (alternative to magnet) */
+	/** Torrent file data (preferred - contains private tracker announce URLs) */
 	torrentFile?: Buffer;
 	/** Info hash (always extracted if possible) */
 	infoHash?: string;
@@ -57,18 +63,21 @@ export interface ResolvedDownload {
  */
 class DownloadResolutionService {
 	/**
-	 * Resolve a release to downloadable data (magnet or torrent file).
+	 * Resolve a release to downloadable data (torrent file or magnet link).
 	 *
-	 * Resolution priority:
-	 * 1. If magnetUrl is provided, extract infoHash and use it
-	 * 2. If infoHash is provided (but no magnet), build a magnet URL
-	 * 3. If only downloadUrl is provided, fetch through indexer to get torrent/magnet
+	 * Resolution priority (torrent files are ALWAYS preferred):
+	 * 1. Fetch torrent file through indexer (preferred - contains private tracker info)
+	 * 2. Use existing magnet URL (for public trackers without direct torrent)
+	 * 3. Build magnet from info hash (fallback for public trackers)
+	 *
+	 * CRITICAL: We never build magnet links from fetched torrent files, as this
+	 * would lose private tracker announce URLs and break private trackers.
 	 *
 	 * @param input - Release download info
-	 * @returns Resolved download with magnet URL or torrent file
+	 * @returns Resolved download with torrent file or magnet URL
 	 */
 	async resolve(input: ResolveDownloadInput): Promise<ResolvedDownload> {
-		const { downloadUrl, magnetUrl, infoHash, indexerId, title } = input;
+		const { downloadUrl, magnetUrl, infoHash, indexerId, title, commentsUrl } = input;
 
 		logger.debug('Resolving download', {
 			title,
@@ -78,9 +87,17 @@ class DownloadResolutionService {
 			indexerId
 		});
 
-		// Strategy 1: Use existing magnet URL
+		// Strategy 1: Fetch torrent file through indexer (preferred)
+		// This is the primary method - it gets the actual .torrent file which
+		// contains the private tracker announce URL needed for private trackers
+		if (downloadUrl && indexerId) {
+			return this.fetchThroughIndexer(downloadUrl, indexerId, title, commentsUrl ?? undefined);
+		}
+
+		// Strategy 2: Use existing magnet URL
+		// Only used when we don't have an indexer (e.g., public torrents)
 		if (magnetUrl) {
-			const extractedHash = extractInfoHashFromMagnet(magnetUrl) || infoHash || undefined;
+			const extractedHash = (await extractInfoHashFromMagnet(magnetUrl)) || infoHash || undefined;
 			logger.debug('Using provided magnet URL', { infoHash: extractedHash });
 			return {
 				success: true,
@@ -89,7 +106,8 @@ class DownloadResolutionService {
 			};
 		}
 
-		// Strategy 2: Build magnet from info hash
+		// Strategy 3: Build magnet from info hash
+		// Fallback for cases where we only have an info hash (rare)
 		if (infoHash) {
 			const builtMagnet = buildMagnetFromInfoHash(infoHash, title);
 			logger.debug('Built magnet from infoHash', { infoHash });
@@ -100,13 +118,7 @@ class DownloadResolutionService {
 			};
 		}
 
-		// Strategy 3: Fetch torrent file through indexer
-		if (downloadUrl && indexerId) {
-			return this.fetchThroughIndexer(downloadUrl, indexerId, title);
-		}
-
 		// Strategy 4: Fallback - return the URL as-is and let download client handle it
-		// This is not ideal but maintains backwards compatibility
 		if (downloadUrl) {
 			logger.warn('No indexer available, using downloadUrl as fallback', {
 				title,
@@ -115,7 +127,7 @@ class DownloadResolutionService {
 
 			// Check if downloadUrl is already a magnet
 			if (downloadUrl.startsWith('magnet:')) {
-				const extractedHash = extractInfoHashFromMagnet(downloadUrl);
+				const extractedHash = await extractInfoHashFromMagnet(downloadUrl);
 				return {
 					success: true,
 					magnetUrl: downloadUrl,
@@ -144,7 +156,8 @@ class DownloadResolutionService {
 	private async fetchThroughIndexer(
 		downloadUrl: string,
 		indexerId: string,
-		title: string
+		title: string,
+		commentsUrl?: string
 	): Promise<ResolvedDownload> {
 		logger.debug('Fetching torrent through indexer', {
 			indexerId,
@@ -169,7 +182,9 @@ class DownloadResolutionService {
 			}
 
 			// Use the indexer's downloadTorrent method
-			const result = await indexer.downloadTorrent(downloadUrl);
+			const result = await indexer.downloadTorrent(downloadUrl, {
+				releaseDetailsUrl: commentsUrl
+			});
 
 			if (!result.success) {
 				logger.warn('Indexer download failed, trying direct fetch', {
@@ -189,22 +204,14 @@ class DownloadResolutionService {
 				};
 			}
 
-			// If we got torrent file data
+			// If we got torrent file data - ALWAYS use it directly
+			// NEVER build a magnet link from the torrent file, as this would lose
+			// private tracker announce URLs and break private trackers like nCore.
 			if (result.data) {
-				// Build magnet from the info hash so we can use it with download clients
-				// Most download clients prefer magnet URLs over torrent files
-				if (result.infoHash) {
-					const magnet = buildMagnetFromInfoHash(result.infoHash, title);
-					logger.debug('Built magnet from fetched torrent', { infoHash: result.infoHash });
-					return {
-						success: true,
-						magnetUrl: magnet,
-						torrentFile: result.data,
-						infoHash: result.infoHash
-					};
-				}
-
-				// No info hash extracted, return just the torrent file
+				logger.debug('Returning torrent file', {
+					infoHash: result.infoHash,
+					dataSize: result.data.length
+				});
 				return {
 					success: true,
 					torrentFile: result.data,
@@ -229,12 +236,12 @@ class DownloadResolutionService {
 	 * Fetch a torrent file directly (without indexer authentication).
 	 * Used as a fallback when indexer is unavailable.
 	 */
-	private async fetchDirectly(downloadUrl: string, title: string): Promise<ResolvedDownload> {
+	private async fetchDirectly(downloadUrl: string, _title: string): Promise<ResolvedDownload> {
 		logger.debug('Fetching torrent directly', { url: redactUrl(downloadUrl) });
 
 		// Check if it's already a magnet
 		if (downloadUrl.startsWith('magnet:')) {
-			const infoHash = extractInfoHashFromMagnet(downloadUrl);
+			const infoHash = await extractInfoHashFromMagnet(downloadUrl);
 			return {
 				success: true,
 				magnetUrl: downloadUrl,
@@ -271,7 +278,7 @@ class DownloadResolutionService {
 					}
 
 					if (location.startsWith('magnet:')) {
-						const infoHash = extractInfoHashFromMagnet(location);
+						const infoHash = await extractInfoHashFromMagnet(location);
 						return {
 							success: true,
 							magnetUrl: location,
@@ -293,7 +300,7 @@ class DownloadResolutionService {
 				}
 
 				const data = Buffer.from(await response.arrayBuffer());
-				const parseResult = parseTorrentFile(data);
+				const parseResult = await parseTorrentFile(data);
 
 				if (!parseResult.success) {
 					return {
@@ -303,29 +310,13 @@ class DownloadResolutionService {
 					};
 				}
 
-				if (parseResult.magnetUrl) {
-					return {
-						success: true,
-						magnetUrl: parseResult.magnetUrl,
-						infoHash: parseResult.infoHash,
-						usedFallback: true
-					};
-				}
-
-				if (parseResult.infoHash) {
-					const magnet = buildMagnetFromInfoHash(parseResult.infoHash, title);
-					return {
-						success: true,
-						magnetUrl: magnet,
-						torrentFile: data,
-						infoHash: parseResult.infoHash,
-						usedFallback: true
-					};
-				}
-
+				// Always return the torrent file data directly
+				// Never build a magnet link from the torrent file, as this would lose
+				// private tracker announce URLs and break private trackers.
 				return {
 					success: true,
 					torrentFile: data,
+					infoHash: parseResult.infoHash,
 					usedFallback: true
 				};
 			}

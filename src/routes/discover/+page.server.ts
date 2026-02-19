@@ -1,6 +1,6 @@
 import { tmdb } from '$lib/server/tmdb';
 import { getDiscoverResults } from '$lib/server/discover';
-import { enrichWithLibraryStatus } from '$lib/server/library/status';
+import { enrichWithLibraryStatus, filterInLibrary } from '$lib/server/library/status';
 import type { WatchProvider } from '$lib/types/tmdb';
 import { logger } from '$lib/logging';
 import { parseDiscoverParams, isDefaultView as checkDefaultView } from '$lib/utils/discoverParams';
@@ -14,12 +14,14 @@ export const load: PageServerLoad = async ({ url }) => {
 		page,
 		sortBy,
 		trending,
+		topRated,
 		withWatchProviders,
 		watchRegion,
 		withGenres,
 		minDate,
 		maxDate,
-		minRating
+		minRating,
+		excludeInLibrary
 	} = params;
 	const isDefaultViewCheck = checkDefaultView(url.searchParams, params);
 
@@ -35,8 +37,10 @@ export const load: PageServerLoad = async ({ url }) => {
 				type,
 				sort_by: sortBy,
 				trending,
+				top_rated: topRated,
 				with_watch_providers: withWatchProviders,
-				with_genres: withGenres
+				with_genres: withGenres,
+				exclude_in_library: excludeInLibrary
 			}
 		};
 	}
@@ -62,8 +66,10 @@ export const load: PageServerLoad = async ({ url }) => {
 					type,
 					sort_by: sortBy,
 					trending,
+					top_rated: topRated,
 					with_watch_providers: withWatchProviders,
-					with_genres: withGenres
+					with_genres: withGenres,
+					exclude_in_library: excludeInLibrary
 				}
 			};
 		}
@@ -90,11 +96,12 @@ export const load: PageServerLoad = async ({ url }) => {
 			)) as TmdbPaginatedResult;
 
 			const enrichedResults = await enrichWithLibraryStatus(trendingResults.results);
+			const filteredResults = filterInLibrary(enrichedResults, excludeInLibrary);
 
 			return {
 				viewType: 'grid',
 				tmdbConfigured: true,
-				results: enrichedResults,
+				results: filteredResults,
 				pagination: {
 					page: trendingResults.page,
 					total_pages: trendingResults.total_pages,
@@ -107,46 +114,79 @@ export const load: PageServerLoad = async ({ url }) => {
 					sort_by: sortBy,
 					trending,
 					with_watch_providers: withWatchProviders,
-					with_genres: withGenres
+					with_genres: withGenres,
+					exclude_in_library: excludeInLibrary
 				}
 			};
 		}
 
-		if (isDefaultViewCheck && page === '1') {
-			// Fetch sections for the dashboard-style view
-			const [trendingDay, trendingWeek, popularMovies, popularTV, topRatedMovies] =
-				(await Promise.all([
-					tmdb.fetch('/trending/all/day'),
-					tmdb.fetch('/trending/all/week'),
-					tmdb.fetch('/movie/popular'),
-					tmdb.fetch('/tv/popular'),
-					tmdb.fetch('/movie/top_rated')
+		if (topRated === 'true') {
+			let endpoint: string;
+			if (type === 'movie') {
+				endpoint = `/movie/top_rated?page=${page}`;
+			} else if (type === 'tv') {
+				endpoint = `/tv/top_rated?page=${page}`;
+			} else {
+				// For 'all', fetch both and combine
+				const [moviesData, tvData] = (await Promise.all([
+					tmdb.fetch(`/movie/top_rated?page=${page}`),
+					tmdb.fetch(`/tv/top_rated?page=${page}`)
 				])) as TmdbPaginatedResult[];
 
-			// Enrich all sections with library status
-			const [
-				enrichedTrendingDay,
-				enrichedTrendingWeek,
-				enrichedPopularMovies,
-				enrichedPopularTV,
-				enrichedTopRatedMovies
-			] = await Promise.all([
-				enrichWithLibraryStatus(trendingDay.results),
-				enrichWithLibraryStatus(trendingWeek.results),
-				enrichWithLibraryStatus(popularMovies.results, 'movie'),
-				enrichWithLibraryStatus(popularTV.results, 'tv'),
-				enrichWithLibraryStatus(topRatedMovies.results, 'movie')
-			]);
+				interface VoteRatedItem {
+					id: number;
+					vote_average?: number;
+					media_type?: string;
+				}
+				const movieResults = moviesData.results.map(
+					(m) => ({ ...m, media_type: 'movie' }) as VoteRatedItem
+				);
+				const tvResults = tvData.results.map((t) => ({ ...t, media_type: 'tv' }) as VoteRatedItem);
+				const combinedResults = [...movieResults, ...tvResults].sort(
+					(a, b) => (b.vote_average || 0) - (a.vote_average || 0)
+				);
+
+				const enrichedResults = await enrichWithLibraryStatus(combinedResults, 'all');
+				const filteredResults = filterInLibrary(enrichedResults, excludeInLibrary);
+
+				return {
+					viewType: 'grid',
+					tmdbConfigured: true,
+					results: filteredResults,
+					pagination: {
+						page: 1,
+						total_pages: Math.max(moviesData.total_pages, tvData.total_pages),
+						total_results: moviesData.total_results + tvData.total_results
+					},
+					providers,
+					genres,
+					filters: {
+						type,
+						sort_by: sortBy,
+						trending,
+						with_watch_providers: withWatchProviders,
+						with_genres: withGenres,
+						exclude_in_library: excludeInLibrary
+					}
+				};
+			}
+
+			const topRatedResults = (await tmdb.fetch(endpoint)) as TmdbPaginatedResult;
+			const mediaTypeFilter = type === 'movie' ? 'movie' : 'tv';
+			const enrichedResults = await enrichWithLibraryStatus(
+				topRatedResults.results,
+				mediaTypeFilter
+			);
+			const filteredResults = filterInLibrary(enrichedResults, excludeInLibrary);
 
 			return {
-				viewType: 'dashboard',
+				viewType: 'grid',
 				tmdbConfigured: true,
-				sections: {
-					trendingDay: enrichedTrendingDay,
-					trendingWeek: enrichedTrendingWeek,
-					popularMovies: enrichedPopularMovies,
-					popularTV: enrichedPopularTV,
-					topRatedMovies: enrichedTopRatedMovies
+				results: filteredResults,
+				pagination: {
+					page: topRatedResults.page,
+					total_pages: topRatedResults.total_pages,
+					total_results: topRatedResults.total_results
 				},
 				providers,
 				genres,
@@ -155,7 +195,61 @@ export const load: PageServerLoad = async ({ url }) => {
 					sort_by: sortBy,
 					trending,
 					with_watch_providers: withWatchProviders,
-					with_genres: withGenres
+					with_genres: withGenres,
+					exclude_in_library: excludeInLibrary
+				}
+			};
+		}
+
+		if (isDefaultViewCheck && page === '1') {
+			// Fetch sections for the dashboard-style view
+			const [trendingDay, trendingWeek, popularMovies, popularTV, topRatedMovies, topRatedTV] =
+				(await Promise.all([
+					tmdb.fetch('/trending/all/day'),
+					tmdb.fetch('/trending/all/week'),
+					tmdb.fetch('/movie/popular'),
+					tmdb.fetch('/tv/popular'),
+					tmdb.fetch('/movie/top_rated'),
+					tmdb.fetch('/tv/top_rated')
+				])) as TmdbPaginatedResult[];
+
+			// Enrich all sections with library status
+			const [
+				enrichedTrendingDay,
+				enrichedTrendingWeek,
+				enrichedPopularMovies,
+				enrichedPopularTV,
+				enrichedTopRatedMovies,
+				enrichedTopRatedTV
+			] = await Promise.all([
+				enrichWithLibraryStatus(trendingDay.results),
+				enrichWithLibraryStatus(trendingWeek.results),
+				enrichWithLibraryStatus(popularMovies.results, 'movie'),
+				enrichWithLibraryStatus(popularTV.results, 'tv'),
+				enrichWithLibraryStatus(topRatedMovies.results, 'movie'),
+				enrichWithLibraryStatus(topRatedTV.results, 'tv')
+			]);
+
+			return {
+				viewType: 'dashboard',
+				tmdbConfigured: true,
+				sections: {
+					trendingDay: filterInLibrary(enrichedTrendingDay, excludeInLibrary),
+					trendingWeek: filterInLibrary(enrichedTrendingWeek, excludeInLibrary),
+					popularMovies: filterInLibrary(enrichedPopularMovies, excludeInLibrary),
+					popularTV: filterInLibrary(enrichedPopularTV, excludeInLibrary),
+					topRatedMovies: filterInLibrary(enrichedTopRatedMovies, excludeInLibrary),
+					topRatedTV: filterInLibrary(enrichedTopRatedTV, excludeInLibrary)
+				},
+				providers,
+				genres,
+				filters: {
+					type,
+					sort_by: sortBy,
+					trending,
+					with_watch_providers: withWatchProviders,
+					with_genres: withGenres,
+					exclude_in_library: excludeInLibrary
 				}
 			};
 		} else {
@@ -175,11 +269,12 @@ export const load: PageServerLoad = async ({ url }) => {
 			// Enrich results with library status
 			const mediaTypeFilter = type === 'movie' ? 'movie' : type === 'tv' ? 'tv' : 'all';
 			const enrichedResults = await enrichWithLibraryStatus(results, mediaTypeFilter);
+			const filteredResults = filterInLibrary(enrichedResults, excludeInLibrary);
 
 			return {
 				viewType: 'grid',
 				tmdbConfigured: true,
-				results: enrichedResults,
+				results: filteredResults,
 				pagination,
 				providers,
 				genres,
@@ -188,7 +283,8 @@ export const load: PageServerLoad = async ({ url }) => {
 					sort_by: sortBy,
 					trending,
 					with_watch_providers: withWatchProviders,
-					with_genres: withGenres
+					with_genres: withGenres,
+					exclude_in_library: excludeInLibrary
 				}
 			};
 		}
@@ -204,8 +300,10 @@ export const load: PageServerLoad = async ({ url }) => {
 				type,
 				sort_by: sortBy,
 				trending,
+				top_rated: topRated,
 				with_watch_providers: withWatchProviders,
-				with_genres: withGenres
+				with_genres: withGenres,
+				exclude_in_library: excludeInLibrary
 			}
 		};
 	}

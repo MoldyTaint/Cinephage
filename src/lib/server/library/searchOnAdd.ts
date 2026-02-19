@@ -67,12 +67,16 @@ interface GrabResult {
 /** Parameters for searching a specific episode */
 interface SearchForEpisodeParams {
 	episodeId: string;
+	/** Bypass monitoring checks for manual user-triggered searches */
+	bypassMonitoring?: boolean;
 }
 
 /** Parameters for searching a season pack */
 interface SearchForSeasonParams {
 	seriesId: string;
 	seasonNumber: number;
+	/** Bypass monitoring checks for manual user-triggered searches */
+	bypassMonitoring?: boolean;
 }
 
 /** Result for a single item in multi-search operations */
@@ -396,7 +400,7 @@ class SearchOnAddService {
 	 * - OR release is an upgrade over existing file
 	 */
 	async searchForEpisode(params: SearchForEpisodeParams): Promise<GrabResult> {
-		const { episodeId } = params;
+		const { episodeId, bypassMonitoring = false } = params;
 
 		logger.info('[SearchOnAdd] Starting episode search', { episodeId });
 
@@ -418,7 +422,7 @@ class SearchOnAddService {
 				return { success: false, error: 'Series not found' };
 			}
 
-			if (!seriesData.monitored) {
+			if (!bypassMonitoring && !seriesData.monitored) {
 				logger.info('[SearchOnAdd] Skipping episode search for unmonitored series', {
 					episodeId,
 					seriesId: seriesData.id
@@ -450,8 +454,11 @@ class SearchOnAddService {
 			};
 
 			// Perform enriched search to get scored releases (automatic - on add)
+			const searchSource: 'interactive' | 'automatic' = bypassMonitoring
+				? 'interactive'
+				: 'automatic';
 			const searchResult = await indexerManager.searchEnhanced(criteria, {
-				searchSource: 'automatic',
+				searchSource,
 				enrichment: {
 					scoringProfileId: seriesData.scoringProfileId ?? undefined,
 					filterRejected: true,
@@ -564,7 +571,7 @@ class SearchOnAddService {
 	 * - Counts new episodes (no file) as beneficial
 	 */
 	async searchForSeason(params: SearchForSeasonParams): Promise<GrabResult> {
-		const { seriesId, seasonNumber } = params;
+		const { seriesId, seasonNumber, bypassMonitoring = false } = params;
 
 		logger.info('[SearchOnAdd] Starting season search', { seriesId, seasonNumber });
 
@@ -576,6 +583,14 @@ class SearchOnAddService {
 
 			if (!seriesData) {
 				return { success: false, error: 'Series not found' };
+			}
+
+			if (!bypassMonitoring && !seriesData.monitored) {
+				logger.info('[SearchOnAdd] Skipping season search for unmonitored series', {
+					seriesId,
+					seasonNumber
+				});
+				return { success: true };
 			}
 
 			// Get season episodes for linking
@@ -596,8 +611,11 @@ class SearchOnAddService {
 			};
 
 			// Perform enriched search to get scored releases (automatic - on add)
+			const searchSource: 'interactive' | 'automatic' = bypassMonitoring
+				? 'interactive'
+				: 'automatic';
 			const searchResult = await indexerManager.searchEnhanced(criteria, {
-				searchSource: 'automatic',
+				searchSource,
 				enrichment: {
 					scoringProfileId: seriesData.scoringProfileId ?? undefined,
 					filterRejected: true,

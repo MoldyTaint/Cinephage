@@ -1,150 +1,163 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
+	import { unmatchedFilesStore } from '$lib/stores/unmatched-files.svelte.js';
 	import {
-		Clapperboard,
-		Tv,
-		RefreshCw,
-		Trash2,
-		Link,
-		HardDrive,
-		Calendar,
-		AlertCircle,
-		CheckCircle
-	} from 'lucide-svelte';
-	import { toasts } from '$lib/stores/toast.svelte';
+		UnmatchedFileCard,
+		UnmatchedFolderCard,
+		UnmatchedFilters,
+		UnmatchedBulkActions,
+		UnmatchedEmptyState,
+		UnmatchedPagination,
+		UnmatchedLibraryIssues
+	} from '$lib/components/unmatched';
 	import MatchFileModal from '$lib/components/library/MatchFileModal.svelte';
+	import MatchFolderModal from '$lib/components/library/MatchFolderModal.svelte';
+	import BatchMatchModal from '$lib/components/library/BatchMatchModal.svelte';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
+	import { toasts } from '$lib/stores/toast.svelte';
+	import type { UnmatchedFile, UnmatchedFolder } from '$lib/types/unmatched.js';
 
-	let { data } = $props();
+	// Modal states
+	let showMatchModal = $state(false);
+	let showFolderMatchModal = $state(false);
+	let showBatchMatchModal = $state(false);
+	let showDeleteModal = $state(false);
 
-	// Local state for files (so we can update after actions)
-	// Initialized from props, refreshed via refreshList()
-	let files = $state<typeof data.files>([]);
-	$effect(() => {
-		files = data.files;
-	});
-	let filter = $state<'all' | 'movie' | 'tv'>('all');
-	let isProcessing = $state(false);
-	let selectedFile = $state<(typeof files)[0] | null>(null);
-	let matchModalOpen = $state(false);
-
-	// Delete modal state
-	let deleteModalOpen = $state(false);
-	let deletingFileId = $state<string | null>(null);
-	let deletingFileName = $state<string>('');
+	// Selected items for modals
+	let selectedFile = $state<UnmatchedFile | null>(null);
+	let selectedFolder = $state<UnmatchedFolder | null>(null);
+	let fileToDelete = $state<UnmatchedFile | null>(null);
 	let isDeleting = $state(false);
 
-	// Filtered files based on filter selection
-	const filteredFiles = $derived(() => {
-		if (filter === 'all') return files;
-		return files.filter((f) => f.mediaType === filter);
+	// Local checkbox state
+	let showCheckboxes = $state(false);
+
+	// Track expanded folders
+	const expandedFolders = new SvelteSet<string>();
+
+	// Load data on mount
+	onMount(() => {
+		unmatchedFilesStore.loadFiles();
 	});
 
-	// Format file size
-	function formatSize(bytes: number | null): string {
-		if (!bytes) return 'Unknown';
-		const gb = bytes / (1024 * 1024 * 1024);
-		if (gb >= 1) return `${gb.toFixed(2)} GB`;
-		const mb = bytes / (1024 * 1024);
-		return `${mb.toFixed(1)} MB`;
+	// Handle file selection
+	function toggleFileSelection(fileId: string) {
+		unmatchedFilesStore.toggleFileSelection(fileId);
 	}
 
-	// Format relative path (remove root folder path prefix)
-	function formatPath(fullPath: string, rootPath: string | null): string {
-		if (!rootPath) return fullPath;
-		if (fullPath.startsWith(rootPath)) {
-			return fullPath.substring(rootPath.length).replace(/^\//, '');
+	// Handle file match
+	function handleMatchFile(file: UnmatchedFile) {
+		selectedFile = file;
+		showMatchModal = true;
+	}
+
+	// Handle folder match
+	function handleMatchFolder(folder: UnmatchedFolder) {
+		selectedFolder = folder;
+		showFolderMatchModal = true;
+	}
+
+	// Handle batch match
+	function handleBatchMatch() {
+		if (unmatchedFilesStore.selectedCount === 0) {
+			toasts.info('Select files to match first');
+			return;
 		}
-		return fullPath;
+		showBatchMatchModal = true;
 	}
 
-	// Format date
-	function formatDate(dateStr: string | null): string {
-		if (!dateStr) return 'Unknown';
-		return new Date(dateStr).toLocaleDateString();
-	}
-
-	// Re-process all unmatched files
-	async function reprocessAll() {
-		isProcessing = true;
-		try {
-			const response = await fetch('/api/library/unmatched', { method: 'POST' });
-			const result = await response.json();
-
-			if (result.success) {
-				toasts.success(`Processed ${result.processed} files`, {
-					description: `${result.matched} matched, ${result.failed} still unmatched`
-				});
-				// Refresh the list
-				await refreshList();
-			} else {
-				toasts.error('Failed to process files', { description: result.error });
-			}
-		} catch {
-			toasts.error('Error processing files');
-		} finally {
-			isProcessing = false;
+	// Toggle folder expansion
+	function toggleFolder(folderPath: string) {
+		if (expandedFolders.has(folderPath)) {
+			expandedFolders.delete(folderPath);
+		} else {
+			expandedFolders.add(folderPath);
 		}
 	}
 
-	// Show delete confirmation modal
-	function confirmDelete(file: (typeof files)[0]) {
-		deletingFileId = file.id;
-		deletingFileName = file.path.split('/').pop() || file.path;
-		deleteModalOpen = true;
+	// Expand all folders
+	function expandAllFolders() {
+		for (const folder of filteredFolders) {
+			expandedFolders.add(folder.folderPath);
+		}
 	}
 
-	// Perform deletion with optional file delete
-	async function performDelete(deleteFile: boolean, _removeFromLibrary: boolean) {
-		if (!deletingFileId) return;
+	// Collapse all folders
+	function collapseAllFolders() {
+		expandedFolders.clear();
+	}
+
+	// Handle file delete
+	function handleDeleteFile(file: UnmatchedFile) {
+		fileToDelete = file;
+		showDeleteModal = true;
+	}
+
+	// Perform delete
+	async function performDelete(deleteFromDisk: boolean) {
+		if (!fileToDelete) return;
 
 		isDeleting = true;
 		try {
-			const url = deleteFile
-				? `/api/library/unmatched/${deletingFileId}?deleteFile=true`
-				: `/api/library/unmatched/${deletingFileId}`;
-			const response = await fetch(url, { method: 'DELETE' });
-			const result = await response.json();
-
-			if (result.success) {
-				toasts.success(deleteFile ? 'File deleted from disk' : 'File removed from list');
-				files = files.filter((f) => f.id !== deletingFileId);
-			} else {
-				toasts.error('Failed to remove file', { description: result.error });
-			}
-		} catch {
-			toasts.error('Error removing file');
+			await unmatchedFilesStore.deleteFiles([fileToDelete.id], deleteFromDisk);
+			toasts.success(deleteFromDisk ? 'File deleted from disk' : 'File removed from list');
+			showDeleteModal = false;
+			fileToDelete = null;
+		} catch (_err) {
+			toasts.error('Failed to delete file');
 		} finally {
 			isDeleting = false;
-			deleteModalOpen = false;
-			deletingFileId = null;
 		}
 	}
 
-	// Open match modal for a file
-	function openMatchModal(file: (typeof files)[0]) {
-		selectedFile = file;
-		matchModalOpen = true;
-	}
-
-	// Handle successful match
-	function handleMatchSuccess(fileId: string) {
-		files = files.filter((f) => f.id !== fileId);
-		matchModalOpen = false;
+	// Handle match success
+	function handleMatchSuccess() {
+		showMatchModal = false;
 		selectedFile = null;
+		unmatchedFilesStore.loadFiles();
+		toasts.success('File matched successfully');
 	}
 
-	// Refresh file list
-	async function refreshList() {
-		try {
-			const response = await fetch('/api/library/unmatched');
-			const result = await response.json();
-			if (result.success) {
-				files = result.files;
-			}
-		} catch (error) {
-			console.error('Failed to refresh list:', error);
-		}
+	// Handle folder match success
+	function handleFolderMatchSuccess() {
+		showFolderMatchModal = false;
+		selectedFolder = null;
+		unmatchedFilesStore.loadFiles();
+		toasts.success('Folder matched successfully');
 	}
+
+	// Handle batch match success
+	function handleBatchMatchSuccess() {
+		showBatchMatchModal = false;
+		showCheckboxes = false;
+		unmatchedFilesStore.clearSelection();
+		unmatchedFilesStore.loadFiles();
+		toasts.success('Files matched successfully');
+	}
+
+	// Derived values
+	const files = $derived(unmatchedFilesStore.files);
+	const folders = $derived(unmatchedFilesStore.folders);
+	const viewMode = $derived(unmatchedFilesStore.viewMode);
+	const loading = $derived(unmatchedFilesStore.loading);
+	const pagination = $derived(unmatchedFilesStore.pagination);
+	const selectedCount = $derived(unmatchedFilesStore.selectedCount);
+	// Check for data based on current view mode
+	const hasData = $derived(viewMode === 'folder' ? folders.length > 0 : files.length > 0);
+	const filteredFiles = $derived(unmatchedFilesStore.filteredFiles);
+	const filteredFolders = $derived(unmatchedFilesStore.filteredFolders);
+
+	// Reset expanded folders when filters change to avoid stale state
+	$effect(() => {
+		// This effect runs when filteredFolders changes
+		const validPaths = new Set(filteredFolders.map((f) => f.folderPath));
+		for (const path of expandedFolders) {
+			if (!validPaths.has(path)) {
+				expandedFolders.delete(path);
+			}
+		}
+	});
 </script>
 
 <div class="space-y-6">
@@ -153,181 +166,143 @@
 		<div>
 			<h1 class="text-3xl font-bold">Unmatched Files</h1>
 			<p class="text-base-content/70">
-				{files.length} file{files.length !== 1 ? 's' : ''} need attention
+				{pagination.total} file{pagination.total !== 1 ? 's' : ''} need attention
 			</p>
-		</div>
-		<div class="flex gap-2">
-			<button
-				class="btn btn-outline"
-				onclick={reprocessAll}
-				disabled={isProcessing || files.length === 0}
-			>
-				<RefreshCw class="h-4 w-4 {isProcessing ? 'animate-spin' : ''}" />
-				Re-process All
-			</button>
 		</div>
 	</div>
 
 	<!-- Filters -->
-	<div class="flex gap-2">
-		<button
-			class="btn btn-sm {filter === 'all' ? 'btn-primary' : 'btn-ghost'}"
-			onclick={() => (filter = 'all')}
-		>
-			All ({files.length})
-		</button>
-		<button
-			class="btn btn-sm {filter === 'movie' ? 'btn-primary' : 'btn-ghost'}"
-			onclick={() => (filter = 'movie')}
-		>
-			<Clapperboard class="h-4 w-4" />
-			Movies ({files.filter((f) => f.mediaType === 'movie').length})
-		</button>
-		<button
-			class="btn btn-sm {filter === 'tv' ? 'btn-primary' : 'btn-ghost'}"
-			onclick={() => (filter = 'tv')}
-		>
-			<Tv class="h-4 w-4" />
-			TV Shows ({files.filter((f) => f.mediaType === 'tv').length})
-		</button>
-	</div>
+	<UnmatchedFilters
+		onToggleCheckboxes={(showing) => {
+			showCheckboxes = showing;
+		}}
+	/>
 
-	<!-- Empty State -->
-	{#if files.length === 0}
-		<div class="card bg-base-200">
-			<div class="card-body items-center py-12 text-center">
-				<div class="rounded-full bg-success/10 p-4">
-					<CheckCircle class="h-12 w-12 text-success" />
+	<!-- Library issues panel (missing/invalid root folders) -->
+	<UnmatchedLibraryIssues unmatchedFileCount={pagination.total} />
+
+	<!-- Loading State -->
+	{#if loading}
+		<div class="flex items-center justify-center py-12">
+			<span class="loading loading-lg loading-spinner"></span>
+		</div>
+
+		<!-- Bulk Actions -->
+	{:else if showCheckboxes && selectedCount > 0}
+		<UnmatchedBulkActions
+			onMatch={handleBatchMatch}
+			onDelete={() => {
+				// For bulk delete, we could show a different modal
+				toasts.info('Bulk delete not yet implemented');
+			}}
+		/>
+
+		<!-- Empty State -->
+	{:else if !hasData}
+		<UnmatchedEmptyState />
+
+		<!-- Folder View -->
+	{:else if viewMode === 'folder'}
+		<div class="space-y-4">
+			<div class="flex items-center justify-between">
+				<div>
+					<h2 class="text-xl font-semibold">Folders with Unmatched Files</h2>
+					<p class="text-sm text-base-content/70">
+						{filteredFolders.length} folder{filteredFolders.length !== 1 ? 's' : ''}
+					</p>
 				</div>
-				<h2 class="mt-4 card-title">All Files Matched</h2>
-				<p class="text-base-content/70">
-					No unmatched files in your library. Everything is organized!
-				</p>
+				{#if filteredFolders.length > 0}
+					<div class="flex gap-2">
+						<button class="btn btn-ghost btn-sm" onclick={expandAllFolders}> Expand All </button>
+						<button class="btn btn-ghost btn-sm" onclick={collapseAllFolders}>
+							Collapse All
+						</button>
+					</div>
+				{/if}
+			</div>
+
+			<div class="space-y-3">
+				{#each filteredFolders as folder (folder.folderPath)}
+					<UnmatchedFolderCard
+						{folder}
+						expanded={expandedFolders.has(folder.folderPath)}
+						onToggle={() => toggleFolder(folder.folderPath)}
+						onMatch={() => handleMatchFolder(folder)}
+					/>
+				{/each}
 			</div>
 		</div>
-	{:else if filteredFiles().length === 0}
-		<div class="card bg-base-200">
-			<div class="card-body items-center py-12 text-center">
-				<p class="text-base-content/70">No {filter === 'movie' ? 'movie' : 'TV'} files to show</p>
-			</div>
-		</div>
+
+		<!-- List View -->
 	{:else}
-		<!-- Files Table -->
-		<div class="overflow-x-auto">
-			<table class="table">
-				<thead>
-					<tr>
-						<th>File</th>
-						<th>Parsed Info</th>
-						<th>Details</th>
-						<th>Actions</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each filteredFiles() as file (file.id)}
-						<tr class="hover">
-							<td>
-								<div class="flex items-start gap-3">
-									<div class="rounded-lg bg-base-300 p-2">
-										{#if file.mediaType === 'movie'}
-											<Clapperboard class="h-5 w-5 text-primary" />
-										{:else}
-											<Tv class="h-5 w-5 text-secondary" />
-										{/if}
-									</div>
-									<div class="min-w-0">
-										<p class="max-w-xs truncate font-medium" title={file.path}>
-											{formatPath(file.path, file.rootFolderPath)}
-										</p>
-										<div class="flex items-center gap-2 text-xs text-base-content/50">
-											<HardDrive class="h-3 w-3" />
-											<span>{formatSize(file.size)}</span>
-										</div>
-									</div>
-								</div>
-							</td>
-							<td>
-								<div class="space-y-1">
-									{#if file.parsedTitle}
-										<p class="font-medium">{file.parsedTitle}</p>
-									{:else}
-										<p class="text-base-content/50 italic">Could not parse title</p>
-									{/if}
-									<div class="flex flex-wrap gap-1">
-										{#if file.parsedYear}
-											<span class="badge badge-ghost badge-sm">{file.parsedYear}</span>
-										{/if}
-										{#if file.mediaType === 'tv' && file.parsedSeason !== null}
-											<span class="badge badge-sm badge-secondary">
-												S{String(file.parsedSeason).padStart(2, '0')}
-												{#if file.parsedEpisode !== null}
-													E{String(file.parsedEpisode).padStart(2, '0')}
-												{/if}
-											</span>
-										{/if}
-										<span class="badge badge-outline badge-sm">
-											{file.mediaType === 'movie' ? 'Movie' : 'TV'}
-										</span>
-									</div>
-								</div>
-							</td>
-							<td>
-								<div class="space-y-1 text-sm">
-									{#if file.reason}
-										<div class="flex items-center gap-1 text-warning">
-											<AlertCircle class="h-3 w-3" />
-											<span>{file.reason}</span>
-										</div>
-									{/if}
-									<div class="flex items-center gap-1 text-base-content/50">
-										<Calendar class="h-3 w-3" />
-										<span>{formatDate(file.discoveredAt)}</span>
-									</div>
-								</div>
-							</td>
-							<td>
-								<div class="flex gap-1">
-									<button
-										class="btn btn-ghost btn-sm"
-										onclick={() => openMatchModal(file)}
-										title="Match to TMDB"
-									>
-										<Link class="h-4 w-4" />
-										Match
-									</button>
-									<button
-										class="btn text-error btn-ghost btn-sm"
-										onclick={() => confirmDelete(file)}
-										title="Delete file"
-									>
-										<Trash2 class="h-4 w-4" />
-									</button>
-								</div>
-							</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
+		<div class="space-y-3">
+			{#each filteredFiles as file (file.id)}
+				<UnmatchedFileCard
+					{file}
+					selected={unmatchedFilesStore.selectedFiles.has(file.id)}
+					{showCheckboxes}
+					onSelect={() => toggleFileSelection(file.id)}
+					onMatch={() => handleMatchFile(file)}
+					onDelete={() => handleDeleteFile(file)}
+				/>
+			{/each}
 		</div>
+	{/if}
+
+	<!-- Pagination -->
+	{#if viewMode === 'list' && files.length > 0}
+		<UnmatchedPagination />
 	{/if}
 </div>
 
-<!-- Match Modal -->
-{#if selectedFile}
+<!-- Match File Modal -->
+{#if selectedFile && showMatchModal}
 	<MatchFileModal
-		open={matchModalOpen}
+		open={showMatchModal}
 		file={selectedFile}
-		onClose={() => (matchModalOpen = false)}
+		onClose={() => {
+			showMatchModal = false;
+			selectedFile = null;
+		}}
 		onSuccess={handleMatchSuccess}
+	/>
+{/if}
+
+<!-- Match Folder Modal -->
+{#if selectedFolder && showFolderMatchModal}
+	<MatchFolderModal
+		open={showFolderMatchModal}
+		folder={selectedFolder}
+		onClose={() => {
+			showFolderMatchModal = false;
+			selectedFolder = null;
+		}}
+		onSuccess={handleFolderMatchSuccess}
+	/>
+{/if}
+
+<!-- Batch Match Modal -->
+{#if showBatchMatchModal}
+	<BatchMatchModal
+		open={showBatchMatchModal}
+		selectedFileIds={[...unmatchedFilesStore.selectedFiles]}
+		allFiles={files}
+		onClose={() => {
+			showBatchMatchModal = false;
+		}}
+		onSuccess={handleBatchMatchSuccess}
 	/>
 {/if}
 
 <!-- Delete Confirmation Modal -->
 <DeleteConfirmationModal
-	open={deleteModalOpen}
+	open={showDeleteModal}
 	title="Delete File"
-	itemName={deletingFileName}
+	itemName={fileToDelete?.path.split('/').pop() || 'Unknown'}
 	loading={isDeleting}
 	onConfirm={performDelete}
-	onCancel={() => (deleteModalOpen = false)}
+	onCancel={() => {
+		showDeleteModal = false;
+		fileToDelete = null;
+	}}
 />

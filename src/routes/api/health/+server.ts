@@ -5,8 +5,8 @@ import { getIndexerManager } from '$lib/server/indexers/IndexerManager';
 export const GET: RequestHandler = async () => {
 	// Get indexer manager to check definition status
 	// Note: getIndexerManager() will initialize if not already done
-	let definitionsLoaded = 0;
-	let definitionErrors = 0;
+	let definitionsLoaded: number;
+	let definitionErrors: number;
 
 	try {
 		const manager = await getIndexerManager();

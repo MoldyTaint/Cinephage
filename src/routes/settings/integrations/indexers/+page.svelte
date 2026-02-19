@@ -16,6 +16,7 @@
 	import IndexerModal from '$lib/components/indexers/IndexerModal.svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { SvelteSet } from 'svelte/reactivity';
+	import { ConfirmationModal } from '$lib/components/ui/modal';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
@@ -28,6 +29,7 @@
 	// Selection state
 	let selectedIds = new SvelteSet<string>();
 	let testingIds = new SvelteSet<string>();
+	let togglingIds = new SvelteSet<string>();
 	let bulkLoading = $state(false);
 
 	// Filter state
@@ -46,6 +48,7 @@
 	// Confirmation dialog state
 	let confirmDeleteOpen = $state(false);
 	let deleteTarget = $state<Indexer | null>(null);
+	let confirmBulkDeleteOpen = $state(false);
 
 	// Derived: filtered and sorted indexers
 	const filteredIndexers = $derived(() => {
@@ -97,6 +100,10 @@
 		return result;
 	});
 
+	const canReorder = $derived(
+		filters.protocol === 'all' && filters.status === 'all' && filters.search.trim().length === 0
+	);
+
 	// Functions
 	function openAddModal() {
 		modalMode = 'add';
@@ -145,18 +152,27 @@
 		filters = newFilters;
 	}
 
+	function handlePrioritySortForReorder() {
+		sort = { column: 'priority', direction: 'asc' };
+	}
+
 	function confirmDelete(indexer: IndexerWithStatus) {
 		deleteTarget = indexer;
 		confirmDeleteOpen = true;
 	}
 
-	async function handleTest(indexer: IndexerWithStatus) {
+	async function handleTest(
+		indexer: IndexerWithStatus,
+		refresh: boolean = true,
+		notify: boolean = true
+	): Promise<boolean> {
 		testingIds.add(indexer.id);
 		try {
 			const response = await fetch('/api/indexers/test', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
+					indexerId: indexer.id,
 					name: indexer.name,
 					definitionId: indexer.definitionId,
 					baseUrl: indexer.baseUrl,
@@ -165,14 +181,26 @@
 			});
 			const result = await response.json();
 			if (!result.success) {
-				toasts.error(`Test failed: ${result.error}`);
+				if (notify) {
+					toasts.error(result.error || 'Connection test failed');
+				}
+				return false;
 			} else {
-				toasts.success('Connection successful!');
+				if (notify) {
+					toasts.success('Connection successful!');
+				}
+				return true;
 			}
 		} catch (e) {
-			toasts.error(`Test failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+			if (notify) {
+				toasts.error(e instanceof Error ? e.message : 'Connection test failed');
+			}
+			return false;
 		} finally {
 			testingIds.delete(indexer.id);
+			if (refresh) {
+				await invalidateAll();
+			}
 		}
 	}
 
@@ -184,6 +212,7 @@
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
+					indexerId: modalMode === 'edit' ? editingIndexer?.id : undefined,
 					name: formData.name,
 					definitionId: formData.definitionId,
 					baseUrl: formData.baseUrl,
@@ -191,7 +220,8 @@
 					settings: formData.settings
 				})
 			});
-			return await response.json();
+			const result = await response.json();
+			return result;
 		} catch (e) {
 			return { success: false, error: e instanceof Error ? e.message : 'Unknown error' };
 		}
@@ -222,7 +252,6 @@
 					seedRatio: formData.seedRatio,
 					seedTime: formData.seedTime,
 					packSeedTime: formData.packSeedTime,
-					preferMagnetUrl: formData.preferMagnetUrl,
 					rejectDeadTorrents: formData.rejectDeadTorrents
 				})
 			);
@@ -313,7 +342,16 @@
 	}
 
 	async function handleBulkDelete() {
-		if (!confirm(`Delete ${selectedIds.size} indexer(s)?`)) return;
+		if (selectedIds.size === 0) return;
+		confirmBulkDeleteOpen = true;
+	}
+
+	async function handleConfirmBulkDelete() {
+		if (selectedIds.size === 0) {
+			confirmBulkDeleteOpen = false;
+			return;
+		}
+
 		bulkLoading = true;
 		try {
 			const form = new FormData();
@@ -321,18 +359,88 @@
 			await fetch(`?/bulkDelete`, { method: 'POST', body: form });
 			await invalidateAll();
 			selectedIds.clear();
+			confirmBulkDeleteOpen = false;
+		} catch (e) {
+			toasts.error(e instanceof Error ? e.message : 'Failed to delete selected indexers');
 		} finally {
 			bulkLoading = false;
 		}
 	}
 
 	async function handleBulkTest() {
-		const ids = [...selectedIds];
-		for (const id of ids) {
-			const indexer = data.indexers.find((i) => i.id === id);
-			if (indexer) {
-				await handleTest(indexer as IndexerWithStatus);
+		if (selectedIds.size === 0) return;
+		bulkLoading = true;
+		try {
+			const ids = [...selectedIds];
+			let successCount = 0;
+			let failCount = 0;
+			for (const id of ids) {
+				const indexer = data.indexers.find((i) => i.id === id);
+				if (indexer) {
+					const passed = await handleTest(indexer as IndexerWithStatus, false, false);
+					if (passed) {
+						successCount += 1;
+					} else {
+						failCount += 1;
+					}
+				}
 			}
+			await invalidateAll();
+			toasts.info(`Bulk test complete: ${successCount} passed, ${failCount} failed`);
+		} catch (e) {
+			toasts.error(e instanceof Error ? e.message : 'Failed to run bulk test');
+		} finally {
+			bulkLoading = false;
+		}
+	}
+
+	async function handleToggle(indexer: IndexerWithStatus) {
+		if (togglingIds.has(indexer.id)) return;
+
+		togglingIds.add(indexer.id);
+		try {
+			const form = new FormData();
+			form.append('id', indexer.id);
+			form.append('enabled', (!indexer.enabled).toString());
+
+			const response = await fetch(`?/toggleIndexer`, {
+				method: 'POST',
+				body: form
+			});
+
+			if (!response.ok) {
+				const result = await response.json();
+				toasts.error(result?.data?.indexerError ?? 'Failed to update indexer state');
+				return;
+			}
+
+			await invalidateAll();
+		} catch (e) {
+			toasts.error(e instanceof Error ? e.message : 'Failed to update indexer state');
+		} finally {
+			togglingIds.delete(indexer.id);
+		}
+	}
+
+	async function handleReorder(indexerIds: string[]) {
+		try {
+			const form = new FormData();
+			form.append('ids', JSON.stringify(indexerIds));
+
+			const response = await fetch(`?/reorderPriorities`, {
+				method: 'POST',
+				body: form
+			});
+
+			if (!response.ok) {
+				const result = await response.json();
+				toasts.error(result?.data?.indexerError ?? 'Failed to reorder priorities');
+				return;
+			}
+
+			await invalidateAll();
+		} catch (e) {
+			toasts.error(e instanceof Error ? e.message : 'Failed to reorder priorities');
 		}
 	}
 </script>
@@ -399,13 +507,18 @@
 				indexers={filteredIndexers()}
 				{selectedIds}
 				{sort}
+				{canReorder}
 				{testingIds}
+				{togglingIds}
 				onSelect={handleSelect}
 				onSelectAll={handleSelectAll}
 				onSort={handleSort}
+				onPrioritySortForReorder={handlePrioritySortForReorder}
 				onEdit={openEditModal}
 				onDelete={confirmDelete}
 				onTest={handleTest}
+				onToggle={handleToggle}
+				onReorder={handleReorder}
 			/>
 		</div>
 	</div>
@@ -427,7 +540,7 @@
 <!-- Delete Confirmation Modal -->
 {#if confirmDeleteOpen}
 	<div class="modal-open modal">
-		<div class="modal-box w-full max-w-[min(28rem,calc(100vw-2rem))] break-words">
+		<div class="modal-box w-full max-w-[min(28rem,calc(100vw-2rem))] wrap-break-word">
 			<h3 class="text-lg font-bold">Confirm Delete</h3>
 			<p class="py-4">
 				Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? This action cannot be
@@ -446,3 +559,15 @@
 		></button>
 	</div>
 {/if}
+
+<ConfirmationModal
+	open={confirmBulkDeleteOpen}
+	title="Confirm Delete"
+	messagePrefix="Are you sure you want to delete "
+	messageEmphasis={`${selectedIds.size} indexer(s)`}
+	messageSuffix="? This action cannot be undone."
+	confirmLabel="Delete"
+	confirmVariant="error"
+	onConfirm={handleConfirmBulkDelete}
+	onCancel={() => (confirmBulkDeleteOpen = false)}
+/>

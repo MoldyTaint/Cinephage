@@ -60,6 +60,7 @@ export class ReleaseCache {
 			_v: CACHE_VERSION, // Cache version for invalidation on format changes
 			type: criteria.searchType,
 			q: (criteria.query ?? '').toLowerCase().trim(),
+			src: criteria.searchSource ?? '',
 			c: (criteria.categories ?? []).sort().join(','),
 			i: (criteria.indexerIds ?? []).sort().join(',')
 		};

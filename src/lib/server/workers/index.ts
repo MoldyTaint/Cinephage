@@ -17,7 +17,8 @@ export type {
 	MonitoringWorkerMetadata,
 	SearchWorkerMetadata,
 	SubtitleSearchWorkerMetadata,
-	PortalScanWorkerMetadata
+	PortalScanWorkerMetadata,
+	ChannelSyncWorkerMetadata
 } from './types.js';
 
 export { DEFAULT_WORKER_CONFIG, workerTypeToLogCategory } from './types.js';
@@ -34,3 +35,4 @@ export { ImportWorker, type ImportWorkerOptions } from './ImportWorker.js';
 export { SearchWorker, type SearchWorkerOptions, type SearchResult } from './SearchWorker.js';
 export { SubtitleSearchWorker, type SubtitleSearchWorkerOptions } from './SubtitleSearchWorker.js';
 export { PortalScanWorker, type PortalScanOptions } from './PortalScanWorker.js';
+export { ChannelSyncWorker, type ChannelSyncWorkerOptions } from './ChannelSyncWorker.js';

@@ -19,6 +19,9 @@ function errorResponse(message: string, code: string, status: number): Response 
 
 export const GET: RequestHandler = async ({ params, request }) => {
 	const tmdbId = params.tmdbId;
+	const url = new URL(request.url);
+	const isPrefetch =
+		url.searchParams.get('prefetch') === '1' || request.headers.get('x-prefetch') === 'true';
 
 	if (!tmdbId) {
 		return errorResponse('Missing TMDB ID', 'MISSING_PARAM', 400);
@@ -31,29 +34,32 @@ export const GET: RequestHandler = async ({ params, request }) => {
 
 	const tmdbIdNum = parseInt(tmdbId, 10);
 
-	// Create or find existing stream worker for this media
-	let worker = streamWorkerRegistry.findByMedia(tmdbIdNum, 'movie');
+	// Prefetch requests should not consume worker slots
+	let worker: StreamWorker | undefined;
+	if (!isPrefetch) {
+		worker = streamWorkerRegistry.findByMedia(tmdbIdNum, 'movie');
 
-	if (!worker) {
-		worker = new StreamWorker({
-			mediaType: 'movie',
-			tmdbId: tmdbIdNum
-		});
+		if (!worker) {
+			const newWorker = new StreamWorker({
+				mediaType: 'movie',
+				tmdbId: tmdbIdNum
+			});
 
-		try {
-			workerManager.spawn(worker);
-			streamWorkerRegistry.register(worker);
-			workerManager.spawnInBackground(worker);
-		} catch (e) {
-			worker.log(
-				'warn',
-				`Could not create worker: ${e instanceof Error ? e.message : 'Unknown error'}`
-			);
-			worker = undefined as unknown as StreamWorker;
+			try {
+				workerManager.spawnInBackground(newWorker);
+				streamWorkerRegistry.register(newWorker);
+				worker = newWorker;
+			} catch (e) {
+				newWorker.log(
+					'warn',
+					`Could not create worker: ${e instanceof Error ? e.message : 'Unknown error'}`
+				);
+				worker = undefined;
+			}
 		}
-	}
 
-	worker?.extractionStarted();
+		worker?.extractionStarted();
+	}
 
 	try {
 		const { resolveStream, getBaseUrlAsync } = await import('$lib/server/streaming');
@@ -68,18 +74,28 @@ export const GET: RequestHandler = async ({ params, request }) => {
 		// Track success/failure in worker
 		if (response.ok) {
 			worker?.extractionSucceeded('streaming', 'auto');
+			worker?.complete();
+			if (worker) {
+				streamWorkerRegistry.unregister(worker);
+			}
 		} else {
 			const body = await response
 				.clone()
 				.json()
 				.catch(() => ({ error: 'Unknown error' }));
 			worker?.fail(body.error || 'Stream resolution failed');
+			if (worker) {
+				streamWorkerRegistry.unregister(worker);
+			}
 		}
 
 		return response;
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 		worker?.fail(errorMessage);
+		if (worker) {
+			streamWorkerRegistry.unregister(worker);
+		}
 		return errorResponse(`Stream extraction error: ${errorMessage}`, 'INTERNAL_ERROR', 500);
 	}
 };

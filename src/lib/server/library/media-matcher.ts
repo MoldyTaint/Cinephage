@@ -72,6 +72,35 @@ export class MediaMatcherService {
 	}
 
 	/**
+	 * Upsert episode file by (seriesId, relativePath) to avoid duplicate rows.
+	 */
+	private async upsertEpisodeFileByPath(
+		record: Omit<typeof episodeFiles.$inferInsert, 'id'>
+	): Promise<string> {
+		const existing = await db
+			.select({ id: episodeFiles.id })
+			.from(episodeFiles)
+			.where(
+				and(
+					eq(episodeFiles.seriesId, record.seriesId),
+					eq(episodeFiles.relativePath, record.relativePath)
+				)
+			)
+			.limit(1);
+
+		if (existing.length > 0) {
+			await db.update(episodeFiles).set(record).where(eq(episodeFiles.id, existing[0].id));
+			return existing[0].id;
+		}
+
+		const [inserted] = await db
+			.insert(episodeFiles)
+			.values(record)
+			.returning({ id: episodeFiles.id });
+		return inserted.id;
+	}
+
+	/**
 	 * Get the configured match threshold
 	 */
 	private async getMatchThreshold(): Promise<number> {
@@ -549,8 +578,24 @@ export class MediaMatcherService {
 			throw new Error(`Root folder not found: ${file.rootFolderId}`);
 		}
 
+		// Skip .strm probing for existing items using the Streamer profile
+		let allowStrmProbe: boolean;
+		if (mediaType === 'movie') {
+			const [existingMovie] = await db
+				.select({ scoringProfileId: movies.scoringProfileId })
+				.from(movies)
+				.where(eq(movies.tmdbId, tmdbId));
+			allowStrmProbe = existingMovie?.scoringProfileId !== 'streamer';
+		} else {
+			const [existingSeries] = await db
+				.select({ scoringProfileId: series.scoringProfileId })
+				.from(series)
+				.where(eq(series.tmdbId, tmdbId));
+			allowStrmProbe = existingSeries?.scoringProfileId !== 'streamer';
+		}
+
 		// Extract media info
-		const mediaInfo = await mediaInfoService.extractMediaInfo(file.path);
+		const mediaInfo = await mediaInfoService.extractMediaInfo(file.path, { allowStrmProbe });
 
 		if (mediaType === 'movie') {
 			await this.createMovieEntry(file, tmdbId, rootFolder, mediaInfo);
@@ -652,13 +697,14 @@ export class MediaMatcherService {
 		const originalFilename = basename(file.path, extname(file.path));
 		const parsedQuality = parseRelease(originalFilename);
 
-		// Create movie file entry with proper sceneName and quality data
+		// Create movie file entry with proper sceneName, releaseGroup, and quality data
 		await db.insert(movieFiles).values({
 			movieId,
 			relativePath: fileName,
 			size: file.size,
 			mediaInfo,
 			sceneName: originalFilename,
+			releaseGroup: parsedQuality.releaseGroup ?? undefined,
 			quality: {
 				resolution: parsedQuality.resolution ?? undefined,
 				source: parsedQuality.source ?? undefined,
@@ -855,8 +901,8 @@ export class MediaMatcherService {
 		const originalFilename = basename(file.path, extname(file.path));
 		const parsedQuality = parseRelease(originalFilename);
 
-		// Create episode file entry with proper sceneName and quality data
-		await db.insert(episodeFiles).values({
+		// Create/update episode file entry with proper sceneName, releaseGroup, and quality data
+		await this.upsertEpisodeFileByPath({
 			seriesId,
 			seasonNumber,
 			episodeIds: [episode.id],
@@ -864,6 +910,7 @@ export class MediaMatcherService {
 			size: file.size,
 			mediaInfo,
 			sceneName: originalFilename,
+			releaseGroup: parsedQuality.releaseGroup ?? undefined,
 			quality: {
 				resolution: parsedQuality.resolution ?? undefined,
 				source: parsedQuality.source ?? undefined,

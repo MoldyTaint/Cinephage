@@ -27,9 +27,9 @@ export async function executeUpgradeMonitorTask(
 	const taskHistoryId = ctx?.historyId;
 	logger.info('[UpgradeMonitorTask] Starting upgrade search', { taskHistoryId });
 
-	let itemsProcessed = 0;
-	let itemsGrabbed = 0;
-	let errors = 0;
+	let itemsProcessed: number;
+	let itemsGrabbed: number;
+	let errors: number;
 
 	try {
 		// Check for cancellation before starting

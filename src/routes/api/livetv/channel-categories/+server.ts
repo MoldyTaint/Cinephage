@@ -9,6 +9,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { channelCategoryService } from '$lib/server/livetv/categories';
 import { ValidationError } from '$lib/errors';
+import { logger } from '$lib/logging';
 import type { ChannelCategoryFormData } from '$lib/types/livetv';
 
 export const GET: RequestHandler = async () => {
@@ -23,12 +24,22 @@ export const GET: RequestHandler = async () => {
 		}));
 
 		return json({
+			success: true,
 			categories: enriched,
 			total: categories.length
 		});
 	} catch (error) {
-		console.error('[API] Failed to get channel categories:', error);
-		return json({ error: 'Failed to get channel categories' }, { status: 500 });
+		logger.error(
+			'[API] Failed to get channel categories',
+			error instanceof Error ? error : undefined
+		);
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to get channel categories'
+			},
+			{ status: 500 }
+		);
 	}
 };
 
@@ -46,12 +57,35 @@ export const POST: RequestHandler = async ({ request }) => {
 			icon: body.icon
 		});
 
-		return json(category, { status: 201 });
+		return json(
+			{
+				success: true,
+				category
+			},
+			{ status: 201 }
+		);
 	} catch (error) {
+		// Validation errors
 		if (error instanceof ValidationError) {
-			return json({ error: error.message }, { status: 400 });
+			return json(
+				{
+					success: false,
+					error: error.message,
+					code: error.code
+				},
+				{ status: error.statusCode }
+			);
 		}
-		console.error('[API] Failed to create channel category:', error);
-		return json({ error: 'Failed to create channel category' }, { status: 500 });
+		logger.error(
+			'[API] Failed to create channel category',
+			error instanceof Error ? error : undefined
+		);
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to create channel category'
+			},
+			{ status: 500 }
+		);
 	}
 };

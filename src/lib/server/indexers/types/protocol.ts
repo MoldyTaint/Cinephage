@@ -47,8 +47,6 @@ export interface TorrentProtocolSettings {
 	seedTime?: number | null;
 	/** Seed time for season packs in minutes (usually longer) */
 	packSeedTime?: number | null;
-	/** Prefer magnet URLs over .torrent files */
-	preferMagnetUrl?: boolean;
 	/** Reject torrents with zero seeders */
 	rejectDeadTorrents?: boolean;
 	/** Maximum size in bytes */
@@ -232,8 +230,7 @@ export function createDefaultTorrentSettings(): TorrentProtocolSettings {
 		minimumSeeders: 1,
 		seedRatio: null,
 		seedTime: null,
-		packSeedTime: null,
-		preferMagnetUrl: false
+		packSeedTime: null
 	};
 }
 

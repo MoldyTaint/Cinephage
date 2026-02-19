@@ -202,8 +202,10 @@
 			label: 'Quality Profile',
 			options: [
 				{ value: 'all', label: 'All' },
-				{ value: 'default', label: 'Using Default' },
-				...data.qualityProfiles.map((p) => ({ value: p.id, label: p.name }))
+				...data.qualityProfiles.map((p) => ({
+					value: p.id,
+					label: p.isDefault ? `${p.name} (Default)` : p.name
+				}))
 			]
 		},
 		...(data.uniqueResolutions.length > 0
@@ -282,7 +284,7 @@
 		<div class="flex h-16 w-full flex-nowrap items-center justify-between gap-2 px-4 lg:px-8">
 			<div class="flex min-w-0 items-center gap-2 sm:gap-3">
 				<h1
-					class="min-w-0 bg-gradient-to-r from-primary to-secondary bg-clip-text text-xl font-bold text-transparent sm:text-2xl"
+					class="min-w-0 bg-linear-to-r from-primary to-secondary bg-clip-text text-xl font-bold text-transparent sm:text-2xl"
 				>
 					Movies
 				</h1>
@@ -338,7 +340,7 @@
 						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 						<ul
 							tabindex="0"
-							class="dropdown-content menu z-[2] w-52 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
+							class="dropdown-content menu z-2 w-52 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
 						>
 							<li>
 								<button type="submit" class="w-full text-left" form="movies-monitor-all">

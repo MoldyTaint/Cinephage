@@ -89,7 +89,7 @@
 		isMatching = true;
 		try {
 			const response = await fetch(`/api/library/unmatched/${file.id}`, {
-				method: 'POST',
+				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					tmdbId: movie.id,
@@ -123,7 +123,7 @@
 		isMatching = true;
 		try {
 			const response = await fetch(`/api/library/unmatched/${file.id}`, {
-				method: 'POST',
+				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					tmdbId: selectedShow.id,
@@ -158,13 +158,17 @@
 
 <ModalWrapper {open} onClose={close} maxWidth="2xl" labelledBy="match-file-modal-title">
 	<!-- Header -->
-	<div class="mb-4 flex items-center justify-between">
+	<div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 		<h3 id="match-file-modal-title" class="text-lg font-bold">Match File to TMDB</h3>
-		<button class="btn btn-circle btn-ghost btn-sm" onclick={close} aria-label="Close">
+		<button
+			class="btn btn-circle self-end btn-ghost btn-sm sm:self-auto"
+			onclick={close}
+			aria-label="Close"
+		>
 			<X class="h-4 w-4" />
 		</button>
 	</div>
-	<p class="mt-1 truncate text-sm text-base-content/70" title={file.path}>
+	<p class="mt-1 text-sm break-words text-base-content/70" title={file.path}>
 		{file.path.split('/').pop()}
 	</p>
 
@@ -251,15 +255,15 @@
 		</div>
 	{:else}
 		<!-- Search Input -->
-		<div class="mt-4 flex gap-2">
+		<div class="mt-4 flex flex-col gap-2 sm:flex-row">
 			<input
 				type="text"
-				class="input-bordered input flex-1"
+				class="input-bordered input w-full sm:flex-1"
 				placeholder="Search {searchType === 'movie' ? 'movies' : 'TV shows'}..."
 				bind:value={searchQuery}
 				onkeydown={handleKeydown}
 			/>
-			<button class="btn btn-primary" onclick={search} disabled={isSearching}>
+			<button class="btn w-full btn-primary sm:w-auto" onclick={search} disabled={isSearching}>
 				{#if isSearching}
 					<Loader2 class="h-4 w-4 animate-spin" />
 				{:else}
@@ -273,7 +277,7 @@
 			<div class="mt-4 max-h-80 space-y-2 overflow-y-auto">
 				{#each searchResults as result (result.id)}
 					<button
-						class="flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-base-200"
+						class="flex w-full items-start gap-3 rounded-lg p-2 text-left transition-colors hover:bg-base-200"
 						onclick={() => (searchType === 'movie' ? matchToMovie(result) : selectShow(result))}
 						disabled={isMatching}
 					>
@@ -295,17 +299,19 @@
 								</div>
 							{/if}
 						</div>
-						<div class="flex-1 overflow-hidden">
-							<p class="truncate font-medium">{result.title || result.name}</p>
+						<div class="min-w-0 flex-1">
+							<p class="font-medium break-words sm:truncate">{result.title || result.name}</p>
 							<p class="text-sm text-base-content/70">
 								{(result.release_date || result.first_air_date)?.substring(0, 4) || 'Unknown year'}
 							</p>
 						</div>
-						{#if searchType === 'movie'}
-							<div class="text-sm text-base-content/50">Click to match</div>
-						{:else}
-							<div class="text-sm text-base-content/50">Select</div>
-						{/if}
+						<div class="hidden text-sm text-base-content/50 sm:block">
+							{#if searchType === 'movie'}
+								Click to match
+							{:else}
+								Select
+							{/if}
+						</div>
 					</button>
 				{/each}
 			</div>

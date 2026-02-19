@@ -4,6 +4,56 @@ Cinephage supports four download clients for grabbing releases from indexers.
 
 ---
 
+## Docker Volume Requirements
+
+**CRITICAL:** For Cinephage to import downloaded files, both Cinephage and your download client must have access to the same download directory.
+
+### Docker Setup Example
+
+If your download client saves files to `/downloads` on the host:
+
+```yaml
+# In docker-compose.yaml
+volumes:
+  - ./config:/config
+  - /path/to/media:/media
+  - /path/to/downloads:/downloads # MUST match download client's output
+```
+
+**Path Mapping Rules:**
+
+1. **Same host path** must be mounted to both containers
+2. **Container paths can differ** (handled by path mapping in Cinephage)
+3. **qBittorrent example:**
+   - qBittorrent saves to: `/downloads/complete` (inside its container)
+   - Mount: `/host/downloads:/downloads` (in both containers)
+   - Cinephage sees: `/downloads/complete`
+
+**Common Mistake:** ❌ Only mounting downloads to download client
+
+```yaml
+qbittorrent:
+  volumes:
+    - /downloads:/downloads # Download client has access
+cinephage:
+  volumes:
+    - /media:/media # ❌ Cinephage can't see downloads!
+```
+
+**Correct Setup:** ✅ Mount downloads to both
+
+```yaml
+qbittorrent:
+  volumes:
+    - /downloads:/downloads
+cinephage:
+  volumes:
+    - /media:/media
+    - /downloads:/downloads # ✅ Both can access downloads
+```
+
+---
+
 ## Supported Clients
 
 | Client      | Protocol | Description                        |
@@ -173,7 +223,7 @@ Example:
 | ----------- | ------------------ |
 | `/symlinks` | `/mnt/altmountrem` |
 
-Also enable **Preserve symlinks (for NZBDav/rclone mounts)** on the destination root folder in **Settings > General**, so Cinephage recreates symlinks in the media folder instead of copying the target file. This applies to both NZBDav and Altmount when using the symlink import strategy.
+Also enable **Preserve symlinks (for Rclone mounts)** on the destination root folder in **Settings > General**, so Cinephage recreates symlinks in the media folder instead of copying the target file. This applies to both NZBDav and Altmount when using the symlink import strategy.
 
 Best practice: avoid using the same directory name for both the symlink import directory and the complete directory to prevent duplicate path segments during import.
 

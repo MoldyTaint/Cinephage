@@ -322,14 +322,12 @@ export class ReleaseEnricher {
 	 * Calculate total score with detailed breakdown of all components
 	 *
 	 * Scoring philosophy:
-	 * - Quality score (0-1000) is the PRIMARY ranking factor
-	 * - Bonuses are PROPORTIONAL to quality score to preserve relative rankings
-	 * - Maximum bonus is capped at ~15% of quality score to prevent availability
-	 *   from overwhelming quality differences
-	 * - Pack bonuses are FIXED to strongly prefer packs over individual episodes
+	 * - Only intrinsic quality factors that persist with the file are included
+	 * - Ephemeral factors like seeders, freshness, and parsing confidence are NOT
+	 *   included because they don't represent actual file quality and would cause
+	 *   score mismatches between search results and existing files
 	 *
-	 * This ensures that a 1080p bluray (score ~500) will always rank higher than
-	 * a 720p webrip (score ~300) regardless of seeder counts.
+	 * This ensures that search result scores match what the file will show after download.
 	 */
 	private calculateTotalScoreWithComponents(
 		release: ReleaseResult,
@@ -341,31 +339,6 @@ export class ReleaseEnricher {
 	): { totalScore: number; components: ScoreComponents } {
 		// Start with the normalized quality score as the base
 		const baseScore = normalizedQualityScore;
-
-		// Calculate individual bonus components
-		// All bonuses are proportional to preserve quality ranking
-
-		// Availability bonus: logarithmic seeder bonus, scaled by quality
-		// Max ~5% of quality score for torrents with good seeders
-		let availabilityBonus = 0;
-		if (release.seeders !== undefined && release.seeders > 0) {
-			// Log scale: 1 seeder = small bonus, 100 seeders = moderate, 1000+ = max
-			const seederFactor = Math.min(1, Math.log10(release.seeders + 1) / 3);
-			// Scale bonus to be proportional to quality (max 5% of base score, capped at 50)
-			availabilityBonus = Math.min(50, Math.round(baseScore * 0.05 * seederFactor));
-		}
-
-		// Freshness bonus: prefer newer releases slightly
-		// Max ~3% of quality score for very fresh releases
-		let freshnessBonus = 0;
-		const ageHours = (Date.now() - release.publishDate.getTime()) / (1000 * 60 * 60);
-		if (ageHours < 24) {
-			// Very fresh (< 24h): 3% bonus, capped at 30
-			freshnessBonus = Math.min(30, Math.round(baseScore * 0.03));
-		} else if (ageHours < 168) {
-			// Fresh (< 1 week): 1.5% bonus, capped at 15
-			freshnessBonus = Math.min(15, Math.round(baseScore * 0.015));
-		}
 
 		// Enhancement bonus for PROPER/REPACK (quality fixes)
 		// Only apply if not already scored by the format matcher
@@ -391,34 +364,18 @@ export class ReleaseEnricher {
 			packPreference
 		);
 
-		// Confidence bonus: higher parsing confidence = more reliable match
-		// Max ~3% of quality score
-		const confidenceBonus = Math.min(30, Math.round(baseScore * 0.03 * parsed.confidence));
-
 		// Penalty for hardcoded subs (fixed penalty, not proportional)
 		const hardcodedSubsPenalty = parsed.hasHardcodedSubs ? -50 : 0;
 
-		// Calculate total score (including pack bonus for TV content)
+		// Calculate total score - only intrinsic quality factors
 		const totalScore = Math.round(
-			Math.max(
-				0,
-				baseScore +
-					availabilityBonus +
-					freshnessBonus +
-					enhancementBonus +
-					packBonus +
-					confidenceBonus +
-					hardcodedSubsPenalty
-			)
+			Math.max(0, baseScore + enhancementBonus + packBonus + hardcodedSubsPenalty)
 		);
 
 		// Build components breakdown
 		const components: ScoreComponents = {
 			rawQualityScore,
 			normalizedQualityScore: baseScore,
-			availabilityBonus,
-			freshnessBonus,
-			confidenceBonus,
 			enhancementBonus,
 			packBonus,
 			hardcodedSubsPenalty,

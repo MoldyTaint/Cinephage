@@ -21,9 +21,11 @@ import type {
 	ReleaseResult,
 	IndexerProtocol,
 	IndexerAccessType,
-	IndexerDownloadResult
+	IndexerDownloadResult,
+	DownloadTorrentOptions
 } from '../types';
 import type { YamlDefinition } from '../schema/yamlDefinition';
+import { resolveCategoryId } from '../schema/yamlDefinition';
 import type { IndexerRecord, ProtocolSettings } from '$lib/server/db/schema';
 import { TemplateEngine, createTemplateEngine } from '../engine/TemplateEngine';
 import { FilterEngine, createFilterEngine } from '../engine/FilterEngine';
@@ -182,7 +184,7 @@ export class UnifiedIndexer implements IIndexer {
 		this.baseUrl = record.baseUrl || definition.links[0];
 		this.requestBuilder.setBaseUrl(this.baseUrl);
 		this.templateEngine.setSiteLink(this.baseUrl);
-		this.templateEngine.setConfig(settings);
+		this.templateEngine.setConfigWithDefaults(settings, definition.settings ?? []);
 
 		this.log = createChildLogger({ indexer: this.name, indexerId: this.id });
 
@@ -196,7 +198,8 @@ export class UnifiedIndexer implements IIndexer {
 				? record.alternateUrls
 				: definition.links.slice(1),
 			userAgent: 'Cinephage/1.0',
-			rateLimit: rateLimit ?? { requests: 30, periodMs: 60_000 }
+			rateLimit: rateLimit ?? { requests: 30, periodMs: 60_000 },
+			encoding: definition.encoding
 		});
 
 		// Create database executor for internal streaming indexers
@@ -293,10 +296,8 @@ export class UnifiedIndexer implements IIndexer {
 		if (caps.categorymappings) {
 			for (const mapping of caps.categorymappings) {
 				if (mapping.cat) {
-					const numId = parseInt(mapping.cat, 10);
-					if (!isNaN(numId)) {
-						categories.set(numId, mapping.desc ?? mapping.cat);
-					}
+					const numId = resolveCategoryId(mapping.cat);
+					categories.set(numId, mapping.desc ?? mapping.cat);
 				}
 			}
 		}
@@ -420,16 +421,27 @@ export class UnifiedIndexer implements IIndexer {
 
 		// Execute requests and collect results
 		const allResults: ReleaseResult[] = [];
+		let successfulRequests = 0;
+		const requestErrors: string[] = [];
 
 		for (const request of requests) {
 			this.log.debug('Executing search request', { url: request.url, method: request.method });
 			try {
 				const results = await this.executeSearchRequest(request);
 				allResults.push(...results);
+				successfulRequests += 1;
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				this.log.warn('Search request failed', { url: request.url, error: message });
+				requestErrors.push(this.normalizeTestRequestError(message));
 			}
+		}
+
+		// If all requests failed, surface the error so orchestrator can mark
+		// indexer health as failed instead of treating this as a successful empty result.
+		if (successfulRequests === 0 && requestErrors.length > 0) {
+			const uniqueErrors = [...new Set(requestErrors.filter(Boolean))];
+			throw new Error(uniqueErrors.slice(0, 2).join('; ') || 'All search requests failed');
 		}
 
 		const duration = Date.now() - startTime;
@@ -453,6 +465,12 @@ export class UnifiedIndexer implements IIndexer {
 	}): Promise<ReleaseResult[]> {
 		this.http.setCookies(this.cookies);
 
+		this.log.info('Executing search request', {
+			url: request.url,
+			method: request.method,
+			indexer: this.name
+		});
+
 		const response =
 			request.method === 'POST'
 				? await this.http.post(request.url, request.body!, {
@@ -464,12 +482,25 @@ export class UnifiedIndexer implements IIndexer {
 						followRedirects: this.definition.followredirect ?? true
 					});
 
+		this.log.info('Search response received', {
+			status: response.status,
+			url: response.url,
+			bodyLength: response.body.length,
+			bodyPreview: response.body.substring(0, 500),
+			indexer: this.name
+		});
+
 		this.http.parseAndStoreCookies(response.headers);
 
 		const mockResponse = new Response(response.body, {
 			status: response.status,
 			headers: response.headers
 		});
+
+		const apiError = this.detectProviderError(response.body);
+		if (apiError) {
+			throw new Error(apiError);
+		}
 
 		if (this.authManager.checkLoginNeeded(mockResponse, response.body)) {
 			this.log.info('Login needed, re-authenticating');
@@ -489,16 +520,61 @@ export class UnifiedIndexer implements IIndexer {
 							followRedirects: this.definition.followredirect ?? true
 						});
 
+			const retryApiError = this.detectProviderError(retryResponse.body);
+			if (retryApiError) {
+				throw new Error(retryApiError);
+			}
+
 			return this.parseResponse(retryResponse.body, request.searchPath);
+		}
+
+		// Refresh cookie expiration after successful request to keep session alive
+		if (Object.keys(this.cookies).length > 0) {
+			const context = {
+				indexerId: this.id,
+				baseUrl: this.requestBuilder.getBaseUrl(),
+				settings: this.settings,
+				encoding: this.definition.encoding
+			};
+			await this.authManager.refreshCookieExpiration(context);
 		}
 
 		return this.parseResponse(response.body, request.searchPath);
 	}
 
 	/**
+	 * Detect provider-specific API errors represented in successful HTTP responses.
+	 * Example: Newznab returns <error code="100" description="..." /> with HTTP 200.
+	 */
+	private detectProviderError(content: string): string | null {
+		// Newznab-compatible providers commonly return structured API errors in XML.
+		if (this.definition.id === 'newznab') {
+			const errorMatch = content.match(/<error\b([^>]*)\/?>/i);
+			if (!errorMatch) return null;
+
+			const attrs = errorMatch[1] ?? '';
+			const codeMatch = attrs.match(/\bcode=(['"]?)([^'" >]+)\1/i);
+			const descQuotedMatch = attrs.match(/\bdescription=(['"])(.*?)\1/i);
+			const descBareMatch = attrs.match(/\bdescription=([^'" >]+)/i);
+
+			const code = codeMatch?.[2] ?? 'unknown';
+			const description = descQuotedMatch?.[2] ?? descBareMatch?.[1] ?? 'Unknown API error';
+			return `Indexer API error ${code}: ${description}`;
+		}
+
+		return null;
+	}
+
+	/**
 	 * Parse a response into release results
 	 */
 	private parseResponse(content: string, searchPath: unknown): ReleaseResult[] {
+		this.log.info('Parsing search response', {
+			indexer: this.name,
+			contentLength: content.length,
+			contentPreview: content.substring(0, 200)
+		});
+
 		const parseResult = this.responseParser.parse(
 			content,
 			searchPath as Parameters<typeof this.responseParser.parse>[1],
@@ -509,6 +585,12 @@ export class UnifiedIndexer implements IIndexer {
 				protocol: this.protocol
 			}
 		);
+
+		this.log.info('Parse complete', {
+			indexer: this.name,
+			releasesFound: parseResult.releases.length,
+			errors: parseResult.errors?.length ?? 0
+		});
 
 		if (parseResult.errors && parseResult.errors.length > 0) {
 			this.log.warn('Parse had errors', { errors: parseResult.errors });
@@ -532,29 +614,41 @@ export class UnifiedIndexer implements IIndexer {
 		const context = {
 			indexerId: this.id,
 			baseUrl: this.requestBuilder.getBaseUrl(),
-			settings: this.settings
+			settings: this.settings,
+			encoding: this.definition.encoding
 		};
 
 		const hasStoredCookies = await this.authManager.loadCookies(context);
 		if (hasStoredCookies) {
 			this.cookies = this.authManager.getCookies();
 			this.isLoggedIn = true;
-			this.log.debug('Loaded stored cookies');
+			this.log.info('Loaded stored cookies', {
+				indexer: this.name,
+				cookieCount: Object.keys(this.cookies).length,
+				cookieNames: Object.keys(this.cookies)
+			});
 			return;
 		}
 
-		this.log.info('Performing login');
+		this.log.info('Performing login', { indexer: this.name });
 		const loginResult = await this.authManager.login(context);
 
 		if (!loginResult.success) {
+			this.log.error('Login failed', { indexer: this.name, error: loginResult.error });
 			throw new Error(`Login failed: ${loginResult.error}`);
 		}
 
 		this.cookies = loginResult.cookies;
 		this.isLoggedIn = true;
 
+		this.log.info('Login successful', {
+			indexer: this.name,
+			cookieCount: Object.keys(this.cookies).length,
+			cookieNames: Object.keys(this.cookies)
+		});
+
 		await this.authManager.saveCookies(context);
-		this.log.debug('Login successful, cookies saved');
+		this.log.debug('Cookies saved', { indexer: this.name });
 	}
 
 	/**
@@ -565,71 +659,187 @@ export class UnifiedIndexer implements IIndexer {
 
 		try {
 			if (this.isInternalStreamingIndexer()) {
-				// For internal indexers, just verify the executor is set up
+				// For internal streaming indexers, validate URL settings format.
+				// They don't perform remote indexer I/O, so configuration validation is the test.
+				await this.validateInternalStreamingSettings();
 				this.log.info('Internal streaming indexer test successful');
 				return;
 			}
 
-			await this.ensureLoggedIn();
-
-			const results = await this.search({
+			const testCriteria: SearchCriteria = {
 				searchType: 'basic',
 				query: 'test',
 				limit: 1
-			});
+			};
 
-			this.log.info('Indexer test successful', { resultCount: results.length });
+			// Ensure test will actually perform at least one HTTP request.
+			// Otherwise test could return a false positive.
+			const requests = this.requestBuilder.buildSearchRequests(testCriteria);
+			if (requests.length === 0) {
+				throw new Error('No test request could be generated for this indexer definition');
+			}
+
+			await this.ensureLoggedIn();
+			let successfulRequests = 0;
+			let resultCount = 0;
+			const requestErrors: string[] = [];
+
+			for (const request of requests) {
+				try {
+					const results = await this.executeSearchRequest(request);
+					successfulRequests += 1;
+					resultCount += results.length;
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					requestErrors.push(this.normalizeTestRequestError(message));
+				}
+			}
+
+			if (successfulRequests === 0) {
+				const uniqueErrors = [...new Set(requestErrors.filter(Boolean))];
+				const summary =
+					uniqueErrors.length > 0
+						? uniqueErrors.slice(0, 2).join('; ')
+						: 'All test requests failed';
+				throw new Error(summary);
+			}
+
+			this.log.info('Indexer test successful', {
+				requestCount: successfulRequests,
+				resultCount
+			});
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			this.log.error('Indexer test failed', { error: message });
-			throw new Error(`Indexer test failed: ${message}`);
+			throw error instanceof Error ? error : new Error(message);
 		}
 	}
 
 	/**
-	 * Get download URL for a release
+	 * Validate settings used by the internal streaming indexer.
+	 * Ensures malformed External Host values fail the connection test.
 	 */
-	async getDownloadUrl(release: ReleaseResult): Promise<string> {
-		// For streaming protocol, return the stream URL as-is
-		if (this.protocol === 'streaming') {
-			return release.downloadUrl || '';
+	private async validateInternalStreamingSettings(): Promise<void> {
+		const rawExternalHost = this.settings.externalHost;
+		if (typeof rawExternalHost !== 'string') {
+			return;
 		}
 
-		// Handle torrent magnet preference
-		if (this.protocol === 'torrent') {
-			const torrentSettings = this._protocolSettings as { preferMagnetUrl?: boolean } | undefined;
-			if (torrentSettings?.preferMagnetUrl && release.magnetUrl) {
-				return release.magnetUrl;
-			}
+		const externalHost = rawExternalHost.trim();
+		if (!externalHost) {
+			return;
 		}
 
-		const downloadUrl = release.downloadUrl ?? release.magnetUrl;
-		if (!downloadUrl) {
-			throw new Error('No download URL available');
+		const useHttpsValue = this.settings.useHttps;
+		const useHttps =
+			useHttpsValue === true || (typeof useHttpsValue === 'string' && useHttpsValue === 'true');
+		const defaultProtocol = useHttps ? 'https' : 'http';
+		const hasProtocol = /^[a-z][a-z0-9+.-]*:\/\//i.test(externalHost);
+		const candidate = hasProtocol ? externalHost : `${defaultProtocol}://${externalHost}`;
+
+		let parsed: URL;
+		try {
+			parsed = new URL(candidate);
+		} catch {
+			throw new Error(
+				'Invalid External Host format. Use hostname[:port] (example: 192.168.1.100:3000).'
+			);
 		}
 
-		if (downloadUrl.startsWith('magnet:') || downloadUrl.startsWith('stream://')) {
-			return downloadUrl;
+		if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+			throw new Error('Invalid External Host protocol. Only http and https are supported.');
 		}
 
-		if (!this.downloadHandler.needsResolution()) {
-			return downloadUrl;
+		if (!parsed.hostname) {
+			throw new Error('Invalid External Host. Hostname is required.');
 		}
 
-		const context = {
-			baseUrl: this.requestBuilder.getBaseUrl(),
-			cookies: this.cookies,
-			settings: this.settings
-		};
-
-		const result = await this.downloadHandler.resolveDownload(downloadUrl, context);
-
-		if (!result.success) {
-			this.log.warn('Download resolution failed', { error: result.error });
-			return downloadUrl;
+		if (parsed.pathname !== '/' || parsed.search || parsed.hash) {
+			throw new Error('Invalid External Host. Do not include a path, query, or fragment.');
 		}
 
-		return result.magnetUrl ?? result.request?.url ?? downloadUrl;
+		await this.probeInternalStreamingHost(parsed);
+	}
+
+	/**
+	 * Probe external host reachability for internal streaming indexer config.
+	 * Any HTTP response counts as reachable; network/TLS/DNS failures do not.
+	 */
+	private async probeInternalStreamingHost(baseUrl: URL): Promise<void> {
+		const probeUrl = new URL('/api/health', baseUrl);
+		const timeoutMs = 5000;
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+		try {
+			await fetch(probeUrl.toString(), {
+				method: 'GET',
+				redirect: 'manual',
+				signal: controller.signal,
+				headers: {
+					Accept: 'application/json, text/plain, */*',
+					'User-Agent': 'Cinephage/1.0'
+				}
+			});
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			throw new Error(
+				`External Host is unreachable (${baseUrl.host}). Check host, port, and protocol. (${message})`
+			);
+		} finally {
+			clearTimeout(timeoutId);
+		}
+	}
+
+	/**
+	 * Normalize low-level request errors into concise test-level messages.
+	 * Avoids leaking full request URLs/query params in user-facing errors.
+	 */
+	private normalizeTestRequestError(message: string): string {
+		const normalized = message.trim();
+		const lower = normalized.toLowerCase();
+
+		if (lower.includes('indexer api error')) {
+			const apiErrorMatch = normalized.match(/Indexer API error[^;]+/i);
+			return apiErrorMatch?.[0]?.trim() ?? 'Indexer API error';
+		}
+
+		if (
+			lower.includes('wrong api key') ||
+			lower.includes('invalid api key') ||
+			lower.includes('missing api key')
+		) {
+			return 'Authentication failed: invalid API key';
+		}
+
+		if (
+			lower.includes('fetch failed') ||
+			lower.includes('all urls failed') ||
+			lower.includes('econnrefused') ||
+			lower.includes('enotfound') ||
+			lower.includes('eai_again') ||
+			lower.includes('etimedout') ||
+			lower.includes('timeout') ||
+			lower.includes('timed out') ||
+			lower.includes('unable to reach')
+		) {
+			return 'Unable to reach indexer server';
+		}
+
+		if (lower.includes('cloudflare')) {
+			return 'Cloudflare protection blocked the request';
+		}
+
+		if (
+			lower.includes('login failed') ||
+			lower.includes('authentication') ||
+			lower.includes('unauthorized') ||
+			lower.includes('forbidden')
+		) {
+			return 'Authentication failed';
+		}
+
+		return normalized;
 	}
 
 	/**
@@ -680,7 +890,10 @@ export class UnifiedIndexer implements IIndexer {
 	/**
 	 * Download a torrent/NZB file from the indexer
 	 */
-	async downloadTorrent(url: string): Promise<IndexerDownloadResult> {
+	async downloadTorrent(
+		url: string,
+		options?: DownloadTorrentOptions
+	): Promise<IndexerDownloadResult> {
 		const startTime = Date.now();
 
 		this.log.debug('Downloading content', { url: url.substring(0, 100) });
@@ -692,7 +905,7 @@ export class UnifiedIndexer implements IIndexer {
 			if (url.startsWith('magnet:')) {
 				const { extractInfoHashFromMagnet } =
 					await import('$lib/server/downloadClients/utils/torrentParser');
-				const infoHash = extractInfoHashFromMagnet(url);
+				const infoHash = await extractInfoHashFromMagnet(url);
 				return {
 					success: true,
 					magnetUrl: url,
@@ -708,6 +921,136 @@ export class UnifiedIndexer implements IIndexer {
 					data: Buffer.from(url),
 					responseTimeMs: Date.now() - startTime
 				};
+			}
+
+			// Check if URL needs resolution (e.g., HTML page with selectors to extract magnet/torrent URL)
+			// This handles indexers like Torrent Downloads that return a details page URL instead of
+			// a direct torrent/magnet link. The DownloadHandler will fetch the page and extract the
+			// actual download URL using CSS selectors defined in the indexer YAML definition.
+			const needsRes = this.downloadHandler.needsResolution();
+			this.log.debug('Checking if download needs resolution', {
+				needsResolution: needsRes,
+				hasDownloadBlock: !!this.definition.download,
+				hasSelectors: !!this.definition.download?.selectors?.length,
+				selectorsCount: this.definition.download?.selectors?.length ?? 0
+			});
+			if (needsRes) {
+				const context = {
+					baseUrl: this.requestBuilder.getBaseUrl(),
+					cookies: this.cookies,
+					settings: this.settings,
+					encoding: this.definition.encoding,
+					releaseDetailsUrl: options?.releaseDetailsUrl ?? url,
+					releaseGuid: options?.releaseGuid,
+					releaseTitle: options?.releaseTitle
+				};
+
+				this.log.debug('Calling resolveDownload', {
+					url: url.substring(0, 80),
+					baseUrl: context.baseUrl,
+					hasSettings: Object.keys(context.settings).length > 0,
+					settingsKeys: Object.keys(context.settings)
+				});
+
+				const resolution = await this.downloadHandler.resolveDownload(url, context);
+
+				this.log.debug('Resolution result', {
+					success: resolution.success,
+					hasMagnetUrl: !!resolution.magnetUrl,
+					hasRequestUrl: !!resolution.request?.url,
+					error: resolution.error
+				});
+
+				if (resolution.success) {
+					// If resolution returned a magnet URL, use it directly
+					if (resolution.magnetUrl) {
+						this.log.debug('Resolved download URL to magnet', {
+							original: url.substring(0, 50),
+							magnetHash: resolution.magnetUrl.substring(0, 60)
+						});
+						const { extractInfoHashFromMagnet } =
+							await import('$lib/server/downloadClients/utils/torrentParser');
+						const infoHash = await extractInfoHashFromMagnet(resolution.magnetUrl);
+						return {
+							success: true,
+							magnetUrl: resolution.magnetUrl,
+							infoHash,
+							responseTimeMs: Date.now() - startTime
+						};
+					}
+
+					// If resolution already has cached torrent data (from testTorrentLink validation),
+					// use it directly — avoids a redundant second fetch that would fail with
+					// one-time download tokens (e.g., nCore's &key= parameter)
+					if (resolution.torrentData) {
+						this.log.debug('Using cached torrent data from resolution', {
+							dataSize: resolution.torrentData.length
+						});
+
+						if (this.protocol === 'usenet') {
+							return {
+								success: true,
+								data: resolution.torrentData,
+								responseTimeMs: Date.now() - startTime
+							};
+						}
+
+						const { parseTorrentFile } =
+							await import('$lib/server/downloadClients/utils/torrentParser');
+						const parseResult = await parseTorrentFile(resolution.torrentData);
+
+						if (!parseResult.success) {
+							return {
+								success: false,
+								error: parseResult.error,
+								responseTimeMs: Date.now() - startTime
+							};
+						}
+
+						if (parseResult.magnetUrl) {
+							return {
+								success: true,
+								magnetUrl: parseResult.magnetUrl,
+								infoHash: parseResult.infoHash,
+								responseTimeMs: Date.now() - startTime
+							};
+						}
+
+						return {
+							success: true,
+							data: resolution.torrentData,
+							infoHash: parseResult.infoHash,
+							responseTimeMs: Date.now() - startTime
+						};
+					}
+
+					// If resolution returned a different URL, use that for fetching
+					if (resolution.request?.url && resolution.request.url !== url) {
+						this.log.debug('Resolved download URL', {
+							original: url.substring(0, 50),
+							resolved: resolution.request.url.substring(0, 50)
+						});
+						url = resolution.request.url;
+
+						// Check if the resolved URL is a magnet link
+						if (url.startsWith('magnet:')) {
+							const { extractInfoHashFromMagnet } =
+								await import('$lib/server/downloadClients/utils/torrentParser');
+							const infoHash = await extractInfoHashFromMagnet(url);
+							return {
+								success: true,
+								magnetUrl: url,
+								infoHash,
+								responseTimeMs: Date.now() - startTime
+							};
+						}
+					}
+				} else {
+					this.log.warn('Download URL resolution failed, trying direct fetch', {
+						error: resolution.error
+					});
+					// Continue with original URL as fallback
+				}
 			}
 
 			const headers: Record<string, string> = {
@@ -750,7 +1093,7 @@ export class UnifiedIndexer implements IIndexer {
 					if (location.startsWith('magnet:')) {
 						const { extractInfoHashFromMagnet } =
 							await import('$lib/server/downloadClients/utils/torrentParser');
-						const infoHash = extractInfoHashFromMagnet(location);
+						const infoHash = await extractInfoHashFromMagnet(location);
 						return {
 							success: true,
 							magnetUrl: location,
@@ -797,7 +1140,7 @@ export class UnifiedIndexer implements IIndexer {
 
 			// For torrent, parse the file
 			const { parseTorrentFile } = await import('$lib/server/downloadClients/utils/torrentParser');
-			const parseResult = parseTorrentFile(data);
+			const parseResult = await parseTorrentFile(data);
 
 			if (!parseResult.success) {
 				return {

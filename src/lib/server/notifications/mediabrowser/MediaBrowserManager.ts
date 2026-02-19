@@ -229,14 +229,43 @@ class MediaBrowserManager {
 	/**
 	 * Test a saved server and update its test status
 	 */
-	async testServer(id: string): Promise<MediaBrowserTestResult> {
+	async testServer(
+		id: string,
+		options?: {
+			host?: string;
+			apiKey?: string;
+			serverType?: 'jellyfin' | 'emby';
+			persist?: boolean;
+		}
+	): Promise<MediaBrowserTestResult> {
 		const record = await this.getServerRecord(id);
 		if (!record) {
 			return { success: false, error: 'Server not found' };
 		}
 
-		const client = this.createClient(record);
+		const hasOverrides =
+			options?.host !== undefined ||
+			options?.apiKey !== undefined ||
+			options?.serverType !== undefined;
+
+		const effectiveHost = options?.host?.trim() ? options.host : record.host;
+		const effectiveApiKey = options?.apiKey?.trim() ? options.apiKey : record.apiKey;
+		const effectiveServerType = (options?.serverType ?? record.serverType) as 'jellyfin' | 'emby';
+
+		const client = hasOverrides
+			? new MediaBrowserClient({
+					host: effectiveHost,
+					apiKey: effectiveApiKey,
+					serverType: effectiveServerType
+				})
+			: this.createClient(record);
+
 		const result = await client.test();
+
+		// For modal/preview tests, allow testing without persisting status on the saved server.
+		if (options?.persist === false) {
+			return result;
+		}
 
 		// Update the server with test results
 		const updates: Partial<MediaBrowserServerRecord> = {

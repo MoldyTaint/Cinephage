@@ -72,7 +72,9 @@
 		try {
 			const response = await fetch(`/api/livetv/portals/${portalId}/scan/results`);
 			if (!response.ok) throw new Error('Failed to load results');
-			results = await response.json();
+			const result = await response.json();
+			if (!result.success) throw new Error(result.error || 'Failed to load results');
+			results = result.results || [];
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load results';
 		} finally {

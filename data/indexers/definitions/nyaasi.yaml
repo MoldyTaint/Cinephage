@@ -1,0 +1,232 @@
+---
+# Nyaa.si - Native Cinephage Definition
+# Public anime/manga/East Asian media torrent tracker
+# Uses HTML scraping with simple, JS-compatible selectors
+
+id: nyaasi
+name: Nyaa.si
+description: Nyaa is a public torrent site for anime, manga, and East Asian media
+type: public
+protocol: torrent
+language: en-US
+encoding: UTF-8
+requestdelay: 2
+
+links:
+  - https://nyaa.si/
+  - https://nyaa.iss.ink/
+  - https://nyaa.land/
+
+caps:
+  modes:
+    search: [q]
+    tv-search: [q]
+    movie-search: [q]
+    music-search: [q]
+    book-search: [q]
+  allowrawsearch: true
+
+  categorymappings:
+    # Anime categories - Each maps to BOTH TV/Anime AND Movies/Other
+    # This allows anime content to appear in both TV and Movie searches
+    # (Prowlarr uses the same approach)
+    - id: '1_0'
+      cat: TV/Anime
+      desc: Anime - All
+      default: true
+    - id: '1_0'
+      cat: Movies/Other
+      desc: Anime - All
+    - id: '1_1'
+      cat: TV/Anime
+      desc: Anime - Anime Music Video
+    - id: '1_1'
+      cat: Movies/Other
+      desc: Anime - Anime Music Video
+    - id: '1_2'
+      cat: TV/Anime
+      desc: Anime - English-translated
+    - id: '1_2'
+      cat: Movies/Other
+      desc: Anime - English-translated
+    - id: '1_3'
+      cat: TV/Anime
+      desc: Anime - Non-English-translated
+    - id: '1_3'
+      cat: Movies/Other
+      desc: Anime - Non-English-translated
+    - id: '1_4'
+      cat: TV/Anime
+      desc: Anime - Raw
+    - id: '1_4'
+      cat: Movies/Other
+      desc: Anime - Raw
+    # Audio
+    - id: '2_0'
+      cat: Audio
+      desc: Audio - All
+    - id: '2_1'
+      cat: Audio/Lossless
+      desc: Audio - Lossless
+    - id: '2_2'
+      cat: Audio
+      desc: Audio - Lossy
+    # Literature
+    - id: '3_0'
+      cat: Books
+      desc: Literature - All
+    - id: '3_1'
+      cat: Books/EBook
+      desc: Literature - English-translated
+    - id: '3_2'
+      cat: Books/EBook
+      desc: Literature - Non-English-translated
+    - id: '3_3'
+      cat: Books/EBook
+      desc: Literature - Raw
+    # Live Action - Also maps to both TV and Movies
+    - id: '4_0'
+      cat: TV
+      desc: Live Action - All
+    - id: '4_0'
+      cat: Movies/Other
+      desc: Live Action - All
+    - id: '4_1'
+      cat: TV
+      desc: Live Action - English-translated
+    - id: '4_1'
+      cat: Movies/Other
+      desc: Live Action - English-translated
+    - id: '4_2'
+      cat: TV
+      desc: Live Action - Idol/Promotional Video
+    - id: '4_3'
+      cat: TV
+      desc: Live Action - Non-English-translated
+    - id: '4_3'
+      cat: Movies/Other
+      desc: Live Action - Non-English-translated
+    - id: '4_4'
+      cat: TV
+      desc: Live Action - Raw
+    - id: '4_4'
+      cat: Movies/Other
+      desc: Live Action - Raw
+    # Pictures
+    - id: '5_0'
+      cat: Other
+      desc: Pictures - All
+    - id: '5_1'
+      cat: Other
+      desc: Pictures - Graphics
+    - id: '5_2'
+      cat: Other
+      desc: Pictures - Photos
+    # Software
+    - id: '6_0'
+      cat: PC
+      desc: Software - All
+    - id: '6_1'
+      cat: PC
+      desc: Software - Applications
+    - id: '6_2'
+      cat: PC/Games
+      desc: Software - Games
+
+settings:
+  - name: filter
+    type: select
+    label: Filter
+    default: '0'
+    options:
+      '0': No filter
+      '1': No remakes
+      '2': Trusted only
+  - name: category
+    type: select
+    label: Default Category
+    default: '0_0'
+    options:
+      '0_0': All categories
+      '1_0': Anime
+      '1_2': Anime - English-translated
+      '2_0': Audio
+      '3_0': Literature
+      '4_0': Live Action
+      '6_0': Software
+  - name: sort
+    type: select
+    label: Sort by
+    default: id
+    options:
+      id: Date
+      seeders: Seeders
+      size: Size
+
+search:
+  paths:
+    - path: /
+      method: get
+      inputs:
+        q: '{{ .Keywords }}'
+        f: '{{ .Config.filter }}'
+        c: '{{ .Config.category }}'
+        s: '{{ .Config.sort }}'
+        o: desc
+
+  rows:
+    selector: tr.default, tr.danger, tr.success
+
+  fields:
+    category:
+      selector: td:nth-child(1) a
+      attribute: href
+      filters:
+        - name: querystring
+          args: c
+
+    title:
+      selector: td:nth-child(2) a:last-of-type
+
+    details:
+      selector: td:nth-child(2) a:last-of-type
+      attribute: href
+
+    download:
+      selector: td:nth-child(3) a[href$=".torrent"]
+      attribute: href
+      optional: true
+
+    magnet:
+      selector: td:nth-child(3) a[href^="magnet:"]
+      attribute: href
+
+    size:
+      selector: td:nth-child(4)
+
+    date:
+      selector: td:nth-child(5)
+      attribute: data-timestamp
+      filters:
+        - name: dateparse
+          args: unix
+
+    seeders:
+      selector: td:nth-child(6)
+      optional: true
+      default: '0'
+
+    leechers:
+      selector: td:nth-child(7)
+      optional: true
+      default: '0'
+
+    grabs:
+      selector: td:nth-child(8)
+      optional: true
+
+    downloadvolumefactor:
+      text: '0'
+
+    uploadvolumefactor:
+      text: '1'

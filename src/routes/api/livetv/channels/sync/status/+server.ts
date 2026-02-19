@@ -6,16 +6,26 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getStalkerChannelService } from '$lib/server/livetv/stalker';
+import { getLiveTvChannelService } from '$lib/server/livetv/LiveTvChannelService';
+import { logger } from '$lib/logging';
 
 export const GET: RequestHandler = async () => {
-	const channelService = getStalkerChannelService();
+	const channelService = getLiveTvChannelService();
 
 	try {
-		const accounts = await channelService.getAccountSyncStatuses();
-		return json({ accounts });
+		const accounts = await channelService.getSyncStatus();
+		return json({
+			success: true,
+			accounts
+		});
 	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Unknown error';
-		return json({ error: message }, { status: 500 });
+		logger.error('[API] Failed to get sync status', error instanceof Error ? error : undefined);
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to get sync status'
+			},
+			{ status: 500 }
+		);
 	}
 };

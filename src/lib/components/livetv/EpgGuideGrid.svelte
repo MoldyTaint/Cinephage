@@ -1,6 +1,15 @@
 <script lang="ts">
 	import { SvelteMap } from 'svelte/reactivity';
-	import { Tv, ChevronLeft, ChevronRight, Clock, Loader2, X } from 'lucide-svelte';
+	import {
+		Tv,
+		ChevronLeft,
+		ChevronRight,
+		Clock,
+		Calendar,
+		Loader2,
+		X,
+		Search
+	} from 'lucide-svelte';
 	import type { ChannelLineupItemWithDetails, EpgProgram } from '$lib/types/livetv';
 	import { onMount } from 'svelte';
 	import { getEpgConfig } from './epgConfig';
@@ -21,19 +30,69 @@
 	const HOUR_WIDTH = $derived(gridConfig.hourWidth);
 	const ROW_HEIGHT = $derived(gridConfig.rowHeight);
 	const SLOT_MINUTES = $derived(gridConfig.slotMinutes);
+	const SLOT_WIDTH = $derived((HOUR_WIDTH * SLOT_MINUTES) / 60);
+	const CHANNEL_COLUMN_WIDTH = $derived(Math.max(CHANNEL_WIDTH, 124));
 
-	// Time window state - store as timestamp for reactivity
-	let windowStartTime = $state(getWindowStartTime(Date.now()));
-	let windowStart = $derived(new Date(windowStartTime));
-	let windowEnd = $derived(new Date(windowStartTime + 3 * 60 * 60 * 1000)); // 3 hours
+	// Time/day state
+	const DAY_MS = 24 * 60 * 60 * 1000;
+	const WINDOW_HOURS = 24;
+	let dayOffset = $state(0);
+	let nowTime = $state(Date.now());
+	let now = $derived(new Date(nowTime));
+	const todayStartTime = $derived(getDayStartTime(nowTime));
+	const windowStartTime = $derived(todayStartTime + dayOffset * DAY_MS);
+	const windowStart = $derived(new Date(windowStartTime));
+	const windowEnd = $derived(new Date(windowStartTime + WINDOW_HOURS * 60 * 60 * 1000));
 
 	// Program data
 	let programsByChannel = new SvelteMap<string, EpgProgram[]>();
 	let loadingPrograms = $state(false);
+	let loadProgramsRequestId = 0;
+	let channelSearch = $state('');
+	let gridViewportEl = $state<HTMLDivElement | null>(null);
+	let viewportScrollTop = $state(0);
+	let viewportHeight = $state(0);
 
-	// Current time for indicator - store as timestamp
-	let nowTime = $state(Date.now());
-	let now = $derived(new Date(nowTime));
+	const HEADER_HEIGHT = 40;
+	const VIRTUAL_BUFFER_ROWS = 8;
+	const VISIBLE_CHANNEL_ROWS = 9;
+	const ROW_TOTAL_HEIGHT = $derived(ROW_HEIGHT);
+	const viewportContainerHeight = $derived(HEADER_HEIGHT + ROW_TOTAL_HEIGHT * VISIBLE_CHANNEL_ROWS);
+
+	const normalizedSearch = $derived(channelSearch.trim().toLowerCase());
+	const filteredLineup = $derived(
+		normalizedSearch
+			? lineup.filter((channel) => {
+					const name = channel.displayName.toLowerCase();
+					const account = channel.accountName.toLowerCase();
+					const number = channel.channelNumber?.toString() ?? '';
+					return (
+						name.includes(normalizedSearch) ||
+						account.includes(normalizedSearch) ||
+						number.includes(normalizedSearch)
+					);
+				})
+			: lineup
+	);
+	const visibleRowCount = $derived(
+		Math.max(1, Math.ceil(Math.max(0, viewportHeight - HEADER_HEIGHT) / ROW_TOTAL_HEIGHT))
+	);
+	const virtualStartIndex = $derived(
+		Math.max(
+			0,
+			Math.floor(Math.max(0, viewportScrollTop - HEADER_HEIGHT) / ROW_TOTAL_HEIGHT) -
+				VIRTUAL_BUFFER_ROWS
+		)
+	);
+	const virtualEndIndex = $derived(
+		Math.min(filteredLineup.length, virtualStartIndex + visibleRowCount + VIRTUAL_BUFFER_ROWS * 2)
+	);
+	const visibleChannels = $derived(filteredLineup.slice(virtualStartIndex, virtualEndIndex));
+	const totalRowsHeight = $derived(
+		Math.max(ROW_TOTAL_HEIGHT, filteredLineup.length * ROW_TOTAL_HEIGHT)
+	);
+	const isViewingToday = $derived(dayOffset === 0);
+	const currentDayActionLabel = $derived(isViewingToday ? 'Now' : 'Today');
 	let timeInterval: ReturnType<typeof setInterval> | null = null;
 
 	// Selected program for details
@@ -42,10 +101,10 @@
 		channel: ChannelLineupItemWithDetails;
 	} | null>(null);
 
-	function getWindowStartTime(time: number): number {
-		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- pure function, not reactive state
+	function getDayStartTime(time: number): number {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- pure utility function
 		const d = new Date(time);
-		d.setMinutes(Math.floor(d.getMinutes() / 30) * 30, 0, 0);
+		d.setHours(0, 0, 0, 0);
 		return d.getTime();
 	}
 
@@ -53,7 +112,7 @@
 	const timeSlots = $derived.by(() => {
 		const slots: number[] = [];
 		let current = windowStartTime;
-		const end = windowStartTime + 3 * 60 * 60 * 1000;
+		const end = windowStartTime + WINDOW_HOURS * 60 * 60 * 1000;
 		while (current < end) {
 			slots.push(current);
 			current += SLOT_MINUTES * 60 * 1000;
@@ -66,15 +125,15 @@
 		((windowEnd.getTime() - windowStart.getTime()) / 3600000) * HOUR_WIDTH
 	);
 
-	// Current time indicator position
-	const nowPosition = $derived.by(() => {
-		if (now < windowStart || now > windowEnd) return null;
+	// Current time indicator position relative to timeline origin
+	const nowTimelineOffset = $derived.by(() => {
 		const elapsed = (now.getTime() - windowStart.getTime()) / 3600000;
-		return CHANNEL_WIDTH + elapsed * HOUR_WIDTH;
+		if (elapsed < 0 || elapsed > WINDOW_HOURS) return null;
+		const safeEdge = Math.min(2, Math.max(0, gridWidth / 2));
+		return Math.min(gridWidth - safeEdge, Math.max(safeEdge, elapsed * HOUR_WIDTH));
 	});
 
 	onMount(() => {
-		loadPrograms();
 		timeInterval = setInterval(() => {
 			nowTime = Date.now();
 		}, 60000); // Update every minute
@@ -95,13 +154,48 @@
 
 	// Reload programs when time window changes
 	$effect(() => {
-		// Access windowStartTime to create dependency
+		// Dependencies: window and lineup
 		void windowStartTime;
+		void lineup;
 		loadPrograms();
 	});
 
+	$effect(() => {
+		if (!gridViewportEl) return;
+		const el = gridViewportEl;
+		viewportHeight = el.clientHeight;
+		viewportScrollTop = el.scrollTop;
+		const observer = new ResizeObserver(() => {
+			viewportHeight = el.clientHeight;
+		});
+		observer.observe(el);
+		return () => observer.disconnect();
+	});
+
+	$effect(() => {
+		// Reset vertical position on day/search changes and align horizontal position
+		void dayOffset;
+		void normalizedSearch;
+		if (!gridViewportEl) return;
+		gridViewportEl.scrollTop = 0;
+		viewportScrollTop = 0;
+
+		if (dayOffset !== 0) {
+			gridViewportEl.scrollLeft = 0;
+			return;
+		}
+
+		scrollToCurrentTime();
+	});
+
 	async function loadPrograms() {
-		if (lineup.length === 0) return;
+		const requestId = ++loadProgramsRequestId;
+
+		if (lineup.length === 0) {
+			programsByChannel.clear();
+			loadingPrograms = false;
+			return;
+		}
 
 		loadingPrograms = true;
 		try {
@@ -113,20 +207,28 @@
 			});
 
 			const res = await fetch(`/api/livetv/epg/guide?${params}`);
-			if (res.ok) {
-				const data = await res.json();
-				programsByChannel.clear();
+			if (!res.ok || requestId !== loadProgramsRequestId) {
+				return;
+			}
 
-				// Map the programs back to lineup item IDs
-				for (const item of lineup) {
-					const sourceChannelId = item.epgSourceChannelId ?? item.channelId;
-					programsByChannel.set(item.id, data.programs[sourceChannelId] || []);
-				}
+			const data = await res.json();
+			if (requestId !== loadProgramsRequestId) {
+				return;
+			}
+
+			programsByChannel.clear();
+
+			// Map the programs back to lineup item IDs
+			for (const item of lineup) {
+				const sourceChannelId = item.epgSourceChannelId ?? item.channelId;
+				programsByChannel.set(item.id, data.programs[sourceChannelId] || []);
 			}
 		} catch {
 			// Silent failure
 		} finally {
-			loadingPrograms = false;
+			if (requestId === loadProgramsRequestId) {
+				loadingPrograms = false;
+			}
 		}
 	}
 
@@ -134,20 +236,43 @@
 		return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 	}
 
-	function formatDate(date: Date): string {
-		return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+	function formatLongDate(date: Date): string {
+		return date.toLocaleDateString([], {
+			weekday: 'long',
+			month: 'long',
+			day: 'numeric',
+			year: 'numeric'
+		});
 	}
 
 	function navigatePrev() {
-		windowStartTime = windowStartTime - 2 * 60 * 60 * 1000;
+		dayOffset -= 1;
 	}
 
 	function navigateNext() {
-		windowStartTime = windowStartTime + 2 * 60 * 60 * 1000;
+		dayOffset += 1;
 	}
 
 	function jumpToNow() {
-		windowStartTime = getWindowStartTime(Date.now());
+		if (!isViewingToday) {
+			dayOffset = 0;
+			return;
+		}
+
+		scrollToCurrentTime();
+	}
+
+	function scrollToCurrentTime() {
+		if (!gridViewportEl) return;
+		const nowHourOffset = Math.max(0, (now.getTime() - windowStart.getTime()) / 3600000);
+		const visibleTimelineWidth = gridViewportEl.clientWidth - CHANNEL_COLUMN_WIDTH;
+		const targetLeft = Math.max(0, nowHourOffset * HOUR_WIDTH - visibleTimelineWidth / 2);
+		gridViewportEl.scrollLeft = targetLeft;
+	}
+
+	function handleGridScroll(e: Event) {
+		const target = e.currentTarget as HTMLDivElement;
+		viewportScrollTop = target.scrollTop;
 	}
 
 	function getProgramStyle(program: EpgProgram): string {
@@ -182,131 +307,203 @@
 
 <div class="space-y-4">
 	<!-- Navigation header -->
-	<div class="flex items-center justify-between">
-		<div class="flex items-center gap-2">
-			<button class="btn btn-ghost btn-sm" onclick={navigatePrev}>
+	<div class="flex flex-col items-center gap-2">
+		<div class="flex w-full items-center justify-between">
+			<button class="btn gap-1 px-3 btn-outline btn-sm" onclick={navigatePrev}>
 				<ChevronLeft class="h-4 w-4" />
-				Earlier
+				<span class="hidden sm:inline">Previous</span>
+				<span class="sm:hidden">Prev</span>
 			</button>
-			<button class="btn btn-ghost btn-sm" onclick={jumpToNow}>
-				<Clock class="h-4 w-4" />
-				Now
-			</button>
-			<button class="btn btn-ghost btn-sm" onclick={navigateNext}>
-				Later
+			<div class="text-center text-sm font-semibold text-base-content/80">
+				{formatLongDate(windowStart)}
+			</div>
+			<button class="btn gap-1 px-3 btn-outline btn-sm" onclick={navigateNext}>
+				<span>Next</span>
 				<ChevronRight class="h-4 w-4" />
 			</button>
 		</div>
-		<div class="text-sm text-base-content/60">
-			{formatDate(windowStart)}
-			{formatTime(windowStart)} - {formatTime(windowEnd)}
+		<button class="btn gap-1 px-4 btn-sm btn-primary" onclick={jumpToNow}>
+			{#if isViewingToday}
+				<Clock class="h-4 w-4" />
+			{:else}
+				<Calendar class="h-4 w-4" />
+			{/if}
+			<span>{currentDayActionLabel}</span>
+		</button>
+	</div>
+
+	<div class="space-y-2">
+		<div class="relative w-full">
+			<Search
+				class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/40"
+			/>
+			<input
+				type="text"
+				placeholder="Search channels..."
+				class="input-bordered input input-sm w-full pl-9"
+				bind:value={channelSearch}
+			/>
 		</div>
+		{#if channelSearch}
+			<div class="text-xs text-base-content/60">
+				Showing {filteredLineup.length} of {lineup.length}
+			</div>
+		{/if}
+		{#if loadingPrograms && programsByChannel.size > 0}
+			<div class="text-xs text-base-content/60">Updating guide data...</div>
+		{/if}
 	</div>
 
 	<!-- Guide grid -->
-	{#if loading || loadingPrograms}
+	{#if loading || (loadingPrograms && programsByChannel.size === 0)}
 		<div class="flex items-center justify-center py-12">
 			<Loader2 class="h-8 w-8 animate-spin text-primary" />
 		</div>
 	{:else if lineup.length === 0}
 		<div class="py-12 text-center text-base-content/50">No channels in lineup</div>
+	{:else if filteredLineup.length === 0}
+		<div class="py-12 text-center text-base-content/50">No channels match your search</div>
 	{:else}
-		<div class="overflow-x-auto rounded-lg border border-base-300 bg-base-100">
-			<div class="relative" style="min-width: {CHANNEL_WIDTH + gridWidth}px;">
+		<div
+			class="relative overflow-auto rounded-lg border border-base-300 bg-base-100"
+			style="height: {viewportContainerHeight}px;"
+			bind:this={gridViewportEl}
+			onscroll={handleGridScroll}
+		>
+			<div class="relative" style="min-width: {CHANNEL_COLUMN_WIDTH + gridWidth}px;">
 				<!-- Time header -->
-				<div class="sticky top-0 z-20 flex border-b border-base-300 bg-base-200">
+				<div class="sticky top-0 z-30 flex border-b border-base-300 bg-base-200">
 					<!-- Channel column header -->
 					<div
-						class="sticky left-0 z-30 flex shrink-0 items-center border-r border-base-300 bg-base-200 px-3 font-medium"
-						style="width: {CHANNEL_WIDTH}px; height: 40px;"
+						class="sticky top-0 left-0 z-40 flex shrink-0 items-center border-r border-base-300 bg-base-200 px-3 font-medium"
+						style="width: {CHANNEL_COLUMN_WIDTH}px; height: 40px;"
 					>
-						Channel
+						Channels
 					</div>
 					<!-- Time slots -->
 					<div class="relative flex" style="width: {gridWidth}px;">
 						{#each timeSlots as slotTime (slotTime)}
+							{@const slotDate = new Date(slotTime)}
 							<div
-								class="shrink-0 border-r border-base-300/50 px-2 py-2 text-sm"
-								style="width: {HOUR_WIDTH / 2}px;"
+								class="flex shrink-0 items-center justify-center border-r px-2 py-2 text-center text-xs font-medium {slotDate.getMinutes() ===
+								0
+									? 'border-base-300/70 bg-base-200/70 text-base-content/90'
+									: 'border-base-300/40 bg-base-200/45 text-base-content/65'}"
+								style="width: {SLOT_WIDTH}px;"
 							>
-								{formatTime(new Date(slotTime))}
+								<span class="whitespace-nowrap">{formatTime(slotDate)}</span>
 							</div>
 						{/each}
+
+						<!-- Header time indicator -->
+						{#if nowTimelineOffset !== null}
+							<div
+								class="pointer-events-none absolute top-0 h-full"
+								style="left: {nowTimelineOffset}px; z-index: 5;"
+							>
+								<div class="h-full w-0.5 bg-error"></div>
+								<div
+									class="absolute -top-1 -left-1 h-3 w-3 rounded-full border-2 border-error bg-base-100"
+								></div>
+							</div>
+						{/if}
 					</div>
 				</div>
 
 				<!-- Channel rows -->
-				{#each lineup as channel (channel.id)}
-					{@const programs = programsByChannel.get(channel.id) || []}
-					<div class="flex border-b border-base-300/50 last:border-b-0">
-						<!-- Channel info (sticky) -->
+				<div class="relative" style="height: {totalRowsHeight}px;">
+					{#each visibleChannels as channel, visibleIndex (channel.id)}
+						{@const programs = programsByChannel.get(channel.id) || []}
+						{@const rowIndex = virtualStartIndex + visibleIndex}
 						<div
-							class="sticky left-0 z-10 flex shrink-0 items-center gap-2 border-r border-base-300 bg-base-100 px-3"
-							style="width: {CHANNEL_WIDTH}px; height: {ROW_HEIGHT}px;"
+							class="absolute right-0 left-0 flex border-b border-base-300/50"
+							style="top: {rowIndex * ROW_TOTAL_HEIGHT}px; height: {ROW_HEIGHT}px;"
 						>
-							{#if channel.displayLogo}
-								<img
-									src={channel.displayLogo}
-									alt=""
-									class="h-8 w-8 shrink-0 rounded bg-base-300 object-contain"
-								/>
-							{:else}
-								<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-base-300">
-									<Tv class="h-4 w-4 text-base-content/30" />
-								</div>
-							{/if}
-							<div class="min-w-0">
-								<div class="truncate text-sm font-medium" title={channel.displayName}>
-									{channel.displayName}
-								</div>
-								{#if channel.channelNumber}
-									<div class="text-xs text-base-content/50">#{channel.channelNumber}</div>
+							<!-- Channel info (sticky) -->
+							<div
+								class="sticky left-0 z-20 flex shrink-0 items-center gap-2 border-r border-base-300 bg-base-100 px-3"
+								style="width: {CHANNEL_COLUMN_WIDTH}px; height: {ROW_HEIGHT}px;"
+							>
+								{#if channel.displayLogo}
+									<img
+										src={channel.displayLogo}
+										alt=""
+										class="h-8 w-8 shrink-0 rounded bg-base-300 object-contain"
+									/>
+								{:else}
+									<div
+										class="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-base-300"
+									>
+										<Tv class="h-4 w-4 text-base-content/30" />
+									</div>
 								{/if}
+								<div class="min-w-0">
+									<div class="min-w-[6ch] truncate text-sm font-medium" title={channel.displayName}>
+										{channel.displayName}
+									</div>
+									{#if channel.channelNumber}
+										<div class="text-xs text-base-content/50">#{channel.channelNumber}</div>
+									{/if}
+								</div>
+								<div
+									class="pointer-events-none absolute right-0 bottom-0 left-0 border-t border-base-300/80"
+								></div>
+							</div>
+
+							<!-- Programs -->
+							<div class="relative" style="width: {gridWidth}px; height: {ROW_HEIGHT}px;">
+								<div class="pointer-events-none absolute inset-0 flex">
+									{#each timeSlots as slotTime (slotTime)}
+										{@const slotDate = new Date(slotTime)}
+										<div
+											class="relative h-full shrink-0 border-r {slotDate.getMinutes() === 0
+												? 'border-base-300/50 bg-base-200/15'
+												: 'border-base-300/30 bg-base-100/10'}"
+											style="width: {SLOT_WIDTH}px;"
+										>
+											{#if programs.length === 0}
+												<div
+													class="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-base-content/35"
+												>
+													N/A
+												</div>
+											{/if}
+										</div>
+									{/each}
+								</div>
+
+								{#each programs as program (program.id)}
+									{@const isCurrent = isCurrentlyAiring(program)}
+									<button
+										class="absolute top-1 z-10 flex h-[calc(100%-8px)] cursor-pointer items-center overflow-hidden rounded border px-2 text-left text-sm transition-colors {isCurrent
+											? 'border-primary/30 bg-primary/20 hover:bg-primary/30'
+											: 'border-base-300 bg-base-200 hover:bg-base-300'}"
+										style={getProgramStyle(program)}
+										onclick={() => showProgramDetails(program, channel)}
+										title="{program.title}{program.description ? `: ${program.description}` : ''}"
+									>
+										<span class="truncate">
+											{#if isCurrent}
+												<span class="mr-1 inline-block h-2 w-2 rounded-full bg-primary"></span>
+											{/if}
+											{program.title}
+										</span>
+									</button>
+								{/each}
 							</div>
 						</div>
+					{/each}
 
-						<!-- Programs -->
-						<div class="relative" style="width: {gridWidth}px; height: {ROW_HEIGHT}px;">
-							{#each programs as program (program.id)}
-								{@const isCurrent = isCurrentlyAiring(program)}
-								<button
-									class="absolute top-1 flex h-[calc(100%-8px)] cursor-pointer items-center overflow-hidden rounded border px-2 text-left text-sm transition-colors {isCurrent
-										? 'border-primary/30 bg-primary/20 hover:bg-primary/30'
-										: 'border-base-300 bg-base-200 hover:bg-base-300'}"
-									style={getProgramStyle(program)}
-									onclick={() => showProgramDetails(program, channel)}
-									title="{program.title}{program.description ? `: ${program.description}` : ''}"
-								>
-									<span class="truncate">
-										{#if isCurrent}
-											<span class="mr-1 inline-block h-2 w-2 rounded-full bg-primary"></span>
-										{/if}
-										{program.title}
-									</span>
-								</button>
-							{/each}
-
-							<!-- Empty state for no programs -->
-							{#if programs.length === 0}
-								<div class="flex h-full items-center justify-center text-sm text-base-content/30">
-									No program data
-								</div>
-							{/if}
-						</div>
-					</div>
-				{/each}
-
-				<!-- Current time indicator -->
-				{#if nowPosition !== null}
-					<div
-						class="pointer-events-none absolute top-0 z-40 h-full w-0.5 bg-error"
-						style="left: {nowPosition}px;"
-					>
+					<!-- Body time indicator -->
+					{#if nowTimelineOffset !== null}
 						<div
-							class="absolute -top-1 -left-1 h-3 w-3 rounded-full border-2 border-error bg-base-100"
-						></div>
-					</div>
-				{/if}
+							class="pointer-events-none absolute top-0 h-full"
+							style="left: {CHANNEL_COLUMN_WIDTH + nowTimelineOffset}px; z-index: 15;"
+						>
+							<div class="h-full w-0.5 bg-error"></div>
+						</div>
+					{/if}
+				</div>
 			</div>
 		</div>
 	{/if}
@@ -315,7 +512,7 @@
 <!-- Program details modal -->
 {#if selectedProgram}
 	<div class="modal-open modal">
-		<div class="modal-box w-full max-w-[min(28rem,calc(100vw-2rem))] break-words">
+		<div class="modal-box w-full max-w-[min(28rem,calc(100vw-2rem))] wrap-break-word">
 			<div class="mb-4 flex items-start justify-between">
 				<div>
 					<h3 class="text-lg font-bold">{selectedProgram.program.title}</h3>

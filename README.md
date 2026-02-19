@@ -111,16 +111,38 @@ Dynamic content discovery with auto-add to library. Import from IMDb, Trakt, TMD
 
 ### Docker (Recommended)
 
+Create a `docker-compose.yaml` file:
+
+```yaml
+services:
+  cinephage:
+    image: ghcr.io/moldytaint/cinephage:latest
+    container_name: cinephage
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      - PUID=1000 # Your user ID (run: id -u)
+      - PGID=1000 # Your group ID (run: id -g)
+      - TZ=UTC
+      - ORIGIN=http://localhost:3000
+    volumes:
+      - ./config:/config
+      - /path/to/media:/media # CHANGE THIS
+      - /path/to/downloads:/downloads # CHANGE THIS
+```
+
+Then start it:
+
 ```bash
-mkdir cinephage && cd cinephage
-curl -O https://raw.githubusercontent.com/MoldyTaint/cinephage/main/docker-compose.yaml
-curl -O https://raw.githubusercontent.com/MoldyTaint/cinephage/main/.env.example
-cp .env.example .env
-# Edit .env with your settings
 docker compose up -d
 ```
 
 **That's it.** Open http://localhost:3000 and follow the setup wizard.
+
+> **Note:** Your data, config, and logs are stored in `./config` (automatically created). Never mount `/app` as it contains application code.
+>
+> **Upgrading from older versions?** See [Migration Guide](docs/support/troubleshooting.md#migration-from-legacy-appdata-and-applogs-mounts) if you previously used `/app/data` and `/app/logs` mounts.
 
 ### Requirements
 

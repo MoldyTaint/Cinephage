@@ -19,13 +19,19 @@ export const GET: RequestHandler = async ({ params, url }) => {
 		const scannerService = getPortalScannerService();
 		const history = await scannerService.getScanHistory(params.id, limit);
 
-		return json(history);
-	} catch (error) {
-		logger.error('[API] Failed to get scan history', {
-			portalId: params.id,
-			error: error instanceof Error ? error.message : String(error)
+		return json({
+			success: true,
+			history
 		});
+	} catch (error) {
+		logger.error('[API] Failed to get scan history', error instanceof Error ? error : undefined);
 
-		return json({ error: 'Failed to get scan history' }, { status: 500 });
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to get scan history'
+			},
+			{ status: 500 }
+		);
 	}
 };

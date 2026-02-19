@@ -461,13 +461,21 @@ export class QBittorrentClient implements IDownloadClient {
 		const formData = new FormData();
 
 		// Determine what to send to qBittorrent
-		// Priority: magnetUri > build magnet from infoHash > downloadUrl > torrentFile
-		// We prefer magnet links because they work directly with the BitTorrent network
-		// and bypass issues like Cloudflare protection on .torrent download URLs
+		// Priority: torrentFile > magnetUri > infoHash > downloadUrl
+		// CRITICAL: We always prefer torrent files over magnet links. Torrent files
+		// contain the private tracker announce URL which is required for private
+		// trackers like nCore to work. Magnet links built from info hashes only
+		// include public trackers and will fail for private torrents.
 		let urlsValue: string | undefined;
 		let sourceType: string;
 
-		if (options.magnetUri) {
+		if (options.torrentFile) {
+			// ALWAYS prefer torrent files - they contain private tracker announce URLs
+			// This is critical for private trackers like nCore
+			const uint8Array = new Uint8Array(options.torrentFile);
+			formData.append('torrents', new Blob([uint8Array]), 'torrent.torrent');
+			sourceType = 'torrentFile';
+		} else if (options.magnetUri) {
 			urlsValue = options.magnetUri;
 			sourceType = 'magnetUri';
 			formData.append('urls', options.magnetUri);
@@ -480,11 +488,6 @@ export class QBittorrentClient implements IDownloadClient {
 			urlsValue = options.downloadUrl;
 			sourceType = 'downloadUrl';
 			formData.append('urls', options.downloadUrl);
-		} else if (options.torrentFile) {
-			// Convert Buffer to Uint8Array for Blob compatibility
-			const uint8Array = new Uint8Array(options.torrentFile);
-			formData.append('torrents', new Blob([uint8Array]), 'torrent.torrent');
-			sourceType = 'torrentFile';
 		} else {
 			throw new Error('Must provide magnetUri, infoHash, downloadUrl, or torrentFile');
 		}
@@ -500,7 +503,8 @@ export class QBittorrentClient implements IDownloadClient {
 			category: options.category,
 			hasInfoHash: !!options.infoHash,
 			hasMagnetUri: !!options.magnetUri,
-			hasDownloadUrl: !!options.downloadUrl
+			hasDownloadUrl: !!options.downloadUrl,
+			hasTorrentFile: !!options.torrentFile
 		});
 
 		if (options.category) {

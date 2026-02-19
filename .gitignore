@@ -25,6 +25,7 @@ vite.config.ts.timestamp-*
 
 # SQLite
 *.db
+*.db-*
 
 # Logs
 logs/
@@ -73,3 +74,11 @@ result
 
 # Local compose files
 cine-local.yaml
+
+# Docs
+docs/notes/
+
+#Local test folders
+data/indexers/definitions/custom/
+data/external-lists/presets/custom/
+

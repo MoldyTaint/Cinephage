@@ -23,6 +23,7 @@ import {
 	type FFprobeStream,
 	type FFprobeOutput
 } from './ffprobe.js';
+import { readFile } from 'node:fs/promises';
 import type { movieFiles } from '$lib/server/db/schema.js';
 import { logger } from '$lib/logging';
 
@@ -77,6 +78,16 @@ export function isVideoFile(filePath: string): boolean {
 function getLanguageFromStream(stream: FFprobeStream): string | undefined {
 	const tags = stream.tags || {};
 	return tags.language || tags.LANGUAGE || undefined;
+}
+
+function parseStrmUrl(content: string): string | null {
+	const lines = content.split(/\r?\n/);
+	for (const rawLine of lines) {
+		const line = rawLine.trim();
+		if (!line || line.startsWith('#')) continue;
+		return line;
+	}
+	return null;
 }
 
 /**
@@ -278,14 +289,79 @@ export class MediaInfoService {
 	 * Extract media information from a video file
 	 *
 	 * @param filePath - Full path to the video file
+	 * @param options - Extraction options
 	 * @returns MediaInfo object or null if extraction fails
 	 */
-	async extractMediaInfo(filePath: string): Promise<MediaInfo | null> {
+	async extractMediaInfo(
+		filePath: string,
+		options: {
+			allowStrmProbe?: boolean;
+			onStrmProbeFallback?: (reason: string) => void;
+			failOnInvalidStrmUrl?: boolean;
+		} = {}
+	): Promise<MediaInfo | null> {
 		try {
+			const { allowStrmProbe = true, onStrmProbeFallback, failOnInvalidStrmUrl = false } = options;
 			// Handle .strm files specially - they are streaming placeholders, not real video files
 			const ext = filePath.toLowerCase().slice(filePath.lastIndexOf('.'));
 			if (ext === '.strm') {
-				return this.getStrmMediaInfo();
+				if (!allowStrmProbe) {
+					onStrmProbeFallback?.('STRM probing disabled');
+					return this.getStrmMediaInfo();
+				}
+				const content = await readFile(filePath, 'utf8');
+				const strmUrl = parseStrmUrl(content);
+				if (!strmUrl) {
+					if (failOnInvalidStrmUrl) {
+						throw new Error('STRM file has no URL');
+					}
+					onStrmProbeFallback?.('STRM file has no URL');
+					return this.getStrmMediaInfo();
+				}
+
+				let parsedUrl: URL;
+				try {
+					parsedUrl = new URL(strmUrl);
+				} catch {
+					if (failOnInvalidStrmUrl) {
+						throw new Error('Invalid STRM URL');
+					}
+					onStrmProbeFallback?.('Invalid STRM URL');
+					return this.getStrmMediaInfo();
+				}
+
+				if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+					if (failOnInvalidStrmUrl) {
+						throw new Error(`Unsupported STRM URL protocol: ${parsedUrl.protocol}`);
+					}
+					onStrmProbeFallback?.(`Unsupported STRM URL protocol: ${parsedUrl.protocol}`);
+					return this.getStrmMediaInfo();
+				}
+
+				try {
+					const output = await runFFprobe(strmUrl, {
+						timeout: 8000,
+						rwTimeoutMs: 8000,
+						probeSize: 5_000_000,
+						analyzeDuration: 5_000_000
+					});
+
+					if (!output) {
+						onStrmProbeFallback?.('FFprobe returned no output');
+						return this.getStrmMediaInfo();
+					}
+
+					return this.parseFFprobeOutput(output);
+				} catch (error) {
+					logger.debug('[MediaInfoService] STRM probe failed', {
+						filePath,
+						error: error instanceof Error ? error.message : String(error)
+					});
+					onStrmProbeFallback?.(
+						error instanceof Error ? error.message : 'Unknown STRM probe error'
+					);
+					return this.getStrmMediaInfo();
+				}
 			}
 
 			// Run ffprobe on the file
@@ -312,6 +388,10 @@ export class MediaInfoService {
 				error instanceof Error ? error : undefined,
 				{ filePath }
 			);
+			// Allow callers (e.g. reprobe task) to treat malformed .strm URLs as hard failures.
+			if (options.failOnInvalidStrmUrl) {
+				throw error instanceof Error ? error : new Error(String(error));
+			}
 			return null;
 		}
 	}

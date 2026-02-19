@@ -24,6 +24,10 @@ import { getNntpManager } from '$lib/server/streaming/usenet/NntpManager';
 import { getExtractionCacheManager } from '$lib/server/streaming/nzb/extraction/ExtractionCacheManager';
 import { getMediaBrowserNotifier } from '$lib/server/notifications/mediabrowser';
 import { getEpgScheduler } from '$lib/server/livetv/epg';
+import { getLiveTvAccountManager } from '$lib/server/livetv/LiveTvAccountManager';
+import { getLiveTvChannelService } from '$lib/server/livetv/LiveTvChannelService';
+import { getLiveTvStreamService } from '$lib/server/livetv/streaming/LiveTvStreamService';
+import { getStalkerPortalManager } from '$lib/server/livetv/stalker/StalkerPortalManager';
 import { initializeProviderFactory } from '$lib/server/subtitles/providers/SubtitleProviderFactory.js';
 
 /**
@@ -36,7 +40,7 @@ const CSP_HEADER = [
 	"default-src 'self'",
 	"script-src 'self' 'unsafe-inline'",
 	"style-src 'self' 'unsafe-inline'",
-	"img-src 'self' data: https://image.tmdb.org https://api.cdn-live.tv https://m.media-amazon.com",
+	"img-src 'self' data: https: http:",
 	"connect-src 'self'",
 	"font-src 'self'"
 ].join('; ');
@@ -288,6 +292,10 @@ setImmediate(async () => {
 		serviceManager.register(getExtractionCacheManager());
 		serviceManager.register(getMediaBrowserNotifier());
 		serviceManager.register(getEpgScheduler());
+		serviceManager.register(getLiveTvAccountManager());
+		serviceManager.register(getLiveTvChannelService());
+		serviceManager.register(getLiveTvStreamService());
+		serviceManager.register(getStalkerPortalManager());
 
 		// 3. Essential services run in parallel (fire-and-forget with error handling)
 		// These don't block each other or HTTP responses

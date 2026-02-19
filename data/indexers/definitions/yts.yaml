@@ -41,7 +41,12 @@ search:
       inputs:
         query_term: '{{ or .Query.IMDBID .Keywords }}'
         limit: '50'
-        sort_by: seeds
+        sort_by: date_added
+        order_by: desc
+
+  keywordsfilters:
+    - name: re_replace
+      args: ["[^\\w]+", ' ']
 
   response:
     type: json

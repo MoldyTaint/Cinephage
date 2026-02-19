@@ -14,7 +14,7 @@
 	import TmdbConfigRequired from '$lib/components/ui/TmdbConfigRequired.svelte';
 	import { UI } from '$lib/config/constants';
 	import { parseProviderIds, parseGenreIds, extractYear } from '$lib/utils/discoverParams';
-	import { Search } from 'lucide-svelte';
+	import { Search, Eye, EyeOff } from 'lucide-svelte';
 	import { getMediaTypeLabel } from '$lib/types/tmdb-guards';
 
 	let { data } = $props();
@@ -91,7 +91,7 @@
 		isSearching = true;
 		try {
 			const res = await fetch(
-				`/api/discover/search?query=${encodeURIComponent(normalizedQuery)}&type=${type}`
+				`/api/discover/search?query=${encodeURIComponent(normalizedQuery)}&type=${type}${excludeInLibrary ? '&exclude_in_library=true' : ''}`
 			);
 			if (!res.ok) throw new Error('Search failed');
 
@@ -114,7 +114,7 @@
 		try {
 			const nextPage = searchPagination.page + 1;
 			const res = await fetch(
-				`/api/discover/search?query=${encodeURIComponent(normalizedSearchQuery)}&type=${type}&page=${nextPage}`
+				`/api/discover/search?query=${encodeURIComponent(normalizedSearchQuery)}&type=${type}&page=${nextPage}${excludeInLibrary ? '&exclude_in_library=true' : ''}`
 			);
 			if (!res.ok) return;
 
@@ -132,9 +132,10 @@
 		}
 	}
 
-	// Re-run search when type filter changes
+	// Re-run search when type or excludeInLibrary filter changes
 	$effect(() => {
 		if (searchQuery && type) {
+			void excludeInLibrary;
 			handleSearch(searchQuery);
 		}
 	});
@@ -167,6 +168,7 @@
 	let minYear = $derived(extractYear($page.url.searchParams.get('primary_release_date.gte')));
 	let maxYear = $derived(extractYear($page.url.searchParams.get('primary_release_date.lte')));
 	let minRating = $derived(Number($page.url.searchParams.get('vote_average.gte')) || 0);
+	let excludeInLibrary = $derived($page.url.searchParams.get('exclude_in_library') === 'true');
 
 	function updateFilter(key: string, value: string | null) {
 		const url = new URL($page.url);
@@ -212,6 +214,10 @@
 			current.add(genreId);
 		}
 		updateFilter('with_genres', Array.from(current).join(','));
+	}
+
+	function toggleExcludeInLibrary() {
+		updateFilter('exclude_in_library', excludeInLibrary ? null : 'true');
 	}
 
 	let isFilterOpen = $state(false);
@@ -357,6 +363,21 @@
 					</div>
 				{/if}
 
+				<!-- Hide In Library Toggle -->
+				<button
+					class="btn btn-circle btn-sm {excludeInLibrary
+						? 'btn-primary'
+						: 'border border-base-300 btn-ghost'}"
+					onclick={toggleExcludeInLibrary}
+					title={excludeInLibrary ? 'Show items in library' : 'Hide items in library'}
+				>
+					{#if excludeInLibrary}
+						<EyeOff class="h-4 w-4" />
+					{:else}
+						<Eye class="h-4 w-4" />
+					{/if}
+				</button>
+
 				<button
 					class="btn gap-2 shadow-lg shadow-primary/20 btn-sm btn-primary"
 					onclick={() => (isFilterOpen = true)}
@@ -458,37 +479,58 @@
 				<SectionRow
 					title="Trending Today"
 					items={data.sections.trendingDay}
-					link="/discover?trending=day"
+					link="/discover?trending=day{excludeInLibrary ? '&exclude_in_library=true' : ''}"
 					endpoint="trending/all/day"
 					onAddToLibrary={handleAddToLibrary}
+					{excludeInLibrary}
 				/>
 				<SectionRow
 					title="Trending This Week"
 					items={data.sections.trendingWeek}
-					link="/discover?trending=week"
+					link="/discover?trending=week{excludeInLibrary ? '&exclude_in_library=true' : ''}"
 					endpoint="trending/all/week"
 					onAddToLibrary={handleAddToLibrary}
+					{excludeInLibrary}
 				/>
 				<SectionRow
 					title="Popular Movies"
 					items={data.sections.popularMovies}
-					link="/discover?type=movie&sort_by=popularity.desc"
+					link="/discover?type=movie&sort_by=popularity.desc{excludeInLibrary
+						? '&exclude_in_library=true'
+						: ''}"
 					endpoint="movie/popular"
 					onAddToLibrary={handleAddToLibrary}
+					{excludeInLibrary}
 				/>
 				<SectionRow
 					title="Popular TV Shows"
 					items={data.sections.popularTV}
-					link="/discover?type=tv&sort_by=popularity.desc"
+					link="/discover?type=tv&sort_by=popularity.desc{excludeInLibrary
+						? '&exclude_in_library=true'
+						: ''}"
 					endpoint="tv/popular"
 					onAddToLibrary={handleAddToLibrary}
+					{excludeInLibrary}
 				/>
 				<SectionRow
 					title="Top Rated Movies"
 					items={data.sections.topRatedMovies}
-					link="/discover?type=movie&sort_by=vote_average.desc"
+					link="/discover?type=movie&top_rated=true{excludeInLibrary
+						? '&exclude_in_library=true'
+						: ''}"
 					endpoint="movie/top_rated"
 					onAddToLibrary={handleAddToLibrary}
+					{excludeInLibrary}
+				/>
+				<SectionRow
+					title="Top Rated TV Shows"
+					items={data.sections.topRatedTV}
+					link="/discover?type=tv&top_rated=true{excludeInLibrary
+						? '&exclude_in_library=true'
+						: ''}"
+					endpoint="tv/top_rated"
+					onAddToLibrary={handleAddToLibrary}
+					{excludeInLibrary}
 				/>
 			</div>
 		{:else if data.viewType === 'grid' && data.results}

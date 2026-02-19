@@ -26,6 +26,15 @@ const STB_USER_AGENT =
 	'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 4 rev: 2116 Mobile Safari/533.3';
 
 /**
+ * Generate prehash for handshake authentication.
+ * Reference implementations (stalkerhek) use prehash=0.
+ * All tested portals accept this value.
+ */
+function generatePrehash(_macAddress: string): string {
+	return '0';
+}
+
+/**
  * Configuration for Stalker Portal client
  */
 export interface StalkerPortalConfig {
@@ -168,6 +177,8 @@ export class StalkerPortalClient {
 	private config: StalkerPortalConfig;
 	private token: string;
 	private authenticated: boolean = false;
+	private watchdogInterval: ReturnType<typeof setInterval> | null = null;
+	private static readonly WATCHDOG_INTERVAL_MS = 120_000; // 2 minutes (matches stalkerhek)
 
 	constructor(config: StalkerPortalConfig) {
 		// Normalize portal URL - ensure it doesn't end with slash
@@ -217,7 +228,6 @@ export class StalkerPortalClient {
 	 */
 	private getCookie(): string {
 		const parts = [
-			'PHPSESSID=null',
 			`sn=${encodeURIComponent(this.config.serialNumber)}`,
 			`mac=${encodeURIComponent(this.config.macAddress)}`,
 			'stb_lang=en',
@@ -233,6 +243,8 @@ export class StalkerPortalClient {
 		return {
 			'User-Agent': STB_USER_AGENT,
 			'X-User-Agent': `Model: ${this.config.model}; Link: Ethernet`,
+			Accept: '*/*',
+			'Accept-Language': 'en',
 			Cookie: this.getCookie()
 		};
 	}
@@ -244,6 +256,8 @@ export class StalkerPortalClient {
 		return {
 			'User-Agent': STB_USER_AGENT,
 			'X-User-Agent': `Model: ${this.config.model}; Link: Ethernet`,
+			Accept: '*/*',
+			'Accept-Language': 'en',
 			Authorization: `Bearer ${this.token}`,
 			Cookie: this.getCookie()
 		};
@@ -280,7 +294,7 @@ export class StalkerPortalClient {
 		} catch (error) {
 			clearTimeout(timeoutId);
 			if (error instanceof Error && error.name === 'AbortError') {
-				throw new Error('Request timed out');
+				throw new Error('Request timed out', { cause: error });
 			}
 			throw error;
 		}
@@ -323,6 +337,9 @@ export class StalkerPortalClient {
 	 * Start the client - performs handshake and authentication
 	 */
 	async start(): Promise<void> {
+		// Stop any existing watchdog before re-authenticating
+		this.stopWatchdog();
+
 		// Step 1: Handshake
 		await this.handshake();
 
@@ -334,6 +351,9 @@ export class StalkerPortalClient {
 		}
 
 		this.authenticated = true;
+
+		// Step 3: Start watchdog keepalive to prevent session expiration
+		this.startWatchdog();
 	}
 
 	/**
@@ -350,6 +370,7 @@ export class StalkerPortalClient {
 		url.searchParams.set('type', 'stb');
 		url.searchParams.set('action', 'handshake');
 		url.searchParams.set('token', this.token);
+		url.searchParams.set('prehash', generatePrehash(this.config.macAddress));
 		url.searchParams.set('JsHttpRequest', '1-xml');
 
 		const text = await this.httpRequest(url.toString(), false);
@@ -468,23 +489,10 @@ export class StalkerPortalClient {
 		// Response format: "ffmpeg http://actual-stream-url" or just the URL
 		const cmdStr = result.cmd.trim();
 		const parts = cmdStr.split(/\s+/);
-		let streamUrl = parts[parts.length - 1];
+		const streamUrl = parts[parts.length - 1];
 
 		if (!streamUrl || (!streamUrl.startsWith('http://') && !streamUrl.startsWith('https://'))) {
 			throw new Error(`create_link returned invalid URL: ${cmdStr}`);
-		}
-
-		// Some portals return URLs with empty stream= parameter
-		// Extract stream ID from original cmd and substitute if needed
-		if (streamUrl.includes('stream=&') || streamUrl.endsWith('stream=')) {
-			const originalStreamMatch = cmd.match(/stream=(\d+)/);
-			if (originalStreamMatch) {
-				streamUrl = streamUrl.replace(/stream=(&|$)/, `stream=${originalStreamMatch[1]}$1`);
-				logger.info('[StalkerPortal] Fixed empty stream ID in response', {
-					originalStreamId: originalStreamMatch[1],
-					fixedUrl: streamUrl
-				});
-			}
 		}
 
 		logger.info('[StalkerPortal] createLink returning URL', { streamUrl });
@@ -502,6 +510,63 @@ export class StalkerPortalClient {
 			event_active_id: '0',
 			init: '0',
 			cur_play_type: '1'
+		});
+	}
+
+	/**
+	 * Start periodic watchdog keepalive.
+	 * Stalker portal sessions expire after inactivity. Both stalkerhek implementations
+	 * send watchdog every ~2 minutes to keep the session alive.
+	 */
+	private startWatchdog(): void {
+		this.stopWatchdog(); // Clear any existing interval
+
+		this.watchdogInterval = setInterval(() => {
+			this.watchdog().catch((err) => {
+				logger.warn('[StalkerPortal] Watchdog keepalive failed', {
+					portalUrl: this.config.portalUrl,
+					error: err instanceof Error ? err.message : String(err)
+				});
+				// Session likely expired — mark as unauthenticated so next request re-auths
+				this.authenticated = false;
+				this.stopWatchdog();
+			});
+		}, StalkerPortalClient.WATCHDOG_INTERVAL_MS);
+
+		// Don't block Node.js exit on the watchdog timer
+		if (
+			this.watchdogInterval &&
+			typeof this.watchdogInterval === 'object' &&
+			'unref' in this.watchdogInterval
+		) {
+			this.watchdogInterval.unref();
+		}
+
+		logger.debug('[StalkerPortal] Watchdog started', {
+			portalUrl: this.config.portalUrl,
+			intervalMs: StalkerPortalClient.WATCHDOG_INTERVAL_MS
+		});
+	}
+
+	/**
+	 * Stop the watchdog keepalive timer
+	 */
+	private stopWatchdog(): void {
+		if (this.watchdogInterval) {
+			clearInterval(this.watchdogInterval);
+			this.watchdogInterval = null;
+		}
+	}
+
+	/**
+	 * Stop the client — clears watchdog timer and marks as unauthenticated.
+	 * Should be called when the client is no longer needed.
+	 */
+	stop(): void {
+		this.stopWatchdog();
+		this.authenticated = false;
+		logger.debug('[StalkerPortal] Client stopped', {
+			portalUrl: this.config.portalUrl
 		});
 	}
 
@@ -541,78 +606,27 @@ export class StalkerPortalClient {
 		}));
 	}
 
-	// Cache of channel URLs with short TTL (channels include fresh tokens)
-	private channelCache: { channels: StalkerChannel[]; timestamp: number } | null = null;
-	private static readonly CHANNEL_CACHE_TTL_MS = 30000; // 30 seconds
-
 	/**
 	 * Get fresh stream URL for a channel by stalker_id.
-	 * Uses the known URL type to call the correct method directly:
-	 * - 'direct': Extract URL from fresh channel data (most portals)
-	 * - 'create_link': Call create_link API to resolve URL (localhost template portals)
+	 * Always uses create_link with a normalized localhost cmd format.
+	 * This is the format the portal expects — passing full URLs causes
+	 * the portal to strip the stream ID, returning broken URLs.
 	 */
 	async getFreshStreamUrl(
 		stalkerId: string,
-		urlType: 'direct' | 'create_link' | 'unknown' | null = 'unknown'
+		_urlType: 'direct' | 'create_link' | 'unknown' | null = 'unknown'
 	): Promise<string> {
-		// For create_link type, we need the channel cmd to call the API
-		// For direct type, we need the channel's fresh URL
-		// Either way, we need to fetch channel data first
+		// Always use the normalized localhost cmd format for create_link.
+		// Portals expect: "ffmpeg http://localhost/ch/{channelId}_"
+		// When full URLs are passed, many portals strip the stream ID (returning stream=&id=null).
+		// The portal resolves the localhost template to the real streaming URL with a fresh token.
+		const normalizedCmd = `ffmpeg http://localhost/ch/${stalkerId}_`;
 
-		// Check cache first
-		const now = Date.now();
-		if (
-			!this.channelCache ||
-			now - this.channelCache.timestamp > StalkerPortalClient.CHANNEL_CACHE_TTL_MS
-		) {
-			// Fetch fresh channel data
-			logger.info('[StalkerPortal] Fetching fresh channel data for stream URL', {
-				portalUrl: this.config.portalUrl,
-				urlType
-			});
-			const channels = await this.getChannels();
-			this.channelCache = { channels, timestamp: now };
-			logger.info('[StalkerPortal] Cached channels', { count: channels.length });
-		}
-
-		// Find the channel
-		const channel = this.channelCache.channels.find((ch) => ch.id === stalkerId);
-		if (!channel) {
-			logger.error('[StalkerPortal] Channel not found in cache', {
-				stalkerId,
-				cachedIds: this.channelCache.channels.slice(0, 5).map((ch) => ch.id)
-			});
-			throw new Error(`Channel not found: ${stalkerId}`);
-		}
-
-		const cmd = channel.cmd.trim();
-
-		// Use the known URL type to call the correct method
-		if (urlType === 'create_link') {
-			// Portal requires create_link API to resolve URLs
-			logger.debug('[StalkerPortal] Using create_link method', { stalkerId });
-			return this.createLink(cmd);
-		}
-
-		// For 'direct' or 'unknown', extract URL from the cmd
-		const parts = cmd.split(/\s+/);
-		const url = parts[parts.length - 1];
-
-		if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
-			throw new Error(`Invalid channel cmd: ${cmd}`);
-		}
-
-		// For 'unknown' type, auto-detect if this is a localhost URL that needs create_link
-		if (urlType === 'unknown' || urlType === null) {
-			if (url.includes('localhost') || url.includes('127.0.0.1')) {
-				logger.info('[StalkerPortal] Auto-detected localhost URL, using create_link', {
-					stalkerId
-				});
-				return this.createLink(cmd);
-			}
-		}
-
-		return url;
+		logger.debug('[StalkerPortal] Using create_link for fresh stream URL', {
+			stalkerId,
+			normalizedCmd
+		});
+		return this.createLink(normalizedCmd);
 	}
 
 	/**

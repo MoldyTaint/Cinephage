@@ -191,8 +191,9 @@ function stripIndexerPrefixes(title: string): string {
  * @returns Release group match info or null if not found
  */
 export function extractReleaseGroup(title: string): ReleaseGroupMatch | null {
-	// Remove file extension if present
-	let cleanTitle = title.replace(/\.(mkv|mp4|avi|m4v|webm)$/i, '');
+	// Remove file extension if present (handles both ".mkv" and " mkv" formats)
+	// The space-separated format occurs after ReleaseParser.normalizeTitle() replaces dots with spaces
+	let cleanTitle = title.replace(/[.\s](mkv|mp4|avi|m4v|webm)$/i, '');
 
 	// Strip indexer prefixes (www.Torrenting.com, etc.)
 	cleanTitle = stripIndexerPrefixes(cleanTitle);

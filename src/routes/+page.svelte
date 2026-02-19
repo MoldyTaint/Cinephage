@@ -4,6 +4,7 @@
 		Tv,
 		Download,
 		AlertCircle,
+		PauseCircle,
 		Clock,
 		CheckCircle,
 		XCircle,
@@ -16,14 +17,99 @@
 		PlayCircle,
 		ArrowRight,
 		Loader2,
-		Minus
+		Minus,
+		Wifi
 	} from 'lucide-svelte';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
 	import { resolve } from '$app/paths';
 	import { resolvePath } from '$lib/utils/routing';
 	import type { UnifiedActivity } from '$lib/types/activity';
+	import { createSSE } from '$lib/sse';
+	import { mobileSSEStatus } from '$lib/sse/mobileStatus.svelte';
 
 	let { data } = $props();
+
+	// Local SSE-overridable state; derived values fall back to server props for SSR/initial render.
+	let statsState = $state<typeof data.stats | null>(null);
+	let recentActivityState = $state<UnifiedActivity[] | null>(null);
+	let recentlyAddedState = $state<typeof data.recentlyAdded | null>(null);
+	let missingEpisodesState = $state<typeof data.missingEpisodes | null>(null);
+
+	const stats = $derived(statsState ?? data.stats);
+	const recentActivity = $derived(recentActivityState ?? data.recentActivity);
+	const recentlyAdded = $derived(recentlyAddedState ?? data.recentlyAdded);
+	const missingEpisodes = $derived(missingEpisodesState ?? data.missingEpisodes);
+
+	// Sync from server data when it changes (e.g., on navigation)
+	$effect(() => {
+		statsState = data.stats;
+		recentActivityState = data.recentActivity;
+		recentlyAddedState = data.recentlyAdded;
+		missingEpisodesState = data.missingEpisodes;
+	});
+
+	// SSE Connection - internally handles browser/SSR
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const sse = createSSE<Record<string, any>>(resolvePath('/api/dashboard/stream'), {
+		'dashboard:initial': (payload) => {
+			const data = payload as {
+				stats: typeof stats;
+				recentlyAdded: typeof recentlyAdded;
+				missingEpisodes: typeof missingEpisodes;
+				recentActivity: UnifiedActivity[];
+			};
+			statsState = data.stats;
+			recentlyAddedState = data.recentlyAdded;
+			missingEpisodesState = data.missingEpisodes;
+			recentActivityState = data.recentActivity;
+		},
+		'dashboard:stats': (newStats) => {
+			statsState = newStats as typeof stats;
+		},
+		'dashboard:recentlyAdded': (newRecentlyAdded) => {
+			recentlyAddedState = newRecentlyAdded as typeof recentlyAdded;
+		},
+		'dashboard:missingEpisodes': (newMissingEpisodes) => {
+			missingEpisodesState = newMissingEpisodes as typeof missingEpisodes;
+		},
+		'activity:new': (newActivity) => {
+			const activity = newActivity as UnifiedActivity;
+			const currentRecentActivity = recentActivityState ?? data.recentActivity;
+			recentActivityState = [
+				activity,
+				...currentRecentActivity.filter((a) => a.id !== activity.id)
+			].slice(0, 10);
+		},
+		'activity:updated': (updated) => {
+			const update = updated as Partial<UnifiedActivity>;
+			const currentRecentActivity = recentActivityState ?? data.recentActivity;
+			recentActivityState = currentRecentActivity.map((a) =>
+				a.id === update.id ? { ...a, ...update } : a
+			);
+		},
+		'activity:progress': (progressData) => {
+			const progress = progressData as { id: string; progress: number; status?: string };
+			const currentRecentActivity = recentActivityState ?? data.recentActivity;
+			recentActivityState = currentRecentActivity.map((a) =>
+				a.id === progress.id
+					? {
+							...a,
+							downloadProgress: progress.progress,
+							status: (progress.status as UnifiedActivity['status']) || a.status
+						}
+					: a
+			);
+		}
+	});
+
+	const MOBILE_SSE_SOURCE = 'dashboard';
+
+	$effect(() => {
+		mobileSSEStatus.publish(MOBILE_SSE_SOURCE, sse.status);
+		return () => {
+			mobileSSEStatus.clear(MOBILE_SSE_SOURCE);
+		};
+	});
 
 	// Format relative time
 	function formatRelativeTime(dateStr: string | null): string {
@@ -54,6 +140,7 @@
 			imported: { label: 'Imported', variant: 'badge-success', icon: CheckCircle },
 			streaming: { label: 'Streaming', variant: 'badge-info', icon: CheckCircle },
 			downloading: { label: 'Downloading', variant: 'badge-info', icon: Loader2 },
+			paused: { label: 'Paused', variant: 'badge-warning', icon: PauseCircle },
 			failed: { label: 'Failed', variant: 'badge-error', icon: XCircle },
 			rejected: { label: 'Rejected', variant: 'badge-warning', icon: AlertCircle },
 			removed: { label: 'Removed', variant: 'badge-ghost', icon: XCircle },
@@ -68,6 +155,12 @@
 		}
 		return resolvePath(`/library/tv/${activity.seriesId || activity.mediaId}`);
 	}
+
+	function canLinkToMedia(activity: UnifiedActivity): boolean {
+		if (activity.status === 'removed') return false;
+		if (activity.mediaType === 'movie') return Boolean(activity.mediaId);
+		return Boolean(activity.seriesId || activity.mediaId);
+	}
 </script>
 
 <div class="space-y-6">
@@ -77,7 +170,19 @@
 			<h1 class="text-3xl font-bold">Dashboard</h1>
 			<p class="text-base-content/70">Welcome to Cinephage</p>
 		</div>
-		<div class="flex gap-2">
+		<div class="flex items-center gap-2">
+			<div class="hidden items-center gap-2 lg:flex">
+				{#if sse.isConnected}
+					<span class="badge gap-1 badge-success">
+						<Wifi class="h-3 w-3" />
+						Live
+					</span>
+				{:else if sse.status === 'connecting' || sse.status === 'error'}
+					<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
+						{sse.status === 'error' ? 'Reconnecting...' : 'Connecting...'}
+					</span>
+				{/if}
+			</div>
 			<a href={resolve('/discover')} class="btn btn-primary">
 				<Plus class="h-4 w-4" />
 				Add Content
@@ -98,14 +203,22 @@
 						<Clapperboard class="h-6 w-6 text-primary" />
 					</div>
 					<div>
-						<div class="text-2xl font-bold">{data.stats.movies.total}</div>
+						<div class="text-2xl font-bold">{stats.movies.total}</div>
 						<div class="text-sm text-base-content/70">Movies</div>
 					</div>
 				</div>
 				<div class="mt-2 flex flex-wrap gap-2 text-xs">
-					<span class="badge badge-sm badge-success">{data.stats.movies.withFile} files</span>
-					{#if data.stats.movies.missing > 0}
-						<span class="badge badge-sm badge-warning">{data.stats.movies.missing} missing</span>
+					<span class="badge badge-sm badge-success">{stats.movies.withFile} files</span>
+					{#if stats.movies.missing > 0}
+						<span class="badge badge-sm badge-warning">{stats.movies.missing} missing</span>
+					{/if}
+					{#if (stats.movies.unreleased || 0) > 0}
+						<span class="badge badge-sm badge-secondary">{stats.movies.unreleased} unreleased</span>
+					{/if}
+					{#if (stats.movies.unmonitoredMissing || 0) > 0}
+						<span class="badge badge-sm badge-accent"
+							>{stats.movies.unmonitoredMissing} ignored</span
+						>
 					{/if}
 				</div>
 			</div>
@@ -119,34 +232,44 @@
 						<Tv class="h-6 w-6 text-secondary" />
 					</div>
 					<div>
-						<div class="text-2xl font-bold">{data.stats.series.total}</div>
+						<div class="text-2xl font-bold">{stats.series.total}</div>
 						<div class="text-sm text-base-content/70">TV Shows</div>
 					</div>
 				</div>
 				<div class="mt-2 flex flex-wrap gap-2 text-xs">
-					<span class="badge badge-sm badge-info">{data.stats.episodes.withFile} files</span>
-					{#if data.stats.episodes.missing > 0}
-						<span class="badge badge-sm badge-warning">{data.stats.episodes.missing} missing</span>
+					<span class="badge badge-sm badge-success">{stats.episodes.withFile} files</span>
+					{#if stats.episodes.missing > 0}
+						<span class="badge badge-sm badge-warning">{stats.episodes.missing} missing</span>
+					{/if}
+					{#if (stats.episodes.unaired || 0) > 0}
+						<span class="badge badge-sm badge-secondary">{stats.episodes.unaired} unaired</span>
+					{/if}
+					{#if (stats.episodes.unmonitoredMissing || 0) > 0}
+						<span class="badge badge-sm badge-accent">
+							{stats.episodes.unmonitoredMissing} ignored
+						</span>
 					{/if}
 				</div>
 			</div>
 		</a>
 
 		<!-- Active Downloads -->
-		<a href={resolve('/queue')} class="card bg-base-200 transition-colors hover:bg-base-300">
+		<a href={resolve('/activity')} class="card bg-base-200 transition-colors hover:bg-base-300">
 			<div class="card-body p-4">
 				<div class="flex items-center gap-3">
 					<div class="rounded-lg bg-accent/10 p-2">
 						<Download class="h-6 w-6 text-accent" />
 					</div>
 					<div>
-						<div class="text-2xl font-bold">{data.stats.activeDownloads}</div>
+						<div class="text-2xl font-bold">{stats.activeDownloads}</div>
 						<div class="text-sm text-base-content/70">Downloads</div>
 					</div>
 				</div>
 				<div class="mt-2 text-xs">
-					{#if data.stats.activeDownloads > 0}
-						<span class="badge badge-sm badge-accent">Active</span>
+					{#if stats.activeDownloads > 0}
+						<div class="flex flex-wrap gap-2">
+							<span class="badge badge-sm badge-accent">{stats.activeDownloads} active</span>
+						</div>
 					{:else}
 						<span class="text-base-content/50">No active downloads</span>
 					{/if}
@@ -162,7 +285,7 @@
 						<Calendar class="h-6 w-6 text-warning" />
 					</div>
 					<div>
-						<div class="text-2xl font-bold">{data.missingEpisodes.length}</div>
+						<div class="text-2xl font-bold">{missingEpisodes.length}</div>
 						<div class="text-sm text-base-content/70">Missing Episodes</div>
 					</div>
 				</div>
@@ -171,22 +294,47 @@
 		</div>
 
 		<!-- Unmatched Files -->
-		{#if data.stats.unmatchedFiles > 0}
+		{#if stats.unmatchedFiles > 0}
 			<a
 				href={resolve('/library/unmatched')}
-				class="card bg-base-200 transition-colors hover:bg-base-300"
+				class="card overflow-hidden bg-base-200 transition-colors hover:bg-base-300"
 			>
 				<div class="card-body p-4">
-					<div class="flex items-center gap-3">
-						<div class="rounded-lg bg-error/10 p-2">
+					<div class="flex min-w-0 items-center gap-3">
+						<div class="shrink-0 rounded-lg bg-error/10 p-2">
 							<FileQuestion class="h-6 w-6 text-error" />
 						</div>
-						<div>
-							<div class="text-2xl font-bold">{data.stats.unmatchedFiles}</div>
+						<div class="min-w-0">
+							<div class="text-2xl font-bold">{stats.unmatchedFiles}</div>
 							<div class="text-sm text-base-content/70">Unmatched</div>
 						</div>
 					</div>
 					<div class="mt-2 text-xs text-base-content/50">Files need attention</div>
+					{#if stats.missingRootFolders > 0}
+						<div class="mt-2 text-xs">
+							<span class="badge badge-sm badge-warning">Root folder issues</span>
+						</div>
+					{/if}
+				</div>
+			</a>
+		{:else if stats.missingRootFolders > 0}
+			<a
+				href={resolve('/library/unmatched')}
+				class="card overflow-hidden bg-base-200 transition-colors hover:bg-base-300"
+			>
+				<div class="card-body p-4">
+					<div class="flex min-w-0 items-center gap-3">
+						<div class="shrink-0 rounded-lg bg-warning/10 p-2">
+							<AlertCircle class="h-6 w-6 text-warning" />
+						</div>
+						<div class="min-w-0">
+							<div class="text-2xl font-bold">0</div>
+							<div class="text-sm text-base-content/70">Unmatched</div>
+						</div>
+					</div>
+					<div class="mt-2 text-xs">
+						<span class="badge badge-sm badge-warning">Root folder issues</span>
+					</div>
 				</div>
 			</a>
 		{:else}
@@ -212,7 +360,7 @@
 		<!-- Recently Added Section (2/3 width) -->
 		<div class="space-y-6 lg:col-span-2">
 			<!-- Recently Added Movies -->
-			{#if data.recentlyAdded.movies.length > 0}
+			{#if recentlyAdded.movies.length > 0}
 				<div class="card bg-base-200">
 					<div class="card-body">
 						<div class="flex items-center justify-between">
@@ -225,10 +373,10 @@
 						<div
 							class="grid grid-cols-3 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-6"
 						>
-							{#each data.recentlyAdded.movies as movie (movie.id)}
+							{#each recentlyAdded.movies as movie (movie.id)}
 								<a
 									href={resolve(`/library/movie/${movie.id}`)}
-									class="group relative aspect-[2/3] overflow-hidden rounded-lg"
+									class="group relative aspect-2/3 overflow-hidden rounded-lg"
 								>
 									<TmdbImage
 										path={movie.posterPath}
@@ -237,16 +385,22 @@
 										class="h-full w-full object-cover transition-transform group-hover:scale-105"
 									/>
 									<div
-										class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100"
+										class="absolute inset-0 bg-linear-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100"
 									>
 										<div class="absolute right-0 bottom-0 left-0 p-2">
 											<p class="truncate text-xs font-medium text-white">{movie.title}</p>
 											<p class="text-xs text-white/70">{movie.year}</p>
 										</div>
 									</div>
-									{#if !movie.hasFile}
+									{#if !movie.hasFile && movie.monitored}
 										<div class="absolute top-1 right-1">
-											<span class="badge badge-xs badge-warning">Missing</span>
+											<span
+												class="badge badge-xs {movie.isReleased
+													? 'badge-warning'
+													: 'badge-secondary'}"
+											>
+												{movie.isReleased ? 'Missing' : 'Unreleased'}
+											</span>
 										</div>
 									{/if}
 								</a>
@@ -257,7 +411,7 @@
 			{/if}
 
 			<!-- Recently Added TV Shows -->
-			{#if data.recentlyAdded.series.length > 0}
+			{#if recentlyAdded.series.length > 0}
 				<div class="card bg-base-200">
 					<div class="card-body">
 						<div class="flex items-center justify-between">
@@ -270,10 +424,10 @@
 						<div
 							class="grid grid-cols-3 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-6"
 						>
-							{#each data.recentlyAdded.series as show (show.id)}
+							{#each recentlyAdded.series as show (show.id)}
 								<a
 									href={resolve(`/library/tv/${show.id}`)}
-									class="group relative aspect-[2/3] overflow-hidden rounded-lg"
+									class="group relative aspect-2/3 overflow-hidden rounded-lg"
 								>
 									<TmdbImage
 										path={show.posterPath}
@@ -282,7 +436,7 @@
 										class="h-full w-full object-cover transition-transform group-hover:scale-105"
 									/>
 									<div
-										class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100"
+										class="absolute inset-0 bg-linear-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100"
 									>
 										<div class="absolute right-0 bottom-0 left-0 p-2">
 											<p class="truncate text-xs font-medium text-white">{show.title}</p>
@@ -291,10 +445,10 @@
 											</p>
 										</div>
 									</div>
-									{#if (show.episodeFileCount ?? 0) < (show.episodeCount ?? 0)}
+									{#if (show.airedMissingCount ?? 0) > 0}
 										<div class="absolute top-1 right-1">
 											<span class="badge badge-xs badge-warning">
-												{(show.episodeCount ?? 0) - (show.episodeFileCount ?? 0)} missing
+												{show.airedMissingCount} missing
 											</span>
 										</div>
 									{/if}
@@ -306,7 +460,7 @@
 			{/if}
 
 			<!-- Missing Episodes Section -->
-			{#if data.missingEpisodes.length > 0}
+			{#if missingEpisodes.length > 0}
 				<div class="card bg-base-200">
 					<div class="card-body">
 						<h2 class="card-title">
@@ -314,10 +468,10 @@
 							Missing Episodes
 						</h2>
 						<div class="divide-y divide-base-300">
-							{#each data.missingEpisodes.slice(0, 5) as episode (episode.id)}
+							{#each missingEpisodes.slice(0, 5) as episode (episode.id)}
 								<div class="flex items-center gap-3 py-2">
 									{#if episode.series?.posterPath}
-										<div class="h-12 w-8 flex-shrink-0 overflow-hidden rounded">
+										<div class="h-12 w-8 shrink-0 overflow-hidden rounded">
 											<TmdbImage
 												path={episode.series.posterPath}
 												alt={episode.series.title || ''}
@@ -327,10 +481,10 @@
 										</div>
 									{/if}
 									<div class="min-w-0 flex-1">
-										<p class="truncate font-medium">
+										<p class="font-medium wrap-break-word whitespace-normal">
 											{episode.series?.title || 'Unknown Series'}
 										</p>
-										<p class="text-sm text-base-content/70">
+										<p class="wrap-break-words text-sm whitespace-normal text-base-content/70">
 											S{String(episode.seasonNumber).padStart(2, '0')}E{String(
 												episode.episodeNumber
 											).padStart(2, '0')}
@@ -348,7 +502,7 @@
 			{/if}
 
 			<!-- Empty State -->
-			{#if data.recentlyAdded.movies.length === 0 && data.recentlyAdded.series.length === 0}
+			{#if recentlyAdded.movies.length === 0 && recentlyAdded.series.length === 0}
 				<div class="card bg-base-200">
 					<div class="card-body items-center text-center">
 						<div class="rounded-full bg-base-300 p-4">
@@ -380,7 +534,7 @@
 						<ArrowRight class="h-3 w-3" />
 					</a>
 				</div>
-				{#if data.recentActivity.length > 0}
+				{#if recentActivity.length > 0}
 					<div class="-mx-4 overflow-x-auto">
 						<table class="table table-xs">
 							<thead>
@@ -392,7 +546,7 @@
 								</tr>
 							</thead>
 							<tbody>
-								{#each data.recentActivity as activity (activity.id)}
+								{#each recentActivity as activity (activity.id)}
 									{@const config = statusConfig[activity.status] || statusConfig.no_results}
 									{@const StatusIcon = config.icon}
 									<tr class="hover">
@@ -412,19 +566,32 @@
 											</span>
 										</td>
 										<td>
-											<a
-												href={getMediaLink(activity)}
-												class="flex items-center gap-1 hover:text-primary"
-											>
-												{#if activity.mediaType === 'movie'}
-													<Clapperboard class="h-3 w-3 shrink-0" />
-												{:else}
-													<Tv class="h-3 w-3 shrink-0" />
-												{/if}
-												<span class="max-w-24 truncate text-xs" title={activity.mediaTitle}>
-													{activity.mediaTitle}
-												</span>
-											</a>
+											{#if canLinkToMedia(activity)}
+												<a
+													href={getMediaLink(activity)}
+													class="flex items-center gap-1 hover:text-primary"
+												>
+													{#if activity.mediaType === 'movie'}
+														<Clapperboard class="h-3 w-3 shrink-0" />
+													{:else}
+														<Tv class="h-3 w-3 shrink-0" />
+													{/if}
+													<span class="max-w-24 truncate text-xs" title={activity.mediaTitle}>
+														{activity.mediaTitle}
+													</span>
+												</a>
+											{:else}
+												<div class="flex items-center gap-1">
+													{#if activity.mediaType === 'movie'}
+														<Clapperboard class="h-3 w-3 shrink-0" />
+													{:else}
+														<Tv class="h-3 w-3 shrink-0" />
+													{/if}
+													<span class="max-w-24 truncate text-xs" title={activity.mediaTitle}>
+														{activity.mediaTitle}
+													</span>
+												</div>
+											{/if}
 										</td>
 										<td>
 											{#if activity.status === 'downloading' && activity.downloadProgress !== undefined}
@@ -433,7 +600,7 @@
 													value={activity.downloadProgress}
 													max="100"
 												></progress>
-											{:else if activity.statusReason}
+											{:else if activity.statusReason && activity.status !== 'failed'}
 												<span
 													class="max-w-16 truncate text-xs text-base-content/50"
 													title={activity.statusReason}
@@ -473,9 +640,9 @@
 					<Search class="h-4 w-4" />
 					Discover
 				</a>
-				<a href={resolve('/queue')} class="btn btn-outline btn-sm">
+				<a href={resolve('/activity')} class="btn btn-outline btn-sm">
 					<Download class="h-4 w-4" />
-					View Queue
+					View Activity
 				</a>
 				<a href={resolve('/settings/integrations/indexers')} class="btn btn-outline btn-sm">
 					<TrendingUp class="h-4 w-4" />

@@ -12,6 +12,7 @@
 	import { clientDefinitions } from './forms/clientDefinitions';
 	import NntpServerSettings from './forms/NntpServerSettings.svelte';
 	import DownloadClientSettings from './forms/DownloadClientSettings.svelte';
+	import { toFriendlyDownloadClientError } from '$lib/downloadClients/errorMessages';
 
 	// NNTP server form data type
 	interface NntpServerFormData {
@@ -44,10 +45,15 @@
 		open: boolean;
 		mode: 'add' | 'edit';
 		client?: DownloadClient | NntpServer | null;
+		initialImplementation?: DownloadClientImplementation | 'nntp' | null;
+		allowNntp?: boolean;
 		saving: boolean;
 		error?: string | null;
 		onClose: () => void;
-		onSave: (data: DownloadClientFormData | NntpServerFormData, isNntp: boolean) => void;
+		onSave: (
+			data: DownloadClientFormData | NntpServerFormData,
+			isNntp: boolean
+		) => void | Promise<void>;
 		onDelete?: () => void;
 		onTest: (
 			data: DownloadClientFormData | NntpServerFormData,
@@ -59,6 +65,8 @@
 		open,
 		mode,
 		client = null,
+		initialImplementation = null,
+		allowNntp = true,
 		saving,
 		error = null,
 		onClose,
@@ -116,6 +124,9 @@
 	const selectedDefinition = $derived(
 		implementation ? clientDefinitions.find((d) => d.id === implementation) : null
 	);
+	const visibleClientDefinitions = $derived(
+		allowNntp ? clientDefinitions : clientDefinitions.filter((d) => d.id !== 'nntp')
+	);
 	// Check if selected client uses API key auth (SABnzbd)
 	const usesApiKey = $derived(
 		selectedDefinition?.protocol === 'usenet' &&
@@ -154,7 +165,11 @@
 		if (open) {
 			// Check if editing an NNTP server (has maxConnections but no movieCategory)
 			const isNntpEdit = client && 'maxConnections' in client && !('movieCategory' in client);
-			implementation = isNntpEdit ? 'nntp' : ((client as DownloadClient)?.implementation ?? '');
+			if (mode === 'add') {
+				implementation = '';
+			} else {
+				implementation = isNntpEdit ? 'nntp' : ((client as DownloadClient)?.implementation ?? '');
+			}
 			name = client?.name ?? '';
 			enabled = client?.enabled ?? true;
 			host = client?.host ?? 'localhost';
@@ -188,10 +203,19 @@
 
 			testResult = null;
 			showFolderBrowser = false;
+
+			// If caller wants to add a specific type directly (e.g. NNTP), skip picker.
+			if (mode === 'add' && initialImplementation) {
+				handleImplementationChange(initialImplementation);
+			}
 		}
 	});
 
 	function handleImplementationChange(newImpl: DownloadClientImplementation | 'nntp') {
+		if (!allowNntp && newImpl === 'nntp') {
+			return;
+		}
+
 		implementation = newImpl as DownloadClientImplementation;
 		if (mode === 'add') {
 			const def = clientDefinitions.find((d) => d.id === newImpl);
@@ -218,13 +242,16 @@
 
 	function getFormData(): DownloadClientFormData | NntpServerFormData {
 		const normalizedUrlBase = urlBase.trim().replace(/^\/+|\/+$/g, '');
+		const normalizedName = name.trim();
+		const normalizedHost = host.trim();
+		const normalizedUsername = username.trim();
 		if (isNntpServer) {
 			const data: NntpServerFormData = {
-				name,
-				host,
+				name: normalizedName,
+				host: normalizedHost,
 				port,
 				useSsl,
-				username: username || null,
+				username: normalizedUsername || null,
 				password: password || null,
 				maxConnections,
 				priority,
@@ -238,15 +265,15 @@
 		}
 
 		const data: DownloadClientFormData = {
-			name,
+			name: normalizedName,
 			implementation: implementation as DownloadClientImplementation,
 			enabled,
-			host,
+			host: normalizedHost,
 			port,
 			useSsl,
 			urlBase: urlBaseEnabled ? normalizedUrlBase || null : null,
 			mountMode: implementation === 'nzb-mount' ? mountMode : null,
-			username: username || null,
+			username: normalizedUsername || null,
 			password: password || null,
 			movieCategory,
 			tvCategory,
@@ -272,14 +299,50 @@
 		testing = true;
 		testResult = null;
 		try {
-			testResult = await onTest(getFormData(), isNntpServer);
+			const result = await onTest(getFormData(), isNntpServer);
+			testResult = result.success
+				? result
+				: {
+						...result,
+						error: toFriendlyDownloadClientError(result.error)
+					};
 		} finally {
 			testing = false;
 		}
 	}
 
-	function handleSave() {
-		onSave(getFormData(), isNntpServer);
+	function isValidPort(value: number): boolean {
+		return Number.isInteger(value) && value >= 1 && value <= 65535;
+	}
+
+	function isFormValid(): boolean {
+		return Boolean(implementation && name.trim() && host.trim() && isValidPort(port));
+	}
+
+	async function handleSave() {
+		const formData = getFormData();
+
+		// Match indexer behavior: enabled clients must pass connection test before save.
+		if (enabled) {
+			testing = true;
+			testResult = null;
+			try {
+				const result = await onTest(formData, isNntpServer);
+				testResult = result.success
+					? result
+					: {
+							...result,
+							error: toFriendlyDownloadClientError(result.error)
+						};
+				if (!result.success) {
+					return;
+				}
+			} finally {
+				testing = false;
+			}
+		}
+
+		await onSave(formData, isNntpServer);
 	}
 
 	function handleFolderSelect(path: string) {
@@ -312,7 +375,7 @@
 			<p class="text-base-content/70">Select the type of download client you want to add:</p>
 
 			<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
-				{#each clientDefinitions as def (def.id)}
+				{#each visibleClientDefinitions as def (def.id)}
 					<button
 						type="button"
 						class="card cursor-pointer border-2 border-transparent bg-base-200 text-left transition-all hover:border-primary hover:bg-primary/10"
@@ -563,7 +626,7 @@
 				<button
 					class="btn btn-ghost"
 					onclick={handleTest}
-					disabled={testing || saving || !host || !name || !implementation}
+					disabled={testing || saving || !isFormValid()}
 				>
 					{#if testing}
 						<Loader2 class="h-4 w-4 animate-spin" />
@@ -576,7 +639,7 @@
 				<button
 					class="btn btn-primary"
 					onclick={handleSave}
-					disabled={saving || !host || !name || !implementation}
+					disabled={saving || testing || !isFormValid()}
 				>
 					{#if saving}
 						<Loader2 class="h-4 w-4 animate-spin" />

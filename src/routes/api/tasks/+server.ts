@@ -13,13 +13,14 @@ import {
 } from '$lib/server/tasks/UnifiedTaskRegistry';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler';
 import { taskHistoryService } from '$lib/server/tasks/TaskHistoryService';
+import { taskSettingsService } from '$lib/server/tasks/TaskSettingsService';
 
 /**
  * GET /api/tasks
  *
  * Returns all unified tasks with their current status including:
  * - Task definitions (name, description, category)
- * - Runtime status (lastRunTime, nextRunTime, intervalHours, isRunning)
+ * - Runtime status (lastRunTime, nextRunTime, intervalHours, isRunning, enabled)
  */
 export const GET: RequestHandler = async () => {
 	// Get monitoring status for scheduled tasks
@@ -28,6 +29,10 @@ export const GET: RequestHandler = async () => {
 	// Build unified task list with status
 	const tasks: UnifiedTask[] = await Promise.all(
 		UNIFIED_TASK_DEFINITIONS.map(async (def: UnifiedTaskDefinition) => {
+			// Get settings from TaskSettingsService
+			const settings = await taskSettingsService.getTaskSettings(def.id);
+			const enabled = settings?.enabled ?? true;
+
 			if (def.category === 'scheduled') {
 				// Get status from MonitoringScheduler
 				const taskKey = def.id as keyof typeof monitoringStatus.tasks;
@@ -37,8 +42,10 @@ export const GET: RequestHandler = async () => {
 					...def,
 					lastRunTime: status?.lastRunTime?.toISOString() ?? null,
 					nextRunTime: status?.nextRunTime?.toISOString() ?? null,
-					intervalHours: status?.intervalHours ?? def.defaultIntervalHours ?? null,
-					isRunning: status?.isRunning ?? false
+					intervalHours:
+						settings?.intervalHours ?? status?.intervalHours ?? def.defaultIntervalHours ?? null,
+					isRunning: status?.isRunning ?? false,
+					enabled
 				};
 			} else {
 				// Get status from TaskHistoryService for maintenance tasks
@@ -50,7 +57,8 @@ export const GET: RequestHandler = async () => {
 					lastRunTime: lastRun?.completedAt ?? lastRun?.startedAt ?? null,
 					nextRunTime: null, // Manual tasks don't have scheduled next runs
 					intervalHours: null, // Manual tasks don't have intervals
-					isRunning
+					isRunning,
+					enabled
 				};
 			}
 		})

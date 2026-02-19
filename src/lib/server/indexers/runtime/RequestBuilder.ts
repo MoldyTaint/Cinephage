@@ -8,11 +8,13 @@ import type {
 	SearchBlock,
 	SearchPathBlock
 } from '../schema/yamlDefinition';
+import { resolveCategoryId } from '../schema/yamlDefinition';
 import type { SearchCriteria } from '../types';
-import { isMovieSearch } from '../types';
+import { getCategoriesForSearchType, isMovieSearch } from '../types';
 import { TemplateEngine } from '../engine/TemplateEngine';
 import { FilterEngine } from '../engine/FilterEngine';
 import { logger } from '$lib/logging';
+import { encodeUrlParam } from '../http/EncodingUtils';
 
 /**
  * HTTP request representation.
@@ -57,17 +59,8 @@ export class CategoryMapper {
 		if (caps.categorymappings) {
 			for (const mapping of caps.categorymappings) {
 				if (mapping.cat) {
-					// cat is the Newznab category name or ID
-					let newznabId: number;
-					if (/^\d+$/.test(mapping.cat)) {
-						newznabId = parseInt(mapping.cat, 10);
-					} else {
-						newznabId = this.getNewznabIdByName(mapping.cat) ?? parseInt(mapping.cat, 10);
-					}
-
-					if (!isNaN(newznabId)) {
-						this.addMapping(mapping.id, newznabId);
-					}
+					const newznabId = resolveCategoryId(mapping.cat);
+					this.addMapping(mapping.id, newznabId);
 				}
 
 				if (mapping.default) {
@@ -184,6 +177,15 @@ export class CategoryMapper {
 	getDefaults(): string[] {
 		return this.defaultCategories;
 	}
+
+	/**
+	 * Map a tracker-specific category ID to all matching Newznab category IDs.
+	 * Returns an array because a single tracker category can map to multiple Newznab categories
+	 * (e.g., Nyaa.si's "1_2" anime category maps to both TV/Anime and Movies/Other).
+	 */
+	mapFromTracker(trackerId: string): number[] {
+		return this.trackerToNewznab.get(trackerId) ?? [];
+	}
 }
 
 export class RequestBuilder {
@@ -232,30 +234,31 @@ export class RequestBuilder {
 		const search = this.definition.search;
 		const requests: HttpRequest[] = [];
 		const seenUrls = new Set<string>();
+		const effectiveCriteria = this.withDefaultCategories(criteria);
 
 		// Set query variables
-		this.templateEngine.setQuery(criteria);
+		this.templateEngine.setQuery(effectiveCriteria);
 
 		// Map categories
-		const newznabCategories = criteria.categories ?? [];
+		const newznabCategories = effectiveCriteria.categories ?? [];
 		const trackerCategories = this.categoryMapper.mapToTracker(newznabCategories);
 		this.templateEngine.setCategories(trackerCategories);
 
 		// Build keywords (combining various query parts)
-		const keywords = this.buildKeywords(criteria);
+		const keywords = this.buildKeywords(effectiveCriteria);
 		this.templateEngine.setVariable('.Query.Keywords', keywords);
 		this.templateEngine.setVariable('.Keywords', this.applyKeywordsFilters(keywords, search));
 		this.templateEngine.setVariable('.Categories', trackerCategories);
 
 		// Get search paths
 		const paths = this.getSearchPaths(search);
+		const filteredPaths = this.filterPathsForSearchType(
+			paths,
+			effectiveCriteria,
+			trackerCategories
+		);
 
-		for (const path of paths) {
-			// Check if path categories match
-			if (!this.pathMatchesCategories(path, trackerCategories)) {
-				continue;
-			}
-
+		for (const path of filteredPaths) {
 			const request = this.buildRequestForPath(path, search, trackerCategories);
 			if (request && !seenUrls.has(request.url)) {
 				seenUrls.add(request.url);
@@ -264,6 +267,63 @@ export class RequestBuilder {
 		}
 
 		return requests;
+	}
+
+	/**
+	 * Apply category defaults from search type when caller does not provide categories.
+	 *
+	 * Without this fallback, RequestBuilder falls back to indexer category defaults
+	 * (from categorymappings.default), which can select the wrong content type.
+	 */
+	private withDefaultCategories(criteria: SearchCriteria): SearchCriteria {
+		if (criteria.categories && criteria.categories.length > 0) {
+			return criteria;
+		}
+
+		if (criteria.searchType === 'basic') {
+			return criteria;
+		}
+
+		return {
+			...criteria,
+			categories: getCategoriesForSearchType(criteria.searchType)
+		};
+	}
+
+	/**
+	 * Filter candidate paths for a search.
+	 *
+	 * For typed searches (movie/tv/music/book), prefer category-scoped paths when available.
+	 * This avoids firing both specific and generic fallback paths in the same request cycle.
+	 */
+	private filterPathsForSearchType(
+		paths: SearchPathBlock[],
+		criteria: SearchCriteria,
+		trackerCategories: string[]
+	): SearchPathBlock[] {
+		const matchingPaths = paths.filter((path) =>
+			this.pathMatchesCategories(path, trackerCategories)
+		);
+
+		if (criteria.searchType === 'basic') {
+			const genericPaths = matchingPaths.filter(
+				(path) => !Array.isArray(path.categories) || path.categories.length === 0
+			);
+			// For plain text search, prefer generic paths and avoid category-specific variants.
+			return genericPaths.length > 0 ? genericPaths : matchingPaths;
+		}
+
+		const categoryScopedPaths = matchingPaths.filter(
+			(path) =>
+				Array.isArray(path.categories) && path.categories.length > 0 && path.categories[0] !== '!'
+		);
+
+		// If specific category-scoped paths exist, skip generic fallbacks.
+		if (categoryScopedPaths.length > 0) {
+			return categoryScopedPaths;
+		}
+
+		return matchingPaths;
 	}
 
 	/**
@@ -443,6 +503,8 @@ export class RequestBuilder {
 			'query_term',
 			'name', // UNIT3D trackers use 'name' for keyword search
 			'search',
+			'nm', // RuTracker uses 'nm' for keyword search
+			'mire', // nCore uses 'mire' for keyword search
 			'imdb', // Some trackers use 'imdb' instead of 'imdbid'
 			'imdbid',
 			'imdb_id',
@@ -484,23 +546,30 @@ export class RequestBuilder {
 		}
 
 		// Build request
+		const encoding = this.definition.encoding;
 		if (method === 'GET') {
-			// Add inputs as query parameters
-			const params = new URLSearchParams();
+			// Add inputs as query parameters with proper encoding
+			const queryParts: string[] = [];
 			for (const [key, value] of Object.entries(filteredInputs)) {
 				if (key === '$raw') {
 					// Raw query string, parse and add
 					const rawParts = value.split('&');
 					for (const part of rawParts) {
 						const [k, v] = part.split('=');
-						if (k) params.append(k, v ?? '');
+						if (k) {
+							const encodedK = encodeUrlParam(k, encoding);
+							const encodedV = v ? encodeUrlParam(v, encoding) : '';
+							queryParts.push(`${encodedK}=${encodedV}`);
+						}
 					}
 				} else {
-					params.append(key, value);
+					const encodedKey = encodeUrlParam(key, encoding);
+					const encodedValue = encodeUrlParam(value, encoding);
+					queryParts.push(`${encodedKey}=${encodedValue}`);
 				}
 			}
 
-			const queryString = params.toString();
+			const queryString = queryParts.join('&');
 			if (queryString) {
 				url += (url.includes('?') ? '&' : '?') + queryString;
 			}
@@ -523,19 +592,26 @@ export class RequestBuilder {
 				}
 				return { url, method, headers, body: JSON.stringify(jsonBody), searchPath: path };
 			} else {
-				// Form-encoded body (default)
-				const body = new URLSearchParams();
+				// Form-encoded body (default) with proper encoding
+				const bodyParts: string[] = [];
 				for (const [key, value] of Object.entries(filteredInputs)) {
 					if (key === '$raw') {
 						const rawParts = value.split('&');
 						for (const part of rawParts) {
 							const [k, v] = part.split('=');
-							if (k) body.append(k, v ?? '');
+							if (k) {
+								const encodedK = encodeUrlParam(k, encoding);
+								const encodedV = v ? encodeUrlParam(v, encoding) : '';
+								bodyParts.push(`${encodedK}=${encodedV}`);
+							}
 						}
 					} else {
-						body.append(key, value);
+						const encodedKey = encodeUrlParam(key, encoding);
+						const encodedValue = encodeUrlParam(value, encoding);
+						bodyParts.push(`${encodedKey}=${encodedValue}`);
 					}
 				}
+				const body = bodyParts.join('&');
 				return { url, method, headers, body, searchPath: path };
 			}
 		}

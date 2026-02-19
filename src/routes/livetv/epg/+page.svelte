@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { SvelteMap } from 'svelte/reactivity';
-	import { Calendar, LayoutGrid, Settings } from 'lucide-svelte';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+	import { Calendar, LayoutGrid, Settings, Wifi, WifiOff, Loader2 } from 'lucide-svelte';
 	import {
 		EpgStatusPanel,
 		EpgCoverageTable,
@@ -14,7 +14,10 @@
 		EpgProgramWithProgress,
 		UpdateChannelRequest
 	} from '$lib/types/livetv';
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount } from 'svelte';
+	import { createSSE } from '$lib/sse';
+	import { mobileSSEStatus } from '$lib/sse/mobileStatus.svelte';
+	import { resolvePath } from '$lib/utils/routing';
 
 	type TabId = 'status' | 'coverage' | 'guide';
 
@@ -33,12 +36,13 @@
 	// EPG status state
 	let epgStatus = $state<EpgStatus | null>(null);
 	let epgStatusLoading = $state(true);
-	let epgSyncing = $state(false);
-	let epgStatusPollInterval: ReturnType<typeof setInterval> | null = null;
+	let epgSyncingAll = $state(false);
+	let epgSyncingAccountIds = new SvelteSet<string>();
+	const epgSyncingAny = $derived(epgSyncingAll || epgSyncingAccountIds.size > 0);
+	const epgSyncingAccountList = $derived([...epgSyncingAccountIds]);
 
 	// EPG now/next data for coverage tab
 	let epgData = new SvelteMap<string, NowNextEntry>();
-	let epgDataInterval: ReturnType<typeof setInterval> | null = null;
 
 	// EPG source picker state
 	let epgSourcePickerOpen = $state(false);
@@ -50,18 +54,83 @@
 		{ id: 'guide', label: 'Guide', icon: Calendar }
 	];
 
-	onMount(() => {
-		loadLineup();
-		fetchEpgStatus();
-		fetchEpgData();
-		epgDataInterval = setInterval(fetchEpgData, 60000);
+	// SSE Connection - internally handles browser/SSR
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const sse = createSSE<Record<string, any>>(resolvePath('/api/livetv/epg/stream'), {
+		'epg:initial': (payload) => {
+			epgStatus = payload.status;
+			epgSyncingAll = payload.status?.isSyncing ?? false;
+			if (!epgSyncingAll) {
+				epgSyncingAccountIds.clear();
+			}
+			lineup = payload.lineup || [];
+			loadingLineup = false;
+			epgStatusLoading = false;
+		},
+		'epg:syncStarted': (payload) => {
+			if (payload.accountId) {
+				epgSyncingAccountIds.add(payload.accountId);
+			} else {
+				epgSyncingAll = true;
+			}
+			if (payload.status) {
+				epgStatus = payload.status;
+			}
+		},
+		'epg:syncCompleted': (payload) => {
+			if (payload.accountId) {
+				epgSyncingAccountIds.delete(payload.accountId);
+			} else {
+				epgSyncingAll = false;
+				epgSyncingAccountIds.clear();
+			}
+			if (payload.status) {
+				epgStatus = payload.status;
+			}
+			if (payload.lineup) {
+				lineup = payload.lineup;
+			}
+			fetchEpgData();
+		},
+		'epg:syncFailed': (payload) => {
+			if (payload.accountId) {
+				epgSyncingAccountIds.delete(payload.accountId);
+			} else {
+				epgSyncingAll = false;
+				epgSyncingAccountIds.clear();
+			}
+			if (payload.status) {
+				epgStatus = payload.status;
+			}
+		},
+		'lineup:updated': (payload) => {
+			if (payload.lineup) {
+				lineup = payload.lineup;
+			}
+		}
 	});
 
-	onDestroy(() => {
-		stopEpgStatusPoll();
-		if (epgDataInterval) {
-			clearInterval(epgDataInterval);
-		}
+	const MOBILE_SSE_SOURCE = 'livetv-epg';
+
+	$effect(() => {
+		mobileSSEStatus.publish(MOBILE_SSE_SOURCE, sse.status);
+		return () => {
+			mobileSSEStatus.clear(MOBILE_SSE_SOURCE);
+		};
+	});
+
+	onMount(() => {
+		loadLineup();
+		fetchEpgData();
+
+		// Set loading to false after a timeout in case SSE never connects
+		setTimeout(() => {
+			epgStatusLoading = false;
+		}, 5000);
+
+		return () => {
+			sse.close();
+		};
 	});
 
 	async function loadLineup() {
@@ -76,27 +145,6 @@
 			// Silent failure
 		} finally {
 			loadingLineup = false;
-		}
-	}
-
-	async function fetchEpgStatus() {
-		try {
-			const res = await fetch('/api/livetv/epg/status');
-			if (res.ok) {
-				epgStatus = await res.json();
-				epgSyncing = epgStatus?.isSyncing ?? false;
-
-				if (epgSyncing && !epgStatusPollInterval) {
-					startEpgStatusPoll();
-				} else if (!epgSyncing && epgStatusPollInterval) {
-					stopEpgStatusPoll();
-					fetchEpgData();
-				}
-			}
-		} catch {
-			// Silent failure
-		} finally {
-			epgStatusLoading = false;
 		}
 	}
 
@@ -117,33 +165,27 @@
 	}
 
 	async function triggerEpgSync() {
-		epgSyncing = true;
+		if (epgSyncingAny) return;
+		epgSyncingAll = true;
 		try {
 			await fetch('/api/livetv/epg/sync', { method: 'POST' });
-			startEpgStatusPoll();
 		} catch {
-			epgSyncing = false;
+			epgSyncingAll = false;
 		}
 	}
 
 	async function triggerAccountSync(accountId: string) {
+		if (epgSyncingAll || epgSyncingAccountIds.has(accountId)) return;
+		epgSyncingAccountIds.add(accountId);
 		try {
-			await fetch(`/api/livetv/epg/sync?accountId=${accountId}`, { method: 'POST' });
-			startEpgStatusPoll();
+			const response = await fetch(`/api/livetv/epg/sync?accountId=${accountId}`, {
+				method: 'POST'
+			});
+			if (!response.ok) {
+				throw new Error('Failed to trigger EPG sync');
+			}
 		} catch {
-			// Silent failure
-		}
-	}
-
-	function startEpgStatusPoll() {
-		if (epgStatusPollInterval) return;
-		epgStatusPollInterval = setInterval(fetchEpgStatus, 3000);
-	}
-
-	function stopEpgStatusPoll() {
-		if (epgStatusPollInterval) {
-			clearInterval(epgStatusPollInterval);
-			epgStatusPollInterval = null;
+			epgSyncingAccountIds.delete(accountId);
 		}
 	}
 
@@ -191,13 +233,34 @@
 			<h1 class="text-2xl font-bold">EPG</h1>
 			<p class="mt-1 text-base-content/60">Electronic Program Guide</p>
 		</div>
+		<!-- Connection Status -->
+		<div class="hidden lg:block">
+			{#if sse.isConnected}
+				<span class="badge gap-1 badge-success">
+					<Wifi class="h-3 w-3" />
+					Live
+				</span>
+			{:else if sse.status === 'connecting' || sse.status === 'error'}
+				<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
+					<Loader2 class="h-3 w-3 animate-spin" />
+					{sse.status === 'error' ? 'Reconnecting...' : 'Connecting...'}
+				</span>
+			{:else}
+				<span class="badge gap-1 badge-ghost">
+					<WifiOff class="h-3 w-3" />
+					Disconnected
+				</span>
+			{/if}
+		</div>
 	</div>
 
 	<!-- Tabs -->
-	<div class="tabs-boxed tabs">
+	<div class="tabs-boxed tabs w-full overflow-x-auto sm:w-fit">
 		{#each tabs as tab (tab.id)}
 			<button
-				class="tab gap-2 {activeTab === tab.id ? 'tab-active' : ''}"
+				class="tab-sm tab flex-1 gap-1 whitespace-nowrap sm:flex-none sm:gap-2 {activeTab === tab.id
+					? 'tab-active'
+					: ''}"
 				onclick={() => (activeTab = tab.id)}
 			>
 				<tab.icon class="h-4 w-4" />
@@ -211,7 +274,8 @@
 		<EpgStatusPanel
 			status={epgStatus}
 			loading={epgStatusLoading}
-			syncing={epgSyncing}
+			syncingAll={epgSyncingAll}
+			syncingAccountIds={epgSyncingAccountList}
 			onSync={triggerEpgSync}
 			onSyncAccount={triggerAccountSync}
 		/>

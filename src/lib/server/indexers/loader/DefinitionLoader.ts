@@ -17,7 +17,7 @@ import type {
 } from './types';
 import { toDefinitionSummary } from './types';
 import type { YamlDefinition } from '../schema/yamlDefinition';
-import { safeValidateYamlDefinition } from '../schema/yamlDefinition';
+import { safeValidateYamlDefinition, resolveCategoryId } from '../schema/yamlDefinition';
 
 const log = createChildLogger({ module: 'DefinitionLoader' });
 
@@ -135,7 +135,7 @@ export class DefinitionLoader {
 				(s: {
 					name: string;
 					type: string;
-					label: string;
+					label?: string;
 					default?: string | boolean | number;
 					options?: Record<string, string>;
 				}) => ({
@@ -170,7 +170,7 @@ export class DefinitionLoader {
 		const categories: CategoryMapping[] = (def.caps.categorymappings ?? []).map(
 			(cm: { id: string; cat?: string; desc?: string; default?: boolean }) => ({
 				trackerId: cm.id,
-				newznabId: parseInt(cm.cat ?? '8000', 10),
+				newznabId: resolveCategoryId(cm.cat),
 				description: cm.desc ?? cm.id,
 				default: cm.default
 			})
@@ -215,7 +215,10 @@ export class DefinitionLoader {
 			info: 'info',
 			info_cookie: 'info_cookie',
 			info_cloudflare: 'info_cloudflare',
-			info_useragent: 'info_useragent'
+			info_flaresolverr: 'info_flaresolverr',
+			info_useragent: 'info_useragent',
+			info_category_8000: 'info_category_8000',
+			cardigannCaptcha: 'cardigannCaptcha'
 		};
 		return map[type] ?? 'text';
 	}

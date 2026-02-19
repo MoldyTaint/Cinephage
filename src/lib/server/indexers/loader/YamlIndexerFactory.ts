@@ -89,7 +89,6 @@ export class YamlIndexerFactory implements IIndexerFactory {
 				seedRatio: config.seedRatio ?? null,
 				seedTime: config.seedTime ?? null,
 				packSeedTime: config.packSeedTime ?? null,
-				preferMagnetUrl: config.preferMagnetUrl ?? false,
 				rejectDeadTorrents: config.rejectDeadTorrents ?? true
 			};
 		}

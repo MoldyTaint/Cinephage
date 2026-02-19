@@ -6,15 +6,17 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getStalkerChannelService } from '$lib/server/livetv/stalker';
+import { getLiveTvChannelService } from '$lib/server/livetv/LiveTvChannelService';
+import { logger } from '$lib/logging';
 import type { ChannelQueryOptions } from '$lib/types/livetv';
 
 export const GET: RequestHandler = async ({ url }) => {
-	const channelService = getStalkerChannelService();
+	const channelService = getLiveTvChannelService();
 
 	// Parse query parameters
 	const accountIdsParam = url.searchParams.get('accountIds');
 	const categoryIdsParam = url.searchParams.get('categoryIds');
+	const providerTypesParam = url.searchParams.get('providerTypes');
 	const search = url.searchParams.get('search');
 	const hasArchiveParam = url.searchParams.get('hasArchive');
 	const pageParam = url.searchParams.get('page');
@@ -30,6 +32,12 @@ export const GET: RequestHandler = async ({ url }) => {
 
 	if (categoryIdsParam) {
 		options.categoryIds = categoryIdsParam.split(',').filter(Boolean);
+	}
+
+	if (providerTypesParam) {
+		options.providerTypes = providerTypesParam
+			.split(',')
+			.filter(Boolean) as ChannelQueryOptions['providerTypes'];
 	}
 
 	if (search) {
@@ -64,9 +72,22 @@ export const GET: RequestHandler = async ({ url }) => {
 
 	try {
 		const result = await channelService.getChannels(options);
-		return json(result);
+		return json({
+			success: true,
+			channels: result.items,
+			total: result.total,
+			page: result.page,
+			pageSize: result.pageSize,
+			totalPages: result.totalPages
+		});
 	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Unknown error';
-		return json({ error: message }, { status: 500 });
+		logger.error('[API] Failed to get channels', error instanceof Error ? error : undefined);
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to get channels'
+			},
+			{ status: 500 }
+		);
 	}
 };

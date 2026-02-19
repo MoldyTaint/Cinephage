@@ -10,6 +10,8 @@
  */
 
 import type { IndexerCapabilities, IndexerProtocol, IndexerAccessType } from '../types';
+import { resolveCategoryId } from '../schema/yamlDefinition';
+import path from 'path';
 
 // ============================================================================
 // Settings Field Types
@@ -24,7 +26,10 @@ export type SettingFieldType =
 	| 'info'
 	| 'info_cookie'
 	| 'info_cloudflare'
-	| 'info_useragent';
+	| 'info_flaresolverr' // Prowlarr's name for Cloudflare/FlareSolverr warning
+	| 'info_useragent'
+	| 'info_category_8000'
+	| 'cardigannCaptcha';
 
 /** A single settings field for an indexer */
 export interface SettingField {
@@ -32,8 +37,8 @@ export interface SettingField {
 	name: string;
 	/** Display type for the field */
 	type: SettingFieldType;
-	/** Human-readable label */
-	label: string;
+	/** Human-readable label (optional for info_* types) */
+	label?: string;
 	/** Help text to show below the field */
 	helpText?: string;
 	/** Default value */
@@ -132,6 +137,9 @@ export interface IndexerDefinition {
 
 	/** Request delay in seconds between requests */
 	requestDelay?: number;
+
+	/** Response encoding (e.g., 'UTF-8', 'windows-1251') */
+	encoding?: string;
 
 	// === Metadata ===
 
@@ -256,7 +264,7 @@ export type UISettingType =
  */
 export interface UIDefinitionSetting {
 	name: string;
-	label: string;
+	label?: string; // Optional for info_* types
 	type: UISettingType;
 	required?: boolean;
 	default?: string;
@@ -277,6 +285,7 @@ export interface UIIndexerDefinition {
 	protocol: IndexerProtocol;
 	siteUrl: string;
 	alternateUrls: string[];
+	isCustom?: boolean;
 	capabilities: {
 		search?: { available: boolean; supportedParams: string[] };
 		movieSearch?: { available: boolean; supportedParams: string[] };
@@ -306,7 +315,10 @@ export function yamlToUnifiedDefinition(
 			info: 'info',
 			info_cookie: 'info_cookie',
 			info_cloudflare: 'info_cloudflare',
-			info_useragent: 'info_useragent'
+			info_flaresolverr: 'info_flaresolverr',
+			info_useragent: 'info_useragent',
+			info_category_8000: 'info_category_8000',
+			cardigannCaptcha: 'cardigannCaptcha'
 		};
 		return map[type] ?? 'text';
 	};
@@ -412,7 +424,7 @@ export function yamlToUnifiedDefinition(
 	// Convert category mappings
 	const categories: CategoryMapping[] = (def.caps.categorymappings ?? []).map((cm) => ({
 		trackerId: cm.id,
-		newznabId: parseInt(cm.cat ?? '8000', 10),
+		newznabId: resolveCategoryId(cm.cat),
 		description: cm.desc ?? cm.id,
 		default: cm.default
 	}));
@@ -440,6 +452,7 @@ export function yamlToUnifiedDefinition(
 		supportedCategories,
 		capabilities,
 		requestDelay: def.requestdelay,
+		encoding: def.encoding,
 		loadedAt: new Date(),
 		filePath
 	};
@@ -449,6 +462,18 @@ export function yamlToUnifiedDefinition(
  * Convert unified definition to UI-compatible format.
  */
 export function toUIDefinition(def: IndexerDefinition): UIIndexerDefinition {
+	const baseDefinitionsPath = process.env.INDEXER_DEFINITIONS_PATH ?? 'data/indexers/definitions';
+	const customDefinitionsPath =
+		process.env.INDEXER_CUSTOM_DEFINITIONS_PATH ?? path.join(baseDefinitionsPath, 'custom');
+	const resolvedCustomDir = path.resolve(customDefinitionsPath);
+	const isCustomDefinition = (filePath?: string): boolean => {
+		if (!filePath) return false;
+		const resolvedPath = path.resolve(filePath);
+		return (
+			resolvedPath === resolvedCustomDir || resolvedPath.startsWith(resolvedCustomDir + path.sep)
+		);
+	};
+
 	// Map setting type to UI-compatible type
 	const mapSettingType = (type: SettingFieldType): UISettingType => {
 		const typeMap: Record<SettingFieldType, UISettingType> = {
@@ -459,7 +484,10 @@ export function toUIDefinition(def: IndexerDefinition): UIIndexerDefinition {
 			info: 'info',
 			info_cookie: 'info_cookie',
 			info_cloudflare: 'info_cloudflare',
-			info_useragent: 'info_useragent'
+			info_flaresolverr: 'info_cloudflare', // Map to info_cloudflare for UI (same purpose)
+			info_useragent: 'info_useragent',
+			info_category_8000: 'info_category_8000',
+			cardigannCaptcha: 'cardigannCaptcha'
 		};
 		return typeMap[type] ?? 'text';
 	};
@@ -521,6 +549,7 @@ export function toUIDefinition(def: IndexerDefinition): UIIndexerDefinition {
 		protocol: def.protocol,
 		siteUrl: def.urls[0] ?? '',
 		alternateUrls: def.urls.slice(1).concat(def.legacyUrls ?? []),
+		isCustom: isCustomDefinition(def.filePath),
 		capabilities,
 		settings
 	};

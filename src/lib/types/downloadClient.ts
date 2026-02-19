@@ -12,6 +12,7 @@ export type DownloadClientImplementation =
 	| 'sabnzbd'
 	| 'nzbget'
 	| 'nntp';
+export type DownloadClientHealth = 'healthy' | 'warning' | 'failing';
 export type DownloadPriority = 'normal' | 'high' | 'force';
 export type DownloadInitialState = 'start' | 'pause' | 'force';
 export type RootFolderMediaType = 'movie' | 'tv';
@@ -71,6 +72,14 @@ export interface DownloadClient {
 	tempPathRemote?: string | null;
 
 	priority: number;
+	status?: {
+		health: DownloadClientHealth;
+		consecutiveFailures: number;
+		lastSuccess?: string;
+		lastFailure?: string;
+		lastFailureMessage?: string;
+		lastCheckedAt?: string;
+	};
 	createdAt?: string;
 	updatedAt?: string;
 }
@@ -179,11 +188,11 @@ export interface PathValidationResult {
  * Download client status (runtime info)
  */
 export interface DownloadClientStatus {
-	connected: boolean;
-	version?: string;
-	activeDownloads?: number;
-	downloadSpeed?: number;
-	uploadSpeed?: number;
+	health: DownloadClientHealth;
+	consecutiveFailures: number;
+	lastSuccess?: string;
+	lastFailure?: string;
+	lastFailureMessage?: string;
 	lastCheckedAt?: string;
 }
 
@@ -236,4 +245,12 @@ export interface UnifiedClientItem {
 	priority?: number | null;
 	testResult?: string | null;
 	lastTestedAt?: string | null;
+	status?: {
+		health: DownloadClientHealth;
+		consecutiveFailures: number;
+		lastSuccess?: string;
+		lastFailure?: string;
+		lastFailureMessage?: string;
+		lastCheckedAt?: string;
+	};
 }

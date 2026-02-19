@@ -89,8 +89,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			minimumSeeders: validated.minimumSeeders,
 			seedRatio: validated.seedRatio ?? null,
 			seedTime: validated.seedTime ?? null,
-			packSeedTime: validated.packSeedTime ?? null,
-			preferMagnetUrl: validated.preferMagnetUrl
+			packSeedTime: validated.packSeedTime ?? null
 		});
 
 		return json({ success: true, indexer: created });

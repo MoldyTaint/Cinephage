@@ -86,8 +86,8 @@ COPY --from=builder --chown=node:node /app/server.js ./server.js
 # Copy script to fix TV subtitle paths to be used with cmd 'npm run fix:tv-subtitles' - Temporary fix
 COPY --from=builder --chown=node:node /app/scripts/fix-tv-subtitle-paths.js ./scripts/fix-tv-subtitle-paths.js
 
-# Copy bundled indexers to separate location (not shadowed by volume mount)
-COPY --from=builder --chown=node:node /app/data/indexers ./bundled-indexers
+# Copy bundled data to separate location (not shadowed by volume mount)
+COPY --from=builder --chown=node:node /app/data ./bundled-data
 
 # Copy and set up entrypoint script
 COPY --chown=node:node docker-entrypoint.sh ./docker-entrypoint.sh
@@ -101,13 +101,14 @@ ENV FFPROBE_PATH=/usr/bin/ffprobe
 ENV DATA_DIR=/config/data
 ENV LOG_DIR=/config/logs
 ENV INDEXER_DEFINITIONS_PATH=/config/data/indexers/definitions
+ENV EXTERNAL_LISTS_PRESETS_PATH=/config/data/external-lists/presets
 
 # Expose the application port
 EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:$PORT/api/health || exit 1
 
 # Start the application
 ENTRYPOINT ["./docker-entrypoint.sh"]

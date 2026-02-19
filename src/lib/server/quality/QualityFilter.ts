@@ -57,6 +57,18 @@ export class QualityFilter {
 	private profilesCache: Map<string, ScoringProfile> = new Map();
 	private defaultProfile: ScoringProfile | null = null;
 
+	private coerceNullableNumber(value: unknown): number | null {
+		if (value === null || value === undefined) return null;
+		if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+		if (typeof value === 'string') {
+			const trimmed = value.trim();
+			if (!trimmed) return null;
+			const parsed = Number(trimmed);
+			return Number.isFinite(parsed) ? parsed : null;
+		}
+		return null;
+	}
+
 	/**
 	 * Clear all caches - call this when profiles are updated
 	 */
@@ -139,10 +151,14 @@ export class QualityFilter {
 				if (sizeLimits) {
 					profile = {
 						...profile,
-						movieMinSizeGb: sizeLimits.movieMinSizeGb ?? profile.movieMinSizeGb,
-						movieMaxSizeGb: sizeLimits.movieMaxSizeGb ?? profile.movieMaxSizeGb,
-						episodeMinSizeMb: sizeLimits.episodeMinSizeMb ?? profile.episodeMinSizeMb,
-						episodeMaxSizeMb: sizeLimits.episodeMaxSizeMb ?? profile.episodeMaxSizeMb
+						movieMinSizeGb:
+							this.coerceNullableNumber(sizeLimits.movieMinSizeGb) ?? profile.movieMinSizeGb,
+						movieMaxSizeGb:
+							this.coerceNullableNumber(sizeLimits.movieMaxSizeGb) ?? profile.movieMaxSizeGb,
+						episodeMinSizeMb:
+							this.coerceNullableNumber(sizeLimits.episodeMinSizeMb) ?? profile.episodeMinSizeMb,
+						episodeMaxSizeMb:
+							this.coerceNullableNumber(sizeLimits.episodeMaxSizeMb) ?? profile.episodeMaxSizeMb
 					};
 				}
 			}
@@ -162,10 +178,10 @@ export class QualityFilter {
 
 			const mergedProfile: ScoringProfile = {
 				...builtIn,
-				movieMinSizeGb: sizeLimits?.movieMinSizeGb ?? null,
-				movieMaxSizeGb: sizeLimits?.movieMaxSizeGb ?? null,
-				episodeMinSizeMb: sizeLimits?.episodeMinSizeMb ?? null,
-				episodeMaxSizeMb: sizeLimits?.episodeMaxSizeMb ?? null
+				movieMinSizeGb: this.coerceNullableNumber(sizeLimits?.movieMinSizeGb),
+				movieMaxSizeGb: this.coerceNullableNumber(sizeLimits?.movieMaxSizeGb),
+				episodeMinSizeMb: this.coerceNullableNumber(sizeLimits?.episodeMinSizeMb),
+				episodeMaxSizeMb: this.coerceNullableNumber(sizeLimits?.episodeMaxSizeMb)
 			};
 
 			this.profilesCache.set(id, mergedProfile);
@@ -216,10 +232,10 @@ export class QualityFilter {
 			if (builtIn) {
 				this.defaultProfile = {
 					...builtIn,
-					movieMinSizeGb: defaultOverride.movieMinSizeGb ?? null,
-					movieMaxSizeGb: defaultOverride.movieMaxSizeGb ?? null,
-					episodeMinSizeMb: defaultOverride.episodeMinSizeMb ?? null,
-					episodeMaxSizeMb: defaultOverride.episodeMaxSizeMb ?? null
+					movieMinSizeGb: this.coerceNullableNumber(defaultOverride.movieMinSizeGb),
+					movieMaxSizeGb: this.coerceNullableNumber(defaultOverride.movieMaxSizeGb),
+					episodeMinSizeMb: this.coerceNullableNumber(defaultOverride.episodeMinSizeMb),
+					episodeMaxSizeMb: this.coerceNullableNumber(defaultOverride.episodeMaxSizeMb)
 				};
 				return this.defaultProfile;
 			}
@@ -234,10 +250,10 @@ export class QualityFilter {
 
 		this.defaultProfile = {
 			...BALANCED_PROFILE,
-			movieMinSizeGb: balancedLimits?.movieMinSizeGb ?? null,
-			movieMaxSizeGb: balancedLimits?.movieMaxSizeGb ?? null,
-			episodeMinSizeMb: balancedLimits?.episodeMinSizeMb ?? null,
-			episodeMaxSizeMb: balancedLimits?.episodeMaxSizeMb ?? null
+			movieMinSizeGb: this.coerceNullableNumber(balancedLimits?.movieMinSizeGb),
+			movieMaxSizeGb: this.coerceNullableNumber(balancedLimits?.movieMaxSizeGb),
+			episodeMinSizeMb: this.coerceNullableNumber(balancedLimits?.episodeMinSizeMb),
+			episodeMaxSizeMb: this.coerceNullableNumber(balancedLimits?.episodeMaxSizeMb)
 		};
 		return this.defaultProfile;
 	}
@@ -728,10 +744,10 @@ export class QualityFilter {
 			minScore: row.minScore ?? 0,
 			upgradeUntilScore: row.upgradeUntilScore ?? -1,
 			minScoreIncrement: row.minScoreIncrement ?? 0,
-			movieMinSizeGb: row.movieMinSizeGb ?? null,
-			movieMaxSizeGb: row.movieMaxSizeGb ?? null,
-			episodeMinSizeMb: row.episodeMinSizeMb ?? null,
-			episodeMaxSizeMb: row.episodeMaxSizeMb ?? null,
+			movieMinSizeGb: this.coerceNullableNumber(row.movieMinSizeGb),
+			movieMaxSizeGb: this.coerceNullableNumber(row.movieMaxSizeGb),
+			episodeMinSizeMb: this.coerceNullableNumber(row.episodeMinSizeMb),
+			episodeMaxSizeMb: this.coerceNullableNumber(row.episodeMaxSizeMb),
 			resolutionOrder: (row.resolutionOrder as Resolution[]) ?? [
 				'2160p',
 				'1080p',

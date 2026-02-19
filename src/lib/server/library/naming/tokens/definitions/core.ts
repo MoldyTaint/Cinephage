@@ -5,11 +5,15 @@
 import type { TokenDefinition } from '../types';
 
 /**
- * Generate a clean title by removing special characters for filesystem compatibility
+ * Generate a clean title by removing special characters for filesystem compatibility.
+ *
+ * Note: Colons (:) are NOT removed here - they are handled separately by
+ * NamingService.cleanName() → replaceColons() which respects the user's
+ * colonReplacement preference (delete, dash, spaceDash, spaceDashSpace, smart).
  */
 function generateCleanTitle(title: string): string {
 	return title
-		.replace(/[:/\\?*"<>|]/g, '')
+		.replace(/[/\\?*"<>|]/g, '')
 		.replace(/\s+/g, ' ')
 		.trim();
 }

@@ -253,19 +253,21 @@ describe('NamingService', () => {
 
 	describe('Colon Replacement', () => {
 		// Note: {CleanTitle} token removes colons via generateCleanTitle() before
-		// colon replacement settings apply. Use {Title} to test colon replacement.
+		// Note: CleanTitle now respects the colonReplacement setting.
+		// Previously it would always remove colons, but now the colon replacement
+		// is handled by NamingService.cleanName() which applies the user's preference.
 		const infoWithColon: MediaNamingInfo = {
 			title: 'Star Wars: A New Hope',
 			year: 1977,
 			tmdbId: 11
 		};
 
-		it('should remove colons from CleanTitle regardless of setting', () => {
-			// CleanTitle explicitly removes colons for filesystem safety
+		it('should apply colonReplacement setting to CleanTitle', () => {
+			// CleanTitle now respects the colonReplacement setting
 			const service = new NamingService({ colonReplacement: 'smart' });
 			const result = service.generateMovieFolderName(infoWithColon);
-			// Colon is removed by generateCleanTitle, leaving "Star Wars A New Hope"
-			expect(result).toBe('Star Wars A New Hope (1977) {tmdb-11}');
+			// Smart replaces ": " with " - "
+			expect(result).toBe('Star Wars - A New Hope (1977) {tmdb-11}');
 		});
 
 		it('should use smart colon replacement on raw Title', () => {

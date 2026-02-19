@@ -5,7 +5,8 @@ import { series, seasons, episodes, rootFolders } from '$lib/server/db/schema.js
 import { eq } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
 import { z } from 'zod';
-import { namingService, type MediaNamingInfo } from '$lib/server/library/naming/NamingService.js';
+import { NamingService, type MediaNamingInfo } from '$lib/server/library/naming/NamingService.js';
+import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
 import {
 	validateRootFolder,
 	getEffectiveScoringProfileId,
@@ -50,8 +51,11 @@ const addSeriesSchema = z.object({
 
 /**
  * Generate a folder name for a series using the naming service
+ * Uses database naming configuration instead of defaults
  */
 function generateSeriesFolderName(title: string, year?: number, tvdbId?: number): string {
+	const config = namingSettingsService.getConfigSync();
+	const namingService = new NamingService(config);
 	const info: MediaNamingInfo = {
 		title,
 		year,
@@ -84,6 +88,7 @@ export const GET: RequestHandler = async () => {
 				path: series.path,
 				rootFolderId: series.rootFolderId,
 				rootFolderPath: rootFolders.path,
+				rootFolderMediaType: rootFolders.mediaType,
 				scoringProfileId: series.scoringProfileId,
 				monitored: series.monitored,
 				seasonFolder: series.seasonFolder,
@@ -97,6 +102,7 @@ export const GET: RequestHandler = async () => {
 		// Calculate percentages and format data
 		const seriesWithStats = allSeries.map((s) => ({
 			...s,
+			missingRootFolder: !s.rootFolderId || !s.rootFolderPath || s.rootFolderMediaType !== 'tv',
 			percentComplete:
 				s.episodeCount && s.episodeCount > 0
 					? Math.round(((s.episodeFileCount || 0) / s.episodeCount) * 100)

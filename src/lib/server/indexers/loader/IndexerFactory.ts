@@ -6,10 +6,11 @@
  */
 
 import type { IIndexer, IndexerConfig } from '../types';
-import { YamlIndexer } from '../runtime/YamlIndexer';
+import { UnifiedIndexer } from '../runtime/UnifiedIndexer';
 import { YamlDefinitionLoader } from './YamlDefinitionLoader';
 import { createChildLogger } from '$lib/logging';
 import { getNewznabCapabilitiesProvider } from '../newznab/NewznabCapabilitiesProvider';
+import type { IndexerRecord } from '$lib/server/db/schema';
 
 const log = createChildLogger({ module: 'IndexerFactory' });
 
@@ -61,7 +62,7 @@ export class IndexerFactory {
 	}
 
 	/**
-	 * Create a YAML indexer.
+	 * Create a YAML indexer using UnifiedIndexer.
 	 * For Newznab indexers, fetches live capabilities to filter unsupported params.
 	 */
 	private async createYamlIndexer(config: IndexerConfig): Promise<IIndexer> {
@@ -74,13 +75,48 @@ export class IndexerFactory {
 			throw new Error(`YAML definition not found: ${config.definitionId}`);
 		}
 
+		// Build IndexerRecord from IndexerConfig
+		// Filter out undefined values from settings (IndexerRecord doesn't allow undefined)
+		const cleanSettings = config.settings
+			? (Object.fromEntries(
+					Object.entries(config.settings).filter(([, v]) => v !== undefined)
+				) as Record<string, string | boolean | number>)
+			: null;
+
+		const record: IndexerRecord = {
+			id: config.id,
+			name: config.name,
+			definitionId: config.definitionId,
+			enabled: config.enabled,
+			baseUrl: config.baseUrl,
+			alternateUrls: config.alternateUrls ?? null,
+			priority: config.priority ?? 25,
+			enableAutomaticSearch: config.enableAutomaticSearch,
+			enableInteractiveSearch: config.enableInteractiveSearch,
+			settings: cleanSettings,
+			protocolSettings: null,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString()
+		};
+
+		// Build protocol settings from config
+		let protocolSettings = undefined;
+		if (definition.protocol === 'torrent') {
+			protocolSettings = {
+				minimumSeeders: config.minimumSeeders ?? 1,
+				seedRatio: config.seedRatio ?? null,
+				seedTime: config.seedTime ?? null,
+				packSeedTime: config.packSeedTime ?? null,
+				rejectDeadTorrents: config.rejectDeadTorrents ?? true
+			};
+		}
+
 		// For Newznab, fetch live capabilities from the indexer's /api?t=caps endpoint
-		// This allows us to filter out unsupported search params (e.g., tmdbid if not supported)
 		let liveCapabilities;
 		if (NEWZNAB_DEFINITIONS.includes(config.definitionId)) {
 			try {
 				const provider = getNewznabCapabilitiesProvider();
-				const apiKey = config.settings?.apikey as string | undefined;
+				const apiKey = cleanSettings?.apikey as string | undefined;
 				liveCapabilities = await provider.getCapabilities(config.baseUrl, apiKey);
 				log.info('Fetched Newznab capabilities', {
 					indexerId: config.id,
@@ -89,7 +125,6 @@ export class IndexerFactory {
 					tvSearch: liveCapabilities.searching.tvSearch.supportedParams
 				});
 			} catch (error) {
-				// Log but don't fail - indexer will work, just without param filtering
 				log.warn('Failed to fetch Newznab capabilities, using defaults', {
 					indexerId: config.id,
 					error: error instanceof Error ? error.message : String(error)
@@ -97,8 +132,11 @@ export class IndexerFactory {
 			}
 		}
 
-		return new YamlIndexer({
-			config,
+		// Create indexer using UnifiedIndexer (not deprecated YamlIndexer)
+		return new UnifiedIndexer({
+			record,
+			settings: cleanSettings ?? {},
+			protocolSettings,
 			definition,
 			rateLimit: definition.requestdelay
 				? { requests: 1, periodMs: definition.requestdelay * 1000 }

@@ -11,6 +11,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getEpgService } from '$lib/server/livetv/epg';
+import { liveTvEvents } from '$lib/server/livetv/LiveTvEvents';
 import { logger } from '$lib/logging';
 
 export const POST: RequestHandler = async ({ url }) => {
@@ -23,18 +24,38 @@ export const POST: RequestHandler = async ({ url }) => {
 
 			if (accountId) {
 				logger.info('[EPG] Starting background sync for account', { accountId });
-				await epgService.syncAccount(accountId);
-				logger.info('[EPG] Background sync complete for account', { accountId });
+				liveTvEvents.emitEpgSyncStarted(accountId);
+				try {
+					await epgService.syncAccount(accountId);
+					liveTvEvents.emitEpgSyncCompleted(accountId);
+					logger.info('[EPG] Background sync complete for account', { accountId });
+				} catch (err) {
+					liveTvEvents.emitEpgSyncFailed(
+						accountId,
+						err instanceof Error ? err.message : 'Unknown error'
+					);
+					throw err;
+				}
 			} else {
 				logger.info('[EPG] Starting background sync for all accounts');
-				const results = await epgService.syncAll();
-				const successful = results.filter((r) => r.success).length;
-				const totalAdded = results.reduce((sum, r) => sum + r.programsAdded, 0);
-				logger.info('[EPG] Background sync complete', {
-					accounts: results.length,
-					successful,
-					totalAdded
-				});
+				liveTvEvents.emitEpgSyncStarted();
+				try {
+					const results = await epgService.syncAll();
+					liveTvEvents.emitEpgSyncCompleted();
+					const successful = results.filter((r) => r.success).length;
+					const totalAdded = results.reduce((sum, r) => sum + r.programsAdded, 0);
+					logger.info('[EPG] Background sync complete', {
+						accounts: results.length,
+						successful,
+						totalAdded
+					});
+				} catch (err) {
+					liveTvEvents.emitEpgSyncFailed(
+						undefined,
+						err instanceof Error ? err.message : 'Unknown error'
+					);
+					throw err;
+				}
 			}
 		} catch (error) {
 			logger.error('[EPG] Background sync failed', {
@@ -45,6 +66,7 @@ export const POST: RequestHandler = async ({ url }) => {
 	});
 
 	return json({
+		success: true,
 		started: true,
 		message: accountId
 			? `EPG sync started for account ${accountId}`

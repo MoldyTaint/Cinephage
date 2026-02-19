@@ -16,6 +16,7 @@ import { monitoringSettings } from '$lib/server/db/schema.js';
 import { EventEmitter } from 'events';
 import { logger } from '$lib/logging';
 import { taskHistoryService } from '$lib/server/tasks/TaskHistoryService.js';
+import { taskSettingsService } from '$lib/server/tasks/TaskSettingsService.js';
 import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
 import { TaskCancelledException } from '$lib/server/tasks/TaskCancelledException.js';
 import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service.js';
@@ -176,16 +177,37 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 			'smartListRefresh'
 		];
 		for (const taskType of taskTypes) {
+			// First try to load from task_settings (new system)
+			const taskSettingsLastRun = await taskSettingsService.getLastRunTime(taskType);
+			if (taskSettingsLastRun) {
+				const date = new Date(taskSettingsLastRun);
+				if (!isNaN(date.getTime())) {
+					this.lastRunTimes.set(taskType, date);
+					logger.debug(
+						`[MonitoringScheduler] Loaded last run time for ${taskType} from task_settings`,
+						{
+							taskType,
+							lastRunTime: date.toISOString()
+						}
+					);
+					continue;
+				}
+			}
+
+			// Fall back to legacy monitoring_settings
 			const key = `last_run_${taskType}`;
 			const value = settingsMap.get(key);
 			if (value) {
 				const date = new Date(value);
 				if (!isNaN(date.getTime())) {
 					this.lastRunTimes.set(taskType, date);
-					logger.debug(`[MonitoringScheduler] Loaded last run time for ${taskType}`, {
-						taskType,
-						lastRunTime: date.toISOString()
-					});
+					logger.debug(
+						`[MonitoringScheduler] Loaded last run time for ${taskType} from monitoring_settings`,
+						{
+							taskType,
+							lastRunTime: date.toISOString()
+						}
+					);
 				}
 			}
 		}
@@ -197,10 +219,15 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 	private async saveLastRunTime(taskType: string, time: Date): Promise<void> {
 		const key = `last_run_${taskType}`;
 		try {
+			// Save to legacy monitoring_settings for backward compatibility
 			await db
 				.insert(monitoringSettings)
 				.values({ key, value: time.toISOString() })
 				.onConflictDoUpdate({ target: monitoringSettings.key, set: { value: time.toISOString() } });
+
+			// Also update task_settings for new system
+			await taskSettingsService.recordTaskRun(taskType);
+
 			logger.debug(`[MonitoringScheduler] Saved last run time for ${taskType}`, {
 				taskType,
 				key,
@@ -387,33 +414,50 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 
 		const settings = await this.getSettings();
 
-		// Store task intervals (validated)
-		this.taskIntervals.set(
-			'missing',
-			Math.max(settings.missingSearchIntervalHours, MIN_INTERVAL_HOURS)
-		);
-		this.taskIntervals.set(
-			'upgrade',
-			Math.max(settings.upgradeSearchIntervalHours, MIN_INTERVAL_HOURS)
-		);
-		this.taskIntervals.set(
-			'newEpisode',
-			Math.max(settings.newEpisodeCheckIntervalHours, MIN_INTERVAL_HOURS)
-		);
-		this.taskIntervals.set(
-			'cutoffUnmet',
-			Math.max(settings.cutoffUnmetSearchIntervalHours, MIN_INTERVAL_HOURS)
-		);
-		this.taskIntervals.set('pendingRelease', DEFAULT_INTERVALS.pendingRelease);
+		// Initialize default task settings if needed
+		await taskSettingsService.initializeDefaults();
+
+		// Store task intervals (validated) - check task_settings first, fall back to monitoring_settings
+		const missingInterval =
+			(await taskSettingsService.getTaskInterval('missing')) ?? settings.missingSearchIntervalHours;
+		const upgradeInterval =
+			(await taskSettingsService.getTaskInterval('upgrade')) ?? settings.upgradeSearchIntervalHours;
+		const newEpisodeInterval =
+			(await taskSettingsService.getTaskInterval('newEpisode')) ??
+			settings.newEpisodeCheckIntervalHours;
+		const cutoffUnmetInterval =
+			(await taskSettingsService.getTaskInterval('cutoffUnmet')) ??
+			settings.cutoffUnmetSearchIntervalHours;
+		const pendingReleaseInterval =
+			(await taskSettingsService.getTaskInterval('pendingRelease')) ??
+			DEFAULT_INTERVALS.pendingRelease;
+		const missingSubtitlesInterval =
+			(await taskSettingsService.getTaskInterval('missingSubtitles')) ??
+			settings.missingSubtitlesIntervalHours;
+		const subtitleUpgradeInterval =
+			(await taskSettingsService.getTaskInterval('subtitleUpgrade')) ??
+			settings.subtitleUpgradeIntervalHours;
+		const smartListRefreshInterval =
+			(await taskSettingsService.getTaskInterval('smartListRefresh')) ??
+			DEFAULT_INTERVALS.smartListRefresh;
+
+		this.taskIntervals.set('missing', Math.max(missingInterval, MIN_INTERVAL_HOURS));
+		this.taskIntervals.set('upgrade', Math.max(upgradeInterval, MIN_INTERVAL_HOURS));
+		this.taskIntervals.set('newEpisode', Math.max(newEpisodeInterval, MIN_INTERVAL_HOURS));
+		this.taskIntervals.set('cutoffUnmet', Math.max(cutoffUnmetInterval, MIN_INTERVAL_HOURS));
+		this.taskIntervals.set('pendingRelease', Math.max(pendingReleaseInterval, MIN_INTERVAL_HOURS));
 		this.taskIntervals.set(
 			'missingSubtitles',
-			Math.max(settings.missingSubtitlesIntervalHours, MIN_INTERVAL_HOURS)
+			Math.max(missingSubtitlesInterval, MIN_INTERVAL_HOURS)
 		);
 		this.taskIntervals.set(
 			'subtitleUpgrade',
-			Math.max(settings.subtitleUpgradeIntervalHours, MIN_INTERVAL_HOURS)
+			Math.max(subtitleUpgradeInterval, MIN_INTERVAL_HOURS)
 		);
-		this.taskIntervals.set('smartListRefresh', DEFAULT_INTERVALS.smartListRefresh);
+		this.taskIntervals.set(
+			'smartListRefresh',
+			Math.max(smartListRefreshInterval, MIN_INTERVAL_HOURS)
+		);
 
 		// Log scheduled intervals
 		for (const [taskType, intervalHours] of this.taskIntervals.entries()) {
@@ -466,11 +510,18 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 				continue;
 			}
 
+			// Check if task is enabled
+			const isEnabled = await taskSettingsService.isTaskEnabled(taskType);
+			if (!isEnabled) {
+				logger.debug(`[MonitoringScheduler] Task ${taskType} is disabled, skipping`);
+				continue;
+			}
+
 			const lastRunTime = this.lastRunTimes.get(taskType);
 			const intervalMs = intervalHours * 60 * 60 * 1000;
 
 			// Calculate if task is due
-			let isDue = false;
+			let isDue: boolean;
 			if (!lastRunTime) {
 				// Never run before - run it (but we're past grace period)
 				isDue = true;
@@ -824,7 +875,21 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 	async getStatus(): Promise<MonitoringStatus> {
 		const settings = await this.getSettings();
 
-		const getTaskStatus = (taskType: string, intervalHours: number): TaskStatus => {
+		// Get intervals from task_settings, fall back to monitoring_settings, then defaults
+		const getTaskInterval = async (taskType: string, defaultInterval: number): Promise<number> => {
+			const taskInterval = await taskSettingsService.getTaskInterval(taskType);
+			if (taskInterval !== null) {
+				return taskInterval;
+			}
+			// Fall back to in-memory interval
+			return this.taskIntervals.get(taskType) ?? defaultInterval;
+		};
+
+		const getTaskStatus = async (
+			taskType: string,
+			defaultInterval: number
+		): Promise<TaskStatus> => {
+			const intervalHours = await getTaskInterval(taskType, defaultInterval);
 			const lastRunTime = this.lastRunTimes.get(taskType) || null;
 			const nextRunTime = lastRunTime
 				? new Date(lastRunTime.getTime() + intervalHours * 60 * 60 * 1000)
@@ -840,14 +905,23 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 
 		return {
 			tasks: {
-				missing: getTaskStatus('missing', settings.missingSearchIntervalHours),
-				upgrade: getTaskStatus('upgrade', settings.upgradeSearchIntervalHours),
-				newEpisode: getTaskStatus('newEpisode', settings.newEpisodeCheckIntervalHours),
-				cutoffUnmet: getTaskStatus('cutoffUnmet', settings.cutoffUnmetSearchIntervalHours),
-				pendingRelease: getTaskStatus('pendingRelease', DEFAULT_INTERVALS.pendingRelease),
-				missingSubtitles: getTaskStatus('missingSubtitles', settings.missingSubtitlesIntervalHours),
-				subtitleUpgrade: getTaskStatus('subtitleUpgrade', settings.subtitleUpgradeIntervalHours),
-				smartListRefresh: getTaskStatus('smartListRefresh', DEFAULT_INTERVALS.smartListRefresh)
+				missing: await getTaskStatus('missing', settings.missingSearchIntervalHours),
+				upgrade: await getTaskStatus('upgrade', settings.upgradeSearchIntervalHours),
+				newEpisode: await getTaskStatus('newEpisode', settings.newEpisodeCheckIntervalHours),
+				cutoffUnmet: await getTaskStatus('cutoffUnmet', settings.cutoffUnmetSearchIntervalHours),
+				pendingRelease: await getTaskStatus('pendingRelease', DEFAULT_INTERVALS.pendingRelease),
+				missingSubtitles: await getTaskStatus(
+					'missingSubtitles',
+					settings.missingSubtitlesIntervalHours
+				),
+				subtitleUpgrade: await getTaskStatus(
+					'subtitleUpgrade',
+					settings.subtitleUpgradeIntervalHours
+				),
+				smartListRefresh: await getTaskStatus(
+					'smartListRefresh',
+					DEFAULT_INTERVALS.smartListRefresh
+				)
 			}
 		};
 	}

@@ -11,7 +11,7 @@ import type {
 	BookSearchCriteria
 } from '../types';
 import { generateEpisodeFormat } from '../search/SearchFormatProvider';
-import type { FilterBlock } from '../schema/yamlDefinition';
+import type { FilterBlock, SettingsField } from '../schema/yamlDefinition';
 import { createSafeRegex, safeReplace } from './safeRegex';
 import { logger } from '$lib/logging';
 
@@ -19,6 +19,12 @@ export type TemplateVariables = Map<string, unknown>;
 
 export class TemplateEngine {
 	private variables: TemplateVariables = new Map();
+	/** Cache for compiled template functions */
+	private templateCache: Map<string, { result: string; timestamp: number }> = new Map();
+	/** Maximum cache size to prevent unbounded memory growth */
+	private static readonly MAX_CACHE_SIZE = 1000;
+	/** Cache TTL in milliseconds (5 minutes) */
+	private static readonly CACHE_TTL_MS = 5 * 60 * 1000;
 
 	// Supported logic functions
 	private static readonly LOGIC_FUNCTIONS = [
@@ -86,6 +92,131 @@ export class TemplateEngine {
 				this.variables.set(varName, value ? '.True' : null);
 			} else {
 				this.variables.set(varName, value);
+			}
+		}
+	}
+
+	/**
+	 * Set user configuration settings with defaults from definition.
+	 * This merges user-provided settings with definition defaults, handling
+	 * type-specific conversions:
+	 * - select: Converts index to option key
+	 * - checkbox: Converts boolean to '.True' or null
+	 * - text/password: Direct value assignment
+	 *
+	 * This matches Prowlarr's GetBaseTemplateVariables() behavior.
+	 *
+	 * @param userSettings - User-provided settings (from database)
+	 * @param definitionSettings - Settings fields from YAML definition
+	 */
+	setConfigWithDefaults(
+		userSettings: Record<string, unknown>,
+		definitionSettings: SettingsField[]
+	): void {
+		for (const setting of definitionSettings) {
+			const varName = `.Config.${setting.name}`;
+
+			// Get default value based on type
+			let defaultValue: unknown = setting.default;
+
+			// For select type, default is the index (position) of the default option key
+			if (setting.type === 'select' && setting.options) {
+				const sortedKeys = Object.keys(setting.options).sort();
+				if (typeof setting.default === 'string') {
+					// Default is a key - find its index
+					const defaultIndex = sortedKeys.indexOf(setting.default);
+					defaultValue = defaultIndex >= 0 ? defaultIndex : 0;
+				} else if (typeof setting.default === 'number') {
+					// Default is already an index
+					defaultValue = setting.default;
+				} else {
+					defaultValue = 0;
+				}
+			}
+
+			// Get user value, falling back to default
+			const value = userSettings[setting.name] ?? defaultValue;
+
+			// Type-specific conversion
+			switch (setting.type) {
+				case 'checkbox': {
+					// Convert to boolean if string
+					let boolValue = value;
+					if (typeof value === 'string') {
+						boolValue = value.toLowerCase() === 'true' || value === '1';
+					}
+					this.variables.set(varName, boolValue ? '.True' : null);
+					break;
+				}
+
+				case 'select': {
+					if (!setting.options) {
+						this.variables.set(varName, value);
+						break;
+					}
+
+					// Sort options by key (Prowlarr behavior)
+					const sortedKeys = Object.keys(setting.options).sort();
+
+					// Value should be an index (number) - get the corresponding key
+					let index = 0;
+					if (typeof value === 'number') {
+						index = value;
+					} else if (typeof value === 'string') {
+						// Try parsing as number first (index)
+						const parsed = parseInt(value, 10);
+						if (!isNaN(parsed)) {
+							index = parsed;
+						} else {
+							// Maybe it's already a key? Find its index
+							const keyIndex = sortedKeys.indexOf(value);
+							if (keyIndex >= 0) {
+								index = keyIndex;
+							}
+						}
+					}
+
+					// Clamp to valid range
+					index = Math.max(0, Math.min(index, sortedKeys.length - 1));
+					const selectedKey = sortedKeys[index] ?? sortedKeys[0] ?? '';
+
+					this.variables.set(varName, selectedKey);
+					break;
+				}
+
+				case 'text':
+				case 'password':
+					// Direct value assignment
+					this.variables.set(varName, value);
+					break;
+
+				case 'info':
+				case 'info_cookie':
+				case 'info_cloudflare':
+				case 'info_flaresolverr':
+				case 'info_useragent':
+				case 'info_category_8000':
+				case 'cardigannCaptcha':
+					// No-op for info types
+					break;
+
+				default:
+					// Unknown type - store directly
+					this.variables.set(varName, value);
+					break;
+			}
+		}
+
+		// Also set any user settings that weren't in the definition
+		// (backwards compatibility with old setConfig behavior)
+		for (const [key, value] of Object.entries(userSettings)) {
+			const varName = `.Config.${key}`;
+			if (!this.variables.has(varName)) {
+				if (typeof value === 'boolean') {
+					this.variables.set(varName, value ? '.True' : null);
+				} else {
+					this.variables.set(varName, value);
+				}
 			}
 		}
 	}
@@ -589,24 +720,26 @@ export class TemplateEngine {
 
 			switch (functionName) {
 				case 'and': {
-					// Returns first null/empty, else last variable
+					// Returns first null/empty, else last value
 					for (const param of params) {
-						functionResult = param;
 						const value = this.resolveParamValue(param);
 						if (!value || (typeof value === 'string' && value.trim() === '')) {
+							functionResult = String(value ?? '');
 							break;
 						}
+						functionResult = String(value);
 					}
 					break;
 				}
 				case 'or': {
-					// Returns first not null/empty, else last variable
+					// Returns first not null/empty, else last value
 					for (const param of params) {
-						functionResult = param;
 						const value = this.resolveParamValue(param);
 						if (value && (typeof value !== 'string' || value.trim() !== '')) {
+							functionResult = String(value);
 							break;
 						}
+						functionResult = String(value ?? '');
 					}
 					break;
 				}

@@ -47,7 +47,7 @@ async function fetchWithRetry(
 
 			// Don't retry on abort (timeout)
 			if (lastError.name === 'AbortError') {
-				throw new Error(`Segment fetch timeout`);
+				throw new Error(`Segment fetch timeout`, { cause: error });
 			}
 
 			if (attempt < maxRetries) {
@@ -60,15 +60,44 @@ async function fetchWithRetry(
 }
 
 /**
- * Get headers for upstream requests
+ * Get headers for upstream requests, merging provider-specific headers if available
+ * Provider headers take priority over defaults (e.g., cookies for Stalker portals)
  */
-function getStreamHeaders(): HeadersInit {
+function getStreamHeaders(providerHeaders?: Record<string, string>): HeadersInit {
 	return {
 		'User-Agent': LIVETV_PROXY_USER_AGENT,
 		Accept: '*/*',
 		'Accept-Encoding': 'identity',
-		Connection: 'keep-alive'
+		Connection: 'keep-alive',
+		...providerHeaders
 	};
+}
+
+/**
+ * Decode provider headers from base64-encoded query parameter.
+ * Returns undefined if not present or invalid.
+ */
+function decodeProviderHeaders(encoded: string | null): Record<string, string> | undefined {
+	if (!encoded) return undefined;
+	try {
+		const json = atob(encoded);
+		const headers = JSON.parse(json);
+		if (typeof headers === 'object' && headers !== null && !Array.isArray(headers)) {
+			return headers as Record<string, string>;
+		}
+	} catch {
+		// Invalid base64 or JSON - ignore silently
+	}
+	return undefined;
+}
+
+/**
+ * Encode provider headers as a base64 string for embedding in URLs.
+ * Returns undefined if no headers to encode.
+ */
+function encodeProviderHeaders(headers?: Record<string, string>): string | undefined {
+	if (!headers || Object.keys(headers).length === 0) return undefined;
+	return btoa(JSON.stringify(headers));
 }
 
 /**
@@ -78,7 +107,8 @@ function rewriteHlsPlaylist(
 	playlist: string,
 	originalUrl: string,
 	baseUrl: string,
-	lineupId: string
+	lineupId: string,
+	encodedHeaders?: string
 ): string {
 	const lines = playlist.split('\n');
 	const result: string[] = [];
@@ -91,17 +121,19 @@ function rewriteHlsPlaylist(
 	for (const line of lines) {
 		const trimmed = line.trim();
 
-		// Handle URI= attributes in tags
+		// Handle URI= attributes in tags (EXT-X-MEDIA, EXT-X-KEY, EXT-X-MAP, EXT-X-STREAM-INF, etc.)
 		if (
 			trimmed.startsWith('#EXT-X-MEDIA:') ||
 			trimmed.startsWith('#EXT-X-KEY:') ||
-			trimmed.startsWith('#EXT-X-I-FRAME-STREAM-INF:')
+			trimmed.startsWith('#EXT-X-I-FRAME-STREAM-INF:') ||
+			trimmed.startsWith('#EXT-X-MAP:') ||
+			trimmed.startsWith('#EXT-X-STREAM-INF:')
 		) {
 			const uriMatch = line.match(/URI="([^"]+)"/);
 			if (uriMatch) {
 				const originalUri = uriMatch[1];
 				const absoluteUri = resolveUrl(originalUri, base, basePath);
-				const proxyUri = makeSegmentProxyUrl(absoluteUri, baseUrl, lineupId, false);
+				const proxyUri = makeSegmentProxyUrl(absoluteUri, baseUrl, lineupId, false, encodedHeaders);
 				result.push(line.replace(`URI="${originalUri}"`, `URI="${proxyUri}"`));
 				continue;
 			}
@@ -129,7 +161,13 @@ function rewriteHlsPlaylist(
 				trimmed.includes('.ts') ||
 				trimmed.includes('.aac') ||
 				trimmed.includes('.mp4');
-			const proxyUrl = makeSegmentProxyUrl(absoluteUrl, baseUrl, lineupId, isSegment);
+			const proxyUrl = makeSegmentProxyUrl(
+				absoluteUrl,
+				baseUrl,
+				lineupId,
+				isSegment,
+				encodedHeaders
+			);
 			result.push(proxyUrl);
 		} else {
 			result.push(line);
@@ -142,6 +180,7 @@ function rewriteHlsPlaylist(
 
 /**
  * Resolve a potentially relative URL to absolute
+ * Preserves query parameters from the base URL for authentication tokens
  */
 function resolveUrl(url: string, base: URL, basePath: string): string {
 	if (url.startsWith('http://') || url.startsWith('https://')) {
@@ -153,7 +192,9 @@ function resolveUrl(url: string, base: URL, basePath: string): string {
 	if (url.startsWith('/')) {
 		return `${base.origin}${url}`;
 	}
-	return `${base.origin}${basePath}${url}`;
+	// Preserve query parameters from base URL (e.g., auth tokens)
+	const queryString = base.search || '';
+	return `${base.origin}${basePath}${url}${queryString}`;
 }
 
 /**
@@ -163,10 +204,15 @@ function makeSegmentProxyUrl(
 	originalUrl: string,
 	baseUrl: string,
 	lineupId: string,
-	isSegment: boolean
+	isSegment: boolean,
+	encodedHeaders?: string
 ): string {
 	const extension = isSegment ? 'ts' : 'm3u8';
-	return `${baseUrl}/api/livetv/stream/${lineupId}/segment.${extension}?url=${encodeURIComponent(originalUrl)}`;
+	let proxyUrl = `${baseUrl}/api/livetv/stream/${lineupId}/segment.${extension}?url=${encodeURIComponent(originalUrl)}`;
+	if (encodedHeaders) {
+		proxyUrl += `&h=${encodeURIComponent(encodedHeaders)}`;
+	}
+	return proxyUrl;
 }
 
 export const GET: RequestHandler = async ({ params, url, request }) => {
@@ -181,7 +227,13 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 		});
 	}
 
-	const decodedUrl = decodeURIComponent(segmentUrl);
+	// Note: url.searchParams.get() already returns decoded value
+	// Do NOT call decodeURIComponent again - it would double-decode and corrupt URLs
+	const decodedUrl = segmentUrl;
+
+	// Decode provider-specific headers from query param (forwarded from main proxy)
+	const encodedHeaders = url.searchParams.get('h');
+	const providerHeaders = decodeProviderHeaders(encodedHeaders);
 
 	// SSRF protection
 	const safetyCheck = isUrlSafe(decodedUrl);
@@ -198,7 +250,7 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 
 	try {
 		const response = await fetchWithRetry(decodedUrl, {
-			headers: getStreamHeaders(),
+			headers: getStreamHeaders(providerHeaders),
 			redirect: 'follow'
 		});
 
@@ -240,7 +292,14 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 
 			if (playlist.includes('#EXTM3U')) {
 				const baseUrl = await getBaseUrlAsync(request);
-				const rewritten = rewriteHlsPlaylist(playlist, decodedUrl, baseUrl, lineupId);
+				// Pass through provider headers so nested sub-playlists/segments also get them
+				const rewritten = rewriteHlsPlaylist(
+					playlist,
+					decodedUrl,
+					baseUrl,
+					lineupId,
+					encodedHeaders ?? encodeProviderHeaders(providerHeaders)
+				);
 
 				return new Response(rewritten, {
 					status: 200,

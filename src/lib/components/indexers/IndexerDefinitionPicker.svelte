@@ -27,7 +27,9 @@
 		const filtered = filteredDefinitions();
 		return {
 			public: filtered.filter((d) => d.type === 'public' && d.protocol !== 'streaming'),
-			private: filtered.filter((d) => d.type === 'private' || d.type === 'semi-private'),
+			private: filtered.filter(
+				(d) => (d.type === 'private' || d.type === 'semi-private') && d.protocol !== 'streaming'
+			),
 			streaming: filtered.filter((d) => d.protocol === 'streaming')
 		};
 	});
@@ -48,7 +50,7 @@
 	</div>
 
 	<!-- Definition List -->
-	<div class="max-h-[400px] overflow-y-auto rounded-lg border border-base-300">
+	<div class="max-h-100 overflow-y-auto rounded-lg border border-base-300">
 		{#if groupedDefinitions().public.length > 0}
 			<div class="sticky top-0 z-10 border-b border-base-300 bg-base-200 px-4 py-2">
 				<span class="flex items-center gap-2 text-sm font-medium text-base-content/70">
@@ -69,6 +71,9 @@
 						<div class="flex items-center gap-2">
 							<span class="font-semibold">{def.name}</span>
 							<span class="badge badge-ghost badge-xs">{def.protocol}</span>
+							{#if def.isCustom}
+								<span class="badge badge-ghost badge-xs">custom</span>
+							{/if}
 						</div>
 						{#if def.description}
 							<p class="mt-0.5 truncate text-sm text-base-content/60">{def.description}</p>
@@ -101,6 +106,9 @@
 						<div class="flex items-center gap-2">
 							<span class="font-semibold">{def.name}</span>
 							<span class="badge badge-ghost badge-xs">{def.protocol}</span>
+							{#if def.isCustom}
+								<span class="badge badge-ghost badge-xs">custom</span>
+							{/if}
 						</div>
 						{#if def.description}
 							<p class="mt-0.5 truncate text-sm text-base-content/60">{def.description}</p>
@@ -136,6 +144,9 @@
 						<div class="flex items-center gap-2">
 							<span class="font-semibold">{def.name}</span>
 							<span class="badge badge-ghost badge-xs">streaming</span>
+							{#if def.isCustom}
+								<span class="badge badge-ghost badge-xs">custom</span>
+							{/if}
 						</div>
 						{#if def.description}
 							<p class="mt-0.5 truncate text-sm text-base-content/60">{def.description}</p>

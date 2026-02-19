@@ -147,15 +147,18 @@ export class SearchOrchestrator {
 		const startTime = Date.now();
 		const opts = { ...DEFAULT_OPTIONS, ...options };
 		const indexerResults: IndexerSearchResult[] = [];
+		const criteriaWithSource = opts.searchSource
+			? { ...criteria, searchSource: opts.searchSource }
+			: criteria;
 
 		logger.debug('Starting search orchestration', {
-			criteria: criteriaToString(criteria),
+			criteria: criteriaToString(criteriaWithSource),
 			indexerCount: indexers.length,
 			options: opts
 		});
 
 		// Enrich criteria with missing IDs (e.g., look up IMDB ID from TMDB ID)
-		const enrichedCriteria = await this.enrichCriteriaWithIds(criteria);
+		const enrichedCriteria = await this.enrichCriteriaWithIds(criteriaWithSource);
 
 		// Check cache first (use enriched criteria for cache key)
 		if (opts.useCache) {
@@ -223,8 +226,8 @@ export class SearchOrchestrator {
 		// Rank
 		const ranked = this.ranker.rank(filtered);
 
-		// Apply limit
-		const limited = ranked.slice(0, criteria.limit ?? 100);
+		// Apply limit (only if explicitly specified)
+		const limited = criteria.limit ? ranked.slice(0, criteria.limit) : ranked;
 
 		// Cache results (use enriched criteria for cache key consistency)
 		if (opts.useCache && limited.length > 0) {
@@ -261,15 +264,18 @@ export class SearchOrchestrator {
 		const startTime = Date.now();
 		const opts = { ...DEFAULT_OPTIONS, ...options };
 		const indexerResults: IndexerSearchResult[] = [];
+		const criteriaWithSource = opts.searchSource
+			? { ...criteria, searchSource: opts.searchSource }
+			: criteria;
 
 		logger.debug('Starting enhanced search orchestration', {
-			criteria: criteriaToString(criteria),
+			criteria: criteriaToString(criteriaWithSource),
 			indexerCount: indexers.length,
 			enrichment: opts.enrichment
 		});
 
 		// Enrich criteria with missing IDs (e.g., look up IMDB ID from TMDB ID)
-		const enrichedCriteria = await this.enrichCriteriaWithIds(criteria);
+		const enrichedCriteria = await this.enrichCriteriaWithIds(criteriaWithSource);
 
 		// Filter indexers
 		const { eligible: eligibleIndexers, rejected: rejectedIndexers } = this.filterIndexers(
@@ -402,7 +408,9 @@ export class SearchOrchestrator {
 		});
 
 		// Apply limit (releases are already sorted by totalScore from enricher)
-		const limited = smartDeduped.slice(0, enrichedCriteria.limit ?? 100);
+		const limited = enrichedCriteria.limit
+			? smartDeduped.slice(0, enrichedCriteria.limit)
+			: smartDeduped;
 
 		// Assign releaseWeight (position in final sorted results, 1 = best)
 		const withWeights = limited.map((release, index) => ({
@@ -519,7 +527,7 @@ export class SearchOrchestrator {
 						indexerId: indexer.id,
 						indexerName: indexer.name,
 						reason: 'backoff',
-						message: 'Indexer is in backoff due to recent failures'
+						message: 'Indexer auto-disabled due to repeated failures'
 					});
 					logger.debug(`Indexer ${indexer.name} rejected: in backoff period`, {
 						indexerId: indexer.id
@@ -686,7 +694,7 @@ export class SearchOrchestrator {
 			// Record success for both indexer and host rate limits
 			limiter.recordRequest();
 			this.hostRateLimiter.recordRequest(indexer.baseUrl);
-			this.statusTracker.recordSuccess(indexer.id, Date.now() - startTime);
+			await this.statusTracker.recordSuccess(indexer.id, Date.now() - startTime);
 
 			// Attach indexer priority to each release for Radarr-style deduplication
 			// Lower priority number = higher preference (1 is highest priority)
@@ -715,7 +723,10 @@ export class SearchOrchestrator {
 				});
 
 				// Record failure with Cloudflare-specific message
-				this.statusTracker.recordFailure(indexer.id, `Cloudflare protection on ${error.host}`);
+				await this.statusTracker.recordFailure(
+					indexer.id,
+					`Cloudflare protection on ${error.host}`
+				);
 
 				return {
 					indexerId: indexer.id,
@@ -732,7 +743,7 @@ export class SearchOrchestrator {
 			});
 
 			// Record failure
-			this.statusTracker.recordFailure(indexer.id, message);
+			await this.statusTracker.recordFailure(indexer.id, message);
 
 			return {
 				indexerId: indexer.id,
@@ -819,23 +830,29 @@ export class SearchOrchestrator {
 			episodeFormats = getEpisodeFormats(criteria, formatTypes);
 		}
 
+		let attemptedVariants = 0;
+		let successfulVariants = 0;
+		const variantErrors: string[] = [];
+
 		// Search with each title variant (limit to 3 titles to avoid excessive queries)
 		for (const title of titlesToSearch.slice(0, 3)) {
-			try {
-				if (episodeFormats.length > 0) {
-					// TV search: try each episode format
-					// Pass CLEAN query (just title) with preferredEpisodeFormat set
-					// TemplateEngine uses preferredEpisodeFormat to add the correct token
-					for (const format of episodeFormats) {
-						const textCriteria = createTextOnlyCriteria({
-							...criteria,
-							// Clean query: just the title, no episode token embedded
-							query: title,
-							// Tell TemplateEngine which format to use for this request
-							preferredEpisodeFormat: format.type
-						});
+			if (episodeFormats.length > 0) {
+				// TV search: try each episode format
+				// Pass CLEAN query (just title) with preferredEpisodeFormat set
+				// TemplateEngine uses preferredEpisodeFormat to add the correct token
+				for (const format of episodeFormats) {
+					const textCriteria = createTextOnlyCriteria({
+						...criteria,
+						// Clean query: just the title, no episode token embedded
+						query: title,
+						// Tell TemplateEngine which format to use for this request
+						preferredEpisodeFormat: format.type
+					});
 
+					attemptedVariants++;
+					try {
 						const releases = await indexer.search(textCriteria);
+						successfulVariants++;
 
 						// Add unique releases (dedupe by guid)
 						for (const release of releases) {
@@ -844,14 +861,28 @@ export class SearchOrchestrator {
 								allReleases.push(release);
 							}
 						}
+					} catch (error) {
+						const message = error instanceof Error ? error.message : String(error);
+						variantErrors.push(message);
+						logger.debug('Multi-title search variant failed', {
+							indexer: indexer.name,
+							title,
+							format: format.type,
+							error: message
+						});
 					}
-				} else {
-					// Movie/other search: just use title
-					const textCriteria = createTextOnlyCriteria({
-						...criteria,
-						query: title
-					});
+				}
+			} else {
+				// Movie/other search: just use title
+				const textCriteria = createTextOnlyCriteria({
+					...criteria,
+					query: title
+				});
+
+				attemptedVariants++;
+				try {
 					const releases = await indexer.search(textCriteria);
+					successfulVariants++;
 
 					// Add unique releases
 					for (const release of releases) {
@@ -860,14 +891,22 @@ export class SearchOrchestrator {
 							allReleases.push(release);
 						}
 					}
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					variantErrors.push(message);
+					logger.debug('Multi-title search variant failed', {
+						indexer: indexer.name,
+						title,
+						error: message
+					});
 				}
-			} catch (error) {
-				logger.debug('Multi-title search variant failed', {
-					indexer: indexer.name,
-					title,
-					error: error instanceof Error ? error.message : String(error)
-				});
 			}
+		}
+
+		// If every variant failed, surface failure so status tracking records it.
+		if (attemptedVariants > 0 && successfulVariants === 0 && variantErrors.length > 0) {
+			const uniqueErrors = [...new Set(variantErrors.filter(Boolean))];
+			throw new Error(uniqueErrors.slice(0, 2).join('; ') || 'All text search attempts failed');
 		}
 
 		if (allReleases.length > 0) {

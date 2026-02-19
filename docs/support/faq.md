@@ -49,11 +49,21 @@ Yes. A free API key is required. Get one at [themoviedb.org/settings/api](https:
 
 ## Configuration
 
-### How do I change the port?
+### How do I change the port Cinephage listens on?
 
-Edit `.env`:
+**If using Docker Compose with `env_file`:** Edit `.env` and set `PORT=8080`
 
+**If using Docker Compose with environment variables in the compose file:** Change the value directly in `docker-compose.yaml`:
+
+```yaml
+environment:
+  - PORT=8080
 ```
+
+**If running without Docker (manual npm/node install):** Set `PORT` in `.env`:
+
+```bash
+# In .env file
 PORT=8080
 ```
 
@@ -81,6 +91,10 @@ Not recommended. SQLite doesn't handle multiple writers well.
 | Logs            | `logs/` (Docker: `/config/logs/`)                                           |
 | Custom indexers | `data/indexers/definitions/` (Docker: `/config/data/indexers/definitions/`) |
 
+### Why can't I configure size limits for the Streamer profile?
+
+The Streamer profile plays media from external streaming sources rather than local files. Stream quality and file size can vary by provider, region, or time of request, so hard size limits don't make sense and can cause false rejections. For that reason, Streamer size limits are locked and shown as `Auto`.
+
 ---
 
 ## Library
@@ -91,6 +105,27 @@ Not recommended. SQLite doesn't handle multiple writers well.
 2. Check file extensions are supported (.mkv, .mp4, .avi)
 3. Trigger manual scan in Settings
 4. Check logs for errors
+
+### Why aren't downloads being imported?
+
+**Most common issue:** Download directory not mounted to Cinephage container.
+
+**Solution:**
+
+1. Ensure `/downloads` (or your download path) is mounted in `docker-compose.yaml`:
+   ```yaml
+   volumes:
+     - /path/to/downloads:/downloads
+   ```
+2. Verify the path matches your download client's output directory
+3. Check both containers can access the same files:
+   ```bash
+   docker exec cinephage ls /downloads
+   docker exec qbittorrent ls /downloads
+   ```
+4. Configure path mapping if container paths differ (Settings > Download Clients)
+
+See [Download Clients Configuration](../configuration/download-clients.md#docker-volume-requirements) for detailed setup.
 
 ### How does file matching work?
 

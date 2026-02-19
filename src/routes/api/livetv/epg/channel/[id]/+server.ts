@@ -11,6 +11,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getEpgService } from '$lib/server/livetv/epg';
+import { logger } from '$lib/logging';
+import { ValidationError } from '$lib/errors';
 
 const DEFAULT_HOURS = 6;
 
@@ -19,7 +21,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
 		const channelId = params.id;
 
 		if (!channelId) {
-			return json({ error: 'Channel ID is required' }, { status: 400 });
+			throw new ValidationError('Channel ID is required');
 		}
 
 		const epgService = getEpgService();
@@ -37,17 +39,18 @@ export const GET: RequestHandler = async ({ params, url }) => {
 
 		// Validate dates
 		if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-			return json({ error: 'Invalid date format' }, { status: 400 });
+			throw new ValidationError('Invalid date format');
 		}
 
 		if (start >= end) {
-			return json({ error: 'Start must be before end' }, { status: 400 });
+			throw new ValidationError('Start must be before end');
 		}
 
 		// Get programs for channel
 		const programs = epgService.getChannelPrograms(channelId, start, end);
 
 		return json({
+			success: true,
 			channelId,
 			programs,
 			timeRange: {
@@ -56,7 +59,24 @@ export const GET: RequestHandler = async ({ params, url }) => {
 			}
 		});
 	} catch (error) {
-		console.error('[API] Failed to get EPG for channel:', error);
-		return json({ error: 'Failed to get EPG data' }, { status: 500 });
+		// Validation errors
+		if (error instanceof ValidationError) {
+			return json(
+				{
+					success: false,
+					error: error.message,
+					code: error.code
+				},
+				{ status: error.statusCode }
+			);
+		}
+		logger.error('[API] Failed to get EPG for channel', error instanceof Error ? error : undefined);
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to get EPG data'
+			},
+			{ status: 500 }
+		);
 	}
 };

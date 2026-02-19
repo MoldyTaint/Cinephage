@@ -22,6 +22,7 @@ import { logger } from '$lib/logging/index.js';
 import { normalizeLanguageCode } from '$lib/shared/languages';
 import type { TaskResult } from '../MonitoringScheduler.js';
 import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
+import { isMovieMonitored } from '$lib/server/monitoring/specifications/MonitoredSpecification.js';
 
 /**
  * Maximum subtitles to process per run to prevent overwhelming providers
@@ -152,7 +153,8 @@ async function searchMovieSubtitleUpgrades(
 			and(
 				isNotNull(subtitles.movieId),
 				isNotNull(subtitles.matchScore),
-				isNotNull(movies.languageProfileId)
+				isNotNull(movies.languageProfileId),
+				eq(movies.monitored, true)
 			)
 		)
 		.limit(MAX_SUBTITLES_PER_RUN);
@@ -187,6 +189,9 @@ async function searchMovieSubtitleUpgrades(
 		await Promise.all(
 			batch.map(async ({ movie, subtitles: movieSubs }) => {
 				if (!movie.languageProfileId) return;
+
+				const isMonitored = await isMovieMonitored({ movie });
+				if (!isMonitored) return;
 
 				let movieUpgraded = 0;
 				let movieError: string | undefined;
@@ -352,9 +357,9 @@ async function searchEpisodeSubtitleUpgrades(
 	const seriesData = await db
 		.select()
 		.from(series)
-		.where(and(isNotNull(series.languageProfileId)));
+		.where(and(isNotNull(series.languageProfileId), eq(series.monitored, true)));
 
-	const seriesProfileMap = new Map(seriesData.map((s) => [s.id, s.languageProfileId]));
+	const seriesMap = new Map(seriesData.map((s) => [s.id, s]));
 
 	// Process episodes
 	const episodeEntries = Array.from(episodeMap.values());
@@ -366,8 +371,8 @@ async function searchEpisodeSubtitleUpgrades(
 
 		await Promise.all(
 			batch.map(async ({ episode, subtitles: episodeSubs }) => {
-				const profileId = seriesProfileMap.get(episode.seriesId);
-				if (!profileId) return;
+				const seriesRow = seriesMap.get(episode.seriesId);
+				if (!seriesRow?.languageProfileId) return;
 
 				let episodeUpgraded = 0;
 				let episodeError: string | undefined;
@@ -375,8 +380,10 @@ async function searchEpisodeSubtitleUpgrades(
 				let newScore: number | undefined;
 
 				try {
+					if (!episode.monitored) return;
+
 					// Get profile and check if upgrades are allowed
-					const profile = await profileService.getProfile(profileId);
+					const profile = await profileService.getProfile(seriesRow.languageProfileId);
 					if (!profile || !profile.upgradesAllowed) {
 						return;
 					}

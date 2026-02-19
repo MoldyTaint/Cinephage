@@ -1,16 +1,15 @@
 /**
  * Live TV Stream Proxy
  *
- * Proxies Live TV streams from Stalker Portal sources.
+ * Proxies Live TV streams from all provider sources (Stalker, XStream, M3U).
  * Handles stream URL resolution, HLS manifest rewriting, and direct stream passthrough.
  *
  * GET /api/livetv/stream/:lineupId
  */
 
 import type { RequestHandler } from './$types';
-import { getStalkerStreamService } from '$lib/server/livetv/streaming';
+import { getLiveTvStreamService } from '$lib/server/livetv/streaming/LiveTvStreamService';
 import { getBaseUrlAsync } from '$lib/server/streaming/url';
-import { isUrlSafe } from '$lib/server/http/ssrf-protection';
 import { logger } from '$lib/logging';
 
 /**
@@ -47,7 +46,8 @@ function rewriteHlsPlaylist(
 	playlist: string,
 	originalUrl: string,
 	baseUrl: string,
-	lineupId: string
+	lineupId: string,
+	providerHeaders?: Record<string, string>
 ): string {
 	const lines = playlist.split('\n');
 	const result: string[] = [];
@@ -55,22 +55,27 @@ function rewriteHlsPlaylist(
 	const base = new URL(originalUrl);
 	const basePath = base.pathname.substring(0, base.pathname.lastIndexOf('/') + 1);
 
+	// Encode provider headers once for all segment URLs
+	const encodedHeaders = encodeProviderHeaders(providerHeaders);
+
 	let previousWasExtinf = false;
 
 	for (const line of lines) {
 		const trimmed = line.trim();
 
-		// Handle URI= attributes in tags (EXT-X-MEDIA, EXT-X-KEY, etc.)
+		// Handle URI= attributes in tags (EXT-X-MEDIA, EXT-X-KEY, EXT-X-MAP, EXT-X-STREAM-INF, etc.)
 		if (
 			trimmed.startsWith('#EXT-X-MEDIA:') ||
 			trimmed.startsWith('#EXT-X-KEY:') ||
-			trimmed.startsWith('#EXT-X-I-FRAME-STREAM-INF:')
+			trimmed.startsWith('#EXT-X-I-FRAME-STREAM-INF:') ||
+			trimmed.startsWith('#EXT-X-MAP:') ||
+			trimmed.startsWith('#EXT-X-STREAM-INF:')
 		) {
 			const uriMatch = line.match(/URI="([^"]+)"/);
 			if (uriMatch) {
 				const originalUri = uriMatch[1];
 				const absoluteUri = resolveUrl(originalUri, base, basePath);
-				const proxyUri = makeSegmentProxyUrl(absoluteUri, baseUrl, lineupId, false);
+				const proxyUri = makeSegmentProxyUrl(absoluteUri, baseUrl, lineupId, false, encodedHeaders);
 				result.push(line.replace(`URI="${originalUri}"`, `URI="${proxyUri}"`));
 				continue;
 			}
@@ -98,7 +103,13 @@ function rewriteHlsPlaylist(
 				trimmed.includes('.ts') ||
 				trimmed.includes('.aac') ||
 				trimmed.includes('.mp4');
-			const proxyUrl = makeSegmentProxyUrl(absoluteUrl, baseUrl, lineupId, isSegment);
+			const proxyUrl = makeSegmentProxyUrl(
+				absoluteUrl,
+				baseUrl,
+				lineupId,
+				isSegment,
+				encodedHeaders
+			);
 			result.push(proxyUrl);
 		} else {
 			result.push(line);
@@ -111,6 +122,7 @@ function rewriteHlsPlaylist(
 
 /**
  * Resolve a potentially relative URL to absolute
+ * Preserves query parameters from the base URL for authentication tokens
  */
 function resolveUrl(url: string, base: URL, basePath: string): string {
 	if (url.startsWith('http://') || url.startsWith('https://')) {
@@ -122,7 +134,18 @@ function resolveUrl(url: string, base: URL, basePath: string): string {
 	if (url.startsWith('/')) {
 		return `${base.origin}${url}`;
 	}
-	return `${base.origin}${basePath}${url}`;
+	// Preserve query parameters from base URL (e.g., auth tokens)
+	const queryString = base.search || '';
+	return `${base.origin}${basePath}${url}${queryString}`;
+}
+
+/**
+ * Encode provider headers as a base64 string for embedding in URLs.
+ * Returns undefined if no headers to encode.
+ */
+function encodeProviderHeaders(headers?: Record<string, string>): string | undefined {
+	if (!headers || Object.keys(headers).length === 0) return undefined;
+	return btoa(JSON.stringify(headers));
 }
 
 /**
@@ -132,10 +155,15 @@ function makeSegmentProxyUrl(
 	originalUrl: string,
 	baseUrl: string,
 	lineupId: string,
-	isSegment: boolean
+	isSegment: boolean,
+	encodedHeaders?: string
 ): string {
 	const extension = isSegment ? 'ts' : 'm3u8';
-	return `${baseUrl}/api/livetv/stream/${lineupId}/segment.${extension}?url=${encodeURIComponent(originalUrl)}`;
+	let proxyUrl = `${baseUrl}/api/livetv/stream/${lineupId}/segment.${extension}?url=${encodeURIComponent(originalUrl)}`;
+	if (encodedHeaders) {
+		proxyUrl += `&h=${encodeURIComponent(encodedHeaders)}`;
+	}
+	return proxyUrl;
 }
 
 export const GET: RequestHandler = async ({ params, request }) => {
@@ -150,7 +178,7 @@ export const GET: RequestHandler = async ({ params, request }) => {
 
 	try {
 		const baseUrl = await getBaseUrlAsync(request);
-		const streamService = getStalkerStreamService();
+		const streamService = getLiveTvStreamService();
 
 		// Fetch stream directly - gets fresh token and immediately fetches
 		// This eliminates delay between token generation and fetch
@@ -160,17 +188,9 @@ export const GET: RequestHandler = async ({ params, request }) => {
 		logger.debug('[LiveTV Stream] Stream fetched', {
 			lineupId,
 			type: stream.type,
+			providerType: stream.providerType,
 			accountId: stream.accountId
 		});
-
-		// SSRF protection check (for logging only - already fetched)
-		const safetyCheck = isUrlSafe(stream.url);
-		if (!safetyCheck.safe) {
-			logger.warn('[LiveTV Stream] Stream URL was not safe', {
-				lineupId,
-				reason: safetyCheck.reason
-			});
-		}
 
 		const contentType = response.headers.get('content-type') || '';
 
@@ -192,7 +212,13 @@ export const GET: RequestHandler = async ({ params, request }) => {
 				});
 			}
 
-			const rewritten = rewriteHlsPlaylist(playlist, stream.url, baseUrl, lineupId);
+			const rewritten = rewriteHlsPlaylist(
+				playlist,
+				stream.url,
+				baseUrl,
+				lineupId,
+				stream.providerHeaders
+			);
 
 			return new Response(rewritten, {
 				status: 200,

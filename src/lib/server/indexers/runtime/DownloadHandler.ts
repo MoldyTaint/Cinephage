@@ -14,11 +14,16 @@ import { FilterEngine } from '../engine/FilterEngine';
 import { SelectorEngine } from '../engine/SelectorEngine';
 import { CookieStore } from '../auth/CookieStore';
 import { cloudflareFetch } from '../http/cloudflare-fetch';
+import { createChildLogger } from '$lib/logging';
 
 export interface DownloadContext {
 	baseUrl: string;
 	cookies: Record<string, string>;
 	settings: Record<string, unknown>;
+	encoding?: string;
+	releaseDetailsUrl?: string;
+	releaseGuid?: string;
+	releaseTitle?: string;
 }
 
 export interface DownloadRequest {
@@ -32,6 +37,8 @@ export interface DownloadResult {
 	success: boolean;
 	request?: DownloadRequest;
 	magnetUrl?: string;
+	/** Cached torrent file bytes from testTorrentLink validation, avoids redundant second fetch */
+	torrentData?: Buffer;
 	error?: string;
 }
 
@@ -40,6 +47,7 @@ export class DownloadHandler {
 	private templateEngine: TemplateEngine;
 	private filterEngine: FilterEngine;
 	private selectorEngine: SelectorEngine;
+	private readonly log: ReturnType<typeof createChildLogger>;
 
 	constructor(
 		definition: CardigannDefinition,
@@ -51,6 +59,7 @@ export class DownloadHandler {
 		this.templateEngine = templateEngine;
 		this.filterEngine = filterEngine;
 		this.selectorEngine = selectorEngine;
+		this.log = createChildLogger({ indexer: definition.id, module: 'DownloadHandler' });
 	}
 
 	/**
@@ -61,7 +70,7 @@ export class DownloadHandler {
 	async resolveDownload(downloadUrl: string, context: DownloadContext): Promise<DownloadResult> {
 		// Set up template variables
 		this.templateEngine.setSiteLink(context.baseUrl);
-		this.templateEngine.setConfig(context.settings);
+		this.templateEngine.setConfigWithDefaults(context.settings, this.definition.settings ?? []);
 		this.setDownloadUriVariables(downloadUrl);
 
 		const download = this.definition.download;
@@ -79,6 +88,21 @@ export class DownloadHandler {
 					headers
 				}
 			};
+		}
+
+		// Extract download variables if defined
+		if (download.downloadVariables?.length) {
+			this.log.debug('Starting download variable extraction', {
+				downloadVariablesCount: download.downloadVariables.length,
+				downloadVariablesFrom: download.downloadVariablesFrom,
+				releaseDetailsUrl: context.releaseDetailsUrl,
+				releaseGuid: context.releaseGuid
+			});
+			const extractedVariables = await this.extractDownloadVariables(download, context, headers);
+			for (const [name, value] of Object.entries(extractedVariables)) {
+				this.templateEngine.setVariable(`.Variables.${name}`, value);
+				this.log.debug('Set download variable', { name, value: value?.substring(0, 50) });
+			}
 		}
 
 		try {
@@ -208,7 +232,8 @@ export class DownloadHandler {
 			const response = await cloudflareFetch(downloadUrl, {
 				method: 'GET',
 				headers,
-				timeout: 30000
+				timeout: 30000,
+				encoding: context.encoding
 			});
 			const $ = cheerio.load(response.body);
 
@@ -241,7 +266,8 @@ export class DownloadHandler {
 			method: method as 'GET' | 'POST',
 			headers: requestHeaders,
 			body: method === 'POST' ? body?.toString() : undefined,
-			timeout: 30000
+			timeout: 30000,
+			encoding: context.encoding
 		});
 
 		return {
@@ -277,7 +303,8 @@ export class DownloadHandler {
 			const cfResponse = await cloudflareFetch(downloadUrl, {
 				method: 'GET',
 				headers,
-				timeout: 30000
+				timeout: 30000,
+				encoding: context.encoding
 			});
 			content = cfResponse.body;
 		}
@@ -332,6 +359,60 @@ export class DownloadHandler {
 
 		for (const selector of selectors) {
 			try {
+				// Check if the selector is a template that expands to a URL (not CSS).
+				// This supports the downloadVariables pattern where the selector value
+				// IS the download URL (e.g., nCore: {{ .Variables.fullDownloadUrl }}).
+				// Discriminator: URL-as-selector has no 'attribute' field, since the expanded
+				// template IS the URL — there's no HTML element to extract an attribute from.
+				// All CSS-based selectors have 'attribute: href' to extract the link.
+				if (selector.selector && !selector.attribute) {
+					const expanded = this.templateEngine.expand(selector.selector);
+					if (expanded && expanded !== selector.selector && this.isUrlLikeString(expanded)) {
+						this.log.debug('Selector expanded to URL, using directly as download link', {
+							original: selector.selector,
+							expanded: expanded.substring(0, 80)
+						});
+						const resolvedUrl = this.resolveUrl(expanded, downloadUrl);
+
+						if (resolvedUrl.startsWith('magnet:')) {
+							return {
+								success: true,
+								magnetUrl: resolvedUrl,
+								request: {
+									url: resolvedUrl,
+									method: method as 'GET' | 'POST',
+									headers
+								}
+							};
+						}
+
+						if (this.definition.testlinktorrent !== false) {
+							const testResult = await this.testTorrentLink(resolvedUrl, headers);
+							if (!testResult.valid) {
+								continue;
+							}
+							return {
+								success: true,
+								torrentData: testResult.data,
+								request: {
+									url: resolvedUrl,
+									method: method as 'GET' | 'POST',
+									headers
+								}
+							};
+						}
+
+						return {
+							success: true,
+							request: {
+								url: resolvedUrl,
+								method: method as 'GET' | 'POST',
+								headers
+							}
+						};
+					}
+				}
+
 				let content: string;
 
 				// Use before response if selector specifies it
@@ -341,7 +422,8 @@ export class DownloadHandler {
 					const response = await cloudflareFetch(downloadUrl, {
 						method: 'GET',
 						headers,
-						timeout: 30000
+						timeout: 30000,
+						encoding: context.encoding
 					});
 					content = response.body;
 				}
@@ -377,10 +459,19 @@ export class DownloadHandler {
 
 				// Optionally verify it's a valid torrent
 				if (this.definition.testlinktorrent !== false) {
-					const isValid = await this.testTorrentLink(resolvedUrl, headers);
-					if (!isValid) {
+					const testResult = await this.testTorrentLink(resolvedUrl, headers);
+					if (!testResult.valid) {
 						continue; // Try next selector
 					}
+					return {
+						success: true,
+						torrentData: testResult.data,
+						request: {
+							url: resolvedUrl,
+							method: method as 'GET' | 'POST',
+							headers
+						}
+					};
 				}
 
 				return {
@@ -402,8 +493,13 @@ export class DownloadHandler {
 
 	/**
 	 * Test if a URL returns a valid torrent file.
+	 * Returns the fetched bytes when valid so they can be cached and reused,
+	 * avoiding a redundant second fetch (critical for one-time download tokens).
 	 */
-	private async testTorrentLink(url: string, headers: Record<string, string>): Promise<boolean> {
+	private async testTorrentLink(
+		url: string,
+		headers: Record<string, string>
+	): Promise<{ valid: boolean; data?: Buffer }> {
 		try {
 			const response = await fetch(url, {
 				method: 'GET',
@@ -412,15 +508,18 @@ export class DownloadHandler {
 			});
 
 			if (!response.ok) {
-				return false;
+				return { valid: false };
 			}
 
-			// Check first byte - torrent files start with 'd'
+			// Check first byte - torrent files start with 'd' (bencoded dict)
 			const buffer = await response.arrayBuffer();
 			const bytes = new Uint8Array(buffer);
-			return bytes.length > 0 && bytes[0] === 0x64; // 'd' in ASCII
+			if (bytes.length > 0 && bytes[0] === 0x64) {
+				return { valid: true, data: Buffer.from(buffer) };
+			}
+			return { valid: false };
 		} catch {
-			return false;
+			return { valid: false };
 		}
 	}
 
@@ -473,6 +572,109 @@ export class DownloadHandler {
 				return siteLink + (path.startsWith('/') ? path : '/' + path);
 			}
 		}
+	}
+
+	/**
+	 * Check if a string looks like a URL rather than a CSS selector.
+	 * Used to detect when a template-expanded selector is actually a download URL
+	 * (e.g., nCore's {{ .Variables.fullDownloadUrl }} expands to "torrents.php?action=download&id=...").
+	 */
+	private isUrlLikeString(str: string): boolean {
+		if (!str || str.length === 0) return false;
+		// Absolute URLs
+		if (/^https?:\/\//i.test(str)) return true;
+		if (str.startsWith('magnet:')) return true;
+		// Root-relative paths
+		if (str.startsWith('/')) return true;
+		// Relative URL paths (e.g., "torrents.php?action=download&id=123")
+		if (/^[a-zA-Z0-9_-]+\.[a-zA-Z]{2,5}([?/]|$)/.test(str)) return true;
+		return false;
+	}
+
+	/**
+	 * Extract download variables from a details or search page.
+	 * This handles indexers that generate download URLs dynamically (e.g., nCore).
+	 */
+	async extractDownloadVariables(
+		download: DownloadBlock,
+		context: DownloadContext,
+		headers: Record<string, string>
+	): Promise<Record<string, string>> {
+		const variables: Record<string, string> = {};
+
+		if (!download.downloadVariables?.length) {
+			return variables;
+		}
+
+		const fetchFrom = download.downloadVariablesFrom ?? 'details';
+		let fetchUrl: string | undefined;
+
+		if (fetchFrom === 'details' && context.releaseDetailsUrl) {
+			fetchUrl = context.releaseDetailsUrl;
+		} else if (fetchFrom === 'search' && context.baseUrl) {
+			// For search page, we don't have the search URL in context
+			// This would need additional implementation if needed
+			this.log.debug('downloadVariablesFrom: search not yet supported');
+			return variables;
+		}
+
+		if (!fetchUrl) {
+			this.log.debug('No URL available for download variable extraction', {
+				fetchFrom,
+				hasDetailsUrl: !!context.releaseDetailsUrl
+			});
+			return variables;
+		}
+
+		try {
+			this.log.debug('Fetching page for download variable extraction', {
+				url: fetchUrl.substring(0, 80),
+				headers: Object.keys(headers)
+			});
+
+			const cfResponse = await cloudflareFetch(fetchUrl, {
+				method: 'GET',
+				headers,
+				timeout: 30000,
+				encoding: context.encoding
+			});
+
+			this.log.debug('Download variable extraction response', {
+				status: cfResponse.status,
+				bodyLength: cfResponse.body.length,
+				bodyPreview: cfResponse.body.substring(0, 100)
+			});
+
+			const $ = cheerio.load(cfResponse.body);
+
+			for (const variable of download.downloadVariables) {
+				const result = this.selectorEngine.selectHtml($, $.root(), variable, false);
+
+				if (result.value) {
+					let value = result.value;
+
+					if (variable.filters) {
+						value = this.filterEngine.applyFilters(value, variable.filters);
+					}
+
+					variables[variable.name] = value;
+					this.log.debug('Extracted download variable', {
+						name: variable.name,
+						value: value.substring(0, 50)
+					});
+				} else {
+					this.log.warn('Download variable selector did not match', {
+						name: variable.name,
+						selector: variable.selector
+					});
+				}
+			}
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			this.log.error('Failed to extract download variables', { error: message });
+		}
+
+		return variables;
 	}
 
 	/**

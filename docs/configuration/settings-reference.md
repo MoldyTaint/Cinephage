@@ -6,7 +6,7 @@ Complete reference for Cinephage configuration options.
 
 ## Environment Variables
 
-Copy `.env.example` to `.env` and configure as needed. All variables have sensible defaults.
+If deploying without Docker, or if you want to pass the environment variables to the container via an env_file, copy `.env.example` to `.env` and configure it as needed. All variables have sensible defaults.
 
 ### Server Configuration
 
@@ -15,20 +15,24 @@ Copy `.env.example` to `.env` and configure as needed. All variables have sensib
 | `HOST`   | `0.0.0.0` | Host address to bind                                        |
 | `PORT`   | `3000`    | Port to listen on                                           |
 | `ORIGIN` | -         | Trusted origin for CSRF (e.g., `http://192.168.1.100:3000`) |
+| `PUID`   | `1000`    | User ID for file permissions (Docker Only)                  |
+| `PGID`   | `1000`    | Group ID for file permissions (Docker Only)                 |
 
 **Notes:**
 
-- Set `HOST` to `127.0.0.1` when behind a reverse proxy
+- Set `HOST` to `127.0.0.1` when behind a reverse proxy on the same machine
 - `ORIGIN` is required for external access
 
 ### Logging
 
-| Variable          | Default  | Description                       |
-| ----------------- | -------- | --------------------------------- |
-| `LOG_DIR`         | `./logs` | Log file directory                |
-| `LOG_MAX_SIZE_MB` | `10`     | Max log file size before rotation |
-| `LOG_MAX_FILES`   | `5`      | Number of rotated logs to keep    |
-| `LOG_TO_FILE`     | `true`   | Enable/disable file logging       |
+| Variable            | Default                    | Description                                        |
+| ------------------- | -------------------------- | -------------------------------------------------- |
+| `LOG_DIR`           | `./logs`                   | Log file directory                                 |
+| `LOG_MAX_SIZE_MB`   | `10`                       | Max log file size before rotation                  |
+| `LOG_MAX_FILES`     | `5`                        | Number of rotated logs to keep                     |
+| `LOG_TO_FILE`       | `true`                     | Enable/disable file logging                        |
+| `LOG_INCLUDE_STACK` | Dev: `true`, Prod: `false` | Force include/suppress error stack traces          |
+| `LOG_SENSITIVE`     | `false`                    | Set `true` to bypass secret redaction (debug only) |
 
 ### Media Info
 
@@ -42,14 +46,18 @@ If ffprobe is not in your PATH, specify the full path.
 
 Controls concurrency for background tasks.
 
-| Variable                | Default   | Description                      |
-| ----------------------- | --------- | -------------------------------- |
-| `WORKER_MAX_STREAMS`    | `10`      | Max concurrent stream resolution |
-| `WORKER_MAX_IMPORTS`    | `5`       | Max concurrent file imports      |
-| `WORKER_MAX_SCANS`      | `2`       | Max concurrent library scans     |
-| `WORKER_MAX_MONITORING` | `5`       | Max concurrent monitoring tasks  |
-| `WORKER_CLEANUP_MS`     | `1800000` | Worker cleanup interval (30 min) |
-| `WORKER_MAX_LOGS`       | `1000`    | Max log entries per worker       |
+| Variable                     | Default   | Description                      |
+| ---------------------------- | --------- | -------------------------------- |
+| `WORKER_MAX_STREAMS`         | `10`      | Max concurrent stream resolution |
+| `WORKER_MAX_IMPORTS`         | `5`       | Max concurrent file imports      |
+| `WORKER_MAX_SCANS`           | `2`       | Max concurrent library scans     |
+| `WORKER_MAX_MONITORING`      | `5`       | Max concurrent monitoring tasks  |
+| `WORKER_MAX_SEARCH`          | `3`       | Max concurrent search tasks      |
+| `WORKER_MAX_SUBTITLE_SEARCH` | `3`       | Max concurrent subtitle searches |
+| `WORKER_MAX_PORTAL_SCANS`    | `2`       | Max concurrent portal scans      |
+| `WORKER_MAX_CHANNEL_SYNCS`   | `3`       | Max concurrent channel syncs     |
+| `WORKER_CLEANUP_MS`          | `1800000` | Worker cleanup interval (30 min) |
+| `WORKER_MAX_LOGS`            | `1000`    | Max log entries per worker       |
 
 **Tuning tips:**
 
@@ -91,47 +99,6 @@ sqlite3 data/cinephage.db "VACUUM;"
 ```
 
 ---
-
-## Docker Configuration
-
-When using Docker, configure via `.env` or environment variables:
-
-### Docker-Specific Variables
-
-> [!IMPORTANT]
-> When using Docker Compose with a `.env` file, use the `CINEPHAGE_*` prefixed variables listed below. Docker Compose maps these to the application variables that Cinephage actually consumes (e.g., `CINEPHAGE_ORIGIN` → `ORIGIN`). This prefix convention prevents variable name collisions when running multiple services.
->
-> If using `docker run` directly, pass the unprefixed application variables (`ORIGIN`, `TZ`) since there's no `.env` file involved.
-
-<br>
-
-| Variable               | Default                 | Description                 |
-| ---------------------- | ----------------------- | --------------------------- |
-| `CINEPHAGE_MEDIA_PATH` | -                       | Path to media on host       |
-| `CINEPHAGE_PORT`       | `3000`                  | External port mapping       |
-| `CINEPHAGE_UID`        | `1000`                  | User ID for file ownership  |
-| `CINEPHAGE_GID`        | `1000`                  | Group ID for file ownership |
-| `CINEPHAGE_ORIGIN`     | `http://localhost:3000` | External URL for CSRF       |
-| `CINEPHAGE_TZ`         | `UTC`                   | Timezone                    |
-
-### Example docker-compose.yaml
-
-```yaml
-services:
-  cinephage:
-    image: ghcr.io/moldytaint/cinephage:latest
-    container_name: cinephage
-    user: '${CINEPHAGE_UID:-1000}:${CINEPHAGE_GID:-1000}'
-    ports:
-      - '${CINEPHAGE_PORT:-3000}:3000'
-    volumes:
-      - ./config:/config
-      - ${CINEPHAGE_MEDIA_PATH}:/media
-    environment:
-      - ORIGIN=${CINEPHAGE_ORIGIN:-http://localhost:3000}
-      - TZ=${CINEPHAGE_TZ:-UTC}
-    restart: unless-stopped
-```
 
 ---
 

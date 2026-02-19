@@ -29,6 +29,7 @@ export const GET: RequestHandler = async ({ params }) => {
 		siteUrl: uiDef.siteUrl,
 		alternateUrls: uiDef.alternateUrls,
 		capabilities: uiDef.capabilities,
-		settings: uiDef.settings
+		settings: uiDef.settings,
+		isCustom: uiDef.isCustom
 	});
 };

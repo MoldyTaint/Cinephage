@@ -4,7 +4,38 @@ import { dirname, join } from 'node:path';
 import Database from 'better-sqlite3';
 
 const DRY_RUN = process.env.DRY_RUN === '1' || process.env.DRY_RUN === 'true';
-const DB_PATH = process.env.CINEPHAGE_DB_PATH || 'data/cinephage.db';
+const MISSING_SAMPLE_LIMIT = parseInt(process.env.MISSING_SAMPLE_LIMIT || '5', 10) || 5;
+const DB_PATH = resolveDbPath();
+
+function resolveDbPath() {
+	if (process.env.CINEPHAGE_DB_PATH) {
+		return process.env.CINEPHAGE_DB_PATH;
+	}
+	if (process.env.DATA_DIR) {
+		return join(process.env.DATA_DIR, 'cinephage.db');
+	}
+	// Prefer Docker default if present
+	if (existsSync('/config/data')) {
+		return '/config/data/cinephage.db';
+	}
+	return 'data/cinephage.db';
+}
+
+function assertDbPath(dbPath) {
+	const dir = dirname(dbPath);
+	if (!existsSync(dir)) {
+		throw new Error(
+			`Database directory does not exist: ${dir}. Set CINEPHAGE_DB_PATH or DATA_DIR.`
+		);
+	}
+	if (!existsSync(dbPath)) {
+		const hint =
+			process.env.CINEPHAGE_DB_PATH || process.env.DATA_DIR
+				? 'Check CINEPHAGE_DB_PATH or DATA_DIR.'
+				: 'If running in Docker, set CINEPHAGE_DB_PATH=/config/data/cinephage.db.';
+		throw new Error(`Database not found at ${dbPath}. ${hint}`);
+	}
+}
 
 function resolveEpisodeMediaDir(rootPath, seriesPath, fileRelativePath) {
 	const seriesRel = (seriesPath ?? '').replace(/^[/\\]+/, '');
@@ -29,6 +60,7 @@ function parseEpisodeIds(value) {
 }
 
 async function main() {
+	assertDbPath(DB_PATH);
 	const db = new Database(DB_PATH);
 
 	const subtitleRows = db
@@ -46,6 +78,7 @@ async function main() {
 	let moved = 0;
 	let skipped = 0;
 	let missing = 0;
+	const missingSamples = [];
 
 	for (const subtitle of subtitleRows) {
 		checked += 1;
@@ -92,13 +125,15 @@ async function main() {
 		const currentPath = join(currentDir, fileName);
 		const correctPath = join(correctDir, fileName);
 
-		if (!existsSync(currentPath)) {
-			missing += 1;
-			continue;
-		}
-
 		if (existsSync(correctPath)) {
 			skipped += 1;
+			continue;
+		}
+		if (!existsSync(currentPath)) {
+			missing += 1;
+			if (missingSamples.length < MISSING_SAMPLE_LIMIT) {
+				missingSamples.push({ id: subtitle.id, currentPath, correctPath });
+			}
 			continue;
 		}
 
@@ -112,6 +147,12 @@ async function main() {
 
 	const summary = { checked, moved, skipped, missing, dryRun: DRY_RUN };
 	console.log('[fix-tv-subtitle-paths] Completed', summary);
+	if (missingSamples.length > 0) {
+		console.log('[fix-tv-subtitle-paths] Missing samples:');
+		for (const sample of missingSamples) {
+			console.log(`- id=${sample.id} current=${sample.currentPath} correct=${sample.correctPath}`);
+		}
+	}
 }
 
 main().catch((error) => {

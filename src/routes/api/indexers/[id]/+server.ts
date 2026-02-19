@@ -64,7 +64,6 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 			seedRatio: validated.seedRatio,
 			seedTime: validated.seedTime,
 			packSeedTime: validated.packSeedTime,
-			preferMagnetUrl: validated.preferMagnetUrl,
 			rejectDeadTorrents: validated.rejectDeadTorrents
 		});
 

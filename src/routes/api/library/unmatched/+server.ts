@@ -1,46 +1,77 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { db } from '$lib/server/db/index.js';
-import { unmatchedFiles, rootFolders } from '$lib/server/db/schema.js';
-import { eq } from 'drizzle-orm';
-import { mediaMatcherService } from '$lib/server/library/index.js';
+import { unmatchedFileService } from '$lib/server/library/unmatched-file-service.js';
 import { logger } from '$lib/logging';
+import type { UnmatchedFilters } from '$lib/types/unmatched.js';
 
 /**
  * GET /api/library/unmatched
- * List all unmatched files awaiting manual review
+ * List unmatched files with optional filtering and pagination
+ *
+ * Query params:
+ * - page: number (default: 1)
+ * - limit: number (default: 50, max: 100)
+ * - mediaType: 'movie' | 'tv' | null
+ * - search: string (search in path or parsed title)
+ * - groupBy: 'none' | 'immediate' | 'show' (default: 'none')
+ * - sortBy: 'discoveredAt' | 'path' | 'parsedTitle'
+ * - sortOrder: 'asc' | 'desc'
  */
 export const GET: RequestHandler = async ({ url }) => {
 	try {
-		const mediaType = url.searchParams.get('mediaType'); // 'movie' | 'tv' | null
+		const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
+		const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') || '50', 10)));
+		const mediaType = url.searchParams.get('mediaType') as 'movie' | 'tv' | null;
+		const search = url.searchParams.get('search');
+		const groupBy = url.searchParams.get('groupBy') || 'none';
+		const sortBy =
+			(url.searchParams.get('sortBy') as 'discoveredAt' | 'path' | 'parsedTitle') || 'discoveredAt';
+		const sortOrder = (url.searchParams.get('sortOrder') as 'asc' | 'desc') || 'desc';
 
-		const query = db
-			.select({
-				id: unmatchedFiles.id,
-				path: unmatchedFiles.path,
-				rootFolderId: unmatchedFiles.rootFolderId,
-				rootFolderPath: rootFolders.path,
-				mediaType: unmatchedFiles.mediaType,
-				size: unmatchedFiles.size,
-				parsedTitle: unmatchedFiles.parsedTitle,
-				parsedYear: unmatchedFiles.parsedYear,
-				parsedSeason: unmatchedFiles.parsedSeason,
-				parsedEpisode: unmatchedFiles.parsedEpisode,
-				suggestedMatches: unmatchedFiles.suggestedMatches,
-				reason: unmatchedFiles.reason,
-				discoveredAt: unmatchedFiles.discoveredAt
-			})
-			.from(unmatchedFiles)
-			.leftJoin(rootFolders, eq(unmatchedFiles.rootFolderId, rootFolders.id));
+		const filters: UnmatchedFilters = {};
+		if (mediaType) filters.mediaType = mediaType;
+		if (search) filters.search = search;
 
-		const files = mediaType
-			? await query.where(eq(unmatchedFiles.mediaType, mediaType))
-			: await query;
+		if (groupBy !== 'none') {
+			// Return grouped by folders
+			const folders = await unmatchedFileService.getUnmatchedFolders({
+				filters,
+				groupBy: groupBy as 'immediate' | 'show'
+			});
+
+			return json({
+				success: true,
+				data: {
+					folders,
+					totalFolders: folders.length,
+					totalFiles: folders.reduce((sum, f) => sum + f.fileCount, 0)
+				},
+				meta: {
+					timestamp: new Date().toISOString(),
+					filters,
+					grouping: groupBy
+				}
+			});
+		}
+
+		// Return flat list with pagination
+		const result = await unmatchedFileService.getUnmatchedFiles({
+			filters,
+			pagination: { page, limit },
+			sortBy,
+			sortOrder
+		});
 
 		return json({
 			success: true,
-			files,
-			total: files.length
+			data: {
+				files: result.files,
+				pagination: result.pagination
+			},
+			meta: {
+				timestamp: new Date().toISOString(),
+				filters
+			}
 		});
 	} catch (error) {
 		logger.error(
@@ -50,7 +81,8 @@ export const GET: RequestHandler = async ({ url }) => {
 		return json(
 			{
 				success: false,
-				error: error instanceof Error ? error.message : 'Failed to fetch unmatched files'
+				error: error instanceof Error ? error.message : 'Failed to fetch unmatched files',
+				data: null
 			},
 			{ status: 500 }
 		);
@@ -59,21 +91,18 @@ export const GET: RequestHandler = async ({ url }) => {
 
 /**
  * POST /api/library/unmatched
- * Process all unmatched files (attempt to match them)
+ * Process all unmatched files (attempt to auto-match them)
  */
 export const POST: RequestHandler = async () => {
 	try {
-		const results = await mediaMatcherService.processAllUnmatched();
-
-		const matched = results.filter((r) => r.matched).length;
-		const failed = results.filter((r) => !r.matched).length;
+		const result = await unmatchedFileService.processAllUnmatchedFiles();
 
 		return json({
 			success: true,
-			processed: results.length,
-			matched,
-			failed,
-			results
+			data: result,
+			meta: {
+				timestamp: new Date().toISOString()
+			}
 		});
 	} catch (error) {
 		logger.error(
@@ -83,7 +112,60 @@ export const POST: RequestHandler = async () => {
 		return json(
 			{
 				success: false,
-				error: error instanceof Error ? error.message : 'Failed to process unmatched files'
+				error: error instanceof Error ? error.message : 'Failed to process unmatched files',
+				data: null
+			},
+			{ status: 500 }
+		);
+	}
+};
+
+/**
+ * DELETE /api/library/unmatched
+ * Batch delete unmatched files
+ *
+ * Request body:
+ * - fileIds: string[] (required)
+ * - deleteFromDisk: boolean (default: false)
+ */
+export const DELETE: RequestHandler = async ({ request }) => {
+	try {
+		const body = await request.json();
+		const { fileIds, deleteFromDisk = false } = body as {
+			fileIds: string[];
+			deleteFromDisk?: boolean;
+		};
+
+		if (!Array.isArray(fileIds) || fileIds.length === 0) {
+			return json(
+				{
+					success: false,
+					error: 'fileIds array is required and must not be empty',
+					data: null
+				},
+				{ status: 400 }
+			);
+		}
+
+		const result = await unmatchedFileService.deleteUnmatchedFiles(fileIds, deleteFromDisk);
+
+		return json({
+			success: result.deleted > 0,
+			data: result,
+			meta: {
+				timestamp: new Date().toISOString()
+			}
+		});
+	} catch (error) {
+		logger.error(
+			'[API] Error deleting unmatched files',
+			error instanceof Error ? error : undefined
+		);
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to delete unmatched files',
+				data: null
 			},
 			{ status: 500 }
 		);

@@ -72,7 +72,7 @@ export interface StatusTrackerConfig {
 
 /** Default configuration */
 export const DEFAULT_STATUS_CONFIG: StatusTrackerConfig = {
-	failuresBeforeDisable: 5,
+	failuresBeforeDisable: 3,
 	maxRecentFailures: 10,
 	baseBackoffMs: 5_000, // 5 seconds
 	maxBackoffMs: 60_000, // 1 minute

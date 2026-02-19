@@ -69,7 +69,7 @@ npm run build
    npm ci
    ```
 
-### Application won't start
+### Application won't start (manual npm/node install)
 
 Check if port is in use:
 
@@ -85,7 +85,7 @@ Kill conflicting process or change port in `.env`.
 
 ### "Cannot create directory" or "Permission denied"
 
-**Error**: `cp: can't create directory 'data/indexers': Permission denied`
+**Error**: `cp: can't create directory 'data/indexers': Permission denied` or `Cannot write to config/data directory`
 
 This occurs when the container's user doesn't have write access to host-mounted volumes.
 
@@ -96,17 +96,17 @@ This occurs when the container's user doesn't have write access to host-mounted 
    id -g  # Your GID (e.g., 1000)
    ```
 
-2. Set these in your `.env` file (use your actual values from step 1):
+2. Set these in your `docker-compose.yaml` file or `.env` file if you're passing the environment variables using `env_file` (use your actual values from step 1):
 
    ```bash
-   CINEPHAGE_UID=<your-uid>
-   CINEPHAGE_GID=<your-gid>
+   PUID=<your-uid>
+   PGID=<your-gid>
    ```
 
 3. Fix existing directory ownership (replace with your UID:GID):
 
    ```bash
-   sudo chown -R $(id -u):$(id -g) ./data ./logs
+   sudo chown -R $(id -u):$(id -g) ./config
    ```
 
    This command automatically uses your current user's IDs.
@@ -126,6 +126,223 @@ docker compose logs cinephage
 ```
 
 Look for "Cannot write to" or "Permission denied" messages and follow the fix above.
+
+---
+
+## Migration from Legacy /app/data and /app/logs Mounts
+
+If you're upgrading from an older version that used `/app/data` and `/app/logs` mounts:
+
+### Automatic Migration (Recommended)
+
+1. Update your `docker-compose.yaml` to add the `/config` mount **while keeping** the old mounts:
+
+   ```yaml
+   volumes:
+     - ./config:/config # NEW: Add this line
+     - ./data:/app/data # KEEP temporarily
+     - ./logs:/app/logs # KEEP temporarily
+     - /path/to/media:/media # REQUIRED: Your media library
+     - /path/to/downloads:/downloads # REQUIRED: Download client output folder
+   ```
+
+2. Start the container:
+
+   ```bash
+   docker compose up -d
+   ```
+
+3. Check logs to verify successful migration:
+
+   ```bash
+   docker compose logs cinephage | grep -i migrat
+   ```
+
+   You should see: "Migrating data from /app/data to /config/data..." and "Migrating logs from /app/logs to /config/logs..."
+
+4. Once migration is complete, remove the old mounts from `docker-compose.yaml`:
+
+   ```yaml
+   volumes:
+     - ./config:/config # Keep this
+     # Remove the /app/data and /app/logs lines
+     - /path/to/media:/media # REQUIRED: Your media library
+     - /path/to/downloads:/downloads # REQUIRED: Download client output folder
+   ```
+
+5. Restart the container:
+
+   ```bash
+   docker compose up -d
+   ```
+
+### Migration Failed Due to Permissions
+
+If you see: "ERROR: Failed to migrate data to /config/data"
+
+1. Temporarily run as root to perform migration:
+
+   ```yaml
+   # In docker-compose.yaml, temporarily add:
+   user: '0:0' # Run as root
+   ```
+
+2. Add PUID/PGID environment variables:
+
+   ```yaml
+   environment:
+     - PUID=1000
+     - PGID=1000
+   ```
+
+3. Start container and verify migration:
+
+   ```bash
+   docker compose up -d
+   docker compose logs cinephage | grep -i migrat
+   ```
+
+4. After successful migration, remove the user flag from docker-compose.yaml:
+
+   ```yaml
+   user: '0:0' # Run as root
+   ```
+
+5. Remove old mounts and restart.
+
+### Manual Migration (Fallback)
+
+If automatic migration doesn't work:
+
+1. Stop the container:
+
+   ```bash
+   docker compose down
+   ```
+
+2. Manually copy data:
+
+   ```bash
+   mkdir -p ./config/data ./config/logs
+   cp -a ./data/. ./config/data/
+   cp -a ./logs/. ./config/logs/
+   ```
+
+3. Fix ownership:
+
+   ```bash
+   sudo chown -R $(id -u):$(id -g) ./config
+   ```
+
+4. Update `docker-compose.yaml` to use only `/config` mount.
+
+5. Start container:
+
+   ```bash
+   docker compose up -d
+   ```
+
+### Verifying Migration
+
+After migration, verify your data is accessible:
+
+```bash
+# Check database exists
+ls -lh ./config/data/cinephage.db
+
+# Check logs
+ls -lh ./config/logs/
+
+# Check indexer definitions
+ls -lh ./config/data/indexers/definitions/
+```
+
+---
+
+## Import Issues
+
+### Downloads complete but files aren't imported
+
+**Symptom:** Download client shows completed, but files never appear in Cinephage library.
+
+**Most common cause:** Download directory not mounted to Cinephage container.
+
+**Solution:**
+
+1. **Verify volume mount** in `docker-compose.yaml`:
+
+   ```yaml
+   services:
+     cinephage:
+       volumes:
+         - ./config:/config
+         - /path/to/media:/media
+         - /path/to/downloads:/downloads # ADD THIS
+   ```
+
+2. **Ensure both containers use same host path:**
+
+   ```yaml
+   services:
+     qbittorrent:
+       volumes:
+         - /host/path/downloads:/downloads
+     cinephage:
+       volumes:
+         - /host/path/downloads:/downloads # SAME host path
+   ```
+
+3. **Test access from both containers:**
+
+   ```bash
+   # Check Cinephage can see downloads
+   docker exec cinephage ls -la /downloads
+
+   # Check download client's output
+   docker exec qbittorrent ls -la /downloads/complete
+   ```
+
+4. **Check Cinephage logs for import errors:**
+
+   ```bash
+   docker compose logs cinephage | grep -i import
+   ```
+
+5. **Verify download client settings:**
+   - Settings > Integrations > Download Clients
+   - Ensure "Category" or "Download Directory" matches actual output path
+
+### Path mapping errors
+
+**Symptom:** "File not found" errors in import logs.
+
+**Cause:** Download client reports path that doesn't exist in Cinephage container.
+
+**Example:**
+
+- Download client (inside its container): `/data/downloads/movie.mkv`
+- Cinephage (inside its container): `/downloads/movie.mkv`
+- Same host directory, different container paths
+
+**Solution:**
+
+1. Go to Settings > Integrations > Download Clients
+2. Edit your download client
+3. Configure Path Mapping:
+   - **Remote Path:** `/data/downloads` (path in download client container)
+   - **Local Path:** `/downloads` (path in Cinephage container)
+4. Save and test
+
+**Tip:** To avoid path mapping, use identical container paths in both services:
+
+```yaml
+qbittorrent:
+  volumes:
+    - /host/downloads:/downloads # Same container path
+cinephage:
+  volumes:
+    - /host/downloads:/downloads # Same container path
+```
 
 ---
 
@@ -311,13 +528,26 @@ Indexers auto-disable after repeated failures:
 
 ### High memory usage
 
-Reduce worker counts in `.env`:
+**If using Docker Compose with `env_file`:** Edit `.env` and reduce worker counts
 
+**If using Docker Compose with environment variables in the compose file:** Add/change values directly in `docker-compose.yml`:
+
+```yaml
+environment:
+  - WORKER_MAX_STREAMS=5
+  - WORKER_MAX_IMPORTS=3
+  - WORKER_MAX_LOGS=500
 ```
+
+**If running without Docker (manual npm/node install):** Set reduced worker counts in `.env`:
+
+```bash
 WORKER_MAX_STREAMS=5
 WORKER_MAX_IMPORTS=3
 WORKER_MAX_LOGS=500
 ```
+
+Restart Cinephage to apply changes.
 
 ### Slow searches
 

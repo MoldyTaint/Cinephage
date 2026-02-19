@@ -237,6 +237,42 @@ export class DiskScanService extends EventEmitter {
 							error: statError instanceof Error ? statError.message : String(statError)
 						});
 					}
+				} else if (entry.isSymbolicLink()) {
+					// Include symlinked files (e.g., NZB-Mount/rclone strategies),
+					// but avoid recursing through symlinked directories.
+					if (!isVideoFile(entry.name)) {
+						continue;
+					}
+
+					const relativePath = relative(rootPath, fullPath);
+					if (this.shouldExcludeFile(entry.name, relativePath)) {
+						continue;
+					}
+
+					try {
+						const stats = await stat(fullPath);
+						if (!stats.isFile()) {
+							continue;
+						}
+
+						// Skip files below minimum size (except .strm streaming placeholders)
+						if (stats.size < DOWNLOAD.MIN_SCAN_SIZE_BYTES && !entry.name.endsWith('.strm')) {
+							continue;
+						}
+
+						files.push({
+							path: fullPath,
+							relativePath,
+							size: stats.size,
+							modifiedAt: stats.mtime,
+							parentFolder: dirname(relativePath) || '.'
+						});
+					} catch (statError) {
+						logger.warn('[DiskScan] Could not stat symlinked file', {
+							fullPath,
+							error: statError instanceof Error ? statError.message : String(statError)
+						});
+					}
 				}
 			}
 		} catch (error) {
@@ -337,7 +373,12 @@ export class DiskScanService extends EventEmitter {
 					progress.filesAdded++;
 				} else if (existingFile.size !== file.size) {
 					// File changed - update media info
-					await this.updateFileMediaInfo(existingFile.id, file, rootFolder.mediaType);
+					await this.updateFileMediaInfo(
+						existingFile.id,
+						file,
+						rootFolder.mediaType,
+						existingFile.allowStrmProbe
+					);
 					progress.filesUpdated++;
 				}
 
@@ -445,13 +486,18 @@ export class DiskScanService extends EventEmitter {
 	private async getExistingFiles(
 		rootFolderId: string,
 		mediaType: string
-	): Promise<Map<string, { id: string; path: string; size: number | null }>> {
-		const existingMap = new Map<string, { id: string; path: string; size: number | null }>();
+	): Promise<
+		Map<string, { id: string; path: string; size: number | null; allowStrmProbe: boolean }>
+	> {
+		const existingMap = new Map<
+			string,
+			{ id: string; path: string; size: number | null; allowStrmProbe: boolean }
+		>();
 
 		if (mediaType === 'movie') {
 			// Get movie files via movies table
 			const moviesInFolder = await db
-				.select({ id: movies.id, path: movies.path })
+				.select({ id: movies.id, path: movies.path, scoringProfileId: movies.scoringProfileId })
 				.from(movies)
 				.where(eq(movies.rootFolderId, rootFolderId));
 
@@ -478,7 +524,12 @@ export class DiskScanService extends EventEmitter {
 						const movie = moviesInFolder.find((m) => m.id === file.movieId);
 						if (movie) {
 							const fullPath = join(folder.path, movie.path, file.relativePath);
-							existingMap.set(fullPath, { id: file.id, path: fullPath, size: file.size });
+							existingMap.set(fullPath, {
+								id: file.id,
+								path: fullPath,
+								size: file.size,
+								allowStrmProbe: movie.scoringProfileId !== 'streamer'
+							});
 						}
 					}
 				}
@@ -486,7 +537,7 @@ export class DiskScanService extends EventEmitter {
 		} else {
 			// Get episode files via series table
 			const seriesInFolder = await db
-				.select({ id: series.id, path: series.path })
+				.select({ id: series.id, path: series.path, scoringProfileId: series.scoringProfileId })
 				.from(series)
 				.where(eq(series.rootFolderId, rootFolderId));
 
@@ -512,7 +563,12 @@ export class DiskScanService extends EventEmitter {
 						const seriesItem = seriesInFolder.find((s) => s.id === file.seriesId);
 						if (seriesItem) {
 							const fullPath = join(folder.path, seriesItem.path, file.relativePath);
-							existingMap.set(fullPath, { id: file.id, path: fullPath, size: file.size });
+							existingMap.set(fullPath, {
+								id: file.id,
+								path: fullPath,
+								size: file.size,
+								allowStrmProbe: seriesItem.scoringProfileId !== 'streamer'
+							});
 						}
 					}
 				}
@@ -526,7 +582,12 @@ export class DiskScanService extends EventEmitter {
 			.where(eq(unmatchedFiles.rootFolderId, rootFolderId));
 
 		for (const file of unmatched) {
-			existingMap.set(file.path, { id: file.id, path: file.path, size: file.size });
+			existingMap.set(file.path, {
+				id: file.id,
+				path: file.path,
+				size: file.size,
+				allowStrmProbe: true
+			});
 		}
 
 		return existingMap;
@@ -720,10 +781,11 @@ export class DiskScanService extends EventEmitter {
 	private async updateFileMediaInfo(
 		fileId: string,
 		file: DiscoveredFile,
-		mediaType: string
+		mediaType: string,
+		allowStrmProbe = true
 	): Promise<void> {
 		// Extract fresh media info
-		const mediaInfo = await mediaInfoService.extractMediaInfo(file.path);
+		const mediaInfo = await mediaInfoService.extractMediaInfo(file.path, { allowStrmProbe });
 
 		if (mediaType === 'movie') {
 			await db

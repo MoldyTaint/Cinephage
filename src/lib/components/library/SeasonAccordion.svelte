@@ -75,6 +75,7 @@
 	interface Props {
 		season: Season;
 		seriesMonitored: boolean;
+		isStreamerProfile?: boolean;
 		defaultOpen?: boolean;
 		selectedEpisodes?: Set<string>;
 		showCheckboxes?: boolean;
@@ -85,6 +86,7 @@
 		autoSearchingEpisodes?: Set<string>;
 		autoSearchEpisodeResults?: Map<string, AutoSearchResult>;
 		subtitleAutoSearchingEpisodes?: Set<string>;
+		onToggleOpen?: (seasonId: string) => void;
 		onSeasonMonitorToggle?: (seasonId: string, newValue: boolean) => void;
 		onEpisodeMonitorToggle?: (episodeId: string, newValue: boolean) => void;
 		onSeasonSearch?: (season: Season) => void;
@@ -102,6 +104,7 @@
 	let {
 		season,
 		seriesMonitored,
+		isStreamerProfile = false,
 		defaultOpen = false,
 		selectedEpisodes = new Set(),
 		showCheckboxes = false,
@@ -112,6 +115,7 @@
 		autoSearchingEpisodes = new Set(),
 		autoSearchEpisodeResults = new Map(),
 		subtitleAutoSearchingEpisodes = new Set(),
+		onToggleOpen,
 		onSeasonMonitorToggle,
 		onEpisodeMonitorToggle,
 		onSeasonSearch,
@@ -132,8 +136,11 @@
 		isOpen = defaultOpen;
 	});
 
-	const downloadedCount = $derived(season.episodeFileCount ?? 0);
-	const totalCount = $derived(season.episodeCount ?? season.episodes.length);
+	// Keep header counts aligned with visible rows (episodes array), not cached flags/aggregates.
+	const downloadedCount = $derived(
+		season.episodes.filter((episode) => episode.file !== null).length
+	);
+	const totalCount = $derived(season.episodes.length);
 	const percentComplete = $derived(
 		totalCount > 0 ? Math.round((downloadedCount / totalCount) * 100) : 0
 	);
@@ -213,7 +220,13 @@
 		<div class="flex w-full flex-wrap items-start gap-3 sm:flex-nowrap sm:items-center">
 			<button
 				class="flex min-w-0 flex-1 items-center gap-3 text-left"
-				onclick={() => (isOpen = !isOpen)}
+				onclick={() => {
+					if (onToggleOpen) {
+						onToggleOpen(season.id);
+					} else {
+						isOpen = !isOpen;
+					}
+				}}
 			>
 				{#if isOpen}
 					<ChevronDown size={20} class="text-base-content/50" />
@@ -305,7 +318,7 @@
 				<div class="p-8 text-center text-base-content/60">No episodes in this season</div>
 			{:else}
 				<div class="w-full max-w-full overflow-x-hidden sm:overflow-x-auto">
-					<table class="table w-full table-sm sm:min-w-[640px] sm:table-auto">
+					<table class="table w-full table-sm sm:min-w-160 sm:table-auto">
 						<thead>
 							<tr class="text-xs text-base-content/60">
 								{#if showCheckboxes}
@@ -333,6 +346,7 @@
 								<EpisodeRow
 									{episode}
 									{seriesMonitored}
+									{isStreamerProfile}
 									selected={selectedEpisodes.has(episode.id)}
 									showCheckbox={showCheckboxes}
 									isDownloading={downloadingEpisodeIds.has(episode.id) ||

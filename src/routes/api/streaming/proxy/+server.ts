@@ -79,7 +79,7 @@ async function fetchWithRetry(
 
 			// Don't retry on abort (timeout) - those are intentional
 			if (lastError.name === 'AbortError') {
-				throw new Error(`Proxy timeout after ${PROXY_FETCH_TIMEOUT_MS}ms`);
+				throw new Error(`Proxy timeout after ${PROXY_FETCH_TIMEOUT_MS}ms`, { cause: error });
 			}
 
 			if (attempt < maxRetries) {

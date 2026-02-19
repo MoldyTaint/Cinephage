@@ -25,6 +25,7 @@ export type SettingFieldType =
 	| 'info' // Informational text (not editable)
 	| 'info_cookie' // Cookie help text
 	| 'info_cloudflare' // Cloudflare warning
+	| 'info_flaresolverr' // FlareSolverr/Cloudflare warning (Prowlarr naming)
 	| 'info_useragent' // User agent info
 	| 'cardigannCaptcha' // CAPTCHA handling
 	// Dynamic category info types (from YAML definitions)
@@ -36,8 +37,8 @@ export type SettingFieldType =
 export interface SettingField {
 	/** Field name (used as key in settings object) */
 	name: string;
-	/** Display label */
-	label: string;
+	/** Display label (optional for info_* types) */
+	label?: string;
 	/** Field type */
 	type: SettingFieldType;
 	/** Whether this field is required */

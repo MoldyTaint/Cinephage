@@ -16,21 +16,27 @@ Cinephage uses `node:22-slim` (Debian) as its base image. This provides compatib
 
 ### Quick Start
 
-```bash
-mkdir -p /opt/cinephage && cd /opt/cinephage
-curl -O https://raw.githubusercontent.com/MoldyTaint/cinephage/main/docker-compose.yaml
-curl -O https://raw.githubusercontent.com/MoldyTaint/cinephage/main/.env.example
-cp .env.example .env
-```
+Create a `docker-compose.yaml` file:
 
-Edit `.env`:
-
-```bash
-MEDIA_PATH=/path/to/your/media
-PUID=1000
-PGID=1000
-ORIGIN=https://cinephage.yourdomain.com
-TZ=America/New_York
+```yaml
+services:
+  cinephage:
+    image: ghcr.io/moldytaint/cinephage:latest
+    container_name: cinephage
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - '3000:3000'
+    environment:
+      - PUID=1000 # Your user ID (run: id -u)
+      - PGID=1000 # Your group ID (run: id -g)
+      - TZ=UTC # Your timezone
+      - ORIGIN=http://localhost:3000 # Your access URL (required if using IP/FQDN)
+    volumes:
+      - ./config:/config
+      - /path/to/media:/media # REQUIRED: Your media library
+      - /path/to/downloads:/downloads # REQUIRED: Download client output folder
 ```
 
 Start:
@@ -44,7 +50,7 @@ docker compose up -d
 On first startup, the container will:
 
 1. Initialize indexer definitions from bundled files
-2. Download the Camoufox browser (~80MB) for Cloudflare bypass
+2. Download the Camoufox binaries (~80MB) for Cloudflare bypass
 
 This may take a minute or two. Check logs with `docker compose logs -f` to monitor progress.
 
@@ -57,7 +63,7 @@ Match container user to your media library ownership:
 ls -la /path/to/your/media
 # Note the UID:GID (e.g., 1000:1000)
 
-# Set in .env
+# Set in `docker-compose.yaml`
 PUID=1000
 PGID=1000
 

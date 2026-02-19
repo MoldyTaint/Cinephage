@@ -12,6 +12,19 @@ if (!existsSync(DATA_DIR)) {
 }
 
 const sqlite = new Database(`${DATA_DIR}/cinephage.db`);
+
+try {
+	// Improve concurrent read/write behavior during heavy background jobs (for example EPG sync).
+	sqlite.pragma('journal_mode = WAL');
+	sqlite.pragma('synchronous = NORMAL');
+	sqlite.pragma('busy_timeout = 5000');
+	sqlite.pragma('foreign_keys = ON');
+} catch (error) {
+	logger.warn('Failed to apply SQLite pragmas', {
+		error: error instanceof Error ? error.message : String(error)
+	});
+}
+
 export const db = drizzle(sqlite, { schema });
 
 // Export sqlite for direct access when needed (schema sync uses it)

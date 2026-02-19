@@ -52,7 +52,7 @@ function isMagnetRedirect(data: Buffer | Uint8Array): boolean {
  * @param data - The raw torrent file data
  * @returns Parse result with info hash or magnet URL
  */
-export function parseTorrentFile(data: Buffer | Uint8Array): TorrentParseResult {
+export async function parseTorrentFile(data: Buffer | Uint8Array): Promise<TorrentParseResult> {
 	try {
 		// Check if this is actually a magnet link redirect
 		if (isMagnetRedirect(data)) {
@@ -62,7 +62,7 @@ export function parseTorrentFile(data: Buffer | Uint8Array): TorrentParseResult 
 			});
 
 			// Extract info hash from magnet URL
-			const infoHash = extractInfoHashFromMagnet(magnetUrl);
+			const infoHash = await extractInfoHashFromMagnet(magnetUrl);
 
 			return {
 				success: true,
@@ -71,10 +71,17 @@ export function parseTorrentFile(data: Buffer | Uint8Array): TorrentParseResult 
 			};
 		}
 
-		// Parse as torrent file
-		const torrent = parseTorrent(Buffer.from(data));
+		// Parse as torrent file (parse-torrent v11+ is async)
+		const torrent = await parseTorrent(Buffer.from(data));
 
 		if (!torrent || !torrent.infoHash) {
+			logger.warn('Torrent parse returned no info hash', {
+				dataLength: data.length,
+				firstChars: Buffer.from(data)
+					.subarray(0, 80)
+					.toString('utf-8')
+					.replace(/[^\x20-\x7e]/g, '?')
+			});
 			return {
 				success: false,
 				error: 'Failed to parse torrent file: no info hash found'
@@ -93,7 +100,14 @@ export function parseTorrentFile(data: Buffer | Uint8Array): TorrentParseResult 
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		logger.error('Failed to parse torrent file', { error: message });
+		logger.error('Failed to parse torrent file', {
+			error: message,
+			dataLength: data.length,
+			firstChars: Buffer.from(data)
+				.subarray(0, 80)
+				.toString('utf-8')
+				.replace(/[^\x20-\x7e]/g, '?')
+		});
 
 		return {
 			success: false,
@@ -110,9 +124,9 @@ export function parseTorrentFile(data: Buffer | Uint8Array): TorrentParseResult 
  * @param magnetUrl - The magnet URL to parse
  * @returns The info hash in lowercase hex, or undefined if not found
  */
-export function extractInfoHashFromMagnet(magnetUrl: string): string | undefined {
+export async function extractInfoHashFromMagnet(magnetUrl: string): Promise<string | undefined> {
 	try {
-		// Try hex format first (40 chars)
+		// Try hex format first (40 chars) — sync regex, no need for async
 		const hexMatch = magnetUrl.match(/xt=urn:btih:([a-fA-F0-9]{40})/i);
 		if (hexMatch) {
 			return hexMatch[1].toLowerCase();
@@ -124,8 +138,8 @@ export function extractInfoHashFromMagnet(magnetUrl: string): string | undefined
 			return base32ToHex(base32Match[1].toUpperCase());
 		}
 
-		// Use parse-torrent as fallback
-		const parsed = parseTorrent(magnetUrl);
+		// Use parse-torrent as fallback (async in v11+)
+		const parsed = await parseTorrent(magnetUrl);
 		if (parsed?.infoHash) {
 			return parsed.infoHash.toLowerCase();
 		}
@@ -163,9 +177,9 @@ function base32ToHex(base32: string): string {
  * @param magnetUrl - The magnet URL to parse
  * @returns Parse result with info hash
  */
-export function parseMagnetUrl(magnetUrl: string): TorrentParseResult {
+export async function parseMagnetUrl(magnetUrl: string): Promise<TorrentParseResult> {
 	try {
-		const parsed = parseTorrent(magnetUrl);
+		const parsed = await parseTorrent(magnetUrl);
 
 		if (!parsed || !parsed.infoHash) {
 			return {

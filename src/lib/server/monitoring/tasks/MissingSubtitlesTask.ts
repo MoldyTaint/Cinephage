@@ -22,6 +22,7 @@ import { logger } from '$lib/logging/index.js';
 import { normalizeLanguageCode } from '$lib/shared/languages';
 import type { TaskResult } from '../MonitoringScheduler.js';
 import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
+import { isMovieMonitored } from '$lib/server/monitoring/specifications/MonitoredSpecification.js';
 
 /**
  * Default minimum score for auto-download (used if profile doesn't specify)
@@ -204,7 +205,9 @@ async function searchMissingMovieSubtitles(
 	const moviesWithProfiles = await db
 		.select()
 		.from(movies)
-		.where(and(eq(movies.hasFile, true), eq(movies.wantsSubtitles, true)));
+		.where(
+			and(eq(movies.hasFile, true), eq(movies.wantsSubtitles, true), eq(movies.monitored, true))
+		);
 
 	logger.debug('[MissingSubtitlesTask] Found movies to process', {
 		count: moviesWithProfiles.length
@@ -228,6 +231,11 @@ async function searchMissingMovieSubtitles(
 
 		await Promise.all(
 			batch.map(async (movie, batchIndex) => {
+				const isMonitored = await isMovieMonitored({ movie });
+				if (!isMonitored) {
+					return;
+				}
+
 				let profileId = movie.languageProfileId ?? null;
 				if (!profileId) {
 					const defaultProfile = await profileService.getDefaultProfile();
@@ -270,7 +278,7 @@ async function searchMissingMovieSubtitles(
 					if (languages.length === 0) return;
 
 					const missingCodes = status.missing.map((m) => m.code).join(', ');
-					const missingLabel = missingCodes ? `Missing subtitles: ${missingCodes}` : undefined;
+					const missingLabel = missingCodes ? `Subtitles: ${missingCodes}` : undefined;
 
 					// Search for subtitles
 					const results = await searchService.searchForMovie(movie.id, languages);
@@ -399,7 +407,10 @@ async function searchMissingEpisodeSubtitles(
 	let errorCount = 0;
 
 	// Get series with language profiles that want subtitles
-	const seriesWithProfiles = await db.select().from(series).where(eq(series.wantsSubtitles, true));
+	const seriesWithProfiles = await db
+		.select()
+		.from(series)
+		.where(and(eq(series.wantsSubtitles, true), eq(series.monitored, true)));
 
 	logger.debug('[MissingSubtitlesTask] Found series to process', {
 		count: seriesWithProfiles.length
@@ -468,12 +479,16 @@ async function searchMissingEpisodeSubtitles(
 								return;
 							}
 
+							if (!episodeData.monitored) {
+								return;
+							}
+
 							processed++;
 
 							// Get status for this episode
 							const status = await profileService.getEpisodeSubtitleStatus(episodeId);
 							const missingCodes = status.missing.map((m) => m.code).join(', ');
-							const missingLabel = missingCodes ? `Missing subtitles: ${missingCodes}` : undefined;
+							const missingLabel = missingCodes ? `Subtitles: ${missingCodes}` : undefined;
 
 							// Search for subtitles
 							const results = await searchService.searchForEpisode(episodeId, languages);

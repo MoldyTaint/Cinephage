@@ -1,97 +1,140 @@
 # Live TV
 
-Cinephage includes experimental IPTV support with Stalker portal integration, portal scanning, EPG management, and channel lineup organization.
+Cinephage includes IPTV support with multi-provider integration, supporting Stalker Portals, XStream Codes, and M3U playlists.
 
-> **Experimental Feature**: Live TV functionality is under active development. Expect bugs and incomplete features. Report issues on [GitHub](https://github.com/MoldyTaint/Cinephage/issues).
+> **Feature Status**: Live TV functionality supports three provider types. Stalker Portal is the most mature, with XStream and M3U support recently added.
 
 ---
 
 ## Overview
 
-Cinephage supports live TV through Stalker/Ministra portal integration. You have two options:
+Cinephage supports live TV through three provider types:
 
-- **Bring your own account** — If you already have a Stalker portal account from an IPTV provider, add it directly with your portal URL and MAC address
-- **Discover accounts** — Use the built-in portal scanner to discover working accounts by scanning MAC addresses against portals
+| Provider           | Type          | Authentication    | Best For                                    |
+| ------------------ | ------------- | ----------------- | ------------------------------------------- |
+| **Stalker Portal** | MAG/Ministra  | MAC Address       | Providers using Stalker/Ministra middleware |
+| **XStream Codes**  | IPTV API      | Username/Password | Providers using XStream Codes panel         |
+| **M3U Playlist**   | Playlist File | None              | Generic IPTV playlists                      |
 
-Once you have an account set up, you get:
+You have multiple options for adding accounts:
 
-- Channel sync from the portal
-- Electronic Program Guide (EPG) support
+- **Add manually** — Configure any of the three provider types directly
+- **Discover Stalker accounts** — Use the built-in portal scanner to find working MAC addresses on Stalker portals
+
+Once accounts are configured, you get:
+
+- Channel sync from providers
+- Electronic Program Guide (EPG) support (Stalker fully implemented, XStream planned)
 - Channel lineup organization
 - M3U playlist generation for external players
 - Category management
 
 ---
 
-## Adding Your Own Account
+## Provider Types
 
-If you already have an IPTV subscription with a Stalker portal provider, you can add your account directly.
+### Stalker Portal
 
-### What Are Stalker Portals?
+Stalker (also known as Ministra) is an IPTV middleware system used by many IPTV providers. Your provider gives you a portal URL and MAC address.
 
-Stalker (also known as Ministra) is an IPTV middleware system used by many IPTV providers to deliver live TV streams. Your provider gives you a portal URL and MAC address to access their service.
+**Required Fields:**
 
-### Adding Your Account
+- **Name** — Display name for the account
+- **Portal URL** — The portal URL (e.g., `http://portal.example.com/c`)
+- **MAC Address** — Format: `00:1A:79:XX:XX:XX`
 
-1. Navigate to **Live TV > Accounts**
-2. Click **Add Account**
-3. Enter your provider's details:
+**Features:**
 
-| Setting         | Description                           |
-| --------------- | ------------------------------------- |
-| **Name**        | Display name for this account         |
-| **Portal URL**  | Portal URL from your IPTV provider    |
-| **MAC Address** | MAC address assigned by your provider |
+- ✅ Full EPG support
+- ✅ Archive/Catch-up TV
+- ✅ Portal scanning for discovery
+- ✅ Account expiration tracking
 
-4. Click **Test** to verify the connection
-5. Save the account
+### XStream Codes
 
-### After Adding
+XStream Codes is a popular IPTV panel system. Accounts use username/password authentication.
 
-Once your account is added, click **Sync Channels** to fetch the channel list from your provider. Cinephage will import all available channels and categories.
+**Required Fields:**
+
+- **Name** — Display name for the account
+- **Server URL** — The XStream server URL (e.g., `http://example.com:8080`)
+- **Username** — Your XStream username
+- **Password** — Your XStream password
+
+**Features:**
+
+- ✅ Username/password authentication
+- ✅ Account expiration tracking
+- ⚠️ EPG support planned
+- ⚠️ Archive support implemented but untested
+
+### M3U Playlist
+
+M3U playlists are standard IPTV playlist files that contain channel URLs.
+
+**Required Fields:**
+
+- **Name** — Display name for the playlist
+- **URL** or **File** — Either a URL to an M3U file or upload the file directly
+
+**Optional Fields:**
+
+- **EPG URL** — XMLTV EPG URL for program guide data
+- **Auto-refresh** — Automatically refresh the playlist periodically (URL only)
+
+**Features:**
+
+- ✅ URL or file upload
+- ✅ Optional EPG via XMLTV URL
+- ✅ Auto-refresh support
+- ❌ No authentication required
+- ❌ No archive/catch-up support
 
 ---
 
-## Discovering Accounts
+## Adding an Account
 
-If you don't have an existing IPTV account, Cinephage can discover working accounts on Stalker portals by scanning MAC addresses.
+1. Navigate to **Live TV > Accounts**
+2. Click **Add Account**
+3. Select your provider type (Stalker, XStream, or M3U)
+4. Fill in the required fields
+5. Click **Test** to verify the connection
+6. Save the account
+
+### Testing Connections
+
+Always test your account before saving:
+
+- **Stalker**: Verifies MAC address and retrieves account profile
+- **XStream**: Authenticates and retrieves user info
+- **M3U**: Parses the playlist and counts channels
+
+---
+
+## Discovering Stalker Accounts
+
+If you have a Stalker portal but don't have valid credentials, Cinephage can scan for working MAC addresses.
 
 ### How It Works
 
-The scanner tests MAC addresses against a portal to find valid credentials. When a valid MAC is found, the scanner retrieves account details including channel count, categories, and expiration date.
+The scanner tests MAC addresses against a portal to find valid credentials. When a valid MAC is found, the scanner retrieves account details.
 
 ### Scan Types
 
-| Type           | Description                                                                            |
-| -------------- | -------------------------------------------------------------------------------------- |
-| **Random**     | Generates random MAC addresses using known STB manufacturer prefixes (MAG boxes, etc.) |
-| **Sequential** | Tests a specific range of MAC addresses in order                                       |
-| **Import**     | Tests a list of MAC addresses you provide                                              |
+| Type           | Description                                                          |
+| -------------- | -------------------------------------------------------------------- |
+| **Random**     | Generates random MAC addresses using known STB manufacturer prefixes |
+| **Sequential** | Tests a specific range of MAC addresses                              |
+| **Import**     | Tests a list of MAC addresses you provide                            |
 
 ### Scanning Process
 
-1. Navigate to **Live TV > Scanner**
+1. Click **Scan for Accounts** (only shown when you have Stalker accounts)
 2. Select or create a portal to scan
-3. Choose scan type and configure options:
-   - **Random**: Select MAC prefix and number of addresses to test
-   - **Sequential**: Define start and end MAC addresses
-   - **Import**: Paste a list of MAC addresses to test
-4. Start the scan - progress displays in real-time
-5. Review discovered accounts (shows channel count, expiry, status)
+3. Choose scan type and configure options
+4. Start the scan — progress displays in real-time
+5. Review discovered accounts
 6. Approve accounts you want to use
-7. Approved accounts sync channels automatically
-
-### Scan Results
-
-Discovered accounts show:
-
-- MAC address
-- Channel count
-- Category count
-- Account expiration date
-- Account status (active, expired, etc.)
-
-You can approve individual accounts or bulk approve multiple results. Ignored results are hidden from the list.
 
 ---
 
@@ -101,16 +144,16 @@ After adding an account, sync channels:
 
 1. Go to your account settings
 2. Click **Sync Channels**
-3. Cinephage fetches the channel list from the portal
+3. Cinephage fetches the channel list from the provider
 4. Channels appear in the channel management interface
 
 ### What Gets Synced
 
-- Channel names
-- Channel numbers
+- Channel names and numbers
 - Categories/groups
 - Stream URLs
 - Channel logos (if available)
+- EPG channel IDs
 
 ---
 
@@ -121,7 +164,7 @@ The channel lineup determines which channels are active and how they're organize
 ### Managing Channels
 
 1. Navigate to **Live TV > Channels**
-2. View all synced channels
+2. View all synced channels from all providers
 3. Toggle channels on/off
 4. Reorder channels
 5. Assign to categories
@@ -130,7 +173,7 @@ The channel lineup determines which channels are active and how they're organize
 
 1. Go to **Live TV > Lineup**
 2. Click **Create Lineup**
-3. Select channels to include
+3. Select channels to include (from any provider)
 4. Arrange order
 5. Save
 
@@ -138,10 +181,10 @@ The channel lineup determines which channels are active and how they're organize
 
 Create different lineups for different purposes:
 
-- **All Channels**: Everything available
-- **Sports Only**: Just sports channels
-- **News**: News channels only
-- **Family**: Family-friendly content
+- **All Channels** — Everything available
+- **Sports Only** — Just sports channels
+- **News** — News channels only
+- **Family** — Family-friendly content
 
 ---
 
@@ -163,7 +206,7 @@ Organize channels into categories:
 1. Go to **Live TV > Categories**
 2. Click **Add Category**
 3. Name the category
-4. Assign channels
+4. Assign channels from any provider
 
 ---
 
@@ -171,19 +214,26 @@ Organize channels into categories:
 
 EPG provides TV schedule information.
 
-### EPG Sources
+### EPG Sources by Provider
 
-Cinephage can import EPG data from:
-
-- Portal-provided EPG
-- External XMLTV URLs
+| Provider    | EPG Support | Notes                 |
+| ----------- | ----------- | --------------------- |
+| **Stalker** | ✅ Full     | Retrieved from portal |
+| **XStream** | ⚠️ Planned  | Via XStream EPG API   |
+| **M3U**     | ✅ Optional | Requires XMLTV URL    |
 
 ### Configuring EPG
 
-1. Go to **Live TV > EPG**
-2. Add EPG source URL
-3. Configure refresh interval
-4. Map EPG channels to your lineup
+**For Stalker:**
+
+1. EPG is automatically fetched from the portal
+2. Configure sync interval in settings
+
+**For M3U:**
+
+1. When creating/editing the account, add an EPG URL
+2. The EPG should be in XMLTV format
+3. Cinephage will fetch and parse the EPG data
 
 ### EPG Refresh
 
@@ -193,7 +243,7 @@ Cinephage can import EPG data from:
 
 ---
 
-## M3U Playlist
+## M3U Playlist Export
 
 Cinephage generates M3U playlists for external players.
 
@@ -213,15 +263,17 @@ Point any M3U-compatible player to this URL:
 - IPTV apps
 - Smart TV apps
 - Kodi
+- Jellyfin/Emby/Plex
 
 ### Playlist Contents
 
 The M3U includes:
 
 - Active channels from your lineup
-- Stream URLs
+- Stream URLs (resolved from any provider type)
 - Channel names and numbers
 - EPG mapping (if configured)
+- Category tags (group-title)
 
 ---
 
@@ -235,17 +287,37 @@ Click any channel in the Live TV interface to play directly.
 
 Import the M3U playlist into Jellyfin/Emby/Plex for integrated live TV.
 
+### Failover
+
+If you have multiple accounts with the same channels, Cinephage can automatically failover to backup sources if the primary stream fails.
+
 ---
 
 ## Known Limitations
 
-This feature is experimental:
+### By Provider Type
 
-- Not all Stalker portals are supported
-- Some streams may not play correctly
-- EPG mapping can be imperfect
-- Category sync may be incomplete
+**Stalker:**
+
+- Some portals may have different API versions
+- Stream URL formats vary by portal configuration
+
+**XStream:**
+
+- EPG not yet implemented (planned)
+- Archive/catch-up not yet tested
+
+**M3U:**
+
+- No built-in EPG (requires external XMLTV URL)
+- No authentication support
+- No archive/catch-up support
+
+### General
+
 - DVR/recording not supported yet
+- Some streams may require specific player support
+- EPG mapping can be imperfect across providers
 
 ---
 
@@ -253,23 +325,57 @@ This feature is experimental:
 
 ### Channels Not Loading
 
+**Stalker:**
+
 1. Verify portal URL is correct
-2. Check MAC address is valid
+2. Check MAC address format (XX:XX:XX:XX:XX:XX)
 3. Ensure portal is online
 4. Check Cinephage logs for errors
+
+**XStream:**
+
+1. Verify server URL includes port if needed
+2. Check username/password
+3. Ensure account is active
+
+**M3U:**
+
+1. Verify URL is accessible
+2. Check file format is valid M3U/M3U8
+3. Ensure URLs in playlist are valid
 
 ### Streams Not Playing
 
 - Some streams require specific player support
-- Check if stream format is compatible
+- Check if stream format is compatible (HLS, DASH, etc.)
 - Try playing in VLC directly
+- Check if stream URL requires specific headers
 
 ### EPG Not Showing
 
-1. Verify EPG source URL is accessible
+1. Verify EPG source URL is accessible (for M3U)
 2. Check channel-to-EPG mapping
 3. Wait for next EPG refresh
 4. Check EPG source format is XMLTV compatible
+5. Verify EPG times match your timezone
+
+### Account Test Fails
+
+1. Check network connectivity
+2. Verify credentials
+3. Check if provider requires specific headers
+4. Look at browser console for error details
+
+---
+
+## Migration Notes
+
+If you previously used Stalker-only mode:
+
+- All existing Stalker accounts are preserved
+- The UI now shows all provider types
+- You can add XStream and M3U accounts alongside Stalker accounts
+- Channel lineups can mix channels from all providers
 
 ---
 

@@ -2,6 +2,7 @@
 	import { X, Plus, GripVertical, Pencil, Trash2, Check, Loader2 } from 'lucide-svelte';
 	import type { ChannelCategory, ChannelLineupItemWithDetails } from '$lib/types/livetv';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
+	import { ConfirmationModal } from '$lib/components/ui/modal';
 
 	interface Props {
 		open: boolean;
@@ -28,6 +29,10 @@
 	let savingId = $state<string | null>(null);
 	let deletingId = $state<string | null>(null);
 	let reordering = $state(false);
+
+	// Delete confirmation state
+	let deleteConfirmOpen = $state(false);
+	let categoryToDelete = $state<ChannelCategory | null>(null);
 
 	// Drag state
 	let draggedIndex = $state<number | null>(null);
@@ -104,19 +109,32 @@
 		}
 	}
 
+	function requestDeleteCategory(cat: ChannelCategory) {
+		categoryToDelete = cat;
+		deleteConfirmOpen = true;
+	}
+
+	function closeDeleteConfirm(force = false) {
+		if (!force && deletingId) return;
+		deleteConfirmOpen = false;
+		categoryToDelete = null;
+	}
+
+	const deleteCategoryMessage = $derived.by(() => {
+		if (!categoryToDelete) return '';
+		const count = getChannelCount(categoryToDelete.id);
+		return count > 0
+			? `Delete "${categoryToDelete.name}"? ${count} channel(s) will be moved to Uncategorized.`
+			: `Delete "${categoryToDelete.name}"?`;
+	});
+
 	// Delete category
-	async function deleteCategory(cat: ChannelCategory) {
-		const count = getChannelCount(cat.id);
-		const message =
-			count > 0
-				? `Delete "${cat.name}"? ${count} channel(s) will be moved to Uncategorized.`
-				: `Delete "${cat.name}"?`;
+	async function deleteCategory() {
+		if (!categoryToDelete) return;
 
-		if (!confirm(message)) return;
-
-		deletingId = cat.id;
+		deletingId = categoryToDelete.id;
 		try {
-			const response = await fetch(`/api/livetv/channel-categories/${cat.id}`, {
+			const response = await fetch(`/api/livetv/channel-categories/${categoryToDelete.id}`, {
 				method: 'DELETE'
 			});
 
@@ -125,6 +143,7 @@
 			}
 
 			onChange();
+			closeDeleteConfirm(true);
 		} catch (e) {
 			console.error('Failed to delete category:', e);
 		} finally {
@@ -371,7 +390,7 @@
 
 						<button
 							class="btn text-error btn-ghost btn-xs hover:bg-error/10"
-							onclick={() => deleteCategory(cat)}
+							onclick={() => requestDeleteCategory(cat)}
 							disabled={deletingId === cat.id}
 						>
 							{#if deletingId === cat.id}
@@ -399,3 +418,14 @@
 		<button class="btn" onclick={onClose}>Done</button>
 	</div>
 </ModalWrapper>
+
+<ConfirmationModal
+	open={deleteConfirmOpen}
+	title="Delete Category"
+	message={deleteCategoryMessage}
+	confirmLabel="Delete"
+	confirmVariant="error"
+	loading={!!deletingId}
+	onConfirm={deleteCategory}
+	onCancel={closeDeleteConfirm}
+/>

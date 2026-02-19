@@ -10,15 +10,15 @@ import { db } from '$lib/server/db';
 import {
 	portalScanResults,
 	portalScanHistory,
-	stalkerAccounts,
+	livetvAccounts,
 	type PortalScanResultRecord,
 	type PortalScanHistoryRecord
 } from '$lib/server/db/schema';
 import { logger } from '$lib/logging';
 import { workerManager, PortalScanWorker, type PortalScanOptions } from '$lib/server/workers';
 import { getStalkerPortalManager } from './StalkerPortalManager';
-import { getStalkerAccountManager } from './StalkerAccountManager';
-import { getStalkerChannelSyncService } from './StalkerChannelSyncService';
+import { getLiveTvAccountManager } from '../LiveTvAccountManager';
+import { getLiveTvChannelService } from '../LiveTvChannelService';
 import { MacGenerator } from './MacGenerator';
 
 export interface ScanResult {
@@ -319,24 +319,36 @@ export class PortalScannerService {
 		}
 
 		// Create the account
-		const accountManager = getStalkerAccountManager();
+		const accountManager = getLiveTvAccountManager();
 		const account = await accountManager.createAccount(
 			{
 				name: accountName || `${portal.name} - ${result.macAddress}`,
-				portalUrl: portal.url,
-				macAddress: result.macAddress,
-				enabled: true
+				providerType: 'stalker',
+				enabled: true,
+				stalkerConfig: {
+					portalUrl: portal.url,
+					macAddress: result.macAddress
+				}
 			},
 			false // Don't test again - we already know it works
 		);
 
 		// Update the account to link to the portal and mark as discovered
-		db.update(stalkerAccounts)
+		// Note: portalId and discoveredFromScan are now stored in stalkerConfig
+		const existingConfig = account.stalkerConfig || {
+			portalUrl: portal.url,
+			macAddress: result.macAddress
+		};
+		const updatedStalkerConfig = {
+			...existingConfig,
+			portalId: portal.id,
+			discoveredFromScan: true
+		};
+		db.update(livetvAccounts)
 			.set({
-				portalId: portal.id,
-				discoveredFromScan: true
+				stalkerConfig: updatedStalkerConfig
 			})
-			.where(eq(stalkerAccounts.id, account.id))
+			.where(eq(livetvAccounts.id, account.id))
 			.run();
 
 		// Mark result as approved
@@ -350,8 +362,8 @@ export class PortalScannerService {
 			.run();
 
 		// Trigger channel sync in background
-		const syncService = getStalkerChannelSyncService();
-		syncService.syncAccount(account.id).catch((error) => {
+		const channelService = getLiveTvChannelService();
+		channelService.syncChannels(account.id).catch((error) => {
 			logger.warn('[PortalScanner] Channel sync failed after approval', {
 				accountId: account.id,
 				error: error instanceof Error ? error.message : String(error)

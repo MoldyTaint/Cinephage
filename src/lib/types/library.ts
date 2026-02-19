@@ -77,6 +77,7 @@ export interface LibraryMovie {
 	path: string | null;
 	rootFolderId: string | null;
 	rootFolderPath: string | null;
+	missingRootFolder?: boolean;
 	scoringProfileId: string | null;
 	monitored: boolean | null;
 	minimumAvailability: string | null;
@@ -104,6 +105,7 @@ export interface LibrarySeries {
 	path: string | null;
 	rootFolderId: string | null;
 	rootFolderPath: string | null;
+	missingRootFolder?: boolean;
 	scoringProfileId: string | null;
 	monitored: boolean | null;
 	seasonFolder: boolean | null;

@@ -17,12 +17,12 @@
 		seedRatio: string;
 		seedTime: number | '';
 		packSeedTime: number | '';
-		preferMagnetUrl: boolean;
 		rejectDeadTorrents: boolean;
 		isTorrent: boolean;
 		isStreaming: boolean;
 		hasAuthSettings: boolean;
 		definitionUrls: string[];
+		alternateUrls: string[];
 		onNameChange: (value: string) => void;
 		onUrlChange: (value: string) => void;
 		onUrlBlur: () => void;
@@ -35,7 +35,6 @@
 		onSeedRatioChange: (value: string) => void;
 		onSeedTimeChange: (value: number | '') => void;
 		onPackSeedTimeChange: (value: number | '') => void;
-		onPreferMagnetUrlChange: (value: boolean) => void;
 		onRejectDeadTorrentsChange: (value: boolean) => void;
 	}
 
@@ -53,12 +52,12 @@
 		seedRatio,
 		seedTime,
 		packSeedTime,
-		preferMagnetUrl,
 		rejectDeadTorrents,
 		isTorrent,
 		isStreaming,
 		hasAuthSettings,
 		definitionUrls,
+		alternateUrls,
 		onNameChange,
 		onUrlChange,
 		onUrlBlur,
@@ -71,11 +70,8 @@
 		onSeedRatioChange,
 		onSeedTimeChange,
 		onPackSeedTimeChange,
-		onPreferMagnetUrlChange,
 		onRejectDeadTorrentsChange
 	}: Props = $props();
-
-	const alternateUrls = $derived(definitionUrls.filter((u) => u !== url));
 </script>
 
 <!-- Main Form - Two Column Layout -->
@@ -282,11 +278,6 @@
 				</div>
 			</div>
 
-			<ToggleSetting
-				checked={preferMagnetUrl}
-				label="Prefer Magnet URLs"
-				onchange={() => onPreferMagnetUrlChange(!preferMagnetUrl)}
-			/>
 			<ToggleSetting
 				checked={rejectDeadTorrents}
 				label="Reject Dead Torrents"

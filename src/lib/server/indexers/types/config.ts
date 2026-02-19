@@ -69,8 +69,6 @@ export interface IndexerConfig {
 	seedTime?: number | null;
 	/** @deprecated Use torrentSettings.packSeedTime */
 	packSeedTime?: number | null;
-	/** @deprecated Use torrentSettings.preferMagnetUrl */
-	preferMagnetUrl?: boolean;
 	/** @deprecated Use torrentSettings.rejectDeadTorrents */
 	rejectDeadTorrents?: boolean;
 }
@@ -251,7 +249,6 @@ export function convertLegacyConfig(legacy: {
 	seedRatio?: string | null;
 	seedTime?: number | null;
 	packSeedTime?: number | null;
-	preferMagnetUrl?: boolean;
 	enableAutomaticSearch?: boolean;
 	enableInteractiveSearch?: boolean;
 }): IndexerConfig {
@@ -275,8 +272,7 @@ export function convertLegacyConfig(legacy: {
 			minimumSeeders: legacy.minimumSeeders ?? 1,
 			seedRatio: legacy.seedRatio ?? null,
 			seedTime: legacy.seedTime ?? null,
-			packSeedTime: legacy.packSeedTime ?? null,
-			preferMagnetUrl: legacy.preferMagnetUrl ?? false
+			packSeedTime: legacy.packSeedTime ?? null
 		};
 	}
 
@@ -307,7 +303,6 @@ export function convertToFlatConfig(config: IndexerConfig): Record<string, unkno
 		flat.seedRatio = config.torrentSettings.seedRatio;
 		flat.seedTime = config.torrentSettings.seedTime;
 		flat.packSeedTime = config.torrentSettings.packSeedTime;
-		flat.preferMagnetUrl = config.torrentSettings.preferMagnetUrl;
 	}
 
 	return flat;

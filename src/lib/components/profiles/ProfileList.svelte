@@ -35,7 +35,7 @@
 		{/if}
 	</div>
 
-	<div class="card bg-base-100 shadow-xl">
+	<div class="card bg-transparent shadow-none sm:bg-base-100 sm:shadow-xl">
 		<div class="card-body p-0">
 			<ProfileTable
 				profiles={sortedProfiles()}

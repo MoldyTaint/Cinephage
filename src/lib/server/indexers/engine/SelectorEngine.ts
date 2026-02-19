@@ -62,7 +62,7 @@ export class SelectorEngine {
 
 		// Handle text field (static text with template)
 		if (selectorBlock.text !== undefined) {
-			let text = selectorBlock.text;
+			let text = String(selectorBlock.text); // Convert to string (might be number)
 			if (this.templateEngine) {
 				text = this.templateEngine.expand(text);
 			}
@@ -71,8 +71,8 @@ export class SelectorEngine {
 		}
 
 		// Get the element to select from
-		let selection = element;
-		let value: string | null = null;
+		let selection: ReturnType<typeof $>;
+		let value: string | null;
 
 		if (selectorBlock.selector) {
 			// Expand template in selector
@@ -85,6 +85,8 @@ export class SelectorEngine {
 			if (selectorStr.startsWith(':root')) {
 				selectorStr = selectorStr.substring(5);
 				selection = $.root();
+			} else {
+				selection = element;
 			}
 
 			// Check if element matches selector or find within
@@ -95,12 +97,14 @@ export class SelectorEngine {
 						throw new Error(`Selector "${selectorBlock.selector}" didn't match any elements`);
 					}
 					return {
-						value: selectorBlock.default ?? null,
+						value: selectorBlock.default !== undefined ? String(selectorBlock.default) : null,
 						optional: selectorBlock.optional ?? false
 					};
 				}
 				selection = matched.first();
 			}
+		} else {
+			selection = element;
 		}
 
 		// Handle remove (remove child elements before extraction)
@@ -127,7 +131,7 @@ export class SelectorEngine {
 				throw new Error(`None of the case selectors matched`);
 			}
 			return {
-				value: selectorBlock.default ?? null,
+				value: selectorBlock.default !== undefined ? String(selectorBlock.default) : null,
 				optional: selectorBlock.optional ?? false
 			};
 		}
@@ -144,7 +148,7 @@ export class SelectorEngine {
 
 		// Apply default if no value
 		if ((value === null || value === '') && selectorBlock.default !== undefined) {
-			value = selectorBlock.default;
+			value = String(selectorBlock.default);
 		}
 
 		// Apply filters
@@ -220,7 +224,7 @@ export class SelectorEngine {
 
 		// Handle text field (static text with template)
 		if (selectorBlock.text !== undefined) {
-			let text = selectorBlock.text;
+			let text = String(selectorBlock.text);
 			if (this.templateEngine) {
 				text = this.templateEngine.expand(text);
 			}
@@ -247,7 +251,7 @@ export class SelectorEngine {
 					throw new Error(`Selector "${selectorBlock.selector}" didn't match JSON content`);
 				}
 				return {
-					value: selectorBlock.default ?? null,
+					value: selectorBlock.default !== undefined ? String(selectorBlock.default) : null,
 					optional: selectorBlock.optional ?? false
 				};
 			}
@@ -279,7 +283,7 @@ export class SelectorEngine {
 					throw new Error(`None of the case values matched "${value}"`);
 				}
 				return {
-					value: selectorBlock.default ?? null,
+					value: selectorBlock.default !== undefined ? String(selectorBlock.default) : null,
 					optional: selectorBlock.optional ?? false
 				};
 			}
@@ -287,7 +291,7 @@ export class SelectorEngine {
 
 		// Apply default if no value
 		if ((value === null || value === '') && selectorBlock.default !== undefined) {
-			value = selectorBlock.default;
+			value = String(selectorBlock.default);
 		}
 
 		// Apply filters
@@ -339,15 +343,25 @@ export class SelectorEngine {
 	 * Parse JSONPath string into parts.
 	 */
 	private parseJsonPath(path: string): Array<{
-		type: 'property' | 'index' | 'filter';
+		type: 'property' | 'index' | 'filter' | 'root';
 		value: string;
 		filter?: string;
 	}> {
-		const parts: Array<{ type: 'property' | 'index' | 'filter'; value: string; filter?: string }> =
-			[];
+		const parts: Array<{
+			type: 'property' | 'index' | 'filter' | 'root';
+			value: string;
+			filter?: string;
+		}> = [];
 		let remaining = path;
 
 		while (remaining.length > 0) {
+			// Check for root selector ($)
+			if (remaining.startsWith('$')) {
+				// $ means root - skip it as we're already at root
+				remaining = remaining.substring(1);
+				continue;
+			}
+
 			// Check for filter
 			const filterMatch = remaining.match(/^:([a-z]+)\(([^)]+)\)/i);
 			if (filterMatch) {
@@ -421,7 +435,23 @@ export class SelectorEngine {
 	 */
 	selectJsonAll(obj: JsonValue, selector: string): JsonValue[] {
 		// Remove leading dot
-		const path = selector.replace(/^\./, '');
+		let path = selector.replace(/^\./, '');
+
+		// Handle root selector ($) - means select the entire array
+		if (path === '$' || path === '') {
+			if (Array.isArray(obj)) {
+				return obj;
+			}
+			return obj !== null ? [obj] : [];
+		}
+
+		// Handle $[index] or $.property syntax
+		if (path.startsWith('$')) {
+			path = path.substring(1); // Remove the $
+			if (path.startsWith('.')) {
+				path = path.substring(1); // Remove the leading dot after $
+			}
+		}
 
 		// Split on colon to separate path from filter
 		const colonIndex = path.indexOf(':');
@@ -504,7 +534,7 @@ export class SelectorEngine {
 	 */
 	private applyFilters(
 		value: string,
-		filters?: Array<{ name: string; args?: string | number | string[] }>
+		filters?: Array<{ name: string; args?: string | number | (string | number)[] }>
 	): string {
 		if (!filters || !this.filterEngine) {
 			return value;

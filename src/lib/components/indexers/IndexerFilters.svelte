@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { Search } from 'lucide-svelte';
 	import type { IndexerFilters } from '$lib/types/indexer';
 
 	interface Props {
@@ -16,19 +15,14 @@
 
 <div class="mb-4 flex flex-wrap items-center gap-4">
 	<!-- Search -->
-	<div class="form-control">
-		<div class="input-group input-group-sm">
-			<span class="bg-base-200">
-				<Search class="h-4 w-4" />
-			</span>
-			<input
-				type="text"
-				placeholder="Search indexers..."
-				class="input-bordered input input-sm w-full sm:w-48"
-				value={filters.search}
-				oninput={(e) => updateFilter('search', e.currentTarget.value)}
-			/>
-		</div>
+	<div class="form-control w-full sm:w-48">
+		<input
+			type="text"
+			placeholder="Search indexers..."
+			class="input-bordered input input-sm w-full pl-9"
+			value={filters.search}
+			oninput={(e) => updateFilter('search', e.currentTarget.value)}
+		/>
 	</div>
 
 	<!-- Protocol Filter -->

@@ -4,6 +4,7 @@ import { settings } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { getIndexerManager } from '$lib/server/indexers/IndexerManager';
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
+import { getNntpServerService } from '$lib/server/streaming/nzb/NntpServerService';
 import { getSubtitleProviderManager } from '$lib/server/subtitles/services/SubtitleProviderManager';
 import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService';
 import { getMediaBrowserManager } from '$lib/server/notifications/mediabrowser';
@@ -23,6 +24,11 @@ export const load: PageServerLoad = async () => {
 	const downloadClientManager = getDownloadClientManager();
 	const downloadClients = await downloadClientManager.getClients();
 	const enabledClients = downloadClients.filter((c) => c.enabled);
+
+	// Get NNTP server stats
+	const nntpService = getNntpServerService();
+	const nntpServers = await nntpService.getServers();
+	const enabledNntpServers = nntpServers.filter((s) => s.enabled);
 
 	// Get subtitle provider stats
 	const subtitleManager = getSubtitleProviderManager();
@@ -53,6 +59,10 @@ export const load: PageServerLoad = async () => {
 		downloadClients: {
 			total: downloadClients.length,
 			enabled: enabledClients.length
+		},
+		nntpServers: {
+			total: nntpServers.length,
+			enabled: enabledNntpServers.length
 		},
 		subtitleProviders: {
 			total: subtitleProviders.length,

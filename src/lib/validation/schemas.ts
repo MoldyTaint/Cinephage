@@ -47,7 +47,6 @@ export const indexerCreateSchema = z.object({
 		.nullable(), // Decimal as string (e.g., "1.0")
 	seedTime: z.number().int().min(0).optional().nullable(), // Minutes
 	packSeedTime: z.number().int().min(0).optional().nullable(), // Minutes
-	preferMagnetUrl: z.boolean().default(false),
 	rejectDeadTorrents: z.boolean().default(true) // Reject torrents with 0 seeders
 });
 
@@ -60,6 +59,7 @@ export const indexerUpdateSchema = indexerCreateSchema.partial();
  * Schema for testing an indexer connection.
  */
 export const indexerTestSchema = z.object({
+	indexerId: z.string().uuid().optional(),
 	name: z.string().min(1),
 	definitionId: z.string().regex(/^[a-z0-9-]+$/),
 	baseUrl: z.string().url(),
@@ -86,7 +86,7 @@ const baseSearchCriteriaSchema = z.object({
 	query: z.string().optional(),
 	categories: z.array(z.number().int()).optional(),
 	indexerIds: z.array(z.string()).optional(),
-	limit: z.number().int().min(1).max(500).default(100),
+	limit: z.number().int().min(1).optional(),
 	offset: z.number().int().min(0).default(0)
 });
 
@@ -199,7 +199,7 @@ export const searchQuerySchema = z.object({
 		.optional()
 		.transform((v) => v?.split(',')),
 	minSeeders: z.coerce.number().int().min(0).optional(),
-	limit: z.coerce.number().int().min(1).max(500).default(100),
+	limit: z.coerce.number().int().min(1).optional(),
 	// Movie/TV specific
 	imdbId: z.string().optional(),
 	tmdbId: z.coerce.number().int().positive().optional(),

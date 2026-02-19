@@ -31,3 +31,4 @@ export {
 	triggerMovieSearch,
 	triggerSeriesSearch
 } from './LibraryAddService.js';
+export { unmatchedFileService, UnmatchedFileService } from './unmatched-file-service.js';
