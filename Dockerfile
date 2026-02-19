@@ -6,7 +6,7 @@ FROM node:22-slim AS builder
 WORKDIR /app
 
 # Install build tools required for native modules (better-sqlite3)
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
 
 # Copy package files first to leverage Docker cache
 COPY package*.json ./
@@ -25,11 +25,8 @@ COPY . .
 ARG APP_VERSION=dev
 ENV PUBLIC_APP_VERSION=${APP_VERSION}
 
-# Build the SvelteKit application
-RUN npm run build
-
-# Remove devDependencies to reduce runtime image size
-RUN npm prune --omit=dev
+# Build the SvelteKit application and remove devDependencies in one layer
+RUN npm run build && npm prune --omit=dev
 
 # ==========================================
 # Runtime Stage
@@ -45,6 +42,7 @@ ENV PUBLIC_APP_VERSION=${APP_VERSION}
 # Install runtime dependencies:
 # - ffmpeg: for ffprobe media analysis
 # - Camoufox browser dependencies (Firefox/GTK libs)
+# - GLX/Mesa libraries for Camoufox GPU detection (glxtest)
 # - wget: for health check
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
@@ -68,10 +66,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-liberation \
     libdbus-glib-1-2 \
     libxt6 \
-    # GLX/Mesa libraries for Camoufox GPU detection (glxtest)
     xvfb \
     libgl1-mesa-dri \
-    libgl1-mesa-glx \
+    libglx-mesa0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create necessary directories with correct ownership (node user is UID 1000)
@@ -90,18 +87,17 @@ COPY --from=builder --chown=node:node /app/scripts/fix-tv-subtitle-paths.js ./sc
 COPY --from=builder --chown=node:node /app/data ./bundled-data
 
 # Copy and set up entrypoint script
-COPY --chown=node:node docker-entrypoint.sh ./docker-entrypoint.sh
-RUN chmod +x ./docker-entrypoint.sh
+COPY --chown=node:node --chmod=755 docker-entrypoint.sh ./docker-entrypoint.sh
 
 # Set environment variables
-ENV NODE_ENV=production
-ENV HOST=0.0.0.0
-ENV PORT=3000
-ENV FFPROBE_PATH=/usr/bin/ffprobe
-ENV DATA_DIR=/config/data
-ENV LOG_DIR=/config/logs
-ENV INDEXER_DEFINITIONS_PATH=/config/data/indexers/definitions
-ENV EXTERNAL_LISTS_PRESETS_PATH=/config/data/external-lists/presets
+ENV NODE_ENV=production \
+    HOST=0.0.0.0 \
+    PORT=3000 \
+    FFPROBE_PATH=/usr/bin/ffprobe \
+    DATA_DIR=/config/data \
+    LOG_DIR=/config/logs \
+    INDEXER_DEFINITIONS_PATH=/config/data/indexers/definitions \
+    EXTERNAL_LISTS_PRESETS_PATH=/config/data/external-lists/presets
 
 # Expose the application port
 EXPOSE 3000

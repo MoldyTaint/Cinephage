@@ -17,3 +17,14 @@ data/*.db-*
 coverage
 .nyc_output
 *.tgz
+docs/
+scripts/
+!scripts/fix-tv-subtitle-paths.js
+deploy/
+nix/
+flake.nix
+cine-local.yaml
+Dockerfile
+docker-compose.yaml
+*.md
+!README.md

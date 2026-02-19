@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 set -e
 
 # Ensure we're in the app directory
@@ -136,7 +136,7 @@ check_permissions() {
       echo "Container is running as UID=$(id -u) GID=$(id -g)"
       echo ""
       echo "To fix this, ensure the host directory has correct ownership:"
-      echo "  sudo chown -R $(id -u):$(id -g) $(dirname $dir)"
+      echo "  sudo chown -R $(id -u):$(id -g) $(dirname "$dir")"
       echo ""
       echo "Or set PUID and PGID in your .env file to match"
       echo "your host user (run 'id -u' and 'id -g' to find your IDs)."
@@ -149,7 +149,7 @@ check_permissions() {
     echo "ERROR: Cannot write to $name directory at $dir"
     echo ""
     echo "Container is running as UID=$(id -u) GID=$(id -g)"
-    echo "Directory ownership: $(ls -ld $dir)"
+    echo "Directory ownership: $(ls -ld "$dir")"
     echo ""
     echo "To fix this, update the host directory ownership:"
     echo "  sudo chown -R $(id -u):$(id -g) $dir"
@@ -169,7 +169,7 @@ check_permissions "$INDEXER_DEFINITIONS_PATH" "indexer definitions"
 check_permissions "$EXTERNAL_LISTS_PRESETS_PATH" "external list presets"
 echo "Directory permissions OK"
 
-# Sync bundled data into DATA_DIR (adds missing files only, never overwrites)
+# Sync bundled data into DATA_DIR
 sync_bundled_data() {
   local src="$1"
   local dest="$2"
