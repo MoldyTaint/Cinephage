@@ -338,6 +338,11 @@ export class SearchOrchestrator {
 			const searchType = enrichedCriteria.searchType as 'movie' | 'tv' | 'music' | 'book';
 			filtered = this.filterByCategoryMatch(filtered, searchType);
 		}
+
+		// Filter by title relevance (safety net for irrelevant results)
+		if (enrichedCriteria.searchType !== 'basic') {
+			filtered = this.filterByTitleRelevance(filtered, enrichedCriteria);
+		}
 		const afterFilteringCount = filtered.length;
 
 		// Enrich with quality scoring and optional TMDB matching
@@ -998,9 +1003,10 @@ export class SearchOrchestrator {
 	 * For movie searches: Rejects releases that are clearly TV episodes (have S01E03 patterns)
 	 *
 	 * For TV searches with season/episode specified:
-	 * - Season-only search: Returns season packs (single or multi-season) that contain the target season
-	 * - Season+episode search: Returns matching individual episodes AND season packs containing the episode
-	 *   (Season packs will be scored higher via pack bonus, so they'll naturally float to the top)
+	 * - Season-only search: Returns single-season packs that exactly match the target season
+	 *   (multi-season packs and complete series are excluded to avoid cluttering results)
+	 * - Season+episode search: Returns matching individual episodes AND single-season packs
+	 *   for the target season (Season packs scored higher via pack bonus)
 	 *
 	 * Optimization: Caches parsed results on releases to avoid re-parsing in enricher.
 	 */
@@ -1060,32 +1066,32 @@ export class SearchOrchestrator {
 				return false;
 			}
 
-			// Helper to check if the release contains the target season
-			const containsTargetSeason = (): boolean => {
-				// Complete series always matches any season
+			// Helper to check if the release is a single-season pack matching the target
+			const isSingleSeasonMatch = (): boolean => {
+				// Reject complete series packs (e.g., "Complete Series", "All Seasons")
 				if (episodeInfo.isCompleteSeries) {
-					return true;
+					return false;
 				}
-				// Multi-season pack: check if target season is in the range
-				if (episodeInfo.seasons?.length) {
-					return episodeInfo.seasons.includes(targetSeason!);
+				// Reject multi-season packs (e.g., S01-S05, Seasons 1-5)
+				if (episodeInfo.seasons && episodeInfo.seasons.length > 1) {
+					return false;
 				}
 				// Single season: exact match
 				return episodeInfo.season === targetSeason;
 			};
 
-			// Season-only search: filter to season packs that contain the target season
+			// Season-only search: filter to single-season packs matching the target season
 			if (targetSeason !== undefined && targetEpisode === undefined) {
-				return episodeInfo.isSeasonPack && containsTargetSeason();
+				return episodeInfo.isSeasonPack && isSingleSeasonMatch();
 			}
 
-			// Season + episode search: include BOTH specific episodes AND season packs
+			// Season + episode search: include BOTH specific episodes AND single-season packs
 			// Season packs will get a higher score via pack bonus, so they'll naturally
 			// rank higher than individual episodes of similar quality
 			if (targetSeason !== undefined && targetEpisode !== undefined) {
-				// Include season packs that contain the target season
-				if (episodeInfo.isSeasonPack && containsTargetSeason()) {
-					return true;
+				// Include single-season packs that match the target season
+				if (episodeInfo.isSeasonPack) {
+					return isSingleSeasonMatch();
 				}
 				// Include individual episodes that match exactly
 				return (
@@ -1139,6 +1145,79 @@ export class SearchOrchestrator {
 
 			return hasMatchingCategory;
 		});
+	}
+
+	/**
+	 * Filter releases by title relevance.
+	 * Safety net to reject releases that are clearly for a different title
+	 * (e.g., random TV shows returned by a generic RSS feed when ID search fails).
+	 * Only filters when we have a known title to compare against.
+	 */
+	private filterByTitleRelevance(
+		releases: ReleaseResult[],
+		criteria: SearchCriteria
+	): ReleaseResult[] {
+		// Collect all expected titles: query + searchTitles
+		const expectedTitles: string[] = [];
+		if (criteria.query) expectedTitles.push(criteria.query);
+		if (criteria.searchTitles) expectedTitles.push(...criteria.searchTitles);
+
+		// If we have no titles to compare against, skip filtering
+		if (expectedTitles.length === 0) return releases;
+
+		// Normalize titles for comparison: lowercase, remove non-alphanumeric
+		const normalize = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+		const normalizedExpected = expectedTitles.map(normalize).filter((t) => t.length > 0);
+		if (normalizedExpected.length === 0) return releases;
+
+		// Extract the series/movie name from a release title.
+		// The name is the part before season/episode markers, year, or quality markers.
+		const extractReleaseName = (title: string): string => {
+			// Remove common group tags at the beginning like [GroupName]
+			let clean = title.replace(/^\[.*?\]\s*/, '');
+			// Split on season/episode markers: S01, S01E01, 1x01, Season, Episode, etc.
+			clean = clean.split(/[.\s_-](?:S\d|Season|\d{1,2}x\d{2,3})/i)[0];
+			// Also split on year patterns (4 digits in parens or after dots)
+			clean = clean.split(/[.\s_(-](?:19|20)\d{2}/)[0];
+			// Also split on quality markers
+			clean = clean.split(
+				/[.\s_-](?:720p|1080p|2160p|4K|HDTV|WEB|BluRay|BDRip|DVDRip|WEBRip|WEBDL|WEB-DL|AMZN|NF|DSNP|HULU)/i
+			)[0];
+			return clean;
+		};
+
+		const beforeCount = releases.length;
+		const filtered = releases.filter((release) => {
+			const releaseName = normalize(extractReleaseName(release.title));
+			if (releaseName.length === 0) return true; // Can't parse, keep it
+
+			// Check if any expected title is a substring of the release name or vice versa
+			const matches = normalizedExpected.some((expected) => {
+				return releaseName.includes(expected) || expected.includes(releaseName);
+			});
+
+			if (!matches) {
+				logger.debug('[SearchOrchestrator] Rejecting release due to title mismatch', {
+					releaseTitle: release.title,
+					parsedName: extractReleaseName(release.title),
+					expectedTitles: expectedTitles.slice(0, 3)
+				});
+			}
+
+			return matches;
+		});
+
+		if (filtered.length < beforeCount) {
+			logger.info('[SearchOrchestrator] Title relevance filter removed irrelevant results', {
+				before: beforeCount,
+				after: filtered.length,
+				removed: beforeCount - filtered.length,
+				expectedTitles: expectedTitles.slice(0, 3)
+			});
+		}
+
+		return filtered;
 	}
 
 	/**
@@ -1202,12 +1281,15 @@ export class SearchOrchestrator {
 			return criteria;
 		}
 
-		// If we already have IMDB ID, no enrichment needed
-		if ('imdbId' in criteria && criteria.imdbId) {
+		const hasImdb = 'imdbId' in criteria && !!criteria.imdbId;
+		const hasTvdb = criteria.searchType === 'tv' && 'tvdbId' in criteria && !!criteria.tvdbId;
+
+		// If we already have all relevant IDs, no enrichment needed
+		if (hasImdb && (criteria.searchType === 'movie' || hasTvdb)) {
 			return criteria;
 		}
 
-		// If we have TMDB ID but no IMDB ID, look it up
+		// If we have TMDB ID, look up missing external IDs
 		if ('tmdbId' in criteria && criteria.tmdbId) {
 			try {
 				const externalIds =
@@ -1215,20 +1297,26 @@ export class SearchOrchestrator {
 						? await tmdb.getMovieExternalIds(criteria.tmdbId)
 						: await tmdb.getTvExternalIds(criteria.tmdbId);
 
-				if (externalIds.imdb_id) {
-					logger.debug('Enriched search criteria with IMDB ID', {
-						tmdbId: criteria.tmdbId,
-						imdbId: externalIds.imdb_id
-					});
+				let enriched = { ...criteria };
 
-					return {
-						...criteria,
-						imdbId: externalIds.imdb_id
-					};
+				if (!hasImdb && externalIds.imdb_id) {
+					enriched = { ...enriched, imdbId: externalIds.imdb_id };
 				}
+
+				if (criteria.searchType === 'tv' && !hasTvdb && externalIds.tvdb_id) {
+					enriched = { ...enriched, tvdbId: externalIds.tvdb_id } as typeof enriched;
+				}
+
+				logger.debug('Enriched search criteria with external IDs', {
+					tmdbId: criteria.tmdbId,
+					imdbId: 'imdbId' in enriched ? (enriched.imdbId as string) : null,
+					tvdbId: 'tvdbId' in enriched ? (enriched.tvdbId as number) : null
+				});
+
+				return enriched as SearchCriteria;
 			} catch (error) {
-				// Log but don't fail - search can still proceed without IMDB ID
-				logger.warn('Failed to look up IMDB ID from TMDB', {
+				// Log but don't fail - search can still proceed without external IDs
+				logger.warn('Failed to look up external IDs from TMDB', {
 					tmdbId: criteria.tmdbId,
 					error: error instanceof Error ? error.message : String(error)
 				});

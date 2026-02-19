@@ -1304,6 +1304,7 @@
 	title={searchTitle()}
 	tmdbId={series.tmdbId}
 	imdbId={series.imdbId}
+	tvdbId={series.tvdbId}
 	year={series.year}
 	mediaType="tv"
 	scoringProfileId={series.scoringProfileId}

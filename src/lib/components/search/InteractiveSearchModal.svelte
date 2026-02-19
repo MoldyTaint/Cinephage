@@ -99,6 +99,7 @@
 		title: string;
 		tmdbId?: number;
 		imdbId?: string | null;
+		tvdbId?: number | null;
 		year?: number | null;
 		mediaType: 'movie' | 'tv';
 		scoringProfileId?: string | null;
@@ -117,6 +118,7 @@
 		title,
 		tmdbId,
 		imdbId,
+		tvdbId,
 		year,
 		mediaType,
 		scoringProfileId,
@@ -160,6 +162,7 @@
 				title,
 				tmdbId,
 				imdbId,
+				tvdbId,
 				year,
 				mediaType,
 				season,
@@ -285,6 +288,7 @@
 
 			if (tmdbId) params.set('tmdbId', tmdbId.toString());
 			if (imdbId) params.set('imdbId', imdbId);
+			if (tvdbId) params.set('tvdbId', tvdbId.toString());
 			if (year) params.set('year', year.toString());
 			if (scoringProfileId) params.set('scoringProfileId', scoringProfileId);
 			if (season !== undefined) params.set('season', season.toString());

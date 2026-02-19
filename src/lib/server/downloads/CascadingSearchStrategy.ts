@@ -18,7 +18,7 @@ import {
 	type ReleaseCandidate
 } from '$lib/server/monitoring/specifications/index.js';
 import { scoreRelease } from '$lib/server/scoring/scorer.js';
-import { getProfile } from '$lib/server/scoring/profiles.js';
+import { qualityFilter } from '$lib/server/quality/index.js';
 import { createChildLogger } from '$lib/logging';
 import { db } from '$lib/server/db/index.js';
 import { episodes } from '$lib/server/db/schema.js';
@@ -164,7 +164,7 @@ class CascadingSearchStrategy {
 		// Load scoring profile if provided
 		let profile: ScoringProfile | undefined;
 		if (scoringProfileId) {
-			profile = getProfile(scoringProfileId);
+			profile = (await qualityFilter.getProfile(scoringProfileId)) ?? undefined;
 		}
 
 		// Phase 1: Try season packs for seasons with high missing %

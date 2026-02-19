@@ -150,6 +150,11 @@ export class UnifiedIndexer implements IIndexer {
 			if (caps.bookSearch.available) {
 				this.requestBuilder.setSupportedParams('book', caps.bookSearch.supportedParams);
 			}
+
+			// Also override this.capabilities search modes with live caps
+			// so that indexerSupportsSearchIds() uses the same source of truth
+			// as RequestBuilder.filterBySupportedParams()
+			this.overrideCapabilitiesWithLiveCaps(liveCapabilities);
 		}
 
 		this.responseParser = createResponseParser(
@@ -316,6 +321,59 @@ export class UnifiedIndexer implements IIndexer {
 			limitMax: 100,
 			limitDefault: 100
 		};
+	}
+
+	/**
+	 * Override capabilities search modes with live Newznab caps.
+	 * This ensures indexerSupportsSearchIds() uses the same source of truth
+	 * as RequestBuilder.filterBySupportedParams(), preventing mismatches
+	 * where YAML declares support for params the live indexer doesn't have.
+	 */
+	private overrideCapabilitiesWithLiveCaps(liveCaps: NewznabCapabilities): void {
+		const toSearchParams = (params: string[]): SearchParam[] => {
+			const mapping: Record<string, SearchParam> = {
+				q: 'q',
+				imdbid: 'imdbId',
+				tmdbid: 'tmdbId',
+				tvdbid: 'tvdbId',
+				tvmazeid: 'tvMazeId',
+				traktid: 'traktId',
+				season: 'season',
+				ep: 'ep',
+				year: 'year',
+				genre: 'genre',
+				artist: 'artist',
+				album: 'album',
+				author: 'author',
+				title: 'title',
+				rid: 'q' // RageID not supported, map to q
+			};
+			return params.map((p) => mapping[p.toLowerCase()] ?? 'q');
+		};
+
+		const caps = liveCaps.searching;
+
+		if (caps.search.available && this.capabilities.search) {
+			this.capabilities.search.supportedParams = toSearchParams(caps.search.supportedParams);
+		}
+		if (caps.tvSearch.available && this.capabilities.tvSearch) {
+			this.capabilities.tvSearch.supportedParams = toSearchParams(caps.tvSearch.supportedParams);
+		}
+		if (caps.movieSearch.available && this.capabilities.movieSearch) {
+			this.capabilities.movieSearch.supportedParams = toSearchParams(
+				caps.movieSearch.supportedParams
+			);
+		}
+		if (caps.audioSearch.available && this.capabilities.musicSearch) {
+			this.capabilities.musicSearch.supportedParams = toSearchParams(
+				caps.audioSearch.supportedParams
+			);
+		}
+		if (caps.bookSearch.available && this.capabilities.bookSearch) {
+			this.capabilities.bookSearch.supportedParams = toSearchParams(
+				caps.bookSearch.supportedParams
+			);
+		}
 	}
 
 	/**

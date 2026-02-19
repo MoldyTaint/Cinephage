@@ -891,6 +891,9 @@ export class MonitoringSearchService {
 			if (seriesData.scoringProfileId) {
 				profile = (await qualityFilter.getProfile(seriesData.scoringProfileId)) ?? undefined;
 			}
+			if (!profile) {
+				profile = await qualityFilter.getDefaultScoringProfile();
+			}
 
 			for (const release of seasonPacks) {
 				const releaseCandidate: ReleaseCandidate = {
@@ -1748,6 +1751,9 @@ export class MonitoringSearchService {
 		if (seriesData.scoringProfileId) {
 			profile = (await qualityFilter.getProfile(seriesData.scoringProfileId)) ?? undefined;
 		}
+		if (!profile) {
+			profile = await qualityFilter.getDefaultScoringProfile();
+		}
 
 		// Score the existing file upfront for dry-run reporting
 		let existingScore = 0;
@@ -2485,6 +2491,9 @@ export class MonitoringSearchService {
 			let profile: ScoringProfile | undefined;
 			if (seriesData.scoringProfileId) {
 				profile = (await qualityFilter.getProfile(seriesData.scoringProfileId)) ?? undefined;
+			}
+			if (!profile) {
+				profile = await qualityFilter.getDefaultScoringProfile();
 			}
 
 			for (const release of searchResult.releases) {

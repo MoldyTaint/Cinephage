@@ -7,6 +7,13 @@ import { searchQuerySchema } from '$lib/validation/schemas';
 import { qualityFilter, type EnrichmentOptions } from '$lib/server/quality';
 import { logger } from '$lib/logging';
 import { redactUrl } from '$lib/server/utils/urlSecurity';
+import { db } from '$lib/server/db';
+import { movies, series } from '$lib/server/db/schema';
+import { eq } from 'drizzle-orm';
+import {
+	getMovieSearchTitles,
+	getSeriesSearchTitles
+} from '$lib/server/services/AlternateTitleService';
 
 /**
  * Redact sensitive URLs from release objects before returning in API responses.
@@ -105,6 +112,40 @@ export const GET: RequestHandler = async ({ url }) => {
 			indexerIds: indexers,
 			limit
 		};
+	}
+
+	// Populate searchTitles from alternate titles in the library database
+	// This enables multi-title text fallback search and title relevance filtering
+	if (tmdbId && (searchType === 'movie' || searchType === 'tv')) {
+		try {
+			let searchTitles: string[] | undefined;
+			if (searchType === 'movie') {
+				const movie = await db.query.movies.findFirst({
+					where: eq(movies.tmdbId, tmdbId),
+					columns: { id: true }
+				});
+				if (movie) {
+					searchTitles = await getMovieSearchTitles(movie.id);
+				}
+			} else {
+				const show = await db.query.series.findFirst({
+					where: eq(series.tmdbId, tmdbId),
+					columns: { id: true }
+				});
+				if (show) {
+					searchTitles = await getSeriesSearchTitles(show.id);
+				}
+			}
+			if (searchTitles && searchTitles.length > 0) {
+				criteria.searchTitles = searchTitles;
+			}
+		} catch (error) {
+			logger.warn('[SearchAPI] Failed to look up alternate titles', {
+				tmdbId,
+				searchType,
+				error: error instanceof Error ? error.message : String(error)
+			});
+		}
 	}
 
 	const manager = await getIndexerManager();

@@ -216,7 +216,34 @@ export class QualityFilter {
 			.get();
 
 		if (result) {
-			this.defaultProfile = this.mapDbToProfile(result);
+			let profile = this.mapDbToProfile(result);
+
+			// For built-in profiles, merge size limits from profileSizeLimits table
+			// (Size limits are stored separately from the seeded profile data)
+			const builtIn = getProfile(result.id);
+			if (builtIn) {
+				const sizeLimits = await db
+					.select()
+					.from(profileSizeLimits)
+					.where(eq(profileSizeLimits.profileId, result.id))
+					.get();
+
+				if (sizeLimits) {
+					profile = {
+						...profile,
+						movieMinSizeGb:
+							this.coerceNullableNumber(sizeLimits.movieMinSizeGb) ?? profile.movieMinSizeGb,
+						movieMaxSizeGb:
+							this.coerceNullableNumber(sizeLimits.movieMaxSizeGb) ?? profile.movieMaxSizeGb,
+						episodeMinSizeMb:
+							this.coerceNullableNumber(sizeLimits.episodeMinSizeMb) ?? profile.episodeMinSizeMb,
+						episodeMaxSizeMb:
+							this.coerceNullableNumber(sizeLimits.episodeMaxSizeMb) ?? profile.episodeMaxSizeMb
+					};
+				}
+			}
+
+			this.defaultProfile = profile;
 			return this.defaultProfile;
 		}
 

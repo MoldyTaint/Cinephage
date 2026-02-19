@@ -26,12 +26,11 @@ import {
 } from '$lib/server/db/schema.js';
 import { eq, and, inArray } from 'drizzle-orm';
 import { isUpgrade, scoreRelease } from '$lib/server/scoring/scorer.js';
-import { getProfile } from '$lib/server/scoring/profiles.js';
+import { qualityFilter } from '$lib/server/quality/index.js';
 import {
 	ReleaseBlocklistSpecification,
 	type ReleaseCandidate
 } from '$lib/server/monitoring/specifications/index.js';
-import type { ScoringProfile } from '$lib/server/scoring/types.js';
 import { logger } from '$lib/logging/index.js';
 
 // ============================================================================
@@ -173,17 +172,11 @@ class ReleaseDecisionService {
 				// Skip score validation when forced
 				if (!options.force) {
 					// Score the release to ensure it meets minimum requirements
-					const fullProfile = getProfile(profile.id);
+					const fullProfile = await qualityFilter.getProfile(profile.id);
 					if (fullProfile) {
-						const scoreResult = scoreRelease(
-							release.title,
-							fullProfile as ScoringProfile,
-							undefined,
-							release.size,
-							{
-								mediaType: 'movie'
-							}
-						);
+						const scoreResult = scoreRelease(release.title, fullProfile, undefined, release.size, {
+							mediaType: 'movie'
+						});
 
 						if (scoreResult.isBanned) {
 							return this.createRejectedResult(
@@ -312,18 +305,12 @@ class ReleaseDecisionService {
 				// Skip score validation when forced
 				if (!options.force) {
 					// Score the release to ensure it meets minimum requirements
-					const fullProfile = getProfile(profile.id);
+					const fullProfile = await qualityFilter.getProfile(profile.id);
 					if (fullProfile) {
-						const scoreResult = scoreRelease(
-							release.title,
-							fullProfile as ScoringProfile,
-							undefined,
-							release.size,
-							{
-								mediaType: 'tv',
-								isSeasonPack: false
-							}
-						);
+						const scoreResult = scoreRelease(release.title, fullProfile, undefined, release.size, {
+							mediaType: 'tv',
+							isSeasonPack: false
+						});
 
 						if (scoreResult.isBanned) {
 							return this.createRejectedResult(
@@ -481,23 +468,17 @@ class ReleaseDecisionService {
 			}
 
 			// Get full profile for scoring
-			const fullProfile = getProfile(profile.id);
+			const fullProfile = await qualityFilter.getProfile(profile.id);
 			if (!fullProfile) {
 				return this.createRejectedResult('Profile not found', 'no_profile');
 			}
 
 			// Score the candidate release (as season pack)
-			const candidateScore = scoreRelease(
-				release.title,
-				fullProfile as ScoringProfile,
-				undefined,
-				release.size,
-				{
-					mediaType: 'tv',
-					isSeasonPack: true,
-					episodeCount: seasonEpisodes.length
-				}
-			);
+			const candidateScore = scoreRelease(release.title, fullProfile, undefined, release.size, {
+				mediaType: 'tv',
+				isSeasonPack: true,
+				episodeCount: seasonEpisodes.length
+			});
 
 			// Check if banned or size rejected
 			if (candidateScore.isBanned) {
@@ -532,15 +513,10 @@ class ReleaseDecisionService {
 				}
 
 				const existingFileName = existingFile.sceneName || existingFile.relativePath;
-				const comparison = isUpgrade(
-					existingFileName,
-					release.title,
-					fullProfile as ScoringProfile,
-					{
-						minimumImprovement: profile.minScoreIncrement || 0,
-						allowSidegrade: options.allowSidegrade ?? false
-					}
-				);
+				const comparison = isUpgrade(existingFileName, release.title, fullProfile, {
+					minimumImprovement: profile.minScoreIncrement || 0,
+					allowSidegrade: options.allowSidegrade ?? false
+				});
 
 				if (comparison.isUpgrade) {
 					stats.improved++;
@@ -711,23 +687,17 @@ class ReleaseDecisionService {
 			}
 
 			// Get full profile for scoring
-			const fullProfile = getProfile(profile.id);
+			const fullProfile = await qualityFilter.getProfile(profile.id);
 			if (!fullProfile) {
 				return this.createRejectedResult('Profile not found', 'no_profile');
 			}
 
 			// Score candidate (estimate based on total episodes)
-			const candidateScore = scoreRelease(
-				release.title,
-				fullProfile as ScoringProfile,
-				undefined,
-				release.size,
-				{
-					mediaType: 'tv',
-					isSeasonPack: true,
-					episodeCount: allEpisodes.length
-				}
-			);
+			const candidateScore = scoreRelease(release.title, fullProfile, undefined, release.size, {
+				mediaType: 'tv',
+				isSeasonPack: true,
+				episodeCount: allEpisodes.length
+			});
 
 			if (candidateScore.isBanned) {
 				return this.createRejectedResult(
@@ -761,15 +731,10 @@ class ReleaseDecisionService {
 				}
 
 				const existingFileName = existingFile.sceneName || existingFile.relativePath;
-				const comparison = isUpgrade(
-					existingFileName,
-					release.title,
-					fullProfile as ScoringProfile,
-					{
-						minimumImprovement: profile.minScoreIncrement || 0,
-						allowSidegrade: options.allowSidegrade ?? false
-					}
-				);
+				const comparison = isUpgrade(existingFileName, release.title, fullProfile, {
+					minimumImprovement: profile.minScoreIncrement || 0,
+					allowSidegrade: options.allowSidegrade ?? false
+				});
 
 				if (comparison.isUpgrade) {
 					stats.improved++;
@@ -912,24 +877,18 @@ class ReleaseDecisionService {
 			}
 
 			// Get full profile
-			const fullProfile = getProfile(profile.id);
+			const fullProfile = await qualityFilter.getProfile(profile.id);
 			if (!fullProfile) {
 				return this.createRejectedResult('Profile not found', 'no_profile');
 			}
 
 			// Score candidate
 			const isMultiEp = targetEpisodes.length > 1;
-			const candidateScore = scoreRelease(
-				release.title,
-				fullProfile as ScoringProfile,
-				undefined,
-				release.size,
-				{
-					mediaType: 'tv',
-					isSeasonPack: isMultiEp,
-					episodeCount: targetEpisodes.length
-				}
-			);
+			const candidateScore = scoreRelease(release.title, fullProfile, undefined, release.size, {
+				mediaType: 'tv',
+				isSeasonPack: isMultiEp,
+				episodeCount: targetEpisodes.length
+			});
 
 			if (candidateScore.isBanned) {
 				return this.createRejectedResult(
@@ -963,15 +922,10 @@ class ReleaseDecisionService {
 				}
 
 				const existingFileName = existingFile.sceneName || existingFile.relativePath;
-				const comparison = isUpgrade(
-					existingFileName,
-					release.title,
-					fullProfile as ScoringProfile,
-					{
-						minimumImprovement: profile.minScoreIncrement || 0,
-						allowSidegrade: options.allowSidegrade ?? false
-					}
-				);
+				const comparison = isUpgrade(existingFileName, release.title, fullProfile, {
+					minimumImprovement: profile.minScoreIncrement || 0,
+					allowSidegrade: options.allowSidegrade ?? false
+				});
 
 				if (comparison.isUpgrade) {
 					stats.improved++;
@@ -1086,13 +1040,13 @@ class ReleaseDecisionService {
 		mediaType: 'movie' | 'tv',
 		options: DecisionOptions
 	): Promise<ReleaseDecisionResult> {
-		const fullProfile = getProfile(profile.id);
+		const fullProfile = await qualityFilter.getProfile(profile.id);
 		if (!fullProfile) {
 			return this.createRejectedResult('Profile not found', 'no_profile');
 		}
 
 		// Score both releases
-		const comparison = isUpgrade(existingFileName, release.title, fullProfile as ScoringProfile, {
+		const comparison = isUpgrade(existingFileName, release.title, fullProfile, {
 			minimumImprovement: profile.minScoreIncrement || 0,
 			allowSidegrade: options.allowSidegrade ?? false,
 			candidateSizeBytes: release.size
