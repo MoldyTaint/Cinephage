@@ -180,6 +180,11 @@
 		URL.revokeObjectURL(url);
 	}
 
+	// Generate a unique key for a release (guid alone can collide across indexers)
+	function releaseKey(release: Release): string {
+		return `${release.guid}-${release.indexerId}`;
+	}
+
 	// Helper to check if a release is a multi-season pack
 	function isMultiSeasonPack(release: Release): boolean {
 		// Check episodeMatch first (from enhanced search results)
@@ -307,24 +312,25 @@
 	}
 
 	async function handleGrab(release: Release, streaming?: boolean) {
-		grabbingIds.add(release.guid);
+		const key = releaseKey(release);
+		grabbingIds.add(key);
 		if (streaming) {
-			streamingIds.add(release.guid);
+			streamingIds.add(key);
 		}
-		grabErrors.delete(release.guid);
+		grabErrors.delete(key);
 
 		try {
 			const result = await onGrab(release, streaming);
 			if (result.success) {
-				grabbedIds.add(release.guid);
+				grabbedIds.add(key);
 			} else {
-				grabErrors.set(release.guid, result.error || 'Failed to grab');
+				grabErrors.set(key, result.error || 'Failed to grab');
 			}
 		} catch (err) {
-			grabErrors.set(release.guid, err instanceof Error ? err.message : 'Failed');
+			grabErrors.set(key, err instanceof Error ? err.message : 'Failed');
 		} finally {
-			grabbingIds.delete(release.guid);
-			streamingIds.delete(release.guid);
+			grabbingIds.delete(key);
+			streamingIds.delete(key);
 		}
 	}
 
@@ -475,7 +481,7 @@
 						<div class="mb-2">
 							<span class="font-medium text-base-content/80">Searched:</span>
 							<div class="mt-1 flex flex-wrap gap-2">
-								{#each Object.entries(meta.indexerResults) as [, result] (result.name)}
+								{#each Object.entries(meta.indexerResults) as [indexerId, result] (indexerId)}
 									<div
 										class="badge gap-1 {result.error
 											? 'badge-error'
@@ -655,14 +661,14 @@
 						</tr>
 					</thead>
 					<tbody>
-						{#each filteredReleases as release (release.guid)}
+						{#each filteredReleases as release (releaseKey(release))}
 							<SearchResultRow
 								{release}
 								onGrab={handleGrab}
-								grabbing={grabbingIds.has(release.guid)}
-								grabbed={grabbedIds.has(release.guid)}
-								streaming={streamingIds.has(release.guid)}
-								error={grabErrors.get(release.guid)}
+								grabbing={grabbingIds.has(releaseKey(release))}
+								grabbed={grabbedIds.has(releaseKey(release))}
+								streaming={streamingIds.has(releaseKey(release))}
+								error={grabErrors.get(releaseKey(release))}
 								onClick={showDebugPanel ? () => (selectedDebugRelease = release) : undefined}
 								clickable={showDebugPanel}
 							/>
