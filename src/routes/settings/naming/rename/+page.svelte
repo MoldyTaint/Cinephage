@@ -359,13 +359,13 @@
 										<div class="flex items-center gap-2 text-sm">
 											<span class="w-12 text-base-content/60">From:</span>
 											<code class="rounded bg-base-300 px-2 py-0.5 break-all text-error"
-												>{item.currentRelativePath}</code
+												>{item.currentParentPath}/{item.currentRelativePath}</code
 											>
 										</div>
 										<div class="flex items-center gap-2 text-sm">
 											<span class="w-12 text-base-content/60">To:</span>
 											<code class="rounded bg-base-300 px-2 py-0.5 break-all text-success"
-												>{item.newRelativePath}</code
+												>{item.newParentPath}/{item.newRelativePath}</code
 											>
 										</div>
 									</div>
@@ -407,14 +407,14 @@
 									{:else if activeTab === 'alreadyCorrect'}
 										<div class="mt-2 text-sm">
 											<code class="rounded bg-base-300 px-2 py-0.5 break-all"
-												>{item.currentRelativePath}</code
+												>{item.currentParentPath}/{item.currentRelativePath}</code
 											>
 										</div>
 									{:else if activeTab === 'errors'}
 										<div class="mt-2 space-y-1">
 											<div class="text-sm">
 												<code class="rounded bg-base-300 px-2 py-0.5 break-all"
-													>{item.currentRelativePath}</code
+													>{item.currentParentPath}/{item.currentRelativePath}</code
 												>
 											</div>
 											{#if item.error}

@@ -313,14 +313,14 @@
 														<div class="flex items-center gap-2">
 															<code
 																class="rounded bg-base-300 px-1.5 py-0.5 text-xs break-all text-error"
-																>{item.currentRelativePath}</code
+																>{item.currentParentPath}/{item.currentRelativePath}</code
 															>
 														</div>
 														<div class="flex items-center gap-2">
 															<ArrowRight class="h-3 w-3 flex-shrink-0 text-base-content/40" />
 															<code
 																class="rounded bg-base-300 px-1.5 py-0.5 text-xs break-all text-success"
-																>{item.newRelativePath}</code
+																>{item.newParentPath}/{item.newRelativePath}</code
 															>
 														</div>
 													</div>
@@ -360,7 +360,7 @@
 														</div>
 													{:else}
 														<code class="rounded bg-base-300 px-1.5 py-0.5 text-xs break-all"
-															>{item.currentRelativePath}</code
+															>{item.currentParentPath}/{item.currentRelativePath}</code
 														>
 													{/if}
 													{#if item.error}

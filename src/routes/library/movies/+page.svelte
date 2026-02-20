@@ -5,22 +5,29 @@
 	import { resolvePath } from '$lib/utils/routing';
 	import { SvelteSet } from 'svelte/reactivity';
 	import LibraryMediaCard from '$lib/components/library/LibraryMediaCard.svelte';
+	import LibraryMediaTable from '$lib/components/library/LibraryMediaTable.svelte';
 	import LibraryControls from '$lib/components/library/LibraryControls.svelte';
 	import LibraryBulkActionBar from '$lib/components/library/LibraryBulkActionBar.svelte';
 	import BulkQualityProfileModal from '$lib/components/library/BulkQualityProfileModal.svelte';
 	import BulkDeleteModal from '$lib/components/library/BulkDeleteModal.svelte';
-	import { Clapperboard, CheckSquare, X } from 'lucide-svelte';
+	import InteractiveSearchModal from '$lib/components/search/InteractiveSearchModal.svelte';
+	import { Clapperboard, CheckSquare, X, LayoutGrid, List } from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import { enhance } from '$app/forms';
+	import { Eye } from 'lucide-svelte';
 
 	let { data } = $props();
 
 	// Selection state
 	let selectedMovies = new SvelteSet<string>();
 	let showCheckboxes = $state(false);
+	let viewMode = $state<'grid' | 'list'>('grid');
 	let bulkLoading = $state(false);
 	let currentBulkAction = $state<'monitor' | 'unmonitor' | 'quality' | 'delete' | null>(null);
 	let isQualityModalOpen = $state(false);
 	let isDeleteModalOpen = $state(false);
+	let isSearchModalOpen = $state(false);
+	let selectedMovieForSearch = $state<(typeof data.movies)[number] | null>(null);
 
 	const selectedCount = $derived(selectedMovies.size);
 
@@ -63,7 +70,6 @@
 			});
 			const result = await response.json();
 			if (result.success) {
-				// Update local data
 				for (const movie of data.movies) {
 					if (selectedMovies.has(movie.id)) {
 						movie.monitored = monitored;
@@ -97,7 +103,6 @@
 			});
 			const result = await response.json();
 			if (result.success) {
-				// Update local data
 				for (const movie of data.movies) {
 					if (selectedMovies.has(movie.id)) {
 						movie.scoringProfileId = profileId;
@@ -134,12 +139,10 @@
 			const result = await response.json();
 			if (result.success || result.deletedCount > 0 || result.removedCount > 0) {
 				if (removeFromLibrary && result.removedCount > 0) {
-					// Remove from local data entirely
 					const updatedMovies = data.movies.filter((movie) => !selectedMovies.has(movie.id));
 					data = { ...data, movies: updatedMovies };
 					toasts.success(`Removed ${result.removedCount} movies from library`);
 				} else {
-					// Update local data - mark as missing
 					const updatedMovies = data.movies.map((movie) =>
 						selectedMovies.has(movie.id) ? { ...movie, hasFile: false, files: [] } : movie
 					);
@@ -160,7 +163,170 @@
 		}
 	}
 
-	// Escape key to exit selection mode
+	// Table action handlers
+	async function handleSearchMovie(movieId: string) {
+		const movie = data.movies.find((m) => m.id === movieId);
+		if (!movie) return;
+
+		try {
+			const response = await fetch(`/api/library/movies/${movieId}/search`, {
+				method: 'POST'
+			});
+			const result = await response.json();
+			if (result.success) {
+				toasts.success(`Search started for "${movie.title}"`);
+			} else {
+				toasts.error(result.error || 'Search failed');
+			}
+		} catch {
+			toasts.error('Failed to start search');
+		}
+	}
+
+	async function handleMonitorToggle(movieId: string, monitored: boolean) {
+		const movie = data.movies.find((m) => m.id === movieId);
+		if (!movie) return;
+
+		try {
+			const response = await fetch(`/api/library/movies/${movieId}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ monitored })
+			});
+			const result = await response.json();
+			if (result.success) {
+				movie.monitored = monitored;
+				toasts.success(`"${movie.title}" ${monitored ? 'monitored' : 'unmonitored'}`);
+			} else {
+				toasts.error(result.error || 'Failed to update');
+			}
+		} catch {
+			toasts.error('Failed to update movie');
+		}
+	}
+
+	async function handleDeleteMovie(movieId: string) {
+		const movie = data.movies.find((m) => m.id === movieId);
+		if (!movie) return;
+
+		if (!confirm(`Are you sure you want to delete "${movie.title}"?`)) {
+			return;
+		}
+
+		try {
+			const response = await fetch(`/api/library/movies/${movieId}`, {
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ deleteFiles: true, removeFromLibrary: false })
+			});
+			const result = await response.json();
+			if (result.success) {
+				movie.hasFile = false;
+				movie.files = [];
+				toasts.success(`"${movie.title}" deleted`);
+			} else {
+				toasts.error(result.error || 'Failed to delete');
+			}
+		} catch {
+			toasts.error('Failed to delete movie');
+		}
+	}
+
+	async function handleAutoGrab(movieId: string) {
+		const movie = data.movies.find((m) => m.id === movieId);
+		if (!movie) return;
+
+		try {
+			const response = await fetch(`/api/library/movies/${movieId}/auto-search`, {
+				method: 'POST'
+			});
+			const result = await response.json();
+			if (result.grabbed) {
+				toasts.success(`Auto-grabbed "${result.releaseName}" for "${movie.title}"`);
+			} else if (result.found) {
+				toasts.info(`Found releases but none met criteria for "${movie.title}"`);
+			} else {
+				toasts.info(`No releases found for "${movie.title}"`);
+			}
+		} catch {
+			toasts.error(`Failed to auto-grab for "${movie.title}"`);
+		}
+	}
+
+	function handleManualGrab(movieId: string) {
+		const movie = data.movies.find((m) => m.id === movieId);
+		if (!movie) return;
+		selectedMovieForSearch = movie;
+		isSearchModalOpen = true;
+	}
+
+	async function handleGrabRelease(
+		release: {
+			guid: string;
+			title: string;
+			downloadUrl: string;
+			magnetUrl?: string;
+			infoHash?: string;
+			size: number;
+			seeders?: number;
+			leechers?: number;
+			publishDate: string | Date;
+			indexerId: string;
+			indexerName: string;
+			protocol: string;
+			commentsUrl?: string;
+			parsed?: {
+				resolution?: string;
+				source?: string;
+				codec?: string;
+				hdr?: string;
+				releaseGroup?: string;
+			};
+		},
+		streaming?: boolean
+	) {
+		if (!selectedMovieForSearch) return { success: false, error: 'No movie selected' };
+
+		try {
+			const response = await fetch('/api/download/grab', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					downloadUrl: release.downloadUrl,
+					magnetUrl: release.magnetUrl,
+					infoHash: release.infoHash,
+					title: release.title,
+					indexerId: release.indexerId,
+					indexerName: release.indexerName,
+					protocol: release.protocol,
+					size: release.size,
+					movieId: selectedMovieForSearch.id,
+					mediaType: 'movie',
+					quality: release.parsed
+						? {
+								resolution: release.parsed.resolution,
+								source: release.parsed.source,
+								codec: release.parsed.codec,
+								hdr: release.parsed.hdr
+							}
+						: undefined,
+					streamUsenet: streaming
+				})
+			});
+			const result = await response.json();
+			if (result.success) {
+				toasts.success(`Grabbed "${release.title}"`);
+				return { success: true };
+			} else {
+				toasts.error(result.error || 'Failed to grab release');
+				return { success: false, error: result.error };
+			}
+		} catch {
+			toasts.error('Failed to grab release');
+			return { success: false, error: 'Failed to grab release' };
+		}
+	}
+
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape' && showCheckboxes) {
 			toggleSelectionMode();
@@ -269,9 +435,6 @@
 		videoCodec: data.filters.videoCodec,
 		hdrFormat: data.filters.hdrFormat
 	});
-
-	import { enhance } from '$app/forms';
-	import { Eye } from 'lucide-svelte';
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -356,6 +519,21 @@
 					</div>
 				{/if}
 
+				<!-- View Toggle -->
+				<button
+					class="btn btn-ghost btn-xs sm:btn-sm"
+					onclick={() => (viewMode = viewMode === 'grid' ? 'list' : 'grid')}
+					aria-label={viewMode === 'grid' ? 'Switch to list view' : 'Switch to grid view'}
+				>
+					{#if viewMode === 'grid'}
+						<List class="h-4 w-4" />
+						<span class="hidden sm:inline">List</span>
+					{:else}
+						<LayoutGrid class="h-4 w-4" />
+						<span class="hidden sm:inline">Grid</span>
+					{/if}
+				</button>
+
 				<LibraryControls
 					{sortOptions}
 					{filterOptions}
@@ -395,9 +573,9 @@
 				{#if data.totalUnfiltered === 0}
 					<p class="text-2xl font-bold">No movies in your library</p>
 					<p class="mt-2">Add movies from the Discover page to see them here.</p>
-					<a href={resolvePath('/discover?type=movie')} class="btn mt-6 btn-primary"
-						>Discover Movies</a
-					>
+					<a href={resolvePath('/discover?type=movie')} class="btn mt-6 btn-primary">
+						Discover Movies
+					</a>
 				{:else}
 					<p class="text-2xl font-bold">No movies match your filters</p>
 					<p class="mt-2">Try adjusting your filters to see more results.</p>
@@ -405,18 +583,33 @@
 				{/if}
 			</div>
 		{:else}
-			<!-- Movies Grid -->
+			<!-- Movies Grid or List -->
 			<div class="animate-in fade-in slide-in-from-bottom-4 duration-500">
-				<div class="grid grid-cols-3 gap-3 sm:gap-4 lg:grid-cols-9">
-					{#each data.movies as movie (movie.id)}
-						<LibraryMediaCard
-							item={movie}
-							selectable={showCheckboxes}
-							selected={selectedMovies.has(movie.id)}
-							onSelectChange={handleItemSelectChange}
-						/>
-					{/each}
-				</div>
+				{#if viewMode === 'grid'}
+					<div class="grid grid-cols-3 gap-3 sm:gap-4 lg:grid-cols-9">
+						{#each data.movies as movie (movie.id)}
+							<LibraryMediaCard
+								item={movie}
+								selectable={showCheckboxes}
+								selected={selectedMovies.has(movie.id)}
+								onSelectChange={handleItemSelectChange}
+							/>
+						{/each}
+					</div>
+				{:else}
+					<LibraryMediaTable
+						items={data.movies}
+						mediaType="movie"
+						selectedItems={selectedMovies}
+						selectable={showCheckboxes}
+						onSelectChange={handleItemSelectChange}
+						onSearch={handleSearchMovie}
+						onMonitorToggle={handleMonitorToggle}
+						onDelete={handleDeleteMovie}
+						onAutoGrab={handleAutoGrab}
+						onManualGrab={handleManualGrab}
+					/>
+				{/if}
 			</div>
 		{/if}
 	</main>
@@ -455,3 +648,21 @@
 	onConfirm={handleBulkDelete}
 	onCancel={() => (isDeleteModalOpen = false)}
 />
+
+<!-- Interactive Search Modal -->
+{#if selectedMovieForSearch}
+	<InteractiveSearchModal
+		open={isSearchModalOpen}
+		title={selectedMovieForSearch.title}
+		tmdbId={selectedMovieForSearch.tmdbId}
+		imdbId={selectedMovieForSearch.imdbId ?? undefined}
+		year={selectedMovieForSearch.year ?? undefined}
+		mediaType="movie"
+		scoringProfileId={selectedMovieForSearch.scoringProfileId ?? undefined}
+		onClose={() => {
+			isSearchModalOpen = false;
+			selectedMovieForSearch = null;
+		}}
+		onGrab={handleGrabRelease}
+	/>
+{/if}

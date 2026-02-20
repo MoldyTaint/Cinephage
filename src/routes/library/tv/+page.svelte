@@ -5,22 +5,29 @@
 	import { resolvePath } from '$lib/utils/routing';
 	import { SvelteSet } from 'svelte/reactivity';
 	import LibraryMediaCard from '$lib/components/library/LibraryMediaCard.svelte';
+	import LibraryMediaTable from '$lib/components/library/LibraryMediaTable.svelte';
 	import LibraryControls from '$lib/components/library/LibraryControls.svelte';
 	import LibraryBulkActionBar from '$lib/components/library/LibraryBulkActionBar.svelte';
 	import BulkQualityProfileModal from '$lib/components/library/BulkQualityProfileModal.svelte';
 	import BulkDeleteModal from '$lib/components/library/BulkDeleteModal.svelte';
-	import { Tv, CheckSquare, X } from 'lucide-svelte';
+	import InteractiveSearchModal from '$lib/components/search/InteractiveSearchModal.svelte';
+	import { Tv, CheckSquare, X, LayoutGrid, List } from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import { enhance } from '$app/forms';
+	import { Eye } from 'lucide-svelte';
 
 	let { data } = $props();
 
 	// Selection state
 	let selectedSeries = new SvelteSet<string>();
 	let showCheckboxes = $state(false);
+	let viewMode = $state<'grid' | 'list'>('grid');
 	let bulkLoading = $state(false);
 	let currentBulkAction = $state<'monitor' | 'unmonitor' | 'quality' | 'delete' | null>(null);
 	let isQualityModalOpen = $state(false);
 	let isDeleteModalOpen = $state(false);
+	let isSearchModalOpen = $state(false);
+	let selectedSeriesForSearch = $state<(typeof data.series)[number] | null>(null);
 
 	const selectedCount = $derived(selectedSeries.size);
 
@@ -63,7 +70,6 @@
 			});
 			const result = await response.json();
 			if (result.success) {
-				// Update local data
 				for (const show of data.series) {
 					if (selectedSeries.has(show.id)) {
 						show.monitored = monitored;
@@ -97,7 +103,6 @@
 			});
 			const result = await response.json();
 			if (result.success) {
-				// Update local data
 				for (const show of data.series) {
 					if (selectedSeries.has(show.id)) {
 						show.scoringProfileId = profileId;
@@ -134,12 +139,10 @@
 			const result = await response.json();
 			if (result.success || result.deletedCount > 0 || result.removedCount > 0) {
 				if (removeFromLibrary && result.removedCount > 0) {
-					// Remove from local data entirely
 					const updatedSeries = data.series.filter((show) => !selectedSeries.has(show.id));
 					data = { ...data, series: updatedSeries };
 					toasts.success(`Removed ${result.removedCount} series from library`);
 				} else {
-					// Update local data - mark as having no files
 					const updatedSeries = data.series.map((show) =>
 						selectedSeries.has(show.id)
 							? { ...show, episodeFileCount: 0, percentComplete: 0 }
@@ -162,7 +165,170 @@
 		}
 	}
 
-	// Escape key to exit selection mode
+	// Table action handlers
+	async function handleSearchSeries(seriesId: string) {
+		const show = data.series.find((s) => s.id === seriesId);
+		if (!show) return;
+
+		try {
+			const response = await fetch(`/api/library/series/${seriesId}/search`, {
+				method: 'POST'
+			});
+			const result = await response.json();
+			if (result.success) {
+				toasts.success(`Search started for "${show.title}"`);
+			} else {
+				toasts.error(result.error || 'Search failed');
+			}
+		} catch {
+			toasts.error('Failed to start search');
+		}
+	}
+
+	async function handleMonitorToggle(seriesId: string, monitored: boolean) {
+		const show = data.series.find((s) => s.id === seriesId);
+		if (!show) return;
+
+		try {
+			const response = await fetch(`/api/library/series/${seriesId}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ monitored })
+			});
+			const result = await response.json();
+			if (result.success) {
+				show.monitored = monitored;
+				toasts.success(`"${show.title}" ${monitored ? 'monitored' : 'unmonitored'}`);
+			} else {
+				toasts.error(result.error || 'Failed to update');
+			}
+		} catch {
+			toasts.error('Failed to update series');
+		}
+	}
+
+	async function handleDeleteSeries(seriesId: string) {
+		const show = data.series.find((s) => s.id === seriesId);
+		if (!show) return;
+
+		if (!confirm(`Are you sure you want to delete "${show.title}"?`)) {
+			return;
+		}
+
+		try {
+			const response = await fetch(`/api/library/series/${seriesId}`, {
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ deleteFiles: true, removeFromLibrary: false })
+			});
+			const result = await response.json();
+			if (result.success) {
+				show.episodeFileCount = 0;
+				show.percentComplete = 0;
+				toasts.success(`"${show.title}" files deleted`);
+			} else {
+				toasts.error(result.error || 'Failed to delete');
+			}
+		} catch {
+			toasts.error('Failed to delete series files');
+		}
+	}
+
+	async function handleAutoGrab(seriesId: string) {
+		const show = data.series.find((s) => s.id === seriesId);
+		if (!show) return;
+
+		try {
+			const response = await fetch(`/api/library/series/${seriesId}/auto-search`, {
+				method: 'POST'
+			});
+			const result = await response.json();
+			if (result.grabbed) {
+				toasts.success(`Auto-grabbed "${result.releaseName}" for "${show.title}"`);
+			} else if (result.found) {
+				toasts.info(`Found releases but none met criteria for "${show.title}"`);
+			} else {
+				toasts.info(`No releases found for "${show.title}"`);
+			}
+		} catch {
+			toasts.error(`Failed to auto-grab for "${show.title}"`);
+		}
+	}
+
+	function handleManualGrab(seriesId: string) {
+		const show = data.series.find((s) => s.id === seriesId);
+		if (!show) return;
+		selectedSeriesForSearch = show;
+		isSearchModalOpen = true;
+	}
+
+	async function handleGrabRelease(
+		release: {
+			guid: string;
+			title: string;
+			downloadUrl: string;
+			magnetUrl?: string;
+			infoHash?: string;
+			size: number;
+			seeders?: number;
+			leechers?: number;
+			publishDate: string | Date;
+			indexerId: string;
+			indexerName: string;
+			protocol: string;
+			commentsUrl?: string;
+			parsed?: {
+				resolution?: string;
+				source?: string;
+				codec?: string;
+				hdr?: string;
+				releaseGroup?: string;
+			};
+		},
+		streaming?: boolean
+	) {
+		if (!selectedSeriesForSearch) return { success: false, error: 'No series selected' };
+
+		try {
+			const response = await fetch('/api/download/grab', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					downloadUrl: release.downloadUrl,
+					magnetUrl: release.magnetUrl,
+					infoHash: release.infoHash,
+					title: release.title,
+					indexerId: release.indexerId,
+					indexerName: release.indexerName,
+					protocol: release.protocol,
+					size: release.size,
+					seriesId: selectedSeriesForSearch.id,
+					mediaType: 'tv',
+					quality: release.parsed
+						? {
+								resolution: release.parsed.resolution,
+								source: release.parsed.source,
+								codec: release.parsed.codec,
+								hdr: release.parsed.hdr
+							}
+						: undefined,
+					streamUsenet: streaming
+				})
+			});
+			const result = await response.json();
+			if (result.success) {
+				toasts.success(`Grabbed "${release.title}"`);
+				return { success: true };
+			} else {
+				toasts.error(result.error || 'Failed to grab release');
+				return { success: false, error: result.error };
+			}
+		} catch {
+			toasts.error('Failed to grab release');
+			return { success: false, error: 'Failed to grab release' };
+		}
+	}
+
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape' && showCheckboxes) {
 			toggleSelectionMode();
@@ -284,9 +450,6 @@
 		videoCodec: data.filters.videoCodec,
 		hdrFormat: data.filters.hdrFormat
 	});
-
-	import { enhance } from '$app/forms';
-	import { Eye } from 'lucide-svelte';
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -371,6 +534,21 @@
 					</div>
 				{/if}
 
+				<!-- View Toggle -->
+				<button
+					class="btn btn-ghost btn-xs sm:btn-sm"
+					onclick={() => (viewMode = viewMode === 'grid' ? 'list' : 'grid')}
+					aria-label={viewMode === 'grid' ? 'Switch to list view' : 'Switch to grid view'}
+				>
+					{#if viewMode === 'grid'}
+						<List class="h-4 w-4" />
+						<span class="hidden sm:inline">List</span>
+					{:else}
+						<LayoutGrid class="h-4 w-4" />
+						<span class="hidden sm:inline">Grid</span>
+					{/if}
+				</button>
+
 				<LibraryControls
 					{sortOptions}
 					{filterOptions}
@@ -410,9 +588,9 @@
 				{#if data.totalUnfiltered === 0}
 					<p class="text-2xl font-bold">No TV shows in your library</p>
 					<p class="mt-2">Add TV shows from the Discover page to see them here.</p>
-					<a href={resolvePath('/discover?type=tv')} class="btn mt-6 btn-primary"
-						>Discover TV Shows</a
-					>
+					<a href={resolvePath('/discover?type=tv')} class="btn mt-6 btn-primary">
+						Discover TV Shows
+					</a>
 				{:else}
 					<p class="text-2xl font-bold">No TV shows match your filters</p>
 					<p class="mt-2">Try adjusting your filters to see more results.</p>
@@ -420,18 +598,33 @@
 				{/if}
 			</div>
 		{:else}
-			<!-- Series Grid -->
+			<!-- Series Grid or List -->
 			<div class="animate-in fade-in slide-in-from-bottom-4 duration-500">
-				<div class="grid grid-cols-3 gap-3 sm:gap-4 lg:grid-cols-9">
-					{#each data.series as show (show.id)}
-						<LibraryMediaCard
-							item={show}
-							selectable={showCheckboxes}
-							selected={selectedSeries.has(show.id)}
-							onSelectChange={handleItemSelectChange}
-						/>
-					{/each}
-				</div>
+				{#if viewMode === 'grid'}
+					<div class="grid grid-cols-3 gap-3 sm:gap-4 lg:grid-cols-9">
+						{#each data.series as show (show.id)}
+							<LibraryMediaCard
+								item={show}
+								selectable={showCheckboxes}
+								selected={selectedSeries.has(show.id)}
+								onSelectChange={handleItemSelectChange}
+							/>
+						{/each}
+					</div>
+				{:else}
+					<LibraryMediaTable
+						items={data.series}
+						mediaType="series"
+						selectedItems={selectedSeries}
+						selectable={showCheckboxes}
+						onSelectChange={handleItemSelectChange}
+						onSearch={handleSearchSeries}
+						onMonitorToggle={handleMonitorToggle}
+						onDelete={handleDeleteSeries}
+						onAutoGrab={handleAutoGrab}
+						onManualGrab={handleManualGrab}
+					/>
+				{/if}
 			</div>
 		{/if}
 	</main>
@@ -470,3 +663,21 @@
 	onConfirm={handleBulkDelete}
 	onCancel={() => (isDeleteModalOpen = false)}
 />
+
+<!-- Interactive Search Modal -->
+{#if selectedSeriesForSearch}
+	<InteractiveSearchModal
+		open={isSearchModalOpen}
+		title={selectedSeriesForSearch.title}
+		tmdbId={selectedSeriesForSearch.tmdbId}
+		imdbId={selectedSeriesForSearch.imdbId ?? undefined}
+		year={selectedSeriesForSearch.year ?? undefined}
+		mediaType="tv"
+		scoringProfileId={selectedSeriesForSearch.scoringProfileId ?? undefined}
+		onClose={() => {
+			isSearchModalOpen = false;
+			selectedSeriesForSearch = null;
+		}}
+		onGrab={handleGrabRelease}
+	/>
+{/if}

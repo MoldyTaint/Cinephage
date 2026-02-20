@@ -770,7 +770,7 @@ export class M3uProvider implements LiveTvProvider {
 				});
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				throw new Error(`Failed to decompress XMLTV gzip payload: ${message}`);
+				throw new Error(`Failed to decompress XMLTV gzip payload: ${message}`, { cause: error });
 			}
 		} else if (hasGzipMetadata) {
 			// Some servers auto-decompress despite .gz URLs/content-types.

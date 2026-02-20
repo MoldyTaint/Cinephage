@@ -145,15 +145,19 @@ async function testPreset(
 						originalExtension: extname(file.relativePath)
 					};
 
+					const newFolderName = namingService.generateMovieFolderName(namingInfo);
 					const newFileName = namingService.generateMovieFileName(namingInfo);
 
 					const item: PreviewItem = {
 						fileId: file.id,
 						mediaType: 'movie',
 						mediaTitle: movie.title,
-						currentPath: currentFileName,
-						newPath: newFileName,
-						status: currentFileName === newFileName ? 'already_correct' : 'will_change'
+						currentPath: join(movie.path, currentFileName),
+						newPath: join(newFolderName, newFileName),
+						status:
+							currentFileName === newFileName && movie.path === newFolderName
+								? 'already_correct'
+								: 'will_change'
 					};
 
 					if (item.status === 'will_change') {
@@ -254,6 +258,7 @@ async function testPreset(
 						originalExtension: extname(file.relativePath)
 					};
 
+					const newFolderName = namingService.generateSeriesFolderName(namingInfo);
 					const newFileName = namingService.generateEpisodeFileName(namingInfo);
 					const useSeasonFolders = show.seasonFolder ?? true;
 					let newRelativePath: string;
@@ -269,9 +274,12 @@ async function testPreset(
 						fileId: file.id,
 						mediaType: 'episode',
 						mediaTitle: `${show.title} S${String(file.seasonNumber).padStart(2, '0')}E${String(episodeNumbers[0]).padStart(2, '0')}`,
-						currentPath: file.relativePath,
-						newPath: newRelativePath,
-						status: file.relativePath === newRelativePath ? 'already_correct' : 'will_change'
+						currentPath: join(show.path, file.relativePath),
+						newPath: join(newFolderName, newRelativePath),
+						status:
+							file.relativePath === newRelativePath && show.path === newFolderName
+								? 'already_correct'
+								: 'will_change'
 					};
 
 					if (item.status === 'will_change') {

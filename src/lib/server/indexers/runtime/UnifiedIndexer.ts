@@ -842,7 +842,8 @@ export class UnifiedIndexer implements IIndexer {
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			throw new Error(
-				`External Host is unreachable (${baseUrl.host}). Check host, port, and protocol. (${message})`
+				`External Host is unreachable (${baseUrl.host}). Check host, port, and protocol. (${message})`,
+				{ cause: error }
 			);
 		} finally {
 			clearTimeout(timeoutId);

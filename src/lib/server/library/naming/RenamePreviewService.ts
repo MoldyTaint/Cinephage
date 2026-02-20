@@ -21,6 +21,7 @@ import { NamingService, type MediaNamingInfo } from './NamingService';
 import { namingSettingsService } from './NamingSettingsService';
 import { moveFile, fileExists } from '$lib/server/downloadClients/import/FileTransfer';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
+import { rename } from 'node:fs/promises';
 
 /**
  * Status of a rename preview item
@@ -37,10 +38,12 @@ export interface RenamePreviewItem {
 	mediaTitle: string;
 
 	// Current paths
+	currentParentPath: string;
 	currentRelativePath: string;
 	currentFullPath: string;
 
 	// New paths (what it would be renamed to)
+	newParentPath: string;
 	newRelativePath: string;
 	newFullPath: string;
 
@@ -243,7 +246,10 @@ export class RenamePreviewService {
 			if (item.status === 'error') {
 				result.errors.push(item);
 				result.totalErrors++;
-			} else if (item.currentRelativePath === item.newRelativePath) {
+			} else if (
+				item.currentRelativePath === item.newRelativePath &&
+				item.currentParentPath === item.newParentPath
+			) {
 				item.status = 'already_correct';
 				result.alreadyCorrect.push(item);
 				result.totalAlreadyCorrect++;
@@ -297,7 +303,10 @@ export class RenamePreviewService {
 			if (item.status === 'error') {
 				result.errors.push(item);
 				result.totalErrors++;
-			} else if (item.currentRelativePath === item.newRelativePath) {
+			} else if (
+				item.currentRelativePath === item.newRelativePath &&
+				item.currentParentPath === item.newParentPath
+			) {
 				item.status = 'already_correct';
 				result.alreadyCorrect.push(item);
 				result.totalAlreadyCorrect++;
@@ -355,10 +364,15 @@ export class RenamePreviewService {
 		}
 
 		// Execute each rename
+		// Group items by mediaId to process folder renames first
+		const groups = new Map<string, RenamePreviewItem[]>();
 		for (const fileId of fileIds) {
 			const item = renameMap.get(fileId);
-
-			if (!item) {
+			if (item) {
+				const group = groups.get(item.mediaId) || [];
+				group.push(item);
+				groups.set(item.mediaId, group);
+			} else {
 				// File not found in preview or already correct
 				result.results.push({
 					fileId,
@@ -370,34 +384,146 @@ export class RenamePreviewService {
 				});
 				result.failed++;
 				result.processed++;
-				continue;
+			}
+		}
+
+		for (const [mediaId, items] of groups) {
+			// Check if we need to rename the parent folder
+			const firstItem = items[0];
+
+			if (
+				firstItem &&
+				firstItem.currentParentPath !== firstItem.newParentPath &&
+				firstItem.status !== 'collision'
+			) {
+				try {
+					// We need to resolve the root folder path carefully
+					let rootFolderPath = '';
+
+					if (firstItem.mediaType === 'movie') {
+						const movie = db
+							.select({ rootFolderId: movies.rootFolderId })
+							.from(movies)
+							.where(eq(movies.id, mediaId))
+							.get();
+						if (movie?.rootFolderId) {
+							const rf = db
+								.select()
+								.from(rootFolders)
+								.where(eq(rootFolders.id, movie.rootFolderId))
+								.get();
+							if (rf) rootFolderPath = rf.path;
+						}
+					} else {
+						const show = db
+							.select({ rootFolderId: series.rootFolderId })
+							.from(series)
+							.where(eq(series.id, mediaId))
+							.get();
+						if (show?.rootFolderId) {
+							const rf = db
+								.select()
+								.from(rootFolders)
+								.where(eq(rootFolders.id, show.rootFolderId))
+								.get();
+							if (rf) rootFolderPath = rf.path;
+						}
+					}
+
+					if (!rootFolderPath) {
+						throw new Error(`Could not find root folder for media ${mediaId}`);
+					}
+
+					const actualOldFolder = join(rootFolderPath, firstItem.currentParentPath);
+					const actualNewFolder = join(rootFolderPath, firstItem.newParentPath);
+
+					logger.info('[RenamePreviewService] Renaming parent folder', {
+						mediaId,
+						mediaType: firstItem.mediaType,
+						from: actualOldFolder,
+						to: actualNewFolder
+					});
+
+					// Verify source exists before renaming folder
+					const dirExisted = await fileExists(actualOldFolder);
+					if (dirExisted && actualOldFolder !== actualNewFolder) {
+						await rename(actualOldFolder, actualNewFolder);
+					}
+
+					// Update db
+					if (firstItem.mediaType === 'movie') {
+						db.update(movies)
+							.set({ path: firstItem.newParentPath })
+							.where(eq(movies.id, mediaId))
+							.run();
+					} else {
+						db.update(series)
+							.set({ path: firstItem.newParentPath })
+							.where(eq(series.id, mediaId))
+							.run();
+					}
+
+					if (dirExisted) {
+						// Update currentFullPath for all items in this group
+						// because the folder they are in has now been renamed
+						for (const item of items) {
+							// For movies, currentRelativePath is just the file name
+							// For episodes, it might be "Season 1/Episode.mkv"
+							// We need to replace the old parent with the new parent
+							item.currentFullPath = join(actualNewFolder, item.currentRelativePath);
+							item.currentParentPath = item.newParentPath;
+						}
+					}
+				} catch (error) {
+					logger.error('[RenamePreviewService] Failed to rename parent folder', {
+						mediaId,
+						error: error instanceof Error ? error.message : String(error)
+					});
+					// If folder rename fails, we should fail all items in this group
+					for (const item of items) {
+						result.results.push({
+							fileId: item.fileId,
+							mediaType: item.mediaType,
+							success: false,
+							oldPath: item.currentFullPath,
+							newPath: item.newFullPath,
+							error: `Parent folder rename failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+						});
+						result.failed++;
+						result.processed++;
+					}
+					continue; // skip the rest of the loop for this group
+				}
 			}
 
-			// Skip collision items
-			if (item.status === 'collision') {
-				result.results.push({
-					fileId,
-					mediaType: item.mediaType,
-					success: false,
-					oldPath: item.currentFullPath,
-					newPath: item.newFullPath,
-					error: 'Cannot rename: collision with another file'
-				});
-				result.failed++;
+			// Now process each file in the group
+			for (const item of items) {
+				// Skip collision items
+				if (item.status === 'collision') {
+					result.results.push({
+						fileId: item.fileId,
+						mediaType: item.mediaType,
+						success: false,
+						oldPath: item.currentFullPath,
+						newPath: item.newFullPath,
+						error: 'Cannot rename: collision with another file'
+					});
+					result.failed++;
+					result.processed++;
+					continue;
+				}
+
+				// Execute the rename
+				const renameResult = await this.executeFileRename(item);
+				result.results.push(renameResult);
 				result.processed++;
-				continue;
-			}
 
-			// Execute the rename
-			const renameResult = await this.executeFileRename(item);
-			result.results.push(renameResult);
-			result.processed++;
-
-			if (renameResult.success) {
-				result.succeeded++;
-			} else {
-				result.failed++;
-				result.success = false;
+				if (renameResult.success) {
+					result.succeeded++;
+				} else {
+					result.failed++;
+					result.success = false;
+				}
 			}
 		}
 
@@ -588,21 +714,26 @@ export class RenamePreviewService {
 				originalExtension: extname(file.relativePath)
 			};
 
-			// Generate new filename
+			// Generate new filename and folder name
+			const newFolderName = this.namingService.generateMovieFolderName(namingInfo);
 			const newFileName = this.namingService.generateMovieFileName(namingInfo);
 
 			// Full paths - join root folder path with movie folder and file path
-			const movieFolderPath = join(rootFolderPath, movie.path);
-			const currentFullPath = join(movieFolderPath, file.relativePath);
-			const newFullPath = join(movieFolderPath, newFileName);
+			const currentFolderPath = join(rootFolderPath, movie.path);
+			const newFolderPath = join(rootFolderPath, newFolderName);
+			const currentFullPath = join(currentFolderPath, file.relativePath);
+			// The new full path has the new folder name AND the new file name
+			const newFullPath = join(newFolderPath, newFileName);
 
 			return {
 				fileId: file.id,
 				mediaType: 'movie',
 				mediaId: movie.id,
 				mediaTitle: movie.title,
+				currentParentPath: movie.path,
 				currentRelativePath: currentFileName,
 				currentFullPath,
+				newParentPath: newFolderName,
 				newRelativePath: newFileName,
 				newFullPath,
 				status: 'will_change' // Will be updated based on comparison
@@ -614,8 +745,10 @@ export class RenamePreviewService {
 				mediaType: 'movie',
 				mediaId: movie.id,
 				mediaTitle: movie.title,
+				currentParentPath: movie.path,
 				currentRelativePath: file.relativePath,
 				currentFullPath: join(movieFolderPath, file.relativePath),
+				newParentPath: movie.path,
 				newRelativePath: file.relativePath,
 				newFullPath: join(movieFolderPath, file.relativePath),
 				status: 'error',
@@ -705,7 +838,8 @@ export class RenamePreviewService {
 				originalExtension: extname(file.relativePath)
 			};
 
-			// Generate new filename
+			// Generate new filename and folder name
+			const newFolderName = this.namingService.generateSeriesFolderName(namingInfo);
 			const newFileName = this.namingService.generateEpisodeFileName(namingInfo);
 
 			// Episode files may include season folder in relative path
@@ -724,17 +858,20 @@ export class RenamePreviewService {
 			}
 
 			// Full paths - join root folder path with series folder and file path
-			const seriesFolderPath = join(rootFolderPath, show.path);
-			const currentFullPath = join(seriesFolderPath, file.relativePath);
-			const newFullPath = join(seriesFolderPath, newRelativePath);
+			const currentFolderPath = join(rootFolderPath, show.path);
+			const newFolderPath = join(rootFolderPath, newFolderName);
+			const currentFullPath = join(currentFolderPath, file.relativePath);
+			const newFullPath = join(newFolderPath, newRelativePath);
 
 			return {
 				fileId: file.id,
 				mediaType: 'episode',
 				mediaId: show.id,
 				mediaTitle: `${show.title} - S${String(file.seasonNumber).padStart(2, '0')}E${String(episodeNumbers[0]).padStart(2, '0')}`,
+				currentParentPath: show.path,
 				currentRelativePath: file.relativePath,
 				currentFullPath,
+				newParentPath: newFolderName,
 				newRelativePath,
 				newFullPath,
 				status: 'will_change'
@@ -746,8 +883,10 @@ export class RenamePreviewService {
 				mediaType: 'episode',
 				mediaId: show.id,
 				mediaTitle: show.title,
+				currentParentPath: show.path,
 				currentRelativePath: file.relativePath,
 				currentFullPath: join(seriesFolderPath, file.relativePath),
+				newParentPath: show.path,
 				newRelativePath: file.relativePath,
 				newFullPath: join(seriesFolderPath, file.relativePath),
 				status: 'error',
