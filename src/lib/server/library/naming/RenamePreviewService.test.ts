@@ -929,8 +929,10 @@ describe('RenamePreviewService', () => {
 						mediaTitle: 'Movie 1',
 						currentRelativePath: 'old1.mkv',
 						currentFullPath: '/path/old1.mkv',
+						currentParentPath: '/path',
 						newRelativePath: 'same.mkv',
 						newFullPath: '/path/same.mkv',
+						newParentPath: '/path',
 						status: 'will_change'
 					},
 					{
@@ -940,8 +942,10 @@ describe('RenamePreviewService', () => {
 						mediaTitle: 'Movie 2',
 						currentRelativePath: 'old2.mkv',
 						currentFullPath: '/path/old2.mkv',
+						currentParentPath: '/path',
 						newRelativePath: 'same.mkv',
 						newFullPath: '/path/same.mkv',
+						newParentPath: '/path',
 						status: 'will_change'
 					}
 				],

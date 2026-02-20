@@ -3,10 +3,11 @@
 	import { X, RefreshCw, CheckCircle, AlertTriangle, ArrowRight, Film, Tv } from 'lucide-svelte';
 	import type { RenamePreviewResult } from '$lib/server/library/naming/RenamePreviewService';
 	import { createFocusTrap, lockBodyScroll } from '$lib/utils/focus';
+	import { mediaTypeLabel, type MediaType } from '$lib/utils/media-type';
 
 	interface Props {
 		open: boolean;
-		mediaType: 'movie' | 'series';
+		mediaType: MediaType;
 		mediaId: string;
 		mediaTitle: string;
 		onClose: () => void;
@@ -48,7 +49,7 @@
 			const endpoint =
 				mediaType === 'movie'
 					? `/api/rename/preview/movie/${mediaId}`
-					: `/api/rename/preview/series/${mediaId}`;
+					: `/api/rename/preview/series/${mediaId}`; // rename API uses 'series' not 'tv'
 
 			const response = await fetch(endpoint);
 
@@ -84,7 +85,7 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					fileIds: Array.from(selectedIds),
-					mediaType: mediaType === 'movie' ? 'movie' : 'episode'
+					mediaType: mediaType === 'movie' ? 'movie' : 'episode' // rename API expects 'episode' for TV
 				})
 			});
 
@@ -277,7 +278,7 @@
 
 					{#if preview.totalFiles === 0}
 						<div class="py-10 text-center text-base-content/60">
-							No files found for this {mediaType}.
+							No files found for this {mediaTypeLabel(mediaType)}.
 						</div>
 					{:else if !hasChanges}
 						<div class="py-10 text-center text-base-content/60">

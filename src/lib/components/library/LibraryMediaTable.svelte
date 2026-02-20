@@ -19,10 +19,11 @@
 	} from 'lucide-svelte';
 	import { resolvePath } from '$lib/utils/routing';
 	import { formatBytes } from '$lib/utils/format';
+	import type { MediaType } from '$lib/utils/media-type';
 
 	interface Props {
 		items: (LibraryMovie | LibrarySeries)[];
-		mediaType: 'movie' | 'series';
+		mediaType: MediaType;
 		selectedItems: SvelteSet<string>;
 		selectable: boolean;
 		sortField?: string;
@@ -54,6 +55,8 @@
 
 	// Track loading states for actions
 	let actionLoadingRows = new SvelteSet<string>();
+
+	const isTv = $derived(mediaType === 'tv');
 
 	function handleSort(field: string) {
 		if (onSort) {
@@ -274,7 +277,7 @@
 				<!-- Quality Badges -->
 				{#if qualityBadges.length > 0}
 					<div class="mt-3 flex flex-wrap gap-1.5">
-						{#each qualityBadges as badge}
+						{#each qualityBadges as badge (`${badge.type}-${badge.label}`)}
 							<span class="badge badge-outline badge-sm">{badge.label}</span>
 						{/each}
 					</div>
@@ -403,7 +406,7 @@
 							{/if}
 						</span>
 					</th>
-					{#if mediaType === 'series'}
+					{#if isTv}
 						<th class="text-base">Progress</th>
 					{/if}
 					<th
@@ -502,7 +505,7 @@
 						<td>
 							{#if qualityBadges.length > 0}
 								<div class="flex flex-wrap gap-1.5">
-									{#each qualityBadges as badge}
+									{#each qualityBadges as badge (`${badge.type}-${badge.label}`)}
 										<span class="badge badge-outline badge-sm">{badge.label}</span>
 									{/each}
 								</div>
@@ -517,7 +520,7 @@
 						</td>
 
 						<!-- Progress (Series only) -->
-						{#if mediaType === 'series'}
+						{#if isTv}
 							<td>
 								{#if isSeries(item)}
 									<div class="flex items-center gap-2">

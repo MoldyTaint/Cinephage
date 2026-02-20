@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Plus, X, Globe, User, Loader2 } from 'lucide-svelte';
+	import { mediaTypeApiSegment, type MediaType } from '$lib/utils/media-type';
 
 	interface AlternateTitle {
 		id: number;
@@ -10,7 +11,7 @@
 	}
 
 	interface Props {
-		mediaType: 'movie' | 'series';
+		mediaType: MediaType;
 		mediaId: string;
 		primaryTitle?: string;
 		originalTitle?: string | null;
@@ -35,7 +36,7 @@
 		error = null;
 		try {
 			const response = await fetch(
-				`/api/library/${mediaType === 'movie' ? 'movies' : 'series'}/${mediaId}/alternate-titles`
+				`/api/library/${mediaTypeApiSegment(mediaType)}/${mediaId}/alternate-titles`
 			);
 			const data = await response.json();
 			if (data.success) {
@@ -57,7 +58,7 @@
 		error = null;
 		try {
 			const response = await fetch(
-				`/api/library/${mediaType === 'movie' ? 'movies' : 'series'}/${mediaId}/alternate-titles`,
+				`/api/library/${mediaTypeApiSegment(mediaType)}/${mediaId}/alternate-titles`,
 				{
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
@@ -85,7 +86,7 @@
 		error = null;
 		try {
 			const response = await fetch(
-				`/api/library/${mediaType === 'movie' ? 'movies' : 'series'}/${mediaId}/alternate-titles`,
+				`/api/library/${mediaTypeApiSegment(mediaType)}/${mediaId}/alternate-titles`,
 				{
 					method: 'DELETE',
 					headers: { 'Content-Type': 'application/json' },

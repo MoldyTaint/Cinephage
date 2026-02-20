@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { X, Loader2, AlertTriangle, Trash2 } from 'lucide-svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
+	import { mediaTypeCountLabel, type MediaType } from '$lib/utils/media-type';
 
 	interface Props {
 		open: boolean;
 		selectedCount: number;
-		mediaType: 'movie' | 'series';
+		mediaType: MediaType;
 		loading: boolean;
 		onConfirm: (deleteFiles: boolean, removeFromLibrary: boolean) => void;
 		onCancel: () => void;
@@ -24,15 +25,7 @@
 		}
 	});
 
-	const itemLabel = $derived(
-		mediaType === 'movie'
-			? selectedCount === 1
-				? 'movie'
-				: 'movies'
-			: selectedCount === 1
-				? 'series'
-				: 'series'
-	);
+	const itemLabel = $derived(mediaTypeCountLabel(mediaType, selectedCount));
 
 	function handleConfirm() {
 		onConfirm(deleteFiles, removeFromLibrary);

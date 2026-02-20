@@ -1333,7 +1333,7 @@
 <!-- Rename Preview Modal -->
 <RenamePreviewModal
 	open={isRenameModalOpen}
-	mediaType="series"
+	mediaType="tv"
 	mediaId={series.id}
 	mediaTitle={series.title}
 	onClose={() => (isRenameModalOpen = false)}

@@ -614,7 +614,7 @@
 				{:else}
 					<LibraryMediaTable
 						items={data.series}
-						mediaType="series"
+						mediaType="tv"
 						selectedItems={selectedSeries}
 						selectable={showCheckboxes}
 						onSelectChange={handleItemSelectChange}
@@ -635,7 +635,7 @@
 	{selectedCount}
 	loading={bulkLoading}
 	currentAction={currentBulkAction}
-	mediaType="series"
+	mediaType="tv"
 	onMonitor={() => handleBulkMonitor(true)}
 	onUnmonitor={() => handleBulkMonitor(false)}
 	onChangeQuality={() => (isQualityModalOpen = true)}
@@ -649,7 +649,7 @@
 	{selectedCount}
 	qualityProfiles={data.qualityProfiles}
 	saving={bulkLoading && currentBulkAction === 'quality'}
-	mediaType="series"
+	mediaType="tv"
 	onSave={handleBulkQualityChange}
 	onCancel={() => (isQualityModalOpen = false)}
 />
@@ -658,7 +658,7 @@
 <BulkDeleteModal
 	open={isDeleteModalOpen}
 	{selectedCount}
-	mediaType="series"
+	mediaType="tv"
 	loading={bulkLoading && currentBulkAction === 'delete'}
 	onConfirm={handleBulkDelete}
 	onCancel={() => (isDeleteModalOpen = false)}

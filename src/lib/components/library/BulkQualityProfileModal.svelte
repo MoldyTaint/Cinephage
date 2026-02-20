@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { X, Loader2 } from 'lucide-svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
+	import { mediaTypeCountLabel, type MediaType } from '$lib/utils/media-type';
 
 	interface QualityProfile {
 		id: string;
@@ -15,7 +16,7 @@
 		selectedCount: number;
 		qualityProfiles: QualityProfile[];
 		saving: boolean;
-		mediaType: 'movie' | 'series';
+		mediaType: MediaType;
 		onSave: (profileId: string | null) => void;
 		onCancel: () => void;
 	}
@@ -38,15 +39,7 @@
 		qualityProfiles.find((p) => p.id === qualityProfileId) ?? defaultProfile
 	);
 
-	const itemLabel = $derived(
-		mediaType === 'movie'
-			? selectedCount === 1
-				? 'movie'
-				: 'movies'
-			: selectedCount === 1
-				? 'series'
-				: 'series'
-	);
+	const itemLabel = $derived(mediaTypeCountLabel(mediaType, selectedCount));
 
 	function handleSave() {
 		onSave(qualityProfileId || null);

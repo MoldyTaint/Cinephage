@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { X, Eye, EyeOff, Sliders, Trash2, Loader2 } from 'lucide-svelte';
+	import { mediaTypeCountLabel, type MediaType } from '$lib/utils/media-type';
 
 	interface Props {
 		selectedCount: number;
 		loading: boolean;
 		currentAction: 'monitor' | 'unmonitor' | 'quality' | 'delete' | null;
-		mediaType: 'movie' | 'series';
+		mediaType: MediaType;
 		onMonitor: () => void;
 		onUnmonitor: () => void;
 		onChangeQuality: () => void;
@@ -25,15 +26,7 @@
 		onClear
 	}: Props = $props();
 
-	const itemLabel = $derived(
-		mediaType === 'movie'
-			? selectedCount === 1
-				? 'movie'
-				: 'movies'
-			: selectedCount === 1
-				? 'series'
-				: 'series'
-	);
+	const itemLabel = $derived(mediaTypeCountLabel(mediaType, selectedCount));
 </script>
 
 {#if selectedCount > 0}
