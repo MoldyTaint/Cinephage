@@ -139,7 +139,10 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 		}
 
 		// Update all episodes in this season to hasFile=false
-		await db.update(episodes).set({ hasFile: false }).where(eq(episodes.seasonId, params.id));
+		await db
+			.update(episodes)
+			.set({ hasFile: false, lastSearchTime: null })
+			.where(eq(episodes.seasonId, params.id));
 
 		// Update season episodeFileCount to 0
 		await db.update(seasons).set({ episodeFileCount: 0 }).where(eq(seasons.id, params.id));

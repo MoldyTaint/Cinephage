@@ -928,8 +928,62 @@ export class SearchOrchestrator {
 						});
 					}
 				}
+			} else if (isMovieSearch(criteria)) {
+				// Movie search: try provider-configured format variants.
+				// Default fallback includes noYear to avoid false negatives on indexers
+				// that over-constrain title+year keyword searches.
+				const movieFormats = indexer.capabilities.searchFormats?.movie ?? ['standard', 'noYear'];
+				const seenMovieVariants = new Set<string>();
+
+				for (const format of movieFormats) {
+					let movieQuery = title;
+					let movieYear = criteria.year;
+
+					if (format === 'noYear') {
+						movieYear = undefined;
+					} else if (format === 'yearOnly') {
+						if (!criteria.year) continue;
+						movieQuery = String(criteria.year);
+						movieYear = undefined;
+					}
+
+					const variantKey = `${movieQuery}::${movieYear ?? ''}`;
+					if (seenMovieVariants.has(variantKey)) {
+						continue;
+					}
+					seenMovieVariants.add(variantKey);
+
+					const textCriteria = createTextOnlyCriteria({
+						...criteria,
+						query: movieQuery,
+						year: movieYear
+					});
+
+					attemptedVariants++;
+					try {
+						const releases = await indexer.search(textCriteria);
+						successfulVariants++;
+
+						for (const release of releases) {
+							if (!seenGuids.has(release.guid)) {
+								seenGuids.add(release.guid);
+								allReleases.push(release);
+							}
+						}
+					} catch (error) {
+						const message = error instanceof Error ? error.message : String(error);
+						variantErrors.push(message);
+						logger.debug('Multi-title search variant failed', {
+							indexer: indexer.name,
+							title: movieQuery,
+							year: movieYear,
+							format,
+							error: message
+						});
+					}
+				}
 			} else {
-				// Movie/other search: just use title
+				// Other search types: just use title
 				const textCriteria = createTextOnlyCriteria({
 					...criteria,
 					query: title

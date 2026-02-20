@@ -7,6 +7,8 @@ import { eq, and } from 'drizzle-orm';
 import type { RequestHandler } from '@sveltejs/kit';
 import type { LibraryMovie, MovieFile } from '$lib/types/library';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
+import { tmdb } from '$lib/server/tmdb';
+import { logger } from '$lib/logging';
 
 interface QueueItem {
 	id: string;
@@ -72,21 +74,32 @@ async function getMovieData(movieId: string): Promise<LibraryMovie | null> {
 
 	if (!movie) return null;
 
-	const files = await db.select().from(movieFiles).where(eq(movieFiles.movieId, movieId));
-
-	const movieSubtitles = await db
-		.select({
-			id: subtitles.id,
-			language: subtitles.language,
-			isForced: subtitles.isForced,
-			isHearingImpaired: subtitles.isHearingImpaired,
-			format: subtitles.format
+	const [files, movieSubtitles, releaseInfo] = await Promise.all([
+		db.select().from(movieFiles).where(eq(movieFiles.movieId, movieId)),
+		db
+			.select({
+				id: subtitles.id,
+				language: subtitles.language,
+				isForced: subtitles.isForced,
+				isHearingImpaired: subtitles.isHearingImpaired,
+				format: subtitles.format
+			})
+			.from(subtitles)
+			.where(eq(subtitles.movieId, movieId)),
+		tmdb.getMovieReleaseInfo(movie.tmdbId).catch((err) => {
+			logger.warn('[MovieStream] Failed to fetch TMDB release info', {
+				movieId,
+				tmdbId: movie.tmdbId,
+				error: err instanceof Error ? err.message : String(err)
+			});
+			return null;
 		})
-		.from(subtitles)
-		.where(eq(subtitles.movieId, movieId));
+	]);
 
 	return {
 		...movie,
+		tmdbStatus: releaseInfo?.status ?? null,
+		releaseDate: releaseInfo?.release_date ?? null,
 		added: movie.added ?? new Date().toISOString(),
 		files: files.map((f) => ({
 			id: f.id,

@@ -174,6 +174,9 @@ export const tmdb = {
 
 		return requestPromise;
 	},
+	async getMovieReleaseInfo(id: number): Promise<MovieReleaseInfo> {
+		return this.fetch(`/movie/${id}`) as Promise<MovieReleaseInfo>;
+	},
 	async getMovie(id: number): Promise<MovieDetails> {
 		return this.fetch(
 			`/movie/${id}?append_to_response=credits,videos,images,recommendations,similar,watch/providers,release_dates`
@@ -611,6 +614,11 @@ export interface DiscoverItem {
 	genre_ids: number[];
 	original_language: string;
 	adult?: boolean;
+}
+
+export interface MovieReleaseInfo {
+	status?: string;
+	release_date?: string | null;
 }
 
 /**

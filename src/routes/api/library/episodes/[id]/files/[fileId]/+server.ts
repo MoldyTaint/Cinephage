@@ -105,7 +105,10 @@ export const DELETE: RequestHandler = async ({ params }) => {
 				);
 
 				if (!stillHasFile) {
-					await db.update(episodes).set({ hasFile: false }).where(eq(episodes.id, epId));
+					await db
+						.update(episodes)
+						.set({ hasFile: false, lastSearchTime: null })
+						.where(eq(episodes.id, epId));
 				}
 			}
 		}

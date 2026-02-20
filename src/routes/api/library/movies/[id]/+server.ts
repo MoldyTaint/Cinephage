@@ -18,6 +18,7 @@ import { unlink, rmdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { logger } from '$lib/logging';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
+import { tmdb } from '$lib/server/tmdb.js';
 
 /**
  * GET /api/library/movies/[id]
@@ -57,23 +58,26 @@ export const GET: RequestHandler = async ({ params }) => {
 			return json({ success: false, error: 'Movie not found' }, { status: 404 });
 		}
 
-		// Get files
-		const files = await db.select().from(movieFiles).where(eq(movieFiles.movieId, movie.id));
-
-		// Get existing subtitles
-		const existingSubtitles = await db
-			.select()
-			.from(subtitles)
-			.where(eq(subtitles.movieId, movie.id));
-
-		// Get subtitle status from language profile service
-		const profileService = getLanguageProfileService();
-		const subtitleStatus = await profileService.getMovieSubtitleStatus(movie.id);
+		const [files, existingSubtitles, subtitleStatus, releaseInfo] = await Promise.all([
+			db.select().from(movieFiles).where(eq(movieFiles.movieId, movie.id)),
+			db.select().from(subtitles).where(eq(subtitles.movieId, movie.id)),
+			getLanguageProfileService().getMovieSubtitleStatus(movie.id),
+			tmdb.getMovieReleaseInfo(movie.tmdbId).catch((err) => {
+				logger.warn('[API] Failed to fetch movie release info', {
+					movieId: movie.id,
+					tmdbId: movie.tmdbId,
+					error: err instanceof Error ? err.message : String(err)
+				});
+				return null;
+			})
+		]);
 
 		return json({
 			success: true,
 			movie: {
 				...movie,
+				tmdbStatus: releaseInfo?.status ?? null,
+				releaseDate: releaseInfo?.release_date ?? null,
 				files: files.map((f) => ({
 					id: f.id,
 					relativePath: f.relativePath,
@@ -301,7 +305,10 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 			return json({ success: true, removed: true });
 		} else {
 			// Update movie to show as missing
-			await db.update(movies).set({ hasFile: false }).where(eq(movies.id, params.id));
+			await db
+				.update(movies)
+				.set({ hasFile: false, lastSearchTime: null })
+				.where(eq(movies.id, params.id));
 			libraryMediaEvents.emitMovieUpdated(params.id);
 
 			// Note: Movie metadata is kept - it will show as "missing"

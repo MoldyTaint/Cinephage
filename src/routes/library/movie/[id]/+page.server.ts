@@ -13,6 +13,8 @@ import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import type { LibraryMovie, MovieFile } from '$lib/types/library';
 import { DEFAULT_PROFILES } from '$lib/server/scoring/profiles.js';
+import { tmdb } from '$lib/server/tmdb.js';
+import { logger } from '$lib/logging';
 
 export interface QualityProfileSummary {
 	id: string;
@@ -79,23 +81,32 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 
 	const movie = movieResult[0];
 
-	// Get all files for this movie
-	const files = await db.select().from(movieFiles).where(eq(movieFiles.movieId, id));
-
-	// Fetch subtitles for this movie
-	const movieSubtitles = await db
-		.select({
-			id: subtitles.id,
-			language: subtitles.language,
-			isForced: subtitles.isForced,
-			isHearingImpaired: subtitles.isHearingImpaired,
-			format: subtitles.format
+	const [files, movieSubtitles, releaseInfo] = await Promise.all([
+		db.select().from(movieFiles).where(eq(movieFiles.movieId, id)),
+		db
+			.select({
+				id: subtitles.id,
+				language: subtitles.language,
+				isForced: subtitles.isForced,
+				isHearingImpaired: subtitles.isHearingImpaired,
+				format: subtitles.format
+			})
+			.from(subtitles)
+			.where(eq(subtitles.movieId, id)),
+		tmdb.getMovieReleaseInfo(movie.tmdbId).catch((err) => {
+			logger.warn('[LibraryMovie] Failed to fetch TMDB release info', {
+				movieId: id,
+				tmdbId: movie.tmdbId,
+				error: err instanceof Error ? err.message : String(err)
+			});
+			return null;
 		})
-		.from(subtitles)
-		.where(eq(subtitles.movieId, id));
+	]);
 
 	const movieWithFiles: LibraryMovie = {
 		...movie,
+		tmdbStatus: releaseInfo?.status ?? null,
+		releaseDate: releaseInfo?.release_date ?? null,
 		// Ensure added is always a string
 		added: movie.added ?? new Date().toISOString(),
 		files: files.map((f) => ({

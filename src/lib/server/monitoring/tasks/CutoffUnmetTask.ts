@@ -20,10 +20,16 @@ import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContex
  * @param ctx - Execution context for cancellation support and activity tracking
  */
 export async function executeCutoffUnmetTask(
-	ctx: TaskExecutionContext | null
+	ctx: TaskExecutionContext | null,
+	options: {
+		ignoreCooldown?: boolean;
+		cooldownHours?: number;
+	} = {}
 ): Promise<TaskResult> {
 	const executedAt = new Date();
 	const taskHistoryId = ctx?.historyId;
+	const ignoreCooldown = options.ignoreCooldown ?? false;
+	const cooldownHours = options.cooldownHours;
 	logger.info('[CutoffUnmetTask] Starting cutoff unmet search', { taskHistoryId });
 
 	let itemsProcessed: number;
@@ -38,6 +44,8 @@ export async function executeCutoffUnmetTask(
 		// cutoffUnmetOnly: true means we only search items that haven't reached target quality
 		const cutoffResults = await monitoringSearchService.searchForUpgrades({
 			cutoffUnmetOnly: true,
+			ignoreCooldown,
+			cooldownHours,
 			signal: ctx?.abortSignal
 		});
 

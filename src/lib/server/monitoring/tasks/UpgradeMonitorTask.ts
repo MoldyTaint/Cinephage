@@ -21,10 +21,16 @@ import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContex
  * @param ctx - Execution context for cancellation support and activity tracking
  */
 export async function executeUpgradeMonitorTask(
-	ctx: TaskExecutionContext | null
+	ctx: TaskExecutionContext | null,
+	options: {
+		ignoreCooldown?: boolean;
+		cooldownHours?: number;
+	} = {}
 ): Promise<TaskResult> {
 	const executedAt = new Date();
 	const taskHistoryId = ctx?.historyId;
+	const ignoreCooldown = options.ignoreCooldown ?? false;
+	const cooldownHours = options.cooldownHours;
 	logger.info('[UpgradeMonitorTask] Starting upgrade search', { taskHistoryId });
 
 	let itemsProcessed: number;
@@ -39,6 +45,8 @@ export async function executeUpgradeMonitorTask(
 		// cutoffUnmetOnly: false means we search everything, not just items below cutoff
 		const upgradeResults = await monitoringSearchService.searchForUpgrades({
 			cutoffUnmetOnly: false,
+			ignoreCooldown,
+			cooldownHours,
 			signal: ctx?.abortSignal
 		});
 

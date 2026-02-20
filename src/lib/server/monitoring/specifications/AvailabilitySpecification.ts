@@ -21,6 +21,9 @@ import type {
 	ReleaseCandidate
 } from './types.js';
 import { reject, accept } from './types.js';
+import { tmdb } from '$lib/server/tmdb.js';
+import { logger } from '$lib/logging';
+import { getMovieAvailabilityLevel } from '$lib/utils/movieAvailability';
 
 /**
  * Availability levels in order of "availability"
@@ -41,6 +44,11 @@ export const AvailabilityRejectionReason = {
  * Check if a movie meets minimum availability requirements
  */
 export class MovieAvailabilitySpecification implements IMonitoringSpecification<MovieContext> {
+	private releaseInfoCache = new Map<
+		number,
+		{ status?: string; release_date?: string | null } | null
+	>();
+
 	async isSatisfied(
 		context: MovieContext,
 		_release?: ReleaseCandidate
@@ -50,17 +58,22 @@ export class MovieAvailabilitySpecification implements IMonitoringSpecification<
 		// Get minimum availability setting (default to 'released' for safety)
 		const minimumAvailability = (movie.minimumAvailability as AvailabilityLevel) || 'released';
 
-		// Determine current availability status based on dates
-		const currentAvailability = this.getCurrentAvailability(movie);
-
 		// Compare availability levels
 		const minimumIndex = AVAILABILITY_ORDER.indexOf(minimumAvailability);
-		const currentIndex = AVAILABILITY_ORDER.indexOf(currentAvailability);
 
 		if (minimumIndex === -1) {
 			// Unknown minimum availability setting, allow by default
 			return accept();
 		}
+
+		// 'announced' is the lowest threshold; every movie satisfies it.
+		if (minimumAvailability === 'announced') {
+			return accept();
+		}
+
+		// Determine current availability status from TMDB status/date (fallback: local heuristics)
+		const currentAvailability = await this.getCurrentAvailability(movie);
+		const currentIndex = AVAILABILITY_ORDER.indexOf(currentAvailability);
 
 		if (currentIndex === -1) {
 			// Can't determine current availability - be cautious and reject
@@ -77,49 +90,36 @@ export class MovieAvailabilitySpecification implements IMonitoringSpecification<
 		return accept();
 	}
 
-	/**
-	 * Determine the current availability level of a movie based on available data
-	 *
-	 * Since we don't have precise release dates stored, we use heuristics:
-	 * - If movie year is in the past or current year and movie was added some time ago, assume 'released'
-	 * - If movie year is current year and recently added, assume 'inCinemas'
-	 * - If movie year is in the future, assume 'announced'
-	 */
-	private getCurrentAvailability(movie: MovieContext['movie']): AvailabilityLevel {
-		const now = new Date();
-		const currentYear = now.getFullYear();
-		const movieYear = movie.year;
+	private async getCurrentAvailability(movie: MovieContext['movie']): Promise<AvailabilityLevel> {
+		const releaseInfo = await this.getReleaseInfo(movie.tmdbId);
 
-		// If no year, be conservative and assume announced
-		if (!movieYear) {
-			return 'announced';
+		return getMovieAvailabilityLevel({
+			year: movie.year,
+			added: movie.added,
+			tmdbStatus: releaseInfo?.status,
+			releaseDate: releaseInfo?.release_date
+		});
+	}
+
+	private async getReleaseInfo(
+		tmdbId: number
+	): Promise<{ status?: string; release_date?: string | null } | null> {
+		if (this.releaseInfoCache.has(tmdbId)) {
+			return this.releaseInfoCache.get(tmdbId) ?? null;
 		}
 
-		// If movie year is in the future, it's announced
-		if (movieYear > currentYear) {
-			return 'announced';
+		try {
+			const releaseInfo = await tmdb.getMovieReleaseInfo(tmdbId);
+			this.releaseInfoCache.set(tmdbId, releaseInfo);
+			return releaseInfo;
+		} catch (error) {
+			logger.warn('[MovieAvailabilitySpecification] Failed to fetch TMDB release info', {
+				tmdbId,
+				error: error instanceof Error ? error.message : String(error)
+			});
+			this.releaseInfoCache.set(tmdbId, null);
+			return null;
 		}
-
-		// If movie year is in the past, it's definitely released
-		if (movieYear < currentYear) {
-			return 'released';
-		}
-
-		// Movie year is current year - check how long ago it was added
-		// Movies typically go from theater to digital in 45-90 days
-		// If added > 120 days ago and still current year, likely released
-		const addedDate = movie.added ? new Date(movie.added) : now;
-		const daysSinceAdded = (now.getTime() - addedDate.getTime()) / (1000 * 60 * 60 * 24);
-
-		if (daysSinceAdded > 120) {
-			return 'released';
-		} else if (daysSinceAdded > 30) {
-			return 'inCinemas';
-		}
-
-		// Recently added current year movie - assume announced or in cinemas
-		// Be conservative for automatic grabbing
-		return 'inCinemas';
 	}
 }
 

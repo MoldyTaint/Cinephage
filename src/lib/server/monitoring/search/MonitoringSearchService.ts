@@ -176,6 +176,29 @@ export interface UpgradeSearchOptions {
 	 * Returns detailed upgrade decision info for debugging.
 	 */
 	dryRun?: boolean;
+	/**
+	 * When true, bypass search cooldown checks.
+	 * Useful for manually-triggered "search now" flows.
+	 */
+	ignoreCooldown?: boolean;
+	/**
+	 * Per-item cooldown in hours for this search run.
+	 * Typically derived from the scheduled task interval.
+	 */
+	cooldownHours?: number;
+}
+
+interface MissingSearchOptions {
+	/**
+	 * When true, bypass search cooldown checks.
+	 * Useful for manually-triggered "search now" flows.
+	 */
+	ignoreCooldown?: boolean;
+	/**
+	 * Per-item cooldown in hours for this search run.
+	 * Typically derived from the scheduled task interval.
+	 */
+	cooldownHours?: number;
 }
 
 /**
@@ -185,14 +208,16 @@ export class MonitoringSearchService {
 	private readonly AUTO_GRAB_MIN_SCORE = 0;
 	private readonly MAX_CONCURRENT_SEARCHES = 10;
 
-	// Active download statuses that indicate media is already being acquired
-	private readonly ACTIVE_DOWNLOAD_STATUSES = [
+	// Queue statuses that can block new searches for the same media.
+	// 'paused' and 'seeding' are only blocking when import has not completed yet.
+	private readonly BLOCKING_DOWNLOAD_STATUSES = [
 		'queued',
 		'downloading',
 		'paused',
 		'seeding',
 		'importing'
 	];
+	private readonly ALWAYS_BLOCKING_DOWNLOAD_STATUSES = ['queued', 'downloading', 'importing'];
 
 	// Cache for season episode counts to avoid N+1 queries
 	// Key: `${seriesId}-${seasonNumber}`, Value: episode count
@@ -203,21 +228,36 @@ export class MonitoringSearchService {
 	 */
 	private async isMovieAlreadyDownloading(movieId: string): Promise<boolean> {
 		const activeDownloads = await db
-			.select({ id: downloadQueue.id, status: downloadQueue.status, title: downloadQueue.title })
+			.select({
+				id: downloadQueue.id,
+				status: downloadQueue.status,
+				title: downloadQueue.title,
+				importedAt: downloadQueue.importedAt
+			})
 			.from(downloadQueue)
 			.where(
 				and(
 					eq(downloadQueue.movieId, movieId),
-					inArray(downloadQueue.status, this.ACTIVE_DOWNLOAD_STATUSES)
+					inArray(downloadQueue.status, this.BLOCKING_DOWNLOAD_STATUSES)
 				)
-			)
-			.limit(1);
+			);
 
-		const found = activeDownloads.length > 0;
+		const blockingDownload = activeDownloads.find((download) => {
+			if (this.ALWAYS_BLOCKING_DOWNLOAD_STATUSES.includes(download.status)) {
+				return true;
+			}
+
+			// Legacy/active torrent states: only block if import has not happened yet.
+			return (
+				(download.status === 'paused' || download.status === 'seeding') && !download.importedAt
+			);
+		});
+
+		const found = Boolean(blockingDownload);
 		logger.debug('[MonitoringSearch] isMovieAlreadyDownloading check', {
 			movieId,
 			found,
-			activeDownload: found ? activeDownloads[0] : undefined
+			activeDownload: blockingDownload
 		});
 
 		return found;
@@ -229,12 +269,24 @@ export class MonitoringSearchService {
 	private async areEpisodesAlreadyDownloading(episodeIds: string[]): Promise<boolean> {
 		// Download queue stores episodeIds as JSON array - we need to check if any overlap
 		const activeDownloads = await db
-			.select({ episodeIds: downloadQueue.episodeIds })
+			.select({
+				episodeIds: downloadQueue.episodeIds,
+				status: downloadQueue.status,
+				importedAt: downloadQueue.importedAt
+			})
 			.from(downloadQueue)
-			.where(inArray(downloadQueue.status, this.ACTIVE_DOWNLOAD_STATUSES));
+			.where(inArray(downloadQueue.status, this.BLOCKING_DOWNLOAD_STATUSES));
 
 		const activeEpisodeIds = new Set<string>();
 		for (const download of activeDownloads) {
+			const isBlocking =
+				this.ALWAYS_BLOCKING_DOWNLOAD_STATUSES.includes(download.status) ||
+				((download.status === 'paused' || download.status === 'seeding') && !download.importedAt);
+
+			if (!isBlocking) {
+				continue;
+			}
+
 			if (download.episodeIds) {
 				for (const id of download.episodeIds) {
 					activeEpisodeIds.add(id);
@@ -329,10 +381,15 @@ export class MonitoringSearchService {
 	 * Search for missing movies
 	 * @param signal - Optional AbortSignal for cancellation support
 	 */
-	async searchMissingMovies(signal?: AbortSignal): Promise<SearchResults> {
+	async searchMissingMovies(
+		signal?: AbortSignal,
+		options: MissingSearchOptions = {}
+	): Promise<SearchResults> {
 		logger.info('[MonitoringSearch] Starting missing movies search');
 
 		const results: ItemSearchResult[] = [];
+		const ignoreCooldown = options.ignoreCooldown ?? false;
+		const cooldownHours = options.cooldownHours;
 
 		try {
 			// Check for cancellation
@@ -356,7 +413,7 @@ export class MonitoringSearchService {
 			const monitoredSpec = new MovieMonitoredSpecification();
 			const readOnlySpec = new MovieReadOnlyFolderSpecification();
 			const availabilitySpec = new MovieAvailabilitySpecification();
-			const cooldownSpec = new MovieSearchCooldownSpecification();
+			const cooldownSpec = new MovieSearchCooldownSpecification(cooldownHours);
 
 			for (const movie of missingMovies) {
 				// Check for cancellation before processing each movie
@@ -417,20 +474,22 @@ export class MonitoringSearchService {
 					continue;
 				}
 
-				// Check search cooldown (prevent hammering indexers)
-				const cooldownResult = await cooldownSpec.isSatisfied(context);
-				if (!cooldownResult.accepted) {
-					results.push({
-						itemId: movie.id,
-						itemType: 'movie',
-						title: movie.title,
-						searched: false,
-						releasesFound: 0,
-						grabbed: false,
-						skipped: true,
-						skipReason: cooldownResult.reason
-					});
-					continue;
+				// Check search cooldown (prevent hammering indexers), unless manually bypassed
+				if (!ignoreCooldown) {
+					const cooldownResult = await cooldownSpec.isSatisfied(context);
+					if (!cooldownResult.accepted) {
+						results.push({
+							itemId: movie.id,
+							itemType: 'movie',
+							title: movie.title,
+							searched: false,
+							releasesFound: 0,
+							grabbed: false,
+							skipped: true,
+							skipReason: cooldownResult.reason
+						});
+						continue;
+					}
 				}
 
 				// Check missing
@@ -474,10 +533,15 @@ export class MonitoringSearchService {
 	 * Uses cascading search strategy: series packs -> season packs -> individual episodes
 	 * @param signal - Optional AbortSignal for cancellation support
 	 */
-	async searchMissingEpisodes(signal?: AbortSignal): Promise<SearchResults> {
+	async searchMissingEpisodes(
+		signal?: AbortSignal,
+		options: MissingSearchOptions = {}
+	): Promise<SearchResults> {
 		logger.info('[MonitoringSearch] Starting missing episodes search with cascading strategy');
 
 		const results: ItemSearchResult[] = [];
+		const ignoreCooldown = options.ignoreCooldown ?? false;
+		const cooldownHours = options.cooldownHours;
 
 		try {
 			// Check for cancellation
@@ -511,7 +575,7 @@ export class MonitoringSearchService {
 			const missingSpec = new EpisodeMissingContentSpecification();
 			const monitoredSpec = new EpisodeMonitoredSpecification();
 			const readOnlySpec = new EpisodeReadOnlyFolderSpecification();
-			const cooldownSpec = new EpisodeSearchCooldownSpecification();
+			const cooldownSpec = new EpisodeSearchCooldownSpecification(cooldownHours);
 
 			// Filter and group episodes by series and season
 			const episodesBySeriesAndSeason = new Map<string, Map<number, typeof missingEpisodes>>();
@@ -564,20 +628,22 @@ export class MonitoringSearchService {
 					continue;
 				}
 
-				// Check search cooldown (prevent hammering indexers)
-				const cooldownResult = await cooldownSpec.isSatisfied(context);
-				if (!cooldownResult.accepted) {
-					results.push({
-						itemId: episode.id,
-						itemType: 'episode',
-						title: `${episode.series.title} S${episode.seasonNumber.toString().padStart(2, '0')}E${episode.episodeNumber.toString().padStart(2, '0')}`,
-						searched: false,
-						releasesFound: 0,
-						grabbed: false,
-						skipped: true,
-						skipReason: cooldownResult.reason
-					});
-					continue;
+				// Check search cooldown (prevent hammering indexers), unless manually bypassed
+				if (!ignoreCooldown) {
+					const cooldownResult = await cooldownSpec.isSatisfied(context);
+					if (!cooldownResult.accepted) {
+						results.push({
+							itemId: episode.id,
+							itemType: 'episode',
+							title: `${episode.series.title} S${episode.seasonNumber.toString().padStart(2, '0')}E${episode.episodeNumber.toString().padStart(2, '0')}`,
+							searched: false,
+							releasesFound: 0,
+							grabbed: false,
+							skipped: true,
+							skipReason: cooldownResult.reason
+						});
+						continue;
+					}
 				}
 
 				// Check missing
@@ -986,10 +1052,14 @@ export class MonitoringSearchService {
 		const cutoffUnmetOnly = options.cutoffUnmetOnly ?? true; // Default to legacy behavior
 		const signal = options.signal;
 		const dryRun = options.dryRun ?? false;
+		const ignoreCooldown = options.ignoreCooldown ?? false;
+		const cooldownHours = options.cooldownHours;
 		logger.info('[MonitoringSearch] Starting upgrade search', {
 			...options,
 			cutoffUnmetOnly,
-			dryRun
+			dryRun,
+			ignoreCooldown,
+			cooldownHours
 		});
 
 		const results: ItemSearchResult[] = [];
@@ -1010,7 +1080,9 @@ export class MonitoringSearchService {
 					maxItems,
 					cutoffUnmetOnly,
 					signal,
-					dryRun
+					dryRun,
+					ignoreCooldown,
+					cooldownHours
 				);
 				results.push(...movieItems);
 				if (movieDetails) {
@@ -1031,7 +1103,9 @@ export class MonitoringSearchService {
 					maxItems,
 					cutoffUnmetOnly,
 					signal,
-					dryRun
+					dryRun,
+					ignoreCooldown,
+					cooldownHours
 				);
 				results.push(...episodeItems);
 				if (episodeDetails) {
@@ -1063,7 +1137,9 @@ export class MonitoringSearchService {
 		maxItems?: number,
 		cutoffUnmetOnly: boolean = true,
 		signal?: AbortSignal,
-		dryRun: boolean = false
+		dryRun: boolean = false,
+		ignoreCooldown: boolean = false,
+		cooldownHours?: number
 	): Promise<{ items: ItemSearchResult[]; details?: UpgradeDecisionDetail[] }> {
 		const results: ItemSearchResult[] = [];
 		const details: UpgradeDecisionDetail[] = [];
@@ -1091,14 +1167,16 @@ export class MonitoringSearchService {
 			logger.info('[MonitoringSearch] Found movies with files for upgrade check', {
 				count: moviesWithFiles.length,
 				cutoffUnmetOnly,
-				dryRun
+				dryRun,
+				ignoreCooldown,
+				cooldownHours
 			});
 
 			// Get existing files
 			const cutoffSpec = new MovieCutoffUnmetSpecification();
 			const monitoredSpec = new MovieMonitoredSpecification();
 			const readOnlySpec = new MovieReadOnlyFolderSpecification();
-			const cooldownSpec = new MovieSearchCooldownSpecification();
+			const cooldownSpec = new MovieSearchCooldownSpecification(cooldownHours);
 
 			for (const movie of moviesWithFiles) {
 				// Check for cancellation before each movie
@@ -1153,7 +1231,7 @@ export class MonitoringSearchService {
 				}
 
 				// Check search cooldown (prevent hammering indexers) - skip in dry-run mode
-				if (!dryRun) {
+				if (!dryRun && !ignoreCooldown) {
 					const cooldownResult = await cooldownSpec.isSatisfied(context);
 					if (!cooldownResult.accepted) {
 						results.push({
@@ -1228,7 +1306,9 @@ export class MonitoringSearchService {
 		maxItems?: number,
 		cutoffUnmetOnly: boolean = true,
 		signal?: AbortSignal,
-		dryRun: boolean = false
+		dryRun: boolean = false,
+		ignoreCooldown: boolean = false,
+		cooldownHours?: number
 	): Promise<{ items: ItemSearchResult[]; details?: UpgradeDecisionDetail[] }> {
 		const results: ItemSearchResult[] = [];
 		const details: UpgradeDecisionDetail[] = [];
@@ -1265,7 +1345,9 @@ export class MonitoringSearchService {
 			logger.info('[MonitoringSearch] Found episodes with files for upgrade check', {
 				count: episodesWithFiles.length,
 				cutoffUnmetOnly,
-				dryRun
+				dryRun,
+				ignoreCooldown,
+				cooldownHours
 			});
 
 			// Preload season episode counts to avoid N+1 queries
@@ -1275,7 +1357,7 @@ export class MonitoringSearchService {
 			const cutoffSpec = new EpisodeCutoffUnmetSpecification();
 			const monitoredSpec = new EpisodeMonitoredSpecification();
 			const readOnlySpec = new EpisodeReadOnlyFolderSpecification();
-			const cooldownSpec = new EpisodeSearchCooldownSpecification();
+			const cooldownSpec = new EpisodeSearchCooldownSpecification(cooldownHours);
 
 			for (const episode of episodesWithFiles) {
 				// Check for cancellation before each episode
@@ -1313,7 +1395,7 @@ export class MonitoringSearchService {
 				}
 
 				// Check search cooldown (prevent hammering indexers) - skip in dry-run mode
-				if (!dryRun) {
+				if (!dryRun && !ignoreCooldown) {
 					const cooldownResult = await cooldownSpec.isSatisfied(context);
 					if (!cooldownResult.accepted) {
 						continue; // Skip silently - recently searched

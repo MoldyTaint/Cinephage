@@ -616,7 +616,7 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 
 		try {
 			// Pass context to task for cancellation support and per-item activity tracking
-			const result = await this.runTask(taskType, ctx);
+			const result = await this.runTask(taskType, ctx, 'automatic');
 			const completionTime = new Date();
 
 			// Record success in history
@@ -692,17 +692,27 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 	 * @param taskType - The type of task to run
 	 * @param ctx - Optional execution context for cancellation support and activity tracking
 	 */
-	private async runTask(taskType: string, ctx: TaskExecutionContext | null): Promise<TaskResult> {
+	private async runTask(
+		taskType: string,
+		ctx: TaskExecutionContext | null,
+		executionMode: 'automatic' | 'manual' = 'automatic'
+	): Promise<TaskResult> {
 		const settings = await this.getSettings();
 
 		switch (taskType) {
 			case 'missing': {
 				const { executeMissingContentTask } = await import('./tasks/MissingContentTask.js');
-				return await executeMissingContentTask(ctx);
+				return await executeMissingContentTask(ctx, {
+					ignoreCooldown: executionMode === 'manual',
+					cooldownHours: settings.missingSearchIntervalHours
+				});
 			}
 			case 'upgrade': {
 				const { executeUpgradeMonitorTask } = await import('./tasks/UpgradeMonitorTask.js');
-				return await executeUpgradeMonitorTask(ctx);
+				return await executeUpgradeMonitorTask(ctx, {
+					ignoreCooldown: executionMode === 'manual',
+					cooldownHours: settings.upgradeSearchIntervalHours
+				});
 			}
 			case 'newEpisode': {
 				const { executeNewEpisodeMonitorTask } = await import('./tasks/NewEpisodeMonitorTask.js');
@@ -710,7 +720,10 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 			}
 			case 'cutoffUnmet': {
 				const { executeCutoffUnmetTask } = await import('./tasks/CutoffUnmetTask.js');
-				return await executeCutoffUnmetTask(ctx);
+				return await executeCutoffUnmetTask(ctx, {
+					ignoreCooldown: executionMode === 'manual',
+					cooldownHours: settings.cutoffUnmetSearchIntervalHours
+				});
 			}
 			case 'pendingRelease': {
 				const { executePendingReleaseTask } = await import('./tasks/PendingReleaseTask.js');
@@ -800,7 +813,7 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 
 		try {
 			// Pass context to task for cancellation support and per-item activity tracking
-			const result = await this.runTask(taskType, ctx);
+			const result = await this.runTask(taskType, ctx, 'manual');
 			const completionTime = new Date();
 
 			// Record success in history

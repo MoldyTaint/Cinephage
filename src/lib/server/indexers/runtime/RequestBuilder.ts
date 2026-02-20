@@ -643,7 +643,7 @@ export class RequestBuilder {
 
 		const filtered: Record<string, string> = {};
 		// Standard params that are always allowed (not search-mode specific)
-		const alwaysAllow = ['t', 'apikey', 'limit', 'cat', 'extended', 'offset', 'attrs', '$raw', 'q'];
+		const alwaysAllow = ['t', 'apikey', 'limit', 'cat', 'extended', 'offset', 'attrs', '$raw'];
 
 		for (const [key, value] of Object.entries(inputs)) {
 			const lowerKey = key.toLowerCase();

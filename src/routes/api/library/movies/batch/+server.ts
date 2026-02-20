@@ -168,7 +168,10 @@ export const DELETE: RequestHandler = async ({ request }) => {
 					removedCount++;
 				} else {
 					// Update movie to show as missing
-					await db.update(movies).set({ hasFile: false }).where(eq(movies.id, movieId));
+					await db
+						.update(movies)
+						.set({ hasFile: false, lastSearchTime: null })
+						.where(eq(movies.id, movieId));
 					deletedCount++;
 				}
 			} catch (error) {

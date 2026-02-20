@@ -58,7 +58,7 @@ search:
         cat: '{{ join .Categories "," }}'
         imdbid: '{{ .Query.IMDBIDShort }}'
         tmdbid: '{{ .Query.TMDBID }}'
-        q: '{{ if .Query.IMDBIDShort }}{{ else }}{{ .Keywords }}{{ end }}'
+        q: '{{ .Keywords }}'
         apikey: '{{ .Config.apikey }}'
         limit: '100'
 
@@ -73,7 +73,7 @@ search:
         tvdbid: '{{ .Query.TVDBID }}'
         season: '{{ .Query.Season }}'
         ep: '{{ .Query.Ep }}'
-        q: '{{ if .Query.IMDBIDShort }}{{ else }}{{ .Keywords }}{{ end }}'
+        q: '{{ .Keywords }}'
         apikey: '{{ .Config.apikey }}'
         limit: '100'
 

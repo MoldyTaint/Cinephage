@@ -113,6 +113,10 @@ describe('SearchOrchestrator.executeMultiTitleTextSearch', () => {
 
 		const queries = captured.map((c) => c.query);
 		expect(queries.some((q: string) => q.includes('The Matrix'))).toBe(true);
+		// Default movie text-search fallback should try both year-constrained
+		// and no-year variants for better cross-indexer compatibility.
+		expect(captured.some((c: any) => c.year === 1999)).toBe(true);
+		expect(captured.some((c: any) => c.year === undefined)).toBe(true);
 	});
 });
 

@@ -12,12 +12,26 @@ import { logger } from '$lib/logging/index.js';
 import type { TaskResult } from '../MonitoringScheduler.js';
 import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
 
+interface MissingContentTaskOptions {
+	/**
+	 * When true, bypass per-item cooldown checks.
+	 * Used for manual "run now" executions.
+	 */
+	ignoreCooldown?: boolean;
+	/**
+	 * Per-item cooldown in hours for this run.
+	 * Typically derived from scheduled interval.
+	 */
+	cooldownHours?: number;
+}
+
 /**
  * Execute missing content search task
  * @param ctx - Execution context for cancellation support and activity tracking
  */
 export async function executeMissingContentTask(
-	ctx: TaskExecutionContext | null
+	ctx: TaskExecutionContext | null,
+	options: MissingContentTaskOptions = {}
 ): Promise<TaskResult> {
 	const executedAt = new Date();
 	const taskHistoryId = ctx?.historyId;
@@ -33,7 +47,10 @@ export async function executeMissingContentTask(
 
 		// Search for missing movies
 		logger.info('[MissingContentTask] Searching for missing movies');
-		const movieResults = await monitoringSearchService.searchMissingMovies(ctx?.abortSignal);
+		const movieResults = await monitoringSearchService.searchMissingMovies(ctx?.abortSignal, {
+			ignoreCooldown: options.ignoreCooldown,
+			cooldownHours: options.cooldownHours
+		});
 
 		itemsProcessed += movieResults.summary.searched;
 		itemsGrabbed += movieResults.summary.grabbed;
@@ -100,7 +117,10 @@ export async function executeMissingContentTask(
 
 		// Search for missing episodes
 		logger.info('[MissingContentTask] Searching for missing episodes');
-		const episodeResults = await monitoringSearchService.searchMissingEpisodes(ctx?.abortSignal);
+		const episodeResults = await monitoringSearchService.searchMissingEpisodes(ctx?.abortSignal, {
+			ignoreCooldown: options.ignoreCooldown,
+			cooldownHours: options.cooldownHours
+		});
 
 		itemsProcessed += episodeResults.summary.searched;
 		itemsGrabbed += episodeResults.summary.grabbed;

@@ -132,3 +132,75 @@ describe('RequestBuilder category defaults', () => {
 		expect(modes).toContain('search');
 	});
 });
+
+describe('RequestBuilder supported param filtering', () => {
+	function createMovieIdBuilder(): RequestBuilder {
+		const definition = {
+			id: 'test-newznab',
+			name: 'Test Newznab',
+			type: 'private',
+			protocol: 'usenet',
+			links: ['https://example.test'],
+			caps: {
+				categories: {
+					'2000': 'Movies'
+				},
+				categorymappings: [{ id: '2000', cat: 'Movies', default: true }]
+			},
+			search: {
+				paths: [
+					{
+						path: '/api',
+						method: 'get',
+						categories: ['Movies'],
+						inputs: {
+							t: 'movie',
+							cat: '{{ join .Categories "," }}',
+							imdbid: '{{ .Query.IMDBIDShort }}',
+							q: '{{ .Keywords }}'
+						}
+					}
+				],
+				response: { type: 'xml' },
+				rows: { selector: 'rss channel item' },
+				fields: {
+					title: { selector: 'title' }
+				}
+			}
+		} as any;
+
+		return new RequestBuilder(definition, createTemplateEngine(), createFilterEngine());
+	}
+
+	it('omits q when mode capabilities do not advertise q', () => {
+		const builder = createMovieIdBuilder();
+		builder.setSupportedParams('movie', ['imdbid']);
+
+		const criteria: SearchCriteria = {
+			searchType: 'movie',
+			query: 'Example Movie',
+			imdbId: 'tt1234567'
+		};
+
+		const requests = builder.buildSearchRequests(criteria);
+		expect(requests).toHaveLength(1);
+		expect(getParam(requests[0].url, 'imdbid')).toBe('1234567');
+		expect(getParam(requests[0].url, 'q')).toBeNull();
+	});
+
+	it('keeps q when mode capabilities advertise q', () => {
+		const builder = createMovieIdBuilder();
+		builder.setSupportedParams('movie', ['q', 'imdbid']);
+
+		const criteria: SearchCriteria = {
+			searchType: 'movie',
+			query: 'Example Movie',
+			imdbId: 'tt1234567'
+		};
+
+		const requests = builder.buildSearchRequests(criteria);
+		expect(requests).toHaveLength(1);
+		expect(getParam(requests[0].url, 'imdbid')).toBe('1234567');
+		expect(getParam(requests[0].url, 'q')).toBe('Example Movie');
+	});
+});

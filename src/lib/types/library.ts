@@ -82,6 +82,8 @@ export interface LibraryMovie {
 	monitored: boolean | null;
 	minimumAvailability: string | null;
 	wantsSubtitles: boolean | null;
+	tmdbStatus?: string | null;
+	releaseDate?: string | null;
 	added: string;
 	hasFile: boolean | null;
 	files: MovieFile[];

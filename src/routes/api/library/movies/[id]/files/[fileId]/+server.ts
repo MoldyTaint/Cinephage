@@ -77,7 +77,10 @@ export const DELETE: RequestHandler = async ({ params }) => {
 			.limit(1);
 
 		if (remainingFiles.length === 0) {
-			await db.update(movies).set({ hasFile: false }).where(eq(movies.id, movieId));
+			await db
+				.update(movies)
+				.set({ hasFile: false, lastSearchTime: null })
+				.where(eq(movies.id, movieId));
 		}
 
 		libraryMediaEvents.emitMovieUpdated(movieId);

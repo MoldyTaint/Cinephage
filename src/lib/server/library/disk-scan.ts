@@ -25,6 +25,7 @@ import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser.js';
 import { EventEmitter } from 'events';
 import { logger } from '$lib/logging';
 import { DOWNLOAD } from '$lib/config/constants';
+import { libraryMediaEvents } from './LibraryMediaEvents.js';
 
 /**
  * Patterns to filter out sample/extra files
@@ -67,6 +68,11 @@ const EXCLUDED_PATTERNS = {
 		/^subtitles?$/i
 	]
 };
+
+/**
+ * SQLite has a practical limit on bound parameters; keep IN queries chunked.
+ */
+const DB_CHUNK_SIZE = 400;
 
 /**
  * Discovered file information
@@ -394,6 +400,10 @@ export class DiskScanService extends EventEmitter {
 				}
 			}
 
+			// Reconcile denormalized hasFile flags and cached counts with actual file records.
+			// This keeps manual scans and watcher-triggered scans consistent with filesystem reality.
+			await this.reconcileMediaPresence(rootFolderId, rootFolder.mediaType);
+
 			// Update scan record
 			await db
 				.update(libraryScanHistory)
@@ -454,6 +464,182 @@ export class DiskScanService extends EventEmitter {
 		} finally {
 			this.isScanning = false;
 			this.currentScanId = null;
+		}
+	}
+
+	/**
+	 * Split large IN-list operations into safe chunks for SQLite.
+	 */
+	private chunkArray<T>(values: T[], chunkSize = DB_CHUNK_SIZE): T[][] {
+		if (values.length === 0) return [];
+		const chunks: T[][] = [];
+		for (let i = 0; i < values.length; i += chunkSize) {
+			chunks.push(values.slice(i, i + chunkSize));
+		}
+		return chunks;
+	}
+
+	/**
+	 * Reconcile hasFile booleans with current file records.
+	 * This repairs stale state caused by external filesystem changes and keeps
+	 * Missing Content task inputs accurate.
+	 */
+	private async reconcileMediaPresence(rootFolderId: string, mediaType: string): Promise<void> {
+		if (mediaType === 'movie') {
+			await this.reconcileMoviePresence(rootFolderId);
+			return;
+		}
+
+		if (mediaType === 'tv') {
+			await this.reconcileEpisodePresence(rootFolderId);
+			return;
+		}
+	}
+
+	/**
+	 * Reconcile movie hasFile flags from movieFiles rows.
+	 */
+	private async reconcileMoviePresence(rootFolderId: string): Promise<void> {
+		const moviesInFolder = await db
+			.select({ id: movies.id, hasFile: movies.hasFile })
+			.from(movies)
+			.where(eq(movies.rootFolderId, rootFolderId));
+
+		if (moviesInFolder.length === 0) {
+			return;
+		}
+
+		const movieIds = moviesInFolder.map((movie) => movie.id);
+		const moviesWithFiles = new Set<string>();
+
+		for (const idChunk of this.chunkArray(movieIds)) {
+			const fileRows = await db
+				.select({ movieId: movieFiles.movieId })
+				.from(movieFiles)
+				.where(inArray(movieFiles.movieId, idChunk));
+
+			for (const row of fileRows) {
+				moviesWithFiles.add(row.movieId);
+			}
+		}
+
+		const changedMovieIds: string[] = [];
+		for (const movie of moviesInFolder) {
+			const shouldHaveFile = moviesWithFiles.has(movie.id);
+			const currentlyHasFile = movie.hasFile ?? false;
+			if (shouldHaveFile === currentlyHasFile) {
+				continue;
+			}
+
+			const lostFile = currentlyHasFile && !shouldHaveFile;
+			await db
+				.update(movies)
+				.set({
+					hasFile: shouldHaveFile,
+					...(lostFile ? { lastSearchTime: null } : {})
+				})
+				.where(eq(movies.id, movie.id));
+			changedMovieIds.push(movie.id);
+		}
+
+		if (changedMovieIds.length > 0) {
+			logger.info('[DiskScan] Reconciled movie file state', {
+				rootFolderId,
+				changedMovies: changedMovieIds.length
+			});
+
+			for (const movieId of changedMovieIds) {
+				libraryMediaEvents.emitMovieUpdated(movieId);
+			}
+		}
+	}
+
+	/**
+	 * Reconcile episode hasFile flags from episodeFiles rows and refresh series/season counts.
+	 */
+	private async reconcileEpisodePresence(rootFolderId: string): Promise<void> {
+		const seriesInFolder = await db
+			.select({ id: series.id })
+			.from(series)
+			.where(eq(series.rootFolderId, rootFolderId));
+
+		if (seriesInFolder.length === 0) {
+			return;
+		}
+
+		const seriesIds = seriesInFolder.map((show) => show.id);
+		const episodesInFolder: Array<{ id: string; seriesId: string; hasFile: boolean | null }> = [];
+
+		for (const seriesChunk of this.chunkArray(seriesIds)) {
+			const rows = await db
+				.select({
+					id: episodes.id,
+					seriesId: episodes.seriesId,
+					hasFile: episodes.hasFile
+				})
+				.from(episodes)
+				.where(inArray(episodes.seriesId, seriesChunk));
+			episodesInFolder.push(...rows);
+		}
+
+		const episodeIdsWithFiles = new Set<string>();
+		for (const seriesChunk of this.chunkArray(seriesIds)) {
+			const fileRows = await db
+				.select({ episodeIds: episodeFiles.episodeIds })
+				.from(episodeFiles)
+				.where(inArray(episodeFiles.seriesId, seriesChunk));
+
+			for (const file of fileRows) {
+				const ids = file.episodeIds as string[] | null;
+				for (const episodeId of ids ?? []) {
+					episodeIdsWithFiles.add(episodeId);
+				}
+			}
+		}
+
+		const episodeIdsToSetTrue: string[] = [];
+		const episodeIdsToSetFalse: string[] = [];
+		const touchedSeriesIds = new Set<string>();
+
+		for (const episode of episodesInFolder) {
+			const shouldHaveFile = episodeIdsWithFiles.has(episode.id);
+			const currentlyHasFile = episode.hasFile ?? false;
+
+			if (shouldHaveFile && !currentlyHasFile) {
+				episodeIdsToSetTrue.push(episode.id);
+				touchedSeriesIds.add(episode.seriesId);
+			} else if (!shouldHaveFile && currentlyHasFile) {
+				episodeIdsToSetFalse.push(episode.id);
+				touchedSeriesIds.add(episode.seriesId);
+			}
+		}
+
+		for (const idChunk of this.chunkArray(episodeIdsToSetTrue)) {
+			await db.update(episodes).set({ hasFile: true }).where(inArray(episodes.id, idChunk));
+		}
+
+		for (const idChunk of this.chunkArray(episodeIdsToSetFalse)) {
+			await db
+				.update(episodes)
+				.set({ hasFile: false, lastSearchTime: null })
+				.where(inArray(episodes.id, idChunk));
+		}
+
+		// Always refresh cached counts for series in this root folder.
+		for (const seriesId of seriesIds) {
+			await this.updateSeriesAndSeasonStats(seriesId);
+		}
+
+		if (episodeIdsToSetTrue.length > 0 || episodeIdsToSetFalse.length > 0) {
+			logger.info('[DiskScan] Reconciled episode file state', {
+				rootFolderId,
+				episodesSetTrue: episodeIdsToSetTrue.length,
+				episodesSetFalse: episodeIdsToSetFalse.length
+			});
+		}
+
+		for (const seriesId of touchedSeriesIds) {
+			libraryMediaEvents.emitSeriesUpdated(seriesId);
 		}
 	}
 

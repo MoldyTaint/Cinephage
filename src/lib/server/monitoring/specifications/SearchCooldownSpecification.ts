@@ -18,7 +18,7 @@ import type {
 
 /**
  * Default search cooldown in hours
- * After searching for an item, wait this long before searching again
+ * Used as fallback when no task-derived cooldown is provided.
  */
 const DEFAULT_SEARCH_COOLDOWN_HOURS = 12;
 
@@ -27,6 +27,12 @@ const DEFAULT_SEARCH_COOLDOWN_HOURS = 12;
  * Never search more frequently than this
  */
 const MIN_SEARCH_COOLDOWN_HOURS = 1;
+
+/**
+ * Maximum search cooldown in hours
+ * Prevent excessively long suppression windows.
+ */
+const MAX_SEARCH_COOLDOWN_HOURS = 24;
 
 /**
  * Check if enough time has passed since the last search
@@ -44,7 +50,10 @@ function hasSearchCooldownPassed(
 	const now = new Date();
 	const hoursSinceSearch = (now.getTime() - lastSearch.getTime()) / (1000 * 60 * 60);
 
-	const effectiveCooldown = Math.max(cooldownHours, MIN_SEARCH_COOLDOWN_HOURS);
+	const effectiveCooldown = Math.min(
+		MAX_SEARCH_COOLDOWN_HOURS,
+		Math.max(cooldownHours, MIN_SEARCH_COOLDOWN_HOURS)
+	);
 	const passed = hoursSinceSearch >= effectiveCooldown;
 	const hoursRemaining = passed ? 0 : effectiveCooldown - hoursSinceSearch;
 
@@ -119,7 +128,10 @@ export function getNextSearchTime(
 	}
 
 	const lastSearch = new Date(lastSearchTime);
-	const effectiveCooldown = Math.max(cooldownHours, MIN_SEARCH_COOLDOWN_HOURS);
+	const effectiveCooldown = Math.min(
+		MAX_SEARCH_COOLDOWN_HOURS,
+		Math.max(cooldownHours, MIN_SEARCH_COOLDOWN_HOURS)
+	);
 	const nextSearch = new Date(lastSearch.getTime() + effectiveCooldown * 60 * 60 * 1000);
 
 	// If next search is in the past, return null (can search now)
