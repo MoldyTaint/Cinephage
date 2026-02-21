@@ -2,6 +2,10 @@
 	import { User, Lock, Bell, Shield } from 'lucide-svelte';
 </script>
 
+<svelte:head>
+	<title>User Profile - Cinephage</title>
+</svelte:head>
+
 <div class="mx-auto w-full max-w-2xl p-4">
 	<!-- Header -->
 	<div class="mb-8">

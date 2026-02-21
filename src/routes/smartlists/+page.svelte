@@ -84,6 +84,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>Smart Lists - Cinephage</title>
+</svelte:head>
+
 <div class="w-full p-4">
 	<div class="mb-6 flex items-center justify-between">
 		<div>
@@ -92,7 +96,7 @@
 				Create dynamic lists that automatically populate from TMDB based on your filters.
 			</p>
 		</div>
-		<button class="btn btn-primary" onclick={navigateToCreate}>
+		<button class="btn gap-2 btn-sm btn-primary sm:w-auto" onclick={navigateToCreate}>
 			<Plus class="h-4 w-4" />
 			Create Smart List
 		</button>

@@ -135,6 +135,10 @@
 	]);
 </script>
 
+<svelte:head>
+	<title>Integrations - Settings - Cinephage</title>
+</svelte:head>
+
 <div class="w-full p-4">
 	<div class="mb-6">
 		<h1 class="text-2xl font-bold">Integrations</h1>

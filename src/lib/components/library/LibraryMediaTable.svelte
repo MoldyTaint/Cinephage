@@ -6,7 +6,6 @@
 		XCircle,
 		Eye,
 		EyeOff,
-		Search,
 		Trash2,
 		Clapperboard,
 		Tv,
@@ -15,26 +14,34 @@
 		ArrowDown,
 		MoreVertical,
 		Zap,
-		MousePointerClick
+		Search,
+		Download
 	} from 'lucide-svelte';
 	import { resolvePath } from '$lib/utils/routing';
 	import { formatBytes } from '$lib/utils/format';
 	import type { MediaType } from '$lib/utils/media-type';
+	import { goto } from '$app/navigation';
+
+	interface QualityProfile {
+		id: string;
+		name: string;
+	}
 
 	interface Props {
 		items: (LibraryMovie | LibrarySeries)[];
 		mediaType: MediaType;
 		selectedItems: SvelteSet<string>;
 		selectable: boolean;
+		qualityProfiles?: QualityProfile[];
 		sortField?: string;
 		sortDirection?: 'asc' | 'desc';
 		onSort?: (field: string) => void;
 		onSelectChange?: (id: string, selected: boolean) => void;
-		onSearch?: (id: string) => void;
 		onMonitorToggle?: (id: string, monitored: boolean) => void;
 		onDelete?: (id: string) => void;
 		onAutoGrab?: (id: string) => void;
 		onManualGrab?: (id: string) => void;
+		downloadingIds?: Set<string>;
 	}
 
 	let {
@@ -42,21 +49,51 @@
 		mediaType,
 		selectedItems,
 		selectable,
+		qualityProfiles = [],
 		sortField = 'title',
 		sortDirection = 'asc',
 		onSort,
 		onSelectChange,
-		onSearch,
 		onMonitorToggle,
 		onDelete,
 		onAutoGrab,
-		onManualGrab
+		onManualGrab,
+		downloadingIds = new Set()
 	}: Props = $props();
 
 	// Track loading states for actions
 	let actionLoadingRows = new SvelteSet<string>();
 
 	const isTv = $derived(mediaType === 'tv');
+
+	// Build a profile-id -> name lookup map
+	const profileNameMap = $derived(new Map(qualityProfiles.map((p) => [p.id, p.name])));
+
+	function getProfileName(item: LibraryMovie | LibrarySeries): string | null {
+		if (!isSeries(item)) return null;
+		const id = item.scoringProfileId;
+		if (!id) return profileNameMap.get('balanced') ?? 'Default';
+		return profileNameMap.get(id) ?? id;
+	}
+
+	function getStatusColor(status: string | null): string {
+		if (!status) return 'badge-ghost';
+		const s = status.toLowerCase();
+		if (s.includes('returning') || s.includes('production')) return 'badge-success';
+		if (s.includes('ended')) return 'badge-error';
+		if (s.includes('canceled')) return 'badge-warning';
+		return 'badge-ghost';
+	}
+
+	function formatStatus(status: string | null): string {
+		if (!status) return 'Unknown';
+		const s = status.toLowerCase();
+		if (s.includes('returning')) return 'Continuing';
+		if (s.includes('production')) return 'In Production';
+		if (s.includes('ended')) return 'Ended';
+		if (s.includes('canceled')) return 'Cancelled';
+		return status;
+	}
 
 	function handleSort(field: string) {
 		if (onSort) {
@@ -72,16 +109,6 @@
 	function handleSelectChange(id: string, checked: boolean) {
 		if (onSelectChange) {
 			onSelectChange(id, checked);
-		}
-	}
-
-	async function handleSearch(id: string) {
-		if (!onSearch || actionLoadingRows.has(id)) return;
-		actionLoadingRows.add(id);
-		try {
-			await onSearch(id);
-		} finally {
-			actionLoadingRows.delete(id);
 		}
 	}
 
@@ -137,7 +164,10 @@
 		if (isMovie(item)) {
 			return item.files.reduce((sum, f) => sum + (f.size ?? 0), 0);
 		}
-		return 0; // Series size would need to be calculated from episodes
+		if (isSeries(item)) {
+			return item.totalSize ?? 0;
+		}
+		return 0;
 	}
 
 	function getQualityBadges(
@@ -170,6 +200,36 @@
 		}
 		return '';
 	}
+
+	function formatRelativeDate(dateStr: string): { display: string; full: string } {
+		const date = new Date(dateStr);
+		const now = new Date();
+		const full = date.toLocaleDateString();
+
+		// Strip time for day comparison
+		const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+		const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+		const diffDays = Math.round((today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24));
+
+		if (diffDays === 0) return { display: 'Today', full };
+		if (diffDays === 1) return { display: 'Yesterday', full };
+		if (diffDays < 7) return { display: `${diffDays} days ago`, full };
+		if (diffDays < 30) {
+			const weeks = Math.floor(diffDays / 7);
+			return { display: `${weeks}w ago`, full };
+		}
+		if (diffDays < 365) {
+			const months = Math.floor(diffDays / 30);
+			return { display: `${months}mo ago`, full };
+		}
+		return { display: full, full };
+	}
+
+	function isItemMissing(item: LibraryMovie | LibrarySeries): boolean {
+		if (isMovie(item)) return !item.hasFile;
+		if (isSeries(item)) return (item.percentComplete ?? 0) === 0;
+		return false;
+	}
 </script>
 
 {#if items.length === 0}
@@ -189,8 +249,18 @@
 			{@const size = getItemSize(item)}
 			{@const qualityBadges = getQualityBadges(item)}
 			{@const isLoading = actionLoadingRows.has(item.id)}
-			<div class="rounded-xl bg-base-200 p-4">
-				<!-- Header: Checkbox + Status -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div
+				class="cursor-pointer rounded-xl bg-base-200 p-3 transition-colors active:bg-base-300"
+				onclick={(e) => {
+					// Don't navigate when clicking on interactive elements
+					const target = e.target as HTMLElement;
+					if (target.closest('button, input, [role=toolbar]')) return;
+					goto(resolvePath(`/library/${mediaType}/${item.id}`));
+				}}
+			>
+				<!-- Header: Checkbox + Status Badges -->
 				<div class="flex items-start justify-between gap-2">
 					{#if selectable}
 						<input
@@ -200,14 +270,14 @@
 							onchange={(e) => handleSelectChange(item.id, e.currentTarget.checked)}
 						/>
 					{/if}
-					<div class="flex flex-1 flex-wrap items-center gap-2">
+					<div class="flex flex-1 flex-wrap items-center gap-1.5">
 						{#if item.monitored}
-							<span class="badge gap-1.5 badge-sm badge-info">
+							<span class="badge gap-1.5 badge-sm badge-success">
 								<Eye class="h-3.5 w-3.5" />
 								Monitored
 							</span>
 						{:else}
-							<span class="badge gap-1.5 badge-ghost badge-sm">
+							<span class="badge gap-1.5 badge-sm badge-neutral">
 								<EyeOff class="h-3.5 w-3.5" />
 								Not Monitored
 							</span>
@@ -216,7 +286,12 @@
 							{#if item.hasFile}
 								<span class="badge gap-1.5 badge-sm badge-success">
 									<CheckCircle2 class="h-3.5 w-3.5" />
-									Has File
+									Downloaded
+								</span>
+							{:else if downloadingIds.has(item.id)}
+								<span class="badge gap-1.5 badge-sm badge-info">
+									<Download class="h-3.5 w-3.5 animate-pulse" />
+									Downloading
 								</span>
 							{:else}
 								<span class="badge gap-1.5 badge-sm badge-warning">
@@ -225,20 +300,28 @@
 								</span>
 							{/if}
 						{/if}
+						{#if size > 0}
+							<span class="badge gap-1.5 badge-sm badge-info">{formatBytes(size)}</span>
+						{/if}
+						{#if isSeries(item) && item.status}
+							<span class="badge badge-sm {getStatusColor(item.status)}">
+								{formatStatus(item.status)}
+							</span>
+						{/if}
 					</div>
 				</div>
 
-				<!-- Title and Poster -->
-				<div class="mt-3 flex items-start gap-3">
+				<!-- Title, Poster, and Metadata -->
+				<div class="mt-2 flex items-start gap-3">
 					{#if item.posterPath}
-						<a href={resolvePath(`/library/${mediaType}/${item.id}`)} class="shrink-0">
+						<div class="shrink-0">
 							<img
 								src={getPosterUrl(item)}
 								alt={item.title}
 								class="h-20 w-14 rounded object-cover"
 								loading="lazy"
 							/>
-						</a>
+						</div>
 					{:else}
 						<div class="flex h-20 w-14 shrink-0 items-center justify-center rounded bg-base-300">
 							{#if isItemMovie}
@@ -250,51 +333,56 @@
 					{/if}
 
 					<div class="min-w-0 flex-1">
-						<a
-							href={resolvePath(`/library/${mediaType}/${item.id}`)}
-							class="block truncate text-lg font-medium hover:text-primary"
-						>
+						<span class="line-clamp-2 text-sm font-medium">
 							{item.title}
-						</a>
-						{#if item.year}
-							<span class="text-base text-base-content/60">({item.year})</span>
-						{/if}
+						</span>
+						<div class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+							{#if item.year}
+								<span class="text-xs text-base-content/60">({item.year})</span>
+							{/if}
+						</div>
+						<div class="mt-1.5">
+							{#if qualityBadges.length > 0}
+								{#each qualityBadges as badge (`${badge.type}-${badge.label}`)}
+									<span class="badge badge-outline badge-xs">{badge.label}</span>
+								{/each}
+							{/if}
+						</div>
 
 						{#if isSeries(item)}
-							<div class="mt-1 text-sm text-base-content/60">
-								{item.episodeFileCount ?? 0} / {item.episodeCount ?? 0} episodes
-								{#if item.percentComplete > 0}
-									<span class="ml-2">({item.percentComplete}%)</span>
+							<div class="mt-1.5">
+								<div class="flex items-center gap-2 text-xs text-base-content/60">
+									<span>
+										{item.episodeFileCount ?? 0} / {item.episodeCount ?? 0} episodes
+									</span>
+									{#if item.percentComplete > 0}
+										<span>({item.percentComplete}%)</span>
+									{/if}
+									{#if downloadingIds.has(item.id)}
+										<Download class="h-3.5 w-3.5 animate-pulse text-info" />
+									{/if}
+								</div>
+								{#if (item.episodeCount ?? 0) > 0}
+									<div class="mt-1 h-1.5 w-full max-w-40 overflow-hidden rounded-full bg-base-300">
+										<div
+											class="h-full transition-all duration-500 {item.percentComplete === 100
+												? 'bg-success'
+												: item.percentComplete > 0
+													? 'bg-primary'
+													: 'bg-base-300'}"
+											style="width: {item.percentComplete}%"
+										></div>
+									</div>
 								{/if}
 							</div>
-							{#if item.status}
-								<div class="mt-1 text-sm text-base-content/50">{item.status}</div>
-							{/if}
 						{/if}
 					</div>
-				</div>
-
-				<!-- Quality Badges -->
-				{#if qualityBadges.length > 0}
-					<div class="mt-3 flex flex-wrap gap-1.5">
-						{#each qualityBadges as badge (`${badge.type}-${badge.label}`)}
-							<span class="badge badge-outline badge-sm">{badge.label}</span>
-						{/each}
-					</div>
-				{/if}
-
-				<!-- Metadata -->
-				<div class="mt-2 flex flex-wrap items-center gap-2 text-sm text-base-content/60">
-					{#if size > 0}
-						<span>{formatBytes(size)}</span>
-					{/if}
-					<span>{new Date(item.added).toLocaleDateString()}</span>
 				</div>
 
 				<!-- Actions -->
-				<div class="mt-3 flex flex-wrap gap-2">
+				<div class="mt-2 flex justify-center gap-1 overflow-x-auto" role="toolbar">
 					<button
-						class="btn gap-1 btn-ghost btn-xs"
+						class="btn shrink-0 gap-1 btn-ghost btn-xs"
 						onclick={() => handleMonitorToggle(item.id, item.monitored ?? false)}
 						disabled={isLoading}
 					>
@@ -308,7 +396,7 @@
 					</button>
 					{#if onAutoGrab}
 						<button
-							class="btn gap-1 btn-ghost btn-xs"
+							class="btn shrink-0 gap-1 btn-ghost btn-xs"
 							onclick={() => handleAutoGrab(item.id)}
 							disabled={isLoading}
 						>
@@ -318,24 +406,16 @@
 					{/if}
 					{#if onManualGrab}
 						<button
-							class="btn gap-1 btn-ghost btn-xs"
+							class="btn shrink-0 gap-1 btn-ghost btn-xs"
 							onclick={() => handleManualGrab(item.id)}
 							disabled={isLoading}
 						>
-							<MousePointerClick class="h-3.5 w-3.5" />
+							<Search class="h-3.5 w-3.5" />
 							Manual
 						</button>
 					{/if}
 					<button
-						class="btn gap-1 btn-ghost btn-xs"
-						onclick={() => handleSearch(item.id)}
-						disabled={isLoading}
-					>
-						<Search class="h-3.5 w-3.5" />
-						Search
-					</button>
-					<button
-						class="btn gap-1 btn-ghost btn-xs btn-error"
+						class="btn shrink-0 gap-1 btn-ghost btn-xs btn-error"
 						onclick={() => handleDelete(item.id)}
 						disabled={isLoading}
 					>
@@ -348,7 +428,7 @@
 	</div>
 
 	<!-- Desktop: Table View -->
-	<div class="hidden overflow-x-auto lg:block">
+	<div class="hidden overflow-visible lg:block">
 		<table class="table table-sm">
 			<thead>
 				<tr>
@@ -425,12 +505,26 @@
 				</tr>
 			</thead>
 			<tbody>
-				{#each items as item (item.id)}
+				{#each items as item, idx (item.id)}
 					{@const isItemMovie = isMovie(item)}
 					{@const size = getItemSize(item)}
 					{@const qualityBadges = getQualityBadges(item)}
 					{@const isLoading = actionLoadingRows.has(item.id)}
-					<tr class="hover">
+					{@const isNearBottom = idx >= items.length - 3}
+					{@const missing = isItemMissing(item)}
+					{@const relDate = formatRelativeDate(item.added)}
+					<tr
+						class="cursor-pointer transition-colors hover:bg-base-200/60 {missing
+							? 'bg-warning/5'
+							: idx % 2 === 1
+								? 'bg-base-200/30'
+								: ''}"
+						onclick={(e) => {
+							const target = e.target as HTMLElement;
+							if (target.closest('button, input, a, .dropdown')) return;
+							goto(resolvePath(`/library/${mediaType}/${item.id}`));
+						}}
+					>
 						{#if selectable}
 							<td>
 								<input
@@ -481,9 +575,9 @@
 
 						<!-- Status -->
 						<td>
-							<div class="flex flex-wrap gap-1.5">
+							<div class="flex items-center gap-1.5">
 								{#if item.monitored}
-									<span class="badge gap-1.5 badge-sm badge-info">
+									<span class="badge gap-1.5 badge-sm badge-success">
 										<Eye class="h-3.5 w-3.5" />
 									</span>
 								{:else}
@@ -493,17 +587,40 @@
 								{/if}
 								{#if isItemMovie}
 									{#if item.hasFile}
-										<span class="badge badge-sm badge-success">File</span>
+										<span class="badge gap-1 badge-sm badge-success">
+											<CheckCircle2 class="h-3 w-3" />
+											Downloaded
+										</span>
+									{:else if downloadingIds.has(item.id)}
+										<span class="badge gap-1 badge-sm badge-info">
+											<Download class="h-3 w-3 animate-pulse" />
+											Downloading
+										</span>
 									{:else}
-										<span class="badge badge-sm badge-warning">Missing</span>
+										<span class="badge gap-1 badge-sm badge-warning">
+											<XCircle class="h-3 w-3" />
+											Missing
+										</span>
 									{/if}
+								{/if}
+								{#if isSeries(item) && item.status}
+									<span class="badge badge-sm {getStatusColor(item.status)}">
+										{formatStatus(item.status)}
+									</span>
 								{/if}
 							</div>
 						</td>
 
 						<!-- Quality -->
 						<td>
-							{#if qualityBadges.length > 0}
+							{#if isTv && isSeries(item)}
+								{@const profileName = getProfileName(item)}
+								{#if profileName}
+									<span class="badge badge-outline badge-sm">{profileName}</span>
+								{:else}
+									<span class="text-base text-base-content/40">-</span>
+								{/if}
+							{:else if qualityBadges.length > 0}
 								<div class="flex flex-wrap gap-1.5">
 									{#each qualityBadges as badge (`${badge.type}-${badge.label}`)}
 										<span class="badge badge-outline badge-sm">{badge.label}</span>
@@ -534,6 +651,9 @@
 												max="100"
 											></progress>
 										{/if}
+										{#if downloadingIds.has(item.id)}
+											<Download class="h-4 w-4 animate-pulse text-info" />
+										{/if}
 									</div>
 								{/if}
 							</td>
@@ -541,21 +661,21 @@
 
 						<!-- Added Date -->
 						<td>
-							<span class="text-base text-base-content/60">
-								{new Date(item.added).toLocaleDateString()}
+							<span class="text-base text-base-content/60" title={relDate.full}>
+								{relDate.display}
 							</span>
 						</td>
 
 						<!-- Actions -->
 						<td>
-							<div class="dropdown dropdown-end">
+							<div class="dropdown dropdown-end" class:dropdown-top={isNearBottom}>
 								<button tabindex="0" class="btn btn-ghost btn-xs" disabled={isLoading}>
 									<MoreVertical class="h-4 w-4" />
 								</button>
 								<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 								<ul
 									tabindex="0"
-									class="dropdown-content menu z-[2] w-40 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
+									class="dropdown-content menu z-50 w-40 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
 								>
 									<li>
 										<button onclick={() => handleMonitorToggle(item.id, item.monitored ?? false)}>
@@ -579,17 +699,11 @@
 									{#if onManualGrab}
 										<li>
 											<button onclick={() => handleManualGrab(item.id)}>
-												<MousePointerClick class="mr-2 h-4 w-4" />
+												<Search class="mr-2 h-4 w-4" />
 												Manual Grab
 											</button>
 										</li>
 									{/if}
-									<li>
-										<button onclick={() => handleSearch(item.id)}>
-											<Search class="mr-2 h-4 w-4" />
-											Search
-										</button>
-									</li>
 									<li>
 										<button class="text-error" onclick={() => handleDelete(item.id)}>
 											<Trash2 class="mr-2 h-4 w-4" />

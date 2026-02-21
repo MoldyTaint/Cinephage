@@ -5,6 +5,7 @@ import {
 	series,
 	episodes,
 	episodeFiles,
+	movieFiles,
 	downloadQueue,
 	downloadHistory,
 	unmatchedFiles,
@@ -150,6 +151,14 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 
 		// Get unmatched files count
 		const [unmatchedCount] = await db.select({ count: count() }).from(unmatchedFiles);
+
+		// Get storage size totals
+		const [[movieSizeResult], [episodeSizeResult]] = await Promise.all([
+			db.select({ total: sql<number>`COALESCE(SUM(${movieFiles.size}), 0)` }).from(movieFiles),
+			db.select({ total: sql<number>`COALESCE(SUM(${episodeFiles.size}), 0)` }).from(episodeFiles)
+		]);
+		const movieStorageBytes = Number(movieSizeResult?.total || 0);
+		const tvStorageBytes = Number(episodeSizeResult?.total || 0);
 
 		// Get missing root folder count (movies + series)
 		const [missingMovieRoots, missingSeriesRoots] = await Promise.all([
@@ -409,7 +418,12 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 				missingRootFolders: Math.max(
 					(missingMovieRoots?.[0]?.count || 0) + (missingSeriesRoots?.[0]?.count || 0),
 					missingRootFolderFallback
-				)
+				),
+				storage: {
+					movieBytes: movieStorageBytes,
+					tvBytes: tvStorageBytes,
+					totalBytes: movieStorageBytes + tvStorageBytes
+				}
 			},
 			recentActivity,
 			recentlyAdded: {
@@ -449,7 +463,12 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 				movingDownloads: 0,
 				completedDownloadsLast24h: 0,
 				unmatchedFiles: 0,
-				missingRootFolders: 0
+				missingRootFolders: 0,
+				storage: {
+					movieBytes: 0,
+					tvBytes: 0,
+					totalBytes: 0
+				}
 			},
 			recentActivity: [] as UnifiedActivity[],
 			recentlyAdded: {

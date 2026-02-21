@@ -62,15 +62,16 @@
 <a
 	href={selectable ? undefined : resolvePath(link)}
 	onclick={handleCardClick}
-	class="group relative block aspect-[2/3] w-full overflow-hidden rounded-lg bg-base-300 shadow-sm transition-all hover:shadow-md {selected
+	class="group relative block aspect-2/3 w-full overflow-hidden rounded-lg bg-base-300 shadow-sm transition-shadow hover:shadow-md {selected
 		? 'ring-2 ring-primary ring-offset-2 ring-offset-base-100'
 		: 'hover:ring-2 hover:ring-primary/50'} {selectable ? 'cursor-pointer' : ''}"
+	style="content-visibility: auto; contain-intrinsic-size: auto 150px auto 225px;"
 >
 	<TmdbImage
 		path={item.posterPath}
 		size="w342"
 		alt={item.title}
-		class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+		class="h-full w-full object-cover"
 	/>
 
 	<!-- Selection checkbox -->
@@ -78,7 +79,7 @@
 		<div class="absolute top-2 left-2 z-20">
 			<button
 				type="button"
-				class="flex h-6 w-6 items-center justify-center rounded-md border-2 bg-base-100/90 shadow-sm backdrop-blur-sm transition-colors {selected
+				class="flex h-6 w-6 items-center justify-center rounded-md border-2 bg-base-100/90 shadow-sm transition-colors {selected
 					? 'border-primary bg-primary'
 					: 'border-base-content/30 hover:border-primary'}"
 				onclick={handleCheckboxClick}
@@ -94,7 +95,7 @@
 	<div class="absolute top-2 right-2 z-10 flex max-w-[48%] flex-col items-end gap-1">
 		<!-- Monitored status -->
 		<div
-			class="badge border-none badge-sm shadow-sm backdrop-blur-sm {item.monitored
+			class="badge border-none badge-sm shadow-sm {item.monitored
 				? 'bg-success/80 text-success-content'
 				: 'bg-base-300/80 text-base-content/60'}"
 			title={item.monitored ? 'Monitored' : 'Not Monitored'}
@@ -108,7 +109,7 @@
 
 		<!-- Media type badge -->
 		<div
-			class="badge truncate border-none badge-xs font-semibold shadow-sm backdrop-blur-sm sm:badge-sm {isMovie
+			class="badge truncate border-none badge-xs font-semibold shadow-sm sm:badge-sm {isMovie
 				? 'bg-primary/80 text-primary-content'
 				: 'bg-secondary/80 text-secondary-content'}"
 		>
@@ -123,7 +124,7 @@
 		{#if isMovie}
 			<!-- File status for movies -->
 			<div
-				class="badge border-none badge-sm shadow-sm backdrop-blur-sm {hasFile
+				class="badge border-none badge-sm shadow-sm {hasFile
 					? 'bg-success/80 text-success-content'
 					: 'bg-error/80 text-error-content'}"
 				title={hasFile ? 'File available' : 'Missing file'}
@@ -137,7 +138,7 @@
 		{:else}
 			<!-- Episode count for series -->
 			<div
-				class="badge border-none bg-base-100/80 badge-sm text-base-content shadow-sm backdrop-blur-sm"
+				class="badge border-none bg-base-100/80 badge-sm text-base-content shadow-sm"
 				title="{episodeFileCount} of {episodeCount} episodes"
 			>
 				{episodeFileCount}/{episodeCount}
@@ -147,7 +148,7 @@
 		<!-- Quality badge for movies with files -->
 		{#if isMovie && hasFile && qualityBadge()}
 			<div
-				class="badge truncate border-none bg-primary/80 badge-xs font-medium text-primary-content shadow-sm backdrop-blur-sm sm:badge-sm"
+				class="badge truncate border-none bg-primary/80 badge-xs font-medium text-primary-content shadow-sm sm:badge-sm"
 			>
 				{qualityBadge()}
 			</div>
@@ -180,7 +181,7 @@
 
 	<!-- Hover Overlay -->
 	<div
-		class="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/90 via-black/20 to-transparent p-3 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+		class="absolute inset-0 flex flex-col justify-end bg-linear-to-t from-black/90 via-black/20 to-transparent p-3 opacity-0 transition-opacity duration-300 lg:group-hover:opacity-100"
 	>
 		<div
 			class="translate-y-4 transform transition-transform duration-300 group-hover:translate-y-0"

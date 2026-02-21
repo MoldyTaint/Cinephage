@@ -8,8 +8,10 @@
 		RefreshCw,
 		Package,
 		Download,
+		Zap,
 		Loader2
 	} from 'lucide-svelte';
+	import { formatBytes } from '$lib/utils/format.js';
 
 	interface SeriesData {
 		tmdbId: number;
@@ -49,6 +51,7 @@
 
 	interface Props {
 		series: SeriesData;
+		totalSize?: number;
 		qualityProfileName?: string | null;
 		refreshing?: boolean;
 		refreshProgress?: RefreshProgress | null;
@@ -67,6 +70,7 @@
 
 	let {
 		series,
+		totalSize = 0,
 		qualityProfileName = null,
 		refreshing = false,
 		refreshProgress = null,
@@ -123,7 +127,7 @@
 			/>
 		{/if}
 		<div
-			class="absolute inset-0 bg-gradient-to-r from-base-200/80 via-base-200/75 to-base-200/60 sm:from-base-200 sm:via-base-200/95 sm:to-base-200/80"
+			class="absolute inset-0 bg-linear-to-r from-base-200/80 via-base-200/75 to-base-200/60 sm:from-base-200 sm:via-base-200/95 sm:to-base-200/80"
 		></div>
 	</div>
 
@@ -180,13 +184,13 @@
 						size="md"
 					/>
 
-					<!-- Search Missing Button -->
+					<!-- Auto Grab Button -->
 					<button
 						class="btn gap-2 btn-sm btn-primary"
 						onclick={onSearchMissing}
 						disabled={searchingMissing || missingEpisodeCount === 0}
 						title={missingEpisodeCount > 0
-							? `Search for ${missingEpisodeCount} missing episodes`
+							? `Automatically search for ${missingEpisodeCount} missing episodes and download`
 							: 'No missing episodes'}
 					>
 						{#if searchingMissing}
@@ -199,13 +203,13 @@
 								<span class="hidden sm:inline">Searching...</span>
 							{/if}
 						{:else if missingSearchResult}
-							<Download size={16} />
+							<Zap size={16} />
 							<span class="hidden sm:inline"
 								>Grabbed {missingSearchResult.grabbed}/{missingSearchResult.searched}</span
 							>
 						{:else}
-							<Download size={16} />
-							<span class="hidden sm:inline">Search Missing</span>
+							<Zap size={16} />
+							<span class="hidden sm:inline">Auto Grab</span>
 							{#if missingEpisodeCount > 0}
 								<span class="badge badge-sm badge-secondary">{missingEpisodeCount}</span>
 							{/if}
@@ -258,6 +262,10 @@
 					<span class="text-base-content/60">
 						({series.percentComplete}% complete)
 					</span>
+					{#if totalSize > 0}
+						<span class="text-base-content/40">·</span>
+						<span class="font-medium">{formatBytes(totalSize)}</span>
+					{/if}
 					{#if downloadingCount > 0}
 						<span class="flex items-center gap-1 text-warning">
 							<Download size={14} class="animate-pulse" />

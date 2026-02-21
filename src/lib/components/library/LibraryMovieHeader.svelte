@@ -12,11 +12,11 @@
 		Settings,
 		Trash2,
 		ExternalLink,
-		Download,
 		Clock,
 		Loader2,
 		Check,
-		X
+		X,
+		Zap
 	} from 'lucide-svelte';
 
 	interface AutoSearchResult {
@@ -169,7 +169,7 @@
 						onToggle={onMonitorToggle}
 						size="md"
 					/>
-					<!-- Auto Search Button -->
+					<!-- Auto Grab Button -->
 					<button
 						class="btn gap-2 btn-sm btn-primary"
 						onclick={onAutoSearch}
@@ -186,8 +186,8 @@
 							<X size={16} />
 							<span class="hidden sm:inline">Failed</span>
 						{:else}
-							<Download size={16} />
-							<span class="hidden sm:inline">Auto Search</span>
+							<Zap size={16} />
+							<span class="hidden sm:inline">Auto Grab</span>
 						{/if}
 					</button>
 					<!-- Manual/Interactive Search Button -->

@@ -36,7 +36,7 @@
 		<div
 			class="flex items-center gap-2 rounded-full border border-base-content/10 bg-base-300 px-3 py-2 shadow-xl sm:gap-3 sm:px-4 sm:py-2.5"
 		>
-			<span class="text-sm font-medium">
+			<span class="shrink-0 text-sm font-medium whitespace-nowrap">
 				{selectedCount}
 				{itemLabel} selected
 			</span>

@@ -4,13 +4,26 @@ import {
 	movieFiles,
 	rootFolders,
 	scoringProfiles,
-	profileSizeLimits
+	profileSizeLimits,
+	downloadQueue
 } from '$lib/server/db/schema.js';
-import { eq } from 'drizzle-orm';
+import { eq, and, inArray, isNotNull } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 import type { LibraryMovie, MovieFile } from '$lib/types/library';
 import { logger } from '$lib/logging';
 import { DEFAULT_PROFILES } from '$lib/server/scoring/profiles.js';
+
+const ACTIVE_DOWNLOAD_STATUSES = [
+	'queued',
+	'downloading',
+	'stalled',
+	'paused',
+	'completed',
+	'postprocessing',
+	'importing',
+	'seeding',
+	'seeding-imported'
+] as const;
 
 export interface QualityProfileSummary {
 	id: string;
@@ -59,7 +72,18 @@ export const load: PageServerLoad = async ({ url }) => {
 			.from(movies)
 			.leftJoin(rootFolders, eq(movies.rootFolderId, rootFolders.id));
 
-		// Get file info for each movie
+		// Fetch active queue movie IDs (including paused/seeding states)
+		const activeQueueMovies = await db
+			.select({ movieId: downloadQueue.movieId })
+			.from(downloadQueue)
+			.where(
+				and(
+					isNotNull(downloadQueue.movieId),
+					inArray(downloadQueue.status, [...ACTIVE_DOWNLOAD_STATUSES])
+				)
+			);
+		const downloadingMovieIds = new Set(activeQueueMovies.map((q) => q.movieId!));
+
 		const moviesWithFiles: LibraryMovie[] = await Promise.all(
 			allMovies.map(async (movie) => {
 				const files = await db.select().from(movieFiles).where(eq(movieFiles.movieId, movie.id));
@@ -224,6 +248,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			movies: filteredMovies,
 			total: filteredMovies.length,
 			totalUnfiltered: moviesWithFiles.length,
+			downloadingMovieIds: [...downloadingMovieIds],
 			filters: {
 				sort,
 				monitored,
@@ -247,6 +272,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			movies: emptyMovies,
 			total: 0,
 			totalUnfiltered: 0,
+			downloadingMovieIds: [] as string[],
 			filters: {
 				sort,
 				monitored,

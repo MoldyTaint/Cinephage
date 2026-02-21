@@ -116,6 +116,7 @@ export interface LibrarySeries {
 	episodeCount: number | null;
 	episodeFileCount: number | null;
 	percentComplete: number;
+	totalSize?: number;
 }
 
 export type LibraryItem = LibraryMovie | LibrarySeries;

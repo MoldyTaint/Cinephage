@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types.js';
 import { db } from '$lib/server/db/index.js';
 import {
 	downloadHistory,
+	downloadQueue,
 	movies,
 	movieFiles,
 	rootFolders,
@@ -13,6 +14,7 @@ import { mediaInfoService } from '$lib/server/library/index.js';
 import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
 import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
+import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager.js';
 import { deleteAllAlternateTitles } from '$lib/server/services/index.js';
 import { unlink, rmdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -287,6 +289,38 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 		}
 
 		if (removeFromLibrary) {
+			// Cancel active downloads from client before removing
+			const activeQueueItems = await db
+				.select()
+				.from(downloadQueue)
+				.where(eq(downloadQueue.movieId, params.id));
+
+			for (const queueItem of activeQueueItems) {
+				if (queueItem.downloadClientId) {
+					try {
+						const isTorrent = queueItem.protocol === 'torrent';
+						const clientDownloadId = isTorrent
+							? queueItem.infoHash || queueItem.downloadId
+							: queueItem.downloadId || queueItem.infoHash;
+						if (clientDownloadId) {
+							const clientInstance = await getDownloadClientManager().getClientInstance(
+								queueItem.downloadClientId
+							);
+							if (clientInstance) {
+								await clientInstance.removeDownload(clientDownloadId, true);
+							}
+						}
+					} catch (err) {
+						logger.warn('[API] Failed to remove download from client', {
+							queueItemId: queueItem.id,
+							error: err instanceof Error ? err.message : 'Unknown'
+						});
+					}
+				}
+				// Delete queue record
+				await db.delete(downloadQueue).where(eq(downloadQueue.id, queueItem.id));
+			}
+
 			// Preserve activity audit trail after media row is deleted (FKs become null on delete)
 			await db
 				.update(downloadHistory)

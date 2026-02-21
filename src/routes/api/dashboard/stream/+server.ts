@@ -8,6 +8,7 @@ import {
 	series,
 	episodes,
 	episodeFiles,
+	movieFiles,
 	downloadQueue,
 	downloadHistory,
 	unmatchedFiles,
@@ -213,6 +214,14 @@ async function getDashboardStats() {
 
 	const [unmatchedCount] = await db.select({ count: count() }).from(unmatchedFiles);
 
+	// Get storage size totals
+	const [[movieSizeResult], [episodeSizeResult]] = await Promise.all([
+		db.select({ total: sql<number>`COALESCE(SUM(${movieFiles.size}), 0)` }).from(movieFiles),
+		db.select({ total: sql<number>`COALESCE(SUM(${episodeFiles.size}), 0)` }).from(episodeFiles)
+	]);
+	const movieStorageBytes = Number(movieSizeResult?.total || 0);
+	const tvStorageBytes = Number(episodeSizeResult?.total || 0);
+
 	const [missingMovieRoots, missingSeriesRoots] = await Promise.all([
 		db.select({ count: count() }).from(movies).where(sql`
 			${movies.rootFolderId} IS NULL
@@ -268,7 +277,13 @@ async function getDashboardStats() {
 		movingDownloads,
 		completedDownloadsLast24h,
 		unmatchedFiles: unmatchedCount?.count || 0,
-		missingRootFolders: (missingMovieRoots?.[0]?.count || 0) + (missingSeriesRoots?.[0]?.count || 0)
+		missingRootFolders:
+			(missingMovieRoots?.[0]?.count || 0) + (missingSeriesRoots?.[0]?.count || 0),
+		storage: {
+			movieBytes: movieStorageBytes,
+			tvBytes: tvStorageBytes,
+			totalBytes: movieStorageBytes + tvStorageBytes
+		}
 	};
 }
 

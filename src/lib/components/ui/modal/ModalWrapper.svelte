@@ -8,10 +8,20 @@
 		maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl';
 		labelledBy?: string;
 		describedBy?: string;
+		/** When true, modal-box uses flex column layout and children manage their own scrolling */
+		flexContent?: boolean;
 		children: Snippet;
 	}
 
-	let { open, onClose, maxWidth = 'lg', labelledBy, describedBy, children }: Props = $props();
+	let {
+		open,
+		onClose,
+		maxWidth = 'lg',
+		labelledBy,
+		describedBy,
+		flexContent = false,
+		children
+	}: Props = $props();
 
 	let modalBoxRef = $state<HTMLElement | null>(null);
 	let cleanupFocusTrap: (() => void) | null = null;
@@ -68,9 +78,9 @@
 	>
 		<div
 			bind:this={modalBoxRef}
-			class="modal-box max-h-[90vh] overflow-x-hidden overflow-y-auto break-words {maxWidthClasses[
-				maxWidth
-			]}"
+			class="modal-box max-h-[90vh] wrap-break-word {flexContent
+				? 'flex flex-col overflow-hidden'
+				: 'overflow-x-hidden overflow-y-auto'} {maxWidthClasses[maxWidth]}"
 		>
 			{@render children()}
 		</div>

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, Loader2, AlertTriangle, Trash2 } from 'lucide-svelte';
+	import { X, Loader2, AlertTriangle, Trash2, Download } from 'lucide-svelte';
 	import ModalWrapper from './ModalWrapper.svelte';
 
 	interface Props {
@@ -7,6 +7,8 @@
 		title?: string;
 		itemName: string;
 		allowRemoveFromLibrary?: boolean;
+		hasFiles?: boolean;
+		hasActiveDownload?: boolean;
 		loading?: boolean;
 		onConfirm: (deleteFiles: boolean, removeFromLibrary: boolean) => void;
 		onCancel: () => void;
@@ -17,6 +19,8 @@
 		title = 'Delete',
 		itemName,
 		allowRemoveFromLibrary = true,
+		hasFiles = true,
+		hasActiveDownload = false,
 		loading = false,
 		onConfirm,
 		onCancel
@@ -36,6 +40,12 @@
 	$effect(() => {
 		if (!allowRemoveFromLibrary) {
 			removeFromLibrary = false;
+		}
+	});
+
+	$effect(() => {
+		if (!hasFiles) {
+			deleteFiles = false;
 		}
 	});
 
@@ -72,9 +82,21 @@
 		{/if}
 	</p>
 
-	<label class="mt-4 flex cursor-pointer items-center gap-3 py-2">
-		<input type="checkbox" class="checkbox shrink-0 checkbox-error" bind:checked={deleteFiles} />
-		<span class="text-sm">Delete files from disk</span>
+	<label
+		class="mt-4 flex items-center gap-3 py-2"
+		class:cursor-pointer={hasFiles}
+		class:opacity-50={!hasFiles}
+	>
+		<input
+			type="checkbox"
+			class="checkbox shrink-0 checkbox-error"
+			bind:checked={deleteFiles}
+			disabled={!hasFiles}
+		/>
+		<span class="text-sm"
+			>Delete files from disk{#if !hasFiles}
+				<span class="text-base-content/50">&nbsp(no files on disk)</span>{/if}</span
+		>
 	</label>
 
 	{#if allowRemoveFromLibrary}
@@ -86,6 +108,18 @@
 			/>
 			<span class="text-sm">Remove from library entirely</span>
 		</label>
+	{/if}
+
+	{#if hasActiveDownload}
+		{#if removeFromLibrary}
+			<div class="mt-3 alert alert-warning">
+				<Download class="h-4 w-4" />
+				<span class="text-sm"
+					>There is an active or paused download for this item. It will be cancelled and removed
+					from the download client.
+				</span>
+			</div>
+		{/if}
 	{/if}
 
 	{#if removeFromLibrary}

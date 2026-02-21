@@ -358,6 +358,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>Tasks - Settings - Cinephage</title>
+</svelte:head>
+
 <div class="w-full space-y-6">
 	<!-- Header -->
 	<div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

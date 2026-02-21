@@ -8,7 +8,7 @@
 		EyeOff,
 		Lock,
 		Info,
-		Download,
+		Zap,
 		ChevronDown,
 		Loader2,
 		Subtitles,
@@ -304,7 +304,7 @@
 							</li>
 							<li>
 								<button onclick={handleAutoSearchClick} disabled={autoSearching}>
-									<Download size={14} />
+									<Zap size={14} />
 									Auto-grab best
 								</button>
 							</li>
@@ -381,9 +381,12 @@
 					{/if}
 					{#if onDelete}
 						<button
-							class="btn text-error btn-ghost btn-xs"
+							class="btn btn-ghost btn-xs {!hasEpisodeFile && !isDownloading
+								? 'text-base-content/30'
+								: 'text-error'}"
 							onclick={handleDeleteClick}
-							title="Delete episode"
+							disabled={!hasEpisodeFile && !isDownloading}
+							title={!hasEpisodeFile && !isDownloading ? 'No files to delete' : 'Delete episode'}
 						>
 							<Trash2 size={14} />
 						</button>
@@ -463,7 +466,7 @@
 			</div>
 		{:else if isDownloading}
 			<div class="flex items-center gap-2 text-warning">
-				<Download size={16} class="animate-pulse" />
+				<Zap size={16} class="animate-pulse" />
 				<span class="text-sm">Downloading</span>
 			</div>
 		{:else if isAired(episode.airDate)}
@@ -537,7 +540,7 @@
 					</li>
 					<li>
 						<button onclick={handleAutoSearchClick} disabled={autoSearching}>
-							<Download size={14} />
+							<Zap size={14} />
 							Auto-grab best
 						</button>
 					</li>
@@ -615,9 +618,12 @@
 			<!-- Delete episode -->
 			{#if onDelete}
 				<button
-					class="btn text-error btn-ghost btn-xs"
+					class="btn btn-ghost btn-xs {!hasEpisodeFile && !isDownloading
+						? 'text-base-content/30'
+						: 'text-error'}"
 					onclick={handleDeleteClick}
-					title="Delete episode"
+					disabled={!hasEpisodeFile && !isDownloading}
+					title={!hasEpisodeFile && !isDownloading ? 'No files to delete' : 'Delete episode'}
 				>
 					<Trash2 size={14} />
 				</button>

@@ -293,6 +293,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>Media Naming - Settings - Cinephage</title>
+</svelte:head>
+
 <div class="w-full p-4">
 	<div class="mb-6 flex items-center justify-between">
 		<div>
@@ -417,7 +421,7 @@
 				<div class="card-body border-t border-base-300 pt-4 pb-4">
 					<div class="flex flex-wrap items-center gap-4">
 						{#if customPresets.length > 0}
-							<div class="form-control min-w-[200px] flex-1">
+							<div class="form-control min-w-50 flex-1">
 								<select
 									id="customPresetSelect"
 									class="select-bordered select select-sm"
@@ -839,7 +843,7 @@
 <!-- Save Preset Modal -->
 {#if showSavePresetModal}
 	<div class="modal-open modal">
-		<div class="modal-box w-full max-w-[min(28rem,calc(100vw-2rem))] break-words">
+		<div class="modal-box w-full max-w-[min(28rem,calc(100vw-2rem))] wrap-break-word">
 			<h3 class="mb-4 text-lg font-bold">Save Current Settings as Preset</h3>
 			<div class="form-control mb-4">
 				<label class="label" for="newPresetName">

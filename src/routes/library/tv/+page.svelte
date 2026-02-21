@@ -10,9 +10,11 @@
 	import LibraryBulkActionBar from '$lib/components/library/LibraryBulkActionBar.svelte';
 	import BulkQualityProfileModal from '$lib/components/library/BulkQualityProfileModal.svelte';
 	import BulkDeleteModal from '$lib/components/library/BulkDeleteModal.svelte';
+	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
 	import InteractiveSearchModal from '$lib/components/search/InteractiveSearchModal.svelte';
-	import { Tv, CheckSquare, X, LayoutGrid, List } from 'lucide-svelte';
+	import { Tv, CheckSquare, X, LayoutGrid, List, Search } from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import { viewPreferences } from '$lib/stores/view-preferences.svelte';
 	import { enhance } from '$app/forms';
 	import { Eye } from 'lucide-svelte';
 
@@ -21,11 +23,18 @@
 	// Selection state
 	let selectedSeries = new SvelteSet<string>();
 	let showCheckboxes = $state(false);
-	let viewMode = $state<'grid' | 'list'>('grid');
+	let searchQuery = $state('');
+
+	const filteredSeries = $derived(
+		searchQuery.trim()
+			? data.series.filter((s) => s.title.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+			: data.series
+	);
 	let bulkLoading = $state(false);
 	let currentBulkAction = $state<'monitor' | 'unmonitor' | 'quality' | 'delete' | null>(null);
 	let isQualityModalOpen = $state(false);
 	let isDeleteModalOpen = $state(false);
+	let pendingDeleteSeriesId = $state<string | null>(null);
 	let isSearchModalOpen = $state(false);
 	let selectedSeriesForSearch = $state<(typeof data.series)[number] | null>(null);
 
@@ -47,7 +56,7 @@
 	}
 
 	function selectAll() {
-		for (const show of data.series) {
+		for (const show of filteredSeries) {
 			selectedSeries.add(show.id);
 		}
 	}
@@ -70,11 +79,12 @@
 			});
 			const result = await response.json();
 			if (result.success) {
-				for (const show of data.series) {
-					if (selectedSeries.has(show.id)) {
-						show.monitored = monitored;
-					}
-				}
+				data = {
+					...data,
+					series: data.series.map((show) =>
+						selectedSeries.has(show.id) ? { ...show, monitored } : show
+					)
+				};
 				toasts.success(`${monitored ? 'Monitoring' : 'Unmonitored'} ${result.updatedCount} series`);
 				selectedSeries.clear();
 				showCheckboxes = false;
@@ -103,11 +113,12 @@
 			});
 			const result = await response.json();
 			if (result.success) {
-				for (const show of data.series) {
-					if (selectedSeries.has(show.id)) {
-						show.scoringProfileId = profileId;
-					}
-				}
+				data = {
+					...data,
+					series: data.series.map((show) =>
+						selectedSeries.has(show.id) ? { ...show, scoringProfileId: profileId } : show
+					)
+				};
 				toasts.success(`Updated quality profile for ${result.updatedCount} series`);
 				selectedSeries.clear();
 				showCheckboxes = false;
@@ -166,25 +177,6 @@
 	}
 
 	// Table action handlers
-	async function handleSearchSeries(seriesId: string) {
-		const show = data.series.find((s) => s.id === seriesId);
-		if (!show) return;
-
-		try {
-			const response = await fetch(`/api/library/series/${seriesId}/search`, {
-				method: 'POST'
-			});
-			const result = await response.json();
-			if (result.success) {
-				toasts.success(`Search started for "${show.title}"`);
-			} else {
-				toasts.error(result.error || 'Search failed');
-			}
-		} catch {
-			toasts.error('Failed to start search');
-		}
-	}
-
 	async function handleMonitorToggle(seriesId: string, monitored: boolean) {
 		const show = data.series.find((s) => s.id === seriesId);
 		if (!show) return;
@@ -197,7 +189,10 @@
 			});
 			const result = await response.json();
 			if (result.success) {
-				show.monitored = monitored;
+				data = {
+					...data,
+					series: data.series.map((s) => (s.id === seriesId ? { ...s, monitored } : s))
+				};
 				toasts.success(`"${show.title}" ${monitored ? 'monitored' : 'unmonitored'}`);
 			} else {
 				toasts.error(result.error || 'Failed to update');
@@ -208,30 +203,8 @@
 	}
 
 	async function handleDeleteSeries(seriesId: string) {
-		const show = data.series.find((s) => s.id === seriesId);
-		if (!show) return;
-
-		if (!confirm(`Are you sure you want to delete "${show.title}"?`)) {
-			return;
-		}
-
-		try {
-			const response = await fetch(`/api/library/series/${seriesId}`, {
-				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ deleteFiles: true, removeFromLibrary: false })
-			});
-			const result = await response.json();
-			if (result.success) {
-				show.episodeFileCount = 0;
-				show.percentComplete = 0;
-				toasts.success(`"${show.title}" files deleted`);
-			} else {
-				toasts.error(result.error || 'Failed to delete');
-			}
-		} catch {
-			toasts.error('Failed to delete series files');
-		}
+		pendingDeleteSeriesId = seriesId;
+		isDeleteModalOpen = true;
 	}
 
 	async function handleAutoGrab(seriesId: string) {
@@ -332,6 +305,51 @@
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape' && showCheckboxes) {
 			toggleSelectionMode();
+		}
+	}
+
+	async function handleDeleteConfirm(deleteFiles: boolean, removeFromLibrary: boolean) {
+		if (pendingDeleteSeriesId) {
+			// Single item delete from list view
+			const seriesId = pendingDeleteSeriesId;
+			const show = data.series.find((s) => s.id === seriesId);
+			if (!show) return;
+
+			bulkLoading = true;
+			currentBulkAction = 'delete';
+			try {
+				const response = await fetch(
+					`/api/library/series/${seriesId}?deleteFiles=${deleteFiles}&removeFromLibrary=${removeFromLibrary}`,
+					{ method: 'DELETE' }
+				);
+				const result = await response.json();
+				if (result.success) {
+					if (removeFromLibrary) {
+						data = { ...data, series: data.series.filter((s) => s.id !== seriesId) };
+						toasts.success(`Removed "${show.title}" from library`);
+					} else {
+						data = {
+							...data,
+							series: data.series.map((s) =>
+								s.id === seriesId ? { ...s, episodeFileCount: 0, percentComplete: 0 } : s
+							)
+						};
+						toasts.success(`"${show.title}" files deleted`);
+					}
+					isDeleteModalOpen = false;
+					pendingDeleteSeriesId = null;
+				} else {
+					toasts.error(result.error || 'Failed to delete');
+				}
+			} catch {
+				toasts.error('Failed to delete series');
+			} finally {
+				bulkLoading = false;
+				currentBulkAction = null;
+			}
+		} else {
+			// Bulk delete
+			await handleBulkDelete(deleteFiles, removeFromLibrary);
 		}
 	}
 
@@ -450,7 +468,27 @@
 		videoCodec: data.filters.videoCodec,
 		hdrFormat: data.filters.hdrFormat
 	});
+	const downloadingSeriesIdSet = $derived(new Set(data.downloadingSeriesIds));
+	const deleteModalCount = $derived(pendingDeleteSeriesId ? 1 : selectedCount);
+	const pendingDeleteSeries = $derived(
+		pendingDeleteSeriesId ? data.series.find((s) => s.id === pendingDeleteSeriesId) : null
+	);
+	const pendingDeleteSeriesTitle = $derived(pendingDeleteSeries?.title ?? '');
+	const pendingDeleteSeriesHasFiles = $derived((pendingDeleteSeries?.episodeFileCount ?? 0) > 0);
+	const pendingDeleteSeriesHasActiveDownload = $derived(
+		pendingDeleteSeriesId ? downloadingSeriesIdSet.has(pendingDeleteSeriesId) : false
+	);
+	const bulkActiveDownloadCount = $derived(
+		pendingDeleteSeriesId
+			? 0
+			: [...selectedSeries].filter((seriesId) => downloadingSeriesIdSet.has(seriesId)).length
+	);
+	const bulkHasActiveDownloads = $derived(bulkActiveDownloadCount > 0);
 </script>
+
+<svelte:head>
+	<title>TV Shows - Library - Cinephage</title>
+</svelte:head>
 
 <svelte:window onkeydown={handleKeydown} />
 
@@ -459,10 +497,12 @@
 	<div
 		class="sticky top-16 z-30 -mx-4 border-b border-base-200 bg-base-100/80 backdrop-blur-md lg:top-0 lg:mx-0"
 	>
-		<div class="flex h-16 w-full flex-nowrap items-center justify-between gap-2 px-4 lg:px-8">
-			<div class="flex min-w-0 items-center gap-2 sm:gap-3">
+		<div
+			class="flex h-16 w-full flex-nowrap items-center gap-2 px-4 md:grid md:grid-cols-[minmax(0,1fr)_minmax(18rem,32rem)_minmax(0,1fr)] md:gap-4 lg:px-8"
+		>
+			<div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 md:flex-none">
 				<h1
-					class="min-w-0 bg-gradient-to-r from-primary to-secondary bg-clip-text text-xl font-bold text-transparent sm:text-2xl"
+					class="min-w-0 bg-linear-to-r from-primary to-secondary bg-clip-text text-xl font-bold text-transparent sm:text-2xl"
 				>
 					TV Shows
 				</h1>
@@ -474,7 +514,38 @@
 				{/if}
 			</div>
 
-			<div class="flex shrink-0 items-center gap-2 sm:gap-2">
+			<!-- Search (desktop) -->
+			<div class="hidden w-full items-center gap-2 md:flex md:justify-self-center">
+				<div class="group relative w-full">
+					<Search
+						class="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-base-content/40 transition-colors group-focus-within:text-primary"
+					/>
+					<input
+						type="text"
+						placeholder="Search TV shows…"
+						class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+						bind:value={searchQuery}
+					/>
+					{#if searchQuery}
+						<button
+							class="absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-0.5 text-base-content/40 transition-colors hover:bg-base-300 hover:text-base-content"
+							onclick={() => (searchQuery = '')}
+							aria-label="Clear search"
+						>
+							<X class="h-3.5 w-3.5" />
+						</button>
+					{/if}
+				</div>
+				{#if searchQuery && filteredSeries.length !== data.series.length}
+					<span class="shrink-0 text-xs text-base-content/50">
+						{filteredSeries.length}/{data.series.length}
+					</span>
+				{/if}
+			</div>
+
+			<div
+				class="flex shrink-0 flex-nowrap items-center justify-end gap-2 sm:gap-2 md:justify-self-end"
+			>
 				{#if showCheckboxes}
 					<button class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm" onclick={selectAll}>
 						<span class="hidden sm:inline">Select All</span>
@@ -518,7 +589,7 @@
 						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 						<ul
 							tabindex="0"
-							class="dropdown-content menu z-[2] w-52 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
+							class="dropdown-content menu z-2 w-52 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
 						>
 							<li>
 								<button type="submit" class="w-full text-left" form="tv-monitor-all">
@@ -537,10 +608,12 @@
 				<!-- View Toggle -->
 				<button
 					class="btn btn-ghost btn-xs sm:btn-sm"
-					onclick={() => (viewMode = viewMode === 'grid' ? 'list' : 'grid')}
-					aria-label={viewMode === 'grid' ? 'Switch to list view' : 'Switch to grid view'}
+					onclick={() => viewPreferences.toggleViewMode()}
+					aria-label={viewPreferences.viewMode === 'grid'
+						? 'Switch to list view'
+						: 'Switch to grid view'}
 				>
-					{#if viewMode === 'grid'}
+					{#if viewPreferences.viewMode === 'grid'}
 						<List class="h-4 w-4" />
 						<span class="hidden sm:inline">List</span>
 					{:else}
@@ -559,6 +632,35 @@
 					onClearFilters={clearFilters}
 				/>
 			</div>
+		</div>
+
+		<!-- Search (mobile) -->
+		<div class="flex items-center gap-2 border-t border-base-200/50 px-4 py-2 md:hidden">
+			<div class="group relative w-full">
+				<Search
+					class="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-base-content/40 transition-colors group-focus-within:text-primary"
+				/>
+				<input
+					type="text"
+					placeholder="Search TV shows…"
+					class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+					bind:value={searchQuery}
+				/>
+				{#if searchQuery}
+					<button
+						class="absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-0.5 text-base-content/40 transition-colors hover:bg-base-300 hover:text-base-content"
+						onclick={() => (searchQuery = '')}
+						aria-label="Clear search"
+					>
+						<X class="h-3.5 w-3.5" />
+					</button>
+				{/if}
+			</div>
+			{#if searchQuery && filteredSeries.length !== data.series.length}
+				<span class="shrink-0 text-xs text-base-content/50">
+					{filteredSeries.length}/{data.series.length}
+				</span>
+			{/if}
 		</div>
 	</div>
 
@@ -581,6 +683,16 @@
 				</svg>
 				<span>{data.error}</span>
 			</div>
+		{:else if filteredSeries.length === 0 && searchQuery}
+			<!-- Search Empty State -->
+			<div class="flex flex-col items-center justify-center py-20 text-center opacity-50">
+				<Search class="mb-4 h-16 w-16" />
+				<p class="text-2xl font-bold">No TV shows match "{searchQuery}"</p>
+				<p class="mt-2">Try a different search term.</p>
+				<button class="btn mt-6 btn-ghost" onclick={() => (searchQuery = '')}>
+					Clear Search
+				</button>
+			</div>
 		{:else if data.series.length === 0}
 			<!-- Empty State -->
 			<div class="flex flex-col items-center justify-center py-20 text-center opacity-50">
@@ -599,33 +711,38 @@
 			</div>
 		{:else}
 			<!-- Series Grid or List -->
-			<div class="animate-in fade-in slide-in-from-bottom-4 duration-500">
-				{#if viewMode === 'grid'}
-					<div class="grid grid-cols-3 gap-3 sm:gap-4 lg:grid-cols-9">
-						{#each data.series as show (show.id)}
-							<LibraryMediaCard
-								item={show}
-								selectable={showCheckboxes}
-								selected={selectedSeries.has(show.id)}
-								onSelectChange={handleItemSelectChange}
-							/>
-						{/each}
-					</div>
-				{:else}
-					<LibraryMediaTable
-						items={data.series}
-						mediaType="tv"
-						selectedItems={selectedSeries}
-						selectable={showCheckboxes}
-						onSelectChange={handleItemSelectChange}
-						onSearch={handleSearchSeries}
-						onMonitorToggle={handleMonitorToggle}
-						onDelete={handleDeleteSeries}
-						onAutoGrab={handleAutoGrab}
-						onManualGrab={handleManualGrab}
-					/>
-				{/if}
-			</div>
+			{#if !viewPreferences.isReady}
+				<!-- Defer until client resolves view preference to avoid grid flash -->
+			{:else}
+				<div class="animate-in fade-in slide-in-from-bottom-4 duration-500">
+					{#if viewPreferences.viewMode === 'grid'}
+						<div class="grid grid-cols-3 gap-3 sm:gap-4 lg:grid-cols-9">
+							{#each filteredSeries as show (show.id)}
+								<LibraryMediaCard
+									item={show}
+									selectable={showCheckboxes}
+									selected={selectedSeries.has(show.id)}
+									onSelectChange={handleItemSelectChange}
+								/>
+							{/each}
+						</div>
+					{:else}
+						<LibraryMediaTable
+							items={filteredSeries}
+							mediaType="tv"
+							selectedItems={selectedSeries}
+							selectable={showCheckboxes}
+							qualityProfiles={data.qualityProfiles}
+							downloadingIds={downloadingSeriesIdSet}
+							onSelectChange={handleItemSelectChange}
+							onMonitorToggle={handleMonitorToggle}
+							onDelete={handleDeleteSeries}
+							onAutoGrab={handleAutoGrab}
+							onManualGrab={handleManualGrab}
+						/>
+					{/if}
+				</div>
+			{/if}
 		{/if}
 	</main>
 </div>
@@ -654,14 +771,33 @@
 	onCancel={() => (isQualityModalOpen = false)}
 />
 
+<!-- Single Item Delete Modal -->
+<DeleteConfirmationModal
+	open={isDeleteModalOpen && pendingDeleteSeriesId !== null}
+	title="Delete Series"
+	itemName={pendingDeleteSeriesTitle}
+	hasFiles={pendingDeleteSeriesHasFiles}
+	hasActiveDownload={pendingDeleteSeriesHasActiveDownload}
+	loading={bulkLoading && currentBulkAction === 'delete'}
+	onConfirm={handleDeleteConfirm}
+	onCancel={() => {
+		isDeleteModalOpen = false;
+		pendingDeleteSeriesId = null;
+	}}
+/>
+
 <!-- Bulk Delete Modal -->
 <BulkDeleteModal
-	open={isDeleteModalOpen}
-	{selectedCount}
+	open={isDeleteModalOpen && pendingDeleteSeriesId === null}
+	selectedCount={deleteModalCount}
 	mediaType="tv"
+	hasActiveDownloads={bulkHasActiveDownloads}
+	activeDownloadCount={bulkActiveDownloadCount}
 	loading={bulkLoading && currentBulkAction === 'delete'}
-	onConfirm={handleBulkDelete}
-	onCancel={() => (isDeleteModalOpen = false)}
+	onConfirm={handleDeleteConfirm}
+	onCancel={() => {
+		isDeleteModalOpen = false;
+	}}
 />
 
 <!-- Interactive Search Modal -->

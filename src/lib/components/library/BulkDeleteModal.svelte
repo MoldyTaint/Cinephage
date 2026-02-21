@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, Loader2, AlertTriangle, Trash2 } from 'lucide-svelte';
+	import { X, Loader2, AlertTriangle, Trash2, Download } from 'lucide-svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import { mediaTypeCountLabel, type MediaType } from '$lib/utils/media-type';
 
@@ -7,12 +7,23 @@
 		open: boolean;
 		selectedCount: number;
 		mediaType: MediaType;
+		hasActiveDownloads?: boolean;
+		activeDownloadCount?: number;
 		loading: boolean;
 		onConfirm: (deleteFiles: boolean, removeFromLibrary: boolean) => void;
 		onCancel: () => void;
 	}
 
-	let { open, selectedCount, mediaType, loading, onConfirm, onCancel }: Props = $props();
+	let {
+		open,
+		selectedCount,
+		mediaType,
+		hasActiveDownloads = false,
+		activeDownloadCount = 0,
+		loading,
+		onConfirm,
+		onCancel
+	}: Props = $props();
 
 	let deleteFiles = $state(false);
 	let removeFromLibrary = $state(false);
@@ -75,6 +86,25 @@
 		/>
 		<span class="text-sm">Remove from library entirely</span>
 	</label>
+
+	{#if hasActiveDownloads}
+		<div class="mt-3 alert alert-warning">
+			<Download class="h-4 w-4" />
+			{#if removeFromLibrary}
+				<span class="text-sm"
+					>{activeDownloadCount}
+					{activeDownloadCount === 1 ? ' selected item has' : ' selected items have'} active or paused
+					downloads. They will be cancelled and removed from the download client.</span
+				>
+			{:else}
+				<span class="text-sm"
+					>{activeDownloadCount}
+					{activeDownloadCount === 1 ? ' selected item has' : ' selected items have'} active or paused
+					downloads. Delete files or remove from library with care.</span
+				>
+			{/if}
+		</div>
+	{/if}
 
 	{#if removeFromLibrary}
 		<div class="mt-3 alert alert-error">

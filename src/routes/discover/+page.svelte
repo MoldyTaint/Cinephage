@@ -9,12 +9,11 @@
 	import MediaCard from '$lib/components/tmdb/MediaCard.svelte';
 	import FilterDrawer from '$lib/components/discover/FilterDrawer.svelte';
 	import SectionRow from '$lib/components/discover/SectionRow.svelte';
-	import SearchBar from '$lib/components/discover/SearchBar.svelte';
 	import AddToLibraryModal from '$lib/components/library/AddToLibraryModal.svelte';
 	import TmdbConfigRequired from '$lib/components/ui/TmdbConfigRequired.svelte';
 	import { UI } from '$lib/config/constants';
 	import { parseProviderIds, parseGenreIds, extractYear } from '$lib/utils/discoverParams';
-	import { Search, Eye, EyeOff } from 'lucide-svelte';
+	import { Search, Eye, EyeOff, X, Loader2 } from 'lucide-svelte';
 	import { getMediaTypeLabel } from '$lib/types/tmdb-guards';
 
 	let { data } = $props();
@@ -61,6 +60,7 @@
 
 	// Search state
 	let searchQuery = $state('');
+	let debounceTimer = $state<ReturnType<typeof setTimeout>>();
 	// Search results from TMDB multi-search API
 	// Type is loose since TMDB returns various media types - MediaCard handles the union
 	let searchResults = $state<Array<Record<string, unknown> & { id: number; media_type?: string }>>(
@@ -77,6 +77,21 @@
 	const normalizedSearchQuery = $derived(searchQuery.trim());
 	// Computed: are we in search mode?
 	let isSearchMode = $derived(normalizedSearchQuery.length > 0);
+
+	function handleSearchInput(e: Event) {
+		const target = e.target as HTMLInputElement;
+		searchQuery = target.value.replace(/^\s+/, '');
+		clearTimeout(debounceTimer);
+		debounceTimer = setTimeout(() => {
+			handleSearch(searchQuery);
+		}, 300);
+	}
+
+	function clearSearch() {
+		searchQuery = '';
+		clearTimeout(debounceTimer);
+		handleSearch('');
+	}
 
 	async function handleSearch(query: string) {
 		searchQuery = query;
@@ -332,22 +347,57 @@
 	});
 </script>
 
+<svelte:head>
+	<title>Discover - Cinephage</title>
+</svelte:head>
+
 <div class="min-h-screen bg-base-100 pb-20">
 	<!-- Header -->
 	<div
 		class="sticky top-16 z-30 -mx-4 border-b border-base-200 bg-base-100/80 backdrop-blur-md lg:top-0 lg:mx-0"
 	>
-		<div class="flex h-16 w-full items-center justify-between gap-4 px-4 lg:px-8">
+		<div class="flex h-16 w-full items-center gap-4 px-4 lg:px-8">
 			<h1
-				class="shrink-0 bg-gradient-to-r from-primary to-secondary bg-clip-text text-2xl font-bold text-transparent"
+				class="flex-1 bg-linear-to-r from-primary to-secondary bg-clip-text text-2xl font-bold text-transparent"
 			>
 				{isSearchMode ? 'Search' : 'Discover'}
 			</h1>
 
-			<!-- Search Bar -->
-			<SearchBar bind:value={searchQuery} onSearch={handleSearch} isLoading={isSearching} />
+			<!-- Search (desktop) -->
+			<div class="hidden w-full max-w-md items-center gap-2 px-4 md:flex">
+				<div class="group relative w-full">
+					<div class="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2">
+						{#if isSearching}
+							<Loader2
+								class="h-4 w-4 animate-spin text-base-content/40 transition-colors group-focus-within:text-primary"
+							/>
+						{:else}
+							<Search
+								class="h-4 w-4 text-base-content/40 transition-colors group-focus-within:text-primary"
+							/>
+						{/if}
+					</div>
+					<input
+						type="text"
+						placeholder="Search Movies & TV shows…"
+						class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+						value={searchQuery}
+						oninput={handleSearchInput}
+						onkeydown={(e) => e.key === 'Escape' && clearSearch()}
+					/>
+					{#if searchQuery}
+						<button
+							class="absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-0.5 text-base-content/40 transition-colors hover:bg-base-300 hover:text-base-content"
+							onclick={clearSearch}
+							aria-label="Clear search"
+						>
+							<X class="h-3.5 w-3.5" />
+						</button>
+					{/if}
+				</div>
+			</div>
 
-			<div class="flex shrink-0 items-center gap-3">
+			<div class="flex flex-1 items-center justify-end gap-3">
 				<!-- Active Filters Summary -->
 				{#if selectedProviders.length > 0 || type !== 'all' || selectedGenres.length > 0 || minYear || maxYear || minRating > 0}
 					<div class="hidden items-center gap-2 md:flex">
@@ -398,6 +448,40 @@
 					</svg>
 					Filters
 				</button>
+			</div>
+		</div>
+
+		<!-- Search (mobile) -->
+		<div class="flex items-center gap-2 border-t border-base-200/50 px-4 py-2 md:hidden">
+			<div class="group relative w-full">
+				<div class="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2">
+					{#if isSearching}
+						<Loader2
+							class="h-4 w-4 animate-spin text-base-content/40 transition-colors group-focus-within:text-primary"
+						/>
+					{:else}
+						<Search
+							class="h-4 w-4 text-base-content/40 transition-colors group-focus-within:text-primary"
+						/>
+					{/if}
+				</div>
+				<input
+					type="text"
+					placeholder="Search Movies & TV shows…"
+					class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+					value={searchQuery}
+					oninput={handleSearchInput}
+					onkeydown={(e) => e.key === 'Escape' && clearSearch()}
+				/>
+				{#if searchQuery}
+					<button
+						class="absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-0.5 text-base-content/40 transition-colors hover:bg-base-300 hover:text-base-content"
+						onclick={clearSearch}
+						aria-label="Clear search"
+					>
+						<X class="h-3.5 w-3.5" />
+					</button>
+				{/if}
 			</div>
 		</div>
 	</div>

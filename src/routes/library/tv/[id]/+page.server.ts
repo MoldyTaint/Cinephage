@@ -15,6 +15,18 @@ import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { DEFAULT_PROFILES } from '$lib/server/scoring/profiles.js';
 
+const ACTIVE_DOWNLOAD_STATUSES = [
+	'queued',
+	'downloading',
+	'stalled',
+	'paused',
+	'completed',
+	'postprocessing',
+	'importing',
+	'seeding',
+	'seeding-imported'
+] as const;
+
 export interface QualityProfileSummary {
 	id: string;
 	name: string;
@@ -361,7 +373,12 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 			seasonNumber: downloadQueue.seasonNumber
 		})
 		.from(downloadQueue)
-		.where(and(eq(downloadQueue.seriesId, id), eq(downloadQueue.status, 'downloading')));
+		.where(
+			and(
+				eq(downloadQueue.seriesId, id),
+				inArray(downloadQueue.status, [...ACTIVE_DOWNLOAD_STATUSES])
+			)
+		);
 
 	const queueItems: QueueItemInfo[] = queueResults.map((q) => ({
 		id: q.id,

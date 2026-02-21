@@ -8,13 +8,25 @@ import {
 	downloadQueue,
 	subtitles
 } from '$lib/server/db/schema.js';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import type { LibraryMovie, MovieFile } from '$lib/types/library';
 import { DEFAULT_PROFILES } from '$lib/server/scoring/profiles.js';
 import { tmdb } from '$lib/server/tmdb.js';
 import { logger } from '$lib/logging';
+
+const ACTIVE_DOWNLOAD_STATUSES = [
+	'queued',
+	'downloading',
+	'stalled',
+	'paused',
+	'completed',
+	'postprocessing',
+	'importing',
+	'seeding',
+	'seeding-imported'
+] as const;
 
 export interface QualityProfileSummary {
 	id: string;
@@ -194,7 +206,12 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 			progress: downloadQueue.progress
 		})
 		.from(downloadQueue)
-		.where(and(eq(downloadQueue.movieId, id), eq(downloadQueue.status, 'downloading')));
+		.where(
+			and(
+				eq(downloadQueue.movieId, id),
+				inArray(downloadQueue.status, [...ACTIVE_DOWNLOAD_STATUSES])
+			)
+		);
 
 	const queueItem: QueueItemInfo | null =
 		queueResults.length > 0

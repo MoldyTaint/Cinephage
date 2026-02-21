@@ -5,13 +5,26 @@ import {
 	rootFolders,
 	scoringProfiles,
 	profileSizeLimits,
-	episodeFiles
+	episodeFiles,
+	downloadQueue
 } from '$lib/server/db/schema.js';
-import { eq, and, inArray, ne } from 'drizzle-orm';
+import { eq, and, inArray, ne, isNotNull } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 import type { LibrarySeries, EpisodeFile } from '$lib/types/library';
 import { logger } from '$lib/logging';
 import { DEFAULT_PROFILES } from '$lib/server/scoring/profiles.js';
+
+const ACTIVE_DOWNLOAD_STATUSES = [
+	'queued',
+	'downloading',
+	'stalled',
+	'paused',
+	'completed',
+	'postprocessing',
+	'importing',
+	'seeding',
+	'seeding-imported'
+] as const;
 
 export interface QualityProfileSummary {
 	id: string;
@@ -65,6 +78,19 @@ export const load: PageServerLoad = async ({ url }) => {
 			.leftJoin(rootFolders, eq(series.rootFolderId, rootFolders.id));
 
 		const seriesIds = allSeries.map((s) => s.id);
+
+		// Fetch active queue series IDs (including paused/seeding states)
+		const activeQueueSeries = await db
+			.select({ seriesId: downloadQueue.seriesId })
+			.from(downloadQueue)
+			.where(
+				and(
+					isNotNull(downloadQueue.seriesId),
+					inArray(downloadQueue.status, [...ACTIVE_DOWNLOAD_STATUSES])
+				)
+			);
+		const downloadingSeriesIds = new Set(activeQueueSeries.map((q) => q.seriesId!));
+
 		const allRegularEpisodes =
 			seriesIds.length > 0
 				? await db
@@ -113,6 +139,15 @@ export const load: PageServerLoad = async ({ url }) => {
 		}
 
 		// Calculate percentages and format data using derived episode/file linkage (source of truth).
+		// Build seriesId -> total size map
+		const seriesTotalSizeMap = new Map<string, number>();
+		for (const file of allEpisodeFiles) {
+			seriesTotalSizeMap.set(
+				file.seriesId,
+				(seriesTotalSizeMap.get(file.seriesId) ?? 0) + (file.size ?? 0)
+			);
+		}
+
 		const seriesWithStats: LibrarySeries[] = allSeries.map((s) => {
 			const derivedEpisodeCount = episodeTotalsBySeries.get(s.id) ?? 0;
 			const derivedEpisodeFileCount = episodeFilesBySeries.get(s.id)?.size ?? 0;
@@ -124,18 +159,10 @@ export const load: PageServerLoad = async ({ url }) => {
 				percentComplete:
 					derivedEpisodeCount > 0
 						? Math.round((derivedEpisodeFileCount / derivedEpisodeCount) * 100)
-						: 0
+						: 0,
+				totalSize: seriesTotalSizeMap.get(s.id) ?? 0
 			};
 		}) as LibrarySeries[];
-
-		// Build seriesId -> total size map for sort-by-size
-		const seriesTotalSizeMap = new Map<string, number>();
-		for (const file of allEpisodeFiles) {
-			seriesTotalSizeMap.set(
-				file.seriesId,
-				(seriesTotalSizeMap.get(file.seriesId) ?? 0) + (file.size ?? 0)
-			);
-		}
 
 		// Extract unique file attribute values for filter dropdowns
 		const uniqueResolutions = new Set<string>();
@@ -315,6 +342,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			series: filteredSeries,
 			total: filteredSeries.length,
 			totalUnfiltered: seriesWithStats.length,
+			downloadingSeriesIds: [...downloadingSeriesIds],
 			filters: {
 				sort,
 				monitored,
@@ -339,6 +367,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			series: emptySeries,
 			total: 0,
 			totalUnfiltered: 0,
+			downloadingSeriesIds: [] as string[],
 			filters: {
 				sort,
 				monitored,

@@ -244,6 +244,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>General Settings - Cinephage</title>
+</svelte:head>
+
 <div class="w-full p-4">
 	<div class="mb-6">
 		<h1 class="text-3xl font-bold">General Settings</h1>
@@ -393,7 +397,7 @@
 <!-- Root Folder Delete Confirmation Modal -->
 {#if confirmFolderDeleteOpen}
 	<div class="modal-open modal">
-		<div class="modal-box w-full max-w-[min(28rem,calc(100vw-2rem))] break-words">
+		<div class="modal-box w-full max-w-[min(28rem,calc(100vw-2rem))] wrap-break-word">
 			<h3 class="text-lg font-bold">Confirm Delete</h3>
 			<p class="py-4">
 				Are you sure you want to delete <strong>{deleteFolderTarget?.name}</strong>? This action

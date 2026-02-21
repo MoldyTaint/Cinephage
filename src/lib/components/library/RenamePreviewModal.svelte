@@ -318,7 +318,7 @@
 															>
 														</div>
 														<div class="flex items-center gap-2">
-															<ArrowRight class="h-3 w-3 flex-shrink-0 text-base-content/40" />
+															<ArrowRight class="h-3 w-3 shrink-0 text-base-content/40" />
 															<code
 																class="rounded bg-base-300 px-1.5 py-0.5 text-xs break-all text-success"
 																>{item.newParentPath}/{item.newRelativePath}</code
@@ -329,7 +329,7 @@
 														<div class="mt-1 text-xs text-error">{item.error}</div>
 													{/if}
 												</div>
-												<div class="flex-shrink-0">
+												<div class="shrink-0">
 													<span class="badge badge-sm badge-info">Change</span>
 												</div>
 											</div>
@@ -352,7 +352,7 @@
 																>
 															</div>
 															<div class="flex items-center gap-2">
-																<ArrowRight class="h-3 w-3 flex-shrink-0 text-base-content/40" />
+																<ArrowRight class="h-3 w-3 shrink-0 text-base-content/40" />
 																<code
 																	class="rounded bg-base-300 px-1.5 py-0.5 text-xs break-all text-success"
 																	>{item.newRelativePath}</code
@@ -368,7 +368,7 @@
 														<div class="mt-1 text-xs text-error">{item.error}</div>
 													{/if}
 												</div>
-												<div class="flex-shrink-0">
+												<div class="shrink-0">
 													{#if item.status === 'already_correct'}
 														<span class="badge badge-sm badge-success">Correct</span>
 													{:else if item.status === 'collision'}

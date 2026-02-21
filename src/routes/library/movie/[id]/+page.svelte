@@ -23,6 +23,18 @@
 
 	let { data }: { data: PageData } = $props();
 
+	const ACTIVE_QUEUE_STATUSES = new Set([
+		'queued',
+		'downloading',
+		'stalled',
+		'paused',
+		'completed',
+		'postprocessing',
+		'importing',
+		'seeding',
+		'seeding-imported'
+	]);
+
 	// Reactive data that will be updated via SSE
 	let movieState = $state<LibraryMovie | null>(null);
 	let queueItemState = $state<PageData['queueItem'] | undefined>(undefined);
@@ -55,7 +67,7 @@
 			queueItemState = payload.queueItem;
 		},
 		'queue:updated': (payload) => {
-			if (payload.status !== 'downloading') {
+			if (!ACTIVE_QUEUE_STATUSES.has(payload.status)) {
 				queueItemState = null;
 			} else {
 				queueItemState = {
@@ -750,6 +762,8 @@
 	open={isDeleteModalOpen}
 	title="Delete Movie"
 	itemName={movie.title}
+	hasFiles={movie.hasFile === true}
+	hasActiveDownload={queueItem !== null && queueItem !== undefined}
 	loading={isDeleting}
 	onConfirm={performDelete}
 	onCancel={() => (isDeleteModalOpen = false)}

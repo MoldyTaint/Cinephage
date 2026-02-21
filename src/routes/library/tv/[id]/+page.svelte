@@ -23,6 +23,18 @@
 
 	let { data }: { data: PageData } = $props();
 
+	const ACTIVE_QUEUE_STATUSES = new Set([
+		'queued',
+		'downloading',
+		'stalled',
+		'paused',
+		'completed',
+		'postprocessing',
+		'importing',
+		'seeding',
+		'seeding-imported'
+	]);
+
 	// Reactive data that will be updated via SSE
 	let seriesState = $state<PageData['series'] | null>(null);
 	let seasonsState = $state<PageData['seasons'] | null>(null);
@@ -54,6 +66,14 @@
 			percentComplete
 		};
 	});
+
+	// Calculate total size across all seasons from episode files
+	const totalSeriesSize = $derived(
+		seasons.reduce(
+			(total, season) => total + season.episodes.reduce((sum, ep) => sum + (ep.file?.size ?? 0), 0),
+			0
+		)
+	);
 
 	$effect(() => {
 		const incomingSeriesId = data.series.id;
@@ -95,8 +115,8 @@
 			queueItemsState = payload.queueItems;
 		},
 		'queue:updated': (payload) => {
-			if (payload.status !== 'downloading') {
-				// Keep local queue state aligned to actively downloading items only
+			if (!ACTIVE_QUEUE_STATUSES.has(payload.status)) {
+				// Remove from queue state when no longer active
 				queueItemsState = queueItems.filter((q) => q.id !== payload.id);
 			} else {
 				// Update or add queue item
@@ -255,6 +275,21 @@
 	let deletingEpisodeName = $state<string>('');
 	let isDeletingSeason = $state(false);
 	let isDeletingEpisode = $state(false);
+
+	const deletingSeasonHasFiles = $derived.by(() => {
+		if (!deletingSeasonId) return false;
+		const season = seasons.find((s) => s.id === deletingSeasonId);
+		return (season?.episodeFileCount ?? 0) > 0;
+	});
+
+	const deletingEpisodeHasFiles = $derived.by(() => {
+		if (!deletingEpisodeId) return false;
+		for (const season of seasons) {
+			const ep = season.episodes.find((e) => e.id === deletingEpisodeId);
+			if (ep) return ep.file !== null;
+		}
+		return false;
+	});
 
 	$effect(() => {
 		if ($page.url.searchParams.get('edit') === '1') {
@@ -1194,6 +1229,7 @@
 	<!-- Header -->
 	<LibrarySeriesHeader
 		series={seriesForDisplay}
+		totalSize={totalSeriesSize}
 		{qualityProfileName}
 		refreshing={isRefreshing}
 		{refreshProgress}
@@ -1348,6 +1384,8 @@
 	open={isDeleteModalOpen}
 	title="Delete Series"
 	itemName={series.title}
+	hasFiles={(series.episodeFileCount ?? 0) > 0}
+	hasActiveDownload={queueItems.length > 0}
 	loading={isDeleting}
 	onConfirm={performDelete}
 	onCancel={() => (isDeleteModalOpen = false)}
@@ -1359,6 +1397,7 @@
 	title="Delete Season"
 	itemName={deletingSeasonName}
 	allowRemoveFromLibrary={false}
+	hasFiles={deletingSeasonHasFiles}
 	loading={isDeletingSeason}
 	onConfirm={performSeasonDelete}
 	onCancel={() => (isSeasonDeleteModalOpen = false)}
@@ -1370,6 +1409,7 @@
 	title="Delete Episode"
 	itemName={deletingEpisodeName}
 	allowRemoveFromLibrary={false}
+	hasFiles={deletingEpisodeHasFiles}
 	loading={isDeletingEpisode}
 	onConfirm={performEpisodeDelete}
 	onCancel={() => (isEpisodeDeleteModalOpen = false)}

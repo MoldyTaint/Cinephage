@@ -26,6 +26,10 @@
 	];
 </script>
 
+<svelte:head>
+	<title>Global Filters - Settings - Cinephage</title>
+</svelte:head>
+
 <div class="w-full p-4">
 	<div class="mb-6">
 		<h1 class="text-3xl font-bold">Global Filters</h1>

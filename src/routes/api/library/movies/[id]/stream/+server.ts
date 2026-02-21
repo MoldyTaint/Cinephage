@@ -3,12 +3,24 @@ import { downloadMonitor } from '$lib/server/downloadClients/monitoring';
 import { importService } from '$lib/server/downloadClients/import';
 import { db } from '$lib/server/db';
 import { movies, movieFiles, rootFolders, downloadQueue, subtitles } from '$lib/server/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import type { RequestHandler } from '@sveltejs/kit';
 import type { LibraryMovie, MovieFile } from '$lib/types/library';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import { tmdb } from '$lib/server/tmdb';
 import { logger } from '$lib/logging';
+
+const ACTIVE_DOWNLOAD_STATUSES = [
+	'queued',
+	'downloading',
+	'stalled',
+	'paused',
+	'completed',
+	'postprocessing',
+	'importing',
+	'seeding',
+	'seeding-imported'
+] as const;
 
 interface QueueItem {
 	id: string;
@@ -133,7 +145,12 @@ async function getQueueItem(movieId: string): Promise<QueueItem | null> {
 			progress: downloadQueue.progress
 		})
 		.from(downloadQueue)
-		.where(and(eq(downloadQueue.movieId, movieId), eq(downloadQueue.status, 'downloading')));
+		.where(
+			and(
+				eq(downloadQueue.movieId, movieId),
+				inArray(downloadQueue.status, [...ACTIVE_DOWNLOAD_STATUSES])
+			)
+		);
 
 	if (!queueItem) return null;
 

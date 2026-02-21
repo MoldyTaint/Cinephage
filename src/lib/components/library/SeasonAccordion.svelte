@@ -6,12 +6,13 @@
 		EyeOff,
 		Lock,
 		Search,
-		Download,
+		Zap,
 		Loader2,
 		Trash2
 	} from 'lucide-svelte';
 	import EpisodeRow from './EpisodeRow.svelte';
 	import AutoSearchStatus from './AutoSearchStatus.svelte';
+	import { formatBytes } from '$lib/utils/format.js';
 
 	interface Subtitle {
 		id: string;
@@ -145,6 +146,9 @@
 		totalCount > 0 ? Math.round((downloadedCount / totalCount) * 100) : 0
 	);
 
+	// Calculate cumulative season file size
+	const seasonSize = $derived(season.episodes.reduce((sum, ep) => sum + (ep.file?.size ?? 0), 0));
+
 	// Calculate selection state for season checkbox
 	const seasonEpisodeIds = $derived(season.episodes.map((e) => e.id));
 	const selectedInSeasonCount = $derived(
@@ -237,7 +241,13 @@
 				<div class="min-w-0">
 					<h3 class="font-semibold">{getSeasonName()}</h3>
 					<div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-base-content/60">
-						<span class="whitespace-nowrap">{downloadedCount}/{totalCount} episodes</span>
+						<span class="whitespace-nowrap">
+							{downloadedCount}/{totalCount} episodes
+							{#if seasonSize > 0}
+								<span class="text-base-content/40">·</span>
+								{formatBytes(seasonSize)}
+							{/if}
+						</span>
 						{#if percentComplete === 100}
 							<span class="badge badge-xs badge-success">Complete</span>
 						{:else if percentComplete > 0}
@@ -284,7 +294,7 @@
 					{#if autoSearchingSeason}
 						<Loader2 size={16} class="animate-spin" />
 					{:else}
-						<Download size={16} />
+						<Zap size={16} />
 					{/if}
 				</button>
 
@@ -300,9 +310,12 @@
 				<!-- Delete season -->
 				{#if onSeasonDelete}
 					<button
-						class="btn text-error btn-ghost btn-sm"
+						class="btn btn-ghost btn-sm {downloadedCount === 0
+							? 'text-base-content/30'
+							: 'text-error'}"
 						onclick={handleSeasonDelete}
-						title="Delete season"
+						disabled={downloadedCount === 0}
+						title={downloadedCount === 0 ? 'No files to delete' : 'Delete season'}
 					>
 						<Trash2 size={16} />
 					</button>
