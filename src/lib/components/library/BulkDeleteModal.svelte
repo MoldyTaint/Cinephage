@@ -28,6 +28,8 @@
 	let deleteFiles = $state(false);
 	let removeFromLibrary = $state(false);
 
+	type ActionMode = 'unmatch' | 'delete_files' | 'remove_only' | 'remove_and_delete';
+
 	// Reset when modal closes
 	$effect(() => {
 		if (!open) {
@@ -37,6 +39,36 @@
 	});
 
 	const itemLabel = $derived(mediaTypeCountLabel(mediaType, selectedCount));
+	const actionMode = $derived.by<ActionMode>(() => {
+		if (removeFromLibrary && deleteFiles) return 'remove_and_delete';
+		if (removeFromLibrary) return 'remove_only';
+		if (deleteFiles) return 'delete_files';
+		return 'unmatch';
+	});
+	const titleText = $derived.by(() => {
+		switch (actionMode) {
+			case 'remove_and_delete':
+				return 'Remove + Delete Files';
+			case 'remove_only':
+				return 'Remove from Library';
+			case 'delete_files':
+				return 'Delete Files';
+			default:
+				return 'Unmatch Files';
+		}
+	});
+	const confirmLabel = $derived.by(() => {
+		switch (actionMode) {
+			case 'remove_and_delete':
+				return 'Remove + Delete Files';
+			case 'remove_only':
+				return 'Remove from Library';
+			case 'delete_files':
+				return 'Delete Files';
+			default:
+				return 'Unmatch Files';
+		}
+	});
 
 	function handleConfirm() {
 		onConfirm(deleteFiles, removeFromLibrary);
@@ -51,9 +83,7 @@
 
 <ModalWrapper {open} onClose={handleClose} maxWidth="md" labelledBy="bulk-delete-modal-title">
 	<div class="mb-4 flex items-center justify-between">
-		<h3 id="bulk-delete-modal-title" class="text-lg font-bold">
-			{removeFromLibrary ? 'Remove from Library' : 'Delete Files'}
-		</h3>
+		<h3 id="bulk-delete-modal-title" class="text-lg font-bold">{titleText}</h3>
 		<button
 			type="button"
 			class="btn btn-circle btn-ghost btn-sm"
@@ -65,11 +95,18 @@
 	</div>
 
 	<p class="py-2">
-		{#if removeFromLibrary}
-			Remove <strong>{selectedCount} {itemLabel}</strong> from your library entirely?
+		{#if actionMode === 'remove_and_delete'}
+			Remove <strong>{selectedCount} {itemLabel}</strong> from your library and permanently delete matched
+			files from disk?
+		{:else if actionMode === 'remove_only'}
+			Remove <strong>{selectedCount} {itemLabel}</strong> from your library and keep existing files on
+			disk?
+		{:else if actionMode === 'delete_files'}
+			Delete matched files for <strong>{selectedCount} {itemLabel}</strong> from disk? The
+			{selectedCount === 1 ? 'item' : 'items'} will remain in your library but show as missing.
 		{:else}
-			Delete files for <strong>{selectedCount} {itemLabel}</strong>? The items will remain in your
-			library but show as missing.
+			Unmatch files for <strong>{selectedCount} {itemLabel}</strong>? The
+			{selectedCount === 1 ? 'item' : 'items'} will stay in your library and show as missing.
 		{/if}
 	</p>
 
@@ -87,39 +124,42 @@
 		<span class="text-sm">Remove from library entirely</span>
 	</label>
 
-	{#if hasActiveDownloads}
+	{#if hasActiveDownloads && (actionMode === 'remove_only' || actionMode === 'remove_and_delete')}
 		<div class="mt-3 alert alert-warning">
 			<Download class="h-4 w-4" />
-			{#if removeFromLibrary}
-				<span class="text-sm"
-					>{activeDownloadCount}
-					{activeDownloadCount === 1 ? ' selected item has' : ' selected items have'} active or paused
-					downloads. They will be cancelled and removed from the download client.</span
-				>
-			{:else}
-				<span class="text-sm"
-					>{activeDownloadCount}
-					{activeDownloadCount === 1 ? ' selected item has' : ' selected items have'} active or paused
-					downloads. Delete files or remove from library with care.</span
-				>
-			{/if}
+			<span class="text-sm"
+				>{activeDownloadCount}
+				{activeDownloadCount === 1 ? ' selected item has' : ' selected items have'} active or paused downloads.
+				They will be cancelled and removed from the download client.</span
+			>
 		</div>
 	{/if}
 
-	{#if removeFromLibrary}
+	{#if actionMode === 'remove_and_delete'}
 		<div class="mt-3 alert alert-error">
 			<Trash2 class="h-4 w-4" />
 			<span class="text-sm"
 				>This will permanently remove {selectedCount}
-				{itemLabel} from your library. All metadata, history, and settings will be lost. This cannot be
-				undone.</span
+				{itemLabel} from your library and delete matched files from disk. Metadata, history, and settings
+				will be lost. This cannot be undone.</span
 			>
 		</div>
-	{:else if deleteFiles}
+	{:else if actionMode === 'remove_only'}
+		<div class="mt-3 alert alert-error">
+			<Trash2 class="h-4 w-4" />
+			<span class="text-sm"
+				>This will permanently remove {selectedCount}
+				{itemLabel} from your library. Files stay on disk but become unmatched. Metadata, history, and
+				settings will be lost.</span
+			>
+		</div>
+	{:else if actionMode === 'delete_files'}
 		<div class="mt-3 alert alert-warning">
 			<AlertTriangle class="h-4 w-4" />
 			<span class="text-sm"
-				>Files will be permanently deleted from disk. This cannot be undone.</span
+				>Files will be permanently deleted from disk, and the selected
+				{selectedCount === 1 ? ' item will' : ' items will'} show as missing in your library. This cannot
+				be undone.</span
 			>
 		</div>
 	{:else}
@@ -138,9 +178,7 @@
 			{#if loading}
 				<Loader2 class="h-4 w-4 animate-spin" />
 			{/if}
-			{removeFromLibrary ? 'Remove' : 'Delete'}
-			{selectedCount}
-			{itemLabel}
+			{confirmLabel}
 		</button>
 	</div>
 </ModalWrapper>

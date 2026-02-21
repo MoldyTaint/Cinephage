@@ -240,7 +240,7 @@
 						</div>
 					{/if}
 					{#if movie.hasFile && totalSize > 0}
-						<span class="text-sm text-base-content/70">
+						<span class="badge badge-sm badge-info">
 							{formatBytes(totalSize)}
 						</span>
 					{/if}

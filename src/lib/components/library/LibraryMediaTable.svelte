@@ -70,10 +70,15 @@
 	const profileNameMap = $derived(new Map(qualityProfiles.map((p) => [p.id, p.name])));
 
 	function getProfileName(item: LibraryMovie | LibrarySeries): string | null {
-		if (!isSeries(item)) return null;
 		const id = item.scoringProfileId;
 		if (!id) return profileNameMap.get('balanced') ?? 'Default';
 		return profileNameMap.get(id) ?? id;
+	}
+
+	function hasStreamerProfile(item: LibraryMovie | LibrarySeries): boolean {
+		const profileId = item.scoringProfileId?.toLowerCase();
+		const profileName = getProfileName(item)?.toLowerCase();
+		return profileId === 'streamer' || profileName === 'streamer';
 	}
 
 	function getStatusColor(status: string | null): string {
@@ -177,11 +182,23 @@
 
 		if (isMovie(item) && item.files.length > 0) {
 			const file = item.files[0];
+			const useAutoResolution = hasStreamerProfile(item);
+
 			if (file.quality?.resolution) {
-				badges.push({ label: file.quality.resolution, type: 'resolution' });
+				badges.push({
+					label: useAutoResolution ? 'Auto' : file.quality.resolution,
+					type: 'resolution'
+				});
+			} else if (useAutoResolution) {
+				badges.push({ label: 'Auto', type: 'resolution' });
 			}
 			if (file.quality?.source) {
-				badges.push({ label: file.quality.source, type: 'source' });
+				badges.push({
+					label: useAutoResolution ? 'Streaming' : file.quality.source,
+					type: 'source'
+				});
+			} else if (useAutoResolution) {
+				badges.push({ label: 'Streaming', type: 'source' });
 			}
 			if (file.mediaInfo?.videoCodec) {
 				badges.push({ label: file.mediaInfo.videoCodec, type: 'codec' });
@@ -355,8 +372,13 @@
 									<span>
 										{item.episodeFileCount ?? 0} / {item.episodeCount ?? 0} episodes
 									</span>
-									{#if item.percentComplete > 0}
-										<span>({item.percentComplete}%)</span>
+									{#if item.percentComplete === 100}
+										<span class="badge badge-sm badge-success">
+											<CheckCircle2 class="h-3 w-3" />
+											Complete
+										</span>
+									{:else if item.percentComplete > 0}
+										<span class="badge badge-xs badge-primary">{item.percentComplete}%</span>
 									{/if}
 									{#if downloadingIds.has(item.id)}
 										<Download class="h-3.5 w-3.5 animate-pulse text-info" />
@@ -650,6 +672,12 @@
 												value={item.percentComplete}
 												max="100"
 											></progress>
+										{/if}
+										{#if item.percentComplete === 100}
+											<span class="badge badge-sm badge-success">
+												<CheckCircle2 class="h-3 w-3" />
+												Complete
+											</span>
 										{/if}
 										{#if downloadingIds.has(item.id)}
 											<Download class="h-4 w-4 animate-pulse text-info" />

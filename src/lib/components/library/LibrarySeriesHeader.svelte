@@ -255,23 +255,33 @@
 
 			<!-- Middle row: Episode progress -->
 			<div class="flex flex-col gap-2">
-				<div class="flex items-center gap-4 text-sm">
-					<span class="font-medium">
-						{series.episodeFileCount ?? 0} / {series.episodeCount ?? 0} Episodes
-					</span>
-					<span class="text-base-content/60">
-						({series.percentComplete}% complete)
-					</span>
-					{#if totalSize > 0}
-						<span class="text-base-content/40">·</span>
-						<span class="font-medium">{formatBytes(totalSize)}</span>
-					{/if}
-					{#if downloadingCount > 0}
-						<span class="flex items-center gap-1 text-warning">
-							<Download size={14} class="animate-pulse" />
-							{downloadingCount} downloading
+				<div class="flex items-center gap-2 text-sm">
+					<div class="flex min-w-0 items-center gap-3 sm:gap-4">
+						<span class="font-medium whitespace-nowrap">
+							{series.episodeFileCount ?? 0} / {series.episodeCount ?? 0} Episodes &nbsp;
+							{#if series.episodeCount === 0}
+								<span class="badge badge-ghost badge-xs">No episodes</span>
+							{:else if series.episodeFileCount === 0}
+								<span class="badge badge-xs badge-error">All missing</span>
+							{/if}
+							{#if series.percentComplete === 100}
+								<span class="badge badge-sm badge-success">Complete</span>
+							{:else if series.percentComplete > 0}
+								<span class="badge badge-sm badge-primary">{series.percentComplete}%</span>
+							{/if}
+							&nbsp;
+							{#if totalSize > 0}
+								<span class="badge badge-sm badge-info">{formatBytes(totalSize)} </span>
+							{/if}
+							&nbsp;
+							{#if downloadingCount > 0}
+								<span class="text-bold badge badge-sm font-semibold badge-success">
+									<Download size={16} class="animate-pulse" />
+									<span>{downloadingCount}</span>
+								</span>
+							{/if}
 						</span>
-					{/if}
+					</div>
 				</div>
 				<div class="h-2 w-full max-w-md overflow-hidden rounded-full bg-base-300">
 					<div
