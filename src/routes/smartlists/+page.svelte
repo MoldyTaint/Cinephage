@@ -183,9 +183,13 @@
 							/>
 						</div>
 
-						{#if list.description}
-							<p class="line-clamp-2 text-sm text-base-content/70">{list.description}</p>
-						{/if}
+						<div class="h-10">
+							{#if list.description}
+								<p class="line-clamp-2 text-sm leading-5 text-base-content/70">
+									{list.description}
+								</p>
+							{/if}
+						</div>
 
 						<div class="mt-2 flex flex-wrap gap-1.5 sm:gap-2">
 							<div class="badge badge-ghost badge-sm">
