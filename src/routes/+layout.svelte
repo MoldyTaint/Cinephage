@@ -94,9 +94,16 @@
 					<Menu class="h-6 w-6" />
 				</label>
 			</div>
-			<div class="mx-2 flex flex-1 items-center gap-2 px-2">
+			<div class="mx-2 flex min-w-0 flex-1 items-center gap-2 px-2">
 				<img src="/logo.png" alt="" class="h-7 w-7" />
-				<span class="text-xl font-bold">Cinephage</span>
+				<div class="relative min-w-0">
+					<span class="block truncate pr-10 text-xl leading-tight font-bold">Cinephage</span>
+					<span
+						class="absolute -top-1 right-0 badge h-4 min-h-4 px-1 badge-xs font-semibold badge-warning"
+					>
+						Alpha
+					</span>
+				</div>
 			</div>
 			<div class="flex flex-none items-center gap-2">
 				{#if mobileSSEStatus.visible}
@@ -137,24 +144,42 @@
 		<label for="main-drawer" aria-label="close sidebar" class="drawer-overlay"></label>
 		<aside
 			class="flex min-h-full flex-col overflow-x-hidden bg-base-200 transition-[width] duration-300 ease-in-out
-            {layoutState.isSidebarExpanded ? 'w-64' : 'w-20'}"
+	            {layoutState.isSidebarExpanded ? 'w-64' : 'w-20'}"
 		>
 			<!-- Sidebar Header -->
 			<div
-				class="flex h-16 items-center border-b border-base-300 px-4"
+				class="relative flex h-16 items-center border-b border-base-300"
+				class:px-4={layoutState.isSidebarExpanded}
+				class:px-2={!layoutState.isSidebarExpanded}
 				class:justify-between={layoutState.isSidebarExpanded}
 				class:justify-center={!layoutState.isSidebarExpanded}
 			>
 				{#if layoutState.isSidebarExpanded}
-					<div class="flex items-center gap-2">
+					<div class="flex min-w-0 items-center gap-2">
 						<img src="/logo.png" alt="" class="h-7 w-7" />
-						<span class="truncate text-xl font-bold">Cinephage</span>
+						<div class="relative min-w-0">
+							<span class="block truncate pr-10 text-xl leading-tight font-bold">Cinephage</span>
+							<span
+								class="absolute -top-1 right-0 badge h-4 min-h-4 px-1 badge-xs font-semibold badge-warning"
+							>
+								Alpha
+							</span>
+						</div>
 					</div>
 				{:else}
-					<img src="/logo.png" alt="Cinephage" class="h-8 w-8" />
+					<div class="relative">
+						<img src="/logo.png" alt="Cinephage" class="h-8 w-8" />
+						<span
+							class="absolute right-0 bottom-0 badge h-4 min-h-4 px-1 badge-xs font-semibold badge-warning"
+						>
+							A
+						</span>
+					</div>
 				{/if}
 				<button
 					class="btn hidden btn-square btn-ghost btn-sm lg:flex"
+					class:absolute={!layoutState.isSidebarExpanded}
+					class:right-1={!layoutState.isSidebarExpanded}
 					onclick={() => layoutState.toggleSidebar()}
 					aria-label="Toggle Sidebar"
 				>

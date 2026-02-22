@@ -87,6 +87,8 @@
 	}: Props = $props();
 
 	const isLimited = $derived(unfilteredTotal > itemLimit);
+	const maxGridItems = 24;
+	const gridItems = $derived(items.slice(0, maxGridItems));
 
 	function downloadDebugJson() {
 		if (!debugData) return;
@@ -127,8 +129,8 @@
 <div class="card bg-base-100 shadow-xl">
 	<div class="card-body p-4 sm:p-6">
 		<!-- Header -->
-		<div class="mb-4 flex items-center justify-between">
-			<div class="flex items-center gap-3">
+		<div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+			<div class="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
 				<h2 class="card-title text-lg sm:text-xl">Preview</h2>
 				{#if !loading && !error}
 					{#if isLimited}
@@ -145,7 +147,7 @@
 					{/if}
 				{/if}
 			</div>
-			<div class="flex items-center gap-2">
+			<div class="flex flex-wrap items-center gap-2">
 				{#if debugData && !loading}
 					<button
 						class="btn gap-1 btn-ghost btn-xs"
@@ -163,7 +165,7 @@
 		</div>
 
 		<!-- Content -->
-		<div class="min-h-[400px]">
+		<div class="min-h-100">
 			{#if error}
 				<div class="flex h-64 flex-col items-center justify-center gap-4">
 					<AlertCircle class="h-12 w-12 text-error" />
@@ -175,10 +177,12 @@
 				</div>
 			{:else if loading && items.length === 0}
 				<!-- Loading skeleton -->
-				<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5">
-					{#each Array(20) as _, i (i)}
+				<div
+					class="grid grid-cols-5 gap-3 sm:grid-cols-5 sm:gap-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-8"
+				>
+					{#each Array(maxGridItems) as _, i (i)}
 						<div class="animate-pulse">
-							<div class="aspect-[2/3] rounded-lg bg-base-300"></div>
+							<div class="aspect-2/3 rounded-lg bg-base-300"></div>
 						</div>
 					{/each}
 				</div>
@@ -204,12 +208,14 @@
 					{/if}
 
 					<!-- Grid -->
-					<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5">
-						{#each items as item (item.id)}
+					<div
+						class="grid grid-cols-5 gap-3 sm:grid-cols-5 sm:gap-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-8"
+					>
+						{#each gridItems as item (item.id)}
 							<div class="group relative">
 								<!-- Poster Card -->
 								<div
-									class="relative aspect-[2/3] overflow-hidden rounded-lg bg-base-300 shadow-sm transition-all duration-200 group-hover:shadow-lg"
+									class="relative aspect-2/3 overflow-hidden rounded-lg bg-base-300 shadow-sm transition-all duration-200 group-hover:shadow-lg"
 								>
 									{#if item.poster_path}
 										<img

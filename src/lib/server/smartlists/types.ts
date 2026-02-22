@@ -116,6 +116,7 @@ export interface ItemQueryOptions {
 	inLibrary?: boolean | null;
 	isExcluded?: boolean;
 	includeExcluded?: boolean;
+	query?: string;
 }
 
 export interface BulkAddResult {

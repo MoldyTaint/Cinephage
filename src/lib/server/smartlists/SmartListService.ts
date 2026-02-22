@@ -18,9 +18,10 @@ import {
 	type SmartListRecord,
 	type SmartListItemRecord
 } from '$lib/server/db/schema.js';
-import { eq, and, desc, asc, sql, lt } from 'drizzle-orm';
+import { eq, and, desc, asc, sql, lt, inArray } from 'drizzle-orm';
 import { tmdb, type DiscoverParams, type DiscoverItem } from '$lib/server/tmdb.js';
 import { logger } from '$lib/logging';
+import { ValidationError } from '$lib/errors';
 import {
 	validateRootFolder,
 	getEffectiveScoringProfileId,
@@ -45,6 +46,13 @@ import { providerRegistry } from './providers/ProviderRegistry.js';
 import { externalIdResolver } from './ExternalIdResolver.js';
 import { presetService } from './presets/PresetService.js';
 import type { ExternalListItem } from './providers/types.js';
+
+type SmartListExternalSourceConfig = {
+	url?: string;
+	headers?: Record<string, string>;
+	listId?: string;
+	username?: string;
+};
 
 export class SmartListService {
 	private static instance: SmartListService | null = null;
@@ -100,6 +108,13 @@ export class SmartListService {
 				username: input.externalSourceConfig.username
 			};
 		}
+
+		this.validateExternalSourceConfiguration({
+			listSourceType,
+			presetId: input.presetId,
+			presetSettings: input.presetSettings,
+			externalSourceConfig
+		});
 
 		const [result] = await db
 			.insert(smartLists)
@@ -226,6 +241,19 @@ export class SmartListService {
 			}
 		}
 
+		this.validateExternalSourceConfiguration({
+			listSourceType: (updates.listSourceType ?? existing.listSourceType) as string,
+			presetId: updates.presetId ?? existing.presetId ?? undefined,
+			presetSettings:
+				((updates.presetSettings ?? existing.presetSettings) as
+					| Record<string, unknown>
+					| undefined) ?? undefined,
+			externalSourceConfig:
+				((updates.externalSourceConfig ?? existing.externalSourceConfig) as
+					| SmartListExternalSourceConfig
+					| undefined) ?? undefined
+		});
+
 		const [result] = await db
 			.update(smartLists)
 			.set(updates)
@@ -261,6 +289,97 @@ export class SmartListService {
 			where: eq(smartLists.enabled, true),
 			orderBy: [desc(smartLists.createdAt)]
 		});
+	}
+
+	private validateExternalSourceConfiguration({
+		listSourceType,
+		presetId,
+		presetSettings,
+		externalSourceConfig
+	}: {
+		listSourceType: string;
+		presetId?: string;
+		presetSettings?: Record<string, unknown>;
+		externalSourceConfig?: SmartListExternalSourceConfig;
+	}): void {
+		if (listSourceType !== 'external-json') {
+			return;
+		}
+
+		let providerType = 'external-json';
+		let providerConfig: Record<string, unknown> = { ...(externalSourceConfig ?? {}) };
+
+		if (presetId) {
+			const preset = presetService.getPreset(presetId);
+			if (!preset) {
+				throw new ValidationError('Selected external list preset was not found', { presetId });
+			}
+
+			providerType = preset.provider;
+			providerConfig = {
+				...(preset.config ?? {}),
+				...providerConfig,
+				...(presetSettings ?? {})
+			};
+
+			if (preset.url) {
+				providerConfig.url = preset.url;
+			}
+		}
+
+		if (providerType === 'external-json') {
+			const rawUrl = typeof providerConfig.url === 'string' ? providerConfig.url.trim() : '';
+			if (!rawUrl) {
+				throw new ValidationError('JSON URL is required for custom external lists');
+			}
+
+			try {
+				new URL(rawUrl);
+			} catch {
+				throw new ValidationError('JSON URL must be a valid URL', { url: rawUrl });
+			}
+
+			providerConfig.url = rawUrl;
+		}
+
+		if (providerType === 'imdb-list') {
+			const listId = typeof providerConfig.listId === 'string' ? providerConfig.listId.trim() : '';
+			if (!listId) {
+				throw new ValidationError('IMDb list ID is required');
+			}
+		}
+
+		if (providerType === 'tmdb-list') {
+			const listId = typeof providerConfig.listId === 'string' ? providerConfig.listId.trim() : '';
+			if (!listId) {
+				throw new ValidationError('TMDb list ID is required');
+			}
+		}
+
+		const provider = providerRegistry.get(providerType);
+		if (!provider) {
+			throw new ValidationError(`External provider '${providerType}' is not available`, {
+				providerType
+			});
+		}
+
+		if (!provider.validateConfig(providerConfig)) {
+			if (providerType === 'imdb-list') {
+				throw new ValidationError(
+					"IMDb list ID must look like 'ls060044601' (or an IMDb list URL containing it)"
+				);
+			}
+
+			if (providerType === 'tmdb-list') {
+				throw new ValidationError(
+					"TMDb list ID must be a numeric ID, slug (e.g. '12345-my-list'), or a TMDb list URL"
+				);
+			}
+
+			throw new ValidationError(`Invalid configuration for external provider '${providerType}'`, {
+				providerType
+			});
+		}
 	}
 
 	// =========================================================================
@@ -416,7 +535,7 @@ export class SmartListService {
 			const finalItemCount = await db
 				.select({ count: sql<number>`count(*)` })
 				.from(smartListItems)
-				.where(and(eq(smartListItems.smartListId, id), eq(smartListItems.position, sql`< 9999`)));
+				.where(and(eq(smartListItems.smartListId, id), lt(smartListItems.position, 9999)));
 
 			const inLibraryCount = await db
 				.select({ count: sql<number>`count(*)` })
@@ -553,7 +672,8 @@ export class SmartListService {
 			limit = 50,
 			inLibrary,
 			isExcluded = false,
-			includeExcluded = false
+			includeExcluded = false,
+			query
 		} = options;
 		const offset = (page - 1) * limit;
 
@@ -567,6 +687,14 @@ export class SmartListService {
 			conditions.push(eq(smartListItems.inLibrary, true));
 		} else if (inLibrary === false) {
 			conditions.push(eq(smartListItems.inLibrary, false));
+		}
+
+		const trimmedQuery = query?.trim();
+		if (trimmedQuery) {
+			const pattern = `%${trimmedQuery}%`;
+			conditions.push(
+				sql`(${smartListItems.title} LIKE ${pattern} OR ${smartListItems.originalTitle} LIKE ${pattern})`
+			);
 		}
 
 		const whereCondition = and(...conditions);
@@ -651,7 +779,7 @@ export class SmartListService {
 		_searchOnAdd = false
 	): Promise<{ success: boolean; error?: string }> {
 		const item = await db.query.smartListItems.findFirst({
-			where: eq(smartListItems.id, itemId)
+			where: and(eq(smartListItems.id, itemId), eq(smartListItems.smartListId, smartListId))
 		});
 
 		if (!item) {
@@ -668,7 +796,20 @@ export class SmartListService {
 		}
 
 		try {
+			if (!list.rootFolderId) {
+				return { success: false, error: 'Smart list root folder is not configured' };
+			}
+
+			const monitored = list.autoAddMonitored ?? true;
+			const wantsSubtitles = list.wantsSubtitles ?? true;
+			const shouldSearch = _searchOnAdd && monitored;
+			const scoringProfileId = await getEffectiveScoringProfileId(
+				list.scoringProfileId ?? undefined
+			);
+
 			if (item.mediaType === 'movie') {
+				await validateRootFolder(list.rootFolderId, 'movie');
+
 				// Check if movie already exists
 				const existing = await db.query.movies.findFirst({
 					where: eq(movies.tmdbId, item.tmdbId)
@@ -680,18 +821,83 @@ export class SmartListService {
 						.set({
 							inLibrary: true,
 							movieId: existing.id,
+							seriesId: null,
 							wasAutoAdded: false,
+							autoAddedAt: null,
 							updatedAt: new Date().toISOString()
 						})
 						.where(eq(smartListItems.id, itemId));
 					return { success: true };
 				}
 
-				// Add to library using existing movie service would go here
-				// For now just mark as needing manual add
-				return { success: false, error: 'Movie add integration not yet implemented' };
+				// Fetch movie details from TMDB
+				const movieDetails = await fetchMovieDetails(item.tmdbId);
+				const year = movieDetails.release_date
+					? new Date(movieDetails.release_date).getFullYear()
+					: undefined;
+
+				const config = namingSettingsService.getConfigSync();
+				const namingService = new NamingService(config);
+				const folderName = namingService.generateMovieFolderName({
+					title: movieDetails.title,
+					year,
+					tmdbId: item.tmdbId
+				} as MediaNamingInfo);
+
+				const { imdbId } = await fetchMovieExternalIds(item.tmdbId);
+				const languageProfileId = await getLanguageProfileId(wantsSubtitles, item.tmdbId);
+
+				const [newMovie] = await db
+					.insert(movies)
+					.values({
+						tmdbId: item.tmdbId,
+						imdbId,
+						title: movieDetails.title,
+						originalTitle: movieDetails.original_title,
+						year,
+						overview: movieDetails.overview,
+						posterPath: movieDetails.poster_path,
+						backdropPath: movieDetails.backdrop_path,
+						runtime: movieDetails.runtime,
+						genres: movieDetails.genres?.map((g) => g.name) ?? [],
+						path: folderName,
+						rootFolderId: list.rootFolderId,
+						scoringProfileId,
+						monitored,
+						minimumAvailability: list.minimumAvailability ?? 'released',
+						hasFile: false,
+						wantsSubtitles,
+						languageProfileId
+					})
+					.returning();
+
+				await db
+					.update(smartListItems)
+					.set({
+						inLibrary: true,
+						movieId: newMovie.id,
+						seriesId: null,
+						wasAutoAdded: false,
+						autoAddedAt: null,
+						updatedAt: new Date().toISOString()
+					})
+					.where(eq(smartListItems.id, itemId));
+
+				if (shouldSearch) {
+					await triggerMovieSearch({
+						movieId: newMovie.id,
+						tmdbId: item.tmdbId,
+						imdbId,
+						title: movieDetails.title,
+						year,
+						scoringProfileId
+					});
+				}
+
+				return { success: true };
 			} else {
-				// Similar for TV
+				await validateRootFolder(list.rootFolderId, 'tv');
+
 				const existing = await db.query.series.findFirst({
 					where: eq(series.tmdbId, item.tmdbId)
 				});
@@ -701,15 +907,90 @@ export class SmartListService {
 						.update(smartListItems)
 						.set({
 							inLibrary: true,
+							movieId: null,
 							seriesId: existing.id,
 							wasAutoAdded: false,
+							autoAddedAt: null,
 							updatedAt: new Date().toISOString()
 						})
 						.where(eq(smartListItems.id, itemId));
 					return { success: true };
 				}
 
-				return { success: false, error: 'Series add integration not yet implemented' };
+				// Fetch series details from TMDB
+				const seriesDetails = await fetchSeriesDetails(item.tmdbId);
+				const year = seriesDetails.first_air_date
+					? new Date(seriesDetails.first_air_date).getFullYear()
+					: undefined;
+
+				const { tvdbId, imdbId } = await fetchSeriesExternalIds(item.tmdbId);
+
+				const config = namingSettingsService.getConfigSync();
+				const namingService = new NamingService(config);
+				const folderName = namingService.generateSeriesFolderName({
+					title: seriesDetails.name,
+					year,
+					tvdbId
+				} as MediaNamingInfo);
+
+				const languageProfileId = await getLanguageProfileId(wantsSubtitles, item.tmdbId);
+
+				const [newSeries] = await db
+					.insert(series)
+					.values({
+						tmdbId: item.tmdbId,
+						tvdbId,
+						imdbId,
+						title: seriesDetails.name,
+						originalTitle: seriesDetails.original_name,
+						year,
+						overview: seriesDetails.overview,
+						posterPath: seriesDetails.poster_path,
+						backdropPath: seriesDetails.backdrop_path,
+						status: seriesDetails.status,
+						network:
+							seriesDetails.networks && seriesDetails.networks.length > 0
+								? seriesDetails.networks[0].name
+								: null,
+						genres: seriesDetails.genres?.map((g) => g.name) ?? [],
+						path: folderName,
+						rootFolderId: list.rootFolderId,
+						scoringProfileId,
+						monitored,
+						seasonFolder: true,
+						seriesType: 'standard',
+						monitorNewItems: 'all',
+						monitorSpecials: false,
+						episodeCount: 0,
+						episodeFileCount: 0,
+						wantsSubtitles,
+						languageProfileId
+					})
+					.returning();
+
+				await this.createSeasonsAndEpisodes(newSeries.id, item.tmdbId, monitored);
+
+				await db
+					.update(smartListItems)
+					.set({
+						inLibrary: true,
+						movieId: null,
+						seriesId: newSeries.id,
+						wasAutoAdded: false,
+						autoAddedAt: null,
+						updatedAt: new Date().toISOString()
+					})
+					.where(eq(smartListItems.id, itemId));
+
+				if (shouldSearch) {
+					await triggerSeriesSearch({
+						seriesId: newSeries.id,
+						tmdbId: item.tmdbId,
+						title: seriesDetails.name
+					});
+				}
+
+				return { success: true };
 			}
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error);
@@ -746,7 +1027,74 @@ export class SmartListService {
 			}
 		}
 
+		if (result.added > 0 || result.alreadyInLibrary > 0) {
+			await this.refreshItemsInLibraryCount(smartListId);
+		}
+
 		return result;
+	}
+
+	async bulkAddToLibraryByTmdbIds(smartListId: string, tmdbIds: number[]): Promise<BulkAddResult> {
+		const result: BulkAddResult = {
+			added: 0,
+			failed: 0,
+			alreadyInLibrary: 0,
+			errors: []
+		};
+
+		const uniqueTmdbIds = [...new Set(tmdbIds)];
+		if (uniqueTmdbIds.length === 0) {
+			return result;
+		}
+
+		const items = await db.query.smartListItems.findMany({
+			where: and(
+				eq(smartListItems.smartListId, smartListId),
+				inArray(smartListItems.tmdbId, uniqueTmdbIds)
+			)
+		});
+
+		const itemByTmdbId = new Map(items.map((item) => [item.tmdbId, item]));
+		const itemIds: string[] = [];
+
+		for (const tmdbId of uniqueTmdbIds) {
+			const item = itemByTmdbId.get(tmdbId);
+			if (!item) {
+				result.failed++;
+				result.errors.push({
+					tmdbId,
+					title: `TMDB ${tmdbId}`,
+					error: 'Item not found in smart list'
+				});
+				continue;
+			}
+			itemIds.push(item.id);
+		}
+
+		if (itemIds.length > 0) {
+			const bulkResult = await this.bulkAddToLibrary(smartListId, itemIds);
+			result.added += bulkResult.added;
+			result.failed += bulkResult.failed;
+			result.alreadyInLibrary += bulkResult.alreadyInLibrary;
+			result.errors.push(...bulkResult.errors);
+		}
+
+		return result;
+	}
+
+	private async refreshItemsInLibraryCount(smartListId: string): Promise<void> {
+		const inLibraryCount = await db
+			.select({ count: sql<number>`count(*)` })
+			.from(smartListItems)
+			.where(and(eq(smartListItems.smartListId, smartListId), eq(smartListItems.inLibrary, true)));
+
+		await db
+			.update(smartLists)
+			.set({
+				itemsInLibrary: inLibraryCount[0]?.count ?? 0,
+				updatedAt: new Date().toISOString()
+			})
+			.where(eq(smartLists.id, smartListId));
 	}
 
 	// =========================================================================
@@ -1342,9 +1690,12 @@ export class SmartListService {
 
 		// Build external source config from preset and user settings
 		let externalSourceConfig = list.externalSourceConfig ?? {};
+		let providerType = list.presetProvider ?? list.listSourceType;
 		if (list.presetId) {
 			const preset = presetService.getPreset(list.presetId);
 			if (preset) {
+				providerType = preset.provider;
+
 				// Start with preset config (for providers like tmdb-popular)
 				externalSourceConfig = {
 					...preset.config,
@@ -1374,6 +1725,7 @@ export class SmartListService {
 		logger.info('[SmartListService] Starting external list sync', {
 			id,
 			sourceType: list.listSourceType,
+			providerType,
 			url: externalSourceConfig?.url,
 			presetId: list.presetId
 		});
@@ -1391,9 +1743,9 @@ export class SmartListService {
 
 		try {
 			// Get the appropriate provider
-			const provider = providerRegistry.get(list.listSourceType);
+			const provider = providerRegistry.get(providerType);
 			if (!provider) {
-				throw new Error(`No provider registered for source type: ${list.listSourceType}`);
+				throw new Error(`No provider registered for source type: ${providerType}`);
 			}
 
 			// Validate config
@@ -1523,7 +1875,7 @@ export class SmartListService {
 			const finalItemCount = await db
 				.select({ count: sql<number>`count(*)` })
 				.from(smartListItems)
-				.where(and(eq(smartListItems.smartListId, id), eq(smartListItems.position, sql`< 9999`)));
+				.where(and(eq(smartListItems.smartListId, id), lt(smartListItems.position, 9999)));
 
 			const inLibraryCount = await db
 				.select({ count: sql<number>`count(*)` })

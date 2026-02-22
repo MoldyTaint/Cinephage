@@ -4,6 +4,7 @@
 	interface RootFolder {
 		id: string;
 		path: string;
+		mediaType: string;
 	}
 
 	interface ScoringProfile {
@@ -20,9 +21,12 @@
 		rootFolderId: string;
 		scoringProfileId: string;
 		autoAddMonitored: boolean;
+		mediaType: 'movie' | 'tv';
 		rootFolders: RootFolder[];
 		scoringProfiles: ScoringProfile[];
 		listSourceType?: 'tmdb-discover' | 'external-json';
+		open?: boolean;
+		onToggle?: (open: boolean) => void;
 	}
 
 	let {
@@ -34,12 +38,17 @@
 		rootFolderId = $bindable(),
 		scoringProfileId = $bindable(),
 		autoAddMonitored = $bindable(),
+		mediaType,
 		rootFolders,
 		scoringProfiles,
-		listSourceType = 'tmdb-discover'
+		listSourceType = 'tmdb-discover',
+		open = $bindable(false),
+		onToggle
 	}: Props = $props();
 
-	let showSettings = $state(true);
+	const availableRootFolders = $derived(
+		rootFolders.filter((folder) => folder.mediaType === mediaType)
+	);
 
 	const sortOptions = [
 		{ value: 'popularity.desc', label: 'Most Popular' },
@@ -63,7 +72,11 @@
 </script>
 
 <div class="collapse-arrow collapse rounded-lg border border-base-300 bg-base-100">
-	<input type="checkbox" bind:checked={showSettings} />
+	<input
+		type="checkbox"
+		bind:checked={open}
+		onchange={(e) => onToggle?.(e.currentTarget.checked)}
+	/>
 	<div class="collapse-title font-medium">
 		<div class="flex items-center gap-2">
 			<Settings class="h-4 w-4 text-base-content/70" />
@@ -175,10 +188,15 @@
 							class="select-bordered select w-full select-sm"
 						>
 							<option value="">Select a folder...</option>
-							{#each rootFolders as folder (folder.id)}
+							{#each availableRootFolders as folder (folder.id)}
 								<option value={folder.id}>{folder.path}</option>
 							{/each}
 						</select>
+						{#if availableRootFolders.length === 0}
+							<p class="mt-1 text-xs text-warning">
+								No {mediaType === 'movie' ? 'movie' : 'TV'} root folders configured.
+							</p>
+						{/if}
 					</div>
 
 					<div class="form-control">

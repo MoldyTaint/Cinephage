@@ -7,16 +7,18 @@
 	interface Props {
 		mediaType: 'movie' | 'tv';
 		filters: SmartListFilters;
+		forceCloseSignal?: number;
 	}
 
-	let { mediaType, filters = $bindable() }: Props = $props();
+	let { mediaType, filters = $bindable(), forceCloseSignal = 0 }: Props = $props();
 
 	const dispatch = createEventDispatcher<{
 		sortByChange: { sortBy: string };
+		sectionOpen: { section: string };
 	}>();
 
-	// Section collapse state
-	let openSections = $state<Set<string>>(new Set(['basic']));
+	// Section collapse state (single-open accordion, default basic)
+	let openSection = $state<string | null>('basic');
 
 	// Helper data
 	let genres = $state<Array<{ id: number; name: string }>>([]);
@@ -101,13 +103,20 @@
 	}
 
 	function toggleSection(section: string) {
-		if (openSections.has(section)) {
-			openSections.delete(section);
-		} else {
-			openSections.add(section);
+		const willOpen = openSection !== section;
+		openSection = willOpen ? section : null;
+		if (willOpen) {
+			dispatch('sectionOpen', { section });
 		}
-		openSections = openSections;
 	}
+
+	let lastForceCloseSignal = 0;
+	$effect(() => {
+		if (forceCloseSignal !== lastForceCloseSignal) {
+			lastForceCloseSignal = forceCloseSignal;
+			openSection = null;
+		}
+	});
 
 	// Load genres when media type changes
 	$effect(() => {
@@ -396,7 +405,7 @@
 	<div class="collapse-arrow collapse rounded-lg border border-base-300 bg-base-100">
 		<input
 			type="checkbox"
-			checked={openSections.has('basic')}
+			checked={openSection === 'basic'}
 			onchange={() => toggleSection('basic')}
 		/>
 		<div class="collapse-title font-medium">Basic Filters</div>
@@ -580,7 +589,7 @@
 	<div class="collapse-arrow collapse rounded-lg border border-base-300 bg-base-100">
 		<input
 			type="checkbox"
-			checked={openSections.has('content')}
+			checked={openSection === 'content'}
 			onchange={() => toggleSection('content')}
 		/>
 		<div class="collapse-title font-medium">Content</div>
@@ -743,7 +752,7 @@
 	<div class="collapse-arrow collapse rounded-lg border border-base-300 bg-base-100">
 		<input
 			type="checkbox"
-			checked={openSections.has('people')}
+			checked={openSection === 'people'}
 			onchange={() => toggleSection('people')}
 		/>
 		<div class="collapse-title font-medium">People</div>
@@ -836,7 +845,7 @@
 	<div class="collapse-arrow collapse rounded-lg border border-base-300 bg-base-100">
 		<input
 			type="checkbox"
-			checked={openSections.has('platform')}
+			checked={openSection === 'platform'}
 			onchange={() => toggleSection('platform')}
 		/>
 		<div class="collapse-title font-medium">Streaming Platforms</div>
@@ -915,11 +924,7 @@
 	<!-- Media Type Specific -->
 	{#if mediaType === 'tv'}
 		<div class="collapse-arrow collapse rounded-lg border border-base-300 bg-base-100">
-			<input
-				type="checkbox"
-				checked={openSections.has('tv')}
-				onchange={() => toggleSection('tv')}
-			/>
+			<input type="checkbox" checked={openSection === 'tv'} onchange={() => toggleSection('tv')} />
 			<div class="collapse-title font-medium">TV Show Status</div>
 			<div class="collapse-content">
 				<div class="pt-2">

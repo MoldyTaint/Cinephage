@@ -195,8 +195,9 @@
 
 	// Test connection
 	async function testConnection() {
+		const hasPreset = !!presetId && presetId !== 'custom';
 		const url = selectedPreset?.url || customUrl;
-		if (!url) {
+		if (!hasPreset && !url) {
 			testResult = { success: false, message: 'Please enter a URL first' };
 			return;
 		}
@@ -413,7 +414,7 @@
 					class="input-bordered input input-sm w-full"
 				/>
 				<p class="mt-1 text-xs text-base-content/60">
-					Enter the URL to a JSON file containing movie/TV show data.
+					Enter the URL to a JSON file containing Movie/TV show data.
 				</p>
 			</div>
 

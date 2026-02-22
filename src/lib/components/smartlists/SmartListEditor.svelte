@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { ArrowLeft, Loader2, Film, Tv, Save } from 'lucide-svelte';
+	import { onMount } from 'svelte';
+	import { toasts } from '$lib/stores/toast.svelte';
 	import type { SmartListRecord, SmartListFilters } from '$lib/server/db/schema.js';
 	import FilterBuilder from './FilterBuilder.svelte';
 	import PreviewPanel from './PreviewPanel.svelte';
@@ -10,6 +12,7 @@
 	interface RootFolder {
 		id: string;
 		path: string;
+		mediaType: string;
 	}
 
 	interface ScoringProfile {
@@ -39,12 +42,13 @@
 
 	// Form state
 	let saving = $state(false);
-	let error = $state<string | null>(null);
 
 	// Basic info
 	let name = $state('');
 	let description = $state('');
 	let mediaType = $state<'movie' | 'tv'>('movie');
+	const maxDescriptionLength = 100;
+	const descriptionTooLong = $derived(description.length > maxDescriptionLength);
 
 	// List source type
 	let listSourceType = $state<'tmdb-discover' | 'external-json'>('tmdb-discover');
@@ -70,6 +74,10 @@
 	let itemLimit = $state(100);
 	let excludeInLibrary = $state(true);
 	let refreshIntervalHours = $state(24);
+	let listSettingsOpen = $state(false);
+	let filterCloseSignal = $state(0);
+	const MOBILE_PREVIEW_ITEM_LIMIT = 50;
+	let isMobileViewport = $state(false);
 
 	// Auto-add
 	let autoAddBehavior = $state<'disabled' | 'add_only' | 'add_and_search'>('disabled');
@@ -121,6 +129,26 @@
 
 	// Debounce timer
 	let debounceTimer: ReturnType<typeof setTimeout>;
+	const effectivePreviewItemLimit = $derived(
+		isMobileViewport ? Math.min(itemLimit, MOBILE_PREVIEW_ITEM_LIMIT) : itemLimit
+	);
+
+	onMount(() => {
+		const mediaQuery = window.matchMedia('(max-width: 767px)');
+		const updateMobileState = () => {
+			isMobileViewport = mediaQuery.matches;
+		};
+
+		updateMobileState();
+
+		if (typeof mediaQuery.addEventListener === 'function') {
+			mediaQuery.addEventListener('change', updateMobileState);
+			return () => mediaQuery.removeEventListener('change', updateMobileState);
+		}
+
+		mediaQuery.addListener(updateMobileState);
+		return () => mediaQuery.removeListener(updateMobileState);
+	});
 
 	// Fetch preview with debounce
 	async function fetchPreview() {
@@ -136,7 +164,7 @@
 					mediaType,
 					filters,
 					sortBy,
-					itemLimit,
+					itemLimit: effectivePreviewItemLimit,
 					page: previewPage
 				})
 			});
@@ -175,7 +203,7 @@
 					headers: externalSourceConfig.headers,
 					presetId,
 					config: presetSettings,
-					itemLimit,
+					itemLimit: effectivePreviewItemLimit,
 					page: previewPage
 				})
 			});
@@ -210,7 +238,7 @@
 		const _filtersJson = JSON.stringify(filters);
 		const _externalConfigJson = JSON.stringify(externalSourceConfig);
 		const _presetSettingsJson = JSON.stringify(presetSettings);
-		void [sortBy, mediaType, itemLimit, listSourceType, presetId, presetProvider];
+		void [sortBy, mediaType, effectivePreviewItemLimit, listSourceType, presetId, presetProvider];
 
 		clearTimeout(debounceTimer);
 		debounceTimer = setTimeout(() => {
@@ -246,14 +274,116 @@
 		};
 	}
 
+	function handleFilterSectionOpen() {
+		listSettingsOpen = false;
+	}
+
+	function handleListSettingsToggle(open: boolean) {
+		listSettingsOpen = open;
+		if (open) {
+			filterCloseSignal += 1;
+		}
+	}
+
+	function validateExternalSourceBeforeSave(): string | null {
+		if (listSourceType !== 'external-json') {
+			return null;
+		}
+
+		if (presetId) {
+			const listIdSetting =
+				typeof presetSettings.listId === 'string' ? presetSettings.listId.trim() : '';
+
+			if (presetProvider === 'imdb-list') {
+				if (!listIdSetting) {
+					return 'IMDb list ID is required before saving';
+				}
+
+				if (!/^ls\d+$/i.test(listIdSetting) && !/\/list\/ls\d+/i.test(listIdSetting)) {
+					return "IMDb list ID must look like 'ls060044601' or be an IMDb list URL";
+				}
+			}
+
+			if (presetProvider === 'tmdb-list') {
+				if (!listIdSetting) {
+					return 'TMDb list ID is required before saving';
+				}
+
+				if (
+					!/^\d+$/.test(listIdSetting) &&
+					!/^\d+-/.test(listIdSetting) &&
+					!/\/list\/\d+/i.test(listIdSetting)
+				) {
+					return 'TMDb list ID must be a numeric ID, slug, or TMDb list URL';
+				}
+			}
+
+			return null;
+		}
+
+		const customUrl = externalSourceConfig.url?.trim() ?? '';
+		if (!customUrl) {
+			return 'JSON URL is required before saving';
+		}
+
+		try {
+			new URL(customUrl);
+		} catch {
+			return 'JSON URL must be a valid URL before saving';
+		}
+
+		return null;
+	}
+
+	function validateAutoAddBeforeSave(): string | null {
+		if (autoAddBehavior === 'disabled') {
+			return null;
+		}
+
+		const trimmedRootFolderId = rootFolderId.trim();
+		if (!trimmedRootFolderId) {
+			return 'Root folder is required when Auto Search is enabled';
+		}
+
+		const selectedFolder = rootFolders.find((folder) => folder.id === trimmedRootFolderId);
+		if (!selectedFolder) {
+			return 'Selected root folder was not found';
+		}
+
+		if (selectedFolder.mediaType !== mediaType) {
+			const expectedTypeLabel = mediaType === 'movie' ? 'movie' : 'TV';
+			const folderTypeLabel = selectedFolder.mediaType === 'movie' ? 'movie' : 'TV';
+			return `Selected root folder is a ${folderTypeLabel} folder. Choose a ${expectedTypeLabel} folder.`;
+		}
+
+		return null;
+	}
+
 	async function handleSubmit() {
 		if (!name.trim()) {
-			error = 'Name is required';
+			toasts.error('Save failed', { description: 'Name is required' });
+			return;
+		}
+		if (descriptionTooLong) {
+			toasts.error('Save failed', {
+				description: `Description must be ${maxDescriptionLength} characters or less`
+			});
+			return;
+		}
+
+		const autoAddValidationError = validateAutoAddBeforeSave();
+		if (autoAddValidationError) {
+			toasts.error('Save failed', { description: autoAddValidationError });
+			return;
+		}
+
+		const externalValidationError = validateExternalSourceBeforeSave();
+		if (externalValidationError) {
+			toasts.error('Save failed', { description: externalValidationError });
 			return;
 		}
 
 		saving = true;
-		error = null;
 
 		try {
 			const body = {
@@ -293,7 +423,9 @@
 			const result = await res.json();
 			await goto(`/smartlists/${result.id}`);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'An error occurred';
+			toasts.error('Save failed', {
+				description: e instanceof Error ? e.message : 'An error occurred'
+			});
 		} finally {
 			saving = false;
 		}
@@ -310,7 +442,7 @@
 	const isEditMode = $derived(!!list);
 </script>
 
-<div class="w-full">
+<div class="smartlist-editor w-full">
 	<!-- Header -->
 	<div class="mb-6">
 		<button class="btn gap-1 btn-ghost btn-sm" onclick={handleCancel}>
@@ -319,35 +451,37 @@
 		</button>
 	</div>
 
-	<div class="mb-6 flex flex-wrap items-start justify-between gap-4">
-		<div class="flex items-center gap-4">
+	<div class="mb-6 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+		<div class="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
 			{#if mediaType === 'movie'}
-				<Film class="h-8 w-8 text-primary" />
+				<Film class="h-7 w-7 shrink-0 text-primary sm:h-8 sm:w-8" />
 			{:else}
-				<Tv class="h-8 w-8 text-secondary" />
+				<Tv class="h-7 w-7 shrink-0 text-secondary sm:h-8 sm:w-8" />
 			{/if}
-			<div>
+			<div class="min-w-0 flex-1">
 				<input
 					type="text"
 					bind:value={name}
 					placeholder="Smart List Name"
-					class="input -ml-4 w-64 input-ghost text-2xl font-bold focus:bg-base-200"
+					class="input w-full input-ghost px-0 text-xl font-bold focus:bg-base-200 sm:text-2xl"
 				/>
 			</div>
 		</div>
 
-		<div class="flex flex-wrap items-center gap-2">
+		<div class="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center xl:w-auto">
 			<!-- Media Type Toggle -->
-			<div class="join">
+			<div class="join w-full sm:w-auto">
 				<button
-					class="btn join-item btn-sm {mediaType === 'movie' ? 'btn-active' : ''}"
+					class="btn join-item flex-1 btn-sm sm:flex-none {mediaType === 'movie'
+						? 'btn-active'
+						: ''}"
 					onclick={() => handleMediaTypeChange('movie')}
 				>
 					<Film class="h-4 w-4" />
 					Movies
 				</button>
 				<button
-					class="btn join-item btn-sm {mediaType === 'tv' ? 'btn-active' : ''}"
+					class="btn join-item flex-1 btn-sm sm:flex-none {mediaType === 'tv' ? 'btn-active' : ''}"
 					onclick={() => handleMediaTypeChange('tv')}
 				>
 					<Tv class="h-4 w-4" />
@@ -355,7 +489,11 @@
 				</button>
 			</div>
 
-			<button class="btn btn-primary" onclick={handleSubmit} disabled={saving}>
+			<button
+				class="btn w-full btn-primary sm:w-auto"
+				onclick={handleSubmit}
+				disabled={saving || !name.trim() || descriptionTooLong}
+			>
 				{#if saving}
 					<Loader2 class="h-4 w-4 animate-spin" />
 				{:else}
@@ -366,12 +504,6 @@
 		</div>
 	</div>
 
-	{#if error}
-		<div class="mb-4 alert py-2 alert-error">
-			<span>{error}</span>
-		</div>
-	{/if}
-
 	<!-- Main content - side by side -->
 	<div class="flex flex-col items-start gap-6 lg:flex-row">
 		<!-- Left Panel: Filters -->
@@ -379,10 +511,22 @@
 			<!-- Description -->
 			<div class="form-control">
 				<textarea
+					id="smartlist-description"
 					bind:value={description}
 					placeholder="Description (optional)"
-					class="textarea-bordered textarea h-16 resize-none"
+					class="textarea h-20 w-full resize-none textarea-sm"
+					maxlength={maxDescriptionLength}
 				></textarea>
+				<div class="pt-1">
+					<p class="text-xs {descriptionTooLong ? 'text-error' : 'text-base-content/60'}">
+						{description.length}/{maxDescriptionLength}
+						{#if descriptionTooLong}
+							<span class="mt-0.5 text-xs text-error">
+								- Max {maxDescriptionLength} characters.</span
+							>
+						{/if}
+					</p>
+				</div>
 			</div>
 
 			<!-- Source Configuration -->
@@ -405,6 +549,8 @@
 				<FilterBuilder
 					{mediaType}
 					bind:filters
+					forceCloseSignal={filterCloseSignal}
+					on:sectionOpen={handleFilterSectionOpen}
 					on:sortByChange={(e) => (sortBy = e.detail.sortBy)}
 				/>
 			{/if}
@@ -419,6 +565,9 @@
 				bind:rootFolderId
 				bind:scoringProfileId
 				bind:autoAddMonitored
+				bind:open={listSettingsOpen}
+				onToggle={handleListSettingsToggle}
+				{mediaType}
 				{rootFolders}
 				{scoringProfiles}
 				{listSourceType}
@@ -435,10 +584,16 @@
 				totalResults={previewTotalResults}
 				totalPages={previewTotalPages}
 				{mediaType}
-				{itemLimit}
+				itemLimit={effectivePreviewItemLimit}
 				unfilteredTotal={previewUnfilteredTotal}
 				onPageChange={handlePageChange}
-				onRetry={fetchPreview}
+				onRetry={() => {
+					if (listSourceType === 'external-json') {
+						fetchExternalPreview();
+					} else {
+						fetchPreview();
+					}
+				}}
 				debugData={{
 					timestamp: new Date().toISOString(),
 					listType: listSourceType,
@@ -446,7 +601,7 @@
 						mediaType,
 						filters: filters as Record<string, unknown>,
 						sortBy,
-						itemLimit,
+						itemLimit: effectivePreviewItemLimit,
 						excludeInLibrary,
 						listSourceType,
 						presetId,
@@ -473,3 +628,15 @@
 		</div>
 	</div>
 </div>
+
+<style>
+	:global(.smartlist-editor .input:focus),
+	:global(.smartlist-editor .select:focus),
+	:global(.smartlist-editor .select:focus-visible),
+	:global(.smartlist-editor .select:open),
+	:global(.smartlist-editor .textarea:focus) {
+		border-color: var(--color-primary, oklch(var(--p))) !important;
+		outline-color: var(--color-primary, oklch(var(--p))) !important;
+		box-shadow: 0 0 0 1px var(--color-primary, oklch(var(--p))) !important;
+	}
+</style>

@@ -8,11 +8,15 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getSmartListService } from '$lib/server/smartlists/index.js';
+import { db } from '$lib/server/db/index.js';
+import { rootFolders } from '$lib/server/db/schema.js';
+import { isAppError } from '$lib/errors';
 import { z } from 'zod';
+import { eq } from 'drizzle-orm';
 
 const updateSchema = z.object({
 	name: z.string().min(1).max(100).optional(),
-	description: z.string().max(500).optional().nullable(),
+	description: z.string().max(101).optional().nullable(),
 	filters: z
 		.object({
 			withGenres: z.array(z.number()).optional(),
@@ -70,7 +74,21 @@ const updateSchema = z.object({
 	wantsSubtitles: z.boolean().optional(),
 	languageProfileId: z.string().optional().nullable(),
 	refreshIntervalHours: z.number().min(1).max(168).optional(),
-	enabled: z.boolean().optional()
+	enabled: z.boolean().optional(),
+	listSourceType: z
+		.enum(['tmdb-discover', 'external-json', 'trakt-list', 'custom-manual'])
+		.optional(),
+	externalSourceConfig: z
+		.object({
+			url: z.string().optional(),
+			headers: z.record(z.string(), z.unknown()).optional(),
+			listId: z.string().optional(),
+			username: z.string().optional()
+		})
+		.optional(),
+	presetId: z.string().optional(),
+	presetProvider: z.string().optional(),
+	presetSettings: z.record(z.string(), z.unknown()).optional()
 });
 
 export const GET: RequestHandler = async ({ params }) => {
@@ -88,9 +106,64 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 	try {
 		const body = await request.json();
 		const data = updateSchema.parse(body);
+		const normalizedData = {
+			...data,
+			rootFolderId:
+				data.rootFolderId === undefined
+					? undefined
+					: data.rootFolderId === null
+						? null
+						: data.rootFolderId.trim() || null
+		};
 
 		const service = getSmartListService();
-		const list = await service.updateSmartList(params.id, data);
+		const existing = await service.getSmartList(params.id);
+		if (!existing) {
+			return json({ error: 'Smart list not found' }, { status: 404 });
+		}
+
+		const effectiveAutoAddBehavior =
+			normalizedData.autoAddBehavior ?? existing.autoAddBehavior ?? 'disabled';
+		const effectiveRootFolderId =
+			normalizedData.rootFolderId !== undefined
+				? (normalizedData.rootFolderId ?? '').trim()
+				: (existing.rootFolderId ?? '').trim();
+		const effectiveMediaType = existing.mediaType === 'movie' ? 'movie' : 'tv';
+
+		if (effectiveAutoAddBehavior !== 'disabled' && !effectiveRootFolderId) {
+			return json(
+				{ error: 'Root folder is required when Auto Search is enabled' },
+				{ status: 400 }
+			);
+		}
+
+		if (effectiveAutoAddBehavior !== 'disabled' && effectiveRootFolderId) {
+			const [folder] = await db
+				.select({
+					id: rootFolders.id,
+					mediaType: rootFolders.mediaType
+				})
+				.from(rootFolders)
+				.where(eq(rootFolders.id, effectiveRootFolderId))
+				.limit(1);
+
+			if (!folder) {
+				return json({ error: 'Selected root folder was not found' }, { status: 400 });
+			}
+
+			if (folder.mediaType !== effectiveMediaType) {
+				const expected = effectiveMediaType === 'movie' ? 'movie' : 'TV';
+				const actual = folder.mediaType === 'movie' ? 'movie' : 'TV';
+				return json(
+					{
+						error: `Selected root folder is a ${actual} folder. Choose a ${expected} folder.`
+					},
+					{ status: 400 }
+				);
+			}
+		}
+
+		const list = await service.updateSmartList(params.id, normalizedData);
 
 		if (!list) {
 			return json({ error: 'Smart list not found' }, { status: 404 });
@@ -100,6 +173,9 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 	} catch (error) {
 		if (error instanceof z.ZodError) {
 			return json({ error: 'Validation failed', details: error.issues }, { status: 400 });
+		}
+		if (isAppError(error)) {
+			return json(error.toJSON(), { status: error.statusCode });
 		}
 		const message = error instanceof Error ? error.message : 'Unknown error';
 		return json({ error: message }, { status: 500 });

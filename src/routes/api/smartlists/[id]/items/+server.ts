@@ -21,6 +21,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
 	const limit = parseInt(url.searchParams.get('limit') ?? '50', 10);
 	const inLibraryParam = url.searchParams.get('inLibrary');
 	const includeExcluded = url.searchParams.get('includeExcluded') === 'true';
+	const query = url.searchParams.get('q') ?? undefined;
 
 	let inLibrary: boolean | null = null;
 	if (inLibraryParam === 'true') inLibrary = true;
@@ -30,14 +31,16 @@ export const GET: RequestHandler = async ({ params, url }) => {
 		page,
 		limit,
 		inLibrary,
-		includeExcluded
+		includeExcluded,
+		query
 	});
 
 	return json({
 		items,
 		page,
 		limit,
-		total: list.cachedItemCount ?? 0
+		total: list.cachedItemCount ?? 0,
+		query: query ?? null
 	});
 };
 
@@ -73,8 +76,13 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			return json({ success: true, included: data.tmdbIds.length });
 		}
 
-		if (data.action === 'addToLibrary' && data.itemIds) {
+		if (data.action === 'addToLibrary' && data.itemIds && data.itemIds.length > 0) {
 			const result = await service.bulkAddToLibrary(params.id, data.itemIds);
+			return json(result);
+		}
+
+		if (data.action === 'addToLibrary' && data.tmdbIds && data.tmdbIds.length > 0) {
+			const result = await service.bulkAddToLibraryByTmdbIds(params.id, data.tmdbIds);
 			return json(result);
 		}
 

@@ -102,7 +102,7 @@ const SCHEDULED_TASKS: UnifiedTaskDefinition[] = [
 		name: 'Smart List Refresh',
 		description: 'Check and update smart lists based on their configured refresh intervals',
 		category: 'scheduled',
-		runEndpoint: '/api/smart-lists/refresh-all',
+		runEndpoint: '/api/smartlists/refresh-all',
 		intervalKey: 'smart_list_refresh_interval_hours',
 		defaultIntervalHours: 1, // Hourly
 		minIntervalHours: 0.25,

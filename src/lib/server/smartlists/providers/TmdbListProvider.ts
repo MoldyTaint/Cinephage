@@ -48,21 +48,53 @@ export class TmdbListProvider implements ExternalListProvider {
 	readonly type = 'tmdb-list';
 	readonly name = 'TMDb List';
 
+	private normalizeListId(listId: string): string | null {
+		const trimmed = listId.trim();
+		if (!trimmed) return null;
+
+		// Already a plain list ID
+		if (/^\d+$/.test(trimmed)) {
+			return trimmed;
+		}
+
+		// Slug format from some links, e.g. "12345-my-list"
+		const slugMatch = trimmed.match(/^(\d+)-/);
+		if (slugMatch) {
+			return slugMatch[1];
+		}
+
+		// Full URL format, e.g. https://www.themoviedb.org/list/12345-my-list
+		const urlMatch = trimmed.match(/\/list\/(\d+)/);
+		if (urlMatch) {
+			return urlMatch[1];
+		}
+
+		return null;
+	}
+
 	validateConfig(config: unknown): boolean {
 		if (typeof config !== 'object' || config === null) {
 			return false;
 		}
 		const cfg = config as Partial<TmdbListConfig>;
-		// List ID should be a numeric string
-		return typeof cfg.listId === 'string' && /^\d+$/.test(cfg.listId);
+		return typeof cfg.listId === 'string' && this.normalizeListId(cfg.listId) !== null;
 	}
 
 	async fetchItems(config: unknown, mediaType: 'movie' | 'tv' | ''): Promise<ExternalListResult> {
 		const cfg = config as TmdbListConfig;
 		const items: ExternalListItem[] = [];
+		const normalizedListId = this.normalizeListId(cfg.listId);
+		if (!normalizedListId) {
+			return {
+				items,
+				totalCount: 0,
+				failedCount: 0,
+				error: 'Invalid TMDb list ID format'
+			};
+		}
 
 		logger.info('[TmdbListProvider] Starting TMDb list fetch', {
-			listId: cfg.listId,
+			listId: normalizedListId,
 			mediaType
 		});
 
@@ -70,10 +102,14 @@ export class TmdbListProvider implements ExternalListProvider {
 			// TMDb list API doesn't have pagination in the same way as discover
 			// It returns all items in one request (up to a limit)
 			// We'll fetch the list and filter by media type if specified (empty string = show all)
-			const response = (await tmdb.fetch(`/list/${cfg.listId}`, {}, true)) as TmdbListResponse;
+			const response = (await tmdb.fetch(
+				`/list/${normalizedListId}`,
+				{},
+				true
+			)) as TmdbListResponse;
 
 			if (!response.items || response.items.length === 0) {
-				logger.info('[TmdbListProvider] List is empty', { listId: cfg.listId });
+				logger.info('[TmdbListProvider] List is empty', { listId: normalizedListId });
 				return {
 					items: [],
 					totalCount: 0,
@@ -82,7 +118,7 @@ export class TmdbListProvider implements ExternalListProvider {
 			}
 
 			logger.info('[TmdbListProvider] Fetched list', {
-				listId: cfg.listId,
+				listId: normalizedListId,
 				listName: response.name,
 				itemCount: response.items.length
 			});
@@ -100,7 +136,7 @@ export class TmdbListProvider implements ExternalListProvider {
 			}
 
 			logger.info('[TmdbListProvider] Completed TMDb list fetch', {
-				listId: cfg.listId,
+				listId: normalizedListId,
 				totalItems: items.length,
 				filteredFrom: response.items.length
 			});
@@ -114,7 +150,7 @@ export class TmdbListProvider implements ExternalListProvider {
 			const errorMessage = error instanceof Error ? error.message : String(error);
 			logger.error('[TmdbListProvider] Failed to fetch TMDb list', {
 				error: errorMessage,
-				listId: cfg.listId
+				listId: normalizedListId
 			});
 
 			return {

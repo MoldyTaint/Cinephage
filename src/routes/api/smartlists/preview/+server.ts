@@ -164,37 +164,46 @@ export const POST: RequestHandler = async ({ request }) => {
 		const data = previewSchema.parse(body);
 
 		const params = buildDiscoverParams(data.filters, data.sortBy);
-		params.page = data.page;
+		const TMDB_PAGE_SIZE = 20;
+		const PREVIEW_PAGE_SIZE = 27; // 3 rows of 8 items for better grid display, can adjust as needed
+		const startIndex = (data.page - 1) * PREVIEW_PAGE_SIZE;
+		const tmdbStartPage = Math.floor(startIndex / TMDB_PAGE_SIZE) + 1;
+		const tmdbOffset = startIndex % TMDB_PAGE_SIZE;
 
-		// TMDB returns 20 items per page
-		const itemsPerPage = 20;
-		const maxPages = Math.ceil(data.itemLimit / itemsPerPage);
+		const fetchDiscoverPage = async (page: number) => {
+			const pageParams: DiscoverParams = { ...params, page };
+			return data.mediaType === 'movie'
+				? tmdb.discoverMovies(pageParams, true)
+				: tmdb.discoverTv(pageParams, true);
+		};
 
-		// Don't fetch beyond the item limit
-		if (data.page > maxPages) {
+		const firstResult = await fetchDiscoverPage(tmdbStartPage);
+		const cappedTotalResults = Math.min(firstResult.total_results, data.itemLimit);
+		const totalPages = Math.ceil(cappedTotalResults / PREVIEW_PAGE_SIZE);
+
+		if (cappedTotalResults === 0 || data.page > totalPages) {
 			return json({
 				items: [],
 				page: data.page,
-				totalPages: maxPages,
-				totalResults: data.itemLimit,
-				itemLimit: data.itemLimit
+				totalPages,
+				totalResults: cappedTotalResults,
+				itemLimit: data.itemLimit,
+				unfilteredTotal: firstResult.total_results
 			});
 		}
 
-		const result =
-			data.mediaType === 'movie'
-				? await tmdb.discoverMovies(params, true)
-				: await tmdb.discoverTv(params, true);
+		const endIndexExclusive = Math.min(startIndex + PREVIEW_PAGE_SIZE, cappedTotalResults);
+		const neededCount = Math.max(0, endIndexExclusive - startIndex);
 
-		// Cap totalResults and totalPages to itemLimit
-		const cappedTotalResults = Math.min(result.total_results, data.itemLimit);
-		const cappedTotalPages = Math.min(result.total_pages, maxPages);
+		let items = firstResult.results.slice(tmdbOffset, tmdbOffset + neededCount);
 
-		// If on the last page, trim items to not exceed itemLimit
-		let items = result.results;
-		if (data.page === maxPages) {
-			const itemsOnLastPage = data.itemLimit % itemsPerPage || itemsPerPage;
-			items = items.slice(0, itemsOnLastPage);
+		if (items.length < neededCount) {
+			const nextTmdbPage = tmdbStartPage + 1;
+			if (nextTmdbPage <= firstResult.total_pages) {
+				const secondResult = await fetchDiscoverPage(nextTmdbPage);
+				const remaining = neededCount - items.length;
+				items = [...items, ...secondResult.results.slice(0, remaining)];
+			}
 		}
 
 		// Check which items are already in the library
@@ -227,11 +236,11 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		return json({
 			items: itemsWithLibraryStatus,
-			page: result.page,
-			totalPages: cappedTotalPages,
+			page: data.page,
+			totalPages,
 			totalResults: cappedTotalResults,
 			itemLimit: data.itemLimit,
-			unfilteredTotal: result.total_results
+			unfilteredTotal: firstResult.total_results
 		});
 	} catch (error) {
 		if (error instanceof z.ZodError) {

@@ -256,20 +256,21 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			inLibrary: libraryTmdbIds.size
 		});
 
-		// Implement client-side pagination
+		// Apply preview cap and paginate at fixed 24 items (8x3 grid)
+		const PREVIEW_PAGE_SIZE = 27;
+		const cappedItems = itemsWithLibraryStatus.slice(0, data.itemLimit);
 		const page = data.page;
-		const itemsPerPage = data.itemLimit;
-		const totalItems = itemsWithLibraryStatus.length;
-		const totalPages = Math.ceil(totalItems / itemsPerPage);
+		const totalItems = cappedItems.length;
+		const totalPages = Math.ceil(totalItems / PREVIEW_PAGE_SIZE);
 
 		// Slice items for the requested page
-		const startIndex = (page - 1) * itemsPerPage;
-		const endIndex = startIndex + itemsPerPage;
-		const paginatedItems = itemsWithLibraryStatus.slice(startIndex, endIndex);
+		const startIndex = (page - 1) * PREVIEW_PAGE_SIZE;
+		const endIndex = startIndex + PREVIEW_PAGE_SIZE;
+		const paginatedItems = cappedItems.slice(startIndex, endIndex);
 
 		logger.info('[ExternalPreview API] Returning paginated results', {
 			page,
-			itemsPerPage,
+			itemsPerPage: PREVIEW_PAGE_SIZE,
 			totalItems,
 			totalPages,
 			returnedItems: paginatedItems.length

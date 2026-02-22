@@ -52,17 +52,43 @@ export class ImdbListProvider implements ExternalListProvider {
 	private lastRequestTime = 0;
 	private readonly minRequestInterval = 1000; // 1 second
 
+	private normalizeListId(listId: string): string | null {
+		const trimmed = listId.trim();
+		if (!trimmed) return null;
+
+		const directMatch = trimmed.match(/^(ls\d+)$/i);
+		if (directMatch) {
+			return directMatch[1].toLowerCase();
+		}
+
+		const urlMatch = trimmed.match(/\/list\/(ls\d+)/i);
+		if (urlMatch) {
+			return urlMatch[1].toLowerCase();
+		}
+
+		return null;
+	}
+
 	validateConfig(config: unknown): boolean {
 		if (typeof config !== 'object' || config === null) {
 			return false;
 		}
 		const cfg = config as Partial<ImdbListConfig>;
-		return typeof cfg.listId === 'string' && /^ls\d+$/i.test(cfg.listId);
+		return typeof cfg.listId === 'string' && this.normalizeListId(cfg.listId) !== null;
 	}
 
 	async fetchItems(config: unknown, mediaType: 'movie' | 'tv' | ''): Promise<ExternalListResult> {
 		const cfg = config as ImdbListConfig;
 		const items: ExternalListItem[] = [];
+		const normalizedListId = this.normalizeListId(cfg.listId);
+		if (!normalizedListId) {
+			return {
+				items,
+				totalCount: 0,
+				failedCount: 0,
+				error: 'Invalid IMDb list ID format'
+			};
+		}
 		const seenIds = new Set<string>(); // Track seen IMDb IDs to avoid duplicates
 		let totalListCount: number | undefined; // Total items in list from __NEXT_DATA__
 		let page = 1;
@@ -73,7 +99,7 @@ export class ImdbListProvider implements ExternalListProvider {
 		const filterMediaType = cfg.mediaType ?? mediaType;
 
 		logger.info('[ImdbListProvider] Starting IMDb list scrape', {
-			listId: cfg.listId,
+			listId: normalizedListId,
 			mediaType: filterMediaType,
 			maxPages
 		});
@@ -89,10 +115,10 @@ export class ImdbListProvider implements ExternalListProvider {
 					break;
 				}
 
-				const result = await this.fetchPage(cfg.listId, page, filterMediaType);
+				const result = await this.fetchPage(normalizedListId, page, filterMediaType);
 
 				if (result.items.length === 0) {
-					logger.debug('[ImdbListProvider] Empty page', { page, listId: cfg.listId });
+					logger.debug('[ImdbListProvider] Empty page', { page, listId: normalizedListId });
 					break; // Stop on empty page
 				}
 
@@ -101,7 +127,7 @@ export class ImdbListProvider implements ExternalListProvider {
 					totalListCount = result.totalCount;
 					logger.info('[ImdbListProvider] Found total list count', {
 						total: totalListCount,
-						listId: cfg.listId
+						listId: normalizedListId
 					});
 				}
 
@@ -114,7 +140,7 @@ export class ImdbListProvider implements ExternalListProvider {
 						skippedNoId++;
 						logger.debug('[ImdbListProvider] Skipping item without IMDb ID', {
 							title: item.title,
-							listId: cfg.listId
+							listId: normalizedListId
 						});
 						continue;
 					}
@@ -134,7 +160,7 @@ export class ImdbListProvider implements ExternalListProvider {
 					duplicates,
 					skippedNoId,
 					totalCollected: items.length,
-					listId: cfg.listId
+					listId: normalizedListId
 				});
 
 				// If page had only duplicates, we've reached the end
@@ -142,7 +168,7 @@ export class ImdbListProvider implements ExternalListProvider {
 					logger.info('[ImdbListProvider] Page contained only duplicates, stopping', {
 						page,
 						duplicates,
-						listId: cfg.listId
+						listId: normalizedListId
 					});
 					break;
 				}
@@ -151,7 +177,7 @@ export class ImdbListProvider implements ExternalListProvider {
 			}
 
 			logger.info('[ImdbListProvider] Completed IMDb list scrape', {
-				listId: cfg.listId,
+				listId: normalizedListId,
 				totalItems: items.length,
 				expectedTotal: totalListCount,
 				pagesScanned: page
@@ -166,7 +192,7 @@ export class ImdbListProvider implements ExternalListProvider {
 			const errorMessage = error instanceof Error ? error.message : String(error);
 			logger.error('[ImdbListProvider] Failed to scrape IMDb list', {
 				error: errorMessage,
-				listId: cfg.listId
+				listId: normalizedListId
 			});
 
 			return {

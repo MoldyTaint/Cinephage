@@ -14,4 +14,4 @@ settings:
     label: List ID
     type: string
     required: true
-    helpText: "TMDb list ID (e.g., '12345' from https://www.themoviedb.org/list/12345)"
+    helpText: "TMDb list ID, slug, or URL (e.g., '12345', '12345-my-list', or https://www.themoviedb.org/list/12345-my-list)"
