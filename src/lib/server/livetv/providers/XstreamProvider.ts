@@ -195,7 +195,7 @@ export class XstreamProvider implements LiveTvProvider {
 					categoryCount,
 					expiresAt: expDate,
 					serverTimezone: result.server_info?.timezone || 'UTC',
-					status: result.user_info?.status === 'Active' ? 'active' : 'expired'
+					streamVerified: false
 				}
 			};
 		} catch (error) {

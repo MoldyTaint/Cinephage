@@ -225,8 +225,8 @@ export class PortalScanWorker extends TaskWorker<PortalScanWorkerMetadata> {
 		});
 
 		try {
-			// Use testConnection which does full validation
-			const testResult = await client.testConnection();
+			// Use fast test (3 API calls instead of 5-6) for scanning efficiency
+			const testResult = await client.testConnectionFast();
 
 			if (!testResult.success || !testResult.profile) {
 				return false;
@@ -247,7 +247,7 @@ export class PortalScanWorker extends TaskWorker<PortalScanWorkerMetadata> {
 					channelCount: profile.channelCount,
 					categoryCount: profile.categoryCount,
 					expiresAt: profile.expiresAt,
-					accountStatus: profile.status === 'active' ? 'active' : 'expired',
+					accountStatus: 'active',
 					playbackLimit: profile.playbackLimit,
 					serverTimezone: profile.serverTimezone,
 					rawProfile: JSON.stringify(profile),
@@ -259,7 +259,7 @@ export class PortalScanWorker extends TaskWorker<PortalScanWorkerMetadata> {
 						channelCount: profile.channelCount,
 						categoryCount: profile.categoryCount,
 						expiresAt: profile.expiresAt,
-						accountStatus: profile.status === 'active' ? 'active' : 'expired',
+						accountStatus: 'active',
 						playbackLimit: profile.playbackLimit,
 						serverTimezone: profile.serverTimezone,
 						rawProfile: JSON.stringify(profile),

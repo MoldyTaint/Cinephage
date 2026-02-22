@@ -25,6 +25,59 @@ const REQUEST_TIMEOUT = 30000; // 30 seconds (increased for slow portals)
 const STB_USER_AGENT =
 	'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 4 rev: 2116 Mobile Safari/533.3';
 
+// ============================================================================
+// Stalker-specific error classes
+// ============================================================================
+
+/**
+ * Base class for Stalker protocol errors with HTTP status awareness.
+ * The `retryable` flag indicates whether the request can be retried.
+ */
+export class StalkerProtocolError extends Error {
+	readonly statusCode: number;
+	readonly retryable: boolean;
+
+	constructor(message: string, statusCode: number, retryable: boolean) {
+		super(message);
+		this.name = 'StalkerProtocolError';
+		this.statusCode = statusCode;
+		this.retryable = retryable;
+	}
+}
+
+/**
+ * HTTP 456/459 — Max connections reached or IP lock.
+ * Retrying later may work, but immediate retries won't help.
+ */
+export class StalkerMaxConnectionsError extends StalkerProtocolError {
+	constructor(statusCode: number = 456) {
+		super(`Max connections or IP lock (HTTP ${statusCode})`, statusCode, false);
+		this.name = 'StalkerMaxConnectionsError';
+	}
+}
+
+/**
+ * HTTP 458 — Account blocked/banned by portal.
+ * No retry will help; account is dead.
+ */
+export class StalkerAccountBlockedError extends StalkerProtocolError {
+	constructor() {
+		super('Account blocked by portal (HTTP 458)', 458, false);
+		this.name = 'StalkerAccountBlockedError';
+	}
+}
+
+/**
+ * HTTP 462 — Token/play_token already used (single-use token consumed).
+ * Must request a new token via create_link; retrying the same URL is pointless.
+ */
+export class StalkerTokenUsedError extends StalkerProtocolError {
+	constructor() {
+		super('Token already used (HTTP 462)', 462, false);
+		this.name = 'StalkerTokenUsedError';
+	}
+}
+
 /**
  * Generate prehash for handshake authentication.
  * Reference implementations (stalkerhek) use prehash=0.
@@ -60,7 +113,7 @@ interface HandshakeResponse {
 	random?: string;
 }
 
-interface ProfileAuthResponse {
+interface _ProfileAuthResponse {
 	id?: string;
 	fname?: string;
 }
@@ -146,11 +199,14 @@ function generateToken(): string {
 }
 
 /**
- * Retry with exponential backoff
+ * Retry with exponential backoff.
+ * Automatically skips retries for non-retryable StalkerProtocolError instances.
+ * An optional `shouldRetry` predicate can further control retry behavior.
  */
-async function retryWithBackoff<T>(
+async function _retryWithBackoff<T>(
 	fn: () => Promise<T>,
-	config: RetryConfig = DEFAULT_RETRY_CONFIG
+	config: RetryConfig = DEFAULT_RETRY_CONFIG,
+	shouldRetry?: (error: Error) => boolean
 ): Promise<T> {
 	let lastError: Error | null = null;
 
@@ -159,6 +215,16 @@ async function retryWithBackoff<T>(
 			return await fn();
 		} catch (error) {
 			lastError = error instanceof Error ? error : new Error(String(error));
+
+			// Non-retryable Stalker protocol errors (458 blocked, 462 token used, etc.)
+			if (lastError instanceof StalkerProtocolError && !lastError.retryable) {
+				throw lastError;
+			}
+
+			// Custom retry predicate
+			if (shouldRetry && !shouldRetry(lastError)) {
+				throw lastError;
+			}
 
 			if (attempt < config.maxRetries - 1) {
 				const delay = Math.min(config.baseDelay * Math.pow(2, attempt), config.maxDelay);
@@ -177,6 +243,7 @@ export class StalkerPortalClient {
 	private config: StalkerPortalConfig;
 	private token: string;
 	private authenticated: boolean = false;
+	private lastProfile: StalkerRawProfile | null = null;
 	private watchdogInterval: ReturnType<typeof setInterval> | null = null;
 	private static readonly WATCHDOG_INTERVAL_MS = 120_000; // 2 minutes (matches stalkerhek)
 
@@ -264,9 +331,21 @@ export class StalkerPortalClient {
 	}
 
 	/**
-	 * Get headers for streaming (public for use by stream service)
+	 * Get headers for streaming from backend servers.
+	 * Stream URLs from create_link are self-authenticating via play_token in the URL.
+	 * Backend stream servers don't understand portal auth headers (Authorization, Cookie) —
+	 * only User-Agent is needed. Sending portal headers to backend servers can cause errors.
 	 */
 	getStreamHeaders(): HeadersInit {
+		return {
+			'User-Agent': STB_USER_AGENT
+		};
+	}
+
+	/**
+	 * Get full portal API headers (for portal API calls only, NOT for stream fetching).
+	 */
+	getPortalHeaders(): HeadersInit {
 		return this.getHeaders();
 	}
 
@@ -286,8 +365,22 @@ export class StalkerPortalClient {
 
 			clearTimeout(timeoutId);
 
+			// Handle Stalker-specific HTTP error codes before generic check
+			if (response.status === 456 || response.status === 459) {
+				throw new StalkerMaxConnectionsError(response.status);
+			}
+			if (response.status === 458) {
+				throw new StalkerAccountBlockedError();
+			}
+			if (response.status === 462) {
+				throw new StalkerTokenUsedError();
+			}
 			if (!response.ok) {
-				throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+				throw new StalkerProtocolError(
+					`HTTP ${response.status}: ${response.statusText}`,
+					response.status,
+					response.status >= 500 // 5xx are retryable
+				);
 			}
 
 			return await response.text();
@@ -329,7 +422,12 @@ export class StalkerPortalClient {
 			logger.debug('[StalkerPortal] Raw response', { text: text.substring(0, 500) });
 		}
 
-		const data = JSON.parse(text) as StalkerResponse<T>;
+		let data: StalkerResponse<T>;
+		try {
+			data = JSON.parse(text) as StalkerResponse<T>;
+		} catch {
+			throw new Error(`Invalid JSON response from portal: ${text.substring(0, 200)}`);
+		}
 		return data.js;
 	}
 
@@ -374,7 +472,13 @@ export class StalkerPortalClient {
 		url.searchParams.set('JsHttpRequest', '1-xml');
 
 		const text = await this.httpRequest(url.toString(), false);
-		const data = JSON.parse(text) as StalkerResponse<HandshakeResponse>;
+
+		let data: StalkerResponse<HandshakeResponse>;
+		try {
+			data = JSON.parse(text) as StalkerResponse<HandshakeResponse>;
+		} catch {
+			throw new Error(`Invalid JSON from handshake: ${text.substring(0, 200)}`);
+		}
 
 		// If server provides a new token, use it
 		if (data.js?.token && data.js.token !== '') {
@@ -415,12 +519,13 @@ export class StalkerPortalClient {
 	}
 
 	/**
-	 * Authenticate using device IDs (alternative to username/password)
+	 * Authenticate using device IDs (alternative to username/password).
+	 * Also caches the profile response to avoid a redundant get_profile call later.
 	 */
 	async authenticateWithDeviceIds(): Promise<void> {
 		logger.debug('[StalkerPortal] Authenticating with device IDs');
 
-		const result = await this.request<ProfileAuthResponse>(
+		const result = await this.request<StalkerRawProfile>(
 			'stb',
 			'get_profile',
 			{
@@ -438,8 +543,11 @@ export class StalkerPortalClient {
 			throw new Error('Authentication failed: device ID auth rejected');
 		}
 
+		// Cache the full profile from auth — avoids redundant get_profile calls
+		this.lastProfile = result;
+
 		logger.debug('[StalkerPortal] Device ID authentication successful', {
-			userId: result.id,
+			userId: String(result.id),
 			name: result.fname
 		});
 	}
@@ -454,30 +562,49 @@ export class StalkerPortalClient {
 	}
 
 	/**
-	 * Create a stream link for a channel
-	 * This is the key method for getting playable stream URLs
+	 * Create a stream link for a channel.
+	 * Returns a URL with a single-use play_token — each URL can only be used once.
+	 * Does NOT use _retryWithBackoff because each create_link call returns a fresh
+	 * token; retrying the same request just wastes time on non-retryable errors.
 	 *
 	 * @param cmd - The channel CMD value (e.g., "ffmpeg http://...")
 	 * @param retry - Whether to retry with re-authentication on failure
-	 * @returns The playable stream URL
+	 * @returns The playable stream URL (single-use)
 	 */
 	async createLink(cmd: string, retry: boolean = true): Promise<string> {
 		await this.ensureAuthenticated();
 
 		logger.debug('[StalkerPortal] Creating link', { cmd });
 
-		const result = await retryWithBackoff(async () => {
-			return this.request<CreateLinkResponse>('itv', 'create_link', {
+		let result: CreateLinkResponse;
+		try {
+			result = await this.request<CreateLinkResponse>('itv', 'create_link', {
 				cmd: cmd
 			});
-		});
+		} catch (error) {
+			// Non-retryable errors — don't attempt re-auth
+			if (error instanceof StalkerAccountBlockedError) throw error;
+			if (error instanceof StalkerTokenUsedError) throw error;
+			if (error instanceof StalkerMaxConnectionsError) throw error;
+
+			// For other errors (session expired, transient failures), try re-auth once
+			if (retry) {
+				logger.debug('[StalkerPortal] create_link failed, attempting re-authentication', {
+					error: error instanceof Error ? error.message : String(error)
+				});
+				this.authenticated = false;
+				await this.start();
+				return this.createLink(cmd, false);
+			}
+			throw error;
+		}
 
 		logger.debug('[StalkerPortal] create_link response', { result });
 
 		if (!result?.cmd) {
-			if (retry && (this.config.username || this.config.deviceId)) {
+			if (retry) {
 				// Session may have expired, try re-authenticating
-				logger.debug('[StalkerPortal] create_link failed, attempting re-authentication');
+				logger.debug('[StalkerPortal] create_link returned empty, attempting re-authentication');
 				this.authenticated = false;
 				await this.start();
 				return this.createLink(cmd, false);
@@ -836,43 +963,76 @@ export class StalkerPortalClient {
 	}
 
 	/**
-	 * Determine account status from profile
+	 * Verify that a stream is actually reachable by picking a random channel,
+	 * calling create_link, and making a HEAD request to the resulting URL.
+	 * This is the real test — profile metadata flags are unreliable.
+	 *
+	 * @param channels - Array of channels to pick from (uses a random one)
+	 * @returns true if a stream was successfully reached, false otherwise
 	 */
-	private getAccountStatus(
-		profile: StalkerRawProfile,
-		accountInfo: AccountInfoResponse | null
-	): 'active' | 'blocked' | 'expired' {
-		if (profile.blocked === '1') {
-			return 'blocked';
-		}
+	private async verifyStream(channels: StalkerChannel[]): Promise<boolean> {
+		if (channels.length === 0) return false;
 
-		// Check expiry
-		const expiryDate = this.parseExpiryDate(profile, accountInfo);
-		if (expiryDate) {
-			const expiry = new Date(expiryDate);
-			if (expiry < new Date()) {
-				return 'expired';
+		// Pick a random channel to test
+		const channel = channels[Math.floor(Math.random() * channels.length)];
+
+		try {
+			// create_link to get a playable URL (single-use play_token)
+			const streamUrl = await this.createLink(channel.cmd);
+
+			// Follow the redirect and verify the stream is reachable with a HEAD request.
+			// We use manual redirect to capture the backend URL (302 from portal to stream server).
+			const controller = new AbortController();
+			const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+			try {
+				const response = await fetch(streamUrl, {
+					method: 'GET',
+					headers: this.getStreamHeaders(),
+					signal: controller.signal,
+					redirect: 'follow'
+				});
+
+				// Read a tiny amount of data to confirm the stream is actually delivering content
+				const reader = response.body?.getReader();
+				if (reader) {
+					try {
+						const { done, value } = await reader.read();
+						reader.cancel();
+						// If we got any bytes at all, stream is working
+						return !done && (value?.length ?? 0) > 0;
+					} catch {
+						reader.cancel();
+						return false;
+					}
+				}
+
+				// No body reader available — fall back to status check
+				return response.ok || response.status === 200;
+			} finally {
+				clearTimeout(timeoutId);
 			}
+		} catch (error) {
+			logger.debug('[StalkerPortal] Stream verification failed', {
+				channelName: channel.name,
+				error: error instanceof Error ? error.message : String(error)
+			});
+			return false;
 		}
-
-		// Check status field
-		if (profile.status === 0) {
-			return 'blocked';
-		}
-
-		return 'active';
 	}
 
 	/**
-	 * Test connection and fetch account metadata
+	 * Test connection and fetch account metadata.
+	 * Verifies the account works end-to-end: auth, channel list, and actual streaming.
+	 * Does NOT rely on profile blocked/status flags — those are unreliable across portals.
 	 */
 	async testConnection(): Promise<StalkerAccountTestResult> {
 		try {
-			// Step 1: Start (handshake + auth)
+			// Step 1: Start (handshake + auth, which caches profile for MAC-only auth)
 			await this.start();
 
-			// Step 2: Get profile
-			const profile = await this.getProfile();
+			// Step 2: Get profile (reuse cached profile from auth if available)
+			const profile = this.lastProfile ?? (await this.getProfile());
 
 			// Step 3: Get account info (for expiry date)
 			const accountInfo = await this.getAccountInfo();
@@ -880,11 +1040,11 @@ export class StalkerPortalClient {
 			// Step 4: Get genres (categories)
 			const genres = await this.getGenres();
 
-			// Step 5: Get channel count
-			const channelCount = await this.getChannelCount();
+			// Step 5: Get all channels
+			const channels = await this.getChannels();
 
 			// No channels = useless account
-			if (channelCount === 0) {
+			if (channels.length === 0) {
 				return {
 					success: false,
 					error: 'No channels available (portal may block API access)'
@@ -892,17 +1052,19 @@ export class StalkerPortalClient {
 			}
 
 			const expiresAt = this.parseExpiryDate(profile, accountInfo);
-			const status = this.getAccountStatus(profile, accountInfo);
+
+			// Step 6: Verify a random stream actually works (the real test)
+			const streamVerified = await this.verifyStream(channels);
 
 			return {
 				success: true,
 				profile: {
 					playbackLimit: profile.playback_limit || 1,
-					channelCount,
+					channelCount: channels.length,
 					categoryCount: genres.length,
 					expiresAt,
 					serverTimezone: profile.default_timezone || 'UTC',
-					status
+					streamVerified
 				}
 			};
 		} catch (error) {
@@ -916,6 +1078,53 @@ export class StalkerPortalClient {
 				success: false,
 				error: message
 			};
+		}
+	}
+
+	/**
+	 * Fast connection test for scanning — uses fewer API calls (3 instead of 5-6).
+	 * Only performs: handshake + get_profile (via auth) + get_all_channels.
+	 * Skips: get_main_info, get_genres, stream verification (deferred to approval/full test).
+	 * Expiry parsing uses only profile fields (no account_info phone field).
+	 */
+	async testConnectionFast(): Promise<StalkerAccountTestResult> {
+		try {
+			// Step 1: Start (handshake + auth via get_profile — caches profile)
+			await this.start();
+
+			// Step 2: Reuse profile from auth (no redundant get_profile call)
+			const profile = this.lastProfile;
+			if (!profile) {
+				return { success: false, error: 'No profile data from authentication' };
+			}
+
+			// Step 3: Get channel count only (skip genres/account_info for speed)
+			const channelCount = await this.getChannelCount();
+
+			if (channelCount === 0) {
+				return {
+					success: false,
+					error: 'No channels available'
+				};
+			}
+
+			// Parse expiry from profile fields only (skip account_info for speed)
+			const expiresAt = this.parseExpiryDate(profile, null);
+
+			return {
+				success: true,
+				profile: {
+					playbackLimit: profile.playback_limit || 1,
+					channelCount,
+					categoryCount: 0, // Unknown — deferred to approval
+					expiresAt,
+					serverTimezone: profile.default_timezone || 'UTC',
+					streamVerified: false // Not verified during fast scan
+				}
+			};
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown error';
+			return { success: false, error: message };
 		}
 	}
 }

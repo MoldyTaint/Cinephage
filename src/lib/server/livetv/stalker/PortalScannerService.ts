@@ -29,7 +29,7 @@ export interface ScanResult {
 	channelCount: number | null;
 	categoryCount: number | null;
 	expiresAt: string | null;
-	accountStatus: 'active' | 'blocked' | 'expired' | null;
+	accountStatus: 'active' | 'expired' | null;
 	playbackLimit: number | null;
 	serverTimezone: string | null;
 	rawProfile: Record<string, unknown> | null;

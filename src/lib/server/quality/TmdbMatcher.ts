@@ -61,18 +61,57 @@ export class TmdbMatcher {
 	async match(parsed: ParsedRelease, hint?: TmdbHint): Promise<TmdbMatch | null> {
 		const mediaType = parsed.episode ? 'tv' : (hint?.mediaType ?? 'movie');
 
-		// If we have a TMDB ID hint, use it directly
+		// If we have a TMDB ID hint, use it directly (with year validation)
 		if (hint?.tmdbId) {
-			return this.getMatchById(hint.tmdbId, hint.mediaType);
+			const result = await this.getMatchById(hint.tmdbId, hint.mediaType);
+			if (result && this.isYearValid(parsed.year, result.year)) {
+				logger.debug('[TmdbMatcher] Matched via TMDB ID hint with year validation', {
+					tmdbId: hint.tmdbId,
+					title: result.title,
+					releaseYear: parsed.year,
+					movieYear: result.year
+				});
+				return result;
+			}
+			// Year mismatch - fall back to title search to find correct movie
+			logger.debug(
+				'[TmdbMatcher] TMDB ID hint rejected due to year mismatch, falling back to title search',
+				{
+					tmdbId: hint.tmdbId,
+					hintTitle: result?.title,
+					releaseYear: parsed.year,
+					hintYear: result?.year,
+					release: parsed.originalTitle
+				}
+			);
 		}
 
-		// If we have an IMDB ID hint, find by external ID
+		// If we have an IMDB ID hint, find by external ID (with year validation)
 		if (hint?.imdbId) {
 			const result = await this.findByImdbId(hint.imdbId);
-			if (result) return result;
+			if (result && this.isYearValid(parsed.year, result.year)) {
+				logger.debug('[TmdbMatcher] Matched via IMDB ID hint with year validation', {
+					imdbId: hint.imdbId,
+					tmdbId: result.tmdbId,
+					title: result.title,
+					releaseYear: parsed.year,
+					movieYear: result.year
+				});
+				return result;
+			}
+			if (result) {
+				logger.debug(
+					'[TmdbMatcher] IMDB ID hint rejected due to year mismatch, falling back to title search',
+					{
+						imdbId: hint.imdbId,
+						releaseYear: parsed.year,
+						movieYear: result.year
+					}
+				);
+			}
 		}
 
-		// If we have a TVDB ID hint, find by external ID
+		// If we have a TVDB ID hint, find by external ID (TV shows don't have year validation)
 		if (hint?.tvdbId) {
 			const result = await this.findByTvdbId(hint.tvdbId);
 			if (result) return result;
@@ -122,6 +161,31 @@ export class TmdbMatcher {
 
 		// Fall back to title search
 		return this.searchByTitle(parsed.cleanTitle, parsed.year, mediaType);
+	}
+
+	/**
+	 * Validate that the release year matches the movie year.
+	 * Following Radarr's approach: if years don't match, it's likely the wrong movie.
+	 *
+	 * @param releaseYear - Year parsed from the release title (undefined if not found)
+	 * @param movieYear - Year from TMDB for the hinted movie
+	 * @returns true if years are compatible (match within 1 year or no year parsed)
+	 */
+	private isYearValid(releaseYear: number | undefined, movieYear: number | undefined): boolean {
+		// If no year parsed from release, accept (can't validate)
+		if (!releaseYear) {
+			return true;
+		}
+
+		// If no movie year, accept (can't validate)
+		if (!movieYear) {
+			return true;
+		}
+
+		// Accept if years match exactly or are within 1 year
+		// (allows for release year vs production year differences)
+		const yearDiff = Math.abs(releaseYear - movieYear);
+		return yearDiff <= 1;
 	}
 
 	/**

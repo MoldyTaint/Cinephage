@@ -133,7 +133,7 @@ export class IptvOrgProvider implements LiveTvProvider {
 					categoryCount: categories.size,
 					expiresAt: null,
 					serverTimezone: 'UTC',
-					status: 'active'
+					streamVerified: false
 				}
 			};
 		} catch (error) {

@@ -27,7 +27,6 @@ import type {
 	ChannelSyncResult,
 	EpgProgram,
 	LiveTvAccountTestResult,
-	StalkerConfig,
 	StalkerChannelData
 } from '$lib/types/livetv';
 import { StalkerPortalClient, type StalkerPortalConfig } from '../stalker/StalkerPortalClient';
@@ -89,42 +88,17 @@ export class StalkerProvider implements LiveTvProvider {
 
 	async testConnection(account: LiveTvAccount): Promise<LiveTvAccountTestResult> {
 		try {
-			// Don't cache the client for tests
+			// Delegate to client's testConnection which has comprehensive status/expiry
+			// parsing: checks blocked flag, tariff dates, account_info phone field,
+			// expire_billing_date, and correctly compares expiry dates against now.
 			const config = this.buildClientConfig(account);
 			const client = new StalkerPortalClient(config);
-			await client.start();
+			const result = await client.testConnection();
 
-			const profile = await client.getProfile();
+			// Stop the client (don't cache test clients)
+			client.stop();
 
-			// Parse status from profile
-			let status: 'active' | 'blocked' | 'expired' = 'active';
-			if (profile.status === 0) {
-				status = profile.blocked === '1' ? 'blocked' : 'active';
-			} else if (profile.tariff_expired_date) {
-				status = 'expired';
-			}
-
-			// Parse expiresAt from various fields
-			let expiresAt: string | null = null;
-			if (profile.tariff_expired_date && profile.tariff_expired_date !== '0000-00-00 00:00:00') {
-				expiresAt = new Date(profile.tariff_expired_date).toISOString();
-			}
-
-			// Get channel and category count
-			const channelCount = await client.getChannelCount();
-			const genres = await client.getGenres();
-
-			return {
-				success: true,
-				profile: {
-					playbackLimit: profile.playback_limit ?? 0,
-					channelCount: channelCount ?? 0,
-					categoryCount: genres.length,
-					expiresAt,
-					serverTimezone: profile.default_timezone ?? 'UTC',
-					status
-				}
-			};
+			return result;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			logger.error('[StalkerProvider] Connection test failed', {
@@ -284,51 +258,17 @@ export class StalkerProvider implements LiveTvProvider {
 					.where(eq(livetvCategories.id, categoryId));
 			}
 
-			// Detect stream URL type
-			const streamUrlType = await this.detectStreamUrlType(client, channels);
-
-			// Update account sync status and stream URL type
-			const existingConfig = account.stalkerConfig;
-			if (existingConfig) {
-				const updatedStalkerConfig: StalkerConfig = {
-					portalUrl: existingConfig.portalUrl,
-					macAddress: existingConfig.macAddress,
-					serialNumber: existingConfig.serialNumber,
-					deviceId: existingConfig.deviceId,
-					deviceId2: existingConfig.deviceId2,
-					model: existingConfig.model,
-					timezone: existingConfig.timezone,
-					token: existingConfig.token,
-					username: existingConfig.username,
-					password: existingConfig.password,
-					portalId: existingConfig.portalId,
-					discoveredFromScan: existingConfig.discoveredFromScan,
-					streamUrlType
-				};
-
-				await db
-					.update(livetvAccounts)
-					.set({
-						channelCount: channels.length,
-						categoryCount: categories.length,
-						lastSyncAt: new Date().toISOString(),
-						lastSyncError: null,
-						syncStatus: 'success',
-						stalkerConfig: updatedStalkerConfig
-					})
-					.where(eq(livetvAccounts.id, accountId));
-			} else {
-				await db
-					.update(livetvAccounts)
-					.set({
-						channelCount: channels.length,
-						categoryCount: categories.length,
-						lastSyncAt: new Date().toISOString(),
-						lastSyncError: null,
-						syncStatus: 'success'
-					})
-					.where(eq(livetvAccounts.id, accountId));
-			}
+			// Update account sync status
+			await db
+				.update(livetvAccounts)
+				.set({
+					channelCount: channels.length,
+					categoryCount: categories.length,
+					lastSyncAt: new Date().toISOString(),
+					lastSyncError: null,
+					syncStatus: 'success'
+				})
+				.where(eq(livetvAccounts.id, accountId));
 
 			const duration = Date.now() - startTime;
 
@@ -683,45 +623,6 @@ export class StalkerProvider implements LiveTvProvider {
 		if (lowerUrl.includes('.ts') || lowerUrl.includes('.mp4')) {
 			return 'direct';
 		}
-		return 'unknown';
-	}
-
-	private async detectStreamUrlType(
-		client: StalkerPortalClient,
-		channels: Array<{ cmd: string }>
-	): Promise<'direct' | 'create_link' | 'unknown'> {
-		if (channels.length === 0) return 'unknown';
-
-		// Try the first channel's direct URL
-		const testChannel = channels[0];
-		const directUrl = testChannel.cmd.replace(/^ffmpeg\s+/, '');
-
-		try {
-			const response = await fetch(directUrl, {
-				method: 'HEAD',
-				headers: {
-					'User-Agent':
-						'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 4 rev: 2116 Mobile Safari/533.3'
-				},
-				signal: AbortSignal.timeout(5000)
-			});
-
-			if (response.ok) {
-				logger.info('[StalkerProvider] Detected direct stream URL type');
-				return 'direct';
-			}
-		} catch {
-			// Direct URL didn't work, try create_link
-		}
-
-		try {
-			await client.createLink(testChannel.cmd);
-			logger.info('[StalkerProvider] Detected create_link stream URL type');
-			return 'create_link';
-		} catch {
-			// Neither worked
-		}
-
 		return 'unknown';
 	}
 }

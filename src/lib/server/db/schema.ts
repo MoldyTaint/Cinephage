@@ -2752,7 +2752,7 @@ export const portalScanResults = sqliteTable(
 		channelCount: integer('channel_count'),
 		categoryCount: integer('category_count'),
 		expiresAt: text('expires_at'),
-		accountStatus: text('account_status').$type<'active' | 'blocked' | 'expired'>(),
+		accountStatus: text('account_status').$type<'active' | 'expired'>(),
 		playbackLimit: integer('playback_limit'),
 		serverTimezone: text('server_timezone'),
 		rawProfile: text('raw_profile'), // JSON - full profile data for review

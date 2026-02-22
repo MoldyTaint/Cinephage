@@ -260,7 +260,7 @@ export interface LiveTvAccountTestResult {
 		categoryCount: number;
 		expiresAt: string | null;
 		serverTimezone: string;
-		status: 'active' | 'blocked' | 'expired';
+		streamVerified: boolean;
 	};
 }
 

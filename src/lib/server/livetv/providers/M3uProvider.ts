@@ -131,7 +131,7 @@ export class M3uProvider implements LiveTvProvider {
 					categoryCount: new Set(entries.map((e) => e.groupTitle).filter(Boolean)).size,
 					expiresAt: null,
 					serverTimezone: 'UTC',
-					status: 'active'
+					streamVerified: false
 				}
 			};
 		} catch (error) {

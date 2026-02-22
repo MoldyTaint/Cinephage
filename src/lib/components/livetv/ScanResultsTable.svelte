@@ -208,8 +208,6 @@
 				return { class: 'badge-success', text: 'Active' };
 			case 'expired':
 				return { class: 'badge-error', text: 'Expired' };
-			case 'blocked':
-				return { class: 'badge-error', text: 'Blocked' };
 			default:
 				return { class: 'badge-ghost', text: 'Unknown' };
 		}

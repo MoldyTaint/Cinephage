@@ -385,10 +385,10 @@
 					}
 				: null}
 			successMessage={testResult?.profile
-				? `Connection successful • ${testResult.profile.channelCount.toLocaleString()} channels`
+				? `Connection successful (${testResult.profile.streamVerified ? 'Stream verified' : 'Stream not verified'})`
 				: 'Connection successful!'}
 			successDetails={testResult?.profile
-				? `Categories: ${testResult.profile.categoryCount} • Status: ${testResult.profile.status}${testResult.profile.expiresAt ? ` • Expires: ${new Date(testResult.profile.expiresAt).toLocaleDateString()}` : ''}`
+				? `${testResult.profile.channelCount.toLocaleString()} channels • ${testResult.profile.categoryCount.toLocaleString()} categories${testResult.profile.expiresAt ? ` • Expires: ${new Date(testResult.profile.expiresAt).toLocaleDateString()}` : ''}`
 				: undefined}
 		/>
 
