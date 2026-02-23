@@ -149,6 +149,18 @@
 	async function handleStream() {
 		await onGrab(release, true);
 	}
+
+	function getTorrentAvailabilityText(
+		release: Release
+	): { seeders: string; leechers: string } | null {
+		if (release.protocol !== 'torrent') return null;
+		const hasSeederData = release.seeders !== undefined || release.leechers !== undefined;
+		if (!hasSeederData) return null;
+		return {
+			seeders: release.seeders !== undefined ? String(release.seeders) : '—',
+			leechers: release.leechers !== undefined ? String(release.leechers) : '—'
+		};
+	}
 </script>
 
 <tr
@@ -209,9 +221,14 @@
 	<!-- Seeders (torrent only) -->
 	<td class="text-sm">
 		{#if release.protocol === 'torrent'}
-			<span class="text-success">{release.seeders ?? 0}</span>
-			<span class="text-base-content/50">/</span>
-			<span class="text-error">{release.leechers ?? 0}</span>
+			{@const availability = getTorrentAvailabilityText(release)}
+			{#if availability}
+				<span class="text-success">{availability.seeders}</span>
+				<span class="text-base-content/50">/</span>
+				<span class="text-error">{availability.leechers}</span>
+			{:else}
+				<span class="text-base-content/50">—</span>
+			{/if}
 		{:else}
 			<span class="text-base-content/50">—</span>
 		{/if}

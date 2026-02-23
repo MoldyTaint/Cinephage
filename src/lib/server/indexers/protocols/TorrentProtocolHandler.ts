@@ -109,30 +109,38 @@ export class TorrentProtocolHandler extends BaseProtocolHandler implements ITorr
 		const settings = context.settings as TorrentProtocolSettings;
 
 		// Get seeder/leecher info
-		const seeders = result.torrent?.seeders ?? result.seeders ?? 0;
-		const leechers = result.torrent?.leechers ?? result.leechers ?? 0;
+		const seeders = result.seeders;
+		const leechers = result.leechers ?? 0;
 
-		// Health-based adjustments
-		const health = this.calculateHealth(seeders, leechers);
-		switch (health.level) {
-			case 'dead':
-				adjustment += TORRENT_SCORE_PENALTIES.deadTorrent;
-				break;
-			case 'poor':
-				adjustment += TORRENT_SCORE_PENALTIES.poorHealth;
-				break;
-			case 'fair':
-				adjustment += TORRENT_SCORE_BONUSES.fairHealth;
-				break;
-			case 'good':
-				adjustment += TORRENT_SCORE_BONUSES.goodHealth;
-				break;
-			case 'excellent':
-				adjustment += TORRENT_SCORE_BONUSES.excellentHealth;
-				if (seeders > 100) {
-					adjustment += TORRENT_SCORE_BONUSES.highSeeders;
-				}
-				break;
+		// Apply seeder-based adjustments only when the indexer reported seeder metadata.
+		if (seeders !== undefined) {
+			const health = this.calculateHealth(seeders, leechers);
+			switch (health.level) {
+				case 'dead':
+					adjustment += TORRENT_SCORE_PENALTIES.deadTorrent;
+					break;
+				case 'poor':
+					adjustment += TORRENT_SCORE_PENALTIES.poorHealth;
+					break;
+				case 'fair':
+					adjustment += TORRENT_SCORE_BONUSES.fairHealth;
+					break;
+				case 'good':
+					adjustment += TORRENT_SCORE_BONUSES.goodHealth;
+					break;
+				case 'excellent':
+					adjustment += TORRENT_SCORE_BONUSES.excellentHealth;
+					if (seeders > 100) {
+						adjustment += TORRENT_SCORE_BONUSES.highSeeders;
+					}
+					break;
+			}
+
+			// Apply minimum seeders requirement from settings
+			if (settings.minimumSeeders !== undefined && seeders < settings.minimumSeeders) {
+				// Heavy penalty for not meeting minimum seeders
+				adjustment += TORRENT_SCORE_PENALTIES.noSeeders;
+			}
 		}
 
 		// Freeleech bonus
@@ -143,12 +151,6 @@ export class TorrentProtocolHandler extends BaseProtocolHandler implements ITorr
 		// Internal release bonus
 		if (result.torrent?.isInternal) {
 			adjustment += TORRENT_SCORE_BONUSES.internalRelease;
-		}
-
-		// Apply minimum seeders requirement from settings
-		if (settings.minimumSeeders !== undefined && seeders < settings.minimumSeeders) {
-			// Heavy penalty for not meeting minimum seeders
-			adjustment += TORRENT_SCORE_PENALTIES.noSeeders;
 		}
 
 		return adjustment;
@@ -173,16 +175,19 @@ export class TorrentProtocolHandler extends BaseProtocolHandler implements ITorr
 	 */
 	shouldReject(result: EnhancedReleaseResult, context: ProtocolContext): string | undefined {
 		const settings = context.settings as TorrentProtocolSettings;
-		const seeders = result.torrent?.seeders ?? result.seeders ?? 0;
+		const seeders = result.seeders;
 
-		// Reject dead torrents if required
-		if (settings.rejectDeadTorrents && seeders === 0) {
-			return 'No seeders available';
-		}
+		// Apply seeder validation only when the indexer reported seeders.
+		if (seeders !== undefined) {
+			// Reject dead torrents if required
+			if (settings.rejectDeadTorrents && seeders === 0) {
+				return 'No seeders available';
+			}
 
-		// Reject below minimum seeders
-		if (settings.minimumSeeders !== undefined && seeders < settings.minimumSeeders) {
-			return `Below minimum seeders (${seeders} < ${settings.minimumSeeders})`;
+			// Reject below minimum seeders
+			if (settings.minimumSeeders !== undefined && seeders < settings.minimumSeeders) {
+				return `Below minimum seeders (${seeders} < ${settings.minimumSeeders})`;
+			}
 		}
 
 		// Reject above maximum size

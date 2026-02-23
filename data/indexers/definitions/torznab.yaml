@@ -121,7 +121,12 @@ search:
       selector: comments
       optional: true
     download:
+      selector: enclosure
+      attribute: url
+      optional: true
+    downloadurl:
       selector: link
+      optional: true
     guid:
       selector: guid
       optional: true

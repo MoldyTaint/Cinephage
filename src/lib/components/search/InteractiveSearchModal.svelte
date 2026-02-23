@@ -383,6 +383,18 @@
 			sortDir = 'desc';
 		}
 	}
+
+	function getTorrentAvailabilityText(
+		release: Release
+	): { seeders: string; leechers: string } | null {
+		if (release.protocol !== 'torrent') return null;
+		const hasSeederData = release.seeders !== undefined || release.leechers !== undefined;
+		if (!hasSeederData) return null;
+		return {
+			seeders: release.seeders !== undefined ? String(release.seeders) : '—',
+			leechers: release.leechers !== undefined ? String(release.leechers) : '—'
+		};
+	}
 </script>
 
 <ModalWrapper
@@ -848,11 +860,16 @@
 								<span>{formatBytes(release.size)}</span>
 							{/if}
 							{#if release.protocol === 'torrent'}
-								<span>
-									<span class="text-success">{release.seeders ?? 0}</span>/<span class="text-error"
-										>{release.leechers ?? 0}</span
-									>
-								</span>
+								{@const availability = getTorrentAvailabilityText(release)}
+								{#if availability}
+									<span>
+										<span class="text-success">{availability.seeders}</span>/<span
+											class="text-error">{availability.leechers}</span
+										>
+									</span>
+								{:else}
+									<span class="text-base-content/50">—</span>
+								{/if}
 							{/if}
 							{#if release.totalScore !== undefined}
 								<span

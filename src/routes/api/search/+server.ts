@@ -12,7 +12,9 @@ import { movies, series } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import {
 	getMovieSearchTitles,
-	getSeriesSearchTitles
+	getSeriesSearchTitles,
+	fetchAndStoreMovieAlternateTitles,
+	fetchAndStoreSeriesAlternateTitles
 } from '$lib/server/services/AlternateTitleService';
 
 /**
@@ -126,6 +128,11 @@ export const GET: RequestHandler = async ({ url }) => {
 				});
 				if (movie) {
 					searchTitles = await getMovieSearchTitles(movie.id);
+					// If we only have a single title variant, refresh alternates from TMDB once.
+					if (searchTitles.length <= 1) {
+						await fetchAndStoreMovieAlternateTitles(movie.id, tmdbId);
+						searchTitles = await getMovieSearchTitles(movie.id);
+					}
 				}
 			} else {
 				const show = await db.query.series.findFirst({
@@ -134,6 +141,11 @@ export const GET: RequestHandler = async ({ url }) => {
 				});
 				if (show) {
 					searchTitles = await getSeriesSearchTitles(show.id);
+					// If we only have a single title variant, refresh alternates from TMDB once.
+					if (searchTitles.length <= 1) {
+						await fetchAndStoreSeriesAlternateTitles(show.id, tmdbId);
+						searchTitles = await getSeriesSearchTitles(show.id);
+					}
 				}
 			}
 			if (searchTitles && searchTitles.length > 0) {

@@ -240,19 +240,19 @@
 			{#each data.lists as list (list.id)}
 				<div class="card bg-base-100 shadow-xl">
 					<div class="card-body p-4 sm:p-6">
-							<div class="flex items-start justify-between gap-3">
-								<a
-									class="flex min-w-0 items-center gap-2 text-left hover:opacity-80"
-									href={`/smartlists/${list.id}`}
-									data-sveltekit-preload-data="hover"
-								>
-									{#if list.mediaType === 'movie'}
-										<Film class="h-5 w-5 shrink-0 text-primary" />
-									{:else}
-										<Tv class="h-5 w-5 shrink-0 text-secondary" />
-									{/if}
-									<h2 class="card-title min-w-0 truncate text-lg">{list.name}</h2>
-								</a>
+						<div class="flex items-start justify-between gap-3">
+							<a
+								class="flex min-w-0 items-center gap-2 text-left hover:opacity-80"
+								href={`/smartlists/${list.id}`}
+								data-sveltekit-preload-data="hover"
+							>
+								{#if list.mediaType === 'movie'}
+									<Film class="h-5 w-5 shrink-0 text-primary" />
+								{:else}
+									<Tv class="h-5 w-5 shrink-0 text-secondary" />
+								{/if}
+								<h2 class="card-title min-w-0 truncate text-lg">{list.name}</h2>
+							</a>
 							<input
 								type="checkbox"
 								class="toggle shrink-0 toggle-sm toggle-success"
@@ -311,72 +311,72 @@
 							</div>
 						</div>
 
-							<div class="mt-3 grid grid-cols-4 gap-2 sm:hidden">
-								<a
-									class="btn gap-1 btn-outline btn-sm"
-									href={`/smartlists/${list.id}`}
-									data-sveltekit-preload-data="hover"
-									title="View list"
-								>
-									<ExternalLink class="h-4 w-4" />
-									View
-								</a>
-								<button
-									class="btn gap-1 btn-outline btn-sm"
-									onclick={() => refreshList(list.id)}
-									disabled={refreshingIds.has(list.id)}
-									title="Refresh"
-								>
-									<RefreshCw class="h-4 w-4 {refreshingIds.has(list.id) ? 'animate-spin' : ''}" />
-								</button>
-								<a
-									class="btn gap-1 btn-outline btn-sm"
-									href={`/smartlists/${list.id}/edit`}
-									data-sveltekit-preload-data="hover"
-									title="Edit"
-								>
-									<Edit class="h-4 w-4" />
-									Edit
-								</a>
-								<button
-									class="btn gap-1 btn-outline btn-sm btn-error"
-									onclick={() => openDeleteModal(list)}
-									disabled={deletingIds.has(list.id)}
-									title="Delete"
+						<div class="mt-3 grid grid-cols-4 gap-2 sm:hidden">
+							<a
+								class="btn gap-1 btn-outline btn-sm"
+								href={`/smartlists/${list.id}`}
+								data-sveltekit-preload-data="hover"
+								title="View list"
+							>
+								<ExternalLink class="h-4 w-4" />
+								View
+							</a>
+							<button
+								class="btn gap-1 btn-outline btn-sm"
+								onclick={() => refreshList(list.id)}
+								disabled={refreshingIds.has(list.id)}
+								title="Refresh"
+							>
+								<RefreshCw class="h-4 w-4 {refreshingIds.has(list.id) ? 'animate-spin' : ''}" />
+							</button>
+							<a
+								class="btn gap-1 btn-outline btn-sm"
+								href={`/smartlists/${list.id}/edit`}
+								data-sveltekit-preload-data="hover"
+								title="Edit"
+							>
+								<Edit class="h-4 w-4" />
+								Edit
+							</a>
+							<button
+								class="btn gap-1 btn-outline btn-sm btn-error"
+								onclick={() => openDeleteModal(list)}
+								disabled={deletingIds.has(list.id)}
+								title="Delete"
 							>
 								<Trash2 class="h-4 w-4" />
 							</button>
 						</div>
 
-							<div class="mt-2 card-actions hidden justify-end sm:flex">
-								<a
-									class="btn btn-ghost btn-sm"
-									href={`/smartlists/${list.id}`}
-									data-sveltekit-preload-data="hover"
-									title="View list"
-								>
-									<ExternalLink class="h-4 w-4" />
-								</a>
-								<button
-									class="btn btn-ghost btn-sm"
-									onclick={() => refreshList(list.id)}
-									disabled={refreshingIds.has(list.id)}
-									title="Refresh"
+						<div class="mt-2 card-actions hidden justify-end sm:flex">
+							<a
+								class="btn btn-ghost btn-sm"
+								href={`/smartlists/${list.id}`}
+								data-sveltekit-preload-data="hover"
+								title="View list"
+							>
+								<ExternalLink class="h-4 w-4" />
+							</a>
+							<button
+								class="btn btn-ghost btn-sm"
+								onclick={() => refreshList(list.id)}
+								disabled={refreshingIds.has(list.id)}
+								title="Refresh"
 							>
 								<RefreshCw class="h-4 w-4 {refreshingIds.has(list.id) ? 'animate-spin' : ''}" />
 							</button>
-								<a
-									class="btn btn-ghost btn-sm"
-									href={`/smartlists/${list.id}/edit`}
-									data-sveltekit-preload-data="hover"
-									title="Edit"
-								>
-									<Edit class="h-4 w-4" />
-								</a>
-								<button
-									class="btn btn-ghost btn-sm btn-error"
-									onclick={() => openDeleteModal(list)}
-									disabled={deletingIds.has(list.id)}
+							<a
+								class="btn btn-ghost btn-sm"
+								href={`/smartlists/${list.id}/edit`}
+								data-sveltekit-preload-data="hover"
+								title="Edit"
+							>
+								<Edit class="h-4 w-4" />
+							</a>
+							<button
+								class="btn btn-ghost btn-sm btn-error"
+								onclick={() => openDeleteModal(list)}
+								disabled={deletingIds.has(list.id)}
 								title="Delete"
 							>
 								<Trash2 class="h-4 w-4" />
