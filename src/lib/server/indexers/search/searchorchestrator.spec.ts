@@ -245,6 +245,156 @@ describe('SearchOrchestrator.executeWithTiering', () => {
 		expect(captured[0].imdbId).toBe('tt1234567');
 		expect(captured[0].tvdbId).toBe(123456);
 	});
+
+	it('retries movie ID search without q/year before falling back to text', async () => {
+		const orchestrator = new SearchOrchestrator();
+		const captured: any[] = [];
+
+		const fakeIndexer = {
+			name: 'FakeIndexer',
+			capabilities: {
+				...mockCapabilities,
+				movieSearch: {
+					available: true,
+					supportedParams: ['q', 'imdbId']
+				}
+			},
+			search: async (criteria: any) => {
+				captured.push(criteria);
+
+				// First attempt: ID + q/year returns no results.
+				if (criteria.imdbId && criteria.query) {
+					return [];
+				}
+
+				// Second attempt: ID only returns a hit.
+				if (criteria.imdbId && !criteria.query) {
+					return [
+						{
+							guid: 'movie-id-only-result',
+							title: 'Now.You.See.Me.3.2025.1080p.WEB-DL',
+							indexerId: 'test-indexer',
+							indexerName: 'FakeIndexer',
+							downloadUrl: 'https://example.test/download',
+							detailsUrl: 'https://example.test/details',
+							protocol: 'usenet',
+							sourceProtocol: 'usenet',
+							size: 1024,
+							publishDate: new Date().toISOString(),
+							seeders: 0,
+							leechers: 0,
+							grabs: 0,
+							categories: [2000]
+						}
+					];
+				}
+
+				// Text fallback should not be needed in this case.
+				return [];
+			}
+		} as any;
+
+		const criteria = {
+			searchType: 'movie',
+			query: "Now You See Me: Now You Don't",
+			year: 2025,
+			imdbId: 'tt4712810'
+		} as any;
+
+		const result = await (orchestrator as any).executeWithTiering(fakeIndexer, criteria);
+
+		expect(result.searchMethod).toBe('id');
+		expect(result.releases).toHaveLength(1);
+		expect(captured).toHaveLength(2);
+		expect(captured[0].query).toBe("Now You See Me: Now You Don't");
+		expect(captured[0].year).toBe(2025);
+		expect(captured[1].query).toBeUndefined();
+		expect(captured[1].year).toBeUndefined();
+		expect(captured[1].imdbId).toBe('tt4712810');
+	});
+
+	it('supplements interactive movie ID results with text fallback variants', async () => {
+		const orchestrator = new SearchOrchestrator();
+		const captured: any[] = [];
+
+		const fakeIndexer = {
+			name: 'FakeIndexer',
+			capabilities: {
+				...mockCapabilities,
+				movieSearch: {
+					available: true,
+					supportedParams: ['q', 'imdbId']
+				},
+				searchFormats: {
+					episode: ['standard'],
+					movie: ['standard', 'noYear']
+				}
+			},
+			search: async (criteria: any) => {
+				captured.push(criteria);
+
+				// ID search succeeds first.
+				if (criteria.imdbId) {
+					return [
+						{
+							guid: 'id-result',
+							title: 'Now.You.See.Me.3.2025.1080p.WEB-DL',
+							indexerId: 'test-indexer',
+							indexerName: 'FakeIndexer',
+							downloadUrl: 'https://example.test/download/id',
+							detailsUrl: 'https://example.test/details/id',
+							protocol: 'usenet',
+							sourceProtocol: 'usenet',
+							size: 1024,
+							publishDate: new Date().toISOString(),
+							seeders: 0,
+							leechers: 0,
+							grabs: 0,
+							categories: [2000]
+						}
+					];
+				}
+
+				// Text variant returns a unique release.
+				return [
+					{
+						guid: 'text-result',
+						title: 'Now.You.See.Me.3.2025.2160p.BluRay.x265',
+						indexerId: 'test-indexer',
+						indexerName: 'FakeIndexer',
+						downloadUrl: 'https://example.test/download/text',
+						detailsUrl: 'https://example.test/details/text',
+						protocol: 'usenet',
+						sourceProtocol: 'usenet',
+						size: 2048,
+						publishDate: new Date().toISOString(),
+						seeders: 0,
+						leechers: 0,
+						grabs: 0,
+						categories: [2000]
+					}
+				];
+			}
+		} as any;
+
+		const criteria = {
+			searchType: 'movie',
+			searchSource: 'interactive',
+			query: "Now You See Me: Now You Don't",
+			year: 2025,
+			imdbId: 'tt4712810',
+			searchTitles: ["Now You See Me: Now You Don't", 'Now You See Me 3']
+		} as any;
+
+		const result = await (orchestrator as any).executeWithTiering(fakeIndexer, criteria);
+
+		expect(result.searchMethod).toBe('text');
+		expect(result.releases).toHaveLength(2);
+		expect(result.releases.some((r: any) => r.guid === 'id-result')).toBe(true);
+		expect(result.releases.some((r: any) => r.guid === 'text-result')).toBe(true);
+		expect(captured[0].imdbId).toBe('tt4712810');
+		expect(captured[1].imdbId).toBeUndefined();
+	});
 });
 
 describe('SearchOrchestrator.filterBySeasonEpisode', () => {
@@ -290,5 +440,50 @@ describe('SearchOrchestrator.filterBySeasonEpisode', () => {
 		expect(titles).toEqual(
 			['Smallville.S01.COMPLETE.1080p.BluRay', 'Smallville.S01E01.1080p.WEBRip'].sort()
 		);
+	});
+});
+
+describe('SearchOrchestrator.filterByIdOrTitleMatch', () => {
+	const orchestrator = new SearchOrchestrator();
+
+	it('rejects wrong-year movie releases even without searchTitles', () => {
+		const releases = [
+			{ title: 'Now.You.See.Me.2013.1080p.BluRay.x264', indexerName: 'FakeIndexer' },
+			{
+				title: 'Now.You.See.Me.Now.You.Dont.2025.1080p.WEB-DL.DDP5.1.H.265',
+				indexerName: 'FakeIndexer'
+			}
+		] as any[];
+
+		const criteria = {
+			searchType: 'movie',
+			query: "Now You See Me: Now You Don't",
+			imdbId: 'tt4712810',
+			tmdbId: 425274,
+			year: 2025
+		} as any;
+
+		const filtered = (orchestrator as any).filterByIdOrTitleMatch(releases, criteria);
+		const titles = filtered.map((r: any) => r.title);
+
+		expect(titles).toEqual(['Now.You.See.Me.Now.You.Dont.2025.1080p.WEB-DL.DDP5.1.H.265']);
+	});
+
+	it('keeps movie releases with unknown year when IDs are absent', () => {
+		const releases = [
+			{ title: 'Now.You.See.Me.Now.You.Dont.1080p.WEB-DL.REPACK', indexerName: 'FakeIndexer' }
+		] as any[];
+
+		const criteria = {
+			searchType: 'movie',
+			query: "Now You See Me: Now You Don't",
+			imdbId: 'tt4712810',
+			tmdbId: 425274,
+			year: 2025
+		} as any;
+
+		const filtered = (orchestrator as any).filterByIdOrTitleMatch(releases, criteria);
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].title).toBe('Now.You.See.Me.Now.You.Dont.1080p.WEB-DL.REPACK');
 	});
 });

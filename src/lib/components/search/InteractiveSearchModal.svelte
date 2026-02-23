@@ -522,7 +522,7 @@
 								{/if}
 								{#if meta.afterFiltering !== undefined}
 									<div class="flex justify-between">
-										<span>3. After season/category filter:</span>
+										<span>3. After relevance filters (season/category/ID/title/year):</span>
 										<span class="font-mono"
 											>{meta.afterFiltering}
 											{#if meta.afterDedup !== undefined && meta.afterFiltering < meta.afterDedup}

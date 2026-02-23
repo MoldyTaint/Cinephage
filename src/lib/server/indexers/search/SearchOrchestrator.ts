@@ -808,14 +808,60 @@ export class SearchOrchestrator {
 		// with incomplete ID mapping (common on some Newznab instances).
 		if (hasSearchableIds(criteria) && indexerSupportsIds) {
 			const idCriteria = createIdOnlyCriteria(criteria);
-			const idReleases = await indexer.search(idCriteria);
-
-			if (idReleases.length > 0) {
-				return { releases: idReleases, searchMethod: 'id' };
-			}
+			let idReleases = await indexer.search(idCriteria);
 
 			const hasTextFallbackSource =
 				!!criteria.query || !!(criteria.searchTitles && criteria.searchTitles.length > 0);
+
+			// Some Newznab providers over-constrain movie ID searches when q/year
+			// are present together. Retry once with IDs only before text fallback.
+			if (idReleases.length === 0 && isMovieSearch(criteria) && (criteria.query || criteria.year)) {
+				const movieIdOnlyCriteria = {
+					...criteria,
+					query: undefined,
+					year: undefined
+				};
+				const movieIdOnlyReleases = await indexer.search(movieIdOnlyCriteria);
+				if (movieIdOnlyReleases.length > 0) {
+					logger.debug('Movie ID retry without q/year returned results', {
+						indexer: indexer.name,
+						imdbId: criteria.imdbId,
+						tmdbId: criteria.tmdbId
+					});
+					idReleases = movieIdOnlyReleases;
+				}
+			}
+
+			if (idReleases.length > 0) {
+				// For interactive movie searches, supplement ID results with text variants.
+				// This matches NZBHydra-style behavior where text variants can surface
+				// additional releases even when ID lookup succeeds.
+				const shouldSupplementWithText =
+					isMovieSearch(criteria) &&
+					criteria.searchSource === 'interactive' &&
+					hasTextFallbackSource;
+				if (shouldSupplementWithText) {
+					const textReleases = await this.executeMultiTitleTextSearch(indexer, criteria);
+					if (textReleases.length > 0) {
+						const merged = [...idReleases];
+						const seenGuids = new Set(idReleases.map((r) => r.guid));
+						for (const release of textReleases) {
+							if (!seenGuids.has(release.guid)) {
+								seenGuids.add(release.guid);
+								merged.push(release);
+							}
+						}
+						logger.debug('Supplemented movie ID results with text fallback', {
+							indexer: indexer.name,
+							idResults: idReleases.length,
+							textResults: textReleases.length,
+							mergedResults: merged.length
+						});
+						return { releases: merged, searchMethod: 'text' };
+					}
+				}
+				return { releases: idReleases, searchMethod: 'id' };
+			}
 
 			if (!hasTextFallbackSource) {
 				return { releases: [], searchMethod: 'id' };
@@ -1421,6 +1467,14 @@ export class SearchOrchestrator {
 		const beforeCount = releases.length;
 
 		const filtered = releases.filter((release) => {
+			let parsed: ReturnType<typeof parseRelease> | undefined;
+			const getParsed = () => {
+				if (!parsed) {
+					parsed = parseRelease(release.title);
+				}
+				return parsed;
+			};
+
 			// PRIORITY 1: ID Matching (if both sides have IDs)
 
 			// TMDB ID check
@@ -1468,13 +1522,28 @@ export class SearchOrchestrator {
 				return true;
 			}
 
+			// For movies, enforce strict year matching whenever we can parse a year
+			// from the release title, even if title variants are unavailable.
+			if (isMovieSearch(criteria) && searchYear) {
+				const parsedRelease = getParsed();
+				if (parsedRelease.year && Math.abs(parsedRelease.year - searchYear) > 1) {
+					logger.debug('[SearchOrchestrator] Year mismatch - removing movie release', {
+						releaseTitle: release.title,
+						releaseYear: parsedRelease.year,
+						criteriaYear: searchYear,
+						indexer: release.indexerName
+					});
+					return false;
+				}
+			}
+
 			// PRIORITY 2: Title + Year Fallback (if no ID match possible)
 			if (hasSearchTitles && hasSearchYear) {
 				// Parse release title
-				const parsed = parseRelease(release.title);
+				const parsedRelease = getParsed();
 
 				// Check title similarity
-				const releaseName = this.normalizeForComparison(parsed.cleanTitle);
+				const releaseName = this.normalizeForComparison(parsedRelease.cleanTitle);
 				const titleMatch = criteria.searchTitles!.some((expectedTitle) => {
 					const expectedName = this.normalizeForComparison(expectedTitle);
 					const similarity = this.calculateTitleSimilarity(releaseName, expectedName);
@@ -1482,13 +1551,13 @@ export class SearchOrchestrator {
 				});
 
 				// Check year (allow 1 year difference for release/production year differences)
-				const yearMatch = parsed.year && Math.abs(parsed.year - searchYear!) <= 1;
+				const yearMatch = parsedRelease.year && Math.abs(parsedRelease.year - searchYear!) <= 1;
 
 				if (!titleMatch || !yearMatch) {
 					logger.debug('[SearchOrchestrator] Title/Year mismatch - removing release', {
 						releaseTitle: release.title,
-						parsedTitle: parsed.cleanTitle,
-						parsedYear: parsed.year,
+						parsedTitle: parsedRelease.cleanTitle,
+						parsedYear: parsedRelease.year,
 						criteriaYear: searchYear,
 						titleMatch,
 						yearMatch
