@@ -25,17 +25,10 @@
 	let confirmDeleteOpen = $state(false);
 	let deleteLoading = $state(false);
 	let deleteTarget = $state<{ id: string; name: string } | null>(null);
+	type SmartListRow = (typeof data.lists)[number];
 
 	function navigateToCreate() {
 		goto('/smartlists/new');
-	}
-
-	function navigateToEdit(listId: string) {
-		goto(`/smartlists/${listId}/edit`);
-	}
-
-	function navigateToDetail(listId: string) {
-		goto(`/smartlists/${listId}`);
 	}
 
 	async function refreshList(id: string) {
@@ -116,6 +109,90 @@
 		if (diffDays < 7) return `${diffDays}d ago`;
 		return date.toLocaleDateString();
 	}
+
+	function getSortLabel(sortBy: string | null | undefined): string {
+		switch (sortBy) {
+			case 'popularity.desc':
+				return 'most popular first';
+			case 'popularity.asc':
+				return 'least popular first';
+			case 'vote_average.desc':
+				return 'highest rated first';
+			case 'vote_average.asc':
+				return 'lowest rated first';
+			case 'primary_release_date.desc':
+			case 'first_air_date.desc':
+				return 'newest first';
+			case 'primary_release_date.asc':
+			case 'first_air_date.asc':
+				return 'oldest first';
+			case 'title.asc':
+				return 'title A-Z';
+			case 'title.desc':
+				return 'title Z-A';
+			default:
+				return 'custom order';
+		}
+	}
+
+	function getSourceLabel(list: SmartListRow): string {
+		if (list.listSourceType === 'external-json') {
+			if (list.presetProvider === 'imdb-list') return 'IMDb';
+			if (list.presetProvider === 'tmdb-list') return 'TMDB list';
+			if (list.presetProvider === 'stevenlu') return 'StevenLu';
+			return 'an external source';
+		}
+		if (list.listSourceType === 'trakt-list') return 'Trakt';
+		if (list.listSourceType === 'custom-manual') return 'manual curation';
+		return 'TMDB Discover';
+	}
+
+	function getDisplayDescription(list: SmartListRow): string {
+		const explicit = list.description?.trim();
+		if (explicit) return explicit;
+
+		const mediaLabel = list.mediaType === 'movie' ? 'movies' : 'TV shows';
+		const autoAddSuffix = list.autoAddBehavior !== 'disabled' ? ' Auto-add is enabled.' : '';
+
+		if (list.listSourceType === 'tmdb-discover') {
+			const filters = (list.filters ?? {}) as Record<string, unknown>;
+			const hints: string[] = [];
+			const withGenres = Array.isArray(filters.withGenres) ? filters.withGenres.length : 0;
+			const withKeywords = Array.isArray(filters.withKeywords) ? filters.withKeywords.length : 0;
+			const yearMin = typeof filters.yearMin === 'number' ? filters.yearMin : undefined;
+			const yearMax = typeof filters.yearMax === 'number' ? filters.yearMax : undefined;
+			const voteAverageMin =
+				typeof filters.voteAverageMin === 'number' ? filters.voteAverageMin : undefined;
+
+			if (withGenres > 0) hints.push(`${withGenres} genre filter${withGenres === 1 ? '' : 's'}`);
+			if (withKeywords > 0)
+				hints.push(`${withKeywords} keyword filter${withKeywords === 1 ? '' : 's'}`);
+			if (yearMin || yearMax) {
+				const min = yearMin ?? 'any';
+				const max = yearMax ?? 'any';
+				hints.push(`years ${min}-${max}`);
+			}
+			if (voteAverageMin !== undefined) hints.push(`rated ${voteAverageMin}+`);
+			if (list.excludeInLibrary) hints.push('excluding items already in library');
+
+			const hintText = hints.length > 0 ? ` ${hints.slice(0, 2).join(', ')}.` : '.';
+			return `TMDB Discover ${mediaLabel}, sorted ${getSortLabel(list.sortBy)}.${hintText}${autoAddSuffix}`;
+		}
+
+		if (list.listSourceType === 'external-json') {
+			return `Synced from ${getSourceLabel(list)} for ${mediaLabel}.${autoAddSuffix}`;
+		}
+
+		if (list.listSourceType === 'trakt-list') {
+			return `Synced from Trakt for ${mediaLabel}.${autoAddSuffix}`;
+		}
+
+		if (list.listSourceType === 'custom-manual') {
+			return `Manually curated ${mediaLabel}.${autoAddSuffix}`;
+		}
+
+		return `Dynamic ${mediaLabel} list.${autoAddSuffix}`;
+	}
 </script>
 
 <svelte:head>
@@ -163,18 +240,19 @@
 			{#each data.lists as list (list.id)}
 				<div class="card bg-base-100 shadow-xl">
 					<div class="card-body p-4 sm:p-6">
-						<div class="flex items-start justify-between gap-3">
-							<button
-								class="flex min-w-0 items-center gap-2 text-left hover:opacity-80"
-								onclick={() => navigateToDetail(list.id)}
-							>
-								{#if list.mediaType === 'movie'}
-									<Film class="h-5 w-5 shrink-0 text-primary" />
-								{:else}
-									<Tv class="h-5 w-5 shrink-0 text-secondary" />
-								{/if}
-								<h2 class="card-title min-w-0 truncate text-lg">{list.name}</h2>
-							</button>
+							<div class="flex items-start justify-between gap-3">
+								<a
+									class="flex min-w-0 items-center gap-2 text-left hover:opacity-80"
+									href={`/smartlists/${list.id}`}
+									data-sveltekit-preload-data="hover"
+								>
+									{#if list.mediaType === 'movie'}
+										<Film class="h-5 w-5 shrink-0 text-primary" />
+									{:else}
+										<Tv class="h-5 w-5 shrink-0 text-secondary" />
+									{/if}
+									<h2 class="card-title min-w-0 truncate text-lg">{list.name}</h2>
+								</a>
 							<input
 								type="checkbox"
 								class="toggle shrink-0 toggle-sm toggle-success"
@@ -184,11 +262,9 @@
 						</div>
 
 						<div class="h-10">
-							{#if list.description}
-								<p class="line-clamp-2 text-sm leading-5 text-base-content/70">
-									{list.description}
-								</p>
-							{/if}
+							<p class="line-clamp-2 text-sm leading-5 text-base-content/70">
+								{getDisplayDescription(list)}
+							</p>
 						</div>
 
 						<div class="mt-2 flex flex-wrap gap-1.5 sm:gap-2">
@@ -235,68 +311,72 @@
 							</div>
 						</div>
 
-						<div class="mt-3 grid grid-cols-4 gap-2 sm:hidden">
-							<button
-								class="btn gap-1 btn-outline btn-sm"
-								onclick={() => navigateToDetail(list.id)}
-								title="View list"
-							>
-								<ExternalLink class="h-4 w-4" />
-								View
-							</button>
-							<button
-								class="btn gap-1 btn-outline btn-sm"
-								onclick={() => refreshList(list.id)}
-								disabled={refreshingIds.has(list.id)}
-								title="Refresh"
-							>
-								<RefreshCw class="h-4 w-4 {refreshingIds.has(list.id) ? 'animate-spin' : ''}" />
-							</button>
-							<button
-								class="btn gap-1 btn-outline btn-sm"
-								onclick={() => navigateToEdit(list.id)}
-								title="Edit"
-							>
-								<Edit class="h-4 w-4" />
-								Edit
-							</button>
-							<button
-								class="btn gap-1 btn-outline btn-sm btn-error"
-								onclick={() => openDeleteModal(list)}
-								disabled={deletingIds.has(list.id)}
-								title="Delete"
+							<div class="mt-3 grid grid-cols-4 gap-2 sm:hidden">
+								<a
+									class="btn gap-1 btn-outline btn-sm"
+									href={`/smartlists/${list.id}`}
+									data-sveltekit-preload-data="hover"
+									title="View list"
+								>
+									<ExternalLink class="h-4 w-4" />
+									View
+								</a>
+								<button
+									class="btn gap-1 btn-outline btn-sm"
+									onclick={() => refreshList(list.id)}
+									disabled={refreshingIds.has(list.id)}
+									title="Refresh"
+								>
+									<RefreshCw class="h-4 w-4 {refreshingIds.has(list.id) ? 'animate-spin' : ''}" />
+								</button>
+								<a
+									class="btn gap-1 btn-outline btn-sm"
+									href={`/smartlists/${list.id}/edit`}
+									data-sveltekit-preload-data="hover"
+									title="Edit"
+								>
+									<Edit class="h-4 w-4" />
+									Edit
+								</a>
+								<button
+									class="btn gap-1 btn-outline btn-sm btn-error"
+									onclick={() => openDeleteModal(list)}
+									disabled={deletingIds.has(list.id)}
+									title="Delete"
 							>
 								<Trash2 class="h-4 w-4" />
 							</button>
 						</div>
 
-						<div class="mt-2 card-actions hidden justify-end sm:flex">
-							<button
-								class="btn btn-ghost btn-sm"
-								onclick={() => navigateToDetail(list.id)}
-								title="View list"
-							>
-								<ExternalLink class="h-4 w-4" />
-							</button>
-							<button
-								class="btn btn-ghost btn-sm"
-								onclick={() => refreshList(list.id)}
-								disabled={refreshingIds.has(list.id)}
-								title="Refresh"
+							<div class="mt-2 card-actions hidden justify-end sm:flex">
+								<a
+									class="btn btn-ghost btn-sm"
+									href={`/smartlists/${list.id}`}
+									data-sveltekit-preload-data="hover"
+									title="View list"
+								>
+									<ExternalLink class="h-4 w-4" />
+								</a>
+								<button
+									class="btn btn-ghost btn-sm"
+									onclick={() => refreshList(list.id)}
+									disabled={refreshingIds.has(list.id)}
+									title="Refresh"
 							>
 								<RefreshCw class="h-4 w-4 {refreshingIds.has(list.id) ? 'animate-spin' : ''}" />
 							</button>
-							<button
-								class="btn btn-ghost btn-sm"
-								onclick={() => navigateToEdit(list.id)}
-								title="Edit"
-							>
-								<Edit class="h-4 w-4" />
-							</button>
-							<button
-								class="btn btn-ghost btn-sm btn-error"
-								onclick={() => openDeleteModal(list)}
-								disabled={deletingIds.has(list.id)}
+								<a
+									class="btn btn-ghost btn-sm"
+									href={`/smartlists/${list.id}/edit`}
+									data-sveltekit-preload-data="hover"
+									title="Edit"
+								>
+									<Edit class="h-4 w-4" />
+								</a>
+								<button
+									class="btn btn-ghost btn-sm btn-error"
+									onclick={() => openDeleteModal(list)}
+									disabled={deletingIds.has(list.id)}
 								title="Delete"
 							>
 								<Trash2 class="h-4 w-4" />

@@ -400,7 +400,7 @@ export function yamlToUnifiedDefinition(
 			label: s.label,
 			default: s.default,
 			options: s.options,
-			required: s.type === 'password' || s.type === 'text'
+			required: s.required ?? (s.type === 'password' || s.type === 'text')
 		}));
 
 	// If no settings but login exists, add defaults

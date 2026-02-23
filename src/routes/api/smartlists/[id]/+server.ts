@@ -108,6 +108,12 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 		const data = updateSchema.parse(body);
 		const normalizedData = {
 			...data,
+			description:
+				data.description === undefined
+					? undefined
+					: data.description === null
+						? null
+						: data.description.trim() || null,
 			rootFolderId:
 				data.rootFolderId === undefined
 					? undefined

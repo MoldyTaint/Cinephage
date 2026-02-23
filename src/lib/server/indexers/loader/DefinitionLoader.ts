@@ -137,6 +137,7 @@ export class DefinitionLoader {
 					type: string;
 					label?: string;
 					default?: string | boolean | number;
+					required?: boolean;
 					options?: Record<string, string>;
 				}) => ({
 					name: s.name,
@@ -144,7 +145,7 @@ export class DefinitionLoader {
 					label: s.label,
 					default: s.default,
 					options: s.options,
-					required: s.type === 'password' || s.type === 'text'
+					required: s.required ?? (s.type === 'password' || s.type === 'text')
 				})
 			);
 

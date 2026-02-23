@@ -1,0 +1,167 @@
+---
+id: torznab
+name: Torznab
+description: Connect to any Torznab-compatible API endpoint you host or control (e.g., your own Prowlarr/Jackett instance)
+type: semi-private
+language: en-US
+encoding: UTF-8
+requestdelay: 0.1
+
+links:
+  - http://localhost:9696/api
+
+settings:
+  - name: apikey
+    type: password
+    label: API Key
+    required: false
+
+caps:
+  modes:
+    search: [q]
+    movie-search: [q, imdbid, tmdbid]
+    tv-search: [q, imdbid, tvdbid, season, ep]
+  categories:
+    '2000': Movies
+    '2010': Movies/Foreign
+    '2020': Movies/Other
+    '2030': Movies/SD
+    '2040': Movies/HD
+    '2045': Movies/UHD
+    '2050': Movies/BluRay
+    '2060': Movies/3D
+    '5000': TV
+    '5010': TV/WEB-DL
+    '5020': TV/Foreign
+    '5030': TV/SD
+    '5040': TV/HD
+    '5045': TV/UHD
+    '5050': TV/Other
+    '5060': TV/Sport
+    '5070': TV/Anime
+    '5080': TV/Documentary
+  categorymappings:
+    - id: '2000'
+      cat: Movies
+    - id: '5000'
+      cat: TV
+      default: true
+
+search:
+  paths:
+    # Movie ID search
+    - path: ''
+      method: get
+      categories: [Movies]
+      inputs:
+        t: movie
+        imdbid: '{{ .Query.IMDBID }}'
+        tmdbid: '{{ .Query.TMDBID }}'
+        q: '{{ .Keywords }}'
+        cat: '{{ .Categories }}'
+        apikey: '{{ .Config.apikey }}'
+        limit: '100'
+
+    # Movie fallback (some Torznab endpoints return more complete results with generic search)
+    - path: ''
+      method: get
+      categories: [Movies]
+      inputs:
+        t: search
+        q: '{{ .Keywords }}'
+        cat: '{{ .Categories }}'
+        apikey: '{{ .Config.apikey }}'
+        limit: '100'
+
+    # TV ID search
+    - path: ''
+      method: get
+      categories: [TV]
+      inputs:
+        t: tvsearch
+        imdbid: '{{ .Query.IMDBID }}'
+        tvdbid: '{{ .Query.TVDBID }}'
+        season: '{{ .Query.Season }}'
+        ep: '{{ .Query.Ep }}'
+        q: '{{ .Keywords }}'
+        cat: '{{ .Categories }}'
+        apikey: '{{ .Config.apikey }}'
+        limit: '100'
+
+    # TV fallback (generic search with TV categories)
+    - path: ''
+      method: get
+      categories: [TV]
+      inputs:
+        t: search
+        q: '{{ .Keywords }}'
+        cat: '{{ .Categories }}'
+        apikey: '{{ .Config.apikey }}'
+        limit: '100'
+
+    # General search
+    - path: ''
+      method: get
+      inputs:
+        t: search
+        q: '{{ .Keywords }}'
+        apikey: '{{ .Config.apikey }}'
+        limit: '100'
+
+  response:
+    type: xml
+
+  rows:
+    selector: rss channel item
+
+  fields:
+    title:
+      selector: title
+    details:
+      selector: comments
+      optional: true
+    download:
+      selector: link
+    guid:
+      selector: guid
+      optional: true
+    date:
+      selector: pubDate
+      filters:
+        - name: dateparse
+          args: 'Mon, 02 Jan 2006 15:04:05 -0700'
+    size:
+      selector: enclosure
+      attribute: length
+      optional: true
+    seeders:
+      selector: "torznab|attr[name='seeders']"
+      attribute: value
+      optional: true
+    leechers:
+      selector: "torznab|attr[name='peers']"
+      attribute: value
+      optional: true
+    infohash:
+      selector: "torznab|attr[name='infohash']"
+      attribute: value
+      optional: true
+    magnet:
+      selector: "torznab|attr[name='magneturl']"
+      attribute: value
+      optional: true
+    category:
+      selector: category
+      optional: true
+    imdbid:
+      selector: "torznab|attr[name='imdb']"
+      attribute: value
+      optional: true
+    tmdbid:
+      selector: "torznab|attr[name='tmdbid']"
+      attribute: value
+      optional: true
+    tvdbid:
+      selector: "torznab|attr[name='tvdbid']"
+      attribute: value
+      optional: true

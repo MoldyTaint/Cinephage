@@ -18,7 +18,7 @@ import { getNewznabCapabilitiesProvider } from '../newznab/NewznabCapabilitiesPr
 const log = createChildLogger({ module: 'YamlIndexerFactory' });
 
 /** Definition IDs that use the Newznab protocol */
-const NEWZNAB_DEFINITIONS = ['newznab'];
+const NEWZNAB_DEFINITIONS = ['newznab', 'torznab'];
 
 /**
  * Factory for creating YAML-based indexer instances.
@@ -93,15 +93,16 @@ export class YamlIndexerFactory implements IIndexerFactory {
 			};
 		}
 
-		// For Newznab, fetch live capabilities from the indexer's /api?t=caps endpoint
-		// This allows us to filter out unsupported search params (e.g., tmdbid if not supported)
+		// For Newznab/Torznab, fetch live capabilities from the indexer's caps endpoint.
+		// This allows us to filter out unsupported search params (e.g., tmdbid if not supported).
 		let liveCapabilities;
 		if (NEWZNAB_DEFINITIONS.includes(config.definitionId)) {
 			try {
 				const provider = getNewznabCapabilitiesProvider();
-				const apiKey = cleanSettings?.apikey as string | undefined;
+				const rawApiKey = cleanSettings?.apikey;
+				const apiKey = typeof rawApiKey === 'string' ? rawApiKey : undefined;
 				liveCapabilities = await provider.getCapabilities(config.baseUrl, apiKey?.trim());
-				log.info('Fetched Newznab capabilities', {
+				log.info('Fetched Newznab/Torznab capabilities', {
 					indexerId: config.id,
 					baseUrl: config.baseUrl,
 					movieSearch: liveCapabilities.searching.movieSearch.supportedParams,
@@ -109,7 +110,7 @@ export class YamlIndexerFactory implements IIndexerFactory {
 				});
 			} catch (error) {
 				// Log but don't fail - indexer will work, just without param filtering
-				log.warn('Failed to fetch Newznab capabilities, using defaults', {
+				log.warn('Failed to fetch Newznab/Torznab capabilities, using defaults', {
 					indexerId: config.id,
 					error: error instanceof Error ? error.message : String(error)
 				});

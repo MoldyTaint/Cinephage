@@ -105,6 +105,17 @@ export class NewznabCapabilitiesProvider {
 	}
 
 	/**
+	 * Strictly validate a Newznab/Torznab capabilities endpoint.
+	 * Unlike getCapabilities(), this throws on errors instead of returning defaults.
+	 */
+	async validateCapabilitiesEndpoint(
+		baseUrl: string,
+		apiKey?: string
+	): Promise<NewznabCapabilities> {
+		return this.fetchCapabilities(baseUrl, apiKey?.trim());
+	}
+
+	/**
 	 * Clear cached capabilities for an indexer.
 	 */
 	clearCache(baseUrl: string, apiKey?: string): void {
@@ -127,13 +138,19 @@ export class NewznabCapabilitiesProvider {
 	private async fetchCapabilities(baseUrl: string, apiKey?: string): Promise<NewznabCapabilities> {
 		// Build URL
 		const url = new URL(baseUrl);
-		// Ensure we're hitting the API endpoint
-		if (!url.pathname.endsWith('/api')) {
-			url.pathname = url.pathname.replace(/\/?$/, '/api');
+		const normalizedPath = url.pathname.replace(/\/+$/, '');
+		const lowerPath = normalizedPath.toLowerCase();
+		// Torznab-style endpoints can be full paths ending in /torznab.
+		// For plain indexer host URLs, append /api to match Newznab conventions.
+		const isTorznabEndpoint =
+			lowerPath.endsWith('/torznab') || lowerPath.includes('/results/torznab');
+		if (!isTorznabEndpoint && !lowerPath.endsWith('/api')) {
+			url.pathname = normalizedPath ? `${normalizedPath}/api` : '/api';
 		}
 		url.searchParams.set('t', 'caps');
-		if (apiKey) {
-			url.searchParams.set('apikey', apiKey);
+		const normalizedApiKey = apiKey?.trim();
+		if (normalizedApiKey) {
+			url.searchParams.set('apikey', normalizedApiKey);
 		}
 
 		logger.debug('[Newznab] Fetching capabilities', {
@@ -153,7 +170,17 @@ export class NewznabCapabilitiesProvider {
 			);
 		}
 
+		const contentType = (response.headers.get('content-type') ?? '').toLowerCase();
+		if (contentType.includes('text/html')) {
+			throw new CapabilitiesFetchError(
+				'Indexer returned HTML instead of XML from the caps endpoint'
+			);
+		}
+
 		const xml = await response.text();
+		if (!xml.trim()) {
+			throw new CapabilitiesFetchError('Indexer returned an empty caps response');
+		}
 		return this.parseCapabilities(xml);
 	}
 
@@ -162,6 +189,12 @@ export class NewznabCapabilitiesProvider {
 	 */
 	private parseCapabilities(xml: string): NewznabCapabilities {
 		const $ = cheerio.load(xml, { xmlMode: true });
+
+		if ($('caps').length === 0) {
+			throw new CapabilitiesFetchError(
+				'Invalid capabilities response: missing <caps> root element'
+			);
+		}
 
 		// Check for error response
 		const errorEl = $('error');

@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getIndexerManager } from '$lib/server/indexers/IndexerManager';
+import { getNewznabCapabilitiesProvider } from '$lib/server/indexers/newznab/NewznabCapabilitiesProvider';
 import { indexerTestSchema } from '$lib/validation/schemas';
 
 function redactSensitiveDetails(message: string): string {
@@ -17,7 +18,7 @@ function toFriendlyTestError(rawMessage: string): string {
 	const lower = message.toLowerCase();
 
 	// Provider-reported API errors (e.g. Newznab XML <error .../>)
-	const apiErrorMatch = message.match(/Indexer API error\s*([0-9]+)?\s*:?\s*(.+)/i);
+	const apiErrorMatch = message.match(/Indexer(?: API)? error\s*([0-9]+)?\s*:?\s*(.+)/i);
 	if (apiErrorMatch) {
 		const code = apiErrorMatch[1];
 		const description = apiErrorMatch[2]?.trim() ?? 'Unknown API error';
@@ -68,6 +69,14 @@ function toFriendlyTestError(rawMessage: string): string {
 		return 'Connection blocked by Cloudflare protection.';
 	}
 
+	if (lower.includes('returned html instead of xml')) {
+		return 'Endpoint returned HTML instead of XML. Verify you are using the Torznab/Newznab API URL.';
+	}
+
+	if (lower.includes('missing <caps>')) {
+		return 'Endpoint is reachable but did not return a valid Torznab/Newznab caps response.';
+	}
+
 	if (lower.includes('no test request could be generated')) {
 		return 'Unable to build a valid test request for this indexer definition.';
 	}
@@ -88,6 +97,16 @@ function toFriendlyTestError(rawMessage: string): string {
 	}
 
 	return sanitized.length > 180 ? `${sanitized.slice(0, 177)}...` : sanitized;
+}
+
+function extractApiKey(
+	settings: Record<string, string | number | boolean> | null | undefined
+): string | undefined {
+	if (!settings) return undefined;
+	const candidate = settings.apikey ?? settings.apiKey ?? settings.api_key;
+	if (typeof candidate !== 'string') return undefined;
+	const trimmed = candidate.trim();
+	return trimmed.length > 0 ? trimmed : undefined;
 }
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -146,6 +165,14 @@ export const POST: RequestHandler = async ({ request }) => {
 	try {
 		// Get protocol from YAML definition
 		const protocol = definition.protocol;
+		const settings = (validated.settings ?? {}) as Record<string, string | number | boolean>;
+
+		// Torznab validation uses the canonical caps endpoint.
+		// API key is optional and only included when provided.
+		if (validated.definitionId === 'torznab') {
+			const provider = getNewznabCapabilitiesProvider();
+			await provider.validateCapabilitiesEndpoint(validated.baseUrl, extractApiKey(settings));
+		}
 
 		await manager.testIndexer(
 			{
@@ -156,7 +183,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				enabled: true,
 				priority: 25,
 				protocol,
-				settings: (validated.settings ?? {}) as Record<string, string>,
+				settings: settings as Record<string, string>,
 
 				// Default values for test (not needed for connectivity test)
 				enableAutomaticSearch: true,

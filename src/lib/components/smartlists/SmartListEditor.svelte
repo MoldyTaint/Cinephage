@@ -386,9 +386,10 @@
 		saving = true;
 
 		try {
+			const normalizedDescription = description.trim();
 			const body = {
 				name,
-				description: description || undefined,
+				description: list ? normalizedDescription || null : normalizedDescription || undefined,
 				mediaType,
 				listSourceType,
 				externalSourceConfig,

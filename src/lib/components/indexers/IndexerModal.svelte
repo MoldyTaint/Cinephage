@@ -175,14 +175,6 @@
 		}
 	});
 
-	// Update defaults when definition changes in add mode
-	$effect(() => {
-		if (mode === 'add' && selectedDefinition) {
-			if (!url) url = selectedDefinition.siteUrl ?? '';
-			if (!name) name = selectedDefinition.name;
-		}
-	});
-
 	function handleDefinitionSelect(defId: string) {
 		selectedDefinitionId = defId;
 		const def = definitions.find((d) => d.id === defId);

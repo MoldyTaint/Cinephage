@@ -67,6 +67,7 @@ export const settingsFieldSchema = z.object({
 	]),
 	label: z.string().optional(), // Optional for info_* types which often lack labels
 	default: z.union([z.string(), z.boolean(), z.number()]).optional(),
+	required: z.boolean().optional(),
 	defaults: z.array(z.string()).optional(),
 	options: z.record(z.string(), z.string()).optional()
 });
