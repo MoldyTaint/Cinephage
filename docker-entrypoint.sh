@@ -1,7 +1,6 @@
 #!/bin/bash
 set -e
 
-# Ensure we're in the app directory
 cd /app
 
 CONFIG_ROOT="/config"
@@ -49,6 +48,12 @@ EXTERNAL_LISTS_CUSTOM_PRESETS_PATH="${EXTERNAL_LISTS_CUSTOM_PRESETS_PATH:-${EXTE
 export DATA_DIR LOG_DIR INDEXER_DEFINITIONS_PATH EXTERNAL_LISTS_PRESETS_PATH \
   INDEXER_CUSTOM_DEFINITIONS_PATH EXTERNAL_LISTS_CUSTOM_PRESETS_PATH
 
+# camoufox-js resolves install path from os.homedir(), so force HOME into /config/cache
+HOME="${CONFIG_ROOT}/cache/home"
+export HOME
+CAMOUFOX_CACHE_DIR="${HOME}/.cache/camoufox"
+export CAMOUFOX_PATH="$CAMOUFOX_CACHE_DIR"
+
 has_contents() {
   [ -d "$1" ] && [ -n "$(ls -A "$1" 2>/dev/null)" ]
 }
@@ -78,23 +83,29 @@ migrate_dir() {
   fi
 }
 
-# Optional UID/GID remap for non-standard hosts
 if [ "$(id -u)" = "0" ] && [ -z "${CINEPHAGE_REEXEC:-}" ]; then
   TARGET_UID="${PUID:-1000}"
   TARGET_GID="${PGID:-1000}"
-  
+
   echo "Configuring runtime UID/GID: ${TARGET_UID}:${TARGET_GID}"
-  
-  if [ "$TARGET_GID" != "$(id -g node)" ]; then
-    groupmod -o -g "$TARGET_GID" node
+
+  # Keep startup deterministic and avoid mutating system users/groups.
+  # We run as numeric UID:GID with gosu instead of editing /etc/passwd.
+  if ! [[ "$TARGET_UID" =~ ^[0-9]+$ ]] || ! [[ "$TARGET_GID" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: PUID and PGID must be numeric values."
+    echo "  Received: PUID='${TARGET_UID}', PGID='${TARGET_GID}'"
+    exit 1
   fi
-  if [ "$TARGET_UID" != "$(id -u node)" ]; then
-    usermod -o -u "$TARGET_UID" -g "$TARGET_GID" node
-  fi
-  
-  # Create known critical directories as root BEFORE dropping privileges
-  mkdir -p "$DATA_DIR" "$LOG_DIR" "$INDEXER_DEFINITIONS_PATH" "$EXTERNAL_LISTS_PRESETS_PATH" \
-    "$INDEXER_CUSTOM_DEFINITIONS_PATH" "$EXTERNAL_LISTS_CUSTOM_PRESETS_PATH" /home/node/.cache
+
+  # Create all necessary directories before dropping privileges
+  mkdir -p \
+    "$DATA_DIR" \
+    "$LOG_DIR" \
+    "$INDEXER_DEFINITIONS_PATH" \
+    "$EXTERNAL_LISTS_PRESETS_PATH" \
+    "$INDEXER_CUSTOM_DEFINITIONS_PATH" \
+    "$EXTERNAL_LISTS_CUSTOM_PRESETS_PATH" \
+    "$CAMOUFOX_CACHE_DIR"
 
   if [ "$CONFIG_MOUNTED" = "1" ]; then
     migrate_dir "$LEGACY_DATA_DIR" "$DATA_DIR" "data"
@@ -104,15 +115,15 @@ if [ "$(id -u)" = "0" ] && [ -z "${CINEPHAGE_REEXEC:-}" ]; then
     echo "Mount ${CONFIG_ROOT} and keep legacy mounts for one run to migrate."
   fi
 
-  # Fix ownership on /config and /home/node/.cache to match the runtime UID/GID
-  # This covers bind mounts for config/data/logs and cached browser downloads.
   echo "Setting ownership on application directories..."
   chown -R "$TARGET_UID:$TARGET_GID" "$CONFIG_ROOT" 2>/dev/null || true
-  chown -R "$TARGET_UID:$TARGET_GID" "$DATA_DIR" "$LOG_DIR" 2>/dev/null || true
-  chown -R "$TARGET_UID:$TARGET_GID" /home/node/.cache 2>/dev/null || true
-  
+  # Exclude node_modules — owned by root, never written to at runtime,
+  # and walking it on every boot adds meaningful startup latency
+  find /app -mindepth 1 -maxdepth 1 -not -name 'node_modules' \
+    -exec chown -R "$TARGET_UID:$TARGET_GID" {} +
+
   export CINEPHAGE_REEXEC=1
-  exec gosu node "$0" "$@"
+  exec gosu "${TARGET_UID}:${TARGET_GID}" "$0" "$@"
 fi
 
 if [ "$(id -u)" != "0" ] && [ -z "${CINEPHAGE_REEXEC:-}" ] && [ "$CONFIG_MOUNTED" = "1" ]; then
@@ -122,13 +133,10 @@ fi
 
 echo "Running as UID=$(id -u) GID=$(id -g)"
 
-# Verify write access to critical directories
-# This catches UID/GID mismatches early with helpful error messages
 check_permissions() {
   local dir="$1"
   local name="$2"
-  
-  # Try to create directory if it doesn't exist
+
   if [ ! -d "$dir" ]; then
     if ! mkdir -p "$dir" 2>/dev/null; then
       echo "ERROR: Cannot create $name directory at $dir"
@@ -138,13 +146,11 @@ check_permissions() {
       echo "To fix this, ensure the host directory has correct ownership:"
       echo "  sudo chown -R $(id -u):$(id -g) $(dirname "$dir")"
       echo ""
-      echo "Or set PUID and PGID in your .env file to match"
-      echo "your host user (run 'id -u' and 'id -g' to find your IDs)."
+      echo "Or set PUID and PGID to match your host user ('id -u' and 'id -g')."
       exit 1
     fi
   fi
-  
-  # Verify we can write to the directory
+
   if ! touch "$dir/.write-test" 2>/dev/null; then
     echo "ERROR: Cannot write to $name directory at $dir"
     echo ""
@@ -154,14 +160,12 @@ check_permissions() {
     echo "To fix this, update the host directory ownership:"
     echo "  sudo chown -R $(id -u):$(id -g) $dir"
     echo ""
-    echo "Or set PUID and PGID in your .env file to match"
-    echo "your host user (run 'id -u' and 'id -g' to find your IDs)."
+    echo "Or set PUID and PGID to match your host user ('id -u' and 'id -g')."
     exit 1
   fi
   rm -f "$dir/.write-test"
 }
 
-# Check critical directories before proceeding
 echo "Checking directory permissions..."
 check_permissions "$DATA_DIR" "data"
 check_permissions "$LOG_DIR" "logs"
@@ -169,7 +173,6 @@ check_permissions "$INDEXER_DEFINITIONS_PATH" "indexer definitions"
 check_permissions "$EXTERNAL_LISTS_PRESETS_PATH" "external list presets"
 echo "Directory permissions OK"
 
-# Sync bundled data into DATA_DIR
 sync_bundled_data() {
   local src="$1"
   local dest="$2"
@@ -189,27 +192,23 @@ sync_bundled_data() {
   fi
 }
 
-# Sync only whitelisted bundled data (avoid touching DB/logs)
 sync_bundled_data "$BUNDLED_DATA_DIR/indexers" "$DATA_DIR/indexers" "indexers"
 sync_bundled_data "$BUNDLED_DATA_DIR/external-lists" "$DATA_DIR/external-lists" "external lists"
 
-# Ensure custom folders exist for user-defined overrides
 mkdir -p "$INDEXER_CUSTOM_DEFINITIONS_PATH" "$EXTERNAL_LISTS_CUSTOM_PRESETS_PATH"
 
-# Download Camoufox browser if not already present
-# This is done at runtime to reduce image size and allow updates
-CAMOUFOX_CACHE_DIR="/home/node/.cache/camoufox"
+# Download Camoufox into HOME-backed cache under /config so it persists across container recreates
 CAMOUFOX_MARKER="$CAMOUFOX_CACHE_DIR/version.json"
 
 if [ ! -f "$CAMOUFOX_MARKER" ]; then
   echo "Downloading Camoufox (first run only, ~80MB)..."
   mkdir -p "$CAMOUFOX_CACHE_DIR"
-  
-  if ! ./node_modules/.bin/camoufox-js fetch; then
+
+  if ! HOME="$HOME" ./node_modules/.bin/camoufox-js fetch; then
     echo "Warning: Failed to download Camoufox browser. Captcha solving will be unavailable."
   fi
 else
-  echo "Camoufox already installed"
+  echo "Camoufox already installed at $CAMOUFOX_CACHE_DIR"
 fi
 
 echo "Starting Cinephage..."
