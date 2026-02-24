@@ -127,6 +127,20 @@ docker compose logs cinephage
 
 Look for "Cannot write to" or "Permission denied" messages and follow the fix above.
 
+### "npm: command not found" inside Docker container
+
+The production image intentionally removes runtime `npm`/`npx` to reduce attack surface.
+
+Use the built-in script runner instead:
+
+```bash
+# List available scripts
+docker exec -it cinephage cine-run --list
+
+# Run the TV subtitle repair script
+docker exec -it cinephage cine-run fix:tv-subtitles
+```
+
 ---
 
 ## Migration from Legacy /app/data and /app/logs Mounts

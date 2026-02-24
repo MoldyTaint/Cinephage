@@ -48,10 +48,10 @@ EXTERNAL_LISTS_CUSTOM_PRESETS_PATH="${EXTERNAL_LISTS_CUSTOM_PRESETS_PATH:-${EXTE
 export DATA_DIR LOG_DIR INDEXER_DEFINITIONS_PATH EXTERNAL_LISTS_PRESETS_PATH \
   INDEXER_CUSTOM_DEFINITIONS_PATH EXTERNAL_LISTS_CUSTOM_PRESETS_PATH
 
-# camoufox-js resolves install path from os.homedir(), so force HOME into /config/cache
-HOME="${CONFIG_ROOT}/cache/home"
+# camoufox-js resolves install path from os.homedir(), so force HOME into /config
+HOME="${CONFIG_ROOT}"
 export HOME
-CAMOUFOX_CACHE_DIR="${HOME}/.cache/camoufox"
+CAMOUFOX_CACHE_DIR="${HOME}/cache/camoufox"
 export CAMOUFOX_PATH="$CAMOUFOX_CACHE_DIR"
 
 has_contents() {

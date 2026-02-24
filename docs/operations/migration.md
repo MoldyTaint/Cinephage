@@ -395,8 +395,8 @@ docker compose build
 # Check container logs for details
 docker compose logs cinephage | grep -i camoufox
 
-# Verify home directory permissions
-docker exec cinephage ls -la /home/node/.cache
+# Verify cache directory permissions
+docker exec cinephage ls -la /config/cache
 
 # If permission issue, recreate with user 0:0 and PUID/PGID
 ```

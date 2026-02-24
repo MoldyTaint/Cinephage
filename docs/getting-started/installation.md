@@ -104,7 +104,7 @@ These variables are read directly by the container entrypoint. They only take ef
 | `PUID`   | No       | 1000    | Runtime user ID to drop to  |
 | `PGID`   | No       | 1000    | Runtime group ID to drop to |
 
-At startup, the entrypoint ensures ownership of `/config` and `/home/node/.cache` matches the runtime UID/GID, which covers config/data/logs and cached browser downloads.
+At startup, the entrypoint ensures ownership of `/config` matches the runtime UID/GID, which covers cache, data & logs.
 
 ### Using Docker Run
 
@@ -126,6 +126,23 @@ docker run -d \
 > **Note:** When using `docker run`, pass the actual application variables (`ORIGIN`, `TZ`, `PUID`, `PGID`) directly.
 >
 > The container starts as root, then the entrypoint automatically drops privileges to `PUID:PGID` (default: 1000:1000) and fixes ownership of `/config` and cache directories.
+
+### Running Bundled Scripts in Docker
+
+The production Docker image does not include `npm`/`npx`. Use the built-in script runner command instead:
+
+```bash
+# List available scripts
+docker exec -it cinephage cine-run --list
+
+# Run by npm script alias (when mapped to node scripts/<file>)
+docker exec -it cinephage cine-run fix:tv-subtitles
+
+# Run by script file name
+docker exec -it cinephage cine-run fix-tv-subtitle-paths
+```
+
+`cinephage-script` is also available as a full command alias.
 
 ### Building from Source
 

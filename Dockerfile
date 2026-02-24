@@ -1,7 +1,7 @@
 # ==========================================
 # Build Stage
 # ==========================================
-FROM node:24-slim AS builder
+FROM node:24-trixie-slim AS builder
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -27,7 +27,7 @@ RUN npm run build && npm prune --omit=dev
 # ==========================================
 # Runtime Stage
 # ==========================================
-FROM node:24-slim AS runner
+FROM node:24-trixie-slim AS runner
 WORKDIR /app
 
 ARG APP_VERSION=dev
@@ -40,15 +40,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 	libgtk-3-0 \
 	libx11-xcb1 \
 	libasound2 \
-	libgbm1 \
-	libdrm2 \
-	libxshmfence1 \
-	fonts-liberation \
-	libdbus-glib-1-2 \
-	libxt6 \
 	xvfb \
-	libgl1-mesa-dri \
-	libglx-mesa0 \
 	&& rm -rf /var/lib/apt/lists/*
 
 # Runtime does not need npm tooling; remove to shrink attack surface and CVE footprint.
@@ -62,9 +54,11 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/build ./build
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/server.js ./server.js
-COPY --from=builder /app/scripts/fix-tv-subtitle-paths.js ./scripts/fix-tv-subtitle-paths.js
+COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/data ./bundled-data
 COPY --chmod=755 docker-entrypoint.sh ./docker-entrypoint.sh
+COPY --chmod=755 docker-script-runner.sh /usr/local/bin/cinephage-script
+RUN ln -sf /usr/local/bin/cinephage-script /usr/local/bin/cine-run
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \

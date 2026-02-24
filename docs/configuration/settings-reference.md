@@ -87,6 +87,8 @@ No environment variables are required for database configuration.
 
 ### Database Management
 
+The following `npm` commands are for manual/source installs.
+
 ```bash
 # Show database info
 npm run db:info
@@ -97,6 +99,8 @@ npm run db:reset
 # Optimize database
 sqlite3 data/cinephage.db "VACUUM;"
 ```
+
+For Docker deployments, the runtime image does not include `npm`. Manage the database directly under `/config/data/cinephage.db` (for example, backup/replace/reset) and restart the container.
 
 ---
 
