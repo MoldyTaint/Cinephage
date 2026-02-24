@@ -49,8 +49,7 @@ export const load: PageServerLoad = async () => {
 	return {
 		tmdb: {
 			hasApiKey: !!apiKeySetting,
-			configured: !!apiKeySetting,
-			apiKey: apiKeySetting?.value || ''
+			configured: !!apiKeySetting
 		},
 		indexers: {
 			total: indexers.length,
@@ -83,16 +82,18 @@ export const load: PageServerLoad = async () => {
 export const actions: Actions = {
 	saveTmdbApiKey: async ({ request }) => {
 		const formData = await request.formData();
-		const apiKey = formData.get('apiKey') as string;
+		const apiKey = (formData.get('apiKey') as string)?.trim();
 
 		if (apiKey) {
+			// Save or update the API key
 			await db
 				.insert(settings)
 				.values({ key: 'tmdb_api_key', value: apiKey })
 				.onConflictDoUpdate({ target: settings.key, set: { value: apiKey } });
-		} else {
-			await db.delete(settings).where(eq(settings.key, 'tmdb_api_key'));
 		}
+		// If empty, do nothing — the key is no longer sent to the client,
+		// so empty means "keep current" (not "delete"). To delete, use a
+		// dedicated remove action or the API directly.
 
 		return { success: true };
 	}

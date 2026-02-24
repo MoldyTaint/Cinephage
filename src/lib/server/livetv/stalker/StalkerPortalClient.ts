@@ -21,9 +21,14 @@ import type {
 
 const REQUEST_TIMEOUT = 30000; // 30 seconds (increased for slow portals)
 
-// STB User-Agent string (mimics MAG200 set-top box)
-const STB_USER_AGENT =
+// STB User-Agent strings (mimic MAG200 set-top box)
+// Full version - used for authenticated API calls and stream fetching
+export const STB_USER_AGENT =
 	'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 4 rev: 2116 Mobile Safari/533.3';
+
+// Lightweight version - used for portal detection/probing (no auth required)
+export const STB_USER_AGENT_PROBE =
+	'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3';
 
 // ============================================================================
 // Stalker-specific error classes

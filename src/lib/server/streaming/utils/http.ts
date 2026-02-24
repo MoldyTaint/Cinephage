@@ -11,6 +11,7 @@ import {
 } from '../constants';
 import type { StreamSubtitle } from '../types/stream';
 import { injectSubtitles, isMasterPlaylist } from './subtitle-injection';
+import { rewriteHlsPlaylistUrls } from './hls-rewrite.js';
 
 export interface FetchOptions {
 	/** Request timeout in milliseconds */
@@ -163,9 +164,10 @@ export async function fetchPlaylist(url: string): Promise<Response> {
 }
 
 /**
- * Rewrite URLs in an HLS playlist to use our proxy endpoint.
- * This ensures all requests (playlists and segments) go through the proxy
- * with proper headers.
+ * Rewrite URLs in an HLS playlist to use the general streaming proxy endpoint.
+ *
+ * Thin wrapper around the shared {@link rewriteHlsPlaylistUrls} that builds
+ * proxy URLs in the `/api/streaming/proxy/segment.{ext}` format.
  *
  * @param playlist - The raw playlist content
  * @param playlistUrl - The original URL of this playlist (for resolving relative URLs)
@@ -179,83 +181,14 @@ export function rewritePlaylistUrls(
 	proxyBaseUrl: string,
 	referer: string
 ): string {
-	const lines = playlist.split('\n');
-	const rewritten: string[] = [];
-
-	const base = new URL(playlistUrl);
-	const basePath = base.pathname.substring(0, base.pathname.lastIndexOf('/') + 1);
-
-	const makeProxyUrl = (url: string, isSegment: boolean = false): string => {
-		let absoluteUrl: string;
-
-		if (url.startsWith('http://') || url.startsWith('https://')) {
-			absoluteUrl = url;
-		} else if (url.startsWith('/')) {
-			absoluteUrl = `${base.origin}${url}`;
-		} else {
-			absoluteUrl = `${base.origin}${basePath}${url}`;
+	return rewriteHlsPlaylistUrls(
+		playlist,
+		playlistUrl,
+		(absoluteUrl: string, isSegment: boolean): string => {
+			const extension = isSegment ? 'ts' : 'm3u8';
+			return `${proxyBaseUrl}/api/streaming/proxy/segment.${extension}?url=${encodeURIComponent(absoluteUrl)}&referer=${encodeURIComponent(referer)}`;
 		}
-
-		// Use path-based proxy URL with proper extension for FFmpeg compatibility
-		const extension = isSegment ? 'ts' : 'm3u8';
-		return `${proxyBaseUrl}/api/streaming/proxy/segment.${extension}?url=${encodeURIComponent(absoluteUrl)}&referer=${encodeURIComponent(referer)}`;
-	};
-
-	let previousWasExtinf = false;
-
-	for (const line of lines) {
-		const trimmedLine = line.trim();
-
-		// Handle HLS tags that contain URIs
-		if (line.startsWith('#EXT-X-MEDIA:') || line.startsWith('#EXT-X-I-FRAME-STREAM-INF:')) {
-			const uriMatch = line.match(/URI="([^"]+)"/);
-			if (uriMatch) {
-				const originalUri = uriMatch[1];
-				const proxiedUri = makeProxyUrl(originalUri, false);
-				rewritten.push(line.replace(`URI="${originalUri}"`, `URI="${proxiedUri}"`));
-			} else {
-				rewritten.push(line);
-			}
-			previousWasExtinf = false;
-			continue;
-		}
-
-		// Track #EXTINF lines - the next URL line is always a segment
-		if (trimmedLine.startsWith('#EXTINF:')) {
-			rewritten.push(line);
-			previousWasExtinf = true;
-			continue;
-		}
-
-		// Keep other comments and empty lines as-is
-		if (line.startsWith('#') || trimmedLine === '') {
-			rewritten.push(line);
-			previousWasExtinf = false;
-			continue;
-		}
-
-		// This is a URL line - could be a playlist or segment
-		if (!trimmedLine) {
-			rewritten.push(line);
-			previousWasExtinf = false;
-			continue;
-		}
-
-		try {
-			// If previous line was #EXTINF, this is definitely a segment URL
-			const isSegment =
-				previousWasExtinf ||
-				trimmedLine.includes('.ts') ||
-				trimmedLine.includes('.aac') ||
-				trimmedLine.includes('.mp4');
-			rewritten.push(makeProxyUrl(trimmedLine, isSegment));
-		} catch {
-			rewritten.push(line);
-		}
-		previousWasExtinf = false;
-	}
-
-	return rewritten.join('\n');
+	);
 }
 
 /**

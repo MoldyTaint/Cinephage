@@ -13,7 +13,11 @@
 import type { RequestHandler } from './$types';
 import { logger } from '$lib/logging';
 import { ensureVttFormat } from '$lib/server/streaming/utils';
-import { isUrlSafe, fetchWithTimeout, MAX_REDIRECTS } from '$lib/server/http/ssrf-protection';
+import {
+	resolveAndValidateUrl,
+	fetchWithTimeout,
+	MAX_REDIRECTS
+} from '$lib/server/http/ssrf-protection';
 
 const streamLog = { logCategory: 'streams' as const };
 
@@ -31,11 +35,13 @@ export const GET: RequestHandler = async ({ url }) => {
 		});
 	}
 
-	const decodedUrl = decodeURIComponent(subtitleUrl);
+	// Note: url.searchParams.get() already returns decoded value
+	// Do NOT call decodeURIComponent again - it would double-decode and corrupt URLs
+	const decodedUrl = subtitleUrl;
 
 	try {
-		// SSRF protection
-		const safetyCheck = isUrlSafe(decodedUrl);
+		// SSRF protection (with DNS resolution)
+		const safetyCheck = await resolveAndValidateUrl(decodedUrl);
 		if (!safetyCheck.safe) {
 			logger.warn('Blocked unsafe subtitle URL', {
 				url: decodedUrl,
@@ -88,7 +94,7 @@ export const GET: RequestHandler = async ({ url }) => {
 				const location = response.headers.get('location');
 				if (location) {
 					const redirectUrl = new URL(location, currentUrl).toString();
-					const redirectSafetyCheck = isUrlSafe(redirectUrl);
+					const redirectSafetyCheck = await resolveAndValidateUrl(redirectUrl);
 					if (!redirectSafetyCheck.safe) {
 						return new Response(
 							JSON.stringify({

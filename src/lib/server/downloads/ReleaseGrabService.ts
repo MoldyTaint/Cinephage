@@ -40,7 +40,7 @@ import { eq, and } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { statSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { unlink } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import type { EnhancedReleaseResult } from '$lib/server/indexers/types';
 import { categoryMatchesSearchType, getCategoryContentType } from '$lib/server/indexers/types';
 import type { DownloadInfo } from '$lib/server/downloadClients/core/interfaces.js';
@@ -765,6 +765,9 @@ class ReleaseGrabService {
 		const strmFileName = `${safeName} (${year}).strm`;
 		const strmPath = join(folderPath, strmFileName);
 
+		// Validate path stays within root folder (prevents path traversal)
+		this.assertPathContained(strmPath, rootFolder.path);
+
 		writeFileSync(strmPath, streamUrl, 'utf8');
 
 		return { success: true, filePath: strmPath };
@@ -816,6 +819,9 @@ class ReleaseGrabService {
 		const strmFileName = `${safeName} - ${episodeCode}.strm`;
 		const strmPath = join(folderPath, strmFileName);
 
+		// Validate path stays within root folder (prevents path traversal)
+		this.assertPathContained(strmPath, rootFolder.path);
+
 		writeFileSync(strmPath, streamUrl, 'utf8');
 
 		return { success: true, filePath: strmPath };
@@ -829,6 +835,20 @@ class ReleaseGrabService {
 			.replace(/[<>:"/\\|?*]/g, '')
 			.replace(/\s+/g, ' ')
 			.trim();
+	}
+
+	/**
+	 * Verify that a resolved file path stays within the expected root folder.
+	 * Prevents path traversal via '../' in database-sourced path components.
+	 */
+	private assertPathContained(filePath: string, rootPath: string): void {
+		const resolvedFile = resolve(filePath);
+		const resolvedRoot = resolve(rootPath);
+		if (!resolvedFile.startsWith(resolvedRoot + '/') && resolvedFile !== resolvedRoot) {
+			throw new Error(
+				`Path traversal detected: ${resolvedFile} is outside root folder ${resolvedRoot}`
+			);
+		}
 	}
 
 	/**

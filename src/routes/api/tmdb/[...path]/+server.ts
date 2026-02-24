@@ -15,7 +15,7 @@ function getMediaTypeFromPath(path: string): 'movie' | 'tv' | 'all' {
 	return 'all';
 }
 
-const handler: RequestHandler = async ({ params, request, url, locals, getClientAddress }) => {
+const handler: RequestHandler = async ({ params, url, locals, getClientAddress }) => {
 	const { correlationId } = locals;
 	const log = createChildLogger({ correlationId, service: 'tmdb-proxy' });
 
@@ -49,27 +49,9 @@ const handler: RequestHandler = async ({ params, request, url, locals, getClient
 	const endpoint = query ? `${path}?${query}` : path;
 
 	try {
-		const options: RequestInit = {
-			method: request.method,
-			headers: {}
-		};
+		log.debug('Proxying TMDB request', { endpoint });
 
-		// Forward Content-Type if present
-		const contentType = request.headers.get('content-type');
-		if (contentType) {
-			options.headers = { 'Content-Type': contentType };
-		}
-
-		if (request.method !== 'GET' && request.method !== 'HEAD') {
-			const body = await request.text();
-			if (body) {
-				options.body = body;
-			}
-		}
-
-		log.debug('Proxying TMDB request', { endpoint, method: request.method });
-
-		const data = await tmdb.fetch(endpoint, options);
+		const data = await tmdb.fetch(endpoint);
 
 		log.debug('TMDB request successful', { endpoint });
 
@@ -91,7 +73,5 @@ const handler: RequestHandler = async ({ params, request, url, locals, getClient
 	}
 };
 
+// Only expose GET — write methods (POST/PUT/DELETE) are not used
 export const GET = handler;
-export const POST = handler;
-export const PUT = handler;
-export const DELETE = handler;

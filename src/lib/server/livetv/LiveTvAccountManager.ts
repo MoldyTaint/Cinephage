@@ -53,9 +53,10 @@ function generateDeviceId(): string {
 }
 
 /**
- * Convert database record to API response type
+ * Convert database record to API response type.
+ * Shared across all providers and services that need to map DB rows to LiveTvAccount.
  */
-function recordToAccount(record: LivetvAccountRecord): LiveTvAccount {
+export function recordToAccount(record: LivetvAccountRecord): LiveTvAccount {
 	return {
 		id: record.id,
 		name: record.name,

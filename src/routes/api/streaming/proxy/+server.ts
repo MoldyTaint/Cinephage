@@ -26,9 +26,49 @@ import {
 	PROXY_REFERER_MAP
 } from '$lib/server/streaming/constants';
 import { validatePlaylist, sanitizePlaylist, isHLSPlaylist } from '$lib/server/streaming/hls';
-import { isUrlSafe, fetchWithTimeout, MAX_REDIRECTS } from '$lib/server/http/ssrf-protection';
+import {
+	resolveAndValidateUrl,
+	fetchWithTimeout,
+	MAX_REDIRECTS
+} from '$lib/server/http/ssrf-protection';
+import { rewriteHlsPlaylistUrls } from '$lib/server/streaming/utils/hls-rewrite.js';
 
 const streamLog = { logCategory: 'streams' as const };
+
+/**
+ * Read response body with a maximum size limit.
+ * Throws if the response exceeds maxBytes (protects against responses
+ * without Content-Length header).
+ */
+async function readBodyWithLimit(response: Response, maxBytes: number): Promise<ArrayBuffer> {
+	if (!response.body) {
+		return new ArrayBuffer(0);
+	}
+
+	const reader = response.body.getReader();
+	const chunks: Uint8Array[] = [];
+	let totalSize = 0;
+
+	while (true) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		totalSize += value.byteLength;
+		if (totalSize > maxBytes) {
+			reader.cancel();
+			throw new Error(`Response body exceeds ${maxBytes} bytes`);
+		}
+		chunks.push(value);
+	}
+
+	// Combine chunks into a single ArrayBuffer
+	const result = new Uint8Array(totalSize);
+	let offset = 0;
+	for (const chunk of chunks) {
+		result.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return result.buffer;
+}
 
 /**
  * Infer the appropriate referer based on stream URL domain
@@ -108,14 +148,16 @@ export const GET: RequestHandler = async ({ url, request }) => {
 		});
 	}
 
-	const decodedUrl = decodeURIComponent(targetUrl);
+	// Note: url.searchParams.get() already returns decoded value
+	// Do NOT call decodeURIComponent again - it would double-decode and corrupt URLs
+	const decodedUrl = targetUrl;
 
 	// Use provided referer, or infer from stream URL domain
 	const referer = url.searchParams.get('referer') || inferReferer(decodedUrl);
 
 	try {
-		// SSRF protection: validate URL is safe before proxying
-		const safetyCheck = isUrlSafe(decodedUrl);
+		// SSRF protection: validate URL is safe before proxying (includes DNS resolution)
+		const safetyCheck = await resolveAndValidateUrl(decodedUrl);
 		if (!safetyCheck.safe) {
 			logger.warn('Blocked unsafe URL', {
 				url: decodedUrl,
@@ -177,8 +219,8 @@ export const GET: RequestHandler = async ({ url, request }) => {
 				if (location) {
 					const redirectUrl = new URL(location, currentUrl).toString();
 
-					// Validate redirect target for SSRF
-					const redirectSafetyCheck = isUrlSafe(redirectUrl);
+					// Validate redirect target for SSRF (with DNS resolution)
+					const redirectSafetyCheck = await resolveAndValidateUrl(redirectUrl);
 					if (!redirectSafetyCheck.safe) {
 						logger.warn('Blocked unsafe redirect', {
 							url: redirectUrl,
@@ -235,7 +277,19 @@ export const GET: RequestHandler = async ({ url, request }) => {
 			}
 		}
 
-		const arrayBuffer = await response.arrayBuffer();
+		// Read body with size enforcement (protects against missing Content-Length)
+		let arrayBuffer: ArrayBuffer;
+		try {
+			arrayBuffer = await readBodyWithLimit(response, PROXY_SEGMENT_MAX_SIZE);
+		} catch {
+			return new Response(
+				JSON.stringify({
+					error: 'Segment too large',
+					maxSize: PROXY_SEGMENT_MAX_SIZE
+				}),
+				{ status: 413, headers: { 'Content-Type': 'application/json' } }
+			);
+		}
 		const firstBytes = new Uint8Array(arrayBuffer.slice(0, 4));
 		const isMpegTs = firstBytes[0] === 0x47;
 		const isFmp4 = firstBytes[0] === 0x00 && firstBytes[1] === 0x00 && firstBytes[2] === 0x00;
@@ -295,7 +349,14 @@ export const GET: RequestHandler = async ({ url, request }) => {
 				}
 			}
 
-			const rewrittenPlaylist = rewritePlaylistUrls(text, decodedUrl, baseUrl, referer);
+			const rewrittenPlaylist = rewriteHlsPlaylistUrls(
+				text,
+				decodedUrl,
+				(absoluteUrl: string, isSegment: boolean): string => {
+					const extension = isSegment ? 'ts' : 'm3u8';
+					return `${baseUrl}/api/streaming/proxy/segment.${extension}?url=${encodeURIComponent(absoluteUrl)}&referer=${encodeURIComponent(referer)}`;
+				}
+			);
 			// Ensure VOD markers are present so players start from beginning
 			const vodPlaylist = ensureVodPlaylist(rewrittenPlaylist);
 
@@ -392,94 +453,6 @@ function ensureVodPlaylist(playlist: string): string {
 		rewritten.pop();
 	}
 	rewritten.push('#EXT-X-ENDLIST');
-
-	return rewritten.join('\n');
-}
-
-function rewritePlaylistUrls(
-	playlist: string,
-	baseUrl: string,
-	proxyBaseUrl: string,
-	referer: string
-): string {
-	const lines = playlist.split('\n');
-	const rewritten: string[] = [];
-
-	const base = new URL(baseUrl);
-	const basePath = base.pathname.substring(0, base.pathname.lastIndexOf('/') + 1);
-
-	const makeProxyUrl = (url: string, isSegment: boolean = false): string => {
-		let absoluteUrl: string;
-
-		if (url.startsWith('http://') || url.startsWith('https://')) {
-			absoluteUrl = url;
-		} else if (url.startsWith('/')) {
-			absoluteUrl = `${base.origin}${url}`;
-		} else {
-			absoluteUrl = `${base.origin}${basePath}${url}`;
-		}
-
-		// Use path-based proxy URL with proper extension for FFmpeg compatibility
-		// FFmpeg's HLS parser rejects URLs that don't end in recognized extensions
-		const extension = isSegment ? 'ts' : 'm3u8';
-		return `${proxyBaseUrl}/api/streaming/proxy/segment.${extension}?url=${encodeURIComponent(absoluteUrl)}&referer=${encodeURIComponent(referer)}`;
-	};
-
-	let previousWasExtinf = false;
-
-	for (const line of lines) {
-		const trimmedLine = line.trim();
-
-		// Handle HLS tags that contain URIs
-		if (line.startsWith('#EXT-X-MEDIA:') || line.startsWith('#EXT-X-I-FRAME-STREAM-INF:')) {
-			const uriMatch = line.match(/URI="([^"]+)"/);
-			if (uriMatch) {
-				const originalUri = uriMatch[1];
-				const proxiedUri = makeProxyUrl(originalUri, false);
-				rewritten.push(line.replace(`URI="${originalUri}"`, `URI="${proxiedUri}"`));
-			} else {
-				rewritten.push(line);
-			}
-			previousWasExtinf = false;
-			continue;
-		}
-
-		// Track #EXTINF lines - the next URL line is always a segment
-		if (trimmedLine.startsWith('#EXTINF:')) {
-			rewritten.push(line);
-			previousWasExtinf = true;
-			continue;
-		}
-
-		// Keep other comments and empty lines as-is
-		if (line.startsWith('#') || trimmedLine === '') {
-			rewritten.push(line);
-			previousWasExtinf = false;
-			continue;
-		}
-
-		// This is a URL line - could be a playlist or segment
-		if (!trimmedLine) {
-			rewritten.push(line);
-			previousWasExtinf = false;
-			continue;
-		}
-
-		try {
-			// If previous line was #EXTINF, this is definitely a segment URL
-			// regardless of its extension (providers use fake extensions like .txt, .jpg, .html)
-			// Otherwise, check for common segment extensions or assume playlist
-			const isSegment =
-				previousWasExtinf ||
-				trimmedLine.includes('.ts') ||
-				trimmedLine.includes('.aac') ||
-				trimmedLine.includes('.mp4');
-			rewritten.push(makeProxyUrl(trimmedLine, isSegment));
-		} catch {
-			rewritten.push(line);
-		}
-		previousWasExtinf = false;
-	}
 
 	return rewritten.join('\n');
 }

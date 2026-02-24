@@ -46,13 +46,22 @@ const CSP_HEADER = [
 ].join('; ');
 
 /**
- * Common security headers applied to all responses.
+ * Base security headers applied to ALL responses (including streaming routes).
+ * These headers are ignored by media players for non-HTML content, so they
+ * don't break streaming/playback but still protect against content-type sniffing etc.
  */
-const SECURITY_HEADERS: Record<string, string> = {
+const BASE_SECURITY_HEADERS: Record<string, string> = {
 	'X-Content-Type-Options': 'nosniff',
 	'X-Frame-Options': 'DENY',
 	'Referrer-Policy': 'strict-origin-when-cross-origin',
-	'X-XSS-Protection': '1; mode=block',
+	'X-XSS-Protection': '1; mode=block'
+};
+
+/**
+ * Full security headers for non-streaming routes (includes CSP).
+ */
+const SECURITY_HEADERS: Record<string, string> = {
+	...BASE_SECURITY_HEADERS,
 	'Content-Security-Policy': CSP_HEADER
 };
 
@@ -384,8 +393,10 @@ process.on('unhandledRejection', (reason, _promise) => {
  * Adds correlation IDs to all requests for tracing.
  */
 export const handle: Handle = async ({ event, resolve }) => {
-	// Generate or extract correlation ID
-	const correlationId = event.request.headers.get('x-correlation-id') ?? randomUUID();
+	// Generate or extract correlation ID (validate format to prevent header/log injection)
+	const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+	const clientId = event.request.headers.get('x-correlation-id');
+	const correlationId = clientId && UUID_REGEX.test(clientId) ? clientId : randomUUID();
 
 	// Attach to locals for use in routes
 	event.locals.correlationId = correlationId;
@@ -453,6 +464,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 		// Add security headers (skip CSP for streaming routes - they need flexible origins)
 		if (isStreamingRoute) {
+			// Apply base security headers even for streaming routes
+			for (const [header, value] of Object.entries(BASE_SECURITY_HEADERS)) {
+				response.headers.set(header, value);
+			}
 			response.headers.set('Access-Control-Allow-Origin', '*');
 			response.headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
 			response.headers.set('Access-Control-Allow-Headers', 'Range, Content-Type');
@@ -488,7 +503,8 @@ export const handle: Handle = async ({ event, resolve }) => {
 				headers: {
 					'Content-Type': 'text/plain',
 					'x-correlation-id': correlationId,
-					'Access-Control-Allow-Origin': '*'
+					'Access-Control-Allow-Origin': '*',
+					...BASE_SECURITY_HEADERS
 				}
 			});
 		}

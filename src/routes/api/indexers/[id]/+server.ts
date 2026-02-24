@@ -6,14 +6,15 @@ import { indexerUpdateSchema } from '$lib/validation/schemas';
 import { createChildLogger } from '$lib/logging';
 import { assertFound, parseBody } from '$lib/server/api/validate';
 import { NotFoundError } from '$lib/errors';
+import { redactIndexer } from '$lib/server/utils/redaction.js';
 
 const logger = createChildLogger({ module: 'IndexerAPI' });
 
 export const GET: RequestHandler = async ({ params }) => {
 	const manager = await getIndexerManager();
-	const indexer = await manager.getIndexer(params.id);
+	const indexer = assertFound(await manager.getIndexer(params.id), 'Indexer', params.id);
 
-	return json(assertFound(indexer, 'Indexer', params.id));
+	return json(redactIndexer(indexer));
 };
 
 export const DELETE: RequestHandler = async ({ params }) => {
@@ -92,7 +93,7 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 				});
 		}
 
-		return json({ success: true, indexer: updated });
+		return json({ success: true, indexer: redactIndexer(updated) });
 	} catch (error) {
 		if (error instanceof Error && error.message.includes('not found')) {
 			throw new NotFoundError('Indexer', params.id);

@@ -11,6 +11,7 @@ import { stalkerPortals, type StalkerPortalRecord } from '$lib/server/db/schema'
 import { createChildLogger } from '$lib/logging';
 import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service.js';
 import { ValidationError, NotFoundError } from '$lib/errors';
+import { STB_USER_AGENT_PROBE } from './StalkerPortalClient.js';
 
 const logger = createChildLogger({ module: 'StalkerPortalManager' });
 
@@ -343,8 +344,7 @@ export class StalkerPortalManager implements BackgroundService {
 					method: 'GET',
 					signal: AbortSignal.timeout(10000),
 					headers: {
-						'User-Agent':
-							'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3'
+						'User-Agent': STB_USER_AGENT_PROBE
 					}
 				});
 
@@ -376,8 +376,7 @@ export class StalkerPortalManager implements BackgroundService {
 				method: 'GET',
 				signal: AbortSignal.timeout(10000),
 				headers: {
-					'User-Agent':
-						'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3'
+					'User-Agent': STB_USER_AGENT_PROBE
 				}
 			});
 
@@ -399,8 +398,7 @@ export class StalkerPortalManager implements BackgroundService {
 				method: 'GET',
 				signal: AbortSignal.timeout(10000),
 				headers: {
-					'User-Agent':
-						'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3'
+					'User-Agent': STB_USER_AGENT_PROBE
 				}
 			});
 

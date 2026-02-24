@@ -92,11 +92,13 @@ export interface LiveTvProvider {
 	 * Resolve stream URL for a channel
 	 * @param account The account to use
 	 * @param channel The channel to get stream for (CachedChannel from lineup)
+	 * @param format Optional format preference: 'ts' for direct MPEG-TS, 'hls' for HLS playlist (default: 'hls')
 	 * @returns Stream resolution result with URL
 	 */
 	resolveStreamUrl(
 		account: LiveTvAccount,
-		channel: CachedChannel | LiveTvChannel
+		channel: CachedChannel | LiveTvChannel,
+		format?: 'ts' | 'hls'
 	): Promise<StreamResolutionResult>;
 
 	/**

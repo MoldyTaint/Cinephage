@@ -5,11 +5,11 @@
  * Syncs subtitles against video audio track or reference subtitle.
  */
 
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import { existsSync } from 'fs';
-import { readFile, writeFile, rename } from 'fs/promises';
-import { join, dirname, basename, extname } from 'path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { existsSync } from 'node:fs';
+import { readFile, writeFile, rename } from 'node:fs/promises';
+import { join, dirname, basename, extname } from 'node:path';
 import { db } from '$lib/server/db';
 import {
 	subtitles,
@@ -25,7 +25,7 @@ import { eq } from 'drizzle-orm';
 import { logger } from '$lib/logging';
 import type { SubtitleSyncResult } from '../types';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 /** Sync options */
 export interface SyncOptions {
@@ -47,6 +47,8 @@ export interface SyncOptions {
 export class SubtitleSyncService {
 	private static instance: SubtitleSyncService | null = null;
 	private ffsubsyncAvailable: boolean | null = null;
+	/** Resolved binary name ('ffsubsync' or 'ffs') */
+	private ffsubsyncBinary: string = 'ffsubsync';
 
 	private constructor() {}
 
@@ -66,13 +68,15 @@ export class SubtitleSyncService {
 		}
 
 		try {
-			await execAsync('ffsubsync --version');
+			await execFileAsync('ffsubsync', ['--version']);
+			this.ffsubsyncBinary = 'ffsubsync';
 			this.ffsubsyncAvailable = true;
 			logger.info('ffsubsync is available');
 		} catch {
 			// Try alternative: ffs (shorter command)
 			try {
-				await execAsync('ffs --version');
+				await execFileAsync('ffs', ['--version']);
+				this.ffsubsyncBinary = 'ffs';
 				this.ffsubsyncAvailable = true;
 				logger.info('ffsubsync (ffs) is available');
 			} catch {
@@ -252,39 +256,37 @@ export class SubtitleSyncService {
 		const base = basename(subtitlePath, ext);
 		const outputPath = join(dir, `${base}.synced${ext}`);
 
-		// Build command
-		const args: string[] = ['ffsubsync'];
+		// Build argument array (execFileAsync handles escaping — no shell involved)
+		const execArgs: string[] = [];
 
 		// Reference (video or subtitle)
 		if (options?.referenceType === 'subtitle' && options.referencePath) {
-			args.push(`"${options.referencePath}"`);
+			execArgs.push(options.referencePath);
 		} else {
-			args.push(`"${videoPath}"`);
+			execArgs.push(videoPath);
 		}
 
 		// Input subtitle
-		args.push('-i', `"${subtitlePath}"`);
+		execArgs.push('-i', subtitlePath);
 
 		// Output
-		args.push('-o', `"${outputPath}"`);
+		execArgs.push('-o', outputPath);
 
 		// Options
 		if (options?.maxOffsetSeconds) {
-			args.push('--max-offset-seconds', options.maxOffsetSeconds.toString());
+			execArgs.push('--max-offset-seconds', options.maxOffsetSeconds.toString());
 		}
 		if (options?.noFixFramerate) {
-			args.push('--no-fix-framerate');
+			execArgs.push('--no-fix-framerate');
 		}
 		if (options?.gss) {
-			args.push('--gss');
+			execArgs.push('--gss');
 		}
 
-		const command = args.join(' ');
-
 		try {
-			logger.debug('Running ffsubsync', { command });
+			logger.debug('Running ffsubsync', { binary: this.ffsubsyncBinary, args: execArgs });
 
-			const { stdout, stderr } = await execAsync(command, {
+			const { stdout, stderr } = await execFileAsync(this.ffsubsyncBinary, execArgs, {
 				timeout: 300000 // 5 minute timeout
 			});
 

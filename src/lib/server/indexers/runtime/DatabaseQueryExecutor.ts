@@ -548,6 +548,67 @@ export class DatabaseQueryExecutor {
 	}
 
 	/**
+	 * Allowed column names for database query conditions.
+	 * Only these columns can be referenced in YAML definition conditions
+	 * to prevent SQL injection via sql.raw().
+	 */
+	private static readonly ALLOWED_COLUMNS = new Set([
+		// movies table
+		'id',
+		'tmdb_id',
+		'imdb_id',
+		'title',
+		'original_title',
+		'year',
+		'overview',
+		'runtime',
+		'genres',
+		'path',
+		'monitored',
+		'minimum_availability',
+		'added',
+		'has_file',
+		'wants_subtitles',
+		'last_search_time',
+		// series table
+		'tvdb_id',
+		'status',
+		'network',
+		'monitor_new_items',
+		'monitor_specials',
+		'season_folder',
+		'series_type',
+		'episode_count',
+		'episode_file_count',
+		// episodes table
+		'series_id',
+		'season_id',
+		'season_number',
+		'episode_number',
+		'absolute_episode_number',
+		'air_date',
+		'wants_subtitles_override',
+		// episode_files table
+		'relative_path',
+		'size',
+		'date_added',
+		'scene_name',
+		'release_group',
+		'release_type',
+		'quality',
+		'media_info',
+		'languages',
+		'info_hash',
+		'episode_ids',
+		// common
+		'root_folder_id',
+		'scoring_profile_id',
+		'language_profile_id',
+		'poster_path',
+		'backdrop_path'
+	]);
+
+	/**
 	 * Build a single SQL condition
 	 */
 	private buildSingleCondition(
@@ -555,8 +616,15 @@ export class DatabaseQueryExecutor {
 		operator: string,
 		value: unknown
 	): ReturnType<typeof eq> | null {
-		// For now, use raw SQL for flexibility
-		// In a full implementation, this would map to the appropriate table column
+		// Validate field against column allowlist to prevent SQL injection
+		if (!DatabaseQueryExecutor.ALLOWED_COLUMNS.has(field)) {
+			this.log.warn('Rejected unknown column in database query condition', {
+				field,
+				operator,
+				logCategory: 'indexers'
+			});
+			return null;
+		}
 		const sqlField = sql.raw(field);
 
 		switch (operator) {

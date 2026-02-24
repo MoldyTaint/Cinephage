@@ -597,7 +597,10 @@ export const subtitleDownloadSchema = z.object({
 export const subtitleSyncSchema = z.object({
 	subtitleId: z.string().uuid(),
 	referenceType: z.enum(['video', 'subtitle']).default('video'),
-	referencePath: z.string().optional(),
+	referencePath: z
+		.string()
+		.refine((s) => !s.includes('\0'), { message: 'Path must not contain null bytes' })
+		.optional(),
 	maxOffsetSeconds: z.number().int().min(1).max(600).default(60),
 	noFixFramerate: z.boolean().default(false),
 	gss: z.boolean().default(false)

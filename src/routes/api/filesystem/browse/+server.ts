@@ -46,8 +46,8 @@ async function isPathAllowed(requestedPath: string): Promise<boolean> {
 	}
 
 	// Allow common base paths that might contain root folders
-	// Include '/' to support Docker volume mounts like /movies, /tv, etc.
-	const commonBasePaths = ['/', '/mnt', '/media', '/srv', '/data', '/storage'];
+	// (e.g., Docker volume mounts like /movies, /tv under these directories)
+	const commonBasePaths = ['/mnt', '/media', '/srv', '/data', '/storage', '/home', '/opt', '/vol'];
 	for (const basePath of commonBasePaths) {
 		if (normalizedPath.startsWith(basePath)) {
 			return true;

@@ -6,13 +6,7 @@
  */
 
 import { db } from '$lib/server/db';
-import {
-	livetvAccounts,
-	livetvChannels,
-	livetvCategories,
-	settings,
-	type LivetvAccountRecord
-} from '$lib/server/db/schema';
+import { livetvAccounts, livetvChannels, livetvCategories, settings } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '$lib/logging';
 import { randomUUID } from 'crypto';
@@ -30,6 +24,7 @@ import type {
 	IptvOrgConfig,
 	M3uChannelData
 } from '$lib/types/livetv';
+import { recordToAccount } from '../LiveTvAccountManager.js';
 
 // IPTV-Org API endpoints
 const IPTVORG_API_BASE = 'https://iptv-org.github.io/api';
@@ -168,7 +163,7 @@ export class IptvOrgProvider implements LiveTvProvider {
 				throw new Error(`Account not found: ${accountId}`);
 			}
 
-			const account = this.recordToAccount(accountRecord);
+			const account = recordToAccount(accountRecord);
 			const config = account.iptvOrgConfig;
 
 			if (!config) {
@@ -380,7 +375,8 @@ export class IptvOrgProvider implements LiveTvProvider {
 
 	async resolveStreamUrl(
 		account: LiveTvAccount,
-		channel: LiveTvChannel
+		channel: LiveTvChannel,
+		_format?: 'ts' | 'hls'
 	): Promise<StreamResolutionResult> {
 		try {
 			const m3uData = channel.m3u;
@@ -637,36 +633,6 @@ export class IptvOrgProvider implements LiveTvProvider {
 			return 'direct';
 		}
 		return 'unknown';
-	}
-
-	private recordToAccount(record: LivetvAccountRecord): LiveTvAccount {
-		return {
-			id: record.id,
-			name: record.name,
-			providerType: record.providerType,
-			enabled: record.enabled ?? true,
-			stalkerConfig: record.stalkerConfig ?? undefined,
-			xstreamConfig: record.xstreamConfig ?? undefined,
-			m3uConfig: record.m3uConfig ?? undefined,
-			iptvOrgConfig: record.iptvOrgConfig ?? undefined,
-			playbackLimit: record.playbackLimit ?? null,
-			channelCount: record.channelCount ?? null,
-			categoryCount: record.categoryCount ?? null,
-			expiresAt: record.expiresAt ?? null,
-			serverTimezone: record.serverTimezone ?? null,
-			lastTestedAt: record.lastTestedAt ?? null,
-			lastTestSuccess: record.lastTestSuccess ?? null,
-			lastTestError: record.lastTestError ?? null,
-			lastSyncAt: record.lastSyncAt ?? null,
-			lastSyncError: record.lastSyncError ?? null,
-			syncStatus: record.syncStatus ?? 'never',
-			lastEpgSyncAt: record.lastEpgSyncAt ?? null,
-			lastEpgSyncError: record.lastEpgSyncError ?? null,
-			epgProgramCount: record.epgProgramCount ?? 0,
-			hasEpg: record.hasEpg ?? null,
-			createdAt: record.createdAt ?? new Date().toISOString(),
-			updatedAt: record.updatedAt ?? new Date().toISOString()
-		};
 	}
 }
 

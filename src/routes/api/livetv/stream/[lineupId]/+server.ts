@@ -2,171 +2,53 @@
  * Live TV Stream Proxy
  *
  * Proxies Live TV streams from all provider sources (Stalker, XStream, M3U).
- * Handles stream URL resolution, HLS manifest rewriting, and direct stream passthrough.
+ * Handles stream URL resolution, HLS-to-TS conversion, and direct stream passthrough.
  *
- * GET /api/livetv/stream/:lineupId
+ * STREAMING MODES:
+ *
+ * 1. Default (no format param) — Server-side HLS-to-TS conversion
+ *    This is the primary mode, used by media servers (Jellyfin/Plex/Emby) when
+ *    they tune to a channel from the M3U playlist. Media servers' M3U tuners
+ *    expect a continuous MPEG-TS byte stream — they cannot consume HLS playlists.
+ *    The HlsToTsConverter fetches HLS playlists from the portal (getting a fresh
+ *    play_token via createLink each cycle), downloads segments in sequence order,
+ *    and pipes them as one continuous TS stream. This avoids the stalker portal
+ *    replay issue entirely (see below).
+ *
+ * 2. HLS mode (format=hls) — Returns the raw HLS playlist with rewritten URLs
+ *    Segment URLs are rewritten to go through the segment proxy at
+ *    /api/livetv/stream/:lineupId/segment.ts. Used by HLS-aware clients that
+ *    can handle playlist refreshes themselves.
+ *
+ * 3. Direct TS mode (format=ts) — Resolve URL, fetch, pipe body directly
+ *    No reconnection logic. When upstream closes (~24s on stalker), response ends.
+ *    WARNING: Stalker portals cause ~20s content overlap/replay on reconnect
+ *    because play_tokens are single-use and the server restarts from its internal
+ *    buffer origin each time. This mode exists for debugging or non-stalker sources.
+ *
+ * STALKER PORTAL REPLAY ISSUE (why default mode uses HLS-to-TS):
+ *    Stalker portal play_tokens are single-use. In raw TS mode, each token yields
+ *    ~24 seconds of wall-clock streaming before the server closes the connection.
+ *    On reconnect with a new token, the server replays ~20 seconds of overlapping
+ *    content from its buffer origin, creating a visible 30-45 second loop. HLS
+ *    mode avoids this because segments are individually addressable via hash-based
+ *    backend URLs, and sequence tracking prevents delivering duplicate segments.
+ *
+ * ENDPOINTS:
+ *    GET  /api/livetv/stream/:lineupId              (HLS-to-TS conversion)
+ *    GET  /api/livetv/stream/:lineupId?format=hls   (HLS playlist passthrough)
+ *    GET  /api/livetv/stream/:lineupId?format=ts    (direct TS pipe)
+ *    HEAD /api/livetv/stream/:lineupId               (content-type probe)
  */
 
 import type { RequestHandler } from './$types';
-import { getLiveTvStreamService } from '$lib/server/livetv/streaming/LiveTvStreamService';
-import { getBaseUrlAsync } from '$lib/server/streaming/url';
-import { logger } from '$lib/logging';
+import {
+	handleStreamGet,
+	handleStreamHead,
+	handleStreamOptions
+} from '$lib/server/livetv/streaming/StreamRequestHandler.js';
 
-/**
- * Detect if content is an HLS playlist
- */
-function isHlsContent(contentType: string, url: string, body?: string): boolean {
-	// Check content type
-	if (
-		contentType.includes('mpegurl') ||
-		contentType.includes('m3u8') ||
-		contentType.includes('x-mpegurl')
-	) {
-		return true;
-	}
-
-	// Check URL patterns
-	const lowerUrl = url.toLowerCase();
-	if (lowerUrl.includes('.m3u8') || lowerUrl.includes('/hls/')) {
-		return true;
-	}
-
-	// Check content
-	if (body && body.startsWith('#EXTM3U')) {
-		return true;
-	}
-
-	return false;
-}
-
-/**
- * Rewrite HLS playlist URLs to route through our segment proxy
- */
-function rewriteHlsPlaylist(
-	playlist: string,
-	originalUrl: string,
-	baseUrl: string,
-	lineupId: string,
-	providerHeaders?: Record<string, string>
-): string {
-	const lines = playlist.split('\n');
-	const result: string[] = [];
-
-	const base = new URL(originalUrl);
-	const basePath = base.pathname.substring(0, base.pathname.lastIndexOf('/') + 1);
-
-	// Encode provider headers once for all segment URLs
-	const encodedHeaders = encodeProviderHeaders(providerHeaders);
-
-	let previousWasExtinf = false;
-
-	for (const line of lines) {
-		const trimmed = line.trim();
-
-		// Handle URI= attributes in tags (EXT-X-MEDIA, EXT-X-KEY, EXT-X-MAP, EXT-X-STREAM-INF, etc.)
-		if (
-			trimmed.startsWith('#EXT-X-MEDIA:') ||
-			trimmed.startsWith('#EXT-X-KEY:') ||
-			trimmed.startsWith('#EXT-X-I-FRAME-STREAM-INF:') ||
-			trimmed.startsWith('#EXT-X-MAP:') ||
-			trimmed.startsWith('#EXT-X-STREAM-INF:')
-		) {
-			const uriMatch = line.match(/URI="([^"]+)"/);
-			if (uriMatch) {
-				const originalUri = uriMatch[1];
-				const absoluteUri = resolveUrl(originalUri, base, basePath);
-				const proxyUri = makeSegmentProxyUrl(absoluteUri, baseUrl, lineupId, false, encodedHeaders);
-				result.push(line.replace(`URI="${originalUri}"`, `URI="${proxyUri}"`));
-				continue;
-			}
-		}
-
-		// Track EXTINF lines - the next URL line is always a segment
-		if (trimmed.startsWith('#EXTINF:')) {
-			result.push(line);
-			previousWasExtinf = true;
-			continue;
-		}
-
-		// Keep other comments and empty lines as-is
-		if (line.startsWith('#') || trimmed === '') {
-			result.push(line);
-			previousWasExtinf = false;
-			continue;
-		}
-
-		// This is a URL line - rewrite it
-		if (trimmed) {
-			const absoluteUrl = resolveUrl(trimmed, base, basePath);
-			const isSegment =
-				previousWasExtinf ||
-				trimmed.includes('.ts') ||
-				trimmed.includes('.aac') ||
-				trimmed.includes('.mp4');
-			const proxyUrl = makeSegmentProxyUrl(
-				absoluteUrl,
-				baseUrl,
-				lineupId,
-				isSegment,
-				encodedHeaders
-			);
-			result.push(proxyUrl);
-		} else {
-			result.push(line);
-		}
-		previousWasExtinf = false;
-	}
-
-	return result.join('\n');
-}
-
-/**
- * Resolve a potentially relative URL to absolute
- * Preserves query parameters from the base URL for authentication tokens
- */
-function resolveUrl(url: string, base: URL, basePath: string): string {
-	if (url.startsWith('http://') || url.startsWith('https://')) {
-		return url;
-	}
-	if (url.startsWith('//')) {
-		return `${base.protocol}${url}`;
-	}
-	if (url.startsWith('/')) {
-		return `${base.origin}${url}`;
-	}
-	// Preserve query parameters from base URL (e.g., auth tokens)
-	const queryString = base.search || '';
-	return `${base.origin}${basePath}${url}${queryString}`;
-}
-
-/**
- * Encode provider headers as a base64 string for embedding in URLs.
- * Returns undefined if no headers to encode.
- */
-function encodeProviderHeaders(headers?: Record<string, string>): string | undefined {
-	if (!headers || Object.keys(headers).length === 0) return undefined;
-	return btoa(JSON.stringify(headers));
-}
-
-/**
- * Create a proxy URL for a segment or sub-playlist
- */
-function makeSegmentProxyUrl(
-	originalUrl: string,
-	baseUrl: string,
-	lineupId: string,
-	isSegment: boolean,
-	encodedHeaders?: string
-): string {
-	const extension = isSegment ? 'ts' : 'm3u8';
-	let proxyUrl = `${baseUrl}/api/livetv/stream/${lineupId}/segment.${extension}?url=${encodeURIComponent(originalUrl)}`;
-	if (encodedHeaders) {
-		proxyUrl += `&h=${encodeURIComponent(encodedHeaders)}`;
-	}
-	return proxyUrl;
-}
-
-export const GET: RequestHandler = async ({ params, request }) => {
+export const GET: RequestHandler = async ({ params, request, url }) => {
 	const { lineupId } = params;
 
 	if (!lineupId) {
@@ -176,129 +58,19 @@ export const GET: RequestHandler = async ({ params, request }) => {
 		});
 	}
 
-	try {
-		const baseUrl = await getBaseUrlAsync(request);
-		const streamService = getLiveTvStreamService();
-
-		// Fetch stream directly - gets fresh token and immediately fetches
-		// This eliminates delay between token generation and fetch
-		const stream = await streamService.fetchStream(lineupId);
-		const response = stream.response;
-
-		logger.debug('[LiveTV Stream] Stream fetched', {
-			lineupId,
-			type: stream.type,
-			providerType: stream.providerType,
-			accountId: stream.accountId
-		});
-
-		const contentType = response.headers.get('content-type') || '';
-
-		// Check if this is HLS content
-		if (stream.type === 'hls' || isHlsContent(contentType, stream.url)) {
-			// Read the playlist and rewrite URLs
-			const playlist = await response.text();
-
-			if (!playlist.includes('#EXTM3U')) {
-				// Not a valid HLS playlist - try to pass through as video
-				logger.warn('[LiveTV Stream] Expected HLS but got non-playlist content', { lineupId });
-				return new Response(playlist, {
-					status: 200,
-					headers: {
-						'Content-Type': contentType || 'video/mp2t',
-						'Access-Control-Allow-Origin': '*',
-						'Cache-Control': 'no-store'
-					}
-				});
-			}
-
-			const rewritten = rewriteHlsPlaylist(
-				playlist,
-				stream.url,
-				baseUrl,
-				lineupId,
-				stream.providerHeaders
-			);
-
-			return new Response(rewritten, {
-				status: 200,
-				headers: {
-					'Content-Type': 'application/vnd.apple.mpegurl',
-					'Accept-Ranges': 'none',
-					'Access-Control-Allow-Origin': '*',
-					'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-					'Access-Control-Allow-Headers': 'Range, Content-Type',
-					'Cache-Control': 'public, max-age=2, stale-while-revalidate=5',
-					'X-Content-Type-Options': 'nosniff'
-				}
-			});
-		}
-
-		// Direct stream - pipe through
-		// Note: For very long streams, this keeps the connection open
-		return new Response(response.body, {
-			status: 200,
-			headers: {
-				'Content-Type': contentType || 'video/mp2t',
-				'Transfer-Encoding': 'chunked',
-				'Accept-Ranges': 'none',
-				'Access-Control-Allow-Origin': '*',
-				'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-				'Access-Control-Allow-Headers': 'Range, Content-Type',
-				'Cache-Control': 'no-store',
-				'X-Content-Type-Options': 'nosniff'
-			}
-		});
-	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Stream failed';
-		logger.error('[LiveTV Stream] Stream resolution failed', error, { lineupId });
-
-		// Determine appropriate status code
-		let status = 502;
-		if (message.includes('not found')) {
-			status = 404;
-		} else if (message.includes('disabled')) {
-			status = 403;
-		}
-
-		return new Response(JSON.stringify({ error: message }), {
-			status,
-			headers: { 'Content-Type': 'application/json' }
-		});
-	}
+	return handleStreamGet(lineupId, request, url);
 };
 
-export const HEAD: RequestHandler = async ({ params }) => {
+export const HEAD: RequestHandler = async ({ params, url }) => {
 	const { lineupId } = params;
 
 	if (!lineupId) {
 		return new Response(null, { status: 400 });
 	}
 
-	// Return expected headers immediately without resolving the stream.
-	// This is critical for Jellyfin/Plex which probe streams with HEAD before playing.
-	// Most live TV streams are HLS, so return the HLS content type to match what GET returns.
-	return new Response(null, {
-		status: 200,
-		headers: {
-			'Content-Type': 'application/vnd.apple.mpegurl',
-			'Accept-Ranges': 'none',
-			'Access-Control-Allow-Origin': '*',
-			'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-			'Access-Control-Allow-Headers': 'Range, Content-Type',
-			'Cache-Control': 'no-store',
-			'X-Content-Type-Options': 'nosniff'
-		}
-	});
+	return handleStreamHead(lineupId, url);
 };
 
 export const OPTIONS: RequestHandler = async () => {
-	return new Response(null, {
-		status: 200,
-		headers: {
-			'Access-Control-Allow-Origin': '*',
-			'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-			'Access-Control-Allow-Headers': 'Range, Content-Type'
-		}
-	});
+	return handleStreamOptions();
 };

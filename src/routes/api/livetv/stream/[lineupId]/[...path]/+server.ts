@@ -4,12 +4,21 @@
  * Proxies HLS segments and sub-playlists for Live TV streams.
  * Handles URL rewriting for nested playlists and passes through segment data.
  *
+ * KEY FEATURE: Automatic stream URL refresh when tokens expire.
+ * Based on Stalkerhek pattern - validates and refreshes URLs on each request.
+ *
  * GET /api/livetv/stream/:lineupId/:path?url=<encoded_url>
  */
 
 import type { RequestHandler } from './$types';
 import { getBaseUrlAsync } from '$lib/server/streaming/url';
-import { isUrlSafe, fetchWithTimeout } from '$lib/server/http/ssrf-protection';
+import { resolveAndValidateUrl, fetchWithTimeout } from '$lib/server/http/ssrf-protection';
+import {
+	getStreamUrlCache,
+	HLS_STREAM_TIMEOUT_MS
+} from '$lib/server/livetv/streaming/StreamUrlCache.js';
+import { rewriteHlsPlaylistUrls } from '$lib/server/streaming/utils/hls-rewrite.js';
+import { STB_USER_AGENT } from '$lib/server/livetv/stalker/StalkerPortalClient.js';
 import { logger } from '$lib/logging';
 
 // Streaming constants
@@ -18,22 +27,44 @@ const LIVETV_SEGMENT_MAX_SIZE = 50 * 1024 * 1024; // 50MB
 const LIVETV_SEGMENT_CACHE_MAX_AGE = 60; // Segments are immutable once created
 const LIVETV_MAX_RETRIES = 3;
 const LIVETV_RETRY_BASE_DELAY_MS = 1000;
-const LIVETV_PROXY_USER_AGENT =
-	'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 4 rev: 2116 Mobile Safari/533.3';
 
 /**
  * Fetch with retry logic for transient errors
+ * Includes automatic URL refresh on authentication failures (403)
  */
 async function fetchWithRetry(
 	url: string,
 	options: RequestInit,
-	maxRetries: number = LIVETV_MAX_RETRIES
+	lineupId: string,
+	maxRetries: number = LIVETV_MAX_RETRIES,
+	allowUrlRefresh: boolean = true
 ): Promise<Response> {
 	let lastError: Error | null = null;
+	const urlCache = getStreamUrlCache();
 
 	for (let attempt = 0; attempt <= maxRetries; attempt++) {
 		try {
 			const response = await fetchWithTimeout(url, options, LIVETV_SEGMENT_FETCH_TIMEOUT_MS);
+
+			// Handle 403 Forbidden - likely expired token
+			if (response.status === 403 && allowUrlRefresh && attempt < maxRetries) {
+				logger.warn('[LiveTV Segment] Got 403, refreshing stream URL', {
+					lineupId,
+					attempt: attempt + 1
+				});
+
+				// Refresh the URL and retry
+				const refreshed = await urlCache.refreshStream(lineupId);
+				url = refreshed.url;
+
+				// Update headers with new provider headers if available
+				if (refreshed.providerHeaders) {
+					options.headers = getStreamHeaders(refreshed.providerHeaders);
+				}
+
+				// Retry immediately with new URL
+				continue;
+			}
 
 			// Only retry on 5xx server errors
 			if (response.status >= 500 && attempt < maxRetries) {
@@ -65,7 +96,7 @@ async function fetchWithRetry(
  */
 function getStreamHeaders(providerHeaders?: Record<string, string>): HeadersInit {
 	return {
-		'User-Agent': LIVETV_PROXY_USER_AGENT,
+		'User-Agent': STB_USER_AGENT,
 		Accept: '*/*',
 		'Accept-Encoding': 'identity',
 		Connection: 'keep-alive',
@@ -74,8 +105,24 @@ function getStreamHeaders(providerHeaders?: Record<string, string>): HeadersInit
 }
 
 /**
+ * Allowed header names that can be passed through from provider headers.
+ * This prevents injection of security-sensitive headers like Host, Authorization, etc.
+ */
+const ALLOWED_PROVIDER_HEADERS = new Set([
+	'cookie',
+	'user-agent',
+	'referer',
+	'accept',
+	'accept-language',
+	'accept-encoding',
+	'x-forwarded-for',
+	'x-real-ip'
+]);
+
+/**
  * Decode provider headers from base64-encoded query parameter.
  * Returns undefined if not present or invalid.
+ * Filters to only allowed header names to prevent header injection.
  */
 function decodeProviderHeaders(encoded: string | null): Record<string, string> | undefined {
 	if (!encoded) return undefined;
@@ -83,7 +130,19 @@ function decodeProviderHeaders(encoded: string | null): Record<string, string> |
 		const json = atob(encoded);
 		const headers = JSON.parse(json);
 		if (typeof headers === 'object' && headers !== null && !Array.isArray(headers)) {
-			return headers as Record<string, string>;
+			// Filter to allowed headers only
+			const filtered: Record<string, string> = {};
+			for (const [key, value] of Object.entries(headers)) {
+				if (
+					ALLOWED_PROVIDER_HEADERS.has(key.toLowerCase()) &&
+					typeof value === 'string' &&
+					!value.includes('\r') &&
+					!value.includes('\n')
+				) {
+					filtered[key] = value;
+				}
+			}
+			return Object.keys(filtered).length > 0 ? filtered : undefined;
 		}
 	} catch {
 		// Invalid base64 or JSON - ignore silently
@@ -101,118 +160,62 @@ function encodeProviderHeaders(headers?: Record<string, string>): string | undef
 }
 
 /**
- * Rewrite HLS playlist URLs to route through our segment proxy
+ * Build a LiveTV segment proxy URL builder for the shared HLS rewriter.
  */
-function rewriteHlsPlaylist(
-	playlist: string,
-	originalUrl: string,
+function makeLiveTvProxyUrlBuilder(
 	baseUrl: string,
 	lineupId: string,
 	encodedHeaders?: string
-): string {
-	const lines = playlist.split('\n');
-	const result: string[] = [];
-
-	const base = new URL(originalUrl);
-	const basePath = base.pathname.substring(0, base.pathname.lastIndexOf('/') + 1);
-
-	let previousWasExtinf = false;
-
-	for (const line of lines) {
-		const trimmed = line.trim();
-
-		// Handle URI= attributes in tags (EXT-X-MEDIA, EXT-X-KEY, EXT-X-MAP, EXT-X-STREAM-INF, etc.)
-		if (
-			trimmed.startsWith('#EXT-X-MEDIA:') ||
-			trimmed.startsWith('#EXT-X-KEY:') ||
-			trimmed.startsWith('#EXT-X-I-FRAME-STREAM-INF:') ||
-			trimmed.startsWith('#EXT-X-MAP:') ||
-			trimmed.startsWith('#EXT-X-STREAM-INF:')
-		) {
-			const uriMatch = line.match(/URI="([^"]+)"/);
-			if (uriMatch) {
-				const originalUri = uriMatch[1];
-				const absoluteUri = resolveUrl(originalUri, base, basePath);
-				const proxyUri = makeSegmentProxyUrl(absoluteUri, baseUrl, lineupId, false, encodedHeaders);
-				result.push(line.replace(`URI="${originalUri}"`, `URI="${proxyUri}"`));
-				continue;
-			}
+): (absoluteUrl: string, isSegment: boolean) => string {
+	return (absoluteUrl: string, isSegment: boolean): string => {
+		const extension = isSegment ? 'ts' : 'm3u8';
+		let proxyUrl = `${baseUrl}/api/livetv/stream/${lineupId}/segment.${extension}?url=${encodeURIComponent(absoluteUrl)}`;
+		if (encodedHeaders) {
+			proxyUrl += `&h=${encodeURIComponent(encodedHeaders)}`;
 		}
+		return proxyUrl;
+	};
+}
 
-		// Track EXTINF lines
-		if (trimmed.startsWith('#EXTINF:')) {
-			result.push(line);
-			previousWasExtinf = true;
-			continue;
-		}
+/**
+ * Validate and potentially refresh stream URL before use
+ * Based on Stalkerhek pattern - checks URL age and refreshes if stale
+ */
+async function validateAndRefreshUrl(
+	lineupId: string,
+	originalUrl: string,
+	providerHeaders?: Record<string, string>
+): Promise<{ url: string; headers: Record<string, string> }> {
+	const urlCache = getStreamUrlCache();
+	const cached = urlCache.getCached(lineupId);
 
-		// Keep comments and empty lines
-		if (line.startsWith('#') || trimmed === '') {
-			result.push(line);
-			previousWasExtinf = false;
-			continue;
-		}
-
-		// URL line - rewrite it
-		if (trimmed) {
-			const absoluteUrl = resolveUrl(trimmed, base, basePath);
-			const isSegment =
-				previousWasExtinf ||
-				trimmed.includes('.ts') ||
-				trimmed.includes('.aac') ||
-				trimmed.includes('.mp4');
-			const proxyUrl = makeSegmentProxyUrl(
-				absoluteUrl,
-				baseUrl,
+	// Check if we have a cached entry and if the URL matches
+	if (cached && cached.url === originalUrl) {
+		// Check if still valid
+		if (urlCache.isValid(cached)) {
+			logger.debug('[LiveTV Segment] Using valid cached URL', {
 				lineupId,
-				isSegment,
-				encodedHeaders
-			);
-			result.push(proxyUrl);
-		} else {
-			result.push(line);
+				age: Date.now() - cached.createdAt
+			});
+			return { url: originalUrl, headers: providerHeaders || {} };
 		}
-		previousWasExtinf = false;
+
+		// URL is stale - refresh it
+		logger.info('[LiveTV Segment] Stream URL expired, refreshing', {
+			lineupId,
+			age: Date.now() - cached.createdAt,
+			maxAge: cached.type === 'hls' ? HLS_STREAM_TIMEOUT_MS : 5000
+		});
+
+		const refreshed = await urlCache.refreshStream(lineupId);
+		return {
+			url: refreshed.url,
+			headers: refreshed.providerHeaders || {}
+		};
 	}
 
-	return result.join('\n');
-}
-
-/**
- * Resolve a potentially relative URL to absolute
- * Preserves query parameters from the base URL for authentication tokens
- */
-function resolveUrl(url: string, base: URL, basePath: string): string {
-	if (url.startsWith('http://') || url.startsWith('https://')) {
-		return url;
-	}
-	if (url.startsWith('//')) {
-		return `${base.protocol}${url}`;
-	}
-	if (url.startsWith('/')) {
-		return `${base.origin}${url}`;
-	}
-	// Preserve query parameters from base URL (e.g., auth tokens)
-	const queryString = base.search || '';
-	return `${base.origin}${basePath}${url}${queryString}`;
-}
-
-/**
- * Create a proxy URL for a segment or sub-playlist
- */
-function makeSegmentProxyUrl(
-	originalUrl: string,
-	baseUrl: string,
-	lineupId: string,
-	isSegment: boolean,
-	encodedHeaders?: string
-): string {
-	const extension = isSegment ? 'ts' : 'm3u8';
-	let proxyUrl = `${baseUrl}/api/livetv/stream/${lineupId}/segment.${extension}?url=${encodeURIComponent(originalUrl)}`;
-	if (encodedHeaders) {
-		proxyUrl += `&h=${encodeURIComponent(encodedHeaders)}`;
-	}
-	return proxyUrl;
+	// No cached entry or URL doesn't match cache - just use provided URL
+	return { url: originalUrl, headers: providerHeaders || {} };
 }
 
 export const GET: RequestHandler = async ({ params, url, request }) => {
@@ -229,14 +232,27 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 
 	// Note: url.searchParams.get() already returns decoded value
 	// Do NOT call decodeURIComponent again - it would double-decode and corrupt URLs
-	const decodedUrl = segmentUrl;
+	let decodedUrl = segmentUrl;
 
 	// Decode provider-specific headers from query param (forwarded from main proxy)
 	const encodedHeaders = url.searchParams.get('h');
-	const providerHeaders = decodeProviderHeaders(encodedHeaders);
+	let providerHeaders = decodeProviderHeaders(encodedHeaders);
 
-	// SSRF protection
-	const safetyCheck = isUrlSafe(decodedUrl);
+	// Validate and refresh URL if needed (Stalkerhek pattern)
+	try {
+		const validated = await validateAndRefreshUrl(lineupId, decodedUrl, providerHeaders);
+		decodedUrl = validated.url;
+		providerHeaders = validated.headers;
+	} catch (error) {
+		logger.error('[LiveTV Segment] Failed to validate/refresh stream URL', error, { lineupId });
+		return new Response(JSON.stringify({ error: 'Failed to refresh stream URL' }), {
+			status: 502,
+			headers: { 'Content-Type': 'application/json' }
+		});
+	}
+
+	// SSRF protection (with DNS resolution)
+	const safetyCheck = await resolveAndValidateUrl(decodedUrl);
 	if (!safetyCheck.safe) {
 		logger.warn('[LiveTV Segment] Blocked unsafe URL', {
 			lineupId,
@@ -249,10 +265,69 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 	}
 
 	try {
-		const response = await fetchWithRetry(decodedUrl, {
-			headers: getStreamHeaders(providerHeaders),
-			redirect: 'follow'
-		});
+		// Follow redirects manually to validate each redirect target for SSRF
+		let currentUrl = decodedUrl;
+		let redirectCount = 0;
+		const MAX_SEGMENT_REDIRECTS = 5;
+		const visitedUrls = new Set<string>();
+		let response: Response;
+
+		while (true) {
+			if (visitedUrls.has(currentUrl)) {
+				logger.warn('[LiveTV Segment] Redirect loop detected', { lineupId, url: currentUrl });
+				return new Response(JSON.stringify({ error: 'Redirect loop detected' }), {
+					status: 508,
+					headers: { 'Content-Type': 'application/json' }
+				});
+			}
+			visitedUrls.add(currentUrl);
+
+			if (redirectCount >= MAX_SEGMENT_REDIRECTS) {
+				logger.warn('[LiveTV Segment] Max redirects exceeded', { lineupId });
+				return new Response(JSON.stringify({ error: 'Too many redirects' }), {
+					status: 508,
+					headers: { 'Content-Type': 'application/json' }
+				});
+			}
+
+			response = await fetchWithRetry(
+				currentUrl,
+				{
+					headers: getStreamHeaders(providerHeaders),
+					redirect: 'manual'
+				},
+				lineupId
+			);
+
+			// Handle redirects with SSRF validation
+			if (response.status >= 300 && response.status < 400) {
+				const location = response.headers.get('location');
+				if (location) {
+					const redirectUrl = new URL(location, currentUrl).toString();
+					const redirectSafetyCheck = await resolveAndValidateUrl(redirectUrl);
+					if (!redirectSafetyCheck.safe) {
+						logger.warn('[LiveTV Segment] Blocked unsafe redirect', {
+							lineupId,
+							url: redirectUrl,
+							reason: redirectSafetyCheck.reason
+						});
+						return new Response(
+							JSON.stringify({
+								error: 'Redirect target not allowed',
+								reason: redirectSafetyCheck.reason
+							}),
+							{ status: 403, headers: { 'Content-Type': 'application/json' } }
+						);
+					}
+					currentUrl = redirectUrl;
+					redirectCount++;
+					continue;
+				}
+			}
+
+			// Not a redirect, break out of loop
+			break;
+		}
 
 		if (!response.ok) {
 			return new Response(JSON.stringify({ error: `Segment fetch failed: ${response.status}` }), {
@@ -293,12 +368,10 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 			if (playlist.includes('#EXTM3U')) {
 				const baseUrl = await getBaseUrlAsync(request);
 				// Pass through provider headers so nested sub-playlists/segments also get them
-				const rewritten = rewriteHlsPlaylist(
+				const rewritten = rewriteHlsPlaylistUrls(
 					playlist,
 					decodedUrl,
-					baseUrl,
-					lineupId,
-					encodedHeaders ?? encodeProviderHeaders(providerHeaders)
+					makeLiveTvProxyUrlBuilder(baseUrl, lineupId, encodeProviderHeaders(providerHeaders))
 				);
 
 				return new Response(rewritten, {

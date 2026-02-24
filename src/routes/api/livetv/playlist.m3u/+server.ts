@@ -2,7 +2,17 @@
  * M3U Playlist Generator for Live TV
  *
  * Generates an M3U playlist for Plex/Jellyfin/Emby consumption.
- * Each channel in the user's lineup is listed with proxy URLs.
+ * Each channel in the user's lineup is listed with proxy URLs that point
+ * to the stream proxy endpoint (/api/livetv/stream/:lineupId).
+ *
+ * IMPORTANT: Channel URLs use the default stream proxy mode (no format param),
+ * which triggers server-side HLS-to-TS conversion. This is intentional:
+ * media servers' M3U tuners expect a continuous MPEG-TS byte stream, not an
+ * HLS playlist. The stream proxy handles the conversion transparently.
+ *
+ * Previously, URLs included ?format=ts which piped raw TS directly, but this
+ * caused 30-45 second replay loops on stalker portal providers due to their
+ * single-use play_token and buffer-origin restart behavior.
  *
  * GET /api/livetv/playlist.m3u
  * GET /api/livetv/playlist.m3u?category=<categoryId>
@@ -44,7 +54,9 @@ function buildM3UPlaylist(lineup: ChannelLineupItemWithDetails[], baseUrl: strin
 		lines.push(`${extinf},${tvgName}`);
 
 		// Proxy URL - media servers will request this
-		lines.push(`${baseUrl}/api/livetv/stream/${item.id}`);
+		// Append .ts extension so Jellyfin/Emby auto-detect as MPEG-TS format.
+		// Without extension, Jellyfin defaults to -f hls which causes format mismatch errors.
+		lines.push(`${baseUrl}/api/livetv/stream/${item.id}.ts`);
 	}
 
 	return lines.join('\n');

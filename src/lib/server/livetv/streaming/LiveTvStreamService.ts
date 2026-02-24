@@ -9,15 +9,40 @@
 import { createChildLogger } from '$lib/logging';
 import { channelLineupService } from '$lib/server/livetv/lineup/ChannelLineupService';
 import { getProvider } from '$lib/server/livetv/providers';
+import { recordToAccount } from '$lib/server/livetv/LiveTvAccountManager.js';
 import { db } from '$lib/server/db';
-import { livetvAccounts, type LivetvAccountRecord } from '$lib/server/db/schema';
+import { livetvAccounts } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
-import { isUrlSafe } from '$lib/server/http/ssrf-protection';
+import { resolveAndValidateUrl } from '$lib/server/http/ssrf-protection';
 import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service.js';
 import { ValidationError, ExternalServiceError } from '$lib/errors';
-import type { FetchStreamResult, StreamError, LiveTvAccount } from '$lib/types/livetv';
+import { STB_USER_AGENT } from '$lib/server/livetv/stalker/StalkerPortalClient.js';
+import type { FetchStreamResult, StreamError, CachedChannel } from '$lib/types/livetv';
 
 const logger = createChildLogger({ module: 'LiveTvStreamService' });
+
+/**
+ * Result of resolving a stream URL (without opening an HTTP connection)
+ */
+export interface StreamUrlResolution {
+	url: string;
+	type: 'hls' | 'direct' | 'unknown';
+	accountId: string;
+	channelId: string;
+	lineupItemId: string;
+	providerType: 'stalker' | 'xstream' | 'm3u' | 'iptvorg';
+	providerHeaders?: Record<string, string>;
+}
+
+/**
+ * Result of fetching a URL with redirect tracking.
+ * Includes the final URL after all redirects were followed.
+ */
+export interface FetchFromUrlResult {
+	response: Response;
+	/** The final URL after following all redirects (same as input if no redirects) */
+	finalUrl: string;
+}
 
 /**
  * Stream source info for failover
@@ -25,6 +50,7 @@ const logger = createChildLogger({ module: 'LiveTvStreamService' });
 interface StreamSource {
 	accountId: string;
 	channelId: string;
+	channel: CachedChannel;
 	providerType: 'stalker' | 'xstream' | 'm3u' | 'iptvorg';
 	priority: number;
 }
@@ -81,13 +107,22 @@ export class LiveTvStreamService implements BackgroundService {
 	}
 
 	/**
-	 * Fetch stream - resolves URL and fetches from appropriate provider.
-	 * This is the main method used by the stream endpoint.
+	 * Resolve stream URL and metadata without opening an HTTP connection.
+	 * Returns everything needed to fetch the stream (URL, headers, type).
+	 *
+	 * Used by StreamUrlCache to cache URL resolution results, and by the
+	 * route handler to determine stream type before deciding how to proxy.
+	 *
+	 * @param lineupItemId - The lineup item ID
+	 * @param format - Preferred format: 'ts' for direct MPEG-TS, 'hls' for HLS playlist (default)
 	 */
-	async fetchStream(lineupItemId: string): Promise<FetchStreamResult> {
+	async resolveStream(
+		lineupItemId: string,
+		format: 'ts' | 'hls' = 'hls'
+	): Promise<StreamUrlResolution> {
 		this.totalResolutions++;
 
-		// Get lineup item with backups
+		// Get lineup item with backups (single DB query — includes channel data)
 		const item = await channelLineupService.getChannelWithBackups(lineupItemId);
 		if (!item) {
 			throw this.createError('LINEUP_ITEM_NOT_FOUND', `Lineup item not found: ${lineupItemId}`);
@@ -98,6 +133,7 @@ export class LiveTvStreamService implements BackgroundService {
 			{
 				accountId: item.accountId,
 				channelId: item.channelId,
+				channel: item.channel,
 				providerType: item.providerType,
 				priority: 0
 			}
@@ -107,6 +143,7 @@ export class LiveTvStreamService implements BackgroundService {
 			sources.push({
 				accountId: backup.accountId,
 				channelId: backup.channelId,
+				channel: backup.channel,
 				providerType: backup.providerType,
 				priority: backup.priority
 			});
@@ -117,9 +154,8 @@ export class LiveTvStreamService implements BackgroundService {
 
 		for (const source of sources) {
 			try {
-				const result = await this.fetchFromSource(source, lineupItemId);
+				const result = await this.resolveFromSource(source, lineupItemId, format);
 
-				// If we used a backup, log it
 				if (source.priority > 0) {
 					this.failovers++;
 					logger.info('Used backup source', {
@@ -153,13 +189,32 @@ export class LiveTvStreamService implements BackgroundService {
 	}
 
 	/**
-	 * Fetch stream from a single source
+	 * Fetch stream - resolves URL and fetches the actual content.
+	 * For backward compatibility with callers that need the full Response.
 	 */
-	private async fetchFromSource(
+	async fetchStream(lineupItemId: string): Promise<FetchStreamResult> {
+		const resolved = await this.resolveStream(lineupItemId);
+		const { response } = await this.fetchFromUrl(
+			resolved.url,
+			resolved.providerType,
+			resolved.providerHeaders
+		);
+
+		return {
+			...resolved,
+			response
+		};
+	}
+
+	/**
+	 * Resolve stream URL from a single source (no HTTP fetch)
+	 */
+	private async resolveFromSource(
 		source: StreamSource,
-		lineupItemId: string
-	): Promise<FetchStreamResult> {
-		const { accountId, channelId, providerType } = source;
+		lineupItemId: string,
+		format: 'ts' | 'hls' = 'hls'
+	): Promise<StreamUrlResolution> {
+		const { accountId, channelId, channel, providerType } = source;
 
 		// Get account
 		const accountRecord = await db
@@ -177,19 +232,11 @@ export class LiveTvStreamService implements BackgroundService {
 			throw new ValidationError(`Account is disabled: ${accountId}`);
 		}
 
-		const account = this.recordToAccount(accountRecord);
+		const account = recordToAccount(accountRecord);
 
-		// Get channel (from lineup service's cached data, but we need the full channel)
-		const item = await channelLineupService.getChannelById(lineupItemId);
-		if (!item) {
-			throw this.createError('LINEUP_ITEM_NOT_FOUND', `Lineup item not found: ${lineupItemId}`);
-		}
-
-		// Get the appropriate provider
+		// Get the appropriate provider and resolve stream URL
 		const provider = getProvider(providerType);
-
-		// Resolve stream URL using the provider
-		const resolutionResult = await provider.resolveStreamUrl(account, item.channel);
+		const resolutionResult = await provider.resolveStreamUrl(account, channel, format);
 
 		if (!resolutionResult.success || !resolutionResult.url) {
 			throw new ExternalServiceError(
@@ -200,10 +247,9 @@ export class LiveTvStreamService implements BackgroundService {
 		}
 
 		const streamUrl = resolutionResult.url;
-		const type = resolutionResult.type;
 
-		// SSRF protection: validate resolved URL before fetching
-		const safetyCheck = isUrlSafe(streamUrl);
+		// SSRF protection: validate resolved URL (with DNS resolution)
+		const safetyCheck = await resolveAndValidateUrl(streamUrl);
 		if (!safetyCheck.safe) {
 			logger.warn('Blocked unsafe stream URL', {
 				url: streamUrl.substring(0, 100)
@@ -211,33 +257,81 @@ export class LiveTvStreamService implements BackgroundService {
 			throw new ValidationError(`Stream URL blocked: ${safetyCheck.reason}`);
 		}
 
-		logger.info('Fetching stream', {
+		logger.info('Stream URL resolved', {
 			url: streamUrl.substring(0, 100),
+			type: resolutionResult.type,
 			providerType
 		});
 
-		const fetchStart = Date.now();
+		return {
+			url: streamUrl,
+			type: resolutionResult.type,
+			accountId,
+			channelId,
+			lineupItemId,
+			providerType,
+			providerHeaders: resolutionResult.headers
+		};
+	}
 
-		// Build headers - merge provider headers (e.g., cookies for Stalker) with defaults
+	/**
+	 * Fetch a stream from a resolved URL with SSRF-safe redirect handling.
+	 * Used after resolveStream() when we need the actual HTTP response.
+	 * Returns both the response and the final URL after all redirects.
+	 */
+	async fetchFromUrl(
+		streamUrl: string,
+		providerType: string,
+		providerHeaders?: Record<string, string>
+	): Promise<FetchFromUrlResult> {
 		const requestHeaders: Record<string, string> = {
-			'User-Agent':
-				'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 4 rev: 2116 Mobile Safari/533.3',
+			'User-Agent': STB_USER_AGENT,
 			Accept: '*/*',
-			...resolutionResult.headers // Include provider-specific headers (cookies, auth, etc.)
+			...providerHeaders
 		};
 
-		logger.debug('Request headers', {
-			lineupItemId,
-			headers: Object.keys(requestHeaders)
-		});
+		// Fetch with manual redirect handling for SSRF protection
+		const MAX_STREAM_REDIRECTS = 5;
+		let currentStreamUrl = streamUrl;
+		let redirectCount = 0;
+		const visitedUrls = new Set<string>();
+		let response: Response;
 
-		// Fetch the stream
-		const response = await fetch(streamUrl, {
-			headers: requestHeaders,
-			redirect: 'follow'
-		});
+		while (true) {
+			if (visitedUrls.has(currentStreamUrl)) {
+				throw new ExternalServiceError(providerType, 'Redirect loop detected', 508);
+			}
+			visitedUrls.add(currentStreamUrl);
 
-		const fetchMs = Date.now() - fetchStart;
+			if (redirectCount >= MAX_STREAM_REDIRECTS) {
+				throw new ExternalServiceError(providerType, 'Too many redirects', 508);
+			}
+
+			response = await fetch(currentStreamUrl, {
+				headers: requestHeaders,
+				redirect: 'manual'
+			});
+
+			if (response.status >= 300 && response.status < 400) {
+				const location = response.headers.get('location');
+				if (location) {
+					const redirectUrl = new URL(location, currentStreamUrl).toString();
+					const redirectSafetyCheck = await resolveAndValidateUrl(redirectUrl);
+					if (!redirectSafetyCheck.safe) {
+						logger.warn('Blocked unsafe stream redirect', {
+							url: redirectUrl.substring(0, 100),
+							reason: redirectSafetyCheck.reason
+						});
+						throw new ValidationError(`Stream redirect blocked: ${redirectSafetyCheck.reason}`);
+					}
+					currentStreamUrl = redirectUrl;
+					redirectCount++;
+					continue;
+				}
+			}
+
+			break;
+		}
 
 		if (!response.ok) {
 			logger.error('Stream fetch failed', {
@@ -251,105 +345,7 @@ export class LiveTvStreamService implements BackgroundService {
 			);
 		}
 
-		// Note: Content-Length: 0 is valid for live streams (continuous data)
-		// Live streams don't have a fixed size, so we skip this check
-		const contentLength = response.headers.get('content-length');
-		if (contentLength && contentLength !== '0') {
-			logger.debug('Stream content length', {
-				contentLength: response.headers.get('content-length')
-			});
-		}
-
-		// For HLS streams, validate the playlist content
-		if (type === 'hls' || streamUrl.toLowerCase().includes('.m3u8')) {
-			const text = await response.text();
-			if (!text.includes('#EXTM3U')) {
-				logger.warn('Invalid HLS playlist: missing #EXTM3U', {
-					lineupItemId
-				});
-				throw new ExternalServiceError(providerType, 'Invalid HLS playlist (missing #EXTM3U)', 502);
-			}
-
-			// Count segments in playlist
-			const segmentCount = text
-				.split('\n')
-				.filter((line) => line.trim().startsWith('#EXTINF')).length;
-			logger.debug('HLS stream validated', {
-				segmentCount,
-				lineupItemId
-			});
-
-			return {
-				response: new Response(text, {
-					status: response.status,
-					headers: response.headers
-				}),
-				url: streamUrl,
-				type: 'hls',
-				accountId,
-				channelId,
-				lineupItemId,
-				providerType,
-				providerHeaders: resolutionResult.headers
-			};
-		}
-
-		// For direct streams (TS, MP4, etc.), read first chunk to verify data flows
-		const reader = response.body?.getReader();
-		if (!reader) {
-			throw new ExternalServiceError(providerType, 'Stream has no readable body', 502);
-		}
-
-		const firstChunk = await reader.read();
-		if (firstChunk.done || !firstChunk.value || firstChunk.value.length === 0) {
-			reader.releaseLock();
-			logger.warn('Stream returned no data', {
-				lineupItemId,
-				accountId,
-				fetchMs
-			});
-			throw new ExternalServiceError(providerType, 'Stream returned no data', 502);
-		}
-
-		logger.debug('Direct stream validated', {
-			lineupItemId,
-			accountId,
-			type,
-			fetchMs,
-			firstChunkSize: firstChunk.value.length
-		});
-
-		// Create a new stream that includes the chunk we already read
-		const reconstructedStream = new ReadableStream({
-			start(controller) {
-				controller.enqueue(firstChunk.value);
-			},
-			async pull(controller) {
-				const { value, done } = await reader.read();
-				if (done) {
-					controller.close();
-				} else if (value) {
-					controller.enqueue(value);
-				}
-			},
-			cancel() {
-				reader.releaseLock();
-			}
-		});
-
-		return {
-			response: new Response(reconstructedStream, {
-				status: response.status,
-				headers: response.headers
-			}),
-			url: streamUrl,
-			type,
-			accountId,
-			channelId,
-			lineupItemId,
-			providerType,
-			providerHeaders: resolutionResult.headers
-		};
+		return { response, finalUrl: currentStreamUrl };
 	}
 
 	/**
@@ -368,38 +364,6 @@ export class LiveTvStreamService implements BackgroundService {
 		error.channelId = channelId;
 		error.attempts = attempts;
 		return error;
-	}
-
-	/**
-	 * Convert database record to account type
-	 */
-	private recordToAccount(record: LivetvAccountRecord): LiveTvAccount {
-		return {
-			id: record.id,
-			name: record.name,
-			providerType: record.providerType,
-			enabled: record.enabled ?? true,
-			stalkerConfig: record.stalkerConfig ?? undefined,
-			xstreamConfig: record.xstreamConfig ?? undefined,
-			m3uConfig: record.m3uConfig ?? undefined,
-			playbackLimit: record.playbackLimit ?? null,
-			channelCount: record.channelCount ?? null,
-			categoryCount: record.categoryCount ?? null,
-			expiresAt: record.expiresAt ?? null,
-			serverTimezone: record.serverTimezone ?? null,
-			lastTestedAt: record.lastTestedAt ?? null,
-			lastTestSuccess: record.lastTestSuccess ?? null,
-			lastTestError: record.lastTestError ?? null,
-			lastSyncAt: record.lastSyncAt ?? null,
-			lastSyncError: record.lastSyncError ?? null,
-			syncStatus: record.syncStatus ?? 'never',
-			lastEpgSyncAt: record.lastEpgSyncAt ?? null,
-			lastEpgSyncError: record.lastEpgSyncError ?? null,
-			epgProgramCount: record.epgProgramCount ?? 0,
-			hasEpg: record.hasEpg ?? null,
-			createdAt: record.createdAt ?? new Date().toISOString(),
-			updatedAt: record.updatedAt ?? new Date().toISOString()
-		};
 	}
 
 	/**

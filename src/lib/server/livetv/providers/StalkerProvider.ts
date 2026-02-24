@@ -6,12 +6,7 @@
  */
 
 import { db } from '$lib/server/db';
-import {
-	livetvAccounts,
-	livetvChannels,
-	livetvCategories,
-	type LivetvAccountRecord
-} from '$lib/server/db/schema';
+import { livetvAccounts, livetvChannels, livetvCategories } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '$lib/logging';
 import { randomUUID } from 'crypto';
@@ -30,6 +25,7 @@ import type {
 	StalkerChannelData
 } from '$lib/types/livetv';
 import { StalkerPortalClient, type StalkerPortalConfig } from '../stalker/StalkerPortalClient';
+import { recordToAccount } from '../LiveTvAccountManager.js';
 
 export class StalkerProvider implements LiveTvProvider {
 	readonly type = 'stalker';
@@ -137,7 +133,7 @@ export class StalkerProvider implements LiveTvProvider {
 				throw new Error(`Account not found: ${accountId}`);
 			}
 
-			const account = this.recordToAccount(accountRecord);
+			const account = recordToAccount(accountRecord);
 
 			// Get authenticated client
 			const client = await this.getClient(account);
@@ -335,7 +331,8 @@ export class StalkerProvider implements LiveTvProvider {
 
 	async resolveStreamUrl(
 		account: LiveTvAccount,
-		channel: CachedChannel
+		channel: CachedChannel,
+		format?: 'ts' | 'hls'
 	): Promise<StreamResolutionResult> {
 		try {
 			const client = await this.getClient(account);
@@ -353,7 +350,43 @@ export class StalkerProvider implements LiveTvProvider {
 
 			// Always fetch fresh stream URL to avoid expired tokens in cached stalkerData.cmd
 			// getFreshStreamUrl handles both 'direct' and 'create_link' types internally
-			const url = await client.getFreshStreamUrl(channel.externalId, streamUrlType);
+			let url = await client.getFreshStreamUrl(channel.externalId, streamUrlType);
+
+			// Rewrite stalker portal TS streams to HLS at the provider level.
+			//
+			// WHY: Stalker portals enforce per-token session time limits (~24s of
+			// wall-clock streaming in TS mode). When the connection drops and a new
+			// token is obtained, the server replays ~20s of content from its internal
+			// buffer origin, creating a visible 30-45s loop for the viewer.
+			//
+			// HLS avoids this because:
+			// - The play_token is consumed once during the 302 redirect to the playlist
+			// - Segments use hash-based URLs on the backend (e.g. /hls/{hash}/xxx.ts)
+			//   that are independently fetchable without additional auth
+			// - The stream proxy's HlsToTsConverter can request new tokens via
+			//   createLink() for each playlist refresh, tracking segments by
+			//   EXT-X-MEDIA-SEQUENCE to prevent duplicates
+			//
+			// The stream proxy (/api/livetv/stream/:lineupId) then converts HLS back
+			// to a continuous TS stream for media server consumption. See
+			// HlsToTsConverter.ts for the full conversion pipeline.
+			//
+			// When format=ts is explicitly requested (debugging), skip the rewrite
+			// to allow raw TS passthrough.
+			if (url.includes('extension=ts') && format !== 'ts') {
+				url = url.replace('extension=ts', 'extension=m3u8');
+				logger.debug('[StalkerProvider] Rewrote stream URL from TS to HLS', {
+					channelId: channel.id,
+					accountId: account.id
+				});
+			}
+
+			if (format === 'ts' && url.includes('extension=ts')) {
+				logger.debug('[StalkerProvider] Keeping TS format as requested', {
+					channelId: channel.id,
+					accountId: account.id
+				});
+			}
 
 			// Detect stream type
 			const type = this.detectStreamType(url);
@@ -568,35 +601,6 @@ export class StalkerProvider implements LiveTvProvider {
 		}
 	}
 
-	private recordToAccount(record: LivetvAccountRecord): LiveTvAccount {
-		return {
-			id: record.id,
-			name: record.name,
-			providerType: record.providerType,
-			enabled: record.enabled ?? true,
-			stalkerConfig: record.stalkerConfig ?? undefined,
-			xstreamConfig: record.xstreamConfig ?? undefined,
-			m3uConfig: record.m3uConfig ?? undefined,
-			playbackLimit: record.playbackLimit ?? null,
-			channelCount: record.channelCount ?? null,
-			categoryCount: record.categoryCount ?? null,
-			expiresAt: record.expiresAt ?? null,
-			serverTimezone: record.serverTimezone ?? null,
-			lastTestedAt: record.lastTestedAt ?? null,
-			lastTestSuccess: record.lastTestSuccess ?? null,
-			lastTestError: record.lastTestError ?? null,
-			lastSyncAt: record.lastSyncAt ?? null,
-			lastSyncError: record.lastSyncError ?? null,
-			syncStatus: record.syncStatus ?? 'never',
-			lastEpgSyncAt: record.lastEpgSyncAt ?? null,
-			lastEpgSyncError: record.lastEpgSyncError ?? null,
-			epgProgramCount: record.epgProgramCount ?? 0,
-			hasEpg: record.hasEpg ?? null,
-			createdAt: record.createdAt ?? new Date().toISOString(),
-			updatedAt: record.updatedAt ?? new Date().toISOString()
-		};
-	}
-
 	private generateSerialNumber(): string {
 		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 		let sn = '';
@@ -617,10 +621,21 @@ export class StalkerProvider implements LiveTvProvider {
 
 	private detectStreamType(url: string): 'hls' | 'direct' | 'unknown' {
 		const lowerUrl = url.toLowerCase();
-		if (lowerUrl.includes('.m3u8') || lowerUrl.includes('/hls/')) {
+		// Check for HLS indicators: file extension, path component, or query parameter
+		if (
+			lowerUrl.includes('.m3u8') ||
+			lowerUrl.includes('/hls/') ||
+			lowerUrl.includes('extension=m3u8')
+		) {
 			return 'hls';
 		}
-		if (lowerUrl.includes('.ts') || lowerUrl.includes('.mp4')) {
+		// Check for direct stream indicators: file extension or query parameter
+		if (
+			lowerUrl.includes('.ts') ||
+			lowerUrl.includes('.mp4') ||
+			lowerUrl.includes('extension=ts') ||
+			lowerUrl.includes('extension=mp4')
+		) {
 			return 'direct';
 		}
 		return 'unknown';

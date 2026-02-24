@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getIndexerManager } from '$lib/server/indexers/IndexerManager';
 import { indexerCreateSchema } from '$lib/validation/schemas';
+import { redactIndexer } from '$lib/server/utils/redaction.js';
 
 /**
  * GET /api/indexers
@@ -13,24 +14,7 @@ export const GET: RequestHandler = async () => {
 	const all = await manager.getIndexers();
 
 	// Redact sensitive settings (api keys, passwords, cookies)
-	const redactedIndexers = all.map((indexer) => ({
-		...indexer,
-		settings: Object.fromEntries(
-			Object.entries(indexer.settings ?? {}).map(([key, value]) => {
-				const lowerKey = key.toLowerCase();
-				if (
-					lowerKey.includes('key') ||
-					lowerKey.includes('password') ||
-					lowerKey.includes('secret') ||
-					lowerKey.includes('token') ||
-					lowerKey.includes('cookie')
-				) {
-					return [key, value ? '[REDACTED]' : null];
-				}
-				return [key, value];
-			})
-		)
-	}));
+	const redactedIndexers = all.map(redactIndexer);
 
 	return json(redactedIndexers);
 };

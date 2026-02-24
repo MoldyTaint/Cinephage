@@ -6,7 +6,12 @@
  */
 
 // Portal-specific functionality (used for portal scanning)
-export { StalkerPortalClient, createStalkerClient } from './StalkerPortalClient';
+export {
+	StalkerPortalClient,
+	createStalkerClient,
+	STB_USER_AGENT,
+	STB_USER_AGENT_PROBE
+} from './StalkerPortalClient';
 export { StalkerPortalManager, getStalkerPortalManager } from './StalkerPortalManager';
 export type {
 	StalkerPortal,

@@ -42,19 +42,6 @@ export const tmdb = {
 		}
 		return res.json();
 	},
-	async post<T>(endpoint: string, body: unknown, customFetch = fetch): Promise<T> {
-		const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-		const res = await customFetch(`/api/tmdb${path}`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(body)
-		});
-		if (!res.ok) {
-			const error = await safeParseErrorJson(res, `POST ${path}`);
-			throw new Error((error.error as string) || `TMDB Request Failed (${res.status})`);
-		}
-		return res.json();
-	},
 	async configuration(customFetch = fetch): Promise<TmdbConfiguration> {
 		// Return cached result if available
 		if (configCache) return configCache;

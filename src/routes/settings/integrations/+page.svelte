@@ -24,7 +24,7 @@
 	let saving = $state(false);
 
 	function openTmdbModal() {
-		tmdbApiKey = data.tmdb.apiKey || '';
+		tmdbApiKey = '';
 		tmdbModalOpen = true;
 	}
 
@@ -290,7 +290,9 @@
 						id="apiKey"
 						name="apiKey"
 						bind:value={tmdbApiKey}
-						placeholder="Enter your TMDB API key"
+						placeholder={data.tmdb.hasApiKey
+							? 'Enter new API key (leave empty to keep current)'
+							: 'Enter your TMDB API key'}
 						class="input-bordered input w-full"
 					/>
 				</div>

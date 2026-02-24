@@ -13,6 +13,7 @@ import { getStreamValidator, quickValidateStream } from '$lib/server/streaming/v
 import type { StreamSource } from '$lib/server/streaming/types';
 import { logger } from '$lib/logging';
 import { z } from 'zod';
+import { resolveAndValidateUrl } from '$lib/server/http/ssrf-protection';
 
 const streamLog = { logCategory: 'streams' as const };
 
@@ -72,6 +73,20 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		const { url, referer, quick, timeout, validateSegments } = parsed.data;
+
+		// SSRF protection: validate URL before making any requests
+		const safetyCheck = await resolveAndValidateUrl(url);
+		if (!safetyCheck.safe) {
+			logger.warn('Blocked unsafe verify URL', {
+				url,
+				reason: safetyCheck.reason,
+				...streamLog
+			});
+			return json(
+				{ success: false, error: 'URL not allowed', reason: safetyCheck.reason },
+				{ status: 403 }
+			);
+		}
 
 		logger.debug('Verifying stream URL', { url, quick, timeout, ...streamLog });
 

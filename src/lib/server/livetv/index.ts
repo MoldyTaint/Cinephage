@@ -4,7 +4,7 @@
  * Central export point for all Live TV services.
  */
 
-export { getLiveTvAccountManager } from './LiveTvAccountManager';
+export { getLiveTvAccountManager, recordToAccount } from './LiveTvAccountManager';
 export { getLiveTvChannelService } from './LiveTvChannelService';
 export { channelLineupService } from './lineup/ChannelLineupService';
 export { getEpgService } from './epg/EpgService';
