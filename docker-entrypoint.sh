@@ -48,10 +48,11 @@ EXTERNAL_LISTS_CUSTOM_PRESETS_PATH="${EXTERNAL_LISTS_CUSTOM_PRESETS_PATH:-${EXTE
 export DATA_DIR LOG_DIR INDEXER_DEFINITIONS_PATH EXTERNAL_LISTS_PRESETS_PATH \
   INDEXER_CUSTOM_DEFINITIONS_PATH EXTERNAL_LISTS_CUSTOM_PRESETS_PATH
 
-# camoufox-js resolves install path from os.homedir(), so force HOME into /config
-HOME="${CONFIG_ROOT}"
+# camoufox-js resolves install path from os.homedir(), so force HOME into /config/cache
+HOME="${CONFIG_ROOT}/cache/home"
 export HOME
-CAMOUFOX_CACHE_DIR="${HOME}/cache/camoufox"
+CAMOUFOX_CACHE_DIR="${HOME}/.cache/camoufox"
+CAMOUFOX_NOTICE_FILE="${CONFIG_ROOT}/README-DO-NOT-DELETE-CAMOUFOX-CACHE.txt"
 export CAMOUFOX_PATH="$CAMOUFOX_CACHE_DIR"
 
 has_contents() {
@@ -80,6 +81,28 @@ migrate_dir() {
     else
       echo "Skipping ${label} migration; destination already has data."
     fi
+  fi
+}
+
+write_camoufox_notice() {
+  if ! cat > "$CAMOUFOX_NOTICE_FILE" <<EOF
+Cinephage Camoufox Cache (Do Not Delete)
+=========================================
+
+This instance uses Camoufox browser files for captcha solving.
+Deleting the "cache" folder will force a full Camoufox redownload and may break captcha solving until it finishes.
+
+Active paths:
+- ${CAMOUFOX_CACHE_DIR}
+
+
+If cleanup is required:
+1. Stop Cinephage
+2. Remove the cache folder
+3. Start Cinephage and wait for Camoufox download to complete in logs
+EOF
+  then
+    echo "Warning: Failed to write Camoufox cache notice at ${CAMOUFOX_NOTICE_FILE}"
   fi
 }
 
@@ -172,6 +195,8 @@ check_permissions "$LOG_DIR" "logs"
 check_permissions "$INDEXER_DEFINITIONS_PATH" "indexer definitions"
 check_permissions "$EXTERNAL_LISTS_PRESETS_PATH" "external list presets"
 echo "Directory permissions OK"
+
+write_camoufox_notice
 
 sync_bundled_data() {
   local src="$1"
