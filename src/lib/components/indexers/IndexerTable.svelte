@@ -1,5 +1,19 @@
 <script lang="ts">
-	import { ChevronUp, ChevronDown, Database, GripVertical } from 'lucide-svelte';
+	import {
+		ChevronUp,
+		ChevronDown,
+		Database,
+		GripVertical,
+		FlaskConical,
+		Loader2,
+		Search,
+		Zap,
+		ToggleLeft,
+		ToggleRight,
+		Settings,
+		Trash2
+	} from 'lucide-svelte';
+	import IndexerStatusBadge from './IndexerStatusBadge.svelte';
 	import IndexerRow from './IndexerRow.svelte';
 	import type { IndexerWithStatus, IndexerSort } from '$lib/types/indexer';
 
@@ -108,6 +122,16 @@
 		dragOverIndex = null;
 	}
 
+	function moveIndexer(fromIndex: number, toIndex: number) {
+		if (!onReorder || !reorderMode) return;
+		if (toIndex < 0 || toIndex >= indexers.length || fromIndex === toIndex) return;
+
+		const reordered = [...indexers];
+		const [moved] = reordered.splice(fromIndex, 1);
+		reordered.splice(toIndex, 0, moved);
+		onReorder(reordered.map((i) => i.id));
+	}
+
 	$effect(() => {
 		if (!canReorder && reorderMode) {
 			reorderMode = false;
@@ -124,7 +148,201 @@
 		<p class="text-sm">Add an indexer to start searching for content</p>
 	</div>
 {:else}
-	<div class="overflow-x-auto">
+	<div class="space-y-3 overflow-x-hidden sm:hidden">
+		<div class="rounded-lg border border-base-300/80 bg-base-100 px-3 py-2 shadow-sm">
+			<div class="flex items-center justify-between gap-2">
+				<label class="flex items-center gap-2 text-xs font-medium">
+					<input
+						type="checkbox"
+						class="checkbox checkbox-sm"
+						checked={allSelected}
+						indeterminate={someSelected}
+						onchange={(e) => onSelectAll(e.currentTarget.checked)}
+					/>
+					Select all
+				</label>
+				<span class="text-xs text-base-content/60">{selectedIds.size} selected</span>
+			</div>
+
+			{#if onReorder}
+				<div class="mt-2 border-t border-base-300/70 pt-2">
+					<div class="flex items-center justify-between gap-2">
+						<div
+							class="text-xs font-medium {reorderMode ? 'text-primary' : 'text-base-content/70'}"
+						>
+							{reorderMode ? 'Reorder mode is active' : 'Priority reordering'}
+						</div>
+						<button
+							class="btn gap-1 btn-xs {reorderMode ? 'btn-primary' : 'btn-ghost'}"
+							onclick={toggleReorderMode}
+							disabled={!canReorder}
+							title={reorderDisabledReason}
+						>
+							<GripVertical class="h-3.5 w-3.5" />
+							{reorderMode ? 'Done' : 'Reorder'}
+						</button>
+					</div>
+					<p class="mt-1 text-xs text-base-content/60">
+						{#if canReorder}
+							{reorderMode
+								? 'Drag cards or use the up/down arrows to change priority.'
+								: 'Enable reorder mode to change Indexer priority.'}
+						{:else}
+							Clear filters to reorder priorities.
+						{/if}
+					</p>
+				</div>
+			{/if}
+		</div>
+
+		{#each indexers as indexer, index (indexer.id)}
+			<div
+				role="listitem"
+				class="rounded-xl border bg-base-100 p-3 transition-all duration-150 {selectedIds.has(
+					indexer.id
+				)
+					? 'border-primary/50 ring-1 ring-primary/30'
+					: 'border-base-300/80'} {dragOverIndex === index
+					? 'border-primary/70 bg-primary/5'
+					: ''} {draggedIndex === index ? 'opacity-60' : ''} min-w-0"
+				draggable={reorderMode}
+				ondragstart={(e) => handleDragStart(e, index)}
+				ondragover={(e) => handleDragOver(e, index)}
+				ondragleave={handleDragLeave}
+				ondrop={(e) => handleDrop(e, index)}
+				ondragend={handleDragEnd}
+			>
+				<div class="mb-2 flex items-start justify-between gap-2">
+					<div class="flex min-w-0 items-start gap-2.5">
+						{#if reorderMode}
+							<div class="mt-0.5 flex h-5 w-5 items-center justify-center">
+								<GripVertical class="h-4 w-4 text-base-content/50" />
+							</div>
+						{:else}
+							<input
+								type="checkbox"
+								class="checkbox checkbox-sm"
+								checked={selectedIds.has(indexer.id)}
+								onchange={(e) => onSelect(indexer.id, e.currentTarget.checked)}
+							/>
+						{/if}
+						<div class="min-w-0">
+							<div class="flex flex-wrap items-center gap-2">
+								<button class="link text-sm font-bold link-hover" onclick={() => onEdit(indexer)}>
+									{indexer.name}
+								</button>
+								<IndexerStatusBadge
+									enabled={indexer.enabled}
+									consecutiveFailures={indexer.status?.consecutiveFailures ?? 0}
+									lastFailure={indexer.status?.lastFailure}
+									disabledUntil={indexer.status?.disabledUntil}
+								/>
+							</div>
+							<div class="truncate text-xs text-base-content/60">
+								{indexer.definitionName ?? indexer.definitionId}
+							</div>
+						</div>
+					</div>
+					<div class="flex shrink-0 items-center gap-1">
+						{#if reorderMode}
+							<button
+								class="btn btn-ghost btn-xs"
+								onclick={() => moveIndexer(index, index - 1)}
+								disabled={index === 0}
+								title="Move up"
+								aria-label="Move up"
+							>
+								<ChevronUp class="h-3.5 w-3.5" />
+							</button>
+							<button
+								class="btn btn-ghost btn-xs"
+								onclick={() => moveIndexer(index, index + 1)}
+								disabled={index === indexers.length - 1}
+								title="Move down"
+								aria-label="Move down"
+							>
+								<ChevronDown class="h-3.5 w-3.5" />
+							</button>
+						{/if}
+						<span class="badge shrink-0 badge-outline badge-sm">{indexer.priority}</span>
+					</div>
+				</div>
+
+				<div class="mb-3 flex items-center gap-2">
+					<span class="badge badge-outline badge-sm capitalize">{indexer.protocol}</span>
+					<div class="flex shrink-0 items-center gap-1.5 text-xs text-base-content/60">
+						<Zap
+							class="h-3.5 w-3.5 {indexer.enableAutomaticSearch
+								? 'text-success'
+								: 'text-base-content/30'}"
+						/>
+						<Search
+							class="h-3.5 w-3.5 {indexer.enableInteractiveSearch
+								? 'text-success'
+								: 'text-base-content/30'}"
+						/>
+					</div>
+					<span
+						class="min-w-0 flex-1 truncate font-mono text-xs text-base-content/60"
+						title={indexer.baseUrl}
+					>
+						{indexer.baseUrl}
+					</span>
+				</div>
+
+				<div class="grid grid-cols-4 gap-1.5">
+					<button
+						class="btn btn-ghost btn-xs"
+						onclick={() => onTest(indexer)}
+						disabled={testingIds.has(indexer.id) || reorderMode}
+						title="Test connection"
+						aria-label="Test connection"
+					>
+						{#if testingIds.has(indexer.id)}
+							<Loader2 class="h-4 w-4 animate-spin" />
+						{:else}
+							<FlaskConical class="h-4 w-4" />
+						{/if}
+					</button>
+					<button
+						class="btn btn-ghost btn-xs"
+						onclick={() => onToggle(indexer)}
+						disabled={testingIds.has(indexer.id) || togglingIds.has(indexer.id) || reorderMode}
+						title={indexer.enabled ? 'Disable' : 'Enable'}
+						aria-label={indexer.enabled ? 'Disable indexer' : 'Enable indexer'}
+					>
+						{#if togglingIds.has(indexer.id)}
+							<Loader2 class="h-4 w-4 animate-spin" />
+						{:else if indexer.enabled}
+							<ToggleRight class="h-4 w-4 text-success" />
+						{:else}
+							<ToggleLeft class="h-4 w-4" />
+						{/if}
+					</button>
+					<button
+						class="btn btn-ghost btn-xs"
+						onclick={() => onEdit(indexer)}
+						disabled={reorderMode}
+						title="Edit indexer"
+						aria-label="Edit indexer"
+					>
+						<Settings class="h-4 w-4" />
+					</button>
+					<button
+						class="btn text-error btn-ghost btn-xs"
+						onclick={() => onDelete(indexer)}
+						disabled={reorderMode}
+						title="Delete indexer"
+						aria-label="Delete indexer"
+					>
+						<Trash2 class="h-4 w-4" />
+					</button>
+				</div>
+			</div>
+		{/each}
+	</div>
+
+	<div class="hidden overflow-x-auto sm:block">
 		{#if onReorder}
 			<div class="flex items-center justify-end border-b border-base-300 px-4 py-2">
 				<button

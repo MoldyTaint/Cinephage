@@ -72,6 +72,9 @@
 		onPackSeedTimeChange,
 		onRejectDeadTorrentsChange
 	}: Props = $props();
+
+	const MAX_NAME_LENGTH = 20;
+	const nameTooLong = $derived(name.length > MAX_NAME_LENGTH);
 </script>
 
 <!-- Main Form - Two Column Layout -->
@@ -90,8 +93,17 @@
 				class="input-bordered input input-sm"
 				value={name}
 				oninput={(e) => onNameChange(e.currentTarget.value)}
+				maxlength={MAX_NAME_LENGTH}
 				placeholder={definition?.name ?? 'My Indexer'}
 			/>
+			<div class="label py-1">
+				<span class="label-text-alt text-xs {nameTooLong ? 'text-error' : 'text-base-content/60'}">
+					{name.length}/{MAX_NAME_LENGTH}
+				</span>
+				{#if nameTooLong}
+					<span class="label-text-alt text-xs text-error">Max {MAX_NAME_LENGTH} characters.</span>
+				{/if}
+			</div>
 		</div>
 
 		<!-- URL Selection -->

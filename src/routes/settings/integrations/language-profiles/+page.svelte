@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
-	import { Plus, Trash2, Pencil, Star, Globe } from 'lucide-svelte';
+	import { Plus, Trash2, Pencil, Star, Globe, CheckCircle } from 'lucide-svelte';
 	import type { PageData, ActionData } from './$types';
 	import {
 		ALL_LANGUAGE_OPTIONS,
@@ -39,6 +39,8 @@
 
 	// Form state
 	let formName = $state('');
+	const MAX_NAME_LENGTH = 20;
+	const nameTooLong = $derived(formName.length > MAX_NAME_LENGTH);
 	let formLanguages = $state<LanguagePreference[]>([]);
 	let formUpgradesAllowed = $state(true);
 	let formIsDefault = $state(false);
@@ -119,6 +121,10 @@
 			toasts.warning('Please provide a name and at least one language');
 			return;
 		}
+		if (formName.trim().length > MAX_NAME_LENGTH) {
+			toasts.warning(`Profile name must be ${MAX_NAME_LENGTH} characters or less`);
+			return;
+		}
 
 		saving = true;
 		try {
@@ -185,7 +191,7 @@
 	}
 </script>
 
-<div class="w-full p-4">
+<div class="w-full p-3 sm:p-4">
 	<div class="mb-6">
 		<h1 class="text-2xl font-bold">Language Profiles</h1>
 		<p class="text-base-content/70">
@@ -207,7 +213,7 @@
 
 	<!-- Global Settings -->
 	<div class="card mb-6 bg-base-100 shadow-xl">
-		<div class="card-body">
+		<div class="card-body p-4 sm:p-6">
 			<h2 class="card-title">Default Settings</h2>
 
 			<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -226,7 +232,9 @@
 						{/each}
 					</select>
 					<p class="label">
-						<span class="label-text-alt">Applied to new movies and series</span>
+						<span class="label-text-alt wrap-break-word whitespace-normal">
+							Applied to new movies and series
+						</span>
 					</p>
 				</div>
 
@@ -244,21 +252,26 @@
 						{/each}
 					</select>
 					<p class="label">
-						<span class="label-text-alt">Used when subtitle file language cannot be detected</span>
+						<span class="label-text-alt wrap-break-word whitespace-normal">
+							Used when subtitle file language cannot be detected
+						</span>
 					</p>
 				</div>
 			</div>
 
-			<div class="mt-4 card-actions justify-end">
-				<button class="btn btn-primary" onclick={handleSaveSettings}>Save Settings</button>
+			<div class="mt-4 card-actions justify-stretch sm:justify-end">
+				<button class="btn w-full gap-2 btn-sm btn-primary sm:w-auto" onclick={handleSaveSettings}>
+					<CheckCircle size={16} />
+					Save Settings
+				</button>
 			</div>
 		</div>
 	</div>
 
 	<!-- Profiles List -->
-	<div class="mb-4 flex items-center justify-between">
+	<div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 		<h2 class="text-xl font-semibold">Profiles</h2>
-		<button class="btn gap-2 btn-primary" onclick={openAddModal}>
+		<button class="btn w-full gap-2 btn-sm btn-primary sm:w-auto" onclick={openAddModal}>
 			<Plus class="h-4 w-4" />
 			Add Profile
 		</button>
@@ -275,14 +288,14 @@
 			</div>
 		</div>
 	{:else}
-		<div class="grid gap-4">
+		<div class="grid gap-3 sm:gap-4">
 			{#each data.profiles as profile (profile.id)}
 				<div class="card bg-base-100 shadow-xl">
-					<div class="card-body">
-						<div class="flex items-start justify-between">
-							<div>
-								<h3 class="card-title">
-									{profile.name}
+					<div class="card-body gap-3 p-4 sm:p-6">
+						<div class="flex items-start justify-between gap-3">
+							<div class="min-w-0 flex-1">
+								<h3 class="card-title flex flex-wrap items-center gap-2 leading-tight">
+									<span class="wrap-break-word">{profile.name}</span>
 									{#if profile.isDefault}
 										<span class="badge gap-1 badge-primary">
 											<Star class="h-3 w-3" />
@@ -303,12 +316,14 @@
 									{/each}
 								</div>
 								<div class="mt-2 text-sm text-base-content/60">
-									Min score: {profile.minimumScore} | Upgrades: {profile.upgradesAllowed
-										? 'Allowed'
-										: 'Disabled'}
+									<span class="block sm:inline">Min score: {profile.minimumScore}</span>
+									<span class="hidden sm:inline"> | </span>
+									<span class="block sm:inline">
+										Upgrades: {profile.upgradesAllowed ? 'Allowed' : 'Disabled'}
+									</span>
 								</div>
 							</div>
-							<div class="flex gap-2">
+							<div class="flex shrink-0 gap-1 sm:gap-2">
 								<button
 									class="btn btn-ghost btn-sm"
 									onclick={() => openEditModal(profile)}
@@ -335,7 +350,7 @@
 <!-- Add/Edit Modal -->
 {#if modalOpen}
 	<div class="modal-open modal">
-		<div class="modal-box w-full max-w-[min(42rem,calc(100vw-2rem))] break-words">
+		<div class="modal-box w-full max-w-[min(42rem,calc(100vw-2rem))] wrap-break-word">
 			<h3 class="mb-4 text-lg font-bold">
 				{modalMode === 'add' ? 'Add Language Profile' : 'Edit Language Profile'}
 			</h3>
@@ -350,8 +365,23 @@
 						type="text"
 						class="input-bordered input"
 						bind:value={formName}
+						maxlength={MAX_NAME_LENGTH}
 						placeholder="e.g., English + Spanish"
 					/>
+					<div class="label py-1">
+						<span
+							class="label-text-alt text-xs wrap-break-word whitespace-normal {nameTooLong
+								? 'text-error'
+								: 'text-base-content/60'}"
+						>
+							{formName.length}/{MAX_NAME_LENGTH}
+						</span>
+						{#if nameTooLong}
+							<span class="label-text-alt text-xs text-error"
+								>Max {MAX_NAME_LENGTH} characters.</span
+							>
+						{/if}
+					</div>
 				</div>
 
 				<div class="form-control">
@@ -432,7 +462,9 @@
 							max={formLanguages.length - 1}
 						/>
 						<p class="label">
-							<span class="label-text-alt">Stop searching after this language index</span>
+							<span class="label-text-alt wrap-break-word whitespace-normal">
+								Stop searching after this language index
+							</span>
 						</p>
 					</div>
 
@@ -449,12 +481,14 @@
 							max="100"
 						/>
 						<p class="label">
-							<span class="label-text-alt">Auto-download threshold (0-100)</span>
+							<span class="label-text-alt wrap-break-word whitespace-normal">
+								Auto-download threshold (0-100)
+							</span>
 						</p>
 					</div>
 				</div>
 
-				<div class="flex gap-4">
+				<div class="flex flex-col gap-2 sm:flex-row sm:gap-4">
 					<label class="label cursor-pointer gap-2">
 						<input type="checkbox" class="checkbox" bind:checked={formUpgradesAllowed} />
 						<span class="label-text">Allow upgrades</span>
@@ -469,7 +503,7 @@
 
 			<div class="modal-action">
 				<button class="btn btn-ghost" onclick={closeModal}>Cancel</button>
-				<button class="btn btn-primary" onclick={handleSave} disabled={saving}>
+				<button class="btn btn-primary" onclick={handleSave} disabled={saving || nameTooLong}>
 					{#if saving}
 						<span class="loading loading-sm loading-spinner"></span>
 					{/if}
@@ -489,7 +523,7 @@
 <!-- Delete Confirmation Modal -->
 {#if confirmDeleteOpen}
 	<div class="modal-open modal">
-		<div class="modal-box w-full max-w-[min(28rem,calc(100vw-2rem))] break-words">
+		<div class="modal-box w-full max-w-[min(28rem,calc(100vw-2rem))] wrap-break-word">
 			<h3 class="text-lg font-bold">Confirm Delete</h3>
 			<p class="py-4">
 				Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? This action cannot be

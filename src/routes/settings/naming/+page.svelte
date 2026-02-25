@@ -297,25 +297,33 @@
 	<title>Media Naming - Settings - Cinephage</title>
 </svelte:head>
 
-<div class="w-full p-4">
-	<div class="mb-6 flex items-center justify-between">
-		<div>
-			<h1 class="text-3xl font-bold">Media Naming</h1>
+<div class="naming-settings w-full p-3 sm:p-4">
+	<div class="mb-5 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
+		<div class="min-w-0">
+			<h1 class="text-2xl font-bold">Media Naming</h1>
 			<p class="text-base-content/70">
 				Configure how media files and folders are named. Uses TRaSH Guides conventions for media
 				server compatibility.
 			</p>
 		</div>
-		<div class="flex gap-2">
-			<a href="/settings/naming/rename" class="btn gap-2 btn-ghost">
+		<div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
+			<a href="/settings/naming/rename" class="btn w-full gap-2 btn-ghost btn-sm sm:w-auto">
 				<FileEdit class="h-4 w-4" />
 				Rename Files
 			</a>
-			<button class="btn gap-2 btn-ghost" onclick={resetToDefaults} disabled={saving}>
+			<button
+				class="btn w-full gap-2 btn-ghost btn-sm sm:w-auto"
+				onclick={resetToDefaults}
+				disabled={saving}
+			>
 				<RotateCcw class="h-4 w-4" />
 				Reset to Defaults
 			</button>
-			<button class="btn gap-2 btn-primary" onclick={saveConfig} disabled={saving || !hasChanges}>
+			<button
+				class="btn w-full gap-2 btn-sm btn-primary sm:w-auto"
+				onclick={saveConfig}
+				disabled={saving || !hasChanges}
+			>
 				{#if saving}
 					<RefreshCw class="h-4 w-4 animate-spin" />
 					Saving...

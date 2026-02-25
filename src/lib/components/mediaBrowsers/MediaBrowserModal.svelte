@@ -67,6 +67,8 @@
 	// UI state
 	let testing = $state(false);
 	let testResult = $state<MediaBrowserTestResult | null>(null);
+	const MAX_NAME_LENGTH = 20;
+	const nameTooLong = $derived(name.length > MAX_NAME_LENGTH);
 
 	// Derived
 	const modalTitle = $derived(mode === 'add' ? 'Add Media Server' : 'Edit Media Server');
@@ -223,8 +225,21 @@
 						type="text"
 						class="input-bordered input input-sm"
 						bind:value={name}
+						maxlength={MAX_NAME_LENGTH}
 						placeholder={serverType === 'jellyfin' ? 'Jellyfin' : 'Emby'}
 					/>
+					<div class="label py-1">
+						<span
+							class="label-text-alt text-xs {nameTooLong ? 'text-error' : 'text-base-content/60'}"
+						>
+							{name.length}/{MAX_NAME_LENGTH}
+						</span>
+						{#if nameTooLong}
+							<span class="label-text-alt text-xs text-error"
+								>Max {MAX_NAME_LENGTH} characters.</span
+							>
+						{/if}
+					</div>
 				</div>
 
 				<div class="form-control">
@@ -377,7 +392,13 @@
 			<button
 				class="btn btn-ghost"
 				onclick={handleTest}
-				disabled={testing || saving || !host || !name || !serverType || (mode === 'add' && !apiKey)}
+				disabled={testing ||
+					saving ||
+					!host ||
+					!name ||
+					nameTooLong ||
+					!serverType ||
+					(mode === 'add' && !apiKey)}
 			>
 				{#if testing}
 					<Loader2 class="h-4 w-4 animate-spin" />
@@ -390,7 +411,12 @@
 			<button
 				class="btn btn-primary"
 				onclick={handleSave}
-				disabled={saving || !host || !name || !serverType || (mode === 'add' && !apiKey)}
+				disabled={saving ||
+					!host ||
+					!name ||
+					nameTooLong ||
+					!serverType ||
+					(mode === 'add' && !apiKey)}
 			>
 				{#if saving}
 					<Loader2 class="h-4 w-4 animate-spin" />

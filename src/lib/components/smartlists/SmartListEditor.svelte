@@ -629,15 +629,3 @@
 		</div>
 	</div>
 </div>
-
-<style>
-	:global(.smartlist-editor .input:focus),
-	:global(.smartlist-editor .select:focus),
-	:global(.smartlist-editor .select:focus-visible),
-	:global(.smartlist-editor .select:open),
-	:global(.smartlist-editor .textarea:focus) {
-		border-color: var(--color-primary, oklch(var(--p))) !important;
-		outline-color: var(--color-primary, oklch(var(--p))) !important;
-		box-shadow: 0 0 0 1px var(--color-primary, oklch(var(--p))) !important;
-	}
-</style>

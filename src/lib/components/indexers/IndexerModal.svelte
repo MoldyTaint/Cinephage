@@ -36,6 +36,7 @@
 	// Form state - Basic
 	let selectedDefinitionId = $state('');
 	let name = $state('');
+	const MAX_NAME_LENGTH = 20;
 	let url = $state('');
 	let enabled = $state(true);
 	let priority = $state(25);
@@ -97,6 +98,7 @@
 
 	const isTorrent = $derived(uiHints()?.showTorrentSettings ?? false);
 	const isStreaming = $derived(uiHints()?.isStreaming ?? false);
+	const nameTooLong = $derived(name.length > MAX_NAME_LENGTH);
 
 	const hasAuthSettings = $derived(
 		selectedDefinition?.settings &&
@@ -397,7 +399,7 @@
 			<button
 				class="btn btn-ghost"
 				onclick={handleTest}
-				disabled={testing || saving || !url || !name || !urlValid()}
+				disabled={testing || saving || !url || !name || nameTooLong || !urlValid()}
 			>
 				{#if testing}
 					<Loader2 class="h-4 w-4 animate-spin" />
@@ -410,7 +412,7 @@
 			<button
 				class="btn btn-primary"
 				onclick={handleSave}
-				disabled={saving || testing || !url || !name || !urlValid()}
+				disabled={saving || testing || !url || !name || nameTooLong || !urlValid()}
 			>
 				{#if saving}
 					<Loader2 class="h-4 w-4 animate-spin" />

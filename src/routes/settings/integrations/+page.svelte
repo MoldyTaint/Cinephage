@@ -139,8 +139,8 @@
 	<title>Integrations - Settings - Cinephage</title>
 </svelte:head>
 
-<div class="w-full p-4">
-	<div class="mb-6">
+<div class="w-full p-3 sm:p-4">
+	<div class="mb-5 sm:mb-6">
 		<h1 class="text-2xl font-bold">Integrations</h1>
 		<p class="text-base-content/70">Manage external service connections and data sources.</p>
 	</div>
@@ -151,30 +151,32 @@
 
 		<!-- TMDB -->
 		<div class="card bg-base-100 shadow-xl">
-			<div class="card-body">
-				<div class="flex items-center gap-4">
-					<div class="rounded-lg bg-base-200 p-3">
-						<Film class="h-6 w-6 text-primary" />
+			<div class="card-body p-4 sm:p-6">
+				<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+					<div class="flex min-w-0 items-start gap-3">
+						<div class="shrink-0 rounded-lg bg-base-200 p-3">
+							<Film class="h-6 w-6 text-primary" />
+						</div>
+						<div class="min-w-0">
+							<h2 class="text-lg font-semibold">TMDB Integration</h2>
+							<p class="text-sm text-base-content/70">
+								The Movie Database API for metadata and Smart Lists
+							</p>
+						</div>
 					</div>
-					<div class="flex-1">
-						<h2 class="text-lg font-semibold">TMDB Integration</h2>
-						<p class="text-sm text-base-content/70">
-							The Movie Database API for metadata and Smart Lists
-						</p>
-					</div>
-					<div class="flex items-center gap-2">
+					<div class="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
 						{#if data.tmdb.hasApiKey}
-							<div class="badge gap-1 badge-success">
+							<div class="badge shrink-0 gap-1 badge-success">
 								<CheckCircle class="h-3 w-3" />
 								Configured
 							</div>
 						{:else}
-							<div class="badge gap-1 badge-warning">
+							<div class="badge shrink-0 gap-1 badge-warning">
 								<AlertCircle class="h-3 w-3" />
 								Not Configured
 							</div>
 						{/if}
-						<button onclick={openTmdbModal} class="btn btn-ghost btn-sm">
+						<button onclick={openTmdbModal} class="btn gap-1 px-2 btn-ghost btn-sm">
 							Configure
 							<ChevronRight class="h-4 w-4" />
 						</button>
@@ -185,33 +187,37 @@
 	</div>
 
 	<!-- Integration Cards Grid -->
-	<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+	<div class="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
 		{#each integrations as integration (integration.href)}
 			{@const Icon = integration.icon}
 			<a
 				href={resolvePath(integration.href)}
-				class="card bg-base-100 shadow-xl transition-all hover:-translate-y-0.5 hover:shadow-2xl"
+				class="card bg-base-100 shadow-xl transition-all hover:-translate-y-0.5 hover:shadow-2xl active:scale-[0.99]"
 			>
-				<div class="card-body">
+				<div class="card-body p-4 sm:p-5">
 					<div class="flex items-start gap-3">
-						<div class="rounded-lg bg-base-200 p-3">
+						<div class="shrink-0 rounded-lg bg-base-200 p-3">
 							<Icon class="h-6 w-6 text-primary" />
 						</div>
-						<div class="flex-1">
-							<h2 class="card-title text-lg">{integration.title}</h2>
+						<div class="min-w-0 flex-1">
+							<h2 class="card-title text-base sm:text-lg">{integration.title}</h2>
 							<p class="text-sm text-base-content/70">{integration.description}</p>
 						</div>
-						<ChevronRight class="h-5 w-5 text-base-content/50" />
+						<ChevronRight class="hidden h-5 w-5 text-base-content/50 sm:block" />
 					</div>
 
-					<div class="divider my-2"></div>
+					<div class="divider my-1.5 sm:my-2"></div>
 
-					<div class="flex flex-wrap gap-3">
+					<div
+						class="grid auto-cols-fr grid-flow-col items-center gap-2 sm:flex sm:flex-wrap sm:gap-3"
+					>
 						{#each integration.stats as stat (stat.label)}
-							<div class="flex items-center gap-2">
-								<span class="text-sm text-base-content/70">{stat.label}:</span>
+							<div
+								class="flex min-w-0 items-center justify-center gap-1 whitespace-nowrap sm:justify-start sm:gap-2"
+							>
+								<span class="text-[11px] text-base-content/70 sm:text-sm">{stat.label}:</span>
 								<span
-									class="font-medium {stat.status === 'success'
+									class="text-sm font-medium sm:text-base {stat.status === 'success'
 										? 'text-success'
 										: stat.status === 'warning'
 											? 'text-warning'
@@ -232,8 +238,8 @@
 	<!-- Quick Start Guide -->
 	{#if data.indexers.total === 0 || data.downloadClients.total === 0}
 		<div class="mt-6">
-			<div class="alert alert-info">
-				<AlertCircle class="h-5 w-5" />
+			<div class="alert items-start gap-3 alert-info sm:items-center">
+				<AlertCircle class="h-5 w-5 shrink-0" />
 				<div>
 					<h3 class="font-semibold">Getting Started</h3>
 					<p class="text-sm">
@@ -254,7 +260,7 @@
 <!-- TMDB API Key Modal -->
 {#if tmdbModalOpen}
 	<div class="modal-open modal">
-		<div class="modal-box w-full max-w-[min(28rem,calc(100vw-2rem))] wrap-break-word">
+		<div class="modal-box w-full max-w-[min(28rem,calc(100vw-2rem))] p-4 wrap-break-word sm:p-6">
 			<button
 				onclick={closeTmdbModal}
 				class="btn absolute top-2 right-2 btn-circle btn-ghost btn-sm"
@@ -296,9 +302,11 @@
 						class="input-bordered input w-full"
 					/>
 				</div>
-				<div class="modal-action">
-					<button type="button" onclick={closeTmdbModal} class="btn btn-ghost">Cancel</button>
-					<button type="submit" class="btn btn-primary" disabled={saving}>
+				<div class="modal-action flex-col-reverse sm:flex-row">
+					<button type="button" onclick={closeTmdbModal} class="btn w-full btn-ghost sm:w-auto">
+						Cancel
+					</button>
+					<button type="submit" class="btn w-full btn-primary sm:w-auto" disabled={saving}>
 						{#if saving}
 							<span class="loading loading-sm loading-spinner"></span>
 						{/if}

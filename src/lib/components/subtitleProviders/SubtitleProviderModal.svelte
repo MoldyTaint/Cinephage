@@ -142,6 +142,8 @@
 	);
 	const requiresApiKey = $derived(selectedDefinition?.requiresApiKey ?? false);
 	const requiresCredentials = $derived(selectedDefinition?.requiresCredentials ?? false);
+	const MAX_NAME_LENGTH = 15;
+	const nameTooLong = $derived(name.length > MAX_NAME_LENGTH);
 
 	// Filter definitions based on search
 	const filteredDefinitions = $derived(() => {
@@ -228,7 +230,7 @@
 					<Search class="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/50" />
 					<input
 						type="text"
-						class="input-bordered input w-full pl-10"
+						class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 						placeholder="Search providers..."
 						bind:value={searchQuery}
 					/>
@@ -236,7 +238,7 @@
 			</div>
 
 			<!-- Provider List -->
-			<div class="max-h-[400px] overflow-y-auto rounded-lg border border-base-300">
+			<div class="max-h-100 overflow-y-auto rounded-lg border border-base-300">
 				{#each filteredDefinitions() as def (def.implementation)}
 					{@const accessInfo = getAccessTypeInfo(def)}
 					{@const AccessIcon = accessInfo.icon}
@@ -324,8 +326,21 @@
 						type="text"
 						class="input-bordered input input-sm"
 						bind:value={name}
+						maxlength={MAX_NAME_LENGTH}
 						placeholder={selectedDefinition?.name ?? 'My Provider'}
 					/>
+					<div class="label py-1">
+						<span
+							class="label-text-alt text-xs {nameTooLong ? 'text-error' : 'text-base-content/60'}"
+						>
+							{name.length}/{MAX_NAME_LENGTH}
+						</span>
+						{#if nameTooLong}
+							<span class="label-text-alt text-xs text-error"
+								>Max {MAX_NAME_LENGTH} characters.</span
+							>
+						{/if}
+					</div>
 				</div>
 
 				<div class="grid grid-cols-2 gap-2 sm:gap-3">
@@ -488,7 +503,7 @@
 			<button
 				class="btn btn-ghost"
 				onclick={handleTest}
-				disabled={testing || saving || !name || (requiresApiKey && !apiKey)}
+				disabled={testing || saving || !name || nameTooLong || (requiresApiKey && !apiKey)}
 			>
 				{#if testing}
 					<Loader2 class="h-4 w-4 animate-spin" />
@@ -501,7 +516,7 @@
 			<button
 				class="btn btn-primary"
 				onclick={handleSave}
-				disabled={saving || !name || (requiresApiKey && !apiKey)}
+				disabled={saving || !name || nameTooLong || (requiresApiKey && !apiKey)}
 			>
 				{#if saving}
 					<Loader2 class="h-4 w-4 animate-spin" />

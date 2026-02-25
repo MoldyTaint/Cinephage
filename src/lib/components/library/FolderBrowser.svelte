@@ -125,11 +125,13 @@
 	</div>
 
 	<!-- Footer with actions -->
-	<div class="flex items-center justify-between border-t border-base-300 bg-base-200 p-3">
+	<div
+		class="flex flex-col gap-2 border-t border-base-300 bg-base-200 p-3 sm:flex-row sm:items-center sm:justify-between"
+	>
 		<div class="text-sm text-base-content/60">
 			Double-click to enter, select current folder below
 		</div>
-		<div class="flex gap-2">
+		<div class="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row">
 			<button type="button" class="btn btn-ghost btn-sm" onclick={onCancel}> Cancel </button>
 			<button type="button" class="btn gap-1 btn-sm btn-primary" onclick={handleSelect}>
 				<Check class="h-4 w-4" />

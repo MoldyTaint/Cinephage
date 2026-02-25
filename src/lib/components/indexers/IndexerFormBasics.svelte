@@ -32,6 +32,8 @@
 
 	// Alternate URLs = all definition URLs except the selected primary
 	const alternateUrls = $derived(definitionUrls.filter((u) => u !== url));
+	const MAX_NAME_LENGTH = 20;
+	const nameTooLong = $derived(name.length > MAX_NAME_LENGTH);
 </script>
 
 <!-- Definition Select -->
@@ -71,8 +73,17 @@
 		class="input-bordered input w-full"
 		placeholder="Enter indexer name"
 		bind:value={name}
+		maxlength={MAX_NAME_LENGTH}
 		required
 	/>
+	<div class="label">
+		<span class="label-text-alt text-xs {nameTooLong ? 'text-error' : 'text-base-content/60'}">
+			{name.length}/{MAX_NAME_LENGTH}
+		</span>
+		{#if nameTooLong}
+			<span class="label-text-alt text-xs text-error">Max {MAX_NAME_LENGTH} characters.</span>
+		{/if}
+	</div>
 </div>
 
 <!-- URL Selection -->

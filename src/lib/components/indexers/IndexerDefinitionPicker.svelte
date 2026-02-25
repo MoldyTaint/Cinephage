@@ -42,7 +42,7 @@
 			<Search class="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/50" />
 			<input
 				type="text"
-				class="input-bordered input w-full pl-10"
+				class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				placeholder="Search indexers..."
 				bind:value={searchQuery}
 			/>

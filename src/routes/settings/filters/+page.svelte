@@ -32,7 +32,7 @@
 
 <div class="w-full p-4">
 	<div class="mb-6">
-		<h1 class="text-3xl font-bold">Global Filters</h1>
+		<h1 class="text-2xl font-bold">Global Filters</h1>
 		<p class="text-base-content/70">
 			Configure global content filters. These settings apply to all search results, discoveries, and
 			automated tasks.

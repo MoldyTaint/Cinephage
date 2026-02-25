@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { SvelteMap } from 'svelte/reactivity';
-	import { Tv, Check, AlertCircle, ArrowRight, Calendar, Loader2 } from 'lucide-svelte';
+	import { Tv, Check, AlertCircle, ArrowRight, Calendar, Loader2, Search } from 'lucide-svelte';
 	import type {
 		ChannelLineupItemWithDetails,
 		EpgProgram,
@@ -86,30 +86,35 @@
 	<div class="space-y-3">
 		<div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
 			<div class="rounded-xl bg-base-200 px-3 py-2">
-				<div class="text-xs text-base-content/60">Total</div>
-				<div class="text-3xl leading-tight font-semibold">{stats.total}</div>
+				<div class="stat-title">Total</div>
+				<div class="stat-value text-xl sm:text-2xl">{stats.total}</div>
 			</div>
 			<div class="rounded-xl bg-base-200 px-3 py-2">
-				<div class="text-xs text-base-content/60">Has EPG</div>
-				<div class="text-3xl leading-tight font-semibold text-success">{stats.hasEpg}</div>
+				<div class="stat-title">Has EPG</div>
+				<div class="stat-value text-xl text-success sm:text-2xl">{stats.hasEpg}</div>
 			</div>
 			<div class="rounded-xl bg-base-200 px-3 py-2">
-				<div class="text-xs text-base-content/60">Missing</div>
-				<div class="text-3xl leading-tight font-semibold text-error">{stats.missing}</div>
+				<div class="stat-title">Missing</div>
+				<div class="stat-value text-xl text-error sm:text-2xl">{stats.missing}</div>
 			</div>
 			<div class="rounded-xl bg-base-200 px-3 py-2">
-				<div class="text-xs text-base-content/60">Override</div>
-				<div class="text-3xl leading-tight font-semibold text-info">{stats.override}</div>
+				<div class="stat-title">Override</div>
+				<div class="stat-value text-xl text-info sm:text-2xl">{stats.override}</div>
 			</div>
 		</div>
 
 		<div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-			<input
-				type="text"
-				placeholder="Search channels..."
-				class="input-bordered input input-sm w-full sm:w-56"
-				bind:value={searchQuery}
-			/>
+			<div class="relative w-full sm:w-56">
+				<Search
+					class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/40"
+				/>
+				<input
+					type="text"
+					placeholder="Search channels..."
+					class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-9 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+					bind:value={searchQuery}
+				/>
+			</div>
 			<select class="select-bordered select w-full select-sm sm:w-48" bind:value={filter}>
 				<option value="all">All Channels</option>
 				<option value="missing">Missing EPG</option>

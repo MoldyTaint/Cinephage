@@ -135,6 +135,8 @@
 	// Check if this is an NNTP server
 	const isNntpServer = $derived(implementation === 'nntp');
 	const isNzbMount = $derived(implementation === 'nzb-mount');
+	const MAX_NAME_LENGTH = 20;
+	const nameTooLong = $derived(name.length > MAX_NAME_LENGTH);
 	const urlBasePlaceholder = $derived(
 		(() => {
 			switch (selectedDefinition?.id) {
@@ -316,7 +318,13 @@
 	}
 
 	function isFormValid(): boolean {
-		return Boolean(implementation && name.trim() && host.trim() && isValidPort(port));
+		return Boolean(
+			implementation &&
+			name.trim() &&
+			name.trim().length <= MAX_NAME_LENGTH &&
+			host.trim() &&
+			isValidPort(port)
+		);
 	}
 
 	async function handleSave() {
@@ -446,8 +454,21 @@
 							type="text"
 							class="input-bordered input input-sm"
 							bind:value={name}
+							maxlength={MAX_NAME_LENGTH}
 							placeholder={selectedDefinition?.name ?? 'My Download Client'}
 						/>
+						<div class="label py-1">
+							<span
+								class="label-text-alt text-xs {nameTooLong ? 'text-error' : 'text-base-content/60'}"
+							>
+								{name.length}/{MAX_NAME_LENGTH}
+							</span>
+							{#if nameTooLong}
+								<span class="label-text-alt text-xs text-error"
+									>Max {MAX_NAME_LENGTH} characters.</span
+								>
+							{/if}
+						</div>
 					</div>
 
 					<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">

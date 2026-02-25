@@ -158,39 +158,43 @@
 	});
 </script>
 
-<div class="w-full p-4">
+<div class="w-full p-3 sm:p-4">
 	<!-- Header -->
-	<div class="mb-6 flex items-center justify-between">
-		<div class="flex items-center gap-4">
-			<a href="/settings/naming" class="btn gap-2 btn-ghost btn-sm">
-				<ChevronLeft class="h-4 w-4" />
-				Back
-			</a>
-			<div>
-				<h1 class="text-3xl font-bold">Rename Files</h1>
+	<div class="mb-5 sm:mb-6">
+		<a href="/settings/naming" class="btn mb-3 gap-2 btn-ghost btn-sm">
+			<ChevronLeft class="h-4 w-4" />
+			Back
+		</a>
+		<div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+			<div class="min-w-0">
+				<h1 class="text-2xl font-bold">Rename Files</h1>
 				<p class="text-base-content/70">
 					Preview and apply naming convention changes to existing library files.
 				</p>
 			</div>
-		</div>
-		<div class="flex gap-2">
-			<button class="btn gap-2 btn-ghost" onclick={loadPreview} disabled={loading}>
-				<RefreshCw class="h-4 w-4 {loading ? 'animate-spin' : ''}" />
-				Refresh Preview
-			</button>
-			<button
-				class="btn gap-2 btn-primary"
-				onclick={executeRenames}
-				disabled={executing || selectedIds.size === 0}
-			>
-				{#if executing}
-					<RefreshCw class="h-4 w-4 animate-spin" />
-					Renaming...
-				{:else}
-					<CheckCircle class="h-4 w-4" />
-					Rename Selected ({selectedIds.size})
-				{/if}
-			</button>
+			<div class="flex w-full flex-col gap-2 md:w-auto md:flex-row md:flex-wrap md:justify-end">
+				<button
+					class="btn w-full gap-2 btn-ghost btn-sm md:w-auto"
+					onclick={loadPreview}
+					disabled={loading}
+				>
+					<RefreshCw class="h-4 w-4 {loading ? 'animate-spin' : ''}" />
+					Refresh Preview
+				</button>
+				<button
+					class="btn w-full gap-2 btn-sm btn-primary md:w-auto"
+					onclick={executeRenames}
+					disabled={executing || selectedIds.size === 0}
+				>
+					{#if executing}
+						<RefreshCw class="h-4 w-4 animate-spin" />
+						Renaming...
+					{:else}
+						<CheckCircle class="h-4 w-4" />
+						Rename Selected ({selectedIds.size})
+					{/if}
+				</button>
+			</div>
 		</div>
 	</div>
 
@@ -210,7 +214,7 @@
 	{/if}
 
 	<!-- Media Type Filter -->
-	<div class="mb-4 flex gap-2">
+	<div class="mb-4 flex flex-wrap gap-2">
 		<button
 			class="btn btn-sm"
 			class:btn-primary={mediaTypeFilter === 'all'}
@@ -255,27 +259,27 @@
 		</div>
 	{:else if preview}
 		<!-- Summary Stats -->
-		<div class="mb-6 grid grid-cols-4 gap-4">
+		<div class="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-4">
 			<div class="stat rounded-box bg-base-200">
 				<div class="stat-title">Total Files</div>
-				<div class="stat-value text-2xl">{preview.totalFiles}</div>
+				<div class="stat-value text-xl sm:text-2xl">{preview.totalFiles}</div>
 			</div>
 			<div class="stat rounded-box bg-base-200">
 				<div class="stat-title">Will Change</div>
-				<div class="stat-value text-2xl text-info">{preview.totalWillChange}</div>
+				<div class="stat-value text-xl text-info sm:text-2xl">{preview.totalWillChange}</div>
 			</div>
 			<div class="stat rounded-box bg-base-200">
 				<div class="stat-title">Already Correct</div>
-				<div class="stat-value text-2xl text-success">{preview.totalAlreadyCorrect}</div>
+				<div class="stat-value text-xl text-success sm:text-2xl">{preview.totalAlreadyCorrect}</div>
 			</div>
 			<div class="stat rounded-box bg-base-200">
 				<div class="stat-title">Collisions</div>
-				<div class="stat-value text-2xl text-warning">{preview.totalCollisions}</div>
+				<div class="stat-value text-xl text-warning sm:text-2xl">{preview.totalCollisions}</div>
 			</div>
 		</div>
 
 		<!-- Tabs -->
-		<div class="tabs-boxed mb-4 tabs w-fit">
+		<div class="tabs-boxed mb-4 tabs flex w-full flex-wrap gap-1">
 			<button
 				class="tab gap-2"
 				class:tab-active={activeTab === 'willChange'}
@@ -312,10 +316,10 @@
 
 		<!-- Selection Controls (only for willChange tab) -->
 		{#if activeTab === 'willChange' && counts.willChange > 0}
-			<div class="mb-4 flex gap-2">
+			<div class="mb-4 flex flex-wrap items-center gap-2">
 				<button class="btn btn-ghost btn-sm" onclick={selectAll}>Select All</button>
 				<button class="btn btn-ghost btn-sm" onclick={selectNone}>Select None</button>
-				<span class="ml-2 self-center text-sm text-base-content/60">
+				<span class="self-center text-sm text-base-content/60">
 					{selectedIds.size} of {counts.willChange} selected
 				</span>
 			</div>
@@ -336,42 +340,44 @@
 						tabindex="0"
 					>
 						<div class="card-body p-4">
-							<div class="flex items-start gap-4">
-								<div class="flex-shrink-0 pt-1">
-									<input
-										type="checkbox"
-										class="checkbox checkbox-primary"
-										checked={selectedIds.has(item.fileId)}
-										onclick={(e) => e.stopPropagation()}
-										onchange={() => toggleSelect(item.fileId)}
-									/>
-								</div>
-								<div class="flex-shrink-0 pt-1">
-									{#if item.mediaType === 'movie'}
-										<Film class="h-5 w-5 text-primary" />
-									{:else}
-										<Tv class="h-5 w-5 text-secondary" />
-									{/if}
-								</div>
-								<div class="min-w-0 flex-1">
-									<div class="font-medium">{item.mediaTitle}</div>
-									<div class="mt-2 space-y-1">
-										<div class="flex items-center gap-2 text-sm">
-											<span class="w-12 text-base-content/60">From:</span>
-											<code class="rounded bg-base-300 px-2 py-0.5 break-all text-error"
-												>{item.currentParentPath}/{item.currentRelativePath}</code
-											>
-										</div>
-										<div class="flex items-center gap-2 text-sm">
-											<span class="w-12 text-base-content/60">To:</span>
-											<code class="rounded bg-base-300 px-2 py-0.5 break-all text-success"
-												>{item.newParentPath}/{item.newRelativePath}</code
-											>
-										</div>
+							<div class="flex items-start justify-between gap-2">
+								<div class="flex min-w-0 items-start gap-3">
+									<div class="shrink-0 pt-1">
+										<input
+											type="checkbox"
+											class="checkbox checkbox-primary"
+											checked={selectedIds.has(item.fileId)}
+											onclick={(e) => e.stopPropagation()}
+											onchange={() => toggleSelect(item.fileId)}
+										/>
 									</div>
+									<div class="shrink-0 pt-1">
+										{#if item.mediaType === 'movie'}
+											<Film class="h-5 w-5 text-primary" />
+										{:else}
+											<Tv class="h-5 w-5 text-secondary" />
+										{/if}
+									</div>
+									<div class="min-w-0 font-medium">{item.mediaTitle}</div>
 								</div>
-								<div class="flex-shrink-0">
+								<div class="shrink-0">
 									<span class="badge badge-info">Will Change</span>
+								</div>
+							</div>
+							<div class="mt-2 space-y-1">
+								<div class="flex flex-col gap-1 text-sm md:flex-row md:items-start md:gap-2">
+									<span class="text-base-content/60 md:w-10 md:shrink-0">From:</span>
+									<code
+										class="block max-w-full min-w-0 flex-1 overflow-hidden rounded bg-base-300 px-2 py-0.5 break-all whitespace-normal text-error"
+										>{item.currentParentPath}/{item.currentRelativePath}</code
+									>
+								</div>
+								<div class="flex flex-col gap-1 text-sm md:flex-row md:items-start md:gap-2">
+									<span class="text-base-content/60 md:w-10 md:shrink-0">To:</span>
+									<code
+										class="block max-w-full min-w-0 flex-1 overflow-hidden rounded bg-base-300 px-2 py-0.5 break-all whitespace-normal text-success"
+										>{item.newParentPath}/{item.newRelativePath}</code
+									>
 								</div>
 							</div>
 						</div>
@@ -379,59 +385,18 @@
 				{:else}
 					<div class="card bg-base-200">
 						<div class="card-body p-4">
-							<div class="flex items-start gap-4">
-								<div class="flex-shrink-0 pt-1">
-									{#if item.mediaType === 'movie'}
-										<Film class="h-5 w-5 text-primary" />
-									{:else}
-										<Tv class="h-5 w-5 text-secondary" />
-									{/if}
+							<div class="flex items-start justify-between gap-2">
+								<div class="flex min-w-0 items-start gap-3">
+									<div class="shrink-0 pt-1">
+										{#if item.mediaType === 'movie'}
+											<Film class="h-5 w-5 text-primary" />
+										{:else}
+											<Tv class="h-5 w-5 text-secondary" />
+										{/if}
+									</div>
+									<div class="min-w-0 font-medium">{item.mediaTitle}</div>
 								</div>
-								<div class="min-w-0 flex-1">
-									<div class="font-medium">{item.mediaTitle}</div>
-									{#if activeTab === 'collisions'}
-										<div class="mt-2 space-y-1">
-											<div class="flex items-center gap-2 text-sm">
-												<span class="w-12 text-base-content/60">From:</span>
-												<code class="rounded bg-base-300 px-2 py-0.5 break-all text-error"
-													>{item.currentRelativePath}</code
-												>
-											</div>
-											<div class="flex items-center gap-2 text-sm">
-												<span class="w-12 text-base-content/60">To:</span>
-												<code class="rounded bg-base-300 px-2 py-0.5 break-all text-success"
-													>{item.newRelativePath}</code
-												>
-											</div>
-										</div>
-									{:else if activeTab === 'alreadyCorrect'}
-										<div class="mt-2 text-sm">
-											<code class="rounded bg-base-300 px-2 py-0.5 break-all"
-												>{item.currentParentPath}/{item.currentRelativePath}</code
-											>
-										</div>
-									{:else if activeTab === 'errors'}
-										<div class="mt-2 space-y-1">
-											<div class="text-sm">
-												<code class="rounded bg-base-300 px-2 py-0.5 break-all"
-													>{item.currentParentPath}/{item.currentRelativePath}</code
-												>
-											</div>
-											{#if item.error}
-												<div class="text-sm text-error">{item.error}</div>
-											{/if}
-										</div>
-									{/if}
-									{#if item.status === 'collision' && item.collisionsWith}
-										<div class="mt-2 text-sm text-warning">
-											Conflicts with {item.collisionsWith.length} other file{item.collisionsWith
-												.length !== 1
-												? 's'
-												: ''}
-										</div>
-									{/if}
-								</div>
-								<div class="flex-shrink-0">
+								<div class="shrink-0">
 									{#if item.status === 'already_correct'}
 										<span class="badge badge-success">Correct</span>
 									{:else if item.status === 'collision'}
@@ -440,6 +405,53 @@
 										<span class="badge badge-error">Error</span>
 									{/if}
 								</div>
+							</div>
+							<div class="mt-2 min-w-0">
+								{#if activeTab === 'collisions'}
+									<div class="space-y-1">
+										<div class="flex flex-col gap-1 text-sm md:flex-row md:items-start md:gap-2">
+											<span class="text-base-content/60 md:w-10 md:shrink-0">From:</span>
+											<code
+												class="block max-w-full min-w-0 flex-1 overflow-hidden rounded bg-base-300 px-2 py-0.5 break-all whitespace-normal text-error"
+												>{item.currentRelativePath}</code
+											>
+										</div>
+										<div class="flex flex-col gap-1 text-sm md:flex-row md:items-start md:gap-2">
+											<span class="text-base-content/60 md:w-10 md:shrink-0">To:</span>
+											<code
+												class="block max-w-full min-w-0 flex-1 overflow-hidden rounded bg-base-300 px-2 py-0.5 break-all whitespace-normal text-success"
+												>{item.newRelativePath}</code
+											>
+										</div>
+									</div>
+								{:else if activeTab === 'alreadyCorrect'}
+									<div class="text-sm">
+										<code
+											class="block max-w-full overflow-hidden rounded bg-base-300 px-2 py-0.5 break-all whitespace-normal"
+											>{item.currentParentPath}/{item.currentRelativePath}</code
+										>
+									</div>
+								{:else if activeTab === 'errors'}
+									<div class="space-y-1">
+										<div class="text-sm">
+											<code
+												class="block max-w-full overflow-hidden rounded bg-base-300 px-2 py-0.5 break-all whitespace-normal"
+												>{item.currentParentPath}/{item.currentRelativePath}</code
+											>
+										</div>
+										{#if item.error}
+											<div class="text-sm text-error">{item.error}</div>
+										{/if}
+									</div>
+								{/if}
+								{#if item.status === 'collision' && item.collisionsWith}
+									<div class="mt-2 text-sm text-warning">
+										Conflicts with {item.collisionsWith.length} other file{item.collisionsWith
+											.length !== 1
+											? 's'
+											: ''}
+									</div>
+								{/if}
 							</div>
 						</div>
 					</div>

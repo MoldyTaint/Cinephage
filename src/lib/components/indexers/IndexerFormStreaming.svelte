@@ -41,6 +41,8 @@
 	const checkboxSettings = $derived(
 		definition.settings?.filter((s) => s.type === 'checkbox') ?? []
 	);
+	const MAX_NAME_LENGTH = 20;
+	const nameTooLong = $derived(name.length > MAX_NAME_LENGTH);
 </script>
 
 <div class="space-y-6">
@@ -56,8 +58,17 @@
 				class="input-bordered input input-sm"
 				value={name}
 				oninput={(e) => onNameChange(e.currentTarget.value)}
+				maxlength={MAX_NAME_LENGTH}
 				placeholder={definition.name ?? 'Streaming Indexer'}
 			/>
+			<div class="label py-1">
+				<span class="label-text-alt text-xs {nameTooLong ? 'text-error' : 'text-base-content/60'}">
+					{name.length}/{MAX_NAME_LENGTH}
+				</span>
+				{#if nameTooLong}
+					<span class="label-text-alt text-xs text-error">Max {MAX_NAME_LENGTH} characters.</span>
+				{/if}
+			</div>
 		</div>
 
 		<div class="form-control">

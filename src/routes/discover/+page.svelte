@@ -561,14 +561,6 @@
 			<!-- Dashboard View -->
 			<div class="animate-in fade-in space-y-12 duration-500">
 				<SectionRow
-					title="Trending Today"
-					items={data.sections.trendingDay}
-					link="/discover?trending=day{excludeInLibrary ? '&exclude_in_library=true' : ''}"
-					endpoint="trending/all/day"
-					onAddToLibrary={handleAddToLibrary}
-					{excludeInLibrary}
-				/>
-				<SectionRow
 					title="Trending This Week"
 					items={data.sections.trendingWeek}
 					link="/discover?trending=week{excludeInLibrary ? '&exclude_in_library=true' : ''}"

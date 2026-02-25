@@ -39,7 +39,10 @@
 								<h3 class="flex items-center gap-2 font-semibold">
 									{folder.name}
 									{#if folder.isDefault}
-										<Star class="h-4 w-4 fill-warning text-warning" />
+										<span class="badge gap-1 badge-primary">
+											<Star class="h-3 w-3" />
+											Default
+										</span>
 									{/if}
 									{#if folder.readOnly}
 										<span

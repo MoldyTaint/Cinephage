@@ -445,14 +445,14 @@
 	}
 </script>
 
-<div class="w-full p-4">
-	<div class="mb-6">
-		<h1 class="text-2xl font-bold">Indexers</h1>
+<div class="w-full overflow-x-hidden p-3 sm:p-4">
+	<div class="mb-5 sm:mb-6">
+		<h1 class="text-xl font-bold sm:text-2xl">Indexers</h1>
 		<p class="text-base-content/70">Configure torrent and usenet indexers for content search.</p>
 	</div>
 
 	<div class="mb-4 flex items-center justify-end">
-		<button class="btn gap-2 btn-primary" onclick={openAddModal}>
+		<button class="btn w-full gap-2 btn-sm btn-primary sm:w-auto" onclick={openAddModal}>
 			<Plus class="h-4 w-4" />
 			Add Indexer
 		</button>
@@ -501,8 +501,8 @@
 		/>
 	{/if}
 
-	<div class="card bg-base-100 shadow-xl">
-		<div class="card-body p-0">
+	<div class="card bg-base-200/40 shadow-none sm:bg-base-100 sm:shadow-xl">
+		<div class="card-body p-2 sm:p-0">
 			<IndexerTable
 				indexers={filteredIndexers()}
 				{selectedIds}

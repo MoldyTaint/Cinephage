@@ -28,7 +28,7 @@
 <div class="space-y-4">
 	<div class="flex items-center justify-end">
 		{#if onAdd}
-			<button class="btn gap-2 btn-primary" onclick={onAdd}>
+			<button class="btn w-full gap-2 btn-sm btn-primary sm:w-auto" onclick={onAdd}>
 				<Plus class="h-4 w-4" />
 				Add Profile
 			</button>

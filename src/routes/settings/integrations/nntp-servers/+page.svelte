@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
-	import { Plus } from 'lucide-svelte';
+	import { Plus, Search } from 'lucide-svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import type { PageData } from './$types';
@@ -407,47 +407,50 @@
 	}
 </script>
 
-<div class="w-full p-4">
-	<div class="mb-6">
-		<h1 class="text-2xl font-bold">NNTP Servers</h1>
+<div class="w-full p-3 sm:p-4">
+	<div class="mb-5 sm:mb-6">
+		<h1 class="text-xl font-bold sm:text-2xl">NNTP Servers</h1>
 		<p class="text-base-content/70">Configure Usenet providers for streaming and article checks.</p>
 	</div>
 
-	<div class="mb-3 flex justify-end">
-		<button class="btn gap-2 btn-primary" onclick={openAddModal}>
+	<div class="mb-4 flex items-center justify-end">
+		<button class="btn w-full gap-2 btn-sm btn-primary sm:w-auto" onclick={openAddModal}>
 			<Plus class="h-4 w-4" />
 			Add NNTP Server
 		</button>
 	</div>
 
-	<div class="mb-4 flex flex-wrap items-center gap-4">
-		<div class="form-control w-full sm:w-48">
+	<div class="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
+		<div class="form-control relative w-full sm:w-56">
+			<Search
+				class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/40"
+			/>
 			<input
 				type="text"
 				placeholder="Search servers..."
-				class="input-bordered input input-sm w-full pl-9"
+				class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				value={filters.search}
 				oninput={(e) => updateFilter('search', e.currentTarget.value)}
 			/>
 		</div>
 
-		<div class="join">
+		<div class="join w-full sm:w-auto">
 			<button
-				class="btn join-item btn-sm"
+				class="btn join-item flex-1 btn-sm sm:flex-none"
 				class:btn-active={filters.status === 'all'}
 				onclick={() => updateFilter('status', 'all')}
 			>
 				All
 			</button>
 			<button
-				class="btn join-item btn-sm"
+				class="btn join-item flex-1 btn-sm sm:flex-none"
 				class:btn-active={filters.status === 'enabled'}
 				onclick={() => updateFilter('status', 'enabled')}
 			>
 				Enabled
 			</button>
 			<button
-				class="btn join-item btn-sm"
+				class="btn join-item flex-1 btn-sm sm:flex-none"
 				class:btn-active={filters.status === 'disabled'}
 				onclick={() => updateFilter('status', 'disabled')}
 			>
@@ -467,8 +470,8 @@
 		/>
 	{/if}
 
-	<div class="card bg-base-100 shadow-xl">
-		<div class="card-body p-0">
+	<div class="card bg-base-200/40 shadow-none sm:bg-base-100 sm:shadow-xl">
+		<div class="card-body p-2 sm:p-0">
 			<NntpServerTable
 				servers={sortedServers}
 				{selectedIds}

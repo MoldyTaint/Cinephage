@@ -4,7 +4,7 @@
 		FlaskConical,
 		Trash2,
 		Search,
-		MousePointer,
+		Zap,
 		GripVertical,
 		ToggleLeft,
 		ToggleRight,
@@ -122,7 +122,7 @@
 				class="tooltip"
 				data-tip="Auto Search {indexer.enableAutomaticSearch ? 'enabled' : 'disabled'}"
 			>
-				<Search
+				<Zap
 					class="h-3.5 w-3.5 {indexer.enableAutomaticSearch
 						? 'text-success'
 						: 'text-base-content/30'}"
@@ -132,7 +132,7 @@
 				class="tooltip"
 				data-tip="Interactive Search {indexer.enableInteractiveSearch ? 'enabled' : 'disabled'}"
 			>
-				<MousePointer
+				<Search
 					class="h-3.5 w-3.5 {indexer.enableInteractiveSearch
 						? 'text-success'
 						: 'text-base-content/30'}"

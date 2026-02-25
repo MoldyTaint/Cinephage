@@ -45,3 +45,24 @@
 	--safe-area-bottom: env(safe-area-inset-bottom, 0px);
 	--safe-area-left: env(safe-area-inset-left, 0px);
 }
+
+/* Unified form control focus style (exclude search fields) */
+.input:focus:not([type='search']):not([placeholder*='search' i]):not([id*='search' i]):not(
+		[name*='search' i]
+	):not([class*='search' i]):not(.no-primary-focus),
+.input:focus-visible:not([type='search']):not([placeholder*='search' i]):not([id*='search' i]):not(
+		[name*='search' i]
+	):not([class*='search' i]):not(.no-primary-focus),
+.textarea:focus:not([placeholder*='search' i]):not([id*='search' i]):not([name*='search' i]):not(
+		[class*='search' i]
+	):not(.no-primary-focus),
+.textarea:focus-visible:not([placeholder*='search' i]):not([id*='search' i]):not(
+		[name*='search' i]
+	):not([class*='search' i]):not(.no-primary-focus),
+.select:focus:not(.no-primary-focus),
+.select:focus-visible:not(.no-primary-focus),
+.select:open:not(.no-primary-focus) {
+	border-color: transparent !important;
+	outline: none !important;
+	box-shadow: inset 0 0 0 2px var(--color-primary, oklch(var(--p))) !important;
+}

@@ -203,9 +203,8 @@ export const load: PageServerLoad = async ({ url }) => {
 
 		if (isDefaultViewCheck && page === '1') {
 			// Fetch sections for the dashboard-style view
-			const [trendingDay, trendingWeek, popularMovies, popularTV, topRatedMovies, topRatedTV] =
+			const [trendingWeek, popularMovies, popularTV, topRatedMovies, topRatedTV] =
 				(await Promise.all([
-					tmdb.fetch('/trending/all/day'),
 					tmdb.fetch('/trending/all/week'),
 					tmdb.fetch('/movie/popular'),
 					tmdb.fetch('/tv/popular'),
@@ -215,14 +214,12 @@ export const load: PageServerLoad = async ({ url }) => {
 
 			// Enrich all sections with library status
 			const [
-				enrichedTrendingDay,
 				enrichedTrendingWeek,
 				enrichedPopularMovies,
 				enrichedPopularTV,
 				enrichedTopRatedMovies,
 				enrichedTopRatedTV
 			] = await Promise.all([
-				enrichWithLibraryStatus(trendingDay.results),
 				enrichWithLibraryStatus(trendingWeek.results),
 				enrichWithLibraryStatus(popularMovies.results, 'movie'),
 				enrichWithLibraryStatus(popularTV.results, 'tv'),
@@ -234,7 +231,6 @@ export const load: PageServerLoad = async ({ url }) => {
 				viewType: 'dashboard',
 				tmdbConfigured: true,
 				sections: {
-					trendingDay: filterInLibrary(enrichedTrendingDay, excludeInLibrary),
 					trendingWeek: filterInLibrary(enrichedTrendingWeek, excludeInLibrary),
 					popularMovies: filterInLibrary(enrichedPopularMovies, excludeInLibrary),
 					popularTV: filterInLibrary(enrichedPopularTV, excludeInLibrary),

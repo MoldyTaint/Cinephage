@@ -86,6 +86,11 @@
 		return sort.direction === 'asc';
 	}
 
+	function getClientUrl(client: UnifiedClientItem): string {
+		const path = client.urlBase ? `/${client.urlBase.replace(/^\/+/, '')}` : '';
+		return `${client.useSsl ? 'https' : 'http'}://${client.host}:${client.port}${path}`;
+	}
+
 	const allSelected = $derived(clients.length > 0 && clients.every((c) => selectedIds.has(c.id)));
 	const someSelected = $derived(clients.some((c) => selectedIds.has(c.id)) && !allSelected);
 </script>
@@ -97,8 +102,128 @@
 		<p class="mt-1 text-sm">Add a download client to start managing downloads</p>
 	</div>
 {:else}
-	<div class="h-11 border-b border-base-300"></div>
-	<div class="overflow-x-auto">
+	<div class="space-y-3 sm:hidden">
+		<div class="rounded-lg border border-base-300/80 bg-base-100 px-3 py-2 shadow-sm">
+			<div class="flex items-center justify-between gap-2">
+				<label class="flex items-center gap-2 text-xs font-medium">
+					<input
+						type="checkbox"
+						class="checkbox checkbox-sm"
+						checked={allSelected}
+						indeterminate={someSelected}
+						onchange={(e) => onSelectAll(e.currentTarget.checked)}
+					/>
+					Select all
+				</label>
+				<span class="text-xs text-base-content/60">{selectedIds.size} selected</span>
+			</div>
+		</div>
+
+		{#each clients as client (client.id)}
+			<div
+				class="rounded-xl border bg-base-100 p-3 transition-all duration-150 {selectedIds.has(
+					client.id
+				)
+					? 'border-primary/50 ring-1 ring-primary/30'
+					: 'border-base-300/80'}"
+			>
+				<div class="mb-2 flex items-start gap-2.5">
+					<input
+						type="checkbox"
+						class="checkbox checkbox-sm"
+						checked={selectedIds.has(client.id)}
+						onchange={(e) => onSelect(client.id, e.currentTarget.checked)}
+					/>
+					<div class="min-w-0 flex-1">
+						<div class="flex items-start justify-between gap-2">
+							<button
+								class="block min-w-0 flex-1 link truncate text-left text-sm font-bold link-hover"
+								onclick={() => onEdit(client)}
+							>
+								{client.name}
+							</button>
+							<div class="shrink-0">
+								<DownloadClientStatusBadge
+									enabled={client.enabled}
+									health={client.status?.health}
+									consecutiveFailures={client.status?.consecutiveFailures}
+									lastFailure={client.status?.lastFailure}
+									lastFailureMessage={client.status?.lastFailureMessage}
+								/>
+							</div>
+						</div>
+						<div class="mt-1 truncate text-xs text-base-content/60">
+							{getDownloaderTypeLabel(client.implementation)}
+						</div>
+					</div>
+				</div>
+
+				<div class="mb-2 flex flex-wrap items-center gap-1.5">
+					<span class="badge badge-outline badge-sm">
+						{getProtocolLabel(client.implementation)}
+					</span>
+					<span class="badge badge-ghost badge-sm">Movies: {client.movieCategory ?? '-'}</span>
+					<span class="badge badge-ghost badge-sm">TV: {client.tvCategory ?? '-'}</span>
+				</div>
+
+				<div
+					class="mb-3 min-w-0 truncate font-mono text-xs text-base-content/60"
+					title={getClientUrl(client)}
+				>
+					{getClientUrl(client)}
+				</div>
+
+				<div class="grid gap-1.5 {onTest ? 'grid-cols-4' : 'grid-cols-3'}">
+					{#if onTest}
+						<button
+							class="btn btn-ghost btn-xs"
+							onclick={() => onTest(client)}
+							title="Test connection"
+							aria-label="Test connection"
+							disabled={testingId === client.id}
+						>
+							{#if testingId === client.id}
+								<Loader2 class="h-4 w-4 animate-spin" />
+							{:else}
+								<FlaskConical class="h-4 w-4" />
+							{/if}
+						</button>
+					{/if}
+					<button
+						class="btn btn-ghost btn-xs"
+						onclick={() => onToggle(client)}
+						title={client.enabled ? 'Disable' : 'Enable'}
+						aria-label={client.enabled ? 'Disable client' : 'Enable client'}
+						disabled={testingId === client.id}
+					>
+						{#if client.enabled}
+							<ToggleRight class="h-4 w-4 text-success" />
+						{:else}
+							<ToggleLeft class="h-4 w-4" />
+						{/if}
+					</button>
+					<button
+						class="btn btn-ghost btn-xs"
+						onclick={() => onEdit(client)}
+						title="Edit client"
+						aria-label="Edit client"
+					>
+						<Settings class="h-4 w-4" />
+					</button>
+					<button
+						class="btn text-error btn-ghost btn-xs"
+						onclick={() => onDelete(client)}
+						title="Delete client"
+						aria-label="Delete client"
+					>
+						<Trash2 class="h-4 w-4" />
+					</button>
+				</div>
+			</div>
+		{/each}
+	</div>
+
+	<div class="hidden overflow-x-auto sm:block">
 		<table class="table table-sm">
 			<thead>
 				<tr>
@@ -183,9 +308,7 @@
 							/>
 						</td>
 						<td>
-							<div>
-								<div class="font-bold">{client.name}</div>
-							</div>
+							<div class="font-bold">{client.name}</div>
 						</td>
 						<td>{getDownloaderTypeLabel(client.implementation)}</td>
 						<td>
@@ -194,16 +317,13 @@
 							>
 						</td>
 						<td>
-							<div class="font-mono text-sm">
-								{client.useSsl ? 'https' : 'http'}://{client.host}:{client.port}{client.urlBase
-									? `/${client.urlBase}`
-									: ''}
-							</div>
+							<div class="font-mono text-sm">{getClientUrl(client)}</div>
 						</td>
 						<td>
 							<div class="flex flex-col gap-1">
-								<span class="badge badge-ghost badge-sm">Movies: {client.movieCategory}</span>
-								<span class="badge badge-ghost badge-sm">TV: {client.tvCategory}</span>
+								<span class="badge badge-ghost badge-sm">Movies: {client.movieCategory ?? '-'}</span
+								>
+								<span class="badge badge-ghost badge-sm">TV: {client.tvCategory ?? '-'}</span>
 							</div>
 						</td>
 						<td class="pl-2!">

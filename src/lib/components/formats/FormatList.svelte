@@ -116,21 +116,21 @@
 			<Search class="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/50" />
 			<input
 				type="text"
-				class="input-bordered input input-sm w-full pl-9"
+				class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-9 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				placeholder="Search formats..."
 				bind:value={searchQuery}
 			/>
 		</div>
 
 		<!-- Type filter -->
-		<select class="select-bordered select select-sm" bind:value={filterType}>
+		<select class="select-bordered select w-full select-sm sm:w-48" bind:value={filterType}>
 			<option value="all">All Types</option>
 			<option value="builtin">Built-in</option>
 			<option value="custom">Custom</option>
 		</select>
 
 		<!-- Category filter -->
-		<select class="select-bordered select select-sm" bind:value={filterCategory}>
+		<select class="select-bordered select w-full select-sm sm:w-48" bind:value={filterCategory}>
 			<option value="all">All Categories</option>
 			{#each FORMAT_CATEGORY_ORDER as cat (cat)}
 				<option value={cat}>{FORMAT_CATEGORY_LABELS[cat]}</option>
@@ -138,9 +138,9 @@
 		</select>
 
 		<!-- Create button -->
-		<button type="button" class="btn gap-1 btn-sm btn-primary" onclick={onCreate}>
+		<button type="button" class="btn w-full gap-2 btn-sm btn-primary sm:w-auto" onclick={onCreate}>
 			<Plus class="h-4 w-4" />
-			<span class="hidden sm:inline">Create Format</span>
+			Create Format
 		</button>
 	</div>
 

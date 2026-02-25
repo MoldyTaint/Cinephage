@@ -236,7 +236,7 @@
 <div class="w-full p-4">
 	<!-- Header -->
 	<div class="mb-6">
-		<h1 class="text-3xl font-bold">Quality Settings</h1>
+		<h1 class="text-2xl font-bold">Quality Settings</h1>
 		<p class="text-base-content/70">
 			Manage quality profiles and custom formats to control how releases are scored and selected.
 		</p>

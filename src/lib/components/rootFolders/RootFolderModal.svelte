@@ -118,7 +118,7 @@
 		/>
 	{:else}
 		<!-- Form -->
-		<div class="space-y-4">
+		<div class="root-folder-editor space-y-4">
 			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
 				<div class="form-control">
 					<label class="label py-1" for="name">

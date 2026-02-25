@@ -309,15 +309,21 @@
 					<div class="mt-4 space-y-6">
 						<!-- Enable Toggle -->
 						<div class="form-control">
-							<label class="label cursor-pointer justify-start gap-4">
+							<label
+								class="label w-full cursor-pointer items-start justify-start gap-3 py-0 whitespace-normal"
+							>
 								<input
 									type="checkbox"
 									bind:checked={settings.enabled}
-									class="toggle toggle-primary"
+									class="toggle mt-0.5 shrink-0 toggle-primary"
 								/>
-								<div>
-									<span class="label-text font-medium">Enable Captcha Solver</span>
-									<p class="text-sm text-base-content/60">
+								<div class="min-w-0">
+									<span class="label-text block font-medium whitespace-normal">
+										Enable Captcha Solver
+									</span>
+									<p
+										class="text-sm leading-relaxed wrap-break-word whitespace-normal text-base-content/60"
+									>
 										Automatically solve Cloudflare and other anti-bot challenges
 									</p>
 								</div>
@@ -326,16 +332,22 @@
 
 						<!-- Headless Mode -->
 						<div class="form-control">
-							<label class="label cursor-pointer justify-start gap-4">
+							<label
+								class="label w-full cursor-pointer items-start justify-start gap-3 py-0 whitespace-normal"
+							>
 								<input
 									type="checkbox"
 									bind:checked={settings.headless}
-									class="toggle toggle-secondary"
+									class="toggle mt-0.5 shrink-0 toggle-secondary"
 									disabled={!settings.enabled}
 								/>
-								<div>
-									<span class="label-text font-medium">Headless Mode</span>
-									<p class="text-sm text-base-content/60">
+								<div class="min-w-0">
+									<span class="label-text block font-medium whitespace-normal">
+										Headless Mode
+									</span>
+									<p
+										class="text-sm leading-relaxed wrap-break-word whitespace-normal text-base-content/60"
+									>
 										Run browser in background without visible window (recommended)
 									</p>
 								</div>
@@ -362,7 +374,7 @@
 								<option value={180}>3 minutes</option>
 							</select>
 							<div class="label">
-								<span class="label-text-alt text-base-content/50">
+								<span class="label-text-alt wrap-break-word whitespace-normal text-base-content/50">
 									Maximum time to wait for challenge resolution
 								</span>
 							</div>
@@ -387,7 +399,7 @@
 								<option value={86400}>24 hours</option>
 							</select>
 							<div class="label">
-								<span class="label-text-alt text-base-content/50">
+								<span class="label-text-alt wrap-break-word whitespace-normal text-base-content/50">
 									How long to cache solved cookies before re-solving
 								</span>
 							</div>
@@ -412,7 +424,7 @@
 								disabled={!settings.enabled}
 							/>
 							<div class="label">
-								<span class="label-text-alt text-base-content/50">
+								<span class="label-text-alt wrap-break-word whitespace-normal text-base-content/50">
 									HTTP/SOCKS5 proxy for browser connections
 								</span>
 							</div>
@@ -452,7 +464,11 @@
 					</div>
 
 					<div class="mt-6 card-actions justify-end">
-						<button class="btn gap-2 btn-primary" onclick={saveSettings} disabled={saving}>
+						<button
+							class="btn w-full gap-2 btn-sm btn-primary sm:w-auto"
+							onclick={saveSettings}
+							disabled={saving}
+						>
 							{#if saving}
 								<RefreshCw size={16} class="animate-spin" />
 								Saving...
@@ -482,11 +498,11 @@
 							type="url"
 							bind:value={testUrl}
 							placeholder="https://example.com"
-							class="input-bordered input flex-1"
+							class="input-bordered input w-full sm:flex-1"
 							disabled={testing || !settings.enabled}
 						/>
 						<button
-							class="btn gap-2 btn-primary"
+							class="btn w-full gap-2 btn-sm btn-primary sm:w-auto"
 							onclick={testSolver}
 							disabled={testing || !testUrl || !settings.enabled}
 						>

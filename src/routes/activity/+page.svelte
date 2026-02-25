@@ -527,7 +527,7 @@
 	<!-- Header -->
 	<div class="flex items-center justify-between">
 		<div>
-			<h1 class="flex items-center gap-2 text-3xl font-bold">
+			<h1 class="flex items-center gap-2 text-2xl font-bold">
 				<Activity class="h-8 w-8" />
 				Activity
 			</h1>
