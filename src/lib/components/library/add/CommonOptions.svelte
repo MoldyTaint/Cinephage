@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { FolderOpen, BarChart3, Search, Subtitles } from 'lucide-svelte';
 	import { resolve } from '$app/paths';
+	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
 
 	interface RootFolder {
 		id: string;
 		name: string;
 		path: string;
 		mediaType: string;
+		isDefault?: boolean;
 		freeSpaceBytes?: number | null;
 	}
 
@@ -38,7 +40,7 @@
 		wantsSubtitles = $bindable()
 	}: Props = $props();
 
-	const filteredRootFolders = $derived(rootFolders.filter((f) => f.mediaType === mediaType));
+	const filteredRootFolders = $derived(sortRootFoldersForMediaType(rootFolders, mediaType));
 	const selectedRootFolderObj = $derived(
 		filteredRootFolders.find((f) => f.id === selectedRootFolder)
 	);

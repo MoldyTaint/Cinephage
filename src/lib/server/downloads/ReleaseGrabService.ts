@@ -23,6 +23,7 @@ import { isMediaFile } from '$lib/server/streaming/usenet/types';
 import { fileExists, importService } from '$lib/server/downloadClients/import/index.js';
 import { eventBuffer } from '$lib/server/sse/EventBuffer.js';
 import { mediaInfoService } from '$lib/server/library/media-info.js';
+import { getLibraryRelativePath } from '$lib/server/library/media-paths.js';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
 import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
 import { getIndexerManager } from '$lib/server/indexers/IndexerManager.js';
@@ -41,7 +42,7 @@ import { eq, and } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { statSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { unlink } from 'node:fs/promises';
-import { join, relative, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { EnhancedReleaseResult } from '$lib/server/indexers/types';
 import { categoryMatchesSearchType, getCategoryContentType } from '$lib/server/indexers/types';
 import type { DownloadInfo } from '$lib/server/downloadClients/core/interfaces.js';
@@ -1033,8 +1034,7 @@ class ReleaseGrabService {
 			return { success: false, error: 'Movie or root folder not found' };
 		}
 
-		// Calculate relative path from root folder
-		const relativePath = relative(movie.rootFolder.path, filePath);
+		const relativePath = getLibraryRelativePath(movie.rootFolder.path, movie.path, filePath);
 
 		// Delete existing files if this is an upgrade
 		if (isUpgrade) {
@@ -1161,8 +1161,7 @@ class ReleaseGrabService {
 			return { success: false, error: `Episode S${season}E${episode} not found` };
 		}
 
-		// Calculate relative path from root folder
-		const relativePath = relative(show.rootFolder.path, filePath);
+		const relativePath = getLibraryRelativePath(show.rootFolder.path, show.path, filePath);
 
 		// Delete existing episode file if this is an upgrade
 		if (isUpgrade) {
@@ -1355,7 +1354,11 @@ class ReleaseGrabService {
 				const mediaInfo = await mediaInfoService.extractMediaInfo(epResult.filePath, {
 					allowStrmProbe
 				});
-				const relativePath = relative(show.rootFolder!.path, epResult.filePath);
+				const relativePath = getLibraryRelativePath(
+					show.rootFolder!.path,
+					show.path,
+					epResult.filePath
+				);
 
 				episodeFileData.push({
 					episodeId: epResult.episodeId,

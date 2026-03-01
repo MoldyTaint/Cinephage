@@ -3,8 +3,8 @@ import { json, redirect } from '@sveltejs/kit';
 import { sequence } from '@sveltejs/kit/hooks';
 import { randomUUID } from 'node:crypto';
 import { building } from '$app/environment';
-import { svelteKitHandler } from 'better-auth/svelte-kit';
 
+import { AUTH_BASE_PATH } from '$lib/auth/config.js';
 import { logger } from '$lib/logging';
 import { getLibraryScheduler, librarySchedulerService } from '$lib/server/library/index.js';
 import { isFFprobeAvailable, getFFprobeVersion } from '$lib/server/library/ffprobe.js';
@@ -309,7 +309,22 @@ initializeServices().catch((error) => {
  * Handles all /api/auth/* routes using Better Auth's SvelteKit handler
  */
 const authHandler: Handle = async ({ event, resolve }) => {
-	return svelteKitHandler({ event, resolve, auth, building });
+	if (building) {
+		return resolve(event);
+	}
+
+	const normalizedBasePath = AUTH_BASE_PATH.endsWith('/')
+		? AUTH_BASE_PATH.slice(0, -1)
+		: AUTH_BASE_PATH;
+	const isAuthRoute =
+		event.url.pathname === normalizedBasePath ||
+		event.url.pathname.startsWith(`${normalizedBasePath}/`);
+
+	if (isAuthRoute) {
+		return auth.handler(event.request);
+	}
+
+	return resolve(event);
 };
 
 /**
@@ -375,7 +390,7 @@ const customHandler: Handle = async ({ event, resolve }) => {
 	const pathname = event.url.pathname;
 
 	// Auth routes are already handled by authHandler
-	if (pathname.startsWith('/api/auth')) {
+	if (pathname.startsWith(AUTH_BASE_PATH)) {
 		return resolve(event);
 	}
 
@@ -427,7 +442,7 @@ const customHandler: Handle = async ({ event, resolve }) => {
 		}
 
 		// Better Auth routes (handles its own auth)
-		if (path.startsWith('/api/auth')) {
+		if (path.startsWith(AUTH_BASE_PATH)) {
 			return true;
 		}
 

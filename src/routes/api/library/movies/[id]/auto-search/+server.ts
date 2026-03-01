@@ -129,6 +129,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 						title: movie.title,
 						year: movie.year ?? undefined,
 						scoringProfileId: movie.scoringProfileId ?? undefined,
+						bypassMonitoring: true,
 						onProgress
 					});
 

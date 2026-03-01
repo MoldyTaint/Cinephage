@@ -42,21 +42,7 @@ import {
  */
 const EXCLUDED_PATTERNS = {
 	// Sample files
-	samples: [/\bsample\b/i, /\btrailer\b/i, /\bteaser\b/i, /\bpromo\b/i, /\bpreview\b/i],
-	// Extras/featurettes
-	extras: [
-		/\bfeaturette\b/i,
-		/\bbehind[\s._-]?the[\s._-]?scenes?\b/i,
-		/\bdeleted[\s._-]?scenes?\b/i,
-		/\bbloopers?\b/i,
-		/\bgag[\s._-]?reel\b/i,
-		/\binterview\b/i,
-		/\bcommentary\b/i,
-		/\bmaking[\s._-]?of\b/i,
-		/\bbonus\b/i,
-		/\bextras?\b/i,
-		/\bspecial[\s._-]?features?\b/i
-	],
+	samples: [/\bsample\b/i],
 	// Folders to skip entirely
 	excludedFolders: [
 		/^\./, // Hidden folders
@@ -176,11 +162,6 @@ export class DiskScanService extends EventEmitter {
 	private shouldExcludeFile(fileName: string, filePath: string): boolean {
 		// Check samples
 		if (EXCLUDED_PATTERNS.samples.some((pattern) => pattern.test(fileName))) {
-			return true;
-		}
-
-		// Check extras
-		if (EXCLUDED_PATTERNS.extras.some((pattern) => pattern.test(fileName))) {
 			return true;
 		}
 

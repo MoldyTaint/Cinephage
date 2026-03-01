@@ -97,6 +97,40 @@ describe('ActivityService download client filtering', () => {
 	});
 });
 
+describe('ActivityService sorting priority', () => {
+	it('always keeps active downloads at the top of the list', () => {
+		const service = ActivityService.getInstance() as unknown as {
+			sortActivities: (
+				activities: UnifiedActivity[],
+				sort: { field: 'time' | 'media' | 'size' | 'status'; direction: 'asc' | 'desc' }
+			) => void;
+		};
+
+		const activities: UnifiedActivity[] = [
+			createActivity('imported-newer', {
+				status: 'imported',
+				startedAt: '2026-02-10T00:00:00.000Z'
+			}),
+			createActivity('downloading-older', {
+				status: 'downloading',
+				startedAt: '2026-02-08T00:00:00.000Z'
+			}),
+			createActivity('failed-middle', {
+				status: 'failed',
+				startedAt: '2026-02-09T00:00:00.000Z'
+			})
+		];
+
+		service.sortActivities(activities, { field: 'time', direction: 'desc' });
+
+		expect(activities.map((activity) => activity.id)).toEqual([
+			'downloading-older',
+			'imported-newer',
+			'failed-middle'
+		]);
+	});
+});
+
 describe('ActivityService fallback media resolution', () => {
 	it('uses parsed release title when a deleted movie no longer resolves by id', () => {
 		const service = ActivityService.getInstance();

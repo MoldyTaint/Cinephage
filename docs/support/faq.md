@@ -79,6 +79,11 @@ rm data/cinephage.db
 
 Docker: remove `/config/data/cinephage.db` from your mounted config directory.
 
+### How do I recover the admin password?
+
+Use the built-in password reset script. See [Troubleshooting: Lost admin password](troubleshooting.md#lost-admin-password)
+for the Docker and manual recovery commands.
+
 ### Can I run multiple instances?
 
 Not recommended. SQLite doesn't handle multiple writers well.

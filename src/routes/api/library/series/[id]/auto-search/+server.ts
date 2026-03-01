@@ -231,7 +231,9 @@ export const POST: RequestHandler = async ({ params, request }) => {
 						}
 
 						case 'missing': {
-							const result = await searchOnAdd.searchForMissingEpisodes(seriesId, onProgress);
+							const result = await searchOnAdd.searchForMissingEpisodes(seriesId, onProgress, {
+								bypassMonitoring: true
+							});
 
 							sendEvent('search:completed', {
 								success: true,

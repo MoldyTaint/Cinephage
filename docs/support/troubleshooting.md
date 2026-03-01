@@ -143,6 +143,51 @@ docker exec -it cinephage cine-run fix:tv-subtitles
 
 ---
 
+## Authentication Issues
+
+### Lost admin password
+
+Use the built-in password reset script. It resets the password for an admin account and revokes that
+user's existing sessions by default.
+
+**List admin accounts first (recommended if you might have more than one):**
+
+```bash
+# Manual npm/node install
+node scripts/reset-admin-password.js --list-admins
+
+# Docker
+docker exec -it cinephage cine-run reset-admin-password --list-admins
+```
+
+**Reset the sole admin account password:**
+
+```bash
+# Manual npm/node install
+printf '%s' 'NewPass123!' | npm run auth:reset-admin-password -- --password-stdin
+
+# Docker
+printf '%s' 'NewPass123!' | docker exec -i cinephage cine-run auth:reset-admin-password --password-stdin
+```
+
+**Reset a specific admin account when multiple admins exist:**
+
+```bash
+# By username
+printf '%s' 'NewPass123!' | docker exec -i cinephage cine-run auth:reset-admin-password --username admin --password-stdin
+
+# By email
+printf '%s' 'NewPass123!' | docker exec -i cinephage cine-run auth:reset-admin-password --email admin@example.com --password-stdin
+```
+
+**Notes:**
+
+1. Prefer `--password-stdin` so the new password does not end up in shell history.
+2. If the script reports multiple admin users, rerun it with `--username`, `--email`, or `--user-id`.
+3. Existing sessions for that admin are revoked unless you pass `--keep-sessions`.
+
+---
+
 ## Migration from Legacy /app/data and /app/logs Mounts
 
 If you're upgrading from an older version that used `/app/data` and `/app/logs` mounts:

@@ -400,13 +400,13 @@
 		return seasons;
 	});
 
-	// Calculate missing episode count (monitored, aired, no file, not downloading)
+	// Calculate missing aired episode count for manual auto-grab.
 	const missingEpisodeCount = $derived.by(() => {
 		const now = new Date().toISOString().split('T')[0];
 		let count = 0;
 		for (const season of seasons) {
 			for (const episode of season.episodes) {
-				if (episode.monitored && !episode.file && episode.airDate && episode.airDate <= now) {
+				if (!episode.file && episode.airDate && episode.airDate <= now) {
 					// Don't count as missing if it's downloading
 					if (
 						!downloadingEpisodeIds.has(episode.id) &&

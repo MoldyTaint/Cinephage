@@ -97,6 +97,57 @@
 		};
 	}
 
+	function compareActivityPriority(a: UnifiedActivity, b: UnifiedActivity): number {
+		const aPriority = a.status === 'downloading' ? 0 : 1;
+		const bPriority = b.status === 'downloading' ? 0 : 1;
+		return aPriority - bPriority;
+	}
+
+	function getSortValue(activity: UnifiedActivity, field: string): string | number {
+		switch (field) {
+			case 'time':
+				return activity.startedAt;
+			case 'media':
+				return activity.mediaTitle.toLowerCase();
+			case 'size':
+				return activity.size || 0;
+			case 'status':
+				return activity.status;
+			case 'release':
+				return activity.releaseTitle?.toLowerCase() || '';
+			default:
+				return activity.startedAt;
+		}
+	}
+
+	function sortActivitiesList(
+		list: UnifiedActivity[],
+		field: string = sortField,
+		direction: 'asc' | 'desc' = sortDirection
+	): UnifiedActivity[] {
+		return [...list].sort((a, b) => {
+			const priorityComparison = compareActivityPriority(a, b);
+			if (priorityComparison !== 0) {
+				return priorityComparison;
+			}
+
+			const aVal = getSortValue(a, field);
+			const bVal = getSortValue(b, field);
+
+			let comparison = 0;
+			if (aVal < bVal) comparison = -1;
+			if (aVal > bVal) comparison = 1;
+
+			if (comparison === 0) {
+				const aTime = new Date(a.startedAt).getTime();
+				const bTime = new Date(b.startedAt).getTime();
+				comparison = aTime < bTime ? -1 : aTime > bTime ? 1 : 0;
+			}
+
+			return direction === 'asc' ? comparison : -comparison;
+		});
+	}
+
 	function matchesLiveFilters(activity: UnifiedActivity): boolean {
 		// Status
 		if (filters.status && filters.status !== 'all') {
@@ -196,10 +247,11 @@
 			if (selectedActivity?.id === existing.id && selectedActivity !== existing) {
 				selectedActivity = existing;
 			}
+			activities = sortActivitiesList(activities);
 			return;
 		}
 
-		activities = [normalized, ...activities];
+		activities = sortActivitiesList([normalized, ...activities]);
 		total += 1;
 	}
 
@@ -242,6 +294,8 @@
 
 				return [a];
 			});
+
+			activities = sortActivitiesList(activities);
 
 			if (removed) {
 				total = Math.max(0, total - 1);
@@ -343,39 +397,7 @@
 			sortDirection = 'desc';
 		}
 
-		// Sort locally
-		activities = [...activities].sort((a, b) => {
-			let aVal: string | number | null = null;
-			let bVal: string | number | null = null;
-
-			switch (field) {
-				case 'time':
-					aVal = a.startedAt;
-					bVal = b.startedAt;
-					break;
-				case 'media':
-					aVal = a.mediaTitle.toLowerCase();
-					bVal = b.mediaTitle.toLowerCase();
-					break;
-				case 'size':
-					aVal = a.size || 0;
-					bVal = b.size || 0;
-					break;
-				case 'status':
-					aVal = a.status;
-					bVal = b.status;
-					break;
-				case 'release':
-					aVal = a.releaseTitle?.toLowerCase() || '';
-					bVal = b.releaseTitle?.toLowerCase() || '';
-					break;
-			}
-
-			if (aVal === null || bVal === null) return 0;
-			if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-			if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-			return 0;
-		});
+		activities = sortActivitiesList(activities, field, sortDirection);
 	}
 
 	// Load more
@@ -405,7 +427,7 @@
 			const result = await response.json();
 
 			if (result.success && result.activities) {
-				activities = [...activities, ...result.activities];
+				activities = sortActivitiesList([...activities, ...result.activities]);
 			}
 		} catch (error) {
 			console.error('Failed to load more:', error);

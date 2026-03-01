@@ -8,10 +8,75 @@ import {
 	series,
 	downloadClients
 } from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
 import { downloadMonitor } from '$lib/server/downloadClients/monitoring';
 import { logger } from '$lib/logging';
+
+async function writeRemovedHistory(queueItem: typeof downloadQueue.$inferSelect): Promise<void> {
+	if (queueItem.status === 'failed') {
+		const historyConditions = [
+			eq(downloadHistory.status, 'failed'),
+			eq(downloadHistory.title, queueItem.title)
+		];
+
+		if (queueItem.addedAt) {
+			historyConditions.push(eq(downloadHistory.grabbedAt, queueItem.addedAt));
+		}
+
+		if (queueItem.downloadId) {
+			historyConditions.push(eq(downloadHistory.downloadId, queueItem.downloadId));
+		}
+
+		if (queueItem.downloadClientId) {
+			historyConditions.push(eq(downloadHistory.downloadClientId, queueItem.downloadClientId));
+		}
+
+		const existingFailedHistory = await db
+			.select({ id: downloadHistory.id })
+			.from(downloadHistory)
+			.where(and(...historyConditions))
+			.orderBy(desc(downloadHistory.createdAt))
+			.limit(1)
+			.get();
+
+		if (existingFailedHistory) {
+			await db
+				.update(downloadHistory)
+				.set({
+					status: 'removed',
+					statusReason: null,
+					size: queueItem.size,
+					quality: queueItem.quality,
+					releaseGroup: queueItem.releaseGroup,
+					completedAt: queueItem.completedAt
+				})
+				.where(eq(downloadHistory.id, existingFailedHistory.id));
+			return;
+		}
+	}
+
+	await db.insert(downloadHistory).values({
+		downloadClientId: queueItem.downloadClientId,
+		downloadId: queueItem.downloadId,
+		title: queueItem.title,
+		status: 'removed',
+		movieId: queueItem.movieId,
+		seriesId: queueItem.seriesId,
+		seasonNumber: queueItem.seasonNumber,
+		episodeIds: queueItem.episodeIds,
+		indexerId: queueItem.indexerId,
+		indexerName: queueItem.indexerName,
+		protocol: queueItem.protocol,
+		size: queueItem.size,
+		quality: queueItem.quality,
+		releaseGroup: queueItem.releaseGroup,
+		grabbedAt: queueItem.addedAt,
+		completedAt: queueItem.completedAt,
+		importedAt: null,
+		createdAt: new Date().toISOString()
+	});
+}
 
 /**
  * GET - Get a single queue item by ID
@@ -155,26 +220,8 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 			logger.warn('Blocklist not yet implemented', { infoHash: queueItem.infoHash });
 		}
 
-		// Create history record before deleting
-		await db.insert(downloadHistory).values({
-			downloadClientId: queueItem.downloadClientId,
-			downloadId: queueItem.downloadId,
-			title: queueItem.title,
-			status: 'removed',
-			movieId: queueItem.movieId,
-			seriesId: queueItem.seriesId,
-			seasonNumber: queueItem.seasonNumber,
-			episodeIds: queueItem.episodeIds,
-			indexerId: queueItem.indexerId,
-			indexerName: queueItem.indexerName,
-			protocol: queueItem.protocol,
-			size: queueItem.size,
-			quality: queueItem.quality,
-			grabbedAt: queueItem.addedAt,
-			completedAt: queueItem.completedAt,
-			importedAt: null,
-			createdAt: new Date().toISOString()
-		});
+		// Preserve the original failed attempt as a single history record when a user removes it.
+		await writeRemovedHistory(queueItem);
 
 		// Delete from queue
 		await db.delete(downloadQueue).where(eq(downloadQueue.id, id));

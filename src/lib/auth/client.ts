@@ -1,6 +1,7 @@
 import { createAuthClient } from 'better-auth/svelte';
 import { usernameClient, adminClient } from 'better-auth/client/plugins';
 import { ac, admin, user } from './access-control.js';
+import { AUTH_BASE_PATH } from './config.js';
 
 /**
  * Better Auth client for Svelte
@@ -10,7 +11,7 @@ import { ac, admin, user } from './access-control.js';
  * NOT from $lib/server/auth/client
  */
 export const authClient = createAuthClient({
-	basePath: '/api/auth',
+	basePath: AUTH_BASE_PATH,
 	plugins: [
 		usernameClient(),
 		adminClient({

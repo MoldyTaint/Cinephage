@@ -879,6 +879,11 @@ export class ActivityService {
 
 	private sortActivities(activities: UnifiedActivity[], sort: ActivitySortOptions): void {
 		activities.sort((a, b) => {
+			const priorityComparison = this.compareActivityPriority(a, b);
+			if (priorityComparison !== 0) {
+				return priorityComparison;
+			}
+
 			let comparison = 0;
 
 			switch (sort.field) {
@@ -896,8 +901,18 @@ export class ActivityService {
 					break;
 			}
 
+			if (comparison === 0) {
+				comparison = new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime();
+			}
+
 			return sort.direction === 'asc' ? -comparison : comparison;
 		});
+	}
+
+	private compareActivityPriority(a: UnifiedActivity, b: UnifiedActivity): number {
+		const aPriority = a.status === 'downloading' ? 0 : 1;
+		const bPriority = b.status === 'downloading' ? 0 : 1;
+		return aPriority - bPriority;
 	}
 
 	private applyFilters(activities: UnifiedActivity[], filters: ActivityFilters): UnifiedActivity[] {

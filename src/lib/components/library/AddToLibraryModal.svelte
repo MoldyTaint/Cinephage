@@ -4,6 +4,7 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import CommonOptions from './add/CommonOptions.svelte';
+	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
 	import MovieAddOptions, { type MinimumAvailability } from './add/MovieAddOptions.svelte';
 	import SeriesAddOptions, {
 		type MonitorType,
@@ -31,6 +32,7 @@
 		name: string;
 		path: string;
 		mediaType: string;
+		isDefault?: boolean;
 		freeSpaceBytes?: number | null;
 	}
 
@@ -96,7 +98,7 @@
 	let monitoredSeasons = new SvelteSet<number>();
 
 	// Derived: Filter root folders by media type
-	const filteredRootFolders = $derived(rootFolders.filter((f) => f.mediaType === mediaType));
+	const filteredRootFolders = $derived(sortRootFoldersForMediaType(rootFolders, mediaType));
 
 	// Derived: Collection movies not in library (excluding current movie)
 	const missingCollectionMovies = $derived(
@@ -234,7 +236,7 @@
 			}
 
 			// Set defaults
-			const defaultFolder = filteredRootFolders.find((f) => f.mediaType === mediaType);
+			const defaultFolder = filteredRootFolders.find((folder) => folder.isDefault);
 			if (defaultFolder) {
 				selectedRootFolder = defaultFolder.id;
 			} else if (filteredRootFolders.length > 0) {

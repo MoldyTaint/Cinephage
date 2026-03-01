@@ -15,6 +15,7 @@ import { strmService, StrmService, getStreamingBaseUrl } from '$lib/server/strea
 import { getNzbMountManager } from '$lib/server/streaming/nzb';
 import { getUsenetStreamService } from '$lib/server/streaming/usenet/UsenetStreamService';
 import { mediaInfoService } from '$lib/server/library/media-info';
+import { getLibraryRelativePath } from '$lib/server/library/media-paths.js';
 import { db } from '$lib/server/db';
 import {
 	movies,
@@ -27,7 +28,6 @@ import {
 import { eq, and, inArray } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { statSync } from 'node:fs';
-import { relative } from 'node:path';
 import { redactUrl } from '$lib/server/utils/urlSecurity';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 
@@ -708,8 +708,11 @@ async function handleStreamingGrab(data: GrabRequest): Promise<Response> {
 				allowStrmProbe
 			});
 
-			// Calculate relative path from root folder
-			const relativePath = relative(movie.rootFolder.path, result.filePath);
+			const relativePath = getLibraryRelativePath(
+				movie.rootFolder.path,
+				movie.path,
+				result.filePath
+			);
 
 			// Create movie file record
 			fileId = randomUUID();
@@ -794,7 +797,7 @@ async function handleStreamingGrab(data: GrabRequest): Promise<Response> {
 			}
 
 			// Calculate relative path from root folder
-			const relativePath = relative(show.rootFolder.path, result.filePath);
+			const relativePath = getLibraryRelativePath(show.rootFolder.path, show.path, result.filePath);
 
 			// Create/update episode file record
 			fileId = await upsertEpisodeFileByPath({
@@ -983,7 +986,11 @@ async function handleStreamingSeasonPack(
 			const mediaInfo = await mediaInfoService.extractMediaInfo(epResult.filePath, {
 				allowStrmProbe
 			});
-			const relativePath = relative(show.rootFolder.path, epResult.filePath);
+			const relativePath = getLibraryRelativePath(
+				show.rootFolder.path,
+				show.path,
+				epResult.filePath
+			);
 			const fileId = randomUUID();
 
 			fileRecords.push({
@@ -1185,7 +1192,11 @@ async function handleStreamingCompleteSeries(
 				const mediaInfo = await mediaInfoService.extractMediaInfo(epResult.filePath, {
 					allowStrmProbe
 				});
-				const relativePath = relative(show.rootFolder.path, epResult.filePath);
+				const relativePath = getLibraryRelativePath(
+					show.rootFolder.path,
+					show.path,
+					epResult.filePath
+				);
 				const fileId = randomUUID();
 
 				fileRecords.push({
@@ -1443,7 +1454,11 @@ async function handleNzbStreamingGrab(data: GrabRequest): Promise<Response> {
 					const mediaInfo = await mediaInfoService.extractMediaInfo(strmResult.filePath, {
 						allowStrmProbe
 					});
-					const relativePath = relative(movie.rootFolder.path, strmResult.filePath);
+					const relativePath = getLibraryRelativePath(
+						movie.rootFolder.path,
+						movie.path,
+						strmResult.filePath
+					);
 					const fileId = randomUUID();
 
 					// Create movie file record
@@ -1545,7 +1560,11 @@ async function handleNzbStreamingGrab(data: GrabRequest): Promise<Response> {
 					const mediaInfo = await mediaInfoService.extractMediaInfo(strmResult.filePath, {
 						allowStrmProbe
 					});
-					const relativePath = relative(show.rootFolder.path, strmResult.filePath);
+					const relativePath = getLibraryRelativePath(
+						show.rootFolder.path,
+						show.path,
+						strmResult.filePath
+					);
 					// Create/update episode file record
 					const fileId = await upsertEpisodeFileByPath({
 						seriesId,

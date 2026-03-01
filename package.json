@@ -18,6 +18,7 @@
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run",
 		"migrate:remove-enabled": "tsx scripts/remove-monitoring-enabled.ts",
+		"auth:reset-admin-password": "node scripts/reset-admin-password.js",
 		"fix:tv-subtitles": "node scripts/fix-tv-subtitle-paths.js",
 		"db:reset": "rm -f data/cinephage.db && echo 'Database deleted. Will be recreated on next startup.'",
 		"db:info": "sqlite3 data/cinephage.db \"SELECT value FROM settings WHERE key='schema_version'\" 2>/dev/null || echo 'No database found'"

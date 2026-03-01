@@ -34,6 +34,8 @@ interface SearchForMovieParams {
 	title: string;
 	year?: number;
 	scoringProfileId?: string;
+	/** Bypass monitoring checks for manual user-triggered searches */
+	bypassMonitoring?: boolean;
 	/** Optional progress callback for real-time updates */
 	onProgress?: (
 		phase: string,
@@ -84,6 +86,11 @@ interface SearchForSeasonParams {
 	bypassMonitoring?: boolean;
 }
 
+interface SearchForMissingEpisodesOptions {
+	/** Bypass monitoring checks for manual user-triggered searches */
+	bypassMonitoring?: boolean;
+}
+
 /** Result for a single item in multi-search operations */
 interface AutoSearchItemResult {
 	itemId: string;
@@ -129,7 +136,16 @@ class SearchOnAddService {
 	 * - OR release is an upgrade over existing file
 	 */
 	async searchForMovie(params: SearchForMovieParams): Promise<GrabResult> {
-		const { movieId, tmdbId, imdbId, title, year, scoringProfileId, onProgress } = params;
+		const {
+			movieId,
+			tmdbId,
+			imdbId,
+			title,
+			year,
+			scoringProfileId,
+			bypassMonitoring = false,
+			onProgress
+		} = params;
 
 		logger.info('[SearchOnAdd] Starting movie search', { movieId, tmdbId, title, year });
 
@@ -161,8 +177,11 @@ class SearchOnAddService {
 			// Perform enriched search to get scored releases (automatic - on add)
 			onProgress?.('searching', 'Querying indexers for releases...', { current: 10, total: 100 });
 
+			const searchSource: 'interactive' | 'automatic' = bypassMonitoring
+				? 'interactive'
+				: 'automatic';
 			const searchResult = await indexerManager.searchEnhanced(criteria, {
-				searchSource: 'automatic',
+				searchSource,
 				enrichment: {
 					scoringProfileId,
 					filterRejected: true,
@@ -774,17 +793,23 @@ class SearchOnAddService {
 	}
 
 	/**
-	 * Search for all missing (monitored, aired, no file) episodes in a series.
+	 * Search for missing aired episodes in a series.
+	 * Automatic/background searches respect episode monitoring.
+	 * Manual user-triggered searches can bypass monitoring.
 	 * Uses MultiSeasonSearchStrategy for intelligent pack-first searching with multi-season support.
 	 */
 	async searchForMissingEpisodes(
 		seriesId: string,
 		onProgress?: (
 			update: import('$lib/server/downloads/MultiSeasonSearchStrategy.js').SearchProgressUpdate
-		) => void
+		) => void,
+		options: SearchForMissingEpisodesOptions = {}
 	): Promise<MultiSearchResult> {
+		const { bypassMonitoring = false } = options;
+
 		logger.info('[SearchOnAdd] Starting missing episodes search with multi-season strategy', {
-			seriesId
+			seriesId,
+			bypassMonitoring
 		});
 
 		try {
@@ -800,14 +825,16 @@ class SearchOnAddService {
 				};
 			}
 
-			// Find all missing episodes: monitored, aired, and no file
+			// Find all missing episodes. Automatic/background searches only include monitored
+			// episodes, while manual user-triggered searches can bypass monitoring.
 			const now = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+			const conditions = [eq(episodes.seriesId, seriesId), eq(episodes.hasFile, false)];
+			if (!bypassMonitoring) {
+				conditions.push(eq(episodes.monitored, true));
+			}
+
 			const missingEpisodes = await db.query.episodes.findMany({
-				where: and(
-					eq(episodes.seriesId, seriesId),
-					eq(episodes.monitored, true),
-					eq(episodes.hasFile, false)
-				)
+				where: and(...conditions)
 			});
 
 			// Filter to only aired episodes
