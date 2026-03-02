@@ -84,27 +84,42 @@ export const load: PageServerLoad = async ({ url }) => {
 			);
 		const downloadingMovieIds = new Set(activeQueueMovies.map((q) => q.movieId!));
 
-		const moviesWithFiles: LibraryMovie[] = await Promise.all(
-			allMovies.map(async (movie) => {
-				const files = await db.select().from(movieFiles).where(eq(movieFiles.movieId, movie.id));
+		// Batch-fetch all movie files in a single query instead of N+1
+		const allMovieIds = allMovies.map((m) => m.id);
+		const allFiles =
+			allMovieIds.length > 0
+				? await db.select().from(movieFiles).where(inArray(movieFiles.movieId, allMovieIds))
+				: [];
 
-				return {
-					...movie,
-					missingRootFolder:
-						!movie.rootFolderId || !movie.rootFolderPath || movie.rootFolderMediaType !== 'movie',
-					files: files.map((f) => ({
-						id: f.id,
-						relativePath: f.relativePath,
-						size: f.size,
-						dateAdded: f.dateAdded,
-						quality: f.quality as MovieFile['quality'],
-						mediaInfo: f.mediaInfo as MovieFile['mediaInfo'],
-						releaseGroup: f.releaseGroup,
-						edition: f.edition
-					}))
-				} as LibraryMovie;
-			})
-		);
+		// Group files by movieId
+		const filesByMovieId = new Map<string, typeof allFiles>();
+		for (const f of allFiles) {
+			let bucket = filesByMovieId.get(f.movieId);
+			if (!bucket) {
+				bucket = [];
+				filesByMovieId.set(f.movieId, bucket);
+			}
+			bucket.push(f);
+		}
+
+		const moviesWithFiles: LibraryMovie[] = allMovies.map((movie) => {
+			const files = filesByMovieId.get(movie.id) ?? [];
+			return {
+				...movie,
+				missingRootFolder:
+					!movie.rootFolderId || !movie.rootFolderPath || movie.rootFolderMediaType !== 'movie',
+				files: files.map((f) => ({
+					id: f.id,
+					relativePath: f.relativePath,
+					size: f.size,
+					dateAdded: f.dateAdded,
+					quality: f.quality as MovieFile['quality'],
+					mediaInfo: f.mediaInfo as MovieFile['mediaInfo'],
+					releaseGroup: f.releaseGroup,
+					edition: f.edition
+				}))
+			} as LibraryMovie;
+		});
 
 		// Extract unique file attribute values for filter dropdowns
 		const uniqueResolutions = new Set<string>();

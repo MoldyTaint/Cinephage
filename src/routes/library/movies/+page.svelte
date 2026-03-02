@@ -18,6 +18,7 @@
 	import { enhance } from '$app/forms';
 	import { Eye } from 'lucide-svelte';
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
+	import { createProgressiveRenderer } from '$lib/utils/progressive-render.svelte.js';
 
 	let { data } = $props();
 
@@ -31,6 +32,9 @@
 			? data.movies.filter((m) => m.title.toLowerCase().includes(searchQuery.trim().toLowerCase()))
 			: data.movies
 	);
+
+	// Progressive rendering: only render a screenful + buffer at a time
+	const renderer = createProgressiveRenderer(() => filteredMovies);
 	let bulkLoading = $state(false);
 	let currentBulkAction = $state<'monitor' | 'unmonitor' | 'quality' | 'delete' | null>(null);
 	let isQualityModalOpen = $state(false);
@@ -714,7 +718,7 @@
 				<div class="animate-in fade-in slide-in-from-bottom-4 duration-500">
 					{#if viewPreferences.viewMode === 'grid'}
 						<div class="grid grid-cols-3 gap-3 sm:gap-4 lg:grid-cols-9">
-							{#each filteredMovies as movie (movie.id)}
+							{#each renderer.visible as movie (movie.id)}
 								<LibraryMediaCard
 									item={movie}
 									selectable={showCheckboxes}
@@ -725,7 +729,7 @@
 						</div>
 					{:else}
 						<LibraryMediaTable
-							items={filteredMovies}
+							items={renderer.visible}
 							mediaType="movie"
 							selectedItems={selectedMovies}
 							selectable={showCheckboxes}
@@ -737,6 +741,13 @@
 							onAutoGrab={handleAutoGrab}
 							onManualGrab={handleManualGrab}
 						/>
+					{/if}
+
+					<!-- Progressive rendering sentinel -->
+					{#if renderer.hasMore}
+						<div bind:this={renderer.sentinel} class="flex justify-center py-8">
+							<span class="loading loading-md loading-dots text-base-content/30"></span>
+						</div>
 					{/if}
 				</div>
 			{/if}
