@@ -29,6 +29,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  UPSTREAM_TEST_VERSION: 0.0.0-test
 
 concurrency:
   group: release-${{ github.ref }}
@@ -63,11 +64,90 @@ jobs:
           fi
           echo "✅ Tag $VERSION is available"
 
+  prepare-upstream:
+    name: Prepare Upstream Release
+    runs-on: ubuntu-latest
+    needs: [validate]
+    permissions:
+      contents: read
+    outputs:
+      release_version: ${{ steps.prepare.outputs.release_version }}
+      upstream_version: ${{ steps.prepare.outputs.upstream_version }}
+      commit_sha: ${{ steps.prepare.outputs.commit_sha }}
+      client_key: ${{ steps.publish.outputs.client_key }}
+
+    steps:
+      - name: Prepare upstream release values
+        id: prepare
+        env:
+          VERSION_INPUT: ${{ github.event.inputs.version }}
+          UPSTREAM_TEST_VERSION: ${{ env.UPSTREAM_TEST_VERSION }}
+        run: |
+          RELEASE_VERSION="$VERSION_INPUT"
+          UPSTREAM_VERSION="$UPSTREAM_TEST_VERSION"
+          COMMIT_SHA="${GITHUB_SHA}"
+
+          {
+            echo "release_version=$RELEASE_VERSION"
+            echo "upstream_version=$UPSTREAM_VERSION"
+            echo "commit_sha=$COMMIT_SHA"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Register upstream release
+        env:
+          AUTOMATION_KEY: ${{ secrets.CINEPHAGE_AUTOMATION_KEY }}
+          UPSTREAM_VERSION: ${{ steps.prepare.outputs.upstream_version }}
+          COMMIT_SHA: ${{ steps.prepare.outputs.commit_sha }}
+        run: |
+          if [ -z "$AUTOMATION_KEY" ]; then
+            echo "CINEPHAGE_AUTOMATION_KEY is not configured"
+            exit 1
+          fi
+
+          payload=$(jq -n \
+            --arg commit "$COMMIT_SHA" \
+            --arg version "$UPSTREAM_VERSION" \
+            --argjson isPrerelease true \
+            '{ commit: $commit, version: $version, isPrerelease: $isPrerelease }')
+
+          curl --fail-with-body --silent --show-error \
+            -X POST "https://api.cinephage.net/sys/a7x9k2m/register" \
+            -H "Content-Type: application/json" \
+            -H "X-Automation-Key: ${AUTOMATION_KEY}" \
+            -d "$payload" > /dev/null
+
+      - name: Publish upstream release
+        id: publish
+        env:
+          AUTOMATION_KEY: ${{ secrets.CINEPHAGE_AUTOMATION_KEY }}
+          UPSTREAM_VERSION: ${{ steps.prepare.outputs.upstream_version }}
+          COMMIT_SHA: ${{ steps.prepare.outputs.commit_sha }}
+        run: |
+          payload=$(jq -n \
+            --arg commit "$COMMIT_SHA" \
+            --arg version "$UPSTREAM_VERSION" \
+            '{ commit: $commit, version: $version }')
+
+          response=$(curl --fail-with-body --silent --show-error \
+            -X POST "https://api.cinephage.net/sys/a7x9k2m/publish" \
+            -H "Content-Type: application/json" \
+            -H "X-Automation-Key: ${AUTOMATION_KEY}" \
+            -d "$payload")
+
+          client_key=$(printf '%s' "$response" | jq -r '.clientKey // .data.clientKey // .result.clientKey // empty')
+          if [ -z "$client_key" ]; then
+            echo "Upstream publish response did not include clientKey"
+            exit 1
+          fi
+
+          echo "::add-mask::$client_key"
+          echo "client_key=$client_key" >> "$GITHUB_OUTPUT"
+
   build-amd64:
     name: Build amd64
     runs-on: ubuntu-latest
-    needs: [validate]
-    if: always() && (needs.validate.result == 'skipped' || needs.validate.result == 'success')
+    needs: [validate, prepare-upstream]
+    if: always() && needs.validate.result == 'success' && needs.prepare-upstream.result == 'success'
     permissions:
       contents: read
       packages: write
@@ -95,7 +175,18 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build test image
-        run: docker buildx build --load -t cinephage:test --build-arg APP_VERSION=${{ github.event.inputs.version }} .
+        env:
+          APP_VERSION: ${{ needs.prepare-upstream.outputs.release_version }}
+          CINEPHAGE_COMMIT: ${{ needs.prepare-upstream.outputs.commit_sha }}
+          CINEPHAGE_VERSION: ${{ needs.prepare-upstream.outputs.upstream_version }}
+          CINEPHAGE_CLIENT_KEY: ${{ needs.prepare-upstream.outputs.client_key }}
+        run: |
+          docker buildx build --load -t cinephage:test \
+            --build-arg APP_VERSION="$APP_VERSION" \
+            --build-arg CINEPHAGE_COMMIT="$CINEPHAGE_COMMIT" \
+            --build-arg CINEPHAGE_VERSION="$CINEPHAGE_VERSION" \
+            --build-arg CINEPHAGE_CLIENT_KEY="$CINEPHAGE_CLIENT_KEY" \
+            .
 
       - name: Test Docker image
         run: |
@@ -130,15 +221,18 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:amd64
           build-args: |
-            APP_VERSION=${{ github.event.inputs.version }}
+            APP_VERSION=${{ needs.prepare-upstream.outputs.release_version }}
+            CINEPHAGE_COMMIT=${{ needs.prepare-upstream.outputs.commit_sha }}
+            CINEPHAGE_VERSION=${{ needs.prepare-upstream.outputs.upstream_version }}
+            CINEPHAGE_CLIENT_KEY=${{ needs.prepare-upstream.outputs.client_key }}
           cache-from: type=gha,scope=amd64
           cache-to: type=gha,mode=max,scope=amd64
 
   build-arm64:
     name: Build arm64
     runs-on: ubuntu-24.04-arm
-    needs: [validate]
-    if: always() && (needs.validate.result == 'skipped' || needs.validate.result == 'success')
+    needs: [validate, prepare-upstream]
+    if: always() && needs.validate.result == 'success' && needs.prepare-upstream.result == 'success'
     permissions:
       contents: read
       packages: write
@@ -172,7 +266,10 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:arm64
           build-args: |
-            APP_VERSION=${{ github.event.inputs.version }}
+            APP_VERSION=${{ needs.prepare-upstream.outputs.release_version }}
+            CINEPHAGE_COMMIT=${{ needs.prepare-upstream.outputs.commit_sha }}
+            CINEPHAGE_VERSION=${{ needs.prepare-upstream.outputs.upstream_version }}
+            CINEPHAGE_CLIENT_KEY=${{ needs.prepare-upstream.outputs.client_key }}
           cache-from: type=gha,scope=arm64
           cache-to: type=gha,mode=max,scope=arm64
 
@@ -307,7 +404,7 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [manifest, generate-changelog]
+    needs: [manifest, generate-changelog, prepare-upstream]
     permissions:
       contents: write
 
@@ -320,17 +417,18 @@ jobs:
       - name: Create Git tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.event.inputs.version }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Create and push tag
-          if git rev-parse "${{ github.event.inputs.version }}" >/dev/null 2>&1; then
-            echo "⚠️  Tag already exists, skipping tag creation"
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "Tag already exists, skipping tag creation"
           else
-            git tag -a "${{ github.event.inputs.version }}" -m "Release ${{ github.event.inputs.version }}"
-            git push origin "${{ github.event.inputs.version }}"
-            echo "✅ Created and pushed tag ${{ github.event.inputs.version }}"
+            git tag -a "$VERSION" -m "Release $VERSION"
+            git push origin "$VERSION"
+            echo "Created and pushed tag $VERSION"
           fi
 
       - name: Create GitHub Release
@@ -345,7 +443,7 @@ jobs:
 
             ${{ github.event.inputs.release_notes }}
           draft: false
-          prerelease: false
+          prerelease: true
 
   cleanup-images:
     name: Cleanup Old Images

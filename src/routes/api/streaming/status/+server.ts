@@ -1,24 +1,17 @@
 /**
  * Streaming Status API Endpoint
  *
- * Returns health and status of all streaming providers.
- * Useful for monitoring and debugging streaming issues.
+ * Returns health and status of the upstream Cinephage backend used for streaming resolution.
  *
- * GET /api/streaming/status - Get all provider status
- * POST /api/streaming/status - Perform actions (reset circuit breakers)
+ * GET /api/streaming/status - Get backend and cache status
+ * POST /api/streaming/status - Clear streaming caches
  */
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import {
-	getAllProviderStatus,
-	resetCircuitBreaker,
-	clearCaches,
-	getProviderIds,
-	type ProviderStatus
-} from '$lib/server/streaming/providers';
+import { clearCaches } from '$lib/server/streaming/providers';
 import { getStreamCache } from '$lib/server/streaming/cache/StreamCache';
-import { getEncDecClient } from '$lib/server/streaming/enc-dec';
+import { getCinephageBackendClient } from '$lib/server/indexers/streaming/CinephageBackendClient';
 import { logger } from '$lib/logging';
 
 const streamLog = { logCategory: 'streams' as const };
@@ -29,26 +22,6 @@ const streamLog = { logCategory: 'streams' as const };
 export interface StreamingStatusResponse {
 	success: boolean;
 	timestamp: string;
-	providers: Array<{
-		id: string;
-		name: string;
-		enabled: boolean;
-		score: number;
-		circuitBreaker: {
-			isOpen: boolean;
-			isHalfOpen: boolean;
-			failures: number;
-			resetAt?: string;
-		};
-		health: {
-			successCount: number;
-			failureCount: number;
-			successRate: number;
-			averageLatencyMs: number;
-			lastSuccess?: string;
-			lastFailure?: string;
-		};
-	}>;
 	summary: {
 		totalProviders: number;
 		enabledProviders: number;
@@ -78,10 +51,11 @@ export interface StreamingStatusResponse {
 			hitRate: number;
 		};
 	};
-	encDecApi: {
+	cinephageApi: {
 		configured: boolean;
 		healthy: boolean;
-		baseUrl?: string;
+		baseUrl: string;
+		missing: string[];
 	};
 }
 
@@ -91,55 +65,21 @@ export interface StreamingStatusResponse {
  */
 export const GET: RequestHandler = async () => {
 	try {
-		const statuses = getAllProviderStatus();
-
-		const providers = statuses.map((s: ProviderStatus) => ({
-			id: s.id,
-			name: s.name,
-			enabled: s.enabled,
-			score: Math.round(s.score * 100) / 100,
-			circuitBreaker: {
-				isOpen: s.circuitBreaker.isOpen,
-				isHalfOpen: s.circuitBreaker.isHalfOpen,
-				failures: s.circuitBreaker.failures,
-				resetAt: s.circuitBreaker.resetAt
-					? new Date(s.circuitBreaker.resetAt).toISOString()
-					: undefined
-			},
-			health: {
-				successCount: s.health.successCount,
-				failureCount: s.health.failureCount,
-				successRate: Math.round(s.health.successRate * 1000) / 1000,
-				averageLatencyMs: Math.round(s.health.averageLatencyMs),
-				lastSuccess: s.health.lastSuccess?.toISOString(),
-				lastFailure: s.health.lastFailure?.toISOString()
-			}
-		}));
-
-		const enabledCount = providers.filter((p) => p.enabled).length;
-		const healthyCount = providers.filter(
-			(p) => p.enabled && !p.circuitBreaker.isOpen && p.health.successRate >= 0.5
-		).length;
-		const circuitBrokenCount = providers.filter(
-			(p) => p.circuitBreaker.isOpen && !p.circuitBreaker.isHalfOpen
-		).length;
-
 		// Get cache statistics
 		const cacheStats = getStreamCache().getStats();
 
-		// Get EncDec API status
-		const encDecClient = getEncDecClient();
-		const encDecHealthy = await encDecClient.isHealthy().catch(() => false);
+		// Get Cinephage backend status
+		const cinephageBackend = getCinephageBackendClient();
+		const backendHealth = await cinephageBackend.getHealth();
 
 		const response: StreamingStatusResponse = {
 			success: true,
 			timestamp: new Date().toISOString(),
-			providers,
 			summary: {
-				totalProviders: providers.length,
-				enabledProviders: enabledCount,
-				healthyProviders: healthyCount,
-				circuitBrokenProviders: circuitBrokenCount
+				totalProviders: 1,
+				enabledProviders: backendHealth.configured ? 1 : 0,
+				healthyProviders: backendHealth.healthy ? 1 : 0,
+				circuitBrokenProviders: 0
 			},
 			cache: {
 				streamCache: {
@@ -164,10 +104,11 @@ export const GET: RequestHandler = async () => {
 					hitRate: Math.round(cacheStats.negativeCache.hitRate * 1000) / 1000
 				}
 			},
-			encDecApi: {
-				configured: true,
-				healthy: encDecHealthy,
-				baseUrl: encDecClient.getBaseUrl()
+			cinephageApi: {
+				configured: backendHealth.configured,
+				healthy: backendHealth.healthy,
+				baseUrl: backendHealth.baseUrl,
+				missing: backendHealth.missing
 			}
 		};
 
@@ -180,46 +121,22 @@ export const GET: RequestHandler = async () => {
 
 /**
  * POST /api/streaming/status
- * Perform actions on streaming providers
+ * Perform actions on streaming state
  *
  * Actions:
- * - { action: "reset", providerId: "videasy" } - Reset single circuit breaker
- * - { action: "reset-all" } - Reset all circuit breakers and caches
+ * - { action: "reset-all" } - Reset all streaming caches
  */
 export const POST: RequestHandler = async ({ request }) => {
 	try {
 		const body = await request.json();
-		const { action, providerId } = body;
-
-		if (action === 'reset' && providerId) {
-			// Validate providerId
-			const validIds = getProviderIds();
-			if (!validIds.includes(providerId)) {
-				return json(
-					{
-						success: false,
-						error: `Invalid provider ID: ${providerId}`,
-						validIds
-					},
-					{ status: 400 }
-				);
-			}
-
-			const success = resetCircuitBreaker(providerId);
-			return json({
-				success,
-				message: success
-					? `Circuit breaker reset for ${providerId}`
-					: `Failed to reset ${providerId}`
-			});
-		}
+		const { action } = body;
 
 		if (action === 'reset-all') {
 			clearCaches();
-			logger.info('All streaming caches and circuit breakers reset', streamLog);
+			logger.info('All streaming caches reset', streamLog);
 			return json({
 				success: true,
-				message: 'All caches and circuit breakers reset'
+				message: 'All streaming caches reset'
 			});
 		}
 
@@ -227,7 +144,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			{
 				success: false,
 				error: 'Invalid action',
-				validActions: ['reset', 'reset-all']
+				validActions: ['reset-all']
 			},
 			{ status: 400 }
 		);

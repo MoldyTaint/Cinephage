@@ -48,6 +48,18 @@ export interface StreamingIndexerSettings {
 	/** Base URL for streaming endpoints (legacy, reconstructed from useHttps + externalHost) */
 	baseUrl?: string;
 
+	/** Upstream Cinephage API base URL */
+	cinephageApiBaseUrl?: string;
+
+	/** Build commit used for upstream request signing */
+	cinephageCommit?: string;
+
+	/** Build version used for upstream request signing */
+	cinephageVersion?: string;
+
+	/** Client key used for upstream request signing */
+	cinephageClientKey?: string;
+
 	/** Comma-separated list of enabled providers */
 	enabledProviders?: string;
 
