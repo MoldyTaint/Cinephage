@@ -70,6 +70,7 @@ jobs:
         env:
           RELEASE_TYPE: ${{ github.event.inputs.release_type }}
           INPUT_VERSION: ${{ github.event.inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
 
@@ -94,7 +95,7 @@ jobs:
                 echo "ℹ️ Ignoring version input because release_type=${RELEASE_TYPE}"
               fi
 
-              LAST_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)
+              LAST_TAG=$(git tag -l --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)
               if [ -z "$LAST_TAG" ]; then
                 LAST_TAG='v0.0.0'
               fi
@@ -131,6 +132,11 @@ jobs:
               exit 1
               ;;
           esac
+
+          # Dev-branch releases are always tagged as dev variants.
+          if [ "$REF_NAME" = 'dev' ] && [[ ! "$VERSION" =~ -dev([.-][0-9A-Za-z]+)?$ ]]; then
+            VERSION="${VERSION}-dev"
+          fi
 
           echo "Resolved release version: ${VERSION}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
@@ -437,7 +443,7 @@ jobs:
           fi
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@c062e08bd532815e2082a07b400541a7f5c7d705 # v2
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.validate.outputs.version }}
           name: Release ${{ needs.validate.outputs.version }}
