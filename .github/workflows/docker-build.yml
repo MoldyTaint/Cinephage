@@ -3,6 +3,7 @@
 # Triggers:
 # - Pull requests to main: Build only (validates Dockerfile)
 # - Push to main: Build and push with 'latest' and SHA tags
+# - Runs only when Docker-relevant files change (paths filter)
 #
 # Images are pushed to ghcr.io/<owner>/cinephage
 #
@@ -13,8 +14,42 @@ name: Docker Build
 on:
   push:
     branches: [main, dev]
+    paths:
+      - '.github/workflows/docker-build.yml'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'docker-entrypoint.sh'
+      - 'docker-script-runner.sh'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.npmrc'
+      - 'server.js'
+      - 'svelte.config.js'
+      - 'tsconfig.json'
+      - 'vite.config.ts'
+      - 'src/**'
+      - 'static/**'
+      - 'data/**'
+      - 'scripts/fix-tv-subtitle-paths.js'
   pull_request:
     branches: [main]
+    paths:
+      - '.github/workflows/docker-build.yml'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'docker-entrypoint.sh'
+      - 'docker-script-runner.sh'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.npmrc'
+      - 'server.js'
+      - 'svelte.config.js'
+      - 'tsconfig.json'
+      - 'vite.config.ts'
+      - 'src/**'
+      - 'static/**'
+      - 'data/**'
+      - 'scripts/fix-tv-subtitle-paths.js'
   workflow_dispatch:
     inputs:
       tag:

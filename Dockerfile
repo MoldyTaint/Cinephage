@@ -17,7 +17,11 @@ ENV NODE_OPTIONS="--max-old-space-size=4096"
 
 RUN npm ci
 
-COPY . .
+COPY src ./src
+COPY static ./static
+COPY data ./data
+COPY scripts/fix-tv-subtitle-paths.js ./scripts/fix-tv-subtitle-paths.js
+COPY server.js svelte.config.js tsconfig.json vite.config.ts ./
 
 ARG APP_VERSION=dev
 ENV PUBLIC_APP_VERSION=${APP_VERSION}

@@ -27,7 +27,3 @@ cine-local.yaml
 Dockerfile
 docker-compose.yaml
 *.md
-!README.md
-!AGENTS.md
-!CONTRIBUTING.md
-!CODE_OF_CONDUCT.md
