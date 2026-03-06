@@ -3,10 +3,6 @@ changelog:
     labels:
       - skip-changelog
       - no-release-notes
-    authors:
-      - dependabot[bot]
-      - github-actions[bot]
-      - renovate[bot]
   categories:
     - title: 'Breaking Changes'
       labels:
@@ -25,9 +21,16 @@ changelog:
       labels:
         - documentation
         - docs
+    - title: 'Dependencies'
+      labels:
+        - dependencies
+        - deps
+        - javascript
+        - npm
+        - docker
+        - security
     - title: 'Maintenance'
       labels:
         - chore
         - ci
-        - dependencies
         - refactor

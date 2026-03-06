@@ -368,18 +368,84 @@ jobs:
             echo "✅ Created and pushed tag $VERSION"
           fi
 
+      - name: Build release notes body
+        id: notes
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          SOURCE_TAG: ${{ needs.validate.outputs.source_tag }}
+          EXTRA_NOTES: ${{ github.event.inputs.release_notes }}
+        with:
+          script: |
+            const version = process.env.VERSION;
+            const sourceTag = process.env.SOURCE_TAG;
+            const extraNotes = (process.env.EXTRA_NOTES || '').trim();
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const imageRef = `ghcr.io/${owner.toLowerCase()}/${repo.toLowerCase()}:${version}`;
+            const hiddenAuthorPattern = /@github-actions\[bot\]/i;
+            const contributorBotPattern = /@(github-actions\[bot\]|dependabot\[bot\]|renovate\[bot\])/i;
+
+            const releases = await github.rest.repos.listReleases({
+              owner,
+              repo,
+              per_page: 100
+            });
+            const releaseCount = releases.data.filter((r) => !r.draft).length;
+            const isFirstRelease = releaseCount === 0;
+
+            const generated = await github.rest.repos.generateReleaseNotes({
+              owner,
+              repo,
+              tag_name: version,
+              target_commitish: context.ref.replace('refs/heads/', ''),
+              configuration_file_path: '.github/release.yml'
+            });
+
+            let generatedBody = generated.data.body || '';
+            generatedBody = generatedBody
+              .split('\n')
+              .filter((line) => !hiddenAuthorPattern.test(line))
+              .join('\n');
+
+            // Remove bot entries from "New Contributors" only.
+            generatedBody = generatedBody.replace(
+              /(^##+\s+New Contributors\s*$[\s\S]*?)(?=^##+\s+|$)/m,
+              (section) => {
+                const lines = section.split('\n').filter((line) => !contributorBotPattern.test(line));
+                const hasContributorBullet = lines.some((line) => /^[-*]\s+@/.test(line.trim()));
+                return hasContributorBullet ? `${lines.join('\n').trim()}\n\n` : '';
+              }
+            );
+            generatedBody = generatedBody.replace(/\n{3,}/g, '\n\n').trim();
+
+            const preface = [];
+            preface.push(`Promoted from CI candidate: \`${sourceTag}\``);
+            preface.push(`Container image: \`${imageRef}\``);
+
+            if (isFirstRelease) {
+              preface.push('');
+              preface.push('## Initial Release');
+              preface.push('- First official Cinephage release.');
+              preface.push('- Multi-arch images published for `linux/amd64` and `linux/arm64`.');
+              preface.push('- Pin deployments to this version tag for stable rollouts.');
+            }
+
+            if (extraNotes.length > 0) {
+              preface.push('');
+              preface.push('## Maintainer Notes');
+              preface.push(extraNotes);
+            }
+
+            const body = `${preface.join('\n')}\n\n---\n\n${generatedBody}`.trim();
+            core.setOutput('body', body);
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.validate.outputs.version }}
-          name: Release ${{ needs.validate.outputs.version }}
-          generate_release_notes: true
-          body: |
-            Promoted from CI candidate: `${{ needs.validate.outputs.source_tag }}`
-
-            ---
-
-            ${{ github.event.inputs.release_notes }}
+          name: ${{ needs.validate.outputs.version }}
+          body: ${{ steps.notes.outputs.body }}
           draft: false
           prerelease: ${{ needs.validate.outputs.is_prerelease == 'true' }}
 
