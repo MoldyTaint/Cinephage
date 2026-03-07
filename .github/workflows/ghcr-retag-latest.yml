@@ -161,4 +161,3 @@ jobs:
             echo "- New latest digest: \`${NEW_LATEST_DIGEST}\`"
             echo "- Result: ✅ \`latest\` now points to \`${SOURCE_TAG}\`"
           } >> "$GITHUB_STEP_SUMMARY"
-
