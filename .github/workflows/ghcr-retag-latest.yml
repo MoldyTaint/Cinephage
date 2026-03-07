@@ -68,7 +68,8 @@ jobs:
             exit 1
           fi
 
-          if [[ "$SOURCE_TAG" != v* ]]; then
+          # Normalize plain semver input (e.g. 1.0.0 -> v1.0.0) without touching channel tags.
+          if [[ "$SOURCE_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             SOURCE_TAG="v${SOURCE_TAG}"
           fi
 
@@ -162,24 +163,48 @@ jobs:
           echo "Version label: ${VERSION_LABEL:-<empty>}"
           echo "App version env: ${APP_VERSION_ENV:-<empty>}"
 
-          is_non_stable() {
+          is_dev_or_prerelease() {
             local value="$1"
             if [ -z "$value" ]; then
               return 1
             fi
-            # Block dev/edge channel values and common prerelease suffixes.
-            [[ "$value" =~ (^dev-|^edge-|-dev($|[.-])|-rc($|[.-])|-beta($|[.-])|-alpha($|[.-])|-pre($|[.-])|-preview($|[.-])) ]]
+            # Always block dev and prerelease variants.
+            [[ "$value" =~ (^dev-|-dev($|[.-])|-rc($|[.-])|-beta($|[.-])|-alpha($|[.-])|-pre($|[.-])|-preview($|[.-])) ]]
           }
 
-          if [ "$ALLOW_EDGE_ROLLBACK" != 'true' ] && is_non_stable "$SOURCE_TAG"; then
-            echo "Refusing retag: source tag appears to be dev/edge/prerelease."
+          is_edge_channel() {
+            local value="$1"
+            if [ -z "$value" ]; then
+              return 1
+            fi
+            [[ "$value" =~ (^edge-|-edge($|[.-])) ]]
+          }
+
+          IS_EDGE_ROLLBACK='false'
+          if [ "$ALLOW_EDGE_ROLLBACK" = 'true' ] && [[ "$SOURCE_TAG" =~ ^edge-[0-9]{8}-[0-9]+$ ]]; then
+            IS_EDGE_ROLLBACK='true'
+          fi
+
+          if is_dev_or_prerelease "$SOURCE_TAG"; then
+            echo "Refusing retag: source tag appears to be dev/prerelease."
             exit 1
           fi
 
-          if is_non_stable "$VERSION_LABEL" || is_non_stable "$APP_VERSION_ENV"; then
-            echo "Refusing retag: source image appears to be dev/edge/prerelease."
+          if [ "$IS_EDGE_ROLLBACK" != 'true' ] && is_edge_channel "$SOURCE_TAG"; then
+            echo "Refusing retag: source tag appears to be edge, but edge rollback is not enabled."
             exit 1
           fi
+
+          for value in "$VERSION_LABEL" "$APP_VERSION_ENV"; do
+            if is_dev_or_prerelease "$value"; then
+              echo "Refusing retag: source image metadata appears to be dev/prerelease."
+              exit 1
+            fi
+            if [ "$IS_EDGE_ROLLBACK" != 'true' ] && is_edge_channel "$value"; then
+              echo "Refusing retag: source image metadata appears to be edge, but edge rollback is not enabled."
+              exit 1
+            fi
+          done
 
       - name: Retag latest
         env:
