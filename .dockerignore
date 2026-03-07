@@ -18,8 +18,9 @@ coverage
 .nyc_output
 *.tgz
 docs/
-scripts/
+scripts/*
 !scripts/fix-tv-subtitle-paths.js
+!scripts/reset-admin-password.js
 deploy/
 nix/
 flake.nix

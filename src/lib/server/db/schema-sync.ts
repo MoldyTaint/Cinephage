@@ -90,8 +90,10 @@ interface MigrationDefinition {
  * Version 62: Add role column to user table for RBAC
  * Version 63: Repair Better Auth schema drift and add missing plugin tables
  * Version 64: Promote the sole bootstrap user to admin if older auth code created it as user
+ * Version 65: Migrate Better Auth apikey schema from userId -> referenceId and add configId
+ * Version 66: Fix apikey schema migration for databases stuck after v65
  */
-export const CURRENT_SCHEMA_VERSION = 65;
+export const CURRENT_SCHEMA_VERSION = 66;
 
 const BETTER_AUTH_TABLE_DEFINITIONS = [
 	{
@@ -197,7 +199,6 @@ const BETTER_AUTH_INDEX_DEFINITIONS = [
 	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_account_provider" ON "account" ("providerId", "accountId")`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_email" ON "user" ("email")`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_username" ON "user" ("username")`,
-	`CREATE INDEX IF NOT EXISTS "idx_apikey_user" ON "apikey" ("userId")`,
 	`CREATE INDEX IF NOT EXISTS "idx_apikey_key" ON "apikey" ("key")`
 ] as const;
 
@@ -4709,6 +4710,25 @@ function createBetterAuthIndexes(sqlite: Database.Database): void {
 	for (const sql of BETTER_AUTH_INDEX_DEFINITIONS) {
 		sqlite.prepare(sql).run();
 	}
+
+	if (!tableExists(sqlite, 'apikey')) {
+		return;
+	}
+
+	const columns = sqlite.prepare(`PRAGMA table_info(apikey)`).all() as Array<{ name: string }>;
+	const hasReferenceId = columns.some((col) => col.name === 'referenceId');
+	const hasUserId = columns.some((col) => col.name === 'userId');
+
+	if (hasReferenceId) {
+		sqlite
+			.prepare(`CREATE INDEX IF NOT EXISTS "idx_apikey_reference" ON "apikey" ("referenceId")`)
+			.run();
+		return;
+	}
+
+	if (hasUserId) {
+		sqlite.prepare(`CREATE INDEX IF NOT EXISTS "idx_apikey_user" ON "apikey" ("userId")`).run();
+	}
 }
 
 function recreateBetterAuthSchema(sqlite: Database.Database): void {
@@ -4828,7 +4848,7 @@ const CRITICAL_COLUMNS: Record<string, string[]> = {
 	session: ['id', 'userId', 'token', 'expiresAt', 'impersonatedBy', 'createdAt', 'updatedAt'],
 	account: ['id', 'userId', 'accountId', 'providerId', 'createdAt', 'updatedAt'],
 	verification: ['id', 'identifier', 'value', 'expiresAt'],
-	apikey: ['id', 'key', 'userId', 'createdAt', 'updatedAt'],
+	apikey: ['id', 'key', 'referenceId', 'createdAt', 'updatedAt'],
 	rateLimit: ['key', 'count', 'lastRequest'],
 	download_clients: [
 		'id',
