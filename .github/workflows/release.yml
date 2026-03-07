@@ -317,6 +317,7 @@ jobs:
 
       - name: Promote source images to release tags with release metadata
         env:
+          REF_NAME: ${{ github.ref_name }}
           SOURCE_TAG: ${{ needs.validate.outputs.source_tag }}
           VERSION: ${{ needs.validate.outputs.version }}
           IS_PRERELEASE: ${{ needs.validate.outputs.is_prerelease }}
@@ -355,10 +356,25 @@ jobs:
 
           # Build release manifest from the release architecture tags.
           docker buildx imagetools create -t "$RELEASE_MULTIARCH_IMAGE" "$RELEASE_AMD64_IMAGE" "$RELEASE_ARM64_IMAGE"
+          RELEASE_DIGEST="$(docker buildx imagetools inspect "$RELEASE_MULTIARCH_IMAGE" | awk '/^Digest:/ {print $2; exit}')"
+
+          if [ -z "$RELEASE_DIGEST" ]; then
+            echo "❌ Failed to resolve digest for ${RELEASE_MULTIARCH_IMAGE}"
+            exit 1
+          fi
 
           # Tag as latest only for stable main releases.
-          if [ "${GITHUB_REF_NAME}" = 'main' ] && [ "$IS_PRERELEASE" != 'true' ]; then
-            docker buildx imagetools create -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:latest" "$RELEASE_AMD64_IMAGE" "$RELEASE_ARM64_IMAGE"
+          if [ "$REF_NAME" = 'main' ] && [ "$IS_PRERELEASE" != 'true' ]; then
+            crane tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}@${RELEASE_DIGEST}" latest
+            LATEST_DIGEST="$(docker buildx imagetools inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:latest" | awk '/^Digest:/ {print $2; exit}')"
+
+            if [ "$LATEST_DIGEST" != "$RELEASE_DIGEST" ]; then
+              echo "❌ latest digest does not match release digest"
+              echo "release=${RELEASE_DIGEST}"
+              echo "latest=${LATEST_DIGEST}"
+              exit 1
+            fi
+
             echo "✅ Promoted ${SOURCE_TAG} to ${VERSION} and latest"
           else
             echo "✅ Promoted ${SOURCE_TAG} to ${VERSION} (latest skipped for prerelease/non-main)"

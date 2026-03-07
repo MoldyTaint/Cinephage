@@ -1,0 +1,235 @@
+name: GHCR Retag Latest
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_tag:
+        description: 'Stable release tag to copy to latest (e.g., v1.0.0)'
+        required: true
+        type: string
+        default: 'v1.0.0'
+      dry_run:
+        description: 'Preview only (no retag)'
+        required: true
+        type: boolean
+        default: true
+      allow_edge_rollback:
+        description: 'Allow edge-YYYYMMDD-RUN tags for emergency rollback'
+        required: true
+        type: boolean
+        default: false
+      confirm:
+        description: 'Type RETAG to allow non-dry-run retag'
+        required: true
+        type: string
+        default: 'NO'
+      edge_confirm:
+        description: 'Type EDGE_ROLLBACK to allow edge rollback when allow_edge_rollback=true'
+        required: true
+        type: string
+        default: 'NO'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  retag-latest:
+    name: Retag latest from release tag
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate confirmation
+        env:
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: |
+          set -euo pipefail
+
+          if [ "$DRY_RUN" != 'true' ] && [ "$CONFIRM" != 'RETAG' ]; then
+            echo "Refusing retag: set confirm=RETAG when dry_run=false"
+            exit 1
+          fi
+
+      - name: Set image references
+        id: refs
+        env:
+          SOURCE_TAG_INPUT: ${{ github.event.inputs.source_tag }}
+          ALLOW_EDGE_ROLLBACK: ${{ github.event.inputs.allow_edge_rollback }}
+          EDGE_CONFIRM: ${{ github.event.inputs.edge_confirm }}
+        run: |
+          set -euo pipefail
+
+          IMAGE_NAME_LC="${GITHUB_REPOSITORY,,}"
+          SOURCE_TAG="$(echo "$SOURCE_TAG_INPUT" | xargs)"
+
+          if [ -z "$SOURCE_TAG" ]; then
+            echo "source_tag is required"
+            exit 1
+          fi
+
+          if [[ "$SOURCE_TAG" != v* ]]; then
+            SOURCE_TAG="v${SOURCE_TAG}"
+          fi
+
+          IS_STABLE_TAG='false'
+          IS_EDGE_TAG='false'
+          if [[ "$SOURCE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            IS_STABLE_TAG='true'
+          fi
+          if [[ "$SOURCE_TAG" =~ ^edge-[0-9]{8}-[0-9]+$ ]]; then
+            IS_EDGE_TAG='true'
+          fi
+
+          if [ "$IS_STABLE_TAG" != 'true' ] && [ "$IS_EDGE_TAG" != 'true' ]; then
+            echo "source_tag must be stable semver (vX.Y.Z) or edge-YYYYMMDD-RUN."
+            echo "Got: ${SOURCE_TAG}"
+            exit 1
+          fi
+
+          if [ "$IS_EDGE_TAG" = 'true' ]; then
+            if [ "$ALLOW_EDGE_ROLLBACK" != 'true' ]; then
+              echo "Refusing edge rollback: set allow_edge_rollback=true for edge tags."
+              exit 1
+            fi
+            if [ "$EDGE_CONFIRM" != 'EDGE_ROLLBACK' ]; then
+              echo "Refusing edge rollback: set edge_confirm=EDGE_ROLLBACK."
+              exit 1
+            fi
+          fi
+
+          SOURCE_IMAGE="ghcr.io/${IMAGE_NAME_LC}:${SOURCE_TAG}"
+          LATEST_IMAGE="ghcr.io/${IMAGE_NAME_LC}:latest"
+          IMAGE_REPO="ghcr.io/${IMAGE_NAME_LC}"
+
+          {
+            echo "source_tag=${SOURCE_TAG}"
+            echo "source_image=${SOURCE_IMAGE}"
+            echo "latest_image=${LATEST_IMAGE}"
+            echo "image_repo=${IMAGE_REPO}"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Source image: ${SOURCE_IMAGE}"
+          echo "Latest image: ${LATEST_IMAGE}"
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Install crane
+        env:
+          CRANE_VERSION: v0.20.6
+        run: |
+          set -euo pipefail
+
+          curl -fsSL \
+            "https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" \
+            -o /tmp/go-containerregistry.tgz
+
+          tar -xzf /tmp/go-containerregistry.tgz -C /tmp crane
+          sudo mv /tmp/crane /usr/local/bin/crane
+          crane version
+
+      - name: Verify source image exists
+        env:
+          SOURCE_IMAGE: ${{ steps.refs.outputs.source_image }}
+        run: |
+          set -euo pipefail
+
+          docker buildx imagetools inspect "$SOURCE_IMAGE" >/dev/null
+          echo "Verified source image exists: $SOURCE_IMAGE"
+
+      - name: Validate source image is stable (non-dev)
+        env:
+          SOURCE_IMAGE: ${{ steps.refs.outputs.source_image }}
+          SOURCE_TAG: ${{ steps.refs.outputs.source_tag }}
+          ALLOW_EDGE_ROLLBACK: ${{ github.event.inputs.allow_edge_rollback }}
+        run: |
+          set -euo pipefail
+
+          # Require amd64 metadata to identify release channel/version from OCI config.
+          SOURCE_CONFIG="$(crane config --platform linux/amd64 "$SOURCE_IMAGE")"
+          VERSION_LABEL="$(echo "$SOURCE_CONFIG" | jq -r '.config.Labels["org.opencontainers.image.version"] // ""')"
+          APP_VERSION_ENV="$(echo "$SOURCE_CONFIG" | jq -r '.config.Env[]? | select(startswith("PUBLIC_APP_VERSION="))' | tail -n 1 | sed 's/^PUBLIC_APP_VERSION=//')"
+
+          echo "Source tag: ${SOURCE_TAG}"
+          echo "Version label: ${VERSION_LABEL:-<empty>}"
+          echo "App version env: ${APP_VERSION_ENV:-<empty>}"
+
+          is_non_stable() {
+            local value="$1"
+            if [ -z "$value" ]; then
+              return 1
+            fi
+            # Block dev/edge channel values and common prerelease suffixes.
+            [[ "$value" =~ (^dev-|^edge-|-dev($|[.-])|-rc($|[.-])|-beta($|[.-])|-alpha($|[.-])|-pre($|[.-])|-preview($|[.-])) ]]
+          }
+
+          if [ "$ALLOW_EDGE_ROLLBACK" != 'true' ] && is_non_stable "$SOURCE_TAG"; then
+            echo "Refusing retag: source tag appears to be dev/edge/prerelease."
+            exit 1
+          fi
+
+          if is_non_stable "$VERSION_LABEL" || is_non_stable "$APP_VERSION_ENV"; then
+            echo "Refusing retag: source image appears to be dev/edge/prerelease."
+            exit 1
+          fi
+
+      - name: Retag latest
+        env:
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          SOURCE_TAG: ${{ steps.refs.outputs.source_tag }}
+          SOURCE_IMAGE: ${{ steps.refs.outputs.source_image }}
+          LATEST_IMAGE: ${{ steps.refs.outputs.latest_image }}
+          IMAGE_REPO: ${{ steps.refs.outputs.image_repo }}
+        run: |
+          set -euo pipefail
+
+          SOURCE_DIGEST="$(docker buildx imagetools inspect "$SOURCE_IMAGE" | awk '/^Digest:/ {print $2; exit}')"
+          CURRENT_LATEST_DIGEST="$(docker buildx imagetools inspect "$LATEST_IMAGE" 2>/dev/null | awk '/^Digest:/ {print $2; exit}')"
+
+          echo "Source digest: ${SOURCE_DIGEST}"
+          if [ -n "$CURRENT_LATEST_DIGEST" ]; then
+            echo "Current latest digest: ${CURRENT_LATEST_DIGEST}"
+          else
+            echo "Current latest digest: <none>"
+          fi
+
+          if [ "$DRY_RUN" = 'true' ]; then
+            echo "DRY RUN: would copy ${SOURCE_IMAGE} -> ${LATEST_IMAGE}"
+            {
+              echo "## GHCR Retag Latest (Dry Run)"
+              echo "- Source tag: \`${SOURCE_TAG}\`"
+              echo "- Source digest: \`${SOURCE_DIGEST}\`"
+              if [ -n "$CURRENT_LATEST_DIGEST" ]; then
+                echo "- Current latest digest: \`${CURRENT_LATEST_DIGEST}\`"
+              else
+                echo "- Current latest digest: \`<none>\`"
+              fi
+              echo "- Action: would copy \`${SOURCE_IMAGE}\` to \`${LATEST_IMAGE}\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          crane tag "${IMAGE_REPO}@${SOURCE_DIGEST}" latest
+          NEW_LATEST_DIGEST="$(docker buildx imagetools inspect "$LATEST_IMAGE" | awk '/^Digest:/ {print $2; exit}')"
+          echo "New latest digest: ${NEW_LATEST_DIGEST}"
+
+          if [ "$NEW_LATEST_DIGEST" != "$SOURCE_DIGEST" ]; then
+            echo "latest digest does not match source digest after retag"
+            exit 1
+          fi
+
+          {
+            echo "## GHCR Retag Latest"
+            echo "- Source tag: \`${SOURCE_TAG}\`"
+            echo "- Source digest: \`${SOURCE_DIGEST}\`"
+            echo "- New latest digest: \`${NEW_LATEST_DIGEST}\`"
+            echo "- Result: ✅ \`latest\` now points to \`${SOURCE_TAG}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
