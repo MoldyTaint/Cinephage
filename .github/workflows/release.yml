@@ -317,6 +317,7 @@ jobs:
 
       - name: Promote source images to release tags with release metadata
         env:
+          REF_NAME: ${{ github.ref_name }}
           SOURCE_TAG: ${{ needs.validate.outputs.source_tag }}
           VERSION: ${{ needs.validate.outputs.version }}
           IS_PRERELEASE: ${{ needs.validate.outputs.is_prerelease }}
@@ -357,8 +358,9 @@ jobs:
           docker buildx imagetools create -t "$RELEASE_MULTIARCH_IMAGE" "$RELEASE_AMD64_IMAGE" "$RELEASE_ARM64_IMAGE"
 
           # Tag as latest only for stable main releases.
-          if [ "${GITHUB_REF_NAME}" = 'main' ] && [ "$IS_PRERELEASE" != 'true' ]; then
-            docker buildx imagetools create -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:latest" "$RELEASE_AMD64_IMAGE" "$RELEASE_ARM64_IMAGE"
+          if [ "$REF_NAME" = 'main' ] && [ "$IS_PRERELEASE" != 'true' ]; then
+            crane cp "$RELEASE_MULTIARCH_IMAGE" "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:latest"
+            docker buildx imagetools inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:latest" >/dev/null
             echo "✅ Promoted ${SOURCE_TAG} to ${VERSION} and latest"
           else
             echo "✅ Promoted ${SOURCE_TAG} to ${VERSION} (latest skipped for prerelease/non-main)"
