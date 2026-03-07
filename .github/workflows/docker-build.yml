@@ -161,6 +161,8 @@ jobs:
           context: .
           platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' }}
+          provenance: false
+          sbom: false
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:${{ needs.prepare.outputs.arch_tag_amd64 }}
           build-args: |
             APP_VERSION=${{ needs.prepare.outputs.app_version }}
@@ -203,6 +205,8 @@ jobs:
           context: .
           platforms: linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
+          provenance: false
+          sbom: false
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:${{ needs.prepare.outputs.arch_tag_arm64 }}
           build-args: |
             APP_VERSION=${{ needs.prepare.outputs.app_version }}

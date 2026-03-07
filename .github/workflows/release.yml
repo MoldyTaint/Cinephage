@@ -17,7 +17,7 @@ on:
       - dev
     inputs:
       release_type:
-        description: 'Version bump type'
+        description: 'Version bump type (dev branch remaps major to minor)'
         required: true
         type: choice
         default: patch
@@ -81,6 +81,32 @@ jobs:
             echo "$v"
           }
 
+          parse_core_semver() {
+            local tag="$1"
+            if [[ "$tag" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+              echo "${BASH_REMATCH[1]} ${BASH_REMATCH[2]} ${BASH_REMATCH[3]}"
+              return 0
+            fi
+            if [[ "$tag" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)-dev([.-][0-9A-Za-z]+)?$ ]]; then
+              echo "${BASH_REMATCH[1]} ${BASH_REMATCH[2]} ${BASH_REMATCH[3]}"
+              return 0
+            fi
+            return 1
+          }
+
+          LAST_STABLE_TAG=$(git tag -l --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)
+          if [ -z "$LAST_STABLE_TAG" ]; then
+            LAST_STABLE_TAG='v0.0.0'
+          fi
+
+          BASE_TAG="$LAST_STABLE_TAG"
+
+          BUMP_TYPE="$RELEASE_TYPE"
+          if [ "$REF_NAME" = 'dev' ] && [ "$RELEASE_TYPE" = 'major' ]; then
+            echo "ℹ️ Dev branch releases do not support major bumps; treating release_type=major as minor."
+            BUMP_TYPE='minor'
+          fi
+
           case "$RELEASE_TYPE" in
             custom)
               if [ -z "$INPUT_VERSION" ]; then
@@ -94,22 +120,13 @@ jobs:
                 echo "ℹ️ Ignoring version input because release_type=${RELEASE_TYPE}"
               fi
 
-              LAST_TAG=$(git tag -l --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)
-              if [ -z "$LAST_TAG" ]; then
-                LAST_TAG='v0.0.0'
-              fi
-              if [[ ! "$LAST_TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-                echo "❌ Latest release tag must be plain semver (vX.Y.Z) for auto-bump."
-                echo "Found: ${LAST_TAG}"
+              if ! read -r MAJOR MINOR PATCH < <(parse_core_semver "$BASE_TAG"); then
+                echo "❌ Could not parse auto-bump base tag: ${BASE_TAG}"
                 echo "Use release_type=custom with an explicit version if needed."
                 exit 1
               fi
 
-              MAJOR="${BASH_REMATCH[1]}"
-              MINOR="${BASH_REMATCH[2]}"
-              PATCH="${BASH_REMATCH[3]}"
-
-              case "$RELEASE_TYPE" in
+              case "$BUMP_TYPE" in
                 patch)
                   PATCH=$((PATCH + 1))
                   ;;
@@ -133,8 +150,32 @@ jobs:
           esac
 
           # Dev-branch releases are always tagged as dev variants.
-          if [ "$REF_NAME" = 'dev' ] && [[ ! "$VERSION" =~ -dev([.-][0-9A-Za-z]+)?$ ]]; then
-            VERSION="${VERSION}-dev"
+          # For auto-bumps, skip existing tags while preserving the selected bump semantics.
+          if [ "$REF_NAME" = 'dev' ]; then
+            if [ "$RELEASE_TYPE" = 'custom' ]; then
+              if [[ ! "$VERSION" =~ -dev([.-][0-9A-Za-z]+)?$ ]]; then
+                VERSION="${VERSION}-dev"
+              fi
+            else
+              if ! read -r DEV_MAJOR DEV_MINOR DEV_PATCH < <(parse_core_semver "$VERSION"); then
+                echo "❌ Could not parse dev version base: ${VERSION}"
+                exit 1
+              fi
+
+              while git rev-parse "v${DEV_MAJOR}.${DEV_MINOR}.${DEV_PATCH}-dev" >/dev/null 2>&1; do
+                case "$BUMP_TYPE" in
+                  patch)
+                    DEV_PATCH=$((DEV_PATCH + 1))
+                    ;;
+                  *)
+                    DEV_MINOR=$((DEV_MINOR + 1))
+                    DEV_PATCH=0
+                    ;;
+                esac
+              done
+
+              VERSION="v${DEV_MAJOR}.${DEV_MINOR}.${DEV_PATCH}-dev"
+            fi
           fi
 
           echo "Resolved release version: ${VERSION}"
