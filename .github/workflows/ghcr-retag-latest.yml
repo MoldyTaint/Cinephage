@@ -68,7 +68,8 @@ jobs:
             exit 1
           fi
 
-          if [[ "$SOURCE_TAG" != v* ]]; then
+          # Normalize plain semver input (e.g. 1.0.0 -> v1.0.0) without touching channel tags.
+          if [[ "$SOURCE_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             SOURCE_TAG="v${SOURCE_TAG}"
           fi
 
