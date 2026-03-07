@@ -13,8 +13,18 @@ on:
         required: true
         type: boolean
         default: true
+      allow_edge_rollback:
+        description: 'Allow edge-YYYYMMDD-RUN tags for emergency rollback'
+        required: true
+        type: boolean
+        default: false
       confirm:
         description: 'Type RETAG to allow non-dry-run retag'
+        required: true
+        type: string
+        default: 'NO'
+      edge_confirm:
+        description: 'Type EDGE_ROLLBACK to allow edge rollback when allow_edge_rollback=true'
         required: true
         type: string
         default: 'NO'
@@ -45,6 +55,8 @@ jobs:
         id: refs
         env:
           SOURCE_TAG_INPUT: ${{ github.event.inputs.source_tag }}
+          ALLOW_EDGE_ROLLBACK: ${{ github.event.inputs.allow_edge_rollback }}
+          EDGE_CONFIRM: ${{ github.event.inputs.edge_confirm }}
         run: |
           set -euo pipefail
 
@@ -60,18 +72,41 @@ jobs:
             SOURCE_TAG="v${SOURCE_TAG}"
           fi
 
-          if [[ ! "$SOURCE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "source_tag must be a stable semver tag (vX.Y.Z). Got: ${SOURCE_TAG}"
+          IS_STABLE_TAG='false'
+          IS_EDGE_TAG='false'
+          if [[ "$SOURCE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            IS_STABLE_TAG='true'
+          fi
+          if [[ "$SOURCE_TAG" =~ ^edge-[0-9]{8}-[0-9]+$ ]]; then
+            IS_EDGE_TAG='true'
+          fi
+
+          if [ "$IS_STABLE_TAG" != 'true' ] && [ "$IS_EDGE_TAG" != 'true' ]; then
+            echo "source_tag must be stable semver (vX.Y.Z) or edge-YYYYMMDD-RUN."
+            echo "Got: ${SOURCE_TAG}"
             exit 1
+          fi
+
+          if [ "$IS_EDGE_TAG" = 'true' ]; then
+            if [ "$ALLOW_EDGE_ROLLBACK" != 'true' ]; then
+              echo "Refusing edge rollback: set allow_edge_rollback=true for edge tags."
+              exit 1
+            fi
+            if [ "$EDGE_CONFIRM" != 'EDGE_ROLLBACK' ]; then
+              echo "Refusing edge rollback: set edge_confirm=EDGE_ROLLBACK."
+              exit 1
+            fi
           fi
 
           SOURCE_IMAGE="ghcr.io/${IMAGE_NAME_LC}:${SOURCE_TAG}"
           LATEST_IMAGE="ghcr.io/${IMAGE_NAME_LC}:latest"
+          IMAGE_REPO="ghcr.io/${IMAGE_NAME_LC}"
 
           {
             echo "source_tag=${SOURCE_TAG}"
             echo "source_image=${SOURCE_IMAGE}"
             echo "latest_image=${LATEST_IMAGE}"
+            echo "image_repo=${IMAGE_REPO}"
           } >> "$GITHUB_OUTPUT"
 
           echo "Source image: ${SOURCE_IMAGE}"
@@ -110,17 +145,54 @@ jobs:
           docker buildx imagetools inspect "$SOURCE_IMAGE" >/dev/null
           echo "Verified source image exists: $SOURCE_IMAGE"
 
+      - name: Validate source image is stable (non-dev)
+        env:
+          SOURCE_IMAGE: ${{ steps.refs.outputs.source_image }}
+          SOURCE_TAG: ${{ steps.refs.outputs.source_tag }}
+          ALLOW_EDGE_ROLLBACK: ${{ github.event.inputs.allow_edge_rollback }}
+        run: |
+          set -euo pipefail
+
+          # Require amd64 metadata to identify release channel/version from OCI config.
+          SOURCE_CONFIG="$(crane config --platform linux/amd64 "$SOURCE_IMAGE")"
+          VERSION_LABEL="$(echo "$SOURCE_CONFIG" | jq -r '.config.Labels["org.opencontainers.image.version"] // ""')"
+          APP_VERSION_ENV="$(echo "$SOURCE_CONFIG" | jq -r '.config.Env[]? | select(startswith("PUBLIC_APP_VERSION="))' | tail -n 1 | sed 's/^PUBLIC_APP_VERSION=//')"
+
+          echo "Source tag: ${SOURCE_TAG}"
+          echo "Version label: ${VERSION_LABEL:-<empty>}"
+          echo "App version env: ${APP_VERSION_ENV:-<empty>}"
+
+          is_non_stable() {
+            local value="$1"
+            if [ -z "$value" ]; then
+              return 1
+            fi
+            # Block dev/edge channel values and common prerelease suffixes.
+            [[ "$value" =~ (^dev-|^edge-|-dev($|[.-])|-rc($|[.-])|-beta($|[.-])|-alpha($|[.-])|-pre($|[.-])|-preview($|[.-])) ]]
+          }
+
+          if [ "$ALLOW_EDGE_ROLLBACK" != 'true' ] && is_non_stable "$SOURCE_TAG"; then
+            echo "Refusing retag: source tag appears to be dev/edge/prerelease."
+            exit 1
+          fi
+
+          if is_non_stable "$VERSION_LABEL" || is_non_stable "$APP_VERSION_ENV"; then
+            echo "Refusing retag: source image appears to be dev/edge/prerelease."
+            exit 1
+          fi
+
       - name: Retag latest
         env:
           DRY_RUN: ${{ github.event.inputs.dry_run }}
           SOURCE_TAG: ${{ steps.refs.outputs.source_tag }}
           SOURCE_IMAGE: ${{ steps.refs.outputs.source_image }}
           LATEST_IMAGE: ${{ steps.refs.outputs.latest_image }}
+          IMAGE_REPO: ${{ steps.refs.outputs.image_repo }}
         run: |
           set -euo pipefail
 
-          SOURCE_DIGEST="$(crane digest "$SOURCE_IMAGE")"
-          CURRENT_LATEST_DIGEST="$(crane digest "$LATEST_IMAGE" 2>/dev/null || true)"
+          SOURCE_DIGEST="$(docker buildx imagetools inspect "$SOURCE_IMAGE" | awk '/^Digest:/ {print $2; exit}')"
+          CURRENT_LATEST_DIGEST="$(docker buildx imagetools inspect "$LATEST_IMAGE" 2>/dev/null | awk '/^Digest:/ {print $2; exit}')"
 
           echo "Source digest: ${SOURCE_DIGEST}"
           if [ -n "$CURRENT_LATEST_DIGEST" ]; then
@@ -145,8 +217,8 @@ jobs:
             exit 0
           fi
 
-          crane cp "$SOURCE_IMAGE" "$LATEST_IMAGE"
-          NEW_LATEST_DIGEST="$(crane digest "$LATEST_IMAGE")"
+          crane tag "${IMAGE_REPO}@${SOURCE_DIGEST}" latest
+          NEW_LATEST_DIGEST="$(docker buildx imagetools inspect "$LATEST_IMAGE" | awk '/^Digest:/ {print $2; exit}')"
           echo "New latest digest: ${NEW_LATEST_DIGEST}"
 
           if [ "$NEW_LATEST_DIGEST" != "$SOURCE_DIGEST" ]; then
