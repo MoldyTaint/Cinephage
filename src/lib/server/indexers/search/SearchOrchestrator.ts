@@ -22,7 +22,8 @@ import {
 	isTvSearch,
 	indexerHasCategoriesForSearchType,
 	categoryMatchesSearchType,
-	getCategoryContentType
+	getCategoryContentType,
+	CINEPHAGE_STREAM_DEFINITION_ID
 } from '../types';
 
 import {
@@ -583,6 +584,26 @@ export class SearchOrchestrator {
 					indexerName: indexer.name,
 					reason: 'indexerFilter',
 					message: 'Excluded by indexer filter'
+				});
+				continue;
+			}
+
+			// Streamer profile must only search the internal Cinephage Library indexer.
+			// This prevents auto-grab from hitting torrent/usenet/external indexers when
+			// the profile is explicitly configured for .strm streaming behavior.
+			if (
+				options.enrichment?.scoringProfileId === 'streamer' &&
+				indexer.definitionId !== CINEPHAGE_STREAM_DEFINITION_ID
+			) {
+				rejected.push({
+					indexerId: indexer.id,
+					indexerName: indexer.name,
+					reason: 'indexerFilter',
+					message: 'Excluded by streamer profile indexer rule (Cinephage Library only)'
+				});
+				logger.debug(`Indexer ${indexer.name} rejected: streamer profile rule`, {
+					indexerId: indexer.id,
+					definitionId: indexer.definitionId
 				});
 				continue;
 			}
