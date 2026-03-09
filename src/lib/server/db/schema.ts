@@ -137,7 +137,8 @@ export const authApiKeys = sqliteTable(
 );
 
 export const authRateLimits = sqliteTable('rateLimit', {
-	key: text('key').primaryKey(),
+	id: text('id').primaryKey(),
+	key: text('key').notNull().unique(),
 	count: integer('count').notNull(),
 	lastRequest: integer('lastRequest').notNull()
 });

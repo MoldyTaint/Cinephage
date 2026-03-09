@@ -323,4 +323,37 @@ describe('syncSchema Better Auth repair', () => {
 			.get('session-legacy') as { userId: string };
 		expect(sessionRow.userId).toBe('user-legacy');
 	});
+
+	it('adds and backfills rateLimit.id for legacy rateLimit tables', () => {
+		const sqlite = createTestDatabase();
+
+		sqlite
+			.prepare(
+				`CREATE TABLE "rateLimit" (
+					"key" text PRIMARY KEY NOT NULL,
+					"count" integer NOT NULL,
+					"lastRequest" integer NOT NULL
+				)`
+			)
+			.run();
+		sqlite
+			.prepare(`CREATE TABLE "settings" ("key" text PRIMARY KEY NOT NULL, "value" text NOT NULL)`)
+			.run();
+		sqlite.prepare(`INSERT INTO "settings" ("key", "value") VALUES ('schema_version', '64')`).run();
+		sqlite
+			.prepare(`INSERT INTO "rateLimit" ("key", "count", "lastRequest") VALUES (?, ?, ?)`)
+			.run('ip|/sign-in', 2, Date.now());
+
+		expect(() => syncSchema(sqlite)).not.toThrow();
+		expect(getColumnNames(sqlite, 'rateLimit')).toEqual(
+			expect.arrayContaining(['id', 'key', 'count', 'lastRequest'])
+		);
+
+		const row = sqlite
+			.prepare(`SELECT "id", "key", "count" FROM "rateLimit" WHERE "key" = ?`)
+			.get('ip|/sign-in') as { id: string; key: string; count: number };
+		expect(row.id).toBeTruthy();
+		expect(row.key).toBe('ip|/sign-in');
+		expect(row.count).toBe(2);
+	});
 });

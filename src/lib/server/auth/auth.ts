@@ -94,6 +94,35 @@ function isLocalNetworkOrigin(origin: string): boolean {
 	}
 }
 
+function getFirstForwardedHeaderValue(value: string | null): string | null {
+	if (!value) {
+		return null;
+	}
+
+	const first = value
+		.split(',')
+		.map((part) => part.trim())
+		.find((part) => part.length > 0);
+	return first ?? null;
+}
+
+function getForwardedOrigin(request: Request): string | null {
+	const forwardedHost = getFirstForwardedHeaderValue(request.headers.get('x-forwarded-host'));
+	if (!forwardedHost) {
+		return null;
+	}
+
+	const protoCandidate = getFirstForwardedHeaderValue(request.headers.get('x-forwarded-proto'));
+	const forwardedProto =
+		protoCandidate === 'http' || protoCandidate === 'https' ? protoCandidate : 'https';
+
+	try {
+		return new URL(`${forwardedProto}://${forwardedHost}`).origin;
+	} catch {
+		return null;
+	}
+}
+
 /**
  * Username validator - checks shared format rules and hard-reserved namespaces
  */
@@ -158,8 +187,19 @@ export const auth = betterAuth({
 		// Dynamically trust local network origins
 		// This allows access from any device on the LAN (192.168.x.x, 10.x.x.x, etc.)
 		if (request) {
+			const requestOrigin = new URL(request.url).origin;
+			const forwardedOrigin = getForwardedOrigin(request);
 			const origin = request.headers.get('origin');
-			if (origin && isLocalNetworkOrigin(origin)) {
+
+			origins.push(requestOrigin);
+			if (forwardedOrigin) {
+				origins.push(forwardedOrigin);
+			}
+
+			if (
+				origin &&
+				(isLocalNetworkOrigin(origin) || origin === requestOrigin || origin === forwardedOrigin)
+			) {
 				origins.push(origin);
 			}
 		}
@@ -186,7 +226,7 @@ export const auth = betterAuth({
 			origins.push(...additional);
 		}
 
-		return origins;
+		return [...new Set(origins)];
 	},
 
 	// Use native SQLite adapter instead of Drizzle to avoid boolean binding issues

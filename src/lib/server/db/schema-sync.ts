@@ -92,8 +92,9 @@ interface MigrationDefinition {
  * Version 64: Promote the sole bootstrap user to admin if older auth code created it as user
  * Version 65: Migrate Better Auth apikey schema from userId -> referenceId and add configId
  * Version 66: Fix apikey schema migration for databases stuck after v65
+ * Version 67: Add Better Auth rateLimit.id column required by adapter-generated IDs
  */
-export const CURRENT_SCHEMA_VERSION = 66;
+export const CURRENT_SCHEMA_VERSION = 67;
 
 const BETTER_AUTH_TABLE_DEFINITIONS = [
 	{
@@ -186,7 +187,8 @@ const BETTER_AUTH_TABLE_DEFINITIONS = [
 	{
 		name: 'rateLimit',
 		sql: `CREATE TABLE IF NOT EXISTS "rateLimit" (
-			"key" text PRIMARY KEY NOT NULL,
+			"id" text PRIMARY KEY NOT NULL,
+			"key" text NOT NULL UNIQUE,
 			"count" integer NOT NULL,
 			"lastRequest" integer NOT NULL
 		)`
@@ -229,6 +231,12 @@ const BETTER_AUTH_INDEX_DEFINITIONS = [
 		table: 'apikey',
 		columns: ['key'],
 		sql: `CREATE INDEX IF NOT EXISTS "idx_apikey_key" ON "apikey" ("key")`
+	},
+	{
+		name: 'idx_rateLimit_key',
+		table: 'rateLimit',
+		columns: ['key'],
+		sql: `CREATE UNIQUE INDEX IF NOT EXISTS "idx_rateLimit_key" ON "rateLimit" ("key")`
 	}
 ] as const;
 
@@ -4560,6 +4568,8 @@ const MIGRATIONS: MigrationDefinition[] = [
 			ensureColumn(sqlite, 'apikey', 'permissions', '"permissions" text');
 			ensureColumn(sqlite, 'apikey', 'metadata', '"metadata" text');
 
+			ensureColumn(sqlite, 'rateLimit', 'id', '"id" text');
+			ensureColumn(sqlite, 'rateLimit', 'key', '"key" text');
 			ensureColumn(sqlite, 'rateLimit', 'count', '"count" integer NOT NULL DEFAULT 0');
 			ensureColumn(sqlite, 'rateLimit', 'lastRequest', '"lastRequest" integer NOT NULL DEFAULT 0');
 
@@ -4577,6 +4587,20 @@ const MIGRATIONS: MigrationDefinition[] = [
 					.prepare(`UPDATE "apikey" SET "rateLimitEnabled" = 1 WHERE "rateLimitEnabled" IS NULL`)
 					.run();
 				sqlite.prepare(`UPDATE "apikey" SET "requestCount" = 0 WHERE "requestCount" IS NULL`).run();
+			}
+
+			if (tableExists(sqlite, 'rateLimit')) {
+				sqlite
+					.prepare(
+						`UPDATE "rateLimit" SET "id" = lower(hex(randomblob(16))) WHERE "id" IS NULL OR "id" = ''`
+					)
+					.run();
+				sqlite
+					.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS "idx_rateLimit_key" ON "rateLimit" ("key")`)
+					.run();
+				sqlite
+					.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS "idx_rateLimit_id" ON "rateLimit" ("id")`)
+					.run();
 			}
 
 			createBetterAuthIndexes(sqlite);
@@ -4714,6 +4738,41 @@ const MIGRATIONS: MigrationDefinition[] = [
 			logger.info('[SchemaSync] Recreated apikey indexes for referenceId');
 
 			logger.info('[SchemaSync] apikey schema fix completed successfully');
+		}
+	},
+
+	// Version 67: Better Auth now generates IDs for rateLimit rows; ensure column exists on upgraded DBs
+	{
+		version: 67,
+		name: 'add_rate_limit_id_column',
+		apply: (sqlite) => {
+			if (!tableExists(sqlite, 'rateLimit')) {
+				logger.info('[SchemaSync] rateLimit table not found, skipping id column migration');
+				return;
+			}
+
+			ensureColumn(sqlite, 'rateLimit', 'id', '"id" text');
+			ensureColumn(sqlite, 'rateLimit', 'key', '"key" text');
+			ensureColumn(sqlite, 'rateLimit', 'count', '"count" integer NOT NULL DEFAULT 0');
+			ensureColumn(sqlite, 'rateLimit', 'lastRequest', '"lastRequest" integer NOT NULL DEFAULT 0');
+
+			const backfilled = sqlite
+				.prepare(
+					`UPDATE "rateLimit" SET "id" = lower(hex(randomblob(16))) WHERE "id" IS NULL OR "id" = ''`
+				)
+				.run();
+			if (backfilled.changes > 0) {
+				logger.info('[SchemaSync] Backfilled missing rateLimit.id values', {
+					rows: backfilled.changes
+				});
+			}
+
+			sqlite
+				.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS "idx_rateLimit_key" ON "rateLimit" ("key")`)
+				.run();
+			sqlite
+				.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS "idx_rateLimit_id" ON "rateLimit" ("id")`)
+				.run();
 		}
 	}
 ];
@@ -4979,7 +5038,7 @@ const CRITICAL_COLUMNS: Record<string, string[]> = {
 	account: ['id', 'userId', 'accountId', 'providerId', 'createdAt', 'updatedAt'],
 	verification: ['id', 'identifier', 'value', 'expiresAt'],
 	apikey: ['id', 'key', 'referenceId', 'createdAt', 'updatedAt'],
-	rateLimit: ['key', 'count', 'lastRequest'],
+	rateLimit: ['id', 'key', 'count', 'lastRequest'],
 	download_clients: [
 		'id',
 		'name',
@@ -5091,7 +5150,8 @@ const MIGRATION_COLUMN_MAP: Record<number, Array<{ table: string; column: string
 	65: [
 		{ table: 'apikey', column: 'referenceId' },
 		{ table: 'apikey', column: 'configId' }
-	]
+	],
+	67: [{ table: 'rateLimit', column: 'id' }]
 };
 
 /**
