@@ -43,9 +43,9 @@ Typical client code:
 
 ```typescript
 const headers = {
-  'X-Cinephage-Version': import.meta.env.VITE_CINEPHAGE_VERSION,
-  'X-Cinephage-Commit': import.meta.env.VITE_CINEPHAGE_COMMIT,
-  'X-Cinephage-Timestamp': String(Math.floor(Date.now() / 1000))
+	'X-Cinephage-Version': import.meta.env.VITE_CINEPHAGE_VERSION,
+	'X-Cinephage-Commit': import.meta.env.VITE_CINEPHAGE_COMMIT,
+	'X-Cinephage-Timestamp': String(Math.floor(Date.now() / 1000))
 };
 ```
 
@@ -74,8 +74,8 @@ Body:
 
 ```json
 {
-  "commit": "abc123def456",
-  "version": "2.1.0"
+	"commit": "abc123def456",
+	"version": "2.1.0"
 }
 ```
 
@@ -92,13 +92,13 @@ Expected response:
 
 ```json
 {
-  "success": true,
-  "release": {
-    "version": "2.1.0",
-    "commit": "abc123def456",
-    "createdAt": 1772946363994,
-    "updatedBy": "automation"
-  }
+	"success": true,
+	"release": {
+		"version": "2.1.0",
+		"commit": "abc123def456",
+		"createdAt": 1772946363994,
+		"updatedBy": "automation"
+	}
 }
 ```
 
