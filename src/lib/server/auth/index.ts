@@ -5,6 +5,15 @@ export {
 	repairCurrentUserAdminRole
 } from './auth.js';
 export {
+	ensureDefaultApiKeysForUser,
+	ensureStreamingApiKeyRateLimit,
+	getManagedApiKeysForRequest,
+	getRecoverableApiKeyByType,
+	regenerateRecoverableApiKey,
+	type RecoverableApiKey,
+	type ManagedApiKeyType
+} from './api-keys.js';
+export {
 	HARD_RESERVED_USERNAMES,
 	HARD_RESERVED_USERNAMES as RESERVED_USERNAMES,
 	isHardReservedUsername,
@@ -13,7 +22,7 @@ export {
 	USERNAME_MIN_LENGTH,
 	USERNAME_PATTERN
 } from '$lib/auth/username-policy.js';
-export { isSetupComplete, requireSetup, requireAuth } from './setup.js';
+export { isSetupComplete, requireSetup } from './setup.js';
 export {
 	checkApiKeyPermission,
 	requireApiKeyPermission,

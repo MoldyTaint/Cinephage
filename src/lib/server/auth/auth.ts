@@ -14,7 +14,8 @@ import {
 import { getSystemSettingsService } from '$lib/server/settings/SystemSettingsService.js';
 import { ac, admin as adminRole, user as userRole } from '$lib/auth/access-control.js';
 import { isHardReservedUsername, isValidUsernameFormat } from '$lib/auth/username-policy.js';
-import { ensureSoleUserIsAdmin } from './admin-bootstrap.js';
+import { ensureSoleUserIsAdminRecord } from './admin-bootstrap.js';
+import { isSetupComplete } from './setup.js';
 
 /**
  * Extract IP from hostname (e.g., "192.168.1.100:5173" → "192.168.1.100")
@@ -256,7 +257,7 @@ export const auth = betterAuth({
 			rateLimit: {
 				enabled: true,
 				timeWindow: 1000 * 60 * 60, // 1 hour
-				maxRequests: 1000 // 1000 requests per hour per key
+				maxRequests: 10000 // 10000 requests per hour per key
 			},
 			enableMetadata: true
 		}),
@@ -294,10 +295,7 @@ export const auth = betterAuth({
 		user: {
 			create: {
 				before: async (user) => {
-					// Check if any user already exists
-					// Only allow first user (admin) to be created
-					const existingUser = authDb.prepare('SELECT 1 FROM "user" LIMIT 1').get();
-					if (existingUser) {
+					if (await isSetupComplete()) {
 						throw new APIError('FORBIDDEN', {
 							message: 'User registration is disabled. Only one admin account is allowed.'
 						});
@@ -345,8 +343,8 @@ export const auth = betterAuth({
 	}
 });
 
-export function repairCurrentUserAdminRole(userId: string): boolean {
-	return ensureSoleUserIsAdmin(authDb, userId);
+export async function repairCurrentUserAdminRole(userId: string): Promise<boolean> {
+	return ensureSoleUserIsAdminRecord(userId);
 }
 
 // Export helper functions

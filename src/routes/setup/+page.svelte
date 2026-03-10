@@ -136,17 +136,6 @@
 			}
 
 			// Mark setup as complete
-			try {
-				await fetch('/api/setup/complete', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					credentials: 'include'
-				});
-			} catch (setupError) {
-				// Non-critical - setup flag is mainly for preventing re-setup
-				console.warn('Error marking setup complete:', setupError);
-			}
-
 			currentStep = 3;
 
 			// Redirect to dashboard after 2 seconds

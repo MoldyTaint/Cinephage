@@ -1,10 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { auth } from '$lib/server/auth/index.js';
-import { encryptApiKey } from '$lib/server/crypto/apiKeyCrypto.js';
-import { db } from '$lib/server/db';
-import { userApiKeySecrets } from '$lib/server/db/schema.js';
+import {
+	ensureDefaultApiKeysForUser,
+	getManagedApiKeysForRequest
+} from '$lib/server/auth/index.js';
 
 // POST /api/settings/system/api-keys - Auto-generate Main and Media Streaming API keys
 export const POST: RequestHandler = async (event) => {
@@ -18,83 +18,7 @@ export const POST: RequestHandler = async (event) => {
 	const user = locals.user!;
 
 	try {
-		// Check if user already has API keys
-		const existingKeysResult = await auth.api.listApiKeys({
-			headers: request.headers
-		});
-		const existingKeys = existingKeysResult.apiKeys;
-
-		const hasMainKey = existingKeys.some(
-			(key: { metadata?: { type?: string } | null }) => key.metadata?.type === 'main'
-		);
-		const hasStreamingKey = existingKeys.some(
-			(key: { metadata?: { type?: string } | null }) => key.metadata?.type === 'streaming'
-		);
-
-		const results = {
-			mainKey: null as { id: string; key: string } | null,
-			streamingKey: null as { id: string; key: string } | null
-		};
-
-		// Create Main API Key if doesn't exist
-		if (!hasMainKey) {
-			const mainKey = await auth.api.createApiKey({
-				body: {
-					userId: user.id,
-					name: 'Main API Key',
-					metadata: {
-						type: 'main',
-						description: 'Full access to all API endpoints'
-					},
-					permissions: {
-						default: ['*']
-					}
-				}
-			});
-			results.mainKey = {
-				id: mainKey.id,
-				key: mainKey.key
-			};
-			// Encrypt and store the full key
-			const encryptedKey = encryptApiKey(mainKey.key);
-			await db.insert(userApiKeySecrets).values({
-				id: mainKey.id,
-				userId: user.id,
-				encryptedKey,
-				createdAt: new Date().toISOString()
-			});
-		}
-
-		// Create Media Streaming API Key if doesn't exist
-		if (!hasStreamingKey) {
-			const streamingKey = await auth.api.createApiKey({
-				body: {
-					userId: user.id,
-					name: 'Media Streaming API Key',
-					metadata: {
-						type: 'streaming',
-						description:
-							'Access to Live TV and Media Streaming endpoints for media server integration'
-					},
-					permissions: {
-						livetv: ['*'],
-						streaming: ['*']
-					}
-				}
-			});
-			results.streamingKey = {
-				id: streamingKey.id,
-				key: streamingKey.key
-			};
-			// Encrypt and store the full key
-			const encryptedKey = encryptApiKey(streamingKey.key);
-			await db.insert(userApiKeySecrets).values({
-				id: streamingKey.id,
-				userId: user.id,
-				encryptedKey,
-				createdAt: new Date().toISOString()
-			});
-		}
+		const results = await ensureDefaultApiKeysForUser(user.id, request.headers);
 
 		return json({
 			success: true,
@@ -115,13 +39,11 @@ export const GET: RequestHandler = async (event) => {
 	const { request } = event;
 
 	try {
-		const apiKeysResult = await auth.api.listApiKeys({
-			headers: request.headers
-		});
+		const apiKeysResult = await getManagedApiKeysForRequest(request.headers);
 
 		return json({
 			success: true,
-			data: apiKeysResult.apiKeys
+			data: [apiKeysResult.mainApiKey, apiKeysResult.streamingApiKey].filter(Boolean)
 		});
 	} catch (error) {
 		console.error('Error listing API keys:', error);

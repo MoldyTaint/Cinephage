@@ -17,7 +17,7 @@ import {
 import { fetchAndStoreMovieAlternateTitles } from '$lib/server/services/AlternateTitleService.js';
 import { ValidationError } from '$lib/errors';
 import { logger } from '$lib/logging';
-import { requireAuth } from '$lib/server/auth/requireAuth.js';
+import { requireAuth } from '$lib/server/auth/authorization.js';
 
 /**
  * Schema for adding a movie to the library

@@ -19,43 +19,24 @@ import { getUnifiedTaskById } from '$lib/server/tasks/UnifiedTaskRegistry';
 import { taskHistoryService } from '$lib/server/tasks/TaskHistoryService';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler';
 import { createChildLogger } from '$lib/logging';
-import { db } from '$lib/server/db';
-import { userApiKeySecrets } from '$lib/server/db/schema.js';
-import { eq } from 'drizzle-orm';
-import { decryptApiKey } from '$lib/server/crypto/apiKeyCrypto.js';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { getRecoverableApiKeyByType } from '$lib/server/auth/index.js';
 
 const logger = createChildLogger({ module: 'TaskRunAPI' });
 
 /**
  * Fetch the Media Streaming API Key for a user
- * Queries the Better Auth apiKey table directly (bypassing auth API)
  */
 async function getUserStreamingApiKey(userId: string): Promise<string | null> {
 	try {
-		// Query the apiKey table directly using raw SQL
-		// Better Auth stores API keys in the 'apiKey' table (v1.5+ uses referenceId instead of userId)
-		const result = db.$client
-			.prepare(
-				`SELECT id FROM apiKey WHERE referenceId = ? AND metadata LIKE '%"type":"streaming"%' LIMIT 1`
-			)
-			.get(userId) as { id: string } | undefined;
+		const key = await getRecoverableApiKeyByType('streaming', userId);
 
-		if (!result) {
+		if (!key) {
 			logger.warn('[TaskRunAPI] No Media Streaming API Key found for user', { userId });
 			return null;
 		}
 
-		// Fetch the full key from our encrypted storage
-		const keyRecord = await db.query.userApiKeySecrets.findFirst({
-			where: eq(userApiKeySecrets.id, result.id)
-		});
-
-		if (keyRecord) {
-			return decryptApiKey(keyRecord.encryptedKey);
-		}
-
-		return null;
+		return key;
 	} catch (error) {
 		logger.error('[TaskRunAPI] Failed to fetch Media Streaming API Key', {
 			error: error instanceof Error ? error.message : 'Unknown error'

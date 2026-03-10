@@ -9,6 +9,7 @@
 import { existsSync, mkdirSync, writeFileSync, unlinkSync, readFileSync } from 'fs';
 import { join, dirname, resolve, relative } from 'path';
 import { createChildLogger } from '$lib/logging';
+import { getRecoverableApiKeyByType } from '$lib/server/auth/index.js';
 import { db } from '$lib/server/db';
 import {
 	movies,
@@ -148,32 +149,14 @@ export class StrmService {
 	 */
 	private async getMediaStreamingApiKey(): Promise<string | null> {
 		try {
-			// Query the apiKey table directly using raw SQL
-			// This works in background contexts where auth.api.listApiKeys() fails
-			const result = db.$client
-				.prepare(
-					`SELECT id FROM apiKey WHERE metadata LIKE '%"type":"streaming"%' AND enabled = 1 LIMIT 1`
-				)
-				.get() as { id: string } | undefined;
+			const key = await getRecoverableApiKeyByType('streaming');
 
-			if (!result) {
+			if (!key) {
 				logger.debug('[StrmService] No Media Streaming API Key found in database');
 				return null;
 			}
 
-			// Fetch the full key from our encrypted storage
-			const { userApiKeySecrets } = await import('$lib/server/db/schema.js');
-			const { eq } = await import('drizzle-orm');
-			const keyRecord = await db.query.userApiKeySecrets.findFirst({
-				where: eq(userApiKeySecrets.id, result.id)
-			});
-
-			if (keyRecord) {
-				const { decryptApiKey } = await import('$lib/server/crypto/apiKeyCrypto.js');
-				return decryptApiKey(keyRecord.encryptedKey);
-			}
-
-			return null;
+			return key;
 		} catch (error) {
 			logger.error('[StrmService] Failed to fetch Media Streaming API Key', {
 				error: error instanceof Error ? error.message : 'Unknown error'
@@ -467,8 +450,21 @@ export class StrmService {
 		season?: number;
 		episode?: number;
 	} | null {
+		const trimmedUrl = url.trim();
+		let pathToParse = trimmedUrl;
+
+		if (/^https?:\/\//i.test(trimmedUrl)) {
+			try {
+				pathToParse = new URL(trimmedUrl).pathname;
+			} catch {
+				pathToParse = trimmedUrl;
+			}
+		} else {
+			pathToParse = trimmedUrl.split('?')[0]?.split('#')[0] ?? trimmedUrl;
+		}
+
 		// Match movie URL: {anyBaseUrl}/api/streaming/resolve/movie/{tmdbId}
-		const movieMatch = url.match(/\/api\/streaming\/resolve\/movie\/(\d+)$/);
+		const movieMatch = pathToParse.match(/\/api\/streaming\/resolve\/movie\/(\d+)\/?$/);
 		if (movieMatch) {
 			return {
 				mediaType: 'movie',
@@ -477,7 +473,7 @@ export class StrmService {
 		}
 
 		// Match TV URL: {anyBaseUrl}/api/streaming/resolve/tv/{tmdbId}/{season}/{episode}
-		const tvMatch = url.match(/\/api\/streaming\/resolve\/tv\/(\d+)\/(\d+)\/(\d+)$/);
+		const tvMatch = pathToParse.match(/\/api\/streaming\/resolve\/tv\/(\d+)\/(\d+)\/(\d+)\/?$/);
 		if (tvMatch) {
 			return {
 				mediaType: 'tv',

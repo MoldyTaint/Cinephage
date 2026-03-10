@@ -10,7 +10,8 @@
 		Copy,
 		Check,
 		Wifi,
-		WifiOff
+		WifiOff,
+		Image
 	} from 'lucide-svelte';
 	import type { PageData } from './$types';
 
@@ -40,6 +41,7 @@
 		ChannelStreamEvents,
 		NowNextEntry
 	} from '$lib/types/sse/events/livetv-channel-events.js';
+	import type { LogoDownloadProgress } from '$lib/server/logos/LogoDownloadService';
 
 	// Data state
 	let lineup = $state<ChannelLineupItemWithDetails[]>([]);
@@ -64,6 +66,9 @@
 	let editingChannel = $state<ChannelLineupItemWithDetails | null>(null);
 	let editModalSaving = $state(false);
 	let editModalError = $state<string | null>(null);
+	let editModalRef:
+		| { refreshBackups: () => void; setEpgSourceChannelId: (id: string | null) => void }
+		| undefined = $state(undefined);
 
 	let categoryModalOpen = $state(false);
 
@@ -79,11 +84,6 @@
 	// Export state
 	let exportDropdownOpen = $state(false);
 	let copiedField = $state<'m3u' | 'epg' | null>(null);
-
-	// Edit modal reference for refreshing backups and setting EPG source
-	let editModalRef:
-		| { refreshBackups: () => void; setEpgSourceChannelId: (id: string | null) => void }
-		| undefined = $state(undefined);
 
 	// EPG source picker modal state
 	let epgSourcePickerOpen = $state(false);
@@ -102,6 +102,132 @@
 	// EPG state (now/next programs)
 	let epgData = new SvelteMap<string, NowNextEntry>();
 	let channelSearch = $state('');
+
+	// Logo library state
+	let logoDownloaded = $state(false);
+	let logoCount = $state(0);
+	let loadingLogos = $state(false);
+	let downloadingLogos = $state(false);
+	let logoDownloadProgress = $state<LogoDownloadProgress | null>(null);
+	let logoDownloadEventSource: EventSource | null = $state(null);
+
+	onMount(() => {
+		loadLogoStatus();
+	});
+
+	async function loadLogoStatus() {
+		loadingLogos = true;
+		try {
+			const res = await fetch('/api/logos/status');
+			if (res.ok) {
+				const data = await res.json();
+				if (data.success) {
+					logoDownloaded = data.data.downloaded;
+					logoCount = data.data.count;
+				}
+			}
+		} catch {
+			// Silently fail - logos are optional
+		} finally {
+			loadingLogos = false;
+		}
+	}
+
+	async function downloadLogos() {
+		// Prevent multiple simultaneous downloads
+		if (downloadingLogos) return;
+
+		downloadingLogos = true;
+		logoDownloadProgress = null;
+
+		try {
+			const res = await fetch('/api/logos/download', { method: 'POST' });
+			const data = await res.json();
+
+			if (data.success) {
+				if (data.data?.downloaded) {
+					// Already downloaded
+					logoDownloaded = true;
+					logoCount = data.data.count;
+					downloadingLogos = false;
+					toasts.success('Logos already available');
+				} else {
+					// Start SSE connection
+					connectToLogoDownloadStream();
+				}
+			} else {
+				console.error('Server error:', data.error);
+				downloadingLogos = false;
+			}
+		} catch (err) {
+			console.error('Download error:', err);
+			downloadingLogos = false;
+		}
+	}
+
+	function connectToLogoDownloadStream() {
+		// Close any existing connection
+		if (logoDownloadEventSource) {
+			logoDownloadEventSource.close();
+		}
+
+		// Use native EventSource instead of createSSE to avoid Svelte context issues
+		const eventSource = new EventSource('/api/logos/download/stream');
+		logoDownloadEventSource = eventSource;
+
+		eventSource.addEventListener('logos:status', (e) => {
+			const data = JSON.parse(e.data) as LogoDownloadProgress;
+			logoDownloadProgress = data;
+			if (data.status === 'completed') {
+				logoDownloaded = true;
+				downloadingLogos = false;
+				logoCount = data.downloaded;
+				eventSource.close();
+				logoDownloadEventSource = null;
+				loadLogoStatus();
+			}
+		});
+
+		eventSource.addEventListener('logos:started', (e) => {
+			const data = JSON.parse(e.data) as LogoDownloadProgress;
+			logoDownloadProgress = data;
+		});
+
+		eventSource.addEventListener('logos:progress', (e) => {
+			const data = JSON.parse(e.data) as LogoDownloadProgress;
+			logoDownloadProgress = data;
+		});
+
+		eventSource.addEventListener('logos:completed', (e) => {
+			const data = JSON.parse(e.data) as LogoDownloadProgress;
+			logoDownloadProgress = data;
+			logoDownloaded = true;
+			downloadingLogos = false;
+			logoCount = data.downloaded;
+			eventSource.close();
+			logoDownloadEventSource = null;
+			toasts.success(`Downloaded ${logoCount} logos`);
+			loadLogoStatus();
+		});
+
+		eventSource.addEventListener('logos:error', (e) => {
+			const data = JSON.parse(e.data) as LogoDownloadProgress;
+			logoDownloadProgress = data;
+			downloadingLogos = false;
+			eventSource.close();
+			logoDownloadEventSource = null;
+			toasts.error(data.error || 'Download failed');
+		});
+
+		eventSource.addEventListener('error', () => {
+			// Connection error - close and cleanup
+			if (logoDownloadEventSource === eventSource) {
+				downloadingLogos = false;
+				eventSource.close();
+				logoDownloadEventSource = null;
+			}
+		});
+	}
 
 	// SSE Connection - internally handles browser/SSR
 	const sse = createSSE<ChannelStreamEvents>(resolvePath('/api/livetv/channels/stream'), {
@@ -614,7 +740,6 @@
 	}
 
 	function handleBackupSelected(_accountId: string, _channelId: string) {
-		// Refresh the edit modal's backups list
 		editModalRef?.refreshBackups();
 	}
 
@@ -742,6 +867,49 @@
 				<FolderOpen class="h-4 w-4" />
 				Categories
 			</button>
+			{#if logoDownloaded}
+				<button class="btn gap-1 btn-ghost btn-sm" disabled={loadingLogos}>
+					{#if loadingLogos}
+						<Loader2 class="h-4 w-4 animate-spin" />
+					{:else}
+						<Image class="h-4 w-4" />
+					{/if}
+					Logos
+					{#if logoCount > 0}
+						<span class="badge badge-ghost badge-xs">{logoCount}</span>
+					{/if}
+				</button>
+			{:else if downloadingLogos && logoDownloadProgress}
+				<!-- Progress Bar -->
+				<div class="flex w-48 items-center gap-2">
+					<div class="h-2 flex-1 rounded-full bg-base-300">
+						<div
+							class="h-full rounded-full bg-primary transition-all duration-300"
+							style="width: {logoDownloadProgress.total > 0
+								? (logoDownloadProgress.downloaded / logoDownloadProgress.total) * 100
+								: 0}%"
+						></div>
+					</div>
+					<span class="text-xs text-base-content/70">
+						{logoDownloadProgress.downloaded}/{logoDownloadProgress.total}
+					</span>
+				</div>
+			{:else}
+				<button
+					class="btn gap-1 btn-sm btn-primary"
+					onclick={downloadLogos}
+					disabled={downloadingLogos}
+					title="Download channel logos"
+				>
+					{#if downloadingLogos}
+						<Loader2 class="h-4 w-4 animate-spin" />
+						Starting...
+					{:else}
+						<Download class="h-4 w-4" />
+						Get Logos
+					{/if}
+				</button>
+			{/if}
 			<!-- Export Dropdown -->
 			<div class="relative">
 				<button

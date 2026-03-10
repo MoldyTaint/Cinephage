@@ -28,7 +28,12 @@ import { getLiveTvChannelService } from '$lib/server/livetv/LiveTvChannelService
 import { getLiveTvStreamService } from '$lib/server/livetv/streaming/LiveTvStreamService';
 import { getStalkerPortalManager } from '$lib/server/livetv/stalker/StalkerPortalManager';
 import { initializeProviderFactory } from '$lib/server/subtitles/providers/SubtitleProviderFactory.js';
-import { auth, isSetupComplete, repairCurrentUserAdminRole } from '$lib/server/auth/index.js';
+import {
+	auth,
+	ensureStreamingApiKeyRateLimit,
+	isSetupComplete,
+	repairCurrentUserAdminRole
+} from '$lib/server/auth/index.js';
 import { checkApiRateLimit, applyRateLimitHeaders } from '$lib/server/rate-limit.js';
 import type { SessionRecord, UserRecord } from '$lib/server/db/schema.js';
 
@@ -199,6 +204,12 @@ async function initializeServices(): Promise<void> {
 			logger.info('Initializing database...');
 			await initializeDatabase();
 			logger.info('Database initialized');
+			const updatedStreamingKeys = await ensureStreamingApiKeyRateLimit();
+			if (updatedStreamingKeys > 0) {
+				logger.info('Updated streaming API key rate limits', {
+					updatedKeys: updatedStreamingKeys
+				});
+			}
 			logger.info('Initializing background services...');
 
 			// Verify ffprobe is available
@@ -342,64 +353,6 @@ const customHandler: Handle = async ({ event, resolve }) => {
 	event.locals.correlationId = correlationId;
 	const pathname = event.url.pathname;
 
-	// Fetch session from Better Auth - check API key first, then cookie
-	let session = null;
-	let apiKey = null;
-
-	// Check for API key in header
-	const apiKeyHeader = event.request.headers.get('x-api-key');
-	if (apiKeyHeader) {
-		try {
-			// Get session from API key
-			session = await auth.api.getSession({
-				headers: new Headers({ 'x-api-key': apiKeyHeader })
-			});
-			apiKey = apiKeyHeader;
-		} catch {
-			// Invalid API key, continue to cookie auth
-		}
-	}
-
-	// If no API key session, try cookie-based session
-	if (!session) {
-		session = await auth.api.getSession({
-			headers: event.request.headers
-		});
-	}
-
-	if (session) {
-		if (
-			session.user?.id &&
-			session.user.role !== 'admin' &&
-			repairCurrentUserAdminRole(session.user.id)
-		) {
-			session = {
-				...session,
-				user: {
-					...session.user,
-					role: 'admin'
-				}
-			};
-		}
-
-		setAuthenticatedLocals(event, session, apiKey);
-	} else {
-		clearAuthenticatedLocals(event);
-	}
-
-	// Check if setup is complete
-	const setupComplete = await isSetupComplete();
-
-	// Auth routes are already handled by authHandler
-	if (pathname.startsWith(AUTH_BASE_PATH)) {
-		return resolve(event);
-	}
-
-	/**
-	 * Check if route requires Media Streaming API Key authentication
-	 * These endpoints are for media server integration (Jellyfin, Plex, Emby)
-	 * and require a valid API key with appropriate permissions
-	 */
 	function requiresStreamingApiKey(path: string): boolean {
 		// Live TV endpoints
 		if (path === '/api/livetv/playlist.m3u' || path.startsWith('/api/livetv/playlist.m3u/')) {
@@ -425,6 +378,65 @@ const customHandler: Handle = async ({ event, resolve }) => {
 		}
 
 		return false;
+	}
+
+	const isStreamingApiRoute = requiresStreamingApiKey(pathname);
+
+	// Fetch session from Better Auth - check API key first, then cookie
+	let session = null;
+	let apiKey = null;
+
+	if (!isStreamingApiRoute) {
+		// Check for API key in header
+		const apiKeyHeader = event.request.headers.get('x-api-key');
+		if (apiKeyHeader) {
+			try {
+				// Get session from API key
+				session = await auth.api.getSession({
+					headers: new Headers({ 'x-api-key': apiKeyHeader })
+				});
+				apiKey = apiKeyHeader;
+			} catch {
+				// Invalid API key, continue to cookie auth
+			}
+		}
+
+		// If no API key session, try cookie-based session
+		if (!session) {
+			session = await auth.api.getSession({
+				headers: event.request.headers
+			});
+		}
+
+		if (session) {
+			if (
+				session.user?.id &&
+				session.user.role !== 'admin' &&
+				(await repairCurrentUserAdminRole(session.user.id))
+			) {
+				session = {
+					...session,
+					user: {
+						...session.user,
+						role: 'admin'
+					}
+				};
+			}
+
+			setAuthenticatedLocals(event, session, apiKey);
+		} else {
+			clearAuthenticatedLocals(event);
+		}
+	} else {
+		clearAuthenticatedLocals(event);
+	}
+
+	// Check if setup is complete
+	const setupComplete = await isSetupComplete();
+
+	// Auth routes are already handled by authHandler
+	if (pathname.startsWith(AUTH_BASE_PATH)) {
+		return resolve(event);
 	}
 
 	/**
@@ -456,7 +468,7 @@ const customHandler: Handle = async ({ event, resolve }) => {
 	}
 
 	// Check if route requires Media Streaming API Key authentication
-	if (requiresStreamingApiKey(pathname)) {
+	if (isStreamingApiRoute) {
 		// Get API key from query parameter (for .strm files) or header (for API clients)
 		const url = new URL(event.request.url);
 		const apiKeyFromQuery = url.searchParams.get('api_key');
@@ -517,30 +529,10 @@ const customHandler: Handle = async ({ event, resolve }) => {
 				);
 			}
 
-			// Valid API key with streaming permissions - get session
-			const session = await auth.api.getSession({
-				headers: new Headers({ 'x-api-key': apiKey })
-			});
-
-			if (!session) {
-				return json(
-					{
-						success: false,
-						error: 'Invalid API key',
-						code: 'INVALID_API_KEY'
-					},
-					{
-						status: 401,
-						headers: {
-							'x-correlation-id': correlationId,
-							...BASE_SECURITY_HEADERS
-						}
-					}
-				);
-			}
-
-			// Valid streaming API key - set locals and allow access
-			setAuthenticatedLocals(event, session, apiKey, verifyResult.key?.permissions || null);
+			// Streaming routes do not rely on a full Better Auth session.
+			// Avoid fetching one here so API-key validation is only counted once.
+			event.locals.apiKey = apiKey;
+			event.locals.apiKeyPermissions = verifyResult.key?.permissions || null;
 		} catch (error) {
 			logger.error('[Auth] API key validation error', {
 				correlationId,

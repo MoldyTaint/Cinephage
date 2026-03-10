@@ -1,4 +1,7 @@
 import type Database from 'better-sqlite3';
+import { count, eq } from 'drizzle-orm';
+import { db } from '$lib/server/db/index.js';
+import { user } from '$lib/server/db/schema.js';
 
 function tableExists(sqlite: Database.Database, tableName: string): boolean {
 	return !!sqlite
@@ -47,6 +50,48 @@ export function ensureSoleUserIsAdmin(sqlite: Database.Database, expectedUserId?
 	} else {
 		sqlite.prepare(`UPDATE "user" SET "role" = 'admin' WHERE "id" = ?`).run(user.id);
 	}
+
+	return true;
+}
+
+/**
+ * Runtime-safe variant that uses the shared app database abstraction.
+ * Keep this as the default path for request handling; raw SQLite access remains
+ * available above for schema repair and operational compatibility code.
+ */
+export async function ensureSoleUserIsAdminRecord(expectedUserId?: string): Promise<boolean> {
+	const [{ value: userCount }] = await db.select({ value: count() }).from(user);
+
+	if (userCount !== 1) {
+		return false;
+	}
+
+	const existingUser = await db.query.user.findFirst({
+		columns: {
+			id: true,
+			role: true
+		}
+	});
+
+	if (!existingUser) {
+		return false;
+	}
+
+	if (expectedUserId && existingUser.id !== expectedUserId) {
+		return false;
+	}
+
+	if (existingUser.role === 'admin') {
+		return true;
+	}
+
+	await db
+		.update(user)
+		.set({
+			role: 'admin',
+			updatedAt: new Date().toISOString()
+		})
+		.where(eq(user.id, existingUser.id));
 
 	return true;
 }

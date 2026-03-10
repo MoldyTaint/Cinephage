@@ -1,7 +1,7 @@
 import { getMigrations } from 'better-auth/db/migration';
 import Database from 'better-sqlite3';
 import { logger } from '$lib/logging';
-import { getAuthSecret } from './secret.js';
+import { getAuthDatabasePath, getAuthSecret } from './secret.js';
 
 /**
  * Run Better Auth migrations programmatically
@@ -9,7 +9,7 @@ import { getAuthSecret } from './secret.js';
  * Called on application startup
  */
 export async function runBetterAuthMigrations(): Promise<void> {
-	const dbPath = '/root/Cinephage/data/cinephage.db';
+	const dbPath = getAuthDatabasePath();
 	const authDb = new Database(dbPath);
 
 	try {

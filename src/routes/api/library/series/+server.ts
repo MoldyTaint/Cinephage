@@ -16,7 +16,7 @@ import {
 import { fetchAndStoreSeriesAlternateTitles } from '$lib/server/services/AlternateTitleService.js';
 import { ValidationError } from '$lib/errors';
 import { logger } from '$lib/logging';
-import { requireAuth } from '$lib/server/auth/requireAuth.js';
+import { requireAuth } from '$lib/server/auth/authorization.js';
 import { NamingService, type MediaNamingInfo } from '$lib/server/library/naming/NamingService.js';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
 

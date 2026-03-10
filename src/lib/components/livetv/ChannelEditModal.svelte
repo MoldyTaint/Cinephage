@@ -1,26 +1,27 @@
 <script lang="ts">
 	import {
-		Loader2,
-		Tv,
-		Plus,
-		Trash2,
-		ChevronUp,
-		ChevronDown,
 		AlertCircle,
-		X,
-		Copy,
-		Check,
 		Archive,
-		Link
+		Check,
+		ChevronDown,
+		ChevronUp,
+		Copy,
+		Link,
+		Loader2,
+		Plus,
+		Search,
+		Trash2,
+		Tv,
+		X
 	} from 'lucide-svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import { copyToClipboard as copyTextToClipboard } from '$lib/utils/clipboard';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import type {
-		ChannelLineupItemWithDetails,
+		ChannelBackupLink,
 		ChannelCategory,
-		UpdateChannelRequest,
-		ChannelBackupLink
+		ChannelLineupItemWithDetails,
+		UpdateChannelRequest
 	} from '$lib/types/livetv';
 
 	interface Props {
@@ -36,6 +37,20 @@
 		onOpenEpgSourcePicker?: (channelId: string) => void;
 	}
 
+	interface LogoLibraryItem {
+		path: string;
+		country: string;
+		name: string;
+		filename: string;
+		url: string;
+	}
+
+	interface LogoCountryOption {
+		code: string;
+		name: string;
+		logoCount: number;
+	}
+
 	let {
 		open,
 		channel,
@@ -49,7 +64,6 @@
 		onOpenEpgSourcePicker
 	}: Props = $props();
 
-	// Form state
 	let channelNumber = $state<number | null>(null);
 	let customName = $state('');
 	let customLogo = $state('');
@@ -57,40 +71,92 @@
 	let epgId = $state('');
 	let epgSourceChannelId = $state<string | null>(null);
 
-	// Backup links state
 	let backups = $state<ChannelBackupLink[]>([]);
 	let loadingBackups = $state(false);
 	let backupError = $state<string | null>(null);
 	let backupSaving = $state(false);
 
-	// Collapse state
 	let technicalDetailsOpen = $state(false);
 	let backupsOpen = $state(false);
-
-	// Copy state for stream command
 	let copiedCmd = $state(false);
+	let logoPickerOpen = $state(false);
+	let logoPickerSearch = $state('');
+	let logoPickerCountry = $state('');
+	let logoPickerLoading = $state(false);
+	let logoPickerLoadingMore = $state(false);
+	let logoPickerError = $state<string | null>(null);
+	let logoPickerItems = $state<LogoLibraryItem[]>([]);
+	let logoPickerCountries = $state<LogoCountryOption[]>([]);
+	let logoLibraryReady = $state<boolean | null>(null);
+	let logoPickerOffset = $state(0);
+	let logoPickerHasMore = $state(false);
+	let logoPickerRequestId = 0;
 
-	// Validation
 	const channelNumberError = $derived(
 		channelNumber !== null && channelNumber < 1 ? 'Must be 1 or greater' : null
 	);
 
 	const customLogoError = $derived(
-		customLogo.trim() && !customLogo.trim().match(/^https?:\/\//) ? 'Must be a valid URL' : null
+		customLogo.trim() &&
+			!customLogo.trim().match(/^https?:\/\//) &&
+			!customLogo.trim().startsWith('/')
+			? 'Must be a valid URL or app path'
+			: null
 	);
 
 	const isValid = $derived(!channelNumberError && !customLogoError);
 
-	// Computed logo preview URL
 	const logoPreviewUrl = $derived.by(() => {
 		const trimmed = customLogo.trim();
 		if (trimmed && !customLogoError) {
 			return trimmed;
 		}
-		return channel?.channel.logo || null;
+		return channel?.displayLogo ?? channel?.channel.logo ?? null;
 	});
 
-	// Load backups when modal opens
+	$effect(() => {
+		if (channel && open) {
+			channelNumber = channel.channelNumber;
+			customName = channel.customName || '';
+			customLogo = channel.customLogo || '';
+			categoryId = channel.categoryId;
+			epgId = channel.epgId || '';
+			epgSourceChannelId = channel.epgSourceChannelId;
+			backupError = null;
+			copiedCmd = false;
+			technicalDetailsOpen = false;
+			backupsOpen = false;
+			closeLogoPicker();
+			loadBackups();
+		}
+	});
+
+	$effect(() => {
+		if (!open || !logoPickerOpen) return;
+
+		const currentSearch = logoPickerSearch;
+		const currentCountry = logoPickerCountry;
+		const timer = setTimeout(() => {
+			loadLogoLibrary(currentSearch, currentCountry);
+		}, 250);
+
+		return () => clearTimeout(timer);
+	});
+
+	$effect(() => {
+		if (!open || !logoPickerOpen || logoPickerCountries.length > 0 || logoLibraryReady === false)
+			return;
+		loadLogoCountries();
+	});
+
+	export function refreshBackups() {
+		loadBackups();
+	}
+
+	export function setEpgSourceChannelId(channelId: string | null) {
+		epgSourceChannelId = channelId;
+	}
+
 	async function loadBackups() {
 		if (!channel) return;
 		loadingBackups = true;
@@ -110,11 +176,10 @@
 		}
 	}
 
-	// Remove a backup with proper error handling
 	async function removeBackup(backupId: string) {
 		if (!channel) return;
 		const previousBackups = [...backups];
-		backups = backups.filter((b) => b.id !== backupId);
+		backups = backups.filter((backup) => backup.id !== backupId);
 		backupError = null;
 
 		try {
@@ -131,7 +196,6 @@
 		}
 	}
 
-	// Move backup up in priority
 	async function moveBackupUp(index: number) {
 		if (index === 0 || !channel) return;
 		const newOrder = [...backups];
@@ -140,7 +204,6 @@
 		await saveBackupOrder();
 	}
 
-	// Move backup down in priority
 	async function moveBackupDown(index: number) {
 		if (index >= backups.length - 1 || !channel) return;
 		const newOrder = [...backups];
@@ -149,7 +212,6 @@
 		await saveBackupOrder();
 	}
 
-	// Save backup order with proper error handling
 	async function saveBackupOrder() {
 		if (!channel) return;
 		const previousOrder = [...backups];
@@ -160,7 +222,7 @@
 			const res = await fetch(`/api/livetv/lineup/${channel.id}/backups/reorder`, {
 				method: 'PUT',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ backupIds: backups.map((b) => b.id) })
+				body: JSON.stringify({ backupIds: backups.map((backup) => backup.id) })
 			});
 			if (!res.ok) {
 				backups = previousOrder;
@@ -174,7 +236,6 @@
 		}
 	}
 
-	// Copy stream command to clipboard
 	async function copyStreamCommand() {
 		if (!channel?.channel.stalker?.cmd) return;
 		const copied = await copyTextToClipboard(channel.channel.stalker.cmd);
@@ -186,33 +247,6 @@
 		} else {
 			toasts.error('Failed to copy stream command');
 		}
-	}
-
-	// Initialize form when channel changes
-	$effect(() => {
-		if (channel && open) {
-			channelNumber = channel.channelNumber;
-			customName = channel.customName || '';
-			customLogo = channel.customLogo || '';
-			categoryId = channel.categoryId;
-			epgId = channel.epgId || '';
-			epgSourceChannelId = channel.epgSourceChannelId;
-			backupError = null;
-			copiedCmd = false;
-			technicalDetailsOpen = false;
-			backupsOpen = false;
-			loadBackups();
-		}
-	});
-
-	// Expose refresh function for parent to call after adding a backup
-	export function refreshBackups() {
-		loadBackups();
-	}
-
-	// Expose function for parent to set EPG source after picker selection
-	export function setEpgSourceChannelId(channelId: string | null) {
-		epgSourceChannelId = channelId;
 	}
 
 	function handleSubmit() {
@@ -234,6 +268,129 @@
 		epgSourceChannelId = null;
 	}
 
+	function toggleLogoPicker() {
+		logoPickerOpen = !logoPickerOpen;
+	}
+
+	function closeLogoPicker() {
+		logoPickerOpen = false;
+		logoPickerSearch = '';
+		logoPickerCountry = '';
+		logoPickerLoading = false;
+		logoPickerLoadingMore = false;
+		logoPickerError = null;
+		logoPickerItems = [];
+		logoPickerCountries = [];
+		logoLibraryReady = null;
+		logoPickerOffset = 0;
+		logoPickerHasMore = false;
+	}
+
+	function applyLogoSelection(url: string) {
+		customLogo = url;
+		logoPickerOpen = false;
+	}
+
+	function clearCustomLogo() {
+		customLogo = '';
+		logoPickerOpen = false;
+	}
+
+	async function loadLogoCountries() {
+		try {
+			const res = await fetch('/api/logos/countries');
+			const body = await res.json().catch(() => null);
+
+			if (!res.ok || !body?.success) {
+				if (body?.code === 'NOT_DOWNLOADED') {
+					logoLibraryReady = false;
+				}
+				return;
+			}
+
+			logoPickerCountries = body.data ?? [];
+		} catch {
+			// Ignore country filter failures. The picker can still work without them.
+		}
+	}
+
+	function handleLogoPickerScroll(event: Event) {
+		const target = event.currentTarget;
+		if (!(target instanceof HTMLDivElement)) return;
+
+		const nearBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 48;
+		if (!nearBottom || logoPickerLoading || logoPickerLoadingMore || !logoPickerHasMore) return;
+
+		loadLogoLibrary(logoPickerSearch, logoPickerCountry, true);
+	}
+
+	async function loadLogoLibrary(search = '', country = '', append = false) {
+		if (append && (logoPickerLoading || logoPickerLoadingMore || !logoPickerHasMore)) {
+			return;
+		}
+
+		const requestId = ++logoPickerRequestId;
+		const offset = append ? logoPickerOffset : 0;
+
+		if (append) {
+			logoPickerLoadingMore = true;
+		} else {
+			logoPickerLoading = true;
+			logoPickerItems = [];
+			logoPickerOffset = 0;
+			logoPickerHasMore = false;
+		}
+
+		logoPickerError = null;
+
+		try {
+			const params = new URLSearchParams({ limit: '18', offset: String(offset) });
+			if (search.trim()) params.set('search', search.trim());
+			if (country) params.set('country', country);
+
+			const res = await fetch(`/api/logos?${params.toString()}`);
+			const body = await res.json().catch(() => null);
+
+			if (requestId !== logoPickerRequestId) {
+				return;
+			}
+
+			if (!res.ok || !body?.success) {
+				logoPickerItems = [];
+				logoPickerOffset = 0;
+				logoPickerHasMore = false;
+				if (body?.code === 'NOT_DOWNLOADED') {
+					logoLibraryReady = false;
+					logoPickerError =
+						'Download logos from the Live TV channels page to browse the logo library.';
+				} else {
+					logoLibraryReady = null;
+					logoPickerError = body?.error || 'Failed to load logos';
+				}
+				return;
+			}
+
+			logoLibraryReady = true;
+			const nextItems = body.data ?? [];
+			logoPickerItems = append ? [...logoPickerItems, ...nextItems] : nextItems;
+			logoPickerOffset = offset + nextItems.length;
+			logoPickerHasMore = body.pagination?.hasMore ?? false;
+		} catch {
+			if (requestId !== logoPickerRequestId) {
+				return;
+			}
+
+			logoLibraryReady = null;
+			logoPickerItems = [];
+			logoPickerError = 'Failed to load logos';
+		} finally {
+			if (requestId === logoPickerRequestId) {
+				logoPickerLoading = false;
+				logoPickerLoadingMore = false;
+			}
+		}
+	}
+
 	function formatArchiveDuration(hours: number): string {
 		if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''}`;
 		const days = Math.floor(hours / 24);
@@ -243,7 +400,6 @@
 
 {#if channel}
 	<ModalWrapper {open} {onClose} maxWidth="xl" labelledBy="channel-edit-modal-title">
-		<!-- Header -->
 		<div class="mb-4 flex items-center justify-between">
 			<h3 id="channel-edit-modal-title" class="text-lg font-bold">Edit Channel</h3>
 			<button class="btn btn-circle btn-ghost btn-sm" onclick={onClose}>
@@ -251,14 +407,9 @@
 			</button>
 		</div>
 
-		<!-- Channel Info Banner -->
 		<div class="mb-6 flex items-center gap-3 rounded-lg bg-base-200 p-3">
-			{#if channel.displayLogo}
-				<img
-					src={channel.displayLogo}
-					alt=""
-					class="h-12 w-12 rounded-lg bg-base-300 object-contain"
-				/>
+			{#if logoPreviewUrl}
+				<img src={logoPreviewUrl} alt="" class="h-12 w-12 rounded-lg bg-base-300 object-contain" />
 			{:else}
 				<div class="flex h-12 w-12 items-center justify-center rounded-lg bg-base-300">
 					<Tv class="h-6 w-6 text-base-content/30" />
@@ -278,7 +429,6 @@
 			</div>
 		</div>
 
-		<!-- Error -->
 		{#if error}
 			<div class="mb-4 alert alert-error">
 				<AlertCircle class="h-5 w-5" />
@@ -289,9 +439,7 @@
 			</div>
 		{/if}
 
-		<!-- Form -->
 		<div class="space-y-3">
-			<!-- Channel Number -->
 			<div>
 				<label class="mb-1 block text-sm text-base-content/70" for="channelNumber">
 					Channel Number
@@ -309,7 +457,6 @@
 				{/if}
 			</div>
 
-			<!-- Custom Name -->
 			<div>
 				<label class="mb-1 block text-sm text-base-content/70" for="customName">
 					Custom Name
@@ -323,9 +470,8 @@
 				/>
 			</div>
 
-			<!-- Category -->
 			<div>
-				<label class="mb-1 block text-sm text-base-content/70" for="category"> Category </label>
+				<label class="mb-1 block text-sm text-base-content/70" for="category">Category</label>
 				<select
 					id="category"
 					class="select-bordered select w-full select-sm"
@@ -338,39 +484,142 @@
 				</select>
 			</div>
 
-			<!-- Custom Logo URL -->
 			<div>
 				<label class="mb-1 block text-sm text-base-content/70" for="customLogo">
 					Custom Logo URL
 				</label>
-				<div class="flex items-center gap-2">
-					<input
-						type="url"
-						id="customLogo"
-						class="input-bordered input input-sm flex-1 {customLogoError ? 'input-error' : ''}"
-						bind:value={customLogo}
-						placeholder="https://..."
-					/>
-					{#if logoPreviewUrl}
-						<img
-							src={logoPreviewUrl}
-							alt="Preview"
-							class="h-8 w-8 rounded bg-base-200 object-contain"
+				<div class="relative">
+					<div class="flex items-center gap-2">
+						<input
+							type="url"
+							id="customLogo"
+							class="input-bordered input input-sm flex-1 {customLogoError ? 'input-error' : ''}"
+							bind:value={customLogo}
+							placeholder="https://... or /api/logos/file/..."
 						/>
-					{:else}
-						<div class="flex h-8 w-8 items-center justify-center rounded bg-base-200">
-							<Tv class="h-4 w-4 text-base-content/30" />
+						<button
+							type="button"
+							class="btn btn-square shrink-0 btn-outline btn-sm"
+							onclick={toggleLogoPicker}
+							aria-expanded={logoPickerOpen}
+							aria-haspopup="dialog"
+							title="Browse downloaded logos"
+						>
+							<Search class="h-4 w-4" />
+						</button>
+					</div>
+
+					{#if logoPickerOpen}
+						<div
+							class="fixed inset-0 z-40"
+							onclick={closeLogoPicker}
+							onkeydown={(e) => e.key === 'Escape' && closeLogoPicker()}
+							role="button"
+							tabindex="-1"
+						></div>
+
+						<div
+							class="absolute inset-x-0 z-50 mt-2 rounded-xl border border-base-content/10 bg-base-100 p-3 shadow-xl"
+						>
+							<div class="mb-3 flex items-center gap-2">
+								<div class="relative flex-1">
+									<Search
+										class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/40"
+									/>
+									<input
+										type="text"
+										class="input-bordered input input-sm w-full pl-9"
+										placeholder="Search downloaded logos"
+										bind:value={logoPickerSearch}
+									/>
+								</div>
+								<select
+									class="select-bordered select w-36 select-sm"
+									bind:value={logoPickerCountry}
+									disabled={logoPickerCountries.length === 0 || logoLibraryReady === false}
+								>
+									<option value="">All</option>
+									{#each logoPickerCountries as countryOption (countryOption.code)}
+										<option value={countryOption.code}>
+											{countryOption.name} ({countryOption.logoCount})
+										</option>
+									{/each}
+								</select>
+							</div>
+
+							<div
+								class="max-h-64 overflow-y-auto rounded-lg bg-base-200/60 p-1"
+								onscroll={handleLogoPickerScroll}
+							>
+								{#if logoPickerLoading}
+									<div class="flex items-center justify-center py-8 text-base-content/60">
+										<Loader2 class="h-5 w-5 animate-spin" />
+									</div>
+								{:else if logoPickerError}
+									<div class="px-3 py-6 text-center text-sm text-base-content/60">
+										{logoPickerError}
+									</div>
+								{:else if logoPickerItems.length === 0}
+									<div class="px-3 py-6 text-center text-sm text-base-content/60">
+										No logos matched your search.
+									</div>
+								{:else}
+									<div class="space-y-1">
+										{#each logoPickerItems as logoItem (logoItem.path)}
+											<button
+												type="button"
+												class="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-base-100"
+												onclick={() => applyLogoSelection(logoItem.url)}
+											>
+												<img
+													src={logoItem.url}
+													alt=""
+													class="h-9 w-9 rounded bg-base-100 object-contain"
+												/>
+												<div class="min-w-0 flex-1">
+													<div class="truncate text-sm font-medium">{logoItem.name}</div>
+													<div class="truncate text-xs text-base-content/50">
+														{logoItem.country}
+													</div>
+												</div>
+											</button>
+										{/each}
+										{#if logoPickerLoadingMore}
+											<div class="flex items-center justify-center py-2 text-base-content/60">
+												<Loader2 class="h-4 w-4 animate-spin" />
+											</div>
+										{/if}
+									</div>
+								{/if}
+							</div>
+
+							<div class="mt-3 flex items-center justify-between gap-2">
+								<p class="text-xs text-base-content/50">Paste a URL or pick a downloaded logo.</p>
+								<div class="flex items-center gap-2">
+									{#if customLogo.trim()}
+										<button type="button" class="btn btn-ghost btn-xs" onclick={clearCustomLogo}>
+											Clear
+										</button>
+									{/if}
+									<button type="button" class="btn btn-ghost btn-xs" onclick={closeLogoPicker}>
+										Done
+									</button>
+								</div>
+							</div>
 						</div>
 					{/if}
 				</div>
 				{#if customLogoError}
 					<p class="mt-1 text-xs text-error">{customLogoError}</p>
+				{:else}
+					<p class="mt-1 text-xs text-base-content/50">
+						Paste a URL or browse your downloaded logo library. The header preview updates live.
+					</p>
 				{/if}
 			</div>
 
-			<!-- EPG ID -->
 			<div>
-				<label class="mb-1 block text-sm text-base-content/70" for="epgId"> EPG ID </label>
+				<label class="mb-1 block text-sm text-base-content/70" for="epgId">EPG ID</label>
 				<input
 					type="text"
 					id="epgId"
@@ -381,7 +630,6 @@
 				<p class="mt-1 text-xs text-base-content/50">Match with external EPG guide data</p>
 			</div>
 
-			<!-- EPG Source Override -->
 			<div>
 				<div class="mb-1 block text-sm text-base-content/70">EPG Source Override</div>
 				{#if epgSourceChannelId && channel.epgSourceChannel}
@@ -439,7 +687,6 @@
 			</div>
 		</div>
 
-		<!-- Technical Details (collapsible) -->
 		<div class="collapse mt-4 rounded-lg bg-base-200" class:collapse-open={technicalDetailsOpen}>
 			<button
 				type="button"
@@ -453,23 +700,23 @@
 			</button>
 			<div class="collapse-content px-3 pb-3">
 				<div class="space-y-2 text-sm">
-					<div class="flex justify-between">
+					<div class="flex justify-between gap-4">
 						<span class="text-base-content/50">Original Name</span>
-						<span class="font-medium">{channel.channel.name}</span>
+						<span class="truncate font-medium">{channel.channel.name}</span>
 					</div>
 					<div class="flex justify-between">
 						<span class="text-base-content/50">Original Number</span>
 						<span class="font-medium">{channel.channel.number || 'None'}</span>
 					</div>
-					<div class="flex justify-between">
+					<div class="flex justify-between gap-4">
 						<span class="text-base-content/50">Provider Category</span>
-						<span class="font-medium">{channel.channel.categoryTitle || 'None'}</span>
+						<span class="truncate font-medium">{channel.channel.categoryTitle || 'None'}</span>
 					</div>
 					<div class="flex justify-between">
 						<span class="text-base-content/50">Archive</span>
 						<span class="font-medium">
 							{#if channel.channel.stalker?.tvArchive}
-								Yes ({formatArchiveDuration(channel.channel.stalker?.archiveDuration)})
+								Yes ({formatArchiveDuration(channel.channel.stalker.archiveDuration || 0)})
 							{:else}
 								No
 							{/if}
@@ -510,7 +757,6 @@
 			</div>
 		</div>
 
-		<!-- Backup Sources (collapsible) -->
 		<div class="collapse mt-2 rounded-lg bg-base-200" class:collapse-open={backupsOpen}>
 			<button
 				type="button"
@@ -607,7 +853,6 @@
 			</div>
 		</div>
 
-		<!-- Footer -->
 		<div class="modal-action mt-4">
 			{#if onDelete}
 				<button class="btn mr-auto btn-outline btn-sm btn-error" onclick={onDelete}>
