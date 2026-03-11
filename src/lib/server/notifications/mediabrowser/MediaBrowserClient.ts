@@ -6,6 +6,7 @@
  */
 
 import { XMLParser } from 'fast-xml-parser';
+import path from 'node:path';
 import { logger } from '$lib/logging';
 import type {
 	MediaBrowserPathMapping,
@@ -151,7 +152,13 @@ export class MediaBrowserClient {
 	}
 
 	private async notifyPlexLibraryUpdate(payload: LibraryUpdatePayload): Promise<void> {
-		const paths = [...new Set(payload.Updates.map((update) => update.Path).filter(Boolean))];
+		const paths = [
+			...new Set(
+				payload.Updates.map((update) => update.Path)
+					.filter(Boolean)
+					.map((updatePath) => this.getPlexRefreshPath(updatePath))
+			)
+		];
 
 		if (paths.length === 0) {
 			return;
@@ -169,6 +176,10 @@ export class MediaBrowserClient {
 				);
 
 				if (matchingSections.length === 0) {
+					logger.debug('Plex library refresh found no matching section', {
+						path,
+						knownSections: sections.map((section) => section.path)
+					});
 					continue;
 				}
 
@@ -179,6 +190,11 @@ export class MediaBrowserClient {
 					if (response.ok) {
 						refreshedAny = true;
 						refreshedSectionIds.add(section.id);
+						logger.debug('Plex library refresh triggered', {
+							sectionId: section.id,
+							sectionPath: section.path,
+							refreshPath: path
+						});
 					} else {
 						logger.warn('Plex library refresh failed', {
 							status: response.status,
@@ -191,6 +207,9 @@ export class MediaBrowserClient {
 			}
 
 			if (!refreshedAny && refreshedSectionIds.size === 0) {
+				logger.debug('Plex library refresh falling back to full refresh', {
+					paths
+				});
 				await this.refreshLibrary();
 			}
 		} catch (error) {
@@ -333,6 +352,11 @@ export class MediaBrowserClient {
 
 	private normalizePath(path: string): string {
 		return path.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+	}
+
+	private getPlexRefreshPath(mediaPath: string): string {
+		const normalized = mediaPath.replace(/\\/g, '/');
+		return path.posix.dirname(normalized);
 	}
 
 	/**
