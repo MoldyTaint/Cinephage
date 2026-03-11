@@ -293,13 +293,16 @@ export class OpenSubtitlesProvider extends BaseSubtitleProvider {
 			throw new ConfigurationError('opensubtitles', 'API key is required');
 		}
 
+		// Ensure authentication is performed before every request
+		await this.authenticate();
+
 		const headers: Record<string, string> = {
 			'Api-Key': apiKey,
 			'User-Agent': DEFAULT_USER_AGENT,
 			Accept: 'application/json'
 		};
 
-		// Add auth token if available
+		// Add auth token if available (set by authenticate() when username+password provided)
 		if (this.token) {
 			headers['Authorization'] = `Bearer ${this.token}`;
 		}

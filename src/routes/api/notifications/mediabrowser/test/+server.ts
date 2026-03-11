@@ -9,7 +9,7 @@ import { mediaBrowserServerTestSchema } from '$lib/validation/schemas';
 
 /**
  * POST /api/notifications/mediabrowser/test
- * Test MediaBrowser (Jellyfin/Emby) connection with provided credentials.
+ * Test media server (Jellyfin/Emby/Plex) connection with provided credentials.
  * Use this to validate credentials before creating/updating a server.
  */
 export const POST: RequestHandler = async ({ request }) => {

@@ -105,7 +105,10 @@ export const actions: Actions = {
 			if (effectiveEnabled) {
 				const host = result.data.host ?? existing.host;
 				const apiKey = result.data.apiKey ?? existing.apiKey;
-				const serverType = (result.data.serverType ?? existing.serverType) as 'jellyfin' | 'emby';
+				const serverType = (result.data.serverType ?? existing.serverType) as
+					| 'jellyfin'
+					| 'emby'
+					| 'plex';
 
 				const testResult = await manager.testServerConfig({
 					host,

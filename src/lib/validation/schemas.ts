@@ -749,13 +749,13 @@ export type NntpServerUpdate = z.infer<typeof nntpServerUpdateSchema>;
 export type NntpServerTest = z.infer<typeof nntpServerTestSchema>;
 
 // ============================================================
-// MediaBrowser (Jellyfin/Emby) Schemas
+// Media server notification schemas
 // ============================================================
 
 /**
  * Server type for MediaBrowser servers.
  */
-export const mediaBrowserServerTypeSchema = z.enum(['jellyfin', 'emby']);
+export const mediaBrowserServerTypeSchema = z.enum(['jellyfin', 'emby', 'plex']);
 
 /**
  * Path mapping for MediaBrowser servers.

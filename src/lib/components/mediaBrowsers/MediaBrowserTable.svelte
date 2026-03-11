@@ -47,11 +47,15 @@
 	}: Props = $props();
 
 	function getServerTypeLabel(type: string): string {
-		return type === 'jellyfin' ? 'Jellyfin' : 'Emby';
+		return type === 'jellyfin' ? 'Jellyfin' : type === 'emby' ? 'Emby' : 'Plex';
 	}
 
 	function getServerTypeBadgeClass(type: string): string {
-		return type === 'jellyfin' ? 'badge-primary' : 'badge-secondary';
+		return type === 'jellyfin'
+			? 'badge-primary'
+			: type === 'emby'
+				? 'badge-secondary'
+				: 'badge-accent';
 	}
 
 	function isSortedBy(column: 'status' | 'name' | 'type'): boolean {
@@ -96,7 +100,7 @@
 	<div class="py-12 text-center text-base-content/60">
 		<Monitor class="mx-auto mb-4 h-12 w-12 opacity-40" />
 		<p class="text-lg font-medium">No media servers configured</p>
-		<p class="mt-1 text-sm">Add a Jellyfin or Emby server to enable library notifications</p>
+		<p class="mt-1 text-sm">Add a Jellyfin, Emby, or Plex server to enable library notifications</p>
 	</div>
 {:else}
 	<div class="space-y-3 overflow-x-hidden sm:hidden">

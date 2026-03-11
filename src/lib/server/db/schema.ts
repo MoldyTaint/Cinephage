@@ -2665,7 +2665,7 @@ export interface MediaBrowserPathMapping {
 }
 
 /**
- * MediaBrowser Servers - Jellyfin and Emby server configurations.
+ * MediaBrowser Servers - Jellyfin, Emby, and Plex server configurations.
  * Used to notify media servers when content is added, updated, or deleted.
  */
 export const mediaBrowserServers = sqliteTable('media_browser_servers', {
@@ -2673,7 +2673,7 @@ export const mediaBrowserServers = sqliteTable('media_browser_servers', {
 		.primaryKey()
 		.$defaultFn(() => randomUUID()),
 	name: text('name').notNull(),
-	serverType: text('server_type', { enum: ['jellyfin', 'emby'] }).notNull(),
+	serverType: text('server_type', { enum: ['jellyfin', 'emby', 'plex'] }).notNull(),
 	host: text('host').notNull(),
 	apiKey: text('api_key').notNull(),
 	enabled: integer('enabled', { mode: 'boolean' }).default(true),

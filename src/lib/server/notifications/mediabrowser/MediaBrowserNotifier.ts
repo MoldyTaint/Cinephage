@@ -1,5 +1,5 @@
 /**
- * MediaBrowserNotifier - Background service for notifying Jellyfin/Emby servers.
+ * MediaBrowserNotifier - Background service for notifying Jellyfin, Emby, and Plex servers.
  *
  * Features:
  * - Batching: Waits before sending updates to deduplicate rapid changes
@@ -241,7 +241,7 @@ class MediaBrowserNotifier extends EventEmitter implements BackgroundService {
 					const client = new MediaBrowserClient({
 						host: server.host,
 						apiKey: server.apiKey,
-						serverType: server.serverType as 'jellyfin' | 'emby'
+						serverType: server.serverType as 'jellyfin' | 'emby' | 'plex'
 					});
 
 					await client.notifyLibraryUpdate(payload);

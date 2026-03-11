@@ -234,7 +234,7 @@ async function initializeMediaBrowserNotifier() {
 	if (mediaBrowserNotifierInitialized) return;
 
 	try {
-		// Start the MediaBrowser notifier (Jellyfin/Emby library updates)
+		// Start the MediaBrowser notifier (Jellyfin/Emby/Plex library updates)
 		const notifier = getMediaBrowserNotifier();
 		notifier.start();
 
@@ -246,7 +246,7 @@ async function initializeMediaBrowserNotifier() {
 		});
 
 		mediaBrowserNotifierInitialized = true;
-		logger.info('MediaBrowser notifier initialized for Jellyfin/Emby integration');
+		logger.info('MediaBrowser notifier initialized for Jellyfin/Emby/Plex integration');
 	} catch (error) {
 		// Non-fatal - library updates will not be sent to media servers
 		logger.error('Failed to initialize MediaBrowser notifier', error);
