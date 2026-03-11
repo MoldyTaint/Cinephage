@@ -155,7 +155,7 @@
 		},
 		{
 			title: 'Media Servers',
-			description: 'Configure Jellyfin and Emby for library notifications',
+			description: 'Configure Jellyfin, Emby, and Plex for library notifications',
 			href: '/settings/integrations/media-browsers',
 			icon: Monitor,
 			stats: [

@@ -20,7 +20,7 @@
 
 	interface MediaBrowserFormData {
 		name: string;
-		serverType: 'jellyfin' | 'emby';
+		serverType: 'jellyfin' | 'emby' | 'plex';
 		host: string;
 		apiKey: string;
 		enabled: boolean;
@@ -47,7 +47,7 @@
 	let selectedIds = new SvelteSet<string>();
 
 	interface MediaBrowserPageFilters {
-		type: 'all' | 'jellyfin' | 'emby';
+		type: 'all' | 'jellyfin' | 'emby' | 'plex';
 		status: 'all' | 'enabled' | 'disabled';
 		search: string;
 	}
@@ -496,7 +496,7 @@
 	<div class="mb-5 sm:mb-6">
 		<h1 class="text-xl font-bold sm:text-2xl">Media Servers</h1>
 		<p class="text-base-content/70">
-			Configure Jellyfin and Emby servers for library update notifications.
+			Configure Jellyfin, Emby, and Plex servers for library update notifications.
 		</p>
 	</div>
 
@@ -542,6 +542,13 @@
 				onclick={() => updateFilter('type', 'emby')}
 			>
 				Emby
+			</button>
+			<button
+				class="btn join-item flex-1 btn-sm sm:flex-none"
+				class:btn-active={filters.type === 'plex'}
+				onclick={() => updateFilter('type', 'plex')}
+			>
+				Plex
 			</button>
 		</div>
 

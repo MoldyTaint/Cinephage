@@ -94,9 +94,21 @@
 	function handleServerTypeChange(type: MediaBrowserServerType) {
 		serverType = type;
 		if (mode === 'add') {
-			name = type === 'jellyfin' ? 'Jellyfin' : 'Emby';
-			host = type === 'jellyfin' ? 'http://localhost:8096' : 'http://localhost:8096';
+			name = type === 'jellyfin' ? 'Jellyfin' : type === 'emby' ? 'Emby' : 'Plex';
+			host = type === 'plex' ? 'http://localhost:32400' : 'http://localhost:8096';
 		}
+	}
+
+	function getServerTypeName(type: MediaBrowserServerType): string {
+		return type === 'jellyfin' ? 'Jellyfin' : type === 'emby' ? 'Emby' : 'Plex';
+	}
+
+	function getServerTypeBadge(type: MediaBrowserServerType): string {
+		return type === 'jellyfin'
+			? 'badge-primary'
+			: type === 'emby'
+				? 'badge-secondary'
+				: 'badge-accent';
 	}
 
 	function addPathMapping() {
@@ -184,6 +196,21 @@
 						</div>
 					</div>
 				</button>
+
+				<button
+					type="button"
+					class="card cursor-pointer border-2 border-transparent bg-base-200 text-left transition-all hover:border-accent hover:bg-accent/10"
+					onclick={() => handleServerTypeChange('plex')}
+				>
+					<div class="card-body p-4">
+						<div class="flex-1">
+							<h3 class="font-semibold">Plex</h3>
+							<p class="mt-1 text-sm text-base-content/60">
+								Media server with path refresh integration
+							</p>
+						</div>
+					</div>
+				</button>
 			</div>
 		</div>
 
@@ -196,12 +223,10 @@
 			<div class="mb-6 flex items-center justify-between rounded-lg bg-base-200 px-4 py-3">
 				<div class="flex items-center gap-3">
 					<div class="font-semibold">
-						{serverType === 'jellyfin' ? 'Jellyfin' : 'Emby'}
+						{getServerTypeName(serverType as MediaBrowserServerType)}
 					</div>
-					<div
-						class="badge badge-sm {serverType === 'jellyfin' ? 'badge-primary' : 'badge-secondary'}"
-					>
-						MediaBrowser
+					<div class="badge badge-sm {getServerTypeBadge(serverType as MediaBrowserServerType)}">
+						Media Server
 					</div>
 				</div>
 				<button type="button" class="btn btn-ghost btn-sm" onclick={() => (serverType = '')}>
@@ -226,7 +251,7 @@
 						class="input-bordered input input-sm"
 						bind:value={name}
 						maxlength={MAX_NAME_LENGTH}
-						placeholder={serverType === 'jellyfin' ? 'Jellyfin' : 'Emby'}
+						placeholder={serverType ? getServerTypeName(serverType as MediaBrowserServerType) : ''}
 					/>
 					<div class="label py-1">
 						<span
@@ -251,7 +276,7 @@
 						type="text"
 						class="input-bordered input input-sm"
 						bind:value={host}
-						placeholder="http://localhost:8096"
+						placeholder={serverType === 'plex' ? 'http://localhost:32400' : 'http://localhost:8096'}
 					/>
 					<div class="label py-1">
 						<span class="label-text-alt text-xs"> Include http:// or https:// </span>
@@ -277,7 +302,11 @@
 							: 'Dashboard > API Keys > Create'}
 					/>
 					<div class="label py-1">
-						<span class="label-text-alt text-xs"> Found in Dashboard &gt; API Keys </span>
+						<span class="label-text-alt text-xs">
+							{serverType === 'plex'
+								? 'Found in Plex account or server token settings'
+								: 'Found in Dashboard > API Keys'}
+						</span>
 					</div>
 				</div>
 
