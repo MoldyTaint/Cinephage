@@ -204,9 +204,37 @@ export class NamingService {
 			format = this.config.animeEpisodeFormat;
 		}
 
+		if (this.config.multiEpisodeStyle === 'repeat' && (info.episodeNumbers?.length ?? 0) > 1) {
+			format = this.expandRepeatEpisodeFormat(format, info);
+		}
+
 		const name = this.formatName(format, info);
 		const ext = info.originalExtension || '';
 		return name + ext;
+	}
+
+	private expandRepeatEpisodeFormat(format: string, info: MediaNamingInfo): string {
+		const repeatedSeasonEpisodePattern = /S\{Season(?::[^}]+)?\}E\{Episode(?::[^}]+)?\}/g;
+		const expandSegment = (segment: string) =>
+			(info.episodeNumbers ?? [])
+				.map((episodeNumber) =>
+					this.templateEngine.render(
+						segment,
+						{ ...info, episodeNumbers: [episodeNumber] },
+						this.config
+					)
+				)
+				.join(' - ');
+
+		const expandedFormat = format.replace(repeatedSeasonEpisodePattern, (segment) =>
+			expandSegment(segment)
+		);
+
+		if (expandedFormat !== format) {
+			return expandedFormat;
+		}
+
+		return format.replace(/\{Episode(?::[^}]+)?\}/g, (segment) => expandSegment(segment));
 	}
 
 	/**

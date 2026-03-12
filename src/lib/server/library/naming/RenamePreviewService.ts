@@ -23,6 +23,7 @@ import { namingSettingsService } from './NamingSettingsService';
 import { moveFile, fileExists } from '$lib/server/downloadClients/import/FileTransfer';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
 import { rename } from 'node:fs/promises';
+import { chooseBestParsedRelease } from './preview-metadata';
 
 /**
  * Status of a rename preview item
@@ -161,6 +162,9 @@ export class RenamePreviewService {
 		audioCodec?: string;
 		audioChannels?: string;
 		releaseGroup?: string;
+		edition?: string;
+		proper?: boolean;
+		repack?: boolean;
 	} {
 		const parser = new ReleaseParser();
 		const parsed = parser.parse(filename);
@@ -172,7 +176,10 @@ export class RenamePreviewService {
 			hdr: parsed.hdr ?? undefined,
 			audioCodec: parsed.audioCodec ?? undefined,
 			audioChannels: parsed.audioChannels ?? undefined,
-			releaseGroup: parsed.releaseGroup ?? undefined
+			releaseGroup: parsed.releaseGroup ?? undefined,
+			edition: parsed.edition ?? undefined,
+			proper: parsed.isProper,
+			repack: parsed.isRepack
 		};
 	}
 
@@ -889,8 +896,14 @@ export class RenamePreviewService {
 			// Parse for quality info - prefer sceneName (original release name) over current filename
 			// The sceneName contains the original release info (e.g., "Movie.2024.1080p.BluRay.x264-GROUP")
 			// while relativePath may have been renamed and lost metadata (e.g., "Movie (2024) [BluRay-1080p].mkv")
-			const parseSource = file.sceneName || currentFileName;
-			const parsedFromFilename = this.parseFilenameForQuality(parseSource);
+			const parsedFromFilename = this.parseFilenameForQuality(
+				chooseBestParsedRelease({
+					sceneName: file.sceneName,
+					currentFileName,
+					actualTitle: movie.title,
+					actualYear: movie.year ?? undefined
+				}).value
+			);
 
 			// Build MediaNamingInfo with the following priority:
 			//
@@ -911,7 +924,7 @@ export class RenamePreviewService {
 				year: movie.year ?? undefined,
 				tmdbId: movie.tmdbId,
 				imdbId: movie.imdbId ?? undefined,
-				edition: file.edition ?? undefined,
+				edition: file.edition ?? parsedFromFilename.edition ?? undefined,
 
 				// Video info: prefer release parsing, fall back to filename, then mediaInfo
 				resolution: file.quality?.resolution ?? parsedFromFilename.resolution,
@@ -928,6 +941,8 @@ export class RenamePreviewService {
 				audioLanguages: file.mediaInfo?.audioLanguages,
 
 				releaseGroup: file.releaseGroup ?? parsedFromFilename.releaseGroup,
+				proper: parsedFromFilename.proper,
+				repack: parsedFromFilename.repack,
 				originalExtension: extname(file.relativePath)
 			};
 
@@ -991,8 +1006,14 @@ export class RenamePreviewService {
 			// Parse for quality info - prefer sceneName (original release name) over current filename
 			// The sceneName contains the original release info (e.g., "Show.S01E01.1080p.WEB-DL.x264-GROUP")
 			// while relativePath may have been renamed and lost metadata
-			const parseSource = file.sceneName || currentFileName;
-			const parsedFromFilename = this.parseFilenameForQuality(parseSource);
+			const parsedFromFilename = this.parseFilenameForQuality(
+				chooseBestParsedRelease({
+					sceneName: file.sceneName,
+					currentFileName,
+					actualTitle: show.title,
+					actualYear: show.year ?? undefined
+				}).value
+			);
 
 			// Get episode info from the file's episode IDs
 			const episodeIds = file.episodeIds || [];
@@ -1041,6 +1062,7 @@ export class RenamePreviewService {
 				airDate: firstEpisode.airDate ?? undefined,
 				isAnime,
 				isDaily,
+				edition: file.edition ?? parsedFromFilename.edition ?? undefined,
 
 				// Video info: prefer release parsing, fall back to filename, then mediaInfo
 				resolution: file.quality?.resolution ?? parsedFromFilename.resolution,
@@ -1056,6 +1078,8 @@ export class RenamePreviewService {
 					formatAudioChannels(file.mediaInfo?.audioChannels) ?? parsedFromFilename.audioChannels,
 				audioLanguages: file.mediaInfo?.audioLanguages,
 				releaseGroup: file.releaseGroup ?? parsedFromFilename.releaseGroup,
+				proper: parsedFromFilename.proper,
+				repack: parsedFromFilename.repack,
 				originalExtension: extname(file.relativePath)
 			};
 

@@ -10,7 +10,7 @@
 	interface Props {
 		label: string;
 		id: string;
-		value: string | number;
+		value: string | number | undefined;
 		options: SelectOption[];
 		helpText?: string;
 		error?: string | null;
@@ -35,9 +35,16 @@
 		onchange
 	}: Props = $props();
 
+	let selectedValue = $state(value !== undefined ? String(value) : '');
+
+	$effect(() => {
+		selectedValue = value !== undefined ? String(value) : '';
+	});
+
 	function handleChange(e: Event) {
 		const target = e.target as HTMLSelectElement;
 		const newValue = target.value;
+		selectedValue = newValue;
 		// Preserve number type if original value was a number
 		value = typeof options[0]?.value === 'number' ? Number(newValue) : newValue;
 		onchange?.(value);
@@ -63,10 +70,10 @@
 
 	<select
 		{id}
-		class="select-bordered select select-{size}"
+		class="select-bordered select select-{size} w-full"
 		class:select-error={error}
 		{disabled}
-		{value}
+		bind:value={selectedValue}
 		onchange={handleChange}
 	>
 		{#each options as option (option.value)}

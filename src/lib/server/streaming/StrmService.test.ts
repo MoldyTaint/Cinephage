@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { StrmService } from './StrmService';
@@ -87,6 +88,93 @@ describe('StrmService', () => {
 				'https://new.example.com/api/streaming/resolve/tv/1399/1/2?api_key=active-key'
 			);
 			expect(updatedContent).not.toContain('stale-key');
+		});
+	});
+
+	describe('naming-based path generation', () => {
+		it('uses the current naming service for movie strm paths', () => {
+			(
+				service as unknown as {
+					getNamingService: () => {
+						generateMovieFolderName: () => string;
+						generateMovieFileName: () => string;
+					};
+				}
+			).getNamingService = () => ({
+				generateMovieFolderName: () => 'Movie Folder',
+				generateMovieFileName: () => 'Movie File.strm'
+			});
+
+			expect(
+				(
+					service as unknown as {
+						buildMovieStrmPath: (
+							rootFolderPath: string,
+							movie: {
+								title: string;
+								year: number | null;
+								tmdbId: number;
+								imdbId?: string | null;
+								path: string | null;
+							}
+						) => string;
+					}
+				).buildMovieStrmPath('/library/movies', {
+					title: 'Movie',
+					year: 2024,
+					tmdbId: 1,
+					path: null
+				})
+			).toBe(join('/library/movies', 'Movie Folder', 'Movie File.strm'));
+		});
+
+		it('uses the current naming service for episode strm paths', () => {
+			(
+				service as unknown as {
+					getNamingService: () => {
+						generateSeriesFolderName: () => string;
+						generateSeasonFolderName: () => string;
+						generateEpisodeFileName: () => string;
+					};
+				}
+			).getNamingService = () => ({
+				generateSeriesFolderName: () => 'Series Folder',
+				generateSeasonFolderName: () => 'Collection 03',
+				generateEpisodeFileName: () => 'Episode 08.strm'
+			});
+
+			expect(
+				(
+					service as unknown as {
+						buildEpisodeStrmPath: (
+							rootFolderPath: string,
+							show: {
+								title: string;
+								year: number | null;
+								tmdbId: number;
+								tvdbId?: number | null;
+								path: string | null;
+								seasonFolder?: boolean | null;
+							},
+							seasonNumber: number,
+							episodeNumber: number,
+							episodeTitle?: string | null
+						) => string;
+					}
+				).buildEpisodeStrmPath(
+					'/library/tv',
+					{
+						title: 'Show',
+						year: 2024,
+						tmdbId: 2,
+						path: null,
+						seasonFolder: true
+					},
+					3,
+					8,
+					'Test Episode'
+				)
+			).toBe(join('/library/tv', 'Series Folder', 'Collection 03', 'Episode 08.strm'));
 		});
 	});
 });

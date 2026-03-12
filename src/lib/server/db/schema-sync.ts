@@ -93,8 +93,9 @@ interface MigrationDefinition {
  * Version 65: Migrate Better Auth apikey schema from userId -> referenceId and add configId
  * Version 66: Fix apikey schema migration for databases stuck after v65
  * Version 67: Add Better Auth rateLimit.id column required by adapter-generated IDs
+ * Version 68: Add edition column to episode_files for rename preservation
  */
-export const CURRENT_SCHEMA_VERSION = 67;
+export const CURRENT_SCHEMA_VERSION = 68;
 
 const BETTER_AUTH_TABLE_DEFINITIONS = [
 	{
@@ -633,6 +634,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"date_added" text,
 		"scene_name" text,
 		"release_group" text,
+		"edition" text,
 		"release_type" text,
 		"quality" text,
 		"media_info" text,
@@ -4774,6 +4776,17 @@ const MIGRATIONS: MigrationDefinition[] = [
 				.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS "idx_rateLimit_id" ON "rateLimit" ("id")`)
 				.run();
 		}
+	},
+	// Migration 68: Add edition column to episode_files
+	{
+		version: 68,
+		name: 'add_edition_to_episode_files',
+		apply: (sqlite) => {
+			if (!columnExists(sqlite, 'episode_files', 'edition')) {
+				sqlite.prepare(`ALTER TABLE episode_files ADD COLUMN edition TEXT`).run();
+				logger.info('[SchemaSync] Added edition column to episode_files');
+			}
+		}
 	}
 ];
 
@@ -5151,7 +5164,8 @@ const MIGRATION_COLUMN_MAP: Record<number, Array<{ table: string; column: string
 		{ table: 'apikey', column: 'referenceId' },
 		{ table: 'apikey', column: 'configId' }
 	],
-	67: [{ table: 'rateLimit', column: 'id' }]
+	67: [{ table: 'rateLimit', column: 'id' }],
+	68: [{ table: 'episode_files', column: 'edition' }]
 };
 
 /**

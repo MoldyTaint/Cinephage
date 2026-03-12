@@ -51,7 +51,8 @@ export const qualityTokens: TokenDefinition[] = [
 		description: 'Quality string (Source-Resolution)',
 		example: 'Bluray-1080p',
 		applicability: ['movie', 'episode'],
-		render: (info) => buildQualityString(info.source, info.resolution)
+		render: (info, config) =>
+			config.includeQuality ? buildQualityString(info.source, info.resolution) : ''
 	},
 	{
 		name: 'QualityFull',
@@ -59,34 +60,39 @@ export const qualityTokens: TokenDefinition[] = [
 		description: 'Quality with Proper/Repack markers',
 		example: 'Proper Bluray-1080p',
 		applicability: ['movie', 'episode'],
-		render: (info) => buildQualityFullString(info.source, info.resolution, info.proper, info.repack)
+		render: (info, config) =>
+			config.includeQuality
+				? buildQualityFullString(info.source, info.resolution, info.proper, info.repack)
+				: ''
 	},
 	{
 		name: 'Resolution',
 		category: 'quality',
 		description: 'Resolution only (2160p, 1080p, etc.)',
 		applicability: ['movie', 'episode'],
-		render: (info) => (isValidValue(info.resolution) ? info.resolution : '')
+		render: (info, config) =>
+			config.includeQuality && isValidValue(info.resolution) ? info.resolution : ''
 	},
 	{
 		name: 'Source',
 		category: 'quality',
 		description: 'Source only (Bluray, WEB-DL, etc.)',
 		applicability: ['movie', 'episode'],
-		render: (info) => (info.source ? normalizeSource(info.source) : '') ?? ''
+		render: (info, config) =>
+			config.includeQuality ? ((info.source ? normalizeSource(info.source) : '') ?? '') : ''
 	},
 	{
 		name: 'Proper',
 		category: 'quality',
 		description: '"PROPER" if applicable',
 		applicability: ['movie', 'episode'],
-		render: (info) => (info.proper ? 'PROPER' : '')
+		render: (info, config) => (config.includeQuality && info.proper ? 'PROPER' : '')
 	},
 	{
 		name: 'Repack',
 		category: 'quality',
 		description: '"REPACK" if applicable',
 		applicability: ['movie', 'episode'],
-		render: (info) => (info.repack ? 'REPACK' : '')
+		render: (info, config) => (config.includeQuality && info.repack ? 'REPACK' : '')
 	}
 ];

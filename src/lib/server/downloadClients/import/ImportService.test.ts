@@ -318,4 +318,28 @@ describe('ImportService episode naming', () => {
 
 		expect(absoluteNumber).toBe(3);
 	});
+
+	it('uses custom season folder naming consistently for import paths', () => {
+		const service = ImportService.getInstance() as unknown as {
+			buildEpisodeRelativePath: (
+				useSeasonFolders: boolean,
+				seasonNumber: number,
+				destFileName: string
+			) => string;
+			buildSeasonFolderName: (seasonNumber: number) => string;
+		};
+
+		const namingService = {
+			generateSeasonFolderName: (seasonNumber: number) => `Series ${seasonNumber}`
+		};
+
+		(service as unknown as { getNamingService: () => typeof namingService }).getNamingService =
+			() => namingService;
+
+		expect(service.buildSeasonFolderName(3)).toBe('Series 3');
+		expect(service.buildEpisodeRelativePath(true, 3, 'Episode 03.mkv')).toBe(
+			'Series 3/Episode 03.mkv'
+		);
+		expect(service.buildEpisodeRelativePath(false, 3, 'Episode 03.mkv')).toBe('Episode 03.mkv');
+	});
 });

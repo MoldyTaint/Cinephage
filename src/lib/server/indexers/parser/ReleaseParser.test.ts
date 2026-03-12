@@ -81,6 +81,25 @@ describe('ReleaseParser', () => {
 			);
 
 			expect(result.cleanTitle).toContain('Blade Runner');
+			expect(result.edition).toBe('Final Cut');
+		});
+
+		it('should detect IMAX Enhanced releases', () => {
+			const result = parseRelease('Movie.2024.IMAX.Enhanced.2160p.WEB-DL.DDP5.1.H265-GROUP');
+
+			expect(result.edition).toBe('IMAX Enhanced');
+		});
+
+		it('should detect hybrid releases', () => {
+			const result = parseRelease('Movie.2024.Hybrid.1080p.BluRay.x264-GROUP');
+
+			expect(result.edition).toBe('Hybrid');
+		});
+
+		it('should not treat WEB-DL quality suffix as release group', () => {
+			const result = parseRelease('Movie (2024) [WEB-DL-1080p][AC3 5.1][x265].mkv');
+
+			expect(result.releaseGroup).toBeUndefined();
 		});
 
 		it('should detect 3D releases', () => {

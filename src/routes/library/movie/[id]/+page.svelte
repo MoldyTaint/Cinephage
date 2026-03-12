@@ -765,7 +765,6 @@
 	mediaTitle={movie.title}
 	onClose={() => (isRenameModalOpen = false)}
 	onRenamed={() => {
-		isRenameModalOpen = false;
 		void refreshMovieFromApi();
 	}}
 />

@@ -1,8 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { normalizeNamingConfig, normalizeNamingPresetSelection } from '$lib/naming/editor-state';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService';
 import { DEFAULT_NAMING_CONFIG } from '$lib/server/library/naming/NamingService';
-import { namingConfigUpdateSchema } from '$lib/validation/schemas';
+import { namingSettingsUpdateSchema } from '$lib/validation/schemas';
 import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 
@@ -13,9 +14,11 @@ import { requireAdmin } from '$lib/server/auth/authorization.js';
 export const GET: RequestHandler = async () => {
 	try {
 		const config = await namingSettingsService.getConfig();
+		const presetSelection = await namingSettingsService.getPresetSelection();
 
 		return json({
 			config,
+			presetSelection,
 			defaults: DEFAULT_NAMING_CONFIG
 		});
 	} catch (error) {
@@ -35,7 +38,7 @@ export const PUT: RequestHandler = async (event) => {
 	const { request } = event;
 	try {
 		const body = await request.json();
-		const validation = namingConfigUpdateSchema.safeParse(body);
+		const validation = namingSettingsUpdateSchema.safeParse(body);
 
 		if (!validation.success) {
 			return json(
@@ -44,11 +47,15 @@ export const PUT: RequestHandler = async (event) => {
 			);
 		}
 
-		const updatedConfig = await namingSettingsService.updateConfig(validation.data);
+		const updatedSettings = await namingSettingsService.updateSettings({
+			config: normalizeNamingConfig(validation.data.config),
+			presetSelection: normalizeNamingPresetSelection(validation.data.presetSelection)
+		});
 
 		return json({
 			success: true,
-			config: updatedConfig
+			config: updatedSettings.config,
+			presetSelection: updatedSettings.presetSelection
 		});
 	} catch (error) {
 		logger.error('Error updating naming config', error instanceof Error ? error : undefined);
@@ -66,10 +73,12 @@ export const DELETE: RequestHandler = async (event) => {
 
 	try {
 		const defaultConfig = await namingSettingsService.resetToDefaults();
+		const presetSelection = await namingSettingsService.getPresetSelection();
 
 		return json({
 			success: true,
 			config: defaultConfig,
+			presetSelection,
 			message: 'Naming settings reset to defaults'
 		});
 	} catch (error) {

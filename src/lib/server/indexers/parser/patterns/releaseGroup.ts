@@ -17,6 +17,8 @@ interface ReleaseGroupMatch {
 const GROUP_BLACKLIST = [
 	// Quality indicators
 	/^(720p?|1080p?|2160p?|4k|uhd|hd|sd|hdr|dv|hdr10|hlg)$/i,
+	/^(dl|rip)-\d{3,4}p$/i,
+	/^(web|webdl|webrip|bluray|brrip|bdrip|remux)-\d{3,4}p$/i,
 	// Codecs
 	/^(x264|x265|h264|h265|hevc|avc|av1|xvid|divx)$/i,
 	// Sources

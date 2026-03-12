@@ -778,6 +778,7 @@ async function handleStreamingGrab(data: GrabRequest): Promise<Response> {
 				dateAdded: new Date().toISOString(),
 				sceneName: title,
 				releaseGroup: parsedRelease.releaseGroup ?? 'Streaming',
+				edition: parsedRelease.edition ?? undefined,
 				quality,
 				mediaInfo
 			});
@@ -863,6 +864,7 @@ async function handleStreamingGrab(data: GrabRequest): Promise<Response> {
 				dateAdded: new Date().toISOString(),
 				sceneName: title,
 				releaseGroup: parsedRelease.releaseGroup ?? 'Streaming',
+				edition: parsedRelease.edition ?? undefined,
 				quality,
 				mediaInfo
 			});
@@ -1016,6 +1018,7 @@ async function handleStreamingSeasonPack(
 		dateAdded: string;
 		sceneName: string;
 		releaseGroup: string;
+		edition?: string;
 		quality: typeof quality;
 		mediaInfo: Awaited<ReturnType<typeof mediaInfoService.extractMediaInfo>>;
 	}> = [];
@@ -1220,6 +1223,7 @@ async function handleStreamingCompleteSeries(
 		dateAdded: string;
 		sceneName: string;
 		releaseGroup: string;
+		edition?: string;
 		quality: typeof quality;
 		mediaInfo: Awaited<ReturnType<typeof mediaInfoService.extractMediaInfo>>;
 	}> = [];
@@ -1263,6 +1267,7 @@ async function handleStreamingCompleteSeries(
 					dateAdded,
 					sceneName: title,
 					releaseGroup,
+					edition: parsedRelease.edition ?? undefined,
 					quality,
 					mediaInfo
 				});
@@ -1524,6 +1529,7 @@ async function handleNzbStreamingGrab(data: GrabRequest): Promise<Response> {
 						dateAdded: new Date().toISOString(),
 						sceneName: title,
 						releaseGroup: parsedRelease.releaseGroup ?? 'NZB',
+						edition: parsedRelease.edition ?? undefined,
 						quality,
 						mediaInfo
 					});
@@ -1629,6 +1635,7 @@ async function handleNzbStreamingGrab(data: GrabRequest): Promise<Response> {
 						dateAdded: new Date().toISOString(),
 						sceneName: title,
 						releaseGroup: parsedRelease.releaseGroup ?? 'NZB',
+						edition: parsedRelease.edition ?? undefined,
 						quality,
 						mediaInfo
 					});

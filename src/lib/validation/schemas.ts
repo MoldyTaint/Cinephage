@@ -701,11 +701,25 @@ export const namingConfigUpdateSchema = z.object({
 	includeReleaseGroup: z.boolean().optional()
 });
 
+export const namingPresetSelectionSchema = z.object({
+	selectedServerPresetId: z.string().min(1),
+	selectedStylePresetId: z.string().min(1),
+	selectedDetailPresetId: z.string().min(1),
+	selectedCustomPresetId: z.string().min(1).optional()
+});
+
+export const namingSettingsUpdateSchema = z.object({
+	config: namingConfigUpdateSchema,
+	presetSelection: namingPresetSelectionSchema
+});
+
 // Naming Type Exports
 export type MultiEpisodeStyle = z.infer<typeof multiEpisodeStyleSchema>;
 export type ColonReplacement = z.infer<typeof colonReplacementSchema>;
 export type MediaServerIdFormat = z.infer<typeof mediaServerIdFormatSchema>;
 export type NamingConfigUpdate = z.infer<typeof namingConfigUpdateSchema>;
+export type NamingPresetSelection = z.infer<typeof namingPresetSelectionSchema>;
+export type NamingSettingsUpdate = z.infer<typeof namingSettingsUpdateSchema>;
 
 // ============================================================
 // NNTP Server Schemas (for NZB streaming)

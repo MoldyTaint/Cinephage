@@ -28,11 +28,14 @@ const YEAR_PATTERN = /\b(19\d{2}|20\d{2})\b/;
  */
 const EDITION_PATTERNS: Array<{ pattern: RegExp; edition: string }> = [
 	{ pattern: /\bdirector'?s?[\s._-]?cut\b/i, edition: "Director's Cut" },
+	{ pattern: /\bfinal[\s._-]?cut\b/i, edition: 'Final Cut' },
 	{ pattern: /\bextended[\s._-]?(?:cut|edition)?\b/i, edition: 'Extended' },
 	{ pattern: /\bunrated\b/i, edition: 'Unrated' },
 	{ pattern: /\btheatrical\b/i, edition: 'Theatrical' },
 	{ pattern: /\bremastered\b/i, edition: 'Remastered' },
+	{ pattern: /\bimax[\s._-]?enhanced\b/i, edition: 'IMAX Enhanced' },
 	{ pattern: /\bimax\b/i, edition: 'IMAX' },
+	{ pattern: /\bhybrid\b/i, edition: 'Hybrid' },
 	{ pattern: /\bcriterion\b/i, edition: 'Criterion' },
 	{ pattern: /\bspecial[\s._-]?edition\b/i, edition: 'Special Edition' },
 	{ pattern: /\banniversary[\s._-]?edition\b/i, edition: 'Anniversary Edition' },

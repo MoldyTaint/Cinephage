@@ -10,8 +10,45 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { RenamePreviewService, type RenamePreviewResult } from './RenamePreviewService';
 import { NamingService, type MediaNamingInfo, DEFAULT_NAMING_CONFIG } from './NamingService';
+import { chooseBestParsedRelease } from './preview-metadata';
 
 describe('RenamePreviewService', () => {
+	describe('preview metadata trust', () => {
+		it('prefers current filename when sceneName points at different sequel/year', () => {
+			const candidate = chooseBestParsedRelease({
+				sceneName: 'Ant-Man and the Wasp Quantumania 2023 1080p WEBRip x265-RARBG',
+				currentFileName: 'Ant-Man (2015) [WEBRip-1080p][x265]-RARBG.mp4',
+				actualTitle: 'Ant-Man',
+				actualYear: 2015
+			});
+
+			expect(candidate.label).toBe('currentFilename');
+		});
+
+		it('prefers sceneName when it is richer and matches title/year', () => {
+			const candidate = chooseBestParsedRelease({
+				sceneName: 'Interstellar.2014.2160p.UHD.BluRay.REMUX.HDR.HEVC.Atmos-FGT',
+				currentFileName: 'Interstellar (2014) [Remux-2160p].mkv',
+				actualTitle: 'Interstellar',
+				actualYear: 2014
+			});
+
+			expect(candidate.label).toBe('sceneName');
+			expect(candidate.parsed.releaseGroup).toBe('FGT');
+		});
+
+		it('recovers edition metadata from filenames when stored edition is missing', () => {
+			const parsed = chooseBestParsedRelease({
+				sceneName: null,
+				currentFileName: 'Blade Runner (1982) edition-Final Cut [Bluray-1080p].mkv',
+				actualTitle: 'Blade Runner',
+				actualYear: 1982
+			});
+
+			expect(parsed.parsed.edition).toBe('Final Cut');
+		});
+	});
+
 	describe('NamingService Edge Cases', () => {
 		let namingService: NamingService;
 
@@ -444,6 +481,25 @@ describe('RenamePreviewService', () => {
 
 				const result = service.generateEpisodeFileName(info);
 				expect(result).toContain('S01E01-E02');
+			});
+
+			it('should format multi-episode repeat correctly', () => {
+				const service = new NamingService({
+					...DEFAULT_NAMING_CONFIG,
+					multiEpisodeStyle: 'repeat'
+				});
+
+				const info: MediaNamingInfo = {
+					title: 'Test Show',
+					year: 2020,
+					tvdbId: 12345,
+					seasonNumber: 1,
+					episodeNumbers: [1, 2, 3],
+					originalExtension: '.mkv'
+				};
+
+				const result = service.generateEpisodeFileName(info);
+				expect(result).toContain('S01E01 - S01E02 - S01E03');
 			});
 		});
 

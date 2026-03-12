@@ -9,6 +9,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { RenamePreviewService } from '$lib/server/library/naming/RenamePreviewService';
 import { logger } from '$lib/logging';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 interface ExecuteRequest {
 	fileIds: string[];
@@ -25,7 +26,11 @@ interface ExecuteRequest {
  *   mediaType?: 'movie' | 'episode' | 'mixed' - Type of files (default: 'mixed')
  * }
  */
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { request } = event;
 	try {
 		const body = (await request.json()) as ExecuteRequest;
 		const { fileIds, mediaType = 'mixed' } = body;

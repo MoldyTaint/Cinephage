@@ -20,6 +20,8 @@ import {
 	episodeFiles
 } from '$lib/server/db/schema';
 import { eq, and, asc, sql } from 'drizzle-orm';
+import { NamingService, type MediaNamingInfo } from '$lib/server/library/naming/NamingService.js';
+import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
 
 const logger = createChildLogger({ module: 'StrmService' });
 
@@ -106,6 +108,8 @@ export interface SeriesData {
 	title: string;
 	year: number | null;
 	path: string | null;
+	tvdbId?: number | null;
+	seasonFolder?: boolean | null;
 }
 
 /** Pre-fetched episode data for batch processing */
@@ -231,20 +235,7 @@ export class StrmService {
 					return { success: false, error: 'Root folder not found' };
 				}
 
-				// Build movie folder path - use existing path or construct from title
-				const safeName = this.sanitizeFilename(movie.title);
-				const year = movie.year ?? 'Unknown';
-				const rawFolderName = movie.path || `${safeName} (${year})`;
-
-				// Sanitize path to prevent traversal attacks
-				const folderName = sanitizePath(rawFolderName);
-				if (!isPathSafe(rootFolder.path, folderName)) {
-					return { success: false, error: 'Invalid movie path: path traversal detected' };
-				}
-
-				const movieFolder = join(rootFolder.path, folderName);
-				filename = `${safeName} (${year}).strm`;
-				destinationPath = join(movieFolder, filename);
+				destinationPath = this.buildMovieStrmPath(rootFolder.path, movie);
 			} else if (mediaType === 'tv' && seriesId && season !== undefined && episode !== undefined) {
 				// Get series details
 				const show = await db.query.series.findFirst({
@@ -268,20 +259,6 @@ export class StrmService {
 					return { success: false, error: 'Root folder not found' };
 				}
 
-				// Build episode folder path - use existing path or construct from title
-				const safeName = this.sanitizeFilename(show.title);
-				const year = show.year ?? 'Unknown';
-				const rawShowPath = show.path || `${safeName} (${year})`;
-
-				// Sanitize path to prevent traversal attacks
-				const showPath = sanitizePath(rawShowPath);
-				if (!isPathSafe(rootFolder.path, showPath)) {
-					return { success: false, error: 'Invalid series path: path traversal detected' };
-				}
-
-				const showFolder = join(rootFolder.path, showPath);
-				const seasonFolder = join(showFolder, `Season ${season.toString().padStart(2, '0')}`);
-
 				// Get episode title if available
 				const episodeRow = await db.query.episodes.findFirst({
 					where: and(
@@ -290,13 +267,13 @@ export class StrmService {
 						eq(episodes.episodeNumber, episode)
 					)
 				});
-				const seasonStr = season.toString().padStart(2, '0');
-				const episodeStr = episode.toString().padStart(2, '0');
-				const episodeTitle = episodeRow?.title
-					? ` - ${this.sanitizeFilename(episodeRow.title)}`
-					: '';
-				filename = `${safeName} - S${seasonStr}E${episodeStr}${episodeTitle}.strm`;
-				destinationPath = join(seasonFolder, filename);
+				destinationPath = this.buildEpisodeStrmPath(
+					rootFolder.path,
+					show,
+					season,
+					episode,
+					episodeRow?.title
+				);
 			} else {
 				return { success: false, error: 'Invalid options for creating .strm file' };
 			}
@@ -350,23 +327,20 @@ export class StrmService {
 				};
 			}
 
-			const safeName = this.sanitizeFilename(seriesData.title);
-			const year = seriesData.year ?? 'Unknown';
-			const rawShowPath = seriesData.path || `${safeName} (${year})`;
-
-			const showPath = sanitizePath(rawShowPath);
-			if (!isPathSafe(rootFolderPath, showPath)) {
-				return { success: false, error: 'Invalid series path: path traversal detected' };
-			}
-
-			const showFolder = join(rootFolderPath, showPath);
-			const seasonFolder = join(showFolder, `Season ${seasonNumber.toString().padStart(2, '0')}`);
-
-			const seasonStr = seasonNumber.toString().padStart(2, '0');
-			const episodeStr = episode.episodeNumber.toString().padStart(2, '0');
-			const episodeTitle = episode.title ? ` - ${this.sanitizeFilename(episode.title)}` : '';
-			const filename = `${safeName} - S${seasonStr}E${episodeStr}${episodeTitle}.strm`;
-			const destinationPath = join(seasonFolder, filename);
+			const destinationPath = this.buildEpisodeStrmPath(
+				rootFolderPath,
+				{
+					title: seriesData.title,
+					year: seriesData.year,
+					tmdbId: Number(tmdbId),
+					tvdbId: seriesData.tvdbId,
+					path: seriesData.path,
+					seasonFolder: seriesData.seasonFolder
+				},
+				seasonNumber,
+				episode.episodeNumber,
+				episode.title
+			);
 
 			// Ensure directory exists
 			const dir = dirname(destinationPath);
@@ -405,14 +379,80 @@ export class StrmService {
 		}
 	}
 
-	/**
-	 * Sanitize a string for use as a filename
-	 */
-	private sanitizeFilename(name: string): string {
-		return name
-			.replace(/[<>:"/\\|?*]/g, '') // Remove invalid characters
-			.replace(/\s+/g, ' ') // Normalize whitespace
-			.trim();
+	private getNamingService(): NamingService {
+		return new NamingService(namingSettingsService.getConfigSync());
+	}
+
+	private buildMovieStrmPath(
+		rootFolderPath: string,
+		movie: {
+			title: string;
+			year: number | null;
+			tmdbId: number;
+			imdbId?: string | null;
+			path: string | null;
+		}
+	): string {
+		const namingService = this.getNamingService();
+		const info: MediaNamingInfo = {
+			title: movie.title,
+			year: movie.year ?? undefined,
+			tmdbId: movie.tmdbId,
+			imdbId: movie.imdbId ?? undefined,
+			originalExtension: '.strm'
+		};
+
+		const folderName = sanitizePath(movie.path || namingService.generateMovieFolderName(info));
+		if (!isPathSafe(rootFolderPath, folderName)) {
+			throw new Error('Invalid movie path: path traversal detected');
+		}
+
+		return join(rootFolderPath, folderName, namingService.generateMovieFileName(info));
+	}
+
+	private buildEpisodeStrmPath(
+		rootFolderPath: string,
+		show: {
+			title: string;
+			year: number | null;
+			tmdbId: number;
+			tvdbId?: number | null;
+			path: string | null;
+			seasonFolder?: boolean | null;
+		},
+		seasonNumber: number,
+		episodeNumber: number,
+		episodeTitle?: string | null
+	): string {
+		const namingService = this.getNamingService();
+		const seriesInfo: MediaNamingInfo = {
+			title: show.title,
+			year: show.year ?? undefined,
+			tmdbId: show.tmdbId,
+			tvdbId: show.tvdbId ?? undefined
+		};
+		const showPath = sanitizePath(show.path || namingService.generateSeriesFolderName(seriesInfo));
+		if (!isPathSafe(rootFolderPath, showPath)) {
+			throw new Error('Invalid series path: path traversal detected');
+		}
+
+		const episodeInfo: MediaNamingInfo = {
+			...seriesInfo,
+			seasonNumber,
+			episodeNumbers: [episodeNumber],
+			episodeTitle: episodeTitle ?? undefined,
+			originalExtension: '.strm'
+		};
+
+		const relativePath =
+			(show.seasonFolder ?? true)
+				? join(
+						namingService.generateSeasonFolderName(seasonNumber),
+						namingService.generateEpisodeFileName(episodeInfo)
+					)
+				: namingService.generateEpisodeFileName(episodeInfo);
+
+		return join(rootFolderPath, showPath, relativePath);
 	}
 
 	/**
@@ -748,7 +788,13 @@ export class StrmService {
 					return { success: false, results: [], error: 'Series has no root folder configured' };
 				}
 
-				seriesData = { title: show.title, year: show.year, path: show.path };
+				seriesData = {
+					title: show.title,
+					year: show.year,
+					path: show.path,
+					tvdbId: show.tvdbId,
+					seasonFolder: show.seasonFolder
+				};
 				rootFolderPath = show.rootFolder.path;
 			}
 
@@ -877,7 +923,13 @@ export class StrmService {
 				return { success: false, results: [], error: 'Series has no root folder configured' };
 			}
 
-			const seriesData: SeriesData = { title: show.title, year: show.year, path: show.path };
+			const seriesData: SeriesData = {
+				title: show.title,
+				year: show.year,
+				path: show.path,
+				tvdbId: show.tvdbId,
+				seasonFolder: show.seasonFolder
+			};
 			const rootFolderPath = show.rootFolder.path;
 
 			// Pre-fetch ALL episodes for the series in one query
@@ -1017,18 +1069,7 @@ export class StrmService {
 					return { success: false, error: 'Movie has no root folder configured' };
 				}
 
-				const safeName = this.sanitizeFilename(movie.title);
-				const year = movie.year ?? 'Unknown';
-				const rawFolderName = movie.path || `${safeName} (${year})`;
-				const folderName = sanitizePath(rawFolderName);
-
-				if (!isPathSafe(movie.rootFolder.path, folderName)) {
-					return { success: false, error: 'Invalid movie path: path traversal detected' };
-				}
-
-				const movieFolder = join(movie.rootFolder.path, folderName);
-				const filename = `${safeName} (${year}).strm`;
-				destinationPath = join(movieFolder, filename);
+				destinationPath = this.buildMovieStrmPath(movie.rootFolder.path, movie);
 			} else if (seriesId && seasonNumber !== undefined && episodeId) {
 				// Get series and episode details
 				const show = await db.query.series.findFirst({
@@ -1051,25 +1092,13 @@ export class StrmService {
 					return { success: false, error: `Episode not found: ${episodeId}` };
 				}
 
-				const safeName = this.sanitizeFilename(show.title);
-				const year = show.year ?? 'Unknown';
-				const rawShowPath = show.path || `${safeName} (${year})`;
-				const showPath = sanitizePath(rawShowPath);
-
-				if (!isPathSafe(show.rootFolder.path, showPath)) {
-					return { success: false, error: 'Invalid series path: path traversal detected' };
-				}
-
-				const showFolder = join(show.rootFolder.path, showPath);
-				const seasonFolder = join(showFolder, `Season ${seasonNumber.toString().padStart(2, '0')}`);
-
-				const seasonStr = seasonNumber.toString().padStart(2, '0');
-				const episodeStr = episodeRow.episodeNumber.toString().padStart(2, '0');
-				const episodeTitle = episodeRow.title
-					? ` - ${this.sanitizeFilename(episodeRow.title)}`
-					: '';
-				const filename = `${safeName} - S${seasonStr}E${episodeStr}${episodeTitle}.strm`;
-				destinationPath = join(seasonFolder, filename);
+				destinationPath = this.buildEpisodeStrmPath(
+					show.rootFolder.path,
+					show,
+					seasonNumber,
+					episodeRow.episodeNumber,
+					episodeRow.title
+				);
 			} else {
 				return { success: false, error: 'Invalid options for creating NZB .strm file' };
 			}

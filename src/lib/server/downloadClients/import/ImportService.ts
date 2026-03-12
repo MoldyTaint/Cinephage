@@ -10,7 +10,7 @@
 
 import { EventEmitter } from 'events';
 import { stat } from 'fs/promises';
-import { join, basename, extname } from 'path';
+import { join, basename, dirname, extname } from 'path';
 import { randomUUID } from 'node:crypto';
 import { db } from '$lib/server/db';
 import { eventBuffer } from '$lib/server/sse/EventBuffer.js';
@@ -828,6 +828,7 @@ export class ImportService extends EventEmitter {
 			dateAdded: new Date().toISOString(),
 			sceneName: importedMetadata.sceneName,
 			releaseGroup: importedMetadata.releaseGroup,
+			edition: importedMetadata.edition,
 			quality: importedMetadata.quality,
 			mediaInfo,
 			infoHash: queueItem.infoHash ?? undefined
@@ -936,7 +937,7 @@ export class ImportService extends EventEmitter {
 				releaseGroup: fileData.releaseGroup,
 				quality: fileData.quality,
 				mediaInfo,
-				edition: undefined as string | undefined
+				edition: fileData.edition
 			},
 			wasUpgrade: isUpgrade,
 			replacedFileIds: deletedFileIds.length > 0 ? deletedFileIds : undefined,
@@ -1244,9 +1245,6 @@ export class ImportService extends EventEmitter {
 
 		// Build destination path
 		const seriesFolder = join(rootFolder.path, seriesData.path);
-		const seasonFolder = seriesData.seasonFolder
-			? join(seriesFolder, `Season ${String(seasonNum).padStart(2, '0')}`)
-			: seriesFolder;
 
 		const destFileName = this.buildEpisodeFileName(
 			seriesData,
@@ -1258,10 +1256,15 @@ export class ImportService extends EventEmitter {
 			absoluteNumber,
 			firstEpisode?.airDate ?? undefined
 		);
-		const destPath = join(seasonFolder, destFileName);
+		const relativePath = this.buildEpisodeRelativePath(
+			seriesData.seasonFolder ?? true,
+			seasonNum,
+			destFileName
+		);
+		const destPath = join(seriesFolder, relativePath);
 
 		// Ensure season folder exists
-		await ensureDirectory(seasonFolder);
+		await ensureDirectory(dirname(destPath));
 
 		// Transfer file using mode based on seeding state
 		const preserveSymlinks = rootFolder.preserveSymlinks ?? false;
@@ -1314,11 +1317,6 @@ export class ImportService extends EventEmitter {
 			}
 		}
 
-		// Build relative path
-		const relativePath = seriesData.seasonFolder
-			? join(`Season ${String(seasonNum).padStart(2, '0')}`, destFileName)
-			: destFileName;
-
 		// Check if a file record already exists for this path (prevent duplicates)
 		const existingFileRecord = await db
 			.select()
@@ -1338,6 +1336,7 @@ export class ImportService extends EventEmitter {
 			dateAdded: new Date().toISOString(),
 			sceneName: importedMetadata.sceneName,
 			releaseGroup: importedMetadata.releaseGroup,
+			edition: importedMetadata.edition,
 			releaseType: episodeNums.length > 1 ? 'multiEpisode' : 'singleEpisode',
 			quality: importedMetadata.quality,
 			mediaInfo,
@@ -1380,6 +1379,7 @@ export class ImportService extends EventEmitter {
 				dateAdded: fileData.dateAdded,
 				sceneName: fileData.sceneName,
 				releaseGroup: fileData.releaseGroup,
+				edition: fileData.edition,
 				releaseType: fileData.releaseType,
 				quality: fileData.quality,
 				mediaInfo,
@@ -1641,6 +1641,20 @@ export class ImportService extends EventEmitter {
 		return new NamingService(config);
 	}
 
+	private buildSeasonFolderName(seasonNumber: number): string {
+		return this.getNamingService().generateSeasonFolderName(seasonNumber);
+	}
+
+	private buildEpisodeRelativePath(
+		useSeasonFolders: boolean,
+		seasonNumber: number,
+		destFileName: string
+	): string {
+		return useSeasonFolders
+			? join(this.buildSeasonFolderName(seasonNumber), destFileName)
+			: destFileName;
+	}
+
 	/**
 	 * Build a movie filename using the naming service
 	 */
@@ -1823,6 +1837,7 @@ export class ImportService extends EventEmitter {
 	): {
 		sceneName: string;
 		releaseGroup?: string;
+		edition?: string;
 		quality: {
 			resolution?: string;
 			source?: string;
@@ -1851,6 +1866,7 @@ export class ImportService extends EventEmitter {
 
 		return {
 			sceneName,
+			edition: queueParsed.edition ?? sourceParsed.edition ?? undefined,
 			releaseGroup: this.firstKnownValue(
 				queueItem.releaseGroup,
 				queueParsed.releaseGroup,

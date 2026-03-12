@@ -749,6 +749,7 @@ export class MediaMatcherService {
 			mediaInfo,
 			sceneName: originalFilename,
 			releaseGroup: parsedQuality.releaseGroup ?? undefined,
+			edition: parsedQuality.edition ?? undefined,
 			quality: {
 				resolution: parsedQuality.resolution ?? undefined,
 				source: parsedQuality.source ?? undefined,
@@ -980,6 +981,7 @@ export class MediaMatcherService {
 			mediaInfo,
 			sceneName: originalFilename,
 			releaseGroup: parsedQuality.releaseGroup ?? undefined,
+			edition: parsedQuality.edition ?? undefined,
 			quality: {
 				resolution: parsedQuality.resolution ?? undefined,
 				source: parsedQuality.source ?? undefined,

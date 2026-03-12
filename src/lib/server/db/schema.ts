@@ -827,6 +827,8 @@ export const episodeFiles = sqliteTable('episode_files', {
 	sceneName: text('scene_name'),
 	// Release group if detected
 	releaseGroup: text('release_group'),
+	// Edition info (IMAX, Extended, etc.)
+	edition: text('edition'),
 	// Release type (singleEpisode, multiEpisode, seasonPack, etc.)
 	releaseType: text('release_type'),
 	// Parsed quality info as JSON

@@ -1484,7 +1484,6 @@
 	mediaTitle={series.title}
 	onClose={() => (isRenameModalOpen = false)}
 	onRenamed={() => {
-		isRenameModalOpen = false;
 		void refreshSeriesFromApi();
 	}}
 />

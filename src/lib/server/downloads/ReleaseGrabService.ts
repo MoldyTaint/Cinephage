@@ -1051,6 +1051,7 @@ class ReleaseGrabService {
 			dateAdded: new Date().toISOString(),
 			sceneName: release.title,
 			releaseGroup: parsedRelease.releaseGroup ?? 'Streaming',
+			edition: parsedRelease.edition ?? undefined,
 			quality,
 			mediaInfo
 		});
@@ -1183,6 +1184,7 @@ class ReleaseGrabService {
 			dateAdded: new Date().toISOString(),
 			sceneName: release.title,
 			releaseGroup: parsedRelease.releaseGroup ?? 'Streaming',
+			edition: parsedRelease.edition ?? undefined,
 			quality,
 			mediaInfo
 		});

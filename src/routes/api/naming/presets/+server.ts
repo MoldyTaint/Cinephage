@@ -2,7 +2,13 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import { namingPresets } from '$lib/server/db/schema';
-import { BUILT_IN_PRESETS, type NamingPreset } from '$lib/server/library/naming/presets';
+import {
+	BUILT_IN_PRESETS,
+	NAMING_DETAIL_PRESETS,
+	NAMING_SERVER_PRESETS,
+	NAMING_STYLE_PRESETS,
+	type NamingPreset
+} from '$lib/server/library/naming/presets';
 import { eq } from 'drizzle-orm';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 
@@ -29,7 +35,12 @@ export const GET: RequestHandler = async () => {
 
 		return json({
 			presets: allPresets,
-			builtInIds: BUILT_IN_PRESETS.map((p) => p.id)
+			builtInIds: BUILT_IN_PRESETS.map((p) => p.id),
+			setupPresets: {
+				servers: NAMING_SERVER_PRESETS,
+				styles: NAMING_STYLE_PRESETS,
+				details: NAMING_DETAIL_PRESETS
+			}
 		});
 	} catch (err) {
 		console.error('Error fetching naming presets:', err);

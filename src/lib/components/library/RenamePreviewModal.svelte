@@ -100,10 +100,11 @@
 				success = `Successfully renamed ${result.succeeded} file${result.succeeded !== 1 ? 's' : ''}`;
 				onRenamed();
 
-				// Auto-close after success
-				setTimeout(() => {
-					onClose();
-				}, 1500);
+				if (result.failed === 0) {
+					setTimeout(() => {
+						onClose();
+					}, 1500);
+				}
 			}
 
 			if (result.failed > 0) {
