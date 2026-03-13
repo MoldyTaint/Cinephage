@@ -8,7 +8,6 @@
 
 	import { page } from '$app/stores';
 	import { resolvePath } from '$lib/utils/routing';
-	import { env } from '$env/dynamic/public';
 	import { authClient } from '$lib/auth/client.js';
 	import { PLACEHOLDER_PACKAGE_VERSION } from '$lib/version.js';
 	import {
@@ -121,14 +120,7 @@
 		}
 	];
 
-	const envAppVersion = (() => {
-		const version = env.PUBLIC_APP_VERSION?.trim();
-		if (!version || version === PLACEHOLDER_PACKAGE_VERSION) {
-			return 'dev-local';
-		}
-		return version;
-	})();
-	let appVersion = $state(envAppVersion);
+	let appVersion = $state('');
 
 	async function refreshAppVersion(): Promise<void> {
 		if (!browser) return;

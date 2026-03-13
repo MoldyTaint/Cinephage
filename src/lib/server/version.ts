@@ -30,9 +30,9 @@ function readPackageVersion(): string | null {
 
 export function resolveAppVersion(): string {
 	return (
-		readPackageVersion() ??
 		readVersion(process.env.APP_VERSION) ??
 		readVersion(process.env.PUBLIC_APP_VERSION) ??
+		readPackageVersion() ??
 		readVersion(process.env.npm_package_version) ??
 		'dev-local'
 	);

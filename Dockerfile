@@ -24,7 +24,6 @@ COPY scripts/fix-tv-subtitle-paths.js scripts/reset-admin-password.js ./scripts/
 COPY server.js svelte.config.js tsconfig.json vite.config.ts ./
 
 ARG APP_VERSION=dev
-ENV PUBLIC_APP_VERSION=${APP_VERSION}
 
 RUN npm run build && npm prune --omit=dev
 
@@ -39,7 +38,6 @@ ARG APP_SOURCE=https://github.com/MoldyTaint/Cinephage
 ARG VCS_REF=unknown
 ARG BUILD_CREATED=unknown
 ENV APP_VERSION=${APP_VERSION}
-ENV PUBLIC_APP_VERSION=${APP_VERSION}
 
 LABEL org.opencontainers.image.title='Cinephage' \
 	org.opencontainers.image.description='Self-hosted media management application' \
