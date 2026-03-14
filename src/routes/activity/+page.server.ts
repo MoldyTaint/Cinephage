@@ -1,8 +1,9 @@
 import type { PageServerLoad } from './$types';
-import type { UnifiedActivity, ActivityFilters, FilterOptions } from '$lib/types/activity';
+import type { ActivityFilters, FilterOptions } from '$lib/types/activity';
 import { db } from '$lib/server/db';
 import { downloadClients, indexers } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
+import { activityService } from '$lib/server/activity';
 
 type ActivityTab = 'active' | 'history';
 const ACTIVE_TAB_STATUSES: NonNullable<ActivityFilters['status']>[] = [
@@ -31,7 +32,7 @@ function normalizeStatusForTab(
 		: 'all';
 }
 
-export const load: PageServerLoad = async ({ fetch, url }) => {
+export const load: PageServerLoad = async ({ url }) => {
 	const tabParam = url.searchParams.get('tab');
 	const explicitTab: ActivityTab | null =
 		tabParam === 'active' || tabParam === 'history' ? tabParam : null;
@@ -67,38 +68,12 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 		};
 	}
 
-	function appendFiltersToApiUrl(apiUrl: URL, filters: ActivityFilters): void {
-		if (filters.status !== 'all') apiUrl.searchParams.set('status', filters.status!);
-		if (filters.mediaType !== 'all') apiUrl.searchParams.set('mediaType', filters.mediaType!);
-		if (filters.search) apiUrl.searchParams.set('search', filters.search);
-		if (filters.protocol !== 'all') apiUrl.searchParams.set('protocol', filters.protocol!);
-		if (filters.indexer) apiUrl.searchParams.set('indexer', filters.indexer);
-		if (filters.releaseGroup) apiUrl.searchParams.set('releaseGroup', filters.releaseGroup);
-		if (filters.resolution) apiUrl.searchParams.set('resolution', filters.resolution);
-		if (filters.isUpgrade) apiUrl.searchParams.set('isUpgrade', 'true');
-		if (filters.includeNoResults) apiUrl.searchParams.set('includeNoResults', 'true');
-		if (filters.downloadClientId)
-			apiUrl.searchParams.set('downloadClientId', filters.downloadClientId);
-		if (filters.startDate) apiUrl.searchParams.set('startDate', filters.startDate);
-		if (filters.endDate) apiUrl.searchParams.set('endDate', filters.endDate);
-	}
-
 	let tab: ActivityTab = explicitTab ?? 'history';
 	if (!explicitTab) {
 		try {
-			const activeProbeUrl = new URL('/api/activity', url.origin);
-			activeProbeUrl.searchParams.set('limit', '1');
-			activeProbeUrl.searchParams.set('offset', '0');
-			activeProbeUrl.searchParams.set('scope', 'active');
-			appendFiltersToApiUrl(activeProbeUrl, buildFiltersForTab('active'));
-
-			const probeResponse = await fetch(activeProbeUrl.toString());
-			const probeData = await probeResponse.json().catch(() => ({}));
-			const activeTotal =
-				typeof probeData.total === 'number' && Number.isFinite(probeData.total)
-					? probeData.total
-					: 0;
-			tab = activeTotal > 0 ? 'active' : 'history';
+			// Lightweight COUNT query instead of a full API round-trip through the 8-query pipeline
+			const activeCount = await activityService.getActiveCount();
+			tab = activeCount > 0 ? 'active' : 'history';
 		} catch {
 			tab = 'history';
 		}
@@ -106,15 +81,9 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 
 	const filters = buildFiltersForTab(tab);
 
-	// Build API URL with query params
-	const apiUrl = new URL('/api/activity', url.origin);
-	apiUrl.searchParams.set('limit', '50');
-	apiUrl.searchParams.set('offset', '0');
-	apiUrl.searchParams.set('scope', tab);
-	appendFiltersToApiUrl(apiUrl, filters);
-
-	// Fetch filter options (indexers, download clients)
-	const [indexerRows, clientRows] = await Promise.all([
+	// Fetch filter options and activity data in parallel — call the service directly
+	// instead of routing through an internal HTTP fetch
+	const [indexerRows, clientRows, activityResult] = await Promise.all([
 		db
 			.select({ id: indexers.id, name: indexers.name })
 			.from(indexers)
@@ -124,7 +93,10 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 			.select({ id: downloadClients.id, name: downloadClients.name })
 			.from(downloadClients)
 			.where(eq(downloadClients.enabled, true))
-			.orderBy(downloadClients.name)
+			.orderBy(downloadClients.name),
+		activityService
+			.getActivities(filters, { field: 'time', direction: 'desc' }, { limit: 50, offset: 0 }, tab)
+			.catch(() => null)
 	]);
 
 	const filterOptions: FilterOptions = {
@@ -134,27 +106,25 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 		resolutions: ['4K', '2160p', '1080p', '720p', '480p', 'SD']
 	};
 
-	try {
-		const response = await fetch(apiUrl.toString());
-		const data = await response.json();
-
+	if (activityResult) {
 		return {
-			activities: data.activities as UnifiedActivity[],
-			total: data.total as number,
-			hasMore: data.hasMore as boolean,
-			tab,
-			filters,
-			filterOptions
-		};
-	} catch (error) {
-		console.error('Failed to load activity:', error);
-		return {
-			activities: [] as UnifiedActivity[],
-			total: 0,
-			hasMore: false,
+			activities: activityResult.activities,
+			total: activityResult.total,
+			hasMore: activityResult.hasMore,
+			summary: activityResult.summary,
 			tab,
 			filters,
 			filterOptions
 		};
 	}
+
+	return {
+		activities: [],
+		total: 0,
+		hasMore: false,
+		summary: null,
+		tab,
+		filters,
+		filterOptions
+	};
 };

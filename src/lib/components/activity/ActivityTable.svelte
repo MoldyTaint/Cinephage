@@ -2,11 +2,7 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import { isImportFailedActivity, type UnifiedActivity } from '$lib/types/activity';
 	import {
-		CheckCircle2,
-		XCircle,
-		AlertCircle,
 		Loader2,
-		Upload,
 		Pause,
 		Play,
 		RotateCcw,
@@ -24,6 +20,15 @@
 	import { resolvePath } from '$lib/utils/routing';
 	import { formatBytes } from '$lib/utils/format';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import { createProgressiveRenderer } from '$lib/utils/progressive-render.svelte.js';
+	import {
+		statusConfig,
+		getStatusLabel,
+		formatRelativeTime,
+		formatTimestamp,
+		getDisplayTime,
+		getResolutionBadge
+	} from './activity-display-utils.js';
 
 	interface Props {
 		activities: UnifiedActivity[];
@@ -37,10 +42,13 @@
 		onRetry?: (id: string) => Promise<void>;
 		compact?: boolean;
 		selectionMode?: boolean;
-		selectedIds?: string[];
+		selectedIds?: Set<string>;
 		isSelectable?: (activity: UnifiedActivity) => boolean;
 		onToggleSelection?: (activityId: string, selected: boolean) => void;
 		onToggleSelectionAll?: (activityIds: string[], selected: boolean) => void;
+		hasMore?: boolean;
+		isLoadingMore?: boolean;
+		onLoadMore?: () => void;
 	}
 
 	let {
@@ -55,11 +63,41 @@
 		onRetry,
 		compact = false,
 		selectionMode = false,
-		selectedIds = [],
+		selectedIds = new Set<string>(),
 		isSelectable = () => false,
 		onToggleSelection,
-		onToggleSelectionAll
+		onToggleSelectionAll,
+		hasMore = false,
+		isLoadingMore = false,
+		onLoadMore
 	}: Props = $props();
+
+	// Progressive renderer: only mount DOM nodes for a visible slice + buffer.
+	// When the sentinel becomes visible and we've exhausted the client-side
+	// items, trigger server-side pagination via onLoadMore.
+	const renderer = createProgressiveRenderer(() => activities, { batchSize: 24 });
+
+	// When the progressive renderer has shown everything but the server has
+	// more data, automatically request the next page.
+	$effect(() => {
+		if (!renderer.hasMore && hasMore && !isLoadingMore) {
+			onLoadMore?.();
+		}
+	});
+
+	// Responsive: only render mobile OR desktop view, not both
+	let isMobile = $state(false);
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+
+		const mq = window.matchMedia('(max-width: 1023px)');
+		isMobile = mq.matches;
+		const handler = (e: MediaQueryListEvent) => {
+			isMobile = e.matches;
+		};
+		mq.addEventListener('change', handler);
+		return () => mq.removeEventListener('change', handler);
+	});
 
 	// Track expanded rows
 	let expandedRows = new SvelteSet<string>();
@@ -73,10 +111,10 @@
 			: []
 	);
 	const allSelectableSelected = $derived.by(
-		() => selectableIds.length > 0 && selectableIds.every((id) => selectedIds.includes(id))
+		() => selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id))
 	);
 	const someSelectableSelected = $derived.by(
-		() => selectableIds.some((id) => selectedIds.includes(id)) && !allSelectableSelected
+		() => selectableIds.some((id) => selectedIds.has(id)) && !allSelectableSelected
 	);
 
 	$effect(() => {
@@ -100,67 +138,6 @@
 			failedReasonExpandedRows.add(id);
 		}
 	}
-
-	// Format relative time
-	function formatRelativeTime(dateStr: string | null): string {
-		if (!dateStr) return '-';
-		const date = new Date(dateStr);
-		const now = new Date();
-		const diff = now.getTime() - date.getTime();
-		const minutes = Math.floor(diff / 60000);
-		const hours = Math.floor(diff / 3600000);
-		const days = Math.floor(diff / 86400000);
-
-		if (minutes < 1) return 'Just now';
-		if (minutes < 60) return `${minutes}m ago`;
-		if (hours < 24) return `${hours}h ago`;
-		if (days < 7) return `${days}d ago`;
-		return date.toLocaleDateString();
-	}
-
-	// Format timestamp for timeline
-	function formatTimestamp(dateStr: string): string {
-		const date = new Date(dateStr);
-		return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-	}
-
-	// Get the appropriate time to display: completed time for history items, started time for active
-	function getDisplayTime(activity: UnifiedActivity): string | null {
-		// For completed/imported activities, show completion time instead of start time
-		if (
-			activity.completedAt &&
-			(activity.status === 'imported' || activity.status === 'streaming')
-		) {
-			return activity.completedAt;
-		}
-		// For other completed statuses, use completedAt if available
-		if (activity.completedAt && ['removed', 'rejected', 'no_results'].includes(activity.status)) {
-			return activity.completedAt;
-		}
-		// For failed items, use the most recent attempt time if available
-		if (activity.status === 'failed' && activity.lastAttemptAt) {
-			return activity.lastAttemptAt;
-		}
-		// For active items, use startedAt
-		return activity.startedAt;
-	}
-
-	// Status config
-	const statusConfig: Record<
-		string,
-		{ label: string; variant: string; icon: typeof CheckCircle2 }
-	> = {
-		imported: { label: 'Imported', variant: 'badge-success', icon: CheckCircle2 },
-		streaming: { label: 'Streaming', variant: 'badge-info', icon: CheckCircle2 },
-		downloading: { label: 'Downloading', variant: 'badge-info', icon: Loader2 },
-		seeding: { label: 'Seeding', variant: 'badge-success', icon: Upload },
-		paused: { label: 'Paused', variant: 'badge-warning', icon: Pause },
-		failed: { label: 'Failed', variant: 'badge-error', icon: XCircle },
-		rejected: { label: 'Rejected', variant: 'badge-warning', icon: AlertCircle },
-		removed: { label: 'Removed', variant: 'badge-ghost', icon: XCircle },
-		no_results: { label: 'No Results', variant: 'badge-ghost', icon: Minus },
-		searching: { label: 'Searching', variant: 'badge-info', icon: Loader2 }
-	};
 
 	// Get media link
 	function getMediaLink(activity: UnifiedActivity): string {
@@ -196,29 +173,6 @@
 	function getSortIcon(field: string) {
 		if (sortField !== field) return ArrowUpDown;
 		return sortDirection === 'asc' ? ArrowUp : ArrowDown;
-	}
-
-	function getResolutionBadge(activity: UnifiedActivity): string | null {
-		const rawResolution = activity.quality?.resolution?.trim();
-		if (rawResolution && rawResolution.toLowerCase() !== 'unknown') {
-			return rawResolution;
-		}
-
-		const isCinephageLibraryStream =
-			activity.protocol === 'streaming' &&
-			(activity.indexerName?.toLowerCase().includes('cinephage library') ?? false);
-		if (isCinephageLibraryStream) {
-			return 'Auto';
-		}
-
-		return null;
-	}
-
-	function getStatusLabel(activity: UnifiedActivity, fallbackLabel: string): string {
-		if (activity.status === 'failed' && isImportFailedActivity(activity)) {
-			return 'Import Failed';
-		}
-		return fallbackLabel;
 	}
 
 	async function runQueueAction(
@@ -260,7 +214,7 @@
 	}
 
 	function isRowSelected(activityId: string): boolean {
-		return selectedIds.includes(activityId);
+		return selectedIds.has(activityId);
 	}
 
 	function toggleSelection(activity: UnifiedActivity, selected: boolean): void {
@@ -284,10 +238,10 @@
 		<p class="text-lg font-medium">No activity</p>
 		<p class="mt-1 text-sm">Download and search activity will appear here</p>
 	</div>
-{:else}
+{:else if isMobile}
 	<!-- Mobile: Card View -->
-	<div class="space-y-3 lg:hidden">
-		{#each activities as activity (activity.id)}
+	<div class="space-y-3">
+		{#each renderer.visible as activity (activity.id)}
 			{@const config = statusConfig[activity.status] || statusConfig.no_results}
 			{@const StatusIcon = config.icon}
 			{@const isExpanded = expandedRows.has(activity.id)}
@@ -502,8 +456,17 @@
 		{/each}
 	</div>
 
+	<!-- Progressive render sentinel + server load-more -->
+	{#if renderer.hasMore || hasMore}
+		<div bind:this={renderer.sentinel} class="flex justify-center py-4">
+			{#if isLoadingMore}
+				<Loader2 class="h-5 w-5 animate-spin text-base-content/40" />
+			{/if}
+		</div>
+	{/if}
+{:else}
 	<!-- Desktop: Table View -->
-	<div class="hidden overflow-x-auto lg:block">
+	<div class="overflow-x-auto">
 		<table class="table table-sm">
 			<thead>
 				<tr>
@@ -594,7 +557,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{#each activities as activity (activity.id)}
+				{#each renderer.visible as activity (activity.id)}
 					{@const config = statusConfig[activity.status] || statusConfig.no_results}
 					{@const StatusIcon = config.icon}
 					{@const isExpanded = expandedRows.has(activity.id)}
@@ -818,4 +781,13 @@
 			</tbody>
 		</table>
 	</div>
+
+	<!-- Progressive render sentinel + server load-more -->
+	{#if renderer.hasMore || hasMore}
+		<div bind:this={renderer.sentinel} class="flex justify-center py-4">
+			{#if isLoadingMore}
+				<Loader2 class="h-5 w-5 animate-spin text-base-content/40" />
+			{/if}
+		</div>
+	{/if}
 {/if}

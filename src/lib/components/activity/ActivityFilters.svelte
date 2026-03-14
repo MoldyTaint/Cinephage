@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import type { Snippet } from 'svelte';
 	import type { ActivityFilters, FilterOptions } from '$lib/types/activity';
 	import {
@@ -53,6 +54,58 @@
 			filters.endDate ||
 			filters.search
 	);
+
+	// ── Debounced text inputs ────────────────────────────────────────────
+	// Search and releaseGroup are text inputs that fire on every keystroke.
+	// Debounce them so the expensive goto() + server re-fetch only fires
+	// after the user stops typing for 300ms.
+	const DEBOUNCE_MS = 300;
+	let searchValue = $state('');
+	let releaseGroupValue = $state('');
+	let searchTimer: ReturnType<typeof setTimeout> | undefined;
+	let releaseGroupTimer: ReturnType<typeof setTimeout> | undefined;
+
+	// Track the last external filter value so we only reset local state
+	// when the parent actually changes the filter (tab switch, clear, etc.),
+	// not when our own debounced callback round-trips through props.
+	let lastExternalSearch = $state('');
+	let lastExternalReleaseGroup = $state('');
+
+	$effect(() => {
+		const incoming = filters.search || '';
+		if (incoming !== lastExternalSearch) {
+			lastExternalSearch = incoming;
+			searchValue = incoming;
+		}
+	});
+	$effect(() => {
+		const incoming = filters.releaseGroup || '';
+		if (incoming !== lastExternalReleaseGroup) {
+			lastExternalReleaseGroup = incoming;
+			releaseGroupValue = incoming;
+		}
+	});
+
+	function onSearchInput(value: string) {
+		searchValue = value;
+		clearTimeout(searchTimer);
+		searchTimer = setTimeout(() => {
+			onFiltersChange({ ...filters, search: value || undefined });
+		}, DEBOUNCE_MS);
+	}
+
+	function onReleaseGroupInput(value: string) {
+		releaseGroupValue = value;
+		clearTimeout(releaseGroupTimer);
+		releaseGroupTimer = setTimeout(() => {
+			onFiltersChange({ ...filters, releaseGroup: value || undefined });
+		}, DEBOUNCE_MS);
+	}
+
+	onDestroy(() => {
+		clearTimeout(searchTimer);
+		clearTimeout(releaseGroupTimer);
+	});
 
 	// Quick date presets
 	const datePresets = [
@@ -184,8 +237,8 @@
 					type="text"
 					placeholder="Search media, release, group..."
 					class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
-					value={filters.search || ''}
-					oninput={(e) => updateFilter('search', e.currentTarget.value || undefined)}
+					value={searchValue}
+					oninput={(e) => onSearchInput(e.currentTarget.value)}
 				/>
 			</div>
 		</div>
@@ -282,7 +335,7 @@
 					onchange={(e) => updateFilter('indexer', e.currentTarget.value || undefined)}
 				>
 					<option value="">All Indexers</option>
-					{#each filterOptions.indexers as indexer (indexer.name)}
+					{#each filterOptions.indexers as indexer (indexer.id)}
 						<option value={indexer.name}>{indexer.name}</option>
 					{/each}
 				</select>
@@ -334,8 +387,8 @@
 					type="text"
 					placeholder="Filter by group..."
 					class="input-bordered input input-sm w-full"
-					value={filters.releaseGroup || ''}
-					oninput={(e) => updateFilter('releaseGroup', e.currentTarget.value || undefined)}
+					value={releaseGroupValue}
+					oninput={(e) => onReleaseGroupInput(e.currentTarget.value)}
 				/>
 			</div>
 

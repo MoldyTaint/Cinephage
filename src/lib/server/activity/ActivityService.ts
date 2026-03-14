@@ -6,11 +6,10 @@ import {
 	movies,
 	series,
 	episodes,
-	activityDetails,
-	movieFiles,
 	settings
 } from '$lib/server/db/schema';
-import { desc, inArray, eq, lt } from 'drizzle-orm';
+import { and, desc, gte, inArray, eq, lte, lt, sql, count } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
 import { extractReleaseGroup } from '$lib/server/indexers/parser/patterns/releaseGroup';
 import { parseRelease } from '$lib/server/indexers/parser/ReleaseParser';
 import {
@@ -20,10 +19,11 @@ import {
 	type ActivityStatus,
 	type ActivityFilters,
 	type ActivitySortOptions,
-	type ActivityDetails,
-	type ActivityScope
+	type ActivityScope,
+	type ActivitySummary
 } from '$lib/types/activity';
 import type { DownloadQueueRecord, DownloadHistoryRecord, MonitoringHistoryRecord } from './types';
+import { mapQueueStatus, projectQueueActivity } from './projectors';
 
 interface MediaInfo {
 	id: string;
@@ -53,20 +53,22 @@ interface PaginationOptions {
 	offset: number;
 }
 
+interface ActiveQueueIndex {
+	byDownloadId: Map<string, DownloadQueueRecord>;
+	byNormalizedTitle: Map<string, DownloadQueueRecord>;
+	byMovieId: Set<string>;
+	bySeriesId: Set<string>;
+	byAddedAt: Map<string, DownloadQueueRecord[]>;
+	titleEntries: { key: string; item: DownloadQueueRecord }[];
+	hasAnyWithoutMediaLink: boolean;
+	items: DownloadQueueRecord[];
+}
+
 interface ActivityQueryResult {
 	activities: UnifiedActivity[];
 	total: number;
 	hasMore: boolean;
-}
-
-interface ActiveActivityStats {
-	totalCount: number;
-	downloadingCount: number;
-	seedingCount: number;
-	pausedCount: number;
-	failedCount: number;
-	totalDownloadSpeed: number;
-	totalUploadSpeed: number;
+	summary: ActivitySummary | null;
 }
 
 const ACTIVITY_RETENTION_SETTINGS_KEY = 'activity_history_retention_days';
@@ -106,7 +108,11 @@ export class ActivityService {
 	}
 
 	/**
-	 * Get unified activities with filtering and pagination
+	 * Get unified activities with filtering and pagination.
+	 *
+	 * Filters are pushed down to SQL WHERE clauses where possible so the
+	 * database does the heavy lifting rather than fetching everything into
+	 * memory and filtering afterwards.
 	 */
 	async getActivities(
 		filters: ActivityFilters = {},
@@ -114,121 +120,152 @@ export class ActivityService {
 		pagination: PaginationOptions = { limit: 50, offset: 0 },
 		scope: ActivityScope = 'all'
 	): Promise<ActivityQueryResult> {
-		// Keep a consistent fetch window so total counts do not change unexpectedly
-		// between equivalent views (e.g. no filter vs date presets).
-		const historyFetchLimit = 200;
-		const monitoringFetchLimit = 100;
+		const needsActive = scope === 'all' || scope === 'active';
+		const needsHistory = scope === 'all' || scope === 'history';
+		const summaryFilters = this.withoutStatusFilter(filters);
 
-		// Fetch data from all three sources
-		const [activeDownloads, historyItems, monitoringItems, failedQueueItems] = await Promise.all([
-			this.fetchActiveDownloads(),
-			this.fetchHistoryItems(historyFetchLimit),
-			this.fetchMonitoringItems(filters.includeNoResults, monitoringFetchLimit),
-			this.fetchFailedQueueItems()
+		// Check if any JS-only filters are active (search, resolution,
+		// releaseGroup, isUpgrade).  When they are, we cannot compute an
+		// accurate total via SQL COUNT alone and must rely on the
+		// post-transform filtered length instead.
+		const hasJsOnlyFilters =
+			!!filters.search ||
+			!!filters.resolution ||
+			!!filters.releaseGroup ||
+			filters.isUpgrade !== undefined;
+
+		// Fetch data + SQL-level counts in parallel.
+		// The counts use the same WHERE clauses as the data queries but skip
+		// the LIMIT cap, giving an accurate total even when the result set is
+		// larger than the fetch limit.
+		const [
+			activeDownloads,
+			historyItems,
+			monitoringItems,
+			failedQueueItems,
+			historyCount,
+			monitoringCount
+		] = await Promise.all([
+			needsActive
+				? this.fetchActiveDownloads(summaryFilters)
+				: Promise.resolve([] as DownloadQueueRecord[]),
+			needsHistory
+				? this.fetchHistoryItems(filters)
+				: Promise.resolve([] as DownloadHistoryRecord[]),
+			needsHistory
+				? this.fetchMonitoringItems(filters.includeNoResults, filters)
+				: Promise.resolve([] as MonitoringHistoryRecord[]),
+			needsActive
+				? this.fetchFailedQueueItems()
+				: Promise.resolve(
+						[] as Pick<DownloadQueueRecord, 'id' | 'downloadId' | 'title' | 'addedAt' | 'status'>[]
+					),
+			needsHistory && !hasJsOnlyFilters ? this.countHistoryItems(filters) : Promise.resolve(0),
+			needsHistory && !hasJsOnlyFilters
+				? this.countMonitoringItems(filters.includeNoResults, filters)
+				: Promise.resolve(0)
 		]);
 
 		// Batch fetch all media info
 		const mediaMaps = await this.fetchMediaMaps(activeDownloads, historyItems, monitoringItems);
 
 		// Fetch linked monitoring history for queue items
-		const monitoringByQueueId = await this.fetchMonitoringForQueue(
-			activeDownloads.map((d) => d.id)
-		);
+		const monitoringByQueueId = needsActive
+			? await this.fetchMonitoringForQueue(activeDownloads.map((d) => d.id))
+			: new Map<string, MonitoringHistoryRecord[]>();
 
 		const failedQueueIndex = this.buildFailedQueueIndex(failedQueueItems);
 
-		// Transform all sources to activities
+		const queueActivities = this.transformQueueItems(
+			activeDownloads,
+			mediaMaps,
+			monitoringByQueueId
+		);
+		const historyActivities = this.transformHistoryItems(
+			historyItems,
+			mediaMaps,
+			activeDownloads,
+			failedQueueIndex
+		);
+		const monitoringActivities = this.transformMonitoringItems(monitoringItems, mediaMaps);
 		const activities: UnifiedActivity[] = [
-			...this.transformQueueItems(activeDownloads, mediaMaps, monitoringByQueueId),
-			...this.transformHistoryItems(historyItems, mediaMaps, activeDownloads, failedQueueIndex),
-			...this.transformMonitoringItems(monitoringItems, mediaMaps)
+			...queueActivities,
+			...historyActivities,
+			...monitoringActivities
 		];
 
-		// Sort by time
-		this.sortActivities(activities, sort);
-
-		// Apply filters
-		let filtered = this.applyFilters(activities, filters, scope);
+		let filtered = this.applyRequestedStatusFilter(
+			this.applyFilters(activities, filters, scope),
+			filters
+		);
 		if (scope === 'active') {
 			filtered = this.dedupeActiveActivities(filtered);
-			this.sortActivities(filtered, sort);
+		}
+		this.sortActivities(filtered, sort);
+
+		let activeFilteredCount = 0;
+		let summary: ActivitySummary | null = null;
+		if (needsActive) {
+			let activeUniverse = this.applyFilters(activities, summaryFilters, 'active');
+			activeUniverse = this.dedupeActiveActivities(activeUniverse);
+			activeFilteredCount = this.applyRequestedStatusFilter(activeUniverse, filters).length;
+
+			if (scope === 'active') {
+				summary = this.buildActivitySummary(activeUniverse);
+			}
 		}
 
-		// Apply pagination
-		const total = filtered.length;
+		const total =
+			scope === 'active'
+				? activeFilteredCount
+				: scope === 'history'
+					? hasJsOnlyFilters
+						? filtered.length
+						: historyCount + monitoringCount
+					: hasJsOnlyFilters
+						? filtered.length
+						: activeFilteredCount + historyCount + monitoringCount;
+
 		const paginated = filtered.slice(pagination.offset, pagination.offset + pagination.limit);
 
 		return {
 			activities: paginated,
 			total,
-			hasMore: pagination.offset + paginated.length < total
+			hasMore: pagination.offset + paginated.length < total,
+			summary
 		};
 	}
 
 	/**
-	 * Get active-tab card stats based on unified activity scope (not raw client queue stats).
+	 * Get active-tab card stats using lightweight COUNT/SUM queries.
+	 *
+	 * Previous implementation ran the full 8-query pipeline (fetch all sources,
+	 * transform, filter, dedupe) just to return 7 numbers. This replaces it with
+	 * two simple SQL queries against the download_queue table.
 	 */
-	async getActiveStats(): Promise<ActiveActivityStats> {
-		const historyFetchLimit = 200;
-		const monitoringFetchLimit = 100;
-
-		const [activeDownloads, historyItems, monitoringItems, failedQueueItems] = await Promise.all([
-			this.fetchActiveDownloads(),
-			this.fetchHistoryItems(historyFetchLimit),
-			this.fetchMonitoringItems(undefined, monitoringFetchLimit),
-			this.fetchFailedQueueItems()
-		]);
-
-		const mediaMaps = await this.fetchMediaMaps(activeDownloads, historyItems, monitoringItems);
-		const monitoringByQueueId = await this.fetchMonitoringForQueue(
-			activeDownloads.map((download) => download.id)
-		);
-		const failedQueueIndex = this.buildFailedQueueIndex(failedQueueItems);
-
-		const activities: UnifiedActivity[] = [
-			...this.transformQueueItems(activeDownloads, mediaMaps, monitoringByQueueId),
-			...this.transformHistoryItems(historyItems, mediaMaps, activeDownloads, failedQueueIndex),
-			...this.transformMonitoringItems(monitoringItems, mediaMaps)
-		];
-
-		const activeActivities = this.dedupeActiveActivities(
-			activities.filter((activity) => isActiveActivity(activity))
-		);
-		const stats: ActiveActivityStats = {
-			totalCount: activeActivities.length,
-			downloadingCount: 0,
-			seedingCount: 0,
-			pausedCount: 0,
-			failedCount: 0,
-			totalDownloadSpeed: 0,
-			totalUploadSpeed: 0
-		};
-
-		for (const activity of activeActivities) {
-			switch (activity.status) {
-				case 'seeding':
-					stats.seedingCount += 1;
-					break;
-				case 'paused':
-					stats.pausedCount += 1;
-					break;
-				case 'failed':
-					stats.failedCount += 1;
-					break;
-				default:
-					stats.downloadingCount += 1;
-					break;
-			}
-		}
-
-		// Collate speed from app-tracked active queue rows only (not global client totals).
-		for (const download of activeDownloads) {
-			if (download.status === 'paused') continue;
-			stats.totalDownloadSpeed += download.downloadSpeed || 0;
-			stats.totalUploadSpeed += download.uploadSpeed || 0;
-		}
-
-		return stats;
+	/**
+	 * Lightweight check: how many active queue items exist?
+	 * Used by the page load to decide which tab to show without running the full pipeline.
+	 */
+	async getActiveCount(): Promise<number> {
+		const result = await db
+			.select({ count: count() })
+			.from(downloadQueue)
+			.where(
+				inArray(downloadQueue.status, [
+					'downloading',
+					'queued',
+					'paused',
+					'stalled',
+					'seeding',
+					'completed',
+					'postprocessing',
+					'importing',
+					'failed'
+				])
+			)
+			.get();
+		return result?.count ?? 0;
 	}
 
 	async getRetentionDays(): Promise<number> {
@@ -404,114 +441,6 @@ export class ActivityService {
 	}
 
 	/**
-	 * Get activity details by activity ID
-	 */
-	async getActivityDetails(activityId: string): Promise<ActivityDetails | null> {
-		const details = await db
-			.select()
-			.from(activityDetails)
-			.where(eq(activityDetails.activityId, activityId))
-			.get();
-
-		if (!details) return null;
-
-		// Fetch replaced file info if available
-		let replacedFileInfo = null;
-		if (details.replacedMovieFileId) {
-			const file = await db
-				.select()
-				.from(movieFiles)
-				.where(eq(movieFiles.id, details.replacedMovieFileId))
-				.get();
-			if (file) {
-				replacedFileInfo = {
-					id: file.id,
-					path: file.relativePath,
-					size: file.size,
-					quality: file.quality,
-					releaseGroup: file.releaseGroup
-				};
-			}
-		}
-
-		return {
-			id: details.id,
-			activityId: details.activityId,
-			scoreBreakdown: details.scoreBreakdown ?? undefined,
-			replacedFileInfo: replacedFileInfo ?? undefined,
-			replacedFilePath: details.replacedFilePath ?? undefined,
-			replacedFileQuality: details.replacedFileQuality ?? undefined,
-			replacedFileScore: details.replacedFileScore ?? undefined,
-			replacedFileSize: details.replacedFileSize ?? undefined,
-			searchResults: details.searchResults ?? undefined,
-			selectionReason: details.selectionReason ?? undefined,
-			importLog: details.importLog ?? undefined,
-			filesImported: details.filesImported ?? undefined,
-			filesDeleted: details.filesDeleted ?? undefined,
-			downloadClientName: details.downloadClientName ?? undefined,
-			downloadClientType: details.downloadClientType ?? undefined,
-			downloadId: details.downloadId ?? undefined,
-			infoHash: details.infoHash ?? undefined,
-			releaseInfo: details.releaseInfo ?? undefined,
-			createdAt: details.createdAt ?? new Date().toISOString(),
-			updatedAt: details.updatedAt ?? new Date().toISOString()
-		};
-	}
-
-	/**
-	 * Create activity details record
-	 */
-	async createActivityDetails(activityId: string, data: Partial<ActivityDetails>): Promise<void> {
-		await db.insert(activityDetails).values({
-			activityId,
-			scoreBreakdown: data.scoreBreakdown,
-			replacedMovieFileId: data.replacedFileInfo?.id,
-			replacedFilePath: data.replacedFilePath,
-			replacedFileQuality: data.replacedFileQuality,
-			replacedFileScore: data.replacedFileScore,
-			replacedFileSize: data.replacedFileSize,
-			searchResults: data.searchResults,
-			selectionReason: data.selectionReason,
-			importLog: data.importLog,
-			filesImported: data.filesImported,
-			filesDeleted: data.filesDeleted,
-			downloadClientName: data.downloadClientName,
-			downloadClientType: data.downloadClientType,
-			downloadId: data.downloadId,
-			infoHash: data.infoHash,
-			releaseInfo: data.releaseInfo
-		});
-	}
-
-	/**
-	 * Update activity details
-	 */
-	async updateActivityDetails(activityId: string, data: Partial<ActivityDetails>): Promise<void> {
-		await db
-			.update(activityDetails)
-			.set({
-				scoreBreakdown: data.scoreBreakdown,
-				replacedMovieFileId: data.replacedFileInfo?.id,
-				replacedFilePath: data.replacedFilePath,
-				replacedFileQuality: data.replacedFileQuality,
-				replacedFileScore: data.replacedFileScore,
-				replacedFileSize: data.replacedFileSize,
-				searchResults: data.searchResults,
-				selectionReason: data.selectionReason,
-				importLog: data.importLog,
-				filesImported: data.filesImported,
-				filesDeleted: data.filesDeleted,
-				downloadClientName: data.downloadClientName,
-				downloadClientType: data.downloadClientType,
-				downloadId: data.downloadId,
-				infoHash: data.infoHash,
-				releaseInfo: data.releaseInfo,
-				updatedAt: new Date().toISOString()
-			})
-			.where(eq(activityDetails.activityId, activityId));
-	}
-
-	/**
 	 * Transform a single queue item to unified activity
 	 */
 	transformQueueItem(
@@ -519,39 +448,9 @@ export class ActivityService {
 		mediaMaps: MediaMaps,
 		linkedMonitoring: MonitoringHistoryRecord[] = []
 	): UnifiedActivity {
-		const timeline = this.buildQueueTimeline(download, linkedMonitoring);
 		const mediaInfo = this.resolveMediaInfo(download, mediaMaps);
-		const status = this.mapQueueStatus(download.status);
 
-		return {
-			id: `queue-${download.id}`,
-			mediaType: mediaInfo.mediaType,
-			mediaId: mediaInfo.mediaId,
-			mediaTitle: mediaInfo.mediaTitle,
-			mediaYear: mediaInfo.mediaYear,
-			seriesId: mediaInfo.seriesId,
-			seriesTitle: mediaInfo.seriesTitle,
-			seasonNumber: mediaInfo.seasonNumber,
-			episodeNumber: mediaInfo.episodeNumber,
-			episodeIds: download.episodeIds ?? undefined,
-			releaseTitle: download.title,
-			quality: download.quality ?? null,
-			releaseGroup: download.releaseGroup ?? extractReleaseGroup(download.title)?.group ?? null,
-			size: download.size ?? null,
-			indexerId: download.indexerId ?? null,
-			indexerName: download.indexerName ?? null,
-			protocol: (download.protocol as 'torrent' | 'usenet' | 'streaming') ?? null,
-			downloadClientId: download.downloadClientId ?? null,
-			status,
-			statusReason: download.errorMessage ?? undefined,
-			downloadProgress: Math.round((Number(download.progress) || 0) * 100),
-			isUpgrade: download.isUpgrade ?? false,
-			timeline,
-			startedAt: download.addedAt || new Date().toISOString(),
-			completedAt: download.completedAt ?? null,
-			lastAttemptAt: download.lastAttemptAt ?? null,
-			queueItemId: download.id
-		};
+		return projectQueueActivity(download, mediaInfo, linkedMonitoring);
 	}
 
 	/**
@@ -565,7 +464,8 @@ export class ActivityService {
 	): UnifiedActivity | null {
 		// Skip if this release is already represented by an active queue row.
 		// This avoids duplicate active entries when a failed history record is retried.
-		if (this.isHistoryRepresentedByActiveQueue(history, activeDownloads)) {
+		const index = this.buildActiveQueueIndex(activeDownloads);
+		if (this.isHistoryRepresentedByActiveQueueIndexed(history, index)) {
 			return null;
 		}
 
@@ -673,59 +573,380 @@ export class ActivityService {
 
 	// Private helper methods
 
-	private async fetchActiveDownloads(): Promise<DownloadQueueRecord[]> {
+	private async fetchActiveDownloads(
+		filters: ActivityFilters = {}
+	): Promise<DownloadQueueRecord[]> {
+		const baseStatuses = [
+			'downloading',
+			'queued',
+			'paused',
+			'stalled',
+			'seeding',
+			'completed',
+			'postprocessing',
+			'importing',
+			'failed'
+		];
+
+		// Apply status filter at SQL level when possible
+		let statusFilter: string[] = baseStatuses;
+		if (filters.status && filters.status !== 'all') {
+			const mapped = this.mapFilterStatusToQueueStatuses(filters.status);
+			if (mapped) {
+				statusFilter = mapped.filter((s) => baseStatuses.includes(s));
+				// If no overlap (e.g. filtering for 'success' on active tab), return empty
+				if (statusFilter.length === 0) return [];
+			}
+		}
+
+		const conditions: SQL[] = [inArray(downloadQueue.status, statusFilter)];
+
+		// Protocol filter
+		if (filters.protocol && filters.protocol !== 'all') {
+			conditions.push(eq(downloadQueue.protocol, filters.protocol));
+		}
+
+		// Download client filter
+		if (filters.downloadClientId) {
+			conditions.push(eq(downloadQueue.downloadClientId, filters.downloadClientId));
+		}
+
+		// Indexer filter (by name)
+		if (filters.indexer) {
+			conditions.push(sql`LOWER(${downloadQueue.indexerName}) = LOWER(${filters.indexer})`);
+		}
+
+		// Media type filter
+		if (filters.mediaType === 'movie') {
+			conditions.push(sql`${downloadQueue.movieId} IS NOT NULL`);
+		} else if (filters.mediaType === 'tv') {
+			conditions.push(sql`${downloadQueue.seriesId} IS NOT NULL`);
+		}
+
+		// Date filters (use addedAt for queue items)
+		if (filters.startDate) {
+			conditions.push(gte(downloadQueue.addedAt, filters.startDate));
+		}
+		if (filters.endDate) {
+			const endDateEnd = filters.endDate + 'T23:59:59.999Z';
+			conditions.push(lte(downloadQueue.addedAt, endDateEnd));
+		}
+
 		return db
-			.select()
+			.select({
+				id: downloadQueue.id,
+				downloadClientId: downloadQueue.downloadClientId,
+				downloadId: downloadQueue.downloadId,
+				title: downloadQueue.title,
+				indexerId: downloadQueue.indexerId,
+				indexerName: downloadQueue.indexerName,
+				protocol: downloadQueue.protocol,
+				movieId: downloadQueue.movieId,
+				seriesId: downloadQueue.seriesId,
+				episodeIds: downloadQueue.episodeIds,
+				seasonNumber: downloadQueue.seasonNumber,
+				status: downloadQueue.status,
+				progress: downloadQueue.progress,
+				size: downloadQueue.size,
+				quality: downloadQueue.quality,
+				releaseGroup: downloadQueue.releaseGroup,
+				addedAt: downloadQueue.addedAt,
+				startedAt: downloadQueue.startedAt,
+				completedAt: downloadQueue.completedAt,
+				errorMessage: downloadQueue.errorMessage,
+				lastAttemptAt: downloadQueue.lastAttemptAt,
+				isUpgrade: downloadQueue.isUpgrade
+			})
 			.from(downloadQueue)
-			.where(
-				inArray(downloadQueue.status, [
-					'downloading',
-					'queued',
-					'paused',
-					'stalled',
-					'seeding',
-					'completed',
-					'postprocessing',
-					'importing'
-				])
-			)
+			.where(and(...conditions))
 			.orderBy(desc(downloadQueue.addedAt))
+			.all() as DownloadQueueRecord[];
+	}
+
+	private async fetchFailedQueueItems(): Promise<
+		Pick<DownloadQueueRecord, 'id' | 'downloadId' | 'title' | 'addedAt' | 'status'>[]
+	> {
+		return db
+			.select({
+				id: downloadQueue.id,
+				downloadId: downloadQueue.downloadId,
+				title: downloadQueue.title,
+				addedAt: downloadQueue.addedAt,
+				status: downloadQueue.status
+			})
+			.from(downloadQueue)
+			.where(eq(downloadQueue.status, 'failed'))
 			.all();
 	}
 
-	private async fetchFailedQueueItems(): Promise<DownloadQueueRecord[]> {
-		return db.select().from(downloadQueue).where(eq(downloadQueue.status, 'failed')).all();
-	}
+	private async fetchHistoryItems(filters: ActivityFilters = {}): Promise<DownloadHistoryRecord[]> {
+		const conditions: SQL[] = [];
 
-	private async fetchHistoryItems(fetchLimit = 200): Promise<DownloadHistoryRecord[]> {
+		// Status filter at SQL level
+		if (filters.status && filters.status !== 'all') {
+			const mapped = this.mapFilterStatusToHistoryStatuses(filters.status);
+			if (mapped) {
+				if (mapped.length === 0) return [];
+				conditions.push(inArray(downloadHistory.status, mapped));
+			}
+		}
+
+		// Protocol filter
+		if (filters.protocol && filters.protocol !== 'all') {
+			conditions.push(eq(downloadHistory.protocol, filters.protocol));
+		}
+
+		// Download client filter
+		if (filters.downloadClientId) {
+			conditions.push(eq(downloadHistory.downloadClientId, filters.downloadClientId));
+		}
+
+		// Indexer filter (by name)
+		if (filters.indexer) {
+			conditions.push(sql`LOWER(${downloadHistory.indexerName}) = LOWER(${filters.indexer})`);
+		}
+
+		// Media type filter
+		if (filters.mediaType === 'movie') {
+			conditions.push(sql`${downloadHistory.movieId} IS NOT NULL`);
+		} else if (filters.mediaType === 'tv') {
+			conditions.push(sql`${downloadHistory.seriesId} IS NOT NULL`);
+		}
+
+		// Date filters
+		if (filters.startDate) {
+			conditions.push(gte(downloadHistory.createdAt, filters.startDate));
+		}
+		if (filters.endDate) {
+			const endDateEnd = filters.endDate + 'T23:59:59.999Z';
+			conditions.push(lte(downloadHistory.createdAt, endDateEnd));
+		}
+
+		// Fetch up to 500 rows (raised from 200) -- SQL filters now keep this manageable
+		const fetchLimit = 500;
+
+		const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
 		return db
-			.select()
+			.select({
+				id: downloadHistory.id,
+				downloadClientId: downloadHistory.downloadClientId,
+				downloadClientName: downloadHistory.downloadClientName,
+				downloadId: downloadHistory.downloadId,
+				title: downloadHistory.title,
+				indexerId: downloadHistory.indexerId,
+				indexerName: downloadHistory.indexerName,
+				protocol: downloadHistory.protocol,
+				movieId: downloadHistory.movieId,
+				seriesId: downloadHistory.seriesId,
+				episodeIds: downloadHistory.episodeIds,
+				seasonNumber: downloadHistory.seasonNumber,
+				status: downloadHistory.status,
+				statusReason: downloadHistory.statusReason,
+				size: downloadHistory.size,
+				quality: downloadHistory.quality,
+				releaseGroup: downloadHistory.releaseGroup,
+				importedPath: downloadHistory.importedPath,
+				grabbedAt: downloadHistory.grabbedAt,
+				completedAt: downloadHistory.completedAt,
+				importedAt: downloadHistory.importedAt,
+				createdAt: downloadHistory.createdAt
+			})
 			.from(downloadHistory)
+			.where(whereClause)
 			.orderBy(desc(downloadHistory.createdAt))
 			.limit(fetchLimit)
-			.all();
+			.all() as DownloadHistoryRecord[];
+	}
+
+	/**
+	 * Count history items matching SQL-level filters (no LIMIT cap).
+	 * Uses the same WHERE conditions as fetchHistoryItems so the total is
+	 * accurate even when the data fetch is capped.
+	 */
+	private async countHistoryItems(filters: ActivityFilters = {}): Promise<number> {
+		const conditions: SQL[] = [];
+
+		if (filters.status && filters.status !== 'all') {
+			const mapped = this.mapFilterStatusToHistoryStatuses(filters.status);
+			if (mapped) {
+				if (mapped.length === 0) return 0;
+				conditions.push(inArray(downloadHistory.status, mapped));
+			}
+		}
+		if (filters.protocol && filters.protocol !== 'all') {
+			conditions.push(eq(downloadHistory.protocol, filters.protocol));
+		}
+		if (filters.downloadClientId) {
+			conditions.push(eq(downloadHistory.downloadClientId, filters.downloadClientId));
+		}
+		if (filters.indexer) {
+			conditions.push(sql`LOWER(${downloadHistory.indexerName}) = LOWER(${filters.indexer})`);
+		}
+		if (filters.mediaType === 'movie') {
+			conditions.push(sql`${downloadHistory.movieId} IS NOT NULL`);
+		} else if (filters.mediaType === 'tv') {
+			conditions.push(sql`${downloadHistory.seriesId} IS NOT NULL`);
+		}
+		if (filters.startDate) {
+			conditions.push(gte(downloadHistory.createdAt, filters.startDate));
+		}
+		if (filters.endDate) {
+			const endDateEnd = filters.endDate + 'T23:59:59.999Z';
+			conditions.push(lte(downloadHistory.createdAt, endDateEnd));
+		}
+
+		const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+		const result = await db
+			.select({ count: count() })
+			.from(downloadHistory)
+			.where(whereClause)
+			.get();
+		return result?.count ?? 0;
 	}
 
 	private async fetchMonitoringItems(
 		includeNoResults?: boolean,
-		fetchLimit = 100
+		filters: ActivityFilters = {}
 	): Promise<MonitoringHistoryRecord[]> {
 		// Build status filter based on includeNoResults flag
 		// By default (undefined/false), exclude 'no_results' to reduce noise
-		const statuses = includeNoResults ? ['no_results', 'error', 'skipped'] : ['error', 'skipped'];
+		const baseStatuses = includeNoResults
+			? ['no_results', 'error', 'skipped']
+			: ['error', 'skipped'];
 
-		const items = await db
-			.select()
+		// If user is filtering by a specific status, narrow monitoring statuses accordingly
+		let monitoringStatuses = baseStatuses;
+		if (filters.status && filters.status !== 'all') {
+			if (filters.status === 'failed') {
+				monitoringStatuses = baseStatuses.filter((s) => s === 'error');
+			} else if (filters.status === 'no_results') {
+				monitoringStatuses = baseStatuses.filter((s) => s === 'no_results');
+				if (monitoringStatuses.length === 0) return [];
+			} else if (
+				filters.status === 'success' ||
+				filters.status === 'downloading' ||
+				filters.status === 'seeding' ||
+				filters.status === 'paused' ||
+				filters.status === 'removed' ||
+				filters.status === 'rejected'
+			) {
+				// Monitoring items never have these statuses
+				return [];
+			}
+		}
+
+		const conditions: SQL[] = [inArray(monitoringHistory.status, monitoringStatuses)];
+
+		// Exclude subtitle search noise in SQL (previously done in JS post-query)
+		conditions.push(
+			sql`NOT (${monitoringHistory.taskType} = 'missingSubtitles' AND ${monitoringHistory.status} = 'no_results')`
+		);
+
+		// Media type filter
+		if (filters.mediaType === 'movie') {
+			conditions.push(sql`${monitoringHistory.movieId} IS NOT NULL`);
+		} else if (filters.mediaType === 'tv') {
+			conditions.push(sql`${monitoringHistory.seriesId} IS NOT NULL`);
+		}
+
+		// Date filters
+		if (filters.startDate) {
+			conditions.push(gte(monitoringHistory.executedAt, filters.startDate));
+		}
+		if (filters.endDate) {
+			const endDateEnd = filters.endDate + 'T23:59:59.999Z';
+			conditions.push(lte(monitoringHistory.executedAt, endDateEnd));
+		}
+
+		// Fetch up to 300 rows (raised from 100) -- SQL filters keep this manageable
+		const fetchLimit = 300;
+
+		const items = (await db
+			.select({
+				id: monitoringHistory.id,
+				taskType: monitoringHistory.taskType,
+				movieId: monitoringHistory.movieId,
+				seriesId: monitoringHistory.seriesId,
+				seasonNumber: monitoringHistory.seasonNumber,
+				episodeId: monitoringHistory.episodeId,
+				status: monitoringHistory.status,
+				releasesFound: monitoringHistory.releasesFound,
+				releaseGrabbed: monitoringHistory.releaseGrabbed,
+				queueItemId: monitoringHistory.queueItemId,
+				isUpgrade: monitoringHistory.isUpgrade,
+				oldScore: monitoringHistory.oldScore,
+				newScore: monitoringHistory.newScore,
+				executedAt: monitoringHistory.executedAt,
+				errorMessage: monitoringHistory.errorMessage
+			})
 			.from(monitoringHistory)
-			.where(inArray(monitoringHistory.status, statuses))
+			.where(and(...conditions))
 			.orderBy(desc(monitoringHistory.executedAt))
 			.limit(fetchLimit)
-			.all();
+			.all()) as MonitoringHistoryRecord[];
 
-		// Filter out subtitle search noise
-		return items.filter(
-			(item) => !(item.taskType === 'missingSubtitles' && item.status === 'no_results')
+		return items;
+	}
+
+	/**
+	 * Count monitoring items matching SQL-level filters (no LIMIT cap).
+	 * Mirrors the WHERE logic in fetchMonitoringItems, plus excludes
+	 * subtitle noise in SQL so the count is accurate.
+	 */
+	private async countMonitoringItems(
+		includeNoResults?: boolean,
+		filters: ActivityFilters = {}
+	): Promise<number> {
+		const baseStatuses = includeNoResults
+			? ['no_results', 'error', 'skipped']
+			: ['error', 'skipped'];
+
+		let monitoringStatuses = baseStatuses;
+		if (filters.status && filters.status !== 'all') {
+			if (filters.status === 'failed') {
+				monitoringStatuses = baseStatuses.filter((s) => s === 'error');
+			} else if (filters.status === 'no_results') {
+				monitoringStatuses = baseStatuses.filter((s) => s === 'no_results');
+				if (monitoringStatuses.length === 0) return 0;
+			} else if (
+				filters.status === 'success' ||
+				filters.status === 'downloading' ||
+				filters.status === 'seeding' ||
+				filters.status === 'paused' ||
+				filters.status === 'removed' ||
+				filters.status === 'rejected'
+			) {
+				return 0;
+			}
+		}
+
+		const conditions: SQL[] = [inArray(monitoringHistory.status, monitoringStatuses)];
+
+		// Exclude subtitle noise in SQL (matches the JS filter in fetchMonitoringItems)
+		conditions.push(
+			sql`NOT (${monitoringHistory.taskType} = 'missingSubtitles' AND ${monitoringHistory.status} = 'no_results')`
 		);
+
+		if (filters.mediaType === 'movie') {
+			conditions.push(sql`${monitoringHistory.movieId} IS NOT NULL`);
+		} else if (filters.mediaType === 'tv') {
+			conditions.push(sql`${monitoringHistory.seriesId} IS NOT NULL`);
+		}
+		if (filters.startDate) {
+			conditions.push(gte(monitoringHistory.executedAt, filters.startDate));
+		}
+		if (filters.endDate) {
+			const endDateEnd = filters.endDate + 'T23:59:59.999Z';
+			conditions.push(lte(monitoringHistory.executedAt, endDateEnd));
+		}
+
+		const result = await db
+			.select({ count: count() })
+			.from(monitoringHistory)
+			.where(and(...conditions))
+			.get();
+		return result?.count ?? 0;
 	}
 
 	private async fetchMediaMaps(
@@ -837,11 +1058,71 @@ export class ActivityService {
 		activeDownloads: DownloadQueueRecord[],
 		failedQueueIndex?: Map<string, string>
 	): UnifiedActivity[] {
+		// Build the active queue index once for all history items (O(n) build, O(1) lookups)
+		const activeIndex = this.buildActiveQueueIndex(activeDownloads);
+
 		return historyItems
 			.map((history) =>
-				this.transformHistoryItem(history, mediaMaps, activeDownloads, failedQueueIndex)
+				this.transformHistoryItemWithIndex(history, mediaMaps, activeIndex, failedQueueIndex)
 			)
 			.filter((activity): activity is UnifiedActivity => activity !== null);
+	}
+
+	/**
+	 * Internal transform using a pre-built active queue index for O(1) dedup lookups.
+	 */
+	private transformHistoryItemWithIndex(
+		history: DownloadHistoryRecord,
+		mediaMaps: MediaMaps,
+		activeIndex: ActiveQueueIndex,
+		failedQueueIndex?: Map<string, string>
+	): UnifiedActivity | null {
+		if (this.isHistoryRepresentedByActiveQueueIndexed(history, activeIndex)) {
+			return null;
+		}
+
+		const timeline = this.buildHistoryTimeline(history);
+		const mediaInfo = this.resolveMediaInfo(history, mediaMaps);
+		const queueItemId =
+			history.status === 'failed'
+				? this.findFailedQueueItemId(history, failedQueueIndex)
+				: undefined;
+
+		return {
+			id: `history-${history.id}`,
+			mediaType: mediaInfo.mediaType,
+			mediaId: mediaInfo.mediaId,
+			mediaTitle: mediaInfo.mediaTitle,
+			mediaYear: mediaInfo.mediaYear,
+			seriesId: mediaInfo.seriesId,
+			seriesTitle: mediaInfo.seriesTitle,
+			seasonNumber: mediaInfo.seasonNumber,
+			episodeNumber: mediaInfo.episodeNumber,
+			episodeIds: history.episodeIds ?? undefined,
+			releaseTitle: history.title,
+			quality: history.quality ?? null,
+			releaseGroup: history.releaseGroup ?? extractReleaseGroup(history.title)?.group ?? null,
+			size: history.size ?? null,
+			indexerId: history.indexerId ?? null,
+			indexerName: history.indexerName ?? null,
+			protocol: (history.protocol as 'torrent' | 'usenet' | 'streaming') ?? null,
+			downloadClientId: history.downloadClientId ?? null,
+			downloadClientName: history.downloadClientName ?? null,
+			status: history.status as ActivityStatus,
+			statusReason: history.statusReason ?? undefined,
+			isUpgrade: false,
+			timeline,
+			startedAt:
+				history.createdAt ||
+				history.importedAt ||
+				history.completedAt ||
+				history.grabbedAt ||
+				new Date().toISOString(),
+			completedAt: history.importedAt || history.completedAt || null,
+			queueItemId,
+			downloadHistoryId: history.id,
+			importedPath: history.importedPath ?? undefined
+		};
 	}
 
 	private transformMonitoringItems(
@@ -854,7 +1135,9 @@ export class ActivityService {
 			.filter((activity): activity is UnifiedActivity => activity !== null);
 	}
 
-	private buildFailedQueueIndex(queueItems: DownloadQueueRecord[]): Map<string, string> {
+	private buildFailedQueueIndex(
+		queueItems: Pick<DownloadQueueRecord, 'id' | 'downloadId' | 'title' | 'addedAt'>[]
+	): Map<string, string> {
 		const index = new Map<string, string>();
 
 		for (const item of queueItems) {
@@ -955,60 +1238,160 @@ export class ActivityService {
 		return false;
 	}
 
-	private isHistoryRepresentedByActiveQueue(
+	/**
+	 * Pre-built index for fast active queue lookups.
+	 * Replaces O(n*m) iteration with O(1) lookups for most match paths.
+	 */
+	private buildActiveQueueIndex(activeDownloads: DownloadQueueRecord[]): ActiveQueueIndex {
+		const byDownloadId = new Map<string, DownloadQueueRecord>();
+		const byNormalizedTitle = new Map<string, DownloadQueueRecord>();
+		const byMovieId = new Set<string>();
+		const bySeriesId = new Set<string>();
+		const byAddedAt = new Map<string, DownloadQueueRecord[]>();
+		const titleEntries: { key: string; item: DownloadQueueRecord }[] = [];
+		const hasAnyWithoutMediaLink = activeDownloads.some((d) => !d.movieId && !d.seriesId);
+
+		for (const item of activeDownloads) {
+			if (item.downloadId) {
+				byDownloadId.set(item.downloadId, item);
+			}
+			const titleKey = this.normalizeReleaseKey(item.title);
+			if (titleKey) {
+				byNormalizedTitle.set(titleKey, item);
+				titleEntries.push({ key: titleKey, item });
+			}
+			if (item.movieId) byMovieId.add(item.movieId);
+			if (item.seriesId) bySeriesId.add(item.seriesId);
+			if (item.addedAt) {
+				const existing = byAddedAt.get(item.addedAt) || [];
+				existing.push(item);
+				byAddedAt.set(item.addedAt, existing);
+			}
+		}
+
+		return {
+			byDownloadId,
+			byNormalizedTitle,
+			byMovieId,
+			bySeriesId,
+			byAddedAt,
+			titleEntries,
+			hasAnyWithoutMediaLink,
+			items: activeDownloads
+		};
+	}
+
+	private isHistoryRepresentedByActiveQueueIndexed(
 		history: DownloadHistoryRecord,
-		activeDownloads: DownloadQueueRecord[]
+		index: ActiveQueueIndex
 	): boolean {
-		if (activeDownloads.length === 0) return false;
+		if (index.items.length === 0) return false;
+
+		// Fast path 1: exact downloadId match
+		if (history.downloadId && index.byDownloadId.has(history.downloadId)) {
+			return true;
+		}
 
 		const historyTitleKey = this.normalizeReleaseKey(history.title);
+		const hasHistoryMediaLink = Boolean(history.movieId || history.seriesId);
 
-		for (const queueItem of activeDownloads) {
-			const queueTitleKey = this.normalizeReleaseKey(queueItem.title);
-			const sameDownloadId = Boolean(
-				history.downloadId && queueItem.downloadId && history.downloadId === queueItem.downloadId
-			);
-			const sameGrabbedAt = Boolean(
-				history.grabbedAt && queueItem.addedAt && history.grabbedAt === queueItem.addedAt
-			);
-			const sameTitle = Boolean(
-				historyTitleKey &&
-				queueTitleKey &&
-				(historyTitleKey === queueTitleKey ||
-					(historyTitleKey.length > 12 && queueTitleKey.includes(historyTitleKey)) ||
-					(queueTitleKey.length > 12 && historyTitleKey.includes(queueTitleKey)))
-			);
-			const sameMedia = this.isSameMediaTarget(history, queueItem);
-			const sameMovie = Boolean(
-				history.movieId && queueItem.movieId && history.movieId === queueItem.movieId
-			);
-			const sameSeries = Boolean(
-				history.seriesId && queueItem.seriesId && history.seriesId === queueItem.seriesId
-			);
-			const sameProtocol = Boolean(
-				history.protocol && queueItem.protocol && history.protocol === queueItem.protocol
-			);
-			const hasHistoryMediaLink = Boolean(history.movieId || history.seriesId);
-			const hasQueueMediaLink = Boolean(queueItem.movieId || queueItem.seriesId);
-			const protocolCompatible = !history.protocol || !queueItem.protocol || sameProtocol;
+		// Fast path 2: exact title match + (same media OR same grabbedAt OR no media link)
+		if (historyTitleKey) {
+			const queueByTitle = index.byNormalizedTitle.get(historyTitleKey);
+			if (queueByTitle) {
+				// sameTitle is true, check remaining conditions
+				const sameMovie = Boolean(
+					history.movieId && queueByTitle.movieId && history.movieId === queueByTitle.movieId
+				);
+				const sameSeries = Boolean(
+					history.seriesId && queueByTitle.seriesId && history.seriesId === queueByTitle.seriesId
+				);
+				const sameGrabbedAt = Boolean(
+					history.grabbedAt && queueByTitle.addedAt && history.grabbedAt === queueByTitle.addedAt
+				);
+				const hasQueueMediaLink = Boolean(queueByTitle.movieId || queueByTitle.seriesId);
+				const sameProtocol = Boolean(
+					history.protocol && queueByTitle.protocol && history.protocol === queueByTitle.protocol
+				);
+				const protocolCompatible = !history.protocol || !queueByTitle.protocol || sameProtocol;
 
-			// Download client identifiers are strong enough to treat the rows as the same activity.
-			if (sameDownloadId) {
-				return true;
+				if (sameMovie || sameSeries || sameGrabbedAt) return true;
+				if (this.isSameMediaTarget(history, queueByTitle)) return true;
+				if (protocolCompatible && (!hasHistoryMediaLink || !hasQueueMediaLink)) return true;
 			}
+		}
 
-			if (
-				(sameMedia && (sameTitle || sameGrabbedAt)) ||
-				(sameTitle && (sameSeries || sameMovie || sameGrabbedAt)) ||
-				(sameGrabbedAt && (sameSeries || sameMovie))
-			) {
-				return true;
+		// Fast path 3: same grabbedAt + same movie/series
+		if (history.grabbedAt) {
+			const queueItemsAtTime = index.byAddedAt.get(history.grabbedAt);
+			if (queueItemsAtTime) {
+				for (const queueItem of queueItemsAtTime) {
+					const sameMovie = Boolean(
+						history.movieId && queueItem.movieId && history.movieId === queueItem.movieId
+					);
+					const sameSeries = Boolean(
+						history.seriesId && queueItem.seriesId && history.seriesId === queueItem.seriesId
+					);
+					if (sameMovie || sameSeries) return true;
+					if (this.isSameMediaTarget(history, queueItem)) return true;
+				}
 			}
+		}
 
-			// Fallback: if the release title matches but one side lost media linkage context,
-			// still treat it as the same active item to avoid duplicate rows on retry.
-			if (sameTitle && protocolCompatible && (!hasHistoryMediaLink || !hasQueueMediaLink)) {
-				return true;
+		// Fast path 4: same media + same grabbedAt (check media exists in index)
+		if (history.movieId && index.byMovieId.has(history.movieId) && history.grabbedAt) {
+			const queueItemsAtTime = index.byAddedAt.get(history.grabbedAt);
+			if (queueItemsAtTime?.some((q) => q.movieId === history.movieId)) return true;
+		}
+		if (history.seriesId && index.bySeriesId.has(history.seriesId) && history.grabbedAt) {
+			const queueItemsAtTime = index.byAddedAt.get(history.grabbedAt);
+			if (queueItemsAtTime?.some((q) => q.seriesId === history.seriesId)) return true;
+		}
+
+		// Slow path: substring title matching (only when exact title didn't match)
+		// This handles cases where title normalization results in containment rather than equality
+		if (historyTitleKey && historyTitleKey.length > 12) {
+			for (const entry of index.titleEntries) {
+				if (entry.key === historyTitleKey) continue; // already checked exact match above
+				const isSubstring =
+					(entry.key.length > 12 && entry.key.includes(historyTitleKey)) ||
+					historyTitleKey.includes(entry.key);
+				if (!isSubstring) continue;
+
+				const queueItem = entry.item;
+				const sameMovie = Boolean(
+					history.movieId && queueItem.movieId && history.movieId === queueItem.movieId
+				);
+				const sameSeries = Boolean(
+					history.seriesId && queueItem.seriesId && history.seriesId === queueItem.seriesId
+				);
+				const sameGrabbedAt = Boolean(
+					history.grabbedAt && queueItem.addedAt && history.grabbedAt === queueItem.addedAt
+				);
+				const hasQueueMediaLink = Boolean(queueItem.movieId || queueItem.seriesId);
+				const sameProtocol = Boolean(
+					history.protocol && queueItem.protocol && history.protocol === queueItem.protocol
+				);
+				const protocolCompatible = !history.protocol || !queueItem.protocol || sameProtocol;
+
+				if (sameMovie || sameSeries || sameGrabbedAt) return true;
+				if (this.isSameMediaTarget(history, queueItem)) return true;
+				if (protocolCompatible && (!hasHistoryMediaLink || !hasQueueMediaLink)) return true;
+			}
+		}
+
+		// Fallback for short-titled items with no media link (rare case)
+		if (historyTitleKey && !hasHistoryMediaLink && index.hasAnyWithoutMediaLink) {
+			const queueByTitle = index.byNormalizedTitle.get(historyTitleKey);
+			if (queueByTitle) {
+				const hasQueueMediaLink = Boolean(queueByTitle.movieId || queueByTitle.seriesId);
+				if (!hasQueueMediaLink) {
+					const protocolCompatible =
+						!history.protocol ||
+						!queueByTitle.protocol ||
+						history.protocol === queueByTitle.protocol;
+					if (protocolCompatible) return true;
+				}
 			}
 		}
 
@@ -1083,52 +1466,6 @@ export class ActivityService {
 		return stableOrder
 			.map((key) => dedupedByKey.get(key))
 			.filter((activity): activity is UnifiedActivity => Boolean(activity));
-	}
-
-	private buildQueueTimeline(
-		download: DownloadQueueRecord,
-		linkedMonitoring: MonitoringHistoryRecord[]
-	): ActivityEvent[] {
-		const timeline: ActivityEvent[] = [];
-
-		// Add monitoring events
-		for (const m of linkedMonitoring) {
-			if (m.status === 'grabbed' && m.executedAt) {
-				timeline.push({
-					type: 'grabbed',
-					timestamp: m.executedAt,
-					details: m.releaseGrabbed || undefined
-				});
-			}
-			if (m.releasesFound && m.releasesFound > 0 && m.executedAt) {
-				timeline.push({
-					type: 'found',
-					timestamp: m.executedAt,
-					details: `${m.releasesFound} releases found`
-				});
-			}
-		}
-
-		// Add download events
-		if (download.addedAt) {
-			timeline.push({ type: 'grabbed', timestamp: download.addedAt });
-		}
-		if (download.startedAt) {
-			timeline.push({ type: 'downloading', timestamp: download.startedAt });
-		}
-
-		if (download.status === 'failed' && download.lastAttemptAt) {
-			timeline.push({
-				type: 'failed',
-				timestamp: download.lastAttemptAt,
-				details: download.errorMessage ?? undefined
-			});
-		}
-
-		// Sort by timestamp
-		timeline.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-		return timeline;
 	}
 
 	private buildHistoryTimeline(history: DownloadHistoryRecord): ActivityEvent[] {
@@ -1355,23 +1692,6 @@ export class ActivityService {
 		};
 	}
 
-	private mapQueueStatus(status: string): ActivityStatus {
-		switch (status) {
-			case 'seeding':
-				return 'seeding';
-			case 'paused':
-				return 'paused';
-			case 'failed':
-				return 'failed';
-			case 'imported':
-				return 'imported';
-			case 'removed':
-				return 'removed';
-			default:
-				return 'downloading';
-		}
-	}
-
 	private sortActivities(activities: UnifiedActivity[], sort: ActivitySortOptions): void {
 		activities.sort((a, b) => {
 			const priorityComparison = this.compareActivityPriority(a, b);
@@ -1419,6 +1739,137 @@ export class ActivityService {
 		return aPriority - bPriority;
 	}
 
+	/**
+	 * Map a UI-facing filter status to download_queue status values.
+	 * Returns null if the filter does not constrain queue statuses.
+	 */
+	private mapFilterStatusToQueueStatuses(status: string): string[] | null {
+		switch (status) {
+			case 'downloading':
+				return ['downloading', 'queued', 'stalled', 'completed', 'postprocessing', 'importing'];
+			case 'seeding':
+				return ['seeding'];
+			case 'paused':
+				return ['paused'];
+			case 'failed':
+				return ['failed'];
+			case 'success':
+				// Queue items are never in a "success" state visible to the user
+				return [];
+			default:
+				return null;
+		}
+	}
+
+	/**
+	 * Map a UI-facing filter status to download_history status values.
+	 * Returns null if the filter does not constrain history statuses.
+	 */
+	private mapFilterStatusToHistoryStatuses(status: string): string[] | null {
+		switch (status) {
+			case 'success':
+				return ['imported'];
+			case 'failed':
+				return ['failed'];
+			case 'removed':
+				return ['removed'];
+			case 'rejected':
+				return ['rejected'];
+			case 'downloading':
+			case 'seeding':
+			case 'paused':
+			case 'no_results':
+				// History items never have these statuses
+				return [];
+			default:
+				return null;
+		}
+	}
+
+	private withoutStatusFilter(filters: ActivityFilters): ActivityFilters {
+		if (!filters.status || filters.status === 'all') {
+			return filters;
+		}
+
+		return {
+			...filters,
+			status: 'all'
+		};
+	}
+
+	private applyRequestedStatusFilter(
+		activities: UnifiedActivity[],
+		filters: ActivityFilters
+	): UnifiedActivity[] {
+		const status = filters.status ?? 'all';
+		if (status === 'all') return activities;
+
+		switch (status) {
+			case 'success':
+				return activities.filter((activity) => activity.status === 'imported');
+			case 'downloading':
+				return activities.filter((activity) => activity.status === 'downloading');
+			case 'failed':
+			case 'seeding':
+			case 'paused':
+			case 'removed':
+			case 'rejected':
+			case 'no_results':
+				return activities.filter((activity) => activity.status === status);
+			default:
+				return activities;
+		}
+	}
+
+	private createEmptySummary(): ActivitySummary {
+		return {
+			totalCount: 0,
+			downloadingCount: 0,
+			seedingCount: 0,
+			pausedCount: 0,
+			failedCount: 0
+		};
+	}
+
+	private buildActivitySummary(activeActivities: UnifiedActivity[]): ActivitySummary {
+		const summary = this.createEmptySummary();
+
+		for (const activity of activeActivities) {
+			summary.totalCount += 1;
+			switch (activity.status) {
+				case 'seeding':
+					summary.seedingCount += 1;
+					break;
+				case 'paused':
+					summary.pausedCount += 1;
+					break;
+				case 'failed':
+					summary.failedCount += 1;
+					break;
+				default:
+					summary.downloadingCount += 1;
+					break;
+			}
+		}
+
+		return summary;
+	}
+
+	/**
+	 * Apply filters that cannot be expressed in SQL.
+	 *
+	 * Filters already pushed to SQL in fetchActiveDownloads / fetchHistoryItems /
+	 * fetchMonitoringItems: status, protocol, indexer, downloadClientId,
+	 * mediaType, startDate, endDate.  DO NOT re-apply them here.
+	 *
+	 * This method handles only:
+	 *  - scope (active vs history) — determined by source table, but transformed
+	 *    activities need the isActiveActivity check after merging
+	 *  - search — matches across joined/transformed fields (mediaTitle, seriesTitle, etc.)
+	 *  - releaseGroup — extracted from the release title at transform time
+	 *  - resolution — parsed from the JSON quality blob
+	 *  - isUpgrade — only available after transform
+	 */
 	private applyFilters(
 		activities: UnifiedActivity[],
 		filters: ActivityFilters,
@@ -1432,23 +1883,7 @@ export class ActivityService {
 			filtered = filtered.filter((activity) => !isActiveActivity(activity));
 		}
 
-		// Status filter
-		if (filters.status && filters.status !== 'all') {
-			if (filters.status === 'success') {
-				filtered = filtered.filter((a) => a.status === 'imported' || a.status === 'streaming');
-			} else {
-				filtered = filtered.filter((a) => a.status === filters.status);
-			}
-		}
-
-		// Media type filter
-		if (filters.mediaType === 'movie') {
-			filtered = filtered.filter((a) => a.mediaType === 'movie');
-		} else if (filters.mediaType === 'tv') {
-			filtered = filtered.filter((a) => a.mediaType === 'episode');
-		}
-
-		// Search filter
+		// Search filter (spans joined fields not available in SQL)
 		if (filters.search) {
 			const searchLower = filters.search.toLowerCase();
 			filtered = filtered.filter(
@@ -1461,52 +1896,23 @@ export class ActivityService {
 			);
 		}
 
-		// Protocol filter
-		if (filters.protocol && filters.protocol !== 'all') {
-			filtered = filtered.filter((a) => a.protocol === filters.protocol);
-		}
-
-		// Indexer filter
-		if (filters.indexer) {
-			filtered = filtered.filter(
-				(a) => a.indexerName?.toLowerCase() === filters.indexer?.toLowerCase()
-			);
-		}
-
-		// Release group filter
+		// Release group filter (extracted at transform time)
 		if (filters.releaseGroup) {
 			filtered = filtered.filter((a) =>
 				a.releaseGroup?.toLowerCase().includes(filters.releaseGroup!.toLowerCase())
 			);
 		}
 
-		// Resolution filter
+		// Resolution filter (parsed from JSON quality blob)
 		if (filters.resolution) {
 			filtered = filtered.filter(
 				(a) => a.quality?.resolution?.toLowerCase() === filters.resolution?.toLowerCase()
 			);
 		}
 
-		// Download client filter
-		if (filters.downloadClientId) {
-			filtered = filtered.filter((a) => a.downloadClientId === filters.downloadClientId);
-		}
-
-		// Is upgrade filter
+		// Is upgrade filter (only known after transform)
 		if (filters.isUpgrade !== undefined) {
 			filtered = filtered.filter((a) => a.isUpgrade === filters.isUpgrade);
-		}
-
-		// Date filters
-		if (filters.startDate) {
-			const startTime = new Date(filters.startDate).getTime();
-			filtered = filtered.filter((a) => new Date(a.startedAt).getTime() >= startTime);
-		}
-		if (filters.endDate) {
-			const endDate = new Date(filters.endDate);
-			endDate.setHours(23, 59, 59, 999);
-			const endTime = endDate.getTime();
-			filtered = filtered.filter((a) => new Date(a.startedAt).getTime() <= endTime);
 		}
 
 		return filtered;

@@ -17,6 +17,11 @@ export type ActivityNewEvent = UnifiedActivity;
 export type ActivityUpdatedEvent = UnifiedActivity;
 
 /**
+ * activity:seed event - Batch of active downloads sent on initial SSE connection
+ */
+export type ActivitySeedEvent = UnifiedActivity[];
+
+/**
  * activity:progress event - Progress update
  */
 export interface ActivityProgressEvent {
@@ -39,6 +44,7 @@ export interface ActivityRefreshEvent {
 export interface ActivityStreamEvents {
 	'activity:new': ActivityNewEvent;
 	'activity:updated': ActivityUpdatedEvent;
+	'activity:seed': ActivitySeedEvent;
 	'activity:progress': ActivityProgressEvent;
 	'activity:refresh': ActivityRefreshEvent;
 }

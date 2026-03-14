@@ -2,16 +2,8 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { activityService, activityStreamEvents } from '$lib/server/activity';
 import { logger } from '$lib/logging';
-import type {
-	ActivityFilters,
-	ActivitySortOptions,
-	FilterOptions,
-	ActivityScope
-} from '$lib/types/activity';
-import { db } from '$lib/server/db';
-import { downloadClients, indexers } from '$lib/server/db/schema';
+import type { ActivityFilters, ActivitySortOptions, ActivityScope } from '$lib/types/activity';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 
 const deleteHistorySchema = z.object({
@@ -99,47 +91,12 @@ export const GET: RequestHandler = async ({ url }) => {
 			success: true,
 			activities: result.activities,
 			total: result.total,
-			hasMore: result.hasMore
+			hasMore: result.hasMore,
+			summary: result.summary
 		});
 	} catch (err) {
 		logger.error('Error fetching activity', err instanceof Error ? err : undefined);
 		return json({ error: 'Failed to fetch activity', success: false }, { status: 500 });
-	}
-};
-
-/**
- * GET /options - Get available filter options (indexers, clients, etc.)
- */
-export const OPTIONS: RequestHandler = async () => {
-	try {
-		// Fetch available indexers
-		const indexerRows = await db
-			.select({ id: indexers.id, name: indexers.name })
-			.from(indexers)
-			.where(eq(indexers.enabled, true))
-			.orderBy(indexers.name);
-
-		// Fetch available download clients
-		const clientRows = await db
-			.select({ id: downloadClients.id, name: downloadClients.name })
-			.from(downloadClients)
-			.where(eq(downloadClients.enabled, true))
-			.orderBy(downloadClients.name);
-
-		// Common resolutions
-		const resolutions = ['4K', '2160p', '1080p', '720p', '480p', 'SD'];
-
-		const options: FilterOptions = {
-			indexers: indexerRows,
-			downloadClients: clientRows,
-			releaseGroups: [], // Will be populated from activity data
-			resolutions
-		};
-
-		return json({ success: true, options });
-	} catch (err) {
-		logger.error('Error fetching filter options', err instanceof Error ? err : undefined);
-		return json({ error: 'Failed to fetch filter options', success: false }, { status: 500 });
 	}
 };
 

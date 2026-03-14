@@ -1,73 +1,72 @@
 <script lang="ts">
-	import { SvelteURLSearchParams } from 'svelte/reactivity';
-	import { onMount } from 'svelte';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { onMount, untrack } from 'svelte';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { resolvePath } from '$lib/utils/routing';
 	import { createSSE } from '$lib/sse';
 	import ActivityTable from '$lib/components/activity/ActivityTable.svelte';
 	import ActivityDetailModal from '$lib/components/activity/ActivityDetailModal.svelte';
 	import ActivityFilters from '$lib/components/activity/ActivityFilters.svelte';
 	import ActiveFilters from '$lib/components/activity/ActiveFilters.svelte';
+	import QueueStatsCards from '$lib/components/activity/QueueStatsCards.svelte';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
-	import { formatSpeed } from '$lib/utils/format';
 	import {
 		isActiveActivity,
-		type ActivityScope,
 		type UnifiedActivity,
-		type ActivityDetails,
 		type ActivityFilters as FiltersType,
-		type ActivityStatus
+		type ActivityStatus,
+		type ActivitySummary
 	} from '$lib/types/activity';
 	import type { ActivityStreamEvents } from '$lib/types/sse/events/activity-events.js';
-	import {
-		Activity,
-		AlertTriangle,
-		ArrowDown,
-		ArrowUp,
-		Download,
-		Gauge,
-		Loader2,
-		Pause,
-		Upload,
-		Wifi,
-		WifiOff
-	} from 'lucide-svelte';
+	import { Activity, Loader2, Wifi, WifiOff } from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import {
+		ACTIVITY_REFRESH_MIN_INTERVAL_MS,
+		type ActivityTab,
+		type HistoryConfirmAction,
+		type ActiveBulkAction,
+		type QueueCardStats,
+		type QueueCardStatusFilter
+	} from './activity-constants.js';
+	import {
+		createDefaultFilters,
+		normalizeFiltersForTab,
+		isHistoryActivity,
+		isQueueActivityId,
+		shouldSyncSelectedActivity,
+		normalizeActivityStatus,
+		normalizeActivity,
+		sortActivitiesList,
+		parseQueueStats,
+		createDefaultQueueCardStats,
+		buildActivityApiQueryString,
+		buildFilterQueryString,
+		matchesActivityFilters,
+		getQueueActionErrorMessage
+	} from './activity-utils.js';
 
 	let { data } = $props();
-	type ActivityTab = Exclude<ActivityScope, 'all'>;
-	const ACTIVE_TAB_STATUSES: NonNullable<FiltersType['status']>[] = [
-		'all',
-		'downloading',
-		'seeding',
-		'paused',
-		'failed'
-	];
-	const HISTORY_TAB_STATUSES: NonNullable<FiltersType['status']>[] = [
-		'all',
-		'success',
-		'failed',
-		'removed',
-		'rejected',
-		'no_results'
-	];
-	const BASE_FILTERS: FiltersType = {
-		status: 'all',
-		mediaType: 'all',
-		protocol: 'all'
-	};
-
-	function createDefaultFilters(): FiltersType {
-		return { ...BASE_FILTERS };
-	}
 
 	// Local state for activities (for SSE updates)
+	// Initialize directly from server data so the first render already has correct content.
+	// The $effect below re-syncs on subsequent data changes (navigation / tab switch).
+	function getInitialTab(): ActivityTab {
+		return data.tab === 'active' ? 'active' : 'history';
+	}
+
+	function getInitialFilters(): FiltersType {
+		return data.filters ? { ...data.filters } : createDefaultFilters();
+	}
+
 	let activities = $state<UnifiedActivity[]>([]);
 	let total = $state(0);
+	let hasMore = $state(false);
+	// Track how many items were loaded from the server (excluding SSE additions)
+	// so loadMore() uses the correct offset.
+	let loadedOffset = $state(0);
 	let selectionMode = $state(false);
-	let selectedHistoryIds = $state<string[]>([]);
+	let selectedHistoryIds = new SvelteSet<string>();
 	let activeSelectionMode = $state(false);
-	let selectedActiveIds = $state<string[]>([]);
+	let selectedActiveIds = new SvelteSet<string>();
 	let canManageHistory = $state(false);
 	let retentionDays = $state(90);
 	let settingsLoading = $state(true);
@@ -75,15 +74,13 @@
 	let purgeOlderLoading = $state(false);
 	let purgeAllLoading = $state(false);
 	let deleteSelectedLoading = $state(false);
-	type HistoryConfirmAction = 'purge_older_than_retention' | 'purge_all' | 'delete_selected';
-	type ActiveBulkAction = 'pause' | 'resume' | 'retry_failed' | 'remove_failed';
 	let historyConfirmOpen = $state(false);
 	let historyConfirmAction = $state<HistoryConfirmAction | null>(null);
 	let activeConfirmOpen = $state(false);
 	let activeConfirmAction = $state<ActiveBulkAction | null>(null);
 	let activeBulkLoading = $state(false);
 
-	// Filter state - initialize from URL/data
+	// Filter state - initialize from server data
 	let filters = $state<FiltersType>(createDefaultFilters());
 	let activeTabFilters = $state<FiltersType>(createDefaultFilters());
 	let historyTabFilters = $state<FiltersType>(createDefaultFilters());
@@ -98,64 +95,10 @@
 	let isLoadingMore = $state(false);
 
 	let refreshInFlight = $state(false);
-	let queueStatsRefreshTimer: ReturnType<typeof setTimeout> | null = null;
-	let queueStatsRefreshForcePending = false;
-	let queueStatsRequestToken = 0;
-	let queueStatsLoading = false;
-	let lastQueueStatsLoadedAt = 0;
 	let lastActivityRefreshAt = 0;
-
-	const QUEUE_STATS_MIN_REFRESH_MS = 3000;
-	const ACTIVITY_REFRESH_MIN_INTERVAL_MS = 10000;
-
-	interface QueueCardStats {
-		totalCount: number;
-		downloadingCount: number;
-		seedingCount: number;
-		pausedCount: number;
-		failedCount: number;
-		totalDownloadSpeed: number;
-		totalUploadSpeed: number;
-	}
-
-	type QueueCardStatusFilter = Extract<
-		NonNullable<FiltersType['status']>,
-		'all' | 'downloading' | 'seeding' | 'paused' | 'failed'
-	>;
-
-	function createDefaultQueueCardStats(): QueueCardStats {
-		return {
-			totalCount: 0,
-			downloadingCount: 0,
-			seedingCount: 0,
-			pausedCount: 0,
-			failedCount: 0,
-			totalDownloadSpeed: 0,
-			totalUploadSpeed: 0
-		};
-	}
+	let activityRequestToken = 0;
 
 	let queueStats = $state<QueueCardStats>(createDefaultQueueCardStats());
-	const queueDownloadSpeedLabel = $derived.by(() => formatSpeed(queueStats.totalDownloadSpeed));
-	const queueUploadSpeedLabel = $derived.by(() => formatSpeed(queueStats.totalUploadSpeed));
-
-	function getAllowedStatuses(tab: ActivityTab): NonNullable<FiltersType['status']>[] {
-		return tab === 'active' ? ACTIVE_TAB_STATUSES : HISTORY_TAB_STATUSES;
-	}
-
-	function normalizeFiltersForTab(nextFilters: FiltersType, tab: ActivityTab): FiltersType {
-		const normalized = { ...nextFilters };
-		const status = normalized.status ?? 'all';
-		if (!getAllowedStatuses(tab).includes(status)) {
-			normalized.status = 'all';
-		}
-
-		if (tab === 'active') {
-			normalized.includeNoResults = undefined;
-		}
-
-		return normalized;
-	}
 
 	function getFiltersForTab(tab: ActivityTab): FiltersType {
 		return tab === 'active' ? activeTabFilters : historyTabFilters;
@@ -169,21 +112,6 @@
 		historyTabFilters = { ...nextFilters };
 	}
 
-	function matchesTabScope(activity: UnifiedActivity): boolean {
-		return activityTab === 'active' ? isActiveActivity(activity) : !isActiveActivity(activity);
-	}
-
-	function isHistoryActivity(activity: UnifiedActivity): boolean {
-		const isHistoryRow =
-			activity.id.startsWith('history-') || activity.id.startsWith('monitoring-');
-		if (!isHistoryRow) return false;
-
-		// Keep failed activities retryable via queue actions; don't allow bulk-delete selection.
-		if (activity.status === 'failed' && activity.queueItemId) return false;
-
-		return true;
-	}
-
 	function isActiveQueueActivity(activity: UnifiedActivity): boolean {
 		return isActiveActivity(activity) && Boolean(activity.queueItemId);
 	}
@@ -191,98 +119,86 @@
 	function toggleSelectionMode(): void {
 		selectionMode = !selectionMode;
 		if (!selectionMode) {
-			selectedHistoryIds = [];
+			selectedHistoryIds.clear();
 		}
 	}
 
 	function handleToggleSelection(activityId: string, selected: boolean): void {
 		if (selected) {
-			if (!selectedHistoryIds.includes(activityId)) {
-				selectedHistoryIds = [...selectedHistoryIds, activityId];
-			}
+			selectedHistoryIds.add(activityId);
 		} else {
-			selectedHistoryIds = selectedHistoryIds.filter((id) => id !== activityId);
+			selectedHistoryIds.delete(activityId);
 		}
 	}
 
 	function handleToggleSelectionAll(activityIds: string[], selected: boolean): void {
 		if (selected) {
-			const merged = [...selectedHistoryIds];
 			for (const id of activityIds) {
-				if (!merged.includes(id)) {
-					merged.push(id);
-				}
+				selectedHistoryIds.add(id);
 			}
-			selectedHistoryIds = merged;
 			return;
 		}
 
-		selectedHistoryIds = selectedHistoryIds.filter((id) => !activityIds.includes(id));
+		for (const id of activityIds) {
+			selectedHistoryIds.delete(id);
+		}
 	}
 
 	function toggleActiveSelectionMode(): void {
 		activeSelectionMode = !activeSelectionMode;
 		if (!activeSelectionMode) {
-			selectedActiveIds = [];
+			selectedActiveIds.clear();
 		}
 	}
 
 	function handleToggleActiveSelection(activityId: string, selected: boolean): void {
 		if (selected) {
-			if (!selectedActiveIds.includes(activityId)) {
-				selectedActiveIds = [...selectedActiveIds, activityId];
-			}
+			selectedActiveIds.add(activityId);
 		} else {
-			selectedActiveIds = selectedActiveIds.filter((id) => id !== activityId);
+			selectedActiveIds.delete(activityId);
 		}
 	}
 
 	function handleToggleActiveSelectionAll(activityIds: string[], selected: boolean): void {
 		if (selected) {
-			const merged = [...selectedActiveIds];
 			for (const id of activityIds) {
-				if (!merged.includes(id)) {
-					merged.push(id);
-				}
+				selectedActiveIds.add(id);
 			}
-			selectedActiveIds = merged;
 			return;
 		}
 
-		selectedActiveIds = selectedActiveIds.filter((id) => !activityIds.includes(id));
+		for (const id of activityIds) {
+			selectedActiveIds.delete(id);
+		}
 	}
 
 	function reconcileSelectedHistoryIds(sourceActivities: UnifiedActivity[]): void {
-		const next = selectedHistoryIds.filter((id) =>
-			sourceActivities.some((activity) => activity.id === id && isHistoryActivity(activity))
+		const validIds = new Set(
+			sourceActivities
+				.filter((a) => isHistoryActivity(a) && selectedHistoryIds.has(a.id))
+				.map((a) => a.id)
 		);
-		if (
-			next.length === selectedHistoryIds.length &&
-			next.every((id, i) => id === selectedHistoryIds[i])
-		) {
-			return;
-		}
-		selectedHistoryIds = next;
+		if (validIds.size === selectedHistoryIds.size) return;
+		selectedHistoryIds.clear();
+		for (const id of validIds) selectedHistoryIds.add(id);
 	}
 
 	function reconcileSelectedActiveIds(sourceActivities: UnifiedActivity[]): void {
-		const next = selectedActiveIds.filter((id) =>
-			sourceActivities.some((activity) => activity.id === id && isActiveQueueActivity(activity))
+		const validIds = new Set(
+			sourceActivities
+				.filter((a) => isActiveQueueActivity(a) && selectedActiveIds.has(a.id))
+				.map((a) => a.id)
 		);
-		if (
-			next.length === selectedActiveIds.length &&
-			next.every((id, i) => id === selectedActiveIds[i])
-		) {
-			return;
-		}
-		selectedActiveIds = next;
+		if (validIds.size === selectedActiveIds.size) return;
+		selectedActiveIds.clear();
+		for (const id of validIds) selectedActiveIds.add(id);
 	}
 
 	function getSelectedQueueIdsByStatus(statuses: ActivityStatus[]): string[] {
 		const queueIds: string[] = [];
 
 		for (const activity of activities) {
-			if (!selectedActiveIds.includes(activity.id)) continue;
+			if (!selectedActiveIds.has(activity.id)) continue;
 			if (!isActiveQueueActivity(activity) || !activity.queueItemId) continue;
 			if (!statuses.includes(activity.status)) continue;
 			if (!queueIds.includes(activity.queueItemId)) {
@@ -311,306 +227,121 @@
 		}
 	}
 
-	function normalizeActivityStatus(status: unknown): ActivityStatus {
-		switch (status) {
-			case 'imported':
-			case 'streaming':
-			case 'downloading':
-			case 'seeding':
-			case 'paused':
-			case 'failed':
-			case 'rejected':
-			case 'removed':
-			case 'no_results':
-			case 'searching':
-				return status;
-			default:
-				return 'downloading';
-		}
-	}
-
-	function normalizeActivity(activity: Partial<UnifiedActivity>): UnifiedActivity | null {
-		if (!activity.id) return null;
-
-		return {
-			id: activity.id,
-			mediaType: activity.mediaType === 'episode' ? 'episode' : 'movie',
-			mediaId: activity.mediaId ?? '',
-			mediaTitle: activity.mediaTitle ?? 'Unknown',
-			mediaYear: activity.mediaYear ?? null,
-			seriesId: activity.seriesId,
-			seriesTitle: activity.seriesTitle,
-			seasonNumber: activity.seasonNumber,
-			episodeNumber: activity.episodeNumber,
-			episodeIds: activity.episodeIds,
-			releaseTitle: activity.releaseTitle ?? null,
-			quality: activity.quality ?? null,
-			releaseGroup: activity.releaseGroup ?? null,
-			size: activity.size ?? null,
-			indexerId: activity.indexerId ?? null,
-			indexerName: activity.indexerName ?? null,
-			protocol: activity.protocol ?? null,
-			downloadClientId: activity.downloadClientId ?? null,
-			downloadClientName: activity.downloadClientName ?? null,
-			status: normalizeActivityStatus(activity.status),
-			statusReason: activity.statusReason,
-			downloadProgress: activity.downloadProgress,
-			isUpgrade: activity.isUpgrade ?? false,
-			oldScore: activity.oldScore,
-			newScore: activity.newScore,
-			timeline: Array.isArray(activity.timeline) ? activity.timeline : [],
-			startedAt: activity.startedAt ?? new Date().toISOString(),
-			completedAt: activity.completedAt ?? null,
-			lastAttemptAt: activity.lastAttemptAt ?? null,
-			queueItemId: activity.queueItemId,
-			downloadHistoryId: activity.downloadHistoryId,
-			monitoringHistoryId: activity.monitoringHistoryId,
-			importedPath: activity.importedPath
-		};
-	}
-
-	function compareActivityPriority(a: UnifiedActivity, b: UnifiedActivity): number {
-		const aPriority = a.status === 'downloading' || a.status === 'seeding' ? 0 : 1;
-		const bPriority = b.status === 'downloading' || b.status === 'seeding' ? 0 : 1;
-		return aPriority - bPriority;
-	}
-
-	function getSortValue(activity: UnifiedActivity, field: string): string | number {
-		switch (field) {
-			case 'time': {
-				// For completed items, sort by completion time
-				if (
-					activity.completedAt &&
-					(activity.status === 'imported' ||
-						activity.status === 'streaming' ||
-						activity.status === 'removed' ||
-						activity.status === 'rejected' ||
-						activity.status === 'no_results')
-				) {
-					return activity.completedAt;
-				}
-				// For failed items, use the most recent attempt time if available
-				if (activity.status === 'failed' && activity.lastAttemptAt) {
-					return activity.lastAttemptAt;
-				}
-				// For active items, use startedAt
-				return activity.startedAt;
-			}
-			case 'media':
-				return activity.mediaTitle.toLowerCase();
-			case 'size':
-				return activity.size || 0;
-			case 'status':
-				return activity.status;
-			case 'release':
-				return activity.releaseTitle?.toLowerCase() || '';
-			default:
-				return activity.startedAt;
-		}
-	}
-
-	function sortActivitiesList(
-		list: UnifiedActivity[],
-		field: string = sortField,
-		direction: 'asc' | 'desc' = sortDirection
-	): UnifiedActivity[] {
-		return [...list].sort((a, b) => {
-			const priorityComparison = compareActivityPriority(a, b);
-			if (priorityComparison !== 0) {
-				return priorityComparison;
-			}
-
-			const aVal = getSortValue(a, field);
-			const bVal = getSortValue(b, field);
-
-			let comparison = 0;
-			if (aVal < bVal) comparison = -1;
-			if (aVal > bVal) comparison = 1;
-
-			if (comparison === 0) {
-				const aTime = new Date(a.startedAt).getTime();
-				const bTime = new Date(b.startedAt).getTime();
-				comparison = aTime < bTime ? -1 : aTime > bTime ? 1 : 0;
-			}
-
-			return direction === 'asc' ? comparison : -comparison;
-		});
-	}
-
-	function readQueueStatsNumber(value: unknown): number {
-		const numeric = typeof value === 'number' ? value : Number(value ?? 0);
-		return Number.isFinite(numeric) ? numeric : 0;
-	}
-
-	function parseQueueStats(rawStats: Partial<QueueCardStats> | null | undefined): QueueCardStats {
-		return {
-			totalCount: readQueueStatsNumber(rawStats?.totalCount),
-			downloadingCount: readQueueStatsNumber(rawStats?.downloadingCount),
-			seedingCount: readQueueStatsNumber(rawStats?.seedingCount),
-			pausedCount: readQueueStatsNumber(rawStats?.pausedCount),
-			failedCount: readQueueStatsNumber(rawStats?.failedCount),
-			totalDownloadSpeed: readQueueStatsNumber(rawStats?.totalDownloadSpeed),
-			totalUploadSpeed: readQueueStatsNumber(rawStats?.totalUploadSpeed)
-		};
-	}
-
-	async function loadQueueStats(options: { force?: boolean } = {}): Promise<void> {
-		if (activityTab !== 'active') return;
-		if (queueStatsLoading) return;
-
-		const { force = false } = options;
-		const now = Date.now();
-		if (!force && now - lastQueueStatsLoadedAt < QUEUE_STATS_MIN_REFRESH_MS) {
-			return;
-		}
-
-		const requestToken = ++queueStatsRequestToken;
-		queueStatsLoading = true;
-
-		try {
-			const response = await fetch('/api/activity/stats');
-			if (!response.ok) {
-				throw new Error('Failed to load queue stats');
-			}
-
-			const payload = await response.json();
-			if (requestToken !== queueStatsRequestToken) return;
-
-			const rawStats = (payload?.data ?? null) as Partial<QueueCardStats> | null;
-			queueStats = parseQueueStats(rawStats);
-			lastQueueStatsLoadedAt = Date.now();
-		} catch (error) {
-			console.error('Failed to load queue stats:', error);
-		} finally {
-			queueStatsLoading = false;
-		}
-	}
-
-	function scheduleQueueStatsRefresh(delayMs = 400, options: { force?: boolean } = {}): void {
-		if (activityTab !== 'active') return;
-
-		const { force = false } = options;
-		queueStatsRefreshForcePending = queueStatsRefreshForcePending || force;
-		if (queueStatsRefreshTimer) {
-			return;
-		}
-
-		queueStatsRefreshTimer = setTimeout(() => {
-			const nextForce = queueStatsRefreshForcePending;
-			queueStatsRefreshForcePending = false;
-			queueStatsRefreshTimer = null;
-			void loadQueueStats({ force: nextForce });
-		}, delayMs);
-	}
-
-	function isQueueCardFilterActive(status: QueueCardStatusFilter): boolean {
-		return activityTab === 'active' && (filters.status ?? 'all') === status;
-	}
-
-	async function applyQueueCardFilter(status: QueueCardStatusFilter): Promise<void> {
+	function applyQueueCardFilter(status: QueueCardStatusFilter): void {
 		if (activityTab !== 'active') return;
 		const currentStatus = filters.status ?? 'all';
 		if (currentStatus === status) return;
-		await applyFilters({ ...filters, status }, 'active');
+		applyFilters({ ...filters, status }, 'active');
 	}
 
-	function matchesLiveFilters(activity: UnifiedActivity): boolean {
-		if (!matchesTabScope(activity)) return false;
+	function syncActivityUrl(nextFilters: FiltersType, tab: ActivityTab): void {
+		if (typeof window === 'undefined') return;
+		const queryString = buildFilterQueryString(nextFilters, tab);
+		const nextUrl = resolvePath(`/activity${queryString ? `?${queryString}` : ''}`);
+		window.history.replaceState(window.history.state, '', nextUrl);
+	}
 
-		// Status
-		if (filters.status && filters.status !== 'all') {
-			if (filters.status === 'success') {
-				if (activity.status !== 'imported' && activity.status !== 'streaming') return false;
-			} else if (activity.status !== filters.status) {
-				return false;
+	function applyActivityResult(
+		payload: {
+			activities?: UnifiedActivity[];
+			total?: number;
+			hasMore?: boolean;
+			summary?: Partial<ActivitySummary> | null;
+		},
+		options: { append?: boolean } = {}
+	): void {
+		const { append = false } = options;
+		const nextActivities = Array.isArray(payload.activities) ? payload.activities : [];
+
+		activities = append ? [...activities, ...nextActivities] : nextActivities;
+		loadedOffset = activities.length;
+		total = typeof payload.total === 'number' ? payload.total : total;
+		hasMore = typeof payload.hasMore === 'boolean' ? payload.hasMore : false;
+		if (!append) {
+			queueStats = parseQueueStats((payload.summary ?? null) as Partial<ActivitySummary> | null);
+		}
+	}
+
+	async function fetchActivityData(
+		nextFilters: FiltersType,
+		tab: ActivityTab,
+		options: { offset?: number; append?: boolean; updateUrl?: boolean; force?: boolean } = {}
+	): Promise<void> {
+		const { offset = 0, append = false, updateUrl = false, force = false } = options;
+		const normalizedFilters = normalizeFiltersForTab(nextFilters, tab);
+		const requestToken = ++activityRequestToken;
+		const previousActivities = append ? activities : [...activities];
+		const previousHasMore = hasMore;
+
+		if (!append) {
+			activities = [];
+			hasMore = false;
+		}
+
+		if (append) {
+			isLoadingMore = true;
+		} else {
+			isLoading = true;
+		}
+
+		try {
+			const queryString = buildActivityApiQueryString(normalizedFilters, tab, {
+				limit: 50,
+				offset
+			});
+			const response = await fetch(resolvePath(`/api/activity?${queryString}`));
+			if (!response.ok) {
+				throw new Error('Failed to load activity');
+			}
+
+			const payload = await response.json();
+			if (requestToken !== activityRequestToken) return;
+			if (!payload?.success) {
+				throw new Error(
+					typeof payload?.error === 'string' ? payload.error : 'Failed to load activity'
+				);
+			}
+
+			filters = normalizedFilters;
+			activityTab = tab;
+			setFiltersForTab(tab, normalizedFilters);
+			applyActivityResult(payload, { append });
+
+			if (!append && updateUrl) {
+				syncActivityUrl(normalizedFilters, tab);
+			}
+
+			if (!append && force) {
+				lastActivityRefreshAt = Date.now();
+			}
+		} catch (error) {
+			if (!append) {
+				activities = previousActivities ?? activities;
+				hasMore = previousHasMore;
+			}
+			throw error;
+		} finally {
+			if (requestToken === activityRequestToken) {
+				isLoading = false;
+				isLoadingMore = false;
 			}
 		}
-
-		// Media type
-		if (filters.mediaType === 'movie' && activity.mediaType !== 'movie') return false;
-		if (filters.mediaType === 'tv' && activity.mediaType !== 'episode') return false;
-
-		// Search
-		if (filters.search) {
-			const needle = filters.search.toLowerCase();
-			const matches =
-				activity.mediaTitle.toLowerCase().includes(needle) ||
-				activity.releaseTitle?.toLowerCase().includes(needle) ||
-				activity.seriesTitle?.toLowerCase().includes(needle) ||
-				activity.releaseGroup?.toLowerCase().includes(needle) ||
-				activity.indexerName?.toLowerCase().includes(needle);
-			if (!matches) return false;
-		}
-
-		// Protocol
-		if (filters.protocol && filters.protocol !== 'all' && activity.protocol !== filters.protocol) {
-			return false;
-		}
-
-		// Download client
-		if (filters.downloadClientId && activity.downloadClientId !== filters.downloadClientId) {
-			return false;
-		}
-
-		// Indexer
-		if (filters.indexer && activity.indexerName?.toLowerCase() !== filters.indexer.toLowerCase()) {
-			return false;
-		}
-
-		// Release group
-		if (
-			filters.releaseGroup &&
-			!activity.releaseGroup?.toLowerCase().includes(filters.releaseGroup.toLowerCase())
-		) {
-			return false;
-		}
-
-		// Resolution
-		if (
-			filters.resolution &&
-			activity.quality?.resolution?.toLowerCase() !== filters.resolution.toLowerCase()
-		) {
-			return false;
-		}
-
-		// Upgrade flag
-		if (filters.isUpgrade !== undefined && activity.isUpgrade !== filters.isUpgrade) return false;
-
-		// Date range
-		if (filters.startDate) {
-			const startTime = new Date(filters.startDate).getTime();
-			if (new Date(activity.startedAt).getTime() < startTime) return false;
-		}
-		if (filters.endDate) {
-			const endTime = new Date(filters.endDate).getTime() + 86_399_999;
-			if (new Date(activity.startedAt).getTime() > endTime) return false;
-		}
-
-		return true;
 	}
 
-	function isQueueActivityId(activityId: string): boolean {
-		return activityId.startsWith('queue-');
-	}
+	// ── Derived sorted view (server handles filtering; client handles sort) ──
+	const filteredActivities = $derived.by(() => {
+		const field = sortField;
+		const direction = sortDirection;
+		return sortActivitiesList(activities, field, direction);
+	});
 
-	function shouldSyncSelectedActivity(
-		selected: UnifiedActivity,
-		incoming: Pick<UnifiedActivity, 'id' | 'queueItemId' | 'status'>
-	): boolean {
-		if (selected.id === incoming.id) return true;
-		if (!selected.queueItemId || !incoming.queueItemId) return false;
-		if (selected.queueItemId !== incoming.queueItemId) return false;
-
-		const selectedIsQueue = isQueueActivityId(selected.id);
-		const incomingIsQueue = isQueueActivityId(incoming.id);
-
-		// While queue and history rows may coexist briefly, prefer queue-origin updates.
-		if (selectedIsQueue && !incomingIsQueue && incoming.status === 'failed') {
-			return false;
-		}
-
-		return true;
-	}
+	// Derived inline stats (replaces inline template computations)
+	const hasDownloading = $derived(
+		activityTab === 'active' && filteredActivities.some((a) => a.status === 'downloading')
+	);
+	const downloadingCount = $derived(
+		hasDownloading ? filteredActivities.filter((a) => a.status === 'downloading').length : 0
+	);
 
 	function removeStaleQueueLinkedRows(queueActivity: UnifiedActivity): number {
 		if (!isQueueActivityId(queueActivity.id) || !queueActivity.queueItemId) {
@@ -648,22 +379,23 @@
 	function upsertActivity(activity: Partial<UnifiedActivity>): void {
 		const normalized = normalizeActivity(activity);
 		if (!normalized) return;
+		const inScope = matchesActivityFilters(normalized, filters, activityTab);
 
 		const existingIndex = activities.findIndex((a) => a.id === normalized.id);
-		const matchesFilters = matchesLiveFilters(normalized);
 
-		if (!matchesFilters) {
-			if (existingIndex >= 0) {
-				activities = activities.filter((a) => a.id !== normalized.id);
+		// If the item already exists, update in place
+		if (existingIndex >= 0) {
+			if (!inScope) {
+				const removed = activities[existingIndex];
+				activities = activities.filter((entry) => entry.id !== removed.id);
 				total = Math.max(0, total - 1);
 				if (selectedActivity && shouldSyncSelectedActivity(selectedActivity, normalized)) {
-					selectedActivity = { ...selectedActivity, ...normalized };
+					selectedActivity = null;
+					isModalOpen = false;
 				}
+				return;
 			}
-			return;
-		}
 
-		if (existingIndex >= 0) {
 			const existing = activities[existingIndex];
 			Object.assign(existing, normalized);
 			const removedDuplicates = removeStaleQueueLinkedRows(existing);
@@ -677,44 +409,66 @@
 			if (removedDuplicates > 0) {
 				total = Math.max(0, total - removedDuplicates);
 			}
-			activities = sortActivitiesList(activities);
+			// Trigger reactivity by reassigning (no sort needed -- $derived handles it)
+			activities = activities;
 			return;
 		}
 
-		activities = sortActivitiesList([normalized, ...activities]);
+		// New item: check if it belongs in the current tab scope at all
+		if (!inScope) {
+			if (selectedActivity && shouldSyncSelectedActivity(selectedActivity, normalized)) {
+				selectedActivity = { ...selectedActivity, ...normalized };
+			}
+			return;
+		}
+
+		// Add new item (no sort needed -- $derived handles it)
+		activities = [normalized, ...activities];
 		const removedDuplicates = removeStaleQueueLinkedRows(normalized);
 		total = Math.max(0, total + 1 - removedDuplicates);
 	}
 
 	// Detail modal state
 	let selectedActivity = $state<UnifiedActivity | null>(null);
-	let activityDetails = $state<ActivityDetails | null>(null);
-	let detailsLoading = $state(false);
 	let isModalOpen = $state(false);
 
-	// Update activities when data changes (navigation)
+	// Update activities when data changes (navigation / tab switch / filter change)
 	$effect(() => {
-		const nextTab = data.tab === 'active' ? 'active' : 'history';
+		const nextTab = getInitialTab();
+		const initialFilters = getInitialFilters();
 		activityTab = nextTab;
-		activities = sortActivitiesList(data.activities, sortField, sortDirection);
+		activeTabFilters = nextTab === 'active' ? { ...initialFilters } : createDefaultFilters();
+		historyTabFilters = nextTab === 'history' ? { ...initialFilters } : createDefaultFilters();
+		// Store unsorted master list; $derived filteredActivities handles sort
+		activities = data.activities;
 		total = data.total;
-		reconcileSelectedHistoryIds(data.activities);
-		reconcileSelectedActiveIds(data.activities);
-		if (data.filters) {
-			const resolvedFilters = { ...data.filters };
-			filters = resolvedFilters;
-			setFiltersForTab(nextTab, resolvedFilters);
+		hasMore = data.hasMore;
+		loadedOffset = data.activities.length;
+		queueStats = parseQueueStats((data.summary ?? null) as Partial<ActivitySummary> | null);
+		filters = initialFilters;
+		setFiltersForTab(nextTab, initialFilters);
+		// Reconcile selections against the new data (untracked to avoid circular deps)
+		untrack(() => {
+			reconcileSelectedHistoryIds(data.activities);
+			reconcileSelectedActiveIds(data.activities);
+		});
+	});
+
+	$effect(() => {
+		// Only reconcile when selection mode is active to avoid unnecessary work
+		// Read activities to trigger on data changes, but untrack the mutations
+		const currentActivities = activities;
+		if (selectionMode && selectedHistoryIds.size > 0) {
+			untrack(() => reconcileSelectedHistoryIds(currentActivities));
+		}
+		if (activeSelectionMode && selectedActiveIds.size > 0) {
+			untrack(() => reconcileSelectedActiveIds(currentActivities));
 		}
 	});
 
 	$effect(() => {
-		reconcileSelectedHistoryIds(activities);
-		reconcileSelectedActiveIds(activities);
-	});
-
-	$effect(() => {
 		const currentSelected = selectedActivity;
-		if (!currentSelected) return;
+		if (!isModalOpen || !currentSelected) return;
 
 		const linkedById = activities.find((activity) => activity.id === currentSelected.id);
 		const linkedByQueueId = currentSelected.queueItemId
@@ -734,13 +488,13 @@
 	});
 
 	$effect(() => {
-		if (activityTab !== 'history' && (selectionMode || selectedHistoryIds.length > 0)) {
+		if (activityTab !== 'history' && (selectionMode || selectedHistoryIds.size > 0)) {
 			selectionMode = false;
-			selectedHistoryIds = [];
+			selectedHistoryIds.clear();
 		}
-		if (activityTab !== 'active' && (activeSelectionMode || selectedActiveIds.length > 0)) {
+		if (activityTab !== 'active' && (activeSelectionMode || selectedActiveIds.size > 0)) {
 			activeSelectionMode = false;
-			selectedActiveIds = [];
+			selectedActiveIds.clear();
 		}
 		if (activityTab !== 'active' && activeConfirmOpen && !activeBulkLoading) {
 			activeConfirmOpen = false;
@@ -748,46 +502,61 @@
 		}
 	});
 
-	$effect(() => {
-		if (activityTab === 'active') {
-			scheduleQueueStatsRefresh(0, { force: true });
-			return;
+	// ── Batched SSE progress updates ────────────────────────────────────
+	let pendingProgressUpdates = new SvelteMap<
+		string,
+		{ progress: UnifiedActivity['downloadProgress']; status?: string }
+	>();
+	let progressFlushFrame: ReturnType<typeof requestAnimationFrame> | null = null;
+
+	function flushProgressUpdates(): void {
+		progressFlushFrame = null;
+		if (pendingProgressUpdates.size === 0) return;
+
+		const updates = pendingProgressUpdates;
+		pendingProgressUpdates = new SvelteMap();
+
+		for (const activity of activities) {
+			const update = updates.get(activity.id);
+			if (!update) continue;
+			activity.downloadProgress = update.progress;
+			if (update.status) {
+				activity.status = normalizeActivityStatus(update.status);
+			}
 		}
 
-		if (queueStatsRefreshTimer) {
-			clearTimeout(queueStatsRefreshTimer);
-			queueStatsRefreshTimer = null;
+		// Sync selected activity if affected
+		if (selectedActivity) {
+			const selUpdate = updates.get(selectedActivity.id);
+			const queueItemId = selectedActivity.queueItemId;
+			if (selUpdate) {
+				selectedActivity.downloadProgress = selUpdate.progress;
+				if (selUpdate.status) {
+					selectedActivity.status = normalizeActivityStatus(selUpdate.status);
+				}
+				selectedActivity = { ...selectedActivity };
+			} else if (queueItemId) {
+				// Check by queueItemId
+				for (const [id, upd] of updates) {
+					const qId = id.startsWith('queue-') ? id.slice('queue-'.length) : undefined;
+					if (qId === queueItemId) {
+						selectedActivity.downloadProgress = upd.progress;
+						if (upd.status) {
+							selectedActivity.status = normalizeActivityStatus(upd.status);
+						}
+						selectedActivity = { ...selectedActivity };
+						break;
+					}
+				}
+			}
 		}
-		queueStatsRefreshForcePending = false;
-	});
 
-	// Automatically recompute stats when activities change (e.g., after removing duplicates)
-	$effect(() => {
-		if (activityTab !== 'active') return;
-		if (activities.length === 0) {
-			queueStats = {
-				totalCount: 0,
-				downloadingCount: 0,
-				seedingCount: 0,
-				pausedCount: 0,
-				failedCount: 0,
-				totalDownloadSpeed: 0,
-				totalUploadSpeed: 0
-			};
-			return;
-		}
-
-		const activeActivities = activities.filter((a) => isActiveActivity(a));
-		queueStats = {
-			totalCount: activeActivities.length,
-			downloadingCount: activeActivities.filter((a) => a.status === 'downloading').length,
-			seedingCount: activeActivities.filter((a) => a.status === 'seeding').length,
-			pausedCount: activeActivities.filter((a) => a.status === 'paused').length,
-			failedCount: activeActivities.filter((a) => a.status === 'failed').length,
-			totalDownloadSpeed: 0,
-			totalUploadSpeed: 0
-		};
-	});
+		// Svelte 5 deep reactivity tracks individual property mutations on
+		// $state arrays, so the template updates for downloadProgress/status
+		// without needing to reassign the whole array.  Skipping the
+		// `activities = activities` pattern here avoids triggering a full
+		// $derived sort recomputation on every progress tick.
+	}
 
 	// SSE Connection - internally handles browser/SSR
 	const sse = createSSE<ActivityStreamEvents>(
@@ -795,51 +564,24 @@
 		{
 			'activity:new': (newActivity) => {
 				upsertActivity(newActivity);
-				scheduleQueueStatsRefresh();
+			},
+			'activity:seed': (seedActivities) => {
+				for (const activity of seedActivities) {
+					upsertActivity(activity);
+				}
 			},
 			'activity:updated': (updated) => {
 				upsertActivity(updated);
-				scheduleQueueStatsRefresh();
 			},
 			'activity:progress': (data) => {
-				let removed = false;
-				const queueItemId = data.id.startsWith('queue-')
-					? data.id.slice('queue-'.length)
-					: undefined;
-
-				activities = activities.flatMap((a) => {
-					if (a.id !== data.id) return [a];
-
-					a.downloadProgress = data.progress;
-					a.status = data.status ? normalizeActivityStatus(data.status) : a.status;
-
-					if (!matchesLiveFilters(a)) {
-						removed = true;
-						return [];
-					}
-
-					return [a];
+				// Batch progress updates and flush on next animation frame
+				pendingProgressUpdates.set(data.id, {
+					progress: data.progress,
+					status: data.status
 				});
-
-				activities = sortActivitiesList(activities);
-
-				if (removed) {
-					total = Math.max(0, total - 1);
+				if (progressFlushFrame === null) {
+					progressFlushFrame = requestAnimationFrame(flushProgressUpdates);
 				}
-
-				if (
-					selectedActivity &&
-					(selectedActivity.id === data.id ||
-						(queueItemId && selectedActivity.queueItemId === queueItemId))
-				) {
-					selectedActivity.downloadProgress = data.progress;
-					if (data.status) {
-						selectedActivity.status = normalizeActivityStatus(data.status);
-					}
-					selectedActivity = { ...selectedActivity };
-				}
-
-				scheduleQueueStatsRefresh(750);
 			},
 			'activity:refresh': () => {
 				void refreshActivityData({ force: true });
@@ -860,7 +602,7 @@
 
 		refreshInFlight = true;
 		try {
-			await Promise.all([invalidateAll(), loadQueueStats({ force })]);
+			await fetchActivityData(filters, activityTab, { force });
 		} finally {
 			refreshInFlight = false;
 			lastActivityRefreshAt = Date.now();
@@ -893,9 +635,9 @@
 	}
 
 	onMount(() => {
-		// Ensure we don't show stale client-side snapshot state after route back/forward.
-		void refreshActivityData({ force: true });
-		void loadHistorySettings();
+		if (activityTab === 'history') {
+			void loadHistorySettings();
+		}
 
 		const handleFocus = () => {
 			if (!sse.isConnected) {
@@ -918,15 +660,20 @@
 		window.addEventListener('pageshow', handlePageShow);
 
 		return () => {
-			if (queueStatsRefreshTimer) {
-				clearTimeout(queueStatsRefreshTimer);
-				queueStatsRefreshTimer = null;
+			if (progressFlushFrame !== null) {
+				cancelAnimationFrame(progressFlushFrame);
+				progressFlushFrame = null;
 			}
-			queueStatsRefreshForcePending = false;
 			window.removeEventListener('focus', handleFocus);
 			document.removeEventListener('visibilitychange', handleVisibilityChange);
 			window.removeEventListener('pageshow', handlePageShow);
 		};
+	});
+
+	$effect(() => {
+		if (activityTab === 'history' && settingsLoading && !canManageHistory) {
+			void loadHistorySettings();
+		}
 	});
 
 	async function saveRetention(): Promise<void> {
@@ -980,7 +727,7 @@
 			case 'purge_older_than_retention':
 				return `Delete activity history older than ${retentionDays} days? This cannot be undone.`;
 			case 'delete_selected':
-				return `Delete ${selectedHistoryIds.length} selected history row${selectedHistoryIds.length === 1 ? '' : 's'}? This cannot be undone.`;
+				return `Delete ${selectedHistoryIds.size} selected history row${selectedHistoryIds.size === 1 ? '' : 's'}? This cannot be undone.`;
 			default:
 				return '';
 		}
@@ -1017,7 +764,7 @@
 	);
 
 	const activeConfirmSkippedCount = $derived.by(() =>
-		Math.max(0, selectedActiveIds.length - activeConfirmTargetCount)
+		Math.max(0, selectedActiveIds.size - activeConfirmTargetCount)
 	);
 
 	const activeConfirmTitle = $derived.by((): string => {
@@ -1087,7 +834,7 @@
 		if (!canManageHistory) return;
 		if (action === 'purge_all' && (settingsLoading || purgeAllLoading)) return;
 		if (action === 'purge_older_than_retention' && (settingsLoading || purgeOlderLoading)) return;
-		if (action === 'delete_selected' && (deleteSelectedLoading || selectedHistoryIds.length === 0))
+		if (action === 'delete_selected' && (deleteSelectedLoading || selectedHistoryIds.size === 0))
 			return;
 
 		historyConfirmAction = action;
@@ -1151,7 +898,7 @@
 			toasts.success(
 				`Deleted ${totalDeleted} activity ${totalDeleted === 1 ? 'entry' : 'entries'}`
 			);
-			selectedHistoryIds = [];
+			selectedHistoryIds.clear();
 		} catch (error) {
 			toasts.error(error instanceof Error ? error.message : 'Failed to purge activity entries');
 			return;
@@ -1169,14 +916,14 @@
 	}
 
 	async function deleteSelectedHistory(): Promise<void> {
-		if (!canManageHistory || deleteSelectedLoading || selectedHistoryIds.length === 0) return;
+		if (!canManageHistory || deleteSelectedLoading || selectedHistoryIds.size === 0) return;
 
 		deleteSelectedLoading = true;
 		try {
 			const response = await fetch('/api/activity', {
 				method: 'DELETE',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ activityIds: selectedHistoryIds })
+				body: JSON.stringify({ activityIds: [...selectedHistoryIds] })
 			});
 			if (response.status === 401 || response.status === 403) {
 				canManageHistory = false;
@@ -1214,7 +961,7 @@
 				);
 			}
 
-			selectedHistoryIds = [];
+			selectedHistoryIds.clear();
 		} catch (error) {
 			toasts.error(
 				error instanceof Error ? error.message : 'Failed to delete selected activity entries'
@@ -1325,81 +1072,58 @@
 		}
 
 		if (action === 'retry_failed' || action === 'remove_failed') {
-			selectedActiveIds = [];
+			selectedActiveIds.clear();
 		}
 	}
 
-	// Apply filters via URL navigation
+	// Apply filters by fetching activity data directly and syncing the URL.
 	async function applyFilters(newFilters: FiltersType, tab: ActivityTab = activityTab) {
 		const normalizedFilters = normalizeFiltersForTab(newFilters, tab);
-		const previousFilters = { ...filters };
-		const previousTab = activityTab;
-		const previousActiveTabFilters = { ...activeTabFilters };
-		const previousHistoryTabFilters = { ...historyTabFilters };
-		filters = normalizedFilters;
-		activityTab = tab;
-		setFiltersForTab(tab, normalizedFilters);
-		isLoading = true;
-
-		const params = new SvelteURLSearchParams();
-		params.set('tab', tab);
-		if (normalizedFilters.status !== 'all') params.set('status', normalizedFilters.status!);
-		if (normalizedFilters.mediaType !== 'all')
-			params.set('mediaType', normalizedFilters.mediaType!);
-		if (normalizedFilters.search) params.set('search', normalizedFilters.search);
-		if (normalizedFilters.protocol !== 'all') params.set('protocol', normalizedFilters.protocol!);
-		if (normalizedFilters.indexer) params.set('indexer', normalizedFilters.indexer);
-		if (normalizedFilters.releaseGroup) params.set('releaseGroup', normalizedFilters.releaseGroup);
-		if (normalizedFilters.resolution) params.set('resolution', normalizedFilters.resolution);
-		if (normalizedFilters.isUpgrade) params.set('isUpgrade', 'true');
-		if (normalizedFilters.includeNoResults) params.set('includeNoResults', 'true');
-		if (normalizedFilters.downloadClientId)
-			params.set('downloadClientId', normalizedFilters.downloadClientId);
-		if (normalizedFilters.startDate) params.set('startDate', normalizedFilters.startDate);
-		if (normalizedFilters.endDate) params.set('endDate', normalizedFilters.endDate);
-
-		const queryString = params.toString();
 		try {
-			await goto(resolvePath(`/activity${queryString ? `?${queryString}` : ''}`), {
-				keepFocus: true
-			});
+			await fetchActivityData(normalizedFilters, tab, { updateUrl: true });
 		} catch (error) {
 			console.error('Failed to apply activity filters:', error);
-			filters = previousFilters;
-			activityTab = previousTab;
-			activeTabFilters = previousActiveTabFilters;
-			historyTabFilters = previousHistoryTabFilters;
+			toasts.error('Failed to update activity filters');
 		} finally {
-			isLoading = false;
+			// handled by fetchActivityData
 		}
 	}
 
 	async function switchTab(tab: ActivityTab): Promise<void> {
 		if (tab === activityTab) return;
-		await applyFilters(getFiltersForTab(tab), tab);
+
+		const tabFilters = normalizeFiltersForTab(getFiltersForTab(tab), tab);
+		try {
+			await fetchActivityData(tabFilters, tab, { updateUrl: true });
+		} catch (error) {
+			console.error('Failed to switch activity tab:', error);
+			toasts.error('Failed to switch activity tab');
+		} finally {
+			// handled by fetchActivityData
+		}
 	}
 
 	// Remove a specific filter
-	async function removeFilter(key: keyof FiltersType) {
+	function removeFilter(key: keyof FiltersType) {
 		const newFilters = { ...filters };
 		if (key === 'status' || key === 'mediaType' || key === 'protocol') {
 			newFilters[key] = 'all';
 		} else {
 			delete newFilters[key];
 		}
-		await applyFilters(newFilters);
+		applyFilters(newFilters);
 	}
 
 	// Clear all filters
-	async function clearAllFilters() {
-		await applyFilters({
+	function clearAllFilters() {
+		applyFilters({
 			status: 'all',
 			mediaType: 'all',
 			protocol: 'all'
 		});
 	}
 
-	// Handle sort
+	// Handle sort (just update state; $derived filteredActivities recomputes)
 	function handleSort(field: string) {
 		if (sortField === field) {
 			sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
@@ -1407,82 +1131,43 @@
 			sortField = field;
 			sortDirection = 'desc';
 		}
-
-		activities = sortActivitiesList(activities, field, sortDirection);
 	}
 
 	// Load more
 	async function loadMore() {
-		if (isLoadingMore || !data.hasMore) return;
-		isLoadingMore = true;
+		if (isLoadingMore || !hasMore) return;
 
 		try {
-			const apiUrl = new URL('/api/activity', window.location.origin);
-			apiUrl.searchParams.set('limit', '50');
-			apiUrl.searchParams.set('offset', String(activities.length));
-			apiUrl.searchParams.set('scope', activityTab);
-			if (filters.status !== 'all') apiUrl.searchParams.set('status', filters.status!);
-			if (filters.mediaType !== 'all') apiUrl.searchParams.set('mediaType', filters.mediaType!);
-			if (filters.search) apiUrl.searchParams.set('search', filters.search);
-			if (filters.protocol !== 'all') apiUrl.searchParams.set('protocol', filters.protocol!);
-			if (filters.indexer) apiUrl.searchParams.set('indexer', filters.indexer);
-			if (filters.releaseGroup) apiUrl.searchParams.set('releaseGroup', filters.releaseGroup);
-			if (filters.resolution) apiUrl.searchParams.set('resolution', filters.resolution);
-			if (filters.isUpgrade) apiUrl.searchParams.set('isUpgrade', 'true');
-			if (filters.includeNoResults) apiUrl.searchParams.set('includeNoResults', 'true');
-			if (filters.downloadClientId)
-				apiUrl.searchParams.set('downloadClientId', filters.downloadClientId);
-			if (filters.startDate) apiUrl.searchParams.set('startDate', filters.startDate);
-			if (filters.endDate) apiUrl.searchParams.set('endDate', filters.endDate);
-
-			const response = await fetch(apiUrl.toString());
-			const result = await response.json();
-
-			if (result.success && result.activities) {
-				activities = sortActivitiesList([...activities, ...result.activities]);
-			}
+			await fetchActivityData(filters, activityTab, { offset: loadedOffset, append: true });
 		} catch (error) {
 			console.error('Failed to load more:', error);
-		} finally {
-			isLoadingMore = false;
+			toasts.error('Failed to load more activity');
 		}
 	}
 
 	// Open detail modal
-	async function openDetailModal(activity: UnifiedActivity) {
+	function openDetailModal(activity: UnifiedActivity) {
 		selectedActivity = activity;
 		isModalOpen = true;
-		detailsLoading = true;
-		activityDetails = null;
-
-		// Fetch activity details
-		try {
-			const response = await fetch(`/api/activity/${activity.id}/details`);
-			if (response.ok) {
-				const data = await response.json();
-				activityDetails = data.details;
-			}
-		} catch (error) {
-			console.error('Failed to fetch activity details:', error);
-		}
-
-		detailsLoading = false;
 	}
 
 	function closeModal() {
 		isModalOpen = false;
-		selectedActivity = null;
-		activityDetails = null;
 	}
 
 	function applyQueueStatusLocally(id: string, status: ActivityStatus, statusReason?: string) {
+		let changed = false;
 		for (const activity of activities) {
 			if (activity.queueItemId === id) {
 				activity.status = status;
 				if (statusReason !== undefined) {
 					activity.statusReason = statusReason;
 				}
+				changed = true;
 			}
+		}
+		if (changed) {
+			activities = activities;
 		}
 		if (selectedActivity?.queueItemId === id) {
 			selectedActivity.status = status;
@@ -1491,21 +1176,6 @@
 			}
 			selectedActivity = { ...selectedActivity };
 		}
-	}
-
-	async function getQueueActionErrorMessage(response: Response, fallback: string): Promise<string> {
-		let message = fallback;
-		try {
-			const payload = await response.json();
-			if (payload?.message && typeof payload.message === 'string') {
-				message = payload.message;
-			} else if (payload?.error && typeof payload.error === 'string') {
-				message = payload.error;
-			}
-		} catch {
-			// Ignore JSON parse errors and fall back to default message.
-		}
-		return message;
 	}
 
 	async function runQueueAction(id: string, action: 'pause' | 'resume') {
@@ -1557,7 +1227,6 @@
 					? 'Waiting for download path before import retry'
 					: 'Import retry in progress';
 			applyQueueStatusLocally(id, 'downloading', reason);
-			scheduleQueueStatsRefresh(250, { force: true });
 		} else {
 			applyQueueStatusLocally(id, 'downloading');
 		}
@@ -1636,114 +1305,11 @@
 	</div>
 
 	{#if activityTab === 'active'}
-		<div class="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-6">
-			<button
-				type="button"
-				class="min-h-26 rounded-xl border p-3 text-left transition-colors sm:p-4 {isQueueCardFilterActive(
-					'all'
-				)
-					? 'border-primary/80 bg-base-200'
-					: 'border-base-300 bg-base-200 hover:border-base-content/25'}"
-				onclick={() => applyQueueCardFilter('all')}
-			>
-				<div class="flex items-center justify-between">
-					<span class="text-xs font-medium text-base-content/70 sm:text-sm">Total</span>
-					<Activity class="h-4 w-4 text-base-content/50" />
-				</div>
-				<div class="text-2xl font-bold">
-					{queueStats.totalCount}
-				</div>
-			</button>
-
-			<button
-				type="button"
-				class="min-h-26 rounded-xl border p-3 text-left transition-colors sm:p-4 {isQueueCardFilterActive(
-					'downloading'
-				)
-					? 'border-primary/80 bg-base-200'
-					: 'border-base-300 bg-base-200 hover:border-base-content/25'}"
-				onclick={() => applyQueueCardFilter('downloading')}
-			>
-				<div class="flex items-center justify-between">
-					<span class="text-xs font-medium text-base-content/70 sm:text-sm">Downloading</span>
-					<Download class="h-4 w-4 text-info" />
-				</div>
-				<div class="text-2xl font-bold">
-					{queueStats.downloadingCount}
-				</div>
-			</button>
-
-			<button
-				type="button"
-				class="min-h-26 rounded-xl border p-3 text-left transition-colors sm:p-4 {isQueueCardFilterActive(
-					'seeding'
-				)
-					? 'border-primary/80 bg-base-200'
-					: 'border-base-300 bg-base-200 hover:border-base-content/25'}"
-				onclick={() => applyQueueCardFilter('seeding')}
-			>
-				<div class="flex items-center justify-between">
-					<span class="text-xs font-medium text-base-content/70 sm:text-sm">Seeding</span>
-					<Upload class="h-4 w-4 text-success" />
-				</div>
-				<div class="text-2xl font-bold">
-					{queueStats.seedingCount}
-				</div>
-			</button>
-
-			<button
-				type="button"
-				class="min-h-26 rounded-xl border p-3 text-left transition-colors sm:p-4 {isQueueCardFilterActive(
-					'paused'
-				)
-					? 'border-primary/80 bg-base-200'
-					: 'border-base-300 bg-base-200 hover:border-base-content/25'}"
-				onclick={() => applyQueueCardFilter('paused')}
-			>
-				<div class="flex items-center justify-between">
-					<span class="text-xs font-medium text-base-content/70 sm:text-sm">Paused</span>
-					<Pause class="h-4 w-4 text-warning" />
-				</div>
-				<div class="text-2xl font-bold">
-					{queueStats.pausedCount}
-				</div>
-			</button>
-
-			<button
-				type="button"
-				class="min-h-26 rounded-xl border p-3 text-left transition-colors sm:p-4 {isQueueCardFilterActive(
-					'failed'
-				)
-					? 'border-primary/80 bg-base-200'
-					: 'border-base-300 bg-base-200 hover:border-base-content/25'}"
-				onclick={() => applyQueueCardFilter('failed')}
-			>
-				<div class="flex items-center justify-between">
-					<span class="text-xs font-medium text-base-content/70 sm:text-sm">Failed</span>
-					<AlertTriangle class="h-4 w-4 text-error" />
-				</div>
-				<div class="text-2xl font-bold">
-					{queueStats.failedCount}
-				</div>
-			</button>
-
-			<div class="min-h-26 rounded-xl border border-base-300 bg-base-200 p-3 sm:p-4">
-				<div class="flex items-center justify-between">
-					<span class="text-xs font-medium text-base-content/70 sm:text-sm">Speed</span>
-					<Gauge class="h-4 w-4 text-info" />
-				</div>
-				<div class="mt-2 space-y-1 text-sm font-bold sm:text-lg">
-					<div class="flex items-center gap-2 text-info">
-						<ArrowDown class="h-5 w-5 shrink-0" aria-hidden="true" />
-						<span>{queueDownloadSpeedLabel}</span>
-					</div>
-					<div class="flex items-center gap-2 text-success">
-						<ArrowUp class="h-5 w-5 shrink-0" aria-hidden="true" />
-						<span>{queueUploadSpeedLabel}</span>
-					</div>
-				</div>
-			</div>
-		</div>
+		<QueueStatsCards
+			stats={queueStats}
+			activeFilter={(filters.status ?? 'all') as QueueCardStatusFilter}
+			onFilterSelect={applyQueueCardFilter}
+		/>
 	{/if}
 
 	<!-- Unified Toolbar -->
@@ -1774,7 +1340,7 @@
 					</button>
 
 					{#if activeSelectionMode}
-						<span class="text-xs text-base-content/60">{selectedActiveIds.length} selected</span>
+						<span class="text-xs text-base-content/60">{selectedActiveIds.size} selected</span>
 						<button
 							class="btn btn-xs"
 							onclick={() => openActiveConfirm('pause')}
@@ -1807,9 +1373,9 @@
 						<button
 							class="btn btn-ghost btn-xs"
 							onclick={() => {
-								selectedActiveIds = [];
+								selectedActiveIds.clear();
 							}}
-							disabled={activeBulkLoading || selectedActiveIds.length === 0}
+							disabled={activeBulkLoading || selectedActiveIds.size === 0}
 						>
 							Clear Selection
 						</button>
@@ -1868,12 +1434,12 @@
 					<button
 						class="btn btn-xs btn-error"
 						onclick={() => openHistoryConfirm('delete_selected')}
-						disabled={deleteSelectedLoading || selectedHistoryIds.length === 0}
+						disabled={deleteSelectedLoading || selectedHistoryIds.size === 0}
 					>
 						{#if deleteSelectedLoading}
 							<Loader2 class="h-3 w-3 animate-spin" />
 						{/if}
-						Delete Selected ({selectedHistoryIds.length})
+						Delete Selected ({selectedHistoryIds.size})
 					</button>
 				{/if}
 				<div class="ml-auto"></div>
@@ -1894,22 +1460,22 @@
 	<!-- Activity Stats -->
 	<div class="flex items-center gap-4 text-sm text-base-content/70">
 		<span>{total} {activityTab === 'active' ? 'active downloads' : 'history activities'}</span>
-		{#if activityTab === 'active' && activities.some((a) => a.status === 'downloading')}
+		{#if hasDownloading}
 			<span class="badge gap-1 badge-info">
 				<Loader2 class="h-3 w-3 animate-spin" />
-				{activities.filter((a) => a.status === 'downloading').length} downloading
+				{downloadingCount} downloading
 			</span>
 		{/if}
 	</div>
 
 	<!-- Activity Table -->
-	{#if isLoading && activities.length === 0}
+	{#if isLoading && filteredActivities.length === 0}
 		<div class="flex items-center justify-center py-12">
 			<Loader2 class="h-8 w-8 animate-spin" />
 		</div>
 	{:else}
 		<ActivityTable
-			{activities}
+			activities={filteredActivities}
 			{sortField}
 			{sortDirection}
 			selectionMode={activityTab === 'history' ? selectionMode : activeSelectionMode}
@@ -1927,19 +1493,10 @@
 			onToggleSelectionAll={activityTab === 'history'
 				? handleToggleSelectionAll
 				: handleToggleActiveSelectionAll}
+			{hasMore}
+			{isLoadingMore}
+			onLoadMore={loadMore}
 		/>
-
-		<!-- Load More -->
-		{#if data.hasMore}
-			<div class="flex justify-center py-4">
-				<button class="btn btn-ghost" onclick={loadMore} disabled={isLoadingMore}>
-					{#if isLoadingMore}
-						<Loader2 class="h-4 w-4 animate-spin" />
-					{/if}
-					Load More
-				</button>
-			</div>
-		{/if}
 	{/if}
 </div>
 
@@ -1966,11 +1523,11 @@
 />
 
 <!-- Detail Modal -->
-{#if isModalOpen && selectedActivity}
+
+{#if selectedActivity}
 	<ActivityDetailModal
+		open={isModalOpen}
 		activity={selectedActivity}
-		details={activityDetails}
-		loading={detailsLoading}
 		onClose={closeModal}
 		onPause={handlePause}
 		onResume={handleResume}

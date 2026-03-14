@@ -95,7 +95,10 @@ interface MigrationDefinition {
  * Version 67: Add Better Auth rateLimit.id column required by adapter-generated IDs
  * Version 68: Add edition column to episode_files for rename preservation
  */
-export const CURRENT_SCHEMA_VERSION = 68;
+/**
+ * Version 69: Add indexes on download_history for activity query performance
+ */
+export const CURRENT_SCHEMA_VERSION = 70;
 
 const BETTER_AUTH_TABLE_DEFINITIONS = [
 	{
@@ -807,66 +810,6 @@ const TABLE_DEFINITIONS: string[] = [
 		"error_message" text
 	)`,
 
-	`CREATE TABLE IF NOT EXISTS "activities" (
-		"id" text PRIMARY KEY NOT NULL,
-		"queue_item_id" text REFERENCES "download_queue"("id") ON DELETE CASCADE,
-		"download_history_id" text REFERENCES "download_history"("id") ON DELETE CASCADE,
-		"monitoring_history_id" text REFERENCES "monitoring_history"("id") ON DELETE CASCADE,
-		"source_type" text NOT NULL CHECK ("source_type" IN ('queue', 'history', 'monitoring')),
-		"media_type" text NOT NULL CHECK ("media_type" IN ('movie', 'episode')),
-		"movie_id" text REFERENCES "movies"("id") ON DELETE CASCADE,
-		"series_id" text REFERENCES "series"("id") ON DELETE CASCADE,
-		"episode_ids" text,
-		"season_number" integer,
-		"media_title" text NOT NULL,
-		"media_year" integer,
-		"series_title" text,
-		"release_title" text,
-		"quality" text,
-		"release_group" text,
-		"size" integer,
-		"indexer_id" text,
-		"indexer_name" text,
-		"protocol" text CHECK ("protocol" IN ('torrent', 'usenet', 'streaming')),
-		"status" text NOT NULL CHECK ("status" IN ('imported', 'streaming', 'downloading', 'failed', 'rejected', 'removed', 'no_results', 'searching')),
-		"status_reason" text,
-		"download_progress" integer DEFAULT 0,
-		"is_upgrade" integer DEFAULT false,
-		"old_score" integer,
-		"new_score" integer,
-		"timeline" text,
-		"started_at" text NOT NULL,
-		"completed_at" text,
-		"imported_path" text,
-		"search_text" text,
-		"created_at" text,
-		"updated_at" text
-	)`,
-
-	`CREATE TABLE IF NOT EXISTS "activity_details" (
-		"id" text PRIMARY KEY NOT NULL,
-		"activity_id" text NOT NULL REFERENCES "activities"("id") ON DELETE CASCADE,
-		"score_breakdown" text,
-		"replaced_movie_file_id" text REFERENCES "movie_files"("id") ON DELETE SET NULL,
-		"replaced_episode_file_ids" text,
-		"replaced_file_path" text,
-		"replaced_file_quality" text,
-		"replaced_file_score" integer,
-		"replaced_file_size" integer,
-		"search_results" text,
-		"selection_reason" text,
-		"import_log" text,
-		"files_imported" text,
-		"files_deleted" text,
-		"download_client_name" text,
-		"download_client_type" text,
-		"download_id" text,
-		"info_hash" text,
-		"release_info" text,
-		"created_at" text,
-		"updated_at" text
-	)`,
-
 	`CREATE TABLE IF NOT EXISTS "subtitles" (
 		"id" text PRIMARY KEY NOT NULL,
 		"movie_id" text REFERENCES "movies"("id") ON DELETE CASCADE,
@@ -1282,16 +1225,6 @@ const INDEX_DEFINITIONS: string[] = [
 	`CREATE INDEX IF NOT EXISTS "idx_monitoring_history_movie" ON "monitoring_history" ("movie_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_monitoring_history_series" ON "monitoring_history" ("series_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_monitoring_history_episode" ON "monitoring_history" ("episode_id")`,
-	// Activities indexes
-	`CREATE INDEX IF NOT EXISTS "idx_activities_status" ON "activities" ("status")`,
-	`CREATE INDEX IF NOT EXISTS "idx_activities_media_type" ON "activities" ("media_type")`,
-	`CREATE INDEX IF NOT EXISTS "idx_activities_started_at" ON "activities" ("started_at")`,
-	`CREATE INDEX IF NOT EXISTS "idx_activities_movie" ON "activities" ("movie_id")`,
-	`CREATE INDEX IF NOT EXISTS "idx_activities_series" ON "activities" ("series_id")`,
-	`CREATE INDEX IF NOT EXISTS "idx_activities_source" ON "activities" ("source_type")`,
-	`CREATE INDEX IF NOT EXISTS "idx_activities_queue" ON "activities" ("queue_item_id")`,
-	`CREATE INDEX IF NOT EXISTS "idx_activities_history" ON "activities" ("download_history_id")`,
-	`CREATE INDEX IF NOT EXISTS "idx_activities_monitoring" ON "activities" ("monitoring_history_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_subtitles_movie" ON "subtitles" ("movie_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_subtitles_episode" ON "subtitles" ("episode_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_smart_lists_enabled" ON "smart_lists" ("enabled")`,
@@ -1358,9 +1291,16 @@ const INDEX_DEFINITIONS: string[] = [
 	// Alternate titles indexes for multi-title search
 	`CREATE INDEX IF NOT EXISTS "idx_alternate_titles_media" ON "alternate_titles" ("media_type", "media_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_alternate_titles_source" ON "alternate_titles" ("source")`,
-	// Activity details indexes
-	`CREATE INDEX IF NOT EXISTS "idx_activity_details_activity" ON "activity_details" ("activity_id")`,
-	`CREATE INDEX IF NOT EXISTS "idx_activity_details_replaced_movie" ON "activity_details" ("replaced_movie_file_id")`
+
+	// download_history indexes for activity query performance
+	`CREATE INDEX IF NOT EXISTS "idx_dh_status" ON "download_history" ("status")`,
+	`CREATE INDEX IF NOT EXISTS "idx_dh_movie" ON "download_history" ("movie_id")`,
+	`CREATE INDEX IF NOT EXISTS "idx_dh_series" ON "download_history" ("series_id")`,
+	`CREATE INDEX IF NOT EXISTS "idx_dh_created_at" ON "download_history" ("created_at")`,
+	`CREATE INDEX IF NOT EXISTS "idx_dh_protocol" ON "download_history" ("protocol")`,
+	`CREATE INDEX IF NOT EXISTS "idx_dh_indexer_name" ON "download_history" ("indexer_name")`,
+	`CREATE INDEX IF NOT EXISTS "idx_dh_download_client" ON "download_history" ("download_client_id")`,
+	`CREATE INDEX IF NOT EXISTS "idx_dh_status_created" ON "download_history" ("status", "created_at")`
 ];
 
 /**
@@ -4786,6 +4726,43 @@ const MIGRATIONS: MigrationDefinition[] = [
 				sqlite.prepare(`ALTER TABLE episode_files ADD COLUMN edition TEXT`).run();
 				logger.info('[SchemaSync] Added edition column to episode_files');
 			}
+		}
+	},
+
+	// Migration 69: Add indexes on download_history for activity query performance
+	{
+		version: 69,
+		name: 'add_download_history_indexes',
+		apply: (sqlite) => {
+			const indexes = [
+				`CREATE INDEX IF NOT EXISTS "idx_dh_status" ON "download_history" ("status")`,
+				`CREATE INDEX IF NOT EXISTS "idx_dh_movie" ON "download_history" ("movie_id")`,
+				`CREATE INDEX IF NOT EXISTS "idx_dh_series" ON "download_history" ("series_id")`,
+				`CREATE INDEX IF NOT EXISTS "idx_dh_created_at" ON "download_history" ("created_at")`,
+				`CREATE INDEX IF NOT EXISTS "idx_dh_protocol" ON "download_history" ("protocol")`,
+				`CREATE INDEX IF NOT EXISTS "idx_dh_indexer_name" ON "download_history" ("indexer_name")`,
+				`CREATE INDEX IF NOT EXISTS "idx_dh_download_client" ON "download_history" ("download_client_id")`,
+				`CREATE INDEX IF NOT EXISTS "idx_dh_status_created" ON "download_history" ("status", "created_at")`
+			];
+			for (const sql of indexes) {
+				sqlite.prepare(sql).run();
+			}
+			logger.info('[SchemaSync] Added download_history indexes for activity query performance');
+		}
+	},
+	{
+		version: 70,
+		name: 'drop_unused_activities_tables',
+		apply: (sqlite) => {
+			// The "activities" and "activity_details" tables were scaffolding for a
+			// materialized-view pattern that was never implemented.  The actual
+			// Activity page reads directly from download_queue, download_history,
+			// and monitoring_history.  Both tables are always empty and can be
+			// safely dropped.  activity_details has a FK to activities, so it must
+			// be dropped first.
+			sqlite.prepare('DROP TABLE IF EXISTS "activity_details"').run();
+			sqlite.prepare('DROP TABLE IF EXISTS "activities"').run();
+			logger.info('[SchemaSync] Dropped unused activities and activity_details tables');
 		}
 	}
 ];

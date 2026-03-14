@@ -176,6 +176,18 @@ export interface ActivitySortOptions {
 }
 
 /**
+ * Summary metadata returned alongside activity results.
+ * Counts reflect the full filtered result universe, not just the current page.
+ */
+export interface ActivitySummary {
+	totalCount: number;
+	downloadingCount: number;
+	seedingCount: number;
+	pausedCount: number;
+	failedCount: number;
+}
+
+/**
  * SSE event types for activity updates
  */
 export type ActivityEventStreamType =
@@ -200,107 +212,5 @@ export interface ActivityResponse {
 	activities: UnifiedActivity[];
 	total: number;
 	hasMore: boolean;
-}
-
-/**
- * Score breakdown for activity details
- */
-export interface ScoreBreakdown {
-	resolution?: { old: number; new: number };
-	source?: { old: number; new: number };
-	codec?: { old: number; new: number };
-	hdr?: { old: number; new: number };
-	audio?: { old: number; new: number };
-	releaseGroup?: { old: number; new: number };
-	customFormats?: Array<{ name: string; old: number; new: number }>;
-}
-
-/**
- * Search result entry for audit trail
- */
-export interface SearchResultEntry {
-	title: string;
-	indexer: string;
-	score: number;
-	size: number;
-	protocol: string;
-	rejected: boolean;
-	rejectionReason?: string;
-}
-
-/**
- * Import log entry
- */
-export interface ImportLogEntry {
-	step: string;
-	timestamp: string;
-	message: string;
-	success: boolean;
-}
-
-/**
- * File import entry
- */
-export interface FileImportEntry {
-	path: string;
-	size: number;
-	quality: string;
-}
-
-/**
- * File deletion entry
- */
-export interface FileDeletionEntry {
-	path: string;
-	reason: string;
-}
-
-/**
- * Release info metadata
- */
-export interface ReleaseInfo {
-	indexerId?: string;
-	indexerName?: string;
-	downloadUrl?: string;
-	magnetUrl?: string;
-	seeders?: number;
-	leechers?: number;
-	age?: string;
-}
-
-/**
- * Replaced file info
- */
-export interface ReplacedFileInfo {
-	id: string;
-	path: string;
-	size: number | null;
-	quality: QueueQualityInfo | null;
-	releaseGroup: string | null;
-}
-
-/**
- * Activity details with full scoring breakdown and audit trail
- */
-export interface ActivityDetails {
-	id: string;
-	activityId: string;
-	scoreBreakdown?: ScoreBreakdown;
-	replacedFileInfo?: ReplacedFileInfo;
-	replacedFilePath?: string | null;
-	replacedFileQuality?: QueueQualityInfo | null;
-	replacedFileScore?: number | null;
-	replacedFileSize?: number | null;
-	searchResults?: SearchResultEntry[];
-	selectionReason?: string | null;
-	importLog?: ImportLogEntry[];
-	filesImported?: FileImportEntry[];
-	filesDeleted?: FileDeletionEntry[];
-	downloadClientName?: string | null;
-	downloadClientType?: string | null;
-	downloadId?: string | null;
-	infoHash?: string | null;
-	releaseInfo?: ReleaseInfo;
-	createdAt: string;
-	updatedAt: string;
+	summary: ActivitySummary | null;
 }

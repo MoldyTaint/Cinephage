@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ActivityFilters, UnifiedActivity } from '$lib/types/activity';
+import type { ActivityFilters, ActivitySummary, UnifiedActivity } from '$lib/types/activity';
 import { ActivityService } from './ActivityService';
 import type { DownloadHistoryRecord, DownloadQueueRecord } from './types';
 
@@ -106,7 +106,7 @@ function createQueueRecord(
 }
 
 describe('ActivityService download client filtering', () => {
-	it('filters activities by downloadClientId across queue/history entries', () => {
+	it('applyFilters ignores downloadClientId (handled by SQL)', () => {
 		const service = ActivityService.getInstance() as unknown as {
 			applyFilters: (activities: UnifiedActivity[], filters: ActivityFilters) => UnifiedActivity[];
 		};
@@ -130,6 +130,8 @@ describe('ActivityService download client filtering', () => {
 			})
 		];
 
+		// downloadClientId filtering is now pushed to SQL.
+		// applyFilters only handles JS-only filters (search, releaseGroup, resolution, isUpgrade).
 		const filtered = service.applyFilters(activities, {
 			status: 'all',
 			mediaType: 'all',
@@ -137,12 +139,18 @@ describe('ActivityService download client filtering', () => {
 			downloadClientId: 'client-a'
 		});
 
-		expect(filtered.map((activity) => activity.id)).toEqual(['queue-a', 'history-a']);
+		// All items pass through because applyFilters does not filter by downloadClientId
+		expect(filtered.map((activity) => activity.id)).toEqual([
+			'queue-a',
+			'history-a',
+			'queue-b',
+			'monitoring-no-client'
+		]);
 	});
 });
 
 describe('ActivityService date filtering', () => {
-	it('treats endDate as inclusive through end-of-day', () => {
+	it('applyFilters ignores date filters (handled by SQL)', () => {
 		const service = ActivityService.getInstance() as unknown as {
 			applyFilters: (activities: UnifiedActivity[], filters: ActivityFilters) => UnifiedActivity[];
 		};
@@ -152,6 +160,8 @@ describe('ActivityService date filtering', () => {
 			createActivity('outside-day', { startedAt: '2026-03-08T00:00:00.000Z' })
 		];
 
+		// endDate filtering is now pushed to SQL (fetchHistoryItems / fetchMonitoringItems).
+		// applyFilters only handles JS-only filters (search, releaseGroup, resolution, isUpgrade).
 		const filtered = service.applyFilters(activities, {
 			status: 'all',
 			mediaType: 'all',
@@ -159,7 +169,8 @@ describe('ActivityService date filtering', () => {
 			endDate: '2026-03-07'
 		});
 
-		expect(filtered.map((activity) => activity.id)).toEqual(['inside-day']);
+		// Both items pass through because applyFilters does not filter by date
+		expect(filtered.map((activity) => activity.id)).toEqual(['inside-day', 'outside-day']);
 	});
 });
 
@@ -461,5 +472,45 @@ describe('ActivityService active dedupe', () => {
 		const deduped = service.dedupeActiveActivities([failedHistory, activeQueue]);
 		expect(deduped).toHaveLength(1);
 		expect(deduped[0].id).toBe('queue-active-series-no-episodes');
+	});
+});
+
+describe('ActivityService unified summary', () => {
+	it('counts failed active queue rows in the same active dataset the table uses', () => {
+		const service = ActivityService.getInstance() as unknown as {
+			applyFilters: (
+				activities: UnifiedActivity[],
+				filters: ActivityFilters,
+				scope?: 'all' | 'active' | 'history'
+			) => UnifiedActivity[];
+			applyRequestedStatusFilter: (
+				activities: UnifiedActivity[],
+				filters: ActivityFilters
+			) => UnifiedActivity[];
+			dedupeActiveActivities: (activities: UnifiedActivity[]) => UnifiedActivity[];
+			buildActivitySummary: (activities: UnifiedActivity[]) => ActivitySummary;
+		};
+
+		const failedQueue = createActivity('queue-failed', {
+			status: 'failed',
+			queueItemId: 'queue-failed-id',
+			releaseTitle: 'Failure.Movie.2026.1080p.WEB-DL-GRP'
+		});
+		const downloadingQueue = createActivity('queue-downloading', {
+			status: 'downloading',
+			queueItemId: 'queue-download-id',
+			releaseTitle: 'Success.Movie.2026.1080p.WEB-DL-GRP'
+		});
+
+		const activeUniverse = service.dedupeActiveActivities(
+			service.applyFilters([failedQueue, downloadingQueue], { status: 'all' }, 'active')
+		);
+		const failedOnly = service.applyRequestedStatusFilter(activeUniverse, { status: 'failed' });
+		const summary = service.buildActivitySummary(activeUniverse);
+
+		expect(failedOnly.map((activity) => activity.id)).toEqual(['queue-failed']);
+		expect(summary.failedCount).toBe(1);
+		expect(summary.totalCount).toBe(2);
+		expect(summary.downloadingCount).toBe(1);
 	});
 });

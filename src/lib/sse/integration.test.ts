@@ -245,6 +245,27 @@ describe('SSE Event Type Validation', () => {
 					progress: 50,
 					status: 'downloading'
 				},
+				'activity:seed': [
+					{
+						id: 'seed-activity',
+						mediaType: 'movie',
+						mediaId: 'movie-2',
+						mediaTitle: 'Seed Movie',
+						mediaYear: 2024,
+						releaseTitle: 'Seed.Release.2024.1080p',
+						quality: null,
+						releaseGroup: 'SEEDGROUP',
+						size: 2000000,
+						indexerId: null,
+						indexerName: null,
+						protocol: 'torrent',
+						status: 'downloading',
+						isUpgrade: false,
+						timeline: [],
+						startedAt: new Date().toISOString(),
+						completedAt: null
+					}
+				],
 				'activity:refresh': {
 					action: 'purge_older_than_retention',
 					timestamp: new Date().toISOString()
