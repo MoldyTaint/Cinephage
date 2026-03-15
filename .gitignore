@@ -27,8 +27,8 @@ vite.config.ts.timestamp-*
 *.db
 *.db-*
 
-# Logs
-logs/
+# Logs (anchored to repo root so src/routes/**/logs/ is not ignored)
+/logs/
 *.log
 
 # Claude Code local settings

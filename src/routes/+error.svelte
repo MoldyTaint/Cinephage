@@ -5,11 +5,10 @@
 <script lang="ts">
 	import { page } from '$app/state';
 
-	let { error }: { error: App.Error } = $props();
+	let { error }: { error: App.Error | undefined } = $props();
 	const status = $derived(page.status);
-	const supportId = $derived(
-		(error as App.Error & { supportId?: string }).supportId ?? 'Unavailable'
-	);
+	const message = $derived(error?.message || fallbackMessage);
+	const supportId = $derived(error?.supportId ?? 'Unavailable');
 </script>
 
 <svelte:head>
@@ -28,7 +27,7 @@
 		</div>
 
 		<h1 class="max-w-2xl font-serif text-5xl leading-tight font-semibold text-white sm:text-6xl">
-			{error.message || fallbackMessage}
+			{message}
 		</h1>
 
 		<p class="mt-5 max-w-2xl text-base leading-7 text-zinc-300 sm:text-lg">

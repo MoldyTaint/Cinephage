@@ -843,9 +843,17 @@ export const handleError: HandleServerError = ({ error, event }) => {
 	);
 
 	// Return safe error message to client
+	if (isAppError(error)) {
+		return {
+			message: error.message,
+			code: error.code,
+			supportId
+		};
+	}
+
 	return {
-		message: isAppError(error) ? error.message : 'An unexpected error occurred',
-		code: isAppError(error) ? error.code : 'INTERNAL_ERROR',
+		message: error instanceof Error ? error.message : 'An unexpected error occurred',
+		code: 'INTERNAL_ERROR',
 		supportId
 	};
 };
