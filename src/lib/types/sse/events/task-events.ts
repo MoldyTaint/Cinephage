@@ -4,15 +4,7 @@
  * Shared types for the /api/tasks/stream endpoint
  */
 
-import type { UnifiedTask } from '$lib/server/tasks/UnifiedTaskRegistry';
 import type { TaskHistoryEntry } from '$lib/types/task';
-
-/**
- * tasks:initial event - Full initial task state
- */
-export interface TasksInitialEvent {
-	tasks: UnifiedTask[];
-}
 
 /**
  * task:started event - A task began execution
@@ -70,7 +62,6 @@ export interface TaskUpdatedEvent {
  * All events for the tasks stream endpoint
  */
 export interface TaskStreamEvents {
-	'tasks:initial': TasksInitialEvent;
 	'task:started': TaskStartedEvent;
 	'task:completed': TaskCompletedEvent;
 	'task:failed': TaskFailedEvent;

@@ -17,9 +17,6 @@ describe('SSE Event Type Validation', () => {
 		it('should have correct event structure', () => {
 			// This test validates the TypeScript types compile correctly
 			const events: TaskStreamEvents = {
-				'tasks:initial': {
-					tasks: []
-				},
 				'task:started': {
 					taskId: 'test-task',
 					startedAt: new Date().toISOString()
@@ -94,20 +91,18 @@ describe('SSE Event Type Validation', () => {
 	describe('ChannelStreamEvents', () => {
 		it('should have correct event structure', () => {
 			const events: ChannelStreamEvents = {
-				'livetv:initial': {
+				'livetv:sync': {
 					lineup: [],
 					categories: [],
+					lineupChannelIds: [],
 					epgNowNext: {}
 				},
 				'lineup:updated': {
 					lineup: [],
-					categories: [],
-					epgNowNext: {}
+					lineupChannelIds: []
 				},
 				'categories:updated': {
-					lineup: [],
-					categories: [],
-					epgNowNext: {}
+					categories: []
 				},
 				'epg:nowNext': {
 					channels: {}

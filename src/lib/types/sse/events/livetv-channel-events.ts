@@ -20,11 +20,12 @@ export interface NowNextEntry {
 }
 
 /**
- * livetv:initial event - Full initial state
+ * livetv:sync event - Full state snapshot used to resync the page
  */
 export interface LivetvInitialEvent {
 	lineup: ChannelLineupItemWithDetails[];
 	categories: ChannelCategory[];
+	lineupChannelIds: string[];
 	epgNowNext: Record<string, NowNextEntry>;
 }
 
@@ -33,17 +34,14 @@ export interface LivetvInitialEvent {
  */
 export interface LineupUpdatedEvent {
 	lineup: ChannelLineupItemWithDetails[];
-	categories: ChannelCategory[];
-	epgNowNext: Record<string, NowNextEntry>;
+	lineupChannelIds: string[];
 }
 
 /**
  * categories:updated event - Categories changed
  */
 export interface CategoriesUpdatedEvent {
-	lineup: ChannelLineupItemWithDetails[];
 	categories: ChannelCategory[];
-	epgNowNext: Record<string, NowNextEntry>;
 }
 
 /**
@@ -84,7 +82,7 @@ export interface ChannelsSyncFailedEvent {
  * All events for the channels stream endpoint
  */
 export interface ChannelStreamEvents {
-	'livetv:initial': LivetvInitialEvent;
+	'livetv:sync': LivetvInitialEvent;
 	'lineup:updated': LineupUpdatedEvent;
 	'categories:updated': CategoriesUpdatedEvent;
 	'epg:nowNext': EpgNowNextEvent;

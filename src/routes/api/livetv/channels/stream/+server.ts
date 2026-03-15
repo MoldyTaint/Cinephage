@@ -6,7 +6,7 @@
  * Events:
  * - connected: Initial connection established
  * - heartbeat: Keep-alive every 30s
- * - livetv:initial: Full lineup, categories, and EPG now/next data
+ * - livetv:sync: Current lineup, categories, and EPG now/next data
  * - lineup:updated: Lineup changed (add/remove/reorder)
  * - categories:updated: Categories changed
  * - channels:syncStarted: Channel sync started
@@ -66,7 +66,10 @@ export const GET: RequestHandler = async () => {
 		const sendInitialState = async () => {
 			try {
 				const data = await getInitialData();
-				send('livetv:initial', data);
+				send('livetv:sync', {
+					...data,
+					lineupChannelIds: data.lineup.map((item) => item.channelId)
+				});
 			} catch (error) {
 				logger.error('Failed to fetch initial LiveTV state', {
 					error: error instanceof Error ? error.message : 'Unknown error'
@@ -112,11 +115,18 @@ export const GET: RequestHandler = async () => {
 		epgInterval = setInterval(sendEpgNowNext, 60000);
 
 		const onLineupUpdated = async () => {
-			send('lineup:updated', await getInitialData());
+			const data = await getInitialData();
+			send('lineup:updated', {
+				lineup: data.lineup,
+				lineupChannelIds: data.lineup.map((item) => item.channelId)
+			});
 		};
 
 		const onCategoriesUpdated = async () => {
-			send('categories:updated', await getInitialData());
+			const data = await getInitialData();
+			send('categories:updated', {
+				categories: data.categories
+			});
 		};
 
 		const onChannelsSyncStarted = (event: { accountId: string }) => {

@@ -4,7 +4,6 @@
  * GET /api/tasks/stream
  *
  * Events emitted:
- * - tasks:initial    - Full initial task state
  * - task:started     - A task began execution (scheduled or manual)
  * - task:completed   - A task finished successfully
  * - task:failed      - A task encountered an error
@@ -18,12 +17,6 @@ import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler'
 import { taskSettingsService } from '$lib/server/tasks/TaskSettingsService';
 import { taskHistoryService } from '$lib/server/tasks/TaskHistoryService';
 import type { TaskResult } from '$lib/server/monitoring/MonitoringScheduler';
-import {
-	UNIFIED_TASK_DEFINITIONS,
-	type UnifiedTask,
-	type UnifiedTaskDefinition
-} from '$lib/server/tasks/UnifiedTaskRegistry';
-import { librarySchedulerService } from '$lib/server/library/index';
 import type { TaskHistoryEntry } from '$lib/types/task';
 
 /**
@@ -66,77 +59,12 @@ export interface TaskUpdatedEvent {
 	nextRunTime?: string | null;
 }
 
-export interface TasksInitialEvent {
-	tasks: UnifiedTask[];
-}
-
-/**
- * All events for the tasks stream endpoint
- */
 export interface TaskStreamEvents {
-	'tasks:initial': TasksInitialEvent;
 	'task:started': TaskStartedEvent;
 	'task:completed': TaskCompletedEvent;
 	'task:failed': TaskFailedEvent;
 	'task:cancelled': TaskCancelledEvent;
 	'task:updated': TaskUpdatedEvent;
-}
-
-/**
- * Get initial task state by querying the database directly.
- * This bypasses the in-memory cache which may not be initialized yet.
- */
-async function getInitialTaskState(): Promise<UnifiedTask[]> {
-	return await Promise.all(
-		UNIFIED_TASK_DEFINITIONS.map(async (def: UnifiedTaskDefinition) => {
-			// Get settings from TaskSettingsService (queries DB directly)
-			const settings = await taskSettingsService.getTaskSettings(def.id);
-			const enabled = settings?.enabled ?? true;
-			const intervalHours = settings?.intervalHours ?? def.defaultIntervalHours ?? null;
-
-			if (def.category === 'scheduled') {
-				// For scheduled tasks, use the lastRunAt from task_settings (DB)
-				// This is always available regardless of MonitoringScheduler initialization
-				const lastRunTime = settings?.lastRunAt ?? null;
-				const nextRunTime = settings?.nextRunAt ?? null;
-
-				// Check if task is currently running via monitoringScheduler's in-memory Set
-				// Note: This relies on the in-memory state, but for initial load it's acceptable
-				// because any running tasks will immediately emit task:started events via SSE
-				const monitoringStatus = await monitoringScheduler.getStatus();
-				const taskKey = def.id as keyof typeof monitoringStatus.tasks;
-				const isRunning = monitoringStatus.tasks[taskKey]?.isRunning ?? false;
-
-				return {
-					...def,
-					lastRunTime,
-					nextRunTime,
-					intervalHours,
-					isRunning,
-					enabled
-				};
-			} else {
-				// Get status from TaskHistoryService for maintenance tasks
-				const lastRun = await taskHistoryService.getLastRunForTask(def.id);
-				let isRunning = taskHistoryService.isTaskRunning(def.id);
-
-				// Special handling for library-scan: check librarySchedulerService for actual running state
-				if (def.id === 'library-scan') {
-					const libStatus = await librarySchedulerService.getStatus();
-					isRunning = libStatus.scanning;
-				}
-
-				return {
-					...def,
-					lastRunTime: lastRun?.completedAt ?? lastRun?.startedAt ?? null,
-					nextRunTime: null,
-					intervalHours,
-					isRunning,
-					enabled
-				};
-			}
-		})
-	);
 }
 
 /**
@@ -184,15 +112,6 @@ async function getFailedHistoryEntry(
 
 export const GET: RequestHandler = async () => {
 	return createSSEStream(async (send) => {
-		// Send initial task state immediately (queries DB directly, bypasses cache)
-		try {
-			const initialTasks = await getInitialTaskState();
-			send('tasks:initial', { tasks: initialTasks });
-		} catch (error) {
-			// Log error but don't fail the connection - client will rely on server-rendered data
-			console.error('[Tasks SSE] Failed to fetch initial task state:', error);
-		}
-
 		// --- Scheduled task event handlers ---
 
 		const onTaskStarted = (taskType: string) => {

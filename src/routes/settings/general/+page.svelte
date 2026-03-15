@@ -43,11 +43,24 @@
 
 	// SSE Connection for library scan progress
 	createSSE<{
+		status: {
+			fullScan?: boolean;
+			activeScans?: unknown[];
+			inProgress?: boolean;
+			isScanning?: boolean;
+		};
 		progress: ScanProgress;
 		scanComplete: { results?: Array<{ unmatchedFiles?: number }> };
 		scanError: { error?: { message?: string } };
 	}>('/api/library/scan/status', {
+		status: (data) => {
+			scanning = Boolean(data.inProgress ?? data.isScanning ?? false);
+			if (!scanning) {
+				scanProgress = null;
+			}
+		},
 		progress: (data) => {
+			scanning = true;
 			scanProgress = data;
 		},
 		scanComplete: (data) => {

@@ -10,6 +10,7 @@
 
 import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { createSSEOperationStream } from '$lib/server/sse';
 import { db } from '$lib/server/db/index.js';
 import { series, seasons, episodes } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -62,39 +63,13 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	const refreshId = `series-refresh-${id}`;
 	startRefresh(refreshId, { seriesId: id });
 
-	// Create a streaming response
-	const stream = new ReadableStream({
-		async start(controller) {
-			const encoder = new TextEncoder();
-
-			const send = (event: SSEEvent) => {
-				try {
-					controller.enqueue(encoder.encode(`event: ${event.type}\n`));
-					controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
-				} catch {
-					// Controller may be closed
-				}
+	return createSSEOperationStream(
+		request,
+		async ({ send, signal, isAborted }) => {
+			const sendEvent = (event: SSEEvent) => {
+				if (isAborted()) return;
+				send(event.type, event);
 			};
-
-			// Heartbeat to keep connection alive (every 25 seconds)
-			const heartbeatInterval = setInterval(() => {
-				try {
-					controller.enqueue(encoder.encode(`: heartbeat\n\n`));
-				} catch {
-					clearInterval(heartbeatInterval);
-				}
-			}, 25000);
-
-			// Cleanup on abort
-			request.signal.addEventListener('abort', () => {
-				clearInterval(heartbeatInterval);
-				stopRefresh(refreshId);
-				try {
-					controller.close();
-				} catch {
-					// Already closed
-				}
-			});
 
 			try {
 				// Fetch fresh data from TMDB
@@ -137,8 +112,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 				if (tmdbSeries.seasons) {
 					for (const tmdbSeasonInfo of tmdbSeries.seasons) {
 						// Check if request was aborted
-						if (request.signal.aborted) {
-							clearInterval(heartbeatInterval);
+						if (signal.aborted) {
 							return;
 						}
 
@@ -238,7 +212,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 							processedSeasons++;
 
 							// Send progress event
-							send({
+							sendEvent({
 								type: 'progress',
 								seasonNumber: tmdbSeasonInfo.season_number,
 								totalSeasons,
@@ -290,7 +264,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 				libraryMediaEvents.emitSeriesUpdated(id);
 
 				// Send completion event
-				send({
+				sendEvent({
 					type: 'complete',
 					success: true,
 					episodeCount,
@@ -301,28 +275,14 @@ export const POST: RequestHandler = async ({ params, request }) => {
 					'[RefreshSeries] Failed to refresh series',
 					err instanceof Error ? err : undefined
 				);
-				send({
+				sendEvent({
 					type: 'error',
 					message: err instanceof Error ? err.message : 'Failed to refresh series from TMDB'
 				});
 			} finally {
-				clearInterval(heartbeatInterval);
 				stopRefresh(refreshId);
-				try {
-					controller.close();
-				} catch {
-					// Already closed
-				}
 			}
-		}
-	});
-
-	return new Response(stream, {
-		headers: {
-			'Content-Type': 'text/event-stream',
-			'Cache-Control': 'no-cache',
-			Connection: 'keep-alive',
-			'X-Accel-Buffering': 'no' // Disable nginx buffering
-		}
-	});
+		},
+		{ heartbeatInterval: 25000 }
+	);
 };

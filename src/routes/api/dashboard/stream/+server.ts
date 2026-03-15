@@ -52,7 +52,7 @@ export const GET: RequestHandler = async () => {
 				const { activities } = await activityService.getActivities(
 					{ status: 'all', mediaType: 'all', protocol: 'all' },
 					{ field: 'time', direction: 'desc' },
-					{ limit: 10, offset: 0 },
+					{ limit: 18, offset: 0 },
 					'history'
 				);
 

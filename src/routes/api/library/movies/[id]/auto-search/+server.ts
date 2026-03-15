@@ -1,5 +1,6 @@
 import type { RequestHandler } from './$types.js';
 import { searchOnAdd } from '$lib/server/library/searchOnAdd.js';
+import { createSSEOperationStream } from '$lib/server/sse';
 import {
 	startSearch,
 	stopSearch,
@@ -51,39 +52,14 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		startSearch(searchId, { movieId, type: 'single' });
 		libraryMediaEvents.emit('movie:searchStarted', { movieId });
 
-		// Create SSE stream
-		const stream = new ReadableStream({
-			async start(controller) {
-				const encoder = new TextEncoder();
-				let cancelled = false;
-
-				// Listen for client disconnect
-				request.signal.addEventListener('abort', () => {
-					cancelled = true;
-				});
-
+		return createSSEOperationStream(
+			request,
+			async ({ send, isAborted }) => {
 				const sendEvent = (event: string, data: unknown) => {
-					if (cancelled) return;
-					try {
-						controller.enqueue(encoder.encode(`event: ${event}\n`));
-						controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-					} catch {
-						// Connection closed
-						cancelled = true;
-					}
+					if (isAborted()) return;
+					send(event, data);
 				};
 
-				// Keep connection alive through reverse proxies (25s interval)
-				const heartbeatInterval = setInterval(() => {
-					if (cancelled) return;
-					try {
-						controller.enqueue(encoder.encode(': heartbeat\n\n'));
-					} catch {
-						cancelled = true;
-					}
-				}, 25000);
-
-				// Send initial event
 				sendEvent('search:started', {
 					movieId,
 					title: movie.title,
@@ -190,22 +166,12 @@ export const POST: RequestHandler = async ({ params, request }) => {
 						error: message
 					});
 				} finally {
-					clearInterval(heartbeatInterval);
 					stopSearch(searchId);
 					libraryMediaEvents.emit('movie:searchCompleted', { movieId });
-					controller.close();
 				}
-			}
-		});
-
-		return new Response(stream, {
-			headers: {
-				'Content-Type': 'text/event-stream',
-				'Cache-Control': 'no-cache',
-				Connection: 'keep-alive',
-				'X-Accel-Buffering': 'no'
-			}
-		});
+			},
+			{ heartbeatInterval: 25000 }
+		);
 	} catch (error) {
 		logger.error('[API] Movie auto-search error', error instanceof Error ? error : undefined);
 		return new Response(

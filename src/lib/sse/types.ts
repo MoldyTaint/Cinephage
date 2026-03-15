@@ -19,7 +19,7 @@ export type SSEStatus =
 /**
  * SSE error types for better error handling
  */
-export type SSEErrorType = 'network' | 'server' | 'client' | 'timeout' | 'circuit-open';
+export type SSEErrorType = 'network' | 'server' | 'client' | 'timeout';
 
 /**
  * SSE error with type classification
@@ -66,12 +66,6 @@ export interface SSEOptions {
 	heartbeatInterval?: number;
 	/** Enable debug logging (default: false) */
 	debug?: boolean;
-	/** Enable connection sharing for same URL (default: false) */
-	shared?: boolean;
-	/** Circuit breaker: errors before opening circuit (default: 5) */
-	circuitBreakerThreshold?: number;
-	/** Circuit breaker: milliseconds before retrying (default: 30000) */
-	circuitBreakerTimeout?: number;
 }
 
 /**
@@ -88,29 +82,12 @@ export interface SSEState {
 	readonly isPaused: boolean;
 	/** Number of reconnection attempts */
 	readonly reconnectCount: number;
-	/** Whether circuit breaker is open */
-	readonly isCircuitOpen: boolean;
 	/** Whether max retries have been exceeded */
 	readonly maxRetriesExceeded: boolean;
 	/** Manually close the connection */
 	close: () => void;
 	/** Manually reconnect */
 	reconnect: () => void;
-}
-
-/**
- * Internal connection metadata
- */
-export interface SSEConnection {
-	id: string;
-	url: string;
-	eventSource: EventSource | null;
-	status: SSEStatus;
-	refCount: number;
-	lastActivity: number;
-	errorCount: number;
-	circuitOpenUntil: number;
-	handlers: Map<string, Set<(data: unknown) => void>>;
 }
 
 /**
@@ -134,8 +111,5 @@ export const DEFAULT_SSE_OPTIONS: Required<SSEOptions> = {
 	pauseOnHidden: true,
 	reconnectOnVisible: true,
 	heartbeatInterval: 60000,
-	debug: false,
-	shared: false,
-	circuitBreakerThreshold: 5,
-	circuitBreakerTimeout: 30000
+	debug: false
 };

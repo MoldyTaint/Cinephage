@@ -101,11 +101,12 @@
 	};
 
 	const sse = createDynamicSSE<{
-		'media:initial': {
+		'media:updated': {
 			series: typeof series;
 			seasons: typeof seasons;
 			queueItems: typeof queueItems;
 		};
+		'queue:sync': { queueItems: typeof queueItems };
 		'queue:added': QueueEventPayload;
 		'queue:updated': QueueEventPayload;
 		'queue:removed': { id: string };
@@ -120,10 +121,12 @@
 		'search:started': { seriesId: string };
 		'search:completed': { seriesId: string };
 	}>(() => `/api/library/series/${series.id}/stream`, {
-		'media:initial': (payload) => {
-			console.log('[TVPage] media:initial received, seasons count:', payload.seasons?.length);
+		'media:updated': (payload) => {
 			seriesState = payload.series;
 			seasonsState = payload.seasons;
+			queueItemsState = payload.queueItems;
+		},
+		'queue:sync': (payload) => {
 			queueItemsState = payload.queueItems;
 		},
 		'queue:added': (payload) => {
@@ -169,32 +172,14 @@
 			queueItemsState = queueItems.filter((q) => q.id !== payload.id);
 		},
 		'file:added': (payload) => {
-			console.log('[TVPage] file:added event received:', {
-				seasonNumber: payload.seasonNumber,
-				episodeIds: payload.episodeIds,
-				fileId: payload.file?.id,
-				hasSeasonsState: !!seasonsState
-			});
-
 			// Work with seasonsState to ensure reactivity
 			if (!seasonsState) {
-				console.log('[TVPage] seasonsState is null, skipping update');
 				return;
 			}
 
 			const seasonIndex = seasonsState.findIndex((s) => s.seasonNumber === payload.seasonNumber);
-			console.log(
-				'[TVPage] Found season at index:',
-				seasonIndex,
-				'for seasonNumber:',
-				payload.seasonNumber
-			);
 
 			if (seasonIndex === -1) {
-				console.log(
-					'[TVPage] Season not found, available seasons:',
-					seasonsState.map((s) => s.seasonNumber)
-				);
 				return;
 			}
 
@@ -215,21 +200,12 @@
 				// Calculate new file count
 				const episodeFileCount = updatedEpisodes.filter((e) => e.file !== null).length;
 
-				console.log(
-					'[TVPage] Updated season',
-					payload.seasonNumber,
-					'file count:',
-					episodeFileCount
-				);
-
 				return {
 					...season,
 					episodes: updatedEpisodes,
 					episodeFileCount
 				};
 			});
-
-			console.log('[TVPage] seasonsState updated, new length:', seasonsState.length);
 
 			// Update series state immutably
 			if (seriesState) {
@@ -239,7 +215,6 @@
 					episodeFileCount: totalFiles,
 					percentComplete: totalEpisodes > 0 ? Math.round((totalFiles / totalEpisodes) * 100) : 0
 				};
-				console.log('[TVPage] seriesState updated, totalFiles:', totalFiles);
 			}
 		},
 		'file:removed': (payload) => {
@@ -1282,6 +1257,7 @@
 
 <svelte:head>
 	<title>{series.title} - Library - Cinephage</title>
+	<meta name="description" content={series.overview || `Manage ${series.title} in your library`} />
 </svelte:head>
 
 <div class="flex w-full flex-col gap-4 px-4 pb-20 md:gap-6 md:overflow-x-hidden md:px-6 lg:px-8">

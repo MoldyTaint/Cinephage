@@ -328,12 +328,14 @@ async function getQueueItems(seriesId: string): Promise<QueueItem[]> {
  * Server-Sent Events endpoint for real-time series detail updates
  *
  * Events emitted:
- * - media:initial - Full series state on connect
+ * - queue:sync - Current queue state after connect
+ * - media:updated - Refetched series state after metadata changes
  * - queue:added - New download added for this series
  * - queue:updated - Queue item progress/status change
  * - file:added - New episode file imported
  * - file:removed - Episode file deleted
- * - episode:updated - Episode metadata changes
+ * - search:started - Series search began
+ * - search:completed - Series search finished
  */
 export const GET: RequestHandler = async ({ params }) => {
 	const seriesId = params.id;
@@ -343,17 +345,30 @@ export const GET: RequestHandler = async ({ params }) => {
 	}
 
 	return createSSEStream((send) => {
-		// Concurrency control for sendInitialState to prevent race conditions
-		// where multiple calls complete out of order and overwrite with stale data
-		let isFetchingInitialState = false;
+		// Concurrency control for server-side refresh snapshots to prevent race conditions
+		// where multiple calls complete out of order and overwrite with stale data.
+		let isFetchingMediaUpdate = false;
 		let pendingVersion = 0;
 		let lastSentVersion = 0;
-		let initialStateFetchTime = 0;
+		let queueSyncTime = 0;
 
-		// Send initial state with version tracking
-		const sendInitialState = async (version: number = Date.now()) => {
+		const sendQueueSync = async () => {
+			try {
+				const queueItems = await getQueueItems(seriesId);
+				send('queue:sync', { queueItems });
+				return queueItems;
+			} catch (error) {
+				logger.error('[SeriesStream] Failed to fetch queue sync', {
+					seriesId,
+					error: error instanceof Error ? error.message : String(error)
+				});
+				return [];
+			}
+		};
+
+		const sendMediaUpdate = async (version: number = Date.now()) => {
 			// If already fetching, just mark that we need another refresh with this version
-			if (isFetchingInitialState) {
+			if (isFetchingMediaUpdate) {
 				pendingVersion = Math.max(pendingVersion, version);
 				logger.debug('[SeriesStream] Queuing refresh request', {
 					seriesId,
@@ -363,9 +378,9 @@ export const GET: RequestHandler = async ({ params }) => {
 				return;
 			}
 
-			isFetchingInitialState = true;
+			isFetchingMediaUpdate = true;
 			try {
-				logger.info('[SeriesStream] Fetching initial state', { seriesId, version });
+				logger.info('[SeriesStream] Fetching media update', { seriesId, version });
 				const [data, queueItems] = await Promise.all([
 					getSeriesData(seriesId),
 					getQueueItems(seriesId)
@@ -373,45 +388,45 @@ export const GET: RequestHandler = async ({ params }) => {
 
 				// Only send if this is still the latest request (not superseded by another)
 				if (version >= lastSentVersion && data) {
-					logger.info('[SeriesStream] Sending media:initial', {
+					logger.info('[SeriesStream] Sending media:updated', {
 						seriesId,
 						version,
 						episodeCount: data.seasons?.reduce((sum, s) => sum + (s.episodeFileCount || 0), 0)
 					});
-					send('media:initial', { ...data, queueItems });
+					send('media:updated', { ...data, queueItems });
 					lastSentVersion = version;
 				} else {
-					logger.debug('[SeriesStream] Skipping stale media:initial', {
+					logger.debug('[SeriesStream] Skipping stale media:updated', {
 						seriesId,
 						version,
 						lastSentVersion
 					});
 				}
 			} catch (error) {
-				logger.error('[SeriesStream] Failed to fetch initial state', {
+				logger.error('[SeriesStream] Failed to fetch media update', {
 					seriesId,
 					version,
 					error: error instanceof Error ? error.message : String(error)
 				});
 			} finally {
-				isFetchingInitialState = false;
+				isFetchingMediaUpdate = false;
 
 				// If another request was queued during our execution, process it now
 				if (pendingVersion > version) {
 					logger.info('[SeriesStream] Processing queued refresh', { seriesId, pendingVersion });
 					const nextVersion = pendingVersion;
 					pendingVersion = 0;
-					void sendInitialState(nextVersion);
+					void sendMediaUpdate(nextVersion);
 				}
 			}
 		};
 
-		// Send initial state and replay buffered events after connection is established
-		void sendInitialState().then(() => {
-			initialStateFetchTime = Date.now();
+		// Sync queue state and replay buffered file events after connection is established.
+		void sendQueueSync().then(() => {
+			queueSyncTime = Date.now();
 
 			// Replay recent buffered events (handles race condition where events fired before connection)
-			// Only replay events that happened BEFORE we fetched initial state
+			// Only replay events that happened BEFORE queue sync completed.
 			const recentEvents = eventBuffer.getRecentSeriesEvents(seriesId);
 			logger.info('[SeriesStream] Replaying buffered events', {
 				seriesId,
@@ -420,12 +435,12 @@ export const GET: RequestHandler = async ({ params }) => {
 			});
 			for (const event of recentEvents) {
 				// Skip events that happened after we started (they'll come through the live listener)
-				if (event.timestamp > initialStateFetchTime) {
+				if (event.timestamp > queueSyncTime) {
 					logger.debug('[SeriesStream] Skipping future event in replay', {
 						seriesId,
 						episodeIds: event.episodeIds,
 						timestamp: event.timestamp,
-						fetchTime: initialStateFetchTime
+						fetchTime: queueSyncTime
 					});
 					continue;
 				}
@@ -529,8 +544,8 @@ export const GET: RequestHandler = async ({ params }) => {
 		const onSeriesUpdated = (event: { seriesId: string }) => {
 			if (event.seriesId === seriesId) {
 				logger.info('[SeriesStream] Series update triggered, refreshing state', { seriesId });
-				// Pass a new version to ensure this refresh takes precedence over any in-flight initial load
-				void sendInitialState(Date.now());
+				// Pass a new version to ensure this refresh takes precedence over any in-flight refresh.
+				void sendMediaUpdate(Date.now());
 			}
 		};
 

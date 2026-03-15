@@ -48,10 +48,22 @@
 	import type { LogoDownloadProgress } from '$lib/server/logos/LogoDownloadService';
 	import { normalizeLiveTvChannelName } from '$lib/livetv/channel-name-normalizer';
 
+	type LiveTvPageData = PageData & {
+		lineup?: ChannelLineupItemWithDetails[];
+		categories?: ChannelCategory[];
+		lineupChannelIds?: string[];
+		epgNowNext?: Record<string, NowNextEntry>;
+	};
+	function getLiveTvPageData(): LiveTvPageData {
+		return data as LiveTvPageData;
+	}
+
 	// Data state
-	let lineup = $state<ChannelLineupItemWithDetails[]>([]);
-	let categories = $state<ChannelCategory[]>([]);
-	let loading = $state(true);
+	let lineup = $state<ChannelLineupItemWithDetails[]>(
+		$state.snapshot(getLiveTvPageData().lineup ?? [])
+	);
+	let categories = $state<ChannelCategory[]>($state.snapshot(getLiveTvPageData().categories ?? []));
+	let loading = $state(false);
 	let refreshing = $state(false);
 	let error = $state<string | null>(null);
 
@@ -115,7 +127,37 @@
 	let loadingLogos = $state(false);
 	let downloadingLogos = $state(false);
 	let logoDownloadProgress = $state<LogoDownloadProgress | null>(null);
-	let logoDownloadEventSource: EventSource | null = $state(null);
+	let logoDownloadEventSource: ReturnType<typeof createSSE> | null = $state(null);
+
+	function syncLineupChannelIds(ids: string[]) {
+		lineupChannelIds.clear();
+		for (const id of ids) {
+			lineupChannelIds.add(id);
+		}
+	}
+
+	function applyLiveTvSnapshot(payload: {
+		lineup: ChannelLineupItemWithDetails[];
+		categories: ChannelCategory[];
+		lineupChannelIds: string[];
+		epgNowNext: Record<string, NowNextEntry>;
+	}) {
+		lineup = payload.lineup || [];
+		categories = payload.categories || [];
+		syncLineupChannelIds(payload.lineupChannelIds || []);
+		updateEpgData(payload.epgNowNext || {});
+		loading = false;
+	}
+
+	$effect(() => {
+		const pageData = data as LiveTvPageData;
+		applyLiveTvSnapshot({
+			lineup: pageData.lineup ?? [],
+			categories: pageData.categories ?? [],
+			lineupChannelIds: pageData.lineupChannelIds ?? [],
+			epgNowNext: pageData.epgNowNext ?? {}
+		});
+	});
 
 	onMount(() => {
 		loadLogoStatus();
@@ -177,82 +219,65 @@
 			logoDownloadEventSource.close();
 		}
 
-		// Use native EventSource instead of createSSE to avoid Svelte context issues
-		const eventSource = new EventSource('/api/logos/download/stream');
-		logoDownloadEventSource = eventSource;
-
-		eventSource.addEventListener('logos:status', (e) => {
-			const data = JSON.parse(e.data) as LogoDownloadProgress;
-			logoDownloadProgress = data;
-			if (data.status === 'completed') {
+		logoDownloadEventSource = createSSE<{
+			'logos:status': LogoDownloadProgress;
+			'logos:started': LogoDownloadProgress;
+			'logos:progress': LogoDownloadProgress;
+			'logos:completed': LogoDownloadProgress;
+			'logos:error': LogoDownloadProgress;
+		}>('/api/logos/download/stream', {
+			'logos:status': (payload) => {
+				logoDownloadProgress = payload;
+				if (payload.status === 'completed') {
+					logoDownloaded = true;
+					downloadingLogos = false;
+					logoCount = payload.downloaded;
+					logoDownloadEventSource?.close();
+					logoDownloadEventSource = null;
+					void loadLogoStatus();
+				}
+			},
+			'logos:started': (payload) => {
+				logoDownloadProgress = payload;
+			},
+			'logos:progress': (payload) => {
+				logoDownloadProgress = payload;
+			},
+			'logos:completed': (payload) => {
+				logoDownloadProgress = payload;
 				logoDownloaded = true;
 				downloadingLogos = false;
-				logoCount = data.downloaded;
-				eventSource.close();
+				logoCount = payload.downloaded;
+				logoDownloadEventSource?.close();
 				logoDownloadEventSource = null;
-				loadLogoStatus();
-			}
-		});
-
-		eventSource.addEventListener('logos:started', (e) => {
-			const data = JSON.parse(e.data) as LogoDownloadProgress;
-			logoDownloadProgress = data;
-		});
-
-		eventSource.addEventListener('logos:progress', (e) => {
-			const data = JSON.parse(e.data) as LogoDownloadProgress;
-			logoDownloadProgress = data;
-		});
-
-		eventSource.addEventListener('logos:completed', (e) => {
-			const data = JSON.parse(e.data) as LogoDownloadProgress;
-			logoDownloadProgress = data;
-			logoDownloaded = true;
-			downloadingLogos = false;
-			logoCount = data.downloaded;
-			eventSource.close();
-			logoDownloadEventSource = null;
-			toasts.success(`Downloaded ${logoCount} logos`);
-			loadLogoStatus();
-		});
-
-		eventSource.addEventListener('logos:error', (e) => {
-			const data = JSON.parse(e.data) as LogoDownloadProgress;
-			logoDownloadProgress = data;
-			downloadingLogos = false;
-			eventSource.close();
-			logoDownloadEventSource = null;
-			toasts.error(data.error || 'Download failed');
-		});
-
-		eventSource.addEventListener('error', () => {
-			// Connection error - close and cleanup
-			if (logoDownloadEventSource === eventSource) {
+				toasts.success(`Downloaded ${payload.downloaded} logos`);
+				void loadLogoStatus();
+			},
+			'logos:error': (payload) => {
+				logoDownloadProgress = payload;
 				downloadingLogos = false;
-				eventSource.close();
+				logoDownloadEventSource?.close();
 				logoDownloadEventSource = null;
+				toasts.error(payload.error || 'Download failed');
+			},
+			error: () => {
+				if (logoDownloadEventSource) {
+					downloadingLogos = false;
+					logoDownloadEventSource.close();
+					logoDownloadEventSource = null;
+				}
 			}
 		});
 	}
 
 	// SSE Connection - internally handles browser/SSR
 	const sse = createSSE<ChannelStreamEvents>(resolvePath('/api/livetv/channels/stream'), {
-		'livetv:initial': (payload) => {
-			lineup = payload.lineup || [];
-			categories = payload.categories || [];
-			lineupChannelIds.clear();
-			for (const item of lineup) {
-				lineupChannelIds.add(item.channelId);
-			}
-			updateEpgData(payload.epgNowNext || {});
-			loading = false;
+		'livetv:sync': (payload) => {
+			applyLiveTvSnapshot(payload);
 		},
 		'lineup:updated': (payload) => {
 			lineup = payload.lineup || [];
-			lineupChannelIds.clear();
-			for (const item of lineup) {
-				lineupChannelIds.add(item.channelId);
-			}
+			syncLineupChannelIds(payload.lineupChannelIds || []);
 		},
 		'categories:updated': (payload) => {
 			categories = payload.categories || [];
@@ -260,16 +285,54 @@
 		'epg:nowNext': (payload) => {
 			updateEpgData(payload.channels || {});
 		},
-		'channels:syncStarted': (payload) => {
-			console.log('Channel sync started:', payload.accountId);
-		},
-		'channels:syncCompleted': (payload) => {
-			console.log('Channel sync completed:', payload.accountId);
-		},
-		'channels:syncFailed': (payload) => {
-			console.error('Channel sync failed:', payload.accountId, payload.error);
-		}
+		'channels:syncStarted': () => {},
+		'channels:syncCompleted': () => {},
+		'channels:syncFailed': () => {}
 	});
+
+	async function fetchEpgData() {
+		try {
+			const res = await fetch('/api/livetv/epg/now');
+			if (!res.ok) return;
+			const response = await res.json();
+			if (response.channels) {
+				updateEpgData(response.channels);
+			}
+		} catch {
+			// Silent failure - EPG is not critical
+		}
+	}
+
+	async function loadData() {
+		loading = true;
+		error = null;
+
+		try {
+			const [lineupRes, categoriesRes] = await Promise.all([
+				fetch('/api/livetv/lineup'),
+				fetch('/api/livetv/channel-categories')
+			]);
+
+			if (!lineupRes.ok) {
+				throw new Error('Failed to load lineup');
+			}
+			if (!categoriesRes.ok) {
+				throw new Error('Failed to load categories');
+			}
+
+			const lineupData = await lineupRes.json();
+			const categoriesData = await categoriesRes.json();
+
+			lineup = lineupData.lineup || [];
+			syncLineupChannelIds(lineupData.lineupChannelIds || []);
+			categories = categoriesData.categories || [];
+			await fetchEpgData();
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to load data';
+		} finally {
+			loading = false;
+		}
+	}
 
 	const normalizedSearch = $derived(channelSearch.trim().toLowerCase());
 	const filteredLineup = $derived(
@@ -404,11 +467,6 @@
 		bulkCleanNamesModalOpen = false;
 	}
 
-	onMount(() => {
-		loadData();
-		fetchEpgData();
-	});
-
 	function updateEpgData(epgNowNext: Record<string, NowNextEntry>) {
 		epgData.clear();
 		for (const [channelId, entry] of Object.entries(epgNowNext)) {
@@ -416,55 +474,14 @@
 		}
 	}
 
-	async function fetchEpgData() {
-		try {
-			const res = await fetch('/api/livetv/epg/now');
-			if (!res.ok) return;
-			const data = await res.json();
-			if (data.channels) {
-				updateEpgData(data.channels);
-			}
-		} catch {
-			// Silent failure - EPG is not critical
-		}
-	}
-
-	async function loadData() {
-		loading = true;
-		error = null;
-
-		try {
-			const [lineupRes, categoriesRes] = await Promise.all([
-				fetch('/api/livetv/lineup'),
-				fetch('/api/livetv/channel-categories')
-			]);
-
-			if (!lineupRes.ok) {
-				throw new Error('Failed to load lineup');
-			}
-			if (!categoriesRes.ok) {
-				throw new Error('Failed to load categories');
-			}
-
-			const lineupData = await lineupRes.json();
-			const categoriesData = await categoriesRes.json();
-
-			lineup = lineupData.lineup || [];
-			lineupChannelIds.clear();
-			for (const id of lineupData.lineupChannelIds || []) {
-				lineupChannelIds.add(id);
-			}
-			categories = categoriesData.categories || [];
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load data';
-		} finally {
-			loading = false;
-		}
-	}
-
 	async function refreshData() {
 		refreshing = true;
-		await loadData();
+		error = null;
+		try {
+			await loadData();
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to refresh Live TV data';
+		}
 		refreshing = false;
 	}
 
@@ -941,6 +958,10 @@
 
 <svelte:head>
 	<title>Channels - Live TV - Cinephage</title>
+	<meta
+		name="description"
+		content="Manage your Live TV channel lineup, categories, EPG mappings, and export feeds."
+	/>
 </svelte:head>
 
 <div class="space-y-6">

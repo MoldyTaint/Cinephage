@@ -22,6 +22,13 @@ export type SSESetupFunction = (
 	send: SSESendFunction
 ) => SSECleanupFunction | Promise<SSECleanupFunction>;
 
+export type SSEOperationFunction = (context: {
+	send: SSESendFunction;
+	signal: AbortSignal;
+	close: () => void;
+	isAborted: () => boolean;
+}) => void | Promise<void>;
+
 /**
  * SSE connected event payload
  */
@@ -168,4 +175,78 @@ export function createSSEHandler(
 	return async () => {
 		return createSSEStream(setup, options);
 	};
+}
+
+export function createSSEOperationStream(
+	request: Request,
+	operation: SSEOperationFunction,
+	options: {
+		heartbeatInterval?: number;
+	} = {}
+): Response {
+	const heartbeatIntervalMs = options.heartbeatInterval ?? 30000;
+
+	const stream = new ReadableStream({
+		async start(controller) {
+			const encoder = new TextEncoder();
+			let cleanedUp = false;
+			let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+
+			const cleanup = () => {
+				if (cleanedUp) return;
+				cleanedUp = true;
+				if (heartbeatInterval) {
+					clearInterval(heartbeatInterval);
+				}
+				try {
+					controller.close();
+				} catch {
+					// Already closed
+				}
+			};
+
+			const send: SSESendFunction = (event, data) => {
+				if (cleanedUp) return;
+				try {
+					controller.enqueue(encoder.encode(`event: ${event}\n`));
+					controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+				} catch {
+					cleanup();
+				}
+			};
+
+			request.signal.addEventListener('abort', cleanup, { once: true });
+
+			send('connected', { timestamp: new Date().toISOString() });
+
+			heartbeatInterval = setInterval(() => {
+				send('heartbeat', { timestamp: new Date().toISOString() });
+			}, heartbeatIntervalMs);
+
+			try {
+				await Promise.resolve(
+					operation({
+						send,
+						signal: request.signal,
+						close: cleanup,
+						isAborted: () => request.signal.aborted || cleanedUp
+					})
+				);
+			} finally {
+				cleanup();
+			}
+		},
+		cancel() {
+			// Abort handling closes the stream.
+		}
+	});
+
+	return new Response(stream, {
+		headers: {
+			'Content-Type': 'text/event-stream',
+			'Cache-Control': 'no-cache',
+			Connection: 'keep-alive',
+			'X-Accel-Buffering': 'no'
+		}
+	});
 }

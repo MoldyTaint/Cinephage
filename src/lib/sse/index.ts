@@ -16,7 +16,7 @@
  */
 
 // Main API
-export { createSSE, createDynamicSSE, createSharedSSE } from './create-sse.svelte.js';
+export { createSSE, createDynamicSSE } from './create-sse.svelte.js';
 
 // Types
 export type {
@@ -26,16 +26,6 @@ export type {
 	SSEErrorType,
 	SSEHandlers,
 	SSEOptions,
-	SSEConnection,
 	SSEConnectedEvent,
 	SSEHeartbeatEvent
 } from './types.js';
-
-// Utilities (for advanced use)
-export {
-	getSharedConnection,
-	acquireConnection,
-	releaseConnection,
-	getActiveConnections,
-	closeAllConnections
-} from './connection-pool.js';

@@ -53,7 +53,8 @@
 
 	// SSE Connection - internally handles browser/SSR
 	const sse = createDynamicSSE<{
-		'media:initial': { movie: LibraryMovie; queueItem: PageData['queueItem'] };
+		'media:updated': { movie: LibraryMovie; queueItem: PageData['queueItem'] };
+		'queue:sync': { queueItem: PageData['queueItem'] };
 		'queue:added': { id: string; title: string; status: string; progress: number | null };
 		'queue:updated': { id: string; title: string; status: string; progress: number | null };
 		'queue:removed': { id: string };
@@ -64,8 +65,11 @@
 		};
 		'file:removed': { fileId: string };
 	}>(() => `/api/library/movies/${movie.id}/stream`, {
-		'media:initial': (payload) => {
+		'media:updated': (payload) => {
 			movieState = payload.movie;
+			queueItemState = payload.queueItem;
+		},
+		'queue:sync': (payload) => {
 			queueItemState = payload.queueItem;
 		},
 		'queue:added': (payload) => {
@@ -555,6 +559,7 @@
 
 <svelte:head>
 	<title>{movie.title} - Library - Cinephage</title>
+	<meta name="description" content={movie.overview || `Manage ${movie.title} in your library`} />
 </svelte:head>
 
 <div class="flex w-full flex-col gap-4 overflow-x-hidden px-4 pb-20 md:gap-6 md:px-6 lg:px-8">

@@ -44,7 +44,6 @@
 	// --- SSE Connection using createSSE ---
 	const sse = createSSE<{
 		connected: void;
-		'tasks:initial': { tasks: UnifiedTask[] };
 		'task:started': { taskId: string; startedAt: string };
 		'task:completed': {
 			taskId: string;
@@ -70,14 +69,6 @@
 	}>('/api/tasks/stream', {
 		connected: () => {
 			// Connection established
-		},
-		'tasks:initial': (event) => {
-			const newState: Record<string, UnifiedTask> = {};
-			for (const task of event.tasks) {
-				newState[task.id] = { ...task };
-			}
-			taskState = newState;
-			hasInitialized = true;
 		},
 		'task:started': (event) => {
 			updateTask(event.taskId, { isRunning: true });

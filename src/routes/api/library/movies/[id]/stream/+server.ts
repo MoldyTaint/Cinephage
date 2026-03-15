@@ -167,12 +167,14 @@ async function getQueueItem(movieId: string): Promise<QueueItem | null> {
  * Server-Sent Events endpoint for real-time movie detail updates
  *
  * Events emitted:
- * - media:initial - Full movie state on connect
+ * - queue:sync - Current queue state after connect
+ * - media:updated - Refetched movie state after metadata changes
  * - queue:added - New download added for this movie
  * - queue:updated - Queue item progress/status change
  * - file:added - New file imported
  * - file:removed - File deleted
- * - media:updated - Movie metadata changes (from other sources)
+ * - search:started - Movie search began
+ * - search:completed - Movie search finished
  */
 export const GET: RequestHandler = async ({ params }) => {
 	const movieId = params.id;
@@ -182,8 +184,21 @@ export const GET: RequestHandler = async ({ params }) => {
 	}
 
 	return createSSEStream((send) => {
-		// Send initial state
-		const sendInitialState = async () => {
+		const sendQueueSync = async () => {
+			try {
+				const queueItem = await getQueueItem(movieId);
+				send('queue:sync', { queueItem });
+				return queueItem;
+			} catch (error) {
+				logger.error('[MovieStream] Failed to fetch queue sync', {
+					movieId,
+					error: error instanceof Error ? error.message : String(error)
+				});
+				return null;
+			}
+		};
+
+		const sendMovieUpdate = async () => {
 			try {
 				const [movie, queueItem] = await Promise.all([
 					getMovieData(movieId),
@@ -191,20 +206,18 @@ export const GET: RequestHandler = async ({ params }) => {
 				]);
 
 				if (movie) {
-					send('media:initial', { movie, queueItem });
+					send('media:updated', { movie, queueItem });
 				}
-				return { movie, queueItem };
 			} catch (error) {
-				logger.error('[MovieStream] Failed to fetch initial state', {
+				logger.error('[MovieStream] Failed to fetch movie update', {
 					movieId,
 					error: error instanceof Error ? error.message : String(error)
 				});
-				return { movie: null, queueItem: null };
 			}
 		};
 
-		// Send initial state and replay buffered events after connection is established
-		void sendInitialState().then(() => {
+		// Sync queue state and replay buffered file events after connection is established.
+		void sendQueueSync().then(() => {
 			// Replay recent buffered events (handles race condition where events fired before connection)
 			const recentEvents = eventBuffer.getRecentMovieEvents(movieId);
 			logger.debug('[MovieStream] Replaying buffered events', {
@@ -288,7 +301,7 @@ export const GET: RequestHandler = async ({ params }) => {
 		// Handle metadata/subtitle/settings updates for this movie
 		const onMovieUpdated = (event: { movieId: string }) => {
 			if (event.movieId === movieId) {
-				void sendInitialState();
+				void sendMovieUpdate();
 			}
 		};
 
