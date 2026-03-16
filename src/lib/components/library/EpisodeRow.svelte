@@ -17,6 +17,7 @@
 	import QualityBadge from './QualityBadge.svelte';
 	import AutoSearchStatus from './AutoSearchStatus.svelte';
 	import { SubtitleDisplay } from '$lib/components/subtitles';
+	import SubtitlePopover from '$lib/components/subtitles/SubtitlePopover.svelte';
 	import { normalizeLanguageCode } from '$lib/shared/languages';
 
 	interface EpisodeFile {
@@ -75,18 +76,23 @@
 		episode: Episode;
 		seriesMonitored: boolean;
 		isStreamerProfile?: boolean;
+		wantsSubtitles?: boolean;
 		selected?: boolean;
 		showCheckbox?: boolean;
 		isDownloading?: boolean;
 		autoSearching?: boolean;
 		autoSearchResult?: AutoSearchResult | null;
 		subtitleAutoSearching?: boolean;
+		subtitleSyncingId?: string | null;
+		subtitleDeletingId?: string | null;
 		onMonitorToggle?: (episodeId: string, newValue: boolean) => void;
 		onSearch?: (episode: Episode) => void;
 		onAutoSearch?: (episode: Episode) => void;
 		onSelectChange?: (episodeId: string, selected: boolean) => void;
 		onSubtitleSearch?: (episode: Episode) => void;
 		onSubtitleAutoSearch?: (episode: Episode) => void;
+		onSubtitleSync?: (subtitleId: string) => void;
+		onSubtitleDelete?: (subtitleId: string) => void;
 		onDelete?: (episode: Episode) => void;
 	}
 
@@ -94,18 +100,23 @@
 		episode,
 		seriesMonitored,
 		isStreamerProfile = false,
+		wantsSubtitles = false,
 		selected = false,
 		showCheckbox = false,
 		isDownloading = false,
 		autoSearching = false,
 		autoSearchResult = null,
 		subtitleAutoSearching = false,
+		subtitleSyncingId = null,
+		subtitleDeletingId = null,
 		onMonitorToggle,
 		onSearch,
 		onAutoSearch,
 		onSelectChange,
 		onSubtitleSearch,
 		onSubtitleAutoSearch,
+		onSubtitleSync,
+		onSubtitleDelete,
 		onDelete
 	}: Props = $props();
 
@@ -154,6 +165,7 @@
 			: 'Series is unmonitored. Enable series monitoring to monitor episodes.'
 	);
 	const hasEpisodeFile = $derived(episode.file !== null);
+	const missingSubtitles = $derived(hasEpisodeFile && allSubtitles.length === 0 && wantsSubtitles);
 
 	function formatAirDate(dateString: string | null): string {
 		if (!dateString) return 'TBA';
@@ -211,18 +223,6 @@
 		const target = event.target as HTMLInputElement;
 		if (onSelectChange) {
 			onSelectChange(episode.id, target.checked);
-		}
-	}
-
-	function handleSubtitleSearchClick() {
-		if (onSubtitleSearch) {
-			onSubtitleSearch(episode);
-		}
-	}
-
-	function handleSubtitleAutoSearchClick() {
-		if (onSubtitleAutoSearch) {
-			onSubtitleAutoSearch(episode);
 		}
 	}
 
@@ -285,12 +285,8 @@
 						size="xs"
 					/>
 					<div class="dropdown dropdown-end">
-						<button
-							class="btn btn-ghost btn-xs"
-							disabled={autoSearching || subtitleAutoSearching}
-							title="Search options"
-						>
-							{#if autoSearching || subtitleAutoSearching}
+						<button class="btn btn-ghost btn-xs" disabled={autoSearching} title="Search options">
+							{#if autoSearching}
 								<Loader2 size={14} class="animate-spin" />
 							{:else}
 								<Search size={14} />
@@ -317,30 +313,6 @@
 									Interactive search
 								</button>
 							</li>
-							{#if hasEpisodeFile && (onSubtitleSearch || onSubtitleAutoSearch)}
-								<li class="menu-title">
-									<span>Subtitles</span>
-								</li>
-								{#if onSubtitleAutoSearch}
-									<li>
-										<button
-											onclick={handleSubtitleAutoSearchClick}
-											disabled={subtitleAutoSearching}
-										>
-											<Subtitles size={14} />
-											Auto-download subs
-										</button>
-									</li>
-								{/if}
-								{#if onSubtitleSearch}
-									<li>
-										<button onclick={handleSubtitleSearchClick}>
-											<Search size={14} />
-											Search subtitles
-										</button>
-									</li>
-								{/if}
-							{/if}
 						</ul>
 					</div>
 					{#if episode.file?.mediaInfo}
@@ -432,17 +404,40 @@
 					{:else}
 						<QualityBadge quality={episode.file?.quality ?? null} mediaInfo={null} size="sm" />
 					{/if}
-					{#if allSubtitles.length > 0}
-						<div class="flex items-center gap-1">
-							<Subtitles size={12} class="text-base-content/50" />
-							<SubtitleDisplay
-								subtitles={allSubtitles}
-								maxDisplay={3}
-								size="xs"
-								showSyncStatus={true}
+					<!-- Subtitle popover trigger -->
+					<div class="dropdown dropdown-end">
+						<button
+							class="btn gap-1 btn-ghost btn-xs {missingSubtitles ? 'text-warning' : ''}"
+							title={missingSubtitles
+								? 'No subtitles - click to manage'
+								: `${allSubtitles.length} subtitle${allSubtitles.length !== 1 ? 's' : ''}`}
+						>
+							<Subtitles
+								size={12}
+								class={missingSubtitles ? 'text-warning' : 'text-base-content/50'}
 							/>
-						</div>
-					{/if}
+							{#if allSubtitles.length > 0}
+								<SubtitleDisplay
+									subtitles={allSubtitles}
+									maxDisplay={2}
+									size="xs"
+									showSyncStatus={true}
+								/>
+							{:else if missingSubtitles}
+								<span class="text-xs text-warning">Missing</span>
+							{/if}
+						</button>
+						<SubtitlePopover
+							subtitles={allSubtitles}
+							hasFile={hasEpisodeFile}
+							syncingId={subtitleSyncingId}
+							deletingId={subtitleDeletingId}
+							onSync={onSubtitleSync}
+							onDelete={onSubtitleDelete}
+							onSearch={() => onSubtitleSearch?.(episode)}
+							onAutoSearch={() => onSubtitleAutoSearch?.(episode)}
+						/>
+					</div>
 				</div>
 			{/if}
 		</div>
@@ -465,17 +460,42 @@
 						<QualityBadge quality={episode.file?.quality ?? null} mediaInfo={null} size="sm" />
 					{/if}
 				</div>
-				{#if allSubtitles.length > 0}
-					<div class="flex items-center gap-1">
-						<Subtitles size={12} class="text-base-content/50" />
-						<SubtitleDisplay
-							subtitles={allSubtitles}
-							maxDisplay={3}
-							size="xs"
-							showSyncStatus={true}
+				<!-- Subtitle popover trigger (desktop) -->
+				<div class="dropdown dropdown-end">
+					<button
+						class="btn gap-1 px-1 btn-ghost btn-xs {missingSubtitles ? 'text-warning' : ''}"
+						title={missingSubtitles
+							? 'No subtitles - click to manage'
+							: `${allSubtitles.length} subtitle${allSubtitles.length !== 1 ? 's' : ''} - click to manage`}
+					>
+						<Subtitles
+							size={12}
+							class={missingSubtitles ? 'text-warning' : 'text-base-content/50'}
 						/>
-					</div>
-				{/if}
+						{#if allSubtitles.length > 0}
+							<SubtitleDisplay
+								subtitles={allSubtitles}
+								maxDisplay={3}
+								size="xs"
+								showSyncStatus={true}
+							/>
+						{:else if missingSubtitles}
+							<span class="text-xs text-warning">Missing</span>
+						{:else}
+							<span class="text-xs text-base-content/40">None</span>
+						{/if}
+					</button>
+					<SubtitlePopover
+						subtitles={allSubtitles}
+						hasFile={hasEpisodeFile}
+						syncingId={subtitleSyncingId}
+						deletingId={subtitleDeletingId}
+						onSync={onSubtitleSync}
+						onDelete={onSubtitleDelete}
+						onSearch={() => onSubtitleSearch?.(episode)}
+						onAutoSearch={() => onSubtitleAutoSearch?.(episode)}
+					/>
+				</div>
 			</div>
 		{:else if isDownloading}
 			<div class="flex items-center gap-2 text-warning">
@@ -532,12 +552,8 @@
 
 			<!-- Search dropdown with auto-grab and interactive options -->
 			<div class="dropdown dropdown-end">
-				<button
-					class="btn btn-ghost btn-xs"
-					disabled={autoSearching || subtitleAutoSearching}
-					title="Search options"
-				>
-					{#if autoSearching || subtitleAutoSearching}
+				<button class="btn btn-ghost btn-xs" disabled={autoSearching} title="Search options">
+					{#if autoSearching}
 						<Loader2 size={14} class="animate-spin" />
 					{:else}
 						<Search size={14} />
@@ -564,27 +580,6 @@
 							Interactive search
 						</button>
 					</li>
-					{#if hasEpisodeFile && (onSubtitleSearch || onSubtitleAutoSearch)}
-						<li class="menu-title">
-							<span>Subtitles</span>
-						</li>
-						{#if onSubtitleAutoSearch}
-							<li>
-								<button onclick={handleSubtitleAutoSearchClick} disabled={subtitleAutoSearching}>
-									<Subtitles size={14} />
-									Auto-download subs
-								</button>
-							</li>
-						{/if}
-						{#if onSubtitleSearch}
-							<li>
-								<button onclick={handleSubtitleSearchClick}>
-									<Search size={14} />
-									Search subtitles
-								</button>
-							</li>
-						{/if}
-					{/if}
 				</ul>
 			</div>
 

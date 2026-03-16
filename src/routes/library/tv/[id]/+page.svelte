@@ -308,6 +308,10 @@
 		title: string;
 	} | null>(null);
 	let subtitleAutoSearchingEpisodes = new SvelteSet<string>();
+	let subtitleSyncingId = $state<string | null>(null);
+	let subtitleDeletingId = $state<string | null>(null);
+	let bulkSubtitleAutoSearching = $state(false);
+	let bulkSubtitleSyncing = $state(false);
 
 	function describeError(error: unknown, fallback: string): string {
 		return error instanceof Error ? error.message : fallback;
@@ -1179,6 +1183,283 @@
 		}
 	}
 
+	// Subtitle sync from popover (individual subtitle)
+	async function handleSubtitleSyncFromPopover(subtitleId: string): Promise<void> {
+		subtitleSyncingId = subtitleId;
+		try {
+			const response = await fetch('/api/subtitles/sync', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ subtitleId })
+			});
+
+			const result = await response.json();
+
+			if (!response.ok || !result.success) {
+				throw new Error(result.error || 'Subtitle sync failed');
+			}
+
+			seasonsState = seasons.map((season) => ({
+				...season,
+				episodes: season.episodes.map((episode) => ({
+					...episode,
+					subtitles: (episode.subtitles ?? []).map((subtitle) =>
+						subtitle.id === subtitleId
+							? { ...subtitle, wasSynced: true, syncOffset: result.offsetMs }
+							: subtitle
+					)
+				}))
+			}));
+
+			toasts.success('Subtitle synced', {
+				description: `Applied offset of ${result.offsetMs}ms`
+			});
+		} catch (error) {
+			showActionError('Failed to sync subtitle', error);
+		} finally {
+			subtitleSyncingId = null;
+		}
+	}
+
+	// Subtitle delete from popover
+	async function handleSubtitleDeleteFromPopover(subtitleId: string): Promise<void> {
+		subtitleDeletingId = subtitleId;
+		try {
+			const response = await fetch(`/api/subtitles/${subtitleId}`, {
+				method: 'DELETE'
+			});
+
+			const result = await response.json();
+
+			if (!response.ok || !result.success) {
+				throw new Error(result.error || 'Delete failed');
+			}
+
+			// Remove subtitle from seasons state
+			seasonsState = seasons.map((season) => ({
+				...season,
+				episodes: season.episodes.map((episode) => ({
+					...episode,
+					subtitles: (episode.subtitles ?? []).filter((s) => s.id !== subtitleId)
+				}))
+			}));
+
+			toasts.success('Subtitle deleted');
+		} catch (error) {
+			showActionError('Failed to delete subtitle', error);
+		} finally {
+			subtitleDeletingId = null;
+		}
+	}
+
+	// Bulk sync handler for SubtitleSyncModal (NDJSON streaming)
+	async function handleBulkSubtitleSync(
+		subtitleIds: string[],
+		settings: { splitPenalty: number; noSplits: boolean },
+		onProgress: (result: {
+			subtitleId: string;
+			success: boolean;
+			offsetMs: number;
+			error?: string;
+			index: number;
+			total: number;
+		}) => void,
+		onComplete: () => void
+	): Promise<void> {
+		try {
+			const response = await fetch('/api/subtitles/sync/bulk', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ subtitleIds, ...settings })
+			});
+
+			if (!response.ok) {
+				throw new Error('Bulk sync request failed');
+			}
+
+			const reader = response.body?.getReader();
+			if (!reader) {
+				throw new Error('No response body');
+			}
+
+			const decoder = new TextDecoder();
+			let buffer = '';
+
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+
+				buffer += decoder.decode(value, { stream: true });
+				const lines = buffer.split('\n');
+				buffer = lines.pop() || '';
+
+				for (const line of lines) {
+					if (!line.trim()) continue;
+					try {
+						const result = JSON.parse(line);
+						onProgress(result);
+
+						// Update seasons state for successful syncs
+						if (result.success) {
+							seasonsState = seasons.map((season) => ({
+								...season,
+								episodes: season.episodes.map((episode) => ({
+									...episode,
+									subtitles: (episode.subtitles ?? []).map((subtitle) =>
+										subtitle.id === result.subtitleId
+											? { ...subtitle, wasSynced: true, syncOffset: result.offsetMs }
+											: subtitle
+									)
+								}))
+							}));
+						}
+					} catch {
+						// Ignore parse errors
+					}
+				}
+			}
+
+			onComplete();
+		} catch (error) {
+			showActionError('Bulk sync failed', error);
+			onComplete();
+		}
+	}
+
+	// Bulk subtitle auto-search for selected episodes (BulkActionBar)
+	async function handleBulkSubtitleAutoSearch(): Promise<void> {
+		const episodeIds = [...selectedEpisodes];
+		if (episodeIds.length === 0) return;
+
+		bulkSubtitleAutoSearching = true;
+		let successCount = 0;
+
+		try {
+			for (const episodeId of episodeIds) {
+				subtitleAutoSearchingEpisodes.add(episodeId);
+				try {
+					const response = await fetch('/api/subtitles/auto-search', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({ episodeId })
+					});
+
+					const result = await response.json();
+
+					if (result.success && result.subtitle) {
+						appendSubtitleToEpisode(episodeId, result.subtitle);
+						successCount++;
+					}
+				} catch {
+					// Continue with next episode
+				} finally {
+					subtitleAutoSearchingEpisodes.delete(episodeId);
+				}
+			}
+
+			if (successCount > 0) {
+				toasts.success(
+					`Downloaded subtitles for ${successCount} episode${successCount !== 1 ? 's' : ''}`
+				);
+			} else {
+				toasts.info('No subtitles found for selected episodes');
+			}
+
+			selectedEpisodes.clear();
+			showCheckboxes = false;
+		} catch (error) {
+			showActionError('Bulk subtitle auto-search failed', error);
+		} finally {
+			bulkSubtitleAutoSearching = false;
+		}
+	}
+
+	// Bulk subtitle sync for selected episodes (BulkActionBar)
+	async function handleBulkSubtitleSyncSelected(): Promise<void> {
+		const episodeIds = [...selectedEpisodes];
+		if (episodeIds.length === 0) return;
+
+		// Collect all non-embedded subtitle IDs for selected episodes
+		const subtitleIds: string[] = [];
+		for (const season of seasons) {
+			for (const episode of season.episodes) {
+				if (!episodeIds.includes(episode.id)) continue;
+				for (const subtitle of episode.subtitles ?? []) {
+					if ('isEmbedded' in subtitle && subtitle.isEmbedded) continue;
+					subtitleIds.push(subtitle.id);
+				}
+			}
+		}
+
+		if (subtitleIds.length === 0) {
+			toasts.info('No syncable subtitles found for selected episodes');
+			return;
+		}
+
+		bulkSubtitleSyncing = true;
+
+		try {
+			const response = await fetch('/api/subtitles/sync/bulk', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ subtitleIds })
+			});
+
+			if (!response.ok) {
+				throw new Error('Bulk sync request failed');
+			}
+
+			const reader = response.body?.getReader();
+			if (!reader) {
+				throw new Error('No response body');
+			}
+
+			const decoder = new TextDecoder();
+			let buffer = '';
+			let successCount = 0;
+
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+
+				buffer += decoder.decode(value, { stream: true });
+				const lines = buffer.split('\n');
+				buffer = lines.pop() || '';
+
+				for (const line of lines) {
+					if (!line.trim()) continue;
+					try {
+						const result = JSON.parse(line);
+						if (result.success) {
+							successCount++;
+							seasonsState = seasons.map((season) => ({
+								...season,
+								episodes: season.episodes.map((episode) => ({
+									...episode,
+									subtitles: (episode.subtitles ?? []).map((subtitle) =>
+										subtitle.id === result.subtitleId
+											? { ...subtitle, wasSynced: true, syncOffset: result.offsetMs }
+											: subtitle
+									)
+								}))
+							}));
+						}
+					} catch {
+						// Ignore parse errors
+					}
+				}
+			}
+
+			toasts.success(`Synced ${successCount} subtitle${successCount !== 1 ? 's' : ''}`);
+			selectedEpisodes.clear();
+			showCheckboxes = false;
+		} catch (error) {
+			showActionError('Bulk subtitle sync failed', error);
+		} finally {
+			bulkSubtitleSyncing = false;
+		}
+	}
+
 	// Selection handlers
 	function handleEpisodeSelectChange(episodeId: string, selected: boolean) {
 		if (selected) {
@@ -1465,6 +1746,7 @@
 						{season}
 						seriesMonitored={series.monitored ?? false}
 						isStreamerProfile={series.scoringProfileId === 'streamer'}
+						wantsSubtitles={series.wantsSubtitles ?? false}
 						defaultOpen={openSeasonId === season.id}
 						{selectedEpisodes}
 						{showCheckboxes}
@@ -1475,6 +1757,8 @@
 						{autoSearchingEpisodes}
 						{autoSearchEpisodeResults}
 						{subtitleAutoSearchingEpisodes}
+						{subtitleSyncingId}
+						{subtitleDeletingId}
 						onToggleOpen={handleSeasonToggle}
 						onSeasonMonitorToggle={handleSeasonMonitorToggle}
 						onEpisodeMonitorToggle={handleEpisodeMonitorToggle}
@@ -1486,6 +1770,8 @@
 						onSelectAllInSeason={handleSelectAllInSeason}
 						onSubtitleSearch={handleSubtitleSearch}
 						onSubtitleAutoSearch={handleSubtitleAutoSearch}
+						onSubtitleSync={handleSubtitleSyncFromPopover}
+						onSubtitleDelete={handleSubtitleDeleteFromPopover}
 						onSeasonDelete={handleSeasonDelete}
 						onEpisodeDelete={handleEpisodeDelete}
 					/>
@@ -1502,8 +1788,12 @@
 <BulkActionBar
 	{selectedCount}
 	searching={autoSearchingEpisodes.size > 0}
+	subtitleAutoSearching={bulkSubtitleAutoSearching}
+	subtitleSyncing={bulkSubtitleSyncing}
 	onSearch={handleBulkAutoSearch}
 	onClear={clearSelection}
+	onSubtitleAutoSearch={handleBulkSubtitleAutoSearch}
+	onSubtitleSync={handleBulkSubtitleSyncSelected}
 />
 
 <!-- Edit Modal -->
@@ -1561,7 +1851,8 @@
 		matchScore: (subtitle as { matchScore?: number | null }).matchScore,
 		dateAdded: (subtitle as { dateAdded?: string | null }).dateAdded,
 		wasSynced: subtitle.wasSynced,
-		syncOffset: subtitle.syncOffset
+		syncOffset: subtitle.syncOffset,
+		label: subtitle.label
 	}))}
 	{syncingSubtitleId}
 	errorMessage={subtitleSyncError}
@@ -1570,6 +1861,7 @@
 		subtitleSyncError = null;
 	}}
 	onSync={handleSubtitleResync}
+	onBulkSync={handleBulkSubtitleSync}
 />
 
 <!-- Rename Preview Modal -->

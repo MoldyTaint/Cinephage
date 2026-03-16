@@ -607,6 +607,24 @@ export const subtitleSyncSchema = z.object({
 });
 
 /**
+ * Schema for bulk subtitle sync request.
+ * Syncs multiple subtitles with shared settings.
+ */
+export const subtitleBulkSyncSchema = z.object({
+	subtitleIds: z.array(z.string().uuid()).min(1).max(500),
+	splitPenalty: z.number().int().min(0).max(1000).default(7),
+	noSplits: z.boolean().default(false)
+});
+
+/**
+ * Schema for deleting a subtitle file.
+ */
+export const subtitleDeleteSchema = z.object({
+	addToBlacklist: z.boolean().default(false),
+	reason: z.enum(['wrong_content', 'out_of_sync', 'poor_quality', 'manual']).optional()
+});
+
+/**
  * Schema for blacklisting a subtitle.
  */
 export const subtitleBlacklistSchema = z.object({

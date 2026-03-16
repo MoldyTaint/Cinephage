@@ -19,9 +19,9 @@ import {
 } from '$lib/server/db/schema';
 import { eq, and, inArray } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { writeFile, mkdir, unlink } from 'fs/promises';
-import { existsSync } from 'fs';
-import { dirname, join, basename, extname } from 'path';
+import { writeFile, mkdir, unlink } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { dirname, join, basename, extname } from 'node:path';
 import { createChildLogger } from '$lib/logging';
 import { getSubtitleSyncService } from './SubtitleSyncService';
 
@@ -145,7 +145,7 @@ export class SubtitleDownloadService {
 		}
 
 		const rootPath = rootFolder?.[0]?.path || '';
-		const mediaPath = this.resolveEpisodeMediaDir(rootPath, seriesData[0].path, file.relativePath);
+		const mediaPath = join(rootPath, seriesData[0].path, dirname(file.relativePath));
 
 		// Download and save
 		return this.downloadAndSave(result, {
@@ -539,11 +539,7 @@ export class SubtitleDownloadService {
 			});
 
 			if (file) {
-				const mediaDir = this.resolveEpisodeMediaDir(
-					rootPath,
-					seriesData[0].path,
-					file.relativePath
-				);
+				const mediaDir = join(rootPath, seriesData[0].path, dirname(file.relativePath));
 				return join(mediaDir, subtitle.relativePath);
 			}
 
@@ -552,21 +548,6 @@ export class SubtitleDownloadService {
 		}
 
 		return null;
-	}
-
-	private resolveEpisodeMediaDir(
-		rootPath: string,
-		seriesPath: string | null,
-		fileRelativePath: string
-	): string {
-		const seriesRel = (seriesPath ?? '').replace(/^[/\\]+/, '');
-		let fileDir = dirname(fileRelativePath).replace(/^[/\\]+/, '');
-
-		if (seriesRel && !(fileDir === seriesRel || fileDir.startsWith(`${seriesRel}/`))) {
-			fileDir = join(seriesRel, fileDir);
-		}
-
-		return join(rootPath, fileDir);
 	}
 }
 

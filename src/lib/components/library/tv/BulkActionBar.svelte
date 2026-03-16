@@ -1,14 +1,27 @@
 <script lang="ts">
-	import { X, Download, Loader2 } from 'lucide-svelte';
+	import { X, Download, Loader2, Subtitles, RefreshCw } from 'lucide-svelte';
 
 	interface Props {
 		selectedCount: number;
 		searching: boolean;
+		subtitleAutoSearching?: boolean;
+		subtitleSyncing?: boolean;
 		onSearch: () => void;
 		onClear: () => void;
+		onSubtitleAutoSearch?: () => void;
+		onSubtitleSync?: () => void;
 	}
 
-	let { selectedCount, searching, onSearch, onClear }: Props = $props();
+	let {
+		selectedCount,
+		searching,
+		subtitleAutoSearching = false,
+		subtitleSyncing = false,
+		onSearch,
+		onClear,
+		onSubtitleAutoSearch,
+		onSubtitleSync
+	}: Props = $props();
 </script>
 
 {#if selectedCount > 0}
@@ -32,6 +45,42 @@
 						Search Selected
 					{/if}
 				</button>
+
+				{#if onSubtitleAutoSearch}
+					<button
+						class="btn gap-2 btn-sm btn-secondary"
+						onclick={onSubtitleAutoSearch}
+						disabled={subtitleAutoSearching}
+						title="Auto-download subtitles for selected episodes"
+					>
+						{#if subtitleAutoSearching}
+							<Loader2 size={16} class="animate-spin" />
+							Downloading...
+						{:else}
+							<Subtitles size={16} />
+							<span class="hidden sm:inline">Auto-download Subs</span>
+							<span class="sm:hidden">Subs</span>
+						{/if}
+					</button>
+				{/if}
+
+				{#if onSubtitleSync}
+					<button
+						class="btn gap-2 btn-outline btn-sm"
+						onclick={onSubtitleSync}
+						disabled={subtitleSyncing}
+						title="Sync subtitles for selected episodes"
+					>
+						{#if subtitleSyncing}
+							<Loader2 size={16} class="animate-spin" />
+							Syncing...
+						{:else}
+							<RefreshCw size={16} />
+							<span class="hidden sm:inline">Sync Subs</span>
+							<span class="sm:hidden">Sync</span>
+						{/if}
+					</button>
+				{/if}
 
 				<button class="btn btn-circle btn-ghost btn-sm" onclick={onClear} title="Clear selection">
 					<X size={16} />

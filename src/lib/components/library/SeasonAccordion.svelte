@@ -8,7 +8,8 @@
 		Search,
 		Zap,
 		Loader2,
-		Trash2
+		Trash2,
+		Subtitles
 	} from 'lucide-svelte';
 	import EpisodeRow from './EpisodeRow.svelte';
 	import AutoSearchStatus from './AutoSearchStatus.svelte';
@@ -79,6 +80,7 @@
 		season: Season;
 		seriesMonitored: boolean;
 		isStreamerProfile?: boolean;
+		wantsSubtitles?: boolean;
 		defaultOpen?: boolean;
 		selectedEpisodes?: Set<string>;
 		showCheckboxes?: boolean;
@@ -89,6 +91,8 @@
 		autoSearchingEpisodes?: Set<string>;
 		autoSearchEpisodeResults?: Map<string, AutoSearchResult>;
 		subtitleAutoSearchingEpisodes?: Set<string>;
+		subtitleSyncingId?: string | null;
+		subtitleDeletingId?: string | null;
 		onToggleOpen?: (seasonId: string) => void;
 		onSeasonMonitorToggle?: (seasonId: string, newValue: boolean) => void;
 		onEpisodeMonitorToggle?: (episodeId: string, newValue: boolean) => void;
@@ -100,6 +104,8 @@
 		onSelectAllInSeason?: (seasonId: string, selectAll: boolean) => void;
 		onSubtitleSearch?: (episode: Episode) => void;
 		onSubtitleAutoSearch?: (episode: Episode) => void;
+		onSubtitleSync?: (subtitleId: string) => void;
+		onSubtitleDelete?: (subtitleId: string) => void;
 		onSeasonDelete?: (season: Season) => void;
 		onEpisodeDelete?: (episode: Episode) => void;
 	}
@@ -108,6 +114,7 @@
 		season,
 		seriesMonitored,
 		isStreamerProfile = false,
+		wantsSubtitles = false,
 		defaultOpen = false,
 		selectedEpisodes = new Set(),
 		showCheckboxes = false,
@@ -118,6 +125,8 @@
 		autoSearchingEpisodes = new Set(),
 		autoSearchEpisodeResults = new Map(),
 		subtitleAutoSearchingEpisodes = new Set(),
+		subtitleSyncingId = null,
+		subtitleDeletingId = null,
 		onToggleOpen,
 		onSeasonMonitorToggle,
 		onEpisodeMonitorToggle,
@@ -129,6 +138,8 @@
 		onSelectAllInSeason,
 		onSubtitleSearch,
 		onSubtitleAutoSearch,
+		onSubtitleSync,
+		onSubtitleDelete,
 		onSeasonDelete,
 		onEpisodeDelete
 	}: Props = $props();
@@ -150,6 +161,17 @@
 
 	// Calculate cumulative season file size
 	const seasonSize = $derived(season.episodes.reduce((sum, ep) => sum + (ep.file?.size ?? 0), 0));
+
+	// Calculate subtitle stats for the season header
+	const episodesWithFiles = $derived(season.episodes.filter((ep) => ep.file !== null));
+	const episodesWithSubs = $derived(
+		episodesWithFiles.filter((ep) => (ep.subtitles?.length ?? 0) > 0)
+	);
+	const subtitleCoverage = $derived(
+		episodesWithFiles.length > 0
+			? { withSubs: episodesWithSubs.length, total: episodesWithFiles.length }
+			: null
+	);
 
 	// Calculate selection state for season checkbox
 	const seasonEpisodeIds = $derived(season.episodes.map((e) => e.id));
@@ -254,6 +276,20 @@
 							<span class="badge badge-xs badge-success">Complete</span>
 						{:else if percentComplete > 0}
 							<span class="badge badge-xs badge-primary">{percentComplete}%</span>
+						{/if}
+						{#if wantsSubtitles && subtitleCoverage}
+							<span class="text-base-content/40">·</span>
+							<span
+								class="inline-flex items-center gap-1 whitespace-nowrap {subtitleCoverage.withSubs ===
+								subtitleCoverage.total
+									? 'text-success/70'
+									: subtitleCoverage.withSubs === 0
+										? 'text-warning/70'
+										: 'text-base-content/50'}"
+							>
+								<Subtitles size={12} />
+								{subtitleCoverage.withSubs}/{subtitleCoverage.total}
+							</span>
 						{/if}
 					</div>
 				</div>
@@ -363,6 +399,7 @@
 									{episode}
 									{seriesMonitored}
 									{isStreamerProfile}
+									{wantsSubtitles}
 									selected={selectedEpisodes.has(episode.id)}
 									showCheckbox={showCheckboxes}
 									isDownloading={downloadingEpisodeIds.has(episode.id) ||
@@ -370,12 +407,16 @@
 									autoSearching={autoSearchingEpisodes.has(episode.id)}
 									autoSearchResult={autoSearchEpisodeResults.get(episode.id) ?? null}
 									subtitleAutoSearching={subtitleAutoSearchingEpisodes.has(episode.id)}
+									{subtitleSyncingId}
+									{subtitleDeletingId}
 									onMonitorToggle={onEpisodeMonitorToggle}
 									onSearch={onEpisodeSearch}
 									onAutoSearch={onAutoSearchEpisode}
 									onSelectChange={onEpisodeSelectChange}
 									{onSubtitleSearch}
 									{onSubtitleAutoSearch}
+									{onSubtitleSync}
+									{onSubtitleDelete}
 									onDelete={onEpisodeDelete}
 								/>
 							{/each}

@@ -10,7 +10,7 @@
 
 import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { db } from '$lib/server/db';
 import {
 	subtitles,
@@ -379,11 +379,13 @@ export class SubtitleSyncService {
 				: null;
 
 			const rootPath = rootFolder?.[0]?.path || '';
-			const basePath = join(rootPath, seriesData[0].path);
+			const mediaPath = file
+				? join(rootPath, seriesData[0].path, dirname(file.relativePath))
+				: join(rootPath, seriesData[0].path);
 
 			return {
-				subtitlePath: join(basePath, subtitle.relativePath),
-				videoPath: file ? join(basePath, file.relativePath) : null
+				subtitlePath: join(mediaPath, subtitle.relativePath),
+				videoPath: file ? join(mediaPath, basename(file.relativePath)) : null
 			};
 		}
 
