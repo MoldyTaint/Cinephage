@@ -261,6 +261,11 @@ export interface LiveTvAccountTestResult {
 		expiresAt: string | null;
 		serverTimezone: string;
 		streamVerified: boolean;
+		epg?: {
+			status: 'not_configured' | 'reachable' | 'unreachable';
+			source?: 'configured' | 'playlist-header';
+			error?: string;
+		};
 	};
 }
 
@@ -709,6 +714,7 @@ export interface EpgSyncResult {
 export interface EpgStatus {
 	isEnabled: boolean;
 	isSyncing: boolean;
+	syncingAccountIds?: string[];
 	syncIntervalHours: number;
 	retentionHours: number;
 	lastSyncAt: string | null;

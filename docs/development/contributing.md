@@ -63,6 +63,14 @@ npm run test:watch  # Run tests in watch mode
 npm run check       # Run svelte-check for TypeScript errors
 ```
 
+### Dependency Audit
+
+```bash
+npm run deps:audit  # Run dependency audit (unused/unlisted packages)
+```
+
+This uses [`knip.jsonc`](../../knip.jsonc) for repository-specific ignores.
+
 ### Building
 
 ```bash

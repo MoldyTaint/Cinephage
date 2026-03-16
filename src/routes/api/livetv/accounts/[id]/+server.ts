@@ -9,6 +9,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getLiveTvAccountManager } from '$lib/server/livetv/LiveTvAccountManager';
+import { getEpgService, getEpgScheduler } from '$lib/server/livetv/epg';
+import { getEpgSyncState } from '$lib/server/livetv/epg/EpgSyncState';
+import { liveTvEvents } from '$lib/server/livetv/LiveTvEvents';
 import { logger } from '$lib/logging';
 import { z } from 'zod';
 import { ValidationError } from '$lib/errors';
@@ -44,12 +47,62 @@ const liveTvAccountUpdateSchema = z.object({
 		.object({
 			url: z.string().url().optional(),
 			fileContent: z.string().optional(),
-			epgUrl: z.string().url().optional(),
+			epgUrl: z.preprocess(
+				(value) => (typeof value === 'string' ? value.trim() : value),
+				z.union([z.string().url(), z.literal('')]).optional()
+			),
 			refreshIntervalHours: z.number().min(1).max(168).optional(),
 			autoRefresh: z.boolean().optional()
 		})
 		.optional()
 });
+
+function queueAccountEpgSync(accountId: string): void {
+	const syncState = getEpgSyncState();
+	const epgScheduler = getEpgScheduler();
+
+	if (epgScheduler.getStatus().isSyncing) {
+		logger.info(
+			{
+				accountId
+			},
+			'[API] Skipping account EPG sync trigger because scheduler sync is already running'
+		);
+		return;
+	}
+
+	if (!syncState.tryStartAccount(accountId)) {
+		logger.info(
+			{
+				accountId
+			},
+			'[API] Skipping account EPG sync trigger because another EPG sync is already running'
+		);
+		return;
+	}
+
+	setImmediate(async () => {
+		try {
+			const epgService = getEpgService();
+			liveTvEvents.emitEpgSyncStarted(accountId);
+			await epgService.syncAccount(accountId);
+			liveTvEvents.emitEpgSyncCompleted(accountId);
+			logger.info({ accountId }, '[API] Background EPG sync complete after account update');
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown error';
+			liveTvEvents.emitEpgSyncFailed(accountId, message);
+			logger.error(
+				{
+					accountId,
+					error: message
+				},
+				'[API] Background EPG sync failed after account update'
+			);
+		} finally {
+			syncState.finishAccount(accountId);
+		}
+	});
+}
 
 /**
  * Get a Live TV account by ID
@@ -101,8 +154,46 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 			});
 		}
 
+		const updates = parsed.data;
+		const hasExplicitEpgField =
+			typeof body === 'object' &&
+			body !== null &&
+			'm3uConfig' in body &&
+			typeof body.m3uConfig === 'object' &&
+			body.m3uConfig !== null &&
+			Object.prototype.hasOwnProperty.call(body.m3uConfig, 'epgUrl');
+		const requestedEpgUrl =
+			hasExplicitEpgField &&
+			typeof body.m3uConfig === 'object' &&
+			body.m3uConfig !== null &&
+			typeof body.m3uConfig.epgUrl === 'string'
+				? body.m3uConfig.epgUrl.trim()
+				: null;
+
+		// Empty epgUrl in update payload means "clear existing epgUrl".
+		if (hasExplicitEpgField && updates.m3uConfig && updates.m3uConfig.epgUrl === '') {
+			updates.m3uConfig.epgUrl = undefined;
+		}
+
 		const manager = getLiveTvAccountManager();
-		const account = await manager.updateAccount(params.id, parsed.data);
+		const existingAccount = await manager.getAccount(params.id);
+		if (!existingAccount) {
+			return json(
+				{
+					success: false,
+					error: 'Account not found'
+				},
+				{ status: 404 }
+			);
+		}
+
+		const previousEpgUrl = (existingAccount.m3uConfig?.epgUrl ?? '').trim();
+		const shouldTriggerAccountEpgSync =
+			hasExplicitEpgField &&
+			existingAccount.providerType === 'm3u' &&
+			requestedEpgUrl !== null &&
+			previousEpgUrl !== requestedEpgUrl;
+		const account = await manager.updateAccount(params.id, updates);
 
 		if (!account) {
 			return json(
@@ -112,6 +203,10 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 				},
 				{ status: 404 }
 			);
+		}
+
+		if (shouldTriggerAccountEpgSync && account.enabled) {
+			queueAccountEpgSync(account.id);
 		}
 
 		return json({

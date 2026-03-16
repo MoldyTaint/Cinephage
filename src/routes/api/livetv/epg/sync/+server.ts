@@ -10,12 +10,52 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getEpgService } from '$lib/server/livetv/epg';
+import { getEpgService, getEpgScheduler } from '$lib/server/livetv/epg';
+import { getEpgSyncState } from '$lib/server/livetv/epg/EpgSyncState';
 import { liveTvEvents } from '$lib/server/livetv/LiveTvEvents';
 import { logger } from '$lib/logging';
 
 export const POST: RequestHandler = async ({ url }) => {
 	const accountId = url.searchParams.get('accountId');
+	const syncState = getEpgSyncState();
+	const epgScheduler = getEpgScheduler();
+	const schedulerStatus = epgScheduler.getStatus();
+
+	if (schedulerStatus.isSyncing) {
+		return json(
+			{
+				success: true,
+				started: false,
+				alreadyRunning: true,
+				message: 'EPG scheduler sync already running'
+			},
+			{ status: 202 }
+		);
+	}
+
+	if (accountId) {
+		if (!syncState.tryStartAccount(accountId)) {
+			return json(
+				{
+					success: true,
+					started: false,
+					alreadyRunning: true,
+					message: `EPG sync already running for account ${accountId}`
+				},
+				{ status: 202 }
+			);
+		}
+	} else if (!syncState.tryStartAll()) {
+		return json(
+			{
+				success: true,
+				started: false,
+				alreadyRunning: true,
+				message: 'EPG sync already running'
+			},
+			{ status: 202 }
+		);
+	}
 
 	// Fire-and-forget: start sync in background, return immediately
 	setImmediate(async () => {
@@ -68,12 +108,19 @@ export const POST: RequestHandler = async ({ url }) => {
 				},
 				'[EPG] Background sync failed'
 			);
+		} finally {
+			if (accountId) {
+				syncState.finishAccount(accountId);
+			} else {
+				syncState.finishAll();
+			}
 		}
 	});
 
 	return json({
 		success: true,
 		started: true,
+		alreadyRunning: false,
 		message: accountId
 			? `EPG sync started for account ${accountId}`
 			: 'EPG sync started for all accounts'

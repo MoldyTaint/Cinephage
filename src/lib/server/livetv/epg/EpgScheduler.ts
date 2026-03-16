@@ -14,6 +14,8 @@ import { settings } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service';
 import { getEpgService } from './EpgService';
+import { getEpgSyncState } from './EpgSyncState';
+import { liveTvEvents } from '../LiveTvEvents';
 
 /**
  * Default settings
@@ -198,9 +200,17 @@ export class EpgScheduler extends EventEmitter implements BackgroundService {
 	 */
 	private async runSync(): Promise<void> {
 		this.isSyncing = true;
+		const syncState = getEpgSyncState();
+		let syncStateStarted = false;
 
 		try {
+			if (!syncState.tryStartAll()) {
+				logger.info('Skipping scheduled EPG sync because another sync is already running');
+				return;
+			}
+			syncStateStarted = true;
 			logger.info('Starting scheduled EPG sync');
+			liveTvEvents.emitEpgSyncStarted();
 
 			const epgService = getEpgService();
 			const results = await epgService.syncAll();
@@ -221,9 +231,14 @@ export class EpgScheduler extends EventEmitter implements BackgroundService {
 				},
 				'Scheduled EPG sync complete'
 			);
+			liveTvEvents.emitEpgSyncCompleted();
 
 			this.emit('sync-complete', { results });
 		} catch (error) {
+			liveTvEvents.emitEpgSyncFailed(
+				undefined,
+				error instanceof Error ? error.message : 'Unknown error'
+			);
 			logger.error(
 				{
 					error: error instanceof Error ? error.message : 'Unknown error'
@@ -232,6 +247,9 @@ export class EpgScheduler extends EventEmitter implements BackgroundService {
 			);
 		} finally {
 			this.isSyncing = false;
+			if (syncStateStarted) {
+				syncState.finishAll();
+			}
 		}
 	}
 

@@ -64,9 +64,12 @@
 		loadAccounts();
 	});
 
-	async function loadAccounts() {
-		loading = true;
-		error = null;
+	async function loadAccounts(options: { foreground?: boolean } = {}) {
+		const { foreground = true } = options;
+		if (foreground) {
+			loading = true;
+			error = null;
+		}
 
 		try {
 			const response = await fetch('/api/livetv/accounts');
@@ -78,13 +81,15 @@
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load accounts';
 		} finally {
-			loading = false;
+			if (foreground) {
+				loading = false;
+			}
 		}
 	}
 
 	async function refreshAccounts() {
 		refreshing = true;
-		await loadAccounts();
+		await loadAccounts({ foreground: false });
 		refreshing = false;
 	}
 
@@ -149,11 +154,13 @@
 							countries: data.selectedCountries
 						};
 					} else {
+						const normalizedEpgUrl = data.epgUrl.trim();
 						// Regular M3U mode
 						body.m3uConfig = {
 							url: data.url || undefined,
 							fileContent: data.fileContent || undefined,
-							epgUrl: data.epgUrl || undefined,
+							// In edit mode, send empty string to explicitly clear an existing EPG URL.
+							epgUrl: normalizedEpgUrl || (modalMode === 'edit' ? '' : undefined),
 							autoRefresh: data.autoRefresh
 						};
 					}
@@ -171,8 +178,8 @@
 				throw new Error(result.error || 'Failed to save account');
 			}
 
-			await loadAccounts();
 			closeModal();
+			void loadAccounts({ foreground: false });
 		} catch (e) {
 			modalError = e instanceof Error ? e.message : 'Failed to save account';
 		} finally {
@@ -188,6 +195,27 @@
 	function closeDeleteConfirm() {
 		if (saving) return;
 		deleteConfirmOpen = false;
+	}
+
+	function getTestSummary(result: LiveTvAccountTestResult): string | undefined {
+		if (!result.profile) return undefined;
+
+		const parts = [
+			`${result.profile.channelCount.toLocaleString()} channels`,
+			`${result.profile.categoryCount.toLocaleString()} categories`
+		];
+
+		const epgStatus = result.profile.epg?.status;
+		if (epgStatus === 'reachable') {
+			parts.push('EPG reachable');
+		} else if (epgStatus === 'unreachable') {
+			const epgError = result.profile.epg?.error;
+			parts.push(epgError ? `EPG unreachable (${epgError})` : 'EPG unreachable');
+		} else if (epgStatus === 'not_configured') {
+			parts.push('EPG not configured');
+		}
+
+		return parts.join(' • ');
 	}
 
 	async function confirmDelete() {
@@ -206,7 +234,7 @@
 				throw new Error(result.error || 'Failed to delete account');
 			}
 
-			await loadAccounts();
+			await loadAccounts({ foreground: false });
 			deleteConfirmOpen = false;
 			closeModal();
 		} catch (e) {
@@ -228,7 +256,7 @@
 				throw new Error('Failed to update account');
 			}
 
-			await loadAccounts();
+			await loadAccounts({ foreground: false });
 		} catch (e) {
 			toasts.error('Failed to update account', {
 				description: e instanceof Error ? e.message : 'Failed to update account'
@@ -286,9 +314,7 @@
 
 			if (testResult.success) {
 				toasts.success(`Connection test passed: ${account.name}`, {
-					description: testResult.profile
-						? `${testResult.profile.channelCount.toLocaleString()} channels • ${testResult.profile.categoryCount.toLocaleString()} categories`
-						: undefined
+					description: getTestSummary(testResult)
 				});
 			} else {
 				toasts.error(`Connection test failed: ${account.name}`, {
@@ -318,7 +344,7 @@
 				throw new Error('Failed to sync account');
 			}
 
-			await loadAccounts();
+			await loadAccounts({ foreground: false });
 		} catch (e) {
 			toasts.error('Failed to sync account', {
 				description: e instanceof Error ? e.message : 'Failed to sync account'
@@ -356,7 +382,8 @@
 				} else {
 					body.m3uConfig = {
 						url: config.url,
-						fileContent: config.fileContent
+						fileContent: config.fileContent,
+						epgUrl: config.epgUrl
 					};
 				}
 				break;
@@ -453,7 +480,7 @@
 	{:else if error}
 		<div class="alert alert-error">
 			<span>{error}</span>
-			<button class="btn btn-ghost btn-sm" onclick={loadAccounts}>Retry</button>
+			<button class="btn btn-ghost btn-sm" onclick={() => loadAccounts()}>Retry</button>
 		</div>
 	{:else}
 		<LiveTvAccountTable

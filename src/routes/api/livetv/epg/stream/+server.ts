@@ -16,6 +16,7 @@ import { createSSEStream } from '$lib/server/sse';
 import { liveTvEvents } from '$lib/server/livetv/LiveTvEvents';
 import { channelLineupService } from '$lib/server/livetv/lineup';
 import { getEpgService, getEpgScheduler } from '$lib/server/livetv/epg';
+import { getEpgSyncState } from '$lib/server/livetv/epg/EpgSyncState';
 import { db } from '$lib/server/db';
 import { livetvAccounts } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
@@ -28,6 +29,7 @@ interface EpgStatusData {
 	success: boolean;
 	isEnabled: boolean;
 	isSyncing: boolean;
+	syncingAccountIds: string[];
 	syncIntervalHours: number;
 	retentionHours: number;
 	lastSyncAt: string | null;
@@ -47,8 +49,10 @@ interface EpgStatusData {
 async function getEpgStatus(): Promise<EpgStatusData> {
 	const epgService = getEpgService();
 	const epgScheduler = getEpgScheduler();
+	const epgSyncState = getEpgSyncState();
 
 	const schedulerStatus = epgScheduler.getStatus();
+	const syncSnapshot = epgSyncState.getSnapshot();
 	const totalPrograms = epgService.getProgramCount();
 
 	const accounts = db
@@ -78,7 +82,11 @@ async function getEpgStatus(): Promise<EpgStatusData> {
 	return {
 		success: true,
 		isEnabled: true,
-		isSyncing: schedulerStatus.isSyncing,
+		isSyncing:
+			schedulerStatus.isSyncing ||
+			syncSnapshot.syncingAll ||
+			syncSnapshot.syncingAccountIds.length > 0,
+		syncingAccountIds: syncSnapshot.syncingAccountIds,
 		syncIntervalHours: schedulerStatus.syncIntervalHours,
 		retentionHours: schedulerStatus.retentionHours,
 		lastSyncAt: schedulerStatus.lastSyncAt,

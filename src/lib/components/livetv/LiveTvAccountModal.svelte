@@ -50,6 +50,7 @@
 		password?: string;
 		url?: string;
 		fileContent?: string;
+		epgUrl?: string;
 		countries?: string[];
 	}
 
@@ -224,6 +225,9 @@
 				config.password = password.trim() || account?.xstreamConfig?.password || '';
 				break;
 			case 'm3u':
+				if (epgUrl.trim()) {
+					config.epgUrl = epgUrl.trim();
+				}
 				if (inputMode === 'freeiptv') {
 					config.countries = selectedCountries;
 				} else if (inputMode === 'url') {
@@ -235,6 +239,52 @@
 		}
 
 		return config;
+	}
+
+	function getSuccessMessage(result: LiveTvAccountTestResult | null): string {
+		if (!result?.profile) {
+			return 'Connection successful!';
+		}
+
+		const statuses = [result.profile.streamVerified ? 'Stream verified' : 'Stream not verified'];
+		const epgStatus = result.profile.epg?.status;
+		if (epgStatus === 'reachable') {
+			statuses.push('EPG reachable');
+		} else if (epgStatus === 'unreachable') {
+			statuses.push('EPG unreachable');
+		} else if (epgStatus === 'not_configured') {
+			statuses.push('EPG not configured');
+		}
+
+		return `Connection successful (${statuses.join(' • ')})`;
+	}
+
+	function getSuccessDetails(result: LiveTvAccountTestResult | null): string | undefined {
+		if (!result?.profile) {
+			return undefined;
+		}
+
+		const details = [
+			`${result.profile.channelCount.toLocaleString()} channels`,
+			`${result.profile.categoryCount.toLocaleString()} categories`
+		];
+
+		if (result.profile.expiresAt) {
+			details.push(`Expires: ${new Date(result.profile.expiresAt).toLocaleDateString()}`);
+		}
+
+		const epgStatus = result.profile.epg?.status;
+		if (epgStatus === 'reachable') {
+			details.push(
+				result.profile.epg?.source === 'playlist-header'
+					? 'EPG source: playlist header'
+					: 'EPG source: configured URL'
+			);
+		} else if (epgStatus === 'unreachable' && result.profile.epg?.error) {
+			details.push(`EPG error: ${result.profile.epg.error}`);
+		}
+
+		return details.join(' • ');
 	}
 
 	async function handleTest() {
@@ -384,12 +434,8 @@
 						error: testResult.error
 					}
 				: null}
-			successMessage={testResult?.profile
-				? `Connection successful (${testResult.profile.streamVerified ? 'Stream verified' : 'Stream not verified'})`
-				: 'Connection successful!'}
-			successDetails={testResult?.profile
-				? `${testResult.profile.channelCount.toLocaleString()} channels • ${testResult.profile.categoryCount.toLocaleString()} categories${testResult.profile.expiresAt ? ` • Expires: ${new Date(testResult.profile.expiresAt).toLocaleDateString()}` : ''}`
-				: undefined}
+			successMessage={getSuccessMessage(testResult)}
+			successDetails={getSuccessDetails(testResult)}
 		/>
 
 		<!-- Actions -->

@@ -14,6 +14,7 @@ npm run lint:fix         # Auto-fix lint issues
 npm run format           # Auto-format code with Prettier
 npm run test             # Run all tests once
 npm run test:unit        # Run tests in watch mode
+npm run deps:audit       # Dependency audit (unused/unlisted packages)
 
 # Run a single test file
 npx vitest run path/to/test.ts

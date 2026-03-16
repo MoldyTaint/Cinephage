@@ -10,11 +10,11 @@ import { livetvAccounts, livetvChannels, livetvCategories } from '$lib/server/db
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
 import { randomUUID } from 'crypto';
+import { promisify } from 'util';
+import { gunzip, inflate } from 'zlib';
 
 const logger = createChildLogger({ logDomain: 'livetv' as const });
 import { XMLParser } from 'fast-xml-parser';
-import { gunzip } from 'zlib';
-import { promisify } from 'util';
 import type {
 	LiveTvProvider,
 	AuthResult,
@@ -32,6 +32,7 @@ import type {
 import { recordToAccount } from '../LiveTvAccountManager.js';
 
 const gunzipAsync = promisify(gunzip);
+const inflateAsync = promisify(inflate);
 
 // Parsed M3U entry
 interface M3uEntry {
@@ -48,6 +49,8 @@ interface ParsedM3u {
 	entries: M3uEntry[];
 	headerEpgUrl: string | null;
 }
+
+type M3uEpgTestStatus = NonNullable<NonNullable<LiveTvAccountTestResult['profile']>['epg']>;
 
 export class M3uProvider implements LiveTvProvider {
 	readonly type = 'm3u';
@@ -120,6 +123,15 @@ export class M3uProvider implements LiveTvProvider {
 			// Try to parse
 			const parsed = this.parseM3u(playlistContent);
 			const entries = parsed.entries;
+			const configuredEpgUrl = config.epgUrl?.trim();
+			const derivedEpgUrl = parsed.headerEpgUrl;
+			const epgUrl = configuredEpgUrl || derivedEpgUrl || null;
+			const epgSource = configuredEpgUrl
+				? 'configured'
+				: derivedEpgUrl
+					? 'playlist-header'
+					: undefined;
+			const epg = await this.testEpgConnection(epgUrl, epgSource, config);
 
 			return {
 				success: true,
@@ -129,7 +141,8 @@ export class M3uProvider implements LiveTvProvider {
 					categoryCount: new Set(entries.map((e) => e.groupTitle).filter(Boolean)).size,
 					expiresAt: null,
 					serverTimezone: 'UTC',
-					streamVerified: false
+					streamVerified: false,
+					epg
 				}
 			};
 		} catch (error) {
@@ -559,11 +572,13 @@ export class M3uProvider implements LiveTvProvider {
 
 			// Fetch XMLTV data
 			logger.info({ epgUrl }, '[M3uProvider] Fetching XMLTV EPG');
+			const headers = this.buildRequestHeaders(config);
+			if (!headers['User-Agent']) {
+				headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+			}
 
 			const response = await fetch(epgUrl, {
-				headers: {
-					'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-				},
+				headers,
 				signal: AbortSignal.timeout(60000) // 60s timeout for potentially large XML files
 			});
 
@@ -602,6 +617,7 @@ export class M3uProvider implements LiveTvProvider {
 
 			// Build map of XMLTV channel IDs -> one or more of our channels.
 			const channelMap = new Map<string, Map<string, { id: string; externalId: string }>>();
+			const localChannelLookup = new Map<string, Map<string, { id: string; externalId: string }>>();
 			const addChannelMapEntry = (
 				xmltvChannelId: string | undefined,
 				channelInfo: { id: string; externalId: string }
@@ -614,6 +630,17 @@ export class M3uProvider implements LiveTvProvider {
 				}
 				channelMap.get(key)!.set(channelInfo.id, channelInfo);
 			};
+			const addLocalLookupEntry = (
+				value: string | undefined,
+				channelInfo: { id: string; externalId: string }
+			) => {
+				const key = this.normalizeChannelLookupKey(value);
+				if (!key) return;
+				if (!localChannelLookup.has(key)) {
+					localChannelLookup.set(key, new Map());
+				}
+				localChannelLookup.get(key)!.set(channelInfo.id, channelInfo);
+			};
 
 			for (const channel of channels) {
 				const channelInfo = { id: channel.id, externalId: channel.externalId };
@@ -621,6 +648,56 @@ export class M3uProvider implements LiveTvProvider {
 				addChannelMapEntry(m3uData?.tvgId, channelInfo);
 				// Fallback map by externalId for playlists where XMLTV channel uses external IDs.
 				addChannelMapEntry(channel.externalId, channelInfo);
+				addLocalLookupEntry(m3uData?.tvgId, channelInfo);
+				addLocalLookupEntry(m3uData?.tvgName, channelInfo);
+				addLocalLookupEntry(channel.name, channelInfo);
+				addLocalLookupEntry(channel.externalId, channelInfo);
+			}
+
+			const xmlChannels = Array.isArray(parsed.tv.channel)
+				? parsed.tv.channel
+				: parsed.tv.channel
+					? [parsed.tv.channel]
+					: [];
+			let inferredChannelMappings = 0;
+			for (const xmlChannel of xmlChannels) {
+				const xmltvChannelId = xmlChannel?.['@_id']?.toString().trim();
+				if (!xmltvChannelId || channelMap.has(xmltvChannelId)) continue;
+
+				const resolvedMatches = new Map<string, { id: string; externalId: string }>();
+				const lookupKeys = new Set<string>();
+
+				const normalizedXmlId = this.normalizeChannelLookupKey(xmltvChannelId);
+				if (normalizedXmlId) {
+					lookupKeys.add(normalizedXmlId);
+				}
+
+				const displayNameValues = Array.isArray(xmlChannel?.['display-name'])
+					? xmlChannel['display-name']
+					: xmlChannel?.['display-name']
+						? [xmlChannel['display-name']]
+						: [];
+
+				for (const value of displayNameValues) {
+					const name = this.extractXmltvText(value);
+					const normalizedName = this.normalizeChannelLookupKey(name ?? undefined);
+					if (normalizedName) {
+						lookupKeys.add(normalizedName);
+					}
+				}
+
+				for (const key of lookupKeys) {
+					const matches = localChannelLookup.get(key);
+					if (!matches) continue;
+					for (const [channelId, channelInfo] of matches) {
+						resolvedMatches.set(channelId, channelInfo);
+					}
+				}
+
+				if (resolvedMatches.size > 0) {
+					channelMap.set(xmltvChannelId, resolvedMatches);
+					inferredChannelMappings += resolvedMatches.size;
+				}
 			}
 
 			// Parse programmes
@@ -629,6 +706,9 @@ export class M3uProvider implements LiveTvProvider {
 				: parsed.tv.programme
 					? [parsed.tv.programme]
 					: [];
+			const totalProgrammes = programmes.length;
+			let matchedProgrammes = 0;
+			const unmatchedXmlProgrammeChannelIds = new Set<string>();
 
 			const programs: EpgProgram[] = [];
 
@@ -639,7 +719,11 @@ export class M3uProvider implements LiveTvProvider {
 
 					// Find matching channels (can be multiple when tvg-id is duplicated in playlist).
 					const channelInfos = channelMap.get(xmltvChannelId);
-					if (!channelInfos || channelInfos.size === 0) continue;
+					if (!channelInfos || channelInfos.size === 0) {
+						unmatchedXmlProgrammeChannelIds.add(xmltvChannelId);
+						continue;
+					}
+					matchedProgrammes++;
 
 					// Parse timestamps (XMLTV format: YYYYMMDDHHMMSS +TZ)
 					const startStr = prog['@_start'];
@@ -705,6 +789,11 @@ export class M3uProvider implements LiveTvProvider {
 			logger.info(
 				{
 					accountId: account.id,
+					totalProgrammes,
+					matchedProgrammes,
+					inferredChannelMappings,
+					unmatchedXmlProgrammeChannels: unmatchedXmlProgrammeChannelIds.size,
+					unmatchedXmlProgrammeSamples: Array.from(unmatchedXmlProgrammeChannelIds).slice(0, 10),
 					programsFound: programs.length,
 					channelsMatched: new Set(programs.map((p) => p.channelId)).size
 				},
@@ -776,6 +865,84 @@ export class M3uProvider implements LiveTvProvider {
 		return null;
 	}
 
+	private normalizeChannelLookupKey(value: string | undefined): string | null {
+		if (!value) return null;
+		const normalized = value
+			.normalize('NFKD')
+			.replace(/[\u0300-\u036f]/g, '')
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, '');
+		return normalized || null;
+	}
+
+	private async testEpgConnection(
+		epgUrl: string | null,
+		source: 'configured' | 'playlist-header' | undefined,
+		config?: M3uConfig
+	): Promise<M3uEpgTestStatus> {
+		if (!epgUrl) {
+			return {
+				status: 'not_configured'
+			};
+		}
+
+		try {
+			const headers = this.buildRequestHeaders(config);
+			if (!headers['User-Agent']) {
+				headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+			}
+
+			const response = await fetch(epgUrl, {
+				headers,
+				signal: AbortSignal.timeout(30000)
+			});
+
+			if (!response.ok) {
+				return {
+					status: 'unreachable',
+					source,
+					error: `HTTP ${response.status}`
+				};
+			}
+
+			const xmlContent = await this.readXmltvContent(response, epgUrl);
+			if (!xmlContent.trim()) {
+				return {
+					status: 'unreachable',
+					source,
+					error: 'Empty XMLTV response'
+				};
+			}
+
+			const parser = new XMLParser({
+				ignoreAttributes: false,
+				attributeNamePrefix: '@_',
+				textNodeName: '#text',
+				parseAttributeValue: false,
+				trimValues: true
+			});
+			const parsed = parser.parse(xmlContent);
+			if (!parsed?.tv) {
+				return {
+					status: 'unreachable',
+					source,
+					error: 'Invalid XMLTV format: missing <tv> root'
+				};
+			}
+
+			return {
+				status: 'reachable',
+				source
+			};
+		} catch (error) {
+			return {
+				status: 'unreachable',
+				source,
+				error: error instanceof Error ? error.message : String(error)
+			};
+		}
+	}
+
 	/**
 	 * Read XMLTV response body, transparently handling gzip payloads (.gz).
 	 */
@@ -785,38 +952,79 @@ export class M3uProvider implements LiveTvProvider {
 			return '';
 		}
 
-		const hasGzipMagic = raw.length >= 2 && raw[0] === 0x1f && raw[1] === 0x8b;
 		const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
-		const hasGzipMetadata =
+		const contentEncoding = response.headers.get('content-encoding')?.toLowerCase() ?? '';
+		const hasGzipMetadataHint =
 			contentType.includes('application/gzip') ||
 			contentType.includes('application/x-gzip') ||
+			contentEncoding.includes('gzip') ||
+			contentEncoding.includes('x-gzip') ||
 			/\.gz(?:$|[?#])/i.test(epgUrl);
+		const hasDeflateMetadataHint = contentEncoding.includes('deflate');
 
 		let xmlBuffer = Buffer.from(raw);
+		let decompressed = false;
+		const MAX_DECOMPRESS_PASSES = 2;
 
-		if (hasGzipMagic) {
+		for (let pass = 0; pass < MAX_DECOMPRESS_PASSES; pass++) {
+			const hasGzipMagic = xmlBuffer.length >= 2 && xmlBuffer[0] === 0x1f && xmlBuffer[1] === 0x8b;
+			const hasZlibDeflateMagic =
+				xmlBuffer.length >= 2 &&
+				xmlBuffer[0] === 0x78 &&
+				(xmlBuffer[1] === 0x01 ||
+					xmlBuffer[1] === 0x5e ||
+					xmlBuffer[1] === 0x9c ||
+					xmlBuffer[1] === 0xda);
+			const metadataHintActive = pass === 0 && (hasGzipMetadataHint || hasDeflateMetadataHint);
+			const shouldAttemptDecompression = hasGzipMagic || hasZlibDeflateMagic || metadataHintActive;
+
+			if (!shouldAttemptDecompression) {
+				break;
+			}
+
+			const beforeLength = xmlBuffer.length;
 			try {
-				xmlBuffer = await gunzipAsync(xmlBuffer);
+				if (hasGzipMagic) {
+					xmlBuffer = await gunzipAsync(xmlBuffer);
+				} else if (hasZlibDeflateMagic) {
+					xmlBuffer = await inflateAsync(xmlBuffer);
+				} else if (hasDeflateMetadataHint) {
+					xmlBuffer = await inflateAsync(xmlBuffer);
+				} else {
+					xmlBuffer = await gunzipAsync(xmlBuffer);
+				}
+				decompressed = true;
 				logger.debug(
 					{
 						epgUrl,
-						compressedBytes: raw.length,
+						pass: pass + 1,
+						compressedBytes: beforeLength,
 						uncompressedBytes: xmlBuffer.length
 					},
-					'[M3uProvider] Decompressed gzip XMLTV payload'
+					'[M3uProvider] Decompressed XMLTV payload'
 				);
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				throw new Error(`Failed to decompress XMLTV gzip payload: ${message}`, { cause: error });
+				// Some providers serve plain XML from .gz URLs (or already decompressed bodies).
+				const plainText = xmlBuffer.toString('utf-8');
+				if (plainText.trimStart().startsWith('<')) {
+					logger.debug(
+						{ epgUrl },
+						'[M3uProvider] XMLTV marked as compressed but response was plain text'
+					);
+					break;
+				} else {
+					const message = error instanceof Error ? error.message : String(error);
+					throw new Error(`Failed to decompress XMLTV payload: ${message}`, { cause: error });
+				}
 			}
-		} else if (hasGzipMetadata) {
-			// Some servers auto-decompress despite .gz URLs/content-types.
-			logger.debug({ epgUrl }, '[M3uProvider] XMLTV marked as gzip but response was plain text');
 		}
 
 		let xmlContent = xmlBuffer.toString('utf-8');
 		if (xmlContent.charCodeAt(0) === 0xfeff) {
 			xmlContent = xmlContent.slice(1);
+		}
+		if (!decompressed && !xmlContent.trimStart().startsWith('<')) {
+			throw new Error('XMLTV payload is not valid XML after decompression attempts');
 		}
 
 		return xmlContent;

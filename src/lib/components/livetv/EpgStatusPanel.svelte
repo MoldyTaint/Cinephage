@@ -61,7 +61,11 @@
 
 	const accountsWithError = $derived(status?.accounts.filter((a) => a.error).length ?? 0);
 	const accountsWithoutEpg = $derived(
-		status?.accounts.filter((a) => a.hasEpg === false).length ?? 0
+		status?.accounts.filter((a) => {
+			if (a.hasEpg !== false) return false;
+			if (syncingAll) return false;
+			return !syncingAccountIdSet.has(a.id);
+		}).length ?? 0
 	);
 	const syncErrors = $derived(
 		status?.accounts
@@ -74,7 +78,11 @@
 	);
 	const syncWarnings = $derived(
 		status?.accounts
-			.filter((a) => !a.error && a.hasEpg === false)
+			.filter((a) => {
+				if (a.error || a.hasEpg !== false) return false;
+				if (syncingAll) return false;
+				return !syncingAccountIdSet.has(a.id);
+			})
 			.map((a) => ({
 				id: a.id,
 				name: a.name,
@@ -215,12 +223,14 @@
 		{#if status.accounts && status.accounts.length > 0}
 			<div class="space-y-2">
 				{#each status.accounts as account (account.id)}
-					{@const isAccountSyncing = syncingAccountIdSet.has(account.id)}
+					{@const isAccountSyncing = syncingAll || syncingAccountIdSet.has(account.id)}
 					<div class="card bg-base-200">
 						<div class="card-body flex-row items-center justify-between p-4">
 							<div class="flex items-center gap-4">
 								<div class="flex items-center gap-2">
-									{#if account.error}
+									{#if isAccountSyncing}
+										<Loader2 class="h-5 w-5 animate-spin text-primary" />
+									{:else if account.error}
 										<div class="tooltip" data-tip={account.error}>
 											<AlertTriangle class="h-5 w-5 text-error" />
 										</div>
@@ -247,8 +257,8 @@
 							<button
 								class="btn btn-ghost btn-sm"
 								onclick={() => handleSyncAccount(account.id)}
-								disabled={syncingAll || isAccountSyncing}
-								title={syncingAll ? 'Sync all is currently running' : 'Sync this account'}
+								disabled={anySyncing}
+								title={anySyncing ? 'Another EPG sync is currently running' : 'Sync this account'}
 							>
 								{#if isAccountSyncing}
 									<Loader2 class="h-4 w-4 animate-spin" />

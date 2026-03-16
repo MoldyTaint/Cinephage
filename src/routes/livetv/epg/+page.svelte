@@ -47,37 +47,46 @@
 		{ id: 'guide', label: 'Guide', icon: Calendar }
 	];
 
+	function applySyncStateFromStatus(status: EpgStatus | null | undefined) {
+		if (!status) return;
+		const syncingIds = status.syncingAccountIds ?? [];
+		epgSyncingAll = status.isSyncing && syncingIds.length === 0;
+		if (status.syncingAccountIds !== undefined) {
+			epgSyncingAccountIds.clear();
+			for (const id of syncingIds) {
+				epgSyncingAccountIds.add(id);
+			}
+		}
+	}
+
 	// SSE Connection - internally handles browser/SSR
 	const sse = createSSE<EpgStreamEvents>(resolvePath('/api/livetv/epg/stream'), {
 		'epg:initial': (payload) => {
 			epgStatus = payload.status;
-			epgSyncingAll = payload.status?.isSyncing ?? false;
-			if (!epgSyncingAll) {
-				epgSyncingAccountIds.clear();
-			}
+			applySyncStateFromStatus(payload.status);
 			lineup = payload.lineup || [];
 			loadingLineup = false;
 			epgStatusLoading = false;
 		},
 		'epg:syncStarted': (payload) => {
-			if (payload.accountId) {
+			if (payload.status) {
+				epgStatus = payload.status;
+				applySyncStateFromStatus(payload.status);
+			} else if (payload.accountId) {
 				epgSyncingAccountIds.add(payload.accountId);
 			} else {
 				epgSyncingAll = true;
 			}
-			if (payload.status) {
-				epgStatus = payload.status;
-			}
 		},
 		'epg:syncCompleted': (payload) => {
-			if (payload.accountId) {
+			if (payload.status) {
+				epgStatus = payload.status;
+				applySyncStateFromStatus(payload.status);
+			} else if (payload.accountId) {
 				epgSyncingAccountIds.delete(payload.accountId);
 			} else {
 				epgSyncingAll = false;
 				epgSyncingAccountIds.clear();
-			}
-			if (payload.status) {
-				epgStatus = payload.status;
 			}
 			if (payload.lineup) {
 				lineup = payload.lineup;
@@ -85,14 +94,14 @@
 			fetchEpgData();
 		},
 		'epg:syncFailed': (payload) => {
-			if (payload.accountId) {
+			if (payload.status) {
+				epgStatus = payload.status;
+				applySyncStateFromStatus(payload.status);
+			} else if (payload.accountId) {
 				epgSyncingAccountIds.delete(payload.accountId);
 			} else {
 				epgSyncingAll = false;
 				epgSyncingAccountIds.clear();
-			}
-			if (payload.status) {
-				epgStatus = payload.status;
 			}
 		},
 		'lineup:updated': (payload) => {
@@ -147,14 +156,21 @@
 		if (epgSyncingAny) return;
 		epgSyncingAll = true;
 		try {
-			await fetch('/api/livetv/epg/sync', { method: 'POST' });
+			const response = await fetch('/api/livetv/epg/sync', { method: 'POST' });
+			if (!response.ok) {
+				throw new Error('Failed to trigger EPG sync');
+			}
+			const payload = (await response.json()) as { started?: boolean; alreadyRunning?: boolean };
+			if (payload?.started === false && payload?.alreadyRunning) {
+				epgSyncingAll = true;
+			}
 		} catch {
 			epgSyncingAll = false;
 		}
 	}
 
 	async function triggerAccountSync(accountId: string) {
-		if (epgSyncingAll || epgSyncingAccountIds.has(accountId)) return;
+		if (epgSyncingAny) return;
 		epgSyncingAccountIds.add(accountId);
 		try {
 			const response = await fetch(`/api/livetv/epg/sync?accountId=${accountId}`, {
@@ -163,6 +179,7 @@
 			if (!response.ok) {
 				throw new Error('Failed to trigger EPG sync');
 			}
+			await response.json();
 		} catch {
 			epgSyncingAccountIds.delete(accountId);
 		}

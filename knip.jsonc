@@ -1,0 +1,8 @@
+{
+	// guessit-js is loaded via dynamic import in subtitle refiners.
+	// pino-pretty is used as a logger transport target string.
+	"ignoreDependencies": ["guessit-js", "pino-pretty"],
+
+	// sqlite3 is a system CLI used by the db:info npm script.
+	"ignoreBinaries": ["sqlite3"]
+}

@@ -5,9 +5,9 @@
  * Provides CRUD operations, testing, and account management.
  */
 
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, lte, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import { livetvAccounts, type LivetvAccountRecord } from '$lib/server/db/schema';
+import { epgPrograms, livetvAccounts, type LivetvAccountRecord } from '$lib/server/db/schema';
 import { createChildLogger } from '$lib/logging';
 import { randomUUID } from 'crypto';
 import { getProvider, getProviderForAccount } from './providers';
@@ -96,6 +96,14 @@ export class LiveTvAccountManager implements BackgroundService {
 	readonly name = 'LiveTvAccountManager';
 	private _status: ServiceStatus = 'pending';
 	private _error?: Error;
+	private readonly epgProgramPurgeQueue = new Map<
+		string,
+		{ accountName: string; purgeBefore: string }
+	>();
+	private readonly epgProgramPurgeRunning = new Set<string>();
+	private readonly epgProgramPurgeScheduled = new Set<string>();
+	private static readonly EPG_PURGE_BATCH_SIZE = 5000;
+	private static readonly EPG_PURGE_START_DELAY_MS = 1500;
 
 	get status(): ServiceStatus {
 		return this._status;
@@ -103,6 +111,109 @@ export class LiveTvAccountManager implements BackgroundService {
 
 	get error(): Error | undefined {
 		return this._error;
+	}
+
+	private scheduleEpgProgramPurgeRunner(accountId: string, delayMs: number): void {
+		if (
+			this.epgProgramPurgeRunning.has(accountId) ||
+			this.epgProgramPurgeScheduled.has(accountId)
+		) {
+			return;
+		}
+
+		this.epgProgramPurgeScheduled.add(accountId);
+		setTimeout(() => {
+			this.epgProgramPurgeScheduled.delete(accountId);
+			if (this.epgProgramPurgeRunning.has(accountId)) {
+				return;
+			}
+			this.epgProgramPurgeRunning.add(accountId);
+			void this.runQueuedEpgProgramPurge(accountId);
+		}, delayMs);
+	}
+
+	private enqueueEpgProgramPurge(
+		accountId: string,
+		accountName: string,
+		purgeBefore: string
+	): void {
+		const queued = this.epgProgramPurgeQueue.get(accountId);
+		if (!queued || queued.purgeBefore < purgeBefore) {
+			this.epgProgramPurgeQueue.set(accountId, { accountName, purgeBefore });
+		}
+
+		if (this.epgProgramPurgeRunning.has(accountId)) {
+			return;
+		}
+		this.scheduleEpgProgramPurgeRunner(accountId, LiveTvAccountManager.EPG_PURGE_START_DELAY_MS);
+	}
+
+	private async runQueuedEpgProgramPurge(accountId: string): Promise<void> {
+		try {
+			while (true) {
+				const queued = this.epgProgramPurgeQueue.get(accountId);
+				if (!queued) {
+					break;
+				}
+				this.epgProgramPurgeQueue.delete(accountId);
+				let deletedPrograms = 0;
+				while (true) {
+					const ids = await db
+						.select({ id: epgPrograms.id })
+						.from(epgPrograms)
+						.where(
+							and(
+								eq(epgPrograms.accountId, accountId),
+								lte(epgPrograms.cachedAt, queued.purgeBefore)
+							)
+						)
+						.limit(LiveTvAccountManager.EPG_PURGE_BATCH_SIZE);
+
+					if (ids.length === 0) {
+						break;
+					}
+
+					const deleted = await db.delete(epgPrograms).where(
+						and(
+							eq(epgPrograms.accountId, accountId),
+							inArray(
+								epgPrograms.id,
+								ids.map((row) => row.id)
+							)
+						)
+					);
+
+					deletedPrograms += deleted.changes ?? 0;
+
+					// Yield so regular API requests are not blocked by long purge loops.
+					await new Promise<void>((resolve) => setImmediate(resolve));
+				}
+
+				logger.info(
+					{
+						id: accountId,
+						name: queued.accountName,
+						deletedPrograms,
+						purgeBefore: queued.purgeBefore
+					},
+					'Cleared cached EPG programs after source change'
+				);
+			}
+		} catch (error) {
+			logger.error(
+				{
+					id: accountId,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed background EPG program purge after source change'
+			);
+		} finally {
+			this.epgProgramPurgeRunning.delete(accountId);
+			if (this.epgProgramPurgeQueue.has(accountId)) {
+				// Continue quickly when additional purge work was queued while we were running.
+				this.scheduleEpgProgramPurgeRunner(accountId, 100);
+			}
+		}
 	}
 
 	/**
@@ -325,6 +436,7 @@ export class LiveTvAccountManager implements BackgroundService {
 		const updateData: Partial<typeof livetvAccounts.$inferInsert> = {
 			updatedAt: now
 		};
+		let purgeAccountEpgData = false;
 
 		// Update name
 		if (updates.name !== undefined) {
@@ -352,10 +464,31 @@ export class LiveTvAccountManager implements BackgroundService {
 		}
 
 		if (updates.m3uConfig && existing.providerType === 'm3u') {
-			updateData.m3uConfig = {
+			const mergedM3uConfig = {
 				...existing.m3uConfig,
 				...updates.m3uConfig
 			} as M3uConfig;
+
+			const hasExplicitEpgUrlUpdate = Object.prototype.hasOwnProperty.call(
+				updates.m3uConfig,
+				'epgUrl'
+			);
+			if (hasExplicitEpgUrlUpdate) {
+				const previousEpgUrl = (existing.m3uConfig?.epgUrl ?? '').trim();
+				const nextEpgUrl = (mergedM3uConfig.epgUrl ?? '').trim();
+				purgeAccountEpgData = previousEpgUrl !== nextEpgUrl;
+				mergedM3uConfig.epgUrl = nextEpgUrl || undefined;
+			}
+
+			updateData.m3uConfig = mergedM3uConfig;
+
+			if (purgeAccountEpgData) {
+				// Force fresh EPG state when source changes/clears.
+				updateData.epgProgramCount = 0;
+				updateData.hasEpg = false;
+				updateData.lastEpgSyncAt = null;
+				updateData.lastEpgSyncError = null;
+			}
 		}
 
 		if (updates.iptvOrgConfig && existing.providerType === 'iptvorg') {
@@ -373,6 +506,11 @@ export class LiveTvAccountManager implements BackgroundService {
 
 		if (!record) {
 			return null;
+		}
+
+		if (purgeAccountEpgData) {
+			// Defer large deletes to background so update/save response remains fast.
+			this.enqueueEpgProgramPurge(id, record.name, now);
 		}
 
 		logger.info({ id, name: record.name }, 'Updated account');
