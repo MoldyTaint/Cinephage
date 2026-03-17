@@ -129,6 +129,7 @@
 	const prefetchProfileId = $derived.by(
 		() => movie.scoringProfileId ?? data.qualityProfiles.find((p) => p.isDefault)?.id ?? null
 	);
+	const isStreamerProfile = $derived.by(() => movie.scoringProfileId === 'streamer');
 	let prefetchedStreamKey = $state<string | null>(null);
 
 	// Prefetch stream when page loads (warms cache for faster playback)
@@ -486,6 +487,9 @@
 	}
 
 	function handleSubtitleSync() {
+		if (isStreamerProfile) {
+			return;
+		}
 		subtitleSyncError = null;
 		isSubtitleSyncModalOpen = true;
 	}
@@ -705,7 +709,7 @@
 				<div class="mb-4 flex items-center justify-between">
 					<h2 class="text-lg font-semibold">Files</h2>
 					<div class="flex flex-wrap items-center gap-2">
-						{#if (movie.subtitles?.length ?? 0) > 0}
+						{#if !isStreamerProfile && (movie.subtitles?.length ?? 0) > 0}
 							<button class="btn gap-1 btn-ghost btn-sm" onclick={handleSubtitleSync}>
 								<RefreshCw class="h-4 w-4" />
 								Sync Subtitles
@@ -722,7 +726,7 @@
 				<MovieFilesTab
 					files={movie.files}
 					subtitles={movie.subtitles}
-					isStreamerProfile={movie.scoringProfileId === 'streamer'}
+					{isStreamerProfile}
 					onDeleteFile={handleDeleteFile}
 					onSearch={handleSearch}
 					onSubtitleSearch={handleSubtitleSearch}

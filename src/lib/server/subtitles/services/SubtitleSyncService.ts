@@ -24,6 +24,7 @@ import {
 } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import type { SubtitleSyncResult } from '../types';
@@ -86,6 +87,14 @@ export class SubtitleSyncService {
 			};
 		}
 
+		if (await this.isStreamerProfileSubtitle(subtitle[0])) {
+			return {
+				success: false,
+				offsetMs: 0,
+				error: 'Subtitle sync is not available for Streamer profile media.'
+			};
+		}
+
 		// Get paths
 		const { subtitlePath, videoPath } = await this.getSubtitlePaths(subtitle[0]);
 		if (!subtitlePath || !existsSync(subtitlePath)) {
@@ -134,6 +143,8 @@ export class SubtitleSyncService {
 				},
 				'Subtitle synced successfully'
 			);
+
+			await this.emitMediaUpdatedForSubtitle(subtitle[0]);
 		}
 
 		return result;
@@ -199,6 +210,8 @@ export class SubtitleSyncService {
 				matchScore: subtitle[0].matchScore
 			});
 
+			await this.emitMediaUpdatedForSubtitle(subtitle[0]);
+
 			return {
 				success: true,
 				offsetMs
@@ -258,7 +271,7 @@ export class SubtitleSyncService {
 				return {
 					success: false,
 					offsetMs: 0,
-					error: result.error ?? 'Sync failed'
+					error: this.toUserFriendlySyncError(result.error ?? 'Sync failed')
 				};
 			}
 
@@ -283,9 +296,36 @@ export class SubtitleSyncService {
 			return {
 				success: false,
 				offsetMs: 0,
-				error: errorMsg
+				error: this.toUserFriendlySyncError(errorMsg)
 			};
 		}
+	}
+
+	private toUserFriendlySyncError(error: string): string {
+		const normalized = error.toLowerCase();
+		if (normalized.includes('subtitle sync is not available for streamer profile media')) {
+			return 'Subtitle sync is not available for Streamer profile media.';
+		}
+		if (normalized.includes('strm file has no url')) {
+			return 'Subtitle sync failed: the .strm file has no stream URL.';
+		}
+		if (normalized.includes('strm file contains an invalid url')) {
+			return 'Subtitle sync failed: the .strm file contains an invalid URL.';
+		}
+		if (normalized.includes("strm url protocol '")) {
+			return 'Subtitle sync failed: the .strm URL protocol is not supported.';
+		}
+		if (normalized.includes('could not read a valid media stream from the source')) {
+			return 'Subtitle sync failed: could not read a valid media stream from the source.';
+		}
+		if (normalized.includes('audio extraction timed out')) {
+			return 'Subtitle sync failed: audio extraction timed out.';
+		}
+		if (normalized.includes('command failed:')) {
+			return 'Subtitle sync failed while extracting reference audio.';
+		}
+
+		return error.length > 220 ? `${error.slice(0, 217)}...` : error;
 	}
 
 	/**
@@ -390,6 +430,69 @@ export class SubtitleSyncService {
 		}
 
 		return { subtitlePath: null, videoPath: null };
+	}
+
+	private async isStreamerProfileSubtitle(
+		subtitle: typeof subtitles.$inferSelect
+	): Promise<boolean> {
+		if (subtitle.movieId) {
+			const movie = await db.select().from(movies).where(eq(movies.id, subtitle.movieId)).limit(1);
+			return movie[0]?.scoringProfileId === 'streamer';
+		}
+
+		if (subtitle.episodeId) {
+			const episode = await db
+				.select()
+				.from(episodes)
+				.where(eq(episodes.id, subtitle.episodeId))
+				.limit(1);
+			if (!episode[0]) return false;
+
+			const seriesData = await db
+				.select()
+				.from(series)
+				.where(eq(series.id, episode[0].seriesId))
+				.limit(1);
+			return seriesData[0]?.scoringProfileId === 'streamer';
+		}
+
+		return false;
+	}
+
+	private async emitMediaUpdatedForSubtitle(
+		subtitle: typeof subtitles.$inferSelect
+	): Promise<void> {
+		try {
+			if (subtitle.movieId) {
+				libraryMediaEvents.emitMovieUpdated(subtitle.movieId);
+				return;
+			}
+
+			if (!subtitle.episodeId) {
+				return;
+			}
+
+			const episode = await db
+				.select({ seriesId: episodes.seriesId })
+				.from(episodes)
+				.where(eq(episodes.id, subtitle.episodeId))
+				.limit(1)
+				.then((rows) => rows[0]);
+
+			if (episode?.seriesId) {
+				libraryMediaEvents.emitSeriesUpdated(episode.seriesId);
+			}
+		} catch (error) {
+			logger.warn(
+				{
+					subtitleId: subtitle.id,
+					movieId: subtitle.movieId,
+					episodeId: subtitle.episodeId,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to emit library media update after subtitle sync'
+			);
+		}
 	}
 }
 

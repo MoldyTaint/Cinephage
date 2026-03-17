@@ -1120,6 +1120,37 @@ export const downloadQueue = sqliteTable(
 );
 
 /**
+ * Download Queue Tombstones - Suppress immediate queue re-add for locally removed items
+ */
+export const downloadQueueTombstones = sqliteTable(
+	'download_queue_tombstones',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => randomUUID()),
+		downloadClientId: text('download_client_id')
+			.notNull()
+			.references(() => downloadClients.id, { onDelete: 'cascade' }),
+		protocol: text('protocol').notNull().default('torrent'),
+		remoteId: text('remote_id').notNull(),
+		reason: text('reason'),
+		suppressedUntil: text('suppressed_until').notNull(),
+		lastSeenAt: text('last_seen_at'),
+		createdAt: text('created_at').$defaultFn(() => new Date().toISOString()),
+		updatedAt: text('updated_at').$defaultFn(() => new Date().toISOString())
+	},
+	(table) => [
+		index('idx_download_queue_tombstones_client').on(table.downloadClientId),
+		index('idx_download_queue_tombstones_suppressed_until').on(table.suppressedUntil),
+		uniqueIndex('idx_download_queue_tombstones_unique').on(
+			table.downloadClientId,
+			table.protocol,
+			table.remoteId
+		)
+	]
+);
+
+/**
  * Download History - Permanent record of completed/failed downloads
  * Created when a download is imported or permanently fails
  */
@@ -1738,6 +1769,16 @@ export const downloadQueueRelations = relations(downloadQueue, ({ one }) => ({
 	series: one(series, {
 		fields: [downloadQueue.seriesId],
 		references: [series.id]
+	})
+}));
+
+/**
+ * Download Queue Tombstones Relations
+ */
+export const downloadQueueTombstonesRelations = relations(downloadQueueTombstones, ({ one }) => ({
+	downloadClient: one(downloadClients, {
+		fields: [downloadQueueTombstones.downloadClientId],
+		references: [downloadClients.id]
 	})
 }));
 

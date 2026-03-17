@@ -15,6 +15,12 @@ import { eq, and, inArray, not, notInArray } from 'drizzle-orm';
 import { getDownloadClientManager } from '../DownloadClientManager';
 import { mapClientPathToLocal } from './PathMapping';
 import { extractInfoHash } from '../utils/hashUtils';
+import {
+	cleanupExpiredQueueTombstones,
+	extendQueueTombstonesFromDownloads,
+	getQueueTombstoneCleanupIntervalMs,
+	isQueueItemSuppressed
+} from './QueueTombstoneService';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'imports' as const });
@@ -81,6 +87,7 @@ function getStartupSyncTimeoutMs(): number {
 }
 
 const STARTUP_SYNC_TIMEOUT_MS = getStartupSyncTimeoutMs();
+const QUEUE_TOMBSTONE_CLEANUP_INTERVAL_MS = getQueueTombstoneCleanupIntervalMs();
 
 /**
  * Max import attempts before marking as failed
@@ -241,6 +248,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 	// Last time orphan cleanup was run (runs every 10 minutes)
 	private lastOrphanCleanupTime = 0;
+	private lastQueueTombstoneCleanupTime = 0;
 	private static readonly ORPHAN_CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
 	private constructor() {
@@ -798,6 +806,18 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 					);
 				});
 			}
+
+			if (startTime - this.lastQueueTombstoneCleanupTime > QUEUE_TOMBSTONE_CLEANUP_INTERVAL_MS) {
+				this.lastQueueTombstoneCleanupTime = startTime;
+				this.runQueueTombstoneCleanup().catch((err) => {
+					logger.warn(
+						{
+							error: err instanceof Error ? err.message : String(err)
+						},
+						'Queue tombstone cleanup failed'
+					);
+				});
+			}
 		} catch (error) {
 			logger.error(
 				{
@@ -1020,6 +1040,10 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		}
 	}
 
+	private async runQueueTombstoneCleanup(): Promise<void> {
+		await cleanupExpiredQueueTombstones();
+	}
+
 	/**
 	 * Poll a single download client
 	 */
@@ -1030,6 +1054,17 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 	): Promise<number> {
 		// Get all downloads from this client
 		const downloads = await instance.getDownloads();
+		const clientProtocol =
+			client.implementation === 'sabnzbd' ||
+			client.implementation === 'nzbget' ||
+			client.implementation === 'nzb-mount'
+				? 'usenet'
+				: 'torrent';
+		await extendQueueTombstonesFromDownloads({
+			downloadClientId: client.id,
+			protocol: clientProtocol,
+			downloads
+		});
 
 		// Create a map for quick lookup by download ID (hash)
 		const downloadMap = new Map<string, DownloadInfo>();
@@ -1564,6 +1599,20 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				'Download already in queue, returning existing item'
 			);
 			return rowToQueueItem(existing[0]);
+		}
+
+		// Automatic grabs are suppressed for a short window when the same remote item
+		// was recently removed locally while the client was unavailable.
+		if (params.isAutomatic) {
+			const suppressed = await isQueueItemSuppressed({
+				downloadClientId: params.downloadClientId,
+				protocol: params.protocol,
+				downloadId: params.downloadId,
+				infoHash: params.infoHash
+			});
+			if (suppressed) {
+				throw new Error('Download temporarily suppressed after local removal');
+			}
 		}
 
 		// Create new queue item

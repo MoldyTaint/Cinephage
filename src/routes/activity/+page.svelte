@@ -214,6 +214,25 @@
 	);
 	const selectedPausedQueueIds = $derived.by(() => getSelectedQueueIdsByStatus(['paused']));
 	const selectedFailedQueueIds = $derived.by(() => getSelectedQueueIdsByStatus(['failed']));
+	const selectableHistoryIds = $derived.by(() =>
+		filteredActivities
+			.filter((activity) => isHistoryActivity(activity))
+			.map((activity) => activity.id)
+	);
+	const selectableActiveIds = $derived.by(() =>
+		filteredActivities
+			.filter((activity) => isActiveQueueActivity(activity))
+			.map((activity) => activity.id)
+	);
+	const allHistorySelectableSelected = $derived.by(
+		() =>
+			selectableHistoryIds.length > 0 &&
+			selectableHistoryIds.every((id) => selectedHistoryIds.has(id))
+	);
+	const allActiveSelectableSelected = $derived.by(
+		() =>
+			selectableActiveIds.length > 0 && selectableActiveIds.every((id) => selectedActiveIds.has(id))
+	);
 
 	function getActiveBulkActionQueueIds(action: ActiveBulkAction): string[] {
 		switch (action) {
@@ -1018,7 +1037,11 @@
 					: action === 'retry_failed'
 						? (queueId: string) => retryQueueItem(queueId, { refresh: false })
 						: (queueId: string) =>
-								removeQueueItem(queueId, { refresh: false, closeDetailModal: false });
+								removeQueueItem(queueId, {
+									refresh: false,
+									closeDetailModal: false,
+									removeFromClient: false
+								});
 
 		for (const queueId of queueIds) {
 			try {
@@ -1189,10 +1212,11 @@
 
 	async function removeQueueItem(
 		id: string,
-		options: { refresh?: boolean; closeDetailModal?: boolean } = {}
+		options: { refresh?: boolean; closeDetailModal?: boolean; removeFromClient?: boolean } = {}
 	): Promise<void> {
-		const { refresh = true, closeDetailModal = true } = options;
-		const response = await fetch(`/api/queue/${id}`, { method: 'DELETE' });
+		const { refresh = true, closeDetailModal = true, removeFromClient = true } = options;
+		const query = removeFromClient ? '' : '?removeFromClient=false';
+		const response = await fetch(`/api/queue/${id}${query}`, { method: 'DELETE' });
 		if (!response.ok) {
 			const message = await getQueueActionErrorMessage(response, 'Failed to remove');
 			throw new Error(message);
@@ -1338,6 +1362,16 @@
 					{#if activeSelectionMode}
 						<span class="text-xs text-base-content/60">{selectedActiveIds.size} selected</span>
 						<button
+							class="btn btn-ghost btn-xs"
+							onclick={() =>
+								handleToggleActiveSelectionAll(selectableActiveIds, !allActiveSelectableSelected)}
+							disabled={activeBulkLoading || selectableActiveIds.length === 0}
+						>
+							{allActiveSelectableSelected
+								? `Deselect All (${selectableActiveIds.length})`
+								: `Select All (${selectableActiveIds.length})`}
+						</button>
+						<button
 							class="btn btn-xs"
 							onclick={() => openActiveConfirm('pause')}
 							disabled={activeBulkLoading || selectedPausableQueueIds.length === 0}
@@ -1427,6 +1461,16 @@
 					{selectionMode ? 'Exit Selection' : 'Select Rows'}
 				</button>
 				{#if selectionMode}
+					<button
+						class="btn btn-ghost btn-xs"
+						onclick={() =>
+							handleToggleSelectionAll(selectableHistoryIds, !allHistorySelectableSelected)}
+						disabled={deleteSelectedLoading || selectableHistoryIds.length === 0}
+					>
+						{allHistorySelectableSelected
+							? `Deselect All (${selectableHistoryIds.length})`
+							: `Select All (${selectableHistoryIds.length})`}
+					</button>
 					<button
 						class="btn btn-xs btn-error"
 						onclick={() => openHistoryConfirm('delete_selected')}

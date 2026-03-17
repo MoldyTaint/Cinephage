@@ -18,8 +18,8 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createReadStream, existsSync } from 'node:fs';
-import { unlink, mkdtemp, rmdir, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { readFile, unlink, mkdtemp, rmdir, stat } from 'node:fs/promises';
+import { extname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 
@@ -65,6 +65,112 @@ const DEFAULT_VAD_OPTIONS: Required<VadOptions> = {
 	ffmpegPath: 'ffmpeg'
 };
 
+const DEFAULT_VAD_TIMEOUT_MS = 300_000;
+const DEFAULT_STRM_VAD_TIMEOUT_MS = 45_000;
+const DEFAULT_STRM_ANALYSIS_SECONDS = 240;
+const DEFAULT_STRM_RW_TIMEOUT_MS = 15_000;
+
+type ExecFileError = Error & {
+	stderr?: string;
+	stdout?: string;
+	code?: string | number;
+	signal?: string;
+	killed?: boolean;
+};
+
+function parseStrmUrl(content: string): string | null {
+	const lines = content.split(/\r?\n/);
+	for (const rawLine of lines) {
+		const line = rawLine.trim();
+		if (!line || line.startsWith('#')) continue;
+		return line;
+	}
+	return null;
+}
+
+function getPositiveIntEnv(name: string, fallback: number): number {
+	const raw = process.env[name];
+	if (!raw) return fallback;
+
+	const parsed = Number(raw);
+	if (!Number.isFinite(parsed) || parsed <= 0) {
+		return fallback;
+	}
+
+	return Math.round(parsed);
+}
+
+function isHttpInput(inputPath: string): boolean {
+	return inputPath.startsWith('http://') || inputPath.startsWith('https://');
+}
+
+async function resolveAudioInputPath(videoPath: string): Promise<string> {
+	if (extname(videoPath).toLowerCase() !== '.strm') {
+		return videoPath;
+	}
+
+	const content = await readFile(videoPath, 'utf-8');
+	const strmUrl = parseStrmUrl(content);
+	if (!strmUrl) {
+		throw new Error('STRM file has no URL');
+	}
+
+	let parsed: URL;
+	try {
+		parsed = new URL(strmUrl);
+	} catch {
+		throw new Error('STRM file contains an invalid URL');
+	}
+
+	if (!['http:', 'https:'].includes(parsed.protocol)) {
+		throw new Error(`STRM URL protocol '${parsed.protocol}' is not supported`);
+	}
+
+	return strmUrl;
+}
+
+function getFriendlyFfmpegError(error: unknown): string {
+	if (!(error instanceof Error)) {
+		return 'Could not extract audio from the media source.';
+	}
+
+	const execError = error as ExecFileError;
+	const stderr = execError.stderr ?? '';
+	const message = (execError.message || '').toLowerCase();
+	const stderrLower = stderr.toLowerCase();
+
+	if (message.includes('timed out') || stderrLower.includes('timed out')) {
+		return 'Audio extraction timed out. The source may be slow or unreachable.';
+	}
+	if (stderrLower.includes('no such file or directory')) {
+		return 'Media source not found.';
+	}
+	if (
+		stderrLower.includes('invalid data found when processing input') ||
+		stderrLower.includes('error opening input')
+	) {
+		return 'Could not read a valid media stream from the source.';
+	}
+	if (
+		stderrLower.includes('connection refused') ||
+		stderrLower.includes('failed to resolve hostname') ||
+		stderrLower.includes('temporary failure in name resolution')
+	) {
+		return 'Could not connect to the media source.';
+	}
+	if (stderrLower.includes('401 unauthorized') || stderrLower.includes('403 forbidden')) {
+		return 'Media source requires authorization and could not be accessed.';
+	}
+	if (stderrLower.includes('404 not found')) {
+		return 'Media source URL was not found.';
+	}
+	if (stderrLower.includes('server returned 5')) {
+		return 'Media source server returned an error.';
+	}
+
+	return 'Could not extract audio from the media source.';
+}
+
 /**
  * Extract speech segments from a video/audio file.
  *
@@ -80,6 +186,8 @@ export async function extractSpeechSegments(
 	options?: VadOptions
 ): Promise<TimeSpan[]> {
 	const opts = { ...DEFAULT_VAD_OPTIONS, ...options };
+	const inputPath = await resolveAudioInputPath(videoPath);
+	const isRemoteHttpSource = isHttpInput(inputPath);
 
 	// Create temp file for PCM output
 	const tempDir = await mkdtemp(join(tmpdir(), 'cinephage-vad-'));
@@ -87,27 +195,57 @@ export async function extractSpeechSegments(
 
 	try {
 		// Extract audio using ffmpeg: mono, 16kHz, signed 16-bit little-endian PCM
-		await execFileAsync(
-			opts.ffmpegPath,
-			[
-				'-i',
-				videoPath,
-				'-vn', // No video
-				'-ac',
-				'1', // Mono
-				'-ar',
-				String(opts.sampleRate),
-				'-f',
-				's16le', // Signed 16-bit LE PCM
-				'-acodec',
-				'pcm_s16le',
-				'-y', // Overwrite
-				tempPcmPath
-			],
-			{
-				timeout: 300000 // 5 minute timeout
+		const ffmpegArgs = ['-nostdin', '-hide_banner', '-loglevel', 'error'];
+
+		if (isRemoteHttpSource) {
+			const rwTimeoutMs = getPositiveIntEnv(
+				'SUBTITLE_SYNC_STRM_RW_TIMEOUT_MS',
+				DEFAULT_STRM_RW_TIMEOUT_MS
+			);
+			const maxAnalysisSeconds = getPositiveIntEnv(
+				'SUBTITLE_SYNC_STRM_ANALYSIS_SECONDS',
+				DEFAULT_STRM_ANALYSIS_SECONDS
+			);
+
+			ffmpegArgs.push(
+				'-rw_timeout',
+				String(rwTimeoutMs * 1000), // ffmpeg expects microseconds
+				'-analyzeduration',
+				'4000000',
+				'-probesize',
+				'4000000'
+			);
+
+			if (maxAnalysisSeconds > 0) {
+				ffmpegArgs.push('-t', String(maxAnalysisSeconds));
 			}
+		}
+
+		ffmpegArgs.push(
+			'-i',
+			inputPath,
+			'-vn', // No video
+			'-ac',
+			'1', // Mono
+			'-ar',
+			String(opts.sampleRate),
+			'-f',
+			's16le', // Signed 16-bit LE PCM
+			'-acodec',
+			'pcm_s16le',
+			'-y', // Overwrite
+			tempPcmPath
 		);
+
+		const timeoutMs = isRemoteHttpSource
+			? getPositiveIntEnv('SUBTITLE_SYNC_STRM_TIMEOUT_MS', DEFAULT_STRM_VAD_TIMEOUT_MS)
+			: DEFAULT_VAD_TIMEOUT_MS;
+
+		try {
+			await execFileAsync(opts.ffmpegPath, ffmpegArgs, { timeout: timeoutMs });
+		} catch (error) {
+			throw new Error(getFriendlyFfmpegError(error));
+		}
 
 		// Stream PCM data and compute VAD incrementally
 		return await vadFromStream(tempPcmPath, opts);

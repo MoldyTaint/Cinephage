@@ -297,6 +297,7 @@
 	$effect(() => {
 		searchingMissing = data.isSearching;
 	});
+	const isStreamerProfile = $derived.by(() => series.scoringProfileId === 'streamer');
 
 	// Subtitle search state
 	let isSubtitleSearchModalOpen = $state(false);
@@ -1080,6 +1081,9 @@
 	}
 
 	function handleSubtitleSync() {
+		if (isStreamerProfile) {
+			return;
+		}
 		subtitleSyncError = null;
 		isSubtitleSyncModalOpen = true;
 	}
@@ -1711,7 +1715,7 @@
 			<div class="flex items-center justify-between">
 				<h2 class="text-lg font-semibold">Seasons</h2>
 				<div class="flex gap-1">
-					{#if syncableSubtitles.length > 0}
+					{#if !isStreamerProfile && syncableSubtitles.length > 0}
 						<button class="btn gap-1 btn-ghost btn-sm" onclick={handleSubtitleSync}>
 							<RefreshCw class="h-4 w-4" />
 							Sync Subtitles
@@ -1745,7 +1749,7 @@
 					<SeasonAccordion
 						{season}
 						seriesMonitored={series.monitored ?? false}
-						isStreamerProfile={series.scoringProfileId === 'streamer'}
+						{isStreamerProfile}
 						wantsSubtitles={series.wantsSubtitles ?? false}
 						defaultOpen={openSeasonId === season.id}
 						{selectedEpisodes}
@@ -1770,7 +1774,7 @@
 						onSelectAllInSeason={handleSelectAllInSeason}
 						onSubtitleSearch={handleSubtitleSearch}
 						onSubtitleAutoSearch={handleSubtitleAutoSearch}
-						onSubtitleSync={handleSubtitleSyncFromPopover}
+						onSubtitleSync={isStreamerProfile ? undefined : handleSubtitleSyncFromPopover}
 						onSubtitleDelete={handleSubtitleDeleteFromPopover}
 						onSeasonDelete={handleSeasonDelete}
 						onEpisodeDelete={handleEpisodeDelete}
@@ -1793,7 +1797,7 @@
 	onSearch={handleBulkAutoSearch}
 	onClear={clearSelection}
 	onSubtitleAutoSearch={handleBulkSubtitleAutoSearch}
-	onSubtitleSync={handleBulkSubtitleSyncSelected}
+	onSubtitleSync={isStreamerProfile ? undefined : handleBulkSubtitleSyncSelected}
 />
 
 <!-- Edit Modal -->

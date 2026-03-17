@@ -422,12 +422,16 @@
 								class={missingSubtitles ? 'text-warning' : 'text-base-content/50'}
 							/>
 							{#if allSubtitles.length > 0}
-								<SubtitleDisplay
-									subtitles={allSubtitles}
-									maxDisplay={2}
-									size="xs"
-									showSyncStatus={true}
-								/>
+								<span class="inline-flex min-w-0">
+									<SubtitleDisplay
+										subtitles={allSubtitles}
+										maxDisplay={1}
+										size="xs"
+										showSyncStatus={true}
+										noWrap={true}
+										countVariant="badge"
+									/>
+								</span>
 							{:else if missingSubtitles}
 								<span class="text-xs text-warning">Missing</span>
 							{/if}
@@ -468,7 +472,9 @@
 				<!-- Subtitle popover trigger (desktop) -->
 				<div class="dropdown dropdown-end">
 					<button
-						class="btn gap-1 px-1 btn-ghost btn-xs {missingSubtitles ? 'text-warning' : ''}"
+						class="btn max-w-full justify-start gap-1 px-1 btn-ghost btn-xs {missingSubtitles
+							? 'text-warning'
+							: ''}"
 						title={missingSubtitles
 							? 'No subtitles - click to manage'
 							: `${allSubtitles.length} subtitle${allSubtitles.length !== 1 ? 's' : ''} - click to manage`}
@@ -478,12 +484,16 @@
 							class={missingSubtitles ? 'text-warning' : 'text-base-content/50'}
 						/>
 						{#if allSubtitles.length > 0}
-							<SubtitleDisplay
-								subtitles={allSubtitles}
-								maxDisplay={3}
-								size="xs"
-								showSyncStatus={true}
-							/>
+							<span class="inline-flex max-w-[9.5rem] min-w-0">
+								<SubtitleDisplay
+									subtitles={allSubtitles}
+									maxDisplay={2}
+									size="xs"
+									showSyncStatus={true}
+									noWrap={true}
+									countVariant="badge"
+								/>
+							</span>
 						{:else if missingSubtitles}
 							<span class="text-xs text-warning">Missing</span>
 						{:else}

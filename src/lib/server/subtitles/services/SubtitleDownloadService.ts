@@ -92,7 +92,8 @@ export class SubtitleDownloadService {
 			movieId,
 			mediaPath,
 			videoFileName: basename(file.relativePath),
-			format: result.format
+			format: result.format,
+			disableAutoSync: movie[0].scoringProfileId === 'streamer'
 		});
 	}
 
@@ -152,7 +153,8 @@ export class SubtitleDownloadService {
 			episodeId,
 			mediaPath,
 			videoFileName: basename(file.relativePath),
-			format: result.format
+			format: result.format,
+			disableAutoSync: seriesData[0].scoringProfileId === 'streamer'
 		});
 	}
 
@@ -230,6 +232,7 @@ export class SubtitleDownloadService {
 			mediaPath: string;
 			videoFileName: string;
 			format: SubtitleFormat;
+			disableAutoSync?: boolean;
 		}
 	): Promise<SubtitleDownloadResult> {
 		const providerManager = getSubtitleProviderManager();
@@ -354,7 +357,11 @@ export class SubtitleDownloadService {
 			'Subtitle downloaded'
 		);
 
-		const syncResult = await this.autoSyncSubtitle(subtitleId, result.isForced);
+		const syncResult = await this.autoSyncSubtitle(
+			subtitleId,
+			result.isForced,
+			options.disableAutoSync ?? false
+		);
 
 		return {
 			subtitleId,
@@ -370,8 +377,14 @@ export class SubtitleDownloadService {
 
 	private async autoSyncSubtitle(
 		subtitleId: string,
-		isForced: boolean
+		isForced: boolean,
+		disableAutoSync: boolean
 	): Promise<{ success: boolean; offsetMs: number | null }> {
+		if (disableAutoSync) {
+			logger.debug({ subtitleId }, 'Skipping automatic subtitle sync for Streamer profile media');
+			return { success: false, offsetMs: null };
+		}
+
 		if (isForced) {
 			logger.debug({ subtitleId }, 'Skipping automatic subtitle sync for forced subtitle');
 			return { success: false, offsetMs: null };

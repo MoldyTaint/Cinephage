@@ -18,9 +18,18 @@
 		maxDisplay?: number;
 		size?: 'xs' | 'sm' | 'md';
 		showSyncStatus?: boolean;
+		noWrap?: boolean;
+		countVariant?: 'text' | 'badge';
 	}
 
-	let { subtitles, maxDisplay = 5, size = 'sm', showSyncStatus = false }: Props = $props();
+	let {
+		subtitles,
+		maxDisplay = 5,
+		size = 'sm',
+		showSyncStatus = false,
+		noWrap = false,
+		countVariant = 'text'
+	}: Props = $props();
 
 	// Group by language, keeping track of forced/HI variants
 	const grouped = $derived.by(() => {
@@ -53,9 +62,11 @@
 </script>
 
 {#if subtitles.length > 0}
-	<div class="flex flex-wrap items-center gap-1">
+	<div
+		class="flex items-center gap-1 {noWrap ? 'min-w-0 flex-nowrap overflow-hidden' : 'flex-wrap'}"
+	>
 		{#each displaySubtitles as sub (sub.id)}
-			<div class="flex items-center gap-1">
+			<div class="flex shrink-0 items-center gap-1">
 				<SubtitleBadge
 					language={sub.language}
 					isForced={sub.isForced}
@@ -69,7 +80,13 @@
 			</div>
 		{/each}
 		{#if hiddenCount > 0}
-			<span class="text-xs text-base-content/50">+{hiddenCount}</span>
+			<span
+				class="shrink-0 {countVariant === 'badge'
+					? 'badge badge-outline badge-xs text-base-content/70'
+					: 'text-xs text-base-content/50'}"
+			>
+				+{hiddenCount}
+			</span>
 		{/if}
 	</div>
 {:else}
