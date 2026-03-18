@@ -131,6 +131,7 @@ export function projectQueueActivity(
 
 	return {
 		id: `queue-${download.id}`,
+		activitySource: 'queue' as const,
 		mediaType: mediaInfo.mediaType,
 		mediaId: mediaInfo.mediaId,
 		mediaTitle: mediaInfo.mediaTitle,

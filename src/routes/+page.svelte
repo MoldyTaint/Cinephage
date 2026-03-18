@@ -195,6 +195,7 @@
 			seeding: { label: 'Seeding', variant: 'badge-success', icon: Upload },
 			paused: { label: 'Paused', variant: 'badge-warning', icon: PauseCircle },
 			failed: { label: 'Failed', variant: 'badge-error', icon: XCircle },
+			search_error: { label: 'Search Error', variant: 'badge-warning', icon: AlertCircle },
 			rejected: { label: 'Rejected', variant: 'badge-warning', icon: AlertCircle },
 			removed: { label: 'Removed', variant: 'badge-ghost', icon: XCircle },
 			no_results: { label: 'No Results', variant: 'badge-ghost', icon: Minus },
@@ -841,7 +842,7 @@
 													value={activity.downloadProgress}
 													max="100"
 												></progress>
-											{:else if activity.statusReason && activity.status !== 'failed'}
+											{:else if activity.statusReason}
 												<span
 													class="max-w-16 truncate text-xs text-base-content/50"
 													title={activity.statusReason}

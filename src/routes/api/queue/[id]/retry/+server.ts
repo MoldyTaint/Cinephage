@@ -9,6 +9,7 @@ import { getContentPath } from '$lib/server/downloadClients/monitoring';
 import type { DownloadInfo } from '$lib/server/downloadClients/core/interfaces';
 import { logger } from '$lib/logging';
 import { redactUrl } from '$lib/server/utils/urlSecurity';
+import { matchesImportError } from '$lib/types/activity.js';
 
 const MAX_IMPORT_ATTEMPTS = 10;
 
@@ -23,12 +24,22 @@ function normalizeReleaseKey(value: string | null | undefined): string {
 function isImportRetryCandidate(queueItem: typeof downloadQueue.$inferSelect): boolean {
 	if (queueItem.status !== 'failed') return false;
 
-	const progress = Number(queueItem.progress ?? 0);
-	if (queueItem.completedAt) return true;
-	if (Number.isFinite(progress) && progress >= 1) return true;
-
 	const reason = queueItem.errorMessage?.toLowerCase() ?? '';
-	return reason.includes('import');
+
+	// Positively identify import-phase failures by error message pattern.
+	// This avoids misclassifying download-client errors (e.g. "Download limit
+	// exceeded") that happen to have completedAt set because the client briefly
+	// reported completion before post-processing failed.
+	if (matchesImportError(reason)) return true;
+
+	// If the download reached 100% AND the error is not a recognized import
+	// error, it could still be worth trying an import retry when there is no
+	// error message at all (the error may have been transient). However if the
+	// client provided a specific non-import error, it is a download failure.
+	const progress = Number(queueItem.progress ?? 0);
+	if (Number.isFinite(progress) && progress >= 1 && !reason) return true;
+
+	return false;
 }
 
 function isCompletedInClient(download: DownloadInfo): boolean {

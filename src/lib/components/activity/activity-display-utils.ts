@@ -1,6 +1,15 @@
 import type { UnifiedActivity } from '$lib/types/activity';
-import { isImportFailedActivity } from '$lib/types/activity';
-import { CheckCircle2, XCircle, AlertCircle, Loader2, Upload, Pause, Minus } from 'lucide-svelte';
+import { isImportFailedActivity, TASK_TYPE_LABELS } from '$lib/types/activity';
+import {
+	CheckCircle2,
+	XCircle,
+	AlertCircle,
+	Loader2,
+	Upload,
+	Pause,
+	Minus,
+	SearchX
+} from 'lucide-svelte';
 
 /**
  * Status → display metadata mapping shared across all activity UI components.
@@ -18,6 +27,7 @@ export const statusConfig: Record<
 	seeding: { label: 'Seeding', variant: 'badge-success', icon: Upload },
 	paused: { label: 'Paused', variant: 'badge-warning', icon: Pause },
 	failed: { label: 'Failed', variant: 'badge-error', icon: XCircle },
+	search_error: { label: 'Search Error', variant: 'badge-warning', icon: SearchX },
 	rejected: { label: 'Rejected', variant: 'badge-warning', icon: AlertCircle },
 	removed: { label: 'Removed', variant: 'badge-ghost', icon: XCircle },
 	no_results: { label: 'No Results', variant: 'badge-ghost', icon: Minus },
@@ -27,13 +37,20 @@ export const statusConfig: Record<
 /**
  * Return the user-facing label for an activity's status.
  *
- * Handles the special "Import Failed" case for queue items whose download
- * succeeded but whose post-import step failed. When no explicit fallback is
- * provided, the label is looked up from {@link statusConfig}.
+ * Handles special cases:
+ * - "Import Failed" for queue items whose download succeeded but import failed
+ * - Task-type-specific labels for search errors (e.g. "Missing Search Error")
+ *
+ * When no explicit fallback is provided, the label is looked up from
+ * {@link statusConfig}.
  */
 export function getStatusLabel(activity: UnifiedActivity, fallbackLabel?: string): string {
 	if (activity.status === 'failed' && isImportFailedActivity(activity)) {
 		return 'Import Failed';
+	}
+	if (activity.status === 'search_error' && activity.taskType) {
+		const taskLabel = TASK_TYPE_LABELS[activity.taskType];
+		if (taskLabel) return `${taskLabel} Error`;
 	}
 	return fallbackLabel ?? statusConfig[activity.status]?.label ?? activity.status;
 }

@@ -88,6 +88,7 @@ export function normalizeActivityStatus(status: unknown): ActivityStatus {
 		case 'seeding':
 		case 'paused':
 		case 'failed':
+		case 'search_error':
 		case 'rejected':
 		case 'removed':
 		case 'no_results':
@@ -101,8 +102,19 @@ export function normalizeActivityStatus(status: unknown): ActivityStatus {
 export function normalizeActivity(activity: Partial<UnifiedActivity>): UnifiedActivity | null {
 	if (!activity.id) return null;
 
+	// Infer activitySource from id prefix if not provided
+	const activitySource =
+		activity.activitySource ??
+		(activity.id.startsWith('queue-')
+			? 'queue'
+			: activity.id.startsWith('monitoring-')
+				? 'monitoring'
+				: 'download_history');
+
 	return {
 		id: activity.id,
+		activitySource,
+		taskType: activity.taskType,
 		mediaType: activity.mediaType === 'episode' ? 'episode' : 'movie',
 		mediaId: activity.mediaId ?? '',
 		mediaTitle: activity.mediaTitle ?? 'Unknown',
@@ -156,12 +168,16 @@ export function getSortValue(activity: UnifiedActivity, field: string): string |
 					activity.status === 'streaming' ||
 					activity.status === 'removed' ||
 					activity.status === 'rejected' ||
-					activity.status === 'no_results')
+					activity.status === 'no_results' ||
+					activity.status === 'search_error')
 			) {
 				return activity.completedAt;
 			}
-			// For failed items, use the most recent attempt time if available
-			if (activity.status === 'failed' && activity.lastAttemptAt) {
+			// For failed/search_error items, use the most recent attempt time if available
+			if (
+				(activity.status === 'failed' || activity.status === 'search_error') &&
+				activity.lastAttemptAt
+			) {
 				return activity.lastAttemptAt;
 			}
 			// For active items, use startedAt

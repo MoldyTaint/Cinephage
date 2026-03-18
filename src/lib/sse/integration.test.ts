@@ -199,6 +199,7 @@ describe('SSE Event Type Validation', () => {
 			const events: ActivityStreamEvents = {
 				'activity:new': {
 					id: 'test-activity',
+					activitySource: 'queue',
 					mediaType: 'movie',
 					mediaId: 'movie-1',
 					mediaTitle: 'Test Movie',
@@ -218,6 +219,7 @@ describe('SSE Event Type Validation', () => {
 				},
 				'activity:updated': {
 					id: 'test-activity',
+					activitySource: 'queue',
 					mediaType: 'movie',
 					mediaId: 'movie-1',
 					mediaTitle: 'Test Movie',
@@ -243,6 +245,7 @@ describe('SSE Event Type Validation', () => {
 				'activity:seed': [
 					{
 						id: 'seed-activity',
+						activitySource: 'queue',
 						mediaType: 'movie',
 						mediaId: 'movie-2',
 						mediaTitle: 'Seed Movie',

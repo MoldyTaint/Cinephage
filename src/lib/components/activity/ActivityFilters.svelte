@@ -172,6 +172,7 @@
 		{ value: 'all', label: 'All', color: '' },
 		{ value: 'success', label: 'Success', color: 'badge-success' },
 		{ value: 'failed', label: 'Failed', color: 'badge-error' },
+		{ value: 'search_error', label: 'Search Error', color: 'badge-warning' },
 		{ value: 'removed', label: 'Removed', color: 'badge-ghost' },
 		{ value: 'rejected', label: 'Rejected', color: 'badge-warning' },
 		{ value: 'no_results', label: 'No Results', color: 'badge-ghost' }

@@ -15,10 +15,31 @@ export type ActivityStatus =
 	| 'seeding' // Download complete, still seeding
 	| 'paused' // Download paused
 	| 'failed' // Download or import failed
+	| 'search_error' // Automated search failed (indexer error, timeout, etc.)
 	| 'rejected' // Release rejected (quality, blocklist, etc.)
 	| 'removed' // Removed from queue
 	| 'no_results' // Search found no results
 	| 'searching'; // Search in progress
+
+/**
+ * Where an activity row originated from.
+ */
+export type ActivitySource = 'queue' | 'download_history' | 'monitoring';
+
+/**
+ * Human-readable labels for monitoring task types.
+ */
+export const TASK_TYPE_LABELS: Record<string, string> = {
+	missing: 'Missing Search',
+	upgrade: 'Upgrade Search',
+	cutoffUnmet: 'Cutoff Search',
+	cutoff_unmet: 'Cutoff Search',
+	missingSubtitles: 'Subtitle Search',
+	subtitleUpgrade: 'Subtitle Upgrade',
+	new_episode: 'New Episode Search',
+	pendingRelease: 'Pending Release',
+	smartListRefresh: 'Smart List Refresh'
+};
 
 /**
  * Activity view scope
@@ -47,8 +68,42 @@ export function isActiveActivity(
 }
 
 /**
+ * Error message patterns that positively identify import-phase failures.
+ *
+ * These come from ImportService.ts and DownloadMonitorService.markImporting()
+ * — we control all of them so the list is exhaustive. Download-client errors
+ * (e.g. "Download limit exceeded", "Unpacking failed") will never match,
+ * which prevents misclassifying download failures that happen to have a
+ * `completedAt` timestamp.
+ */
+export const IMPORT_ERROR_PATTERNS: readonly string[] = [
+	'import', // "Import failed after N attempts", "Failed to import any episodes"
+	'root folder', // "Root folder not found", "Cannot import to read-only root folder"
+	'not found in library', // "Movie not found in library", "Series not found in library"
+	'no video files', // "No video files found in download"
+	'no importable files', // "No importable files found in download"
+	'download path not available',
+	'dangerous files', // "Caution: Found potentially dangerous files: …"
+	'failed to transfer', // "Failed to transfer file: …"
+	'no linked movie', // "No linked movie or series"
+	'no linked series' // "No linked movie or series" (alternate wording)
+];
+
+/**
+ * Check whether a lowercase error reason matches a known import-phase pattern.
+ */
+export function matchesImportError(reason: string): boolean {
+	return IMPORT_ERROR_PATTERNS.some((p) => reason.includes(p));
+}
+
+/**
  * Determine whether a failed activity represents an import-phase failure.
  * These failures should retry import instead of re-downloading when possible.
+ *
+ * Uses positive pattern matching against known ImportService error messages
+ * rather than relying on `completedAt`, which can be set for download-phase
+ * failures too (e.g. SABnzbd briefly reports "Completed" before post-processing
+ * fails with "Download limit exceeded").
  */
 export function isImportFailedActivity(
 	activity: Pick<UnifiedActivity, 'status' | 'completedAt' | 'statusReason'>
@@ -56,7 +111,7 @@ export function isImportFailedActivity(
 	if (activity.status !== 'failed') return false;
 
 	const reason = activity.statusReason?.toLowerCase() ?? '';
-	return Boolean(activity.completedAt) || reason.includes('import');
+	return matchesImportError(reason);
 }
 
 /**
@@ -89,6 +144,10 @@ export interface ActivityEvent {
  */
 export interface UnifiedActivity {
 	id: string;
+
+	// Activity origin
+	activitySource: ActivitySource;
+	taskType?: string; // monitoring task type (e.g., 'missing', 'upgrade')
 
 	// Media info
 	mediaType: 'movie' | 'episode';

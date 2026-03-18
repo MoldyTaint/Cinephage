@@ -478,6 +478,7 @@ export class ActivityService {
 
 		return {
 			id: `history-${history.id}`,
+			activitySource: 'download_history' as const,
 			mediaType: mediaInfo.mediaType,
 			mediaId: mediaInfo.mediaId,
 			mediaTitle: mediaInfo.mediaTitle,
@@ -544,6 +545,8 @@ export class ActivityService {
 
 		return {
 			id: `monitoring-${mon.id}`,
+			activitySource: 'monitoring',
+			taskType: mon.taskType ?? undefined,
 			mediaType: mediaInfo.mediaType,
 			mediaId: mediaInfo.mediaId,
 			mediaTitle: mediaInfo.mediaTitle,
@@ -559,7 +562,7 @@ export class ActivityService {
 			indexerId: null,
 			indexerName: null,
 			protocol: null,
-			status: mon.status === 'error' ? 'failed' : 'no_results',
+			status: mon.status === 'error' ? 'search_error' : 'no_results',
 			statusReason: mon.errorMessage ?? undefined,
 			isUpgrade: mon.isUpgrade ?? false,
 			oldScore: mon.oldScore ?? undefined,
@@ -819,7 +822,7 @@ export class ActivityService {
 		// If user is filtering by a specific status, narrow monitoring statuses accordingly
 		let monitoringStatuses = baseStatuses;
 		if (filters.status && filters.status !== 'all') {
-			if (filters.status === 'failed') {
+			if (filters.status === 'failed' || filters.status === 'search_error') {
 				monitoringStatuses = baseStatuses.filter((s) => s === 'error');
 			} else if (filters.status === 'no_results') {
 				monitoringStatuses = baseStatuses.filter((s) => s === 'no_results');
@@ -1091,6 +1094,7 @@ export class ActivityService {
 
 		return {
 			id: `history-${history.id}`,
+			activitySource: 'download_history' as const,
 			mediaType: mediaInfo.mediaType,
 			mediaId: mediaInfo.mediaId,
 			mediaTitle: mediaInfo.mediaTitle,
@@ -1772,6 +1776,9 @@ export class ActivityService {
 				return ['imported'];
 			case 'failed':
 				return ['failed'];
+			case 'search_error':
+				// search_error items come from monitoring, not download history
+				return [];
 			case 'removed':
 				return ['removed'];
 			case 'rejected':
@@ -1811,6 +1818,7 @@ export class ActivityService {
 			case 'downloading':
 				return activities.filter((activity) => activity.status === 'downloading');
 			case 'failed':
+			case 'search_error':
 			case 'seeding':
 			case 'paused':
 			case 'removed':

@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { SvelteSet } from 'svelte/reactivity';
-	import { isImportFailedActivity, type UnifiedActivity } from '$lib/types/activity';
+	import {
+		isImportFailedActivity,
+		TASK_TYPE_LABELS,
+		type UnifiedActivity
+	} from '$lib/types/activity';
 	import {
 		Loader2,
 		Pause,
@@ -361,7 +365,7 @@
 							value={activity.downloadProgress}
 							max="100"
 						></progress>
-					{:else if activity.status === 'failed' && activity.statusReason}
+					{:else if (activity.status === 'failed' || activity.status === 'search_error') && activity.statusReason}
 						<button
 							class="btn gap-1 btn-ghost btn-xs"
 							onclick={() => toggleFailedReason(activity.id)}
@@ -375,7 +379,7 @@
 								{activity.statusReason}
 							</div>
 						{/if}
-					{:else if activity.statusReason && activity.status !== 'failed'}
+					{:else if activity.statusReason}
 						<div class="text-xs text-base-content/60">{activity.statusReason}</div>
 					{/if}
 				</div>
@@ -695,7 +699,12 @@
 
 							<!-- Source -->
 							<td>
-								{#if activity.indexerName}
+								{#if activity.activitySource === 'monitoring' && activity.taskType}
+									{@const taskLabel = TASK_TYPE_LABELS[activity.taskType]}
+									<div class="text-sm">
+										<span class="text-base-content/70">{taskLabel ?? activity.taskType}</span>
+									</div>
+								{:else if activity.indexerName}
 									<div class="text-sm">
 										<span>{activity.indexerName}</span>
 										{#if activity.protocol}
@@ -720,7 +729,7 @@
 										max="100"
 									></progress>
 								</div>
-							{:else if activity.statusReason && activity.status !== 'failed'}
+							{:else if activity.statusReason}
 								<span
 									class="max-w-32 truncate text-xs text-base-content/60"
 									title={activity.statusReason}

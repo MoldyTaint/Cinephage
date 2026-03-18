@@ -1,5 +1,9 @@
 <script lang="ts">
-	import { isImportFailedActivity, type UnifiedActivity } from '$lib/types/activity';
+	import {
+		isImportFailedActivity,
+		TASK_TYPE_LABELS,
+		type UnifiedActivity
+	} from '$lib/types/activity';
 	import { formatBytes } from '$lib/utils/format';
 	import { X, Clapperboard, Tv, Pause, Play, RotateCcw, Trash2, Info, Folder } from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
@@ -240,12 +244,19 @@
 							{formatRelativeTime(
 								activity.status === 'failed' && activity.lastAttemptAt
 									? activity.lastAttemptAt
-									: activity.completedAt &&
-										  ['imported', 'streaming', 'removed', 'rejected', 'no_results'].includes(
-												activity.status
-										  )
-										? activity.completedAt
-										: activity.startedAt
+									: activity.status === 'search_error' && activity.lastAttemptAt
+										? activity.lastAttemptAt
+										: activity.completedAt &&
+											  [
+													'imported',
+													'streaming',
+													'removed',
+													'rejected',
+													'no_results',
+													'search_error'
+											  ].includes(activity.status)
+											? activity.completedAt
+											: activity.startedAt
 							)}
 						</span>
 					</div>
@@ -309,6 +320,14 @@
 								<span class="text-sm text-base-content/60">Status</span>
 								<p class="font-medium">{getStatusLabel(activity)}</p>
 							</div>
+							{#if activity.activitySource === 'monitoring' && activity.taskType}
+								<div class="space-y-1">
+									<span class="text-sm text-base-content/60">Task Type</span>
+									<p class="font-medium">
+										{TASK_TYPE_LABELS[activity.taskType] ?? activity.taskType}
+									</p>
+								</div>
+							{/if}
 							<div class="space-y-1">
 								<span class="text-sm text-base-content/60">Size</span>
 								<p class="font-medium">{formatBytes(activity.size)}</p>

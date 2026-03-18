@@ -6,6 +6,11 @@ import type { DownloadHistoryRecord, DownloadQueueRecord } from './types';
 function createActivity(id: string, overrides: Partial<UnifiedActivity> = {}): UnifiedActivity {
 	return {
 		id,
+		activitySource: id.startsWith('queue-')
+			? 'queue'
+			: id.startsWith('monitoring-')
+				? 'monitoring'
+				: 'download_history',
 		mediaType: 'movie',
 		mediaId: 'movie-1',
 		mediaTitle: 'Example Movie',

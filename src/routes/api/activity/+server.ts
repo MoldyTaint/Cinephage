@@ -14,7 +14,7 @@ const deleteHistorySchema = z.object({
  * GET - Get unified activity with optional filtering
  *
  * Query params:
- * - status: Filter by status ('imported', 'failed', 'downloading', 'no_results', 'success', 'all')
+ * - status: Filter by status ('imported', 'failed', 'search_error', 'downloading', 'no_results', 'success', 'all')
  * - mediaType: Filter by media type ('movie', 'tv', 'all')
  * - search: Search in media title or release title
  * - protocol: Filter by protocol ('torrent', 'usenet', 'streaming', 'all')

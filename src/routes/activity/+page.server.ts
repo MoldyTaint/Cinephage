@@ -17,6 +17,7 @@ const HISTORY_TAB_STATUSES: NonNullable<ActivityFilters['status']>[] = [
 	'all',
 	'success',
 	'failed',
+	'search_error',
 	'removed',
 	'rejected',
 	'no_results'

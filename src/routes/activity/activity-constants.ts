@@ -27,6 +27,7 @@ export const HISTORY_TAB_STATUSES: NonNullable<FiltersType['status']>[] = [
 	'all',
 	'success',
 	'failed',
+	'search_error',
 	'removed',
 	'rejected',
 	'no_results'
