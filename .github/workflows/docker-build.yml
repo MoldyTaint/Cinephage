@@ -136,6 +136,7 @@ jobs:
           docker run -d --name cinephage-test \
             -p 3000:3000 \
             -e ORIGIN=http://localhost:3000 \
+            -e BETTER_AUTH_SECRET=ci-healthcheck-secret-change-in-production \
             cinephage:test
 
           for i in {1..12}; do
