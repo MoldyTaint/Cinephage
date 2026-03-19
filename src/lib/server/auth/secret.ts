@@ -87,7 +87,9 @@ export function getAuthSecret(): string {
 	throw new Error(
 		'BETTER_AUTH_SECRET is not set. ' +
 			'Add it to your .env file or pass it as an environment variable. ' +
-			"Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\""
+			'Generate one with: openssl rand -base64 32 ' +
+			"or node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\" " +
+			'or python3 -c "import secrets,base64; print(base64.b64encode(secrets.token_bytes(32)).decode())"'
 	);
 }
 

@@ -43,6 +43,7 @@ services:
       - TZ=UTC
       - ORIGIN=http://localhost:3000
       - BETTER_AUTH_URL=http://localhost:3000
+      - BETTER_AUTH_SECRET=replace-with-random-secret
     volumes:
       - ./config:/config
       - /path/to/media:/media
@@ -53,15 +54,22 @@ services:
 
 Replace the placeholder values in the environment section:
 
-| Variable          | Value                   | Description                               |
-| ----------------- | ----------------------- | ----------------------------------------- |
-| `PUID`            | `1000`                  | Your user ID (run `id -u` to find yours)  |
-| `PGID`            | `1000`                  | Your group ID (run `id -g` to find yours) |
-| `TZ`              | `UTC`                   | Your timezone (e.g., `America/New_York`)  |
-| `ORIGIN`          | `http://localhost:3000` | The URL you will access Cinephage from    |
-| `BETTER_AUTH_URL` | `http://localhost:3000` | Same as ORIGIN, used for authentication   |
+| Variable             | Value                   | Description                                          |
+| -------------------- | ----------------------- | ---------------------------------------------------- |
+| `PUID`               | `1000`                  | Your user ID (run `id -u` to find yours)             |
+| `PGID`               | `1000`                  | Your group ID (run `id -g` to find yours)            |
+| `TZ`                 | `UTC`                   | Your timezone (e.g., `America/New_York`)             |
+| `ORIGIN`             | `http://localhost:3000` | The URL you will access Cinephage from               |
+| `BETTER_AUTH_URL`    | `http://localhost:3000` | Same as ORIGIN, used for authentication              |
+| `BETTER_AUTH_SECRET` | Random secret string    | Required auth secret for sessions/API-key encryption |
 
 **Important:** If you will access Cinephage through a reverse proxy or domain name, update `ORIGIN` and `BETTER_AUTH_URL` to match your public URL (e.g., `https://cinephage.yourdomain.com`).
+
+Generate `BETTER_AUTH_SECRET` with one of:
+
+- `openssl rand -base64 32`
+- `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
+- `python3 -c "import secrets,base64; print(base64.b64encode(secrets.token_bytes(32)).decode())"`
 
 ## Step 3: Configure Volume Mounts
 
