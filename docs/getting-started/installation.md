@@ -62,6 +62,7 @@ services:
       - TZ=UTC # Your timezone
       - ORIGIN=http://localhost:3000 # Trusted app origin / CSRF origin
       - BETTER_AUTH_URL=http://localhost:3000 # Auth callback/redirect base URL
+      - BETTER_AUTH_SECRET=replace-with-random-secret # Required auth secret
     volumes:
       - ./config:/config
       - /path/to/media:/media # REQUIRED: Your media library
@@ -80,15 +81,22 @@ Open http://localhost:3000 and follow the setup wizard.
 
 All configuration is done via environment variables in `docker-compose.yaml`:
 
-| Variable          | Required | Default                                     | Description                                         |
-| ----------------- | -------- | ------------------------------------------- | --------------------------------------------------- |
-| `PORT`            | No       | 3000                                        | Port to expose/listen on                            |
-| `PUID`            | No       | 1000                                        | User ID for file permissions                        |
-| `PGID`            | No       | 1000                                        | Group ID for file permissions                       |
-| `TZ`              | No       | UTC                                         | Timezone (e.g., America/New_York)                   |
-| `ORIGIN`          | No       | http://localhost:3000                       | Trusted app origin / CSRF origin                    |
-| `BETTER_AUTH_URL` | No       | Saved External URL or http://localhost:5173 | Auth callback/redirect base URL                     |
-| `PUBLIC_BASE_URL` | No       | -                                           | Public-facing base URL for generated external links |
+| Variable             | Required | Default                                     | Description                                                 |
+| -------------------- | -------- | ------------------------------------------- | ----------------------------------------------------------- |
+| `PORT`               | No       | 3000                                        | Port to expose/listen on                                    |
+| `PUID`               | No       | 1000                                        | User ID for file permissions                                |
+| `PGID`               | No       | 1000                                        | Group ID for file permissions                               |
+| `TZ`                 | No       | UTC                                         | Timezone (e.g., America/New_York)                           |
+| `ORIGIN`             | No       | http://localhost:3000                       | Trusted app origin / CSRF origin                            |
+| `BETTER_AUTH_URL`    | No       | Saved External URL or http://localhost:5173 | Auth callback/redirect base URL                             |
+| `BETTER_AUTH_SECRET` | Yes      | -                                           | Required auth secret for session signing/API-key encryption |
+| `PUBLIC_BASE_URL`    | No       | -                                           | Public-facing base URL for generated external links         |
+
+Generate `BETTER_AUTH_SECRET` with one of:
+
+- `openssl rand -base64 32`
+- `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
+- `python3 -c "import secrets,base64; print(base64.b64encode(secrets.token_bytes(32)).decode())"`
 
 **Volume Mounts:**
 
@@ -130,11 +138,12 @@ docker run -d \
   -e PGID=1000 \
   -e ORIGIN=http://localhost:3000 \
   -e BETTER_AUTH_URL=http://localhost:3000 \
+  -e BETTER_AUTH_SECRET=replace-with-random-secret \
   -e TZ=UTC \
   ghcr.io/moldytaint/cinephage:latest
 ```
 
-> **Note:** When using `docker run`, pass the actual application variables (`ORIGIN`, `BETTER_AUTH_URL`, `TZ`, `PUID`, `PGID`) directly.
+> **Note:** When using `docker run`, pass the actual application variables (`ORIGIN`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `TZ`, `PUID`, `PGID`) directly.
 >
 > The container starts as root, then the entrypoint automatically drops privileges to `PUID:PGID` (default: 1000:1000). It performs a full recursive ownership fix when needed (or when `CINEPHAGE_FORCE_RECURSIVE_CHOWN=1`), then uses a fast path on subsequent boots.
 

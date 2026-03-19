@@ -80,7 +80,15 @@ BETTER_AUTH_URL=cinephage.example.com  # Missing protocol
 | ----------------------------- | ---------------------------------------------------- | --------------------------------------------- |
 | `BETTER_AUTH_URL`             | Explicit Better Auth base URL                        | Saved External URL or `http://localhost:5173` |
 | `BETTER_AUTH_TRUSTED_ORIGINS` | Comma-separated extra origins trusted by Better Auth | -                                             |
-| `BETTER_AUTH_SECRET`          | Auth secret (auto-generated and persisted if unset)  | Auto-generated                                |
+| `BETTER_AUTH_SECRET`          | Auth secret for session signing and API key crypto   | - (required)                                  |
+
+`BETTER_AUTH_SECRET` must be explicitly set at runtime.
+
+Generate one with any of:
+
+- `openssl rand -base64 32`
+- `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
+- `python3 -c "import secrets,base64; print(base64.b64encode(secrets.token_bytes(32)).decode())"`
 
 ---
 

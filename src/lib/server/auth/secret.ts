@@ -4,6 +4,7 @@ import Database from 'better-sqlite3';
 
 const DATA_DIR = process.env.DATA_DIR || 'data';
 const DEFAULT_BASE_URL = 'http://localhost:5173';
+const BUILD_TIME_PLACEHOLDER = 'build-time-placeholder-do-not-use-in-production';
 
 function normalizeUrl(url: string): string {
 	return url.trim().replace(/\/+$/, '');
@@ -62,29 +63,34 @@ function getConfiguredExternalUrl(): string | null {
 }
 
 /**
- * Get the Better Auth secret from the environment.
+ * Get the Better Auth secret from environment.
  *
- * The secret MUST be provided via the BETTER_AUTH_SECRET environment variable.
- * In dev, Vite loads .env automatically. In production, server.js loads it via dotenv.
- * Docker users can pass it via docker-compose environment or -e flag.
+ * The secret MUST be provided via the BETTER_AUTH_SECRET environment variable
+ * at runtime. Test/build contexts use a fixed placeholder so type-checking and
+ * vitest imports do not fail.
  *
  * WARNING: Changing this value will invalidate all active sessions and make
  * encrypted API keys in the database permanently unrecoverable.
  */
 export function getAuthSecret(): string {
-	const secret = process.env.BETTER_AUTH_SECRET;
-
-	if (!secret) {
-		if (process.env.VITE_SSR_BUILD) {
-			return 'build-time-placeholder-do-not-use-in-production';
-		}
-		throw new Error(
-			'BETTER_AUTH_SECRET is not set. ' +
-				'Add it to your .env file or pass it as an environment variable. ' +
-				"Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\""
-		);
+	const secret = process.env.BETTER_AUTH_SECRET?.trim();
+	if (secret) {
+		return secret;
 	}
-	return secret;
+
+	// During SSR build and vitest runs there is no runtime auth flow.
+	// Use a deterministic placeholder to keep imports from crashing in CI/tests.
+	if (process.env.VITE_SSR_BUILD || process.env.VITEST || process.env.NODE_ENV === 'test') {
+		return BUILD_TIME_PLACEHOLDER;
+	}
+
+	throw new Error(
+		'BETTER_AUTH_SECRET is not set. ' +
+			'Add it to your .env file or pass it as an environment variable. ' +
+			'Generate one with: openssl rand -base64 32 ' +
+			"or node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\" " +
+			'or python3 -c "import secrets,base64; print(base64.b64encode(secrets.token_bytes(32)).decode())"'
+	);
 }
 
 /**

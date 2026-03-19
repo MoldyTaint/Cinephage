@@ -14,10 +14,11 @@ This reference documents all environment variables available for configuring Cin
 
 These variables must be set for Cinephage to function correctly:
 
-| Variable          | Description                            | Example                 |
-| ----------------- | -------------------------------------- | ----------------------- |
-| `ORIGIN`          | Trusted origin URL for CSRF protection | `http://localhost:3000` |
-| `BETTER_AUTH_URL` | Base URL for authentication callbacks  | `http://localhost:3000` |
+| Variable             | Description                                 | Example                 |
+| -------------------- | ------------------------------------------- | ----------------------- |
+| `ORIGIN`             | Trusted origin URL for CSRF protection      | `http://localhost:3000` |
+| `BETTER_AUTH_URL`    | Base URL for authentication callbacks       | `http://localhost:3000` |
+| `BETTER_AUTH_SECRET` | Auth secret for sessions/API-key encryption | `base64-random-string`  |
 
 ## Server Configuration
 
@@ -30,6 +31,7 @@ These variables must be set for Cinephage to function correctly:
 | `ORIGIN`                      | -         | Trusted origin URL for CSRF protection. Must match your access URL exactly |
 | `BETTER_AUTH_URL`             | -         | Base URL for authentication callbacks and redirects                        |
 | `BETTER_AUTH_TRUSTED_ORIGINS` | -         | Additional trusted origins for CORS (comma-separated)                      |
+| `BETTER_AUTH_SECRET`          | -         | Required auth secret for session signing and API-key encryption            |
 | `PUBLIC_BASE_URL`             | -         | Public-facing URL for generated external links                             |
 
 ### Examples
@@ -40,6 +42,7 @@ These variables must be set for Cinephage to function correctly:
 environment:
   - ORIGIN=http://localhost:3000
   - BETTER_AUTH_URL=http://localhost:3000
+  - BETTER_AUTH_SECRET=replace-with-random-secret
 ```
 
 **Production with Reverse Proxy:**
@@ -48,6 +51,7 @@ environment:
 environment:
   - ORIGIN=https://cinephage.yourdomain.com
   - BETTER_AUTH_URL=https://cinephage.yourdomain.com
+  - BETTER_AUTH_SECRET=replace-with-random-secret
   - PUBLIC_BASE_URL=https://cinephage.yourdomain.com
 ```
 
@@ -57,8 +61,15 @@ environment:
 environment:
   - ORIGIN=https://cinephage.yourdomain.com
   - BETTER_AUTH_URL=https://cinephage.yourdomain.com
+  - BETTER_AUTH_SECRET=replace-with-random-secret
   - BETTER_AUTH_TRUSTED_ORIGINS=https://cinephage.yourdomain.com,https://app.yourdomain.com
 ```
+
+Generate `BETTER_AUTH_SECRET` with one of:
+
+- `openssl rand -base64 32`
+- `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
+- `python3 -c "import secrets,base64; print(base64.b64encode(secrets.token_bytes(32)).decode())"`
 
 ## System Configuration
 
