@@ -246,8 +246,8 @@
 						<div class="font-medium">Symlink preservation enabled</div>
 						<div class="text-sm opacity-80">
 							Symlinks will be recreated at the destination instead of copying file contents. This
-							is useful when the source folder contains symlinks to files on network mounts
-							(NZB-Mount: NZBDav/Altmount Rclone).
+							is useful when the source folder contains symlinks to files on network mounts (SABnzbd
+							Mount Mode: NZBDav/Altmount Rclone).
 						</div>
 					</div>
 				</div>

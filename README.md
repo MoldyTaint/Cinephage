@@ -158,7 +158,7 @@ If you later access Cinephage through a hostname or reverse proxy, update
 ### Requirements
 
 - **TMDB API Key**: Free at [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api)
-- **Download Client** (optional): qBittorrent, SABnzbd, NZBGet, or NZBMount
+- **Download Client** (optional): qBittorrent, SABnzbd, or NZBGet
   - Or use streaming mode — no download client needed
 - **Optional**: ffprobe for media info extraction
 

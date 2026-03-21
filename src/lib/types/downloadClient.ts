@@ -8,7 +8,6 @@ export type DownloadClientImplementation =
 	| 'deluge'
 	| 'rtorrent'
 	| 'aria2'
-	| 'nzb-mount'
 	| 'sabnzbd'
 	| 'nzbget'
 	| 'nntp';

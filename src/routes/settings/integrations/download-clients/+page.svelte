@@ -82,7 +82,6 @@
 		switch (implementation) {
 			case 'sabnzbd':
 			case 'nzbget':
-			case 'nzb-mount':
 			case 'nntp':
 				return 'usenet';
 			default:

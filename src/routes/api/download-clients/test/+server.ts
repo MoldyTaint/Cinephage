@@ -63,10 +63,7 @@ export const POST: RequestHandler = async ({ request }) => {
 						username: validated.username,
 						password: validated.password,
 						implementation: validated.implementation,
-						apiKey:
-							validated.implementation === 'sabnzbd' || validated.implementation === 'nzb-mount'
-								? validated.password
-								: undefined
+						apiKey: validated.implementation === 'sabnzbd' ? validated.password : undefined
 					});
 
 		if (!testResult.success) {

@@ -337,8 +337,7 @@ export const downloadClientImplementationSchema = z.enum([
 	'rtorrent',
 	'aria2',
 	'nzbget',
-	'sabnzbd',
-	'nzb-mount'
+	'sabnzbd'
 ]);
 
 /**

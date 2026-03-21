@@ -240,7 +240,7 @@ export class DiskScanService extends EventEmitter {
 						);
 					}
 				} else if (entry.isSymbolicLink()) {
-					// Include symlinked files (e.g., NZB-Mount/rclone strategies),
+					// Include symlinked files (e.g., SAB mount-mode/rclone strategies),
 					// but avoid recursing through symlinked directories.
 					if (!isVideoFile(entry.name)) {
 						continue;

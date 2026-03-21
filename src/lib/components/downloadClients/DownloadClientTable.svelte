@@ -48,7 +48,6 @@
 		switch (implementation) {
 			case 'sabnzbd':
 			case 'nzbget':
-			case 'nzb-mount':
 				return 'Usenet';
 			default:
 				return 'Torrent';
@@ -63,8 +62,6 @@
 				return 'SABnzbd';
 			case 'nzbget':
 				return 'NZBGet';
-			case 'nzb-mount':
-				return 'NZB-Mount';
 			case 'transmission':
 				return 'Transmission';
 			case 'deluge':

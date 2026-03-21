@@ -127,21 +127,16 @@
 	const visibleClientDefinitions = $derived(
 		allowNntp ? clientDefinitions : clientDefinitions.filter((d) => d.id !== 'nntp')
 	);
-	const pickerClientDefinitions = $derived(
-		visibleClientDefinitions.filter((d) => d.id !== 'nzb-mount')
-	);
+	const pickerClientDefinitions = $derived(visibleClientDefinitions);
 	// Check if selected client uses API key auth (SABnzbd)
 	const usesApiKey = $derived(
-		selectedDefinition?.protocol === 'usenet' &&
-			['sabnzbd', 'nzb-mount'].includes(selectedDefinition?.id ?? '')
+		selectedDefinition?.protocol === 'usenet' && selectedDefinition?.id === 'sabnzbd'
 	);
 	// Check if this is an NNTP server
 	const isNntpServer = $derived(implementation === 'nntp');
 	const isSabnzbd = $derived(implementation === 'sabnzbd');
-	const isNzbMount = $derived(implementation === 'nzb-mount');
-	const isSabCompatibleMountClient = $derived(isSabnzbd || isNzbMount);
 	const isMountModeClient = $derived(
-		isSabCompatibleMountClient && (mountMode === 'nzbdav' || mountMode === 'altmount')
+		isSabnzbd && (mountMode === 'nzbdav' || mountMode === 'altmount')
 	);
 	const MAX_NAME_LENGTH = 20;
 	const nameTooLong = $derived(name.length > MAX_NAME_LENGTH);
@@ -150,8 +145,6 @@
 			switch (selectedDefinition?.id) {
 				case 'sabnzbd':
 					return 'sabnzbd';
-				case 'nzb-mount':
-					return 'nzbmount';
 				case 'nzbget':
 					return 'nzbget';
 				case 'qbittorrent':
@@ -237,9 +230,7 @@
 				if (newImpl === 'nntp') {
 					useSsl = true;
 				}
-				if (newImpl === 'nzb-mount') {
-					mountMode = 'nzbdav';
-				} else if (newImpl === 'sabnzbd') {
+				if (newImpl === 'sabnzbd') {
 					mountMode = '';
 				}
 			}
@@ -285,14 +276,7 @@
 			port,
 			useSsl,
 			urlBase: urlBaseEnabled ? normalizedUrlBase || null : null,
-			mountMode:
-				implementation === 'nzb-mount'
-					? mountMode || 'nzbdav'
-					: implementation === 'sabnzbd'
-						? mountMode
-							? 'nzbdav'
-							: null
-						: null,
+			mountMode: implementation === 'sabnzbd' && mountMode ? 'nzbdav' : null,
 			username: normalizedUsername || null,
 			password: password || null,
 			movieCategory,
@@ -524,7 +508,7 @@
 							bind:urlBaseEnabled
 							bind:urlBase
 							{urlBasePlaceholder}
-							showMountMode={isSabCompatibleMountClient}
+							showMountMode={isSabnzbd}
 							bind:mountMode
 						/>
 					{/if}
@@ -626,7 +610,7 @@
 							bind:tempPathLocal
 							bind:tempPathRemote
 							isSabnzbd={usesApiKey}
-							isNzbMount={isMountModeClient}
+							isMountMode={isMountModeClient}
 							onBrowse={openFolderBrowser}
 						/>
 					{/if}

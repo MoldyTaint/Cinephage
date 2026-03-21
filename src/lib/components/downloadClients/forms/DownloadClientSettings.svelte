@@ -15,7 +15,7 @@
 		tempPathLocal?: string;
 		tempPathRemote?: string;
 		isSabnzbd?: boolean;
-		isNzbMount?: boolean;
+		isMountMode?: boolean;
 		onBrowse?: (field: 'downloadPathLocal' | 'tempPathLocal') => void;
 		mode?: 'connection' | 'settings';
 		urlBaseEnabled?: boolean;
@@ -39,7 +39,7 @@
 		tempPathLocal = $bindable(),
 		tempPathRemote = $bindable(),
 		isSabnzbd = false,
-		isNzbMount = false,
+		isMountMode = false,
 		onBrowse = () => {},
 		mode = 'settings',
 		urlBaseEnabled = $bindable(),
@@ -248,7 +248,7 @@
 	</div>
 
 	<!-- Temp Downloads Path Mapping (SABnzbd only) -->
-	{#if isSabnzbd && !isNzbMount}
+	{#if isSabnzbd && !isMountMode}
 		<div class="rounded-lg bg-base-200/50 p-3">
 			<div class="mb-2 text-xs font-medium text-base-content/80">Temporary Download Folder</div>
 

@@ -24,7 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Subtitle search on import** - Triggers automatic subtitle search when media files are imported
 - **OldToons.World indexer** - Private UNIT3D tracker for classic animated content with API key authentication
 - **SABnzbd download client** - Full usenet downloader support with queue/history monitoring
-- **NZB-Mount download client** - WebDAV-mounted NZB streaming with STRM/Symlink import support and mount modes (nzbdav/altmount)
+- **SABnzbd Mount Mode** - WebDAV-mounted NZB streaming with STRM/Symlink import support
 - **Download client URL base support** - Optional URL base configuration for reverse proxy setups
 - **Clear failed downloads** - Bulk remove failed items from download queue with confirmation modal
 - **Newznab protocol** - Generic usenet indexer integration with dynamic capability discovery

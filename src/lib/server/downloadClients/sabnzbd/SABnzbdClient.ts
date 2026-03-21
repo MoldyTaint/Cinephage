@@ -55,7 +55,7 @@ interface ConfigCache {
  * SABnzbd download client implementation.
  */
 export class SABnzbdClient implements IDownloadClient {
-	readonly implementation: 'sabnzbd' | 'nzb-mount';
+	readonly implementation = 'sabnzbd' as const;
 
 	private proxy: SABnzbdProxy;
 	private config: SABnzbdConfig;
@@ -64,22 +64,20 @@ export class SABnzbdClient implements IDownloadClient {
 	constructor(config: SABnzbdConfig) {
 		this.config = config;
 		this.proxy = new SABnzbdProxy(this.buildSettings());
-		this.implementation = this.isNzbMountVariant() ? 'nzb-mount' : 'sabnzbd';
 	}
 
 	/**
-	 * Whether this client should use NZB-Mount compatibility behavior.
+	 * Whether this client is running in SAB-compatible mount mode.
 	 */
-	private isNzbMountVariant(): boolean {
-		return this.config.implementation === 'nzb-mount';
+	private isMountModeClient(): boolean {
+		return this.config.mountMode === 'nzbdav' || this.config.mountMode === 'altmount';
 	}
 
 	/**
 	 * Whether category paths should be normalized against complete_dir.
-	 * NZB-Mount variants need this behavior by default.
 	 */
 	private shouldNormalizeCategoryDir(): boolean {
-		return this.config.normalizeCategoryDir ?? this.isNzbMountVariant();
+		return this.config.normalizeCategoryDir ?? this.isMountModeClient();
 	}
 
 	/**

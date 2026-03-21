@@ -13,12 +13,12 @@ async function createSizedFile(filePath: string, sizeBytes: number) {
 	await truncate(filePath, sizeBytes);
 }
 
-describe('ImportService SAB-compatible STRM selection', () => {
+describe('ImportService SAB mount-mode STRM selection', () => {
 	beforeEach(() => {
 		ImportService.resetInstance();
 	});
 
-	it('prefers non-strm when present for NZB-Mount options', async () => {
+	it('prefers non-strm when present for mount-mode options', async () => {
 		const dir = await createTempDir();
 		try {
 			const strmPath = join(dir, 'movie.strm');
@@ -44,7 +44,7 @@ describe('ImportService SAB-compatible STRM selection', () => {
 		}
 	});
 
-	it('allows small strm files when configured for NZB-Mount', async () => {
+	it('allows small strm files when configured for mount mode', async () => {
 		const dir = await createTempDir();
 		try {
 			const strmPath = join(dir, 'movie.strm');
@@ -133,7 +133,7 @@ describe('ImportService SAB-compatible STRM selection', () => {
 		expect(options.preferNonStrm).toBe(false);
 	});
 
-	it('treats SABnzbd mount mode as STRM-capable (parity with legacy nzb-mount)', () => {
+	it('treats SABnzbd mount mode as STRM-capable (parity with legacy mount alias)', () => {
 		const service = ImportService.getInstance() as unknown as {
 			getImportOptions: (
 				client?: { implementation?: string; mountMode?: string | null },

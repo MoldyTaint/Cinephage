@@ -38,31 +38,32 @@ function getProxyInstance() {
 	};
 }
 
-describe('SABnzbdClient NZB-Mount compatibility', () => {
+describe('SABnzbdClient mount-mode compatibility', () => {
 	beforeEach(() => {
 		const proxyClass = SABnzbdProxy as unknown as { instances: Array<Record<string, unknown>> };
 		proxyClass.instances.length = 0;
 	});
 
-	it('keeps NZB-Mount implementation identity for compatibility paths', () => {
+	it('keeps sabnzbd implementation identity in mount mode', () => {
 		const client = new SABnzbdClient({
 			host: 'localhost',
 			port: 3000,
 			useSsl: false,
 			apiKey: 'key',
-			implementation: 'nzb-mount'
+			implementation: 'sabnzbd',
+			mountMode: 'nzbdav'
 		});
 
-		expect(client.implementation).toBe('nzb-mount');
+		expect(client.implementation).toBe('sabnzbd');
 	});
 
-	it('continues when fullstatus returns unknown mode for nzb-mount', async () => {
+	it('continues when fullstatus returns unknown mode for mount-mode clients', async () => {
 		const client = new SABnzbdClient({
 			host: 'localhost',
 			port: 3000,
 			useSsl: false,
 			apiKey: 'key',
-			implementation: 'nzb-mount',
+			implementation: 'sabnzbd',
 			mountMode: 'altmount'
 		});
 		const proxy = getProxyInstance();
@@ -79,13 +80,13 @@ describe('SABnzbdClient NZB-Mount compatibility', () => {
 		expect(proxy.getFullStatus).toHaveBeenCalled();
 	});
 
-	it('continues when warnings endpoint is unsupported for nzb-mount', async () => {
+	it('continues when warnings endpoint is unsupported for mount-mode clients', async () => {
 		const client = new SABnzbdClient({
 			host: 'localhost',
 			port: 3000,
 			useSsl: false,
 			apiKey: 'key',
-			implementation: 'nzb-mount',
+			implementation: 'sabnzbd',
 			mountMode: 'nzbdav'
 		});
 		const proxy = getProxyInstance();

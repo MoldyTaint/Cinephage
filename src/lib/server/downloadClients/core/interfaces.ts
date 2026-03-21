@@ -15,7 +15,7 @@ export interface DownloadClientConfig {
 	useSsl: boolean;
 	/** Optional URL base path (e.g., "/sabnzbd") */
 	urlBase?: string | null;
-	/** Optional api variant for NZB-Mount clients */
+	/** Optional mount mode for SAB-compatible streaming clients */
 	mountMode?: 'nzbdav' | 'altmount' | null;
 	username?: string | null;
 	password?: string | null;

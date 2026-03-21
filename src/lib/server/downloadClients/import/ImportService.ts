@@ -1697,9 +1697,8 @@ export class ImportService extends EventEmitter {
 		queueItem?: Pick<typeof downloadQueue.$inferSelect, 'outputPath' | 'clientDownloadPath'>
 	): ImportableFileOptions {
 		const isMountModeClient =
-			client?.implementation === 'nzb-mount' ||
-			(client?.implementation === 'sabnzbd' &&
-				(client?.mountMode === 'nzbdav' || client?.mountMode === 'altmount'));
+			client?.implementation === 'sabnzbd' &&
+			(client?.mountMode === 'nzbdav' || client?.mountMode === 'altmount');
 		const hasDirectStrmPath = [queueItem?.outputPath, queueItem?.clientDownloadPath].some(
 			(path) => path?.toLowerCase().endsWith('.strm') ?? false
 		);
