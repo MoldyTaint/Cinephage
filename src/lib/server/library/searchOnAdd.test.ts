@@ -728,6 +728,74 @@ describe('SearchOnAddService.searchForMissingEpisodes monitoring behavior', () =
 		expect(searchForEpisodeSpy).toHaveBeenCalledTimes(1);
 	});
 
+	it('uses episode-only strategy in auto mode when Kinozal is the only eligible TV indexer', async () => {
+		const kinozalOnlyIndexerManager = createIndexerManagerMockWith([
+			{
+				...TEST_INDEXER_CONFIG,
+				id: 'indexer-kinozal',
+				name: 'Kinozal',
+				definitionId: 'kinozal',
+				protocol: 'torrent',
+				baseUrl: 'https://kinozal.tv'
+			}
+		]);
+		mocks.getIndexerManager.mockResolvedValue(kinozalOnlyIndexerManager);
+		mocks.seriesFindFirst.mockResolvedValue({
+			id: 'series-1',
+			title: 'Afro Samurai',
+			tmdbId: 19544,
+			tvdbId: 79755,
+			imdbId: 'tt0465316',
+			scoringProfileId: 'balanced'
+		});
+		mocks.episodesFindMany
+			.mockResolvedValueOnce([
+				{
+					id: 'ep-1',
+					seriesId: 'series-1',
+					seasonNumber: 1,
+					episodeNumber: 1,
+					hasFile: false,
+					monitored: true,
+					airDate: '2007-01-03'
+				}
+			])
+			.mockResolvedValueOnce([
+				{
+					id: 'ep-1',
+					seriesId: 'series-1',
+					seasonNumber: 1,
+					episodeNumber: 1,
+					hasFile: false,
+					monitored: true,
+					airDate: '2007-01-03'
+				},
+				{
+					id: 'ep-2',
+					seriesId: 'series-1',
+					seasonNumber: 1,
+					episodeNumber: 2,
+					hasFile: true,
+					monitored: true,
+					airDate: '2007-01-10'
+				}
+			]);
+
+		const searchForEpisodeSpy = vi
+			.spyOn(searchOnAdd, 'searchForEpisode')
+			.mockResolvedValue({ success: false, error: 'No suitable releases found' });
+		const searchForSeasonSpy = vi.spyOn(searchOnAdd, 'searchForSeason');
+
+		await searchOnAdd.searchForMissingEpisodes('series-1', undefined, {
+			bypassMonitoring: true,
+			searchStrategy: 'auto'
+		});
+
+		expect(mocks.searchWithMultiSeasonPriority).not.toHaveBeenCalled();
+		expect(searchForSeasonSpy).not.toHaveBeenCalled();
+		expect(searchForEpisodeSpy).toHaveBeenCalledTimes(1);
+	});
+
 	it('keeps pack-first strategy in auto mode when non-RuTracker TV indexers are also eligible', async () => {
 		const mixedIndexerManager = createIndexerManagerMockWith([
 			{

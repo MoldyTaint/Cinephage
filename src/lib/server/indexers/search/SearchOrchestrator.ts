@@ -1363,7 +1363,7 @@ export class SearchOrchestrator {
 							title,
 							error: message
 						},
-						'RuTracker season pointer search variant failed'
+						'Pointer-indexer season search variant failed'
 					);
 				}
 			}
@@ -1490,14 +1490,14 @@ export class SearchOrchestrator {
 	 *
 	 * For TV searches with season/episode specified:
 	 * - Season-only search: Returns single-season packs that exactly match the target season
-	 *   (multi-season packs and complete series are excluded; RuTracker packs must be verifiably complete)
+	 *   (multi-season packs and complete series are excluded; pointer-indexer packs must be verifiably complete)
 	 * - Season+episode search:
-	 *   - RuTracker: returns episode pointers from matching season packs (never raw season packs)
+	 *   - RuTracker/Kinozal: returns episode pointers from matching season packs (never raw season packs)
 	 *   - Other indexers:
 	 *     - interactive: returns exact episodes, falls back to season-pack pointers
 	 *     - automatic: returns exact episodes and season-pack candidates
 	 * - Episode-only search:
-	 *   - RuTracker: returns episode pointers from matching season packs (never raw season packs)
+	 *   - RuTracker/Kinozal: returns episode pointers from matching season packs (never raw season packs)
 	 *   - Other indexers:
 	 *     - interactive: returns exact episodes, falls back to season-pack pointers
 	 *     - automatic: returns exact episodes and season-pack candidates
@@ -1745,7 +1745,7 @@ export class SearchOrchestrator {
 					indexer: release.indexerName,
 					expectedSeasonEpisodeCount
 				},
-				'[SearchOrchestrator] Rejecting incomplete RuTracker season pack for season-only search'
+				'[SearchOrchestrator] Rejecting incomplete pointer-indexer season pack for season-only search'
 			);
 		}
 
@@ -1778,7 +1778,7 @@ export class SearchOrchestrator {
 				? expectedSeasonEpisodeCount
 				: explicitTotal;
 
-		// For RuTracker season-pack grabs we require a verifiable complete-season signal.
+		// For pointer-indexer season-pack grabs we require a verifiable complete-season signal.
 		if (expectedTotal === undefined || expectedTotal <= 0) {
 			return false;
 		}
@@ -1831,7 +1831,11 @@ export class SearchOrchestrator {
 	}
 
 	private isRuTrackerIndexerName(indexerName: string | undefined): boolean {
-		return typeof indexerName === 'string' && indexerName.toLowerCase().includes('rutracker');
+		if (typeof indexerName !== 'string') {
+			return false;
+		}
+		const normalized = indexerName.toLowerCase();
+		return normalized.includes('rutracker') || normalized.includes('kinozal');
 	}
 
 	private isRuTrackerHost(baseUrl: string | undefined): boolean {
@@ -1839,9 +1843,11 @@ export class SearchOrchestrator {
 			return false;
 		}
 		try {
-			return new URL(baseUrl).hostname.toLowerCase().includes('rutracker.');
+			const hostname = new URL(baseUrl).hostname.toLowerCase();
+			return hostname.includes('rutracker.') || hostname.includes('kinozal.');
 		} catch {
-			return baseUrl.toLowerCase().includes('rutracker.');
+			const normalized = baseUrl.toLowerCase();
+			return normalized.includes('rutracker.') || normalized.includes('kinozal.');
 		}
 	}
 

@@ -86,7 +86,7 @@ settings:
   - name: stripcyrillic
     type: checkbox
     label: Strip Cyrillic Letters
-    default: true
+    default: false
   - name: sort
     type: select
     label: Sort requested from site
@@ -211,11 +211,17 @@ search:
         - name: re_replace
           args:
             [
-              '(\([А-Яа-яЁё\W]+\))|(^[А-Яа-яЁё\W\d]+/ ((?:[12][0-9]{3}-?){1,}))|(^[А-Яа-яЁё\W\d]+/ )|([а-яА-ЯЁё \-]+,+)|([а-яА-ЯЁё]+)',
+              '(?i)\s*\([^\)]*?[А-Яа-яЁё]{2,}[^\)]*?\)',
               '{{ if .Config.stripcyrillic }}{{ else }}$0{{ end }}'
             ]
+        - name: re_replace
+          args: ['[А-Яа-яЁё]+', '{{ if .Config.stripcyrillic }}{{ else }}$&{{ end }}']
         - name: replace
-          args: [' / ', ' ']
+          args: [' / ', '{{ if .Config.stripcyrillic }} {{ else }} / {{ end }}']
+        - name: re_replace
+          args: ['^\s*[-–—]+\s*/\s*', '']
+        - name: re_replace
+          args: ['^\s*/\s*', '']
         - name: re_replace
           args: ['^-\s+', ' ']
         - name: re_replace
@@ -230,6 +236,7 @@ search:
           args: ['WEBDLRip', 'WEBDL']
         - name: replace
           args: ['HDTVRip', 'HDTV']
+        - name: trim
     details:
       selector: 'td.nam a[href^="/details.php?"]'
       attribute: href

@@ -20,7 +20,7 @@ settings:
     label: Password
   - name: stripcyrillic
     type: checkbox
-    label: Strip Russian letters
+    label: Strip Cyrillic Letters
     default: false
   - name: usemagnetlinks
     type: checkbox

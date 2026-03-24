@@ -107,7 +107,7 @@ interface SearchForMissingEpisodesOptions {
 	 * - 'pack-first': complete/multi-season/single-season packs, then episodes
 	 * - 'episode-only': targeted episode searches, but if an entire aired season is missing
 	 *   we attempt a single-season pack grab first
-	 * - 'auto': use episode-only only when RuTracker is the sole eligible TV indexer
+	 * - 'auto': use episode-only only when RuTracker/Kinozal is the sole eligible TV indexer
 	 */
 	searchStrategy?: 'pack-first' | 'episode-only' | 'auto';
 }
@@ -1772,7 +1772,11 @@ class SearchOnAddService {
 	}
 
 	private isRuTrackerIndexerName(indexerName: string | undefined): boolean {
-		return typeof indexerName === 'string' && indexerName.toLowerCase().includes('rutracker');
+		if (typeof indexerName !== 'string') {
+			return false;
+		}
+		const normalized = indexerName.toLowerCase();
+		return normalized.includes('rutracker') || normalized.includes('kinozal');
 	}
 
 	private isRuTrackerHost(baseUrl: string | undefined): boolean {
@@ -1780,9 +1784,11 @@ class SearchOnAddService {
 			return false;
 		}
 		try {
-			return new URL(baseUrl).hostname.toLowerCase().includes('rutracker.');
+			const hostname = new URL(baseUrl).hostname.toLowerCase();
+			return hostname.includes('rutracker.') || hostname.includes('kinozal.');
 		} catch {
-			return baseUrl.toLowerCase().includes('rutracker.');
+			const normalized = baseUrl.toLowerCase();
+			return normalized.includes('rutracker.') || normalized.includes('kinozal.');
 		}
 	}
 }

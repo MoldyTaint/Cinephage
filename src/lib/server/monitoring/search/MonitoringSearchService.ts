@@ -728,8 +728,9 @@ export class MonitoringSearchService {
 			const missingPercent = (missingEpisodes.length / totalEpisodes) * 100;
 			const isEntireSeasonMissing = totalEpisodes > 0 && missingEpisodes.length >= totalEpisodes;
 
-			// When RuTracker is the only automatic TV source, avoid season-pack requests unless
-			// the full season is missing. Partial seasons should use episode-pointer flow.
+			// When RuTracker/Kinozal is the only automatic TV source, avoid season-pack
+			// requests unless the full season is missing. Partial seasons should use
+			// episode-pointer flow.
 			if (useRuTrackerEpisodePointerPolicy && !isEntireSeasonMissing) {
 				logger.debug(
 					{
@@ -739,7 +740,7 @@ export class MonitoringSearchService {
 						totalEpisodes,
 						missingPercent: missingPercent.toFixed(1)
 					},
-					'[MonitoringSearch] Skipping season pack search - RuTracker pointer policy (partial season)'
+					'[MonitoringSearch] Skipping season pack search - pointer policy (partial season)'
 				);
 				continue;
 			}
@@ -991,7 +992,7 @@ export class MonitoringSearchService {
 							missingEpisodes: missingEpisodes.length,
 							seasonEpisodeCount
 						},
-						'[MonitoringSearch] Skipping RuTracker season pack for partial-missing season'
+						'[MonitoringSearch] Skipping pointer-indexer season pack for partial-missing season'
 					);
 					continue;
 				}
@@ -2692,7 +2693,8 @@ export class MonitoringSearchService {
 				const isSeasonPack = parsedEpisode?.isSeasonPack ?? false;
 				const isEpisodePointer = this.isEpisodePointerRelease(release);
 
-				// RuTracker episode-targeted missing-content search should not grab full season packs.
+				// Pointer-indexer episode-targeted missing-content search should not grab
+				// full season packs.
 				// Allow virtual episode pointers because they resolve to per-episode file selection.
 				if (this.isRuTrackerIndexerName(release.indexerName) && isSeasonPack && !isEpisodePointer) {
 					logger.debug(
@@ -2701,7 +2703,7 @@ export class MonitoringSearchService {
 							episodeId: episode.id,
 							title: release.title
 						},
-						'[MonitoringSearch] Skipping RuTracker season pack in episode-targeted search'
+						'[MonitoringSearch] Skipping pointer-indexer season pack in episode-targeted search'
 					);
 					continue;
 				}
@@ -2814,7 +2816,11 @@ export class MonitoringSearchService {
 	}
 
 	private isRuTrackerIndexerName(indexerName: string | undefined): boolean {
-		return typeof indexerName === 'string' && indexerName.toLowerCase().includes('rutracker');
+		if (typeof indexerName !== 'string') {
+			return false;
+		}
+		const normalized = indexerName.toLowerCase();
+		return normalized.includes('rutracker') || normalized.includes('kinozal');
 	}
 
 	private isRuTrackerHost(baseUrl: string | undefined): boolean {
@@ -2822,9 +2828,11 @@ export class MonitoringSearchService {
 			return false;
 		}
 		try {
-			return new URL(baseUrl).hostname.toLowerCase().includes('rutracker.');
+			const hostname = new URL(baseUrl).hostname.toLowerCase();
+			return hostname.includes('rutracker.') || hostname.includes('kinozal.');
 		} catch {
-			return baseUrl.toLowerCase().includes('rutracker.');
+			const normalized = baseUrl.toLowerCase();
+			return normalized.includes('rutracker.') || normalized.includes('kinozal.');
 		}
 	}
 
