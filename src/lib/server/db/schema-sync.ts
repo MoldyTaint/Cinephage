@@ -102,8 +102,9 @@ interface MigrationDefinition {
  * Version 72: Add adaptive subtitle searching columns for movies and episodes
  * Version 73: Allow Plex in media_browser_servers server_type constraint
  * Version 74: Consolidate legacy nzb-mount clients into sabnzbd mount mode
+ * Version 75: Add language column to user table for UI localization preference
  */
-export const CURRENT_SCHEMA_VERSION = 74;
+export const CURRENT_SCHEMA_VERSION = 75;
 
 const BETTER_AUTH_TABLE_DEFINITIONS = [
 	{
@@ -117,6 +118,7 @@ const BETTER_AUTH_TABLE_DEFINITIONS = [
 			"username" text UNIQUE,
 			"displayUsername" text,
 			"role" text DEFAULT 'admin' NOT NULL,
+			"language" text DEFAULT 'en',
 			"banned" integer DEFAULT 0,
 			"banReason" text,
 			"banExpires" date,
@@ -4973,6 +4975,32 @@ const MIGRATIONS: MigrationDefinition[] = [
 				},
 				'[SchemaSync] Consolidated legacy nzb-mount clients into sabnzbd mount mode'
 			);
+		}
+	},
+	{
+		version: 75,
+		name: 'add_language_column_to_user_table',
+		apply: (sqlite) => {
+			// Check if user table exists
+			if (!tableExists(sqlite, 'user')) {
+				logger.info('[SchemaSync] user table not found, skipping language column migration');
+				return;
+			}
+
+			// Check if language column already exists
+			const tableInfo = sqlite.prepare(`PRAGMA table_info("user")`).all() as Array<{
+				name: string;
+			}>;
+			const hasLanguageColumn = tableInfo.some((col) => col.name === 'language');
+
+			if (hasLanguageColumn) {
+				logger.info('[SchemaSync] language column already exists in user table');
+				return;
+			}
+
+			// Add language column with default 'en'
+			sqlite.prepare(`ALTER TABLE "user" ADD COLUMN "language" text DEFAULT 'en'`).run();
+			logger.info('[SchemaSync] Added language column to user table');
 		}
 	}
 ];

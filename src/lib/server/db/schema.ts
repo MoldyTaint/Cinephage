@@ -28,6 +28,7 @@ export const user = sqliteTable(
 		username: text('username').unique(),
 		displayUsername: text('displayUsername'),
 		role: text('role').default('admin').notNull(),
+		language: text('language').default('en'),
 		banned: integer('banned').default(0),
 		banReason: text('banReason'),
 		banExpires: text('banExpires'),
