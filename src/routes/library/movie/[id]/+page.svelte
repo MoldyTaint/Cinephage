@@ -22,6 +22,7 @@
 	import { resolvePath } from '$lib/utils/routing';
 	import { createDynamicSSE } from '$lib/sse';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -204,7 +205,7 @@
 		}
 		// No profile set - show the default
 		const defaultProfile = data.qualityProfiles.find((p) => p.isDefault);
-		return defaultProfile ? `${defaultProfile.name} (Default)` : null;
+		return defaultProfile ? m.library_movies_profileDefault({ name: defaultProfile.name }) : null;
 	});
 
 	const movieStoragePath = $derived.by(() => {
@@ -244,7 +245,7 @@
 				subtitles: refreshed.subtitles ?? []
 			};
 		} catch (error) {
-			showActionError('Failed to refresh movie details', error);
+			showActionError(m.toast_library_movieDetail_failedToRefresh(), error);
 		}
 	}
 
@@ -262,7 +263,7 @@
 				movie.monitored = newValue;
 			}
 		} catch (error) {
-			showActionError('Failed to update monitored status', error);
+			showActionError(m.toast_library_movieDetail_failedToUpdateMonitor(), error);
 		} finally {
 			isSaving = false;
 		}
@@ -307,20 +308,27 @@
 				// Show toast notification
 				const issue = getPrimaryAutoSearchIssue(searchProgress.results);
 				if (searchProgress.results.grabbed) {
-					toasts.success(`Found and grabbed: ${searchProgress.results.releaseName}`);
+					toasts.success(
+						m.toast_library_movieDetail_foundAndGrabbed({
+							release: searchProgress.results.releaseName ?? ''
+						})
+					);
 				} else if (issue) {
 					toasts.error(issue.message, { description: issue.description });
 				} else {
-					toasts.info('No suitable releases found');
+					toasts.info(m.toast_library_movieDetail_noSuitableReleases());
 				}
 			}
 		} catch (error) {
 			autoSearchResult = {
 				found: false,
 				grabbed: false,
-				error: error instanceof Error ? error.message : 'Failed to auto-search'
+				error:
+					error instanceof Error ? error.message : m.toast_library_movieDetail_failedAutoSearch()
 			};
-			toasts.error(error instanceof Error ? error.message : 'Failed to auto-search');
+			toasts.error(
+				error instanceof Error ? error.message : m.toast_library_movieDetail_failedAutoSearch()
+			);
 		} finally {
 			autoSearching = false;
 			searchProgress.reset();
@@ -369,7 +377,7 @@
 		} catch (error) {
 			return {
 				success: false,
-				error: error instanceof Error ? error.message : 'Failed to grab release'
+				error: error instanceof Error ? error.message : m.toast_library_movieDetail_failedToGrab()
 			};
 		}
 	}
@@ -409,7 +417,7 @@
 				isEditModalOpen = false;
 			}
 		} catch (error) {
-			showActionError('Failed to update movie', error);
+			showActionError(m.toast_library_movieDetail_failedToUpdate(), error);
 		} finally {
 			isSaving = false;
 		}
@@ -430,20 +438,22 @@
 
 			if (result.success) {
 				if (removeFromLibrary) {
-					toasts.success('Movie removed from library');
+					toasts.success(m.toast_library_movieDetail_movieRemoved());
 					// Navigate to library since the movie no longer exists
 					window.location.href = '/library/movies';
 				} else {
-					toasts.success('Movie files deleted');
+					toasts.success(m.toast_library_movieDetail_movieFilesDeleted());
 					movie.files = [];
 					movie.hasFile = false;
 					queueItemState = null;
 				}
 			} else {
-				toasts.error('Failed to delete movie', { description: result.error });
+				toasts.error(m.toast_library_movieDetail_failedToDeleteMovie(), {
+					description: result.error
+				});
 			}
 		} catch (error) {
-			showActionError('Failed to delete movie', error);
+			showActionError(m.toast_library_movieDetail_failedToDeleteMovie(), error);
 		} finally {
 			isDeleting = false;
 			isDeleteModalOpen = false;
@@ -453,7 +463,7 @@
 	async function handleDeleteFile(fileId: string) {
 		const file = movie.files.find((f) => f.id === fileId);
 		deletingFileId = fileId;
-		deletingFileName = file ? getFileName(file.relativePath) : 'this file';
+		deletingFileName = file ? getFileName(file.relativePath) : m.library_movieDetail_thisFile();
 		isDeleteFileModalOpen = true;
 	}
 
@@ -477,16 +487,18 @@
 			const result = await response.json();
 
 			if (result.success) {
-				toasts.success('File deleted');
+				toasts.success(m.toast_library_movieDetail_fileDeleted());
 				const updatedFiles = movie.files.filter((f) => f.id !== deletingFileId);
 				movie.files = updatedFiles;
 				movie.hasFile = updatedFiles.length > 0;
 				closeDeleteFileModal();
 			} else {
-				toasts.error('Failed to delete file', { description: result.error });
+				toasts.error(m.toast_library_movieDetail_failedToDeleteFile(), {
+					description: result.error
+				});
 			}
 		} catch (error) {
-			showActionError('Failed to delete file', error);
+			showActionError(m.toast_library_movieDetail_failedToDeleteFile(), error);
 		} finally {
 			isDeletingFile = false;
 		}
@@ -529,7 +541,7 @@
 				}
 			}
 		} catch (error) {
-			showActionError('Failed to auto-search subtitles', error);
+			showActionError(m.toast_library_movieDetail_failedToAutoSearchSubs(), error);
 		} finally {
 			subtitleAutoSearching = false;
 		}
@@ -574,7 +586,7 @@
 			const result = await response.json();
 
 			if (!response.ok || !result.success) {
-				throw new Error(result.error || 'Subtitle sync failed');
+				throw new Error(result.error || m.toast_library_movieDetail_subtitleSyncFailed());
 			}
 
 			movie.subtitles = (movie.subtitles ?? []).map((subtitle) =>
@@ -587,12 +599,14 @@
 					: subtitle
 			);
 
-			toasts.success('Subtitle synced', {
-				description: `Applied offset of ${result.offsetMs}ms`
+			toasts.success(m.toast_library_movieDetail_subtitleSynced(), {
+				description: m.toast_library_movieDetail_subtitleSyncOffset({
+					offset: String(result.offsetMs)
+				})
 			});
 		} catch (error) {
-			subtitleSyncError = describeError(error, 'Subtitle sync failed');
-			showActionError('Failed to sync subtitle', error);
+			subtitleSyncError = describeError(error, m.toast_library_movieDetail_subtitleSyncFailed());
+			showActionError(m.toast_library_movieDetail_failedToSyncSub(), error);
 		} finally {
 			syncingSubtitleId = null;
 		}
@@ -612,7 +626,7 @@
 				}
 			}
 		} catch (error) {
-			showActionError('Failed to load score details', error);
+			showActionError(m.toast_library_movieDetail_failedToLoadScore(), error);
 		} finally {
 			scoreLoading = false;
 			scoreFetched = true;
@@ -635,8 +649,11 @@
 </script>
 
 <svelte:head>
-	<title>{movie.title} - Library - Cinephage</title>
-	<meta name="description" content={movie.overview || `Manage ${movie.title} in your library`} />
+	<title>{m.library_movieDetail_pageTitle({ title: movie.title })}</title>
+	<meta
+		name="description"
+		content={movie.overview || m.library_movieDetail_metaDescription({ title: movie.title })}
+	/>
 </svelte:head>
 
 <div class="flex w-full flex-col gap-4 overflow-x-hidden px-4 pb-20 md:gap-6 md:px-6 lg:px-8">
@@ -650,12 +667,12 @@
 			<div class="flex items-start justify-between gap-3">
 				<div class="min-w-0">
 					{#if movie.monitored}
-						Monitoring enabled.
+						{m.library_movieDetail_monitoringEnabled()}
 					{:else}
 						<div>
-							Monitoring is disabled.
+							{m.library_movieDetail_monitoringDisabled()}
 							<span class="block text-xs font-normal text-base-100/90">
-								Automatic downloads and upgrades will not occur.
+								{m.library_movieDetail_monitoringDisabledHint()}
 							</span>
 						</div>
 					{/if}
@@ -666,28 +683,28 @@
 							class="inline-flex items-center gap-1 rounded-full border border-success/70 bg-success/90 px-2.5 py-1 text-xs font-medium text-success-content shadow-sm"
 						>
 							<Wifi class="h-3 w-3" />
-							Live
+							{m.library_movieDetail_sseLive()}
 						</span>
 					{:else if sse.status === 'error'}
 						<span
 							class="inline-flex items-center gap-1 rounded-full border border-warning/70 bg-warning/90 px-2.5 py-1 text-xs font-medium text-warning-content shadow-sm"
 						>
 							<Loader2 class="h-3 w-3 animate-spin" />
-							Reconnecting
+							{m.library_movieDetail_sseReconnecting()}
 						</span>
 					{:else if sse.status === 'connecting'}
 						<span
 							class="inline-flex items-center gap-1 rounded-full border border-info/70 bg-info/90 px-2.5 py-1 text-xs font-medium text-info-content shadow-sm"
 						>
 							<Loader2 class="h-3 w-3 animate-spin" />
-							Connecting
+							{m.library_movieDetail_sseConnecting()}
 						</span>
 					{:else}
 						<span
 							class="inline-flex items-center gap-1 rounded-full border border-base-100/35 bg-base-100/20 px-2.5 py-1 text-xs font-medium text-base-100 shadow-sm"
 						>
 							<WifiOff class="h-3 w-3" />
-							Offline
+							{m.library_movieDetail_sseOffline()}
 						</span>
 					{/if}
 				</div>
@@ -718,18 +735,18 @@
 		<div class="md:col-span-2 lg:col-span-2">
 			<div class="rounded-xl bg-base-200 p-4 md:p-6">
 				<div class="mb-4 flex items-center justify-between">
-					<h2 class="text-lg font-semibold">Files</h2>
+					<h2 class="text-lg font-semibold">{m.library_movieDetail_filesHeading()}</h2>
 					<div class="flex flex-wrap items-center gap-2">
 						{#if !isStreamerProfile && (movie.subtitles?.length ?? 0) > 0}
 							<button class="btn gap-1 btn-ghost btn-sm" onclick={handleSubtitleSync}>
 								<RefreshCw class="h-4 w-4" />
-								Sync Subtitles
+								{m.library_movieDetail_syncSubtitles()}
 							</button>
 						{/if}
 						{#if movie.files.length > 0}
 							<button class="btn gap-1 btn-ghost btn-sm" onclick={() => (isRenameModalOpen = true)}>
 								<FileEdit class="h-4 w-4" />
-								Rename
+								{m.library_movieDetail_rename()}
 							</button>
 						{/if}
 					</div>
@@ -752,7 +769,7 @@
 			<!-- Overview -->
 			{#if movie.overview}
 				<div class="rounded-xl bg-base-200 p-4 md:p-6">
-					<h3 class="mb-2 font-semibold">Overview</h3>
+					<h3 class="mb-2 font-semibold">{m.library_movieDetail_overviewHeading()}</h3>
 					<p class="text-sm leading-relaxed text-base-content/80">
 						{movie.overview}
 					</p>
@@ -761,29 +778,34 @@
 
 			<!-- Details -->
 			<div class="rounded-xl bg-base-200 p-4 md:p-6">
-				<h3 class="mb-3 font-semibold">Details</h3>
+				<h3 class="mb-3 font-semibold">{m.library_movieDetail_detailsHeading()}</h3>
 				<dl class="space-y-2 text-sm">
 					{#if movie.originalTitle && movie.originalTitle !== movie.title}
 						<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-							<dt class="text-base-content/60">Original Title</dt>
+							<dt class="text-base-content/60">{m.library_movieDetail_originalTitle()}</dt>
 							<dd class="sm:text-right">{movie.originalTitle}</dd>
 						</div>
 					{/if}
 					{#if movie.runtime}
 						<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-							<dt class="text-base-content/60">Runtime</dt>
-							<dd>{Math.floor(movie.runtime / 60)}h {movie.runtime % 60}m</dd>
+							<dt class="text-base-content/60">{m.library_movieDetail_runtime()}</dt>
+							<dd>
+								{m.library_movieDetail_runtimeValue({
+									hours: String(Math.floor(movie.runtime / 60)),
+									minutes: String(movie.runtime % 60)
+								})}
+							</dd>
 						</div>
 					{/if}
 					{#if movie.genres && movie.genres.length > 0}
 						<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-							<dt class="text-base-content/60">Genres</dt>
+							<dt class="text-base-content/60">{m.library_movieDetail_genres()}</dt>
 							<dd class="sm:text-right">{movie.genres.join(', ')}</dd>
 						</div>
 					{/if}
 					{#if movie.imdbId}
 						<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-							<dt class="text-base-content/60">IMDb</dt>
+							<dt class="text-base-content/60">{m.library_movieDetail_imdb()}</dt>
 							<dd>
 								<a
 									href="https://www.imdb.com/title/{movie.imdbId}"
@@ -797,7 +819,7 @@
 						</div>
 					{/if}
 					<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-						<dt class="text-base-content/60">TMDB ID</dt>
+						<dt class="text-base-content/60">{m.library_movieDetail_tmdbId()}</dt>
 						<dd>
 							<a
 								href="https://www.themoviedb.org/movie/{movie.tmdbId}"
@@ -814,10 +836,10 @@
 
 			<!-- Path Info -->
 			<div class="rounded-xl bg-base-200 p-4 md:p-6">
-				<h3 class="mb-3 font-semibold">Storage</h3>
+				<h3 class="mb-3 font-semibold">{m.library_movieDetail_storageHeading()}</h3>
 				<dl class="space-y-2 text-sm">
 					<div>
-						<dt class="text-base-content/60">Path</dt>
+						<dt class="text-base-content/60">{m.library_movieDetail_path()}</dt>
 						<dd class="mt-1 font-mono text-xs break-all">
 							{movieStoragePath}
 						</dd>
@@ -889,7 +911,7 @@
 <!-- Delete Confirmation Modal -->
 <DeleteConfirmationModal
 	open={isDeleteModalOpen}
-	title="Delete Movie"
+	title={m.library_movieDetail_deleteMovieTitle()}
 	itemName={movie.title}
 	hasFiles={movie.hasFile === true}
 	hasActiveDownload={queueItem !== null && queueItem !== undefined}
@@ -901,9 +923,11 @@
 <!-- File Delete Confirmation Modal -->
 <ConfirmationModal
 	open={isDeleteFileModalOpen}
-	title="Delete File"
-	message={`Are you sure you want to delete "${deletingFileName ?? 'this file'}"? This cannot be undone.`}
-	confirmLabel="Delete"
+	title={m.library_movieDetail_deleteFileTitle()}
+	message={m.library_movieDetail_deleteFileMessage({
+		fileName: deletingFileName ?? m.library_movieDetail_thisFile()
+	})}
+	confirmLabel={m.common_delete()}
 	confirmVariant="error"
 	loading={isDeletingFile}
 	onConfirm={confirmDeleteFile}

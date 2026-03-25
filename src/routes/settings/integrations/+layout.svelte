@@ -12,49 +12,50 @@
 		ChevronLeft,
 		ChevronRight
 	} from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let { children } = $props();
 
 	const navItems = [
 		{
 			href: '/settings/integrations',
-			label: 'Overview',
+			label: m.common_overview(),
 			icon: Database,
 			exact: true
 		},
 		{
 			href: '/settings/integrations/indexers',
-			label: 'Indexers',
+			label: m.nav_indexers(),
 			icon: Database
 		},
 		{
 			href: '/settings/integrations/download-clients',
-			label: 'Download Clients',
+			label: m.nav_downloadClients(),
 			icon: Download
 		},
 		{
 			href: '/settings/integrations/nntp-servers',
-			label: 'NNTP Servers',
+			label: m.nav_nntpServers(),
 			icon: Server
 		},
 		{
 			href: '/settings/integrations/subtitle-providers',
-			label: 'Subtitle Providers',
+			label: m.nav_subtitleProviders(),
 			icon: Subtitles
 		},
 		{
 			href: '/settings/integrations/language-profiles',
-			label: 'Language Profiles',
+			label: m.nav_languageProfiles(),
 			icon: Languages
 		},
 		{
 			href: '/settings/integrations/media-browsers',
-			label: 'Media Servers',
+			label: m.nav_mediaServers(),
 			icon: Monitor
 		},
 		{
 			href: '/settings/integrations/captcha',
-			label: 'Captcha Solver',
+			label: m.nav_captchaSolver(),
 			icon: Shield
 		}
 	];
@@ -122,7 +123,7 @@
 			>
 				<nav
 					class="-mb-px flex min-w-max items-stretch gap-1 sm:gap-4"
-					aria-label="Integration tabs"
+					aria-label={m.settings_integrations_tabsAriaLabel()}
 				>
 					{#each navItems as item (item.href)}
 						{@const Icon = item.icon}

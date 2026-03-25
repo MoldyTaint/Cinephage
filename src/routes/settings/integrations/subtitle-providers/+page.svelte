@@ -14,6 +14,7 @@
 	} from '$lib/components/subtitleProviders';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface SubtitleProviderFormData {
 		name: string;
@@ -208,9 +209,16 @@
 		try {
 			const result = await testProviderConnection(provider);
 			if (!result.success) {
-				toasts.error(`Test failed: ${result.message || result.error || 'Connection test failed'}`);
+				toasts.error(
+					`Test failed: ${result.message || result.error || m.settings_integrations_subtitleProviders_connectionTestFailed()}`
+				);
 			} else {
-				toasts.success(`Connection successful! (${result.responseTime}ms)`);
+				toasts.success(
+					m.settings_integrations_subtitleProviders_connectionSuccessful({
+						name: provider.name,
+						responseTime: String(result.responseTime)
+					})
+				);
 			}
 		} catch (e) {
 			toasts.error(`Test failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
@@ -350,7 +358,12 @@
 				}
 			}
 
-			toasts.info(`Bulk test complete: ${successCount} passed, ${failCount} failed`);
+			toasts.info(
+				m.settings_integrations_bulkTestComplete({
+					successCount: String(successCount),
+					failCount: String(failCount)
+				})
+			);
 		} catch (e) {
 			toasts.error(e instanceof Error ? e.message : 'Failed to test selected providers');
 		} finally {
@@ -480,16 +493,16 @@
 
 <div class="w-full p-3 sm:p-4">
 	<div class="mb-5 sm:mb-6">
-		<h1 class="text-xl font-bold sm:text-2xl">Subtitle Providers</h1>
+		<h1 class="text-xl font-bold sm:text-2xl">{m.nav_subtitleProviders()}</h1>
 		<p class="text-base-content/70">
-			Configure subtitle providers for automatic subtitle search and download.
+			{m.settings_integrations_subtitleProviders_subtitle()}
 		</p>
 	</div>
 
 	<div class="mb-4 flex items-center justify-end">
 		<button class="btn w-full gap-2 btn-sm btn-primary sm:w-auto" onclick={openAddModal}>
 			<Plus class="h-4 w-4" />
-			Add Provider
+			{m.settings_integrations_subtitleProviders_addProvider()}
 		</button>
 	</div>
 
@@ -500,7 +513,7 @@
 			/>
 			<input
 				type="text"
-				placeholder="Search providers..."
+				placeholder={m.settings_integrations_subtitleProviders_searchPlaceholder()}
 				class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				value={filters.search}
 				oninput={(e) => updateFilter('search', e.currentTarget.value)}
@@ -513,21 +526,21 @@
 				class:btn-active={filters.status === 'all'}
 				onclick={() => updateFilter('status', 'all')}
 			>
-				All
+				{m.common_all()}
 			</button>
 			<button
 				class="btn join-item flex-1 btn-sm sm:flex-none"
 				class:btn-active={filters.status === 'enabled'}
 				onclick={() => updateFilter('status', 'enabled')}
 			>
-				Enabled
+				{m.common_enabled()}
 			</button>
 			<button
 				class="btn join-item flex-1 btn-sm sm:flex-none"
 				class:btn-active={filters.status === 'disabled'}
 				onclick={() => updateFilter('status', 'disabled')}
 			>
-				Disabled
+				{m.common_disabled()}
 			</button>
 		</div>
 	</div>
@@ -580,32 +593,36 @@
 {#if confirmDeleteOpen}
 	<div class="modal-open modal">
 		<div class="modal-box w-full max-w-[min(28rem,calc(100vw-2rem))] wrap-break-word">
-			<h3 class="text-lg font-bold">Confirm Delete</h3>
+			<h3 class="text-lg font-bold">{m.ui_modal_confirmTitle()}</h3>
 			<p class="py-4">
-				Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? This action cannot be
-				undone.
+				{m.settings_integrations_deleteConfirmPrefix()}
+				<strong>{deleteTarget?.name}</strong>{m.settings_integrations_deleteConfirmSuffix()}
 			</p>
 			<div class="modal-action">
-				<button class="btn btn-ghost" onclick={() => (confirmDeleteOpen = false)}>Cancel</button>
-				<button class="btn btn-error" onclick={handleConfirmDelete}>Delete</button>
+				<button class="btn btn-ghost" onclick={() => (confirmDeleteOpen = false)}
+					>{m.action_cancel()}</button
+				>
+				<button class="btn btn-error" onclick={handleConfirmDelete}>{m.action_delete()}</button>
 			</div>
 		</div>
 		<button
 			type="button"
 			class="modal-backdrop cursor-default border-none bg-black/50"
 			onclick={() => (confirmDeleteOpen = false)}
-			aria-label="Close modal"
+			aria-label={m.action_close()}
 		></button>
 	</div>
 {/if}
 
 <ConfirmationModal
 	open={confirmBulkDeleteOpen}
-	title="Confirm Delete"
-	messagePrefix="Are you sure you want to delete "
-	messageEmphasis={`${selectedIds.size} subtitle provider(s)`}
-	messageSuffix="? This action cannot be undone."
-	confirmLabel="Delete"
+	title={m.ui_modal_confirmTitle()}
+	messagePrefix={m.settings_integrations_deleteConfirmPrefix()}
+	messageEmphasis={m.settings_integrations_subtitleProviders_bulkDeleteCount({
+		count: selectedIds.size
+	})}
+	messageSuffix={m.settings_integrations_deleteConfirmSuffix()}
+	confirmLabel={m.action_delete()}
 	confirmVariant="error"
 	loading={bulkLoading}
 	onConfirm={handleConfirmBulkDelete}

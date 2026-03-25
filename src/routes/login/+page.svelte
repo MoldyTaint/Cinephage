@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { User, Lock, AlertCircle } from 'lucide-svelte';
 	import { authClient } from '$lib/auth/client.js';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let username = $state('');
 	let password = $state('');
@@ -21,14 +22,14 @@
 			});
 
 			if (result.error) {
-				error = result.error.message || 'Invalid username or password';
+				error = result.error.message || m.login_invalidCredentials();
 				return;
 			}
 
 			// Redirect to dashboard on success
 			goto('/');
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'An unexpected error occurred';
+			error = e instanceof Error ? e.message : m.login_unexpectedError();
 		} finally {
 			isLoading = false;
 		}
@@ -36,15 +37,15 @@
 </script>
 
 <svelte:head>
-	<title>Login - Cinephage</title>
+	<title>{m.login_pageTitle()}</title>
 </svelte:head>
 
 <div class="flex min-h-screen items-center justify-center bg-base-200 p-4">
 	<div class="card w-full max-w-md bg-base-100 shadow-xl">
 		<div class="card-body">
 			<div class="mb-6 space-y-2 text-center">
-				<h1 class="text-3xl font-bold">Welcome Back</h1>
-				<p class="text-base-content/70">Sign in to access Cinephage</p>
+				<h1 class="text-3xl font-bold">{m.login_welcomeBack()}</h1>
+				<p class="text-base-content/70">{m.login_subtitle()}</p>
 			</div>
 
 			{#if error}
@@ -66,13 +67,13 @@
 					<label class="label">
 						<span class="label-text flex items-center gap-2">
 							<User class="h-4 w-4" />
-							Username
+							{m.login_usernameLabel()}
 						</span>
 					</label>
 					<input
 						type="text"
 						class="input-bordered input w-full"
-						placeholder="Enter your username"
+						placeholder={m.login_usernamePlaceholder()}
 						bind:value={username}
 						required
 						autocomplete="username"
@@ -84,7 +85,7 @@
 					<label class="label">
 						<span class="label-text flex items-center gap-2">
 							<Lock class="h-4 w-4" />
-							Password
+							{m.login_passwordLabel()}
 						</span>
 					</label>
 					<input
@@ -101,7 +102,7 @@
 				<div class="form-control">
 					<label class="label cursor-pointer justify-start gap-2">
 						<input type="checkbox" class="checkbox" bind:checked={rememberMe} />
-						<span class="label-text">Remember me</span>
+						<span class="label-text">{m.login_rememberMe()}</span>
 					</label>
 				</div>
 
@@ -112,9 +113,9 @@
 				>
 					{#if isLoading}
 						<span class="loading loading-spinner">&#8203;</span>
-						Signing in...
+						{m.action_signingIn()}
 					{:else}
-						Sign In
+						{m.action_signIn()}
 					{/if}
 				</button>
 			</form>

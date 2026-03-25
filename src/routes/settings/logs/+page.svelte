@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { SvelteMap, SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
 	import {
 		ChevronDown,
@@ -273,7 +274,7 @@
 			link.remove();
 			URL.revokeObjectURL(href);
 		} catch (error) {
-			toasts.error(error instanceof Error ? error.message : 'Failed to download logs');
+			toasts.error(error instanceof Error ? error.message : m.settings_logs_failedToDownload());
 		}
 	}
 
@@ -380,28 +381,28 @@
 </script>
 
 <svelte:head>
-	<title>Logs - Settings - Cinephage</title>
+	<title>{m.settings_logs_pageTitle()}</title>
 </svelte:head>
 
 <div class="w-full space-y-4 p-3 sm:p-4">
 	<!-- Header -->
 	<div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
 		<div>
-			<h1 class="text-2xl font-bold">Logs</h1>
+			<h1 class="text-2xl font-bold">{m.settings_logs_heading()}</h1>
 			<p class="mt-1 text-sm text-base-content/60">
-				Live application log stream. Click any entry to inspect its details.
+				{m.settings_logs_subtitle()}
 			</p>
 		</div>
 		<div class="flex flex-wrap items-center gap-2">
 			{#if sse.isConnected}
 				<span class="badge gap-1.5 text-xs badge-success">
 					<Wifi class="h-3 w-3" />
-					Live
+					{m.common_live()}
 				</span>
 			{:else}
 				<span class="badge gap-1.5 text-xs badge-warning">
 					<WifiOff class="h-3 w-3" />
-					Connecting
+					{m.common_connecting()}
 				</span>
 			{/if}
 			<span class="badge badge-ghost text-xs">{entryCountLabel}</span>
@@ -425,7 +426,7 @@
 								activeLevels.has(level)
 							)}"
 							onclick={() => toggleLevel(level)}
-							title="Toggle {level} logs"
+							title={m.settings_logs_toggleLevel({ level })}
 						>
 							{level}
 						</button>
@@ -439,7 +440,7 @@
 					class="select-bordered select bg-base-100 select-sm text-xs"
 					bind:value={selectedDomain}
 				>
-					<option value="all">All domains</option>
+					<option value="all">{m.settings_logs_allDomains()}</option>
 					{#each data.availableDomains as domain (domain)}
 						<option value={domain}>{domain}</option>
 					{/each}
@@ -454,7 +455,7 @@
 						type="text"
 						class="w-40 grow sm:w-52"
 						bind:value={searchDraft}
-						placeholder="Filter logs..."
+						placeholder={m.settings_logs_filterPlaceholder()}
 					/>
 				</label>
 			</div>
@@ -464,27 +465,31 @@
 				<button
 					class="btn text-xs btn-ghost btn-sm"
 					onclick={togglePause}
-					title={paused ? 'Resume stream' : 'Pause stream'}
+					title={paused ? m.settings_logs_resumeStream() : m.settings_logs_pauseStream()}
 				>
 					{#if paused}
 						<Play class="h-3.5 w-3.5" />
-						Resume
+						{m.action_resume()}
 					{:else}
 						<Pause class="h-3.5 w-3.5" />
-						Pause
+						{m.action_pause()}
 					{/if}
 				</button>
-				<button class="btn text-xs btn-ghost btn-sm" onclick={clearView} title="Clear view">
+				<button
+					class="btn text-xs btn-ghost btn-sm"
+					onclick={clearView}
+					title={m.settings_logs_clearView()}
+				>
 					<RotateCcw class="h-3.5 w-3.5" />
-					Clear
+					{m.action_clear()}
 				</button>
 				<button
 					class="btn text-xs btn-ghost btn-sm"
 					onclick={downloadLogs}
-					title="Download logs as JSONL"
+					title={m.settings_logs_downloadJsonl()}
 				>
 					<Download class="h-3.5 w-3.5" />
-					Export
+					{m.action_export()}
 				</button>
 			</div>
 		</div>
@@ -495,11 +500,11 @@
 				class="mt-3 flex items-center justify-between rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm"
 			>
 				<span class="text-warning">
-					{pendingEntries.length} new {pendingEntries.length === 1 ? 'entry' : 'entries'} buffered
+					{m.settings_logs_bufferedEntries({ count: pendingEntries.length })}
 				</span>
 				<button class="btn btn-xs btn-warning" onclick={togglePause}>
 					<Play class="h-3 w-3" />
-					Resume
+					{m.action_resume()}
 				</button>
 			</div>
 		{/if}
@@ -516,7 +521,7 @@
 				<!-- Loading state: SSE still connecting/reconnecting -->
 				<div class="flex items-center gap-3 p-6 font-mono text-sm text-neutral-content/50">
 					<span class="loading loading-sm loading-dots"></span>
-					<span>Connecting to log stream...</span>
+					<span>{m.settings_logs_connectingToStream()}</span>
 				</div>
 			{:else if entries.length === 0}
 				<!-- Empty state: connected but no matching entries -->
@@ -525,9 +530,11 @@
 						<Terminal class="h-5 w-5 text-neutral-content/40" />
 					</div>
 					<div>
-						<p class="font-mono text-sm text-neutral-content/60">No matching log entries</p>
+						<p class="font-mono text-sm text-neutral-content/60">
+							{m.settings_logs_noMatchingEntries()}
+						</p>
 						<p class="mt-1 font-mono text-xs text-neutral-content/40">
-							Adjust filters or wait for new events
+							{m.settings_logs_adjustFilters()}
 						</p>
 					</div>
 				</div>
@@ -632,7 +639,7 @@
 			<button
 				class="btn absolute right-4 bottom-4 btn-circle shadow-lg btn-sm btn-neutral"
 				onclick={scrollToBottom}
-				title="Scroll to bottom"
+				title={m.settings_logs_scrollToBottom()}
 			>
 				<ArrowDown class="h-4 w-4" />
 			</button>

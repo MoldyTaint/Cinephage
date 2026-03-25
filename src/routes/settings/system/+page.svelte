@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import {
 		Key,
 		Copy,
@@ -40,7 +41,7 @@
 	async function copyToClipboard(text: string, type: 'main' | 'streaming') {
 		const copied = await copyTextToClipboard(text);
 		if (!copied) {
-			toasts.error('Failed to copy API key');
+			toasts.error(m.settings_system_failedToCopyApiKey());
 			return;
 		}
 
@@ -80,18 +81,22 @@
 			});
 
 			if (!response.ok) {
-				const errorData = await response.json().catch(() => ({ error: 'Failed to generate' }));
-				throw new Error(errorData.error || 'Failed to generate API keys');
+				const errorData = await response
+					.json()
+					.catch(() => ({ error: m.settings_system_failedToGenerate() }));
+				throw new Error(errorData.error || m.settings_system_failedToGenerateApiKeys());
 			}
 
 			const result = await response.json();
 
 			if (result.success) {
 				await invalidateAll();
-				toasts.success('API keys generated successfully');
+				toasts.success(m.settings_system_apiKeysGenerated());
 			}
 		} catch (err) {
-			toasts.error(err instanceof Error ? err.message : 'Failed to generate API keys');
+			toasts.error(
+				err instanceof Error ? err.message : m.settings_system_failedToGenerateApiKeys()
+			);
 		} finally {
 			generatingKeys = false;
 		}
@@ -105,10 +110,11 @@
 	async function regenerateKey(type: 'main' | 'streaming') {
 		confirmRegenerateOpen = false;
 		const keyId = type === 'main' ? data.mainApiKey?.id : data.streamingApiKey?.id;
-		const label = type === 'main' ? 'Main' : 'Media Streaming';
+		const label =
+			type === 'main' ? m.settings_system_mainLabel() : m.settings_system_mediaStreamingLabel();
 
 		if (!keyId) {
-			toasts.error(`No ${label} API key found to regenerate`);
+			toasts.error(m.settings_system_noKeyToRegenerate({ label }));
 			return;
 		}
 
@@ -122,8 +128,10 @@
 			});
 
 			if (!response.ok) {
-				const errorData = await response.json().catch(() => ({ error: 'Failed to regenerate' }));
-				throw new Error(errorData.error || `Failed to regenerate ${label} API key`);
+				const errorData = await response
+					.json()
+					.catch(() => ({ error: m.settings_system_failedToRegenerate() }));
+				throw new Error(errorData.error || m.settings_system_failedToRegenerateKey({ label }));
 			}
 
 			const result = await response.json();
@@ -132,10 +140,12 @@
 				await invalidateAll();
 				if (type === 'main') showMainKey = true;
 				else showStreamingKey = true;
-				toasts.success(`${label} API key regenerated successfully`);
+				toasts.success(m.settings_system_keyRegenerated({ label }));
 			}
 		} catch (err) {
-			toasts.error(err instanceof Error ? err.message : `Failed to regenerate ${label} API key`);
+			toasts.error(
+				err instanceof Error ? err.message : m.settings_system_failedToRegenerateKey({ label })
+			);
 		} finally {
 			if (type === 'main') regeneratingMain = false;
 			else regeneratingStreaming = false;
@@ -150,7 +160,7 @@
 		try {
 			// Validate URL format if not empty
 			if (externalUrl && !isValidUrl(externalUrl)) {
-				saveUrlError = 'Please enter a valid URL (e.g., https://cinephage.example.com)';
+				saveUrlError = m.settings_system_invalidUrlFormat();
 				return;
 			}
 
@@ -161,14 +171,17 @@
 			});
 
 			if (!response.ok) {
-				const errorData = await response.json().catch(() => ({ error: 'Failed to save' }));
-				throw new Error(errorData.error || 'Failed to save external URL');
+				const errorData = await response
+					.json()
+					.catch(() => ({ error: m.settings_system_failedToSave() }));
+				throw new Error(errorData.error || m.settings_system_failedToSaveExternalUrl());
 			}
 
 			saveUrlSuccess = true;
 			setTimeout(() => (saveUrlSuccess = false), 3000);
 		} catch (err) {
-			saveUrlError = err instanceof Error ? err.message : 'Failed to save external URL';
+			saveUrlError =
+				err instanceof Error ? err.message : m.settings_system_failedToSaveExternalUrl();
 		} finally {
 			isSavingUrl = false;
 		}
@@ -185,14 +198,14 @@
 </script>
 
 <svelte:head>
-	<title>System Settings - Cinephage</title>
+	<title>{m.settings_system_pageTitle()}</title>
 </svelte:head>
 
 <div class="w-full p-3 sm:p-4">
 	<div class="mb-5 sm:mb-6">
-		<h1 class="text-2xl font-bold">System Settings</h1>
+		<h1 class="text-2xl font-bold">{m.settings_system_heading()}</h1>
 		<p class="text-base-content/70">
-			Configure system-level settings including API authentication.
+			{m.settings_system_subtitle()}
 		</p>
 	</div>
 
@@ -200,19 +213,17 @@
 	<div class="mb-8">
 		<div class="mb-4 flex items-center gap-2">
 			<Shield class="h-6 w-6" />
-			<h2 class="text-xl font-bold">API Authentication</h2>
+			<h2 class="text-xl font-bold">{m.settings_system_apiAuth()}</h2>
 		</div>
 		<p class="mb-4 text-base-content/70">
-			API keys allow external applications to access Cinephage programmatically. Use the Main key
-			for full access, or the Media Streaming key for media server integration with Live TV and
-			streaming content.
+			{m.settings_system_apiAuthDescription()}
 		</p>
 
 		{#if !data.mainApiKey && !data.streamingApiKey}
 			<div class="mb-4 alert alert-info">
 				<AlertCircle class="h-5 w-5" />
 				<div class="flex flex-col gap-2">
-					<span>No API keys found. Generate keys to enable external access.</span>
+					<span>{m.settings_system_noApiKeys()}</span>
 					<button
 						class="btn w-fit btn-sm btn-primary"
 						onclick={generateApiKeys}
@@ -220,10 +231,10 @@
 					>
 						{#if generatingKeys}
 							<span class="loading loading-sm loading-spinner"></span>
-							Generating...
+							{m.settings_system_generating()}
 						{:else}
 							<Key class="h-4 w-4" />
-							Generate API Keys
+							{m.settings_system_generateApiKeys()}
 						{/if}
 					</button>
 				</div>
@@ -236,14 +247,14 @@
 				<div class="flex items-center justify-between">
 					<div class="flex items-center gap-2">
 						<Key class="h-5 w-5" />
-						<h3 class="card-title text-lg">Main API Key</h3>
+						<h3 class="card-title text-lg">{m.settings_system_mainApiKey()}</h3>
 					</div>
-					<span class="badge badge-primary">Full Access</span>
+					<span class="badge badge-primary">{m.settings_system_fullAccess()}</span>
 				</div>
 
 				<div class="mt-4">
 					<label class="label" for="system-main-api-key">
-						<span class="label-text">API Key</span>
+						<span class="label-text">{m.settings_system_apiKeyLabel()}</span>
 					</label>
 					<div class="join w-full">
 						<input
@@ -256,7 +267,7 @@
 						<button
 							class="btn join-item btn-ghost"
 							onclick={() => (showMainKey = !showMainKey)}
-							title={showMainKey ? 'Hide key' : 'Show key'}
+							title={showMainKey ? m.settings_system_hideKey() : m.settings_system_showKey()}
 						>
 							{#if showMainKey}
 								<EyeOff class="h-4 w-4" />
@@ -267,7 +278,7 @@
 						<button
 							class="btn join-item btn-ghost"
 							onclick={() => data.mainApiKey?.key && copyToClipboard(data.mainApiKey.key, 'main')}
-							title="Copy to clipboard"
+							title={m.settings_system_copyToClipboard()}
 							disabled={!data.mainApiKey?.key}
 						>
 							{#if copiedMain}
@@ -281,9 +292,9 @@
 
 				<div class="mt-4 flex items-center gap-4 text-sm text-base-content/70">
 					<span
-						>Created: {data.mainApiKey?.createdAt
+						>{m.settings_system_created()}: {data.mainApiKey?.createdAt
 							? new Date(data.mainApiKey.createdAt).toLocaleDateString()
-							: 'N/A'}</span
+							: m.common_na()}</span
 					>
 				</div>
 
@@ -295,10 +306,10 @@
 					>
 						{#if regeneratingMain}
 							<span class="loading loading-sm loading-spinner"></span>
-							Regenerating...
+							{m.settings_system_regenerating()}
 						{:else}
 							<RefreshCw class="h-4 w-4" />
-							Regenerate
+							{m.settings_system_regenerate()}
 						{/if}
 					</button>
 				</div>
@@ -311,19 +322,18 @@
 				<div class="flex items-center justify-between">
 					<div class="flex items-center gap-2">
 						<Server class="h-5 w-5" />
-						<h3 class="card-title text-lg">Media Streaming API Key</h3>
+						<h3 class="card-title text-lg">{m.settings_system_mediaStreamingApiKey()}</h3>
 					</div>
-					<span class="badge badge-secondary">Live TV + Streaming</span>
+					<span class="badge badge-secondary">{m.settings_system_liveTvStreaming()}</span>
 				</div>
 
 				<p class="mt-2 text-sm text-base-content/70">
-					Use this key with media servers like Jellyfin, Plex, or Emby for M3U playlist, EPG access,
-					and streaming content (.strm files).
+					{m.settings_system_mediaStreamingDescription()}
 				</p>
 
 				<div class="mt-4">
 					<label class="label" for="system-streaming-api-key">
-						<span class="label-text">API Key</span>
+						<span class="label-text">{m.settings_system_apiKeyLabel()}</span>
 					</label>
 					<div class="join w-full">
 						<input
@@ -338,7 +348,7 @@
 						<button
 							class="btn join-item btn-ghost"
 							onclick={() => (showStreamingKey = !showStreamingKey)}
-							title={showStreamingKey ? 'Hide key' : 'Show key'}
+							title={showStreamingKey ? m.settings_system_hideKey() : m.settings_system_showKey()}
 						>
 							{#if showStreamingKey}
 								<EyeOff class="h-4 w-4" />
@@ -350,7 +360,7 @@
 							class="btn join-item btn-ghost"
 							onclick={() =>
 								data.streamingApiKey?.key && copyToClipboard(data.streamingApiKey.key, 'streaming')}
-							title="Copy to clipboard"
+							title={m.settings_system_copyToClipboard()}
 							disabled={!data.streamingApiKey?.key}
 						>
 							{#if copiedStreaming}
@@ -363,22 +373,22 @@
 				</div>
 
 				<div class="mt-4 text-sm text-base-content/70">
-					<div class="mb-2 font-semibold">Permissions:</div>
+					<div class="mb-2 font-semibold">{m.settings_system_permissions()}:</div>
 					<ul class="list-inside list-disc space-y-1">
-						<li class="text-success">✓ M3U Playlist (/api/livetv/playlist.m3u)</li>
-						<li class="text-success">✓ EPG Data (/api/livetv/epg.xml)</li>
-						<li class="text-success">✓ Live TV Streams (/api/livetv/stream/*)</li>
-						<li class="text-success">✓ Streaming Content (/api/streaming/*)</li>
-						<li class="text-error">✗ Library Access</li>
-						<li class="text-error">✗ Settings Access</li>
+						<li class="text-success">{m.settings_system_permM3u()}</li>
+						<li class="text-success">{m.settings_system_permEpg()}</li>
+						<li class="text-success">{m.settings_system_permLiveTvStreams()}</li>
+						<li class="text-success">{m.settings_system_permStreamingContent()}</li>
+						<li class="text-error">{m.settings_system_permNoLibrary()}</li>
+						<li class="text-error">{m.settings_system_permNoSettings()}</li>
 					</ul>
 				</div>
 
 				<div class="mt-4 flex items-center gap-4 text-sm text-base-content/70">
 					<span
-						>Created: {data.streamingApiKey?.createdAt
+						>{m.settings_system_created()}: {data.streamingApiKey?.createdAt
 							? new Date(data.streamingApiKey.createdAt).toLocaleDateString()
-							: 'N/A'}</span
+							: m.common_na()}</span
 					>
 				</div>
 
@@ -390,10 +400,10 @@
 					>
 						{#if regeneratingStreaming}
 							<span class="loading loading-sm loading-spinner"></span>
-							Regenerating...
+							{m.settings_system_regenerating()}
 						{:else}
 							<RefreshCw class="h-4 w-4" />
-							Regenerate
+							{m.settings_system_regenerate()}
 						{/if}
 					</button>
 				</div>
@@ -405,28 +415,26 @@
 	<div class="mb-8">
 		<div class="mb-4 flex items-center gap-2">
 			<Globe class="h-6 w-6" />
-			<h2 class="text-xl font-bold">External URL</h2>
+			<h2 class="text-xl font-bold">{m.settings_system_externalUrl()}</h2>
 		</div>
 		<p class="mb-4 text-base-content/70">
-			Set the public-facing URL for your Cinephage instance. This is used for authentication
-			callbacks and generating correct links when behind a reverse proxy.
+			{m.settings_system_externalUrlDescription()}
 		</p>
 
 		<div class="card bg-base-200">
 			<div class="card-body">
 				<div class="flex items-center gap-2">
 					<Globe class="h-5 w-5" />
-					<h3 class="card-title text-lg">Public URL Configuration</h3>
+					<h3 class="card-title text-lg">{m.settings_system_publicUrlConfig()}</h3>
 				</div>
 
 				<p class="mt-2 text-sm text-base-content/70">
-					If you access Cinephage through a reverse proxy with HTTPS, enter your public URL here
-					(e.g., https://cinephage.yourdomain.com). Leave empty for local HTTP access.
+					{m.settings_system_publicUrlHint()}
 				</p>
 
 				<div class="mt-4">
 					<label class="label" for="externalUrl">
-						<span class="label-text">External URL</span>
+						<span class="label-text">{m.settings_system_externalUrl()}</span>
 					</label>
 					<input
 						id="externalUrl"
@@ -444,17 +452,17 @@
 					{#if saveUrlSuccess}
 						<div class="mt-2 flex items-center gap-2 text-sm text-success">
 							<Check class="h-4 w-4" />
-							<span>External URL saved successfully</span>
+							<span>{m.settings_system_externalUrlSaved()}</span>
 						</div>
 					{/if}
 				</div>
 
 				<div class="mt-4 text-sm text-base-content/70">
-					<div class="mb-2 font-semibold">Examples:</div>
+					<div class="mb-2 font-semibold">{m.settings_system_examples()}:</div>
 					<ul class="list-inside list-disc space-y-1">
-						<li>https://cinephage.example.com (behind reverse proxy)</li>
-						<li>https://media.yourdomain.com/cinephage (subpath)</li>
-						<li>Leave empty for direct HTTP access</li>
+						<li>{m.settings_system_exampleReverseProxy()}</li>
+						<li>{m.settings_system_exampleSubpath()}</li>
+						<li>{m.settings_system_exampleEmpty()}</li>
 					</ul>
 				</div>
 
@@ -462,10 +470,10 @@
 					<button class="btn gap-2 btn-primary" onclick={saveExternalUrl} disabled={isSavingUrl}>
 						{#if isSavingUrl}
 							<span class="loading loading-sm loading-spinner"></span>
-							Saving...
+							{m.common_saving()}
 						{:else}
 							<Check class="h-4 w-4" />
-							Save External URL
+							{m.settings_system_saveExternalUrl()}
 						{/if}
 					</button>
 				</div>
@@ -476,9 +484,9 @@
 
 <ConfirmationModal
 	open={confirmRegenerateOpen}
-	title="Regenerate API Key"
-	message="Are you sure you want to regenerate this API key? The current key will be permanently destroyed and any applications using it will stop working immediately."
-	confirmLabel="Regenerate"
+	title={m.settings_system_regenerateApiKeyTitle()}
+	message={m.settings_system_regenerateApiKeyMessage()}
+	confirmLabel={m.settings_system_regenerate()}
 	confirmVariant="warning"
 	loading={regeneratingMain || regeneratingStreaming}
 	onConfirm={() => regenerateKey(regenerateTarget)}

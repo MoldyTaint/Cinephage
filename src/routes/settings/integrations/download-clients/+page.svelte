@@ -17,6 +17,7 @@
 		DownloadClientTable
 	} from '$lib/components/downloadClients';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -407,7 +408,7 @@
 				return;
 			}
 
-			toasts.success('Connection successful!');
+			toasts.success(m.settings_integrations_connectionSuccessful());
 		} catch (error) {
 			toasts.error(
 				toFriendlyDownloadClientError(
@@ -537,7 +538,12 @@
 			}
 
 			await invalidateAll();
-			toasts.info(`Bulk test complete: ${successCount} passed, ${failCount} failed`);
+			toasts.info(
+				m.settings_integrations_bulkTestComplete({
+					successCount: String(successCount),
+					failCount: String(failCount)
+				})
+			);
 		} catch (error) {
 			toasts.error(error instanceof Error ? error.message : 'Failed to test selected clients');
 		} finally {
@@ -548,9 +554,9 @@
 
 <div class="w-full p-3 sm:p-4">
 	<div class="mb-5 sm:mb-6">
-		<h1 class="text-xl font-bold sm:text-2xl">Download Clients</h1>
+		<h1 class="text-xl font-bold sm:text-2xl">{m.nav_downloadClients()}</h1>
 		<p class="text-base-content/70">
-			Configure download clients used for downloading and post-processing.
+			{m.settings_integrations_downloadClients_subtitle()}
 		</p>
 	</div>
 
@@ -560,7 +566,7 @@
 			onclick={openAddDownloadClientModal}
 		>
 			<Plus class="h-4 w-4" />
-			Add Download Client
+			{m.settings_integrations_downloadClients_addButton()}
 		</button>
 	</div>
 
@@ -571,7 +577,7 @@
 			/>
 			<input
 				type="text"
-				placeholder="Search clients..."
+				placeholder={m.settings_integrations_downloadClients_searchPlaceholder()}
 				class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				value={filters.search}
 				oninput={(e) => updateFilter('search', e.currentTarget.value)}
@@ -584,21 +590,21 @@
 				class:btn-active={filters.protocol === 'all'}
 				onclick={() => updateFilter('protocol', 'all')}
 			>
-				All
+				{m.common_all()}
 			</button>
 			<button
 				class="btn join-item flex-1 btn-sm sm:flex-none"
 				class:btn-active={filters.protocol === 'torrent'}
 				onclick={() => updateFilter('protocol', 'torrent')}
 			>
-				Torrent
+				{m.settings_integrations_downloadClients_torrent()}
 			</button>
 			<button
 				class="btn join-item flex-1 btn-sm sm:flex-none"
 				class:btn-active={filters.protocol === 'usenet'}
 				onclick={() => updateFilter('protocol', 'usenet')}
 			>
-				Usenet
+				{m.settings_integrations_downloadClients_usenet()}
 			</button>
 		</div>
 
@@ -608,21 +614,21 @@
 				class:btn-active={filters.status === 'all'}
 				onclick={() => updateFilter('status', 'all')}
 			>
-				All
+				{m.common_all()}
 			</button>
 			<button
 				class="btn join-item flex-1 btn-sm sm:flex-none"
 				class:btn-active={filters.status === 'enabled'}
 				onclick={() => updateFilter('status', 'enabled')}
 			>
-				Enabled
+				{m.common_enabled()}
 			</button>
 			<button
 				class="btn join-item flex-1 btn-sm sm:flex-none"
 				class:btn-active={filters.status === 'disabled'}
 				onclick={() => updateFilter('status', 'disabled')}
 			>
-				Disabled
+				{m.common_disabled()}
 			</button>
 		</div>
 	</div>
@@ -672,11 +678,11 @@
 
 <ConfirmationModal
 	open={confirmDeleteOpen}
-	title="Confirm Delete"
-	messagePrefix="Are you sure you want to delete "
-	messageEmphasis={deleteTarget?.name ?? 'this download client'}
-	messageSuffix="? This action cannot be undone."
-	confirmLabel="Delete"
+	title={m.ui_modal_deleteTitle()}
+	messagePrefix={m.settings_integrations_deleteConfirmPrefix()}
+	messageEmphasis={deleteTarget?.name ?? m.settings_integrations_downloadClients_thisClient()}
+	messageSuffix={m.settings_integrations_deleteConfirmSuffix()}
+	confirmLabel={m.action_delete()}
 	confirmVariant="error"
 	onConfirm={handleConfirmDelete}
 	onCancel={() => (confirmDeleteOpen = false)}
@@ -684,11 +690,13 @@
 
 <ConfirmationModal
 	open={confirmBulkDeleteOpen}
-	title="Confirm Delete"
-	messagePrefix="Are you sure you want to delete "
-	messageEmphasis={`${selectedIds.size} download client(s)`}
-	messageSuffix="? This action cannot be undone."
-	confirmLabel="Delete"
+	title={m.ui_modal_deleteTitle()}
+	messagePrefix={m.settings_integrations_deleteConfirmPrefix()}
+	messageEmphasis={m.settings_integrations_downloadClients_bulkDeleteCount({
+		count: selectedIds.size
+	})}
+	messageSuffix={m.settings_integrations_deleteConfirmSuffix()}
+	confirmLabel={m.action_delete()}
 	confirmVariant="error"
 	onConfirm={handleConfirmBulkDelete}
 	onCancel={() => (confirmBulkDeleteOpen = false)}

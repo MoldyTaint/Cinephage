@@ -25,6 +25,7 @@
 	import TokenPicker from '$lib/components/naming/TokenPicker.svelte';
 	import { FormInput, FormSelect } from '$lib/components/ui/form';
 	import { ModalWrapper } from '$lib/components/ui/modal';
+	import * as m from '$lib/paraglide/messages.js';
 	import {
 		createNormalizedNamingConfig,
 		getPresetLabelById,
@@ -56,13 +57,13 @@
 	] as const;
 
 	const FORMAT_FIELD_LABELS: Record<(typeof FORMAT_FIELDS)[number], string> = {
-		movieFolderFormat: 'Movie folder format',
-		movieFileFormat: 'Movie file format',
-		seriesFolderFormat: 'Series folder format',
-		seasonFolderFormat: 'Season folder format',
-		episodeFileFormat: 'Episode file format',
-		dailyEpisodeFormat: 'Daily episode format',
-		animeEpisodeFormat: 'Anime episode format'
+		movieFolderFormat: m.settings_naming_movieFolderFormat(),
+		movieFileFormat: m.settings_naming_movieFileFormat(),
+		seriesFolderFormat: m.settings_naming_seriesFolderFormat(),
+		seasonFolderFormat: m.settings_naming_seasonFolderFormat(),
+		episodeFileFormat: m.settings_naming_episodeFileFormat(),
+		dailyEpisodeFormat: m.settings_naming_dailyEpisodeFormat(),
+		animeEpisodeFormat: m.settings_naming_animeEpisodeFormat()
 	};
 
 	let { data }: { data: PageData } = $props();
@@ -182,13 +183,7 @@
 	});
 
 	function applySetupPreset(forceConfirm = false) {
-		if (
-			forceConfirm &&
-			setupDirty &&
-			!confirm(
-				'Change the current setup preset? This will replace the generated naming draft in the form, but will not save yet.'
-			)
-		) {
+		if (forceConfirm && setupDirty && !confirm(m.settings_naming_confirmChangePreset())) {
 			skipNextSetupApply = true;
 			return;
 		}
@@ -245,12 +240,7 @@
 	async function applyCustomPreset() {
 		if (!selectedPresetId) return;
 
-		if (
-			hasChanges &&
-			!confirm(
-				'Load this custom preset into your current draft? This will replace the naming fields and options in the form, but will not save yet.'
-			)
-		) {
+		if (hasChanges && !confirm(m.settings_naming_confirmLoadCustomPreset())) {
 			return;
 		}
 
@@ -314,7 +304,7 @@
 	}
 
 	async function deletePreset(presetId: string, presetName: string) {
-		if (!confirm(`Delete preset "${presetName}"?`)) return;
+		if (!confirm(m.settings_naming_confirmDeletePreset({ name: presetName }))) return;
 
 		try {
 			const response = await fetch(`/api/naming/presets/${presetId}`, {
@@ -469,7 +459,7 @@
 	}
 
 	async function resetToDefaults() {
-		if (!confirm('Reset all naming settings to defaults?')) return;
+		if (!confirm(m.settings_naming_confirmResetDefaults())) return;
 
 		saving = true;
 		error = null;
@@ -504,40 +494,39 @@
 </script>
 
 <svelte:head>
-	<title>Media Naming - Settings - Cinephage</title>
+	<title>{m.settings_naming_pageTitle()}</title>
 </svelte:head>
 
 <div class="naming-settings w-full p-3 sm:p-4 lg:p-6">
 	<!-- Header Section -->
 	<div class="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-start sm:justify-between">
 		<div class="min-w-0 flex-1">
-			<h1 class="text-2xl font-bold sm:text-3xl">Media Naming</h1>
+			<h1 class="text-2xl font-bold sm:text-3xl">{m.settings_naming_heading()}</h1>
 			<p class="mt-1 text-base text-base-content/70">
-				Configure how media files and folders are named using TRaSH Guides conventions for Plex and
-				Jellyfin compatibility.
+				{m.settings_naming_subtitle()}
 			</p>
 		</div>
 		<div class="flex flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
 			<a href={renameHref} class="btn gap-2 btn-ghost btn-sm">
 				<FileEdit class="h-4 w-4" />
-				<span class="hidden sm:inline">Review Rename Plan</span>
-				<span class="sm:hidden">Review</span>
+				<span class="hidden sm:inline">{m.settings_naming_reviewRenamePlan()}</span>
+				<span class="sm:hidden">{m.settings_naming_review()}</span>
 			</a>
 			<button class="btn gap-2 btn-ghost btn-sm" onclick={resetToDefaults} disabled={saving}>
 				<RotateCcw class="h-4 w-4" />
-				<span class="hidden sm:inline">Reset</span>
-				<span class="sm:hidden">Reset</span>
+				<span class="hidden sm:inline">{m.action_reset()}</span>
+				<span class="sm:hidden">{m.action_reset()}</span>
 			</button>
 			<button class="btn gap-2 btn-sm btn-primary" onclick={saveConfig} disabled={!canSave}>
 				{#if saving}
 					<RefreshCw class="h-4 w-4 animate-spin" />
-					Saving...
+					{m.common_saving()}
 				{:else if success}
 					<CheckCircle class="h-4 w-4" />
-					Saved
+					{m.settings_naming_saved()}
 				{:else}
 					<Save class="h-4 w-4" />
-					Save Changes
+					{m.settings_naming_saveChanges()}
 				{/if}
 			</button>
 		</div>
@@ -555,10 +544,9 @@
 			<div class="flex items-start gap-3">
 				<Info class="mt-0.5 h-5 w-5 shrink-0" />
 				<div>
-					<p class="font-medium">Unsaved Changes</p>
+					<p class="font-medium">{m.settings_naming_unsavedChanges()}</p>
 					<p class="text-sm opacity-90">
-						The live samples reflect your draft. Save changes before review if you want the rename
-						plan to use this version.
+						{m.settings_naming_unsavedChangesDesc()}
 					</p>
 				</div>
 			</div>
@@ -572,22 +560,21 @@
 				<div>
 					<div class="flex items-center gap-2">
 						<Wand2 class="h-5 w-5 text-primary" />
-						<h2 class="card-title text-base">Setup Presets</h2>
+						<h2 class="card-title text-base">{m.settings_naming_setupPresets()}</h2>
 					</div>
 					<p class="mt-1 text-sm text-base-content/65">
-						Choose a starting point for your server and naming style. Applying a preset updates the
-						editable fields below and does not save automatically.
+						{m.settings_naming_setupPresetsDesc()}
 					</p>
 				</div>
 				<div class="rounded-full bg-base-100 px-3 py-1 text-xs font-medium text-base-content/60">
-					Presets update the draft only
+					{m.settings_naming_presetsUpdateDraftOnly()}
 				</div>
 			</div>
 
 			<div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
 				<FormSelect
 					id="setupServerPreset"
-					label="Server Preset"
+					label={m.settings_naming_serverPreset()}
 					bind:value={selectedServerPresetId}
 					options={data.setupPresets.servers.map((preset) => ({
 						value: preset.id,
@@ -598,7 +585,7 @@
 
 				<FormSelect
 					id="setupStylePreset"
-					label="Naming Style"
+					label={m.settings_naming_namingStyle()}
 					bind:value={selectedStylePresetId}
 					options={data.setupPresets.styles.map((preset) => ({
 						value: preset.id,
@@ -609,7 +596,7 @@
 
 				<FormSelect
 					id="setupDetailPreset"
-					label="Detail Level"
+					label={m.settings_naming_detailLevel()}
 					bind:value={selectedDetailPresetId}
 					options={data.setupPresets.details.map((preset) => ({
 						value: preset.id,
@@ -621,17 +608,23 @@
 
 			<div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
 				<div class="rounded-xl border border-base-300 bg-base-100 p-3">
-					<p class="text-xs font-semibold tracking-wide text-base-content/50 uppercase">Server</p>
+					<p class="text-xs font-semibold tracking-wide text-base-content/50 uppercase">
+						{m.settings_naming_server()}
+					</p>
 					<p class="mt-1 font-medium">{selectedServerPreset?.name}</p>
 					<p class="mt-1 text-sm text-base-content/65">{selectedServerPreset?.description}</p>
 				</div>
 				<div class="rounded-xl border border-base-300 bg-base-100 p-3">
-					<p class="text-xs font-semibold tracking-wide text-base-content/50 uppercase">Style</p>
+					<p class="text-xs font-semibold tracking-wide text-base-content/50 uppercase">
+						{m.settings_naming_style()}
+					</p>
 					<p class="mt-1 font-medium">{selectedStylePreset?.name}</p>
 					<p class="mt-1 text-sm text-base-content/65">{selectedStylePreset?.description}</p>
 				</div>
 				<div class="rounded-xl border border-base-300 bg-base-100 p-3">
-					<p class="text-xs font-semibold tracking-wide text-base-content/50 uppercase">Detail</p>
+					<p class="text-xs font-semibold tracking-wide text-base-content/50 uppercase">
+						{m.settings_naming_detail()}
+					</p>
 					<p class="mt-1 font-medium">{selectedDetailPreset?.name}</p>
 					<p class="mt-1 text-sm text-base-content/65">{selectedDetailPreset?.description}</p>
 				</div>
@@ -641,37 +634,32 @@
 				<div
 					class="rounded-xl border border-base-300 bg-base-100 p-3 text-sm text-base-content/70 xl:col-span-2"
 				>
-					<p class="font-medium">Current saved setup</p>
+					<p class="font-medium">{m.settings_naming_currentSavedSetup()}</p>
 					<p class="mt-1">
-						These preset selectors open on whatever you last saved, so the setup section itself
-						shows your current active baseline.
+						{m.settings_naming_currentSavedSetupDesc()}
 					</p>
 					{#if savedCustomPresetName}
 						<p class="mt-2 text-xs text-base-content/55">
-							Saved custom source: {savedCustomPresetName}
+							{m.settings_naming_savedCustomSource()}: {savedCustomPresetName}
 						</p>
 					{/if}
 					{#if draftCustomPresetName && draftCustomPresetName !== savedCustomPresetName}
 						<p class="mt-1 text-xs text-base-content/55">
-							Draft custom source: {draftCustomPresetName}
+							{m.settings_naming_draftCustomSource()}: {draftCustomPresetName}
 						</p>
 					{/if}
 				</div>
 				<div class="rounded-xl border border-base-300 bg-base-100 p-3 text-sm text-base-content/70">
-					<p class="font-medium">Editor health</p>
+					<p class="font-medium">{m.settings_naming_editorHealth()}</p>
 					<p class="mt-1">
 						{#if validatingFormats}
-							Checking format syntax and token usage.
+							{m.settings_naming_checkingFormats()}
 						{:else if invalidFormatFields.length > 0}
-							Fix {invalidFormatFields.length} invalid format{invalidFormatFields.length === 1
-								? ''
-								: 's'} before saving.
+							{m.settings_naming_fixInvalidFormats({ count: invalidFormatFields.length })}
 						{:else if validationWarningFields.length > 0}
-							{validationWarningFields.length} format warning{validationWarningFields.length === 1
-								? ''
-								: 's'} to review.
+							{m.settings_naming_formatWarnings({ count: validationWarningFields.length })}
 						{:else}
-							All format fields validate cleanly.
+							{m.settings_naming_allFormatsValid()}
 						{/if}
 					</p>
 				</div>
@@ -681,8 +669,7 @@
 				<div
 					class="mt-4 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm text-base-content/75"
 				>
-					You have edited this preset-generated draft. Switching presets will replace those draft
-					values, but nothing will be saved until you use Save Changes.
+					{m.settings_naming_presetDraftEdited()}
 				</div>
 			{/if}
 		</div>
@@ -700,7 +687,7 @@
 			<div class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
 					<Settings2 class="h-5 w-5 text-secondary" />
-					<h2 class="card-title text-base">Custom Presets</h2>
+					<h2 class="card-title text-base">{m.settings_naming_customPresets()}</h2>
 					{#if customPresets.length > 0}
 						<span class="badge badge-ghost badge-sm">{customPresets.length}</span>
 					{/if}
@@ -723,7 +710,7 @@
 								bind:value={selectedPresetId}
 								disabled={loadingPresets}
 							>
-								<option value="">Select a custom preset...</option>
+								<option value="">{m.settings_naming_selectCustomPreset()}</option>
 								{#each customPresets as preset (preset.id)}
 									<option value={preset.id}>{preset.name}</option>
 								{/each}
@@ -734,7 +721,7 @@
 									<p class="mt-1 text-xs text-base-content/60">{selectedPreset.description}</p>
 								{/if}
 								<p class="mt-1 text-xs text-base-content/50">
-									Loading a preset updates the draft only. Save changes to make it active.
+									{m.settings_naming_loadPresetDraftOnly()}
 								</p>
 							{/if}
 						</div>
@@ -745,7 +732,7 @@
 								disabled={!selectedPresetId}
 							>
 								<Download class="h-4 w-4" />
-								Load
+								{m.settings_naming_load()}
 							</button>
 							{#if selectedPresetId}
 								<button
@@ -760,14 +747,14 @@
 							{/if}
 						</div>
 					{:else}
-						<p class="py-2 text-sm text-base-content/60">No custom presets saved yet.</p>
+						<p class="py-2 text-sm text-base-content/60">{m.settings_naming_noCustomPresets()}</p>
 					{/if}
 					<button
 						class="btn ml-auto gap-1 btn-ghost btn-sm"
 						onclick={() => (showSavePresetModal = true)}
 					>
 						<Plus class="h-4 w-4" />
-						Save Current as Preset
+						{m.settings_naming_saveCurrentAsPreset()}
 					</button>
 				</div>
 				{#if savedCustomPresetName || draftCustomPresetName}
@@ -775,14 +762,14 @@
 						<div
 							class="rounded-xl border border-base-300 bg-base-100 p-3 text-sm text-base-content/70"
 						>
-							<p class="font-medium">Saved custom source</p>
-							<p class="mt-1">{savedCustomPresetName ?? 'None'}</p>
+							<p class="font-medium">{m.settings_naming_savedCustomSource()}</p>
+							<p class="mt-1">{savedCustomPresetName ?? m.common_none()}</p>
 						</div>
 						<div
 							class="rounded-xl border border-base-300 bg-base-100 p-3 text-sm text-base-content/70"
 						>
-							<p class="font-medium">Draft custom source</p>
-							<p class="mt-1">{draftCustomPresetName ?? 'None'}</p>
+							<p class="font-medium">{m.settings_naming_draftCustomSource()}</p>
+							<p class="mt-1">{draftCustomPresetName ?? m.common_none()}</p>
 						</div>
 					</div>
 				{/if}
@@ -809,8 +796,8 @@
 								<Film class="h-5 w-5 text-primary" />
 							</div>
 							<div>
-								<h2 class="card-title">Movie Naming</h2>
-								<p class="text-sm text-base-content/60">Folder and file name patterns</p>
+								<h2 class="card-title">{m.settings_naming_movieNaming()}</h2>
+								<p class="text-sm text-base-content/60">{m.settings_naming_movieNamingDesc()}</p>
 							</div>
 						</div>
 						{#if movieSectionOpen}
@@ -824,7 +811,7 @@
 					<div id="movie-naming-panel" class="card-body space-y-5 border-t border-base-300 pt-4">
 						<NamingFormatField
 							id="movieFolderFormat"
-							label="Folder Format"
+							label={m.settings_naming_folderFormat()}
 							mode="single"
 							bind:this={movieFolderField}
 							bind:value={config.movieFolderFormat}
@@ -834,7 +821,7 @@
 						/>
 						<NamingFormatField
 							id="movieFileFormat"
-							label="File Format"
+							label={m.settings_naming_fileFormat()}
 							mode="multi"
 							bind:this={movieFileField}
 							bind:value={config.movieFileFormat}
@@ -861,8 +848,8 @@
 								<Tv class="h-5 w-5 text-secondary" />
 							</div>
 							<div>
-								<h2 class="card-title">Series Naming</h2>
-								<p class="text-sm text-base-content/60">Series, season, and episode patterns</p>
+								<h2 class="card-title">{m.settings_naming_seriesNaming()}</h2>
+								<p class="text-sm text-base-content/60">{m.settings_naming_seriesNamingDesc()}</p>
 							</div>
 						</div>
 						{#if seriesSectionOpen}
@@ -876,7 +863,7 @@
 					<div id="series-naming-panel" class="card-body space-y-5 border-t border-base-300 pt-4">
 						<NamingFormatField
 							id="seriesFolderFormat"
-							label="Series Folder"
+							label={m.settings_naming_seriesFolder()}
 							mode="single"
 							bind:this={seriesFolderField}
 							bind:value={config.seriesFolderFormat}
@@ -886,7 +873,7 @@
 						/>
 						<NamingFormatField
 							id="seasonFolderFormat"
-							label="Season Folder"
+							label={m.settings_naming_seasonFolder()}
 							mode="single"
 							bind:this={seasonFolderField}
 							bind:value={config.seasonFolderFormat}
@@ -896,7 +883,7 @@
 						/>
 						<NamingFormatField
 							id="episodeFileFormat"
-							label="Standard Episode"
+							label={m.settings_naming_standardEpisode()}
 							mode="multi"
 							bind:this={episodeFileField}
 							bind:value={config.episodeFileFormat}
@@ -906,7 +893,7 @@
 						/>
 						<NamingFormatField
 							id="dailyEpisodeFormat"
-							label="Daily Show Episode"
+							label={m.settings_naming_dailyShowEpisode()}
 							mode="multi"
 							bind:this={dailyEpisodeField}
 							bind:value={config.dailyEpisodeFormat}
@@ -916,7 +903,7 @@
 						/>
 						<NamingFormatField
 							id="animeEpisodeFormat"
-							label="Anime Episode"
+							label={m.settings_naming_animeEpisode()}
 							mode="multi"
 							bind:this={animeEpisodeField}
 							bind:value={config.animeEpisodeFormat}
@@ -938,7 +925,7 @@
 					aria-controls="advanced-options-panel"
 				>
 					<div class="flex items-center justify-between">
-						<h2 class="card-title text-base">Advanced Options</h2>
+						<h2 class="card-title text-base">{m.settings_naming_advancedOptions()}</h2>
 						{#if advancedSectionOpen}
 							<ChevronUp class="h-5 w-5" />
 						{:else}
@@ -953,59 +940,58 @@
 								class="rounded-xl border border-base-300 bg-base-100 p-3 sm:col-span-2 lg:col-span-3"
 							>
 								<p class="text-xs font-semibold tracking-wide text-base-content/50 uppercase">
-									Preset-aware options
+									{m.settings_naming_presetAwareOptions()}
 								</p>
 								<p class="mt-1 text-sm text-base-content/65">
-									These controls stay editable even after you apply a setup preset, so you can
-									fine-tune naming behavior without rebuilding your formats from scratch.
+									{m.settings_naming_presetAwareOptionsDesc()}
 								</p>
 							</div>
 							<!-- Replace Spaces -->
 							<FormInput
 								id="replaceSpacesWith"
-								label="Replace Spaces With"
+								label={m.settings_naming_replaceSpacesWith()}
 								bind:value={config.replaceSpacesWith}
-								placeholder="Leave blank for spaces"
-								helpText="Blank values are normalized and will not cause false unsaved changes"
+								placeholder={m.settings_naming_replaceSpacesPlaceholder()}
+								helpText={m.settings_naming_replaceSpacesHelp()}
 							/>
 
 							<FormSelect
 								id="multiEpisodeStyle"
-								label="Multi-Episode Style"
+								label={m.settings_naming_multiEpisodeStyle()}
 								bind:value={config.multiEpisodeStyle}
 								options={[
-									{ value: 'range', label: 'Range' },
-									{ value: 'extend', label: 'Extend' },
-									{ value: 'duplicate', label: 'Duplicate' },
-									{ value: 'repeat', label: 'Repeat' },
-									{ value: 'scene', label: 'Scene' }
+									{ value: 'range', label: m.settings_naming_multiEpRange() },
+									{ value: 'extend', label: m.settings_naming_multiEpExtend() },
+									{ value: 'duplicate', label: m.settings_naming_multiEpDuplicate() },
+									{ value: 'repeat', label: m.settings_naming_multiEpRepeat() },
+									{ value: 'scene', label: m.settings_naming_multiEpScene() }
 								]}
-								helpText="Controls how files with multiple episode numbers are rendered"
+								helpText={m.settings_naming_multiEpisodeStyleHelp()}
 							/>
 
 							<FormSelect
 								id="colonReplacement"
-								label="Colon Replacement"
+								label={m.settings_naming_colonReplacement()}
 								bind:value={config.colonReplacement}
 								options={[
-									{ value: 'smart', label: 'Smart' },
-									{ value: 'delete', label: 'Delete' },
-									{ value: 'dash', label: 'Dash' },
-									{ value: 'spaceDash', label: 'Space + Dash' },
-									{ value: 'spaceDashSpace', label: 'Space + Dash + Space' }
+									{ value: 'smart', label: m.settings_naming_colonSmart() },
+									{ value: 'delete', label: m.settings_naming_colonDelete() },
+									{ value: 'dash', label: m.settings_naming_colonDash() },
+									{ value: 'spaceDash', label: m.settings_naming_colonSpaceDash() },
+									{ value: 'spaceDashSpace', label: m.settings_naming_colonSpaceDashSpace() }
 								]}
-								helpText="How titles like Title: Subtitle are normalized for the filesystem"
+								helpText={m.settings_naming_colonReplacementHelp()}
 							/>
 
 							<FormSelect
 								id="mediaServerIdFormat"
-								label="Media Server ID Format"
+								label={m.settings_naming_mediaServerIdFormat()}
 								bind:value={config.mediaServerIdFormat}
 								options={[
-									{ value: 'plex', label: 'Plex braces' },
-									{ value: 'jellyfin', label: 'Jellyfin brackets' }
+									{ value: 'plex', label: m.settings_naming_plexBraces() },
+									{ value: 'jellyfin', label: m.settings_naming_jellyfinBrackets() }
 								]}
-								helpText="Matches folder ID tokens to the media server style you want"
+								helpText={m.settings_naming_mediaServerIdFormatHelp()}
 							/>
 
 							<!-- Checkboxes -->
@@ -1018,7 +1004,7 @@
 										class="checkbox checkbox-sm checkbox-primary"
 										bind:checked={config.includeQuality}
 									/>
-									<span class="label-text">Include quality tokens (e.g., 1080p, BluRay)</span>
+									<span class="label-text">{m.settings_naming_includeQuality()}</span>
 								</label>
 
 								<label
@@ -1029,7 +1015,7 @@
 										class="checkbox checkbox-sm checkbox-primary"
 										bind:checked={config.includeMediaInfo}
 									/>
-									<span class="label-text">Include media info (e.g., x264, DTS)</span>
+									<span class="label-text">{m.settings_naming_includeMediaInfo()}</span>
 								</label>
 
 								<label
@@ -1040,7 +1026,7 @@
 										class="checkbox checkbox-sm checkbox-primary"
 										bind:checked={config.includeReleaseGroup}
 									/>
-									<span class="label-text">Include release group</span>
+									<span class="label-text">{m.settings_naming_includeReleaseGroup()}</span>
 								</label>
 							</div>
 						</div>
@@ -1055,49 +1041,51 @@
 				<div class="card bg-base-200">
 					<div class="card-body p-4">
 						<div class="flex items-center justify-between gap-3">
-							<h2 class="card-title text-base">Review Outcome</h2>
+							<h2 class="card-title text-base">{m.settings_naming_reviewOutcome()}</h2>
 							{#if validatingFormats}
 								<div class="flex items-center gap-2 text-xs text-base-content/60">
 									<RefreshCw class="h-3.5 w-3.5 animate-spin text-primary" />
-									Validating
+									{m.settings_naming_validating()}
 								</div>
 							{/if}
 						</div>
 						<div class="mt-4 space-y-3 text-sm text-base-content/70">
 							<div class="rounded-xl border border-base-300 bg-base-100 p-3">
-								<p class="font-medium">Draft vs saved</p>
+								<p class="font-medium">{m.settings_naming_draftVsSaved()}</p>
 								<p class="mt-1">
 									{#if hasChanges}
-										You have draft changes. Samples update instantly, but rename review uses saved
-										settings.
+										{m.settings_naming_draftChangesExist()}
 									{:else}
-										Draft and saved settings match.
+										{m.settings_naming_draftAndSavedMatch()}
 									{/if}
 								</p>
 							</div>
 							<div class="rounded-xl border border-base-300 bg-base-100 p-3">
-								<p class="font-medium">Format validation</p>
+								<p class="font-medium">{m.settings_naming_formatValidation()}</p>
 								{#if invalidFormatFields.length > 0}
 									<ul class="mt-2 space-y-1 text-sm text-error">
 										{#each invalidFormatFields as field (field)}
-											<li>{FORMAT_FIELD_LABELS[field]} has syntax issues.</li>
+											<li>
+												{m.settings_naming_hasSyntaxIssues({ field: FORMAT_FIELD_LABELS[field] })}
+											</li>
 										{/each}
 									</ul>
 								{:else if validationWarningFields.length > 0}
 									<ul class="mt-2 space-y-1 text-sm text-warning">
 										{#each validationWarningFields as field (field)}
-											<li>{FORMAT_FIELD_LABELS[field]} has warnings worth reviewing.</li>
+											<li>
+												{m.settings_naming_hasWarnings({ field: FORMAT_FIELD_LABELS[field] })}
+											</li>
 										{/each}
 									</ul>
 								{:else}
-									<p class="mt-1">All format fields validate cleanly.</p>
+									<p class="mt-1">{m.settings_naming_allFieldsClean()}</p>
 								{/if}
 							</div>
 							<div class="rounded-xl border border-base-300 bg-base-100 p-3">
-								<p class="font-medium">Next step</p>
+								<p class="font-medium">{m.settings_naming_nextStep()}</p>
 								<p class="mt-1">
-									Save this draft when it looks right, then review the rename plan before applying
-									file changes across the library.
+									{m.settings_naming_nextStepDesc()}
 								</p>
 							</div>
 						</div>
@@ -1108,11 +1096,11 @@
 				<div class="card bg-base-200">
 					<div class="card-body p-4">
 						<div class="mb-4 flex items-center justify-between gap-3">
-							<h2 class="card-title text-base">Token Browser</h2>
+							<h2 class="card-title text-base">{m.settings_naming_tokenBrowser()}</h2>
 							{#if loadingPreviews}
 								<div class="flex items-center gap-2 text-xs text-base-content/60">
 									<RefreshCw class="h-3.5 w-3.5 animate-spin text-primary" />
-									Updating previews
+									{m.settings_naming_updatingPreviews()}
 								</div>
 							{/if}
 						</div>
@@ -1138,7 +1126,7 @@
 >
 	<div class="p-6">
 		<div class="mb-4 flex items-center justify-between">
-			<h3 id="preset-modal-title" class="text-lg font-bold">Save Preset</h3>
+			<h3 id="preset-modal-title" class="text-lg font-bold">{m.settings_naming_savePreset()}</h3>
 			<button class="btn btn-square btn-ghost btn-sm" onclick={closeSavePresetModal}>
 				<X class="h-4 w-4" />
 			</button>
@@ -1147,27 +1135,27 @@
 		<div class="space-y-4">
 			<FormInput
 				id="newPresetName"
-				label="Preset Name"
+				label={m.settings_naming_presetName()}
 				bind:value={newPresetName}
-				placeholder="My Custom Preset"
+				placeholder={m.settings_naming_presetNamePlaceholder()}
 				required
 			/>
 
 			<div class="form-control">
 				<label class="label py-1" for="newPresetDescription">
-					<span class="label-text">Description (optional)</span>
+					<span class="label-text">{m.settings_naming_descriptionOptional()}</span>
 				</label>
 				<textarea
 					id="newPresetDescription"
 					class="textarea-bordered textarea"
-					placeholder="What this preset is for..."
+					placeholder={m.settings_naming_presetDescPlaceholder()}
 					bind:value={newPresetDescription}
 				></textarea>
 			</div>
 		</div>
 
 		<div class="modal-action mt-6">
-			<button class="btn btn-ghost" onclick={closeSavePresetModal}>Cancel</button>
+			<button class="btn btn-ghost" onclick={closeSavePresetModal}>{m.action_cancel()}</button>
 			<button
 				class="btn gap-2 btn-primary"
 				onclick={saveAsPreset}
@@ -1175,10 +1163,10 @@
 			>
 				{#if savingPreset}
 					<RefreshCw class="h-4 w-4 animate-spin" />
-					Saving...
+					{m.common_saving()}
 				{:else}
 					<Save class="h-4 w-4" />
-					Save Preset
+					{m.settings_naming_savePreset()}
 				{/if}
 			</button>
 		</div>

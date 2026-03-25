@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import type { PageData } from './$types';
 	import type { UnifiedTask } from '$lib/server/tasks/UnifiedTaskRegistry';
 	import type { TaskHistoryEntry } from '$lib/types/task';
@@ -90,7 +91,11 @@
 			const task = taskState[event.taskId];
 			if (task && event.result) {
 				const { itemsProcessed, itemsGrabbed } = event.result;
-				successMessage = `${task.name} completed: ${itemsProcessed} processed, ${itemsGrabbed} grabbed`;
+				successMessage = m.settings_tasks_taskCompleted({
+					name: task.name,
+					processed: String(itemsProcessed),
+					grabbed: String(itemsGrabbed)
+				});
 				autoDismissSuccess();
 			}
 		},
@@ -104,7 +109,7 @@
 
 			const task = taskState[event.taskId];
 			if (task) {
-				errorMessage = `${task.name} failed: ${event.error}`;
+				errorMessage = m.settings_tasks_taskFailed({ name: task.name, error: event.error });
 			}
 		},
 		'task:cancelled': (event) => {
@@ -112,7 +117,7 @@
 
 			const task = taskState[event.taskId];
 			if (task) {
-				successMessage = `${task.name} cancelled`;
+				successMessage = m.settings_tasks_taskCancelled({ name: task.name });
 				autoDismissSuccess();
 			}
 		},
@@ -201,13 +206,16 @@
 					if (!response.ok) {
 						const result = await response.json().catch(() => ({}));
 						updateTask(taskId, { isRunning: false });
-						errorMessage = result.error || result.message || `Task failed (${response.status})`;
+						errorMessage =
+							result.error ||
+							result.message ||
+							m.settings_tasks_taskFailedStatus({ status: String(response.status) });
 					}
 					// On success: SSE events handle the rest (started/completed/failed)
 				})
 				.catch((err) => {
 					updateTask(taskId, { isRunning: false });
-					errorMessage = err instanceof Error ? err.message : 'Failed to start task';
+					errorMessage = err instanceof Error ? err.message : m.settings_tasks_failedToStartTask();
 				});
 		} else {
 			// SSE not connected: await the response and handle the result directly
@@ -217,22 +225,31 @@
 
 				if (!response.ok || !result.success) {
 					updateTask(taskId, { isRunning: false });
-					throw new Error(result.error || result.message || 'Task failed');
+					throw new Error(result.error || result.message || m.settings_tasks_taskFailedGeneric());
 				}
 
 				updateTask(taskId, { isRunning: false });
 				if (result.result) {
 					const { itemsProcessed, itemsGrabbed } = result.result;
-					successMessage = `${task.name} completed: ${itemsProcessed ?? 0} processed, ${itemsGrabbed ?? 0} grabbed`;
+					successMessage = m.settings_tasks_taskCompleted({
+						name: task.name,
+						processed: String(itemsProcessed ?? 0),
+						grabbed: String(itemsGrabbed ?? 0)
+					});
 				} else if (result.updatedFiles !== undefined) {
-					successMessage = `${task.name} completed: ${result.updatedFiles}/${result.totalFiles ?? 0} files updated`;
+					successMessage = m.settings_tasks_taskCompletedFiles({
+						name: task.name,
+						updated: String(result.updatedFiles),
+						total: String(result.totalFiles ?? 0)
+					});
 				} else {
-					successMessage = `${task.name} completed successfully`;
+					successMessage = m.settings_tasks_taskCompletedSuccess({ name: task.name });
 				}
 				autoDismissSuccess();
 			} catch (error) {
 				updateTask(taskId, { isRunning: false });
-				errorMessage = error instanceof Error ? error.message : 'Task failed';
+				errorMessage =
+					error instanceof Error ? error.message : m.settings_tasks_taskFailedGeneric();
 			}
 		}
 	}
@@ -246,17 +263,17 @@
 			const result = await response.json();
 
 			if (!response.ok || !result.success) {
-				throw new Error(result.error || 'Failed to cancel task');
+				throw new Error(result.error || m.settings_tasks_failedToCancelTask());
 			}
 
 			// SSE will handle the state update (task:cancelled)
 			if (!sse.isConnected) {
 				updateTask(taskId, { isRunning: false });
-				successMessage = 'Task cancelled successfully';
+				successMessage = m.settings_tasks_taskCancelledSuccess();
 				autoDismissSuccess();
 			}
 		} catch (error) {
-			errorMessage = error instanceof Error ? error.message : 'Failed to cancel task';
+			errorMessage = error instanceof Error ? error.message : m.settings_tasks_failedToCancelTask();
 		}
 	}
 
@@ -278,27 +295,27 @@
 				// Revert on failure
 				updateTask(taskId, { enabled: !enabled });
 				const result = await response.json();
-				errorMessage = result.message || 'Failed to update task';
+				errorMessage = result.message || m.settings_tasks_failedToUpdateTask();
 			}
 			// SSE will confirm the update via task:updated event
 		} catch (error) {
 			updateTask(taskId, { enabled: !enabled });
-			errorMessage = error instanceof Error ? error.message : 'Failed to toggle task';
+			errorMessage = error instanceof Error ? error.message : m.settings_tasks_failedToToggleTask();
 		}
 	}
 </script>
 
 <svelte:head>
-	<title>Tasks - Settings - Cinephage</title>
+	<title>{m.settings_tasks_pageTitle()}</title>
 </svelte:head>
 
 <div class="w-full space-y-6">
 	<!-- Header -->
 	<div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
 		<div>
-			<h1 class="text-2xl font-bold">Tasks</h1>
+			<h1 class="text-2xl font-bold">{m.settings_tasks_heading()}</h1>
 			<p class="mt-1 text-base-content/60">
-				Scheduled and maintenance tasks for your Cinephage instance
+				{m.settings_tasks_subtitle()}
 			</p>
 		</div>
 		<div class="flex items-center gap-2 sm:gap-3">
@@ -306,11 +323,11 @@
 				{#if sse.isConnected}
 					<span class="badge gap-1 badge-success">
 						<Wifi class="h-3 w-3" />
-						Live
+						{m.common_live()}
 					</span>
 				{:else if sse.status === 'connecting' || sse.status === 'error'}
 					<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
-						{sse.status === 'error' ? 'Reconnecting...' : 'Connecting...'}
+						{sse.status === 'error' ? m.common_reconnecting() : m.common_connecting()}
 					</span>
 				{/if}
 			</div>
@@ -332,7 +349,7 @@
 					<line x1="12" y1="5" x2="12" y2="19" />
 					<line x1="5" y1="12" x2="19" y2="12" />
 				</svg>
-				Create Task
+				{m.settings_tasks_createTask()}
 			</button>
 		</div>
 	</div>
@@ -357,7 +374,7 @@
 			</svg>
 			<span class="wrap-break-word">{errorMessage}</span>
 			<button class="btn ml-auto btn-ghost btn-xs" onclick={() => (errorMessage = null)}
-				>Dismiss</button
+				>{m.settings_tasks_dismiss()}</button
 			>
 		</div>
 	{/if}
@@ -380,7 +397,7 @@
 			</svg>
 			<span class="wrap-break-word">{successMessage}</span>
 			<button class="btn ml-auto btn-ghost btn-xs" onclick={() => (successMessage = null)}
-				>Dismiss</button
+				>{m.settings_tasks_dismiss()}</button
 			>
 		</div>
 	{/if}

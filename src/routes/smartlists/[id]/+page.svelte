@@ -24,6 +24,7 @@
 		Database
 	} from 'lucide-svelte';
 	import type { PageData } from './$types';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -112,8 +113,8 @@
 
 			await invalidateAll();
 		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Smart list refresh failed';
-			toasts.error('Smart list refresh failed', { description: message });
+			const message = error instanceof Error ? error.message : m.smartlists_detail_refreshFailed();
+			toasts.error(m.smartlists_detail_refreshFailed(), { description: message });
 		} finally {
 			refreshing = false;
 		}
@@ -135,23 +136,24 @@
 			const result = (await response.json().catch(() => null)) as AddToLibraryResponse | null;
 
 			if (!response.ok) {
-				throw new Error(result?.error ?? 'Failed to add to library');
+				throw new Error(result?.error ?? m.smartlists_detail_failedToAddToLibrary());
 			}
 
 			if (!result) {
-				throw new Error('Invalid add-to-library response');
+				throw new Error(m.smartlists_detail_invalidAddResponse());
 			}
 
 			if (result.failed > 0) {
-				throw new Error(result.errors?.[0]?.error ?? 'Failed to add to library');
+				throw new Error(result.errors?.[0]?.error ?? m.smartlists_detail_failedToAddToLibrary());
 			}
 
-			toasts.success(`${title} added to library`);
+			toasts.success(m.smartlists_detail_addedToLibrary({ title }));
 			closeItemDetails();
 			await invalidateAll();
 		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Failed to add to library';
-			toasts.error('Failed to add to library', { description: message });
+			const message =
+				error instanceof Error ? error.message : m.smartlists_detail_failedToAddToLibrary();
+			toasts.error(m.smartlists_detail_failedToAddToLibrary(), { description: message });
 		} finally {
 			addingIds.delete(tmdbId);
 			addingIds = addingIds;
@@ -168,7 +170,7 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ action: 'exclude', tmdbIds: [tmdbId] })
 			});
-			toasts.success(`${title} excluded from smart list`);
+			toasts.success(m.smartlists_detail_excludedFromList({ title }));
 			closeItemDetails();
 			await invalidateAll();
 		} finally {
@@ -187,7 +189,7 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ action: 'include', tmdbIds: [tmdbId] })
 			});
-			toasts.success(`${title} included in smart list`);
+			toasts.success(m.smartlists_detail_includedInList({ title }));
 			closeItemDetails();
 			await invalidateAll();
 		} finally {
@@ -198,13 +200,13 @@
 	}
 
 	async function addAllToLibrary() {
-		if (!confirm('Add all visible items to your library?')) return;
+		if (!confirm(m.smartlists_detail_addAllConfirm())) return;
 		const tmdbIds = data.items
 			.filter((i: (typeof data.items)[0]) => !i.inLibrary && !i.isExcluded)
 			.map((i: (typeof data.items)[0]) => i.tmdbId);
 
 		if (tmdbIds.length === 0) {
-			toasts.info('No visible items are eligible to add.');
+			toasts.info(m.smartlists_detail_noEligibleItems());
 			return;
 		}
 
@@ -218,24 +220,28 @@
 			const result = (await response.json().catch(() => null)) as AddToLibraryResponse | null;
 
 			if (!response.ok) {
-				throw new Error(result?.error ?? 'Failed to add items to library');
+				throw new Error(result?.error ?? m.smartlists_detail_failedToAddItems());
 			}
 
 			if (!result) {
-				throw new Error('Invalid add-to-library response');
+				throw new Error(m.smartlists_detail_invalidAddResponse());
 			}
 
 			if (result.failed > 0) {
 				const firstError = result.errors?.[0]?.error;
-				toasts.warning(`Added ${result.added}, failed ${result.failed}`, {
-					description: firstError
-				});
+				toasts.warning(
+					m.smartlists_detail_addedBulkPartial({ added: result.added, failed: result.failed }),
+					{
+						description: firstError
+					}
+				);
 			}
 
 			await invalidateAll();
 		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Failed to add items to library';
-			toasts.error('Failed to add items to library', { description: message });
+			const message =
+				error instanceof Error ? error.message : m.smartlists_detail_failedToAddItems();
+			toasts.error(m.smartlists_detail_failedToAddItems(), { description: message });
 		} finally {
 			bulkAdding = false;
 		}
@@ -292,13 +298,13 @@
 	<div class="mb-6">
 		<a href="/smartlists" class="btn gap-1 btn-ghost btn-sm">
 			<ArrowLeft class="h-4 w-4" />
-			Back to Smart Lists
+			{m.smartlists_detail_backToSmartLists()}
 		</a>
 	</div>
 
 	<ModalWrapper open={itemDetailOpen} onClose={closeItemDetails} maxWidth="2xl">
 		<ModalHeader
-			title={selectedItem ? selectedItem.title : 'Item details'}
+			title={selectedItem ? selectedItem.title : m.smartlists_detail_itemDetailsTitle()}
 			onClose={closeItemDetails}
 		/>
 
@@ -333,13 +339,15 @@
 									? 'badge-primary'
 									: 'badge-secondary'}"
 							>
-								{selectedItem.mediaType === 'movie' ? 'Movie' : 'TV Show'}
+								{selectedItem.mediaType === 'movie'
+									? m.smartlists_detail_badgeMovie()
+									: m.smartlists_detail_badgeTvShow()}
 							</div>
 							{#if selectedItem.inLibrary}
-								<div class="badge badge-success">In Library</div>
+								<div class="badge badge-success">{m.smartlists_detail_badgeInLibrary()}</div>
 							{/if}
 							{#if selectedItem.isExcluded}
-								<div class="badge badge-error">Excluded</div>
+								<div class="badge badge-error">{m.smartlists_detail_badgeExcluded()}</div>
 							{/if}
 							{#if selectedItem.year}
 								<div class="badge badge-ghost">{selectedItem.year}</div>
@@ -364,7 +372,7 @@
 						{#if selectedItem.overview}
 							<p class="text-sm leading-relaxed text-base-content/80">{selectedItem.overview}</p>
 						{:else}
-							<p class="text-sm text-base-content/60">No synopsis available for this title.</p>
+							<p class="text-sm text-base-content/60">{m.smartlists_detail_noSynopsis()}</p>
 						{/if}
 					</div>
 				</div>
@@ -382,7 +390,7 @@
 							{:else}
 								<Check class="h-4 w-4" />
 							{/if}
-							Include
+							{m.smartlists_detail_includeButton()}
 						</button>
 					{:else}
 						{#if !selectedItem.inLibrary}
@@ -397,7 +405,7 @@
 								{:else}
 									<Plus class="h-4 w-4" />
 								{/if}
-								Add to Library
+								{m.smartlists_detail_addToLibrary()}
 							</button>
 						{/if}
 						<button
@@ -411,7 +419,7 @@
 							{:else}
 								<Ban class="h-4 w-4" />
 							{/if}
-							Exclude
+							{m.smartlists_detail_excludeButton()}
 						</button>
 					{/if}
 				</div>
@@ -435,24 +443,28 @@
 			{/if}
 
 			<div class="mt-2 flex flex-wrap gap-2">
-				<div class="badge badge-ghost">{data.pagination.totalItems} items</div>
-				<div class="badge badge-ghost">{data.list.itemsInLibrary ?? 0} in library</div>
+				<div class="badge badge-ghost">
+					{m.smartlists_itemsBadge({ count: data.pagination.totalItems })}
+				</div>
+				<div class="badge badge-ghost">
+					{m.smartlists_inLibraryBadge({ count: data.list.itemsInLibrary ?? 0 })}
+				</div>
 				{#if data.list.autoAddBehavior !== 'disabled'}
-					<div class="badge badge-outline badge-info">Auto-add enabled</div>
+					<div class="badge badge-outline badge-info">{m.smartlists_detail_autoAddEnabled()}</div>
 				{/if}
 				{#if data.list.listSourceType === 'external-json'}
 					<div class="badge flex items-center gap-1 badge-outline badge-secondary">
 						<Globe class="h-3 w-3" />
-						External JSON
+						{m.smartlists_source_externalJson()}
 					</div>
 				{:else if data.list.listSourceType === 'trakt-list'}
-					<div class="badge badge-outline badge-accent">Trakt List</div>
+					<div class="badge badge-outline badge-accent">{m.smartlists_source_traktList()}</div>
 				{:else if data.list.listSourceType === 'custom-manual'}
-					<div class="badge badge-outline badge-warning">Custom</div>
+					<div class="badge badge-outline badge-warning">{m.common_custom()}</div>
 				{:else}
 					<div class="badge flex items-center gap-1 badge-outline badge-primary">
 						<Database class="h-3 w-3" />
-						TMDB Discover
+						{m.smartlists_source_tmdbDiscover()}
 					</div>
 				{/if}
 			</div>
@@ -461,14 +473,14 @@
 			<button class="btn btn-outline btn-sm" onclick={refreshList} disabled={refreshing}>
 				<RefreshCw class="h-4 w-4 {refreshing ? 'animate-spin' : ''}" />
 				{#if data.list.listSourceType === 'external-json'}
-					Sync
+					{m.smartlists_detail_syncButton()}
 				{:else}
-					Refresh
+					{m.smartlists_detail_refreshButton()}
 				{/if}
 			</button>
 			<button class="btn btn-outline btn-sm" onclick={navigateToEdit}>
 				<Edit class="h-4 w-4" />
-				Edit
+				{m.smartlists_detail_editButton()}
 			</button>
 			<button class="btn btn-sm btn-primary" onclick={addAllToLibrary} disabled={bulkAdding}>
 				{#if bulkAdding}
@@ -476,7 +488,7 @@
 				{:else}
 					<Plus class="h-4 w-4" />
 				{/if}
-				Add All
+				{m.smartlists_detail_addAllButton()}
 			</button>
 		</div>
 	</div>
@@ -491,7 +503,7 @@
 						applyFilters();
 					}}
 				>
-					All
+					{m.smartlists_detail_filterAll()}
 				</button>
 				<button
 					class="btn join-item btn-xs sm:btn-sm {filterInLibrary === 'out' ? 'btn-active' : ''}"
@@ -500,7 +512,7 @@
 						applyFilters();
 					}}
 				>
-					Not in Library
+					{m.smartlists_detail_filterNotInLibrary()}
 				</button>
 				<button
 					class="btn join-item btn-xs sm:btn-sm {filterInLibrary === 'in' ? 'btn-active' : ''}"
@@ -509,7 +521,7 @@
 						applyFilters();
 					}}
 				>
-					In Library
+					{m.smartlists_detail_filterInLibrary()}
 				</button>
 			</div>
 			<label class="label shrink-0 cursor-pointer gap-1.5 py-0 whitespace-nowrap sm:gap-2">
@@ -519,7 +531,7 @@
 					bind:checked={showExcluded}
 					onchange={() => applyFilters()}
 				/>
-				<span class="label-text">Show excluded</span>
+				<span class="label-text">{m.smartlists_detail_showExcluded()}</span>
 			</label>
 		</div>
 		<div class="group relative w-full sm:ml-auto sm:w-72">
@@ -528,7 +540,7 @@
 			/>
 			<input
 				type="text"
-				placeholder="Search Smart List…"
+				placeholder={m.smartlists_detail_searchPlaceholder()}
 				class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				bind:value={searchQuery}
 				oninput={onSearchInput}
@@ -557,20 +569,20 @@
 		<div class="card bg-base-100 shadow-xl">
 			<div class="card-body items-center text-center">
 				<Library class="h-16 w-16 text-base-content/30" />
-				<h2 class="card-title">No Items Found</h2>
+				<h2 class="card-title">{m.smartlists_detail_noItemsTitle()}</h2>
 				<p class="text-base-content/70">
 					{#if data.pagination.totalItems === 0}
-						This smart list hasn't been refreshed yet or returned no results.
+						{m.smartlists_detail_noItemsNotRefreshed()}
 					{:else if data.filters.query}
-						No items match your current search/filter.
+						{m.smartlists_detail_noItemsMatchSearch()}
 					{:else}
-						No items match your current filters.
+						{m.smartlists_detail_noItemsMatchFilters()}
 					{/if}
 				</p>
 				{#if data.pagination.totalItems === 0}
 					<button class="btn mt-4 btn-primary" onclick={refreshList} disabled={refreshing}>
 						<RefreshCw class="h-4 w-4 {refreshing ? 'animate-spin' : ''}" />
-						Refresh Now
+						{m.smartlists_detail_refreshNow()}
 					</button>
 				{/if}
 			</div>
@@ -626,7 +638,7 @@
 							<div class="absolute top-2 left-2 z-10">
 								<div
 									class="flex h-6 w-6 items-center justify-center rounded-full bg-success/90 text-success-content shadow-md backdrop-blur-sm"
-									title="Available in library"
+									title={m.smartlists_detail_badgeInLibrary()}
 								>
 									<Check class="h-4 w-4" strokeWidth={3} />
 								</div>
@@ -638,7 +650,7 @@
 							<div class="absolute top-2 z-10 {item.inLibrary ? 'left-10' : 'left-2'}">
 								<div
 									class="flex h-6 w-6 items-center justify-center rounded-full bg-error/90 text-error-content shadow-md backdrop-blur-sm"
-									title="Excluded from this smart list"
+									title={m.smartlists_detail_badgeExcluded()}
 								>
 									<Ban class="h-3.5 w-3.5" />
 								</div>
@@ -659,8 +671,8 @@
 									onpointerup={(event) => event.stopPropagation()}
 									onclick={() => includeItem(item.tmdbId, item.title)}
 									disabled={excludingIds.has(item.tmdbId)}
-									title="Include item"
-									aria-label="Include item"
+									title={m.smartlists_detail_includeButton()}
+									aria-label={m.smartlists_detail_includeButton()}
 								>
 									{#if excludingIds.has(item.tmdbId)}
 										<Loader2 class="h-3 w-3 animate-spin" />
@@ -676,8 +688,8 @@
 										onpointerup={(event) => event.stopPropagation()}
 										onclick={() => addToLibrary(item.tmdbId, item.title)}
 										disabled={addingIds.has(item.tmdbId)}
-										title="Add to library"
-										aria-label="Add to library"
+										title={m.smartlists_detail_addToLibrary()}
+										aria-label={m.smartlists_detail_addToLibrary()}
 									>
 										{#if addingIds.has(item.tmdbId)}
 											<Loader2 class="h-3 w-3 animate-spin" />
@@ -692,8 +704,8 @@
 									onpointerup={(event) => event.stopPropagation()}
 									onclick={() => excludeItem(item.tmdbId, item.title)}
 									disabled={excludingIds.has(item.tmdbId)}
-									title="Exclude item"
-									aria-label="Exclude item"
+									title={m.smartlists_detail_excludeButton()}
+									aria-label={m.smartlists_detail_excludeButton()}
 								>
 									{#if excludingIds.has(item.tmdbId)}
 										<Loader2 class="h-3 w-3 animate-spin" />
@@ -731,17 +743,20 @@
 						disabled={data.pagination.page <= 1}
 						onclick={() => goToPage(data.pagination.page - 1)}
 					>
-						Previous
+						{m.smartlists_detail_paginationPrevious()}
 					</button>
 					<button class="btn join-item btn-sm">
-						Page {data.pagination.page} of {data.pagination.totalPages}
+						{m.smartlists_detail_paginationPageOf({
+							page: data.pagination.page,
+							totalPages: data.pagination.totalPages
+						})}
 					</button>
 					<button
 						class="btn join-item btn-sm"
 						disabled={data.pagination.page >= data.pagination.totalPages}
 						onclick={() => goToPage(data.pagination.page + 1)}
 					>
-						Next
+						{m.smartlists_detail_paginationNext()}
 					</button>
 				</div>
 			</div>

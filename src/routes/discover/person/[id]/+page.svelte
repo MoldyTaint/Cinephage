@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { SvelteSet } from 'svelte/reactivity';
 	import type { PageData } from './$types';
 	import type { PersonCastCredit, PersonCrewCredit } from '$lib/types/tmdb';
@@ -141,7 +142,7 @@
 </script>
 
 <svelte:head>
-	<title>{data.person.name} - Cinephage</title>
+	<title>{m.discover_person_pageTitle({ name: data.person.name })}</title>
 </svelte:head>
 
 <div class="flex w-full flex-col gap-8 px-4 pb-20 lg:px-8">
@@ -152,7 +153,7 @@
 	<div class="space-y-6">
 		<h2 class="flex items-center gap-2 text-xl font-bold text-base-content">
 			<span class="h-6 w-1 rounded-full bg-primary"></span>
-			Filmography
+			{m.discover_person_filmography()}
 		</h2>
 
 		<!-- Tabs -->
@@ -175,7 +176,7 @@
 						}}
 					>
 						<Film class="h-4 w-4" />
-						Movies
+						{m.discover_person_tabMovies()}
 						<span class="badge badge-sm">{movieTotal}</span>
 					</button>
 				{/if}
@@ -190,7 +191,7 @@
 						}}
 					>
 						<Tv class="h-4 w-4" />
-						TV Shows
+						{m.discover_person_tabTvShows()}
 						<span class="badge badge-sm">{tvTotal}</span>
 					</button>
 				{/if}
@@ -205,7 +206,7 @@
 						}}
 					>
 						<Clapperboard class="h-4 w-4" />
-						Crew
+						{m.discover_person_tabCrew()}
 						<span class="badge badge-sm">{crewTotal}</span>
 					</button>
 				{/if}
@@ -232,14 +233,25 @@
 					<span class="loading loading-md loading-spinner text-primary"></span>
 				{:else if !hasMore}
 					<span class="text-sm text-base-content/50">
-						Showing all {activeCredits.length}
-						{activeTab === 'movies' ? 'movies' : activeTab === 'tv' ? 'TV shows' : 'crew credits'}
+						{m.discover_person_showingAll({
+							count: activeCredits.length,
+							type:
+								activeTab === 'movies'
+									? m.discover_person_tabMovies()
+									: activeTab === 'tv'
+										? m.discover_person_tabTvShows()
+										: m.discover_person_tabCrew()
+						})}
 					</span>
 				{/if}
 			</div>
 		{:else}
 			<div class="flex items-center justify-center py-12 text-base-content/50">
-				No {activeTab === 'movies' ? 'movies' : activeTab === 'tv' ? 'TV shows' : 'crew credits'} found
+				{activeTab === 'movies'
+					? m.discover_person_noMoviesFound()
+					: activeTab === 'tv'
+						? m.discover_person_noTvShowsFound()
+						: m.discover_person_noCrewCreditsFound()}
 			</div>
 		{/if}
 	</div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { page } from '$app/stores';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -115,8 +116,8 @@
 			searchResults = result.results;
 			searchPagination = result.pagination;
 		} catch (e) {
-			toasts.error('Search failed', {
-				description: e instanceof Error ? e.message : 'Search failed'
+			toasts.error(m.discover_searchFailed(), {
+				description: e instanceof Error ? e.message : m.discover_searchFailed()
 			});
 			searchResults = [];
 		} finally {
@@ -315,8 +316,8 @@
 			}
 			currentPage = nextPage;
 		} catch (e) {
-			toasts.error('Failed to load more results', {
-				description: e instanceof Error ? e.message : 'Failed to load more results'
+			toasts.error(m.discover_failedToLoadMore(), {
+				description: e instanceof Error ? e.message : m.discover_failedToLoadMore()
 			});
 		} finally {
 			isLoadingMore = false;
@@ -353,7 +354,7 @@
 </script>
 
 <svelte:head>
-	<title>Discover - Cinephage</title>
+	<title>{m.discover_pageTitle()}</title>
 </svelte:head>
 
 <div class="min-h-screen bg-base-100 pb-20">
@@ -365,7 +366,7 @@
 			<h1
 				class="flex-1 bg-linear-to-r from-primary to-secondary bg-clip-text text-2xl font-bold text-transparent"
 			>
-				{isSearchMode ? 'Search' : 'Discover'}
+				{isSearchMode ? m.discover_headingSearch() : m.discover_heading()}
 			</h1>
 
 			<!-- Search (desktop) -->
@@ -384,7 +385,7 @@
 					</div>
 					<input
 						type="text"
-						placeholder="Search Movies & TV shows…"
+						placeholder={m.discover_searchPlaceholder()}
 						class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 						value={searchQuery}
 						oninput={handleSearchInput}
@@ -394,7 +395,7 @@
 						<button
 							class="absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-0.5 text-base-content/40 transition-colors hover:bg-base-300 hover:text-base-content"
 							onclick={clearSearch}
-							aria-label="Clear search"
+							aria-label={m.discover_clearSearch()}
 						>
 							<X class="h-3.5 w-3.5" />
 						</button>
@@ -408,13 +409,17 @@
 					<div class="hidden items-center gap-2 md:flex">
 						{#if type !== 'all'}
 							<div class="badge badge-sm badge-primary">
-								{type === 'tv' ? 'TV Shows' : 'Movies'}
+								{type === 'tv' ? m.discover_filterBadgeTvShows() : m.discover_filterBadgeMovies()}
 							</div>
 						{/if}
 						{#if selectedGenres.length > 0}
-							<div class="badge badge-outline badge-sm">{selectedGenres.length} Genres</div>
+							<div class="badge badge-outline badge-sm">
+								{m.discover_filterBadgeGenres({ count: selectedGenres.length })}
+							</div>
 						{/if}
-						<button class="btn text-error btn-ghost btn-xs" onclick={resetFilters}>Clear</button>
+						<button class="btn text-error btn-ghost btn-xs" onclick={resetFilters}
+							>{m.action_clear()}</button
+						>
 					</div>
 				{/if}
 
@@ -424,7 +429,9 @@
 						? 'btn-primary'
 						: 'border border-base-300 btn-ghost'}"
 					onclick={toggleExcludeInLibrary}
-					title={excludeInLibrary ? 'Show items in library' : 'Hide items in library'}
+					title={excludeInLibrary
+						? m.discover_showItemsInLibrary()
+						: m.discover_hideItemsInLibrary()}
 				>
 					{#if excludeInLibrary}
 						<EyeOff class="h-4 w-4" />
@@ -451,7 +458,7 @@
 							d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
 						/>
 					</svg>
-					Filters
+					{m.discover_filtersButton()}
 				</button>
 			</div>
 		</div>
@@ -472,7 +479,7 @@
 				</div>
 				<input
 					type="text"
-					placeholder="Search Movies & TV shows…"
+					placeholder={m.discover_searchPlaceholder()}
 					class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 					value={searchQuery}
 					oninput={handleSearchInput}
@@ -482,7 +489,7 @@
 					<button
 						class="absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-0.5 text-base-content/40 transition-colors hover:bg-base-300 hover:text-base-content"
 						onclick={clearSearch}
-						aria-label="Clear search"
+						aria-label={m.discover_clearSearch()}
 					>
 						<X class="h-3.5 w-3.5" />
 					</button>
@@ -495,13 +502,10 @@
 	<main class="w-full space-y-12 px-4 py-8 lg:px-8">
 		{#if data.viewType === 'not_configured'}
 			<div class="mx-auto max-w-2xl py-12">
-				<TmdbConfigRequired
-					message="Configure your TMDB API key to browse and discover movies and TV shows."
-				/>
+				<TmdbConfigRequired message={m.discover_tmdbConfigMessage()} />
 				<div class="mt-8 text-center">
 					<p class="text-base-content/60">
-						TMDB (The Movie Database) provides the metadata for all movies and TV shows in
-						Cinephage. You'll need a free API key to get started.
+						{m.discover_tmdbConfigDescription()}
 					</p>
 				</div>
 			</div>
@@ -527,9 +531,12 @@
 				<div class="mb-6 flex items-center justify-between">
 					<h2 class="text-xl font-bold opacity-70">
 						{#if searchPagination}
-							{searchPagination.total_results.toLocaleString()} Results for "{searchQuery}"
+							{m.discover_searchResultsCount({
+								count: searchPagination.total_results.toLocaleString(),
+								query: searchQuery
+							})}
 						{:else}
-							Searching...
+							{m.common_searching()}
 						{/if}
 					</h2>
 				</div>
@@ -546,8 +553,8 @@
 				{#if searchResults.length === 0 && !isSearching && searchPagination}
 					<div class="flex flex-col items-center justify-center py-20 text-center opacity-50">
 						<Search class="mb-4 h-20 w-20" />
-						<p class="text-2xl font-bold">No results found</p>
-						<p class="mt-2">Try a different search term</p>
+						<p class="text-2xl font-bold">{m.discover_noResultsFound()}</p>
+						<p class="mt-2">{m.discover_noResultsTryDifferent()}</p>
 					</div>
 				{/if}
 
@@ -557,7 +564,7 @@
 						<span class="loading loading-lg loading-dots text-primary"></span>
 					{:else if searchPagination && searchPagination.page >= searchPagination.total_pages && searchResults.length > 0}
 						<span class="text-sm tracking-widest text-base-content/30 uppercase"
-							>End of results</span
+							>{m.common_endOfResults()}</span
 						>
 					{/if}
 				</div>
@@ -566,7 +573,7 @@
 			<!-- Dashboard View -->
 			<div class="animate-in fade-in space-y-12 duration-500">
 				<SectionRow
-					title="Trending This Week"
+					title={m.discover_trendingThisWeek()}
 					items={data.sections.trendingWeek}
 					link="/discover?trending=week{excludeInLibrary ? '&exclude_in_library=true' : ''}"
 					endpoint="trending/all/week"
@@ -574,7 +581,7 @@
 					{excludeInLibrary}
 				/>
 				<SectionRow
-					title="Popular Movies"
+					title={m.discover_popularMovies()}
 					items={data.sections.popularMovies}
 					link="/discover?type=movie&sort_by=popularity.desc{excludeInLibrary
 						? '&exclude_in_library=true'
@@ -584,7 +591,7 @@
 					{excludeInLibrary}
 				/>
 				<SectionRow
-					title="Popular TV Shows"
+					title={m.discover_popularTvShows()}
 					items={data.sections.popularTV}
 					link="/discover?type=tv&sort_by=popularity.desc{excludeInLibrary
 						? '&exclude_in_library=true'
@@ -594,7 +601,7 @@
 					{excludeInLibrary}
 				/>
 				<SectionRow
-					title="Top Rated Movies"
+					title={m.discover_topRatedMovies()}
 					items={data.sections.topRatedMovies}
 					link="/discover?type=movie&top_rated=true{excludeInLibrary
 						? '&exclude_in_library=true'
@@ -604,7 +611,7 @@
 					{excludeInLibrary}
 				/>
 				<SectionRow
-					title="Top Rated TV Shows"
+					title={m.discover_topRatedTvShows()}
 					items={data.sections.topRatedTV}
 					link="/discover?type=tv&top_rated=true{excludeInLibrary
 						? '&exclude_in_library=true'
@@ -619,7 +626,7 @@
 			<div class="animate-in fade-in slide-in-from-bottom-4 duration-500">
 				<div class="mb-6 flex items-center justify-between">
 					<h2 class="text-xl font-bold opacity-70">
-						{data.pagination.total_results.toLocaleString()} Results
+						{m.discover_resultsCount({ count: data.pagination.total_results.toLocaleString() })}
 					</h2>
 				</div>
 
@@ -645,9 +652,11 @@
 								d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
 							/>
 						</svg>
-						<p class="text-2xl font-bold">No results found</p>
-						<p class="mt-2">Try adjusting your filters to find what you're looking for.</p>
-						<button class="btn mt-6 btn-primary" onclick={resetFilters}>Clear Filters</button>
+						<p class="text-2xl font-bold">{m.discover_noResultsFound()}</p>
+						<p class="mt-2">{m.discover_noGridResultsHint()}</p>
+						<button class="btn mt-6 btn-primary" onclick={resetFilters}
+							>{m.discover_clearFilters()}</button
+						>
 					</div>
 				{/if}
 
@@ -657,7 +666,7 @@
 						<span class="loading loading-lg loading-dots text-primary"></span>
 					{:else if currentPage >= data.pagination.total_pages && allResults.length > 0}
 						<span class="text-sm tracking-widest text-base-content/30 uppercase"
-							>End of results</span
+							>{m.common_endOfResults()}</span
 						>
 					{/if}
 				</div>

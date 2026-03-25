@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import type { PageData } from './$types';
 	import SmartListEditor from '$lib/components/smartlists/SmartListEditor.svelte';
 
@@ -6,7 +7,7 @@
 </script>
 
 <svelte:head>
-	<title>Edit {data.list.name} - Cinephage</title>
+	<title>{m.smartlists_edit_pageTitle({ name: data.list.name })}</title>
 </svelte:head>
 
 <SmartListEditor

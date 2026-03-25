@@ -8,6 +8,7 @@
 		getLanguageName as getLanguageNameFromLib
 	} from '$lib/shared/languages';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface LanguagePreference {
 		code: string;
@@ -119,11 +120,13 @@
 
 	async function handleSave() {
 		if (!formName.trim() || formLanguages.length === 0) {
-			toasts.warning('Please provide a name and at least one language');
+			toasts.warning(m.settings_integrations_languageProfiles_nameAndLanguageRequired());
 			return;
 		}
 		if (formName.trim().length > MAX_NAME_LENGTH) {
-			toasts.warning(`Profile name must be ${MAX_NAME_LENGTH} characters or less`);
+			toasts.warning(
+				m.settings_integrations_languageProfiles_nameTooLong({ max: MAX_NAME_LENGTH })
+			);
 			return;
 		}
 
@@ -214,7 +217,7 @@
 			}
 
 			await invalidateAll();
-			toasts.success('Subtitle defaults saved');
+			toasts.success(m.settings_integrations_languageProfiles_defaultsSaved());
 		} catch (error) {
 			toasts.error(error instanceof Error ? error.message : 'Failed to save subtitle settings');
 		}
@@ -223,42 +226,46 @@
 
 <div class="w-full p-3 sm:p-4">
 	<div class="mb-6">
-		<h1 class="text-2xl font-bold">Language Profiles</h1>
+		<h1 class="text-2xl font-bold">{m.nav_languageProfiles()}</h1>
 		<p class="text-base-content/70">
-			Define which subtitle languages to search for and their preferences.
+			{m.settings_integrations_languageProfiles_subtitle()}
 		</p>
 	</div>
 
 	<!-- Global Settings -->
 	<div class="card mb-6 bg-base-100 shadow-xl">
 		<div class="card-body p-4 sm:p-6">
-			<h2 class="card-title">Default Settings</h2>
+			<h2 class="card-title">{m.settings_integrations_languageProfiles_defaultSettings()}</h2>
 
 			<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
 				<div class="form-control">
 					<label class="label" for="defaultProfile">
-						<span class="label-text">Default Language Profile</span>
+						<span class="label-text"
+							>{m.settings_integrations_languageProfiles_defaultProfile()}</span
+						>
 					</label>
 					<select
 						id="defaultProfile"
 						class="select-bordered select"
 						bind:value={selectedDefaultProfile}
 					>
-						<option value="">None</option>
+						<option value="">{m.common_none()}</option>
 						{#each data.profiles as profile (profile.id)}
 							<option value={profile.id}>{profile.name}</option>
 						{/each}
 					</select>
 					<p class="label">
 						<span class="label-text-alt wrap-break-word whitespace-normal">
-							Applied to new movies and series
+							{m.settings_integrations_languageProfiles_defaultProfileHelp()}
 						</span>
 					</p>
 				</div>
 
 				<div class="form-control">
 					<label class="label" for="fallbackLanguage">
-						<span class="label-text">Fallback Language</span>
+						<span class="label-text"
+							>{m.settings_integrations_languageProfiles_fallbackLanguage()}</span
+						>
 					</label>
 					<select
 						id="fallbackLanguage"
@@ -271,7 +278,7 @@
 					</select>
 					<p class="label">
 						<span class="label-text-alt wrap-break-word whitespace-normal">
-							Used when subtitle file language cannot be detected
+							{m.settings_integrations_languageProfiles_fallbackLanguageHelp()}
 						</span>
 					</p>
 				</div>
@@ -280,7 +287,7 @@
 			<div class="mt-4 card-actions justify-stretch sm:justify-end">
 				<button class="btn w-full gap-2 btn-sm btn-primary sm:w-auto" onclick={handleSaveSettings}>
 					<CheckCircle size={16} />
-					Save Settings
+					{m.settings_integrations_languageProfiles_saveSettings()}
 				</button>
 			</div>
 		</div>
@@ -288,10 +295,10 @@
 
 	<!-- Profiles List -->
 	<div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-		<h2 class="text-xl font-semibold">Profiles</h2>
+		<h2 class="text-xl font-semibold">{m.settings_integrations_languageProfiles_profiles()}</h2>
 		<button class="btn w-full gap-2 btn-sm btn-primary sm:w-auto" onclick={openAddModal}>
 			<Plus class="h-4 w-4" />
-			Add Profile
+			{m.settings_integrations_languageProfiles_addProfile()}
 		</button>
 	</div>
 
@@ -299,9 +306,9 @@
 		<div class="card bg-base-100 shadow-xl">
 			<div class="card-body text-center">
 				<Globe class="mx-auto h-12 w-12 text-base-content/30" />
-				<p class="text-base-content/70">No language profiles yet.</p>
+				<p class="text-base-content/70">{m.settings_integrations_languageProfiles_noProfiles()}</p>
 				<p class="text-sm text-base-content/50">
-					Create a profile to define which subtitle languages to search for.
+					{m.settings_integrations_languageProfiles_noProfilesHint()}
 				</p>
 			</div>
 		</div>
@@ -317,7 +324,7 @@
 									{#if profile.isDefault}
 										<span class="badge gap-1 badge-primary">
 											<Star class="h-3 w-3" />
-											Default
+											{m.common_default()}
 										</span>
 									{/if}
 								</h3>
@@ -325,19 +332,29 @@
 									{#each profile.languages as lang, i (i)}
 										<span class="badge badge-outline">
 											{getLanguageName(lang.code)}
-											{#if lang.forced}<span class="ml-1 text-xs">(forced)</span>{/if}
-											{#if lang.hearingImpaired}<span class="ml-1 text-xs">(HI)</span>{/if}
+											{#if lang.forced}<span class="ml-1 text-xs"
+													>({m.settings_integrations_languageProfiles_forced()})</span
+												>{/if}
+											{#if lang.hearingImpaired}<span class="ml-1 text-xs"
+													>({m.settings_integrations_languageProfiles_hi()})</span
+												>{/if}
 											{#if i === profile.cutoffIndex}
-												<span class="ml-1 text-xs text-warning">cutoff</span>
+												<span class="ml-1 text-xs text-warning"
+													>{m.settings_integrations_languageProfiles_cutoff()}</span
+												>
 											{/if}
 										</span>
 									{/each}
 								</div>
 								<div class="mt-2 text-sm text-base-content/60">
-									<span class="block sm:inline">Min score: {profile.minimumScore}</span>
+									<span class="block sm:inline"
+										>{m.settings_integrations_languageProfiles_minScore()}: {profile.minimumScore}</span
+									>
 									<span class="hidden sm:inline"> | </span>
 									<span class="block sm:inline">
-										Upgrades: {profile.upgradesAllowed ? 'Allowed' : 'Disabled'}
+										{m.settings_integrations_languageProfiles_upgrades()}: {profile.upgradesAllowed
+											? m.settings_integrations_languageProfiles_allowed()
+											: m.common_disabled()}
 									</span>
 								</div>
 							</div>
@@ -345,14 +362,14 @@
 								<button
 									class="btn btn-ghost btn-sm"
 									onclick={() => openEditModal(profile)}
-									aria-label="Edit profile"
+									aria-label={m.settings_integrations_languageProfiles_editProfile()}
 								>
 									<Pencil class="h-4 w-4" />
 								</button>
 								<button
 									class="btn text-error btn-ghost btn-sm"
 									onclick={() => confirmDelete(profile)}
-									aria-label="Delete profile"
+									aria-label={m.settings_integrations_languageProfiles_deleteProfile()}
 								>
 									<Trash2 class="h-4 w-4" />
 								</button>
@@ -370,13 +387,15 @@
 	<div class="modal-open modal">
 		<div class="modal-box w-full max-w-[min(42rem,calc(100vw-2rem))] wrap-break-word">
 			<h3 class="mb-4 text-lg font-bold">
-				{modalMode === 'add' ? 'Add Language Profile' : 'Edit Language Profile'}
+				{modalMode === 'add'
+					? m.settings_integrations_languageProfiles_addTitle()
+					: m.settings_integrations_languageProfiles_editTitle()}
 			</h3>
 
 			<div class="space-y-4">
 				<div class="form-control">
 					<label class="label" for="profileName">
-						<span class="label-text">Profile Name</span>
+						<span class="label-text">{m.settings_integrations_languageProfiles_profileName()}</span>
 					</label>
 					<input
 						id="profileName"
@@ -384,7 +403,7 @@
 						class="input-bordered input"
 						bind:value={formName}
 						maxlength={MAX_NAME_LENGTH}
-						placeholder="e.g., English + Spanish"
+						placeholder={m.settings_integrations_languageProfiles_profileNamePlaceholder()}
 					/>
 					<div class="label py-1">
 						<span
@@ -396,7 +415,7 @@
 						</span>
 						{#if nameTooLong}
 							<span class="label-text-alt text-xs text-error"
-								>Max {MAX_NAME_LENGTH} characters.</span
+								>{m.settings_integrations_languageProfiles_maxChars({ max: MAX_NAME_LENGTH })}</span
 							>
 						{/if}
 					</div>
@@ -404,7 +423,7 @@
 
 				<div class="form-control">
 					<span class="label">
-						<span class="label-text">Languages</span>
+						<span class="label-text">{m.common_languages()}</span>
 					</span>
 					<div class="space-y-2">
 						{#each formLanguages as lang, i (i)}
@@ -426,7 +445,9 @@
 										checked={lang.forced}
 										onchange={(e) => updateLanguage(i, 'forced', e.currentTarget.checked)}
 									/>
-									<span class="label-text text-xs">Forced</span>
+									<span class="label-text text-xs"
+										>{m.settings_integrations_languageProfiles_forced()}</span
+									>
 								</label>
 
 								<label class="label cursor-pointer gap-1">
@@ -436,7 +457,9 @@
 										checked={lang.hearingImpaired}
 										onchange={(e) => updateLanguage(i, 'hearingImpaired', e.currentTarget.checked)}
 									/>
-									<span class="label-text text-xs">HI</span>
+									<span class="label-text text-xs"
+										>{m.settings_integrations_languageProfiles_hi()}</span
+									>
 								</label>
 
 								<label class="label cursor-pointer gap-1">
@@ -446,14 +469,16 @@
 										checked={lang.excludeHi}
 										onchange={(e) => updateLanguage(i, 'excludeHi', e.currentTarget.checked)}
 									/>
-									<span class="label-text text-xs">Exclude HI</span>
+									<span class="label-text text-xs"
+										>{m.settings_integrations_languageProfiles_excludeHi()}</span
+									>
 								</label>
 
 								<button
 									class="btn text-error btn-ghost btn-sm"
 									onclick={() => removeLanguage(i)}
 									disabled={formLanguages.length === 1}
-									aria-label="Remove language"
+									aria-label={m.settings_integrations_languageProfiles_removeLanguage()}
 								>
 									<Trash2 class="h-4 w-4" />
 								</button>
@@ -462,14 +487,16 @@
 					</div>
 					<button class="btn mt-2 btn-ghost btn-sm" onclick={addLanguage}>
 						<Plus class="h-4 w-4" />
-						Add Language
+						{m.settings_integrations_languageProfiles_addLanguage()}
 					</button>
 				</div>
 
 				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 					<div class="form-control">
 						<label class="label" for="cutoffIndex">
-							<span class="label-text">Cutoff Index</span>
+							<span class="label-text"
+								>{m.settings_integrations_languageProfiles_cutoffIndex()}</span
+							>
 						</label>
 						<input
 							id="cutoffIndex"
@@ -481,14 +508,16 @@
 						/>
 						<p class="label">
 							<span class="label-text-alt wrap-break-word whitespace-normal">
-								Stop searching after this language index
+								{m.settings_integrations_languageProfiles_cutoffIndexHelp()}
 							</span>
 						</p>
 					</div>
 
 					<div class="form-control">
 						<label class="label" for="minimumScore">
-							<span class="label-text">Minimum Score</span>
+							<span class="label-text"
+								>{m.settings_integrations_languageProfiles_minimumScore()}</span
+							>
 						</label>
 						<input
 							id="minimumScore"
@@ -500,7 +529,7 @@
 						/>
 						<p class="label">
 							<span class="label-text-alt wrap-break-word whitespace-normal">
-								Auto-download threshold (0-100)
+								{m.settings_integrations_languageProfiles_minimumScoreHelp()}
 							</span>
 						</p>
 					</div>
@@ -509,23 +538,26 @@
 				<div class="flex flex-col gap-2 sm:flex-row sm:gap-4">
 					<label class="label cursor-pointer gap-2">
 						<input type="checkbox" class="checkbox" bind:checked={formUpgradesAllowed} />
-						<span class="label-text">Allow upgrades</span>
+						<span class="label-text"
+							>{m.settings_integrations_languageProfiles_allowUpgrades()}</span
+						>
 					</label>
 
 					<label class="label cursor-pointer gap-2">
 						<input type="checkbox" class="checkbox" bind:checked={formIsDefault} />
-						<span class="label-text">Set as default</span>
+						<span class="label-text">{m.settings_integrations_languageProfiles_setAsDefault()}</span
+						>
 					</label>
 				</div>
 			</div>
 
 			<div class="modal-action">
-				<button class="btn btn-ghost" onclick={closeModal}>Cancel</button>
+				<button class="btn btn-ghost" onclick={closeModal}>{m.action_cancel()}</button>
 				<button class="btn btn-primary" onclick={handleSave} disabled={saving || nameTooLong}>
 					{#if saving}
 						<span class="loading loading-sm loading-spinner"></span>
 					{/if}
-					{modalMode === 'add' ? 'Create' : 'Save'}
+					{modalMode === 'add' ? m.action_create() : m.action_save()}
 				</button>
 			</div>
 		</div>
@@ -533,7 +565,7 @@
 			type="button"
 			class="modal-backdrop cursor-default border-none bg-black/50"
 			onclick={closeModal}
-			aria-label="Close modal"
+			aria-label={m.action_close()}
 		></button>
 	</div>
 {/if}
@@ -542,21 +574,23 @@
 {#if confirmDeleteOpen}
 	<div class="modal-open modal">
 		<div class="modal-box w-full max-w-[min(28rem,calc(100vw-2rem))] wrap-break-word">
-			<h3 class="text-lg font-bold">Confirm Delete</h3>
+			<h3 class="text-lg font-bold">{m.ui_modal_confirmTitle()}</h3>
 			<p class="py-4">
-				Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? This action cannot be
-				undone.
+				{m.settings_integrations_deleteConfirmPrefix()}
+				<strong>{deleteTarget?.name}</strong>{m.settings_integrations_deleteConfirmSuffix()}
 			</p>
 			<div class="modal-action">
-				<button class="btn btn-ghost" onclick={() => (confirmDeleteOpen = false)}>Cancel</button>
-				<button class="btn btn-error" onclick={handleConfirmDelete}>Delete</button>
+				<button class="btn btn-ghost" onclick={() => (confirmDeleteOpen = false)}
+					>{m.action_cancel()}</button
+				>
+				<button class="btn btn-error" onclick={handleConfirmDelete}>{m.action_delete()}</button>
 			</div>
 		</div>
 		<button
 			type="button"
 			class="modal-backdrop cursor-default border-none bg-black/50"
 			onclick={() => (confirmDeleteOpen = false)}
-			aria-label="Close modal"
+			aria-label={m.action_close()}
 		></button>
 	</div>
 {/if}

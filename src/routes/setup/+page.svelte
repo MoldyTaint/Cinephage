@@ -9,6 +9,7 @@
 		USERNAME_MIN_LENGTH,
 		USERNAME_PATTERN
 	} from '$lib/auth/username-policy.js';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let currentStep = $state(1);
 	let isLoading = $state(false);
@@ -36,19 +37,19 @@
 		usernameError = '';
 
 		if (username.length < USERNAME_MIN_LENGTH) {
-			usernameError = `Username must be at least ${USERNAME_MIN_LENGTH} characters`;
+			usernameError = m.setup_usernameMinLength({ min: String(USERNAME_MIN_LENGTH) });
 			return false;
 		}
 		if (username.length > USERNAME_MAX_LENGTH) {
-			usernameError = `Username must be no more than ${USERNAME_MAX_LENGTH} characters`;
+			usernameError = m.setup_usernameMaxLength({ max: String(USERNAME_MAX_LENGTH) });
 			return false;
 		}
 		if (!USERNAME_PATTERN.test(username)) {
-			usernameError = 'Username can only contain letters, numbers, and underscores';
+			usernameError = m.setup_usernameInvalidChars();
 			return false;
 		}
 		if (isHardReservedUsername(username)) {
-			usernameError = 'This name cannot be used as a username. Choose a different username';
+			usernameError = m.setup_usernameReserved();
 			return false;
 		}
 
@@ -57,13 +58,13 @@
 
 	function validateEmail(): boolean {
 		if (!email || email.length === 0) {
-			emailError = 'Email is required';
+			emailError = m.setup_emailRequired();
 			return false;
 		}
 		// Basic email validation
 		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 		if (!emailRegex.test(email)) {
-			emailError = 'Please enter a valid email address';
+			emailError = m.setup_emailInvalid();
 			return false;
 		}
 		emailError = '';
@@ -88,7 +89,7 @@
 
 	function validateConfirm(): boolean {
 		if (password !== confirmPassword) {
-			confirmError = 'Passwords do not match';
+			confirmError = m.setup_passwordsDoNotMatch();
 			return false;
 		}
 		confirmError = '';
@@ -114,7 +115,7 @@
 			});
 
 			if (result.error) {
-				error = result.error.message || 'Failed to create account';
+				error = result.error.message || m.setup_failedToCreateAccount();
 				return;
 			}
 
@@ -127,15 +128,14 @@
 				});
 
 				if (!apiKeyResponse.ok) {
-					toasts.warning('Account created, but API keys were not auto-generated', {
+					toasts.warning(m.setup_apiKeyWarning(), {
 						description: await apiKeyResponse.text()
 					});
 				}
 			} catch (apiKeyError) {
 				// Don't fail setup if API key creation fails - keys can be regenerated later
-				toasts.warning('Account created, but API key creation failed', {
-					description:
-						apiKeyError instanceof Error ? apiKeyError.message : 'API keys can be created later'
+				toasts.warning(m.setup_apiKeyFailed(), {
+					description: apiKeyError instanceof Error ? apiKeyError.message : m.setup_apiKeyLater()
 				});
 			}
 
@@ -147,7 +147,7 @@
 				goto('/');
 			}, 2000);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'An unexpected error occurred';
+			error = e instanceof Error ? e.message : m.login_unexpectedError();
 		} finally {
 			isLoading = false;
 		}
@@ -155,7 +155,7 @@
 </script>
 
 <svelte:head>
-	<title>Setup - Cinephage</title>
+	<title>{m.setup_pageTitle()}</title>
 </svelte:head>
 
 <div class="flex min-h-screen items-center justify-center bg-base-200 p-4">
@@ -167,15 +167,15 @@
 					<div class="inline-flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
 						<Shield class="h-8 w-8 text-primary" />
 					</div>
-					<h1 class="text-3xl font-bold">Welcome to Cinephage</h1>
-					<p class="text-base-content/70">Let's set up your admin account to get started.</p>
+					<h1 class="text-3xl font-bold">{m.setup_welcomeTitle()}</h1>
+					<p class="text-base-content/70">{m.setup_welcomeSubtitle()}</p>
 					<div class="pt-4">
 						<button
 							class="btn btn-wide btn-primary"
 							onclick={() => (currentStep = 2)}
 							disabled={isLoading}
 						>
-							Get Started
+							{m.setup_getStarted()}
 						</button>
 					</div>
 				</div>
@@ -183,9 +183,9 @@
 				<!-- Step 2: Create Admin Account -->
 				<div class="space-y-6">
 					<div class="text-center">
-						<h2 class="text-2xl font-bold">Create Admin Account</h2>
+						<h2 class="text-2xl font-bold">{m.setup_createAdminTitle()}</h2>
 						<p class="text-sm text-base-content/70">
-							This account will have full access to manage Cinephage
+							{m.setup_createAdminSubtitle()}
 						</p>
 					</div>
 
@@ -208,7 +208,7 @@
 							<label class="label" for="setup-username">
 								<span class="label-text flex items-center gap-2">
 									<User class="h-4 w-4" />
-									Username
+									{m.setup_usernameLabel()}
 								</span>
 							</label>
 							<input
@@ -216,7 +216,7 @@
 								type="text"
 								class="input-bordered input w-full"
 								class:input-error={usernameError}
-								placeholder="admin_user"
+								placeholder={m.setup_usernamePlaceholder()}
 								bind:value={username}
 								oninput={validateUsername}
 								minlength={USERNAME_MIN_LENGTH}
@@ -234,7 +234,7 @@
 							{:else}
 								<div class="label">
 									<span id="setup-username-help" class="label-text-alt"
-										>3-32 characters, letters, numbers, underscores</span
+										>{m.setup_usernameHelp()}</span
 									>
 								</div>
 							{/if}
@@ -258,7 +258,7 @@
 											d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"
 										/></svg
 									>
-									Email
+									{m.setup_emailLabel()}
 								</span>
 							</label>
 							<input
@@ -266,7 +266,7 @@
 								type="email"
 								class="input-bordered input w-full"
 								class:input-error={emailError}
-								placeholder="admin@example.com"
+								placeholder={m.setup_emailPlaceholder()}
 								bind:value={email}
 								oninput={validateEmail}
 								aria-invalid={Boolean(emailError)}
@@ -285,7 +285,7 @@
 							<label class="label" for="setup-password">
 								<span class="label-text flex items-center gap-2">
 									<Lock class="h-4 w-4" />
-									Password
+									{m.setup_passwordLabel()}
 								</span>
 							</label>
 							<input
@@ -302,19 +302,24 @@
 							<!-- Password requirements -->
 							<div class="mt-2 space-y-1 text-xs">
 								<div class={passwordErrors.length ? 'text-success' : 'text-base-content/50'}>
-									{passwordErrors.length ? '✓' : '○'} At least 8 characters
+									{passwordErrors.length ? '✓' : '○'}
+									{m.setup_passwordReqLength()}
 								</div>
 								<div class={passwordErrors.uppercase ? 'text-success' : 'text-base-content/50'}>
-									{passwordErrors.uppercase ? '✓' : '○'} One uppercase letter
+									{passwordErrors.uppercase ? '✓' : '○'}
+									{m.setup_passwordReqUppercase()}
 								</div>
 								<div class={passwordErrors.lowercase ? 'text-success' : 'text-base-content/50'}>
-									{passwordErrors.lowercase ? '✓' : '○'} One lowercase letter
+									{passwordErrors.lowercase ? '✓' : '○'}
+									{m.setup_passwordReqLowercase()}
 								</div>
 								<div class={passwordErrors.number ? 'text-success' : 'text-base-content/50'}>
-									{passwordErrors.number ? '✓' : '○'} One number
+									{passwordErrors.number ? '✓' : '○'}
+									{m.setup_passwordReqNumber()}
 								</div>
 								<div class={passwordErrors.special ? 'text-success' : 'text-base-content/50'}>
-									{passwordErrors.special ? '✓' : '○'} One special character
+									{passwordErrors.special ? '✓' : '○'}
+									{m.setup_passwordReqSpecial()}
 								</div>
 							</div>
 						</div>
@@ -322,7 +327,7 @@
 						<!-- Confirm Password -->
 						<div class="form-control">
 							<label class="label" for="setup-confirm-password">
-								<span class="label-text">Confirm Password</span>
+								<span class="label-text">{m.setup_confirmPasswordLabel()}</span>
 							</label>
 							<input
 								id="setup-confirm-password"
@@ -353,7 +358,7 @@
 								onclick={() => (currentStep = 1)}
 								disabled={isLoading}
 							>
-								Back
+								{m.action_back()}
 							</button>
 							<button
 								type="submit"
@@ -363,7 +368,7 @@
 								{#if isLoading}
 									<span class="loading loading-spinner"></span>
 								{/if}
-								Create Account
+								{m.setup_createAccount()}
 							</button>
 						</div>
 					</form>
@@ -374,9 +379,9 @@
 					<div class="inline-flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
 						<CheckCircle class="h-8 w-8 text-success" />
 					</div>
-					<h2 class="text-3xl font-bold">Setup Complete!</h2>
-					<p class="text-base-content/70">Your admin account has been created successfully.</p>
-					<p class="text-sm text-base-content/50">Redirecting to dashboard...</p>
+					<h2 class="text-3xl font-bold">{m.setup_completeTitle()}</h2>
+					<p class="text-base-content/70">{m.setup_completeMessage()}</p>
+					<p class="text-sm text-base-content/50">{m.setup_redirecting()}</p>
 					<div class="mt-4 h-2 w-full rounded-full bg-base-200">
 						<div class="h-2 animate-pulse rounded-full bg-success" style="width: 100%"></div>
 					</div>

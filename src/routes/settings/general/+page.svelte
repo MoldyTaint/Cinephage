@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { invalidateAll } from '$app/navigation';
 	import {
 		Plus,
@@ -111,7 +112,7 @@
 				throw new Error(getResponseErrorMessage(payload, 'Failed to start scan'));
 			}
 		} catch (error) {
-			scanError = error instanceof Error ? error.message : 'Failed to start scan';
+			scanError = error instanceof Error ? error.message : m.settings_general_failedToStartScan();
 			scanning = false;
 			scanProgress = null;
 		}
@@ -238,7 +239,8 @@
 				triggerLibraryScan(payload.folder.id);
 			}
 		} catch (error) {
-			folderSaveError = error instanceof Error ? error.message : 'An unexpected error occurred';
+			folderSaveError =
+				error instanceof Error ? error.message : m.settings_general_unexpectedError();
 		} finally {
 			folderSaving = false;
 		}
@@ -262,7 +264,7 @@
 			closeFolderModal();
 		} catch (error) {
 			toasts.error(
-				error instanceof Error ? error.message : 'An unexpected error occurred while deleting'
+				error instanceof Error ? error.message : m.settings_general_unexpectedDeleteError()
 			);
 		}
 	}
@@ -291,21 +293,21 @@
 			deleteFolderTarget = null;
 		} catch (error) {
 			toasts.error(
-				error instanceof Error ? error.message : 'An unexpected error occurred while deleting'
+				error instanceof Error ? error.message : m.settings_general_unexpectedDeleteError()
 			);
 		}
 	}
 </script>
 
 <svelte:head>
-	<title>General Settings - Cinephage</title>
+	<title>{m.settings_general_pageTitle()}</title>
 </svelte:head>
 
 <div class="w-full p-3 sm:p-4">
 	<div class="mb-5 sm:mb-6">
-		<h1 class="text-2xl font-bold">General Settings</h1>
+		<h1 class="text-2xl font-bold">{m.settings_general_heading()}</h1>
 		<p class="text-base-content/70">
-			Configure general application settings and media library folders.
+			{m.settings_general_subtitle()}
 		</p>
 	</div>
 
@@ -313,14 +315,14 @@
 	<div class="mb-8">
 		<div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 			<div class="min-w-0">
-				<h2 class="text-2xl font-bold">Root Folders</h2>
+				<h2 class="text-2xl font-bold">{m.settings_general_rootFolders()}</h2>
 				<p class="text-base-content/70">
-					Configure media library folders where content will be organized.
+					{m.settings_general_rootFoldersDescription()}
 				</p>
 			</div>
 			<button class="btn gap-2 btn-sm btn-primary sm:w-auto" onclick={openAddFolderModal}>
 				<Plus class="h-4 w-4" />
-				Add Folder
+				{m.settings_general_addFolder()}
 			</button>
 		</div>
 
@@ -337,9 +339,9 @@
 	<div class="mb-8">
 		<div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 			<div class="min-w-0">
-				<h2 class="text-2xl font-bold">Library Scan</h2>
+				<h2 class="text-2xl font-bold">{m.settings_general_libraryScan()}</h2>
 				<p class="text-base-content/70">
-					Scan root folders to discover media files and match them to your library.
+					{m.settings_general_libraryScanDescription()}
 				</p>
 			</div>
 			<button
@@ -349,10 +351,10 @@
 			>
 				{#if scanning}
 					<RefreshCw class="h-4 w-4 animate-spin" />
-					Scanning...
+					{m.settings_general_scanning()}
 				{:else}
 					<HardDrive class="h-4 w-4" />
-					Scan Library
+					{m.settings_general_scanLibrary()}
 				{/if}
 			</button>
 		</div>
@@ -360,7 +362,7 @@
 		{#if data.rootFolders.length === 0}
 			<div class="mb-4 alert alert-warning">
 				<AlertCircle class="h-5 w-5" />
-				<span>Add a root folder above before scanning your library.</span>
+				<span>{m.settings_general_addFolderFirst()}</span>
 			</div>
 		{/if}
 
@@ -378,9 +380,7 @@
 					<span>{scanSuccess.message}</span>
 					{#if scanSuccess.unmatchedCount > 0}
 						<a href="/library/unmatched" class="btn gap-1 btn-ghost btn-sm">
-							View {scanSuccess.unmatchedCount} unmatched file{scanSuccess.unmatchedCount !== 1
-								? 's'
-								: ''}
+							{m.settings_general_viewUnmatchedFiles({ count: scanSuccess.unmatchedCount })}
 							<ExternalLink class="h-3 w-3" />
 						</a>
 					{/if}
@@ -394,13 +394,14 @@
 					class="mb-2 flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between"
 				>
 					<span class="max-w-md truncate">
-						{scanProgress.phase === 'scanning' ? 'Discovering files...' : ''}
-						{scanProgress.phase === 'processing' ? 'Processing...' : ''}
-						{scanProgress.phase === 'matching' ? 'Matching files...' : ''}
+						{scanProgress.phase === 'scanning' ? m.settings_general_discoveringFiles() : ''}
+						{scanProgress.phase === 'processing' ? m.settings_general_processing() : ''}
+						{scanProgress.phase === 'matching' ? m.settings_general_matchingFiles() : ''}
 						{scanProgress.rootFolderPath ?? ''}
 					</span>
 					<span class="text-base-content/60">
-						{scanProgress.filesProcessed} / {scanProgress.filesFound} files
+						{scanProgress.filesProcessed} / {scanProgress.filesFound}
+						{m.common_files()}
 					</span>
 				</div>
 				<progress
@@ -409,10 +410,10 @@
 					max={scanProgress.filesFound || 1}
 				></progress>
 				<div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-base-content/60">
-					<span>Added: {scanProgress.filesAdded}</span>
-					<span>Updated: {scanProgress.filesUpdated}</span>
-					<span>Removed: {scanProgress.filesRemoved}</span>
-					<span>Unmatched: {scanProgress.unmatchedCount}</span>
+					<span>{m.settings_general_scanAdded()}: {scanProgress.filesAdded}</span>
+					<span>{m.settings_general_scanUpdated()}: {scanProgress.filesUpdated}</span>
+					<span>{m.settings_general_scanRemoved()}: {scanProgress.filesRemoved}</span>
+					<span>{m.settings_general_scanUnmatched()}: {scanProgress.unmatchedCount}</span>
 				</div>
 				{#if scanProgress.currentFile}
 					<div class="mt-2 truncate text-xs text-base-content/50">
@@ -441,23 +442,24 @@
 {#if confirmFolderDeleteOpen}
 	<div class="modal-open modal">
 		<div class="modal-box w-full max-w-[min(28rem,calc(100vw-2rem))] wrap-break-word">
-			<h3 class="text-lg font-bold">Confirm Delete</h3>
+			<h3 class="text-lg font-bold">{m.settings_general_confirmDelete()}</h3>
 			<p class="py-4">
-				Are you sure you want to delete <strong>{deleteFolderTarget?.name}</strong>? This action
-				cannot be undone.
+				{m.settings_general_confirmDeleteMessage({ name: deleteFolderTarget?.name ?? '' })}
 			</p>
 			<div class="modal-action flex-col-reverse sm:flex-row">
 				<button class="btn btn-ghost" onclick={() => (confirmFolderDeleteOpen = false)}
-					>Cancel</button
+					>{m.action_cancel()}</button
 				>
-				<button class="btn btn-error" onclick={handleConfirmFolderDelete}>Delete</button>
+				<button class="btn btn-error" onclick={handleConfirmFolderDelete}
+					>{m.action_delete()}</button
+				>
 			</div>
 		</div>
 		<button
 			type="button"
 			class="modal-backdrop cursor-default border-none bg-black/50"
 			onclick={() => (confirmFolderDeleteOpen = false)}
-			aria-label="Close modal"
+			aria-label={m.action_close()}
 		></button>
 	</div>
 {/if}

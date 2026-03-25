@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';
 	import TmdbConfigRequired from '$lib/components/ui/TmdbConfigRequired.svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
@@ -69,9 +70,9 @@
 			}
 
 			saveSuccess = true;
-			toasts.success('Global filters updated');
+			toasts.success(m.settings_filters_updated());
 		} catch (error) {
-			toasts.error(error instanceof Error ? error.message : 'Failed to save global filters');
+			toasts.error(error instanceof Error ? error.message : m.settings_filters_failedToSave());
 		} finally {
 			saving = false;
 		}
@@ -83,23 +84,20 @@
 </script>
 
 <svelte:head>
-	<title>Global Filters - Settings - Cinephage</title>
+	<title>{m.settings_filters_pageTitle()}</title>
 </svelte:head>
 
 <div class="w-full p-4">
 	<div class="mb-6">
-		<h1 class="text-2xl font-bold">Global Filters</h1>
+		<h1 class="text-2xl font-bold">{m.settings_filters_heading()}</h1>
 		<p class="text-base-content/70">
-			Configure global content filters. These settings apply to all search results, discoveries, and
-			automated tasks.
+			{m.settings_filters_subtitle()}
 		</p>
 	</div>
 
 	{#if !data.tmdbConfigured}
 		<div class="mb-6">
-			<TmdbConfigRequired
-				message="Configure your TMDB API key to enable genre filtering and other TMDB-powered features."
-			/>
+			<TmdbConfigRequired message={m.settings_filters_tmdbRequired()} />
 		</div>
 	{/if}
 
@@ -107,7 +105,7 @@
 		<!-- Content Settings -->
 		<div class="card bg-base-100 shadow-xl">
 			<div class="card-body">
-				<h2 class="card-title">Content Preferences</h2>
+				<h2 class="card-title">{m.settings_filters_contentPreferences()}</h2>
 				<div class="form-control">
 					<label class="label cursor-pointer justify-start gap-4">
 						<input
@@ -116,10 +114,10 @@
 							bind:checked={filtersState.include_adult}
 							onchange={() => (saveSuccess = false)}
 						/>
-						<span class="label-text">Include Adult Content</span>
+						<span class="label-text">{m.settings_filters_includeAdult()}</span>
 					</label>
 					<p class="pl-10 text-xs text-base-content/60">
-						Enable to allow adult content in search results and discovery.
+						{m.settings_filters_includeAdultHint()}
 					</p>
 				</div>
 			</div>
@@ -128,11 +126,11 @@
 		<!-- Quality Settings -->
 		<div class="card bg-base-100 shadow-xl">
 			<div class="card-body">
-				<h2 class="card-title">Quality Standards</h2>
+				<h2 class="card-title">{m.settings_filters_qualityStandards()}</h2>
 				<div class="grid gap-6 md:grid-cols-2">
 					<div class="form-control">
 						<label class="label" for="min_vote_average">
-							<span class="label-text">Minimum Score (0-10)</span>
+							<span class="label-text">{m.settings_filters_minScore()}</span>
 						</label>
 						<input
 							type="number"
@@ -147,7 +145,7 @@
 					</div>
 					<div class="form-control">
 						<label class="label" for="min_vote_count">
-							<span class="label-text">Minimum Vote Count</span>
+							<span class="label-text">{m.settings_filters_minVoteCount()}</span>
 						</label>
 						<input
 							type="number"
@@ -165,11 +163,11 @@
 		<!-- Localization -->
 		<div class="card bg-base-100 shadow-xl">
 			<div class="card-body">
-				<h2 class="card-title">Localization</h2>
+				<h2 class="card-title">{m.settings_filters_localization()}</h2>
 				<div class="grid gap-6 md:grid-cols-2">
 					<div class="form-control">
 						<label class="label" for="language">
-							<span class="label-text">Preferred Language</span>
+							<span class="label-text">{m.settings_filters_preferredLanguage()}</span>
 						</label>
 						<select
 							id="language"
@@ -184,7 +182,7 @@
 					</div>
 					<div class="form-control">
 						<label class="label" for="region">
-							<span class="label-text">Preferred Region</span>
+							<span class="label-text">{m.settings_filters_preferredRegion()}</span>
 						</label>
 						<select
 							id="region"
@@ -204,14 +202,14 @@
 		<!-- Genre Exclusion -->
 		<div class="card bg-base-100 shadow-xl">
 			<div class="card-body">
-				<h2 class="card-title">Excluded Genres</h2>
-				<p class="mb-4 text-sm text-base-content/70">Select genres to exclude from all results.</p>
+				<h2 class="card-title">{m.settings_filters_excludedGenres()}</h2>
+				<p class="mb-4 text-sm text-base-content/70">{m.settings_filters_excludedGenresHint()}</p>
 				{#if data.genres.length === 0}
 					<p class="text-sm text-base-content/50 italic">
 						{#if !data.tmdbConfigured}
-							Configure your TMDB API key to load available genres.
+							{m.settings_filters_configureTmdbForGenres()}
 						{:else}
-							No genres available.
+							{m.settings_filters_noGenresAvailable()}
 						{/if}
 					</p>
 				{:else}
@@ -234,13 +232,13 @@
 
 		{#if saveSuccess}
 			<div class="alert alert-success shadow-lg">
-				<span>Global filters updated successfully.</span>
+				<span>{m.settings_filters_updatedSuccess()}</span>
 			</div>
 		{/if}
 
 		<div class="flex justify-end">
 			<button class="btn btn-primary" onclick={handleSave} disabled={saving}>
-				{saving ? 'Saving...' : 'Save Global Filters'}
+				{saving ? m.common_saving() : m.settings_filters_saveButton()}
 			</button>
 		</div>
 	</div>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { SvelteSet } from 'svelte/reactivity';
+	import * as m from '$lib/paraglide/messages.js';
 	import {
 		RefreshCw,
 		CheckCircle,
@@ -100,7 +101,7 @@
 			executeResult = await response.json();
 
 			if (executeResult && executeResult.succeeded > 0) {
-				success = `Successfully renamed ${executeResult.succeeded} file${executeResult.succeeded !== 1 ? 's' : ''}`;
+				success = m.settings_naming_rename_successCount({ count: executeResult.succeeded });
 			}
 
 			if (executeResult && executeResult.failed > 0) {
@@ -110,9 +111,12 @@
 				const errorMessages = failedResults.map((r: { error?: string }) => r.error).filter(Boolean);
 
 				if (errorMessages.length > 0) {
-					error = `Failed to rename ${executeResult.failed} file(s): ${errorMessages.join(', ')}`;
+					error = m.settings_naming_rename_failCountWithErrors({
+						count: executeResult.failed,
+						errors: errorMessages.join(', ')
+					});
 				} else {
-					error = `Failed to rename ${executeResult.failed} file${executeResult.failed !== 1 ? 's' : ''}`;
+					error = m.settings_naming_rename_failCount({ count: executeResult.failed });
 				}
 			}
 
@@ -187,7 +191,7 @@
 	<div class="mb-6">
 		<a href={returnTo} class="btn mb-4 gap-2 btn-ghost btn-sm">
 			<ChevronLeft class="h-4 w-4" />
-			Back to Naming Settings
+			{m.settings_naming_rename_backToNaming()}
 		</a>
 
 		<div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -197,9 +201,9 @@
 						<FileEdit class="h-5 w-5 text-primary" />
 					</div>
 					<div>
-						<h1 class="text-2xl font-bold sm:text-3xl">Review Rename Plan</h1>
+						<h1 class="text-2xl font-bold sm:text-3xl">{m.settings_naming_rename_heading()}</h1>
 						<p class="text-base text-base-content/70">
-							Review how your saved naming settings would change files across the library
+							{m.settings_naming_rename_subtitle()}
 						</p>
 					</div>
 				</div>
@@ -207,7 +211,7 @@
 			<div class="flex flex-col gap-2 sm:w-auto sm:flex-row">
 				<button class="btn gap-2 btn-ghost btn-sm" onclick={loadPreview} disabled={loading}>
 					<RefreshCw class="h-4 w-4 {loading ? 'animate-spin' : ''}" />
-					Refresh
+					{m.action_refresh()}
 				</button>
 				<button
 					class="btn gap-2 btn-sm btn-primary"
@@ -216,10 +220,10 @@
 				>
 					{#if executing}
 						<RefreshCw class="h-4 w-4 animate-spin" />
-						Renaming...
+						{m.settings_naming_rename_renaming()}
 					{:else}
 						<CheckCircle class="h-4 w-4" />
-						Rename Selected ({selectedIds.size})
+						{m.settings_naming_rename_renameSelected({ count: selectedIds.size })}
 					{/if}
 				</button>
 			</div>
@@ -246,10 +250,9 @@
 			<div class="flex items-start gap-3">
 				<AlertTriangle class="mt-0.5 h-5 w-5 shrink-0" />
 				<div>
-					<p class="font-medium">Using Saved Settings</p>
+					<p class="font-medium">{m.settings_naming_rename_usingSavedSettings()}</p>
 					<p class="text-sm opacity-90">
-						This review uses the last saved naming settings. Save changes on the naming page first
-						to turn your current draft into the active rename plan.
+						{m.settings_naming_rename_usingSavedSettingsDesc()}
 					</p>
 				</div>
 			</div>
@@ -257,10 +260,9 @@
 	{/if}
 
 	<div class="mb-6 rounded-2xl border border-base-300 bg-base-200 p-4 text-sm text-base-content/70">
-		<p class="font-medium">What this page is showing</p>
+		<p class="font-medium">{m.settings_naming_rename_whatShowing()}</p>
 		<p class="mt-1">
-			This page is the review step for saved naming settings. It shows which files already match,
-			which would change, and where collisions or errors need attention before you rename anything.
+			{m.settings_naming_rename_whatShowingDesc()}
 		</p>
 	</div>
 
@@ -269,7 +271,7 @@
 		<div class="flex items-center justify-center py-20">
 			<div class="text-center">
 				<RefreshCw class="mx-auto mb-4 h-10 w-10 animate-spin text-primary" />
-				<p class="text-base-content/60">Loading rename preview...</p>
+				<p class="text-base-content/60">{m.settings_naming_rename_loadingPreview()}</p>
 			</div>
 		</div>
 	{:else if preview}
@@ -277,7 +279,7 @@
 		<div class="mb-6 space-y-4">
 			<!-- Media Type Pills -->
 			<div class="flex flex-wrap items-center gap-2">
-				<span class="mr-1 text-sm text-base-content/60">Filter:</span>
+				<span class="mr-1 text-sm text-base-content/60">{m.settings_naming_rename_filter()}:</span>
 				<button
 					class="btn gap-1 btn-sm"
 					class:btn-primary={mediaTypeFilter === 'all'}
@@ -285,7 +287,7 @@
 					onclick={() => (mediaTypeFilter = 'all')}
 				>
 					<Files class="h-4 w-4" />
-					All
+					{m.common_all()}
 				</button>
 				<button
 					class="btn gap-1 btn-sm"
@@ -294,7 +296,7 @@
 					onclick={() => (mediaTypeFilter = 'movie')}
 				>
 					<Film class="h-4 w-4" />
-					Movies
+					{m.common_movies()}
 				</button>
 				<button
 					class="btn gap-1 btn-sm"
@@ -303,26 +305,26 @@
 					onclick={() => (mediaTypeFilter = 'tv')}
 				>
 					<Tv class="h-4 w-4" />
-					TV Shows
+					{m.common_tvShows()}
 				</button>
 			</div>
 
 			<!-- Summary Stats -->
 			<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
 				<div class="stat rounded-box bg-base-200 p-3">
-					<div class="stat-title text-xs">Total Files</div>
+					<div class="stat-title text-xs">{m.settings_naming_rename_totalFiles()}</div>
 					<div class="stat-value text-xl sm:text-2xl">{totalFiles}</div>
 				</div>
 				<div class="stat rounded-box bg-base-200 p-3">
-					<div class="stat-title text-xs">Will Change</div>
+					<div class="stat-title text-xs">{m.settings_naming_rename_willChange()}</div>
 					<div class="stat-value text-xl text-info sm:text-2xl">{counts.willChange}</div>
 				</div>
 				<div class="stat rounded-box bg-base-200 p-3">
-					<div class="stat-title text-xs">Already Correct</div>
+					<div class="stat-title text-xs">{m.settings_naming_rename_alreadyCorrect()}</div>
 					<div class="stat-value text-xl text-success sm:text-2xl">{counts.alreadyCorrect}</div>
 				</div>
 				<div class="stat rounded-box bg-base-200 p-3">
-					<div class="stat-title text-xs">Issues</div>
+					<div class="stat-title text-xs">{m.settings_naming_rename_issues()}</div>
 					<div
 						class="stat-value text-xl {counts.collisions + counts.errors > 0
 							? 'text-warning'
@@ -342,7 +344,7 @@
 				onclick={() => (activeTab = 'willChange')}
 			>
 				<FileEdit class="h-4 w-4" />
-				Will Change
+				{m.settings_naming_rename_willChange()}
 				<span class="badge badge-sm badge-info">{counts.willChange}</span>
 			</button>
 			<button
@@ -351,7 +353,7 @@
 				onclick={() => (activeTab = 'alreadyCorrect')}
 			>
 				<FileCheck class="h-4 w-4" />
-				Correct
+				{m.settings_naming_rename_correct()}
 				<span class="badge badge-sm badge-success">{counts.alreadyCorrect}</span>
 			</button>
 			<button
@@ -360,7 +362,7 @@
 				onclick={() => (activeTab = 'collisions')}
 			>
 				<AlertTriangle class="h-4 w-4" />
-				Collisions
+				{m.settings_naming_rename_collisions()}
 				<span class="badge badge-sm {counts.collisions > 0 ? 'badge-warning' : 'badge-ghost'}"
 					>{counts.collisions}</span
 				>
@@ -371,7 +373,7 @@
 				onclick={() => (activeTab = 'errors')}
 			>
 				<FileWarning class="h-4 w-4" />
-				Errors
+				{m.settings_naming_rename_errors()}
 				<span class="badge badge-sm {counts.errors > 0 ? 'badge-error' : 'badge-ghost'}"
 					>{counts.errors}</span
 				>
@@ -381,11 +383,14 @@
 		<!-- Selection Controls (only for willChange tab) -->
 		{#if activeTab === 'willChange' && counts.willChange > 0}
 			<div class="mb-4 flex flex-wrap items-center gap-2 rounded-lg bg-base-200 p-3">
-				<span class="mr-2 text-sm font-medium">Selection:</span>
-				<button class="btn btn-ghost btn-xs" onclick={selectAll}>Select All</button>
-				<button class="btn btn-ghost btn-xs" onclick={selectNone}>Select None</button>
+				<span class="mr-2 text-sm font-medium">{m.settings_naming_rename_selection()}:</span>
+				<button class="btn btn-ghost btn-xs" onclick={selectAll}>{m.action_selectAll()}</button>
+				<button class="btn btn-ghost btn-xs" onclick={selectNone}>{m.action_deselectAll()}</button>
 				<span class="ml-auto text-sm text-base-content/60">
-					{selectedIds.size} of {counts.willChange} selected
+					{m.settings_naming_rename_selectedCount({
+						selected: selectedIds.size,
+						total: counts.willChange
+					})}
 				</span>
 			</div>
 		{/if}
@@ -431,7 +436,9 @@
 										<p class="truncate text-sm text-base-content/60">{item.currentRelativePath}</p>
 									</div>
 								</div>
-								<span class="badge shrink-0 badge-info">Will Change</span>
+								<span class="badge shrink-0 badge-info"
+									>{m.settings_naming_rename_willChange()}</span
+								>
 							</div>
 
 							<!-- Path Comparison -->
@@ -439,7 +446,9 @@
 								<div class="flex flex-col gap-1 text-sm">
 									<div class="flex items-center gap-2">
 										<X class="h-4 w-4 shrink-0 text-error" />
-										<span class="shrink-0 text-base-content/50">Current:</span>
+										<span class="shrink-0 text-base-content/50"
+											>{m.settings_naming_rename_current()}:</span
+										>
 									</div>
 									<code class="font-mono text-xs break-all text-error">
 										{item.currentParentPath}/{item.currentRelativePath}
@@ -451,7 +460,9 @@
 								<div class="flex flex-col gap-1 text-sm">
 									<div class="flex items-center gap-2">
 										<Check class="h-4 w-4 shrink-0 text-success" />
-										<span class="shrink-0 text-base-content/50">New:</span>
+										<span class="shrink-0 text-base-content/50"
+											>{m.settings_naming_rename_new()}:</span
+										>
 									</div>
 									<code class="font-mono text-xs break-all text-success">
 										{item.newParentPath}/{item.newRelativePath}
@@ -480,11 +491,11 @@
 								</div>
 								<div class="shrink-0">
 									{#if item.status === 'already_correct'}
-										<span class="badge badge-success">Correct</span>
+										<span class="badge badge-success">{m.settings_naming_rename_correct()}</span>
 									{:else if item.status === 'collision'}
-										<span class="badge badge-warning">Collision</span>
+										<span class="badge badge-warning">{m.settings_naming_rename_collision()}</span>
 									{:else if item.status === 'error'}
-										<span class="badge badge-error">Error</span>
+										<span class="badge badge-error">{m.settings_naming_rename_error()}</span>
 									{/if}
 								</div>
 							</div>
@@ -495,17 +506,18 @@
 										<AlertTriangle class="mt-0.5 h-4 w-4 shrink-0 text-warning" />
 										<div class="space-y-1">
 											<div>
-												<span class="text-base-content/50">Would rename to:</span>
+												<span class="text-base-content/50"
+													>{m.settings_naming_rename_wouldRenameTo()}:</span
+												>
 												<code class="mt-0.5 block font-mono text-xs break-all"
 													>{item.newRelativePath}</code
 												>
 											</div>
 											{#if item.collisionsWith}
 												<p class="text-sm text-warning">
-													Conflicts with {item.collisionsWith.length} other file{item.collisionsWith
-														.length !== 1
-														? 's'
-														: ''}
+													{m.settings_naming_rename_conflictsWith({
+														count: item.collisionsWith.length
+													})}
 												</p>
 											{/if}
 										</div>
@@ -544,26 +556,26 @@
 					{#if activeTab === 'willChange'}
 						<div class="flex flex-col items-center gap-3">
 							<CheckCircle class="h-12 w-12 text-success" />
-							<p class="text-lg font-medium">All files match your naming settings</p>
-							<p class="text-sm">No files need to be renamed.</p>
+							<p class="text-lg font-medium">{m.settings_naming_rename_allMatch()}</p>
+							<p class="text-sm">{m.settings_naming_rename_noFilesNeedRenaming()}</p>
 						</div>
 					{:else if activeTab === 'alreadyCorrect'}
 						<div class="flex flex-col items-center gap-3">
 							<RotateCcw class="h-12 w-12 text-base-content/30" />
-							<p class="text-lg font-medium">No correctly named files</p>
-							<p class="text-sm">Check "Will Change" to see files that need renaming.</p>
+							<p class="text-lg font-medium">{m.settings_naming_rename_noCorrectFiles()}</p>
+							<p class="text-sm">{m.settings_naming_rename_checkWillChange()}</p>
 						</div>
 					{:else if activeTab === 'collisions'}
 						<div class="flex flex-col items-center gap-3">
 							<CheckCircle class="h-12 w-12 text-success" />
-							<p class="text-lg font-medium">No naming collisions</p>
-							<p class="text-sm">All rename operations are collision-free.</p>
+							<p class="text-lg font-medium">{m.settings_naming_rename_noCollisions()}</p>
+							<p class="text-sm">{m.settings_naming_rename_allCollisionFree()}</p>
 						</div>
 					{:else}
 						<div class="flex flex-col items-center gap-3">
 							<CheckCircle class="h-12 w-12 text-success" />
-							<p class="text-lg font-medium">No errors</p>
-							<p class="text-sm">All files can be processed without issues.</p>
+							<p class="text-lg font-medium">{m.settings_naming_rename_noErrors()}</p>
+							<p class="text-sm">{m.settings_naming_rename_allProcessable()}</p>
 						</div>
 					{/if}
 				</div>
@@ -574,8 +586,8 @@
 		<div class="py-20 text-center text-base-content/60">
 			<div class="flex flex-col items-center gap-3">
 				<RefreshCw class="h-12 w-12" />
-				<p class="text-lg font-medium">Ready to preview</p>
-				<p class="text-sm">Click "Refresh" to load the rename preview.</p>
+				<p class="text-lg font-medium">{m.settings_naming_rename_readyToPreview()}</p>
+				<p class="text-sm">{m.settings_naming_rename_clickRefresh()}</p>
 			</div>
 		</div>
 	{/if}

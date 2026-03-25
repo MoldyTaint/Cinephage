@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { onMount, untrack } from 'svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { resolvePath } from '$lib/utils/routing';
@@ -654,8 +655,9 @@
 			}
 			canManageHistory = true;
 		} catch (error) {
-			toasts.error('Failed to load history settings', {
-				description: error instanceof Error ? error.message : 'Failed to load history settings'
+			toasts.error(m.toast_activity_failedToLoadSettings(), {
+				description:
+					error instanceof Error ? error.message : m.toast_activity_failedToLoadSettings()
 			});
 			canManageHistory = false;
 		} finally {
@@ -728,9 +730,11 @@
 			}
 
 			retentionDays = payload.retentionDays ?? retentionDays;
-			toasts.success(`Retention updated to ${retentionDays} day${retentionDays === 1 ? '' : 's'}`);
+			toasts.success(m.toast_activity_retentionUpdated({ count: retentionDays }));
 		} catch (error) {
-			toasts.error(error instanceof Error ? error.message : 'Failed to save retention setting');
+			toasts.error(
+				error instanceof Error ? error.message : m.toast_activity_failedToSaveRetention()
+			);
 		} finally {
 			saveRetentionLoading = false;
 		}
@@ -739,24 +743,24 @@
 	const historyConfirmTitle = $derived.by((): string => {
 		switch (historyConfirmAction) {
 			case 'purge_all':
-				return 'Purge All Activity History';
+				return m.activity_history_confirmPurgeAllTitle();
 			case 'purge_older_than_retention':
-				return 'Purge Older Activity History';
+				return m.activity_history_confirmPurgeOlderTitle();
 			case 'delete_selected':
-				return 'Delete Selected History';
+				return m.activity_history_confirmDeleteSelectedTitle();
 			default:
-				return 'Confirm Action';
+				return m.action_confirm();
 		}
 	});
 
 	const historyConfirmMessage = $derived.by((): string => {
 		switch (historyConfirmAction) {
 			case 'purge_all':
-				return 'Permanently delete all activity history? This cannot be undone.';
+				return m.activity_history_confirmPurgeAllMessage();
 			case 'purge_older_than_retention':
-				return `Delete activity history older than ${retentionDays} days? This cannot be undone.`;
+				return m.activity_history_confirmPurgeOlderMessage({ days: retentionDays });
 			case 'delete_selected':
-				return `Delete ${selectedHistoryIds.size} selected history row${selectedHistoryIds.size === 1 ? '' : 's'}? This cannot be undone.`;
+				return m.activity_history_confirmDeleteSelectedMessage({ count: selectedHistoryIds.size });
 			default:
 				return '';
 		}
@@ -765,13 +769,13 @@
 	const historyConfirmLabel = $derived.by((): string => {
 		switch (historyConfirmAction) {
 			case 'purge_all':
-				return 'Purge All';
+				return m.activity_history_purgeAll();
 			case 'purge_older_than_retention':
-				return 'Purge Older';
+				return m.activity_history_purgeOlder();
 			case 'delete_selected':
-				return 'Delete Selected';
+				return m.activity_history_deleteSelectedCount({ count: selectedHistoryIds.size });
 			default:
-				return 'Confirm';
+				return m.action_confirm();
 		}
 	});
 
@@ -799,35 +803,33 @@
 	const activeConfirmTitle = $derived.by((): string => {
 		switch (activeConfirmAction) {
 			case 'pause':
-				return 'Pause Selected Downloads';
+				return m.activity_queue_confirmPauseTitle();
 			case 'resume':
-				return 'Resume Selected Downloads';
+				return m.activity_queue_confirmResumeTitle();
 			case 'retry_failed':
-				return 'Retry Failed Downloads';
+				return m.activity_queue_confirmRetryTitle();
 			case 'remove_failed':
-				return 'Remove Failed Downloads';
+				return m.activity_queue_confirmRemoveTitle();
 			default:
-				return 'Confirm Action';
+				return m.action_confirm();
 		}
 	});
 
 	const activeConfirmMessage = $derived.by((): string => {
 		const targetCount = activeConfirmTargetCount;
-		const targetLabel = `${targetCount} queue item${targetCount === 1 ? '' : 's'}`;
+		const skippedCount = activeConfirmSkippedCount;
 		const skippedSuffix =
-			activeConfirmSkippedCount > 0
-				? ` ${activeConfirmSkippedCount} selected queue item${activeConfirmSkippedCount === 1 ? '' : 's'} does not match this action and will be skipped.`
-				: '';
+			skippedCount > 0 ? ` ${m.activity_queue_skippedItems({ count: skippedCount })}` : '';
 
 		switch (activeConfirmAction) {
 			case 'pause':
-				return `Pause ${targetLabel}?${skippedSuffix}`;
+				return m.activity_queue_confirmPauseMessage({ count: targetCount }) + skippedSuffix;
 			case 'resume':
-				return `Resume ${targetLabel}?${skippedSuffix}`;
+				return m.activity_queue_confirmResumeMessage({ count: targetCount }) + skippedSuffix;
 			case 'retry_failed':
-				return `Retry ${targetLabel}? Completed-client failures retry import first; other failures re-download.${skippedSuffix}`;
+				return m.activity_queue_confirmRetryMessage({ count: targetCount }) + skippedSuffix;
 			case 'remove_failed':
-				return `Remove ${targetLabel} from the queue? This cannot be undone.${skippedSuffix}`;
+				return m.activity_queue_confirmRemoveMessage({ count: targetCount }) + skippedSuffix;
 			default:
 				return '';
 		}
@@ -836,15 +838,15 @@
 	const activeConfirmLabel = $derived.by((): string => {
 		switch (activeConfirmAction) {
 			case 'pause':
-				return 'Pause Selected';
+				return m.activity_queue_pauseSelected();
 			case 'resume':
-				return 'Resume Selected';
+				return m.activity_queue_resumeSelected();
 			case 'retry_failed':
-				return 'Retry Failed';
+				return m.activity_queue_retryFailed();
 			case 'remove_failed':
-				return 'Remove Failed';
+				return m.activity_queue_removeFailed();
 			default:
-				return 'Confirm';
+				return m.action_confirm();
 		}
 	});
 
@@ -924,19 +926,17 @@
 				typeof payload.totalDeleted === 'number'
 					? payload.totalDeleted
 					: (payload.deletedDownloadHistory ?? 0) + (payload.deletedMonitoringHistory ?? 0);
-			toasts.success(
-				`Deleted ${totalDeleted} activity ${totalDeleted === 1 ? 'entry' : 'entries'}`
-			);
+			toasts.success(m.toast_activity_deletedEntries({ count: totalDeleted }));
 			selectedHistoryIds.clear();
 		} catch (error) {
-			toasts.error(error instanceof Error ? error.message : 'Failed to purge activity entries');
+			toasts.error(error instanceof Error ? error.message : m.toast_activity_failedToPurge());
 			return;
 		}
 
 		try {
 			await refreshActivityData({ force: true });
 		} catch (_error) {
-			toasts.info('Purge completed. Activity list will refresh shortly.');
+			toasts.info(m.toast_activity_purgeCompleted());
 		} finally {
 			purgeOlderLoading = false;
 			purgeAllLoading = false;
@@ -955,7 +955,7 @@
 			});
 			if (response.status === 401 || response.status === 403) {
 				canManageHistory = false;
-				throw new Error('Admin access is required');
+				throw new Error(m.toast_activity_adminRequired());
 			}
 
 			const payload = await response.json().catch(() => ({}));
@@ -963,7 +963,7 @@
 				throw new Error(
 					typeof payload.error === 'string'
 						? payload.error
-						: 'Failed to delete selected activity entries'
+						: m.toast_activity_failedToDeleteSelected()
 				);
 			}
 
@@ -975,24 +975,18 @@
 			const skippedRetryableFailed =
 				typeof payload.skippedRetryableFailed === 'number' ? payload.skippedRetryableFailed : 0;
 
-			toasts.success(
-				`Deleted ${totalDeleted} activity ${totalDeleted === 1 ? 'entry' : 'entries'}`
-			);
+			toasts.success(m.toast_activity_deletedEntries({ count: totalDeleted }));
 			if (skippedQueue > 0) {
-				toasts.info(
-					`${skippedQueue} active download ${skippedQueue === 1 ? 'item was' : 'items were'} skipped (use queue actions to remove them)`
-				);
+				toasts.info(m.activity_history_skippedActiveDownloads({ count: skippedQueue }));
 			}
 			if (skippedRetryableFailed > 0) {
-				toasts.info(
-					`${skippedRetryableFailed} failed activity ${skippedRetryableFailed === 1 ? 'entry was' : 'entries were'} kept because retry is still available`
-				);
+				toasts.info(m.activity_history_skippedRetryableFailed({ count: skippedRetryableFailed }));
 			}
 
 			selectedHistoryIds.clear();
 		} catch (error) {
 			toasts.error(
-				error instanceof Error ? error.message : 'Failed to delete selected activity entries'
+				error instanceof Error ? error.message : m.toast_activity_failedToDeleteSelected()
 			);
 			return;
 		}
@@ -1000,7 +994,7 @@
 		try {
 			await refreshActivityData({ force: true });
 		} catch (_error) {
-			toasts.info('Delete completed. Activity list will refresh shortly.');
+			toasts.info(m.toast_activity_deleteCompleted());
 		} finally {
 			deleteSelectedLoading = false;
 		}
@@ -1069,36 +1063,33 @@
 				await refreshActivityData({ force: true });
 			}
 		} catch (_error) {
-			toasts.info('Queue action completed. Activity list will refresh shortly.');
+			toasts.info(m.toast_activity_queueActionCompleted());
 		} finally {
 			activeBulkLoading = false;
 		}
 
-		const actionPastTense =
-			action === 'pause'
-				? 'Paused'
-				: action === 'resume'
-					? 'Resumed'
-					: action === 'retry_failed'
-						? 'Retried'
-						: 'Removed';
-		const actionVerb =
-			action === 'pause'
-				? 'pause'
-				: action === 'resume'
-					? 'resume'
-					: action === 'retry_failed'
-						? 'retry'
-						: 'remove';
-
 		if (successCount > 0) {
-			toasts.success(`${actionPastTense} ${successCount} download${successCount === 1 ? '' : 's'}`);
+			const toastMessage =
+				action === 'pause'
+					? m.toast_activity_pausedDownloads({ count: successCount })
+					: action === 'resume'
+						? m.toast_activity_resumedDownloads({ count: successCount })
+						: action === 'retry_failed'
+							? m.toast_activity_retriedDownloads({ count: successCount })
+							: m.toast_activity_removedDownloads({ count: successCount });
+			toasts.success(toastMessage);
 		}
 		if (failedCount > 0) {
 			const suffix = firstFailureMessage ? ` First error: ${firstFailureMessage}` : '';
-			toasts.error(
-				`Failed to ${actionVerb} ${failedCount} download${failedCount === 1 ? '' : 's'}.${suffix}`
-			);
+			const toastMessage =
+				action === 'pause'
+					? m.toast_activity_failedToPause()
+					: action === 'resume'
+						? m.toast_activity_failedToResume()
+						: action === 'retry_failed'
+							? m.toast_activity_failedToRetry()
+							: m.toast_activity_failedToRemove();
+			toasts.error(`${toastMessage}${suffix}`);
 		}
 
 		if (action === 'retry_failed' || action === 'remove_failed') {
@@ -1112,7 +1103,7 @@
 		try {
 			await fetchActivityData(normalizedFilters, tab, { updateUrl: true });
 		} catch (_error) {
-			toasts.error('Failed to update activity filters');
+			toasts.error(m.activity_failedToUpdateFilters());
 		} finally {
 			// handled by fetchActivityData
 		}
@@ -1125,7 +1116,7 @@
 		try {
 			await fetchActivityData(tabFilters, tab, { updateUrl: true });
 		} catch (_error) {
-			toasts.error('Failed to switch activity tab');
+			toasts.error(m.toast_activity_failedToSwitchTab());
 		} finally {
 			// handled by fetchActivityData
 		}
@@ -1168,7 +1159,7 @@
 		try {
 			await fetchActivityData(filters, activityTab, { offset: loadedOffset, append: true });
 		} catch (_error) {
-			toasts.error('Failed to load more activity');
+			toasts.error(m.toast_activity_failedToLoadMore());
 		}
 	}
 
@@ -1252,8 +1243,8 @@
 		if (retryMode === 'import') {
 			const reason =
 				importStatus === 'pending_retry'
-					? 'Waiting for download path before import retry'
-					: 'Import retry in progress';
+					? m.activity_retryMode_waitingForPath()
+					: m.activity_retryMode_importInProgress();
 			applyQueueStatusLocally(id, 'downloading', reason);
 		} else {
 			applyQueueStatusLocally(id, 'downloading');
@@ -1283,7 +1274,7 @@
 </script>
 
 <svelte:head>
-	<title>Activity - Cinephage</title>
+	<title>{m.activity_pageTitle()}</title>
 </svelte:head>
 
 <div class="space-y-6">
@@ -1292,26 +1283,26 @@
 		<div>
 			<h1 class="flex items-center gap-2 text-2xl font-bold">
 				<Activity class="h-8 w-8" />
-				Activity
+				{m.activity_title()}
 			</h1>
-			<p class="text-base-content/70">Download and search history</p>
+			<p class="text-base-content/70">{m.activity_subtitle()}</p>
 		</div>
 		<!-- Connection Status -->
 		<div class="hidden lg:block">
 			{#if sse.isConnected}
 				<span class="badge gap-1 badge-success">
 					<Wifi class="h-3 w-3" />
-					Live
+					{m.common_live()}
 				</span>
 			{:else if sse.status === 'connecting' || sse.status === 'error'}
 				<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
 					<Loader2 class="h-3 w-3 animate-spin" />
-					{sse.status === 'error' ? 'Reconnecting...' : 'Connecting...'}
+					{sse.status === 'error' ? m.common_reconnecting() : m.common_connecting()}
 				</span>
 			{:else}
 				<span class="badge gap-1 badge-ghost">
 					<WifiOff class="h-3 w-3" />
-					Disconnected
+					{m.common_disconnected()}
 				</span>
 			{/if}
 		</div>
@@ -1322,13 +1313,13 @@
 			class="tab {activityTab === 'active' ? 'tab-active' : ''}"
 			onclick={() => switchTab('active')}
 		>
-			Active Downloads
+			{m.activity_tabActive()}
 		</button>
 		<button
 			class="tab {activityTab === 'history' ? 'tab-active' : ''}"
 			onclick={() => switchTab('history')}
 		>
-			History
+			{m.activity_tabHistory()}
 		</button>
 	</div>
 
@@ -1360,15 +1351,17 @@
 			{#if activityTab === 'active'}
 				<div class="mt-3 flex flex-wrap items-center gap-2">
 					<span class="text-sm font-bold tracking-wide text-base-content/70"
-						>Queue Bulk Actions</span
+						>{m.activity_queue_bulkActionsHeading()}</span
 					>
 					<div class="divider m-0 divider-horizontal h-6"></div>
 					<button class="btn btn-ghost btn-xs" onclick={toggleActiveSelectionMode}>
-						{activeSelectionMode ? 'Exit Selection' : 'Select Rows'}
+						{activeSelectionMode ? m.activity_queue_exitSelection() : m.activity_queue_selectRows()}
 					</button>
 
 					{#if activeSelectionMode}
-						<span class="text-xs text-base-content/60">{selectedActiveIds.size} selected</span>
+						<span class="text-xs text-base-content/60"
+							>{m.common_selected({ count: selectedActiveIds.size })}</span
+						>
 						<button
 							class="btn btn-ghost btn-xs"
 							onclick={() =>
@@ -1376,36 +1369,36 @@
 							disabled={activeBulkLoading || selectableActiveIds.length === 0}
 						>
 							{allActiveSelectableSelected
-								? `Deselect All (${selectableActiveIds.length})`
-								: `Select All (${selectableActiveIds.length})`}
+								? m.activity_queue_deselectAllCount({ count: selectableActiveIds.length })
+								: m.activity_queue_selectAllCount({ count: selectableActiveIds.length })}
 						</button>
 						<button
 							class="btn btn-xs"
 							onclick={() => openActiveConfirm('pause')}
 							disabled={activeBulkLoading || selectedPausableQueueIds.length === 0}
 						>
-							Pause ({selectedPausableQueueIds.length})
+							{m.activity_queue_pauseCount({ count: selectedPausableQueueIds.length })}
 						</button>
 						<button
 							class="btn btn-xs"
 							onclick={() => openActiveConfirm('resume')}
 							disabled={activeBulkLoading || selectedPausedQueueIds.length === 0}
 						>
-							Resume ({selectedPausedQueueIds.length})
+							{m.activity_queue_resumeCount({ count: selectedPausedQueueIds.length })}
 						</button>
 						<button
 							class="btn btn-xs btn-warning"
 							onclick={() => openActiveConfirm('retry_failed')}
 							disabled={activeBulkLoading || selectedFailedQueueIds.length === 0}
 						>
-							Retry Failed ({selectedFailedQueueIds.length})
+							{m.activity_queue_retryFailedCount({ count: selectedFailedQueueIds.length })}
 						</button>
 						<button
 							class="btn btn-xs btn-error"
 							onclick={() => openActiveConfirm('remove_failed')}
 							disabled={activeBulkLoading || selectedFailedQueueIds.length === 0}
 						>
-							Remove Failed ({selectedFailedQueueIds.length})
+							{m.activity_queue_removeFailedCount({ count: selectedFailedQueueIds.length })}
 						</button>
 						<div class="ml-auto"></div>
 						<button
@@ -1415,11 +1408,11 @@
 							}}
 							disabled={activeBulkLoading || selectedActiveIds.size === 0}
 						>
-							Clear Selection
+							{m.activity_queue_clearSelection()}
 						</button>
 					{:else}
 						<span class="text-xs text-base-content/60">
-							Select queue rows to bulk pause, resume, retry failed, or remove failed downloads.
+							{m.activity_queue_bulkHint()}
 						</span>
 					{/if}
 				</div>
@@ -1428,20 +1421,22 @@
 
 		{#snippet historyControlsContent()}
 			<div class="flex flex-wrap items-center gap-2">
-				<span class="text-sm font-bold tracking-wide text-base-content/70">History Management</span>
+				<span class="text-sm font-bold tracking-wide text-base-content/70"
+					>{m.activity_history_management()}</span
+				>
 				<div class="divider m-0 divider-horizontal h-6"></div>
 				<label class="flex items-center gap-2 text-sm">
-					<span class="text-base-content/70">Retention:</span>
+					<span class="text-base-content/70">{m.activity_history_retention()}</span>
 					<select
 						class="select-bordered select select-xs"
 						bind:value={retentionDays}
 						disabled={settingsLoading}
 					>
-						<option value={7}>7 days</option>
-						<option value={14}>14 days</option>
-						<option value={30}>30 days</option>
-						<option value={60}>60 days</option>
-						<option value={90}>90 days</option>
+						<option value={7}>{m.activity_history_days7()}</option>
+						<option value={14}>{m.activity_history_days14()}</option>
+						<option value={30}>{m.activity_history_days30()}</option>
+						<option value={60}>{m.activity_history_days60()}</option>
+						<option value={90}>{m.activity_history_days90()}</option>
 					</select>
 				</label>
 				<div class="divider m-0 divider-horizontal h-6"></div>
@@ -1453,7 +1448,7 @@
 					{#if saveRetentionLoading}
 						<Loader2 class="h-3 w-3 animate-spin" />
 					{/if}
-					Save
+					{m.action_save()}
 				</button>
 				<button
 					class="btn btn-xs"
@@ -1463,10 +1458,10 @@
 					{#if purgeOlderLoading}
 						<Loader2 class="h-3 w-3 animate-spin" />
 					{/if}
-					Purge Older
+					{m.activity_history_purgeOlder()}
 				</button>
 				<button class="btn btn-ghost btn-xs" onclick={toggleSelectionMode}>
-					{selectionMode ? 'Exit Selection' : 'Select Rows'}
+					{selectionMode ? m.activity_history_exitSelection() : m.activity_history_selectRows()}
 				</button>
 				{#if selectionMode}
 					<button
@@ -1476,8 +1471,8 @@
 						disabled={deleteSelectedLoading || selectableHistoryIds.length === 0}
 					>
 						{allHistorySelectableSelected
-							? `Deselect All (${selectableHistoryIds.length})`
-							: `Select All (${selectableHistoryIds.length})`}
+							? m.activity_history_deselectAllCount({ count: selectableHistoryIds.length })
+							: m.activity_history_selectAllCount({ count: selectableHistoryIds.length })}
 					</button>
 					<button
 						class="btn btn-xs btn-error"
@@ -1487,7 +1482,7 @@
 						{#if deleteSelectedLoading}
 							<Loader2 class="h-3 w-3 animate-spin" />
 						{/if}
-						Delete Selected ({selectedHistoryIds.size})
+						{m.activity_history_deleteSelectedCount({ count: selectedHistoryIds.size })}
 					</button>
 				{/if}
 				<div class="ml-auto"></div>
@@ -1499,7 +1494,7 @@
 					{#if purgeAllLoading}
 						<Loader2 class="h-3 w-3 animate-spin" />
 					{/if}
-					Purge All
+					{m.activity_history_purgeAll()}
 				</button>
 			</div>
 		{/snippet}
@@ -1507,11 +1502,15 @@
 
 	<!-- Activity Stats -->
 	<div class="flex items-center gap-4 text-sm text-base-content/70">
-		<span>{total} {activityTab === 'active' ? 'active downloads' : 'history activities'}</span>
+		<span
+			>{activityTab === 'active'
+				? m.activity_activeCount({ total })
+				: m.activity_historyCount({ total })}</span
+		>
 		{#if hasDownloading}
 			<span class="badge gap-1 badge-info">
 				<Loader2 class="h-3 w-3 animate-spin" />
-				{downloadingCount} downloading
+				{m.activity_downloadingCount({ count: downloadingCount })}
 			</span>
 		{/if}
 	</div>

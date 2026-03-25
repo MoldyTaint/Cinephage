@@ -17,6 +17,7 @@
 		X
 	} from 'lucide-svelte';
 	import type { PageData } from './$types';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -58,7 +59,7 @@
 			}
 
 			await invalidateAll();
-			toasts.success('TMDB API key saved');
+			toasts.success(m.settings_integrations_tmdbKeySaved());
 			closeTmdbModal();
 		} catch (error) {
 			tmdbError = error instanceof Error ? error.message : 'Failed to save TMDB API key';
@@ -78,61 +79,61 @@
 	// Use $derived.by for reactive computation from props
 	const integrations = $derived.by<IntegrationCard[]>(() => [
 		{
-			title: 'Indexers',
-			description: 'Configure indexers for content search',
+			title: m.nav_indexers(),
+			description: m.settings_integrations_indexersDesc(),
 			href: '/settings/integrations/indexers',
 			icon: Database,
 			stats: [
-				{ label: 'Total', value: data.indexers.total },
+				{ label: m.settings_integrations_statTotal(), value: data.indexers.total },
 				{
-					label: 'Enabled',
+					label: m.common_enabled(),
 					value: data.indexers.enabled,
 					status: data.indexers.enabled > 0 ? 'success' : 'warning'
 				}
 			]
 		},
 		{
-			title: 'Download Clients',
-			description: 'Configure torrent clients for downloading content',
+			title: m.nav_downloadClients(),
+			description: m.settings_integrations_downloadClientsDesc(),
 			href: '/settings/integrations/download-clients',
 			icon: Download,
 			stats: [
-				{ label: 'Total', value: data.downloadClients.total },
+				{ label: m.settings_integrations_statTotal(), value: data.downloadClients.total },
 				{
-					label: 'Enabled',
+					label: m.common_enabled(),
 					value: data.downloadClients.enabled,
 					status: data.downloadClients.enabled > 0 ? 'success' : 'warning'
 				}
 			]
 		},
 		{
-			title: 'NNTP Servers',
-			description: 'Configure Usenet providers for streaming and article checks',
+			title: m.nav_nntpServers(),
+			description: m.settings_integrations_nntpServersDesc(),
 			href: '/settings/integrations/nntp-servers',
 			icon: Server,
 			stats: [
-				{ label: 'Total', value: data.nntpServers.total },
+				{ label: m.settings_integrations_statTotal(), value: data.nntpServers.total },
 				{
-					label: 'Enabled',
+					label: m.common_enabled(),
 					value: data.nntpServers.enabled,
 					status: data.nntpServers.enabled > 0 ? 'success' : 'warning'
 				}
 			]
 		},
 		{
-			title: 'Subtitle Providers',
-			description: 'Configure providers for automatic subtitle downloads',
+			title: m.nav_subtitleProviders(),
+			description: m.settings_integrations_subtitleProvidersDesc(),
 			href: '/settings/integrations/subtitle-providers',
 			icon: Subtitles,
 			stats: [
-				{ label: 'Total', value: data.subtitleProviders.total },
+				{ label: m.settings_integrations_statTotal(), value: data.subtitleProviders.total },
 				{
-					label: 'Enabled',
+					label: m.common_enabled(),
 					value: data.subtitleProviders.enabled,
 					status: data.subtitleProviders.enabled > 0 ? 'success' : 'warning'
 				},
 				{
-					label: 'Healthy',
+					label: m.status_healthy(),
 					value: `${data.subtitleProviders.healthy}/${data.subtitleProviders.total}`,
 					status:
 						data.subtitleProviders.healthy === data.subtitleProviders.total ? 'success' : 'warning'
@@ -140,28 +141,30 @@
 			]
 		},
 		{
-			title: 'Language Profiles',
-			description: 'Define subtitle language preferences for media',
+			title: m.nav_languageProfiles(),
+			description: m.settings_integrations_languageProfilesDesc(),
 			href: '/settings/integrations/language-profiles',
 			icon: Languages,
 			stats: [
-				{ label: 'Profiles', value: data.languageProfiles.total },
+				{ label: m.settings_integrations_statProfiles(), value: data.languageProfiles.total },
 				{
-					label: 'Default',
-					value: data.languageProfiles.hasDefault ? 'Set' : 'Not Set',
+					label: m.common_default(),
+					value: data.languageProfiles.hasDefault
+						? m.settings_integrations_statSet()
+						: m.settings_integrations_statNotSet(),
 					status: data.languageProfiles.hasDefault ? 'success' : 'warning'
 				}
 			]
 		},
 		{
-			title: 'Media Servers',
-			description: 'Configure Jellyfin, Emby, and Plex for library notifications',
+			title: m.nav_mediaServers(),
+			description: m.settings_integrations_mediaServersDesc(),
 			href: '/settings/integrations/media-browsers',
 			icon: Monitor,
 			stats: [
-				{ label: 'Total', value: data.mediaBrowsers.total },
+				{ label: m.settings_integrations_statTotal(), value: data.mediaBrowsers.total },
 				{
-					label: 'Enabled',
+					label: m.common_enabled(),
 					value: data.mediaBrowsers.enabled,
 					status: data.mediaBrowsers.enabled > 0 ? 'success' : 'warning'
 				}
@@ -171,18 +174,18 @@
 </script>
 
 <svelte:head>
-	<title>Integrations - Settings - Cinephage</title>
+	<title>{m.settings_integrations_pageTitle()}</title>
 </svelte:head>
 
 <div class="w-full p-3 sm:p-4">
 	<div class="mb-5 sm:mb-6">
-		<h1 class="text-2xl font-bold">Integrations</h1>
-		<p class="text-base-content/70">Manage external service connections and data sources.</p>
+		<h1 class="text-2xl font-bold">{m.nav_integrations()}</h1>
+		<p class="text-base-content/70">{m.settings_integrations_subtitle()}</p>
 	</div>
 
 	<!-- API Integrations -->
 	<div class="mb-6 space-y-4">
-		<h2 class="text-lg font-semibold">API Integrations</h2>
+		<h2 class="text-lg font-semibold">{m.settings_integrations_apiIntegrations()}</h2>
 
 		<!-- TMDB -->
 		<div class="card bg-base-100 shadow-xl">
@@ -193,9 +196,9 @@
 							<Film class="h-6 w-6 text-primary" />
 						</div>
 						<div class="min-w-0">
-							<h2 class="text-lg font-semibold">TMDB Integration</h2>
+							<h2 class="text-lg font-semibold">{m.settings_integrations_tmdbTitle()}</h2>
 							<p class="text-sm text-base-content/70">
-								The Movie Database API for metadata and Smart Lists
+								{m.settings_integrations_tmdbDescription()}
 							</p>
 						</div>
 					</div>
@@ -203,16 +206,16 @@
 						{#if data.tmdb.hasApiKey}
 							<div class="badge shrink-0 gap-1 badge-success">
 								<CheckCircle class="h-3 w-3" />
-								Configured
+								{m.settings_integrations_configured()}
 							</div>
 						{:else}
 							<div class="badge shrink-0 gap-1 badge-warning">
 								<AlertCircle class="h-3 w-3" />
-								Not Configured
+								{m.settings_integrations_notConfigured()}
 							</div>
 						{/if}
 						<button onclick={openTmdbModal} class="btn gap-1 px-2 btn-ghost btn-sm">
-							Configure
+							{m.action_configure()}
 							<ChevronRight class="h-4 w-4" />
 						</button>
 					</div>
@@ -276,14 +279,14 @@
 			<div class="alert items-start gap-3 alert-info sm:items-center">
 				<AlertCircle class="h-5 w-5 shrink-0" />
 				<div>
-					<h3 class="font-semibold">Getting Started</h3>
+					<h3 class="font-semibold">{m.settings_integrations_gettingStarted()}</h3>
 					<p class="text-sm">
 						{#if data.indexers.total === 0 && data.downloadClients.total === 0}
-							Configure at least one indexer and one download client to start acquiring content.
+							{m.settings_integrations_gettingStartedBoth()}
 						{:else if data.indexers.total === 0}
-							Add an indexer to search for content.
+							{m.settings_integrations_gettingStartedIndexer()}
 						{:else}
-							Add a download client to download content.
+							{m.settings_integrations_gettingStartedDownloadClient()}
 						{/if}
 					</p>
 				</div>
@@ -302,12 +305,11 @@
 			>
 				<X class="h-4 w-4" />
 			</button>
-			<h3 class="text-lg font-bold">TMDB API Key</h3>
+			<h3 class="text-lg font-bold">{m.settings_integrations_tmdbApiKeyTitle()}</h3>
 			<p class="py-2 text-sm text-base-content/70">
-				Enter your TMDB API key to fetch movie and TV show metadata. Get a free key at <a
-					href="https://www.themoviedb.org/settings/api"
-					target="_blank"
-					class="link link-primary">themoviedb.org</a
+				{m.settings_integrations_tmdbApiKeyDescription()}
+				<a href="https://www.themoviedb.org/settings/api" target="_blank" class="link link-primary"
+					>themoviedb.org</a
 				>.
 			</p>
 			<form
@@ -318,7 +320,7 @@
 			>
 				<div class="form-control w-full">
 					<label class="label" for="apiKey">
-						<span class="label-text">API Key</span>
+						<span class="label-text">{m.settings_integrations_apiKeyLabel()}</span>
 					</label>
 					<input
 						type="text"
@@ -326,8 +328,8 @@
 						name="apiKey"
 						bind:value={tmdbApiKey}
 						placeholder={data.tmdb.hasApiKey
-							? 'Enter new API key (leave empty to keep current)'
-							: 'Enter your TMDB API key'}
+							? m.settings_integrations_apiKeyPlaceholderExisting()
+							: m.settings_integrations_apiKeyPlaceholderNew()}
 						class="input-bordered input w-full"
 					/>
 				</div>
@@ -338,18 +340,22 @@
 				{/if}
 				<div class="modal-action flex-col-reverse sm:flex-row">
 					<button type="button" onclick={closeTmdbModal} class="btn w-full btn-ghost sm:w-auto">
-						Cancel
+						{m.action_cancel()}
 					</button>
 					<button type="submit" class="btn w-full btn-primary sm:w-auto" disabled={saving}>
 						{#if saving}
 							<span class="loading loading-sm loading-spinner"></span>
 						{/if}
-						Save
+						{m.action_save()}
 					</button>
 				</div>
 			</form>
 		</div>
-		<button type="button" class="modal-backdrop" onclick={closeTmdbModal} aria-label="Close modal"
+		<button
+			type="button"
+			class="modal-backdrop"
+			onclick={closeTmdbModal}
+			aria-label={m.action_close()}
 		></button>
 	</div>
 {/if}

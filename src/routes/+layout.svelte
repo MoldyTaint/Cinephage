@@ -2,9 +2,10 @@
 	import './layout.css';
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
-	import { ThemeSelector } from '$lib/components/ui';
+	import { ThemeSelector, LanguageSelector } from '$lib/components/ui';
 	import Toasts from '$lib/components/ui/Toasts.svelte';
 	import { layoutState } from '$lib/layout.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	import { page } from '$app/stores';
 	import { resolvePath } from '$lib/utils/routing';
@@ -84,46 +85,47 @@
 		}
 	}
 
-	const menuItems = [
-		{ href: '/', label: 'Home', icon: Home },
-		{ href: '/discover', label: 'Discover', icon: Compass },
+	// Menu items using translation functions
+	const menuItems = $derived([
+		{ href: '/', label: m.nav_home, icon: Home },
+		{ href: '/discover', label: m.nav_discover, icon: Compass },
 		{
-			label: 'Library',
+			label: m.nav_library,
 			icon: Library,
 			children: [
-				{ href: '/library/movies', label: 'Movies', icon: Clapperboard },
-				{ href: '/library/tv', label: 'TV Shows', icon: Tv },
-				{ href: '/library/import', label: 'Import', icon: Download },
-				{ href: '/library/unmatched', label: 'Unmatched Files', icon: FileQuestion }
+				{ href: '/library/movies', label: m.nav_movies, icon: Clapperboard },
+				{ href: '/library/tv', label: m.nav_tvShows, icon: Tv },
+				{ href: '/library/import', label: m.nav_import, icon: Download },
+				{ href: '/library/unmatched', label: m.nav_unmatchedFiles, icon: FileQuestion }
 			]
 		},
-		{ href: '/activity', label: 'Activity', icon: Activity },
+		{ href: '/activity', label: m.nav_activity, icon: Activity },
 		{
-			label: 'Live TV',
+			label: m.nav_liveTv,
 			icon: Radio,
 			children: [
-				{ href: '/livetv/channels', label: 'Channels', icon: Tv },
-				{ href: '/livetv/epg', label: 'EPG', icon: Calendar },
-				{ href: '/livetv/accounts', label: 'Accounts', icon: User }
+				{ href: '/livetv/channels', label: m.nav_channels, icon: Tv },
+				{ href: '/livetv/epg', label: m.nav_epg, icon: Calendar },
+				{ href: '/livetv/accounts', label: m.nav_accounts, icon: User }
 			]
 		},
-		{ href: '/smartlists', label: 'Smart Lists', icon: List },
+		{ href: '/smartlists', label: m.nav_smartLists, icon: List },
 		{
-			label: 'Settings',
+			label: m.nav_settings,
 			icon: Settings,
 			children: [
-				{ href: '/settings/general', label: 'General', icon: Settings },
-				{ href: '/settings/system', label: 'System', icon: Server },
-				{ href: '/settings/logs', label: 'Logs', icon: ScrollText },
-				{ href: '/settings/naming', label: 'Naming', icon: FileSignature },
-				{ href: '/settings/quality', label: 'Quality Settings', icon: Shield },
-				{ href: '/settings/integrations', label: 'Integrations', icon: Compass },
-				{ href: '/settings/tasks', label: 'Tasks', icon: ListTodo },
-				{ href: '/settings/filters', label: 'Global Filters', icon: Filter },
-				{ href: '/profile', label: 'Profile', icon: User }
+				{ href: '/settings/general', label: m.nav_general, icon: Settings },
+				{ href: '/settings/system', label: m.nav_system, icon: Server },
+				{ href: '/settings/logs', label: m.nav_logs, icon: ScrollText },
+				{ href: '/settings/naming', label: m.nav_naming, icon: FileSignature },
+				{ href: '/settings/quality', label: m.nav_qualitySettings, icon: Shield },
+				{ href: '/settings/integrations', label: m.nav_integrations, icon: Compass },
+				{ href: '/settings/tasks', label: m.nav_tasks, icon: ListTodo },
+				{ href: '/settings/filters', label: m.nav_globalFilters, icon: Filter },
+				{ href: '/profile', label: m.nav_profile, icon: User }
 			]
 		}
-	];
+	]);
 
 	let appVersion = $state('');
 
@@ -206,18 +208,24 @@
 			<!-- Mobile Header -->
 			<header class="navbar sticky top-0 z-50 bg-base-200 shadow-sm lg:hidden">
 				<div class="flex-none">
-					<label for="main-drawer" aria-label="open sidebar" class="btn btn-square btn-ghost">
+					<label
+						for="main-drawer"
+						aria-label={m.nav_openSidebar()}
+						class="btn btn-square btn-ghost"
+					>
 						<Menu class="h-6 w-6" />
 					</label>
 				</div>
 				<div class="mx-2 flex min-w-0 flex-1 items-center gap-2 px-2">
 					<img src="/logo.png" alt="" class="h-7 w-7" />
 					<div class="relative min-w-0">
-						<span class="block truncate pr-10 text-xl leading-tight font-bold">Cinephage</span>
+						<span class="block truncate pr-10 text-xl leading-tight font-bold"
+							>{m.common_appName()}</span
+						>
 						<span
 							class="absolute -top-1 right-0 badge h-4 min-h-4 px-1 badge-xs font-semibold badge-warning"
 						>
-							Alpha
+							{m.common_alpha()}
 						</span>
 					</div>
 				</div>
@@ -225,17 +233,17 @@
 					{#if layoutState.mobileSseStatus === 'connected'}
 						<span class="badge shrink-0 gap-1 badge-success">
 							<Wifi class="h-3 w-3" />
-							Live
+							{m.common_live()}
 						</span>
 					{:else if layoutState.mobileSseStatus === 'error'}
 						<span class="badge shrink-0 gap-1 badge-error">
 							<WifiOff class="h-3 w-3" />
-							Reconnecting...
+							{m.common_reconnecting()}
 						</span>
 					{:else if layoutState.mobileSseStatus === 'connecting'}
 						<span class="badge shrink-0 gap-1 badge-warning">
 							<Loader2 class="h-3 w-3 animate-spin" />
-							Connecting...
+							{m.common_connecting()}
 						</span>
 					{/if}
 				</div>
@@ -249,7 +257,7 @@
 
 		<!-- Sidebar -->
 		<div class="drawer-side z-40">
-			<label for="main-drawer" aria-label="close sidebar" class="drawer-overlay"></label>
+			<label for="main-drawer" aria-label={m.nav_closeSidebar()} class="drawer-overlay"></label>
 			<aside
 				class="flex min-h-full flex-col overflow-x-hidden bg-base-200 transition-[width] duration-300 ease-in-out
 		            {layoutState.isSidebarExpanded ? 'w-64' : 'w-20'}"
@@ -266,21 +274,23 @@
 						<div class="flex min-w-0 items-center gap-2">
 							<img src="/logo.png" alt="" class="h-7 w-7" />
 							<div class="relative min-w-0">
-								<span class="block truncate pr-10 text-xl leading-tight font-bold">Cinephage</span>
+								<span class="block truncate pr-10 text-xl leading-tight font-bold"
+									>{m.common_appName()}</span
+								>
 								<span
 									class="absolute -top-1 right-0 badge h-4 min-h-4 px-1 badge-xs font-semibold badge-warning"
 								>
-									Alpha
+									{m.common_alpha()}
 								</span>
 							</div>
 						</div>
 					{:else}
 						<div class="relative">
-							<img src="/logo.png" alt="Cinephage" class="h-8 w-8" />
+							<img src="/logo.png" alt={m.common_appName()} class="h-8 w-8" />
 							<span
 								class="absolute right-0 bottom-0 badge h-4 min-h-4 px-1 badge-xs font-semibold badge-warning"
 							>
-								A
+								{m.common_alphaShort()}
 							</span>
 						</div>
 					{/if}
@@ -289,7 +299,7 @@
 						class:absolute={!layoutState.isSidebarExpanded}
 						class:right-1={!layoutState.isSidebarExpanded}
 						onclick={() => layoutState.toggleSidebar()}
-						aria-label="Toggle Sidebar"
+						aria-label={m.action_toggleSidebar()}
 					>
 						{#if layoutState.isSidebarExpanded}
 							<ChevronLeft class="h-5 w-5" />
@@ -308,7 +318,7 @@
 									<details>
 										<summary class="flex items-center gap-4 px-4 py-3">
 											<item.icon class="h-5 w-5 shrink-0" />
-											<span class="truncate">{item.label}</span>
+											<span class="truncate">{item.label()}</span>
 										</summary>
 										<ul>
 											{#each item.children as child (child.href)}
@@ -320,7 +330,7 @@
 														onclick={(event) => handleNavClick(event, child.href)}
 													>
 														{#if child.icon}<child.icon class="h-4 w-4 shrink-0" />{/if}
-														<span class="truncate">{child.label}</span>
+														<span class="truncate">{child.label()}</span>
 													</a>
 												</li>
 											{/each}
@@ -330,7 +340,7 @@
 									<button
 										class="flex items-center gap-4 px-4 py-3"
 										onclick={() => layoutState.toggleSidebar()}
-										title={item.label}
+										title={item.label()}
 									>
 										<item.icon class="h-5 w-5 shrink-0" />
 									</button>
@@ -340,12 +350,12 @@
 									href={buildNavHref(item.href)}
 									class="flex items-center gap-4 px-4 py-3"
 									class:active={$page.url.pathname === item.href}
-									title={!layoutState.isSidebarExpanded ? item.label : ''}
+									title={!layoutState.isSidebarExpanded ? item.label() : ''}
 									onclick={(event) => handleNavClick(event, item.href)}
 								>
 									<item.icon class="h-5 w-5 shrink-0" />
 									{#if layoutState.isSidebarExpanded}
-										<span class="truncate">{item.label}</span>
+										<span class="truncate">{item.label()}</span>
 									{/if}
 								</a>
 							{/if}
@@ -363,7 +373,7 @@
 						class:justify-center={!layoutState.isSidebarExpanded}
 						onclick={handleLogout}
 						disabled={isLoggingOut}
-						title="Logout"
+						title={m.action_logout()}
 					>
 						{#if isLoggingOut}
 							<span class="loading loading-xs loading-spinner"></span>
@@ -371,9 +381,13 @@
 							<LogOut class="h-4 w-4" />
 						{/if}
 						{#if layoutState.isSidebarExpanded}
-							<span class="ml-2">Logout</span>
+							<span class="ml-2">{m.action_logout()}</span>
 						{/if}
 					</button>
+					<LanguageSelector
+						class={layoutState.isSidebarExpanded ? 'dropdown-top' : 'dropdown-right'}
+						showLabel={layoutState.isSidebarExpanded}
+					/>
 					<ThemeSelector
 						class={layoutState.isSidebarExpanded ? 'dropdown-top' : 'dropdown-right'}
 						showLabel={layoutState.isSidebarExpanded}

@@ -17,6 +17,7 @@
 		MediaBrowserTable
 	} from '$lib/components/mediaBrowsers';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface MediaBrowserFormData {
 		name: string;
@@ -366,7 +367,7 @@
 			if (!response.ok || !result || typeof result === 'string' || !result.success) {
 				toasts.error(getServerErrorMessage(result, 'Connection test failed'));
 			} else {
-				toasts.success('Connection successful!');
+				toasts.success(m.settings_integrations_connectionSuccessful());
 			}
 		} finally {
 			await invalidateAll();
@@ -483,7 +484,12 @@
 			}
 
 			await invalidateAll();
-			toasts.info(`Bulk test complete: ${successCount} passed, ${failCount} failed`);
+			toasts.info(
+				m.settings_integrations_bulkTestComplete({
+					successCount: String(successCount),
+					failCount: String(failCount)
+				})
+			);
 		} catch (error) {
 			toasts.error(error instanceof Error ? error.message : 'Failed to test selected servers');
 		} finally {
@@ -494,16 +500,16 @@
 
 <div class="w-full p-3 sm:p-4">
 	<div class="mb-5 sm:mb-6">
-		<h1 class="text-xl font-bold sm:text-2xl">Media Servers</h1>
+		<h1 class="text-xl font-bold sm:text-2xl">{m.nav_mediaServers()}</h1>
 		<p class="text-base-content/70">
-			Configure Jellyfin, Emby, and Plex servers for library update notifications.
+			{m.settings_integrations_mediaBrowsers_subtitle()}
 		</p>
 	</div>
 
 	<div class="mb-4 flex items-center justify-end">
 		<button class="btn w-full gap-2 btn-sm btn-primary sm:w-auto" onclick={openAddModal}>
 			<Plus class="h-4 w-4" />
-			Add Server
+			{m.settings_integrations_mediaBrowsers_addServer()}
 		</button>
 	</div>
 
@@ -514,7 +520,7 @@
 			/>
 			<input
 				type="text"
-				placeholder="Search servers..."
+				placeholder={m.settings_integrations_mediaBrowsers_searchPlaceholder()}
 				class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				value={filters.search}
 				oninput={(e) => updateFilter('search', e.currentTarget.value)}
@@ -527,7 +533,7 @@
 				class:btn-active={filters.type === 'all'}
 				onclick={() => updateFilter('type', 'all')}
 			>
-				All
+				{m.common_all()}
 			</button>
 			<button
 				class="btn join-item flex-1 btn-sm sm:flex-none"
@@ -558,21 +564,21 @@
 				class:btn-active={filters.status === 'all'}
 				onclick={() => updateFilter('status', 'all')}
 			>
-				All
+				{m.common_all()}
 			</button>
 			<button
 				class="btn join-item flex-1 btn-sm sm:flex-none"
 				class:btn-active={filters.status === 'enabled'}
 				onclick={() => updateFilter('status', 'enabled')}
 			>
-				Enabled
+				{m.common_enabled()}
 			</button>
 			<button
 				class="btn join-item flex-1 btn-sm sm:flex-none"
 				class:btn-active={filters.status === 'disabled'}
 				onclick={() => updateFilter('status', 'disabled')}
 			>
-				Disabled
+				{m.common_disabled()}
 			</button>
 		</div>
 	</div>
@@ -623,11 +629,11 @@
 <!-- Delete Confirmation Modal -->
 <ConfirmationModal
 	open={confirmDeleteOpen}
-	title="Confirm Delete"
-	messagePrefix="Are you sure you want to delete "
-	messageEmphasis={deleteTarget?.name ?? 'this media server'}
-	messageSuffix="? This action cannot be undone."
-	confirmLabel="Delete"
+	title={m.ui_modal_confirmTitle()}
+	messagePrefix={m.settings_integrations_deleteConfirmPrefix()}
+	messageEmphasis={deleteTarget?.name ?? m.settings_integrations_mediaBrowsers_thisServer()}
+	messageSuffix={m.settings_integrations_deleteConfirmSuffix()}
+	confirmLabel={m.action_delete()}
 	confirmVariant="error"
 	onConfirm={handleConfirmDelete}
 	onCancel={() => {
@@ -638,11 +644,13 @@
 
 <ConfirmationModal
 	open={confirmBulkDeleteOpen}
-	title="Confirm Delete"
-	messagePrefix="Are you sure you want to delete "
-	messageEmphasis={`${selectedIds.size} media server(s)`}
-	messageSuffix="? This action cannot be undone."
-	confirmLabel="Delete"
+	title={m.ui_modal_confirmTitle()}
+	messagePrefix={m.settings_integrations_deleteConfirmPrefix()}
+	messageEmphasis={m.settings_integrations_mediaBrowsers_bulkDeleteCount({
+		count: selectedIds.size
+	})}
+	messageSuffix={m.settings_integrations_deleteConfirmSuffix()}
+	confirmLabel={m.action_delete()}
 	confirmVariant="error"
 	loading={bulkLoading}
 	onConfirm={handleConfirmBulkDelete}

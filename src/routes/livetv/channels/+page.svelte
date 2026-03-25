@@ -14,9 +14,6 @@
 		Image
 	} from 'lucide-svelte';
 	import type { PageData } from './$types';
-
-	// Receive data from server load function (includes streaming API key)
-	let { data }: { data: PageData } = $props();
 	import {
 		ChannelLineupTable,
 		ChannelEditModal,
@@ -42,12 +39,16 @@
 	import { resolvePath } from '$lib/utils/routing';
 	import { copyToClipboard as copyTextToClipboard } from '$lib/utils/clipboard';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 	import type {
 		ChannelStreamEvents,
 		NowNextEntry
 	} from '$lib/types/sse/events/livetv-channel-events.js';
 	import type { LogoDownloadProgress } from '$lib/server/logos/LogoDownloadService';
 	import { normalizeLiveTvChannelName } from '$lib/livetv/channel-name-normalizer';
+
+	// Receive data from server load function (includes streaming API key)
+	let { data }: { data: PageData } = $props();
 
 	type LiveTvPageData = PageData & {
 		lineup?: ChannelLineupItemWithDetails[];
@@ -203,17 +204,19 @@
 					logoDownloaded = true;
 					logoCount = data.data.count;
 					downloadingLogos = false;
-					toasts.success('Logos already available');
+					toasts.success(m.livetv_channels_logosAlreadyAvailable());
 				} else {
 					// Start SSE connection
 					connectToLogoDownloadStream();
 				}
 			} else {
-				toasts.error(data.error || 'Failed to start logo download');
+				toasts.error(data.error || m.livetv_channels_failedToStartLogoDownload());
 				downloadingLogos = false;
 			}
 		} catch (err) {
-			toasts.error(err instanceof Error ? err.message : 'Failed to start logo download');
+			toasts.error(
+				err instanceof Error ? err.message : m.livetv_channels_failedToStartLogoDownload()
+			);
 			downloadingLogos = false;
 		}
 	}
@@ -265,7 +268,7 @@
 			downloadingLogos = false;
 			logoCount = payload.downloaded;
 			closeLogoDownloadStream();
-			toasts.success(`Downloaded ${payload.downloaded} logos`);
+			toasts.success(m.livetv_channels_downloadedLogos({ count: payload.downloaded }));
 			void loadLogoStatus();
 		});
 
@@ -274,7 +277,7 @@
 			logoDownloadProgress = payload;
 			downloadingLogos = false;
 			closeLogoDownloadStream();
-			toasts.error(payload?.error || 'Download failed');
+			toasts.error(payload?.error || m.livetv_channels_downloadFailed());
 		});
 
 		stream.onerror = () => {
@@ -342,10 +345,10 @@
 			]);
 
 			if (!lineupRes.ok) {
-				throw new Error('Failed to load lineup');
+				throw new Error(m.livetv_channels_failedToLoadLineup());
 			}
 			if (!categoriesRes.ok) {
-				throw new Error('Failed to load categories');
+				throw new Error(m.livetv_channels_failedToLoadCategories());
 			}
 
 			const lineupData = await lineupRes.json();
@@ -356,7 +359,7 @@
 			categories = categoriesData.categories || [];
 			await fetchEpgData();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load data';
+			error = e instanceof Error ? e.message : m.livetv_channels_failedToLoadData();
 		} finally {
 			loading = false;
 		}
@@ -508,7 +511,7 @@
 		try {
 			await loadData();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to refresh Live TV data';
+			error = e instanceof Error ? e.message : m.livetv_channels_failedToRefreshData();
 		}
 		refreshing = false;
 	}
@@ -585,12 +588,12 @@
 				});
 
 				if (!response.ok) {
-					throw new Error('Failed to update channel category');
+					throw new Error(m.livetv_channels_failedToUpdateCategory());
 				}
 
 				await loadData();
 			} catch (e) {
-				toasts.error(e instanceof Error ? e.message : 'Failed to update category');
+				toasts.error(e instanceof Error ? e.message : m.livetv_channels_failedToUpdateCategory());
 			}
 		}
 
@@ -626,12 +629,12 @@
 			});
 
 			if (!response.ok) {
-				throw new Error('Failed to reorder channels');
+				throw new Error(m.livetv_channels_failedToReorderChannels());
 			}
 
 			await loadData();
 		} catch (e) {
-			toasts.error(e instanceof Error ? e.message : 'Failed to reorder channels');
+			toasts.error(e instanceof Error ? e.message : m.livetv_channels_failedToReorderChannels());
 		}
 	}
 
@@ -683,13 +686,13 @@
 
 			if (!response.ok) {
 				const result = await response.json();
-				throw new Error(result.error || 'Failed to save channel');
+				throw new Error(result.error || m.livetv_channels_failedToSaveChannel());
 			}
 
 			await loadData();
 			closeEditModal();
 		} catch (e) {
-			editModalError = e instanceof Error ? e.message : 'Failed to save channel';
+			editModalError = e instanceof Error ? e.message : m.livetv_channels_failedToSaveChannel();
 		} finally {
 			editModalSaving = false;
 		}
@@ -741,7 +744,7 @@
 				});
 
 				if (!response.ok) {
-					throw new Error('Failed to remove channel');
+					throw new Error(m.livetv_channels_failedToRemoveChannel());
 				}
 
 				// Remove from selection if selected
@@ -758,7 +761,7 @@
 				});
 
 				if (!response.ok) {
-					throw new Error('Failed to remove channels');
+					throw new Error(m.livetv_channels_failedToRemoveChannels());
 				}
 
 				clearSelection();
@@ -766,7 +769,7 @@
 
 			await loadData();
 		} catch (e) {
-			toasts.error(e instanceof Error ? e.message : 'Failed to remove channel selection');
+			toasts.error(e instanceof Error ? e.message : m.livetv_channels_failedToRemoveChannel());
 		} finally {
 			bulkActionLoading = false;
 			bulkAction = null;
@@ -788,14 +791,14 @@
 			});
 
 			if (!response.ok) {
-				toasts.error('Failed to save inline edit');
+				toasts.error(m.livetv_channels_failedToSaveInlineEdit());
 				return false;
 			}
 
 			await loadData();
 			return true;
 		} catch (e) {
-			toasts.error(e instanceof Error ? e.message : 'Failed to save inline edit');
+			toasts.error(e instanceof Error ? e.message : m.livetv_channels_failedToSaveInlineEdit());
 			return false;
 		}
 	}
@@ -833,16 +836,14 @@
 
 			if (!response.ok) {
 				const result = await response.json().catch(() => null);
-				throw new Error(result?.error || 'Failed to update categories');
+				throw new Error(result?.error || m.livetv_channels_failedToUpdateCategories());
 			}
 
 			await loadData();
 			clearSelection();
-			toasts.success(
-				`Updated category for ${selectedCountAtAction} channel${selectedCountAtAction === 1 ? '' : 's'}`
-			);
+			toasts.success(m.livetv_channels_updatedCategory({ count: selectedCountAtAction }));
 		} catch (e) {
-			toasts.error(e instanceof Error ? e.message : 'Failed to update categories');
+			toasts.error(e instanceof Error ? e.message : m.livetv_channels_failedToUpdateCategories());
 		} finally {
 			bulkActionLoading = false;
 			bulkAction = null;
@@ -869,7 +870,8 @@
 			const result = (await response.json().catch(() => null)) as BulkApplyCleanNamesResult | null;
 			if (!response.ok) {
 				throw new Error(
-					(result as { error?: string } | null)?.error || 'Failed to apply cleaned names'
+					(result as { error?: string } | null)?.error ||
+						m.livetv_channels_failedToApplyCleanedNames()
 				);
 			}
 
@@ -880,10 +882,10 @@
 			if (result && result.updated > 0) {
 				toasts.success(buildCleanNameToast(result));
 			} else {
-				toasts.success('No cleaned names were applied');
+				toasts.success(m.livetv_channels_noCleanNamesApplied());
 			}
 		} catch (e) {
-			toasts.error(e instanceof Error ? e.message : 'Failed to apply cleaned names');
+			toasts.error(e instanceof Error ? e.message : m.livetv_channels_failedToApplyCleanedNames());
 		} finally {
 			bulkActionLoading = false;
 			bulkAction = null;
@@ -969,7 +971,7 @@
 				copiedField = null;
 			}, 2000);
 		} else {
-			toasts.error('Failed to copy URL');
+			toasts.error(m.livetv_channels_failedToCopyUrl());
 		}
 	}
 
@@ -983,19 +985,16 @@
 </script>
 
 <svelte:head>
-	<title>Channels - Live TV - Cinephage</title>
-	<meta
-		name="description"
-		content="Manage your Live TV channel lineup, categories, EPG mappings, and export feeds."
-	/>
+	<title>{m.livetv_channels_pageTitle()}</title>
+	<meta name="description" content={m.livetv_channels_subtitle()} />
 </svelte:head>
 
 <div class="space-y-6">
 	<!-- Header -->
 	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 		<div>
-			<h1 class="text-2xl font-bold">Channels</h1>
-			<p class="mt-1 text-base-content/60">Organize your channel lineup</p>
+			<h1 class="text-2xl font-bold">{m.livetv_channels_heading()}</h1>
+			<p class="mt-1 text-base-content/60">{m.livetv_channels_subtitle()}</p>
 		</div>
 		<div class="flex flex-wrap items-center gap-2 sm:flex-nowrap">
 			<!-- Connection Status -->
@@ -1003,17 +1002,17 @@
 				{#if sse.isConnected}
 					<span class="badge gap-1 badge-success">
 						<Wifi class="h-3 w-3" />
-						Live
+						{m.common_live()}
 					</span>
 				{:else if sse.status === 'connecting' || sse.status === 'error'}
 					<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
 						<Loader2 class="h-3 w-3 animate-spin" />
-						{sse.status === 'error' ? 'Reconnecting...' : 'Connecting...'}
+						{sse.status === 'error' ? m.common_reconnecting() : m.common_connecting()}
 					</span>
 				{:else}
 					<span class="badge gap-1 badge-ghost">
 						<WifiOff class="h-3 w-3" />
-						Disconnected
+						{m.common_disconnected()}
 					</span>
 				{/if}
 			</div>
@@ -1021,18 +1020,18 @@
 				class="btn btn-ghost btn-sm"
 				onclick={refreshData}
 				disabled={loading || refreshing}
-				title="Refresh"
+				title={m.action_refresh()}
 			>
 				{#if refreshing}
 					<Loader2 class="h-4 w-4 animate-spin" />
 				{:else}
 					<RefreshCw class="h-4 w-4" />
-					Refresh
+					{m.livetv_channels_refreshButton()}
 				{/if}
 			</button>
 			<button class="btn btn-ghost btn-sm" onclick={openCategoryModal}>
 				<FolderOpen class="h-4 w-4" />
-				Categories
+				{m.livetv_channels_categoriesButton()}
 			</button>
 			{#if logoDownloaded}
 				<button class="btn gap-1 btn-ghost btn-sm" disabled={loadingLogos}>
@@ -1041,7 +1040,7 @@
 					{:else}
 						<Image class="h-4 w-4" />
 					{/if}
-					Logos
+					{m.livetv_channels_logosButton()}
 					{#if logoCount > 0}
 						<span class="badge badge-ghost badge-xs">{logoCount}</span>
 					{/if}
@@ -1066,14 +1065,14 @@
 					class="btn gap-1 btn-sm btn-primary"
 					onclick={downloadLogos}
 					disabled={downloadingLogos}
-					title="Download channel logos"
+					title={m.livetv_channels_downloadLogosTitle()}
 				>
 					{#if downloadingLogos}
 						<Loader2 class="h-4 w-4 animate-spin" />
-						Starting...
+						{m.livetv_channels_logosStarting()}
 					{:else}
 						<Download class="h-4 w-4" />
-						Get Logos
+						{m.livetv_channels_getLogosButton()}
 					{/if}
 				</button>
 			{/if}
@@ -1087,7 +1086,7 @@
 					aria-haspopup="menu"
 				>
 					<Download class="h-4 w-4" />
-					Export
+					{m.livetv_channels_exportButton()}
 				</button>
 				{#if exportDropdownOpen}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1103,11 +1102,13 @@
 							sm:translate-x-0"
 					>
 						<div class="space-y-4">
-							<div class="text-sm font-medium">Playlist URLs for Plex/Jellyfin/Emby</div>
+							<div class="text-sm font-medium">{m.livetv_channels_playlistUrlsHeading()}</div>
 
 							<!-- M3U URL -->
 							<div class="space-y-1">
-								<div class="text-xs font-medium text-base-content/70">M3U Playlist</div>
+								<div class="text-xs font-medium text-base-content/70">
+									{m.livetv_channels_m3uPlaylist()}
+								</div>
 								<div class="flex gap-2">
 									<input
 										type="text"
@@ -1121,7 +1122,7 @@
 											e.stopPropagation();
 											copyToClipboard('m3u');
 										}}
-										title="Copy M3U URL"
+										title={m.livetv_channels_copyM3uUrl()}
 									>
 										{#if copiedField === 'm3u'}
 											<Check class="h-4 w-4 text-success" />
@@ -1134,7 +1135,9 @@
 
 							<!-- EPG URL -->
 							<div class="space-y-1">
-								<div class="text-xs font-medium text-base-content/70">XMLTV EPG Guide</div>
+								<div class="text-xs font-medium text-base-content/70">
+									{m.livetv_channels_xmltvEpgGuide()}
+								</div>
 								<div class="flex gap-2">
 									<input
 										type="text"
@@ -1148,7 +1151,7 @@
 											e.stopPropagation();
 											copyToClipboard('epg');
 										}}
-										title="Copy EPG URL"
+										title={m.livetv_channels_copyEpgUrl()}
 									>
 										{#if copiedField === 'epg'}
 											<Check class="h-4 w-4 text-success" />
@@ -1160,7 +1163,7 @@
 							</div>
 
 							<div class="text-xs text-base-content/50">
-								Add these URLs to your media server's Live TV/DVR settings.
+								{m.livetv_channels_exportHint()}
 							</div>
 						</div>
 					</div>
@@ -1168,7 +1171,7 @@
 			</div>
 			<button class="btn w-full btn-sm btn-primary sm:w-auto" onclick={openChannelBrowser}>
 				<Search class="h-4 w-4" />
-				Browse Channels
+				{m.livetv_channels_browseChannels()}
 			</button>
 		</div>
 	</div>
@@ -1180,14 +1183,14 @@
 			/>
 			<input
 				type="text"
-				placeholder="Search channels..."
+				placeholder={m.livetv_channels_searchPlaceholder()}
 				class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-9 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				bind:value={channelSearch}
 			/>
 		</div>
 		{#if channelSearch}
 			<div class="text-sm text-base-content/60">
-				Showing {filteredLineup.length} of {lineup.length}
+				{m.livetv_channels_showingOf({ filtered: filteredLineup.length, total: lineup.length })}
 			</div>
 		{/if}
 	</div>
@@ -1200,14 +1203,16 @@
 	{:else if error}
 		<div class="alert alert-error">
 			<span>{error}</span>
-			<button class="btn btn-ghost btn-sm" onclick={loadData}>Retry</button>
+			<button class="btn btn-ghost btn-sm" onclick={loadData}>{m.common_retry()}</button>
 		</div>
 	{:else if lineup.length === 0}
 		<div class="flex flex-col items-center justify-center py-12 text-base-content/50">
 			<Tv class="mb-4 h-12 w-12" />
-			<p class="text-lg font-medium">No channels in your lineup</p>
-			<p class="text-sm">Add channels from your accounts to build your lineup</p>
-			<a href="/livetv/accounts" class="btn mt-4 btn-primary">Manage Accounts</a>
+			<p class="text-lg font-medium">{m.livetv_channels_emptyHeading()}</p>
+			<p class="text-sm">{m.livetv_channels_emptyDescription()}</p>
+			<a href="/livetv/accounts" class="btn mt-4 btn-primary"
+				>{m.livetv_channels_manageAccounts()}</a
+			>
 		</div>
 	{:else}
 		<ChannelLineupTable

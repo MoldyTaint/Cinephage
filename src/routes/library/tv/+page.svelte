@@ -20,6 +20,7 @@
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
 	import { getPrimaryAutoSearchIssue } from '$lib/utils/autoSearchIssues';
 	import { createProgressiveRenderer } from '$lib/utils/progressive-render.svelte.js';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 
@@ -96,14 +97,16 @@
 						selectedSeries.has(show.id) ? { ...show, monitored } : show
 					)
 				};
-				toasts.success(`${monitored ? 'Monitoring' : 'Unmonitored'} ${result.updatedCount} series`);
-				selectedSeries.clear();
-				showCheckboxes = false;
+				toasts.success(
+					monitored
+						? m.toast_library_tv_monitoringCount({ count: result.updatedCount })
+						: m.toast_library_tv_unmonitoredCount({ count: result.updatedCount })
+				);
 			} else {
-				toasts.error(result.error || 'Failed to update series');
+				toasts.error(result.error || m.toast_library_tv_failedToUpdate());
 			}
 		} catch {
-			toasts.error('Failed to update series');
+			toasts.error(m.toast_library_tv_failedToUpdate());
 		} finally {
 			bulkLoading = false;
 			currentBulkAction = null;
@@ -130,15 +133,12 @@
 						selectedSeries.has(show.id) ? { ...show, scoringProfileId: profileId } : show
 					)
 				};
-				toasts.success(`Updated quality profile for ${result.updatedCount} series`);
-				selectedSeries.clear();
-				showCheckboxes = false;
-				isQualityModalOpen = false;
+				toasts.success(m.toast_library_tv_qualityUpdatedCount({ count: result.updatedCount }));
 			} else {
-				toasts.error(result.error || 'Failed to update series');
+				toasts.error(result.error || m.toast_library_tv_failedToUpdate());
 			}
 		} catch {
-			toasts.error('Failed to update series');
+			toasts.error(m.toast_library_tv_failedToUpdate());
 		} finally {
 			bulkLoading = false;
 			currentBulkAction = null;
@@ -163,7 +163,7 @@
 				if (removeFromLibrary && result.removedCount > 0) {
 					const updatedSeries = data.series.filter((show) => !selectedSeries.has(show.id));
 					data = { ...data, series: updatedSeries };
-					toasts.success(`Removed ${result.removedCount} series from library`);
+					toasts.success(m.toast_library_tv_removedCount({ count: result.removedCount }));
 				} else {
 					const updatedSeries = data.series.map((show) =>
 						selectedSeries.has(show.id)
@@ -171,16 +171,16 @@
 							: show
 					);
 					data = { ...data, series: updatedSeries };
-					toasts.success(`Deleted files for ${result.deletedCount} series`);
+					toasts.success(m.toast_library_tv_deletedFilesCount({ count: result.deletedCount }));
 				}
 				selectedSeries.clear();
 				showCheckboxes = false;
 				isDeleteModalOpen = false;
 			} else {
-				toasts.error(result.error || 'Failed to delete');
+				toasts.error(result.error || m.toast_library_tv_failedToDelete());
 			}
 		} catch {
-			toasts.error('Failed to delete');
+			toasts.error(m.toast_library_tv_failedToDelete());
 		} finally {
 			bulkLoading = false;
 			currentBulkAction = null;
@@ -204,12 +204,17 @@
 					...data,
 					series: data.series.map((s) => (s.id === seriesId ? { ...s, monitored } : s))
 				};
-				toasts.success(`"${show.title}" ${monitored ? 'monitored' : 'unmonitored'}`);
+				toasts.success(
+					m.toast_library_tv_monitorToggle({
+						title: show.title,
+						status: monitored ? m.common_monitored() : m.common_unmonitored()
+					})
+				);
 			} else {
-				toasts.error(result.error || 'Failed to update');
+				toasts.error(result.error || m.toast_library_tv_failedToUpdateSingle());
 			}
 		} catch {
-			toasts.error('Failed to update series');
+			toasts.error(m.toast_library_tv_failedToUpdateSeries());
 		}
 	}
 
@@ -235,18 +240,22 @@
 				const summary = searchProgress.results.summary;
 				const issue = getPrimaryAutoSearchIssue(searchProgress.results);
 				if (summary && summary.grabbed > 0) {
-					toasts.success(`Auto-grabbed ${summary.grabbed} release(s) for "${show.title}"`);
+					toasts.success(
+						m.toast_library_tv_autoGrabbedCount({ count: summary.grabbed, title: show.title })
+					);
 				} else if (issue) {
 					toasts.error(issue.message, { description: issue.description });
 				} else if (summary && summary.found > 0) {
-					toasts.info(`Found ${summary.found} releases but none met criteria for "${show.title}"`);
+					toasts.info(m.toast_library_tv_foundNoMatch({ count: summary.found, title: show.title }));
 				} else {
-					toasts.info(`No releases found for "${show.title}"`);
+					toasts.info(m.toast_library_tv_noReleases({ title: show.title }));
 				}
 			}
 		} catch (error) {
 			toasts.error(
-				error instanceof Error ? error.message : `Failed to auto-grab for "${show.title}"`
+				error instanceof Error
+					? error.message
+					: m.toast_library_tv_failedAutoGrab({ title: show.title })
 			);
 		} finally {
 			autoSearchingIds.delete(seriesId);
@@ -286,7 +295,8 @@
 		},
 		streaming?: boolean
 	) {
-		if (!selectedSeriesForSearch) return { success: false, error: 'No series selected' };
+		if (!selectedSeriesForSearch)
+			return { success: false, error: m.toast_library_tv_failedToGrab() };
 
 		try {
 			const response = await fetch('/api/download/grab', {
@@ -318,15 +328,15 @@
 			});
 			const result = await response.json();
 			if (result.success) {
-				toasts.success(`Grabbed "${release.title}"`);
+				toasts.success(m.toast_library_tv_grabbed({ title: release.title }));
 				return { success: true };
 			} else {
-				toasts.error(result.error || 'Failed to grab release');
+				toasts.error(result.error || m.toast_library_tv_failedToGrab());
 				return { success: false, error: result.error, errorCode: result.errorCode };
 			}
 		} catch {
-			toasts.error('Failed to grab release');
-			return { success: false, error: 'Failed to grab release' };
+			toasts.error(m.toast_library_tv_failedToGrab());
+			return { success: false, error: m.toast_library_tv_failedToGrab() };
 		}
 	}
 
@@ -354,7 +364,7 @@
 				if (result.success) {
 					if (removeFromLibrary) {
 						data = { ...data, series: data.series.filter((s) => s.id !== seriesId) };
-						toasts.success(`Removed "${show.title}" from library`);
+						toasts.success(m.toast_library_tv_removedFromLibrary({ title: show.title }));
 					} else {
 						data = {
 							...data,
@@ -362,15 +372,15 @@
 								s.id === seriesId ? { ...s, episodeFileCount: 0, percentComplete: 0 } : s
 							)
 						};
-						toasts.success(`"${show.title}" files deleted`);
+						toasts.success(m.toast_library_tv_filesDeleted({ title: show.title }));
 					}
 					isDeleteModalOpen = false;
 					pendingDeleteSeriesId = null;
 				} else {
-					toasts.error(result.error || 'Failed to delete');
+					toasts.error(result.error || m.toast_library_tv_failedToDelete());
 				}
 			} catch {
-				toasts.error('Failed to delete series');
+				toasts.error(m.toast_library_tv_failedToDeleteSeries());
 			} finally {
 				bulkLoading = false;
 				currentBulkAction = null;
@@ -382,55 +392,55 @@
 	}
 
 	const sortOptions = [
-		{ value: 'title-asc', label: 'Title (A-Z)' },
-		{ value: 'title-desc', label: 'Title (Z-A)' },
-		{ value: 'added-desc', label: 'Date Added (Newest)' },
-		{ value: 'added-asc', label: 'Date Added (Oldest)' },
-		{ value: 'progress-desc', label: 'Progress (Highest)' },
-		{ value: 'progress-asc', label: 'Progress (Lowest)' },
-		{ value: 'year-desc', label: 'Year (Newest)' },
-		{ value: 'year-asc', label: 'Year (Oldest)' },
-		{ value: 'size-desc', label: 'Size (Largest)' },
-		{ value: 'size-asc', label: 'Size (Smallest)' }
+		{ value: 'title-asc', label: m.library_tv_sortTitleAsc() },
+		{ value: 'title-desc', label: m.library_tv_sortTitleDesc() },
+		{ value: 'added-desc', label: m.library_tv_sortAddedDesc() },
+		{ value: 'added-asc', label: m.library_tv_sortAddedAsc() },
+		{ value: 'progress-desc', label: m.library_tv_sortProgressDesc() },
+		{ value: 'progress-asc', label: m.library_tv_sortProgressAsc() },
+		{ value: 'year-desc', label: m.library_tv_sortYearDesc() },
+		{ value: 'year-asc', label: m.library_tv_sortYearAsc() },
+		{ value: 'size-desc', label: m.library_tv_sortSizeDesc() },
+		{ value: 'size-asc', label: m.library_tv_sortSizeAsc() }
 	];
 
 	const filterOptions = $derived([
 		{
 			key: 'monitored',
-			label: 'Monitored',
+			label: m.library_tv_filterMonitored(),
 			options: [
-				{ value: 'all', label: 'All' },
-				{ value: 'monitored', label: 'Monitored Only' },
-				{ value: 'unmonitored', label: 'Not Monitored' }
+				{ value: 'all', label: m.library_tv_filterAll() },
+				{ value: 'monitored', label: m.library_tv_filterMonitoredOnly() },
+				{ value: 'unmonitored', label: m.library_tv_filterNotMonitored() }
 			]
 		},
 		{
 			key: 'status',
-			label: 'Show Status',
+			label: m.library_tv_filterShowStatus(),
 			options: [
-				{ value: 'all', label: 'All' },
-				{ value: 'continuing', label: 'Continuing' },
-				{ value: 'ended', label: 'Ended' }
+				{ value: 'all', label: m.library_tv_filterAll() },
+				{ value: 'continuing', label: m.library_tv_filterContinuing() },
+				{ value: 'ended', label: m.library_tv_filterEnded() }
 			]
 		},
 		{
 			key: 'progress',
-			label: 'Progress',
+			label: m.library_tv_filterProgress(),
 			options: [
-				{ value: 'all', label: 'All' },
-				{ value: 'complete', label: 'Complete (100%)' },
-				{ value: 'inProgress', label: 'In Progress' },
-				{ value: 'notStarted', label: 'Not Started (0%)' }
+				{ value: 'all', label: m.library_tv_filterAll() },
+				{ value: 'complete', label: m.library_tv_filterComplete() },
+				{ value: 'inProgress', label: m.library_tv_filterInProgress() },
+				{ value: 'notStarted', label: m.library_tv_filterNotStarted() }
 			]
 		},
 		{
 			key: 'qualityProfile',
-			label: 'Quality Profile',
+			label: m.library_tv_filterQualityProfile(),
 			options: [
-				{ value: 'all', label: 'All' },
+				{ value: 'all', label: m.library_tv_filterAll() },
 				...data.qualityProfiles.map((p) => ({
 					value: p.id,
-					label: p.isDefault ? `${p.name} (Default)` : p.name
+					label: p.isDefault ? m.library_tv_profileDefault({ name: p.name }) : p.name
 				}))
 			]
 		},
@@ -438,9 +448,9 @@
 			? [
 					{
 						key: 'resolution',
-						label: 'Resolution',
+						label: m.library_tv_filterResolution(),
 						options: [
-							{ value: 'all', label: 'All' },
+							{ value: 'all', label: m.library_tv_filterAll() },
 							...data.uniqueResolutions.map((r) => ({ value: r, label: r }))
 						]
 					}
@@ -450,9 +460,9 @@
 			? [
 					{
 						key: 'videoCodec',
-						label: 'Video Codec',
+						label: m.library_tv_filterVideoCodec(),
 						options: [
-							{ value: 'all', label: 'All' },
+							{ value: 'all', label: m.library_tv_filterAll() },
 							...data.uniqueCodecs.map((c) => ({ value: c, label: c }))
 						]
 					}
@@ -462,10 +472,10 @@
 			? [
 					{
 						key: 'hdrFormat',
-						label: 'HDR',
+						label: m.library_tv_filterHdr(),
 						options: [
-							{ value: 'all', label: 'All' },
-							{ value: 'sdr', label: 'SDR' },
+							{ value: 'all', label: m.library_tv_filterAll() },
+							{ value: 'sdr', label: m.library_tv_filterSdr() },
 							...data.uniqueHdrFormats.map((h) => ({ value: h, label: h }))
 						]
 					}
@@ -515,7 +525,7 @@
 </script>
 
 <svelte:head>
-	<title>TV Shows - Library - Cinephage</title>
+	<title>{m.library_tv_pageTitle()}</title>
 </svelte:head>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -532,12 +542,12 @@
 				<h1
 					class="min-w-0 bg-linear-to-r from-primary to-secondary bg-clip-text text-xl font-bold text-transparent sm:text-2xl"
 				>
-					TV Shows
+					{m.library_tv_heading()}
 				</h1>
 				<span class="badge badge-ghost badge-sm sm:badge-lg">{data.total}</span>
 				{#if data.total !== data.totalUnfiltered}
 					<span class="hidden text-sm text-base-content/50 sm:inline">
-						of {data.totalUnfiltered}
+						{m.library_tv_ofTotal({ total: data.totalUnfiltered })}
 					</span>
 				{/if}
 			</div>
@@ -550,7 +560,7 @@
 					/>
 					<input
 						type="text"
-						placeholder="Search TV shows…"
+						placeholder={m.library_tv_searchPlaceholder()}
 						class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 						bind:value={searchQuery}
 					/>
@@ -558,7 +568,7 @@
 						<button
 							class="absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-0.5 text-base-content/40 transition-colors hover:bg-base-300 hover:text-base-content"
 							onclick={() => (searchQuery = '')}
-							aria-label="Clear search"
+							aria-label={m.library_tv_clearSearch()}
 						>
 							<X class="h-3.5 w-3.5" />
 						</button>
@@ -576,23 +586,23 @@
 			>
 				{#if showCheckboxes}
 					<button class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm" onclick={selectAll}>
-						<span class="hidden sm:inline">Select All</span>
-						<span class="sm:hidden">All</span>
+						<span class="hidden sm:inline">{m.library_tv_selectAll()}</span>
+						<span class="sm:hidden">{m.library_tv_selectAllShort()}</span>
 					</button>
 					<button class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm" onclick={toggleSelectionMode}>
 						<X class="h-4 w-4" />
-						<span class="hidden sm:inline">Done</span>
+						<span class="hidden sm:inline">{m.library_tv_done()}</span>
 					</button>
 				{:else}
 					<button class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm" onclick={toggleSelectionMode}>
 						<CheckSquare class="h-4 w-4" />
-						<span class="hidden sm:inline">Select</span>
+						<span class="hidden sm:inline">{m.library_tv_select()}</span>
 					</button>
 
 					<div class="dropdown dropdown-end">
 						<div tabindex="0" role="button" class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm">
 							<Eye class="h-4 w-4" />
-							<span class="hidden sm:inline">Monitor</span>
+							<span class="hidden sm:inline">{m.library_tv_monitor()}</span>
 						</div>
 						<form
 							id="tv-monitor-all"
@@ -621,12 +631,12 @@
 						>
 							<li>
 								<button type="submit" class="w-full text-left" form="tv-monitor-all">
-									Monitor All
+									{m.library_tv_monitorAll()}
 								</button>
 							</li>
 							<li>
 								<button type="submit" class="w-full text-left" form="tv-unmonitor-all">
-									Unmonitor All
+									{m.library_tv_unmonitorAll()}
 								</button>
 							</li>
 						</ul>
@@ -638,15 +648,15 @@
 					class="btn btn-ghost btn-xs sm:btn-sm"
 					onclick={() => viewPreferences.toggleViewMode()}
 					aria-label={viewPreferences.viewMode === 'grid'
-						? 'Switch to list view'
-						: 'Switch to grid view'}
+						? m.library_tv_switchToList()
+						: m.library_tv_switchToGrid()}
 				>
 					{#if viewPreferences.viewMode === 'grid'}
 						<List class="h-4 w-4" />
-						<span class="hidden sm:inline">List</span>
+						<span class="hidden sm:inline">{m.library_tv_list()}</span>
 					{:else}
 						<LayoutGrid class="h-4 w-4" />
-						<span class="hidden sm:inline">Grid</span>
+						<span class="hidden sm:inline">{m.library_tv_grid()}</span>
 					{/if}
 				</button>
 
@@ -670,7 +680,7 @@
 				/>
 				<input
 					type="text"
-					placeholder="Search TV shows…"
+					placeholder={m.library_tv_searchPlaceholder()}
 					class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 					bind:value={searchQuery}
 				/>
@@ -678,7 +688,7 @@
 					<button
 						class="absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-0.5 text-base-content/40 transition-colors hover:bg-base-300 hover:text-base-content"
 						onclick={() => (searchQuery = '')}
-						aria-label="Clear search"
+						aria-label={m.library_tv_clearSearch()}
 					>
 						<X class="h-3.5 w-3.5" />
 					</button>
@@ -715,10 +725,10 @@
 			<!-- Search Empty State -->
 			<div class="flex flex-col items-center justify-center py-20 text-center opacity-50">
 				<Search class="mb-4 h-16 w-16" />
-				<p class="text-2xl font-bold">No TV shows match "{searchQuery}"</p>
-				<p class="mt-2">Try a different search term.</p>
+				<p class="text-2xl font-bold">{m.library_tv_noSearchMatch({ query: searchQuery })}</p>
+				<p class="mt-2">{m.library_tv_tryDifferentSearch()}</p>
 				<button class="btn mt-6 btn-ghost" onclick={() => (searchQuery = '')}>
-					Clear Search
+					{m.library_tv_clearSearchBtn()}
 				</button>
 			</div>
 		{:else if data.series.length === 0}
@@ -726,15 +736,17 @@
 			<div class="flex flex-col items-center justify-center py-20 text-center opacity-50">
 				<Tv class="mb-4 h-20 w-20" />
 				{#if data.totalUnfiltered === 0}
-					<p class="text-2xl font-bold">No TV shows in your library</p>
-					<p class="mt-2">Add TV shows from the Discover page to see them here.</p>
+					<p class="text-2xl font-bold">{m.library_tv_emptyLibrary()}</p>
+					<p class="mt-2">{m.library_tv_emptyLibraryHint()}</p>
 					<a href={resolvePath('/discover?type=tv')} class="btn mt-6 btn-primary">
-						Discover TV Shows
+						{m.library_tv_discoverTvShows()}
 					</a>
 				{:else}
-					<p class="text-2xl font-bold">No TV shows match your filters</p>
-					<p class="mt-2">Try adjusting your filters to see more results.</p>
-					<button class="btn mt-6 btn-primary" onclick={clearFilters}>Clear Filters</button>
+					<p class="text-2xl font-bold">{m.library_tv_noFilterMatch()}</p>
+					<p class="mt-2">{m.library_tv_noFilterMatchHint()}</p>
+					<button class="btn mt-6 btn-primary" onclick={clearFilters}
+						>{m.library_tv_clearFilters()}</button
+					>
 				{/if}
 			</div>
 		{:else}
@@ -810,7 +822,7 @@
 <!-- Single Item Delete Modal -->
 <DeleteConfirmationModal
 	open={isDeleteModalOpen && pendingDeleteSeriesId !== null}
-	title="Delete Series"
+	title={m.library_tv_deleteSeriesTitle()}
 	itemName={pendingDeleteSeriesTitle}
 	hasFiles={pendingDeleteSeriesHasFiles}
 	hasActiveDownload={pendingDeleteSeriesHasActiveDownload}

@@ -17,6 +17,7 @@
 	import { resolvePath } from '$lib/utils/routing';
 	import type { EpgStreamEvents } from '$lib/types/sse/events/livetv-epg-events.js';
 	import type { NowNextEntry } from '$lib/types/sse/events/livetv-channel-events.js';
+	import * as m from '$lib/paraglide/messages.js';
 
 	type TabId = 'status' | 'coverage' | 'guide';
 
@@ -46,9 +47,9 @@
 	let epgSourcePickerChannel = $state<ChannelLineupItemWithDetails | null>(null);
 
 	const tabs: { id: TabId; label: string; icon: typeof Settings }[] = [
-		{ id: 'status', label: 'Status', icon: Settings },
-		{ id: 'coverage', label: 'Coverage', icon: LayoutGrid },
-		{ id: 'guide', label: 'Guide', icon: Calendar }
+		{ id: 'status', label: m.livetv_epg_tabStatus(), icon: Settings },
+		{ id: 'coverage', label: m.livetv_epg_tabCoverage(), icon: LayoutGrid },
+		{ id: 'guide', label: m.livetv_epg_tabGuide(), icon: Calendar }
 	];
 
 	function applySyncStateFromStatus(status: EpgStatus | null | undefined) {
@@ -277,32 +278,32 @@
 </script>
 
 <svelte:head>
-	<title>EPG - Live TV - Cinephage</title>
+	<title>{m.livetv_epg_pageTitle()}</title>
 </svelte:head>
 
 <div class="space-y-6">
 	<!-- Header -->
 	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 		<div>
-			<h1 class="text-2xl font-bold">EPG</h1>
-			<p class="mt-1 text-base-content/60">Electronic Program Guide</p>
+			<h1 class="text-2xl font-bold">{m.livetv_epg_heading()}</h1>
+			<p class="mt-1 text-base-content/60">{m.livetv_epg_subtitle()}</p>
 		</div>
 		<!-- Connection Status -->
 		<div class="hidden lg:block">
 			{#if sse.isConnected}
 				<span class="badge gap-1 badge-success">
 					<Wifi class="h-3 w-3" />
-					Live
+					{m.common_live()}
 				</span>
 			{:else if sse.status === 'connecting' || sse.status === 'error'}
 				<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
 					<Loader2 class="h-3 w-3 animate-spin" />
-					{sse.status === 'error' ? 'Reconnecting...' : 'Connecting...'}
+					{sse.status === 'error' ? m.common_reconnecting() : m.common_connecting()}
 				</span>
 			{:else}
 				<span class="badge gap-1 badge-ghost">
 					<WifiOff class="h-3 w-3" />
-					Disconnected
+					{m.common_disconnected()}
 				</span>
 			{/if}
 		</div>

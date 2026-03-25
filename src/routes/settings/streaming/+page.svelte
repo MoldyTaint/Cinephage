@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { HardDrive, Trash2, RefreshCw, Archive, Clock } from 'lucide-svelte';
 	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';
 	import { toasts } from '$lib/stores/toast.svelte';
@@ -30,9 +31,9 @@
 				cleaned: result.cleaned ?? 0,
 				freedMB: result.freedMB ?? 0
 			};
-			toasts.success('Expired cache files cleaned');
+			toasts.success(m.settings_streaming_expiredCleaned());
 		} catch (error) {
-			toasts.error(error instanceof Error ? error.message : 'Failed to clean expired files');
+			toasts.error(error instanceof Error ? error.message : m.settings_streaming_failedToClean());
 		} finally {
 			cleaning = false;
 		}
@@ -40,13 +41,13 @@
 </script>
 
 <svelte:head>
-	<title>Streaming Settings - Cinephage</title>
+	<title>{m.settings_streaming_pageTitle()}</title>
 </svelte:head>
 
 <div class="container mx-auto max-w-4xl p-6">
 	<div class="mb-6 flex items-center gap-3">
 		<Archive size={28} class="text-primary" />
-		<h1 class="text-2xl font-bold">Streaming Settings</h1>
+		<h1 class="text-2xl font-bold">{m.settings_streaming_heading()}</h1>
 	</div>
 
 	<!-- Extraction Cache Section -->
@@ -54,11 +55,10 @@
 		<div class="card-body">
 			<h2 class="card-title">
 				<HardDrive size={20} />
-				Extraction Cache
+				{m.settings_streaming_extractionCache()}
 			</h2>
 			<p class="mb-4 text-sm text-base-content/70">
-				Compressed Usenet releases are downloaded and extracted locally for streaming. Extracted
-				files are cached to enable instant playback on subsequent views.
+				{m.settings_streaming_extractionCacheDescription()}
 			</p>
 
 			<!-- Cache Stats -->
@@ -67,7 +67,7 @@
 					<div class="stat-figure text-primary">
 						<Archive size={24} />
 					</div>
-					<div class="stat-title">Cached Files</div>
+					<div class="stat-title">{m.settings_streaming_cachedFiles()}</div>
 					<div class="stat-value text-primary">{data.cacheStats.fileCount}</div>
 				</div>
 
@@ -75,7 +75,7 @@
 					<div class="stat-figure text-secondary">
 						<HardDrive size={24} />
 					</div>
-					<div class="stat-title">Cache Size</div>
+					<div class="stat-title">{m.settings_streaming_cacheSize()}</div>
 					<div class="stat-value text-secondary">
 						{data.cacheStats.totalSizeMB >= 1024
 							? `${(data.cacheStats.totalSizeMB / 1024).toFixed(1)} GB`
@@ -87,9 +87,9 @@
 					<div class="stat-figure text-warning">
 						<Clock size={24} />
 					</div>
-					<div class="stat-title">Expired</div>
+					<div class="stat-title">{m.settings_streaming_expired()}</div>
 					<div class="stat-value text-warning">{data.cacheStats.expiredCount}</div>
-					<div class="stat-desc">pending cleanup</div>
+					<div class="stat-desc">{m.settings_streaming_pendingCleanup()}</div>
 				</div>
 			</div>
 
@@ -98,9 +98,13 @@
 				{#if cleanupResult}
 					<div class="mb-4 alert alert-success">
 						<span>
-							Cleaned up {cleanupResult.cleaned} file(s), freed {cleanupResult.freedMB >= 1024
-								? `${(cleanupResult.freedMB / 1024).toFixed(1)} GB`
-								: `${cleanupResult.freedMB} MB`}
+							{m.settings_streaming_cleanedUpResult({
+								count: String(cleanupResult.cleaned),
+								size:
+									cleanupResult.freedMB >= 1024
+										? `${(cleanupResult.freedMB / 1024).toFixed(1)} GB`
+										: `${cleanupResult.freedMB} MB`
+							})}
 						</span>
 					</div>
 				{/if}
@@ -112,10 +116,10 @@
 				>
 					{#if cleaning}
 						<RefreshCw size={16} class="animate-spin" />
-						Cleaning...
+						{m.settings_streaming_cleaning()}
 					{:else}
 						<Trash2 size={16} />
-						Clean Expired Files
+						{m.settings_streaming_cleanExpiredFiles()}
 					{/if}
 				</button>
 			</div>
@@ -127,29 +131,29 @@
 		<div class="card-body">
 			<h2 class="card-title">
 				<Clock size={20} />
-				Cache Settings
+				{m.settings_streaming_cacheSettings()}
 			</h2>
 
 			<div class="form-control w-full max-w-xs">
 				<label class="label" for="retention">
-					<span class="label-text">Retention Period</span>
+					<span class="label-text">{m.settings_streaming_retentionPeriod()}</span>
 				</label>
 				<select id="retention" class="select-bordered select" disabled>
-					<option value="24">24 hours</option>
-					<option value="48" selected>48 hours (default)</option>
-					<option value="72">72 hours</option>
-					<option value="168">1 week</option>
+					<option value="24">{m.settings_streaming_hours24()}</option>
+					<option value="48" selected>{m.settings_streaming_hours48Default()}</option>
+					<option value="72">{m.settings_streaming_hours72()}</option>
+					<option value="168">{m.settings_streaming_week1()}</option>
 				</select>
 				<div class="label">
 					<span class="label-text-alt text-base-content/50">
-						Extracted files are automatically deleted after this period
+						{m.settings_streaming_retentionHint()}
 					</span>
 				</div>
 			</div>
 
 			<div class="mt-4 alert alert-info">
 				<span>
-					Cache settings are currently using defaults. Custom configuration coming soon.
+					{m.settings_streaming_cacheDefaultsNotice()}
 				</span>
 			</div>
 		</div>
@@ -158,28 +162,28 @@
 	<!-- How It Works -->
 	<div class="card mt-6 bg-base-200">
 		<div class="card-body">
-			<h2 class="card-title">How Extraction Works</h2>
+			<h2 class="card-title">{m.settings_streaming_howItWorks()}</h2>
 			<div class="prose-sm prose max-w-none">
 				<ol class="space-y-2">
 					<li>
-						<strong>Detection:</strong> When you select a Usenet release for streaming, the system checks
-						if the content is compressed (RAR, 7z, ZIP).
+						<strong>{m.settings_streaming_stepDetection()}:</strong>
+						{m.settings_streaming_stepDetectionDesc()}
 					</li>
 					<li>
-						<strong>Download:</strong> Compressed content is downloaded from your NNTP servers with parallel
-						segment fetching for maximum speed.
+						<strong>{m.settings_streaming_stepDownload()}:</strong>
+						{m.settings_streaming_stepDownloadDesc()}
 					</li>
 					<li>
-						<strong>Extraction:</strong> The archive is extracted to your root folder's extraction cache
-						directory.
+						<strong>{m.settings_streaming_stepExtraction()}:</strong>
+						{m.settings_streaming_stepExtractionDesc()}
 					</li>
 					<li>
-						<strong>Streaming:</strong> Once extracted, the media file is available for instant playback
-						with full seeking support.
+						<strong>{m.settings_streaming_stepStreaming()}:</strong>
+						{m.settings_streaming_stepStreamingDesc()}
 					</li>
 					<li>
-						<strong>Cleanup:</strong> Extracted files are automatically removed after the retention period
-						to save disk space.
+						<strong>{m.settings_streaming_stepCleanup()}:</strong>
+						{m.settings_streaming_stepCleanupDesc()}
 					</li>
 				</ol>
 			</div>

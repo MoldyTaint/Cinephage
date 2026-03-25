@@ -13,6 +13,7 @@
 		Globe
 	} from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface SolverHealth {
 		available: boolean;
@@ -108,8 +109,9 @@
 				settings = data.settings;
 			}
 		} catch (error) {
-			toasts.error('Failed to load captcha solver data', {
-				description: error instanceof Error ? error.message : 'Failed to load captcha solver data'
+			toasts.error(m.settings_integrations_captcha_failedToLoad(), {
+				description:
+					error instanceof Error ? error.message : m.settings_integrations_captcha_failedToLoad()
 			});
 		} finally {
 			loading = false;
@@ -206,8 +208,11 @@
 				await loadData();
 			}
 		} catch (error) {
-			toasts.error('Failed to clear captcha cache', {
-				description: error instanceof Error ? error.message : 'Failed to clear captcha cache'
+			toasts.error(m.settings_integrations_captcha_failedToClearCache(), {
+				description:
+					error instanceof Error
+						? error.message
+						: m.settings_integrations_captcha_failedToClearCache()
 			});
 		} finally {
 			clearing = false;
@@ -233,7 +238,7 @@
 </script>
 
 <svelte:head>
-	<title>Captcha Solver - Cinephage</title>
+	<title>{m.settings_integrations_captcha_pageTitle()}</title>
 </svelte:head>
 
 <div class="w-full p-4">
@@ -241,8 +246,8 @@
 		<div class="flex items-center gap-3">
 			<Shield size={28} class="text-primary" />
 			<div>
-				<h1 class="text-2xl font-bold">Captcha Solver</h1>
-				<p class="mt-1 text-base-content/60">Automated anti-bot protection bypass for indexers</p>
+				<h1 class="text-2xl font-bold">{m.nav_captchaSolver()}</h1>
+				<p class="mt-1 text-base-content/60">{m.settings_integrations_captcha_subtitle()}</p>
 			</div>
 		</div>
 	</div>
@@ -259,32 +264,36 @@
 					<div class="alert flex items-center gap-2 alert-info">
 						<RefreshCw size={20} class="animate-spin" />
 						<div>
-							<span class="font-medium">Initializing</span>
-							<p class="text-sm">Captcha solver is starting up, please wait...</p>
+							<span class="font-medium">{m.settings_integrations_captcha_statusInitializing()}</span
+							>
+							<p class="text-sm">{m.settings_integrations_captcha_statusInitializingDesc()}</p>
 						</div>
 					</div>
 				{:else if health?.available}
 					<div class="alert flex items-center gap-2 alert-success">
 						<CheckCircle size={20} />
-						<span>Captcha solver is enabled and ready</span>
+						<span>{m.settings_integrations_captcha_statusReady()}</span>
 						{#if health.status === 'busy'}
-							<span class="badge badge-warning">Solving...</span>
+							<span class="badge badge-warning">{m.settings_integrations_captcha_statusBusy()}</span
+							>
 						{/if}
 					</div>
 				{:else if settings.enabled && !health?.browserAvailable}
 					<div class="alert flex items-center gap-2 alert-error">
 						<XCircle size={20} />
 						<div>
-							<span class="font-medium">Browser not available</span>
+							<span class="font-medium"
+								>{m.settings_integrations_captcha_browserNotAvailable()}</span
+							>
 							<p class="text-sm">
-								{health?.error || 'Camoufox browser is not installed or failed to start'}
+								{health?.error || m.settings_integrations_captcha_browserNotAvailableDesc()}
 							</p>
 						</div>
 					</div>
 				{:else}
 					<div class="alert flex items-center gap-2 alert-warning">
 						<AlertCircle size={20} />
-						<span>Captcha solver is disabled</span>
+						<span>{m.settings_integrations_captcha_statusDisabled()}</span>
 					</div>
 				{/if}
 			</div>
@@ -294,7 +303,7 @@
 				<div class="card-body">
 					<h2 class="card-title">
 						<Settings2 size={20} />
-						Settings
+						{m.nav_settings()}
 					</h2>
 
 					{#if saveError}
@@ -307,7 +316,7 @@
 					{#if saveSuccess}
 						<div class="alert alert-success">
 							<CheckCircle size={16} />
-							<span>Settings saved successfully</span>
+							<span>{m.settings_integrations_captcha_settingsSaved()}</span>
 						</div>
 					{/if}
 
@@ -324,12 +333,12 @@
 								/>
 								<div class="min-w-0">
 									<span class="label-text block font-medium whitespace-normal">
-										Enable Captcha Solver
+										{m.settings_integrations_captcha_enableLabel()}
 									</span>
 									<p
 										class="text-sm leading-relaxed wrap-break-word whitespace-normal text-base-content/60"
 									>
-										Automatically solve Cloudflare and other anti-bot challenges
+										{m.settings_integrations_captcha_enableDesc()}
 									</p>
 								</div>
 							</label>
@@ -348,23 +357,23 @@
 								/>
 								<div class="min-w-0">
 									<span class="label-text block font-medium whitespace-normal">
-										Headless Mode
+										{m.settings_integrations_captcha_headlessLabel()}
 									</span>
 									<p
 										class="text-sm leading-relaxed wrap-break-word whitespace-normal text-base-content/60"
 									>
-										Run browser in background without visible window (recommended)
+										{m.settings_integrations_captcha_headlessDesc()}
 									</p>
 								</div>
 							</label>
 						</div>
 
-						<div class="divider">Timing</div>
+						<div class="divider">{m.settings_integrations_captcha_timing()}</div>
 
 						<!-- Timeout -->
 						<div class="form-control w-full max-w-xs">
 							<label class="label" for="timeout">
-								<span class="label-text">Solve Timeout</span>
+								<span class="label-text">{m.settings_integrations_captcha_solveTimeout()}</span>
 							</label>
 							<select
 								id="timeout"
@@ -372,15 +381,15 @@
 								class="select-bordered select"
 								disabled={!settings.enabled}
 							>
-								<option value={30}>30 seconds</option>
-								<option value={60}>60 seconds (default)</option>
-								<option value={90}>90 seconds</option>
-								<option value={120}>2 minutes</option>
-								<option value={180}>3 minutes</option>
+								<option value={30}>{m.settings_integrations_captcha_seconds30()}</option>
+								<option value={60}>{m.settings_integrations_captcha_seconds60Default()}</option>
+								<option value={90}>{m.settings_integrations_captcha_seconds90()}</option>
+								<option value={120}>{m.settings_integrations_captcha_minutes2()}</option>
+								<option value={180}>{m.settings_integrations_captcha_minutes3()}</option>
 							</select>
 							<div class="label">
 								<span class="label-text-alt wrap-break-word whitespace-normal text-base-content/50">
-									Maximum time to wait for challenge resolution
+									{m.settings_integrations_captcha_solveTimeoutHelp()}
 								</span>
 							</div>
 						</div>
@@ -388,7 +397,7 @@
 						<!-- Cache TTL -->
 						<div class="form-control w-full max-w-xs">
 							<label class="label" for="cacheTtl">
-								<span class="label-text">Cache Duration</span>
+								<span class="label-text">{m.settings_integrations_captcha_cacheDuration()}</span>
 							</label>
 							<select
 								id="cacheTtl"
@@ -396,29 +405,29 @@
 								class="select-bordered select"
 								disabled={!settings.enabled}
 							>
-								<option value={1800}>30 minutes</option>
-								<option value={3600}>1 hour (default)</option>
-								<option value={7200}>2 hours</option>
-								<option value={14400}>4 hours</option>
-								<option value={28800}>8 hours</option>
-								<option value={86400}>24 hours</option>
+								<option value={1800}>{m.settings_integrations_captcha_minutes30()}</option>
+								<option value={3600}>{m.settings_integrations_captcha_hour1Default()}</option>
+								<option value={7200}>{m.settings_integrations_captcha_hours2()}</option>
+								<option value={14400}>{m.settings_integrations_captcha_hours4()}</option>
+								<option value={28800}>{m.settings_integrations_captcha_hours8()}</option>
+								<option value={86400}>{m.settings_integrations_captcha_hours24()}</option>
 							</select>
 							<div class="label">
 								<span class="label-text-alt wrap-break-word whitespace-normal text-base-content/50">
-									How long to cache solved cookies before re-solving
+									{m.settings_integrations_captcha_cacheDurationHelp()}
 								</span>
 							</div>
 						</div>
 
 						<div class="divider">
 							<Globe size={16} />
-							Proxy (Optional)
+							{m.settings_integrations_captcha_proxyOptional()}
 						</div>
 
 						<!-- Proxy URL -->
 						<div class="form-control w-full">
 							<label class="label" for="proxyUrl">
-								<span class="label-text">Proxy URL</span>
+								<span class="label-text">{m.settings_integrations_captcha_proxyUrl()}</span>
 							</label>
 							<input
 								id="proxyUrl"
@@ -430,7 +439,7 @@
 							/>
 							<div class="label">
 								<span class="label-text-alt wrap-break-word whitespace-normal text-base-content/50">
-									HTTP/SOCKS5 proxy for browser connections
+									{m.settings_integrations_captcha_proxyUrlHelp()}
 								</span>
 							</div>
 						</div>
@@ -440,26 +449,28 @@
 							<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 								<div class="form-control">
 									<label class="label" for="proxyUsername">
-										<span class="label-text">Proxy Username</span>
+										<span class="label-text">{m.settings_integrations_captcha_proxyUsername()}</span
+										>
 									</label>
 									<input
 										id="proxyUsername"
 										type="text"
 										bind:value={settings.proxyUsername}
-										placeholder="Optional"
+										placeholder={m.settings_integrations_captcha_optional()}
 										class="input-bordered input"
 										disabled={!settings.enabled}
 									/>
 								</div>
 								<div class="form-control">
 									<label class="label" for="proxyPassword">
-										<span class="label-text">Proxy Password</span>
+										<span class="label-text">{m.settings_integrations_captcha_proxyPassword()}</span
+										>
 									</label>
 									<input
 										id="proxyPassword"
 										type="password"
 										bind:value={settings.proxyPassword}
-										placeholder="Optional"
+										placeholder={m.settings_integrations_captcha_optional()}
 										class="input-bordered input"
 										disabled={!settings.enabled}
 									/>
@@ -476,10 +487,10 @@
 						>
 							{#if saving}
 								<RefreshCw size={16} class="animate-spin" />
-								Saving...
+								{m.common_saving()}
 							{:else}
 								<CheckCircle size={16} />
-								Save Settings
+								{m.settings_integrations_captcha_saveSettings()}
 							{/if}
 						</button>
 					</div>
@@ -491,11 +502,10 @@
 				<div class="card-body">
 					<h2 class="card-title">
 						<Play size={20} />
-						Test Solver
+						{m.settings_integrations_captcha_testSolver()}
 					</h2>
 					<p class="mb-4 text-sm text-base-content/70">
-						Test the captcha solver with a specific URL to verify it can handle the site's
-						protection.
+						{m.settings_integrations_captcha_testSolverDesc()}
 					</p>
 
 					<div class="flex flex-col gap-2 sm:flex-row">
@@ -513,10 +523,10 @@
 						>
 							{#if testing}
 								<RefreshCw size={16} class="animate-spin" />
-								Testing...
+								{m.common_testing()}
 							{:else}
 								<Play size={16} />
-								Test
+								{m.action_test()}
 							{/if}
 						</button>
 					</div>
@@ -540,7 +550,7 @@
 					<div class="card-body">
 						<h2 class="card-title">
 							<Activity size={20} />
-							Statistics
+							{m.settings_integrations_captcha_statistics()}
 						</h2>
 
 						<div class="stats stats-vertical bg-base-100 shadow lg:stats-horizontal">
@@ -548,16 +558,20 @@
 								<div class="stat-figure text-primary">
 									<Activity size={24} />
 								</div>
-								<div class="stat-title">Solve Success Rate</div>
+								<div class="stat-title">{m.settings_integrations_captcha_solveSuccessRate()}</div>
 								<div class="stat-value text-primary">{getSuccessRate()}</div>
-								<div class="stat-desc">{health.stats.totalAttempts} solves attempted</div>
+								<div class="stat-desc">
+									{m.settings_integrations_captcha_solvesAttempted({
+										count: health.stats.totalAttempts
+									})}
+								</div>
 							</div>
 
 							<div class="stat">
 								<div class="stat-figure text-secondary">
 									<Clock size={24} />
 								</div>
-								<div class="stat-title">Avg Solve Time</div>
+								<div class="stat-title">{m.settings_integrations_captcha_avgSolveTime()}</div>
 								<div class="stat-value text-secondary">
 									{formatDuration(health.stats.avgSolveTimeMs)}
 								</div>
@@ -567,29 +581,37 @@
 								<div class="stat-figure text-secondary">
 									<Globe size={24} />
 								</div>
-								<div class="stat-title">Fetch Success Rate</div>
+								<div class="stat-title">{m.settings_integrations_captcha_fetchSuccessRate()}</div>
 								<div class="stat-value text-secondary">{getFetchSuccessRate()}</div>
-								<div class="stat-desc">{health.stats.fetchAttempts} fetches attempted</div>
+								<div class="stat-desc">
+									{m.settings_integrations_captcha_fetchesAttempted({
+										count: health.stats.fetchAttempts
+									})}
+								</div>
 							</div>
 
 							<div class="stat">
 								<div class="stat-figure text-accent">
 									<Shield size={24} />
 								</div>
-								<div class="stat-title">Cache Hits</div>
+								<div class="stat-title">{m.settings_integrations_captcha_cacheHits()}</div>
 								<div class="stat-value text-accent">{health.stats.cacheHits}</div>
-								<div class="stat-desc">{health.stats.cacheSize} domains cached</div>
+								<div class="stat-desc">
+									{m.settings_integrations_captcha_domainsCached({ count: health.stats.cacheSize })}
+								</div>
 							</div>
 						</div>
 
 						<div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 							<div class="text-sm text-base-content/60">
 								{#if health.stats.lastSolveAt}
-									Last solve: {new Date(health.stats.lastSolveAt).toLocaleString()}
+									{m.settings_integrations_captcha_lastSolve()}
+									{new Date(health.stats.lastSolveAt).toLocaleString()}
 								{:else if health.stats.lastFetchAt}
-									Last fetch: {new Date(health.stats.lastFetchAt).toLocaleString()}
+									{m.settings_integrations_captcha_lastFetch()}
+									{new Date(health.stats.lastFetchAt).toLocaleString()}
 								{:else}
-									No activity recorded yet
+									{m.settings_integrations_captcha_noActivity()}
 								{/if}
 							</div>
 							<button
@@ -602,13 +624,15 @@
 								{:else}
 									<Trash2 size={14} />
 								{/if}
-								Clear Cache
+								{m.settings_integrations_captcha_clearCache()}
 							</button>
 						</div>
 
 						{#if health.stats.lastError}
 							<div class="alert-sm mt-2 alert alert-error">
-								<span class="text-sm">Last error: {health.stats.lastError}</span>
+								<span class="text-sm"
+									>{m.settings_integrations_captcha_lastError()} {health.stats.lastError}</span
+								>
 							</div>
 						{/if}
 					</div>
@@ -618,36 +642,35 @@
 			<!-- Info Card -->
 			<div class="card bg-base-100 shadow-xl">
 				<div class="card-body">
-					<h2 class="card-title">How It Works</h2>
+					<h2 class="card-title">{m.settings_integrations_captcha_howItWorks()}</h2>
 					<div class="prose-sm prose max-w-none">
 						<ol class="space-y-2">
 							<li>
-								<strong>Detection:</strong> When an indexer returns a challenge page (Cloudflare, DDoS-Guard,
-								etc.), the solver is triggered.
+								<strong>{m.settings_integrations_captcha_step1Label()}</strong>
+								{m.settings_integrations_captcha_step1Desc()}
 							</li>
 							<li>
-								<strong>Browser Launch:</strong> A stealth browser instance is launched with fingerprint
-								randomization to avoid detection.
+								<strong>{m.settings_integrations_captcha_step2Label()}</strong>
+								{m.settings_integrations_captcha_step2Desc()}
 							</li>
 							<li>
-								<strong>Challenge Solving:</strong> The browser navigates to the protected page and waits
-								for the challenge to be solved (usually automatic).
+								<strong>{m.settings_integrations_captcha_step3Label()}</strong>
+								{m.settings_integrations_captcha_step3Desc()}
 							</li>
 							<li>
-								<strong>Cookie Extraction:</strong> Once solved, the clearance cookies are extracted and
-								cached.
+								<strong>{m.settings_integrations_captcha_step4Label()}</strong>
+								{m.settings_integrations_captcha_step4Desc()}
 							</li>
 							<li>
-								<strong>Reuse:</strong> Subsequent requests to the same domain use the cached cookies
-								until they expire.
+								<strong>{m.settings_integrations_captcha_step5Label()}</strong>
+								{m.settings_integrations_captcha_step5Desc()}
 							</li>
 						</ol>
 					</div>
 
 					<div class="mt-4 alert alert-info">
 						<span class="text-sm">
-							The solver supports Cloudflare (JS Challenge, Turnstile), DDoS-Guard, and generic
-							JavaScript challenges. CAPTCHA puzzles requiring human interaction are not supported.
+							{m.settings_integrations_captcha_supportedChallenges()}
 						</span>
 					</div>
 				</div>

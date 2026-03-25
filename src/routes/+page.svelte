@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import {
 		Clapperboard,
 		Tv,
@@ -173,7 +174,7 @@
 
 	// Format relative time
 	function formatRelativeTime(dateStr: string | null): string {
-		if (!dateStr) return 'Unknown';
+		if (!dateStr) return m.common_unknown();
 		const date = new Date(dateStr);
 		const now = new Date();
 		const diff = now.getTime() - date.getTime();
@@ -181,33 +182,33 @@
 		const hours = Math.floor(diff / 3600000);
 		const days = Math.floor(diff / 86400000);
 
-		if (minutes < 1) return 'Just now';
-		if (minutes < 60) return `${minutes}m ago`;
-		if (hours < 24) return `${hours}h ago`;
-		if (days < 7) return `${days}d ago`;
+		if (minutes < 1) return m.dashboard_relativeTime_justNow();
+		if (minutes < 60) return m.dashboard_relativeTime_minutesAgo({ count: minutes });
+		if (hours < 24) return m.dashboard_relativeTime_hoursAgo({ count: hours });
+		if (days < 7) return m.dashboard_relativeTime_daysAgo({ count: days });
 		return date.toLocaleDateString();
 	}
 
 	// Format date
 	function formatDate(dateStr: string | null): string {
-		if (!dateStr) return 'Unknown';
+		if (!dateStr) return m.common_unknown();
 		return new Date(dateStr).toLocaleDateString();
 	}
 
 	// Status config for activity
 	const statusConfig: Record<string, { label: string; variant: string; icon: typeof CheckCircle }> =
 		{
-			imported: { label: 'Imported', variant: 'badge-success', icon: CheckCircle },
-			streaming: { label: 'Streaming', variant: 'badge-info', icon: CheckCircle },
-			downloading: { label: 'Downloading', variant: 'badge-info', icon: Loader2 },
-			seeding: { label: 'Seeding', variant: 'badge-success', icon: Upload },
-			paused: { label: 'Paused', variant: 'badge-warning', icon: PauseCircle },
-			failed: { label: 'Failed', variant: 'badge-error', icon: XCircle },
-			search_error: { label: 'Search Error', variant: 'badge-warning', icon: AlertCircle },
-			rejected: { label: 'Rejected', variant: 'badge-warning', icon: AlertCircle },
-			removed: { label: 'Removed', variant: 'badge-ghost', icon: XCircle },
-			no_results: { label: 'No Results', variant: 'badge-ghost', icon: Minus },
-			searching: { label: 'Searching', variant: 'badge-info', icon: Loader2 }
+			imported: { label: m.status_imported(), variant: 'badge-success', icon: CheckCircle },
+			streaming: { label: m.status_streaming(), variant: 'badge-info', icon: CheckCircle },
+			downloading: { label: m.status_downloading(), variant: 'badge-info', icon: Loader2 },
+			seeding: { label: m.status_seeding(), variant: 'badge-success', icon: Upload },
+			paused: { label: m.status_paused(), variant: 'badge-warning', icon: PauseCircle },
+			failed: { label: m.status_failed(), variant: 'badge-error', icon: XCircle },
+			search_error: { label: m.status_searchError(), variant: 'badge-warning', icon: AlertCircle },
+			rejected: { label: m.status_rejected(), variant: 'badge-warning', icon: AlertCircle },
+			removed: { label: m.status_removed(), variant: 'badge-ghost', icon: XCircle },
+			no_results: { label: m.status_noResults(), variant: 'badge-ghost', icon: Minus },
+			searching: { label: m.status_searching(), variant: 'badge-info', icon: Loader2 }
 		};
 
 	// Get media link
@@ -234,32 +235,32 @@
 </script>
 
 <svelte:head>
-	<title>Dashboard - Cinephage</title>
+	<title>{m.dashboard_pageTitle()}</title>
 </svelte:head>
 
 <div class="space-y-6">
 	<!-- Header -->
 	<div class="flex items-center justify-between">
 		<div>
-			<h1 class="text-3xl font-bold">Dashboard</h1>
-			<p class="text-base-content/70">Welcome to Cinephage</p>
+			<h1 class="text-3xl font-bold">{m.dashboard_title()}</h1>
+			<p class="text-base-content/70">{m.dashboard_subtitle()}</p>
 		</div>
 		<div class="flex items-center gap-2">
 			<div class="hidden items-center gap-2 lg:flex">
 				{#if sse?.isConnected}
 					<span class="badge gap-1 badge-success">
 						<Wifi class="h-3 w-3" />
-						Live
+						{m.common_live()}
 					</span>
 				{:else if sse?.status === 'connecting' || sse?.status === 'error'}
 					<span class="badge gap-1 {sse?.status === 'error' ? 'badge-error' : 'badge-warning'}">
-						{sse?.status === 'error' ? 'Reconnecting...' : 'Connecting...'}
+						{sse?.status === 'error' ? m.common_reconnecting() : m.common_connecting()}
 					</span>
 				{/if}
 			</div>
 			<a href={resolve('/discover')} class="btn gap-2 btn-sm btn-primary sm:w-auto">
 				<Plus class="h-4 w-4" />
-				Add Content
+				{m.dashboard_addContent()}
 			</a>
 		</div>
 	</div>
@@ -278,20 +279,26 @@
 					</div>
 					<div>
 						<div class="text-2xl font-bold">{stats.movies.total}</div>
-						<div class="text-sm text-base-content/70">Movies</div>
+						<div class="text-sm text-base-content/70">{m.dashboard_stats_movies()}</div>
 					</div>
 				</div>
 				<div class="mt-2 flex flex-wrap gap-2 text-xs">
-					<span class="badge badge-sm badge-success">{stats.movies.withFile} files</span>
+					<span class="badge badge-sm badge-success"
+						>{m.dashboard_stats_filesCount({ count: stats.movies.withFile })}</span
+					>
 					{#if stats.movies.missing > 0}
-						<span class="badge badge-sm badge-warning">{stats.movies.missing} missing</span>
+						<span class="badge badge-sm badge-warning"
+							>{m.dashboard_stats_missingCount({ count: stats.movies.missing })}</span
+						>
 					{/if}
 					{#if (stats.movies.unreleased || 0) > 0}
-						<span class="badge badge-sm badge-secondary">{stats.movies.unreleased} unreleased</span>
+						<span class="badge badge-sm badge-secondary"
+							>{m.dashboard_stats_unreleasedCount({ count: stats.movies.unreleased })}</span
+						>
 					{/if}
 					{#if (stats.movies.unmonitoredMissing || 0) > 0}
 						<span class="badge badge-sm badge-accent"
-							>{stats.movies.unmonitoredMissing} ignored</span
+							>{m.dashboard_stats_ignoredCount({ count: stats.movies.unmonitoredMissing })}</span
 						>
 					{/if}
 				</div>
@@ -307,20 +314,26 @@
 					</div>
 					<div>
 						<div class="text-2xl font-bold">{stats.series.total}</div>
-						<div class="text-sm text-base-content/70">TV Shows</div>
+						<div class="text-sm text-base-content/70">{m.dashboard_stats_tvShows()}</div>
 					</div>
 				</div>
 				<div class="mt-2 flex flex-wrap gap-2 text-xs">
-					<span class="badge badge-sm badge-success">{stats.episodes.withFile} files</span>
+					<span class="badge badge-sm badge-success"
+						>{m.dashboard_stats_filesCount({ count: stats.episodes.withFile })}</span
+					>
 					{#if stats.episodes.missing > 0}
-						<span class="badge badge-sm badge-warning">{stats.episodes.missing} missing</span>
+						<span class="badge badge-sm badge-warning"
+							>{m.dashboard_stats_missingCount({ count: stats.episodes.missing })}</span
+						>
 					{/if}
 					{#if (stats.episodes.unaired || 0) > 0}
-						<span class="badge badge-sm badge-secondary">{stats.episodes.unaired} unaired</span>
+						<span class="badge badge-sm badge-secondary"
+							>{m.dashboard_stats_unairedCount({ count: stats.episodes.unaired })}</span
+						>
 					{/if}
 					{#if (stats.episodes.unmonitoredMissing || 0) > 0}
 						<span class="badge badge-sm badge-accent">
-							{stats.episodes.unmonitoredMissing} ignored
+							{m.dashboard_stats_ignoredCount({ count: stats.episodes.unmonitoredMissing })}
 						</span>
 					{/if}
 				</div>
@@ -336,16 +349,18 @@
 					</div>
 					<div>
 						<div class="text-2xl font-bold">{stats.activeDownloads}</div>
-						<div class="text-sm text-base-content/70">Downloads</div>
+						<div class="text-sm text-base-content/70">{m.dashboard_stats_downloads()}</div>
 					</div>
 				</div>
 				<div class="mt-2 text-xs">
 					{#if stats.activeDownloads > 0}
 						<div class="flex flex-wrap gap-2">
-							<span class="badge badge-sm badge-accent">{stats.activeDownloads} active</span>
+							<span class="badge badge-sm badge-accent"
+								>{m.dashboard_stats_activeCount({ count: stats.activeDownloads })}</span
+							>
 						</div>
 					{:else}
-						<span class="text-base-content/50">No active downloads</span>
+						<span class="text-base-content/50">{m.dashboard_stats_noActiveDownloads()}</span>
 					{/if}
 				</div>
 			</div>
@@ -365,12 +380,14 @@
 							<div class="text-2xl font-bold">{missingEpisodes.length}</div>
 						{/if}
 						<div class="text-sm text-base-content/70">
-							<span class="sm:hidden">Missing Eps</span>
-							<span class="hidden sm:inline">Missing Episodes</span>
+							<span class="sm:hidden">{m.dashboard_stats_missingEpisodesShort()}</span>
+							<span class="hidden sm:inline">{m.dashboard_stats_missingEpisodes()}</span>
 						</div>
 					</div>
 				</div>
-				<div class="mt-2 text-xs text-base-content/50">Aired but not downloaded</div>
+				<div class="mt-2 text-xs text-base-content/50">
+					{m.dashboard_stats_airedNotDownloaded()}
+				</div>
 			</div>
 		</div>
 
@@ -387,13 +404,17 @@
 						</div>
 						<div class="min-w-0">
 							<div class="text-2xl font-bold">{stats.unmatchedFiles}</div>
-							<div class="text-sm text-base-content/70">Unmatched</div>
+							<div class="text-sm text-base-content/70">{m.dashboard_stats_unmatched()}</div>
 						</div>
 					</div>
-					<div class="mt-2 text-xs text-base-content/50">Files need attention</div>
+					<div class="mt-2 text-xs text-base-content/50">
+						{m.dashboard_stats_filesNeedAttention()}
+					</div>
 					{#if stats.missingRootFolders > 0}
 						<div class="mt-2 text-xs">
-							<span class="badge badge-sm badge-warning">Root folder issues</span>
+							<span class="badge badge-sm badge-warning"
+								>{m.dashboard_stats_rootFolderIssues()}</span
+							>
 						</div>
 					{/if}
 				</div>
@@ -410,11 +431,11 @@
 						</div>
 						<div class="min-w-0">
 							<div class="text-2xl font-bold">0</div>
-							<div class="text-sm text-base-content/70">Unmatched</div>
+							<div class="text-sm text-base-content/70">{m.dashboard_stats_unmatched()}</div>
 						</div>
 					</div>
 					<div class="mt-2 text-xs">
-						<span class="badge badge-sm badge-warning">Root folder issues</span>
+						<span class="badge badge-sm badge-warning">{m.dashboard_stats_rootFolderIssues()}</span>
 					</div>
 				</div>
 			</a>
@@ -427,10 +448,10 @@
 						</div>
 						<div>
 							<div class="text-2xl font-bold">0</div>
-							<div class="text-sm text-base-content/70">Unmatched</div>
+							<div class="text-sm text-base-content/70">{m.dashboard_stats_unmatched()}</div>
 						</div>
 					</div>
-					<div class="mt-2 text-xs text-base-content/50">All files matched</div>
+					<div class="mt-2 text-xs text-base-content/50">{m.dashboard_stats_allFilesMatched()}</div>
 				</div>
 			</div>
 		{/if}
@@ -444,7 +465,7 @@
 					</div>
 					<div>
 						<div class="text-2xl font-bold">{formatBytes(stats.storage.totalBytes)}</div>
-						<div class="text-sm text-base-content/70">Storage</div>
+						<div class="text-sm text-base-content/70">{m.dashboard_stats_storage()}</div>
 					</div>
 				</div>
 				<div class="mt-2 flex gap-2 text-xs">
@@ -461,7 +482,7 @@
 						</span>
 					{/if}
 					{#if stats.storage.totalBytes === 0}
-						<span class="text-base-content/50">No files on disk</span>
+						<span class="text-base-content/50">{m.dashboard_stats_noFilesOnDisk()}</span>
 					{/if}
 				</div>
 			</div>
@@ -473,7 +494,7 @@
 		<div class="card-body items-center gap-4 py-5 text-center">
 			<div class="space-y-1">
 				<div class="text-sm font-medium tracking-[0.2em] text-base-content/45 uppercase">
-					Quick Actions
+					{m.dashboard_quickActions_title()}
 				</div>
 			</div>
 			<div class="flex w-full flex-wrap justify-center gap-2.5">
@@ -482,35 +503,35 @@
 					class="btn min-w-34 justify-center border-info bg-info text-info-content btn-sm hover:border-info hover:bg-info/90"
 				>
 					<Compass class="h-4 w-4" />
-					Discover
+					{m.dashboard_quickActions_discover()}
 				</a>
 				<a
 					href={resolve('/library/import')}
 					class="btn min-w-34 justify-center border-primary bg-primary text-primary-content btn-sm hover:border-primary hover:bg-primary/90"
 				>
 					<Download class="h-4 w-4" />
-					Import
+					{m.dashboard_quickActions_import()}
 				</a>
 				<a
 					href={resolve('/activity')}
 					class="btn min-w-34 justify-center border-secondary bg-secondary text-secondary-content btn-sm hover:border-secondary hover:bg-secondary/90"
 				>
 					<Activity class="h-4 w-4" />
-					View Activity
+					{m.dashboard_quickActions_viewActivity()}
 				</a>
 				<a
 					href={resolve('/settings/integrations/indexers')}
 					class="btn min-w-34 justify-center border-accent bg-accent text-accent-content btn-sm hover:border-accent hover:bg-accent/90"
 				>
 					<TrendingUp class="h-4 w-4" />
-					Indexers
+					{m.dashboard_quickActions_indexers()}
 				</a>
 				<a
 					href={resolve('/settings/tasks')}
 					class="btn min-w-34 justify-center border-warning bg-warning text-warning-content btn-sm hover:border-warning hover:bg-warning/90"
 				>
 					<ListTodo class="h-4 w-4" />
-					Tasks
+					{m.dashboard_quickActions_tasks()}
 				</a>
 			</div>
 		</div>
@@ -527,7 +548,7 @@
 						<div class="flex items-center justify-between">
 							<h2 class="card-title">
 								<Clapperboard class="h-5 w-5" />
-								Recently Added Movies
+								{m.dashboard_recentMovies_title()}
 							</h2>
 							<Skeleton variant="text" class="h-8 w-20" />
 						</div>
@@ -548,9 +569,11 @@
 						<div class="flex items-center justify-between">
 							<h2 class="card-title">
 								<Clapperboard class="h-5 w-5" />
-								Recently Added Movies
+								{m.dashboard_recentMovies_title()}
 							</h2>
-							<a href={resolve('/library/movies')} class="btn btn-ghost btn-sm">View All</a>
+							<a href={resolve('/library/movies')} class="btn btn-ghost btn-sm"
+								>{m.dashboard_recentMovies_viewAll()}</a
+							>
 						</div>
 						<div
 							class="grid grid-cols-3 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-6"
@@ -582,7 +605,7 @@
 													? 'badge-warning'
 													: 'badge-secondary'}"
 											>
-												{typedMovie.isReleased ? 'Missing' : 'Unreleased'}
+												{typedMovie.isReleased ? m.common_missing() : m.common_unreleased()}
 											</span>
 										</div>
 									{/if}
@@ -600,7 +623,7 @@
 						<div class="flex items-center justify-between">
 							<h2 class="card-title">
 								<Tv class="h-5 w-5" />
-								Recently Added TV Shows
+								{m.dashboard_recentTvShows_title()}
 							</h2>
 							<Skeleton variant="text" class="h-8 w-20" />
 						</div>
@@ -621,9 +644,11 @@
 						<div class="flex items-center justify-between">
 							<h2 class="card-title">
 								<Tv class="h-5 w-5" />
-								Recently Added TV Shows
+								{m.dashboard_recentTvShows_title()}
 							</h2>
-							<a href={resolve('/library/tv')} class="btn btn-ghost btn-sm">View All</a>
+							<a href={resolve('/library/tv')} class="btn btn-ghost btn-sm"
+								>{m.dashboard_recentTvShows_viewAll()}</a
+							>
 						</div>
 						<div
 							class="grid grid-cols-3 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-6"
@@ -646,14 +671,19 @@
 										<div class="absolute right-0 bottom-0 left-0 p-2">
 											<p class="truncate text-xs font-medium text-white">{typedShow.title}</p>
 											<p class="text-xs text-white/70">
-												{typedShow.episodeFileCount ?? 0}/{typedShow.episodeCount ?? 0} episodes
+												{m.dashboard_recentTvShows_episodes({
+													fileCount: typedShow.episodeFileCount ?? 0,
+													totalCount: typedShow.episodeCount ?? 0
+												})}
 											</p>
 										</div>
 									</div>
 									{#if (typedShow.airedMissingCount ?? 0) > 0}
 										<div class="absolute top-1 right-1">
 											<span class="badge badge-xs badge-warning">
-												{typedShow.airedMissingCount} missing
+												{m.dashboard_recentTvShows_missingCount({
+													count: typedShow.airedMissingCount
+												})}
 											</span>
 										</div>
 									{/if}
@@ -670,7 +700,7 @@
 					<div class="card-body">
 						<h2 class="card-title">
 							<Calendar class="h-5 w-5" />
-							Missing Episodes
+							{m.dashboard_missingEpisodes_title()}
 						</h2>
 						<div class="divide-y divide-base-300">
 							{#each Array.from({ length: 5 }, (_, index) => index) as index (index)}
@@ -691,7 +721,7 @@
 					<div class="card-body">
 						<h2 class="card-title">
 							<Calendar class="h-5 w-5" />
-							Missing Episodes
+							{m.dashboard_missingEpisodes_title()}
 						</h2>
 						<div class="divide-y divide-base-300">
 							{#each missingEpisodes.slice(0, 5) as episode (episode.id)}
@@ -709,7 +739,7 @@
 									{/if}
 									<div class="min-w-0 flex-1">
 										<p class="font-medium wrap-break-word whitespace-normal">
-											{typedEpisode.series?.title || 'Unknown Series'}
+											{typedEpisode.series?.title || m.dashboard_missingEpisodes_unknownSeries()}
 										</p>
 										<p class="wrap-break-words text-sm whitespace-normal text-base-content/70">
 											S{String(typedEpisode.seasonNumber).padStart(2, '0')}E{String(
@@ -735,13 +765,13 @@
 						<div class="rounded-full bg-base-300 p-4">
 							<Plus class="h-8 w-8 text-base-content/50" />
 						</div>
-						<h2 class="card-title">No Content Yet</h2>
+						<h2 class="card-title">{m.dashboard_emptyState_title()}</h2>
 						<p class="text-base-content/70">
-							Start by discovering movies and TV shows to add to your library.
+							{m.dashboard_emptyState_description()}
 						</p>
 						<a href={resolve('/discover')} class="btn btn-primary">
 							<Search class="h-4 w-4" />
-							Discover Content
+							{m.dashboard_emptyState_discoverContent()}
 						</a>
 					</div>
 				</div>
@@ -754,10 +784,10 @@
 				<div class="flex items-center justify-between">
 					<h2 class="card-title">
 						<Activity class="h-5 w-5" />
-						Recent History
+						{m.dashboard_recentHistory_title()}
 					</h2>
 					<a href={resolvePath('/activity?tab=history')} class="btn gap-1 btn-ghost btn-xs">
-						View all
+						{m.dashboard_recentHistory_viewAll()}
 						<ArrowRight class="h-3 w-3" />
 					</a>
 				</div>
@@ -766,10 +796,10 @@
 						<table class="table table-xs">
 							<thead>
 								<tr>
-									<th>Status</th>
-									<th>Media</th>
-									<th>Progress</th>
-									<th>Time</th>
+									<th>{m.dashboard_recentHistory_colStatus()}</th>
+									<th>{m.dashboard_recentHistory_colMedia()}</th>
+									<th>{m.dashboard_recentHistory_colProgress()}</th>
+									<th>{m.dashboard_recentHistory_colTime()}</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -789,10 +819,10 @@
 						<table class="table table-xs">
 							<thead>
 								<tr>
-									<th>Status</th>
-									<th>Media</th>
-									<th>Progress</th>
-									<th>Time</th>
+									<th>{m.dashboard_recentHistory_colStatus()}</th>
+									<th>{m.dashboard_recentHistory_colMedia()}</th>
+									<th>{m.dashboard_recentHistory_colProgress()}</th>
+									<th>{m.dashboard_recentHistory_colTime()}</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -874,7 +904,7 @@
 				{:else}
 					<div class="py-8 text-center text-base-content/50">
 						<Clock class="mx-auto h-8 w-8 opacity-50" />
-						<p class="mt-2 text-sm">No recent activity</p>
+						<p class="mt-2 text-sm">{m.dashboard_recentHistory_noActivity()}</p>
 					</div>
 				{/if}
 			</div>
