@@ -36,6 +36,7 @@ import {
 } from '$lib/server/auth/index.js';
 import { checkApiRateLimit, applyRateLimitHeaders } from '$lib/server/rate-limit.js';
 import type { SessionRecord, UserRecord } from '$lib/server/db/schema.js';
+import { paraglideMiddleware } from '$lib/paraglide/server.js';
 
 /**
  * Content Security Policy header.
@@ -87,6 +88,7 @@ type AuthSessionUser = {
 	username?: string | null;
 	displayUsername?: string | null;
 	role?: string | null;
+	language?: string | null;
 	emailVerified?: boolean | number | null;
 	banned?: boolean | number | null;
 	banReason?: string | null;
@@ -141,6 +143,7 @@ function normalizeAuthUser(user: AuthSessionUser): UserRecord {
 		username: user.username ?? null,
 		displayUsername: user.displayUsername ?? null,
 		role: user.role ?? 'user',
+		language: user.language ?? 'en',
 		banned: toIntegerFlag(user.banned),
 		banReason: user.banReason ?? null,
 		banExpires:
@@ -182,6 +185,19 @@ function clearAuthenticatedLocals(event: Parameters<Handle>[0]['event']): void {
 	event.locals.apiKey = null;
 	event.locals.apiKeyPermissions = null;
 }
+
+/**
+ * Locale handler - Sets up i18n context for the request using Paraglide
+ * Must run early in the sequence to ensure locale is available for all handlers
+ */
+const localeHandler: Handle = async ({ event, resolve }) => {
+	// Use paraglide middleware to handle locale detection and setting
+	// The middleware reads/writes the PARAGLIDE_LOCALE cookie automatically
+	return paraglideMiddleware(event.request, () => {
+		// Continue with the SvelteKit request
+		return resolve(event);
+	});
+};
 
 /**
  * Global initialization promise - ensures init runs only once
@@ -818,7 +834,7 @@ const customHandler: Handle = async ({ event, resolve }) => {
  * Export sequenced handlers
  * authHandler runs first, then customHandler for non-auth routes
  */
-export const handle = sequence(authHandler, customHandler);
+export const handle = sequence(localeHandler, authHandler, customHandler);
 
 /**
  * Global error handler for uncaught exceptions.
