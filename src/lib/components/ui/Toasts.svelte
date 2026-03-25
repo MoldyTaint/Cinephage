@@ -3,6 +3,7 @@
 	import { toasts, type ToastType } from '$lib/stores/toast.svelte';
 	import { CheckCircle, XCircle, AlertCircle, Info, X } from 'lucide-svelte';
 	import { fly } from 'svelte/transition';
+	import * as m from '$lib/paraglide/messages.js';
 
 	const icons: Record<ToastType, typeof CheckCircle> = {
 		success: CheckCircle,
@@ -53,7 +54,7 @@
 				<button
 					class="btn btn-circle btn-ghost btn-xs"
 					onclick={() => toasts.dismiss(toast.id)}
-					aria-label="Dismiss"
+					aria-label={m.ui_toasts_dismiss()}
 				>
 					<X class="h-4 w-4" />
 				</button>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { onMount } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import {
@@ -87,18 +88,19 @@
 		libraryItems.filter((item) => item.mediaType === libraryIssuesFilter)
 	);
 	const issueSummaryLabel = $derived.by(() => {
-		if (missingIssueCount > 0 && invalidIssueCount > 0) return 'Missing or invalid root folder';
-		if (invalidIssueCount > 0) return 'Invalid root folder assignment';
-		return 'Missing root folder';
+		if (missingIssueCount > 0 && invalidIssueCount > 0)
+			return m.unmatched_libraryIssues_missingOrInvalidRoot();
+		if (invalidIssueCount > 0) return m.unmatched_libraryIssues_invalidRootAssignment();
+		return m.unmatched_libraryIssues_missingRoot();
 	});
 	const issueDetailLabel = $derived.by(() => {
 		if (missingIssueCount > 0 && invalidIssueCount > 0) {
-			return 'These library items have missing or invalid root folder assignments. Select a root folder to fix them.';
+			return m.unmatched_libraryIssues_missingOrInvalidDescription();
 		}
 		if (invalidIssueCount > 0) {
-			return 'These library items have invalid root folder assignments. Select a valid root folder to fix them.';
+			return m.unmatched_libraryIssues_invalidDescription();
 		}
-		return 'These library items have no root folder set. Select a root folder to fix them.';
+		return m.unmatched_libraryIssues_missingDescription();
 	});
 
 	onMount(() => {
@@ -154,12 +156,12 @@
 					libraryIssuesOpen = unmatchedFileCount === 0;
 				}
 			} else {
-				toasts.error('Failed to load library issues', {
+				toasts.error(m.unmatched_libraryIssues_failedToLoad(), {
 					description: result.error || 'Please try again'
 				});
 			}
 		} catch {
-			toasts.error('Failed to load library issues');
+			toasts.error(m.unmatched_libraryIssues_failedToLoad());
 		} finally {
 			loading = false;
 		}
@@ -182,7 +184,7 @@
 	async function updateRootFolder(item: LibraryIssue): Promise<void> {
 		const rootFolderId = getSelectedRootFolder(item.id);
 		if (!rootFolderId) {
-			toasts.info('Select a root folder first');
+			toasts.info(m.unmatched_libraryIssues_selectRootFolderFirst());
 			return;
 		}
 
@@ -192,12 +194,12 @@
 			if (success) {
 				libraryItems = libraryItems.filter((libraryItem) => libraryItem.id !== item.id);
 				clearSelectionsForIds([item.id]);
-				toasts.success('Root folder updated');
+				toasts.success(m.unmatched_libraryIssues_rootFolderUpdated());
 			} else {
-				toasts.error('Failed to update root folder');
+				toasts.error(m.unmatched_libraryIssues_rootFolderUpdateFailed());
 			}
 		} catch {
-			toasts.error('Failed to update root folder');
+			toasts.error(m.unmatched_libraryIssues_rootFolderUpdateFailed());
 		} finally {
 			savingIssues.delete(item.id);
 		}
@@ -223,8 +225,8 @@
 
 	function getIssueLabel(issue: LibraryIssue['issue']): string {
 		return issue === 'invalid_root_folder'
-			? 'Invalid root folder assignment'
-			: 'Root folder not set';
+			? m.unmatched_libraryIssues_invalidRootFolder()
+			: m.unmatched_libraryIssues_rootFolderNotSet();
 	}
 
 	function getIssueTextClass(issue: LibraryIssue['issue']): string {
@@ -234,7 +236,7 @@
 	async function bulkAssignRootFolder(mediaType: 'movie' | 'tv'): Promise<void> {
 		const rootFolderId = mediaType === 'movie' ? bulkMovieRootFolder : bulkTvRootFolder;
 		if (!rootFolderId) {
-			toasts.info('Select a root folder first');
+			toasts.info(m.unmatched_libraryIssues_selectRootFolderFirst());
 			return;
 		}
 
@@ -242,7 +244,7 @@
 			(item) => item.mediaType === mediaType && selectedIssueSet.has(item.id)
 		);
 		if (selectedItems.length === 0) {
-			toasts.info('Select items to apply the bulk action');
+			toasts.info(m.unmatched_libraryIssues_selectItemsFirst());
 			return;
 		}
 
@@ -275,11 +277,11 @@
 			}
 
 			if (failedCount === 0) {
-				toasts.success('Root folder updated for selected items');
+				toasts.success(m.unmatched_libraryIssues_bulkUpdateSuccess());
 			} else if (successIds.length > 0) {
-				toasts.warning('Some root folder updates failed');
+				toasts.warning(m.unmatched_libraryIssues_bulkUpdatePartial());
 			} else {
-				toasts.error('Failed to update root folder for selected items');
+				toasts.error(m.unmatched_libraryIssues_bulkUpdateFailed());
 			}
 		} finally {
 			for (const item of selectedItems) {
@@ -298,7 +300,7 @@
 	<div class="card bg-base-200">
 		<div class="card-body items-center py-6">
 			<span class="loading loading-md loading-spinner"></span>
-			<p class="text-sm text-base-content/70">Loading library issues...</p>
+			<p class="text-sm text-base-content/70">{m.unmatched_libraryIssues_loading()}</p>
 		</div>
 	</div>
 {:else if libraryItems.length > 0}
@@ -310,7 +312,7 @@
 			<div class="flex items-center gap-2">
 				<AlertCircle class="h-5 w-5 text-warning" />
 				<div>
-					<div class="font-semibold">Library Issues</div>
+					<div class="font-semibold">{m.unmatched_libraryIssues_title()}</div>
 					<div class="text-xs text-base-content/60">
 						{issueSummaryLabel} on {libraryItems.length} item{libraryItems.length !== 1 ? 's' : ''}
 					</div>
@@ -333,30 +335,32 @@
 						onclick={() => (libraryIssuesFilter = 'movie')}
 						disabled={movieIssueCount === 0}
 					>
-						Movies ({movieIssueCount})
+						{m.unmatched_libraryIssues_movies()} ({movieIssueCount})
 					</button>
 					<button
 						class="btn btn-xs {libraryIssuesFilter === 'tv' ? 'btn-primary' : 'btn-ghost'}"
 						onclick={() => (libraryIssuesFilter = 'tv')}
 						disabled={tvIssueCount === 0}
 					>
-						TV Shows ({tvIssueCount})
+						{m.unmatched_libraryIssues_tvShows()} ({tvIssueCount})
 					</button>
 				</div>
 
 				<div class="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
 					<div class="flex flex-wrap items-center gap-2 text-xs text-base-content/60">
-						<span>{selectedFilteredCount} selected</span>
+						<span>{m.unmatched_libraryIssues_selectedCount({ count: selectedFilteredCount })}</span>
 						{#if libraryIssuesFilter === 'movie'}
 							<button class="btn btn-ghost btn-xs" onclick={() => selectAllIssues('movie')}>
-								Select all Movies
+								{m.unmatched_libraryIssues_selectAllMovies()}
 							</button>
 						{:else}
 							<button class="btn btn-ghost btn-xs" onclick={() => selectAllIssues('tv')}>
-								Select all TV shows
+								{m.unmatched_libraryIssues_selectAllTv()}
 							</button>
 						{/if}
-						<button class="btn btn-ghost btn-xs" onclick={clearIssueSelection}>Clear</button>
+						<button class="btn btn-ghost btn-xs" onclick={clearIssueSelection}
+							>{m.unmatched_libraryIssues_clear()}</button
+						>
 					</div>
 
 					{#if libraryIssuesFilter === 'movie'}
@@ -367,7 +371,7 @@
 									bind:value={bulkMovieRootFolder}
 									disabled={bulkSavingMovie}
 								>
-									<option value="">Select root folder</option>
+									<option value="">{m.unmatched_libraryIssues_selectRootFolder()}</option>
 									{#each movieFolders as folder (folder.id)}
 										<option value={folder.id}>{folder.name} - {folder.path}</option>
 									{/each}
@@ -380,12 +384,14 @@
 									{#if bulkSavingMovie}
 										<Loader2 class="h-3.5 w-3.5 animate-spin" />
 									{/if}
-									Apply to selected
+									{m.unmatched_libraryIssues_applyToSelected()}
 								</button>
 							{:else}
 								<span class="text-xs text-warning">
-									No Movie root folders configured.
-									<a class="ml-1 link" href="/settings/general">Add a root folder</a>
+									{m.unmatched_libraryIssues_noMovieFolders()}
+									<a class="ml-1 link" href="/settings/general"
+										>{m.unmatched_libraryIssues_addRootFolder()}</a
+									>
 								</span>
 							{/if}
 						</div>
@@ -397,7 +403,7 @@
 									bind:value={bulkTvRootFolder}
 									disabled={bulkSavingTv}
 								>
-									<option value="">Select root folder</option>
+									<option value="">{m.unmatched_libraryIssues_selectRootFolder()}</option>
 									{#each tvFolders as folder (folder.id)}
 										<option value={folder.id}>{folder.name} - {folder.path}</option>
 									{/each}
@@ -410,12 +416,14 @@
 									{#if bulkSavingTv}
 										<Loader2 class="h-3.5 w-3.5 animate-spin" />
 									{/if}
-									Apply to selected
+									{m.unmatched_libraryIssues_applyToSelected()}
 								</button>
 							{:else}
 								<span class="text-xs text-warning">
-									No TV root folders configured.
-									<a class="ml-1 link" href="/settings/general">Add a root folder</a>
+									{m.unmatched_libraryIssues_noTvFolders()}
+									<a class="ml-1 link" href="/settings/general"
+										>{m.unmatched_libraryIssues_addRootFolder()}</a
+									>
 								</span>
 							{/if}
 						</div>
@@ -438,7 +446,9 @@
 											? 'badge-primary'
 											: 'badge-secondary'}"
 									>
-										{item.mediaType === 'movie' ? 'M' : 'TV'}
+										{item.mediaType === 'movie'
+											? m.unmatched_libraryIssues_movie()
+											: m.unmatched_libraryIssues_tv()}
 									</div>
 									<div class="min-w-0">
 										<div class="truncate font-medium">
@@ -471,7 +481,7 @@
 												(event.currentTarget as HTMLSelectElement).value
 											)}
 									>
-										<option value="">Select root folder</option>
+										<option value="">{m.unmatched_libraryIssues_selectRootFolder()}</option>
 										{#if item.mediaType === 'movie'}
 											{#each movieFolders as folder (folder.id)}
 												<option value={folder.id}>{folder.name} - {folder.path}</option>
@@ -484,7 +494,7 @@
 									</select>
 									<button
 										class="btn btn-ghost btn-sm"
-										title="Apply root folder"
+										title={m.unmatched_libraryIssues_applyRootFolder()}
 										disabled={!getSelectedRootFolder(item.id) || savingIssues.get(item.id)}
 										onclick={() => updateRootFolder(item)}
 									>

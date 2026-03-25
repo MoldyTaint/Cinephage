@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { Search, X, Clapperboard, Tv, Check, Loader2 } from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
@@ -70,7 +71,7 @@
 			const data = await response.json();
 			searchResults = data.results || [];
 		} catch {
-			toasts.error('Search failed');
+			toasts.error(m.library_matchFile_searchFailed());
 			searchResults = [];
 		} finally {
 			isSearching = false;
@@ -99,13 +100,13 @@
 			const result = await response.json();
 
 			if (result.success) {
-				toasts.success(`Matched to ${movie.title || movie.name}`);
+				toasts.success(m.library_matchFile_matchedTo({ title: movie.title || movie.name || '' }));
 				onSuccess(file.id);
 			} else {
-				toasts.error('Failed to match', { description: result.error });
+				toasts.error(m.library_matchFile_failedToMatch(), { description: result.error });
 			}
 		} catch {
-			toasts.error('Error matching file');
+			toasts.error(m.library_matchFile_errorMatching());
 		} finally {
 			isMatching = false;
 		}
@@ -136,14 +137,18 @@
 
 			if (result.success) {
 				toasts.success(
-					`Matched to ${selectedShow.name} S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`
+					m.library_matchFile_matchedToEpisode({
+						name: selectedShow.name || '',
+						season: String(season).padStart(2, '0'),
+						episode: String(episode).padStart(2, '0')
+					})
 				);
 				onSuccess(file.id);
 			} else {
-				toasts.error('Failed to match', { description: result.error });
+				toasts.error(m.library_matchFile_failedToMatch(), { description: result.error });
 			}
 		} catch {
-			toasts.error('Error matching file');
+			toasts.error(m.library_matchFile_errorMatching());
 		} finally {
 			isMatching = false;
 		}
@@ -159,11 +164,11 @@
 <ModalWrapper {open} onClose={close} maxWidth="2xl" labelledBy="match-file-modal-title">
 	<!-- Header -->
 	<div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-		<h3 id="match-file-modal-title" class="text-lg font-bold">Match File to TMDB</h3>
+		<h3 id="match-file-modal-title" class="text-lg font-bold">{m.library_matchFile_title()}</h3>
 		<button
 			class="btn btn-circle self-end btn-ghost btn-sm sm:self-auto"
 			onclick={close}
-			aria-label="Close"
+			aria-label={m.action_close()}
 		>
 			<X class="h-4 w-4" />
 		</button>
@@ -182,7 +187,7 @@
 			}}
 		>
 			<Clapperboard class="h-4 w-4" />
-			Movie
+			{m.common_movie()}
 		</button>
 		<button
 			class="btn btn-sm {searchType === 'tv' ? 'btn-primary' : 'btn-ghost'}"
@@ -192,7 +197,7 @@
 			}}
 		>
 			<Tv class="h-4 w-4" />
-			TV Show
+			{m.common_tvShow()}
 		</button>
 	</div>
 
@@ -209,18 +214,20 @@
 					/>
 				</div>
 				<div class="flex-1">
-					<p class="font-medium">{selectedShow.name ?? 'Unknown Show'}</p>
+					<p class="font-medium">{selectedShow.name ?? m.common_unknown()}</p>
 					<p class="text-sm text-base-content/70">
-						{selectedShow.first_air_date?.substring(0, 4) || 'Unknown year'}
+						{selectedShow.first_air_date?.substring(0, 4) || m.common_unknown()}
 					</p>
 				</div>
-				<button class="btn btn-ghost btn-sm" onclick={() => (selectedShow = null)}> Change </button>
+				<button class="btn btn-ghost btn-sm" onclick={() => (selectedShow = null)}>
+					{m.action_change()}
+				</button>
 			</div>
 
 			<div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
 				<div class="form-control">
 					<label class="label" for="season-input">
-						<span class="label-text">Season</span>
+						<span class="label-text">{m.common_season()}</span>
 					</label>
 					<input
 						id="season-input"
@@ -232,7 +239,7 @@
 				</div>
 				<div class="form-control">
 					<label class="label" for="episode-input">
-						<span class="label-text">Episode</span>
+						<span class="label-text">{m.common_episode()}</span>
 					</label>
 					<input
 						id="episode-input"
@@ -250,7 +257,10 @@
 				{:else}
 					<Check class="h-4 w-4" />
 				{/if}
-				Match to S{String(season).padStart(2, '0')}E{String(episode).padStart(2, '0')}
+				{m.library_matchFile_matchTo({
+					season: String(season).padStart(2, '0'),
+					episode: String(episode).padStart(2, '0')
+				})}
 			</button>
 		</div>
 	{:else}
@@ -259,7 +269,12 @@
 			<input
 				type="text"
 				class="input-bordered input w-full sm:flex-1"
-				placeholder="Search {searchType === 'movie' ? 'movies' : 'TV shows'}..."
+				placeholder={m.library_matchFile_searchPlaceholder({
+					type:
+						searchType === 'movie'
+							? m.common_movies().toLowerCase()
+							: m.common_tvShows().toLowerCase()
+				})}
 				bind:value={searchQuery}
 				onkeydown={handleKeydown}
 			/>
@@ -307,9 +322,9 @@
 						</div>
 						<div class="hidden text-sm text-base-content/50 sm:block">
 							{#if searchType === 'movie'}
-								Click to match
+								{m.library_matchFile_clickToMatch()}
 							{:else}
-								Select
+								{m.action_select()}
 							{/if}
 						</div>
 					</button>
@@ -318,9 +333,16 @@
 		{:else if searchQuery && !isSearching}
 			<div class="mt-4 py-8 text-center text-base-content/50">
 				{#if searchResults.length === 0 && searchQuery}
-					<p>No results found. Try a different search.</p>
+					<p>{m.common_noResults()}</p>
 				{:else}
-					<p>Search for a {searchType === 'movie' ? 'movie' : 'TV show'} to match this file.</p>
+					<p>
+						{m.library_matchFile_searchHint({
+							type:
+								searchType === 'movie'
+									? m.common_movie().toLowerCase()
+									: m.common_tvShow().toLowerCase()
+						})}
+					</p>
 				{/if}
 			</div>
 		{/if}

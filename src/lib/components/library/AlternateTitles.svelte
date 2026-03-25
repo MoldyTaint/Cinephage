@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { Plus, X, Globe, User, Loader2 } from 'lucide-svelte';
 	import { mediaTypeApiSegment, type MediaType } from '$lib/utils/media-type';
 
@@ -42,10 +43,10 @@
 			if (data.success) {
 				alternateTitles = data.alternateTitles;
 			} else {
-				error = data.error || 'Failed to fetch alternate titles';
+				error = data.error || m.library_alternateTitles_fetchError();
 			}
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to fetch alternate titles';
+			error = e instanceof Error ? e.message : m.library_alternateTitles_fetchError();
 		} finally {
 			loading = false;
 		}
@@ -70,10 +71,10 @@
 				alternateTitles = [...alternateTitles, data.alternateTitle];
 				newTitle = '';
 			} else {
-				error = data.error || 'Failed to add alternate title';
+				error = data.error || m.library_alternateTitles_addError();
 			}
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to add alternate title';
+			error = e instanceof Error ? e.message : m.library_alternateTitles_addError();
 		} finally {
 			adding = false;
 		}
@@ -97,10 +98,10 @@
 			if (data.success) {
 				alternateTitles = alternateTitles.filter((t) => t.id !== title.id);
 			} else {
-				error = data.error || 'Failed to remove alternate title';
+				error = data.error || m.library_alternateTitles_removeError();
 			}
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to remove alternate title';
+			error = e instanceof Error ? e.message : m.library_alternateTitles_removeError();
 		} finally {
 			deletingId = null;
 		}
@@ -122,13 +123,13 @@
 	<div class="space-y-2">
 		{#if primaryTitle}
 			<div class="flex items-center gap-2">
-				<span class="badge badge-sm badge-primary">Primary</span>
+				<span class="badge badge-sm badge-primary">{m.library_alternateTitles_primary()}</span>
 				<span class="text-sm">{primaryTitle}</span>
 			</div>
 		{/if}
 		{#if originalTitle && originalTitle !== primaryTitle}
 			<div class="flex items-center gap-2">
-				<span class="badge badge-sm badge-secondary">Original</span>
+				<span class="badge badge-sm badge-secondary">{m.library_alternateTitles_original()}</span>
 				<span class="text-sm">{originalTitle}</span>
 			</div>
 		{/if}
@@ -145,7 +146,7 @@
 			<div class="space-y-2">
 				<h4 class="flex items-center gap-2 text-sm font-medium text-base-content/70">
 					<Globe class="h-4 w-4" />
-					From TMDB ({tmdbTitles.length})
+					{m.library_alternateTitles_fromTmdb()} ({tmdbTitles.length})
 				</h4>
 				<div class="flex flex-wrap gap-2">
 					{#each tmdbTitles as title (title.id)}
@@ -167,7 +168,7 @@
 		<div class="space-y-2">
 			<h4 class="flex items-center gap-2 text-sm font-medium text-base-content/70">
 				<User class="h-4 w-4" />
-				Custom Titles ({userTitles.length})
+				{m.library_alternateTitles_customTitles()} ({userTitles.length})
 			</h4>
 			{#if userTitles.length > 0}
 				<div class="flex flex-wrap gap-2">
@@ -178,7 +179,7 @@
 								class="btn h-auto min-h-0 p-0 btn-ghost btn-xs"
 								onclick={() => removeTitle(title)}
 								disabled={deletingId === title.id}
-								title="Remove"
+								title={m.library_alternateTitles_removeTitle()}
 							>
 								{#if deletingId === title.id}
 									<Loader2 class="h-3 w-3 animate-spin" />
@@ -190,7 +191,7 @@
 					{/each}
 				</div>
 			{:else}
-				<p class="text-sm text-base-content/50">No custom titles added</p>
+				<p class="text-sm text-base-content/50">{m.library_alternateTitles_noCustomTitles()}</p>
 			{/if}
 
 			<!-- Add Title Input -->
@@ -198,7 +199,7 @@
 				<input
 					type="text"
 					class="input-bordered input input-sm flex-1"
-					placeholder="Add custom search title..."
+					placeholder={m.library_alternateTitles_addPlaceholder()}
 					bind:value={newTitle}
 					onkeydown={handleKeydown}
 					disabled={adding}
@@ -213,7 +214,7 @@
 					{:else}
 						<Plus class="h-4 w-4" />
 					{/if}
-					Add
+					{m.action_add()}
 				</button>
 			</div>
 		</div>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { X, Loader2 } from 'lucide-svelte';
 	import ModalWrapper from './ModalWrapper.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		open: boolean;
@@ -19,13 +20,13 @@
 
 	let {
 		open,
-		title = 'Confirm',
+		title = m.action_confirm(),
 		message = '',
 		messagePrefix,
 		messageEmphasis,
 		messageSuffix,
-		confirmLabel = 'Confirm',
-		cancelLabel = 'Cancel',
+		confirmLabel = m.action_confirm(),
+		cancelLabel = m.action_cancel(),
 		confirmVariant = 'primary',
 		loading = false,
 		onConfirm,
@@ -53,7 +54,7 @@
 			type="button"
 			class="btn btn-circle btn-ghost btn-sm"
 			onclick={onCancel}
-			aria-label="Close"
+			aria-label={m.action_close()}
 		>
 			<X class="h-4 w-4" />
 		</button>

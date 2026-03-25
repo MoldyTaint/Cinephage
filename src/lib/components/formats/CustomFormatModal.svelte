@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import type { FormatCondition, FormatCategory, UICustomFormat } from '$lib/types/format';
 	import { FORMAT_CATEGORY_LABELS, FORMAT_CATEGORY_ORDER } from '$lib/types/format';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
@@ -133,7 +134,11 @@
 
 	const isReadonly = $derived(mode === 'view' || (format?.isBuiltIn ?? false));
 	const modalTitle = $derived(
-		mode === 'add' ? 'Create Custom Format' : format?.isBuiltIn ? 'View Format' : 'Edit Format'
+		mode === 'add'
+			? m.formats_createCustomFormat()
+			: format?.isBuiltIn
+				? m.formats_viewFormat()
+				: m.formats_editFormat()
 	);
 </script>
 
@@ -154,7 +159,7 @@
 
 	{#if format?.isBuiltIn}
 		<div class="mb-4 alert alert-info">
-			<span>Built-in formats cannot be modified. Create a custom format to customize.</span>
+			<span>{m.formats_builtinReadOnly()}</span>
 		</div>
 	{/if}
 
@@ -164,7 +169,7 @@
 			<!-- Name -->
 			<div class="form-control">
 				<label class="label" for="format-name">
-					<span class="label-text">Name</span>
+					<span class="label-text">{m.formats_nameLabel()}</span>
 				</label>
 				<input
 					id="format-name"
@@ -172,14 +177,14 @@
 					class="input-bordered input input-sm"
 					bind:value={name}
 					disabled={isReadonly}
-					placeholder="My Custom Format"
+					placeholder={m.formats_namePlaceholder()}
 				/>
 			</div>
 
 			<!-- Category -->
 			<div class="form-control">
 				<label class="label" for="format-category">
-					<span class="label-text">Category</span>
+					<span class="label-text">{m.formats_categoryLabel()}</span>
 				</label>
 				<select
 					id="format-category"
@@ -197,21 +202,21 @@
 		<!-- Description -->
 		<div class="form-control">
 			<label class="label" for="format-description">
-				<span class="label-text">Description</span>
+				<span class="label-text">{m.formats_descriptionLabel()}</span>
 			</label>
 			<textarea
 				id="format-description"
 				class="textarea-bordered textarea h-16 textarea-sm"
 				bind:value={description}
 				disabled={isReadonly}
-				placeholder="Describe what this format matches..."
+				placeholder={m.formats_descriptionPlaceholder()}
 			></textarea>
 		</div>
 
 		<!-- Tags -->
 		<div class="form-control">
 			<label class="label" for="format-tags">
-				<span class="label-text">Tags</span>
+				<span class="label-text">{m.formats_tagsLabel()}</span>
 			</label>
 			<input
 				id="format-tags"
@@ -219,7 +224,7 @@
 				class="input-bordered input input-sm"
 				bind:value={tagsInput}
 				disabled={isReadonly}
-				placeholder="tag1, tag2, ..."
+				placeholder={m.formats_tagsPlaceholder()}
 			/>
 		</div>
 
@@ -227,8 +232,7 @@
 		<div class="alert bg-base-200 text-sm">
 			<Info class="h-4 w-4" />
 			<span>
-				Format scores are defined per-profile. After creating this format, assign scores to it in
-				your scoring profiles.
+				{m.formats_scoreInfo()}
 			</span>
 		</div>
 
@@ -243,24 +247,24 @@
 						disabled={isReadonly}
 					/>
 					<div class="min-w-0">
-						<span class="label-text">Enabled</span>
-						<p class="text-xs text-base-content/60">Disabled formats won't be used for scoring</p>
+						<span class="label-text">{m.formats_enabledLabel()}</span>
+						<p class="text-xs text-base-content/60">{m.formats_enabledHint()}</p>
 					</div>
 				</label>
 			</div>
 		{/if}
 
 		<!-- Conditions -->
-		<div class="divider">Conditions</div>
+		<div class="divider">{m.formats_conditionsDivider()}</div>
 
 		<FormatConditionBuilder {conditions} readonly={isReadonly} onUpdate={handleConditionsUpdate} />
 
 		<!-- Test Section -->
-		<div class="divider">Test</div>
+		<div class="divider">{m.formats_testDivider()}</div>
 
 		<div class="rounded-lg bg-base-200 p-4">
 			<p class="mb-3 text-sm text-base-content/70">
-				Test your conditions against a sample release name to verify they work correctly.
+				{m.formats_testDescription()}
 			</p>
 
 			<div class="flex gap-2">
@@ -268,7 +272,7 @@
 					type="text"
 					class="input-bordered input input-sm flex-1 font-mono"
 					bind:value={testReleaseName}
-					placeholder="Movie.2024.2160p.BluRay.REMUX.HEVC.TrueHD.Atmos-GROUP"
+					placeholder={m.formats_testPlaceholder()}
 				/>
 				<button
 					type="button"
@@ -281,7 +285,7 @@
 					{:else}
 						<FlaskConical class="h-4 w-4" />
 					{/if}
-					Test
+					{m.formats_testButton()}
 				</button>
 			</div>
 
@@ -296,7 +300,7 @@
 					{:else}
 						<AlertTriangle class="h-4 w-4" />
 					{/if}
-					<span>{testResult.matched ? 'Matched!' : 'Not matched'}</span>
+					<span>{testResult.matched ? m.formats_testMatched() : m.formats_testNotMatched()}</span>
 					{#if testResult.details}
 						<span class="text-base-content/60">- {testResult.details}</span>
 					{/if}

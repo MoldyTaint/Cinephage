@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { X, Loader2, CheckCircle2, XCircle, FolderOpen, Info } from 'lucide-svelte';
 	import type {
 		RootFolder,
@@ -51,7 +52,9 @@
 	let showFolderBrowser = $state(false);
 
 	// Derived
-	const modalTitle = $derived(mode === 'add' ? 'Add Root Folder' : 'Edit Root Folder');
+	const modalTitle = $derived(
+		mode === 'add' ? m.rootFolders_addTitle() : m.rootFolders_editTitle()
+	);
 
 	// Reset form when modal opens or folder changes
 	$effect(() => {
@@ -133,24 +136,24 @@
 						type="text"
 						class="input-bordered input input-sm"
 						bind:value={name}
-						placeholder="Movies Library"
+						placeholder={m.rootFolders_namePlaceholder()}
 					/>
 				</div>
 
 				<div class="form-control">
 					<label class="label py-1" for="mediaType">
-						<span class="label-text">Media Type</span>
+						<span class="label-text">{m.rootFolders_mediaTypeLabel()}</span>
 					</label>
 					<select id="mediaType" class="select-bordered select select-sm" bind:value={mediaType}>
-						<option value="movie">Movies</option>
-						<option value="tv">TV Shows</option>
+						<option value="movie">{m.rootFolders_movies()}</option>
+						<option value="tv">{m.rootFolders_tvShows()}</option>
 					</select>
 				</div>
 			</div>
 
 			<div class="form-control">
 				<label class="label py-1" for="path">
-					<span class="label-text">Path</span>
+					<span class="label-text">{m.rootFolders_pathLabel()}</span>
 				</label>
 				<div class="flex gap-2">
 					<div class="join flex-1">
@@ -159,13 +162,13 @@
 							type="text"
 							class="input-bordered input input-sm join-item flex-1"
 							bind:value={path}
-							placeholder="/mnt/media/movies"
+							placeholder={m.rootFolders_pathPlaceholder()}
 						/>
 						<button
 							type="button"
 							class="btn join-item border border-base-300 btn-ghost btn-sm"
 							onclick={() => (showFolderBrowser = true)}
-							title="Browse folders"
+							title={m.rootFolders_browseFolders()}
 						>
 							<FolderOpen class="h-4 w-4" />
 						</button>
@@ -178,12 +181,12 @@
 						{#if validating}
 							<Loader2 class="h-4 w-4 animate-spin" />
 						{/if}
-						Validate
+						{m.rootFolders_validate()}
 					</button>
 				</div>
 				<div class="label py-1">
 					<span class="label-text-alt text-xs">
-						The folder path where your media library is stored
+						{m.rootFolders_pathHint()}
 					</span>
 				</div>
 			</div>
@@ -191,13 +194,16 @@
 			<label class="flex cursor-pointer items-center gap-3 py-2">
 				<input type="checkbox" class="checkbox shrink-0 checkbox-sm" bind:checked={isDefault} />
 				<span class="text-sm"
-					>Set as default for {mediaType === 'movie' ? 'movies' : 'TV shows'}</span
+					>{m.rootFolders_setAsDefault({
+						mediaType:
+							mediaType === 'movie' ? m.rootFolders_movies().toLowerCase() : m.rootFolders_tvShows()
+					})}</span
 				>
 			</label>
 
 			<label class="flex cursor-pointer items-center gap-3 py-2">
 				<input type="checkbox" class="checkbox shrink-0 checkbox-sm" bind:checked={readOnly} />
-				<span class="text-sm">Read-only folder (catalog only, no imports)</span>
+				<span class="text-sm">{m.rootFolders_readOnlyLabel()}</span>
 			</label>
 
 			<label class="flex cursor-pointer items-center gap-3 py-2">
@@ -206,7 +212,7 @@
 					class="checkbox shrink-0 checkbox-sm"
 					bind:checked={preserveSymlinks}
 				/>
-				<span class="text-sm">Preserve symlinks (for Rclone mounts)</span>
+				<span class="text-sm">{m.rootFolders_preserveSymlinksLabel()}</span>
 			</label>
 
 			<label class="flex cursor-pointer items-center gap-3 py-2">
@@ -215,11 +221,11 @@
 					class="checkbox shrink-0 checkbox-sm"
 					bind:checked={defaultMonitored}
 				/>
-				<span class="min-w-0 text-sm">Monitor new content</span>
+				<span class="min-w-0 text-sm">{m.rootFolders_monitorNewContent()}</span>
 				<button
 					type="button"
 					class="tooltip btn tooltip-right shrink-0 btn-ghost btn-xs"
-					data-tip="When off, content added by library scan or manual match will be unmonitored (no auto-download of missing episodes/seasons)."
+					data-tip={m.rootFolders_monitorNewContentTooltip()}
 					onclick={(e) => e.stopPropagation()}
 					aria-label="More information about monitor new content"
 				>
@@ -243,11 +249,9 @@
 						></path>
 					</svg>
 					<div>
-						<div class="font-medium">Symlink preservation enabled</div>
+						<div class="font-medium">{m.rootFolders_symlinkAlertTitle()}</div>
 						<div class="text-sm opacity-80">
-							Symlinks will be recreated at the destination instead of copying file contents. This
-							is useful when the source folder contains symlinks to files on network mounts (SABnzbd
-							Mount Mode: NZBDav/Altmount Rclone).
+							{m.rootFolders_symlinkAlertDesc()}
 						</div>
 					</div>
 				</div>
@@ -269,10 +273,9 @@
 						></path>
 					</svg>
 					<div>
-						<div class="font-medium">Read-only mode enabled</div>
+						<div class="font-medium">{m.rootFolders_readOnlyAlertTitle()}</div>
 						<div class="text-sm opacity-80">
-							This folder will be used for cataloging existing content only. Imports and new media
-							will not be written to this folder. Useful for virtual mounts like NZBDav.
+							{m.rootFolders_readOnlyAlertDesc()}
 						</div>
 					</div>
 				</div>
@@ -283,7 +286,7 @@
 				<div class="alert alert-error">
 					<XCircle class="h-5 w-5" />
 					<div>
-						<div class="font-medium">Failed to save</div>
+						<div class="font-medium">{m.rootFolders_saveFailed()}</div>
 						<div class="text-sm opacity-80">{error}</div>
 					</div>
 				</div>
@@ -296,20 +299,20 @@
 						<CheckCircle2 class="h-5 w-5" />
 						<div>
 							<div class="font-medium">
-								{readOnly ? 'Path is readable' : 'Path is valid'}
+								{readOnly ? m.rootFolders_pathReadable() : m.rootFolders_pathValid()}
 							</div>
 							{#if validationResult.freeSpaceFormatted}
 								<div class="text-sm opacity-80">
-									Free space: {validationResult.freeSpaceFormatted}
+									{m.rootFolders_freeSpace({ space: validationResult.freeSpaceFormatted })}
 								</div>
 							{:else if readOnly}
-								<div class="text-sm opacity-80">Free space: N/A (read-only)</div>
+								<div class="text-sm opacity-80">{m.rootFolders_freeSpaceNa()}</div>
 							{/if}
 						</div>
 					{:else}
 						<XCircle class="h-5 w-5" />
 						<div>
-							<div class="font-medium">Path validation failed</div>
+							<div class="font-medium">{m.rootFolders_validationFailed()}</div>
 							<div class="text-sm opacity-80">{validationResult.error}</div>
 						</div>
 					{/if}

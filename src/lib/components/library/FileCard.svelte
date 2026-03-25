@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { SvelteSet } from 'svelte/reactivity';
 	import type { MovieFile } from '$lib/types/library';
 	import QualityBadge from './QualityBadge.svelte';
@@ -66,7 +67,7 @@
 	});
 
 	function formatBytes(bytes: number | null): string {
-		if (!bytes) return 'Unknown size';
+		if (!bytes) return m.library_fileCard_unknownSize();
 		const k = 1024;
 		const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
 		const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -74,7 +75,7 @@
 	}
 
 	function formatDate(dateString: string | null): string {
-		if (!dateString) return 'Unknown';
+		if (!dateString) return m.library_fileCard_unknownDate();
 		return new Date(dateString).toLocaleDateString('en-US', {
 			year: 'numeric',
 			month: 'short',
@@ -118,7 +119,7 @@
 				<button
 					class="btn text-error btn-ghost btn-xs"
 					onclick={() => onDelete(file.id)}
-					title="Delete file"
+					title={m.library_fileCard_deleteFile()}
 				>
 					<Trash2 size={14} />
 				</button>
@@ -130,7 +131,9 @@
 	<div class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2 md:gap-x-4">
 		<!-- Streaming tag before size for streamer profiles -->
 		{#if isStreamerProfile}
-			<span class="badge max-w-full truncate badge-sm badge-secondary">Streaming</span>
+			<span class="badge max-w-full truncate badge-sm badge-secondary"
+				>{m.library_fileCard_streaming()}</span
+			>
 		{/if}
 
 		<!-- Quality badges -->
@@ -172,7 +175,7 @@
 		>
 			{#if file.mediaInfo.videoCodec}
 				<span>
-					Video: {file.mediaInfo.videoCodec}
+					{m.library_fileCard_videoLabel()}: {file.mediaInfo.videoCodec}
 					{#if file.mediaInfo.videoBitDepth}
 						{file.mediaInfo.videoBitDepth}-bit
 					{/if}
@@ -183,7 +186,7 @@
 			{/if}
 			{#if file.mediaInfo.audioCodec}
 				<span>
-					Audio: {file.mediaInfo.audioCodec}
+					{m.library_fileCard_audioLabel()}: {file.mediaInfo.audioCodec}
 					{#if file.mediaInfo.audioChannels}
 						({file.mediaInfo.audioChannels === 6
 							? '5.1'
@@ -194,10 +197,16 @@
 				</span>
 			{/if}
 			{#if file.mediaInfo.audioLanguages && file.mediaInfo.audioLanguages.length > 0}
-				<span>Languages: {file.mediaInfo.audioLanguages.join(', ')}</span>
+				<span
+					>{m.library_fileCard_languagesLabel()}: {file.mediaInfo.audioLanguages.join(', ')}</span
+				>
 			{/if}
 			{#if file.mediaInfo.subtitleLanguages && file.mediaInfo.subtitleLanguages.length > 0}
-				<span>Subs: {file.mediaInfo.subtitleLanguages.join(', ')}</span>
+				<span
+					>{m.library_fileCard_subtitlesLabel()}: {file.mediaInfo.subtitleLanguages.join(
+						', '
+					)}</span
+				>
 			{/if}
 		</div>
 	{/if}
@@ -214,10 +223,10 @@
 					<button
 						class="btn gap-1 btn-ghost btn-xs"
 						onclick={onSubtitleSearch}
-						title="Search for subtitles"
+						title={m.library_fileCard_searchSubtitles()}
 					>
 						<Subtitles size={12} />
-						Search
+						{m.library_fileCard_search()}
 					</button>
 				{/if}
 				{#if onSubtitleAutoSearch}
@@ -225,14 +234,14 @@
 						class="btn gap-1 btn-ghost btn-xs"
 						onclick={onSubtitleAutoSearch}
 						disabled={autoSearching}
-						title="Auto-download best match"
+						title={m.library_fileCard_autoDownload()}
 					>
 						{#if autoSearching}
 							<Loader2 size={12} class="animate-spin" />
 						{:else}
 							<Download size={12} />
 						{/if}
-						Auto
+						{m.library_fileCard_auto()}
 					</button>
 				{/if}
 			</div>

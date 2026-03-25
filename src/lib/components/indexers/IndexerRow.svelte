@@ -10,6 +10,7 @@
 		ToggleRight,
 		Settings
 	} from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 	import IndexerStatusBadge from './IndexerStatusBadge.svelte';
 	import type { IndexerWithStatus } from '$lib/types/indexer';
 

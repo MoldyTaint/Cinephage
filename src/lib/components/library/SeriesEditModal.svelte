@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { X } from 'lucide-svelte';
 	import { ModalWrapper, ModalFooter } from '$lib/components/ui/modal';
 	import { FormCheckbox } from '$lib/components/ui/form';
@@ -64,9 +65,21 @@
 		label: string;
 		description: string;
 	}> = [
-		{ value: 'standard', label: 'Standard', description: 'Episodes with S##E## numbering' },
-		{ value: 'anime', label: 'Anime', description: 'Episodes with absolute numbering' },
-		{ value: 'daily', label: 'Daily', description: 'Episodes with date-based numbering' }
+		{
+			value: 'standard',
+			label: m.library_seriesEdit_standard(),
+			description: m.library_seriesEdit_standardDesc()
+		},
+		{
+			value: 'anime',
+			label: m.library_seriesEdit_anime(),
+			description: m.library_seriesEdit_animeDesc()
+		},
+		{
+			value: 'daily',
+			label: m.library_seriesEdit_daily(),
+			description: m.library_seriesEdit_dailyDesc()
+		}
 	];
 
 	function normalizeSeriesType(value: string | null | undefined): 'standard' | 'anime' | 'daily' {
@@ -97,7 +110,7 @@
 	);
 
 	function formatBytes(bytes: number | null): string {
-		if (!bytes) return 'Unknown';
+		if (!bytes) return m.common_unknown();
 		const k = 1024;
 		const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
 		const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -119,7 +132,7 @@
 <ModalWrapper {open} {onClose} maxWidth="lg" labelledBy="series-edit-modal-title">
 	<!-- Header -->
 	<div class="mb-4 flex items-center justify-between">
-		<h3 id="series-edit-modal-title" class="text-lg font-bold">Edit Series</h3>
+		<h3 id="series-edit-modal-title" class="text-lg font-bold">{m.library_seriesEdit_title()}</h3>
 		<button class="btn btn-circle btn-ghost btn-sm" onclick={onClose}>
 			<X class="h-4 w-4" />
 		</button>
@@ -138,16 +151,16 @@
 		<!-- Monitored -->
 		<FormCheckbox
 			bind:checked={monitored}
-			label="Monitored"
-			description="Search for new episodes automatically"
+			label={m.common_monitored()}
+			description={m.library_seriesEdit_monitoredDesc()}
 			variant="toggle"
 		/>
 
 		<!-- Season Folder -->
 		<FormCheckbox
 			bind:checked={seasonFolder}
-			label="Season Folders"
-			description="Organize episodes into season folders (e.g., /Season 01/)"
+			label={m.library_seriesEdit_seasonFolders()}
+			description={m.library_seriesEdit_seasonFoldersDesc()}
 			variant="toggle"
 			color="secondary"
 		/>
@@ -155,15 +168,15 @@
 		<!-- Wants Subtitles -->
 		<FormCheckbox
 			bind:checked={wantsSubtitles}
-			label="Auto-Download Subtitles"
-			description="Automatically search and download subtitles for episodes"
+			label={m.library_seriesEdit_autoDownloadSubtitles()}
+			description={m.library_seriesEdit_autoDownloadSubtitlesDesc()}
 			variant="toggle"
 		/>
 
 		<!-- Series Type -->
 		<div class="form-control">
 			<label class="label" for="series-type">
-				<span class="label-text font-medium">Series Type</span>
+				<span class="label-text font-medium">{m.library_seriesEdit_seriesType()}</span>
 			</label>
 			<select id="series-type" bind:value={seriesType} class="select-bordered select w-full">
 				{#each seriesTypeOptions as option (option.value)}
@@ -180,14 +193,15 @@
 		<!-- Quality Profile -->
 		<div class="form-control">
 			<label class="label" for="series-quality-profile">
-				<span class="label-text font-medium">Quality Profile</span>
+				<span class="label-text font-medium">{m.library_seriesEdit_qualityProfile()}</span>
 			</label>
 			<select
 				id="series-quality-profile"
 				bind:value={qualityProfileId}
 				class="select-bordered select w-full"
 			>
-				<option value="">{defaultProfile?.name ?? 'System Default'} (Default)</option>
+				<option value="">{defaultProfile?.name ?? m.common_default()} ({m.common_default()})</option
+				>
 				{#each nonDefaultProfiles as profile (profile.id)}
 					<option value={profile.id}>{profile.name}</option>
 				{/each}
@@ -197,7 +211,7 @@
 					{#if currentProfile}
 						{currentProfile.description}
 					{:else}
-						Controls quality scoring and upgrade behavior
+						{m.library_seriesEdit_qualityProfileDesc()}
 					{/if}
 				</span>
 			</div>
@@ -206,31 +220,36 @@
 		<!-- Root Folder -->
 		<div class="form-control">
 			<label class="label" for="series-root-folder">
-				<span class="label-text font-medium">Root Folder</span>
+				<span class="label-text font-medium">{m.library_seriesEdit_rootFolder()}</span>
 			</label>
 			<select
 				id="series-root-folder"
 				bind:value={rootFolderId}
 				class="select-bordered select w-full"
 			>
-				<option value="">Not set</option>
+				<option value="">{m.library_seriesEdit_notSet()}</option>
 				{#each rootFolders as folder (folder.id)}
 					<option value={folder.id}>
 						{folder.path}
 						{#if folder.freeSpaceBytes}
-							({formatBytes(folder.freeSpaceBytes)} free)
+							({formatBytes(folder.freeSpaceBytes)} {m.library_seriesEdit_free()})
 						{/if}
 					</option>
 				{/each}
 			</select>
 			<div class="label">
 				<span class="label-text-alt wrap-break-word whitespace-normal text-base-content/60">
-					Where downloaded files will be stored
+					{m.library_seriesEdit_rootFolderDesc()}
 				</span>
 			</div>
 		</div>
 	</div>
 
 	<!-- Actions -->
-	<ModalFooter onCancel={onClose} onSave={handleSave} {saving} saveLabel="Save Changes" />
+	<ModalFooter
+		onCancel={onClose}
+		onSave={handleSave}
+		{saving}
+		saveLabel={m.library_seriesEdit_saveChanges()}
+	/>
 </ModalWrapper>

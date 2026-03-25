@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import {
 		ChevronDown,
 		ChevronUp,
@@ -275,17 +276,17 @@
 									{#if !server.enabled}
 										<span class="badge gap-1 badge-ghost">
 											<XCircle class="h-3 w-3" />
-											<span class="text-xs">Disabled</span>
+											<span class="text-xs">{m.status_disabled()}</span>
 										</span>
 									{:else if server.testResult === 'failed'}
 										<span class="badge gap-1 badge-error">
 											<AlertTriangle class="h-3 w-3" />
-											<span class="text-xs">Unhealthy</span>
+											<span class="text-xs">{m.status_unhealthy()}</span>
 										</span>
 									{:else}
 										<span class="badge gap-1 badge-success">
 											<CheckCircle class="h-3 w-3" />
-											<span class="text-xs">Healthy</span>
+											<span class="text-xs">{m.status_healthy()}</span>
 										</span>
 									{/if}
 								</div>
@@ -298,8 +299,8 @@
 								class="btn btn-ghost btn-xs"
 								onclick={() => moveServer(index, index - 1)}
 								disabled={index === 0}
-								title="Move up"
-								aria-label="Move up"
+								title={m.action_moveUp()}
+								aria-label={m.action_moveUp()}
 							>
 								<ChevronUp class="h-3.5 w-3.5" />
 							</button>
@@ -307,8 +308,8 @@
 								class="btn btn-ghost btn-xs"
 								onclick={() => moveServer(index, index + 1)}
 								disabled={index === servers.length - 1}
-								title="Move down"
-								aria-label="Move down"
+								title={m.action_moveDown()}
+								aria-label={m.action_moveDown()}
 							>
 								<ChevronDown class="h-3.5 w-3.5" />
 							</button>
@@ -332,8 +333,8 @@
 					<button
 						class="btn btn-ghost btn-xs"
 						onclick={() => onTest(server)}
-						title="Test connection"
-						aria-label="Test connection"
+						title={m.action_testConnection()}
+						aria-label={m.action_testConnection()}
 						disabled={testingId === server.id || reorderMode}
 					>
 						{#if testingId === server.id}
@@ -345,8 +346,8 @@
 					<button
 						class="btn btn-ghost btn-xs"
 						onclick={() => onToggle(server)}
-						title={server.enabled ? 'Disable' : 'Enable'}
-						aria-label={server.enabled ? 'Disable server' : 'Enable server'}
+						title={server.enabled ? m.action_disable() : m.action_enable()}
+						aria-label={server.enabled ? m.nntpServer_disableServer() : m.nntpServer_enableServer()}
 						disabled={testingId === server.id || reorderMode}
 					>
 						{#if server.enabled}
@@ -358,8 +359,8 @@
 					<button
 						class="btn btn-ghost btn-xs"
 						onclick={() => onEdit(server)}
-						title="Edit server"
-						aria-label="Edit server"
+						title={m.action_edit()}
+						aria-label={m.nntpServer_editServer()}
 						disabled={reorderMode}
 					>
 						<Settings class="h-4 w-4" />
@@ -367,8 +368,8 @@
 					<button
 						class="btn text-error btn-ghost btn-xs"
 						onclick={() => onDelete(server)}
-						title="Delete server"
-						aria-label="Delete server"
+						title={m.common_delete()}
+						aria-label={m.nntpServer_deleteServer()}
 						disabled={reorderMode}
 					>
 						<Trash2 class="h-4 w-4" />

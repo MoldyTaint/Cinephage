@@ -3,6 +3,7 @@
 	import { isCastMember } from '$lib/types/tmdb-guards';
 	import { resolvePath } from '$lib/utils/routing';
 	import TmdbImage from './TmdbImage.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let { person }: { person: CastMember | CrewMember } = $props();
 

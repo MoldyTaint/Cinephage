@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import type { Snippet } from 'svelte';
+	import * as m from '$lib/paraglide/messages.js';
 	import type { ActivityFilters, FilterOptions } from '$lib/types/activity';
 	import {
 		Filter,
@@ -109,10 +110,10 @@
 
 	// Quick date presets
 	const datePresets = [
-		{ label: 'Today', days: 0 },
-		{ label: 'Last 7 days', days: 7 },
-		{ label: 'Last 30 days', days: 30 },
-		{ label: 'Last 90 days', days: 90 }
+		{ label: m.activity_filters_today(), days: 0 },
+		{ label: m.activity_filters_last7Days(), days: 7 },
+		{ label: m.activity_filters_last30Days(), days: 30 },
+		{ label: m.activity_filters_last90Days(), days: 90 }
 	];
 
 	const DAY_IN_MS = 24 * 60 * 60 * 1000;
@@ -161,21 +162,21 @@
 	}
 
 	const activeStatusOptions = [
-		{ value: 'all', label: 'All' },
-		{ value: 'downloading', label: 'Downloading' },
-		{ value: 'seeding', label: 'Seeding' },
-		{ value: 'paused', label: 'Paused' },
-		{ value: 'failed', label: 'Failed' }
+		{ value: 'all', label: m.common_all() },
+		{ value: 'downloading', label: m.status_downloading() },
+		{ value: 'seeding', label: m.status_seeding() },
+		{ value: 'paused', label: m.status_paused() },
+		{ value: 'failed', label: m.status_failed() }
 	] as const;
 
 	const historyStatusOptions = [
-		{ value: 'all', label: 'All', color: '' },
-		{ value: 'success', label: 'Success', color: 'badge-success' },
-		{ value: 'failed', label: 'Failed', color: 'badge-error' },
-		{ value: 'search_error', label: 'Search Error', color: 'badge-warning' },
-		{ value: 'removed', label: 'Removed', color: 'badge-ghost' },
-		{ value: 'rejected', label: 'Rejected', color: 'badge-warning' },
-		{ value: 'no_results', label: 'No Results', color: 'badge-ghost' }
+		{ value: 'all', label: m.common_all(), color: '' },
+		{ value: 'success', label: m.status_success(), color: 'badge-success' },
+		{ value: 'failed', label: m.status_failed(), color: 'badge-error' },
+		{ value: 'search_error', label: m.status_searchError(), color: 'badge-warning' },
+		{ value: 'removed', label: m.status_removed(), color: 'badge-ghost' },
+		{ value: 'rejected', label: m.status_rejected(), color: 'badge-warning' },
+		{ value: 'no_results', label: m.status_noResults(), color: 'badge-ghost' }
 	] as const;
 
 	const statusOptions = $derived(
@@ -184,10 +185,10 @@
 
 	// Protocol options
 	const protocolOptions = [
-		{ value: 'all', label: 'All' },
-		{ value: 'torrent', label: 'Torrent' },
-		{ value: 'usenet', label: 'Usenet' },
-		{ value: 'streaming', label: 'Streaming' }
+		{ value: 'all', label: m.common_all() },
+		{ value: 'torrent', label: m.activity_filters_torrent() },
+		{ value: 'usenet', label: m.activity_filters_usenet() },
+		{ value: 'streaming', label: m.activity_filters_streaming() }
 	];
 
 	// Resolution options
@@ -198,16 +199,16 @@
 	<div class="flex items-center justify-between gap-2">
 		<div class="flex items-center gap-2">
 			<Filter class="h-5 w-5" />
-			<span class="font-medium">Filters</span>
+			<span class="font-medium">{m.activity_filters_title()}</span>
 			{#if hasActiveFilters}
-				<span class="badge badge-sm badge-primary">Active</span>
+				<span class="badge badge-sm badge-primary">{m.common_active()}</span>
 			{/if}
 		</div>
 		<div class="flex items-center gap-2">
 			{#if hasActiveFilters}
 				<button class="btn btn-ghost btn-xs" onclick={onClearFilters}>
 					<X class="h-3 w-3" />
-					Clear
+					{m.action_clear()}
 				</button>
 			{/if}
 			<button
@@ -216,10 +217,10 @@
 				aria-label={isExpanded ? 'Collapse filters' : 'Expand filters'}
 			>
 				{#if isExpanded}
-					<span>Less Filters</span>
+					<span>{m.activity_filters_lessFilters()}</span>
 					<ChevronUp class="h-4 w-4" />
 				{:else}
-					<span>More Filters</span>
+					<span>{m.activity_filters_moreFilters()}</span>
 					<ChevronDown class="h-4 w-4" />
 				{/if}
 			</button>
@@ -236,7 +237,7 @@
 				</div>
 				<input
 					type="text"
-					placeholder="Search media, release, group..."
+					placeholder={m.activity_filters_searchPlaceholder()}
 					class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 					value={searchValue}
 					oninput={(e) => onSearchInput(e.currentTarget.value)}
@@ -249,19 +250,19 @@
 				class="btn join-item btn-sm {filters.mediaType === 'all' ? 'btn-primary' : 'btn-ghost'}"
 				onclick={() => updateFilter('mediaType', 'all')}
 			>
-				All
+				{m.common_all()}
 			</button>
 			<button
 				class="btn join-item btn-sm {filters.mediaType === 'movie' ? 'btn-primary' : 'btn-ghost'}"
 				onclick={() => updateFilter('mediaType', 'movie')}
 			>
-				Movies
+				{m.common_movies()}
 			</button>
 			<button
 				class="btn join-item btn-sm {filters.mediaType === 'tv' ? 'btn-primary' : 'btn-ghost'}"
 				onclick={() => updateFilter('mediaType', 'tv')}
 			>
-				TV Shows
+				{m.common_tvShows()}
 			</button>
 		</div>
 
@@ -294,7 +295,7 @@
 			<div class="space-y-2">
 				<label class="flex items-center gap-2 text-sm font-medium">
 					<Monitor class="h-4 w-4" />
-					Status
+					{m.common_status()}
 				</label>
 				<select
 					class="select-bordered select w-full select-sm"
@@ -311,7 +312,7 @@
 			<div class="space-y-2">
 				<label class="flex items-center gap-2 text-sm font-medium">
 					<Globe class="h-4 w-4" />
-					Protocol
+					{m.activity_detail_protocol()}
 				</label>
 				<select
 					class="select-bordered select w-full select-sm"
@@ -328,14 +329,14 @@
 			<div class="space-y-2">
 				<label class="flex items-center gap-2 text-sm font-medium">
 					<HardDrive class="h-4 w-4" />
-					Indexer
+					{m.activity_detail_indexer()}
 				</label>
 				<select
 					class="select-bordered select w-full select-sm"
 					value={filters.indexer || ''}
 					onchange={(e) => updateFilter('indexer', e.currentTarget.value || undefined)}
 				>
-					<option value="">All Indexers</option>
+					<option value="">{m.activity_filters_allIndexers()}</option>
 					{#each filterOptions.indexers as indexer (indexer.id)}
 						<option value={indexer.name}>{indexer.name}</option>
 					{/each}
@@ -346,14 +347,14 @@
 			<div class="space-y-2">
 				<label class="flex items-center gap-2 text-sm font-medium">
 					<Monitor class="h-4 w-4" />
-					Download Client
+					{m.activity_filters_downloadClient()}
 				</label>
 				<select
 					class="select-bordered select w-full select-sm"
 					value={filters.downloadClientId || ''}
 					onchange={(e) => updateFilter('downloadClientId', e.currentTarget.value || undefined)}
 				>
-					<option value="">All Clients</option>
+					<option value="">{m.activity_filters_allClients()}</option>
 					{#each filterOptions.downloadClients as client (client.id)}
 						<option value={client.id}>{client.name}</option>
 					{/each}
@@ -364,14 +365,14 @@
 			<div class="space-y-2">
 				<label class="flex items-center gap-2 text-sm font-medium">
 					<HardDrive class="h-4 w-4" />
-					Resolution
+					{m.activity_filters_resolution()}
 				</label>
 				<select
 					class="select-bordered select w-full select-sm"
 					value={filters.resolution || ''}
 					onchange={(e) => updateFilter('resolution', e.currentTarget.value || undefined)}
 				>
-					<option value="">All Resolutions</option>
+					<option value="">{m.activity_filters_allResolutions()}</option>
 					{#each resolutionOptions as res (res)}
 						<option value={res}>{res}</option>
 					{/each}
@@ -382,11 +383,11 @@
 			<div class="space-y-2">
 				<label class="flex items-center gap-2 text-sm font-medium">
 					<Users class="h-4 w-4" />
-					Release Group
+					{m.activity_detail_releaseGroup()}
 				</label>
 				<input
 					type="text"
-					placeholder="Filter by group..."
+					placeholder={m.activity_filters_filterByGroup()}
 					class="input-bordered input input-sm w-full"
 					value={releaseGroupValue}
 					oninput={(e) => onReleaseGroupInput(e.currentTarget.value)}
@@ -397,7 +398,7 @@
 			<div class="space-y-2 md:col-span-2 lg:col-span-3">
 				<label class="flex items-center gap-2 text-sm font-medium">
 					<Calendar class="h-4 w-4" />
-					Date Range
+					{m.activity_filters_dateRange()}
 				</label>
 				<div class="flex flex-wrap items-center gap-2">
 					<input
@@ -406,7 +407,7 @@
 						value={filters.startDate || ''}
 						onchange={(e) => updateFilter('startDate', e.currentTarget.value || undefined)}
 					/>
-					<span class="text-base-content/50">to</span>
+					<span class="text-base-content/50">{m.activity_activeFilters_toSeparator()}</span>
 					<input
 						type="date"
 						class="input-bordered input input-sm"
@@ -425,7 +426,7 @@
 			<div class="space-y-2">
 				<label class="flex items-center gap-2 text-sm font-medium">
 					<ArrowUpCircle class="h-4 w-4" />
-					Upgrades Only
+					{m.activity_filters_upgradesOnly()}
 				</label>
 				<div class="form-control">
 					<label class="label cursor-pointer justify-start gap-2">
@@ -435,7 +436,7 @@
 							checked={filters.isUpgrade || false}
 							onchange={(e) => updateFilter('isUpgrade', e.currentTarget.checked || undefined)}
 						/>
-						<span class="label-text text-sm">Show only upgrades</span>
+						<span class="label-text text-sm">{m.activity_filters_showOnlyUpgrades()}</span>
 					</label>
 				</div>
 			</div>
@@ -445,7 +446,7 @@
 				<div class="space-y-2">
 					<label class="flex items-center gap-2 text-sm font-medium">
 						<Search class="h-4 w-4" />
-						Include 'No Results'
+						{m.activity_filters_includeNoResults()}
 					</label>
 					<div class="form-control">
 						<label class="label cursor-pointer justify-start gap-2">
@@ -456,7 +457,7 @@
 								onchange={(e) =>
 									updateFilter('includeNoResults', e.currentTarget.checked || undefined)}
 							/>
-							<span class="label-text text-sm">Show items with no releases found</span>
+							<span class="label-text text-sm">{m.activity_filters_showNoReleases()}</span>
 						</label>
 					</div>
 				</div>

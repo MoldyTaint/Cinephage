@@ -10,6 +10,7 @@
 		X
 	} from 'lucide-svelte';
 	import type { EpgStatus } from '$lib/types/livetv';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		status: EpgStatus | null;
@@ -38,7 +39,7 @@
 	}: Props = $props();
 
 	function formatRelativeTime(isoDate: string | null): string {
-		if (!isoDate) return 'Never';
+		if (!isoDate) return m.livetv_epgStatus_never();
 
 		const date = new Date(isoDate);
 		const now = new Date();
@@ -47,14 +48,14 @@
 		const diffHours = Math.floor(diffMins / 60);
 		const diffDays = Math.floor(diffHours / 24);
 
-		if (diffMins < 1) return 'Just now';
-		if (diffMins < 60) return `${diffMins}m ago`;
-		if (diffHours < 24) return `${diffHours}h ago`;
-		return `${diffDays}d ago`;
+		if (diffMins < 1) return m.livetv_epgStatus_justNow();
+		if (diffMins < 60) return m.livetv_epgStatus_minutesAgo({ count: diffMins });
+		if (diffHours < 24) return m.livetv_epgStatus_hoursAgo({ count: diffHours });
+		return m.livetv_epgStatus_daysAgo({ count: diffDays });
 	}
 
 	function formatFutureTime(isoDate: string | null): string {
-		if (!isoDate) return 'Unknown';
+		if (!isoDate) return m.common_unknown();
 
 		const date = new Date(isoDate);
 		const now = new Date();
@@ -62,14 +63,14 @@
 		const diffMins = Math.floor(diffMs / 60000);
 		const diffHours = Math.floor(diffMins / 60);
 
-		if (diffMins < 1) return 'Soon';
-		if (diffMins < 60) return `in ${diffMins}m`;
-		if (diffHours < 24) return `in ${diffHours}h`;
-		return `in ${Math.floor(diffHours / 24)}d`;
+		if (diffMins < 1) return m.livetv_epgStatus_futureSoon();
+		if (diffMins < 60) return m.livetv_epgStatus_futureMinutes({ count: diffMins });
+		if (diffHours < 24) return m.livetv_epgStatus_futureHours({ count: diffHours });
+		return m.livetv_epgStatus_futureDays({ count: Math.floor(diffHours / 24) });
 	}
 
 	function compactMessage(message: string | undefined, maxLength = 140): string {
-		if (!message) return 'Unknown error';
+		if (!message) return m.livetv_epgStatusPanel_unknownError();
 		const compact = message.replace(/\s+/g, ' ').trim();
 		if (compact.length <= maxLength) return compact;
 		return `${compact.slice(0, maxLength - 1)}...`;
@@ -119,7 +120,7 @@
 			.map((a) => ({
 				id: a.id,
 				name: a.name,
-				message: 'No EPG data was returned during the last sync'
+				message: m.livetv_epgStatusPanel_noEpgDataMessage()
 			})) ?? []
 	);
 </script>
@@ -139,8 +140,10 @@
 							<Database class="h-5 w-5 text-primary" />
 						</div>
 						<div>
-							<div class="text-2xl font-bold">{status.totalPrograms.toLocaleString()}</div>
-							<div class="text-sm text-base-content/60">Total Programs</div>
+							<div class="text-2xl font-bold">{status.totalPrograms.toLocaleString(undefined)}</div>
+							<div class="text-sm text-base-content/60">
+								{m.livetv_epgStatusPanel_totalPrograms()}
+							</div>
 						</div>
 					</div>
 				</div>
@@ -154,7 +157,7 @@
 						</div>
 						<div>
 							<div class="text-lg font-bold">{formatRelativeTime(status.lastSyncAt)}</div>
-							<div class="text-sm text-base-content/60">Last Sync</div>
+							<div class="text-sm text-base-content/60">{m.livetv_epgStatusPanel_lastSync()}</div>
 						</div>
 					</div>
 				</div>
@@ -168,7 +171,7 @@
 						</div>
 						<div>
 							<div class="text-lg font-bold">{formatFutureTime(status.nextSyncAt)}</div>
-							<div class="text-sm text-base-content/60">Next Sync</div>
+							<div class="text-sm text-base-content/60">{m.livetv_epgStatusPanel_nextSync()}</div>
 						</div>
 					</div>
 				</div>
@@ -182,9 +185,11 @@
 						<AlertTriangle class="h-5 w-5 shrink-0" />
 						<div class="min-w-0 space-y-1">
 							<div class="font-medium">
-								Last sync completed with {syncErrors.length} error{syncErrors.length === 1
-									? ''
-									: 's'}
+								{#if syncErrors.length === 1}
+									{m.livetv_epgStatusPanel_errorTitle({ count: syncErrors.length })}
+								{:else}
+									{m.livetv_epgStatusPanel_errorTitlePlural({ count: syncErrors.length })}
+								{/if}
 							</div>
 							<div class="space-y-1 text-sm">
 								{#each syncErrors.slice(0, 3) as issue (issue.id)}
@@ -194,7 +199,9 @@
 									</div>
 								{/each}
 								{#if syncErrors.length > 3}
-									<div class="text-xs opacity-80">+{syncErrors.length - 3} more account issues</div>
+									<div class="text-xs opacity-80">
+										{m.livetv_epgStatusPanel_moreAccountIssues({ count: syncErrors.length - 3 })}
+									</div>
 								{/if}
 							</div>
 						</div>
@@ -206,7 +213,11 @@
 						<Info class="h-5 w-5 shrink-0" />
 						<div class="min-w-0 space-y-1">
 							<div class="font-medium">
-								Last sync warning{syncWarnings.length === 1 ? '' : 's'} ({syncWarnings.length})
+								{#if syncWarnings.length === 1}
+									{m.livetv_epgStatusPanel_warningTitle({ count: syncWarnings.length })}
+								{:else}
+									{m.livetv_epgStatusPanel_warningTitlePlural({ count: syncWarnings.length })}
+								{/if}
 							</div>
 							<div class="space-y-1 text-sm">
 								{#each syncWarnings.slice(0, 3) as issue (issue.id)}
@@ -217,7 +228,9 @@
 								{/each}
 								{#if syncWarnings.length > 3}
 									<div class="text-xs opacity-80">
-										+{syncWarnings.length - 3} more account warnings
+										{m.livetv_epgStatusPanel_moreAccountWarnings({
+											count: syncWarnings.length - 3
+										})}
 									</div>
 								{/if}
 							</div>
@@ -230,12 +243,16 @@
 		<!-- Sync all button -->
 		<div class="flex items-center justify-between">
 			<div class="flex items-center gap-2">
-				<h3 class="font-semibold">Accounts</h3>
+				<h3 class="font-semibold">{m.livetv_epgStatusPanel_accountsHeading()}</h3>
 				{#if accountsWithError > 0}
-					<div class="badge badge-sm badge-error">{accountsWithError} error</div>
+					<div class="badge badge-sm badge-error">
+						{m.livetv_epgStatus_errorBadge({ count: accountsWithError })}
+					</div>
 				{/if}
 				{#if accountsWithoutEpg > 0}
-					<div class="badge badge-sm badge-warning">{accountsWithoutEpg} no EPG</div>
+					<div class="badge badge-sm badge-warning">
+						{m.livetv_epgStatus_noEpgBadge({ count: accountsWithoutEpg })}
+					</div>
 				{/if}
 			</div>
 			<div class="flex items-center gap-2">
@@ -247,23 +264,23 @@
 					>
 						{#if cancelRequestedAll}
 							<Loader2 class="h-4 w-4 animate-spin" />
-							Cancelling...
+							{m.livetv_epgStatusPanel_cancelling()}
 						{:else}
 							<X class="h-4 w-4" />
-							Cancel Sync
+							{m.livetv_epgStatusPanel_cancelSync()}
 						{/if}
 					</button>
 				{/if}
 				<button class="btn btn-sm btn-primary" onclick={onSync} disabled={anySyncing}>
 					{#if syncingAll}
 						<Loader2 class="h-4 w-4 animate-spin" />
-						Syncing All...
+						{m.livetv_epgStatusPanel_syncingAll()}
 					{:else if hasAccountSyncRunning}
 						<Loader2 class="h-4 w-4 animate-spin" />
-						Sync In Progress...
+						{m.livetv_epgStatusPanel_syncInProgress()}
 					{:else}
 						<RefreshCw class="h-4 w-4" />
-						Sync All Accounts
+						{m.livetv_epgStatusPanel_syncAll()}
 					{/if}
 				</button>
 			</div>
@@ -287,7 +304,7 @@
 											<AlertTriangle class="h-5 w-5 text-error" />
 										</div>
 									{:else if account.hasEpg === false}
-										<div class="tooltip" data-tip="This portal does not provide EPG data">
+										<div class="tooltip" data-tip={m.livetv_epgStatus_noEpgTooltip()}>
 											<Info class="h-5 w-5 text-warning" />
 										</div>
 									{:else if account.programCount > 0}
@@ -298,11 +315,13 @@
 									<span class="font-medium">{account.name}</span>
 								</div>
 								<div class="text-sm text-base-content/60">
-									{account.programCount.toLocaleString()} programs
+									{account.programCount.toLocaleString(undefined)} programs
 								</div>
 								{#if account.lastEpgSyncAt}
 									<div class="text-sm text-base-content/50">
-										Synced {formatRelativeTime(account.lastEpgSyncAt)}
+										{m.livetv_epgStatusPanel_syncedRelative({
+											time: formatRelativeTime(account.lastEpgSyncAt)
+										})}
 									</div>
 								{/if}
 							</div>
@@ -315,11 +334,11 @@
 								disabled={isAccountSyncing ? isCancelRequested : anySyncing}
 								title={isAccountSyncing
 									? isCancelRequested
-										? 'Cancellation requested'
-										: 'Cancel sync for this account'
+										? m.livetv_epgStatusPanel_cancelRequestedTooltip()
+										: m.livetv_epgStatusPanel_cancelAccountTooltip()
 									: anySyncing
-										? 'Another EPG sync is currently running'
-										: 'Sync this account'}
+										? m.livetv_epgStatusPanel_syncRunningTooltip()
+										: m.livetv_epgStatusPanel_syncAccountTooltip()}
 							>
 								{#if isAccountSyncing}
 									{#if isCancelRequested}
@@ -337,10 +356,10 @@
 			</div>
 		{:else}
 			<div class="py-8 text-center text-base-content/50">
-				No accounts configured. Add Stalker accounts to sync EPG data.
+				{m.livetv_epgStatusPanel_noAccounts()}
 			</div>
 		{/if}
 	{:else}
-		<div class="py-8 text-center text-base-content/50">Unable to load EPG status</div>
+		<div class="py-8 text-center text-base-content/50">{m.livetv_epgStatus_unableToLoad()}</div>
 	{/if}
 </div>

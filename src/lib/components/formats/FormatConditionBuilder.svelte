@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { SvelteMap } from 'svelte/reactivity';
 	import type { FormatCondition, ConditionType } from '$lib/types/format';
 	import {
@@ -45,7 +46,7 @@
 
 	function addCondition() {
 		const newCondition: FormatCondition = {
-			name: 'New Condition',
+			name: m.formats_conditionNamePlaceholder(),
 			type: 'resolution',
 			required: true,
 			negate: false,
@@ -135,18 +136,18 @@
 
 <div class="space-y-4">
 	<div class="flex items-center justify-between">
-		<h4 class="font-medium">Conditions</h4>
+		<h4 class="font-medium">{m.formats_conditionsHeader()}</h4>
 		{#if !readonly}
 			<button type="button" class="btn gap-1 btn-ghost btn-sm" onclick={addCondition}>
 				<Plus class="h-4 w-4" />
-				Add Condition
+				{m.formats_addCondition()}
 			</button>
 		{/if}
 	</div>
 
 	{#if conditions.length === 0}
 		<div class="rounded-lg bg-base-200 p-4 text-center text-sm text-base-content/60">
-			No conditions defined. Add conditions to specify when this format should match.
+			{m.formats_noConditions()}
 		</div>
 	{:else}
 		<div class="space-y-3">
@@ -159,7 +160,7 @@
 							class="input-bordered input input-sm flex-1"
 							value={condition.name}
 							disabled={readonly}
-							placeholder="Condition name"
+							placeholder={m.formats_conditionNamePlaceholder()}
 							oninput={(e) => updateCondition(index, { name: e.currentTarget.value })}
 						/>
 						{#if !readonly}
@@ -167,7 +168,7 @@
 								type="button"
 								class="btn text-error btn-ghost btn-sm"
 								onclick={() => removeCondition(index)}
-								aria-label="Remove condition"
+								aria-label={m.formats_conditionRemoveAria()}
 							>
 								<Trash2 class="h-4 w-4" />
 							</button>
@@ -178,7 +179,7 @@
 						<!-- Condition Type -->
 						<div class="form-control">
 							<label class="label py-1" for="condition-type-{index}">
-								<span class="label-text text-xs">Type</span>
+								<span class="label-text text-xs">{m.formats_conditionTypeLabel()}</span>
 								<span
 									class="tooltip tooltip-left"
 									data-tip={CONDITION_TYPE_DESCRIPTIONS[condition.type]}
@@ -203,7 +204,7 @@
 						<!-- Type-specific value field -->
 						<div class="form-control">
 							<label class="label py-1" for="condition-value-{index}">
-								<span class="label-text text-xs">Value</span>
+								<span class="label-text text-xs">{m.formats_conditionValueLabel()}</span>
 							</label>
 
 							{#if condition.type === 'resolution'}
@@ -321,7 +322,7 @@
 										class:input-error={regexErrors.has(index)}
 										value={condition.pattern ?? ''}
 										disabled={readonly}
-										placeholder="Regex pattern..."
+										placeholder={m.formats_regexPlaceholder()}
 										oninput={(e) => handlePatternChange(index, e.currentTarget.value)}
 									/>
 									{#if regexErrors.has(index)}
@@ -349,8 +350,8 @@
 								disabled={readonly}
 								onchange={(e) => updateCondition(index, { required: e.currentTarget.checked })}
 							/>
-							<span class="text-sm">Required</span>
-							<span class="tooltip" data-tip="Condition MUST match for format to apply">
+							<span class="text-sm">{m.formats_requiredLabel()}</span>
+							<span class="tooltip" data-tip={m.formats_requiredTooltip()}>
 								<Info class="h-3 w-3 text-base-content/50" />
 							</span>
 						</label>
@@ -363,8 +364,8 @@
 								disabled={readonly}
 								onchange={(e) => updateCondition(index, { negate: e.currentTarget.checked })}
 							/>
-							<span class="text-sm">Negate</span>
-							<span class="tooltip" data-tip="Invert match (must NOT match)">
+							<span class="text-sm">{m.formats_negateLabel()}</span>
+							<span class="tooltip" data-tip={m.formats_negateTooltip()}>
 								<Info class="h-3 w-3 text-base-content/50" />
 							</span>
 						</label>
@@ -376,11 +377,11 @@
 
 	<!-- Help text -->
 	<div class="rounded-lg bg-base-200 p-3 text-xs text-base-content/70">
-		<p class="mb-1 font-medium">Condition Logic:</p>
+		<p class="mb-1 font-medium">{m.formats_conditionLogicTitle()}</p>
 		<ul class="list-inside list-disc space-y-0.5">
-			<li><strong>Required</strong> conditions must ALL match (AND logic)</li>
-			<li><strong>Optional</strong> conditions: at least ONE must match (OR logic)</li>
-			<li><strong>Negate</strong> inverts the match (must NOT match)</li>
+			<li>{m.formats_conditionLogicRequired({ required: 'Required' })}</li>
+			<li>{m.formats_conditionLogicOptional({ optional: 'Optional' })}</li>
+			<li>{m.formats_conditionLogicNegate({ negate: 'Negate' })}</li>
 		</ul>
 	</div>
 </div>

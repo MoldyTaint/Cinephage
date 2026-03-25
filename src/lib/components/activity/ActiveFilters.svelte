@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import type { ActivityFilters } from '$lib/types/activity';
 	import { X, Calendar, HardDrive, Globe, Users, Monitor, ArrowUpCircle } from 'lucide-svelte';
 
@@ -20,23 +21,25 @@
 		switch (key) {
 			case 'status':
 				return value === 'success'
-					? 'Success'
+					? m.status_success()
 					: String(value).charAt(0).toUpperCase() + String(value).slice(1);
 			case 'mediaType':
-				return value === 'tv' ? 'TV Shows' : 'Movies';
+				return value === 'tv' ? m.common_tvShows() : m.common_movies();
 			case 'protocol':
 				return String(value).charAt(0).toUpperCase() + String(value).slice(1);
 			case 'isUpgrade':
-				return 'Upgrades Only';
+				return m.activity_activeFilters_upgradesOnly();
 			case 'startDate':
-				return `From ${value}`;
+				return m.activity_activeFilters_from({ date: String(value) });
 			case 'endDate':
-				return `To ${value}`;
+				return m.activity_activeFilters_to({ date: String(value) });
 			case 'search':
-				return `Search: "${value}"`;
+				return m.activity_activeFilters_search({ value: String(value) });
 			case 'downloadClientId': {
 				const client = downloadClients.find((entry) => entry.id === value);
-				return client ? `Client: ${client.name}` : `Client: ${value}`;
+				return client
+					? m.activity_activeFilters_client({ name: client.name })
+					: m.activity_activeFilters_client({ name: String(value) });
 			}
 			default:
 				return String(value);
@@ -85,11 +88,11 @@
 	let hasDateRange = $derived(filters.startDate || filters.endDate);
 	let dateRangeLabel = $derived(() => {
 		if (filters.startDate && filters.endDate) {
-			return `${filters.startDate} to ${filters.endDate}`;
+			return `${filters.startDate} ${m.activity_activeFilters_toSeparator()} ${filters.endDate}`;
 		} else if (filters.startDate) {
-			return `From ${filters.startDate}`;
+			return m.activity_activeFilters_from({ date: filters.startDate });
 		} else if (filters.endDate) {
-			return `Until ${filters.endDate}`;
+			return m.activity_activeFilters_until({ date: filters.endDate });
 		}
 		return '';
 	});
@@ -97,7 +100,7 @@
 
 {#if activeFilters.length > 0}
 	<div class="flex flex-wrap items-center gap-2">
-		<span class="text-sm text-base-content/60">Active filters:</span>
+		<span class="text-sm text-base-content/60">{m.activity_activeFilters_label()}</span>
 
 		{#each activeFilters as [key, value] (key)}
 			{#if key !== 'startDate' && key !== 'endDate'}
@@ -110,7 +113,7 @@
 					<button
 						class="btn btn-circle btn-ghost btn-xs"
 						onclick={() => onFilterRemove(key)}
-						aria-label="Remove filter"
+						aria-label={m.activity_activeFilters_removeFilter()}
 					>
 						<X class="h-3 w-3" />
 					</button>
@@ -128,13 +131,15 @@
 						onFilterRemove('startDate');
 						onFilterRemove('endDate');
 					}}
-					aria-label="Remove date filter"
+					aria-label={m.activity_activeFilters_removeDateFilter()}
 				>
 					<X class="h-3 w-3" />
 				</button>
 			</div>
 		{/if}
 
-		<button class="btn btn-ghost btn-xs" onclick={onClearAll}> Clear all </button>
+		<button class="btn btn-ghost btn-xs" onclick={onClearAll}>
+			{m.activity_activeFilters_clearAll()}
+		</button>
 	</div>
 {/if}

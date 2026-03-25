@@ -19,6 +19,7 @@
 	import { SubtitleDisplay } from '$lib/components/subtitles';
 	import SubtitlePopover from '$lib/components/subtitles/SubtitlePopover.svelte';
 	import { normalizeLanguageCode } from '$lib/shared/languages';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface EpisodeFile {
 		id: string;
@@ -160,15 +161,15 @@
 	const monitorTooltip = $derived.by(() =>
 		seriesMonitored
 			? episode.monitored
-				? 'Monitored'
-				: 'Not monitored'
-			: 'Series is unmonitored. Enable series monitoring to monitor episodes.'
+				? m.library_episodeRow_monitored()
+				: m.library_episodeRow_notMonitored()
+			: m.library_episodeRow_seriesUnmonitoredTooltip()
 	);
 	const hasEpisodeFile = $derived(episode.file !== null);
 	const missingSubtitles = $derived(hasEpisodeFile && allSubtitles.length === 0 && wantsSubtitles);
 
 	function formatAirDate(dateString: string | null): string {
-		if (!dateString) return 'TBA';
+		if (!dateString) return m.library_episodeRow_tba();
 		const date = new Date(dateString);
 		const now = new Date();
 
@@ -176,7 +177,7 @@
 		if (date > now) {
 			const diffDays = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 			if (diffDays <= 7) {
-				return `In ${diffDays} day${diffDays !== 1 ? 's' : ''}`;
+				return m.library_episodeRow_inDays({ count: diffDays });
 			}
 		}
 
@@ -263,7 +264,7 @@
 				<span
 					class={`wrap-break-words min-w-0 flex-1 font-medium ${!episode.title ? 'text-base-content/60' : ''}`}
 				>
-					{episode.title || 'TBA'}
+					{episode.title || m.library_episodeRow_tba()}
 				</span>
 				<div class="ml-auto flex shrink-0 items-center gap-1 sm:hidden">
 					<button
@@ -290,7 +291,11 @@
 						size="xs"
 					/>
 					<div class="dropdown dropdown-end">
-						<button class="btn btn-ghost btn-xs" disabled={autoSearching} title="Search options">
+						<button
+							class="btn btn-ghost btn-xs"
+							disabled={autoSearching}
+							title={m.library_episodeRow_searchOptions()}
+						>
 							{#if autoSearching}
 								<Loader2 size={14} class="animate-spin" />
 							{:else}
@@ -304,18 +309,18 @@
 							class="dropdown-content menu z-50 w-52 rounded-box bg-base-200 p-2 shadow-lg"
 						>
 							<li class="menu-title">
-								<span>Media</span>
+								<span>{m.library_episodeRow_mediaMenuTitle()}</span>
 							</li>
 							<li>
 								<button onclick={handleAutoSearchClick} disabled={autoSearching}>
 									<Zap size={14} />
-									Auto-grab best
+									{m.library_episodeRow_autoGrabBest()}
 								</button>
 							</li>
 							<li>
 								<button onclick={handleSearchClick}>
 									<Search size={14} />
-									Interactive search
+									{m.library_episodeRow_interactiveSearch()}
 								</button>
 							</li>
 						</ul>
@@ -332,28 +337,40 @@
 							>
 								<div class="space-y-1">
 									{#if episode.file.mediaInfo.videoCodec}
-										<div>Video: {episode.file.mediaInfo.videoCodec}</div>
+										<div>
+											{m.library_episodeRow_videoLabel({
+												codec: episode.file.mediaInfo.videoCodec
+											})}
+										</div>
 									{/if}
 									{#if episode.file.mediaInfo.audioCodec}
 										<div>
-											Audio: {episode.file.mediaInfo.audioCodec}
-											{#if episode.file.mediaInfo.audioChannels}
-												({episode.file.mediaInfo.audioChannels === 6
-													? '5.1'
-													: episode.file.mediaInfo.audioChannels === 8
-														? '7.1'
-														: `${episode.file.mediaInfo.audioChannels}ch`})
-											{/if}
+											{m.library_episodeRow_audioLabel({
+												codec: episode.file.mediaInfo.audioCodec,
+												channels: episode.file.mediaInfo.audioChannels ?? 0
+											})}
 										</div>
 									{/if}
 									{#if episode.file.mediaInfo.audioLanguages?.length}
-										<div>Languages: {episode.file.mediaInfo.audioLanguages.join(', ')}</div>
+										<div>
+											{m.library_episodeRow_languagesLabel({
+												languages: episode.file.mediaInfo.audioLanguages.join(', ')
+											})}
+										</div>
 									{/if}
 									{#if episode.file.mediaInfo.subtitleLanguages?.length}
-										<div>Subs: {episode.file.mediaInfo.subtitleLanguages.join(', ')}</div>
+										<div>
+											{m.library_episodeRow_subsLabel({
+												languages: episode.file.mediaInfo.subtitleLanguages.join(', ')
+											})}
+										</div>
 									{/if}
 									{#if episode.file.releaseGroup || isStreamerProfile}
-										<div>Group: {episode.file.releaseGroup || 'Streaming'}</div>
+										<div>
+											{m.library_episodeRow_groupLabel({
+												group: episode.file.releaseGroup ?? m.library_episodeRow_streamingLabel()
+											})}
+										</div>
 									{/if}
 								</div>
 							</div>
@@ -366,7 +383,9 @@
 								: 'text-error'}"
 							onclick={handleDeleteClick}
 							disabled={!hasEpisodeFile && !isDownloading}
-							title={!hasEpisodeFile && !isDownloading ? 'No files to delete' : 'Delete episode'}
+							title={!hasEpisodeFile && !isDownloading
+								? m.library_episodeRow_noFilesToDelete()
+								: m.library_episodeRow_deleteEpisode()}
 						>
 							<Trash2 size={14} />
 						</button>
@@ -385,13 +404,13 @@
 				<span>{formatAirDate(episode.airDate)}</span>
 				<span class="text-base-content/40">•</span>
 				{#if hasEpisodeFile}
-					<span class="text-success">Downloaded</span>
+					<span class="text-success">{m.library_episodeRow_downloaded()}</span>
 				{:else if isDownloading}
-					<span class="text-warning">Downloading</span>
+					<span class="text-warning">{m.library_episodeRow_downloading()}</span>
 				{:else if isAired(episode.airDate)}
-					<span class="text-error">Missing</span>
+					<span class="text-error">{m.library_episodeRow_missing()}</span>
 				{:else}
-					<span class="text-base-content/50">Not aired</span>
+					<span class="text-base-content/50">{m.library_episodeRow_notAired()}</span>
 				{/if}
 				<span class="text-base-content/40">•</span>
 				<span>
@@ -414,8 +433,8 @@
 						<button
 							class="btn gap-1 btn-ghost btn-xs {missingSubtitles ? 'text-warning' : ''}"
 							title={missingSubtitles
-								? 'No subtitles - click to manage'
-								: `${allSubtitles.length} subtitle${allSubtitles.length !== 1 ? 's' : ''}`}
+								? m.library_episodeRow_noSubtitlesTooltip()
+								: m.library_episodeRow_subtitleCountTooltip({ count: allSubtitles.length })}
 						>
 							<Subtitles
 								size={12}
@@ -433,7 +452,9 @@
 									/>
 								</span>
 							{:else if missingSubtitles}
-								<span class="text-xs text-warning">Missing</span>
+								<span class="text-xs text-warning"
+									>{m.library_episodeRow_subtitlesMissingLabel()}</span
+								>
 							{/if}
 						</button>
 						<SubtitlePopover
@@ -476,8 +497,8 @@
 							? 'text-warning'
 							: ''}"
 						title={missingSubtitles
-							? 'No subtitles - click to manage'
-							: `${allSubtitles.length} subtitle${allSubtitles.length !== 1 ? 's' : ''} - click to manage`}
+							? m.library_episodeRow_noSubtitlesTooltip()
+							: m.library_episodeRow_subtitleCountTooltip({ count: allSubtitles.length })}
 					>
 						<Subtitles
 							size={12}
@@ -495,9 +516,13 @@
 								/>
 							</span>
 						{:else if missingSubtitles}
-							<span class="text-xs text-warning">Missing</span>
+							<span class="text-xs text-warning"
+								>{m.library_episodeRow_subtitlesMissingLabel()}</span
+							>
 						{:else}
-							<span class="text-xs text-base-content/40">None</span>
+							<span class="text-xs text-base-content/40"
+								>{m.library_episodeRow_subtitlesNoneLabel()}</span
+							>
 						{/if}
 					</button>
 					<SubtitlePopover
@@ -515,15 +540,15 @@
 		{:else if isDownloading}
 			<div class="flex items-center gap-2 text-warning">
 				<Zap size={16} class="animate-pulse" />
-				<span class="text-sm">Downloading</span>
+				<span class="text-sm">{m.library_episodeRow_downloading()}</span>
 			</div>
 		{:else if isAired(episode.airDate)}
 			<div class="flex items-center gap-2 text-error">
 				<XCircle size={16} />
-				<span class="text-sm">Missing</span>
+				<span class="text-sm">{m.library_episodeRow_missing()}</span>
 			</div>
 		{:else}
-			<span class="text-sm text-base-content/50">Not aired</span>
+			<span class="text-sm text-base-content/50">{m.library_episodeRow_notAired()}</span>
 		{/if}
 	</td>
 
@@ -581,18 +606,18 @@
 					class="dropdown-content menu z-50 w-52 rounded-box bg-base-200 p-2 shadow-lg"
 				>
 					<li class="menu-title">
-						<span>Media</span>
+						<span>{m.library_episodeRow_mediaMenuTitle()}</span>
 					</li>
 					<li>
 						<button onclick={handleAutoSearchClick} disabled={autoSearching}>
 							<Zap size={14} />
-							Auto-grab best
+							{m.library_episodeRow_autoGrabBest()}
 						</button>
 					</li>
 					<li>
 						<button onclick={handleSearchClick}>
 							<Search size={14} />
-							Interactive search
+							{m.library_episodeRow_interactiveSearch()}
 						</button>
 					</li>
 				</ul>
@@ -611,28 +636,38 @@
 					>
 						<div class="space-y-1">
 							{#if episode.file.mediaInfo.videoCodec}
-								<div>Video: {episode.file.mediaInfo.videoCodec}</div>
+								<div>
+									{m.library_episodeRow_videoLabel({ codec: episode.file.mediaInfo.videoCodec })}
+								</div>
 							{/if}
 							{#if episode.file.mediaInfo.audioCodec}
 								<div>
-									Audio: {episode.file.mediaInfo.audioCodec}
-									{#if episode.file.mediaInfo.audioChannels}
-										({episode.file.mediaInfo.audioChannels === 6
-											? '5.1'
-											: episode.file.mediaInfo.audioChannels === 8
-												? '7.1'
-												: `${episode.file.mediaInfo.audioChannels}ch`})
-									{/if}
+									{m.library_episodeRow_audioLabel({
+										codec: episode.file.mediaInfo.audioCodec,
+										channels: episode.file.mediaInfo.audioChannels ?? 0
+									})}
 								</div>
 							{/if}
 							{#if episode.file.mediaInfo.audioLanguages?.length}
-								<div>Languages: {episode.file.mediaInfo.audioLanguages.join(', ')}</div>
+								<div>
+									{m.library_episodeRow_languagesLabel({
+										languages: episode.file.mediaInfo.audioLanguages.join(', ')
+									})}
+								</div>
 							{/if}
 							{#if episode.file.mediaInfo.subtitleLanguages?.length}
-								<div>Subs: {episode.file.mediaInfo.subtitleLanguages.join(', ')}</div>
+								<div>
+									{m.library_episodeRow_subsLabel({
+										languages: episode.file.mediaInfo.subtitleLanguages.join(', ')
+									})}
+								</div>
 							{/if}
 							{#if episode.file.releaseGroup || isStreamerProfile}
-								<div>Group: {episode.file.releaseGroup || 'Streaming'}</div>
+								<div>
+									{m.library_episodeRow_groupLabel({
+										group: episode.file.releaseGroup ?? m.library_episodeRow_streamingLabel()
+									})}
+								</div>
 							{/if}
 						</div>
 					</div>
@@ -647,7 +682,9 @@
 						: 'text-error'}"
 					onclick={handleDeleteClick}
 					disabled={!hasEpisodeFile && !isDownloading}
-					title={!hasEpisodeFile && !isDownloading ? 'No files to delete' : 'Delete episode'}
+					title={!hasEpisodeFile && !isDownloading
+						? m.library_episodeRow_noFilesToDelete()
+						: m.library_episodeRow_deleteEpisode()}
 				>
 					<Trash2 size={14} />
 				</button>

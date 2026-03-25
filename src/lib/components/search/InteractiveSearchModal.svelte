@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { SvelteSet, SvelteMap, SvelteURLSearchParams } from 'svelte/reactivity';
 	import {
 		X,
@@ -827,7 +828,7 @@
 			<div class="form-control w-full sm:w-auto">
 				<input
 					type="text"
-					placeholder="Search results…"
+					placeholder={m.search_placeholder_filterResults()}
 					class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 px-4 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none sm:w-48"
 					bind:value={filterQuery}
 				/>
@@ -835,12 +836,12 @@
 
 			<label class="label cursor-pointer gap-2">
 				<input type="checkbox" class="checkbox checkbox-sm" bind:checked={showRejected} />
-				<span class="label-text text-xs sm:text-sm">Show rejected</span>
+				<span class="label-text text-xs sm:text-sm">{m.search_label_showRejected()}</span>
 			</label>
 
 			<!-- Mobile sort control -->
 			<div class="ml-auto flex items-center gap-1 sm:hidden">
-				<span class="text-xs text-base-content/60">Sort:</span>
+				<span class="text-xs text-base-content/60">{m.search_label_sort()}</span>
 				<select
 					class="select-bordered select select-xs"
 					value={sortBy}
@@ -848,9 +849,9 @@
 						sortBy = e.currentTarget.value as typeof sortBy;
 					}}
 				>
-					<option value="score">Score</option>
-					<option value="seeders">Seeders</option>
-					<option value="size">Size</option>
+					<option value="score">{m.search_sort_score()}</option>
+					<option value="seeders">{m.search_sort_seeders()}</option>
+					<option value="size">{m.search_sort_size()}</option>
 					<option value="age">Age</option>
 				</select>
 				<button

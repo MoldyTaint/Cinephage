@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import type { Snippet } from 'svelte';
 	import { Loader2 } from 'lucide-svelte';
 

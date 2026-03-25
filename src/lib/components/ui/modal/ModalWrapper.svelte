@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { createFocusTrap, lockBodyScroll } from '$lib/utils/focus';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		open: boolean;
@@ -88,7 +89,7 @@
 			type="button"
 			class="modal-backdrop cursor-default border-none bg-black/50"
 			onclick={onClose}
-			aria-label="Close modal"
+			aria-label={m.ui_modal_closeModal()}
 		></button>
 	</div>
 {/if}

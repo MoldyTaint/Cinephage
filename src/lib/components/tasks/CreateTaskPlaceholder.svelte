@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 
 	interface Props {
@@ -12,7 +13,9 @@
 <ModalWrapper open={isOpen} {onClose} maxWidth="lg" labelledBy="create-custom-task-modal-title">
 	<div>
 		<div class="mb-4 flex items-center justify-between">
-			<h3 id="create-custom-task-modal-title" class="text-lg font-bold">Create Custom Task</h3>
+			<h3 id="create-custom-task-modal-title" class="text-lg font-bold">
+				{m.task_createModal_title()}
+			</h3>
 			<button class="btn btn-circle btn-ghost btn-sm" onclick={onClose}>✕</button>
 		</div>
 
@@ -38,8 +41,8 @@
 				</svg>
 			</div>
 
-			<h4 class="mb-2 text-xl font-semibold">Coming Soon!</h4>
-			<p class="mb-6 text-base-content/70">Custom task creation will allow you to:</p>
+			<h4 class="mb-2 text-xl font-semibold">{m.task_createModal_comingSoon()}</h4>
+			<p class="mb-6 text-base-content/70">{m.task_createModal_description()}</p>
 
 			<ul class="mx-auto mb-6 max-w-xs space-y-2 text-left text-sm">
 				<li class="flex items-start gap-2">
@@ -57,7 +60,7 @@
 					>
 						<polyline points="20 6 9 17 4 12" />
 					</svg>
-					<span>Create custom schedules</span>
+					<span>{m.task_createModal_feature_schedules()}</span>
 				</li>
 				<li class="flex items-start gap-2">
 					<svg
@@ -74,7 +77,7 @@
 					>
 						<polyline points="20 6 9 17 4 12" />
 					</svg>
-					<span>Filter tasks by media type, quality, or tags</span>
+					<span>{m.task_createModal_feature_filters()}</span>
 				</li>
 				<li class="flex items-start gap-2">
 					<svg
@@ -91,7 +94,7 @@
 					>
 						<polyline points="20 6 9 17 4 12" />
 					</svg>
-					<span>Chain multiple actions together</span>
+					<span>{m.task_createModal_feature_chains()}</span>
 				</li>
 				<li class="flex items-start gap-2">
 					<svg
@@ -108,15 +111,15 @@
 					>
 						<polyline points="20 6 9 17 4 12" />
 					</svg>
-					<span>Set conditional logic and notifications</span>
+					<span>{m.task_createModal_feature_logic()}</span>
 				</li>
 			</ul>
 
-			<div class="text-sm text-base-content/50">Stay tuned for updates!</div>
+			<div class="text-sm text-base-content/50">{m.task_createModal_stayTuned()}</div>
 		</div>
 
 		<div class="modal-action">
-			<button class="btn btn-primary" onclick={onClose}>Got it</button>
+			<button class="btn btn-primary" onclick={onClose}>{m.task_createModal_gotIt()}</button>
 		</div>
 	</div>
 </ModalWrapper>

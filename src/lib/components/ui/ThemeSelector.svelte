@@ -2,6 +2,7 @@
 	import { theme } from '$lib/theme.svelte';
 	import { themes } from '$lib/themes';
 	import { Palette } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let { class: className = 'dropdown-end', showLabel = true } = $props();
 </script>
@@ -10,7 +11,7 @@
 	<div tabindex="0" role="button" class="btn m-1 btn-ghost">
 		<Palette class="h-5 w-5" />
 		{#if showLabel}
-			<span class="hidden md:inline">Theme</span>
+			<span class="hidden md:inline">{m.ui_themeLabel()}</span>
 		{/if}
 	</div>
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->

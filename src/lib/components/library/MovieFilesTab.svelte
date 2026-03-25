@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import type { MovieFile } from '$lib/types/library';
 	import FileCard from './FileCard.svelte';
 	import { FileX, Search } from 'lucide-svelte';
@@ -54,12 +55,12 @@
 			class="flex flex-col items-center justify-center rounded-lg border border-dashed border-base-300 bg-base-100 py-12"
 		>
 			<FileX size={48} class="text-base-content/30" />
-			<h3 class="mt-4 text-lg font-medium">No Files Found</h3>
-			<p class="mt-1 text-sm text-base-content/60">This movie hasn't been downloaded yet.</p>
+			<h3 class="mt-4 text-lg font-medium">{m.library_movieFilesTab_noFilesFound()}</h3>
+			<p class="mt-1 text-sm text-base-content/60">{m.library_movieFilesTab_notDownloaded()}</p>
 			{#if onSearch}
 				<button class="btn mt-4 gap-2 btn-sm btn-primary" onclick={onSearch}>
 					<Search size={16} />
-					Search for Downloads
+					{m.library_movieFilesTab_searchDownloads()}
 				</button>
 			{/if}
 		</div>
@@ -81,11 +82,11 @@
 
 		<!-- Summary -->
 		<div class="rounded-lg bg-base-200 p-3 text-sm text-base-content/70">
-			{files.length} file{files.length !== 1 ? 's' : ''} •
+			{m.library_movieFilesTab_fileCount({ count: files.length })} •
 			{#if totalSize > 0}
-				{formatBytes(totalSize)} total
+				{formatBytes(totalSize)} {m.common_size().toLowerCase()}
 			{:else}
-				Unknown total size
+				{m.library_movieFilesTab_unknownTotalSize()}
 			{/if}
 		</div>
 	{/if}

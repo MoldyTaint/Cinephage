@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { SvelteMap } from 'svelte/reactivity';
 	import { Tv, Check, AlertCircle, ArrowRight, Calendar, Loader2, Search } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 	import type {
 		ChannelLineupItemWithDetails,
 		EpgProgram,
@@ -86,19 +87,19 @@
 	<div class="space-y-3">
 		<div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
 			<div class="rounded-xl bg-base-200 px-3 py-2">
-				<div class="stat-title">Total</div>
+				<div class="stat-title">{m.livetv_epgCoverage_total()}</div>
 				<div class="stat-value text-xl sm:text-2xl">{stats.total}</div>
 			</div>
 			<div class="rounded-xl bg-base-200 px-3 py-2">
-				<div class="stat-title">Has EPG</div>
+				<div class="stat-title">{m.livetv_epgCoverage_hasEpg()}</div>
 				<div class="stat-value text-xl text-success sm:text-2xl">{stats.hasEpg}</div>
 			</div>
 			<div class="rounded-xl bg-base-200 px-3 py-2">
-				<div class="stat-title">Missing</div>
+				<div class="stat-title">{m.livetv_epgCoverage_missing()}</div>
 				<div class="stat-value text-xl text-error sm:text-2xl">{stats.missing}</div>
 			</div>
 			<div class="rounded-xl bg-base-200 px-3 py-2">
-				<div class="stat-title">Override</div>
+				<div class="stat-title">{m.livetv_epgCoverage_override()}</div>
 				<div class="stat-value text-xl text-info sm:text-2xl">{stats.override}</div>
 			</div>
 		</div>
@@ -110,16 +111,16 @@
 				/>
 				<input
 					type="text"
-					placeholder="Search channels..."
+					placeholder={m.livetv_epgCoverage_searchPlaceholder()}
 					class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-9 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 					bind:value={searchQuery}
 				/>
 			</div>
 			<select class="select-bordered select w-full select-sm sm:w-48" bind:value={filter}>
-				<option value="all">All Channels</option>
-				<option value="missing">Missing EPG</option>
-				<option value="has-epg">Has EPG</option>
-				<option value="override">Using Override</option>
+				<option value="all">{m.livetv_epgCoverage_filterAll()}</option>
+				<option value="missing">{m.livetv_epgCoverage_filterMissing()}</option>
+				<option value="has-epg">{m.livetv_epgCoverage_filterHasEpg()}</option>
+				<option value="override">{m.livetv_epgCoverage_filterOverride()}</option>
 			</select>
 		</div>
 	</div>
@@ -131,9 +132,9 @@
 	{:else if filteredLineup.length === 0}
 		<div class="py-12 text-center text-base-content/50">
 			{#if lineup.length === 0}
-				No channels in lineup
+				{m.livetv_epgCoverage_noChannels()}
 			{:else}
-				No channels match the current filter
+				{m.livetv_epgCoverage_noMatch()}
 			{/if}
 		</div>
 	{:else}
@@ -167,24 +168,24 @@
 						{#if status === 'has-epg'}
 							<div class="badge gap-1 badge-sm badge-success">
 								<Check class="h-3 w-3" />
-								Has EPG
+								{m.livetv_epgCoverage_hasEpgBadge()}
 							</div>
 						{:else if status === 'missing'}
 							<div class="badge gap-1 badge-sm badge-error">
 								<AlertCircle class="h-3 w-3" />
-								Missing
+								{m.livetv_epgCoverage_missingBadge()}
 							</div>
 						{:else}
 							<div class="badge gap-1 badge-sm badge-info">
 								<ArrowRight class="h-3 w-3" />
-								Override
+								{m.livetv_epgCoverage_overrideBadge()}
 							</div>
 						{/if}
 					</div>
 
 					<div class="mt-3 rounded-lg bg-base-200 px-3 py-2">
 						<div class="mb-1 text-[11px] tracking-wide text-base-content/50 uppercase">
-							Current Program
+							{m.livetv_epgCoverage_currentProgram()}
 						</div>
 						{#if epg?.now}
 							<div class="truncate text-sm font-medium" title={epg.now.title}>{epg.now.title}</div>
@@ -194,32 +195,38 @@
 									value={epg.now.progress * 100}
 									max="100"
 								></progress>
-								<span class="text-xs text-base-content/50">{epg.now.remainingMinutes}m left</span>
+								<span class="text-xs text-base-content/50"
+									>{m.livetv_channelLineupRow_minutesLeft({
+										count: epg.now.remainingMinutes
+									})}</span
+								>
 							</div>
 						{:else}
-							<div class="text-sm text-base-content/40">No data</div>
+							<div class="text-sm text-base-content/40">{m.livetv_epgCoverage_noData()}</div>
 						{/if}
 					</div>
 
 					<div class="mt-3 flex items-center justify-between gap-2">
 						<div class="min-w-0 text-sm">
-							<div class="text-[11px] tracking-wide text-base-content/50 uppercase">EPG Source</div>
+							<div class="text-[11px] tracking-wide text-base-content/50 uppercase">
+								{m.livetv_epgCoverage_epgSource()}
+							</div>
 							{#if channel.epgSourceChannel}
 								<div class="flex items-center gap-1 text-info">
 									<Calendar class="h-3 w-3" />
 									<span class="truncate">{channel.epgSourceChannel.name}</span>
 								</div>
 							{:else}
-								<span class="text-base-content/60">Default</span>
+								<span class="text-base-content/60">{m.livetv_epgCoverage_default()}</span>
 							{/if}
 						</div>
 
 						<button
 							class="btn btn-ghost btn-xs"
 							onclick={() => onSetEpgSource(channel)}
-							title="Set EPG Source"
+							title={m.livetv_epgCoverage_setEpgSource()}
 						>
-							Set EPG
+							{m.livetv_epgCoverage_setEpg()}
 						</button>
 					</div>
 				</div>
@@ -232,12 +239,12 @@
 				<thead>
 					<tr>
 						<th class="w-12"></th>
-						<th>Channel</th>
-						<th class="hidden lg:table-cell">Account</th>
-						<th>EPG Status</th>
-						<th class="hidden md:table-cell">Current Program</th>
-						<th>EPG Source</th>
-						<th class="w-24">Actions</th>
+						<th>{m.common_name()}</th>
+						<th class="hidden lg:table-cell">{m.nav_accounts()}</th>
+						<th>EPG {m.common_status()}</th>
+						<th class="hidden md:table-cell">{m.livetv_epgCoverage_currentProgram()}</th>
+						<th>{m.livetv_epgCoverage_epgSource()}</th>
+						<th class="w-24">{m.common_actions()}</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -271,17 +278,17 @@
 								{#if status === 'has-epg'}
 									<div class="badge gap-1 badge-sm badge-success">
 										<Check class="h-3 w-3" />
-										Has EPG
+										{m.livetv_epgCoverage_hasEpgBadge()}
 									</div>
 								{:else if status === 'missing'}
 									<div class="badge gap-1 badge-sm badge-error">
 										<AlertCircle class="h-3 w-3" />
-										Missing
+										{m.livetv_epgCoverage_missingBadge()}
 									</div>
 								{:else}
 									<div class="badge gap-1 badge-sm badge-info">
 										<ArrowRight class="h-3 w-3" />
-										Override
+										{m.livetv_epgCoverage_overrideBadge()}
 									</div>
 								{/if}
 							</td>
@@ -297,11 +304,13 @@
 											max="100"
 										></progress>
 										<span class="text-xs text-base-content/50"
-											>{epg.now.remainingMinutes}m left</span
+											>{m.livetv_channelLineupRow_minutesLeft({
+												count: epg.now.remainingMinutes
+											})}</span
 										>
 									</div>
 								{:else}
-									<span class="text-sm text-base-content/40">No data</span>
+									<span class="text-sm text-base-content/40">{m.livetv_epgCoverage_noData()}</span>
 								{/if}
 							</td>
 							<td
@@ -310,7 +319,7 @@
 								role="button"
 								tabindex="0"
 								onkeydown={(e) => e.key === 'Enter' && onSetEpgSource(channel)}
-								title="Double-click to change EPG source"
+								title={m.livetv_epgCoverage_doubleClickToChange()}
 							>
 								{#if channel.epgSourceChannel}
 									<div class="flex items-center gap-1 text-sm text-info">
@@ -318,16 +327,16 @@
 										<span class="max-w-24 truncate">{channel.epgSourceChannel.name}</span>
 									</div>
 								{:else}
-									<span class="text-sm text-base-content/40">Default</span>
+									<span class="text-sm text-base-content/40">{m.livetv_epgCoverage_default()}</span>
 								{/if}
 							</td>
 							<td>
 								<button
 									class="btn btn-ghost btn-xs"
 									onclick={() => onSetEpgSource(channel)}
-									title="Set EPG Source"
+									title={m.livetv_epgCoverage_setEpgSource()}
 								>
-									Set EPG
+									{m.livetv_epgCoverage_setEpg()}
 								</button>
 							</td>
 						</tr>

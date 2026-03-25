@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { SvelteMap } from 'svelte/reactivity';
+	import * as m from '$lib/paraglide/messages.js';
 	import SubtitleBadge from './SubtitleBadge.svelte';
 	import SubtitleSyncBadge from './SubtitleSyncBadge.svelte';
 

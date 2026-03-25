@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { CheckCircle, XCircle, Loader2 } from 'lucide-svelte';
 
 	type Status = 'idle' | 'searching' | 'success' | 'failed';
@@ -20,18 +21,18 @@
 
 	function getMobileErrorMessage(message: string | null): string {
 		const text = message?.trim();
-		if (!text) return 'Search failed';
+		if (!text) return m.library_autoSearch_searchFailed();
 
 		if (text.includes('Cinephage Library indexer is disabled')) {
-			return 'Indexer disabled. Enable Cinephage indexer.';
+			return m.library_autoSearch_indexerDisabled();
 		}
 
 		if (text.includes('Streamer profile requires the Cinephage Library indexer')) {
-			return 'Streamer requires Cinephage indexer.';
+			return m.library_autoSearch_streamerRequiresIndexer();
 		}
 
 		if (text.includes('Cinephage Library indexer has automatic search disabled')) {
-			return 'Enable auto search on Cinephage indexer.';
+			return m.library_autoSearch_enableAutoSearch();
 		}
 
 		if (text.length > 72) {
@@ -45,11 +46,11 @@
 </script>
 
 {#if status === 'searching'}
-	<div class="tooltip" data-tip="Searching...">
+	<div class="tooltip" data-tip={m.common_searching()}>
 		<Loader2 size={iconSizes[size]} class="animate-spin text-primary" />
 	</div>
 {:else if status === 'success'}
-	<div class="tooltip" data-tip={releaseName || 'Release grabbed'}>
+	<div class="tooltip" data-tip={releaseName || m.library_autoSearch_releaseGrabbed()}>
 		<CheckCircle size={iconSizes[size]} class="text-success" />
 	</div>
 {:else if status === 'failed'}
@@ -61,7 +62,7 @@
 	</div>
 	<div
 		class="tooltip tooltip-left hidden tooltip-error before:max-w-80 before:text-left before:break-words before:whitespace-normal sm:block"
-		data-tip={error || 'Search failed'}
+		data-tip={error || m.library_autoSearch_searchFailed()}
 	>
 		<XCircle size={iconSizes[size]} class="text-error" />
 	</div>

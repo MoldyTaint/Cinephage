@@ -1,6 +1,7 @@
 <script lang="ts">
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
 	import type { WatchProvider } from '$lib/types/tmdb';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let {
 		type,
@@ -41,24 +42,24 @@
 	<!-- Type -->
 	<div class="form-control">
 		<span class="label text-sm font-bold tracking-wide text-base-content/70 uppercase"
-			>Media Type</span
+			>{m.discover_filter_mediaType()}</span
 		>
 		<div class="join w-full">
 			<button
 				class="btn join-item flex-1 {type === 'all'
 					? 'btn-primary'
 					: 'border-base-300 btn-outline'}"
-				onclick={() => onTypeChange('all')}>All</button
+				onclick={() => onTypeChange('all')}>{m.common_all()}</button
 			>
 			<button
 				class="btn join-item flex-1 {type === 'movie'
 					? 'btn-primary'
 					: 'border-base-300 btn-outline'}"
-				onclick={() => onTypeChange('movie')}>Movies</button
+				onclick={() => onTypeChange('movie')}>{m.common_movies()}</button
 			>
 			<button
 				class="btn join-item flex-1 {type === 'tv' ? 'btn-primary' : 'border-base-300 btn-outline'}"
-				onclick={() => onTypeChange('tv')}>TV</button
+				onclick={() => onTypeChange('tv')}>{m.common_tvShows()}</button
 			>
 		</div>
 	</div>
@@ -67,7 +68,8 @@
 	<div class="form-control">
 		<label
 			for="sort-by"
-			class="label text-sm font-bold tracking-wide text-base-content/70 uppercase">Sort By</label
+			class="label text-sm font-bold tracking-wide text-base-content/70 uppercase"
+			>{m.discover_filter_sortBy()}</label
 		>
 		<select
 			id="sort-by"
@@ -75,17 +77,17 @@
 			value={sortBy}
 			onchange={(e) => onSortChange(e.currentTarget.value)}
 		>
-			<option value="popularity.desc">Most Popular</option>
-			<option value="vote_average.desc">Highest Rated</option>
-			<option value="primary_release_date.desc">Newest Releases</option>
-			<option value="revenue.desc">Highest Revenue</option>
+			<option value="popularity.desc">{m.discover_sort_mostPopular()}</option>
+			<option value="vote_average.desc">{m.discover_sort_highestRated()}</option>
+			<option value="primary_release_date.desc">{m.discover_sort_newestReleases()}</option>
+			<option value="revenue.desc">{m.discover_sort_highestRevenue()}</option>
 		</select>
 	</div>
 
 	<!-- Release Year -->
 	<div class="form-control">
 		<span class="label text-sm font-bold tracking-wide text-base-content/70 uppercase"
-			>Release Year</span
+			>{m.discover_filter_releaseYear()}</span
 		>
 		<div class="flex items-center gap-2">
 			<input
@@ -112,7 +114,7 @@
 			for="min-rating"
 			class="label text-sm font-bold tracking-wide text-base-content/70 uppercase"
 		>
-			<span>Min Rating</span>
+			<span>{m.discover_filter_minRating()}</span>
 			<span class="badge font-bold badge-primary">{minRating}</span>
 		</label>
 		<input
@@ -135,7 +137,7 @@
 	<!-- Genres -->
 	<div class="form-control">
 		<span class="label text-sm font-bold tracking-wide text-base-content/70 uppercase">
-			<span>Genres</span>
+			<span>{m.common_genres()}</span>
 			{#if selectedGenres.length > 0}
 				<span class="badge badge-sm badge-primary">{selectedGenres.length}</span>
 			{/if}
@@ -157,7 +159,7 @@
 	<!-- Watch Providers -->
 	<div class="form-control">
 		<span class="label text-sm font-bold tracking-wide text-base-content/70 uppercase">
-			<span>Watch Providers</span>
+			<span>{m.discover_filter_watchProviders()}</span>
 			{#if selectedProviders.length > 0}
 				<span class="badge badge-sm badge-primary">{selectedProviders.length}</span>
 			{/if}

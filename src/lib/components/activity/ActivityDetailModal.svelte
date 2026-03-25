@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import {
 		isImportFailedActivity,
 		TASK_TYPE_LABELS,
@@ -42,9 +43,9 @@
 		actionLoading = true;
 		try {
 			await onPause(activity.queueItemId);
-			toasts.success('Download paused');
+			toasts.success(m.activity_detail_downloadPaused());
 		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Failed to pause download';
+			const message = error instanceof Error ? error.message : m.activity_detail_failedToPause();
 			toasts.error(message);
 		} finally {
 			actionLoading = false;
@@ -56,9 +57,9 @@
 		actionLoading = true;
 		try {
 			await onResume(activity.queueItemId);
-			toasts.success('Download resumed');
+			toasts.success(m.activity_detail_downloadResumed());
 		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Failed to resume download';
+			const message = error instanceof Error ? error.message : m.activity_detail_failedToResume();
 			toasts.error(message);
 		} finally {
 			actionLoading = false;
@@ -70,10 +71,10 @@
 		actionLoading = true;
 		try {
 			await onRemove(activity.queueItemId);
-			toasts.success('Download removed');
+			toasts.success(m.activity_detail_downloadRemoved());
 			onClose();
 		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Failed to remove download';
+			const message = error instanceof Error ? error.message : m.activity_detail_failedToRemove();
 			toasts.error(message);
 		} finally {
 			actionLoading = false;
@@ -88,9 +89,13 @@
 		actionLoading = true;
 		try {
 			await onRetry(queueItemId);
-			toasts.success(isImportFailed ? 'Import retry initiated' : 'Download retry initiated');
+			toasts.success(
+				isImportFailed
+					? m.activity_detail_importRetryInitiated()
+					: m.activity_detail_downloadRetryInitiated()
+			);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Failed to retry download';
+			const message = error instanceof Error ? error.message : m.activity_detail_failedToRetry();
 			toasts.error(message);
 		} finally {
 			actionLoading = false;
@@ -238,7 +243,7 @@
 							{/if}
 						</span>
 						{#if activity.isUpgrade}
-							<span class="badge badge-sm badge-warning">Upgrade</span>
+							<span class="badge badge-sm badge-warning">{m.activity_detail_upgrade()}</span>
 						{/if}
 						<span class="text-sm text-base-content/60">
 							{formatRelativeTime(
@@ -268,18 +273,20 @@
 						{#if activity.status === 'downloading' || activity.status === 'seeding'}
 							<button class="btn btn-ghost btn-sm" onclick={handlePause} disabled={actionLoading}>
 								<Pause class="h-4 w-4" />
-								Pause
+								{m.action_pause()}
 							</button>
 						{:else if activity.status === 'paused'}
 							<button class="btn btn-ghost btn-sm" onclick={handleResume} disabled={actionLoading}>
 								<Play class="h-4 w-4" />
-								Resume
+								{m.action_resume()}
 							</button>
 						{/if}
 						{#if activity.status === 'failed'}
 							<button class="btn btn-ghost btn-sm" onclick={handleRetry} disabled={actionLoading}>
 								<RotateCcw class="h-4 w-4" />
-								{isImportFailedActivity(activity) ? 'Retry Import' : 'Retry'}
+								{isImportFailedActivity(activity)
+									? m.activity_detail_retryImport()
+									: m.common_retry()}
 							</button>
 						{/if}
 						<button
@@ -288,7 +295,7 @@
 							disabled={actionLoading}
 						>
 							<Trash2 class="h-4 w-4" />
-							Remove
+							{m.action_remove()}
 						</button>
 					</div>
 				{/if}
@@ -301,7 +308,7 @@
 					onclick={() => (activeTab = 'overview')}
 				>
 					<Info class="h-4 w-4" />
-					Overview
+					{m.common_overview()}
 				</button>
 			</div>
 
@@ -313,35 +320,35 @@
 						<!-- Basic Info -->
 						<div class="grid gap-4 sm:grid-cols-2">
 							<div class="space-y-1">
-								<span class="text-sm text-base-content/60">Media Type</span>
+								<span class="text-sm text-base-content/60">{m.activity_detail_mediaType()}</span>
 								<p class="font-medium capitalize">{activity.mediaType}</p>
 							</div>
 							<div class="space-y-1">
-								<span class="text-sm text-base-content/60">Status</span>
+								<span class="text-sm text-base-content/60">{m.common_status()}</span>
 								<p class="font-medium">{getStatusLabel(activity)}</p>
 							</div>
 							{#if activity.activitySource === 'monitoring' && activity.taskType}
 								<div class="space-y-1">
-									<span class="text-sm text-base-content/60">Task Type</span>
+									<span class="text-sm text-base-content/60">{m.activity_detail_taskType()}</span>
 									<p class="font-medium">
 										{TASK_TYPE_LABELS[activity.taskType] ?? activity.taskType}
 									</p>
 								</div>
 							{/if}
 							<div class="space-y-1">
-								<span class="text-sm text-base-content/60">Size</span>
+								<span class="text-sm text-base-content/60">{m.common_size()}</span>
 								<p class="font-medium">{formatBytes(activity.size)}</p>
 							</div>
 							<div class="space-y-1">
-								<span class="text-sm text-base-content/60">Protocol</span>
+								<span class="text-sm text-base-content/60">{m.activity_detail_protocol()}</span>
 								<p class="font-medium uppercase">{activity.protocol || '-'}</p>
 							</div>
 							<div class="space-y-1">
-								<span class="text-sm text-base-content/60">Indexer</span>
+								<span class="text-sm text-base-content/60">{m.activity_detail_indexer()}</span>
 								<p class="font-medium">{activity.indexerName || '-'}</p>
 							</div>
 							<div class="space-y-1">
-								<span class="text-sm text-base-content/60">Release Group</span>
+								<span class="text-sm text-base-content/60">{m.activity_detail_releaseGroup()}</span>
 								<p class="font-medium">{activity.releaseGroup || '-'}</p>
 							</div>
 						</div>
@@ -349,7 +356,7 @@
 						<!-- Quality -->
 						{#if activity.quality}
 							<div>
-								<span class="text-sm text-base-content/60">Quality</span>
+								<span class="text-sm text-base-content/60">{m.common_quality()}</span>
 								<div class="mt-1 flex flex-wrap gap-2">
 									{#if getResolutionBadge(activity)}
 										<span class="badge badge-outline">{getResolutionBadge(activity)}</span>
@@ -370,7 +377,7 @@
 						<!-- Import Path -->
 						{#if activity.importedPath}
 							<div>
-								<span class="text-sm text-base-content/60">Imported To</span>
+								<span class="text-sm text-base-content/60">{m.activity_detail_importedTo()}</span>
 								<div class="mt-1 flex items-center gap-2">
 									<Folder class="h-4 w-4 text-base-content/40" />
 									<code class="text-sm">{activity.importedPath}</code>
@@ -381,7 +388,7 @@
 						<!-- Status Reason -->
 						{#if activity.statusReason}
 							<div>
-								<span class="text-sm text-base-content/60">Status Reason</span>
+								<span class="text-sm text-base-content/60">{m.activity_detail_statusReason()}</span>
 								<p class="mt-1 text-sm">{activity.statusReason}</p>
 							</div>
 						{/if}
@@ -389,7 +396,7 @@
 						<!-- Timeline -->
 						{#if activity.timeline.length > 0}
 							<div>
-								<span class="text-sm text-base-content/60">Timeline</span>
+								<span class="text-sm text-base-content/60">{m.activity_detail_timeline()}</span>
 								<div class="mt-2 space-y-2">
 									{#each activity.timeline as event, i (event.timestamp + '-' + i)}
 										<div class="flex items-center gap-3">

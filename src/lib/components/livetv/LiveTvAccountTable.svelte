@@ -13,6 +13,7 @@
 		RefreshCw
 	} from 'lucide-svelte';
 	import type { LiveTvAccount, LiveTvProviderType } from '$lib/types/livetv';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		accounts: LiveTvAccount[];
@@ -62,11 +63,15 @@
 	} {
 		switch (type) {
 			case 'stalker':
-				return { class: 'badge-primary', text: 'Stalker', icon: Tv };
+				return { class: 'badge-primary', text: m.livetv_accountTable_providerStalker(), icon: Tv };
 			case 'xstream':
-				return { class: 'badge-secondary', text: 'XStream', icon: Radio };
+				return {
+					class: 'badge-secondary',
+					text: m.livetv_accountTable_providerXstream(),
+					icon: Radio
+				};
 			case 'm3u':
-				return { class: 'badge-accent', text: 'M3U', icon: List };
+				return { class: 'badge-accent', text: m.livetv_accountTable_providerM3u(), icon: List };
 			default:
 				return { class: 'badge-ghost', text: type, icon: Tv };
 		}
@@ -74,7 +79,7 @@
 
 	function getStatusBadge(account: LiveTvAccount): { class: string; text: string } {
 		if (account.lastTestSuccess === false) {
-			return { class: 'badge-error', text: 'Error' };
+			return { class: 'badge-error', text: m.livetv_accountTable_statusError() };
 		}
 
 		if (account.expiresAt) {
@@ -83,17 +88,17 @@
 			const daysUntilExpiry = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
 			if (daysUntilExpiry < 0) {
-				return { class: 'badge-error', text: 'Expired' };
-			}
-			if (daysUntilExpiry < 7) {
-				return { class: 'badge-warning', text: `${daysUntilExpiry}d left` };
+				return { class: 'badge-error', text: m.livetv_accountTable_statusExpired() };
 			}
 			if (daysUntilExpiry < 30) {
-				return { class: 'badge-info', text: `${daysUntilExpiry}d left` };
+				return {
+					class: daysUntilExpiry < 7 ? 'badge-warning' : 'badge-info',
+					text: m.livetv_accountTable_daysLeft({ count: daysUntilExpiry })
+				};
 			}
 		}
 
-		return { class: 'badge-success', text: 'Active' };
+		return { class: 'badge-success', text: m.livetv_accountTable_statusActive() };
 	}
 
 	function getSyncStatusBadge(account: LiveTvAccount): { class: string; text: string } {
@@ -101,14 +106,14 @@
 
 		switch (status) {
 			case 'syncing':
-				return { class: 'badge-info', text: 'Syncing...' };
+				return { class: 'badge-info', text: m.livetv_accountTable_syncingStatus() };
 			case 'success':
-				return { class: 'badge-success', text: 'Synced' };
+				return { class: 'badge-success', text: m.livetv_accountTable_syncedStatus() };
 			case 'failed':
-				return { class: 'badge-error', text: 'Failed' };
+				return { class: 'badge-error', text: m.livetv_accountTable_failedStatus() };
 			case 'never':
 			default:
-				return { class: 'badge-warning', text: 'Not synced' };
+				return { class: 'badge-warning', text: m.livetv_accountTable_neverSynced() };
 		}
 	}
 
@@ -131,11 +136,13 @@
 			case 'stalker':
 				return account.stalkerConfig?.macAddress
 					? maskMac(account.stalkerConfig.macAddress)
-					: 'No MAC';
+					: m.livetv_accountTable_noMac();
 			case 'xstream':
-				return account.xstreamConfig?.username ?? 'No username';
+				return account.xstreamConfig?.username ?? m.livetv_accountTable_noUsername();
 			case 'm3u':
-				return account.m3uConfig?.url ? 'URL Source' : 'File Upload';
+				return account.m3uConfig?.url
+					? m.livetv_accountTable_urlSource()
+					: m.livetv_accountTable_fileUpload();
 			default:
 				return '';
 		}
@@ -157,13 +164,13 @@
 	function getProviderLabel(type: LiveTvProviderType): string {
 		switch (type) {
 			case 'stalker':
-				return 'Portal';
+				return m.livetv_accountTable_portalLabel();
 			case 'xstream':
-				return 'Server';
+				return m.livetv_accountTable_serverLabel();
 			case 'm3u':
-				return 'Source';
+				return m.livetv_accountTable_sourceLabel();
 			default:
-				return 'Source';
+				return m.livetv_accountTable_sourceLabel();
 		}
 	}
 </script>
@@ -171,8 +178,8 @@
 {#if accounts.length === 0}
 	<div class="py-12 text-center text-base-content/60">
 		<Tv class="mx-auto mb-4 h-12 w-12 opacity-40" />
-		<p class="text-lg font-medium">No Live TV accounts configured</p>
-		<p class="mt-1 text-sm">Add an account to start using Live TV</p>
+		<p class="text-lg font-medium">{m.livetv_accountTable_noAccounts()}</p>
+		<p class="mt-1 text-sm">{m.livetv_accountTable_addHint()}</p>
 	</div>
 {:else}
 	<!-- Mobile cards -->
@@ -215,7 +222,9 @@
 					<div class="rounded-lg bg-base-200 p-2">
 						<div class="mb-1 opacity-60">Channels</div>
 						{#if account.channelCount !== null}
-							<div class="font-medium">{account.channelCount.toLocaleString()} channels</div>
+							<div class="font-medium">
+								{account.channelCount.toLocaleString(undefined)} channels
+							</div>
 							<div class="opacity-70">
 								{account.categoryCount !== null ? `${account.categoryCount} categories` : '-'}
 							</div>
@@ -317,14 +326,14 @@
 		<table class="table">
 			<thead>
 				<tr>
-					<th>Account</th>
-					<th>Type</th>
-					<th>Source</th>
-					<th>Channels</th>
-					<th>Sync</th>
-					<th>Expires</th>
-					<th>Status</th>
-					<th class="text-right">Actions</th>
+					<th>{m.livetv_accountTable_accountColumn()}</th>
+					<th>{m.livetv_accountTable_typeColumn()}</th>
+					<th>{m.livetv_accountTable_sourceColumn()}</th>
+					<th>{m.livetv_accountTable_channelsColumn()}</th>
+					<th>{m.livetv_accountTable_syncColumn()}</th>
+					<th>{m.livetv_accountTable_expiresColumn()}</th>
+					<th>{m.livetv_accountTable_statusColumn()}</th>
+					<th class="text-right">{m.livetv_accountTable_actionsColumn()}</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -371,7 +380,7 @@
 							{#if account.channelCount !== null}
 								<div class="flex flex-col gap-1">
 									<span class="badge badge-ghost badge-sm">
-										{account.channelCount.toLocaleString()} channels
+										{account.channelCount.toLocaleString(undefined)} channels
 									</span>
 									{#if account.categoryCount !== null}
 										<span class="badge badge-outline badge-sm">

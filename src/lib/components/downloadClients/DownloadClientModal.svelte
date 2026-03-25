@@ -13,6 +13,7 @@
 	import NntpServerSettings from './forms/NntpServerSettings.svelte';
 	import DownloadClientSettings from './forms/DownloadClientSettings.svelte';
 	import { toFriendlyDownloadClientError } from '$lib/downloadClients/errorMessages';
+	import * as m from '$lib/paraglide/messages.js';
 
 	// NNTP server form data type
 	interface NntpServerFormData {
@@ -119,7 +120,9 @@
 	let browsingField = $state<'downloadPathLocal' | 'tempPathLocal'>('downloadPathLocal');
 
 	// Derived
-	const modalTitle = $derived(mode === 'add' ? 'Add Download Client' : 'Edit Download Client');
+	const modalTitle = $derived(
+		mode === 'add' ? m.downloadClient_addDownloadClient() : m.downloadClient_editDownloadClient()
+	);
 	const hasPassword = $derived(client?.hasPassword ?? false);
 	const selectedDefinition = $derived(
 		implementation ? clientDefinitions.find((d) => d.id === implementation) : null
@@ -382,7 +385,7 @@
 	<!-- Client Type Selection (only in add mode when not selected) -->
 	{#if mode === 'add' && !implementation}
 		<div class="space-y-4">
-			<p class="text-base-content/70">Select the type of download client you want to add:</p>
+			<p class="text-base-content/70">{m.downloadClient_selectType()}</p>
 
 			<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
 				{#each pickerClientDefinitions as def (def.id)}
@@ -401,10 +404,12 @@
 												? 'badge-secondary'
 												: 'badge-primary'}"
 										>
-											{def.protocol}
+											{m[`downloadClient_protocol_${def.protocol}`]?.() ?? def.protocol}
 										</span>
 									</div>
-									<p class="mt-1 text-sm text-base-content/60">{def.description}</p>
+									<p class="mt-1 text-sm text-base-content/60">
+										{m[`downloadClient_desc_${def.id}`]?.() ?? def.description}
+									</p>
 								</div>
 								<div class="badge badge-outline badge-sm">:{def.defaultPort}</div>
 							</div>
@@ -423,10 +428,13 @@
 			<div class="mb-6 flex items-center justify-between rounded-lg bg-base-200 px-4 py-3">
 				<div class="flex items-center gap-3">
 					<div class="font-semibold">{selectedDefinition.name}</div>
-					<div class="badge badge-ghost badge-sm">Port {selectedDefinition.defaultPort}</div>
+					<div class="badge badge-ghost badge-sm">
+						{m.common_port()}
+						{selectedDefinition.defaultPort}
+					</div>
 				</div>
 				<button type="button" class="btn btn-ghost btn-sm" onclick={() => (implementation = '')}>
-					Change Type
+					{m.action_change()}
 				</button>
 			</div>
 		{/if}
@@ -445,11 +453,11 @@
 			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
 				<!-- Left Column: Connection -->
 				<div class="space-y-4">
-					<SectionHeader title="Connection" />
+					<SectionHeader title={m.connection_section_title()} />
 
 					<div class="form-control">
 						<label class="label py-1" for="name">
-							<span class="label-text">Name</span>
+							<span class="label-text">{m.common_name()}</span>
 						</label>
 						<input
 							id="name"
@@ -467,7 +475,7 @@
 							</span>
 							{#if nameTooLong}
 								<span class="label-text-alt text-xs text-error"
-									>Max {MAX_NAME_LENGTH} characters.</span
+									>{m.validation_maxChars({ max: MAX_NAME_LENGTH })}</span
 								>
 							{/if}
 						</div>
@@ -476,7 +484,7 @@
 					<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
 						<div class="form-control">
 							<label class="label py-1" for="host">
-								<span class="label-text">Host</span>
+								<span class="label-text">{m.connection_host_label()}</span>
 							</label>
 							<input
 								id="host"
@@ -489,7 +497,7 @@
 
 						<div class="form-control">
 							<label class="label py-1" for="port">
-								<span class="label-text">Port</span>
+								<span class="label-text">{m.common_port()}</span>
 							</label>
 							<input
 								id="port"
@@ -518,9 +526,9 @@
 						<div class="form-control">
 							<label class="label py-1" for="password">
 								<span class="label-text">
-									API Key
+									{m.auth_apiKey_label()}
 									{#if mode === 'edit' && hasPassword}
-										<span class="text-xs opacity-50">(blank to keep)</span>
+										<span class="text-xs opacity-50">({m.auth_blankToKeep()})</span>
 									{/if}
 								</span>
 							</label>
@@ -535,7 +543,7 @@
 							/>
 							<div class="label py-1">
 								<span class="label-text-alt text-xs">
-									Found in SABnzbd Config &gt; General &gt; API Key
+									{m.downloadClient_apiKeyHelp()}
 								</span>
 							</div>
 						</div>
@@ -544,7 +552,7 @@
 						<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
 							<div class="form-control">
 								<label class="label py-1" for="username">
-									<span class="label-text">Username</span>
+									<span class="label-text">{m.auth_username_label()}</span>
 								</label>
 								<input
 									id="username"
@@ -558,9 +566,9 @@
 							<div class="form-control">
 								<label class="label py-1" for="password">
 									<span class="label-text">
-										Password
+										{m.auth_password_label()}
 										{#if mode === 'edit' && hasPassword}
-											<span class="text-xs opacity-50">(blank to keep)</span>
+											<span class="text-xs opacity-50">({m.auth_blankToKeep()})</span>
 										{/if}
 									</span>
 								</label>
@@ -583,12 +591,12 @@
 								bind:checked={useSsl}
 								onchange={handleSslChange}
 							/>
-							<span class="label-text">Use SSL</span>
+							<span class="label-text">{m.connection_useSsl_label()}</span>
 						</label>
 
 						<label class="label cursor-pointer gap-2">
 							<input type="checkbox" class="checkbox checkbox-sm" bind:checked={enabled} />
-							<span class="label-text">Enabled</span>
+							<span class="label-text">{m.common_enabled()}</span>
 						</label>
 					</div>
 				</div>
@@ -622,7 +630,7 @@
 				<div class="mt-6 alert alert-error">
 					<XCircle class="h-5 w-5" />
 					<div>
-						<div class="font-medium">Failed to save</div>
+						<div class="font-medium">{m.common_failedToSave()}</div>
 						<div class="text-sm opacity-80">{error}</div>
 					</div>
 				</div>
@@ -643,7 +651,9 @@
 		{#if !showFolderBrowser}
 			<div class="modal-action">
 				{#if mode === 'edit' && onDelete}
-					<button class="btn mr-auto btn-outline btn-error" onclick={onDelete}>Delete</button>
+					<button class="btn mr-auto btn-outline btn-error" onclick={onDelete}
+						>{m.common_delete()}</button
+					>
 				{/if}
 
 				<button
@@ -654,10 +664,10 @@
 					{#if testing}
 						<Loader2 class="h-4 w-4 animate-spin" />
 					{/if}
-					Test
+					{m.action_test()}
 				</button>
 
-				<button class="btn btn-ghost" onclick={onClose}>Cancel</button>
+				<button class="btn btn-ghost" onclick={onClose}>{m.action_cancel()}</button>
 
 				<button
 					class="btn btn-primary"
@@ -667,7 +677,7 @@
 					{#if saving}
 						<Loader2 class="h-4 w-4 animate-spin" />
 					{/if}
-					Save
+					{m.action_save()}
 				</button>
 			</div>
 		{/if}

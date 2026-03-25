@@ -2,6 +2,7 @@
 	import { CheckCircle2, XCircle, Link, FileText, Globe } from 'lucide-svelte';
 	import { SectionHeader } from '$lib/components/ui/modal';
 	import IptvOrgSelector from '../IptvOrgSelector.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		name: string;
@@ -83,7 +84,7 @@
 	<!-- Name (full width) -->
 	<div class="form-control">
 		<label class="label py-1" for="m3u-name">
-			<span class="label-text">Name</span>
+			<span class="label-text">{m.livetv_form_m3u_nameLabel()}</span>
 		</label>
 		<input
 			id="m3u-name"
@@ -91,10 +92,12 @@
 			class="input-bordered input input-sm"
 			value={name}
 			oninput={(e) => onNameChange(e.currentTarget.value)}
-			placeholder={inputMode === 'freeiptv' ? 'My Free IPTV Channels' : 'My M3U Playlist'}
+			placeholder={inputMode === 'freeiptv'
+				? m.livetv_form_m3u_freeIptvPlaceholder()
+				: m.livetv_form_m3u_m3uPlaylistPlaceholder()}
 		/>
 		<div class="label py-1">
-			<span class="label-text-alt text-xs">A friendly name for this collection</span>
+			<span class="label-text-alt text-xs">{m.livetv_form_m3u_namePlaceholder()}</span>
 		</div>
 	</div>
 
@@ -106,21 +109,21 @@
 				onclick={() => onInputModeChange('url')}
 			>
 				<Link class="mr-2 inline h-4 w-4" />
-				URL
+				{m.livetv_form_m3u_urlTab()}
 			</button>
 			<button
 				class="tab {inputMode === 'file' ? 'tab-active' : ''}"
 				onclick={() => onInputModeChange('file')}
 			>
 				<FileText class="mr-2 inline h-4 w-4" />
-				File Upload
+				{m.livetv_form_m3u_fileTab()}
 			</button>
 			<button
 				class="tab {inputMode === 'freeiptv' ? 'tab-active' : ''}"
 				onclick={() => onInputModeChange('freeiptv')}
 			>
 				<Globe class="mr-2 inline h-4 w-4" />
-				Free IPTV
+				{m.livetv_form_m3u_freeIptvTab()}
 			</button>
 		</div>
 	{/if}
@@ -128,12 +131,12 @@
 	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
 		<!-- Left Column: Source -->
 		<div class="space-y-4">
-			<SectionHeader title="Playlist Source" />
+			<SectionHeader title={m.livetv_form_m3u_playlistSource()} />
 
 			{#if inputMode === 'url'}
 				<div class="form-control">
 					<label class="label py-1" for="m3u-url">
-						<span class="label-text">M3U Playlist URL</span>
+						<span class="label-text">{m.livetv_form_m3u_m3uUrlLabel()}</span>
 					</label>
 					<div class="relative">
 						<input
@@ -143,7 +146,7 @@
 							class:input-error={url.length > 0 && !isUrlValid()}
 							value={url}
 							oninput={(e) => onUrlChange(e.currentTarget.value)}
-							placeholder="http://example.com/playlist.m3u"
+							placeholder={m.livetv_form_m3u_m3uUrlPlaceholder()}
 						/>
 						{#if url.length > 0}
 							<div class="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2">
@@ -156,13 +159,13 @@
 						{/if}
 					</div>
 					<div class="label py-1">
-						<span class="label-text-alt text-xs">Direct link to M3U playlist file</span>
+						<span class="label-text-alt text-xs">{m.livetv_form_m3u_m3uUrlHint()}</span>
 					</div>
 				</div>
 			{:else if inputMode === 'file'}
 				<div class="form-control">
 					<label class="label py-1" for="m3u-file">
-						<span class="label-text">Upload M3U File</span>
+						<span class="label-text">{m.livetv_form_m3u_uploadFileLabel()}</span>
 					</label>
 					<input
 						id="m3u-file"
@@ -173,11 +176,13 @@
 					/>
 					{#if fileName}
 						<div class="label py-1">
-							<span class="label-text-alt text-xs text-success">Loaded: {fileName}</span>
+							<span class="label-text-alt text-xs text-success"
+								>{m.livetv_form_m3u_fileLoaded({ name: fileName })}</span
+							>
 						</div>
 					{:else}
 						<div class="label py-1">
-							<span class="label-text-alt text-xs">Select an M3U or M3U8 file</span>
+							<span class="label-text-alt text-xs">{m.livetv_form_m3u_fileHint()}</span>
 						</div>
 					{/if}
 				</div>
@@ -188,12 +193,12 @@
 
 		<!-- Right Column: Settings -->
 		<div class="space-y-4">
-			<SectionHeader title="Settings" />
+			<SectionHeader title={m.livetv_form_m3u_settings()} />
 
 			{#if inputMode === 'url'}
 				<div class="form-control">
 					<label class="label py-1" for="epg-url">
-						<span class="label-text">EPG URL (Optional)</span>
+						<span class="label-text">{m.livetv_form_m3u_epgUrlLabel()}</span>
 					</label>
 					<div class="relative">
 						<input
@@ -203,7 +208,7 @@
 							class:input-error={epgUrl.length > 0 && !isEpgUrlValid()}
 							value={epgUrl}
 							oninput={(e) => onEpgUrlChange(e.currentTarget.value)}
-							placeholder="http://example.com/epg.xml"
+							placeholder={m.livetv_form_m3u_epgUrlPlaceholder()}
 						/>
 						{#if epgUrl.length > 0}
 							<div class="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2">
@@ -216,7 +221,7 @@
 						{/if}
 					</div>
 					<div class="label py-1">
-						<span class="label-text-alt text-xs">XMLTV EPG URL for program guide data</span>
+						<span class="label-text-alt text-xs">{m.livetv_form_m3u_epgUrlHint()}</span>
 					</div>
 				</div>
 
@@ -227,12 +232,12 @@
 						checked={autoRefresh}
 						onchange={(e) => onAutoRefreshChange(e.currentTarget.checked)}
 					/>
-					<span class="label-text">Auto-refresh playlist</span>
+					<span class="label-text">{m.livetv_form_m3u_autoRefresh()}</span>
 				</label>
 			{:else if inputMode === 'file'}
 				<div class="form-control">
 					<label class="label py-1" for="epg-url">
-						<span class="label-text">EPG URL (Optional)</span>
+						<span class="label-text">{m.livetv_form_m3u_epgUrlLabel()}</span>
 					</label>
 					<div class="relative">
 						<input
@@ -242,7 +247,7 @@
 							class:input-error={epgUrl.length > 0 && !isEpgUrlValid()}
 							value={epgUrl}
 							oninput={(e) => onEpgUrlChange(e.currentTarget.value)}
-							placeholder="http://example.com/epg.xml"
+							placeholder={m.livetv_form_m3u_epgUrlPlaceholder()}
 						/>
 						{#if epgUrl.length > 0}
 							<div class="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2">
@@ -255,7 +260,7 @@
 						{/if}
 					</div>
 					<div class="label py-1">
-						<span class="label-text-alt text-xs">XMLTV EPG URL for program guide data</span>
+						<span class="label-text-alt text-xs">{m.livetv_form_m3u_epgUrlHint()}</span>
 					</div>
 				</div>
 			{/if}
@@ -267,7 +272,7 @@
 					checked={enabled}
 					onchange={(e) => onEnabledChange(e.currentTarget.checked)}
 				/>
-				<span class="label-text">Enabled</span>
+				<span class="label-text">{m.livetv_form_m3u_enabled()}</span>
 			</label>
 		</div>
 	</div>

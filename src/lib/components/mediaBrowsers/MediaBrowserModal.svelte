@@ -8,6 +8,7 @@
 	} from '$lib/server/notifications/mediabrowser/types';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import { SectionHeader, TestResult, ToggleSetting } from '$lib/components/ui/modal';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface MediaBrowserFormData {
 		name: string;
@@ -71,7 +72,9 @@
 	const nameTooLong = $derived(name.length > MAX_NAME_LENGTH);
 
 	// Derived
-	const modalTitle = $derived(mode === 'add' ? 'Add Media Server' : 'Edit Media Server');
+	const modalTitle = $derived(
+		mode === 'add' ? m.mediaBrowser_addServer() : m.mediaBrowser_editServer()
+	);
 	const hasApiKey = $derived(!!server?.id); // In edit mode, server has existing API key
 
 	// Reset form when modal opens or server changes
@@ -168,7 +171,7 @@
 	<!-- Server Type Selection (only in add mode when not selected) -->
 	{#if mode === 'add' && !serverType}
 		<div class="space-y-4">
-			<p class="text-base-content/70">Select the type of media server you want to add:</p>
+			<p class="text-base-content/70">{m.mediaBrowser_selectServerType()}</p>
 
 			<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
 				<button
@@ -178,8 +181,10 @@
 				>
 					<div class="card-body p-4">
 						<div class="flex-1">
-							<h3 class="font-semibold">Jellyfin</h3>
-							<p class="mt-1 text-sm text-base-content/60">Free and open source media server</p>
+							<h3 class="font-semibold">{m.mediaBrowser_serverType_jellyfin()}</h3>
+							<p class="mt-1 text-sm text-base-content/60">
+								{m.mediaBrowser_serverType_jellyfinDesc()}
+							</p>
 						</div>
 					</div>
 				</button>
@@ -191,8 +196,10 @@
 				>
 					<div class="card-body p-4">
 						<div class="flex-1">
-							<h3 class="font-semibold">Emby</h3>
-							<p class="mt-1 text-sm text-base-content/60">Personal media server</p>
+							<h3 class="font-semibold">{m.mediaBrowser_serverType_emby()}</h3>
+							<p class="mt-1 text-sm text-base-content/60">
+								{m.mediaBrowser_serverType_embyDesc()}
+							</p>
 						</div>
 					</div>
 				</button>
@@ -204,8 +211,10 @@
 				>
 					<div class="card-body p-4">
 						<div class="flex-1">
-							<h3 class="font-semibold">Plex</h3>
-							<p class="mt-1 text-sm text-base-content/60">Personal media server</p>
+							<h3 class="font-semibold">{m.mediaBrowser_serverType_plex()}</h3>
+							<p class="mt-1 text-sm text-base-content/60">
+								{m.mediaBrowser_serverType_plexDesc()}
+							</p>
 						</div>
 					</div>
 				</button>
@@ -228,7 +237,7 @@
 					</div>
 				</div>
 				<button type="button" class="btn btn-ghost btn-sm" onclick={() => (serverType = '')}>
-					Change Type
+					{m.action_change()}
 				</button>
 			</div>
 		{/if}
@@ -237,11 +246,11 @@
 		<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
 			<!-- Left Column: Connection -->
 			<div class="space-y-4">
-				<SectionHeader title="Connection" />
+				<SectionHeader title={m.mediaBrowser_connection()} />
 
 				<div class="form-control">
 					<label class="label py-1" for="name">
-						<span class="label-text">Name</span>
+						<span class="label-text">{m.common_name()}</span>
 					</label>
 					<input
 						id="name"
@@ -255,11 +264,11 @@
 						<span
 							class="label-text-alt text-xs {nameTooLong ? 'text-error' : 'text-base-content/60'}"
 						>
-							{name.length}/{MAX_NAME_LENGTH}
+							{m.mediaBrowser_nameLength({ current: name.length, max: MAX_NAME_LENGTH })}
 						</span>
 						{#if nameTooLong}
 							<span class="label-text-alt text-xs text-error"
-								>Max {MAX_NAME_LENGTH} characters.</span
+								>{m.mediaBrowser_nameTooLong({ max: MAX_NAME_LENGTH })}</span
 							>
 						{/if}
 					</div>
@@ -267,7 +276,7 @@
 
 				<div class="form-control">
 					<label class="label py-1" for="host">
-						<span class="label-text">Host</span>
+						<span class="label-text">{m.mediaBrowser_host()}</span>
 					</label>
 					<input
 						id="host"
@@ -277,16 +286,16 @@
 						placeholder={serverType === 'plex' ? 'http://localhost:32400' : 'http://localhost:8096'}
 					/>
 					<div class="label py-1">
-						<span class="label-text-alt text-xs"> Include http:// or https:// </span>
+						<span class="label-text-alt text-xs"> {m.mediaBrowser_hostHint()} </span>
 					</div>
 				</div>
 
 				<div class="form-control">
 					<label class="label py-1" for="apiKey">
 						<span class="label-text">
-							API Key
+							{m.mediaBrowser_apiKey()}
 							{#if mode === 'edit' && hasApiKey}
-								<span class="text-xs opacity-50">(blank to keep)</span>
+								<span class="text-xs opacity-50">({m.mediaBrowser_apiKeyKeep()})</span>
 							{/if}
 						</span>
 					</label>
@@ -297,49 +306,49 @@
 						bind:value={apiKey}
 						placeholder={mode === 'edit' && hasApiKey
 							? '********'
-							: 'Dashboard > API Keys > Create'}
+							: m.mediaBrowser_apiKeyPlaceholder()}
 					/>
 					<div class="label py-1">
 						<span class="label-text-alt text-xs">
 							{serverType === 'plex'
-								? 'Found in Plex account or server token settings'
-								: 'Found in Dashboard > API Keys'}
+								? m.mediaBrowser_apiKeyHelpPlex()
+								: m.mediaBrowser_apiKeyHelpGeneric()}
 						</span>
 					</div>
 				</div>
 
 				<label class="label cursor-pointer gap-2">
 					<input type="checkbox" class="checkbox checkbox-sm" bind:checked={enabled} />
-					<span class="label-text">Enabled</span>
+					<span class="label-text">{m.common_enabled()}</span>
 				</label>
 			</div>
 
 			<!-- Right Column: Settings -->
 			<div class="space-y-4">
-				<SectionHeader title="Notification Events" />
+				<SectionHeader title={m.mediaBrowser_notificationEvents()} />
 
 				<ToggleSetting
 					bind:checked={onImport}
-					label="On Import"
-					description="Notify when new media is imported"
+					label={m.mediaBrowser_event_import()}
+					description={m.mediaBrowser_event_importDesc()}
 				/>
 
 				<ToggleSetting
 					bind:checked={onUpgrade}
-					label="On Upgrade"
-					description="Notify when media is upgraded to better quality"
+					label={m.mediaBrowser_event_upgrade()}
+					description={m.mediaBrowser_event_upgradeDesc()}
 				/>
 
 				<ToggleSetting
 					bind:checked={onRename}
-					label="On Rename"
-					description="Notify when media files are renamed"
+					label={m.mediaBrowser_event_rename()}
+					description={m.mediaBrowser_event_renameDesc()}
 				/>
 
 				<ToggleSetting
 					bind:checked={onDelete_}
-					label="On Delete"
-					description="Notify when media is deleted"
+					label={m.mediaBrowser_event_delete()}
+					description={m.mediaBrowser_event_deleteDesc()}
 				/>
 			</div>
 		</div>
@@ -347,16 +356,15 @@
 		<!-- Path Mappings Section -->
 		<div class="mt-6 space-y-4">
 			<div class="flex items-center justify-between">
-				<SectionHeader title="Path Mappings" />
+				<SectionHeader title={m.mediaBrowser_pathMappings()} />
 				<button type="button" class="btn btn-ghost btn-sm" onclick={addPathMapping}>
 					<Plus class="h-4 w-4" />
-					Add Mapping
+					{m.mediaBrowser_addMapping()}
 				</button>
 			</div>
 
 			<p class="text-sm text-base-content/60">
-				Map local paths to remote paths if your media server runs in Docker or on a different
-				machine.
+				{m.mediaBrowser_pathMappingsDesc()}
 			</p>
 
 			{#if pathMappings.length > 0}
@@ -366,15 +374,15 @@
 							<input
 								type="text"
 								class="input-bordered input input-sm flex-1"
-								placeholder="Local path (e.g., /media)"
+								placeholder={m.mediaBrowser_localPathPlaceholder()}
 								value={mapping.localPath}
 								onchange={(e) => updatePathMapping(index, 'localPath', e.currentTarget.value)}
 							/>
-							<span class="text-base-content/50">to</span>
+							<span class="text-base-content/50">{m.mediaBrowser_to()}</span>
 							<input
 								type="text"
 								class="input-bordered input input-sm flex-1"
-								placeholder="Remote path (e.g., /data/media)"
+								placeholder={m.mediaBrowser_remotePathPlaceholder()}
 								value={mapping.remotePath}
 								onchange={(e) => updatePathMapping(index, 'remotePath', e.currentTarget.value)}
 							/>
@@ -382,6 +390,7 @@
 								type="button"
 								class="btn text-error btn-ghost btn-sm"
 								onclick={() => removePathMapping(index)}
+								aria-label={m.action_remove()}
 							>
 								<Trash2 class="h-4 w-4" />
 							</button>
@@ -396,7 +405,7 @@
 			<div class="mt-6 alert alert-error">
 				<XCircle class="h-5 w-5" />
 				<div>
-					<div class="font-medium">Failed to save</div>
+					<div class="font-medium">{m.mediaBrowser_failedToSave()}</div>
 					<div class="text-sm opacity-80">{error}</div>
 				</div>
 			</div>
@@ -413,7 +422,9 @@
 		<!-- Actions -->
 		<div class="modal-action">
 			{#if mode === 'edit' && onDelete}
-				<button class="btn mr-auto btn-outline btn-error" onclick={onDelete}>Delete</button>
+				<button class="btn mr-auto btn-outline btn-error" onclick={onDelete}
+					>{m.action_delete()}</button
+				>
 			{/if}
 
 			<button
@@ -430,10 +441,10 @@
 				{#if testing}
 					<Loader2 class="h-4 w-4 animate-spin" />
 				{/if}
-				Test
+				{m.action_test()}
 			</button>
 
-			<button class="btn btn-ghost" onclick={onClose}>Cancel</button>
+			<button class="btn btn-ghost" onclick={onClose}>{m.action_cancel()}</button>
 
 			<button
 				class="btn btn-primary"
@@ -448,7 +459,7 @@
 				{#if saving}
 					<Loader2 class="h-4 w-4 animate-spin" />
 				{/if}
-				Save
+				{m.action_save()}
 			</button>
 		</div>
 	{/if}

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { X, Download, Loader2, Subtitles, RefreshCw } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		selectedCount: number;
@@ -32,17 +33,17 @@
 			class="flex items-center gap-3 rounded-full border border-base-content/10 bg-base-300 px-4 py-2.5 shadow-xl sm:gap-4 sm:px-6 sm:py-3"
 		>
 			<span class="text-sm font-medium">
-				{selectedCount} episode{selectedCount !== 1 ? 's' : ''} selected
+				{m.library_bulkActionBar_episodesSelected({ count: selectedCount })}
 			</span>
 
 			<div class="flex items-center gap-2">
 				<button class="btn gap-2 btn-sm btn-primary" onclick={onSearch} disabled={searching}>
 					{#if searching}
 						<Loader2 size={16} class="animate-spin" />
-						Searching...
+						{m.common_searching()}
 					{:else}
 						<Download size={16} />
-						Search Selected
+						{m.library_bulkActionBar_searchSelected()}
 					{/if}
 				</button>
 
@@ -51,15 +52,15 @@
 						class="btn gap-2 btn-sm btn-secondary"
 						onclick={onSubtitleAutoSearch}
 						disabled={subtitleAutoSearching}
-						title="Auto-download subtitles for selected episodes"
+						title={m.library_bulkActionBar_autoDownloadTitle()}
 					>
 						{#if subtitleAutoSearching}
 							<Loader2 size={16} class="animate-spin" />
-							Downloading...
+							{m.common_downloading()}
 						{:else}
 							<Subtitles size={16} />
-							<span class="hidden sm:inline">Auto-download Subs</span>
-							<span class="sm:hidden">Subs</span>
+							<span class="hidden sm:inline">{m.library_bulkActionBar_autoDownloadSubs()}</span>
+							<span class="sm:hidden">{m.library_bulkActionBar_subsShort()}</span>
 						{/if}
 					</button>
 				{/if}
@@ -69,20 +70,24 @@
 						class="btn gap-2 btn-outline btn-sm"
 						onclick={onSubtitleSync}
 						disabled={subtitleSyncing}
-						title="Sync subtitles for selected episodes"
+						title={m.library_bulkActionBar_syncTitle()}
 					>
 						{#if subtitleSyncing}
 							<Loader2 size={16} class="animate-spin" />
-							Syncing...
+							{m.common_syncing()}
 						{:else}
 							<RefreshCw size={16} />
-							<span class="hidden sm:inline">Sync Subs</span>
-							<span class="sm:hidden">Sync</span>
+							<span class="hidden sm:inline">{m.library_bulkActionBar_syncSubs()}</span>
+							<span class="sm:hidden">{m.library_bulkActionBar_syncShort()}</span>
 						{/if}
 					</button>
 				{/if}
 
-				<button class="btn btn-circle btn-ghost btn-sm" onclick={onClear} title="Clear selection">
+				<button
+					class="btn btn-circle btn-ghost btn-sm"
+					onclick={onClear}
+					title={m.action_clearSelection()}
+				>
 					<X size={16} />
 				</button>
 			</div>

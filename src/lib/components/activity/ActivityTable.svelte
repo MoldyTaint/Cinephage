@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { SvelteSet } from 'svelte/reactivity';
+	import * as m from '$lib/paraglide/messages.js';
 	import {
 		isImportFailedActivity,
 		TASK_TYPE_LABELS,
@@ -199,18 +200,19 @@
 		queueActionLoadingRows.add(activity.id);
 		try {
 			await handler(activity.queueItemId);
-			if (action === 'pause') toasts.success('Download paused');
-			if (action === 'resume') toasts.success('Download resumed');
-			if (action === 'remove') toasts.success('Download removed');
+			if (action === 'pause') toasts.success(m.activity_detail_downloadPaused());
+			if (action === 'resume') toasts.success(m.activity_detail_downloadResumed());
+			if (action === 'remove') toasts.success(m.activity_detail_downloadRemoved());
 			if (action === 'retry') {
 				toasts.success(
 					activity.status === 'failed' && isImportFailedActivity(activity)
-						? 'Import retry initiated'
-						: 'Download retry initiated'
+						? m.activity_detail_importRetryInitiated()
+						: m.activity_detail_downloadRetryInitiated()
 				);
 			}
 		} catch (error) {
-			const message = error instanceof Error ? error.message : `Failed to ${action} download`;
+			const message =
+				error instanceof Error ? error.message : m.activity_table_failedToAction({ action });
 			toasts.error(message);
 		} finally {
 			queueActionLoadingRows.delete(activity.id);
@@ -239,8 +241,8 @@
 {#if activities.length === 0}
 	<div class="py-12 text-center text-base-content/60">
 		<Minus class="mx-auto mb-4 h-12 w-12 opacity-40" />
-		<p class="text-lg font-medium">No activity</p>
-		<p class="mt-1 text-sm">Download and search activity will appear here</p>
+		<p class="text-lg font-medium">{m.activity_table_noActivity()}</p>
+		<p class="mt-1 text-sm">{m.activity_table_noActivityHint()}</p>
 	</div>
 {:else if isMobile}
 	<!-- Mobile: Card View -->
@@ -369,10 +371,12 @@
 						<button
 							class="btn gap-1 btn-ghost btn-xs"
 							onclick={() => toggleFailedReason(activity.id)}
-							aria-label={isFailedReasonExpanded ? 'Hide failure reason' : 'Show failure reason'}
+							aria-label={isFailedReasonExpanded
+								? m.activity_table_hideReason()
+								: m.activity_table_showReason()}
 						>
 							<MessageSquare class="h-3 w-3" />
-							{isFailedReasonExpanded ? 'Hide reason' : 'Reason'}
+							{isFailedReasonExpanded ? m.activity_table_hideReason() : m.activity_table_reason()}
 						</button>
 						{#if isFailedReasonExpanded}
 							<div class="mt-2 rounded-md bg-base-300/60 p-2 text-xs text-base-content/70">
@@ -393,7 +397,7 @@
 								disabled={isQueueActionLoading}
 							>
 								<Pause class="h-3.5 w-3.5" />
-								Pause
+								{m.action_pause()}
 							</button>
 						{:else if activity.status === 'paused'}
 							<button
@@ -402,7 +406,7 @@
 								disabled={isQueueActionLoading}
 							>
 								<Play class="h-3.5 w-3.5" />
-								Resume
+								{m.action_resume()}
 							</button>
 						{/if}
 
@@ -413,7 +417,9 @@
 								disabled={isQueueActionLoading}
 							>
 								<RotateCcw class="h-3.5 w-3.5" />
-								{isImportFailedActivity(activity) ? 'Retry Import' : 'Retry'}
+								{isImportFailedActivity(activity)
+									? m.activity_detail_retryImport()
+									: m.common_retry()}
 							</button>
 						{/if}
 
@@ -423,7 +429,7 @@
 							disabled={isQueueActionLoading}
 						>
 							<Trash2 class="h-3.5 w-3.5" />
-							Remove
+							{m.action_remove()}
 						</button>
 					</div>
 				{/if}
@@ -435,10 +441,10 @@
 					>
 						{#if isExpanded}
 							<ChevronUp class="h-3 w-3" />
-							Hide timeline
+							{m.activity_table_hideTimeline()}
 						{:else}
 							<ChevronDown class="h-3 w-3" />
-							Show timeline
+							{m.activity_table_showTimeline()}
 						{/if}
 					</button>
 				{/if}
@@ -482,7 +488,7 @@
 									type="checkbox"
 									class="checkbox checkbox-xs"
 									checked={allSelectableSelected}
-									aria-label="Select all visible rows"
+									aria-label={m.activity_table_selectAllVisible()}
 									onclick={(e) => {
 										e.stopPropagation();
 										toggleSelectionAll(!allSelectableSelected);
@@ -497,7 +503,7 @@
 						onclick={() => handleSort('status')}
 					>
 						<span class="flex items-center gap-1">
-							Status
+							{m.common_status()}
 							{#if onSort}
 								{@const Icon = getSortIcon('status')}
 								<Icon class="h-3 w-3 opacity-50" />
@@ -509,7 +515,7 @@
 						onclick={() => handleSort('media')}
 					>
 						<span class="flex items-center gap-1">
-							Media
+							{m.activity_table_media()}
 							{#if onSort}
 								{@const Icon = getSortIcon('media')}
 								<Icon class="h-3 w-3 opacity-50" />
@@ -522,7 +528,7 @@
 							onclick={() => handleSort('release')}
 						>
 							<span class="flex items-center gap-1">
-								Release
+								{m.activity_table_release()}
 								{#if onSort}
 									{@const Icon = getSortIcon('release')}
 									<Icon class="h-3 w-3 opacity-50" />

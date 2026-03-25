@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { ArrowUpDown, Filter, X } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface SortOption {
 		value: string;
@@ -63,7 +64,7 @@
 	<div class="dropdown dropdown-end">
 		<button class="btn gap-2 btn-ghost btn-sm">
 			<ArrowUpDown class="h-4 w-4" />
-			<span class="hidden sm:inline">Sort</span>
+			<span class="hidden sm:inline">{m.action_sort()}</span>
 		</button>
 		<ul class="dropdown-content menu z-50 w-52 rounded-box bg-base-200 p-2 shadow-lg">
 			{#each sortOptions as option (option.value)}
@@ -86,7 +87,7 @@
 			onclick={() => (isFilterOpen = !isFilterOpen)}
 		>
 			<Filter class="h-4 w-4" />
-			<span class="hidden sm:inline">Filters</span>
+			<span class="hidden sm:inline">{m.action_filter()}</span>
 			{#if activeFilterCount > 0}
 				<span class="badge badge-sm">{activeFilterCount}</span>
 			{/if}
@@ -116,7 +117,7 @@
 
 				{#if hasActiveFilters}
 					<button class="btn w-full btn-ghost btn-sm" onclick={onClearFilters}>
-						Clear All Filters
+						{m.library_controls_clearAllFilters()}
 					</button>
 				{/if}
 			</div>

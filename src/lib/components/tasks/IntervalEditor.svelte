@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Pencil, Check, X } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 	import { toasts } from '$lib/stores/toast.svelte';
 
 	interface Props {

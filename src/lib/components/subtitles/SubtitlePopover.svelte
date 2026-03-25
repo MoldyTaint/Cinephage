@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { RefreshCw, Trash2, Search, Subtitles, Loader2, Clock3 } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 	import SubtitleBadge from './SubtitleBadge.svelte';
 	import SubtitleSyncBadge from './SubtitleSyncBadge.svelte';
 

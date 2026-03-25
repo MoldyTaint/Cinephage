@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import { X, Search, Loader2, RefreshCw, Subtitles } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 	import SubtitleSearchResultRow from './SubtitleSearchResultRow.svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 

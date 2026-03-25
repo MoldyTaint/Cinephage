@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { Loader2, X, Plus, Sparkles } from 'lucide-svelte';
 	import type { SmartListFilters } from '$lib/server/db/schema.js';
 
@@ -57,32 +58,32 @@
 	const filterPresets: FilterPreset[] = [
 		{
 			id: 'popular',
-			name: 'Popular',
-			description: 'Most popular right now',
+			name: m.smartlists_filter_popular(),
+			description: m.smartlists_filter_popularDesc(),
 			filters: {},
 			sortBy: 'popularity.desc',
 			appliesTo: ['movie', 'tv']
 		},
 		{
 			id: 'top-rated',
-			name: 'Top Rated',
-			description: 'Highest rated',
+			name: m.smartlists_filter_topRated(),
+			description: m.smartlists_filter_topRatedDesc(),
 			filters: { voteCountMin: 100 },
 			sortBy: 'vote_average.desc',
 			appliesTo: ['movie', 'tv']
 		},
 		{
 			id: 'new-releases',
-			name: 'New Releases',
-			description: 'Recently released',
+			name: m.smartlists_filter_newReleases(),
+			description: m.smartlists_filter_newReleasesDesc(),
 			filters: {},
 			sortBy: 'primary_release_date.desc',
 			appliesTo: ['movie']
 		},
 		{
 			id: 'new-episodes',
-			name: 'New Episodes',
-			description: 'Recently aired',
+			name: m.smartlists_filter_newEpisodes(),
+			description: m.smartlists_filter_newEpisodesDesc(),
 			filters: {},
 			sortBy: 'first_air_date.desc',
 			appliesTo: ['tv']
@@ -371,7 +372,7 @@
 		<div class="rounded-lg border border-base-300 bg-base-100 p-4">
 			<div class="mb-3 flex items-center gap-2">
 				<Sparkles class="h-4 w-4 text-primary" />
-				<span class="font-medium">Quick Presets</span>
+				<span class="font-medium">{m.smartlists_filter_quickPresets()}</span>
 			</div>
 			<div class="flex flex-wrap gap-2">
 				{#each filterPresets.filter((p) => p.appliesTo.includes(mediaType)) as preset (preset.id)}
@@ -395,7 +396,7 @@
 						filters = {};
 					}}
 				>
-					Clear Preset
+					{m.smartlists_filter_clearPreset()}
 				</button>
 			{/if}
 		</div>
@@ -408,7 +409,7 @@
 			checked={openSection === 'basic'}
 			onchange={() => toggleSection('basic')}
 		/>
-		<div class="collapse-title font-medium">Basic Filters</div>
+		<div class="collapse-title font-medium">{m.smartlists_filter_basicFilters()}</div>
 		<div class="collapse-content">
 			<div class="space-y-4 pt-2">
 				<!-- Genres Include -->
@@ -416,7 +417,7 @@
 					<div class="label py-1">
 						<span
 							class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-							>Include Genres</span
+							>{m.smartlists_filter_includeGenres()}</span
 						>
 						{#if filters.withGenres?.length}
 							<span class="badge badge-sm badge-primary">{filters.withGenres.length}</span>
@@ -425,7 +426,7 @@
 					{#if loadingGenres}
 						<div class="flex items-center gap-2 py-2">
 							<Loader2 class="h-4 w-4 animate-spin" />
-							<span class="text-sm text-base-content/60">Loading genres...</span>
+							<span class="text-sm text-base-content/60">{m.smartlists_filter_loading()}</span>
 						</div>
 					{:else}
 						<div class="flex flex-wrap gap-1.5">
@@ -449,7 +450,7 @@
 					<div class="label py-1">
 						<span
 							class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-							>Exclude Genres</span
+							>{m.smartlists_filter_excludeGenres()}</span
 						>
 						{#if filters.withoutGenres?.length}
 							<span class="badge badge-sm badge-error">{filters.withoutGenres.length}</span>
@@ -476,7 +477,7 @@
 						<div class="label py-1">
 							<span
 								class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-								>Genre Match Mode</span
+								>{m.smartlists_filter_genreMatchMode()}</span
 							>
 						</div>
 						<div class="flex gap-4">
@@ -489,7 +490,7 @@
 									checked={filters.genreMode !== 'and'}
 									onchange={() => (filters.genreMode = 'or')}
 								/>
-								<span class="text-sm">Match any</span>
+								<span class="text-sm">{m.smartlists_filter_matchAny()}</span>
 							</label>
 							<label class="label cursor-pointer gap-2">
 								<input
@@ -500,7 +501,7 @@
 									checked={filters.genreMode === 'and'}
 									onchange={() => (filters.genreMode = 'and')}
 								/>
-								<span class="text-sm">Match all</span>
+								<span class="text-sm">{m.smartlists_filter_matchAll()}</span>
 							</label>
 						</div>
 					</div>
@@ -512,7 +513,7 @@
 						<label class="label py-1" for="yearMin">
 							<span
 								class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-								>Year From</span
+								>{m.smartlists_filter_yearFrom()}</span
 							>
 						</label>
 						<input
@@ -529,7 +530,7 @@
 						<label class="label py-1" for="yearMax">
 							<span
 								class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-								>Year To</span
+								>{m.smartlists_filter_yearTo()}</span
 							>
 						</label>
 						<input
@@ -550,7 +551,7 @@
 						<label class="label py-1" for="ratingMin">
 							<span
 								class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-								>Min Rating</span
+								>{m.smartlists_filter_minRating()}</span
 							>
 						</label>
 						<input
@@ -568,7 +569,7 @@
 						<label class="label py-1" for="voteCount">
 							<span
 								class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-								>Min Votes</span
+								>{m.smartlists_filter_minVotes()}</span
 							>
 						</label>
 						<input
@@ -592,7 +593,7 @@
 			checked={openSection === 'content'}
 			onchange={() => toggleSection('content')}
 		/>
-		<div class="collapse-title font-medium">Content</div>
+		<div class="collapse-title font-medium">{m.smartlists_filter_content()}</div>
 		<div class="collapse-content">
 			<div class="space-y-4 pt-2">
 				<!-- Keywords -->
@@ -600,7 +601,7 @@
 					<div class="label py-1">
 						<span
 							class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-							>Keywords</span
+							>{m.smartlists_filter_keywords()}</span
 						>
 					</div>
 					<div class="relative">
@@ -608,7 +609,7 @@
 							type="text"
 							bind:value={keywordQuery}
 							oninput={handleKeywordInput}
-							placeholder="Search keywords..."
+							placeholder={m.smartlists_filter_keywordsPlaceholder()}
 							class="input-bordered input input-sm w-full"
 						/>
 						{#if searchingKeywords}
@@ -629,7 +630,7 @@
 											type="button"
 											class="btn btn-xs btn-success"
 											onclick={() => addKeyword(keyword, false)}
-											title="Include"
+											title={m.smartlists_filter_include()}
 										>
 											<Plus class="h-3 w-3" />
 										</button>
@@ -637,7 +638,7 @@
 											type="button"
 											class="btn btn-xs btn-error"
 											onclick={() => addKeyword(keyword, true)}
-											title="Exclude"
+											title={m.smartlists_filter_exclude()}
 										>
 											<X class="h-3 w-3" />
 										</button>
@@ -666,7 +667,7 @@
 					<label class="label py-1" for="language">
 						<span
 							class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-							>Original Language</span
+							>{m.smartlists_filter_originalLanguage()}</span
 						>
 					</label>
 					<select
@@ -674,9 +675,9 @@
 						bind:value={filters.withOriginalLanguage}
 						class="select-bordered select w-full select-sm"
 					>
-						<option value="">Any Language</option>
+						<option value="">{m.smartlists_filter_anyLanguage()}</option>
 						{#if loadingLanguages}
-							<option disabled>Loading...</option>
+							<option disabled>{m.smartlists_filter_loading()}</option>
 						{:else}
 							{#each languages as lang (lang.iso_639_1)}
 								<option value={lang.iso_639_1}>{lang.english_name}</option>
@@ -691,7 +692,7 @@
 						<label class="label py-1" for="runtimeMin">
 							<span
 								class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-								>Min Runtime</span
+								>{m.smartlists_filter_minRuntime()}</span
 							>
 						</label>
 						<input
@@ -707,7 +708,7 @@
 						<label class="label py-1" for="runtimeMax">
 							<span
 								class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-								>Max Runtime</span
+								>{m.smartlists_filter_maxRuntime()}</span
 							>
 						</label>
 						<input
@@ -726,7 +727,7 @@
 					<label class="label py-1" for="certification">
 						<span
 							class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-							>Age Rating</span
+							>{m.smartlists_filter_ageRating()}</span
 						>
 					</label>
 					<select
@@ -734,9 +735,9 @@
 						bind:value={filters.certification}
 						class="select-bordered select w-full select-sm"
 					>
-						<option value="">Any Rating</option>
+						<option value="">{m.smartlists_filter_anyRating()}</option>
 						{#if loadingCertifications}
-							<option disabled>Loading...</option>
+							<option disabled>{m.smartlists_filter_loading()}</option>
 						{:else}
 							{#each certifications as cert (cert.certification)}
 								<option value={cert.certification}>{cert.certification}</option>
@@ -755,14 +756,14 @@
 			checked={openSection === 'people'}
 			onchange={() => toggleSection('people')}
 		/>
-		<div class="collapse-title font-medium">People</div>
+		<div class="collapse-title font-medium">{m.smartlists_filter_people()}</div>
 		<div class="collapse-content">
 			<div class="space-y-4 pt-2">
 				<div class="form-control">
 					<div class="label py-1">
 						<span
 							class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-							>Cast & Crew</span
+							>{m.smartlists_filter_castCrew()}</span
 						>
 					</div>
 					<div class="relative">
@@ -770,7 +771,7 @@
 							type="text"
 							bind:value={peopleQuery}
 							oninput={handlePeopleInput}
-							placeholder="Search actors, directors..."
+							placeholder={m.smartlists_filter_castCrewPlaceholder()}
 							class="input-bordered input input-sm w-full"
 						/>
 						{#if searchingPeople}
@@ -807,14 +808,14 @@
 											class="btn btn-xs btn-primary"
 											onclick={() => addPerson(person, 'cast')}
 										>
-											Cast
+											{m.smartlists_filter_cast()}
 										</button>
 										<button
 											type="button"
 											class="btn btn-xs btn-secondary"
 											onclick={() => addPerson(person, 'crew')}
 										>
-											Crew
+											{m.smartlists_filter_crew()}
 										</button>
 									</div>
 								</div>
@@ -848,7 +849,7 @@
 			checked={openSection === 'platform'}
 			onchange={() => toggleSection('platform')}
 		/>
-		<div class="collapse-title font-medium">Streaming Platforms</div>
+		<div class="collapse-title font-medium">{m.smartlists_filter_streamingPlatforms()}</div>
 		<div class="collapse-content">
 			<div class="space-y-4 pt-2">
 				<!-- Watch Region -->
@@ -856,7 +857,7 @@
 					<label class="label py-1" for="watchRegion">
 						<span
 							class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-							>Region</span
+							>{m.smartlists_filter_region()}</span
 						>
 					</label>
 					<select
@@ -883,7 +884,7 @@
 					<div class="label py-1">
 						<span
 							class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-							>Available On</span
+							>{m.smartlists_filter_availableOn()}</span
 						>
 						{#if filters.withWatchProviders?.length}
 							<span class="badge badge-sm badge-primary">{filters.withWatchProviders.length}</span>
@@ -892,7 +893,7 @@
 					{#if loadingProviders}
 						<div class="flex items-center gap-2 py-2">
 							<Loader2 class="h-4 w-4 animate-spin" />
-							<span class="text-sm text-base-content/60">Loading providers...</span>
+							<span class="text-sm text-base-content/60">{m.smartlists_filter_loading()}</span>
 						</div>
 					{:else}
 						<div class="grid grid-cols-5 gap-2 sm:grid-cols-6">
@@ -925,14 +926,14 @@
 	{#if mediaType === 'tv'}
 		<div class="collapse-arrow collapse rounded-lg border border-base-300 bg-base-100">
 			<input type="checkbox" checked={openSection === 'tv'} onchange={() => toggleSection('tv')} />
-			<div class="collapse-title font-medium">TV Show Status</div>
+			<div class="collapse-title font-medium">{m.smartlists_filter_tvShowStatus()}</div>
 			<div class="collapse-content">
 				<div class="pt-2">
 					<div class="form-control">
 						<label class="label py-1" for="tvStatus">
 							<span
 								class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-								>Show Status</span
+								>{m.smartlists_filter_showStatus()}</span
 							>
 						</label>
 						<select
@@ -940,13 +941,13 @@
 							bind:value={filters.withStatus}
 							class="select-bordered select w-full select-sm"
 						>
-							<option value="">Any Status</option>
-							<option value="0">Returning Series</option>
-							<option value="1">Planned</option>
-							<option value="2">In Production</option>
-							<option value="3">Ended</option>
-							<option value="4">Canceled</option>
-							<option value="5">Pilot</option>
+							<option value="">{m.smartlists_filter_anyStatus()}</option>
+							<option value="0">{m.smartlists_filter_returningSeries()}</option>
+							<option value="1">{m.smartlists_filter_planned()}</option>
+							<option value="2">{m.smartlists_filter_inProduction()}</option>
+							<option value="3">{m.smartlists_filter_ended()}</option>
+							<option value="4">{m.smartlists_filter_canceled()}</option>
+							<option value="5">{m.smartlists_filter_pilot()}</option>
 						</select>
 					</div>
 				</div>

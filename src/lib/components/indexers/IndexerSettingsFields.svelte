@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { DefinitionSetting } from '$lib/types/indexer';
+	import * as m from '$lib/paraglide/messages.js';
 	import { HelpCircle, Info, Cookie, Shield, User } from 'lucide-svelte';
 
 	interface Props {

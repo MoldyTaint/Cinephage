@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { ProductionCompany } from '$lib/types/tmdb';
 	import TmdbImage from './TmdbImage.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let {
 		companies,
@@ -34,7 +35,7 @@
 
 		{#if hasMore && !showAll}
 			<button class="text-sm text-primary hover:underline" onclick={() => (showAll = true)}>
-				+{companies.length - maxDisplay} more
+				{m.tmdb_productionCompanies_more({ count: companies.length - maxDisplay })}
 			</button>
 		{/if}
 	</div>

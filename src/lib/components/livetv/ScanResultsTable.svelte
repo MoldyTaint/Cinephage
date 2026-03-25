@@ -12,6 +12,7 @@
 	} from 'lucide-svelte';
 	import { onMount } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface ScanResult {
 		id: string;
@@ -71,12 +72,13 @@
 
 		try {
 			const response = await fetch(`/api/livetv/portals/${portalId}/scan/results`);
-			if (!response.ok) throw new Error('Failed to load results');
+			if (!response.ok) throw new Error(m.livetv_scanResults_failedToLoadResults());
 			const result = await response.json();
-			if (!result.success) throw new Error(result.error || 'Failed to load results');
+			if (!result.success)
+				throw new Error(result.error || m.livetv_scanResults_failedToLoadResults());
 			results = result.results || [];
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load results';
+			error = e instanceof Error ? e.message : m.livetv_scanResults_failedToLoadResults();
 		} finally {
 			loading = false;
 		}
@@ -112,14 +114,14 @@
 
 			if (!response.ok) {
 				const data = await response.json();
-				throw new Error(data.error || 'Failed to approve results');
+				throw new Error(data.error || m.livetv_scanResults_failedToApprove());
 			}
 
 			selectedIds.clear();
 			await loadResults();
 			onAccountsCreated();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to approve results';
+			error = e instanceof Error ? e.message : m.livetv_scanResults_failedToApprove();
 		} finally {
 			approving = false;
 		}
@@ -138,13 +140,13 @@
 
 			if (!response.ok) {
 				const data = await response.json();
-				throw new Error(data.error || 'Failed to ignore results');
+				throw new Error(data.error || m.livetv_scanResults_failedToIgnore());
 			}
 
 			selectedIds.clear();
 			await loadResults();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to ignore results';
+			error = e instanceof Error ? e.message : m.livetv_scanResults_failedToIgnore();
 		} finally {
 			ignoring = false;
 		}
@@ -159,12 +161,12 @@
 
 			if (!response.ok) {
 				const data = await response.json();
-				throw new Error(data.error || 'Failed to clear results');
+				throw new Error(data.error || m.livetv_scanResults_failedToClear());
 			}
 
 			await loadResults();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to clear results';
+			error = e instanceof Error ? e.message : m.livetv_scanResults_failedToClear();
 		} finally {
 			clearing = false;
 		}
@@ -184,43 +186,49 @@
 	}
 
 	function getExpiryStatus(expiresAt: string | null): { class: string; text: string } {
-		if (!expiresAt) return { class: 'badge-ghost', text: 'Unknown' };
+		if (!expiresAt) return { class: 'badge-ghost', text: m.livetv_scanResults_statusUnknown() };
 
 		const expiry = new Date(expiresAt);
 		const now = new Date();
 		const daysUntilExpiry = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
 		if (daysUntilExpiry < 0) {
-			return { class: 'badge-error', text: 'Expired' };
+			return { class: 'badge-error', text: m.livetv_scanResults_expiryExpired() };
 		}
 		if (daysUntilExpiry < 7) {
-			return { class: 'badge-warning', text: `${daysUntilExpiry}d left` };
+			return {
+				class: 'badge-warning',
+				text: m.livetv_scanResults_expiryDaysLeft({ count: daysUntilExpiry })
+			};
 		}
 		if (daysUntilExpiry < 30) {
-			return { class: 'badge-info', text: `${daysUntilExpiry}d left` };
+			return {
+				class: 'badge-info',
+				text: m.livetv_scanResults_expiryDaysLeft({ count: daysUntilExpiry })
+			};
 		}
-		return { class: 'badge-success', text: 'Active' };
+		return { class: 'badge-success', text: m.livetv_scanResults_expiryActive() };
 	}
 
 	function getAccountStatusBadge(status: string | null): { class: string; text: string } {
 		switch (status) {
 			case 'active':
-				return { class: 'badge-success', text: 'Active' };
+				return { class: 'badge-success', text: m.livetv_scanResults_statusActive() };
 			case 'expired':
-				return { class: 'badge-error', text: 'Expired' };
+				return { class: 'badge-error', text: m.livetv_scanResults_statusExpired() };
 			default:
-				return { class: 'badge-ghost', text: 'Unknown' };
+				return { class: 'badge-ghost', text: m.livetv_scanResults_statusUnknown() };
 		}
 	}
 
 	function getResultStatusBadge(status: string): { class: string; text: string } {
 		switch (status) {
 			case 'pending':
-				return { class: 'badge-info', text: 'Pending' };
+				return { class: 'badge-info', text: m.livetv_scanResults_statusPending() };
 			case 'approved':
-				return { class: 'badge-success', text: 'Approved' };
+				return { class: 'badge-success', text: m.livetv_scanResults_statusApproved() };
 			case 'ignored':
-				return { class: 'badge-ghost', text: 'Ignored' };
+				return { class: 'badge-ghost', text: m.livetv_scanResults_statusIgnored() };
 			default:
 				return { class: 'badge-ghost', text: status };
 		}
@@ -235,9 +243,12 @@
 				<Tv class="h-5 w-5 text-primary" />
 			</div>
 			<div>
-				<h3 class="text-lg font-bold">Scan Results</h3>
+				<h3 class="text-lg font-bold">{m.livetv_scanResults_title()}</h3>
 				<div class="text-sm text-base-content/60">
-					{pendingResults.length} pending, {results.length} total
+					{m.livetv_scanResults_pendingTotal({
+						pending: pendingResults.length,
+						total: results.length
+					})}
 				</div>
 			</div>
 		</div>
@@ -251,7 +262,7 @@
 			</button>
 			<button class="btn btn-ghost btn-sm" onclick={onClose}>
 				<X class="h-4 w-4" />
-				Close
+				{m.livetv_scanResults_closeButton()}
 			</button>
 		</div>
 	</div>
@@ -262,32 +273,34 @@
 			class="btn btn-sm {statusFilter === 'pending' ? 'btn-primary' : 'btn-ghost'}"
 			onclick={() => (statusFilter = 'pending')}
 		>
-			Pending ({pendingResults.length})
+			{m.livetv_scanResults_pendingTab({ count: pendingResults.length })}
 		</button>
 		<button
 			class="btn btn-sm {statusFilter === 'approved' ? 'btn-primary' : 'btn-ghost'}"
 			onclick={() => (statusFilter = 'approved')}
 		>
-			Approved
+			{m.livetv_scanResults_approvedTab()}
 		</button>
 		<button
 			class="btn btn-sm {statusFilter === 'ignored' ? 'btn-primary' : 'btn-ghost'}"
 			onclick={() => (statusFilter = 'ignored')}
 		>
-			Ignored
+			{m.livetv_scanResults_ignoredTab()}
 		</button>
 		<button
 			class="btn btn-sm {statusFilter === 'all' ? 'btn-primary' : 'btn-ghost'}"
 			onclick={() => (statusFilter = 'all')}
 		>
-			All
+			{m.livetv_scanResults_allTab()}
 		</button>
 	</div>
 
 	<!-- Bulk Actions -->
 	{#if someSelected && statusFilter === 'pending'}
 		<div class="mb-4 flex items-center gap-3 rounded-lg bg-primary/10 p-3">
-			<span class="text-sm font-medium">{selectedIds.size} selected</span>
+			<span class="text-sm font-medium"
+				>{m.livetv_scanResults_selectedCount({ count: selectedIds.size })}</span
+			>
 			<button
 				class="btn btn-sm btn-success"
 				onclick={approveSelected}
@@ -298,7 +311,7 @@
 				{:else}
 					<CheckCheck class="h-4 w-4" />
 				{/if}
-				Approve Selected
+				{m.livetv_scanResults_approveSelected()}
 			</button>
 			<button
 				class="btn btn-ghost btn-sm"
@@ -310,7 +323,7 @@
 				{:else}
 					<XCircle class="h-4 w-4" />
 				{/if}
-				Ignore Selected
+				{m.livetv_scanResults_ignoreSelected()}
 			</button>
 		</div>
 	{/if}
@@ -324,7 +337,7 @@
 				{:else}
 					<Trash2 class="h-4 w-4" />
 				{/if}
-				Clear Ignored Results
+				{m.livetv_scanResults_clearIgnored()}
 			</button>
 		</div>
 	{/if}
@@ -342,16 +355,16 @@
 	{:else if filteredResults.length === 0}
 		<div class="py-8 text-center text-base-content/60">
 			<Tv class="mx-auto mb-4 h-12 w-12 opacity-40" />
-			<p class="text-lg font-medium">No results found</p>
+			<p class="text-lg font-medium">{m.livetv_scanResults_noResultsTitle()}</p>
 			<p class="mt-1 text-sm">
 				{#if statusFilter === 'pending'}
-					No pending accounts to review
+					{m.livetv_scanResults_noPending()}
 				{:else if statusFilter === 'approved'}
-					No approved accounts yet
+					{m.livetv_scanResults_noApproved()}
 				{:else if statusFilter === 'ignored'}
-					No ignored accounts
+					{m.livetv_scanResults_noIgnored()}
 				{:else}
-					No scan results available
+					{m.livetv_scanResults_noResultsAvailable()}
 				{/if}
 			</p>
 		</div>
@@ -370,16 +383,16 @@
 								/>
 							</th>
 						{/if}
-						<th>MAC Address</th>
-						<th>Channels</th>
-						<th>Expires</th>
-						<th>Account</th>
+						<th>{m.livetv_scanResults_macAddressCol()}</th>
+						<th>{m.livetv_scanResults_channelsCol()}</th>
+						<th>{m.livetv_scanResults_expiresCol()}</th>
+						<th>{m.livetv_scanResults_accountCol()}</th>
 						{#if statusFilter !== 'pending'}
-							<th>Status</th>
+							<th>{m.livetv_scanResults_statusCol()}</th>
 						{/if}
-						<th>Discovered</th>
+						<th>{m.livetv_scanResults_discoveredCol()}</th>
 						{#if statusFilter === 'pending'}
-							<th class="text-right">Actions</th>
+							<th class="text-right">{m.livetv_scanResults_actionsCol()}</th>
 						{/if}
 					</tr>
 				</thead>
@@ -406,11 +419,11 @@
 								{#if result.channelCount !== null}
 									<div class="flex flex-col gap-1">
 										<span class="badge badge-ghost badge-sm">
-											{result.channelCount.toLocaleString()} ch
+											{m.livetv_scanResults_channelsCount({ count: result.channelCount })}
 										</span>
 										{#if result.categoryCount !== null}
 											<span class="badge badge-outline badge-sm">
-												{result.categoryCount} cat
+												{m.livetv_scanResults_categoriesCount({ count: result.categoryCount })}
 											</span>
 										{/if}
 									</div>
@@ -439,7 +452,7 @@
 								</span>
 								{#if result.playbackLimit}
 									<div class="mt-1 text-xs text-base-content/50">
-										{result.playbackLimit} stream{result.playbackLimit !== 1 ? 's' : ''}
+										{m.livetv_scanResults_streamsCount({ count: result.playbackLimit })}
 									</div>
 								{/if}
 							</td>
@@ -466,7 +479,7 @@
 												approveSelected();
 											}}
 											disabled={approving || ignoring}
-											title="Approve"
+											title={m.livetv_scanResults_approveTitle()}
 										>
 											<Check class="h-4 w-4" />
 										</button>
@@ -478,7 +491,7 @@
 												ignoreSelected();
 											}}
 											disabled={approving || ignoring}
-											title="Ignore"
+											title={m.livetv_scanResults_ignoreTitle()}
 										>
 											<X class="h-4 w-4" />
 										</button>

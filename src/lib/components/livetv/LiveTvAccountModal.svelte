@@ -12,6 +12,7 @@
 		LiveTvProviderType,
 		LiveTvAccountTestResult
 	} from '$lib/types/livetv';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		open: boolean;
@@ -96,7 +97,9 @@
 	let testResult = $state<LiveTvAccountTestResult | null>(null);
 
 	// Derived
-	const modalTitle = $derived(mode === 'add' ? 'Add Live TV Account' : 'Edit Live TV Account');
+	const modalTitle = $derived(
+		mode === 'add' ? m.livetv_accountModal_addTitle() : m.livetv_accountModal_editTitle()
+	);
 	const providerDef = $derived(selectedProvider ? getProviderDefinition(selectedProvider) : null);
 	const isIptvOrgAccount = $derived(account?.providerType === 'iptvorg');
 
@@ -246,20 +249,24 @@
 
 	function getSuccessMessage(result: LiveTvAccountTestResult | null): string {
 		if (!result?.profile) {
-			return 'Connection successful!';
+			return m.livetv_accountModal_testSuccess();
 		}
 
-		const statuses = [result.profile.streamVerified ? 'Stream verified' : 'Stream not verified'];
+		const statuses = [
+			result.profile.streamVerified
+				? m.livetv_accountModal_streamVerified()
+				: m.livetv_accountModal_streamNotVerified()
+		];
 		const epgStatus = result.profile.epg?.status;
 		if (epgStatus === 'reachable') {
-			statuses.push('EPG reachable');
+			statuses.push(m.livetv_accountModal_epgReachable());
 		} else if (epgStatus === 'unreachable') {
-			statuses.push('EPG unreachable');
+			statuses.push(m.livetv_accountModal_epgUnreachable());
 		} else if (epgStatus === 'not_configured') {
-			statuses.push('EPG not configured');
+			statuses.push(m.livetv_accountModal_epgNotConfigured());
 		}
 
-		return `Connection successful (${statuses.join(' • ')})`;
+		return m.livetv_accountModal_testSuccessWithStatus({ statuses: statuses.join(' • ') });
 	}
 
 	function getSuccessDetails(result: LiveTvAccountTestResult | null): string | undefined {
@@ -268,23 +275,27 @@
 		}
 
 		const details = [
-			`${result.profile.channelCount.toLocaleString()} channels`,
-			`${result.profile.categoryCount.toLocaleString()} categories`
+			m.livetv_accountModal_channelCount({ count: result.profile.channelCount }),
+			m.livetv_accountModal_categoryCount({ count: result.profile.categoryCount })
 		];
 
 		if (result.profile.expiresAt) {
-			details.push(`Expires: ${new Date(result.profile.expiresAt).toLocaleDateString()}`);
+			details.push(
+				m.livetv_accountModal_expires({
+					date: new Date(result.profile.expiresAt).toLocaleDateString(undefined)
+				})
+			);
 		}
 
 		const epgStatus = result.profile.epg?.status;
 		if (epgStatus === 'reachable') {
 			details.push(
 				result.profile.epg?.source === 'playlist-header'
-					? 'EPG source: playlist header'
-					: 'EPG source: configured URL'
+					? m.livetv_accountModal_epgSourcePlaylist()
+					: m.livetv_accountModal_epgSourceUrl()
 			);
 		} else if (epgStatus === 'unreachable' && result.profile.epg?.error) {
-			details.push(`EPG error: ${result.profile.epg.error}`);
+			details.push(m.livetv_accountModal_epgError({ error: result.profile.epg.error }));
 		}
 
 		return details.join(' • ');
@@ -351,7 +362,7 @@
 						class="btn btn-ghost btn-sm"
 						onclick={() => (selectedProvider = '')}
 					>
-						Change
+						{m.livetv_accountModal_changeButton()}
 					</button>
 				{/if}
 			</div>
@@ -423,7 +434,7 @@
 			<div class="mt-6 alert alert-error">
 				<XCircle class="h-5 w-5" />
 				<div>
-					<div class="font-medium">Failed to save</div>
+					<div class="font-medium">{m.livetv_accountModal_failedToSave()}</div>
 					<div class="text-sm opacity-80">{error}</div>
 				</div>
 			</div>

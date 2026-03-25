@@ -3,6 +3,7 @@
 	import type { LibraryMovie } from '$lib/types/library';
 	import { ModalWrapper, ModalFooter } from '$lib/components/ui/modal';
 	import { FormCheckbox } from '$lib/components/ui/form';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface QualityProfile {
 		id: string;
@@ -63,14 +64,26 @@
 	});
 
 	const availabilityOptions = [
-		{ value: 'announced', label: 'Announced', description: 'Search as soon as movie is announced' },
-		{ value: 'inCinemas', label: 'In Cinemas', description: 'Search when movie is in cinemas' },
+		{
+			value: 'announced',
+			label: m.library_availability_announcedLabel(),
+			description: m.library_availability_announcedDesc()
+		},
+		{
+			value: 'inCinemas',
+			label: m.library_availability_inCinemasLabel(),
+			description: m.library_availability_inCinemasDesc()
+		},
 		{
 			value: 'released',
-			label: 'Released',
-			description: 'Search when movie is released on disc/streaming'
+			label: m.library_availability_releasedLabel(),
+			description: m.library_availability_releasedDesc()
 		},
-		{ value: 'preDb', label: 'PreDB', description: 'Search when movie appears on PreDB' }
+		{
+			value: 'preDb',
+			label: m.library_availability_preDbLabel(),
+			description: m.library_availability_preDbDesc()
+		}
 	];
 
 	// Get profile data for labels/description
@@ -81,7 +94,7 @@
 	);
 
 	function formatBytes(bytes: number | null): string {
-		if (!bytes) return 'Unknown';
+		if (!bytes) return m.common_unknown();
 		const k = 1024;
 		const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
 		const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -102,7 +115,7 @@
 <ModalWrapper {open} {onClose} maxWidth="lg" labelledBy="movie-edit-modal-title">
 	<!-- Header -->
 	<div class="mb-4 flex items-center justify-between">
-		<h3 id="movie-edit-modal-title" class="text-lg font-bold">Edit Movie</h3>
+		<h3 id="movie-edit-modal-title" class="text-lg font-bold">{m.library_editMovie_title()}</h3>
 		<button class="btn btn-circle btn-ghost btn-sm" onclick={onClose}>
 			<X class="h-4 w-4" />
 		</button>
@@ -121,30 +134,34 @@
 		<!-- Monitored -->
 		<FormCheckbox
 			bind:checked={monitored}
-			label="Monitored"
-			description="Search for new releases and upgrades"
+			label={m.common_monitored()}
+			description={m.library_editMovie_monitoredDesc()}
 			variant="toggle"
 		/>
 
 		<!-- Wants Subtitles -->
 		<FormCheckbox
 			bind:checked={wantsSubtitles}
-			label="Auto-Download Subtitles"
-			description="Automatically search and download subtitles"
+			label={m.library_editMovie_autoDownloadSubtitles()}
+			description={m.library_editMovie_autoDownloadSubtitlesDesc()}
 			variant="toggle"
 		/>
 
 		<!-- Quality Profile -->
 		<div class="form-control">
 			<label class="label" for="movie-quality-profile">
-				<span class="label-text font-medium">Quality Profile</span>
+				<span class="label-text font-medium">{m.common_qualityProfile()}</span>
 			</label>
 			<select
 				id="movie-quality-profile"
 				bind:value={qualityProfileId}
 				class="select-bordered select w-full"
 			>
-				<option value="">{defaultProfile?.name ?? 'System Default'} (Default)</option>
+				<option value=""
+					>{m.library_movies_profileDefault({
+						name: defaultProfile?.name ?? m.common_default()
+					})}</option
+				>
 				{#each nonDefaultProfiles as profile (profile.id)}
 					<option value={profile.id}>{profile.name}</option>
 				{/each}
@@ -154,7 +171,7 @@
 					{#if currentProfile}
 						{currentProfile.description}
 					{:else}
-						Controls quality scoring and upgrade behavior
+						{m.library_editMovie_qualityProfileDesc()}
 					{/if}
 				</span>
 			</div>
@@ -163,26 +180,26 @@
 		<!-- Root Folder -->
 		<div class="form-control">
 			<label class="label" for="movie-root-folder">
-				<span class="label-text font-medium">Root Folder</span>
+				<span class="label-text font-medium">{m.common_rootFolder()}</span>
 			</label>
 			<select
 				id="movie-root-folder"
 				bind:value={rootFolderId}
 				class="select-bordered select w-full"
 			>
-				<option value="">Not set</option>
+				<option value="">{m.common_notSet()}</option>
 				{#each rootFolders as folder (folder.id)}
 					<option value={folder.id}>
 						{folder.path}
 						{#if folder.freeSpaceBytes}
-							({formatBytes(folder.freeSpaceBytes)} free)
+							({m.library_add_rootFolderFree({ free: formatBytes(folder.freeSpaceBytes) })})
 						{/if}
 					</option>
 				{/each}
 			</select>
 			<div class="label">
 				<span class="label-text-alt break-words whitespace-normal text-base-content/60">
-					Where downloaded files will be stored
+					{m.library_add_rootFolderDesc()}
 				</span>
 			</div>
 		</div>
@@ -190,7 +207,7 @@
 		<!-- Minimum Availability -->
 		<div class="form-control">
 			<label class="label" for="movie-min-availability">
-				<span class="label-text font-medium">Minimum Availability</span>
+				<span class="label-text font-medium">{m.library_minimumAvailability()}</span>
 			</label>
 			<select
 				id="movie-min-availability"
@@ -210,5 +227,5 @@
 	</div>
 
 	<!-- Actions -->
-	<ModalFooter onCancel={onClose} onSave={handleSave} {saving} saveLabel="Save Changes" />
+	<ModalFooter onCancel={onClose} onSave={handleSave} {saving} saveLabel={m.action_saveChanges()} />
 </ModalWrapper>

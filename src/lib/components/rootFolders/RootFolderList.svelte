@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { Folder, Settings, Trash2, Film, Tv, AlertCircle, Star, Eye } from 'lucide-svelte';
 	import type { RootFolder } from '$lib/types/downloadClient';
 	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
@@ -26,15 +27,15 @@
 		[
 			{
 				id: 'movie',
-				title: 'Movie Root Folders',
-				description: 'Default movie folder first, then remaining folders alphabetically.',
+				title: m.rootFolders_movieFoldersTitle(),
+				description: m.rootFolders_movieFoldersDesc(),
 				icon: Film,
 				folders: movieFolders
 			},
 			{
 				id: 'tv',
-				title: 'TV Root Folders',
-				description: 'Default TV folder first, then remaining folders alphabetically.',
+				title: m.rootFolders_tvFoldersTitle(),
+				description: m.rootFolders_tvFoldersDesc(),
 				icon: Tv,
 				folders: tvFolders
 			}
@@ -45,8 +46,8 @@
 {#if folders.length === 0}
 	<div class="py-12 text-center text-base-content/60">
 		<Folder class="mx-auto mb-4 h-12 w-12 opacity-40" />
-		<p class="text-lg font-medium">No root folders configured</p>
-		<p class="mt-1 text-sm">Add root folders to define where your media libraries are stored</p>
+		<p class="text-lg font-medium">{m.rootFolders_noFoldersConfigured()}</p>
+		<p class="mt-1 text-sm">{m.rootFolders_addFoldersHint()}</p>
 	</div>
 {:else}
 	<div class="space-y-6">
@@ -89,16 +90,16 @@
 												{#if folder.isDefault}
 													<span class="badge gap-1 badge-primary">
 														<Star class="h-3 w-3" />
-														Default
+														{m.rootFolders_badgeDefault()}
 													</span>
 												{/if}
 												{#if folder.readOnly}
 													<span
 														class="badge gap-1 badge-outline badge-sm"
-														title="Read-only folder (catalog only)"
+														title={m.rootFolders_readOnlyLabel()}
 													>
 														<Eye class="h-3 w-3" />
-														Read-only
+														{m.rootFolders_badgeReadOnly()}
 													</span>
 												{/if}
 											</h3>
@@ -130,17 +131,17 @@
 									{#if !folder.accessible}
 										<div class="flex items-center gap-2 text-sm text-error">
 											<AlertCircle class="h-4 w-4" />
-											<span>Path not accessible</span>
+											<span>{m.rootFolders_pathNotAccessible()}</span>
 										</div>
 									{:else}
 										<div class="flex items-center justify-between text-sm">
-											<span class="text-base-content/60">Free Space</span>
+											<span class="text-base-content/60">{m.rootFolders_freeSpaceLabel()}</span>
 											{#if folder.readOnly}
-												<span class="text-base-content/60">N/A</span>
+												<span class="text-base-content/60">{m.common_na()}</span>
 											{:else if folder.freeSpaceFormatted}
 												<span class="font-medium">{folder.freeSpaceFormatted}</span>
 											{:else}
-												<span class="text-base-content/60">Unknown</span>
+												<span class="text-base-content/60">{m.rootFolders_unknown()}</span>
 											{/if}
 										</div>
 									{/if}

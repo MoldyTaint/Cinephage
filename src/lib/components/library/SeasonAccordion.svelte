@@ -14,6 +14,7 @@
 	import EpisodeRow from './EpisodeRow.svelte';
 	import AutoSearchStatus from './AutoSearchStatus.svelte';
 	import { formatBytes } from '$lib/utils/format.js';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Subtitle {
 		id: string;
@@ -196,14 +197,14 @@
 	const seasonMonitorTooltip = $derived.by(() =>
 		seriesMonitored
 			? season.monitored
-				? 'Season monitored'
-				: 'Season not monitored'
-			: 'Series is unmonitored. Enable series monitoring to monitor seasons.'
+				? m.library_seasonAccordion_seasonMonitored()
+				: m.library_seasonAccordion_seasonNotMonitored()
+			: m.library_seasonAccordion_seriesUnmonitoredTooltip()
 	);
 
 	function getSeasonName(): string {
-		if (season.seasonNumber === 0) return 'Specials';
-		return season.name || `Season ${season.seasonNumber}`;
+		if (season.seasonNumber === 0) return m.library_seasonAccordion_specials();
+		return season.name || m.common_season({ number: season.seasonNumber });
 	}
 
 	function handleSeasonMonitorToggle() {
@@ -266,14 +267,18 @@
 					<h3 class="font-semibold">{getSeasonName()}</h3>
 					<div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-base-content/60">
 						<span class="whitespace-nowrap">
-							{downloadedCount}/{totalCount} episodes
+							{m.library_seasonAccordion_episodesCount({
+								count: totalCount
+							})}
 							{#if seasonSize > 0}
 								<span class="text-base-content/40">·</span>
 								{formatBytes(seasonSize)}
 							{/if}
 						</span>
 						{#if percentComplete === 100}
-							<span class="badge badge-xs badge-success">Complete</span>
+							<span class="badge badge-xs badge-success"
+								>{m.library_seasonAccordion_completeBadge()}</span
+							>
 						{:else if percentComplete > 0}
 							<span class="badge badge-xs badge-primary">{percentComplete}%</span>
 						{/if}
@@ -328,7 +333,7 @@
 					class="btn btn-ghost btn-sm"
 					onclick={handleAutoSearchSeason}
 					disabled={autoSearchingSeason}
-					title="Auto-grab season pack"
+					title={m.library_seasonAccordion_autoGrabSeasonPack()}
 				>
 					{#if autoSearchingSeason}
 						<Loader2 size={16} class="animate-spin" />
@@ -341,7 +346,7 @@
 				<button
 					class="btn btn-ghost btn-sm"
 					onclick={handleSeasonSearch}
-					title="Interactive search for season"
+					title={m.library_seasonAccordion_searchSeason()}
 				>
 					<Search size={16} />
 				</button>
@@ -354,7 +359,9 @@
 							: 'text-error'}"
 						onclick={handleSeasonDelete}
 						disabled={downloadedCount === 0}
-						title={downloadedCount === 0 ? 'No files to delete' : 'Delete season'}
+						title={downloadedCount === 0
+							? m.library_seasonAccordion_noFilesToDelete()
+							: m.library_seasonAccordion_deleteSeason()}
 					>
 						<Trash2 size={16} />
 					</button>
@@ -367,7 +374,9 @@
 	{#if isOpen}
 		<div class="border-t border-base-300">
 			{#if season.episodes.length === 0}
-				<div class="p-8 text-center text-base-content/60">No episodes in this season</div>
+				<div class="p-8 text-center text-base-content/60">
+					{m.library_seasonAccordion_noEpisodes()}
+				</div>
 			{:else}
 				<div class="w-full max-w-full overflow-x-hidden sm:overflow-x-auto">
 					<table class="table w-full table-sm sm:min-w-160 sm:table-auto">
@@ -381,16 +390,21 @@
 											checked={isAllSelected}
 											indeterminate={isSomeSelected}
 											onchange={handleSelectAllChange}
-											title="Select all episodes in season"
+											title={m.library_seasonAccordion_selectAllEpisodes()}
 										/>
 									</th>
 								{/if}
-								<th class="w-12 text-center">#</th>
-								<th>Title</th>
-								<th class="hidden w-24 sm:table-cell">Air Date</th>
-								<th class="hidden w-32 sm:table-cell">Status</th>
-								<th class="hidden w-20 sm:table-cell">Size</th>
-								<th class="hidden w-28 sm:table-cell">Actions</th>
+								<th class="w-12 text-center">{m.library_seasonAccordion_episodeNumberColumn()}</th>
+								<th>{m.library_seasonAccordion_titleColumn()}</th>
+								<th class="hidden w-24 sm:table-cell"
+									>{m.library_seasonAccordion_airDateColumn()}</th
+								>
+								<th class="hidden w-32 sm:table-cell">{m.library_seasonAccordion_statusColumn()}</th
+								>
+								<th class="hidden w-20 sm:table-cell">{m.library_seasonAccordion_sizeColumn()}</th>
+								<th class="hidden w-28 sm:table-cell"
+									>{m.library_seasonAccordion_actionsColumn()}</th
+								>
 							</tr>
 						</thead>
 						<tbody>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { Eye, EyeOff } from 'lucide-svelte';
 
 	interface Props {
@@ -33,7 +34,7 @@
 	class="btn btn-ghost {sizeClasses[size]} {monitored ? 'text-success' : 'text-base-content/50'}"
 	class:btn-disabled={disabled}
 	onclick={handleClick}
-	title={monitored ? 'Monitored - Click to unmonitor' : 'Not monitored - Click to monitor'}
+	title={monitored ? m.library_monitorToggle_monitored() : m.library_monitorToggle_notMonitored()}
 	{disabled}
 >
 	{#if monitored}

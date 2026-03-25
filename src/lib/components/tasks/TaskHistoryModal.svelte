@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { ChevronDown, ChevronRight, MessageSquare } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 	import type { UnifiedTask } from '$lib/server/tasks/UnifiedTaskRegistry';
 	import type { TaskHistoryEntry } from '$lib/types/task';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
@@ -104,7 +105,9 @@
 	<div>
 		<div class="mb-4 flex items-center justify-between">
 			<div>
-				<h3 id="task-history-modal-title" class="text-lg font-bold">{task.name} - History</h3>
+				<h3 id="task-history-modal-title" class="text-lg font-bold">
+					{task.name} - {m.task_card_history()}
+				</h3>
 				<p class="text-sm text-base-content/60">{task.description}</p>
 			</div>
 			<button class="btn btn-circle btn-ghost btn-sm" onclick={onClose}>✕</button>
@@ -127,17 +130,17 @@
 					<polyline points="9 11 12 14 22 4" />
 					<path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
 				</svg>
-				<p>No history available for this task.</p>
+				<p>{m.task_historyModal_noHistory()}</p>
 			</div>
 		{:else}
 			<div class="overflow-x-auto">
 				<table class="table-compact table w-full table-zebra">
 					<thead>
 						<tr>
-							<th>Status</th>
-							<th>Started</th>
-							<th>Duration</th>
-							<th>Details</th>
+							<th>{m.task_historyModal_status()}</th>
+							<th>{m.task_historyModal_started()}</th>
+							<th>{m.task_historyModal_duration()}</th>
+							<th>{m.task_historyModal_details()}</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -169,34 +172,36 @@
 									{#if entry.results}
 										<div class="space-y-0.5 text-xs">
 											{#if itemsProcessed !== null}
-												<div>Processed: {itemsProcessed}</div>
+												<div>{m.task_historyModal_processed({ count: itemsProcessed })}</div>
 											{/if}
 											{#if itemsGrabbed !== null}
-												<div>Grabbed: {itemsGrabbed}</div>
+												<div>{m.task_historyModal_grabbed({ count: itemsGrabbed })}</div>
 											{/if}
 											{#if updatedFiles !== null}
-												<div>Updated: {updatedFiles}</div>
+												<div>{m.task_historyModal_updated({ count: updatedFiles })}</div>
 											{/if}
 											{#if filesScanned !== null}
-												<div>Scanned: {filesScanned}</div>
+												<div>{m.task_historyModal_scanned({ count: filesScanned })}</div>
 											{/if}
 											{#if filesAdded !== null && filesAdded > 0}
-												<div>Added: {filesAdded}</div>
+												<div>{m.task_historyModal_added({ count: filesAdded })}</div>
 											{/if}
 											{#if filesUpdated !== null && filesUpdated > 0}
-												<div>Updated files: {filesUpdated}</div>
+												<div>{m.task_historyModal_updatedFiles({ count: filesUpdated })}</div>
 											{/if}
 											{#if filesRemoved !== null && filesRemoved > 0}
-												<div>Removed: {filesRemoved}</div>
+												<div>{m.task_historyModal_removed({ count: filesRemoved })}</div>
 											{/if}
 											{#if unmatchedFiles !== null && unmatchedFiles > 0}
-												<div>Unmatched: {unmatchedFiles}</div>
+												<div>{m.task_historyModal_unmatched({ count: unmatchedFiles })}</div>
 											{/if}
 											{#if probeFallbackUsed !== null && probeFallbackUsed > 0}
-												<div>Fallback used: {probeFallbackUsed}</div>
+												<div>{m.task_historyModal_fallback({ count: probeFallbackUsed })}</div>
 											{/if}
 											{#if errorCount !== null && errorCount > 0}
-												<div class="text-error">Errors: {errorCount}</div>
+												<div class="text-error">
+													{m.task_historyModal_errors({ count: errorCount })}
+												</div>
 											{/if}
 											{#if resultErrorItems.length > 0}
 												<button
@@ -210,7 +215,7 @@
 														<ChevronRight class="h-3 w-3" />
 													{/if}
 													<MessageSquare class="h-3 w-3" />
-													View failed items
+													{m.task_historyModal_viewFailedItems()}
 												</button>
 											{/if}
 										</div>
@@ -240,7 +245,9 @@
 							{#if entry.errors && Array.isArray(entry.errors) && entry.errors.length > 0}
 								<tr class="bg-error/5">
 									<td colspan="4" class="text-sm">
-										<div class="mb-1 font-medium text-error">Errors:</div>
+										<div class="mb-1 font-medium text-error">
+											{m.task_historyModal_errorsSection()}
+										</div>
 										<ul class="list-inside list-disc space-y-0.5 text-xs">
 											{#each entry.errors as error (error)}
 												<li>{error}</li>
@@ -256,7 +263,7 @@
 		{/if}
 
 		<div class="modal-action">
-			<button class="btn btn-primary" onclick={onClose}>Close</button>
+			<button class="btn btn-primary" onclick={onClose}>{m.task_historyModal_close()}</button>
 		</div>
 	</div>
 </ModalWrapper>

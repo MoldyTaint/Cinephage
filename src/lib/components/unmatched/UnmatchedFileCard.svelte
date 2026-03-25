@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { Clapperboard, Tv, HardDrive, Calendar, AlertCircle } from 'lucide-svelte';
 	import type { UnmatchedFile } from '$lib/types/unmatched.js';
 
@@ -21,7 +22,7 @@
 	}: Props = $props();
 
 	function formatSize(bytes: number | null): string {
-		if (!bytes) return 'Unknown';
+		if (!bytes) return m.unmatched_file_unknown();
 		const gb = bytes / (1024 * 1024 * 1024);
 		if (gb >= 1) return `${gb.toFixed(2)} GB`;
 		const mb = bytes / (1024 * 1024);
@@ -80,7 +81,7 @@
 						</span>
 					{/if}
 					<span class="badge badge-outline badge-sm">
-						{file.mediaType === 'movie' ? 'Movie' : 'TV'}
+						{file.mediaType === 'movie' ? m.unmatched_file_movie() : m.unmatched_file_tv()}
 					</span>
 				</div>
 				{#if file.reason}
@@ -96,8 +97,10 @@
 			</div>
 		</div>
 		<div class="flex flex-col gap-2">
-			<button class="btn btn-ghost btn-xs" onclick={onMatch}> Match </button>
-			<button class="btn text-error btn-ghost btn-xs" onclick={onDelete}> Delete </button>
+			<button class="btn btn-ghost btn-xs" onclick={onMatch}> {m.unmatched_file_match()} </button>
+			<button class="btn text-error btn-ghost btn-xs" onclick={onDelete}>
+				{m.unmatched_file_delete()}
+			</button>
 		</div>
 	</div>
 </div>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Season } from '$lib/types/tmdb';
 	import TmdbImage from './TmdbImage.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let { seasons }: { seasons: Season[] } = $props();
 
@@ -28,12 +29,12 @@
 						<span>{new Date(season.air_date).getFullYear()}</span>
 						<span>•</span>
 					{/if}
-					<span>{season.episode_count} Episodes</span>
+					<span>{season.episode_count} {m.common_episodes()}</span>
 				</div>
 				{#if season.overview}
 					<p class="mt-2 line-clamp-3 text-sm text-base-content/80">{season.overview}</p>
 				{:else}
-					<p class="mt-2 text-sm text-base-content/50 italic">No overview available.</p>
+					<p class="mt-2 text-sm text-base-content/50 italic">{m.tmdb_seasonList_noOverview()}</p>
 				{/if}
 			</div>
 		</div>

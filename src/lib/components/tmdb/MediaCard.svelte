@@ -10,6 +10,7 @@
 	import { resolvePath } from '$lib/utils/routing';
 	import TmdbImage from './TmdbImage.svelte';
 	import { Check, Clock, Plus } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	// Extended type that includes library status (added by enrichWithLibraryStatus)
 	type MediaItemWithLibraryStatus = TmdbMediaItem & {
@@ -69,7 +70,7 @@
 				<!-- Available: Green checkmark -->
 				<div
 					class="flex h-6 w-6 items-center justify-center rounded-full bg-success/90 text-success-content shadow-md backdrop-blur-sm"
-					title="Available in library"
+					title={m.tmdb_availableInLibrary()}
 				>
 					<Check class="h-4 w-4" strokeWidth={3} />
 				</div>
@@ -77,7 +78,7 @@
 				<!-- Monitored but missing: Yellow clock -->
 				<div
 					class="flex h-6 w-6 items-center justify-center rounded-full bg-warning/90 text-warning-content shadow-md backdrop-blur-sm"
-					title="Monitored - not yet downloaded"
+					title={m.tmdb_monitoredNotDownloaded()}
 				>
 					<Clock class="h-4 w-4" strokeWidth={2.5} />
 				</div>
@@ -105,7 +106,7 @@
 			<button
 				type="button"
 				class="absolute top-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-content shadow-lg transition-transform hover:scale-110 active:scale-95"
-				title="Add to Library"
+				title={m.tmdb_addToLibrary()}
 				onclick={(e) => {
 					e.preventDefault();
 					e.stopPropagation();

@@ -2,6 +2,7 @@
 	import { X, Loader2, Globe, Lock, Zap } from 'lucide-svelte';
 	import type { IndexerDefinition, Indexer, IndexerFormData } from '$lib/types/indexer';
 	import { computeUIHints } from '$lib/types/indexer';
+	import * as m from '$lib/paraglide/messages.js';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import { TestResult } from '$lib/components/ui/modal';
 	import IndexerDefinitionPicker from './IndexerDefinitionPicker.svelte';

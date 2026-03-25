@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Download, Check, AlertCircle, Hash, Ear } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 	import SubtitleBadge from './SubtitleBadge.svelte';
 
 	interface SubtitleResult {

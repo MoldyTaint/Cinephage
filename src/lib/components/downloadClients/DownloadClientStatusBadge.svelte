@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { AlertTriangle, CheckCircle, XCircle } from 'lucide-svelte';
 	import type { DownloadClientHealth } from '$lib/types/downloadClient';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		enabled: boolean | null;
@@ -21,38 +22,44 @@
 	const statusInfo = $derived.by(() => {
 		if (!enabled) {
 			return {
-				text: 'Disabled',
+				text: m.common_disabled(),
 				class: 'badge-ghost',
 				icon: XCircle,
-				tooltip: 'Download client is disabled by user'
+				tooltip: m.settings_integrations_downloadClients_tooltipDisabled()
 			};
 		}
 
 		if (health === 'failing' || consecutiveFailures >= 3) {
-			const failureTime = lastFailure ? new Date(lastFailure).toLocaleString() : 'Unknown';
+			const failureTime = lastFailure ? new Date(lastFailure).toLocaleString() : m.common_unknown();
 			return {
-				text: 'Unhealthy',
+				text: m.status_unhealthy(),
 				class: 'badge-error',
 				icon: AlertTriangle,
-				tooltip: `${consecutiveFailures} consecutive failures. Last: ${failureTime}`
+				tooltip: m.settings_integrations_downloadClients_tooltipUnhealthy({
+					count: consecutiveFailures,
+					time: failureTime
+				})
 			};
 		}
 
 		if (health === 'warning' || consecutiveFailures >= 1) {
-			const failureTime = lastFailure ? new Date(lastFailure).toLocaleString() : 'Unknown';
+			const failureTime = lastFailure ? new Date(lastFailure).toLocaleString() : m.common_unknown();
 			return {
-				text: 'Degraded',
+				text: m.settings_integrations_downloadClients_statusDegraded(),
 				class: 'badge-warning',
 				icon: AlertTriangle,
-				tooltip: `${consecutiveFailures} recent failures. Last: ${failureTime}`
+				tooltip: m.settings_integrations_downloadClients_tooltipDegraded({
+					count: consecutiveFailures,
+					time: failureTime
+				})
 			};
 		}
 
 		return {
-			text: 'Healthy',
+			text: m.status_healthy(),
 			class: 'badge-success',
 			icon: CheckCircle,
-			tooltip: 'Download client is healthy and reachable'
+			tooltip: m.settings_integrations_downloadClients_tooltipHealthy()
 		};
 	});
 

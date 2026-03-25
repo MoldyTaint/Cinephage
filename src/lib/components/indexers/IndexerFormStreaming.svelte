@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { ChevronDown, Settings } from 'lucide-svelte';
 	import type { IndexerDefinition } from '$lib/types/indexer';
+	import * as m from '$lib/paraglide/messages.js';
 	import { SectionHeader, ToggleSetting } from '$lib/components/ui/modal';
 
 	interface Props {
@@ -140,14 +141,14 @@
 		<!-- Search Settings -->
 		<ToggleSetting
 			checked={enableAutomaticSearch}
-			label="Automatic Search"
-			description="Search when items are added"
+			label={m.indexer_label_automaticSearch()}
+			description={m.indexer_desc_automaticSearch()}
 			onchange={() => onAutomaticSearchChange(!enableAutomaticSearch)}
 		/>
 		<ToggleSetting
 			checked={enableInteractiveSearch}
-			label="Interactive Search"
-			description="Manual searches from UI"
+			label={m.indexer_label_interactiveSearch()}
+			description={m.indexer_desc_interactiveSearch()}
 			onchange={() => onInteractiveSearchChange(!enableInteractiveSearch)}
 		/>
 	</div>

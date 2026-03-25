@@ -3,6 +3,7 @@
 	import TmdbImage from './TmdbImage.svelte';
 	import { ExternalLink, Briefcase } from 'lucide-svelte';
 	import { formatDate } from '$lib/utils/format';
+	import * as m from '$lib/paraglide/messages.js';
 
 	// Accept PersonDetails with or without combined_credits (for optimized loading)
 	// The combined_credits field is intentionally optional as this component works with both variants
@@ -26,11 +27,11 @@
 	// Gender display
 	const genderLabel = $derived(
 		person.gender === 1
-			? 'Female'
+			? m.person_gender_female()
 			: person.gender === 2
-				? 'Male'
+				? m.person_gender_male()
 				: person.gender === 3
-					? 'Non-binary'
+					? m.person_gender_nonBinary()
 					: null
 	);
 </script>
@@ -112,7 +113,7 @@
 					</p>
 				</div>
 			{:else}
-				<p class="text-base-content/50 italic">No biography available.</p>
+				<p class="text-base-content/50 italic">{m.person_noBiography()}</p>
 			{/if}
 
 			<!-- External links -->
@@ -123,7 +124,7 @@
 					rel="noopener noreferrer"
 					class="btn gap-1 btn-ghost btn-xs"
 				>
-					TMDB
+					{m.tmdb_link_tmdb()}
 					<ExternalLink size={12} />
 				</a>
 				{#if person.external_ids?.imdb_id}
@@ -133,7 +134,7 @@
 						rel="noopener noreferrer"
 						class="btn gap-1 btn-ghost btn-xs"
 					>
-						IMDb
+						{m.tmdb_link_imdb()}
 						<ExternalLink size={12} />
 					</a>
 				{/if}
@@ -144,7 +145,7 @@
 						rel="noopener noreferrer"
 						class="btn gap-1 btn-ghost btn-xs"
 					>
-						Instagram
+						{m.tmdb_link_instagram()}
 						<ExternalLink size={12} />
 					</a>
 				{/if}
@@ -155,7 +156,7 @@
 						rel="noopener noreferrer"
 						class="btn gap-1 btn-ghost btn-xs"
 					>
-						X
+						{m.tmdb_link_x()}
 						<ExternalLink size={12} />
 					</a>
 				{/if}
@@ -167,7 +168,7 @@
 						rel="noopener noreferrer"
 						class="btn gap-1 btn-ghost btn-xs"
 					>
-						Website
+						{m.tmdb_link_website()}
 						<ExternalLink size={12} />
 					</a>
 					<!-- eslint-enable svelte/no-navigation-without-resolve -->
@@ -180,41 +181,41 @@
 			<div class="grid gap-y-3">
 				{#if person.birthday}
 					<div>
-						<div class="text-sm text-base-content/50">Born</div>
+						<div class="text-sm text-base-content/50">{m.person_born()}</div>
 						<div class="font-medium">{formatDate(person.birthday)}</div>
 						{#if age && !person.deathday}
-							<div class="text-sm text-base-content/60">({age} years old)</div>
+							<div class="text-sm text-base-content/60">{m.person_ageYears({ age })}</div>
 						{/if}
 					</div>
 				{/if}
 
 				{#if person.deathday}
 					<div>
-						<div class="text-sm text-base-content/50">Died</div>
+						<div class="text-sm text-base-content/50">{m.person_died()}</div>
 						<div class="font-medium">{formatDate(person.deathday)}</div>
 						{#if age}
-							<div class="text-sm text-base-content/60">(aged {age})</div>
+							<div class="text-sm text-base-content/60">{m.person_ageAtDeath({ age })}</div>
 						{/if}
 					</div>
 				{/if}
 
 				{#if person.place_of_birth}
 					<div>
-						<div class="text-sm text-base-content/50">Birthplace</div>
+						<div class="text-sm text-base-content/50">{m.person_birthplace()}</div>
 						<div class="font-medium">{person.place_of_birth}</div>
 					</div>
 				{/if}
 
 				{#if genderLabel}
 					<div>
-						<div class="text-sm text-base-content/50">Gender</div>
+						<div class="text-sm text-base-content/50">{m.person_gender()}</div>
 						<div class="font-medium">{genderLabel}</div>
 					</div>
 				{/if}
 
 				{#if person.also_known_as && person.also_known_as.length > 0}
 					<div>
-						<div class="text-sm text-base-content/50">Also Known As</div>
+						<div class="text-sm text-base-content/50">{m.person_alsoKnownAs()}</div>
 						<div class="text-sm">{person.also_known_as.slice(0, 3).join(', ')}</div>
 					</div>
 				{/if}

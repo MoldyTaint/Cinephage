@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { RotateCcw, Eye, Code } from 'lucide-svelte';
 
 	interface Props {
@@ -83,7 +84,7 @@
 			aria-label={`Reset ${label}`}
 		>
 			<RotateCcw class="h-3 w-3" />
-			Reset
+			{m.naming_reset()}
 		</button>
 	</div>
 
@@ -127,7 +128,9 @@
 			<div class="flex items-start gap-2">
 				<Eye class="mt-0.5 h-4 w-4 shrink-0 text-success" />
 				<div class="min-w-0 flex-1">
-					<span class="mb-1 block text-xs font-medium text-base-content/50">Preview</span>
+					<span class="mb-1 block text-xs font-medium text-base-content/50"
+						>{m.naming_preview()}</span
+					>
 					<code class="font-mono text-sm break-all text-success">{preview}</code>
 				</div>
 			</div>

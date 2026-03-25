@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Loader2, CheckCircle, XCircle, AlertCircle } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	type Status = 'idle' | 'loading' | 'success' | 'error' | 'warning';
 
@@ -16,10 +17,10 @@
 
 	let {
 		status,
-		loadingText = 'Loading...',
-		successText = 'Success',
-		errorText = 'Error',
-		warningText = 'Warning',
+		loadingText = m.common_loading(),
+		successText = m.status_success(),
+		errorText = m.status_error(),
+		warningText = m.status_warning(),
 		size = 'sm',
 		showIcon = true,
 		inline = false

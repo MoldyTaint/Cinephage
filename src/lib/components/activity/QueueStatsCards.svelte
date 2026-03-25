@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { Activity, AlertTriangle, Download, Pause, Upload } from 'lucide-svelte';
 	import type {
 		QueueCardStats,
@@ -27,7 +28,9 @@
 		onclick={() => onFilterSelect('all')}
 	>
 		<div class="flex items-center justify-between">
-			<span class="text-xs font-medium text-base-content/70 sm:text-sm">Total</span>
+			<span class="text-xs font-medium text-base-content/70 sm:text-sm"
+				>{m.activity_queueStats_total()}</span
+			>
 			<Activity class="h-4 w-4 text-base-content/50" />
 		</div>
 		<div class="text-2xl font-bold">
@@ -43,7 +46,9 @@
 		onclick={() => onFilterSelect('downloading')}
 	>
 		<div class="flex items-center justify-between">
-			<span class="text-xs font-medium text-base-content/70 sm:text-sm">Downloading</span>
+			<span class="text-xs font-medium text-base-content/70 sm:text-sm"
+				>{m.status_downloading()}</span
+			>
 			<Download class="h-4 w-4 text-info" />
 		</div>
 		<div class="text-2xl font-bold">
@@ -57,7 +62,7 @@
 		onclick={() => onFilterSelect('seeding')}
 	>
 		<div class="flex items-center justify-between">
-			<span class="text-xs font-medium text-base-content/70 sm:text-sm">Seeding</span>
+			<span class="text-xs font-medium text-base-content/70 sm:text-sm">{m.status_seeding()}</span>
 			<Upload class="h-4 w-4 text-success" />
 		</div>
 		<div class="text-2xl font-bold">
@@ -71,7 +76,7 @@
 		onclick={() => onFilterSelect('paused')}
 	>
 		<div class="flex items-center justify-between">
-			<span class="text-xs font-medium text-base-content/70 sm:text-sm">Paused</span>
+			<span class="text-xs font-medium text-base-content/70 sm:text-sm">{m.status_paused()}</span>
 			<Pause class="h-4 w-4 text-warning" />
 		</div>
 		<div class="text-2xl font-bold">
@@ -85,7 +90,7 @@
 		onclick={() => onFilterSelect('failed')}
 	>
 		<div class="flex items-center justify-between">
-			<span class="text-xs font-medium text-base-content/70 sm:text-sm">Failed</span>
+			<span class="text-xs font-medium text-base-content/70 sm:text-sm">{m.status_failed()}</span>
 			<AlertTriangle class="h-4 w-4 text-error" />
 		</div>
 		<div class="text-2xl font-bold">

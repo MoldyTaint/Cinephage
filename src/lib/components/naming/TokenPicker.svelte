@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import {
 		Search,
 		Copy,
@@ -66,17 +67,17 @@
 		{
 			pattern: '{[{Token}]}',
 			example: '{[{HDR}]}',
-			description: 'Include brackets only if Token exists'
+			description: m.naming_tokenIncludeBrackets()
 		},
 		{
 			pattern: '{prefix{Token}suffix}',
 			example: '{ -{ReleaseGroup}}',
-			description: 'Include prefix/suffix only if Token exists'
+			description: m.naming_tokenIncludePrefixSuffix()
 		},
 		{
 			pattern: '{edition-{Edition}}',
 			example: 'edition-Directors Cut',
-			description: 'Conditional edition tag'
+			description: m.naming_tokenConditionalEdition()
 		}
 	];
 
@@ -138,29 +139,29 @@
 		const success = await copyToClipboard(token);
 		if (success) {
 			copiedToken = token;
-			toasts.success(`Copied ${token}`);
+			toasts.success(m.naming_tokenCopied({ token }));
 			setTimeout(() => (copiedToken = null), 1500);
 		} else {
-			toasts.error('Failed to copy');
+			toasts.error(m.naming_tokenCopyFailed());
 		}
 	}
 
 	function getCategoryLabel(name: string): string {
 		const labels: Record<string, string> = {
-			movie: 'Movie',
-			series: 'Series',
-			episode: 'Episode',
-			quality: 'Quality',
-			video: 'Video',
-			audio: 'Audio',
-			release: 'Release',
-			conditional: 'Conditional'
+			movie: m.naming_tokenCategoryMovie(),
+			series: m.naming_tokenCategorySeries(),
+			episode: m.naming_tokenCategoryEpisode(),
+			quality: m.naming_tokenCategoryQuality(),
+			video: m.naming_tokenCategoryVideo(),
+			audio: m.naming_tokenCategoryAudio(),
+			release: m.naming_tokenCategoryRelease(),
+			conditional: m.naming_tokenCategoryConditional()
 		};
 		return labels[name] || name.charAt(0).toUpperCase() + name.slice(1);
 	}
 
 	function getInsertTitle(label: string) {
-		return canInsert ? `Insert ${label}` : 'Select a format field first';
+		return canInsert ? m.naming_tokenInsert({ token: label }) : m.naming_tokenSelectFieldFirst();
 	}
 </script>
 
@@ -171,7 +172,7 @@
 			<Search class="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/50" />
 			<input
 				type="text"
-				placeholder="Search tokens..."
+				placeholder={m.naming_tokenSearchPlaceholder()}
 				class="input-bordered input input-sm w-full pl-9"
 				bind:value={searchQuery}
 			/>
@@ -197,7 +198,7 @@
 				onclick={() => (selectedCategory = 'recommended')}
 			>
 				<Sparkles class="h-3 w-3" />
-				Recommended
+				{m.naming_tokenRecommended()}
 			</button>
 
 			{#each tokenCategories as category (category.name)}
@@ -221,7 +222,7 @@
 				onclick={() => (selectedCategory = 'conditional')}
 			>
 				<Zap class="h-3 w-3" />
-				Patterns
+				{m.naming_tokenPatterns()}
 			</button>
 		</div>
 	{/if}
@@ -283,11 +284,11 @@
 			<div class="space-y-2">
 				<div class="flex items-center gap-2 text-xs font-medium text-base-content/70">
 					<Sparkles class="h-3 w-3" />
-					Recommended for {context === 'movie'
-						? 'Movies'
+					{context === 'movie'
+						? m.naming_tokenRecommendedForMovies()
 						: context === 'series'
-							? 'Series'
-							: 'General'}
+							? m.naming_tokenRecommendedForSeries()
+							: m.naming_tokenRecommendedForGeneral()}
 				</div>
 				<div class="grid grid-cols-1 gap-2">
 					{#each getRecommendedTokens().slice(0, 12) as token (token.token)}
@@ -308,7 +309,7 @@
 									class="btn btn-ghost btn-xs"
 									onclick={() => handleInsert(token.token)}
 									disabled={!canInsert}
-									aria-label={`Insert ${token.token}`}
+									aria-label={m.naming_tokenInsert({ token: token.token })}
 									title={getInsertTitle(token.token)}
 								>
 									<Plus class="h-3 w-3" />
@@ -317,8 +318,8 @@
 									type="button"
 									class="btn btn-ghost btn-xs"
 									onclick={() => handleCopy(token.token)}
-									aria-label={`Copy ${token.token}`}
-									title="Copy to clipboard"
+									aria-label={m.naming_tokenInsert({ token: token.token })}
+									title={m.naming_tokenCopy()}
 								>
 									{#if copiedToken === token.token}
 										<Check class="h-3 w-3 text-success" />
@@ -334,7 +335,7 @@
 		{:else if selectedCategory === 'conditional'}
 			<div class="space-y-3">
 				<div class="text-sm text-base-content/70">
-					Conditional patterns let you include tokens only when they have values.
+					{m.naming_tokenConditionalDescription()}
 				</div>
 				{#each conditionalSnippets as snippet (snippet.pattern)}
 					<div class="rounded-lg border border-base-300 bg-base-100 p-3">
@@ -346,7 +347,7 @@
 									class="btn btn-ghost btn-xs"
 									onclick={() => handleInsert(snippet.pattern)}
 									disabled={!canInsert}
-									aria-label={`Insert ${snippet.pattern}`}
+									aria-label={m.naming_tokenInsert({ token: snippet.pattern })}
 									title={getInsertTitle(snippet.pattern)}
 								>
 									<Plus class="h-3 w-3" />
@@ -355,14 +356,16 @@
 									type="button"
 									class="btn btn-ghost btn-xs"
 									onclick={() => handleCopy(snippet.pattern)}
-									aria-label={`Copy ${snippet.pattern}`}
+									aria-label={m.naming_tokenInsert({ token: snippet.pattern })}
 								>
 									<Copy class="h-3 w-3" />
 								</button>
 							</div>
 						</div>
 						<p class="mt-1 text-xs text-base-content/60">{snippet.description}</p>
-						<div class="mt-2 text-xs text-success">Example: {snippet.example}</div>
+						<div class="mt-2 text-xs text-success">
+							{m.naming_tokenExample()}: {snippet.example}
+						</div>
 					</div>
 				{/each}
 			</div>
@@ -394,7 +397,7 @@
 										class="btn btn-ghost btn-xs"
 										onclick={() => handleInsert(token.token)}
 										disabled={!canInsert}
-										aria-label={`Insert ${token.token}`}
+										aria-label={m.naming_tokenInsert({ token: token.token })}
 										title={getInsertTitle(token.token)}
 									>
 										<Plus class="h-3 w-3" />
@@ -403,8 +406,8 @@
 										type="button"
 										class="btn btn-ghost btn-xs"
 										onclick={() => handleCopy(token.token)}
-										aria-label={`Copy ${token.token}`}
-										title="Copy to clipboard"
+										aria-label={m.naming_tokenInsert({ token: token.token })}
+										title={m.naming_tokenCopy()}
 									>
 										{#if copiedToken === token.token}
 											<Check class="h-3 w-3 text-success" />
@@ -424,7 +427,7 @@
 	<!-- Insert Hint -->
 	{#if !activeFieldId}
 		<div class="alert-sm alert alert-warning">
-			<span class="text-xs">Click on a format field above to enable token insertion</span>
+			<span class="text-xs">{m.naming_tokenInsertHint()}</span>
 		</div>
 	{/if}
 </div>

@@ -1,5 +1,6 @@
 import type { UnifiedActivity } from '$lib/types/activity';
 import { isImportFailedActivity, TASK_TYPE_LABELS } from '$lib/types/activity';
+import * as m from '$lib/paraglide/messages.js';
 import {
 	CheckCircle2,
 	XCircle,
@@ -16,23 +17,48 @@ import {
  *
  * Note: `icon` is typed loosely (`typeof CheckCircle2`) because every
  * lucide-svelte icon shares the same component signature.
+ *
+ * Labels are resolved at call time via paraglide so the config object
+ * stores getter functions instead of static strings.
  */
 export const statusConfig: Record<
 	string,
 	{ label: string; variant: string; icon: typeof CheckCircle2 }
 > = {
-	imported: { label: 'Imported', variant: 'badge-success', icon: CheckCircle2 },
-	streaming: { label: 'Streaming', variant: 'badge-info', icon: CheckCircle2 },
-	downloading: { label: 'Downloading', variant: 'badge-info', icon: Loader2 },
-	seeding: { label: 'Seeding', variant: 'badge-success', icon: Upload },
-	paused: { label: 'Paused', variant: 'badge-warning', icon: Pause },
-	failed: { label: 'Failed', variant: 'badge-error', icon: XCircle },
-	search_error: { label: 'Search Error', variant: 'badge-warning', icon: SearchX },
-	rejected: { label: 'Rejected', variant: 'badge-warning', icon: AlertCircle },
-	removed: { label: 'Removed', variant: 'badge-ghost', icon: XCircle },
-	no_results: { label: 'No Results', variant: 'badge-ghost', icon: Minus },
-	searching: { label: 'Searching', variant: 'badge-info', icon: Loader2 }
-};
+	get imported() {
+		return { label: m.status_imported(), variant: 'badge-success', icon: CheckCircle2 };
+	},
+	get streaming() {
+		return { label: m.status_streaming(), variant: 'badge-info', icon: CheckCircle2 };
+	},
+	get downloading() {
+		return { label: m.status_downloading(), variant: 'badge-info', icon: Loader2 };
+	},
+	get seeding() {
+		return { label: m.status_seeding(), variant: 'badge-success', icon: Upload };
+	},
+	get paused() {
+		return { label: m.status_paused(), variant: 'badge-warning', icon: Pause };
+	},
+	get failed() {
+		return { label: m.status_failed(), variant: 'badge-error', icon: XCircle };
+	},
+	get search_error() {
+		return { label: m.status_searchError(), variant: 'badge-warning', icon: SearchX };
+	},
+	get rejected() {
+		return { label: m.status_rejected(), variant: 'badge-warning', icon: AlertCircle };
+	},
+	get removed() {
+		return { label: m.status_removed(), variant: 'badge-ghost', icon: XCircle };
+	},
+	get no_results() {
+		return { label: m.status_noResults(), variant: 'badge-ghost', icon: Minus };
+	},
+	get searching() {
+		return { label: m.status_searching(), variant: 'badge-info', icon: Loader2 };
+	}
+} as Record<string, { label: string; variant: string; icon: typeof CheckCircle2 }>;
 
 /**
  * Return the user-facing label for an activity's status.
@@ -46,11 +72,11 @@ export const statusConfig: Record<
  */
 export function getStatusLabel(activity: UnifiedActivity, fallbackLabel?: string): string {
 	if (activity.status === 'failed' && isImportFailedActivity(activity)) {
-		return 'Import Failed';
+		return m.activity_importFailed();
 	}
 	if (activity.status === 'search_error' && activity.taskType) {
 		const taskLabel = TASK_TYPE_LABELS[activity.taskType];
-		if (taskLabel) return `${taskLabel} Error`;
+		if (taskLabel) return m.activity_taskError({ task: taskLabel });
 	}
 	return fallbackLabel ?? statusConfig[activity.status]?.label ?? activity.status;
 }
@@ -70,10 +96,10 @@ export function formatRelativeTime(dateStr: string | null | undefined): string {
 	const hours = Math.floor(diff / 3600000);
 	const days = Math.floor(diff / 86400000);
 
-	if (minutes < 1) return 'Just now';
-	if (minutes < 60) return `${minutes}m ago`;
-	if (hours < 24) return `${hours}h ago`;
-	if (days < 7) return `${days}d ago`;
+	if (minutes < 1) return m.activity_relativeTime_justNow();
+	if (minutes < 60) return m.activity_relativeTime_minutesAgo({ count: minutes });
+	if (hours < 24) return m.activity_relativeTime_hoursAgo({ count: hours });
+	if (days < 7) return m.activity_relativeTime_daysAgo({ count: days });
 	return date.toLocaleDateString();
 }
 
@@ -94,7 +120,7 @@ export function getResolutionBadge(activity: UnifiedActivity): string | null {
 		activity.protocol === 'streaming' &&
 		(activity.indexerName?.toLowerCase().includes('cinephage library') ?? false);
 	if (isCinephageLibraryStream) {
-		return 'Auto';
+		return m.activity_resolutionAuto();
 	}
 
 	return null;

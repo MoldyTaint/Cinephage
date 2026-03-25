@@ -5,6 +5,7 @@
 	import { type Snippet } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import { resolvePath } from '$lib/utils/routing';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let { title, items, link, endpoint, cardSnippet, onAddToLibrary, itemClass, excludeInLibrary } =
 		$props<{
@@ -61,8 +62,8 @@
 				}
 			}
 		} catch (e) {
-			toasts.error('Failed to load more items', {
-				description: e instanceof Error ? e.message : 'Failed to load more items'
+			toasts.error(m.discover_failedToLoadMore(), {
+				description: e instanceof Error ? e.message : m.discover_failedToLoadMore()
 			});
 		} finally {
 			loading = false;
@@ -107,7 +108,7 @@
 				href={resolvePath(link)}
 				class="hover:text-primary-focus group/link flex items-center gap-1 text-sm font-bold text-primary transition-colors"
 			>
-				View All
+				{m.common_viewAll()}
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
 					class="h-4 w-4 transition-transform group-hover/link:translate-x-1"

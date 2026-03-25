@@ -1,4 +1,6 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
+
 	interface Props {
 		type: 'movie' | 'tv' | 'streaming';
 		size?: 'xs' | 'sm' | 'md';
@@ -7,11 +9,11 @@
 
 	let { type, size = 'sm', class: className = '' }: Props = $props();
 
-	const labels = {
-		movie: 'Movie',
-		tv: 'TV',
-		streaming: 'Stream'
-	};
+	const labels = $derived({
+		movie: m.ui_mediaType_movie(),
+		tv: m.ui_mediaType_tv(),
+		streaming: m.ui_mediaType_stream()
+	});
 
 	const colorClasses = {
 		movie: 'bg-primary/80 text-primary-content',

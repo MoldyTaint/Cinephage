@@ -25,6 +25,7 @@
 		ChannelLineupItemWithDetails,
 		UpdateChannelRequest
 	} from '$lib/types/livetv';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		open: boolean;
@@ -95,14 +96,16 @@
 	let logoPickerRequestId = 0;
 
 	const channelNumberError = $derived(
-		channelNumber !== null && channelNumber < 1 ? 'Must be 1 or greater' : null
+		channelNumber !== null && channelNumber < 1
+			? m.livetv_channelEditModal_channelNumberError()
+			: null
 	);
 
 	const customLogoError = $derived(
 		customLogo.trim() &&
 			!customLogo.trim().match(/^https?:\/\//) &&
 			!customLogo.trim().startsWith('/')
-			? 'Must be a valid URL or app path'
+			? m.livetv_channelEditModal_customLogoError()
 			: null
 	);
 
@@ -177,10 +180,10 @@
 				const data = await res.json();
 				backups = data.backups || [];
 			} else {
-				backupError = 'Failed to load backups';
+				backupError = m.livetv_channelEditModal_failedToLoadBackups();
 			}
 		} catch {
-			backupError = 'Failed to load backups';
+			backupError = m.livetv_channelEditModal_failedToLoadBackups();
 		} finally {
 			loadingBackups = false;
 		}
@@ -198,11 +201,11 @@
 			});
 			if (!res.ok) {
 				backups = previousBackups;
-				backupError = 'Failed to remove backup';
+				backupError = m.livetv_channelEditModal_failedToRemoveBackup();
 			}
 		} catch {
 			backups = previousBackups;
-			backupError = 'Failed to remove backup';
+			backupError = m.livetv_channelEditModal_failedToRemoveBackup();
 		}
 	}
 
@@ -236,11 +239,11 @@
 			});
 			if (!res.ok) {
 				backups = previousOrder;
-				backupError = 'Failed to reorder backups';
+				backupError = m.livetv_channelEditModal_failedToReorderBackups();
 			}
 		} catch {
 			backups = previousOrder;
-			backupError = 'Failed to reorder backups';
+			backupError = m.livetv_channelEditModal_failedToReorderBackups();
 		} finally {
 			backupSaving = false;
 		}
@@ -255,7 +258,7 @@
 				copiedCmd = false;
 			}, 2000);
 		} else {
-			toasts.error('Failed to copy stream command');
+			toasts.error(m.livetv_channelEditModal_failedToCopy());
 		}
 	}
 
@@ -420,7 +423,9 @@
 {#if channel}
 	<ModalWrapper {open} {onClose} maxWidth="xl" labelledBy="channel-edit-modal-title">
 		<div class="mb-4 flex items-center justify-between">
-			<h3 id="channel-edit-modal-title" class="text-lg font-bold">Edit Channel</h3>
+			<h3 id="channel-edit-modal-title" class="text-lg font-bold">
+				{m.livetv_channelEditModal_title()}
+			</h3>
 			<button class="btn btn-circle btn-ghost btn-sm" onclick={onClose}>
 				<X class="h-4 w-4" />
 			</button>
@@ -440,7 +445,7 @@
 					{#if channel.channel.stalker?.tvArchive}
 						<span class="badge gap-1 badge-xs badge-info">
 							<Archive class="h-3 w-3" />
-							Archive
+							{m.livetv_channelEditModal_archive()}
 						</span>
 					{/if}
 				</div>
@@ -461,7 +466,7 @@
 		<div class="space-y-3">
 			<div>
 				<label class="mb-1 block text-sm text-base-content/70" for="channelNumber">
-					Channel Number
+					{m.livetv_channelEditModal_channelNumber()}
 				</label>
 				<input
 					type="number"
@@ -478,7 +483,7 @@
 
 			<div>
 				<label class="mb-1 block text-sm text-base-content/70" for="customName">
-					Custom Name
+					{m.livetv_channelEditModal_customName()}
 				</label>
 				<input
 					type="text"
@@ -488,28 +493,34 @@
 					placeholder={channel.channel.name}
 				/>
 				<div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-base-content/60">
-					<span>Cleaned name: {normalizedSuggestedName || channel.channel.name}</span>
+					<span
+						>{m.livetv_channelEditModal_cleanedName({
+							name: normalizedSuggestedName || channel.channel.name
+						})}</span
+					>
 					{#if canApplySuggestedName}
 						<button type="button" class="btn btn-ghost btn-xs" onclick={applySuggestedName}>
-							Use Cleaned Name
+							{m.livetv_channelEditModal_useCleanedName()}
 						</button>
 					{/if}
 					{#if customName.trim()}
 						<button type="button" class="btn btn-ghost btn-xs" onclick={clearCustomName}>
-							Use Provider Name
+							{m.livetv_channelEditModal_useProviderName()}
 						</button>
 					{/if}
 				</div>
 			</div>
 
 			<div>
-				<label class="mb-1 block text-sm text-base-content/70" for="category">Category</label>
+				<label class="mb-1 block text-sm text-base-content/70" for="category"
+					>{m.livetv_channelEditModal_category()}</label
+				>
 				<select
 					id="category"
 					class="select-bordered select w-full select-sm"
 					bind:value={categoryId}
 				>
-					<option value={null}>Uncategorized</option>
+					<option value={null}>{m.livetv_channelEditModal_uncategorized()}</option>
 					{#each categories as cat (cat.id)}
 						<option value={cat.id}>{cat.name}</option>
 					{/each}
@@ -518,7 +529,7 @@
 
 			<div>
 				<label class="mb-1 block text-sm text-base-content/70" for="customLogo">
-					Custom Logo URL
+					{m.livetv_channelEditModal_customLogoUrl()}
 				</label>
 				<div class="relative">
 					<div class="flex items-center gap-2">
@@ -527,7 +538,7 @@
 							id="customLogo"
 							class="input-bordered input input-sm flex-1 {customLogoError ? 'input-error' : ''}"
 							bind:value={customLogo}
-							placeholder="https://... or /api/logos/file/..."
+							placeholder={m.livetv_channelEditModal_customLogoPlaceholder()}
 						/>
 						<button
 							type="button"
@@ -535,7 +546,7 @@
 							onclick={toggleLogoPicker}
 							aria-expanded={logoPickerOpen}
 							aria-haspopup="dialog"
-							title="Browse downloaded logos"
+							title={m.livetv_channelEditModal_browseLogos()}
 						>
 							<Search class="h-4 w-4" />
 						</button>
@@ -561,7 +572,7 @@
 									<input
 										type="text"
 										class="input-bordered input input-sm w-full pl-9"
-										placeholder="Search downloaded logos"
+										placeholder={m.livetv_channelEditModal_searchLogosPlaceholder()}
 										bind:value={logoPickerSearch}
 									/>
 								</div>
@@ -570,7 +581,7 @@
 									bind:value={logoPickerCountry}
 									disabled={logoPickerCountries.length === 0 || logoLibraryReady === false}
 								>
-									<option value="">All</option>
+									<option value="">{m.livetv_channelEditModal_allCountries()}</option>
 									{#each logoPickerCountries as countryOption (countryOption.code)}
 										<option value={countryOption.code}>
 											{countryOption.name} ({countryOption.logoCount})
@@ -593,7 +604,7 @@
 									</div>
 								{:else if logoPickerItems.length === 0}
 									<div class="px-3 py-6 text-center text-sm text-base-content/60">
-										No logos matched your search.
+										{m.livetv_channelEditModal_noLogosMatch()}
 									</div>
 								{:else}
 									<div class="space-y-1">
@@ -626,7 +637,9 @@
 							</div>
 
 							<div class="mt-3 flex items-center justify-between gap-2">
-								<p class="text-xs text-base-content/50">Paste a URL or pick a downloaded logo.</p>
+								<p class="text-xs text-base-content/50">
+									{m.livetv_channelEditModal_pasteOrPickLogo()}
+								</p>
 								<div class="flex items-center gap-2">
 									{#if customLogo.trim()}
 										<button type="button" class="btn btn-ghost btn-xs" onclick={clearCustomLogo}>
@@ -645,25 +658,29 @@
 					<p class="mt-1 text-xs text-error">{customLogoError}</p>
 				{:else}
 					<p class="mt-1 text-xs text-base-content/50">
-						Paste a URL or browse your downloaded logo library. The header preview updates live.
+						{m.livetv_channelEditModal_customLogoHint()}
 					</p>
 				{/if}
 			</div>
 
 			<div>
-				<label class="mb-1 block text-sm text-base-content/70" for="epgId">EPG ID</label>
+				<label class="mb-1 block text-sm text-base-content/70" for="epgId"
+					>{m.livetv_channelEditModal_epgId()}</label
+				>
 				<input
 					type="text"
 					id="epgId"
 					class="input-bordered input input-sm w-full"
 					bind:value={epgId}
-					placeholder="XMLTV channel ID"
+					placeholder={m.livetv_channelEditModal_epgIdPlaceholder()}
 				/>
 				<p class="mt-1 text-xs text-base-content/50">Match with external EPG guide data</p>
 			</div>
 
 			<div>
-				<div class="mb-1 block text-sm text-base-content/70">EPG Source Override</div>
+				<div class="mb-1 block text-sm text-base-content/70">
+					{m.livetv_channelEditModal_epgSourceOverride()}
+				</div>
 				{#if epgSourceChannelId && channel.epgSourceChannel}
 					<div class="flex items-center gap-2 rounded-lg bg-base-200 px-3 py-2">
 						{#if channel.epgSourceChannel.logo}
@@ -695,7 +712,9 @@
 						<div class="flex h-8 w-8 items-center justify-center rounded bg-base-300">
 							<Link class="h-4 w-4 text-base-content/30" />
 						</div>
-						<div class="flex-1 text-sm text-base-content/60">EPG source selected</div>
+						<div class="flex-1 text-sm text-base-content/60">
+							{m.livetv_channelEditModal_epgSourceSelected()}
+						</div>
 						<button
 							type="button"
 							class="btn text-error btn-ghost btn-xs"
@@ -712,7 +731,7 @@
 						onclick={() => onOpenEpgSourcePicker?.(channel.channelId)}
 					>
 						<Link class="h-4 w-4" />
-						Select EPG Source
+						{m.livetv_channelEditModal_selectEpgSource()}
 					</button>
 				{/if}
 				<p class="mt-1 text-xs text-base-content/50">Use EPG from another channel</p>
@@ -725,7 +744,7 @@
 				class="collapse-title flex min-h-0 items-center justify-between px-3 py-2 text-sm font-medium"
 				onclick={() => (technicalDetailsOpen = !technicalDetailsOpen)}
 			>
-				<span>Technical Details</span>
+				<span>{m.livetv_channelEditModal_technicalDetails()}</span>
 				<ChevronDown
 					class="h-4 w-4 transition-transform {technicalDetailsOpen ? 'rotate-180' : ''}"
 				/>
@@ -733,29 +752,31 @@
 			<div class="collapse-content px-3 pb-3">
 				<div class="space-y-2 text-sm">
 					<div class="flex justify-between gap-4">
-						<span class="text-base-content/50">Original Name</span>
+						<span class="text-base-content/50">{m.livetv_channelEditModal_originalName()}</span>
 						<span class="truncate font-medium">{channel.channel.name}</span>
 					</div>
 					<div class="flex justify-between">
-						<span class="text-base-content/50">Original Number</span>
+						<span class="text-base-content/50">{m.livetv_channelEditModal_originalNumber()}</span>
 						<span class="font-medium">{channel.channel.number || 'None'}</span>
 					</div>
 					<div class="flex justify-between gap-4">
-						<span class="text-base-content/50">Provider Category</span>
+						<span class="text-base-content/50">{m.livetv_channelEditModal_providerCategory()}</span>
 						<span class="truncate font-medium">{channel.channel.categoryTitle || 'None'}</span>
 					</div>
 					<div class="flex justify-between">
-						<span class="text-base-content/50">Archive</span>
+						<span class="text-base-content/50">{m.livetv_channelEditModal_archive()}</span>
 						<span class="font-medium">
 							{#if channel.channel.stalker?.tvArchive}
-								Yes ({formatArchiveDuration(channel.channel.stalker.archiveDuration || 0)})
+								{m.livetv_channelEditModal_archiveYes({
+									duration: formatArchiveDuration(channel.channel.stalker.archiveDuration || 0)
+								})}
 							{:else}
-								No
+								{m.livetv_channelEditModal_archiveNo()}
 							{/if}
 						</span>
 					</div>
 					<div>
-						<span class="text-base-content/50">Stream Command</span>
+						<span class="text-base-content/50">{m.livetv_channelEditModal_streamCommand()}</span>
 						<div class="mt-1 flex items-center gap-2">
 							<code
 								class="flex-1 truncate rounded bg-base-300 px-2 py-1 font-mono text-xs"
@@ -767,7 +788,7 @@
 								type="button"
 								class="btn btn-ghost btn-xs"
 								onclick={copyStreamCommand}
-								title="Copy"
+								title={m.livetv_channelEditModal_copy()}
 							>
 								{#if copiedCmd}
 									<Check class="h-3.5 w-3.5 text-success" />
@@ -778,11 +799,11 @@
 						</div>
 					</div>
 					<div class="flex justify-between">
-						<span class="text-base-content/50">Account ID</span>
+						<span class="text-base-content/50">{m.livetv_channelEditModal_accountId()}</span>
 						<span class="font-mono text-xs">{channel.accountId}</span>
 					</div>
 					<div class="flex justify-between">
-						<span class="text-base-content/50">Channel ID</span>
+						<span class="text-base-content/50">{m.livetv_channelEditModal_channelId()}</span>
 						<span class="font-mono text-xs">{channel.channelId}</span>
 					</div>
 				</div>
@@ -796,7 +817,7 @@
 				onclick={() => (backupsOpen = !backupsOpen)}
 			>
 				<span class="flex items-center gap-2">
-					Backup Sources
+					{m.livetv_channelEditModal_backupSources()}
 					{#if backups.length > 0}
 						<span class="badge badge-xs badge-neutral">{backups.length}</span>
 					{/if}
@@ -817,7 +838,7 @@
 					</div>
 				{:else if backups.length === 0}
 					<p class="py-2 text-xs text-base-content/50">
-						No backups configured. Backups provide failover if the primary stream is unavailable.
+						{m.livetv_channelEditModal_noBackups()}
 					</p>
 				{:else}
 					<div class="space-y-2">
@@ -845,7 +866,7 @@
 										class="btn btn-ghost btn-xs"
 										onclick={() => moveBackupUp(i)}
 										disabled={i === 0 || backupSaving}
-										title="Move up"
+										title={m.livetv_channelEditModal_moveUp()}
 									>
 										<ChevronUp class="h-3 w-3" />
 									</button>
@@ -854,7 +875,7 @@
 										class="btn btn-ghost btn-xs"
 										onclick={() => moveBackupDown(i)}
 										disabled={i >= backups.length - 1 || backupSaving}
-										title="Move down"
+										title={m.livetv_channelEditModal_moveDown()}
 									>
 										<ChevronDown class="h-3 w-3" />
 									</button>
@@ -862,7 +883,7 @@
 										type="button"
 										class="btn text-error btn-ghost btn-xs"
 										onclick={() => removeBackup(backup.id)}
-										title="Remove"
+										title={m.livetv_channelEditModal_remove()}
 									>
 										<Trash2 class="h-3 w-3" />
 									</button>
@@ -879,7 +900,7 @@
 						onclick={() => onOpenBackupBrowser(channel.id, channel.channelId)}
 					>
 						<Plus class="h-3 w-3" />
-						Add Backup
+						{m.livetv_channelEditModal_addBackup()}
 					</button>
 				{/if}
 			</div>
@@ -892,12 +913,14 @@
 				</button>
 			{/if}
 
-			<button class="btn btn-ghost btn-sm" onclick={onClose} disabled={saving}>Cancel</button>
+			<button class="btn btn-ghost btn-sm" onclick={onClose} disabled={saving}
+				>{m.action_cancel()}</button
+			>
 			<button class="btn btn-sm btn-primary" onclick={handleSubmit} disabled={saving || !isValid}>
 				{#if saving}
 					<Loader2 class="h-4 w-4 animate-spin" />
 				{/if}
-				Save
+				{m.action_save()}
 			</button>
 		</div>
 	</ModalWrapper>

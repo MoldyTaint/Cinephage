@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { Clapperboard, Tv, Folder, List, Square, SquareCheck, RefreshCw } from 'lucide-svelte';
 	import { unmatchedFilesStore } from '$lib/stores/unmatched-files.svelte.js';
 
@@ -52,21 +53,21 @@
 				class="btn btn-sm {filter === 'all' ? 'btn-primary' : 'btn-ghost'}"
 				onclick={() => setFilter('all')}
 			>
-				All
+				{m.unmatched_filters_all()}
 			</button>
 			<button
 				class="btn btn-sm {filter === 'movie' ? 'btn-primary' : 'btn-ghost'}"
 				onclick={() => setFilter('movie')}
 			>
 				<Clapperboard class="h-4 w-4" />
-				Movies
+				{m.unmatched_filters_movies()}
 			</button>
 			<button
 				class="btn btn-sm {filter === 'tv' ? 'btn-primary' : 'btn-ghost'}"
 				onclick={() => setFilter('tv')}
 			>
 				<Tv class="h-4 w-4" />
-				TV Shows
+				{m.unmatched_filters_tvShows()}
 			</button>
 		</div>
 
@@ -76,14 +77,14 @@
 				<button
 					class="btn btn-sm {viewMode === 'list' ? 'btn-primary' : 'btn-ghost'}"
 					onclick={() => setViewMode('list')}
-					title="List View"
+					title={m.unmatched_filters_listView()}
 				>
 					<List class="h-4 w-4" />
 				</button>
 				<button
 					class="btn btn-sm {viewMode === 'folder' ? 'btn-primary' : 'btn-ghost'}"
 					onclick={() => setViewMode('folder')}
-					title="Folder View"
+					title={m.unmatched_filters_folderView()}
 				>
 					<Folder class="h-4 w-4" />
 				</button>
@@ -112,7 +113,7 @@
 			disabled={isProcessing || unmatchedFilesStore.files.length === 0}
 		>
 			<RefreshCw class="h-4 w-4 {isProcessing ? 'animate-spin' : ''}" />
-			Re-process Files
+			{m.unmatched_filters_reprocessFiles()}
 		</button>
 	</div>
 </div>
