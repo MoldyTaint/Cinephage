@@ -12,6 +12,7 @@
 		providers,
 		genres,
 		selectedGenres,
+		selectedLanguage,
 		minYear,
 		maxYear,
 		minRating,
@@ -19,6 +20,7 @@
 		onSortChange,
 		onProviderToggle,
 		onGenreToggle,
+		onLanguageChange,
 		onYearChange,
 		onRatingChange,
 		onReset,
@@ -31,6 +33,7 @@
 		providers: WatchProvider[];
 		genres: { id: number; name: string }[];
 		selectedGenres: number[];
+		selectedLanguage: string;
 		minYear: string;
 		maxYear: string;
 		minRating: number;
@@ -38,6 +41,7 @@
 		onSortChange: (sort: string) => void;
 		onProviderToggle: (id: number) => void;
 		onGenreToggle: (id: number) => void;
+		onLanguageChange: (language: string) => void;
 		onYearChange: (min: string, max: string) => void;
 		onRatingChange: (rating: number) => void;
 		onReset: () => void;
@@ -99,6 +103,7 @@
 				{providers}
 				{genres}
 				{selectedGenres}
+				{selectedLanguage}
 				{minYear}
 				{maxYear}
 				{minRating}
@@ -106,6 +111,7 @@
 				{onSortChange}
 				{onProviderToggle}
 				{onGenreToggle}
+				{onLanguageChange}
 				{onYearChange}
 				{onRatingChange}
 			/>

@@ -12,6 +12,7 @@ export interface DiscoverParams {
 	withWatchProviders: string;
 	watchRegion: string;
 	withGenres: string;
+	withOriginalLanguage: string | null;
 	minDate: string | null;
 	maxDate: string | null;
 	minRating: string | null;
@@ -31,6 +32,7 @@ export function parseDiscoverParams(searchParams: URLSearchParams): DiscoverPara
 		withWatchProviders: searchParams.get('with_watch_providers') || '',
 		watchRegion: searchParams.get('watch_region') || 'US',
 		withGenres: searchParams.get('with_genres') || '',
+		withOriginalLanguage: searchParams.get('with_original_language') || null,
 		minDate: searchParams.get('primary_release_date.gte') || null,
 		maxDate: searchParams.get('primary_release_date.lte') || null,
 		minRating: searchParams.get('vote_average.gte') || null,
@@ -48,6 +50,7 @@ export function isDefaultView(searchParams: URLSearchParams, params: DiscoverPar
 		(!searchParams.has('type') || searchParams.get('type') === 'all') &&
 		!searchParams.has('with_watch_providers') &&
 		!searchParams.has('with_genres') &&
+		!searchParams.has('with_original_language') &&
 		!searchParams.has('primary_release_date.gte') &&
 		!searchParams.has('primary_release_date.lte') &&
 		!searchParams.has('vote_average.gte') &&

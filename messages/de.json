@@ -480,6 +480,8 @@
 	"discover_filterBadgeTvShows": "Serien",
 	"discover_filterBadgeMovies": "Filme",
 	"discover_filterBadgeGenres": "{count} Genres",
+	"discover_filterBadgeLanguage": "Sprache",
+	"discover_filter_originalLanguage": "Originalsprache",
 	"library_movies_pageTitle": "Filme - Bibliothek - Cinephage",
 	"library_movies_heading": "Filme",
 	"library_movies_ofTotal": "von {total}",

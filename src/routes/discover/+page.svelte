@@ -184,6 +184,7 @@
 		parseProviderIds($page.url.searchParams.get('with_watch_providers'))
 	);
 	let selectedGenres = $derived(parseGenreIds($page.url.searchParams.get('with_genres')));
+	let selectedLanguage = $derived($page.url.searchParams.get('with_original_language') || '');
 	let minYear = $derived(extractYear($page.url.searchParams.get('primary_release_date.gte')));
 	let maxYear = $derived(extractYear($page.url.searchParams.get('primary_release_date.lte')));
 	let minRating = $derived(Number($page.url.searchParams.get('vote_average.gte')) || 0);
@@ -405,7 +406,7 @@
 
 			<div class="flex flex-1 items-center justify-end gap-3">
 				<!-- Active Filters Summary -->
-				{#if selectedProviders.length > 0 || type !== 'all' || selectedGenres.length > 0 || minYear || maxYear || minRating > 0}
+				{#if selectedProviders.length > 0 || type !== 'all' || selectedGenres.length > 0 || selectedLanguage || minYear || maxYear || minRating > 0}
 					<div class="hidden items-center gap-2 md:flex">
 						{#if type !== 'all'}
 							<div class="badge badge-sm badge-primary">
@@ -415,6 +416,11 @@
 						{#if selectedGenres.length > 0}
 							<div class="badge badge-outline badge-sm">
 								{m.discover_filterBadgeGenres({ count: selectedGenres.length })}
+							</div>
+						{/if}
+						{#if selectedLanguage}
+							<div class="badge badge-outline badge-sm">
+								{m.discover_filterBadgeLanguage()}
 							</div>
 						{/if}
 						<button class="btn text-error btn-ghost btn-xs" onclick={resetFilters}
@@ -682,6 +688,7 @@
 		{selectedProviders}
 		genres={data.genres}
 		{selectedGenres}
+		{selectedLanguage}
 		{minYear}
 		{maxYear}
 		{minRating}
@@ -690,6 +697,7 @@
 		onSortChange={(s) => updateFilter('sort_by', s)}
 		onProviderToggle={toggleProvider}
 		onGenreToggle={toggleGenre}
+		onLanguageChange={(lang) => updateFilter('with_original_language', lang || null)}
 		onYearChange={updateYear}
 		onRatingChange={(r) => updateFilter('vote_average.gte', String(r))}
 		onReset={resetFilters}

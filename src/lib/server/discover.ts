@@ -39,6 +39,7 @@ export interface DiscoverParams {
 	withWatchProviders: string;
 	watchRegion: string;
 	withGenres: string;
+	withOriginalLanguage: string | null;
 	minDate: string | null;
 	maxDate: string | null;
 	minRating: string | null;
@@ -53,6 +54,7 @@ export async function getDiscoverResults(params: DiscoverParams) {
 		withWatchProviders,
 		watchRegion,
 		withGenres,
+		withOriginalLanguage,
 		minDate,
 		maxDate,
 		minRating
@@ -84,6 +86,10 @@ export async function getDiscoverResults(params: DiscoverParams) {
 			} else {
 				queryParams.set('with_genres', withGenres);
 			}
+		}
+
+		if (withOriginalLanguage) {
+			queryParams.set('with_original_language', withOriginalLanguage);
 		}
 
 		if (minDate) {

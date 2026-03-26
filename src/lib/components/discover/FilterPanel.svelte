@@ -10,6 +10,7 @@
 		providers,
 		genres,
 		selectedGenres,
+		selectedLanguage,
 		minYear,
 		maxYear,
 		minRating,
@@ -17,6 +18,7 @@
 		onSortChange,
 		onProviderToggle,
 		onGenreToggle,
+		onLanguageChange,
 		onYearChange,
 		onRatingChange
 	} = $props<{
@@ -26,6 +28,7 @@
 		providers: WatchProvider[];
 		genres: { id: number; name: string }[];
 		selectedGenres: number[];
+		selectedLanguage: string;
 		minYear: string;
 		maxYear: string;
 		minRating: number;
@@ -33,9 +36,27 @@
 		onSortChange: (sort: string) => void;
 		onProviderToggle: (id: number) => void;
 		onGenreToggle: (id: number) => void;
+		onLanguageChange: (language: string) => void;
 		onYearChange: (min: string, max: string) => void;
 		onRatingChange: (rating: number) => void;
 	}>();
+
+	// Common languages for filtering
+	const languages = [
+		{ code: '', name: 'All Languages' },
+		{ code: 'en', name: 'English' },
+		{ code: 'es', name: 'Spanish' },
+		{ code: 'fr', name: 'French' },
+		{ code: 'de', name: 'German' },
+		{ code: 'it', name: 'Italian' },
+		{ code: 'ja', name: 'Japanese' },
+		{ code: 'ko', name: 'Korean' },
+		{ code: 'zh', name: 'Chinese' },
+		{ code: 'hi', name: 'Hindi' },
+		{ code: 'pt', name: 'Portuguese' },
+		{ code: 'ru', name: 'Russian' },
+		{ code: 'ar', name: 'Arabic' }
+	];
 </script>
 
 <div class="space-y-8">
@@ -81,6 +102,25 @@
 			<option value="vote_average.desc">{m.discover_sort_highestRated()}</option>
 			<option value="primary_release_date.desc">{m.discover_sort_newestReleases()}</option>
 			<option value="revenue.desc">{m.discover_sort_highestRevenue()}</option>
+		</select>
+	</div>
+
+	<!-- Original Language -->
+	<div class="form-control">
+		<label
+			for="original-language"
+			class="label text-sm font-bold tracking-wide text-base-content/70 uppercase"
+			>{m.discover_filter_originalLanguage()}</label
+		>
+		<select
+			id="original-language"
+			class="select-bordered select w-full bg-base-200 transition-colors focus:bg-base-100"
+			value={selectedLanguage}
+			onchange={(e) => onLanguageChange(e.currentTarget.value)}
+		>
+			{#each languages as language}
+				<option value={language.code}>{language.name}</option>
+			{/each}
 		</select>
 	</div>
 

@@ -439,6 +439,8 @@
 	"discover_filterBadgeTvShows": "TV Shows",
 	"discover_filterBadgeMovies": "Movies",
 	"discover_filterBadgeGenres": "{count} Genres",
+	"discover_filterBadgeLanguage": "Language",
+	"discover_filter_originalLanguage": "Original Language",
 	"livetv_channels_pageTitle": "Channels - Live TV - Cinephage",
 	"livetv_channels_heading": "Channels",
 	"livetv_channels_subtitle": "Organize your channel lineup",
