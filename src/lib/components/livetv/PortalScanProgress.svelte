@@ -166,7 +166,9 @@
 			<div>
 				<h3 class="text-lg font-bold">
 					{#if isActive}
-						{m.livetv_portalScanProgress_scanningPortal()}
+						{m.livetv_portalScanProgress_scanningPortal({
+							name: worker?.metadata.portalName ?? ''
+						})}
 					{:else if isCompleted}
 						{m.livetv_portalScanProgress_scanComplete()}
 					{:else if isCancelled}
@@ -237,7 +239,7 @@
 		{#if isActive && currentMac}
 			<div class="mb-6">
 				<div class="text-sm text-base-content/60">
-					{m.livetv_portalScanProgress_currentlyTesting()}
+					{m.livetv_portalScanProgress_currentlyTesting({ mac: currentMac })}
 				</div>
 				<div class="font-mono text-lg">{currentMac}</div>
 				{#if estimatedTimeRemaining()}

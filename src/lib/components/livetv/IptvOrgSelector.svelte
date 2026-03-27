@@ -105,7 +105,7 @@
 							class="ml-1 hover:text-error"
 							onclick={() => removeCountry(country.code)}
 							type="button"
-							aria-label={m.livetv_iptvOrg_removeCountry({ name: country.name })}
+							aria-label={m.livetv_iptvOrg_removeCountry({ country: country.name })
 						>
 							<X class="h-3 w-3" />
 						</button>
@@ -158,7 +158,7 @@
 			<span class="label-text-alt text-xs">
 				{#if searchQuery}
 					{m.livetv_iptvOrg_filteredCount({
-						filtered: filteredCountries.length,
+						count: filteredCountries.length,
 						total: countries.length
 					})}
 				{:else if selectedCountries.length === 0}

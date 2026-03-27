@@ -756,7 +756,11 @@
 						<span class="truncate font-medium">{channel.channel.name}</span>
 					</div>
 					<div class="flex justify-between">
-						<span class="text-base-content/50">{m.livetv_channelEditModal_originalNumber()}</span>
+						<span class="text-base-content/50"
+							>{m.livetv_channelEditModal_originalNumber({
+								number: channel.channel.number ?? 'None'
+							})}</span
+						>
 						<span class="font-medium">{channel.channel.number || 'None'}</span>
 					</div>
 					<div class="flex justify-between gap-4">

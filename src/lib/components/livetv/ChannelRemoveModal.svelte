@@ -17,7 +17,7 @@
 	const channelLabel = $derived(
 		selectedCount === 1
 			? m.livetv_channelRemoveModal_channel()
-			: m.livetv_channelRemoveModal_channels()
+			: m.livetv_channelRemoveModal_channels({ count: selectedCount })
 	);
 
 	function handleClose() {
@@ -47,8 +47,7 @@
 			{m.livetv_channelRemoveModal_removeSingle({ name: channelName })}
 		{:else}
 			{m.livetv_channelRemoveModal_removeMultiple({
-				count: selectedCount,
-				label: channelLabel
+				count: selectedCount
 			})}
 		{/if}
 	</p>

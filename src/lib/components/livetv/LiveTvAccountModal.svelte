@@ -266,7 +266,7 @@
 			statuses.push(m.livetv_accountModal_epgNotConfigured());
 		}
 
-		return m.livetv_accountModal_testSuccessWithStatus({ statuses: statuses.join(' • ') });
+		return m.livetv_accountModal_testSuccessWithStatus({ status: statuses.join(' • ') });
 	}
 
 	function getSuccessDetails(result: LiveTvAccountTestResult | null): string | undefined {

@@ -64,14 +64,14 @@
 	<div class="mb-4 grid gap-2 sm:grid-cols-3">
 		<div class="rounded-box border border-base-content/10 bg-base-200/50 p-3">
 			<div class="text-xs tracking-wide text-base-content/50 uppercase">
-				{m.livetv_channelBulkCleanNamesModal_selected()}
+				{m.livetv_channelBulkCleanNamesModal_selected({ count: selectedCount })}
 			</div>
 			<div class="mt-1 text-lg font-semibold">{selectedCount}</div>
 			<div class="text-sm text-base-content/60">{selectedLabel}</div>
 		</div>
 		<div class="rounded-box border border-success/20 bg-success/10 p-3">
 			<div class="text-xs tracking-wide text-success/70 uppercase">
-				{m.livetv_channelBulkCleanNamesModal_willApply()}
+				{m.livetv_channelBulkCleanNamesModal_willApply({ count: applicableCount })}
 			</div>
 			<div class="mt-1 text-lg font-semibold text-success">{applicableCount}</div>
 			<div class="text-sm text-base-content/60">
@@ -80,14 +80,13 @@
 		</div>
 		<div class="rounded-box border border-base-content/10 bg-base-200/50 p-3">
 			<div class="text-xs tracking-wide text-base-content/50 uppercase">
-				{m.livetv_channelBulkCleanNamesModal_skipped()}
+				{m.livetv_channelBulkCleanNamesModal_skipped({
+					count: skippedExistingCustom + skippedUnchanged
+				})}
 			</div>
 			<div class="mt-1 text-lg font-semibold">{skippedExistingCustom + skippedUnchanged}</div>
 			<div class="text-sm text-base-content/60">
-				{m.livetv_channelBulkCleanNamesModal_skippedDetails({
-					custom: skippedExistingCustom,
-					unchanged: skippedUnchanged
-				})}
+				{m.livetv_channelBulkCleanNamesModal_skippedDetails()}
 			</div>
 		</div>
 	</div>
