@@ -207,7 +207,6 @@
 			const result = await response.json();
 
 			if (result.success) {
-				const mediaTitle = selectedMedia.title || selectedMedia.name;
 				toasts.success(
 					m.library_batchMatch_matchedFiles({
 						count: result.data.matched
