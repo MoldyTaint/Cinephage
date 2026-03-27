@@ -22,7 +22,12 @@ import {
 	ImportMode,
 	transferFileWithMode
 } from '$lib/server/downloadClients/import/FileTransfer.js';
-import { validateRootFolder, type MediaType } from '$lib/server/library/LibraryAddService.js';
+import {
+	validateRootFolder,
+	getAnimeSubtypeEnforcement,
+	type MediaType
+} from '$lib/server/library/LibraryAddService.js';
+import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import {
 	extractSeasonFromPath,
 	getMediaParseStem,
@@ -507,7 +512,22 @@ export class ManualImportService {
 			throw new Error('Root folder is required for new movie import');
 		}
 
-		await validateRootFolder(request.rootFolderId, 'movie');
+		const tmdbMovie = await tmdb.getMovie(request.tmdbId);
+		const enforceAnimeSubtype = await getAnimeSubtypeEnforcement();
+		const isAnimeMedia = isLikelyAnimeMedia({
+			genres: tmdbMovie.genres,
+			originalLanguage: tmdbMovie.original_language,
+			originCountries: tmdbMovie.production_countries?.map((country) => country.iso_3166_1),
+			productionCountries: tmdbMovie.production_countries,
+			title: tmdbMovie.title,
+			originalTitle: tmdbMovie.original_title
+		});
+
+		await validateRootFolder(request.rootFolderId, 'movie', {
+			enforceAnimeSubtype,
+			isAnimeMedia,
+			mediaTitle: tmdbMovie.title
+		});
 		const [rootFolder] = await db
 			.select()
 			.from(rootFolders)
@@ -518,7 +538,6 @@ export class ManualImportService {
 			throw new Error('Root folder not found');
 		}
 
-		const tmdbMovie = await tmdb.getMovie(request.tmdbId);
 		const externalIds = await tmdb.getMovieExternalIds(request.tmdbId).catch(() => ({
 			imdb_id: null
 		}));
@@ -601,7 +620,22 @@ export class ManualImportService {
 			throw new Error('Root folder is required for new TV import');
 		}
 
-		await validateRootFolder(request.rootFolderId, 'tv');
+		const tvShow = await tmdb.getTVShow(request.tmdbId);
+		const enforceAnimeSubtype = await getAnimeSubtypeEnforcement();
+		const isAnimeMedia = isLikelyAnimeMedia({
+			genres: tvShow.genres,
+			originalLanguage: tvShow.original_language,
+			originCountries: tvShow.origin_country,
+			productionCountries: tvShow.production_countries,
+			title: tvShow.name,
+			originalTitle: tvShow.original_name
+		});
+
+		await validateRootFolder(request.rootFolderId, 'tv', {
+			enforceAnimeSubtype,
+			isAnimeMedia,
+			mediaTitle: tvShow.name
+		});
 		const [rootFolder] = await db
 			.select()
 			.from(rootFolders)
@@ -612,7 +646,6 @@ export class ManualImportService {
 			throw new Error('Root folder not found');
 		}
 
-		const tvShow = await tmdb.getTVShow(request.tmdbId);
 		const externalIds = await tmdb.getTvExternalIds(request.tmdbId).catch(() => ({
 			tvdb_id: null,
 			imdb_id: null

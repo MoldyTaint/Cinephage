@@ -52,6 +52,7 @@ export interface LibraryMoviePageData {
 		name: string;
 		path: string;
 		mediaType: string;
+		mediaSubType: string | null;
 		freeSpaceBytes: number | null;
 	}>;
 	queueItem: QueueItemInfo | null;
@@ -207,6 +208,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 			name: rootFolders.name,
 			path: rootFolders.path,
 			mediaType: rootFolders.mediaType,
+			mediaSubType: rootFolders.mediaSubType,
 			freeSpaceBytes: rootFolders.freeSpaceBytes
 		})
 		.from(rootFolders)

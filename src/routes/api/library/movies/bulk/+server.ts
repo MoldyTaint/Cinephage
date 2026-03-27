@@ -8,12 +8,14 @@ import { NamingService, type MediaNamingInfo } from '$lib/server/library/naming/
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
 import {
 	validateRootFolder,
+	getAnimeSubtypeEnforcement,
 	getEffectiveScoringProfileId,
 	getLanguageProfileId,
 	fetchMovieDetails,
 	fetchMovieExternalIds,
 	triggerMovieSearch
 } from '$lib/server/library/LibraryAddService.js';
+import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { ValidationError } from '$lib/errors';
 import { logger } from '$lib/logging';
 
@@ -79,6 +81,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		// Verify root folder exists and is for movies
 		await validateRootFolder(rootFolderId, 'movie');
+		const enforceAnimeSubtype = await getAnimeSubtypeEnforcement();
 
 		// Check which movies already exist in library
 		const existingMovies = await db
@@ -106,6 +109,22 @@ export const POST: RequestHandler = async ({ request }) => {
 			try {
 				// Fetch movie details from TMDB
 				const movieDetails = await fetchMovieDetails(tmdbId);
+				const isAnimeMedia = isLikelyAnimeMedia({
+					genres: movieDetails.genres,
+					originalLanguage: movieDetails.original_language,
+					originCountries: movieDetails.production_countries?.map((country) => country.iso_3166_1),
+					productionCountries: movieDetails.production_countries,
+					title: movieDetails.title,
+					originalTitle: movieDetails.original_title
+				});
+
+				if (enforceAnimeSubtype && isAnimeMedia) {
+					await validateRootFolder(rootFolderId, 'movie', {
+						enforceAnimeSubtype,
+						isAnimeMedia,
+						mediaTitle: movieDetails.title
+					});
+				}
 
 				// Generate folder path
 				const year = movieDetails.release_date

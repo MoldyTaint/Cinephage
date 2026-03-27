@@ -9,6 +9,7 @@
 		name: string;
 		path: string;
 		mediaType: string;
+		mediaSubType?: 'standard' | 'anime';
 		isDefault?: boolean;
 		freeSpaceBytes?: number | null;
 	}
@@ -29,6 +30,7 @@
 		selectedScoringProfile: string;
 		searchOnAdd: boolean;
 		wantsSubtitles: boolean;
+		requiredMediaSubType?: 'standard' | 'anime';
 	}
 
 	let {
@@ -38,10 +40,13 @@
 		selectedRootFolder = $bindable(),
 		selectedScoringProfile = $bindable(),
 		searchOnAdd = $bindable(),
-		wantsSubtitles = $bindable()
+		wantsSubtitles = $bindable(),
+		requiredMediaSubType
 	}: Props = $props();
 
-	const filteredRootFolders = $derived(sortRootFoldersForMediaType(rootFolders, mediaType));
+	const filteredRootFolders = $derived(
+		sortRootFoldersForMediaType(rootFolders, mediaType, requiredMediaSubType)
+	);
 	const selectedRootFolderObj = $derived(
 		filteredRootFolders.find((f) => f.id === selectedRootFolder)
 	);
@@ -66,12 +71,16 @@
 	{#if filteredRootFolders.length === 0}
 		<div class="alert text-sm alert-warning">
 			<span
-				>{m.library_add_noRootFoldersConfigured({
-					mediaType:
-						mediaType === 'movie'
-							? m.common_movies().toLowerCase()
-							: m.common_tvShows().toLowerCase()
-				})}
+				>{#if requiredMediaSubType === 'anime'}
+					No Anime root folders are available for this media type.
+				{:else}
+					{m.library_add_noRootFoldersConfigured({
+						mediaType:
+							mediaType === 'movie'
+								? m.common_movies().toLowerCase()
+								: m.common_tvShows().toLowerCase()
+					})}
+				{/if}
 				<a href={resolve('/settings/general')} class="link">{m.library_add_addOneInSettings()}</a>
 			</span>
 		</div>

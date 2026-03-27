@@ -18,6 +18,7 @@ import { searchOnAdd } from './searchOnAdd.js';
 import { SearchWorker, workerManager } from '$lib/server/workers/index.js';
 import { ValidationError, NotFoundError, ExternalServiceError } from '$lib/errors';
 import { createChildLogger } from '$lib/logging';
+import { isAnimeRootFolderEnforcementEnabled } from './anime-root-enforcement-settings.js';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });
 
@@ -27,6 +28,13 @@ export interface RootFolderInfo {
 	id: string;
 	path: string;
 	mediaType: string;
+	mediaSubType: string;
+}
+
+export interface RootFolderValidationOptions {
+	enforceAnimeSubtype?: boolean;
+	isAnimeMedia?: boolean;
+	mediaTitle?: string;
 }
 
 export interface ExternalIds {
@@ -43,7 +51,8 @@ export interface SearchOnAddResult {
  */
 export async function validateRootFolder(
 	rootFolderId: string,
-	expectedMediaType: MediaType
+	expectedMediaType: MediaType,
+	options: RootFolderValidationOptions = {}
 ): Promise<RootFolderInfo> {
 	const [folder] = await db
 		.select()
@@ -63,11 +72,30 @@ export async function validateRootFolder(
 		});
 	}
 
+	const mediaSubType = folder.mediaSubType ?? 'standard';
+	if (options.enforceAnimeSubtype && options.isAnimeMedia && mediaSubType !== 'anime') {
+		throw new ValidationError(
+			'Anime media can only be added to an Anime root folder while anime enforcement is enabled',
+			{
+				rootFolderId: folder.id,
+				rootFolderName: folder.name,
+				mediaSubType,
+				expectedMediaSubType: 'anime',
+				title: options.mediaTitle
+			}
+		);
+	}
+
 	return {
 		id: folder.id,
 		path: folder.path,
-		mediaType: folder.mediaType
+		mediaType: folder.mediaType,
+		mediaSubType
 	};
+}
+
+export async function getAnimeSubtypeEnforcement(): Promise<boolean> {
+	return isAnimeRootFolderEnforcementEnabled();
 }
 
 /**

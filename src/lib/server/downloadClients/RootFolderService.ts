@@ -23,7 +23,8 @@ import { libraryWatcherService } from '$lib/server/library/library-watcher.js';
 import type {
 	RootFolder,
 	PathValidationResult,
-	RootFolderMediaType
+	RootFolderMediaType,
+	RootFolderMediaSubType
 } from '$lib/types/downloadClient';
 
 /**
@@ -33,6 +34,7 @@ export interface RootFolderInput {
 	name: string;
 	path: string;
 	mediaType: RootFolderMediaType;
+	mediaSubType?: RootFolderMediaSubType;
 	isDefault?: boolean;
 	readOnly?: boolean;
 	preserveSymlinks?: boolean;
@@ -126,6 +128,7 @@ export class RootFolderService {
 			name: input.name,
 			path: input.path,
 			mediaType: input.mediaType,
+			mediaSubType: input.mediaSubType ?? 'standard',
 			isDefault: input.isDefault ?? false,
 			readOnly: input.readOnly ?? false,
 			preserveSymlinks: input.preserveSymlinks ?? false,
@@ -206,6 +209,7 @@ export class RootFolderService {
 		if (updates.name !== undefined) updateData.name = updates.name;
 		if (updates.path !== undefined) updateData.path = updates.path;
 		if (updates.mediaType !== undefined) updateData.mediaType = updates.mediaType;
+		if (updates.mediaSubType !== undefined) updateData.mediaSubType = updates.mediaSubType;
 		if (updates.isDefault !== undefined) updateData.isDefault = updates.isDefault;
 		if (updates.readOnly !== undefined) updateData.readOnly = updates.readOnly;
 		if (updates.preserveSymlinks !== undefined)
@@ -508,6 +512,7 @@ export class RootFolderService {
 			name: row.name,
 			path: row.path,
 			mediaType: row.mediaType as RootFolderMediaType,
+			mediaSubType: (row.mediaSubType ?? 'standard') as RootFolderMediaSubType,
 			isDefault: !!row.isDefault,
 			readOnly: isReadOnly,
 			preserveSymlinks: !!row.preserveSymlinks,

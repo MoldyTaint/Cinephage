@@ -41,6 +41,7 @@
 	let name = $state('');
 	let path = $state('');
 	let mediaType = $state<'movie' | 'tv'>('movie');
+	let mediaSubType = $state<'standard' | 'anime'>('standard');
 	let isDefault = $state(false);
 	let readOnly = $state(false);
 	let preserveSymlinks = $state(false);
@@ -62,6 +63,7 @@
 			name = folder?.name ?? '';
 			path = folder?.path ?? '';
 			mediaType = folder?.mediaType ?? 'movie';
+			mediaSubType = folder?.mediaSubType ?? 'standard';
 			isDefault = folder?.isDefault ?? false;
 			readOnly = folder?.readOnly ?? false;
 			preserveSymlinks = folder?.preserveSymlinks ?? false;
@@ -76,6 +78,7 @@
 			name,
 			path,
 			mediaType,
+			mediaSubType,
 			isDefault,
 			readOnly,
 			preserveSymlinks,
@@ -126,7 +129,7 @@
 	{:else}
 		<!-- Form -->
 		<div class="root-folder-editor space-y-4">
-			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+			<div class="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
 				<div class="form-control">
 					<label class="label py-1" for="name">
 						<span class="label-text">Name</span>
@@ -147,6 +150,20 @@
 					<select id="mediaType" class="select-bordered select select-sm" bind:value={mediaType}>
 						<option value="movie">{m.rootFolders_movies()}</option>
 						<option value="tv">{m.rootFolders_tvShows()}</option>
+					</select>
+				</div>
+
+				<div class="form-control">
+					<label class="label py-1" for="mediaSubType">
+						<span class="label-text">Library Subtype</span>
+					</label>
+					<select
+						id="mediaSubType"
+						class="select-bordered select select-sm"
+						bind:value={mediaSubType}
+					>
+						<option value="standard">Standard</option>
+						<option value="anime">Anime</option>
 					</select>
 				</div>
 			</div>

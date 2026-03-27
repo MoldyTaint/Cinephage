@@ -22,6 +22,11 @@ import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import { tmdb } from '$lib/server/tmdb.js';
 import { movieUpdateSchema } from '$lib/validation/schemas';
 import { parseBody } from '$lib/server/api/validate.js';
+import {
+	validateRootFolder,
+	getAnimeSubtypeEnforcement
+} from '$lib/server/library/LibraryAddService.js';
+import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 
 /**
  * GET /api/library/movies/[id]
@@ -139,6 +144,9 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	// Capture current state before update (for subtitle trigger detection)
 	const [currentMovie] = await db
 		.select({
+			tmdbId: movies.tmdbId,
+			title: movies.title,
+			rootFolderId: movies.rootFolderId,
 			wantsSubtitles: movies.wantsSubtitles,
 			languageProfileId: movies.languageProfileId,
 			hasFile: movies.hasFile
@@ -158,7 +166,38 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		updateData.minimumAvailability = body.minimumAvailability;
 	}
 	if (body.rootFolderId !== undefined) {
-		updateData.rootFolderId = body.rootFolderId;
+		const nextRootFolderId = body.rootFolderId === '' ? null : body.rootFolderId;
+		const currentRootFolderId = currentMovie?.rootFolderId ?? null;
+
+		// Only validate/apply when reassignment is requested.
+		if (nextRootFolderId !== currentRootFolderId) {
+			if (nextRootFolderId === null) {
+				updateData.rootFolderId = null;
+			} else {
+				const enforceAnimeSubtype = await getAnimeSubtypeEnforcement();
+				let isAnimeMedia = false;
+				if (enforceAnimeSubtype && currentMovie) {
+					const movieDetails = await tmdb.getMovie(currentMovie.tmdbId);
+					isAnimeMedia = isLikelyAnimeMedia({
+						genres: movieDetails.genres,
+						originalLanguage: movieDetails.original_language,
+						originCountries: movieDetails.production_countries?.map(
+							(country) => country.iso_3166_1
+						),
+						productionCountries: movieDetails.production_countries,
+						title: movieDetails.title,
+						originalTitle: movieDetails.original_title
+					});
+				}
+
+				await validateRootFolder(nextRootFolderId, 'movie', {
+					enforceAnimeSubtype,
+					isAnimeMedia,
+					mediaTitle: currentMovie?.title
+				});
+				updateData.rootFolderId = nextRootFolderId;
+			}
+		}
 	}
 	if (body.wantsSubtitles !== undefined) {
 		updateData.wantsSubtitles = body.wantsSubtitles;

@@ -3,8 +3,11 @@
 	import { X } from 'lucide-svelte';
 	import { ModalWrapper, ModalFooter } from '$lib/components/ui/modal';
 	import { FormCheckbox } from '$lib/components/ui/form';
+	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
+	import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 
 	interface SeriesData {
+		tmdbId: number;
 		title: string;
 		year: number | null;
 		monitored: boolean | null;
@@ -28,7 +31,17 @@
 		name: string;
 		path: string;
 		mediaType: string;
+		mediaSubType?: string | null;
 		freeSpaceBytes: number | null;
+	}
+
+	interface TmdbTvDetails {
+		name?: string | null;
+		original_name?: string | null;
+		original_language?: string | null;
+		origin_country?: string[] | null;
+		production_countries?: Array<{ iso_3166_1?: string }> | null;
+		genres?: Array<{ id?: number; name?: string }> | null;
 	}
 
 	interface Props {
@@ -59,6 +72,54 @@
 	let seasonFolder = $state(true);
 	let wantsSubtitles = $state(true);
 	let seriesType = $state<'standard' | 'anime' | 'daily'>('standard');
+	let enforceAnimeSubtype = $state(false);
+	let detectedAnime = $state(false);
+
+	const requiredMediaSubType = $derived(
+		enforceAnimeSubtype && detectedAnime ? ('anime' as const) : undefined
+	);
+	const eligibleRootFolders = $derived(
+		sortRootFoldersForMediaType(rootFolders, 'tv', requiredMediaSubType)
+	);
+	const selectedRootFolderObj = $derived(rootFolders.find((folder) => folder.id === rootFolderId));
+	const selectedRootFolderOutOfPolicy = $derived(
+		requiredMediaSubType === 'anime' &&
+			!!selectedRootFolderObj &&
+			(selectedRootFolderObj.mediaSubType ?? 'standard') !== 'anime'
+	);
+
+	async function loadAnimeRoutingContext(tmdbId: number) {
+		try {
+			const [classificationRes, tvRes] = await Promise.all([
+				fetch('/api/settings/library/classification'),
+				fetch(`/api/tmdb/tv/${tmdbId}`)
+			]);
+
+			if (classificationRes.ok) {
+				const classificationData = await classificationRes.json();
+				enforceAnimeSubtype = classificationData?.enforceAnimeSubtype === true;
+			} else {
+				enforceAnimeSubtype = false;
+			}
+
+			if (tvRes.ok) {
+				const details: TmdbTvDetails = await tvRes.json();
+				detectedAnime = isLikelyAnimeMedia({
+					genres: details.genres,
+					originalLanguage: details.original_language,
+					originCountries: details.origin_country,
+					productionCountries: details.production_countries,
+					title: details.name,
+					originalTitle: details.original_name
+				});
+			} else {
+				detectedAnime = false;
+			}
+		} catch {
+			enforceAnimeSubtype = false;
+			detectedAnime = false;
+		}
+	}
 
 	const seriesTypeOptions: Array<{
 		value: 'standard' | 'anime' | 'daily';
@@ -99,6 +160,18 @@
 			seasonFolder = series.seasonFolder ?? true;
 			wantsSubtitles = series.wantsSubtitles ?? true;
 			seriesType = normalizeSeriesType(series.seriesType);
+			enforceAnimeSubtype = false;
+			detectedAnime = false;
+			void loadAnimeRoutingContext(series.tmdbId);
+		}
+	});
+
+	$effect(() => {
+		if (!open) return;
+		if (!rootFolderId) return;
+		const stillAllowed = eligibleRootFolders.some((folder) => folder.id === rootFolderId);
+		if (!stillAllowed && !selectedRootFolderOutOfPolicy) {
+			rootFolderId = '';
 		}
 	});
 
@@ -228,7 +301,10 @@
 				class="select-bordered select w-full"
 			>
 				<option value="">{m.library_seriesEdit_notSet()}</option>
-				{#each rootFolders as folder (folder.id)}
+				{#if selectedRootFolderOutOfPolicy && selectedRootFolderObj}
+					<option value={selectedRootFolderObj.id}>{selectedRootFolderObj.path} (current)</option>
+				{/if}
+				{#each eligibleRootFolders as folder (folder.id)}
 					<option value={folder.id}>
 						{folder.path}
 						{#if folder.freeSpaceBytes}
@@ -242,6 +318,11 @@
 					{m.library_seriesEdit_rootFolderDesc()}
 				</span>
 			</div>
+			{#if requiredMediaSubType === 'anime'}
+				<div class="text-xs text-base-content/70">
+					Anime root enforcement is enabled. New folder selections are limited to Anime roots.
+				</div>
+			{/if}
 		</div>
 	</div>
 

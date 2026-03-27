@@ -102,6 +102,9 @@
 														{m.rootFolders_badgeReadOnly()}
 													</span>
 												{/if}
+												{#if (folder.mediaSubType ?? 'standard') === 'anime'}
+													<span class="badge badge-sm badge-accent">Anime</span>
+												{/if}
 											</h3>
 											<p class="max-w-full font-mono text-sm break-all text-base-content/60">
 												{folder.path}

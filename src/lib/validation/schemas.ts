@@ -420,6 +420,7 @@ export const downloadClientTestSchema = z.object({
  * Media type for root folders.
  */
 export const rootFolderMediaTypeSchema = z.enum(['movie', 'tv']);
+export const rootFolderMediaSubTypeSchema = z.enum(['standard', 'anime']);
 
 /**
  * Schema for creating a root folder.
@@ -428,6 +429,7 @@ export const rootFolderCreateSchema = z.object({
 	name: z.string().min(1, 'Name is required').max(100, 'Name must be 100 characters or less'),
 	path: z.string().min(1, 'Path is required'),
 	mediaType: rootFolderMediaTypeSchema,
+	mediaSubType: rootFolderMediaSubTypeSchema.default('standard'),
 	isDefault: z.boolean().default(false),
 	readOnly: z.boolean().default(false),
 	preserveSymlinks: z.boolean().default(false),
@@ -449,6 +451,7 @@ export type DownloadClientTest = z.infer<typeof downloadClientTestSchema>;
 
 // Root Folder Type Exports
 export type RootFolderMediaType = z.infer<typeof rootFolderMediaTypeSchema>;
+export type RootFolderMediaSubType = z.infer<typeof rootFolderMediaSubTypeSchema>;
 export type RootFolderCreate = z.infer<typeof rootFolderCreateSchema>;
 export type RootFolderUpdate = z.infer<typeof rootFolderUpdateSchema>;
 

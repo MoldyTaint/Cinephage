@@ -21,6 +21,12 @@ import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.
 import { deleteAllAlternateTitles } from '$lib/server/services/index.js';
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
+import {
+	validateRootFolder,
+	getAnimeSubtypeEnforcement
+} from '$lib/server/library/LibraryAddService.js';
+import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
+import { tmdb } from '$lib/server/tmdb.js';
 
 /**
  * GET /api/library/series/[id]
@@ -191,6 +197,10 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		// Get current series state BEFORE update to detect monitoring changes
 		const [currentSeries] = await db
 			.select({
+				tmdbId: series.tmdbId,
+				title: series.title,
+				seriesType: series.seriesType,
+				rootFolderId: series.rootFolderId,
 				monitored: series.monitored,
 				wantsSubtitles: series.wantsSubtitles,
 				languageProfileId: series.languageProfileId
@@ -215,7 +225,36 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			updateData.seriesType = seriesType;
 		}
 		if (rootFolderId !== undefined) {
-			updateData.rootFolderId = rootFolderId;
+			const nextRootFolderId = rootFolderId === '' ? null : rootFolderId;
+			const currentRootFolderId = currentSeries?.rootFolderId ?? null;
+
+			// Only validate/apply when reassignment is requested.
+			if (nextRootFolderId !== currentRootFolderId) {
+				if (nextRootFolderId === null) {
+					updateData.rootFolderId = null;
+				} else {
+					const enforceAnimeSubtype = await getAnimeSubtypeEnforcement();
+					let isAnimeMedia = false;
+					if (enforceAnimeSubtype && currentSeries) {
+						const tvDetails = await tmdb.getTVShow(currentSeries.tmdbId);
+						isAnimeMedia = isLikelyAnimeMedia({
+							genres: tvDetails.genres,
+							originalLanguage: tvDetails.original_language,
+							originCountries: tvDetails.origin_country,
+							productionCountries: tvDetails.production_countries,
+							title: tvDetails.name,
+							originalTitle: tvDetails.original_name
+						});
+					}
+
+					await validateRootFolder(nextRootFolderId, 'tv', {
+						enforceAnimeSubtype,
+						isAnimeMedia,
+						mediaTitle: currentSeries?.title
+					});
+					updateData.rootFolderId = nextRootFolderId;
+				}
+			}
 		}
 		if (typeof wantsSubtitles === 'boolean') {
 			updateData.wantsSubtitles = wantsSubtitles;

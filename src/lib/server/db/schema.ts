@@ -579,6 +579,8 @@ export const rootFolders = sqliteTable('root_folders', {
 	path: text('path').notNull().unique(),
 	// Media type this folder is for
 	mediaType: text('media_type').notNull(), // 'movie' | 'tv'
+	// Optional subtype for organization/routing (e.g. anime)
+	mediaSubType: text('media_sub_type').notNull().default('standard'), // 'standard' | 'anime'
 	// Whether this is the default for its media type
 	isDefault: integer('is_default', { mode: 'boolean' }).default(false),
 	// Read-only folder (for virtual mounts like NZBDav - catalog only, no imports)

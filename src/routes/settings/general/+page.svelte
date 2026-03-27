@@ -128,6 +128,12 @@
 	let folderSaveError = $state<string | null>(null);
 	let confirmFolderDeleteOpen = $state(false);
 	let deleteFolderTarget = $state<RootFolder | null>(null);
+	let enforceAnimeSubtype = $state(false);
+	let savingAnimeSubtype = $state(false);
+
+	$effect(() => {
+		enforceAnimeSubtype = data.enforceAnimeSubtype ?? false;
+	});
 
 	// Root Folder Functions
 	function openAddFolderModal() {
@@ -299,6 +305,32 @@
 			);
 		}
 	}
+
+	async function updateAnimeSubtypeEnforcement(enabled: boolean) {
+		const previous = enforceAnimeSubtype;
+		enforceAnimeSubtype = enabled;
+		savingAnimeSubtype = true;
+
+		try {
+			const response = await fetch('/api/settings/library/classification', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ enforceAnimeSubtype: enabled })
+			});
+
+			if (!response.ok) {
+				const payload = await readResponsePayload<Record<string, unknown>>(response);
+				throw new Error(getResponseErrorMessage(payload, 'Failed to save anime subtype setting'));
+			}
+
+			toasts.success(`Anime root folder enforcement ${enabled ? 'enabled' : 'disabled'}`);
+		} catch (error) {
+			enforceAnimeSubtype = previous;
+			toasts.error(error instanceof Error ? error.message : 'Failed to save anime subtype setting');
+		} finally {
+			savingAnimeSubtype = false;
+		}
+	}
 </script>
 
 <svelte:head>
@@ -324,6 +356,25 @@
 			onEdit={openEditFolderModal}
 			onDelete={confirmFolderDelete}
 		/>
+
+		<div class="mt-4 rounded-lg border border-base-300 bg-base-200 p-4">
+			<label class="flex cursor-pointer items-start gap-4">
+				<input
+					type="checkbox"
+					class="toggle mt-0.5 toggle-primary"
+					checked={enforceAnimeSubtype}
+					disabled={savingAnimeSubtype}
+					onchange={(event) =>
+						updateAnimeSubtypeEnforcement((event.currentTarget as HTMLInputElement).checked)}
+				/>
+				<div class="min-w-0">
+					<div class="font-medium">Enforce Anime Root Folders</div>
+					<div class="text-sm text-base-content/70">
+						When enabled, anime media can only be added to root folders with subtype set to Anime.
+					</div>
+				</div>
+			</label>
+		</div>
 	</SettingsSection>
 
 	<div class="divider"></div>

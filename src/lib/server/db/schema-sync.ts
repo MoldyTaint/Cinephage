@@ -103,8 +103,9 @@ interface MigrationDefinition {
  * Version 73: Allow Plex in media_browser_servers server_type constraint
  * Version 74: Consolidate legacy nzb-mount clients into sabnzbd mount mode
  * Version 75: Add language column to user table for UI localization preference
+ * Version 76: Add media_sub_type to root_folders for anime library routing
  */
-export const CURRENT_SCHEMA_VERSION = 75;
+export const CURRENT_SCHEMA_VERSION = 76;
 
 const BETTER_AUTH_TABLE_DEFINITIONS = [
 	{
@@ -385,6 +386,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"name" text NOT NULL,
 		"path" text NOT NULL UNIQUE,
 		"media_type" text NOT NULL,
+		"media_sub_type" text DEFAULT 'standard' NOT NULL,
 		"is_default" integer DEFAULT false,
 		"read_only" integer DEFAULT false,
 		"preserve_symlinks" integer DEFAULT false,
@@ -5002,6 +5004,33 @@ const MIGRATIONS: MigrationDefinition[] = [
 			sqlite.prepare(`ALTER TABLE "user" ADD COLUMN "language" text DEFAULT 'en'`).run();
 			logger.info('[SchemaSync] Added language column to user table');
 		}
+	},
+	{
+		version: 76,
+		name: 'add_root_folders_media_sub_type',
+		apply: (sqlite) => {
+			if (!tableExists(sqlite, 'root_folders')) {
+				logger.info('[SchemaSync] root_folders table not found, skipping media_sub_type migration');
+				return;
+			}
+
+			if (!columnExists(sqlite, 'root_folders', 'media_sub_type')) {
+				sqlite
+					.prepare(
+						`ALTER TABLE "root_folders" ADD COLUMN "media_sub_type" text DEFAULT 'standard' NOT NULL`
+					)
+					.run();
+				logger.info('[SchemaSync] Added media_sub_type column to root_folders');
+			}
+
+			sqlite
+				.prepare(
+					`UPDATE "root_folders"
+					SET "media_sub_type" = 'standard'
+					WHERE "media_sub_type" IS NULL OR TRIM("media_sub_type") = ''`
+				)
+				.run();
+		}
 	}
 ];
 
@@ -5284,7 +5313,7 @@ const CRITICAL_COLUMNS: Record<string, string[]> = {
 		'health',
 		'consecutive_failures'
 	],
-	root_folders: ['id', 'path', 'read_only', 'preserve_symlinks'],
+	root_folders: ['id', 'path', 'media_sub_type', 'read_only', 'preserve_symlinks'],
 	movies: ['id', 'tmdb_id', 'title', 'path', 'monitored'],
 	series: ['id', 'tmdb_id', 'title', 'path', 'monitored'],
 	episodes: ['id', 'series_id', 'season_number', 'episode_number'],
@@ -5386,7 +5415,8 @@ const MIGRATION_COLUMN_MAP: Record<number, Array<{ table: string; column: string
 		{ table: 'apikey', column: 'configId' }
 	],
 	67: [{ table: 'rateLimit', column: 'id' }],
-	68: [{ table: 'episode_files', column: 'edition' }]
+	68: [{ table: 'episode_files', column: 'edition' }],
+	76: [{ table: 'root_folders', column: 'media_sub_type' }]
 };
 
 /**

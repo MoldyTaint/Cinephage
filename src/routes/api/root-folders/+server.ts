@@ -32,6 +32,7 @@ export const POST: RequestHandler = async (event) => {
 		name: validated.name,
 		path: validated.path,
 		mediaType: validated.mediaType,
+		mediaSubType: validated.mediaSubType,
 		isDefault: validated.isDefault,
 		readOnly: validated.readOnly,
 		preserveSymlinks: validated.preserveSymlinks,

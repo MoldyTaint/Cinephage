@@ -3,6 +3,8 @@
 	import type { LibraryMovie } from '$lib/types/library';
 	import { ModalWrapper, ModalFooter } from '$lib/components/ui/modal';
 	import { FormCheckbox } from '$lib/components/ui/form';
+	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
+	import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 	import * as m from '$lib/paraglide/messages.js';
 
 	interface QualityProfile {
@@ -18,7 +20,16 @@
 		name: string;
 		path: string;
 		mediaType: string;
+		mediaSubType?: string | null;
 		freeSpaceBytes: number | null;
+	}
+
+	interface TmdbMovieDetails {
+		title?: string | null;
+		original_title?: string | null;
+		original_language?: string | null;
+		production_countries?: Array<{ iso_3166_1?: string }> | null;
+		genres?: Array<{ id?: number; name?: string }> | null;
 	}
 
 	interface Props {
@@ -47,6 +58,56 @@
 	let rootFolderId = $state('');
 	let minimumAvailability = $state('released');
 	let wantsSubtitles = $state(true);
+	let enforceAnimeSubtype = $state(false);
+	let detectedAnime = $state(false);
+
+	const requiredMediaSubType = $derived(
+		enforceAnimeSubtype && detectedAnime ? ('anime' as const) : undefined
+	);
+	const eligibleRootFolders = $derived(
+		sortRootFoldersForMediaType(rootFolders, 'movie', requiredMediaSubType)
+	);
+	const selectedRootFolderObj = $derived(rootFolders.find((folder) => folder.id === rootFolderId));
+	const selectedRootFolderOutOfPolicy = $derived(
+		requiredMediaSubType === 'anime' &&
+			!!selectedRootFolderObj &&
+			(selectedRootFolderObj.mediaSubType ?? 'standard') !== 'anime'
+	);
+
+	async function loadAnimeRoutingContext(tmdbId: number) {
+		try {
+			const [classificationRes, movieRes] = await Promise.all([
+				fetch('/api/settings/library/classification'),
+				fetch(`/api/tmdb/movie/${tmdbId}`)
+			]);
+
+			if (classificationRes.ok) {
+				const classificationData = await classificationRes.json();
+				enforceAnimeSubtype = classificationData?.enforceAnimeSubtype === true;
+			} else {
+				enforceAnimeSubtype = false;
+			}
+
+			if (movieRes.ok) {
+				const details: TmdbMovieDetails = await movieRes.json();
+				detectedAnime = isLikelyAnimeMedia({
+					genres: details.genres,
+					originalLanguage: details.original_language,
+					productionCountries: details.production_countries,
+					originCountries: details.production_countries
+						?.map((country) => country.iso_3166_1)
+						.filter((country): country is string => Boolean(country)),
+					title: details.title,
+					originalTitle: details.original_title
+				});
+			} else {
+				detectedAnime = false;
+			}
+		} catch {
+			enforceAnimeSubtype = false;
+			detectedAnime = false;
+		}
+	}
 
 	// Reset form when modal opens
 	$effect(() => {
@@ -60,6 +121,18 @@
 			rootFolderId = movie.rootFolderId ?? '';
 			minimumAvailability = movie.minimumAvailability ?? 'released';
 			wantsSubtitles = movie.wantsSubtitles ?? true;
+			enforceAnimeSubtype = false;
+			detectedAnime = false;
+			void loadAnimeRoutingContext(movie.tmdbId);
+		}
+	});
+
+	$effect(() => {
+		if (!open) return;
+		if (!rootFolderId) return;
+		const stillAllowed = eligibleRootFolders.some((folder) => folder.id === rootFolderId);
+		if (!stillAllowed && !selectedRootFolderOutOfPolicy) {
+			rootFolderId = '';
 		}
 	});
 
@@ -188,7 +261,10 @@
 				class="select-bordered select w-full"
 			>
 				<option value="">{m.common_notSet()}</option>
-				{#each rootFolders as folder (folder.id)}
+				{#if selectedRootFolderOutOfPolicy && selectedRootFolderObj}
+					<option value={selectedRootFolderObj.id}>{selectedRootFolderObj.path} (current)</option>
+				{/if}
+				{#each eligibleRootFolders as folder (folder.id)}
 					<option value={folder.id}>
 						{folder.path}
 						{#if folder.freeSpaceBytes}
@@ -202,6 +278,11 @@
 					{m.library_add_rootFolderDesc()}
 				</span>
 			</div>
+			{#if requiredMediaSubType === 'anime'}
+				<div class="text-xs text-base-content/70">
+					Anime root enforcement is enabled. New folder selections are limited to Anime roots.
+				</div>
+			{/if}
 		</div>
 
 		<!-- Minimum Availability -->

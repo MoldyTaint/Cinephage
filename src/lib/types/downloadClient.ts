@@ -15,6 +15,7 @@ export type DownloadClientHealth = 'healthy' | 'warning' | 'failing';
 export type DownloadPriority = 'normal' | 'high' | 'force';
 export type DownloadInitialState = 'start' | 'pause' | 'force';
 export type RootFolderMediaType = 'movie' | 'tv';
+export type RootFolderMediaSubType = 'standard' | 'anime';
 export type DownloadClientMountMode = 'nzbdav' | 'altmount';
 
 /**
@@ -119,6 +120,7 @@ export interface RootFolder {
 	name: string;
 	path: string;
 	mediaType: RootFolderMediaType;
+	mediaSubType: RootFolderMediaSubType;
 	isDefault: boolean;
 	readOnly: boolean;
 	preserveSymlinks: boolean;
@@ -137,6 +139,7 @@ export interface RootFolderFormData {
 	name: string;
 	path: string;
 	mediaType: RootFolderMediaType;
+	mediaSubType: RootFolderMediaSubType;
 	isDefault: boolean;
 	readOnly?: boolean;
 	preserveSymlinks?: boolean;

@@ -9,10 +9,12 @@ import {
 	fetchSeriesDetails,
 	fetchSeriesExternalIds,
 	validateRootFolder,
+	getAnimeSubtypeEnforcement,
 	getEffectiveScoringProfileId,
 	getLanguageProfileId,
 	triggerSeriesSearch
 } from '$lib/server/library/LibraryAddService.js';
+import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { fetchAndStoreSeriesAlternateTitles } from '$lib/server/services/AlternateTitleService.js';
 import { ValidationError } from '$lib/errors';
 import { logger } from '$lib/logging';
@@ -185,11 +187,25 @@ export const POST: RequestHandler = async (event) => {
 			);
 		}
 
-		// Verify root folder exists and is for TV (shared logic)
-		await validateRootFolder(rootFolderId, 'tv');
-
 		// Fetch series details from TMDB (shared logic with error handling)
 		const tvDetails = await fetchSeriesDetails(tmdbId);
+		const enforceAnimeSubtype = await getAnimeSubtypeEnforcement();
+		const isAnimeMedia = isLikelyAnimeMedia({
+			genres: tvDetails.genres,
+			originalLanguage: tvDetails.original_language,
+			originCountries: tvDetails.origin_country,
+			productionCountries: tvDetails.production_countries,
+			title: tvDetails.name,
+			originalTitle: tvDetails.original_name,
+			explicitAnimeType: seriesType === 'anime'
+		});
+
+		// Verify root folder exists and is for TV (with optional anime subtype enforcement)
+		await validateRootFolder(rootFolderId, 'tv', {
+			enforceAnimeSubtype,
+			isAnimeMedia,
+			mediaTitle: tvDetails.name
+		});
 
 		// Extract external IDs (shared logic)
 		const { imdbId, tvdbId } = await fetchSeriesExternalIds(tmdbId);

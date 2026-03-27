@@ -5,6 +5,7 @@
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import CommonOptions from './add/CommonOptions.svelte';
 	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
+	import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 	import MovieAddOptions, { type MinimumAvailability } from './add/MovieAddOptions.svelte';
 	import SeriesAddOptions, {
 		type MonitorType,
@@ -32,6 +33,7 @@
 		name: string;
 		path: string;
 		mediaType: string;
+		mediaSubType?: 'standard' | 'anime';
 		isDefault?: boolean;
 		freeSpaceBytes?: number | null;
 	}
@@ -66,6 +68,26 @@
 		parts: CollectionPart[];
 	}
 
+	interface TmdbMovieDetails {
+		title: string;
+		original_title?: string | null;
+		original_language?: string | null;
+		origin_country?: string[] | null;
+		production_countries?: Array<{ iso_3166_1?: string }> | null;
+		genres?: Array<{ id?: number; name?: string }> | null;
+		belongs_to_collection?: { id: number } | null;
+	}
+
+	interface TmdbTvDetails {
+		name: string;
+		original_name?: string | null;
+		original_language?: string | null;
+		origin_country?: string[] | null;
+		production_countries?: Array<{ iso_3166_1?: string }> | null;
+		genres?: Array<{ id?: number; name?: string }> | null;
+		seasons?: Season[];
+	}
+
 	// State
 	let rootFolders = $state<RootFolder[]>([]);
 	let scoringProfiles = $state<ScoringProfile[]>([]);
@@ -78,6 +100,8 @@
 	// Collection state (for movies only)
 	let collection = $state<CollectionInfo | null>(null);
 	let addEntireCollection = $state(false);
+	let enforceAnimeSubtype = $state(false);
+	let detectedAnime = $state(false);
 
 	// Form state - Common
 	let selectedRootFolder = $state('');
@@ -98,7 +122,13 @@
 	let monitoredSeasons = new SvelteSet<number>();
 
 	// Derived: Filter root folders by media type
-	const filteredRootFolders = $derived(sortRootFoldersForMediaType(rootFolders, mediaType));
+	const requiresAnimeRootSubtype = $derived(
+		enforceAnimeSubtype && (detectedAnime || (mediaType === 'tv' && seriesType === 'anime'))
+	);
+	const requiredMediaSubType = $derived(requiresAnimeRootSubtype ? ('anime' as const) : undefined);
+	const filteredRootFolders = $derived(
+		sortRootFoldersForMediaType(rootFolders, mediaType, requiredMediaSubType)
+	);
 
 	// Derived: Collection movies not in library (excluding current movie)
 	const missingCollectionMovies = $derived(
@@ -131,6 +161,8 @@
 			// Reset collection state
 			collection = null;
 			addEntireCollection = false;
+			enforceAnimeSubtype = false;
+			detectedAnime = false;
 
 			loadData();
 		}
@@ -142,6 +174,21 @@
 			// Track both monitorType and monitorSpecials to trigger updates
 			void [monitorType, monitorSpecials];
 			updateMonitoredSeasonsFromType(monitorType);
+		}
+	});
+
+	// Keep selected root folder aligned with current subtype filter/enforcement rules.
+	$effect(() => {
+		if (!open) return;
+		if (filteredRootFolders.length === 0) {
+			selectedRootFolder = '';
+			return;
+		}
+
+		const stillValid = filteredRootFolders.some((folder) => folder.id === selectedRootFolder);
+		if (!stillValid) {
+			const preferred = filteredRootFolders.find((folder) => folder.isDefault);
+			selectedRootFolder = preferred?.id ?? filteredRootFolders[0].id;
 		}
 	});
 
@@ -188,6 +235,29 @@
 		}
 	}
 
+	function updateAnimeDetectionFromMovie(movieDetails: TmdbMovieDetails | null | undefined) {
+		detectedAnime = isLikelyAnimeMedia({
+			genres: movieDetails?.genres,
+			originalLanguage: movieDetails?.original_language,
+			originCountries: movieDetails?.origin_country,
+			productionCountries: movieDetails?.production_countries,
+			title: movieDetails?.title,
+			originalTitle: movieDetails?.original_title
+		});
+	}
+
+	function updateAnimeDetectionFromSeries(tvDetails: TmdbTvDetails | null | undefined) {
+		detectedAnime = isLikelyAnimeMedia({
+			genres: tvDetails?.genres,
+			originalLanguage: tvDetails?.original_language,
+			originCountries: tvDetails?.origin_country,
+			productionCountries: tvDetails?.production_countries,
+			title: tvDetails?.name,
+			originalTitle: tvDetails?.original_name,
+			explicitAnimeType: seriesType === 'anime'
+		});
+	}
+
 	async function loadData() {
 		isLoading = true;
 		error = null;
@@ -195,44 +265,57 @@
 		try {
 			const requests: Promise<Response>[] = [
 				fetch('/api/root-folders'),
-				fetch('/api/scoring-profiles')
+				fetch('/api/scoring-profiles'),
+				fetch('/api/settings/library/classification')
 			];
 
 			// Fetch seasons for TV shows
 			if (mediaType === 'tv') {
 				requests.push(fetch(`/api/tmdb/tv/${tmdbId}`));
+			} else {
+				requests.push(fetch(`/api/tmdb/movie/${tmdbId}`));
 			}
 
 			const responses = await Promise.all(requests);
-			const [foldersRes, profilesRes] = responses;
+			const [foldersRes, profilesRes, classificationRes] = responses;
 
-			if (!foldersRes.ok || !profilesRes.ok) {
+			if (!foldersRes.ok || !profilesRes.ok || !classificationRes.ok) {
 				throw new Error('Failed to load configuration');
 			}
 
 			const foldersData = await foldersRes.json();
 			const profilesData = await profilesRes.json();
+			const classificationData = await classificationRes.json();
 
 			rootFolders = Array.isArray(foldersData) ? foldersData : (foldersData.folders ?? []);
 			scoringProfiles = profilesData.profiles ?? [];
+			enforceAnimeSubtype = classificationData?.enforceAnimeSubtype === true;
 
 			// Handle TV seasons
-			if (mediaType === 'tv' && responses[2]) {
-				const tvRes = responses[2];
+			if (mediaType === 'tv' && responses[3]) {
+				const tvRes = responses[3];
 				if (tvRes.ok) {
-					const tvData = await tvRes.json();
+					const tvData: TmdbTvDetails = await tvRes.json();
 					seasons = tvData.seasons?.filter((s: Season) => s.episode_count > 0) ?? [];
 					// Initialize all seasons as monitored by default
 					monitoredSeasons.clear();
 					for (const s of seasons) {
 						monitoredSeasons.add(s.season_number);
 					}
+					updateAnimeDetectionFromSeries(tvData);
 				}
 			}
 
 			// Fetch collection data for movies (non-blocking, don't fail if it errors)
 			if (mediaType === 'movie') {
-				fetchCollectionData();
+				const movieRes = responses[3];
+				if (movieRes?.ok) {
+					const movieData: TmdbMovieDetails = await movieRes.json();
+					updateAnimeDetectionFromMovie(movieData);
+					fetchCollectionData();
+				} else {
+					fetchCollectionData();
+				}
 			}
 
 			// Set defaults
@@ -261,11 +344,12 @@
 
 	async function fetchCollectionData() {
 		try {
+			let movieData: TmdbMovieDetails;
 			// First fetch the movie to check if it belongs to a collection
 			const movieRes = await fetch(`/api/tmdb/movie/${tmdbId}`);
 			if (!movieRes.ok) return;
 
-			const movieData = await movieRes.json();
+			movieData = await movieRes.json();
 			if (!movieData.belongs_to_collection) return;
 
 			// Fetch the collection details
@@ -496,11 +580,18 @@
 				</div>
 			{/if}
 
+			{#if requiresAnimeRootSubtype}
+				<div class="alert text-sm alert-info">
+					<span>Anime detected. Only folders with subtype Anime are available.</span>
+				</div>
+			{/if}
+
 			<!-- Common Options (Root Folder, Profile) -->
 			<CommonOptions
 				{mediaType}
 				{rootFolders}
 				{scoringProfiles}
+				{requiredMediaSubType}
 				bind:selectedRootFolder
 				bind:selectedScoringProfile
 				bind:searchOnAdd
