@@ -105,7 +105,7 @@
 							class="ml-1 hover:text-error"
 							onclick={() => removeCountry(country.code)}
 							type="button"
-							aria-label={m.livetv_iptvOrg_removeCountry({ country: country.name })
+							aria-label={m.livetv_iptvOrg_removeCountry({ country: country.name })}
 						>
 							<X class="h-3 w-3" />
 						</button>
