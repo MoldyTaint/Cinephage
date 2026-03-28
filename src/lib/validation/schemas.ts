@@ -396,7 +396,54 @@ export const downloadClientCreateSchema = z.object({
 /**
  * Schema for updating an existing download client.
  */
-export const downloadClientUpdateSchema = downloadClientCreateSchema.partial();
+export const downloadClientUpdateSchema = z.object({
+	name: z
+		.string()
+		.min(1, 'Name is required')
+		.max(100, 'Name must be 100 characters or less')
+		.optional(),
+	implementation: downloadClientImplementationSchema.optional(),
+	enabled: z.boolean().optional(),
+
+	// Connection settings
+	host: z.string().min(1, 'Host is required').optional(),
+	port: z
+		.number()
+		.int()
+		.min(1, 'Port must be at least 1')
+		.max(65535, 'Port must be at most 65535')
+		.optional(),
+	useSsl: z.boolean().optional(),
+	urlBase: z.string().max(200).optional().nullable(),
+	mountMode: z.enum(['nzbdav', 'altmount']).optional().nullable(),
+	username: z.string().optional().nullable(),
+	password: z.string().optional().nullable(),
+
+	// Category settings
+	movieCategory: z.string().min(1).optional(),
+	tvCategory: z.string().min(1).optional(),
+
+	// Priority settings
+	recentPriority: downloadPrioritySchema.optional(),
+	olderPriority: downloadPrioritySchema.optional(),
+	initialState: downloadInitialStateSchema.optional(),
+
+	// Seeding limits
+	seedRatioLimit: z
+		.string()
+		.regex(/^\d+(\.\d+)?$/, 'Must be a valid decimal number (e.g., "1.0", "2.5")')
+		.optional()
+		.nullable(),
+	seedTimeLimit: z.number().int().min(0).optional().nullable(),
+
+	// Path mapping
+	downloadPathLocal: z.string().optional().nullable(),
+	downloadPathRemote: z.string().optional().nullable(),
+	tempPathLocal: z.string().optional().nullable(),
+	tempPathRemote: z.string().optional().nullable(),
+
+	priority: z.number().int().min(1).max(100).optional()
+});
 
 /**
  * Schema for testing download client connection.
@@ -1148,12 +1195,12 @@ export const episodeUpdateSchema = z
  */
 export const movieUpdateSchema = z.object({
 	monitored: z.boolean().optional(),
-	scoringProfileId: z.string().optional(),
+	scoringProfileId: z.string().nullable().optional(),
 	minimumAvailability: z.string().min(1).optional(),
 	rootFolderId: z.string().optional(),
 	moveFilesOnRootChange: z.boolean().optional(),
 	wantsSubtitles: z.boolean().optional(),
-	languageProfileId: z.string().optional()
+	languageProfileId: z.string().nullable().optional()
 });
 
 /**
@@ -1161,12 +1208,12 @@ export const movieUpdateSchema = z.object({
  */
 export const seriesUpdateSchema = z.object({
 	monitored: z.boolean().optional(),
-	scoringProfileId: z.string().optional(),
+	scoringProfileId: z.string().nullable().optional(),
 	seasonFolder: z.boolean().optional(),
 	seriesType: z.enum(['standard', 'anime', 'daily']).optional(),
 	rootFolderId: z.string().optional(),
 	wantsSubtitles: z.boolean().optional(),
-	languageProfileId: z.string().optional()
+	languageProfileId: z.string().nullable().optional()
 });
 
 /**
