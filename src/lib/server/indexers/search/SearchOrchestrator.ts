@@ -393,6 +393,19 @@ export class SearchOrchestrator {
 
 		const searchTimeMs = Date.now() - startTime;
 
+		// TEMP DEBUG: Log per-indexer result counts
+		logger.info(
+			{
+				indexerCounts: indexerResults.map((r) => ({
+					indexer: r.indexerName,
+					returned: r.results?.length ?? 0,
+					duration: r.searchTimeMs,
+					error: r.error
+				}))
+			},
+			'[SearchOrchestrator] PER-INDEXER RESULT COUNTS (DEBUG)'
+		);
+
 		// Pass 1: Basic deduplication (by infoHash/title, prefer more seeders)
 		const { releases: deduped } = this.deduplicator.deduplicate(allReleases);
 		const afterDedupCount = deduped.length;
@@ -441,24 +454,50 @@ export class SearchOrchestrator {
 			seasonEpisodeCount,
 			seasonEpisodeCounts
 		});
+		// TEMP DEBUG: Log after season/episode filter
+		logger.debug(
+			{ afterSeasonEpisode: filtered.length },
+			'[SearchOrchestrator] DEBUG: after season/episode filter'
+		);
 
 		// Filter by category match (reject releases in wrong categories)
 		if (enrichedCriteria.searchType !== 'basic') {
 			const searchType = enrichedCriteria.searchType as 'movie' | 'tv' | 'music' | 'book';
 			filtered = this.filterByCategoryMatch(filtered, searchType);
 		}
+		// TEMP DEBUG: Log after category filter
+		logger.debug(
+			{ afterCategory: filtered.length },
+			'[SearchOrchestrator] DEBUG: after category filter'
+		);
+
 		filtered = this.filterOutNonVideoArtifacts(filtered, enrichedCriteria);
+		// TEMP DEBUG: Log after non-video filter
+		logger.debug(
+			{ afterNonVideo: filtered.length },
+			'[SearchOrchestrator] DEBUG: after non-video filter'
+		);
 
 		// Hard filter by ID match with title+year fallback
 		// Completely removes releases with wrong IDs or mismatched title/year
 		if (isMovieSearch(enrichedCriteria) || isTvSearch(enrichedCriteria)) {
 			filtered = this.filterByIdOrTitleMatch(filtered, enrichedCriteria);
 		}
+		// TEMP DEBUG: Log after ID/title filter
+		logger.debug(
+			{ afterIdTitle: filtered.length },
+			'[SearchOrchestrator] DEBUG: after ID/title filter'
+		);
 
 		// Filter by title relevance (safety net for irrelevant results)
 		if (enrichedCriteria.searchType !== 'basic') {
 			filtered = this.filterByTitleRelevance(filtered, enrichedCriteria);
 		}
+		// TEMP DEBUG: Log after title relevance filter
+		logger.debug(
+			{ afterTitleRelevance: filtered.length },
+			'[SearchOrchestrator] DEBUG: after title relevance filter'
+		);
 		const afterFilteringCount = filtered.length;
 
 		// Enrich with quality scoring and optional TMDB matching
@@ -497,17 +536,43 @@ export class SearchOrchestrator {
 
 		const enrichResult = await releaseEnricher.enrich(filtered, enrichmentOpts);
 
-		// Debug: log YTS releases after enrichment
-		const ytsAfterEnrich = enrichResult.releases.filter((r) => r.indexerName === 'YTS');
-		if (ytsAfterEnrich.length > 0 || ytsAfterDedup.length > 0) {
+		// TEMP DEBUG: Log enrichment results per indexer
+		logger.info(
+			{
+				beforeEnrich: filtered.length,
+				afterEnrichTotal: enrichResult.releases.length,
+				rejectedCount: enrichResult.rejectedCount,
+				acceptedCount: enrichResult.releases.filter((r) => !r.rejected).length,
+				perIndexer: [...new Set(enrichResult.releases.map((r) => r.indexerName))].map((name) => ({
+					indexer: name,
+					total: enrichResult.releases.filter((r) => r.indexerName === name).length,
+					rejected: enrichResult.releases.filter((r) => r.indexerName === name && r.rejected)
+						.length,
+					accepted: enrichResult.releases.filter((r) => r.indexerName === name && !r.rejected)
+						.length,
+					sampleTitles: enrichResult.releases
+						.filter((r) => r.indexerName === name)
+						.slice(0, 3)
+						.map((r) => r.title)
+				}))
+			},
+			'[SearchOrchestrator] DEBUG: After enrichment - per indexer results'
+		);
+
+		// TEMP DEBUG: Log rejected releases details
+		const rejectedReleases = enrichResult.releases.filter((r) => r.rejected);
+		if (rejectedReleases.length > 0) {
 			logger.info(
 				{
-					countBefore: ytsAfterDedup.length,
-					countAfter: ytsAfterEnrich.length,
-					titles: ytsAfterEnrich.map((r) => r.title),
-					rejected: ytsAfterEnrich.filter((r) => r.rejected).length
+					rejectedCount: rejectedReleases.length,
+					sampleRejected: rejectedReleases.slice(0, 5).map((r) => ({
+						indexer: r.indexerName,
+						title: r.title,
+						size: r.size,
+						rejectionReason: r.rejectionReason
+					}))
 				},
-				'[SearchOrchestrator] YTS releases after enrichment'
+				'[SearchOrchestrator] DEBUG: Sample rejected releases'
 			);
 		}
 
@@ -2102,13 +2167,23 @@ export class SearchOrchestrator {
 			});
 
 			if (!matches) {
-				logger.debug(
+				// TEMP DEBUG: Log detailed similarity info for rejected releases
+				const simDetails = normalizedExpected.map((expected) => ({
+					expected,
+					similarity: this.calculateTitleSimilarity(releaseName, expected),
+					containsEachOther: releaseName.includes(expected) || expected.includes(releaseName)
+				}));
+				logger.info(
 					{
 						releaseTitle: release.title,
-						parsedName: extractReleaseName(release.title),
-						expectedTitles: expectedTitles.slice(0, 3)
+						releaseName, // normalized release name
+						parsedName: extractReleaseName(release.title), // before normalization
+						normalizedExpected,
+						similarityDetails: simDetails,
+						indexer: release.indexerName,
+						size: release.size
 					},
-					'[SearchOrchestrator] Rejecting release due to title mismatch'
+					'[SearchOrchestrator] DEBUG: TITLE MISMATCH - Release rejected by title filter'
 				);
 			}
 
@@ -2246,14 +2321,16 @@ export class SearchOrchestrator {
 			// TMDB ID check
 			if (searchTmdbId && release.tmdbId) {
 				if (release.tmdbId !== searchTmdbId) {
-					logger.debug(
+					// TEMP DEBUG: Log TMDB ID mismatch with indexer
+					logger.info(
 						{
 							releaseTitle: release.title,
 							releaseTmdbId: release.tmdbId,
 							criteriaTmdbId: searchTmdbId,
-							indexer: release.indexerName
+							indexer: release.indexerName,
+							hasReleaseIds: !!(release.tmdbId || release.imdbId || release.tvdbId)
 						},
-						'[SearchOrchestrator] ID mismatch - removing release'
+						'[SearchOrchestrator] DEBUG: TMDB ID mismatch - removing release'
 					);
 					return false; // Hard reject
 				}
@@ -2264,14 +2341,16 @@ export class SearchOrchestrator {
 			// IMDB ID check
 			if (searchImdbId && release.imdbId) {
 				if (release.imdbId !== searchImdbId) {
-					logger.debug(
+					// TEMP DEBUG: Log IMDB ID mismatch with indexer
+					logger.info(
 						{
 							releaseTitle: release.title,
 							releaseImdbId: release.imdbId,
 							criteriaImdbId: searchImdbId,
-							indexer: release.indexerName
+							indexer: release.indexerName,
+							hasReleaseIds: !!(release.tmdbId || release.imdbId || release.tvdbId)
 						},
-						'[SearchOrchestrator] ID mismatch - removing release'
+						'[SearchOrchestrator] DEBUG: IMDB ID mismatch - removing release'
 					);
 					return false; // Hard reject
 				}
@@ -2302,14 +2381,16 @@ export class SearchOrchestrator {
 			if (isMovieSearch(criteria) && searchYear) {
 				const parsedRelease = getParsed();
 				if (parsedRelease.year && Math.abs(parsedRelease.year - searchYear) > 1) {
-					logger.debug(
+					// TEMP DEBUG: Log year mismatch details
+					logger.info(
 						{
 							releaseTitle: release.title,
 							releaseYear: parsedRelease.year,
 							criteriaYear: searchYear,
-							indexer: release.indexerName
+							indexer: release.indexerName,
+							releaseHasAnyId: !!(release.tmdbId || release.imdbId || release.tvdbId)
 						},
-						'[SearchOrchestrator] Year mismatch - removing movie release'
+						'[SearchOrchestrator] DEBUG: YEAR MISMATCH - removing movie release'
 					);
 					return false;
 				}
@@ -2376,29 +2457,44 @@ export class SearchOrchestrator {
 						(isMovieSearch(criteria) ||
 							(isTvSearch(criteria) && !isEpisodeTarget && !isSeasonTarget));
 					if (allowInteractiveTitleFallback) {
-						logger.debug(
+						logger.info(
 							{
 								releaseTitle: release.title,
 								parsedTitle: parsedRelease.cleanTitle,
 								parsedYear: parsedRelease.year,
-								criteriaYear: searchYear
+								criteriaYear: searchYear,
+								titleMatch,
+								yearMatch,
+								isInteractiveSearch,
+								releaseHasAnyId
 							},
-							'[SearchOrchestrator] Applying interactive localized-title fallback'
+							'[SearchOrchestrator] DEBUG: Applying interactive localized-title fallback'
 						);
 						return true;
 					}
 
-					logger.debug(
+					// TEMP DEBUG: Log title/year mismatch details
+					const simDetails = normalizedCandidates.map((expectedName) => ({
+						expected: expectedName,
+						similarity: this.calculateTitleSimilarity(releaseName, expectedName),
+						containsEachOther:
+							releaseName.includes(expectedName) || expectedName.includes(releaseName)
+					}));
+					logger.info(
 						{
 							releaseTitle: release.title,
 							parsedTitle: parsedRelease.cleanTitle,
+							releaseName, // normalized
 							parsedYear: parsedRelease.year,
 							criteriaYear: searchYear,
 							titleMatch,
 							yearMatch,
-							isInteractiveSearch
+							isInteractiveSearch,
+							releaseHasAnyId,
+							normalizedCandidates,
+							similarityDetails: simDetails
 						},
-						'[SearchOrchestrator] Title/Year mismatch - removing release'
+						'[SearchOrchestrator] DEBUG: TITLE/YEAR MISMATCH - removing release'
 					);
 					return false; // Hard reject
 				}
@@ -2432,11 +2528,13 @@ export class SearchOrchestrator {
 
 	/**
 	 * Normalize a string for title comparison.
-	 * Removes punctuation, converts to lowercase, normalizes whitespace.
+	 * Removes diacritics, punctuation, converts to lowercase, normalizes whitespace.
 	 */
 	private normalizeForComparison(str: string): string {
 		return str
-			.normalize('NFKC')
+			.normalize('NFD') // Decompose diacritics (e.g., ů → u + combining dot)
+			.replace(/[\u0300-\u036f]/g, '') // Remove combining diacritics
+			.normalize('NFKC') // Re-compose for consistent representation
 			.toLowerCase()
 			.replace(/[^\p{L}\p{N}\s]/gu, '') // Remove punctuation, keep Unicode letters/numbers
 			.replace(/\s+/g, ' ') // Normalize whitespace

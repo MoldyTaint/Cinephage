@@ -150,7 +150,13 @@ search:
       attribute: href
       filters:
         - name: replace
+          args: ['https://none.st/?q=', '']
+        - name: replace
           args: ['https://dereferer.link/?', '']
+        - name: regexp
+          args: ['tt\\d+']
+        - name: replace
+          args: ['tt', '']
     size:
       selector: div.box_meret2
     seeders:

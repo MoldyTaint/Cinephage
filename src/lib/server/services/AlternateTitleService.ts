@@ -35,11 +35,12 @@ export function cleanTitle(title: string): string {
 	// Remove special characters (quotes, apostrophes, etc.)
 	clean = clean.replace(/[''`´""]/g, '');
 
-	// Replace non-alphanumeric with space
-	clean = clean.replace(/[^\w\s]/g, ' ');
-
-	// Remove accents/diacritics
+	// Remove accents/diacritics BEFORE punctuation replacement
+	// This ensures Unicode letters like ű are properly handled
 	clean = clean.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+	// Replace non-alphanumeric with space (now that diacritics are stripped)
+	clean = clean.replace(/[^\w\s]/g, ' ');
 
 	// Collapse multiple spaces and trim
 	clean = clean.replace(/\s+/g, ' ').trim();
@@ -49,7 +50,7 @@ export function cleanTitle(title: string): string {
 
 /**
  * Get all search titles for a movie (primary + original + alternates)
- * Returns deduplicated list with primary title first
+ * Returns deduplicated list with primary title first, all normalized for matching
  */
 export async function getMovieSearchTitles(movieId: string): Promise<string[]> {
 	// Get the movie's primary and original titles
@@ -60,22 +61,22 @@ export async function getMovieSearchTitles(movieId: string): Promise<string[]> {
 
 	if (!movie) return [];
 
-	const titles: string[] = [movie.title];
+	const titles: string[] = [cleanTitle(movie.title)];
 
-	// Add original title if different
+	// Add original title if different (cleaned)
 	if (movie.originalTitle && movie.originalTitle !== movie.title) {
-		titles.push(movie.originalTitle);
+		titles.push(cleanTitle(movie.originalTitle));
 	}
 
-	// Get alternate titles from database
+	// Get alternate titles from database (use pre-computed cleanTitle)
 	const alternates = await db.query.alternateTitles.findMany({
 		where: and(eq(alternateTitles.mediaType, 'movie'), eq(alternateTitles.mediaId, movieId)),
-		columns: { title: true }
+		columns: { cleanTitle: true }
 	});
 
 	for (const alt of alternates) {
-		if (!titles.includes(alt.title)) {
-			titles.push(alt.title);
+		if (!titles.includes(alt.cleanTitle)) {
+			titles.push(alt.cleanTitle);
 		}
 	}
 
@@ -85,7 +86,7 @@ export async function getMovieSearchTitles(movieId: string): Promise<string[]> {
 
 /**
  * Get all search titles for a series (primary + original + alternates)
- * Returns deduplicated list with primary title first
+ * Returns deduplicated list with primary title first, all normalized for matching
  */
 export async function getSeriesSearchTitles(seriesId: string): Promise<string[]> {
 	// Get the series' primary and original titles
@@ -96,22 +97,22 @@ export async function getSeriesSearchTitles(seriesId: string): Promise<string[]>
 
 	if (!show) return [];
 
-	const titles: string[] = [show.title];
+	const titles: string[] = [cleanTitle(show.title)];
 
-	// Add original title if different
+	// Add original title if different (cleaned)
 	if (show.originalTitle && show.originalTitle !== show.title) {
-		titles.push(show.originalTitle);
+		titles.push(cleanTitle(show.originalTitle));
 	}
 
-	// Get alternate titles from database
+	// Get alternate titles from database (use pre-computed cleanTitle)
 	const alternates = await db.query.alternateTitles.findMany({
 		where: and(eq(alternateTitles.mediaType, 'series'), eq(alternateTitles.mediaId, seriesId)),
-		columns: { title: true }
+		columns: { cleanTitle: true }
 	});
 
 	for (const alt of alternates) {
-		if (!titles.includes(alt.title)) {
-			titles.push(alt.title);
+		if (!titles.includes(alt.cleanTitle)) {
+			titles.push(alt.cleanTitle);
 		}
 	}
 
