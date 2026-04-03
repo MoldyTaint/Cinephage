@@ -1082,35 +1082,6 @@
 		});
 	}
 
-	function getRecommendedRootFolderId(
-		folders: RootFolder[],
-		options?: { preferAnime?: boolean }
-	): string | undefined {
-		if (folders.length === 0) return undefined;
-
-		const preferAnime = options?.preferAnime === true;
-		if (preferAnime) {
-			return (
-				folders.find(
-					(folder) => folder.isDefault && (folder.mediaSubType ?? 'standard') === 'anime'
-				)?.id ??
-				folders.find(
-					(folder) => folder.isDefault && (folder.mediaSubType ?? 'standard') === 'standard'
-				)?.id ??
-				folders.find((folder) => folder.isDefault)?.id ??
-				folders[0].id
-			);
-		}
-
-		return (
-			folders.find(
-				(folder) => folder.isDefault && (folder.mediaSubType ?? 'standard') === 'standard'
-			)?.id ??
-			folders.find((folder) => folder.isDefault)?.id ??
-			folders[0].id
-		);
-	}
-
 	function getRecommendedDestinationLibraryId(
 		libraries: DestinationLibrary[],
 		options?: { preferAnime?: boolean }

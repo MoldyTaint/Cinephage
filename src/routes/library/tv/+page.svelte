@@ -408,8 +408,7 @@
 		() => data.libraryScope?.options?.find((library) => library.isDefault)?.slug ?? ''
 	);
 	const showLibraryFilter = $derived.by(
-		() =>
-			Boolean(data.libraryScope?.hasSubLibraries) && !Boolean(data.libraryScope?.isSubLibraryScope)
+		() => Boolean(data.libraryScope?.hasSubLibraries) && !data.libraryScope?.isSubLibraryScope
 	);
 
 	const filterOptions = $derived([

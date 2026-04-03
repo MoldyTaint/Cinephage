@@ -35,7 +35,6 @@ import {
 	matchEpisodesByIdentifier,
 	resolveTvEpisodeIdentifier
 } from './tv-episode-resolver.js';
-import { mediaMatcherService } from './media-matcher.js';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });
 
@@ -69,13 +68,6 @@ const EXCLUDED_PATTERNS = {
  * SQLite has a practical limit on bound parameters; keep IN queries chunked.
  */
 const DB_CHUNK_SIZE = 400;
-
-const SYSTEM_LIBRARY_IDS = {
-	movie: 'lib-movies-standard',
-	animeMovie: 'lib-movies-anime',
-	tv: 'lib-tv-standard',
-	animeTv: 'lib-tv-anime'
-} as const;
 
 /**
  * Discovered file information
@@ -335,10 +327,6 @@ export class DiskScanService extends EventEmitter {
 
 					if (rootFolder.mediaType === 'tv') {
 						wasLinked = await this.tryAutoLinkTvFile(file, rootFolderId, rootFolder.path);
-					}
-
-					if (!wasLinked) {
-						wasLinked = await this.tryRouteToDefaultSystemLibrary(file, rootFolder, progress);
 					}
 
 					if (!wasLinked) {
@@ -852,131 +840,70 @@ export class DiskScanService extends EventEmitter {
 		return false;
 	}
 
-	private async tryRouteToDefaultSystemLibrary(
-		file: DiscoveredFile,
-		rootFolder: typeof rootFolders.$inferSelect,
-		progress: ScanProgress
-	): Promise<boolean> {
-		const targetLibraryId = this.getDefaultSystemLibraryId(rootFolder.mediaType, file.path);
+	private async updateSeriesAndSeasonStats(seriesId: string): Promise<void> {
+		const allEpisodes = await db.select().from(episodes).where(eq(episodes.seriesId, seriesId));
 
-		if (!targetLibraryId) {
-			logger.warn(
-				{
-					filePath: file.path,
-					mediaType: rootFolder.mediaType
-				},
-				'[DiskScan] No default system library available for file'
-			);
-			return false;
-		}
-
-		if (rootFolder.mediaType === 'movie') {
-			const [movie] = await db
-				.select({ id: movies.id, path: movies.path, scoringProfileId: movies.scoringProfileId })
-				.from(movies)
-				.where(and(eq(movies.rootFolderId, rootFolder.id), eq(movies.path, targetLibraryId)))
-				.limit(1);
-
-			if (!movie) {
-				return false;
-			}
-
-			await db.insert(movieFiles).values({
-				movieId: movie.id,
-				relativePath: file.path.split('/').pop() ?? file.path,
-				size: file.size,
-				mediaInfo: await mediaInfoService.extractMediaInfo(file.path, {
-					allowStrmProbe: movie.scoringProfileId !== 'streamer'
-				})
-			});
-
-			progress.filesUpdated++;
-			logger.info(
-				{
-					filePath: file.path,
-					movieId: movie.id
-				},
-				'[DiskScan] Routed movie file to default system library'
-			);
-			return true;
-		}
-
-		const [seriesItem] = await db
-			.select({ id: series.id, path: series.path, scoringProfileId: series.scoringProfileId })
+		const [seriesData] = await db
+			.select({ monitorSpecials: series.monitorSpecials })
 			.from(series)
-			.where(and(eq(series.rootFolderId, rootFolder.id), eq(series.path, targetLibraryId)))
-			.limit(1);
+			.where(eq(series.id, seriesId));
+		const monitorSpecials = seriesData?.monitorSpecials ?? false;
 
-		if (!seriesItem) {
-			return false;
-		}
+		const episodesForStats = monitorSpecials
+			? allEpisodes
+			: allEpisodes.filter((episode) => episode.seasonNumber !== 0);
+		const episodesWithFiles = episodesForStats.filter((episode) => episode.hasFile);
 
-		const parsed = this.parser.parse(getMediaParseStem(file.path));
-		const identifier = resolveTvEpisodeIdentifier({
-			filePath: file.path,
-			parsed,
-			seriesType: seriesItem.scoringProfileId === 'anime' ? 'anime' : 'standard'
-		});
-
-		if (!identifier) {
-			return false;
-		}
-
-		const matchingEpisodes = await db
-			.select()
-			.from(episodes)
-			.where(
-				and(
-					eq(episodes.seriesId, seriesItem.id),
-					eq(episodes.seasonNumber, identifier.seasonNumber),
-					inArray(episodes.episodeNumber, identifier.episodeNumbers)
-				)
-			);
-
-		if (matchingEpisodes.length === 0) {
-			return false;
-		}
-
-		await db.insert(episodeFiles).values({
-			seriesId: seriesItem.id,
-			seasonNumber: identifier.seasonNumber,
-			episodeIds: matchingEpisodes.map((episode) => episode.id),
-			relativePath: file.path.split('/').pop() ?? file.path,
-			size: file.size,
-			mediaInfo: await mediaInfoService.extractMediaInfo(file.path, {
-				allowStrmProbe: seriesItem.scoringProfileId !== 'streamer'
+		await db
+			.update(series)
+			.set({
+				episodeFileCount: episodesWithFiles.length,
+				episodeCount: episodesForStats.length
 			})
-		});
+			.where(eq(series.id, seriesId));
 
-		for (const episode of matchingEpisodes) {
-			await db.update(episodes).set({ hasFile: true }).where(eq(episodes.id, episode.id));
+		const seasonMap = new Map<number, { total: number; withFiles: number }>();
+		for (const episode of allEpisodes) {
+			const stats = seasonMap.get(episode.seasonNumber) || { total: 0, withFiles: 0 };
+			stats.total++;
+			if (episode.hasFile) stats.withFiles++;
+			seasonMap.set(episode.seasonNumber, stats);
 		}
 
-		await this.updateSeriesAndSeasonStats(seriesItem.id);
-		progress.filesUpdated++;
-		logger.info(
-			{
-				filePath: file.path,
-				seriesId: seriesItem.id
-			},
-			'[DiskScan] Routed TV file to default system library'
-		);
-		return true;
+		for (const [seasonNumber, stats] of seasonMap) {
+			await db
+				.update(seasons)
+				.set({
+					episodeFileCount: stats.withFiles,
+					episodeCount: stats.total
+				})
+				.where(and(eq(seasons.seriesId, seriesId), eq(seasons.seasonNumber, seasonNumber)));
+		}
 	}
 
-	private getDefaultSystemLibraryId(mediaType: string, filePath: string): string | null {
-		const lowerPath = filePath.toLowerCase();
-		const isAnime = /anime/.test(lowerPath);
+	private async addUnmatchedFile(
+		file: DiscoveredFile,
+		rootFolderId: string,
+		mediaType: string
+	): Promise<void> {
+		const fileName = getMediaParseStem(file.path);
+		const parsed = this.parser.parse(fileName);
+		const identifier = resolveTvEpisodeIdentifier({
+			filePath: file.path,
+			parsed
+		});
 
-		if (mediaType === 'movie') {
-			return isAnime ? SYSTEM_LIBRARY_IDS.animeMovie : SYSTEM_LIBRARY_IDS.movie;
-		}
-
-		if (mediaType === 'tv') {
-			return isAnime ? SYSTEM_LIBRARY_IDS.animeTv : SYSTEM_LIBRARY_IDS.tv;
-		}
-
-		return null;
+		await db.insert(unmatchedFiles).values({
+			path: file.path,
+			rootFolderId,
+			mediaType,
+			size: file.size,
+			parsedTitle: parsed.cleanTitle || null,
+			parsedYear: parsed.year || null,
+			parsedSeason: identifier?.numbering === 'standard' ? identifier.seasonNumber : null,
+			parsedEpisode: identifier?.numbering === 'standard' ? identifier.episodeNumbers[0] : null,
+			reason: 'no_match'
+		});
 	}
 
 	private async updateFileMediaInfo(
