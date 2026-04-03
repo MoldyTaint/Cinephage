@@ -18,7 +18,6 @@
 	type FolderSection = {
 		id: 'movie' | 'tv';
 		title: string;
-		description: string;
 		icon: typeof Film;
 		folders: RootFolder[];
 	};
@@ -28,14 +27,12 @@
 			{
 				id: 'movie',
 				title: m.rootFolders_movieFoldersTitle(),
-				description: m.rootFolders_movieFoldersDesc(),
 				icon: Film,
 				folders: movieFolders
 			},
 			{
 				id: 'tv',
 				title: m.rootFolders_tvFoldersTitle(),
-				description: m.rootFolders_tvFoldersDesc(),
 				icon: Tv,
 				folders: tvFolders
 			}
@@ -63,7 +60,6 @@
 					</div>
 					<div class="min-w-0">
 						<h3 class="font-semibold">{section.title}</h3>
-						<p class="text-sm text-base-content/60">{section.description}</p>
 					</div>
 				</div>
 
@@ -85,8 +81,8 @@
 											{/if}
 										</div>
 										<div class="min-w-0">
-											<h3 class="flex items-center gap-2 font-semibold">
-												{folder.name}
+											<h3 class="flex items-center gap-2">
+												<span class="font-semibold">{folder.name}</span>
 												{#if folder.isDefault}
 													<span class="badge gap-1 badge-primary">
 														<Star class="h-3 w-3" />

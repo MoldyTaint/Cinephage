@@ -42,6 +42,17 @@
 		readOnly?: boolean;
 	}
 
+	interface DestinationLibrary {
+		id: string;
+		name: string;
+		slug: string;
+		mediaType: MediaType;
+		mediaSubType?: string | null;
+		isDefault?: boolean;
+		defaultRootFolderId?: string | null;
+		defaultRootFolderPath?: string | null;
+	}
+
 	interface MatchResult {
 		tmdbId: number;
 		title: string;
@@ -145,6 +156,7 @@
 	let browserError = $state<string | null>(null);
 
 	let rootFolders = $state<RootFolder[]>([]);
+	let destinationLibraries = $state<DestinationLibrary[]>([]);
 	let loadingRootFolders = $state(true);
 	let enforceAnimeSubtype = $state(false);
 
@@ -247,8 +259,8 @@
 		Boolean(activeGroup && importedGroupIds.includes(activeGroup.id))
 	);
 	const step2Ready = $derived(Boolean(activeGroup && selectedMatch && !isActiveGroupImported));
-	const rootFoldersForType = $derived(
-		getWritableRootFoldersForType(selectedMediaType, selectedMatch)
+	const destinationLibrariesForType = $derived(
+		getAvailableDestinationLibrariesForType(selectedMediaType, selectedMatch)
 	);
 	const isBatchTvImport = $derived(
 		Boolean(activeGroup && selectedMediaType === 'tv' && activeGroup.detectedFileCount > 1)
@@ -436,8 +448,8 @@
 			return selectedMatch.inLibrary;
 		}
 
-		if (rootFoldersForType.length === 0) return false;
-		if (rootFoldersForType.length === 1) return true;
+		if (destinationLibrariesForType.length === 0) return false;
+		if (destinationLibrariesForType.length === 1) return true;
 		return selectedRootFolder.length > 0;
 	});
 	const hasActiveImportSession = $derived.by(
@@ -491,11 +503,11 @@
 
 	$effect(() => {
 		let nextRootFolder = selectedRootFolder;
-		if (rootFoldersForType.length === 0) {
+		if (destinationLibrariesForType.length === 0) {
 			nextRootFolder = '';
-		} else if (!rootFoldersForType.some((folder) => folder.id === selectedRootFolder)) {
+		} else if (!destinationLibrariesForType.some((library) => library.id === selectedRootFolder)) {
 			nextRootFolder =
-				getRecommendedRootFolderId(rootFoldersForType, {
+				getRecommendedDestinationLibraryId(destinationLibrariesForType, {
 					preferAnime: selectedMatch?.isAnime === true
 				}) ?? '';
 		}
@@ -517,12 +529,15 @@
 			const state = nextState[group.id];
 			if (!state) continue;
 
-			const folders = getWritableRootFoldersForType(state.selectedMediaType, state.selectedMatch);
+			const libraries = getAvailableDestinationLibrariesForType(
+				state.selectedMediaType,
+				state.selectedMatch
+			);
 			const hasValidSelection =
 				state.selectedRootFolder.length > 0 &&
-				folders.some((folder) => folder.id === state.selectedRootFolder);
+				libraries.some((library) => library.id === state.selectedRootFolder);
 			const recommendedRootFolder =
-				getRecommendedRootFolderId(folders, {
+				getRecommendedDestinationLibraryId(libraries, {
 					preferAnime: state.selectedMatch?.isAnime === true
 				}) ?? '';
 
@@ -687,9 +702,10 @@
 	async function loadRootFolders() {
 		loadingRootFolders = true;
 		try {
-			const [foldersResponse, classificationResponse] = await Promise.all([
+			const [foldersResponse, classificationResponse, librariesResponse] = await Promise.all([
 				fetch('/api/root-folders'),
-				fetch('/api/settings/library/classification')
+				fetch('/api/settings/library/classification'),
+				fetch('/api/libraries?includeSystem=true')
 			]);
 
 			const foldersPayload = await readResponsePayload<RootFolder[] | { folders?: RootFolder[] }>(
@@ -698,6 +714,9 @@
 			const classificationPayload = await readResponsePayload<{
 				enforceAnimeSubtype?: boolean;
 			}>(classificationResponse);
+			const librariesPayload = await readResponsePayload<{
+				libraries?: DestinationLibrary[];
+			}>(librariesResponse);
 
 			if (!foldersResponse.ok) {
 				throw new Error(getResponseErrorMessage(foldersPayload, 'Failed to load root folders'));
@@ -716,6 +735,17 @@
 				typeof classificationPayload === 'object' &&
 				classificationPayload.enforceAnimeSubtype === true
 			);
+
+			if (
+				librariesResponse.ok &&
+				librariesPayload &&
+				typeof librariesPayload === 'object' &&
+				Array.isArray(librariesPayload.libraries)
+			) {
+				destinationLibraries = librariesPayload.libraries;
+			} else {
+				destinationLibraries = [];
+			}
 		} catch {
 			toasts.error(m.toast_library_import_failedToLoadRootFolders());
 		} finally {
@@ -844,8 +874,8 @@
 	function createInitialGroupState(group: DetectionGroup): GroupReviewState {
 		const initialCandidates = group.matches ?? [];
 		const initialMatch = initialCandidates[0] ?? null;
-		const initialRootFolder = getRecommendedRootFolderId(
-			getWritableRootFoldersForType(group.inferredMediaType, initialMatch),
+		const initialRootFolder = getRecommendedDestinationLibraryId(
+			getAvailableDestinationLibrariesForType(group.inferredMediaType, initialMatch),
 			{
 				preferAnime: initialMatch?.isAnime === true
 			}
@@ -1029,6 +1059,29 @@
 		);
 	}
 
+	function getAvailableDestinationLibrariesForType(
+		mediaType: MediaType,
+		match: MatchResult | null = null
+	): DestinationLibrary[] {
+		const allowedFolders = getWritableRootFoldersForType(mediaType, match);
+		if (allowedFolders.length === 0) {
+			return [];
+		}
+
+		const allowedRootFolderIds = new Set(allowedFolders.map((folder) => folder.id));
+		const eligibleLibraries = destinationLibraries.filter((library) => {
+			if (library.mediaType !== mediaType) return false;
+			if (!library.defaultRootFolderId) return false;
+			return allowedRootFolderIds.has(library.defaultRootFolderId);
+		});
+
+		return eligibleLibraries.sort((a, b) => {
+			const defaultOrder = Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault));
+			if (defaultOrder !== 0) return defaultOrder;
+			return a.name.localeCompare(b.name);
+		});
+	}
+
 	function getRecommendedRootFolderId(
 		folders: RootFolder[],
 		options?: { preferAnime?: boolean }
@@ -1055,6 +1108,35 @@
 			)?.id ??
 			folders.find((folder) => folder.isDefault)?.id ??
 			folders[0].id
+		);
+	}
+
+	function getRecommendedDestinationLibraryId(
+		libraries: DestinationLibrary[],
+		options?: { preferAnime?: boolean }
+	): string | undefined {
+		if (libraries.length === 0) return undefined;
+
+		const preferAnime = options?.preferAnime === true;
+		if (preferAnime) {
+			return (
+				libraries.find(
+					(library) => library.isDefault && (library.mediaSubType ?? 'standard') === 'anime'
+				)?.id ??
+				libraries.find(
+					(library) => library.isDefault && (library.mediaSubType ?? 'standard') === 'standard'
+				)?.id ??
+				libraries.find((library) => library.isDefault)?.id ??
+				libraries[0].id
+			);
+		}
+
+		return (
+			libraries.find(
+				(library) => library.isDefault && (library.mediaSubType ?? 'standard') === 'standard'
+			)?.id ??
+			libraries.find((library) => library.isDefault)?.id ??
+			libraries[0].id
 		);
 	}
 
@@ -1368,9 +1450,9 @@
 		const groups = getSkippableSeasonGroups(seasonSection);
 		if (groups.length === 0) return false;
 
-		const foldersForTv = getWritableRootFoldersForType('tv', selectedTvMatch);
+		const librariesForTv = getAvailableDestinationLibrariesForType('tv', selectedTvMatch);
 		const recommendedRootFolder =
-			getRecommendedRootFolderId(foldersForTv, {
+			getRecommendedDestinationLibraryId(librariesForTv, {
 				preferAnime: selectedTvMatch.isAnime === true
 			}) ?? '';
 		const nextState = { ...groupReviewState };
@@ -1386,7 +1468,7 @@
 				: [selectedTvMatch, ...state.matchCandidates];
 			const hasValidRootFolder =
 				state.selectedRootFolder.length > 0 &&
-				foldersForTv.some((folder) => folder.id === state.selectedRootFolder);
+				librariesForTv.some((library) => library.id === state.selectedRootFolder);
 
 			nextState[group.id] = {
 				...state,
@@ -1425,40 +1507,43 @@
 		});
 	}
 
-	function getSectionDestinationOptions(section: DetectionSection): RootFolder[] {
+	function getSectionDestinationOptions(section: DetectionSection): DestinationLibrary[] {
 		const groups = getSectionDestinationEligibleGroups(section);
 
 		if (groups.length === 0) return [];
 
-		const allowedFolderIds: string[] = [];
+		const allowedLibraryIds: string[] = [];
 		for (const group of groups) {
 			const state = getGroupState(group);
-			const groupFolders = getWritableRootFoldersForType(
+			const groupLibraries = getAvailableDestinationLibrariesForType(
 				state.selectedMediaType,
 				state.selectedMatch
 			);
-			for (const folder of groupFolders) {
-				if (!allowedFolderIds.includes(folder.id)) {
-					allowedFolderIds.push(folder.id);
+			for (const library of groupLibraries) {
+				if (!allowedLibraryIds.includes(library.id)) {
+					allowedLibraryIds.push(library.id);
 				}
 			}
 		}
 
-		const sortedFolders = sortRootFoldersForMediaType(
-			rootFolders.filter((folder) => !folder.readOnly),
-			section.mediaType
-		);
-		return sortedFolders.filter((folder) => allowedFolderIds.includes(folder.id));
+		return destinationLibraries
+			.filter((library) => library.mediaType === section.mediaType)
+			.filter((library) => allowedLibraryIds.includes(library.id))
+			.sort((a, b) => {
+				const defaultOrder = Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault));
+				if (defaultOrder !== 0) return defaultOrder;
+				return a.name.localeCompare(b.name);
+			});
 	}
 
 	function getRecommendedSectionDestinationId(
 		section: DetectionSection,
-		options: RootFolder[]
+		options: DestinationLibrary[]
 	): string {
 		const shouldPreferAnime = getSectionDestinationGroups(section).some(
 			(group) => getGroupState(group).selectedMatch?.isAnime === true
 		);
-		return getRecommendedRootFolderId(options, { preferAnime: shouldPreferAnime }) ?? '';
+		return getRecommendedDestinationLibraryId(options, { preferAnime: shouldPreferAnime }) ?? '';
 	}
 
 	function updateSectionDestination(sectionId: string, value: string) {
@@ -1477,8 +1562,11 @@
 
 		return groups.some((group) => {
 			const state = getGroupState(group);
-			const folders = getWritableRootFoldersForType(state.selectedMediaType, state.selectedMatch);
-			return folders.some((folder) => folder.id === selectedDestination);
+			const libraries = getAvailableDestinationLibrariesForType(
+				state.selectedMediaType,
+				state.selectedMatch
+			);
+			return libraries.some((library) => library.id === selectedDestination);
 		});
 	}
 
@@ -1499,8 +1587,11 @@
 		for (const group of groups) {
 			const state = getGroupState(group);
 
-			const folders = getWritableRootFoldersForType(state.selectedMediaType, state.selectedMatch);
-			if (!folders.some((folder) => folder.id === selectedDestination)) {
+			const libraries = getAvailableDestinationLibrariesForType(
+				state.selectedMediaType,
+				state.selectedMatch
+			);
+			if (!libraries.some((library) => library.id === selectedDestination)) {
 				restrictedCount += 1;
 				continue;
 			}
@@ -1573,9 +1664,12 @@
 			return match.inLibrary;
 		}
 
-		const folders = getWritableRootFoldersForType(state.selectedMediaType, state.selectedMatch);
-		if (folders.length === 0) return false;
-		if (folders.length === 1) return true;
+		const libraries = getAvailableDestinationLibrariesForType(
+			state.selectedMediaType,
+			state.selectedMatch
+		);
+		if (libraries.length === 0) return false;
+		if (libraries.length === 1) return true;
 		return state.selectedRootFolder.length > 0;
 	}
 
@@ -1604,7 +1698,7 @@
 		}
 		const resolvedImportTarget = state.selectedMatch.inLibrary ? 'existing' : state.importTarget;
 
-		const foldersForType = getWritableRootFoldersForType(
+		const librariesForType = getAvailableDestinationLibrariesForType(
 			state.selectedMediaType,
 			state.selectedMatch
 		);
@@ -1616,7 +1710,7 @@
 			tmdbId: state.selectedMatch.tmdbId,
 			importTarget: resolvedImportTarget,
 			...(resolvedImportTarget === 'new'
-				? { rootFolderId: state.selectedRootFolder || foldersForType[0]?.id }
+				? { libraryId: state.selectedRootFolder || librariesForType[0]?.id }
 				: {}),
 			...(state.selectedMediaType === 'tv' && !isBatchTv
 				? { seasonNumber: state.seasonNumber, episodeNumber: state.episodeNumber }
@@ -1863,9 +1957,12 @@
 		importTarget = match.inLibrary ? 'existing' : 'new';
 		if (importTarget === 'new') {
 			selectedRootFolder =
-				getRecommendedRootFolderId(getWritableRootFoldersForType(selectedMediaType, match), {
-					preferAnime: match.isAnime === true
-				}) ?? '';
+				getRecommendedDestinationLibraryId(
+					getAvailableDestinationLibrariesForType(selectedMediaType, match),
+					{
+						preferAnime: match.isAnime === true
+					}
+				) ?? '';
 		}
 
 		if (
@@ -1891,7 +1988,8 @@
 		matchCandidates = [];
 		importTarget = 'new';
 		selectedRootFolder =
-			getRecommendedRootFolderId(getWritableRootFoldersForType(nextType, null)) ?? '';
+			getRecommendedDestinationLibraryId(getAvailableDestinationLibrariesForType(nextType, null)) ??
+			'';
 		batchSeasonOverride = nextType === 'tv' ? (activeGroup?.suggestedSeason ?? null) : null;
 		persistActiveGroupState();
 	}
@@ -3183,7 +3281,12 @@
 																>{m.library_import_selectRootFolder()}</option
 															>
 															{#each mediaDestinationOptions as folder (folder.id)}
-																<option value={folder.id}>{folder.name} - {folder.path}</option>
+																<option value={folder.id}
+																	>{folder.name}
+																	{#if folder.defaultRootFolderPath}
+																		- {folder.defaultRootFolderPath}
+																	{/if}</option
+																>
 															{/each}
 														</select>
 													</div>
@@ -3365,7 +3468,7 @@
 							<Loader2 class="h-4 w-4 animate-spin" />
 							{m.library_import_loadingFolders()}
 						</div>
-					{:else if rootFoldersForType.length === 0}
+					{:else if destinationLibrariesForType.length === 0}
 						<div class="mt-3 alert text-sm alert-warning">
 							<span>{m.library_import_noWritableFolders()}</span>
 						</div>
@@ -3376,8 +3479,13 @@
 							onchange={persistActiveGroupState}
 						>
 							<option disabled value="">{m.library_import_selectRootFolder()}</option>
-							{#each rootFoldersForType as folder (folder.id)}
-								<option value={folder.id}>{folder.name} - {folder.path}</option>
+							{#each destinationLibrariesForType as library (library.id)}
+								<option value={library.id}
+									>{library.name}
+									{#if library.defaultRootFolderPath}
+										- {library.defaultRootFolderPath}
+									{/if}</option
+								>
 							{/each}
 						</select>
 					{/if}

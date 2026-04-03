@@ -14,6 +14,7 @@ const executeSchema = z
 		tmdbId: z.number().int().positive(),
 		importTarget: z.enum(['new', 'existing']),
 		rootFolderId: z.string().optional(),
+		libraryId: z.string().optional(),
 		seasonNumber: z.number().int().min(0).optional(),
 		episodeNumber: z.number().int().min(1).optional()
 	})

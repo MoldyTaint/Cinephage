@@ -17,15 +17,8 @@ import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });
 
-/**
- * Debounce time for processing file events (ms)
- * Groups rapid changes together
- */
 const DEBOUNCE_TIME = 5000;
 
-/**
- * File change event
- */
 interface FileChange {
 	type: 'add' | 'change' | 'unlink';
 	path: string;
@@ -33,16 +26,13 @@ interface FileChange {
 	timestamp: number;
 }
 
-/**
- * LibraryWatcherService - Watch filesystem for media changes
- */
 export class LibraryWatcherService extends EventEmitter {
 	private static instance: LibraryWatcherService;
 	private watchers: Map<string, FSWatcher> = new Map();
 	private pendingChanges: Map<string, FileChange> = new Map();
 	private processTimeout: NodeJS.Timeout | null = null;
 	private enabled = false;
-	private rootFolderMap: Map<string, string> = new Map(); // path -> id
+	private rootFolderMap: Map<string, string> = new Map();
 
 	private constructor() {
 		super();
@@ -55,9 +45,6 @@ export class LibraryWatcherService extends EventEmitter {
 		return LibraryWatcherService.instance;
 	}
 
-	/**
-	 * Check if watching is enabled in settings
-	 */
 	private async isWatchingEnabled(): Promise<boolean> {
 		const setting = await db
 			.select()
@@ -69,13 +56,9 @@ export class LibraryWatcherService extends EventEmitter {
 			return setting[0].value === 'true';
 		}
 
-		// Default to true
 		return true;
 	}
 
-	/**
-	 * Initialize watchers for all root folders
-	 */
 	async initialize(): Promise<void> {
 		const watchEnabled = await this.isWatchingEnabled();
 		if (!watchEnabled) {
@@ -93,9 +76,6 @@ export class LibraryWatcherService extends EventEmitter {
 		logger.info({ folderCount: folders.length }, '[LibraryWatcher] Initialized watchers');
 	}
 
-	/**
-	 * Stop all watchers
-	 */
 	async shutdown(): Promise<void> {
 		for (const [folderId, watcher] of this.watchers) {
 			await watcher.close();
@@ -114,38 +94,25 @@ export class LibraryWatcherService extends EventEmitter {
 		this.enabled = false;
 	}
 
-	/**
-	 * Watch a specific root folder
-	 */
 	async watchFolder(folderId: string, folderPath: string): Promise<void> {
-		// Stop existing watcher if any
 		if (this.watchers.has(folderId)) {
 			await this.watchers.get(folderId)?.close();
 		}
 
-		// Store mapping
 		this.rootFolderMap.set(folderPath, folderId);
 
-		// Create watcher
 		const watcher = chokidar.watch(folderPath, {
 			persistent: true,
-			ignoreInitial: true, // Don't fire events for existing files
+			ignoreInitial: true,
 			followSymlinks: true,
-			depth: 10, // Max depth to watch
+			depth: 10,
 			awaitWriteFinish: {
 				stabilityThreshold: 2000,
 				pollInterval: 100
 			},
-			ignored: [
-				/(^|[/\\])\../, // Ignore dotfiles
-				/node_modules/,
-				/@eaDir/, // Synology thumbnails
-				/#recycle/i,
-				/\$RECYCLE\.BIN/i
-			]
+			ignored: [/(^|[/\\])\../, /node_modules/, /@eaDir/, /#recycle/i, /\$RECYCLE\.BIN/i]
 		});
 
-		// Set up event handlers
 		watcher
 			.on('add', (path) => this.handleFileEvent('add', path, folderId))
 			.on('change', (path) => this.handleFileEvent('change', path, folderId))
@@ -161,16 +128,12 @@ export class LibraryWatcherService extends EventEmitter {
 		this.watchers.set(folderId, watcher);
 	}
 
-	/**
-	 * Stop watching a specific folder
-	 */
 	async unwatchFolder(folderId: string): Promise<void> {
 		const watcher = this.watchers.get(folderId);
 		if (watcher) {
 			await watcher.close();
 			this.watchers.delete(folderId);
 
-			// Remove from folder map
 			for (const [path, id] of this.rootFolderMap) {
 				if (id === folderId) {
 					this.rootFolderMap.delete(path);
@@ -182,22 +145,17 @@ export class LibraryWatcherService extends EventEmitter {
 		}
 	}
 
-	/**
-	 * Handle a file event
-	 */
 	private handleFileEvent(
 		type: 'add' | 'change' | 'unlink',
 		path: string,
 		rootFolderId: string
 	): void {
-		// Only process video files
 		if (!isVideoFile(path)) {
 			return;
 		}
 
 		logger.debug({ type, path }, '[LibraryWatcher] File event');
 
-		// Queue the change
 		this.pendingChanges.set(path, {
 			type,
 			path,
@@ -205,7 +163,6 @@ export class LibraryWatcherService extends EventEmitter {
 			timestamp: Date.now()
 		});
 
-		// Debounce processing
 		if (this.processTimeout) {
 			clearTimeout(this.processTimeout);
 		}
@@ -215,15 +172,11 @@ export class LibraryWatcherService extends EventEmitter {
 		}, DEBOUNCE_TIME);
 	}
 
-	/**
-	 * Process all pending file changes
-	 */
 	private async processPendingChanges(): Promise<void> {
 		if (this.pendingChanges.size === 0) {
 			return;
 		}
 
-		// Group changes by root folder
 		const changesByFolder = new Map<string, FileChange[]>();
 
 		for (const [, change] of this.pendingChanges) {
@@ -232,15 +185,12 @@ export class LibraryWatcherService extends EventEmitter {
 			changesByFolder.set(change.rootFolderId, existing);
 		}
 
-		// Clear pending changes
 		this.pendingChanges.clear();
 
-		// Process each folder with a SINGLE scan
 		for (const [folderId, changes] of changesByFolder) {
 			logger.info({ folderId, changeCount: changes.length }, '[LibraryWatcher] Processing changes');
 
 			try {
-				// Check if scan is already running
 				if (diskScanService.scanning) {
 					logger.debug(
 						{
@@ -248,24 +198,23 @@ export class LibraryWatcherService extends EventEmitter {
 						},
 						'[LibraryWatcher] Scan already running, re-queueing changes'
 					);
-					// Re-queue the changes for later processing
+
 					for (const change of changes) {
 						this.pendingChanges.set(change.path, change);
 					}
-					// Trigger another debounced process
+
 					if (this.processTimeout) {
 						clearTimeout(this.processTimeout);
 					}
+
 					this.processTimeout = setTimeout(() => {
 						this.processPendingChanges();
 					}, DEBOUNCE_TIME);
 					continue;
 				}
 
-				// Always do a single folder scan (handles adds, changes, and deletes)
 				await diskScanService.scanRootFolder(folderId);
 
-				// Process unmatched files after scan
 				await mediaMatcherService.processAllUnmatched();
 
 				this.emit('processed', { folderId, changes: changes.length });
@@ -276,9 +225,6 @@ export class LibraryWatcherService extends EventEmitter {
 		}
 	}
 
-	/**
-	 * Get watcher status
-	 */
 	getStatus(): { enabled: boolean; watchedFolders: string[] } {
 		return {
 			enabled: this.enabled,
@@ -286,9 +232,6 @@ export class LibraryWatcherService extends EventEmitter {
 		};
 	}
 
-	/**
-	 * Refresh watchers (e.g., when root folders change)
-	 */
 	async refresh(): Promise<void> {
 		await this.shutdown();
 		await this.initialize();

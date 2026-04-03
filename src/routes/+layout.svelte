@@ -57,12 +57,20 @@
 		children?: MenuChildItem[];
 	};
 
+	type LibraryNavItem = {
+		id: string;
+		slug: string;
+		name: string;
+		mediaSubType: string | null;
+		isDefault: boolean;
+	};
+
 	let { children, data } = $props<{
 		children: import('svelte').Snippet;
 		data: {
 			libraryNav?: {
-				hasAnimeMovies?: boolean;
-				hasAnimeSeries?: boolean;
+				movieLibraries?: LibraryNavItem[];
+				tvLibraries?: LibraryNavItem[];
 			};
 		};
 	}>();
@@ -133,47 +141,56 @@
 
 	// Menu items using translation functions
 	const menuItems = $derived.by<MenuItem[]>(() => {
-		const hasAnimeMovies = data.libraryNav?.hasAnimeMovies === true;
-		const hasAnimeSeries = data.libraryNav?.hasAnimeSeries === true;
+		const movieLibraries = data.libraryNav?.movieLibraries ?? [];
+		const tvLibraries = data.libraryNav?.tvLibraries ?? [];
+		const defaultMovieLibrary =
+			movieLibraries.find((library: LibraryNavItem) => library.isDefault) ?? null;
+		const defaultTvLibrary =
+			tvLibraries.find((library: LibraryNavItem) => library.isDefault) ?? null;
+		const movieSubLibraries = movieLibraries.filter(
+			(library: LibraryNavItem) => !library.isDefault
+		);
+		const tvSubLibraries = tvLibraries.filter((library: LibraryNavItem) => !library.isDefault);
 
 		const libraryChildren: MenuChildItem[] = [
 			{
 				href: '/library/movies',
 				label: m.nav_movies,
 				icon: Clapperboard,
-				match: (url: URL) =>
-					url.pathname === '/library/movies' && url.searchParams.get('librarySubtype') !== 'anime'
+				match: (url: URL) => {
+					if (url.pathname !== '/library/movies') return false;
+					const currentLibrarySlug = url.searchParams.get('library')?.trim() ?? '';
+					if (!currentLibrarySlug) return true;
+					return currentLibrarySlug === (defaultMovieLibrary?.slug ?? '');
+				}
 			},
-			...(hasAnimeMovies
-				? [
-						{
-							href: '/library/movies?librarySubtype=anime',
-							label: m.nav_animeMovies,
-							isSubtype: true,
-							match: (url: URL) =>
-								url.pathname === '/library/movies' &&
-								url.searchParams.get('librarySubtype') === 'anime'
-						}
-					]
-				: []),
+			...movieSubLibraries.map((library: LibraryNavItem) => ({
+				href: `/library/movies?library=${encodeURIComponent(library.slug)}`,
+				label: () => library.name,
+				isSubtype: true,
+				match: (url: URL) =>
+					url.pathname === '/library/movies' &&
+					(url.searchParams.get('library')?.trim() ?? '') === library.slug
+			})),
 			{
 				href: '/library/tv',
 				label: m.nav_tvShows,
 				icon: Tv,
-				match: (url: URL) =>
-					url.pathname === '/library/tv' && url.searchParams.get('librarySubtype') !== 'anime'
+				match: (url: URL) => {
+					if (url.pathname !== '/library/tv') return false;
+					const currentLibrarySlug = url.searchParams.get('library')?.trim() ?? '';
+					if (!currentLibrarySlug) return true;
+					return currentLibrarySlug === (defaultTvLibrary?.slug ?? '');
+				}
 			},
-			...(hasAnimeSeries
-				? [
-						{
-							href: '/library/tv?librarySubtype=anime',
-							label: m.nav_animeSeries,
-							isSubtype: true,
-							match: (url: URL) =>
-								url.pathname === '/library/tv' && url.searchParams.get('librarySubtype') === 'anime'
-						}
-					]
-				: []),
+			...tvSubLibraries.map((library: LibraryNavItem) => ({
+				href: `/library/tv?library=${encodeURIComponent(library.slug)}`,
+				label: () => library.name,
+				isSubtype: true,
+				match: (url: URL) =>
+					url.pathname === '/library/tv' &&
+					(url.searchParams.get('library')?.trim() ?? '') === library.slug
+			})),
 			{ href: '/library/import', label: m.nav_import, icon: Download },
 			{ href: '/library/unmatched', label: m.nav_unmatchedFiles, icon: FileQuestion }
 		];
@@ -201,12 +218,17 @@
 				label: m.nav_settings,
 				icon: Settings,
 				children: [
-					{ href: '/settings/general', label: m.nav_mediaStorage, icon: FolderCog },
+					{ href: '/settings/general', label: m.nav_libraryStorage, icon: FolderCog },
 					{ href: '/settings/system', label: m.nav_system, icon: Server },
 					{ href: '/settings/logs', label: m.nav_logs, icon: ScrollText },
 					{ href: '/settings/naming', label: m.nav_naming, icon: FileSignature },
 					{ href: '/settings/quality', label: m.nav_qualitySettings, icon: Shield },
-					{ href: '/settings/integrations', label: m.nav_integrations, icon: Puzzle },
+					{
+						href: '/settings/integrations/indexers',
+						label: m.nav_integrations,
+						icon: Puzzle,
+						match: (url: URL) => url.pathname.startsWith('/settings/integrations')
+					},
 					{ href: '/settings/tasks', label: m.nav_tasks, icon: ListTodo },
 					{ href: '/settings/filters', label: m.nav_globalFilters, icon: Filter },
 					{ href: '/profile', label: m.nav_profile, icon: User }

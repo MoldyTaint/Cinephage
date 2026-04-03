@@ -344,7 +344,9 @@ export const indexerStatus = sqliteTable(
 export type IndexerStatusRecord = typeof indexerStatus.$inferSelect;
 export type NewIndexerStatusRecord = typeof indexerStatus.$inferInsert;
 
+// ============================================================================
 // Relations for indexer status
+// ============================================================================
 export const indexerStatusRelations = relations(indexerStatus, ({ one }) => ({
 	indexer: one(indexers, {
 		fields: [indexerStatus.indexerId],
@@ -596,6 +598,62 @@ export const rootFolders = sqliteTable('root_folders', {
 	createdAt: text('created_at').$defaultFn(() => new Date().toISOString())
 });
 
+/**
+ * Libraries - First-class media library entities (system + user custom libraries)
+ */
+export const libraries = sqliteTable(
+	'libraries',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => randomUUID()),
+		name: text('name').notNull(),
+		slug: text('slug').notNull().unique(),
+		mediaType: text('media_type').notNull(), // 'movie' | 'tv'
+		mediaSubType: text('media_sub_type').notNull().default('custom'), // 'standard' | 'anime' | 'custom'
+		isSystem: integer('is_system', { mode: 'boolean' }).notNull().default(false),
+		systemKey: text('system_key').unique(),
+		isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
+		defaultRootFolderId: text('default_root_folder_id').references(() => rootFolders.id, {
+			onDelete: 'set null'
+		}),
+		defaultMonitored: integer('default_monitored', { mode: 'boolean' }).notNull().default(true),
+		defaultSearchOnAdd: integer('default_search_on_add', { mode: 'boolean' })
+			.notNull()
+			.default(true),
+		defaultWantsSubtitles: integer('default_wants_subtitles', { mode: 'boolean' })
+			.notNull()
+			.default(true),
+		sortOrder: integer('sort_order').notNull().default(0),
+		createdAt: text('created_at').$defaultFn(() => new Date().toISOString()),
+		updatedAt: text('updated_at').$defaultFn(() => new Date().toISOString())
+	},
+	(table) => [
+		index('idx_libraries_media_type').on(table.mediaType),
+		index('idx_libraries_media_sub_type').on(table.mediaSubType),
+		index('idx_libraries_sort_order').on(table.sortOrder)
+	]
+);
+
+export const libraryRootFolders = sqliteTable(
+	'library_root_folders',
+	{
+		libraryId: text('library_id')
+			.notNull()
+			.references(() => libraries.id, { onDelete: 'cascade' }),
+		rootFolderId: text('root_folder_id')
+			.notNull()
+			.references(() => rootFolders.id, { onDelete: 'cascade' }),
+		isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
+		createdAt: text('created_at').$defaultFn(() => new Date().toISOString())
+	},
+	(table) => [
+		primaryKey({ columns: [table.libraryId, table.rootFolderId] }),
+		index('idx_library_root_folders_library').on(table.libraryId),
+		index('idx_library_root_folders_root_folder').on(table.rootFolderId)
+	]
+);
+
 // ============================================================================
 // MEDIA LIBRARY TABLES
 // ============================================================================
@@ -621,6 +679,7 @@ export const movies = sqliteTable(
 		genres: text('genres', { mode: 'json' }).$type<string[]>(),
 		// Path to the movie folder (relative to root folder)
 		path: text('path').notNull(),
+		libraryId: text('library_id').references(() => libraries.id, { onDelete: 'set null' }),
 		rootFolderId: text('root_folder_id').references(() => rootFolders.id, { onDelete: 'set null' }),
 		// Quality profile for scoring and filtering releases
 		scoringProfileId: text('scoring_profile_id').references(() => scoringProfiles.id, {
@@ -723,6 +782,7 @@ export const series = sqliteTable(
 		genres: text('genres', { mode: 'json' }).$type<string[]>(),
 		// Path to the series folder (relative to root folder)
 		path: text('path').notNull(),
+		libraryId: text('library_id').references(() => libraries.id, { onDelete: 'set null' }),
 		rootFolderId: text('root_folder_id').references(() => rootFolders.id, { onDelete: 'set null' }),
 		// Quality profile for scoring and filtering releases
 		scoringProfileId: text('scoring_profile_id').references(() => scoringProfiles.id, {
@@ -1435,7 +1495,7 @@ export const monitoringHistory = sqliteTable(
 // ============================================================================
 
 /**
- * Language Profile - Type definitions for JSON columns
+ * Language Profile - Type definitions for JSON column
  */
 export interface LanguagePreference {
 	code: string; // ISO 639-1 code (e.g., 'en', 'es', 'fr')
@@ -1684,6 +1744,10 @@ export type NewTaskSettingsRecord = typeof taskSettings.$inferInsert;
  * Movies Relations
  */
 export const moviesRelations = relations(movies, ({ one, many }) => ({
+	library: one(libraries, {
+		fields: [movies.libraryId],
+		references: [libraries.id]
+	}),
 	scoringProfile: one(scoringProfiles, {
 		fields: [movies.scoringProfileId],
 		references: [scoringProfiles.id]
@@ -1703,6 +1767,10 @@ export const moviesRelations = relations(movies, ({ one, many }) => ({
  * Series Relations
  */
 export const seriesRelations = relations(series, ({ one, many }) => ({
+	library: one(libraries, {
+		fields: [series.libraryId],
+		references: [libraries.id]
+	}),
 	scoringProfile: one(scoringProfiles, {
 		fields: [series.scoringProfileId],
 		references: [scoringProfiles.id]
@@ -1717,6 +1785,29 @@ export const seriesRelations = relations(series, ({ one, many }) => ({
 	}),
 	seasons: many(seasons),
 	episodes: many(episodes)
+}));
+
+/**
+ * Libraries Relations
+ */
+export const librariesRelations = relations(libraries, ({ many }) => ({
+	movies: many(movies),
+	series: many(series),
+	rootFolders: many(libraryRootFolders)
+}));
+
+/**
+ * Library Root Folders Relations
+ */
+export const libraryRootFoldersRelations = relations(libraryRootFolders, ({ one }) => ({
+	library: one(libraries, {
+		fields: [libraryRootFolders.libraryId],
+		references: [libraries.id]
+	}),
+	rootFolder: one(rootFolders, {
+		fields: [libraryRootFolders.rootFolderId],
+		references: [rootFolders.id]
+	})
 }));
 
 /**

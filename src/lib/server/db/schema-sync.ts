@@ -104,8 +104,45 @@ interface MigrationDefinition {
  * Version 74: Consolidate legacy nzb-mount clients into sabnzbd mount mode
  * Version 75: Add language column to user table for UI localization preference
  * Version 76: Add media_sub_type to root_folders for anime library routing
+ * Version 77: Add first-class libraries table with media library linkage
+ * Version 78: Backfill existing movies and series to seeded system libraries
  */
-export const CURRENT_SCHEMA_VERSION = 76;
+export const CURRENT_SCHEMA_VERSION = 78;
+
+const SYSTEM_LIBRARY_SEEDS = [
+	{
+		id: 'lib-movies-standard',
+		slug: 'movies',
+		sortOrder: 0,
+		mediaType: 'movie',
+		mediaSubType: 'standard',
+		systemKey: 'movies_standard'
+	},
+	{
+		id: 'lib-movies-anime',
+		slug: 'anime-movies',
+		sortOrder: 10,
+		mediaType: 'movie',
+		mediaSubType: 'anime',
+		systemKey: 'movies_anime'
+	},
+	{
+		id: 'lib-tv-standard',
+		slug: 'tv-shows',
+		sortOrder: 0,
+		mediaType: 'tv',
+		mediaSubType: 'standard',
+		systemKey: 'tv_standard'
+	},
+	{
+		id: 'lib-tv-anime',
+		slug: 'anime-series',
+		sortOrder: 10,
+		mediaType: 'tv',
+		mediaSubType: 'anime',
+		systemKey: 'tv_anime'
+	}
+] as const;
 
 const BETTER_AUTH_TABLE_DEFINITIONS = [
 	{
@@ -390,10 +427,36 @@ const TABLE_DEFINITIONS: string[] = [
 		"is_default" integer DEFAULT false,
 		"read_only" integer DEFAULT false,
 		"preserve_symlinks" integer DEFAULT false,
-		"default_monitored" integer DEFAULT 1,
+		"default_monitored" integer DEFAULT true,
 		"free_space_bytes" integer,
 		"last_checked_at" text,
 		"created_at" text
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS "libraries" (
+		"id" text PRIMARY KEY NOT NULL,
+		"name" text NOT NULL,
+		"slug" text NOT NULL UNIQUE,
+		"media_type" text NOT NULL CHECK ("media_type" IN ('movie', 'tv')),
+		"media_sub_type" text DEFAULT 'custom' NOT NULL CHECK ("media_sub_type" IN ('standard', 'anime', 'custom')),
+		"is_system" integer DEFAULT false NOT NULL,
+		"system_key" text UNIQUE,
+		"is_default" integer DEFAULT false NOT NULL,
+		"default_root_folder_id" text REFERENCES "root_folders"("id") ON DELETE SET NULL,
+		"default_monitored" integer DEFAULT true NOT NULL,
+		"default_search_on_add" integer DEFAULT true NOT NULL,
+		"default_wants_subtitles" integer DEFAULT true NOT NULL,
+		"sort_order" integer DEFAULT 0 NOT NULL,
+		"created_at" text,
+		"updated_at" text
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS "library_root_folders" (
+		"library_id" text NOT NULL REFERENCES "libraries"("id") ON DELETE CASCADE,
+		"root_folder_id" text NOT NULL REFERENCES "root_folders"("id") ON DELETE CASCADE,
+		"is_default" integer DEFAULT false NOT NULL,
+		"created_at" text,
+		PRIMARY KEY ("library_id", "root_folder_id")
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS "language_profiles" (
@@ -549,6 +612,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"runtime" integer,
 		"genres" text,
 		"path" text NOT NULL,
+		"library_id" text REFERENCES "libraries"("id") ON DELETE SET NULL,
 		"root_folder_id" text REFERENCES "root_folders"("id") ON DELETE SET NULL,
 		"scoring_profile_id" text REFERENCES "scoring_profiles"("id") ON DELETE SET NULL,
 		"language_profile_id" text,
@@ -590,6 +654,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"network" text,
 		"genres" text,
 		"path" text NOT NULL,
+		"library_id" text REFERENCES "libraries"("id") ON DELETE SET NULL,
 		"root_folder_id" text REFERENCES "root_folders"("id") ON DELETE SET NULL,
 		"scoring_profile_id" text REFERENCES "scoring_profiles"("id") ON DELETE SET NULL,
 		"language_profile_id" text,
@@ -1229,10 +1294,17 @@ const INDEX_DEFINITIONS: string[] = [
 	`CREATE INDEX IF NOT EXISTS "idx_indexers_definition" ON "indexers" ("definition_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_indexers_enabled" ON "indexers" ("enabled")`,
 	`CREATE INDEX IF NOT EXISTS "idx_indexer_status_health" ON "indexer_status" ("health", "is_disabled")`,
+	`CREATE INDEX IF NOT EXISTS "idx_libraries_media_type" ON "libraries" ("media_type")`,
+	`CREATE INDEX IF NOT EXISTS "idx_libraries_media_sub_type" ON "libraries" ("media_sub_type")`,
+	`CREATE INDEX IF NOT EXISTS "idx_libraries_sort_order" ON "libraries" ("sort_order")`,
+	`CREATE INDEX IF NOT EXISTS "idx_library_root_folders_library" ON "library_root_folders" ("library_id")`,
+	`CREATE INDEX IF NOT EXISTS "idx_library_root_folders_root_folder" ON "library_root_folders" ("root_folder_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_movies_monitored_hasfile" ON "movies" ("monitored", "has_file")`,
+	`CREATE INDEX IF NOT EXISTS "idx_movies_library_id" ON "movies" ("library_id")`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_movie_files_unique_path" ON "movie_files" ("movie_id", "relative_path")`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_episode_files_unique_path" ON "episode_files" ("series_id", "relative_path")`,
 	`CREATE INDEX IF NOT EXISTS "idx_series_monitored" ON "series" ("monitored")`,
+	`CREATE INDEX IF NOT EXISTS "idx_series_library_id" ON "series" ("library_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_episodes_series_season" ON "episodes" ("series_id", "season_number")`,
 	`CREATE INDEX IF NOT EXISTS "idx_episodes_monitored_hasfile" ON "episodes" ("monitored", "has_file")`,
 	`CREATE INDEX IF NOT EXISTS "idx_episodes_airdate" ON "episodes" ("air_date")`,
@@ -4163,7 +4235,7 @@ const MIGRATIONS: MigrationDefinition[] = [
 		}
 	},
 
-	// Migration 53: Add iptv_org_config column to livetv_accounts for IPTV-Org provider support
+	// Version 53: Add iptv_org_config column to livetv_accounts for IPTV-Org provider support
 	{
 		version: 53,
 		name: 'add_iptv_org_config_column',
@@ -5031,6 +5103,364 @@ const MIGRATIONS: MigrationDefinition[] = [
 				)
 				.run();
 		}
+	},
+	{
+		version: 77,
+		name: 'add_libraries_table_and_media_links',
+		apply: (sqlite) => {
+			if (!tableExists(sqlite, 'libraries')) {
+				sqlite
+					.prepare(
+						`CREATE TABLE IF NOT EXISTS "libraries" (
+							"id" text PRIMARY KEY NOT NULL,
+							"name" text NOT NULL,
+							"slug" text NOT NULL UNIQUE,
+							"media_type" text NOT NULL CHECK ("media_type" IN ('movie', 'tv')),
+							"media_sub_type" text DEFAULT 'custom' NOT NULL CHECK ("media_sub_type" IN ('standard', 'anime', 'custom')),
+							"is_system" integer DEFAULT false NOT NULL,
+							"system_key" text UNIQUE,
+							"is_default" integer DEFAULT false NOT NULL,
+							"default_root_folder_id" text REFERENCES "root_folders"("id") ON DELETE SET NULL,
+							"default_monitored" integer DEFAULT true NOT NULL,
+							"default_search_on_add" integer DEFAULT true NOT NULL,
+							"default_wants_subtitles" integer DEFAULT true NOT NULL,
+							"sort_order" integer DEFAULT 0 NOT NULL,
+							"created_at" text,
+							"updated_at" text
+						)`
+					)
+					.run();
+				logger.info('[SchemaSync] Created libraries table');
+			}
+
+			if (!columnExists(sqlite, 'movies', 'library_id')) {
+				sqlite
+					.prepare(
+						`ALTER TABLE "movies" ADD COLUMN "library_id" text REFERENCES "libraries"("id") ON DELETE SET NULL`
+					)
+					.run();
+				logger.info('[SchemaSync] Added movies.library_id column');
+			}
+
+			if (!columnExists(sqlite, 'series', 'library_id')) {
+				sqlite
+					.prepare(
+						`ALTER TABLE "series" ADD COLUMN "library_id" text REFERENCES "libraries"("id") ON DELETE SET NULL`
+					)
+					.run();
+				logger.info('[SchemaSync] Added series.library_id column');
+			}
+
+			sqlite
+				.prepare(
+					`CREATE INDEX IF NOT EXISTS "idx_libraries_media_type" ON "libraries" ("media_type")`
+				)
+				.run();
+			sqlite
+				.prepare(
+					`CREATE INDEX IF NOT EXISTS "idx_libraries_media_sub_type" ON "libraries" ("media_sub_type")`
+				)
+				.run();
+			sqlite
+				.prepare(
+					`CREATE INDEX IF NOT EXISTS "idx_libraries_sort_order" ON "libraries" ("sort_order")`
+				)
+				.run();
+			sqlite
+				.prepare(`CREATE INDEX IF NOT EXISTS "idx_movies_library_id" ON "movies" ("library_id")`)
+				.run();
+			sqlite
+				.prepare(`CREATE INDEX IF NOT EXISTS "idx_series_library_id" ON "series" ("library_id")`)
+				.run();
+
+			const getRootFolder = sqlite.prepare(
+				`SELECT "id", "default_monitored"
+				FROM "root_folders"
+				WHERE "media_type" = ? AND COALESCE("media_sub_type", 'standard') = ?
+				ORDER BY "is_default" DESC, "created_at" ASC
+				LIMIT 1`
+			);
+			const now = new Date().toISOString();
+
+			const movieStandardRoot = getRootFolder.get('movie', 'standard') as
+				| { id: string; default_monitored: number | null }
+				| undefined;
+			const movieAnimeRoot = getRootFolder.get('movie', 'anime') as
+				| { id: string; default_monitored: number | null }
+				| undefined;
+			const tvStandardRoot = getRootFolder.get('tv', 'standard') as
+				| { id: string; default_monitored: number | null }
+				| undefined;
+			const tvAnimeRoot = getRootFolder.get('tv', 'anime') as
+				| { id: string; default_monitored: number | null }
+				| undefined;
+
+			const upsertLibrary = sqlite.prepare(`
+				INSERT INTO "libraries" (
+					"id", "name", "slug", "media_type", "media_sub_type", "is_system", "system_key",
+					"is_default", "default_root_folder_id", "default_monitored",
+					"default_search_on_add", "default_wants_subtitles", "sort_order", "created_at", "updated_at"
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT("system_key") DO UPDATE SET
+					"name" = excluded."name",
+					"slug" = excluded."slug",
+					"media_type" = excluded."media_type",
+					"media_sub_type" = excluded."media_sub_type",
+					"is_default" = excluded."is_default",
+					"default_root_folder_id" = excluded."default_root_folder_id",
+					"default_monitored" = excluded."default_monitored",
+					"default_search_on_add" = excluded."default_search_on_add",
+					"default_wants_subtitles" = excluded."default_wants_subtitles",
+					"sort_order" = excluded."sort_order",
+					"updated_at" = excluded."updated_at"
+			`);
+
+			upsertLibrary.run(
+				'lib-movies-standard',
+				'Movies',
+				'movies',
+				'movie',
+				'standard',
+				1,
+				'movies_standard',
+				1,
+				movieStandardRoot?.id ?? null,
+				movieStandardRoot?.default_monitored === 0 ? 0 : 1,
+				1,
+				1,
+				0,
+				now,
+				now
+			);
+			upsertLibrary.run(
+				'lib-movies-anime',
+				'Anime Movies',
+				'anime-movies',
+				'movie',
+				'anime',
+				1,
+				'movies_anime',
+				0,
+				movieAnimeRoot?.id ?? null,
+				movieAnimeRoot?.default_monitored === 0 ? 0 : 1,
+				1,
+				1,
+				10,
+				now,
+				now
+			);
+			upsertLibrary.run(
+				'lib-tv-standard',
+				'TV Shows',
+				'tv-shows',
+				'tv',
+				'standard',
+				1,
+				'tv_standard',
+				1,
+				tvStandardRoot?.id ?? null,
+				tvStandardRoot?.default_monitored === 0 ? 0 : 1,
+				1,
+				1,
+				0,
+				now,
+				now
+			);
+			upsertLibrary.run(
+				'lib-tv-anime',
+				'Anime Series',
+				'anime-series',
+				'tv',
+				'anime',
+				1,
+				'tv_anime',
+				0,
+				tvAnimeRoot?.id ?? null,
+				tvAnimeRoot?.default_monitored === 0 ? 0 : 1,
+				1,
+				1,
+				10,
+				now,
+				now
+			);
+
+			sqlite
+				.prepare(
+					`UPDATE "movies"
+					SET "library_id" = CASE
+						WHEN EXISTS (
+							SELECT 1
+							FROM "root_folders" rf
+							WHERE rf."id" = "movies"."root_folder_id"
+								AND COALESCE(rf."media_sub_type", 'standard') = 'anime'
+						)
+						THEN 'lib-movies-anime'
+						ELSE 'lib-movies-standard'
+					END
+					WHERE "library_id" IS NULL`
+				)
+				.run();
+
+			sqlite
+				.prepare(
+					`UPDATE "series"
+					SET "library_id" = CASE
+						WHEN EXISTS (
+							SELECT 1
+							FROM "root_folders" rf
+							WHERE rf."id" = "series"."root_folder_id"
+								AND COALESCE(rf."media_sub_type", 'standard') = 'anime'
+						)
+						THEN 'lib-tv-anime'
+						ELSE 'lib-tv-standard'
+					END
+					WHERE "library_id" IS NULL`
+				)
+				.run();
+
+			sqlite
+				.prepare(
+					`UPDATE "movies"
+					SET "library_id" = 'lib-movies-standard'
+					WHERE "library_id" IS NOT NULL
+						AND NOT EXISTS (SELECT 1 FROM "libraries" l WHERE l."id" = "movies"."library_id")`
+				)
+				.run();
+
+			sqlite
+				.prepare(
+					`UPDATE "series"
+					SET "library_id" = 'lib-tv-standard'
+					WHERE "library_id" IS NOT NULL
+						AND NOT EXISTS (SELECT 1 FROM "libraries" l WHERE l."id" = "series"."library_id")`
+				)
+				.run();
+
+			logger.info('[SchemaSync] Seeded system libraries and backfilled media library_id');
+		}
+	},
+
+	// Version 78: Backfill existing movies and series to seeded system libraries
+	{
+		version: 78,
+		name: 'backfill_existing_media_to_system_libraries',
+		apply: (sqlite) => {
+			if (!tableExists(sqlite, 'libraries')) {
+				logger.info('[SchemaSync] libraries table not found, skipping system library backfill');
+				return;
+			}
+
+			const hasMoviesLibraryId = columnExists(sqlite, 'movies', 'library_id');
+			const hasSeriesLibraryId = columnExists(sqlite, 'series', 'library_id');
+
+			if (!hasMoviesLibraryId && !hasSeriesLibraryId) {
+				logger.info(
+					'[SchemaSync] Media library columns not found, skipping system library backfill'
+				);
+				return;
+			}
+
+			const now = new Date().toISOString();
+
+			const ensureLibrarySeed = sqlite.prepare(`
+				INSERT INTO "libraries" (
+					"id", "name", "slug", "media_type", "media_sub_type", "is_system", "system_key",
+					"is_default", "default_root_folder_id", "default_monitored",
+					"default_search_on_add", "default_wants_subtitles", "sort_order", "created_at", "updated_at"
+				)
+				VALUES (?, ?, ?, ?, ?, 1, ?, ?, NULL, 1, 1, 1, ?, ?, ?)
+				ON CONFLICT("system_key") DO UPDATE SET
+					"name" = excluded."name",
+					"slug" = excluded."slug",
+					"media_type" = excluded."media_type",
+					"media_sub_type" = excluded."media_sub_type",
+					"is_default" = excluded."is_default",
+					"updated_at" = excluded."updated_at"
+			`);
+
+			for (const seed of SYSTEM_LIBRARY_SEEDS) {
+				ensureLibrarySeed.run(
+					seed.id,
+					seed.mediaType === 'movie' && seed.mediaSubType === 'anime'
+						? 'Anime Movies'
+						: seed.mediaType === 'movie'
+							? 'Movies'
+							: seed.mediaSubType === 'anime'
+								? 'Anime Series'
+								: 'TV Shows',
+					seed.slug,
+					seed.mediaType,
+					seed.mediaSubType,
+					seed.systemKey,
+					seed.id === 'lib-movies-standard' || seed.id === 'lib-tv-standard' ? 1 : 0,
+					seed.sortOrder,
+					now,
+					now
+				);
+			}
+
+			if (hasMoviesLibraryId) {
+				sqlite
+					.prepare(
+						`UPDATE "movies"
+						SET "library_id" = CASE
+							WHEN "library_id" IS NOT NULL
+								AND EXISTS (SELECT 1 FROM "libraries" l WHERE l."id" = "movies"."library_id")
+							THEN "library_id"
+							WHEN "root_folder_id" IS NOT NULL THEN (
+								SELECT l."id"
+								FROM "libraries" l
+								WHERE l."id" = CASE
+									WHEN (
+										SELECT COALESCE(rf."media_sub_type", 'standard')
+										FROM "root_folders" rf
+										WHERE rf."id" = "movies"."root_folder_id"
+										LIMIT 1
+									) = 'anime'
+									THEN 'lib-movies-anime'
+									ELSE 'lib-movies-standard'
+								END
+							)
+							ELSE 'lib-movies-standard'
+						END
+						WHERE "library_id" IS NULL
+							OR NOT EXISTS (SELECT 1 FROM "libraries" l WHERE l."id" = "movies"."library_id")`
+					)
+					.run();
+			}
+
+			if (hasSeriesLibraryId) {
+				sqlite
+					.prepare(
+						`UPDATE "series"
+						SET "library_id" = CASE
+							WHEN "library_id" IS NOT NULL
+								AND EXISTS (SELECT 1 FROM "libraries" l WHERE l."id" = "series"."library_id")
+							THEN "library_id"
+							WHEN "root_folder_id" IS NOT NULL THEN (
+								SELECT l."id"
+								FROM "libraries" l
+								WHERE l."id" = CASE
+									WHEN (
+										SELECT COALESCE(rf."media_sub_type", 'standard')
+										FROM "root_folders" rf
+										WHERE rf."id" = "series"."root_folder_id"
+										LIMIT 1
+									) = 'anime'
+									THEN 'lib-tv-anime'
+									ELSE 'lib-tv-standard'
+								END
+							)
+							ELSE 'lib-tv-standard'
+						END
+						WHERE "library_id" IS NULL
+							OR NOT EXISTS (SELECT 1 FROM "libraries" l WHERE l."id" = "series"."library_id")`
+					)
+					.run();
+			}
+
+			logger.info('[SchemaSync] Backfilled existing media into seeded system libraries');
+		}
 	}
 ];
 
@@ -5314,8 +5744,9 @@ const CRITICAL_COLUMNS: Record<string, string[]> = {
 		'consecutive_failures'
 	],
 	root_folders: ['id', 'path', 'media_sub_type', 'read_only', 'preserve_symlinks'],
-	movies: ['id', 'tmdb_id', 'title', 'path', 'monitored'],
-	series: ['id', 'tmdb_id', 'title', 'path', 'monitored'],
+	libraries: ['id', 'name', 'slug', 'media_type', 'media_sub_type', 'is_system'],
+	movies: ['id', 'tmdb_id', 'title', 'path', 'monitored', 'library_id'],
+	series: ['id', 'tmdb_id', 'title', 'path', 'monitored', 'library_id'],
 	episodes: ['id', 'series_id', 'season_number', 'episode_number'],
 	indexers: ['id', 'name', 'definition_id', 'enabled'],
 	scoring_profiles: ['id', 'name', 'is_default']
@@ -5416,7 +5847,12 @@ const MIGRATION_COLUMN_MAP: Record<number, Array<{ table: string; column: string
 	],
 	67: [{ table: 'rateLimit', column: 'id' }],
 	68: [{ table: 'episode_files', column: 'edition' }],
-	76: [{ table: 'root_folders', column: 'media_sub_type' }]
+	76: [{ table: 'root_folders', column: 'media_sub_type' }],
+	77: [
+		{ table: 'libraries', column: 'id' },
+		{ table: 'movies', column: 'library_id' },
+		{ table: 'series', column: 'library_id' }
+	]
 };
 
 /**

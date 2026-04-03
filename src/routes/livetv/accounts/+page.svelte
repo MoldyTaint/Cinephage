@@ -578,7 +578,9 @@
 <ConfirmationModal
 	open={deleteConfirmOpen}
 	title={m.livetv_accounts_deleteAccountTitle()}
-	message={m.livetv_accounts_deleteAccountMessage({ name: editingAccount?.name ?? 'this account' })}
+	messagePrefix={m.livetv_accounts_deleteAccountMessagePrefix()}
+	messageEmphasis={editingAccount?.name ?? 'this account'}
+	messageSuffix={m.livetv_accounts_deleteAccountMessageSuffix()}
 	confirmLabel={m.common_delete()}
 	confirmVariant="error"
 	loading={saving}

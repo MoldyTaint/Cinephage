@@ -98,17 +98,17 @@
 
 	<p class="py-2">
 		{#if actionMode === 'remove_and_delete'}
-			{m.ui_deleteModal_confirmRemoveAndDelete_prefix()} <strong>"{itemName}"</strong>
+			{m.ui_deleteModal_confirmRemoveAndDelete_prefix()} <strong>{itemName}</strong>
 			{m.ui_deleteModal_confirmRemoveAndDelete_suffix()}
 		{:else if actionMode === 'remove_only'}
-			{m.ui_deleteModal_confirmRemoveOnly_prefix()} <strong>"{itemName}"</strong>
+			{m.ui_deleteModal_confirmRemoveOnly_prefix()} <strong>{itemName}</strong>
 			{m.ui_deleteModal_confirmRemoveOnly_suffix()}
 		{:else if actionMode === 'delete_files'}
-			{m.ui_deleteModal_confirmDeleteFiles_prefix()} <strong>"{itemName}"</strong>
+			{m.ui_deleteModal_confirmDeleteFiles_prefix()} <strong>{itemName}</strong>
 			{m.ui_deleteModal_confirmDeleteFiles_suffix()}
 		{:else}
-			{m.ui_deleteModal_confirmUnmatch_prefix()}
-			<strong>"{itemName}"</strong>{m.ui_deleteModal_confirmUnmatch_suffix()}
+			{m.ui_deleteModal_confirmUnmatch_prefix()} <strong>{itemName}</strong>
+			{m.ui_deleteModal_confirmUnmatch_suffix()}
 		{/if}
 	</p>
 

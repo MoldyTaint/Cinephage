@@ -503,6 +503,42 @@ export type RootFolderCreate = z.infer<typeof rootFolderCreateSchema>;
 export type RootFolderUpdate = z.infer<typeof rootFolderUpdateSchema>;
 
 // ============================================================
+// Library Entity Schemas
+// ============================================================
+
+/**
+ * Media type and subtype for first-class libraries.
+ */
+export const libraryMediaTypeSchema = z.enum(['movie', 'tv']);
+export const libraryMediaSubTypeSchema = z.enum(['standard', 'anime']);
+
+/**
+ * Schema for creating a library entity.
+ */
+export const libraryCreateSchema = z.object({
+	name: z.string().min(1, 'Name is required').max(100, 'Name must be 100 characters or less'),
+	mediaType: libraryMediaTypeSchema,
+	mediaSubType: libraryMediaSubTypeSchema.default('standard'),
+	defaultRootFolderId: z.string().uuid().optional().nullable(),
+	isDefault: z.boolean().default(false),
+	defaultMonitored: z.boolean().default(true),
+	defaultSearchOnAdd: z.boolean().default(true),
+	defaultWantsSubtitles: z.boolean().default(true),
+	sortOrder: z.number().int().min(0).default(100)
+});
+
+/**
+ * Schema for updating a library entity.
+ */
+export const libraryUpdateSchema = libraryCreateSchema.partial();
+
+// Library Entity Type Exports
+export type LibraryMediaType = z.infer<typeof libraryMediaTypeSchema>;
+export type LibraryMediaSubType = z.infer<typeof libraryMediaSubTypeSchema>;
+export type LibraryCreate = z.infer<typeof libraryCreateSchema>;
+export type LibraryUpdate = z.infer<typeof libraryUpdateSchema>;
+
+// ============================================================
 // Subtitle Provider Schemas
 // ============================================================
 

@@ -400,19 +400,24 @@
 		{ value: 'size-asc', label: m.library_movies_sortSizeAsc() }
 	];
 
-	const showLibrarySubtypeFilter = $derived(data.libraryNav?.hasAnimeMovies === true);
+	const defaultLibrarySlug = $derived.by(
+		() => data.libraryScope?.options?.find((library) => library.isDefault)?.slug ?? ''
+	);
+	const showLibraryFilter = $derived.by(
+		() =>
+			Boolean(data.libraryScope?.hasSubLibraries) && !Boolean(data.libraryScope?.isSubLibraryScope)
+	);
 
 	const filterOptions = $derived([
-		...(showLibrarySubtypeFilter
+		...(showLibraryFilter
 			? [
 					{
-						key: 'librarySubtype',
+						key: 'library',
 						label: m.library_movies_filterLibrary(),
-						options: [
-							{ value: 'all', label: m.library_movies_filterAllLibraries() },
-							{ value: 'standard', label: m.nav_movies() },
-							{ value: 'anime', label: m.nav_animeMovies() }
-						]
+						options: (data.libraryScope?.options ?? []).map((library) => ({
+							value: library.slug,
+							label: library.name
+						}))
 					}
 				]
 			: []),
@@ -486,8 +491,8 @@
 
 	function updateUrlParam(key: string, value: string) {
 		const url = new URL($page.url);
-		if (key === 'librarySubtype') {
-			if (value === 'standard') {
+		if (key === 'library') {
+			if (!value || value === defaultLibrarySlug) {
 				url.searchParams.delete(key);
 			} else {
 				url.searchParams.set(key, value);
@@ -502,14 +507,14 @@
 
 	function clearFilters() {
 		const url = new URL(resolve('/library/movies'), $page.url.origin);
-		if (data.filters.librarySubtype === 'anime') {
-			url.searchParams.set('librarySubtype', 'anime');
+		if (data.libraryScope?.isSubLibraryScope && data.libraryScope?.selected?.slug) {
+			url.searchParams.set('library', data.libraryScope.selected.slug);
 		}
 		goto(resolvePath(url.pathname + url.search), { keepFocus: true, noScroll: true });
 	}
 
 	const currentFilters = $derived({
-		librarySubtype: data.filters.librarySubtype,
+		library: data.filters.library,
 		monitored: data.filters.monitored,
 		fileStatus: data.filters.fileStatus,
 		qualityProfile: data.filters.qualityProfile,
@@ -676,7 +681,7 @@
 					{filterOptions}
 					currentSort={data.filters.sort}
 					{currentFilters}
-					hiddenActiveFilterKeys={['librarySubtype']}
+					hiddenActiveFilterKeys={['library']}
 					onSortChange={(sort) => updateUrlParam('sort', sort)}
 					onFilterChange={(key, value) => updateUrlParam(key, value)}
 					onClearFilters={clearFilters}

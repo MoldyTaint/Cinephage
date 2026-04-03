@@ -27,6 +27,7 @@ import {
 	getAnimeSubtypeEnforcement,
 	type MediaType
 } from '$lib/server/library/LibraryAddService.js';
+import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import {
 	extractSeasonFromPath,
@@ -90,6 +91,7 @@ export interface ExecuteManualImportRequest {
 	tmdbId: number;
 	importTarget: 'new' | 'existing';
 	rootFolderId?: string;
+	libraryId?: string;
 	seasonNumber?: number;
 	episodeNumber?: number;
 }
@@ -707,9 +709,7 @@ export class ManualImportService {
 			};
 		}
 
-		if (!request.rootFolderId) {
-			throw new Error('Root folder is required for new movie import');
-		}
+		const destinationRootFolderId = await this.resolveDestinationRootFolderId(request, 'movie');
 
 		const tmdbMovie = await tmdb.getMovie(request.tmdbId);
 		const enforceAnimeSubtype = await getAnimeSubtypeEnforcement();
@@ -722,7 +722,7 @@ export class ManualImportService {
 			originalTitle: tmdbMovie.original_title
 		});
 
-		await validateRootFolder(request.rootFolderId, 'movie', {
+		await validateRootFolder(destinationRootFolderId, 'movie', {
 			enforceAnimeSubtype,
 			isAnimeMedia,
 			mediaTitle: tmdbMovie.title
@@ -730,7 +730,7 @@ export class ManualImportService {
 		const [rootFolder] = await db
 			.select()
 			.from(rootFolders)
-			.where(eq(rootFolders.id, request.rootFolderId))
+			.where(eq(rootFolders.id, destinationRootFolderId))
 			.limit(1);
 
 		if (!rootFolder) {
@@ -815,9 +815,7 @@ export class ManualImportService {
 			};
 		}
 
-		if (!request.rootFolderId) {
-			throw new Error('Root folder is required for new TV import');
-		}
+		const destinationRootFolderId = await this.resolveDestinationRootFolderId(request, 'tv');
 
 		const tvShow = await tmdb.getTVShow(request.tmdbId);
 		const enforceAnimeSubtype = await getAnimeSubtypeEnforcement();
@@ -830,7 +828,7 @@ export class ManualImportService {
 			originalTitle: tvShow.original_name
 		});
 
-		await validateRootFolder(request.rootFolderId, 'tv', {
+		await validateRootFolder(destinationRootFolderId, 'tv', {
 			enforceAnimeSubtype,
 			isAnimeMedia,
 			mediaTitle: tvShow.name
@@ -838,7 +836,7 @@ export class ManualImportService {
 		const [rootFolder] = await db
 			.select()
 			.from(rootFolders)
-			.where(eq(rootFolders.id, request.rootFolderId))
+			.where(eq(rootFolders.id, destinationRootFolderId))
 			.limit(1);
 
 		if (!rootFolder) {
@@ -871,6 +869,25 @@ export class ManualImportService {
 				imdbId: externalIds.imdb_id ?? undefined
 			}
 		};
+	}
+
+	private async resolveDestinationRootFolderId(
+		request: ExecuteManualImportRequest,
+		mediaType: MediaType
+	): Promise<string> {
+		if (request.libraryId) {
+			const destination = await getLibraryEntityService().resolveDefaultRootFolderForLibrary(
+				request.libraryId,
+				mediaType
+			);
+			return destination.rootFolderId;
+		}
+
+		if (request.rootFolderId) {
+			return request.rootFolderId;
+		}
+
+		throw new Error('Destination library is required for new imports');
 	}
 
 	private async getEpisodeTitle(
