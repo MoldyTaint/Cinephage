@@ -360,7 +360,69 @@
 	</div>
 {/if}
 
-<div class="space-y-4">
+{#if rootFolderCount === 0}
+	<div class="mt-4 alert alert-warning">
+		<AlertCircle class="h-5 w-5" />
+		<span>{m.settings_general_addFolderFirst()}</span>
+	</div>
+{/if}
+
+{#if scanError}
+	<div class="mt-4 alert alert-error">
+		<AlertCircle class="h-5 w-5" />
+		<span>{scanError}</span>
+	</div>
+{/if}
+
+{#if scanSuccess}
+	<div class="mt-4 alert alert-success">
+		<CheckCircle class="h-5 w-5" />
+		<div class="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+			<span>{scanSuccess.message}</span>
+			{#if scanSuccess.unmatchedCount > 0}
+				<a href="/library/unmatched" class="btn gap-1 btn-ghost btn-sm">
+					{m.settings_general_viewUnmatchedFiles({ count: scanSuccess.unmatchedCount })}
+					<ExternalLink class="h-3 w-3" />
+				</a>
+			{/if}
+		</div>
+	</div>
+{/if}
+
+{#if scanning && scanProgress}
+	<div class="card mt-4 bg-base-200 p-3 sm:p-4">
+		<div class="mb-2 flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between">
+			<span class="max-w-md truncate">
+				{scanProgress.phase === 'scanning' ? m.settings_general_discoveringFiles() : ''}
+				{scanProgress.phase === 'processing' ? m.settings_general_processing() : ''}
+				{scanProgress.phase === 'matching' ? m.settings_general_matchingFiles() : ''}
+				{scanProgress.rootFolderPath ?? ''}
+			</span>
+			<span class="text-base-content/60">
+				{scanProgress.filesProcessed} / {scanProgress.filesFound}
+				{m.common_files()}
+			</span>
+		</div>
+		<progress
+			class="progress w-full progress-primary"
+			value={scanProgress.filesProcessed}
+			max={scanProgress.filesFound || 1}
+		></progress>
+		<div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-base-content/60">
+			<span>{m.settings_general_scanAdded()}: {scanProgress.filesAdded}</span>
+			<span>{m.settings_general_scanUpdated()}: {scanProgress.filesUpdated}</span>
+			<span>{m.settings_general_scanRemoved()}: {scanProgress.filesRemoved}</span>
+			<span>{m.settings_general_scanUnmatched()}: {scanProgress.unmatchedCount}</span>
+		</div>
+		{#if scanProgress.currentFile}
+			<div class="mt-2 truncate text-xs text-base-content/50">
+				{scanProgress.currentFile}
+			</div>
+		{/if}
+	</div>
+{/if}
+
+<div class="mt-6 space-y-4">
 	<div class="rounded-lg border border-base-300 bg-base-100 p-4">
 		<div class="mb-3 flex items-center gap-2">
 			<RefreshCw class="h-4 w-4" />
@@ -608,68 +670,6 @@
 		</div>
 	</div>
 </div>
-
-{#if rootFolderCount === 0}
-	<div class="mt-4 alert alert-warning">
-		<AlertCircle class="h-5 w-5" />
-		<span>{m.settings_general_addFolderFirst()}</span>
-	</div>
-{/if}
-
-{#if scanError}
-	<div class="mt-4 alert alert-error">
-		<AlertCircle class="h-5 w-5" />
-		<span>{scanError}</span>
-	</div>
-{/if}
-
-{#if scanSuccess}
-	<div class="mt-4 alert alert-success">
-		<CheckCircle class="h-5 w-5" />
-		<div class="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-			<span>{scanSuccess.message}</span>
-			{#if scanSuccess.unmatchedCount > 0}
-				<a href="/library/unmatched" class="btn gap-1 btn-ghost btn-sm">
-					{m.settings_general_viewUnmatchedFiles({ count: scanSuccess.unmatchedCount })}
-					<ExternalLink class="h-3 w-3" />
-				</a>
-			{/if}
-		</div>
-	</div>
-{/if}
-
-{#if scanning && scanProgress}
-	<div class="card mt-4 bg-base-200 p-3 sm:p-4">
-		<div class="mb-2 flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between">
-			<span class="max-w-md truncate">
-				{scanProgress.phase === 'scanning' ? m.settings_general_discoveringFiles() : ''}
-				{scanProgress.phase === 'processing' ? m.settings_general_processing() : ''}
-				{scanProgress.phase === 'matching' ? m.settings_general_matchingFiles() : ''}
-				{scanProgress.rootFolderPath ?? ''}
-			</span>
-			<span class="text-base-content/60">
-				{scanProgress.filesProcessed} / {scanProgress.filesFound}
-				{m.common_files()}
-			</span>
-		</div>
-		<progress
-			class="progress w-full progress-primary"
-			value={scanProgress.filesProcessed}
-			max={scanProgress.filesFound || 1}
-		></progress>
-		<div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-base-content/60">
-			<span>{m.settings_general_scanAdded()}: {scanProgress.filesAdded}</span>
-			<span>{m.settings_general_scanUpdated()}: {scanProgress.filesUpdated}</span>
-			<span>{m.settings_general_scanRemoved()}: {scanProgress.filesRemoved}</span>
-			<span>{m.settings_general_scanUnmatched()}: {scanProgress.unmatchedCount}</span>
-		</div>
-		{#if scanProgress.currentFile}
-			<div class="mt-2 truncate text-xs text-base-content/50">
-				{scanProgress.currentFile}
-			</div>
-		{/if}
-	</div>
-{/if}
 
 <div class="mt-6 grid gap-6 xl:grid-cols-2">
 	<div id="libraries-usage">

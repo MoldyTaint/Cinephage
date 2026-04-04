@@ -141,7 +141,7 @@
 												<span
 													class={hasAssignedRootFolders(library.rootFolders)
 														? ''
-														: 'badge badge-warning '}
+														: 'badge badge-sm badge-warning'}
 												>
 													{formatRootFolderSummary(library.rootFolders)}
 												</span>

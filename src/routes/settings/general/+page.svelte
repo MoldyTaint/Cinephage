@@ -2,6 +2,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/stores';
+	import { SvelteURL } from 'svelte/reactivity';
 	import {
 		Plus,
 		HardDrive,
@@ -209,9 +210,19 @@
 		enforceAnimeSubtype = data.enforceAnimeSubtype ?? false;
 	});
 
+	$effect(() => {
+		if (activeTab === 'maintenance' || !$page.url.hash) return;
+		const url = new SvelteURL($page.url);
+		url.hash = '';
+		goto(url.toString(), { replaceState: true, noScroll: true, keepFocus: true });
+	});
+
 	function setTab(tab: TabId) {
-		const url = new URL($page.url);
+		const url = new SvelteURL($page.url);
 		url.searchParams.set('tab', tab);
+		if (tab !== 'maintenance') {
+			url.hash = '';
+		}
 		goto(url.toString(), { replaceState: true });
 	}
 
@@ -786,7 +797,6 @@
 	error={folderSaveError}
 	onClose={closeFolderModal}
 	onSave={handleFolderSave}
-	onDelete={() => {}}
 	onValidatePath={handleValidatePath}
 />
 

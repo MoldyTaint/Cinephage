@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
-	import { X, Loader2, CheckCircle2, XCircle, FolderOpen, Info } from 'lucide-svelte';
+	import { Loader2, CheckCircle2, XCircle, FolderOpen, Info } from 'lucide-svelte';
 	import type {
 		RootFolder,
 		RootFolderFormData,
@@ -8,6 +8,8 @@
 	} from '$lib/types/downloadClient';
 	import { FolderBrowser } from '$lib/components/library';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
+	import ModalHeader from '$lib/components/ui/modal/ModalHeader.svelte';
+	import ModalFooter from '$lib/components/ui/modal/ModalFooter.svelte';
 
 	interface Props {
 		open: boolean;
@@ -17,7 +19,6 @@
 		error?: string | null;
 		onClose: () => void;
 		onSave: (data: RootFolderFormData) => void;
-		onDelete?: () => void;
 		onValidatePath: (
 			path: string,
 			readOnly?: boolean,
@@ -33,7 +34,6 @@
 		error = null,
 		onClose,
 		onSave,
-		onDelete,
 		onValidatePath
 	}: Props = $props();
 
@@ -116,13 +116,7 @@
 </script>
 
 <ModalWrapper {open} {onClose} maxWidth="2xl" labelledBy="root-folder-modal-title">
-	<!-- Header -->
-	<div class="mb-6 flex items-center justify-between">
-		<h3 id="root-folder-modal-title" class="text-xl font-bold">{modalTitle}</h3>
-		<button class="btn btn-circle btn-ghost btn-sm" onclick={onClose}>
-			<X class="h-4 w-4" />
-		</button>
-	</div>
+	<ModalHeader title={modalTitle} {onClose} />
 
 	<!-- Folder Browser -->
 	{#if showFolderBrowser}
@@ -341,20 +335,12 @@
 			{/if}
 		</div>
 
-		<!-- Actions -->
-		<div class="modal-action">
-			{#if mode === 'edit' && onDelete}
-				<button class="btn mr-auto btn-outline btn-error" onclick={onDelete}>Delete</button>
-			{/if}
-
-			<button class="btn btn-ghost" onclick={onClose}>Cancel</button>
-
-			<button class="btn btn-primary" onclick={handleSave} disabled={saving || !path || !name}>
-				{#if saving}
-					<Loader2 class="h-4 w-4 animate-spin" />
-				{/if}
-				Save
-			</button>
-		</div>
+		<ModalFooter
+			onCancel={onClose}
+			onSave={handleSave}
+			{saving}
+			saveLabel={m.action_save()}
+			saveDisabled={saving || !path || !name}
+		/>
 	{/if}
 </ModalWrapper>

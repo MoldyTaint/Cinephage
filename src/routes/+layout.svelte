@@ -218,7 +218,12 @@
 				label: m.nav_settings,
 				icon: Settings,
 				children: [
-					{ href: '/settings/general', label: m.nav_libraryStorage, icon: FolderCog },
+					{
+						href: '/settings/general?tab=libraries',
+						label: m.nav_libraryStorage,
+						icon: FolderCog,
+						match: (url: URL) => url.pathname === '/settings/general'
+					},
 					{ href: '/settings/system', label: m.nav_system, icon: Server },
 					{ href: '/settings/logs', label: m.nav_logs, icon: ScrollText },
 					{ href: '/settings/naming', label: m.nav_naming, icon: FileSignature },
