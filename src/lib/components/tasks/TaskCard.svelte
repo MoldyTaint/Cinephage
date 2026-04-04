@@ -4,6 +4,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import TaskIntervalCell from './TaskIntervalCell.svelte';
+	import { formatDuration } from '$lib/utils/format.js';
 
 	interface Props {
 		task: UnifiedTask;
@@ -28,26 +29,6 @@
 
 	const isRunning = $derived(task.isRunning);
 	const lastRunStatus = $derived(history.length > 0 ? (history[0]?.status ?? null) : null);
-
-	function formatDuration(diffMs: number): string {
-		const totalSeconds = Math.floor(diffMs / 1000);
-		const totalMinutes = Math.floor(totalSeconds / 60);
-		const totalHours = Math.floor(totalMinutes / 60);
-		const totalDays = Math.floor(totalHours / 24);
-		const minutes = totalMinutes % 60;
-		const hours = totalHours % 24;
-
-		if (totalDays > 0) {
-			return hours > 0 ? `${totalDays}d ${hours}h` : `${totalDays}d`;
-		}
-		if (totalHours > 0) {
-			return minutes > 0 ? `${totalHours}h ${minutes}m` : `${totalHours}h`;
-		}
-		if (totalMinutes > 0) {
-			return `${totalMinutes}m`;
-		}
-		return `${totalSeconds}s`;
-	}
 
 	const liveTimeAgo = $derived.by(() => {
 		if (!task.lastRunTime) return 'Never';

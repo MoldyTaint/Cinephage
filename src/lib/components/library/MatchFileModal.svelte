@@ -4,6 +4,7 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
+	import { getFileName } from '$lib/utils/format.js';
 
 	interface UnmatchedFile {
 		id: string;
@@ -173,7 +174,7 @@
 		</button>
 	</div>
 	<p class="mt-1 text-sm break-words text-base-content/70" title={file.path}>
-		{file.path.split('/').pop()}
+		{getFileName(file.path)}
 	</p>
 
 	<!-- Search Type Toggle -->

@@ -4,6 +4,7 @@
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import { getFileName } from '$lib/utils/format.js';
 
 	interface UnmatchedFile {
 		id: string;
@@ -157,7 +158,7 @@
 		try {
 			// Generate preview client-side from file data
 			previewResults = selectedFiles.map((file) => {
-				const fileName = file.path.split('/').pop() || file.path;
+				const fileName = getFileName(file.path);
 				return {
 					fileId: file.id,
 					filePath: file.path,
@@ -285,7 +286,7 @@
 					{:else}
 						<Tv class="h-3 w-3 text-secondary" />
 					{/if}
-					<span class="truncate">{file.path.split('/').pop()}</span>
+					<span class="truncate">{getFileName(file.path)}</span>
 					{#if file.parsedSeason !== null && file.parsedEpisode !== null}
 						<span class="badge badge-xs badge-secondary">
 							S{String(file.parsedSeason).padStart(2, '0')}E{String(file.parsedEpisode).padStart(

@@ -5,6 +5,7 @@
 	import type { TaskHistoryEntry } from '$lib/types/task';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import TaskIntervalCell from './TaskIntervalCell.svelte';
+	import { formatDuration } from '$lib/utils/format.js';
 
 	interface Props {
 		task: UnifiedTask;
@@ -33,33 +34,6 @@
 
 	// Derived state for last run status (value, not function)
 	const lastRunStatus = $derived(history.length > 0 ? (history[0]?.status ?? null) : null);
-
-	/**
-	 * Format a duration in milliseconds to a human-readable string.
-	 * Shows live seconds for < 1 minute, minutes/hours only for >= 1 minute.
-	 * Uses tabular-nums friendly format to prevent layout shift.
-	 */
-	function formatDuration(diffMs: number): string {
-		const totalSeconds = Math.floor(diffMs / 1000);
-		const totalMinutes = Math.floor(totalSeconds / 60);
-		const totalHours = Math.floor(totalMinutes / 60);
-		const totalDays = Math.floor(totalHours / 24);
-
-		const minutes = totalMinutes % 60;
-		const hours = totalHours % 24;
-
-		if (totalDays > 0) {
-			return hours > 0 ? `${totalDays}d ${hours}h` : `${totalDays}d`;
-		}
-		if (totalHours > 0) {
-			return minutes > 0 ? `${totalHours}h ${minutes}m` : `${totalHours}h`;
-		}
-		if (totalMinutes > 0) {
-			return `${totalMinutes}m`;
-		}
-		// Under 1 minute - show live seconds
-		return `${totalSeconds}s`;
-	}
 
 	// Live-computed "time ago" string that updates every second
 	const liveTimeAgo = $derived.by(() => {

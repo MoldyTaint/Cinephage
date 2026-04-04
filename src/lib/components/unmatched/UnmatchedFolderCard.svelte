@@ -2,6 +2,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { Folder, ChevronDown, ChevronUp, Link } from 'lucide-svelte';
 	import type { UnmatchedFolder } from '$lib/types/unmatched.js';
+	import { formatBytes, getFileName } from '$lib/utils/format.js';
 
 	interface Props {
 		folder: UnmatchedFolder;
@@ -94,7 +95,7 @@
 				<div class="space-y-1">
 					{#each folder.files as file (file.id)}
 						<div class="flex items-center justify-between rounded bg-base-300/50 px-3 py-2 text-sm">
-							<span class="truncate">{file.path.split('/').pop()}</span>
+							<span class="truncate">{getFileName(file.path)}</span>
 							<div class="flex items-center gap-2">
 								{#if file.parsedSeason !== null && file.parsedEpisode !== null}
 									<span class="badge badge-sm badge-secondary">

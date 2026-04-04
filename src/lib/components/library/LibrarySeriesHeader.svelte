@@ -12,7 +12,7 @@
 		Zap,
 		Loader2
 	} from 'lucide-svelte';
-	import { formatBytes } from '$lib/utils/format.js';
+	import { formatBytes, getStatusColor } from '$lib/utils/format.js';
 
 	interface SeriesData {
 		tmdbId: number;
@@ -96,15 +96,6 @@
 			month: 'short',
 			day: 'numeric'
 		});
-	}
-
-	function getStatusColor(status: string | null): string {
-		if (!status) return 'badge-ghost';
-		const s = status.toLowerCase();
-		if (s.includes('returning') || s.includes('production')) return 'badge-success';
-		if (s.includes('ended')) return 'badge-error';
-		if (s.includes('canceled')) return 'badge-warning';
-		return 'badge-ghost';
 	}
 
 	function formatStatus(status: string | null): string {

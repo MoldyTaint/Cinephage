@@ -18,7 +18,7 @@
 		Download
 	} from 'lucide-svelte';
 	import { resolvePath } from '$lib/utils/routing';
-	import { formatBytes } from '$lib/utils/format';
+	import { formatBytes, getStatusColor } from '$lib/utils/format';
 	import type { MediaType } from '$lib/utils/media-type';
 	import { goto } from '$app/navigation';
 	import * as m from '$lib/paraglide/messages.js';
@@ -82,15 +82,6 @@
 		const profileId = item.scoringProfileId?.toLowerCase();
 		const profileName = getProfileName(item)?.toLowerCase();
 		return profileId === 'streamer' || profileName === 'streamer';
-	}
-
-	function getStatusColor(status: string | null): string {
-		if (!status) return 'badge-ghost';
-		const s = status.toLowerCase();
-		if (s.includes('returning') || s.includes('production')) return 'badge-success';
-		if (s.includes('ended')) return 'badge-error';
-		if (s.includes('canceled')) return 'badge-warning';
-		return 'badge-ghost';
 	}
 
 	function formatStatus(status: string | null): string {

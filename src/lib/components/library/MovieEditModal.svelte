@@ -7,6 +7,7 @@
 	import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import { formatBytes } from '$lib/utils/format.js';
 
 	interface QualityProfile {
 		id: string;
@@ -210,14 +211,6 @@
 	let currentProfile = $derived(
 		qualityProfiles.find((p) => p.id === qualityProfileId) ?? defaultProfile
 	);
-
-	function formatBytes(bytes: number | null): string {
-		if (!bytes) return m.common_unknown();
-		const k = 1024;
-		const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-		const i = Math.floor(Math.log(bytes) / Math.log(k));
-		return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-	}
 
 	function handleSave() {
 		onSave({

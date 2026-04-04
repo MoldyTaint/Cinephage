@@ -4,6 +4,7 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
+	import { getFileName } from '$lib/utils/format.js';
 
 	import type { UnmatchedFolder } from '$lib/types/unmatched.js';
 
@@ -50,7 +51,7 @@
 	$effect(() => {
 		if (selectedMedia && folder) {
 			matchPreview = folder.files.map((file) => {
-				const fileName = file.path.split('/').pop() || file.path;
+				const fileName = getFileName(file.path);
 				return {
 					file: fileName,
 					season: file.parsedSeason ?? undefined,

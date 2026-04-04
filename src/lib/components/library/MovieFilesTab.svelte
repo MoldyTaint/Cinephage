@@ -3,6 +3,7 @@
 	import type { MovieFile } from '$lib/types/library';
 	import FileCard from './FileCard.svelte';
 	import { FileX, Search } from 'lucide-svelte';
+	import { formatBytes } from '$lib/utils/format.js';
 
 	interface Subtitle {
 		id: string;
@@ -38,14 +39,6 @@
 
 	// Calculate total size for display
 	const totalSize = $derived(files.reduce((sum, f) => sum + (f.size || 0), 0));
-
-	function formatBytes(bytes: number): string {
-		if (bytes === 0) return '0 B';
-		const k = 1024;
-		const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-		const i = Math.floor(Math.log(bytes) / Math.log(k));
-		return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-	}
 </script>
 
 <div class="space-y-4">

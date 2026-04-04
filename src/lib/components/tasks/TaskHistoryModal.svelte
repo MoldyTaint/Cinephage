@@ -4,6 +4,7 @@
 	import type { UnifiedTask } from '$lib/server/tasks/UnifiedTaskRegistry';
 	import type { TaskHistoryEntry } from '$lib/types/task';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
+	import { formatDateRange } from '$lib/utils/format.js';
 
 	interface Props {
 		task: UnifiedTask;
@@ -21,16 +22,7 @@
 
 	function formatDuration(startedAt: string, completedAt: string | null): string {
 		if (!completedAt) return '—';
-		const start = new Date(startedAt);
-		const end = new Date(completedAt);
-		const diffMs = end.getTime() - start.getTime();
-		const diffSecs = Math.floor(diffMs / 1000);
-		const diffMins = Math.floor(diffSecs / 60);
-		const diffHours = Math.floor(diffMins / 60);
-
-		if (diffHours > 0) return `${diffHours}h ${diffMins % 60}m`;
-		if (diffMins > 0) return `${diffMins}m ${diffSecs % 60}s`;
-		return `${diffSecs}s`;
+		return formatDateRange(new Date(startedAt), new Date(completedAt));
 	}
 
 	function getStatusColor(status: string): string {

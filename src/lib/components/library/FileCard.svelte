@@ -16,6 +16,7 @@
 		Loader2
 	} from 'lucide-svelte';
 	import { normalizeLanguageCode } from '$lib/shared/languages';
+	import { formatBytes, getFileName } from '$lib/utils/format.js';
 
 	interface Subtitle {
 		id: string;
@@ -75,14 +76,6 @@
 		return combined;
 	});
 
-	function formatBytes(bytes: number | null): string {
-		if (!bytes) return m.library_fileCard_unknownSize();
-		const k = 1024;
-		const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-		const i = Math.floor(Math.log(bytes) / Math.log(k));
-		return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-	}
-
 	function formatDate(dateString: string | null): string {
 		if (!dateString) return m.library_fileCard_unknownDate();
 		return new Date(dateString).toLocaleDateString('en-US', {
@@ -90,10 +83,6 @@
 			month: 'short',
 			day: 'numeric'
 		});
-	}
-
-	function getFileName(path: string): string {
-		return path.split('/').pop() || path;
 	}
 </script>
 
