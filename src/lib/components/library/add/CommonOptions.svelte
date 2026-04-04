@@ -3,6 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
 	import * as m from '$lib/paraglide/messages.js';
+	import { formatBytes } from '$lib/utils/format.js';
 
 	interface RootFolder {
 		id: string;
@@ -51,13 +52,6 @@
 		filteredRootFolders.find((f) => f.id === selectedRootFolder)
 	);
 	const selectedProfileObj = $derived(scoringProfiles.find((p) => p.id === selectedScoringProfile));
-
-	function formatBytes(bytes: number | null | undefined): string {
-		if (!bytes) return '';
-		const gb = bytes / (1024 * 1024 * 1024);
-		if (gb >= 1000) return `${(gb / 1024).toFixed(1)} TB`;
-		return `${gb.toFixed(1)} GB`;
-	}
 </script>
 
 <!-- Root Folder Select -->

@@ -18,6 +18,7 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import type { UnmatchedFile, UnmatchedFolder } from '$lib/types/unmatched.js';
 	import * as m from '$lib/paraglide/messages.js';
+	import { getFileName } from '$lib/utils/format.js';
 
 	// Modal states
 	let showMatchModal = $state(false);
@@ -309,7 +310,7 @@
 <DeleteConfirmationModal
 	open={showDeleteModal}
 	title={m.library_unmatched_deleteFileTitle()}
-	itemName={fileToDelete?.path.split('/').pop() || 'Unknown'}
+	itemName={fileToDelete ? getFileName(fileToDelete.path) : 'Unknown'}
 	loading={isDeleting}
 	onConfirm={performDelete}
 	onCancel={() => {

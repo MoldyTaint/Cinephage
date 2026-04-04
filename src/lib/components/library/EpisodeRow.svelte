@@ -20,6 +20,7 @@
 	import SubtitlePopover from '$lib/components/subtitles/SubtitlePopover.svelte';
 	import { normalizeLanguageCode } from '$lib/shared/languages';
 	import * as m from '$lib/paraglide/messages.js';
+	import { formatBytes, getFileName } from '$lib/utils/format.js';
 
 	interface EpisodeFile {
 		id: string;
@@ -191,14 +192,6 @@
 	function isAired(dateString: string | null): boolean {
 		if (!dateString) return false;
 		return new Date(dateString) <= new Date();
-	}
-
-	function formatBytes(bytes: number | null): string {
-		if (!bytes) return '';
-		const k = 1024;
-		const sizes = ['B', 'KB', 'MB', 'GB'];
-		const i = Math.floor(Math.log(bytes) / Math.log(k));
-		return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 	}
 
 	function handleMonitorClick() {
@@ -397,7 +390,7 @@
 					class="wrap-break-words block max-w-full text-xs text-base-content/50 sm:whitespace-normal"
 					title={episode.file.relativePath}
 				>
-					{episode.file.relativePath.split('/').pop()}
+					{getFileName(episode.file.relativePath)}
 				</span>
 			{/if}
 			<div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-base-content/60 sm:hidden">

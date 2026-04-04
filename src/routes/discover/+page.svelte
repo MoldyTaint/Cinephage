@@ -95,7 +95,7 @@
 		handleSearch('');
 	}
 
-	async function handleSearch(query: string) {
+	async function handleSearch(query: string, exclude?: boolean) {
 		searchQuery = query;
 		const normalizedQuery = query.trim();
 
@@ -108,7 +108,7 @@
 		isSearching = true;
 		try {
 			const res = await fetch(
-				`/api/discover/search?query=${encodeURIComponent(normalizedQuery)}&type=${type}${excludeInLibrary ? '&exclude_in_library=true' : ''}`
+				`/api/discover/search?query=${encodeURIComponent(normalizedQuery)}&type=${type}${exclude ? '&exclude_in_library=true' : ''}`
 			);
 			if (!res.ok) throw new Error('Search failed');
 
@@ -154,8 +154,7 @@
 	// Re-run search when type or excludeInLibrary filter changes
 	$effect(() => {
 		if (searchQuery && type) {
-			void excludeInLibrary;
-			handleSearch(searchQuery);
+			handleSearch(searchQuery, excludeInLibrary);
 		}
 	});
 

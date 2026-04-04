@@ -21,6 +21,7 @@
 	import { goto } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
 	import { createDynamicSSE } from '$lib/sse';
+	import { getFileName } from '$lib/utils/format.js';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 
@@ -225,10 +226,6 @@
 
 		return `${normalizedRoot}/${normalizedRelative}`;
 	});
-
-	function getFileName(path: string): string {
-		return path.split('/').pop() || path;
-	}
 
 	async function refreshMovieFromApi(): Promise<void> {
 		try {

@@ -20,6 +20,7 @@
 		Zap
 	} from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import { formatBytes } from '$lib/utils/format.js';
 
 	interface AutoSearchResult {
 		found: boolean;
@@ -85,14 +86,6 @@
 		if (!bestQuality.quality) return null;
 		return `${bestQuality.quality}${bestQuality.hdr ? ` ${bestQuality.hdr}` : ''}`;
 	});
-
-	function formatBytes(bytes: number): string {
-		if (bytes === 0) return '0 B';
-		const k = 1024;
-		const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-		const i = Math.floor(Math.log(bytes) / Math.log(k));
-		return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-	}
 
 	function formatRuntime(minutes: number | null): string {
 		if (!minutes) return '';

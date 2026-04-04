@@ -28,6 +28,7 @@
 	import Skeleton from '$lib/components/ui/Skeleton.svelte';
 	import { resolve } from '$app/paths';
 	import { resolvePath } from '$lib/utils/routing';
+	import { formatBytes } from '$lib/utils/format.js';
 	import type { UnifiedActivity } from '$lib/types/activity';
 	import { createSSE } from '$lib/sse';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
@@ -223,14 +224,6 @@
 		if (activity.status === 'removed') return false;
 		if (activity.mediaType === 'movie') return Boolean(activity.mediaId);
 		return Boolean(activity.seriesId || activity.mediaId);
-	}
-
-	function formatBytes(bytes: number): string {
-		if (bytes === 0) return '0 B';
-		const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
-		const i = Math.floor(Math.log(bytes) / Math.log(1024));
-		const value = bytes / Math.pow(1024, i);
-		return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[i]}`;
 	}
 </script>
 
