@@ -90,6 +90,7 @@ export type FormatCategory =
 	| 'banned'
 	| 'enhancement'
 	| 'codec'
+	| 'source'
 	| 'other';
 
 // =============================================================================

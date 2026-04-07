@@ -321,12 +321,63 @@ export const RESOLUTION_SD_FORMATS: CustomFormat[] = [
 ];
 
 /**
- * All resolution formats combined
+ * Resolution-Only Formats
+ *
+ * These formats match on resolution alone when source detection fails.
+ * They provide a baseline score when full resolution+source formats don't match.
+ * Scores are intentionally lower than full resolution+source combos.
+ */
+export const RESOLUTION_ONLY_FORMATS: CustomFormat[] = [
+	{
+		id: 'resolution-2160p',
+		name: '2160p (Any Source)',
+		description: '4K resolution without detected source',
+		category: 'resolution',
+		tags: ['2160p', '4K', 'Resolution'],
+		conditions: [
+			{ name: '2160p', type: 'resolution', resolution: '2160p', required: true, negate: false }
+		]
+	},
+	{
+		id: 'resolution-1080p',
+		name: '1080p (Any Source)',
+		description: '1080p resolution without detected source',
+		category: 'resolution',
+		tags: ['1080p', 'Resolution'],
+		conditions: [
+			{ name: '1080p', type: 'resolution', resolution: '1080p', required: true, negate: false }
+		]
+	},
+	{
+		id: 'resolution-720p',
+		name: '720p (Any Source)',
+		description: '720p resolution without detected source',
+		category: 'resolution',
+		tags: ['720p', 'Resolution'],
+		conditions: [
+			{ name: '720p', type: 'resolution', resolution: '720p', required: true, negate: false }
+		]
+	},
+	{
+		id: 'resolution-480p',
+		name: '480p (Any Source)',
+		description: '480p resolution without detected source',
+		category: 'resolution',
+		tags: ['480p', 'SD', 'Resolution'],
+		conditions: [
+			{ name: '480p', type: 'resolution', resolution: '480p', required: true, negate: false }
+		]
+	}
+];
+
+/**
+ * All resolution formats combined (including resolution-only fallback formats)
  */
 export const ALL_RESOLUTION_FORMATS: CustomFormat[] = [
 	...RESOLUTION_2160P_FORMATS,
 	...RESOLUTION_1080P_FORMATS,
 	...RESOLUTION_720P_FORMATS,
 	...RESOLUTION_576P_FORMATS,
-	...RESOLUTION_SD_FORMATS
+	...RESOLUTION_SD_FORMATS,
+	...RESOLUTION_ONLY_FORMATS
 ];

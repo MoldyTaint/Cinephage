@@ -104,6 +104,7 @@ export type FormatCategory =
 	| 'banned' // Truly banned releases (deceptive: retagging, fake HDR, CAM, TS, etc.)
 	| 'enhancement' // Special enhancements (IMAX, Repack, etc.)
 	| 'codec' // Codec-specific formats (x265, AV1, etc.)
+	| 'source' // Source-only formats (e.g., "WEB-DL (Any Resolution)")
 	| 'other'; // Miscellaneous
 
 /**

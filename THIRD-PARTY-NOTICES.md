@@ -21,12 +21,11 @@ These projects use the same license as Cinephage:
 
 These projects use permissive licenses compatible with GPLv3:
 
-| Project                                                         | License | Inspiration                                     |
-| --------------------------------------------------------------- | ------- | ----------------------------------------------- |
-| [EncDec Endpoints](https://github.com/AzartX47/EncDecEndpoints) | MIT     | Primary inspiration for streaming functionality |
-| [Bazarr](https://github.com/morpheus65535/bazarr)               | GPL-3.0 | Subtitle provider architecture                  |
-| [Overseerr](https://github.com/sct/overseerr)                   | MIT     | Modern UI/UX patterns                           |
-| [Seerr](https://github.com/seerr-team/seerr)                    | MIT     | Request management UI patterns                  |
+| Project                                           | License | Inspiration                    |
+| ------------------------------------------------- | ------- | ------------------------------ |
+| [Bazarr](https://github.com/morpheus65535/bazarr) | GPL-3.0 | Subtitle provider architecture |
+| [Overseerr](https://github.com/sct/overseerr)     | MIT     | Modern UI/UX patterns          |
+| [Seerr](https://github.com/seerr-team/seerr)      | MIT     | Request management UI patterns |
 
 ### Other Projects
 

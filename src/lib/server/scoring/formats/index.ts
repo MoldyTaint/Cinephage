@@ -17,6 +17,7 @@ export * from './hdr.js';
 export * from './streaming.js';
 export * from './banned.js';
 export * from './enhancement.js';
+export * from './source.js';
 
 // Import for aggregation
 import { ALL_RESOLUTION_FORMATS } from './resolution.js';
@@ -26,6 +27,7 @@ import { ALL_HDR_FORMATS } from './hdr.js';
 import { ALL_STREAMING_FORMATS } from './streaming.js';
 import { ALL_BANNED_FORMATS } from './banned.js';
 import { ALL_ENHANCEMENT_FORMATS } from './enhancement.js';
+import { ALL_SOURCE_FORMATS } from './source.js';
 
 import type { CustomFormat } from '../types.js';
 
@@ -39,7 +41,8 @@ export const ALL_FORMATS: CustomFormat[] = [
 	...ALL_HDR_FORMATS,
 	...ALL_STREAMING_FORMATS,
 	...ALL_BANNED_FORMATS,
-	...ALL_ENHANCEMENT_FORMATS
+	...ALL_ENHANCEMENT_FORMATS,
+	...ALL_SOURCE_FORMATS
 ];
 
 /**
@@ -79,5 +82,6 @@ export const FORMAT_COUNTS = {
 	streaming: ALL_STREAMING_FORMATS.length,
 	banned: ALL_BANNED_FORMATS.length,
 	enhancement: ALL_ENHANCEMENT_FORMATS.length,
+	source: ALL_SOURCE_FORMATS.length,
 	total: ALL_FORMATS.length
 };

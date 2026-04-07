@@ -317,9 +317,13 @@ export class QualityFilter {
 	}
 
 	/**
-	 * Seed default scoring profiles to database if they don't exist.
-	 * This ensures built-in profile IDs (quality, balanced, compact, streamer) are valid
-	 * foreign key targets when users assign them to movies/series.
+	 * Seed and sync default scoring profiles to database.
+	 * Ensures built-in profile IDs (quality, balanced, compact, streamer) are valid
+	 * foreign key targets and always have the latest formatScores and settings.
+	 *
+	 * - INSERT: If profile doesn't exist in DB, create it
+	 * - UPDATE: If profile exists in DB, sync ALL fields except isDefault
+	 *   (isDefault is preserved because it's a user-configurable choice)
 	 */
 	async seedDefaultScoringProfiles(): Promise<void> {
 		const existingIds = (
@@ -328,13 +332,10 @@ export class QualityFilter {
 		const existingSet = new Set(existingIds);
 
 		let seeded = 0;
-		for (const profile of DEFAULT_PROFILES) {
-			if (existingSet.has(profile.id)) {
-				continue;
-			}
+		let updated = 0;
 
-			await db.insert(scoringProfiles).values({
-				id: profile.id,
+		for (const profile of DEFAULT_PROFILES) {
+			const values = {
 				name: profile.name,
 				description: profile.description ?? null,
 				tags: profile.tags ?? [],
@@ -344,13 +345,28 @@ export class QualityFilter {
 				minScoreIncrement: profile.minScoreIncrement ?? 0,
 				resolutionOrder: profile.resolutionOrder ?? null,
 				formatScores: profile.formatScores ?? null,
-				isDefault: profile.id === 'balanced' // Balanced is the default profile
-			});
-			seeded++;
+				allowedProtocols: profile.allowedProtocols ?? null,
+				updatedAt: new Date().toISOString()
+			};
+
+			if (existingSet.has(profile.id)) {
+				await db.update(scoringProfiles).set(values).where(eq(scoringProfiles.id, profile.id));
+				updated++;
+			} else {
+				await db.insert(scoringProfiles).values({
+					id: profile.id,
+					...values,
+					isDefault: profile.id === 'balanced'
+				});
+				seeded++;
+			}
 		}
 
 		if (seeded > 0) {
 			logger.info(`Seeded ${seeded} default scoring profile(s) to database`);
+		}
+		if (updated > 0) {
+			logger.info(`Synced ${updated} default scoring profile(s) with latest definitions`);
 		}
 	}
 

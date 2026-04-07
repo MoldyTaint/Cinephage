@@ -121,6 +121,24 @@ export const QUALITY_PROFILE: ScoringProfile = {
 		'dvd-remux': 500,
 
 		// ===========================================
+		// Resolution-Only Formats (fallback when source unknown)
+		// ===========================================
+		'resolution-2160p': 3000,
+		'resolution-1080p': 2000,
+		'resolution-720p': 1000,
+		'resolution-480p': 400,
+
+		// ===========================================
+		// Source-Only Formats (fallback when resolution unknown)
+		// ===========================================
+		'source-remux': 2000,
+		'source-bluray': 1500,
+		'source-webdl': 1000,
+		'source-webrip': 600,
+		'source-hdtv': 300,
+		'source-dvd': 200,
+
+		// ===========================================
 		// Audio - Lossless highly valued
 		// ===========================================
 		'audio-truehd': 3000,
@@ -321,6 +339,24 @@ export const BALANCED_PROFILE: ScoringProfile = {
 		'dvd-remux': 300,
 
 		// ===========================================
+		// Resolution-Only Formats (fallback when source unknown)
+		// ===========================================
+		'resolution-2160p': 4000,
+		'resolution-1080p': 2500,
+		'resolution-720p': 1500,
+		'resolution-480p': 500,
+
+		// ===========================================
+		// Source-Only Formats (fallback when resolution unknown)
+		// ===========================================
+		'source-remux': 2000,
+		'source-bluray': 1800,
+		'source-webdl': 1500,
+		'source-webrip': 1000,
+		'source-hdtv': 500,
+		'source-dvd': 400,
+
+		// ===========================================
 		// Audio - Efficient formats valued
 		// ===========================================
 		// HQ Lossy preferred for efficiency
@@ -444,7 +480,7 @@ export const BALANCED_PROFILE: ScoringProfile = {
 		// Codecs - x265/AV1 highly valued
 		'codec-x265': 3000,
 		'codec-av1': 4000,
-		'codec-x264': 0,
+		'codec-x264': 100,
 
 		// 3D
 		'banned-3d': -5000,
@@ -515,6 +551,24 @@ export const COMPACT_PROFILE: ScoringProfile = {
 		'480p-webdl': 3500,
 		dvd: 2500,
 		'dvd-remux': 2000,
+
+		// ===========================================
+		// Resolution-Only Formats (fallback when source unknown)
+		// ===========================================
+		'resolution-2160p': 2500,
+		'resolution-1080p': 2000,
+		'resolution-720p': 1500,
+		'resolution-480p': 800,
+
+		// ===========================================
+		// Source-Only Formats (fallback when resolution unknown)
+		// ===========================================
+		'source-remux': 500,
+		'source-bluray': 800,
+		'source-webdl': 1500,
+		'source-webrip': 1200,
+		'source-hdtv': 600,
+		'source-dvd': 500,
 
 		// ===========================================
 		// Audio - Efficient formats preferred
@@ -639,7 +693,7 @@ export const COMPACT_PROFILE: ScoringProfile = {
 		// Codecs - x265/AV1 essential
 		'codec-x265': 4000,
 		'codec-av1': 5000,
-		'codec-x264': 0,
+		'codec-x264': 50,
 
 		// 3D
 		'banned-3d': -5000,
@@ -694,6 +748,24 @@ export const STREAMER_PROFILE: ScoringProfile = {
 		'hdr-dolby-vision': 1000,
 		'hdr-hdr10plus': 800,
 		'hdr-hdr10': 600,
+
+		// ===========================================
+		// Resolution-Only Formats (fallback when source unknown)
+		// ===========================================
+		'resolution-2160p': 1000,
+		'resolution-1080p': 800,
+		'resolution-720p': 500,
+		'resolution-480p': 200,
+
+		// ===========================================
+		// Source-Only Formats (fallback when resolution unknown)
+		// ===========================================
+		'source-remux': 0,
+		'source-bluray': 0,
+		'source-webdl': 500,
+		'source-webrip': 300,
+		'source-hdtv': 100,
+		'source-dvd': 0,
 
 		// Banned formats - still apply
 		...UNIVERSAL_BANNED_FORMATS

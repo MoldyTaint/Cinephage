@@ -243,6 +243,9 @@ async function initializeServices(): Promise<void> {
 				logger.warn('ffprobe not found. Library refresh will be slower and less accurate.');
 			}
 
+			// Sync default scoring profiles (insert new or update existing built-in profiles)
+			await qualityFilter.seedDefaultScoringProfiles();
+
 			// Check quality profiles
 			const profiles = await qualityFilter.getAllProfiles();
 			logger.info(`Loaded ${profiles.length} quality profiles`);

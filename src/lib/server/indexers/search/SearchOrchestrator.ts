@@ -134,7 +134,8 @@ const NON_VIDEO_ARTIFACT_TITLE_PATTERNS: RegExp[] = [
 	/\bmp3\b/i,
 	/\baac\b/i,
 	/\bm4a\b/i,
-	/\b(?:audio\s*)?cd\b/i
+	/\b(?:audio\s*)?cd\b/i,
+	/\b(?:epub|pdf|mobi|azw3|cbz|cbr)\b/i
 ];
 
 const VIDEO_SIGNAL_PATTERN =
