@@ -194,8 +194,7 @@ const mockSeries = {
 		upgradeUntilScore: 50000,
 		minScoreIncrement: 100,
 		formatScores: {}
-	},
-	episodeFiles: [] as any[]
+	}
 };
 
 /** Episode S01E01 — has a 720p file */
@@ -287,9 +286,13 @@ describe('MonitoringSearchService - searchEpisodeUpgrades', () => {
 	});
 
 	it('should use the correct episode file as upgrade baseline, not an arbitrary series file (issue #213)', async () => {
+		// Setup: one episode to check, but the series has files for two different episodes
 		findManyEpisodesMock.mockResolvedValue([episodeS01E01]);
-		mockSeries.episodeFiles = [fileForEp1, fileForEp2];
 
+		// The DB returns ALL files for the series (both episodes)
+		findManyEpisodeFilesMock.mockResolvedValue([fileForEp1, fileForEp2]);
+
+		// Track what context is passed to specifications
 		const capturedContexts: any[] = [];
 		mockIsSatisfied.mockImplementation(async (context: any) => {
 			if (context?.existingFile) {
@@ -298,21 +301,22 @@ describe('MonitoringSearchService - searchEpisodeUpgrades', () => {
 			return { accepted: true };
 		});
 
+		// Run upgrade search for the series via the public API (dryRun to avoid grab)
 		await service.searchForUpgrades({
 			seriesIds: [SERIES_ID],
 			dryRun: true,
 			ignoreCooldown: true
 		});
 
+		// Verify the correct file was used as baseline for ep-1
 		const ep1Contexts = capturedContexts.filter((c) => c.episode?.id === 'ep-1');
 		expect(ep1Contexts.length).toBeGreaterThan(0);
 
 		for (const ctx of ep1Contexts) {
+			// The existingFile must be the 720p file (file-ep1), NOT the 1080p file (file-ep2)
 			expect(ctx.existingFile.id).toBe('file-ep1');
 			expect(ctx.existingFile.sceneName).toBe('Test.Series.S01E01.720p.WEB-DL');
 		}
-
-		mockSeries.episodeFiles = [];
 	});
 
 	it('should skip episodes that have no matching file in episodeIds', async () => {
@@ -330,7 +334,8 @@ describe('MonitoringSearchService - searchEpisodeUpgrades', () => {
 		};
 
 		findManyEpisodesMock.mockResolvedValue([episodeWithNoFile]);
-		mockSeries.episodeFiles = [fileForEp1, fileForEp2];
+		// Files exist for ep-1 and ep-2 but NOT ep-3
+		findManyEpisodeFilesMock.mockResolvedValue([fileForEp1, fileForEp2]);
 
 		const capturedContexts: any[] = [];
 		mockIsSatisfied.mockImplementation(async (context: any) => {
@@ -346,16 +351,17 @@ describe('MonitoringSearchService - searchEpisodeUpgrades', () => {
 			ignoreCooldown: true
 		});
 
+		// No specification should have been called with ep-3 context since it has no file
 		const ep3Contexts = capturedContexts.filter((c) => c.episode?.id === 'ep-3');
 		expect(ep3Contexts.length).toBe(0);
 
+		// No items should have been searched for ep-3
 		const ep3Results = result.items.filter((i) => i.itemId === 'ep-3');
 		expect(ep3Results.length).toBe(0);
-
-		mockSeries.episodeFiles = [];
 	});
 
 	it('should correctly handle multi-episode files via episodeIds array', async () => {
+		// A single file covers both ep-1 and ep-2 (double episode)
 		const multiEpFile = {
 			...fileForEp1,
 			id: 'file-multi',
@@ -366,7 +372,7 @@ describe('MonitoringSearchService - searchEpisodeUpgrades', () => {
 		};
 
 		findManyEpisodesMock.mockResolvedValue([episodeS01E01, episodeS01E02]);
-		mockSeries.episodeFiles = [multiEpFile];
+		findManyEpisodeFilesMock.mockResolvedValue([multiEpFile]);
 
 		const capturedContexts: any[] = [];
 		mockIsSatisfied.mockImplementation(async (context: any) => {
@@ -382,6 +388,7 @@ describe('MonitoringSearchService - searchEpisodeUpgrades', () => {
 			ignoreCooldown: true
 		});
 
+		// Both episodes should see the multi-episode file as their baseline
 		const ep1Contexts = capturedContexts.filter((c) => c.episode?.id === 'ep-1');
 		const ep2Contexts = capturedContexts.filter((c) => c.episode?.id === 'ep-2');
 
@@ -391,8 +398,6 @@ describe('MonitoringSearchService - searchEpisodeUpgrades', () => {
 		for (const ctx of [...ep1Contexts, ...ep2Contexts]) {
 			expect(ctx.existingFile.id).toBe('file-multi');
 		}
-
-		mockSeries.episodeFiles = [];
 	});
 });
 
