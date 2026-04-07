@@ -1215,10 +1215,7 @@ export class MonitoringSearchService {
 			const moviesWithFiles = await db.query.movies.findMany({
 				where: query,
 				with: {
-					scoringProfile: true,
-					movieFiles: {
-						limit: 1
-					}
+					scoringProfile: true
 				},
 				...(maxItems && { limit: maxItems })
 			});
@@ -1246,13 +1243,17 @@ export class MonitoringSearchService {
 					throw new TaskCancelledException('search');
 				}
 
-				const existingFile = movie.movieFiles[0];
+				// Get existing file
+				const existingFiles = await db.query.movieFiles.findMany({
+					where: eq(movieFiles.movieId, movie.id),
+					limit: 1
+				});
 
-				if (!existingFile) continue;
+				if (existingFiles.length === 0) continue;
 
 				const context: MovieContext = {
 					movie,
-					existingFile,
+					existingFile: existingFiles[0],
 					profile: movie.scoringProfile ?? undefined
 				};
 
@@ -1335,7 +1336,7 @@ export class MonitoringSearchService {
 				// Search for better releases
 				const { result: searchResult, detail } = await this.searchAndUpgradeMovie(
 					movie,
-					existingFile,
+					existingFiles[0],
 					dryRun
 				);
 				results.push(searchResult);
@@ -1392,8 +1393,7 @@ export class MonitoringSearchService {
 				with: {
 					series: {
 						with: {
-							scoringProfile: true,
-							episodeFiles: true
+							scoringProfile: true
 						}
 					},
 					season: true
@@ -1429,16 +1429,18 @@ export class MonitoringSearchService {
 
 				if (!episode.series) continue;
 
-				const existingFile = episode.series.episodeFiles.find((file) =>
-					file.episodeIds?.includes(episode.id)
-				);
+				// Get existing file for this specific episode
+				const allSeriesFiles = await db.query.episodeFiles.findMany({
+					where: eq(episodeFiles.seriesId, episode.seriesId)
+				});
+				const existingFiles = allSeriesFiles.filter((f) => f.episodeIds?.includes(episode.id));
 
-				if (!existingFile) continue;
+				if (existingFiles.length === 0) continue;
 
 				const context: EpisodeContext = {
 					series: episode.series,
 					episode,
-					existingFile,
+					existingFile: existingFiles[0],
 					profile: episode.series.scoringProfile ?? undefined
 				};
 
@@ -1482,7 +1484,7 @@ export class MonitoringSearchService {
 				const { result: searchResult, detail } = await this.searchAndUpgradeEpisode(
 					episode.series,
 					episode,
-					existingFile,
+					existingFiles[0],
 					dryRun
 				);
 				results.push(searchResult);
