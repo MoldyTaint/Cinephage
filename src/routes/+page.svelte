@@ -566,9 +566,9 @@
 	</div>
 
 	<!-- Main Content Grid -->
-	<div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-		<!-- Recently Added Section (2/3 width on lg, full width on md) -->
-		<div class="space-y-6 md:col-span-2 lg:col-span-2">
+	<div class="grid gap-6 lg:grid-cols-3">
+		<!-- Recently Added Section (2/3 width) -->
+		<div class="space-y-6 lg:col-span-2">
 			<!-- Recently Added Movies -->
 			{#if isRecentlyAddedLoading}
 				<div class="card bg-base-200">
@@ -581,7 +581,7 @@
 							<Skeleton variant="text" class="h-8 w-20" />
 						</div>
 						<div
-							class="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-6"
+							class="grid grid-cols-3 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-6"
 						>
 							{#each Array.from({ length: 6 }, (_, index) => index) as index (index)}
 								<div class="aspect-2/3 overflow-hidden rounded-lg">
@@ -604,7 +604,7 @@
 							>
 						</div>
 						<div
-							class="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-6"
+							class="grid grid-cols-3 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-6"
 						>
 							{#each recentlyAdded.movies as movie (movie.id)}
 								{@const typedMovie = movie as RecentlyAddedMovie}
@@ -656,7 +656,7 @@
 							<Skeleton variant="text" class="h-8 w-20" />
 						</div>
 						<div
-							class="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-6"
+							class="grid grid-cols-3 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-6"
 						>
 							{#each Array.from({ length: 6 }, (_, index) => index) as index (index)}
 								<div class="aspect-2/3 overflow-hidden rounded-lg">
@@ -679,7 +679,7 @@
 							>
 						</div>
 						<div
-							class="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-6"
+							class="grid grid-cols-3 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-6"
 						>
 							{#each recentlyAdded.series as show (show.id)}
 								{@const typedShow = show as RecentlyAddedSeries}
@@ -859,7 +859,7 @@
 									{@const StatusIcon = config.icon}
 									<tr class="hover">
 										<td>
-											<span class="badge gap-1 {config.variant} badge-xs whitespace-nowrap">
+											<span class="badge gap-1 {config.variant} badge-xs">
 												<StatusIcon
 													class="h-3 w-3 {activity.status === 'downloading' ||
 													activity.status === 'searching'
