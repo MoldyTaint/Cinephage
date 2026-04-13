@@ -20,7 +20,7 @@ const SAMPLE_MOVIE: MediaNamingInfo = {
 	resolution: '2160p',
 	source: 'Remux',
 	codec: 'x265',
-	hdr: 'DV HDR10',
+	hdr: 'DV',
 	audioCodec: 'TrueHD Atmos',
 	audioChannels: '7.1',
 	releaseGroup: 'FraMeSToR',

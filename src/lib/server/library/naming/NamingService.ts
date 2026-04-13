@@ -90,7 +90,7 @@ export interface NamingConfig {
 export const DEFAULT_NAMING_CONFIG: NamingConfig = {
 	// Movie folder: "Movie Title (2024) {tmdb-12345}" (Plex) or "[tmdbid-12345]" (Jellyfin)
 	movieFolderFormat: '{CleanTitle} ({Year}) {MediaId}',
-	// Movie file: "Movie Title (2024) {edition-Extended} [Bluray-1080p][DV HDR10][DTS-HD MA 7.1][x265]-GROUP"
+	// Movie file: "Movie Title (2024) {edition-Extended} [Bluray-1080p][DV][DTS-HD MA 7.1][x265]-GROUP"
 	movieFileFormat:
 		'{CleanTitle} ({Year}) {edition-{Edition}} [{QualityFull}]{[{HDR}]}{[{AudioCodec} {AudioChannels}]}{[{VideoCodec}]}{-{ReleaseGroup}}',
 
@@ -330,7 +330,7 @@ export function releaseToNamingInfo(
 		source?: string | null;
 		codec?: string | null;
 		hdr?: string | null;
-		audio?: string | null;
+		bitDepth?: string | null;
 		audioCodec?: string;
 		audioChannels?: string;
 		releaseGroup?: string;
@@ -346,7 +346,8 @@ export function releaseToNamingInfo(
 		source: parsed.source ?? undefined,
 		codec: parsed.codec ?? undefined,
 		hdr: parsed.hdr ?? undefined,
-		audioCodec: parsed.audioCodec ?? parsed.audio ?? undefined,
+		bitDepth: parsed.bitDepth ?? undefined,
+		audioCodec: parsed.audioCodec ?? undefined,
 		audioChannels: parsed.audioChannels,
 		releaseGroup: parsed.releaseGroup,
 		proper: parsed.isProper,

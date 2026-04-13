@@ -161,6 +161,7 @@ export class RenamePreviewService {
 		source?: string;
 		codec?: string;
 		hdr?: string;
+		bitDepth?: string;
 		audioCodec?: string;
 		audioChannels?: string;
 		releaseGroup?: string;
@@ -176,6 +177,7 @@ export class RenamePreviewService {
 			source: parsed.source ?? undefined,
 			codec: parsed.codec ?? undefined,
 			hdr: parsed.hdr ?? undefined,
+			bitDepth: parsed.bitDepth !== 'unknown' ? parsed.bitDepth : undefined,
 			audioCodec: parsed.audioCodec ?? undefined,
 			audioChannels: parsed.audioChannels ?? undefined,
 			releaseGroup: parsed.releaseGroup ?? undefined,
@@ -963,7 +965,7 @@ export class RenamePreviewService {
 				source: file.quality?.source ?? parsedFromFilename.source,
 				codec: file.quality?.codec ?? parsedFromFilename.codec ?? file.mediaInfo?.videoCodec,
 				hdr: file.quality?.hdr ?? parsedFromFilename.hdr ?? file.mediaInfo?.videoHdrFormat,
-				bitDepth: file.mediaInfo?.videoBitDepth?.toString(),
+				bitDepth: file.mediaInfo?.videoBitDepth?.toString() ?? parsedFromFilename.bitDepth,
 
 				// Audio info: prefer mediaInfo (actual file scan) over filename parsing
 				// This ensures renamed files reflect the true audio codec, not mislabeled release names
@@ -1101,7 +1103,7 @@ export class RenamePreviewService {
 				source: file.quality?.source ?? parsedFromFilename.source,
 				codec: file.quality?.codec ?? parsedFromFilename.codec ?? file.mediaInfo?.videoCodec,
 				hdr: file.quality?.hdr ?? parsedFromFilename.hdr ?? file.mediaInfo?.videoHdrFormat,
-				bitDepth: file.mediaInfo?.videoBitDepth?.toString(),
+				bitDepth: file.mediaInfo?.videoBitDepth?.toString() ?? parsedFromFilename.bitDepth,
 
 				// Audio info: prefer mediaInfo (actual file scan) over filename parsing
 				// This ensures renamed files reflect the true audio codec, not mislabeled release names

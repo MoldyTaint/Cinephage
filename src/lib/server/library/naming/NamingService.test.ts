@@ -443,7 +443,7 @@ describe('NamingService', () => {
 			const info: MediaNamingInfo = {
 				title: 'Test',
 				year: 2023,
-				hdr: 'dolby-vision-hdr10',
+				hdr: 'dolby-vision',
 				codec: 'x265',
 				audioCodec: 'TrueHD',
 				audioChannels: '7.1',
@@ -452,7 +452,7 @@ describe('NamingService', () => {
 				originalExtension: '.mkv'
 			};
 			const result = service.generateMovieFileName(info);
-			expect(result).toContain('[DV HDR10]');
+			expect(result).toContain('[DV]');
 			expect(result).toContain('[TrueHD 7.1]');
 			expect(result).toContain('[x265]');
 		});

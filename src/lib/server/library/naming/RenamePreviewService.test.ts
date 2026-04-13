@@ -263,7 +263,7 @@ describe('RenamePreviewService', () => {
 					resolution: '2160p',
 					source: 'Remux',
 					codec: 'x265',
-					hdr: 'DV HDR10',
+					hdr: 'DV',
 					audioCodec: 'TrueHD',
 					audioChannels: '7.1',
 					releaseGroup: 'FraMeSToR',
@@ -272,7 +272,7 @@ describe('RenamePreviewService', () => {
 
 				const result = namingService.generateMovieFileName(info);
 				expect(result).toContain('Remux-2160p');
-				expect(result).toContain('DV HDR10');
+				expect(result).toContain('DV');
 				expect(result).toContain('TrueHD');
 				expect(result).toContain('7.1');
 				expect(result).toContain('x265');
@@ -817,7 +817,7 @@ describe('RenamePreviewService', () => {
 					resolution: '2160p',
 					source: 'remux',
 					codec: 'hevc',
-					hdr: 'DV HDR10',
+					hdr: 'DV',
 					audioCodec: 'truehd',
 					audioChannels: '7.1',
 					releaseGroup: 'FraMeSToR',
@@ -827,7 +827,7 @@ describe('RenamePreviewService', () => {
 				const result = namingService.generateMovieFileName(info);
 				expect(result).toContain('Interstellar');
 				expect(result).toContain('Remux-2160p');
-				expect(result).toContain('DV HDR10');
+				expect(result).toContain('DV');
 				expect(result).toContain('TrueHD');
 				expect(result).toContain('7.1');
 			});
