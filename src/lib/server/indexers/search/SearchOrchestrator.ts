@@ -145,8 +145,23 @@ const NON_VIDEO_ARTIFACT_TITLE_PATTERNS: RegExp[] = [
 	/\bmp3\b/i,
 	/\baac\b/i,
 	/\bm4a\b/i,
+	/\btrailer\b/i,
+	/\bteaser\b/i,
+	/\bpromo\b/i,
+	/\bpreview\b/i,
+	/\bclip\b/i,
+	/\bfeaturette\b/i,
 	/\b(?:audio\s*)?cd\b/i,
 	/\b(?:epub|pdf|mobi|azw3|cbz|cbr)\b/i
+];
+
+const TRAILER_ARTIFACT_TITLE_PATTERNS: RegExp[] = [
+	/\btrailer\b/i,
+	/\bteaser\b/i,
+	/\bpromo\b/i,
+	/\bpreview\b/i,
+	/\bclip\b/i,
+	/\bfeaturette\b/i
 ];
 
 const VIDEO_SIGNAL_PATTERN =
@@ -1155,6 +1170,11 @@ export class SearchOrchestrator {
 		let titlesToSearch = [...new Set(rawTitles.map((title) => title.trim()).filter(Boolean))];
 
 		if (prefersNativeCyrillicTitles(indexer)) {
+			const nativeCyrillicTitles = titlesToSearch.filter((title) => containsCyrillic(title));
+			if (nativeCyrillicTitles.length > 0) {
+				titlesToSearch = nativeCyrillicTitles;
+			}
+
 			titlesToSearch = [...titlesToSearch].sort((a, b) => {
 				const aCyrillic = containsCyrillic(a) ? 1 : 0;
 				const bCyrillic = containsCyrillic(b) ? 1 : 0;
@@ -2060,6 +2080,18 @@ export class SearchOrchestrator {
 				return true;
 			}
 
+			if (this.matchesTrailerArtifactTitle(title)) {
+				logger.debug(
+					{
+						title: release.title,
+						searchType: criteria.searchType,
+						indexer: release.indexerName
+					},
+					'[SearchOrchestrator] Rejecting trailer/promo style release'
+				);
+				return false;
+			}
+
 			const releaseWithCache = release as ReleaseResult & {
 				_parsedRelease?: ReturnType<typeof parseRelease>;
 			};
@@ -2109,6 +2141,10 @@ export class SearchOrchestrator {
 		return NON_VIDEO_ARTIFACT_TITLE_PATTERNS.some((pattern) => pattern.test(title));
 	}
 
+	private matchesTrailerArtifactTitle(title: string): boolean {
+		return TRAILER_ARTIFACT_TITLE_PATTERNS.some((pattern) => pattern.test(title));
+	}
+
 	/**
 	 * Filter releases by title relevance.
 	 * Safety net to reject releases that are clearly for a different title
@@ -2120,7 +2156,6 @@ export class SearchOrchestrator {
 		criteria: SearchCriteria
 	): ReleaseResult[] {
 		const isTvSearchCriteria = criteria.searchType === 'tv';
-		const isMovieSearchCriteria = criteria.searchType === 'movie';
 		const hasEpisodeTarget = isTvSearchCriteria && criteria.episode !== undefined;
 		const hasSeasonTarget = isTvSearchCriteria && criteria.season !== undefined;
 		const allowInteractiveTvFallback =
@@ -2128,8 +2163,7 @@ export class SearchOrchestrator {
 			criteria.searchSource === 'interactive' &&
 			!hasEpisodeTarget &&
 			!hasSeasonTarget;
-		const allowInteractiveMovieFallback =
-			isMovieSearchCriteria && criteria.searchSource === 'interactive';
+		const allowInteractiveMovieFallback = false;
 		const allowInteractiveFallback = allowInteractiveTvFallback || allowInteractiveMovieFallback;
 
 		// Collect all expected titles: query + searchTitles
@@ -2147,25 +2181,18 @@ export class SearchOrchestrator {
 		const normalizedExpected = expectedTitles.map(normalize).filter((t) => t.length > 0);
 		if (normalizedExpected.length === 0) return releases;
 
-		// Extract the series/movie name from a release title.
-		// The name is the part before season/episode markers, year, or quality markers.
-		const extractReleaseName = (title: string): string => {
-			// Remove common group tags at the beginning like [GroupName]
-			let clean = title.replace(/^\[.*?\]\s*/, '');
-			// Split on season/episode markers: S01, S01E01, 1x01, Season, Episode, etc.
-			clean = clean.split(/[.\s_-](?:S\d|Season|\d{1,2}x\d{2,3})/i)[0];
-			// Also split on year patterns (4 digits in parens or after dots)
-			clean = clean.split(/[.\s_(-](?:19|20)\d{2}/)[0];
-			// Also split on quality markers
-			clean = clean.split(
-				/[.\s_-](?:720p|1080p|2160p|4K|HDTV|WEB|BluRay|BDRip|DVDRip|WEBRip|WEBDL|WEB-DL|AMZN|NF|DSNP|HULU)/i
-			)[0];
-			return clean;
-		};
-
 		const beforeCount = releases.length;
 		const filtered = releases.filter((release) => {
-			const releaseName = normalize(extractReleaseName(release.title));
+			const releaseWithCache = release as ReleaseResult & {
+				_parsedRelease?: ReturnType<typeof parseRelease>;
+			};
+			if (!releaseWithCache._parsedRelease) {
+				releaseWithCache._parsedRelease = parseRelease(release.title, {
+					sourceLanguage: release.sourceLanguage
+				});
+			}
+			const parsed = releaseWithCache._parsedRelease;
+			const releaseName = normalize(parsed.cleanTitle);
 			// If we cannot derive a comparable title token, keep only for
 			// interactive browsing fallbacks; targeted episode/season lookups stay strict.
 			if (releaseName.length === 0) return allowInteractiveFallback;
@@ -2199,7 +2226,7 @@ export class SearchOrchestrator {
 					{
 						releaseTitle: release.title,
 						releaseName, // normalized release name
-						parsedName: extractReleaseName(release.title), // before normalization
+						parsedName: parsed.cleanTitle,
 						normalizedExpected,
 						similarityDetails: simDetails,
 						indexer: release.indexerName,
@@ -2328,8 +2355,7 @@ export class SearchOrchestrator {
 		const beforeCount = releases.length;
 		const isInteractiveSearch = criteria.searchSource === 'interactive';
 		const allowInteractiveFallback =
-			isInteractiveSearch &&
-			(isMovieSearch(criteria) || (isTvSearch(criteria) && !criteria.season && !criteria.episode));
+			isInteractiveSearch && isTvSearch(criteria) && !criteria.season && !criteria.episode;
 
 		const filtered = releases.filter((release) => {
 			let parsed: ReturnType<typeof parseRelease> | undefined;
@@ -2343,6 +2369,9 @@ export class SearchOrchestrator {
 			};
 
 			// PRIORITY 1: ID Matching (if both sides have IDs)
+			const releasePrefersNativeCyrillic = prefersNativeCyrillicTitles({
+				name: release.indexerName ?? ''
+			} as IIndexer);
 
 			// TMDB ID check
 			if (searchTmdbId && release.tmdbId) {
@@ -2406,7 +2435,7 @@ export class SearchOrchestrator {
 			// from the release title, even if title variants are unavailable.
 			if (isMovieSearch(criteria) && searchYear) {
 				const parsedRelease = getParsed();
-				if (parsedRelease.year && Math.abs(parsedRelease.year - searchYear) > 1) {
+				if (parsedRelease.year && parsedRelease.year !== searchYear) {
 					// TEMP DEBUG: Log year mismatch details
 					logger.info(
 						{
@@ -2462,13 +2491,14 @@ export class SearchOrchestrator {
 				} else if (isUnmappableLocalizedTitle) {
 					// Interactive searches should not blank out results when title validation
 					// is impossible due to script mismatch (e.g. Cyrillic-only tracker titles).
-					titleMatch = isInteractiveSearch;
+					titleMatch =
+						isInteractiveSearch && (isTvSearch(criteria) || releasePrefersNativeCyrillic);
 				}
 
-				// Check year (allow 1 year difference for release/production year differences).
+				// Check year.
 				// If year is absent in title, allow interactive fallback.
 				const yearMatch = parsedRelease.year
-					? Math.abs(parsedRelease.year - searchYear!) <= 1
+					? parsedRelease.year === searchYear!
 					: isInteractiveSearch;
 
 				if (!titleMatch || !yearMatch) {
@@ -2479,8 +2509,8 @@ export class SearchOrchestrator {
 						isInteractiveSearch &&
 						yearMatch &&
 						!releaseHasAnyId &&
-						(isMovieSearch(criteria) ||
-							(isTvSearch(criteria) && !isEpisodeTarget && !isSeasonTarget));
+						((isTvSearch(criteria) && !isEpisodeTarget && !isSeasonTarget) ||
+							(isMovieSearch(criteria) && releasePrefersNativeCyrillic));
 					if (allowInteractiveTitleFallback) {
 						logger.info(
 							{

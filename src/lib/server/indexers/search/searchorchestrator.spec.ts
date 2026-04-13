@@ -181,7 +181,7 @@ describe('SearchOrchestrator.executeMultiTitleTextSearch', () => {
 		).toBe(true);
 	});
 
-	it('prioritizes Cyrillic title variants for RuTracker and expands the title budget', async () => {
+	it('uses only Cyrillic title variants for RuTracker when native titles are available', async () => {
 		const orchestrator = new SearchOrchestrator();
 		const captured: any[] = [];
 
@@ -213,7 +213,8 @@ describe('SearchOrchestrator.executeMultiTitleTextSearch', () => {
 		expect(captured.length).toBeGreaterThan(0);
 		expect(captured[0].query).toBe('Как Деревянко Чехова играл');
 		expect(captured.some((c: any) => c.query === 'Как Деревянко играл')).toBe(true);
-		expect(captured.some((c: any) => c.query === 'How Derevyanko Chekhov Played')).toBe(true);
+		expect(captured.some((c: any) => c.query === 'How Derevyanko Chekhov Played')).toBe(false);
+		expect(captured.some((c: any) => c.query === 'Kak Derevyanko Chekhova igral')).toBe(false);
 	});
 
 	it('reuses cached RuTracker season search results across automatic episode variants', async () => {
@@ -247,8 +248,8 @@ describe('SearchOrchestrator.executeMultiTitleTextSearch', () => {
 			episode: 2
 		});
 
-		// First call: two title variants (budgeted). Second call: served from cache.
-		expect(captured).toHaveLength(2);
+		// Only the native-script title should be queried, and the second call should be served from cache.
+		expect(captured).toHaveLength(1);
 		expect(captured.every((c: any) => c.preferredEpisodeFormat === 'standard')).toBe(true);
 		expect(captured.every((c: any) => c.episode === undefined)).toBe(true);
 		expect(captured.every((c: any) => c.season === 1)).toBe(true);
@@ -288,8 +289,8 @@ describe('SearchOrchestrator.executeMultiTitleTextSearch', () => {
 			})
 		]);
 
-		// Budget is 2 titles; with in-flight dedupe concurrent calls should still issue only 2 variants total.
-		expect(captured).toHaveLength(2);
+		// Only the native-script title should be queried, and concurrent calls should dedupe to one request.
+		expect(captured).toHaveLength(1);
 		expect(captured.every((c: any) => c.preferredEpisodeFormat === 'standard')).toBe(true);
 		expect(captured.every((c: any) => c.episode === undefined)).toBe(true);
 	});
@@ -846,8 +847,8 @@ describe('SearchOrchestrator.filterByIdOrTitleMatch', () => {
 		expect(filtered[0].title).toBe('Now.You.See.Me.Now.You.Dont.1080p.WEB-DL.REPACK');
 	});
 
-	it('keeps interactive movie results when title is localized and year is missing', () => {
-		const releases = [{ title: 'Военная машина WEB-DL', indexerName: 'FakeIndexer' }] as any[];
+	it('keeps interactive movie results when title is localized and year is missing on localized trackers', () => {
+		const releases = [{ title: 'Военная машина WEB-DL', indexerName: 'RuTracker.org' }] as any[];
 
 		const criteria = {
 			searchType: 'movie',
@@ -862,11 +863,11 @@ describe('SearchOrchestrator.filterByIdOrTitleMatch', () => {
 		expect(filtered[0].title).toBe('Военная машина WEB-DL');
 	});
 
-	it('keeps interactive movie results when title is transliterated and year matches', () => {
+	it('keeps interactive movie results when title is transliterated and year matches on localized trackers', () => {
 		const releases = [
 			{
 				title: 'Osobennosti nacionalnoy ohoty [1995, Russia, comedy, DVDRip]',
-				indexerName: 'FakeIndexer'
+				indexerName: 'RuTracker.org'
 			}
 		] as any[];
 
@@ -1003,7 +1004,7 @@ describe('SearchOrchestrator.filterByTitleRelevance', () => {
 		expect(filtered[0].title).toContain('Особенности национальной охоты');
 	});
 
-	it('falls back to pre-filtered releases for interactive movie when localization mismatches', () => {
+	it('does not fallback to pre-filtered releases for generic interactive movie localization mismatches', () => {
 		const releases = [{ title: 'Osobennosti nacionalnoy ohoty [1995, comedy, DVDRip]' }] as any[];
 
 		const criteria = {
@@ -1014,8 +1015,7 @@ describe('SearchOrchestrator.filterByTitleRelevance', () => {
 		} as any;
 
 		const filtered = (orchestrator as any).filterByTitleRelevance(releases, criteria);
-		expect(filtered).toHaveLength(1);
-		expect(filtered).toEqual(releases);
+		expect(filtered).toHaveLength(0);
 	});
 
 	it('keeps TV releases with long tracker metadata when series title matches', () => {
@@ -1037,6 +1037,23 @@ describe('SearchOrchestrator.filterByTitleRelevance', () => {
 		const filtered = (orchestrator as any).filterByTitleRelevance(releases, criteria);
 		expect(filtered).toHaveLength(1);
 		expect(filtered[0].title).toContain('The Night Agent');
+	});
+
+	it('filters trailer-like non-video artifacts from movie searches', () => {
+		const releases = [
+			{ title: 'Avatar Fire and Ash Trailer 1 WEB-DL 1080p x264' },
+			{ title: 'Avatar Fire and Ash Teaser WEB-DL 720p x264' },
+			{ title: 'Avatar Fire and Ash 2025 1080p WEB-DL x264-GROUP' }
+		] as any[];
+
+		const criteria = {
+			searchType: 'movie',
+			query: 'Avatar Fire and Ash'
+		} as any;
+
+		const filtered = (orchestrator as any).filterOutNonVideoArtifacts(releases, criteria);
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].title).toContain('2025');
 	});
 
 	it('falls back to pre-filtered releases for interactive TV when relevance removes all', () => {
@@ -1093,9 +1110,9 @@ describe('SearchOrchestrator.filterByTitleRelevance', () => {
 		expect(filtered).toHaveLength(0);
 	});
 
-	it('falls back to pre-filtered releases for interactive movie ID/title checks when localized titles remove all', () => {
+	it('keeps generic interactive movie ID/title checks strict while preserving direct aliases', () => {
 		const releases = [
-			{ title: 'Сталкер / Stalker [1979, BDRip 1080p]' },
+			{ title: 'Сталкер / Stalker [1979, BDRip 1080p]', indexerName: 'FakeIndexer' },
 			{ title: 'Пикник на обочине [1979, WEB-DL 1080p]' }
 		] as any[];
 
@@ -1108,14 +1125,57 @@ describe('SearchOrchestrator.filterByTitleRelevance', () => {
 		} as any;
 
 		const filtered = (orchestrator as any).filterByIdOrTitleMatch(releases, criteria);
-		expect(filtered).toHaveLength(2);
-		expect(filtered).toEqual(releases);
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].title).toContain('Stalker');
 	});
 
-	it('keeps explicit ID mismatches strict during interactive ID/title fallback', () => {
+	it('rejects wrong-year movie releases during interactive fallback', () => {
 		const releases = [
-			{ title: 'Сталкер / Stalker [1979, BDRip 1080p]', tmdbId: 999999 },
-			{ title: 'Пикник на обочине [1979, WEB-DL 1080p]' }
+			{ title: 'Avatar 3 2026 1080p WEB h264-ETHEL' },
+			{ title: 'Avatar Fire and Ash 2026 720p HDTV x264-SYNCOPY' },
+			{ title: 'Avatar Fire and Ash 2025 720p WEBRip x264-GROUP' }
+		] as any[];
+
+		const criteria = {
+			searchType: 'movie',
+			searchSource: 'interactive',
+			query: 'Avatar Fire and Ash',
+			searchTitles: ['Avatar Fire and Ash'],
+			year: 2025
+		} as any;
+
+		const filtered = (orchestrator as any).filterByIdOrTitleMatch(releases, criteria);
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].title).toContain('2025');
+		expect(filtered[0].title).toContain('Avatar Fire and Ash');
+	});
+
+	it('keeps interactive movie title relevance strict when titles do not match', () => {
+		const releases = [
+			{ title: 'Avatar 3 2026 1080p WEB h264-ETHEL' },
+			{ title: 'Completely Different Movie 2025 1080p WEB-DL' }
+		] as any[];
+
+		const criteria = {
+			searchType: 'movie',
+			searchSource: 'interactive',
+			query: 'Avatar Fire and Ash',
+			searchTitles: ['Avatar Fire and Ash'],
+			year: 2025
+		} as any;
+
+		const filtered = (orchestrator as any).filterByTitleRelevance(releases, criteria);
+		expect(filtered).toHaveLength(0);
+	});
+
+	it('keeps explicit ID mismatches strict during localized interactive ID/title fallback', () => {
+		const releases = [
+			{
+				title: 'Сталкер / Stalker [1979, BDRip 1080p]',
+				tmdbId: 999999,
+				indexerName: 'RuTracker.org'
+			},
+			{ title: 'Пикник на обочине [1979, WEB-DL 1080p]', indexerName: 'RuTracker.org' }
 		] as any[];
 
 		const criteria = {
