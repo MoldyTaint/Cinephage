@@ -335,5 +335,8 @@ export function cleanupRateLimits(): void {
 	}
 }
 
-// Run cleanup every 10 minutes
-setInterval(cleanupRateLimits, 10 * 60 * 1000);
+// Run cleanup every 10 minutes without blocking process exit.
+const cleanupInterval = setInterval(cleanupRateLimits, 10 * 60 * 1000);
+if (cleanupInterval.unref) {
+	cleanupInterval.unref();
+}

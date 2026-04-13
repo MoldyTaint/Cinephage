@@ -96,7 +96,7 @@ describe('checkApiRateLimit', () => {
 
 		for (let i = 0; i < 80; i++) {
 			const response = checkApiRateLimit(
-				createEvent('/api/streaming/resolve/test-token', {
+				createEvent('/api/streaming/session/movie/123/master.m3u8', {
 					apiKey: true,
 					userAgent
 				})
