@@ -489,7 +489,7 @@
 	"error_playbackInterrupted": "Wiedergabe unterbrochen",
 	"error_returnHome": "Zur Startseite",
 	"error_statusLabel": "Status",
-	"error_supportIdLabel": "Support-ID",
+	"error_supportIdLabel": "Fehler-ID",
 	"error_supportIdUnavailable": "Nicht verfügbar",
 	"expandAll": "Alle erweitern",
 	"formatScoresCopied": "Format-Punktzahlen werden vom ausgewählten Profil kopiert",

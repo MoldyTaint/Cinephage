@@ -489,7 +489,7 @@
 	"error_playbackInterrupted": "Reproducción interrumpida",
 	"error_returnHome": "Volver al inicio",
 	"error_statusLabel": "Estado",
-	"error_supportIdLabel": "ID de soporte",
+	"error_supportIdLabel": "ID de error",
 	"error_supportIdUnavailable": "No disponible",
 	"expandAll": "Expandir todo",
 	"formatScoresCopied": "Las puntuaciones de formato se copiarán del perfil seleccionado",
