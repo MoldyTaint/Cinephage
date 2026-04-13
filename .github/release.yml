@@ -8,19 +8,48 @@ changelog:
       labels:
         - breaking-change
         - major
+        - breaking
     - title: 'Features'
       labels:
         - feature
         - enhancement
+        - feat
     - title: 'Bug Fixes'
       labels:
         - bug
         - bugfix
         - fix
+        - regression
+    - title: 'Indexers & Search'
+      labels:
+        - indexer
+        - search
+        - metadata
+        - tmdb
+    - title: 'Downloads & Imports'
+      labels:
+        - downloads
+        - import
+        - sabnzbd
+        - torrent
+        - usenet
+    - title: 'Subtitles'
+      labels:
+        - subtitles
+        - subtitle
     - title: 'Documentation'
       labels:
         - documentation
         - docs
+    - title: 'Testing'
+      labels:
+        - test
+        - tests
+        - testing
+    - title: 'Performance'
+      labels:
+        - performance
+        - perf
     - title: 'Dependencies'
       labels:
         - dependencies
@@ -29,8 +58,18 @@ changelog:
         - npm
         - docker
         - security
-    - title: 'Maintenance'
+    - title: 'Workflow & Release'
+      labels:
+        - ci
+        - cd
+        - workflow
+        - github-actions
+        - release
+    - title: 'Maintenance & Refactoring'
       labels:
         - chore
-        - ci
         - refactor
+        - cleanup
+    - title: 'Other Changes'
+      labels:
+        - other
