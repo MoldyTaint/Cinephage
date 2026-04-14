@@ -22,7 +22,8 @@ import {
 	simplifyRatingBuffer,
 	offsetBufferGetAt,
 	type RatingBuffer,
-	type DualFullSegment
+	type DualFullSegment,
+	type OffsetBuffer
 } from './rating-buffer.js';
 import { standardScoring } from './scoring.js';
 
@@ -593,7 +594,7 @@ describe('rating-buffer', () => {
 		});
 
 		it('should return t for empty buffer', () => {
-			const buf = { start: 0, segments: [] as any[] };
+			const buf: OffsetBuffer = { start: 0, segments: [] };
 			expect(offsetBufferGetAt(buf, 75)).toBe(75);
 		});
 
