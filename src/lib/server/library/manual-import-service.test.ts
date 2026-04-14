@@ -20,7 +20,8 @@ describe('ManualImportService naming', () => {
 			episodeTitle: 'Shachiku no Uta'
 		};
 
-		const namingInfo = (manualImportService as any).enrichNamingInfo(
+		// @ts-expect-error accessing private method for testing
+		const namingInfo = manualImportService.enrichNamingInfo(
 			namingInfoBase,
 			parsed,
 			'/tmp/[Horse] Aggressive Retsuko - 003.mkv.strm',
