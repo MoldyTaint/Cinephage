@@ -11,6 +11,10 @@
 		describedBy?: string;
 		/** When true, modal-box uses flex column layout and children manage their own scrolling */
 		flexContent?: boolean;
+		/** When true, keep modal under desktop sidebar z-index for in-page settings workflows */
+		behindSidebarOnDesktop?: boolean;
+		/** Disable global body scroll locking for contexts where shell position must remain fixed */
+		lockScroll?: boolean;
 		children: Snippet;
 	}
 
@@ -21,6 +25,8 @@
 		labelledBy,
 		describedBy,
 		flexContent = false,
+		behindSidebarOnDesktop = false,
+		lockScroll = true,
 		children
 	}: Props = $props();
 
@@ -50,7 +56,7 @@
 	// Set up focus trap and scroll lock when modal opens
 	$effect(() => {
 		if (open && modalBoxRef) {
-			cleanupScrollLock = lockBodyScroll();
+			cleanupScrollLock = lockScroll ? lockBodyScroll() : null;
 			cleanupFocusTrap = createFocusTrap(modalBoxRef);
 		}
 
@@ -71,7 +77,7 @@
 
 {#if open}
 	<div
-		class="modal-open modal"
+		class="modal-open modal {behindSidebarOnDesktop ? 'modal-under-sidebar' : ''}"
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby={labelledBy}
@@ -87,7 +93,9 @@
 		</div>
 		<button
 			type="button"
-			class="modal-backdrop cursor-default border-none bg-black/50"
+			class="modal-backdrop cursor-default border-none {behindSidebarOnDesktop
+				? 'bg-black/50 lg:bg-transparent'
+				: 'bg-black/50'}"
 			onclick={onClose}
 			aria-label={m.ui_modal_closeModal()}
 		></button>

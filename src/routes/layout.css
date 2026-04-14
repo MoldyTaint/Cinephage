@@ -68,6 +68,13 @@
 	background-color: oklch(var(--p));
 }
 
+/* Keep selected in-page modals below desktop sidebar (used by settings maintenance edit dialogs) */
+@media (min-width: 1024px) {
+	.modal.modal-under-sidebar {
+		z-index: 30 !important;
+	}
+}
+
 /* Unified form control focus style (exclude search fields) */
 .input:focus:not([type='search']):not([placeholder*='search' i]):not([id*='search' i]):not(
 		[name*='search' i]

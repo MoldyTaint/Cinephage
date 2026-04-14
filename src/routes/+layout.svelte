@@ -219,12 +219,17 @@
 				icon: Settings,
 				children: [
 					{
-						href: '/settings/general?tab=libraries',
+						href: '/settings/general/libraries',
 						label: m.nav_libraryStorage,
 						icon: FolderCog,
-						match: (url: URL) => url.pathname === '/settings/general'
+						match: (url: URL) => url.pathname.startsWith('/settings/general')
 					},
-					{ href: '/settings/system', label: m.nav_system, icon: Server },
+					{
+						href: '/settings/system/general',
+						label: m.nav_system,
+						icon: Server,
+						match: (url: URL) => url.pathname.startsWith('/settings/system')
+					},
 					{ href: '/settings/logs', label: m.nav_logs, icon: ScrollText },
 					{ href: '/settings/naming', label: m.nav_naming, icon: FileSignature },
 					{ href: '/settings/quality', label: m.nav_qualitySettings, icon: Shield },

@@ -18,6 +18,8 @@
 		saving: boolean;
 		error?: string | null;
 		onClose: () => void;
+		behindSidebarOnDesktop?: boolean;
+		lockScroll?: boolean;
 		onSave: (data: RootFolderFormData) => void;
 		onValidatePath: (
 			path: string,
@@ -33,6 +35,8 @@
 		saving,
 		error = null,
 		onClose,
+		behindSidebarOnDesktop = false,
+		lockScroll = true,
 		onSave,
 		onValidatePath
 	}: Props = $props();
@@ -115,7 +119,14 @@
 	}
 </script>
 
-<ModalWrapper {open} {onClose} maxWidth="2xl" labelledBy="root-folder-modal-title">
+<ModalWrapper
+	{open}
+	{onClose}
+	maxWidth="2xl"
+	labelledBy="root-folder-modal-title"
+	{behindSidebarOnDesktop}
+	{lockScroll}
+>
 	<ModalHeader title={modalTitle} {onClose} />
 
 	<!-- Folder Browser -->

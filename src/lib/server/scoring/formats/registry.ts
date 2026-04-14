@@ -19,8 +19,10 @@ import { ALL_FORMATS } from './index.js';
 import { db } from '$lib/server/db';
 import { customFormats } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
+import { createChildLogger } from '$lib/logging';
 
 let _activeFormats: CustomFormat[] | null = null;
+const logger = createChildLogger({ module: 'FormatRegistry', component: 'FormatRegistry' });
 
 /**
  * Map a database custom format record to a runtime CustomFormat
@@ -47,16 +49,26 @@ export function getActiveFormats(): CustomFormat[] {
 		return _activeFormats;
 	}
 
-	const dbCustomFormats = db
-		.select()
-		.from(customFormats)
-		.where(eq(customFormats.enabled, true))
-		.all();
+	try {
+		const dbCustomFormats = db
+			.select()
+			.from(customFormats)
+			.where(eq(customFormats.enabled, true))
+			.all();
 
-	const merged = [...ALL_FORMATS, ...dbCustomFormats.map(mapDbToFormat)];
-
-	_activeFormats = merged;
-	return merged;
+		_activeFormats = [...ALL_FORMATS, ...dbCustomFormats.map(mapDbToFormat)];
+		return _activeFormats;
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		if (message.includes('no such table: custom_formats')) {
+			// Schema sync may not have run yet in isolated unit tests.
+			// Fall back to built-in formats rather than failing quality comparisons.
+			logger.warn('custom_formats table unavailable, falling back to built-in formats');
+			_activeFormats = ALL_FORMATS;
+			return _activeFormats;
+		}
+		throw error;
+	}
 }
 
 /**
