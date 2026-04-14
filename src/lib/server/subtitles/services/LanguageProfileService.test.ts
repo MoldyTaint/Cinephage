@@ -171,7 +171,8 @@ describe('LanguageProfileService', () => {
 				isDefault: false
 			};
 
-			const status = (profileService as any).calculateStatus(profile, [
+			// @ts-expect-error accessing private method for testing
+			const status: SubtitleStatus = profileService.calculateStatus(profile, [
 				{
 					id: 'embedded-en',
 					language: 'en',
@@ -180,7 +181,7 @@ describe('LanguageProfileService', () => {
 					isForced: false,
 					isHearingImpaired: false
 				}
-			]) as SubtitleStatus;
+			]);
 
 			expect(status.satisfied).toBe(false);
 			expect(status.missing).toHaveLength(1);
@@ -200,7 +201,8 @@ describe('LanguageProfileService', () => {
 				isDefault: false
 			};
 
-			const satisfied = (profileService as any).checkCutoffSatisfied(profile, [
+			// @ts-expect-error accessing private method for testing
+			const satisfied: boolean = profileService.checkCutoffSatisfied(profile, [
 				{
 					id: 'embedded-en',
 					language: 'en',
@@ -209,7 +211,7 @@ describe('LanguageProfileService', () => {
 					isForced: false,
 					isHearingImpaired: false
 				}
-			]) as boolean;
+			]);
 
 			expect(satisfied).toBe(false);
 		});
@@ -227,7 +229,8 @@ describe('LanguageProfileService', () => {
 				isDefault: false
 			};
 
-			const status = (profileService as any).calculateStatus(profile, [
+			// @ts-expect-error accessing private method for testing
+			const status: SubtitleStatus = profileService.calculateStatus(profile, [
 				{
 					id: 'external-en',
 					language: 'en',
@@ -236,7 +239,7 @@ describe('LanguageProfileService', () => {
 					isForced: false,
 					isHearingImpaired: false
 				}
-			]) as SubtitleStatus;
+			]);
 
 			expect(status.satisfied).toBe(true);
 			expect(status.missing).toHaveLength(0);
