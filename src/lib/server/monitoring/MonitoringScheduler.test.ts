@@ -56,7 +56,8 @@ describe('MonitoringScheduler cooldown propagation', () => {
 	it('passes task interval as cooldown for automatic search tasks', async () => {
 		const scheduler = getMonitoringScheduler();
 		vi.spyOn(scheduler, 'getSettings').mockResolvedValue(settings);
-		const runTask = (scheduler as any).runTask.bind(scheduler);
+		// @ts-expect-error accessing private method for testing
+		const runTask = scheduler.runTask.bind(scheduler);
 
 		await runTask('missing', null, 'automatic');
 		await runTask('upgrade', null, 'automatic');
@@ -79,7 +80,8 @@ describe('MonitoringScheduler cooldown propagation', () => {
 	it('bypasses cooldown for manual runs while preserving interval-derived cooldownHours', async () => {
 		const scheduler = getMonitoringScheduler();
 		vi.spyOn(scheduler, 'getSettings').mockResolvedValue(settings);
-		const runTask = (scheduler as any).runTask.bind(scheduler);
+		// @ts-expect-error accessing private method for testing
+		const runTask = scheduler.runTask.bind(scheduler);
 
 		await runTask('missing', null, 'manual');
 		await runTask('upgrade', null, 'manual');
