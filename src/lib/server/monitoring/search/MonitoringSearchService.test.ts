@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { EpisodeContext } from '../specifications/types.js';
 
 // --- Hoisted mocks (must be before any imports that use them) ---
 
@@ -52,26 +53,6 @@ vi.mock('$lib/server/db/index.js', () => ({
 			})
 		})
 	}
-}));
-
-// Mock schema (provide table references for eq/and/inArray calls)
-vi.mock('$lib/server/db/schema.js', () => ({
-	movies: { id: 'id', monitored: 'monitored', hasFile: 'hasFile' },
-	movieFiles: { movieId: 'movieId' },
-	series: { id: 'id' },
-	episodes: { id: 'id', monitored: 'monitored', hasFile: 'hasFile', seriesId: 'seriesId' },
-	episodeFiles: { seriesId: 'seriesId', episodeIds: 'episodeIds' },
-	scoringProfiles: {},
-	downloadQueue: { mediaType: 'mediaType', mediaId: 'mediaId', status: 'status' }
-}));
-
-// Mock drizzle-orm operators as pass-through
-vi.mock('drizzle-orm', () => ({
-	eq: vi.fn((_col, val) => val),
-	and: vi.fn((...args: unknown[]) => args),
-	lte: vi.fn(),
-	gte: vi.fn(),
-	inArray: vi.fn()
 }));
 
 // Mock logger
@@ -197,7 +178,6 @@ const mockSeries = {
 	}
 };
 
-/** Episode S01E01 — has a 720p file */
 const episodeS01E01 = {
 	id: 'ep-1',
 	seriesId: SERIES_ID,
@@ -210,7 +190,6 @@ const episodeS01E01 = {
 	season: { id: 'season-1', seriesId: SERIES_ID, seasonNumber: 1, monitored: true }
 };
 
-/** Episode S01E02 — has a 1080p file */
 const episodeS01E02 = {
 	id: 'ep-2',
 	seriesId: SERIES_ID,
@@ -223,7 +202,6 @@ const episodeS01E02 = {
 	season: { id: 'season-1', seriesId: SERIES_ID, seasonNumber: 1, monitored: true }
 };
 
-/** 720p file belonging to S01E01 */
 const fileForEp1 = {
 	id: 'file-ep1',
 	seriesId: SERIES_ID,
@@ -242,7 +220,6 @@ const fileForEp1 = {
 	infoHash: null
 };
 
-/** 1080p file belonging to S01E02 */
 const fileForEp2 = {
 	id: 'file-ep2',
 	seriesId: SERIES_ID,
@@ -265,11 +242,22 @@ const fileForEp2 = {
 
 const { MonitoringSearchService } = await import('./MonitoringSearchService.js');
 
+interface TestableService {
+	getSeasonEpisodeCount(seriesId: string, seasonNumber: number): Promise<number>;
+	searchAndGrabSeasonPack(...args: unknown[]): Promise<unknown>;
+	searchAndGrabEpisode(...args: unknown[]): Promise<unknown>;
+	searchSeriesWithCascadingStrategy(...args: unknown[]): Promise<unknown[]>;
+	grabRelease(...args: unknown[]): Promise<unknown>;
+}
+
+function asTestable(service: InstanceType<typeof MonitoringSearchService>): TestableService {
+	return service as unknown as TestableService;
+}
+
 describe('MonitoringSearchService - searchEpisodeUpgrades', () => {
 	let service: InstanceType<typeof MonitoringSearchService>;
 
 	beforeEach(() => {
-		// Only reset call history, not implementations
 		findManyEpisodesMock.mockReset();
 		findManyEpisodeFilesMock.mockReset();
 		findManyDownloadQueueMock.mockReset().mockResolvedValue([]);
@@ -286,41 +274,33 @@ describe('MonitoringSearchService - searchEpisodeUpgrades', () => {
 	});
 
 	it('should use the correct episode file as upgrade baseline, not an arbitrary series file (issue #213)', async () => {
-		// Setup: one episode to check, but the series has files for two different episodes
 		findManyEpisodesMock.mockResolvedValue([episodeS01E01]);
-
-		// The DB returns ALL files for the series (both episodes)
 		findManyEpisodeFilesMock.mockResolvedValue([fileForEp1, fileForEp2]);
 
-		// Track what context is passed to specifications
-		const capturedContexts: any[] = [];
-		mockIsSatisfied.mockImplementation(async (context: any) => {
+		const capturedContexts: EpisodeContext[] = [];
+		mockIsSatisfied.mockImplementation(async (context: EpisodeContext) => {
 			if (context?.existingFile) {
 				capturedContexts.push({ ...context });
 			}
 			return { accepted: true };
 		});
 
-		// Run upgrade search for the series via the public API (dryRun to avoid grab)
 		await service.searchForUpgrades({
 			seriesIds: [SERIES_ID],
 			dryRun: true,
 			ignoreCooldown: true
 		});
 
-		// Verify the correct file was used as baseline for ep-1
 		const ep1Contexts = capturedContexts.filter((c) => c.episode?.id === 'ep-1');
 		expect(ep1Contexts.length).toBeGreaterThan(0);
 
 		for (const ctx of ep1Contexts) {
-			// The existingFile must be the 720p file (file-ep1), NOT the 1080p file (file-ep2)
-			expect(ctx.existingFile.id).toBe('file-ep1');
-			expect(ctx.existingFile.sceneName).toBe('Test.Series.S01E01.720p.WEB-DL');
+			expect(ctx.existingFile!.id).toBe('file-ep1');
+			expect(ctx.existingFile!.sceneName).toBe('Test.Series.S01E01.720p.WEB-DL');
 		}
 	});
 
 	it('should skip episodes that have no matching file in episodeIds', async () => {
-		// Episode ep-3 has hasFile=true but no actual episode file references it
 		const episodeWithNoFile = {
 			id: 'ep-3',
 			seriesId: SERIES_ID,
@@ -334,11 +314,10 @@ describe('MonitoringSearchService - searchEpisodeUpgrades', () => {
 		};
 
 		findManyEpisodesMock.mockResolvedValue([episodeWithNoFile]);
-		// Files exist for ep-1 and ep-2 but NOT ep-3
 		findManyEpisodeFilesMock.mockResolvedValue([fileForEp1, fileForEp2]);
 
-		const capturedContexts: any[] = [];
-		mockIsSatisfied.mockImplementation(async (context: any) => {
+		const capturedContexts: EpisodeContext[] = [];
+		mockIsSatisfied.mockImplementation(async (context: EpisodeContext) => {
 			if (context?.existingFile) {
 				capturedContexts.push({ ...context });
 			}
@@ -351,17 +330,14 @@ describe('MonitoringSearchService - searchEpisodeUpgrades', () => {
 			ignoreCooldown: true
 		});
 
-		// No specification should have been called with ep-3 context since it has no file
 		const ep3Contexts = capturedContexts.filter((c) => c.episode?.id === 'ep-3');
 		expect(ep3Contexts.length).toBe(0);
 
-		// No items should have been searched for ep-3
 		const ep3Results = result.items.filter((i) => i.itemId === 'ep-3');
 		expect(ep3Results.length).toBe(0);
 	});
 
 	it('should correctly handle multi-episode files via episodeIds array', async () => {
-		// A single file covers both ep-1 and ep-2 (double episode)
 		const multiEpFile = {
 			...fileForEp1,
 			id: 'file-multi',
@@ -374,8 +350,8 @@ describe('MonitoringSearchService - searchEpisodeUpgrades', () => {
 		findManyEpisodesMock.mockResolvedValue([episodeS01E01, episodeS01E02]);
 		findManyEpisodeFilesMock.mockResolvedValue([multiEpFile]);
 
-		const capturedContexts: any[] = [];
-		mockIsSatisfied.mockImplementation(async (context: any) => {
+		const capturedContexts: EpisodeContext[] = [];
+		mockIsSatisfied.mockImplementation(async (context: EpisodeContext) => {
 			if (context?.existingFile) {
 				capturedContexts.push({ ...context });
 			}
@@ -388,7 +364,6 @@ describe('MonitoringSearchService - searchEpisodeUpgrades', () => {
 			ignoreCooldown: true
 		});
 
-		// Both episodes should see the multi-episode file as their baseline
 		const ep1Contexts = capturedContexts.filter((c) => c.episode?.id === 'ep-1');
 		const ep2Contexts = capturedContexts.filter((c) => c.episode?.id === 'ep-2');
 
@@ -396,13 +371,14 @@ describe('MonitoringSearchService - searchEpisodeUpgrades', () => {
 		expect(ep2Contexts.length).toBeGreaterThan(0);
 
 		for (const ctx of [...ep1Contexts, ...ep2Contexts]) {
-			expect(ctx.existingFile.id).toBe('file-multi');
+			expect(ctx.existingFile!.id).toBe('file-multi');
 		}
 	});
 });
 
 describe('MonitoringSearchService - RuTracker missing-episode behavior', () => {
 	let service: InstanceType<typeof MonitoringSearchService>;
+	let testable: TestableService;
 
 	beforeEach(() => {
 		findManyDownloadQueueMock.mockReset().mockResolvedValue([]);
@@ -413,24 +389,23 @@ describe('MonitoringSearchService - RuTracker missing-episode behavior', () => {
 		}));
 		searchEnhancedMock.mockReset().mockResolvedValue({ releases: [], rejections: [] });
 		service = new MonitoringSearchService();
+		testable = asTestable(service);
 	});
 
 	it('does not treat an episode pointer as a full-season pack grab', async () => {
 		const getSeasonEpisodeCountSpy = vi
-			.spyOn(service as any, 'getSeasonEpisodeCount')
+			.spyOn(testable, 'getSeasonEpisodeCount')
 			.mockResolvedValue(10);
-		const searchSeasonPackSpy = vi
-			.spyOn(service as any, 'searchAndGrabSeasonPack')
-			.mockResolvedValue({
-				itemId: 'ep-1',
-				itemType: 'episode',
-				title: 'Test Show Season 1',
-				searched: true,
-				releasesFound: 0,
-				grabbed: false
-			});
+		const searchSeasonPackSpy = vi.spyOn(testable, 'searchAndGrabSeasonPack').mockResolvedValue({
+			itemId: 'ep-1',
+			itemType: 'episode',
+			title: 'Test Show Season 1',
+			searched: true,
+			releasesFound: 0,
+			grabbed: false
+		});
 		const searchEpisodeSpy = vi
-			.spyOn(service as any, 'searchAndGrabEpisode')
+			.spyOn(testable, 'searchAndGrabEpisode')
 			.mockResolvedValueOnce({
 				itemId: 'ep-1',
 				itemType: 'episode',
@@ -449,18 +424,12 @@ describe('MonitoringSearchService - RuTracker missing-episode behavior', () => {
 				grabbed: false
 			});
 
-		const seriesData = { id: 'series-1', title: 'Test Show' } as any;
-		const seasonMap = new Map<number, Array<any>>([
-			[
-				1,
-				[
-					{ id: 'ep-1', seasonNumber: 1, episodeNumber: 1 },
-					{ id: 'ep-2', seasonNumber: 1, episodeNumber: 2 }
-				]
-			]
+		const seriesData = { id: 'series-1', title: 'Test Show' };
+		const seasonMap = new Map<number, Array<{ id: string }>>([
+			[1, [{ id: 'ep-1' }, { id: 'ep-2' }]]
 		]);
 
-		await (service as any).searchSeriesWithCascadingStrategy(seriesData, seasonMap);
+		await testable.searchSeriesWithCascadingStrategy(seriesData, seasonMap);
 
 		expect(getSeasonEpisodeCountSpy).toHaveBeenCalled();
 		expect(searchSeasonPackSpy).not.toHaveBeenCalled();
@@ -468,8 +437,8 @@ describe('MonitoringSearchService - RuTracker missing-episode behavior', () => {
 	});
 
 	it('skips RuTracker season-pack grabs when the season is only partially missing', async () => {
-		vi.spyOn(service as any, 'getSeasonEpisodeCount').mockResolvedValue(10);
-		const grabReleaseSpy = vi.spyOn(service as any, 'grabRelease').mockResolvedValue({
+		vi.spyOn(testable, 'getSeasonEpisodeCount').mockResolvedValue(10);
+		const grabReleaseSpy = vi.spyOn(testable, 'grabRelease').mockResolvedValue({
 			success: true,
 			releaseName: 'Should not grab'
 		});
@@ -514,15 +483,15 @@ describe('MonitoringSearchService - RuTracker missing-episode behavior', () => {
 			tvdbId: 2,
 			imdbId: 'tt123',
 			scoringProfileId: null
-		} as any;
+		};
 
-		const result = await (service as any).searchAndGrabSeasonPack(seriesData, 1, [
+		const result = (await testable.searchAndGrabSeasonPack(seriesData, 1, [
 			{ id: 'ep-1' },
 			{ id: 'ep-2' },
 			{ id: 'ep-3' },
 			{ id: 'ep-4' },
 			{ id: 'ep-5' }
-		]);
+		])) as { grabbed: boolean };
 
 		expect(result.grabbed).toBe(false);
 		expect(grabReleaseSpy).not.toHaveBeenCalled();
