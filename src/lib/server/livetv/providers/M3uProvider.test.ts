@@ -50,7 +50,8 @@ describe('M3uProvider XMLTV compression handling', () => {
 			}
 		});
 
-		const parsed = await (provider as any).readXmltvContent(
+		// @ts-expect-error accessing private method for testing
+		const parsed = await provider.readXmltvContent(
 			response,
 			'https://epgshare01.online/epgshare01/epg_ripper_NL1.xml.gz'
 		);
@@ -67,10 +68,8 @@ describe('M3uProvider XMLTV compression handling', () => {
 			}
 		});
 
-		const parsed = await (provider as any).readXmltvContent(
-			response,
-			'https://example.com/guide.xml.gz'
-		);
+		// @ts-expect-error accessing private method for testing
+		const parsed = await provider.readXmltvContent(response, 'https://example.com/guide.xml.gz');
 
 		expect(parsed).toContain('<tv>');
 	});
@@ -86,10 +85,8 @@ describe('M3uProvider XMLTV compression handling', () => {
 			}
 		});
 
-		const parsed = await (provider as any).readXmltvContent(
-			response,
-			'https://example.com/guide.xml'
-		);
+		// @ts-expect-error accessing private method for testing
+		const parsed = await provider.readXmltvContent(response, 'https://example.com/guide.xml');
 
 		expect(parsed).toContain('<tv>');
 	});
@@ -105,10 +102,8 @@ describe('M3uProvider XMLTV compression handling', () => {
 			}
 		});
 
-		const parsed = await (provider as any).readXmltvContent(
-			response,
-			'https://example.com/guide.xml.gz'
-		);
+		// @ts-expect-error accessing private method for testing
+		const parsed = await provider.readXmltvContent(response, 'https://example.com/guide.xml.gz');
 
 		expect(parsed).toContain('<!DOCTYPE tv SYSTEM "xmltv.dtd">');
 		expect(parsed).toContain('<tv>');
