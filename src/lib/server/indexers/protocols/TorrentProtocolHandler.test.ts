@@ -10,14 +10,18 @@ const STUB_PARSED: ParsedRelease = {
 	resolution: '1080p',
 	source: 'webdl',
 	codec: 'h264',
-	hdr: 'none',
-	bitDepth: '8bit',
+	hdr: null,
+	bitDepth: '8',
 	audioCodec: 'aac',
 	audioChannels: '5.1',
 	hasAtmos: false,
 	languages: [],
 	isProper: false,
-	isRepack: false
+	isRepack: false,
+	isRemux: false,
+	is3d: false,
+	hasHardcodedSubs: false,
+	confidence: 1
 };
 
 function createResult(overrides: Partial<EnhancedReleaseResult> = {}): EnhancedReleaseResult {

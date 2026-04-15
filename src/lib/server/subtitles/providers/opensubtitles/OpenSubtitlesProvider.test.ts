@@ -81,6 +81,7 @@ describe('OpenSubtitlesProvider - authentication (Bug #180)', () => {
 
 		// @ts-expect-error spying on protected method
 		vi.spyOn(provider, 'fetchWithTimeout').mockImplementation(
+			// @ts-expect-error mock implementation type mismatch for protected method
 			async (url: string, options: RequestInit & { timeout?: number } = {}) => {
 				const headers = (options?.headers ?? {}) as Record<string, string>;
 				fetchCalls.push({ url, headers });
@@ -121,6 +122,7 @@ describe('OpenSubtitlesProvider - authentication (Bug #180)', () => {
 
 		// @ts-expect-error spying on protected method
 		vi.spyOn(provider, 'fetchWithTimeout').mockImplementation(
+			// @ts-expect-error mock implementation type mismatch for protected method
 			async (url: string, options: RequestInit & { timeout?: number } = {}) => {
 				fetchCalls.push({ url, headers: (options?.headers ?? {}) as Record<string, string> });
 				return { ok: true, json: async () => SEARCH_RESPONSE } as Response;
@@ -144,6 +146,7 @@ describe('OpenSubtitlesProvider - authentication (Bug #180)', () => {
 
 		// @ts-expect-error spying on protected method
 		vi.spyOn(provider, 'fetchWithTimeout').mockImplementation(
+			// @ts-expect-error mock implementation type mismatch for protected method
 			async (url: string, options: RequestInit & { timeout?: number } = {}) => {
 				fetchCalls.push({ url, headers: (options?.headers ?? {}) as Record<string, string> });
 

@@ -173,6 +173,7 @@ describe('LanguageProfileService', () => {
 
 			// @ts-expect-error accessing private method for testing
 			const status: SubtitleStatus = profileService.calculateStatus(profile, [
+				// @ts-expect-error partial subtitle record for testing
 				{
 					id: 'embedded-en',
 					language: 'en',
@@ -203,6 +204,7 @@ describe('LanguageProfileService', () => {
 
 			// @ts-expect-error accessing private method for testing
 			const satisfied: boolean = profileService.checkCutoffSatisfied(profile, [
+				// @ts-expect-error partial subtitle record for testing
 				{
 					id: 'embedded-en',
 					language: 'en',
@@ -231,6 +233,7 @@ describe('LanguageProfileService', () => {
 
 			// @ts-expect-error accessing private method for testing
 			const status: SubtitleStatus = profileService.calculateStatus(profile, [
+				// @ts-expect-error partial subtitle record for testing
 				{
 					id: 'external-en',
 					language: 'en',

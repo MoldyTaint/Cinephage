@@ -1028,8 +1028,12 @@ describe('RenamePreviewService', () => {
 	describe('Anime Rename Fallbacks', () => {
 		it('builds fallback absolute numbering from episode order when DB values are missing', () => {
 			const service = new RenamePreviewService();
-			// @ts-expect-error accessing private method for testing
-			const absoluteEpisodeMap = service.buildAbsoluteEpisodeFallbackMap([
+			const testEpisodes: Array<{
+				id: string;
+				seasonNumber: number;
+				episodeNumber: number;
+				absoluteEpisodeNumber: number | null;
+			}> = [
 				{
 					id: 'special',
 					seasonNumber: 0,
@@ -1054,7 +1058,9 @@ describe('RenamePreviewService', () => {
 					episodeNumber: 1,
 					absoluteEpisodeNumber: null
 				}
-			]);
+			];
+			// @ts-expect-error accessing private method for testing
+			const absoluteEpisodeMap = service.buildAbsoluteEpisodeFallbackMap(testEpisodes);
 
 			expect(absoluteEpisodeMap.get('special')).toBeUndefined();
 			expect(absoluteEpisodeMap.get('ep1')).toBe(1);

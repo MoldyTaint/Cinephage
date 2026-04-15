@@ -60,7 +60,7 @@ function createTestRequestBuilder(): RequestBuilder {
 				title: { selector: 'title' }
 			}
 		}
-	} as CardigannDefinition;
+	} as unknown as CardigannDefinition;
 
 	return new RequestBuilder(definition, createTemplateEngine(), createFilterEngine());
 }
@@ -100,7 +100,7 @@ function createRutrackerLikeTvBuilder(): RequestBuilder {
 				title: { selector: 'a.tLink' }
 			}
 		}
-	} as CardigannDefinition;
+	} as unknown as CardigannDefinition;
 
 	return new RequestBuilder(definition, createTemplateEngine(), createFilterEngine());
 }
@@ -252,7 +252,7 @@ describe('RequestBuilder supported param filtering', () => {
 					title: { selector: 'title' }
 				}
 			}
-		} as CardigannDefinition;
+		} as unknown as CardigannDefinition;
 
 		return new RequestBuilder(definition, createTemplateEngine(), createFilterEngine());
 	}
@@ -321,7 +321,7 @@ describe('RequestBuilder newznab base path handling', () => {
 					title: { selector: 'title' }
 				}
 			}
-		} as CardigannDefinition;
+		} as unknown as CardigannDefinition;
 
 		return new RequestBuilder(definition, createTemplateEngine(), createFilterEngine());
 	}
