@@ -13,6 +13,13 @@
 name: Docker Build
 
 on:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: 'Semver release tag (e.g. v1.0.0)'
+        required: false
+        type: string
+        default: ''
   push:
     branches: [main, dev, experimental, 'experimental/**']
     paths:
@@ -91,7 +98,9 @@ jobs:
 
           RUN_DATE="$(date +%Y%m%d)"
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.tag }}" ]; then
+          if [ -n "${{ inputs.release_tag }}" ]; then
+            APP_VERSION="${{ inputs.release_tag }}"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.tag }}" ]; then
             APP_VERSION="${{ github.event.inputs.tag }}"
           elif [ "${{ github.ref }}" = "refs/heads/dev" ]; then
             APP_VERSION="dev-${RUN_DATE}-${{ github.run_number }}"
@@ -255,6 +264,11 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}
           tags: |
+            type=raw,value=${{ inputs.release_tag }},enable=${{ inputs.release_tag != '' }}
+            type=semver,pattern={{version}},value=${{ inputs.release_tag }},enable=${{ inputs.release_tag != '' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.release_tag }},enable=${{ inputs.release_tag != '' }}
+            type=semver,pattern={{major}},value=${{ inputs.release_tag }},enable=${{ inputs.release_tag != '' }}
+            type=raw,value=latest,enable=${{ inputs.release_tag != '' }}
             type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '' }}
             type=raw,value=main-${{ needs.prepare.outputs.run_date }}-${{ github.run_number }},enable=${{ github.ref == 'refs/heads/main' }}
             type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
