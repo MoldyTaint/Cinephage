@@ -9,10 +9,7 @@ const config = {
 
 	kit: {
 		// Explicit Node.js adapter for self-hosted deployment
-		adapter: adapter({
-			// Externalize native modules that can't be bundled
-			external: ['better-sqlite3']
-		}),
+		adapter: adapter(),
 		// Allow self-hosted access via LAN IPs and local hostnames.
 		// SvelteKit's default CSRF protection requires the Origin header to match
 		// the server's host. For LAN apps accessed via IP or custom hostnames,
