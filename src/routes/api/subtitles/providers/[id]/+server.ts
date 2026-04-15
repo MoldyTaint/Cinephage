@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getSubtitleProviderManager } from '$lib/server/subtitles/services/SubtitleProviderManager';
 import { subtitleProviderUpdateSchema } from '$lib/validation/schemas';
+import { parseBody, assertFound } from '$lib/server/api/validate.js';
 
 /**
  * GET /api/subtitles/providers/:id
@@ -9,11 +10,7 @@ import { subtitleProviderUpdateSchema } from '$lib/validation/schemas';
  */
 export const GET: RequestHandler = async ({ params }) => {
 	const manager = await getSubtitleProviderManager();
-	const provider = await manager.getProvider(params.id);
-
-	if (!provider) {
-		return json({ error: 'Provider not found' }, { status: 404 });
-	}
+	const provider = assertFound(await manager.getProvider(params.id), 'Provider', params.id);
 
 	// Redact sensitive fields
 	return json({
@@ -28,48 +25,21 @@ export const GET: RequestHandler = async ({ params }) => {
  * Update a subtitle provider.
  */
 export const PUT: RequestHandler = async ({ params, request }) => {
-	let data: unknown;
-	try {
-		data = await request.json();
-	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
-	}
-
-	const result = subtitleProviderUpdateSchema.safeParse(data);
-
-	if (!result.success) {
-		return json(
-			{
-				error: 'Validation failed',
-				details: result.error.flatten()
-			},
-			{ status: 400 }
-		);
-	}
-
-	const validated = result.data;
+	const validated = await parseBody(request, subtitleProviderUpdateSchema);
 	const manager = await getSubtitleProviderManager();
 
-	try {
-		const updated = await manager.updateProvider(params.id, {
-			name: validated.name,
-			enabled: validated.enabled,
-			priority: validated.priority,
-			apiKey: validated.apiKey ?? undefined,
-			username: validated.username ?? undefined,
-			password: validated.password ?? undefined,
-			settings: (validated.settings as Record<string, unknown>) ?? undefined,
-			requestsPerMinute: validated.requestsPerMinute
-		});
+	const updated = await manager.updateProvider(params.id, {
+		name: validated.name,
+		enabled: validated.enabled,
+		priority: validated.priority,
+		apiKey: validated.apiKey ?? undefined,
+		username: validated.username ?? undefined,
+		password: validated.password ?? undefined,
+		settings: (validated.settings as Record<string, unknown>) ?? undefined,
+		requestsPerMinute: validated.requestsPerMinute
+	});
 
-		return json({ success: true, provider: updated });
-	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Unknown error';
-		if (message.includes('not found')) {
-			return json({ error: message }, { status: 404 });
-		}
-		return json({ error: message }, { status: 500 });
-	}
+	return json({ success: true, provider: updated });
 };
 
 /**
@@ -78,15 +48,6 @@ export const PUT: RequestHandler = async ({ params, request }) => {
  */
 export const DELETE: RequestHandler = async ({ params }) => {
 	const manager = await getSubtitleProviderManager();
-
-	try {
-		await manager.deleteProvider(params.id);
-		return json({ success: true });
-	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Unknown error';
-		if (message.includes('not found')) {
-			return json({ error: message }, { status: 404 });
-		}
-		return json({ error: message }, { status: 500 });
-	}
+	await manager.deleteProvider(params.id);
+	return json({ success: true });
 };

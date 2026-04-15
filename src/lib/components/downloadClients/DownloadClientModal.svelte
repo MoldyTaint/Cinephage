@@ -13,6 +13,7 @@
 	import NntpServerSettings from './forms/NntpServerSettings.svelte';
 	import DownloadClientSettings from './forms/DownloadClientSettings.svelte';
 	import { toFriendlyDownloadClientError } from '$lib/downloadClients/errorMessages';
+	import * as m from '$lib/paraglide/messages.js';
 
 	// NNTP server form data type
 	interface NntpServerFormData {
@@ -86,7 +87,7 @@
 	let useSsl = $state(false);
 	let urlBase = $state('');
 	let urlBaseEnabled = $state(false);
-	let mountMode = $state<'nzbdav' | 'altmount'>('nzbdav');
+	let mountMode = $state<'nzbdav' | 'altmount' | ''>('');
 	let username = $state('');
 	let password = $state('');
 
@@ -119,7 +120,9 @@
 	let browsingField = $state<'downloadPathLocal' | 'tempPathLocal'>('downloadPathLocal');
 
 	// Derived
-	const modalTitle = $derived(mode === 'add' ? 'Add Download Client' : 'Edit Download Client');
+	const modalTitle = $derived(
+		mode === 'add' ? m.downloadClient_addDownloadClient() : m.downloadClient_editDownloadClient()
+	);
 	const hasPassword = $derived(client?.hasPassword ?? false);
 	const selectedDefinition = $derived(
 		implementation ? clientDefinitions.find((d) => d.id === implementation) : null
@@ -127,14 +130,17 @@
 	const visibleClientDefinitions = $derived(
 		allowNntp ? clientDefinitions : clientDefinitions.filter((d) => d.id !== 'nntp')
 	);
+	const pickerClientDefinitions = $derived(visibleClientDefinitions);
 	// Check if selected client uses API key auth (SABnzbd)
 	const usesApiKey = $derived(
-		selectedDefinition?.protocol === 'usenet' &&
-			['sabnzbd', 'nzb-mount'].includes(selectedDefinition?.id ?? '')
+		selectedDefinition?.protocol === 'usenet' && selectedDefinition?.id === 'sabnzbd'
 	);
 	// Check if this is an NNTP server
 	const isNntpServer = $derived(implementation === 'nntp');
-	const isNzbMount = $derived(implementation === 'nzb-mount');
+	const isSabnzbd = $derived(implementation === 'sabnzbd');
+	const isMountModeClient = $derived(
+		isSabnzbd && (mountMode === 'nzbdav' || mountMode === 'altmount')
+	);
 	const MAX_NAME_LENGTH = 20;
 	const nameTooLong = $derived(name.length > MAX_NAME_LENGTH);
 	const urlBasePlaceholder = $derived(
@@ -142,8 +148,6 @@
 			switch (selectedDefinition?.id) {
 				case 'sabnzbd':
 					return 'sabnzbd';
-				case 'nzb-mount':
-					return 'nzbmount';
 				case 'nzbget':
 					return 'nzbget';
 				case 'qbittorrent':
@@ -180,7 +184,8 @@
 			const clientUrlBase = (client as DownloadClient | undefined)?.urlBase ?? '';
 			urlBase = clientUrlBase;
 			urlBaseEnabled = !!clientUrlBase;
-			mountMode = (client as DownloadClient | undefined)?.mountMode ?? 'nzbdav';
+			const storedMountMode = (client as DownloadClient | undefined)?.mountMode ?? null;
+			mountMode = storedMountMode === 'altmount' || storedMountMode === 'nzbdav' ? 'nzbdav' : '';
 			username = client?.username ?? '';
 			password = '';
 
@@ -228,8 +233,8 @@
 				if (newImpl === 'nntp') {
 					useSsl = true;
 				}
-				if (newImpl === 'nzb-mount') {
-					mountMode = 'nzbdav';
+				if (newImpl === 'sabnzbd') {
+					mountMode = '';
 				}
 			}
 		}
@@ -274,7 +279,7 @@
 			port,
 			useSsl,
 			urlBase: urlBaseEnabled ? normalizedUrlBase || null : null,
-			mountMode: implementation === 'nzb-mount' ? mountMode : null,
+			mountMode: implementation === 'sabnzbd' && mountMode ? 'nzbdav' : null,
 			username: normalizedUsername || null,
 			password: password || null,
 			movieCategory,
@@ -366,6 +371,28 @@
 		browsingField = field;
 		showFolderBrowser = true;
 	}
+
+	function getProtocolLabel(protocol: 'torrent' | 'usenet' | 'nntp'): string {
+		switch (protocol) {
+			case 'torrent':
+				return m.downloadClient_protocol_torrent();
+			case 'usenet':
+				return m.downloadClient_protocol_usenet();
+			case 'nntp':
+				return m.downloadClient_protocol_nntp();
+		}
+	}
+
+	function getClientDescription(def: (typeof clientDefinitions)[number]): string {
+		switch (def.id) {
+			case 'qbittorrent':
+				return m.downloadClient_desc_qbittorrent();
+			case 'nntp':
+				return m.downloadClient_desc_nntp();
+			default:
+				return def.description;
+		}
+	}
 </script>
 
 <ModalWrapper {open} {onClose} maxWidth="3xl" labelledBy="download-client-modal-title">
@@ -380,10 +407,10 @@
 	<!-- Client Type Selection (only in add mode when not selected) -->
 	{#if mode === 'add' && !implementation}
 		<div class="space-y-4">
-			<p class="text-base-content/70">Select the type of download client you want to add:</p>
+			<p class="text-base-content/70">{m.downloadClient_selectType()}</p>
 
 			<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
-				{#each visibleClientDefinitions as def (def.id)}
+				{#each pickerClientDefinitions as def (def.id)}
 					<button
 						type="button"
 						class="card cursor-pointer border-2 border-transparent bg-base-200 text-left transition-all hover:border-primary hover:bg-primary/10"
@@ -399,10 +426,12 @@
 												? 'badge-secondary'
 												: 'badge-primary'}"
 										>
-											{def.protocol}
+											{getProtocolLabel(def.protocol)}
 										</span>
 									</div>
-									<p class="mt-1 text-sm text-base-content/60">{def.description}</p>
+									<p class="mt-1 text-sm text-base-content/60">
+										{getClientDescription(def)}
+									</p>
 								</div>
 								<div class="badge badge-outline badge-sm">:{def.defaultPort}</div>
 							</div>
@@ -421,10 +450,13 @@
 			<div class="mb-6 flex items-center justify-between rounded-lg bg-base-200 px-4 py-3">
 				<div class="flex items-center gap-3">
 					<div class="font-semibold">{selectedDefinition.name}</div>
-					<div class="badge badge-ghost badge-sm">Port {selectedDefinition.defaultPort}</div>
+					<div class="badge badge-ghost badge-sm">
+						{m.common_port()}
+						{selectedDefinition.defaultPort}
+					</div>
 				</div>
 				<button type="button" class="btn btn-ghost btn-sm" onclick={() => (implementation = '')}>
-					Change Type
+					{m.action_change()}
 				</button>
 			</div>
 		{/if}
@@ -443,11 +475,11 @@
 			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
 				<!-- Left Column: Connection -->
 				<div class="space-y-4">
-					<SectionHeader title="Connection" />
+					<SectionHeader title={m.connection_section_title()} />
 
 					<div class="form-control">
 						<label class="label py-1" for="name">
-							<span class="label-text">Name</span>
+							<span class="label-text">{m.common_name()}</span>
 						</label>
 						<input
 							id="name"
@@ -465,7 +497,7 @@
 							</span>
 							{#if nameTooLong}
 								<span class="label-text-alt text-xs text-error"
-									>Max {MAX_NAME_LENGTH} characters.</span
+									>{m.validation_maxChars({ max: MAX_NAME_LENGTH })}</span
 								>
 							{/if}
 						</div>
@@ -474,7 +506,7 @@
 					<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
 						<div class="form-control">
 							<label class="label py-1" for="host">
-								<span class="label-text">Host</span>
+								<span class="label-text">{m.connection_host_label()}</span>
 							</label>
 							<input
 								id="host"
@@ -487,7 +519,7 @@
 
 						<div class="form-control">
 							<label class="label py-1" for="port">
-								<span class="label-text">Port</span>
+								<span class="label-text">{m.common_port()}</span>
 							</label>
 							<input
 								id="port"
@@ -506,7 +538,7 @@
 							bind:urlBaseEnabled
 							bind:urlBase
 							{urlBasePlaceholder}
-							showMountMode={isNzbMount}
+							showMountMode={isSabnzbd}
 							bind:mountMode
 						/>
 					{/if}
@@ -516,9 +548,9 @@
 						<div class="form-control">
 							<label class="label py-1" for="password">
 								<span class="label-text">
-									API Key
+									{m.auth_apiKey_label()}
 									{#if mode === 'edit' && hasPassword}
-										<span class="text-xs opacity-50">(blank to keep)</span>
+										<span class="text-xs opacity-50">({m.auth_blankToKeep()})</span>
 									{/if}
 								</span>
 							</label>
@@ -533,7 +565,7 @@
 							/>
 							<div class="label py-1">
 								<span class="label-text-alt text-xs">
-									Found in SABnzbd Config &gt; General &gt; API Key
+									{m.downloadClient_apiKeyHelp()}
 								</span>
 							</div>
 						</div>
@@ -542,7 +574,7 @@
 						<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
 							<div class="form-control">
 								<label class="label py-1" for="username">
-									<span class="label-text">Username</span>
+									<span class="label-text">{m.auth_username_label()}</span>
 								</label>
 								<input
 									id="username"
@@ -556,9 +588,9 @@
 							<div class="form-control">
 								<label class="label py-1" for="password">
 									<span class="label-text">
-										Password
+										{m.auth_password_label()}
 										{#if mode === 'edit' && hasPassword}
-											<span class="text-xs opacity-50">(blank to keep)</span>
+											<span class="text-xs opacity-50">({m.auth_blankToKeep()})</span>
 										{/if}
 									</span>
 								</label>
@@ -581,12 +613,12 @@
 								bind:checked={useSsl}
 								onchange={handleSslChange}
 							/>
-							<span class="label-text">Use SSL</span>
+							<span class="label-text">{m.connection_useSsl_label()}</span>
 						</label>
 
 						<label class="label cursor-pointer gap-2">
 							<input type="checkbox" class="checkbox checkbox-sm" bind:checked={enabled} />
-							<span class="label-text">Enabled</span>
+							<span class="label-text">{m.common_enabled()}</span>
 						</label>
 					</div>
 				</div>
@@ -608,7 +640,7 @@
 							bind:tempPathLocal
 							bind:tempPathRemote
 							isSabnzbd={usesApiKey}
-							{isNzbMount}
+							isMountMode={isMountModeClient}
 							onBrowse={openFolderBrowser}
 						/>
 					{/if}
@@ -620,7 +652,7 @@
 				<div class="mt-6 alert alert-error">
 					<XCircle class="h-5 w-5" />
 					<div>
-						<div class="font-medium">Failed to save</div>
+						<div class="font-medium">{m.common_failedToSave()}</div>
 						<div class="text-sm opacity-80">{error}</div>
 					</div>
 				</div>
@@ -641,7 +673,9 @@
 		{#if !showFolderBrowser}
 			<div class="modal-action">
 				{#if mode === 'edit' && onDelete}
-					<button class="btn mr-auto btn-outline btn-error" onclick={onDelete}>Delete</button>
+					<button class="btn mr-auto btn-outline btn-error" onclick={onDelete}
+						>{m.common_delete()}</button
+					>
 				{/if}
 
 				<button
@@ -652,10 +686,10 @@
 					{#if testing}
 						<Loader2 class="h-4 w-4 animate-spin" />
 					{/if}
-					Test
+					{m.action_test()}
 				</button>
 
-				<button class="btn btn-ghost" onclick={onClose}>Cancel</button>
+				<button class="btn btn-ghost" onclick={onClose}>{m.action_cancel()}</button>
 
 				<button
 					class="btn btn-primary"
@@ -665,7 +699,7 @@
 					{#if saving}
 						<Loader2 class="h-4 w-4 animate-spin" />
 					{/if}
-					Save
+					{m.action_save()}
 				</button>
 			</div>
 		{/if}

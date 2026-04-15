@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { SvelteMap } from 'svelte/reactivity';
 	import SubtitleBadge from './SubtitleBadge.svelte';
+	import SubtitleSyncBadge from './SubtitleSyncBadge.svelte';
 
 	interface Subtitle {
 		id: string;
@@ -8,15 +9,27 @@
 		isForced?: boolean;
 		isHearingImpaired?: boolean;
 		format?: string;
+		wasSynced?: boolean;
+		syncOffset?: number | null;
 	}
 
 	interface Props {
 		subtitles: Subtitle[];
 		maxDisplay?: number;
 		size?: 'xs' | 'sm' | 'md';
+		showSyncStatus?: boolean;
+		noWrap?: boolean;
+		countVariant?: 'text' | 'badge';
 	}
 
-	let { subtitles, maxDisplay = 5, size = 'sm' }: Props = $props();
+	let {
+		subtitles,
+		maxDisplay = 5,
+		size = 'sm',
+		showSyncStatus = false,
+		noWrap = false,
+		countVariant = 'text'
+	}: Props = $props();
 
 	// Group by language, keeping track of forced/HI variants
 	const grouped = $derived.by(() => {
@@ -49,18 +62,31 @@
 </script>
 
 {#if subtitles.length > 0}
-	<div class="flex flex-wrap items-center gap-1">
+	<div
+		class="flex items-center gap-1 {noWrap ? 'min-w-0 flex-nowrap overflow-hidden' : 'flex-wrap'}"
+	>
 		{#each displaySubtitles as sub (sub.id)}
-			<SubtitleBadge
-				language={sub.language}
-				isForced={sub.isForced}
-				isHearingImpaired={sub.isHearingImpaired}
-				format={sub.format}
-				{size}
-			/>
+			<div class="flex shrink-0 items-center gap-1">
+				<SubtitleBadge
+					language={sub.language}
+					isForced={sub.isForced}
+					isHearingImpaired={sub.isHearingImpaired}
+					format={sub.format}
+					{size}
+				/>
+				{#if showSyncStatus && sub.wasSynced}
+					<SubtitleSyncBadge wasSynced={sub.wasSynced} syncOffset={sub.syncOffset} {size} />
+				{/if}
+			</div>
 		{/each}
 		{#if hiddenCount > 0}
-			<span class="text-xs text-base-content/50">+{hiddenCount}</span>
+			<span
+				class="shrink-0 {countVariant === 'badge'
+					? 'badge badge-outline badge-xs text-base-content/70'
+					: 'text-xs text-base-content/50'}"
+			>
+				+{hiddenCount}
+			</span>
 		{/if}
 	</div>
 {:else}

@@ -8,7 +8,6 @@ export type DownloadClientImplementation =
 	| 'deluge'
 	| 'rtorrent'
 	| 'aria2'
-	| 'nzb-mount'
 	| 'sabnzbd'
 	| 'nzbget'
 	| 'nntp';
@@ -16,6 +15,7 @@ export type DownloadClientHealth = 'healthy' | 'warning' | 'failing';
 export type DownloadPriority = 'normal' | 'high' | 'force';
 export type DownloadInitialState = 'start' | 'pause' | 'force';
 export type RootFolderMediaType = 'movie' | 'tv';
+export type RootFolderMediaSubType = 'standard' | 'anime';
 export type DownloadClientMountMode = 'nzbdav' | 'altmount';
 
 /**
@@ -120,11 +120,13 @@ export interface RootFolder {
 	name: string;
 	path: string;
 	mediaType: RootFolderMediaType;
+	mediaSubType: RootFolderMediaSubType;
 	isDefault: boolean;
 	readOnly: boolean;
 	preserveSymlinks: boolean;
 	defaultMonitored: boolean;
 	freeSpaceBytes?: number | null;
+	totalSpaceBytes?: number | null;
 	freeSpaceFormatted?: string;
 	accessible: boolean;
 	lastCheckedAt?: string | null;
@@ -138,6 +140,7 @@ export interface RootFolderFormData {
 	name: string;
 	path: string;
 	mediaType: RootFolderMediaType;
+	mediaSubType: RootFolderMediaSubType;
 	isDefault: boolean;
 	readOnly?: boolean;
 	preserveSymlinks?: boolean;

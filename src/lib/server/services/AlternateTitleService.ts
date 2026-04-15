@@ -35,11 +35,12 @@ export function cleanTitle(title: string): string {
 	// Remove special characters (quotes, apostrophes, etc.)
 	clean = clean.replace(/[''`´""]/g, '');
 
-	// Replace non-alphanumeric with space
-	clean = clean.replace(/[^\w\s]/g, ' ');
-
-	// Remove accents/diacritics
+	// Remove accents/diacritics BEFORE punctuation replacement
+	// This ensures Unicode letters like ű are properly handled
 	clean = clean.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+	// Replace non-letter/number with space while preserving non-Latin scripts
+	clean = clean.replace(/[^\p{L}\p{N}\s]/gu, ' ');
 
 	// Collapse multiple spaces and trim
 	clean = clean.replace(/\s+/g, ' ').trim();
@@ -47,9 +48,27 @@ export function cleanTitle(title: string): string {
 	return clean;
 }
 
+function pushUniqueSearchTitle(
+	titles: string[],
+	seen: Set<string>,
+	title: string | null | undefined
+): void {
+	if (!title) return;
+
+	const trimmed = title.trim();
+	if (!trimmed) return;
+
+	const normalized = cleanTitle(trimmed);
+	if (!normalized || seen.has(normalized)) return;
+
+	seen.add(normalized);
+	titles.push(trimmed);
+}
+
 /**
  * Get all search titles for a movie (primary + original + alternates)
- * Returns deduplicated list with primary title first
+ * Returns deduplicated list with primary/original title text preserved for searching.
+ * Deduplication is still done using normalized titles for stable matching.
  */
 export async function getMovieSearchTitles(movieId: string): Promise<string[]> {
 	// Get the movie's primary and original titles
@@ -60,23 +79,23 @@ export async function getMovieSearchTitles(movieId: string): Promise<string[]> {
 
 	if (!movie) return [];
 
-	const titles: string[] = [movie.title];
+	const titles: string[] = [];
+	const seen = new Set<string>();
 
-	// Add original title if different
+	// Prefer original/native title first for tracker search ordering.
 	if (movie.originalTitle && movie.originalTitle !== movie.title) {
-		titles.push(movie.originalTitle);
+		pushUniqueSearchTitle(titles, seen, movie.originalTitle);
 	}
+	pushUniqueSearchTitle(titles, seen, movie.title);
 
-	// Get alternate titles from database
+	// Get alternate titles from database, preserving their original text for searching.
 	const alternates = await db.query.alternateTitles.findMany({
 		where: and(eq(alternateTitles.mediaType, 'movie'), eq(alternateTitles.mediaId, movieId)),
 		columns: { title: true }
 	});
 
 	for (const alt of alternates) {
-		if (!titles.includes(alt.title)) {
-			titles.push(alt.title);
-		}
+		pushUniqueSearchTitle(titles, seen, alt.title);
 	}
 
 	// Limit to prevent excessive searches
@@ -85,7 +104,8 @@ export async function getMovieSearchTitles(movieId: string): Promise<string[]> {
 
 /**
  * Get all search titles for a series (primary + original + alternates)
- * Returns deduplicated list with primary title first
+ * Returns deduplicated list with primary/original title text preserved for searching.
+ * Deduplication is still done using normalized titles for stable matching.
  */
 export async function getSeriesSearchTitles(seriesId: string): Promise<string[]> {
 	// Get the series' primary and original titles
@@ -96,23 +116,23 @@ export async function getSeriesSearchTitles(seriesId: string): Promise<string[]>
 
 	if (!show) return [];
 
-	const titles: string[] = [show.title];
+	const titles: string[] = [];
+	const seen = new Set<string>();
 
-	// Add original title if different
+	// Prefer original/native title first for tracker search ordering.
 	if (show.originalTitle && show.originalTitle !== show.title) {
-		titles.push(show.originalTitle);
+		pushUniqueSearchTitle(titles, seen, show.originalTitle);
 	}
+	pushUniqueSearchTitle(titles, seen, show.title);
 
-	// Get alternate titles from database
+	// Get alternate titles from database, preserving their original text for searching.
 	const alternates = await db.query.alternateTitles.findMany({
 		where: and(eq(alternateTitles.mediaType, 'series'), eq(alternateTitles.mediaId, seriesId)),
 		columns: { title: true }
 	});
 
 	for (const alt of alternates) {
-		if (!titles.includes(alt.title)) {
-			titles.push(alt.title);
-		}
+		pushUniqueSearchTitle(titles, seen, alt.title);
 	}
 
 	// Limit to prevent excessive searches
@@ -161,16 +181,19 @@ export async function fetchAndStoreMovieAlternateTitles(
 		}
 
 		if (inserted > 0) {
-			logger.debug(`Stored ${inserted} alternate titles for movie`, { movieId, tmdbId });
+			logger.debug({ movieId, tmdbId }, `Stored ${inserted} alternate titles for movie`);
 		}
 
 		return inserted;
 	} catch (error) {
-		logger.warn('Failed to fetch movie alternate titles', {
-			movieId,
-			tmdbId,
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.warn(
+			{
+				movieId,
+				tmdbId,
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'Failed to fetch movie alternate titles'
+		);
 		return 0;
 	}
 }
@@ -217,16 +240,19 @@ export async function fetchAndStoreSeriesAlternateTitles(
 		}
 
 		if (inserted > 0) {
-			logger.debug(`Stored ${inserted} alternate titles for series`, { seriesId, tmdbId });
+			logger.debug({ seriesId, tmdbId }, `Stored ${inserted} alternate titles for series`);
 		}
 
 		return inserted;
 	} catch (error) {
-		logger.warn('Failed to fetch series alternate titles', {
-			seriesId,
-			tmdbId,
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.warn(
+			{
+				seriesId,
+				tmdbId,
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'Failed to fetch series alternate titles'
+		);
 		return 0;
 	}
 }
@@ -265,15 +291,18 @@ export async function addUserAlternateTitle(
 			})
 			.returning();
 
-		logger.info(`Added user alternate title`, { mediaType, mediaId, title });
+		logger.info({ mediaType, mediaId, title }, `Added user alternate title`);
 		return { id: inserted.id, title: inserted.title, source: inserted.source };
 	} catch (error) {
-		logger.error('Failed to add user alternate title', {
-			mediaType,
-			mediaId,
-			title,
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.error(
+			{
+				mediaType,
+				mediaId,
+				title,
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'Failed to add user alternate title'
+		);
 		throw error;
 	}
 }
@@ -316,16 +345,19 @@ export async function removeAlternateTitle(
 		}
 
 		await db.delete(alternateTitles).where(eq(alternateTitles.id, titleRecord.id));
-		logger.info(`Removed user alternate title`, { mediaType, mediaId, id: titleRecord.id });
+		logger.info({ mediaType, mediaId, id: titleRecord.id }, `Removed user alternate title`);
 		return true;
 	} catch (error) {
-		logger.error('Failed to remove alternate title', {
-			mediaType,
-			mediaId,
-			id,
-			title,
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.error(
+			{
+				mediaType,
+				mediaId,
+				id,
+				title,
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'Failed to remove alternate title'
+		);
 		return false;
 	}
 }

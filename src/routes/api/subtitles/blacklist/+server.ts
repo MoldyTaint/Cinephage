@@ -5,6 +5,7 @@ import { db } from '$lib/server/db';
 import { subtitleBlacklist, subtitles } from '$lib/server/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
+import { parseBody } from '$lib/server/api/validate.js';
 
 /**
  * GET /api/subtitles/blacklist
@@ -39,26 +40,7 @@ export const GET: RequestHandler = async ({ url }) => {
  * Add a subtitle to the blacklist.
  */
 export const POST: RequestHandler = async ({ request }) => {
-	let data: unknown;
-	try {
-		data = await request.json();
-	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
-	}
-
-	const result = subtitleBlacklistSchema.safeParse(data);
-
-	if (!result.success) {
-		return json(
-			{
-				error: 'Validation failed',
-				details: result.error.flatten()
-			},
-			{ status: 400 }
-		);
-	}
-
-	const validated = result.data;
+	const validated = await parseBody(request, subtitleBlacklistSchema);
 
 	// Check if already blacklisted
 	const existing = await db.query.subtitleBlacklist.findFirst({
@@ -72,37 +54,32 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ error: 'Subtitle is already blacklisted' }, { status: 409 });
 	}
 
-	try {
-		// If subtitleId is provided, get additional info
-		let language: string | undefined;
-		if (validated.subtitleId) {
-			const subtitle = await db.query.subtitles.findFirst({
-				where: eq(subtitles.id, validated.subtitleId)
-			});
-			if (subtitle) {
-				language = subtitle.language;
-			}
+	// If subtitleId is provided, get additional info
+	let language: string | undefined;
+	if (validated.subtitleId) {
+		const subtitle = await db.query.subtitles.findFirst({
+			where: eq(subtitles.id, validated.subtitleId)
+		});
+		if (subtitle) {
+			language = subtitle.language;
 		}
-
-		const [created] = await db
-			.insert(subtitleBlacklist)
-			.values({
-				id: uuidv4(),
-				providerId: validated.providerId,
-				providerSubtitleId: validated.providerSubtitleId,
-				movieId: validated.movieId ?? null,
-				episodeId: validated.episodeId ?? null,
-				language: language ?? 'unknown',
-				reason: validated.reason,
-				createdAt: new Date().toISOString()
-			})
-			.returning();
-
-		return json({ success: true, blacklist: created });
-	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Unknown error';
-		return json({ error: message }, { status: 500 });
 	}
+
+	const [created] = await db
+		.insert(subtitleBlacklist)
+		.values({
+			id: uuidv4(),
+			providerId: validated.providerId,
+			providerSubtitleId: validated.providerSubtitleId,
+			movieId: validated.movieId ?? null,
+			episodeId: validated.episodeId ?? null,
+			language: language ?? 'unknown',
+			reason: validated.reason,
+			createdAt: new Date().toISOString()
+		})
+		.returning();
+
+	return json({ success: true, blacklist: created });
 };
 
 /**

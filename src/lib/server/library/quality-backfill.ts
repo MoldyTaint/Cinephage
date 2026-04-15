@@ -9,7 +9,9 @@ import { db } from '$lib/server/db/index.js';
 import { episodeFiles, movieFiles } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'scans' as const });
 
 const parser = new ReleaseParser();
 
@@ -130,7 +132,7 @@ export async function backfillMissingQuality(): Promise<BackfillResult> {
 			})
 			.from(episodeFiles);
 
-		logger.info('[QualityBackfill] Processing episode files', { count: allEpisodeFiles.length });
+		logger.info({ count: allEpisodeFiles.length }, '[QualityBackfill] Processing episode files');
 
 		for (const file of allEpisodeFiles) {
 			try {
@@ -162,10 +164,13 @@ export async function backfillMissingQuality(): Promise<BackfillResult> {
 			} catch (err) {
 				const errorMsg = `Failed to update episode file ${file.id}: ${err instanceof Error ? err.message : String(err)}`;
 				result.errors.push(errorMsg);
-				logger.error('[QualityBackfill] Episode file update failed', undefined, {
-					fileId: file.id,
-					errorMsg
-				});
+				logger.error(
+					{
+						fileId: file.id,
+						errorMsg
+					},
+					'[QualityBackfill] Episode file update failed'
+				);
 			}
 		}
 	} catch (err) {
@@ -187,7 +192,7 @@ export async function backfillMissingQuality(): Promise<BackfillResult> {
 			})
 			.from(movieFiles);
 
-		logger.info('[QualityBackfill] Processing movie files', { count: allMovieFiles.length });
+		logger.info({ count: allMovieFiles.length }, '[QualityBackfill] Processing movie files');
 
 		for (const file of allMovieFiles) {
 			try {
@@ -219,10 +224,13 @@ export async function backfillMissingQuality(): Promise<BackfillResult> {
 			} catch (err) {
 				const errorMsg = `Failed to update movie file ${file.id}: ${err instanceof Error ? err.message : String(err)}`;
 				result.errors.push(errorMsg);
-				logger.error('[QualityBackfill] Movie file update failed', undefined, {
-					fileId: file.id,
-					errorMsg
-				});
+				logger.error(
+					{
+						fileId: file.id,
+						errorMsg
+					},
+					'[QualityBackfill] Movie file update failed'
+				);
 			}
 		}
 	} catch (err) {
@@ -234,6 +242,6 @@ export async function backfillMissingQuality(): Promise<BackfillResult> {
 		);
 	}
 
-	logger.info('[QualityBackfill] Complete', { ...result });
+	logger.info({ ...result }, '[QualityBackfill] Complete');
 	return result;
 }

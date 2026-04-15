@@ -55,10 +55,13 @@ export class DefinitionLoader {
 
 		this.loaded = true;
 
-		log.info('Loaded all definitions', {
-			total: this.definitions.size,
-			errors: this.errors.length
-		});
+		log.info(
+			{
+				total: this.definitions.size,
+				errors: this.errors.length
+			},
+			'Loaded all definitions'
+		);
 	}
 
 	/**
@@ -66,7 +69,7 @@ export class DefinitionLoader {
 	 */
 	private async loadYamlDefinitions(): Promise<void> {
 		if (!fs.existsSync(this.yamlPath)) {
-			log.warn('YAML definitions directory not found', { path: this.yamlPath });
+			log.warn({ path: this.yamlPath }, 'YAML definitions directory not found');
 			return;
 		}
 
@@ -111,13 +114,13 @@ export class DefinitionLoader {
 
 			// Skip duplicates (first definition loaded wins)
 			if (this.definitions.has(yamlDef.id)) {
-				log.debug('Skipping duplicate YAML definition', { id: yamlDef.id });
+				log.debug({ id: yamlDef.id }, 'Skipping duplicate YAML definition');
 				return;
 			}
 
 			const unified = this.convertYamlDefinition(yamlDef, filePath);
 			this.definitions.set(unified.id, unified);
-			log.debug('Loaded YAML definition', { id: unified.id, path: filePath });
+			log.debug({ id: unified.id, path: filePath }, 'Loaded YAML definition');
 		} catch (error) {
 			const msg = error instanceof Error ? error.message : String(error);
 			this.errors.push({ source: filePath, error: msg });

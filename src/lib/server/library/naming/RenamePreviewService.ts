@@ -17,12 +17,15 @@ import {
 } from '$lib/server/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { extname, join, dirname, basename } from 'path';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'scans' as const });
 import { NamingService, type MediaNamingInfo } from './NamingService';
 import { namingSettingsService } from './NamingSettingsService';
 import { moveFile, fileExists } from '$lib/server/downloadClients/import/FileTransfer';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
 import { rename } from 'node:fs/promises';
+import { chooseBestParsedRelease } from './preview-metadata';
 
 /**
  * Status of a rename preview item
@@ -158,9 +161,13 @@ export class RenamePreviewService {
 		source?: string;
 		codec?: string;
 		hdr?: string;
+		bitDepth?: string;
 		audioCodec?: string;
 		audioChannels?: string;
 		releaseGroup?: string;
+		edition?: string;
+		proper?: boolean;
+		repack?: boolean;
 	} {
 		const parser = new ReleaseParser();
 		const parsed = parser.parse(filename);
@@ -170,9 +177,13 @@ export class RenamePreviewService {
 			source: parsed.source ?? undefined,
 			codec: parsed.codec ?? undefined,
 			hdr: parsed.hdr ?? undefined,
+			bitDepth: parsed.bitDepth !== 'unknown' ? parsed.bitDepth : undefined,
 			audioCodec: parsed.audioCodec ?? undefined,
 			audioChannels: parsed.audioChannels ?? undefined,
-			releaseGroup: parsed.releaseGroup ?? undefined
+			releaseGroup: parsed.releaseGroup ?? undefined,
+			edition: parsed.edition ?? undefined,
+			proper: parsed.isProper,
+			repack: parsed.isRepack
 		};
 	}
 
@@ -453,12 +464,15 @@ export class RenamePreviewService {
 					const actualOldFolder = join(rootFolderPath, firstItem.currentParentPath);
 					const actualNewFolder = join(rootFolderPath, firstItem.newParentPath);
 
-					logger.info('[RenamePreviewService] Renaming parent folder', {
-						mediaId,
-						mediaType: firstItem.mediaType,
-						from: actualOldFolder,
-						to: actualNewFolder
-					});
+					logger.info(
+						{
+							mediaId,
+							mediaType: firstItem.mediaType,
+							from: actualOldFolder,
+							to: actualNewFolder
+						},
+						'[RenamePreviewService] Renaming parent folder'
+					);
 
 					// Verify source exists before renaming folder
 					const dirExisted = await fileExists(actualOldFolder);
@@ -491,10 +505,13 @@ export class RenamePreviewService {
 						}
 					}
 				} catch (error) {
-					logger.error('[RenamePreviewService] Failed to rename parent folder', {
-						mediaId,
-						error: error instanceof Error ? error.message : String(error)
-					});
+					logger.error(
+						{
+							mediaId,
+							error: error instanceof Error ? error.message : String(error)
+						},
+						'[RenamePreviewService] Failed to rename parent folder'
+					);
 					// If folder rename fails, we should fail all items in this group
 					for (const item of items) {
 						result.results.push({
@@ -558,11 +575,14 @@ export class RenamePreviewService {
 			// Check if the file is in a read-only folder
 			const isReadOnly = await this.isFileInReadOnlyFolder(item);
 			if (isReadOnly) {
-				logger.warn('[RenamePreviewService] Cannot rename file in read-only folder', {
-					fileId: item.fileId,
-					mediaType: item.mediaType,
-					path: item.currentFullPath
-				});
+				logger.warn(
+					{
+						fileId: item.fileId,
+						mediaType: item.mediaType,
+						path: item.currentFullPath
+					},
+					'[RenamePreviewService] Cannot rename file in read-only folder'
+				);
 				return {
 					fileId: item.fileId,
 					mediaType: item.mediaType,
@@ -577,11 +597,14 @@ export class RenamePreviewService {
 			const sourceExists = await fileExists(item.currentFullPath);
 			if (!sourceExists) {
 				await this.reconcileMissingSourceRecord(item);
-				logger.warn('[RenamePreviewService] Source file not found', {
-					fileId: item.fileId,
-					mediaType: item.mediaType,
-					path: item.currentFullPath
-				});
+				logger.warn(
+					{
+						fileId: item.fileId,
+						mediaType: item.mediaType,
+						path: item.currentFullPath
+					},
+					'[RenamePreviewService] Source file not found'
+				);
 				return {
 					fileId: item.fileId,
 					mediaType: item.mediaType,
@@ -595,12 +618,15 @@ export class RenamePreviewService {
 			// Check if destination already exists (collision check)
 			const destExists = await fileExists(item.newFullPath);
 			if (destExists && item.currentFullPath !== item.newFullPath) {
-				logger.warn('[RenamePreviewService] Destination file already exists', {
-					fileId: item.fileId,
-					mediaType: item.mediaType,
-					currentPath: item.currentFullPath,
-					newPath: item.newFullPath
-				});
+				logger.warn(
+					{
+						fileId: item.fileId,
+						mediaType: item.mediaType,
+						currentPath: item.currentFullPath,
+						newPath: item.newFullPath
+					},
+					'[RenamePreviewService] Destination file already exists'
+				);
 				return {
 					fileId: item.fileId,
 					mediaType: item.mediaType,
@@ -615,13 +641,16 @@ export class RenamePreviewService {
 			const moveResult = await moveFile(item.currentFullPath, item.newFullPath);
 
 			if (!moveResult.success) {
-				logger.warn('[RenamePreviewService] Move operation failed', {
-					fileId: item.fileId,
-					mediaType: item.mediaType,
-					from: item.currentFullPath,
-					to: item.newFullPath,
-					error: moveResult.error
-				});
+				logger.warn(
+					{
+						fileId: item.fileId,
+						mediaType: item.mediaType,
+						from: item.currentFullPath,
+						to: item.newFullPath,
+						error: moveResult.error
+					},
+					'[RenamePreviewService] Move operation failed'
+				);
 				return {
 					fileId: item.fileId,
 					mediaType: item.mediaType,
@@ -645,12 +674,15 @@ export class RenamePreviewService {
 					.run();
 			}
 
-			logger.info('[RenamePreviewService] File renamed successfully', {
-				fileId: item.fileId,
-				mediaType: item.mediaType,
-				from: item.currentRelativePath,
-				to: item.newRelativePath
-			});
+			logger.info(
+				{
+					fileId: item.fileId,
+					mediaType: item.mediaType,
+					from: item.currentRelativePath,
+					to: item.newRelativePath
+				},
+				'[RenamePreviewService] File renamed successfully'
+			);
 
 			return {
 				fileId: item.fileId,
@@ -660,10 +692,13 @@ export class RenamePreviewService {
 				newPath: item.newFullPath
 			};
 		} catch (error) {
-			logger.error('[RenamePreviewService] Failed to rename file', {
-				fileId: item.fileId,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.error(
+				{
+					fileId: item.fileId,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[RenamePreviewService] Failed to rename file'
+			);
 
 			return {
 				fileId: item.fileId,
@@ -842,7 +877,12 @@ export class RenamePreviewService {
 
 	private async recalculateSeriesEpisodeCounts(seriesId: string): Promise<void> {
 		const allEpisodes = db.select().from(episodes).where(eq(episodes.seriesId, seriesId)).all();
-		const regularEpisodes = allEpisodes.filter((episode) => episode.seasonNumber !== 0);
+
+		const today = new Date().toISOString().split('T')[0];
+		const isAired = (ep: typeof episodes.$inferSelect) =>
+			Boolean(ep.airDate && ep.airDate !== '' && ep.airDate <= today);
+
+		const regularEpisodes = allEpisodes.filter((e) => e.seasonNumber !== 0 && isAired(e));
 		const regularEpisodesWithFiles = regularEpisodes.filter((episode) => episode.hasFile);
 
 		db.update(series)
@@ -855,6 +895,7 @@ export class RenamePreviewService {
 
 		const seasonCounts = new Map<number, { total: number; withFiles: number }>();
 		for (const episode of allEpisodes) {
+			if (!isAired(episode)) continue;
 			const existing = seasonCounts.get(episode.seasonNumber) ?? { total: 0, withFiles: 0 };
 			existing.total += 1;
 			if (episode.hasFile) {
@@ -889,8 +930,14 @@ export class RenamePreviewService {
 			// Parse for quality info - prefer sceneName (original release name) over current filename
 			// The sceneName contains the original release info (e.g., "Movie.2024.1080p.BluRay.x264-GROUP")
 			// while relativePath may have been renamed and lost metadata (e.g., "Movie (2024) [BluRay-1080p].mkv")
-			const parseSource = file.sceneName || currentFileName;
-			const parsedFromFilename = this.parseFilenameForQuality(parseSource);
+			const parsedFromFilename = this.parseFilenameForQuality(
+				chooseBestParsedRelease({
+					sceneName: file.sceneName,
+					currentFileName,
+					actualTitle: movie.title,
+					actualYear: movie.year ?? undefined
+				}).value
+			);
 
 			// Build MediaNamingInfo with the following priority:
 			//
@@ -911,14 +958,14 @@ export class RenamePreviewService {
 				year: movie.year ?? undefined,
 				tmdbId: movie.tmdbId,
 				imdbId: movie.imdbId ?? undefined,
-				edition: file.edition ?? undefined,
+				edition: file.edition ?? parsedFromFilename.edition ?? undefined,
 
 				// Video info: prefer release parsing, fall back to filename, then mediaInfo
 				resolution: file.quality?.resolution ?? parsedFromFilename.resolution,
 				source: file.quality?.source ?? parsedFromFilename.source,
 				codec: file.quality?.codec ?? parsedFromFilename.codec ?? file.mediaInfo?.videoCodec,
 				hdr: file.quality?.hdr ?? parsedFromFilename.hdr ?? file.mediaInfo?.videoHdrFormat,
-				bitDepth: file.mediaInfo?.videoBitDepth?.toString(),
+				bitDepth: file.mediaInfo?.videoBitDepth?.toString() ?? parsedFromFilename.bitDepth,
 
 				// Audio info: prefer mediaInfo (actual file scan) over filename parsing
 				// This ensures renamed files reflect the true audio codec, not mislabeled release names
@@ -928,6 +975,8 @@ export class RenamePreviewService {
 				audioLanguages: file.mediaInfo?.audioLanguages,
 
 				releaseGroup: file.releaseGroup ?? parsedFromFilename.releaseGroup,
+				proper: parsedFromFilename.proper,
+				repack: parsedFromFilename.repack,
 				originalExtension: extname(file.relativePath)
 			};
 
@@ -991,8 +1040,14 @@ export class RenamePreviewService {
 			// Parse for quality info - prefer sceneName (original release name) over current filename
 			// The sceneName contains the original release info (e.g., "Show.S01E01.1080p.WEB-DL.x264-GROUP")
 			// while relativePath may have been renamed and lost metadata
-			const parseSource = file.sceneName || currentFileName;
-			const parsedFromFilename = this.parseFilenameForQuality(parseSource);
+			const parsedFromFilename = this.parseFilenameForQuality(
+				chooseBestParsedRelease({
+					sceneName: file.sceneName,
+					currentFileName,
+					actualTitle: show.title,
+					actualYear: show.year ?? undefined
+				}).value
+			);
 
 			// Get episode info from the file's episode IDs
 			const episodeIds = file.episodeIds || [];
@@ -1041,13 +1096,14 @@ export class RenamePreviewService {
 				airDate: firstEpisode.airDate ?? undefined,
 				isAnime,
 				isDaily,
+				edition: file.edition ?? parsedFromFilename.edition ?? undefined,
 
 				// Video info: prefer release parsing, fall back to filename, then mediaInfo
 				resolution: file.quality?.resolution ?? parsedFromFilename.resolution,
 				source: file.quality?.source ?? parsedFromFilename.source,
 				codec: file.quality?.codec ?? parsedFromFilename.codec ?? file.mediaInfo?.videoCodec,
 				hdr: file.quality?.hdr ?? parsedFromFilename.hdr ?? file.mediaInfo?.videoHdrFormat,
-				bitDepth: file.mediaInfo?.videoBitDepth?.toString(),
+				bitDepth: file.mediaInfo?.videoBitDepth?.toString() ?? parsedFromFilename.bitDepth,
 
 				// Audio info: prefer mediaInfo (actual file scan) over filename parsing
 				// This ensures renamed files reflect the true audio codec, not mislabeled release names
@@ -1056,6 +1112,8 @@ export class RenamePreviewService {
 					formatAudioChannels(file.mediaInfo?.audioChannels) ?? parsedFromFilename.audioChannels,
 				audioLanguages: file.mediaInfo?.audioLanguages,
 				releaseGroup: file.releaseGroup ?? parsedFromFilename.releaseGroup,
+				proper: parsedFromFilename.proper,
+				repack: parsedFromFilename.repack,
 				originalExtension: extname(file.relativePath)
 			};
 

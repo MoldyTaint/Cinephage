@@ -34,7 +34,7 @@ export const load: PageServerLoad = async ({ params }) => {
 
 		return { person };
 	} catch (e) {
-		logger.error('Failed to fetch person', e, { personId: id });
+		logger.error({ err: e, ...{ personId: id } }, 'Failed to fetch person');
 		throw error(404, 'Person not found');
 	}
 };

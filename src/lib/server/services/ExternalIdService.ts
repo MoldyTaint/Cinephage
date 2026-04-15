@@ -37,7 +37,7 @@ const DEFAULT_CONFIG: ExternalIdServiceConfig = {
 	intervalHours: 6,
 	batchSize: 50,
 	apiDelayMs: 250,
-	runOnStartup: true
+	runOnStartup: process.env.EXTERNAL_ID_RUN_ON_STARTUP !== 'false'
 };
 
 /**
@@ -103,14 +103,14 @@ export class ExternalIdService implements BackgroundService {
 		}
 
 		this._status = 'starting';
-		logger.info(`[${this.name}] Starting...`, { config: this.config });
+		logger.info({ config: this.config }, `[${this.name}] Starting...`);
 
 		// Use setImmediate to not block
 		setImmediate(() => {
 			this.initialize().catch((err) => {
 				this._error = err instanceof Error ? err : new Error(String(err));
 				this._status = 'error';
-				logger.error(`[${this.name}] Failed to initialize`, this._error);
+				logger.error({ err: this._error }, `[${this.name}] Failed to initialize`);
 			});
 		});
 	}
@@ -138,7 +138,7 @@ export class ExternalIdService implements BackgroundService {
 		const intervalMs = this.config.intervalHours * 60 * 60 * 1000;
 		this.intervalTimer = setInterval(() => {
 			this.runRefresh().catch((err) => {
-				logger.error(`[${this.name}] Scheduled refresh failed`, err);
+				logger.error({ err }, `[${this.name}] Scheduled refresh failed`);
 			});
 		}, intervalMs);
 
@@ -150,7 +150,7 @@ export class ExternalIdService implements BackgroundService {
 			// Small delay to let other services start
 			setTimeout(() => {
 				this.runRefresh().catch((err) => {
-					logger.error(`[${this.name}] Startup refresh failed`, err);
+					logger.error({ err }, `[${this.name}] Startup refresh failed`);
 				});
 			}, 5000);
 		}
@@ -239,20 +239,23 @@ export class ExternalIdService implements BackgroundService {
 			this.lastRunTime = new Date();
 			this.lastRunSummary = summary;
 
-			logger.info(`[${this.name}] Refresh complete`, {
-				moviesProcessed: summary.moviesProcessed,
-				moviesUpdated: summary.moviesUpdated,
-				seriesProcessed: summary.seriesProcessed,
-				seriesUpdated: summary.seriesUpdated,
-				errors: summary.errors,
-				durationMs: summary.duration
-			});
+			logger.info(
+				{
+					moviesProcessed: summary.moviesProcessed,
+					moviesUpdated: summary.moviesUpdated,
+					seriesProcessed: summary.seriesProcessed,
+					seriesUpdated: summary.seriesUpdated,
+					errors: summary.errors,
+					durationMs: summary.duration
+				},
+				`[${this.name}] Refresh complete`
+			);
 
 			return summary;
 		} catch (error) {
 			summary.errors++;
 			summary.duration = Date.now() - startTime;
-			logger.error(`[${this.name}] Refresh failed`, error);
+			logger.error({ err: error }, `[${this.name}] Refresh failed`);
 			throw error;
 		} finally {
 			this.isRunning = false;
@@ -312,11 +315,14 @@ export class ExternalIdService implements BackgroundService {
 				const { eq } = await import('drizzle-orm');
 				await db.update(movies).set({ imdbId: externalIds.imdb_id }).where(eq(movies.id, movie.id));
 
-				logger.debug(`[${this.name}] Updated movie external IDs`, {
-					id: movie.id,
-					title: movie.title,
-					imdbId: externalIds.imdb_id
-				});
+				logger.debug(
+					{
+						id: movie.id,
+						title: movie.title,
+						imdbId: externalIds.imdb_id
+					},
+					`[${this.name}] Updated movie external IDs`
+				);
 			}
 
 			return {
@@ -329,11 +335,14 @@ export class ExternalIdService implements BackgroundService {
 				success: true
 			};
 		} catch (error) {
-			logger.warn(`[${this.name}] Failed to fetch external IDs for movie`, {
-				id: movie.id,
-				title: movie.title,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					id: movie.id,
+					title: movie.title,
+					err: error
+				},
+				`[${this.name}] Failed to fetch external IDs for movie`
+			);
 
 			return {
 				id: movie.id,
@@ -413,12 +422,15 @@ export class ExternalIdService implements BackgroundService {
 				const { eq } = await import('drizzle-orm');
 				await db.update(series).set(updateData).where(eq(series.id, show.id));
 
-				logger.debug(`[${this.name}] Updated series external IDs`, {
-					id: show.id,
-					title: show.title,
-					imdbId: updateData.imdbId,
-					tvdbId: updateData.tvdbId
-				});
+				logger.debug(
+					{
+						id: show.id,
+						title: show.title,
+						imdbId: updateData.imdbId,
+						tvdbId: updateData.tvdbId
+					},
+					`[${this.name}] Updated series external IDs`
+				);
 			}
 
 			return {
@@ -431,11 +443,14 @@ export class ExternalIdService implements BackgroundService {
 				success: true
 			};
 		} catch (error) {
-			logger.warn(`[${this.name}] Failed to fetch external IDs for series`, {
-				id: show.id,
-				title: show.title,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					id: show.id,
+					title: show.title,
+					err: error
+				},
+				`[${this.name}] Failed to fetch external IDs for series`
+			);
 
 			return {
 				id: show.id,
@@ -505,19 +520,25 @@ export async function ensureExternalIds(
 			if (externalIds.imdb_id) {
 				await db.update(movies).set({ imdbId: externalIds.imdb_id }).where(eq(movies.id, id));
 
-				logger.info('[ExternalIdService] On-demand fetch: updated movie external ID', {
-					id,
-					imdbId: externalIds.imdb_id
-				});
+				logger.info(
+					{
+						id,
+						imdbId: externalIds.imdb_id
+					},
+					'[ExternalIdService] On-demand fetch: updated movie external ID'
+				);
 			}
 
 			return { imdbId: externalIds.imdb_id, tvdbId: null };
 		} catch (error) {
-			logger.warn('[ExternalIdService] On-demand fetch failed for movie', {
-				id,
-				tmdbId,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					id,
+					tmdbId,
+					err: error
+				},
+				'[ExternalIdService] On-demand fetch failed for movie'
+			);
 			return { imdbId: null, tvdbId: null };
 		}
 	} else {
@@ -547,10 +568,13 @@ export async function ensureExternalIds(
 			if (Object.keys(updateData).length > 0) {
 				await db.update(series).set(updateData).where(eq(series.id, id));
 
-				logger.info('[ExternalIdService] On-demand fetch: updated series external IDs', {
-					id,
-					...updateData
-				});
+				logger.info(
+					{
+						id,
+						...updateData
+					},
+					'[ExternalIdService] On-demand fetch: updated series external IDs'
+				);
 			}
 
 			return {
@@ -558,11 +582,14 @@ export async function ensureExternalIds(
 				tvdbId: externalIds.tvdb_id ?? show?.tvdbId ?? null
 			};
 		} catch (error) {
-			logger.warn('[ExternalIdService] On-demand fetch failed for series', {
-				id,
-				tmdbId,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					id,
+					tmdbId,
+					err: error
+				},
+				'[ExternalIdService] On-demand fetch failed for series'
+			);
 			return {
 				imdbId: show?.imdbId ?? null,
 				tvdbId: show?.tvdbId ?? null

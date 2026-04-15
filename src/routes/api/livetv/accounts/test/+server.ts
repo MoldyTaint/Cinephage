@@ -8,6 +8,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getProvider } from '$lib/server/livetv/providers';
 import { logger } from '$lib/logging';
+import { toFriendlyLiveTvTestError } from '$lib/livetv/errorMessages';
 import { z } from 'zod';
 import { ValidationError } from '$lib/errors';
 import type { LiveTvAccount } from '$lib/types/livetv';
@@ -34,7 +35,8 @@ const liveTvAccountTestSchema = z.object({
 		.object({
 			baseUrl: z.string().url('Please enter a valid server URL'),
 			username: z.string().min(1, 'Username is required'),
-			password: z.string().min(1, 'Password is required')
+			password: z.string().min(1, 'Password is required'),
+			epgUrl: z.string().url().optional()
 		})
 		.optional(),
 	// M3U-specific config
@@ -119,8 +121,14 @@ function getFriendlyValidationMessage(error: ValidationError): string {
  * Useful for validating credentials before creating an account
  */
 export const POST: RequestHandler = async ({ request }) => {
+	let providerType: LiveTvAccount['providerType'] | undefined;
+
 	try {
 		const body = await request.json();
+		providerType =
+			typeof body === 'object' && body && 'providerType' in body
+				? ((body as { providerType?: LiveTvAccount['providerType'] }).providerType ?? undefined)
+				: undefined;
 
 		// Validate input
 		const parsed = liveTvAccountTestSchema.safeParse(body);
@@ -161,7 +169,13 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		// Get provider and test
 		const provider = getProvider(parsed.data.providerType);
-		const result = await provider.testConnection(tempAccount);
+		const providerResult = await provider.testConnection(tempAccount);
+		const result = providerResult.success
+			? providerResult
+			: {
+					...providerResult,
+					error: toFriendlyLiveTvTestError(providerResult.error, parsed.data.providerType)
+				};
 
 		return json({
 			success: true,
@@ -170,10 +184,13 @@ export const POST: RequestHandler = async ({ request }) => {
 	} catch (error) {
 		// Validation errors
 		if (error instanceof ValidationError) {
-			logger.warn('[API] Live TV account test rejected due to invalid input', {
-				code: error.code,
-				statusCode: error.statusCode
-			});
+			logger.warn(
+				{
+					code: error.code,
+					statusCode: error.statusCode
+				},
+				'[API] Live TV account test rejected due to invalid input'
+			);
 
 			return json(
 				{
@@ -194,7 +211,10 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json(
 			{
 				success: false,
-				error: error instanceof Error ? error.message : 'Failed to test account configuration'
+				error: toFriendlyLiveTvTestError(
+					error instanceof Error ? error.message : 'Failed to test account configuration',
+					providerType
+				)
 			},
 			{ status: 500 }
 		);

@@ -2,7 +2,9 @@ import { drizzle } from 'drizzle-orm/better-sqlite3';
 import Database from 'better-sqlite3';
 import { existsSync, mkdirSync } from 'node:fs';
 import * as schema from './schema';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'system' as const });
 import { syncSchema } from './schema-sync';
 
 // Ensure data directory exists before creating database connection
@@ -20,9 +22,12 @@ try {
 	sqlite.pragma('busy_timeout = 5000');
 	sqlite.pragma('foreign_keys = ON');
 } catch (error) {
-	logger.warn('Failed to apply SQLite pragmas', {
-		error: error instanceof Error ? error.message : String(error)
-	});
+	logger.warn(
+		{
+			err: error
+		},
+		'Failed to apply SQLite pragmas'
+	);
 }
 
 export const db = drizzle(sqlite, { schema });
@@ -55,7 +60,7 @@ export async function initializeDatabase(): Promise<void> {
 		initialized = true;
 		logger.info('Database initialization complete');
 	} catch (error) {
-		logger.error('Database initialization failed', error);
+		logger.error({ err: error }, 'Database initialization failed');
 		throw error;
 	}
 }

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { ArrowLeft, Loader2, Film, Tv, Save } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 	import { onMount } from 'svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import type { SmartListRecord, SmartListFilters } from '$lib/server/db/schema.js';
@@ -448,7 +449,7 @@
 	<div class="mb-6">
 		<button class="btn gap-1 btn-ghost btn-sm" onclick={handleCancel}>
 			<ArrowLeft class="h-4 w-4" />
-			Back to Smart Lists
+			{m.smartlists_editor_backToSmartLists()}
 		</button>
 	</div>
 
@@ -463,7 +464,7 @@
 				<input
 					type="text"
 					bind:value={name}
-					placeholder="Smart List Name"
+					placeholder={m.smartlists_editor_namePlaceholder()}
 					class="input w-full input-ghost px-0 text-xl font-bold focus:bg-base-200 sm:text-2xl"
 				/>
 			</div>
@@ -479,14 +480,14 @@
 					onclick={() => handleMediaTypeChange('movie')}
 				>
 					<Film class="h-4 w-4" />
-					Movies
+					{m.common_movies()}
 				</button>
 				<button
 					class="btn join-item flex-1 btn-sm sm:flex-none {mediaType === 'tv' ? 'btn-active' : ''}"
 					onclick={() => handleMediaTypeChange('tv')}
 				>
 					<Tv class="h-4 w-4" />
-					TV Shows
+					{m.common_tvShows()}
 				</button>
 			</div>
 
@@ -500,7 +501,7 @@
 				{:else}
 					<Save class="h-4 w-4" />
 				{/if}
-				{isEditMode ? 'Save Changes' : 'Create List'}
+				{isEditMode ? m.smartlists_editor_saveChanges() : m.smartlists_editor_createList()}
 			</button>
 		</div>
 	</div>
@@ -514,7 +515,7 @@
 				<textarea
 					id="smartlist-description"
 					bind:value={description}
-					placeholder="Description (optional)"
+					placeholder={m.smartlists_editor_descriptionPlaceholder()}
 					class="textarea h-20 w-full resize-none textarea-sm"
 					maxlength={maxDescriptionLength}
 				></textarea>

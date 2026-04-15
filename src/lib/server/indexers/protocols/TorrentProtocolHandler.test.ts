@@ -1,7 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import { TorrentProtocolHandler } from './TorrentProtocolHandler';
 import type { EnhancedReleaseResult } from '../types/release';
+import type { ParsedRelease } from '../types/release';
 import type { ProtocolContext } from './IProtocolHandler';
+
+const STUB_PARSED: ParsedRelease = {
+	originalTitle: 'Test.Release.2025.1080p.WEB-DL.x264-GROUP',
+	cleanTitle: 'Test Release',
+	resolution: '1080p',
+	source: 'webdl',
+	codec: 'h264',
+	hdr: null,
+	bitDepth: '8',
+	audioCodec: 'aac',
+	audioChannels: '5.1',
+	hasAtmos: false,
+	languages: [],
+	isProper: false,
+	isRepack: false,
+	isRemux: false,
+	is3d: false,
+	hasHardcodedSubs: false,
+	confidence: 1
+};
 
 function createResult(overrides: Partial<EnhancedReleaseResult> = {}): EnhancedReleaseResult {
 	return {
@@ -14,10 +35,8 @@ function createResult(overrides: Partial<EnhancedReleaseResult> = {}): EnhancedR
 		indexerName: 'Indexer One',
 		protocol: 'torrent',
 		categories: [],
-		parsed: {} as any,
-		quality: {} as any,
+		parsed: STUB_PARSED,
 		totalScore: 100,
-		scoreComponents: {} as any,
 		rejected: false,
 		...overrides
 	};

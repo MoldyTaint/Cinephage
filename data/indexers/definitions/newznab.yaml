@@ -9,12 +9,13 @@ protocol: usenet
 requestdelay: 0.2
 
 links:
-  - http://localhost
+  - http://localhost/api
 
 settings:
   - name: apikey
     type: password
     label: API Key
+    required: false
 
 caps:
   modes:

@@ -20,6 +20,15 @@ import { deleteDirectoryWithinRoot } from '$lib/server/filesystem/delete-helpers
 import { logger } from '$lib/logging';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import { tmdb } from '$lib/server/tmdb.js';
+import { movieUpdateSchema } from '$lib/validation/schemas';
+import { parseBody } from '$lib/server/api/validate.js';
+import {
+	validateRootFolder,
+	getAnimeSubtypeEnforcement
+} from '$lib/server/library/LibraryAddService.js';
+import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
+import { mediaMoveService } from '$lib/server/library/MediaMoveService.js';
+import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 
 /**
  * GET /api/library/movies/[id]
@@ -64,11 +73,14 @@ export const GET: RequestHandler = async ({ params }) => {
 			db.select().from(subtitles).where(eq(subtitles.movieId, movie.id)),
 			getLanguageProfileService().getMovieSubtitleStatus(movie.id),
 			tmdb.getMovieReleaseInfo(movie.tmdbId).catch((err) => {
-				logger.warn('[API] Failed to fetch movie release info', {
-					movieId: movie.id,
-					tmdbId: movie.tmdbId,
-					error: err instanceof Error ? err.message : String(err)
-				});
+				logger.warn(
+					{
+						movieId: movie.id,
+						tmdbId: movie.tmdbId,
+						error: err instanceof Error ? err.message : String(err)
+					},
+					'[API] Failed to fetch movie release info'
+				);
 				return null;
 			})
 		]);
@@ -100,7 +112,10 @@ export const GET: RequestHandler = async ({ params }) => {
 					isHearingImpaired: s.isHearingImpaired,
 					format: s.format,
 					matchScore: s.matchScore,
-					dateAdded: s.dateAdded
+					providerId: s.providerId,
+					dateAdded: s.dateAdded,
+					wasSynced: s.wasSynced,
+					syncOffset: s.syncOffset
 				})),
 				subtitleStatus: {
 					satisfied: subtitleStatus.satisfied,
@@ -126,92 +141,194 @@ export const GET: RequestHandler = async ({ params }) => {
  * Update movie settings (monitored, quality profile, etc.)
  */
 export const PATCH: RequestHandler = async ({ params, request }) => {
-	try {
-		const body = await request.json();
-		const {
-			monitored,
-			scoringProfileId,
-			minimumAvailability,
-			rootFolderId,
-			wantsSubtitles,
-			languageProfileId
-		} = body;
+	const body = await parseBody(request, movieUpdateSchema);
+	const {
+		monitored,
+		scoringProfileId,
+		minimumAvailability,
+		rootFolderId,
+		moveFilesOnRootChange,
+		wantsSubtitles,
+		languageProfileId
+	} = body;
 
-		// Capture current state before update (for subtitle trigger detection)
-		const [currentMovie] = await db
-			.select({
-				wantsSubtitles: movies.wantsSubtitles,
-				languageProfileId: movies.languageProfileId,
-				hasFile: movies.hasFile
-			})
-			.from(movies)
-			.where(eq(movies.id, params.id));
+	// Capture current state before update (for subtitle trigger detection)
+	const [currentMovie] = await db
+		.select({
+			tmdbId: movies.tmdbId,
+			title: movies.title,
+			path: movies.path,
+			rootFolderId: movies.rootFolderId,
+			wantsSubtitles: movies.wantsSubtitles,
+			languageProfileId: movies.languageProfileId,
+			hasFile: movies.hasFile
+		})
+		.from(movies)
+		.where(eq(movies.id, params.id));
 
-		const updateData: Record<string, unknown> = {};
+	const updateData: Record<string, unknown> = {};
+	let moveRequest:
+		| {
+				mediaId: string;
+				mediaTitle: string;
+				relativePath: string;
+				sourceRootFolderId: string;
+				destinationRootFolderId: string;
+		  }
+		| undefined;
 
-		if (typeof monitored === 'boolean') {
-			updateData.monitored = monitored;
-		}
-		if (scoringProfileId !== undefined) {
-			updateData.scoringProfileId = scoringProfileId;
-		}
-		if (minimumAvailability) {
-			updateData.minimumAvailability = minimumAvailability;
-		}
-		if (rootFolderId !== undefined) {
-			updateData.rootFolderId = rootFolderId;
-		}
-		if (typeof wantsSubtitles === 'boolean') {
-			updateData.wantsSubtitles = wantsSubtitles;
-		}
-		if (languageProfileId !== undefined) {
-			updateData.languageProfileId = languageProfileId;
+	if (typeof monitored === 'boolean') {
+		updateData.monitored = monitored;
+	}
+	if (scoringProfileId !== undefined) {
+		updateData.scoringProfileId = scoringProfileId;
+	}
+	if (minimumAvailability) {
+		updateData.minimumAvailability = minimumAvailability;
+	}
+	if (rootFolderId !== undefined) {
+		const nextRootFolderId = typeof rootFolderId === 'string' ? rootFolderId.trim() : '';
+		const currentRootFolderId = currentMovie?.rootFolderId ?? null;
+		if (!nextRootFolderId) {
+			return json(
+				{
+					success: false,
+					error: 'Root folder is required and cannot be unset after adding media.'
+				},
+				{ status: 400 }
+			);
 		}
 
-		if (Object.keys(updateData).length === 0) {
-			return json({ success: false, error: 'No valid fields to update' }, { status: 400 });
-		}
+		// Only validate/apply when reassignment is requested.
+		if (nextRootFolderId !== currentRootFolderId) {
+			const hasExistingFiles = currentMovie?.hasFile === true;
+			const canMoveFromCurrentRoot = Boolean(currentRootFolderId);
+			if (hasExistingFiles && canMoveFromCurrentRoot && moveFilesOnRootChange !== true) {
+				return json(
+					{
+						success: false,
+						error:
+							'This movie already has files. Enable "Move existing files to new root folder" to change its root folder.'
+					},
+					{ status: 400 }
+				);
+			}
 
-		await db.update(movies).set(updateData).where(eq(movies.id, params.id));
+			const enforceAnimeSubtype = await getAnimeSubtypeEnforcement();
+			let isAnimeMedia = false;
+			if (enforceAnimeSubtype && currentMovie) {
+				const movieDetails = await tmdb.getMovie(currentMovie.tmdbId);
+				isAnimeMedia = isLikelyAnimeMedia({
+					genres: movieDetails.genres,
+					originalLanguage: movieDetails.original_language,
+					originCountries: movieDetails.production_countries?.map((country) => country.iso_3166_1),
+					productionCountries: movieDetails.production_countries,
+					title: movieDetails.title,
+					originalTitle: movieDetails.original_title
+				});
+			}
 
-		// Check if subtitle monitoring was just enabled
-		if (currentMovie?.hasFile) {
-			const wasEnabled = currentMovie.wantsSubtitles === true && currentMovie.languageProfileId;
-			const newWantsSubtitles = wantsSubtitles ?? currentMovie.wantsSubtitles;
-			const newProfileId = languageProfileId ?? currentMovie.languageProfileId;
-			const isNowEnabled = newWantsSubtitles === true && newProfileId;
+			await validateRootFolder(nextRootFolderId, 'movie', {
+				enforceAnimeSubtype,
+				isAnimeMedia,
+				mediaTitle: currentMovie?.title
+			});
 
-			// Trigger subtitle search if just enabled (wasn't before, is now)
-			if (!wasEnabled && isNowEnabled) {
-				const settings = await monitoringScheduler.getSettings();
-				if (settings.subtitleSearchOnImportEnabled) {
-					logger.info('[API] Subtitle monitoring enabled for movie, triggering search', {
-						movieId: params.id
-					});
-					// Fire-and-forget: don't await
-					searchSubtitlesForNewMedia('movie', params.id).catch((err) => {
-						logger.warn('[API] Background subtitle search failed', {
-							movieId: params.id,
-							error: err instanceof Error ? err.message : String(err)
-						});
-					});
-				}
+			const shouldMoveFiles =
+				moveFilesOnRootChange === true &&
+				currentMovie?.hasFile === true &&
+				currentMovie?.path &&
+				canMoveFromCurrentRoot;
+			if (shouldMoveFiles && currentRootFolderId && currentMovie?.path) {
+				moveRequest = {
+					mediaId: params.id,
+					mediaTitle: currentMovie.title,
+					relativePath: currentMovie.path,
+					sourceRootFolderId: currentRootFolderId,
+					destinationRootFolderId: nextRootFolderId
+				};
+			} else {
+				// Recovery path: if files exist but current root folder is missing, re-link directly.
+				const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
+					nextRootFolderId,
+					'movie'
+				);
+				updateData.rootFolderId = nextRootFolderId;
+				updateData.libraryId = owningLibrary.id;
 			}
 		}
-
-		libraryMediaEvents.emitMovieUpdated(params.id);
-
-		return json({ success: true });
-	} catch (error) {
-		logger.error('[API] Error updating movie', error instanceof Error ? error : undefined);
-		return json(
-			{
-				success: false,
-				error: error instanceof Error ? error.message : 'Failed to update movie'
-			},
-			{ status: 500 }
-		);
 	}
+	if (typeof wantsSubtitles === 'boolean') {
+		updateData.wantsSubtitles = wantsSubtitles;
+	}
+	if (languageProfileId !== undefined) {
+		updateData.languageProfileId = languageProfileId;
+	}
+
+	if (Object.keys(updateData).length === 0 && !moveRequest) {
+		return json({ success: false, error: 'No valid fields to update' }, { status: 400 });
+	}
+
+	if (Object.keys(updateData).length > 0) {
+		await db.update(movies).set(updateData).where(eq(movies.id, params.id));
+	}
+
+	let moveTask:
+		| {
+				taskId: string;
+				historyId: string;
+		  }
+		| undefined;
+	if (moveRequest) {
+		moveTask = await mediaMoveService.enqueueMove({
+			mediaType: 'movie',
+			mediaId: moveRequest.mediaId,
+			mediaTitle: moveRequest.mediaTitle,
+			relativePath: moveRequest.relativePath,
+			sourceRootFolderId: moveRequest.sourceRootFolderId,
+			destinationRootFolderId: moveRequest.destinationRootFolderId
+		});
+	}
+
+	// Check if subtitle monitoring was just enabled
+	if (currentMovie?.hasFile) {
+		const wasEnabled = currentMovie.wantsSubtitles === true && currentMovie.languageProfileId;
+		const newWantsSubtitles = wantsSubtitles ?? currentMovie.wantsSubtitles;
+		const newProfileId = languageProfileId ?? currentMovie.languageProfileId;
+		const isNowEnabled = newWantsSubtitles === true && newProfileId;
+
+		// Trigger subtitle search if just enabled (wasn't before, is now)
+		if (!wasEnabled && isNowEnabled) {
+			const settings = await monitoringScheduler.getSettings();
+			if (settings.subtitleSearchOnImportEnabled) {
+				logger.info(
+					{
+						movieId: params.id
+					},
+					'[API] Subtitle monitoring enabled for movie, triggering search'
+				);
+				// Fire-and-forget: don't await
+				searchSubtitlesForNewMedia('movie', params.id).catch((err) => {
+					logger.warn(
+						{
+							movieId: params.id,
+							error: err instanceof Error ? err.message : String(err)
+						},
+						'[API] Background subtitle search failed'
+					);
+				});
+			}
+		}
+	}
+
+	libraryMediaEvents.emitMovieUpdated(params.id);
+
+	return json({
+		success: true,
+		moveQueued: Boolean(moveTask),
+		moveTaskId: moveTask?.taskId,
+		moveTaskHistoryId: moveTask?.historyId
+	});
 };
 
 // Alias PUT to PATCH for convenience
@@ -263,7 +380,7 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 		// Delete files from disk if requested
 		if (deleteFiles && movie.rootFolderPath && movie.path) {
 			const movieFolder = await deleteDirectoryWithinRoot(movie.rootFolderPath, movie.path);
-			logger.debug('[API] Removed movie folder and all contents', { movieFolder });
+			logger.debug({ movieFolder }, '[API] Removed movie folder and all contents');
 		}
 
 		// Delete movie file records from database
@@ -294,10 +411,13 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 							}
 						}
 					} catch (err) {
-						logger.warn('[API] Failed to remove download from client', {
-							queueItemId: queueItem.id,
-							error: err instanceof Error ? err.message : 'Unknown'
-						});
+						logger.warn(
+							{
+								queueItemId: queueItem.id,
+								error: err instanceof Error ? err.message : 'Unknown'
+							},
+							'[API] Failed to remove download from client'
+						);
 					}
 				}
 				// Delete queue record
@@ -318,7 +438,7 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 			await db.delete(movies).where(eq(movies.id, params.id));
 			libraryMediaEvents.emitMovieUpdated(params.id);
 
-			logger.info('[API] Removed movie from library', { movieId: params.id });
+			logger.info({ movieId: params.id }, '[API] Removed movie from library');
 			return json({ success: true, removed: true });
 		} else {
 			// Update movie to show as missing

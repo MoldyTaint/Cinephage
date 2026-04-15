@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import type { UnifiedTask } from '$lib/server/tasks/UnifiedTaskRegistry';
+	import { toasts } from '$lib/stores/toast.svelte';
 
 	interface Props {
 		task: UnifiedTask;
@@ -34,10 +35,10 @@
 				isEditing = false;
 			} else {
 				const data = await response.json();
-				console.error('Failed to save interval:', data);
+				toasts.error(data?.error || 'Failed to save interval');
 			}
 		} catch (error) {
-			console.error('Failed to save interval:', error);
+			toasts.error(error instanceof Error ? error.message : 'Failed to save interval');
 		} finally {
 			isSaving = false;
 		}

@@ -12,6 +12,11 @@
  * Solution: Set keepAliveTimeout higher than the proxy's timeout.
  */
 
+// Load .env into process.env before any application code runs.
+// In dev Vite handles this automatically; in production we need it explicitly.
+// If no .env file exists (e.g. Docker with env vars passed directly), this is a no-op.
+import 'dotenv/config';
+
 import { server } from './build/index.js';
 
 // Set keepAliveTimeout to 65 seconds (higher than typical proxy timeouts of 60s)

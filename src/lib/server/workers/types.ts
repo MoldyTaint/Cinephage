@@ -3,7 +3,7 @@
  * Defines the core types for the task worker infrastructure.
  */
 
-import type { LogCategory } from '$lib/logging';
+import type { LogDomain } from '$lib/logging';
 
 /**
  * Types of workers supported by the system.
@@ -102,9 +102,9 @@ export type WorkerEvent =
 	| { type: 'removed'; workerId: string };
 
 /**
- * Map worker type to log category.
+ * Map worker type to log domain.
  */
-export function workerTypeToLogCategory(type: WorkerType): LogCategory {
+export function workerTypeToLogCategory(type: WorkerType): LogDomain {
 	switch (type) {
 		case 'stream':
 			return 'streams';

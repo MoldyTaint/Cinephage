@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { Folder, ChevronUp, Loader2, Home, Check } from 'lucide-svelte';
 	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';
 
@@ -91,7 +92,7 @@
 			type="button"
 			class="btn btn-square btn-ghost btn-sm"
 			onclick={goHome}
-			title="Go to root"
+			title={m.library_folderBrowser_goToRoot()}
 		>
 			<Home class="h-4 w-4" />
 		</button>
@@ -100,7 +101,7 @@
 			class="btn btn-square btn-ghost btn-sm"
 			onclick={goUp}
 			disabled={!parentPath}
-			title="Go up"
+			title={m.library_folderBrowser_goUp()}
 		>
 			<ChevronUp class="h-4 w-4" />
 		</button>
@@ -121,7 +122,7 @@
 			</div>
 		{:else if entries.length === 0}
 			<div class="flex h-full items-center justify-center text-base-content/50">
-				<span>No subdirectories</span>
+				<span>{m.library_folderBrowser_noSubdirectories()}</span>
 			</div>
 		{:else}
 			<div class="space-y-1">
@@ -145,13 +146,15 @@
 		class="flex flex-col gap-2 border-t border-base-300 bg-base-200 p-3 sm:flex-row sm:items-center sm:justify-between"
 	>
 		<div class="text-sm text-base-content/60">
-			Double-click to enter, select current folder below
+			{m.library_folderBrowser_hint()}
 		</div>
 		<div class="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row">
-			<button type="button" class="btn btn-ghost btn-sm" onclick={onCancel}> Cancel </button>
+			<button type="button" class="btn btn-ghost btn-sm" onclick={onCancel}>
+				{m.action_cancel()}
+			</button>
 			<button type="button" class="btn gap-1 btn-sm btn-primary" onclick={handleSelect}>
 				<Check class="h-4 w-4" />
-				Select This Folder
+				{m.library_folderBrowser_selectFolder()}
 			</button>
 		</div>
 	</div>

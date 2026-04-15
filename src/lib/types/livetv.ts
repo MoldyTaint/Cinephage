@@ -133,6 +133,8 @@ export interface XstreamConfig {
 	baseUrl: string;
 	username: string;
 	password: string;
+	/** Optional XMLTV override (e.g. /xmltv.php?username=...&password=...) */
+	epgUrl?: string;
 	authToken?: string;
 	tokenExpiry?: string;
 	/** Output format for stream URLs: 'ts' (MPEG-TS), 'm3u8' (HLS), or 'mp4'. Defaults to 'ts'. */
@@ -261,6 +263,11 @@ export interface LiveTvAccountTestResult {
 		expiresAt: string | null;
 		serverTimezone: string;
 		streamVerified: boolean;
+		epg?: {
+			status: 'not_configured' | 'reachable' | 'unreachable';
+			source?: 'configured' | 'playlist-header';
+			error?: string;
+		};
 	};
 }
 
@@ -284,6 +291,7 @@ export interface StalkerChannelData {
 export interface XstreamChannelData {
 	streamId: string;
 	streamType: string;
+	epgChannelId?: string;
 	directStreamUrl?: string;
 	containerExtension?: string;
 }
@@ -597,6 +605,34 @@ export interface RemoveFromLineupRequest {
 	itemIds: string[];
 }
 
+/**
+ * Request to apply cleaned names to lineup items
+ */
+export interface BulkApplyCleanNamesRequest {
+	itemIds: string[];
+}
+
+/**
+ * Preview entry for applying cleaned names in bulk
+ */
+export interface ChannelCleanNamePreview {
+	itemId: string;
+	channelNumber: number;
+	accountName: string;
+	providerType: LiveTvProviderType;
+	currentName: string;
+	cleanedName: string;
+}
+
+/**
+ * Result of applying cleaned names in bulk
+ */
+export interface BulkApplyCleanNamesResult {
+	updated: number;
+	skippedExistingCustom: number;
+	skippedUnchanged: number;
+}
+
 // ============================================================================
 // EPG (Electronic Program Guide) TYPES
 // ============================================================================
@@ -681,6 +717,9 @@ export interface EpgSyncResult {
 export interface EpgStatus {
 	isEnabled: boolean;
 	isSyncing: boolean;
+	syncingAccountIds?: string[];
+	cancelRequestedAll?: boolean;
+	cancelRequestedAccountIds?: string[];
 	syncIntervalHours: number;
 	retentionHours: number;
 	lastSyncAt: string | null;

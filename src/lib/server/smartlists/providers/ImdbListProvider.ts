@@ -4,7 +4,9 @@
  * Scrapes IMDb lists (e.g., https://www.imdb.com/list/ls060044601/)
  * Uses JSON-LD structured data embedded in the page.
  */
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'monitoring' as const });
 import type { ExternalListProvider, ExternalListItem, ExternalListResult } from './types.js';
 
 export interface ImdbListConfig {
@@ -98,37 +100,46 @@ export class ImdbListProvider implements ExternalListProvider {
 		// If neither is set (empty string), show all content types
 		const filterMediaType = cfg.mediaType ?? mediaType;
 
-		logger.info('[ImdbListProvider] Starting IMDb list scrape', {
-			listId: normalizedListId,
-			mediaType: filterMediaType,
-			maxPages
-		});
+		logger.info(
+			{
+				listId: normalizedListId,
+				mediaType: filterMediaType,
+				maxPages
+			},
+			'[ImdbListProvider] Starting IMDb list scrape'
+		);
 
 		try {
 			while (page <= maxPages) {
 				// Check if we've collected all items
 				if (totalListCount !== undefined && items.length >= totalListCount) {
-					logger.info('[ImdbListProvider] All items collected', {
-						collected: items.length,
-						total: totalListCount
-					});
+					logger.info(
+						{
+							collected: items.length,
+							total: totalListCount
+						},
+						'[ImdbListProvider] All items collected'
+					);
 					break;
 				}
 
 				const result = await this.fetchPage(normalizedListId, page, filterMediaType);
 
 				if (result.items.length === 0) {
-					logger.debug('[ImdbListProvider] Empty page', { page, listId: normalizedListId });
+					logger.debug({ page, listId: normalizedListId }, '[ImdbListProvider] Empty page');
 					break; // Stop on empty page
 				}
 
 				// On first page, get the total count from __NEXT_DATA__
 				if (page === 1 && result.totalCount) {
 					totalListCount = result.totalCount;
-					logger.info('[ImdbListProvider] Found total list count', {
-						total: totalListCount,
-						listId: normalizedListId
-					});
+					logger.info(
+						{
+							total: totalListCount,
+							listId: normalizedListId
+						},
+						'[ImdbListProvider] Found total list count'
+					);
 				}
 
 				// Add unique items only
@@ -138,10 +149,13 @@ export class ImdbListProvider implements ExternalListProvider {
 				for (const item of result.items) {
 					if (!item.imdbId) {
 						skippedNoId++;
-						logger.debug('[ImdbListProvider] Skipping item without IMDb ID', {
-							title: item.title,
-							listId: normalizedListId
-						});
+						logger.debug(
+							{
+								title: item.title,
+								listId: normalizedListId
+							},
+							'[ImdbListProvider] Skipping item without IMDb ID'
+						);
 						continue;
 					}
 
@@ -154,34 +168,43 @@ export class ImdbListProvider implements ExternalListProvider {
 					}
 				}
 
-				logger.debug('[ImdbListProvider] Fetched page', {
-					page,
-					newItems,
-					duplicates,
-					skippedNoId,
-					totalCollected: items.length,
-					listId: normalizedListId
-				});
+				logger.debug(
+					{
+						page,
+						newItems,
+						duplicates,
+						skippedNoId,
+						totalCollected: items.length,
+						listId: normalizedListId
+					},
+					'[ImdbListProvider] Fetched page'
+				);
 
 				// If page had only duplicates, we've reached the end
 				if (newItems === 0 && duplicates > 0) {
-					logger.info('[ImdbListProvider] Page contained only duplicates, stopping', {
-						page,
-						duplicates,
-						listId: normalizedListId
-					});
+					logger.info(
+						{
+							page,
+							duplicates,
+							listId: normalizedListId
+						},
+						'[ImdbListProvider] Page contained only duplicates, stopping'
+					);
 					break;
 				}
 
 				page++;
 			}
 
-			logger.info('[ImdbListProvider] Completed IMDb list scrape', {
-				listId: normalizedListId,
-				totalItems: items.length,
-				expectedTotal: totalListCount,
-				pagesScanned: page
-			});
+			logger.info(
+				{
+					listId: normalizedListId,
+					totalItems: items.length,
+					expectedTotal: totalListCount,
+					pagesScanned: page
+				},
+				'[ImdbListProvider] Completed IMDb list scrape'
+			);
 
 			return {
 				items,
@@ -190,10 +213,13 @@ export class ImdbListProvider implements ExternalListProvider {
 			};
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error);
-			logger.error('[ImdbListProvider] Failed to scrape IMDb list', {
-				error: errorMessage,
-				listId: normalizedListId
-			});
+			logger.error(
+				{
+					error: errorMessage,
+					listId: normalizedListId
+				},
+				'[ImdbListProvider] Failed to scrape IMDb list'
+			);
 
 			return {
 				items,
@@ -214,7 +240,7 @@ export class ImdbListProvider implements ExternalListProvider {
 		// Rate limiting
 		await this.applyRateLimit();
 
-		logger.info('[ImdbListProvider] Fetching page', { url, page, listId });
+		logger.info({ url, page, listId }, '[ImdbListProvider] Fetching page');
 
 		const startTime = Date.now();
 		const response = await fetch(url, {
@@ -237,22 +263,28 @@ export class ImdbListProvider implements ExternalListProvider {
 		});
 
 		const fetchTime = Date.now() - startTime;
-		logger.info('[ImdbListProvider] Page fetched', {
-			url,
-			status: response.status,
-			fetchTimeMs: fetchTime
-		});
+		logger.info(
+			{
+				url,
+				status: response.status,
+				fetchTimeMs: fetchTime
+			},
+			'[ImdbListProvider] Page fetched'
+		);
 
 		if (!response.ok) {
 			if (response.status === 404) {
-				logger.debug('[ImdbListProvider] Page not found (404)', { page, listId });
+				logger.debug({ page, listId }, '[ImdbListProvider] Page not found (404)');
 				return { items: [] }; // End of list
 			}
 			if (response.status === 403 || response.status === 429) {
-				logger.error('[ImdbListProvider] Rate limited or blocked', {
-					status: response.status,
-					listId
-				});
+				logger.error(
+					{
+						status: response.status,
+						listId
+					},
+					'[ImdbListProvider] Rate limited or blocked'
+				);
 				throw new Error(
 					`IMDb rate limited or blocked (HTTP ${response.status}). Please try again later.`
 				);
@@ -287,13 +319,16 @@ export class ImdbListProvider implements ExternalListProvider {
 				nextData?.props?.pageProps?.data?.titleListItemSearch;
 
 			if (listData?.total) {
-				logger.debug('[ImdbListProvider] Extracted total count', { total: listData.total });
+				logger.debug({ total: listData.total }, '[ImdbListProvider] Extracted total count');
 				return listData.total;
 			}
 		} catch (error) {
-			logger.debug('[ImdbListProvider] Failed to extract total count', {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.debug(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[ImdbListProvider] Failed to extract total count'
+			);
 		}
 
 		return undefined;
@@ -305,7 +340,7 @@ export class ImdbListProvider implements ExternalListProvider {
 
 		if (timeSinceLastRequest < this.minRequestInterval) {
 			const delay = this.minRequestInterval - timeSinceLastRequest;
-			logger.debug('[ImdbListProvider] Rate limiting - waiting', { delayMs: delay });
+			logger.debug({ delayMs: delay }, '[ImdbListProvider] Rate limiting - waiting');
 			await new Promise((resolve) => setTimeout(resolve, delay));
 		}
 
@@ -339,9 +374,12 @@ export class ImdbListProvider implements ExternalListProvider {
 					continue;
 				}
 
-				logger.debug('[ImdbListProvider] Found ItemList with', {
-					itemCount: data.itemListElement.length
-				});
+				logger.debug(
+					{
+						itemCount: data.itemListElement.length
+					},
+					'[ImdbListProvider] Found ItemList with'
+				);
 
 				for (const listItem of data.itemListElement) {
 					try {
@@ -350,10 +388,13 @@ export class ImdbListProvider implements ExternalListProvider {
 							items.push(item);
 						}
 					} catch (error) {
-						logger.warn('[ImdbListProvider] Failed to parse list item', {
-							error: error instanceof Error ? error.message : String(error),
-							item: listItem.item?.name
-						});
+						logger.warn(
+							{
+								error: error instanceof Error ? error.message : String(error),
+								item: listItem.item?.name
+							},
+							'[ImdbListProvider] Failed to parse list item'
+						);
 					}
 				}
 			} catch (_error) {
@@ -362,7 +403,7 @@ export class ImdbListProvider implements ExternalListProvider {
 			}
 		}
 
-		logger.debug('[ImdbListProvider] Parsed items from page', { count: items.length });
+		logger.debug({ count: items.length }, '[ImdbListProvider] Parsed items from page');
 		return items;
 	}
 
@@ -375,7 +416,7 @@ export class ImdbListProvider implements ExternalListProvider {
 		// Extract IMDb ID from URL
 		const imdbIdMatch = item.url.match(/\/title\/(tt\d+)\//);
 		if (!imdbIdMatch) {
-			logger.debug('[ImdbListProvider] Could not extract IMDb ID from URL', { url: item.url });
+			logger.debug({ url: item.url }, '[ImdbListProvider] Could not extract IMDb ID from URL');
 			return null;
 		}
 		const imdbId = imdbIdMatch[1];
@@ -385,13 +426,16 @@ export class ImdbListProvider implements ExternalListProvider {
 
 		// Filter by requested media type if specified
 		if (mediaType && itemMediaType && itemMediaType !== mediaType) {
-			logger.debug('[ImdbListProvider] Filtering item by media type', {
-				title: item.name,
-				imdbId,
-				itemType: itemMediaType,
-				requestedType: mediaType,
-				itemTypeRaw: item['@type']
-			});
+			logger.debug(
+				{
+					title: item.name,
+					imdbId,
+					itemType: itemMediaType,
+					requestedType: mediaType,
+					itemTypeRaw: item['@type']
+				},
+				'[ImdbListProvider] Filtering item by media type'
+			);
 			return null; // Skip items that don't match requested type
 		}
 

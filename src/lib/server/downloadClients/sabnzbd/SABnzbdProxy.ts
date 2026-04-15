@@ -8,7 +8,9 @@
  * - Implements exponential backoff for retries
  */
 
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'imports' as const });
 import { randomUUID } from 'node:crypto';
 
 /** Default timeout for SABnzbd API requests in milliseconds */
@@ -392,7 +394,7 @@ export class SABnzbdProxy {
 		params.set('value3', password);
 
 		await this.executeRequest<unknown>('queue', params);
-		logger.debug('[SABnzbd] Password set for download', { id });
+		logger.debug({ id }, '[SABnzbd] Password set for download');
 	}
 
 	/**
@@ -484,10 +486,13 @@ export class SABnzbdProxy {
 			additionalParams.forEach((value, key) => url.searchParams.set(key, value));
 		}
 
-		logger.debug('[SABnzbd] API request', {
-			mode,
-			url: url.toString().replace(/apikey=[^&]+/, 'apikey=***')
-		});
+		logger.debug(
+			{
+				mode,
+				url: url.toString().replace(/apikey=[^&]+/, 'apikey=***')
+			},
+			'[SABnzbd] API request'
+		);
 
 		// Create abort controller with timeout
 		const controller = new AbortController();
@@ -557,25 +562,31 @@ export class SABnzbdProxy {
 				// Log retry attempt with exponential backoff
 				if (attempt < MAX_RETRIES) {
 					const delayMs = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
-					logger.warn('[SABnzbd] Upload failed, retrying with backoff', {
-						mode,
-						filename: file.filename,
-						attempt: attempt + 1,
-						maxRetries: MAX_RETRIES,
-						delayMs,
-						error: lastError.message
-					});
+					logger.warn(
+						{
+							mode,
+							filename: file.filename,
+							attempt: attempt + 1,
+							maxRetries: MAX_RETRIES,
+							delayMs,
+							error: lastError.message
+						},
+						'[SABnzbd] Upload failed, retrying with backoff'
+					);
 					await new Promise((r) => setTimeout(r, delayMs));
 				}
 			}
 		}
 
-		logger.error('[SABnzbd] Upload failed after all retries', {
-			mode,
-			filename: file.filename,
-			totalAttempts: MAX_RETRIES + 1,
-			error: lastError?.message
-		});
+		logger.error(
+			{
+				mode,
+				filename: file.filename,
+				totalAttempts: MAX_RETRIES + 1,
+				error: lastError?.message
+			},
+			'[SABnzbd] Upload failed after all retries'
+		);
 
 		throw lastError!;
 	}
@@ -597,7 +608,7 @@ export class SABnzbdProxy {
 		authParams.forEach((value, key) => url.searchParams.set(key, value));
 		additionalParams.forEach((value, key) => url.searchParams.set(key, value));
 
-		logger.debug('[SABnzbd] Multipart request', { mode, filename: file.filename });
+		logger.debug({ mode, filename: file.filename }, '[SABnzbd] Multipart request');
 
 		// Build multipart form data with cryptographically secure boundary
 		// Using crypto.randomUUID() instead of Math.random() to avoid boundary collisions
@@ -721,10 +732,13 @@ export class SABnzbdProxy {
 				if (lastError instanceof SabnzbdApiError && lastError.statusCode) {
 					// 429 Too Many Requests - retry with longer backoff
 					if (lastError.statusCode === 429) {
-						logger.warn('[SABnzbd] Rate limited (429), will retry with longer backoff', {
-							mode,
-							attempt: attempt + 1
-						});
+						logger.warn(
+							{
+								mode,
+								attempt: attempt + 1
+							},
+							'[SABnzbd] Rate limited (429), will retry with longer backoff'
+						);
 						// Use longer backoff for rate limiting: 5s, 10s, 20s, 40s
 						if (attempt < MAX_RETRIES) {
 							const delayMs = 5000 * Math.pow(2, attempt);
@@ -742,27 +756,33 @@ export class SABnzbdProxy {
 				if (attempt < MAX_RETRIES) {
 					// Exponential backoff: 1s, 2s, 4s, 8s...
 					const delayMs = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
-					logger.warn('[SABnzbd] Request failed, retrying with backoff', {
-						mode,
-						attempt: attempt + 1,
-						maxRetries: MAX_RETRIES,
-						delayMs,
-						nextAttemptIn: `${delayMs / 1000}s`,
-						error: lastError.message
-					});
+					logger.warn(
+						{
+							mode,
+							attempt: attempt + 1,
+							maxRetries: MAX_RETRIES,
+							delayMs,
+							nextAttemptIn: `${delayMs / 1000}s`,
+							error: lastError.message
+						},
+						'[SABnzbd] Request failed, retrying with backoff'
+					);
 					await new Promise((r) => setTimeout(r, delayMs));
 				}
 			}
 		}
 
 		// Log final failure with full context
-		logger.error('[SABnzbd] Request failed after all retries', {
-			mode,
-			totalAttempts: MAX_RETRIES + 1,
-			error: lastError?.message,
-			host: this.settings.host,
-			port: this.settings.port
-		});
+		logger.error(
+			{
+				mode,
+				totalAttempts: MAX_RETRIES + 1,
+				error: lastError?.message,
+				host: this.settings.host,
+				port: this.settings.port
+			},
+			'[SABnzbd] Request failed after all retries'
+		);
 
 		throw lastError!;
 	}

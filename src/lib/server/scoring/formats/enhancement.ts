@@ -674,8 +674,8 @@ export const CODEC_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'AV1',
-				type: 'release_title',
-				pattern: '\\bAV1\\b',
+				type: 'codec',
+				codec: 'av1',
 				required: true,
 				negate: false
 			}
@@ -706,8 +706,8 @@ export const CODEC_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'x265',
-				type: 'release_title',
-				pattern: '\\b(x265|HEVC|H\\.?265)\\b',
+				type: 'codec',
+				codec: 'h265',
 				required: true,
 				negate: false
 			}
@@ -722,15 +722,15 @@ export const CODEC_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'x264',
-				type: 'release_title',
-				pattern: '\\b(x264|AVC|H\\.?264)\\b',
+				type: 'codec',
+				codec: 'h264',
 				required: true,
 				negate: false
 			},
 			{
 				name: 'Not 2160p (separate banned format)',
-				type: 'release_title',
-				pattern: '\\b(2160p|4K|UHD)\\b',
+				type: 'resolution',
+				resolution: '2160p',
 				required: true,
 				negate: true
 			}

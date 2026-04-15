@@ -57,9 +57,12 @@ export async function parseTorrentFile(data: Buffer | Uint8Array): Promise<Torre
 		// Check if this is actually a magnet link redirect
 		if (isMagnetRedirect(data)) {
 			const magnetUrl = Buffer.from(data).toString('utf-8').trim();
-			logger.debug('Data is magnet redirect, not torrent file', {
-				magnetUrl: magnetUrl.substring(0, 100)
-			});
+			logger.debug(
+				{
+					magnetUrl: magnetUrl.substring(0, 100)
+				},
+				'Data is magnet redirect, not torrent file'
+			);
 
 			// Extract info hash from magnet URL
 			const infoHash = await extractInfoHashFromMagnet(magnetUrl);
@@ -75,23 +78,29 @@ export async function parseTorrentFile(data: Buffer | Uint8Array): Promise<Torre
 		const torrent = await parseTorrent(Buffer.from(data));
 
 		if (!torrent || !torrent.infoHash) {
-			logger.warn('Torrent parse returned no info hash', {
-				dataLength: data.length,
-				firstChars: Buffer.from(data)
-					.subarray(0, 80)
-					.toString('utf-8')
-					.replace(/[^\x20-\x7e]/g, '?')
-			});
+			logger.warn(
+				{
+					dataLength: data.length,
+					firstChars: Buffer.from(data)
+						.subarray(0, 80)
+						.toString('utf-8')
+						.replace(/[^\x20-\x7e]/g, '?')
+				},
+				'Torrent parse returned no info hash'
+			);
 			return {
 				success: false,
 				error: 'Failed to parse torrent file: no info hash found'
 			};
 		}
 
-		logger.debug('Parsed torrent file', {
-			infoHash: torrent.infoHash,
-			name: Array.isArray(torrent.name) ? torrent.name[0] : torrent.name
-		});
+		logger.debug(
+			{
+				infoHash: torrent.infoHash,
+				name: Array.isArray(torrent.name) ? torrent.name[0] : torrent.name
+			},
+			'Parsed torrent file'
+		);
 
 		return {
 			success: true,
@@ -100,14 +109,17 @@ export async function parseTorrentFile(data: Buffer | Uint8Array): Promise<Torre
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		logger.error('Failed to parse torrent file', {
-			error: message,
-			dataLength: data.length,
-			firstChars: Buffer.from(data)
-				.subarray(0, 80)
-				.toString('utf-8')
-				.replace(/[^\x20-\x7e]/g, '?')
-		});
+		logger.error(
+			{
+				error: message,
+				dataLength: data.length,
+				firstChars: Buffer.from(data)
+					.subarray(0, 80)
+					.toString('utf-8')
+					.replace(/[^\x20-\x7e]/g, '?')
+			},
+			'Failed to parse torrent file'
+		);
 
 		return {
 			success: false,
@@ -165,7 +177,7 @@ function base32ToHex(base32: string): string {
 
 	let hex = '';
 	for (let i = 0; i < bits.length - 3; i += 4) {
-		hex += parseInt(bits.substr(i, 4), 2).toString(16);
+		hex += parseInt(bits.slice(i, i + 4), 2).toString(16);
 	}
 
 	return hex.toLowerCase();

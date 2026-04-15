@@ -53,10 +53,13 @@ export class IndexerFactory {
 
 		// Cache and return
 		this.cache.set(config.id, indexer);
-		log.debug('Created indexer', {
-			id: config.id,
-			definitionId: config.definitionId
-		});
+		log.debug(
+			{
+				id: config.id,
+				definitionId: config.definitionId
+			},
+			'Created indexer'
+		);
 
 		return indexer;
 	}
@@ -119,17 +122,23 @@ export class IndexerFactory {
 				const rawApiKey = cleanSettings?.apikey;
 				const apiKey = typeof rawApiKey === 'string' ? rawApiKey : undefined;
 				liveCapabilities = await provider.getCapabilities(config.baseUrl, apiKey?.trim());
-				log.info('Fetched Newznab/Torznab capabilities', {
-					indexerId: config.id,
-					baseUrl: config.baseUrl,
-					movieSearch: liveCapabilities.searching.movieSearch.supportedParams,
-					tvSearch: liveCapabilities.searching.tvSearch.supportedParams
-				});
+				log.info(
+					{
+						indexerId: config.id,
+						baseUrl: config.baseUrl,
+						movieSearch: liveCapabilities.searching.movieSearch.supportedParams,
+						tvSearch: liveCapabilities.searching.tvSearch.supportedParams
+					},
+					'Fetched Newznab/Torznab capabilities'
+				);
 			} catch (error) {
-				log.warn('Failed to fetch Newznab/Torznab capabilities, using defaults', {
-					indexerId: config.id,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				log.warn(
+					{
+						indexerId: config.id,
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'Failed to fetch Newznab/Torznab capabilities, using defaults'
+				);
 			}
 		}
 

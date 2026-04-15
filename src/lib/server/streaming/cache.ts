@@ -10,7 +10,7 @@ import {
 } from './constants';
 import { logger } from '$lib/logging';
 
-const streamLog = { logCategory: 'streams' as const };
+const streamLog = { logDomain: 'streams' as const };
 
 interface CacheEntry<T> {
 	value: T;
@@ -52,7 +52,7 @@ export class LRUCache<T> {
 		}
 
 		if (cleaned > 0) {
-			logger.debug('Cache cleanup completed', { cleaned, ...streamLog });
+			logger.debug({ cleaned, ...streamLog }, 'Cache cleanup completed');
 		}
 	}
 

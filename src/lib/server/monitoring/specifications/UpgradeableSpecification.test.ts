@@ -14,9 +14,173 @@ import {
 } from './UpgradeableSpecification.js';
 import type { MovieContext, EpisodeContext, ReleaseCandidate } from './types.js';
 import { RejectionReason } from './types.js';
+import type {
+	movies,
+	movieFiles,
+	series,
+	episodes,
+	episodeFiles,
+	scoringProfiles
+} from '$lib/server/db/schema';
 
-// Test profiles for mocking
-const TEST_PROFILES: Record<string, any> = {
+type Movie = typeof movies.$inferSelect;
+type MovieFile = typeof movieFiles.$inferSelect;
+type Series = typeof series.$inferSelect;
+type Episode = typeof episodes.$inferSelect;
+type EpisodeFile = typeof episodeFiles.$inferSelect;
+type ScoringProfile = typeof scoringProfiles.$inferSelect;
+
+function createTestMovie(overrides: Partial<Movie> = {}): Movie {
+	return {
+		id: '1',
+		tmdbId: 123,
+		imdbId: null,
+		title: 'Test Movie',
+		originalTitle: null,
+		year: null,
+		overview: null,
+		posterPath: null,
+		backdropPath: null,
+		runtime: null,
+		genres: null,
+		path: '/movies/test-movie',
+		libraryId: null,
+		rootFolderId: null,
+		scoringProfileId: null,
+		languageProfileId: null,
+		monitored: true,
+		minimumAvailability: 'released',
+		added: '2024-01-01T00:00:00.000Z',
+		hasFile: false,
+		wantsSubtitles: true,
+		lastSearchTime: null,
+		failedSubtitleAttempts: 0,
+		firstSubtitleSearchAt: null,
+		...overrides
+	} as Movie;
+}
+
+function createTestMovieFile(overrides: Partial<MovieFile> = {}): MovieFile {
+	return {
+		id: '1',
+		movieId: '1',
+		relativePath: 'test.mkv',
+		size: null,
+		dateAdded: '2024-01-01T00:00:00.000Z',
+		sceneName: null,
+		releaseGroup: null,
+		quality: null,
+		mediaInfo: null,
+		edition: null,
+		languages: null,
+		infoHash: null,
+		...overrides
+	} as MovieFile;
+}
+
+function createTestSeries(overrides: Partial<Series> = {}): Series {
+	return {
+		id: '1',
+		tmdbId: 456,
+		tvdbId: null,
+		imdbId: null,
+		title: 'Test Show',
+		originalTitle: null,
+		year: null,
+		overview: null,
+		posterPath: null,
+		backdropPath: null,
+		status: null,
+		network: null,
+		genres: null,
+		path: '/series/test-show',
+		libraryId: null,
+		rootFolderId: null,
+		scoringProfileId: null,
+		languageProfileId: null,
+		monitored: true,
+		monitorNewItems: 'all',
+		monitorSpecials: false,
+		seasonFolder: true,
+		seriesType: 'standard',
+		added: '2024-01-01T00:00:00.000Z',
+		episodeCount: 0,
+		episodeFileCount: 0,
+		wantsSubtitles: true,
+		...overrides
+	} as Series;
+}
+
+function createTestEpisode(overrides: Partial<Episode> = {}): Episode {
+	return {
+		id: '1',
+		seriesId: '1',
+		seasonId: null,
+		tmdbId: null,
+		tvdbId: null,
+		seasonNumber: 1,
+		episodeNumber: 1,
+		absoluteEpisodeNumber: null,
+		title: null,
+		overview: null,
+		airDate: null,
+		runtime: null,
+		monitored: true,
+		hasFile: false,
+		wantsSubtitlesOverride: null,
+		lastSearchTime: null,
+		failedSubtitleAttempts: 0,
+		firstSubtitleSearchAt: null,
+		...overrides
+	} as Episode;
+}
+
+function createTestEpisodeFile(overrides: Partial<EpisodeFile> = {}): EpisodeFile {
+	return {
+		id: '1',
+		seriesId: '1',
+		seasonNumber: 1,
+		episodeIds: null,
+		relativePath: 'test.mkv',
+		size: null,
+		dateAdded: '2024-01-01T00:00:00.000Z',
+		sceneName: null,
+		releaseGroup: null,
+		edition: null,
+		releaseType: null,
+		quality: null,
+		mediaInfo: null,
+		languages: null,
+		infoHash: null,
+		...overrides
+	} as EpisodeFile;
+}
+
+function createTestProfile(overrides: Partial<ScoringProfile> = {}): ScoringProfile {
+	return {
+		id: 'best',
+		name: 'Best',
+		description: null,
+		tags: null,
+		upgradesAllowed: true,
+		minScore: 0,
+		upgradeUntilScore: 50000,
+		minScoreIncrement: 100,
+		resolutionOrder: null,
+		formatScores: null,
+		allowedProtocols: null,
+		isDefault: false,
+		movieMinSizeGb: null,
+		movieMaxSizeGb: null,
+		episodeMinSizeMb: null,
+		episodeMaxSizeMb: null,
+		createdAt: '2024-01-01T00:00:00.000Z',
+		updatedAt: '2024-01-01T00:00:00.000Z',
+		...overrides
+	} as ScoringProfile;
+}
+
+const TEST_PROFILES: Record<string, Record<string, unknown>> = {
 	best: {
 		id: 'best',
 		name: 'Best',
@@ -25,17 +189,12 @@ const TEST_PROFILES: Record<string, any> = {
 		upgradeUntilScore: 50000,
 		minScoreIncrement: 100,
 		formatScores: {
-			'2160p-remux': 20000,
-			'2160p-bluray': 15000,
-			'2160p-webdl': 8000,
-			'1080p-remux': 12000,
-			'1080p-bluray': 8000,
-			'1080p-webdl': 4000,
-			'1080p-webrip': 2000,
-			'720p-webdl': 1500,
-			'audio-truehd-atmos': 3000,
-			'audio-truehd': 2500,
-			'audio-ddp': 500
+			'resolution-2160p': 500,
+			'resolution-1080p': 300,
+			'source-remux': 400,
+			'source-bluray': 300,
+			'source-webdl': 200,
+			'codec-x264': 50
 		}
 	},
 	'no-upgrades': {
@@ -55,9 +214,9 @@ const TEST_PROFILES: Record<string, any> = {
 		upgradeUntilScore: 50000,
 		minScoreIncrement: 5000,
 		formatScores: {
-			'2160p-remux': 20000,
-			'1080p-webdl': 4000,
-			'1080p-bluray': 8000
+			'resolution-2160p': 500,
+			'source-bluray': 300,
+			'source-webdl': 200
 		}
 	},
 	'low-cutoff': {
@@ -68,9 +227,11 @@ const TEST_PROFILES: Record<string, any> = {
 		upgradeUntilScore: 5000,
 		minScoreIncrement: 0,
 		formatScores: {
-			'2160p-remux': 20000,
-			'1080p-webdl': 4000,
-			'1080p-bluray': 8000
+			'resolution-2160p': 500,
+			'resolution-1080p': 300,
+			'source-bluray': 300,
+			'source-remux': 400,
+			'codec-x264': 50
 		}
 	},
 	'custom-profile': {
@@ -81,15 +242,13 @@ const TEST_PROFILES: Record<string, any> = {
 		upgradeUntilScore: 30000,
 		minScoreIncrement: 100,
 		formatScores: {
-			'2160p-remux': 25000,
-			'2160p-bluray': 18000,
-			'1080p-bluray': 10000,
-			'1080p-webdl': 5000
+			'resolution-2160p': 500,
+			'source-remux': 400,
+			'source-bluray': 300
 		}
 	}
 };
 
-// Mock qualityFilter.getProfile to return test profiles (handles both built-in and custom)
 vi.mock('$lib/server/quality', () => ({
 	qualityFilter: {
 		getProfile: vi.fn(async (id: string) => TEST_PROFILES[id] ?? null)
@@ -106,9 +265,9 @@ describe('MovieUpgradeableSpecification', () => {
 	describe('Basic Validation', () => {
 		it('should reject when no existing file', async () => {
 			const context: MovieContext = {
-				movie: { id: '1', title: 'Test Movie' } as any,
+				movie: createTestMovie(),
 				existingFile: null,
-				profile: { id: 'best', upgradesAllowed: true } as any
+				profile: createTestProfile()
 			};
 			const release: ReleaseCandidate = {
 				title: 'Test.Movie.2024.2160p.REMUX',
@@ -123,9 +282,9 @@ describe('MovieUpgradeableSpecification', () => {
 
 		it('should reject when no release candidate', async () => {
 			const context: MovieContext = {
-				movie: { id: '1', title: 'Test Movie' } as any,
-				existingFile: { sceneName: 'Test.Movie.2024.1080p.WEB-DL' } as any,
-				profile: { id: 'best', upgradesAllowed: true } as any
+				movie: createTestMovie(),
+				existingFile: createTestMovieFile({ sceneName: 'Test.Movie.2024.1080p.WEB-DL' }),
+				profile: createTestProfile()
 			};
 
 			const result = await spec.isSatisfied(context);
@@ -136,8 +295,8 @@ describe('MovieUpgradeableSpecification', () => {
 
 		it('should reject when no profile', async () => {
 			const context: MovieContext = {
-				movie: { id: '1', title: 'Test Movie' } as any,
-				existingFile: { sceneName: 'Test.Movie.2024.1080p.WEB-DL' } as any,
+				movie: createTestMovie(),
+				existingFile: createTestMovieFile({ sceneName: 'Test.Movie.2024.1080p.WEB-DL' }),
 				profile: null
 			};
 			const release: ReleaseCandidate = {
@@ -155,9 +314,11 @@ describe('MovieUpgradeableSpecification', () => {
 	describe('Upgrade Decisions', () => {
 		it('should accept upgrade from 1080p WebDL to 2160p Remux', async () => {
 			const context: MovieContext = {
-				movie: { id: '1', title: 'Test Movie' } as any,
-				existingFile: { sceneName: 'Test.Movie.2024.1080p.WEB-DL.DDP5.1-GROUP' } as any,
-				profile: { id: 'best', upgradesAllowed: true, minScoreIncrement: 100 } as any
+				movie: createTestMovie(),
+				existingFile: createTestMovieFile({
+					sceneName: 'Test.Movie.2024.1080p.WEB-DL.DDP5.1-GROUP'
+				}),
+				profile: createTestProfile({ id: 'best', upgradesAllowed: true, minScoreIncrement: 100 })
 			};
 			const release: ReleaseCandidate = {
 				title: 'Test.Movie.2024.2160p.UHD.BluRay.REMUX.TrueHD.Atmos-GROUP',
@@ -171,11 +332,11 @@ describe('MovieUpgradeableSpecification', () => {
 
 		it('should reject downgrade from 2160p Remux to 1080p WebDL', async () => {
 			const context: MovieContext = {
-				movie: { id: '1', title: 'Test Movie' } as any,
-				existingFile: {
+				movie: createTestMovie(),
+				existingFile: createTestMovieFile({
 					sceneName: 'Test.Movie.2024.2160p.UHD.BluRay.REMUX.TrueHD.Atmos-GROUP'
-				} as any,
-				profile: { id: 'best', upgradesAllowed: true, minScoreIncrement: 100 } as any
+				}),
+				profile: createTestProfile({ id: 'best', upgradesAllowed: true, minScoreIncrement: 100 })
 			};
 			const release: ReleaseCandidate = {
 				title: 'Test.Movie.2024.1080p.WEB-DL.DDP5.1-GROUP',
@@ -190,9 +351,9 @@ describe('MovieUpgradeableSpecification', () => {
 
 		it('should reject when upgrades not allowed', async () => {
 			const context: MovieContext = {
-				movie: { id: '1', title: 'Test Movie' } as any,
-				existingFile: { sceneName: 'Test.Movie.2024.1080p.WEB-DL-GROUP' } as any,
-				profile: { id: 'no-upgrades', upgradesAllowed: false } as any
+				movie: createTestMovie(),
+				existingFile: createTestMovieFile({ sceneName: 'Test.Movie.2024.1080p.WEB-DL-GROUP' }),
+				profile: createTestProfile({ id: 'no-upgrades', upgradesAllowed: false })
 			};
 			const release: ReleaseCandidate = {
 				title: 'Test.Movie.2024.2160p.UHD.BluRay.REMUX-GROUP',
@@ -207,11 +368,14 @@ describe('MovieUpgradeableSpecification', () => {
 
 		it('should reject when improvement below minScoreIncrement', async () => {
 			const context: MovieContext = {
-				movie: { id: '1', title: 'Test Movie' } as any,
-				existingFile: { sceneName: 'Test.Movie.2024.1080p.WEB-DL-GROUP' } as any,
-				profile: { id: 'high-increment', upgradesAllowed: true, minScoreIncrement: 5000 } as any
+				movie: createTestMovie(),
+				existingFile: createTestMovieFile({ sceneName: 'Test.Movie.2024.1080p.WEB-DL-GROUP' }),
+				profile: createTestProfile({
+					id: 'high-increment',
+					upgradesAllowed: true,
+					minScoreIncrement: 5000
+				})
 			};
-			// 1080p BluRay is only ~4000 points higher than 1080p WebDL
 			const release: ReleaseCandidate = {
 				title: 'Test.Movie.2024.1080p.BluRay.x264-GROUP',
 				score: 8000
@@ -220,20 +384,20 @@ describe('MovieUpgradeableSpecification', () => {
 			const result = await spec.isSatisfied(context, release);
 
 			expect(result.accepted).toBe(false);
-			// Could be QUALITY_NOT_BETTER or IMPROVEMENT_TOO_SMALL depending on actual score diff
 		});
 
 		it('should accept upgrade even when candidate exceeds cutoff (cutoff only limits search initiation)', async () => {
 			const context: MovieContext = {
-				movie: { id: '1', title: 'Test Movie' } as any,
-				// Existing file is lower quality
-				existingFile: { sceneName: 'Test.Movie.2024.1080p.BluRay.x264-GROUP' } as any,
-				profile: {
+				movie: createTestMovie(),
+				existingFile: createTestMovieFile({
+					sceneName: 'Test.Movie.2024.1080p.BluRay.x264-GROUP'
+				}),
+				profile: createTestProfile({
 					id: 'low-cutoff',
 					upgradesAllowed: true,
 					upgradeUntilScore: 5000,
 					minScoreIncrement: 0
-				} as any
+				})
 			};
 			const release: ReleaseCandidate = {
 				title: 'Test.Movie.2024.2160p.UHD.BluRay.REMUX-GROUP',
@@ -242,8 +406,6 @@ describe('MovieUpgradeableSpecification', () => {
 
 			const result = await spec.isSatisfied(context, release);
 
-			// Should accept because it's an upgrade - cutoff only controls whether we SEARCH,
-			// not whether we accept good releases when found
 			expect(result.accepted).toBe(true);
 		});
 	});
@@ -251,9 +413,11 @@ describe('MovieUpgradeableSpecification', () => {
 	describe('Convenience Functions', () => {
 		it('isMovieUpgrade should return boolean', async () => {
 			const context: MovieContext = {
-				movie: { id: '1', title: 'Test Movie' } as any,
-				existingFile: { sceneName: 'Test.Movie.2024.1080p.WEB-DL-GROUP' } as any,
-				profile: { id: 'best', upgradesAllowed: true, minScoreIncrement: 100 } as any
+				movie: createTestMovie(),
+				existingFile: createTestMovieFile({
+					sceneName: 'Test.Movie.2024.1080p.WEB-DL-GROUP'
+				}),
+				profile: createTestProfile({ id: 'best', upgradesAllowed: true, minScoreIncrement: 100 })
 			};
 			const release: ReleaseCandidate = {
 				title: 'Test.Movie.2024.2160p.UHD.BluRay.REMUX-GROUP',
@@ -277,10 +441,12 @@ describe('EpisodeUpgradeableSpecification', () => {
 
 	it('should accept upgrade for episode', async () => {
 		const context: EpisodeContext = {
-			series: { id: '1', title: 'Test Show' } as any,
-			episode: { id: '1', seasonNumber: 1, episodeNumber: 1 } as any,
-			existingFile: { sceneName: 'Test.Show.S01E01.1080p.WEB-DL-GROUP' } as any,
-			profile: { id: 'best', upgradesAllowed: true, minScoreIncrement: 100 } as any
+			series: createTestSeries(),
+			episode: createTestEpisode(),
+			existingFile: createTestEpisodeFile({
+				sceneName: 'Test.Show.S01E01.1080p.WEB-DL-GROUP'
+			}),
+			profile: createTestProfile({ id: 'best', upgradesAllowed: true, minScoreIncrement: 100 })
 		};
 		const release: ReleaseCandidate = {
 			title: 'Test.Show.S01E01.2160p.UHD.BluRay.REMUX-GROUP',
@@ -294,10 +460,12 @@ describe('EpisodeUpgradeableSpecification', () => {
 
 	it('should reject downgrade for episode', async () => {
 		const context: EpisodeContext = {
-			series: { id: '1', title: 'Test Show' } as any,
-			episode: { id: '1', seasonNumber: 1, episodeNumber: 1 } as any,
-			existingFile: { sceneName: 'Test.Show.S01E01.2160p.UHD.BluRay.REMUX-GROUP' } as any,
-			profile: { id: 'best', upgradesAllowed: true, minScoreIncrement: 100 } as any
+			series: createTestSeries(),
+			episode: createTestEpisode(),
+			existingFile: createTestEpisodeFile({
+				sceneName: 'Test.Show.S01E01.2160p.UHD.BluRay.REMUX-GROUP'
+			}),
+			profile: createTestProfile({ id: 'best', upgradesAllowed: true, minScoreIncrement: 100 })
 		};
 		const release: ReleaseCandidate = {
 			title: 'Test.Show.S01E01.1080p.WEB-DL-GROUP',
@@ -312,10 +480,12 @@ describe('EpisodeUpgradeableSpecification', () => {
 
 	it('isEpisodeUpgrade should return boolean', async () => {
 		const context: EpisodeContext = {
-			series: { id: '1', title: 'Test Show' } as any,
-			episode: { id: '1', seasonNumber: 1, episodeNumber: 1 } as any,
-			existingFile: { sceneName: 'Test.Show.S01E01.1080p.WEB-DL-GROUP' } as any,
-			profile: { id: 'best', upgradesAllowed: true, minScoreIncrement: 100 } as any
+			series: createTestSeries(),
+			episode: createTestEpisode(),
+			existingFile: createTestEpisodeFile({
+				sceneName: 'Test.Show.S01E01.1080p.WEB-DL-GROUP'
+			}),
+			profile: createTestProfile({ id: 'best', upgradesAllowed: true, minScoreIncrement: 100 })
 		};
 		const release: ReleaseCandidate = {
 			title: 'Test.Show.S01E01.2160p.UHD.BluRay.REMUX-GROUP',
@@ -338,9 +508,15 @@ describe('Custom Profile Support', () => {
 
 	it('should work with custom profiles (non-built-in)', async () => {
 		const context: MovieContext = {
-			movie: { id: '1', title: 'Test Movie' } as any,
-			existingFile: { sceneName: 'Test.Movie.2024.1080p.WEB-DL.DDP5.1-GROUP' } as any,
-			profile: { id: 'custom-profile', upgradesAllowed: true, minScoreIncrement: 100 } as any
+			movie: createTestMovie(),
+			existingFile: createTestMovieFile({
+				sceneName: 'Test.Movie.2024.1080p.WEB-DL.DDP5.1-GROUP'
+			}),
+			profile: createTestProfile({
+				id: 'custom-profile',
+				upgradesAllowed: true,
+				minScoreIncrement: 100
+			})
 		};
 		const release: ReleaseCandidate = {
 			title: 'Test.Movie.2024.2160p.UHD.BluRay.REMUX.TrueHD.Atmos-GROUP',
@@ -354,9 +530,15 @@ describe('Custom Profile Support', () => {
 
 	it('should reject unknown custom profile IDs', async () => {
 		const context: MovieContext = {
-			movie: { id: '1', title: 'Test Movie' } as any,
-			existingFile: { sceneName: 'Test.Movie.2024.1080p.WEB-DL-GROUP' } as any,
-			profile: { id: 'nonexistent-profile', upgradesAllowed: true, minScoreIncrement: 100 } as any
+			movie: createTestMovie(),
+			existingFile: createTestMovieFile({
+				sceneName: 'Test.Movie.2024.1080p.WEB-DL-GROUP'
+			}),
+			profile: createTestProfile({
+				id: 'nonexistent-profile',
+				upgradesAllowed: true,
+				minScoreIncrement: 100
+			})
 		};
 		const release: ReleaseCandidate = {
 			title: 'Test.Movie.2024.2160p.UHD.BluRay.REMUX-GROUP',

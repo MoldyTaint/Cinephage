@@ -8,6 +8,12 @@ export interface Subtitle {
 	isForced?: boolean;
 	isHearingImpaired?: boolean;
 	format?: string;
+	matchScore?: number | null;
+	providerId?: string | null;
+	dateAdded?: string | null;
+	wasSynced?: boolean;
+	syncOffset?: number | null;
+	isEmbedded?: boolean;
 }
 
 export interface MovieFile {

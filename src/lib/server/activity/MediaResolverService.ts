@@ -2,6 +2,54 @@ import { db } from '$lib/server/db';
 import { movies, series, episodes } from '$lib/server/db/schema';
 import { eq, inArray } from 'drizzle-orm';
 
+/** Cache TTL in milliseconds (5 minutes) */
+const CACHE_TTL_MS = 5 * 60 * 1000;
+/** Maximum entries per cache */
+const CACHE_MAX_SIZE = 5000;
+
+interface CacheEntry<T> {
+	value: T;
+	expiresAt: number;
+}
+
+/**
+ * Simple TTL + size-bounded cache backed by a Map.
+ * Entries expire after CACHE_TTL_MS and the oldest entries are evicted
+ * when the cache exceeds CACHE_MAX_SIZE.
+ */
+class TTLCache<T> {
+	private store = new Map<string, CacheEntry<T>>();
+
+	get(key: string): T | undefined {
+		const entry = this.store.get(key);
+		if (!entry) return undefined;
+		if (Date.now() > entry.expiresAt) {
+			this.store.delete(key);
+			return undefined;
+		}
+		return entry.value;
+	}
+
+	has(key: string): boolean {
+		return this.get(key) !== undefined;
+	}
+
+	set(key: string, value: T): void {
+		// Evict oldest entries if at capacity
+		if (this.store.size >= CACHE_MAX_SIZE && !this.store.has(key)) {
+			const firstKey = this.store.keys().next().value;
+			if (firstKey !== undefined) {
+				this.store.delete(firstKey);
+			}
+		}
+		this.store.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
+	}
+
+	clear(): void {
+		this.store.clear();
+	}
+}
+
 interface MovieInfo {
 	id: string;
 	title: string;
@@ -38,9 +86,9 @@ interface ResolvedMediaInfo {
  */
 export class MediaResolverService {
 	private static instance: MediaResolverService;
-	private movieCache: Map<string, MovieInfo> = new Map();
-	private seriesCache: Map<string, SeriesInfo> = new Map();
-	private episodeCache: Map<string, EpisodeInfo> = new Map();
+	private movieCache = new TTLCache<MovieInfo>();
+	private seriesCache = new TTLCache<SeriesInfo>();
+	private episodeCache = new TTLCache<EpisodeInfo>();
 
 	private constructor() {}
 

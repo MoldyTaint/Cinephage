@@ -22,7 +22,9 @@ import {
 	MACHINE_TRANSLATOR_KEYWORDS,
 	type NapiprojektConfig
 } from './types';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import * as cheerio from 'cheerio';
 
 /** API endpoints */
@@ -98,9 +100,12 @@ export class NapiprojektProvider extends BaseSubtitleProvider implements ISubtit
 			const scraped = await this.scrapeSubtitles(criteria, language);
 			results.push(...scraped);
 		} catch (error) {
-			logger.debug('[Napiprojekt] Scrape failed', {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.debug(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[Napiprojekt] Scrape failed'
+			);
 		}
 
 		this.logSearch(criteria, results.length);

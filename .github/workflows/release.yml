@@ -1,7 +1,7 @@
 # Create versioned releases by promoting existing CI Docker images
 #
 # Triggers:
-# - Manual workflow_dispatch from main or dev branches
+# - Manual workflow_dispatch from main, dev, or experimental branches
 #
 # This workflow:
 # 1. Promotes existing CI architecture tags into release tags
@@ -12,9 +12,6 @@ name: Release
 
 on:
   workflow_dispatch:
-    branches:
-      - main
-      - dev
     inputs:
       release_type:
         description: 'Version bump type (dev branch remaps major to minor)'
@@ -32,7 +29,7 @@ on:
         type: string
         default: ''
       source_tag:
-        description: 'CI candidate tag to promote (without -amd64/-arm64), e.g. edge-20260306-123'
+        description: 'CI candidate tag to promote (without -amd64/-arm64), e.g. main-20260306-123'
         required: true
         type: string
       release_notes:
@@ -42,6 +39,7 @@ on:
         default: ''
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
@@ -149,20 +147,40 @@ jobs:
               ;;
           esac
 
-          # Dev-branch releases are always tagged as dev variants.
+          branch_channel() {
+            local ref="$1"
+            if [ "$ref" = 'main' ]; then
+              echo 'main'
+            elif [ "$ref" = 'dev' ]; then
+              echo 'dev'
+            elif [[ "$ref" =~ ^experimental([/-].*)?$ ]]; then
+              printf '%s' "$ref" \
+                | tr '[:upper:]' '[:lower:]' \
+                | sed -E 's|[^a-z0-9]+|-|g; s|^-+||; s|-+$||; s|-+|-|g'
+            else
+              return 1
+            fi
+          }
+
+          CHANNEL="$(branch_channel "$REF_NAME")" || {
+            echo "❌ Releases are only allowed from main, dev, or experimental branches. Got: ${REF_NAME}"
+            exit 1
+          }
+
+          # Non-main releases are always prerelease variants tied to the branch channel.
           # For auto-bumps, skip existing tags while preserving the selected bump semantics.
-          if [ "$REF_NAME" = 'dev' ]; then
+          if [ "$CHANNEL" != 'main' ]; then
             if [ "$RELEASE_TYPE" = 'custom' ]; then
-              if [[ ! "$VERSION" =~ -dev([.-][0-9A-Za-z]+)?$ ]]; then
-                VERSION="${VERSION}-dev"
+              if [[ ! "$VERSION" =~ -${CHANNEL}([.-][0-9A-Za-z]+)?$ ]]; then
+                VERSION="${VERSION}-${CHANNEL}"
               fi
             else
               if ! read -r DEV_MAJOR DEV_MINOR DEV_PATCH < <(parse_core_semver "$VERSION"); then
-                echo "❌ Could not parse dev version base: ${VERSION}"
+                echo "❌ Could not parse prerelease version base: ${VERSION}"
                 exit 1
               fi
 
-              while git rev-parse "v${DEV_MAJOR}.${DEV_MINOR}.${DEV_PATCH}-dev" >/dev/null 2>&1; do
+              while git rev-parse "v${DEV_MAJOR}.${DEV_MINOR}.${DEV_PATCH}-${CHANNEL}" >/dev/null 2>&1; do
                 case "$BUMP_TYPE" in
                   patch)
                     DEV_PATCH=$((DEV_PATCH + 1))
@@ -170,11 +188,11 @@ jobs:
                   *)
                     DEV_MINOR=$((DEV_MINOR + 1))
                     DEV_PATCH=0
-                    ;;
+                  ;;
                 esac
               done
 
-              VERSION="v${DEV_MAJOR}.${DEV_MINOR}.${DEV_PATCH}-dev"
+              VERSION="v${DEV_MAJOR}.${DEV_MINOR}.${DEV_PATCH}-${CHANNEL}"
             fi
           fi
 
@@ -198,18 +216,33 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ "$REF_NAME" != 'main' ] && [ "$REF_NAME" != 'dev' ]; then
-            echo "❌ Releases are only allowed from main or dev. Got: ${REF_NAME}"
+          branch_channel() {
+            local ref="$1"
+            if [ "$ref" = 'main' ]; then
+              echo 'main'
+            elif [ "$ref" = 'dev' ]; then
+              echo 'dev'
+            elif [[ "$ref" =~ ^experimental([/-].*)?$ ]]; then
+              printf '%s' "$ref" \
+                | tr '[:upper:]' '[:lower:]' \
+                | sed -E 's|[^a-z0-9]+|-|g; s|^-+||; s|-+$||; s|-+|-|g'
+            else
+              return 1
+            fi
+          }
+
+          CHANNEL="$(branch_channel "$REF_NAME")" || {
+            echo "❌ Releases are only allowed from main, dev, or experimental branches. Got: ${REF_NAME}"
             exit 1
-          fi
+          }
 
           IS_PRERELEASE='false'
           REASON='stable-main'
 
-          # All dev-branch releases are prereleases.
-          if [ "$REF_NAME" = 'dev' ]; then
+          # All non-main branch releases are prereleases.
+          if [ "$CHANNEL" != 'main' ]; then
             IS_PRERELEASE='true'
-            REASON='dev-branch'
+            REASON="branch-${CHANNEL}"
           # Main-branch prerelease tags (rc/beta/alpha/pre/preview) are also prereleases.
           elif [[ "$VERSION" =~ -([Rr][Cc]|[Bb]eta|[Aa]lpha|[Pp]re|[Pp]review)([.-]?[0-9A-Za-z]*)?$ ]]; then
             IS_PRERELEASE='true'
@@ -249,14 +282,34 @@ jobs:
             exit 1
           fi
 
-          if [ "$REF_NAME" = 'main' ] && [[ ! "$SOURCE_TAG" =~ ^edge-[0-9]{8}-[0-9]+$ ]]; then
-            echo "❌ main releases must promote an immutable edge tag (edge-YYYYMMDD-RUN)."
+          branch_channel() {
+            local ref="$1"
+            if [ "$ref" = 'main' ]; then
+              echo 'main'
+            elif [ "$ref" = 'dev' ]; then
+              echo 'dev'
+            elif [[ "$ref" =~ ^experimental([/-].*)?$ ]]; then
+              printf '%s' "$ref" \
+                | tr '[:upper:]' '[:lower:]' \
+                | sed -E 's|[^a-z0-9]+|-|g; s|^-+||; s|-+$||; s|-+|-|g'
+            else
+              return 1
+            fi
+          }
+
+          CHANNEL="$(branch_channel "$REF_NAME")" || {
+            echo "❌ Releases are only allowed from main, dev, or experimental branches. Got: ${REF_NAME}"
+            exit 1
+          }
+
+          if [ "$CHANNEL" = 'main' ] && [[ ! "$SOURCE_TAG" =~ ^main-[0-9]{8}-[0-9]+$ ]]; then
+            echo "❌ main releases must promote an immutable main tag (main-YYYYMMDD-RUN)."
             echo "Got: ${SOURCE_TAG}"
             exit 1
           fi
 
-          if [ "$REF_NAME" = 'dev' ] && [[ ! "$SOURCE_TAG" =~ ^dev-[0-9]{8}-[0-9]+$ ]]; then
-            echo "❌ dev releases must promote an immutable dev tag (dev-YYYYMMDD-RUN)."
+          if [ "$CHANNEL" != 'main' ] && [[ ! "$SOURCE_TAG" =~ ^${CHANNEL}-[0-9]{8}-[0-9]+$ ]]; then
+            echo "❌ ${CHANNEL} releases must promote an immutable ${CHANNEL} tag (${CHANNEL}-YYYYMMDD-RUN)."
             echo "Got: ${SOURCE_TAG}"
             exit 1
           fi
@@ -268,25 +321,28 @@ jobs:
     name: Create Multi-Arch Manifest
     runs-on: ubuntu-latest
     needs: [validate]
+    outputs:
+      digest: ${{ steps.promote.outputs.digest }}
     permissions:
       contents: write
       packages: write
-      attestations: write
-      id-token: write
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
       - name: Set lowercase image name
         run: echo "IMAGE_NAME_LC=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
       - name: Log in to Container Registry
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
       - name: Install crane
         env:
@@ -316,6 +372,7 @@ jobs:
           echo "✅ Found ${SOURCE_AMD64_IMAGE} and ${SOURCE_ARM64_IMAGE}"
 
       - name: Promote source images to release tags with release metadata
+        id: promote
         env:
           REF_NAME: ${{ github.ref_name }}
           SOURCE_TAG: ${{ needs.validate.outputs.source_tag }}
@@ -328,6 +385,26 @@ jobs:
           RELEASE_MULTIARCH_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:${{ needs.validate.outputs.version }}
         run: |
           set -euo pipefail
+
+          resolve_digest() {
+            local image="$1"
+            local attempts="${2:-10}"
+            local sleep_seconds="${3:-3}"
+            local digest=''
+
+            for attempt in $(seq 1 "$attempts"); do
+              digest="$(crane digest "$image" 2>/dev/null || true)"
+              if [ -n "$digest" ]; then
+                echo "$digest"
+                return 0
+              fi
+              echo "Digest not yet available for ${image} (attempt ${attempt}/${attempts}), retrying..."
+              sleep "$sleep_seconds"
+            done
+
+            echo "❌ Failed to resolve digest for ${image} after ${attempts} attempts" >&2
+            return 1
+          }
 
           # Mutate immutable source architecture images into release tags without rebuild.
           # This writes release version metadata directly into the image config.
@@ -356,17 +433,13 @@ jobs:
 
           # Build release manifest from the release architecture tags.
           docker buildx imagetools create -t "$RELEASE_MULTIARCH_IMAGE" "$RELEASE_AMD64_IMAGE" "$RELEASE_ARM64_IMAGE"
-          RELEASE_DIGEST="$(docker buildx imagetools inspect "$RELEASE_MULTIARCH_IMAGE" | awk '/^Digest:/ {print $2; exit}')"
-
-          if [ -z "$RELEASE_DIGEST" ]; then
-            echo "❌ Failed to resolve digest for ${RELEASE_MULTIARCH_IMAGE}"
-            exit 1
-          fi
+          RELEASE_DIGEST="$(resolve_digest "$RELEASE_MULTIARCH_IMAGE")"
+          echo "digest=${RELEASE_DIGEST}" >> "$GITHUB_OUTPUT"
 
           # Tag as latest only for stable main releases.
           if [ "$REF_NAME" = 'main' ] && [ "$IS_PRERELEASE" != 'true' ]; then
             crane tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}@${RELEASE_DIGEST}" latest
-            LATEST_DIGEST="$(docker buildx imagetools inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:latest" | awk '/^Digest:/ {print $2; exit}')"
+            LATEST_DIGEST="$(resolve_digest "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:latest")"
 
             if [ "$LATEST_DIGEST" != "$RELEASE_DIGEST" ]; then
               echo "❌ latest digest does not match release digest"
@@ -380,19 +453,33 @@ jobs:
             echo "✅ Promoted ${SOURCE_TAG} to ${VERSION} (latest skipped for prerelease/non-main)"
           fi
 
-      - name: Get manifest digest
-        id: digest
-        env:
-          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:${{ needs.validate.outputs.version }}
-        run: |
-          digest=$(docker buildx imagetools inspect "$IMAGE" --format '{{json .Manifest.Digest}}' | xargs)
-          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+  attest-manifest:
+    name: Attest Release Manifest
+    runs-on: ubuntu-latest
+    needs: [manifest]
+    if: needs.manifest.result == 'success'
+    continue-on-error: true
+    permissions:
+      attestations: write
+      id-token: write
+      packages: write
+
+    steps:
+      - name: Set lowercase image name
+        run: echo "IMAGE_NAME_LC=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate artifact attestation
-        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        uses: actions/attest-build-provenance@v4
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}
-          subject-digest: ${{ steps.digest.outputs.digest }}
+          subject-digest: ${{ needs.manifest.outputs.digest }}
           push-to-registry: true
 
   create-release:
@@ -408,14 +495,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Configure git identity
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
       - name: Create Git tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
           # Create and push tag
           if git rev-parse "$VERSION" >/dev/null 2>&1; then
             echo "⚠️  Tag already exists, skipping tag creation"

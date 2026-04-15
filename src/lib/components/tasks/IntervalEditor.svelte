@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Pencil, Check, X } from 'lucide-svelte';
+	import { toasts } from '$lib/stores/toast.svelte';
 
 	interface Props {
 		intervalHours: number;
@@ -82,7 +83,7 @@
 			isEditing = false;
 		} catch (e) {
 			error = 'Failed';
-			console.error('Failed to save interval:', e);
+			toasts.error(e instanceof Error ? e.message : 'Failed to save interval');
 		} finally {
 			isSaving = false;
 		}

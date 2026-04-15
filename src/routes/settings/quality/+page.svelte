@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/stores';
 	import type { PageData } from './$types';
@@ -8,6 +9,8 @@
 	import { ProfileList, ProfileModal } from '$lib/components/profiles';
 	import { FormatList, CustomFormatModal } from '$lib/components/formats';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import { SettingsPage } from '$lib/components/ui/settings';
+	import { toasts } from '$lib/stores/toast.svelte';
 	import { Sliders, Layers } from 'lucide-svelte';
 
 	let { data }: { data: PageData } = $props();
@@ -83,6 +86,31 @@
 		}
 	}
 
+	async function handleProfileReset(profileId: string) {
+		profileSaving = true;
+		profileError = null;
+
+		try {
+			// Reset built-in profile scores by saving with empty formatScores (server computes diff)
+			const response = await fetch('/api/scoring-profiles', {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ id: profileId, formatScores: {} })
+			});
+
+			if (!response.ok) {
+				const data = await response.json();
+				throw new Error(data.error || 'Failed to reset profile');
+			}
+
+			await invalidateAll();
+		} catch (e) {
+			profileError = e instanceof Error ? e.message : 'An unexpected error occurred';
+		} finally {
+			profileSaving = false;
+		}
+	}
+
 	function confirmProfileDelete(profile: ScoringProfile) {
 		profileDeleteTarget = profile;
 		profileDeleteConfirmOpen = true;
@@ -105,7 +133,7 @@
 
 			await invalidateAll();
 		} catch (e) {
-			console.error('Delete failed:', e);
+			toasts.error(e instanceof Error ? e.message : m.settings_quality_failedToDeleteProfile());
 		} finally {
 			profileDeleteConfirmOpen = false;
 			profileDeleteTarget = null;
@@ -130,7 +158,7 @@
 
 			await invalidateAll();
 		} catch (e) {
-			console.error('Set default failed:', e);
+			toasts.error(e instanceof Error ? e.message : m.settings_quality_failedToSetDefault());
 		}
 	}
 
@@ -225,7 +253,7 @@
 
 			await invalidateAll();
 		} catch (e) {
-			console.error('Delete failed:', e);
+			toasts.error(e instanceof Error ? e.message : m.settings_quality_failedToDeleteFormat());
 		} finally {
 			formatDeleteConfirmOpen = false;
 			formatDeleteTarget = null;
@@ -233,17 +261,9 @@
 	}
 </script>
 
-<div class="w-full p-4">
-	<!-- Header -->
-	<div class="mb-6">
-		<h1 class="text-2xl font-bold">Quality Settings</h1>
-		<p class="text-base-content/70">
-			Manage quality profiles and custom formats to control how releases are scored and selected.
-		</p>
-	</div>
-
+<SettingsPage title={m.settings_quality_heading()} subtitle={m.settings_quality_subtitle()}>
 	<!-- Tabs -->
-	<div class="tabs-boxed mb-6 tabs w-fit">
+	<div class="tabs-boxed tabs w-fit">
 		<button
 			type="button"
 			class="tab gap-2"
@@ -251,7 +271,7 @@
 			onclick={() => setTab('profiles')}
 		>
 			<Sliders class="h-4 w-4" />
-			Profiles
+			{m.settings_quality_tabProfiles()}
 		</button>
 		<button
 			type="button"
@@ -260,16 +280,15 @@
 			onclick={() => setTab('formats')}
 		>
 			<Layers class="h-4 w-4" />
-			Custom Formats
+			{m.settings_quality_tabFormats()}
 		</button>
 	</div>
 
 	<!-- Tab Content -->
 	{#if activeTab === 'profiles'}
-		<div class="mb-4">
+		<div class="-mt-2">
 			<p class="text-sm text-base-content/60">
-				Quality profiles determine how releases are scored. Each profile assigns scores to different
-				formats (resolution, audio, HDR, etc.) to rank releases by quality.
+				{m.settings_quality_profilesDescription()}
 			</p>
 		</div>
 		<ProfileList
@@ -280,11 +299,9 @@
 			onSetDefault={handleSetDefault}
 		/>
 	{:else if activeTab === 'formats'}
-		<div class="mb-4">
+		<div class="-mt-2">
 			<p class="text-sm text-base-content/60">
-				Custom formats define matching rules for releases. Create formats to match specific codecs,
-				audio formats, release groups, and more. Use conditions to precisely target the releases you
-				want.
+				{m.settings_quality_formatsDescription()}
 			</p>
 		</div>
 		<FormatList
@@ -294,7 +311,7 @@
 			onCreate={openAddFormatModal}
 		/>
 	{/if}
-</div>
+</SettingsPage>
 
 <!-- Profile Modal -->
 <ProfileModal
@@ -308,14 +325,17 @@
 	error={profileError}
 	onClose={closeProfileModal}
 	onSave={handleProfileSave}
+	onReset={handleProfileReset}
 />
 
 <!-- Profile Delete Confirmation -->
 <ConfirmationModal
 	open={profileDeleteConfirmOpen}
-	title="Confirm Delete"
-	message="Are you sure you want to delete {profileDeleteTarget?.name}? This action cannot be undone."
-	confirmLabel="Delete"
+	title={m.settings_quality_confirmDeleteTitle()}
+	message={m.settings_quality_confirmDeleteProfileMessage({
+		name: profileDeleteTarget?.name ?? ''
+	})}
+	confirmLabel={m.action_delete()}
 	confirmVariant="error"
 	onConfirm={handleProfileDelete}
 	onCancel={() => (profileDeleteConfirmOpen = false)}
@@ -335,9 +355,9 @@
 <!-- Format Delete Confirmation -->
 <ConfirmationModal
 	open={formatDeleteConfirmOpen}
-	title="Confirm Delete"
-	message="Are you sure you want to delete {formatDeleteTarget?.name}? This action cannot be undone."
-	confirmLabel="Delete"
+	title={m.settings_quality_confirmDeleteTitle()}
+	message={m.settings_quality_confirmDeleteFormatMessage({ name: formatDeleteTarget?.name ?? '' })}
+	confirmLabel={m.action_delete()}
 	confirmVariant="error"
 	onConfirm={handleFormatDelete}
 	onCancel={() => (formatDeleteConfirmOpen = false)}

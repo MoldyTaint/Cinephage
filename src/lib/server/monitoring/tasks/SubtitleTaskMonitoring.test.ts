@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
-import { initTestDb, getTestDb, closeTestDb } from '../../../../test/db-helper';
+import { createTestDb, destroyTestDb, type TestDatabase } from '../../../../test/db-helper';
 import {
 	movies,
 	series,
@@ -9,7 +9,7 @@ import {
 	monitoringHistory
 } from '$lib/server/db/schema';
 
-initTestDb();
+const testDb: TestDatabase = createTestDb();
 
 const { searchService, downloadService, providerManager, profileService, missingEpisodesBySeries } =
 	vi.hoisted(() => {
@@ -89,39 +89,37 @@ const { searchService, downloadService, providerManager, profileService, missing
 		};
 	});
 
-vi.mock('$lib/server/db', async () => {
-	const { getTestDb } = await import('../../../../test/db-helper');
-	return {
-		get db() {
-			return getTestDb().db;
-		},
-		get sqlite() {
-			return getTestDb().sqlite;
-		},
-		initializeDatabase: vi.fn().mockResolvedValue(undefined)
-	};
-});
+vi.mock('$lib/server/db', () => ({
+	get db() {
+		return testDb.db;
+	},
+	get sqlite() {
+		return testDb.sqlite;
+	},
+	initializeDatabase: vi.fn().mockResolvedValue(undefined)
+}));
 
-vi.mock('$lib/server/db/index.js', async () => {
-	const { getTestDb } = await import('../../../../test/db-helper');
-	return {
-		get db() {
-			return getTestDb().db;
-		},
-		get sqlite() {
-			return getTestDb().sqlite;
-		},
-		initializeDatabase: vi.fn().mockResolvedValue(undefined)
-	};
-});
+vi.mock('$lib/server/db/index.js', () => ({
+	get db() {
+		return testDb.db;
+	},
+	get sqlite() {
+		return testDb.sqlite;
+	},
+	initializeDatabase: vi.fn().mockResolvedValue(undefined)
+}));
+
+const mockLogger = vi.hoisted(() => ({
+	info: vi.fn(),
+	error: vi.fn(),
+	warn: vi.fn(),
+	debug: vi.fn(),
+	child: vi.fn().mockReturnThis()
+}));
 
 vi.mock('$lib/logging', () => ({
-	logger: {
-		info: vi.fn(),
-		error: vi.fn(),
-		warn: vi.fn(),
-		debug: vi.fn()
-	}
+	logger: mockLogger,
+	createChildLogger: vi.fn(() => mockLogger)
 }));
 
 vi.mock('$lib/server/subtitles/services/SubtitleSearchService.js', () => ({
@@ -146,13 +144,12 @@ const { executeMissingSubtitlesTask } = await import('./MissingSubtitlesTask.js'
 const { executeSubtitleUpgradeTask } = await import('./SubtitleUpgradeTask.js');
 
 function resetDb() {
-	const { db } = getTestDb();
-	db.delete(subtitleHistory).run();
-	db.delete(monitoringHistory).run();
-	db.delete(subtitles).run();
-	db.delete(episodes).run();
-	db.delete(series).run();
-	db.delete(movies).run();
+	testDb.db.delete(subtitleHistory).run();
+	testDb.db.delete(monitoringHistory).run();
+	testDb.db.delete(subtitles).run();
+	testDb.db.delete(episodes).run();
+	testDb.db.delete(series).run();
+	testDb.db.delete(movies).run();
 }
 
 beforeEach(() => {
@@ -162,17 +159,15 @@ beforeEach(() => {
 });
 
 afterAll(() => {
-	closeTestDb();
+	destroyTestDb(testDb);
 });
 
 describe('MissingSubtitlesTask monitored gating', () => {
 	it('skips unmonitored movies and episodes', async () => {
-		const { db } = getTestDb();
-
 		const monitoredMovieId = 'movie-monitored';
 		const unmonitoredMovieId = 'movie-unmonitored';
 
-		await db.insert(movies).values([
+		await testDb.db.insert(movies).values([
 			{
 				id: monitoredMovieId,
 				tmdbId: 1,
@@ -198,7 +193,7 @@ describe('MissingSubtitlesTask monitored gating', () => {
 		const monitoredSeriesId = 'series-monitored';
 		const unmonitoredSeriesId = 'series-unmonitored';
 
-		await db.insert(series).values([
+		await testDb.db.insert(series).values([
 			{
 				id: monitoredSeriesId,
 				tmdbId: 101,
@@ -223,7 +218,7 @@ describe('MissingSubtitlesTask monitored gating', () => {
 		const unmonitoredEpisodeId = 'ep-unmonitored';
 		const unmonitoredSeriesEpisodeId = 'ep-unmonitored-series';
 
-		await db.insert(episodes).values([
+		await testDb.db.insert(episodes).values([
 			{
 				id: monitoredEpisodeId,
 				seriesId: monitoredSeriesId,
@@ -279,12 +274,10 @@ describe('MissingSubtitlesTask monitored gating', () => {
 
 describe('SubtitleUpgradeTask monitored gating', () => {
 	it('skips unmonitored movies, series, and episodes', async () => {
-		const { db } = getTestDb();
-
 		const monitoredMovieId = 'upgrade-movie-monitored';
 		const unmonitoredMovieId = 'upgrade-movie-unmonitored';
 
-		await db.insert(movies).values([
+		await testDb.db.insert(movies).values([
 			{
 				id: monitoredMovieId,
 				tmdbId: 201,
@@ -303,7 +296,7 @@ describe('SubtitleUpgradeTask monitored gating', () => {
 			}
 		]);
 
-		await db.insert(subtitles).values([
+		await testDb.db.insert(subtitles).values([
 			{
 				id: 'sub-movie-monitored',
 				movieId: monitoredMovieId,
@@ -325,7 +318,7 @@ describe('SubtitleUpgradeTask monitored gating', () => {
 		const monitoredSeriesId = 'upgrade-series-monitored';
 		const unmonitoredSeriesId = 'upgrade-series-unmonitored';
 
-		await db.insert(series).values([
+		await testDb.db.insert(series).values([
 			{
 				id: monitoredSeriesId,
 				tmdbId: 301,
@@ -348,7 +341,7 @@ describe('SubtitleUpgradeTask monitored gating', () => {
 		const unmonitoredEpisodeId = 'upgrade-ep-unmonitored';
 		const unmonitoredSeriesEpisodeId = 'upgrade-ep-unmonitored-series';
 
-		await db.insert(episodes).values([
+		await testDb.db.insert(episodes).values([
 			{
 				id: monitoredEpisodeId,
 				seriesId: monitoredSeriesId,
@@ -372,7 +365,7 @@ describe('SubtitleUpgradeTask monitored gating', () => {
 			}
 		]);
 
-		await db.insert(subtitles).values([
+		await testDb.db.insert(subtitles).values([
 			{
 				id: 'sub-ep-monitored',
 				episodeId: monitoredEpisodeId,

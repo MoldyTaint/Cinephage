@@ -7,6 +7,8 @@ import type {
 	PersonDetails
 } from './types/tmdb';
 
+import { logger } from '$lib/logging';
+
 // Cache both the result AND the pending promise to prevent duplicate requests
 let configCache: TmdbConfiguration | null = null;
 let configPromise: Promise<TmdbConfiguration> | null = null;
@@ -22,10 +24,10 @@ async function safeParseErrorJson(
 	try {
 		return await res.json();
 	} catch {
-		// Log to console in development - this indicates the API returned non-JSON error
 		if (typeof window === 'undefined') {
-			console.warn(
-				`[TMDB] Failed to parse error response JSON for ${context}, status: ${res.status}`
+			logger.warn(
+				{ component: 'tmdb', context, status: res.status },
+				'[TMDB] Failed to parse error response JSON'
 			);
 		}
 		return {};

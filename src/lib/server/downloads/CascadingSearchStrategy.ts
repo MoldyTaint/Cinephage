@@ -25,6 +25,7 @@ import { episodes } from '$lib/server/db/schema.js';
 import { eq, and, inArray } from 'drizzle-orm';
 import type { SearchCriteria } from '$lib/server/indexers/types';
 import type { ScoringProfile } from '$lib/server/scoring/types.js';
+import { getSeriesSearchTitles } from '$lib/server/services/AlternateTitleService.js';
 
 const logger = createChildLogger({ module: 'CascadingSearchStrategy' });
 
@@ -124,6 +125,25 @@ class CascadingSearchStrategy {
 	private readonly DEFAULT_PACK_THRESHOLD = 50; // 50%
 	private readonly DEFAULT_MIN_SCORE = 0;
 
+	private summarizeGrabFailures(errors: string[], fallback: string): string {
+		if (errors.length === 0) return fallback;
+
+		const uniqueErrors = [...new Set(errors.map((e) => e.trim()).filter(Boolean))];
+		if (uniqueErrors.length === 0) return fallback;
+
+		// Prefer explicit client/config failures first.
+		const prioritized =
+			uniqueErrors.find((error) =>
+				error.toLowerCase().includes('no enabled torrent download client configured')
+			) ??
+			uniqueErrors.find((error) =>
+				error.toLowerCase().includes('no enabled usenet download client configured')
+			) ??
+			uniqueErrors[0];
+
+		return prioritized;
+	}
+
 	/**
 	 * Search for episodes using cascading strategy:
 	 * 1. Group by season
@@ -140,13 +160,16 @@ class CascadingSearchStrategy {
 			minScore = this.DEFAULT_MIN_SCORE
 		} = options;
 
-		logger.info('[CascadingSearch] Starting cascading search', {
-			seriesId: seriesData.id,
-			title: seriesData.title,
-			episodeCount: episodesToSearch.length,
-			threshold: seasonPackThreshold,
-			searchSource
-		});
+		logger.info(
+			{
+				seriesId: seriesData.id,
+				title: seriesData.title,
+				episodeCount: episodesToSearch.length,
+				threshold: seasonPackThreshold,
+				searchSource
+			},
+			'[CascadingSearch] Starting cascading search'
+		);
 
 		const results: EpisodeSearchResult[] = [];
 		const seasonPacks: SeasonPackGrab[] = [];
@@ -172,22 +195,28 @@ class CascadingSearchStrategy {
 			const totalInSeason = seasonTotalCounts.get(seasonNumber) ?? seasonEpisodes.length;
 			const missingPercent = (seasonEpisodes.length / totalInSeason) * 100;
 
-			logger.debug('[CascadingSearch] Analyzing season for pack search', {
-				seriesTitle: seriesData.title,
-				season: seasonNumber,
-				missingEpisodes: seasonEpisodes.length,
-				totalEpisodes: totalInSeason,
-				missingPercent: missingPercent.toFixed(1),
-				threshold: seasonPackThreshold
-			});
+			logger.debug(
+				{
+					seriesTitle: seriesData.title,
+					season: seasonNumber,
+					missingEpisodes: seasonEpisodes.length,
+					totalEpisodes: totalInSeason,
+					missingPercent: missingPercent.toFixed(1),
+					threshold: seasonPackThreshold
+				},
+				'[CascadingSearch] Analyzing season for pack search'
+			);
 
 			// Skip if less than threshold missing
 			if (missingPercent < seasonPackThreshold) {
-				logger.debug('[CascadingSearch] Skipping season pack search - not enough missing', {
-					seriesTitle: seriesData.title,
-					season: seasonNumber,
-					missingPercent: missingPercent.toFixed(1)
-				});
+				logger.debug(
+					{
+						seriesTitle: seriesData.title,
+						season: seasonNumber,
+						missingPercent: missingPercent.toFixed(1)
+					},
+					'[CascadingSearch] Skipping season pack search - not enough missing'
+				);
 				continue;
 			}
 
@@ -215,12 +244,15 @@ class CascadingSearchStrategy {
 					episodesCovered: packResult.episodesCovered
 				});
 
-				logger.info('[CascadingSearch] Season pack grabbed successfully', {
-					seriesTitle: seriesData.title,
-					season: seasonNumber,
-					releaseName: packResult.releaseName,
-					episodesCovered: packResult.episodesCovered.length
-				});
+				logger.info(
+					{
+						seriesTitle: seriesData.title,
+						season: seasonNumber,
+						releaseName: packResult.releaseName,
+						episodesCovered: packResult.episodesCovered.length
+					},
+					'[CascadingSearch] Season pack grabbed successfully'
+				);
 
 				// Add results for episodes covered by pack
 				for (const ep of seasonEpisodes) {
@@ -239,11 +271,14 @@ class CascadingSearchStrategy {
 					}
 				}
 			} else {
-				logger.debug('[CascadingSearch] No suitable season pack found', {
-					seriesTitle: seriesData.title,
-					season: seasonNumber,
-					error: packResult.error
-				});
+				logger.debug(
+					{
+						seriesTitle: seriesData.title,
+						season: seasonNumber,
+						error: packResult.error
+					},
+					'[CascadingSearch] No suitable season pack found'
+				);
 			}
 
 			// Rate limiting between season searches
@@ -260,10 +295,13 @@ class CascadingSearchStrategy {
 
 				const episodeLabel = this.formatEpisodeLabel(episode.seasonNumber, episode.episodeNumber);
 
-				logger.debug('[CascadingSearch] Searching for individual episode', {
-					seriesTitle: seriesData.title,
-					episode: episodeLabel
-				});
+				logger.debug(
+					{
+						seriesTitle: seriesData.title,
+						episode: episodeLabel
+					},
+					'[CascadingSearch] Searching for individual episode'
+				);
 
 				const episodeResult = await this.searchAndGrabEpisode({
 					seriesData,
@@ -321,11 +359,14 @@ class CascadingSearchStrategy {
 			individualEpisodesGrabbed: results.filter((r) => r.grabbed && !r.wasPackGrab).length
 		};
 
-		logger.info('[CascadingSearch] Cascading search completed', {
-			seriesId: seriesData.id,
-			title: seriesData.title,
-			...summary
-		});
+		logger.info(
+			{
+				seriesId: seriesData.id,
+				title: seriesData.title,
+				...summary
+			},
+			'[CascadingSearch] Cascading search completed'
+		);
 
 		return {
 			results,
@@ -368,6 +409,7 @@ class CascadingSearchStrategy {
 
 		try {
 			const indexerManager = await getIndexerManager();
+			const searchTitles = await getSeriesSearchTitles(seriesData.id);
 
 			// Build search criteria - season only (no episode number) to get packs
 			const criteria: SearchCriteria = {
@@ -376,7 +418,8 @@ class CascadingSearchStrategy {
 				tmdbId: seriesData.tmdbId,
 				tvdbId: seriesData.tvdbId ?? undefined,
 				imdbId: seriesData.imdbId ?? undefined,
-				season: seasonNumber
+				season: seasonNumber,
+				searchTitles
 				// Note: No episode number - this will return season packs
 			};
 
@@ -412,6 +455,7 @@ class CascadingSearchStrategy {
 
 			// Find best non-blocklisted season pack
 			const blocklistSpec = new ReleaseBlocklistSpecification({ seriesId: seriesData.id });
+			const grabErrors: string[] = [];
 
 			for (const release of seasonPacks) {
 				const releaseCandidate: ReleaseCandidate = {
@@ -424,10 +468,13 @@ class CascadingSearchStrategy {
 				// Check blocklist
 				const blocklistResult = await blocklistSpec.isSatisfied(releaseCandidate);
 				if (!blocklistResult.accepted) {
-					logger.debug('[CascadingSearch] Season pack blocklisted, trying next', {
-						title: release.title,
-						reason: blocklistResult.reason
-					});
+					logger.debug(
+						{
+							title: release.title,
+							reason: blocklistResult.reason
+						},
+						'[CascadingSearch] Season pack blocklisted, trying next'
+					);
 					continue;
 				}
 
@@ -439,15 +486,18 @@ class CascadingSearchStrategy {
 						episodeCount: totalEpisodes
 					});
 					if (!scoreResult.meetsMinimum || scoreResult.isBanned || scoreResult.sizeRejected) {
-						logger.debug('[CascadingSearch] Season pack rejected by scoring profile', {
-							title: release.title,
-							score: scoreResult.totalScore,
-							reason: scoreResult.isBanned
-								? 'banned'
-								: scoreResult.sizeRejected
-									? scoreResult.sizeRejectionReason
-									: `score below minimum`
-						});
+						logger.debug(
+							{
+								title: release.title,
+								score: scoreResult.totalScore,
+								reason: scoreResult.isBanned
+									? 'banned'
+									: scoreResult.sizeRejected
+										? scoreResult.sizeRejectionReason
+										: `score below minimum`
+							},
+							'[CascadingSearch] Season pack rejected by scoring profile'
+						);
 						continue;
 					}
 				}
@@ -470,9 +520,16 @@ class CascadingSearchStrategy {
 						episodesCovered: grabResult.episodesCovered || episodeIds
 					};
 				}
+
+				if (grabResult.error) {
+					grabErrors.push(grabResult.error);
+				}
 			}
 
-			return { grabbed: false, error: 'All season packs rejected or failed to grab' };
+			return {
+				grabbed: false,
+				error: this.summarizeGrabFailures(grabErrors, 'All season packs rejected or failed to grab')
+			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
 			return { grabbed: false, error: message };
@@ -503,6 +560,7 @@ class CascadingSearchStrategy {
 
 		try {
 			const indexerManager = await getIndexerManager();
+			const searchTitles = await getSeriesSearchTitles(seriesData.id);
 
 			// Build search criteria with season and episode
 			const criteria: SearchCriteria = {
@@ -512,7 +570,8 @@ class CascadingSearchStrategy {
 				tvdbId: seriesData.tvdbId ?? undefined,
 				imdbId: seriesData.imdbId ?? undefined,
 				season: episode.seasonNumber,
-				episode: episode.episodeNumber
+				episode: episode.episodeNumber,
+				searchTitles
 			};
 
 			// Get episode count for potential pack size validation
@@ -538,6 +597,7 @@ class CascadingSearchStrategy {
 
 			// Find best non-blocklisted release
 			const blocklistSpec = new ReleaseBlocklistSpecification({ seriesId: seriesData.id });
+			const grabErrors: string[] = [];
 
 			for (const release of searchResult.releases) {
 				const releaseCandidate: ReleaseCandidate = {
@@ -550,10 +610,13 @@ class CascadingSearchStrategy {
 				// Check blocklist
 				const blocklistResult = await blocklistSpec.isSatisfied(releaseCandidate);
 				if (!blocklistResult.accepted) {
-					logger.debug('[CascadingSearch] Release blocklisted, trying next', {
-						title: release.title,
-						reason: blocklistResult.reason
-					});
+					logger.debug(
+						{
+							title: release.title,
+							reason: blocklistResult.reason
+						},
+						'[CascadingSearch] Release blocklisted, trying next'
+					);
 					continue;
 				}
 
@@ -576,11 +639,14 @@ class CascadingSearchStrategy {
 						episodeCount
 					});
 					if (!scoreResult.meetsMinimum || scoreResult.isBanned || scoreResult.sizeRejected) {
-						logger.debug('[CascadingSearch] Release rejected by scoring profile', {
-							title: release.title,
-							score: scoreResult.totalScore,
-							isSeasonPack
-						});
+						logger.debug(
+							{
+								title: release.title,
+								score: scoreResult.totalScore,
+								isSeasonPack
+							},
+							'[CascadingSearch] Release rejected by scoring profile'
+						);
 						continue;
 					}
 				}
@@ -615,9 +681,17 @@ class CascadingSearchStrategy {
 						episodesCovered: grabResult.episodesCovered
 					};
 				}
+
+				if (grabResult.error) {
+					grabErrors.push(grabResult.error);
+				}
 			}
 
-			return { found: true, grabbed: false, error: 'All releases rejected or failed to grab' };
+			return {
+				found: true,
+				grabbed: false,
+				error: this.summarizeGrabFailures(grabErrors, 'All releases rejected or failed to grab')
+			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
 			return { found: false, grabbed: false, error: message };
@@ -642,7 +716,7 @@ class CascadingSearchStrategy {
 	}
 
 	/**
-	 * Get total episode counts for multiple seasons
+	 * Get total episode counts for multiple seasons (aired episodes only)
 	 */
 	private async getSeasonTotalCounts(
 		seriesId: string,
@@ -652,12 +726,17 @@ class CascadingSearchStrategy {
 
 		if (seasonNumbers.length === 0) return counts;
 
+		const today = new Date().toISOString().split('T')[0];
+		const isAired = (ep: { airDate: string | null }) =>
+			Boolean(ep.airDate && ep.airDate !== '' && ep.airDate <= today);
+
 		const allEpisodes = await db.query.episodes.findMany({
 			where: and(eq(episodes.seriesId, seriesId), inArray(episodes.seasonNumber, seasonNumbers)),
-			columns: { seasonNumber: true }
+			columns: { seasonNumber: true, airDate: true }
 		});
 
 		for (const ep of allEpisodes) {
+			if (!isAired(ep)) continue;
 			counts.set(ep.seasonNumber, (counts.get(ep.seasonNumber) || 0) + 1);
 		}
 
@@ -665,14 +744,18 @@ class CascadingSearchStrategy {
 	}
 
 	/**
-	 * Get total episode count for a single season
+	 * Get total episode count for a single season (aired episodes only)
 	 */
 	private async getSeasonTotalCount(seriesId: string, seasonNumber: number): Promise<number> {
+		const today = new Date().toISOString().split('T')[0];
+		const isAired = (ep: { airDate: string | null }) =>
+			Boolean(ep.airDate && ep.airDate !== '' && ep.airDate <= today);
+
 		const seasonEpisodes = await db.query.episodes.findMany({
 			where: and(eq(episodes.seriesId, seriesId), eq(episodes.seasonNumber, seasonNumber)),
-			columns: { id: true }
+			columns: { id: true, airDate: true }
 		});
-		return seasonEpisodes.length;
+		return seasonEpisodes.filter(isAired).length;
 	}
 
 	/**

@@ -4,10 +4,16 @@
  * Extracts video codec from release titles (H.265, H.264, AV1, etc.)
  */
 
-import type { Codec } from '../types.js';
+import type { BitDepth, Codec } from '../types.js';
 
 interface CodecMatch {
 	codec: Codec;
+	matchedText: string;
+	index: number;
+}
+
+interface BitDepthMatch {
+	bitDepth: BitDepth;
 	matchedText: string;
 	index: number;
 }
@@ -21,13 +27,13 @@ const CODEC_PATTERNS: Array<{ pattern: RegExp; codec: Codec }> = [
 
 	// H.265/HEVC variants
 	{ pattern: /\bhevc\b/i, codec: 'h265' },
-	{ pattern: /\bh\.?265\b/i, codec: 'h265' },
+	{ pattern: /\bh(?:[ ._-])?265\b/i, codec: 'h265' },
 	{ pattern: /\bx265\b/i, codec: 'h265' },
 	{ pattern: /\bx\.265\b/i, codec: 'h265' },
 
 	// H.264/AVC variants
 	{ pattern: /\bavc\b/i, codec: 'h264' },
-	{ pattern: /\bh[\s._-]?264\b/i, codec: 'h264' },
+	{ pattern: /\bh(?:[ ._-])?264\b/i, codec: 'h264' },
 	{ pattern: /\bx264\b/i, codec: 'h264' },
 	{ pattern: /\bx[\s._-]?264\b/i, codec: 'h264' },
 
@@ -41,6 +47,12 @@ const CODEC_PATTERNS: Array<{ pattern: RegExp; codec: Codec }> = [
 	// XviD/DivX (older formats, still seen in legacy releases)
 	{ pattern: /\bxvid\b/i, codec: 'xvid' },
 	{ pattern: /\bdivx\b/i, codec: 'divx' }
+];
+
+const BIT_DEPTH_PATTERNS: Array<{ pattern: RegExp; bitDepth: BitDepth }> = [
+	{ pattern: /\b12[\s._-]?bit\b/i, bitDepth: '12' },
+	{ pattern: /\b10[\s._-]?bit\b/i, bitDepth: '10' },
+	{ pattern: /\b8[\s._-]?bit\b/i, bitDepth: '8' }
 ];
 
 /**
@@ -63,9 +75,27 @@ export function extractCodec(title: string): CodecMatch | null {
 	return null;
 }
 
+export function extractBitDepth(title: string): BitDepthMatch | null {
+	for (const { pattern, bitDepth } of BIT_DEPTH_PATTERNS) {
+		const match = title.match(pattern);
+		if (match) {
+			return {
+				bitDepth,
+				matchedText: match[0],
+				index: match.index ?? 0
+			};
+		}
+	}
+	return null;
+}
+
 /**
  * Check if a string likely contains codec info
  */
 export function hasCodecInfo(title: string): boolean {
 	return CODEC_PATTERNS.some(({ pattern }) => pattern.test(title));
+}
+
+export function hasBitDepthInfo(title: string): boolean {
+	return BIT_DEPTH_PATTERNS.some(({ pattern }) => pattern.test(title));
 }

@@ -16,21 +16,17 @@ import {
 	episodes,
 	episodeFiles,
 	scoringProfiles,
-	downloadQueue,
-	downloadHistory
+	downloadQueue
 } from '$lib/server/db/schema.js';
 import { eq, and, lte, gte, inArray } from 'drizzle-orm';
 import { getIndexerManager } from '$lib/server/indexers/IndexerManager.js';
 import { getReleaseGrabService } from '$lib/server/downloads/ReleaseGrabService.js';
+import {
+	parseEpisodePointerFromGuid,
+	parseEpisodePointerFromTitle
+} from '$lib/server/downloads/episode-pointer.js';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser.js';
-import { strmService, StrmService, getStreamingBaseUrl } from '$lib/server/streaming/index.js';
-import { fileExists } from '$lib/server/downloadClients/import/index.js';
-import { mediaInfoService } from '$lib/server/library/media-info.js';
 import { logger } from '$lib/logging/index.js';
-import { randomUUID } from 'node:crypto';
-import { statSync } from 'node:fs';
-import { unlink } from 'node:fs/promises';
-import { relative, join } from 'node:path';
 import type { SearchCriteria, EnhancedReleaseResult } from '$lib/server/indexers/types';
 import { scoreRelease, isUpgrade } from '$lib/server/scoring/scorer.js';
 import type { ScoringProfile } from '$lib/server/scoring/types.js';
@@ -64,39 +60,6 @@ import {
 } from '../specifications/index.js';
 
 const parser = new ReleaseParser();
-
-type EpisodeFileUpsertInput = Omit<typeof episodeFiles.$inferInsert, 'id'> & { id?: string };
-type EpisodeFileWriteExecutor = Pick<typeof db, 'select' | 'update' | 'insert'>;
-
-/**
- * Upsert episode file by (seriesId, relativePath) and return canonical row id.
- */
-async function upsertEpisodeFileByPath(
-	executor: EpisodeFileWriteExecutor,
-	record: EpisodeFileUpsertInput
-): Promise<string> {
-	const { id: requestedId, ...values } = record;
-
-	const existing = await executor
-		.select({ id: episodeFiles.id })
-		.from(episodeFiles)
-		.where(
-			and(
-				eq(episodeFiles.seriesId, record.seriesId),
-				eq(episodeFiles.relativePath, record.relativePath)
-			)
-		)
-		.limit(1);
-
-	if (existing.length > 0) {
-		await executor.update(episodeFiles).set(values).where(eq(episodeFiles.id, existing[0].id));
-		return existing[0].id;
-	}
-
-	const id = requestedId ?? randomUUID();
-	await executor.insert(episodeFiles).values({ id, ...values });
-	return id;
-}
 
 /**
  * Search result for individual item
@@ -254,11 +217,14 @@ export class MonitoringSearchService {
 		});
 
 		const found = Boolean(blockingDownload);
-		logger.debug('[MonitoringSearch] isMovieAlreadyDownloading check', {
-			movieId,
-			found,
-			activeDownload: blockingDownload
-		});
+		logger.debug(
+			{
+				movieId,
+				found,
+				activeDownload: blockingDownload
+			},
+			'[MonitoringSearch] isMovieAlreadyDownloading check'
+		);
 
 		return found;
 	}
@@ -300,6 +266,7 @@ export class MonitoringSearchService {
 	/**
 	 * Pre-load episode counts for all seasons of given series IDs in a single query.
 	 * Call this at the start of a search operation to avoid N+1 queries.
+	 * Only counts aired episodes for accurate completion percentage calculation.
 	 */
 	private async preloadSeasonEpisodeCounts(seriesIds: string[]): Promise<void> {
 		if (seriesIds.length === 0) return;
@@ -314,18 +281,24 @@ export class MonitoringSearchService {
 			}
 		}
 
-		// Single query to get all season episode counts grouped by series and season
-		const counts = await db
+		const today = new Date().toISOString().split('T')[0];
+		const isAired = (ep: { airDate: string | null }) =>
+			Boolean(ep.airDate && ep.airDate !== '' && ep.airDate <= today);
+
+		// Single query to get all aired episode counts grouped by series and season
+		const allCounts = await db
 			.select({
 				seriesId: episodes.seriesId,
-				seasonNumber: episodes.seasonNumber
+				seasonNumber: episodes.seasonNumber,
+				airDate: episodes.airDate
 			})
 			.from(episodes)
 			.where(inArray(episodes.seriesId, seriesIds));
 
-		// Count episodes per series/season combination
+		// Count aired episodes per series/season combination
 		const countMap = new Map<string, number>();
-		for (const row of counts) {
+		for (const row of allCounts) {
+			if (!isAired(row)) continue;
 			const key = `${row.seriesId}-${row.seasonNumber}`;
 			countMap.set(key, (countMap.get(key) || 0) + 1);
 		}
@@ -335,10 +308,13 @@ export class MonitoringSearchService {
 			this.seasonEpisodeCountCache.set(key, count);
 		}
 
-		logger.debug('[MonitoringSearch] Preloaded season episode counts', {
-			seriesCount: seriesIds.length,
-			seasonCount: countMap.size
-		});
+		logger.debug(
+			{
+				seriesCount: seriesIds.length,
+				seasonCount: countMap.size
+			},
+			'[MonitoringSearch] Preloaded season episode counts'
+		);
 	}
 
 	/**
@@ -352,6 +328,7 @@ export class MonitoringSearchService {
 	/**
 	 * Get the episode count for a specific season.
 	 * Uses cache if available, otherwise falls back to database query.
+	 * Only counts aired episodes for accurate completion percentage calculation.
 	 * Used for season pack size validation (per-episode size calculation)
 	 */
 	private async getSeasonEpisodeCount(seriesId: string, seasonNumber: number): Promise<number> {
@@ -363,13 +340,17 @@ export class MonitoringSearchService {
 			return cached;
 		}
 
+		const today = new Date().toISOString().split('T')[0];
+		const isAired = (ep: { airDate: string | null }) =>
+			Boolean(ep.airDate && ep.airDate !== '' && ep.airDate <= today);
+
 		// Fallback to database query (for cases where cache wasn't preloaded)
 		const seasonEpisodes = await db.query.episodes.findMany({
 			where: and(eq(episodes.seriesId, seriesId), eq(episodes.seasonNumber, seasonNumber)),
-			columns: { id: true }
+			columns: { id: true, airDate: true }
 		});
 
-		const count = seasonEpisodes.length;
+		const count = seasonEpisodes.filter(isAired).length;
 
 		// Cache for future calls in this operation
 		this.seasonEpisodeCountCache.set(cacheKey, count);
@@ -406,7 +387,7 @@ export class MonitoringSearchService {
 				}
 			});
 
-			logger.info('[MonitoringSearch] Found missing movies', { count: missingMovies.length });
+			logger.info({ count: missingMovies.length }, '[MonitoringSearch] Found missing movies');
 
 			// Filter through specifications
 			const missingSpec = new MovieMissingContentSpecification();
@@ -522,7 +503,7 @@ export class MonitoringSearchService {
 				await new Promise((resolve) => setTimeout(resolve, 500));
 			}
 		} catch (error) {
-			logger.error('[MonitoringSearch] Missing movies search failed', error);
+			logger.error({ err: error }, '[MonitoringSearch] Missing movies search failed');
 		}
 
 		return this.aggregateResults(results);
@@ -569,7 +550,7 @@ export class MonitoringSearchService {
 				}
 			});
 
-			logger.info('[MonitoringSearch] Found missing episodes', { count: missingEpisodes.length });
+			logger.info({ count: missingEpisodes.length }, '[MonitoringSearch] Found missing episodes');
 
 			// Filter through specifications first
 			const missingSpec = new EpisodeMissingContentSpecification();
@@ -679,6 +660,8 @@ export class MonitoringSearchService {
 			// Preload all season episode counts in a single query to avoid N+1
 			const allSeriesIds = Array.from(episodesBySeriesAndSeason.keys());
 			await this.preloadSeasonEpisodeCounts(allSeriesIds);
+			const useRuTrackerEpisodePointerPolicy =
+				await this.shouldApplyRuTrackerEpisodePointerPolicy();
 
 			// Process each series with cascading strategy
 			for (const [currentSeriesId, seasonMap] of episodesBySeriesAndSeason) {
@@ -694,12 +677,13 @@ export class MonitoringSearchService {
 				const seriesResults = await this.searchSeriesWithCascadingStrategy(
 					seriesData,
 					seasonMap,
-					signal
+					signal,
+					useRuTrackerEpisodePointerPolicy
 				);
 				results.push(...seriesResults);
 			}
 		} catch (error) {
-			logger.error('[MonitoringSearch] Missing episodes search failed', error);
+			logger.error({ err: error }, '[MonitoringSearch] Missing episodes search failed');
 		} finally {
 			// Clear the cache after search completes
 			this.clearSeasonEpisodeCountCache();
@@ -718,17 +702,24 @@ export class MonitoringSearchService {
 			typeof series.$inferSelect & { scoringProfile?: typeof scoringProfiles.$inferSelect | null }
 		>,
 		seasonMap: Map<number, Array<typeof episodes.$inferSelect>>,
-		signal?: AbortSignal
+		signal?: AbortSignal,
+		useRuTrackerEpisodePointerPolicy: boolean = false
 	): Promise<ItemSearchResult[]> {
 		const results: ItemSearchResult[] = [];
 		const grabbedEpisodeIds = new Set<string>();
 
-		logger.info('[MonitoringSearch] Processing series with cascading strategy', {
-			seriesId: seriesData.id,
-			title: seriesData.title,
-			seasons: Array.from(seasonMap.keys()),
-			totalMissingEpisodes: Array.from(seasonMap.values()).reduce((sum, eps) => sum + eps.length, 0)
-		});
+		logger.info(
+			{
+				seriesId: seriesData.id,
+				title: seriesData.title,
+				seasons: Array.from(seasonMap.keys()),
+				totalMissingEpisodes: Array.from(seasonMap.values()).reduce(
+					(sum, eps) => sum + eps.length,
+					0
+				)
+			},
+			'[MonitoringSearch] Processing series with cascading strategy'
+		);
 
 		// Get total episode counts for each season to calculate missing percentage
 		const seasonEpisodeCounts = new Map<number, number>();
@@ -737,8 +728,8 @@ export class MonitoringSearchService {
 			seasonEpisodeCounts.set(seasonNumber, count);
 		}
 
-		// Strategy 1: Try season pack search for seasons with many missing episodes
-		// Only try pack search if >= 50% of season is missing
+		// Strategy 1: Try season pack search for seasons with many missing episodes.
+		// RuTracker-specific completeness restrictions are enforced later per release candidate.
 		for (const [seasonNumber, missingEpisodes] of seasonMap) {
 			// Check for cancellation before each season
 			if (signal?.aborted) {
@@ -747,16 +738,37 @@ export class MonitoringSearchService {
 
 			const totalEpisodes = seasonEpisodeCounts.get(seasonNumber) ?? missingEpisodes.length;
 			const missingPercent = (missingEpisodes.length / totalEpisodes) * 100;
+			const isEntireSeasonMissing = totalEpisodes > 0 && missingEpisodes.length >= totalEpisodes;
+
+			// When RuTracker/Kinozal is the only automatic TV source, avoid season-pack
+			// requests unless the full season is missing. Partial seasons should use
+			// episode-pointer flow.
+			if (useRuTrackerEpisodePointerPolicy && !isEntireSeasonMissing) {
+				logger.debug(
+					{
+						seriesTitle: seriesData.title,
+						season: seasonNumber,
+						missingEpisodes: missingEpisodes.length,
+						totalEpisodes,
+						missingPercent: missingPercent.toFixed(1)
+					},
+					'[MonitoringSearch] Skipping season pack search - pointer policy (partial season)'
+				);
+				continue;
+			}
 
 			// Skip if less than 50% missing - not worth a pack
 			if (missingPercent < 50) {
-				logger.debug('[MonitoringSearch] Skipping season pack search - not enough missing', {
-					seriesTitle: seriesData.title,
-					season: seasonNumber,
-					missingEpisodes: missingEpisodes.length,
-					totalEpisodes,
-					missingPercent: missingPercent.toFixed(1)
-				});
+				logger.debug(
+					{
+						seriesTitle: seriesData.title,
+						season: seasonNumber,
+						missingEpisodes: missingEpisodes.length,
+						totalEpisodes,
+						missingPercent: missingPercent.toFixed(1)
+					},
+					'[MonitoringSearch] Skipping season pack search - not enough missing'
+				);
 				continue;
 			}
 
@@ -764,20 +776,26 @@ export class MonitoringSearchService {
 			const episodeIds = missingEpisodes.map((e) => e.id);
 			const alreadyDownloading = await this.areEpisodesAlreadyDownloading(episodeIds);
 			if (alreadyDownloading) {
-				logger.debug('[MonitoringSearch] Some episodes already downloading, skipping season pack', {
-					seriesTitle: seriesData.title,
-					season: seasonNumber
-				});
+				logger.debug(
+					{
+						seriesTitle: seriesData.title,
+						season: seasonNumber
+					},
+					'[MonitoringSearch] Some episodes already downloading, skipping season pack'
+				);
 				continue;
 			}
 
-			logger.info('[MonitoringSearch] Trying season pack search', {
-				seriesTitle: seriesData.title,
-				season: seasonNumber,
-				missingEpisodes: missingEpisodes.length,
-				totalEpisodes,
-				missingPercent: missingPercent.toFixed(1)
-			});
+			logger.info(
+				{
+					seriesTitle: seriesData.title,
+					season: seasonNumber,
+					missingEpisodes: missingEpisodes.length,
+					totalEpisodes,
+					missingPercent: missingPercent.toFixed(1)
+				},
+				'[MonitoringSearch] Trying season pack search'
+			);
 
 			// Try season pack search
 			const packResult = await this.searchAndGrabSeasonPack(
@@ -793,20 +811,23 @@ export class MonitoringSearchService {
 				}
 				results.push(packResult);
 
-				logger.info('[MonitoringSearch] Season pack grabbed successfully', {
-					seriesTitle: seriesData.title,
-					season: seasonNumber,
-					releaseName: packResult.grabbedRelease
-				});
+				logger.info(
+					{
+						seriesTitle: seriesData.title,
+						season: seasonNumber,
+						releaseName: packResult.grabbedRelease
+					},
+					'[MonitoringSearch] Season pack grabbed successfully'
+				);
 			} else {
 				// Log that we'll try individual episodes instead
 				logger.debug(
-					'[MonitoringSearch] No suitable season pack found, will try individual episodes',
 					{
 						seriesTitle: seriesData.title,
 						season: seasonNumber,
 						releasesFound: packResult.releasesFound
-					}
+					},
+					'[MonitoringSearch] No suitable season pack found, will try individual episodes'
 				);
 			}
 
@@ -838,20 +859,29 @@ export class MonitoringSearchService {
 				// Pack bonus scoring will naturally prioritize packs if they're of similar quality
 				const searchResult = await this.searchAndGrabEpisode(seriesData, episode);
 
-				// If we grabbed a pack, mark all episodes in that season as handled
+				// If we grabbed a pack, mark all episodes in that season as handled.
+				// Episode pointers intentionally look like packs in title shape, but only grab one episode.
+				if (searchResult.grabbed) {
+					grabbedEpisodeIds.add(episode.id);
+				}
 				if (searchResult.grabbed && searchResult.grabbedRelease) {
-					// Check if the grabbed release is a season pack
+					const isEpisodePointer = Boolean(
+						parseEpisodePointerFromTitle(searchResult.grabbedRelease)
+					);
 					const parsed = parser.parse(searchResult.grabbedRelease);
-					if (parsed.episode?.isSeasonPack) {
+					if (!isEpisodePointer && parsed.episode?.isSeasonPack) {
 						// Mark all episodes in this season as handled
 						for (const ep of missingEpisodes) {
 							grabbedEpisodeIds.add(ep.id);
 						}
-						logger.info('[MonitoringSearch] Season pack grabbed via episode search', {
-							seriesTitle: seriesData.title,
-							season: seasonNumber,
-							releaseName: searchResult.grabbedRelease
-						});
+						logger.info(
+							{
+								seriesTitle: seriesData.title,
+								season: seasonNumber,
+								releaseName: searchResult.grabbedRelease
+							},
+							'[MonitoringSearch] Season pack grabbed via episode search'
+						);
 					}
 				}
 
@@ -961,7 +991,24 @@ export class MonitoringSearchService {
 				profile = await qualityFilter.getDefaultScoringProfile();
 			}
 
+			const isEntireSeasonMissing =
+				seasonEpisodeCount > 0 && missingEpisodes.length >= seasonEpisodeCount;
+
 			for (const release of seasonPacks) {
+				if (this.isRuTrackerIndexerName(release.indexerName) && !isEntireSeasonMissing) {
+					logger.debug(
+						{
+							seriesId: seriesData.id,
+							season: seasonNumber,
+							title: release.title,
+							missingEpisodes: missingEpisodes.length,
+							seasonEpisodeCount
+						},
+						'[MonitoringSearch] Skipping pointer-indexer season pack for partial-missing season'
+					);
+					continue;
+				}
+
 				const releaseCandidate: ReleaseCandidate = {
 					title: release.title,
 					score: release.totalScore ?? 0,
@@ -973,10 +1020,13 @@ export class MonitoringSearchService {
 				// Check blocklist
 				const blocklistResult = await blocklistSpec.isSatisfied(releaseCandidate);
 				if (!blocklistResult.accepted) {
-					logger.debug('[MonitoringSearch] Season pack blocklisted, trying next', {
-						title: release.title,
-						reason: blocklistResult.reason
-					});
+					logger.debug(
+						{
+							title: release.title,
+							reason: blocklistResult.reason
+						},
+						'[MonitoringSearch] Season pack blocklisted, trying next'
+					);
 					continue;
 				}
 
@@ -988,17 +1038,20 @@ export class MonitoringSearchService {
 						episodeCount: seasonEpisodeCount
 					});
 					if (!scoreResult.meetsMinimum || scoreResult.isBanned || scoreResult.sizeRejected) {
-						logger.debug('[MonitoringSearch] Season pack rejected by scoring profile', {
-							seriesId: seriesData.id,
-							season: seasonNumber,
-							title: release.title,
-							score: scoreResult.totalScore,
-							reason: scoreResult.isBanned
-								? 'banned'
-								: scoreResult.sizeRejected
-									? scoreResult.sizeRejectionReason
-									: `score ${scoreResult.totalScore} below minimum ${profile.minScore ?? 0}`
-						});
+						logger.debug(
+							{
+								seriesId: seriesData.id,
+								season: seasonNumber,
+								title: release.title,
+								score: scoreResult.totalScore,
+								reason: scoreResult.isBanned
+									? 'banned'
+									: scoreResult.sizeRejected
+										? scoreResult.sizeRejectionReason
+										: `score ${scoreResult.totalScore} below minimum ${profile.minScore ?? 0}`
+							},
+							'[MonitoringSearch] Season pack rejected by scoring profile'
+						);
 						continue;
 					}
 				}
@@ -1054,13 +1107,16 @@ export class MonitoringSearchService {
 		const dryRun = options.dryRun ?? false;
 		const ignoreCooldown = options.ignoreCooldown ?? false;
 		const cooldownHours = options.cooldownHours;
-		logger.info('[MonitoringSearch] Starting upgrade search', {
-			...options,
-			cutoffUnmetOnly,
-			dryRun,
-			ignoreCooldown,
-			cooldownHours
-		});
+		logger.info(
+			{
+				...options,
+				cutoffUnmetOnly,
+				dryRun,
+				ignoreCooldown,
+				cooldownHours
+			},
+			'[MonitoringSearch] Starting upgrade search'
+		);
 
 		const results: ItemSearchResult[] = [];
 		const upgradeDetails: UpgradeDecisionDetail[] = [];
@@ -1116,7 +1172,7 @@ export class MonitoringSearchService {
 			if (TaskCancelledException.isTaskCancelled(error)) {
 				throw error;
 			}
-			logger.error('[MonitoringSearch] Upgrade search failed', error);
+			logger.error({ err: error }, '[MonitoringSearch] Upgrade search failed');
 		}
 
 		const aggregated = this.aggregateResults(results);
@@ -1164,13 +1220,16 @@ export class MonitoringSearchService {
 				...(maxItems && { limit: maxItems })
 			});
 
-			logger.info('[MonitoringSearch] Found movies with files for upgrade check', {
-				count: moviesWithFiles.length,
-				cutoffUnmetOnly,
-				dryRun,
-				ignoreCooldown,
-				cooldownHours
-			});
+			logger.info(
+				{
+					count: moviesWithFiles.length,
+					cutoffUnmetOnly,
+					dryRun,
+					ignoreCooldown,
+					cooldownHours
+				},
+				'[MonitoringSearch] Found movies with files for upgrade check'
+			);
 
 			// Get existing files
 			const cutoffSpec = new MovieCutoffUnmetSpecification();
@@ -1289,7 +1348,7 @@ export class MonitoringSearchService {
 				await new Promise((resolve) => setTimeout(resolve, 1000));
 			}
 		} catch (error) {
-			logger.error('[MonitoringSearch] Movie upgrade search failed', error);
+			logger.error({ err: error }, '[MonitoringSearch] Movie upgrade search failed');
 		}
 
 		return { items: results, details: dryRun ? details : undefined };
@@ -1342,13 +1401,16 @@ export class MonitoringSearchService {
 				...(maxItems && { limit: maxItems })
 			});
 
-			logger.info('[MonitoringSearch] Found episodes with files for upgrade check', {
-				count: episodesWithFiles.length,
-				cutoffUnmetOnly,
-				dryRun,
-				ignoreCooldown,
-				cooldownHours
-			});
+			logger.info(
+				{
+					count: episodesWithFiles.length,
+					cutoffUnmetOnly,
+					dryRun,
+					ignoreCooldown,
+					cooldownHours
+				},
+				'[MonitoringSearch] Found episodes with files for upgrade check'
+			);
 
 			// Preload season episode counts to avoid N+1 queries
 			const uniqueSeriesIds = [...new Set(episodesWithFiles.map((e) => e.seriesId))];
@@ -1367,11 +1429,11 @@ export class MonitoringSearchService {
 
 				if (!episode.series) continue;
 
-				// Get existing file
-				const existingFiles = await db.query.episodeFiles.findMany({
-					where: eq(episodeFiles.seriesId, episode.seriesId),
-					limit: 1
+				// Get existing file for this specific episode
+				const allSeriesFiles = await db.query.episodeFiles.findMany({
+					where: eq(episodeFiles.seriesId, episode.seriesId)
 				});
+				const existingFiles = allSeriesFiles.filter((f) => f.episodeIds?.includes(episode.id));
 
 				if (existingFiles.length === 0) continue;
 
@@ -1434,7 +1496,7 @@ export class MonitoringSearchService {
 				await new Promise((resolve) => setTimeout(resolve, 1000));
 			}
 		} catch (error) {
-			logger.error('[MonitoringSearch] Episode upgrade search failed', error);
+			logger.error({ err: error }, '[MonitoringSearch] Episode upgrade search failed');
 		} finally {
 			// Clear the cache after search completes
 			this.clearSeasonEpisodeCountCache();
@@ -1570,16 +1632,22 @@ export class MonitoringSearchService {
 				const blocklistResult = await blocklistSpec.isSatisfied(releaseCandidate);
 				if (!blocklistResult.accepted) {
 					if (dryRun) {
-						logger.info('[DryRun] Release blocklisted', {
-							movie: movie.title,
-							release: release.title,
-							reason: blocklistResult.reason
-						});
+						logger.info(
+							{
+								movie: movie.title,
+								release: release.title,
+								reason: blocklistResult.reason
+							},
+							'[DryRun] Release blocklisted'
+						);
 					} else {
-						logger.debug('[MonitoringSearch] Release blocklisted', {
-							title: release.title,
-							reason: blocklistResult.reason
-						});
+						logger.debug(
+							{
+								title: release.title,
+								reason: blocklistResult.reason
+							},
+							'[MonitoringSearch] Release blocklisted'
+						);
 					}
 					continue;
 				}
@@ -1589,19 +1657,25 @@ export class MonitoringSearchService {
 				const episodeInfo = release.parsed.episode;
 				if (episodeInfo && (episodeInfo.season !== undefined || episodeInfo.episodes?.length)) {
 					if (dryRun) {
-						logger.info('[DryRun] Release rejected - TV episode, not a movie', {
-							movie: movie.title,
-							release: release.title,
-							season: episodeInfo.season,
-							episodes: episodeInfo.episodes
-						});
+						logger.info(
+							{
+								movie: movie.title,
+								release: release.title,
+								season: episodeInfo.season,
+								episodes: episodeInfo.episodes
+							},
+							'[DryRun] Release rejected - TV episode, not a movie'
+						);
 					} else {
-						logger.debug('[MonitoringSearch] Release rejected - TV episode, not a movie', {
-							movieId: movie.id,
-							title: release.title,
-							season: episodeInfo.season,
-							episodes: episodeInfo.episodes
-						});
+						logger.debug(
+							{
+								movieId: movie.id,
+								title: release.title,
+								season: episodeInfo.season,
+								episodes: episodeInfo.episodes
+							},
+							'[MonitoringSearch] Release rejected - TV episode, not a movie'
+						);
 					}
 					continue;
 				}
@@ -1628,19 +1702,25 @@ export class MonitoringSearchService {
 								? candidateScoreResult.sizeRejectionReason
 								: `score ${candidateScoreResult.totalScore} below minimum ${profile.minScore ?? 0}`;
 						if (dryRun) {
-							logger.info('[DryRun] Release rejected by scoring profile', {
-								movie: movie.title,
-								release: release.title,
-								score: candidateScoreResult.totalScore,
-								reason
-							});
+							logger.info(
+								{
+									movie: movie.title,
+									release: release.title,
+									score: candidateScoreResult.totalScore,
+									reason
+								},
+								'[DryRun] Release rejected by scoring profile'
+							);
 						} else {
-							logger.debug('[MonitoringSearch] Release rejected by scoring profile', {
-								movieId: movie.id,
-								title: release.title,
-								score: candidateScoreResult.totalScore,
-								reason
-							});
+							logger.debug(
+								{
+									movieId: movie.id,
+									title: release.title,
+									score: candidateScoreResult.totalScore,
+									reason
+								},
+								'[MonitoringSearch] Release rejected by scoring profile'
+							);
 						}
 						continue;
 					}
@@ -1657,17 +1737,20 @@ export class MonitoringSearchService {
 							Object.entries(comparison.candidate.breakdown).map(([k, v]) => [k, v.score])
 						);
 
-						logger.info('[DryRun] Upgrade comparison', {
-							movie: movie.title,
-							existingFile: existingFileName,
-							existingScore: comparison.existing.totalScore,
-							candidate: release.title,
-							candidateScore: comparison.candidate.totalScore,
-							improvement: comparison.improvement,
-							minRequired: movie.scoringProfile?.minScoreIncrement || 0,
-							isUpgrade: comparison.isUpgrade,
-							verdict: comparison.isUpgrade ? 'WOULD GRAB' : 'REJECTED'
-						});
+						logger.info(
+							{
+								movie: movie.title,
+								existingFile: existingFileName,
+								existingScore: comparison.existing.totalScore,
+								candidate: release.title,
+								candidateScore: comparison.candidate.totalScore,
+								improvement: comparison.improvement,
+								minRequired: movie.scoringProfile?.minScoreIncrement || 0,
+								isUpgrade: comparison.isUpgrade,
+								verdict: comparison.isUpgrade ? 'WOULD GRAB' : 'REJECTED'
+							},
+							'[DryRun] Upgrade comparison'
+						);
 
 						// Track best candidate (even if not accepted)
 						if (!bestCandidate || comparison.candidate.totalScore > bestCandidate.score) {
@@ -1692,13 +1775,16 @@ export class MonitoringSearchService {
 				if (upgradeResult.accepted) {
 					if (dryRun) {
 						// In dry-run mode, don't actually grab - just report what would happen
-						logger.info('[DryRun] Would grab upgrade', {
-							movie: movie.title,
-							release: release.title,
-							existingFile: existingFileName,
-							existingScore,
-							candidateScore: release.totalScore ?? 0
-						});
+						logger.info(
+							{
+								movie: movie.title,
+								release: release.title,
+								existingFile: existingFileName,
+								existingScore,
+								candidateScore: release.totalScore ?? 0
+							},
+							'[DryRun] Would grab upgrade'
+						);
 
 						const result: ItemSearchResult = {
 							itemId: movie.id,
@@ -1955,16 +2041,22 @@ export class MonitoringSearchService {
 				const blocklistResult = await blocklistSpec.isSatisfied(releaseCandidate);
 				if (!blocklistResult.accepted) {
 					if (dryRun) {
-						logger.info('[DryRun] Release blocklisted', {
-							episode: title,
-							release: release.title,
-							reason: blocklistResult.reason
-						});
+						logger.info(
+							{
+								episode: title,
+								release: release.title,
+								reason: blocklistResult.reason
+							},
+							'[DryRun] Release blocklisted'
+						);
 					} else {
-						logger.debug('[MonitoringSearch] Release blocklisted', {
-							title: release.title,
-							reason: blocklistResult.reason
-						});
+						logger.debug(
+							{
+								title: release.title,
+								reason: blocklistResult.reason
+							},
+							'[MonitoringSearch] Release blocklisted'
+						);
 					}
 					continue;
 				}
@@ -2005,22 +2097,28 @@ export class MonitoringSearchService {
 								? candidateScoreResult.sizeRejectionReason
 								: `score ${candidateScoreResult.totalScore} below minimum ${profile.minScore ?? 0}`;
 						if (dryRun) {
-							logger.info('[DryRun] Release rejected by scoring profile', {
-								episode: title,
-								release: release.title,
-								score: candidateScoreResult.totalScore,
-								reason
-							});
+							logger.info(
+								{
+									episode: title,
+									release: release.title,
+									score: candidateScoreResult.totalScore,
+									reason
+								},
+								'[DryRun] Release rejected by scoring profile'
+							);
 						} else {
-							logger.debug('[MonitoringSearch] Release rejected by scoring profile', {
-								seriesId: seriesData.id,
-								episodeId: episode.id,
-								title: release.title,
-								score: candidateScoreResult.totalScore,
-								isSeasonPack,
-								episodeCount,
-								reason
-							});
+							logger.debug(
+								{
+									seriesId: seriesData.id,
+									episodeId: episode.id,
+									title: release.title,
+									score: candidateScoreResult.totalScore,
+									isSeasonPack,
+									episodeCount,
+									reason
+								},
+								'[MonitoringSearch] Release rejected by scoring profile'
+							);
 						}
 						continue;
 					}
@@ -2037,17 +2135,20 @@ export class MonitoringSearchService {
 							Object.entries(comparison.candidate.breakdown).map(([k, v]) => [k, v.score])
 						);
 
-						logger.info('[DryRun] Upgrade comparison', {
-							episode: title,
-							existingFile: existingFileName,
-							existingScore: comparison.existing.totalScore,
-							candidate: release.title,
-							candidateScore: comparison.candidate.totalScore,
-							improvement: comparison.improvement,
-							minRequired: seriesData.scoringProfile?.minScoreIncrement || 0,
-							isUpgrade: comparison.isUpgrade,
-							verdict: comparison.isUpgrade ? 'WOULD GRAB' : 'REJECTED'
-						});
+						logger.info(
+							{
+								episode: title,
+								existingFile: existingFileName,
+								existingScore: comparison.existing.totalScore,
+								candidate: release.title,
+								candidateScore: comparison.candidate.totalScore,
+								improvement: comparison.improvement,
+								minRequired: seriesData.scoringProfile?.minScoreIncrement || 0,
+								isUpgrade: comparison.isUpgrade,
+								verdict: comparison.isUpgrade ? 'WOULD GRAB' : 'REJECTED'
+							},
+							'[DryRun] Upgrade comparison'
+						);
 
 						// Track best candidate (even if not accepted)
 						if (!bestCandidate || comparison.candidate.totalScore > bestCandidate.score) {
@@ -2072,13 +2173,16 @@ export class MonitoringSearchService {
 				if (upgradeResult.accepted) {
 					if (dryRun) {
 						// In dry-run mode, don't actually grab - just report what would happen
-						logger.info('[DryRun] Would grab upgrade', {
-							episode: title,
-							release: release.title,
-							existingFile: existingFileName,
-							existingScore,
-							candidateScore: release.totalScore ?? 0
-						});
+						logger.info(
+							{
+								episode: title,
+								release: release.title,
+								existingFile: existingFileName,
+								existingScore,
+								candidateScore: release.totalScore ?? 0
+							},
+							'[DryRun] Would grab upgrade'
+						);
 
 						const result: ItemSearchResult = {
 							itemId: episode.id,
@@ -2199,7 +2303,7 @@ export class MonitoringSearchService {
 	 * @param signal - Optional AbortSignal for cancellation support
 	 */
 	async searchNewEpisodes(intervalHours: number, signal?: AbortSignal): Promise<SearchResults> {
-		logger.info('[MonitoringSearch] Starting new episode search', { intervalHours });
+		logger.info({ intervalHours }, '[MonitoringSearch] Starting new episode search');
 
 		const results: ItemSearchResult[] = [];
 
@@ -2232,9 +2336,12 @@ export class MonitoringSearchService {
 				}
 			});
 
-			logger.info('[MonitoringSearch] Found recently aired episodes', {
-				count: recentEpisodes.length
-			});
+			logger.info(
+				{
+					count: recentEpisodes.length
+				},
+				'[MonitoringSearch] Found recently aired episodes'
+			);
 
 			// Preload season episode counts to avoid N+1 queries
 			const uniqueSeriesIds = [...new Set(recentEpisodes.map((e) => e.seriesId))];
@@ -2305,7 +2412,7 @@ export class MonitoringSearchService {
 				await new Promise((resolve) => setTimeout(resolve, 500));
 			}
 		} catch (error) {
-			logger.error('[MonitoringSearch] New episodes search failed', error);
+			logger.error({ err: error }, '[MonitoringSearch] New episodes search failed');
 		} finally {
 			// Clear the cache after search completes
 			this.clearSeasonEpisodeCountCache();
@@ -2326,10 +2433,13 @@ export class MonitoringSearchService {
 			// Check if movie already has an active download
 			const alreadyDownloading = await this.isMovieAlreadyDownloading(movie.id);
 			if (alreadyDownloading) {
-				logger.debug('[MonitoringSearch] Movie already downloading, skipping', {
-					movieId: movie.id,
-					title: movie.title
-				});
+				logger.debug(
+					{
+						movieId: movie.id,
+						title: movie.title
+					},
+					'[MonitoringSearch] Movie already downloading, skipping'
+				);
 				return {
 					itemId: movie.id,
 					itemType: 'movie',
@@ -2405,10 +2515,13 @@ export class MonitoringSearchService {
 				// Check blocklist
 				const blocklistResult = await blocklistSpec.isSatisfied(releaseCandidate);
 				if (!blocklistResult.accepted) {
-					logger.debug('[MonitoringSearch] Release blocklisted, trying next', {
-						title: release.title,
-						reason: blocklistResult.reason
-					});
+					logger.debug(
+						{
+							title: release.title,
+							reason: blocklistResult.reason
+						},
+						'[MonitoringSearch] Release blocklisted, trying next'
+					);
 					continue;
 				}
 
@@ -2416,12 +2529,15 @@ export class MonitoringSearchService {
 				// This prevents mismatches like "Doom.Patrol.S03E06.1917.Patrol" being grabbed for movie "1917"
 				const episodeInfo = release.parsed.episode;
 				if (episodeInfo && (episodeInfo.season !== undefined || episodeInfo.episodes?.length)) {
-					logger.debug('[MonitoringSearch] Release rejected - TV episode, not a movie', {
-						movieId: movie.id,
-						title: release.title,
-						season: episodeInfo.season,
-						episodes: episodeInfo.episodes
-					});
+					logger.debug(
+						{
+							movieId: movie.id,
+							title: release.title,
+							season: episodeInfo.season,
+							episodes: episodeInfo.episodes
+						},
+						'[MonitoringSearch] Release rejected - TV episode, not a movie'
+					);
 					continue;
 				}
 
@@ -2431,19 +2547,22 @@ export class MonitoringSearchService {
 						mediaType: 'movie'
 					});
 					if (!scoreResult.meetsMinimum || scoreResult.isBanned || scoreResult.sizeRejected) {
-						logger.debug('[MonitoringSearch] Release rejected by scoring profile', {
-							movieId: movie.id,
-							title: release.title,
-							score: scoreResult.totalScore,
-							meetsMinimum: scoreResult.meetsMinimum,
-							isBanned: scoreResult.isBanned,
-							sizeRejected: scoreResult.sizeRejected,
-							reason: scoreResult.isBanned
-								? 'banned'
-								: scoreResult.sizeRejected
-									? scoreResult.sizeRejectionReason
-									: `score ${scoreResult.totalScore} below minimum ${profile.minScore ?? 0}`
-						});
+						logger.debug(
+							{
+								movieId: movie.id,
+								title: release.title,
+								score: scoreResult.totalScore,
+								meetsMinimum: scoreResult.meetsMinimum,
+								isBanned: scoreResult.isBanned,
+								sizeRejected: scoreResult.sizeRejected,
+								reason: scoreResult.isBanned
+									? 'banned'
+									: scoreResult.sizeRejected
+										? scoreResult.sizeRejectionReason
+										: `score ${scoreResult.totalScore} below minimum ${profile.minScore ?? 0}`
+							},
+							'[MonitoringSearch] Release rejected by scoring profile'
+						);
 						continue;
 					}
 				}
@@ -2498,10 +2617,13 @@ export class MonitoringSearchService {
 			// Check if episode already has an active download
 			const alreadyDownloading = await this.areEpisodesAlreadyDownloading([episode.id]);
 			if (alreadyDownloading) {
-				logger.debug('[MonitoringSearch] Episode already downloading, skipping', {
-					episodeId: episode.id,
-					title
-				});
+				logger.debug(
+					{
+						episodeId: episode.id,
+						title
+					},
+					'[MonitoringSearch] Episode already downloading, skipping'
+				);
 				return {
 					itemId: episode.id,
 					itemType: 'episode',
@@ -2579,6 +2701,25 @@ export class MonitoringSearchService {
 			}
 
 			for (const release of searchResult.releases) {
+				const parsedEpisode = release.parsed.episode ?? release.episodeMatch;
+				const isSeasonPack = parsedEpisode?.isSeasonPack ?? false;
+				const isEpisodePointer = this.isEpisodePointerRelease(release);
+
+				// Pointer-indexer episode-targeted missing-content search should not grab
+				// full season packs.
+				// Allow virtual episode pointers because they resolve to per-episode file selection.
+				if (this.isRuTrackerIndexerName(release.indexerName) && isSeasonPack && !isEpisodePointer) {
+					logger.debug(
+						{
+							seriesId: seriesData.id,
+							episodeId: episode.id,
+							title: release.title
+						},
+						'[MonitoringSearch] Skipping pointer-indexer season pack in episode-targeted search'
+					);
+					continue;
+				}
+
 				const releaseCandidate: ReleaseCandidate = {
 					title: release.title,
 					score: release.totalScore ?? 0,
@@ -2590,48 +2731,53 @@ export class MonitoringSearchService {
 				// Check blocklist
 				const blocklistResult = await blocklistSpec.isSatisfied(releaseCandidate);
 				if (!blocklistResult.accepted) {
-					logger.debug('[MonitoringSearch] Release blocklisted, trying next', {
-						title: release.title,
-						reason: blocklistResult.reason
-					});
+					logger.debug(
+						{
+							title: release.title,
+							reason: blocklistResult.reason
+						},
+						'[MonitoringSearch] Release blocklisted, trying next'
+					);
 					continue;
 				}
 
 				// Validate release against scoring profile (defense-in-depth check)
 				if (profile) {
-					// Check if this is a season pack and get episode count for proper size validation
-					const isSeasonPack =
-						release.parsed.episode?.isSeasonPack ?? release.episodeMatch?.isSeasonPack ?? false;
+					const treatAsSeasonPack = isSeasonPack && !isEpisodePointer;
 					let episodeCount: number | undefined;
-					if (isSeasonPack) {
+					if (treatAsSeasonPack) {
 						// For season packs, we need episode count for per-episode size calculation
-						const releaseSeasons = release.parsed.episode?.seasons ?? release.episodeMatch?.seasons;
+						const releaseSeasons = parsedEpisode?.seasons;
 						const targetSeason = releaseSeasons?.[0] ?? episode.seasonNumber;
 						episodeCount = await this.getSeasonEpisodeCount(seriesData.id, targetSeason);
 					}
 
 					const scoreResult = scoreRelease(release.title, profile, undefined, release.size, {
 						mediaType: 'tv',
-						isSeasonPack,
+						isSeasonPack: treatAsSeasonPack,
 						episodeCount
 					});
 					if (!scoreResult.meetsMinimum || scoreResult.isBanned || scoreResult.sizeRejected) {
-						logger.debug('[MonitoringSearch] Release rejected by scoring profile', {
-							seriesId: seriesData.id,
-							episodeId: episode.id,
-							title: release.title,
-							score: scoreResult.totalScore,
-							meetsMinimum: scoreResult.meetsMinimum,
-							isBanned: scoreResult.isBanned,
-							sizeRejected: scoreResult.sizeRejected,
-							isSeasonPack,
-							episodeCount,
-							reason: scoreResult.isBanned
-								? 'banned'
-								: scoreResult.sizeRejected
-									? scoreResult.sizeRejectionReason
-									: `score ${scoreResult.totalScore} below minimum ${profile.minScore ?? 0}`
-						});
+						logger.debug(
+							{
+								seriesId: seriesData.id,
+								episodeId: episode.id,
+								title: release.title,
+								score: scoreResult.totalScore,
+								meetsMinimum: scoreResult.meetsMinimum,
+								isBanned: scoreResult.isBanned,
+								sizeRejected: scoreResult.sizeRejected,
+								isSeasonPack: treatAsSeasonPack,
+								isEpisodePointer,
+								episodeCount,
+								reason: scoreResult.isBanned
+									? 'banned'
+									: scoreResult.sizeRejected
+										? scoreResult.sizeRejectionReason
+										: `score ${scoreResult.totalScore} below minimum ${profile.minScore ?? 0}`
+							},
+							'[MonitoringSearch] Release rejected by scoring profile'
+						);
 						continue;
 					}
 				}
@@ -2675,6 +2821,75 @@ export class MonitoringSearchService {
 		}
 	}
 
+	private isEpisodePointerRelease(release: Pick<EnhancedReleaseResult, 'guid' | 'title'>): boolean {
+		return Boolean(
+			parseEpisodePointerFromGuid(release.guid) ?? parseEpisodePointerFromTitle(release.title)
+		);
+	}
+
+	private isRuTrackerIndexerName(indexerName: string | undefined): boolean {
+		if (typeof indexerName !== 'string') {
+			return false;
+		}
+		const normalized = indexerName.toLowerCase();
+		return normalized.includes('rutracker') || normalized.includes('kinozal');
+	}
+
+	private isRuTrackerHost(baseUrl: string | undefined): boolean {
+		if (!baseUrl) {
+			return false;
+		}
+		try {
+			const hostname = new URL(baseUrl).hostname.toLowerCase();
+			return hostname.includes('rutracker.') || hostname.includes('kinozal.');
+		} catch {
+			const normalized = baseUrl.toLowerCase();
+			return normalized.includes('rutracker.') || normalized.includes('kinozal.');
+		}
+	}
+
+	private async shouldApplyRuTrackerEpisodePointerPolicy(): Promise<boolean> {
+		try {
+			const indexerManager = await getIndexerManager();
+			const maybeGetIndexers = (indexerManager as { getIndexers?: () => Promise<unknown[]> })
+				.getIndexers;
+			if (typeof maybeGetIndexers !== 'function') {
+				return false;
+			}
+
+			const configuredIndexers = await maybeGetIndexers.call(indexerManager);
+			const automaticTvIndexers = configuredIndexers.filter((indexer) => {
+				const config = indexer as {
+					enabled?: boolean;
+					enableAutomaticSearch?: boolean;
+					capabilities?: { tvSearch?: { available?: boolean }; search?: { available?: boolean } };
+				};
+				return Boolean(
+					config.enabled &&
+					config.enableAutomaticSearch &&
+					(config.capabilities?.tvSearch?.available ?? config.capabilities?.search?.available)
+				);
+			});
+
+			if (automaticTvIndexers.length === 0) {
+				return false;
+			}
+
+			const hasRuTracker = automaticTvIndexers.some((indexer) => {
+				const config = indexer as { name?: string; baseUrl?: string };
+				return this.isRuTrackerIndexerName(config.name) || this.isRuTrackerHost(config.baseUrl);
+			});
+			const hasNonRuTracker = automaticTvIndexers.some((indexer) => {
+				const config = indexer as { name?: string; baseUrl?: string };
+				return !(this.isRuTrackerIndexerName(config.name) || this.isRuTrackerHost(config.baseUrl));
+			});
+
+			return hasRuTracker && !hasNonRuTracker;
+		} catch {
+			return false;
+		}
+	}
+
 	/**
 	 * Grab a release and add to download queue.
 	 * Delegates to ReleaseGrabService for proper protocol-specific handling.
@@ -2696,565 +2911,6 @@ export class MonitoringSearchService {
 			...options,
 			isAutomatic: options.isAutomatic ?? true
 		});
-	}
-
-	// TODO: Remove handleStreamingGrab and handleStreamingSeasonPack methods
-	// These are now dead code since grabRelease() delegates to ReleaseGrabService
-	// which has its own streaming handling. Can be safely deleted in a future cleanup.
-
-	/**
-	 * Handle streaming releases - create .strm file directly instead of using download client
-	 * Supports both single episodes and season packs
-	 * @deprecated No longer called - ReleaseGrabService handles streaming now
-	 */
-	private async handleStreamingGrab(
-		release: EnhancedReleaseResult,
-		options: {
-			mediaType: 'movie' | 'tv';
-			movieId?: string;
-			seriesId?: string;
-			episodeIds?: string[];
-			seasonNumber?: number;
-			isAutomatic?: boolean;
-			isUpgrade?: boolean;
-		}
-	): Promise<{ success: boolean; releaseName?: string; error?: string; queueItemId?: string }> {
-		const { mediaType, movieId, seriesId, seasonNumber, episodeIds, isUpgrade } = options;
-
-		logger.info('[MonitoringSearch] Handling streaming release', {
-			title: release.title,
-			downloadUrl: release.downloadUrl
-		});
-
-		// Parse the stream:// URL to get TMDB ID and episode info
-		const parsed = StrmService.parseStreamUrl(release.downloadUrl);
-		if (!parsed) {
-			return { success: false, error: `Invalid streaming URL: ${release.downloadUrl}` };
-		}
-
-		// Determine base URL for the .strm file content (from indexer settings, env var, or default)
-		const baseUrl = await getStreamingBaseUrl('http://localhost:5173');
-
-		// Handle season pack (multiple episodes)
-		if (parsed.isSeasonPack && mediaType === 'tv' && seriesId && parsed.season !== undefined) {
-			return this.handleStreamingSeasonPack(release, {
-				seriesId,
-				seasonNumber: parsed.season,
-				tmdbId: parsed.tmdbId,
-				baseUrl,
-				isUpgrade,
-				episodeIds
-			});
-		}
-
-		// Single file handling (movie or single episode)
-		const result = await strmService.createStrmFile({
-			mediaType,
-			tmdbId: parsed.tmdbId,
-			movieId,
-			seriesId,
-			season: parsed.season ?? seasonNumber,
-			episode: parsed.episode,
-			baseUrl
-		});
-
-		if (!result.success || !result.filePath) {
-			logger.error('[MonitoringSearch] Failed to create .strm file', {
-				title: release.title,
-				error: result.error
-			});
-			return { success: false, error: result.error };
-		}
-
-		logger.info('[MonitoringSearch] Created .strm file for streaming release', {
-			title: release.title,
-			filePath: result.filePath
-		});
-
-		// Now add the file to the database (immediate import)
-		try {
-			// Get file stats
-			const stats = statSync(result.filePath);
-
-			// Parse quality from release title
-			const parsedRelease = parser.parse(release.title);
-			const quality = {
-				resolution: parsedRelease.resolution ?? '1080p',
-				source: 'Streaming',
-				codec: 'HLS',
-				hdr: undefined
-			};
-
-			if (mediaType === 'movie' && movieId) {
-				// Get movie for root folder path
-				const movie = await db.query.movies.findFirst({
-					where: eq(movies.id, movieId),
-					with: { rootFolder: true }
-				});
-
-				if (!movie || !movie.rootFolder) {
-					return { success: false, error: 'Movie or root folder not found' };
-				}
-
-				const allowStrmProbe = movie.scoringProfileId !== 'streamer';
-				const mediaInfo = await mediaInfoService.extractMediaInfo(result.filePath, {
-					allowStrmProbe
-				});
-
-				// Calculate relative path from root folder
-				const relativePath = relative(movie.rootFolder.path, result.filePath);
-
-				// Delete existing files if this is an upgrade
-				if (isUpgrade) {
-					const existingFiles = await db.query.movieFiles.findMany({
-						where: eq(movieFiles.movieId, movieId)
-					});
-					for (const oldFile of existingFiles) {
-						// Delete physical file from disk
-						const oldFilePath = join(movie.rootFolder.path, movie.path, oldFile.relativePath);
-						try {
-							if (await fileExists(oldFilePath)) {
-								await unlink(oldFilePath);
-								logger.info('[MonitoringSearch] Deleted old movie file from disk', {
-									movieId,
-									path: oldFilePath
-								});
-							}
-						} catch (deleteError) {
-							logger.warn('[MonitoringSearch] Failed to delete old file from disk (continuing)', {
-								path: oldFilePath,
-								error: deleteError instanceof Error ? deleteError.message : String(deleteError)
-							});
-						}
-						// Delete DB record
-						await db.delete(movieFiles).where(eq(movieFiles.id, oldFile.id));
-						logger.info('[MonitoringSearch] Deleted old movie file record for streaming upgrade', {
-							movieId,
-							oldFileId: oldFile.id
-						});
-					}
-				}
-
-				// Create movie file record
-				const fileId = randomUUID();
-				await db.insert(movieFiles).values({
-					id: fileId,
-					movieId,
-					relativePath,
-					size: stats.size,
-					dateAdded: new Date().toISOString(),
-					sceneName: release.title,
-					releaseGroup: parsedRelease.releaseGroup ?? 'Streaming',
-					quality,
-					mediaInfo
-				});
-
-				// Update movie hasFile flag
-				await db.update(movies).set({ hasFile: true }).where(eq(movies.id, movieId));
-
-				// Create history record
-				await db.insert(downloadHistory).values({
-					title: release.title,
-					indexerId: release.indexerId,
-					indexerName: release.indexerName,
-					protocol: 'streaming',
-					movieId,
-					status: 'streaming',
-					size: stats.size,
-					quality,
-					importedPath: result.filePath,
-					movieFileId: fileId,
-					grabbedAt: new Date().toISOString(),
-					importedAt: new Date().toISOString()
-				});
-
-				logger.info('[MonitoringSearch] Added streaming movie file to database', {
-					movieId,
-					fileId,
-					relativePath
-				});
-			} else if (
-				mediaType === 'tv' &&
-				seriesId &&
-				parsed.season !== undefined &&
-				parsed.episode !== undefined
-			) {
-				// Get series for root folder path
-				const show = await db.query.series.findFirst({
-					where: eq(series.id, seriesId),
-					with: { rootFolder: true }
-				});
-
-				if (!show || !show.rootFolder) {
-					return { success: false, error: 'Series or root folder not found' };
-				}
-
-				const allowStrmProbe = show.scoringProfileId !== 'streamer';
-				const mediaInfo = await mediaInfoService.extractMediaInfo(result.filePath, {
-					allowStrmProbe
-				});
-
-				// Find the episode
-				const episodeRow = await db.query.episodes.findFirst({
-					where: and(
-						eq(episodes.seriesId, seriesId),
-						eq(episodes.seasonNumber, parsed.season),
-						eq(episodes.episodeNumber, parsed.episode)
-					)
-				});
-
-				if (!episodeRow) {
-					return { success: false, error: `Episode S${parsed.season}E${parsed.episode} not found` };
-				}
-
-				// Calculate relative path from root folder
-				const relativePath = relative(show.rootFolder.path, result.filePath);
-
-				// Delete existing episode file if this is an upgrade
-				if (isUpgrade) {
-					// Episode files use episodeIds array, find files containing this episode
-					const allSeriesFiles = await db.query.episodeFiles.findMany({
-						where: eq(episodeFiles.seriesId, seriesId)
-					});
-					const existingFiles = allSeriesFiles.filter((f) => f.episodeIds?.includes(episodeRow.id));
-					for (const oldFile of existingFiles) {
-						// Delete physical file from disk
-						const oldFilePath = join(show.rootFolder.path, show.path, oldFile.relativePath);
-						try {
-							if (await fileExists(oldFilePath)) {
-								await unlink(oldFilePath);
-								logger.info('[MonitoringSearch] Deleted old episode file from disk', {
-									episodeId: episodeRow.id,
-									path: oldFilePath
-								});
-							}
-						} catch (deleteError) {
-							logger.warn(
-								'[MonitoringSearch] Failed to delete old episode file from disk (continuing)',
-								{
-									path: oldFilePath,
-									error: deleteError instanceof Error ? deleteError.message : String(deleteError)
-								}
-							);
-						}
-						// Delete DB record
-						await db.delete(episodeFiles).where(eq(episodeFiles.id, oldFile.id));
-						logger.info(
-							'[MonitoringSearch] Deleted old episode file record for streaming upgrade',
-							{
-								episodeId: episodeRow.id,
-								oldFileId: oldFile.id
-							}
-						);
-					}
-				}
-
-				// Create/update episode file record
-				const fileId = await upsertEpisodeFileByPath(db, {
-					seriesId,
-					seasonNumber: parsed.season,
-					episodeIds: [episodeRow.id],
-					relativePath,
-					size: stats.size,
-					dateAdded: new Date().toISOString(),
-					sceneName: release.title,
-					releaseGroup: parsedRelease.releaseGroup ?? 'Streaming',
-					quality,
-					mediaInfo
-				});
-
-				// Update episode hasFile flag
-				await db.update(episodes).set({ hasFile: true }).where(eq(episodes.id, episodeRow.id));
-
-				// Create history record
-				await db.insert(downloadHistory).values({
-					title: release.title,
-					indexerId: release.indexerId,
-					indexerName: release.indexerName,
-					protocol: 'streaming',
-					seriesId,
-					episodeIds: [episodeRow.id],
-					seasonNumber: parsed.season,
-					status: 'streaming',
-					size: stats.size,
-					quality,
-					importedPath: result.filePath,
-					episodeFileIds: [fileId],
-					grabbedAt: new Date().toISOString(),
-					importedAt: new Date().toISOString()
-				});
-
-				logger.info('[MonitoringSearch] Added streaming episode file to database', {
-					seriesId,
-					episodeId: episodeRow.id,
-					fileId,
-					relativePath
-				});
-			} else {
-				return { success: false, error: 'Invalid media type or missing required IDs' };
-			}
-
-			return {
-				success: true,
-				releaseName: release.title
-			};
-		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[MonitoringSearch] Failed to add streaming file to database', {
-				title: release.title,
-				error: message
-			});
-			return { success: false, error: `Database error: ${message}` };
-		}
-	}
-
-	/**
-	 * Handle streaming season pack - create .strm files for all episodes in a season
-	 */
-	private async handleStreamingSeasonPack(
-		release: EnhancedReleaseResult,
-		options: {
-			seriesId: string;
-			seasonNumber: number;
-			tmdbId: string;
-			baseUrl: string;
-			isUpgrade?: boolean;
-			episodeIds?: string[];
-		}
-	): Promise<{ success: boolean; releaseName?: string; error?: string; queueItemId?: string }> {
-		const { seriesId, seasonNumber, tmdbId, baseUrl, isUpgrade } = options;
-
-		logger.info('[MonitoringSearch] Handling streaming season pack', {
-			seriesId,
-			seasonNumber,
-			title: release.title
-		});
-
-		// Get series for root folder path
-		const show = await db.query.series.findFirst({
-			where: eq(series.id, seriesId),
-			with: { rootFolder: true }
-		});
-
-		if (!show || !show.rootFolder) {
-			return { success: false, error: 'Series or root folder not found' };
-		}
-		const allowStrmProbe = show.scoringProfileId !== 'streamer';
-
-		// Create .strm files for all episodes in the season
-		const strmResult = await strmService.createSeasonStrmFiles({
-			seriesId,
-			seasonNumber,
-			tmdbId,
-			baseUrl
-		});
-
-		if (!strmResult.success || strmResult.results.length === 0) {
-			logger.error('[MonitoringSearch] Failed to create season pack .strm files', {
-				seriesId,
-				seasonNumber,
-				error: strmResult.error
-			});
-			return { success: false, error: strmResult.error || 'Failed to create .strm files' };
-		}
-
-		// Parse quality from release title
-		const parsedRelease = parser.parse(release.title);
-		const quality = {
-			resolution: parsedRelease.resolution ?? '1080p',
-			source: 'Streaming',
-			codec: 'HLS',
-			hdr: undefined
-		};
-
-		// Collect file info before starting transaction
-		const episodeFileData: Array<{
-			episodeId: string;
-			episodeNumber: number;
-			filePath: string;
-			fileSize: number;
-			relativePath: string;
-			mediaInfo: Awaited<ReturnType<typeof mediaInfoService.extractMediaInfo>>;
-		}> = [];
-
-		// First pass: collect file info and validate (outside transaction)
-		for (const epResult of strmResult.results) {
-			if (!epResult.filePath) {
-				logger.warn('[MonitoringSearch] Skipping episode without .strm file', {
-					episodeId: epResult.episodeId,
-					episodeNumber: epResult.episodeNumber,
-					error: epResult.error
-				});
-				continue;
-			}
-
-			try {
-				const stats = statSync(epResult.filePath);
-				const mediaInfo = await mediaInfoService.extractMediaInfo(epResult.filePath, {
-					allowStrmProbe
-				});
-				const relativePath = relative(show.rootFolder!.path, epResult.filePath);
-
-				episodeFileData.push({
-					episodeId: epResult.episodeId,
-					episodeNumber: epResult.episodeNumber,
-					filePath: epResult.filePath,
-					fileSize: Number(stats.size), // Convert bigint to number if needed
-					relativePath,
-					mediaInfo
-				});
-			} catch (error) {
-				logger.error('[MonitoringSearch] Failed to get file info for episode', {
-					episodeId: epResult.episodeId,
-					episodeNumber: epResult.episodeNumber,
-					error: error instanceof Error ? error.message : 'Unknown error'
-				});
-			}
-		}
-
-		if (episodeFileData.length === 0) {
-			// Don't clean up .strm files - let the LibraryWatcher try to link them
-			// Even if we failed to get file info, the watcher might succeed
-			logger.warn(
-				'[MonitoringSearch] Failed to get file info for any episodes, keeping files for watcher',
-				{
-					seriesId,
-					seasonNumber,
-					filesCreated: strmResult.results.filter((r) => r.filePath).length
-				}
-			);
-			return { success: false, error: 'Failed to get file info for any episodes' };
-		}
-
-		const createdEpisodeIds: string[] = [];
-		const createdFileIds: string[] = [];
-		let totalSize = 0;
-
-		// Use transaction for all database operations to ensure atomicity
-		try {
-			await db.transaction(async (tx) => {
-				for (const epData of episodeFileData) {
-					// Delete existing episode file if this is an upgrade
-					if (isUpgrade) {
-						const allSeriesFiles = await tx.query.episodeFiles.findMany({
-							where: eq(episodeFiles.seriesId, seriesId)
-						});
-						const existingFiles = allSeriesFiles.filter((f) =>
-							f.episodeIds?.includes(epData.episodeId)
-						);
-						for (const oldFile of existingFiles) {
-							// Delete physical file from disk (best effort)
-							const oldFilePath = join(show.rootFolder!.path, show.path, oldFile.relativePath);
-							try {
-								if (await fileExists(oldFilePath)) {
-									await unlink(oldFilePath);
-									logger.debug('[MonitoringSearch] Deleted old episode file from disk', {
-										episodeId: epData.episodeId,
-										path: oldFilePath
-									});
-								}
-							} catch (deleteError) {
-								logger.warn(
-									'[MonitoringSearch] Failed to delete old episode file from disk (continuing)',
-									{
-										path: oldFilePath,
-										error: deleteError instanceof Error ? deleteError.message : String(deleteError)
-									}
-								);
-							}
-							// Delete DB record
-							await tx.delete(episodeFiles).where(eq(episodeFiles.id, oldFile.id));
-							logger.debug(
-								'[MonitoringSearch] Deleted old episode file record for streaming upgrade',
-								{
-									episodeId: epData.episodeId,
-									oldFileId: oldFile.id
-								}
-							);
-						}
-					}
-
-					// Create/update episode file record
-					const fileId = await upsertEpisodeFileByPath(tx, {
-						seriesId,
-						seasonNumber,
-						episodeIds: [epData.episodeId],
-						relativePath: epData.relativePath,
-						size: epData.fileSize,
-						dateAdded: new Date().toISOString(),
-						sceneName: release.title,
-						releaseGroup: parsedRelease.releaseGroup ?? 'Streaming',
-						quality,
-						mediaInfo: epData.mediaInfo
-					});
-
-					// Update episode hasFile flag
-					await tx.update(episodes).set({ hasFile: true }).where(eq(episodes.id, epData.episodeId));
-
-					createdEpisodeIds.push(epData.episodeId);
-					createdFileIds.push(fileId);
-					totalSize += epData.fileSize;
-
-					logger.debug('[MonitoringSearch] Created episode file record', {
-						episodeId: epData.episodeId,
-						episodeNumber: epData.episodeNumber,
-						fileId
-					});
-				}
-
-				// Create single history record for the entire season pack
-				await tx.insert(downloadHistory).values({
-					title: release.title,
-					indexerId: release.indexerId,
-					indexerName: release.indexerName,
-					protocol: 'streaming',
-					seriesId,
-					episodeIds: createdEpisodeIds,
-					seasonNumber,
-					status: 'streaming',
-					size: totalSize,
-					quality,
-					episodeFileIds: createdFileIds,
-					grabbedAt: new Date().toISOString(),
-					importedAt: new Date().toISOString()
-				});
-			});
-		} catch (txError) {
-			// Transaction failed - do NOT delete files, let LibraryWatcher handle them
-			// Deleting files here causes a race condition where E01 gets deleted before
-			// the watcher has a chance to process and link it
-			logger.error('[MonitoringSearch] Transaction failed for streaming season pack', {
-				seriesId,
-				seasonNumber,
-				error: txError instanceof Error ? txError.message : 'Unknown error',
-				filesCreated: episodeFileData.length,
-				note: 'Keeping .strm files for LibraryWatcher to process'
-			});
-
-			// Don't delete files - the LibraryWatcher will detect them and link properly
-			// This avoids the race condition where files get deleted before watcher processes them
-
-			return {
-				success: false,
-				error: txError instanceof Error ? txError.message : 'Database transaction failed'
-			};
-		}
-
-		if (createdFileIds.length === 0) {
-			return { success: false, error: 'Failed to create any episode file records' };
-		}
-
-		logger.info('[MonitoringSearch] Created streaming season pack files', {
-			seriesId,
-			seasonNumber,
-			episodesCreated: createdFileIds.length,
-			totalEpisodes: strmResult.results.length
-		});
-
-		return {
-			success: true,
-			releaseName: release.title
-		};
 	}
 
 	/**

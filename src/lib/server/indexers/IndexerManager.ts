@@ -14,7 +14,9 @@ import {
 } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 
 import type {
 	IIndexer,
@@ -37,6 +39,7 @@ import { getPersistentStatusTracker } from './status';
 import { getRateLimitRegistry } from './ratelimit';
 import { cleanupIndexerCookies } from './http/IndexerHttp';
 import { CINEPHAGE_STREAM_DEFINITION_ID } from './types';
+import { sanitizeStreamingIndexerSettings } from '$lib/server/streaming/settings';
 
 /** Manager options */
 export interface IndexerManagerOptions {
@@ -67,17 +70,23 @@ export class IndexerManager {
 		// Seed built-in streaming indexer if not exists
 		await this.seedStreamingIndexer();
 
-		logger.info('IndexerManager initialized', {
-			definitionCount: this.definitionLoader.count,
-			errors: this.definitionLoader.getErrors().length
-		});
+		logger.info(
+			{
+				definitionCount: this.definitionLoader.count,
+				errors: this.definitionLoader.getErrors().length
+			},
+			'IndexerManager initialized'
+		);
 
 		// Log any errors
 		for (const error of this.definitionLoader.getErrors()) {
-			logger.warn('Definition load error', {
-				file: error.filePath,
-				error: error.error
-			});
+			logger.warn(
+				{
+					file: error.filePath,
+					error: error.error
+				},
+				'Definition load error'
+			);
 		}
 	}
 
@@ -139,6 +148,23 @@ export class IndexerManager {
 			.where(eq(indexersTable.definitionId, CINEPHAGE_STREAM_DEFINITION_ID));
 
 		if (existing.length > 0) {
+			const current = existing[0];
+			const sanitizedSettings = sanitizeStreamingIndexerSettings(
+				current.settings as Record<string, unknown> | null | undefined
+			);
+			const currentSettings =
+				(current.settings as Record<string, unknown> | null | undefined) ?? {};
+
+			if (JSON.stringify(currentSettings) !== JSON.stringify(sanitizedSettings)) {
+				await db
+					.update(indexersTable)
+					.set({
+						settings: sanitizedSettings,
+						updatedAt: new Date().toISOString()
+					})
+					.where(eq(indexersTable.id, current.id));
+			}
+
 			logger.debug('Streaming indexer already exists in database');
 			return;
 		}
@@ -146,7 +172,7 @@ export class IndexerManager {
 		// Get definition info from YAML loader
 		const def = this.definitionLoader.get(CINEPHAGE_STREAM_DEFINITION_ID);
 		if (!def) {
-			logger.warn('Streaming indexer definition not found', { id: CINEPHAGE_STREAM_DEFINITION_ID });
+			logger.warn({ id: CINEPHAGE_STREAM_DEFINITION_ID }, 'Streaming indexer definition not found');
 			return;
 		}
 
@@ -161,10 +187,13 @@ export class IndexerManager {
 			enableInteractiveSearch: true // Include in manual searches
 		});
 
-		logger.info('Seeded built-in streaming indexer to database', {
-			definitionId: CINEPHAGE_STREAM_DEFINITION_ID,
-			name: def.name
-		});
+		logger.info(
+			{
+				definitionId: CINEPHAGE_STREAM_DEFINITION_ID,
+				name: def.name
+			},
+			'Seeded built-in streaming indexer to database'
+		);
 	}
 
 	/** Get all configured indexers from database */
@@ -355,11 +384,14 @@ export class IndexerManager {
 	private async createIndexerInstance(config: IndexerConfig): Promise<IIndexer | null> {
 		const instance = await this.indexerFactory.createIndexer(config);
 		if (instance) {
-			logger.debug('Created indexer instance', {
-				indexerId: config.id,
-				definitionId: config.definitionId,
-				protocol: config.protocol
-			});
+			logger.debug(
+				{
+					indexerId: config.id,
+					definitionId: config.definitionId,
+					protocol: config.protocol
+				},
+				'Created indexer instance'
+			);
 		}
 		return instance;
 	}
@@ -382,7 +414,7 @@ export class IndexerManager {
 			}
 			return instance;
 		} catch (error) {
-			logger.error('Failed to create indexer instance', error, { indexerId: id });
+			logger.error({ err: error, ...{ indexerId: id } }, 'Failed to create indexer instance');
 			return undefined;
 		}
 	}
@@ -415,15 +447,21 @@ export class IndexerManager {
 					created.push(instance);
 				}
 			} catch (error) {
-				logger.error('Failed to create indexer instance', error, { indexerId: config.id });
+				logger.error(
+					{ err: error, ...{ indexerId: config.id } },
+					'Failed to create indexer instance'
+				);
 			}
 		}
 
-		logger.debug('getEnabledIndexers batch result', {
-			total: enabledConfigs.length,
-			cached: cached.length,
-			newlyCreated: created.length
-		});
+		logger.debug(
+			{
+				total: enabledConfigs.length,
+				cached: cached.length,
+				newlyCreated: created.length
+			},
+			'getEnabledIndexers batch result'
+		);
 
 		return [...cached, ...created];
 	}
@@ -547,7 +585,12 @@ export class IndexerManager {
 			alternateUrls: row.alternateUrls ?? [],
 			priority: row.priority ?? 25,
 			protocol,
-			settings: (row.settings as Record<string, string>) ?? {},
+			settings:
+				row.definitionId === CINEPHAGE_STREAM_DEFINITION_ID
+					? sanitizeStreamingIndexerSettings(
+							row.settings as Record<string, unknown> | null | undefined
+						)
+					: ((row.settings as Record<string, string>) ?? {}),
 
 			// Search capability toggles
 			enableAutomaticSearch: row.enableAutomaticSearch ?? true,

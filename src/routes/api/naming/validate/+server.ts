@@ -1,7 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { logger } from '$lib/logging';
 import { tokenRegistry } from '$lib/server/library/naming/tokens';
 import { TemplateEngine } from '$lib/server/library/naming/template';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 const templateEngine = new TemplateEngine(tokenRegistry);
 
@@ -9,7 +11,11 @@ const templateEngine = new TemplateEngine(tokenRegistry);
  * POST /api/naming/validate
  * Validates naming format strings and returns errors/warnings
  */
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { request } = event;
 	try {
 		const body = await request.json();
 		const { formats } = body as { formats: Record<string, string> };
@@ -50,7 +56,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		return json({ results });
 	} catch (err) {
-		console.error('Error validating naming formats:', err);
+		logger.error({ err, component: 'NamingValidateApi' }, 'Error validating naming formats');
 		return json({ error: 'Failed to validate formats' }, { status: 500 });
 	}
 };

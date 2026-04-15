@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import type { FormatCategory } from '$lib/types/format';
+	import * as m from '$lib/paraglide/messages.js';
 	import {
 		FORMAT_CATEGORY_LABELS,
 		FORMAT_CATEGORY_ORDER,
@@ -84,14 +85,18 @@
 			<input
 				type="text"
 				class="input-bordered input input-sm w-full pl-9"
-				placeholder="Search formats..."
+				placeholder={m.profiles_searchFormats()}
 				bind:value={searchQuery}
 			/>
 		</div>
 
 		<div class="flex gap-1">
-			<button type="button" class="btn btn-ghost btn-xs" onclick={expandAll}>Expand All</button>
-			<button type="button" class="btn btn-ghost btn-xs" onclick={collapseAll}>Collapse All</button>
+			<button type="button" class="btn btn-ghost btn-xs" onclick={expandAll}
+				>{m.action_expandAll()}</button
+			>
+			<button type="button" class="btn btn-ghost btn-xs" onclick={collapseAll}
+				>{m.action_collapseAll()}</button
+			>
 		</div>
 	</div>
 
@@ -141,9 +146,11 @@
 						<span class="flex-1 font-medium">{FORMAT_CATEGORY_LABELS[category]}</span>
 
 						{#if nonZeroCount > 0}
-							<span class="badge badge-sm badge-primary">{nonZeroCount} scored</span>
+							<span class="badge badge-sm badge-primary"
+								>{m.profiles_scoredCount({ count: nonZeroCount })}</span
+							>
 						{/if}
-						<span class="badge badge-sm">{scores.length}</span>
+						<span class="badge badge-sm">{m.profiles_formatCount({ count: scores.length })}</span>
 					</button>
 
 					<!-- Category content -->
@@ -154,7 +161,9 @@
 									<div class="hover:bg-base-50 flex items-center gap-3 px-4 py-2">
 										<!-- Format name -->
 										<span class="min-w-0 flex-1 truncate" class:font-medium={entry.score !== 0}>
-											{entry.formatName}
+											{(m as unknown as Record<string, () => string>)[
+												`format_${entry.formatId}`
+											]?.() || entry.formatName}
 										</span>
 
 										<!-- Score input -->
@@ -178,7 +187,7 @@
 		{#if filteredScores().size === 0}
 			<div class="rounded-lg bg-base-200 p-8 text-center">
 				<Search class="mx-auto mb-2 h-8 w-8 text-base-content/40" />
-				<p class="text-base-content/60">No formats match your search</p>
+				<p class="text-base-content/60">{m.profiles_noFormatsMatchSearch()}</p>
 			</div>
 		{/if}
 	</div>

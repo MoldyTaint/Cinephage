@@ -2,6 +2,7 @@
 	import type { ScoringProfile } from '$lib/types/profile';
 	import ProfileTable from './ProfileTable.svelte';
 	import { Plus } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		profiles: ScoringProfile[];
@@ -30,7 +31,7 @@
 		{#if onAdd}
 			<button class="btn w-full gap-2 btn-sm btn-primary sm:w-auto" onclick={onAdd}>
 				<Plus class="h-4 w-4" />
-				Add Profile
+				{m.profiles_addProfile()}
 			</button>
 		{/if}
 	</div>

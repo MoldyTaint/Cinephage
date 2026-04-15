@@ -12,7 +12,9 @@ import type {
 	ProviderSearchOptions,
 	LanguageCode
 } from '../../types';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import { TooManyRequests, ServiceUnavailable } from '../../errors/ProviderErrors';
 
 const API_BASE_URL = 'https://www.podnapisi.net/subtitles/search/old';
@@ -134,10 +136,13 @@ export class PodnapisiProvider extends BaseSubtitleProvider {
 				});
 
 				if (!response.ok) {
-					logger.warn('[Podnapisi] Search request failed', {
-						status: response.status,
-						language: lang
-					});
+					logger.warn(
+						{
+							status: response.status,
+							language: lang
+						},
+						'[Podnapisi] Search request failed'
+					);
 					// Throw typed errors for specific status codes
 					if (response.status === 429) {
 						const retryAfter = response.headers.get('retry-after');
@@ -207,10 +212,13 @@ export class PodnapisiProvider extends BaseSubtitleProvider {
 			// If it's a zip, we'd need to extract it - for now return as-is
 			// The download service will handle extraction
 			if (contentType.includes('zip') || buffer.slice(0, 2).toString() === 'PK') {
-				logger.debug('[Podnapisi] Downloaded zipped subtitle', {
-					subtitleId,
-					size: buffer.length
-				});
+				logger.debug(
+					{
+						subtitleId,
+						size: buffer.length
+					},
+					'[Podnapisi] Downloaded zipped subtitle'
+				);
 			}
 
 			return buffer;

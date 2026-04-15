@@ -1,92 +1,130 @@
 /**
- * Streaming Provider Settings
- *
- * Provides utilities to retrieve streaming provider configuration
- * from the database and manage provider enablement.
+ * Streaming settings for the active Cinephage API resolver.
  */
 
 import { db } from '$lib/server/db';
 import { indexers } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
+import { logger } from '$lib/logging';
 import { CINEPHAGE_STREAM_DEFINITION_ID } from '../indexers/types';
 
-// ============================================================================
-// Provider Types
-// ============================================================================
+const STREAMING_INDEXER_SETTING_KEYS = [
+	'useHttps',
+	'externalHost',
+	'cinephageCommit',
+	'cinephageVersion'
+] as const;
 
-/**
- * All supported streaming provider IDs
- */
-export type StreamingProvider =
-	| 'videasy'
-	| 'vidlink'
-	| 'xprime'
-	| 'smashy'
-	| 'hexa'
-	| 'yflix'
-	| 'mapple'
-	| 'onetouchtv'
-	| 'animekai'
-	| 'kisskh';
-
-/**
- * Default enabled providers (primary movie/TV sources)
- */
-const DEFAULT_ENABLED_PROVIDERS: StreamingProvider[] = ['videasy', 'vidlink', 'hexa'];
-
-// ============================================================================
-// Settings Interface
-// ============================================================================
+type StreamingIndexerSettingKey = (typeof STREAMING_INDEXER_SETTING_KEYS)[number];
+type StreamingIndexerSettingValue = string;
 
 export interface StreamingIndexerSettings {
 	/** Whether to use HTTPS (new split URL format) */
-	useHttps?: boolean | 'true' | 'false';
+	useHttps?: 'true' | 'false';
 
 	/** External host:port (new split URL format) */
 	externalHost?: string;
 
-	/** Base URL for streaming endpoints (legacy, reconstructed from useHttps + externalHost) */
+	/** Base URL for streaming endpoints, resolved from current settings */
 	baseUrl?: string;
 
-	/** Comma-separated list of enabled providers */
-	enabledProviders?: string;
+	/** Build commit sent with upstream authentication headers */
+	cinephageCommit?: string;
 
-	/** Individual provider toggles (for backward compatibility) */
-	enableVideasy?: 'true' | 'false';
-	enableVidlink?: 'true' | 'false';
-	enableXprime?: 'true' | 'false';
-	enableSmashy?: 'true' | 'false';
-	enableHexa?: 'true' | 'false';
-	enableYflix?: 'true' | 'false';
-	enableMapple?: 'true' | 'false';
-	enableOnetouchtv?: 'true' | 'false';
-	enableAnimekai?: 'true' | 'false';
-	enableKisskh?: 'true' | 'false';
-
-	// Legacy settings (deprecated)
-	/** @deprecated Use enabledProviders instead */
-	enableVidsrc?: string;
-	/** @deprecated Use enabledProviders instead */
-	enableMoviesapi?: string;
-	/** @deprecated Use enabledProviders instead */
-	enable2embed?: string;
+	/** Build version sent with upstream authentication headers */
+	cinephageVersion?: string;
 }
 
-// ============================================================================
-// Settings Functions
-// ============================================================================
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeStreamingSettingValue(
+	key: StreamingIndexerSettingKey,
+	value: unknown
+): StreamingIndexerSettingValue | undefined {
+	if (key === 'useHttps') {
+		if (typeof value === 'boolean') {
+			return value ? 'true' : 'false';
+		}
+
+		if (typeof value !== 'string') {
+			return undefined;
+		}
+
+		const normalized = value.trim().toLowerCase();
+		if (normalized === 'true' || normalized === '1' || normalized === 'yes') {
+			return 'true';
+		}
+
+		if (normalized === 'false' || normalized === '0' || normalized === 'no') {
+			return 'false';
+		}
+
+		return undefined;
+	}
+
+	if (typeof value !== 'string') {
+		return undefined;
+	}
+
+	const normalized = value.trim();
+	if (!normalized) {
+		return undefined;
+	}
+
+	return normalized;
+}
+
+function needsStreamingSettingsCleanup(
+	rawSettings: Record<string, unknown> | null | undefined,
+	sanitizedSettings: Record<string, StreamingIndexerSettingValue>
+): boolean {
+	if (!isRecord(rawSettings)) {
+		return Object.keys(sanitizedSettings).length > 0;
+	}
+
+	if (Object.keys(rawSettings).length !== Object.keys(sanitizedSettings).length) {
+		return true;
+	}
+
+	for (const key of STREAMING_INDEXER_SETTING_KEYS) {
+		if (rawSettings[key] !== sanitizedSettings[key]) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+export function sanitizeStreamingIndexerSettings(
+	settings: Record<string, unknown> | null | undefined
+): Record<string, StreamingIndexerSettingValue> {
+	const rawSettings = isRecord(settings) ? settings : {};
+	const sanitizedSettings: Record<string, StreamingIndexerSettingValue> = {};
+
+	for (const key of STREAMING_INDEXER_SETTING_KEYS) {
+		const normalizedValue = normalizeStreamingSettingValue(key, rawSettings[key]);
+		if (normalizedValue !== undefined) {
+			sanitizedSettings[key] = normalizedValue;
+		}
+	}
+
+	return sanitizedSettings;
+}
 
 /**
  * Get the streaming indexer's settings from the database.
  * Returns undefined if indexer not found or has no settings.
  *
  * Priority for baseUrl:
- * 1. JSON settings field (user-configured in indexer settings form)
- * 2. indexer's base_url column (selected from links array)
+ * 1. externalHost + useHttps in settings JSON
+ * 2. indexer's base_url column
  */
 export async function getStreamingIndexerSettings(): Promise<StreamingIndexerSettings | undefined> {
 	const rows = await db
 		.select({
+			id: indexers.id,
 			settings: indexers.settings,
 			baseUrl: indexers.baseUrl
 		})
@@ -98,17 +136,41 @@ export async function getStreamingIndexerSettings(): Promise<StreamingIndexerSet
 		return undefined;
 	}
 
-	const settings = (rows[0].settings as StreamingIndexerSettings) ?? {};
+	const rawSettings = rows[0].settings as Record<string, unknown> | null | undefined;
+	const sanitizedSettings = sanitizeStreamingIndexerSettings(rawSettings);
+
+	if (needsStreamingSettingsCleanup(rawSettings, sanitizedSettings)) {
+		if (rawSettings && Object.keys(rawSettings).length > Object.keys(sanitizedSettings).length) {
+			logger.warn('Streaming settings cleanup removing keys', {
+				indexerId: rows[0].id,
+				removedKeys: Object.keys(rawSettings).filter((k) => !(k in sanitizedSettings))
+			});
+		}
+		logger.debug('Streaming settings cleanup', {
+			indexerId: rows[0].id,
+			rawSettings,
+			sanitizedSettings
+		});
+		await db
+			.update(indexers)
+			.set({
+				settings: sanitizedSettings,
+				updatedAt: new Date().toISOString()
+			})
+			.where(eq(indexers.id, rows[0].id));
+	}
+
+	const settings: StreamingIndexerSettings = sanitizedSettings;
 
 	// Reconstruct baseUrl from new split fields (useHttps + externalHost)
 	if (settings.externalHost) {
 		const host = settings.externalHost.replace(/^https?:\/\//, ''); // Strip protocol if accidentally included
-		const useHttps = settings.useHttps === true || settings.useHttps === 'true';
+		const useHttps = settings.useHttps === 'true';
 		const protocol = useHttps ? 'https' : 'http';
 		settings.baseUrl = `${protocol}://${host}`;
 	}
-	// Fall back to legacy baseUrl in settings JSON
-	else if (!settings.baseUrl && rows[0].baseUrl) {
+	// Fall back to the current indexer baseUrl column
+	else if (rows[0].baseUrl) {
 		settings.baseUrl = rows[0].baseUrl;
 	}
 
@@ -137,181 +199,4 @@ export async function getStreamingBaseUrl(fallback: string): Promise<string> {
 	}
 
 	return fallback;
-}
-
-/**
- * Provider toggle configuration for individual settings.
- * Maps provider ID to its settings key and default state.
- */
-const PROVIDER_TOGGLES: Array<{
-	id: StreamingProvider;
-	settingsKey: keyof StreamingIndexerSettings;
-	enabledByDefault: boolean;
-}> = [
-	{ id: 'videasy', settingsKey: 'enableVideasy', enabledByDefault: true },
-	{ id: 'vidlink', settingsKey: 'enableVidlink', enabledByDefault: true },
-	{ id: 'xprime', settingsKey: 'enableXprime', enabledByDefault: false },
-	{ id: 'smashy', settingsKey: 'enableSmashy', enabledByDefault: false },
-	{ id: 'hexa', settingsKey: 'enableHexa', enabledByDefault: true },
-	{ id: 'yflix', settingsKey: 'enableYflix', enabledByDefault: false },
-	{ id: 'mapple', settingsKey: 'enableMapple', enabledByDefault: false },
-	{ id: 'onetouchtv', settingsKey: 'enableOnetouchtv', enabledByDefault: false },
-	{ id: 'animekai', settingsKey: 'enableAnimekai', enabledByDefault: false },
-	{ id: 'kisskh', settingsKey: 'enableKisskh', enabledByDefault: false }
-];
-
-/**
- * Get list of enabled streaming providers based on indexer settings.
- */
-export async function getEnabledProviders(): Promise<StreamingProvider[]> {
-	const settings = await getStreamingIndexerSettings();
-
-	// If enabledProviders is set, use it directly
-	if (settings?.enabledProviders) {
-		const enabled = settings.enabledProviders
-			.split(',')
-			.map((p) => p.trim().toLowerCase() as StreamingProvider)
-			.filter((p) => isValidProvider(p));
-
-		if (enabled.length > 0) {
-			return enabled;
-		}
-	}
-
-	// Check individual toggles using provider configuration
-	const providers: StreamingProvider[] = [];
-
-	for (const toggle of PROVIDER_TOGGLES) {
-		const settingValue = settings?.[toggle.settingsKey];
-
-		if (toggle.enabledByDefault) {
-			// Enabled by default: only exclude if explicitly set to 'false'
-			if (settingValue !== 'false') {
-				providers.push(toggle.id);
-			}
-		} else {
-			// Disabled by default: only include if explicitly set to 'true'
-			if (settingValue === 'true') {
-				providers.push(toggle.id);
-			}
-		}
-	}
-
-	// If no providers enabled from settings, use defaults
-	if (providers.length === 0) {
-		return DEFAULT_ENABLED_PROVIDERS;
-	}
-
-	return providers;
-}
-
-/**
- * Check if a provider ID is valid
- */
-function isValidProvider(provider: string): provider is StreamingProvider {
-	const validProviders: StreamingProvider[] = [
-		'videasy',
-		'vidlink',
-		'xprime',
-		'smashy',
-		'hexa',
-		'yflix',
-		'mapple',
-		'onetouchtv',
-		'animekai',
-		'kisskh'
-	];
-	return validProviders.includes(provider as StreamingProvider);
-}
-
-/**
- * Get provider display name
- */
-export function getProviderDisplayName(provider: StreamingProvider): string {
-	const names: Record<StreamingProvider, string> = {
-		videasy: 'Videasy',
-		vidlink: 'Vidlink',
-		xprime: 'XPrime',
-		smashy: 'Smashystream',
-		hexa: 'Hexa',
-		yflix: 'YFlix',
-		mapple: 'Mapple',
-		onetouchtv: 'OneTouchTV',
-		animekai: 'AnimeKai',
-		kisskh: 'KissKH'
-	};
-	return names[provider] ?? provider;
-}
-
-/**
- * Get all available providers with their default status
- */
-export function getAllProviders(): Array<{
-	id: StreamingProvider;
-	name: string;
-	enabledByDefault: boolean;
-	description: string;
-}> {
-	return [
-		{
-			id: 'videasy',
-			name: 'Videasy',
-			enabledByDefault: true,
-			description: 'Multiple servers with multi-language support'
-		},
-		{
-			id: 'vidlink',
-			name: 'Vidlink',
-			enabledByDefault: true,
-			description: 'Simple and fast provider'
-		},
-		{
-			id: 'xprime',
-			name: 'XPrime',
-			enabledByDefault: true,
-			description: 'High quality streams with turnstile protection'
-		},
-		{
-			id: 'smashy',
-			name: 'Smashystream',
-			enabledByDefault: true,
-			description: 'Multiple player types with subtitles'
-		},
-		{
-			id: 'hexa',
-			name: 'Hexa',
-			enabledByDefault: true,
-			description: 'Fast provider with API key encryption'
-		},
-		{
-			id: 'yflix',
-			name: 'YFlix',
-			enabledByDefault: false,
-			description: 'Requires content ID lookup (1Movies compatible)'
-		},
-		{
-			id: 'mapple',
-			name: 'Mapple',
-			enabledByDefault: false,
-			description: 'Session-based provider with 4K support'
-		},
-		{
-			id: 'onetouchtv',
-			name: 'OneTouchTV',
-			enabledByDefault: false,
-			description: 'TV shows only, requires content ID lookup'
-		},
-		{
-			id: 'animekai',
-			name: 'AnimeKai',
-			enabledByDefault: false,
-			description: 'Anime only, requires content ID lookup'
-		},
-		{
-			id: 'kisskh',
-			name: 'KissKH',
-			enabledByDefault: false,
-			description: 'Asian dramas, requires content ID lookup'
-		}
-	];
 }

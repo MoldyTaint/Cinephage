@@ -14,6 +14,7 @@
 		XCircle
 	} from 'lucide-svelte';
 	import type { MediaBrowserServerPublic } from '$lib/server/notifications/mediabrowser/types';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		servers: MediaBrowserServerPublic[];
@@ -47,11 +48,15 @@
 	}: Props = $props();
 
 	function getServerTypeLabel(type: string): string {
-		return type === 'jellyfin' ? 'Jellyfin' : 'Emby';
+		return type === 'jellyfin' ? 'Jellyfin' : type === 'emby' ? 'Emby' : 'Plex';
 	}
 
 	function getServerTypeBadgeClass(type: string): string {
-		return type === 'jellyfin' ? 'badge-primary' : 'badge-secondary';
+		return type === 'jellyfin'
+			? 'badge-primary'
+			: type === 'emby'
+				? 'badge-secondary'
+				: 'badge-accent';
 	}
 
 	function isSortedBy(column: 'status' | 'name' | 'type'): boolean {
@@ -63,7 +68,7 @@
 	}
 
 	function formatLastTested(lastTestedAt: string | null): string {
-		if (!lastTestedAt) return 'never';
+		if (!lastTestedAt) return m.common_never();
 		return new Date(lastTestedAt).toLocaleString();
 	}
 
@@ -74,18 +79,20 @@
 
 	function getStatusTooltip(server: MediaBrowserServerPublic): string {
 		if (!server.enabled) {
-			return 'Media server is disabled by user';
+			return m.mediaBrowser_serverDisabledTooltip();
 		}
 		if (server.testResult === 'failed') {
 			const testedAt = formatLastTested(server.lastTestedAt);
 			return server.testError
-				? `Connection failed: ${server.testError}. Last tested: ${testedAt}`
-				: `Connection test failed. Last tested: ${testedAt}`;
+				? m.mediaBrowser_connectionFailedWithError({ error: server.testError, testedAt })
+				: m.mediaBrowser_connectionTestFailed({ testedAt });
 		}
 		if (server.testResult === 'success') {
-			return `Connection test succeeded. Last tested: ${formatLastTested(server.lastTestedAt)}`;
+			return m.mediaBrowser_connectionTestSucceeded({
+				testedAt: formatLastTested(server.lastTestedAt)
+			});
 		}
-		return 'Connection has not been tested yet';
+		return m.mediaBrowser_connectionNotTested();
 	}
 
 	const allSelected = $derived(servers.length > 0 && servers.every((s) => selectedIds.has(s.id)));
@@ -95,8 +102,8 @@
 {#if servers.length === 0}
 	<div class="py-12 text-center text-base-content/60">
 		<Monitor class="mx-auto mb-4 h-12 w-12 opacity-40" />
-		<p class="text-lg font-medium">No media servers configured</p>
-		<p class="mt-1 text-sm">Add a Jellyfin or Emby server to enable library notifications</p>
+		<p class="text-lg font-medium">{m.mediaBrowser_noServersConfigured()}</p>
+		<p class="mt-1 text-sm">{m.mediaBrowser_addServerHint()}</p>
 	</div>
 {:else}
 	<div class="space-y-3 overflow-x-hidden sm:hidden">
@@ -110,9 +117,11 @@
 						indeterminate={someSelected}
 						onchange={(e) => onSelectAll(e.currentTarget.checked)}
 					/>
-					Select all
+					{m.action_selectAll()}
 				</label>
-				<span class="text-xs text-base-content/60">{selectedIds.size} selected</span>
+				<span class="text-xs text-base-content/60"
+					>{m.common_selected({ count: selectedIds.size })}</span
+				>
 			</div>
 		</div>
 
@@ -141,17 +150,17 @@
 									{#if !server.enabled}
 										<span class="badge gap-1 badge-ghost">
 											<XCircle class="h-3 w-3" />
-											<span class="text-xs">Disabled</span>
+											<span class="text-xs">{m.common_disabled()}</span>
 										</span>
 									{:else if server.testResult === 'failed'}
 										<span class="badge gap-1 badge-error">
 											<AlertTriangle class="h-3 w-3" />
-											<span class="text-xs">Unhealthy</span>
+											<span class="text-xs">{m.status_unhealthy()}</span>
 										</span>
 									{:else}
 										<span class="badge gap-1 badge-success">
 											<CheckCircle class="h-3 w-3" />
-											<span class="text-xs">Healthy</span>
+											<span class="text-xs">{m.status_healthy()}</span>
 										</span>
 									{/if}
 								</div>
@@ -194,8 +203,8 @@
 						<button
 							class="btn btn-ghost btn-xs"
 							onclick={() => onTest(server)}
-							title="Test connection"
-							aria-label="Test connection"
+							title={m.action_test()}
+							aria-label={m.action_test()}
 							disabled={testingId === server.id}
 						>
 							{#if testingId === server.id}
@@ -208,8 +217,10 @@
 					<button
 						class="btn btn-ghost btn-xs"
 						onclick={() => onToggle(server)}
-						title={server.enabled ? 'Disable' : 'Enable'}
-						aria-label={server.enabled ? 'Disable server' : 'Enable server'}
+						title={server.enabled ? m.action_disable() : m.action_enable()}
+						aria-label={server.enabled
+							? m.mediaBrowser_disableServer()
+							: m.mediaBrowser_enableServer()}
 						disabled={testingId === server.id}
 					>
 						{#if server.enabled}
@@ -221,16 +232,16 @@
 					<button
 						class="btn btn-ghost btn-xs"
 						onclick={() => onEdit(server)}
-						title="Edit"
-						aria-label="Edit server"
+						title={m.action_edit()}
+						aria-label={m.mediaBrowser_editServer()}
 					>
 						<Settings class="h-4 w-4" />
 					</button>
 					<button
 						class="btn text-error btn-ghost btn-xs"
 						onclick={() => onDelete(server)}
-						title="Delete"
-						aria-label="Delete server"
+						title={m.action_delete()}
+						aria-label={m.mediaBrowser_deleteServer()}
 					>
 						<Trash2 class="h-4 w-4" />
 					</button>
@@ -257,7 +268,7 @@
 							class="flex items-center gap-1 hover:text-primary"
 							onclick={() => onSort('status')}
 						>
-							Status
+							{m.common_status()}
 							{#if isSortedBy('status')}
 								{#if isAscending()}
 									<ChevronUp class="h-3 w-3" />
@@ -272,7 +283,7 @@
 							class="flex items-center gap-1 hover:text-primary"
 							onclick={() => onSort('name')}
 						>
-							Name
+							{m.common_name()}
 							{#if isSortedBy('name')}
 								{#if isAscending()}
 									<ChevronUp class="h-3 w-3" />
@@ -287,7 +298,7 @@
 							class="flex items-center gap-1 hover:text-primary"
 							onclick={() => onSort('type')}
 						>
-							Type
+							{m.common_type()}
 							{#if isSortedBy('type')}
 								{#if isAscending()}
 									<ChevronUp class="h-3 w-3" />
@@ -297,9 +308,9 @@
 							{/if}
 						</button>
 					</th>
-					<th>Host</th>
-					<th>Server Info</th>
-					<th class="pl-4! text-start">Actions</th>
+					<th>{m.mediaBrowser_host()}</th>
+					<th>{m.mediaBrowser_serverInfo()}</th>
+					<th class="pl-4! text-start">{m.mediaBrowser_actions()}</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -318,17 +329,17 @@
 								{#if !server.enabled}
 									<span class="badge gap-1 badge-ghost">
 										<XCircle class="h-3 w-3" />
-										<span class="text-xs">Disabled</span>
+										<span class="text-xs">{m.common_disabled()}</span>
 									</span>
 								{:else if server.testResult === 'failed'}
 									<span class="badge gap-1 badge-error">
 										<AlertTriangle class="h-3 w-3" />
-										<span class="text-xs">Unhealthy</span>
+										<span class="text-xs">{m.status_unhealthy()}</span>
 									</span>
 								{:else}
 									<span class="badge gap-1 badge-success">
 										<CheckCircle class="h-3 w-3" />
-										<span class="text-xs">Healthy</span>
+										<span class="text-xs">{m.status_healthy()}</span>
 									</span>
 								{/if}
 							</div>
@@ -364,7 +375,7 @@
 									{/if}
 								</div>
 							{:else}
-								<span class="text-base-content/50">-</span>
+								<span class="text-base-content/50">{m.common_na()}</span>
 							{/if}
 						</td>
 						<td class="pl-2!">
@@ -373,7 +384,7 @@
 									<button
 										class="btn btn-ghost btn-xs"
 										onclick={() => onTest(server)}
-										title="Test connection"
+										title={m.action_test()}
 										disabled={testingId === server.id}
 									>
 										{#if testingId === server.id}
@@ -386,7 +397,7 @@
 								<button
 									class="btn btn-ghost btn-xs"
 									onclick={() => onToggle(server)}
-									title={server.enabled ? 'Disable' : 'Enable'}
+									title={server.enabled ? m.action_disable() : m.action_enable()}
 									disabled={testingId === server.id}
 								>
 									{#if server.enabled}
@@ -395,13 +406,17 @@
 										<ToggleLeft class="h-4 w-4" />
 									{/if}
 								</button>
-								<button class="btn btn-ghost btn-xs" onclick={() => onEdit(server)} title="Edit">
+								<button
+									class="btn btn-ghost btn-xs"
+									onclick={() => onEdit(server)}
+									title={m.action_edit()}
+								>
 									<Settings class="h-4 w-4" />
 								</button>
 								<button
 									class="btn text-error btn-ghost btn-xs"
 									onclick={() => onDelete(server)}
-									title="Delete"
+									title={m.action_delete()}
 								>
 									<Trash2 class="h-4 w-4" />
 								</button>

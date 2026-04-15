@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { X, Loader2, Tv, Clock, Calendar } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 	import type { ChannelLineupItemWithDetails, EpgProgram } from '$lib/types/livetv';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 
@@ -51,13 +52,13 @@
 
 			const res = await fetch(`/api/livetv/epg/channel/${channelId}?${params}`);
 			if (!res.ok) {
-				throw new Error('Failed to load schedule');
+				throw new Error(m.livetv_channelScheduleModal_failedToLoad());
 			}
 
 			const data = await res.json();
 			programs = data.programs || [];
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load schedule';
+			error = e instanceof Error ? e.message : m.livetv_channelScheduleModal_failedToLoad();
 			programs = [];
 		} finally {
 			loading = false;
@@ -122,7 +123,9 @@
 		{#if channel.epgSourceChannelId && channel.epgSourceChannel}
 			<div class="mb-4 flex items-center gap-2 rounded-lg bg-info/10 px-3 py-2 text-sm text-info">
 				<Calendar class="h-4 w-4" />
-				<span>EPG from: {channel.epgSourceChannel.name}</span>
+				<span
+					>{m.livetv_channelScheduleModal_epgFrom({ source: channel.epgSourceChannel.name })}</span
+				>
 			</div>
 		{/if}
 
@@ -140,7 +143,9 @@
 					<Loader2 class="h-6 w-6 animate-spin text-base-content/50" />
 				</div>
 			{:else if programs.length === 0}
-				<div class="py-8 text-center text-base-content/50">No upcoming programs available</div>
+				<div class="py-8 text-center text-base-content/50">
+					{m.livetv_channelScheduleModal_noPrograms()}
+				</div>
 			{:else}
 				<div class="space-y-1">
 					{#each programs as program (program.id)}
@@ -165,7 +170,9 @@
 									<div class="flex items-center gap-2">
 										<span class="font-medium">{program.title}</span>
 										{#if isCurrent}
-											<span class="badge badge-sm badge-primary">LIVE</span>
+											<span class="badge badge-sm badge-primary"
+												>{m.livetv_channelScheduleModal_liveBadge()}</span
+											>
 										{/if}
 										{#if program.category}
 											<span class="badge badge-ghost badge-sm">{program.category}</span>
@@ -184,7 +191,9 @@
 												max="100"
 											></progress>
 											<span class="text-xs text-base-content/50">
-												{Math.round(100 - progress)}% remaining
+												{m.livetv_channelScheduleModal_percentRemaining({
+													percent: Math.round(100 - progress)
+												})}
 											</span>
 										</div>
 									{/if}
@@ -198,7 +207,7 @@
 
 		<!-- Footer -->
 		<div class="modal-action">
-			<button class="btn btn-ghost" onclick={onClose}>Close</button>
+			<button class="btn btn-ghost" onclick={onClose}>{m.action_close()}</button>
 		</div>
 	{/if}
 </ModalWrapper>

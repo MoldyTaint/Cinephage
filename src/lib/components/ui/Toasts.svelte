@@ -3,6 +3,7 @@
 	import { toasts, type ToastType } from '$lib/stores/toast.svelte';
 	import { CheckCircle, XCircle, AlertCircle, Info, X } from 'lucide-svelte';
 	import { fly } from 'svelte/transition';
+	import * as m from '$lib/paraglide/messages.js';
 
 	const icons: Record<ToastType, typeof CheckCircle> = {
 		success: CheckCircle,
@@ -21,7 +22,7 @@
 
 <!-- Toast Container - Fixed position, centered on mobile, right-aligned on desktop -->
 <div
-	class="fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-[100] flex flex-col gap-2 sm:inset-x-auto sm:right-4 sm:left-auto"
+	class="fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-2000 flex flex-col gap-2 sm:inset-x-auto sm:right-4 sm:left-auto"
 	aria-live="polite"
 >
 	{#each toasts.toasts as toast (toast.id)}
@@ -53,7 +54,7 @@
 				<button
 					class="btn btn-circle btn-ghost btn-xs"
 					onclick={() => toasts.dismiss(toast.id)}
-					aria-label="Dismiss"
+					aria-label={m.ui_toasts_dismiss()}
 				>
 					<X class="h-4 w-4" />
 				</button>

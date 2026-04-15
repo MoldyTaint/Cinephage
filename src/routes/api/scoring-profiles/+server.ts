@@ -1,12 +1,17 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
-import { scoringProfiles, profileSizeLimits } from '$lib/server/db/schema';
+import {
+	scoringProfiles,
+	profileSizeLimits,
+	builtInProfileScoreOverrides
+} from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { DEFAULT_PROFILES, getProfile, isBuiltInProfile } from '$lib/server/scoring';
 import { qualityFilter } from '$lib/server/quality';
 import { logger } from '$lib/logging';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 /**
  * Schema for creating scoring profiles (name required)
@@ -62,15 +67,19 @@ export const GET: RequestHandler = async () => {
 	const dbProfiles = await db.select().from(scoringProfiles);
 	const customProfiles = dbProfiles.filter((p) => !BUILT_IN_IDS.includes(p.id));
 
-	// Get overrides for built-in profiles
-	const overrides = await db.select().from(profileSizeLimits);
-	const overridesMap = new Map(overrides.map((s) => [s.profileId, s]));
+	// Get overrides for built-in profiles (size/default + score diffs)
+	const [sizeOverrides, scoreOverrides] = await Promise.all([
+		db.select().from(profileSizeLimits),
+		db.select().from(builtInProfileScoreOverrides)
+	]);
+	const sizeOverridesMap = new Map(sizeOverrides.map((s) => [s.profileId, s]));
+	const scoreOverridesMap = new Map(scoreOverrides.map((s) => [s.profileId, s]));
 
 	// Check for default status in custom profiles
 	const customDefaultId = customProfiles.find((p) => p.isDefault)?.id;
 
 	// Check for default status in built-in profile overrides
-	const builtInDefaultId = overrides.find((o) => o.isDefault)?.profileId;
+	const builtInDefaultId = sizeOverrides.find((o) => o.isDefault)?.profileId;
 
 	// Map custom profiles from database
 	const mappedCustomProfiles = customProfiles.map((p) => ({
@@ -99,14 +108,21 @@ export const GET: RequestHandler = async () => {
 
 	// Build built-in profiles from code + overrides from DB
 	const builtInProfiles = DEFAULT_PROFILES.map((p) => {
-		const profileOverrides = overridesMap.get(p.id);
+		const sizeOverride = sizeOverridesMap.get(p.id);
+		const scoreOverride = scoreOverridesMap.get(p.id);
+
+		// Merge formatScores: shipped defaults + score diffs
+		const formatScores = scoreOverride
+			? { ...p.formatScores, ...scoreOverride.formatScores }
+			: p.formatScores;
 
 		return {
 			...p,
-			movieMinSizeGb: toNullableNumber(profileOverrides?.movieMinSizeGb),
-			movieMaxSizeGb: toNullableNumber(profileOverrides?.movieMaxSizeGb),
-			episodeMinSizeMb: toNullableNumber(profileOverrides?.episodeMinSizeMb),
-			episodeMaxSizeMb: toNullableNumber(profileOverrides?.episodeMaxSizeMb),
+			formatScores,
+			movieMinSizeGb: toNullableNumber(sizeOverride?.movieMinSizeGb),
+			movieMaxSizeGb: toNullableNumber(sizeOverride?.movieMaxSizeGb),
+			episodeMinSizeMb: toNullableNumber(sizeOverride?.episodeMinSizeMb),
+			episodeMaxSizeMb: toNullableNumber(sizeOverride?.episodeMaxSizeMb),
 			isBuiltIn: true,
 			// Default to Balanced only if no DB default is set
 			isDefault: dbDefaultId === p.id || (!dbDefaultId && p.id === 'balanced')
@@ -135,7 +151,11 @@ export const GET: RequestHandler = async () => {
  * - Copying from built-in profile (copyFromId = 'quality', 'balanced', 'compact', 'streamer')
  * - Copying from another custom profile (copyFromId = custom profile ID)
  */
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { request } = event;
 	try {
 		const body = await request.json();
 		const validation = scoringProfileSchema.safeParse(body);
@@ -247,7 +267,11 @@ export const POST: RequestHandler = async ({ request }) => {
  * For built-in profiles: only size limits can be changed, stored in profileSizeLimits table.
  * For custom profiles: full update via scoringProfiles table.
  */
-export const PUT: RequestHandler = async ({ request }) => {
+export const PUT: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { request } = event;
 	try {
 		const body = await request.json();
 		const { id, ...updateData } = body;
@@ -256,80 +280,139 @@ export const PUT: RequestHandler = async ({ request }) => {
 			return json({ error: 'Profile ID is required' }, { status: 400 });
 		}
 
-		// Handle built-in profiles - store overrides in profileSizeLimits table
+		// Handle built-in profiles
 		if (isBuiltInProfile(id)) {
 			const builtIn = getProfile(id);
 			if (!builtIn) {
 				return json({ error: 'Built-in profile not found' }, { status: 404 });
 			}
 
-			// If setting as default, clear other defaults first (in both tables)
+			// Reject edits to fixed built-in fields
+			const disallowedFields = [
+				'name',
+				'description',
+				'upgradesAllowed',
+				'minScore',
+				'upgradeUntilScore',
+				'minScoreIncrement',
+				'resolutionOrder',
+				'allowedProtocols'
+			];
+			const submittedDisallowed = disallowedFields.filter((f) => f in updateData);
+			if (submittedDisallowed.length > 0) {
+				return json(
+					{
+						error: `Cannot edit these fields on built-in profiles: ${submittedDisallowed.join(', ')}`
+					},
+					{ status: 400 }
+				);
+			}
+
+			// Handle formatScores: compute diff against shipped defaults and store in override table
+			if ('formatScores' in updateData && updateData.formatScores !== undefined) {
+				const diff: Record<string, number> = {};
+				for (const [formatId, score] of Object.entries(updateData.formatScores) as [
+					string,
+					number
+				][]) {
+					const baseline = builtIn.formatScores[formatId] ?? 0;
+					if (score !== baseline) {
+						diff[formatId] = score;
+					}
+				}
+
+				if (Object.keys(diff).length === 0) {
+					// All scores back to defaults - remove override row if it exists
+					await db
+						.delete(builtInProfileScoreOverrides)
+						.where(eq(builtInProfileScoreOverrides.profileId, id));
+				} else {
+					// Upsert diff-only override
+					const existing = await db
+						.select()
+						.from(builtInProfileScoreOverrides)
+						.where(eq(builtInProfileScoreOverrides.profileId, id))
+						.get();
+
+					if (existing) {
+						// Merge with existing overrides
+						const merged = { ...existing.formatScores, ...diff };
+						await db
+							.update(builtInProfileScoreOverrides)
+							.set({ formatScores: merged, updatedAt: new Date().toISOString() })
+							.where(eq(builtInProfileScoreOverrides.profileId, id));
+					} else {
+						await db.insert(builtInProfileScoreOverrides).values({
+							profileId: id,
+							formatScores: diff,
+							updatedAt: new Date().toISOString()
+						});
+					}
+				}
+			}
+
+			// Handle isDefault - clear other defaults and update size limits table
 			if (updateData.isDefault) {
 				await db.update(scoringProfiles).set({ isDefault: false });
 				await db.update(profileSizeLimits).set({ isDefault: false });
 			}
 
-			// Check if overrides already exist for this profile
-			const existing = await db
+			// Upsert size limit overrides
+			const existingLimits = await db
 				.select()
 				.from(profileSizeLimits)
-				.where(eq(profileSizeLimits.profileId, id));
+				.where(eq(profileSizeLimits.profileId, id))
+				.get();
 
-			if (existing.length > 0) {
-				// Update existing overrides
+			const sizeValues = {
+				movieMinSizeGb: toNullableNumber(updateData.movieMinSizeGb),
+				movieMaxSizeGb: toNullableNumber(updateData.movieMaxSizeGb),
+				episodeMinSizeMb: toNullableNumber(updateData.episodeMinSizeMb),
+				episodeMaxSizeMb: toNullableNumber(updateData.episodeMaxSizeMb),
+				isDefault: updateData.isDefault ?? existingLimits?.isDefault ?? false,
+				updatedAt: new Date().toISOString()
+			};
+
+			if (existingLimits) {
 				await db
 					.update(profileSizeLimits)
-					.set({
-						movieMinSizeGb:
-							updateData.movieMinSizeGb !== undefined
-								? toNullableNumber(updateData.movieMinSizeGb)
-								: toNullableNumber(existing[0].movieMinSizeGb),
-						movieMaxSizeGb:
-							updateData.movieMaxSizeGb !== undefined
-								? toNullableNumber(updateData.movieMaxSizeGb)
-								: toNullableNumber(existing[0].movieMaxSizeGb),
-						episodeMinSizeMb:
-							updateData.episodeMinSizeMb !== undefined
-								? toNullableNumber(updateData.episodeMinSizeMb)
-								: toNullableNumber(existing[0].episodeMinSizeMb),
-						episodeMaxSizeMb:
-							updateData.episodeMaxSizeMb !== undefined
-								? toNullableNumber(updateData.episodeMaxSizeMb)
-								: toNullableNumber(existing[0].episodeMaxSizeMb),
-						isDefault: updateData.isDefault ?? existing[0].isDefault,
-						updatedAt: new Date().toISOString()
-					})
+					.set(sizeValues)
 					.where(eq(profileSizeLimits.profileId, id));
-			} else {
-				// Insert new overrides entry
-				await db.insert(profileSizeLimits).values({
-					profileId: id,
-					movieMinSizeGb: toNullableNumber(updateData.movieMinSizeGb),
-					movieMaxSizeGb: toNullableNumber(updateData.movieMaxSizeGb),
-					episodeMinSizeMb: toNullableNumber(updateData.episodeMinSizeMb),
-					episodeMaxSizeMb: toNullableNumber(updateData.episodeMaxSizeMb),
-					isDefault: updateData.isDefault ?? false,
-					updatedAt: new Date().toISOString()
-				});
+			} else if (
+				updateData.movieMinSizeGb !== undefined ||
+				updateData.movieMaxSizeGb !== undefined ||
+				updateData.episodeMinSizeMb !== undefined ||
+				updateData.episodeMaxSizeMb !== undefined ||
+				updateData.isDefault !== undefined
+			) {
+				await db.insert(profileSizeLimits).values({ profileId: id, ...sizeValues });
 			}
 
-			// Clear cache after update
+			// Clear cache and return merged profile
 			qualityFilter.clearProfileCache(id);
 
-			// Return the merged profile
-			const limits = await db
-				.select()
-				.from(profileSizeLimits)
-				.where(eq(profileSizeLimits.profileId, id));
+			const [limits, scoreOverride] = await Promise.all([
+				db.select().from(profileSizeLimits).where(eq(profileSizeLimits.profileId, id)).get(),
+				db
+					.select()
+					.from(builtInProfileScoreOverrides)
+					.where(eq(builtInProfileScoreOverrides.profileId, id))
+					.get()
+			]);
+
+			const mergedFormatScores = scoreOverride
+				? { ...builtIn.formatScores, ...scoreOverride.formatScores }
+				: builtIn.formatScores;
 
 			return json({
 				...builtIn,
-				movieMinSizeGb: toNullableNumber(limits[0]?.movieMinSizeGb),
-				movieMaxSizeGb: toNullableNumber(limits[0]?.movieMaxSizeGb),
-				episodeMinSizeMb: toNullableNumber(limits[0]?.episodeMinSizeMb),
-				episodeMaxSizeMb: toNullableNumber(limits[0]?.episodeMaxSizeMb),
+				formatScores: mergedFormatScores,
+				movieMinSizeGb: toNullableNumber(limits?.movieMinSizeGb),
+				movieMaxSizeGb: toNullableNumber(limits?.movieMaxSizeGb),
+				episodeMinSizeMb: toNullableNumber(limits?.episodeMinSizeMb),
+				episodeMaxSizeMb: toNullableNumber(limits?.episodeMaxSizeMb),
 				isBuiltIn: true,
-				isDefault: limits[0]?.isDefault ?? false
+				isDefault: limits?.isDefault ?? false
 			});
 		}
 
@@ -403,7 +486,11 @@ export const PUT: RequestHandler = async ({ request }) => {
  * DELETE /api/scoring-profiles
  * Delete a custom scoring profile
  */
-export const DELETE: RequestHandler = async ({ request }) => {
+export const DELETE: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { request } = event;
 	try {
 		const { id } = await request.json();
 

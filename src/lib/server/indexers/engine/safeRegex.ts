@@ -3,7 +3,21 @@
  * Validates regex patterns and provides safe execution.
  */
 
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
+
+/**
+ * Inline regex flags commonly found in Cardigann/Prowlarr definitions.
+ * JavaScript does not support PCRE-style inline groups like `(?i)` directly,
+ * so we normalize leading flag groups into RegExp flags.
+ */
+const INLINE_FLAG_MAP: Record<string, string> = {
+	i: 'i',
+	m: 'm',
+	s: 's',
+	u: 'u'
+};
 
 /**
  * Maximum input length to process with regex.
@@ -35,16 +49,19 @@ export function isPatternSafe(pattern: string): boolean {
 
 	// Very long patterns are suspicious
 	if (pattern.length > 500) {
-		logger.warn('Regex pattern too long', { length: pattern.length });
+		logger.warn({ length: pattern.length }, 'Regex pattern too long');
 		return false;
 	}
 
 	// Check for dangerous constructs
 	for (const dangerous of DANGEROUS_PATTERNS) {
 		if (dangerous.test(pattern)) {
-			logger.warn('Potentially dangerous regex pattern detected', {
-				pattern: pattern.substring(0, 100)
-			});
+			logger.warn(
+				{
+					pattern: pattern.substring(0, 100)
+				},
+				'Potentially dangerous regex pattern detected'
+			);
 			return false;
 		}
 	}
@@ -53,21 +70,81 @@ export function isPatternSafe(pattern: string): boolean {
 }
 
 /**
+ * Normalize leading PCRE-style inline flag groups (e.g. `(?i)` / `(?-i)`).
+ * Returns a JavaScript-compatible pattern + merged flag string.
+ */
+function normalizePatternAndFlags(
+	pattern: string,
+	flags?: string
+): { pattern: string; flags: string } {
+	let normalizedPattern = pattern;
+	let normalizedFlags = flags ?? '';
+
+	const addFlag = (flag: string): void => {
+		if (!normalizedFlags.includes(flag)) {
+			normalizedFlags += flag;
+		}
+	};
+
+	const removeFlag = (flag: string): void => {
+		normalizedFlags = normalizedFlags
+			.split('')
+			.filter((existing) => existing !== flag)
+			.join('');
+	};
+
+	while (true) {
+		const inlineMatch = normalizedPattern.match(/^\(\?([a-zA-Z-]+)\)/);
+		if (!inlineMatch) break;
+
+		const inlineFlags = inlineMatch[1];
+		normalizedPattern = normalizedPattern.slice(inlineMatch[0].length);
+
+		let removeMode = false;
+		for (const char of inlineFlags) {
+			if (char === '-') {
+				removeMode = true;
+				continue;
+			}
+
+			const mapped = INLINE_FLAG_MAP[char.toLowerCase()];
+			if (!mapped) continue;
+
+			if (removeMode) {
+				removeFlag(mapped);
+			} else {
+				addFlag(mapped);
+			}
+		}
+	}
+
+	return {
+		pattern: normalizedPattern,
+		flags: normalizedFlags
+	};
+}
+
+/**
  * Safely create a RegExp, returning null if the pattern is invalid or dangerous.
  */
 export function createSafeRegex(pattern: string, flags?: string): RegExp | null {
+	const normalized = normalizePatternAndFlags(pattern, flags);
+
 	// Validate pattern safety
-	if (!isPatternSafe(pattern)) {
+	if (!isPatternSafe(normalized.pattern)) {
 		return null;
 	}
 
 	try {
-		return new RegExp(pattern, flags);
+		return new RegExp(normalized.pattern, normalized.flags);
 	} catch (err) {
-		logger.warn('Invalid regex pattern', {
-			pattern: pattern.substring(0, 100),
-			error: err instanceof Error ? err.message : 'Unknown error'
-		});
+		logger.warn(
+			{
+				pattern: pattern.substring(0, 100),
+				error: err instanceof Error ? err.message : 'Unknown error'
+			},
+			'Invalid regex pattern'
+		);
 		return null;
 	}
 }
@@ -79,19 +156,25 @@ export function createSafeRegex(pattern: string, flags?: string): RegExp | null 
 export function safeMatch(input: string, regex: RegExp): RegExpMatchArray | null {
 	// Limit input length to prevent slow operations
 	if (input.length > MAX_INPUT_LENGTH) {
-		logger.warn('Input too long for regex match', {
-			length: input.length,
-			limit: MAX_INPUT_LENGTH
-		});
+		logger.warn(
+			{
+				length: input.length,
+				limit: MAX_INPUT_LENGTH
+			},
+			'Input too long for regex match'
+		);
 		return null;
 	}
 
 	try {
 		return input.match(regex);
 	} catch (err) {
-		logger.warn('Regex match failed', {
-			error: err instanceof Error ? err.message : 'Unknown error'
-		});
+		logger.warn(
+			{
+				error: err instanceof Error ? err.message : 'Unknown error'
+			},
+			'Regex match failed'
+		);
 		return null;
 	}
 }
@@ -103,19 +186,25 @@ export function safeMatch(input: string, regex: RegExp): RegExpMatchArray | null
 export function safeReplace(input: string, regex: RegExp, replacement: string): string {
 	// Limit input length to prevent slow operations
 	if (input.length > MAX_INPUT_LENGTH) {
-		logger.warn('Input too long for regex replace', {
-			length: input.length,
-			limit: MAX_INPUT_LENGTH
-		});
+		logger.warn(
+			{
+				length: input.length,
+				limit: MAX_INPUT_LENGTH
+			},
+			'Input too long for regex replace'
+		);
 		return input;
 	}
 
 	try {
 		return input.replace(regex, replacement);
 	} catch (err) {
-		logger.warn('Regex replace failed', {
-			error: err instanceof Error ? err.message : 'Unknown error'
-		});
+		logger.warn(
+			{
+				error: err instanceof Error ? err.message : 'Unknown error'
+			},
+			'Regex replace failed'
+		);
 		return input;
 	}
 }

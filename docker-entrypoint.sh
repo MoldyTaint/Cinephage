@@ -3,37 +3,34 @@ set -e
 
 cd /app
 
+APP_VERSION_FILE="/app/version.txt"
+if [ -f "$APP_VERSION_FILE" ]; then
+  APP_VERSION="$(tr -d '\r\n' < "$APP_VERSION_FILE")"
+  export APP_VERSION
+fi
+
 CONFIG_ROOT="/config"
 LEGACY_DATA_DIR="/app/data"
-LEGACY_LOG_DIR="/app/logs"
 BUNDLED_DATA_DIR="/app/bundled-data"
 
 CONFIG_MOUNTED=0
 LEGACY_DATA_MOUNTED=0
-LEGACY_LOG_MOUNTED=0
 if grep -q " ${CONFIG_ROOT} " /proc/mounts 2>/dev/null; then
   CONFIG_MOUNTED=1
 fi
 if grep -q " ${LEGACY_DATA_DIR} " /proc/mounts 2>/dev/null; then
   LEGACY_DATA_MOUNTED=1
 fi
-if grep -q " ${LEGACY_LOG_DIR} " /proc/mounts 2>/dev/null; then
-  LEGACY_LOG_MOUNTED=1
-fi
-
 DEFAULT_DATA_DIR="${CONFIG_ROOT}/data"
-DEFAULT_LOG_DIR="${CONFIG_ROOT}/logs"
 DEFAULT_INDEXER_DEFINITIONS_PATH="${DEFAULT_DATA_DIR}/indexers/definitions"
 DEFAULT_EXTERNAL_LISTS_PRESETS_PATH="${DEFAULT_DATA_DIR}/external-lists/presets"
 
 DATA_DIR="${DATA_DIR:-${DEFAULT_DATA_DIR}}"
-LOG_DIR="${LOG_DIR:-${DEFAULT_LOG_DIR}}"
-if [ "$DATA_DIR" = "${CONFIG_ROOT}/data" ] && [ "$LOG_DIR" = "${CONFIG_ROOT}/logs" ]; then
-  if [ "$CONFIG_MOUNTED" != "1" ] && { [ "$LEGACY_DATA_MOUNTED" = "1" ] || [ "$LEGACY_LOG_MOUNTED" = "1" ]; }; then
-    echo "Legacy data/log mounts detected under /app; using legacy paths for this run."
-    echo "Mount ${CONFIG_ROOT} alongside /app/data and /app/logs for one run to migrate."
+if [ "$DATA_DIR" = "${CONFIG_ROOT}/data" ]; then
+  if [ "$CONFIG_MOUNTED" != "1" ] && [ "$LEGACY_DATA_MOUNTED" = "1" ]; then
+    echo "Legacy data mount detected under /app; using legacy path for this run."
+    echo "Mount ${CONFIG_ROOT} alongside /app/data for one run to migrate."
     DATA_DIR="$LEGACY_DATA_DIR"
-    LOG_DIR="$LEGACY_LOG_DIR"
   fi
 fi
 
@@ -45,7 +42,7 @@ if [ -z "${EXTERNAL_LISTS_PRESETS_PATH:-}" ] || [ "$EXTERNAL_LISTS_PRESETS_PATH"
 fi
 INDEXER_CUSTOM_DEFINITIONS_PATH="${INDEXER_CUSTOM_DEFINITIONS_PATH:-${INDEXER_DEFINITIONS_PATH}/custom}"
 EXTERNAL_LISTS_CUSTOM_PRESETS_PATH="${EXTERNAL_LISTS_CUSTOM_PRESETS_PATH:-${EXTERNAL_LISTS_PRESETS_PATH}/custom}"
-export DATA_DIR LOG_DIR INDEXER_DEFINITIONS_PATH EXTERNAL_LISTS_PRESETS_PATH \
+export DATA_DIR INDEXER_DEFINITIONS_PATH EXTERNAL_LISTS_PRESETS_PATH \
   INDEXER_CUSTOM_DEFINITIONS_PATH EXTERNAL_LISTS_CUSTOM_PRESETS_PATH
 
 # camoufox-js resolves install path from os.homedir(), so force HOME into /config/cache
@@ -53,6 +50,7 @@ HOME="${CONFIG_ROOT}/cache/home"
 export HOME
 CAMOUFOX_CACHE_DIR="${HOME}/.cache/camoufox"
 CAMOUFOX_NOTICE_FILE="${CONFIG_ROOT}/README-DO-NOT-DELETE-CAMOUFOX-CACHE.txt"
+OWNERSHIP_STAMP_FILE="${CONFIG_ROOT}/.cinephage-ownership-stamp"
 export CAMOUFOX_PATH="$CAMOUFOX_CACHE_DIR"
 
 has_contents() {
@@ -106,6 +104,34 @@ EOF
   fi
 }
 
+should_run_recursive_ownership_fix() {
+  local target_uid="$1"
+  local target_gid="$2"
+  local expected="${target_uid}:${target_gid}"
+
+  if [ "${CINEPHAGE_FORCE_RECURSIVE_CHOWN:-0}" = "1" ]; then
+    return 0
+  fi
+
+  if [ ! -f "$OWNERSHIP_STAMP_FILE" ]; then
+    return 0
+  fi
+
+  local current
+  current="$(tr -d '\r\n' < "$OWNERSHIP_STAMP_FILE" 2>/dev/null || true)"
+  [ "$current" != "$expected" ]
+}
+
+mark_recursive_ownership_fix_complete() {
+  local target_uid="$1"
+  local target_gid="$2"
+  local expected="${target_uid}:${target_gid}"
+
+  if ! printf '%s\n' "$expected" > "$OWNERSHIP_STAMP_FILE" 2>/dev/null; then
+    echo "Warning: Failed to write ownership stamp file at ${OWNERSHIP_STAMP_FILE}"
+  fi
+}
+
 if [ "$(id -u)" = "0" ] && [ -z "${CINEPHAGE_REEXEC:-}" ]; then
   TARGET_UID="${PUID:-1000}"
   TARGET_GID="${PGID:-1000}"
@@ -123,7 +149,6 @@ if [ "$(id -u)" = "0" ] && [ -z "${CINEPHAGE_REEXEC:-}" ]; then
   # Create all necessary directories before dropping privileges
   mkdir -p \
     "$DATA_DIR" \
-    "$LOG_DIR" \
     "$INDEXER_DEFINITIONS_PATH" \
     "$EXTERNAL_LISTS_PRESETS_PATH" \
     "$INDEXER_CUSTOM_DEFINITIONS_PATH" \
@@ -132,18 +157,32 @@ if [ "$(id -u)" = "0" ] && [ -z "${CINEPHAGE_REEXEC:-}" ]; then
 
   if [ "$CONFIG_MOUNTED" = "1" ]; then
     migrate_dir "$LEGACY_DATA_DIR" "$DATA_DIR" "data"
-    migrate_dir "$LEGACY_LOG_DIR" "$LOG_DIR" "logs"
-  elif has_contents "$LEGACY_DATA_DIR" || has_contents "$LEGACY_LOG_DIR"; then
-    echo "Warning: legacy /app data/logs detected but ${CONFIG_ROOT} is not mounted."
-    echo "Mount ${CONFIG_ROOT} and keep legacy mounts for one run to migrate."
+  elif has_contents "$LEGACY_DATA_DIR"; then
+    echo "Warning: legacy /app/data detected but ${CONFIG_ROOT} is not mounted."
+    echo "Mount ${CONFIG_ROOT} and keep the legacy data mount for one run to migrate."
   fi
 
-  echo "Setting ownership on application directories..."
-  chown -R "$TARGET_UID:$TARGET_GID" "$CONFIG_ROOT" 2>/dev/null || true
-  # Exclude node_modules — owned by root, never written to at runtime,
-  # and walking it on every boot adds meaningful startup latency
-  find /app -mindepth 1 -maxdepth 1 -not -name 'node_modules' \
-    -exec chown -R "$TARGET_UID:$TARGET_GID" {} +
+  if should_run_recursive_ownership_fix "$TARGET_UID" "$TARGET_GID"; then
+    echo "Setting ownership on application directories..."
+    chown -R "$TARGET_UID:$TARGET_GID" "$CONFIG_ROOT" 2>/dev/null || true
+    # Exclude node_modules — owned by root, never written to at runtime,
+    # and walking it on every boot adds meaningful startup latency
+    find /app -mindepth 1 -maxdepth 1 -not -name 'node_modules' \
+      -exec chown -R "$TARGET_UID:$TARGET_GID" {} +
+    mark_recursive_ownership_fix_complete "$TARGET_UID" "$TARGET_GID"
+  else
+    echo "Skipping recursive ownership update (UID/GID unchanged)."
+    chown "$TARGET_UID:$TARGET_GID" \
+      "$CONFIG_ROOT" \
+      "$DATA_DIR" \
+      "$INDEXER_DEFINITIONS_PATH" \
+      "$EXTERNAL_LISTS_PRESETS_PATH" \
+      "$INDEXER_CUSTOM_DEFINITIONS_PATH" \
+      "$EXTERNAL_LISTS_CUSTOM_PRESETS_PATH" \
+      "$HOME" \
+      "$CAMOUFOX_CACHE_DIR" \
+      "$OWNERSHIP_STAMP_FILE" 2>/dev/null || true
+  fi
 
   export CINEPHAGE_REEXEC=1
   exec gosu "${TARGET_UID}:${TARGET_GID}" "$0" "$@"
@@ -151,7 +190,6 @@ fi
 
 if [ "$(id -u)" != "0" ] && [ -z "${CINEPHAGE_REEXEC:-}" ] && [ "$CONFIG_MOUNTED" = "1" ]; then
   migrate_dir "$LEGACY_DATA_DIR" "$DATA_DIR" "data"
-  migrate_dir "$LEGACY_LOG_DIR" "$LOG_DIR" "logs"
 fi
 
 echo "Running as UID=$(id -u) GID=$(id -g)"
@@ -191,7 +229,6 @@ check_permissions() {
 
 echo "Checking directory permissions..."
 check_permissions "$DATA_DIR" "data"
-check_permissions "$LOG_DIR" "logs"
 check_permissions "$INDEXER_DEFINITIONS_PATH" "indexer definitions"
 check_permissions "$EXTERNAL_LISTS_PRESETS_PATH" "external list presets"
 echo "Directory permissions OK"
@@ -237,4 +274,7 @@ else
 fi
 
 echo "Starting Cinephage..."
+if [ -n "${APP_VERSION:-}" ]; then
+  echo "App version: ${APP_VERSION}"
+fi
 exec "$@"

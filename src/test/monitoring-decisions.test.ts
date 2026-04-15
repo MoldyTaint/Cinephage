@@ -10,7 +10,14 @@
  * These tests simulate real-world scenarios without database dependencies.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { ALL_FORMATS } from '$lib/server/scoring/formats/index.js';
+
+vi.mock('$lib/server/scoring/formats/registry.js', () => ({
+	getActiveFormats: () => ALL_FORMATS,
+	invalidateFormatCache: () => {}
+}));
+
 import { scoreRelease, isUpgrade, rankReleases } from '$lib/server/scoring/scorer.js';
 import {
 	QUALITY_PROFILE,
@@ -232,17 +239,16 @@ describe('Monitoring Decisions - Real-World Scenarios', () => {
 				...QUALITY_PROFILE,
 				id: 'low-cutoff',
 				name: 'Low Cutoff',
-				upgradeUntilScore: 10000 // Stop at 10000
+				upgradeUntilScore: 500 // Stop at 500
 			};
 
-			// Existing 1080p BluRay scores ~8000, trying to upgrade to 2160p Remux (~20000)
-			// But since 8000 < 10000, the cutoff check passes
-			// Let's use a higher quality existing file
+			// Existing 1080p REMUX DTS-HD MA scores ~590, candidate 2160p REMUX scores ~550
+			// Since 590 >= 500 (cutoff), should return "Already at cutoff"
 			const decision = simulateMovieGrabDecision(
 				'Movie.2024.2160p.UHD.BluRay.REMUX-GROUP',
 				45 * 1024 * 1024 * 1024,
 				lowCutoffProfile,
-				'Movie.2024.1080p.BluRay.REMUX.DTS-HD.MA-GROUP', // ~12000+ with audio
+				'Movie.2024.1080p.BluRay.REMUX.DTS-HD.MA-GROUP',
 				30 * 1024 * 1024 * 1024
 			);
 

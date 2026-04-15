@@ -2,7 +2,7 @@ import { db } from '$lib/server/db';
 import { settings } from '$lib/server/db/schema';
 import { tmdb } from '$lib/server/tmdb';
 import { eq } from 'drizzle-orm';
-import type { PageServerLoad, Actions } from './$types';
+import type { PageServerLoad } from './$types';
 import type { GlobalTmdbFilters } from '$lib/types/tmdb';
 import { logger } from '$lib/logging';
 
@@ -25,7 +25,7 @@ export const load: PageServerLoad = async () => {
 		try {
 			currentFilters = { ...currentFilters, ...JSON.parse(settingsData.value) };
 		} catch (e) {
-			logger.error('Failed to parse global_filters', e);
+			logger.error({ err: e }, 'Failed to parse global_filters');
 		}
 	}
 
@@ -55,7 +55,7 @@ export const load: PageServerLoad = async () => {
 					.sort((a, b) => a.name.localeCompare(b.name));
 			}
 		} catch (e) {
-			logger.error('Failed to fetch genres', e);
+			logger.error({ err: e }, 'Failed to fetch genres');
 		}
 	}
 
@@ -64,39 +64,4 @@ export const load: PageServerLoad = async () => {
 		genres,
 		tmdbConfigured
 	};
-};
-
-export const actions: Actions = {
-	default: async ({ request }) => {
-		const formData = await request.formData();
-
-		const excluded_genre_ids: number[] = [];
-		for (const [key, value] of formData.entries()) {
-			if (key === 'excluded_genres') {
-				excluded_genre_ids.push(Number(value));
-			}
-		}
-
-		const filters: GlobalTmdbFilters = {
-			include_adult: formData.get('include_adult') === 'on',
-			min_vote_average: Number(formData.get('min_vote_average')),
-			min_vote_count: Number(formData.get('min_vote_count')),
-			language: String(formData.get('language')),
-			region: String(formData.get('region')),
-			excluded_genre_ids
-		};
-
-		await db
-			.insert(settings)
-			.values({
-				key: 'global_filters',
-				value: JSON.stringify(filters)
-			})
-			.onConflictDoUpdate({
-				target: settings.key,
-				set: { value: JSON.stringify(filters) }
-			});
-
-		return { success: true };
-	}
 };

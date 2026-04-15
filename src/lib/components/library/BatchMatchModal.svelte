@@ -3,6 +3,8 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
+	import * as m from '$lib/paraglide/messages.js';
+	import { getFileName } from '$lib/utils/format.js';
 
 	interface UnmatchedFile {
 		id: string;
@@ -126,7 +128,7 @@
 			const data = await response.json();
 			searchResults = data.results || [];
 		} catch {
-			toasts.error('Search failed');
+			toasts.error(m.library_batchMatch_searchFailed());
 			searchResults = [];
 		} finally {
 			isSearching = false;
@@ -156,7 +158,7 @@
 		try {
 			// Generate preview client-side from file data
 			previewResults = selectedFiles.map((file) => {
-				const fileName = file.path.split('/').pop() || file.path;
+				const fileName = getFileName(file.path);
 				return {
 					fileId: file.id,
 					filePath: file.path,
@@ -167,7 +169,7 @@
 				};
 			});
 		} catch {
-			previewError = 'Failed to generate preview';
+			previewError = m.library_batchMatch_failedToGeneratePreview();
 		} finally {
 			isPreviewing = false;
 		}
@@ -206,10 +208,13 @@
 			const result = await response.json();
 
 			if (result.success) {
-				const mediaTitle = selectedMedia.title || selectedMedia.name;
 				toasts.success(
-					`Matched ${result.data.matched} of ${selectedFileIds.length} files to ${mediaTitle}`,
-					result.data.failed > 0 ? { description: `${result.data.failed} files failed` } : undefined
+					m.library_batchMatch_matchedFiles({
+						count: result.data.matched
+					}),
+					result.data.failed > 0
+						? { description: m.library_batchMatch_filesFailed({ count: result.data.failed }) }
+						: undefined
 				);
 
 				// Get successfully matched IDs (those not in errors)
@@ -220,10 +225,10 @@
 
 				onSuccess(matchedIds);
 			} else {
-				toasts.error('Failed to match files', { description: result.error });
+				toasts.error(m.library_batchMatch_failedToMatchFiles(), { description: result.error });
 			}
 		} catch {
-			toasts.error('Error matching files');
+			toasts.error(m.library_batchMatch_errorMatchingFiles());
 		} finally {
 			isMatching = false;
 		}
@@ -244,11 +249,11 @@
 
 	// Format file size
 	function formatSize(bytes: number | null): string {
-		if (!bytes) return 'Unknown';
+		if (!bytes) return m.library_batchMatch_unknownSize();
 		const gb = bytes / (1024 * 1024 * 1024);
-		if (gb >= 1) return `${gb.toFixed(2)} GB`;
+		if (gb >= 1) return m.library_batchMatch_sizeGB({ size: gb.toFixed(2) });
 		const mb = bytes / (1024 * 1024);
-		return `${mb.toFixed(1)} MB`;
+		return m.library_batchMatch_sizeMB({ size: mb.toFixed(1) });
 	}
 </script>
 
@@ -257,12 +262,12 @@
 	<div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 		<div class="flex items-center gap-2">
 			<Check class="h-5 w-5 text-primary" />
-			<h3 id="batch-match-modal-title" class="text-lg font-bold">Batch Match Files</h3>
+			<h3 id="batch-match-modal-title" class="text-lg font-bold">{m.library_batchMatch_title()}</h3>
 		</div>
 		<button
 			class="btn btn-circle self-end btn-ghost btn-sm sm:self-auto"
 			onclick={close}
-			aria-label="Close"
+			aria-label={m.action_close()}
 		>
 			<X class="h-4 w-4" />
 		</button>
@@ -271,7 +276,7 @@
 	<!-- Selected Files Summary -->
 	<div class="mb-4 rounded-lg bg-base-200 p-3">
 		<p class="text-sm text-base-content/70">
-			Matching {selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''}:
+			{m.library_batchMatch_matchingFiles({ count: selectedFiles.length })}
 		</p>
 		<div class="mt-2 max-h-24 space-y-1 overflow-y-auto">
 			{#each selectedFiles.slice(0, 5) as file (file.id)}
@@ -281,7 +286,7 @@
 					{:else}
 						<Tv class="h-3 w-3 text-secondary" />
 					{/if}
-					<span class="truncate">{file.path.split('/').pop()}</span>
+					<span class="truncate">{getFileName(file.path)}</span>
 					{#if file.parsedSeason !== null && file.parsedEpisode !== null}
 						<span class="badge badge-xs badge-secondary">
 							S{String(file.parsedSeason).padStart(2, '0')}E{String(file.parsedEpisode).padStart(
@@ -294,7 +299,9 @@
 				</div>
 			{/each}
 			{#if selectedFiles.length > 5}
-				<p class="text-xs text-base-content/50">... and {selectedFiles.length - 5} more</p>
+				<p class="text-xs text-base-content/50">
+					{m.library_batchMatch_andMore({ count: selectedFiles.length - 5 })}
+				</p>
 			{/if}
 		</div>
 	</div>
@@ -329,13 +336,15 @@
 						</p>
 					{/if}
 				</div>
-				<button class="btn btn-ghost btn-sm" onclick={backToSearch}> Change </button>
+				<button class="btn btn-ghost btn-sm" onclick={backToSearch}>{m.action_change()}</button>
 			</div>
 
 			<!-- Preview Results -->
 			<div>
 				<p class="mb-2 text-sm font-medium">
-					Match Preview {isPreviewing ? '(Loading...)' : ''}:
+					{isPreviewing
+						? m.library_batchMatch_matchPreviewLoading()
+						: m.library_batchMatch_matchPreview()}
 				</p>
 
 				{#if previewError}
@@ -351,7 +360,9 @@
 							<Loader2 class="h-8 w-8 animate-spin text-primary" />
 						</div>
 					{:else if previewResults.length === 0}
-						<p class="py-4 text-center text-base-content/50">Click Preview to see match results</p>
+						<p class="py-4 text-center text-base-content/50">
+							{m.library_batchMatch_clickPreviewHint()}
+						</p>
 					{:else}
 						{#each previewResults as result (result.fileId)}
 							<div
@@ -381,7 +392,11 @@
 												? 'badge-error'
 												: 'badge-warning'}"
 									>
-										{result.status}
+										{result.status === 'matched'
+											? m.status_matched()
+											: result.status === 'error'
+												? m.status_error()
+												: m.status_unmatched()}
 									</span>
 								</div>
 							</div>
@@ -395,7 +410,9 @@
 
 			<!-- Actions -->
 			<div class="flex justify-end gap-2 pt-2">
-				<button class="btn btn-ghost" onclick={backToSearch} disabled={isMatching}> Back </button>
+				<button class="btn btn-ghost" onclick={backToSearch} disabled={isMatching}
+					>{m.action_back()}</button
+				>
 				<button
 					class="btn btn-primary"
 					onclick={performMatch}
@@ -406,7 +423,7 @@
 					{:else}
 						<Check class="h-4 w-4" />
 					{/if}
-					Match {selectedFiles.length} Files
+					{m.library_batchMatch_matchFiles({ count: selectedFiles.length })}
 				</button>
 			</div>
 		</div>
@@ -419,14 +436,14 @@
 				onclick={() => (searchType = 'movie')}
 			>
 				<Clapperboard class="h-4 w-4" />
-				Movie
+				{m.common_movie()}
 			</button>
 			<button
 				class="btn btn-sm {searchType === 'tv' ? 'btn-primary' : 'btn-ghost'}"
 				onclick={() => (searchType = 'tv')}
 			>
 				<Tv class="h-4 w-4" />
-				TV Show
+				{m.common_tvShow()}
 			</button>
 		</div>
 
@@ -435,7 +452,7 @@
 			<input
 				type="text"
 				class="input-bordered input flex-1"
-				placeholder="Search TMDB..."
+				placeholder={m.library_batchMatch_searchPlaceholder()}
 				bind:value={searchQuery}
 				onkeydown={handleKeydown}
 			/>
@@ -449,7 +466,7 @@
 				{:else}
 					<Search class="h-4 w-4" />
 				{/if}
-				Search
+				{m.action_search()}
 			</button>
 		</div>
 
@@ -457,7 +474,7 @@
 		<div class="max-h-96 space-y-2 overflow-y-auto">
 			{#if searchResults.length > 0}
 				<p class="mb-2 text-sm text-base-content/70">
-					Click a result to select it and preview the match
+					{m.library_batchMatch_clickToSelect()}
 				</p>
 				{#each searchResults as result (result.id)}
 					<button
@@ -496,10 +513,12 @@
 					</button>
 				{/each}
 			{:else if !isSearching && searchQuery}
-				<p class="py-8 text-center text-base-content/50">No results found</p>
+				<p class="py-8 text-center text-base-content/50">{m.common_noResults()}</p>
 			{:else if !isSearching}
 				<p class="py-8 text-center text-base-content/50">
-					Search for a {searchType === 'movie' ? 'movie' : 'TV show'} to match
+					{searchType === 'movie'
+						? m.library_batchMatch_searchForMovie()
+						: m.library_batchMatch_searchForTvShow()}
 				</p>
 			{/if}
 		</div>

@@ -72,7 +72,8 @@ export type {
 	Source,
 	Codec,
 	HdrFormat,
-	AudioFormat
+	AudioCodec,
+	AudioChannels
 } from './types.js';
 
 export {
@@ -161,11 +162,7 @@ export {
 	getFormatsByCategory,
 	getFormatsByTag,
 
-	// Resolution formats
-	RESOLUTION_2160P_FORMATS,
-	RESOLUTION_1080P_FORMATS,
-	RESOLUTION_720P_FORMATS,
-	RESOLUTION_SD_FORMATS,
+	// Resolution formats (standalone - no combo formats)
 	ALL_RESOLUTION_FORMATS,
 
 	// Release groups (individual detection, no tiers)
@@ -185,7 +182,6 @@ export {
 	// HDR formats
 	DOLBY_VISION_FORMATS,
 	DOLBY_VISION_FORMAT,
-	DOLBY_VISION_NO_FALLBACK_FORMAT,
 	HDR10_FORMATS,
 	HDR10_PLUS_FORMAT,
 	HDR10_FORMAT,
@@ -194,7 +190,6 @@ export {
 	HLG_FORMAT,
 	PQ_FORMAT,
 	SDR_FORMAT,
-	MISSING_HDR_FORMATS,
 	HDR_FORMATS,
 	ALL_HDR_FORMATS,
 

@@ -20,8 +20,8 @@ export const PREMIUM_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'ATVP',
-				type: 'release_title',
-				pattern: '\\b(ATVP|AppleTV\\+?|Apple[. ]?TV)\\b',
+				type: 'streaming_service',
+				streamingService: 'ATVP',
 				required: true,
 				negate: false
 			}
@@ -36,8 +36,8 @@ export const PREMIUM_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'AMZN',
-				type: 'release_title',
-				pattern: '\\b(AMZN|Amazon)\\b',
+				type: 'streaming_service',
+				streamingService: 'AMZN',
 				required: true,
 				negate: false
 			}
@@ -52,8 +52,8 @@ export const PREMIUM_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'NF',
-				type: 'release_title',
-				pattern: '\\b(NF|Netflix)\\b',
+				type: 'streaming_service',
+				streamingService: 'NF',
 				required: true,
 				negate: false
 			}
@@ -68,8 +68,8 @@ export const PREMIUM_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'DSNP',
-				type: 'release_title',
-				pattern: '\\b(DSNP|Disney\\+?|DisneyPlus)\\b',
+				type: 'streaming_service',
+				streamingService: 'DSNP',
 				required: true,
 				negate: false
 			}
@@ -90,8 +90,8 @@ export const HBO_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'HMAX',
-				type: 'release_title',
-				pattern: '\\b(HMAX|HBO[. ]?Max)\\b',
+				type: 'streaming_service',
+				streamingService: 'HMAX',
 				required: true,
 				negate: false
 			}
@@ -106,15 +106,15 @@ export const HBO_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'MAX',
-				type: 'release_title',
-				pattern: '\\bMAX\\b',
+				type: 'streaming_service',
+				streamingService: 'MAX',
 				required: true,
 				negate: false
 			},
 			{
 				name: 'Not HMAX',
-				type: 'release_title',
-				pattern: '\\bHMAX\\b',
+				type: 'streaming_service',
+				streamingService: 'HMAX',
 				required: true,
 				negate: true
 			}
@@ -135,8 +135,8 @@ export const STANDARD_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'PCOK',
-				type: 'release_title',
-				pattern: '\\b(PCOK|Peacock)\\b',
+				type: 'streaming_service',
+				streamingService: 'PCOK',
 				required: true,
 				negate: false
 			}
@@ -151,8 +151,8 @@ export const STANDARD_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'PMTP',
-				type: 'release_title',
-				pattern: '\\b(PMTP|Paramount\\+?)\\b',
+				type: 'streaming_service',
+				streamingService: 'PMTP',
 				required: true,
 				negate: false
 			}
@@ -167,8 +167,8 @@ export const STANDARD_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'HULU',
-				type: 'release_title',
-				pattern: '\\bHULU\\b',
+				type: 'streaming_service',
+				streamingService: 'HULU',
 				required: true,
 				negate: false
 			}
@@ -183,8 +183,8 @@ export const STANDARD_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'iT',
-				type: 'release_title',
-				pattern: '\\b(iT|iTunes)\\b',
+				type: 'streaming_service',
+				streamingService: 'iT',
 				required: true,
 				negate: false
 			}
@@ -199,8 +199,8 @@ export const STANDARD_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'STAN',
-				type: 'release_title',
-				pattern: '\\bSTAN\\b',
+				type: 'streaming_service',
+				streamingService: 'STAN',
 				required: true,
 				negate: false
 			}
@@ -215,8 +215,8 @@ export const STANDARD_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'CRAV',
-				type: 'release_title',
-				pattern: '\\b(CRAV|Crave)\\b',
+				type: 'streaming_service',
+				streamingService: 'CRAV',
 				required: true,
 				negate: false
 			}
@@ -231,8 +231,8 @@ export const STANDARD_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'NOW',
-				type: 'release_title',
-				pattern: '\\bNOW\\b',
+				type: 'streaming_service',
+				streamingService: 'NOW',
 				required: true,
 				negate: false
 			}
@@ -247,8 +247,8 @@ export const STANDARD_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'SHO',
-				type: 'release_title',
-				pattern: '\\b(SHO|Showtime)\\b',
+				type: 'streaming_service',
+				streamingService: 'SHO',
 				required: true,
 				negate: false
 			}
@@ -263,8 +263,8 @@ export const STANDARD_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'ROKU',
-				type: 'release_title',
-				pattern: '\\bROKU\\b',
+				type: 'streaming_service',
+				streamingService: 'ROKU',
 				required: true,
 				negate: false
 			}
@@ -285,8 +285,8 @@ export const SPECIALTY_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'MUBI',
-				type: 'release_title',
-				pattern: '\\bMUBI\\b',
+				type: 'streaming_service',
+				streamingService: 'MUBI',
 				required: true,
 				negate: false
 			}
@@ -301,8 +301,8 @@ export const SPECIALTY_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'CRIT',
-				type: 'release_title',
-				pattern: '\\b(CRIT|Criterion)\\b',
+				type: 'streaming_service',
+				streamingService: 'CRIT',
 				required: true,
 				negate: false
 			}
@@ -317,8 +317,8 @@ export const SPECIALTY_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'DS4K',
-				type: 'release_title',
-				pattern: '\\bDS4K\\b',
+				type: 'streaming_service',
+				streamingService: 'DS4K',
 				required: true,
 				negate: false
 			}
@@ -339,8 +339,8 @@ export const ASIAN_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'iQIYI',
-				type: 'release_title',
-				pattern: '\\b(iQIYI|IQIYI)\\b',
+				type: 'streaming_service',
+				streamingService: 'iQIYI',
 				required: true,
 				negate: false
 			}
@@ -355,8 +355,8 @@ export const ASIAN_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'TVING',
-				type: 'release_title',
-				pattern: '\\bTVING\\b',
+				type: 'streaming_service',
+				streamingService: 'TVING',
 				required: true,
 				negate: false
 			}
@@ -371,8 +371,8 @@ export const ASIAN_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'VIKI',
-				type: 'release_title',
-				pattern: '\\bVIKI\\b',
+				type: 'streaming_service',
+				streamingService: 'VIKI',
 				required: true,
 				negate: false
 			}
@@ -387,8 +387,8 @@ export const ASIAN_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'VIU',
-				type: 'release_title',
-				pattern: '\\bVIU\\b',
+				type: 'streaming_service',
+				streamingService: 'VIU',
 				required: true,
 				negate: false
 			}
@@ -403,8 +403,8 @@ export const ASIAN_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'WAVVE',
-				type: 'release_title',
-				pattern: '\\bWAVVE\\b',
+				type: 'streaming_service',
+				streamingService: 'WAVVE',
 				required: true,
 				negate: false
 			}
@@ -419,8 +419,8 @@ export const ASIAN_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'WeTV',
-				type: 'release_title',
-				pattern: '\\bWeTV\\b',
+				type: 'streaming_service',
+				streamingService: 'WeTV',
 				required: true,
 				negate: false
 			}
@@ -435,8 +435,8 @@ export const ASIAN_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'KOCOWA',
-				type: 'release_title',
-				pattern: '\\b(KOCOWA|KCW)\\b',
+				type: 'streaming_service',
+				streamingService: 'KOCOWA',
 				required: true,
 				negate: false
 			}
@@ -457,8 +457,8 @@ export const INTERNATIONAL_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'BCORE',
-				type: 'release_title',
-				pattern: '\\b(BCORE|Bravia[. ]?Core)\\b',
+				type: 'streaming_service',
+				streamingService: 'BCORE',
 				required: true,
 				negate: false
 			}
@@ -473,8 +473,8 @@ export const INTERNATIONAL_STREAMING_FORMATS: CustomFormat[] = [
 		conditions: [
 			{
 				name: 'MA',
-				type: 'release_title',
-				pattern: '\\bMA\\b',
+				type: 'streaming_service',
+				streamingService: 'MA',
 				required: true,
 				negate: false
 			}

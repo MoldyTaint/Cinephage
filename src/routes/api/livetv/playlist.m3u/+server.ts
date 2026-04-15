@@ -26,8 +26,15 @@ import type { ChannelLineupItemWithDetails } from '$lib/types/livetv';
 
 /**
  * Build an M3U playlist from lineup items
+ * @param lineup - Channel lineup items
+ * @param baseUrl - Base URL for the server
+ * @param apiKey - Optional API key to embed in channel URLs for authentication
  */
-function buildM3UPlaylist(lineup: ChannelLineupItemWithDetails[], baseUrl: string): string {
+function buildM3UPlaylist(
+	lineup: ChannelLineupItemWithDetails[],
+	baseUrl: string,
+	apiKey?: string
+): string {
 	const lines: string[] = ['#EXTM3U'];
 
 	for (const item of lineup) {
@@ -56,7 +63,14 @@ function buildM3UPlaylist(lineup: ChannelLineupItemWithDetails[], baseUrl: strin
 		// Proxy URL - media servers will request this
 		// Append .ts extension so Jellyfin/Emby auto-detect as MPEG-TS format.
 		// Without extension, Jellyfin defaults to -f hls which causes format mismatch errors.
-		lines.push(`${baseUrl}/api/livetv/stream/${item.id}.ts`);
+		let channelUrl = `${baseUrl}/api/livetv/stream/${item.id}.ts`;
+
+		// Embed API key in URL if provided (for media server authentication)
+		if (apiKey) {
+			channelUrl += `?api_key=${encodeURIComponent(apiKey)}`;
+		}
+
+		lines.push(channelUrl);
 	}
 
 	return lines.join('\n');
@@ -76,6 +90,10 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	try {
 		const baseUrl = await getBaseUrlAsync(request);
 		const categoryId = url.searchParams.get('category');
+
+		// Extract API key from query params (for embedding in channel URLs)
+		// This allows media servers (Jellyfin/Plex/Emby) to authenticate stream requests
+		const apiKey = url.searchParams.get('api_key') || undefined;
 
 		// Get user's lineup ordered by position
 		let lineup = await channelLineupService.getLineup();
@@ -97,13 +115,16 @@ export const GET: RequestHandler = async ({ request, url }) => {
 			});
 		}
 
-		// Build M3U playlist
-		const m3u = buildM3UPlaylist(lineup, baseUrl);
+		// Build M3U playlist (embed API key in channel URLs if provided)
+		const m3u = buildM3UPlaylist(lineup, baseUrl, apiKey);
 
-		logger.debug('[Playlist] Generated M3U playlist', {
-			channels: lineup.length,
-			categoryFilter: categoryId || 'none'
-		});
+		logger.debug(
+			{
+				channels: lineup.length,
+				categoryFilter: categoryId || 'none'
+			},
+			'[Playlist] Generated M3U playlist'
+		);
 
 		return new Response(m3u, {
 			status: 200,

@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { getCaptchaSolver } from '$lib/server/captcha';
 import { z } from 'zod';
 import { logger } from '$lib/logging';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 /**
  * Schema for test request
@@ -15,7 +16,11 @@ const testRequestSchema = z.object({
  * POST /api/captcha-solver/test
  * Test captcha solving for a URL
  */
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { request } = event;
 	try {
 		const body = await request.json();
 		const validation = testRequestSchema.safeParse(body);
@@ -35,7 +40,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		const solver = getCaptchaSolver();
 
 		// First, test if there's a challenge
-		logger.info('[API] Testing for challenge', { url });
+		logger.info({ url }, '[API] Testing for challenge');
 		const testResult = await solver.test(url);
 
 		if (!testResult.hasChallenge) {
@@ -47,11 +52,14 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		// Try to solve it
-		logger.info('[API] Challenge detected, attempting solve', {
-			url,
-			type: testResult.type,
-			confidence: testResult.confidence
-		});
+		logger.info(
+			{
+				url,
+				type: testResult.type,
+				confidence: testResult.confidence
+			},
+			'[API] Challenge detected, attempting solve'
+		);
 
 		const solveResult = await solver.solve({ url });
 

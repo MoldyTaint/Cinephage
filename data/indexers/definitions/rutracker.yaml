@@ -20,11 +20,7 @@ settings:
     label: Password
   - name: stripcyrillic
     type: checkbox
-    label: Strip Russian letters
-    default: false
-  - name: addrussiantotitle
-    type: checkbox
-    label: Add RUS to titles
+    label: Strip Cyrillic Letters
     default: false
   - name: usemagnetlinks
     type: checkbox
@@ -385,7 +381,7 @@ login:
     redirect: 'index.php'
   test:
     path: /forum/index.php
-    selector: a[href*="logout.php"]
+    selector: "a[href*='logout.php'], img[onclick*='logout'], a[href*='login.php?logout=1']"
 
 search:
   paths:
@@ -406,6 +402,7 @@ search:
     title:
       selector: td.t-title-col div.t-title a.tLink
       filters:
+        # PHASE 1: Extract season/episode info FIRST (preserve this data)
         - name: re_replace
           args: ["(?i)\\s*[СС]езоны?:?\\s*(\\d+).+?[СС]ери[ия]:?\\s*(\\d+-?\\d*)", ' S$1E$2']
         - name: re_replace
@@ -416,34 +413,78 @@ search:
           args: ["(?i)\\s*ТВ-?(\\d+)", ' S$1']
         - name: re_replace
           args: ["\\[\\s*(\\d+)\\s*из\\s*(\\d+)\\s*\\]", ' E$1 of $2']
+
+        # PHASE 2: Strip metadata parentheses (NON-GREEDY - max 150 chars total)
+        # Only strips parens containing quality/format keywords
         - name: re_replace
           args:
             [
-              "(?i)\\s*\\([^\\)]*?\\b(?:Юбилейный|Лицензия|Itunes|BLU\\-?RAY|Blu-ray|BDRip|WEB\\-DL|HDTV|HDTVRip|SATRip|TVRip|DVD\\d?|DVD\\-?Rip|DVDScr|WEBRip|WEB\\-?Rip|WEB-DLRip|HDRip|BRRip|BDRemux|Remux|BD\\d|BD\\-?Rip|CAMRip|TeleSync|TS|HDTS|HD\\-?CAM|LD|Line\\.Dubbed|Line\\.Audio|FANSUB|Fansub|Hardsub|Softsub|Subtitles|Subs|VO|VoiceOver|Dub|Dubbed|MVO|P|A)\\b[^\\)]*?\\)",
+              "(?i)\\s*\\([^\\)]{0,100}?\\b(?:Юбилейный|Лицензия|Itunes|BLU\\-?RAY|Blu-ray|BDRip|WEB\\-DL|HDTV|HDTVRip|SATRip|TVRip|DVD\\d?|DVD\\-?Rip|DVDScr|WEBRip|WEB\\-?Rip|WEB-DLRip|HDRip|BRRip|BDRemux|Remux|BD\\d|BD\\-?Rip|CAMRip|TeleSync|TS|HDTS|HD\\-?CAM|LD|Line\\.Dubbed|Line\\.Audio|FANSUB|Fansub|Hardsub|Softsub|Subtitles|Subs|VO|VoiceOver|Dub|Dubbed|MVO|P|A|Rus|Eng|Sub)\\b[^\\)]{0,50}?\\)",
               ''
             ]
+
+        # PHASE 3: Clean up metadata after slash (CONTEXT-AWARE)
+        # Only removes if contains season/episode/metadata keywords
+        # FIX: Previously stripped everything after last slash - now specific to metadata
         - name: re_replace
-          args: ["(?i)(\\s*/\\s*[^/]+)$", '']
+          args: ["(?i)\\s*/\\s*(?:Сезон|Сезоны|Season|Серии|Серия|Episode|Эпизод)[^/]{0,80}$", '']
+
+        # PHASE 4: Normalize quality tags (preserve these at end)
         - name: re_replace
           args: ['(HDTVRip|HDRip|HDTV)', 'HDTV']
         - name: re_replace
           args: ['(WEBRip|WEB-DLRip|WEB-DL)', 'WEB-DL']
         - name: re_replace
           args: ["(BDRip|BD\\d|BD\\-?Rip)", 'BDRip']
-        - name: append
-          args: '{{ if .Config.addrussiantotitle }} RUS{{ end }}'
+
+        # PHASE 5: Handle Cyrillic conditionally (respects user setting)
+        - name: re_replace
+          args: ['[А-Яа-яЁё]+', '{{ if .Config.stripcyrillic }}{{ else }}$&{{ end }}']
+
+        # PHASE 6: Clean up remaining formatting artifacts
+        - name: re_replace
+          args: ['^\s*[-–—]+\s*/\s*', '']
+        - name: re_replace
+          args: ['^\s*/\s*', '']
+        - name: re_replace
+          args: ['\b(S\d+E\d+(?:-\d+)?)\s+(\d{1,2})(?=\s*\[)', '$1 of $2']
+        - name: re_replace
+          args: ['^(.*?)\s*/\s*(S\d+E\d+(?:-\d+)?(?:\s+of\s+\d+)?)', '$1: $2']
+        - name: re_replace
+          args: ['[(]\s*/\s*', '(']
+        - name: re_replace
+          args: ['(?:\s*,\s*){2,}', ', ']
+        - name: re_replace
+          args: ['[[]\s*,\s*', '[']
+        - name: re_replace
+          args: ['\s*,\s*[]]', ']']
+        - name: re_replace
+          args: ['[(]\s*,\s*', '(']
+        - name: re_replace
+          args: ['\s*,\s*[)]', ')']
+        - name: re_replace
+          args: ['[(]\s*[)]', '']
+        - name: re_replace
+          args: ['\s{2,}', ' ']
+
+        # SAFETY: Final trim
+        - name: trim
     download:
       selector: td.tor-size a.tr-dl
       attribute: href
       filters:
+        - name: re_replace
+          args: ['^/?dl\.php', '/forum/dl.php']
         - name: prepend
-          args: '{{ .Config.sitelink }}'
+          args: '{{ re_replace .Config.sitelink "/$" "" }}'
     details:
       selector: td.t-title-col div.t-title a.tLink
       attribute: href
       filters:
+        - name: re_replace
+          args: ['^/?viewtopic\.php', '/forum/viewtopic.php']
         - name: prepend
-          args: '{{ .Config.sitelink }}'
+          args: '{{ re_replace .Config.sitelink "/$" "" }}'
     category:
       selector: td.f-name-col div.f-name a
       attribute: href
@@ -480,9 +521,17 @@ search:
       text: 1
 
 download:
-  selectors:
-    - selector: a.magnet-link[href^="magnet:?"]
+  downloadVariablesFrom: details
+  downloadVariables:
+    - name: downloadUrl
+      selector: a.dl-stub[href*="dl.php?t="], a.dl-link[href*="dl.php?t="]
       attribute: href
       filters:
+        - name: re_replace
+          args: ['^/?dl\.php', '/forum/dl.php']
         - name: prepend
-          args: 'magnet:'
+          args: '{{ re_replace .Config.sitelink "/$" "" }}'
+  selectors:
+    - selector: '{{ .Variables.downloadUrl }}'
+    - selector: a.magnet-link[href^="magnet:?"]
+      attribute: href

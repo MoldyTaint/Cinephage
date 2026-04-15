@@ -10,8 +10,10 @@ import {
 	type NewNntpServerRecord
 } from '$lib/server/db/schema';
 import { eq, asc } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { randomUUID } from 'crypto';
+
+const logger = createChildLogger({ logDomain: 'streams' as const });
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
 import type { NntpServerCreate, NntpServerUpdate } from '$lib/validation/schemas';
 
@@ -122,7 +124,7 @@ class NntpServerService {
 		};
 
 		const [created] = await db.insert(nntpServers).values(newServer).returning();
-		logger.info('[NntpServerService] Created NNTP server', { id: created.id, name: created.name });
+		logger.info({ id: created.id, name: created.name }, '[NntpServerService] Created NNTP server');
 		return toPublicInfo(created);
 	}
 
@@ -157,7 +159,7 @@ class NntpServerService {
 			.where(eq(nntpServers.id, id))
 			.returning();
 
-		logger.info('[NntpServerService] Updated NNTP server', { id });
+		logger.info({ id }, '[NntpServerService] Updated NNTP server');
 		return toPublicInfo(updated);
 	}
 
@@ -168,7 +170,7 @@ class NntpServerService {
 		const result = await db.delete(nntpServers).where(eq(nntpServers.id, id)).returning();
 		const deleted = result.length > 0;
 		if (deleted) {
-			logger.info('[NntpServerService] Deleted NNTP server', { id });
+			logger.info({ id }, '[NntpServerService] Deleted NNTP server');
 		}
 		return deleted;
 	}
@@ -232,14 +234,17 @@ class NntpServerService {
 			} catch (error) {
 				const message = error instanceof Error ? error.message : 'Unknown error';
 				errors.push(`${client.name}: ${message}`);
-				logger.error('[NntpServerService] Failed to sync from download client', {
-					clientId: client.id,
-					error: message
-				});
+				logger.error(
+					{
+						clientId: client.id,
+						error: message
+					},
+					'[NntpServerService] Failed to sync from download client'
+				);
 			}
 		}
 
-		logger.info('[NntpServerService] Sync completed', { synced, skipped, errors: errors.length });
+		logger.info({ synced, skipped, errors: errors.length }, '[NntpServerService] Sync completed');
 		return { synced, skipped, errors };
 	}
 

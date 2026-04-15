@@ -13,7 +13,9 @@ import type {
 	ProviderSearchOptions,
 	LanguageCode
 } from '../../types';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import * as cheerio from 'cheerio';
 import {
 	TooManyRequests,
@@ -52,7 +54,7 @@ export class Subf2mProvider extends BaseSubtitleProvider {
 			const titleUrl = await this.findTitleUrl(searchTitle, criteria, options?.timeout);
 
 			if (!titleUrl) {
-				logger.debug('[Subf2m] Title not found', { title: searchTitle });
+				logger.debug({ title: searchTitle }, '[Subf2m] Title not found');
 				return results;
 			}
 
@@ -353,7 +355,7 @@ export class Subf2mProvider extends BaseSubtitleProvider {
 		for (const langCode of requestedLanguages) {
 			const subf2mLang = SUBF2M_LANGUAGES[langCode];
 			if (!subf2mLang) {
-				logger.debug('[Subf2m] No mapping for language', { langCode });
+				logger.debug({ langCode }, '[Subf2m] No mapping for language');
 				continue;
 			}
 
@@ -440,10 +442,13 @@ export class Subf2mProvider extends BaseSubtitleProvider {
 				});
 			} catch (error) {
 				// Log but don't fail - continue with other languages
-				logger.warn('[Subf2m] Failed to fetch language page', {
-					langCode,
-					error: error instanceof Error ? error.message : 'Unknown error'
-				});
+				logger.warn(
+					{
+						langCode,
+						error: error instanceof Error ? error.message : 'Unknown error'
+					},
+					'[Subf2m] Failed to fetch language page'
+				);
 			}
 		}
 

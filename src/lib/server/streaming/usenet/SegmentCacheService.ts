@@ -16,8 +16,13 @@ import { randomUUID } from 'crypto';
 import { db } from '$lib/server/db';
 import { nzbSegmentCache } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import type { NzbFile } from './types';
+
+const logger = createChildLogger({
+	logDomain: 'streams' as const,
+	component: 'SegmentCacheService'
+});
 import { getNntpManager } from './NntpManager';
 
 /**
@@ -65,12 +70,16 @@ class SegmentCacheService {
 					}
 				});
 		} catch (error) {
-			logger.warn('[SegmentCacheService] Failed to cache segment', {
-				mountId,
-				fileIndex,
-				segmentIndex,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					mountId,
+					fileIndex,
+					segmentIndex,
+					err: error,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to persist prefetched segment'
+			);
 		}
 	}
 
@@ -101,12 +110,16 @@ class SegmentCacheService {
 			}
 			return null;
 		} catch (error) {
-			logger.warn('[SegmentCacheService] Failed to get cached segment', {
-				mountId,
-				fileIndex,
-				segmentIndex,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					mountId,
+					fileIndex,
+					segmentIndex,
+					err: error,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to load cached segment'
+			);
 			return null;
 		}
 	}
@@ -145,7 +158,7 @@ class SegmentCacheService {
 	async prefetchCriticalSegments(mountId: string, fileIndex: number, file: NzbFile): Promise<void> {
 		const totalSegments = file.segments.length;
 		if (totalSegments === 0) {
-			logger.warn('[SegmentCacheService] No segments to prefetch', { mountId, fileIndex });
+			logger.warn({ mountId, fileIndex }, 'No segments available for prefetch');
 			return;
 		}
 
@@ -164,17 +177,20 @@ class SegmentCacheService {
 			}
 		}
 
-		logger.info('[SegmentCacheService] Starting prefetch', {
-			mountId,
-			fileIndex,
-			fileName: file.name,
-			totalSegments,
-			prefetchSegments: segmentsToFetch
-		});
+		logger.info(
+			{
+				mountId,
+				fileIndex,
+				fileName: file.name,
+				totalSegments,
+				prefetchSegments: segmentsToFetch
+			},
+			'Starting critical usenet segment prefetch'
+		);
 
 		const nntpManager = getNntpManager();
 		if (!nntpManager.isReady) {
-			logger.warn('[SegmentCacheService] NNTP manager not ready, skipping prefetch', { mountId });
+			logger.warn({ mountId, fileIndex }, 'NNTP manager is not ready, skipping segment prefetch');
 			return;
 		}
 
@@ -187,11 +203,14 @@ class SegmentCacheService {
 				// Check if already cached
 				const isCached = await this.isSegmentCached(mountId, fileIndex, segmentIndex);
 				if (isCached) {
-					logger.debug('[SegmentCacheService] Segment already cached', {
-						mountId,
-						fileIndex,
-						segmentIndex
-					});
+					logger.debug(
+						{
+							mountId,
+							fileIndex,
+							segmentIndex
+						},
+						'Segment already present in persistent cache'
+					);
 					successCount++;
 					return;
 				}
@@ -199,11 +218,14 @@ class SegmentCacheService {
 				// Fetch from NNTP
 				const segment = file.segments[segmentIndex];
 				if (!segment) {
-					logger.warn('[SegmentCacheService] Segment not found in file', {
-						mountId,
-						fileIndex,
-						segmentIndex
-					});
+					logger.warn(
+						{
+							mountId,
+							fileIndex,
+							segmentIndex
+						},
+						'Segment index was not found in NZB file metadata'
+					);
 					failCount++;
 					return;
 				}
@@ -213,33 +235,43 @@ class SegmentCacheService {
 				// Store in database
 				await this.cacheSegment(mountId, fileIndex, segmentIndex, result.data);
 
-				logger.debug('[SegmentCacheService] Prefetched segment', {
-					mountId,
-					fileIndex,
-					segmentIndex,
-					size: result.data.length
-				});
+				logger.debug(
+					{
+						mountId,
+						fileIndex,
+						segmentIndex,
+						sizeBytes: result.data.length
+					},
+					'Prefetched and cached critical segment'
+				);
 				successCount++;
 			} catch (error) {
-				logger.warn('[SegmentCacheService] Failed to prefetch segment', {
-					mountId,
-					fileIndex,
-					segmentIndex,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.warn(
+					{
+						mountId,
+						fileIndex,
+						segmentIndex,
+						err: error,
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'Failed to prefetch critical segment'
+				);
 				failCount++;
 			}
 		});
 
 		await Promise.allSettled(fetchPromises);
 
-		logger.info('[SegmentCacheService] Prefetch complete', {
-			mountId,
-			fileIndex,
-			fileName: file.name,
-			success: successCount,
-			failed: failCount
-		});
+		logger.info(
+			{
+				mountId,
+				fileIndex,
+				fileName: file.name,
+				successCount,
+				failCount
+			},
+			'Completed critical usenet segment prefetch'
+		);
 	}
 
 	/**
@@ -250,15 +282,22 @@ class SegmentCacheService {
 		try {
 			await db.delete(nzbSegmentCache).where(eq(nzbSegmentCache.mountId, mountId));
 
-			logger.debug('[SegmentCacheService] Cleared mount cache', {
-				mountId
-				// Note: result.changes would give count but not available in all cases
-			});
+			logger.debug(
+				{
+					mountId
+					// Note: result.changes would give count but not available in all cases
+				},
+				'Cleared persistent segment cache for mount'
+			);
 		} catch (error) {
-			logger.warn('[SegmentCacheService] Failed to clear mount cache', {
-				mountId,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					mountId,
+					err: error,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to clear persistent segment cache for mount'
+			);
 		}
 	}
 

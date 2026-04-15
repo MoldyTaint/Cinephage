@@ -5,8 +5,7 @@
  */
 
 // Types
-export type { QualityPreset, QualityMatchResult, ScoreComponents } from './types.js';
-export { DEFAULT_PRESETS } from './types.js';
+export type { ScoreComponents } from './types.js';
 
 // Quality Filter
 export { QualityFilter, qualityFilter, type EnhancedQualityResult } from './QualityFilter.js';

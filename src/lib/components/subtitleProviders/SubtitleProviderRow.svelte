@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { Loader2, FlaskConical, Settings, Trash2, ToggleLeft, ToggleRight } from 'lucide-svelte';
 	import SubtitleProviderStatusBadge from './SubtitleProviderStatusBadge.svelte';
 	import type { SubtitleProviderConfig } from '$lib/server/subtitles/types';
@@ -25,10 +26,10 @@
 
 		if (features.length < 3) {
 			if (provider.definition?.supportsHashSearch) {
-				features.push('Hash matching');
+				features.push(m.subtitleProviders_row_featureHashMatching());
 			}
 			if (provider.definition?.requiresApiKey || provider.definition?.accessType === 'api-key') {
-				features.push('API access');
+				features.push(m.subtitleProviders_row_featureApiAccess());
 			}
 			if (
 				provider.definition?.requiresCredentials ||
@@ -36,12 +37,16 @@
 				provider.definition?.accessType === 'paid' ||
 				provider.definition?.accessType === 'vip'
 			) {
-				features.push('Account auth');
+				features.push(m.subtitleProviders_row_featureAccountAuth());
 			}
 		}
 
 		const unique = Array.from(new Set(features));
-		const defaults = ['Subtitle search', 'Language matching', 'Provider API'];
+		const defaults = [
+			m.subtitleProviders_row_featureSubtitleSearch(),
+			m.subtitleProviders_row_featureLanguageMatching(),
+			m.subtitleProviders_row_featureProviderApi()
+		];
 		let idx = 0;
 		while (unique.length < 3 && idx < defaults.length) {
 			if (!unique.includes(defaults[idx])) {
@@ -103,7 +108,7 @@
 			class="btn btn-ghost btn-xs"
 			onclick={() => onTest(provider)}
 			disabled={testing}
-			title="Test connection"
+			title={m.subtitleProviders_table_testConnection()}
 		>
 			{#if testing}
 				<Loader2 class="h-4 w-4 animate-spin" />
@@ -115,7 +120,9 @@
 			class="btn btn-ghost btn-xs"
 			onclick={() => onToggle(provider)}
 			disabled={testing}
-			title={provider.enabled ? 'Disable' : 'Enable'}
+			title={provider.enabled
+				? m.subtitleProviders_table_disable()
+				: m.subtitleProviders_table_enable()}
 		>
 			{#if provider.enabled}
 				<ToggleRight class="h-4 w-4 text-success" />
@@ -123,13 +130,17 @@
 				<ToggleLeft class="h-4 w-4" />
 			{/if}
 		</button>
-		<button class="btn btn-ghost btn-xs" onclick={() => onEdit(provider)} title="Edit provider">
+		<button
+			class="btn btn-ghost btn-xs"
+			onclick={() => onEdit(provider)}
+			title={m.subtitleProviders_table_editProvider()}
+		>
 			<Settings class="h-4 w-4" />
 		</button>
 		<button
 			class="btn text-error btn-ghost btn-xs"
 			onclick={() => onDelete(provider)}
-			title="Delete provider"
+			title={m.subtitleProviders_table_deleteProvider()}
 		>
 			<Trash2 class="h-4 w-4" />
 		</button>

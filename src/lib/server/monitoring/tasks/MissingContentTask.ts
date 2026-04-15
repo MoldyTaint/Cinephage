@@ -35,7 +35,7 @@ export async function executeMissingContentTask(
 ): Promise<TaskResult> {
 	const executedAt = new Date();
 	const taskHistoryId = ctx?.historyId;
-	logger.info('[MissingContentTask] Starting missing content search', { taskHistoryId });
+	logger.info({ taskHistoryId }, '[MissingContentTask] Starting missing content search');
 
 	let itemsProcessed = 0;
 	let itemsGrabbed = 0;
@@ -56,11 +56,14 @@ export async function executeMissingContentTask(
 		itemsGrabbed += movieResults.summary.grabbed;
 		errors += movieResults.summary.errors;
 
-		logger.info('[MissingContentTask] Missing movies search completed', {
-			searched: movieResults.summary.searched,
-			grabbed: movieResults.summary.grabbed,
-			errors: movieResults.summary.errors
-		});
+		logger.info(
+			{
+				searched: movieResults.summary.searched,
+				grabbed: movieResults.summary.grabbed,
+				errors: movieResults.summary.errors
+			},
+			'[MissingContentTask] Missing movies search completed'
+		);
 
 		// Record history for each movie (with cancellation checks)
 		if (ctx) {
@@ -126,11 +129,14 @@ export async function executeMissingContentTask(
 		itemsGrabbed += episodeResults.summary.grabbed;
 		errors += episodeResults.summary.errors;
 
-		logger.info('[MissingContentTask] Missing episodes search completed', {
-			searched: episodeResults.summary.searched,
-			grabbed: episodeResults.summary.grabbed,
-			errors: episodeResults.summary.errors
-		});
+		logger.info(
+			{
+				searched: episodeResults.summary.searched,
+				grabbed: episodeResults.summary.grabbed,
+				errors: episodeResults.summary.errors
+			},
+			'[MissingContentTask] Missing episodes search completed'
+		);
 
 		// Record history for each episode (with cancellation checks)
 		if (ctx) {
@@ -181,11 +187,14 @@ export async function executeMissingContentTask(
 			}
 		}
 
-		logger.info('[MissingContentTask] Missing content task completed', {
-			totalProcessed: itemsProcessed,
-			totalGrabbed: itemsGrabbed,
-			totalErrors: errors
-		});
+		logger.info(
+			{
+				totalProcessed: itemsProcessed,
+				totalGrabbed: itemsGrabbed,
+				totalErrors: errors
+			},
+			'[MissingContentTask] Missing content task completed'
+		);
 
 		return {
 			taskType: 'missing',
@@ -195,7 +204,7 @@ export async function executeMissingContentTask(
 			executedAt
 		};
 	} catch (error) {
-		logger.error('[MissingContentTask] Task failed', error);
+		logger.error({ err: error }, '[MissingContentTask] Task failed');
 		throw error;
 	}
 }

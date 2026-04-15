@@ -13,7 +13,7 @@ let cachedBaseUrl: string | null = null;
 let cacheExpiry = 0;
 const CACHE_TTL_MS = 30000; // 30 seconds
 
-const streamLog = { logCategory: 'streams' as const };
+const streamLog = { logDomain: 'streams' as const };
 
 /**
  * Check if a URL is a localhost/loopback address that won't work for external clients.
@@ -90,12 +90,12 @@ export async function getBaseUrlAsync(request: Request): Promise<string> {
 		// Warn about localhost but allow it (useful for local testing)
 		if (isLocalhostUrl(baseUrl)) {
 			logger.warn(
-				'Streaming base URL is set to localhost - this will not work for external clients',
 				{
 					configuredUrl: baseUrl,
-					hint: 'Configure External Host in Settings -> Integrations -> Indexers -> Cinephage Stream',
+					hint: 'Configure Cinephage Server Address in Settings -> Integrations -> Indexers -> Cinephage Stream',
 					...streamLog
-				}
+				},
+				'Streaming base URL is set to localhost - this will not work for external clients'
 			);
 		}
 
@@ -118,11 +118,14 @@ export async function getBaseUrlAsync(request: Request): Promise<string> {
 	const fallbackUrl = `${url.protocol}//${url.host}`;
 
 	if (isLocalhostUrl(fallbackUrl)) {
-		logger.warn('Using localhost URL for streaming - configure External Host for external access', {
-			requestUrl: request.url,
-			hint: 'Settings -> Integrations -> Indexers -> Cinephage Stream',
-			...streamLog
-		});
+		logger.warn(
+			{
+				requestUrl: request.url,
+				hint: 'Settings -> Integrations -> Indexers -> Cinephage Stream -> Cinephage Server Address',
+				...streamLog
+			},
+			'Using localhost URL for streaming - configure Cinephage Server Address for external access'
+		);
 	}
 
 	return fallbackUrl;

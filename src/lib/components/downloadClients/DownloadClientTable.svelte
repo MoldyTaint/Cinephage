@@ -12,6 +12,7 @@
 	} from 'lucide-svelte';
 	import type { UnifiedClientItem } from '$lib/types/downloadClient';
 	import DownloadClientStatusBadge from './DownloadClientStatusBadge.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		clients: UnifiedClientItem[];
@@ -48,31 +49,28 @@
 		switch (implementation) {
 			case 'sabnzbd':
 			case 'nzbget':
-			case 'nzb-mount':
-				return 'Usenet';
+				return m.common_usenet();
 			default:
-				return 'Torrent';
+				return m.common_torrent();
 		}
 	}
 
 	function getDownloaderTypeLabel(implementation: UnifiedClientItem['implementation']): string {
 		switch (implementation) {
 			case 'qbittorrent':
-				return 'qBittorrent';
+				return m.downloadClient_qbittorrent();
 			case 'sabnzbd':
-				return 'SABnzbd';
+				return m.downloadClient_sabnzbd();
 			case 'nzbget':
-				return 'NZBGet';
-			case 'nzb-mount':
-				return 'NZB-Mount';
+				return m.downloadClient_nzbget();
 			case 'transmission':
-				return 'Transmission';
+				return m.downloadClient_transmission();
 			case 'deluge':
-				return 'Deluge';
+				return m.downloadClient_deluge();
 			case 'rtorrent':
-				return 'rTorrent';
+				return m.downloadClient_rtorrent();
 			case 'aria2':
-				return 'aria2';
+				return m.downloadClient_aria2();
 			default:
 				return implementation;
 		}
@@ -98,8 +96,8 @@
 {#if clients.length === 0}
 	<div class="py-12 text-center text-base-content/60">
 		<Server class="mx-auto mb-4 h-12 w-12 opacity-40" />
-		<p class="text-lg font-medium">No download clients configured</p>
-		<p class="mt-1 text-sm">Add a download client to start managing downloads</p>
+		<p class="text-lg font-medium">{m.settings_integrations_downloadClients_emptyTitle()}</p>
+		<p class="mt-1 text-sm">{m.settings_integrations_downloadClients_emptyDescription()}</p>
 	</div>
 {:else}
 	<div class="space-y-3 overflow-x-hidden sm:hidden">
@@ -113,9 +111,11 @@
 						indeterminate={someSelected}
 						onchange={(e) => onSelectAll(e.currentTarget.checked)}
 					/>
-					Select all
+					{m.action_selectAll()}
 				</label>
-				<span class="text-xs text-base-content/60">{selectedIds.size} selected</span>
+				<span class="text-xs text-base-content/60"
+					>{m.common_selected({ count: selectedIds.size })}</span
+				>
 			</div>
 		</div>
 
@@ -162,8 +162,12 @@
 					<span class="badge badge-outline badge-sm">
 						{getProtocolLabel(client.implementation)}
 					</span>
-					<span class="badge badge-ghost badge-sm">Movies: {client.movieCategory ?? '-'}</span>
-					<span class="badge badge-ghost badge-sm">TV: {client.tvCategory ?? '-'}</span>
+					<span class="badge badge-ghost badge-sm"
+						>{m.common_movies()}: {client.movieCategory ?? '-'}</span
+					>
+					<span class="badge badge-ghost badge-sm"
+						>{m.common_tvShows()}: {client.tvCategory ?? '-'}</span
+					>
 				</div>
 
 				<div
@@ -178,8 +182,8 @@
 						<button
 							class="btn btn-ghost btn-xs"
 							onclick={() => onTest(client)}
-							title="Test connection"
-							aria-label="Test connection"
+							title={m.action_testConnection()}
+							aria-label={m.action_testConnection()}
 							disabled={testingId === client.id}
 						>
 							{#if testingId === client.id}
@@ -192,8 +196,8 @@
 					<button
 						class="btn btn-ghost btn-xs"
 						onclick={() => onToggle(client)}
-						title={client.enabled ? 'Disable' : 'Enable'}
-						aria-label={client.enabled ? 'Disable client' : 'Enable client'}
+						title={client.enabled ? m.action_disable() : m.action_enable()}
+						aria-label={client.enabled ? m.aria_disableClient() : m.aria_enableClient()}
 						disabled={testingId === client.id}
 					>
 						{#if client.enabled}
@@ -205,16 +209,16 @@
 					<button
 						class="btn btn-ghost btn-xs"
 						onclick={() => onEdit(client)}
-						title="Edit client"
-						aria-label="Edit client"
+						title={m.action_edit()}
+						aria-label={m.aria_editClient()}
 					>
 						<Settings class="h-4 w-4" />
 					</button>
 					<button
 						class="btn text-error btn-ghost btn-xs"
 						onclick={() => onDelete(client)}
-						title="Delete client"
-						aria-label="Delete client"
+						title={m.action_delete()}
+						aria-label={m.aria_deleteClient()}
 					>
 						<Trash2 class="h-4 w-4" />
 					</button>
@@ -241,7 +245,7 @@
 							class="flex items-center gap-1 hover:text-primary"
 							onclick={() => onSort('status')}
 						>
-							Status
+							{m.common_status()}
 							{#if isSortedBy('status')}
 								{#if isAscending()}
 									<ChevronUp class="h-3 w-3" />
@@ -256,7 +260,7 @@
 							class="flex items-center gap-1 hover:text-primary"
 							onclick={() => onSort('name')}
 						>
-							Name
+							{m.common_name()}
 							{#if isSortedBy('name')}
 								{#if isAscending()}
 									<ChevronUp class="h-3 w-3" />
@@ -266,13 +270,13 @@
 							{/if}
 						</button>
 					</th>
-					<th>Downloader</th>
+					<th>{m.settings_integrations_downloadClients_downloaderColumn()}</th>
 					<th>
 						<button
 							class="flex items-center gap-1 hover:text-primary"
 							onclick={() => onSort('protocol')}
 						>
-							Protocol
+							{m.common_protocol()}
 							{#if isSortedBy('protocol')}
 								{#if isAscending()}
 									<ChevronUp class="h-3 w-3" />
@@ -282,9 +286,9 @@
 							{/if}
 						</button>
 					</th>
-					<th>Host</th>
-					<th>Categories</th>
-					<th class="pl-4! text-start">Actions</th>
+					<th>{m.common_host()}</th>
+					<th>{m.common_categories()}</th>
+					<th class="pl-4! text-start">{m.common_actions()}</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -321,9 +325,12 @@
 						</td>
 						<td>
 							<div class="flex flex-col gap-1">
-								<span class="badge badge-ghost badge-sm">Movies: {client.movieCategory ?? '-'}</span
+								<span class="badge badge-ghost badge-sm"
+									>{m.common_movies()}: {client.movieCategory ?? '-'}</span
 								>
-								<span class="badge badge-ghost badge-sm">TV: {client.tvCategory ?? '-'}</span>
+								<span class="badge badge-ghost badge-sm"
+									>{m.common_tvShows()}: {client.tvCategory ?? '-'}</span
+								>
 							</div>
 						</td>
 						<td class="pl-2!">
@@ -332,7 +339,7 @@
 									<button
 										class="btn btn-ghost btn-xs"
 										onclick={() => onTest(client)}
-										title="Test connection"
+										title={m.action_testConnection()}
 										disabled={testingId === client.id}
 									>
 										{#if testingId === client.id}
@@ -345,7 +352,7 @@
 								<button
 									class="btn btn-ghost btn-xs"
 									onclick={() => onToggle(client)}
-									title={client.enabled ? 'Disable' : 'Enable'}
+									title={client.enabled ? m.action_disable() : m.action_enable()}
 									disabled={testingId === client.id}
 								>
 									{#if client.enabled}
@@ -357,14 +364,14 @@
 								<button
 									class="btn btn-ghost btn-xs"
 									onclick={() => onEdit(client)}
-									title="Edit client"
+									title={m.action_editClient()}
 								>
 									<Settings class="h-4 w-4" />
 								</button>
 								<button
 									class="btn text-error btn-ghost btn-xs"
 									onclick={() => onDelete(client)}
-									title="Delete client"
+									title={m.action_deleteClient()}
 								>
 									<Trash2 class="h-4 w-4" />
 								</button>

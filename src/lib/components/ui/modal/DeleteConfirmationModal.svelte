@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { X, Loader2, AlertTriangle, Trash2, Download } from 'lucide-svelte';
 	import ModalWrapper from './ModalWrapper.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		open: boolean;
@@ -41,13 +42,13 @@
 	const confirmLabel = $derived.by(() => {
 		switch (actionMode) {
 			case 'remove_and_delete':
-				return 'Remove + Delete Files';
+				return m.ui_deleteModal_removeAndDeleteFiles();
 			case 'remove_only':
-				return 'Remove from Library';
+				return m.ui_deleteModal_removeFromLibrary();
 			case 'delete_files':
-				return 'Delete Files';
+				return m.ui_deleteModal_deleteFiles();
 			default:
-				return 'Unmatch Files';
+				return m.ui_deleteModal_unmatchFiles();
 		}
 	});
 
@@ -89,7 +90,7 @@
 			type="button"
 			class="btn btn-circle btn-ghost btn-sm"
 			onclick={handleClose}
-			aria-label="Close"
+			aria-label={m.action_close()}
 		>
 			<X class="h-4 w-4" />
 		</button>
@@ -97,16 +98,17 @@
 
 	<p class="py-2">
 		{#if actionMode === 'remove_and_delete'}
-			Remove <strong>"{itemName}"</strong> from your library and permanently delete matched files from
-			disk?
+			{m.ui_deleteModal_confirmRemoveAndDelete_prefix()} <strong>{itemName}</strong>
+			{m.ui_deleteModal_confirmRemoveAndDelete_suffix()}
 		{:else if actionMode === 'remove_only'}
-			Remove <strong>"{itemName}"</strong> from your library and keep existing files on disk?
+			{m.ui_deleteModal_confirmRemoveOnly_prefix()} <strong>{itemName}</strong>
+			{m.ui_deleteModal_confirmRemoveOnly_suffix()}
 		{:else if actionMode === 'delete_files'}
-			Delete matched files for <strong>"{itemName}"</strong> from disk? The item will remain in your library
-			but show as missing.
+			{m.ui_deleteModal_confirmDeleteFiles_prefix()} <strong>{itemName}</strong>
+			{m.ui_deleteModal_confirmDeleteFiles_suffix()}
 		{:else}
-			Unmatch files for <strong>"{itemName}"</strong>? The item will stay in your library and show
-			as missing.
+			{m.ui_deleteModal_confirmUnmatch_prefix()} <strong>{itemName}</strong>
+			{m.ui_deleteModal_confirmUnmatch_suffix()}
 		{/if}
 	</p>
 
@@ -122,8 +124,9 @@
 			disabled={!hasFiles}
 		/>
 		<span class="text-sm"
-			>Delete files from disk{#if !hasFiles}
-				<span class="text-base-content/50">&nbsp(no files on disk)</span>{/if}</span
+			>{m.ui_deleteModal_deleteFilesFromDisk()}{#if !hasFiles}
+				<span class="text-base-content/50">&nbsp({m.ui_deleteModal_noFilesOnDisk()})</span
+				>{/if}</span
 		>
 	</label>
 
@@ -134,55 +137,41 @@
 				class="checkbox shrink-0 checkbox-error"
 				bind:checked={removeFromLibrary}
 			/>
-			<span class="text-sm">Remove from library entirely</span>
+			<span class="text-sm">{m.ui_deleteModal_removeFromLibraryEntirely()}</span>
 		</label>
 	{/if}
 
 	{#if hasActiveDownload && (actionMode === 'remove_only' || actionMode === 'remove_and_delete')}
 		<div class="mt-3 alert alert-warning">
 			<Download class="h-4 w-4" />
-			<span class="text-sm"
-				>There is an active or paused download for this item. It will be cancelled and removed from
-				the download client.
-			</span>
+			<span class="text-sm">{m.ui_deleteModal_activeDownloadWarning()} </span>
 		</div>
 	{/if}
 
 	{#if actionMode === 'remove_and_delete'}
 		<div class="mt-3 alert alert-error">
 			<Trash2 class="h-4 w-4" />
-			<span class="text-sm"
-				>This will permanently remove the item from your library and delete matched files from disk.
-				Metadata, history, and settings will be lost. This cannot be undone.</span
-			>
+			<span class="text-sm">{m.ui_deleteModal_warningRemoveAndDelete()}</span>
 		</div>
 	{:else if actionMode === 'remove_only'}
 		<div class="mt-3 alert alert-error">
 			<Trash2 class="h-4 w-4" />
-			<span class="text-sm"
-				>This will permanently remove the item from your library. Files stay on disk but become
-				unmatched. Metadata, history, and settings will be lost.</span
-			>
+			<span class="text-sm">{m.ui_deleteModal_warningRemoveOnly()}</span>
 		</div>
 	{:else if actionMode === 'delete_files'}
 		<div class="mt-3 alert alert-warning">
 			<AlertTriangle class="h-4 w-4" />
-			<span class="text-sm"
-				>Files will be permanently deleted from disk, and this item will show as missing in your
-				library. This cannot be undone.</span
-			>
+			<span class="text-sm">{m.ui_deleteModal_warningDeleteFiles()}</span>
 		</div>
 	{:else}
 		<div class="mt-3 alert alert-info">
-			<span class="text-sm"
-				>Files will remain on disk but become unmatched. You can re-match them later.</span
-			>
+			<span class="text-sm">{m.ui_deleteModal_warningUnmatch()}</span>
 		</div>
 	{/if}
 
 	<div class="modal-action">
 		<button type="button" class="btn btn-ghost" onclick={handleClose} disabled={loading}>
-			Cancel
+			{m.action_cancel()}
 		</button>
 		<button type="button" class="btn btn-error" onclick={handleConfirm} disabled={loading}>
 			{#if loading}

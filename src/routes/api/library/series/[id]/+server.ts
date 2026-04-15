@@ -21,6 +21,14 @@ import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.
 import { deleteAllAlternateTitles } from '$lib/server/services/index.js';
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
+import {
+	validateRootFolder,
+	getAnimeSubtypeEnforcement
+} from '$lib/server/library/LibraryAddService.js';
+import { mediaMoveService } from '$lib/server/library/MediaMoveService.js';
+import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
+import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
+import { tmdb } from '$lib/server/tmdb.js';
 
 /**
  * GET /api/library/series/[id]
@@ -126,7 +134,12 @@ export const GET: RequestHandler = async ({ params }) => {
 							language: s.language,
 							isForced: s.isForced,
 							isHearingImpaired: s.isHearingImpaired,
-							format: s.format
+							format: s.format,
+							matchScore: s.matchScore,
+							providerId: s.providerId,
+							dateAdded: s.dateAdded,
+							wasSynced: s.wasSynced,
+							syncOffset: s.syncOffset
 						})),
 						subtitleCount: epSubtitles.length,
 						subtitleLanguages: [...new Set(epSubtitles.map((s) => s.language))]
@@ -179,6 +192,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			seasonFolder,
 			seriesType,
 			rootFolderId,
+			moveFilesOnRootChange,
 			wantsSubtitles,
 			languageProfileId
 		} = body;
@@ -186,6 +200,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		// Get current series state BEFORE update to detect monitoring changes
 		const [currentSeries] = await db
 			.select({
+				tmdbId: series.tmdbId,
+				title: series.title,
+				seriesType: series.seriesType,
+				path: series.path,
+				episodeFileCount: series.episodeFileCount,
+				rootFolderId: series.rootFolderId,
 				monitored: series.monitored,
 				wantsSubtitles: series.wantsSubtitles,
 				languageProfileId: series.languageProfileId
@@ -196,6 +216,15 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		const wasUnmonitored = currentSeries ? !currentSeries.monitored : false;
 
 		const updateData: Record<string, unknown> = {};
+		let moveRequest:
+			| {
+					mediaId: string;
+					mediaTitle: string;
+					relativePath: string;
+					sourceRootFolderId: string;
+					destinationRootFolderId: string;
+			  }
+			| undefined;
 
 		if (typeof monitored === 'boolean') {
 			updateData.monitored = monitored;
@@ -210,7 +239,76 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			updateData.seriesType = seriesType;
 		}
 		if (rootFolderId !== undefined) {
-			updateData.rootFolderId = rootFolderId;
+			const nextRootFolderId = typeof rootFolderId === 'string' ? rootFolderId.trim() : '';
+			const currentRootFolderId = currentSeries?.rootFolderId ?? null;
+			if (!nextRootFolderId) {
+				return json(
+					{
+						success: false,
+						error: 'Root folder is required and cannot be unset after adding media.'
+					},
+					{ status: 400 }
+				);
+			}
+
+			// Only validate/apply when reassignment is requested.
+			if (nextRootFolderId !== currentRootFolderId) {
+				const hasExistingFiles = (currentSeries?.episodeFileCount ?? 0) > 0;
+				const canMoveFromCurrentRoot = Boolean(currentRootFolderId);
+				if (hasExistingFiles && canMoveFromCurrentRoot && moveFilesOnRootChange !== true) {
+					return json(
+						{
+							success: false,
+							error:
+								'This series already has files. Enable "Move existing files to new root folder" to change its root folder.'
+						},
+						{ status: 400 }
+					);
+				}
+
+				const enforceAnimeSubtype = await getAnimeSubtypeEnforcement();
+				let isAnimeMedia = false;
+				if (enforceAnimeSubtype && currentSeries) {
+					const tvDetails = await tmdb.getTVShow(currentSeries.tmdbId);
+					isAnimeMedia = isLikelyAnimeMedia({
+						genres: tvDetails.genres,
+						originalLanguage: tvDetails.original_language,
+						originCountries: tvDetails.origin_country,
+						productionCountries: tvDetails.production_countries,
+						title: tvDetails.name,
+						originalTitle: tvDetails.original_name
+					});
+				}
+
+				await validateRootFolder(nextRootFolderId, 'tv', {
+					enforceAnimeSubtype,
+					isAnimeMedia,
+					mediaTitle: currentSeries?.title
+				});
+
+				const shouldMoveFiles =
+					moveFilesOnRootChange === true &&
+					hasExistingFiles &&
+					Boolean(currentSeries?.path) &&
+					canMoveFromCurrentRoot;
+				if (shouldMoveFiles && currentRootFolderId && currentSeries?.path) {
+					moveRequest = {
+						mediaId: params.id,
+						mediaTitle: currentSeries.title,
+						relativePath: currentSeries.path,
+						sourceRootFolderId: currentRootFolderId,
+						destinationRootFolderId: nextRootFolderId
+					};
+				} else {
+					// Recovery path: if files exist but current root folder is missing, re-link directly.
+					const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
+						nextRootFolderId,
+						'tv'
+					);
+					updateData.rootFolderId = nextRootFolderId;
+					updateData.libraryId = owningLibrary.id;
+				}
+			}
 		}
 		if (typeof wantsSubtitles === 'boolean') {
 			updateData.wantsSubtitles = wantsSubtitles;
@@ -219,11 +317,30 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			updateData.languageProfileId = languageProfileId;
 		}
 
-		if (Object.keys(updateData).length === 0) {
+		if (Object.keys(updateData).length === 0 && !moveRequest) {
 			return json({ success: false, error: 'No valid fields to update' }, { status: 400 });
 		}
 
-		await db.update(series).set(updateData).where(eq(series.id, params.id));
+		if (Object.keys(updateData).length > 0) {
+			await db.update(series).set(updateData).where(eq(series.id, params.id));
+		}
+
+		let moveTask:
+			| {
+					taskId: string;
+					historyId: string;
+			  }
+			| undefined;
+		if (moveRequest) {
+			moveTask = await mediaMoveService.enqueueMove({
+				mediaType: 'series',
+				mediaId: moveRequest.mediaId,
+				mediaTitle: moveRequest.mediaTitle,
+				relativePath: moveRequest.relativePath,
+				sourceRootFolderId: moveRequest.sourceRootFolderId,
+				destinationRootFolderId: moveRequest.destinationRootFolderId
+			});
+		}
 
 		// If monitoring was just enabled, check if we should trigger a search
 		if (wasUnmonitored && monitored === true) {
@@ -232,15 +349,21 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			if (settings.searchOnMonitorEnabled) {
 				// Fire and forget - don't block the response
 				searchOnAdd.searchForMissingEpisodes(params.id).catch((err) => {
-					logger.error('[API] Background search on monitor enable failed', {
-						seriesId: params.id,
-						error: err instanceof Error ? err.message : 'Unknown error'
-					});
+					logger.error(
+						{
+							seriesId: params.id,
+							error: err instanceof Error ? err.message : 'Unknown error'
+						},
+						'[API] Background search on monitor enable failed'
+					);
 				});
 
-				logger.info('[API] Triggered search on monitor enable for series', {
-					seriesId: params.id
-				});
+				logger.info(
+					{
+						seriesId: params.id
+					},
+					'[API] Triggered search on monitor enable for series'
+				);
 			}
 		}
 
@@ -264,10 +387,13 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 						.where(and(eq(episodes.seriesId, params.id), eq(episodes.hasFile, true)));
 
 					if (episodesWithFiles.length > 0) {
-						logger.info('[API] Subtitle monitoring enabled for series, triggering search', {
-							seriesId: params.id,
-							episodeCount: episodesWithFiles.length
-						});
+						logger.info(
+							{
+								seriesId: params.id,
+								episodeCount: episodesWithFiles.length
+							},
+							'[API] Subtitle monitoring enabled for series, triggering search'
+						);
 
 						// Fire-and-forget: batch search all episodes
 						const items = episodesWithFiles.map((ep) => ({
@@ -276,10 +402,13 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 						}));
 
 						searchSubtitlesForMediaBatch(items).catch((err) => {
-							logger.warn('[API] Background subtitle batch search failed', {
-								seriesId: params.id,
-								error: err instanceof Error ? err.message : String(err)
-							});
+							logger.warn(
+								{
+									seriesId: params.id,
+									error: err instanceof Error ? err.message : String(err)
+								},
+								'[API] Background subtitle batch search failed'
+							);
 						});
 					}
 				}
@@ -288,7 +417,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 
 		libraryMediaEvents.emitSeriesUpdated(params.id);
 
-		return json({ success: true });
+		return json({
+			success: true,
+			moveQueued: Boolean(moveTask),
+			moveTaskId: moveTask?.taskId,
+			moveTaskHistoryId: moveTask?.historyId
+		});
 	} catch (error) {
 		logger.error('[API] Error updating series', error instanceof Error ? error : undefined);
 		return json(
@@ -352,7 +486,7 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 				seriesItem.rootFolderPath,
 				seriesItem.path
 			);
-			logger.debug('[API] Removed series folder and all contents', { seriesFolder });
+			logger.debug({ seriesFolder }, '[API] Removed series folder and all contents');
 		}
 
 		// Delete all episode file records from database
@@ -383,10 +517,13 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 							}
 						}
 					} catch (err) {
-						logger.warn('[API] Failed to remove download from client', {
-							queueItemId: queueItem.id,
-							error: err instanceof Error ? err.message : 'Unknown'
-						});
+						logger.warn(
+							{
+								queueItemId: queueItem.id,
+								error: err instanceof Error ? err.message : 'Unknown'
+							},
+							'[API] Failed to remove download from client'
+						);
 					}
 				}
 				// Delete queue record
@@ -407,7 +544,7 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 			await db.delete(series).where(eq(series.id, params.id));
 			libraryMediaEvents.emitSeriesUpdated(params.id);
 
-			logger.info('[API] Removed series from library', { seriesId: params.id });
+			logger.info({ seriesId: params.id }, '[API] Removed series from library');
 			return json({ success: true, removed: true });
 		} else {
 			// Update all episodes in this series to hasFile=false

@@ -1,5 +1,5 @@
 /**
- * MediaBrowserNotifier - Background service for notifying Jellyfin/Emby servers.
+ * MediaBrowserNotifier - Background service for notifying Jellyfin, Emby, and Plex servers.
  *
  * Features:
  * - Batching: Waits before sending updates to deduplicate rapid changes
@@ -8,7 +8,9 @@
  */
 
 import { EventEmitter } from 'events';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'system' as const });
 import type { ServiceStatus, BackgroundService } from '$lib/server/services/background-service';
 import { getMediaBrowserManager } from './MediaBrowserManager';
 import { MediaBrowserClient } from './MediaBrowserClient';
@@ -53,9 +55,12 @@ class MediaBrowserNotifier extends EventEmitter implements BackgroundService {
 			} catch (error) {
 				this._error = error instanceof Error ? error : new Error(String(error));
 				this._status = 'error';
-				logger.error('[MediaBrowserNotifier] Failed to start', {
-					error: this._error.message
-				});
+				logger.error(
+					{
+						error: this._error.message
+					},
+					'[MediaBrowserNotifier] Failed to start'
+				);
 			}
 		});
 	}
@@ -86,10 +91,13 @@ class MediaBrowserNotifier extends EventEmitter implements BackgroundService {
 	 */
 	queueUpdate(path: string, updateType: LibraryUpdateType): void {
 		if (this._status !== 'ready') {
-			logger.debug('[MediaBrowserNotifier] Ignoring update - service not ready', {
-				status: this._status,
-				path
-			});
+			logger.debug(
+				{
+					status: this._status,
+					path
+				},
+				'[MediaBrowserNotifier] Ignoring update - service not ready'
+			);
 			return;
 		}
 
@@ -127,20 +135,26 @@ class MediaBrowserNotifier extends EventEmitter implements BackgroundService {
 			});
 		}
 
-		logger.debug('[MediaBrowserNotifier] Update queued', {
-			path: normalizedPath,
-			updateType,
-			queueSize: this.pendingUpdates.size
-		});
+		logger.debug(
+			{
+				path: normalizedPath,
+				updateType,
+				queueSize: this.pendingUpdates.size
+			},
+			'[MediaBrowserNotifier] Update queued'
+		);
 
 		// Start batch timer if not already running
 		if (!this.batchTimer && !this.isProcessing) {
 			this.batchTimer = setTimeout(() => {
 				this.batchTimer = null;
 				this.processBatch().catch((error) => {
-					logger.error('[MediaBrowserNotifier] Batch processing failed', {
-						error: error instanceof Error ? error.message : String(error)
-					});
+					logger.error(
+						{
+							error: error instanceof Error ? error.message : String(error)
+						},
+						'[MediaBrowserNotifier] Batch processing failed'
+					);
 				});
 			}, BATCH_DELAY_MS);
 		}
@@ -174,10 +188,13 @@ class MediaBrowserNotifier extends EventEmitter implements BackgroundService {
 				this.pendingUpdates.delete(path);
 			}
 
-			logger.info('[MediaBrowserNotifier] Processing batch', {
-				count: updates.length,
-				remaining: this.pendingUpdates.size
-			});
+			logger.info(
+				{
+					count: updates.length,
+					remaining: this.pendingUpdates.size
+				},
+				'[MediaBrowserNotifier] Processing batch'
+			);
 
 			// Send to all enabled servers
 			await this.sendToServers(updates);
@@ -187,9 +204,12 @@ class MediaBrowserNotifier extends EventEmitter implements BackgroundService {
 				this.batchTimer = setTimeout(() => {
 					this.batchTimer = null;
 					this.processBatch().catch((error) => {
-						logger.error('[MediaBrowserNotifier] Batch processing failed', {
-							error: error instanceof Error ? error.message : String(error)
-						});
+						logger.error(
+							{
+								error: error instanceof Error ? error.message : String(error)
+							},
+							'[MediaBrowserNotifier] Batch processing failed'
+						);
 					});
 				}, BATCH_DELAY_MS);
 			}
@@ -217,11 +237,14 @@ class MediaBrowserNotifier extends EventEmitter implements BackgroundService {
 			Deleted: updates.filter((u) => u.updateType === 'Deleted').length
 		};
 
-		logger.info('[MediaBrowserNotifier] Sending updates to servers', {
-			serverCount: enabledServers.length,
-			updateCount: updates.length,
-			byType
-		});
+		logger.info(
+			{
+				serverCount: enabledServers.length,
+				updateCount: updates.length,
+				byType
+			},
+			'[MediaBrowserNotifier] Sending updates to servers'
+		);
 
 		// Send to each enabled server
 		await Promise.all(
@@ -241,22 +264,28 @@ class MediaBrowserNotifier extends EventEmitter implements BackgroundService {
 					const client = new MediaBrowserClient({
 						host: server.host,
 						apiKey: server.apiKey,
-						serverType: server.serverType as 'jellyfin' | 'emby'
+						serverType: server.serverType as 'jellyfin' | 'emby' | 'plex'
 					});
 
 					await client.notifyLibraryUpdate(payload);
 
-					logger.debug('[MediaBrowserNotifier] Updates sent to server', {
-						serverId: server.id,
-						serverName: server.name,
-						updateCount: mappedUpdates.length
-					});
+					logger.debug(
+						{
+							serverId: server.id,
+							serverName: server.name,
+							updateCount: mappedUpdates.length
+						},
+						'[MediaBrowserNotifier] Updates sent to server'
+					);
 				} catch (error) {
-					logger.error('[MediaBrowserNotifier] Failed to send updates to server', {
-						serverId: server.id,
-						serverName: server.name,
-						error: error instanceof Error ? error.message : String(error)
-					});
+					logger.error(
+						{
+							serverId: server.id,
+							serverName: server.name,
+							error: error instanceof Error ? error.message : String(error)
+						},
+						'[MediaBrowserNotifier] Failed to send updates to server'
+					);
 				}
 			})
 		);

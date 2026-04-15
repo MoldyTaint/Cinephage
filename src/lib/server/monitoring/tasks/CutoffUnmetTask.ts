@@ -30,7 +30,7 @@ export async function executeCutoffUnmetTask(
 	const taskHistoryId = ctx?.historyId;
 	const ignoreCooldown = options.ignoreCooldown ?? false;
 	const cooldownHours = options.cooldownHours;
-	logger.info('[CutoffUnmetTask] Starting cutoff unmet search', { taskHistoryId });
+	logger.info({ taskHistoryId }, '[CutoffUnmetTask] Starting cutoff unmet search');
 
 	let itemsProcessed: number;
 	let itemsGrabbed: number;
@@ -53,11 +53,14 @@ export async function executeCutoffUnmetTask(
 		itemsGrabbed = cutoffResults.summary.grabbed;
 		errors = cutoffResults.summary.errors;
 
-		logger.info('[CutoffUnmetTask] Cutoff unmet search completed', {
-			searched: cutoffResults.summary.searched,
-			grabbed: cutoffResults.summary.grabbed,
-			errors: cutoffResults.summary.errors
-		});
+		logger.info(
+			{
+				searched: cutoffResults.summary.searched,
+				grabbed: cutoffResults.summary.grabbed,
+				errors: cutoffResults.summary.errors
+			},
+			'[CutoffUnmetTask] Cutoff unmet search completed'
+		);
 
 		// Record history for each item (with cancellation checks)
 		if (ctx) {
@@ -110,11 +113,14 @@ export async function executeCutoffUnmetTask(
 			}
 		}
 
-		logger.info('[CutoffUnmetTask] Cutoff unmet task completed', {
-			totalProcessed: itemsProcessed,
-			totalGrabbed: itemsGrabbed,
-			totalErrors: errors
-		});
+		logger.info(
+			{
+				totalProcessed: itemsProcessed,
+				totalGrabbed: itemsGrabbed,
+				totalErrors: errors
+			},
+			'[CutoffUnmetTask] Cutoff unmet task completed'
+		);
 
 		return {
 			taskType: 'cutoff_unmet',
@@ -124,7 +130,7 @@ export async function executeCutoffUnmetTask(
 			executedAt
 		};
 	} catch (error) {
-		logger.error('[CutoffUnmetTask] Task failed', error);
+		logger.error({ err: error }, '[CutoffUnmetTask] Task failed');
 		throw error;
 	}
 }

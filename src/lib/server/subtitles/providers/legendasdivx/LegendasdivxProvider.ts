@@ -17,7 +17,9 @@ import type {
 import { GenericSubtitle } from '../../subtitle';
 import { Language } from '../../language';
 import { LEGENDASDIVX_LANGUAGES, LEGENDASDIVX_BASE_URL, type LegendasdivxConfig } from './types';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import * as cheerio from 'cheerio';
 import { extractFromZip } from '../mixins';
 import { AuthenticationError, DownloadLimitExceeded } from '../../errors/ProviderErrors';

@@ -2,8 +2,11 @@ import type { RequestHandler } from './$types';
 import { createSSEStream } from '$lib/server/sse';
 import { downloadMonitor } from '$lib/server/downloadClients/monitoring';
 import { mediaResolver } from '$lib/server/activity';
-import { extractReleaseGroup } from '$lib/server/indexers/parser/patterns/releaseGroup';
+import { activityStreamEvents } from '$lib/server/activity/ActivityStreamEvents';
 import type { UnifiedActivity, ActivityStatus } from '$lib/types/activity';
+import type { ActivityRefreshEvent } from '$lib/types/sse/events/activity-events.js';
+import { logger } from '$lib/logging';
+import { mapQueueStatus, projectQueueActivity } from '$lib/server/activity/projectors';
 
 interface QueueItem {
 	id: string;
@@ -24,6 +27,7 @@ interface QueueItem {
 	addedAt: string;
 	startedAt?: string | null;
 	completedAt?: string | null;
+	lastAttemptAt?: string | null;
 	errorMessage?: string | null;
 	isUpgrade?: boolean;
 }
@@ -51,21 +55,7 @@ function getQueueErrorFromPayload(payload: unknown): string | undefined {
 	return typeof maybeError === 'string' ? maybeError : undefined;
 }
 
-function mapQueueStatusToActivityStatus(status: string): ActivityStatus {
-	switch (status) {
-		case 'paused':
-			return 'paused';
-		case 'failed':
-			return 'failed';
-		case 'imported':
-		case 'seeding-imported':
-			return 'imported';
-		case 'removed':
-			return 'removed';
-		default:
-			return 'downloading';
-	}
-}
+const mapQueueStatusToActivityStatus = mapQueueStatus;
 
 /**
  * Server-Sent Events endpoint for real-time activity updates
@@ -86,46 +76,35 @@ export const GET: RequestHandler = async () => {
 				seasonNumber: item.seasonNumber
 			});
 
-			const releaseGroup = extractReleaseGroup(item.title);
-			const startedAt = item.startedAt ?? item.addedAt;
-			const timeline: UnifiedActivity['timeline'] = [{ type: 'grabbed', timestamp: item.addedAt }];
-			if (item.startedAt) {
-				timeline.push({ type: 'downloading', timestamp: item.startedAt });
-			}
-			if (item.completedAt) {
-				timeline.push({ type: 'completed', timestamp: item.completedAt });
-			}
-			timeline.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-			return {
-				id: `queue-${item.id}`,
-				mediaType: mediaInfo.mediaType,
-				mediaId: mediaInfo.mediaId,
-				mediaTitle: mediaInfo.mediaTitle,
-				mediaYear: mediaInfo.mediaYear,
-				seriesId: mediaInfo.seriesId,
-				seriesTitle: mediaInfo.seriesTitle,
-				seasonNumber: mediaInfo.seasonNumber,
-				episodeNumber: mediaInfo.episodeNumber,
-				episodeIds: item.episodeIds ?? undefined,
-				releaseTitle: item.title,
-				quality: item.quality ?? null,
-				releaseGroup: item.releaseGroup ?? releaseGroup?.group ?? null,
-				size: item.size ?? null,
-				indexerId: item.indexerId ?? null,
-				indexerName: item.indexerName ?? null,
-				protocol: (item.protocol as 'torrent' | 'usenet' | 'streaming') ?? null,
-				downloadClientId: item.downloadClientId ?? null,
-				status: mapQueueStatusToActivityStatus(item.status),
-				statusReason: item.errorMessage ?? undefined,
-				downloadProgress: Math.round((item.progress ?? 0) * 100),
-				isUpgrade: item.isUpgrade ?? false,
-				timeline,
-				startedAt,
-				completedAt: item.completedAt ?? null,
-				queueItemId: item.id
-			};
+			return projectQueueActivity(item, mediaInfo);
 		};
+
+		// ── Progress throttling ─────────────────────────────────────────
+		// Track the last status we sent for each queue item so we can
+		// distinguish progress-only updates from real status changes.
+		const PROGRESS_THROTTLE_MS = 1000;
+		const lastProgressSentAt = new Map<string, number>();
+		const lastSentStatus = new Map<string, string>();
+		let progressFlushTimer: ReturnType<typeof setTimeout> | null = null;
+		const pendingProgress = new Map<
+			string,
+			{ id: string; progress: number; status: ActivityStatus }
+		>();
+
+		function flushPendingProgress(): void {
+			progressFlushTimer = null;
+			const now = Date.now();
+			for (const [queueId, data] of pendingProgress) {
+				send('activity:progress', data);
+				lastProgressSentAt.set(queueId, now);
+			}
+			pendingProgress.clear();
+		}
+
+		function scheduleProgressFlush(): void {
+			if (progressFlushTimer !== null) return;
+			progressFlushTimer = setTimeout(flushPendingProgress, PROGRESS_THROTTLE_MS);
+		}
 
 		// Event handlers
 		const onQueueAdded = async (item: unknown) => {
@@ -133,9 +112,10 @@ export const GET: RequestHandler = async () => {
 				const queueItem = getQueueItemFromPayload(item);
 				if (!queueItem) return;
 				const activity = await queueItemToActivity(queueItem);
+				lastSentStatus.set(queueItem.id, queueItem.status);
 				send('activity:new', activity);
-			} catch {
-				// Error converting item
+			} catch (error) {
+				logger.error({ err: error }, '[ActivityStream] Failed to convert queue:added to activity');
 			}
 		};
 
@@ -143,16 +123,49 @@ export const GET: RequestHandler = async () => {
 			try {
 				const queueItem = getQueueItemFromPayload(item);
 				if (!queueItem) return;
-				const activity = await queueItemToActivity(queueItem);
-				send('activity:updated', activity);
-				// For progress updates, send minimal data
-				send('activity:progress', {
+
+				const prevStatus = lastSentStatus.get(queueItem.id);
+				const statusChanged = prevStatus !== undefined && prevStatus !== queueItem.status;
+
+				if (statusChanged) {
+					// Status actually changed — send the full activity payload so
+					// the client can update all fields (timeline, status, etc.)
+					const activity = await queueItemToActivity(queueItem);
+					lastSentStatus.set(queueItem.id, queueItem.status);
+					send('activity:updated', activity);
+					// Also reset throttle so next progress is sent promptly
+					lastProgressSentAt.delete(queueItem.id);
+					return;
+				}
+
+				// Progress-only update — throttle to avoid flooding the client.
+				const now = Date.now();
+				const lastSent = lastProgressSentAt.get(queueItem.id) ?? 0;
+
+				const progressData = {
 					id: `queue-${queueItem.id}`,
 					progress: Math.round((queueItem.progress ?? 0) * 100),
-					status: activity.status
-				});
-			} catch {
-				// Error
+					status: mapQueueStatusToActivityStatus(queueItem.status)
+				};
+
+				if (now - lastSent >= PROGRESS_THROTTLE_MS) {
+					// Enough time passed — send immediately
+					send('activity:progress', progressData);
+					lastProgressSentAt.set(queueItem.id, now);
+					pendingProgress.delete(queueItem.id);
+				} else {
+					// Too soon — buffer and schedule a flush
+					pendingProgress.set(queueItem.id, progressData);
+					scheduleProgressFlush();
+				}
+
+				// Track status so we detect real changes next time
+				lastSentStatus.set(queueItem.id, queueItem.status);
+			} catch (error) {
+				logger.error(
+					{ err: error },
+					'[ActivityStream] Failed to convert queue:updated to activity'
+				);
 			}
 		};
 
@@ -160,10 +173,14 @@ export const GET: RequestHandler = async () => {
 			try {
 				const queueItem = getQueueItemFromPayload(item);
 				if (!queueItem) return;
+				lastSentStatus.set(queueItem.id, queueItem.status);
 				const activity = await queueItemToActivity(queueItem);
 				send('activity:updated', activity);
-			} catch {
-				// Error
+			} catch (error) {
+				logger.error(
+					{ err: error },
+					'[ActivityStream] Failed to convert queue:completed to activity'
+				);
 			}
 		};
 
@@ -171,10 +188,14 @@ export const GET: RequestHandler = async () => {
 			try {
 				const queueItem = getQueueItemFromPayload(data);
 				if (!queueItem) return;
+				lastSentStatus.set(queueItem.id, queueItem.status);
 				const activity = await queueItemToActivity(queueItem);
 				send('activity:updated', activity);
-			} catch {
-				// Error
+			} catch (error) {
+				logger.error(
+					{ err: error },
+					'[ActivityStream] Failed to convert queue:imported to activity'
+				);
 			}
 		};
 
@@ -182,28 +203,40 @@ export const GET: RequestHandler = async () => {
 			try {
 				const queueItem = getQueueItemFromPayload(data);
 				if (!queueItem) return;
+				lastSentStatus.set(queueItem.id, 'failed');
 				const activity = await queueItemToActivity(queueItem);
 				send('activity:updated', {
 					...activity,
 					status: 'failed',
 					statusReason: getQueueErrorFromPayload(data) ?? activity.statusReason
 				});
-			} catch {
-				// Error
+			} catch (error) {
+				logger.error({ err: error }, '[ActivityStream] Failed to convert queue:failed to activity');
 			}
 		};
 
-		// Seed active in-progress downloads so activity rows are visible even if queue:added happened before subscribe.
+		const onActivityRefresh = (payload: ActivityRefreshEvent) => {
+			send('activity:refresh', payload);
+		};
+
+		// Seed active in-progress downloads so activity rows are visible
+		// even if queue:added happened before subscribe.  Send as a single
+		// batch event instead of N individual activity:new messages.
 		const sendInitialQueueItems = async () => {
 			try {
 				const queueItems = await downloadMonitor.getQueue();
+				const seedActivities: UnifiedActivity[] = [];
 				for (const queueItem of queueItems) {
 					const activity = await queueItemToActivity(queueItem as QueueItem);
-					if (activity.status !== 'downloading') continue;
-					send('activity:new', activity);
+					if (activity.status !== 'downloading' && activity.status !== 'seeding') continue;
+					lastSentStatus.set((queueItem as QueueItem).id, (queueItem as QueueItem).status);
+					seedActivities.push(activity);
 				}
-			} catch {
-				// Error loading initial queue state
+				if (seedActivities.length > 0) {
+					send('activity:seed', seedActivities);
+				}
+			} catch (error) {
+				logger.error({ err: error }, '[ActivityStream] Failed to send initial queue items');
 			}
 		};
 
@@ -215,14 +248,17 @@ export const GET: RequestHandler = async () => {
 		downloadMonitor.on('queue:completed', onQueueCompleted);
 		downloadMonitor.on('queue:imported', onQueueImported);
 		downloadMonitor.on('queue:failed', onQueueFailed);
+		activityStreamEvents.on('activity:refresh', onActivityRefresh);
 
 		// Return cleanup function
 		return () => {
+			if (progressFlushTimer !== null) clearTimeout(progressFlushTimer);
 			downloadMonitor.off('queue:added', onQueueAdded);
 			downloadMonitor.off('queue:updated', onQueueUpdated);
 			downloadMonitor.off('queue:completed', onQueueCompleted);
 			downloadMonitor.off('queue:imported', onQueueImported);
 			downloadMonitor.off('queue:failed', onQueueFailed);
+			activityStreamEvents.off('activity:refresh', onActivityRefresh);
 		};
 	});
 };

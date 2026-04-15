@@ -1,11 +1,3 @@
-/**
- * CutoffUnmetSpecification Unit Tests
- *
- * Tests for the specification that determines if an existing file is eligible
- * for upgrade searching. Hard cutoffs have been removed - now simply checks
- * if upgrades are allowed by the profile.
- */
-
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
 	MovieCutoffUnmetSpecification,
@@ -15,6 +7,101 @@ import {
 } from './CutoffUnmetSpecification.js';
 import type { MovieContext, EpisodeContext } from './types.js';
 import { RejectionReason } from './types.js';
+import type {
+	movies,
+	movieFiles,
+	episodeFiles,
+	scoringProfiles,
+	series,
+	episodes
+} from '$lib/server/db/schema';
+
+type MovieRecord = typeof movies.$inferSelect;
+type MovieFileRecord = typeof movieFiles.$inferSelect;
+type EpisodeFileRecord = typeof episodeFiles.$inferSelect;
+type ScoringProfileRecord = typeof scoringProfiles.$inferSelect;
+type SeriesRecord = typeof series.$inferSelect;
+type EpisodeRecord = typeof episodes.$inferSelect;
+
+function createTestMovie(overrides: Partial<MovieRecord> = {}): MovieRecord {
+	return {
+		id: '1',
+		tmdbId: 1,
+		title: 'Test Movie',
+		path: '/movies/test',
+		...overrides
+	} as MovieRecord;
+}
+
+function createTestMovieFile(overrides: Partial<MovieFileRecord> = {}): MovieFileRecord {
+	return {
+		id: '1',
+		movieId: '1',
+		relativePath: 'Test.Movie.2024.1080p.WEB-DL.mkv',
+		sceneName: 'Test.Movie.2024.1080p.WEB-DL',
+		...overrides
+	} as MovieFileRecord;
+}
+
+function createTestEpisodeFile(overrides: Partial<EpisodeFileRecord> = {}): EpisodeFileRecord {
+	return {
+		id: '1',
+		seriesId: '1',
+		seasonNumber: 1,
+		relativePath: 'Test.Show.S01E01.1080p.WEB-DL.mkv',
+		sceneName: 'Test.Show.S01E01.1080p.WEB-DL',
+		...overrides
+	} as EpisodeFileRecord;
+}
+
+function createTestProfile(overrides: Partial<ScoringProfileRecord> = {}): ScoringProfileRecord {
+	return {
+		id: 'best',
+		name: 'Best',
+		upgradesAllowed: true,
+		upgradeUntilScore: 15000,
+		...overrides
+	} as ScoringProfileRecord;
+}
+
+function createTestSeries(overrides: Partial<SeriesRecord> = {}): SeriesRecord {
+	return {
+		id: '1',
+		tmdbId: 1,
+		title: 'Test Show',
+		path: '/tv/test',
+		...overrides
+	} as SeriesRecord;
+}
+
+function createTestEpisode(overrides: Partial<EpisodeRecord> = {}): EpisodeRecord {
+	return {
+		id: '1',
+		seriesId: '1',
+		seasonNumber: 1,
+		episodeNumber: 1,
+		...overrides
+	} as EpisodeRecord;
+}
+
+function createMovieContext(overrides: Partial<MovieContext> = {}): MovieContext {
+	return {
+		movie: createTestMovie(),
+		existingFile: createTestMovieFile(),
+		profile: createTestProfile(),
+		...overrides
+	};
+}
+
+function createEpisodeContext(overrides: Partial<EpisodeContext> = {}): EpisodeContext {
+	return {
+		series: createTestSeries(),
+		episode: createTestEpisode(),
+		existingFile: createTestEpisodeFile(),
+		profile: createTestProfile(),
+		...overrides
+	};
+}
 
 describe('MovieCutoffUnmetSpecification', () => {
 	let spec: MovieCutoffUnmetSpecification;
@@ -25,11 +112,7 @@ describe('MovieCutoffUnmetSpecification', () => {
 
 	describe('Basic Validation', () => {
 		it('should reject when no existing file', async () => {
-			const context: MovieContext = {
-				movie: { id: '1', title: 'Test Movie' } as any,
-				existingFile: null,
-				profile: { id: 'best', upgradesAllowed: true, upgradeUntilScore: 15000 } as any
-			};
+			const context = createMovieContext({ existingFile: null });
 
 			const result = await spec.isSatisfied(context);
 
@@ -38,11 +121,7 @@ describe('MovieCutoffUnmetSpecification', () => {
 		});
 
 		it('should reject when no profile', async () => {
-			const context: MovieContext = {
-				movie: { id: '1', title: 'Test Movie' } as any,
-				existingFile: { sceneName: 'Test.Movie.2024.1080p.WEB-DL' } as any,
-				profile: null
-			};
+			const context = createMovieContext({ profile: null });
 
 			const result = await spec.isSatisfied(context);
 
@@ -51,11 +130,9 @@ describe('MovieCutoffUnmetSpecification', () => {
 		});
 
 		it('should reject when upgrades not allowed', async () => {
-			const context: MovieContext = {
-				movie: { id: '1', title: 'Test Movie' } as any,
-				existingFile: { sceneName: 'Test.Movie.2024.1080p.WEB-DL' } as any,
-				profile: { id: 'no-upgrades', upgradesAllowed: false, upgradeUntilScore: 15000 } as any
-			};
+			const context = createMovieContext({
+				profile: createTestProfile({ upgradesAllowed: false })
+			});
 
 			const result = await spec.isSatisfied(context);
 
@@ -66,12 +143,12 @@ describe('MovieCutoffUnmetSpecification', () => {
 
 	describe('No Hard Cutoff Behavior', () => {
 		it('should accept when existing file is below cutoff score (upgrades allowed)', async () => {
-			const context: MovieContext = {
-				movie: { id: '1', title: 'Test Movie' } as any,
-				// 1080p WebDL scores ~4000, cutoff is 15000
-				existingFile: { sceneName: 'Test.Movie.2024.1080p.WEB-DL.DDP5.1-GROUP' } as any,
-				profile: { id: 'best', upgradesAllowed: true, upgradeUntilScore: 15000 } as any
-			};
+			const context = createMovieContext({
+				existingFile: createTestMovieFile({
+					sceneName: 'Test.Movie.2024.1080p.WEB-DL.DDP5.1-GROUP'
+				}),
+				profile: createTestProfile()
+			});
 
 			const result = await spec.isSatisfied(context);
 
@@ -79,43 +156,38 @@ describe('MovieCutoffUnmetSpecification', () => {
 		});
 
 		it('should accept when existing file is AT cutoff score (no hard cutoff)', async () => {
-			const context: MovieContext = {
-				movie: { id: '1', title: 'Test Movie' } as any,
-				// 2160p BluRay scores ~15000, cutoff is 15000 - previously rejected, now accepts
-				existingFile: { sceneName: 'Test.Movie.2024.2160p.UHD.BluRay.x265-GROUP' } as any,
-				profile: { id: 'best', upgradesAllowed: true, upgradeUntilScore: 15000 } as any
-			};
+			const context = createMovieContext({
+				existingFile: createTestMovieFile({
+					sceneName: 'Test.Movie.2024.2160p.UHD.BluRay.x265-GROUP'
+				}),
+				profile: createTestProfile()
+			});
 
 			const result = await spec.isSatisfied(context);
 
-			// No hard cutoff anymore - always allow searching if upgrades enabled
 			expect(result.accepted).toBe(true);
 		});
 
 		it('should accept when existing file is ABOVE cutoff score (no hard cutoff)', async () => {
-			const context: MovieContext = {
-				movie: { id: '1', title: 'Test Movie' } as any,
-				// 2160p Remux + Atmos scores ~23000, cutoff is 15000 - previously rejected, now accepts
-				existingFile: {
+			const context = createMovieContext({
+				existingFile: createTestMovieFile({
 					sceneName: 'Test.Movie.2024.2160p.UHD.BluRay.REMUX.TrueHD.Atmos-GROUP'
-				} as any,
-				profile: { id: 'best', upgradesAllowed: true, upgradeUntilScore: 15000 } as any
-			};
+				}),
+				profile: createTestProfile()
+			});
 
 			const result = await spec.isSatisfied(context);
 
-			// No hard cutoff anymore - always allow searching if upgrades enabled
 			expect(result.accepted).toBe(true);
 		});
 
 		it('should accept when no cutoff defined (upgradeUntilScore = -1)', async () => {
-			const context: MovieContext = {
-				movie: { id: '1', title: 'Test Movie' } as any,
-				existingFile: {
+			const context = createMovieContext({
+				existingFile: createTestMovieFile({
 					sceneName: 'Test.Movie.2024.2160p.UHD.BluRay.REMUX.TrueHD.Atmos-GROUP'
-				} as any,
-				profile: { id: 'no-cutoff', upgradesAllowed: true, upgradeUntilScore: -1 } as any
-			};
+				}),
+				profile: createTestProfile({ upgradeUntilScore: -1 })
+			});
 
 			const result = await spec.isSatisfied(context);
 
@@ -123,11 +195,12 @@ describe('MovieCutoffUnmetSpecification', () => {
 		});
 
 		it('should accept when upgradeUntilScore is 0', async () => {
-			const context: MovieContext = {
-				movie: { id: '1', title: 'Test Movie' } as any,
-				existingFile: { sceneName: 'Test.Movie.2024.1080p.WEB-DL-GROUP' } as any,
-				profile: { id: 'no-cutoff', upgradesAllowed: true, upgradeUntilScore: 0 } as any
-			};
+			const context = createMovieContext({
+				existingFile: createTestMovieFile({
+					sceneName: 'Test.Movie.2024.1080p.WEB-DL-GROUP'
+				}),
+				profile: createTestProfile({ upgradeUntilScore: 0 })
+			});
 
 			const result = await spec.isSatisfied(context);
 
@@ -137,11 +210,12 @@ describe('MovieCutoffUnmetSpecification', () => {
 
 	describe('Different Quality Levels - All Accept When Upgrades Allowed', () => {
 		it('720p WebDL should be eligible for upgrades', async () => {
-			const context: MovieContext = {
-				movie: { id: '1', title: 'Test Movie' } as any,
-				existingFile: { sceneName: 'Test.Movie.2024.720p.WEB-DL-GROUP' } as any,
-				profile: { id: 'low-cutoff', upgradesAllowed: true, upgradeUntilScore: 5000 } as any
-			};
+			const context = createMovieContext({
+				existingFile: createTestMovieFile({
+					sceneName: 'Test.Movie.2024.720p.WEB-DL-GROUP'
+				}),
+				profile: createTestProfile({ upgradeUntilScore: 5000 })
+			});
 
 			const result = await spec.isSatisfied(context);
 
@@ -149,27 +223,27 @@ describe('MovieCutoffUnmetSpecification', () => {
 		});
 
 		it('1080p BluRay should be eligible for upgrades (no hard cutoff)', async () => {
-			const context: MovieContext = {
-				movie: { id: '1', title: 'Test Movie' } as any,
-				// 1080p BluRay scores ~8000, cutoff is 5000 - previously rejected, now accepts
-				existingFile: { sceneName: 'Test.Movie.2024.1080p.BluRay.x264-GROUP' } as any,
-				profile: { id: 'low-cutoff', upgradesAllowed: true, upgradeUntilScore: 5000 } as any
-			};
+			const context = createMovieContext({
+				existingFile: createTestMovieFile({
+					sceneName: 'Test.Movie.2024.1080p.BluRay.x264-GROUP'
+				}),
+				profile: createTestProfile({ upgradeUntilScore: 5000 })
+			});
 
 			const result = await spec.isSatisfied(context);
 
-			// No hard cutoff anymore
 			expect(result.accepted).toBe(true);
 		});
 	});
 
 	describe('Convenience Functions', () => {
 		it('isMovieCutoffUnmet should return true when upgrades allowed', async () => {
-			const context: MovieContext = {
-				movie: { id: '1', title: 'Test Movie' } as any,
-				existingFile: { sceneName: 'Test.Movie.2024.1080p.WEB-DL-GROUP' } as any,
-				profile: { id: 'best', upgradesAllowed: true, upgradeUntilScore: 15000 } as any
-			};
+			const context = createMovieContext({
+				existingFile: createTestMovieFile({
+					sceneName: 'Test.Movie.2024.1080p.WEB-DL-GROUP'
+				}),
+				profile: createTestProfile()
+			});
 
 			const result = await isMovieCutoffUnmet(context);
 
@@ -177,24 +251,25 @@ describe('MovieCutoffUnmetSpecification', () => {
 		});
 
 		it('isMovieCutoffUnmet should return true even for high quality files (no hard cutoff)', async () => {
-			const context: MovieContext = {
-				movie: { id: '1', title: 'Test Movie' } as any,
-				existingFile: { sceneName: 'Test.Movie.2024.2160p.UHD.BluRay.REMUX-GROUP' } as any,
-				profile: { id: 'best', upgradesAllowed: true, upgradeUntilScore: 15000 } as any
-			};
+			const context = createMovieContext({
+				existingFile: createTestMovieFile({
+					sceneName: 'Test.Movie.2024.2160p.UHD.BluRay.REMUX-GROUP'
+				}),
+				profile: createTestProfile()
+			});
 
 			const result = await isMovieCutoffUnmet(context);
 
-			// No hard cutoff - always true if upgrades allowed
 			expect(result).toBe(true);
 		});
 
 		it('isMovieCutoffUnmet should return false when upgrades not allowed', async () => {
-			const context: MovieContext = {
-				movie: { id: '1', title: 'Test Movie' } as any,
-				existingFile: { sceneName: 'Test.Movie.2024.720p.WEB-DL-GROUP' } as any,
-				profile: { id: 'no-upgrades', upgradesAllowed: false, upgradeUntilScore: 15000 } as any
-			};
+			const context = createMovieContext({
+				existingFile: createTestMovieFile({
+					sceneName: 'Test.Movie.2024.720p.WEB-DL-GROUP'
+				}),
+				profile: createTestProfile({ upgradesAllowed: false })
+			});
 
 			const result = await isMovieCutoffUnmet(context);
 
@@ -211,12 +286,12 @@ describe('EpisodeCutoffUnmetSpecification', () => {
 	});
 
 	it('should accept when upgrades allowed', async () => {
-		const context: EpisodeContext = {
-			series: { id: '1', title: 'Test Show' } as any,
-			episode: { id: '1', seasonNumber: 1, episodeNumber: 1 } as any,
-			existingFile: { sceneName: 'Test.Show.S01E01.1080p.WEB-DL-GROUP' } as any,
-			profile: { id: 'best', upgradesAllowed: true, upgradeUntilScore: 15000 } as any
-		};
+		const context = createEpisodeContext({
+			existingFile: createTestEpisodeFile({
+				sceneName: 'Test.Show.S01E01.1080p.WEB-DL-GROUP'
+			}),
+			profile: createTestProfile()
+		});
 
 		const result = await spec.isSatisfied(context);
 
@@ -224,26 +299,25 @@ describe('EpisodeCutoffUnmetSpecification', () => {
 	});
 
 	it('should accept even for high quality files (no hard cutoff)', async () => {
-		const context: EpisodeContext = {
-			series: { id: '1', title: 'Test Show' } as any,
-			episode: { id: '1', seasonNumber: 1, episodeNumber: 1 } as any,
-			existingFile: { sceneName: 'Test.Show.S01E01.2160p.UHD.BluRay.REMUX-GROUP' } as any,
-			profile: { id: 'best', upgradesAllowed: true, upgradeUntilScore: 15000 } as any
-		};
+		const context = createEpisodeContext({
+			existingFile: createTestEpisodeFile({
+				sceneName: 'Test.Show.S01E01.2160p.UHD.BluRay.REMUX-GROUP'
+			}),
+			profile: createTestProfile()
+		});
 
 		const result = await spec.isSatisfied(context);
 
-		// No hard cutoff anymore
 		expect(result.accepted).toBe(true);
 	});
 
 	it('should reject when upgrades not allowed', async () => {
-		const context: EpisodeContext = {
-			series: { id: '1', title: 'Test Show' } as any,
-			episode: { id: '1', seasonNumber: 1, episodeNumber: 1 } as any,
-			existingFile: { sceneName: 'Test.Show.S01E01.720p.WEB-DL-GROUP' } as any,
-			profile: { id: 'no-upgrades', upgradesAllowed: false, upgradeUntilScore: 15000 } as any
-		};
+		const context = createEpisodeContext({
+			existingFile: createTestEpisodeFile({
+				sceneName: 'Test.Show.S01E01.720p.WEB-DL-GROUP'
+			}),
+			profile: createTestProfile({ upgradesAllowed: false })
+		});
 
 		const result = await spec.isSatisfied(context);
 
@@ -252,12 +326,12 @@ describe('EpisodeCutoffUnmetSpecification', () => {
 	});
 
 	it('isEpisodeCutoffUnmet should return boolean', async () => {
-		const context: EpisodeContext = {
-			series: { id: '1', title: 'Test Show' } as any,
-			episode: { id: '1', seasonNumber: 1, episodeNumber: 1 } as any,
-			existingFile: { sceneName: 'Test.Show.S01E01.720p.WEB-DL-GROUP' } as any,
-			profile: { id: 'best', upgradesAllowed: true, upgradeUntilScore: 15000 } as any
-		};
+		const context = createEpisodeContext({
+			existingFile: createTestEpisodeFile({
+				sceneName: 'Test.Show.S01E01.720p.WEB-DL-GROUP'
+			}),
+			profile: createTestProfile()
+		});
 
 		const result = await isEpisodeCutoffUnmet(context);
 
@@ -276,24 +350,24 @@ describe('Profile upgradesAllowed is the key factor', () => {
 	});
 
 	it('should always accept when upgradesAllowed is true regardless of quality', async () => {
-		// Even the highest quality file should be eligible for upgrades
-		const context: MovieContext = {
-			movie: { id: '1', title: 'Test Movie' } as any,
-			existingFile: { sceneName: 'Test.Movie.2024.2160p.REMUX.TrueHD.Atmos-GROUP' } as any,
-			profile: { id: 'custom', upgradesAllowed: true, upgradeUntilScore: 1 } as any
-		};
+		const context = createMovieContext({
+			existingFile: createTestMovieFile({
+				sceneName: 'Test.Movie.2024.2160p.REMUX.TrueHD.Atmos-GROUP'
+			}),
+			profile: createTestProfile({ upgradesAllowed: true, upgradeUntilScore: 1 })
+		});
 
 		const result = await movieSpec.isSatisfied(context);
 		expect(result.accepted).toBe(true);
 	});
 
 	it('should always reject when upgradesAllowed is false regardless of quality', async () => {
-		// Even low quality file should not be eligible if upgrades disabled
-		const context: MovieContext = {
-			movie: { id: '1', title: 'Test Movie' } as any,
-			existingFile: { sceneName: 'Test.Movie.2024.480p.HDTV-GROUP' } as any,
-			profile: { id: 'custom', upgradesAllowed: false, upgradeUntilScore: 100000 } as any
-		};
+		const context = createMovieContext({
+			existingFile: createTestMovieFile({
+				sceneName: 'Test.Movie.2024.480p.HDTV-GROUP'
+			}),
+			profile: createTestProfile({ upgradesAllowed: false, upgradeUntilScore: 100000 })
+		});
 
 		const result = await movieSpec.isSatisfied(context);
 		expect(result.accepted).toBe(false);
@@ -301,24 +375,26 @@ describe('Profile upgradesAllowed is the key factor', () => {
 	});
 
 	it('should accept episode when upgradesAllowed is true', async () => {
-		const context: EpisodeContext = {
-			series: { id: '1', title: 'Test Series' } as any,
-			episode: { id: '1', title: 'Test Episode' } as any,
-			existingFile: { sceneName: 'Test.Show.S01E01.1080p.WEB-DL' } as any,
-			profile: { id: 'custom', upgradesAllowed: true, upgradeUntilScore: 15000 } as any
-		};
+		const context = createEpisodeContext({
+			episode: createTestEpisode({ title: 'Test Episode' }),
+			existingFile: createTestEpisodeFile({
+				sceneName: 'Test.Show.S01E01.1080p.WEB-DL'
+			}),
+			profile: createTestProfile({ upgradesAllowed: true })
+		});
 
 		const result = await episodeSpec.isSatisfied(context);
 		expect(result.accepted).toBe(true);
 	});
 
 	it('should reject episode when upgradesAllowed is false', async () => {
-		const context: EpisodeContext = {
-			series: { id: '1', title: 'Test Series' } as any,
-			episode: { id: '1', title: 'Test Episode' } as any,
-			existingFile: { sceneName: 'Test.Show.S01E01.1080p.WEB-DL' } as any,
-			profile: { id: 'custom', upgradesAllowed: false, upgradeUntilScore: 15000 } as any
-		};
+		const context = createEpisodeContext({
+			episode: createTestEpisode({ title: 'Test Episode' }),
+			existingFile: createTestEpisodeFile({
+				sceneName: 'Test.Show.S01E01.1080p.WEB-DL'
+			}),
+			profile: createTestProfile({ upgradesAllowed: false })
+		});
 
 		const result = await episodeSpec.isSatisfied(context);
 		expect(result.accepted).toBe(false);

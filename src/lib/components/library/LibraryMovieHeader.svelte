@@ -19,6 +19,8 @@
 		X,
 		Zap
 	} from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
+	import { formatBytes } from '$lib/utils/format.js';
 
 	interface AutoSearchResult {
 		found: boolean;
@@ -84,14 +86,6 @@
 		if (!bestQuality.quality) return null;
 		return `${bestQuality.quality}${bestQuality.hdr ? ` ${bestQuality.hdr}` : ''}`;
 	});
-
-	function formatBytes(bytes: number): string {
-		if (bytes === 0) return '0 B';
-		const k = 1024;
-		const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-		const i = Math.floor(Math.log(bytes) / Math.log(k));
-		return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-	}
 
 	function formatRuntime(minutes: number | null): string {
 		if (!minutes) return '';
@@ -177,41 +171,49 @@
 						class="btn gap-2 btn-sm btn-primary"
 						onclick={onAutoSearch}
 						disabled={autoSearching}
-						title="Automatically search and download"
+						title={m.library_movieHeader_autoGrabTooltip()}
 					>
 						{#if autoSearching}
 							<Loader2 size={16} class="animate-spin" />
-							<span class="hidden sm:inline">Searching...</span>
+							<span class="hidden sm:inline">{m.library_movieHeader_searching()}</span>
 						{:else if autoSearchResult?.grabbed}
 							<Check size={16} />
-							<span class="hidden sm:inline">Grabbed</span>
+							<span class="hidden sm:inline">{m.library_movieHeader_grabbed()}</span>
 						{:else if autoSearchResult?.error}
 							<X size={16} />
-							<span class="hidden sm:inline">Failed</span>
+							<span class="hidden sm:inline">{m.library_movieHeader_failed()}</span>
 						{:else}
 							<Zap size={16} />
-							<span class="hidden sm:inline">Auto Grab</span>
+							<span class="hidden sm:inline">{m.library_movieHeader_autoGrab()}</span>
 						{/if}
 					</button>
 					<!-- Manual/Interactive Search Button -->
-					<button class="btn gap-2 btn-ghost btn-sm" onclick={onSearch} title="Manual search">
+					<button
+						class="btn gap-2 btn-ghost btn-sm"
+						onclick={onSearch}
+						title={m.library_movieHeader_manualSearchTooltip()}
+					>
 						<Search size={16} />
-						<span class="hidden sm:inline">Manual</span>
+						<span class="hidden sm:inline">{m.library_movieHeader_manual()}</span>
 					</button>
 					{#if onImport}
 						<button
 							class="btn gap-2 btn-ghost btn-sm"
 							onclick={onImport}
-							title="Import local media"
+							title={m.library_movieHeader_importTooltip()}
 						>
 							<Download size={16} />
-							<span class="hidden sm:inline">Import</span>
+							<span class="hidden sm:inline">{m.action_import()}</span>
 						</button>
 					{/if}
-					<button class="btn btn-ghost btn-sm" onclick={onEdit} title="Edit">
+					<button class="btn btn-ghost btn-sm" onclick={onEdit} title={m.action_edit()}>
 						<Settings size={16} />
 					</button>
-					<button class="btn text-error btn-ghost btn-sm" onclick={onDelete} title="Delete">
+					<button
+						class="btn text-error btn-ghost btn-sm"
+						onclick={onDelete}
+						title={m.action_delete()}
+					>
 						<Trash2 size={16} />
 					</button>
 				</div>
@@ -220,22 +222,24 @@
 			<!-- Middle row: Settings info -->
 			<div class="flex flex-wrap gap-x-3 gap-y-2 text-sm md:gap-x-6">
 				<div class="shrink-0">
-					<span class="text-base-content/50">Quality Profile:</span>
-					<span class="ml-1 font-medium">{qualityProfileName || 'Default'}</span>
+					<span class="text-base-content/50">{m.library_movieHeader_qualityProfileLabel()}</span>
+					<span class="ml-1 font-medium">{qualityProfileName || m.common_default()}</span>
 				</div>
 				<div class="max-w-full min-w-0">
-					<span class="shrink-0 text-base-content/50">Root Folder:</span>
+					<span class="shrink-0 text-base-content/50"
+						>{m.library_movieHeader_rootFolderLabel()}</span
+					>
 					<span
 						class="ml-1 truncate font-medium {movie.rootFolderId
 							? ''
 							: 'rounded-md bg-warning/20 px-2 py-0.5 text-warning'}"
-						title={movie.rootFolderPath || 'Not set'}
+						title={movie.rootFolderPath || m.library_movieHeader_notSet()}
 					>
-						{movie.rootFolderPath || 'Not set'}
+						{movie.rootFolderPath || m.library_movieHeader_notSet()}
 					</span>
 				</div>
 				<div>
-					<span class="text-base-content/50">Added:</span>
+					<span class="text-base-content/50">{m.common_added()}:</span>
 					<span class="ml-1 font-medium">{formatDate(movie.added)}</span>
 				</div>
 			</div>
@@ -249,7 +253,7 @@
 							class="inline-flex items-center gap-2 rounded-lg bg-error/5 px-3 py-1.5 text-sm text-error/80 ring-1 ring-error/25"
 						>
 							<Clock size={16} />
-							<span class="font-medium">Unreleased</span>
+							<span class="font-medium">{m.common_unreleased()}</span>
 						</div>
 					{/if}
 					{#if movie.hasFile && totalSize > 0}
@@ -259,7 +263,7 @@
 					{/if}
 					{#if movie.hasFile && movie.files.length > 0}
 						{#if isStreamerProfile}
-							<span class="badge badge-sm badge-secondary">Streaming</span>
+							<span class="badge badge-sm badge-secondary">{m.status_streaming()}</span>
 						{:else}
 							<QualityBadge
 								quality={movie.files[0].quality}
@@ -289,7 +293,7 @@
 							rel="noopener noreferrer"
 							class="btn gap-1 btn-ghost btn-xs"
 						>
-							TMDB
+							{m.library_movieHeader_tmdbLink()}
 							<ExternalLink size={12} />
 						</a>
 					{/if}
@@ -300,7 +304,7 @@
 							rel="noopener noreferrer"
 							class="btn gap-1 btn-ghost btn-xs"
 						>
-							IMDb
+							{m.library_movieHeader_imdbLink()}
 							<ExternalLink size={12} />
 						</a>
 					{/if}

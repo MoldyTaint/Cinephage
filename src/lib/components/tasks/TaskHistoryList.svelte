@@ -14,7 +14,9 @@
 		AlertTriangle,
 		Ban
 	} from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 	import type { TaskHistoryEntry } from '$lib/types/task';
+	import { toasts } from '$lib/stores/toast.svelte';
 
 	interface ActivityItem {
 		id: string;
@@ -81,7 +83,7 @@
 				activityCache.set(entryId, data.activity ?? []);
 			}
 		} catch (error) {
-			console.error('Failed to load activity:', error);
+			toasts.error(error instanceof Error ? error.message : 'Failed to load activity');
 		} finally {
 			activityLoading.delete(entryId);
 		}
@@ -243,10 +245,10 @@
 {#if loading}
 	<div class="flex items-center justify-center py-4">
 		<span class="loading loading-sm loading-spinner"></span>
-		<span class="ml-2 text-sm text-base-content/60">Loading history...</span>
+		<span class="ml-2 text-sm text-base-content/60">{m.task_history_loading()}</span>
 	</div>
 {:else if history.length === 0}
-	<div class="py-4 text-center text-sm text-base-content/60">No execution history yet</div>
+	<div class="py-4 text-center text-sm text-base-content/60">{m.task_history_empty()}</div>
 {:else}
 	<div class="space-y-2">
 		{#each history as entry (entry.id)}
@@ -328,7 +330,9 @@
 						{#if isLoadingActivity}
 							<div class="flex items-center justify-center py-2">
 								<span class="loading loading-xs loading-spinner"></span>
-								<span class="ml-2 text-xs text-base-content/60">Loading activity...</span>
+								<span class="ml-2 text-xs text-base-content/60"
+									>{m.task_history_loadingActivity()}</span
+								>
 							</div>
 						{:else if activity.length === 0}
 							<div class="py-2 text-center text-xs text-base-content/60">

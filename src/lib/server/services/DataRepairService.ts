@@ -70,7 +70,7 @@ export class DataRepairService implements BackgroundService {
 				.catch((err) => {
 					this._error = err instanceof Error ? err : new Error(String(err));
 					this._status = 'error';
-					logger.error(`[${this.name}] Failed to run repairs`, this._error);
+					logger.error({ err: this._error }, `[${this.name}] Failed to run repairs`);
 				});
 		});
 	}
@@ -118,7 +118,7 @@ export class DataRepairService implements BackgroundService {
 			try {
 				data = JSON.parse(flag.value) as RepairSeriesData;
 			} catch {
-				logger.error(`[${this.name}] Invalid repair flag data`, { key: flag.key });
+				logger.error({ key: flag.key }, `[${this.name}] Invalid repair flag data`);
 				await db.delete(settings).where(eq(settings.key, flag.key));
 				continue;
 			}
@@ -137,18 +137,24 @@ export class DataRepairService implements BackgroundService {
 		const successful = results.filter((r) => r.success);
 		const failed = results.filter((r) => !r.success);
 
-		logger.info(`[${this.name}] Repair complete`, {
-			total: results.length,
-			successful: successful.length,
-			failed: failed.length,
-			episodesCreated: successful.reduce((sum, r) => sum + r.episodesCreated, 0),
-			episodeFilesLinked: successful.reduce((sum, r) => sum + r.episodeFilesLinked, 0)
-		});
+		logger.info(
+			{
+				total: results.length,
+				successful: successful.length,
+				failed: failed.length,
+				episodesCreated: successful.reduce((sum, r) => sum + r.episodesCreated, 0),
+				episodeFilesLinked: successful.reduce((sum, r) => sum + r.episodeFilesLinked, 0)
+			},
+			`[${this.name}] Repair complete`
+		);
 
 		if (failed.length > 0) {
-			logger.warn(`[${this.name}] Some series failed to repair`, {
-				failures: failed.map((f) => ({ title: f.title, error: f.error }))
-			});
+			logger.warn(
+				{
+					failures: failed.map((f) => ({ title: f.title, error: f.error }))
+				},
+				`[${this.name}] Some series failed to repair`
+			);
 		}
 	}
 
@@ -184,10 +190,13 @@ export class DataRepairService implements BackgroundService {
 				.where(eq(episodes.seriesId, seriesId));
 
 			if (existingEpisodes.length > 0) {
-				logger.debug(`[${this.name}] Series already has episodes, skipping`, {
-					title: data.title,
-					episodeCount: existingEpisodes.length
-				});
+				logger.debug(
+					{
+						title: data.title,
+						episodeCount: existingEpisodes.length
+					},
+					`[${this.name}] Series already has episodes, skipping`
+				);
 				result.success = true;
 				return result;
 			}
@@ -247,11 +256,14 @@ export class DataRepairService implements BackgroundService {
 					// Small delay between season fetches
 					await new Promise((resolve) => setTimeout(resolve, 100));
 				} catch (err) {
-					logger.warn(`[${this.name}] Failed to fetch season`, {
-						title: data.title,
-						season: seasonInfo.season_number,
-						error: err instanceof Error ? err.message : String(err)
-					});
+					logger.warn(
+						{
+							title: data.title,
+							season: seasonInfo.season_number,
+							err
+						},
+						`[${this.name}] Failed to fetch season`
+					);
 				}
 			}
 
@@ -261,8 +273,13 @@ export class DataRepairService implements BackgroundService {
 			// Update series episode counts
 			const allEpisodes = await db.select().from(episodes).where(eq(episodes.seriesId, seriesId));
 
-			const regularEpisodes = allEpisodes.filter((e) => e.seasonNumber !== 0);
-			const episodesWithFiles = allEpisodes.filter((e) => e.hasFile);
+			const today = new Date().toISOString().split('T')[0];
+			const isAired = (ep: typeof episodes.$inferSelect) =>
+				Boolean(ep.airDate && ep.airDate !== '' && ep.airDate <= today);
+
+			// Filter to regular (non-specials) AND aired episodes
+			const regularEpisodes = allEpisodes.filter((e) => e.seasonNumber !== 0 && isAired(e));
+			const episodesWithFiles = regularEpisodes.filter((e) => e.hasFile);
 
 			await db
 				.update(series)
@@ -272,32 +289,42 @@ export class DataRepairService implements BackgroundService {
 				})
 				.where(eq(series.id, seriesId));
 
-			// Update season episode file counts
+			// Update season episode counts (only aired episodes)
 			const allSeasons = await db.select().from(seasons).where(eq(seasons.seriesId, seriesId));
 
 			for (const season of allSeasons) {
-				const seasonEpisodesWithFiles = allEpisodes.filter(
-					(e) => e.seasonId === season.id && e.hasFile
+				const seasonAiredEpisodes = allEpisodes.filter(
+					(e) => e.seasonId === season.id && isAired(e)
 				);
+				const seasonEpisodesWithFiles = seasonAiredEpisodes.filter((e) => e.hasFile);
 				await db
 					.update(seasons)
-					.set({ episodeFileCount: seasonEpisodesWithFiles.length })
+					.set({
+						episodeCount: seasonAiredEpisodes.length,
+						episodeFileCount: seasonEpisodesWithFiles.length
+					})
 					.where(eq(seasons.id, season.id));
 			}
 
 			result.success = true;
-			logger.info(`[${this.name}] Repaired series`, {
-				title: data.title,
-				seasonsCreated: result.seasonsCreated,
-				episodesCreated: result.episodesCreated,
-				episodeFilesLinked: result.episodeFilesLinked
-			});
+			logger.info(
+				{
+					title: data.title,
+					seasonsCreated: result.seasonsCreated,
+					episodesCreated: result.episodesCreated,
+					episodeFilesLinked: result.episodeFilesLinked
+				},
+				`[${this.name}] Repaired series`
+			);
 		} catch (err) {
 			result.error = err instanceof Error ? err.message : String(err);
-			logger.error(`[${this.name}] Failed to repair series`, {
-				title: data.title,
-				error: result.error
-			});
+			logger.error(
+				{
+					title: data.title,
+					err
+				},
+				`[${this.name}] Failed to repair series`
+			);
 		}
 
 		return result;

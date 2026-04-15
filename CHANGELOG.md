@@ -24,7 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Subtitle search on import** - Triggers automatic subtitle search when media files are imported
 - **OldToons.World indexer** - Private UNIT3D tracker for classic animated content with API key authentication
 - **SABnzbd download client** - Full usenet downloader support with queue/history monitoring
-- **NZB-Mount download client** - WebDAV-mounted NZB streaming with STRM/Symlink import support and mount modes (nzbdav/altmount)
+- **SABnzbd Mount Mode** - WebDAV-mounted NZB streaming with STRM/Symlink import support
 - **Download client URL base support** - Optional URL base configuration for reverse proxy setups
 - **Clear failed downloads** - Bulk remove failed items from download queue with confirmation modal
 - **Newznab protocol** - Generic usenet indexer integration with dynamic capability discovery
@@ -99,12 +99,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 **What changed:**
 
-- Old: `./data:/app/data` and `./logs:/app/logs`
-- New: `./config:/config` (single mount for data, logs, and indexer definitions)
+- Old: `./data:/app/data`
+- New: `./config:/config` (single mount for app data, cache, and indexer definitions)
 
 **Automatic migration:**
 
-If you previously used `/app/data` and `/app/logs` mounts, the entrypoint script will automatically migrate your data when you add the `/config` mount alongside the old mounts:
+If you previously used `/app/data` mounts, the entrypoint script will automatically migrate your data when you add the `/config` mount alongside the old mount:
 
 1. Update your `docker-compose.yaml` to add `/config` mount (keep old mounts temporarily):
 
@@ -112,9 +112,8 @@ If you previously used `/app/data` and `/app/logs` mounts, the entrypoint script
    volumes:
      - ./config:/config # NEW: Add this
      - ./data:/app/data # Keep temporarily
-     - ./logs:/app/logs # Keep temporarily
-     - /path/to/media:/media # REQUIRED: Your media library
-     - /path/to/downloads:/downloads # REQUIRED: Download client output folder
+      - /path/to/media:/media # REQUIRED: Your media library
+      - /path/to/downloads:/downloads # REQUIRED: Download client output folder
    ```
 
 2. Start container - migration happens automatically:

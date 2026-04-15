@@ -25,7 +25,9 @@ import {
 	open
 } from 'fs/promises';
 import { join, dirname, basename, extname } from 'path';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'imports' as const });
 
 /**
  * Transfer mode for files (low-level operation)
@@ -172,7 +174,7 @@ export async function transferFile(
 
 		// Check if destination already exists
 		if (await fileExists(dest)) {
-			logger.warn('Destination file already exists, will overwrite', { dest });
+			logger.warn({ dest }, 'Destination file already exists, will overwrite');
 			await unlink(dest);
 		}
 
@@ -184,7 +186,7 @@ export async function transferFile(
 			// Get size from the actual target for reporting (stat follows symlinks)
 			const sizeBytes = await getFileSize(source);
 
-			logger.debug('Symlink preserved', { source, dest, target: linkTarget });
+			logger.debug({ source, dest, target: linkTarget }, 'Symlink preserved');
 
 			return {
 				success: true,
@@ -205,7 +207,7 @@ export async function transferFile(
 			if (sameFs) {
 				try {
 					await link(source, dest);
-					logger.debug('File hardlinked successfully', { source, dest });
+					logger.debug({ source, dest }, 'File hardlinked successfully');
 
 					return {
 						success: true,
@@ -217,22 +219,28 @@ export async function transferFile(
 				} catch (error) {
 					const err = error as NodeJS.ErrnoException;
 					// If hardlink fails (e.g., cross-device, permissions), fall back to copy
-					logger.debug('Hardlink failed, falling back to copy', {
-						error: err.message,
-						code: err.code
-					});
+					logger.debug(
+						{
+							error: err.message,
+							code: err.code
+						},
+						'Hardlink failed, falling back to copy'
+					);
 				}
 			} else {
-				logger.debug('Source and dest on different filesystems, using copy', {
-					source,
-					dest
-				});
+				logger.debug(
+					{
+						source,
+						dest
+					},
+					'Source and dest on different filesystems, using copy'
+				);
 			}
 		}
 
 		// Fall back to copy
 		await copyFile(source, dest);
-		logger.debug('File copied successfully', { source, dest });
+		logger.debug({ source, dest }, 'File copied successfully');
 
 		return {
 			success: true,
@@ -243,11 +251,14 @@ export async function transferFile(
 		};
 	} catch (error) {
 		const err = error as Error;
-		logger.error('File transfer failed', {
-			source,
-			dest,
-			error: err.message
-		});
+		logger.error(
+			{
+				source,
+				dest,
+				error: err.message
+			},
+			'File transfer failed'
+		);
 
 		return {
 			success: false,
@@ -332,11 +343,14 @@ export async function transferFileWithMode(
 			// If canMoveFiles=true, we'll delete source after successful transfer
 			effectiveMode = ImportMode.HardlinkOrCopy;
 			deleteSourceAfter = canMoveFiles;
-			logger.debug('Auto import mode: hardlink first, delete source after', {
-				canMoveFiles,
-				deleteSourceAfter,
-				source: basename(source)
-			});
+			logger.debug(
+				{
+					canMoveFiles,
+					deleteSourceAfter,
+					source: basename(source)
+				},
+				'Auto import mode: hardlink first, delete source after'
+			);
 			break;
 
 		case ImportMode.Move:
@@ -369,17 +383,23 @@ export async function transferFileWithMode(
 	if (result.success && deleteSourceAfter) {
 		try {
 			await unlink(source);
-			logger.debug('Source file deleted after successful hardlink/copy', {
-				source: basename(source)
-			});
+			logger.debug(
+				{
+					source: basename(source)
+				},
+				'Source file deleted after successful hardlink/copy'
+			);
 			// Update mode to reflect the full operation
 			result.mode = 'move';
 		} catch (error) {
 			// Non-fatal: file is already in library, source deletion is just cleanup
-			logger.warn('Failed to delete source after transfer (non-fatal)', {
-				source,
-				error: (error as Error).message
-			});
+			logger.warn(
+				{
+					source,
+					error: (error as Error).message
+				},
+				'Failed to delete source after transfer (non-fatal)'
+			);
 		}
 	}
 
@@ -537,10 +557,13 @@ async function findFilesRecursive(dir: string, extensions?: string[]): Promise<s
 			}
 		}
 	} catch (error) {
-		logger.warn('Failed to read directory', {
-			dir,
-			error: (error as Error).message
-		});
+		logger.warn(
+			{
+				dir,
+				error: (error as Error).message
+			},
+			'Failed to read directory'
+		);
 	}
 
 	return files;

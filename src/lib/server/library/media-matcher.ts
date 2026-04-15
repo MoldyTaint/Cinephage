@@ -26,6 +26,7 @@ import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/Subti
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
 import { logger } from '$lib/logging/index.js';
 import { parseRelease, extractExternalIds } from '$lib/server/indexers/parser/ReleaseParser.js';
+import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 
 /**
  * Default match confidence threshold (0.0 - 1.0)
@@ -196,9 +197,8 @@ export class MediaMatcherService {
 	private normalizeTitle(title: string): string {
 		return title
 			.toLowerCase()
-			.replace(/[^a-z0-9]/g, '') // Remove non-alphanumeric
-			.replace(/^the/, '') // Remove leading "the"
-			.replace(/^a/, ''); // Remove leading "a"
+			.replace(/^(the|an?)\s+/i, '') // Remove leading articles before stripping spaces
+			.replace(/[^a-z0-9]/g, '');
 	}
 
 	private isUniqueTmdbConstraintError(error: unknown, tableName: 'movies' | 'series'): boolean {
@@ -232,11 +232,14 @@ export class MediaMatcherService {
 			if (extractedIds.tmdbId) {
 				const match = await this.lookupByTmdbId(extractedIds.tmdbId, mediaType);
 				if (match) {
-					logger.info('[MediaMatcher] Matched via TMDB ID in path', {
-						tmdbId: extractedIds.tmdbId,
-						title: match.title,
-						filePath
-					});
+					logger.info(
+						{
+							tmdbId: extractedIds.tmdbId,
+							title: match.title,
+							filePath
+						},
+						'[MediaMatcher] Matched via TMDB ID in path'
+					);
 					return [match];
 				}
 			}
@@ -245,12 +248,15 @@ export class MediaMatcherService {
 			if (extractedIds.tvdbId) {
 				const match = await this.lookupByTvdbId(extractedIds.tvdbId);
 				if (match) {
-					logger.info('[MediaMatcher] Matched via TVDB ID in path', {
-						tvdbId: extractedIds.tvdbId,
-						tmdbId: match.tmdbId,
-						title: match.title,
-						filePath
-					});
+					logger.info(
+						{
+							tvdbId: extractedIds.tvdbId,
+							tmdbId: match.tmdbId,
+							title: match.title,
+							filePath
+						},
+						'[MediaMatcher] Matched via TVDB ID in path'
+					);
 					return [match];
 				}
 			}
@@ -259,20 +265,23 @@ export class MediaMatcherService {
 			if (extractedIds.imdbId) {
 				const match = await this.lookupByImdbId(extractedIds.imdbId, mediaType);
 				if (match) {
-					logger.info('[MediaMatcher] Matched via IMDB ID in path', {
-						imdbId: extractedIds.imdbId,
-						tmdbId: match.tmdbId,
-						title: match.title,
-						filePath
-					});
+					logger.info(
+						{
+							imdbId: extractedIds.imdbId,
+							tmdbId: match.tmdbId,
+							title: match.title,
+							filePath
+						},
+						'[MediaMatcher] Matched via IMDB ID in path'
+					);
 					return [match];
 				} else {
 					logger.warn(
-						'[MediaMatcher] IMDB ID found in path but not in TMDB, falling back to title search',
 						{
 							imdbId: extractedIds.imdbId,
 							filePath
-						}
+						},
+						'[MediaMatcher] IMDB ID found in path but not in TMDB, falling back to title search'
 					);
 				}
 			}
@@ -312,9 +321,8 @@ export class MediaMatcherService {
 			return matches;
 		} catch (error) {
 			logger.error(
-				'[MediaMatcher] TMDB search failed',
-				error instanceof Error ? error : undefined,
-				{ title }
+				{ err: error instanceof Error ? error : undefined, ...{ title } },
+				'[MediaMatcher] TMDB search failed'
 			);
 			return [];
 		}
@@ -346,11 +354,14 @@ export class MediaMatcherService {
 				};
 			}
 		} catch (error) {
-			logger.warn('[MediaMatcher] TMDB ID lookup failed', {
-				tmdbId,
-				mediaType,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					tmdbId,
+					mediaType,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[MediaMatcher] TMDB ID lookup failed'
+			);
 			return null;
 		}
 	}
@@ -375,10 +386,13 @@ export class MediaMatcherService {
 
 			return null;
 		} catch (error) {
-			logger.warn('[MediaMatcher] TVDB ID lookup failed', {
-				tvdbId,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					tvdbId,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[MediaMatcher] TVDB ID lookup failed'
+			);
 			return null;
 		}
 	}
@@ -437,10 +451,13 @@ export class MediaMatcherService {
 
 			return null;
 		} catch (error) {
-			logger.warn('[MediaMatcher] IMDB ID lookup failed', {
-				imdbId,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					imdbId,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[MediaMatcher] IMDB ID lookup failed'
+			);
 			return null;
 		}
 	}
@@ -554,11 +571,14 @@ export class MediaMatcherService {
 				results.push(result);
 			} catch (error) {
 				const reason = error instanceof Error ? error.message : 'Unknown matching error';
-				logger.error('[MediaMatcher] Failed to process unmatched file', undefined, {
-					fileId: file.id,
-					filePath: file.path,
-					reason
-				});
+				logger.error(
+					{
+						fileId: file.id,
+						filePath: file.path,
+						reason
+					},
+					'[MediaMatcher] Failed to process unmatched file'
+				);
 				results.push({
 					fileId: file.id,
 					filePath: file.path,
@@ -644,10 +664,13 @@ export class MediaMatcherService {
 		const [tmdbMovie, externalIds] = await Promise.all([
 			tmdb.getMovie(tmdbId),
 			tmdb.getMovieExternalIds(tmdbId).catch((err) => {
-				logger.warn('[MediaMatcher] Failed to fetch movie external IDs', {
-					tmdbId,
-					error: err instanceof Error ? err.message : String(err)
-				});
+				logger.warn(
+					{
+						tmdbId,
+						error: err instanceof Error ? err.message : String(err)
+					},
+					'[MediaMatcher] Failed to fetch movie external IDs'
+				);
 				return { imdb_id: null, tvdb_id: null };
 			})
 		]);
@@ -670,6 +693,10 @@ export class MediaMatcherService {
 			// Get default language profile for new media
 			const subtitleSettings = getSubtitleSettingsService();
 			const defaultProfileId = await subtitleSettings.get('defaultLanguageProfileId');
+			const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
+				rootFolder.id,
+				'movie'
+			);
 
 			try {
 				const [newMovie] = await db
@@ -688,6 +715,7 @@ export class MediaMatcherService {
 						runtime: tmdbMovie.runtime,
 						genres: tmdbMovie.genres?.map((g) => g.name),
 						path: movieFolder || fileName,
+						libraryId: owningLibrary.id,
 						rootFolderId: rootFolder.id,
 						hasFile: true,
 						monitored: rootFolder.defaultMonitored ?? true,
@@ -697,11 +725,14 @@ export class MediaMatcherService {
 					.returning();
 
 				movieId = newMovie.id;
-				logger.debug('[MediaMatcher] Assigned default language profile to new movie', {
-					movieId,
-					title: tmdbMovie.title,
-					languageProfileId: defaultProfileId
-				});
+				logger.debug(
+					{
+						movieId,
+						title: tmdbMovie.title,
+						languageProfileId: defaultProfileId
+					},
+					'[MediaMatcher] Assigned default language profile to new movie'
+				);
 			} catch (error) {
 				if (!this.isUniqueTmdbConstraintError(error, 'movies')) {
 					throw error;
@@ -729,11 +760,14 @@ export class MediaMatcherService {
 			.where(and(eq(movieFiles.movieId, movieId), eq(movieFiles.relativePath, fileName)));
 
 		if (existingFile) {
-			logger.debug('[MediaMatcher] Movie file already exists, skipping insert', {
-				movieId,
-				relativePath: fileName,
-				existingFileId: existingFile.id
-			});
+			logger.debug(
+				{
+					movieId,
+					relativePath: fileName,
+					existingFileId: existingFile.id
+				},
+				'[MediaMatcher] Movie file already exists, skipping insert'
+			);
 			return;
 		}
 
@@ -749,6 +783,7 @@ export class MediaMatcherService {
 			mediaInfo,
 			sceneName: originalFilename,
 			releaseGroup: parsedQuality.releaseGroup ?? undefined,
+			edition: parsedQuality.edition ?? undefined,
 			quality: {
 				resolution: parsedQuality.resolution ?? undefined,
 				source: parsedQuality.source ?? undefined,
@@ -759,10 +794,13 @@ export class MediaMatcherService {
 
 		// Trigger subtitle search if enabled (after metadata is fetched)
 		this.triggerSubtitleSearch('movie', movieId).catch((err) => {
-			logger.warn('[MediaMatcher] Failed to trigger subtitle search for movie', {
-				movieId,
-				error: err instanceof Error ? err.message : String(err)
-			});
+			logger.warn(
+				{
+					movieId,
+					error: err instanceof Error ? err.message : String(err)
+				},
+				'[MediaMatcher] Failed to trigger subtitle search for movie'
+			);
 		});
 	}
 
@@ -779,10 +817,13 @@ export class MediaMatcherService {
 		const [tmdbSeries, externalIds] = await Promise.all([
 			tmdb.getTVShow(tmdbId),
 			tmdb.getTvExternalIds(tmdbId).catch((err) => {
-				logger.warn('[MediaMatcher] Failed to fetch series external IDs', {
-					tmdbId,
-					error: err instanceof Error ? err.message : String(err)
-				});
+				logger.warn(
+					{
+						tmdbId,
+						error: err instanceof Error ? err.message : String(err)
+					},
+					'[MediaMatcher] Failed to fetch series external IDs'
+				);
 				return { imdb_id: null, tvdb_id: null };
 			})
 		]);
@@ -803,6 +844,10 @@ export class MediaMatcherService {
 			// Get default language profile for new media
 			const subtitleSettings = getSubtitleSettingsService();
 			const defaultProfileId = await subtitleSettings.get('defaultLanguageProfileId');
+			const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
+				rootFolder.id,
+				'tv'
+			);
 			let createdSeries = false;
 
 			try {
@@ -824,6 +869,7 @@ export class MediaMatcherService {
 						network: tmdbSeries.networks?.[0]?.name,
 						genres: tmdbSeries.genres?.map((g) => g.name),
 						path: seriesFolder,
+						libraryId: owningLibrary.id,
 						rootFolderId: rootFolder.id,
 						monitored: rootFolder.defaultMonitored ?? true,
 						languageProfileId: defaultProfileId,
@@ -833,11 +879,14 @@ export class MediaMatcherService {
 
 				seriesId = newSeries.id;
 				createdSeries = true;
-				logger.debug('[MediaMatcher] Assigned default language profile to new series', {
-					seriesId,
-					title: tmdbSeries.name,
-					languageProfileId: defaultProfileId
-				});
+				logger.debug(
+					{
+						seriesId,
+						title: tmdbSeries.name,
+						languageProfileId: defaultProfileId
+					},
+					'[MediaMatcher] Assigned default language profile to new series'
+				);
 			} catch (error) {
 				if (!this.isUniqueTmdbConstraintError(error, 'series')) {
 					throw error;
@@ -882,10 +931,13 @@ export class MediaMatcherService {
 			tmdbSeason = await tmdb.getSeason(tmdbId, seasonNumber);
 		} catch {
 			// Season might not exist in TMDB
-			logger.debug('[MediaMatcher] Could not fetch TMDB season data', {
-				tmdbId,
-				seasonNumber
-			});
+			logger.debug(
+				{
+					tmdbId,
+					seasonNumber
+				},
+				'[MediaMatcher] Could not fetch TMDB season data'
+			);
 		}
 
 		// Ensure season exists
@@ -980,6 +1032,7 @@ export class MediaMatcherService {
 			mediaInfo,
 			sceneName: originalFilename,
 			releaseGroup: parsedQuality.releaseGroup ?? undefined,
+			edition: parsedQuality.edition ?? undefined,
 			quality: {
 				resolution: parsedQuality.resolution ?? undefined,
 				source: parsedQuality.source ?? undefined,
@@ -993,10 +1046,13 @@ export class MediaMatcherService {
 
 		// Trigger subtitle search if enabled (after metadata is fetched)
 		this.triggerSubtitleSearch('episode', episode.id).catch((err) => {
-			logger.warn('[MediaMatcher] Failed to trigger subtitle search for episode', {
-				episodeId: episode.id,
-				error: err instanceof Error ? err.message : String(err)
-			});
+			logger.warn(
+				{
+					episodeId: episode.id,
+					error: err instanceof Error ? err.message : String(err)
+				},
+				'[MediaMatcher] Failed to trigger subtitle search for episode'
+			);
 		});
 	}
 
@@ -1011,7 +1067,7 @@ export class MediaMatcherService {
 		defaultMonitored: boolean = true
 	): Promise<void> {
 		if (!tmdbSeries.seasons || tmdbSeries.seasons.length === 0) {
-			logger.debug('[MediaMatcher] No seasons found for series', { tmdbId });
+			logger.debug({ tmdbId }, '[MediaMatcher] No seasons found for series');
 			return;
 		}
 
@@ -1090,27 +1146,36 @@ export class MediaMatcherService {
 				// Small delay to avoid TMDB rate limiting
 				await new Promise((resolve) => setTimeout(resolve, 50));
 			} catch (err) {
-				logger.warn('[MediaMatcher] Failed to fetch episodes for season', {
-					seasonNumber: seasonInfo.season_number,
-					error: err instanceof Error ? err.message : String(err)
-				});
+				logger.warn(
+					{
+						seasonNumber: seasonInfo.season_number,
+						error: err instanceof Error ? err.message : String(err)
+					},
+					'[MediaMatcher] Failed to fetch episodes for season'
+				);
 			}
 		}
 
-		logger.info('[MediaMatcher] Populated all episodes from TMDB for series', {
-			seriesId,
-			tmdbId,
-			title: tmdbSeries.name
-		});
+		logger.info(
+			{
+				seriesId,
+				tmdbId,
+				title: tmdbSeries.name
+			},
+			'[MediaMatcher] Populated all episodes from TMDB for series'
+		);
 	}
 
 	/**
-	 * Update episode counts for a series (excluding specials/season 0)
+	 * Update episode counts for a series (excluding specials/season 0 and unaired episodes)
 	 */
 	private async updateSeriesStats(seriesId: string): Promise<void> {
 		const allEpisodes = await db.select().from(episodes).where(eq(episodes.seriesId, seriesId));
-		const regularEpisodes = allEpisodes.filter((e) => e.seasonNumber !== 0);
+		const today = new Date().toISOString().split('T')[0];
+		const isAired = (ep: typeof episodes.$inferSelect) =>
+			Boolean(ep.airDate && ep.airDate !== '' && ep.airDate <= today);
 
+		const regularEpisodes = allEpisodes.filter((e) => e.seasonNumber !== 0 && isAired(e));
 		const episodeCount = regularEpisodes.length;
 		const episodeFileCount = regularEpisodes.filter((e) => e.hasFile).length;
 
@@ -1152,7 +1217,7 @@ export class MediaMatcherService {
 			return;
 		}
 
-		logger.info('[MediaMatcher] Triggering subtitle search for new media', { mediaType, mediaId });
+		logger.info({ mediaType, mediaId }, '[MediaMatcher] Triggering subtitle search for new media');
 
 		await searchSubtitlesForNewMedia(mediaType, mediaId);
 	}

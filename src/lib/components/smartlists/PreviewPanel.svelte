@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import {
 		AlertCircle,
 		Check,
@@ -122,7 +123,9 @@
 		return 'bg-base-300/90 text-base-content';
 	}
 
-	const mediaLabel = $derived(mediaType === 'movie' ? 'movies' : 'TV shows');
+	const mediaLabel = $derived(
+		mediaType === 'movie' ? m.smartlists_preview_movies() : m.smartlists_preview_tvShows()
+	);
 	const hasMultiplePages = $derived(totalPages > 1);
 </script>
 
@@ -131,18 +134,25 @@
 		<!-- Header -->
 		<div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 			<div class="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
-				<h2 class="card-title text-lg sm:text-xl">Preview</h2>
+				<h2 class="card-title text-lg sm:text-xl">{m.smartlists_preview_title()}</h2>
 				{#if !loading && !error}
 					{#if isLimited}
 						<span class="badge badge-ghost badge-sm">
-							{totalResults.toLocaleString()} of {unfilteredTotal.toLocaleString()}
-							{mediaLabel}
+							{m.smartlists_preview_limited({
+								shown: totalResults.toLocaleString(),
+								total: unfilteredTotal.toLocaleString(),
+								mediaType: mediaLabel
+							})}
 						</span>
-						<span class="badge badge-outline badge-xs">limited to {itemLimit}</span>
+						<span class="badge badge-outline badge-xs"
+							>{m.smartlists_preview_limitedTo({ limit: itemLimit })}</span
+						>
 					{:else}
 						<span class="badge badge-ghost badge-sm">
-							{totalResults.toLocaleString()}
-							{mediaLabel}
+							{m.smartlists_preview_count({
+								count: totalResults.toLocaleString(),
+								mediaType: mediaLabel
+							})}
 						</span>
 					{/if}
 				{/if}
@@ -155,7 +165,7 @@
 						title="Download debug JSON"
 					>
 						<Download class="h-3 w-3" />
-						Debug
+						{m.smartlists_preview_debug()}
 					</button>
 				{/if}
 				{#if loading}
@@ -172,7 +182,7 @@
 					<p class="text-center text-base-content/70">{error}</p>
 					<button class="btn btn-ghost btn-sm" onclick={onRetry}>
 						<RefreshCw class="h-4 w-4" />
-						Retry
+						{m.smartlists_preview_retry()}
 					</button>
 				</div>
 			{:else if loading && items.length === 0}
@@ -189,8 +199,8 @@
 			{:else if items.length === 0}
 				<div class="flex h-64 flex-col items-center justify-center">
 					<p class="text-center text-base-content/50">
-						No {mediaLabel} match your filters.<br />
-						Try adjusting your criteria.
+						{m.smartlists_preview_noMatch({ mediaType: mediaLabel })}<br />
+						{m.smartlists_preview_tryAdjusting()}
 					</p>
 				</div>
 			{:else}
@@ -202,7 +212,7 @@
 						>
 							<div class="flex flex-col items-center gap-3">
 								<RefreshCw class="h-10 w-10 animate-spin text-primary" />
-								<span class="text-sm text-base-content/70">Loading...</span>
+								<span class="text-sm text-base-content/70">{m.smartlists_preview_loading()}</span>
 							</div>
 						</div>
 					{/if}
@@ -246,7 +256,7 @@
 									{#if item.inLibrary}
 										<div
 											class="absolute inset-0 flex items-center justify-center bg-success/30 backdrop-blur-[1px]"
-											title="In library"
+											title={m.smartlists_preview_inLibrary()}
 										>
 											<div class="rounded-full bg-success p-1.5 shadow-lg">
 												<Check class="h-4 w-4 text-success-content" />
@@ -271,12 +281,13 @@
 					aria-label="Previous page"
 				>
 					<ChevronLeft class="h-4 w-4" />
-					Prev
+					{m.smartlists_preview_prev()}
 				</button>
 
 				<div class="flex items-center gap-2 rounded-full bg-base-200 px-4 py-1">
-					<span class="text-sm font-medium text-base-content">Page {page}</span>
-					<span class="text-sm text-base-content/50">of {totalPages}</span>
+					<span class="text-sm font-medium text-base-content"
+						>{m.smartlists_preview_pageOf({ page, totalPages })}</span
+					>
 				</div>
 
 				<button
@@ -285,7 +296,7 @@
 					disabled={page >= totalPages || loading}
 					aria-label="Next page"
 				>
-					Next
+					{m.smartlists_preview_next()}
 					<ChevronRight class="h-4 w-4" />
 				</button>
 			</div>

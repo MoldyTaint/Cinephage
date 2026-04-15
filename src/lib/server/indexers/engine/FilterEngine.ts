@@ -7,7 +7,9 @@ import { createHash } from 'crypto';
 import type { FilterBlock } from '../schema/yamlDefinition';
 import type { TemplateEngine } from './TemplateEngine';
 import { createSafeRegex, safeMatch, safeReplace } from './safeRegex';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 
 export type FilterFunction = (
 	data: string,
@@ -608,17 +610,20 @@ const FILTERS: Record<string, FilterFunction> = {
 
 	// Debug
 	hexdump: (data) => {
-		logger.debug('[hexdump]', {
-			data: Array.from(data)
-				.map((c) => c.charCodeAt(0).toString(16).padStart(2, '0'))
-				.join(' ')
-		});
+		logger.debug(
+			{
+				data: Array.from(data)
+					.map((c) => c.charCodeAt(0).toString(16).padStart(2, '0'))
+					.join(' ')
+			},
+			'[hexdump]'
+		);
 		return data;
 	},
 
 	strdump: (data, args) => {
 		const tag = args ? ` (${args})` : '';
-		logger.debug(`[strdump${tag}]`, { data: JSON.stringify(data) });
+		logger.debug({ data: JSON.stringify(data) }, `[strdump${tag}]`);
 		return data;
 	},
 
@@ -637,6 +642,46 @@ const FILTERS: Record<string, FilterFunction> = {
 
 		const intersection = dataTokens.filter((t) => validList.includes(t));
 		return intersection.join(', ');
+	},
+
+	// Title validation: ensures title isn't empty or only quality tags after filtering
+	// Usage: validate_title (returns data if valid, empty if invalid)
+	// Or: validate_title 5 (returns data if at least 5 chars, empty otherwise)
+	validate_title: (data, args) => {
+		const minLength =
+			typeof args === 'number' ? args : typeof args === 'string' ? parseInt(args, 10) || 5 : 5;
+		const trimmed = data.trim();
+
+		// Check if title is empty or too short
+		if (!trimmed || trimmed.length < minLength) {
+			logger.warn(
+				{
+					title: data,
+					length: trimmed.length,
+					minLength
+				},
+				'[FilterEngine] Title validation failed: too short or empty'
+			);
+			return ''; // Return empty to signal validation failure
+		}
+
+		// Check if title is only quality tags (common issue with RuTracker)
+		const qualityOnlyPattern =
+			/^(?:\s*(?:WEB|WEB-DL|WEBRip|HDTV|HDRip|BDRip|BluRay|DVD|DVDRip|1080p|720p|2160p|4K|x264|x265|HEVC|AVC|AAC|AC3|DTS|MP3|MKV|MP4|AVI)\s*)+$/i;
+		if (qualityOnlyPattern.test(trimmed)) {
+			logger.warn({ title: data }, '[FilterEngine] Title validation failed: only quality tags');
+			return ''; // Return empty to signal validation failure
+		}
+
+		// Check if title is only brackets/punctuation
+		const punctuationOnlyPattern = /^[\s[\](){}<>/\\|.,:;!?#@$%^&*+=_-]*$/;
+		if (punctuationOnlyPattern.test(trimmed)) {
+			logger.warn({ title: data }, '[FilterEngine] Title validation failed: only punctuation');
+			return ''; // Return empty to signal validation failure
+		}
+
+		// Title is valid
+		return data;
 	},
 
 	// Absolute URL
@@ -844,7 +889,7 @@ const FILTERS: Record<string, FilterFunction> = {
 		if (!Array.isArray(args) || args.length < 1) return data;
 		const start = parseInt(String(args[0]), 10);
 		const length = args[1] !== undefined ? parseInt(String(args[1]), 10) : undefined;
-		return length !== undefined ? data.substr(start, length) : data.substring(start);
+		return length !== undefined ? data.slice(start, start + length) : data.slice(start);
 	},
 
 	// Contains check - returns data if contains substring, empty otherwise
@@ -947,9 +992,12 @@ const FILTERS: Record<string, FilterFunction> = {
 		try {
 			return createHash('md5').update(data).digest('hex');
 		} catch (error) {
-			logger.warn('MD5 hash failed', {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'MD5 hash failed'
+			);
 			return data;
 		}
 	},
@@ -959,9 +1007,12 @@ const FILTERS: Record<string, FilterFunction> = {
 		try {
 			return createHash('sha1').update(data).digest('hex');
 		} catch (error) {
-			logger.warn('SHA1 hash failed', {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'SHA1 hash failed'
+			);
 			return data;
 		}
 	}
@@ -991,14 +1042,14 @@ export class FilterEngine {
 	applyFilter(data: string, filter: FilterBlock): string {
 		const filterFn = FILTERS[filter.name.toLowerCase()];
 		if (!filterFn) {
-			logger.warn(`Unknown filter: ${filter.name}`, { filter: filter.name });
+			logger.warn({ filter: filter.name }, `Unknown filter: ${filter.name}`);
 			return data;
 		}
 
 		try {
 			return filterFn(data, filter.args, this.templateEngine);
 		} catch (error) {
-			logger.error(`Filter ${filter.name} failed`, error, { filter: filter.name });
+			logger.error({ err: error, ...{ filter: filter.name } }, `Filter ${filter.name} failed`);
 			return data;
 		}
 	}

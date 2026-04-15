@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { X, RefreshCw, CheckCircle, AlertTriangle, ArrowRight, Film, Tv } from 'lucide-svelte';
 	import type { RenamePreviewResult } from '$lib/server/library/naming/RenamePreviewService';
@@ -55,7 +56,7 @@
 
 			if (!response.ok) {
 				const result = await response.json();
-				throw new Error(result.error || 'Failed to load preview');
+				throw new Error(result.error || m.library_renamePreview_failedToLoad());
 			}
 
 			preview = await response.json();
@@ -66,7 +67,7 @@
 				selectedIds.add(item.fileId);
 			}
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load preview';
+			error = e instanceof Error ? e.message : m.library_renamePreview_failedToLoad();
 		} finally {
 			loading = false;
 		}
@@ -91,19 +92,20 @@
 
 			if (!response.ok) {
 				const result = await response.json();
-				throw new Error(result.error || 'Failed to execute renames');
+				throw new Error(result.error || m.library_renamePreview_failedToExecute());
 			}
 
 			const result = await response.json();
 
 			if (result.succeeded > 0) {
-				success = `Successfully renamed ${result.succeeded} file${result.succeeded !== 1 ? 's' : ''}`;
+				success = m.library_renamePreview_renamedCount({ count: result.succeeded });
 				onRenamed();
 
-				// Auto-close after success
-				setTimeout(() => {
-					onClose();
-				}, 1500);
+				if (result.failed === 0) {
+					setTimeout(() => {
+						onClose();
+					}, 1500);
+				}
 			}
 
 			if (result.failed > 0) {
@@ -112,13 +114,16 @@
 				const errorMessages = failedResults.map((r: { error?: string }) => r.error).filter(Boolean);
 
 				if (errorMessages.length > 0) {
-					error = `Failed to rename ${result.failed} file(s): ${errorMessages.join(', ')}`;
+					error = m.library_renamePreview_failedWithErrors({
+						count: result.failed,
+						errors: errorMessages.join(', ')
+					});
 				} else {
-					error = `Failed to rename ${result.failed} file${result.failed !== 1 ? 's' : ''}`;
+					error = m.library_renamePreview_failedCount({ count: result.failed });
 				}
 			}
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to execute renames';
+			error = e instanceof Error ? e.message : m.library_renamePreview_failedToExecute();
 		} finally {
 			executing = false;
 		}
@@ -238,11 +243,17 @@
 						<Tv class="h-5 w-5 text-secondary" />
 					{/if}
 					<div>
-						<h2 id="modal-title" class="text-lg font-semibold">Rename Files</h2>
+						<h2 id="modal-title" class="text-lg font-semibold">
+							{m.library_renamePreview_title()}
+						</h2>
 						<p class="text-sm text-base-content/60">{mediaTitle}</p>
 					</div>
 				</div>
-				<button class="btn btn-square btn-ghost btn-sm" onclick={onClose} aria-label="Close">
+				<button
+					class="btn btn-square btn-ghost btn-sm"
+					onclick={onClose}
+					aria-label={m.action_close()}
+				>
 					<X class="h-5 w-5" />
 				</button>
 			</div>
@@ -266,24 +277,32 @@
 				{:else if preview}
 					<!-- Summary -->
 					<div class="mb-4 flex gap-4 text-sm">
-						<span class="badge badge-info">{preview.totalWillChange} will change</span>
-						<span class="badge badge-success">{preview.totalAlreadyCorrect} correct</span>
+						<span class="badge badge-info"
+							>{m.library_renamePreview_willChange({ count: preview.totalWillChange })}</span
+						>
+						<span class="badge badge-success"
+							>{m.library_renamePreview_correct({ count: preview.totalAlreadyCorrect })}</span
+						>
 						{#if preview.totalCollisions > 0}
-							<span class="badge badge-warning">{preview.totalCollisions} collisions</span>
+							<span class="badge badge-warning"
+								>{m.library_renamePreview_collisions({ count: preview.totalCollisions })}</span
+							>
 						{/if}
 						{#if preview.totalErrors > 0}
-							<span class="badge badge-error">{preview.totalErrors} errors</span>
+							<span class="badge badge-error"
+								>{m.library_renamePreview_errors({ count: preview.totalErrors })}</span
+							>
 						{/if}
 					</div>
 
 					{#if preview.totalFiles === 0}
 						<div class="py-10 text-center text-base-content/60">
-							No files found for this {mediaTypeLabel(mediaType)}.
+							{m.library_renamePreview_noFilesFound({ type: mediaTypeLabel(mediaType) })}.
 						</div>
 					{:else if !hasChanges}
 						<div class="py-10 text-center text-base-content/60">
 							<CheckCircle class="mx-auto mb-2 h-8 w-8 text-success" />
-							All files are already correctly named.
+							{m.library_renamePreview_allCorrect()}
 						</div>
 					{:else}
 						<!-- File List -->
@@ -330,7 +349,9 @@
 													{/if}
 												</div>
 												<div class="shrink-0">
-													<span class="badge badge-sm badge-info">Change</span>
+													<span class="badge badge-sm badge-info"
+														>{m.library_renamePreview_change()}</span
+													>
 												</div>
 											</div>
 										</div>
@@ -370,11 +391,17 @@
 												</div>
 												<div class="shrink-0">
 													{#if item.status === 'already_correct'}
-														<span class="badge badge-sm badge-success">Correct</span>
+														<span class="badge badge-sm badge-success"
+															>{m.library_renamePreview_correctBadge()}</span
+														>
 													{:else if item.status === 'collision'}
-														<span class="badge badge-sm badge-warning">Collision</span>
+														<span class="badge badge-sm badge-warning"
+															>{m.library_renamePreview_collisionBadge()}</span
+														>
 													{:else if item.status === 'error'}
-														<span class="badge badge-sm badge-error">Error</span>
+														<span class="badge badge-sm badge-error"
+															>{m.library_renamePreview_errorBadge()}</span
+														>
 													{/if}
 												</div>
 											</div>
@@ -389,7 +416,7 @@
 
 			<!-- Footer -->
 			<div class="flex items-center justify-between border-t border-base-300 p-4">
-				<button class="btn btn-ghost" onclick={onClose}>Cancel</button>
+				<button class="btn btn-ghost" onclick={onClose}>{m.action_cancel()}</button>
 				<button
 					class="btn gap-2 btn-primary"
 					onclick={executeRenames}
@@ -397,10 +424,10 @@
 				>
 					{#if executing}
 						<RefreshCw class="h-4 w-4 animate-spin" />
-						Renaming...
+						{m.library_renamePreview_renaming()}
 					{:else}
 						<CheckCircle class="h-4 w-4" />
-						Rename ({selectedIds.size})
+						{m.action_rename()} ({selectedIds.size})
 					{/if}
 				</button>
 			</div>

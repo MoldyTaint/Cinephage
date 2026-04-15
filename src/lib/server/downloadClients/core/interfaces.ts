@@ -15,7 +15,7 @@ export interface DownloadClientConfig {
 	useSsl: boolean;
 	/** Optional URL base path (e.g., "/sabnzbd") */
 	urlBase?: string | null;
-	/** Optional api variant for NZB-Mount clients */
+	/** Optional mount mode for SAB-compatible streaming clients */
 	mountMode?: 'nzbdav' | 'altmount' | null;
 	username?: string | null;
 	password?: string | null;
@@ -43,6 +43,18 @@ export interface AddDownloadOptions {
 	seedTimeLimit?: number;
 	/** Title for the download (used by SABnzbd for naming) */
 	title?: string;
+	/**
+	 * Optional file-selection instructions for torrent clients.
+	 * Used by episode pointers to fetch only matched files from a pack.
+	 */
+	fileSelection?: {
+		/** Torrent file indexes to keep (all others may be marked unwanted) */
+		fileIndices: number[];
+		/** Complete torrent file index set for clients that need explicit unwanted lists */
+		allFileIndices?: number[];
+		/** Relative torrent paths to keep (preferred when client supports path matching) */
+		filePaths?: string[];
+	};
 }
 
 /**

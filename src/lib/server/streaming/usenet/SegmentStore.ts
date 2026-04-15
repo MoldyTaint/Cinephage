@@ -8,8 +8,10 @@
  * - Map byte offsets to segments for Range request support
  */
 
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import type { NzbSegment, SegmentDecodeInfo } from './types';
+
+const logger = createChildLogger({ logDomain: 'streams' as const });
 
 /**
  * Cached decoded segment.
@@ -74,10 +76,13 @@ export class SegmentStore {
 
 		this.estimatedTotalSize = estimatedOffset;
 
-		logger.debug('[SegmentStore] Initialized', {
-			segmentCount: segments.length,
-			estimatedTotalSize: this.estimatedTotalSize
-		});
+		logger.debug(
+			{
+				segmentCount: segments.length,
+				estimatedTotalSize: this.estimatedTotalSize
+			},
+			'[SegmentStore] Initialized'
+		);
 	}
 
 	/**
@@ -193,12 +198,15 @@ export class SegmentStore {
 			// Check if all segments have actual sizes
 			this.checkTotalSizeComplete();
 
-			logger.debug('[SegmentStore] Updated segment size', {
-				index,
-				estimated: info.estimatedSize,
-				actual: actualSize,
-				diff: actualSize - info.estimatedSize
-			});
+			logger.debug(
+				{
+					index,
+					estimated: info.estimatedSize,
+					actual: actualSize,
+					diff: actualSize - info.estimatedSize
+				},
+				'[SegmentStore] Updated segment size'
+			);
 		}
 	}
 
@@ -314,7 +322,7 @@ export class SegmentStore {
 			this.cache.delete(entries[i][0]);
 		}
 
-		logger.debug('[SegmentStore] Evicted cache entries', { evicted: toEvict });
+		logger.debug({ evicted: toEvict }, '[SegmentStore] Evicted cache entries');
 	}
 
 	/**
@@ -329,11 +337,14 @@ export class SegmentStore {
 				0
 			);
 
-			logger.debug('[SegmentStore] All segments decoded', {
-				estimatedTotal: this.estimatedTotalSize,
-				actualTotal: this.actualTotalSize,
-				diff: this.actualTotalSize - this.estimatedTotalSize
-			});
+			logger.debug(
+				{
+					estimatedTotal: this.estimatedTotalSize,
+					actualTotal: this.actualTotalSize,
+					diff: this.actualTotalSize - this.estimatedTotalSize
+				},
+				'[SegmentStore] All segments decoded'
+			);
 		}
 	}
 

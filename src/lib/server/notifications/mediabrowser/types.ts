@@ -1,12 +1,12 @@
 /**
- * MediaBrowser (Jellyfin/Emby) Integration Types
+ * Media server notification integration types.
  */
 
 import type { MediaBrowserPathMapping, MediaBrowserServerRecord } from '$lib/server/db/schema';
 
 export type { MediaBrowserPathMapping, MediaBrowserServerRecord };
 
-export type MediaBrowserServerType = 'jellyfin' | 'emby';
+export type MediaBrowserServerType = 'jellyfin' | 'emby' | 'plex';
 
 /**
  * Configuration for creating/updating a MediaBrowser server
@@ -101,6 +101,23 @@ export interface MediaBrowserSystemInfo {
 	WanAddress?: string;
 	OperatingSystem?: string;
 	OperatingSystemDisplayName?: string;
+}
+
+/**
+ * Minimal Plex identity response
+ */
+export interface PlexIdentityInfo {
+	friendlyName?: string;
+	version?: string;
+	machineIdentifier?: string;
+}
+
+/**
+ * Plex library section location
+ */
+export interface PlexLibraryLocation {
+	id: string;
+	path: string;
 }
 
 /**

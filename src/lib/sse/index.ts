@@ -1,3 +1,31 @@
-// Re-export all SSE utilities
-export { createSSE, createDynamicSSE } from './sse.svelte';
-export type { SSEConnectionStatus } from '$lib/types/sse';
+/**
+ * SSE Module - Server-Sent Events for Svelte
+ *
+ * A fully reactive, Svelte-native SSE connection manager.
+ *
+ * @example
+ * import { createSSE } from '$lib/sse';
+ *
+ * const sse = createSSE('/api/stream', {
+ *   'event:name': (data) => console.log(data)
+ * });
+ *
+ * {#if sse.isConnected}
+ *   <span>Connected</span>
+ * {/if}
+ */
+
+// Main API
+export { createSSE, createDynamicSSE } from './create-sse.svelte.js';
+
+// Types
+export type {
+	SSEState,
+	SSEStatus,
+	SSEError,
+	SSEErrorType,
+	SSEHandlers,
+	SSEOptions,
+	SSEConnectedEvent,
+	SSEHeartbeatEvent
+} from './types.js';

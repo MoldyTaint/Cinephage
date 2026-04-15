@@ -24,10 +24,13 @@ class ProviderRegistry {
 	 */
 	register(provider: ExternalListProvider): void {
 		this.providers.set(provider.type, provider);
-		logger.debug('[ProviderRegistry] Registered provider', {
-			type: provider.type,
-			name: provider.name
-		});
+		logger.debug(
+			{
+				type: provider.type,
+				name: provider.name
+			},
+			'[ProviderRegistry] Registered provider'
+		);
 	}
 
 	/**
@@ -64,5 +67,7 @@ class ProviderRegistry {
 }
 
 // Singleton instance
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'monitoring' as const });
 export const providerRegistry = new ProviderRegistry();

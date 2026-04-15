@@ -10,7 +10,9 @@
  * 3. API calls - all require proper headers with token
  */
 
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'livetv' as const });
 import type {
 	StalkerAccountTestResult,
 	StalkerRawProfile,
@@ -233,9 +235,12 @@ async function _retryWithBackoff<T>(
 
 			if (attempt < config.maxRetries - 1) {
 				const delay = Math.min(config.baseDelay * Math.pow(2, attempt), config.maxDelay);
-				logger.debug(`[StalkerPortal] Attempt ${attempt + 1} failed, retrying in ${delay}ms`, {
-					error: lastError.message
-				});
+				logger.debug(
+					{
+						error: lastError.message
+					},
+					`[StalkerPortal] Attempt ${attempt + 1} failed, retrying in ${delay}ms`
+				);
 				await new Promise((resolve) => setTimeout(resolve, delay));
 			}
 		}
@@ -418,13 +423,13 @@ export class StalkerPortalClient {
 		}
 
 		if (action === 'create_link') {
-			logger.debug('[StalkerPortal] Request URL', { fullUrl: url.toString() });
+			logger.debug({ fullUrl: url.toString() }, '[StalkerPortal] Request URL');
 		}
 
 		const text = await this.httpRequest(url.toString(), useAuth);
 
 		if (action === 'create_link') {
-			logger.debug('[StalkerPortal] Raw response', { text: text.substring(0, 500) });
+			logger.debug({ text: text.substring(0, 500) }, '[StalkerPortal] Raw response');
 		}
 
 		let data: StalkerResponse<T>;
@@ -463,10 +468,13 @@ export class StalkerPortalClient {
 	 * Perform handshake to reserve/obtain token
 	 */
 	async handshake(): Promise<void> {
-		logger.debug('[StalkerPortal] Performing handshake', {
-			portalUrl: this.config.portalUrl,
-			mac: this.config.macAddress.substring(0, 8) + '...'
-		});
+		logger.debug(
+			{
+				portalUrl: this.config.portalUrl,
+				mac: this.config.macAddress.substring(0, 8) + '...'
+			},
+			'[StalkerPortal] Performing handshake'
+		);
 
 		const endpoint = this.getPortalEndpoint();
 		const url = new URL(endpoint);
@@ -551,10 +559,13 @@ export class StalkerPortalClient {
 		// Cache the full profile from auth — avoids redundant get_profile calls
 		this.lastProfile = result;
 
-		logger.debug('[StalkerPortal] Device ID authentication successful', {
-			userId: String(result.id),
-			name: result.fname
-		});
+		logger.debug(
+			{
+				userId: String(result.id),
+				name: result.fname
+			},
+			'[StalkerPortal] Device ID authentication successful'
+		);
 	}
 
 	/**
@@ -579,7 +590,7 @@ export class StalkerPortalClient {
 	async createLink(cmd: string, retry: boolean = true): Promise<string> {
 		await this.ensureAuthenticated();
 
-		logger.debug('[StalkerPortal] Creating link', { cmd });
+		logger.debug({ cmd }, '[StalkerPortal] Creating link');
 
 		let result: CreateLinkResponse;
 		try {
@@ -594,9 +605,12 @@ export class StalkerPortalClient {
 
 			// For other errors (session expired, transient failures), try re-auth once
 			if (retry) {
-				logger.debug('[StalkerPortal] create_link failed, attempting re-authentication', {
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.debug(
+					{
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'[StalkerPortal] create_link failed, attempting re-authentication'
+				);
 				this.authenticated = false;
 				await this.start();
 				return this.createLink(cmd, false);
@@ -604,7 +618,7 @@ export class StalkerPortalClient {
 			throw error;
 		}
 
-		logger.debug('[StalkerPortal] create_link response', { result });
+		logger.debug({ result }, '[StalkerPortal] create_link response');
 
 		if (!result?.cmd) {
 			if (retry) {
@@ -627,7 +641,7 @@ export class StalkerPortalClient {
 			throw new Error(`create_link returned invalid URL: ${cmdStr}`);
 		}
 
-		logger.info('[StalkerPortal] createLink returning URL', { streamUrl });
+		logger.info({ streamUrl }, '[StalkerPortal] createLink returning URL');
 
 		return streamUrl;
 	}
@@ -655,10 +669,13 @@ export class StalkerPortalClient {
 
 		this.watchdogInterval = setInterval(() => {
 			this.watchdog().catch((err) => {
-				logger.warn('[StalkerPortal] Watchdog keepalive failed', {
-					portalUrl: this.config.portalUrl,
-					error: err instanceof Error ? err.message : String(err)
-				});
+				logger.warn(
+					{
+						portalUrl: this.config.portalUrl,
+						error: err instanceof Error ? err.message : String(err)
+					},
+					'[StalkerPortal] Watchdog keepalive failed'
+				);
 				// Session likely expired — mark as unauthenticated so next request re-auths
 				this.authenticated = false;
 				this.stopWatchdog();
@@ -674,10 +691,13 @@ export class StalkerPortalClient {
 			this.watchdogInterval.unref();
 		}
 
-		logger.debug('[StalkerPortal] Watchdog started', {
-			portalUrl: this.config.portalUrl,
-			intervalMs: StalkerPortalClient.WATCHDOG_INTERVAL_MS
-		});
+		logger.debug(
+			{
+				portalUrl: this.config.portalUrl,
+				intervalMs: StalkerPortalClient.WATCHDOG_INTERVAL_MS
+			},
+			'[StalkerPortal] Watchdog started'
+		);
 	}
 
 	/**
@@ -697,9 +717,12 @@ export class StalkerPortalClient {
 	stop(): void {
 		this.stopWatchdog();
 		this.authenticated = false;
-		logger.debug('[StalkerPortal] Client stopped', {
-			portalUrl: this.config.portalUrl
-		});
+		logger.debug(
+			{
+				portalUrl: this.config.portalUrl
+			},
+			'[StalkerPortal] Client stopped'
+		);
 	}
 
 	/**
@@ -754,10 +777,13 @@ export class StalkerPortalClient {
 		// The portal resolves the localhost template to the real streaming URL with a fresh token.
 		const normalizedCmd = `ffmpeg http://localhost/ch/${stalkerId}_`;
 
-		logger.debug('[StalkerPortal] Using create_link for fresh stream URL', {
-			stalkerId,
-			normalizedCmd
-		});
+		logger.debug(
+			{
+				stalkerId,
+				normalizedCmd
+			},
+			'[StalkerPortal] Using create_link for fresh stream URL'
+		);
 		return this.createLink(normalizedCmd);
 	}
 
@@ -811,10 +837,13 @@ export class StalkerPortalClient {
 	async getEpgInfo(period: number = 24): Promise<Map<string, EpgProgramRaw[]>> {
 		await this.ensureAuthenticated();
 
-		logger.debug('[StalkerPortal] Fetching EPG info', {
-			portalUrl: this.config.portalUrl,
-			period
-		});
+		logger.debug(
+			{
+				portalUrl: this.config.portalUrl,
+				period
+			},
+			'[StalkerPortal] Fetching EPG info'
+		);
 
 		try {
 			const result = await this.request<EpgInfoResponse | Record<string, EpgProgramData[]>>(
@@ -857,17 +886,23 @@ export class StalkerPortalClient {
 				}
 			}
 
-			logger.debug('[StalkerPortal] EPG fetch complete', {
-				channelCount: programMap.size,
-				totalPrograms: Array.from(programMap.values()).reduce((sum, arr) => sum + arr.length, 0)
-			});
+			logger.debug(
+				{
+					channelCount: programMap.size,
+					totalPrograms: Array.from(programMap.values()).reduce((sum, arr) => sum + arr.length, 0)
+				},
+				'[StalkerPortal] EPG fetch complete'
+			);
 
 			return programMap;
 		} catch (error) {
-			logger.error('[StalkerPortal] EPG fetch failed', {
-				portalUrl: this.config.portalUrl,
-				error: error instanceof Error ? error.message : 'Unknown error'
-			});
+			logger.error(
+				{
+					portalUrl: this.config.portalUrl,
+					error: error instanceof Error ? error.message : 'Unknown error'
+				},
+				'[StalkerPortal] EPG fetch failed'
+			);
 			return new Map();
 		}
 	}
@@ -1018,10 +1053,13 @@ export class StalkerPortalClient {
 				clearTimeout(timeoutId);
 			}
 		} catch (error) {
-			logger.debug('[StalkerPortal] Stream verification failed', {
-				channelName: channel.name,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.debug(
+				{
+					channelName: channel.name,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[StalkerPortal] Stream verification failed'
+			);
 			return false;
 		}
 	}
@@ -1074,10 +1112,13 @@ export class StalkerPortalClient {
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[StalkerPortal] Connection test failed', {
-				portalUrl: this.config.portalUrl,
-				error: message
-			});
+			logger.error(
+				{
+					portalUrl: this.config.portalUrl,
+					error: message
+				},
+				'[StalkerPortal] Connection test failed'
+			);
 
 			return {
 				success: false,

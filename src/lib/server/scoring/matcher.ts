@@ -81,14 +81,16 @@ export function evaluateCondition(
 			rawMatch = condition.codec === release.codec;
 			break;
 
-		case 'audio':
-			// Special handling: 'atmos' can match either the audio field directly
-			// or check for Atmos in the release title (since Atmos is a modifier)
-			if (condition.audio === 'atmos') {
-				rawMatch = release.audio === 'atmos' || /\batmos\b/i.test(release.title);
-			} else {
-				rawMatch = condition.audio === release.audio;
-			}
+		case 'audio_codec':
+			rawMatch = condition.audioCodec === release.audioCodec;
+			break;
+
+		case 'audio_channels':
+			rawMatch = condition.audioChannels === release.audioChannels;
+			break;
+
+		case 'audio_atmos':
+			rawMatch = release.hasAtmos === true;
 			break;
 
 		case 'hdr':
@@ -237,9 +239,12 @@ export function extractAttributes(parsed: {
 	source: string;
 	codec: string;
 	hdr: string | null;
-	audio: string;
+	audioCodec: string;
+	audioChannels: string;
+	hasAtmos: boolean;
 	releaseGroup?: string;
 	languages: string[];
+	streamingService?: string;
 	edition?: string;
 	isRemux: boolean;
 	isRepack: boolean;
@@ -258,9 +263,11 @@ export function extractAttributes(parsed: {
 		source: parsed.source as ReleaseAttributes['source'],
 		codec: parsed.codec as ReleaseAttributes['codec'],
 		hdr: parsed.hdr as ReleaseAttributes['hdr'],
-		audio: parsed.audio as ReleaseAttributes['audio'],
+		audioCodec: parsed.audioCodec as ReleaseAttributes['audioCodec'],
+		audioChannels: parsed.audioChannels as ReleaseAttributes['audioChannels'],
+		hasAtmos: parsed.hasAtmos,
 		releaseGroup: parsed.releaseGroup,
-		streamingService: detectStreamingService(parsed.originalTitle),
+		streamingService: parsed.streamingService ?? detectStreamingService(parsed.originalTitle),
 		edition: parsed.edition,
 		languages: parsed.languages,
 		isRemux: parsed.isRemux,

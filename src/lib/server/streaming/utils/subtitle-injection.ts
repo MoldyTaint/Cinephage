@@ -5,7 +5,7 @@
  * This allows players like Jellyfin to discover and display subtitle options.
  */
 
-import type { StreamSubtitle } from '../types/stream';
+import type { StreamSubtitle } from '../types';
 
 /**
  * Inject subtitle tracks into an HLS master playlist
@@ -23,7 +23,8 @@ export function injectSubtitles(
 	playlist: string,
 	subtitles: StreamSubtitle[],
 	baseUrl: string,
-	referer: string
+	referer: string,
+	apiKey?: string
 ): string {
 	if (!subtitles.length) return playlist;
 
@@ -32,7 +33,7 @@ export function injectSubtitles(
 
 	// Generate EXT-X-MEDIA tags for each subtitle track
 	const mediaTags = subtitles.map((sub, i) => {
-		const playlistUrl = buildSubtitlePlaylistUrl(baseUrl, sub.url, referer);
+		const playlistUrl = buildSubtitlePlaylistUrl(baseUrl, sub.url, referer, apiKey);
 		const isDefault = sub.isDefault || i === 0;
 		const name = escapeQuotes(sub.label);
 		const lang = sub.language || 'und';
@@ -77,13 +78,22 @@ export function isMasterPlaylist(content: string): boolean {
 /**
  * Build URL for subtitle playlist endpoint
  */
-function buildSubtitlePlaylistUrl(baseUrl: string, subtitleUrl: string, referer: string): string {
+function buildSubtitlePlaylistUrl(
+	baseUrl: string,
+	subtitleUrl: string,
+	referer: string,
+	apiKey?: string
+): string {
 	const params = new URLSearchParams();
 	params.set('url', subtitleUrl);
 	if (referer) {
 		params.set('referer', referer);
 	}
-	return `${baseUrl}/api/streaming/subtitle/playlist?${params.toString()}`;
+	let url = `${baseUrl}/api/streaming/subtitle/playlist?${params.toString()}`;
+	if (apiKey) {
+		url += `&api_key=${encodeURIComponent(apiKey)}`;
+	}
+	return url;
 }
 
 /**

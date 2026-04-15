@@ -17,6 +17,8 @@
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import type { UnmatchedFile, UnmatchedFolder } from '$lib/types/unmatched.js';
+	import * as m from '$lib/paraglide/messages.js';
+	import { getFileName } from '$lib/utils/format.js';
 
 	// Modal states
 	let showMatchModal = $state(false);
@@ -61,7 +63,7 @@
 	// Handle batch match
 	function handleBatchMatch() {
 		if (unmatchedFilesStore.selectedCount === 0) {
-			toasts.info('Select files to match first');
+			toasts.info(m.toast_library_unmatched_selectFirst());
 			return;
 		}
 		showBatchMatchModal = true;
@@ -101,11 +103,15 @@
 		isDeleting = true;
 		try {
 			await unmatchedFilesStore.deleteFiles([fileToDelete.id], deleteFromDisk);
-			toasts.success(deleteFromDisk ? 'File deleted from disk' : 'File removed from list');
+			toasts.success(
+				deleteFromDisk
+					? m.toast_library_unmatched_fileDeletedFromDisk()
+					: m.toast_library_unmatched_fileRemovedFromList()
+			);
 			showDeleteModal = false;
 			fileToDelete = null;
 		} catch (_err) {
-			toasts.error('Failed to delete file');
+			toasts.error(m.toast_library_unmatched_failedToDelete());
 		} finally {
 			isDeleting = false;
 		}
@@ -116,7 +122,7 @@
 		showMatchModal = false;
 		selectedFile = null;
 		unmatchedFilesStore.loadFiles();
-		toasts.success('File matched successfully');
+		toasts.success(m.toast_library_unmatched_fileMatched());
 	}
 
 	// Handle folder match success
@@ -124,7 +130,7 @@
 		showFolderMatchModal = false;
 		selectedFolder = null;
 		unmatchedFilesStore.loadFiles();
-		toasts.success('Folder matched successfully');
+		toasts.success(m.toast_library_unmatched_folderMatched());
 	}
 
 	// Handle batch match success
@@ -133,7 +139,7 @@
 		showCheckboxes = false;
 		unmatchedFilesStore.clearSelection();
 		unmatchedFilesStore.loadFiles();
-		toasts.success('Files matched successfully');
+		toasts.success(m.toast_library_unmatched_filesMatched());
 	}
 
 	// Derived values
@@ -161,16 +167,16 @@
 </script>
 
 <svelte:head>
-	<title>Unmatched Files - Library - Cinephage</title>
+	<title>{m.library_unmatched_pageTitle()}</title>
 </svelte:head>
 
 <div class="space-y-6">
 	<!-- Header -->
 	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 		<div>
-			<h1 class="text-3xl font-bold">Unmatched Files</h1>
+			<h1 class="text-3xl font-bold">{m.library_unmatched_heading()}</h1>
 			<p class="text-base-content/70">
-				{pagination.total} file{pagination.total !== 1 ? 's' : ''} need attention
+				{m.library_unmatched_filesNeedAttention({ count: pagination.total })}
 			</p>
 		</div>
 	</div>
@@ -197,7 +203,7 @@
 			onMatch={handleBatchMatch}
 			onDelete={() => {
 				// For bulk delete, we could show a different modal
-				toasts.info('Bulk delete not yet implemented');
+				toasts.info(m.toast_library_unmatched_bulkDeleteNotImpl());
 			}}
 		/>
 
@@ -210,16 +216,18 @@
 		<div class="space-y-4">
 			<div class="flex items-center justify-between">
 				<div>
-					<h2 class="text-xl font-semibold">Folders with Unmatched Files</h2>
+					<h2 class="text-xl font-semibold">{m.library_unmatched_foldersHeading()}</h2>
 					<p class="text-sm text-base-content/70">
-						{filteredFolders.length} folder{filteredFolders.length !== 1 ? 's' : ''}
+						{m.library_unmatched_folderCount({ count: filteredFolders.length })}
 					</p>
 				</div>
 				{#if filteredFolders.length > 0}
 					<div class="flex gap-2">
-						<button class="btn btn-ghost btn-sm" onclick={expandAllFolders}> Expand All </button>
+						<button class="btn btn-ghost btn-sm" onclick={expandAllFolders}>
+							{m.library_unmatched_expandAll()}
+						</button>
 						<button class="btn btn-ghost btn-sm" onclick={collapseAllFolders}>
-							Collapse All
+							{m.library_unmatched_collapseAll()}
 						</button>
 					</div>
 				{/if}
@@ -301,8 +309,8 @@
 <!-- Delete Confirmation Modal -->
 <DeleteConfirmationModal
 	open={showDeleteModal}
-	title="Delete File"
-	itemName={fileToDelete?.path.split('/').pop() || 'Unknown'}
+	title={m.library_unmatched_deleteFileTitle()}
+	itemName={fileToDelete ? getFileName(fileToDelete.path) : 'Unknown'}
 	loading={isDeleting}
 	onConfirm={performDelete}
 	onCancel={() => {

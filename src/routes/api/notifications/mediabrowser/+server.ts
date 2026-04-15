@@ -7,10 +7,12 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getMediaBrowserManager } from '$lib/server/notifications/mediabrowser';
 import { mediaBrowserServerCreateSchema } from '$lib/validation/schemas';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { parseBody } from '$lib/server/api/validate.js';
 
 /**
  * GET /api/notifications/mediabrowser
- * List all configured MediaBrowser (Jellyfin/Emby) servers.
+ * List all configured media servers (Jellyfin/Emby/Plex).
  */
 export const GET: RequestHandler = async () => {
 	const manager = getMediaBrowserManager();
@@ -22,53 +24,35 @@ export const GET: RequestHandler = async () => {
  * POST /api/notifications/mediabrowser
  * Create a new MediaBrowser server.
  */
-export const POST: RequestHandler = async ({ request }) => {
-	let data: unknown;
-	try {
-		data = await request.json();
-	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
-	}
+export const POST: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
 
-	const result = mediaBrowserServerCreateSchema.safeParse(data);
-
-	if (!result.success) {
-		return json(
-			{
-				error: 'Validation failed',
-				details: result.error.flatten()
-			},
-			{ status: 400 }
-		);
-	}
+	const { request } = event;
+	const result = await parseBody(request, mediaBrowserServerCreateSchema);
 
 	const manager = getMediaBrowserManager();
 
-	try {
-		const shouldValidateConnection = result.data.enabled ?? true;
-		if (shouldValidateConnection) {
-			const testResult = await manager.testServerConfig({
-				host: result.data.host,
-				apiKey: result.data.apiKey,
-				serverType: result.data.serverType
-			});
+	const shouldValidateConnection = result.enabled ?? true;
+	if (shouldValidateConnection) {
+		const testResult = await manager.testServerConfig({
+			host: result.host,
+			apiKey: result.apiKey,
+			serverType: result.serverType
+		});
 
-			if (!testResult.success) {
-				return json(
-					{
-						error: testResult.error
-							? `Connection test failed: ${testResult.error}`
-							: 'Connection test failed'
-					},
-					{ status: 400 }
-				);
-			}
+		if (!testResult.success) {
+			return json(
+				{
+					error: testResult.error
+						? `Connection test failed: ${testResult.error}`
+						: 'Connection test failed'
+				},
+				{ status: 400 }
+			);
 		}
-
-		const created = await manager.createServer(result.data);
-		return json({ success: true, server: created });
-	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Unknown error';
-		return json({ error: message }, { status: 500 });
 	}
+
+	const created = await manager.createServer(result);
+	return json({ success: true, server: created });
 };

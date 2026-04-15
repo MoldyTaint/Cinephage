@@ -11,7 +11,9 @@ import type {
 	AddDownloadOptions,
 	DownloadInfo
 } from '../core/interfaces';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'imports' as const });
 
 /**
  * QBittorrent preferences from /api/v2/app/preferences
@@ -62,6 +64,12 @@ interface QBittorrentTorrent {
 	seeding_time_limit?: number;
 	/** Time spent seeding in seconds */
 	seeding_time?: number;
+}
+
+interface QBittorrentTorrentFile {
+	index: number;
+	name: string;
+	priority: number;
 }
 
 /**
@@ -416,6 +424,83 @@ export class QBittorrentClient implements IDownloadClient {
 		return false;
 	}
 
+	private normalizeTorrentPath(path: string): string {
+		return path.replace(/\\/g, '/').trim();
+	}
+
+	private async getTorrentFiles(hash: string): Promise<QBittorrentTorrentFile[]> {
+		return this.request<QBittorrentTorrentFile[]>(
+			`/api/v2/torrents/files?hash=${encodeURIComponent(hash)}`
+		);
+	}
+
+	private async setFilePriority(hash: string, fileIds: number[], priority: number): Promise<void> {
+		if (fileIds.length === 0) {
+			return;
+		}
+
+		const formData = new URLSearchParams();
+		formData.append('hash', hash);
+		formData.append('id', fileIds.join('|'));
+		formData.append('priority', String(priority));
+
+		await this.requestText('/api/v2/torrents/filePrio', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: formData.toString()
+		});
+	}
+
+	private async applyFileSelection(
+		hash: string,
+		selection: NonNullable<AddDownloadOptions['fileSelection']>
+	): Promise<void> {
+		const files = await this.getTorrentFiles(hash);
+		if (files.length === 0) {
+			throw new Error('Torrent metadata has no file list yet');
+		}
+
+		const includeById = new Set<number>();
+		const fileIdsInTorrent = new Set(files.map((file) => file.index));
+		for (const index of selection.fileIndices) {
+			if (fileIdsInTorrent.has(index)) {
+				includeById.add(index);
+			}
+		}
+
+		if (selection.filePaths && selection.filePaths.length > 0) {
+			const idByPath = new Map(
+				files.map((file) => [this.normalizeTorrentPath(file.name), file.index] as const)
+			);
+			for (const path of selection.filePaths) {
+				const id = idByPath.get(this.normalizeTorrentPath(path));
+				if (id !== undefined) {
+					includeById.add(id);
+				}
+			}
+		}
+
+		const includedIds = Array.from(includeById).sort((a, b) => a - b);
+		if (includedIds.length === 0) {
+			throw new Error('No matched files found in torrent for episode pointer');
+		}
+
+		const allIds = files.map((file) => file.index);
+		const unwantedIds = allIds.filter((id) => !includeById.has(id));
+
+		await this.setFilePriority(hash, unwantedIds, 0);
+		await this.setFilePriority(hash, includedIds, 1);
+
+		logger.info(
+			{
+				hash,
+				keptFiles: includedIds.length,
+				totalFiles: files.length
+			},
+			'[QBittorrent] Applied file selection'
+		);
+	}
+
 	/**
 	 * Add a download.
 	 * Includes duplicate detection and graceful error handling.
@@ -429,12 +514,15 @@ export class QBittorrentClient implements IDownloadClient {
 			try {
 				const existingTorrent = await this.getDownload(infoHash);
 				if (existingTorrent) {
-					logger.info('[QBittorrent] Torrent already exists in client', {
-						hash: infoHash,
-						name: existingTorrent.name,
-						status: existingTorrent.status,
-						progress: existingTorrent.progress
-					});
+					logger.info(
+						{
+							hash: infoHash,
+							name: existingTorrent.name,
+							status: existingTorrent.status,
+							progress: existingTorrent.progress
+						},
+						'[QBittorrent] Torrent already exists in client'
+					);
 
 					// Return the existing hash - caller can decide what to do
 					// We throw a specific error so the grab endpoint can handle it
@@ -451,10 +539,13 @@ export class QBittorrentClient implements IDownloadClient {
 					throw error;
 				}
 				// Log but don't fail on lookup errors - continue with add attempt
-				logger.debug('[QBittorrent] Could not check for existing torrent', {
-					hash: infoHash,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.debug(
+					{
+						hash: infoHash,
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'[QBittorrent] Could not check for existing torrent'
+				);
 			}
 		}
 
@@ -492,20 +583,23 @@ export class QBittorrentClient implements IDownloadClient {
 			throw new Error('Must provide magnetUri, infoHash, downloadUrl, or torrentFile');
 		}
 
-		logger.debug('[QBittorrent] Adding download', {
-			sourceType,
-			urlsValue: urlsValue
-				? urlsValue.length > 200
-					? urlsValue.substring(0, 200) + '...'
-					: urlsValue
-				: undefined,
-			infoHash,
-			category: options.category,
-			hasInfoHash: !!options.infoHash,
-			hasMagnetUri: !!options.magnetUri,
-			hasDownloadUrl: !!options.downloadUrl,
-			hasTorrentFile: !!options.torrentFile
-		});
+		logger.debug(
+			{
+				sourceType,
+				urlsValue: urlsValue
+					? urlsValue.length > 200
+						? urlsValue.substring(0, 200) + '...'
+						: urlsValue
+					: undefined,
+				infoHash,
+				category: options.category,
+				hasInfoHash: !!options.infoHash,
+				hasMagnetUri: !!options.magnetUri,
+				hasDownloadUrl: !!options.downloadUrl,
+				hasTorrentFile: !!options.torrentFile
+			},
+			'[QBittorrent] Adding download'
+		);
 
 		if (options.category) {
 			formData.append('category', options.category);
@@ -531,23 +625,29 @@ export class QBittorrentClient implements IDownloadClient {
 		// Determine initial state based on priority
 		const forceStart = options.priority === 'force';
 
-		logger.info('[QBittorrent] Sending add request to qBittorrent', {
-			sourceType,
-			infoHash,
-			category: options.category,
-			baseUrl: this.baseUrl
-		});
+		logger.info(
+			{
+				sourceType,
+				infoHash,
+				category: options.category,
+				baseUrl: this.baseUrl
+			},
+			'[QBittorrent] Sending add request to qBittorrent'
+		);
 
 		const response = await this.requestText('/api/v2/torrents/add', {
 			method: 'POST',
 			body: formData
 		});
 
-		logger.info('[QBittorrent] Add torrent response', {
-			response,
-			sourceType,
-			infoHash
-		});
+		logger.info(
+			{
+				response,
+				sourceType,
+				infoHash
+			},
+			'[QBittorrent] Add torrent response'
+		);
 
 		// qBittorrent returns "Ok." on success, "Fails." on failure
 		// An empty response also indicates success in some versions
@@ -557,10 +657,13 @@ export class QBittorrentClient implements IDownloadClient {
 			if (infoHash) {
 				const existingTorrent = await this.getDownload(infoHash);
 				if (existingTorrent) {
-					logger.info('[QBittorrent] Add failed but torrent exists - treating as duplicate', {
-						hash: infoHash,
-						name: existingTorrent.name
-					});
+					logger.info(
+						{
+							hash: infoHash,
+							name: existingTorrent.name
+						},
+						'[QBittorrent] Add failed but torrent exists - treating as duplicate'
+					);
 					const error = new Error(
 						`Torrent already exists in qBittorrent: ${existingTorrent.name} (${existingTorrent.status}, ${Math.round(existingTorrent.progress * 100)}%)`
 					);
@@ -570,17 +673,29 @@ export class QBittorrentClient implements IDownloadClient {
 				}
 			}
 
-			logger.error('[QBittorrent] Torrent add failed', {
-				response,
-				sourceType,
-				infoHash,
-				category: options.category
-			});
+			logger.error(
+				{
+					response,
+					sourceType,
+					infoHash,
+					category: options.category
+				},
+				'[QBittorrent] Torrent add failed'
+			);
 			throw new Error(`qBittorrent rejected the torrent: ${response}`);
 		}
 
 		// Get the hash to return
 		const returnHash = infoHash || '';
+
+		// Apply file selection for episode pointers before force-starting.
+		if (returnHash && options.fileSelection && options.fileSelection.fileIndices.length > 0) {
+			const loaded = await this.waitForTorrent(returnHash, 60, 250);
+			if (!loaded) {
+				throw new Error('Unable to apply episode pointer file selection: torrent not available');
+			}
+			await this.applyFileSelection(returnHash, options.fileSelection);
+		}
 
 		// Wait for torrent to be loaded before applying additional settings (Radarr pattern)
 		if (returnHash && forceStart) {
@@ -589,10 +704,13 @@ export class QBittorrentClient implements IDownloadClient {
 				try {
 					await this.setForceStart(returnHash, true);
 				} catch (error) {
-					logger.warn('[QBittorrent] Failed to set force start', {
-						hash: returnHash,
-						error: error instanceof Error ? error.message : String(error)
-					});
+					logger.warn(
+						{
+							hash: returnHash,
+							error: error instanceof Error ? error.message : String(error)
+						},
+						'[QBittorrent] Failed to set force start'
+					);
 				}
 			}
 		}
@@ -630,7 +748,7 @@ export class QBittorrentClient implements IDownloadClient {
 
 		let hex = '';
 		for (let i = 0; i < bits.length - 3; i += 4) {
-			hex += parseInt(bits.substr(i, 4), 2).toString(16);
+			hex += parseInt(bits.slice(i, i + 4), 2).toString(16);
 		}
 
 		return hex.toLowerCase();
@@ -877,9 +995,12 @@ export class QBittorrentClient implements IDownloadClient {
 	 */
 	async markItemAsImported(hash: string, importedCategory?: string): Promise<void> {
 		if (!importedCategory) {
-			logger.debug('[QBittorrent] No imported category configured, skipping category change', {
-				hash
-			});
+			logger.debug(
+				{
+					hash
+				},
+				'[QBittorrent] No imported category configured, skipping category change'
+			);
 			return;
 		}
 
@@ -898,16 +1019,22 @@ export class QBittorrentClient implements IDownloadClient {
 				body: formData.toString()
 			});
 
-			logger.info('[QBittorrent] Moved torrent to imported category', {
-				hash,
-				category: importedCategory
-			});
+			logger.info(
+				{
+					hash,
+					category: importedCategory
+				},
+				'[QBittorrent] Moved torrent to imported category'
+			);
 		} catch (error) {
-			logger.warn('[QBittorrent] Failed to set post-import category', {
-				hash,
-				category: importedCategory,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					hash,
+					category: importedCategory,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[QBittorrent] Failed to set post-import category'
+			);
 			// Don't throw - this is a non-critical operation
 		}
 	}
@@ -943,16 +1070,22 @@ export class QBittorrentClient implements IDownloadClient {
 				body: formData.toString()
 			});
 
-			logger.info('[QBittorrent] Set seeding configuration', {
-				hash,
-				ratioLimit: config.ratioLimit,
-				seedingTimeLimit: config.seedingTimeLimit
-			});
+			logger.info(
+				{
+					hash,
+					ratioLimit: config.ratioLimit,
+					seedingTimeLimit: config.seedingTimeLimit
+				},
+				'[QBittorrent] Set seeding configuration'
+			);
 		} catch (error) {
-			logger.warn('[QBittorrent] Failed to set seeding configuration', {
-				hash,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					hash,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[QBittorrent] Failed to set seeding configuration'
+			);
 			throw error;
 		}
 	}

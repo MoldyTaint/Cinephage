@@ -149,7 +149,7 @@ auto.m3u8
 			expect(result).toEqual(variants[0]);
 		});
 
-		it('should select highest resolution variant', () => {
+		it('should select lowest bandwidth variant', () => {
 			const variants: HLSVariant[] = [
 				{
 					url: 'https://example.com/480p.m3u8',
@@ -169,10 +169,10 @@ auto.m3u8
 			];
 
 			const result = selectBestVariant(variants);
-			expect(result?.resolution?.height).toBe(1080);
+			expect(result?.resolution?.height).toBe(480);
 		});
 
-		it('should prefer higher bandwidth when resolutions are equal', () => {
+		it('should prefer lower bandwidth when resolutions are equal', () => {
 			const variants: HLSVariant[] = [
 				{
 					url: 'https://example.com/1080p-low.m3u8',
@@ -192,10 +192,10 @@ auto.m3u8
 			];
 
 			const result = selectBestVariant(variants);
-			expect(result?.bandwidth).toBe(8000000);
+			expect(result?.bandwidth).toBe(3000000);
 		});
 
-		it('should handle variants without resolution (use bandwidth only)', () => {
+		it('should handle variants without resolution (use lowest bandwidth)', () => {
 			const variants: HLSVariant[] = [
 				{ url: 'https://example.com/low.m3u8', bandwidth: 1000000 },
 				{ url: 'https://example.com/high.m3u8', bandwidth: 5000000 },
@@ -203,10 +203,10 @@ auto.m3u8
 			];
 
 			const result = selectBestVariant(variants);
-			expect(result?.bandwidth).toBe(5000000);
+			expect(result?.bandwidth).toBe(1000000);
 		});
 
-		it('should prefer resolution over bandwidth when different', () => {
+		it('should prefer lower bandwidth over resolution when different', () => {
 			const variants: HLSVariant[] = [
 				// High bandwidth but low resolution
 				{
@@ -223,8 +223,8 @@ auto.m3u8
 			];
 
 			const result = selectBestVariant(variants);
-			// Should pick 1080p despite lower bandwidth
 			expect(result?.resolution?.height).toBe(1080);
+			expect(result?.bandwidth).toBe(4000000);
 		});
 	});
 

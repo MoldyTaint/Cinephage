@@ -8,8 +8,10 @@
  * - Idle connection cleanup
  */
 
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { NntpConnection, type NntpConnectionConfig } from './NntpConnection';
+
+const logger = createChildLogger({ logDomain: 'streams' as const });
 import type { ProviderHealth, NntpServerConfig } from './types';
 
 /**
@@ -254,10 +256,13 @@ export class NntpPool {
 		const connection = new NntpConnection(config);
 		await connection.connect();
 
-		logger.debug('[NntpPool] Created new connection', {
-			host: this.host,
-			poolSize: this.connections.length + 1
-		});
+		logger.debug(
+			{
+				host: this.host,
+				poolSize: this.connections.length + 1
+			},
+			'Created NNTP pool connection'
+		);
 
 		return connection;
 	}
@@ -298,11 +303,14 @@ export class NntpPool {
 				);
 				this.health.backoffUntil = new Date(Date.now() + backoffMs);
 
-				logger.warn('[NntpPool] Provider entering backoff', {
-					host: this.host,
-					failures: this.health.consecutiveFailures,
-					backoffMs
-				});
+				logger.warn(
+					{
+						host: this.host,
+						consecutiveFailures: this.health.consecutiveFailures,
+						backoffMs
+					},
+					'NNTP provider entered backoff'
+				);
 			}
 		}
 	}
@@ -329,11 +337,14 @@ export class NntpPool {
 		}
 
 		if (toRemove.length > 0) {
-			logger.debug('[NntpPool] Cleaned up idle connections', {
-				host: this.host,
-				cleaned: toRemove.length,
-				remaining: this.connections.length
-			});
+			logger.debug(
+				{
+					host: this.host,
+					cleanedCount: toRemove.length,
+					remaining: this.connections.length
+				},
+				'Cleaned idle NNTP pool connections'
+			);
 		}
 	}
 
@@ -376,6 +387,6 @@ export class NntpPool {
 		await Promise.allSettled(closes);
 		this.connections = [];
 
-		logger.debug('[NntpPool] Pool closed', { host: this.host });
+		logger.debug({ host: this.host }, 'Closed NNTP pool');
 	}
 }

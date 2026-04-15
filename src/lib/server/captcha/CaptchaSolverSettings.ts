@@ -4,7 +4,9 @@
  * Database-backed configuration for the Camoufox-based captcha solving system.
  */
 
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 import { db } from '$lib/server/db';
 import { captchaSolverSettings } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
@@ -72,9 +74,12 @@ export class CaptchaSolverSettingsService {
 		try {
 			settings = db.select().from(captchaSolverSettings).all();
 		} catch (error) {
-			logger.warn('[CaptchaSolverSettings] Failed to load settings from DB (using defaults)', {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[CaptchaSolverSettings] Failed to load settings from DB (using defaults)'
+			);
 		}
 
 		const settingsMap = new Map(settings.map((s) => [s.key, s.value]));

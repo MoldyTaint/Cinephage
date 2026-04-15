@@ -23,10 +23,13 @@ export async function executeNewEpisodeMonitorTask(
 ): Promise<TaskResult> {
 	const executedAt = new Date();
 	const taskHistoryId = ctx?.historyId;
-	logger.info('[NewEpisodeMonitorTask] Starting new episode search', {
-		intervalHours,
-		taskHistoryId
-	});
+	logger.info(
+		{
+			intervalHours,
+			taskHistoryId
+		},
+		'[NewEpisodeMonitorTask] Starting new episode search'
+	);
 
 	let itemsProcessed: number;
 	let itemsGrabbed: number;
@@ -46,11 +49,14 @@ export async function executeNewEpisodeMonitorTask(
 		itemsGrabbed = episodeResults.summary.grabbed;
 		errors = episodeResults.summary.errors;
 
-		logger.info('[NewEpisodeMonitorTask] New episode search completed', {
-			searched: episodeResults.summary.searched,
-			grabbed: episodeResults.summary.grabbed,
-			errors: episodeResults.summary.errors
-		});
+		logger.info(
+			{
+				searched: episodeResults.summary.searched,
+				grabbed: episodeResults.summary.grabbed,
+				errors: episodeResults.summary.errors
+			},
+			'[NewEpisodeMonitorTask] New episode search completed'
+		);
 
 		// Record history for each episode (with cancellation checks)
 		if (ctx) {
@@ -101,11 +107,14 @@ export async function executeNewEpisodeMonitorTask(
 			}
 		}
 
-		logger.info('[NewEpisodeMonitorTask] New episode monitor task completed', {
-			totalProcessed: itemsProcessed,
-			totalGrabbed: itemsGrabbed,
-			totalErrors: errors
-		});
+		logger.info(
+			{
+				totalProcessed: itemsProcessed,
+				totalGrabbed: itemsGrabbed,
+				totalErrors: errors
+			},
+			'[NewEpisodeMonitorTask] New episode monitor task completed'
+		);
 
 		return {
 			taskType: 'new_episode',
@@ -115,7 +124,7 @@ export async function executeNewEpisodeMonitorTask(
 			executedAt
 		};
 	} catch (error) {
-		logger.error('[NewEpisodeMonitorTask] Task failed', error);
+		logger.error({ err: error }, '[NewEpisodeMonitorTask] Task failed');
 		throw error;
 	}
 }

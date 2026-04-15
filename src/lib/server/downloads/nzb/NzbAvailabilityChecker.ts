@@ -8,7 +8,9 @@
 import { getNntpManager } from '$lib/server/streaming/usenet/NntpManager';
 import { parseNzb } from '$lib/server/streaming/usenet/NzbParser';
 import type { NzbSegment } from '$lib/server/streaming/usenet/types';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'imports' as const });
 
 export interface AvailabilityResult {
 	available: boolean;
@@ -86,10 +88,13 @@ export async function checkNzbAvailability(
 
 	// Skip check if no NNTP servers configured or not ready
 	if (nntpManager.status !== 'ready' || nntpManager.providerCount === 0) {
-		logger.warn('[NzbAvailabilityChecker] Cannot verify availability - NNTP not available', {
-			status: nntpManager.status,
-			providerCount: nntpManager.providerCount
-		});
+		logger.warn(
+			{
+				status: nntpManager.status,
+				providerCount: nntpManager.providerCount
+			},
+			'[NzbAvailabilityChecker] Cannot verify availability - NNTP not available'
+		);
 		return {
 			available: false,
 			skipped: true,
@@ -119,11 +124,14 @@ export async function checkNzbAvailability(
 		// Sample segments for checking
 		const sample = sampleSegments(allSegments, sampleSize);
 
-		logger.debug('[NzbAvailabilityChecker] Checking availability', {
-			totalSegments: allSegments.length,
-			sampleSize: sample.length,
-			fileCount: parsed.files.length
-		});
+		logger.debug(
+			{
+				totalSegments: allSegments.length,
+				sampleSize: sample.length,
+				fileCount: parsed.files.length
+			},
+			'[NzbAvailabilityChecker] Checking availability'
+		);
 
 		// Check each segment with timeout
 		let found = 0;
@@ -133,11 +141,14 @@ export async function checkNzbAvailability(
 		for (const segment of sample) {
 			// Check timeout
 			if (Date.now() - startTime > timeoutMs) {
-				logger.warn('[NzbAvailabilityChecker] Check timed out', {
-					checked,
-					found,
-					timeoutMs
-				});
+				logger.warn(
+					{
+						checked,
+						found,
+						timeoutMs
+					},
+					'[NzbAvailabilityChecker] Check timed out'
+				);
 				break;
 			}
 
@@ -150,10 +161,13 @@ export async function checkNzbAvailability(
 			} catch (error) {
 				// Count as checked but not found
 				checked++;
-				logger.debug('[NzbAvailabilityChecker] Segment check failed', {
-					messageId: segment.messageId.slice(0, 30),
-					error: error instanceof Error ? error.message : 'Unknown'
-				});
+				logger.debug(
+					{
+						messageId: segment.messageId.slice(0, 30),
+						error: error instanceof Error ? error.message : 'Unknown'
+					},
+					'[NzbAvailabilityChecker] Segment check failed'
+				);
 			}
 		}
 
@@ -161,14 +175,17 @@ export async function checkNzbAvailability(
 		const completionPercentage = checked > 0 ? Math.round((found / checked) * 100) : 0;
 		const available = completionPercentage >= minCompletion;
 
-		logger.info('[NzbAvailabilityChecker] Availability check complete', {
-			available,
-			completionPercentage,
-			checked,
-			found,
-			missing: checked - found,
-			totalSegments: allSegments.length
-		});
+		logger.info(
+			{
+				available,
+				completionPercentage,
+				checked,
+				found,
+				missing: checked - found,
+				totalSegments: allSegments.length
+			},
+			'[NzbAvailabilityChecker] Availability check complete'
+		);
 
 		return {
 			available,
@@ -181,9 +198,12 @@ export async function checkNzbAvailability(
 		};
 	} catch (error) {
 		// If NZB parsing fails or other error, return as unavailable with error
-		logger.error('[NzbAvailabilityChecker] Check failed', {
-			error: error instanceof Error ? error.message : 'Unknown error'
-		});
+		logger.error(
+			{
+				error: error instanceof Error ? error.message : 'Unknown error'
+			},
+			'[NzbAvailabilityChecker] Check failed'
+		);
 
 		return {
 			available: false,

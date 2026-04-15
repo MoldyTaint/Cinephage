@@ -1,9 +1,11 @@
 <script lang="ts" generics="T extends { id: number }">
 	import MediaCard from '$lib/components/tmdb/MediaCard.svelte';
 	import type { TmdbMediaItem } from '$lib/types/tmdb';
+	import { toasts } from '$lib/stores/toast.svelte';
 	import { type Snippet } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import { resolvePath } from '$lib/utils/routing';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let { title, items, link, endpoint, cardSnippet, onAddToLibrary, itemClass, excludeInLibrary } =
 		$props<{
@@ -60,7 +62,9 @@
 				}
 			}
 		} catch (e) {
-			console.error('Failed to load more items', e);
+			toasts.error(m.discover_failedToLoadMore(), {
+				description: e instanceof Error ? e.message : m.discover_failedToLoadMore()
+			});
 		} finally {
 			loading = false;
 		}
@@ -104,7 +108,7 @@
 				href={resolvePath(link)}
 				class="hover:text-primary-focus group/link flex items-center gap-1 text-sm font-bold text-primary transition-colors"
 			>
-				View All
+				{m.common_viewAll()}
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
 					class="h-4 w-4 transition-transform group-hover/link:translate-x-1"
@@ -163,7 +167,7 @@
 			{/each}
 			{#if loading}
 				<div
-					class="flex min-h-[200px] w-32 flex-none items-center justify-center sm:w-36 md:w-40 lg:w-44"
+					class="flex min-h-50 w-32 flex-none items-center justify-center sm:w-36 md:w-40 lg:w-44"
 				>
 					<span class="loading loading-md loading-spinner text-primary"></span>
 				</div>

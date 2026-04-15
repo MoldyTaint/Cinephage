@@ -1,8 +1,10 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { Search, X, Clapperboard, Tv, Check, Loader2, Folder } from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
+	import { getFileName } from '$lib/utils/format.js';
 
 	import type { UnmatchedFolder } from '$lib/types/unmatched.js';
 
@@ -49,7 +51,7 @@
 	$effect(() => {
 		if (selectedMedia && folder) {
 			matchPreview = folder.files.map((file) => {
-				const fileName = file.path.split('/').pop() || file.path;
+				const fileName = getFileName(file.path);
 				return {
 					file: fileName,
 					season: file.parsedSeason ?? undefined,
@@ -71,7 +73,7 @@
 			const data = await response.json();
 			searchResults = data.results || [];
 		} catch {
-			toasts.error('Search failed');
+			toasts.error(m.library_matchFolder_searchFailed());
 			searchResults = [];
 		} finally {
 			isSearching = false;
@@ -111,17 +113,18 @@
 			const result = await response.json();
 
 			if (result.success) {
-				const mediaTitle = selectedMedia.title || selectedMedia.name;
 				toasts.success(
-					`Matched ${result.data.matched} files to ${mediaTitle}`,
-					result.data.failed > 0 ? { description: `${result.data.failed} files failed` } : undefined
+					m.library_matchFolder_matchedFiles({ count: result.data.matched }),
+					result.data.failed > 0
+						? { description: m.library_matchFolder_filesFailed({ count: result.data.failed }) }
+						: undefined
 				);
 				onSuccess(folder.folderPath);
 			} else {
-				toasts.error('Failed to match folder', { description: result.error });
+				toasts.error(m.library_matchFolder_failedToMatch(), { description: result.error });
 			}
 		} catch {
-			toasts.error('Error matching folder');
+			toasts.error(m.library_matchFolder_errorMatching());
 		} finally {
 			isMatching = false;
 		}
@@ -144,12 +147,14 @@
 	<div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 		<div class="flex items-center gap-2">
 			<Folder class="h-5 w-5 text-primary" />
-			<h3 id="match-folder-modal-title" class="text-lg font-bold">Match Folder</h3>
+			<h3 id="match-folder-modal-title" class="text-lg font-bold">
+				{m.library_matchFolder_title()}
+			</h3>
 		</div>
 		<button
 			class="btn btn-circle self-end btn-ghost btn-sm sm:self-auto"
 			onclick={close}
-			aria-label="Close"
+			aria-label={m.action_close()}
 		>
 			<X class="h-4 w-4" />
 		</button>
@@ -159,9 +164,12 @@
 	<div class="mb-4 rounded-lg bg-base-200 p-3">
 		<p class="truncate font-medium" title={folder.folderPath}>{folder.folderName}</p>
 		<p class="text-sm text-base-content/70">
-			{folder.fileCount} file{folder.fileCount !== 1 ? 's' : ''} • {folder.mediaType === 'movie'
-				? 'Movie'
-				: 'TV Show'}
+			{folder.fileCount === 1
+				? m.library_matchFolder_fileCount_one({ count: folder.fileCount })
+				: m.library_matchFolder_fileCount_other({ count: folder.fileCount })} • {folder.mediaType ===
+			'movie'
+				? m.common_movie()
+				: m.common_tvShow()}
 		</p>
 	</div>
 
@@ -195,12 +203,14 @@
 						</p>
 					{/if}
 				</div>
-				<button class="btn btn-ghost btn-sm" onclick={backToSearch}> Change </button>
+				<button class="btn btn-ghost btn-sm" onclick={backToSearch}> {m.action_change()} </button>
 			</div>
 
 			<!-- Match Preview -->
 			<div>
-				<p class="mb-2 text-sm font-medium">Files will be matched:</p>
+				<p class="mb-2 text-sm font-medium">
+					{m.library_matchFolder_filesWillBeMatched({ count: matchPreview.length })}:
+				</p>
 				<div class="max-h-48 space-y-1 overflow-y-auto rounded-lg bg-base-200 p-2">
 					{#each matchPreview.slice(0, 10) as item, index (`${item.file}-${index}`)}
 						<div class="flex items-center justify-between rounded bg-base-300/50 px-2 py-1 text-sm">
@@ -214,7 +224,7 @@
 					{/each}
 					{#if matchPreview.length > 10}
 						<p class="py-1 text-center text-xs text-base-content/50">
-							... and {matchPreview.length - 10} more files
+							{m.library_matchFolder_andMoreFiles({ count: matchPreview.length - 10 })}
 						</p>
 					{/if}
 				</div>
@@ -222,14 +232,16 @@
 
 			<!-- Actions -->
 			<div class="flex justify-end gap-2 pt-2">
-				<button class="btn btn-ghost" onclick={backToSearch} disabled={isMatching}> Back </button>
+				<button class="btn btn-ghost" onclick={backToSearch} disabled={isMatching}>
+					{m.action_back()}
+				</button>
 				<button class="btn btn-primary" onclick={matchFolder} disabled={isMatching}>
 					{#if isMatching}
 						<Loader2 class="h-4 w-4 animate-spin" />
 					{:else}
 						<Check class="h-4 w-4" />
 					{/if}
-					Match {folder.fileCount} Files
+					{m.library_matchFolder_matchFiles({ count: folder.fileCount })}
 				</button>
 			</div>
 		</div>
@@ -242,14 +254,14 @@
 				onclick={() => (searchType = 'movie')}
 			>
 				<Clapperboard class="h-4 w-4" />
-				Movie
+				{m.common_movie()}
 			</button>
 			<button
 				class="btn btn-sm {searchType === 'tv' ? 'btn-primary' : 'btn-ghost'}"
 				onclick={() => (searchType = 'tv')}
 			>
 				<Tv class="h-4 w-4" />
-				TV Show
+				{m.common_tvShow()}
 			</button>
 		</div>
 
@@ -258,7 +270,7 @@
 			<input
 				type="text"
 				class="input-bordered input flex-1"
-				placeholder="Search TMDB..."
+				placeholder={m.library_matchFolder_searchPlaceholder()}
 				bind:value={searchQuery}
 				onkeydown={handleKeydown}
 			/>
@@ -272,7 +284,7 @@
 				{:else}
 					<Search class="h-4 w-4" />
 				{/if}
-				Search
+				{m.action_search()}
 			</button>
 		</div>
 
@@ -280,7 +292,7 @@
 		<div class="max-h-96 space-y-2 overflow-y-auto">
 			{#if searchResults.length > 0}
 				<p class="mb-2 text-sm text-base-content/70">
-					Click a result to select it and preview the match
+					{m.library_matchFolder_clickToSelect()}
 				</p>
 				{#each searchResults as result (result.id)}
 					<button
@@ -317,10 +329,15 @@
 					</button>
 				{/each}
 			{:else if !isSearching && searchQuery}
-				<p class="py-8 text-center text-base-content/50">No results found</p>
+				<p class="py-8 text-center text-base-content/50">{m.common_noResults()}</p>
 			{:else if !isSearching}
 				<p class="py-8 text-center text-base-content/50">
-					Search for a {searchType === 'movie' ? 'movie' : 'TV show'} to match
+					{m.library_matchFolder_searchHint({
+						type:
+							searchType === 'movie'
+								? m.common_movie().toLowerCase()
+								: m.common_tvShow().toLowerCase()
+					})}
 				</p>
 			{/if}
 		</div>

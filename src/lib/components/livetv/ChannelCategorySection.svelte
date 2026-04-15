@@ -16,6 +16,7 @@
 		EpgProgram,
 		EpgProgramWithProgress
 	} from '$lib/types/livetv';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface NowNextEntry {
 		now: EpgProgramWithProgress | null;
@@ -174,7 +175,9 @@
 			<span class="font-medium">{category.name}</span>
 		{:else}
 			<FolderOpen class="h-4 w-4 text-base-content/50" />
-			<span class="font-medium text-base-content/70">Uncategorized</span>
+			<span class="font-medium text-base-content/70"
+				>{m.livetv_channelCategorySection_uncategorized()}</span
+			>
 		{/if}
 
 		<!-- Channel Count -->
@@ -182,7 +185,7 @@
 
 		<!-- Drop hint when dragging -->
 		{#if isDropTarget}
-			<span class="ml-auto text-sm text-primary">Drop here to move</span>
+			<span class="ml-auto text-sm text-primary">{m.livetv_channelCategorySection_dropHere()}</span>
 		{/if}
 	</button>
 
@@ -273,14 +276,16 @@
 											max="100"
 										></progress>
 										<span class="text-xs text-base-content/50">
-											{nowNext.now.remainingMinutes}m left
+											{m.livetv_channelCategorySection_remainingMinutes({
+												count: nowNext.now.remainingMinutes
+											})}
 										</span>
 									</div>
 								</button>
 							{:else}
 								<div class="mt-2 flex items-center gap-1 text-xs text-base-content/50">
 									<Info class="h-3 w-3" />
-									No EPG
+									{m.livetv_channelCategorySection_noEpg()}
 								</div>
 							{/if}
 						</div>
@@ -296,12 +301,14 @@
 					<tr class="text-xs text-base-content/50">
 						<th class="w-10"></th>
 						<th class="w-10"></th>
-						<th class="w-16 text-center">#</th>
+						<th class="w-16 text-center">{m.livetv_channelCategorySection_columnNumber()}</th>
 						<th class="w-12"></th>
-						<th>Name</th>
-						<th class="hidden md:table-cell">Source</th>
-						<th class="hidden lg:table-cell">Now Playing</th>
-						<th class="w-24">Actions</th>
+						<th>{m.livetv_channelCategorySection_columnName()}</th>
+						<th class="hidden md:table-cell">{m.livetv_channelCategorySection_columnSource()}</th>
+						<th class="hidden lg:table-cell"
+							>{m.livetv_channelCategorySection_columnNowPlaying()}</th
+						>
+						<th class="w-24">{m.livetv_channelCategorySection_columnActions()}</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -333,9 +340,9 @@
 	<!-- Empty category message -->
 	{#if isExpanded && channels.length === 0 && category !== null}
 		<div class="px-4 py-6 text-center text-sm text-base-content/50">
-			No channels in this category
+			{m.livetv_channelCategorySection_noChannels()}
 			{#if isDragging}
-				<span class="block text-primary">Drop a channel here to add it</span>
+				<span class="block text-primary">{m.livetv_channelCategorySection_dropToAdd()}</span>
 			{/if}
 		</div>
 	{/if}

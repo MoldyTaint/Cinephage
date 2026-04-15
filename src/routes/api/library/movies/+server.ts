@@ -8,15 +8,19 @@ import { NamingService, type MediaNamingInfo } from '$lib/server/library/naming/
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
 import {
 	validateRootFolder,
+	getAnimeSubtypeEnforcement,
 	getEffectiveScoringProfileId,
 	getLanguageProfileId,
 	fetchMovieDetails,
 	fetchMovieExternalIds,
 	triggerMovieSearch
 } from '$lib/server/library/LibraryAddService.js';
+import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { fetchAndStoreMovieAlternateTitles } from '$lib/server/services/AlternateTitleService.js';
-import { ValidationError } from '$lib/errors';
+import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
+import { ValidationError, isAppError } from '$lib/errors';
 import { logger } from '$lib/logging';
+import { requireAuth } from '$lib/server/auth/authorization.js';
 
 /**
  * Schema for adding a movie to the library
@@ -50,7 +54,11 @@ function generateMovieFolderName(title: string, year?: number, tmdbId?: number):
  * GET /api/library/movies
  * List all movies in the library
  */
-export const GET: RequestHandler = async () => {
+export const GET: RequestHandler = async (event) => {
+	// Require authentication
+	const authError = requireAuth(event);
+	if (authError) return authError;
+
 	try {
 		// Fetch all movies (1 query)
 		const allMovies = await db
@@ -131,7 +139,13 @@ export const GET: RequestHandler = async () => {
  * POST /api/library/movies
  * Add a movie to the library by TMDB ID
  */
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async (event) => {
+	const { request } = event;
+
+	// Require authentication
+	const authError = requireAuth(event);
+	if (authError) return authError;
+
 	try {
 		const body = await request.json();
 		const result = addMovieSchema.safeParse(body);
@@ -170,11 +184,28 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 
-		// Verify root folder exists and is for movies (shared logic)
-		await validateRootFolder(rootFolderId, 'movie');
-
 		// Fetch movie details from TMDB (shared logic with error handling)
 		const movieDetails = await fetchMovieDetails(tmdbId);
+		const enforceAnimeSubtype = await getAnimeSubtypeEnforcement();
+		const isAnimeMedia = isLikelyAnimeMedia({
+			genres: movieDetails.genres,
+			originalLanguage: movieDetails.original_language,
+			originCountries: movieDetails.production_countries?.map((country) => country.iso_3166_1),
+			productionCountries: movieDetails.production_countries,
+			title: movieDetails.title,
+			originalTitle: movieDetails.original_title
+		});
+
+		// Verify root folder exists and is for movies (with optional anime subtype enforcement)
+		await validateRootFolder(rootFolderId, 'movie', {
+			enforceAnimeSubtype,
+			isAnimeMedia,
+			mediaTitle: movieDetails.title
+		});
+		const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
+			rootFolderId,
+			'movie'
+		);
 
 		// Generate folder path
 		const year = movieDetails.release_date
@@ -206,6 +237,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				runtime: movieDetails.runtime,
 				genres: movieDetails.genres?.map((g) => g.name) ?? [],
 				path: folderName,
+				libraryId: owningLibrary.id,
 				rootFolderId,
 				scoringProfileId: effectiveProfileId,
 				monitored,
@@ -218,11 +250,14 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		// Fetch and store alternate titles from TMDB (non-blocking)
 		fetchAndStoreMovieAlternateTitles(newMovie.id, tmdbId).catch((err) => {
-			logger.warn('Failed to fetch alternate titles for movie', {
-				movieId: newMovie.id,
-				tmdbId,
-				error: err instanceof Error ? err.message : String(err)
-			});
+			logger.warn(
+				{
+					movieId: newMovie.id,
+					tmdbId,
+					error: err instanceof Error ? err.message : String(err)
+				},
+				'Failed to fetch alternate titles for movie'
+			);
 		});
 
 		// Trigger search if requested and movie is monitored (shared logic)
@@ -253,6 +288,29 @@ export const POST: RequestHandler = async ({ request }) => {
 		});
 	} catch (error) {
 		logger.error('[API] Error adding movie', error instanceof Error ? error : undefined);
+
+		if (isAppError(error)) {
+			return json(
+				{
+					success: false,
+					...error.toJSON()
+				},
+				{ status: error.statusCode }
+			);
+		}
+
+		if (error instanceof Error && /FOREIGN KEY constraint failed/i.test(error.message)) {
+			return json(
+				{
+					success: false,
+					error:
+						'The selected root folder or one of its linked library settings is no longer valid. Refresh the page and try again.',
+					code: 'LIBRARY_CONFIGURATION_STALE'
+				},
+				{ status: 409 }
+			);
+		}
+
 		return json(
 			{
 				success: false,

@@ -18,7 +18,9 @@ import type {
 	StreamingService
 } from './video';
 import { Movie, Episode } from './video';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 
 /**
  * Guessit result interface (based on guessit output)
@@ -58,9 +60,12 @@ export async function parseReleaseName(releaseName: string): Promise<GuessitResu
 		return result as GuessitResult;
 	} catch (error) {
 		// Fallback to basic regex parsing if guessit not available
-		logger.debug('Guessit not available, using fallback parser', {
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.debug(
+			{
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'Guessit not available, using fallback parser'
+		);
 		return parseReleaseNameFallback(releaseName);
 	}
 }
@@ -253,9 +258,12 @@ export async function refineVideo(video: Video, releaseName?: string): Promise<V
 			video.edition = parsed.edition;
 		}
 	} catch (error) {
-		logger.debug('Failed to refine video', {
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.debug(
+			{
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'Failed to refine video'
+		);
 	}
 
 	return video;

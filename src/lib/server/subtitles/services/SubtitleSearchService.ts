@@ -17,7 +17,9 @@ import {
 } from '$lib/server/db/schema';
 import { join } from 'path';
 import { eq, and } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import type {
 	SubtitleSearchCriteria,
 	SubtitleSearchResult,
@@ -242,7 +244,7 @@ export class SubtitleSearchService {
 				};
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error);
-				logger.error(`Provider search failed: ${provider.name}`, { error: errorMsg });
+				logger.error({ err: error }, `Provider search failed: ${provider.name}`);
 
 				// Record error - pass actual error object to preserve type information for proper throttling
 				await providerManager.recordError(provider.id, error instanceof Error ? error : errorMsg);

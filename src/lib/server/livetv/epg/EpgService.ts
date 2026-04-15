@@ -6,19 +6,24 @@
  * Updated for multi-provider support.
  */
 
-import { eq, and, gte, lte, inArray, sql } from 'drizzle-orm';
+import { eq, and, gte, lte, inArray, isNull, sql } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { db } from '$lib/server/db';
 import {
 	livetvAccounts,
 	livetvChannels,
+	channelLineupItems,
 	epgPrograms,
 	type EpgProgramRecord
 } from '$lib/server/db/schema';
 import { createChildLogger } from '$lib/logging';
-
-const logger = createChildLogger({ module: 'EpgService' });
 import { getProvider } from '../providers';
+import { liveTvEvents } from '../LiveTvEvents';
+import {
+	selectAutoAttachEpgSource,
+	type AutoAttachCandidate,
+	type AutoAttachTarget
+} from './epg-utils';
 import type {
 	EpgProgram,
 	EpgProgramWithProgress,
@@ -27,10 +32,22 @@ import type {
 	LiveTvAccount
 } from '$lib/types/livetv';
 
+const logger = createChildLogger({ module: 'EpgService' });
+
 const BATCH_SIZE = 1000;
 const DEFAULT_RETENTION_HOURS = 48;
 const DEFAULT_LOOKAHEAD_HOURS = 72;
 const DEFAULT_LOOKBACK_HOURS = DEFAULT_RETENTION_HOURS;
+export const EPG_SYNC_CANCELLED_MESSAGE = 'Sync cancelled by user';
+
+interface EpgSyncAccountOptions {
+	shouldCancel?: () => boolean;
+}
+
+interface EpgSyncAllOptions {
+	shouldCancelAll?: () => boolean;
+	shouldCancelAccount?: (accountId: string) => boolean;
+}
 
 export class EpgService {
 	/**
@@ -42,6 +59,7 @@ export class EpgService {
 			success: boolean;
 			programCount?: number;
 			hasEpg?: boolean;
+			guideEndsAt?: string | null;
 			error?: string;
 		}
 	): Promise<void> {
@@ -59,11 +77,130 @@ export class EpgService {
 			.where(eq(livetvAccounts.id, accountId));
 	}
 
+	private async getAccountEpgStats(accountId: string): Promise<{
+		programCount: number;
+		channelsWithEpg: number;
+		guideEndsAt: string | null;
+	}> {
+		const result = await db
+			.select({
+				programCount: sql<number>`count(*)`,
+				channelsWithEpg: sql<number>`count(distinct ${epgPrograms.channelId})`,
+				guideEndsAt: sql<string | null>`max(${epgPrograms.endTime})`
+			})
+			.from(epgPrograms)
+			.where(eq(epgPrograms.accountId, accountId))
+			.then((rows) => rows[0]);
+
+		return {
+			programCount: result?.programCount ?? 0,
+			channelsWithEpg: result?.channelsWithEpg ?? 0,
+			guideEndsAt: result?.guideEndsAt ?? null
+		};
+	}
+
+	private async autoAttachMissingLineupEpgSources(accountId: string): Promise<number> {
+		const lineupRows = await db
+			.select({
+				lineupItemId: channelLineupItems.id,
+				channelId: channelLineupItems.channelId,
+				providerType: livetvChannels.providerType,
+				name: livetvChannels.name,
+				categoryId: livetvChannels.categoryId
+			})
+			.from(channelLineupItems)
+			.innerJoin(livetvChannels, eq(channelLineupItems.channelId, livetvChannels.id))
+			.where(
+				and(
+					eq(channelLineupItems.accountId, accountId),
+					isNull(channelLineupItems.epgSourceChannelId)
+				)
+			);
+
+		if (lineupRows.length === 0) {
+			return 0;
+		}
+
+		const channelsWithEpg = await db
+			.select({
+				channelId: livetvChannels.id,
+				providerType: livetvChannels.providerType,
+				name: livetvChannels.name,
+				categoryId: livetvChannels.categoryId,
+				programCount: sql<number>`count(${epgPrograms.id})`
+			})
+			.from(epgPrograms)
+			.innerJoin(livetvChannels, eq(epgPrograms.channelId, livetvChannels.id))
+			.where(eq(epgPrograms.accountId, accountId))
+			.groupBy(livetvChannels.id);
+
+		if (channelsWithEpg.length === 0) {
+			return 0;
+		}
+
+		const candidates: AutoAttachCandidate[] = channelsWithEpg.map((channel) => ({
+			channelId: channel.channelId,
+			providerType: channel.providerType,
+			name: channel.name,
+			categoryId: channel.categoryId,
+			programCount: channel.programCount
+		}));
+		const candidateChannelIds = new Set(candidates.map((candidate) => candidate.channelId));
+		const now = new Date().toISOString();
+		let attachedCount = 0;
+
+		for (const row of lineupRows) {
+			if (candidateChannelIds.has(row.channelId)) {
+				continue;
+			}
+
+			const match = selectAutoAttachEpgSource(
+				{
+					lineupItemId: row.lineupItemId,
+					channelId: row.channelId,
+					providerType: row.providerType,
+					name: row.name,
+					categoryId: row.categoryId
+				} satisfies AutoAttachTarget,
+				candidates
+			);
+
+			if (!match) {
+				continue;
+			}
+
+			await db
+				.update(channelLineupItems)
+				.set({
+					epgSourceChannelId: match.channelId,
+					updatedAt: now
+				})
+				.where(eq(channelLineupItems.id, row.lineupItemId));
+
+			attachedCount++;
+		}
+
+		if (attachedCount > 0) {
+			logger.info({ accountId, attachedCount }, 'Auto-attached lineup EPG sources');
+			liveTvEvents.emitLineupUpdated();
+		}
+
+		return attachedCount;
+	}
+
 	/**
 	 * Sync EPG data for a single account
 	 */
-	async syncAccount(accountId: string): Promise<EpgSyncResult> {
+	async syncAccount(
+		accountId: string,
+		options: EpgSyncAccountOptions = {}
+	): Promise<EpgSyncResult> {
 		const startTime = Date.now();
+		const throwIfCancelled = () => {
+			if (options.shouldCancel?.()) {
+				throw new Error(EPG_SYNC_CANCELLED_MESSAGE);
+			}
+		};
 
 		// Get account from new unified table
 		const account = await db
@@ -100,6 +237,7 @@ export class EpgService {
 				error: 'Account is disabled'
 			};
 		}
+		throwIfCancelled();
 
 		// Get the appropriate provider
 		const provider = getProvider(account.providerType);
@@ -119,11 +257,14 @@ export class EpgService {
 		}
 
 		try {
-			logger.info('Starting EPG sync', {
-				accountId,
-				name: account.name,
-				providerType: account.providerType
-			});
+			logger.info(
+				{
+					accountId,
+					name: account.name,
+					providerType: account.providerType
+				},
+				'Starting EPG sync'
+			);
 
 			// Convert account record to LiveTvAccount type
 			const liveTvAccount: LiveTvAccount = {
@@ -160,20 +301,29 @@ export class EpgService {
 			const endTime = new Date(now.getTime() + DEFAULT_LOOKAHEAD_HOURS * 60 * 60 * 1000);
 
 			// Fetch EPG data from provider
+			throwIfCancelled();
 			const epgPrograms = await provider.fetchEpg!(liveTvAccount, rangeStart, endTime);
+			throwIfCancelled();
 
 			if (epgPrograms.length === 0) {
-				logger.info('No EPG data returned from provider', {
-					accountId,
-					name: account.name,
-					providerType: account.providerType
-				});
+				const accountStats = await this.getAccountEpgStats(accountId);
+				logger.info(
+					{
+						accountId,
+						name: account.name,
+						providerType: account.providerType,
+						existingPrograms: accountStats.programCount,
+						existingChannelsWithEpg: accountStats.channelsWithEpg
+					},
+					'No EPG data returned from provider'
+				);
 
-				// Update account status - provider has no EPG data
+				// Update account status based on what is currently cached.
 				await this.updateAccountEpgStatus(accountId, {
 					success: true,
-					programCount: 0,
-					hasEpg: false
+					programCount: accountStats.programCount,
+					hasEpg: accountStats.programCount > 0,
+					guideEndsAt: accountStats.guideEndsAt
 				});
 
 				return {
@@ -200,22 +350,38 @@ export class EpgService {
 			}
 
 			// Process and store EPG data
-			const result = await this.storeEpgData(accountId, epgPrograms, channelMap);
-
-			logger.info('EPG sync complete', {
+			throwIfCancelled();
+			const result = await this.storeEpgData(
 				accountId,
-				name: account.name,
-				providerType: account.providerType,
-				...result,
-				duration: Date.now() - startTime
-			});
+				epgPrograms,
+				channelMap,
+				options.shouldCancel
+			);
+			throwIfCancelled();
+			const autoAttachedCount = await this.autoAttachMissingLineupEpgSources(accountId);
+			throwIfCancelled();
+			const accountStats = await this.getAccountEpgStats(accountId);
+
+			logger.info(
+				{
+					accountId,
+					name: account.name,
+					providerType: account.providerType,
+					...result,
+					autoAttachedCount,
+					channelsWithEpg: accountStats.channelsWithEpg,
+					guideEndsAt: accountStats.guideEndsAt,
+					duration: Date.now() - startTime
+				},
+				'EPG sync complete'
+			);
 
 			// Update account status - successful sync with EPG data
-			const totalPrograms = result.programsAdded + result.programsUpdated;
 			await this.updateAccountEpgStatus(accountId, {
 				success: true,
-				programCount: totalPrograms > 0 ? await this.getAccountProgramCount(accountId) : 0,
-				hasEpg: true
+				programCount: accountStats.programCount,
+				hasEpg: accountStats.programCount > 0,
+				guideEndsAt: accountStats.guideEndsAt
 			});
 
 			return {
@@ -228,18 +394,24 @@ export class EpgService {
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('EPG sync failed', {
-				accountId,
-				name: account.name,
-				providerType: account.providerType,
-				error: message
-			});
+			const cancelled = message === EPG_SYNC_CANCELLED_MESSAGE;
+			logger.error(
+				{
+					accountId,
+					name: account.name,
+					providerType: account.providerType,
+					error: message
+				},
+				cancelled ? 'EPG sync cancelled' : 'EPG sync failed'
+			);
 
-			// Update account status - sync failed
-			await this.updateAccountEpgStatus(accountId, {
-				success: false,
-				error: message
-			});
+			// Keep account status intact for user-initiated cancellations.
+			if (!cancelled) {
+				await this.updateAccountEpgStatus(accountId, {
+					success: false,
+					error: message
+				});
+			}
 
 			return {
 				success: false,
@@ -258,19 +430,45 @@ export class EpgService {
 	/**
 	 * Sync EPG data for all enabled accounts that support EPG
 	 */
-	async syncAll(): Promise<EpgSyncResult[]> {
+	async syncAll(options: EpgSyncAllOptions = {}): Promise<EpgSyncResult[]> {
 		const accounts = await db.select().from(livetvAccounts).where(eq(livetvAccounts.enabled, true));
 
-		logger.info('Starting EPG sync for all accounts', {
-			accountCount: accounts.length
-		});
+		logger.info(
+			{
+				accountCount: accounts.length
+			},
+			'Starting EPG sync for all accounts'
+		);
 
 		const results: EpgSyncResult[] = [];
 
 		for (const account of accounts) {
+			if (options.shouldCancelAll?.()) {
+				logger.info('Stopping EPG all-accounts sync due to cancellation request');
+				break;
+			}
+
 			const provider = getProvider(account.providerType);
 			if (provider.hasEpgSupport()) {
-				const result = await this.syncAccount(account.id);
+				if (options.shouldCancelAccount?.(account.id)) {
+					results.push({
+						success: false,
+						accountId: account.id,
+						accountName: account.name,
+						providerType: account.providerType,
+						programsAdded: 0,
+						programsUpdated: 0,
+						programsRemoved: 0,
+						duration: 0,
+						error: EPG_SYNC_CANCELLED_MESSAGE
+					});
+					continue;
+				}
+
+				const result = await this.syncAccount(account.id, {
+					shouldCancel: () =>
+						Boolean(options.shouldCancelAll?.() || options.shouldCancelAccount?.(account.id))
+				});
 				results.push(result);
 			}
 		}
@@ -279,12 +477,15 @@ export class EpgService {
 		const totalUpdated = results.reduce((sum, r) => sum + r.programsUpdated, 0);
 		const successful = results.filter((r) => r.success).length;
 
-		logger.info('EPG sync complete for all accounts', {
-			accounts: accounts.length,
-			successful,
-			totalAdded,
-			totalUpdated
-		});
+		logger.info(
+			{
+				accounts: accounts.length,
+				successful,
+				totalAdded,
+				totalUpdated
+			},
+			'EPG sync complete for all accounts'
+		);
 
 		return results;
 	}
@@ -295,11 +496,13 @@ export class EpgService {
 	private async storeEpgData(
 		accountId: string,
 		epgProgramsData: EpgProgram[],
-		channelMap: Map<string, string>
+		channelMap: Map<string, string>,
+		shouldCancel?: () => boolean
 	): Promise<{ programsAdded: number; programsUpdated: number; programsRemoved: number }> {
 		let programsAdded = 0;
 		let programsUpdated = 0;
 		const now = new Date().toISOString();
+		const unmatchedExternalChannelIds = new Set<string>();
 		const makeProgramKey = (externalChannelId: string, startTime: string) =>
 			`${externalChannelId}::${startTime}`;
 
@@ -327,8 +530,13 @@ export class EpgService {
 		>();
 
 		for (const program of epgProgramsData) {
+			if (shouldCancel?.()) {
+				throw new Error(EPG_SYNC_CANCELLED_MESSAGE);
+			}
+
 			const localChannelId = channelMap.get(program.externalChannelId);
 			if (!localChannelId) {
+				unmatchedExternalChannelIds.add(program.externalChannelId);
 				continue;
 			}
 
@@ -372,6 +580,17 @@ export class EpgService {
 			updatedAt: string;
 		}[] = Array.from(uniquePrograms.values());
 
+		if (unmatchedExternalChannelIds.size > 0) {
+			logger.warn(
+				{
+					accountId,
+					unmatchedChannelCount: unmatchedExternalChannelIds.size,
+					samples: Array.from(unmatchedExternalChannelIds).slice(0, 10)
+				},
+				'EPG sync skipped unmatched provider channels'
+			);
+		}
+
 		if (allPrograms.length > 0) {
 			const existingRows = await db
 				.select({
@@ -396,6 +615,10 @@ export class EpgService {
 
 		// Upsert programs in batches
 		for (let i = 0; i < allPrograms.length; i += BATCH_SIZE) {
+			if (shouldCancel?.()) {
+				throw new Error(EPG_SYNC_CANCELLED_MESSAGE);
+			}
+
 			const batch = allPrograms.slice(i, i + BATCH_SIZE);
 			if (batch.length === 0) {
 				continue;
@@ -592,10 +815,13 @@ export class EpgService {
 		const deleted = db.delete(epgPrograms).where(lte(epgPrograms.endTime, cutoffTime)).run();
 
 		if (deleted.changes > 0) {
-			logger.info('Cleaned up old EPG programs', {
-				deleted: deleted.changes,
-				cutoffTime
-			});
+			logger.info(
+				{
+					deleted: deleted.changes,
+					cutoffTime
+				},
+				'Cleaned up old EPG programs'
+			);
 		}
 
 		return deleted.changes ?? 0;
@@ -630,18 +856,6 @@ export class EpgService {
 			map.set(row.accountId, row.count);
 		}
 		return map;
-	}
-
-	/**
-	 * Get program count for a specific account
-	 */
-	private async getAccountProgramCount(accountId: string): Promise<number> {
-		const result = await db
-			.select({ count: sql<number>`count(*)` })
-			.from(epgPrograms)
-			.where(eq(epgPrograms.accountId, accountId))
-			.then((rows) => rows[0]);
-		return result?.count ?? 0;
 	}
 
 	/**

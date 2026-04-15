@@ -185,11 +185,14 @@ class DelayProfileService {
 			})
 			.returning();
 
-		logger.info('[DelayService] Added release to pending queue', {
-			id: entry.id,
-			title: release.title,
-			processAt: options.processAt.toISOString()
-		});
+		logger.info(
+			{
+				id: entry.id,
+				title: release.title,
+				processAt: options.processAt.toISOString()
+			},
+			'[DelayService] Added release to pending queue'
+		);
 
 		return entry.id;
 	}

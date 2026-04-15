@@ -39,6 +39,8 @@ export interface HttpRequestOptions {
 	followRedirects?: boolean;
 	/** Request timeout in ms (default: 30000) */
 	timeout?: number;
+	/** Optional abort signal */
+	signal?: AbortSignal;
 	/** Skip rate limiting for this request */
 	skipRateLimiting?: boolean;
 }
@@ -50,6 +52,7 @@ interface ResolvedHttpOptions {
 	body?: string | URLSearchParams;
 	followRedirects: boolean;
 	timeout: number;
+	signal?: AbortSignal;
 }
 
 /** HTTP response */
@@ -166,12 +169,13 @@ export class IndexerHttp {
 			body,
 			followRedirects = true,
 			timeout = this.config.defaultTimeout,
+			signal,
 			skipRateLimiting = false
 		} = options;
 
 		// Apply rate limiting
 		if (!skipRateLimiting) {
-			await this.waitForRateLimit(url);
+			await this.waitForRateLimit(url, signal);
 		}
 
 		// Try request with failover
@@ -180,7 +184,8 @@ export class IndexerHttp {
 			headers,
 			body,
 			followRedirects,
-			timeout
+			timeout,
+			signal
 		});
 	}
 
@@ -197,9 +202,13 @@ export class IndexerHttp {
 		try {
 			return await this.executeSingleRequest(url, options);
 		} catch (error) {
+			if (error instanceof Error && error.message === 'Aborted') {
+				throw error;
+			}
+
 			const message = error instanceof Error ? error.message : String(error);
 			errors.push(`${url}: ${message}`);
-			this.log.debug('Primary URL failed', { url, error: message });
+			this.log.debug({ url, error: message }, 'Primary URL failed');
 		}
 
 		// Try alternate URLs
@@ -207,16 +216,20 @@ export class IndexerHttp {
 			const altUrl = this.replaceBaseUrl(url, this.config.baseUrl, altBaseUrl);
 
 			try {
-				this.log.debug('Trying alternate URL', { altUrl });
+				this.log.debug({ altUrl }, 'Trying alternate URL');
 				await this.delay(500); // Small delay before failover
 
 				const response = await this.executeSingleRequest(altUrl, options);
-				this.log.info('Alternate URL succeeded', { altUrl });
+				this.log.info({ altUrl }, 'Alternate URL succeeded');
 				return response;
 			} catch (error) {
+				if (error instanceof Error && error.message === 'Aborted') {
+					throw error;
+				}
+
 				const message = error instanceof Error ? error.message : String(error);
 				errors.push(`${altUrl}: ${message}`);
-				this.log.debug('Alternate URL failed', { altUrl, error: message });
+				this.log.debug({ altUrl, error: message }, 'Alternate URL failed');
 			}
 		}
 
@@ -250,8 +263,14 @@ export class IndexerHttp {
 		headers: Record<string, string>,
 		skipCaptchaSolver = false
 	): Promise<HttpResponse> {
+		if (options.signal?.aborted) {
+			throw new Error('Aborted');
+		}
+
 		const controller = new AbortController();
 		const timeoutId = setTimeout(() => controller.abort(), options.timeout);
+		const abortListener = () => controller.abort();
+		options.signal?.addEventListener('abort', abortListener, { once: true });
 
 		try {
 			const response = await fetch(url, {
@@ -277,12 +296,12 @@ export class IndexerHttp {
 					const captchaEnabled = captchaSolverSettingsService.isEnabled();
 
 					if (!captchaEnabled) {
-						this.log.info('Cloudflare detected, captcha solver disabled', { url, host });
+						this.log.info({ url, host }, 'Cloudflare detected, captcha solver disabled');
 						throw new CloudflareProtectedError(host, response.status);
 					}
 
 					if (captchaSolver.isAvailable()) {
-						this.log.info('Cloudflare detected, fetching through browser', { url, host });
+						this.log.info({ url, host }, 'Cloudflare detected, fetching through browser');
 
 						// Fetch directly through the browser - this bypasses JA3/TLS fingerprinting
 						// that prevents Node.js fetch from working even with valid cookies
@@ -294,12 +313,15 @@ export class IndexerHttp {
 						});
 
 						if (fetchResult.success) {
-							this.log.info('Browser fetch succeeded', {
-								host,
-								status: fetchResult.status,
-								bodyLength: fetchResult.body.length,
-								timeMs: fetchResult.timeMs
-							});
+							this.log.info(
+								{
+									host,
+									status: fetchResult.status,
+									bodyLength: fetchResult.body.length,
+									timeMs: fetchResult.timeMs
+								},
+								'Browser fetch succeeded'
+							);
 
 							const responseHeaders = new Headers();
 							if (fetchResult.headers) {
@@ -320,10 +342,13 @@ export class IndexerHttp {
 						}
 
 						// Browser fetch failed
-						this.log.warn('Browser fetch failed', {
-							host,
-							error: fetchResult.error
-						});
+						this.log.warn(
+							{
+								host,
+								error: fetchResult.error
+							},
+							'Browser fetch failed'
+						);
 
 						throw new CloudflareBypassError(
 							host,
@@ -353,6 +378,7 @@ export class IndexerHttp {
 			};
 		} finally {
 			clearTimeout(timeoutId);
+			options.signal?.removeEventListener('abort', abortListener);
 		}
 	}
 
@@ -395,13 +421,13 @@ export class IndexerHttp {
 	/**
 	 * Wait for rate limit if needed.
 	 */
-	private async waitForRateLimit(url: string): Promise<void> {
+	private async waitForRateLimit(url: string, signal?: AbortSignal): Promise<void> {
 		// Check indexer-level rate limit
 		const indexerLimiter = getRateLimitRegistry().get(this.config.indexerId);
 		const indexerWait = indexerLimiter.getWaitTime();
 		if (indexerWait > 0) {
-			this.log.debug('Rate limited by indexer', { waitMs: indexerWait });
-			await this.delay(indexerWait);
+			this.log.debug({ waitMs: indexerWait }, 'Rate limited by indexer');
+			await this.delayWithSignal(indexerWait, signal);
 		}
 
 		// Check host-level rate limit
@@ -409,9 +435,29 @@ export class IndexerHttp {
 		const hostLimiter = getHostRateLimiter().getLimiterForHost(host);
 		const hostWait = hostLimiter.getWaitTime();
 		if (hostWait > 0) {
-			this.log.debug('Rate limited by host', { host, waitMs: hostWait });
-			await this.delay(hostWait);
+			this.log.debug({ host, waitMs: hostWait }, 'Rate limited by host');
+			await this.delayWithSignal(hostWait, signal);
 		}
+	}
+
+	private async delayWithSignal(ms: number, signal?: AbortSignal): Promise<void> {
+		if (signal?.aborted) {
+			throw new Error('Aborted');
+		}
+
+		await new Promise<void>((resolve, reject) => {
+			const onAbort = () => {
+				clearTimeout(timeoutId);
+				reject(new Error('Aborted'));
+			};
+
+			const timeoutId = setTimeout(() => {
+				signal?.removeEventListener('abort', onAbort);
+				resolve();
+			}, ms);
+
+			signal?.addEventListener('abort', onAbort, { once: true });
+		});
 	}
 
 	/**
@@ -449,6 +495,13 @@ export class IndexerHttp {
 		}
 
 		// Retry on network errors
+		if (error instanceof Error && error.message === 'Aborted') {
+			return {
+				shouldRetry: false,
+				reason: 'Request aborted'
+			};
+		}
+
 		if (isRetryableNetworkError(error)) {
 			return { shouldRetry: true, reason: 'Network error' };
 		}

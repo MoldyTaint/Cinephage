@@ -13,8 +13,8 @@ on:
         required: true
         type: boolean
         default: true
-      allow_edge_rollback:
-        description: 'Allow edge-YYYYMMDD-RUN tags for emergency rollback'
+      allow_channel_rollback:
+        description: 'Allow main-YYYYMMDD-RUN or legacy edge-YYYYMMDD-RUN tags for emergency rollback'
         required: true
         type: boolean
         default: false
@@ -23,8 +23,8 @@ on:
         required: true
         type: string
         default: 'NO'
-      edge_confirm:
-        description: 'Type EDGE_ROLLBACK to allow edge rollback when allow_edge_rollback=true'
+      channel_confirm:
+        description: 'Type CHANNEL_ROLLBACK to allow channel rollback when allow_channel_rollback=true'
         required: true
         type: string
         default: 'NO'
@@ -55,8 +55,8 @@ jobs:
         id: refs
         env:
           SOURCE_TAG_INPUT: ${{ github.event.inputs.source_tag }}
-          ALLOW_EDGE_ROLLBACK: ${{ github.event.inputs.allow_edge_rollback }}
-          EDGE_CONFIRM: ${{ github.event.inputs.edge_confirm }}
+          ALLOW_CHANNEL_ROLLBACK: ${{ github.event.inputs.allow_channel_rollback }}
+          CHANNEL_CONFIRM: ${{ github.event.inputs.channel_confirm }}
         run: |
           set -euo pipefail
 
@@ -74,27 +74,27 @@ jobs:
           fi
 
           IS_STABLE_TAG='false'
-          IS_EDGE_TAG='false'
+          IS_CHANNEL_BUILD_TAG='false'
           if [[ "$SOURCE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             IS_STABLE_TAG='true'
           fi
-          if [[ "$SOURCE_TAG" =~ ^edge-[0-9]{8}-[0-9]+$ ]]; then
-            IS_EDGE_TAG='true'
+          if [[ "$SOURCE_TAG" =~ ^(main|edge)-[0-9]{8}-[0-9]+$ ]]; then
+            IS_CHANNEL_BUILD_TAG='true'
           fi
 
-          if [ "$IS_STABLE_TAG" != 'true' ] && [ "$IS_EDGE_TAG" != 'true' ]; then
-            echo "source_tag must be stable semver (vX.Y.Z) or edge-YYYYMMDD-RUN."
+          if [ "$IS_STABLE_TAG" != 'true' ] && [ "$IS_CHANNEL_BUILD_TAG" != 'true' ]; then
+            echo "source_tag must be stable semver (vX.Y.Z), main-YYYYMMDD-RUN, or legacy edge-YYYYMMDD-RUN."
             echo "Got: ${SOURCE_TAG}"
             exit 1
           fi
 
-          if [ "$IS_EDGE_TAG" = 'true' ]; then
-            if [ "$ALLOW_EDGE_ROLLBACK" != 'true' ]; then
-              echo "Refusing edge rollback: set allow_edge_rollback=true for edge tags."
+          if [ "$IS_CHANNEL_BUILD_TAG" = 'true' ]; then
+            if [ "$ALLOW_CHANNEL_ROLLBACK" != 'true' ]; then
+              echo "Refusing channel rollback: set allow_channel_rollback=true for main/edge tags."
               exit 1
             fi
-            if [ "$EDGE_CONFIRM" != 'EDGE_ROLLBACK' ]; then
-              echo "Refusing edge rollback: set edge_confirm=EDGE_ROLLBACK."
+            if [ "$CHANNEL_CONFIRM" != 'CHANNEL_ROLLBACK' ]; then
+              echo "Refusing channel rollback: set channel_confirm=CHANNEL_ROLLBACK."
               exit 1
             fi
           fi
@@ -114,14 +114,14 @@ jobs:
           echo "Latest image: ${LATEST_IMAGE}"
 
       - name: Log in to Container Registry
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
       - name: Install crane
         env:
@@ -150,7 +150,7 @@ jobs:
         env:
           SOURCE_IMAGE: ${{ steps.refs.outputs.source_image }}
           SOURCE_TAG: ${{ steps.refs.outputs.source_tag }}
-          ALLOW_EDGE_ROLLBACK: ${{ github.event.inputs.allow_edge_rollback }}
+          ALLOW_CHANNEL_ROLLBACK: ${{ github.event.inputs.allow_channel_rollback }}
         run: |
           set -euo pipefail
 
@@ -172,17 +172,17 @@ jobs:
             [[ "$value" =~ (^dev-|-dev($|[.-])|-rc($|[.-])|-beta($|[.-])|-alpha($|[.-])|-pre($|[.-])|-preview($|[.-])) ]]
           }
 
-          is_edge_channel() {
+          is_channel_build() {
             local value="$1"
             if [ -z "$value" ]; then
               return 1
             fi
-            [[ "$value" =~ (^edge-|-edge($|[.-])) ]]
+            [[ "$value" =~ (^main-|-main($|[.-])|^edge-|-edge($|[.-])) ]]
           }
 
-          IS_EDGE_ROLLBACK='false'
-          if [ "$ALLOW_EDGE_ROLLBACK" = 'true' ] && [[ "$SOURCE_TAG" =~ ^edge-[0-9]{8}-[0-9]+$ ]]; then
-            IS_EDGE_ROLLBACK='true'
+          IS_CHANNEL_ROLLBACK='false'
+          if [ "$ALLOW_CHANNEL_ROLLBACK" = 'true' ] && [[ "$SOURCE_TAG" =~ ^(main|edge)-[0-9]{8}-[0-9]+$ ]]; then
+            IS_CHANNEL_ROLLBACK='true'
           fi
 
           if is_dev_or_prerelease "$SOURCE_TAG"; then
@@ -190,8 +190,8 @@ jobs:
             exit 1
           fi
 
-          if [ "$IS_EDGE_ROLLBACK" != 'true' ] && is_edge_channel "$SOURCE_TAG"; then
-            echo "Refusing retag: source tag appears to be edge, but edge rollback is not enabled."
+          if [ "$IS_CHANNEL_ROLLBACK" != 'true' ] && is_channel_build "$SOURCE_TAG"; then
+            echo "Refusing retag: source tag appears to be a main/edge channel build, but channel rollback is not enabled."
             exit 1
           fi
 
@@ -200,8 +200,8 @@ jobs:
               echo "Refusing retag: source image metadata appears to be dev/prerelease."
               exit 1
             fi
-            if [ "$IS_EDGE_ROLLBACK" != 'true' ] && is_edge_channel "$value"; then
-              echo "Refusing retag: source image metadata appears to be edge, but edge rollback is not enabled."
+            if [ "$IS_CHANNEL_ROLLBACK" != 'true' ] && is_channel_build "$value"; then
+              echo "Refusing retag: source image metadata appears to be a main/edge channel build, but channel rollback is not enabled."
               exit 1
             fi
           done

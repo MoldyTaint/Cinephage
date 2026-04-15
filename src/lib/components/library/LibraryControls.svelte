@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { ArrowUpDown, Filter, X } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface SortOption {
 		value: string;
@@ -17,6 +18,7 @@
 		filterOptions,
 		currentSort = 'title-asc',
 		currentFilters = {},
+		hiddenActiveFilterKeys = [],
 		onSortChange,
 		onFilterChange,
 		onClearFilters
@@ -25,25 +27,29 @@
 		filterOptions: FilterOption[];
 		currentSort: string;
 		currentFilters: Record<string, string>;
+		hiddenActiveFilterKeys?: string[];
 		onSortChange: (sort: string) => void;
 		onFilterChange: (key: string, value: string) => void;
 		onClearFilters: () => void;
 	} = $props();
 
-	// Check if any non-default filters are active
-	const hasActiveFilters = $derived(
-		Object.entries(currentFilters).some(([, value]) => value !== 'all')
+	const visibleActiveFilterEntries = $derived(
+		Object.entries(currentFilters).filter(
+			([key, value]) => !hiddenActiveFilterKeys.includes(key) && value !== 'all'
+		)
 	);
 
+	// Check if any non-default filters are active
+	const hasActiveFilters = $derived(visibleActiveFilterEntries.length > 0);
+
 	// Count active filters
-	const activeFilterCount = $derived(
-		Object.values(currentFilters).filter((v) => v !== 'all').length
-	);
+	const activeFilterCount = $derived(visibleActiveFilterEntries.length);
 
 	// Get labels for active filters
 	const activeFilterLabels = $derived(() => {
 		const labels: string[] = [];
 		for (const filter of filterOptions) {
+			if (hiddenActiveFilterKeys.includes(filter.key)) continue;
 			const value = currentFilters[filter.key];
 			if (value && value !== 'all') {
 				const option = filter.options.find((o) => o.value === value);
@@ -63,7 +69,7 @@
 	<div class="dropdown dropdown-end">
 		<button class="btn gap-2 btn-ghost btn-sm">
 			<ArrowUpDown class="h-4 w-4" />
-			<span class="hidden sm:inline">Sort</span>
+			<span class="hidden sm:inline">{m.action_sort()}</span>
 		</button>
 		<ul class="dropdown-content menu z-50 w-52 rounded-box bg-base-200 p-2 shadow-lg">
 			{#each sortOptions as option (option.value)}
@@ -86,7 +92,7 @@
 			onclick={() => (isFilterOpen = !isFilterOpen)}
 		>
 			<Filter class="h-4 w-4" />
-			<span class="hidden sm:inline">Filters</span>
+			<span class="hidden sm:inline">{m.action_filter()}</span>
 			{#if activeFilterCount > 0}
 				<span class="badge badge-sm">{activeFilterCount}</span>
 			{/if}
@@ -116,7 +122,7 @@
 
 				{#if hasActiveFilters}
 					<button class="btn w-full btn-ghost btn-sm" onclick={onClearFilters}>
-						Clear All Filters
+						{m.library_controls_clearAllFilters()}
 					</button>
 				{/if}
 			</div>

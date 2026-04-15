@@ -10,13 +10,15 @@
 
 import * as net from 'net';
 import * as tls from 'tls';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import {
 	type NntpConnectionState,
 	type NntpResponse,
 	type ClassifiedError,
 	NntpResponseCode
 } from './types';
+
+const logger = createChildLogger({ logDomain: 'streams' as const });
 
 const CRLF = '\r\n';
 
@@ -350,7 +352,7 @@ export class NntpConnection {
 			}, timeout);
 
 			const logCommand = command.startsWith('AUTHINFO PASS') ? 'AUTHINFO PASS ****' : command;
-			logger.debug(`[NntpConnection] > ${logCommand}`);
+			logger.debug({ command: logCommand }, 'Sending NNTP command');
 
 			this.lastActivityTime = Date.now();
 			this.socket.write(command + CRLF);
@@ -380,7 +382,7 @@ export class NntpConnection {
 				reject(new Error(`Multiline command timeout after ${timeout}ms`));
 			}, timeout);
 
-			logger.debug(`[NntpConnection] > ${command}`);
+			logger.debug({ command }, 'Sending multiline NNTP command');
 
 			this.lastActivityTime = Date.now();
 			this.socket.write(command + CRLF);
@@ -415,7 +417,12 @@ export class NntpConnection {
 				const response: NntpResponse = { code, message, data: bodyData };
 
 				logger.debug(
-					`[NntpConnection] < ${code} ${message.slice(0, 50)}... (${bodyData.length} bytes)`
+					{
+						code,
+						message: `${message.slice(0, 50)}...`,
+						bodyLength: bodyData.length
+					},
+					'Received multiline NNTP response'
 				);
 
 				if (this.pendingResolve) {
@@ -437,7 +444,7 @@ export class NntpConnection {
 				const code = parseInt(line.slice(0, 3), 10);
 				const message = line.slice(4);
 
-				logger.debug(`[NntpConnection] < ${code} ${message}`);
+				logger.debug({ code, message }, 'Received NNTP response');
 
 				const response: NntpResponse = { code, message };
 

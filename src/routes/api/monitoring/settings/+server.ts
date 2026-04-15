@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
 import { z } from 'zod';
 import { logger } from '$lib/logging';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 /**
  * Schema for updating monitoring settings
@@ -56,7 +57,11 @@ export const GET: RequestHandler = async () => {
  * PUT /api/monitoring/settings
  * Update monitoring settings
  */
-export const PUT: RequestHandler = async ({ request }) => {
+export const PUT: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { request } = event;
 	try {
 		const body = await request.json();
 		const validation = monitoringSettingsSchema.safeParse(body);

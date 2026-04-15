@@ -29,20 +29,20 @@ export const POST: RequestHandler = async ({ params }) => {
 		return json({ success: false, error: `Task '${taskId}' is not running` }, { status: 400 });
 	}
 
-	logger.info('[TaskCancelAPI] Cancelling task', { taskId });
+	logger.info({ taskId }, '[TaskCancelAPI] Cancelling task');
 
 	try {
 		const cancelled = await taskHistoryService.cancelTask(taskId);
 
 		if (cancelled) {
-			logger.info('[TaskCancelAPI] Task cancelled successfully', { taskId });
+			logger.info({ taskId }, '[TaskCancelAPI] Task cancelled successfully');
 			return json({ success: true, message: `Task '${taskId}' cancelled` });
 		} else {
 			return json({ success: false, error: `Failed to cancel task '${taskId}'` }, { status: 500 });
 		}
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Failed to cancel task';
-		logger.error('[TaskCancelAPI] Error cancelling task', { taskId, error: message });
+		logger.error({ taskId, error: message }, '[TaskCancelAPI] Error cancelling task');
 		return json({ success: false, error: message }, { status: 500 });
 	}
 };

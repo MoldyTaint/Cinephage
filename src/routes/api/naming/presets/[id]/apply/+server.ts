@@ -5,12 +5,18 @@ import { namingPresets } from '$lib/server/db/schema';
 import { getBuiltInPreset, type NamingPreset } from '$lib/server/library/naming/presets';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService';
 import { eq } from 'drizzle-orm';
+import { logger } from '$lib/logging';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 /**
  * POST /api/naming/presets/[id]/apply
  * Apply a preset's config to the current naming settings
  */
-export const POST: RequestHandler = async ({ params }) => {
+export const POST: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { params } = event;
 	try {
 		const { id } = params;
 		let presetConfig: NamingPreset['config'];
@@ -41,7 +47,7 @@ export const POST: RequestHandler = async ({ params }) => {
 			config: updatedConfig
 		});
 	} catch (err) {
-		console.error('Error applying naming preset:', err);
+		logger.error({ err, component: 'NamingPresetApplyApi' }, 'Error applying naming preset');
 		return json({ error: 'Failed to apply preset' }, { status: 500 });
 	}
 };

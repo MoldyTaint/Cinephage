@@ -1,11 +1,13 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { db } from '$lib/server/db';
 import { settings } from '$lib/server/db/schema';
 import { globalTmdbFiltersSchema } from '$lib/validation/schemas';
 import { eq } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { tmdb } from '$lib/server/tmdb';
 import type { GlobalTmdbFilters } from '$lib/types/tmdb';
+import { parseBody } from '$lib/server/api/validate.js';
 
 const DEFAULT_FILTERS: GlobalTmdbFilters = {
 	include_adult: false,
@@ -16,7 +18,11 @@ const DEFAULT_FILTERS: GlobalTmdbFilters = {
 	excluded_genre_ids: []
 };
 
-export const GET: RequestHandler = async () => {
+export const GET: RequestHandler = async (event) => {
+	// Require admin authentication
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
 	const settingsData = await db.query.settings.findFirst({
 		where: eq(settings.key, 'global_filters')
 	});
@@ -34,41 +40,32 @@ export const GET: RequestHandler = async () => {
 				...stored
 			}
 		});
-	} catch (error) {
-		logger.error('Failed to parse global_filters', error);
+	} catch {
+		// Invalid JSON, return defaults
 		return json({ success: true, filters: DEFAULT_FILTERS });
 	}
 };
 
-export const PUT: RequestHandler = async ({ request }) => {
-	let data: unknown;
-	try {
-		data = await request.json();
-	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
-	}
+export const PUT: RequestHandler = async (event) => {
+	// Require admin authentication
+	const authError = requireAdmin(event);
+	if (authError) return authError;
 
-	const result = globalTmdbFiltersSchema.safeParse(data);
-	if (!result.success) {
-		return json(
-			{
-				error: 'Validation failed',
-				details: result.error.flatten()
-			},
-			{ status: 400 }
-		);
-	}
+	const { request } = event;
+	const result = await parseBody(request, globalTmdbFiltersSchema);
 
 	await db
 		.insert(settings)
 		.values({
 			key: 'global_filters',
-			value: JSON.stringify(result.data)
+			value: JSON.stringify(result)
 		})
 		.onConflictDoUpdate({
 			target: settings.key,
-			set: { value: JSON.stringify(result.data) }
+			set: { value: JSON.stringify(result) }
 		});
 
-	return json({ success: true, filters: result.data });
+	tmdb.invalidateSettings();
+
+	return json({ success: true, filters: result });
 };

@@ -10,14 +10,17 @@
  */
 
 import { db } from '$lib/server/db/index.js';
-import { rootFolders, languageProfiles } from '$lib/server/db/schema.js';
+import { rootFolders, languageProfiles, scoringProfiles } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
 import { qualityFilter } from '$lib/server/quality/index.js';
 import { searchOnAdd } from './searchOnAdd.js';
 import { SearchWorker, workerManager } from '$lib/server/workers/index.js';
 import { ValidationError, NotFoundError, ExternalServiceError } from '$lib/errors';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+import { getEffectiveAnimeRootFolderEnforcement } from './anime-root-enforcement-settings.js';
+
+const logger = createChildLogger({ logDomain: 'scans' as const });
 
 export type MediaType = 'movie' | 'tv';
 
@@ -25,6 +28,13 @@ export interface RootFolderInfo {
 	id: string;
 	path: string;
 	mediaType: string;
+	mediaSubType: string;
+}
+
+export interface RootFolderValidationOptions {
+	enforceAnimeSubtype?: boolean;
+	isAnimeMedia?: boolean;
+	mediaTitle?: string;
 }
 
 export interface ExternalIds {
@@ -41,7 +51,8 @@ export interface SearchOnAddResult {
  */
 export async function validateRootFolder(
 	rootFolderId: string,
-	expectedMediaType: MediaType
+	expectedMediaType: MediaType,
+	options: RootFolderValidationOptions = {}
 ): Promise<RootFolderInfo> {
 	const [folder] = await db
 		.select()
@@ -61,18 +72,62 @@ export async function validateRootFolder(
 		});
 	}
 
+	const mediaSubType = folder.mediaSubType ?? 'standard';
+	if (options.enforceAnimeSubtype && typeof options.isAnimeMedia === 'boolean') {
+		const expectedMediaSubType = options.isAnimeMedia ? 'anime' : 'standard';
+		if (mediaSubType !== expectedMediaSubType) {
+			const mediaLabel = options.isAnimeMedia ? 'Anime' : 'Standard';
+			const expectedLabel = expectedMediaSubType === 'anime' ? 'Anime' : 'Standard';
+			throw new ValidationError(
+				`${mediaLabel} media can only be added to a ${expectedLabel} root folder while anime enforcement is enabled`,
+				{
+					rootFolderId: folder.id,
+					rootFolderName: folder.name,
+					mediaSubType,
+					expectedMediaSubType,
+					isAnimeMedia: options.isAnimeMedia,
+					title: options.mediaTitle
+				}
+			);
+		}
+	}
+
 	return {
 		id: folder.id,
 		path: folder.path,
-		mediaType: folder.mediaType
+		mediaType: folder.mediaType,
+		mediaSubType
 	};
+}
+
+export async function getAnimeSubtypeEnforcement(): Promise<boolean> {
+	return getEffectiveAnimeRootFolderEnforcement();
 }
 
 /**
  * Get the effective scoring profile ID (provided or default)
  */
 export async function getEffectiveScoringProfileId(providedProfileId?: string): Promise<string> {
+	// Ensure built-in profiles exist as valid FK targets before resolving the final profile ID.
+	await qualityFilter.seedDefaultScoringProfiles();
+
 	if (providedProfileId) {
+		const existingProfile = await db
+			.select({ id: scoringProfiles.id })
+			.from(scoringProfiles)
+			.where(eq(scoringProfiles.id, providedProfileId))
+			.limit(1)
+			.get();
+
+		if (!existingProfile) {
+			throw new ValidationError(
+				'Selected quality profile is no longer valid. Refresh and try again.',
+				{
+					scoringProfileId: providedProfileId
+				}
+			);
+		}
+
 		return providedProfileId;
 	}
 
@@ -98,9 +153,12 @@ export async function getLanguageProfileId(
 		.limit(1);
 
 	if (!defaultLanguageProfile) {
-		logger.warn('[LibraryAddService] No default language profile found for subtitle preferences', {
-			tmdbId
-		});
+		logger.warn(
+			{
+				tmdbId
+			},
+			'[LibraryAddService] No default language profile found for subtitle preferences'
+		);
 		return null;
 	}
 
@@ -118,7 +176,7 @@ export async function fetchMovieExternalIds(tmdbId: number): Promise<ExternalIds
 			tvdbId: null
 		};
 	} catch {
-		logger.warn('[LibraryAddService] Failed to fetch external IDs for movie', { tmdbId });
+		logger.warn({ tmdbId }, '[LibraryAddService] Failed to fetch external IDs for movie');
 		return { imdbId: null, tvdbId: null };
 	}
 }
@@ -134,7 +192,7 @@ export async function fetchSeriesExternalIds(tmdbId: number): Promise<ExternalId
 			tvdbId: externalIds.tvdb_id
 		};
 	} catch {
-		logger.warn('[LibraryAddService] Failed to fetch external IDs for series', { tmdbId });
+		logger.warn({ tmdbId }, '[LibraryAddService] Failed to fetch external IDs for series');
 		return { imdbId: null, tvdbId: null };
 	}
 }
@@ -207,10 +265,13 @@ export async function triggerMovieSearch(params: {
 		return { triggered: true };
 	} catch (error) {
 		// Concurrency limit reached - fall back to fire and forget
-		logger.warn('[LibraryAddService] Could not create search worker, running directly', {
-			movieId,
-			error: error instanceof Error ? error.message : 'Unknown error'
-		});
+		logger.warn(
+			{
+				movieId,
+				error: error instanceof Error ? error.message : 'Unknown error'
+			},
+			'[LibraryAddService] Could not create search worker, running directly'
+		);
 
 		searchOnAdd
 			.searchForMovie({
@@ -222,10 +283,13 @@ export async function triggerMovieSearch(params: {
 				scoringProfileId
 			})
 			.catch((err) => {
-				logger.warn('[LibraryAddService] Background search failed for movie', {
-					movieId,
-					error: err instanceof Error ? err.message : 'Unknown error'
-				});
+				logger.warn(
+					{
+						movieId,
+						error: err instanceof Error ? err.message : 'Unknown error'
+					},
+					'[LibraryAddService] Background search failed for movie'
+				);
 			});
 
 		return { triggered: true };
@@ -262,16 +326,22 @@ export async function triggerSeriesSearch(params: {
 		return { triggered: true };
 	} catch (error) {
 		// Concurrency limit reached - fall back to fire and forget
-		logger.warn('[LibraryAddService] Could not create search worker, running directly', {
-			seriesId,
-			error: error instanceof Error ? error.message : 'Unknown error'
-		});
+		logger.warn(
+			{
+				seriesId,
+				error: error instanceof Error ? error.message : 'Unknown error'
+			},
+			'[LibraryAddService] Could not create search worker, running directly'
+		);
 
 		searchOnAdd.searchForMissingEpisodes(seriesId).catch((err) => {
-			logger.warn('[LibraryAddService] Background search failed for series', {
-				seriesId,
-				error: err instanceof Error ? err.message : 'Unknown error'
-			});
+			logger.warn(
+				{
+					seriesId,
+					error: err instanceof Error ? err.message : 'Unknown error'
+				},
+				'[LibraryAddService] Background search failed for series'
+			);
 		});
 
 		return { triggered: true };

@@ -3,6 +3,8 @@ import type { RequestHandler } from './$types';
 import { z } from 'zod';
 import { captchaSolverSettingsService, getCaptchaSolver } from '$lib/server/captcha';
 import { logger } from '$lib/logging';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { resolveAppVersion } from '$lib/server/version.js';
 
 const requestSchema = z
 	.object({
@@ -17,7 +19,12 @@ const requestSchema = z
 		maxTimeout: data.maxTimeout ?? data.max_timeout ?? 60
 	}));
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async (event) => {
+	const appVersion = resolveAppVersion();
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { request } = event;
 	let requestUrl: string;
 	try {
 		const body = await request.json();
@@ -35,7 +42,7 @@ export const POST: RequestHandler = async ({ request }) => {
 						endTimestamp: Date.now(),
 						durationMs: 0
 					},
-					version: process.env.npm_package_version ?? 'unknown'
+					version: appVersion
 				},
 				{ status: 400 }
 			);
@@ -60,7 +67,7 @@ export const POST: RequestHandler = async ({ request }) => {
 						endTimestamp: Date.now(),
 						durationMs: Date.now() - startTimestamp
 					},
-					version: process.env.npm_package_version ?? 'unknown'
+					version: appVersion
 				},
 				{ status: 403 }
 			);
@@ -78,7 +85,7 @@ export const POST: RequestHandler = async ({ request }) => {
 						endTimestamp: Date.now(),
 						durationMs: Date.now() - startTimestamp
 					},
-					version: process.env.npm_package_version ?? 'unknown'
+					version: appVersion
 				},
 				{ status: 503 }
 			);
@@ -110,7 +117,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				endTimestamp,
 				durationMs: endTimestamp - startTimestamp
 			},
-			version: process.env.npm_package_version ?? 'unknown'
+			version: appVersion
 		});
 	} catch (error) {
 		logger.error('[API] Captcha bypass request failed', error instanceof Error ? error : undefined);
@@ -127,7 +134,7 @@ export const POST: RequestHandler = async ({ request }) => {
 					endTimestamp,
 					durationMs: endTimestamp - startTimestamp
 				},
-				version: process.env.npm_package_version ?? 'unknown'
+				version: appVersion
 			},
 			{ status: 500 }
 		);

@@ -1,30 +1,18 @@
-/**
- * CaptchaSolverSettings Tests
- *
- * Tests for the database-backed configuration service.
- */
-
 import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
-import { initTestDb, closeTestDb, getTestDb } from '../../../test/db-helper';
+import { createTestDb, destroyTestDb, type TestDatabase } from '../../../test/db-helper';
 
-// Initialize test database FIRST
-initTestDb();
+const testDb: TestDatabase = createTestDb();
 
-// Mock the database module
-vi.mock('$lib/server/db', async () => {
-	const { getTestDb } = await import('../../../test/db-helper');
-	return {
-		get db() {
-			return getTestDb().db;
-		},
-		get sqlite() {
-			return getTestDb().sqlite;
-		},
-		initializeDatabase: vi.fn().mockResolvedValue(undefined)
-	};
-});
+vi.mock('$lib/server/db', () => ({
+	get db() {
+		return testDb.db;
+	},
+	get sqlite() {
+		return testDb.sqlite;
+	},
+	initializeDatabase: vi.fn().mockResolvedValue(undefined)
+}));
 
-// Import after mocking
 const { CaptchaSolverSettingsService, captchaSolverSettingsService } =
 	await import('./CaptchaSolverSettings');
 const { DEFAULT_CONFIG } = await import('./types');
@@ -32,15 +20,12 @@ const { captchaSolverSettings } = await import('$lib/server/db/schema');
 
 describe('CaptchaSolverSettingsService', () => {
 	beforeEach(() => {
-		// Clear all settings before each test
-		const { db } = getTestDb();
-		db.delete(captchaSolverSettings).run();
-		// Invalidate cache
+		testDb.db.delete(captchaSolverSettings).run();
 		captchaSolverSettingsService.invalidateCache();
 	});
 
 	afterAll(() => {
-		closeTestDb();
+		destroyTestDb(testDb);
 	});
 
 	describe('Singleton pattern', () => {
@@ -69,9 +54,8 @@ describe('CaptchaSolverSettingsService', () => {
 		});
 
 		it('should parse boolean settings correctly', () => {
-			const { db } = getTestDb();
-			db.insert(captchaSolverSettings).values({ key: 'enabled', value: 'false' }).run();
-			db.insert(captchaSolverSettings).values({ key: 'headless', value: 'false' }).run();
+			testDb.db.insert(captchaSolverSettings).values({ key: 'enabled', value: 'false' }).run();
+			testDb.db.insert(captchaSolverSettings).values({ key: 'headless', value: 'false' }).run();
 			captchaSolverSettingsService.invalidateCache();
 
 			const config = captchaSolverSettingsService.getConfig();
@@ -81,9 +65,14 @@ describe('CaptchaSolverSettingsService', () => {
 		});
 
 		it('should parse numeric settings correctly', () => {
-			const { db } = getTestDb();
-			db.insert(captchaSolverSettings).values({ key: 'timeout_seconds', value: '120' }).run();
-			db.insert(captchaSolverSettings).values({ key: 'cache_ttl_seconds', value: '7200' }).run();
+			testDb.db
+				.insert(captchaSolverSettings)
+				.values({ key: 'timeout_seconds', value: '120' })
+				.run();
+			testDb.db
+				.insert(captchaSolverSettings)
+				.values({ key: 'cache_ttl_seconds', value: '7200' })
+				.run();
 			captchaSolverSettingsService.invalidateCache();
 
 			const config = captchaSolverSettingsService.getConfig();
@@ -93,12 +82,18 @@ describe('CaptchaSolverSettingsService', () => {
 		});
 
 		it('should build proxy config from separate fields', () => {
-			const { db } = getTestDb();
-			db.insert(captchaSolverSettings)
+			testDb.db
+				.insert(captchaSolverSettings)
 				.values({ key: 'proxy_url', value: 'http://proxy.example.com:8080' })
 				.run();
-			db.insert(captchaSolverSettings).values({ key: 'proxy_username', value: 'user' }).run();
-			db.insert(captchaSolverSettings).values({ key: 'proxy_password', value: 'pass' }).run();
+			testDb.db
+				.insert(captchaSolverSettings)
+				.values({ key: 'proxy_username', value: 'user' })
+				.run();
+			testDb.db
+				.insert(captchaSolverSettings)
+				.values({ key: 'proxy_password', value: 'pass' })
+				.run();
 			captchaSolverSettingsService.invalidateCache();
 
 			const config = captchaSolverSettingsService.getConfig();
@@ -110,9 +105,11 @@ describe('CaptchaSolverSettingsService', () => {
 		});
 
 		it('should NOT create proxy config for empty proxy_url', () => {
-			const { db } = getTestDb();
-			db.insert(captchaSolverSettings).values({ key: 'proxy_url', value: '' }).run();
-			db.insert(captchaSolverSettings).values({ key: 'proxy_username', value: 'user' }).run();
+			testDb.db.insert(captchaSolverSettings).values({ key: 'proxy_url', value: '' }).run();
+			testDb.db
+				.insert(captchaSolverSettings)
+				.values({ key: 'proxy_username', value: 'user' })
+				.run();
 			captchaSolverSettingsService.invalidateCache();
 
 			const config = captchaSolverSettingsService.getConfig();
@@ -121,18 +118,14 @@ describe('CaptchaSolverSettingsService', () => {
 		});
 
 		it('should return cached config on subsequent calls', () => {
-			// First call loads from DB
 			const config1 = captchaSolverSettingsService.getConfig();
 
-			// Insert new data (won't be seen because of cache)
-			const { db } = getTestDb();
-			db.insert(captchaSolverSettings).values({ key: 'enabled', value: 'false' }).run();
+			testDb.db.insert(captchaSolverSettings).values({ key: 'enabled', value: 'false' }).run();
 
-			// Second call should return cached value
 			const config2 = captchaSolverSettingsService.getConfig();
 
 			expect(config1.enabled).toBe(config2.enabled);
-			expect(config2.enabled).toBe(true); // Still cached default
+			expect(config2.enabled).toBe(true);
 		});
 	});
 
@@ -142,7 +135,6 @@ describe('CaptchaSolverSettingsService', () => {
 
 			expect(result.enabled).toBe(false);
 
-			// Verify persisted
 			captchaSolverSettingsService.invalidateCache();
 			const config = captchaSolverSettingsService.getConfig();
 			expect(config.enabled).toBe(false);
@@ -159,17 +151,15 @@ describe('CaptchaSolverSettingsService', () => {
 		});
 
 		it('should handle partial updates', () => {
-			// Set initial values
 			captchaSolverSettingsService.updateConfig({
 				enabled: true,
 				timeoutSeconds: 60
 			});
 
-			// Update only one field
 			const result = captchaSolverSettingsService.updateConfig({ timeoutSeconds: 120 });
 
-			expect(result.enabled).toBe(true); // Unchanged
-			expect(result.timeoutSeconds).toBe(120); // Updated
+			expect(result.enabled).toBe(true);
+			expect(result.timeoutSeconds).toBe(120);
 		});
 
 		it('should update proxy via proxyUrl field', () => {
@@ -197,24 +187,20 @@ describe('CaptchaSolverSettingsService', () => {
 		});
 
 		it('should clear proxy when set to undefined', () => {
-			// First set a proxy
 			captchaSolverSettingsService.updateConfig({
 				proxy: { url: 'http://proxy.example.com:8080' }
 			});
 
-			// Then clear it
 			const result = captchaSolverSettingsService.updateConfig({
 				proxy: undefined
 			});
 
-			// Proxy should be cleared
 			expect(result.proxy).toBeUndefined();
 		});
 
 		it('should invalidate cache after update', () => {
 			captchaSolverSettingsService.updateConfig({ enabled: false });
 
-			// Should return updated value (cache was invalidated)
 			const config = captchaSolverSettingsService.getConfig();
 			expect(config.enabled).toBe(false);
 		});
@@ -222,14 +208,12 @@ describe('CaptchaSolverSettingsService', () => {
 
 	describe('resetToDefaults', () => {
 		it('should clear all settings and return defaults', () => {
-			// Set some values
 			captchaSolverSettingsService.updateConfig({
 				enabled: false,
 				timeoutSeconds: 120,
 				proxyUrl: 'http://proxy.example.com:8080'
 			});
 
-			// Reset
 			const result = captchaSolverSettingsService.resetToDefaults();
 
 			expect(result.enabled).toBe(DEFAULT_CONFIG.enabled);
@@ -241,9 +225,7 @@ describe('CaptchaSolverSettingsService', () => {
 			captchaSolverSettingsService.updateConfig({ enabled: false });
 			captchaSolverSettingsService.resetToDefaults();
 
-			// Verify DB is cleared
-			const { db } = getTestDb();
-			const settings = db.select().from(captchaSolverSettings).all();
+			const settings = testDb.db.select().from(captchaSolverSettings).all();
 			expect(settings.length).toBe(0);
 		});
 	});
@@ -261,14 +243,10 @@ describe('CaptchaSolverSettingsService', () => {
 
 	describe('invalidateCache', () => {
 		it('should force reload from database', () => {
-			// Get config (caches it)
 			captchaSolverSettingsService.getConfig();
 
-			// Insert directly to DB
-			const { db } = getTestDb();
-			db.insert(captchaSolverSettings).values({ key: 'enabled', value: 'false' }).run();
+			testDb.db.insert(captchaSolverSettings).values({ key: 'enabled', value: 'false' }).run();
 
-			// Invalidate and reload
 			captchaSolverSettingsService.invalidateCache();
 			const config = captchaSolverSettingsService.getConfig();
 

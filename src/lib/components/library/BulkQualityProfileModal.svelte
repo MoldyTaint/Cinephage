@@ -2,6 +2,7 @@
 	import { X, Loader2 } from 'lucide-svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import { mediaTypeCountLabel, type MediaType } from '$lib/utils/media-type';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface QualityProfile {
 		id: string;
@@ -48,12 +49,14 @@
 
 <ModalWrapper {open} onClose={onCancel} maxWidth="md" labelledBy="bulk-profile-modal-title">
 	<div class="mb-4 flex items-center justify-between">
-		<h3 id="bulk-profile-modal-title" class="text-lg font-bold">Change Quality Profile</h3>
+		<h3 id="bulk-profile-modal-title" class="text-lg font-bold">
+			{m.library_bulkQualityProfile_title()}
+		</h3>
 		<button
 			type="button"
 			class="btn btn-circle btn-ghost btn-sm"
 			onclick={onCancel}
-			aria-label="Close"
+			aria-label={m.action_close()}
 		>
 			<X class="h-4 w-4" />
 		</button>
@@ -61,24 +64,29 @@
 
 	<div class="mb-4 rounded-lg bg-base-200 p-3">
 		<div class="font-medium">
-			{selectedCount}
-			{itemLabel} selected
+			{m.library_bulkQualityProfile_selectedCount({ count: selectedCount })}
 		</div>
 		<div class="text-sm text-base-content/60">
-			The selected quality profile will be applied to all selected items.
+			{m.library_bulkQualityProfile_description()}
 		</div>
 	</div>
 
 	<div class="form-control">
 		<label class="label" for="bulk-quality-profile">
-			<span class="label-text font-medium">Quality Profile</span>
+			<span class="label-text font-medium"
+				>{m.library_bulkQualityProfile_qualityProfileLabel()}</span
+			>
 		</label>
 		<select
 			id="bulk-quality-profile"
 			bind:value={qualityProfileId}
 			class="select-bordered select w-full"
 		>
-			<option value="">{defaultProfile?.name ?? 'System Default'} (Default)</option>
+			<option value=""
+				>{m.library_bulkQualityProfile_defaultOption({
+					name: defaultProfile?.name ?? m.common_default()
+				})}</option
+			>
 			{#each nonDefaultProfiles as profile (profile.id)}
 				<option value={profile.id}>{profile.name}</option>
 			{/each}
@@ -88,7 +96,7 @@
 				{#if currentProfile}
 					{currentProfile.description}
 				{:else}
-					Controls quality scoring and upgrade behavior
+					{m.library_bulkQualityProfile_profileHint({ count: selectedCount })}
 				{/if}
 			</span>
 		</div>
@@ -96,14 +104,13 @@
 
 	<div class="modal-action">
 		<button type="button" class="btn btn-ghost" onclick={onCancel} disabled={saving}>
-			Cancel
+			{m.action_cancel()}
 		</button>
 		<button type="button" class="btn btn-primary" onclick={handleSave} disabled={saving}>
 			{#if saving}
 				<Loader2 class="h-4 w-4 animate-spin" />
 			{/if}
-			Apply to {selectedCount}
-			{itemLabel}
+			{m.library_bulkQualityProfile_applyButton({ count: selectedCount, items: itemLabel })}
 		</button>
 	</div>
 </ModalWrapper>

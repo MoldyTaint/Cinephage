@@ -5,7 +5,14 @@
  * Loads and saves naming preferences from the namingSettings table.
  */
 
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'scans' as const });
+import {
+	DEFAULT_NAMING_PRESET_SELECTION,
+	normalizeNamingPresetSelection,
+	type NamingPresetSelection
+} from '$lib/naming/editor-state';
 import { db } from '$lib/server/db';
 import { namingSettings } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
@@ -31,12 +38,23 @@ const KEY_MAP: Record<string, keyof NamingConfig> = {
 	include_release_group: 'includeReleaseGroup'
 };
 
+const PRESET_KEY_MAP = {
+	selected_server_preset_id: 'selectedServerPresetId',
+	selected_style_preset_id: 'selectedStylePresetId',
+	selected_detail_preset_id: 'selectedDetailPresetId',
+	selected_custom_preset_id: 'selectedCustomPresetId'
+} as const satisfies Record<string, keyof NamingPresetSelection>;
+
 /**
  * Reverse mapping from config property to database key
  */
 const REVERSE_KEY_MAP: Record<keyof NamingConfig, string> = Object.fromEntries(
 	Object.entries(KEY_MAP).map(([k, v]) => [v, k])
 ) as Record<keyof NamingConfig, string>;
+
+const REVERSE_PRESET_KEY_MAP: Record<keyof NamingPresetSelection, string> = Object.fromEntries(
+	Object.entries(PRESET_KEY_MAP).map(([k, v]) => [v, k])
+) as Record<keyof NamingPresetSelection, string>;
 
 /**
  * Boolean settings that need special handling
@@ -63,6 +81,7 @@ function setConfigValue(
 export class NamingSettingsService {
 	private static instance: NamingSettingsService;
 	private cachedConfig: NamingConfig | null = null;
+	private cachedPresetSelection: NamingPresetSelection | null = null;
 
 	private constructor() {}
 
@@ -82,43 +101,17 @@ export class NamingSettingsService {
 			return { ...this.cachedConfig };
 		}
 
-		let settings: { key: string; value: string }[] = [];
-		try {
-			settings = db.select().from(namingSettings).all();
-		} catch (error) {
-			logger.warn('[NamingSettingsService] Failed to load settings from DB (using defaults)', {
-				error: error instanceof Error ? error.message : String(error)
-			});
-			// Determine if table is missing
-			if (String(error).includes('no such table')) {
-				logger.error(
-					'[NamingSettingsService] CRITICAL: naming_settings table is missing! Please run migrations.'
-				);
-			}
+		const { config } = this.loadCachedStateFromDb();
+		return config;
+	}
+
+	async getPresetSelection(): Promise<NamingPresetSelection> {
+		if (this.cachedPresetSelection) {
+			return { ...this.cachedPresetSelection };
 		}
 
-		const settingsMap = new Map(settings.map((s) => [s.key, s.value]));
-
-		// Build config from database settings, falling back to defaults
-		const config: NamingConfig = { ...DEFAULT_NAMING_CONFIG };
-
-		for (const [dbKey, configKey] of Object.entries(KEY_MAP)) {
-			const value = settingsMap.get(dbKey);
-			if (value !== undefined) {
-				if (BOOLEAN_KEYS.has(dbKey)) {
-					// Parse boolean values
-					setConfigValue(config, configKey, value === 'true');
-				} else if (value === 'null' || value === '') {
-					// Handle null/empty values for optional fields
-					setConfigValue(config, configKey, undefined);
-				} else {
-					setConfigValue(config, configKey, value);
-				}
-			}
-		}
-
-		this.cachedConfig = config;
-		return { ...config };
+		const { presetSelection } = this.loadCachedStateFromDb();
+		return presetSelection;
 	}
 
 	/**
@@ -130,39 +123,17 @@ export class NamingSettingsService {
 			return { ...this.cachedConfig };
 		}
 
-		// Load synchronously for immediate use
-		let settings: { key: string; value: string }[] = [];
-		try {
-			settings = db.select().from(namingSettings).all();
-		} catch (error) {
-			// Cannot log async here easily if logger.warn is async, but usually it's safe.
-			// Just suppress specifically for missing table or sync issues.
-			if (String(error).includes('no such table')) {
-				console.error(
-					'[NamingSettingsService] CRITICAL: naming_settings table missing (sync load)'
-				);
-			}
+		const { config } = this.loadCachedStateFromDb();
+		return config;
+	}
+
+	getPresetSelectionSync(): NamingPresetSelection {
+		if (this.cachedPresetSelection) {
+			return { ...this.cachedPresetSelection };
 		}
 
-		const settingsMap = new Map(settings.map((s) => [s.key, s.value]));
-
-		const config: NamingConfig = { ...DEFAULT_NAMING_CONFIG };
-
-		for (const [dbKey, configKey] of Object.entries(KEY_MAP)) {
-			const value = settingsMap.get(dbKey);
-			if (value !== undefined) {
-				if (BOOLEAN_KEYS.has(dbKey)) {
-					setConfigValue(config, configKey, value === 'true');
-				} else if (value === 'null' || value === '') {
-					setConfigValue(config, configKey, undefined);
-				} else {
-					setConfigValue(config, configKey, value);
-				}
-			}
-		}
-
-		this.cachedConfig = config;
-		return { ...config };
+		const { presetSelection } = this.loadCachedStateFromDb();
+		return presetSelection;
 	}
 
 	/**
@@ -202,6 +173,47 @@ export class NamingSettingsService {
 		return this.getConfig();
 	}
 
+	async updatePresetSelection(
+		updates: Partial<NamingPresetSelection>
+	): Promise<NamingPresetSelection> {
+		const nextSelection = normalizeNamingPresetSelection({
+			...this.getPresetSelectionSync(),
+			...updates
+		});
+
+		for (const [selectionKey, value] of Object.entries(nextSelection)) {
+			const dbKey = REVERSE_PRESET_KEY_MAP[selectionKey as keyof NamingPresetSelection];
+			if (!dbKey) continue;
+
+			const stringValue = value ? String(value) : '';
+			const existing = db.select().from(namingSettings).where(eq(namingSettings.key, dbKey)).get();
+
+			if (existing) {
+				db.update(namingSettings)
+					.set({ value: stringValue })
+					.where(eq(namingSettings.key, dbKey))
+					.run();
+			} else {
+				db.insert(namingSettings).values({ key: dbKey, value: stringValue }).run();
+			}
+		}
+
+		this.invalidateCache();
+		return this.getPresetSelection();
+	}
+
+	async updateSettings(options: {
+		config: Partial<NamingConfig>;
+		presetSelection: Partial<NamingPresetSelection>;
+	}): Promise<{ config: NamingConfig; presetSelection: NamingPresetSelection }> {
+		await this.updateConfig(options.config);
+		const presetSelection = await this.updatePresetSelection(options.presetSelection);
+		return {
+			config: await this.getConfig(),
+			presetSelection
+		};
+	}
+
 	/**
 	 * Reset all naming settings to defaults
 	 */
@@ -221,6 +233,62 @@ export class NamingSettingsService {
 	 */
 	invalidateCache(): void {
 		this.cachedConfig = null;
+		this.cachedPresetSelection = null;
+	}
+
+	private loadCachedStateFromDb(): {
+		config: NamingConfig;
+		presetSelection: NamingPresetSelection;
+	} {
+		let settings: { key: string; value: string }[] = [];
+		try {
+			settings = db.select().from(namingSettings).all();
+		} catch (error) {
+			logger.warn(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[NamingSettingsService] Failed to load settings from DB (using defaults)'
+			);
+			if (String(error).includes('no such table')) {
+				logger.error(
+					'[NamingSettingsService] CRITICAL: naming_settings table is missing! Please run migrations.'
+				);
+			}
+		}
+
+		const settingsMap = new Map(settings.map((setting) => [setting.key, setting.value]));
+		const config: NamingConfig = { ...DEFAULT_NAMING_CONFIG };
+		const presetSelection: NamingPresetSelection = { ...DEFAULT_NAMING_PRESET_SELECTION };
+
+		for (const [dbKey, configKey] of Object.entries(KEY_MAP)) {
+			const value = settingsMap.get(dbKey);
+			if (value !== undefined) {
+				if (BOOLEAN_KEYS.has(dbKey)) {
+					setConfigValue(config, configKey, value === 'true');
+				} else if (value === 'null' || value === '') {
+					setConfigValue(config, configKey, undefined);
+				} else {
+					setConfigValue(config, configKey, value);
+				}
+			}
+		}
+
+		for (const [dbKey, selectionKey] of Object.entries(PRESET_KEY_MAP)) {
+			const value = settingsMap.get(dbKey);
+			if (value && value.trim().length > 0) {
+				presetSelection[selectionKey] = value;
+			}
+		}
+
+		const normalizedPresetSelection = normalizeNamingPresetSelection(presetSelection);
+		this.cachedConfig = config;
+		this.cachedPresetSelection = normalizedPresetSelection;
+
+		return {
+			config: { ...config },
+			presetSelection: { ...normalizedPresetSelection }
+		};
 	}
 }
 

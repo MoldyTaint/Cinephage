@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { CheckCircle2, XCircle } from 'lucide-svelte';
 	import { SectionHeader } from '$lib/components/ui/modal';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		name: string;
@@ -58,11 +59,11 @@
 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
 	<!-- Left Column: Connection -->
 	<div class="space-y-4">
-		<SectionHeader title="Connection" />
+		<SectionHeader title={m.livetv_form_xstream_connection()} />
 
 		<div class="form-control">
 			<label class="label py-1" for="xstream-name">
-				<span class="label-text">Name</span>
+				<span class="label-text">{m.livetv_form_xstream_nameLabel()}</span>
 			</label>
 			<input
 				id="xstream-name"
@@ -70,16 +71,16 @@
 				class="input-bordered input input-sm"
 				value={name}
 				oninput={(e) => onNameChange(e.currentTarget.value)}
-				placeholder="My XStream Account"
+				placeholder={m.livetv_form_xstream_myXstreamAccount()}
 			/>
 			<div class="label py-1">
-				<span class="label-text-alt text-xs">A friendly name for this account</span>
+				<span class="label-text-alt text-xs">{m.livetv_form_xstream_namePlaceholder()}</span>
 			</div>
 		</div>
 
 		<div class="form-control">
 			<label class="label py-1" for="base-url">
-				<span class="label-text">Server URL</span>
+				<span class="label-text">{m.livetv_form_xstream_serverUrlLabel()}</span>
 			</label>
 			<div class="relative">
 				<input
@@ -89,7 +90,7 @@
 					class:input-error={baseUrl.length > 0 && !isUrlValid()}
 					value={baseUrl}
 					oninput={(e) => onBaseUrlChange(e.currentTarget.value)}
-					placeholder="http://example.com:8080"
+					placeholder={m.livetv_form_xstream_serverUrlPlaceholder()}
 				/>
 				{#if baseUrl.length > 0}
 					<div class="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2">
@@ -102,16 +103,14 @@
 				{/if}
 			</div>
 			<div class="label py-1">
-				<span class="label-text-alt text-xs"
-					>The XStream server URL (e.g., http://example.com:8080)</span
-				>
+				<span class="label-text-alt text-xs">{m.livetv_form_xstream_serverUrlHint()}</span>
 			</div>
 		</div>
 
 		<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
 			<div class="form-control">
 				<label class="label py-1" for="username">
-					<span class="label-text">Username</span>
+					<span class="label-text">{m.livetv_form_xstream_usernameLabel()}</span>
 				</label>
 				<input
 					id="username"
@@ -119,16 +118,16 @@
 					class="input-bordered input input-sm"
 					value={username}
 					oninput={(e) => onUsernameChange(e.currentTarget.value)}
-					placeholder="your_username"
+					placeholder={m.livetv_form_xstream_usernamePlaceholder()}
 				/>
 			</div>
 
 			<div class="form-control">
 				<label class="label py-1" for="password">
 					<span class="label-text">
-						Password
+						{m.livetv_form_xstream_passwordLabel()}
 						{#if mode === 'edit' && hasPassword}
-							<span class="text-xs opacity-50">(blank to keep)</span>
+							<span class="text-xs opacity-50">{m.livetv_form_xstream_passwordKeep()}</span>
 						{/if}
 					</span>
 				</label>
@@ -146,11 +145,11 @@
 
 	<!-- Right Column: Settings -->
 	<div class="space-y-4">
-		<SectionHeader title="Settings" />
+		<SectionHeader title={m.livetv_form_xstream_settings()} />
 
 		<div class="form-control">
 			<label class="label py-1" for="epg-url">
-				<span class="label-text">EPG URL (Optional)</span>
+				<span class="label-text">{m.livetv_form_xstream_epgUrlLabel()}</span>
 			</label>
 			<div class="relative">
 				<input
@@ -160,7 +159,7 @@
 					class:input-error={epgUrl.length > 0 && !isEpgUrlValid()}
 					value={epgUrl}
 					oninput={(e) => onEpgUrlChange(e.currentTarget.value)}
-					placeholder="http://example.com/epg.xml"
+					placeholder={m.livetv_form_xstream_epgUrlPlaceholder()}
 				/>
 				{#if epgUrl.length > 0}
 					<div class="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2">
@@ -173,7 +172,9 @@
 				{/if}
 			</div>
 			<div class="label py-1">
-				<span class="label-text-alt text-xs">Override EPG source (XMLTV format)</span>
+				<span class="label-text-alt block text-xs wrap-break-word whitespace-normal"
+					>{m.livetv_form_xstream_epgUrlHint()}</span
+				>
 			</div>
 		</div>
 
@@ -184,7 +185,7 @@
 				checked={enabled}
 				onchange={(e) => onEnabledChange(e.currentTarget.checked)}
 			/>
-			<span class="label-text">Enabled</span>
+			<span class="label-text">{m.livetv_form_xstream_enabled()}</span>
 		</label>
 	</div>
 </div>

@@ -1,9 +1,12 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { resolvePath } from '$lib/utils/routing';
 	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';
+	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
+	import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import {
 		ArrowUp,
@@ -34,8 +37,20 @@
 		name: string;
 		path: string;
 		mediaType: string;
+		mediaSubType?: string | null;
 		isDefault?: boolean;
 		readOnly?: boolean;
+	}
+
+	interface DestinationLibrary {
+		id: string;
+		name: string;
+		slug: string;
+		mediaType: MediaType;
+		mediaSubType?: string | null;
+		isDefault?: boolean;
+		defaultRootFolderId?: string | null;
+		defaultRootFolderPath?: string | null;
 	}
 
 	interface MatchResult {
@@ -43,6 +58,7 @@
 		title: string;
 		year?: number;
 		mediaType: MediaType;
+		isAnime?: boolean;
 		confidence: number;
 		inLibrary: boolean;
 		libraryId?: string;
@@ -140,7 +156,9 @@
 	let browserError = $state<string | null>(null);
 
 	let rootFolders = $state<RootFolder[]>([]);
+	let destinationLibraries = $state<DestinationLibrary[]>([]);
 	let loadingRootFolders = $state(true);
+	let enforceAnimeSubtype = $state(false);
 
 	let detecting = $state(false);
 	let detection = $state<DetectionResult | null>(null);
@@ -165,11 +183,13 @@
 	let searchingMatches = $state(false);
 	let matchCandidates = $state<MatchResult[]>([]);
 	let importTarget = $state<'new' | 'existing'>('new');
+	let applySelectedMatchToSeasonOnSelect = $state(false);
 
 	let seasonNumber = $state(1);
 	let episodeNumber = $state(1);
 	let batchSeasonOverride = $state<number | null>(null);
 	let selectedRootFolder = $state('');
+	let bulkDestinationBySectionId = $state<Record<string, string>>({});
 	let executingImport = $state(false);
 	let executeResult = $state<ExecuteResult | null>(null);
 	let executeError = $state<string | null>(null);
@@ -239,8 +259,8 @@
 		Boolean(activeGroup && importedGroupIds.includes(activeGroup.id))
 	);
 	const step2Ready = $derived(Boolean(activeGroup && selectedMatch && !isActiveGroupImported));
-	const rootFoldersForType = $derived(
-		rootFolders.filter((folder) => folder.mediaType === selectedMediaType && !folder.readOnly)
+	const destinationLibrariesForType = $derived(
+		getAvailableDestinationLibrariesForType(selectedMediaType, selectedMatch)
 	);
 	const isBatchTvImport = $derived(
 		Boolean(activeGroup && selectedMediaType === 'tv' && activeGroup.detectedFileCount > 1)
@@ -318,11 +338,11 @@
 			);
 		});
 
-		return filtered.sort((a, b) => {
-			if (selectedGroupId === a.id) return -1;
-			if (selectedGroupId === b.id) return 1;
-			return a.displayName.localeCompare(b.displayName, undefined, { numeric: true });
-		});
+		return filtered.sort(
+			(a, b) =>
+				a.displayName.localeCompare(b.displayName, undefined, { numeric: true }) ||
+				a.id.localeCompare(b.id, undefined, { numeric: true })
+		);
 	});
 	const filteredDetectionGroupsByMedia = $derived.by(() =>
 		filteredDetectionGroups.filter((group) => {
@@ -375,6 +395,13 @@
 			) ?? activeReviewTvSection.seasonSections[0]
 		);
 	});
+	const canApplyMatchSelectionToActiveSeason = $derived.by(() =>
+		Boolean(
+			selectedMediaType === 'tv' &&
+			activeReviewSeasonSection &&
+			getSkippableSeasonGroups(activeReviewSeasonSection).length > 0
+		)
+	);
 	const hasMultipleReviewTvSeries = $derived.by(() => reviewTvSections.length > 1);
 
 	const importMovieSections = $derived.by(() =>
@@ -421,8 +448,8 @@
 			return selectedMatch.inLibrary;
 		}
 
-		if (rootFoldersForType.length === 0) return false;
-		if (rootFoldersForType.length === 1) return true;
+		if (destinationLibrariesForType.length === 0) return false;
+		if (destinationLibrariesForType.length === 1) return true;
 		return selectedRootFolder.length > 0;
 	});
 	const hasActiveImportSession = $derived.by(
@@ -476,14 +503,58 @@
 
 	$effect(() => {
 		let nextRootFolder = selectedRootFolder;
-		if (rootFoldersForType.length === 1) {
-			nextRootFolder = rootFoldersForType[0].id;
-		} else if (!rootFoldersForType.some((folder) => folder.id === selectedRootFolder)) {
+		if (destinationLibrariesForType.length === 0) {
 			nextRootFolder = '';
+		} else if (!destinationLibrariesForType.some((library) => library.id === selectedRootFolder)) {
+			nextRootFolder =
+				getRecommendedDestinationLibraryId(destinationLibrariesForType, {
+					preferAnime: selectedMatch?.isAnime === true
+				}) ?? '';
 		}
 
 		if (nextRootFolder !== selectedRootFolder) {
 			selectedRootFolder = nextRootFolder;
+			persistActiveGroupState();
+		}
+	});
+
+	$effect(() => {
+		if (!detection || detectionGroups.length === 0) return;
+		if (Object.keys(groupReviewState).length === 0) return;
+
+		let updated = false;
+		const nextState: Record<string, GroupReviewState> = { ...groupReviewState };
+
+		for (const group of detectionGroups) {
+			const state = nextState[group.id];
+			if (!state) continue;
+
+			const libraries = getAvailableDestinationLibrariesForType(
+				state.selectedMediaType,
+				state.selectedMatch
+			);
+			const hasValidSelection =
+				state.selectedRootFolder.length > 0 &&
+				libraries.some((library) => library.id === state.selectedRootFolder);
+			const recommendedRootFolder =
+				getRecommendedDestinationLibraryId(libraries, {
+					preferAnime: state.selectedMatch?.isAnime === true
+				}) ?? '';
+
+			if (!hasValidSelection && state.selectedRootFolder !== recommendedRootFolder) {
+				nextState[group.id] = {
+					...state,
+					selectedRootFolder: recommendedRootFolder
+				};
+				updated = true;
+			}
+		}
+
+		if (updated) {
+			groupReviewState = nextState;
+			if (selectedGroupId && nextState[selectedGroupId]) {
+				selectedRootFolder = nextState[selectedGroupId].selectedRootFolder;
+			}
 		}
 	});
 
@@ -516,6 +587,12 @@
 		if (!reviewTvSections.some((section) => section.id === reviewSelectedSeriesSectionId)) {
 			reviewSelectedSeriesSectionId = reviewTvSections[0].id;
 			reviewSelectedSeasonSectionKey = null;
+		}
+	});
+
+	$effect(() => {
+		if (!canApplyMatchSelectionToActiveSeason) {
+			applySelectedMatchToSeasonOnSelect = false;
 		}
 	});
 
@@ -561,6 +638,36 @@
 		if (step !== 3) {
 			return;
 		}
+
+		const nextSelections = { ...bulkDestinationBySectionId };
+		let changed = false;
+
+		for (const section of importSelectionSections) {
+			const options = getSectionDestinationOptions(section);
+			if (options.length === 0) {
+				if (nextSelections[section.id]) {
+					delete nextSelections[section.id];
+					changed = true;
+				}
+				continue;
+			}
+
+			const current = nextSelections[section.id];
+			if (!current || !options.some((folder) => folder.id === current)) {
+				nextSelections[section.id] = getRecommendedSectionDestinationId(section, options);
+				changed = true;
+			}
+		}
+
+		if (changed) {
+			bulkDestinationBySectionId = nextSelections;
+		}
+	});
+
+	$effect(() => {
+		if (step !== 3) {
+			return;
+		}
 		const activeSection = activeImportTvSection;
 		if (
 			!activeSection ||
@@ -595,22 +702,52 @@
 	async function loadRootFolders() {
 		loadingRootFolders = true;
 		try {
-			const response = await fetch('/api/root-folders');
-			const payload = await readResponsePayload<RootFolder[] | { folders?: RootFolder[] }>(
-				response
+			const [foldersResponse, classificationResponse, librariesResponse] = await Promise.all([
+				fetch('/api/root-folders'),
+				fetch('/api/settings/library/classification'),
+				fetch('/api/libraries?includeSystem=true')
+			]);
+
+			const foldersPayload = await readResponsePayload<RootFolder[] | { folders?: RootFolder[] }>(
+				foldersResponse
 			);
-			if (!response.ok) {
-				throw new Error(getResponseErrorMessage(payload, 'Failed to load root folders'));
+			const classificationPayload = await readResponsePayload<{
+				enforceAnimeSubtype?: boolean;
+			}>(classificationResponse);
+			const librariesPayload = await readResponsePayload<{
+				libraries?: DestinationLibrary[];
+			}>(librariesResponse);
+
+			if (!foldersResponse.ok) {
+				throw new Error(getResponseErrorMessage(foldersPayload, 'Failed to load root folders'));
 			}
-			if (Array.isArray(payload)) {
-				rootFolders = payload;
-			} else if (payload && typeof payload === 'object') {
-				rootFolders = payload.folders ?? [];
+			if (Array.isArray(foldersPayload)) {
+				rootFolders = foldersPayload;
+			} else if (foldersPayload && typeof foldersPayload === 'object') {
+				rootFolders = foldersPayload.folders ?? [];
 			} else {
 				rootFolders = [];
 			}
+
+			enforceAnimeSubtype = Boolean(
+				classificationResponse.ok &&
+				classificationPayload &&
+				typeof classificationPayload === 'object' &&
+				classificationPayload.enforceAnimeSubtype === true
+			);
+
+			if (
+				librariesResponse.ok &&
+				librariesPayload &&
+				typeof librariesPayload === 'object' &&
+				Array.isArray(librariesPayload.libraries)
+			) {
+				destinationLibraries = librariesPayload.libraries;
+			} else {
+				destinationLibraries = [];
+			}
 		} catch {
-			toasts.error('Failed to load root folders');
+			toasts.error(m.toast_library_import_failedToLoadRootFolders());
 		} finally {
 			loadingRootFolders = false;
 		}
@@ -737,6 +874,12 @@
 	function createInitialGroupState(group: DetectionGroup): GroupReviewState {
 		const initialCandidates = group.matches ?? [];
 		const initialMatch = initialCandidates[0] ?? null;
+		const initialRootFolder = getRecommendedDestinationLibraryId(
+			getAvailableDestinationLibrariesForType(group.inferredMediaType, initialMatch),
+			{
+				preferAnime: initialMatch?.isAnime === true
+			}
+		);
 		return {
 			selectedMediaType: group.inferredMediaType,
 			selectedMatch: initialMatch,
@@ -746,7 +889,7 @@
 			seasonNumber: group.parsedSeason ?? 1,
 			episodeNumber: group.parsedEpisode ?? 1,
 			batchSeasonOverride: group.suggestedSeason ?? null,
-			selectedRootFolder: ''
+			selectedRootFolder: initialRootFolder ?? ''
 		};
 	}
 
@@ -790,6 +933,45 @@
 				selectedRootFolder
 			}
 		};
+	}
+
+	function handleSeasonNumberChange() {
+		if (!selectedGroupId) {
+			return;
+		}
+
+		const group = detectionGroups.find((item) => item.id === selectedGroupId);
+		if (!group) {
+			persistActiveGroupState();
+			return;
+		}
+
+		let nextBatchSeasonOverride = batchSeasonOverride;
+		if (selectedMediaType === 'tv' && !isBatchTvImport && typeof group.parsedSeason !== 'number') {
+			nextBatchSeasonOverride = seasonNumber >= 0 ? seasonNumber : null;
+			batchSeasonOverride = nextBatchSeasonOverride;
+		}
+
+		groupReviewState = {
+			...groupReviewState,
+			[selectedGroupId]: {
+				selectedMediaType,
+				selectedMatch,
+				searchQuery,
+				matchCandidates,
+				importTarget,
+				seasonNumber,
+				episodeNumber,
+				batchSeasonOverride: nextBatchSeasonOverride,
+				selectedRootFolder
+			}
+		};
+	}
+
+	function canApplyActiveSeasonOverride(): boolean {
+		if (!activeGroup) return false;
+		if (selectedMediaType !== 'tv' || isBatchTvImport) return false;
+		return typeof activeGroup.parsedSeason !== 'number';
 	}
 
 	function shouldPreserveSelectedItemEditor(nextGroupId: string): boolean {
@@ -856,8 +1038,77 @@
 		step = 2;
 	}
 
-	function getWritableRootFoldersForType(mediaType: MediaType): RootFolder[] {
-		return rootFolders.filter((folder) => folder.mediaType === mediaType && !folder.readOnly);
+	function getRequiredRootFolderSubType(
+		match: MatchResult | null | undefined
+	): 'standard' | 'anime' | undefined {
+		if (!enforceAnimeSubtype) return undefined;
+		if (match?.isAnime === true) return 'anime';
+		if (match?.isAnime === false) return 'standard';
+		return undefined;
+	}
+
+	function getWritableRootFoldersForType(
+		mediaType: MediaType,
+		match: MatchResult | null = null
+	): RootFolder[] {
+		const writableFolders = rootFolders.filter((folder) => !folder.readOnly);
+		return sortRootFoldersForMediaType(
+			writableFolders,
+			mediaType,
+			getRequiredRootFolderSubType(match)
+		);
+	}
+
+	function getAvailableDestinationLibrariesForType(
+		mediaType: MediaType,
+		match: MatchResult | null = null
+	): DestinationLibrary[] {
+		const allowedFolders = getWritableRootFoldersForType(mediaType, match);
+		if (allowedFolders.length === 0) {
+			return [];
+		}
+
+		const allowedRootFolderIds = new Set(allowedFolders.map((folder) => folder.id));
+		const eligibleLibraries = destinationLibraries.filter((library) => {
+			if (library.mediaType !== mediaType) return false;
+			if (!library.defaultRootFolderId) return false;
+			return allowedRootFolderIds.has(library.defaultRootFolderId);
+		});
+
+		return eligibleLibraries.sort((a, b) => {
+			const defaultOrder = Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault));
+			if (defaultOrder !== 0) return defaultOrder;
+			return a.name.localeCompare(b.name);
+		});
+	}
+
+	function getRecommendedDestinationLibraryId(
+		libraries: DestinationLibrary[],
+		options?: { preferAnime?: boolean }
+	): string | undefined {
+		if (libraries.length === 0) return undefined;
+
+		const preferAnime = options?.preferAnime === true;
+		if (preferAnime) {
+			return (
+				libraries.find(
+					(library) => library.isDefault && (library.mediaSubType ?? 'standard') === 'anime'
+				)?.id ??
+				libraries.find(
+					(library) => library.isDefault && (library.mediaSubType ?? 'standard') === 'standard'
+				)?.id ??
+				libraries.find((library) => library.isDefault)?.id ??
+				libraries[0].id
+			);
+		}
+
+		return (
+			libraries.find(
+				(library) => library.isDefault && (library.mediaSubType ?? 'standard') === 'standard'
+			)?.id ??
+			libraries.find((library) => library.isDefault)?.id ??
+			libraries[0].id
+		);
 	}
 
 	function isGroupImported(groupId: string): boolean {
@@ -948,7 +1199,7 @@
 		if (parsedTitle) {
 			return group.parsedYear ? `${parsedTitle} (${group.parsedYear})` : parsedTitle;
 		}
-		return 'Unmatched TV Series';
+		return m.library_import_unmatchedTvSeries();
 	}
 
 	function normalizeGroupingKey(value: string): string {
@@ -962,8 +1213,8 @@
 	function normalizeTitleForComparison(value: string): string {
 		return value
 			.toLowerCase()
-			.replace(/[^a-z0-9]/g, '')
-			.replace(/^(?:the|an|a)/, '');
+			.replace(/^(?:the|an?)\s+/, '') // Remove leading articles before stripping spaces
+			.replace(/[^a-z0-9]/g, '');
 	}
 
 	function buildTvSeasonSections(items: DetectionGroup[]): TvSeasonSection[] {
@@ -978,7 +1229,10 @@
 			if (existingIndex === undefined) {
 				sections.push({
 					key,
-					label: seasonNumber === null ? 'Season Unmapped' : `Season ${seasonNumber}`,
+					label:
+						seasonNumber === null
+							? m.library_import_seasonUnmapped()
+							: m.library_import_seasonNumber({ number: seasonNumber }),
 					seasonNumber,
 					items: [group]
 				});
@@ -1140,6 +1394,208 @@
 		skippedGroupIds = nextSkippedIds;
 	}
 
+	function canApplySelectedMatchToSeason(
+		seasonSection: TvSeasonSection | null | undefined,
+		match: MatchResult | null = selectedMatch
+	): boolean {
+		if (!seasonSection || !match) return false;
+		if (match.mediaType !== 'tv') return false;
+		return getSkippableSeasonGroups(seasonSection).length > 0;
+	}
+
+	function applySelectedMatchToSeason(
+		seasonSection: TvSeasonSection | null | undefined,
+		matchToApply: MatchResult | null = selectedMatch,
+		options?: { showToast?: boolean }
+	): boolean {
+		const showToast = options?.showToast ?? true;
+		if (!seasonSection) return false;
+		if (!matchToApply || matchToApply.mediaType !== 'tv') {
+			if (showToast) {
+				toasts.warning(m.toast_library_import_selectTvMatchForSeasonApply());
+			}
+			return false;
+		}
+		const selectedTvMatch = matchToApply;
+
+		const groups = getSkippableSeasonGroups(seasonSection);
+		if (groups.length === 0) return false;
+
+		const librariesForTv = getAvailableDestinationLibrariesForType('tv', selectedTvMatch);
+		const recommendedRootFolder =
+			getRecommendedDestinationLibraryId(librariesForTv, {
+				preferAnime: selectedTvMatch.isAnime === true
+			}) ?? '';
+		const nextState = { ...groupReviewState };
+
+		for (const group of groups) {
+			const state = getGroupState(group);
+			const hasSelectedMatch = state.matchCandidates.some(
+				(match) =>
+					match.mediaType === selectedTvMatch.mediaType && match.tmdbId === selectedTvMatch.tmdbId
+			);
+			const nextCandidates = hasSelectedMatch
+				? state.matchCandidates
+				: [selectedTvMatch, ...state.matchCandidates];
+			const hasValidRootFolder =
+				state.selectedRootFolder.length > 0 &&
+				librariesForTv.some((library) => library.id === state.selectedRootFolder);
+
+			nextState[group.id] = {
+				...state,
+				selectedMediaType: 'tv',
+				selectedMatch: selectedTvMatch,
+				searchQuery: selectedTvMatch.title,
+				matchCandidates: nextCandidates,
+				importTarget: selectedTvMatch.inLibrary ? 'existing' : 'new',
+				selectedRootFolder: selectedTvMatch.inLibrary
+					? state.selectedRootFolder
+					: hasValidRootFolder
+						? state.selectedRootFolder
+						: recommendedRootFolder
+			};
+		}
+
+		groupReviewState = nextState;
+		if (activeGroup && nextState[activeGroup.id]) {
+			loadGroupState(activeGroup.id);
+		}
+
+		if (showToast) {
+			toasts.success(m.toast_library_import_appliedMatchToSeason({ count: groups.length }));
+		}
+		return true;
+	}
+
+	function getSectionDestinationGroups(section: DetectionSection): DetectionGroup[] {
+		return section.items.filter((group) => !isGroupImported(group.id) && !isGroupSkipped(group.id));
+	}
+
+	function getSectionDestinationEligibleGroups(section: DetectionSection): DetectionGroup[] {
+		return getSectionDestinationGroups(section).filter((group) => {
+			const state = getGroupState(group);
+			return !(state.selectedMatch?.inLibrary && state.importTarget === 'existing');
+		});
+	}
+
+	function getSectionDestinationOptions(section: DetectionSection): DestinationLibrary[] {
+		const groups = getSectionDestinationEligibleGroups(section);
+
+		if (groups.length === 0) return [];
+
+		const allowedLibraryIds: string[] = [];
+		for (const group of groups) {
+			const state = getGroupState(group);
+			const groupLibraries = getAvailableDestinationLibrariesForType(
+				state.selectedMediaType,
+				state.selectedMatch
+			);
+			for (const library of groupLibraries) {
+				if (!allowedLibraryIds.includes(library.id)) {
+					allowedLibraryIds.push(library.id);
+				}
+			}
+		}
+
+		return destinationLibraries
+			.filter((library) => library.mediaType === section.mediaType)
+			.filter((library) => allowedLibraryIds.includes(library.id))
+			.sort((a, b) => {
+				const defaultOrder = Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault));
+				if (defaultOrder !== 0) return defaultOrder;
+				return a.name.localeCompare(b.name);
+			});
+	}
+
+	function getRecommendedSectionDestinationId(
+		section: DetectionSection,
+		options: DestinationLibrary[]
+	): string {
+		const shouldPreferAnime = getSectionDestinationGroups(section).some(
+			(group) => getGroupState(group).selectedMatch?.isAnime === true
+		);
+		return getRecommendedDestinationLibraryId(options, { preferAnime: shouldPreferAnime }) ?? '';
+	}
+
+	function updateSectionDestination(sectionId: string, value: string) {
+		bulkDestinationBySectionId = {
+			...bulkDestinationBySectionId,
+			[sectionId]: value
+		};
+	}
+
+	function canApplySelectedDestinationToMedia(section: DetectionSection): boolean {
+		const selectedDestination = bulkDestinationBySectionId[section.id] ?? '';
+		if (!selectedDestination) return false;
+
+		const groups = getSectionDestinationEligibleGroups(section);
+		if (groups.length === 0) return false;
+
+		return groups.some((group) => {
+			const state = getGroupState(group);
+			const libraries = getAvailableDestinationLibrariesForType(
+				state.selectedMediaType,
+				state.selectedMatch
+			);
+			return libraries.some((library) => library.id === selectedDestination);
+		});
+	}
+
+	function applySelectedDestinationToMedia(section: DetectionSection) {
+		const selectedDestination = bulkDestinationBySectionId[section.id] ?? '';
+		if (!selectedDestination) {
+			toasts.warning(m.toast_library_import_selectDestinationFirst());
+			return;
+		}
+
+		const groups = getSectionDestinationEligibleGroups(section);
+		if (groups.length === 0) return;
+
+		let updatedCount = 0;
+		let restrictedCount = 0;
+		const nextState = { ...groupReviewState };
+
+		for (const group of groups) {
+			const state = getGroupState(group);
+
+			const libraries = getAvailableDestinationLibrariesForType(
+				state.selectedMediaType,
+				state.selectedMatch
+			);
+			if (!libraries.some((library) => library.id === selectedDestination)) {
+				restrictedCount += 1;
+				continue;
+			}
+
+			const nextImportTarget = state.selectedMatch?.inLibrary ? state.importTarget : 'new';
+			if (
+				state.selectedRootFolder === selectedDestination &&
+				state.importTarget === nextImportTarget
+			) {
+				continue;
+			}
+
+			nextState[group.id] = {
+				...state,
+				selectedRootFolder: selectedDestination,
+				importTarget: nextImportTarget
+			};
+			updatedCount += 1;
+		}
+
+		if (updatedCount > 0) {
+			groupReviewState = nextState;
+			if (activeGroup && nextState[activeGroup.id]) {
+				loadGroupState(activeGroup.id);
+			}
+			toasts.success(m.toast_library_import_appliedDestinationToMedia({ count: updatedCount }));
+		}
+
+		if (restrictedCount > 0) {
+			toasts.warning(m.toast_library_import_destinationRestrictedForMediaItems());
+		}
+	}
+
 	function selectImportSeriesSection(sectionId: string) {
 		if (importSelectedSeriesSectionId === sectionId) {
 			return;
@@ -1179,9 +1635,12 @@
 			return match.inLibrary;
 		}
 
-		const folders = getWritableRootFoldersForType(state.selectedMediaType);
-		if (folders.length === 0) return false;
-		if (folders.length === 1) return true;
+		const libraries = getAvailableDestinationLibrariesForType(
+			state.selectedMediaType,
+			state.selectedMatch
+		);
+		if (libraries.length === 0) return false;
+		if (libraries.length === 1) return true;
 		return state.selectedRootFolder.length > 0;
 	}
 
@@ -1210,7 +1669,10 @@
 		}
 		const resolvedImportTarget = state.selectedMatch.inLibrary ? 'existing' : state.importTarget;
 
-		const foldersForType = getWritableRootFoldersForType(state.selectedMediaType);
+		const librariesForType = getAvailableDestinationLibrariesForType(
+			state.selectedMediaType,
+			state.selectedMatch
+		);
 		const isBatchTv = state.selectedMediaType === 'tv' && group.detectedFileCount > 1;
 
 		return {
@@ -1219,7 +1681,7 @@
 			tmdbId: state.selectedMatch.tmdbId,
 			importTarget: resolvedImportTarget,
 			...(resolvedImportTarget === 'new'
-				? { rootFolderId: state.selectedRootFolder || foldersForType[0]?.id }
+				? { libraryId: state.selectedRootFolder || librariesForType[0]?.id }
 				: {}),
 			...(state.selectedMediaType === 'tv' && !isBatchTv
 				? { seasonNumber: state.seasonNumber, episodeNumber: state.episodeNumber }
@@ -1282,7 +1744,7 @@
 
 	async function runDetection() {
 		if (!sourcePath.trim()) {
-			toasts.error('Please select a source path');
+			toasts.error(m.toast_library_import_selectSourcePath());
 			return;
 		}
 
@@ -1370,7 +1832,9 @@
 			}
 			step = 2;
 		} catch (error) {
-			toasts.error(error instanceof Error ? error.message : 'Detection failed');
+			toasts.error(
+				error instanceof Error ? error.message : m.toast_library_import_detectionFailed()
+			);
 		} finally {
 			detecting = false;
 		}
@@ -1388,7 +1852,7 @@
 		}
 
 		if (!searchQuery.trim()) {
-			toasts.error('Enter a title to search');
+			toasts.error(m.toast_library_import_enterTitle());
 			return;
 		}
 
@@ -1417,11 +1881,31 @@
 				const date = (item.release_date || item.first_air_date) as string | undefined;
 				const year = date ? parseInt(date.split('-')[0], 10) : undefined;
 				const status = statusMap[tmdbId];
+				const genreIds = Array.isArray(item.genre_ids)
+					? item.genre_ids.filter((value): value is number => typeof value === 'number')
+					: [];
+				const originCountries = Array.isArray(item.origin_country)
+					? item.origin_country.filter((value): value is string => typeof value === 'string')
+					: [];
+				const isAnime = isLikelyAnimeMedia({
+					genres: genreIds.map((id) => ({ id })),
+					originalLanguage:
+						typeof item.original_language === 'string' ? item.original_language : null,
+					originCountries,
+					title: typeof item.title === 'string' ? item.title : null,
+					originalTitle:
+						typeof item.original_title === 'string'
+							? item.original_title
+							: typeof item.original_name === 'string'
+								? item.original_name
+								: null
+				});
 				return {
 					tmdbId,
-					title: (item.title || item.name || 'Unknown') as string,
+					title: (item.title || item.name || m.common_unknown()) as string,
 					year,
 					mediaType: selectedMediaType,
+					isAnime,
 					confidence: 0,
 					inLibrary: Boolean(status?.inLibrary),
 					libraryId: status?.libraryId
@@ -1429,10 +1913,10 @@
 			});
 
 			if (matchCandidates.length === 0) {
-				toasts.warning('No matches found');
+				toasts.warning(m.toast_library_import_noMatchesFound());
 			}
 		} catch {
-			toasts.error('Failed to search TMDB');
+			toasts.error(m.toast_library_import_failedToSearchTmdb());
 		} finally {
 			persistActiveGroupState();
 			searchingMatches = false;
@@ -1442,6 +1926,26 @@
 	function chooseMatch(match: MatchResult) {
 		selectedMatch = match;
 		importTarget = match.inLibrary ? 'existing' : 'new';
+		if (importTarget === 'new') {
+			selectedRootFolder =
+				getRecommendedDestinationLibraryId(
+					getAvailableDestinationLibrariesForType(selectedMediaType, match),
+					{
+						preferAnime: match.isAnime === true
+					}
+				) ?? '';
+		}
+
+		if (
+			applySelectedMatchToSeasonOnSelect &&
+			canApplySelectedMatchToSeason(activeReviewSeasonSection, match)
+		) {
+			const applied = applySelectedMatchToSeason(activeReviewSeasonSection, match);
+			if (applied) {
+				return;
+			}
+		}
+
 		persistActiveGroupState();
 	}
 
@@ -1454,6 +1958,9 @@
 		selectedMatch = null;
 		matchCandidates = [];
 		importTarget = 'new';
+		selectedRootFolder =
+			getRecommendedDestinationLibraryId(getAvailableDestinationLibrariesForType(nextType, null)) ??
+			'';
 		batchSeasonOverride = nextType === 'tv' ? (activeGroup?.suggestedSeason ?? null) : null;
 		persistActiveGroupState();
 	}
@@ -1528,7 +2035,7 @@
 				markGroupImported(selectedGroupId);
 			}
 			if (isDirectLibraryImportContext && originLibraryLink) {
-				toasts.success('Import complete');
+				toasts.success(m.toast_library_import_importComplete());
 				bypassNavigationGuard = true;
 				await goto(originLibraryLink);
 				return;
@@ -1549,12 +2056,12 @@
 
 	async function executeBulkImportFlow() {
 		if (selectedImportGroupCount === 0) {
-			toasts.warning('No selected items to import');
+			toasts.warning(m.toast_library_import_noSelectedItems());
 			return;
 		}
 
 		if (selectedNeedsInputCount > 0) {
-			toasts.warning('Some selected items still need input before import');
+			toasts.warning(m.toast_library_import_itemsNeedInput());
 			return;
 		}
 
@@ -1594,7 +2101,7 @@
 		}
 
 		if (imported === 0) {
-			toasts.error(failures[0] ?? 'No groups were imported');
+			toasts.error(failures[0] ?? m.toast_library_import_noGroupsImported());
 			return;
 		}
 
@@ -1603,10 +2110,10 @@
 		step = 4;
 
 		if (failed > 0) {
-			toasts.warning(`Imported ${imported} group(s), failed ${failed}.`);
+			toasts.warning(m.toast_library_import_bulkImportPartial({ imported, failed }));
 			toasts.error(failures[0]);
 		} else {
-			toasts.success(`Imported ${imported} group(s).`);
+			toasts.success(m.toast_library_import_bulkImportSuccess({ count: imported }));
 		}
 	}
 
@@ -1628,7 +2135,7 @@
 	});
 
 	function formatMediaTypeLabel(mediaType: MediaType): string {
-		return mediaType === 'movie' ? 'Movie' : 'TV Show';
+		return mediaType === 'movie' ? m.library_import_movieLabel() : m.library_import_tvShowLabel();
 	}
 
 	function closeLeaveImportModal() {
@@ -1657,56 +2164,58 @@
 </script>
 
 <svelte:head>
-	<title>Import Media - Library - Cinephage</title>
+	<title>{m.library_import_pageTitle()}</title>
 </svelte:head>
 
 <div class="mx-auto flex w-full max-w-6xl flex-col gap-5">
 	<div class="flex flex-col gap-2">
-		<h1 class="text-3xl font-bold">Import Media</h1>
-		<p class="text-base-content/70">Browse local files, review TMDB matches, and import.</p>
+		<h1 class="text-3xl font-bold">{m.library_import_heading()}</h1>
+		<p class="text-base-content/70">{m.library_import_subtitle()}</p>
 	</div>
 
 	<ul class="steps w-full">
-		<li class="step {step >= 1 ? 'step-primary' : ''}">Select Path</li>
-		<li class="step {step >= 2 ? 'step-primary' : ''}">Review Matches</li>
-		<li class="step {step >= 3 ? 'step-primary' : ''}">Import</li>
-		<li class="step {step >= 4 ? 'step-primary' : ''}">Complete</li>
+		<li class="step {step >= 1 ? 'step-primary' : ''}">{m.library_import_stepSelectPath()}</li>
+		<li class="step {step >= 2 ? 'step-primary' : ''}">{m.library_import_stepReviewMatches()}</li>
+		<li class="step {step >= 3 ? 'step-primary' : ''}">{m.library_import_stepImport()}</li>
+		<li class="step {step >= 4 ? 'step-primary' : ''}">{m.library_import_stepComplete()}</li>
 	</ul>
 
 	{#if step === 1}
 		<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
 			<div class="grid gap-3 md:grid-cols-[180px_minmax(0,1fr)_auto] md:items-start">
 				<label class="form-control">
-					<span class="label-text text-sm font-medium">Media Type</span>
+					<span class="label-text text-sm font-medium">{m.library_import_mediaTypeLabel()}</span>
 					<select
 						class="select-bordered select w-full"
 						bind:value={preferredMediaType}
 						disabled={isMediaTypeLockedByContext}
 					>
-						<option value="auto">Auto Detect</option>
-						<option value="movie">Movie</option>
-						<option value="tv">TV</option>
+						<option value="auto">{m.library_import_autoDetect()}</option>
+						<option value="movie">{m.common_movie()}</option>
+						<option value="tv">{m.ui_mediaType_tv()}</option>
 					</select>
 				</label>
 
 				<label class="form-control">
-					<span class="label-text text-sm font-medium">Source Path</span>
+					<span class="label-text text-sm font-medium">{m.library_import_sourcePathLabel()}</span>
 					<span class="text-xs text-base-content/60 md:col-span-2 md:col-start-2">
 						{#if isFileOnlyContext}
-							Select the media file to import for this movie.
+							{m.library_import_sourcePathHintFile()}
 						{:else}
-							Select the path to your media file or folder.
+							{m.library_import_sourcePathHintGeneral()}
 						{/if}</span
 					>
 					<input
 						class="input-bordered input w-full"
-						placeholder="/path/to/file-or-folder"
+						placeholder={m.library_import_sourcePathPlaceholder()}
 						bind:value={sourcePath}
 					/>
 				</label>
 
 				<div class="md:self-end">
-					<span class="label-text invisible hidden text-sm font-medium md:block">Detect</span>
+					<span class="label-text invisible hidden text-sm font-medium md:block"
+						>{m.library_import_detectMedia()}</span
+					>
 					<button
 						type="button"
 						class="btn w-full btn-primary md:w-auto"
@@ -1715,10 +2224,10 @@
 					>
 						{#if detecting}
 							<Loader2 class="h-4 w-4 animate-spin" />
-							Detecting
+							{m.library_import_detecting()}
 						{:else}
 							<Sparkles class="h-4 w-4" />
-							Detect Media
+							{m.library_import_detectMedia()}
 						{/if}
 					</button>
 				</div>
@@ -1730,7 +2239,7 @@
 						type="button"
 						class="btn btn-square btn-ghost btn-sm"
 						onclick={() => browse('/')}
-						title="Go to /"
+						title={m.library_import_goToRoot()}
 					>
 						<Home class="h-4 w-4" />
 					</button>
@@ -1746,7 +2255,7 @@
 					</div>
 					{#if !isFileOnlyContext}
 						<button class="btn btn-outline btn-xs" onclick={() => (sourcePath = browserPath)}>
-							Use Folder
+							{m.library_import_useFolder()}
 						</button>
 					{/if}
 				</div>
@@ -1762,7 +2271,7 @@
 						</div>
 					{:else if browserEntries.length === 0}
 						<div class="py-6 text-center text-sm text-base-content/60">
-							No folders or media files found
+							{m.library_import_noFoldersOrFiles()}
 						</div>
 					{:else}
 						<div class="space-y-1">
@@ -1805,17 +2314,25 @@
 				<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
 					<div class="flex flex-wrap items-center justify-between gap-2">
 						<div>
-							<h2 class="text-lg font-semibold">Detected Items</h2>
+							<h2 class="text-lg font-semibold">{m.library_import_detectedItems()}</h2>
 							<p class="mt-1 text-sm text-base-content/70">
-								Review and select items from this queue for import.
+								{m.library_import_detectedItemsHint()}
 							</p>
 						</div>
 						<div class="flex flex-wrap items-center gap-2 text-xs">
-							<span class="badge badge-outline">{pendingGroupCount} needs input</span>
-							<span class="badge badge-primary">{remainingGroupCount} selected</span>
-							<span class="badge badge-success">{importedGroupIds.length} imported</span>
+							<span class="badge badge-outline"
+								>{m.library_import_needsInputCount({ count: pendingGroupCount })}</span
+							>
+							<span class="badge badge-primary"
+								>{m.library_import_selectedCount({ count: remainingGroupCount })}</span
+							>
+							<span class="badge badge-success"
+								>{m.library_import_importedCount({ count: importedGroupIds.length })}</span
+							>
 							{#if skippedGroupCount > 0}
-								<span class="badge badge-ghost">{skippedGroupCount} skipped</span>
+								<span class="badge badge-ghost"
+									>{m.library_import_skippedCount({ count: skippedGroupCount })}</span
+								>
 							{/if}
 						</div>
 					</div>
@@ -1829,7 +2346,7 @@
 							</div>
 							<input
 								type="text"
-								placeholder="Search detected items..."
+								placeholder={m.library_import_searchDetectedItems()}
 								class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 								bind:value={detectedGroupQuery}
 							/>
@@ -1837,7 +2354,7 @@
 								<button
 									class="absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-0.5 text-base-content/40 transition-colors hover:bg-base-300 hover:text-base-content"
 									onclick={() => (detectedGroupQuery = '')}
-									aria-label="Clear detected item search"
+									aria-label={m.library_import_clearDetectedSearch()}
 								>
 									<X class="h-3.5 w-3.5" />
 								</button>
@@ -1852,7 +2369,7 @@
 										: 'btn-ghost'}"
 									onclick={() => (detectedGroupFilter = 'pending')}
 								>
-									Needs Input
+									{m.library_import_filterNeedsInput()}
 								</button>
 								<button
 									type="button"
@@ -1861,7 +2378,7 @@
 										: 'btn-ghost'}"
 									onclick={() => (detectedGroupFilter = 'ready')}
 								>
-									Ready
+									{m.library_import_filterReady()}
 								</button>
 								<button
 									type="button"
@@ -1870,7 +2387,7 @@
 										: 'btn-ghost'}"
 									onclick={() => (detectedGroupFilter = 'skipped')}
 								>
-									Skipped
+									{m.library_import_filterSkipped()}
 								</button>
 								<button
 									type="button"
@@ -1879,7 +2396,7 @@
 										: 'btn-ghost'}"
 									onclick={() => (detectedGroupFilter = 'imported')}
 								>
-									Imported
+									{m.library_import_filterImported()}
 								</button>
 								<button
 									type="button"
@@ -1888,7 +2405,7 @@
 										: 'btn-ghost'}"
 									onclick={() => (detectedGroupFilter = 'all')}
 								>
-									All
+									{m.common_all()}
 								</button>
 							</div>
 							<div class="join">
@@ -1899,7 +2416,7 @@
 										: 'btn-ghost'}"
 									onclick={() => (detectedMediaFilter = 'all')}
 								>
-									All Media
+									{m.library_import_filterAllMedia()}
 								</button>
 								<button
 									type="button"
@@ -1908,7 +2425,7 @@
 										: 'btn-ghost'}"
 									onclick={() => (detectedMediaFilter = 'movie')}
 								>
-									Movies
+									{m.common_movies()}
 								</button>
 								<button
 									type="button"
@@ -1917,7 +2434,7 @@
 										: 'btn-ghost'}"
 									onclick={() => (detectedMediaFilter = 'tv')}
 								>
-									TV Shows
+									{m.common_tvShows()}
 								</button>
 							</div>
 						</div>
@@ -1928,7 +2445,7 @@
 							<div
 								class="rounded-lg border border-dashed border-base-300 p-4 text-center text-sm text-base-content/60"
 							>
-								No detected items match this filter.
+								{m.library_import_noDetectedItemsMatch()}
 							</div>
 						{:else}
 							{#if reviewMovieSections.length > 0}
@@ -1956,22 +2473,30 @@
 															<span>{formatMediaTypeLabel(getEffectiveMediaType(group))}</span>
 															<span>•</span>
 															<span
-																>{group.detectedFileCount} file{group.detectedFileCount === 1
-																	? ''
-																	: 's'}</span
+																>{group.detectedFileCount === 1
+																	? m.library_import_fileCountSingular({
+																			count: group.detectedFileCount
+																		})
+																	: m.library_import_fileCount({
+																			count: group.detectedFileCount
+																		})}</span
 															>
 															{#if canImportGroup(group)}
-																<span class="text-success">Ready</span>
+																<span class="text-success">{m.library_import_ready()}</span>
 															{:else if isGroupPending(group.id)}
-																<span class="text-warning">Needs input</span>
+																<span class="text-warning">{m.library_import_needsInput()}</span>
 															{/if}
 														</div>
 													</button>
 													<div class="flex shrink-0 items-center gap-2">
 														{#if isGroupImported(group.id)}
-															<span class="badge badge-sm badge-success">Imported</span>
+															<span class="badge badge-sm badge-success"
+																>{m.library_import_badgeImported()}</span
+															>
 														{:else if isGroupSkipped(group.id)}
-															<span class="badge badge-ghost badge-sm">Skipped</span>
+															<span class="badge badge-ghost badge-sm"
+																>{m.library_import_badgeSkipped()}</span
+															>
 														{/if}
 														{#if !isGroupImported(group.id) && skipActionsEnabled}
 															<button
@@ -1982,7 +2507,9 @@
 																		? unskipGroup(group.id)
 																		: markGroupSkipped(group.id)}
 															>
-																{isGroupSkipped(group.id) ? 'Select' : 'Skip'}
+																{isGroupSkipped(group.id)
+																	? m.action_select()
+																	: m.library_import_skipItem()}
 															</button>
 														{/if}
 													</div>
@@ -2013,8 +2540,14 @@
 													>
 														<div class="truncate text-sm font-medium">{section.label}</div>
 														<div class="mt-1 text-xs text-base-content/70">
-															{section.items.length} episode{section.items.length === 1 ? '' : 's'} •
-															seasons: {getDetectedSeasonsLabel(section)}
+															{section.items.length === 1
+																? m.library_import_episodeCountSingular({
+																		count: section.items.length
+																	})
+																: m.library_import_episodeCount({ count: section.items.length })} •
+															{m.library_import_seasonsLabel({
+																seasons: getDetectedSeasonsLabel(section)
+															})}
 														</div>
 													</button>
 												{/each}
@@ -2027,15 +2560,20 @@
 													<div class="min-w-0">
 														<div class="truncate font-medium">{activeReviewTvSection.label}</div>
 														<div class="text-xs text-base-content/70">
-															{activeReviewTvSection.items.length} episode{activeReviewTvSection
-																.items.length === 1
-																? ''
-																: 's'}
+															{activeReviewTvSection.items.length === 1
+																? m.library_import_episodeCountSingular({
+																		count: activeReviewTvSection.items.length
+																	})
+																: m.library_import_episodeCount({
+																		count: activeReviewTvSection.items.length
+																	})}
 														</div>
 													</div>
 													{#if hasUnknownSeasonItems(activeReviewTvSection)}
 														<div class="flex items-center gap-2">
-															<span class="text-xs text-base-content/70">Override Season</span>
+															<span class="text-xs text-base-content/70"
+																>{m.library_import_overrideSeason()}</span
+															>
 															<input
 																type="number"
 																min="0"
@@ -2069,19 +2607,32 @@
 														class="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-base-300 bg-base-200/40 p-2"
 													>
 														<div class="text-xs text-base-content/70">
-															{activeReviewSeasonSection.label}: {getSeasonSectionSkippedCount(
-																activeReviewSeasonSection
-															)} of {getSkippableSeasonGroups(activeReviewSeasonSection).length} skipped
+															{activeReviewSeasonSection.label}: {m.library_import_skippedOfTotal({
+																skipped: getSeasonSectionSkippedCount(activeReviewSeasonSection),
+																total: getSkippableSeasonGroups(activeReviewSeasonSection).length
+															})}
 														</div>
-														<button
-															type="button"
-															class="btn btn-ghost btn-xs"
-															onclick={() => toggleSeasonSectionSkipped(activeReviewSeasonSection)}
-														>
-															{isSeasonSectionFullySkipped(activeReviewSeasonSection)
-																? 'Select Season'
-																: 'Skip Season'}
-														</button>
+														<div class="flex flex-wrap items-center gap-2">
+															<button
+																type="button"
+																class="btn btn-ghost btn-xs"
+																disabled={!canApplySelectedMatchToSeason(activeReviewSeasonSection)}
+																onclick={() =>
+																	applySelectedMatchToSeason(activeReviewSeasonSection)}
+															>
+																{m.library_import_applyMatchToSeason()}
+															</button>
+															<button
+																type="button"
+																class="btn btn-ghost btn-xs"
+																onclick={() =>
+																	toggleSeasonSectionSkipped(activeReviewSeasonSection)}
+															>
+																{isSeasonSectionFullySkipped(activeReviewSeasonSection)
+																	? m.library_import_selectSeason()
+																	: m.library_import_skipSeason()}
+															</button>
+														</div>
 													</div>
 												{/if}
 
@@ -2107,22 +2658,31 @@
 																	<span>{formatMediaTypeLabel(getEffectiveMediaType(group))}</span>
 																	<span>•</span>
 																	<span
-																		>{group.detectedFileCount} file{group.detectedFileCount === 1
-																			? ''
-																			: 's'}</span
+																		>{group.detectedFileCount === 1
+																			? m.library_import_fileCountSingular({
+																					count: group.detectedFileCount
+																				})
+																			: m.library_import_fileCount({
+																					count: group.detectedFileCount
+																				})}</span
 																	>
 																	{#if canImportGroup(group)}
-																		<span class="text-success">Ready</span>
+																		<span class="text-success">{m.library_import_ready()}</span>
 																	{:else if isGroupPending(group.id)}
-																		<span class="text-warning">Needs input</span>
+																		<span class="text-warning">{m.library_import_needsInput()}</span
+																		>
 																	{/if}
 																</div>
 															</button>
 															<div class="flex shrink-0 items-center gap-2">
 																{#if isGroupImported(group.id)}
-																	<span class="badge badge-sm badge-success">Imported</span>
+																	<span class="badge badge-sm badge-success"
+																		>{m.library_import_badgeImported()}</span
+																	>
 																{:else if isGroupSkipped(group.id)}
-																	<span class="badge badge-ghost badge-sm">Skipped</span>
+																	<span class="badge badge-ghost badge-sm"
+																		>{m.library_import_badgeSkipped()}</span
+																	>
 																{/if}
 																{#if !isGroupImported(group.id) && skipActionsEnabled}
 																	<button
@@ -2133,7 +2693,9 @@
 																				? unskipGroup(group.id)
 																				: markGroupSkipped(group.id)}
 																	>
-																		{isGroupSkipped(group.id) ? 'Select' : 'Skip'}
+																		{isGroupSkipped(group.id)
+																			? m.action_select()
+																			: m.library_import_skipItem()}
 																	</button>
 																{/if}
 															</div>
@@ -2154,11 +2716,13 @@
 				<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
 					<div class="flex flex-wrap items-center justify-between gap-3">
 						<div class="min-w-0">
-							<div class="text-sm text-base-content/60">Selected Item</div>
+							<div class="text-sm text-base-content/60">{m.library_import_selectedItem()}</div>
 							<div class="truncate text-lg font-semibold">{activeGroup.displayName}</div>
 							<div class="text-sm text-base-content/70">
-								{formatMediaTypeLabel(activeGroup.inferredMediaType)} • {activeGroup.detectedFileCount}
-								file{activeGroup.detectedFileCount === 1 ? '' : 's'}
+								{formatMediaTypeLabel(activeGroup.inferredMediaType)} • {activeGroup.detectedFileCount ===
+								1
+									? m.library_import_fileCountSingular({ count: activeGroup.detectedFileCount })
+									: m.library_import_fileCount({ count: activeGroup.detectedFileCount })}
 							</div>
 						</div>
 						<button
@@ -2166,7 +2730,7 @@
 							onclick={() => (showSelectedItemEditor = true)}
 							disabled={isGroupImported(activeGroup.id)}
 						>
-							Configure Selected Item
+							{m.library_import_configureSelectedItem()}
 						</button>
 					</div>
 				</div>
@@ -2174,42 +2738,54 @@
 				<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
 					<div class="grid gap-4 lg:grid-cols-2">
 						<div class="space-y-1">
-							<div class="text-sm text-base-content/60">Source</div>
+							<div class="text-sm text-base-content/60">{m.library_import_source()}</div>
 							<div class="font-medium break-all">{activeGroup.sourcePath}</div>
 							<div class="text-xs break-all text-base-content/60">
-								Primary file: {activeGroup.selectedFilePath}
+								{m.library_import_primaryFile({ path: activeGroup.selectedFilePath })}
 							</div>
 							<div class="text-sm text-base-content/70">
-								Parsed: <span class="font-medium">{activeGroup.parsedTitle}</span>
+								{m.library_import_parsed()}
+								<span class="font-medium">{activeGroup.parsedTitle}</span>
 								{#if activeGroup.parsedYear}
 									({activeGroup.parsedYear})
 								{/if}
 							</div>
 							<div class="text-sm text-base-content/70">
-								Files detected: <span class="font-medium">{activeGroup.detectedFileCount}</span>
+								{m.library_import_filesDetected()}
+								<span class="font-medium">{activeGroup.detectedFileCount}</span>
 								{#if activeGroup.detectedSeasons && activeGroup.detectedSeasons.length > 1}
-									<span class="ml-2">Seasons: {activeGroup.detectedSeasons.join(', ')}</span>
+									<span class="ml-2"
+										>{m.library_import_seasonsDetectedInline({
+											seasons: activeGroup.detectedSeasons.join(', ')
+										})}</span
+									>
 								{/if}
 							</div>
 							<div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
 								{#if isGroupImported(activeGroup.id)}
-									<span class="badge badge-sm badge-success">Imported</span>
+									<span class="badge badge-sm badge-success"
+										>{m.library_import_badgeImported()}</span
+									>
 								{:else if isGroupSkipped(activeGroup.id)}
-									<span class="badge badge-ghost badge-sm">Skipped</span>
+									<span class="badge badge-ghost badge-sm">{m.library_import_badgeSkipped()}</span>
 								{:else if canImportGroup(activeGroup)}
-									<span class="badge badge-sm badge-primary">Ready</span>
+									<span class="badge badge-sm badge-primary">{m.library_import_badgeReady()}</span>
 								{:else}
-									<span class="badge badge-sm badge-warning">Needs Input</span>
+									<span class="badge badge-sm badge-warning"
+										>{m.library_import_badgeNeedsInput()}</span
+									>
 								{/if}
 								{#if !isGroupImported(activeGroup.id) && skipActionsEnabled}
 									<button class="btn btn-ghost btn-xs" onclick={toggleSkipActiveGroup}>
-										{isGroupSkipped(activeGroup.id) ? 'Select Item' : 'Skip Item'}
+										{isGroupSkipped(activeGroup.id)
+											? m.library_import_selectItem()
+											: m.library_import_skipItem()}
 									</button>
 								{/if}
 							</div>
 						</div>
 						<div class="space-y-2">
-							<div class="text-sm text-base-content/60">Media Type</div>
+							<div class="text-sm text-base-content/60">{m.library_import_mediaTypeHeading()}</div>
 							<div class="flex gap-2">
 								<button
 									type="button"
@@ -2218,7 +2794,7 @@
 									disabled={isMediaTypeLockedByContext}
 								>
 									<Clapperboard class="h-4 w-4" />
-									Movie
+									{m.common_movie()}
 								</button>
 								<button
 									type="button"
@@ -2227,28 +2803,39 @@
 									disabled={isMediaTypeLockedByContext}
 								>
 									<Tv class="h-4 w-4" />
-									TV
+									{m.ui_mediaType_tv()}
 								</button>
 							</div>
 							{#if isMediaTypeLockedByContext}
 								<div class="text-xs text-base-content/60">
-									Media type is inherited from the library item.
+									{m.library_import_mediaTypeLocked()}
 								</div>
 							{/if}
 							{#if selectedMediaType === 'tv' && !isBatchTvImport}
 								<div class="grid grid-cols-2 gap-2">
 									<label class="form-control">
-										<span class="label-text text-xs">Season</span>
+										<span class="label-text text-xs">{m.library_import_seasonLabel()}</span>
 										<input
 											type="number"
 											min="0"
 											class="input-bordered input input-sm"
 											bind:value={seasonNumber}
-											onchange={persistActiveGroupState}
+											onchange={handleSeasonNumberChange}
 										/>
+										{#if canApplyActiveSeasonOverride()}
+											<div class="mt-2">
+												<button
+													type="button"
+													class="btn btn-ghost btn-xs"
+													onclick={handleSeasonNumberChange}
+												>
+													{m.action_apply()}
+												</button>
+											</div>
+										{/if}
 									</label>
 									<label class="form-control">
-										<span class="label-text text-xs">Episode</span>
+										<span class="label-text text-xs">{m.library_import_episodeLabel()}</span>
 										<input
 											type="number"
 											min="1"
@@ -2261,43 +2848,44 @@
 							{:else if selectedMediaType === 'tv' && isBatchTvImport}
 								<div class="space-y-2 rounded border border-base-300 bg-base-200/40 p-2">
 									<div class="text-xs text-base-content/70">
-										Episode mapping is auto-detected per file from filenames.
+										{m.library_import_episodeMappingAutoDetected()}
 									</div>
 									<label class="form-control">
-										<span class="label-text text-xs">Season Override (optional)</span>
+										<span class="label-text text-xs">{m.library_import_seasonOverrideLabel()}</span>
 										<input
 											type="number"
 											min="0"
 											class="input-bordered input input-sm"
-											placeholder="Use when filenames are missing season numbers"
+											placeholder={m.library_import_seasonOverridePlaceholder()}
 											bind:value={batchSeasonOverride}
 											onchange={persistActiveGroupState}
 										/>
 										<div class="label-text-alt text-xs text-base-content/60">
-											Applied only to files missing a detected season.
+											{m.library_import_seasonOverrideHint()}
 										</div>
 									</label>
 								</div>
 							{/if}
 							{#if isGroupImported(activeGroup.id)}
 								<div class="text-xs text-success">
-									This group is already imported in this session.
+									{m.library_import_alreadyImported()}
 								</div>
 							{:else if isGroupSkipped(activeGroup.id)}
 								<div class="text-xs text-base-content/70">
-									This item is skipped and excluded from bulk import.
+									{m.library_import_itemSkipped()}
 								</div>
 							{/if}
 						</div>
 						{#if parsedSourceContextMismatch && routeImportContext}
 							<div class="alert text-sm alert-warning lg:col-span-2">
 								<span>
-									Parsed file suggests <strong
+									{m.library_import_parsedFileSuggests()}
+									<strong
 										>{activeGroup.parsedTitle}
 										{#if activeGroup.parsedYear}
 											({activeGroup.parsedYear})
 										{/if}</strong
-									>, but this import was opened for
+									>, {m.library_import_butImportOpenedFor()}
 									<strong
 										>{routeImportContext.title || `TMDB ${routeImportContext.tmdbId}`}
 										{#if routeImportContext.year}
@@ -2314,7 +2902,8 @@
 					{#if routeImportContext}
 						<div class="mb-3 alert text-sm alert-info">
 							<span>
-								This is a direct import for <strong
+								{m.library_import_directImportFor()}
+								<strong
 									>{routeImportContext.title || `TMDB ${routeImportContext.tmdbId}`}
 									{#if routeImportContext.year}
 										({routeImportContext.year})
@@ -2338,7 +2927,7 @@
 								</div>
 								<input
 									type="text"
-									placeholder="Search TMDB titles..."
+									placeholder={m.library_import_searchTmdbPlaceholder()}
 									class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 									value={searchQuery}
 									oninput={handleMatchSearchInput}
@@ -2356,7 +2945,7 @@
 									<button
 										class="absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-0.5 text-base-content/40 transition-colors hover:bg-base-300 hover:text-base-content"
 										onclick={clearMatchSearch}
-										aria-label="Clear TMDB search"
+										aria-label={m.library_import_clearTmdbSearch()}
 									>
 										<X class="h-3.5 w-3.5" />
 									</button>
@@ -2367,12 +2956,13 @@
 					{#if selectedMatchContextMismatch && routeImportContext && selectedMatch}
 						<div class="mt-3 mb-3 alert text-sm alert-warning">
 							<span>
-								This import was opened for <strong
+								{m.library_import_importOpenedFor()}
+								<strong
 									>{routeImportContext.title || `TMDB ${routeImportContext.tmdbId}`}
 									{#if routeImportContext.year}
 										({routeImportContext.year})
 									{/if}</strong
-								>, but the selected match is
+								>, {m.library_import_butSelectedMatchIs()}
 								<strong
 									>{selectedMatch.title}
 									{#if selectedMatch.year}
@@ -2382,12 +2972,29 @@
 							</span>
 						</div>
 					{/if}
+					{#if canApplyMatchSelectionToActiveSeason}
+						<div class="mt-3 mb-3 rounded-lg border border-base-300 bg-base-200/40 p-3">
+							<label class="flex cursor-pointer items-center justify-between gap-3">
+								<span class="text-sm font-medium">
+									{m.library_import_matchEntireSelectedSeason()}
+								</span>
+								<input
+									type="checkbox"
+									class="toggle toggle-sm"
+									bind:checked={applySelectedMatchToSeasonOnSelect}
+								/>
+							</label>
+							<p class="mt-1 text-xs text-base-content/70">
+								{m.library_import_matchEntireSelectedSeasonHint()}
+							</p>
+						</div>
+					{/if}
 
 					{#if matchCandidates.length === 0}
 						<div
 							class="rounded-lg border border-dashed border-base-300 p-4 text-sm text-base-content/60"
 						>
-							No matches yet. Search TMDB to continue.
+							{m.library_import_noMatchesYet()}
 						</div>
 					{:else}
 						<div class="max-h-80 space-y-2 overflow-y-auto pr-1">
@@ -2409,15 +3016,19 @@
 										</div>
 										<div class="mt-1 flex flex-wrap items-center gap-2 text-xs">
 											<span class="badge badge-outline badge-sm">
-												{match.mediaType === 'movie' ? 'Movie' : 'TV'}
+												{match.mediaType === 'movie' ? m.common_movie() : m.ui_mediaType_tv()}
 											</span>
 											{#if match.confidence > 0}
 												<span class="badge badge-ghost badge-sm"
-													>{Math.round(match.confidence * 100)}% match</span
+													>{m.library_import_confidenceMatch({
+														percent: Math.round(match.confidence * 100)
+													})}</span
 												>
 											{/if}
 											{#if match.inLibrary}
-												<span class="badge badge-sm badge-success">In library</span>
+												<span class="badge badge-sm badge-success"
+													>{m.library_import_inLibrary()}</span
+												>
 											{/if}
 										</div>
 									</div>
@@ -2432,13 +3043,13 @@
 			{/if}
 
 			<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-				<button class="btn btn-ghost" onclick={() => goToStep(1)}>Back</button>
+				<button class="btn btn-ghost" onclick={() => goToStep(1)}>{m.action_back()}</button>
 				<button
 					class="btn btn-primary"
 					onclick={() => goToStep(3)}
 					disabled={!canProceedFromReview}
 				>
-					Continue to Import
+					{m.library_import_continueToImport()}
 				</button>
 			</div>
 		</div>
@@ -2447,27 +3058,35 @@
 	{#if step === 3 && isMultiGroupReview && detection}
 		<div class="space-y-4">
 			<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
-				<h2 class="text-lg font-semibold">Import Selection</h2>
+				<h2 class="text-lg font-semibold">{m.library_import_importSelectionHeading()}</h2>
 				<p class="mt-1 text-sm text-base-content/70">
-					Import actions run from this step. Finalize your selected items below and start import.
+					{m.library_import_importSelectionHint()}
 				</p>
 
 				<div class="mt-3 flex flex-wrap items-center gap-2 text-sm">
-					<span class="badge badge-primary">{selectedImportGroupCount} selected</span>
-					<span class="badge badge-success">{readyGroupCount} ready</span>
+					<span class="badge badge-primary"
+						>{m.library_import_selectedCount({ count: selectedImportGroupCount })}</span
+					>
+					<span class="badge badge-success"
+						>{m.library_import_readyCount({ count: readyGroupCount })}</span
+					>
 					{#if selectedNeedsInputCount > 0}
-						<span class="badge badge-warning">{selectedNeedsInputCount} need input</span>
+						<span class="badge badge-warning"
+							>{m.library_import_needInputCount({ count: selectedNeedsInputCount })}</span
+						>
 					{/if}
 					{#if skippedGroupCount > 0}
-						<span class="badge badge-ghost">{skippedGroupCount} skipped</span>
+						<span class="badge badge-ghost"
+							>{m.library_import_skippedCount({ count: skippedGroupCount })}</span
+						>
 					{/if}
 				</div>
 			</div>
 
 			<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
-				<h3 class="font-semibold">Selected Items</h3>
+				<h3 class="font-semibold">{m.library_import_selectedItemsHeading()}</h3>
 				<div class="mt-3 flex flex-wrap items-center justify-between gap-2">
-					<p class="text-xs text-base-content/70">Filter selected imports by media type.</p>
+					<p class="text-xs text-base-content/70">{m.library_import_filterByMediaType()}</p>
 					<div class="join">
 						<button
 							type="button"
@@ -2476,7 +3095,7 @@
 								: 'btn-ghost'}"
 							onclick={() => (importMediaFilter = 'all')}
 						>
-							All Media
+							{m.library_import_filterAllMedia()}
 						</button>
 						<button
 							type="button"
@@ -2485,7 +3104,7 @@
 								: 'btn-ghost'}"
 							onclick={() => (importMediaFilter = 'movie')}
 						>
-							Movies
+							{m.common_movies()}
 						</button>
 						<button
 							type="button"
@@ -2494,7 +3113,7 @@
 								: 'btn-ghost'}"
 							onclick={() => (importMediaFilter = 'tv')}
 						>
-							TV Shows
+							{m.common_tvShows()}
 						</button>
 					</div>
 				</div>
@@ -2502,13 +3121,13 @@
 					<div
 						class="mt-3 rounded-lg border border-dashed border-base-300 p-4 text-sm text-base-content/60"
 					>
-						No items selected for import. Go back to Review Matches and select items.
+						{m.library_import_noItemsSelected()}
 					</div>
 				{:else if importSelectionSections.length === 0}
 					<div
 						class="mt-3 rounded-lg border border-dashed border-base-300 p-4 text-sm text-base-content/60"
 					>
-						No selected items match the current media filter.
+						{m.library_import_noItemsMatchFilter()}
 					</div>
 				{:else}
 					<div class="mt-3 space-y-3">
@@ -2528,14 +3147,18 @@
 														<span>{formatMediaTypeLabel(getEffectiveMediaType(group))}</span>
 														<span>•</span>
 														<span
-															>{group.detectedFileCount} file{group.detectedFileCount === 1
-																? ''
-																: 's'}</span
+															>{group.detectedFileCount === 1
+																? m.library_import_fileCountSingular({
+																		count: group.detectedFileCount
+																	})
+																: m.library_import_fileCount({
+																		count: group.detectedFileCount
+																	})}</span
 														>
 														{#if canImportGroup(group)}
-															<span class="text-success">Ready</span>
+															<span class="text-success">{m.library_import_ready()}</span>
 														{:else}
-															<span class="text-warning">Needs input</span>
+															<span class="text-warning">{m.library_import_needsInput()}</span>
 														{/if}
 													</div>
 												</div>
@@ -2547,7 +3170,7 @@
 														showSelectedItemEditor = true;
 													}}
 												>
-													Review
+													{m.library_import_review()}
 												</button>
 											</div>
 										</div>
@@ -2576,8 +3199,13 @@
 												>
 													<div class="truncate text-sm font-medium">{section.label}</div>
 													<div class="mt-1 text-xs text-base-content/70">
-														{section.items.length} episode{section.items.length === 1 ? '' : 's'} • seasons:
-														{getDetectedSeasonsLabel(section)}
+														{section.items.length === 1
+															? m.library_import_episodeCountSingular({
+																	count: section.items.length
+																})
+															: m.library_import_episodeCount({ count: section.items.length })} • {m.library_import_seasonsLabel(
+															{ seasons: getDetectedSeasonsLabel(section) }
+														)}
 													</div>
 												</button>
 											{/each}
@@ -2589,12 +3217,70 @@
 											<div class="min-w-0">
 												<div class="truncate font-medium">{activeImportTvSection.label}</div>
 												<div class="text-xs text-base-content/70">
-													{activeImportTvSection.items.length} episode{activeImportTvSection.items
-														.length === 1
-														? ''
-														: 's'}
+													{activeImportTvSection.items.length === 1
+														? m.library_import_episodeCountSingular({
+																count: activeImportTvSection.items.length
+															})
+														: m.library_import_episodeCount({
+																count: activeImportTvSection.items.length
+															})}
 												</div>
 											</div>
+
+											{@const mediaDestinationOptions =
+												getSectionDestinationOptions(activeImportTvSection)}
+											{@const mediaDestinationEligibleCount =
+												getSectionDestinationEligibleGroups(activeImportTvSection).length}
+											{#if mediaDestinationOptions.length > 0}
+												<div
+													class="mt-2 flex flex-wrap items-end gap-2 rounded-md border border-base-300 bg-base-200/40 p-2"
+												>
+													<div class="min-w-64 flex-1">
+														<div class="pb-1 text-xs text-base-content/80">
+															{m.library_import_destinationRootFolder()}
+														</div>
+														<select
+															class="select-bordered select w-full select-xs"
+															value={bulkDestinationBySectionId[activeImportTvSection.id] ?? ''}
+															onchange={(event) =>
+																updateSectionDestination(
+																	activeImportTvSection.id,
+																	(event.target as HTMLSelectElement).value
+																)}
+														>
+															<option disabled value=""
+																>{m.library_import_selectRootFolder()}</option
+															>
+															{#each mediaDestinationOptions as folder (folder.id)}
+																<option value={folder.id}
+																	>{folder.name}
+																	{#if folder.defaultRootFolderPath}
+																		- {folder.defaultRootFolderPath}
+																	{/if}</option
+																>
+															{/each}
+														</select>
+													</div>
+													<button
+														type="button"
+														class="btn btn-ghost btn-xs"
+														disabled={!canApplySelectedDestinationToMedia(activeImportTvSection)}
+														onclick={() => applySelectedDestinationToMedia(activeImportTvSection)}
+													>
+														{m.library_import_applyDestinationToMedia()}
+													</button>
+												</div>
+											{:else}
+												<div
+													class="mt-2 rounded-md border border-base-300 bg-base-200/40 p-2 text-xs text-base-content/70"
+												>
+													{#if mediaDestinationEligibleCount === 0}
+														{m.library_import_destinationNotNeededForExistingMedia()}
+													{:else}
+														{m.library_import_noCommonDestinationForMedia()}
+													{/if}
+												</div>
+											{/if}
 
 											{#if activeImportTvSection.seasonSections}
 												<div class="mt-2 flex flex-wrap gap-2">
@@ -2626,14 +3312,18 @@
 																<span>{formatMediaTypeLabel(getEffectiveMediaType(group))}</span>
 																<span>•</span>
 																<span
-																	>{group.detectedFileCount} file{group.detectedFileCount === 1
-																		? ''
-																		: 's'}</span
+																	>{group.detectedFileCount === 1
+																		? m.library_import_fileCountSingular({
+																				count: group.detectedFileCount
+																			})
+																		: m.library_import_fileCount({
+																				count: group.detectedFileCount
+																			})}</span
 																>
 																{#if canImportGroup(group)}
-																	<span class="text-success">Ready</span>
+																	<span class="text-success">{m.library_import_ready()}</span>
 																{:else}
-																	<span class="text-warning">Needs input</span>
+																	<span class="text-warning">{m.library_import_needsInput()}</span>
 																{/if}
 															</div>
 														</div>
@@ -2645,7 +3335,7 @@
 																showSelectedItemEditor = true;
 															}}
 														>
-															Review
+															{m.library_import_review()}
 														</button>
 													</div>
 												{/each}
@@ -2662,14 +3352,15 @@
 			{#if selectedNeedsInputCount > 0}
 				<div class="alert text-sm alert-warning">
 					<span>
-						{selectedNeedsInputCount} selected item(s) still need input. Fix them in Review Matches before
-						starting import.
+						{m.library_import_needsInputWarning({ count: selectedNeedsInputCount })}
 					</span>
 				</div>
 			{/if}
 
 			<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-				<button class="btn btn-ghost" onclick={() => goToStep(2)}>Back to Review</button>
+				<button class="btn btn-ghost" onclick={() => goToStep(2)}
+					>{m.library_import_backToReview()}</button
+				>
 				<button
 					class="btn btn-primary"
 					onclick={executeBulkImportFlow}
@@ -2679,10 +3370,10 @@
 				>
 					{#if executingImport}
 						<Loader2 class="h-4 w-4 animate-spin" />
-						Importing...
+						{m.library_import_importing()}
 					{:else}
 						<Check class="h-4 w-4" />
-						Start Import ({selectedImportGroupCount})
+						{m.library_import_startImportCount({ count: selectedImportGroupCount })}
 					{/if}
 				</button>
 			</div>
@@ -2692,9 +3383,9 @@
 	{#if step === 3 && !isMultiGroupReview && activeGroup && selectedMatch}
 		<div class="space-y-4">
 			<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
-				<h2 class="text-lg font-semibold">Import Target</h2>
+				<h2 class="text-lg font-semibold">{m.library_import_importTargetHeading()}</h2>
 				<p class="mt-1 text-sm text-base-content/70">
-					Select whether to import into an existing library item or create a new one.
+					{m.library_import_importTargetHint()}
 				</p>
 				<div class="mt-4 grid gap-2 sm:grid-cols-2">
 					<label
@@ -2711,9 +3402,9 @@
 							disabled={selectedMatch?.inLibrary}
 						/>
 						<div>
-							<div class="font-medium">Create / Import as New</div>
+							<div class="font-medium">{m.library_import_createNew()}</div>
 							<div class="text-sm text-base-content/70">
-								Creates library entry if needed and imports into selected root folder.
+								{m.library_import_createNewHint()}
 							</div>
 						</div>
 					</label>
@@ -2731,9 +3422,9 @@
 							disabled={!selectedMatch?.inLibrary}
 						/>
 						<div>
-							<div class="font-medium">Match Existing Library Item</div>
+							<div class="font-medium">{m.library_import_matchExisting()}</div>
 							<div class="text-sm text-base-content/70">
-								Requires selected TMDB item to already exist in library.
+								{m.library_import_matchExistingHint()}
 							</div>
 						</div>
 					</label>
@@ -2742,15 +3433,15 @@
 
 			{#if importTarget === 'new'}
 				<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
-					<h3 class="font-semibold">Destination Root Folder</h3>
+					<h3 class="font-semibold">{m.library_import_destinationRootFolder()}</h3>
 					{#if loadingRootFolders}
 						<div class="mt-2 flex items-center gap-2 text-sm text-base-content/70">
 							<Loader2 class="h-4 w-4 animate-spin" />
-							Loading folders...
+							{m.library_import_loadingFolders()}
 						</div>
-					{:else if rootFoldersForType.length === 0}
+					{:else if destinationLibrariesForType.length === 0}
 						<div class="mt-3 alert text-sm alert-warning">
-							<span>No writable root folders configured for this media type.</span>
+							<span>{m.library_import_noWritableFolders()}</span>
 						</div>
 					{:else}
 						<select
@@ -2758,34 +3449,40 @@
 							bind:value={selectedRootFolder}
 							onchange={persistActiveGroupState}
 						>
-							<option disabled value="">Select root folder</option>
-							{#each rootFoldersForType as folder (folder.id)}
-								<option value={folder.id}>{folder.name} - {folder.path}</option>
+							<option disabled value="">{m.library_import_selectRootFolder()}</option>
+							{#each destinationLibrariesForType as library (library.id)}
+								<option value={library.id}
+									>{library.name}
+									{#if library.defaultRootFolderPath}
+										- {library.defaultRootFolderPath}
+									{/if}</option
+								>
 							{/each}
 						</select>
 					{/if}
 				</div>
 			{:else}
 				<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
-					<h3 class="font-semibold">Existing Item Match</h3>
+					<h3 class="font-semibold">{m.library_import_existingItemMatch()}</h3>
 					<div class="mt-2 text-sm text-base-content/70">
-						Importing into existing library item for:
+						{m.library_import_importingIntoExisting()}
 						<span class="font-medium text-base-content">{selectedMatch.title}</span>
 					</div>
 				</div>
 			{/if}
 
 			<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
-				<h3 class="font-semibold">Summary</h3>
+				<h3 class="font-semibold">{m.library_import_summaryHeading()}</h3>
 				{#if selectedMatchContextMismatch && routeImportContext}
 					<div class="mt-3 alert text-sm alert-warning">
 						<span>
-							This import was opened for <strong
+							{m.library_import_importOpenedFor()}
+							<strong
 								>{routeImportContext.title || `TMDB ${routeImportContext.tmdbId}`}
 								{#if routeImportContext.year}
 									({routeImportContext.year})
 								{/if}</strong
-							>, but the selected match is
+							>, {m.library_import_butSelectedMatchIs()}
 							<strong
 								>{selectedMatch.title}
 								{#if selectedMatch.year}
@@ -2796,33 +3493,41 @@
 					</div>
 				{/if}
 				<div class="mt-2 space-y-1 text-sm">
-					<div><span class="text-base-content/60">Source:</span> {activeGroup.sourcePath}</div>
 					<div>
-						<span class="text-base-content/60">Match:</span>
+						<span class="text-base-content/60">{m.library_import_summarySource()}</span>
+						{activeGroup.sourcePath}
+					</div>
+					<div>
+						<span class="text-base-content/60">{m.library_import_summaryMatch()}</span>
 						{selectedMatch.title}
 						{#if selectedMatch.year}
 							({selectedMatch.year})
 						{/if}
 					</div>
 					<div>
-						<span class="text-base-content/60">Type:</span>
+						<span class="text-base-content/60">{m.library_import_summaryType()}</span>
 						{formatMediaTypeLabel(selectedMediaType)}
 					</div>
 					{#if selectedMediaType === 'tv'}
 						<div>
 							{#if activeGroup.detectedFileCount > 1}
-								<span class="text-base-content/60">Detected Episodes:</span>
-								{activeGroup.detectedFileCount} files
+								<span class="text-base-content/60"
+									>{m.library_import_summaryDetectedEpisodes()}</span
+								>
+								{m.library_import_summaryFilesCount({ count: activeGroup.detectedFileCount })}
 								{#if activeGroup.detectedSeasons && activeGroup.detectedSeasons.length > 0}
-									(seasons: {activeGroup.detectedSeasons.join(', ')})
+									({m.library_import_summarySeasonsInline({
+										seasons: activeGroup.detectedSeasons.join(', ')
+									})})
 								{/if}
 								{#if batchSeasonOverride !== null}
 									<span class="ml-2 text-base-content/70"
-										>override season: {batchSeasonOverride}</span
+										>{m.library_import_summaryOverrideSeason({ season: batchSeasonOverride })}</span
 									>
 								{/if}
 							{:else}
-								<span class="text-base-content/60">Episode:</span> S{seasonNumber}E{episodeNumber}
+								<span class="text-base-content/60">{m.library_import_summaryEpisode()}</span>
+								S{seasonNumber}E{episodeNumber}
 							{/if}
 						</div>
 					{/if}
@@ -2830,7 +3535,7 @@
 			</div>
 
 			<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-				<button class="btn btn-ghost" onclick={() => goToStep(2)}>Back</button>
+				<button class="btn btn-ghost" onclick={() => goToStep(2)}>{m.action_back()}</button>
 				<button
 					class="btn btn-primary"
 					onclick={executeImportFlow}
@@ -2838,10 +3543,10 @@
 				>
 					{#if executingImport}
 						<Loader2 class="h-4 w-4 animate-spin" />
-						Importing...
+						{m.library_import_importing()}
 					{:else}
 						<Check class="h-4 w-4" />
-						Start Import
+						{m.library_import_startImport()}
 					{/if}
 				</button>
 			</div>
@@ -2855,7 +3560,7 @@
 					<X class="h-5 w-5 text-error" />
 				</div>
 				<div class="min-w-0 flex-1">
-					<h2 class="text-xl font-semibold">Import Failed</h2>
+					<h2 class="text-xl font-semibold">{m.library_import_importFailed()}</h2>
 					<p class="mt-1 text-sm text-base-content/80">
 						{executeError}
 					</p>
@@ -2867,10 +3572,12 @@
 								step = 3;
 							}}
 						>
-							Try Again
+							{m.library_import_tryAgain()}
 						</button>
 						{#if originLibraryLink}
-							<a class="btn btn-outline btn-sm" href={originLibraryLink}>Back to Library Item</a>
+							<a class="btn btn-outline btn-sm" href={originLibraryLink}
+								>{m.library_import_backToLibraryItem()}</a
+							>
 						{/if}
 					</div>
 				</div>
@@ -2883,46 +3590,54 @@
 					<Check class="h-5 w-5 text-success" />
 				</div>
 				<div class="min-w-0 flex-1">
-					<h2 class="text-xl font-semibold">Import Complete</h2>
+					<h2 class="text-xl font-semibold">{m.library_import_importComplete()}</h2>
 					{#if bulkImportSummary}
 						<p class="mt-1 text-sm text-base-content/80">
-							Imported {bulkImportSummary.importedGroups} detected item(s)
 							{#if bulkImportSummary.failedGroups > 0}
-								with {bulkImportSummary.failedGroups} failure(s).
+								{m.library_import_bulkImportedWithFailures({
+									imported: bulkImportSummary.importedGroups,
+									failed: bulkImportSummary.failedGroups
+								})}
 							{:else}
-								successfully.
+								{m.library_import_bulkImportedSuccess({
+									imported: bulkImportSummary.importedGroups
+								})}
 							{/if}
 						</p>
 						{#if skippedGroupCount > 0}
 							<p class="mt-1 text-sm text-base-content/70">
-								Skipped {skippedGroupCount} item(s).
+								{m.library_import_bulkSkippedItems({ count: skippedGroupCount })}
 							</p>
 						{/if}
 					{:else}
 						<p class="mt-1 text-sm text-base-content/80">
 							{executeResult.importedCount && executeResult.importedCount > 1
-								? `${executeResult.importedCount} files imported and linked to library successfully.`
-								: 'File imported and linked to library successfully.'}
+								? m.library_import_filesImportedPlural({ count: executeResult.importedCount })
+								: m.library_import_fileImportedSingular()}
 						</p>
 					{/if}
 					<div class="mt-3 rounded-lg bg-base-100 p-3 text-sm break-all">
 						<div>
-							<span class="text-base-content/60">Imported Path:</span>
+							<span class="text-base-content/60">{m.library_import_importedPathLabel()}</span>
 							{executeResult.importedPath}
 						</div>
 					</div>
 					<div class="mt-4 flex flex-wrap gap-2">
 						{#if completionLink}
 							<a class="btn btn-sm btn-primary" href={completionLink}>
-								{bulkImportSummary ? 'View Last Imported' : 'View in Library'}
+								{bulkImportSummary
+									? m.library_import_viewLastImported()
+									: m.library_import_viewInLibrary()}
 							</a>
 						{/if}
 						{#if remainingGroupCount > 0}
 							<button class="btn btn-outline btn-sm" onclick={continueWithNextDetected}>
-								Import Next Detected Item ({remainingGroupCount})
+								{m.library_import_importNextDetected({ count: remainingGroupCount })}
 							</button>
 						{/if}
-						<button class="btn btn-ghost btn-sm" onclick={resetWizard}>Import Another</button>
+						<button class="btn btn-ghost btn-sm" onclick={resetWizard}
+							>{m.library_import_importAnother()}</button
+						>
 					</div>
 				</div>
 			</div>
@@ -2932,10 +3647,10 @@
 
 <ConfirmationModal
 	open={leaveImportModalOpen}
-	title="Cancel Import?"
-	message="Cancel the current import session and leave this page? Your current import progress will be lost."
-	confirmLabel="Cancel Import"
-	cancelLabel="Stay"
+	title={m.library_import_cancelImportTitle()}
+	message={m.library_import_cancelImportMessage()}
+	confirmLabel={m.library_import_cancelImportConfirm()}
+	cancelLabel={m.library_import_cancelImportStay()}
 	confirmVariant="error"
 	onConfirm={confirmLeaveImportModal}
 	onCancel={closeLeaveImportModal}

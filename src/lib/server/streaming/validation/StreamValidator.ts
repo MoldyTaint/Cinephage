@@ -19,7 +19,7 @@ import type {
 	PlaylistValidationResult
 } from '../types';
 
-const streamLog = { logCategory: 'streams' as const };
+const streamLog = { logDomain: 'streams' as const, component: 'StreamValidator' };
 
 // ============================================================================
 // Configuration
@@ -153,11 +153,16 @@ export class StreamValidator {
 			result.error = errorMessage;
 			result.errors = [errorMessage];
 
-			logger.debug('Playlist validation failed', {
-				url,
-				error: errorMessage,
-				...streamLog
-			});
+			logger.warn(
+				{
+					url,
+					referer: effectiveReferer,
+					err: error,
+					error: errorMessage,
+					...streamLog
+				},
+				'Playlist validation request failed'
+			);
 
 			return result;
 		}
@@ -407,23 +412,34 @@ export class StreamValidator {
 			result.playable = true;
 			result.responseTime = Date.now() - startTime;
 
-			logger.debug('Stream validation successful', {
-				url: source.url,
-				responseTime: result.responseTime,
-				variantCount: result.variantCount,
-				...streamLog
-			});
+			logger.debug(
+				{
+					url: source.url,
+					referer: source.referer,
+					provider: source.provider,
+					responseTimeMs: result.responseTime,
+					variantCount: result.variantCount,
+					...streamLog
+				},
+				'Stream validation completed successfully'
+			);
 
 			return result;
 		} catch (error) {
 			result.error = error instanceof Error ? error.message : String(error);
 			result.responseTime = Date.now() - startTime;
 
-			logger.debug('Stream validation failed', {
-				url: source.url,
-				error: result.error,
-				...streamLog
-			});
+			logger.warn(
+				{
+					url: source.url,
+					referer: source.referer,
+					provider: source.provider,
+					err: error,
+					error: result.error,
+					...streamLog
+				},
+				'Stream validation failed'
+			);
 
 			return result;
 		}

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { ScoringProfile, ScoringProfileFormData } from '$lib/types/profile';
 	import type { FormatCategory } from '$lib/types/format';
+	import * as m from '$lib/paraglide/messages.js';
 	import { groupFormatScoresByCategory } from '$lib/types/format';
 	import { X, Save, Info, Loader2, Settings, Layers } from 'lucide-svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
@@ -20,6 +21,8 @@
 		error?: string | null;
 		onClose: () => void;
 		onSave: (data: ScoringProfileFormData) => void;
+		/** Called when resetting a built-in profile's scores to defaults */
+		onReset?: (profileId: string) => void;
 	}
 
 	let {
@@ -32,11 +35,20 @@
 		saving = false,
 		error = null,
 		onClose,
-		onSave
+		onSave,
+		onReset
 	}: Props = $props();
 
 	// Tab state
 	let activeTab = $state<'general' | 'formats'>('general');
+	// Modal title
+	const modalTitle = $derived(
+		mode === 'add'
+			? m.profiles_createProfile()
+			: profile?.isBuiltIn
+				? m.profiles_editSizeLimits()
+				: m.profiles_editProfile()
+	);
 
 	// Form state
 	let name = $state('');
@@ -231,6 +243,23 @@
 		if (descriptionTooLong) {
 			return;
 		}
+
+		const filteredFormatScores = Object.fromEntries(
+			Object.entries(formatScores).filter(([, score]) => score !== 0)
+		);
+
+		if (profile?.isBuiltIn) {
+			onSave({
+				movieMinSizeGb: normalizeGbLimit(movieMinSizeGbValue),
+				movieMaxSizeGb: normalizeGbLimit(movieMaxSizeGbValue),
+				episodeMinSizeMb: normalizeMbLimit(episodeMinSizeMbValue),
+				episodeMaxSizeMb: normalizeMbLimit(episodeMaxSizeMbValue),
+				isDefault,
+				formatScores: filteredFormatScores
+			});
+			return;
+		}
+
 		onSave({
 			name,
 			description: description || undefined,
@@ -242,9 +271,7 @@
 			episodeMaxSizeMb: normalizeMbLimit(episodeMaxSizeMbValue),
 			isDefault,
 			// Include format scores (filter out zeros to keep payload lean)
-			formatScores: Object.fromEntries(
-				Object.entries(formatScores).filter(([, score]) => score !== 0)
-			)
+			formatScores: filteredFormatScores
 		});
 	}
 
@@ -252,12 +279,9 @@
 	const isFullyReadonly = $derived(mode === 'view');
 	const isNewProfile = $derived(mode === 'add');
 	const isStreamerProfile = $derived(profile?.id === 'streamer');
-	const modalTitle = $derived(
-		mode === 'add' ? 'Create Profile' : profile?.isBuiltIn ? 'Edit Size Limits' : 'Edit Profile'
-	);
 
-	// Only show Format Scores tab for custom profiles (not built-in) or when creating new
-	const showFormatsTab = $derived(!profile?.isBuiltIn && allFormats.length > 0);
+	// Show Format Scores tab for all profiles except when in view mode
+	const showFormatsTab = $derived(mode !== 'view' && allFormats.length > 0);
 
 	// Separate built-in and custom profiles for the dropdown
 	const builtInProfiles = $derived(allProfiles.filter((p) => p.isBuiltIn));
@@ -289,7 +313,7 @@
 				onclick={() => (activeTab = 'general')}
 			>
 				<Settings class="h-4 w-4" />
-				General
+				{m.profiles_tab_general()}
 			</button>
 			<button
 				type="button"
@@ -298,7 +322,7 @@
 				onclick={() => (activeTab = 'formats')}
 			>
 				<Layers class="h-4 w-4" />
-				Format Scores
+				{m.profiles_tab_formatScores()}
 			</button>
 		</div>
 	{/if}
@@ -309,11 +333,11 @@
 		<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
 			<!-- Left Column: Profile Details -->
 			<div class="space-y-4">
-				<SectionHeader title="Profile" />
+				<SectionHeader title={m.profiles_section_profile()} />
 
 				<div class="form-control">
 					<label class="label py-1" for="profile-name">
-						<span class="label-text">Name</span>
+						<span class="label-text">{m.common_name()}</span>
 					</label>
 					<input
 						id="profile-name"
@@ -327,7 +351,7 @@
 
 				<div class="form-control">
 					<label class="label py-1" for="profile-description">
-						<span class="label-text">Description</span>
+						<span class="label-text">{m.common_description()}</span>
 					</label>
 					<textarea
 						id="profile-description"
@@ -355,19 +379,19 @@
 				{#if isNewProfile}
 					<div class="form-control">
 						<label class="label py-1" for="copy-from">
-							<span class="label-text">Copy From</span>
+							<span class="label-text">{m.profiles_copyFrom_label()}</span>
 						</label>
 						<select id="copy-from" class="select-bordered select select-sm" bind:value={copyFromId}>
-							<option value="">Start from scratch</option>
+							<option value="">{m.profiles_copyFrom_scratch()}</option>
 							{#if builtInProfiles.length > 0}
-								<optgroup label="Built-in Profiles">
+								<optgroup label={m.profiles_copyFrom_builtInLabel()}>
 									{#each builtInProfiles as bp (bp.id)}
 										<option value={bp.id}>{bp.name}</option>
 									{/each}
 								</optgroup>
 							{/if}
 							{#if customProfiles.length > 0}
-								<optgroup label="Custom Profiles">
+								<optgroup label={m.profiles_copyFrom_customLabel()}>
 									{#each customProfiles as cp (cp.id)}
 										<option value={cp.id}>{cp.name}</option>
 									{/each}
@@ -376,9 +400,7 @@
 						</select>
 						<div class="label py-1">
 							<span class="label-text-alt text-xs">
-								{copyFromId
-									? 'Format scores will be copied from the selected profile'
-									: 'All format scores will start at 0'}
+								{copyFromId ? m.profiles_copyFrom_helpCopied() : m.profiles_copyFrom_helpZero()}
 							</span>
 						</div>
 					</div>
@@ -393,7 +415,7 @@
 							bind:checked={upgradesAllowed}
 							disabled={isCoreReadonly}
 						/>
-						<span class="label-text">Allow Upgrades</span>
+						<span class="label-text">{m.profiles_allowUpgrades_label()}</span>
 					</label>
 
 					{#if !profile?.isBuiltIn}
@@ -404,7 +426,7 @@
 								bind:checked={isDefault}
 								disabled={isFullyReadonly}
 							/>
-							<span class="label-text">Set as Default</span>
+							<span class="label-text">{m.profiles_setAsDefault()}</span>
 						</label>
 					{/if}
 				</div>
@@ -412,18 +434,18 @@
 
 			<!-- Right Column: Size Limits -->
 			<div class="space-y-4">
-				<SectionHeader title="Size Limits" />
+				<SectionHeader title={m.profiles_section_sizeLimits()} />
 
 				{#if isStreamerProfile}
 					<div class="rounded-lg bg-base-200 p-3 text-xs text-base-content/70">
 						<Info class="mr-1 inline h-3 w-3" />
-						Streaming profiles use external sources, so size limits are not configurable.
+						{m.profiles_streamerProfileSizeLimitsInfo()}
 					</div>
 				{:else}
 					<div class="grid grid-cols-2 gap-2 sm:gap-3">
 						<div class="form-control">
 							<label class="label py-1" for="movie-min-size">
-								<span class="label-text">Movie Min (GB)</span>
+								<span class="label-text">{m.profiles_movieMinSize_label()}</span>
 							</label>
 							<input
 								id="movie-min-size"
@@ -451,7 +473,7 @@
 
 						<div class="form-control">
 							<label class="label py-1" for="movie-max-size">
-								<span class="label-text">Movie Max (GB)</span>
+								<span class="label-text">{m.profiles_movieMaxSize_label()}</span>
 							</label>
 							<input
 								id="movie-max-size"
@@ -481,7 +503,7 @@
 					<div class="grid grid-cols-2 gap-2 sm:gap-3">
 						<div class="form-control">
 							<label class="label py-1" for="episode-min-size">
-								<span class="label-text">Episode Min (MB)</span>
+								<span class="label-text">{m.profiles_episodeMinSize_label()}</span>
 							</label>
 							<input
 								id="episode-min-size"
@@ -516,7 +538,7 @@
 
 						<div class="form-control">
 							<label class="label py-1" for="episode-max-size">
-								<span class="label-text">Episode Max (MB)</span>
+								<span class="label-text">{m.profiles_episodeMaxSize_label()}</span>
 							</label>
 							<input
 								id="episode-max-size"
@@ -553,7 +575,7 @@
 
 				<div class="rounded-lg bg-base-200 p-3 text-xs text-base-content/70">
 					<Info class="mr-1 inline h-3 w-3" />
-					For season packs, the average size per episode is calculated.
+					{m.profiles_seasonPackSizeInfo()}
 				</div>
 			</div>
 		</div>
@@ -563,8 +585,7 @@
 				<div class="mb-4 alert text-sm alert-info">
 					<Info class="h-4 w-4" />
 					<span>
-						Format scores will be copied from the selected profile when you save. You can edit them
-						after creation.
+						{m.profiles_formatScoresCopyInfo()}
 					</span>
 				</div>
 			{/if}
@@ -578,8 +599,18 @@
 
 	<!-- Footer -->
 	<div class="modal-action mt-6 border-t border-base-300 pt-4">
+		{#if profile?.isBuiltIn && mode !== 'view' && onReset}
+			<button
+				class="btn text-error btn-ghost"
+				onclick={() => onReset(profile.id)}
+				disabled={saving}
+			>
+				Reset scores to defaults
+			</button>
+		{/if}
+		<div class="flex-1"></div>
 		<button class="btn btn-ghost" onclick={onClose}>
-			{isFullyReadonly ? 'Close' : 'Cancel'}
+			{isFullyReadonly ? m.action_close() : m.action_cancel()}
 		</button>
 		{#if !isFullyReadonly}
 			<button
@@ -592,7 +623,7 @@
 				{:else}
 					<Save class="h-4 w-4" />
 				{/if}
-				Save
+				{m.action_save()}
 			</button>
 		{/if}
 	</div>

@@ -24,7 +24,9 @@ import {
 	ORG_LANGUAGE_REVERSE,
 	ORG_SUPPORTED_LANGUAGES
 } from './types';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import {
 	AuthenticationError,
 	DownloadLimitExceeded,
@@ -104,7 +106,7 @@ export class OpenSubtitlesOrgProvider extends BaseSubtitleProvider implements IS
 			try {
 				await this.logout();
 			} catch (error) {
-				logger.debug('Logout failed', { error });
+				logger.debug({ error }, 'Logout failed');
 			}
 		}
 	}

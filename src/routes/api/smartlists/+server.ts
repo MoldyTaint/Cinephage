@@ -9,9 +9,9 @@ import type { RequestHandler } from './$types';
 import { getSmartListService } from '$lib/server/smartlists/index.js';
 import { db } from '$lib/server/db/index.js';
 import { rootFolders } from '$lib/server/db/schema.js';
-import { isAppError } from '$lib/errors';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
+import { parseBody } from '$lib/server/api/validate.js';
 
 const createSchema = z.object({
 	name: z.string().min(1).max(100),
@@ -96,60 +96,45 @@ export const GET: RequestHandler = async () => {
 };
 
 export const POST: RequestHandler = async ({ request }) => {
-	try {
-		const body = await request.json();
-		const data = createSchema.parse(body);
+	const data = await parseBody(request, createSchema);
 
-		const autoAddBehavior = data.autoAddBehavior ?? 'disabled';
-		const rootFolderId = data.rootFolderId?.trim();
-		if (autoAddBehavior !== 'disabled' && !rootFolderId) {
+	const autoAddBehavior = data.autoAddBehavior ?? 'disabled';
+	const rootFolderId = data.rootFolderId?.trim();
+	if (autoAddBehavior !== 'disabled' && !rootFolderId) {
+		return json({ error: 'Root folder is required when Auto Search is enabled' }, { status: 400 });
+	}
+
+	if (autoAddBehavior !== 'disabled' && rootFolderId) {
+		const [folder] = await db
+			.select({
+				id: rootFolders.id,
+				mediaType: rootFolders.mediaType
+			})
+			.from(rootFolders)
+			.where(eq(rootFolders.id, rootFolderId))
+			.limit(1);
+
+		if (!folder) {
+			return json({ error: 'Selected root folder was not found' }, { status: 400 });
+		}
+
+		if (folder.mediaType !== data.mediaType) {
+			const expected = data.mediaType === 'movie' ? 'movie' : 'TV';
+			const actual = folder.mediaType === 'movie' ? 'movie' : 'TV';
 			return json(
-				{ error: 'Root folder is required when Auto Search is enabled' },
+				{
+					error: `Selected root folder is a ${actual} folder. Choose a ${expected} folder.`
+				},
 				{ status: 400 }
 			);
 		}
-
-		if (autoAddBehavior !== 'disabled' && rootFolderId) {
-			const [folder] = await db
-				.select({
-					id: rootFolders.id,
-					mediaType: rootFolders.mediaType
-				})
-				.from(rootFolders)
-				.where(eq(rootFolders.id, rootFolderId))
-				.limit(1);
-
-			if (!folder) {
-				return json({ error: 'Selected root folder was not found' }, { status: 400 });
-			}
-
-			if (folder.mediaType !== data.mediaType) {
-				const expected = data.mediaType === 'movie' ? 'movie' : 'TV';
-				const actual = folder.mediaType === 'movie' ? 'movie' : 'TV';
-				return json(
-					{
-						error: `Selected root folder is a ${actual} folder. Choose a ${expected} folder.`
-					},
-					{ status: 400 }
-				);
-			}
-		}
-
-		const service = getSmartListService();
-		const list = await service.createSmartList({
-			...data,
-			rootFolderId: rootFolderId || undefined
-		});
-
-		return json(list, { status: 201 });
-	} catch (error) {
-		if (error instanceof z.ZodError) {
-			return json({ error: 'Validation failed', details: error.issues }, { status: 400 });
-		}
-		if (isAppError(error)) {
-			return json(error.toJSON(), { status: error.statusCode });
-		}
-		const message = error instanceof Error ? error.message : 'Unknown error';
-		return json({ error: message }, { status: 500 });
 	}
+
+	const service = getSmartListService();
+	const list = await service.createSmartList({
+		...data,
+		rootFolderId: rootFolderId || undefined
+	});
+
+	return json(list, { status: 201 });
 };

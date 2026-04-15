@@ -309,13 +309,25 @@ export class TransmissionClient implements IDownloadClient {
 
 	async addDownload(options: AddDownloadOptions): Promise<string> {
 		const args: Record<string, unknown> = {};
+		const selectedFileIndices = (options.fileSelection?.fileIndices || []).filter(
+			(index) => Number.isInteger(index) && index >= 0
+		);
+		const allFileIndices = (options.fileSelection?.allFileIndices || []).filter(
+			(index) => Number.isInteger(index) && index >= 0
+		);
+		if (
+			options.fileSelection &&
+			(selectedFileIndices.length === 0 || allFileIndices.length === 0)
+		) {
+			throw new Error('Transmission file selection requires valid file indices');
+		}
 
-		if (options.magnetUri) {
+		if (options.torrentFile) {
+			args.metainfo = options.torrentFile.toString('base64');
+		} else if (options.magnetUri) {
 			args.filename = options.magnetUri;
 		} else if (options.downloadUrl) {
 			args.filename = options.downloadUrl;
-		} else if (options.torrentFile) {
-			args.metainfo = options.torrentFile.toString('base64');
 		} else {
 			throw new Error('Transmission requires magnet URI, torrent file, or download URL');
 		}
@@ -351,6 +363,15 @@ export class TransmissionClient implements IDownloadClient {
 			} else {
 				args.seedIdleMode = 1;
 				args.seedIdleLimit = Math.max(0, Math.round(options.seedTimeLimit));
+			}
+		}
+
+		if (selectedFileIndices.length > 0) {
+			args['files-wanted'] = selectedFileIndices;
+			const keepSet = new Set(selectedFileIndices);
+			const unwanted = allFileIndices.filter((index) => !keepSet.has(index));
+			if (unwanted.length > 0) {
+				args['files-unwanted'] = unwanted;
 			}
 		}
 

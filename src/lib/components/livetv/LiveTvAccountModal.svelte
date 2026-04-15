@@ -12,6 +12,7 @@
 		LiveTvProviderType,
 		LiveTvAccountTestResult
 	} from '$lib/types/livetv';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		open: boolean;
@@ -50,6 +51,7 @@
 		password?: string;
 		url?: string;
 		fileContent?: string;
+		epgUrl?: string;
 		countries?: string[];
 	}
 
@@ -95,7 +97,9 @@
 	let testResult = $state<LiveTvAccountTestResult | null>(null);
 
 	// Derived
-	const modalTitle = $derived(mode === 'add' ? 'Add Live TV Account' : 'Edit Live TV Account');
+	const modalTitle = $derived(
+		mode === 'add' ? m.livetv_accountModal_addTitle() : m.livetv_accountModal_editTitle()
+	);
 	const providerDef = $derived(selectedProvider ? getProviderDefinition(selectedProvider) : null);
 	const isIptvOrgAccount = $derived(account?.providerType === 'iptvorg');
 
@@ -119,7 +123,7 @@
 			// Common fields
 			name = account?.name ?? '';
 			enabled = account?.enabled ?? true;
-			epgUrl = account?.m3uConfig?.epgUrl ?? '';
+			epgUrl = account?.m3uConfig?.epgUrl ?? account?.xstreamConfig?.epgUrl ?? '';
 
 			// Stalker fields
 			portalUrl = account?.stalkerConfig?.portalUrl ?? '';
@@ -222,8 +226,14 @@
 				config.baseUrl = baseUrl.trim();
 				config.username = username.trim();
 				config.password = password.trim() || account?.xstreamConfig?.password || '';
+				if (epgUrl.trim()) {
+					config.epgUrl = epgUrl.trim();
+				}
 				break;
 			case 'm3u':
+				if (epgUrl.trim()) {
+					config.epgUrl = epgUrl.trim();
+				}
 				if (inputMode === 'freeiptv') {
 					config.countries = selectedCountries;
 				} else if (inputMode === 'url') {
@@ -235,6 +245,60 @@
 		}
 
 		return config;
+	}
+
+	function getSuccessMessage(result: LiveTvAccountTestResult | null): string {
+		if (!result?.profile) {
+			return m.livetv_accountModal_testSuccess();
+		}
+
+		const statuses = [
+			result.profile.streamVerified
+				? m.livetv_accountModal_streamVerified()
+				: m.livetv_accountModal_streamNotVerified()
+		];
+		const epgStatus = result.profile.epg?.status;
+		if (epgStatus === 'reachable') {
+			statuses.push(m.livetv_accountModal_epgReachable());
+		} else if (epgStatus === 'unreachable') {
+			statuses.push(m.livetv_accountModal_epgUnreachable());
+		} else if (epgStatus === 'not_configured') {
+			statuses.push(m.livetv_accountModal_epgNotConfigured());
+		}
+
+		return m.livetv_accountModal_testSuccessWithStatus({ status: statuses.join(' • ') });
+	}
+
+	function getSuccessDetails(result: LiveTvAccountTestResult | null): string | undefined {
+		if (!result?.profile) {
+			return undefined;
+		}
+
+		const details = [
+			m.livetv_accountModal_channelCount({ count: result.profile.channelCount }),
+			m.livetv_accountModal_categoryCount({ count: result.profile.categoryCount })
+		];
+
+		if (result.profile.expiresAt) {
+			details.push(
+				m.livetv_accountModal_expires({
+					date: new Date(result.profile.expiresAt).toLocaleDateString(undefined)
+				})
+			);
+		}
+
+		const epgStatus = result.profile.epg?.status;
+		if (epgStatus === 'reachable') {
+			details.push(
+				result.profile.epg?.source === 'playlist-header'
+					? m.livetv_accountModal_epgSourcePlaylist()
+					: m.livetv_accountModal_epgSourceUrl()
+			);
+		} else if (epgStatus === 'unreachable' && result.profile.epg?.error) {
+			details.push(m.livetv_accountModal_epgError({ error: result.profile.epg.error }));
+		}
+
+		return details.join(' • ');
 	}
 
 	async function handleTest() {
@@ -298,7 +362,7 @@
 						class="btn btn-ghost btn-sm"
 						onclick={() => (selectedProvider = '')}
 					>
-						Change
+						{m.livetv_accountModal_changeButton()}
 					</button>
 				{/if}
 			</div>
@@ -370,7 +434,7 @@
 			<div class="mt-6 alert alert-error">
 				<XCircle class="h-5 w-5" />
 				<div>
-					<div class="font-medium">Failed to save</div>
+					<div class="font-medium">{m.livetv_accountModal_failedToSave()}</div>
 					<div class="text-sm opacity-80">{error}</div>
 				</div>
 			</div>
@@ -384,12 +448,8 @@
 						error: testResult.error
 					}
 				: null}
-			successMessage={testResult?.profile
-				? `Connection successful (${testResult.profile.streamVerified ? 'Stream verified' : 'Stream not verified'})`
-				: 'Connection successful!'}
-			successDetails={testResult?.profile
-				? `${testResult.profile.channelCount.toLocaleString()} channels • ${testResult.profile.categoryCount.toLocaleString()} categories${testResult.profile.expiresAt ? ` • Expires: ${new Date(testResult.profile.expiresAt).toLocaleDateString()}` : ''}`
-				: undefined}
+			successMessage={getSuccessMessage(testResult)}
+			successDetails={getSuccessDetails(testResult)}
 		/>
 
 		<!-- Actions -->

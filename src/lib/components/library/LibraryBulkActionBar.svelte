@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { X, Eye, EyeOff, Sliders, Trash2, Loader2 } from 'lucide-svelte';
 	import { mediaTypeCountLabel, type MediaType } from '$lib/utils/media-type';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		selectedCount: number;
@@ -48,56 +49,56 @@
 					class="btn gap-1.5 btn-ghost btn-sm"
 					onclick={onMonitor}
 					disabled={loading}
-					title="Monitor selected"
+					title={m.library_bulkActionBar_titleMonitor()}
 				>
 					{#if loading && currentAction === 'monitor'}
 						<Loader2 size={16} class="animate-spin" />
 					{:else}
 						<Eye size={16} />
 					{/if}
-					<span class="hidden sm:inline">Monitor</span>
+					<span class="hidden sm:inline">{m.action_monitor()}</span>
 				</button>
 
 				<button
 					class="btn gap-1.5 btn-ghost btn-sm"
 					onclick={onUnmonitor}
 					disabled={loading}
-					title="Unmonitor selected"
+					title={m.library_bulkActionBar_titleUnmonitor()}
 				>
 					{#if loading && currentAction === 'unmonitor'}
 						<Loader2 size={16} class="animate-spin" />
 					{:else}
 						<EyeOff size={16} />
 					{/if}
-					<span class="hidden sm:inline">Unmonitor</span>
+					<span class="hidden sm:inline">{m.action_unmonitor()}</span>
 				</button>
 
 				<button
 					class="btn gap-1.5 btn-ghost btn-sm"
 					onclick={onChangeQuality}
 					disabled={loading}
-					title="Change quality profile"
+					title={m.library_bulkActionBar_titleQuality()}
 				>
 					{#if loading && currentAction === 'quality'}
 						<Loader2 size={16} class="animate-spin" />
 					{:else}
 						<Sliders size={16} />
 					{/if}
-					<span class="hidden sm:inline">Quality</span>
+					<span class="hidden sm:inline">{m.common_quality()}</span>
 				</button>
 
 				<button
 					class="btn gap-1.5 text-error btn-ghost btn-sm hover:bg-error/10"
 					onclick={onDelete}
 					disabled={loading}
-					title="Delete files"
+					title={m.library_bulkActionBar_titleDelete()}
 				>
 					{#if loading && currentAction === 'delete'}
 						<Loader2 size={16} class="animate-spin" />
 					{:else}
 						<Trash2 size={16} />
 					{/if}
-					<span class="hidden sm:inline">Delete</span>
+					<span class="hidden sm:inline">{m.common_delete()}</span>
 				</button>
 			</div>
 
@@ -107,7 +108,7 @@
 				class="btn btn-circle btn-ghost btn-sm"
 				onclick={onClear}
 				disabled={loading}
-				title="Clear selection"
+				title={m.library_bulkActionBar_titleClear()}
 			>
 				<X size={16} />
 			</button>

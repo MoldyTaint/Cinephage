@@ -18,6 +18,8 @@
 	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import { SettingsPage } from '$lib/components/ui/settings';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -230,7 +232,7 @@
 				return false;
 			} else {
 				if (notify) {
-					toasts.success('Connection successful!');
+					toasts.success(m.settings_integrations_connectionSuccessful());
 				}
 				return true;
 			}
@@ -307,7 +309,11 @@
 
 			await invalidateAll();
 			closeModal();
-			toasts.success(modalMode === 'edit' ? 'Indexer updated' : 'Indexer created');
+			toasts.success(
+				modalMode === 'edit'
+					? m.settings_integrations_indexers_updated()
+					: m.settings_integrations_indexers_created()
+			);
 		} catch (e) {
 			toasts.error(`Failed to save: ${e instanceof Error ? e.message : 'Unknown error'}`);
 		} finally {
@@ -441,7 +447,12 @@
 				}
 			}
 			await invalidateAll();
-			toasts.info(`Bulk test complete: ${successCount} passed, ${failCount} failed`);
+			toasts.info(
+				m.settings_integrations_bulkTestComplete({
+					successCount: String(successCount),
+					failCount: String(failCount)
+				})
+			);
 		} catch (e) {
 			toasts.error(e instanceof Error ? e.message : 'Failed to run bulk test');
 		} finally {
@@ -480,24 +491,21 @@
 	}
 </script>
 
-<div class="w-full overflow-x-hidden p-3 sm:p-4">
-	<div class="mb-5 sm:mb-6">
-		<h1 class="text-xl font-bold sm:text-2xl">Indexers</h1>
-		<p class="text-base-content/70">Configure torrent and usenet indexers for content search.</p>
-	</div>
-
-	<div class="mb-4 flex items-center justify-end">
+<SettingsPage title={m.nav_indexers()} subtitle={m.settings_integrations_indexers_subtitle()}>
+	{#snippet actions()}
 		<button class="btn w-full gap-2 btn-sm btn-primary sm:w-auto" onclick={openAddModal}>
 			<Plus class="h-4 w-4" />
-			Add Indexer
+			{m.settings_integrations_indexers_addButton()}
 		</button>
-	</div>
+	{/snippet}
 
 	{#if data.definitionErrors && data.definitionErrors.length > 0}
 		<div class="mb-4 alert alert-warning">
 			<div>
 				<span class="font-semibold"
-					>{data.definitionErrors.length} indexer definition(s) failed to load:</span
+					>{m.settings_integrations_indexers_definitionErrors({
+						count: data.definitionErrors.length
+					})}</span
 				>
 				<ul class="mt-1 list-inside list-disc text-sm">
 					{#each data.definitionErrors.slice(0, 3) as error (error.filePath)}
@@ -545,7 +553,7 @@
 			/>
 		</div>
 	</div>
-</div>
+</SettingsPage>
 
 <!-- Add/Edit Modal -->
 <IndexerModal
@@ -561,35 +569,25 @@
 />
 
 <!-- Delete Confirmation Modal -->
-{#if confirmDeleteOpen}
-	<div class="modal-open modal">
-		<div class="modal-box w-full max-w-[min(28rem,calc(100vw-2rem))] wrap-break-word">
-			<h3 class="text-lg font-bold">Confirm Delete</h3>
-			<p class="py-4">
-				Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? This action cannot be
-				undone.
-			</p>
-			<div class="modal-action">
-				<button class="btn btn-ghost" onclick={() => (confirmDeleteOpen = false)}>Cancel</button>
-				<button class="btn btn-error" onclick={handleConfirmDelete}>Delete</button>
-			</div>
-		</div>
-		<button
-			type="button"
-			class="modal-backdrop cursor-default border-none bg-black/50"
-			onclick={() => (confirmDeleteOpen = false)}
-			aria-label="Close modal"
-		></button>
-	</div>
-{/if}
+<ConfirmationModal
+	open={confirmDeleteOpen}
+	title={m.ui_modal_deleteTitle()}
+	messagePrefix={m.settings_integrations_deleteConfirmPrefix()}
+	messageEmphasis={deleteTarget?.name ?? ''}
+	messageSuffix={m.settings_integrations_deleteConfirmSuffix()}
+	confirmLabel={m.action_delete()}
+	confirmVariant="error"
+	onConfirm={handleConfirmDelete}
+	onCancel={() => (confirmDeleteOpen = false)}
+/>
 
 <ConfirmationModal
 	open={confirmBulkDeleteOpen}
-	title="Confirm Delete"
-	messagePrefix="Are you sure you want to delete "
-	messageEmphasis={`${selectedIds.size} indexer(s)`}
-	messageSuffix="? This action cannot be undone."
-	confirmLabel="Delete"
+	title={m.ui_modal_deleteTitle()}
+	messagePrefix={m.settings_integrations_deleteConfirmPrefix()}
+	messageEmphasis={m.settings_integrations_indexers_bulkDeleteCount({ count: selectedIds.size })}
+	messageSuffix={m.settings_integrations_deleteConfirmSuffix()}
+	confirmLabel={m.action_delete()}
 	confirmVariant="error"
 	onConfirm={handleConfirmBulkDelete}
 	onCancel={() => (confirmBulkDeleteOpen = false)}

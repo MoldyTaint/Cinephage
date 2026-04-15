@@ -244,7 +244,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		});
 	} catch (error) {
 		if (error instanceof z.ZodError) {
-			logger.error('[Preview API] Validation error', { issues: error.issues });
+			logger.error({ issues: error.issues }, '[Preview API] Validation error');
 			return json({ error: 'Validation failed', details: error.issues }, { status: 400 });
 		}
 		logger.error('[Preview API] Error', error);

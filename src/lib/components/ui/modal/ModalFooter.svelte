@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Loader2, Save, Trash2 } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		onCancel: () => void;
@@ -22,9 +23,9 @@
 		saving = false,
 		deleting = false,
 		saveDisabled = false,
-		saveLabel = 'Save',
-		cancelLabel = 'Cancel',
-		deleteLabel = 'Delete',
+		saveLabel = m.action_save(),
+		cancelLabel = m.action_cancel(),
+		deleteLabel = m.action_delete(),
 		showDelete = false,
 		readonly = false
 	}: Props = $props();
@@ -47,7 +48,7 @@
 	{/if}
 
 	<button class="btn btn-ghost" onclick={onCancel}>
-		{readonly ? 'Close' : cancelLabel}
+		{readonly ? m.action_close() : cancelLabel}
 	</button>
 
 	{#if !readonly && onSave}

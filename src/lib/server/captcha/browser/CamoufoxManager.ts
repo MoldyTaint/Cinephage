@@ -8,7 +8,9 @@
 
 import { Camoufox, type LaunchOptions } from 'camoufox-js';
 import type { Browser, BrowserContext, Page, Cookie } from 'playwright-core';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 import type { ProxyConfig } from '../types';
 
 /**
@@ -58,9 +60,12 @@ export class CamoufoxManager {
 		} catch (error) {
 			this.isAvailable = false;
 			this.availabilityError = error instanceof Error ? error.message : String(error);
-			logger.warn('[CamoufoxManager] Camoufox is not available', {
-				error: this.availabilityError
-			});
+			logger.warn(
+				{
+					error: this.availabilityError
+				},
+				'[CamoufoxManager] Camoufox is not available'
+			);
 		} finally {
 			this.availabilityChecked = true;
 		}
@@ -103,6 +108,9 @@ export class CamoufoxManager {
 		headless: boolean;
 		proxy?: ProxyConfig;
 	}): Promise<ManagedBrowser> {
+		// Wait for availability check to complete before checking isAvailable
+		await this.waitForAvailabilityCheck();
+
 		if (!this.isAvailable) {
 			throw new Error(`Camoufox not available: ${this.availabilityError || 'unknown error'}`);
 		}
@@ -156,21 +164,27 @@ export class CamoufoxManager {
 				if (!managed.isClosed) {
 					managed.isClosed = true;
 					this.activeBrowsers.delete(id);
-					logger.debug('[CamoufoxManager] Browser disconnected externally', { id });
+					logger.debug({ id }, '[CamoufoxManager] Browser disconnected externally');
 				}
 			});
 
-			logger.debug('[CamoufoxManager] Created browser', {
-				id,
-				headless: options.headless,
-				timeMs: Date.now() - startTime
-			});
+			logger.debug(
+				{
+					id,
+					headless: options.headless,
+					timeMs: Date.now() - startTime
+				},
+				'[CamoufoxManager] Created browser'
+			);
 
 			return managed;
 		} catch (error) {
-			logger.error('[CamoufoxManager] Failed to create browser', {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.error(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[CamoufoxManager] Failed to create browser'
+			);
 			throw error;
 		}
 	}
@@ -208,12 +222,15 @@ export class CamoufoxManager {
 				await closeResult.catch(() => {});
 			}
 
-			logger.debug('[CamoufoxManager] Closed browser', { id: managed.id });
+			logger.debug({ id: managed.id }, '[CamoufoxManager] Closed browser');
 		} catch (error) {
-			logger.warn('[CamoufoxManager] Error closing browser', {
-				id: managed.id,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					id: managed.id,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[CamoufoxManager] Error closing browser'
+			);
 		}
 	}
 
@@ -244,7 +261,7 @@ export class CamoufoxManager {
 			})
 		);
 
-		logger.info('[CamoufoxManager] Closed all browsers', { count: browsers.length });
+		logger.info({ count: browsers.length }, '[CamoufoxManager] Closed all browsers');
 	}
 
 	/**

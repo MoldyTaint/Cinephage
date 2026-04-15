@@ -12,12 +12,108 @@ export type ActivityStatus =
 	| 'imported' // Successfully imported to library
 	| 'streaming' // Streaming source (no download)
 	| 'downloading' // Currently downloading
+	| 'seeding' // Download complete, still seeding
 	| 'paused' // Download paused
 	| 'failed' // Download or import failed
+	| 'search_error' // Automated search failed (indexer error, timeout, etc.)
 	| 'rejected' // Release rejected (quality, blocklist, etc.)
 	| 'removed' // Removed from queue
 	| 'no_results' // Search found no results
 	| 'searching'; // Search in progress
+
+/**
+ * Where an activity row originated from.
+ */
+export type ActivitySource = 'queue' | 'download_history' | 'monitoring' | 'task';
+
+/**
+ * Human-readable labels for monitoring task types.
+ */
+export const TASK_TYPE_LABELS: Record<string, string> = {
+	missing: 'Missing Search',
+	upgrade: 'Upgrade Search',
+	cutoffUnmet: 'Cutoff Search',
+	cutoff_unmet: 'Cutoff Search',
+	missingSubtitles: 'Subtitle Search',
+	subtitleUpgrade: 'Subtitle Upgrade',
+	new_episode: 'New Episode Search',
+	pendingRelease: 'Pending Release',
+	smartListRefresh: 'Smart List Refresh',
+	media_move: 'File Move'
+};
+
+/**
+ * Activity view scope
+ */
+export type ActivityScope = 'all' | 'active' | 'history';
+
+const ACTIVE_ACTIVITY_STATUSES: ActivityStatus[] = [
+	'downloading',
+	'seeding',
+	'paused',
+	'searching'
+];
+
+/**
+ * Determine whether an activity should be treated as active in UI and API views.
+ */
+export function isActiveActivity(
+	activity: Pick<UnifiedActivity, 'status' | 'queueItemId'>
+): boolean {
+	if (ACTIVE_ACTIVITY_STATUSES.includes(activity.status)) {
+		return true;
+	}
+
+	// Failed queue-backed entries can still be retried through queue actions.
+	return activity.status === 'failed' && Boolean(activity.queueItemId);
+}
+
+/**
+ * Error message patterns that positively identify import-phase failures.
+ *
+ * These come from ImportService.ts and DownloadMonitorService.markImporting()
+ * — we control all of them so the list is exhaustive. Download-client errors
+ * (e.g. "Download limit exceeded", "Unpacking failed") will never match,
+ * which prevents misclassifying download failures that happen to have a
+ * `completedAt` timestamp.
+ */
+export const IMPORT_ERROR_PATTERNS: readonly string[] = [
+	'import', // "Import failed after N attempts", "Failed to import any episodes"
+	'root folder', // "Root folder not found", "Cannot import to read-only root folder"
+	'not found in library', // "Movie not found in library", "Series not found in library"
+	'no video files', // "No video files found in download"
+	'no importable files', // "No importable files found in download"
+	'download path not available',
+	'dangerous files', // "Caution: Found potentially dangerous files: …"
+	'failed to transfer', // "Failed to transfer file: …"
+	'no linked movie', // "No linked movie or series"
+	'no linked series' // "No linked movie or series" (alternate wording)
+];
+
+/**
+ * Check whether a lowercase error reason matches a known import-phase pattern.
+ */
+export function matchesImportError(reason: string): boolean {
+	return IMPORT_ERROR_PATTERNS.some((p) => reason.includes(p));
+}
+
+/**
+ * Determine whether a failed activity represents an import-phase failure.
+ * These failures should retry import instead of re-downloading when possible.
+ *
+ * Uses positive pattern matching against known ImportService error messages
+ * rather than relying on `completedAt`, which can be set for download-phase
+ * failures too (e.g. SABnzbd briefly reports "Completed" before post-processing
+ * fails with "Download limit exceeded").
+ */
+export function isImportFailedActivity(
+	activity: Pick<UnifiedActivity, 'status' | 'completedAt' | 'statusReason'>
+): boolean {
+	if (activity.status !== 'failed') return false;
+
+	const reason = activity.statusReason?.toLowerCase() ?? '';
+	return matchesImportError(reason);
+}
 
 /**
  * Activity event types for timeline
@@ -49,6 +145,10 @@ export interface ActivityEvent {
  */
 export interface UnifiedActivity {
 	id: string;
+
+	// Activity origin
+	activitySource: ActivitySource;
+	taskType?: string; // monitoring task type (e.g., 'missing', 'upgrade')
 
 	// Media info
 	mediaType: 'movie' | 'episode';
@@ -90,6 +190,7 @@ export interface UnifiedActivity {
 	// Timestamps
 	startedAt: string;
 	completedAt: string | null;
+	lastAttemptAt?: string | null; // Updated on each retry attempt
 
 	// Links
 	queueItemId?: string; // Link to current queue item if downloading
@@ -135,6 +236,18 @@ export interface ActivitySortOptions {
 }
 
 /**
+ * Summary metadata returned alongside activity results.
+ * Counts reflect the full filtered result universe, not just the current page.
+ */
+export interface ActivitySummary {
+	totalCount: number;
+	downloadingCount: number;
+	seedingCount: number;
+	pausedCount: number;
+	failedCount: number;
+}
+
+/**
  * SSE event types for activity updates
  */
 export type ActivityEventStreamType =
@@ -159,107 +272,5 @@ export interface ActivityResponse {
 	activities: UnifiedActivity[];
 	total: number;
 	hasMore: boolean;
-}
-
-/**
- * Score breakdown for activity details
- */
-export interface ScoreBreakdown {
-	resolution?: { old: number; new: number };
-	source?: { old: number; new: number };
-	codec?: { old: number; new: number };
-	hdr?: { old: number; new: number };
-	audio?: { old: number; new: number };
-	releaseGroup?: { old: number; new: number };
-	customFormats?: Array<{ name: string; old: number; new: number }>;
-}
-
-/**
- * Search result entry for audit trail
- */
-export interface SearchResultEntry {
-	title: string;
-	indexer: string;
-	score: number;
-	size: number;
-	protocol: string;
-	rejected: boolean;
-	rejectionReason?: string;
-}
-
-/**
- * Import log entry
- */
-export interface ImportLogEntry {
-	step: string;
-	timestamp: string;
-	message: string;
-	success: boolean;
-}
-
-/**
- * File import entry
- */
-export interface FileImportEntry {
-	path: string;
-	size: number;
-	quality: string;
-}
-
-/**
- * File deletion entry
- */
-export interface FileDeletionEntry {
-	path: string;
-	reason: string;
-}
-
-/**
- * Release info metadata
- */
-export interface ReleaseInfo {
-	indexerId?: string;
-	indexerName?: string;
-	downloadUrl?: string;
-	magnetUrl?: string;
-	seeders?: number;
-	leechers?: number;
-	age?: string;
-}
-
-/**
- * Replaced file info
- */
-export interface ReplacedFileInfo {
-	id: string;
-	path: string;
-	size: number | null;
-	quality: QueueQualityInfo | null;
-	releaseGroup: string | null;
-}
-
-/**
- * Activity details with full scoring breakdown and audit trail
- */
-export interface ActivityDetails {
-	id: string;
-	activityId: string;
-	scoreBreakdown?: ScoreBreakdown;
-	replacedFileInfo?: ReplacedFileInfo;
-	replacedFilePath?: string | null;
-	replacedFileQuality?: QueueQualityInfo | null;
-	replacedFileScore?: number | null;
-	replacedFileSize?: number | null;
-	searchResults?: SearchResultEntry[];
-	selectionReason?: string | null;
-	importLog?: ImportLogEntry[];
-	filesImported?: FileImportEntry[];
-	filesDeleted?: FileDeletionEntry[];
-	downloadClientName?: string | null;
-	downloadClientType?: string | null;
-	downloadId?: string | null;
-	infoHash?: string | null;
-	releaseInfo?: ReleaseInfo;
-	createdAt: string;
-	updatedAt: string;
+	summary: ActivitySummary | null;
 }

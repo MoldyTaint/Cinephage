@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Loader2, CheckCircle, XCircle, Clock } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	type OperationStatus = 'pending' | 'running' | 'done' | 'error';
 
@@ -88,16 +89,16 @@
 		<!-- Summary -->
 		<div class="flex gap-4 text-xs text-base-content/60">
 			{#if stats.running > 0}
-				<span class="text-primary">{stats.running} running</span>
+				<span class="text-primary">{stats.running} {m.ui_operationProgress_running()}</span>
 			{/if}
 			{#if stats.pending > 0}
-				<span>{stats.pending} pending</span>
+				<span>{stats.pending} {m.ui_operationProgress_pending()}</span>
 			{/if}
 			{#if stats.done > 0}
-				<span class="text-success">{stats.done} done</span>
+				<span class="text-success">{stats.done} {m.ui_operationProgress_done()}</span>
 			{/if}
 			{#if stats.error > 0}
-				<span class="text-error">{stats.error} failed</span>
+				<span class="text-error">{stats.error} {m.ui_operationProgress_failed()}</span>
 			{/if}
 		</div>
 	</div>

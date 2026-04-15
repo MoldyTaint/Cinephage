@@ -4,15 +4,119 @@ import { db } from '$lib/server/db';
 import { downloadQueue, downloadClients } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
+import { getImportService } from '$lib/server/downloadClients/import';
+import { getContentPath } from '$lib/server/downloadClients/monitoring';
+import type { DownloadInfo } from '$lib/server/downloadClients/core/interfaces';
 import { logger } from '$lib/logging';
 import { redactUrl } from '$lib/server/utils/urlSecurity';
+import { matchesImportError } from '$lib/types/activity.js';
 
 const MAX_IMPORT_ATTEMPTS = 10;
 
+function normalizeReleaseKey(value: string | null | undefined): string {
+	if (!value) return '';
+	return value
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '')
+		.trim();
+}
+
+function isImportRetryCandidate(queueItem: typeof downloadQueue.$inferSelect): boolean {
+	if (queueItem.status !== 'failed') return false;
+
+	const reason = queueItem.errorMessage?.toLowerCase() ?? '';
+
+	// Positively identify import-phase failures by error message pattern.
+	// This avoids misclassifying download-client errors (e.g. "Download limit
+	// exceeded") that happen to have completedAt set because the client briefly
+	// reported completion before post-processing failed.
+	if (matchesImportError(reason)) return true;
+
+	// If the download reached 100% AND the error is not a recognized import
+	// error, it could still be worth trying an import retry when there is no
+	// error message at all (the error may have been transient). However if the
+	// client provided a specific non-import error, it is a download failure.
+	const progress = Number(queueItem.progress ?? 0);
+	if (Number.isFinite(progress) && progress >= 1 && !reason) return true;
+
+	return false;
+}
+
+function isCompletedInClient(download: DownloadInfo): boolean {
+	if (download.progress >= 1) return true;
+	return ['completed', 'seeding', 'paused', 'postprocessing'].includes(download.status);
+}
+
+function matchesQueueItem(
+	queueItem: typeof downloadQueue.$inferSelect,
+	download: DownloadInfo
+): boolean {
+	const queueDownloadId = queueItem.downloadId?.toLowerCase();
+	const queueInfoHash = queueItem.infoHash?.toLowerCase();
+	const downloadHash = download.hash?.toLowerCase();
+	const downloadId = download.id?.toLowerCase();
+
+	if (queueDownloadId && (downloadHash === queueDownloadId || downloadId === queueDownloadId)) {
+		return true;
+	}
+
+	if (queueInfoHash && (downloadHash === queueInfoHash || downloadId === queueInfoHash)) {
+		return true;
+	}
+
+	return false;
+}
+
+function matchesQueueItemByTitleAndSize(
+	queueItem: typeof downloadQueue.$inferSelect,
+	download: DownloadInfo
+): boolean {
+	const queueKey = normalizeReleaseKey(queueItem.title);
+	const downloadKey = normalizeReleaseKey(download.name);
+	if (!queueKey || !downloadKey) return false;
+
+	const titleMatches =
+		queueKey === downloadKey ||
+		(queueKey.length > 10 && downloadKey.includes(queueKey)) ||
+		(downloadKey.length > 10 && queueKey.includes(downloadKey));
+	if (!titleMatches) return false;
+
+	const queueSize = Number(queueItem.size ?? 0);
+	const downloadSize = Number(download.size ?? 0);
+	if (
+		!Number.isFinite(queueSize) ||
+		queueSize <= 0 ||
+		!Number.isFinite(downloadSize) ||
+		downloadSize <= 0
+	) {
+		return true;
+	}
+
+	// Allow some tolerance for metadata differences across clients.
+	const sizeDelta = Math.abs(downloadSize - queueSize);
+	const tolerance = Math.max(queueSize * 0.1, 250 * 1024 * 1024);
+	return sizeDelta <= tolerance;
+}
+
+function hasReusableImportPath(queueItem: typeof downloadQueue.$inferSelect): boolean {
+	const outputPath = queueItem.outputPath?.trim();
+	const clientPath = queueItem.clientDownloadPath?.trim();
+	return Boolean(outputPath) || Boolean(clientPath);
+}
+
+function toSafeQueueItem(item: typeof downloadQueue.$inferSelect | undefined) {
+	if (!item) return null;
+	return {
+		...item,
+		downloadUrl: item.downloadUrl ? redactUrl(item.downloadUrl) : null
+	};
+}
+
 /**
- * POST - Retry a failed download
+ * POST - Retry a failed queue item
  *
- * This will re-add the download to the client with the same parameters
+ * If the client still reports the item as completed, retry import first.
+ * Otherwise, fall back to download retry (native client retry or re-add).
  */
 export const POST: RequestHandler = async ({ params }) => {
 	const { id } = params;
@@ -54,7 +158,132 @@ export const POST: RequestHandler = async ({ params }) => {
 			throw error(404, 'Download client not found');
 		}
 
-		// We need either a magnet URL or download URL to retry
+		// Get download client instance
+		const clientInstance = await getDownloadClientManager().getClientInstance(client.id);
+		if (!clientInstance) {
+			throw error(500, 'Failed to get download client instance');
+		}
+
+		// For import-phase failures, prefer import retry before any re-download attempt.
+		// 1) Reuse existing queue paths if available.
+		// 2) Otherwise probe client for a completed item and reuse that path.
+		if (isImportRetryCandidate(queueItem)) {
+			let completedClientDownload: DownloadInfo | null = null;
+			let importPathAvailable = hasReusableImportPath(queueItem);
+
+			try {
+				const downloads = await clientInstance.getDownloads();
+				completedClientDownload =
+					downloads.find(
+						(download) => matchesQueueItem(queueItem, download) && isCompletedInClient(download)
+					) ??
+					downloads.find(
+						(download) =>
+							isCompletedInClient(download) && matchesQueueItemByTitleAndSize(queueItem, download)
+					) ??
+					null;
+				importPathAvailable =
+					importPathAvailable ||
+					Boolean(completedClientDownload?.contentPath) ||
+					Boolean(completedClientDownload?.savePath);
+			} catch (clientLookupError) {
+				if (clientLookupError instanceof Error && 'status' in clientLookupError) {
+					throw clientLookupError;
+				}
+
+				logger.warn(
+					{
+						queueItemId: id,
+						error:
+							clientLookupError instanceof Error
+								? clientLookupError.message
+								: String(clientLookupError)
+					},
+					'Import retry probe failed; will use existing queue paths if available'
+				);
+			}
+
+			if (importPathAvailable) {
+				const now = new Date().toISOString();
+				const existingProgress = Number(queueItem.progress ?? 0);
+				const normalizedExistingProgress = Number.isFinite(existingProgress) ? existingProgress : 0;
+				const mappedOutputPath = completedClientDownload
+					? getContentPath(
+							completedClientDownload.savePath || completedClientDownload.contentPath,
+							completedClientDownload.contentPath,
+							client.downloadPathLocal,
+							client.downloadPathRemote,
+							client.tempPathLocal,
+							client.tempPathRemote
+						)
+					: null;
+				const fallbackOutputPath = queueItem.outputPath || queueItem.clientDownloadPath || null;
+				const mergedProgress = completedClientDownload
+					? Math.max(normalizedExistingProgress, completedClientDownload.progress)
+					: Math.max(normalizedExistingProgress, 1);
+
+				await db
+					.update(downloadQueue)
+					.set({
+						status: 'completed',
+						downloadId: completedClientDownload?.id || queueItem.downloadId,
+						infoHash: completedClientDownload?.hash || queueItem.infoHash,
+						progress: mergedProgress.toString(),
+						downloadSpeed: completedClientDownload?.downloadSpeed ?? 0,
+						uploadSpeed: completedClientDownload?.uploadSpeed ?? 0,
+						eta: completedClientDownload?.eta ?? null,
+						clientDownloadPath:
+							completedClientDownload?.contentPath ||
+							completedClientDownload?.savePath ||
+							queueItem.clientDownloadPath,
+						outputPath: mappedOutputPath || fallbackOutputPath,
+						errorMessage: null,
+						completedAt: queueItem.completedAt || now,
+						lastAttemptAt: now
+					})
+					.where(eq(downloadQueue.id, id));
+
+				const importResult = await getImportService().requestImport(id);
+				if (importResult.status === 'failed') {
+					throw error(
+						400,
+						importResult.reason || 'Import retry failed. Consider re-searching and grabbing again.'
+					);
+				}
+
+				const updatedItem = await db
+					.select()
+					.from(downloadQueue)
+					.where(eq(downloadQueue.id, id))
+					.get();
+				const safeItem = toSafeQueueItem(updatedItem);
+				const message =
+					importResult.status === 'pending_retry'
+						? 'Import retry queued. Waiting for download path to become available.'
+						: 'Import retry initiated';
+
+				logger.info(
+					{
+						queueItemId: id,
+						importResult: importResult.status,
+						source: completedClientDownload ? 'client-completed' : 'stored-queue-path'
+					},
+					'Import retry initiated for failed queue item'
+				);
+
+				return json({
+					success: true,
+					message,
+					retryMode: 'import',
+					importStatus: importResult.status,
+					queueItem: safeItem
+				});
+			}
+		}
+
+		let newInfoHash: string | undefined;
+
+		// We need either a magnet URL or download URL to re-download
 		const downloadUrl = queueItem.magnetUrl || queueItem.downloadUrl;
 		if (!downloadUrl) {
 			throw error(
@@ -63,24 +292,19 @@ export const POST: RequestHandler = async ({ params }) => {
 			);
 		}
 
-		// Get download client instance
-		const clientInstance = await getDownloadClientManager().getClientInstance(client.id);
-		if (!clientInstance) {
-			throw error(500, 'Failed to get download client instance');
-		}
-
-		let newInfoHash: string | undefined;
-
 		// Try native client retry first (SABnzbd/NZBGet can retry from history cache)
 		if (clientInstance.retryDownload && queueItem.downloadId) {
 			try {
 				newInfoHash = await clientInstance.retryDownload(queueItem.downloadId);
-				logger.info('Native retry succeeded', { id, newInfoHash });
+				logger.info({ id, newInfoHash }, 'Native retry succeeded');
 			} catch (retryError) {
-				logger.warn('Native retry failed, falling back to re-add', {
-					id,
-					error: retryError instanceof Error ? retryError.message : String(retryError)
-				});
+				logger.warn(
+					{
+						id,
+						error: retryError instanceof Error ? retryError.message : String(retryError)
+					},
+					'Native retry failed, falling back to re-add'
+				);
 				// Fall through to re-add approach
 			}
 		}
@@ -97,7 +321,8 @@ export const POST: RequestHandler = async ({ params }) => {
 			newInfoHash = await clientInstance.addDownload({
 				magnetUri: queueItem.magnetUrl || undefined,
 				downloadUrl: queueItem.magnetUrl ? undefined : queueItem.downloadUrl || undefined,
-				category
+				category,
+				title: queueItem.title
 			});
 		}
 
@@ -123,12 +348,7 @@ export const POST: RequestHandler = async ({ params }) => {
 		const updatedItem = await db.select().from(downloadQueue).where(eq(downloadQueue.id, id)).get();
 
 		// Redact sensitive URLs before returning
-		const safeItem = updatedItem
-			? {
-					...updatedItem,
-					downloadUrl: updatedItem.downloadUrl ? redactUrl(updatedItem.downloadUrl) : null
-				}
-			: null;
+		const safeItem = toSafeQueueItem(updatedItem);
 
 		return json({
 			success: true,

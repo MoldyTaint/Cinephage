@@ -12,7 +12,10 @@
 
 import Database from 'better-sqlite3';
 import { createHash } from 'crypto';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'system' as const });
+import { ensureSoleUserIsAdmin } from '$lib/server/auth/admin-bootstrap.js';
 
 /**
  * Migration definition with metadata for tracking
@@ -80,8 +83,212 @@ interface MigrationDefinition {
  * Version 53: Add iptv_org_config column to livetv_accounts for IPTV-Org provider support
  * Version 54: Add cookies and cookies_expiration_date columns to indexer_status for persistent session storage
  * Version 55: Add health tracking columns to download_clients
+ * Version 56: Reserved - retired during Better Auth schema refactor
+ * Version 57: Reserved - retired during Better Auth schema refactor
+ * Version 58: Reserved - retired during Better Auth schema refactor
+ * Version 59: Reserved - retired during Better Auth schema refactor
+ * Version 60: Add user_api_key_secrets table for encrypted API key storage
+ * Version 61: Rename Live TV API Key to Media Streaming API Key
+ * Version 62: Add role column to user table for RBAC
+ * Version 63: Repair Better Auth schema drift and add missing plugin tables
+ * Version 64: Promote the sole bootstrap user to admin if older auth code created it as user
+ * Version 65: Migrate Better Auth apikey schema from userId -> referenceId and add configId
+ * Version 66: Fix apikey schema migration for databases stuck after v65
+ * Version 67: Add Better Auth rateLimit.id column required by adapter-generated IDs
+ * Version 68: Add edition column to episode_files for rename preservation
+ * Version 69: Add indexes on download_history for activity query performance
+ * Version 70: Drop unused activities scaffolding tables (activities, activity_details)
+ * Version 71: Add download_queue_tombstones table for local-removal suppression window
+ * Version 72: Add adaptive subtitle searching columns for movies and episodes
+ * Version 73: Allow Plex in media_browser_servers server_type constraint
+ * Version 74: Consolidate legacy nzb-mount clients into sabnzbd mount mode
+ * Version 75: Add language column to user table for UI localization preference
+ * Version 76: Add media_sub_type to root_folders for anime library routing
+ * Version 77: Add first-class libraries table with media library linkage
+ * Version 78: Backfill existing movies and series to seeded system libraries
+ * Version 79: Migrate custom format audio conditions to canonical audio schema
  */
-export const CURRENT_SCHEMA_VERSION = 55;
+export const CURRENT_SCHEMA_VERSION = 80;
+
+const SYSTEM_LIBRARY_SEEDS = [
+	{
+		id: 'lib-movies-standard',
+		slug: 'movies',
+		sortOrder: 0,
+		mediaType: 'movie',
+		mediaSubType: 'standard',
+		systemKey: 'movies_standard'
+	},
+	{
+		id: 'lib-movies-anime',
+		slug: 'anime-movies',
+		sortOrder: 10,
+		mediaType: 'movie',
+		mediaSubType: 'anime',
+		systemKey: 'movies_anime'
+	},
+	{
+		id: 'lib-tv-standard',
+		slug: 'tv-shows',
+		sortOrder: 0,
+		mediaType: 'tv',
+		mediaSubType: 'standard',
+		systemKey: 'tv_standard'
+	},
+	{
+		id: 'lib-tv-anime',
+		slug: 'anime-series',
+		sortOrder: 10,
+		mediaType: 'tv',
+		mediaSubType: 'anime',
+		systemKey: 'tv_anime'
+	}
+] as const;
+
+const BETTER_AUTH_TABLE_DEFINITIONS = [
+	{
+		name: 'user',
+		sql: `CREATE TABLE IF NOT EXISTS "user" (
+			"id" text PRIMARY KEY NOT NULL,
+			"name" text,
+			"email" text NOT NULL,
+			"emailVerified" integer DEFAULT 0,
+			"image" text,
+			"username" text UNIQUE,
+			"displayUsername" text,
+			"role" text DEFAULT 'admin' NOT NULL,
+			"language" text DEFAULT 'en',
+			"banned" integer DEFAULT 0,
+			"banReason" text,
+			"banExpires" date,
+			"createdAt" date NOT NULL,
+			"updatedAt" date NOT NULL
+		)`
+	},
+	{
+		name: 'session',
+		sql: `CREATE TABLE IF NOT EXISTS "session" (
+			"id" text PRIMARY KEY NOT NULL,
+			"userId" text NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
+			"token" text NOT NULL UNIQUE,
+			"expiresAt" date NOT NULL,
+			"ipAddress" text,
+			"userAgent" text,
+			"impersonatedBy" text,
+			"createdAt" date NOT NULL,
+			"updatedAt" date NOT NULL
+		)`
+	},
+	{
+		name: 'account',
+		sql: `CREATE TABLE IF NOT EXISTS "account" (
+			"id" text PRIMARY KEY NOT NULL,
+			"userId" text NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
+			"accountId" text NOT NULL,
+			"providerId" text NOT NULL,
+			"accessToken" text,
+			"refreshToken" text,
+			"accessTokenExpiresAt" date,
+			"refreshTokenExpiresAt" date,
+			"scope" text,
+			"idToken" text,
+			"password" text,
+			"createdAt" date NOT NULL,
+			"updatedAt" date NOT NULL
+		)`
+	},
+	{
+		name: 'verification',
+		sql: `CREATE TABLE IF NOT EXISTS "verification" (
+			"id" text PRIMARY KEY NOT NULL,
+			"identifier" text NOT NULL,
+			"value" text NOT NULL,
+			"expiresAt" date NOT NULL,
+			"createdAt" date,
+			"updatedAt" date
+		)`
+	},
+	{
+		name: 'apikey',
+		sql: `CREATE TABLE IF NOT EXISTS "apikey" (
+			"id" text PRIMARY KEY NOT NULL,
+			"name" text,
+			"start" text,
+			"prefix" text,
+			"key" text NOT NULL,
+			"userId" text NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
+			"refillInterval" integer,
+			"refillAmount" integer,
+			"lastRefillAt" date,
+			"enabled" integer DEFAULT 1,
+			"rateLimitEnabled" integer DEFAULT 1,
+			"rateLimitTimeWindow" integer,
+			"rateLimitMax" integer,
+			"requestCount" integer DEFAULT 0,
+			"remaining" integer,
+			"lastRequest" date,
+			"expiresAt" date,
+			"createdAt" date NOT NULL,
+			"updatedAt" date NOT NULL,
+			"permissions" text,
+			"metadata" text
+		)`
+	},
+	{
+		name: 'rateLimit',
+		sql: `CREATE TABLE IF NOT EXISTS "rateLimit" (
+			"id" text PRIMARY KEY NOT NULL,
+			"key" text NOT NULL UNIQUE,
+			"count" integer NOT NULL,
+			"lastRequest" integer NOT NULL
+		)`
+	}
+] as const;
+
+const BETTER_AUTH_INDEX_DEFINITIONS = [
+	{
+		name: 'idx_session_user',
+		table: 'session',
+		columns: ['userId'],
+		sql: `CREATE INDEX IF NOT EXISTS "idx_session_user" ON "session" ("userId")`
+	},
+	{
+		name: 'idx_account_user',
+		table: 'account',
+		columns: ['userId'],
+		sql: `CREATE INDEX IF NOT EXISTS "idx_account_user" ON "account" ("userId")`
+	},
+	{
+		name: 'idx_account_provider',
+		table: 'account',
+		columns: ['providerId', 'accountId'],
+		sql: `CREATE UNIQUE INDEX IF NOT EXISTS "idx_account_provider" ON "account" ("providerId", "accountId")`
+	},
+	{
+		name: 'idx_user_email',
+		table: 'user',
+		columns: ['email'],
+		sql: `CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_email" ON "user" ("email")`
+	},
+	{
+		name: 'idx_user_username',
+		table: 'user',
+		columns: ['username'],
+		sql: `CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_username" ON "user" ("username")`
+	},
+	{
+		name: 'idx_apikey_key',
+		table: 'apikey',
+		columns: ['key'],
+		sql: `CREATE INDEX IF NOT EXISTS "idx_apikey_key" ON "apikey" ("key")`
+	},
+	{
+		name: 'idx_rateLimit_key',
+		table: 'rateLimit',
+		columns: ['key'],
+		sql: `CREATE UNIQUE INDEX IF NOT EXISTS "idx_rateLimit_key" ON "rateLimit" ("key")`
+	}
+] as const;
 
 /**
  * All table definitions with CREATE TABLE IF NOT EXISTS
@@ -89,9 +296,10 @@ export const CURRENT_SCHEMA_VERSION = 55;
  */
 const TABLE_DEFINITIONS: string[] = [
 	// Core tables (no foreign keys)
-	`CREATE TABLE IF NOT EXISTS "user" (
-		"id" text PRIMARY KEY NOT NULL
-	)`,
+
+	// Better Auth tables - we manage these to have full control over schema
+	// Better Auth expects camelCase column names
+	...BETTER_AUTH_TABLE_DEFINITIONS.map(({ sql }) => sql),
 
 	`CREATE TABLE IF NOT EXISTS "settings" (
 		"key" text PRIMARY KEY NOT NULL,
@@ -216,13 +424,40 @@ const TABLE_DEFINITIONS: string[] = [
 		"name" text NOT NULL,
 		"path" text NOT NULL UNIQUE,
 		"media_type" text NOT NULL,
+		"media_sub_type" text DEFAULT 'standard' NOT NULL,
 		"is_default" integer DEFAULT false,
 		"read_only" integer DEFAULT false,
 		"preserve_symlinks" integer DEFAULT false,
-		"default_monitored" integer DEFAULT 1,
+		"default_monitored" integer DEFAULT true,
 		"free_space_bytes" integer,
 		"last_checked_at" text,
 		"created_at" text
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS "libraries" (
+		"id" text PRIMARY KEY NOT NULL,
+		"name" text NOT NULL,
+		"slug" text NOT NULL UNIQUE,
+		"media_type" text NOT NULL CHECK ("media_type" IN ('movie', 'tv')),
+		"media_sub_type" text DEFAULT 'custom' NOT NULL CHECK ("media_sub_type" IN ('standard', 'anime', 'custom')),
+		"is_system" integer DEFAULT false NOT NULL,
+		"system_key" text UNIQUE,
+		"is_default" integer DEFAULT false NOT NULL,
+		"default_root_folder_id" text REFERENCES "root_folders"("id") ON DELETE SET NULL,
+		"default_monitored" integer DEFAULT true NOT NULL,
+		"default_search_on_add" integer DEFAULT true NOT NULL,
+		"default_wants_subtitles" integer DEFAULT true NOT NULL,
+		"sort_order" integer DEFAULT 0 NOT NULL,
+		"created_at" text,
+		"updated_at" text
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS "library_root_folders" (
+		"library_id" text NOT NULL REFERENCES "libraries"("id") ON DELETE CASCADE,
+		"root_folder_id" text NOT NULL REFERENCES "root_folders"("id") ON DELETE CASCADE,
+		"is_default" integer DEFAULT false NOT NULL,
+		"created_at" text,
+		PRIMARY KEY ("library_id", "root_folder_id")
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS "language_profiles" (
@@ -378,6 +613,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"runtime" integer,
 		"genres" text,
 		"path" text NOT NULL,
+		"library_id" text REFERENCES "libraries"("id") ON DELETE SET NULL,
 		"root_folder_id" text REFERENCES "root_folders"("id") ON DELETE SET NULL,
 		"scoring_profile_id" text REFERENCES "scoring_profiles"("id") ON DELETE SET NULL,
 		"language_profile_id" text,
@@ -419,6 +655,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"network" text,
 		"genres" text,
 		"path" text NOT NULL,
+		"library_id" text REFERENCES "libraries"("id") ON DELETE SET NULL,
 		"root_folder_id" text REFERENCES "root_folders"("id") ON DELETE SET NULL,
 		"scoring_profile_id" text REFERENCES "scoring_profiles"("id") ON DELETE SET NULL,
 		"language_profile_id" text,
@@ -475,6 +712,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"date_added" text,
 		"scene_name" text,
 		"release_group" text,
+		"edition" text,
 		"release_type" text,
 		"quality" text,
 		"media_info" text,
@@ -561,6 +799,18 @@ const TABLE_DEFINITIONS: string[] = [
 		"is_upgrade" integer DEFAULT false
 	)`,
 
+	`CREATE TABLE IF NOT EXISTS "download_queue_tombstones" (
+		"id" text PRIMARY KEY NOT NULL,
+		"download_client_id" text NOT NULL REFERENCES "download_clients"("id") ON DELETE CASCADE,
+		"protocol" text DEFAULT 'torrent' NOT NULL,
+		"remote_id" text NOT NULL,
+		"reason" text,
+		"suppressed_until" text NOT NULL,
+		"last_seen_at" text,
+		"created_at" text,
+		"updated_at" text
+	)`,
+
 	`CREATE TABLE IF NOT EXISTS "download_history" (
 		"id" text PRIMARY KEY NOT NULL,
 		"download_client_id" text,
@@ -645,66 +895,6 @@ const TABLE_DEFINITIONS: string[] = [
 		"new_score" integer,
 		"executed_at" text,
 		"error_message" text
-	)`,
-
-	`CREATE TABLE IF NOT EXISTS "activities" (
-		"id" text PRIMARY KEY NOT NULL,
-		"queue_item_id" text REFERENCES "download_queue"("id") ON DELETE CASCADE,
-		"download_history_id" text REFERENCES "download_history"("id") ON DELETE CASCADE,
-		"monitoring_history_id" text REFERENCES "monitoring_history"("id") ON DELETE CASCADE,
-		"source_type" text NOT NULL CHECK ("source_type" IN ('queue', 'history', 'monitoring')),
-		"media_type" text NOT NULL CHECK ("media_type" IN ('movie', 'episode')),
-		"movie_id" text REFERENCES "movies"("id") ON DELETE CASCADE,
-		"series_id" text REFERENCES "series"("id") ON DELETE CASCADE,
-		"episode_ids" text,
-		"season_number" integer,
-		"media_title" text NOT NULL,
-		"media_year" integer,
-		"series_title" text,
-		"release_title" text,
-		"quality" text,
-		"release_group" text,
-		"size" integer,
-		"indexer_id" text,
-		"indexer_name" text,
-		"protocol" text CHECK ("protocol" IN ('torrent', 'usenet', 'streaming')),
-		"status" text NOT NULL CHECK ("status" IN ('imported', 'streaming', 'downloading', 'failed', 'rejected', 'removed', 'no_results', 'searching')),
-		"status_reason" text,
-		"download_progress" integer DEFAULT 0,
-		"is_upgrade" integer DEFAULT false,
-		"old_score" integer,
-		"new_score" integer,
-		"timeline" text,
-		"started_at" text NOT NULL,
-		"completed_at" text,
-		"imported_path" text,
-		"search_text" text,
-		"created_at" text,
-		"updated_at" text
-	)`,
-
-	`CREATE TABLE IF NOT EXISTS "activity_details" (
-		"id" text PRIMARY KEY NOT NULL,
-		"activity_id" text NOT NULL REFERENCES "activities"("id") ON DELETE CASCADE,
-		"score_breakdown" text,
-		"replaced_movie_file_id" text REFERENCES "movie_files"("id") ON DELETE SET NULL,
-		"replaced_episode_file_ids" text,
-		"replaced_file_path" text,
-		"replaced_file_quality" text,
-		"replaced_file_score" integer,
-		"replaced_file_size" integer,
-		"search_results" text,
-		"selection_reason" text,
-		"import_log" text,
-		"files_imported" text,
-		"files_deleted" text,
-		"download_client_name" text,
-		"download_client_type" text,
-		"download_id" text,
-		"info_hash" text,
-		"release_info" text,
-		"created_at" text,
-		"updated_at" text
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS "subtitles" (
@@ -908,7 +1098,7 @@ const TABLE_DEFINITIONS: string[] = [
 	`CREATE TABLE IF NOT EXISTS "media_browser_servers" (
 		"id" text PRIMARY KEY NOT NULL,
 		"name" text NOT NULL,
-		"server_type" text NOT NULL CHECK ("server_type" IN ('jellyfin', 'emby')),
+		"server_type" text NOT NULL CHECK ("server_type" IN ('jellyfin', 'emby', 'plex')),
 		"host" text NOT NULL,
 		"api_key" text NOT NULL,
 		"enabled" integer DEFAULT 1,
@@ -1105,16 +1295,26 @@ const INDEX_DEFINITIONS: string[] = [
 	`CREATE INDEX IF NOT EXISTS "idx_indexers_definition" ON "indexers" ("definition_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_indexers_enabled" ON "indexers" ("enabled")`,
 	`CREATE INDEX IF NOT EXISTS "idx_indexer_status_health" ON "indexer_status" ("health", "is_disabled")`,
+	`CREATE INDEX IF NOT EXISTS "idx_libraries_media_type" ON "libraries" ("media_type")`,
+	`CREATE INDEX IF NOT EXISTS "idx_libraries_media_sub_type" ON "libraries" ("media_sub_type")`,
+	`CREATE INDEX IF NOT EXISTS "idx_libraries_sort_order" ON "libraries" ("sort_order")`,
+	`CREATE INDEX IF NOT EXISTS "idx_library_root_folders_library" ON "library_root_folders" ("library_id")`,
+	`CREATE INDEX IF NOT EXISTS "idx_library_root_folders_root_folder" ON "library_root_folders" ("root_folder_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_movies_monitored_hasfile" ON "movies" ("monitored", "has_file")`,
+	`CREATE INDEX IF NOT EXISTS "idx_movies_library_id" ON "movies" ("library_id")`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_movie_files_unique_path" ON "movie_files" ("movie_id", "relative_path")`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_episode_files_unique_path" ON "episode_files" ("series_id", "relative_path")`,
 	`CREATE INDEX IF NOT EXISTS "idx_series_monitored" ON "series" ("monitored")`,
+	`CREATE INDEX IF NOT EXISTS "idx_series_library_id" ON "series" ("library_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_episodes_series_season" ON "episodes" ("series_id", "season_number")`,
 	`CREATE INDEX IF NOT EXISTS "idx_episodes_monitored_hasfile" ON "episodes" ("monitored", "has_file")`,
 	`CREATE INDEX IF NOT EXISTS "idx_episodes_airdate" ON "episodes" ("air_date")`,
 	`CREATE INDEX IF NOT EXISTS "idx_download_queue_status" ON "download_queue" ("status")`,
 	`CREATE INDEX IF NOT EXISTS "idx_download_queue_movie" ON "download_queue" ("movie_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_download_queue_series" ON "download_queue" ("series_id")`,
+	`CREATE INDEX IF NOT EXISTS "idx_download_queue_tombstones_client" ON "download_queue_tombstones" ("download_client_id")`,
+	`CREATE INDEX IF NOT EXISTS "idx_download_queue_tombstones_suppressed_until" ON "download_queue_tombstones" ("suppressed_until")`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_download_queue_tombstones_unique" ON "download_queue_tombstones" ("download_client_id", "protocol", "remote_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_blocklist_movie" ON "blocklist" ("movie_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_blocklist_series" ON "blocklist" ("series_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_blocklist_infohash" ON "blocklist" ("info_hash")`,
@@ -1122,16 +1322,6 @@ const INDEX_DEFINITIONS: string[] = [
 	`CREATE INDEX IF NOT EXISTS "idx_monitoring_history_movie" ON "monitoring_history" ("movie_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_monitoring_history_series" ON "monitoring_history" ("series_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_monitoring_history_episode" ON "monitoring_history" ("episode_id")`,
-	// Activities indexes
-	`CREATE INDEX IF NOT EXISTS "idx_activities_status" ON "activities" ("status")`,
-	`CREATE INDEX IF NOT EXISTS "idx_activities_media_type" ON "activities" ("media_type")`,
-	`CREATE INDEX IF NOT EXISTS "idx_activities_started_at" ON "activities" ("started_at")`,
-	`CREATE INDEX IF NOT EXISTS "idx_activities_movie" ON "activities" ("movie_id")`,
-	`CREATE INDEX IF NOT EXISTS "idx_activities_series" ON "activities" ("series_id")`,
-	`CREATE INDEX IF NOT EXISTS "idx_activities_source" ON "activities" ("source_type")`,
-	`CREATE INDEX IF NOT EXISTS "idx_activities_queue" ON "activities" ("queue_item_id")`,
-	`CREATE INDEX IF NOT EXISTS "idx_activities_history" ON "activities" ("download_history_id")`,
-	`CREATE INDEX IF NOT EXISTS "idx_activities_monitoring" ON "activities" ("monitoring_history_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_subtitles_movie" ON "subtitles" ("movie_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_subtitles_episode" ON "subtitles" ("episode_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_smart_lists_enabled" ON "smart_lists" ("enabled")`,
@@ -1198,9 +1388,16 @@ const INDEX_DEFINITIONS: string[] = [
 	// Alternate titles indexes for multi-title search
 	`CREATE INDEX IF NOT EXISTS "idx_alternate_titles_media" ON "alternate_titles" ("media_type", "media_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_alternate_titles_source" ON "alternate_titles" ("source")`,
-	// Activity details indexes
-	`CREATE INDEX IF NOT EXISTS "idx_activity_details_activity" ON "activity_details" ("activity_id")`,
-	`CREATE INDEX IF NOT EXISTS "idx_activity_details_replaced_movie" ON "activity_details" ("replaced_movie_file_id")`
+
+	// download_history indexes for activity query performance
+	`CREATE INDEX IF NOT EXISTS "idx_dh_status" ON "download_history" ("status")`,
+	`CREATE INDEX IF NOT EXISTS "idx_dh_movie" ON "download_history" ("movie_id")`,
+	`CREATE INDEX IF NOT EXISTS "idx_dh_series" ON "download_history" ("series_id")`,
+	`CREATE INDEX IF NOT EXISTS "idx_dh_created_at" ON "download_history" ("created_at")`,
+	`CREATE INDEX IF NOT EXISTS "idx_dh_protocol" ON "download_history" ("protocol")`,
+	`CREATE INDEX IF NOT EXISTS "idx_dh_indexer_name" ON "download_history" ("indexer_name")`,
+	`CREATE INDEX IF NOT EXISTS "idx_dh_download_client" ON "download_history" ("download_client_id")`,
+	`CREATE INDEX IF NOT EXISTS "idx_dh_status_created" ON "download_history" ("status", "created_at")`
 ];
 
 /**
@@ -1773,10 +1970,13 @@ const MIGRATIONS: MigrationDefinition[] = [
 				return;
 			}
 
-			logger.info('[SchemaSync] Found series needing episode metadata repair', {
-				count: brokenSeries.length,
-				series: brokenSeries.map((s) => s.title)
-			});
+			logger.info(
+				{
+					count: brokenSeries.length,
+					series: brokenSeries.map((s) => s.title)
+				},
+				'[SchemaSync] Found series needing episode metadata repair'
+			);
 
 			// Flag each series for repair by the DataRepairService on startup
 			// We use settings table since TMDB API calls need to be async
@@ -1789,9 +1989,12 @@ const MIGRATIONS: MigrationDefinition[] = [
 					);
 			}
 
-			logger.info('[SchemaSync] Queued series for metadata repair on next startup', {
-				count: brokenSeries.length
-			});
+			logger.info(
+				{
+					count: brokenSeries.length
+				},
+				'[SchemaSync] Queued series for metadata repair on next startup'
+			);
 		}
 	},
 
@@ -1821,7 +2024,7 @@ const MIGRATIONS: MigrationDefinition[] = [
 						`CREATE TABLE IF NOT EXISTS "media_browser_servers" (
 						"id" text PRIMARY KEY NOT NULL,
 						"name" text NOT NULL,
-						"server_type" text NOT NULL CHECK ("server_type" IN ('jellyfin', 'emby')),
+						"server_type" text NOT NULL CHECK ("server_type" IN ('jellyfin', 'emby', 'plex')),
 						"host" text NOT NULL,
 						"api_key" text NOT NULL,
 						"enabled" integer DEFAULT 1,
@@ -3569,13 +3772,16 @@ const MIGRATIONS: MigrationDefinition[] = [
 				)
 				.run();
 
-			logger.info('[SchemaSync] Deduped episode_files and enforced unique path index', {
-				groupsDeduped: duplicateGroups.length,
-				duplicateRowsDeleted,
-				canonicalRowsUpdated,
-				downloadHistoryRowsUpdated,
-				activityDetailsRowsUpdated
-			});
+			logger.info(
+				{
+					groupsDeduped: duplicateGroups.length,
+					duplicateRowsDeleted,
+					canonicalRowsUpdated,
+					downloadHistoryRowsUpdated,
+					activityDetailsRowsUpdated
+				},
+				'[SchemaSync] Deduped episode_files and enforced unique path index'
+			);
 		}
 	},
 
@@ -3597,9 +3803,12 @@ const MIGRATIONS: MigrationDefinition[] = [
 				)
 				.run();
 
-			logger.info('[SchemaSync] Backfilled orphaned download_history rows to removed', {
-				rowsUpdated: result.changes
-			});
+			logger.info(
+				{
+					rowsUpdated: result.changes
+				},
+				'[SchemaSync] Backfilled orphaned download_history rows to removed'
+			);
 		}
 	},
 
@@ -4027,7 +4236,7 @@ const MIGRATIONS: MigrationDefinition[] = [
 		}
 	},
 
-	// Migration 53: Add iptv_org_config column to livetv_accounts for IPTV-Org provider support
+	// Version 53: Add iptv_org_config column to livetv_accounts for IPTV-Org provider support
 	{
 		version: 53,
 		name: 'add_iptv_org_config_column',
@@ -4104,6 +4313,1271 @@ const MIGRATIONS: MigrationDefinition[] = [
 				logger.info('[SchemaSync] Added last_checked_at column to download_clients');
 			}
 		}
+	},
+
+	// Versions 56-59 were used during the initial Better Auth rollout and later retired
+	// when auth schema ownership moved into the embedded table definitions above.
+	// Keep them as explicit no-ops so the migration ledger remains contiguous.
+	{
+		version: 56,
+		name: 'reserved_better_auth_refactor_v56',
+		apply: () => {}
+	},
+	{
+		version: 57,
+		name: 'reserved_better_auth_refactor_v57',
+		apply: () => {}
+	},
+	{
+		version: 58,
+		name: 'reserved_better_auth_refactor_v58',
+		apply: () => {}
+	},
+	{
+		version: 59,
+		name: 'reserved_better_auth_refactor_v59',
+		apply: () => {}
+	},
+
+	// Migration 60: Add user_api_key_secrets table for encrypted API key storage
+	{
+		version: 60,
+		name: 'add_user_api_key_secrets_table',
+		apply: (sqlite) => {
+			if (!tableExists(sqlite, 'userApiKeySecrets')) {
+				sqlite
+					.prepare(
+						`
+					CREATE TABLE "userApiKeySecrets" (
+						"id" TEXT PRIMARY KEY NOT NULL,
+						"userId" TEXT NOT NULL,
+						"encryptedKey" TEXT NOT NULL,
+						"createdAt" TEXT NOT NULL,
+						FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE
+					)
+				`
+					)
+					.run();
+				sqlite
+					.prepare(`CREATE INDEX "idx_userApiKeySecrets_userId" ON "userApiKeySecrets"("userId")`)
+					.run();
+				logger.info('[SchemaSync] Created userApiKeySecrets table');
+			} else {
+				logger.info('[SchemaSync] userApiKeySecrets table already exists');
+			}
+		}
+	},
+
+	// NOTE: Better Auth migrations removed (versions 56-57)
+	// Auth tables (user, session, account, verification) are now managed by Better Auth
+	// Do not add auth-related migrations here - Better Auth handles its own schema
+
+	// Version 61: Rename Live TV API Key to Media Streaming API Key
+	// Expands permissions to include both livetv and streaming endpoints
+	{
+		version: 61,
+		name: 'rename_live_tv_to_media_streaming_api_key',
+		apply: (sqlite) => {
+			logger.info(
+				'[SchemaSync] Running migration: Rename Live TV API Key to Media Streaming API Key'
+			);
+
+			// Update Better Auth API key table to migrate livetv keys to streaming keys
+			// Better Auth stores keys in the 'apiKey' table
+			try {
+				// Check if apiKey table exists (Better Auth managed)
+				const tableExists = sqlite
+					.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='apiKey'`)
+					.get();
+
+				if (tableExists) {
+					// Update keys with metadata.type = 'livetv' to type = 'streaming'
+					const updateNameResult = sqlite
+						.prepare(
+							`UPDATE apiKey SET name = 'Media Streaming API Key' WHERE name = 'Live TV API Key'`
+						)
+						.run();
+
+					// Update metadata - we need to parse and update the JSON
+					const keysToUpdate = sqlite
+						.prepare(
+							`SELECT id, metadata, permissions FROM apiKey WHERE metadata LIKE '%"type":"livetv"%'`
+						)
+						.all() as Array<{ id: string; metadata: string; permissions: string }>;
+
+					for (const key of keysToUpdate) {
+						try {
+							const metadata = JSON.parse(key.metadata);
+							const permissions = JSON.parse(key.permissions);
+
+							// Update metadata type and description
+							metadata.type = 'streaming';
+							metadata.description =
+								'Access to Live TV and Media Streaming endpoints for media server integration';
+
+							// Add streaming permission alongside livetv
+							permissions.streaming = ['*'];
+
+							// Update the key
+							sqlite
+								.prepare(`UPDATE apiKey SET metadata = ?, permissions = ? WHERE id = ?`)
+								.run(JSON.stringify(metadata), JSON.stringify(permissions), key.id);
+
+							logger.info(`[SchemaSync] Migrated API key ${key.id} to Media Streaming API Key`);
+						} catch (parseError) {
+							logger.warn(`[SchemaSync] Failed to parse metadata for key ${key.id}: ${parseError}`);
+						}
+					}
+
+					logger.info(
+						{
+							updatedCount: updateNameResult.changes
+						},
+						'[SchemaSync] Migration completed: Live TV API Keys renamed to Media Streaming API Keys'
+					);
+				} else {
+					logger.info('[SchemaSync] apiKey table not found, skipping migration');
+				}
+			} catch (error) {
+				logger.error({ err: error }, '[SchemaSync] Migration failed');
+				throw error;
+			}
+		}
+	},
+
+	// Version 62: Add role column to user table for RBAC
+	{
+		version: 62,
+		name: 'add_user_role_column',
+		apply: (sqlite) => {
+			// Check if user table exists (Better Auth managed)
+			const userTableExists = sqlite
+				.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='user'`)
+				.get();
+
+			if (userTableExists) {
+				// Check if role column already exists
+				const columnInfo = sqlite.prepare(`PRAGMA table_info("user")`).all() as Array<{
+					name: string;
+				}>;
+				const roleColumnExists = columnInfo.some((col) => col.name === 'role');
+
+				if (!roleColumnExists) {
+					// Add role column with default 'admin' for existing users
+					sqlite
+						.prepare(`ALTER TABLE "user" ADD COLUMN "role" text DEFAULT 'admin' NOT NULL`)
+						.run();
+					logger.info('[SchemaSync] Added role column to user table');
+				} else {
+					logger.info('[SchemaSync] role column already exists in user table');
+				}
+
+				// Update any users without a role to be 'admin'
+				const updateResult = sqlite
+					.prepare(`UPDATE "user" SET "role" = 'admin' WHERE "role" IS NULL OR "role" = ''`)
+					.run();
+				if (updateResult.changes > 0) {
+					logger.info(`[SchemaSync] Updated ${updateResult.changes} users to have admin role`);
+				}
+			} else {
+				logger.info('[SchemaSync] user table not found, skipping migration');
+			}
+		}
+	},
+
+	// Version 63: Repair Better Auth schema drift and add missing plugin tables
+	{
+		version: 63,
+		name: 'repair_better_auth_schema',
+		apply: (sqlite) => {
+			const authTables = ['user', 'session', 'account', 'verification', 'apikey', 'rateLimit'];
+			const authHasData = authTables.some((tableName) => getTableRowCount(sqlite, tableName) > 0);
+
+			const userColumns = [
+				'email',
+				'emailVerified',
+				'image',
+				'username',
+				'displayUsername',
+				'role',
+				'banned',
+				'banReason',
+				'banExpires',
+				'createdAt',
+				'updatedAt'
+			];
+			const userNeedsRepair =
+				tableExists(sqlite, 'user') &&
+				userColumns.some((columnName) => !columnExists(sqlite, 'user', columnName));
+
+			const sessionColumns = [
+				'userId',
+				'token',
+				'expiresAt',
+				'ipAddress',
+				'userAgent',
+				'createdAt',
+				'updatedAt'
+			];
+			const sessionNeedsRepair =
+				tableExists(sqlite, 'session') &&
+				(sessionColumns.some((columnName) => !columnExists(sqlite, 'session', columnName)) ||
+					!columnExists(sqlite, 'session', 'impersonatedBy'));
+			const accountColumns = ['userId', 'accountId', 'providerId', 'createdAt', 'updatedAt'];
+			const accountNeedsRepair =
+				tableExists(sqlite, 'account') &&
+				accountColumns.some((columnName) => !columnExists(sqlite, 'account', columnName));
+			const apikeyMissing = !tableExists(sqlite, 'apikey');
+			const apikeyNeedsRepair =
+				tableExists(sqlite, 'apikey') &&
+				!columnExists(sqlite, 'apikey', 'key') &&
+				!columnExists(sqlite, 'apikey', 'referenceId') &&
+				!columnExists(sqlite, 'apikey', 'userId');
+			const rateLimitMissing = !tableExists(sqlite, 'rateLimit');
+
+			if (
+				!authHasData &&
+				(userNeedsRepair ||
+					sessionNeedsRepair ||
+					accountNeedsRepair ||
+					apikeyMissing ||
+					apikeyNeedsRepair ||
+					rateLimitMissing)
+			) {
+				logger.info(
+					'[SchemaSync] Recreating empty Better Auth schema with complete table definitions'
+				);
+				recreateBetterAuthSchema(sqlite);
+				return;
+			}
+
+			createBetterAuthTables(sqlite);
+
+			renameColumnIfExists(sqlite, 'session', 'user_id', 'userId');
+			renameColumnIfExists(sqlite, 'session', 'expires_at', 'expiresAt');
+			renameColumnIfExists(sqlite, 'session', 'ip_address', 'ipAddress');
+			renameColumnIfExists(sqlite, 'session', 'user_agent', 'userAgent');
+			renameColumnIfExists(sqlite, 'session', 'created_at', 'createdAt');
+			renameColumnIfExists(sqlite, 'session', 'updated_at', 'updatedAt');
+			renameColumnIfExists(sqlite, 'account', 'user_id', 'userId');
+			renameColumnIfExists(sqlite, 'account', 'account_id', 'accountId');
+			renameColumnIfExists(sqlite, 'account', 'provider_id', 'providerId');
+			renameColumnIfExists(sqlite, 'account', 'access_token', 'accessToken');
+			renameColumnIfExists(sqlite, 'account', 'refresh_token', 'refreshToken');
+			renameColumnIfExists(sqlite, 'account', 'created_at', 'createdAt');
+			renameColumnIfExists(sqlite, 'account', 'updated_at', 'updatedAt');
+			renameColumnIfExists(sqlite, 'apikey', 'user_id', 'userId');
+
+			ensureColumn(sqlite, 'user', 'name', '"name" text');
+			ensureColumn(sqlite, 'user', 'email', '"email" text');
+			ensureColumn(sqlite, 'user', 'emailVerified', '"emailVerified" integer DEFAULT 0');
+			ensureColumn(sqlite, 'user', 'image', '"image" text');
+			ensureColumn(sqlite, 'user', 'username', '"username" text');
+			ensureColumn(sqlite, 'user', 'displayUsername', '"displayUsername" text');
+			ensureColumn(sqlite, 'user', 'role', '"role" text DEFAULT \'admin\' NOT NULL');
+			ensureColumn(sqlite, 'user', 'banned', '"banned" integer DEFAULT 0');
+			ensureColumn(sqlite, 'user', 'banReason', '"banReason" text');
+			ensureColumn(sqlite, 'user', 'banExpires', '"banExpires" date');
+			ensureColumn(sqlite, 'user', 'createdAt', '"createdAt" date');
+			ensureColumn(sqlite, 'user', 'updatedAt', '"updatedAt" date');
+
+			ensureColumn(sqlite, 'session', 'userId', '"userId" text');
+			ensureColumn(sqlite, 'session', 'token', '"token" text');
+			ensureColumn(sqlite, 'session', 'expiresAt', '"expiresAt" date');
+			ensureColumn(sqlite, 'session', 'ipAddress', '"ipAddress" text');
+			ensureColumn(sqlite, 'session', 'userAgent', '"userAgent" text');
+			ensureColumn(sqlite, 'session', 'createdAt', '"createdAt" date');
+			ensureColumn(sqlite, 'session', 'updatedAt', '"updatedAt" date');
+			ensureColumn(sqlite, 'session', 'impersonatedBy', '"impersonatedBy" text');
+
+			ensureColumn(sqlite, 'account', 'userId', '"userId" text');
+			ensureColumn(sqlite, 'account', 'accountId', '"accountId" text');
+			ensureColumn(sqlite, 'account', 'providerId', '"providerId" text');
+			ensureColumn(sqlite, 'account', 'accessToken', '"accessToken" text');
+			ensureColumn(sqlite, 'account', 'refreshToken', '"refreshToken" text');
+			ensureColumn(sqlite, 'account', 'createdAt', '"createdAt" date');
+			ensureColumn(sqlite, 'account', 'updatedAt', '"updatedAt" date');
+
+			ensureColumn(sqlite, 'apikey', 'name', '"name" text');
+			ensureColumn(sqlite, 'apikey', 'start', '"start" text');
+			ensureColumn(sqlite, 'apikey', 'prefix', '"prefix" text');
+			ensureColumn(sqlite, 'apikey', 'key', '"key" text');
+			ensureColumn(sqlite, 'apikey', 'userId', '"userId" text');
+			ensureColumn(sqlite, 'apikey', 'refillInterval', '"refillInterval" integer');
+			ensureColumn(sqlite, 'apikey', 'refillAmount', '"refillAmount" integer');
+			ensureColumn(sqlite, 'apikey', 'lastRefillAt', '"lastRefillAt" date');
+			ensureColumn(sqlite, 'apikey', 'enabled', '"enabled" integer DEFAULT 1');
+			ensureColumn(sqlite, 'apikey', 'rateLimitEnabled', '"rateLimitEnabled" integer DEFAULT 1');
+			ensureColumn(sqlite, 'apikey', 'rateLimitTimeWindow', '"rateLimitTimeWindow" integer');
+			ensureColumn(sqlite, 'apikey', 'rateLimitMax', '"rateLimitMax" integer');
+			ensureColumn(sqlite, 'apikey', 'requestCount', '"requestCount" integer DEFAULT 0');
+			ensureColumn(sqlite, 'apikey', 'remaining', '"remaining" integer');
+			ensureColumn(sqlite, 'apikey', 'lastRequest', '"lastRequest" date');
+			ensureColumn(sqlite, 'apikey', 'expiresAt', '"expiresAt" date');
+			ensureColumn(sqlite, 'apikey', 'createdAt', '"createdAt" date');
+			ensureColumn(sqlite, 'apikey', 'updatedAt', '"updatedAt" date');
+			ensureColumn(sqlite, 'apikey', 'permissions', '"permissions" text');
+			ensureColumn(sqlite, 'apikey', 'metadata', '"metadata" text');
+
+			ensureColumn(sqlite, 'rateLimit', 'id', '"id" text');
+			ensureColumn(sqlite, 'rateLimit', 'key', '"key" text');
+			ensureColumn(sqlite, 'rateLimit', 'count', '"count" integer NOT NULL DEFAULT 0');
+			ensureColumn(sqlite, 'rateLimit', 'lastRequest', '"lastRequest" integer NOT NULL DEFAULT 0');
+
+			if (tableExists(sqlite, 'user')) {
+				sqlite
+					.prepare(`UPDATE "user" SET "role" = 'admin' WHERE "role" IS NULL OR "role" = ''`)
+					.run();
+				sqlite.prepare(`UPDATE "user" SET "emailVerified" = 0 WHERE "emailVerified" IS NULL`).run();
+				sqlite.prepare(`UPDATE "user" SET "banned" = 0 WHERE "banned" IS NULL`).run();
+			}
+
+			if (tableExists(sqlite, 'apikey')) {
+				sqlite.prepare(`UPDATE "apikey" SET "enabled" = 1 WHERE "enabled" IS NULL`).run();
+				sqlite
+					.prepare(`UPDATE "apikey" SET "rateLimitEnabled" = 1 WHERE "rateLimitEnabled" IS NULL`)
+					.run();
+				sqlite.prepare(`UPDATE "apikey" SET "requestCount" = 0 WHERE "requestCount" IS NULL`).run();
+			}
+
+			if (tableExists(sqlite, 'rateLimit')) {
+				sqlite
+					.prepare(
+						`UPDATE "rateLimit" SET "id" = lower(hex(randomblob(16))) WHERE "id" IS NULL OR "id" = ''`
+					)
+					.run();
+				sqlite
+					.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS "idx_rateLimit_key" ON "rateLimit" ("key")`)
+					.run();
+				sqlite
+					.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS "idx_rateLimit_id" ON "rateLimit" ("id")`)
+					.run();
+			}
+
+			createBetterAuthIndexes(sqlite);
+			logger.info('[SchemaSync] Better Auth schema repair complete');
+		}
+	},
+
+	// Version 64: Promote the sole bootstrap user to admin if older auth code created it as user
+	{
+		version: 64,
+		name: 'ensure_bootstrap_user_is_admin',
+		apply: (sqlite) => {
+			if (ensureSoleUserIsAdmin(sqlite)) {
+				logger.info('[SchemaSync] Ensured the sole bootstrap user has admin role');
+			}
+		}
+	},
+
+	// Version 65: Migrate Better Auth apiKey table from v1.4 to v1.5 schema
+	// Changes: userId -> referenceId, adds configId column
+	{
+		version: 65,
+		name: 'migrate_apikey_schema_v1_5',
+		apply: (sqlite) => {
+			logger.info('[SchemaSync] Checking apiKey table schema for v1.5 migration...');
+
+			// Check if apikey table exists (SQLite table names are case-insensitive, but we use lowercase)
+			const tableExists = sqlite
+				.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='apikey'`)
+				.get();
+
+			if (!tableExists) {
+				logger.info('[SchemaSync] apikey table not found, skipping v1.5 migration');
+				return;
+			}
+
+			// Check current columns
+			const columns = sqlite.prepare(`PRAGMA table_info(apikey)`).all() as Array<{ name: string }>;
+			const hasUserId = columns.some((col) => col.name === 'userId');
+			const hasReferenceId = columns.some((col) => col.name === 'referenceId');
+			const hasConfigId = columns.some((col) => col.name === 'configId');
+
+			if (!hasUserId && hasReferenceId) {
+				logger.info('[SchemaSync] apikey table already migrated to v1.5 schema');
+
+				// Ensure configId exists even if userId was already renamed
+				if (!hasConfigId) {
+					sqlite.prepare(`ALTER TABLE apikey ADD COLUMN configId TEXT DEFAULT 'default'`).run();
+					logger.info('[SchemaSync] Added configId column to apikey table');
+				}
+				return;
+			}
+
+			if (hasUserId) {
+				// Rename userId to referenceId
+				logger.info('[SchemaSync] Renaming apikey.userId to referenceId...');
+				sqlite.prepare(`ALTER TABLE apikey RENAME COLUMN userId TO referenceId`).run();
+				logger.info('[SchemaSync] Renamed userId column to referenceId');
+			}
+
+			// Add configId column if it doesn't exist
+			if (!hasConfigId) {
+				sqlite.prepare(`ALTER TABLE apikey ADD COLUMN configId TEXT DEFAULT 'default'`).run();
+				logger.info('[SchemaSync] Added configId column to apikey table');
+			}
+
+			// Recreate indexes to use new column name
+			sqlite.prepare(`DROP INDEX IF EXISTS apikey_userId_idx`).run();
+			sqlite.prepare(`DROP INDEX IF EXISTS idx_apikey_user`).run();
+			sqlite
+				.prepare(`CREATE INDEX IF NOT EXISTS apikey_referenceId_idx ON apikey(referenceId)`)
+				.run();
+			sqlite
+				.prepare(`CREATE INDEX IF NOT EXISTS idx_apikey_reference ON apikey(referenceId)`)
+				.run();
+			logger.info('[SchemaSync] Recreated apikey indexes for referenceId');
+
+			logger.info('[SchemaSync] apikey v1.5 migration completed successfully');
+		}
+	},
+
+	// Version 66: Fix apikey schema migration for databases stuck at v65
+	// Some databases reached v65 but the migration didn't run due to case-sensitivity bug
+	{
+		version: 66,
+		name: 'fix_apikey_schema_v1_5_stuck',
+		apply: (sqlite) => {
+			logger.info('[SchemaSync] Checking for stuck apikey schema migration...');
+
+			// Check if apikey table exists
+			const tableExists = sqlite
+				.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='apikey'`)
+				.get();
+
+			if (!tableExists) {
+				logger.info('[SchemaSync] apikey table not found, skipping');
+				return;
+			}
+
+			// Check current columns
+			const columns = sqlite.prepare(`PRAGMA table_info(apikey)`).all() as Array<{ name: string }>;
+			const hasUserId = columns.some((col) => col.name === 'userId');
+			const hasReferenceId = columns.some((col) => col.name === 'referenceId');
+			const hasConfigId = columns.some((col) => col.name === 'configId');
+
+			if (!hasUserId && hasReferenceId && hasConfigId) {
+				logger.info('[SchemaSync] apikey table properly migrated, no fix needed');
+				return;
+			}
+
+			logger.info('[SchemaSync] Fixing stuck apikey schema migration...');
+
+			if (hasUserId) {
+				// Rename userId to referenceId
+				logger.info('[SchemaSync] Renaming apikey.userId to referenceId...');
+				sqlite.prepare(`ALTER TABLE apikey RENAME COLUMN userId TO referenceId`).run();
+				logger.info('[SchemaSync] Renamed userId column to referenceId');
+			}
+
+			// Add configId column if it doesn't exist
+			if (!hasConfigId) {
+				sqlite.prepare(`ALTER TABLE apikey ADD COLUMN configId TEXT DEFAULT 'default'`).run();
+				logger.info('[SchemaSync] Added configId column to apikey table');
+			}
+
+			// Recreate indexes to use new column name
+			sqlite.prepare(`DROP INDEX IF EXISTS apikey_userId_idx`).run();
+			sqlite.prepare(`DROP INDEX IF EXISTS idx_apikey_user`).run();
+			sqlite
+				.prepare(`CREATE INDEX IF NOT EXISTS apikey_referenceId_idx ON apikey(referenceId)`)
+				.run();
+			sqlite
+				.prepare(`CREATE INDEX IF NOT EXISTS idx_apikey_reference ON apikey(referenceId)`)
+				.run();
+			logger.info('[SchemaSync] Recreated apikey indexes for referenceId');
+
+			logger.info('[SchemaSync] apikey schema fix completed successfully');
+		}
+	},
+
+	// Version 67: Better Auth now generates IDs for rateLimit rows; ensure column exists on upgraded DBs
+	{
+		version: 67,
+		name: 'add_rate_limit_id_column',
+		apply: (sqlite) => {
+			if (!tableExists(sqlite, 'rateLimit')) {
+				logger.info('[SchemaSync] rateLimit table not found, skipping id column migration');
+				return;
+			}
+
+			ensureColumn(sqlite, 'rateLimit', 'id', '"id" text');
+			ensureColumn(sqlite, 'rateLimit', 'key', '"key" text');
+			ensureColumn(sqlite, 'rateLimit', 'count', '"count" integer NOT NULL DEFAULT 0');
+			ensureColumn(sqlite, 'rateLimit', 'lastRequest', '"lastRequest" integer NOT NULL DEFAULT 0');
+
+			const backfilled = sqlite
+				.prepare(
+					`UPDATE "rateLimit" SET "id" = lower(hex(randomblob(16))) WHERE "id" IS NULL OR "id" = ''`
+				)
+				.run();
+			if (backfilled.changes > 0) {
+				logger.info(
+					{
+						rows: backfilled.changes
+					},
+					'[SchemaSync] Backfilled missing rateLimit.id values'
+				);
+			}
+
+			sqlite
+				.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS "idx_rateLimit_key" ON "rateLimit" ("key")`)
+				.run();
+			sqlite
+				.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS "idx_rateLimit_id" ON "rateLimit" ("id")`)
+				.run();
+		}
+	},
+	// Migration 68: Add edition column to episode_files
+	{
+		version: 68,
+		name: 'add_edition_to_episode_files',
+		apply: (sqlite) => {
+			if (!columnExists(sqlite, 'episode_files', 'edition')) {
+				sqlite.prepare(`ALTER TABLE episode_files ADD COLUMN edition TEXT`).run();
+				logger.info('[SchemaSync] Added edition column to episode_files');
+			}
+		}
+	},
+
+	// Migration 69: Add indexes on download_history for activity query performance
+	{
+		version: 69,
+		name: 'add_download_history_indexes',
+		apply: (sqlite) => {
+			const indexes = [
+				`CREATE INDEX IF NOT EXISTS "idx_dh_status" ON "download_history" ("status")`,
+				`CREATE INDEX IF NOT EXISTS "idx_dh_movie" ON "download_history" ("movie_id")`,
+				`CREATE INDEX IF NOT EXISTS "idx_dh_series" ON "download_history" ("series_id")`,
+				`CREATE INDEX IF NOT EXISTS "idx_dh_created_at" ON "download_history" ("created_at")`,
+				`CREATE INDEX IF NOT EXISTS "idx_dh_protocol" ON "download_history" ("protocol")`,
+				`CREATE INDEX IF NOT EXISTS "idx_dh_indexer_name" ON "download_history" ("indexer_name")`,
+				`CREATE INDEX IF NOT EXISTS "idx_dh_download_client" ON "download_history" ("download_client_id")`,
+				`CREATE INDEX IF NOT EXISTS "idx_dh_status_created" ON "download_history" ("status", "created_at")`
+			];
+			for (const sql of indexes) {
+				sqlite.prepare(sql).run();
+			}
+			logger.info('[SchemaSync] Added download_history indexes for activity query performance');
+		}
+	},
+	{
+		version: 70,
+		name: 'drop_unused_activities_tables',
+		apply: (sqlite) => {
+			// The "activities" and "activity_details" tables were scaffolding for a
+			// materialized-view pattern that was never implemented.  The actual
+			// Activity page reads directly from download_queue, download_history,
+			// and monitoring_history.  Both tables are always empty and can be
+			// safely dropped.  activity_details has a FK to activities, so it must
+			// be dropped first.
+			sqlite.prepare('DROP TABLE IF EXISTS "activity_details"').run();
+			sqlite.prepare('DROP TABLE IF EXISTS "activities"').run();
+			logger.info('[SchemaSync] Dropped unused activities and activity_details tables');
+		}
+	},
+	{
+		version: 71,
+		name: 'add_download_queue_tombstones_table',
+		apply: (sqlite) => {
+			if (!tableExists(sqlite, 'download_queue_tombstones')) {
+				sqlite
+					.prepare(
+						`CREATE TABLE "download_queue_tombstones" (
+								"id" text PRIMARY KEY NOT NULL,
+								"download_client_id" text NOT NULL REFERENCES "download_clients"("id") ON DELETE CASCADE,
+								"protocol" text DEFAULT 'torrent' NOT NULL,
+								"remote_id" text NOT NULL,
+								"reason" text,
+								"suppressed_until" text NOT NULL,
+								"last_seen_at" text,
+								"created_at" text,
+								"updated_at" text
+							)`
+					)
+					.run();
+			}
+
+			sqlite
+				.prepare(
+					`CREATE INDEX IF NOT EXISTS "idx_download_queue_tombstones_client" ON "download_queue_tombstones" ("download_client_id")`
+				)
+				.run();
+			sqlite
+				.prepare(
+					`CREATE INDEX IF NOT EXISTS "idx_download_queue_tombstones_suppressed_until" ON "download_queue_tombstones" ("suppressed_until")`
+				)
+				.run();
+			sqlite
+				.prepare(
+					`CREATE UNIQUE INDEX IF NOT EXISTS "idx_download_queue_tombstones_unique" ON "download_queue_tombstones" ("download_client_id", "protocol", "remote_id")`
+				)
+				.run();
+
+			logger.info('[SchemaSync] Ensured download_queue_tombstones table and indexes');
+		}
+	},
+	{
+		version: 72,
+		name: 'add_adaptive_subtitle_searching_columns',
+		apply: (sqlite) => {
+			ensureColumn(
+				sqlite,
+				'movies',
+				'failed_subtitle_attempts',
+				'"failed_subtitle_attempts" integer DEFAULT 0'
+			);
+			ensureColumn(sqlite, 'movies', 'first_subtitle_search_at', '"first_subtitle_search_at" text');
+			ensureColumn(
+				sqlite,
+				'episodes',
+				'failed_subtitle_attempts',
+				'"failed_subtitle_attempts" integer DEFAULT 0'
+			);
+			ensureColumn(
+				sqlite,
+				'episodes',
+				'first_subtitle_search_at',
+				'"first_subtitle_search_at" text'
+			);
+			logger.info('[SchemaSync] Added adaptive subtitle searching columns to movies and episodes');
+		}
+	},
+	{
+		version: 73,
+		name: 'allow_plex_media_browser_servers',
+		apply: (sqlite) => {
+			if (!tableExists(sqlite, 'media_browser_servers')) {
+				return;
+			}
+
+			const tableInfo = sqlite
+				.prepare(
+					`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'media_browser_servers'`
+				)
+				.get() as { sql?: string } | undefined;
+
+			if (tableInfo?.sql?.includes(`'plex'`)) {
+				logger.info('[SchemaSync] media_browser_servers already allows plex');
+				return;
+			}
+
+			sqlite.transaction(() => {
+				sqlite
+					.prepare(`ALTER TABLE "media_browser_servers" RENAME TO "media_browser_servers_old"`)
+					.run();
+				sqlite
+					.prepare(
+						`CREATE TABLE "media_browser_servers" (
+						"id" text PRIMARY KEY NOT NULL,
+						"name" text NOT NULL,
+						"server_type" text NOT NULL CHECK ("server_type" IN ('jellyfin', 'emby', 'plex')),
+						"host" text NOT NULL,
+						"api_key" text NOT NULL,
+						"enabled" integer DEFAULT 1,
+						"on_import" integer DEFAULT 1,
+						"on_upgrade" integer DEFAULT 1,
+						"on_rename" integer DEFAULT 1,
+						"on_delete" integer DEFAULT 1,
+						"path_mappings" text,
+						"server_name" text,
+						"server_version" text,
+						"server_id" text,
+						"last_tested_at" text,
+						"test_result" text,
+						"test_error" text,
+						"created_at" text,
+						"updated_at" text
+					)`
+					)
+					.run();
+				sqlite
+					.prepare(
+						`INSERT INTO "media_browser_servers" (
+							"id", "name", "server_type", "host", "api_key", "enabled", "on_import",
+							"on_upgrade", "on_rename", "on_delete", "path_mappings", "server_name",
+							"server_version", "server_id", "last_tested_at", "test_result", "test_error",
+							"created_at", "updated_at"
+						)
+						SELECT
+							"id", "name", "server_type", "host", "api_key", "enabled", "on_import",
+							"on_upgrade", "on_rename", "on_delete", "path_mappings", "server_name",
+							"server_version", "server_id", "last_tested_at", "test_result", "test_error",
+							"created_at", "updated_at"
+						FROM "media_browser_servers_old"`
+					)
+					.run();
+				sqlite.prepare(`DROP TABLE "media_browser_servers_old"`).run();
+			})();
+
+			logger.info('[SchemaSync] Updated media_browser_servers to allow plex');
+		}
+	},
+	{
+		version: 74,
+		name: 'consolidate_nzb_mount_clients_into_sab_mount_mode',
+		apply: (sqlite) => {
+			if (!tableExists(sqlite, 'download_clients')) {
+				return;
+			}
+
+			const updateLegacyClients = sqlite.prepare(`
+				UPDATE "download_clients"
+				SET
+					"implementation" = 'sabnzbd',
+					"mount_mode" = CASE
+						WHEN "mount_mode" IS NULL OR TRIM("mount_mode") = '' THEN 'nzbdav'
+						WHEN "mount_mode" = 'altmount' THEN 'nzbdav'
+						ELSE "mount_mode"
+					END
+				WHERE "implementation" = 'nzb-mount'
+			`);
+
+			const normalizeAltmount = sqlite.prepare(`
+				UPDATE "download_clients"
+				SET "mount_mode" = 'nzbdav'
+				WHERE "mount_mode" = 'altmount'
+			`);
+
+			const convertedClients = updateLegacyClients.run().changes;
+			const normalizedMountModes = normalizeAltmount.run().changes;
+
+			logger.info(
+				{
+					convertedClients,
+					normalizedMountModes
+				},
+				'[SchemaSync] Consolidated legacy nzb-mount clients into sabnzbd mount mode'
+			);
+		}
+	},
+	{
+		version: 75,
+		name: 'add_language_column_to_user_table',
+		apply: (sqlite) => {
+			// Check if user table exists
+			if (!tableExists(sqlite, 'user')) {
+				logger.info('[SchemaSync] user table not found, skipping language column migration');
+				return;
+			}
+
+			// Check if language column already exists
+			const tableInfo = sqlite.prepare(`PRAGMA table_info("user")`).all() as Array<{
+				name: string;
+			}>;
+			const hasLanguageColumn = tableInfo.some((col) => col.name === 'language');
+
+			if (hasLanguageColumn) {
+				logger.info('[SchemaSync] language column already exists in user table');
+				return;
+			}
+
+			// Add language column with default 'en'
+			sqlite.prepare(`ALTER TABLE "user" ADD COLUMN "language" text DEFAULT 'en'`).run();
+			logger.info('[SchemaSync] Added language column to user table');
+		}
+	},
+	{
+		version: 76,
+		name: 'add_root_folders_media_sub_type',
+		apply: (sqlite) => {
+			if (!tableExists(sqlite, 'root_folders')) {
+				logger.info('[SchemaSync] root_folders table not found, skipping media_sub_type migration');
+				return;
+			}
+
+			if (!columnExists(sqlite, 'root_folders', 'media_sub_type')) {
+				sqlite
+					.prepare(
+						`ALTER TABLE "root_folders" ADD COLUMN "media_sub_type" text DEFAULT 'standard' NOT NULL`
+					)
+					.run();
+				logger.info('[SchemaSync] Added media_sub_type column to root_folders');
+			}
+
+			sqlite
+				.prepare(
+					`UPDATE "root_folders"
+					SET "media_sub_type" = 'standard'
+					WHERE "media_sub_type" IS NULL OR TRIM("media_sub_type") = ''`
+				)
+				.run();
+		}
+	},
+	{
+		version: 77,
+		name: 'add_libraries_table_and_media_links',
+		apply: (sqlite) => {
+			if (!tableExists(sqlite, 'libraries')) {
+				sqlite
+					.prepare(
+						`CREATE TABLE IF NOT EXISTS "libraries" (
+							"id" text PRIMARY KEY NOT NULL,
+							"name" text NOT NULL,
+							"slug" text NOT NULL UNIQUE,
+							"media_type" text NOT NULL CHECK ("media_type" IN ('movie', 'tv')),
+							"media_sub_type" text DEFAULT 'custom' NOT NULL CHECK ("media_sub_type" IN ('standard', 'anime', 'custom')),
+							"is_system" integer DEFAULT false NOT NULL,
+							"system_key" text UNIQUE,
+							"is_default" integer DEFAULT false NOT NULL,
+							"default_root_folder_id" text REFERENCES "root_folders"("id") ON DELETE SET NULL,
+							"default_monitored" integer DEFAULT true NOT NULL,
+							"default_search_on_add" integer DEFAULT true NOT NULL,
+							"default_wants_subtitles" integer DEFAULT true NOT NULL,
+							"sort_order" integer DEFAULT 0 NOT NULL,
+							"created_at" text,
+							"updated_at" text
+						)`
+					)
+					.run();
+				logger.info('[SchemaSync] Created libraries table');
+			}
+
+			if (!columnExists(sqlite, 'movies', 'library_id')) {
+				sqlite
+					.prepare(
+						`ALTER TABLE "movies" ADD COLUMN "library_id" text REFERENCES "libraries"("id") ON DELETE SET NULL`
+					)
+					.run();
+				logger.info('[SchemaSync] Added movies.library_id column');
+			}
+
+			if (!columnExists(sqlite, 'series', 'library_id')) {
+				sqlite
+					.prepare(
+						`ALTER TABLE "series" ADD COLUMN "library_id" text REFERENCES "libraries"("id") ON DELETE SET NULL`
+					)
+					.run();
+				logger.info('[SchemaSync] Added series.library_id column');
+			}
+
+			sqlite
+				.prepare(
+					`CREATE INDEX IF NOT EXISTS "idx_libraries_media_type" ON "libraries" ("media_type")`
+				)
+				.run();
+			sqlite
+				.prepare(
+					`CREATE INDEX IF NOT EXISTS "idx_libraries_media_sub_type" ON "libraries" ("media_sub_type")`
+				)
+				.run();
+			sqlite
+				.prepare(
+					`CREATE INDEX IF NOT EXISTS "idx_libraries_sort_order" ON "libraries" ("sort_order")`
+				)
+				.run();
+			sqlite
+				.prepare(`CREATE INDEX IF NOT EXISTS "idx_movies_library_id" ON "movies" ("library_id")`)
+				.run();
+			sqlite
+				.prepare(`CREATE INDEX IF NOT EXISTS "idx_series_library_id" ON "series" ("library_id")`)
+				.run();
+
+			const getRootFolder = sqlite.prepare(
+				`SELECT "id", "default_monitored"
+				FROM "root_folders"
+				WHERE "media_type" = ? AND COALESCE("media_sub_type", 'standard') = ?
+				ORDER BY "is_default" DESC, "created_at" ASC
+				LIMIT 1`
+			);
+			const now = new Date().toISOString();
+
+			const movieStandardRoot = getRootFolder.get('movie', 'standard') as
+				| { id: string; default_monitored: number | null }
+				| undefined;
+			const movieAnimeRoot = getRootFolder.get('movie', 'anime') as
+				| { id: string; default_monitored: number | null }
+				| undefined;
+			const tvStandardRoot = getRootFolder.get('tv', 'standard') as
+				| { id: string; default_monitored: number | null }
+				| undefined;
+			const tvAnimeRoot = getRootFolder.get('tv', 'anime') as
+				| { id: string; default_monitored: number | null }
+				| undefined;
+
+			const upsertLibrary = sqlite.prepare(`
+				INSERT INTO "libraries" (
+					"id", "name", "slug", "media_type", "media_sub_type", "is_system", "system_key",
+					"is_default", "default_root_folder_id", "default_monitored",
+					"default_search_on_add", "default_wants_subtitles", "sort_order", "created_at", "updated_at"
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT("system_key") DO UPDATE SET
+					"name" = excluded."name",
+					"slug" = excluded."slug",
+					"media_type" = excluded."media_type",
+					"media_sub_type" = excluded."media_sub_type",
+					"is_default" = excluded."is_default",
+					"default_root_folder_id" = excluded."default_root_folder_id",
+					"default_monitored" = excluded."default_monitored",
+					"default_search_on_add" = excluded."default_search_on_add",
+					"default_wants_subtitles" = excluded."default_wants_subtitles",
+					"sort_order" = excluded."sort_order",
+					"updated_at" = excluded."updated_at"
+			`);
+
+			upsertLibrary.run(
+				'lib-movies-standard',
+				'Movies',
+				'movies',
+				'movie',
+				'standard',
+				1,
+				'movies_standard',
+				1,
+				movieStandardRoot?.id ?? null,
+				movieStandardRoot?.default_monitored === 0 ? 0 : 1,
+				1,
+				1,
+				0,
+				now,
+				now
+			);
+			upsertLibrary.run(
+				'lib-movies-anime',
+				'Anime Movies',
+				'anime-movies',
+				'movie',
+				'anime',
+				1,
+				'movies_anime',
+				0,
+				movieAnimeRoot?.id ?? null,
+				movieAnimeRoot?.default_monitored === 0 ? 0 : 1,
+				1,
+				1,
+				10,
+				now,
+				now
+			);
+			upsertLibrary.run(
+				'lib-tv-standard',
+				'TV Shows',
+				'tv-shows',
+				'tv',
+				'standard',
+				1,
+				'tv_standard',
+				1,
+				tvStandardRoot?.id ?? null,
+				tvStandardRoot?.default_monitored === 0 ? 0 : 1,
+				1,
+				1,
+				0,
+				now,
+				now
+			);
+			upsertLibrary.run(
+				'lib-tv-anime',
+				'Anime Series',
+				'anime-series',
+				'tv',
+				'anime',
+				1,
+				'tv_anime',
+				0,
+				tvAnimeRoot?.id ?? null,
+				tvAnimeRoot?.default_monitored === 0 ? 0 : 1,
+				1,
+				1,
+				10,
+				now,
+				now
+			);
+
+			sqlite
+				.prepare(
+					`UPDATE "movies"
+					SET "library_id" = CASE
+						WHEN EXISTS (
+							SELECT 1
+							FROM "root_folders" rf
+							WHERE rf."id" = "movies"."root_folder_id"
+								AND COALESCE(rf."media_sub_type", 'standard') = 'anime'
+						)
+						THEN 'lib-movies-anime'
+						ELSE 'lib-movies-standard'
+					END
+					WHERE "library_id" IS NULL`
+				)
+				.run();
+
+			sqlite
+				.prepare(
+					`UPDATE "series"
+					SET "library_id" = CASE
+						WHEN EXISTS (
+							SELECT 1
+							FROM "root_folders" rf
+							WHERE rf."id" = "series"."root_folder_id"
+								AND COALESCE(rf."media_sub_type", 'standard') = 'anime'
+						)
+						THEN 'lib-tv-anime'
+						ELSE 'lib-tv-standard'
+					END
+					WHERE "library_id" IS NULL`
+				)
+				.run();
+
+			sqlite
+				.prepare(
+					`UPDATE "movies"
+					SET "library_id" = 'lib-movies-standard'
+					WHERE "library_id" IS NOT NULL
+						AND NOT EXISTS (SELECT 1 FROM "libraries" l WHERE l."id" = "movies"."library_id")`
+				)
+				.run();
+
+			sqlite
+				.prepare(
+					`UPDATE "series"
+					SET "library_id" = 'lib-tv-standard'
+					WHERE "library_id" IS NOT NULL
+						AND NOT EXISTS (SELECT 1 FROM "libraries" l WHERE l."id" = "series"."library_id")`
+				)
+				.run();
+
+			logger.info('[SchemaSync] Seeded system libraries and backfilled media library_id');
+		}
+	},
+
+	// Version 78: Backfill existing movies and series to seeded system libraries
+	{
+		version: 78,
+		name: 'backfill_existing_media_to_system_libraries',
+		apply: (sqlite) => {
+			if (!tableExists(sqlite, 'libraries')) {
+				logger.info('[SchemaSync] libraries table not found, skipping system library backfill');
+				return;
+			}
+
+			const hasMoviesLibraryId = columnExists(sqlite, 'movies', 'library_id');
+			const hasSeriesLibraryId = columnExists(sqlite, 'series', 'library_id');
+
+			if (!hasMoviesLibraryId && !hasSeriesLibraryId) {
+				logger.info(
+					'[SchemaSync] Media library columns not found, skipping system library backfill'
+				);
+				return;
+			}
+
+			const now = new Date().toISOString();
+
+			const ensureLibrarySeed = sqlite.prepare(`
+				INSERT INTO "libraries" (
+					"id", "name", "slug", "media_type", "media_sub_type", "is_system", "system_key",
+					"is_default", "default_root_folder_id", "default_monitored",
+					"default_search_on_add", "default_wants_subtitles", "sort_order", "created_at", "updated_at"
+				)
+				VALUES (?, ?, ?, ?, ?, 1, ?, ?, NULL, 1, 1, 1, ?, ?, ?)
+				ON CONFLICT("system_key") DO UPDATE SET
+					"name" = excluded."name",
+					"slug" = excluded."slug",
+					"media_type" = excluded."media_type",
+					"media_sub_type" = excluded."media_sub_type",
+					"is_default" = excluded."is_default",
+					"updated_at" = excluded."updated_at"
+			`);
+
+			for (const seed of SYSTEM_LIBRARY_SEEDS) {
+				ensureLibrarySeed.run(
+					seed.id,
+					seed.mediaType === 'movie' && seed.mediaSubType === 'anime'
+						? 'Anime Movies'
+						: seed.mediaType === 'movie'
+							? 'Movies'
+							: seed.mediaSubType === 'anime'
+								? 'Anime Series'
+								: 'TV Shows',
+					seed.slug,
+					seed.mediaType,
+					seed.mediaSubType,
+					seed.systemKey,
+					seed.id === 'lib-movies-standard' || seed.id === 'lib-tv-standard' ? 1 : 0,
+					seed.sortOrder,
+					now,
+					now
+				);
+			}
+
+			if (hasMoviesLibraryId) {
+				sqlite
+					.prepare(
+						`UPDATE "movies"
+						SET "library_id" = CASE
+							WHEN "library_id" IS NOT NULL
+								AND EXISTS (SELECT 1 FROM "libraries" l WHERE l."id" = "movies"."library_id")
+							THEN "library_id"
+							WHEN "root_folder_id" IS NOT NULL THEN (
+								SELECT l."id"
+								FROM "libraries" l
+								WHERE l."id" = CASE
+									WHEN (
+										SELECT COALESCE(rf."media_sub_type", 'standard')
+										FROM "root_folders" rf
+										WHERE rf."id" = "movies"."root_folder_id"
+										LIMIT 1
+									) = 'anime'
+									THEN 'lib-movies-anime'
+									ELSE 'lib-movies-standard'
+								END
+							)
+							ELSE 'lib-movies-standard'
+						END
+						WHERE "library_id" IS NULL
+							OR NOT EXISTS (SELECT 1 FROM "libraries" l WHERE l."id" = "movies"."library_id")`
+					)
+					.run();
+			}
+
+			if (hasSeriesLibraryId) {
+				sqlite
+					.prepare(
+						`UPDATE "series"
+						SET "library_id" = CASE
+							WHEN "library_id" IS NOT NULL
+								AND EXISTS (SELECT 1 FROM "libraries" l WHERE l."id" = "series"."library_id")
+							THEN "library_id"
+							WHEN "root_folder_id" IS NOT NULL THEN (
+								SELECT l."id"
+								FROM "libraries" l
+								WHERE l."id" = CASE
+									WHEN (
+										SELECT COALESCE(rf."media_sub_type", 'standard')
+										FROM "root_folders" rf
+										WHERE rf."id" = "series"."root_folder_id"
+										LIMIT 1
+									) = 'anime'
+									THEN 'lib-tv-anime'
+									ELSE 'lib-tv-standard'
+								END
+							)
+							ELSE 'lib-tv-standard'
+						END
+						WHERE "library_id" IS NULL
+							OR NOT EXISTS (SELECT 1 FROM "libraries" l WHERE l."id" = "series"."library_id")`
+					)
+					.run();
+			}
+
+			logger.info('[SchemaSync] Backfilled existing media into seeded system libraries');
+		}
+	},
+
+	// Version 79: Convert saved custom format audio conditions to canonical fields
+	{
+		version: 79,
+		name: 'migrate_custom_format_audio_conditions',
+		apply: (sqlite) => {
+			if (
+				!tableExists(sqlite, 'custom_formats') ||
+				!columnExists(sqlite, 'custom_formats', 'conditions')
+			) {
+				logger.info(
+					'[SchemaSync] custom_formats table not found, skipping audio condition migration'
+				);
+				return;
+			}
+
+			const rows = sqlite
+				.prepare(`SELECT "id", "conditions" FROM "custom_formats" WHERE "conditions" IS NOT NULL`)
+				.all() as Array<{ id: string; conditions: string | null }>;
+
+			const updateConditions = sqlite.prepare(
+				`UPDATE "custom_formats" SET "conditions" = ?, "updated_at" = ? WHERE "id" = ?`
+			);
+
+			let migratedCount = 0;
+			const now = new Date().toISOString();
+
+			for (const row of rows) {
+				if (!row.conditions) continue;
+
+				let parsedConditions: unknown;
+				try {
+					parsedConditions = JSON.parse(row.conditions);
+				} catch (error) {
+					logger.warn(
+						{
+							formatId: row.id,
+							error: error instanceof Error ? error.message : String(error)
+						},
+						'[SchemaSync] Skipping custom format with invalid conditions JSON'
+					);
+					continue;
+				}
+
+				if (!Array.isArray(parsedConditions)) {
+					continue;
+				}
+
+				let changed = false;
+				const migratedConditions = parsedConditions.map((condition) => {
+					if (
+						typeof condition !== 'object' ||
+						condition === null ||
+						!('type' in condition) ||
+						(condition as { type?: unknown }).type !== 'audio'
+					) {
+						return condition;
+					}
+
+					const legacy = condition as Record<string, unknown>;
+					const { audio, ...rest } = legacy;
+
+					if (audio === 'atmos') {
+						changed = true;
+						return {
+							...rest,
+							type: 'audio_atmos'
+						};
+					}
+
+					if (typeof audio === 'string' && audio.length > 0) {
+						changed = true;
+						return {
+							...rest,
+							type: 'audio_codec',
+							audioCodec: audio
+						};
+					}
+
+					return condition;
+				});
+
+				if (!changed) {
+					continue;
+				}
+
+				updateConditions.run(JSON.stringify(migratedConditions), now, row.id);
+				migratedCount += 1;
+			}
+
+			logger.info(
+				{ migratedCount },
+				'[SchemaSync] Migrated custom format audio conditions to canonical schema'
+			);
+		}
+	},
+	// V80: Built-in profile score overrides - stores user-editable format score diffs for built-in profiles
+	// Built-in profiles (quality, balanced, compact, streamer) have shipped defaults in code.
+	// User edits to those scores are stored here as diffs only (entries different from shipped defaults).
+	{
+		version: 80,
+		name: 'built_in_profile_score_overrides',
+		apply: (sqlite) => {
+			sqlite
+				.prepare(
+					`
+				CREATE TABLE IF NOT EXISTS "built_in_profile_score_overrides" (
+					"profile_id" text PRIMARY KEY,
+					"format_scores" text,
+					"updated_at" text
+				)
+			`
+				)
+				.run();
+		}
 	}
 ];
 
@@ -4147,6 +5621,126 @@ function tableExists(sqlite: Database.Database, tableName: string): boolean {
 function columnExists(sqlite: Database.Database, tableName: string, columnName: string): boolean {
 	const result = sqlite.prepare(`PRAGMA table_info(${tableName})`).all() as { name: string }[];
 	return result.some((col) => col.name === columnName);
+}
+
+function renameColumnIfExists(
+	sqlite: Database.Database,
+	tableName: string,
+	fromColumn: string,
+	toColumn: string
+): void {
+	if (
+		!tableExists(sqlite, tableName) ||
+		columnExists(sqlite, tableName, toColumn) ||
+		!columnExists(sqlite, tableName, fromColumn)
+	) {
+		return;
+	}
+
+	try {
+		sqlite
+			.prepare(`ALTER TABLE "${tableName}" RENAME COLUMN "${fromColumn}" TO "${toColumn}"`)
+			.run();
+		logger.info(`[SchemaSync] Renamed ${tableName}.${fromColumn} to ${toColumn}`);
+	} catch (error) {
+		logger.warn(
+			{
+				table: tableName,
+				from: fromColumn,
+				to: toColumn,
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'[SchemaSync] Failed to rename legacy column'
+		);
+	}
+}
+
+function ensureColumn(
+	sqlite: Database.Database,
+	tableName: string,
+	columnName: string,
+	columnDefinition: string
+): void {
+	if (!tableExists(sqlite, tableName) || columnExists(sqlite, tableName, columnName)) {
+		return;
+	}
+
+	sqlite.prepare(`ALTER TABLE "${tableName}" ADD COLUMN ${columnDefinition}`).run();
+	logger.info(`[SchemaSync] Added ${tableName}.${columnName}`);
+}
+
+function getTableRowCount(sqlite: Database.Database, tableName: string): number {
+	if (!tableExists(sqlite, tableName)) {
+		return 0;
+	}
+
+	const result = sqlite.prepare(`SELECT COUNT(*) as count FROM "${tableName}"`).get() as {
+		count: number;
+	};
+	return result.count;
+}
+
+function createBetterAuthTables(sqlite: Database.Database): void {
+	for (const { sql } of BETTER_AUTH_TABLE_DEFINITIONS) {
+		sqlite.prepare(sql).run();
+	}
+}
+
+function createBetterAuthIndexes(sqlite: Database.Database): void {
+	for (const indexDef of BETTER_AUTH_INDEX_DEFINITIONS) {
+		if (!tableExists(sqlite, indexDef.table)) {
+			continue;
+		}
+
+		const missingColumns = indexDef.columns.filter(
+			(columnName) => !columnExists(sqlite, indexDef.table, columnName)
+		);
+		if (missingColumns.length > 0) {
+			logger.warn(
+				{
+					index: indexDef.name,
+					table: indexDef.table,
+					missingColumns
+				},
+				'[SchemaSync] Skipping Better Auth index, missing columns'
+			);
+			continue;
+		}
+
+		sqlite.prepare(indexDef.sql).run();
+	}
+
+	if (!tableExists(sqlite, 'apikey')) {
+		return;
+	}
+
+	const columns = sqlite.prepare(`PRAGMA table_info(apikey)`).all() as Array<{ name: string }>;
+	const hasReferenceId = columns.some((col) => col.name === 'referenceId');
+	const hasUserId = columns.some((col) => col.name === 'userId');
+
+	if (hasReferenceId) {
+		sqlite
+			.prepare(`CREATE INDEX IF NOT EXISTS "idx_apikey_reference" ON "apikey" ("referenceId")`)
+			.run();
+		return;
+	}
+
+	if (hasUserId) {
+		sqlite.prepare(`CREATE INDEX IF NOT EXISTS "idx_apikey_user" ON "apikey" ("userId")`).run();
+	}
+}
+
+function recreateBetterAuthSchema(sqlite: Database.Database): void {
+	const dropOrder = ['apikey', 'account', 'session', 'verification', 'rateLimit', 'user'];
+
+	for (const tableName of dropOrder) {
+		if (tableExists(sqlite, tableName)) {
+			sqlite.prepare(`DROP TABLE "${tableName}"`).run();
+		}
+	}
+
+	createBetterAuthTables(sqlite);
+	createBetterAuthIndexes(sqlite);
 }
 
 /**
@@ -4246,7 +5840,15 @@ function cleanupLiveTvTables(sqlite: Database.Database): void {
  * Critical columns that must exist for the app to function.
  * Used to verify schema integrity after migrations.
  */
+const CRITICAL_TABLES = ['user', 'session', 'account', 'verification', 'apikey', 'rateLimit'];
+
 const CRITICAL_COLUMNS: Record<string, string[]> = {
+	user: ['id', 'email', 'username', 'displayUsername', 'role', 'banned', 'createdAt', 'updatedAt'],
+	session: ['id', 'userId', 'token', 'expiresAt', 'impersonatedBy', 'createdAt', 'updatedAt'],
+	account: ['id', 'userId', 'accountId', 'providerId', 'createdAt', 'updatedAt'],
+	verification: ['id', 'identifier', 'value', 'expiresAt'],
+	apikey: ['id', 'key', 'referenceId', 'createdAt', 'updatedAt'],
+	rateLimit: ['id', 'key', 'count', 'lastRequest'],
 	download_clients: [
 		'id',
 		'name',
@@ -4258,9 +5860,10 @@ const CRITICAL_COLUMNS: Record<string, string[]> = {
 		'health',
 		'consecutive_failures'
 	],
-	root_folders: ['id', 'path', 'read_only', 'preserve_symlinks'],
-	movies: ['id', 'tmdb_id', 'title', 'path', 'monitored'],
-	series: ['id', 'tmdb_id', 'title', 'path', 'monitored'],
+	root_folders: ['id', 'path', 'media_sub_type', 'read_only', 'preserve_symlinks'],
+	libraries: ['id', 'name', 'slug', 'media_type', 'media_sub_type', 'is_system'],
+	movies: ['id', 'tmdb_id', 'title', 'path', 'monitored', 'library_id'],
+	series: ['id', 'tmdb_id', 'title', 'path', 'monitored', 'library_id'],
 	episodes: ['id', 'series_id', 'season_number', 'episode_number'],
 	indexers: ['id', 'name', 'definition_id', 'enabled'],
 	scoring_profiles: ['id', 'name', 'is_default']
@@ -4306,7 +5909,7 @@ function backfillMigrationRecords(sqlite: Database.Database): void {
 		.get() as { count: number };
 	if (existingRecords.count > 0) return;
 
-	logger.info('[SchemaSync] Backfilling migration records for legacy database', { legacyVersion });
+	logger.info({ legacyVersion }, '[SchemaSync] Backfilling migration records for legacy database');
 
 	const now = new Date().toISOString();
 	const stmt = sqlite.prepare(`
@@ -4342,6 +5945,30 @@ const MIGRATION_COLUMN_MAP: Record<number, Array<{ table: string; column: string
 		{ table: 'download_clients', column: 'last_failure' },
 		{ table: 'download_clients', column: 'last_failure_message' },
 		{ table: 'download_clients', column: 'last_checked_at' }
+	],
+	63: [
+		{ table: 'user', column: 'email' },
+		{ table: 'user', column: 'displayUsername' },
+		{ table: 'user', column: 'banned' },
+		{ table: 'session', column: 'userId' },
+		{ table: 'session', column: 'impersonatedBy' },
+		{ table: 'account', column: 'userId' },
+		{ table: 'account', column: 'accountId' },
+		{ table: 'account', column: 'providerId' },
+		{ table: 'apikey', column: 'key' },
+		{ table: 'rateLimit', column: 'lastRequest' }
+	],
+	65: [
+		{ table: 'apikey', column: 'referenceId' },
+		{ table: 'apikey', column: 'configId' }
+	],
+	67: [{ table: 'rateLimit', column: 'id' }],
+	68: [{ table: 'episode_files', column: 'edition' }],
+	76: [{ table: 'root_folders', column: 'media_sub_type' }],
+	77: [
+		{ table: 'libraries', column: 'id' },
+		{ table: 'movies', column: 'library_id' },
+		{ table: 'series', column: 'library_id' }
 	]
 };
 
@@ -4379,10 +6006,14 @@ function detectAndFixSchemaDrift(sqlite: Database.Database): void {
 function verifySchemaIntegrity(sqlite: Database.Database): void {
 	const issues: string[] = [];
 
+	for (const table of CRITICAL_TABLES) {
+		if (!tableExists(sqlite, table)) {
+			issues.push(`Missing table: ${table}`);
+		}
+	}
+
 	for (const [table, columns] of Object.entries(CRITICAL_COLUMNS)) {
 		if (!tableExists(sqlite, table)) {
-			// Some tables may not exist yet (e.g., if no movies added)
-			// Only flag as issue if other parts of the table exist
 			continue;
 		}
 
@@ -4394,7 +6025,7 @@ function verifySchemaIntegrity(sqlite: Database.Database): void {
 	}
 
 	if (issues.length > 0) {
-		logger.error('[SchemaSync] Schema integrity check failed', { issues });
+		logger.error({ issues }, '[SchemaSync] Schema integrity check failed');
 		throw new Error(`Schema integrity check failed: ${issues.join(', ')}`);
 	}
 }
@@ -4433,9 +6064,12 @@ function applyMigration(sqlite: Database.Database, migration: MigrationDefinitio
 
 		logger.info(`[SchemaSync] Migration v${migration.version} completed in ${executionTime}ms`);
 	} catch (error) {
-		logger.error(`[SchemaSync] Migration v${migration.version} failed`, {
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.error(
+			{
+				error: error instanceof Error ? error.message : String(error)
+			},
+			`[SchemaSync] Migration v${migration.version} failed`
+		);
 		throw error;
 	}
 }
@@ -4486,10 +6120,13 @@ export function syncSchema(sqlite: Database.Database): void {
 		try {
 			sqlite.prepare(tableDef).run();
 		} catch (error) {
-			logger.error('[SchemaSync] Failed to create table', {
-				error: error instanceof Error ? error.message : String(error),
-				sql: tableDef.substring(0, 100) + '...'
-			});
+			logger.error(
+				{
+					error: error instanceof Error ? error.message : String(error),
+					sql: tableDef.substring(0, 100) + '...'
+				},
+				'[SchemaSync] Failed to create table'
+			);
 			throw error;
 		}
 	}
@@ -4500,9 +6137,12 @@ export function syncSchema(sqlite: Database.Database): void {
 		try {
 			sqlite.prepare(indexDef).run();
 		} catch (error) {
-			logger.warn('[SchemaSync] Index creation warning', {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[SchemaSync] Index creation warning'
+			);
 		}
 	}
 
@@ -4516,23 +6156,32 @@ export function syncSchema(sqlite: Database.Database): void {
 
 	// 7. Apply pending migrations
 	if (pending.length > 0) {
-		logger.info('[SchemaSync] Applying migrations', {
-			count: pending.length,
-			versions: pending.map((m) => m.version)
-		});
+		logger.info(
+			{
+				count: pending.length,
+				versions: pending.map((m) => m.version)
+			},
+			'[SchemaSync] Applying migrations'
+		);
 
 		for (const migration of pending) {
 			applyMigration(sqlite, migration);
 		}
 	}
 
-	// 8. Verify schema integrity
+	// 8. Ensure Better Auth indexes exist after any auth schema repair
+	createBetterAuthIndexes(sqlite);
+
+	// 9. Verify schema integrity
 	verifySchemaIntegrity(sqlite);
 
-	// 9. Update legacy schema_version for backward compatibility
+	// 10. Update legacy schema_version for backward compatibility
 	setSchemaVersion(sqlite, CURRENT_SCHEMA_VERSION);
 
-	logger.info('[SchemaSync] Schema synchronization complete', {
-		version: CURRENT_SCHEMA_VERSION
-	});
+	logger.info(
+		{
+			version: CURRENT_SCHEMA_VERSION
+		},
+		'[SchemaSync] Schema synchronization complete'
+	);
 }

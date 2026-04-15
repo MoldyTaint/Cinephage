@@ -48,9 +48,9 @@ export const DELETE: RequestHandler = async ({ params }) => {
 			const fullPath = join(file.rootFolderPath, file.moviePath, file.relativePath);
 			try {
 				await unlink(fullPath);
-				logger.debug('[API] Deleted movie file', { fullPath });
+				logger.debug({ fullPath }, '[API] Deleted movie file');
 			} catch {
-				logger.warn('[API] Could not delete movie file from disk', { fullPath });
+				logger.warn({ fullPath }, '[API] Could not delete movie file from disk');
 			}
 
 			// Try to remove empty parent directories up to movie folder
@@ -59,7 +59,7 @@ export const DELETE: RequestHandler = async ({ params }) => {
 			if (fileDir !== movieFolder) {
 				try {
 					await rmdir(fileDir);
-					logger.debug('[API] Removed empty directory', { fileDir });
+					logger.debug({ fileDir }, '[API] Removed empty directory');
 				} catch {
 					// Directory not empty or doesn't exist
 				}

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { LibrarySeries } from '$lib/types/library';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		series: LibrarySeries;
@@ -30,7 +31,7 @@
 	<!-- Overview -->
 	{#if series.overview}
 		<div class="rounded-xl bg-base-200 p-4 md:p-6">
-			<h3 class="mb-2 font-semibold">Overview</h3>
+			<h3 class="mb-2 font-semibold">{m.library_tvDetail_overviewHeading()}</h3>
 			<p class="text-sm leading-relaxed text-base-content/80">
 				{series.overview}
 			</p>
@@ -39,35 +40,35 @@
 
 	<!-- Details -->
 	<div class="rounded-xl bg-base-200 p-4 md:p-6">
-		<h3 class="mb-3 font-semibold">Details</h3>
+		<h3 class="mb-3 font-semibold">{m.common_details()}</h3>
 		<dl class="space-y-2 text-sm">
 			{#if series.originalTitle && series.originalTitle !== series.title}
 				<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-					<dt class="text-base-content/60">Original Title</dt>
+					<dt class="text-base-content/60">{m.library_movieDetail_originalTitle()}</dt>
 					<dd class="sm:text-right">{series.originalTitle}</dd>
 				</div>
 			{/if}
 			{#if series.network}
 				<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-					<dt class="text-base-content/60">Network</dt>
+					<dt class="text-base-content/60">{m.common_network()}</dt>
 					<dd>{series.network}</dd>
 				</div>
 			{/if}
 			{#if series.status}
 				<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-					<dt class="text-base-content/60">Status</dt>
+					<dt class="text-base-content/60">{m.common_status()}</dt>
 					<dd>{series.status}</dd>
 				</div>
 			{/if}
 			{#if series.genres && series.genres.length > 0}
 				<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-					<dt class="text-base-content/60">Genres</dt>
+					<dt class="text-base-content/60">{m.common_genres()}</dt>
 					<dd class="sm:text-right">{series.genres.join(', ')}</dd>
 				</div>
 			{/if}
 			{#if series.imdbId}
 				<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-					<dt class="text-base-content/60">IMDb</dt>
+					<dt class="text-base-content/60">{m.library_movieDetail_imdb()}</dt>
 					<dd>
 						<a
 							href="https://www.imdb.com/title/{series.imdbId}"
@@ -81,7 +82,7 @@
 				</div>
 			{/if}
 			<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-				<dt class="text-base-content/60">TMDB ID</dt>
+				<dt class="text-base-content/60">{m.library_movieDetail_tmdbId()}</dt>
 				<dd>
 					<a
 						href="https://www.themoviedb.org/tv/{series.tmdbId}"
@@ -95,7 +96,7 @@
 			</div>
 			{#if series.tvdbId}
 				<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-					<dt class="text-base-content/60">TVDB ID</dt>
+					<dt class="text-base-content/60">{m.library_tvDetail_tvdbId()}</dt>
 					<dd>
 						<a
 							href="https://thetvdb.com/series/{series.tvdbId}"
@@ -113,17 +114,17 @@
 
 	<!-- Path Info -->
 	<div class="rounded-xl bg-base-200 p-4 md:p-6">
-		<h3 class="mb-3 font-semibold">Storage</h3>
+		<h3 class="mb-3 font-semibold">{m.library_movieDetail_storageHeading()}</h3>
 		<dl class="space-y-2 text-sm">
 			<div>
-				<dt class="text-base-content/60">Path</dt>
+				<dt class="text-base-content/60">{m.common_path()}</dt>
 				<dd class="mt-1 font-mono text-xs break-all">
 					{seriesStoragePath}
 				</dd>
 			</div>
 			<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-				<dt class="text-base-content/60">Season Folders</dt>
-				<dd>{series.seasonFolder ? 'Yes' : 'No'}</dd>
+				<dt class="text-base-content/60">{m.library_tvDetail_seasonFolders()}</dt>
+				<dd>{series.seasonFolder ? m.common_yes() : m.common_no()}</dd>
 			</div>
 		</dl>
 	</div>

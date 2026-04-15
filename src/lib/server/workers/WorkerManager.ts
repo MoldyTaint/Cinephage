@@ -83,10 +83,13 @@ class WorkerManagerImpl extends EventEmitter {
 		for (const id of toRemove) {
 			this.workers.delete(id);
 			this.emitEvent({ type: 'removed', workerId: id });
-			logger.debug(`Cleaned up completed worker`, {
-				logCategory: 'main',
-				workerId: id
-			});
+			logger.debug(
+				{
+					logDomain: 'main',
+					workerId: id
+				},
+				`Cleaned up completed worker`
+			);
 		}
 	}
 
@@ -126,11 +129,14 @@ class WorkerManagerImpl extends EventEmitter {
 		this.workers.set(worker.id, worker);
 		this.emitEvent({ type: 'spawned', workerId: worker.id, workerType: worker.type });
 
-		logger.info(`Worker spawned`, {
-			logCategory: 'main',
-			workerId: worker.id,
-			workerType: worker.type
-		});
+		logger.info(
+			{
+				logDomain: 'main',
+				workerId: worker.id,
+				workerType: worker.type
+			},
+			`Worker spawned`
+		);
 
 		return worker;
 	}
@@ -184,10 +190,16 @@ class WorkerManagerImpl extends EventEmitter {
 				}
 			})
 			.catch((error) => {
-				logger.error(`Background worker failed unexpectedly`, error, {
-					logCategory: 'main',
-					workerId: worker.id
-				});
+				logger.error(
+					{
+						err: error,
+						...{
+							logDomain: 'main',
+							workerId: worker.id
+						}
+					},
+					`Background worker failed unexpectedly`
+				);
 			});
 
 		return worker;
@@ -327,10 +339,13 @@ class WorkerManagerImpl extends EventEmitter {
 			this.config.maxConcurrent = { ...this.config.maxConcurrent, ...updates.maxConcurrent };
 		}
 
-		logger.info(`Worker manager config updated`, {
-			logCategory: 'main',
-			config: this.config
-		});
+		logger.info(
+			{
+				logDomain: 'main',
+				config: this.config
+			},
+			`Worker manager config updated`
+		);
 	}
 
 	/**
@@ -349,7 +364,7 @@ class WorkerManagerImpl extends EventEmitter {
 		}
 
 		this.workers.clear();
-		logger.info(`Worker manager shut down`, { logCategory: 'main' });
+		logger.info({ logDomain: 'main' }, `Worker manager shut down`);
 	}
 }
 

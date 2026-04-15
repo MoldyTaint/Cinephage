@@ -59,24 +59,33 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 					.limit(1);
 
 				if (seriesRecord && !seriesRecord.monitored) {
-					logger.info('[API] Skipping search for episode in unmonitored series', {
-						episodeId: params.id,
-						seriesId: episode.seriesId
-					});
+					logger.info(
+						{
+							episodeId: params.id,
+							seriesId: episode.seriesId
+						},
+						'[API] Skipping search for episode in unmonitored series'
+					);
 					return json({ success: true });
 				}
 
 				// Fire and forget - don't block the response
 				searchOnAdd.searchForEpisode({ episodeId: params.id }).catch((err) => {
-					logger.error('[API] Background search on episode monitor enable failed', {
-						episodeId: params.id,
-						error: err instanceof Error ? err.message : 'Unknown error'
-					});
+					logger.error(
+						{
+							episodeId: params.id,
+							error: err instanceof Error ? err.message : 'Unknown error'
+						},
+						'[API] Background search on episode monitor enable failed'
+					);
 				});
 
-				logger.info('[API] Triggered search on monitor enable for episode', {
-					episodeId: params.id
-				});
+				logger.info(
+					{
+						episodeId: params.id
+					},
+					'[API] Triggered search on monitor enable for episode'
+				);
 			}
 		}
 
@@ -154,7 +163,7 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 				const fullPath = join(episode.rootFolderPath, episode.seriesPath, file.relativePath);
 				try {
 					await unlink(fullPath);
-					logger.debug('[API] Deleted episode file', { fullPath });
+					logger.debug({ fullPath }, '[API] Deleted episode file');
 
 					// Try to remove empty parent directories
 					let currentDir = dirname(fullPath);
@@ -168,7 +177,7 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 						}
 					}
 				} catch {
-					logger.warn('[API] Could not delete episode file', { fullPath });
+					logger.warn({ fullPath }, '[API] Could not delete episode file');
 				}
 			}
 		}

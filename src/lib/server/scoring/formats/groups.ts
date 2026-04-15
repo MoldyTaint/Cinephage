@@ -130,6 +130,7 @@ export const RELEASE_GROUP_FORMATS: CustomFormat[] = [
 	createGroupFormat('LSt', 'Efficient x265 encoder'),
 	createGroupFormat('Lulu', 'Anime group', ['Anime']),
 	createGroupFormat('LYS1TH3A', 'Top tier anime group', ['Anime']),
+	createGroupFormat('LAMA'),
 
 	// M
 	createGroupFormat('MeGusta', 'Micro encoder', ['Micro']),
@@ -236,22 +237,8 @@ export const RELEASE_GROUP_FORMATS: CustomFormat[] = [
 			{
 				name: 'YTS',
 				type: 'release_group',
-				pattern: '^YTS(\\.MX|\\.LT|\\.AG)?$',
-				required: false,
-				negate: false
-			},
-			{
-				name: 'YTS Title',
-				type: 'release_title',
-				pattern: '\\bYTS(\\.MX|\\.LT|\\.AG)?\\b',
-				required: false,
-				negate: false
-			},
-			{
-				name: 'YTS Indexer',
-				type: 'indexer',
-				indexer: 'YTS',
-				required: false,
+				pattern: '^YTS$',
+				required: true,
 				negate: false
 			}
 		]

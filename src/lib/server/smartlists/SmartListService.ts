@@ -20,7 +20,9 @@ import {
 } from '$lib/server/db/schema.js';
 import { eq, and, desc, asc, sql, lt, inArray } from 'drizzle-orm';
 import { tmdb, type DiscoverParams, type DiscoverItem } from '$lib/server/tmdb.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'monitoring' as const });
 import { ValidationError } from '$lib/errors';
 import {
 	validateRootFolder,
@@ -35,6 +37,7 @@ import {
 } from '$lib/server/library/LibraryAddService.js';
 import { NamingService, type MediaNamingInfo } from '$lib/server/library/naming/NamingService.js';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
+import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import type {
 	CreateSmartListInput,
 	UpdateSmartListInput,
@@ -148,7 +151,7 @@ export class SmartListService {
 			})
 			.returning();
 
-		logger.info('[SmartListService] Created smart list', { id: result.id, name: result.name });
+		logger.info({ id: result.id, name: result.name }, '[SmartListService] Created smart list');
 
 		// Perform initial refresh
 		await this.refreshSmartList(result.id, 'manual');
@@ -260,14 +263,14 @@ export class SmartListService {
 			.where(eq(smartLists.id, id))
 			.returning();
 
-		logger.info('[SmartListService] Updated smart list', { id, updates: Object.keys(input) });
+		logger.info({ id, updates: Object.keys(input) }, '[SmartListService] Updated smart list');
 
 		return result;
 	}
 
 	async deleteSmartList(id: string): Promise<boolean> {
 		const result = await db.delete(smartLists).where(eq(smartLists.id, id));
-		logger.info('[SmartListService] Deleted smart list', { id });
+		logger.info({ id }, '[SmartListService] Deleted smart list');
 		return result.changes > 0;
 	}
 
@@ -575,14 +578,17 @@ export class SmartListService {
 				})
 				.where(eq(smartListRefreshHistory.id, historyEntry.id));
 
-			logger.info('[SmartListService] Refresh completed', {
-				id,
-				itemsFound: items.length,
-				itemsNew,
-				itemsRemoved,
-				itemsAutoAdded,
-				durationMs
-			});
+			logger.info(
+				{
+					id,
+					itemsFound: items.length,
+					itemsNew,
+					itemsRemoved,
+					itemsAutoAdded,
+					durationMs
+				},
+				'[SmartListService] Refresh completed'
+			);
 
 			return {
 				smartListId: id,
@@ -617,7 +623,7 @@ export class SmartListService {
 				})
 				.where(eq(smartListRefreshHistory.id, historyEntry.id));
 
-			logger.error('[SmartListService] Refresh failed', error, { id });
+			logger.error({ err: error, ...{ id } }, '[SmartListService] Refresh failed');
 
 			return {
 				smartListId: id,
@@ -639,7 +645,7 @@ export class SmartListService {
 			where: and(eq(smartLists.enabled, true), sql`${smartLists.nextRefreshTime} <= ${now}`)
 		});
 
-		logger.info('[SmartListService] Refreshing due lists', { count: dueLists.length });
+		logger.info({ count: dueLists.length }, '[SmartListService] Refreshing due lists');
 
 		const results: RefreshResult[] = [];
 		for (const list of dueLists) {
@@ -647,7 +653,10 @@ export class SmartListService {
 				const result = await this.refreshSmartList(list.id, 'automatic');
 				results.push(result);
 			} catch (error) {
-				logger.error('[SmartListService] Failed to refresh list', error, { listId: list.id });
+				logger.error(
+					{ err: error, ...{ listId: list.id } },
+					'[SmartListService] Failed to refresh list'
+				);
 			}
 		}
 
@@ -846,6 +855,10 @@ export class SmartListService {
 
 				const { imdbId } = await fetchMovieExternalIds(item.tmdbId);
 				const languageProfileId = await getLanguageProfileId(wantsSubtitles, item.tmdbId);
+				const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
+					list.rootFolderId,
+					'movie'
+				);
 
 				const [newMovie] = await db
 					.insert(movies)
@@ -861,6 +874,7 @@ export class SmartListService {
 						runtime: movieDetails.runtime,
 						genres: movieDetails.genres?.map((g) => g.name) ?? [],
 						path: folderName,
+						libraryId: owningLibrary.id,
 						rootFolderId: list.rootFolderId,
 						scoringProfileId,
 						monitored,
@@ -934,6 +948,10 @@ export class SmartListService {
 				} as MediaNamingInfo);
 
 				const languageProfileId = await getLanguageProfileId(wantsSubtitles, item.tmdbId);
+				const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
+					list.rootFolderId,
+					'tv'
+				);
 
 				const [newSeries] = await db
 					.insert(series)
@@ -954,6 +972,7 @@ export class SmartListService {
 								: null,
 						genres: seriesDetails.genres?.map((g) => g.name) ?? [],
 						path: folderName,
+						libraryId: owningLibrary.id,
 						rootFolderId: list.rootFolderId,
 						scoringProfileId,
 						monitored,
@@ -1273,9 +1292,12 @@ export class SmartListService {
 
 	private async autoAddItems(list: SmartListRecord): Promise<{ added: number }> {
 		if (!list.rootFolderId) {
-			logger.warn('[SmartListService] Auto-add skipped: no root folder configured', {
-				listId: list.id
-			});
+			logger.warn(
+				{
+					listId: list.id
+				},
+				'[SmartListService] Auto-add skipped: no root folder configured'
+			);
 			return { added: 0 };
 		}
 
@@ -1285,10 +1307,16 @@ export class SmartListService {
 		try {
 			await validateRootFolder(list.rootFolderId, mediaType);
 		} catch (error) {
-			logger.error('[SmartListService] Auto-add failed: invalid root folder', error, {
-				listId: list.id,
-				rootFolderId: list.rootFolderId
-			});
+			logger.error(
+				{
+					err: error,
+					...{
+						listId: list.id,
+						rootFolderId: list.rootFolderId
+					}
+				},
+				'[SmartListService] Auto-add failed: invalid root folder'
+			);
 			return { added: 0 };
 		}
 
@@ -1307,12 +1335,15 @@ export class SmartListService {
 			return { added: 0 };
 		}
 
-		logger.info('[SmartListService] Auto-adding items from smart list', {
-			listId: list.id,
-			listName: list.name,
-			itemCount: itemsToAdd.length,
-			mediaType
-		});
+		logger.info(
+			{
+				listId: list.id,
+				listName: list.name,
+				itemCount: itemsToAdd.length,
+				mediaType
+			},
+			'[SmartListService] Auto-adding items from smart list'
+		);
 
 		// Get effective scoring profile
 		const effectiveProfileId = await getEffectiveScoringProfileId(
@@ -1397,6 +1428,10 @@ export class SmartListService {
 
 				// Get the language profile if subtitles wanted
 				const languageProfileId = await getLanguageProfileId(wantsSubtitles, item.tmdbId);
+				const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
+					list.rootFolderId!,
+					'movie'
+				);
 
 				// Insert movie into database
 				const [newMovie] = await db
@@ -1413,6 +1448,7 @@ export class SmartListService {
 						runtime: movieDetails.runtime,
 						genres: movieDetails.genres?.map((g) => g.name) ?? [],
 						path: folderName,
+						libraryId: owningLibrary.id,
 						rootFolderId: list.rootFolderId!,
 						scoringProfileId,
 						monitored,
@@ -1437,12 +1473,15 @@ export class SmartListService {
 
 				added++;
 
-				logger.info('[SmartListService] Auto-added movie', {
-					listId: list.id,
-					movieId: newMovie.id,
-					tmdbId: item.tmdbId,
-					title: movieDetails.title
-				});
+				logger.info(
+					{
+						listId: list.id,
+						movieId: newMovie.id,
+						tmdbId: item.tmdbId,
+						title: movieDetails.title
+					},
+					'[SmartListService] Auto-added movie'
+				);
 
 				// Trigger search if requested and movie is monitored
 				if (shouldSearch && monitored) {
@@ -1456,11 +1495,17 @@ export class SmartListService {
 					});
 				}
 			} catch (error) {
-				logger.error('[SmartListService] Failed to auto-add movie', error, {
-					listId: list.id,
-					tmdbId: item.tmdbId,
-					title: item.title
-				});
+				logger.error(
+					{
+						err: error,
+						...{
+							listId: list.id,
+							tmdbId: item.tmdbId,
+							title: item.title
+						}
+					},
+					'[SmartListService] Failed to auto-add movie'
+				);
 			}
 		}
 
@@ -1518,6 +1563,10 @@ export class SmartListService {
 
 				// Get the language profile if subtitles wanted
 				const languageProfileId = await getLanguageProfileId(wantsSubtitles, item.tmdbId);
+				const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
+					list.rootFolderId!,
+					'tv'
+				);
 
 				// Insert series into database
 				const [newSeries] = await db
@@ -1539,6 +1588,7 @@ export class SmartListService {
 								: null,
 						genres: seriesDetails.genres?.map((g) => g.name) ?? [],
 						path: folderName,
+						libraryId: owningLibrary.id,
 						rootFolderId: list.rootFolderId!,
 						scoringProfileId,
 						monitored,
@@ -1570,12 +1620,15 @@ export class SmartListService {
 
 				added++;
 
-				logger.info('[SmartListService] Auto-added series', {
-					listId: list.id,
-					seriesId: newSeries.id,
-					tmdbId: item.tmdbId,
-					title: seriesDetails.name
-				});
+				logger.info(
+					{
+						listId: list.id,
+						seriesId: newSeries.id,
+						tmdbId: item.tmdbId,
+						title: seriesDetails.name
+					},
+					'[SmartListService] Auto-added series'
+				);
 
 				// Trigger search if requested and series is monitored
 				if (shouldSearch && monitored) {
@@ -1586,11 +1639,17 @@ export class SmartListService {
 					});
 				}
 			} catch (error) {
-				logger.error('[SmartListService] Failed to auto-add series', error, {
-					listId: list.id,
-					tmdbId: item.tmdbId,
-					title: item.title
-				});
+				logger.error(
+					{
+						err: error,
+						...{
+							listId: list.id,
+							tmdbId: item.tmdbId,
+							title: item.title
+						}
+					},
+					'[SmartListService] Failed to auto-add series'
+				);
 			}
 		}
 
@@ -1606,14 +1665,12 @@ export class SmartListService {
 			const seriesDetails = await tmdb.getTVShow(tmdbId);
 			if (!seriesDetails.seasons) return;
 
-			let totalEpisodes = 0;
-
 			for (const seasonInfo of seriesDetails.seasons) {
 				// Skip specials (season 0) by default
 				const isSpecials = seasonInfo.season_number === 0;
 				const seasonMonitored = monitored && !isSpecials;
 
-				// Create season
+				// Create season (episodeCount will be recalculated after episodes are inserted)
 				const [newSeason] = await db
 					.insert(seasons)
 					.values({
@@ -1623,7 +1680,7 @@ export class SmartListService {
 						overview: seasonInfo.overview ?? null,
 						posterPath: seasonInfo.poster_path ?? null,
 						airDate: seasonInfo.air_date ?? null,
-						episodeCount: seasonInfo.episode_count ?? 0,
+						episodeCount: 0, // Will be recalculated to only aired episodes
 						monitored: seasonMonitored
 					})
 					.returning();
@@ -1648,29 +1705,59 @@ export class SmartListService {
 
 						if (episodesToInsert.length > 0) {
 							await db.insert(episodes).values(episodesToInsert);
-							totalEpisodes += episodesToInsert.length;
+							// Only count aired episodes (exclude specials and unaired)
+							const today = new Date().toISOString().split('T')[0];
+							const airedCount = episodesToInsert.filter(
+								(ep) =>
+									ep.seasonNumber !== 0 && ep.airDate && ep.airDate !== '' && ep.airDate <= today
+							).length;
+
+							// Update season episodeCount to only aired episodes
+							await db
+								.update(seasons)
+								.set({ episodeCount: airedCount })
+								.where(eq(seasons.id, newSeason.id));
 						}
 					}
 				} catch (_err) {
-					logger.warn('[SmartListService] Failed to fetch season details', {
-						tmdbId,
-						seasonNumber: seasonInfo.season_number
-					});
+					logger.warn(
+						{
+							tmdbId,
+							seasonNumber: seasonInfo.season_number
+						},
+						'[SmartListService] Failed to fetch season details'
+					);
 				}
 			}
 
-			// Update series episode count
+			// Update series episode count (only count aired episodes)
+			const today = new Date().toISOString().split('T')[0];
+			const isAired = (ep: typeof episodes.$inferSelect) =>
+				Boolean(ep.airDate && ep.airDate !== '' && ep.airDate <= today);
+
+			const allSeriesEpisodes = await db
+				.select()
+				.from(episodes)
+				.where(eq(episodes.seriesId, seriesId));
+			const airedEpisodes = allSeriesEpisodes.filter((e) => e.seasonNumber !== 0 && isAired(e));
+
 			await db
 				.update(series)
 				.set({
-					episodeCount: totalEpisodes
+					episodeCount: airedEpisodes.length
 				})
 				.where(eq(series.id, seriesId));
 		} catch (error) {
-			logger.error('[SmartListService] Failed to create seasons/episodes', error, {
-				seriesId,
-				tmdbId
-			});
+			logger.error(
+				{
+					err: error,
+					...{
+						seriesId,
+						tmdbId
+					}
+				},
+				'[SmartListService] Failed to create seasons/episodes'
+			);
 		}
 	}
 
@@ -1715,20 +1802,26 @@ export class SmartListService {
 					externalSourceConfig.url = preset.url;
 				}
 
-				logger.info('[SmartListService] Using preset config', {
-					presetId: list.presetId,
-					config: externalSourceConfig
-				});
+				logger.info(
+					{
+						presetId: list.presetId,
+						config: externalSourceConfig
+					},
+					'[SmartListService] Using preset config'
+				);
 			}
 		}
 
-		logger.info('[SmartListService] Starting external list sync', {
-			id,
-			sourceType: list.listSourceType,
-			providerType,
-			url: externalSourceConfig?.url,
-			presetId: list.presetId
-		});
+		logger.info(
+			{
+				id,
+				sourceType: list.listSourceType,
+				providerType,
+				url: externalSourceConfig?.url,
+				presetId: list.presetId
+			},
+			'[SmartListService] Starting external list sync'
+		);
 
 		// Create history entry
 		const [historyEntry] = await db
@@ -1761,11 +1854,14 @@ export class SmartListService {
 				throw new Error(`External fetch failed: ${externalResult.error}`);
 			}
 
-			logger.info('[SmartListService] Fetched external items', {
-				id,
-				totalCount: externalResult.totalCount,
-				failedCount: externalResult.failedCount
-			});
+			logger.info(
+				{
+					id,
+					totalCount: externalResult.totalCount,
+					failedCount: externalResult.failedCount
+				},
+				'[SmartListService] Fetched external items'
+			);
 
 			// Resolve external items to TMDB items
 			const resolvedItems = await this.resolveExternalItems(
@@ -1774,11 +1870,14 @@ export class SmartListService {
 				id
 			);
 
-			logger.info('[SmartListService] Resolved external items to TMDB', {
-				id,
-				resolvedCount: resolvedItems.length,
-				totalExternal: externalResult.items.length
-			});
+			logger.info(
+				{
+					id,
+					resolvedCount: resolvedItems.length,
+					totalExternal: externalResult.items.length
+				},
+				'[SmartListService] Resolved external items to TMDB'
+			);
 
 			// Get existing items for this list
 			const existingItems = await db.query.smartListItems.findMany({
@@ -1918,14 +2017,17 @@ export class SmartListService {
 				})
 				.where(eq(smartListRefreshHistory.id, historyEntry.id));
 
-			logger.info('[SmartListService] External sync completed', {
-				id,
-				itemsFound: resolvedItems.length,
-				itemsNew,
-				itemsRemoved,
-				itemsAutoAdded,
-				durationMs
-			});
+			logger.info(
+				{
+					id,
+					itemsFound: resolvedItems.length,
+					itemsNew,
+					itemsRemoved,
+					itemsAutoAdded,
+					durationMs
+				},
+				'[SmartListService] External sync completed'
+			);
 
 			return {
 				smartListId: id,
@@ -1961,7 +2063,7 @@ export class SmartListService {
 				})
 				.where(eq(smartListRefreshHistory.id, historyEntry.id));
 
-			logger.error('[SmartListService] External sync failed', error, { id });
+			logger.error({ err: error, ...{ id } }, '[SmartListService] External sync failed');
 
 			return {
 				smartListId: id,
@@ -1999,11 +2101,14 @@ export class SmartListService {
 			originalLanguage?: string;
 		}>
 	> {
-		logger.info('[SmartListService] Starting external item resolution', {
-			listId,
-			itemCount: items.length,
-			mediaType
-		});
+		logger.info(
+			{
+				listId,
+				itemCount: items.length,
+				mediaType
+			},
+			'[SmartListService] Starting external item resolution'
+		);
 
 		const startTime = Date.now();
 
@@ -2031,23 +2136,29 @@ export class SmartListService {
 					originalLanguage: item.originalLanguage
 				});
 			} else {
-				logger.warn('[SmartListService] Failed to resolve external item', {
-					listId,
-					index: i,
-					title: item.title,
-					error: result.error
-				});
+				logger.warn(
+					{
+						listId,
+						index: i,
+						title: item.title,
+						error: result.error
+					},
+					'[SmartListService] Failed to resolve external item'
+				);
 			}
 		}
 
 		const duration = Date.now() - startTime;
-		logger.info('[SmartListService] External item resolution complete', {
-			listId,
-			totalItems: items.length,
-			resolvedCount: resolved.length,
-			failedCount: items.length - resolved.length,
-			durationMs: duration
-		});
+		logger.info(
+			{
+				listId,
+				totalItems: items.length,
+				resolvedCount: resolved.length,
+				failedCount: items.length - resolved.length,
+				durationMs: duration
+			},
+			'[SmartListService] External item resolution complete'
+		);
 
 		return resolved;
 	}

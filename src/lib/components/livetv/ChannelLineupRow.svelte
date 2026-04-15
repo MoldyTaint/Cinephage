@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { GripVertical, Pencil, Trash2, Tv, Loader2, Info } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 	import type {
 		ChannelLineupItemWithDetails,
 		EpgProgram,
@@ -174,7 +175,7 @@
 				role="button"
 				tabindex="0"
 				onkeydown={(e) => e.key === 'Enter' && startEditNumber()}
-				title="Double-click to edit"
+				title={m.livetv_channelLineupRow_doubleClickToEdit()}
 			>
 				{displayNumber}
 			</span>
@@ -226,7 +227,7 @@
 					role="button"
 					tabindex="0"
 					onkeydown={(e) => e.key === 'Enter' && startEditName()}
-					title="Double-click to edit"
+					title={m.livetv_channelLineupRow_doubleClickToEdit()}
 				>
 					{item.displayName}
 				</span>
@@ -249,7 +250,7 @@
 				type="button"
 				class="flex w-full flex-col gap-0.5 rounded px-1 py-0.5 text-left transition-colors hover:bg-base-200"
 				onclick={() => onShowSchedule?.(item)}
-				title="Click to view schedule"
+				title={m.livetv_channelLineupRow_viewSchedule()}
 			>
 				<span class="truncate text-sm font-medium" title={epgNow.now.title}>
 					{epgNow.now.title}
@@ -261,7 +262,7 @@
 						max="100"
 					></progress>
 					<span class="text-xs text-base-content/50">
-						{epgNow.now.remainingMinutes}m left
+						{m.livetv_channelLineupRow_minutesLeft({ count: epgNow.now.remainingMinutes })}
 					</span>
 				</div>
 			</button>
@@ -269,7 +270,7 @@
 			<div class="tooltip tooltip-left" data-tip="No program data. Check EPG status above.">
 				<span class="flex items-center gap-1 text-sm text-base-content/40">
 					<Info class="h-3 w-3" />
-					No EPG
+					{m.livetv_channelLineupRow_noEpg()}
 				</span>
 			</div>
 		{/if}
@@ -278,13 +279,17 @@
 	<!-- Actions -->
 	<td class="w-24">
 		<div class="flex items-center gap-1">
-			<button class="btn btn-ghost btn-xs" onclick={onEdit} title="Edit channel">
+			<button
+				class="btn btn-ghost btn-xs"
+				onclick={onEdit}
+				title={m.livetv_channelLineupRow_editChannel()}
+			>
 				<Pencil class="h-3.5 w-3.5" />
 			</button>
 			<button
 				class="btn text-error btn-ghost btn-xs hover:bg-error/10"
 				onclick={onRemove}
-				title="Remove from lineup"
+				title={m.livetv_channelLineupRow_removeFromLineup()}
 			>
 				<Trash2 class="h-3.5 w-3.5" />
 			</button>

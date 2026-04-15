@@ -24,7 +24,9 @@ function createRelease(overrides: Partial<ReleaseAttributes> = {}): ReleaseAttri
 		source: 'bluray',
 		codec: 'h265',
 		hdr: 'dolby-vision',
-		audio: 'truehd',
+		audioCodec: 'truehd',
+		audioChannels: '7.1',
+		hasAtmos: true,
 		releaseGroup: 'GROUP',
 		isRemux: true,
 		isRepack: false,
@@ -199,29 +201,45 @@ describe('Matcher', () => {
 			});
 		});
 
-		describe('audio', () => {
+		describe('audio_codec / audio_channels / audio_atmos', () => {
 			it('matches exact audio codec', () => {
-				const condition = createCondition({ type: 'audio', audio: 'truehd' });
-				const release = createRelease({ audio: 'truehd' });
+				const condition = createCondition({ type: 'audio_codec', audioCodec: 'truehd' });
+				const release = createRelease({ audioCodec: 'truehd' });
 
 				const result = evaluateCondition(condition, release);
 				expect(result.matches).toBe(true);
 			});
 
-			it('matches atmos from audio field', () => {
-				const condition = createCondition({ type: 'audio', audio: 'atmos' });
-				const release = createRelease({ audio: 'atmos' });
+			it('matches audio channels', () => {
+				const condition = createCondition({ type: 'audio_channels', audioChannels: '7.1' });
+				const release = createRelease({ audioChannels: '7.1' });
 
 				const result = evaluateCondition(condition, release);
 				expect(result.matches).toBe(true);
 			});
 
-			it('matches atmos from release title', () => {
-				const condition = createCondition({ type: 'audio', audio: 'atmos' });
+			it('matches atmos from canonical hasAtmos flag', () => {
+				const condition = createCondition({ type: 'audio_atmos' });
+				const release = createRelease({ hasAtmos: true, title: 'Movie.2024' });
+
+				const result = evaluateCondition(condition, release);
+				expect(result.matches).toBe(true);
+			});
+
+			it('matches atmos from title when parser set hasAtmos', () => {
+				const condition = createCondition({ type: 'audio_atmos' });
 				const release = createRelease({
-					audio: 'truehd',
+					hasAtmos: true,
 					title: 'Movie.2024.2160p.TrueHD.Atmos-GROUP'
 				});
+
+				const result = evaluateCondition(condition, release);
+				expect(result.matches).toBe(true);
+			});
+
+			it('matches base audio codec from audioCodec', () => {
+				const condition = createCondition({ type: 'audio_codec', audioCodec: 'dd+' });
+				const release = createRelease({ audioCodec: 'dd+' });
 
 				const result = evaluateCondition(condition, release);
 				expect(result.matches).toBe(true);

@@ -1,5 +1,5 @@
 /**
- * MediaBrowser (Jellyfin/Emby) Integration
+ * Media server notification integration
  *
  * Re-exports for convenient importing.
  */

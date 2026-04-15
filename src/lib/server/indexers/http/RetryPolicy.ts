@@ -301,24 +301,30 @@ export class RetryPolicy {
 				const decision = shouldRetry ? shouldRetry(error, context) : this.defaultShouldRetry(error);
 
 				if (!decision.shouldRetry) {
-					log.debug('Not retrying', {
-						attempt,
-						reason: decision.reason,
-						error: lastError.message
-					});
+					log.debug(
+						{
+							attempt,
+							reason: decision.reason,
+							error: lastError.message
+						},
+						'Not retrying'
+					);
 					throw lastError;
 				}
 
 				// Calculate delay
 				const delay = calculateRetryDelay(attempt, this.config, decision.suggestedDelayMs);
 
-				log.debug('Retrying after delay', {
-					attempt,
-					maxRetries: this.config.maxRetries,
-					delayMs: delay,
-					reason: decision.reason,
-					error: lastError.message
-				});
+				log.debug(
+					{
+						attempt,
+						maxRetries: this.config.maxRetries,
+						delayMs: delay,
+						reason: decision.reason,
+						error: lastError.message
+					},
+					'Retrying after delay'
+				);
 
 				await this.delay(delay);
 			}

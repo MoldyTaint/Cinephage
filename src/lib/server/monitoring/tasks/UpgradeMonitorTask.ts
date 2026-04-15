@@ -31,7 +31,7 @@ export async function executeUpgradeMonitorTask(
 	const taskHistoryId = ctx?.historyId;
 	const ignoreCooldown = options.ignoreCooldown ?? false;
 	const cooldownHours = options.cooldownHours;
-	logger.info('[UpgradeMonitorTask] Starting upgrade search', { taskHistoryId });
+	logger.info({ taskHistoryId }, '[UpgradeMonitorTask] Starting upgrade search');
 
 	let itemsProcessed: number;
 	let itemsGrabbed: number;
@@ -54,11 +54,14 @@ export async function executeUpgradeMonitorTask(
 		itemsGrabbed = upgradeResults.summary.grabbed;
 		errors = upgradeResults.summary.errors;
 
-		logger.info('[UpgradeMonitorTask] Upgrade search completed', {
-			searched: upgradeResults.summary.searched,
-			grabbed: upgradeResults.summary.grabbed,
-			errors: upgradeResults.summary.errors
-		});
+		logger.info(
+			{
+				searched: upgradeResults.summary.searched,
+				grabbed: upgradeResults.summary.grabbed,
+				errors: upgradeResults.summary.errors
+			},
+			'[UpgradeMonitorTask] Upgrade search completed'
+		);
 
 		// Record history for each item (with cancellation checks)
 		if (ctx) {
@@ -111,11 +114,14 @@ export async function executeUpgradeMonitorTask(
 			}
 		}
 
-		logger.info('[UpgradeMonitorTask] Upgrade monitor task completed', {
-			totalProcessed: itemsProcessed,
-			totalGrabbed: itemsGrabbed,
-			totalErrors: errors
-		});
+		logger.info(
+			{
+				totalProcessed: itemsProcessed,
+				totalGrabbed: itemsGrabbed,
+				totalErrors: errors
+			},
+			'[UpgradeMonitorTask] Upgrade monitor task completed'
+		);
 
 		return {
 			taskType: 'upgrade',
@@ -125,7 +131,7 @@ export async function executeUpgradeMonitorTask(
 			executedAt
 		};
 	} catch (error) {
-		logger.error('[UpgradeMonitorTask] Task failed', error);
+		logger.error({ err: error }, '[UpgradeMonitorTask] Task failed');
 		throw error;
 	}
 }

@@ -1,7 +1,10 @@
 <script lang="ts">
 	import type { UnifiedTask } from '$lib/server/tasks/UnifiedTaskRegistry';
 	import type { TaskHistoryEntry } from '$lib/types/task';
+	import * as m from '$lib/paraglide/messages.js';
+	import { toasts } from '$lib/stores/toast.svelte';
 	import TaskIntervalCell from './TaskIntervalCell.svelte';
+	import { formatDuration } from '$lib/utils/format.js';
 
 	interface Props {
 		task: UnifiedTask;
@@ -26,26 +29,6 @@
 
 	const isRunning = $derived(task.isRunning);
 	const lastRunStatus = $derived(history.length > 0 ? (history[0]?.status ?? null) : null);
-
-	function formatDuration(diffMs: number): string {
-		const totalSeconds = Math.floor(diffMs / 1000);
-		const totalMinutes = Math.floor(totalSeconds / 60);
-		const totalHours = Math.floor(totalMinutes / 60);
-		const totalDays = Math.floor(totalHours / 24);
-		const minutes = totalMinutes % 60;
-		const hours = totalHours % 24;
-
-		if (totalDays > 0) {
-			return hours > 0 ? `${totalDays}d ${hours}h` : `${totalDays}d`;
-		}
-		if (totalHours > 0) {
-			return minutes > 0 ? `${totalHours}h ${minutes}m` : `${totalHours}h`;
-		}
-		if (totalMinutes > 0) {
-			return `${totalMinutes}m`;
-		}
-		return `${totalSeconds}s`;
-	}
 
 	const liveTimeAgo = $derived.by(() => {
 		if (!task.lastRunTime) return 'Never';
@@ -72,12 +55,15 @@
 		return diffMs > 0 && diffMs < 60000;
 	});
 
+	// Convert task ID to camelCase for translation lookup
+	const camelCaseId = $derived(task.id.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase()));
+
 	async function runTask() {
 		if (isRunning) return;
 		try {
 			await onRunTask(task.id);
 		} catch (error) {
-			console.error('Task failed:', error);
+			toasts.error(error instanceof Error ? error.message : 'Task failed');
 		}
 	}
 
@@ -87,7 +73,7 @@
 		try {
 			await onCancelTask(task.id);
 		} catch (error) {
-			console.error('Failed to cancel task:', error);
+			toasts.error(error instanceof Error ? error.message : 'Failed to cancel task');
 		}
 	}
 
@@ -101,16 +87,22 @@
 <div class="rounded-lg border border-base-300 bg-base-100 p-3">
 	<div class="flex items-start justify-between gap-3">
 		<div class="min-w-0">
-			<div class="truncate font-medium">{task.name}</div>
-			<div class="mt-1 text-xs break-words text-base-content/60">{task.description}</div>
+			<div class="truncate font-medium">
+				{(m as unknown as Record<string, () => string>)[`task_name_${camelCaseId}`]?.() ??
+					task.name}
+			</div>
+			<div class="mt-1 text-xs break-words text-base-content/60">
+				{(m as unknown as Record<string, () => string>)[`task_desc_${camelCaseId}`]?.() ??
+					task.description}
+			</div>
 		</div>
 		{#if isRunning}
 			<span class="badge gap-1 badge-sm badge-primary">
 				<span class="loading loading-xs loading-spinner"></span>
-				Running
+				{m.task_card_running()}
 			</span>
 		{:else if lastRunStatus === 'failed'}
-			<span class="badge badge-sm badge-error">Failed</span>
+			<span class="badge badge-sm badge-error">{m.task_card_failed()}</span>
 		{:else if lastRunStatus === 'completed'}
 			<span class="badge badge-sm badge-success">OK</span>
 		{/if}
@@ -118,18 +110,18 @@
 
 	<div class="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
 		{#if task.category === 'scheduled'}
-			<div class="text-base-content/60">Interval</div>
+			<div class="text-base-content/60">{m.task_card_interval()}</div>
 			<div class="justify-self-end">
 				<TaskIntervalCell {task} />
 			</div>
 
-			<div class="text-base-content/60">Last Run</div>
+			<div class="text-base-content/60">{m.task_card_lastRun()}</div>
 			<div class="justify-self-end tabular-nums" title={task.lastRunTime || ''}>{liveTimeAgo}</div>
 
-			<div class="text-base-content/60">Next Run</div>
+			<div class="text-base-content/60">{m.task_card_nextRun()}</div>
 			<div class="justify-self-end tabular-nums">
 				{#if task.isRunning}
-					<span class="text-primary">Running...</span>
+					<span class="text-primary">{m.task_card_running()}</span>
 				{:else if task.nextRunTime}
 					<span
 						class="{isOverdue ? 'font-medium text-warning' : ''} {isImminent
@@ -144,17 +136,17 @@
 				{/if}
 			</div>
 		{:else}
-			<div class="text-base-content/60">Type</div>
-			<div class="justify-self-end">Manual</div>
+			<div class="text-base-content/60">{m.task_card_type()}</div>
+			<div class="justify-self-end">{m.task_card_manual()}</div>
 
-			<div class="text-base-content/60">Last Run</div>
+			<div class="text-base-content/60">{m.task_card_lastRun()}</div>
 			<div class="justify-self-end tabular-nums" title={task.lastRunTime || ''}>{liveTimeAgo}</div>
 		{/if}
 	</div>
 
 	<div class="mt-3 flex items-center justify-between gap-2">
 		<label class="label cursor-pointer gap-2 p-0">
-			<span class="text-xs text-base-content/70">Enabled</span>
+			<span class="text-xs text-base-content/70">{m.task_card_enabled()}</span>
 			<input
 				type="checkbox"
 				class="toggle toggle-xs"
@@ -174,15 +166,17 @@
 					{#if isCancelling}
 						<span class="loading loading-xs loading-spinner"></span>
 					{:else}
-						Cancel
+						{m.action_cancel()}
 					{/if}
 				</button>
 			{:else}
 				<button class="btn gap-1 btn-xs btn-primary" onclick={runTask} disabled={!task.enabled}>
-					Run
+					{m.action_run()}
 				</button>
 			{/if}
-			<button class="btn gap-1 btn-ghost btn-xs" onclick={onShowHistory}>History</button>
+			<button class="btn gap-1 btn-ghost btn-xs" onclick={onShowHistory}
+				>{m.task_card_history()}</button
+			>
 		</div>
 	</div>
 </div>

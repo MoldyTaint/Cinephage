@@ -10,7 +10,9 @@
 
 import { isCloudflareProtected } from './CloudflareDetection';
 import { captchaSolverSettingsService, getCaptchaSolver } from '$lib/server/captcha';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 import { decodeBuffer } from './EncodingUtils';
 
 export interface CloudflareFetchOptions {
@@ -86,15 +88,21 @@ export async function cloudflareFetch(
 			const solver = getCaptchaSolver();
 			const captchaEnabled = captchaSolverSettingsService.isEnabled();
 			if (!captchaEnabled) {
-				logger.info('[cloudflareFetch] Cloudflare detected, captcha solver disabled', {
-					url
-				});
+				logger.info(
+					{
+						url
+					},
+					'[cloudflareFetch] Cloudflare detected, captcha solver disabled'
+				);
 			} else if (solver.isAvailable()) {
 				const host = new URL(url).hostname;
-				logger.info('[cloudflareFetch] Cloudflare detected, using browser fallback', {
-					url,
-					host
-				});
+				logger.info(
+					{
+						url,
+						host
+					},
+					'[cloudflareFetch] Cloudflare detected, using browser fallback'
+				);
 
 				const browserResult = await solver.fetch({
 					url,
@@ -104,11 +112,14 @@ export async function cloudflareFetch(
 				});
 
 				if (browserResult.success) {
-					logger.info('[cloudflareFetch] Browser fetch succeeded', {
-						url,
-						status: browserResult.status,
-						bodyLength: browserResult.body.length
-					});
+					logger.info(
+						{
+							url,
+							status: browserResult.status,
+							bodyLength: browserResult.body.length
+						},
+						'[cloudflareFetch] Browser fetch succeeded'
+					);
 
 					const responseHeaders = new Headers();
 					if (browserResult.headers) {
@@ -128,10 +139,13 @@ export async function cloudflareFetch(
 					};
 				}
 
-				logger.warn('[cloudflareFetch] Browser fetch failed', {
-					url,
-					error: browserResult.error
-				});
+				logger.warn(
+					{
+						url,
+						error: browserResult.error
+					},
+					'[cloudflareFetch] Browser fetch failed'
+				);
 			}
 		}
 

@@ -7,7 +7,9 @@ import { db } from '$lib/server/db';
 import { downloadClients as downloadClientsTable } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'imports' as const });
 
 import type { IDownloadClient, DownloadClientConfig } from './core/interfaces';
 import type {
@@ -23,7 +25,6 @@ import { RTorrentClient } from './rtorrent/RTorrentClient';
 import { Aria2Client } from './aria2/Aria2Client';
 import { SABnzbdClient, type SABnzbdConfig } from './sabnzbd';
 import { NZBGetClient } from './nzbget';
-import { NZBMountClient } from './nzbmount/NZBMountClient';
 
 /**
  * Protocol type for download clients.
@@ -40,9 +41,25 @@ const IMPLEMENTATION_PROTOCOL_MAP: Record<string, DownloadClientProtocol> = {
 	rtorrent: 'torrent',
 	aria2: 'torrent',
 	sabnzbd: 'usenet',
-	'nzb-mount': 'usenet',
 	nzbget: 'usenet'
 };
+
+function parsePositiveIntEnv(name: string, fallback: number): number {
+	const value = process.env[name];
+	if (!value) return fallback;
+	const parsed = Number(value);
+	if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+	return Math.round(parsed);
+}
+
+const DOWNLOAD_CLIENT_FAILURES_BEFORE_FAILING = parsePositiveIntEnv(
+	'DOWNLOAD_CLIENT_FAILURES_BEFORE_FAILING',
+	3
+);
+const DOWNLOAD_CLIENT_FAILURE_INCREMENT_INTERVAL_MS = parsePositiveIntEnv(
+	'DOWNLOAD_CLIENT_FAILURE_INCREMENT_INTERVAL_MS',
+	30_000
+);
 
 const LEGACY_DOWNLOAD_CLIENT_SELECT = {
 	id: downloadClientsTable.id,
@@ -106,6 +123,18 @@ export interface DownloadClientInput {
 export class DownloadClientManager {
 	private clientInstances: Map<string, IDownloadClient> = new Map();
 	private downloadClientHealthColumnsAvailable = true;
+
+	private normalizeImplementation(
+		implementation: string | undefined
+	): DownloadClientImplementation {
+		return (
+			implementation === 'nzb-mount' ? 'sabnzbd' : (implementation ?? 'qbittorrent')
+		) as DownloadClientImplementation;
+	}
+
+	private normalizeMountMode(mountMode: string | null | undefined): 'nzbdav' | null {
+		return mountMode === 'nzbdav' || mountMode === 'altmount' ? 'nzbdav' : null;
+	}
 
 	private isMissingDownloadClientHealthColumnsError(error: unknown): boolean {
 		const message = this.toErrorMessage(error).toLowerCase();
@@ -206,13 +235,13 @@ export class DownloadClientManager {
 		await db.insert(downloadClientsTable).values({
 			id,
 			name: input.name,
-			implementation: input.implementation,
+			implementation: this.normalizeImplementation(input.implementation),
 			enabled: input.enabled ?? true,
 			host: input.host,
 			port: input.port,
 			useSsl: input.useSsl ?? false,
 			urlBase: input.urlBase ?? null,
-			mountMode: input.mountMode ?? null,
+			mountMode: this.normalizeMountMode(input.mountMode),
 			username: input.username,
 			password: input.password,
 			movieCategory: input.movieCategory ?? 'movies',
@@ -231,7 +260,7 @@ export class DownloadClientManager {
 			updatedAt: now
 		});
 
-		logger.info('Download client created', { id, name: input.name });
+		logger.info({ id, name: input.name }, 'Download client created');
 
 		const created = await this.getClient(id);
 		if (!created) {
@@ -255,13 +284,17 @@ export class DownloadClientManager {
 		};
 
 		if (updates.name !== undefined) updateData.name = updates.name;
-		if (updates.implementation !== undefined) updateData.implementation = updates.implementation;
+		if (updates.implementation !== undefined) {
+			updateData.implementation = this.normalizeImplementation(updates.implementation);
+		}
 		if (updates.enabled !== undefined) updateData.enabled = updates.enabled;
 		if (updates.host !== undefined) updateData.host = updates.host;
 		if (updates.port !== undefined) updateData.port = updates.port;
 		if (updates.useSsl !== undefined) updateData.useSsl = updates.useSsl;
 		if (updates.urlBase !== undefined) updateData.urlBase = updates.urlBase;
-		if (updates.mountMode !== undefined) updateData.mountMode = updates.mountMode;
+		if (updates.mountMode !== undefined) {
+			updateData.mountMode = this.normalizeMountMode(updates.mountMode);
+		}
 		if (updates.username !== undefined) updateData.username = updates.username;
 		// Only update password if explicitly provided with a non-empty value
 		// (null or empty string means "keep existing password")
@@ -293,7 +326,7 @@ export class DownloadClientManager {
 		}
 		this.clientInstances.delete(id);
 
-		logger.info('Download client updated', { id });
+		logger.info({ id }, 'Download client updated');
 
 		const updated = await this.getClient(id);
 		if (!updated) {
@@ -309,7 +342,7 @@ export class DownloadClientManager {
 	async deleteClient(id: string): Promise<void> {
 		await db.delete(downloadClientsTable).where(eq(downloadClientsTable.id, id));
 		this.clientInstances.delete(id);
-		logger.info('Download client deleted', { id });
+		logger.info({ id }, 'Download client deleted');
 	}
 
 	/**
@@ -349,10 +382,7 @@ export class DownloadClientManager {
 			username: clientConfig.username,
 			password: clientConfig.password,
 			implementation: clientConfig.implementation,
-			apiKey:
-				clientConfig.implementation === 'sabnzbd' || clientConfig.implementation === 'nzb-mount'
-					? clientConfig.password
-					: undefined
+			apiKey: clientConfig.implementation === 'sabnzbd' ? clientConfig.password : undefined
 		});
 
 		if (result.success) {
@@ -382,7 +412,9 @@ export class DownloadClientManager {
 		const hasPasswordOverride =
 			typeof overrides.password === 'string' && overrides.password.trim().length > 0;
 		const effectivePassword = hasPasswordOverride ? overrides.password : clientConfig.password;
-		const implementation = overrides.implementation ?? clientConfig.implementation;
+		const implementation = this.normalizeImplementation(
+			overrides.implementation ?? clientConfig.implementation
+		);
 
 		const result = await this.testClient({
 			host: overrides.host ?? clientConfig.host,
@@ -393,10 +425,7 @@ export class DownloadClientManager {
 			username: overrides.username ?? clientConfig.username,
 			password: effectivePassword,
 			implementation,
-			apiKey:
-				implementation === 'sabnzbd' || implementation === 'nzb-mount'
-					? effectivePassword
-					: undefined
+			apiKey: implementation === 'sabnzbd' ? effectivePassword : undefined
 		});
 
 		if (result.success) {
@@ -430,9 +459,9 @@ export class DownloadClientManager {
 			username: config.username,
 			password: config.password,
 			implementation: config.implementation,
-			// For SABnzbd/NZB-Mount, the API key is stored in the password field
+			// For SABnzbd, the API key is stored in the password field
 			apiKey:
-				config.implementation === 'sabnzbd' || config.implementation === 'nzb-mount'
+				this.normalizeImplementation(config.implementation) === 'sabnzbd'
 					? config.password
 					: undefined
 		});
@@ -495,7 +524,8 @@ export class DownloadClientManager {
 	 * Get the protocol for a client implementation.
 	 */
 	static getProtocolForImplementation(implementation: string): DownloadClientProtocol {
-		return IMPLEMENTATION_PROTOCOL_MAP[implementation] || 'torrent';
+		const normalizedImplementation = implementation === 'nzb-mount' ? 'sabnzbd' : implementation;
+		return IMPLEMENTATION_PROTOCOL_MAP[normalizedImplementation] || 'torrent';
 	}
 
 	/**
@@ -504,7 +534,7 @@ export class DownloadClientManager {
 	private createClientInstance(
 		config: DownloadClientConfig & { implementation?: string; apiKey?: string | null }
 	): IDownloadClient | undefined {
-		const implementation = config.implementation || 'qbittorrent';
+		const implementation = this.normalizeImplementation(config.implementation);
 
 		switch (implementation) {
 			case 'qbittorrent':
@@ -522,13 +552,20 @@ export class DownloadClientManager {
 			case 'aria2':
 				return new Aria2Client(config);
 
-			case 'sabnzbd':
-				return new SABnzbdClient(config as SABnzbdConfig);
+			case 'sabnzbd': {
+				const sabConfig = config as SABnzbdConfig;
+				const mountMode = this.normalizeMountMode(sabConfig.mountMode);
+				const isMountMode = mountMode === 'nzbdav';
+				return new SABnzbdClient({
+					...sabConfig,
+					implementation: 'sabnzbd',
+					mountMode,
+					normalizeCategoryDir: sabConfig.normalizeCategoryDir ?? isMountMode
+				});
+			}
 
 			case 'nzbget':
 				return new NZBGetClient(config);
-			case 'nzb-mount':
-				return new NZBMountClient(config);
 
 			// Future implementations
 
@@ -626,10 +663,13 @@ export class DownloadClientManager {
 				this.downloadClientHealthColumnsAvailable = false;
 				return;
 			}
-			logger.debug('Failed to record download client success state', {
-				id,
-				error: this.toErrorMessage(error)
-			});
+			logger.debug(
+				{
+					id,
+					error: this.toErrorMessage(error)
+				},
+				'Failed to record download client success state'
+			);
 		}
 	}
 
@@ -641,12 +681,24 @@ export class DownloadClientManager {
 		const now = new Date().toISOString();
 		try {
 			const [row] = await db
-				.select({ consecutiveFailures: downloadClientsTable.consecutiveFailures })
+				.select({
+					consecutiveFailures: downloadClientsTable.consecutiveFailures,
+					lastFailure: downloadClientsTable.lastFailure
+				})
 				.from(downloadClientsTable)
 				.where(eq(downloadClientsTable.id, id));
 
-			const consecutiveFailures = (row?.consecutiveFailures ?? 0) + 1;
-			const health: DownloadClientHealth = consecutiveFailures >= 3 ? 'failing' : 'warning';
+			const previousFailures = row?.consecutiveFailures ?? 0;
+			const lastFailureTime = row?.lastFailure ? new Date(row.lastFailure).getTime() : 0;
+			const nowTime = Date.now();
+			const shouldIncrementConsecutive =
+				!lastFailureTime ||
+				nowTime - lastFailureTime >= DOWNLOAD_CLIENT_FAILURE_INCREMENT_INTERVAL_MS;
+			const consecutiveFailures = shouldIncrementConsecutive
+				? previousFailures + 1
+				: previousFailures;
+			const health: DownloadClientHealth =
+				consecutiveFailures >= DOWNLOAD_CLIENT_FAILURES_BEFORE_FAILING ? 'failing' : 'warning';
 
 			await db
 				.update(downloadClientsTable)
@@ -664,10 +716,13 @@ export class DownloadClientManager {
 				this.downloadClientHealthColumnsAvailable = false;
 				return;
 			}
-			logger.debug('Failed to record download client failure state', {
-				id,
-				error: this.toErrorMessage(error)
-			});
+			logger.debug(
+				{
+					id,
+					error: this.toErrorMessage(error)
+				},
+				'Failed to record download client failure state'
+			);
 		}
 	}
 
@@ -675,13 +730,13 @@ export class DownloadClientManager {
 	 * Convert database row to DownloadClient (without password).
 	 */
 	private rowToClient(row: typeof downloadClientsTable.$inferSelect): DownloadClient {
-		const mountMode =
-			row.mountMode === 'nzbdav' || row.mountMode === 'altmount' ? row.mountMode : null;
+		const mountMode = this.normalizeMountMode(row.mountMode);
+		const implementation = this.normalizeImplementation(row.implementation);
 
 		return {
 			id: row.id,
 			name: row.name,
-			implementation: row.implementation as DownloadClientImplementation,
+			implementation,
 			enabled: !!row.enabled,
 			host: row.host,
 			port: row.port,

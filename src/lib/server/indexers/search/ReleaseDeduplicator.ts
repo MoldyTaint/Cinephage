@@ -1,5 +1,7 @@
 import type { ReleaseResult, EnhancedReleaseResult } from '../types';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 import { extractInfoHash } from '$lib/server/downloadClients/utils/hashUtils';
 
 /**
@@ -86,13 +88,16 @@ export class ReleaseDeduplicator {
 			(r) => r.sourceIndexers && r.sourceIndexers.length > 1
 		);
 		if (multiSourceReleases.length > 0) {
-			logger.debug('[Deduplicator] Releases from multiple indexers', {
-				count: multiSourceReleases.length,
-				samples: multiSourceReleases.slice(0, 5).map((r) => ({
-					title: r.title,
-					sources: r.sourceIndexers
-				}))
-			});
+			logger.debug(
+				{
+					count: multiSourceReleases.length,
+					samples: multiSourceReleases.slice(0, 5).map((r) => ({
+						title: r.title,
+						sources: r.sourceIndexers
+					}))
+				},
+				'[Deduplicator] Releases from multiple indexers'
+			);
 		}
 
 		return {
@@ -151,13 +156,16 @@ export class ReleaseDeduplicator {
 		// Log deduplication stats
 		const removed = releases.length - seen.size;
 		if (removed > 0) {
-			logger.debug('[Deduplicator] Enhanced deduplication completed', {
-				input: releases.length,
-				output: result.length,
-				removed,
-				multiSourceCount: result.filter((r) => r.sourceIndexers && r.sourceIndexers.length > 1)
-					.length
-			});
+			logger.debug(
+				{
+					input: releases.length,
+					output: result.length,
+					removed,
+					multiSourceCount: result.filter((r) => r.sourceIndexers && r.sourceIndexers.length > 1)
+						.length
+				},
+				'[Deduplicator] Enhanced deduplication completed'
+			);
 		}
 
 		return {

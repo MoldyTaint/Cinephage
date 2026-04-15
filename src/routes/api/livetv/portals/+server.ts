@@ -10,53 +10,41 @@ import type { RequestHandler } from './$types';
 import { getStalkerPortalManager } from '$lib/server/livetv/stalker';
 import { stalkerPortalCreateSchema } from '$lib/validation/schemas';
 import { logger } from '$lib/logging';
-import { ValidationError } from '$lib/errors';
+import { ValidationError, isAppError } from '$lib/errors';
 
 /**
  * List all portals
  */
 export const GET: RequestHandler = async () => {
-	try {
-		const manager = getStalkerPortalManager();
-		const portals = await manager.getPortals();
+	const manager = getStalkerPortalManager();
+	const portals = await manager.getPortals();
 
-		return json({
-			success: true,
-			portals
-		});
-	} catch (error) {
-		logger.error('[API] Failed to list portals', error instanceof Error ? error : undefined);
-
-		return json(
-			{
-				success: false,
-				error: error instanceof Error ? error.message : 'Failed to list portals'
-			},
-			{ status: 500 }
-		);
-	}
+	return json({
+		success: true,
+		portals
+	});
 };
 
 /**
  * Create a new portal
  */
 export const POST: RequestHandler = async ({ request }) => {
+	const body = await request.json();
+
+	// Validate input
+	const parsed = stalkerPortalCreateSchema.safeParse(body);
+	if (!parsed.success) {
+		throw new ValidationError('Validation failed', {
+			details: parsed.error.flatten()
+		});
+	}
+
+	const manager = getStalkerPortalManager();
+
+	// Check if detectType is explicitly set to false
+	const detectType = body.detectType !== false;
+
 	try {
-		const body = await request.json();
-
-		// Validate input
-		const parsed = stalkerPortalCreateSchema.safeParse(body);
-		if (!parsed.success) {
-			throw new ValidationError('Validation failed', {
-				details: parsed.error.flatten()
-			});
-		}
-
-		const manager = getStalkerPortalManager();
-
-		// Check if detectType is explicitly set to false
-		const detectType = body.detectType !== false;
-
 		const portal = await manager.createPortal(parsed.data, detectType);
 
 		return json(
@@ -69,34 +57,15 @@ export const POST: RequestHandler = async ({ request }) => {
 	} catch (error) {
 		logger.error('[API] Failed to create portal', error instanceof Error ? error : undefined);
 
-		// Validation errors
-		if (error instanceof ValidationError) {
-			return json(
-				{
-					success: false,
-					error: error.message,
-					code: error.code,
-					context: error.context
-				},
-				{ status: error.statusCode }
-			);
+		// Re-throw ValidationError and AppError for central handler
+		if (isAppError(error)) {
+			throw error;
 		}
 
 		const message = error instanceof Error ? error.message : String(error);
 
-		// Duplicate URL
-		if (message.includes('already exists')) {
-			return json(
-				{
-					success: false,
-					error: message
-				},
-				{ status: 409 }
-			);
-		}
-
-		// Unique constraint violation
-		if (message.includes('UNIQUE constraint failed')) {
+		// Duplicate URL detection
+		if (message.includes('already exists') || message.includes('UNIQUE constraint failed')) {
 			return json(
 				{
 					success: false,
@@ -106,10 +75,11 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 
+		// Generic error - don't leak details
 		return json(
 			{
 				success: false,
-				error: message || 'Failed to create portal'
+				error: 'Failed to create portal'
 			},
 			{ status: 500 }
 		);

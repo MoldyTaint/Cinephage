@@ -23,7 +23,9 @@ import {
 	type AssrtSearchResponse,
 	type AssrtDetailResponse
 } from './types';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import { extractFromZip } from '../mixins';
 import { ConfigurationError } from '../../errors/ProviderErrors';
 

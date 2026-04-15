@@ -18,7 +18,7 @@ export const POST: RequestHandler = async ({ url }) => {
 	const olderThanDaysParam = url.searchParams.get('olderThanDays');
 	const olderThanDays = olderThanDaysParam ? parseInt(olderThanDaysParam, 10) : undefined;
 
-	logger.info('Clear failed items requested', { dryRun, olderThanDays });
+	logger.info({ dryRun, olderThanDays }, 'Clear failed items requested');
 
 	try {
 		const result = await downloadMonitor.clearFailedItems({
@@ -38,7 +38,7 @@ export const POST: RequestHandler = async ({ url }) => {
 		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
-		logger.error('Clear failed items failed', { error: message });
+		logger.error({ error: message }, 'Clear failed items failed');
 
 		return json(
 			{

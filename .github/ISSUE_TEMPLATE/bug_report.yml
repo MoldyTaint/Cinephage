@@ -137,33 +137,32 @@ body:
       value: |
         ### How to get logs
 
-        **Log files location:**
-        - Docker: `./logs/` (mapped from container's `/app/logs/`)
-        - Native install: `logs/` in your Cinephage directory
+        **Log sources:**
+        - Docker: `docker logs cinephage --tail 200 2>&1`
+        - Docker Compose: `docker compose logs cinephage --tail 200`
+        - Systemd: `journalctl -u cinephage -n 200`
 
-        **Log files (attach the relevant ones to this issue):**
-        - `main.log` - General application logs (always include this)
-        - `indexers.log` - Indexer/search issues
-        - `imports.log` - Download import issues
-        - `streams.log` - Streaming issues
-        - `monitoring.log` - Scheduler/automated task issues
+        **Tips:**
+        - Include the relevant log excerpt for the time of the issue
+        - Mention the request `supportId` if one was shown in the UI
+        - If possible, include log lines with matching `logDomain` (for example `streams`, `imports`, `indexers`, `monitoring`)
 
         **How to retrieve:**
         ```bash
         # Docker Compose
-        docker compose cp cinephage:/app/logs ./cinephage-logs
+        docker compose logs cinephage --tail 200 > cinephage-logs.txt
 
-        # Native install
-        # Logs are in the logs/ folder of your install directory
+        # Systemd
+        sudo journalctl -u cinephage -n 200 > cinephage-logs.txt
         ```
 
-        Drag and drop the .log files below or paste the content.
+        Paste the relevant log excerpts below or attach the captured text file.
 
   - type: textarea
     id: logs
     attributes:
       label: Relevant Logs
-      description: Attach log files by dragging them here, or paste relevant excerpts. Always include main.log for backend issues.
+      description: Paste relevant stdout/service log excerpts here, or attach a text file with the captured logs.
       render: shell
 
   - type: textarea

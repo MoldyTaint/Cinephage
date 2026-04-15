@@ -15,6 +15,7 @@ import type { LibraryMovie, MovieFile } from '$lib/types/library';
 import { DEFAULT_PROFILES } from '$lib/server/scoring/profiles.js';
 import { tmdb } from '$lib/server/tmdb.js';
 import { logger } from '$lib/logging';
+import { isMovieSearching } from '$lib/server/library/ActiveSearchTracker.js';
 
 const ACTIVE_DOWNLOAD_STATUSES = [
 	'queued',
@@ -51,9 +52,11 @@ export interface LibraryMoviePageData {
 		name: string;
 		path: string;
 		mediaType: string;
+		mediaSubType: string | null;
 		freeSpaceBytes: number | null;
 	}>;
 	queueItem: QueueItemInfo | null;
+	isSearching: boolean;
 }
 
 export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePageData> => {
@@ -101,16 +104,24 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 				language: subtitles.language,
 				isForced: subtitles.isForced,
 				isHearingImpaired: subtitles.isHearingImpaired,
-				format: subtitles.format
+				format: subtitles.format,
+				matchScore: subtitles.matchScore,
+				providerId: subtitles.providerId,
+				dateAdded: subtitles.dateAdded,
+				wasSynced: subtitles.wasSynced,
+				syncOffset: subtitles.syncOffset
 			})
 			.from(subtitles)
 			.where(eq(subtitles.movieId, id)),
 		tmdb.getMovieReleaseInfo(movie.tmdbId).catch((err) => {
-			logger.warn('[LibraryMovie] Failed to fetch TMDB release info', {
-				movieId: id,
-				tmdbId: movie.tmdbId,
-				error: err instanceof Error ? err.message : String(err)
-			});
+			logger.warn(
+				{
+					movieId: id,
+					tmdbId: movie.tmdbId,
+					error: err instanceof Error ? err.message : String(err)
+				},
+				'[LibraryMovie] Failed to fetch TMDB release info'
+			);
 			return null;
 		})
 	]);
@@ -136,7 +147,12 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 			language: s.language,
 			isForced: s.isForced ?? undefined,
 			isHearingImpaired: s.isHearingImpaired ?? undefined,
-			format: s.format ?? undefined
+			format: s.format ?? undefined,
+			matchScore: s.matchScore,
+			providerId: s.providerId,
+			dateAdded: s.dateAdded,
+			wasSynced: s.wasSynced ?? undefined,
+			syncOffset: s.syncOffset
 		}))
 	};
 
@@ -192,6 +208,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 			name: rootFolders.name,
 			path: rootFolders.path,
 			mediaType: rootFolders.mediaType,
+			mediaSubType: rootFolders.mediaSubType,
 			freeSpaceBytes: rootFolders.freeSpaceBytes
 		})
 		.from(rootFolders)
@@ -223,10 +240,14 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 				}
 			: null;
 
+	// Check if a search is currently running for this movie
+	const isSearching = isMovieSearching(id);
+
 	return {
 		movie: movieWithFiles,
 		qualityProfiles: allQualityProfiles,
 		rootFolders: folders,
-		queueItem
+		queueItem,
+		isSearching
 	};
 };

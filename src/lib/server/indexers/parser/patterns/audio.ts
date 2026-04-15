@@ -7,20 +7,10 @@
  * Key principles:
  * - Audio codec and Atmos are detected separately (Atmos is a stackable modifier)
  * - Channel configuration is detected independently for metadata
- * - HDR formats are detected with proper fallback layer awareness
+ * - HDR formats are detected as canonical parsed values
  */
 
-import type { AudioFormat, AudioCodec, AudioChannels, HdrFormat } from '../types.js';
-
-// =============================================================================
-// Type Definitions
-// =============================================================================
-
-interface AudioMatch {
-	audio: AudioFormat;
-	matchedText: string;
-	index: number;
-}
+import type { AudioCodec, AudioChannels, HdrFormat } from '../types.js';
 
 interface EnhancedAudioMatch {
 	/** Base audio codec (without Atmos modifier) */
@@ -106,6 +96,7 @@ const AUDIO_CODEC_PATTERNS: Array<{ pattern: RegExp; codec: AudioCodec }> = [
 	{ pattern: /\bE[ ._-]?AC[ ._-]?3\b/i, codec: 'dd+' },
 	{ pattern: /\bEAC3\b/i, codec: 'dd+' },
 	{ pattern: /\bDolby[ ._-]?Digital[ ._-]?Plus\b/i, codec: 'dd+' },
+	{ pattern: /\bDD[ ._-]?Plus\b/i, codec: 'dd+' },
 	// DDPA = DD+ Atmos (Profilarr BTN Atmos pattern includes this)
 	{ pattern: /\bDDPA[ ._]?[0-9]/i, codec: 'dd+' },
 
@@ -179,35 +170,41 @@ const CHANNEL_PATTERNS: Array<{ pattern: RegExp; channels: AudioChannels }> = [
 // =============================================================================
 
 /**
- * HDR format patterns with fallback layer awareness
+ * HDR format patterns
  * Based on Profilarr patterns with enhancements for DV profile detection
  */
 const HDR_PATTERNS: Array<{ pattern: RegExp; hdr: NonNullable<HdrFormat> }> = [
 	// =========================================================================
-	// Dolby Vision with fallback layer detection
+	// Dolby Vision
 	// =========================================================================
 
 	// DV + HDR10+ (combo format)
-	{ pattern: /\b(DV|DoVi|Dolby[ ._-]?Vision)[ ._-]?HDR10\+/i, hdr: 'dolby-vision-hdr10' },
-	{ pattern: /\bHDR10\+[ ._-]?(DV|DoVi|Dolby[ ._-]?Vision)\b/i, hdr: 'dolby-vision-hdr10' },
+	{
+		pattern: /\b(DV|DoVi|Dolby[ ._-]?Vision)[ ._-]?HDR10(?:\+|P|Plus)\b/i,
+		hdr: 'dolby-vision'
+	},
+	{
+		pattern: /\bHDR10(?:\+|P|Plus)[ ._-]?(DV|DoVi|Dolby[ ._-]?Vision)\b/i,
+		hdr: 'dolby-vision'
+	},
 
-	// DV + HDR10 (common combo, Profile 7/8)
-	{ pattern: /\b(DV|DoVi|Dolby[ ._-]?Vision)[ ._-]?HDR10\b/i, hdr: 'dolby-vision-hdr10' },
-	{ pattern: /\bHDR10[ ._-]?(DV|DoVi|Dolby[ ._-]?Vision)\b/i, hdr: 'dolby-vision-hdr10' },
+	// DV + HDR10
+	{ pattern: /\b(DV|DoVi|Dolby[ ._-]?Vision)[ ._-]?HDR10\b/i, hdr: 'dolby-vision' },
+	{ pattern: /\bHDR10[ ._-]?(DV|DoVi|Dolby[ ._-]?Vision)\b/i, hdr: 'dolby-vision' },
 
-	// DV + HDR (assume HDR10 fallback)
-	{ pattern: /\b(DV|DoVi|Dolby[ ._-]?Vision)[ ._-]?HDR\b/i, hdr: 'dolby-vision-hdr10' },
-	{ pattern: /\bHDR[ ._-]?(DV|DoVi|Dolby[ ._-]?Vision)\b/i, hdr: 'dolby-vision-hdr10' },
+	// DV + HDR
+	{ pattern: /\b(DV|DoVi|Dolby[ ._-]?Vision)[ ._-]?HDR\b/i, hdr: 'dolby-vision' },
+	{ pattern: /\bHDR[ ._-]?(DV|DoVi|Dolby[ ._-]?Vision)\b/i, hdr: 'dolby-vision' },
 
-	// DV + HLG fallback
-	{ pattern: /\b(DV|DoVi|Dolby[ ._-]?Vision)[ ._-]?HLG\b/i, hdr: 'dolby-vision-hlg' },
-	{ pattern: /\bDV[ ._]HLG\b/i, hdr: 'dolby-vision-hlg' },
+	// DV + HLG
+	{ pattern: /\b(DV|DoVi|Dolby[ ._-]?Vision)[ ._-]?HLG\b/i, hdr: 'dolby-vision' },
+	{ pattern: /\bDV[ ._]HLG\b/i, hdr: 'dolby-vision' },
 
-	// DV + SDR fallback (compatibility mode, often penalized)
-	{ pattern: /\b(DV|DoVi|Dolby[ ._-]?Vision)[ ._-]?SDR\b/i, hdr: 'dolby-vision-sdr' },
-	{ pattern: /\bDV[ ._]SDR\b/i, hdr: 'dolby-vision-sdr' },
+	// DV + SDR
+	{ pattern: /\b(DV|DoVi|Dolby[ ._-]?Vision)[ ._-]?SDR\b/i, hdr: 'dolby-vision' },
+	{ pattern: /\bDV[ ._]SDR\b/i, hdr: 'dolby-vision' },
 
-	// Generic Dolby Vision (no explicit fallback mentioned)
+	// Generic Dolby Vision
 	// Profilarr pattern: \b(dv(?![ .](HLG|SDR))|dovi|dolby[ .]?vision)\b
 	{ pattern: /\bDolby[ ._-]?Vision\b/i, hdr: 'dolby-vision' },
 	{ pattern: /\bDoVi\b/i, hdr: 'dolby-vision' },
@@ -250,70 +247,6 @@ const HDR_PATTERNS: Array<{ pattern: RegExp; hdr: NonNullable<HdrFormat> }> = [
 	// Must be last to not override specific formats
 	// =========================================================================
 	{ pattern: /\bHDR\b(?!10)/i, hdr: 'hdr' }
-];
-
-// =============================================================================
-// Legacy Audio Patterns (for backwards compatibility)
-// =============================================================================
-
-/**
- * Legacy audio format patterns (includes Atmos as a codec)
- * @deprecated Use AUDIO_CODEC_PATTERNS and ATMOS_PATTERNS separately
- */
-const AUDIO_PATTERNS: Array<{ pattern: RegExp; audio: AudioFormat }> = [
-	// Dolby Atmos (object-based audio)
-	{ pattern: /\bAtmos\b/i, audio: 'atmos' },
-	{ pattern: /\bDolby[ ._-]?Atmos\b/i, audio: 'atmos' },
-
-	// TrueHD (lossless Dolby)
-	{ pattern: /\bTrueHD\b/i, audio: 'truehd' },
-	{ pattern: /\bTrue[ ._-]?HD\b/i, audio: 'truehd' },
-
-	// DTS:X (object-based DTS)
-	{ pattern: /\bDTS[ ._-]?X\b/i, audio: 'dts-x' },
-
-	// DTS-HD Master Audio (lossless DTS)
-	{ pattern: /\bDTS[ ._-]?HD[ ._-]?MA\b/i, audio: 'dts-hdma' },
-	{ pattern: /\bDTS[ ._-]?HD\s+MA\b/i, audio: 'dts-hdma' },
-	{ pattern: /\bDTS[ ._-]?HD[ ._-]?Master\b/i, audio: 'dts-hdma' },
-
-	// DTS-HD (high resolution, but lossy core)
-	{ pattern: /\bDTS[ ._-]?HD\b/i, audio: 'dts-hd' },
-
-	// FLAC (lossless)
-	{ pattern: /\bFLAC\b/i, audio: 'flac' },
-
-	// Standard DTS
-	{ pattern: /\bDTS\b/i, audio: 'dts' },
-
-	// Dolby Digital Plus (E-AC3)
-	{ pattern: /\bDD\+/i, audio: 'dd+' },
-	{ pattern: /\bDD[ ._-]?Plus\b/i, audio: 'dd+' },
-	{ pattern: /\bDDP[ ._-]?5[ ._-]?1\b/i, audio: 'dd+' },
-	{ pattern: /\bDDP\b/i, audio: 'dd+' },
-	{ pattern: /\bE[ ._-]?AC[ ._-]?3\b/i, audio: 'dd+' },
-	{ pattern: /\bEAC3\b/i, audio: 'dd+' },
-	{ pattern: /\bDolby[ ._-]?Digital[ ._-]?Plus\b/i, audio: 'dd+' },
-
-	// Dolby Digital (AC3)
-	{ pattern: /\bDD[ ._-]?5\.1\b/i, audio: 'dd' },
-	{ pattern: /\bAC[ ._-]?3\b/i, audio: 'dd' },
-	{ pattern: /\bAC3\b/i, audio: 'dd' },
-	{ pattern: /\bDolby[ ._-]?Digital\b/i, audio: 'dd' },
-	{ pattern: /\bDD\b(?![+Pp])/i, audio: 'dd' },
-
-	// Opus (modern efficient lossy)
-	{ pattern: /\bOpus\b/i, audio: 'opus' },
-
-	// AAC
-	{ pattern: /\bAAC2[ ._-]?0\b/i, audio: 'aac' },
-	{ pattern: /\bAAC5[ ._-]?1\b/i, audio: 'aac' },
-	{ pattern: /\bAAC[ ._-]?2[ ._-]?0\b/i, audio: 'aac' },
-	{ pattern: /\bAAC[ ._-]?5[ ._-]?1\b/i, audio: 'aac' },
-	{ pattern: /\bAAC\b/i, audio: 'aac' },
-
-	// MP3
-	{ pattern: /\bMP3\b/i, audio: 'mp3' }
 ];
 
 // =============================================================================
@@ -365,27 +298,6 @@ export function extractEnhancedAudio(title: string): EnhancedAudioMatch {
 }
 
 /**
- * Extract audio format from a release title (legacy function)
- *
- * @param title - The release title to parse
- * @returns Audio match info or null if not found
- * @deprecated Use extractEnhancedAudio instead
- */
-export function extractAudio(title: string): AudioMatch | null {
-	for (const { pattern, audio } of AUDIO_PATTERNS) {
-		const match = title.match(pattern);
-		if (match) {
-			return {
-				audio,
-				matchedText: match[0],
-				index: match.index ?? 0
-			};
-		}
-	}
-	return null;
-}
-
-/**
  * Extract HDR format from a release title
  *
  * @param title - The release title to parse
@@ -428,7 +340,10 @@ export function extractChannels(title: string): AudioChannels {
  * Check if a string likely contains audio info
  */
 export function hasAudioInfo(title: string): boolean {
-	return AUDIO_PATTERNS.some(({ pattern }) => pattern.test(title));
+	return (
+		AUDIO_CODEC_PATTERNS.some(({ pattern }) => pattern.test(title)) ||
+		ATMOS_PATTERNS.some((pattern) => pattern.test(title))
+	);
 }
 
 /**

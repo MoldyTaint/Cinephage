@@ -1,32 +1,24 @@
-/**
- * QualityFilter Database-Dependent Tests
- *
- * Tests for methods that require database access:
- * - getDefaultScoringProfile() — verifies size limits are merged from profileSizeLimits
- * - getProfile() — verifies built-in profile size limit merge
- */
-
-import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
-import { initTestDb, closeTestDb, clearTestDb, getTestDb } from '../../../test/db-helper';
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
+import {
+	createTestDb,
+	destroyTestDb,
+	clearTestDb,
+	type TestDatabase
+} from '../../../test/db-helper';
 import { scoringProfiles, profileSizeLimits } from '$lib/server/db/schema';
 import { COMPACT_PROFILE, BALANCED_PROFILE } from '../scoring';
 
-// Initialize the test database FIRST before any mocks
-initTestDb();
+const testDb: TestDatabase = createTestDb();
 
-// Mock $lib/server/db to use the test database
-vi.mock('$lib/server/db/index.js', async () => {
-	const { getTestDb } = await import('../../../test/db-helper');
-	return {
-		get db() {
-			return getTestDb().db;
-		},
-		get sqlite() {
-			return getTestDb().sqlite;
-		},
-		initializeDatabase: vi.fn().mockResolvedValue(undefined)
-	};
-});
+vi.mock('$lib/server/db/index.js', () => ({
+	get db() {
+		return testDb.db;
+	},
+	get sqlite() {
+		return testDb.sqlite;
+	},
+	initializeDatabase: vi.fn().mockResolvedValue(undefined)
+}));
 
 vi.mock('$lib/logging', () => ({
 	createChildLogger: () => ({
@@ -43,32 +35,24 @@ vi.mock('$lib/logging', () => ({
 	}
 }));
 
-// Import after mocks
 const { QualityFilter } = await import('./QualityFilter');
 
 describe('QualityFilter (database)', () => {
 	let filter: InstanceType<typeof QualityFilter>;
 
-	beforeAll(() => {
-		initTestDb();
-	});
-
 	afterAll(() => {
-		closeTestDb();
+		destroyTestDb(testDb);
 	});
 
 	beforeEach(() => {
-		clearTestDb();
+		clearTestDb(testDb);
 		filter = new QualityFilter();
 	});
 
 	describe('getDefaultScoringProfile', () => {
 		it('should merge episode size limits from profileSizeLimits for a built-in default profile', async () => {
-			const { db } = getTestDb();
-
-			// Seed the compact profile as a built-in profile in scoringProfiles (as the app does)
-			// Note: built-in profiles have NULL size limits in this table
-			db.insert(scoringProfiles)
+			testDb.db
+				.insert(scoringProfiles)
 				.values({
 					id: 'compact',
 					name: 'Compact',
@@ -87,8 +71,8 @@ describe('QualityFilter (database)', () => {
 				})
 				.run();
 
-			// Store user-configured size limits in profileSizeLimits
-			db.insert(profileSizeLimits)
+			testDb.db
+				.insert(profileSizeLimits)
 				.values({
 					profileId: 'compact',
 					movieMinSizeGb: 0.5,
@@ -101,7 +85,6 @@ describe('QualityFilter (database)', () => {
 
 			const profile = await filter.getDefaultScoringProfile();
 
-			// Size limits should be merged from profileSizeLimits
 			expect(profile.episodeMaxSizeMb).toBe(450);
 			expect(profile.episodeMinSizeMb).toBe(50);
 			expect(profile.movieMinSizeGb).toBe(0.5);
@@ -110,10 +93,8 @@ describe('QualityFilter (database)', () => {
 		});
 
 		it('should return null size limits when profileSizeLimits has no entry for a built-in default', async () => {
-			const { db } = getTestDb();
-
-			// Seed compact as default, but with NO entry in profileSizeLimits
-			db.insert(scoringProfiles)
+			testDb.db
+				.insert(scoringProfiles)
 				.values({
 					id: 'compact',
 					name: 'Compact',
@@ -134,7 +115,6 @@ describe('QualityFilter (database)', () => {
 
 			const profile = await filter.getDefaultScoringProfile();
 
-			// No size limits configured — should be null/undefined
 			expect(profile.episodeMaxSizeMb).toBeNull();
 			expect(profile.episodeMinSizeMb).toBeNull();
 			expect(profile.movieMinSizeGb).toBeNull();
@@ -142,10 +122,8 @@ describe('QualityFilter (database)', () => {
 		});
 
 		it('should return size limits directly from scoringProfiles for custom default profiles', async () => {
-			const { db } = getTestDb();
-
-			// Insert a custom profile (not a built-in ID) as default with size limits
-			db.insert(scoringProfiles)
+			testDb.db
+				.insert(scoringProfiles)
 				.values({
 					id: 'my-custom-profile',
 					name: 'My Custom',
@@ -166,7 +144,6 @@ describe('QualityFilter (database)', () => {
 
 			const profile = await filter.getDefaultScoringProfile();
 
-			// Custom profiles store size limits directly — should come through
 			expect(profile.movieMinSizeGb).toBe(1.0);
 			expect(profile.movieMaxSizeGb).toBe(10.0);
 			expect(profile.episodeMinSizeMb).toBe(100);
@@ -177,10 +154,8 @@ describe('QualityFilter (database)', () => {
 
 	describe('getProfile', () => {
 		it('should merge size limits from profileSizeLimits for built-in profiles', async () => {
-			const { db } = getTestDb();
-
-			// Seed the compact profile in scoringProfiles (no size limits)
-			db.insert(scoringProfiles)
+			testDb.db
+				.insert(scoringProfiles)
 				.values({
 					id: 'compact',
 					name: 'Compact',
@@ -199,8 +174,8 @@ describe('QualityFilter (database)', () => {
 				})
 				.run();
 
-			// Store user-configured size limits in profileSizeLimits
-			db.insert(profileSizeLimits)
+			testDb.db
+				.insert(profileSizeLimits)
 				.values({
 					profileId: 'compact',
 					movieMinSizeGb: 0.5,

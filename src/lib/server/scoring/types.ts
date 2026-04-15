@@ -10,11 +10,12 @@ import type {
 	Source,
 	Codec,
 	HdrFormat,
-	AudioFormat
+	AudioCodec,
+	AudioChannels
 } from '../indexers/parser/types.js';
 
 // Re-export Resolution for external use
-export type { Resolution, Source, Codec, HdrFormat, AudioFormat };
+export type { Resolution, Source, Codec, HdrFormat, AudioCodec, AudioChannels };
 
 // =============================================================================
 // Format Condition Types
@@ -29,7 +30,9 @@ export type ConditionType =
 	| 'release_title'
 	| 'release_group'
 	| 'codec'
-	| 'audio'
+	| 'audio_codec'
+	| 'audio_channels'
+	| 'audio_atmos'
 	| 'hdr'
 	| 'streaming_service'
 	| 'flag'
@@ -70,8 +73,11 @@ export interface FormatCondition {
 	/** For codec conditions */
 	codec?: Codec;
 
-	/** For audio conditions */
-	audio?: AudioFormat;
+	/** For audio codec conditions */
+	audioCodec?: AudioCodec;
+
+	/** For audio channel conditions */
+	audioChannels?: AudioChannels;
 
 	/** For HDR conditions */
 	hdr?: HdrFormat;
@@ -104,6 +110,7 @@ export type FormatCategory =
 	| 'banned' // Truly banned releases (deceptive: retagging, fake HDR, CAM, TS, etc.)
 	| 'enhancement' // Special enhancements (IMAX, Repack, etc.)
 	| 'codec' // Codec-specific formats (x265, AV1, etc.)
+	| 'source' // Source-only formats (e.g., "WEB-DL (Any Resolution)")
 	| 'other'; // Miscellaneous
 
 /**
@@ -184,7 +191,9 @@ export interface ReleaseAttributes {
 	source: Source;
 	codec: Codec;
 	hdr: HdrFormat;
-	audio: AudioFormat;
+	audioCodec: AudioCodec;
+	audioChannels: AudioChannels;
+	hasAtmos: boolean;
 
 	// Release metadata
 	releaseGroup?: string;
@@ -277,6 +286,9 @@ export interface ScoringProfile {
 	/** Whether upgrades are allowed */
 	upgradesAllowed: boolean;
 
+	/** Whether this is a default profile */
+	isDefault?: boolean;
+
 	/** Minimum score for a release to be accepted */
 	minScore: number;
 
@@ -303,6 +315,30 @@ export interface ScoringProfile {
 	 * All profiles cascade through all resolutions
 	 */
 	resolutionOrder: Resolution[];
+
+	/**
+	 * Minimum resolution to accept (null = no minimum)
+	 * Releases below this resolution will be rejected
+	 */
+	minResolution?: Resolution | null;
+
+	/**
+	 * Maximum resolution to accept (null = no maximum)
+	 * Releases above this resolution will be rejected
+	 */
+	maxResolution?: Resolution | null;
+
+	/**
+	 * Allowed sources (null = allow all)
+	 * Releases with sources not in this list will be rejected
+	 */
+	allowedSources?: Source[] | null;
+
+	/**
+	 * Excluded sources (e.g., ['cam', 'telesync'])
+	 * Releases with sources in this list will be rejected
+	 */
+	excludedSources?: Source[] | null;
 
 	/**
 	 * Pack preference settings for TV series

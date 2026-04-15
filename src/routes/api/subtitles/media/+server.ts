@@ -42,6 +42,8 @@ export const GET: RequestHandler = async ({ url }) => {
 					matchScore: subtitles.matchScore,
 					isHashMatch: subtitles.isHashMatch,
 					providerId: subtitles.providerId,
+					wasSynced: subtitles.wasSynced,
+					syncOffset: subtitles.syncOffset,
 					dateAdded: subtitles.dateAdded
 				})
 				.from(subtitles)
@@ -75,6 +77,8 @@ export const GET: RequestHandler = async ({ url }) => {
 					matchScore: subtitles.matchScore,
 					isHashMatch: subtitles.isHashMatch,
 					providerId: subtitles.providerId,
+					wasSynced: subtitles.wasSynced,
+					syncOffset: subtitles.syncOffset,
 					dateAdded: subtitles.dateAdded
 				})
 				.from(subtitles)

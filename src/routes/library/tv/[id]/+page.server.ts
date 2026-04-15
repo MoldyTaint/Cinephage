@@ -14,6 +14,7 @@ import { eq, asc, inArray, and } from 'drizzle-orm';
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { DEFAULT_PROFILES } from '$lib/server/scoring/profiles.js';
+import { isSeriesSearching } from '$lib/server/library/ActiveSearchTracker.js';
 
 const ACTIVE_DOWNLOAD_STATUSES = [
 	'queued',
@@ -54,6 +55,12 @@ export interface SubtitleInfo {
 	isForced?: boolean;
 	isHearingImpaired?: boolean;
 	format?: string;
+	matchScore?: number | null;
+	providerId?: string | null;
+	dateAdded?: string | null;
+	wasSynced?: boolean;
+	syncOffset?: number | null;
+	isEmbedded?: boolean;
 }
 
 export interface EpisodeWithFile {
@@ -148,9 +155,11 @@ export interface LibrarySeriesPageData {
 		name: string;
 		path: string;
 		mediaType: string;
+		mediaSubType: string | null;
 		freeSpaceBytes: number | null;
 	}>;
 	queueItems: QueueItemInfo[];
+	isSearching: boolean;
 }
 
 export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPageData> => {
@@ -250,7 +259,12 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 						language: subtitles.language,
 						isForced: subtitles.isForced,
 						isHearingImpaired: subtitles.isHearingImpaired,
-						format: subtitles.format
+						format: subtitles.format,
+						matchScore: subtitles.matchScore,
+						providerId: subtitles.providerId,
+						dateAdded: subtitles.dateAdded,
+						wasSynced: subtitles.wasSynced,
+						syncOffset: subtitles.syncOffset
 					})
 					.from(subtitles)
 					.where(inArray(subtitles.episodeId, episodeIds))
@@ -266,7 +280,12 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 				language: sub.language,
 				isForced: sub.isForced ?? undefined,
 				isHearingImpaired: sub.isHearingImpaired ?? undefined,
-				format: sub.format ?? undefined
+				format: sub.format ?? undefined,
+				matchScore: sub.matchScore,
+				providerId: sub.providerId,
+				dateAdded: sub.dateAdded,
+				wasSynced: sub.wasSynced ?? undefined,
+				syncOffset: sub.syncOffset
 			});
 			episodeIdToSubtitles.set(sub.episodeId, existing);
 		}
@@ -359,6 +378,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 			name: rootFolders.name,
 			path: rootFolders.path,
 			mediaType: rootFolders.mediaType,
+			mediaSubType: rootFolders.mediaSubType,
 			freeSpaceBytes: rootFolders.freeSpaceBytes
 		})
 		.from(rootFolders)
@@ -391,6 +411,9 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 		seasonNumber: q.seasonNumber
 	}));
 
+	// Check if a search is currently running for this series
+	const isSearching = isSeriesSearching(id);
+
 	return {
 		series: {
 			...seriesData,
@@ -400,6 +423,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 		seasons: seasonsWithEpisodes,
 		qualityProfiles: allQualityProfiles,
 		rootFolders: folders,
-		queueItems
+		queueItems,
+		isSearching
 	};
 };

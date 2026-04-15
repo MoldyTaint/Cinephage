@@ -13,7 +13,9 @@ import type { SearchCriteria } from '../types';
 import { getCategoriesForSearchType, isMovieSearch } from '../types';
 import { TemplateEngine } from '../engine/TemplateEngine';
 import { FilterEngine } from '../engine/FilterEngine';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 import { encodeUrlParam } from '../http/EncodingUtils';
 
 /**
@@ -509,6 +511,7 @@ export class RequestBuilder {
 			'query_term',
 			'name', // UNIT3D trackers use 'name' for keyword search
 			'search',
+			's', // Kinozal uses 's' for keyword search
 			'nm', // RuTracker uses 'nm' for keyword search
 			'mire', // nCore uses 'mire' for keyword search
 			'imdb', // Some trackers use 'imdb' instead of 'imdbid'
@@ -529,8 +532,10 @@ export class RequestBuilder {
 			'author',
 			'title'
 		];
-		const hasInputSearchCriteria = Object.keys(filteredInputs).some((key) =>
-			meaningfulSearchParams.includes(key.toLowerCase())
+		const hasInputSearchCriteria = Object.entries(filteredInputs).some(
+			([key, value]) =>
+				meaningfulSearchParams.includes(key.toLowerCase()) &&
+				this.isMeaningfulSearchInputValue(key, value)
 		);
 		// Check if the path template contains keywords placeholder (e.g., {{ .Keywords }})
 		// This allows indexers that embed search in the URL path
@@ -632,10 +637,13 @@ export class RequestBuilder {
 		mode: string
 	): Record<string, string> {
 		const supported = this.supportedParams.get(mode);
-		logger.debug('[RequestBuilder] filterBySupportedParams', {
-			mode,
-			supportedParams: supported ?? []
-		});
+		logger.debug(
+			{
+				mode,
+				supportedParams: supported ?? []
+			},
+			'[RequestBuilder] filterBySupportedParams'
+		);
 		if (!supported || supported.length === 0) {
 			// No filtering configured for this mode
 			return inputs;
@@ -679,6 +687,41 @@ export class RequestBuilder {
 	}
 
 	/**
+	 * Check if a search input value is meaningful enough to execute.
+	 *
+	 * Prevents degenerate TV queries where keyword filters strip the title and
+	 * leave only episode tokens (e.g. "%S01", "%S01E01", "%1x01", "%101"),
+	 * which can flood results with unrelated releases.
+	 */
+	private isMeaningfulSearchInputValue(key: string, value: string): boolean {
+		const trimmed = value.trim();
+		if (!trimmed) return false;
+
+		const lowerKey = key.toLowerCase();
+		const keywordKeys = new Set(['q', 'query', 'query_term', 'name', 'search', 's', 'nm', 'mire']);
+		if (!keywordKeys.has(lowerKey)) {
+			return true;
+		}
+
+		const tokens = trimmed.match(/[\p{L}\p{N}x]+/giu) ?? [];
+		if (tokens.length === 0) {
+			return false;
+		}
+
+		const isEpisodeOnlyToken = (token: string): boolean => {
+			return (
+				/^s\d{1,2}$/i.test(token) ||
+				/^e\d{1,3}(?:-\d{1,3})?$/i.test(token) ||
+				/^s\d{1,2}e\d{1,3}$/i.test(token) ||
+				/^\d{1,2}x\d{1,3}$/i.test(token) ||
+				/^\d{3}$/.test(token)
+			);
+		};
+
+		return !tokens.every((token) => isEpisodeOnlyToken(token));
+	}
+
+	/**
 	 * Resolve a path to an absolute URL.
 	 */
 	private resolveUrl(path: string): string {
@@ -687,6 +730,24 @@ export class RequestBuilder {
 		}
 
 		try {
+			// Newznab endpoints are commonly hosted under a sub-path (e.g., /newznab).
+			// Keep that base path when definition paths are absolute like "/api".
+			if (this.definition.id === 'newznab' && path.startsWith('/')) {
+				const base = new URL(this.baseUrl);
+				const normalizedBasePath = base.pathname.replace(/\/+$/, '');
+				const normalizedPath = path.replace(/\/+$/, '');
+
+				if (normalizedBasePath && normalizedBasePath !== '/') {
+					// If base URL already includes the target endpoint (e.g., .../api), keep it unchanged.
+					if (normalizedPath && normalizedBasePath.endsWith(normalizedPath)) {
+						return base.toString();
+					}
+
+					base.pathname = `${normalizedBasePath}${path}`;
+					return base.toString();
+				}
+			}
+
 			return new URL(path, this.baseUrl).toString();
 		} catch {
 			return this.baseUrl + (path.startsWith('/') ? path : '/' + path);

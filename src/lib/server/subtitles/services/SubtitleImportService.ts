@@ -12,7 +12,9 @@ import { eq } from 'drizzle-orm';
 import { getSubtitleSearchService } from './SubtitleSearchService.js';
 import { getSubtitleDownloadService } from './SubtitleDownloadService.js';
 import { LanguageProfileService } from './LanguageProfileService.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import { normalizeLanguageCode } from '$lib/shared/languages';
 import { isMovieMonitored } from '$lib/server/monitoring/specifications/MonitoredSpecification.js';
 
@@ -74,11 +76,14 @@ export async function searchSubtitlesForNewMedia(
 	} catch (error) {
 		const errorMsg = error instanceof Error ? error.message : String(error);
 		result.errors.push(errorMsg);
-		logger.error('[SubtitleImportService] Search failed', {
-			mediaType,
-			mediaId,
-			error: errorMsg
-		});
+		logger.error(
+			{
+				mediaType,
+				mediaId,
+				error: errorMsg
+			},
+			'[SubtitleImportService] Search failed'
+		);
 	}
 
 	return result;
@@ -101,25 +106,31 @@ async function searchForMovie(
 
 	// Skip if movie doesn't exist, doesn't want subtitles, or has no language profile
 	if (!movie) {
-		logger.debug('[SubtitleImportService] Movie not found', { movieId });
+		logger.debug({ movieId }, '[SubtitleImportService] Movie not found');
 		return result;
 	}
 
 	if (movie.wantsSubtitles === false) {
-		logger.debug('[SubtitleImportService] Movie does not want subtitles', {
-			movieId,
-			title: movie.title,
-			wantsSubtitles: movie.wantsSubtitles
-		});
+		logger.debug(
+			{
+				movieId,
+				title: movie.title,
+				wantsSubtitles: movie.wantsSubtitles
+			},
+			'[SubtitleImportService] Movie does not want subtitles'
+		);
 		return result;
 	}
 
 	const isMonitored = await isMovieMonitored({ movie });
 	if (!isMonitored) {
-		logger.debug('[SubtitleImportService] Movie is not monitored; skipping subtitles', {
-			movieId,
-			title: movie.title
-		});
+		logger.debug(
+			{
+				movieId,
+				title: movie.title
+			},
+			'[SubtitleImportService] Movie is not monitored; skipping subtitles'
+		);
 		return result;
 	}
 
@@ -130,20 +141,26 @@ async function searchForMovie(
 			profileId = defaultProfile.id;
 			await db.update(movies).set({ languageProfileId: profileId }).where(eq(movies.id, movieId));
 		} else {
-			logger.debug('[SubtitleImportService] Movie has subtitles enabled but no profile', {
-				movieId,
-				title: movie.title
-			});
+			logger.debug(
+				{
+					movieId,
+					title: movie.title
+				},
+				'[SubtitleImportService] Movie has subtitles enabled but no profile'
+			);
 			return result;
 		}
 	}
 
 	const profile = await profileService.getProfile(profileId);
 	if (!profile) {
-		logger.warn('[SubtitleImportService] Language profile not found', {
-			movieId,
-			profileId
-		});
+		logger.warn(
+			{
+				movieId,
+				profileId
+			},
+			'[SubtitleImportService] Language profile not found'
+		);
 		return result;
 	}
 
@@ -155,10 +172,13 @@ async function searchForMovie(
 	// Check which subtitles are missing
 	const status = await profileService.getMovieSubtitleStatus(movieId);
 	if (status.satisfied || status.missing.length === 0) {
-		logger.debug('[SubtitleImportService] Movie already has required subtitles', {
-			movieId,
-			title: movie.title
-		});
+		logger.debug(
+			{
+				movieId,
+				title: movie.title
+			},
+			'[SubtitleImportService] Movie already has required subtitles'
+		);
 		return result;
 	}
 
@@ -166,13 +186,16 @@ async function searchForMovie(
 	const searchResults = await searchService.searchForMovie(movieId, languages);
 	const minScore = profile.minimumScore ?? DEFAULT_MIN_SCORE;
 
-	logger.info('[SubtitleImportService] Searching subtitles for movie', {
-		movieId,
-		title: movie.title,
-		missingLanguages: status.missing.map((m) => m.code),
-		resultsFound: searchResults.results.length,
-		minScore
-	});
+	logger.info(
+		{
+			movieId,
+			title: movie.title,
+			missingLanguages: status.missing.map((m) => m.code),
+			resultsFound: searchResults.results.length,
+			minScore
+		},
+		'[SubtitleImportService] Searching subtitles for movie'
+	);
 
 	// Download best match for each missing language
 	for (const missing of status.missing) {
@@ -188,14 +211,17 @@ async function searchForMovie(
 		// Log when we have results but none meet minimum score
 		if (!bestMatch && languageResults.length > 0) {
 			const bestScore = Math.max(...languageResults.map((r) => r.matchScore));
-			logger.debug('[SubtitleImportService] No match meets minimum score for movie', {
-				movieId,
-				title: movie.title,
-				language: missing.code,
-				resultsFound: languageResults.length,
-				bestScore,
-				minScore
-			});
+			logger.debug(
+				{
+					movieId,
+					title: movie.title,
+					language: missing.code,
+					resultsFound: languageResults.length,
+					bestScore,
+					minScore
+				},
+				'[SubtitleImportService] No match meets minimum score for movie'
+			);
 		}
 
 		if (bestMatch) {
@@ -216,22 +242,28 @@ async function searchForMovie(
 					wasHashMatch: bestMatch.isHashMatch ?? false
 				});
 
-				logger.info('[SubtitleImportService] Downloaded subtitle for movie', {
-					movieId,
-					title: movie.title,
-					language: normalizedLanguage,
-					provider: bestMatch.providerName,
-					score: bestMatch.matchScore
-				});
+				logger.info(
+					{
+						movieId,
+						title: movie.title,
+						language: normalizedLanguage,
+						provider: bestMatch.providerName,
+						score: bestMatch.matchScore
+					},
+					'[SubtitleImportService] Downloaded subtitle for movie'
+				);
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error);
 				result.errors.push(errorMsg);
-				logger.warn('[SubtitleImportService] Failed to download subtitle for movie', {
-					movieId,
-					title: movie.title,
-					language: missing.code,
-					error: errorMsg
-				});
+				logger.warn(
+					{
+						movieId,
+						title: movie.title,
+						language: missing.code,
+						error: errorMsg
+					},
+					'[SubtitleImportService] Failed to download subtitle for movie'
+				);
 			}
 		}
 	}
@@ -255,16 +287,19 @@ async function searchForEpisode(
 	});
 
 	if (!episode) {
-		logger.debug('[SubtitleImportService] Episode not found', { episodeId });
+		logger.debug({ episodeId }, '[SubtitleImportService] Episode not found');
 		return result;
 	}
 
 	// Check if episode has explicitly disabled subtitles
 	if (episode.wantsSubtitlesOverride === false) {
-		logger.debug('[SubtitleImportService] Episode has subtitles disabled', {
-			episodeId,
-			title: episode.title
-		});
+		logger.debug(
+			{
+				episodeId,
+				title: episode.title
+			},
+			'[SubtitleImportService] Episode has subtitles disabled'
+		);
 		return result;
 	}
 
@@ -274,30 +309,39 @@ async function searchForEpisode(
 
 	// Skip if series doesn't exist, doesn't want subtitles, or has no language profile
 	if (!seriesData) {
-		logger.debug('[SubtitleImportService] Series not found for episode', {
-			episodeId,
-			seriesId: episode.seriesId
-		});
+		logger.debug(
+			{
+				episodeId,
+				seriesId: episode.seriesId
+			},
+			'[SubtitleImportService] Series not found for episode'
+		);
 		return result;
 	}
 
 	if (seriesData.wantsSubtitles === false) {
-		logger.debug('[SubtitleImportService] Series does not want subtitles', {
-			episodeId,
-			seriesId: seriesData.id,
-			seriesTitle: seriesData.title,
-			wantsSubtitles: seriesData.wantsSubtitles
-		});
+		logger.debug(
+			{
+				episodeId,
+				seriesId: seriesData.id,
+				seriesTitle: seriesData.title,
+				wantsSubtitles: seriesData.wantsSubtitles
+			},
+			'[SubtitleImportService] Series does not want subtitles'
+		);
 		return result;
 	}
 
 	if (!seriesData.monitored || !episode.monitored) {
-		logger.debug('[SubtitleImportService] Episode is not monitored; skipping subtitles', {
-			episodeId,
-			seriesTitle: seriesData.title,
-			season: episode.seasonNumber,
-			episode: episode.episodeNumber
-		});
+		logger.debug(
+			{
+				episodeId,
+				seriesTitle: seriesData.title,
+				season: episode.seasonNumber,
+				episode: episode.episodeNumber
+			},
+			'[SubtitleImportService] Episode is not monitored; skipping subtitles'
+		);
 		return result;
 	}
 
@@ -311,22 +355,28 @@ async function searchForEpisode(
 				.set({ languageProfileId: profileId })
 				.where(eq(series.id, seriesData.id));
 		} else {
-			logger.debug('[SubtitleImportService] Series has subtitles enabled but no profile', {
-				episodeId,
-				seriesId: seriesData.id,
-				seriesTitle: seriesData.title
-			});
+			logger.debug(
+				{
+					episodeId,
+					seriesId: seriesData.id,
+					seriesTitle: seriesData.title
+				},
+				'[SubtitleImportService] Series has subtitles enabled but no profile'
+			);
 			return result;
 		}
 	}
 
 	const profile = await profileService.getProfile(profileId);
 	if (!profile) {
-		logger.warn('[SubtitleImportService] Language profile not found for series', {
-			episodeId,
-			seriesId: seriesData.id,
-			profileId
-		});
+		logger.warn(
+			{
+				episodeId,
+				seriesId: seriesData.id,
+				profileId
+			},
+			'[SubtitleImportService] Language profile not found for series'
+		);
 		return result;
 	}
 
@@ -338,12 +388,15 @@ async function searchForEpisode(
 	// Check which subtitles are missing
 	const status = await profileService.getEpisodeSubtitleStatus(episodeId);
 	if (status.satisfied || status.missing.length === 0) {
-		logger.debug('[SubtitleImportService] Episode already has required subtitles', {
-			episodeId,
-			seriesTitle: seriesData.title,
-			season: episode.seasonNumber,
-			episode: episode.episodeNumber
-		});
+		logger.debug(
+			{
+				episodeId,
+				seriesTitle: seriesData.title,
+				season: episode.seasonNumber,
+				episode: episode.episodeNumber
+			},
+			'[SubtitleImportService] Episode already has required subtitles'
+		);
 		return result;
 	}
 
@@ -351,15 +404,18 @@ async function searchForEpisode(
 	const searchResults = await searchService.searchForEpisode(episodeId, languages);
 	const minScore = profile.minimumScore ?? DEFAULT_MIN_SCORE;
 
-	logger.info('[SubtitleImportService] Searching subtitles for episode', {
-		episodeId,
-		seriesTitle: seriesData.title,
-		season: episode.seasonNumber,
-		episode: episode.episodeNumber,
-		missingLanguages: status.missing.map((m) => m.code),
-		resultsFound: searchResults.results.length,
-		minScore
-	});
+	logger.info(
+		{
+			episodeId,
+			seriesTitle: seriesData.title,
+			season: episode.seasonNumber,
+			episode: episode.episodeNumber,
+			missingLanguages: status.missing.map((m) => m.code),
+			resultsFound: searchResults.results.length,
+			minScore
+		},
+		'[SubtitleImportService] Searching subtitles for episode'
+	);
 
 	// Download best match for each missing language
 	for (const missing of status.missing) {
@@ -375,16 +431,19 @@ async function searchForEpisode(
 		// Log when we have results but none meet minimum score
 		if (!bestMatch && languageResults.length > 0) {
 			const bestScore = Math.max(...languageResults.map((r) => r.matchScore));
-			logger.debug('[SubtitleImportService] No match meets minimum score for episode', {
-				episodeId,
-				seriesTitle: seriesData.title,
-				season: episode.seasonNumber,
-				episode: episode.episodeNumber,
-				language: missing.code,
-				resultsFound: languageResults.length,
-				bestScore,
-				minScore
-			});
+			logger.debug(
+				{
+					episodeId,
+					seriesTitle: seriesData.title,
+					season: episode.seasonNumber,
+					episode: episode.episodeNumber,
+					language: missing.code,
+					resultsFound: languageResults.length,
+					bestScore,
+					minScore
+				},
+				'[SubtitleImportService] No match meets minimum score for episode'
+			);
 		}
 
 		if (bestMatch) {
@@ -405,26 +464,32 @@ async function searchForEpisode(
 					wasHashMatch: bestMatch.isHashMatch ?? false
 				});
 
-				logger.info('[SubtitleImportService] Downloaded subtitle for episode', {
-					episodeId,
-					seriesTitle: seriesData.title,
-					season: episode.seasonNumber,
-					episode: episode.episodeNumber,
-					language: normalizedLanguage,
-					provider: bestMatch.providerName,
-					score: bestMatch.matchScore
-				});
+				logger.info(
+					{
+						episodeId,
+						seriesTitle: seriesData.title,
+						season: episode.seasonNumber,
+						episode: episode.episodeNumber,
+						language: normalizedLanguage,
+						provider: bestMatch.providerName,
+						score: bestMatch.matchScore
+					},
+					'[SubtitleImportService] Downloaded subtitle for episode'
+				);
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error);
 				result.errors.push(errorMsg);
-				logger.warn('[SubtitleImportService] Failed to download subtitle for episode', {
-					episodeId,
-					seriesTitle: seriesData.title,
-					season: episode.seasonNumber,
-					episode: episode.episodeNumber,
-					language: missing.code,
-					error: errorMsg
-				});
+				logger.warn(
+					{
+						episodeId,
+						seriesTitle: seriesData.title,
+						season: episode.seasonNumber,
+						episode: episode.episodeNumber,
+						language: missing.code,
+						error: errorMsg
+					},
+					'[SubtitleImportService] Failed to download subtitle for episode'
+				);
 			}
 		}
 	}
@@ -468,11 +533,14 @@ export async function searchSubtitlesForMediaBatch(
 	// Limit batch size to avoid overwhelming providers
 	const itemsToProcess = items.slice(0, maxItems);
 
-	logger.info('[SubtitleImportService] Starting batch subtitle search', {
-		totalItems: items.length,
-		processingItems: itemsToProcess.length,
-		delayMs
-	});
+	logger.info(
+		{
+			totalItems: items.length,
+			processingItems: itemsToProcess.length,
+			delayMs
+		},
+		'[SubtitleImportService] Starting batch subtitle search'
+	);
 
 	for (const item of itemsToProcess) {
 		try {
@@ -483,11 +551,14 @@ export async function searchSubtitlesForMediaBatch(
 		} catch (error) {
 			result.processed++;
 			result.errors++;
-			logger.warn('[SubtitleImportService] Batch search item failed', {
-				mediaType: item.mediaType,
-				mediaId: item.mediaId,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					mediaType: item.mediaType,
+					mediaId: item.mediaId,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[SubtitleImportService] Batch search item failed'
+			);
 		}
 
 		// Rate limit: delay between searches
@@ -496,11 +567,14 @@ export async function searchSubtitlesForMediaBatch(
 		}
 	}
 
-	logger.info('[SubtitleImportService] Batch subtitle search completed', {
-		processed: result.processed,
-		downloaded: result.downloaded,
-		errors: result.errors
-	});
+	logger.info(
+		{
+			processed: result.processed,
+			downloaded: result.downloaded,
+			errors: result.errors
+		},
+		'[SubtitleImportService] Batch subtitle search completed'
+	);
 
 	return result;
 }

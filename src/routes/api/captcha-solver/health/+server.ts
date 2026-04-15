@@ -2,12 +2,15 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getCaptchaSolver } from '$lib/server/captcha';
 import { logger } from '$lib/logging';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 /**
  * GET /api/captcha-solver/health
  * Returns health status and statistics for the captcha solver
  */
-export const GET: RequestHandler = async () => {
+export const GET: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
 	try {
 		const solver = getCaptchaSolver();
 		const health = solver.getHealth();
@@ -35,7 +38,9 @@ export const GET: RequestHandler = async () => {
  * DELETE /api/captcha-solver/health
  * Resets statistics and clears the cache
  */
-export const DELETE: RequestHandler = async () => {
+export const DELETE: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
 	try {
 		const solver = getCaptchaSolver();
 		solver.resetStats();

@@ -10,9 +10,22 @@
 
 	let { quality, mediaInfo = null, size = 'md' }: Props = $props();
 
-	const qualityText = $derived(getQualityDisplay(quality));
+	function sanitizeBadgeValue(value: string | null | undefined): string | null {
+		if (!value) return null;
+		const trimmed = value.trim();
+		if (!trimmed) return null;
+
+		const normalized = trimmed.toLowerCase();
+		if (normalized === 'unknown' || normalized === 'n/a' || normalized === 'na') {
+			return null;
+		}
+
+		return trimmed;
+	}
+
+	const qualityText = $derived(sanitizeBadgeValue(getQualityDisplay(quality)));
 	const hdrText = $derived(getHdrDisplay(mediaInfo));
-	const sourceText = $derived(quality?.source || null);
+	const sourceText = $derived(sanitizeBadgeValue(quality?.source));
 
 	const sizeClasses = {
 		sm: 'badge-xs text-xs',

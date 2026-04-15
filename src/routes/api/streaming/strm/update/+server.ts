@@ -15,17 +15,34 @@ import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ module: 'StrmUpdateAPI' });
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, locals }) => {
+	// Require authentication
+	if (!locals.user) {
+		return json(
+			{
+				success: false,
+				totalFiles: 0,
+				updatedFiles: 0,
+				errors: [{ path: 'global', error: 'Authentication required' }]
+			},
+			{ status: 401 }
+		);
+	}
+
 	try {
-		// Parse optional body for custom base URL
+		// Parse request body
 		let customBaseUrl: string | undefined;
+		let apiKey: string | undefined;
 		try {
 			const body = await request.json();
 			if (body.baseUrl && typeof body.baseUrl === 'string') {
 				customBaseUrl = body.baseUrl;
 			}
+			if (body.apiKey && typeof body.apiKey === 'string') {
+				apiKey = body.apiKey;
+			}
 		} catch {
-			// No body or invalid JSON - that's fine, we'll use default
+			// No body or invalid JSON - that's fine, we'll use defaults
 		}
 
 		// Determine the base URL to use
@@ -40,22 +57,25 @@ export const POST: RequestHandler = async ({ request }) => {
 			baseUrl = await getStreamingBaseUrl(requestBaseUrl);
 		}
 
-		logger.info('[StrmUpdateAPI] Starting bulk .strm update', { baseUrl });
+		logger.info({ baseUrl, hasApiKey: !!apiKey }, '[StrmUpdateAPI] Starting bulk .strm update');
 
-		// Perform the bulk update
-		const result = await strmService.bulkUpdateStrmUrls(baseUrl);
+		// Perform the bulk update with API key if provided
+		const result = await strmService.bulkUpdateStrmUrls(baseUrl, apiKey ? { apiKey } : undefined);
 
-		logger.info('[StrmUpdateAPI] Bulk update complete', {
-			success: result.success,
-			totalFiles: result.totalFiles,
-			updatedFiles: result.updatedFiles,
-			errors: result.errors.length
-		});
+		logger.info(
+			{
+				success: result.success,
+				totalFiles: result.totalFiles,
+				updatedFiles: result.updatedFiles,
+				errors: result.errors.length
+			},
+			'[StrmUpdateAPI] Bulk update complete'
+		);
 
 		return json(result);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
-		logger.error('[StrmUpdateAPI] Bulk update failed', { error: message });
+		logger.error({ error: message }, '[StrmUpdateAPI] Bulk update failed');
 
 		return json(
 			{

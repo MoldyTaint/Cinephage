@@ -2,6 +2,8 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
 import { downloadClientCreateSchema } from '$lib/validation/schemas';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { parseBody } from '$lib/server/api/validate.js';
 
 /**
  * GET /api/download-clients
@@ -20,58 +22,39 @@ export const GET: RequestHandler = async () => {
  * POST /api/download-clients
  * Create a new download client.
  */
-export const POST: RequestHandler = async ({ request }) => {
-	let data: unknown;
-	try {
-		data = await request.json();
-	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
-	}
+export const POST: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
 
-	const result = downloadClientCreateSchema.safeParse(data);
+	const { request } = event;
+	const validated = await parseBody(request, downloadClientCreateSchema);
 
-	if (!result.success) {
-		return json(
-			{
-				error: 'Validation failed',
-				details: result.error.flatten()
-			},
-			{ status: 400 }
-		);
-	}
-
-	const validated = result.data;
 	const manager = getDownloadClientManager();
 
-	try {
-		const created = await manager.createClient({
-			name: validated.name,
-			implementation: validated.implementation,
-			enabled: validated.enabled,
-			host: validated.host,
-			port: validated.port,
-			useSsl: validated.useSsl,
-			urlBase: validated.urlBase,
-			mountMode: validated.mountMode,
-			username: validated.username,
-			password: validated.password,
-			movieCategory: validated.movieCategory,
-			tvCategory: validated.tvCategory,
-			recentPriority: validated.recentPriority,
-			olderPriority: validated.olderPriority,
-			initialState: validated.initialState,
-			seedRatioLimit: validated.seedRatioLimit,
-			seedTimeLimit: validated.seedTimeLimit,
-			downloadPathLocal: validated.downloadPathLocal,
-			downloadPathRemote: validated.downloadPathRemote,
-			tempPathLocal: validated.tempPathLocal,
-			tempPathRemote: validated.tempPathRemote,
-			priority: validated.priority
-		});
+	const created = await manager.createClient({
+		name: validated.name,
+		implementation: validated.implementation,
+		enabled: validated.enabled,
+		host: validated.host,
+		port: validated.port,
+		useSsl: validated.useSsl,
+		urlBase: validated.urlBase,
+		mountMode: validated.mountMode,
+		username: validated.username,
+		password: validated.password,
+		movieCategory: validated.movieCategory,
+		tvCategory: validated.tvCategory,
+		recentPriority: validated.recentPriority,
+		olderPriority: validated.olderPriority,
+		initialState: validated.initialState,
+		seedRatioLimit: validated.seedRatioLimit,
+		seedTimeLimit: validated.seedTimeLimit,
+		downloadPathLocal: validated.downloadPathLocal,
+		downloadPathRemote: validated.downloadPathRemote,
+		tempPathLocal: validated.tempPathLocal,
+		tempPathRemote: validated.tempPathRemote,
+		priority: validated.priority
+	});
 
-		return json({ success: true, client: created });
-	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Unknown error';
-		return json({ error: message }, { status: 500 });
-	}
+	return json({ success: true, client: created });
 };

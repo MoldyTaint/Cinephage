@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getSubtitleSettingsService } from '$lib/server/subtitles/services/SubtitleSettingsService';
 import { subtitleSettingsUpdateSchema } from '$lib/validation/schemas';
+import { parseBody } from '$lib/server/api/validate.js';
 
 /**
  * GET /api/subtitles/settings
@@ -18,38 +19,10 @@ export const GET: RequestHandler = async () => {
  * Update subtitle system settings.
  */
 export const PUT: RequestHandler = async ({ request }) => {
-	let data: unknown;
-	try {
-		data = await request.json();
-	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
-	}
-
-	const result = subtitleSettingsUpdateSchema.safeParse(data);
-
-	if (!result.success) {
-		return json(
-			{
-				error: 'Validation failed',
-				details: result.error.flatten()
-			},
-			{ status: 400 }
-		);
-	}
-
-	try {
-		const settingsService = getSubtitleSettingsService();
-		const updated = await settingsService.update(result.data);
-		return json(updated);
-	} catch (error) {
-		return json(
-			{
-				error: 'Failed to update settings',
-				message: error instanceof Error ? error.message : 'Unknown error'
-			},
-			{ status: 500 }
-		);
-	}
+	const data = await parseBody(request, subtitleSettingsUpdateSchema);
+	const settingsService = getSubtitleSettingsService();
+	const updated = await settingsService.update(data);
+	return json(updated);
 };
 
 /**
@@ -57,17 +30,7 @@ export const PUT: RequestHandler = async ({ request }) => {
  * Reset all subtitle settings to defaults.
  */
 export const DELETE: RequestHandler = async () => {
-	try {
-		const settingsService = getSubtitleSettingsService();
-		const defaults = await settingsService.resetToDefaults();
-		return json(defaults);
-	} catch (error) {
-		return json(
-			{
-				error: 'Failed to reset settings',
-				message: error instanceof Error ? error.message : 'Unknown error'
-			},
-			{ status: 500 }
-		);
-	}
+	const settingsService = getSubtitleSettingsService();
+	const defaults = await settingsService.resetToDefaults();
+	return json(defaults);
 };

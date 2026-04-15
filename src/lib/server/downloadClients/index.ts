@@ -24,7 +24,6 @@ export { TransmissionClient } from './transmission/TransmissionClient';
 export { DelugeClient } from './deluge/DelugeClient';
 export { RTorrentClient } from './rtorrent/RTorrentClient';
 export { Aria2Client } from './aria2/Aria2Client';
-export { NZBMountClient } from './nzbmount/NZBMountClient';
 
 export type {
 	IDownloadClient,

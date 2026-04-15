@@ -23,7 +23,7 @@ import { eq, and, inArray } from 'drizzle-orm';
 import { isVideoFile, mediaInfoService } from './media-info.js';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser.js';
 import { EventEmitter } from 'events';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { DOWNLOAD } from '$lib/config/constants';
 import {
 	findOverlappingRootFolder,
@@ -36,17 +36,17 @@ import {
 	resolveTvEpisodeIdentifier
 } from './tv-episode-resolver.js';
 
+const logger = createChildLogger({ logDomain: 'scans' as const });
+
 /**
  * Patterns to filter out sample/extra files
  * Based on Radarr/Sonarr patterns
  */
 const EXCLUDED_PATTERNS = {
-	// Sample files
 	samples: [/\bsample\b/i],
-	// Folders to skip entirely
 	excludedFolders: [
-		/^\./, // Hidden folders
-		/^@/, // System folders like @eaDir (Synology)
+		/^\./,
+		/^@/,
 		/^#recycle$/i,
 		/^lost\+found$/i,
 		/^\$recycle\.bin$/i,
@@ -58,7 +58,7 @@ const EXCLUDED_PATTERNS = {
 		/^featurettes?$/i,
 		/^behind[\s._-]?the[\s._-]?scenes?$/i,
 		/^deleted[\s._-]?scenes?$/i,
-		/^specials?$/i, // Note: May need to handle /Season 00/ specially for TV
+		/^specials?$/i,
 		/^subs?$/i,
 		/^subtitles?$/i
 	]
@@ -135,37 +135,23 @@ export class DiskScanService extends EventEmitter {
 		return DiskScanService.instance;
 	}
 
-	/**
-	 * Check if a scan is currently running
-	 */
 	get scanning(): boolean {
 		return this.isScanning;
 	}
 
-	/**
-	 * Get current scan ID if scanning
-	 */
 	get activeScanId(): string | null {
 		return this.currentScanId;
 	}
 
-	/**
-	 * Check if a folder name should be excluded from scanning
-	 */
 	private shouldExcludeFolder(folderName: string): boolean {
 		return EXCLUDED_PATTERNS.excludedFolders.some((pattern) => pattern.test(folderName));
 	}
 
-	/**
-	 * Check if a file should be excluded (sample, extra, etc.)
-	 */
 	private shouldExcludeFile(fileName: string, filePath: string): boolean {
-		// Check samples
 		if (EXCLUDED_PATTERNS.samples.some((pattern) => pattern.test(fileName))) {
 			return true;
 		}
 
-		// Check if in excluded folder
 		const pathParts = filePath.split('/');
 		for (const part of pathParts) {
 			if (this.shouldExcludeFolder(part)) {
@@ -176,9 +162,6 @@ export class DiskScanService extends EventEmitter {
 		return false;
 	}
 
-	/**
-	 * Recursively discover video files in a directory
-	 */
 	private async discoverFiles(
 		rootPath: string,
 		currentPath: string = rootPath
@@ -192,31 +175,25 @@ export class DiskScanService extends EventEmitter {
 				const fullPath = join(currentPath, entry.name);
 
 				if (entry.isDirectory()) {
-					// Skip excluded folders
 					if (this.shouldExcludeFolder(entry.name)) {
 						continue;
 					}
 
-					// Recurse into subdirectory
 					const subFiles = await this.discoverFiles(rootPath, fullPath);
 					files.push(...subFiles);
 				} else if (entry.isFile()) {
-					// Check if it's a video file
 					if (!isVideoFile(entry.name)) {
 						continue;
 					}
 
-					// Check if should be excluded
 					const relativePath = relative(rootPath, fullPath);
 					if (this.shouldExcludeFile(entry.name, relativePath)) {
 						continue;
 					}
 
-					// Get file stats
 					try {
 						const stats = await stat(fullPath);
 
-						// Skip files below minimum size (except .strm streaming placeholders)
 						if (stats.size < DOWNLOAD.MIN_SCAN_SIZE_BYTES && !entry.name.endsWith('.strm')) {
 							continue;
 						}
@@ -229,14 +206,15 @@ export class DiskScanService extends EventEmitter {
 							parentFolder: dirname(relativePath) || '.'
 						});
 					} catch (statError) {
-						logger.warn('[DiskScan] Could not stat file', {
-							fullPath,
-							error: statError instanceof Error ? statError.message : String(statError)
-						});
+						logger.warn(
+							{
+								fullPath,
+								error: statError instanceof Error ? statError.message : String(statError)
+							},
+							'[DiskScan] Could not stat file'
+						);
 					}
 				} else if (entry.isSymbolicLink()) {
-					// Include symlinked files (e.g., NZB-Mount/rclone strategies),
-					// but avoid recursing through symlinked directories.
 					if (!isVideoFile(entry.name)) {
 						continue;
 					}
@@ -252,7 +230,6 @@ export class DiskScanService extends EventEmitter {
 							continue;
 						}
 
-						// Skip files below minimum size (except .strm streaming placeholders)
 						if (stats.size < DOWNLOAD.MIN_SCAN_SIZE_BYTES && !entry.name.endsWith('.strm')) {
 							continue;
 						}
@@ -265,27 +242,26 @@ export class DiskScanService extends EventEmitter {
 							parentFolder: dirname(relativePath) || '.'
 						});
 					} catch (statError) {
-						logger.warn('[DiskScan] Could not stat symlinked file', {
-							fullPath,
-							error: statError instanceof Error ? statError.message : String(statError)
-						});
+						logger.warn(
+							{
+								fullPath,
+								error: statError instanceof Error ? statError.message : String(statError)
+							},
+							'[DiskScan] Could not stat symlinked file'
+						);
 					}
 				}
 			}
 		} catch (error) {
 			logger.error(
-				'[DiskScan] Error reading directory',
-				error instanceof Error ? error : undefined,
-				{ currentPath }
+				{ err: error instanceof Error ? error : undefined, ...{ currentPath } },
+				'[DiskScan] Error reading directory'
 			);
 		}
 
 		return files;
 	}
 
-	/**
-	 * Scan a root folder for media files
-	 */
 	async scanRootFolder(rootFolderId: string): Promise<ScanResult> {
 		if (this.isScanning) {
 			throw new Error('A scan is already in progress');
@@ -294,7 +270,6 @@ export class DiskScanService extends EventEmitter {
 		const startTime = Date.now();
 		this.isScanning = true;
 
-		// Get root folder details
 		const [rootFolder] = await db
 			.select()
 			.from(rootFolders)
@@ -305,7 +280,6 @@ export class DiskScanService extends EventEmitter {
 			throw new Error(`Root folder not found: ${rootFolderId}`);
 		}
 
-		// Create scan history record
 		const [scanRecord] = await db
 			.insert(libraryScanHistory)
 			.values({
@@ -333,19 +307,14 @@ export class DiskScanService extends EventEmitter {
 			this.emit('progress', progress);
 			await this.assertNoRootFolderOverlap(rootFolderId, rootFolder.path);
 
-			// Discover files
 			const discoveredFiles = await this.discoverFiles(rootFolder.path);
 			progress.filesFound = discoveredFiles.length;
 			progress.phase = 'processing';
 			this.emit('progress', progress);
 
-			// Get existing files from database
 			const existingFiles = await this.getExistingFiles(rootFolderId, rootFolder.mediaType);
-
-			// Track which files we've seen
 			const seenPaths = new Set<string>();
 
-			// Process each discovered file
 			for (const file of discoveredFiles) {
 				progress.currentFile = file.relativePath;
 				this.emit('progress', progress);
@@ -354,23 +323,19 @@ export class DiskScanService extends EventEmitter {
 				const existingFile = existingFiles.get(file.path);
 
 				if (!existingFile) {
-					// New file - try to auto-link if TV, otherwise add to unmatched
 					let wasLinked = false;
 
 					if (rootFolder.mediaType === 'tv') {
-						// Try to auto-link TV file to known series
 						wasLinked = await this.tryAutoLinkTvFile(file, rootFolderId, rootFolder.path);
 					}
 
 					if (!wasLinked) {
-						// Add to unmatched for MediaMatcherService to handle
 						await this.addUnmatchedFile(file, rootFolderId, rootFolder.mediaType);
 						progress.unmatchedCount++;
 					}
 
 					progress.filesAdded++;
 				} else if (existingFile.size !== file.size) {
-					// File changed - update media info
 					await this.updateFileMediaInfo(
 						existingFile.id,
 						file,
@@ -384,7 +349,6 @@ export class DiskScanService extends EventEmitter {
 				this.emit('progress', progress);
 			}
 
-			// Find removed files
 			for (const [path, existingFile] of existingFiles) {
 				if (!seenPaths.has(path)) {
 					await this.removeFile(existingFile.id, rootFolder.mediaType);
@@ -392,11 +356,8 @@ export class DiskScanService extends EventEmitter {
 				}
 			}
 
-			// Reconcile denormalized hasFile flags and cached counts with actual file records.
-			// This keeps manual scans and watcher-triggered scans consistent with filesystem reality.
 			await this.reconcileMediaPresence(rootFolderId, rootFolder.mediaType);
 
-			// Update scan record
 			await db
 				.update(libraryScanHistory)
 				.set({
@@ -428,7 +389,6 @@ export class DiskScanService extends EventEmitter {
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-			// Update scan record with error
 			await db
 				.update(libraryScanHistory)
 				.set({
@@ -461,9 +421,6 @@ export class DiskScanService extends EventEmitter {
 		}
 	}
 
-	/**
-	 * Split large IN-list operations into safe chunks for SQLite.
-	 */
 	private chunkArray<T>(values: T[], chunkSize = DB_CHUNK_SIZE): T[][] {
 		if (values.length === 0) return [];
 		const chunks: T[][] = [];
@@ -490,11 +447,6 @@ export class DiskScanService extends EventEmitter {
 		}
 	}
 
-	/**
-	 * Reconcile hasFile booleans with current file records.
-	 * This repairs stale state caused by external filesystem changes and keeps
-	 * Missing Content task inputs accurate.
-	 */
 	private async reconcileMediaPresence(rootFolderId: string, mediaType: string): Promise<void> {
 		if (mediaType === 'movie') {
 			await this.reconcileMoviePresence(rootFolderId);
@@ -503,13 +455,9 @@ export class DiskScanService extends EventEmitter {
 
 		if (mediaType === 'tv') {
 			await this.reconcileEpisodePresence(rootFolderId);
-			return;
 		}
 	}
 
-	/**
-	 * Reconcile movie hasFile flags from movieFiles rows.
-	 */
 	private async reconcileMoviePresence(rootFolderId: string): Promise<void> {
 		const moviesInFolder = await db
 			.select({ id: movies.id, hasFile: movies.hasFile })
@@ -554,10 +502,13 @@ export class DiskScanService extends EventEmitter {
 		}
 
 		if (changedMovieIds.length > 0) {
-			logger.info('[DiskScan] Reconciled movie file state', {
-				rootFolderId,
-				changedMovies: changedMovieIds.length
-			});
+			logger.info(
+				{
+					rootFolderId,
+					changedMovies: changedMovieIds.length
+				},
+				'[DiskScan] Reconciled movie file state'
+			);
 
 			for (const movieId of changedMovieIds) {
 				libraryMediaEvents.emitMovieUpdated(movieId);
@@ -565,9 +516,6 @@ export class DiskScanService extends EventEmitter {
 		}
 	}
 
-	/**
-	 * Reconcile episode hasFile flags from episodeFiles rows and refresh series/season counts.
-	 */
 	private async reconcileEpisodePresence(rootFolderId: string): Promise<void> {
 		const seriesInFolder = await db
 			.select({ id: series.id })
@@ -636,17 +584,19 @@ export class DiskScanService extends EventEmitter {
 				.where(inArray(episodes.id, idChunk));
 		}
 
-		// Always refresh cached counts for series in this root folder.
 		for (const seriesId of seriesIds) {
 			await this.updateSeriesAndSeasonStats(seriesId);
 		}
 
 		if (episodeIdsToSetTrue.length > 0 || episodeIdsToSetFalse.length > 0) {
-			logger.info('[DiskScan] Reconciled episode file state', {
-				rootFolderId,
-				episodesSetTrue: episodeIdsToSetTrue.length,
-				episodesSetFalse: episodeIdsToSetFalse.length
-			});
+			logger.info(
+				{
+					rootFolderId,
+					episodesSetTrue: episodeIdsToSetTrue.length,
+					episodesSetFalse: episodeIdsToSetFalse.length
+				},
+				'[DiskScan] Reconciled episode file state'
+			);
 		}
 
 		for (const seriesId of touchedSeriesIds) {
@@ -654,9 +604,6 @@ export class DiskScanService extends EventEmitter {
 		}
 	}
 
-	/**
-	 * Scan all root folders
-	 */
 	async scanAll(): Promise<ScanResult[]> {
 		const allRootFolders = await db.select().from(rootFolders);
 		const results: ScanResult[] = [];
@@ -667,9 +614,8 @@ export class DiskScanService extends EventEmitter {
 				results.push(result);
 			} catch (error) {
 				logger.error(
-					'[DiskScan] Error scanning folder',
-					error instanceof Error ? error : undefined,
-					{ folderPath: folder.path }
+					{ err: error instanceof Error ? error : undefined, ...{ folderPath: folder.path } },
+					'[DiskScan] Error scanning folder'
 				);
 			}
 		}
@@ -677,9 +623,6 @@ export class DiskScanService extends EventEmitter {
 		return results;
 	}
 
-	/**
-	 * Get existing files from database for a root folder
-	 */
 	private async getExistingFiles(
 		rootFolderId: string,
 		mediaType: string
@@ -692,7 +635,6 @@ export class DiskScanService extends EventEmitter {
 		>();
 
 		if (mediaType === 'movie') {
-			// Get movie files via movies table
 			const moviesInFolder = await db
 				.select({ id: movies.id, path: movies.path, scoringProfileId: movies.scoringProfileId })
 				.from(movies)
@@ -710,7 +652,6 @@ export class DiskScanService extends EventEmitter {
 					.from(movieFiles)
 					.where(inArray(movieFiles.movieId, movieIds));
 
-				// Get root folder path
 				const [folder] = await db
 					.select({ path: rootFolders.path })
 					.from(rootFolders)
@@ -732,7 +673,6 @@ export class DiskScanService extends EventEmitter {
 				}
 			}
 		} else {
-			// Get episode files via series table
 			const seriesInFolder = await db
 				.select({ id: series.id, path: series.path, scoringProfileId: series.scoringProfileId })
 				.from(series)
@@ -772,7 +712,6 @@ export class DiskScanService extends EventEmitter {
 			}
 		}
 
-		// Also include unmatched files
 		const unmatched = await db
 			.select({ id: unmatchedFiles.id, path: unmatchedFiles.path, size: unmatchedFiles.size })
 			.from(unmatchedFiles)
@@ -790,16 +729,11 @@ export class DiskScanService extends EventEmitter {
 		return existingMap;
 	}
 
-	/**
-	 * Try to auto-link a TV file to a known series
-	 * Returns true if successfully linked, false if should be added to unmatched
-	 */
 	private async tryAutoLinkTvFile(
 		file: DiscoveredFile,
 		rootFolderId: string,
 		rootFolderPath: string
 	): Promise<boolean> {
-		// Get all series in this root folder
 		const seriesInFolder = await db
 			.select({
 				id: series.id,
@@ -810,12 +744,10 @@ export class DiskScanService extends EventEmitter {
 			.from(series)
 			.where(eq(series.rootFolderId, rootFolderId));
 
-		// Check if this file is inside any series folder
 		for (const s of seriesInFolder) {
 			const seriesFullPath = join(rootFolderPath, s.path);
 
 			if (file.path.startsWith(seriesFullPath + '/')) {
-				// File is inside this series folder!
 				const relativePath = relative(seriesFullPath, file.path);
 				const fileName = getMediaParseStem(file.path);
 				const parsed = this.parser.parse(fileName);
@@ -827,13 +759,10 @@ export class DiskScanService extends EventEmitter {
 				});
 
 				if (!identifier) {
-					logger.debug('[DiskScan] Could not resolve episode mapping from filename', {
-						fileName
-					});
-					return false; // Fall back to unmatched
+					logger.debug({ fileName }, '[DiskScan] Could not resolve episode mapping from filename');
+					return false;
 				}
 
-				// Check if episode_file already exists
 				const existingFile = await db
 					.select()
 					.from(episodeFiles)
@@ -841,8 +770,7 @@ export class DiskScanService extends EventEmitter {
 					.limit(1);
 
 				if (existingFile.length > 0) {
-					// Already linked, skip
-					logger.debug('[DiskScan] File already linked', { relativePath });
+					logger.debug({ relativePath }, '[DiskScan] File already linked');
 					return true;
 				}
 
@@ -852,18 +780,18 @@ export class DiskScanService extends EventEmitter {
 				const seasonNum = matchingEpisodes[0]?.seasonNumber;
 				const episodeNums = matchingEpisodes.map((ep) => ep.episodeNumber);
 
-				// If no episodes found in DB, we can't link this file - let it become unmatched
-				// This prevents creating orphaned episode_files with empty episodeIds
 				if (episodeIds.length === 0 || seasonNum === undefined) {
-					logger.debug('[DiskScan] No matching episodes in DB for file', {
-						fileName,
-						identifier,
-						seriesId: s.id
-					});
-					return false; // Fall back to unmatched
+					logger.debug(
+						{
+							fileName,
+							identifier,
+							seriesId: s.id
+						},
+						'[DiskScan] No matching episodes in DB for file'
+					);
+					return false;
 				}
 
-				// Determine quality - for .strm files, we only know it's streaming (quality determined at playback)
 				const isStrmFile = file.path.endsWith('.strm');
 				const quality = isStrmFile
 					? {
@@ -879,7 +807,6 @@ export class DiskScanService extends EventEmitter {
 							hdr: parsed.hdr ?? undefined
 						};
 
-				// Create episode_file record
 				await db.insert(episodeFiles).values({
 					seriesId: s.id,
 					seasonNumber: seasonNum,
@@ -892,52 +819,60 @@ export class DiskScanService extends EventEmitter {
 					quality
 				});
 
-				// Update hasFile on matched episodes
 				for (const epId of episodeIds) {
 					await db.update(episodes).set({ hasFile: true }).where(eq(episodes.id, epId));
 				}
 
-				// Update series and season stats
 				await this.updateSeriesAndSeasonStats(s.id);
 
-				logger.info('[DiskScan] Auto-linked episode file', {
-					relativePath,
-					season: seasonNum,
-					episodes: episodeNums
-				});
+				logger.info(
+					{
+						relativePath,
+						season: seasonNum,
+						episodes: episodeNums
+					},
+					'[DiskScan] Auto-linked episode file'
+				);
 				return true;
 			}
 		}
 
-		return false; // File not in any known series folder
+		return false;
 	}
 
-	/**
-	 * Update series and season episode counts (similar to ImportService)
-	 */
 	private async updateSeriesAndSeasonStats(seriesId: string): Promise<void> {
 		const allEpisodes = await db.select().from(episodes).where(eq(episodes.seriesId, seriesId));
 
-		// Exclude specials (season 0) from series-level counts
-		const regularEpisodes = allEpisodes.filter((ep) => ep.seasonNumber !== 0);
-		const regularEpisodesWithFiles = regularEpisodes.filter((ep) => ep.hasFile);
+		const [seriesData] = await db
+			.select({ monitorSpecials: series.monitorSpecials })
+			.from(series)
+			.where(eq(series.id, seriesId));
+		const monitorSpecials = seriesData?.monitorSpecials ?? false;
 
-		// Update series
+		const today = new Date().toISOString().split('T')[0];
+		const isAired = (episode: typeof episodes.$inferSelect) =>
+			episode.airDate && episode.airDate !== '' && episode.airDate <= today;
+
+		const episodesForStats = allEpisodes.filter(
+			(episode) => isAired(episode) && (monitorSpecials || episode.seasonNumber !== 0)
+		);
+		const episodesWithFiles = episodesForStats.filter((episode) => episode.hasFile);
+
 		await db
 			.update(series)
 			.set({
-				episodeFileCount: regularEpisodesWithFiles.length,
-				episodeCount: regularEpisodes.length
+				episodeFileCount: episodesWithFiles.length,
+				episodeCount: episodesForStats.length
 			})
 			.where(eq(series.id, seriesId));
 
-		// Group by season and update each
 		const seasonMap = new Map<number, { total: number; withFiles: number }>();
-		for (const ep of allEpisodes) {
-			const stats = seasonMap.get(ep.seasonNumber) || { total: 0, withFiles: 0 };
+		for (const episode of allEpisodes) {
+			if (!isAired(episode)) continue;
+			const stats = seasonMap.get(episode.seasonNumber) || { total: 0, withFiles: 0 };
 			stats.total++;
-			if (ep.hasFile) stats.withFiles++;
-			seasonMap.set(ep.seasonNumber, stats);
+			if (episode.hasFile) stats.withFiles++;
+			seasonMap.set(episode.seasonNumber, stats);
 		}
 
 		for (const [seasonNumber, stats] of seasonMap) {
@@ -951,15 +886,11 @@ export class DiskScanService extends EventEmitter {
 		}
 	}
 
-	/**
-	 * Add a new file to the unmatched files table
-	 */
 	private async addUnmatchedFile(
 		file: DiscoveredFile,
 		rootFolderId: string,
 		mediaType: string
 	): Promise<void> {
-		// Parse the filename to extract info
 		const fileName = getMediaParseStem(file.path);
 		const parsed = this.parser.parse(fileName);
 		const identifier = resolveTvEpisodeIdentifier({
@@ -976,20 +907,16 @@ export class DiskScanService extends EventEmitter {
 			parsedYear: parsed.year || null,
 			parsedSeason: identifier?.numbering === 'standard' ? identifier.seasonNumber : null,
 			parsedEpisode: identifier?.numbering === 'standard' ? identifier.episodeNumbers[0] : null,
-			reason: 'no_match' // Will be updated by MediaMatcherService
+			reason: 'no_match'
 		});
 	}
 
-	/**
-	 * Update media info for an existing file
-	 */
 	private async updateFileMediaInfo(
 		fileId: string,
 		file: DiscoveredFile,
 		mediaType: string,
 		allowStrmProbe = true
 	): Promise<void> {
-		// Extract fresh media info
 		const mediaInfo = await mediaInfoService.extractMediaInfo(file.path, { allowStrmProbe });
 
 		if (mediaType === 'movie') {
@@ -1011,9 +938,6 @@ export class DiskScanService extends EventEmitter {
 		}
 	}
 
-	/**
-	 * Remove a file record from the database
-	 */
 	private async removeFile(fileId: string, mediaType: string): Promise<void> {
 		if (mediaType === 'movie') {
 			await db.delete(movieFiles).where(eq(movieFiles.id, fileId));
@@ -1021,7 +945,6 @@ export class DiskScanService extends EventEmitter {
 			await db.delete(episodeFiles).where(eq(episodeFiles.id, fileId));
 		}
 
-		// Also try to remove from unmatched (in case it was there)
 		await db.delete(unmatchedFiles).where(eq(unmatchedFiles.id, fileId));
 	}
 }

@@ -4,7 +4,9 @@
  * Fetches movies from a specific TMDb list by ID
  * Uses the TMDb /list/{list_id} endpoint
  */
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'monitoring' as const });
 import { tmdb } from '$lib/server/tmdb.js';
 import type { ExternalListProvider, ExternalListItem, ExternalListResult } from './types.js';
 
@@ -93,10 +95,13 @@ export class TmdbListProvider implements ExternalListProvider {
 			};
 		}
 
-		logger.info('[TmdbListProvider] Starting TMDb list fetch', {
-			listId: normalizedListId,
-			mediaType
-		});
+		logger.info(
+			{
+				listId: normalizedListId,
+				mediaType
+			},
+			'[TmdbListProvider] Starting TMDb list fetch'
+		);
 
 		try {
 			// TMDb list API doesn't have pagination in the same way as discover
@@ -109,7 +114,7 @@ export class TmdbListProvider implements ExternalListProvider {
 			)) as TmdbListResponse;
 
 			if (!response.items || response.items.length === 0) {
-				logger.info('[TmdbListProvider] List is empty', { listId: normalizedListId });
+				logger.info({ listId: normalizedListId }, '[TmdbListProvider] List is empty');
 				return {
 					items: [],
 					totalCount: 0,
@@ -117,11 +122,14 @@ export class TmdbListProvider implements ExternalListProvider {
 				};
 			}
 
-			logger.info('[TmdbListProvider] Fetched list', {
-				listId: normalizedListId,
-				listName: response.name,
-				itemCount: response.items.length
-			});
+			logger.info(
+				{
+					listId: normalizedListId,
+					listName: response.name,
+					itemCount: response.items.length
+				},
+				'[TmdbListProvider] Fetched list'
+			);
 
 			for (const item of response.items) {
 				// Filter by media type if specified (skip filter if mediaType is empty string)
@@ -135,11 +143,14 @@ export class TmdbListProvider implements ExternalListProvider {
 				}
 			}
 
-			logger.info('[TmdbListProvider] Completed TMDb list fetch', {
-				listId: normalizedListId,
-				totalItems: items.length,
-				filteredFrom: response.items.length
-			});
+			logger.info(
+				{
+					listId: normalizedListId,
+					totalItems: items.length,
+					filteredFrom: response.items.length
+				},
+				'[TmdbListProvider] Completed TMDb list fetch'
+			);
 
 			return {
 				items,
@@ -148,10 +159,13 @@ export class TmdbListProvider implements ExternalListProvider {
 			};
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error);
-			logger.error('[TmdbListProvider] Failed to fetch TMDb list', {
-				error: errorMessage,
-				listId: normalizedListId
-			});
+			logger.error(
+				{
+					error: errorMessage,
+					listId: normalizedListId
+				},
+				'[TmdbListProvider] Failed to fetch TMDb list'
+			);
 
 			return {
 				items,
@@ -176,7 +190,7 @@ export class TmdbListProvider implements ExternalListProvider {
 		// Use title for movies, name for TV shows
 		const title = item.title || item.name;
 		if (!title) {
-			logger.debug('[TmdbListProvider] Item missing title', { id: item.id });
+			logger.debug({ id: item.id }, '[TmdbListProvider] Item missing title');
 			return null;
 		}
 

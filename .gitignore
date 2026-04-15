@@ -8,6 +8,9 @@ node_modules
 /.svelte-kit
 /build
 
+# Abandoned paraglide directory (Vite plugin now outputs to src/lib/paraglide/)
+/src/paraglide/
+
 # OS
 .DS_Store
 Thumbs.db
@@ -19,6 +22,10 @@ Thumbs.db
 !.env.docker.example
 !.env.test
 
+# Secrets
+.auth-secret
+**/.auth-secret
+
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
@@ -27,17 +34,25 @@ vite.config.ts.timestamp-*
 *.db
 *.db-*
 
-# Logs
-logs/
+# Runtime logs and local app data
+/logs/
+/data/logs/
+/config/
 *.log
 
 # Claude Code local settings
 .claude/
+claude.md
 CLAUDE.md
 .mcp.json
 
 # OpenCode local settings
 .opencode/
+opencode.json
+opencode
+opencode.md
+OPENCODE.md
+AGENTS.md
 
 # Backup files
 *.bak
@@ -63,6 +78,7 @@ temp/
 
 # Build artifacts
 dist/
+coverage/
 *.tsbuildinfo
 
 # Local environment overrides
@@ -75,10 +91,10 @@ result
 # Local compose files
 cine-local.yaml
 
-# Docs
-docs/notes/
-
-#Local test folders
+# Local test folders
 data/indexers/definitions/custom/
 data/external-lists/presets/custom/
+data/reports/
 
+# Local notes
+docs/notes/

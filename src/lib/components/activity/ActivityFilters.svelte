@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
+	import type { Snippet } from 'svelte';
+	import * as m from '$lib/paraglide/messages.js';
 	import type { ActivityFilters, FilterOptions } from '$lib/types/activity';
 	import {
 		Filter,
@@ -17,11 +20,26 @@
 	interface Props {
 		filters: ActivityFilters;
 		filterOptions: FilterOptions;
+		statusContext?: 'active' | 'history';
 		onFiltersChange: (filters: ActivityFilters) => void;
 		onClearFilters: () => void;
+		showActiveFilters?: boolean;
+		showHistoryControls?: boolean;
+		activeFiltersContent?: Snippet;
+		historyControlsContent?: Snippet;
 	}
 
-	let { filters, filterOptions, onFiltersChange, onClearFilters }: Props = $props();
+	let {
+		filters,
+		filterOptions,
+		statusContext = 'history',
+		onFiltersChange,
+		onClearFilters,
+		showActiveFilters = false,
+		showHistoryControls = false,
+		activeFiltersContent,
+		historyControlsContent
+	}: Props = $props();
 
 	let isExpanded = $state(false);
 	let hasActiveFilters = $derived(
@@ -38,27 +56,94 @@
 			filters.search
 	);
 
+	// ── Debounced text inputs ────────────────────────────────────────────
+	// Search and releaseGroup are text inputs that fire on every keystroke.
+	// Debounce them so the expensive goto() + server re-fetch only fires
+	// after the user stops typing for 300ms.
+	const DEBOUNCE_MS = 300;
+	let searchValue = $state('');
+	let releaseGroupValue = $state('');
+	let searchTimer: ReturnType<typeof setTimeout> | undefined;
+	let releaseGroupTimer: ReturnType<typeof setTimeout> | undefined;
+
+	// Track the last external filter value so we only reset local state
+	// when the parent actually changes the filter (tab switch, clear, etc.),
+	// not when our own debounced callback round-trips through props.
+	let lastExternalSearch = $state('');
+	let lastExternalReleaseGroup = $state('');
+
+	$effect(() => {
+		const incoming = filters.search || '';
+		if (incoming !== lastExternalSearch) {
+			lastExternalSearch = incoming;
+			searchValue = incoming;
+		}
+	});
+	$effect(() => {
+		const incoming = filters.releaseGroup || '';
+		if (incoming !== lastExternalReleaseGroup) {
+			lastExternalReleaseGroup = incoming;
+			releaseGroupValue = incoming;
+		}
+	});
+
+	function onSearchInput(value: string) {
+		searchValue = value;
+		clearTimeout(searchTimer);
+		searchTimer = setTimeout(() => {
+			onFiltersChange({ ...filters, search: value || undefined });
+		}, DEBOUNCE_MS);
+	}
+
+	function onReleaseGroupInput(value: string) {
+		releaseGroupValue = value;
+		clearTimeout(releaseGroupTimer);
+		releaseGroupTimer = setTimeout(() => {
+			onFiltersChange({ ...filters, releaseGroup: value || undefined });
+		}, DEBOUNCE_MS);
+	}
+
+	onDestroy(() => {
+		clearTimeout(searchTimer);
+		clearTimeout(releaseGroupTimer);
+	});
+
 	// Quick date presets
 	const datePresets = [
-		{ label: 'Today', days: 0 },
-		{ label: 'Last 7 days', days: 7 },
-		{ label: 'Last 30 days', days: 30 },
-		{ label: 'Last 90 days', days: 90 }
+		{ label: m.activity_filters_today(), days: 0 },
+		{ label: m.activity_filters_last7Days(), days: 7 },
+		{ label: m.activity_filters_last30Days(), days: 30 },
+		{ label: m.activity_filters_last90Days(), days: 90 }
 	];
 
+	const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
+	function toIsoDate(epochMs: number): string {
+		return new Date(epochMs).toISOString().split('T')[0];
+	}
+
+	function getDatePresetRange(days: number): { startDate: string; endDate: string } {
+		const now = Date.now();
+
+		return {
+			startDate: toIsoDate(now - days * DAY_IN_MS),
+			endDate: toIsoDate(now)
+		};
+	}
+
 	function applyDatePreset(days: number) {
-		const end = $state(new Date());
-		const start = $state(new Date());
-		start.setDate(start.getDate() - days);
-		// For "Today", set start to beginning of day
-		if (days === 0) {
-			start.setHours(0, 0, 0, 0);
-		}
+		const range = getDatePresetRange(days);
 		onFiltersChange({
 			...filters,
-			startDate: start.toISOString().split('T')[0],
-			endDate: end.toISOString().split('T')[0]
+			startDate: range.startDate,
+			endDate: range.endDate
 		});
+	}
+
+	function isDatePresetActive(days: number): boolean {
+		if (!filters.startDate || !filters.endDate) return false;
+		const range = getDatePresetRange(days);
+		return filters.startDate === range.startDate && filters.endDate === range.endDate;
 	}
 
 	function clearDateRange() {
@@ -76,109 +161,121 @@
 		});
 	}
 
-	// Status options with colors
-	const statusOptions = [
-		{ value: 'all', label: 'All', color: '' },
-		{ value: 'success', label: 'Success', color: 'badge-success' },
-		{ value: 'downloading', label: 'Downloading', color: 'badge-info' },
-		{ value: 'paused', label: 'Paused', color: 'badge-warning' },
-		{ value: 'failed', label: 'Failed', color: 'badge-error' },
-		{ value: 'removed', label: 'Removed', color: 'badge-ghost' },
-		{ value: 'rejected', label: 'Rejected', color: 'badge-warning' },
-		{ value: 'no_results', label: 'No Results', color: 'badge-ghost' }
-	];
+	const activeStatusOptions = [
+		{ value: 'all', label: m.common_all() },
+		{ value: 'downloading', label: m.status_downloading() },
+		{ value: 'seeding', label: m.status_seeding() },
+		{ value: 'paused', label: m.status_paused() },
+		{ value: 'failed', label: m.status_failed() }
+	] as const;
+
+	const historyStatusOptions = [
+		{ value: 'all', label: m.common_all(), color: '' },
+		{ value: 'success', label: m.status_success(), color: 'badge-success' },
+		{ value: 'failed', label: m.status_failed(), color: 'badge-error' },
+		{ value: 'search_error', label: m.status_searchError(), color: 'badge-warning' },
+		{ value: 'removed', label: m.status_removed(), color: 'badge-ghost' },
+		{ value: 'rejected', label: m.status_rejected(), color: 'badge-warning' },
+		{ value: 'no_results', label: m.status_noResults(), color: 'badge-ghost' }
+	] as const;
+
+	const statusOptions = $derived(
+		statusContext === 'active' ? activeStatusOptions : historyStatusOptions
+	);
 
 	// Protocol options
 	const protocolOptions = [
-		{ value: 'all', label: 'All' },
-		{ value: 'torrent', label: 'Torrent' },
-		{ value: 'usenet', label: 'Usenet' },
-		{ value: 'streaming', label: 'Streaming' }
+		{ value: 'all', label: m.common_all() },
+		{ value: 'torrent', label: m.activity_filters_torrent() },
+		{ value: 'usenet', label: m.activity_filters_usenet() },
+		{ value: 'streaming', label: m.activity_filters_streaming() }
 	];
 
 	// Resolution options
 	const resolutionOptions = ['4K', '2160p', '1080p', '720p', '480p', 'SD'];
 </script>
 
-<div class="card bg-base-200">
-	<div class="card-body p-4">
-		<!-- Header with toggle -->
-		<div class="flex items-center justify-between">
-			<div class="flex items-center gap-2">
-				<Filter class="h-5 w-5" />
-				<span class="font-medium">Filters</span>
-				{#if hasActiveFilters}
-					<span class="badge badge-sm badge-primary">Active</span>
-				{/if}
-			</div>
-			<div class="flex items-center gap-2">
-				{#if hasActiveFilters}
-					<button class="btn btn-ghost btn-xs" onclick={onClearFilters}>
-						<X class="h-3 w-3" />
-						Clear All
-					</button>
-				{/if}
-				<button
-					class="btn gap-1 btn-sm"
-					onclick={() => (isExpanded = !isExpanded)}
-					aria-label={isExpanded ? 'Collapse filters' : 'Expand filters'}
-				>
-					{#if isExpanded}
-						<span>Less Filters</span>
-						<ChevronUp class="h-4 w-4" />
-					{:else}
-						<span>More Filters</span>
-						<ChevronDown class="h-4 w-4" />
-					{/if}
+<div class="rounded-xl border border-base-300 bg-base-200 p-4">
+	<div class="flex items-center justify-between gap-2">
+		<div class="flex items-center gap-2">
+			<Filter class="h-5 w-5" />
+			<span class="font-medium">{m.activity_filters_title()}</span>
+			{#if hasActiveFilters}
+				<span class="badge badge-sm badge-primary">{m.common_active()}</span>
+			{/if}
+		</div>
+		<div class="flex items-center gap-2">
+			{#if hasActiveFilters}
+				<button class="btn btn-ghost btn-xs" onclick={onClearFilters}>
+					<X class="h-3 w-3" />
+					{m.action_clear()}
 				</button>
+			{/if}
+			<button
+				class="btn gap-1 btn-sm"
+				onclick={() => (isExpanded = !isExpanded)}
+				aria-label={isExpanded ? 'Collapse filters' : 'Expand filters'}
+			>
+				{#if isExpanded}
+					<span>{m.activity_filters_lessFilters()}</span>
+					<ChevronUp class="h-4 w-4" />
+				{:else}
+					<span>{m.activity_filters_moreFilters()}</span>
+					<ChevronDown class="h-4 w-4" />
+				{/if}
+			</button>
+		</div>
+	</div>
+
+	<div class="mt-3 flex flex-wrap items-center gap-2">
+		<div class="form-control min-w-50 flex-1">
+			<div class="group relative">
+				<div class="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2">
+					<Search
+						class="h-4 w-4 text-base-content/40 transition-colors group-focus-within:text-primary"
+					/>
+				</div>
+				<input
+					type="text"
+					placeholder={m.activity_filters_searchPlaceholder()}
+					class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+					value={searchValue}
+					oninput={(e) => onSearchInput(e.currentTarget.value)}
+				/>
 			</div>
 		</div>
 
-		<!-- Always visible: Quick filters -->
-		<div class="mt-4 flex flex-wrap items-center gap-2">
-			<!-- Search -->
-			<div class="form-control min-w-50 flex-1">
-				<div class="relative">
-					<Search class="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/50" />
-					<input
-						type="text"
-						placeholder="Search media, release, group..."
-						class="input-bordered input input-sm w-full pl-9"
-						value={filters.search || ''}
-						oninput={(e) => updateFilter('search', e.currentTarget.value || undefined)}
-					/>
-				</div>
-			</div>
+		<div class="join">
+			<button
+				class="btn join-item btn-sm {filters.mediaType === 'all' ? 'btn-primary' : 'btn-ghost'}"
+				onclick={() => updateFilter('mediaType', 'all')}
+			>
+				{m.common_all()}
+			</button>
+			<button
+				class="btn join-item btn-sm {filters.mediaType === 'movie' ? 'btn-primary' : 'btn-ghost'}"
+				onclick={() => updateFilter('mediaType', 'movie')}
+			>
+				{m.common_movies()}
+			</button>
+			<button
+				class="btn join-item btn-sm {filters.mediaType === 'tv' ? 'btn-primary' : 'btn-ghost'}"
+				onclick={() => updateFilter('mediaType', 'tv')}
+			>
+				{m.common_tvShows()}
+			</button>
+		</div>
 
-			<!-- Media Type -->
-			<div class="join">
-				<button
-					class="btn join-item btn-sm {filters.mediaType === 'all' ? 'btn-primary' : 'btn-ghost'}"
-					onclick={() => updateFilter('mediaType', 'all')}
-				>
-					All
-				</button>
-				<button
-					class="btn join-item btn-sm {filters.mediaType === 'movie' ? 'btn-primary' : 'btn-ghost'}"
-					onclick={() => updateFilter('mediaType', 'movie')}
-				>
-					Movies
-				</button>
-				<button
-					class="btn join-item btn-sm {filters.mediaType === 'tv' ? 'btn-primary' : 'btn-ghost'}"
-					onclick={() => updateFilter('mediaType', 'tv')}
-				>
-					TV Shows
-				</button>
-			</div>
-
-			<!-- Date Presets -->
+		{#if statusContext === 'history'}
 			<div class="join">
 				{#each datePresets as preset (preset.label)}
 					<button
-						class="btn join-item btn-ghost btn-sm"
+						class="btn join-item btn-sm {isDatePresetActive(preset.days)
+							? 'btn-primary'
+							: 'btn-ghost'}"
 						onclick={() => applyDatePreset(preset.days)}
 						title="Last {preset.days === 0 ? '24 hours' : preset.days + ' days'}"
+						aria-pressed={isDatePresetActive(preset.days)}
 					>
 						{preset.label}
 					</button>
@@ -189,166 +286,167 @@
 					</button>
 				{/if}
 			</div>
-		</div>
+		{/if}
+	</div>
 
-		<!-- Expanded filters -->
-		{#if isExpanded}
-			<div class="mt-4 grid gap-4 border-t border-base-300 pt-4 md:grid-cols-2 lg:grid-cols-3">
-				<!-- Status -->
-				<div class="space-y-2">
-					<label class="flex items-center gap-2 text-sm font-medium">
-						<Monitor class="h-4 w-4" />
-						Status
-					</label>
-					<select
-						class="select-bordered select w-full select-sm"
-						value={filters.status}
-						onchange={(e) => updateFilter('status', e.currentTarget.value)}
-					>
-						{#each statusOptions as option (option.value)}
-							<option value={option.value}>{option.label}</option>
-						{/each}
-					</select>
-				</div>
+	{#if isExpanded}
+		<div class="mt-3 grid gap-4 border-t border-base-300 pt-4 md:grid-cols-2 lg:grid-cols-3">
+			<!-- Status -->
+			<div class="space-y-2">
+				<label class="flex items-center gap-2 text-sm font-medium">
+					<Monitor class="h-4 w-4" />
+					{m.common_status()}
+				</label>
+				<select
+					class="select-bordered select w-full select-sm"
+					value={filters.status}
+					onchange={(e) => updateFilter('status', e.currentTarget.value)}
+				>
+					{#each statusOptions as option (option.value)}
+						<option value={option.value}>{option.label}</option>
+					{/each}
+				</select>
+			</div>
 
-				<!-- Protocol -->
-				<div class="space-y-2">
-					<label class="flex items-center gap-2 text-sm font-medium">
-						<Globe class="h-4 w-4" />
-						Protocol
-					</label>
-					<select
-						class="select-bordered select w-full select-sm"
-						value={filters.protocol || 'all'}
-						onchange={(e) => updateFilter('protocol', e.currentTarget.value)}
-					>
-						{#each protocolOptions as option (option.value)}
-							<option value={option.value}>{option.label}</option>
-						{/each}
-					</select>
-				</div>
+			<!-- Protocol -->
+			<div class="space-y-2">
+				<label class="flex items-center gap-2 text-sm font-medium">
+					<Globe class="h-4 w-4" />
+					{m.activity_detail_protocol()}
+				</label>
+				<select
+					class="select-bordered select w-full select-sm"
+					value={filters.protocol || 'all'}
+					onchange={(e) => updateFilter('protocol', e.currentTarget.value)}
+				>
+					{#each protocolOptions as option (option.value)}
+						<option value={option.value}>{option.label}</option>
+					{/each}
+				</select>
+			</div>
 
-				<!-- Indexer -->
-				<div class="space-y-2">
-					<label class="flex items-center gap-2 text-sm font-medium">
-						<HardDrive class="h-4 w-4" />
-						Indexer
-					</label>
-					<select
-						class="select-bordered select w-full select-sm"
-						value={filters.indexer || ''}
-						onchange={(e) => updateFilter('indexer', e.currentTarget.value || undefined)}
-					>
-						<option value="">All Indexers</option>
-						{#each filterOptions.indexers as indexer (indexer.name)}
-							<option value={indexer.name}>{indexer.name}</option>
-						{/each}
-					</select>
-				</div>
+			<!-- Indexer -->
+			<div class="space-y-2">
+				<label class="flex items-center gap-2 text-sm font-medium">
+					<HardDrive class="h-4 w-4" />
+					{m.activity_detail_indexer()}
+				</label>
+				<select
+					class="select-bordered select w-full select-sm"
+					value={filters.indexer || ''}
+					onchange={(e) => updateFilter('indexer', e.currentTarget.value || undefined)}
+				>
+					<option value="">{m.activity_filters_allIndexers()}</option>
+					{#each filterOptions.indexers as indexer (indexer.id)}
+						<option value={indexer.name}>{indexer.name}</option>
+					{/each}
+				</select>
+			</div>
 
-				<!-- Download Client -->
-				<div class="space-y-2">
-					<label class="flex items-center gap-2 text-sm font-medium">
-						<Monitor class="h-4 w-4" />
-						Download Client
-					</label>
-					<select
-						class="select-bordered select w-full select-sm"
-						value={filters.downloadClientId || ''}
-						onchange={(e) => updateFilter('downloadClientId', e.currentTarget.value || undefined)}
-					>
-						<option value="">All Clients</option>
-						{#each filterOptions.downloadClients as client (client.id)}
-							<option value={client.id}>{client.name}</option>
-						{/each}
-					</select>
-				</div>
+			<!-- Download Client -->
+			<div class="space-y-2">
+				<label class="flex items-center gap-2 text-sm font-medium">
+					<Monitor class="h-4 w-4" />
+					{m.activity_filters_downloadClient()}
+				</label>
+				<select
+					class="select-bordered select w-full select-sm"
+					value={filters.downloadClientId || ''}
+					onchange={(e) => updateFilter('downloadClientId', e.currentTarget.value || undefined)}
+				>
+					<option value="">{m.activity_filters_allClients()}</option>
+					{#each filterOptions.downloadClients as client (client.id)}
+						<option value={client.id}>{client.name}</option>
+					{/each}
+				</select>
+			</div>
 
-				<!-- Resolution -->
-				<div class="space-y-2">
-					<label class="flex items-center gap-2 text-sm font-medium">
-						<HardDrive class="h-4 w-4" />
-						Resolution
-					</label>
-					<select
-						class="select-bordered select w-full select-sm"
-						value={filters.resolution || ''}
-						onchange={(e) => updateFilter('resolution', e.currentTarget.value || undefined)}
-					>
-						<option value="">All Resolutions</option>
-						{#each resolutionOptions as res (res)}
-							<option value={res}>{res}</option>
-						{/each}
-					</select>
-				</div>
+			<!-- Resolution -->
+			<div class="space-y-2">
+				<label class="flex items-center gap-2 text-sm font-medium">
+					<HardDrive class="h-4 w-4" />
+					{m.activity_filters_resolution()}
+				</label>
+				<select
+					class="select-bordered select w-full select-sm"
+					value={filters.resolution || ''}
+					onchange={(e) => updateFilter('resolution', e.currentTarget.value || undefined)}
+				>
+					<option value="">{m.activity_filters_allResolutions()}</option>
+					{#each resolutionOptions as res (res)}
+						<option value={res}>{res}</option>
+					{/each}
+				</select>
+			</div>
 
-				<!-- Release Group -->
-				<div class="space-y-2">
-					<label class="flex items-center gap-2 text-sm font-medium">
-						<Users class="h-4 w-4" />
-						Release Group
-					</label>
+			<!-- Release Group -->
+			<div class="space-y-2">
+				<label class="flex items-center gap-2 text-sm font-medium">
+					<Users class="h-4 w-4" />
+					{m.activity_detail_releaseGroup()}
+				</label>
+				<input
+					type="text"
+					placeholder={m.activity_filters_filterByGroup()}
+					class="input-bordered input input-sm w-full"
+					value={releaseGroupValue}
+					oninput={(e) => onReleaseGroupInput(e.currentTarget.value)}
+				/>
+			</div>
+
+			<!-- Date Range -->
+			<div class="space-y-2 md:col-span-2 lg:col-span-3">
+				<label class="flex items-center gap-2 text-sm font-medium">
+					<Calendar class="h-4 w-4" />
+					{m.activity_filters_dateRange()}
+				</label>
+				<div class="flex flex-wrap items-center gap-2">
 					<input
-						type="text"
-						placeholder="Filter by group..."
-						class="input-bordered input input-sm w-full"
-						value={filters.releaseGroup || ''}
-						oninput={(e) => updateFilter('releaseGroup', e.currentTarget.value || undefined)}
+						type="date"
+						class="input-bordered input input-sm"
+						value={filters.startDate || ''}
+						onchange={(e) => updateFilter('startDate', e.currentTarget.value || undefined)}
 					/>
+					<span class="text-base-content/50">{m.activity_activeFilters_toSeparator()}</span>
+					<input
+						type="date"
+						class="input-bordered input input-sm"
+						value={filters.endDate || ''}
+						onchange={(e) => updateFilter('endDate', e.currentTarget.value || undefined)}
+					/>
+					{#if filters.startDate || filters.endDate}
+						<button class="btn btn-ghost btn-sm btn-error" onclick={clearDateRange}>
+							<X class="h-4 w-4" />
+						</button>
+					{/if}
 				</div>
+			</div>
 
-				<!-- Date Range -->
-				<div class="space-y-2 md:col-span-2 lg:col-span-3">
-					<label class="flex items-center gap-2 text-sm font-medium">
-						<Calendar class="h-4 w-4" />
-						Date Range
-					</label>
-					<div class="flex flex-wrap items-center gap-2">
+			<!-- Is Upgrade Toggle -->
+			<div class="space-y-2">
+				<label class="flex items-center gap-2 text-sm font-medium">
+					<ArrowUpCircle class="h-4 w-4" />
+					{m.activity_filters_upgradesOnly()}
+				</label>
+				<div class="form-control">
+					<label class="label cursor-pointer justify-start gap-2">
 						<input
-							type="date"
-							class="input-bordered input input-sm"
-							value={filters.startDate || ''}
-							onchange={(e) => updateFilter('startDate', e.currentTarget.value || undefined)}
+							type="checkbox"
+							class="toggle toggle-primary toggle-sm"
+							checked={filters.isUpgrade || false}
+							onchange={(e) => updateFilter('isUpgrade', e.currentTarget.checked || undefined)}
 						/>
-						<span class="text-base-content/50">to</span>
-						<input
-							type="date"
-							class="input-bordered input input-sm"
-							value={filters.endDate || ''}
-							onchange={(e) => updateFilter('endDate', e.currentTarget.value || undefined)}
-						/>
-						{#if filters.startDate || filters.endDate}
-							<button class="btn btn-ghost btn-sm btn-error" onclick={clearDateRange}>
-								<X class="h-4 w-4" />
-							</button>
-						{/if}
-					</div>
-				</div>
-
-				<!-- Is Upgrade Toggle -->
-				<div class="space-y-2">
-					<label class="flex items-center gap-2 text-sm font-medium">
-						<ArrowUpCircle class="h-4 w-4" />
-						Upgrades Only
+						<span class="label-text text-sm">{m.activity_filters_showOnlyUpgrades()}</span>
 					</label>
-					<div class="form-control">
-						<label class="label cursor-pointer justify-start gap-2">
-							<input
-								type="checkbox"
-								class="toggle toggle-primary toggle-sm"
-								checked={filters.isUpgrade || false}
-								onchange={(e) => updateFilter('isUpgrade', e.currentTarget.checked || undefined)}
-							/>
-							<span class="label-text text-sm">Show only upgrades</span>
-						</label>
-					</div>
 				</div>
+			</div>
 
+			{#if statusContext === 'history'}
 				<!-- Include No Results Toggle -->
 				<div class="space-y-2">
 					<label class="flex items-center gap-2 text-sm font-medium">
 						<Search class="h-4 w-4" />
-						Include 'No Results'
+						{m.activity_filters_includeNoResults()}
 					</label>
 					<div class="form-control">
 						<label class="label cursor-pointer justify-start gap-2">
@@ -359,11 +457,23 @@
 								onchange={(e) =>
 									updateFilter('includeNoResults', e.currentTarget.checked || undefined)}
 							/>
-							<span class="label-text text-sm">Show items with no releases found</span>
+							<span class="label-text text-sm">{m.activity_filters_showNoReleases()}</span>
 						</label>
 					</div>
 				</div>
-			</div>
-		{/if}
-	</div>
+			{/if}
+		</div>
+	{/if}
+
+	{#if showActiveFilters && activeFiltersContent}
+		<div class="mt-3 border-t border-base-300 pt-3">
+			{@render activeFiltersContent()}
+		</div>
+	{/if}
+
+	{#if showHistoryControls && historyControlsContent}
+		<div class="mt-3">
+			{@render historyControlsContent()}
+		</div>
+	{/if}
 </div>

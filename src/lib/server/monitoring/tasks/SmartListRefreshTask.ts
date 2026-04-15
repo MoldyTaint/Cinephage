@@ -6,7 +6,9 @@
  */
 
 import { getSmartListService } from '$lib/server/smartlists/index.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'monitoring' as const });
 import type { TaskResult } from '../MonitoringScheduler.js';
 import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
 
@@ -18,7 +20,7 @@ export async function executeSmartListRefreshTask(
 	ctx: TaskExecutionContext | null
 ): Promise<TaskResult> {
 	const taskHistoryId = ctx?.historyId;
-	logger.info('[SmartListRefreshTask] Starting smart list refresh task', { taskHistoryId });
+	logger.info({ taskHistoryId }, '[SmartListRefreshTask] Starting smart list refresh task');
 
 	// Check for cancellation before starting
 	ctx?.checkCancelled();
@@ -32,11 +34,14 @@ export async function executeSmartListRefreshTask(
 		const itemsGrabbed = results.reduce((sum, r) => sum + r.itemsAutoAdded, 0);
 		const errors = results.filter((r) => r.status === 'failed').length;
 
-		logger.info('[SmartListRefreshTask] Completed', {
-			listsRefreshed: itemsProcessed,
-			itemsAutoAdded: itemsGrabbed,
-			errors
-		});
+		logger.info(
+			{
+				listsRefreshed: itemsProcessed,
+				itemsAutoAdded: itemsGrabbed,
+				errors
+			},
+			'[SmartListRefreshTask] Completed'
+		);
 
 		return {
 			taskType: 'smartListRefresh',
@@ -46,7 +51,7 @@ export async function executeSmartListRefreshTask(
 			executedAt: new Date()
 		};
 	} catch (error) {
-		logger.error('[SmartListRefreshTask] Failed', error);
+		logger.error({ err: error }, '[SmartListRefreshTask] Failed');
 		throw error;
 	}
 }

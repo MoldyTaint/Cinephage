@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { TrendingUp, TrendingDown, Minus, Loader2 } from 'lucide-svelte';
 
 	interface Props {
@@ -39,10 +40,10 @@
 	});
 
 	const tooltipText = $derived.by(() => {
-		if (loading) return 'Loading score...';
-		if (!upgradesAllowed) return 'Upgrades disabled';
-		if (isAtCutoff) return 'At cutoff - no upgrades needed';
-		return 'Below cutoff - eligible for upgrades';
+		if (loading) return m.library_scoreBadge_loadingScore();
+		if (!upgradesAllowed) return m.library_scoreBadge_upgradesDisabled();
+		if (isAtCutoff) return m.library_scoreBadge_atCutoff();
+		return m.library_scoreBadge_belowCutoff();
 	});
 </script>
 

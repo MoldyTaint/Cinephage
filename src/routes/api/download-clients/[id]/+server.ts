@@ -4,6 +4,7 @@ import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadCl
 import { downloadClientUpdateSchema } from '$lib/validation/schemas';
 import { assertFound, parseBody } from '$lib/server/api/validate';
 import { NotFoundError } from '$lib/errors';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 /**
  * GET /api/download-clients/[id]
@@ -21,7 +22,11 @@ export const GET: RequestHandler = async ({ params }) => {
  * PUT /api/download-clients/[id]
  * Update a download client.
  */
-export const PUT: RequestHandler = async ({ params, request }) => {
+export const PUT: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { params, request } = event;
 	// Throws ValidationError if invalid JSON or schema mismatch
 	const data = await parseBody(request, downloadClientUpdateSchema);
 	const manager = getDownloadClientManager();
@@ -42,7 +47,11 @@ export const PUT: RequestHandler = async ({ params, request }) => {
  * DELETE /api/download-clients/[id]
  * Delete a download client.
  */
-export const DELETE: RequestHandler = async ({ params }) => {
+export const DELETE: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { params } = event;
 	const manager = getDownloadClientManager();
 
 	try {

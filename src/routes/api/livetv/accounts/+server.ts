@@ -10,7 +10,7 @@ import type { RequestHandler } from './$types';
 import { getLiveTvAccountManager } from '$lib/server/livetv/LiveTvAccountManager';
 import { logger } from '$lib/logging';
 import { z } from 'zod';
-import { ValidationError } from '$lib/errors';
+import { ValidationError, isAppError } from '$lib/errors';
 
 // Validation schema for creating Live TV accounts (supports all provider types)
 const liveTvAccountCreateSchema = z.object({
@@ -36,7 +36,8 @@ const liveTvAccountCreateSchema = z.object({
 		.object({
 			baseUrl: z.string().url(),
 			username: z.string().min(1),
-			password: z.string().min(1)
+			password: z.string().min(1),
+			epgUrl: z.string().url().optional()
 		})
 		.optional(),
 	// M3U-specific config
@@ -63,50 +64,35 @@ const liveTvAccountCreateSchema = z.object({
  * List all Live TV accounts
  */
 export const GET: RequestHandler = async () => {
-	try {
-		const manager = getLiveTvAccountManager();
-		const accounts = await manager.getAccounts();
+	const manager = getLiveTvAccountManager();
+	const accounts = await manager.getAccounts();
 
-		return json({
-			success: true,
-			accounts
-		});
-	} catch (error) {
-		logger.error(
-			'[API] Failed to list Live TV accounts',
-			error instanceof Error ? error : undefined
-		);
-
-		return json(
-			{
-				success: false,
-				error: error instanceof Error ? error.message : 'Failed to list accounts'
-			},
-			{ status: 500 }
-		);
-	}
+	return json({
+		success: true,
+		accounts
+	});
 };
 
 /**
  * Create a new Live TV account
  */
 export const POST: RequestHandler = async ({ request }) => {
+	const body = await request.json();
+
+	// Validate input
+	const parsed = liveTvAccountCreateSchema.safeParse(body);
+	if (!parsed.success) {
+		throw new ValidationError('Validation failed', {
+			details: parsed.error.flatten()
+		});
+	}
+
+	const manager = getLiveTvAccountManager();
+
+	// Check if testFirst is explicitly set to false
+	const testFirst = body.testFirst !== false;
+
 	try {
-		const body = await request.json();
-
-		// Validate input
-		const parsed = liveTvAccountCreateSchema.safeParse(body);
-		if (!parsed.success) {
-			throw new ValidationError('Validation failed', {
-				details: parsed.error.flatten()
-			});
-		}
-
-		const manager = getLiveTvAccountManager();
-
-		// Check if testFirst is explicitly set to false
-		const testFirst = body.testFirst !== false;
-
 		const account = await manager.createAccount(parsed.data, testFirst);
 
 		return json(
@@ -122,17 +108,9 @@ export const POST: RequestHandler = async ({ request }) => {
 			error instanceof Error ? error : undefined
 		);
 
-		// Validation errors
-		if (error instanceof ValidationError) {
-			return json(
-				{
-					success: false,
-					error: error.message,
-					code: error.code,
-					context: error.context
-				},
-				{ status: error.statusCode }
-			);
+		// Re-throw ValidationError and AppError for central handler
+		if (isAppError(error)) {
+			throw error;
 		}
 
 		const message = error instanceof Error ? error.message : String(error);
@@ -159,10 +137,11 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 
+		// Generic error - don't leak details
 		return json(
 			{
 				success: false,
-				error: message || 'Failed to create account'
+				error: 'Failed to create account'
 			},
 			{ status: 500 }
 		);

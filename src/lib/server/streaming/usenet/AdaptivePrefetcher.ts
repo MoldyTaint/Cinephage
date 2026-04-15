@@ -9,8 +9,10 @@
  * - Checks persistent DB cache before NNTP fetch
  */
 
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import type { NntpManager } from './NntpManager';
+
+const logger = createChildLogger({ logDomain: 'streams' as const });
 import { SegmentStore } from './SegmentStore';
 import { getSegmentCacheService } from './SegmentCacheService';
 import type { AccessPattern, PrefetchStrategy } from './types';
@@ -116,7 +118,10 @@ export class AdaptivePrefetcher {
 	 */
 	pause(): void {
 		this.paused = true;
-		logger.debug('[AdaptivePrefetcher] Paused');
+		logger.debug(
+			{ mountId: this.mountId, fileIndex: this.fileIndex },
+			'Paused adaptive prefetching'
+		);
 	}
 
 	/**
@@ -124,7 +129,10 @@ export class AdaptivePrefetcher {
 	 */
 	resume(): void {
 		this.paused = false;
-		logger.debug('[AdaptivePrefetcher] Resumed');
+		logger.debug(
+			{ mountId: this.mountId, fileIndex: this.fileIndex },
+			'Resumed adaptive prefetching'
+		);
 	}
 
 	/**
@@ -153,12 +161,15 @@ export class AdaptivePrefetcher {
 					index
 				);
 				if (dbCached) {
-					logger.debug('[AdaptivePrefetcher] DB cache hit', {
-						mountId: this.mountId,
-						fileIndex: this.fileIndex,
-						segmentIndex: index,
-						size: dbCached.length
-					});
+					logger.debug(
+						{
+							mountId: this.mountId,
+							fileIndex: this.fileIndex,
+							segmentIndex: index,
+							sizeBytes: dbCached.length
+						},
+						'Loaded segment from persistent cache'
+					);
 					// Also cache in memory for faster subsequent access
 					this.store.cacheSegment(index, dbCached);
 					this.triggerPrefetch(index);
@@ -166,10 +177,16 @@ export class AdaptivePrefetcher {
 				}
 			} catch (error) {
 				// DB cache miss or error - fall through to NNTP fetch
-				logger.debug('[AdaptivePrefetcher] DB cache check failed', {
-					segmentIndex: index,
-					error: error instanceof Error ? error.message : 'Unknown'
-				});
+				logger.debug(
+					{
+						mountId: this.mountId,
+						fileIndex: this.fileIndex,
+						segmentIndex: index,
+						err: error,
+						error: error instanceof Error ? error.message : 'Unknown'
+					},
+					'Persistent segment cache lookup failed'
+				);
 			}
 		}
 
@@ -213,12 +230,17 @@ export class AdaptivePrefetcher {
 		// Optionally clear cache outside window
 		this.store.invalidateOutsideWindow(newIndex, strategy.windowSize * 2);
 
-		logger.debug('[AdaptivePrefetcher] Seek detected', {
-			from: this.lastAccessIndex,
-			to: newIndex,
-			pattern: this.currentPattern,
-			cancelledPrefetches: this.pendingFetches.size
-		});
+		logger.debug(
+			{
+				mountId: this.mountId,
+				fileIndex: this.fileIndex,
+				from: this.lastAccessIndex,
+				to: newIndex,
+				pattern: this.currentPattern,
+				cancelledPrefetches: this.pendingFetches.size
+			},
+			'Detected seek and adjusted adaptive prefetch window'
+		);
 
 		this.lastAccessIndex = newIndex;
 	}
@@ -326,10 +348,16 @@ export class AdaptivePrefetcher {
 				return result.data;
 			})
 			.catch((error) => {
-				logger.debug('[AdaptivePrefetcher] Prefetch failed', {
-					index,
-					error: error instanceof Error ? error.message : 'Unknown'
-				});
+				logger.debug(
+					{
+						mountId: this.mountId,
+						fileIndex: this.fileIndex,
+						segmentIndex: index,
+						err: error,
+						error: error instanceof Error ? error.message : 'Unknown'
+					},
+					'Background segment prefetch failed'
+				);
 				throw error;
 			})
 			.finally(() => {

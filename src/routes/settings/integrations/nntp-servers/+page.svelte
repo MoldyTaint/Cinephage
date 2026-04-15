@@ -10,6 +10,8 @@
 		NntpServerTable
 	} from '$lib/components/nntpServers';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import { SettingsPage } from '$lib/components/ui/settings';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface NntpServer {
 		id: string;
@@ -376,7 +378,12 @@
 				}
 			}
 			await invalidateAll();
-			toasts.info(`Bulk test complete: ${successCount} passed, ${failCount} failed`);
+			toasts.info(
+				m.settings_integrations_bulkTestComplete({
+					successCount: String(successCount),
+					failCount: String(failCount)
+				})
+			);
 		} finally {
 			bulkLoading = false;
 		}
@@ -396,7 +403,7 @@
 
 			const failed = responses.find((response) => !response.ok);
 			if (failed) {
-				toasts.error('Failed to reorder NNTP server priorities');
+				toasts.error(m.settings_integrations_nntpServers_failedToReorder());
 				return;
 			}
 
@@ -407,18 +414,13 @@
 	}
 </script>
 
-<div class="w-full p-3 sm:p-4">
-	<div class="mb-5 sm:mb-6">
-		<h1 class="text-xl font-bold sm:text-2xl">NNTP Servers</h1>
-		<p class="text-base-content/70">Configure Usenet providers for streaming and article checks.</p>
-	</div>
-
-	<div class="mb-4 flex items-center justify-end">
+<SettingsPage title={m.nav_nntpServers()} subtitle={m.settings_integrations_nntpServers_subtitle()}>
+	{#snippet actions()}
 		<button class="btn w-full gap-2 btn-sm btn-primary sm:w-auto" onclick={openAddModal}>
 			<Plus class="h-4 w-4" />
-			Add NNTP Server
+			{m.settings_integrations_nntpServers_addServer()}
 		</button>
-	</div>
+	{/snippet}
 
 	<div class="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
 		<div class="form-control relative w-full sm:w-56">
@@ -427,7 +429,7 @@
 			/>
 			<input
 				type="text"
-				placeholder="Search servers..."
+				placeholder={m.settings_integrations_nntpServers_searchPlaceholder()}
 				class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				value={filters.search}
 				oninput={(e) => updateFilter('search', e.currentTarget.value)}
@@ -440,21 +442,21 @@
 				class:btn-active={filters.status === 'all'}
 				onclick={() => updateFilter('status', 'all')}
 			>
-				All
+				{m.common_all()}
 			</button>
 			<button
 				class="btn join-item flex-1 btn-sm sm:flex-none"
 				class:btn-active={filters.status === 'enabled'}
 				onclick={() => updateFilter('status', 'enabled')}
 			>
-				Enabled
+				{m.common_enabled()}
 			</button>
 			<button
 				class="btn join-item flex-1 btn-sm sm:flex-none"
 				class:btn-active={filters.status === 'disabled'}
 				onclick={() => updateFilter('status', 'disabled')}
 			>
-				Disabled
+				{m.common_disabled()}
 			</button>
 		</div>
 	</div>
@@ -490,7 +492,7 @@
 			/>
 		</div>
 	</div>
-</div>
+</SettingsPage>
 
 <NntpServerModal
 	open={modalOpen}
@@ -506,11 +508,11 @@
 
 <ConfirmationModal
 	open={confirmDeleteOpen}
-	title="Confirm Delete"
-	messagePrefix="Are you sure you want to delete "
-	messageEmphasis={deleteTarget?.name ?? 'this NNTP server'}
-	messageSuffix="? This action cannot be undone."
-	confirmLabel="Delete"
+	title={m.ui_modal_confirmTitle()}
+	messagePrefix={m.settings_integrations_deleteConfirmPrefix()}
+	messageEmphasis={deleteTarget?.name ?? m.settings_integrations_nntpServers_thisServer()}
+	messageSuffix={m.settings_integrations_deleteConfirmSuffix()}
+	confirmLabel={m.action_delete()}
 	confirmVariant="error"
 	onConfirm={handleConfirmDelete}
 	onCancel={() => (confirmDeleteOpen = false)}
@@ -518,11 +520,11 @@
 
 <ConfirmationModal
 	open={confirmBulkDeleteOpen}
-	title="Confirm Delete"
-	messagePrefix="Are you sure you want to delete "
-	messageEmphasis={`${selectedIds.size} NNTP server(s)`}
-	messageSuffix="? This action cannot be undone."
-	confirmLabel="Delete"
+	title={m.ui_modal_confirmTitle()}
+	messagePrefix={m.settings_integrations_deleteConfirmPrefix()}
+	messageEmphasis={m.settings_integrations_nntpServers_bulkDeleteCount({ count: selectedIds.size })}
+	messageSuffix={m.settings_integrations_deleteConfirmSuffix()}
+	confirmLabel={m.action_delete()}
 	confirmVariant="error"
 	onConfirm={handleConfirmBulkDelete}
 	onCancel={() => (confirmBulkDeleteOpen = false)}

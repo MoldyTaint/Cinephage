@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { X, Loader2, Search, ChevronRight, ChevronLeft, Radio } from 'lucide-svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface StalkerPortal {
 		id: string;
@@ -57,21 +58,21 @@
 
 	// MAC prefixes from MacGenerator
 	const macPrefixes = [
-		{ prefix: '00:1A:79', name: 'Magnum Semiconductors Ltd (MAG boxes)' },
-		{ prefix: '00:2A:01', name: 'STB Device' },
-		{ prefix: '00:1B:79', name: 'Magnum Semiconductors Ltd' },
-		{ prefix: '00:2A:79', name: 'STB Device' },
-		{ prefix: '00:A1:79', name: 'STB Device' },
-		{ prefix: 'D4:CF:F9', name: 'STB Device' },
-		{ prefix: '33:44:CF', name: 'STB Device' },
-		{ prefix: '10:27:BE', name: 'STB Device' },
-		{ prefix: 'A0:BB:3E', name: 'STB Device' },
-		{ prefix: '55:93:EA', name: 'STB Device' },
-		{ prefix: '04:D6:AA', name: 'STB Device' },
-		{ prefix: '11:33:01', name: 'STB Device' },
-		{ prefix: '00:1C:19', name: 'STB Device' },
-		{ prefix: '1A:00:6A', name: 'STB Device' },
-		{ prefix: '1A:00:FB', name: 'STB Device' }
+		{ prefix: '00:1A:79', name: m.livetv_portalScanModal_magnumSemiconductors() },
+		{ prefix: '00:2A:01', name: m.livetv_portalScanModal_stbDevice() },
+		{ prefix: '00:1B:79', name: m.livetv_portalScanModal_stbDevice() },
+		{ prefix: '00:2A:79', name: m.livetv_portalScanModal_stbDevice() },
+		{ prefix: '00:A1:79', name: m.livetv_portalScanModal_stbDevice() },
+		{ prefix: 'D4:CF:F9', name: m.livetv_portalScanModal_stbDevice() },
+		{ prefix: '33:44:CF', name: m.livetv_portalScanModal_stbDevice() },
+		{ prefix: '10:27:BE', name: m.livetv_portalScanModal_stbDevice() },
+		{ prefix: 'A0:BB:3E', name: m.livetv_portalScanModal_stbDevice() },
+		{ prefix: '55:93:EA', name: m.livetv_portalScanModal_stbDevice() },
+		{ prefix: '04:D6:AA', name: m.livetv_portalScanModal_stbDevice() },
+		{ prefix: '11:33:01', name: m.livetv_portalScanModal_stbDevice() },
+		{ prefix: '00:1C:19', name: m.livetv_portalScanModal_stbDevice() },
+		{ prefix: '1A:00:6A', name: m.livetv_portalScanModal_stbDevice() },
+		{ prefix: '1A:00:FB', name: m.livetv_portalScanModal_stbDevice() }
 	];
 
 	// Derived
@@ -122,12 +123,13 @@
 
 		try {
 			const response = await fetch('/api/livetv/portals');
-			if (!response.ok) throw new Error('Failed to load portals');
+			if (!response.ok) throw new Error(m.livetv_portalScanModal_failedToLoadPortals());
 			const result = await response.json();
-			if (!result.success) throw new Error(result.error || 'Failed to load portals');
+			if (!result.success)
+				throw new Error(result.error || m.livetv_portalScanModal_failedToLoadPortals());
 			portals = result.portals || [];
 		} catch (e) {
-			portalError = e instanceof Error ? e.message : 'Failed to load portals';
+			portalError = e instanceof Error ? e.message : m.livetv_portalScanModal_failedToLoadPortals();
 		} finally {
 			loadingPortals = false;
 		}
@@ -148,7 +150,7 @@
 
 			if (!response.ok) {
 				const data = await response.json();
-				throw new Error(data.error || 'Failed to detect portal');
+				throw new Error(data.error || m.livetv_portalScanModal_failedToDetectPortal());
 			}
 
 			await response.json();
@@ -158,11 +160,12 @@
 					const url = new URL(newPortalUrl);
 					newPortalName = url.hostname;
 				} catch {
-					newPortalName = 'New Portal';
+					newPortalName = m.livetv_portalScanModal_newPortal();
 				}
 			}
 		} catch (e) {
-			portalError = e instanceof Error ? e.message : 'Failed to detect portal';
+			portalError =
+				e instanceof Error ? e.message : m.livetv_portalScanModal_failedToDetectPortal();
 		} finally {
 			detectingPortal = false;
 		}
@@ -209,7 +212,7 @@
 
 				if (!createResponse.ok) {
 					const data = await createResponse.json();
-					throw new Error(data.error || 'Failed to create portal');
+					throw new Error(data.error || m.livetv_portalScanModal_failedToCreatePortal());
 				}
 
 				const newPortal = await createResponse.json();
@@ -248,13 +251,13 @@
 
 			if (!scanResponse.ok) {
 				const data = await scanResponse.json();
-				throw new Error(data.error || 'Failed to start scan');
+				throw new Error(data.error || m.livetv_portalScanModal_failedToStartScan());
 			}
 
 			const scanData = await scanResponse.json();
 			onScanStarted(scanData.workerId, portalId);
 		} catch (e) {
-			scanError = e instanceof Error ? e.message : 'Failed to start scan';
+			scanError = e instanceof Error ? e.message : m.livetv_portalScanModal_failedToStartScan();
 		} finally {
 			startingScan = false;
 		}
@@ -269,14 +272,16 @@
 				<Search class="h-5 w-5 text-primary" />
 			</div>
 			<div>
-				<h3 id="portal-scan-modal-title" class="text-xl font-bold">Scan for Accounts</h3>
+				<h3 id="portal-scan-modal-title" class="text-xl font-bold">
+					{m.livetv_portalScanModal_title()}
+				</h3>
 				<div class="mt-1 flex items-center gap-2 text-sm text-base-content/60">
 					<span class="badge badge-sm {currentStep === 'portal' ? 'badge-primary' : 'badge-ghost'}">
-						1. Portal
+						{m.livetv_portalScanModal_stepPortal()}
 					</span>
 					<ChevronRight class="h-3 w-3" />
 					<span class="badge badge-sm {currentStep === 'config' ? 'badge-primary' : 'badge-ghost'}">
-						2. Configure
+						{m.livetv_portalScanModal_stepConfig()}
 					</span>
 				</div>
 			</div>
@@ -298,7 +303,9 @@
 				{#if portals.length > 0}
 					<div class="space-y-2">
 						<div class="label py-1">
-							<span class="label-text font-medium">Select an existing portal</span>
+							<span class="label-text font-medium"
+								>{m.livetv_portalScanModal_selectExistingPortal()}</span
+							>
 						</div>
 						<div class="space-y-2">
 							{#each portals as portal (portal.id)}
@@ -326,7 +333,7 @@
 						</div>
 					</div>
 
-					<div class="divider">OR</div>
+					<div class="divider">{m.livetv_portalScanModal_orDivider()}</div>
 				{/if}
 
 				<!-- Create New Portal -->
@@ -340,15 +347,17 @@
 							selectedPortalId = null;
 						}}
 					>
-						<div class="font-medium">Add a new portal</div>
-						<div class="text-sm text-base-content/60">Enter a portal URL to scan</div>
+						<div class="font-medium">{m.livetv_portalScanModal_addNewPortal()}</div>
+						<div class="text-sm text-base-content/60">
+							{m.livetv_portalScanModal_enterPortalUrl()}
+						</div>
 					</button>
 
 					{#if creatingPortal}
 						<div class="ml-4 space-y-3 border-l-2 border-primary/20 pl-4">
 							<div class="form-control">
 								<label class="label py-1" for="portalUrl">
-									<span class="label-text">Portal URL</span>
+									<span class="label-text">{m.livetv_portalScanModal_portalUrlLabel()}</span>
 								</label>
 								<div class="flex gap-2">
 									<input
@@ -356,7 +365,7 @@
 										type="url"
 										class="input-bordered input input-sm flex-1"
 										bind:value={newPortalUrl}
-										placeholder="http://portal.example.com/c"
+										placeholder={m.livetv_portalScanModal_portalUrlPlaceholder()}
 									/>
 									<button
 										class="btn btn-ghost btn-sm"
@@ -366,7 +375,7 @@
 										{#if detectingPortal}
 											<Loader2 class="h-4 w-4 animate-spin" />
 										{:else}
-											Detect
+											{m.livetv_portalScanModal_detectButton()}
 										{/if}
 									</button>
 								</div>
@@ -374,14 +383,14 @@
 
 							<div class="form-control">
 								<label class="label py-1" for="portalName">
-									<span class="label-text">Portal Name</span>
+									<span class="label-text">{m.livetv_portalScanModal_portalNameLabel()}</span>
 								</label>
 								<input
 									id="portalName"
 									type="text"
 									class="input-bordered input input-sm"
 									bind:value={newPortalName}
-									placeholder="My Portal"
+									placeholder={m.livetv_portalScanModal_portalNamePlaceholder()}
 								/>
 							</div>
 						</div>
@@ -398,13 +407,15 @@
 
 		<!-- Portal Step Actions -->
 		<div class="modal-action">
-			<button class="btn btn-ghost" onclick={onClose}>Cancel</button>
+			<button class="btn btn-ghost" onclick={onClose}
+				>{m.livetv_portalScanModal_cancelButton()}</button
+			>
 			<button
 				class="btn btn-primary"
 				disabled={!canProceedToConfig}
 				onclick={() => (currentStep = 'config')}
 			>
-				Next
+				{m.livetv_portalScanModal_nextButton()}
 				<ChevronRight class="h-4 w-4" />
 			</button>
 		</div>
@@ -415,9 +426,11 @@
 		<div class="space-y-6">
 			<!-- Portal Info -->
 			<div class="rounded-lg bg-base-200 p-3">
-				<div class="text-sm text-base-content/60">Scanning portal:</div>
+				<div class="text-sm text-base-content/60">
+					{m.livetv_portalScanModal_scanningPortalLabel()}
+				</div>
 				<div class="font-medium">
-					{selectedPortal?.name || newPortalName || 'New Portal'}
+					{selectedPortal?.name || newPortalName || m.livetv_portalScanModal_newPortal()}
 				</div>
 				<div class="text-sm text-base-content/60">
 					{selectedPortal?.url || newPortalUrl}
@@ -427,26 +440,26 @@
 			<!-- Scan Type Selection -->
 			<div class="form-control">
 				<div class="label py-1">
-					<span class="label-text font-medium">Scan Type</span>
+					<span class="label-text font-medium">{m.livetv_portalScanModal_scanTypeLabel()}</span>
 				</div>
 				<div class="flex flex-wrap gap-2">
 					<button
 						class="btn btn-sm {scanType === 'random' ? 'btn-primary' : 'btn-ghost'}"
 						onclick={() => (scanType = 'random')}
 					>
-						Random
+						{m.livetv_portalScanModal_randomScan()}
 					</button>
 					<button
 						class="btn btn-sm {scanType === 'sequential' ? 'btn-primary' : 'btn-ghost'}"
 						onclick={() => (scanType = 'sequential')}
 					>
-						Sequential
+						{m.livetv_portalScanModal_sequentialScan()}
 					</button>
 					<button
 						class="btn btn-sm {scanType === 'import' ? 'btn-primary' : 'btn-ghost'}"
 						onclick={() => (scanType = 'import')}
 					>
-						Import List
+						{m.livetv_portalScanModal_importList()}
 					</button>
 				</div>
 			</div>
@@ -456,7 +469,7 @@
 				<div class="space-y-4">
 					<div class="form-control">
 						<label class="label py-1" for="macPrefix">
-							<span class="label-text">MAC Prefix</span>
+							<span class="label-text">{m.livetv_portalScanModal_macPrefixLabel()}</span>
 						</label>
 						<select id="macPrefix" class="select-bordered select select-sm" bind:value={macPrefix}>
 							{#each macPrefixes as { prefix, name } (prefix)}
@@ -465,14 +478,14 @@
 						</select>
 						<div class="label py-1">
 							<span class="label-text-alt text-xs">
-								Common prefixes for STB devices like MAG boxes
+								{m.livetv_portalScanModal_macPrefixHint()}
 							</span>
 						</div>
 					</div>
 
 					<div class="form-control">
 						<label class="label py-1" for="macCount">
-							<span class="label-text">Number of MACs to test</span>
+							<span class="label-text">{m.livetv_portalScanModal_macCountLabel()}</span>
 						</label>
 						<input
 							id="macCount"
@@ -483,7 +496,7 @@
 							max="10000"
 						/>
 						<div class="label py-1">
-							<span class="label-text-alt text-xs"> Maximum 10,000 per scan </span>
+							<span class="label-text-alt text-xs">{m.livetv_portalScanModal_macCountHint()}</span>
 						</div>
 					</div>
 				</div>
@@ -494,7 +507,7 @@
 				<div class="space-y-4">
 					<div class="form-control">
 						<label class="label py-1" for="macStart">
-							<span class="label-text">Start MAC</span>
+							<span class="label-text">{m.livetv_portalScanModal_startMacLabel()}</span>
 						</label>
 						<input
 							id="macStart"
@@ -503,14 +516,14 @@
 							class:input-error={macRangeStart && !isValidMac(macRangeStart)}
 							value={macRangeStart}
 							oninput={(e) => handleMacInput(e, 'start')}
-							placeholder="00:1A:79:00:00:00"
+							placeholder={m.livetv_portalScanModal_startMacPlaceholder()}
 							maxlength="17"
 						/>
 					</div>
 
 					<div class="form-control">
 						<label class="label py-1" for="macEnd">
-							<span class="label-text">End MAC</span>
+							<span class="label-text">{m.livetv_portalScanModal_endMacLabel()}</span>
 						</label>
 						<input
 							id="macEnd"
@@ -519,7 +532,7 @@
 							class:input-error={macRangeEnd && !isValidMac(macRangeEnd)}
 							value={macRangeEnd}
 							oninput={(e) => handleMacInput(e, 'end')}
-							placeholder="00:1A:79:FF:FF:FF"
+							placeholder={m.livetv_portalScanModal_endMacPlaceholder()}
 							maxlength="17"
 						/>
 					</div>
@@ -529,9 +542,10 @@
 						{@const endNum = parseInt(macRangeEnd.replace(/:/g, ''), 16)}
 						{@const rangeSize = Math.abs(endNum - startNum) + 1}
 						<div class="text-sm text-base-content/60">
-							Range size: {rangeSize.toLocaleString()} MACs
+							{m.livetv_portalScanModal_rangeSize()}
+							{rangeSize.toLocaleString(undefined)} MACs
 							{#if rangeSize > 1000000}
-								<span class="text-warning">(Large range - will take a while)</span>
+								<span class="text-warning">{m.livetv_portalScanModal_largeRangeWarning()}</span>
 							{/if}
 						</div>
 					{/if}
@@ -542,23 +556,23 @@
 			{#if scanType === 'import'}
 				<div class="form-control">
 					<label class="label py-1" for="importMacs">
-						<span class="label-text">MAC Addresses</span>
+						<span class="label-text">{m.livetv_portalScanModal_macAddressesLabel()}</span>
 					</label>
 					<textarea
 						id="importMacs"
 						class="textarea-bordered textarea h-32 font-mono text-sm"
 						bind:value={importedMacs}
-						placeholder="00:1A:79:AB:CD:EF&#10;00:1A:79:12:34:56&#10;..."
+						placeholder={m.livetv_portalScanModal_macAddressesPlaceholder()}
 					></textarea>
 					<div class="label py-1">
 						<span class="label-text-alt text-xs">
-							One MAC address per line, or comma/semicolon separated
+							{m.livetv_portalScanModal_macAddressesHint()}
 						</span>
 					</div>
 					{#if importedMacs.trim()}
 						{@const count = importedMacs.split(/[\n,;]+/).filter((m) => m.trim()).length}
 						<div class="text-sm text-base-content/60">
-							{count} MAC address{count !== 1 ? 'es' : ''} detected
+							{m.livetv_portalScanModal_macCountDetected({ count })}
 						</div>
 					{/if}
 				</div>
@@ -567,7 +581,7 @@
 			<!-- Rate Limit -->
 			<div class="form-control">
 				<label class="label py-1" for="rateLimit">
-					<span class="label-text">Delay between requests</span>
+					<span class="label-text">{m.livetv_portalScanModal_delayLabel()}</span>
 					<span class="label-text-alt">{rateLimit}ms</span>
 				</label>
 				<input
@@ -580,7 +594,7 @@
 					step="100"
 				/>
 				<div class="label py-1">
-					<span class="label-text-alt text-xs"> Lower = faster but may trigger rate limiting </span>
+					<span class="label-text-alt text-xs">{m.livetv_portalScanModal_delayHint()}</span>
 				</div>
 			</div>
 
@@ -595,9 +609,11 @@
 		<div class="modal-action">
 			<button class="btn btn-ghost" onclick={() => (currentStep = 'portal')}>
 				<ChevronLeft class="h-4 w-4" />
-				Back
+				{m.livetv_portalScanModal_backButton()}
 			</button>
-			<button class="btn btn-ghost" onclick={onClose}>Cancel</button>
+			<button class="btn btn-ghost" onclick={onClose}
+				>{m.livetv_portalScanModal_cancelButton()}</button
+			>
 			<button
 				class="btn btn-primary"
 				disabled={startingScan || !canStartScan()}
@@ -608,7 +624,7 @@
 				{:else}
 					<Search class="h-4 w-4" />
 				{/if}
-				Start Scan
+				{m.livetv_portalScanModal_startScanButton()}
 			</button>
 		</div>
 	{/if}

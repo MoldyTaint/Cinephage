@@ -9,7 +9,9 @@
  * - Mixed format with minimal data: [{ imdb_id, title }]
  */
 
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'monitoring' as const });
 import type {
 	ExternalListProvider,
 	ExternalListItem,
@@ -33,10 +35,13 @@ export class JsonListProvider implements ExternalListProvider {
 	async fetchItems(config: unknown, mediaType: 'movie' | 'tv' | ''): Promise<ExternalListResult> {
 		const cfg = config as ExternalJsonConfig;
 
-		logger.info('[JsonListProvider] Fetching external JSON list', {
-			url: cfg.url,
-			mediaType: mediaType || 'all'
-		});
+		logger.info(
+			{
+				url: cfg.url,
+				mediaType: mediaType || 'all'
+			},
+			'[JsonListProvider] Fetching external JSON list'
+		);
 
 		try {
 			// Fetch the JSON data
@@ -55,10 +60,13 @@ export class JsonListProvider implements ExternalListProvider {
 				throw new Error('Expected JSON array, got ' + typeof data);
 			}
 
-			logger.info('[JsonListProvider] Parsed JSON data', {
-				itemCount: data.length,
-				url: cfg.url
-			});
+			logger.info(
+				{
+					itemCount: data.length,
+					url: cfg.url
+				},
+				'[JsonListProvider] Parsed JSON data'
+			);
 
 			// Parse items from various formats
 			const items: ExternalListItem[] = [];
@@ -72,29 +80,38 @@ export class JsonListProvider implements ExternalListProvider {
 						items.push(item);
 					} else {
 						failedCount++;
-						logger.warn('[JsonListProvider] Failed to parse item', {
-							index: i,
-							rawItem,
-							url: cfg.url
-						});
+						logger.warn(
+							{
+								index: i,
+								rawItem,
+								url: cfg.url
+							},
+							'[JsonListProvider] Failed to parse item'
+						);
 					}
 				} catch (error) {
 					failedCount++;
-					logger.warn('[JsonListProvider] Error parsing item', {
-						index: i,
-						rawItem,
-						error: error instanceof Error ? error.message : String(error),
-						url: cfg.url
-					});
+					logger.warn(
+						{
+							index: i,
+							rawItem,
+							error: error instanceof Error ? error.message : String(error),
+							url: cfg.url
+						},
+						'[JsonListProvider] Error parsing item'
+					);
 				}
 			}
 
-			logger.info('[JsonListProvider] Successfully parsed items', {
-				successCount: items.length,
-				failedCount,
-				totalCount: data.length,
-				url: cfg.url
-			});
+			logger.info(
+				{
+					successCount: items.length,
+					failedCount,
+					totalCount: data.length,
+					url: cfg.url
+				},
+				'[JsonListProvider] Successfully parsed items'
+			);
 
 			return {
 				items,
@@ -103,10 +120,13 @@ export class JsonListProvider implements ExternalListProvider {
 			};
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error);
-			logger.error('[JsonListProvider] Failed to fetch external list', {
-				error: errorMessage,
-				url: cfg.url
-			});
+			logger.error(
+				{
+					error: errorMessage,
+					url: cfg.url
+				},
+				'[JsonListProvider] Failed to fetch external list'
+			);
 
 			return {
 				items: [],
@@ -182,7 +202,7 @@ export class JsonListProvider implements ExternalListProvider {
 					title = imdbId;
 				} else {
 					// No identifier at all - can't process this item
-					logger.warn('[JsonListProvider] Item missing all identifiers', { index, rawItem });
+					logger.warn({ index, rawItem }, '[JsonListProvider] Item missing all identifiers');
 					return null;
 				}
 			}

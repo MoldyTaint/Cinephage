@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { Search, X, Loader2 } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let {
 		value = $bindable(''),
 		onSearch,
 		isLoading = false,
-		placeholder = 'Search movies & TV shows...'
+		placeholder = m.discover_searchPlaceholder()
 	}: {
 		value: string;
 		onSearch: (query: string) => void;
@@ -23,7 +24,7 @@
 		clearTimeout(debounceTimer);
 		debounceTimer = setTimeout(() => {
 			onSearch(value);
-		}, 300);
+		}, 600);
 	}
 
 	function clearSearch() {
@@ -63,7 +64,7 @@
 		<button
 			class="absolute inset-y-0 right-0 flex items-center pr-3"
 			onclick={clearSearch}
-			aria-label="Clear search"
+			aria-label={m.discover_clearSearch()}
 		>
 			<X class="h-5 w-5 text-base-content/50 transition-colors hover:text-base-content" />
 		</button>

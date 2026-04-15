@@ -10,12 +10,18 @@
 
 import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { createSSEOperationStream } from '$lib/server/sse';
 import { db } from '$lib/server/db/index.js';
 import { series, seasons, episodes } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
 import { logger } from '$lib/logging';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
+import {
+	startRefresh,
+	stopRefresh,
+	isSeriesRefreshing
+} from '$lib/server/library/ActiveSearchTracker.js';
 
 interface ProgressEvent {
 	type: 'progress';
@@ -48,38 +54,22 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		error(404, 'Series not found');
 	}
 
-	// Create a streaming response
-	const stream = new ReadableStream({
-		async start(controller) {
-			const encoder = new TextEncoder();
+	// Check if a refresh is already running for this series
+	if (isSeriesRefreshing(id)) {
+		error(409, 'A refresh is already in progress for this series');
+	}
 
-			const send = (event: SSEEvent) => {
-				try {
-					controller.enqueue(encoder.encode(`event: ${event.type}\n`));
-					controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
-				} catch {
-					// Controller may be closed
-				}
+	// Track this refresh
+	const refreshId = `series-refresh-${id}`;
+	startRefresh(refreshId, { seriesId: id });
+
+	return createSSEOperationStream(
+		request,
+		async ({ send, signal, isAborted }) => {
+			const sendEvent = (event: SSEEvent) => {
+				if (isAborted()) return;
+				send(event.type, event);
 			};
-
-			// Heartbeat to keep connection alive (every 25 seconds)
-			const heartbeatInterval = setInterval(() => {
-				try {
-					controller.enqueue(encoder.encode(`: heartbeat\n\n`));
-				} catch {
-					clearInterval(heartbeatInterval);
-				}
-			}, 25000);
-
-			// Cleanup on abort
-			request.signal.addEventListener('abort', () => {
-				clearInterval(heartbeatInterval);
-				try {
-					controller.close();
-				} catch {
-					// Already closed
-				}
-			});
 
 			try {
 				// Fetch fresh data from TMDB
@@ -122,8 +112,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 				if (tmdbSeries.seasons) {
 					for (const tmdbSeasonInfo of tmdbSeries.seasons) {
 						// Check if request was aborted
-						if (request.signal.aborted) {
-							clearInterval(heartbeatInterval);
+						if (signal.aborted) {
 							return;
 						}
 
@@ -223,7 +212,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 							processedSeasons++;
 
 							// Send progress event
-							send({
+							sendEvent({
 								type: 'progress',
 								seasonNumber: tmdbSeasonInfo.season_number,
 								totalSeasons,
@@ -233,24 +222,35 @@ export const POST: RequestHandler = async ({ params, request }) => {
 							// Small delay to avoid rate limiting
 							await new Promise((resolve) => setTimeout(resolve, 100));
 						} catch {
-							logger.warn('[RefreshSeries] Failed to fetch season', {
-								seasonNumber: tmdbSeasonInfo.season_number
-							});
+							logger.warn(
+								{
+									seasonNumber: tmdbSeasonInfo.season_number
+								},
+								'[RefreshSeries] Failed to fetch season'
+							);
 						}
 					}
 				}
 
-				// Update series episode counts (excluding specials/season 0)
+				// Update series episode counts (include specials if monitorSpecials is enabled)
 				const allEpisodes = await db.select().from(episodes).where(eq(episodes.seriesId, id));
-				const regularEpisodes = allEpisodes.filter((e) => e.seasonNumber !== 0);
-				const episodeCount = regularEpisodes.length;
-				const episodeFileCount = regularEpisodes.filter((e) => e.hasFile).length;
+				const monitorSpecials = seriesData.monitorSpecials ?? false;
+				const today = new Date().toISOString().split('T')[0];
+				const isAired = (episode: typeof episodes.$inferSelect) =>
+					episode.airDate && episode.airDate !== '' && episode.airDate <= today;
+
+				const episodesForStats = allEpisodes.filter(
+					(e) => isAired(e) && (monitorSpecials || e.seasonNumber !== 0)
+				);
+				const episodeCount = episodesForStats.length;
+				const episodeFileCount = episodesForStats.filter((e) => e.hasFile).length;
 
 				await db.update(series).set({ episodeCount, episodeFileCount }).where(eq(series.id, id));
 
-				// Update each season's episode counts
+				// Update each season's episode counts (only aired episodes)
 				const seasonEpisodeCounts = new Map<string, { total: number; withFiles: number }>();
 				for (const ep of allEpisodes) {
+					if (!isAired(ep)) continue;
 					if (ep.seasonId) {
 						const current = seasonEpisodeCounts.get(ep.seasonId) || { total: 0, withFiles: 0 };
 						current.total++;
@@ -272,7 +272,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 				libraryMediaEvents.emitSeriesUpdated(id);
 
 				// Send completion event
-				send({
+				sendEvent({
 					type: 'complete',
 					success: true,
 					episodeCount,
@@ -283,27 +283,14 @@ export const POST: RequestHandler = async ({ params, request }) => {
 					'[RefreshSeries] Failed to refresh series',
 					err instanceof Error ? err : undefined
 				);
-				send({
+				sendEvent({
 					type: 'error',
 					message: err instanceof Error ? err.message : 'Failed to refresh series from TMDB'
 				});
 			} finally {
-				clearInterval(heartbeatInterval);
-				try {
-					controller.close();
-				} catch {
-					// Already closed
-				}
+				stopRefresh(refreshId);
 			}
-		}
-	});
-
-	return new Response(stream, {
-		headers: {
-			'Content-Type': 'text/event-stream',
-			'Cache-Control': 'no-cache',
-			Connection: 'keep-alive',
-			'X-Accel-Buffering': 'no' // Disable nginx buffering
-		}
-	});
+		},
+		{ heartbeatInterval: 25000 }
+	);
 };

@@ -11,16 +11,19 @@
 	import type { FileScoreResponse } from '$lib/types/score';
 	import { InteractiveSearchModal } from '$lib/components/search';
 	import { SubtitleSearchModal } from '$lib/components/subtitles';
+	import SubtitleSyncModal from '$lib/components/subtitles/SubtitleSyncModal.svelte';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import type { MovieEditData } from '$lib/components/library/MovieEditModal.svelte';
-	import { FileEdit, Wifi, WifiOff, Loader2 } from 'lucide-svelte';
+	import { FileEdit, Wifi, WifiOff, Loader2, RefreshCw } from 'lucide-svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
 	import { createDynamicSSE } from '$lib/sse';
-	import { mobileSSEStatus } from '$lib/sse/mobileStatus.svelte';
+	import { getFileName } from '$lib/utils/format.js';
+	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -43,6 +46,14 @@
 	const movie = $derived(movieState ?? data.movie);
 	const queueItem = $derived(queueItemState === undefined ? data.queueItem : queueItemState);
 
+	function describeError(error: unknown, fallback: string): string {
+		return error instanceof Error ? error.message : fallback;
+	}
+
+	function showActionError(message: string, error: unknown): void {
+		toasts.error(message, { description: describeError(error, message) });
+	}
+
 	$effect(() => {
 		const incomingMovieId = data.movie.id;
 		if (lastMovieId !== incomingMovieId) {
@@ -54,8 +65,11 @@
 
 	// SSE Connection - internally handles browser/SSR
 	const sse = createDynamicSSE<{
-		'media:initial': { movie: LibraryMovie; queueItem: PageData['queueItem'] };
+		'media:updated': { movie: LibraryMovie; queueItem: PageData['queueItem'] };
+		'queue:sync': { queueItem: PageData['queueItem'] };
+		'queue:added': { id: string; title: string; status: string; progress: number | null };
 		'queue:updated': { id: string; title: string; status: string; progress: number | null };
+		'queue:removed': { id: string };
 		'file:added': {
 			file: MovieFile;
 			wasUpgrade: boolean;
@@ -63,9 +77,20 @@
 		};
 		'file:removed': { fileId: string };
 	}>(() => `/api/library/movies/${movie.id}/stream`, {
-		'media:initial': (payload) => {
+		'media:updated': (payload) => {
 			movieState = payload.movie;
 			queueItemState = payload.queueItem;
+		},
+		'queue:sync': (payload) => {
+			queueItemState = payload.queueItem;
+		},
+		'queue:added': (payload) => {
+			queueItemState = {
+				id: payload.id,
+				title: payload.title,
+				status: payload.status,
+				progress: payload.progress
+			};
 		},
 		'queue:updated': (payload) => {
 			if (!ACTIVE_QUEUE_STATUSES.has(payload.status)) {
@@ -77,6 +102,11 @@
 					status: payload.status,
 					progress: payload.progress
 				};
+			}
+		},
+		'queue:removed': (payload) => {
+			if (queueItem?.id === payload.id) {
+				queueItemState = null;
 			}
 		},
 		'file:added': (payload) => {
@@ -92,7 +122,6 @@
 				movie.files = [...movie.files, payload.file];
 			}
 			movie.hasFile = movie.files.length > 0;
-			queueItemState = null;
 		},
 		'file:removed': (payload) => {
 			movie.files = movie.files.filter((f) => f.id !== payload.fileId);
@@ -100,18 +129,17 @@
 		}
 	});
 
-	const MOBILE_SSE_SOURCE = 'library-movie';
-
 	$effect(() => {
-		mobileSSEStatus.publish(MOBILE_SSE_SOURCE, sse.status);
+		layoutState.setMobileSseStatus(deriveMobileSseStatus(sse));
 		return () => {
-			mobileSSEStatus.clear(MOBILE_SSE_SOURCE);
+			layoutState.clearMobileSseStatus();
 		};
 	});
 
 	const prefetchProfileId = $derived.by(
 		() => movie.scoringProfileId ?? data.qualityProfiles.find((p) => p.isDefault)?.id ?? null
 	);
+	const isStreamerProfile = $derived.by(() => movie.scoringProfileId === 'streamer');
 	let prefetchedStreamKey = $state<string | null>(null);
 
 	// Prefetch stream when page loads (warms cache for faster playback)
@@ -121,7 +149,7 @@
 		if (prefetchedStreamKey === key) return;
 		prefetchedStreamKey = key;
 
-		fetch(`/api/streaming/resolve/movie/${movie.tmdbId}?prefetch=1`, {
+		fetch(`/api/streaming/session/movie/${movie.tmdbId}/master.m3u8?prefetch=1`, {
 			signal: AbortSignal.timeout(5000),
 			headers: { 'X-Prefetch': 'true' }
 		}).catch(() => {});
@@ -131,6 +159,9 @@
 	let isEditModalOpen = $state(false);
 	let isSearchModalOpen = $state(false);
 	let isSubtitleSearchModalOpen = $state(false);
+	let isSubtitleSyncModalOpen = $state(false);
+	let syncingSubtitleId = $state<string | null>(null);
+	let subtitleSyncError = $state<string | null>(null);
 	let isRenameModalOpen = $state(false);
 	let isDeleteModalOpen = $state(false);
 	let isDeleteFileModalOpen = $state(false);
@@ -175,7 +206,7 @@
 		}
 		// No profile set - show the default
 		const defaultProfile = data.qualityProfiles.find((p) => p.isDefault);
-		return defaultProfile ? `${defaultProfile.name} (Default)` : null;
+		return defaultProfile ? m.library_movies_profileDefault({ name: defaultProfile.name }) : null;
 	});
 
 	const movieStoragePath = $derived.by(() => {
@@ -196,10 +227,6 @@
 		return `${normalizedRoot}/${normalizedRelative}`;
 	});
 
-	function getFileName(path: string): string {
-		return path.split('/').pop() || path;
-	}
-
 	async function refreshMovieFromApi(): Promise<void> {
 		try {
 			const response = await fetch(`/api/library/movies/${movie.id}`);
@@ -215,7 +242,7 @@
 				subtitles: refreshed.subtitles ?? []
 			};
 		} catch (error) {
-			console.error('Failed to refresh movie state:', error);
+			showActionError(m.toast_library_movieDetail_failedToRefresh(), error);
 		}
 	}
 
@@ -233,7 +260,7 @@
 				movie.monitored = newValue;
 			}
 		} catch (error) {
-			console.error('Failed to update monitored status:', error);
+			showActionError(m.toast_library_movieDetail_failedToUpdateMonitor(), error);
 		} finally {
 			isSaving = false;
 		}
@@ -242,6 +269,11 @@
 	function handleSearch() {
 		isSearchModalOpen = true;
 	}
+
+	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
+	import { getPrimaryAutoSearchIssue } from '$lib/utils/autoSearchIssues';
+
+	const searchProgress = createSearchProgress();
 
 	function handleImport() {
 		const query = [
@@ -257,32 +289,46 @@
 	async function handleAutoSearch() {
 		autoSearching = true;
 		autoSearchResult = null;
+
 		try {
-			const response = await fetch(`/api/library/movies/${movie.id}/auto-search`, {
-				method: 'POST'
-			});
+			await searchProgress.startSearch(`/api/library/movies/${movie.id}/auto-search`);
 
-			const result = await response.json();
-			autoSearchResult = {
-				found: result.found ?? false,
-				grabbed: result.grabbed ?? false,
-				releaseName: result.releaseName,
-				error: result.error
-			};
+			// Use the results from the search
+			if (searchProgress.results) {
+				autoSearchResult = {
+					found: searchProgress.results.found ?? false,
+					grabbed: searchProgress.results.grabbed ?? false,
+					releaseName: searchProgress.results.releaseName,
+					error: searchProgress.results.error
+				};
 
-			// If grabbed successfully, update local state
-			if (result.grabbed) {
-				// The file won't be immediately available, but we can indicate download started
-				// A more complete implementation would refresh data or use SSE
+				// Show toast notification
+				const issue = getPrimaryAutoSearchIssue(searchProgress.results);
+				if (searchProgress.results.grabbed) {
+					toasts.success(
+						m.toast_library_movieDetail_foundAndGrabbed({
+							release: searchProgress.results.releaseName ?? ''
+						})
+					);
+				} else if (issue) {
+					toasts.error(issue.message, { description: issue.description });
+				} else {
+					toasts.info(m.toast_library_movieDetail_noSuitableReleases());
+				}
 			}
 		} catch (error) {
 			autoSearchResult = {
 				found: false,
 				grabbed: false,
-				error: error instanceof Error ? error.message : 'Failed to auto-search'
+				error:
+					error instanceof Error ? error.message : m.toast_library_movieDetail_failedAutoSearch()
 			};
+			toasts.error(
+				error instanceof Error ? error.message : m.toast_library_movieDetail_failedAutoSearch()
+			);
 		} finally {
 			autoSearching = false;
+			searchProgress.reset();
 		}
 	}
 
@@ -301,12 +347,13 @@
 	async function handleGrab(
 		release: Release,
 		streaming?: boolean
-	): Promise<{ success: boolean; error?: string }> {
+	): Promise<{ success: boolean; error?: string; errorCode?: string }> {
 		try {
 			const response = await fetch('/api/download/grab', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
+					guid: release.guid,
 					downloadUrl: release.downloadUrl,
 					magnetUrl: release.magnetUrl,
 					infoHash: release.infoHash,
@@ -323,11 +370,11 @@
 
 			const result = await response.json();
 
-			return { success: result.success, error: result.error };
+			return { success: result.success, error: result.error, errorCode: result.errorCode };
 		} catch (error) {
 			return {
 				success: false,
-				error: error instanceof Error ? error.message : 'Failed to grab release'
+				error: error instanceof Error ? error.message : m.toast_library_movieDetail_failedToGrab()
 			};
 		}
 	}
@@ -352,22 +399,30 @@
 				body: JSON.stringify(editData)
 			});
 
-			if (response.ok) {
-				// Update local state
-				movie.monitored = editData.monitored;
-				movie.scoringProfileId = editData.scoringProfileId;
-				movie.rootFolderId = editData.rootFolderId;
-				movie.minimumAvailability = editData.minimumAvailability;
-				movie.wantsSubtitles = editData.wantsSubtitles;
+			const result = await response.json().catch(() => null);
+			if (!response.ok) {
+				throw new Error(result?.error || m.toast_library_movieDetail_failedToUpdate());
+			}
 
-				// Update root folder path display
+			// Update local state
+			movie.monitored = editData.monitored;
+			movie.scoringProfileId = editData.scoringProfileId;
+			movie.minimumAvailability = editData.minimumAvailability;
+			movie.wantsSubtitles = editData.wantsSubtitles;
+
+			if (result?.moveQueued) {
+				toasts.success(
+					'Move queued. File transfer has started and will appear in Activity until completion.'
+				);
+			} else {
+				movie.rootFolderId = editData.rootFolderId;
 				const newFolder = data.rootFolders.find((f) => f.id === editData.rootFolderId);
 				movie.rootFolderPath = newFolder?.path ?? null;
-
-				isEditModalOpen = false;
 			}
+
+			isEditModalOpen = false;
 		} catch (error) {
-			console.error('Failed to update movie:', error);
+			showActionError(m.toast_library_movieDetail_failedToUpdate(), error);
 		} finally {
 			isSaving = false;
 		}
@@ -388,21 +443,22 @@
 
 			if (result.success) {
 				if (removeFromLibrary) {
-					toasts.success('Movie removed from library');
+					toasts.success(m.toast_library_movieDetail_movieRemoved());
 					// Navigate to library since the movie no longer exists
 					window.location.href = '/library/movies';
 				} else {
-					toasts.success('Movie files deleted');
+					toasts.success(m.toast_library_movieDetail_movieFilesDeleted());
 					movie.files = [];
 					movie.hasFile = false;
 					queueItemState = null;
 				}
 			} else {
-				toasts.error('Failed to delete movie', { description: result.error });
+				toasts.error(m.toast_library_movieDetail_failedToDeleteMovie(), {
+					description: result.error
+				});
 			}
 		} catch (error) {
-			console.error('Failed to delete movie:', error);
-			toasts.error('Failed to delete movie');
+			showActionError(m.toast_library_movieDetail_failedToDeleteMovie(), error);
 		} finally {
 			isDeleting = false;
 			isDeleteModalOpen = false;
@@ -412,7 +468,7 @@
 	async function handleDeleteFile(fileId: string) {
 		const file = movie.files.find((f) => f.id === fileId);
 		deletingFileId = fileId;
-		deletingFileName = file ? getFileName(file.relativePath) : 'this file';
+		deletingFileName = file ? getFileName(file.relativePath) : m.library_movieDetail_thisFile();
 		isDeleteFileModalOpen = true;
 	}
 
@@ -436,17 +492,18 @@
 			const result = await response.json();
 
 			if (result.success) {
-				toasts.success('File deleted');
+				toasts.success(m.toast_library_movieDetail_fileDeleted());
 				const updatedFiles = movie.files.filter((f) => f.id !== deletingFileId);
 				movie.files = updatedFiles;
 				movie.hasFile = updatedFiles.length > 0;
 				closeDeleteFileModal();
 			} else {
-				toasts.error('Failed to delete file', { description: result.error });
+				toasts.error(m.toast_library_movieDetail_failedToDeleteFile(), {
+					description: result.error
+				});
 			}
 		} catch (error) {
-			console.error('Failed to delete file:', error);
-			toasts.error('Failed to delete file');
+			showActionError(m.toast_library_movieDetail_failedToDeleteFile(), error);
 		} finally {
 			isDeletingFile = false;
 		}
@@ -455,6 +512,14 @@
 	// Subtitle handlers
 	function handleSubtitleSearch() {
 		isSubtitleSearchModalOpen = true;
+	}
+
+	function handleSubtitleSync() {
+		if (isStreamerProfile) {
+			return;
+		}
+		subtitleSyncError = null;
+		isSubtitleSyncModalOpen = true;
 	}
 
 	async function handleSubtitleAutoSearch() {
@@ -481,7 +546,7 @@
 				}
 			}
 		} catch (error) {
-			console.error('Failed to auto-search subtitles:', error);
+			showActionError(m.toast_library_movieDetail_failedToAutoSearchSubs(), error);
 		} finally {
 			subtitleAutoSearching = false;
 		}
@@ -493,6 +558,8 @@
 		isForced?: boolean;
 		isHearingImpaired?: boolean;
 		format?: string;
+		wasSynced?: boolean;
+		syncOffset?: number | null;
 	}) {
 		if (!movie.subtitles) {
 			movie.subtitles = [];
@@ -501,6 +568,53 @@
 			return;
 		}
 		movie.subtitles = [...movie.subtitles, subtitle];
+	}
+
+	async function handleSubtitleResync(
+		subtitleId: string,
+		settings?: { splitPenalty?: number; noSplits?: boolean }
+	): Promise<void> {
+		syncingSubtitleId = subtitleId;
+		subtitleSyncError = null;
+
+		try {
+			const response = await fetch('/api/subtitles/sync', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					subtitleId,
+					...(settings?.splitPenalty !== undefined && { splitPenalty: settings.splitPenalty }),
+					...(settings?.noSplits !== undefined && { noSplits: settings.noSplits })
+				})
+			});
+
+			const result = await response.json();
+
+			if (!response.ok || !result.success) {
+				throw new Error(result.error || m.toast_library_movieDetail_subtitleSyncFailed());
+			}
+
+			movie.subtitles = (movie.subtitles ?? []).map((subtitle) =>
+				subtitle.id === subtitleId
+					? {
+							...subtitle,
+							wasSynced: true,
+							syncOffset: result.offsetMs
+						}
+					: subtitle
+			);
+
+			toasts.success(m.toast_library_movieDetail_subtitleSynced(), {
+				description: m.toast_library_movieDetail_subtitleSyncOffset({
+					offset: String(result.offsetMs)
+				})
+			});
+		} catch (error) {
+			subtitleSyncError = describeError(error, m.toast_library_movieDetail_subtitleSyncFailed());
+			showActionError(m.toast_library_movieDetail_failedToSyncSub(), error);
+		} finally {
+			syncingSubtitleId = null;
+		}
 	}
 
 	// Score handlers
@@ -517,7 +631,7 @@
 				}
 			}
 		} catch (error) {
-			console.error('Failed to fetch score:', error);
+			showActionError(m.toast_library_movieDetail_failedToLoadScore(), error);
 		} finally {
 			scoreLoading = false;
 			scoreFetched = true;
@@ -540,7 +654,11 @@
 </script>
 
 <svelte:head>
-	<title>{movie.title} - Library - Cinephage</title>
+	<title>{m.library_movieDetail_pageTitle({ title: movie.title })}</title>
+	<meta
+		name="description"
+		content={movie.overview || m.library_movieDetail_metaDescription({ title: movie.title })}
+	/>
 </svelte:head>
 
 <div class="flex w-full flex-col gap-4 overflow-x-hidden px-4 pb-20 md:gap-6 md:px-6 lg:px-8">
@@ -554,12 +672,12 @@
 			<div class="flex items-start justify-between gap-3">
 				<div class="min-w-0">
 					{#if movie.monitored}
-						Monitoring enabled.
+						{m.library_movieDetail_monitoringEnabled()}
 					{:else}
 						<div>
-							Monitoring is disabled.
+							{m.library_movieDetail_monitoringDisabled()}
 							<span class="block text-xs font-normal text-base-100/90">
-								Automatic downloads and upgrades will not occur.
+								{m.library_movieDetail_monitoringDisabledHint()}
 							</span>
 						</div>
 					{/if}
@@ -570,28 +688,28 @@
 							class="inline-flex items-center gap-1 rounded-full border border-success/70 bg-success/90 px-2.5 py-1 text-xs font-medium text-success-content shadow-sm"
 						>
 							<Wifi class="h-3 w-3" />
-							Live
+							{m.library_movieDetail_sseLive()}
 						</span>
 					{:else if sse.status === 'error'}
 						<span
 							class="inline-flex items-center gap-1 rounded-full border border-warning/70 bg-warning/90 px-2.5 py-1 text-xs font-medium text-warning-content shadow-sm"
 						>
 							<Loader2 class="h-3 w-3 animate-spin" />
-							Reconnecting
+							{m.library_movieDetail_sseReconnecting()}
 						</span>
 					{:else if sse.status === 'connecting'}
 						<span
 							class="inline-flex items-center gap-1 rounded-full border border-info/70 bg-info/90 px-2.5 py-1 text-xs font-medium text-info-content shadow-sm"
 						>
 							<Loader2 class="h-3 w-3 animate-spin" />
-							Connecting
+							{m.library_movieDetail_sseConnecting()}
 						</span>
 					{:else}
 						<span
 							class="inline-flex items-center gap-1 rounded-full border border-base-100/35 bg-base-100/20 px-2.5 py-1 text-xs font-medium text-base-100 shadow-sm"
 						>
 							<WifiOff class="h-3 w-3" />
-							Offline
+							{m.library_movieDetail_sseOffline()}
 						</span>
 					{/if}
 				</div>
@@ -622,18 +740,26 @@
 		<div class="md:col-span-2 lg:col-span-2">
 			<div class="rounded-xl bg-base-200 p-4 md:p-6">
 				<div class="mb-4 flex items-center justify-between">
-					<h2 class="text-lg font-semibold">Files</h2>
-					{#if movie.files.length > 0}
-						<button class="btn gap-1 btn-ghost btn-sm" onclick={() => (isRenameModalOpen = true)}>
-							<FileEdit class="h-4 w-4" />
-							Rename
-						</button>
-					{/if}
+					<h2 class="text-lg font-semibold">{m.library_movieDetail_filesHeading()}</h2>
+					<div class="flex flex-wrap items-center gap-2">
+						{#if !isStreamerProfile && (movie.subtitles?.length ?? 0) > 0}
+							<button class="btn gap-1 btn-ghost btn-sm" onclick={handleSubtitleSync}>
+								<RefreshCw class="h-4 w-4" />
+								{m.library_movieDetail_syncSubtitles()}
+							</button>
+						{/if}
+						{#if movie.files.length > 0}
+							<button class="btn gap-1 btn-ghost btn-sm" onclick={() => (isRenameModalOpen = true)}>
+								<FileEdit class="h-4 w-4" />
+								{m.library_movieDetail_rename()}
+							</button>
+						{/if}
+					</div>
 				</div>
 				<MovieFilesTab
 					files={movie.files}
 					subtitles={movie.subtitles}
-					isStreamerProfile={movie.scoringProfileId === 'streamer'}
+					{isStreamerProfile}
 					onDeleteFile={handleDeleteFile}
 					onSearch={handleSearch}
 					onSubtitleSearch={handleSubtitleSearch}
@@ -648,7 +774,7 @@
 			<!-- Overview -->
 			{#if movie.overview}
 				<div class="rounded-xl bg-base-200 p-4 md:p-6">
-					<h3 class="mb-2 font-semibold">Overview</h3>
+					<h3 class="mb-2 font-semibold">{m.library_movieDetail_overviewHeading()}</h3>
 					<p class="text-sm leading-relaxed text-base-content/80">
 						{movie.overview}
 					</p>
@@ -657,29 +783,34 @@
 
 			<!-- Details -->
 			<div class="rounded-xl bg-base-200 p-4 md:p-6">
-				<h3 class="mb-3 font-semibold">Details</h3>
+				<h3 class="mb-3 font-semibold">{m.library_movieDetail_detailsHeading()}</h3>
 				<dl class="space-y-2 text-sm">
 					{#if movie.originalTitle && movie.originalTitle !== movie.title}
 						<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-							<dt class="text-base-content/60">Original Title</dt>
+							<dt class="text-base-content/60">{m.library_movieDetail_originalTitle()}</dt>
 							<dd class="sm:text-right">{movie.originalTitle}</dd>
 						</div>
 					{/if}
 					{#if movie.runtime}
 						<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-							<dt class="text-base-content/60">Runtime</dt>
-							<dd>{Math.floor(movie.runtime / 60)}h {movie.runtime % 60}m</dd>
+							<dt class="text-base-content/60">{m.library_movieDetail_runtime()}</dt>
+							<dd>
+								{m.library_movieDetail_runtimeValue({
+									hours: String(Math.floor(movie.runtime / 60)),
+									minutes: String(movie.runtime % 60)
+								})}
+							</dd>
 						</div>
 					{/if}
 					{#if movie.genres && movie.genres.length > 0}
 						<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-							<dt class="text-base-content/60">Genres</dt>
+							<dt class="text-base-content/60">{m.library_movieDetail_genres()}</dt>
 							<dd class="sm:text-right">{movie.genres.join(', ')}</dd>
 						</div>
 					{/if}
 					{#if movie.imdbId}
 						<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-							<dt class="text-base-content/60">IMDb</dt>
+							<dt class="text-base-content/60">{m.library_movieDetail_imdb()}</dt>
 							<dd>
 								<a
 									href="https://www.imdb.com/title/{movie.imdbId}"
@@ -693,7 +824,7 @@
 						</div>
 					{/if}
 					<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-						<dt class="text-base-content/60">TMDB ID</dt>
+						<dt class="text-base-content/60">{m.library_movieDetail_tmdbId()}</dt>
 						<dd>
 							<a
 								href="https://www.themoviedb.org/movie/{movie.tmdbId}"
@@ -710,10 +841,10 @@
 
 			<!-- Path Info -->
 			<div class="rounded-xl bg-base-200 p-4 md:p-6">
-				<h3 class="mb-3 font-semibold">Storage</h3>
+				<h3 class="mb-3 font-semibold">{m.library_movieDetail_storageHeading()}</h3>
 				<dl class="space-y-2 text-sm">
 					<div>
-						<dt class="text-base-content/60">Path</dt>
+						<dt class="text-base-content/60">{m.library_movieDetail_path()}</dt>
 						<dd class="mt-1 font-mono text-xs break-all">
 							{movieStoragePath}
 						</dd>
@@ -743,7 +874,7 @@
 	imdbId={movie.imdbId}
 	year={movie.year}
 	mediaType="movie"
-	scoringProfileId={movie.scoringProfileId}
+	scoringProfileId={prefetchProfileId ?? undefined}
 	onClose={() => (isSearchModalOpen = false)}
 	onGrab={handleGrab}
 />
@@ -757,6 +888,19 @@
 	onDownloaded={handleSubtitleDownloaded}
 />
 
+<SubtitleSyncModal
+	open={isSubtitleSyncModalOpen}
+	title={movie.title}
+	subtitles={movie.subtitles ?? []}
+	{syncingSubtitleId}
+	errorMessage={subtitleSyncError}
+	onClose={() => {
+		isSubtitleSyncModalOpen = false;
+		subtitleSyncError = null;
+	}}
+	onSync={handleSubtitleResync}
+/>
+
 <!-- Rename Preview Modal -->
 <RenamePreviewModal
 	open={isRenameModalOpen}
@@ -765,7 +909,6 @@
 	mediaTitle={movie.title}
 	onClose={() => (isRenameModalOpen = false)}
 	onRenamed={() => {
-		isRenameModalOpen = false;
 		void refreshMovieFromApi();
 	}}
 />
@@ -773,7 +916,7 @@
 <!-- Delete Confirmation Modal -->
 <DeleteConfirmationModal
 	open={isDeleteModalOpen}
-	title="Delete Movie"
+	title={m.library_movieDetail_deleteMovieTitle()}
 	itemName={movie.title}
 	hasFiles={movie.hasFile === true}
 	hasActiveDownload={queueItem !== null && queueItem !== undefined}
@@ -785,9 +928,11 @@
 <!-- File Delete Confirmation Modal -->
 <ConfirmationModal
 	open={isDeleteFileModalOpen}
-	title="Delete File"
-	message={`Are you sure you want to delete "${deletingFileName ?? 'this file'}"? This cannot be undone.`}
-	confirmLabel="Delete"
+	title={m.library_movieDetail_deleteFileTitle()}
+	message={m.library_movieDetail_deleteFileMessage({
+		fileName: deletingFileName ?? m.library_movieDetail_thisFile()
+	})}
+	confirmLabel={m.common_delete()}
 	confirmVariant="error"
 	loading={isDeletingFile}
 	onConfirm={confirmDeleteFile}

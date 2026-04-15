@@ -22,7 +22,9 @@ import type {
 } from './types';
 import { OPENSUBTITLES_LANGUAGES } from './types';
 import { calculateOpenSubtitlesHash, canHashFile } from './hash';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import {
 	TooManyRequests,
 	DownloadLimitExceeded,
@@ -71,9 +73,12 @@ export class OpenSubtitlesProvider extends BaseSubtitleProvider {
 					params.moviehash = hash;
 					params.moviehash_match = 'include'; // Include hash matches but also text results
 				} catch (e) {
-					logger.debug('[OpenSubtitles] Hash calculation failed, using text search', {
-						error: e instanceof Error ? e.message : String(e)
-					});
+					logger.debug(
+						{
+							error: e instanceof Error ? e.message : String(e)
+						},
+						'[OpenSubtitles] Hash calculation failed, using text search'
+					);
 				}
 			}
 
@@ -177,11 +182,14 @@ export class OpenSubtitlesProvider extends BaseSubtitleProvider {
 
 			const buffer = Buffer.from(await fileResponse.arrayBuffer());
 
-			logger.debug('[OpenSubtitles] Downloaded subtitle', {
-				fileId,
-				size: buffer.length,
-				remaining: downloadResponse.remaining
-			});
+			logger.debug(
+				{
+					fileId,
+					size: buffer.length,
+					remaining: downloadResponse.remaining
+				},
+				'[OpenSubtitles] Downloaded subtitle'
+			);
 
 			return buffer;
 		} catch (error) {
@@ -267,10 +275,13 @@ export class OpenSubtitlesProvider extends BaseSubtitleProvider {
 			// Token is valid for 24 hours, refresh at 23 hours
 			this.tokenExpiry = new Date(Date.now() + 23 * 60 * 60 * 1000);
 
-			logger.debug('[OpenSubtitles] Authenticated successfully', {
-				downloads: data.user.allowed_downloads,
-				vip: data.user.vip
-			});
+			logger.debug(
+				{
+					downloads: data.user.allowed_downloads,
+					vip: data.user.vip
+				},
+				'[OpenSubtitles] Authenticated successfully'
+			);
 
 			return this.token;
 		}
@@ -293,13 +304,16 @@ export class OpenSubtitlesProvider extends BaseSubtitleProvider {
 			throw new ConfigurationError('opensubtitles', 'API key is required');
 		}
 
+		// Ensure authentication is performed before every request
+		await this.authenticate();
+
 		const headers: Record<string, string> = {
 			'Api-Key': apiKey,
 			'User-Agent': DEFAULT_USER_AGENT,
 			Accept: 'application/json'
 		};
 
-		// Add auth token if available
+		// Add auth token if available (set by authenticate() when username+password provided)
 		if (this.token) {
 			headers['Authorization'] = `Bearer ${this.token}`;
 		}

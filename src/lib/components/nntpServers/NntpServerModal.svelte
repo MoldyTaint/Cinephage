@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { X, Loader2, XCircle } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 	import { SectionHeader, TestResult } from '$lib/components/ui/modal';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 
@@ -76,7 +77,9 @@
 	const nameTooLong = $derived(name.length > MAX_NAME_LENGTH);
 
 	// Derived
-	const modalTitle = $derived(mode === 'add' ? 'Add Usenet Server' : 'Edit Usenet Server');
+	const modalTitle = $derived(
+		mode === 'add' ? m.nntpServer_addUsenetServer() : m.nntpServer_editUsenetServer()
+	);
 	const hasPassword = $derived(server?.hasPassword ?? false);
 
 	// Reset form when modal opens or server changes
@@ -153,11 +156,11 @@
 	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
 		<!-- Left Column: Connection -->
 		<div class="space-y-4">
-			<SectionHeader title="Connection" />
+			<SectionHeader title={m.connection_section_title()} />
 
 			<div class="form-control">
 				<label class="label py-1" for="name">
-					<span class="label-text">Name</span>
+					<span class="label-text">{m.common_name()}</span>
 				</label>
 				<input
 					id="name"
@@ -174,7 +177,9 @@
 						{name.length}/{MAX_NAME_LENGTH}
 					</span>
 					{#if nameTooLong}
-						<span class="label-text-alt text-xs text-error">Max {MAX_NAME_LENGTH} characters.</span>
+						<span class="label-text-alt text-xs text-error"
+							>{m.validation_maxChars({ max: MAX_NAME_LENGTH })}</span
+						>
 					{/if}
 				</div>
 			</div>
@@ -182,7 +187,7 @@
 			<div class="grid grid-cols-2 gap-2 sm:gap-3">
 				<div class="form-control">
 					<label class="label py-1" for="host">
-						<span class="label-text">Host</span>
+						<span class="label-text">{m.connection_host_label()}</span>
 					</label>
 					<input
 						id="host"
@@ -195,7 +200,7 @@
 
 				<div class="form-control">
 					<label class="label py-1" for="port">
-						<span class="label-text">Port</span>
+						<span class="label-text">{m.common_port()}</span>
 					</label>
 					<input
 						id="port"
@@ -211,7 +216,7 @@
 			<div class="grid grid-cols-2 gap-2 sm:gap-3">
 				<div class="form-control">
 					<label class="label py-1" for="username">
-						<span class="label-text">Username</span>
+						<span class="label-text">{m.auth_username_label()}</span>
 					</label>
 					<input
 						id="username"
@@ -225,9 +230,9 @@
 				<div class="form-control">
 					<label class="label py-1" for="password">
 						<span class="label-text">
-							Password
+							{m.auth_password_label()}
 							{#if mode === 'edit' && hasPassword}
-								<span class="text-xs opacity-50">(blank to keep)</span>
+								<span class="text-xs opacity-50">({m.auth_blankToKeep()})</span>
 							{/if}
 						</span>
 					</label>
@@ -249,23 +254,23 @@
 						bind:checked={useSsl}
 						onchange={handleSslChange}
 					/>
-					<span class="label-text">Use SSL</span>
+					<span class="label-text">{m.connection_useSsl_label()}</span>
 				</label>
 
 				<label class="label cursor-pointer gap-2">
 					<input type="checkbox" class="checkbox checkbox-sm" bind:checked={enabled} />
-					<span class="label-text">Enabled</span>
+					<span class="label-text">{m.common_enabled()}</span>
 				</label>
 			</div>
 		</div>
 
 		<!-- Right Column: Settings -->
 		<div class="space-y-4">
-			<SectionHeader title="Settings" />
+			<SectionHeader title={m.nntpServer_settings_title()} />
 
 			<div class="form-control">
 				<label class="label py-1" for="maxConnections">
-					<span class="label-text">Max Connections</span>
+					<span class="label-text">{m.nntpServer_maxConnections_label()}</span>
 				</label>
 				<input
 					id="maxConnections"
@@ -277,14 +282,14 @@
 				/>
 				<div class="label py-1">
 					<span class="label-text-alt text-xs">
-						Check your usenet provider for connection limits (usually 10-50)
+						{m.nntpServer_maxConnections_help()}
 					</span>
 				</div>
 			</div>
 
 			<div class="form-control">
 				<label class="label py-1" for="priority">
-					<span class="label-text">Priority</span>
+					<span class="label-text">{m.common_priority()}</span>
 				</label>
 				<input
 					id="priority"
@@ -296,7 +301,7 @@
 				/>
 				<div class="label py-1">
 					<span class="label-text-alt text-xs">
-						Lower values = higher priority. Use for server failover.
+						{m.nntpServer_priority_help()}
 					</span>
 				</div>
 			</div>
@@ -308,7 +313,7 @@
 		<div class="mt-6 alert alert-error">
 			<XCircle class="h-5 w-5" />
 			<div>
-				<div class="font-medium">Failed to save</div>
+				<div class="font-medium">{m.common_failedToSave()}</div>
 				<div class="text-sm opacity-80">{error}</div>
 			</div>
 		</div>
@@ -323,7 +328,9 @@
 	<!-- Actions -->
 	<div class="modal-action">
 		{#if mode === 'edit' && onDelete}
-			<button class="btn mr-auto btn-outline btn-error" onclick={onDelete}>Delete</button>
+			<button class="btn mr-auto btn-outline btn-error" onclick={onDelete}
+				>{m.common_delete()}</button
+			>
 		{/if}
 
 		<button
@@ -334,10 +341,10 @@
 			{#if testing}
 				<Loader2 class="h-4 w-4 animate-spin" />
 			{/if}
-			Test
+			{m.action_test()}
 		</button>
 
-		<button class="btn btn-ghost" onclick={onClose}>Cancel</button>
+		<button class="btn btn-ghost" onclick={onClose}>{m.action_cancel()}</button>
 
 		<button
 			class="btn btn-primary"
@@ -347,7 +354,7 @@
 			{#if saving}
 				<Loader2 class="h-4 w-4 animate-spin" />
 			{/if}
-			Save
+			{m.action_save()}
 		</button>
 	</div>
 </ModalWrapper>

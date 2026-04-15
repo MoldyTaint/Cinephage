@@ -89,10 +89,13 @@ export class YamlDefinitionLoader {
 			results.push(...dirResults);
 		}
 
-		log.info('Loaded definitions', {
-			count: results.length,
-			errors: this.errors.length
-		});
+		log.info(
+			{
+				count: results.length,
+				errors: this.errors.length
+			},
+			'Loaded definitions'
+		);
 
 		return results;
 	}
@@ -104,7 +107,7 @@ export class YamlDefinitionLoader {
 		const results: DefinitionLoadResult[] = [];
 
 		if (!fs.existsSync(directory)) {
-			log.warn('Definitions directory not found', { directory });
+			log.warn({ directory }, 'Definitions directory not found');
 			return results;
 		}
 
@@ -158,7 +161,7 @@ export class YamlDefinitionLoader {
 					error: `Validation failed: ${errorMessage}`
 				});
 
-				log.warn('Definition validation failed', { filePath, error: errorMessage });
+				log.warn({ filePath, error: errorMessage }, 'Definition validation failed');
 				return null;
 			}
 
@@ -169,7 +172,7 @@ export class YamlDefinitionLoader {
 			};
 
 			this.cache.set(validationResult.data.id, result);
-			log.debug('Loaded definition', { id: validationResult.data.id, filePath });
+			log.debug({ id: validationResult.data.id, filePath }, 'Loaded definition');
 			return result;
 		} catch (error) {
 			const errorMsg = error instanceof Error ? error.message : String(error);
@@ -177,7 +180,7 @@ export class YamlDefinitionLoader {
 				filePath,
 				error: errorMsg
 			});
-			log.warn('Failed to load definition', { filePath, error: errorMsg });
+			log.warn({ filePath, error: errorMsg }, 'Failed to load definition');
 			return null;
 		}
 	}

@@ -57,11 +57,14 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				providerConfig.headers = data.headers;
 			}
 
-			logger.info('[ExternalPreview API] Using preset', {
-				presetId: data.presetId,
-				providerType,
-				config: providerConfig
-			});
+			logger.info(
+				{
+					presetId: data.presetId,
+					providerType,
+					config: providerConfig
+				},
+				'[ExternalPreview API] Using preset'
+			);
 		} else if (data.providerType) {
 			// Using explicit provider type with custom config
 			providerType = data.providerType;
@@ -73,10 +76,13 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				providerConfig.headers = data.headers;
 			}
 
-			logger.info('[ExternalPreview API] Using provider type', {
-				providerType,
-				config: providerConfig
-			});
+			logger.info(
+				{
+					providerType,
+					config: providerConfig
+				},
+				'[ExternalPreview API] Using provider type'
+			);
 		} else if (data.url) {
 			// Fallback to external-json for backward compatibility
 			providerType = 'external-json';
@@ -85,9 +91,12 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				headers: data.headers
 			};
 
-			logger.info('[ExternalPreview API] Using URL (backward compatibility)', {
-				url: data.url
-			});
+			logger.info(
+				{
+					url: data.url
+				},
+				'[ExternalPreview API] Using URL (backward compatibility)'
+			);
 		} else {
 			return json({ error: 'Must provide presetId, providerType, or url' }, { status: 400 });
 		}
@@ -106,11 +115,14 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			);
 		}
 
-		logger.info('[ExternalPreview API] Fetching external list', {
-			providerType,
-			mediaType: data.mediaType,
-			isTest
-		});
+		logger.info(
+			{
+				providerType,
+				mediaType: data.mediaType,
+				isTest
+			},
+			'[ExternalPreview API] Fetching external list'
+		);
 
 		// Fetch items from external source
 		// For external lists, we pass empty string to show all content types
@@ -121,10 +133,13 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			return json({ error: result.error }, { status: 400 });
 		}
 
-		logger.info('[ExternalPreview API] Fetched external items', {
-			totalCount: result.totalCount,
-			failedCount: result.failedCount
-		});
+		logger.info(
+			{
+				totalCount: result.totalCount,
+				failedCount: result.failedCount
+			},
+			'[ExternalPreview API] Fetched external items'
+		);
 
 		// For test endpoint, just return counts without resolving IDs
 		if (isTest) {
@@ -148,10 +163,13 @@ export const POST: RequestHandler = async ({ request, url }) => {
 		// If no mediaType specified, try movie first, then TV as fallback
 		const resolveMediaType = data.mediaType || 'movie';
 
-		logger.info('[ExternalPreview API] Starting concurrent resolution', {
-			totalItems: result.items.length,
-			mediaType: resolveMediaType
-		});
+		logger.info(
+			{
+				totalItems: result.items.length,
+				mediaType: resolveMediaType
+			},
+			'[ExternalPreview API] Starting concurrent resolution'
+		);
 
 		// Use batch resolution with concurrency for much faster processing
 		const resolutions = await externalIdResolver.resolveItemsBatch(
@@ -174,10 +192,13 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				// Check for duplicates
 				if (seenIds.has(resolution.tmdbId)) {
 					duplicatesRemoved++;
-					logger.debug('[ExternalPreview API] Duplicate item removed', {
-						tmdbId: resolution.tmdbId,
-						title: resolution.title
-					});
+					logger.debug(
+						{
+							tmdbId: resolution.tmdbId,
+							title: resolution.title
+						},
+						'[ExternalPreview API] Duplicate item removed'
+					);
 					continue;
 				}
 				seenIds.add(resolution.tmdbId);
@@ -210,13 +231,16 @@ export const POST: RequestHandler = async ({ request, url }) => {
 
 		// Log summary of failed items for debugging
 		if (failedCount > 0) {
-			logger.warn('[ExternalPreview API] Resolution summary', {
-				totalItems: result.items.length,
-				resolvedCount,
-				failedCount,
-				duplicatesRemoved,
-				failedItems: failedItems.slice(0, 10)
-			});
+			logger.warn(
+				{
+					totalItems: result.items.length,
+					resolvedCount,
+					failedCount,
+					duplicatesRemoved,
+					failedItems: failedItems.slice(0, 10)
+				},
+				'[ExternalPreview API] Resolution summary'
+			);
 		}
 
 		// Check which items are already in the library
@@ -249,12 +273,15 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			inLibrary: libraryTmdbIds.has(item.id)
 		}));
 
-		logger.info('[ExternalPreview API] Resolved items', {
-			resolvedCount,
-			failedCount,
-			duplicatesRemoved,
-			inLibrary: libraryTmdbIds.size
-		});
+		logger.info(
+			{
+				resolvedCount,
+				failedCount,
+				duplicatesRemoved,
+				inLibrary: libraryTmdbIds.size
+			},
+			'[ExternalPreview API] Resolved items'
+		);
 
 		// Apply preview cap and paginate at fixed 24 items (8x3 grid)
 		const PREVIEW_PAGE_SIZE = 27;
@@ -268,13 +295,16 @@ export const POST: RequestHandler = async ({ request, url }) => {
 		const endIndex = startIndex + PREVIEW_PAGE_SIZE;
 		const paginatedItems = cappedItems.slice(startIndex, endIndex);
 
-		logger.info('[ExternalPreview API] Returning paginated results', {
-			page,
-			itemsPerPage: PREVIEW_PAGE_SIZE,
-			totalItems,
-			totalPages,
-			returnedItems: paginatedItems.length
-		});
+		logger.info(
+			{
+				page,
+				itemsPerPage: PREVIEW_PAGE_SIZE,
+				totalItems,
+				totalPages,
+				returnedItems: paginatedItems.length
+			},
+			'[ExternalPreview API] Returning paginated results'
+		);
 
 		return json({
 			items: paginatedItems,
@@ -287,7 +317,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 		});
 	} catch (error) {
 		if (error instanceof z.ZodError) {
-			logger.error('[ExternalPreview API] Validation error', { issues: error.issues });
+			logger.error({ issues: error.issues }, '[ExternalPreview API] Validation error');
 			return json({ error: 'Validation failed', details: error.issues }, { status: 400 });
 		}
 		logger.error('[ExternalPreview API] Error', error);

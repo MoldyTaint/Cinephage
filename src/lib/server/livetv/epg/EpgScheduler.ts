@@ -14,6 +14,8 @@ import { settings } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service';
 import { getEpgService } from './EpgService';
+import { getEpgSyncState } from './EpgSyncState';
+import { liveTvEvents } from '../LiveTvEvents';
 
 /**
  * Default settings
@@ -111,10 +113,13 @@ export class EpgScheduler extends EventEmitter implements BackgroundService {
 		try {
 			this.startupTime = new Date();
 
-			logger.info('Starting', {
-				pollInterval: SCHEDULER_POLL_INTERVAL_MS,
-				graceMinutes: STARTUP_GRACE_PERIOD_MS / 60000
-			});
+			logger.info(
+				{
+					pollInterval: SCHEDULER_POLL_INTERVAL_MS,
+					graceMinutes: STARTUP_GRACE_PERIOD_MS / 60000
+				},
+				'Starting'
+			);
 
 			// Start the polling timer
 			this.schedulerTimer = setInterval(() => this.checkDueTasks(), SCHEDULER_POLL_INTERVAL_MS);
@@ -127,7 +132,7 @@ export class EpgScheduler extends EventEmitter implements BackgroundService {
 		} catch (error) {
 			this._error = error instanceof Error ? error : new Error(String(error));
 			this._status = 'error';
-			logger.error('Failed to initialize', { error: this._error.message });
+			logger.error({ err: this._error }, 'Failed to initialize');
 		}
 	}
 
@@ -195,12 +200,23 @@ export class EpgScheduler extends EventEmitter implements BackgroundService {
 	 */
 	private async runSync(): Promise<void> {
 		this.isSyncing = true;
+		const syncState = getEpgSyncState();
+		let syncStateStarted = false;
 
 		try {
+			if (!syncState.tryStartAll()) {
+				logger.info('Skipping scheduled EPG sync because another sync is already running');
+				return;
+			}
+			syncStateStarted = true;
 			logger.info('Starting scheduled EPG sync');
+			liveTvEvents.emitEpgSyncStarted();
 
 			const epgService = getEpgService();
-			const results = await epgService.syncAll();
+			const results = await epgService.syncAll({
+				shouldCancelAll: () => syncState.isCancelRequestedAll(),
+				shouldCancelAccount: (accountId) => syncState.isCancelRequestedForAccount(accountId)
+			});
 
 			const successful = results.filter((r) => r.success).length;
 			const totalAdded = results.reduce((sum, r) => sum + r.programsAdded, 0);
@@ -209,20 +225,34 @@ export class EpgScheduler extends EventEmitter implements BackgroundService {
 			// Update last sync time
 			this.setSetting(SETTINGS_KEYS.lastSyncAt, new Date().toISOString());
 
-			logger.info('Scheduled EPG sync complete', {
-				accounts: results.length,
-				successful,
-				totalAdded,
-				totalUpdated
-			});
+			logger.info(
+				{
+					accounts: results.length,
+					successful,
+					totalAdded,
+					totalUpdated
+				},
+				'Scheduled EPG sync complete'
+			);
+			liveTvEvents.emitEpgSyncCompleted();
 
 			this.emit('sync-complete', { results });
 		} catch (error) {
-			logger.error('Scheduled EPG sync failed', {
-				error: error instanceof Error ? error.message : 'Unknown error'
-			});
+			liveTvEvents.emitEpgSyncFailed(
+				undefined,
+				error instanceof Error ? error.message : 'Unknown error'
+			);
+			logger.error(
+				{
+					error: error instanceof Error ? error.message : 'Unknown error'
+				},
+				'Scheduled EPG sync failed'
+			);
 		} finally {
 			this.isSyncing = false;
+			if (syncStateStarted) {
+				syncState.finishAll();
+			}
 		}
 	}
 
@@ -241,12 +271,15 @@ export class EpgScheduler extends EventEmitter implements BackgroundService {
 			this.setSetting(SETTINGS_KEYS.lastCleanupAt, new Date().toISOString());
 
 			if (deleted > 0) {
-				logger.info('EPG cleanup complete', { deleted });
+				logger.info({ deleted }, 'EPG cleanup complete');
 			}
 		} catch (error) {
-			logger.error('EPG cleanup failed', {
-				error: error instanceof Error ? error.message : 'Unknown error'
-			});
+			logger.error(
+				{
+					error: error instanceof Error ? error.message : 'Unknown error'
+				},
+				'EPG cleanup failed'
+			);
 		} finally {
 			this.isCleaningUp = false;
 		}
@@ -293,7 +326,7 @@ export class EpgScheduler extends EventEmitter implements BackgroundService {
 				})
 				.run();
 		} catch (error) {
-			logger.error('Failed to set setting', { key, error });
+			logger.error({ key, error }, 'Failed to set setting');
 		}
 	}
 

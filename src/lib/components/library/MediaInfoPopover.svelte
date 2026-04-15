@@ -1,6 +1,7 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import type { MediaInfo } from '$lib/types/library';
-	import { Info, Monitor, Volume2, Subtitles, Clock } from 'lucide-svelte';
+	import { Info, Monitor, Volume2, Captions, Clock } from 'lucide-svelte';
 
 	interface Props {
 		mediaInfo: MediaInfo;
@@ -9,7 +10,7 @@
 	let { mediaInfo }: Props = $props();
 
 	function formatBitrate(bps: number | undefined): string {
-		if (!bps) return 'N/A';
+		if (!bps) return m.common_na();
 		if (bps >= 1000000) {
 			return `${(bps / 1000000).toFixed(1)} Mbps`;
 		}
@@ -17,14 +18,14 @@
 	}
 
 	function formatRuntime(seconds: number | undefined): string {
-		if (!seconds) return 'N/A';
+		if (!seconds) return m.common_na();
 		const hours = Math.floor(seconds / 3600);
 		const minutes = Math.floor((seconds % 3600) / 60);
 		return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 	}
 
 	function formatChannels(channels: number | undefined): string {
-		if (!channels) return 'N/A';
+		if (!channels) return m.common_na();
 		switch (channels) {
 			case 1:
 				return 'Mono';
@@ -43,7 +44,7 @@
 		if (info.videoResolution) {
 			return `${info.videoResolution.width}x${info.videoResolution.height}`;
 		}
-		return 'N/A';
+		return m.common_na();
 	}
 </script>
 
@@ -56,16 +57,16 @@
 		role="dialog"
 		class="dropdown-content z-50 w-80 rounded-lg bg-base-200 p-4 shadow-xl"
 	>
-		<h4 class="mb-3 text-sm font-semibold">Media Information</h4>
+		<h4 class="mb-3 text-sm font-semibold">{m.library_mediaInfo_title()}</h4>
 
 		<div class="space-y-3 text-sm">
 			<!-- Video Section -->
 			<div class="flex items-start gap-2">
 				<Monitor size={14} class="mt-0.5 shrink-0 text-primary" />
 				<div class="flex-1">
-					<div class="font-medium">Video</div>
+					<div class="font-medium">{m.library_mediaInfo_video()}</div>
 					<div class="text-base-content/70">
-						{mediaInfo.videoCodec || 'Unknown'}
+						{mediaInfo.videoCodec || m.common_unknown()}
 						{#if mediaInfo.videoProfile}
 							({mediaInfo.videoProfile})
 						{/if}
@@ -96,9 +97,9 @@
 			<div class="flex items-start gap-2">
 				<Volume2 size={14} class="mt-0.5 shrink-0 text-secondary" />
 				<div class="flex-1">
-					<div class="font-medium">Audio</div>
+					<div class="font-medium">{m.library_mediaInfo_audio()}</div>
 					<div class="text-base-content/70">
-						{mediaInfo.audioCodec || 'Unknown'}
+						{mediaInfo.audioCodec || m.common_unknown()}
 						{#if mediaInfo.audioChannels}
 							• {formatChannels(mediaInfo.audioChannels)}
 						{/if}
@@ -110,7 +111,7 @@
 					{/if}
 					{#if mediaInfo.audioLanguages && mediaInfo.audioLanguages.length > 0}
 						<div class="text-base-content/60">
-							Languages: {mediaInfo.audioLanguages.join(', ')}
+							{m.common_languages()}: {mediaInfo.audioLanguages.join(', ')}
 						</div>
 					{/if}
 				</div>
@@ -119,9 +120,9 @@
 			<!-- Subtitles Section -->
 			{#if mediaInfo.subtitleLanguages && mediaInfo.subtitleLanguages.length > 0}
 				<div class="flex items-start gap-2">
-					<Subtitles size={14} class="mt-0.5 shrink-0 text-accent" />
+					<Captions size={14} class="mt-0.5 shrink-0 text-accent" />
 					<div class="flex-1">
-						<div class="font-medium">Subtitles</div>
+						<div class="font-medium">{m.library_mediaInfo_subtitles()}</div>
 						<div class="text-base-content/70">
 							{mediaInfo.subtitleLanguages.join(', ')}
 						</div>
@@ -134,7 +135,7 @@
 				<div class="flex items-start gap-2">
 					<Clock size={14} class="mt-0.5 shrink-0 text-info" />
 					<div class="flex-1">
-						<div class="font-medium">Runtime</div>
+						<div class="font-medium">{m.library_mediaInfo_runtime()}</div>
 						<div class="text-base-content/70">
 							{formatRuntime(mediaInfo.runtime)}
 						</div>
@@ -145,7 +146,7 @@
 			<!-- Container -->
 			{#if mediaInfo.container}
 				<div class="mt-2 border-t border-base-300 pt-2 text-base-content/60">
-					Container: {mediaInfo.container}
+					{m.library_mediaInfo_container()}: {mediaInfo.container}
 				</div>
 			{/if}
 		</div>

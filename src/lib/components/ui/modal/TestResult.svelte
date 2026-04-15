@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { CheckCircle2, XCircle } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface TestResultData {
 		success: boolean;
@@ -12,7 +13,7 @@
 		successDetails?: string;
 	}
 
-	let { result, successMessage = 'Connection test successful!', successDetails }: Props = $props();
+	let { result, successMessage = m.ui_modal_testPassed(), successDetails }: Props = $props();
 </script>
 
 {#if result}
@@ -28,7 +29,7 @@
 		{:else}
 			<XCircle class="h-5 w-5" />
 			<div>
-				<span class="font-medium">Connection test failed</span>
+				<span class="font-medium">{m.ui_modal_testFailed()}</span>
 				{#if result.error}
 					<p class="text-sm opacity-80">{result.error}</p>
 				{/if}

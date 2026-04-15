@@ -7,6 +7,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getEpgService, getEpgScheduler } from '$lib/server/livetv/epg';
+import { getEpgSyncState } from '$lib/server/livetv/epg/EpgSyncState';
 import { db } from '$lib/server/db';
 import { livetvAccounts } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
@@ -16,9 +17,11 @@ export const GET: RequestHandler = async () => {
 	try {
 		const epgService = getEpgService();
 		const epgScheduler = getEpgScheduler();
+		const epgSyncState = getEpgSyncState();
 
 		// Get scheduler status for sync info
 		const schedulerStatus = epgScheduler.getStatus();
+		const syncSnapshot = epgSyncState.getSnapshot();
 
 		// Get total program count
 		const totalPrograms = epgService.getProgramCount();
@@ -52,7 +55,13 @@ export const GET: RequestHandler = async () => {
 		return json({
 			success: true,
 			isEnabled: true,
-			isSyncing: schedulerStatus.isSyncing,
+			isSyncing:
+				schedulerStatus.isSyncing ||
+				syncSnapshot.syncingAll ||
+				syncSnapshot.syncingAccountIds.length > 0,
+			syncingAccountIds: syncSnapshot.syncingAccountIds,
+			cancelRequestedAll: syncSnapshot.cancelRequestedAll,
+			cancelRequestedAccountIds: syncSnapshot.cancelRequestedAccountIds,
 			syncIntervalHours: schedulerStatus.syncIntervalHours,
 			retentionHours: schedulerStatus.retentionHours,
 			lastSyncAt: schedulerStatus.lastSyncAt,

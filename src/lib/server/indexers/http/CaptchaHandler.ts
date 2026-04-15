@@ -108,7 +108,7 @@ export function detectCaptcha(html: string, url?: string): CaptchaDetectionResul
 		const match = html.match(pattern);
 		if (match) {
 			const siteKey = extractSiteKey(html, 'recaptcha') ?? match[1];
-			logger.debug('Detected reCAPTCHA v3', { url, siteKey });
+			logger.debug({ url, siteKey }, 'Detected reCAPTCHA v3');
 			return {
 				detected: true,
 				type: 'recaptcha-v3',
@@ -122,7 +122,7 @@ export function detectCaptcha(html: string, url?: string): CaptchaDetectionResul
 	for (const pattern of CAPTCHA_PATTERNS.recaptchaV2) {
 		if (pattern.test(html)) {
 			const siteKey = extractSiteKey(html, 'recaptcha');
-			logger.debug('Detected reCAPTCHA v2', { url, siteKey });
+			logger.debug({ url, siteKey }, 'Detected reCAPTCHA v2');
 			return {
 				detected: true,
 				type: 'recaptcha-v2',
@@ -135,7 +135,7 @@ export function detectCaptcha(html: string, url?: string): CaptchaDetectionResul
 	for (const pattern of CAPTCHA_PATTERNS.hcaptcha) {
 		if (pattern.test(html)) {
 			const siteKey = extractSiteKey(html, 'hcaptcha');
-			logger.debug('Detected hCaptcha', { url, siteKey });
+			logger.debug({ url, siteKey }, 'Detected hCaptcha');
 			return {
 				detected: true,
 				type: 'hcaptcha',
@@ -148,7 +148,7 @@ export function detectCaptcha(html: string, url?: string): CaptchaDetectionResul
 	for (const pattern of CAPTCHA_PATTERNS.turnstile) {
 		if (pattern.test(html)) {
 			const siteKey = extractSiteKey(html, 'turnstile');
-			logger.debug('Detected Cloudflare Turnstile', { url, siteKey });
+			logger.debug({ url, siteKey }, 'Detected Cloudflare Turnstile');
 			return {
 				detected: true,
 				type: 'turnstile',
@@ -162,7 +162,7 @@ export function detectCaptcha(html: string, url?: string): CaptchaDetectionResul
 		if (pattern.test(html)) {
 			// Only flag as captcha if it looks like a form with captcha
 			if (html.includes('<form') && /captcha/i.test(html)) {
-				logger.debug('Detected potential image captcha', { url });
+				logger.debug({ url }, 'Detected potential image captcha');
 				return {
 					detected: true,
 					type: 'image'
@@ -249,10 +249,13 @@ export class CaptchaHandler {
 		// Native captcha solving is planned for future versions
 		// For now, we report the detection to the user
 		if (this.config.autoSolve) {
-			logger.info('Captcha detected - native solving not yet implemented', {
-				type: detection.type,
-				siteKey: detection.siteKey
-			});
+			logger.info(
+				{
+					type: detection.type,
+					siteKey: detection.siteKey
+				},
+				'Captcha detected - native solving not yet implemented'
+			);
 
 			return {
 				success: false,

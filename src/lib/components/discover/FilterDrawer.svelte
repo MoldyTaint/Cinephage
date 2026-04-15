@@ -2,6 +2,7 @@
 	import { fade, fly } from 'svelte/transition';
 	import FilterPanel from './FilterPanel.svelte';
 	import type { WatchProvider } from '$lib/types/tmdb';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let {
 		isOpen = $bindable(false),
@@ -11,6 +12,7 @@
 		providers,
 		genres,
 		selectedGenres,
+		selectedLanguage,
 		minYear,
 		maxYear,
 		minRating,
@@ -18,6 +20,7 @@
 		onSortChange,
 		onProviderToggle,
 		onGenreToggle,
+		onLanguageChange,
 		onYearChange,
 		onRatingChange,
 		onReset,
@@ -30,6 +33,7 @@
 		providers: WatchProvider[];
 		genres: { id: number; name: string }[];
 		selectedGenres: number[];
+		selectedLanguage: string;
 		minYear: string;
 		maxYear: string;
 		minRating: number;
@@ -37,6 +41,7 @@
 		onSortChange: (sort: string) => void;
 		onProviderToggle: (id: number) => void;
 		onGenreToggle: (id: number) => void;
+		onLanguageChange: (language: string) => void;
 		onYearChange: (min: string, max: string) => void;
 		onRatingChange: (rating: number) => void;
 		onReset: () => void;
@@ -66,8 +71,12 @@
 	>
 		<!-- Header -->
 		<div class="flex items-center justify-between border-b border-base-200 p-4">
-			<h2 class="text-xl font-bold">Filters</h2>
-			<button class="btn btn-circle btn-ghost btn-sm" onclick={close} aria-label="Close Filters">
+			<h2 class="text-xl font-bold">{m.discover_filters()}</h2>
+			<button
+				class="btn btn-circle btn-ghost btn-sm"
+				onclick={close}
+				aria-label={m.discover_closeFilters()}
+			>
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
 					class="h-6 w-6"
@@ -94,6 +103,7 @@
 				{providers}
 				{genres}
 				{selectedGenres}
+				{selectedLanguage}
 				{minYear}
 				{maxYear}
 				{minRating}
@@ -101,6 +111,7 @@
 				{onSortChange}
 				{onProviderToggle}
 				{onGenreToggle}
+				{onLanguageChange}
 				{onYearChange}
 				{onRatingChange}
 			/>
@@ -108,13 +119,13 @@
 
 		<!-- Footer -->
 		<div class="flex gap-3 border-t border-base-200 bg-base-100 p-4">
-			<button class="btn flex-1 btn-outline" onclick={onReset}>Reset</button>
+			<button class="btn flex-1 btn-outline" onclick={onReset}>{m.action_reset()}</button>
 			<button
 				class="btn flex-1 btn-primary"
 				onclick={() => {
 					onApply();
 					close();
-				}}>Apply Filters</button
+				}}>{m.discover_applyFilters()}</button
 			>
 		</div>
 	</div>

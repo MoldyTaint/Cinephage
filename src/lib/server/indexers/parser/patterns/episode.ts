@@ -18,6 +18,32 @@ interface EpisodeMatch {
 }
 
 /**
+ * Heuristic: if a season pack is tagged as S1E1-<very large> and appears to include
+ * all listed episodes (e.g. "of 171"), treat it as complete/multi-season content.
+ * This helps trackers that compress full-series packs into single-season notation.
+ */
+function inferCompleteFromEpisodeRange(
+	season: number,
+	startEpisode: number,
+	endEpisode: number,
+	totalEpisodes?: number
+): Partial<EpisodeInfo> {
+	const COMPLETE_EPISODE_THRESHOLD = 70;
+	const includesFullRange = totalEpisodes ? endEpisode === totalEpisodes : true;
+	const largeEpisodeSpan =
+		startEpisode === 1 && endEpisode >= COMPLETE_EPISODE_THRESHOLD && includesFullRange;
+
+	if (season === 1 && largeEpisodeSpan) {
+		return {
+			isCompleteSeries: true,
+			isSeasonPack: true
+		};
+	}
+
+	return {};
+}
+
+/**
  * Create a default (non-TV) episode info
  */
 function createDefaultEpisodeInfo(): EpisodeInfo {
@@ -35,10 +61,46 @@ const EPISODE_PATTERNS: Array<{
 	pattern: RegExp;
 	extract: (match: RegExpMatchArray) => Partial<EpisodeInfo>;
 }> = [
+	// Multi-season range with explicit episode notation:
+	// "S01E01-S08E99"
+	{
+		pattern: /\bS(\d{1,2})[\s._-]?E\d{1,3}\s*[-–—]\s*S(\d{1,2})[\s._-]?E\d{1,3}\b/i,
+		extract: (match) => {
+			const startSeason = parseInt(match[1], 10);
+			const endSeason = parseInt(match[2], 10);
+			if (endSeason > startSeason && endSeason - startSeason < 20) {
+				const seasons: number[] = [];
+				for (let s = startSeason; s <= endSeason; s++) {
+					seasons.push(s);
+				}
+				return { seasons, isSeasonPack: true, isCompleteSeries: startSeason === 1 };
+			}
+			return { seasons: [startSeason, endSeason], isSeasonPack: true };
+		}
+	},
+
+	// Alternate multi-season range format:
+	// "1x01-8x99"
+	{
+		pattern: /\b(\d{1,2})x\d{1,3}\s*[-–—]\s*(\d{1,2})x\d{1,3}\b/i,
+		extract: (match) => {
+			const startSeason = parseInt(match[1], 10);
+			const endSeason = parseInt(match[2], 10);
+			if (endSeason > startSeason && endSeason - startSeason < 20) {
+				const seasons: number[] = [];
+				for (let s = startSeason; s <= endSeason; s++) {
+					seasons.push(s);
+				}
+				return { seasons, isSeasonPack: true, isCompleteSeries: startSeason === 1 };
+			}
+			return { seasons: [startSeason, endSeason], isSeasonPack: true };
+		}
+	},
+
 	// Multi-season pack patterns: S01-S05, Season 1-5, S01-05, Seasons 1-5
 	// These must come BEFORE generic "complete series" text patterns
 	{
-		pattern: /\bS(\d{1,2})[\s._-]?-[\s._-]?S?(\d{1,2})\b(?![\s._-]?E)/i,
+		pattern: /\bS(\d{1,2})[\s._-]*[-–—][\s._-]*S?(\d{1,2})\b(?![\s._-]?E)/i,
 		extract: (match) => {
 			const startSeason = parseInt(match[1], 10);
 			const endSeason = parseInt(match[2], 10);
@@ -53,7 +115,23 @@ const EPISODE_PATTERNS: Array<{
 		}
 	},
 	{
-		pattern: /\bSeasons?[\s._-]?(\d{1,2})[\s._-]?-[\s._-]?(\d{1,2})\b/i,
+		pattern:
+			/\bSeasons?[\s:._-]*(\d{1,2})\s*(?:[-–—]|to|through|thru)\s*(\d{1,2})(?:\s*(?:of|\/)\s*\d{1,2})?\b/i,
+		extract: (match) => {
+			const startSeason = parseInt(match[1], 10);
+			const endSeason = parseInt(match[2], 10);
+			if (endSeason > startSeason && endSeason - startSeason < 20) {
+				const seasons: number[] = [];
+				for (let s = startSeason; s <= endSeason; s++) {
+					seasons.push(s);
+				}
+				return { seasons, isSeasonPack: true, isCompleteSeries: startSeason === 1 };
+			}
+			return { seasons: [startSeason, endSeason], isSeasonPack: true };
+		}
+	},
+	{
+		pattern: /Сезоны?[\s:._-]*(\d{1,2})\s*(?:[-–—]|до)\s*(\d{1,2})(?:\s*(?:из|of|\/)\s*\d{1,2})?/i,
 		extract: (match) => {
 			const startSeason = parseInt(match[1], 10);
 			const endSeason = parseInt(match[2], 10);
@@ -80,6 +158,112 @@ const EPISODE_PATTERNS: Array<{
 	{
 		pattern: /\ball[\s._-]?seasons?\b/i,
 		extract: () => ({ isCompleteSeries: true, isSeasonPack: true })
+	},
+	{
+		pattern: /\bevery[\s._-]?season\b/i,
+		extract: () => ({ isCompleteSeries: true, isSeasonPack: true })
+	},
+	{
+		pattern: /(?:мульти[\s._-]?сезон|многосезон)/i,
+		extract: () => ({ isSeasonPack: true })
+	},
+	{
+		pattern: /\b(?:season|seasons)[\s._-]?pack\b/i,
+		extract: () => ({ isSeasonPack: true })
+	},
+	{
+		pattern: /\bmulti[\s._-]?season\b/i,
+		extract: () => ({ isSeasonPack: true })
+	},
+	{
+		pattern:
+			/^(?=.*\b(?:series|seasons?|episodes?|s\d{1,2}(?:e\d{1,3})?|(?:\d{1,2})x\d{1,3})\b).*?\b(?:complete|full)[\s._-]?collection\b/i,
+		extract: () => ({ isCompleteSeries: true, isSeasonPack: true })
+	},
+	{
+		pattern:
+			/^(?=.*\b(?:series|seasons?|episodes?|s\d{1,2}(?:e\d{1,3})?|(?:\d{1,2})x\d{1,3})\b).*?\b(?:mega[\s._-]?pack|bundle)\b/i,
+		extract: () => ({ isSeasonPack: true })
+	},
+	{
+		pattern: /(?:все[\s._-]*сезоны|полный[\s._-]*сериал)/i,
+		extract: () => ({ isCompleteSeries: true, isSeasonPack: true })
+	},
+
+	// "Season: 1 of 1" style marker (single-season complete series)
+	{
+		pattern: /\bSeason[\s:._-]*(\d{1,2})\s*(?:of|\/)\s*(\d{1,2})\b/i,
+		extract: (match) => {
+			const season = parseInt(match[1], 10);
+			const totalSeasons = parseInt(match[2], 10);
+			return {
+				season,
+				isSeasonPack: true,
+				isCompleteSeries: season === 1 && totalSeasons === 1
+			};
+		}
+	},
+
+	// Tracker pack format with explicit episode range:
+	// "Season: 2 / Episodes: 1-10 of 15"
+	{
+		pattern:
+			/\bSeason[\s:._-]*(\d{1,2})\b[\s/|,-]*Episodes?[\s:._-]*(\d{1,3})(?:\s*[-–]\s*(\d{1,3}))?(?:\s*(?:of|\/)\s*\d{1,3})?/i,
+		extract: (match) => {
+			const season = parseInt(match[1], 10);
+			const startEpisode = parseInt(match[2], 10);
+			const endEpisode = match[3] ? parseInt(match[3], 10) : startEpisode;
+
+			const episodes: number[] = [];
+			if (
+				!Number.isNaN(startEpisode) &&
+				!Number.isNaN(endEpisode) &&
+				endEpisode >= startEpisode &&
+				endEpisode - startEpisode < 300
+			) {
+				for (let ep = startEpisode; ep <= endEpisode; ep++) {
+					episodes.push(ep);
+				}
+			}
+
+			return {
+				season,
+				episodes: episodes.length > 0 ? episodes : [startEpisode],
+				isSeasonPack: true
+			};
+		}
+	},
+
+	// Explicit episode range using SxxExx-yy / SxxExx-Eyy:
+	// "S01E01-08", "S1E1-E8"
+	{
+		pattern:
+			/\bS(\d{1,2})[\s._-]?E(\d{1,3})[\s._-]?-[\s._-]?E?(\d{1,3})(?!:)(?:\s*(?:of|\/)\s*(\d{1,3}))?\b/i,
+		extract: (match) => {
+			const season = parseInt(match[1], 10);
+			const startEpisode = parseInt(match[2], 10);
+			const endEpisode = parseInt(match[3], 10);
+			const totalEpisodes = match[4] ? parseInt(match[4], 10) : undefined;
+			const episodes: number[] = [];
+
+			if (
+				!Number.isNaN(startEpisode) &&
+				!Number.isNaN(endEpisode) &&
+				endEpisode >= startEpisode &&
+				endEpisode - startEpisode < 300
+			) {
+				for (let ep = startEpisode; ep <= endEpisode; ep++) {
+					episodes.push(ep);
+				}
+			}
+
+			return {
+				season,
+				episodes: episodes.length > 0 ? episodes : [startEpisode],
+				isSeasonPack: true,
+				...inferCompleteFromEpisodeRange(season, startEpisode, endEpisode, totalEpisodes)
+			};
+		}
 	},
 
 	// Standard S##E## format (most common, handles multi-episode)

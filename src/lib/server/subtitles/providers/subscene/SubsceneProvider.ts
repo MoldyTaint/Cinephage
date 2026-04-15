@@ -12,7 +12,9 @@ import type {
 	ProviderSearchOptions,
 	LanguageCode
 } from '../../types';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import * as cheerio from 'cheerio';
 import { TooManyRequests, ServiceUnavailable } from '../../errors/ProviderErrors';
 
@@ -107,7 +109,7 @@ export class SubsceneProvider extends BaseSubtitleProvider {
 			});
 
 			if (!searchResponse.ok) {
-				logger.warn('[Subscene] Search request failed', { status: searchResponse.status });
+				logger.warn({ status: searchResponse.status }, '[Subscene] Search request failed');
 				if (searchResponse.status === 429) {
 					const retryAfter = searchResponse.headers.get('retry-after');
 					throw new TooManyRequests('subscene', retryAfter ? parseInt(retryAfter) : undefined);

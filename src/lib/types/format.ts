@@ -12,7 +12,8 @@ import type {
 	Resolution,
 	Source,
 	Codec,
-	AudioFormat,
+	AudioCodec,
+	AudioChannels,
 	HdrFormat
 } from '$lib/server/scoring';
 
@@ -24,7 +25,8 @@ export type {
 	Resolution,
 	Source,
 	Codec,
-	AudioFormat,
+	AudioCodec,
+	AudioChannels,
 	HdrFormat
 };
 
@@ -33,6 +35,7 @@ export type {
  */
 export const FORMAT_CATEGORY_LABELS: Record<FormatCategory, string> = {
 	resolution: 'Resolution & Source',
+	source: 'Source Only',
 	release_group_tier: 'Release Groups',
 	audio: 'Audio',
 	hdr: 'HDR',
@@ -50,6 +53,7 @@ export const FORMAT_CATEGORY_LABELS: Record<FormatCategory, string> = {
  */
 export const FORMAT_CATEGORY_DESCRIPTIONS: Record<FormatCategory, string> = {
 	resolution: 'Resolution and source quality combinations (e.g., 2160p Remux, 1080p WEB-DL)',
+	source: 'Source-only fallback formats when resolution cannot be detected',
 	release_group_tier: 'Quality tiers for known release groups',
 	audio: 'Audio codec formats (TrueHD, DTS-HD MA, Atmos, etc.)',
 	hdr: 'HDR formats (Dolby Vision, HDR10+, HDR10, HLG)',
@@ -67,6 +71,7 @@ export const FORMAT_CATEGORY_DESCRIPTIONS: Record<FormatCategory, string> = {
  */
 export const FORMAT_CATEGORY_ORDER: FormatCategory[] = [
 	'resolution',
+	'source',
 	'audio',
 	'hdr',
 	'release_group_tier',
@@ -84,6 +89,7 @@ export const FORMAT_CATEGORY_ORDER: FormatCategory[] = [
  */
 export const FORMAT_CATEGORY_ICONS: Record<FormatCategory, string> = {
 	resolution: 'Monitor',
+	source: 'Film',
 	release_group_tier: 'Users',
 	audio: 'Volume2',
 	hdr: 'Sun',
@@ -105,7 +111,9 @@ export const CONDITION_TYPE_LABELS: Record<ConditionType, string> = {
 	release_title: 'Release Title (Regex)',
 	release_group: 'Release Group (Regex)',
 	codec: 'Video Codec',
-	audio: 'Audio Format',
+	audio_codec: 'Audio Codec',
+	audio_channels: 'Audio Channels',
+	audio_atmos: 'Atmos',
 	hdr: 'HDR Format',
 	streaming_service: 'Streaming Service',
 	flag: 'Special Flag',
@@ -121,7 +129,9 @@ export const CONDITION_TYPE_DESCRIPTIONS: Record<ConditionType, string> = {
 	release_title: 'Match a regex pattern against the full release title',
 	release_group: 'Match a regex pattern against the release group name',
 	codec: 'Match against the detected video codec (x265, AV1, etc.)',
-	audio: 'Match against the detected audio format (TrueHD, DTS-HD MA, etc.)',
+	audio_codec: 'Match against the detected audio codec (TrueHD, DTS-HD MA, DD+, etc.)',
+	audio_channels: 'Match against the detected audio channel layout (7.1, 5.1, etc.)',
+	audio_atmos: 'Match when Dolby Atmos is detected as an audio feature',
 	hdr: 'Match against the detected HDR format (Dolby Vision, HDR10+, etc.)',
 	streaming_service: 'Match against the detected streaming service (Netflix, Amazon, etc.)',
 	flag: 'Match against special release flags (Remux, Repack, Proper, 3D)',
@@ -150,6 +160,7 @@ export const RESOLUTION_LABELS: Record<Resolution, string> = {
 export const AVAILABLE_SOURCES: Source[] = [
 	'remux',
 	'bluray',
+	'hdrip',
 	'webdl',
 	'webrip',
 	'hdtv',
@@ -167,6 +178,7 @@ export const AVAILABLE_SOURCES: Source[] = [
 export const SOURCE_LABELS: Record<Source, string> = {
 	remux: 'Remux',
 	bluray: 'BluRay Encode',
+	hdrip: 'HDRip',
 	webdl: 'WEB-DL',
 	webrip: 'WEBRip',
 	hdtv: 'HDTV',
@@ -211,40 +223,54 @@ export const CODEC_LABELS: Record<Codec, string> = {
 };
 
 /**
- * Available audio formats for condition matching
+ * Available audio codecs for condition matching
  */
-export const AVAILABLE_AUDIO: AudioFormat[] = [
-	'atmos',
+export const AVAILABLE_AUDIO_CODECS: AudioCodec[] = [
 	'truehd',
 	'dts-x',
 	'dts-hdma',
+	'dts-hd-hra',
 	'dts-hd',
+	'dts-es',
 	'dts',
 	'dd+',
 	'dd',
 	'flac',
+	'pcm',
+	'opus',
 	'aac',
 	'mp3',
-	'opus',
 	'unknown'
 ];
 
 /**
- * Audio format labels for the UI
+ * Audio codec labels for the UI
  */
-export const AUDIO_LABELS: Record<AudioFormat, string> = {
-	atmos: 'Dolby Atmos',
+export const AUDIO_CODEC_LABELS: Record<AudioCodec, string> = {
 	truehd: 'TrueHD',
 	'dts-x': 'DTS:X',
 	'dts-hdma': 'DTS-HD Master Audio',
+	'dts-hd-hra': 'DTS-HD HRA',
 	'dts-hd': 'DTS-HD',
+	'dts-es': 'DTS-ES',
 	dts: 'DTS',
 	'dd+': 'Dolby Digital Plus (DD+)',
 	dd: 'Dolby Digital (DD)',
 	flac: 'FLAC',
+	pcm: 'PCM',
+	opus: 'Opus',
 	aac: 'AAC',
 	mp3: 'MP3',
-	opus: 'Opus',
+	unknown: 'Unknown'
+};
+
+export const AVAILABLE_AUDIO_CHANNELS: AudioChannels[] = ['7.1', '5.1', '2.0', '1.0', 'unknown'];
+
+export const AUDIO_CHANNEL_LABELS: Record<AudioChannels, string> = {
+	'7.1': '7.1 Surround',
+	'5.1': '5.1 Surround',
+	'2.0': '2.0 Stereo',
+	'1.0': '1.0 Mono',
 	unknown: 'Unknown'
 };
 
@@ -254,10 +280,6 @@ export const AUDIO_LABELS: Record<AudioFormat, string> = {
  */
 export const AVAILABLE_HDR: (HdrFormat | 'sdr')[] = [
 	'dolby-vision',
-	'dolby-vision-hdr10+',
-	'dolby-vision-hdr10',
-	'dolby-vision-hlg',
-	'dolby-vision-sdr',
 	'hdr10+',
 	'hdr10',
 	'hdr',
@@ -271,10 +293,6 @@ export const AVAILABLE_HDR: (HdrFormat | 'sdr')[] = [
  */
 export const HDR_LABELS: Record<NonNullable<HdrFormat> | 'sdr', string> = {
 	'dolby-vision': 'Dolby Vision',
-	'dolby-vision-hdr10+': 'Dolby Vision + HDR10+',
-	'dolby-vision-hdr10': 'Dolby Vision + HDR10',
-	'dolby-vision-hlg': 'Dolby Vision + HLG',
-	'dolby-vision-sdr': 'Dolby Vision + SDR',
 	'hdr10+': 'HDR10+',
 	hdr10: 'HDR10',
 	hdr: 'HDR (Generic)',
@@ -372,6 +390,15 @@ export interface UICustomFormat {
 	enabled: boolean;
 	createdAt?: string;
 	updatedAt?: string;
+}
+
+export interface CustomFormatFormData {
+	name: string;
+	description?: string;
+	category: FormatCategory;
+	tags: string[];
+	conditions: FormatCondition[];
+	enabled: boolean;
 }
 
 /**

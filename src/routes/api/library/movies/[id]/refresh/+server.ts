@@ -12,6 +12,11 @@ import { movies } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
 import { logger } from '$lib/logging';
+import {
+	startRefresh,
+	stopRefresh,
+	isMovieRefreshing
+} from '$lib/server/library/ActiveSearchTracker.js';
 
 export const POST: RequestHandler = async ({ params }) => {
 	const { id } = params;
@@ -23,15 +28,27 @@ export const POST: RequestHandler = async ({ params }) => {
 		error(404, 'Movie not found');
 	}
 
+	// Check if a refresh is already running for this movie
+	if (isMovieRefreshing(id)) {
+		error(409, 'A refresh is already in progress for this movie');
+	}
+
+	// Track this refresh
+	const refreshId = `movie-refresh-${id}`;
+	startRefresh(refreshId, { movieId: id });
+
 	try {
 		// Fetch fresh data from TMDB
 		const [tmdbMovie, externalIds] = await Promise.all([
 			tmdb.getMovie(movieData.tmdbId),
 			tmdb.getMovieExternalIds(movieData.tmdbId).catch((err) => {
-				logger.warn('[API] Failed to fetch movie external IDs', {
-					tmdbId: movieData.tmdbId,
-					error: err instanceof Error ? err.message : String(err)
-				});
+				logger.warn(
+					{
+						tmdbId: movieData.tmdbId,
+						error: err instanceof Error ? err.message : String(err)
+					},
+					'[API] Failed to fetch movie external IDs'
+				);
 				return null;
 			})
 		]);
@@ -57,11 +74,14 @@ export const POST: RequestHandler = async ({ params }) => {
 		// Fetch updated movie data
 		const [updatedMovie] = await db.select().from(movies).where(eq(movies.id, id));
 
-		logger.info('[API] Movie metadata refreshed', {
-			id,
-			title: updatedMovie.title,
-			imdbId: updatedMovie.imdbId
-		});
+		logger.info(
+			{
+				id,
+				title: updatedMovie.title,
+				imdbId: updatedMovie.imdbId
+			},
+			'[API] Movie metadata refreshed'
+		);
 
 		return json({
 			success: true,
@@ -79,11 +99,19 @@ export const POST: RequestHandler = async ({ params }) => {
 			}
 		});
 	} catch (err) {
-		logger.error('[API] Failed to refresh movie metadata', err instanceof Error ? err : undefined, {
-			id,
-			tmdbId: movieData.tmdbId
-		});
+		logger.error(
+			{
+				err: err instanceof Error ? err : undefined,
+				...{
+					id,
+					tmdbId: movieData.tmdbId
+				}
+			},
+			'[API] Failed to refresh movie metadata'
+		);
 
 		error(500, err instanceof Error ? err.message : 'Failed to refresh movie metadata');
+	} finally {
+		stopRefresh(refreshId);
 	}
 };

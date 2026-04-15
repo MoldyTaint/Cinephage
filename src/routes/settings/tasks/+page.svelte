@@ -1,22 +1,20 @@
 <script lang="ts">
-	import { browser } from '$app/environment';
-	import { onMount, onDestroy } from 'svelte';
+	import * as m from '$lib/paraglide/messages.js';
 	import type { PageData } from './$types';
-	import { mobileSSEStatus } from '$lib/sse/mobileStatus.svelte';
 	import type { UnifiedTask } from '$lib/server/tasks/UnifiedTaskRegistry';
 	import type { TaskHistoryEntry } from '$lib/types/task';
 	import TasksTable from '$lib/components/tasks/TasksTable.svelte';
 	import CreateTaskPlaceholder from '$lib/components/tasks/CreateTaskPlaceholder.svelte';
-	import { Wifi } from 'lucide-svelte';
+	import { SettingsPage } from '$lib/components/ui/settings';
+	import { Wifi, Plus, XCircle, CheckCircle2 } from 'lucide-svelte';
+	import { createSSE } from '$lib/sse';
+	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 
 	let { data }: { data: PageData } = $props();
 
 	let errorMessage = $state<string | null>(null);
 	let successMessage = $state<string | null>(null);
 	let showCreateModal = $state(false);
-	let sseConnected = $state(false);
-	let sseStatus = $state<'connecting' | 'connected' | 'disconnected' | 'error'>('connecting');
-	const MOBILE_SSE_SOURCE = 'settings-tasks';
 
 	// --- Reactive local task state (seeded from server, updated by SSE) ---
 
@@ -46,69 +44,39 @@
 	// Derived sorted tasks list (preserving definition order from data.tasks)
 	const tasks = $derived(data.tasks.map((def) => taskState[def.id] ?? def));
 
-	// --- SSE Connection (using onMount/onDestroy, not $effect) ---
-	// NOTE: eventSource must be a regular variable, NOT $state
-	// EventSource events don't fire properly when wrapped in Svelte 5's reactive proxy
-	let eventSource: EventSource | null = null;
-	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-	let reconnectAttempts = $state(0);
-	const MAX_RECONNECT_DELAY = 30000;
-
-	$effect(() => {
-		mobileSSEStatus.publish(MOBILE_SSE_SOURCE, sseStatus);
-	});
-
-	onMount(() => {
-		if (!browser) return;
-		connectSSE();
-	});
-
-	onDestroy(() => {
-		disconnectSSE();
-		mobileSSEStatus.clear(MOBILE_SSE_SOURCE);
-	});
-
-	function connectSSE() {
-		sseStatus = 'connecting';
-		eventSource = new EventSource('/api/tasks/stream');
-
-		eventSource.addEventListener('connected', () => {
-			sseConnected = true;
-			sseStatus = 'connected';
-			reconnectAttempts = 0;
-		});
-
-		// Receive initial task state from SSE (bypasses server-side caching issues)
-		eventSource.addEventListener('tasks:initial', (e: MessageEvent) => {
-			const event = JSON.parse(e.data) as { tasks: UnifiedTask[] };
-			const newState: Record<string, UnifiedTask> = {};
-
-			for (const task of event.tasks) {
-				newState[task.id] = { ...task };
-			}
-
-			taskState = newState;
-			hasInitialized = true;
-		});
-
-		eventSource.addEventListener('heartbeat', () => {
-			// Keep-alive, no action needed
-		});
-
-		eventSource.addEventListener('task:started', (e: MessageEvent) => {
-			const event = JSON.parse(e.data) as { taskId: string; startedAt: string };
+	// --- SSE Connection using createSSE ---
+	const sse = createSSE<{
+		connected: void;
+		'task:started': { taskId: string; startedAt: string };
+		'task:completed': {
+			taskId: string;
+			completedAt: string;
+			lastRunTime: string;
+			nextRunTime: string | null;
+			result?: { itemsProcessed: number; itemsGrabbed: number; errors: number };
+			historyEntry?: TaskHistoryEntry;
+		};
+		'task:failed': {
+			taskId: string;
+			completedAt: string;
+			error: string;
+			historyEntry?: TaskHistoryEntry;
+		};
+		'task:cancelled': { taskId: string; cancelledAt: string };
+		'task:updated': {
+			taskId: string;
+			enabled?: boolean;
+			intervalHours?: number;
+			nextRunTime?: string | null;
+		};
+	}>('/api/tasks/stream', {
+		connected: () => {
+			// Connection established
+		},
+		'task:started': (event) => {
 			updateTask(event.taskId, { isRunning: true });
-		});
-
-		eventSource.addEventListener('task:completed', (e: MessageEvent) => {
-			const event = JSON.parse(e.data) as {
-				taskId: string;
-				completedAt: string;
-				lastRunTime: string;
-				nextRunTime: string | null;
-				result?: { itemsProcessed: number; itemsGrabbed: number; errors: number };
-				historyEntry?: TaskHistoryEntry;
-			};
+		},
+		'task:completed': (event) => {
 			updateTask(event.taskId, {
 				isRunning: false,
 				lastRunTime: event.lastRunTime,
@@ -124,18 +92,15 @@
 			const task = taskState[event.taskId];
 			if (task && event.result) {
 				const { itemsProcessed, itemsGrabbed } = event.result;
-				successMessage = `${task.name} completed: ${itemsProcessed} processed, ${itemsGrabbed} grabbed`;
+				successMessage = m.settings_tasks_taskCompleted({
+					name: task.name,
+					processed: String(itemsProcessed),
+					grabbed: String(itemsGrabbed)
+				});
 				autoDismissSuccess();
 			}
-		});
-
-		eventSource.addEventListener('task:failed', (e: MessageEvent) => {
-			const event = JSON.parse(e.data) as {
-				taskId: string;
-				completedAt: string;
-				error: string;
-				historyEntry?: TaskHistoryEntry;
-			};
+		},
+		'task:failed': (event) => {
 			updateTask(event.taskId, { isRunning: false });
 
 			// Update history if entry provided
@@ -145,62 +110,33 @@
 
 			const task = taskState[event.taskId];
 			if (task) {
-				errorMessage = `${task.name} failed: ${event.error}`;
+				errorMessage = m.settings_tasks_taskFailed({ name: task.name, error: event.error });
 			}
-		});
-
-		eventSource.addEventListener('task:cancelled', (e: MessageEvent) => {
-			const event = JSON.parse(e.data) as { taskId: string; cancelledAt: string };
+		},
+		'task:cancelled': (event) => {
 			updateTask(event.taskId, { isRunning: false });
 
 			const task = taskState[event.taskId];
 			if (task) {
-				successMessage = `${task.name} cancelled`;
+				successMessage = m.settings_tasks_taskCancelled({ name: task.name });
 				autoDismissSuccess();
 			}
-		});
-
-		eventSource.addEventListener('task:updated', (e: MessageEvent) => {
-			const event = JSON.parse(e.data) as {
-				taskId: string;
-				enabled?: boolean;
-				intervalHours?: number;
-				nextRunTime?: string | null;
-			};
+		},
+		'task:updated': (event) => {
 			const updates: Partial<UnifiedTask> = {};
 			if (event.enabled !== undefined) updates.enabled = event.enabled;
 			if (event.intervalHours !== undefined) updates.intervalHours = event.intervalHours;
 			if (event.nextRunTime !== undefined) updates.nextRunTime = event.nextRunTime;
 			updateTask(event.taskId, updates);
-		});
+		}
+	});
 
-		eventSource.onerror = () => {
-			sseConnected = false;
-			sseStatus = 'error';
-			if (eventSource) {
-				eventSource.close();
-				eventSource = null;
-			}
-
-			// Reconnect with exponential backoff
-			const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
-			reconnectAttempts++;
-			reconnectTimer = setTimeout(connectSSE, delay);
+	$effect(() => {
+		layoutState.setMobileSseStatus(deriveMobileSseStatus(sse));
+		return () => {
+			layoutState.clearMobileSseStatus();
 		};
-	}
-
-	function disconnectSSE() {
-		sseConnected = false;
-		sseStatus = 'disconnected';
-		if (reconnectTimer) {
-			clearTimeout(reconnectTimer);
-			reconnectTimer = null;
-		}
-		if (eventSource) {
-			eventSource.close();
-			eventSource = null;
-		}
-	}
+	});
 
 	/**
 	 * Update a single task using fine-grained reactivity
@@ -263,7 +199,7 @@
 		const endpoint =
 			task.category === 'maintenance' ? `/api/tasks/${taskId}/run` : task.runEndpoint;
 
-		if (sseConnected) {
+		if (sse.isConnected) {
 			// Fire-and-forget: SSE will push state updates.
 			// We only need to handle errors from the initial request (e.g. 409 already running).
 			fetch(endpoint, { method: 'POST' })
@@ -271,13 +207,16 @@
 					if (!response.ok) {
 						const result = await response.json().catch(() => ({}));
 						updateTask(taskId, { isRunning: false });
-						errorMessage = result.error || result.message || `Task failed (${response.status})`;
+						errorMessage =
+							result.error ||
+							result.message ||
+							m.settings_tasks_taskFailedStatus({ status: String(response.status) });
 					}
 					// On success: SSE events handle the rest (started/completed/failed)
 				})
 				.catch((err) => {
 					updateTask(taskId, { isRunning: false });
-					errorMessage = err instanceof Error ? err.message : 'Failed to start task';
+					errorMessage = err instanceof Error ? err.message : m.settings_tasks_failedToStartTask();
 				});
 		} else {
 			// SSE not connected: await the response and handle the result directly
@@ -287,22 +226,31 @@
 
 				if (!response.ok || !result.success) {
 					updateTask(taskId, { isRunning: false });
-					throw new Error(result.error || result.message || 'Task failed');
+					throw new Error(result.error || result.message || m.settings_tasks_taskFailedGeneric());
 				}
 
 				updateTask(taskId, { isRunning: false });
 				if (result.result) {
 					const { itemsProcessed, itemsGrabbed } = result.result;
-					successMessage = `${task.name} completed: ${itemsProcessed ?? 0} processed, ${itemsGrabbed ?? 0} grabbed`;
+					successMessage = m.settings_tasks_taskCompleted({
+						name: task.name,
+						processed: String(itemsProcessed ?? 0),
+						grabbed: String(itemsGrabbed ?? 0)
+					});
 				} else if (result.updatedFiles !== undefined) {
-					successMessage = `${task.name} completed: ${result.updatedFiles}/${result.totalFiles ?? 0} files updated`;
+					successMessage = m.settings_tasks_taskCompletedFiles({
+						name: task.name,
+						updated: String(result.updatedFiles),
+						total: String(result.totalFiles ?? 0)
+					});
 				} else {
-					successMessage = `${task.name} completed successfully`;
+					successMessage = m.settings_tasks_taskCompletedSuccess({ name: task.name });
 				}
 				autoDismissSuccess();
 			} catch (error) {
 				updateTask(taskId, { isRunning: false });
-				errorMessage = error instanceof Error ? error.message : 'Task failed';
+				errorMessage =
+					error instanceof Error ? error.message : m.settings_tasks_taskFailedGeneric();
 			}
 		}
 	}
@@ -316,17 +264,17 @@
 			const result = await response.json();
 
 			if (!response.ok || !result.success) {
-				throw new Error(result.error || 'Failed to cancel task');
+				throw new Error(result.error || m.settings_tasks_failedToCancelTask());
 			}
 
 			// SSE will handle the state update (task:cancelled)
-			if (!sseConnected) {
+			if (!sse.isConnected) {
 				updateTask(taskId, { isRunning: false });
-				successMessage = 'Task cancelled successfully';
+				successMessage = m.settings_tasks_taskCancelledSuccess();
 				autoDismissSuccess();
 			}
 		} catch (error) {
-			errorMessage = error instanceof Error ? error.message : 'Failed to cancel task';
+			errorMessage = error instanceof Error ? error.message : m.settings_tasks_failedToCancelTask();
 		}
 	}
 
@@ -348,109 +296,60 @@
 				// Revert on failure
 				updateTask(taskId, { enabled: !enabled });
 				const result = await response.json();
-				errorMessage = result.message || 'Failed to update task';
+				errorMessage = result.message || m.settings_tasks_failedToUpdateTask();
 			}
 			// SSE will confirm the update via task:updated event
 		} catch (error) {
 			updateTask(taskId, { enabled: !enabled });
-			errorMessage = error instanceof Error ? error.message : 'Failed to toggle task';
+			errorMessage = error instanceof Error ? error.message : m.settings_tasks_failedToToggleTask();
 		}
 	}
 </script>
 
 <svelte:head>
-	<title>Tasks - Settings - Cinephage</title>
+	<title>{m.settings_tasks_pageTitle()}</title>
 </svelte:head>
 
-<div class="w-full space-y-6">
-	<!-- Header -->
-	<div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-		<div>
-			<h1 class="text-2xl font-bold">Tasks</h1>
-			<p class="mt-1 text-base-content/60">
-				Scheduled and maintenance tasks for your Cinephage instance
-			</p>
+<SettingsPage title={m.settings_tasks_heading()} subtitle={m.settings_tasks_subtitle()}>
+	{#snippet actions()}
+		<div class="hidden items-center gap-2 lg:flex">
+			{#if sse.isConnected}
+				<span class="badge gap-1 badge-success">
+					<Wifi class="h-3 w-3" />
+					{m.common_live()}
+				</span>
+			{:else if sse.status === 'connecting' || sse.status === 'error'}
+				<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
+					{sse.status === 'error' ? m.common_reconnecting() : m.common_connecting()}
+				</span>
+			{/if}
 		</div>
-		<div class="flex items-center gap-2 sm:gap-3">
-			<div class="hidden items-center gap-2 lg:flex">
-				{#if sseConnected}
-					<span class="badge gap-1 badge-success">
-						<Wifi class="h-3 w-3" />
-						Live
-					</span>
-				{:else if sseStatus === 'connecting' || sseStatus === 'error'}
-					<span class="badge gap-1 {sseStatus === 'error' ? 'badge-error' : 'badge-warning'}">
-						{sseStatus === 'error' ? 'Reconnecting...' : 'Connecting...'}
-					</span>
-				{/if}
-			</div>
-			<button
-				class="btn w-full gap-2 btn-sm btn-primary sm:w-auto"
-				onclick={() => (showCreateModal = true)}
-			>
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					width="16"
-					height="16"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-				>
-					<line x1="12" y1="5" x2="12" y2="19" />
-					<line x1="5" y1="12" x2="19" y2="12" />
-				</svg>
-				Create Task
-			</button>
-		</div>
-	</div>
+		<button
+			class="btn w-full gap-2 btn-sm btn-primary sm:w-auto"
+			onclick={() => (showCreateModal = true)}
+		>
+			<Plus class="h-4 w-4" />
+			{m.settings_tasks_createTask()}
+		</button>
+	{/snippet}
 
 	<!-- Alerts -->
 	{#if errorMessage}
 		<div class="alert-sm alert items-start alert-error sm:items-center">
-			<svg
-				xmlns="http://www.w3.org/2000/svg"
-				width="20"
-				height="20"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-			>
-				<circle cx="12" cy="12" r="10" />
-				<line x1="15" y1="9" x2="9" y2="15" />
-				<line x1="9" y1="9" x2="15" y2="15" />
-			</svg>
+			<XCircle class="h-5 w-5 shrink-0" />
 			<span class="wrap-break-word">{errorMessage}</span>
 			<button class="btn ml-auto btn-ghost btn-xs" onclick={() => (errorMessage = null)}
-				>Dismiss</button
+				>{m.settings_tasks_dismiss()}</button
 			>
 		</div>
 	{/if}
 
 	{#if successMessage}
 		<div class="alert-sm alert items-start alert-success sm:items-center">
-			<svg
-				xmlns="http://www.w3.org/2000/svg"
-				width="20"
-				height="20"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-			>
-				<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-				<polyline points="22 4 12 14.01 9 11.01" />
-			</svg>
+			<CheckCircle2 class="h-5 w-5 shrink-0" />
 			<span class="wrap-break-word">{successMessage}</span>
 			<button class="btn ml-auto btn-ghost btn-xs" onclick={() => (successMessage = null)}
-				>Dismiss</button
+				>{m.settings_tasks_dismiss()}</button
 			>
 		</div>
 	{/if}
@@ -466,4 +365,4 @@
 
 	<!-- Create Task Modal -->
 	<CreateTaskPlaceholder isOpen={showCreateModal} onClose={() => (showCreateModal = false)} />
-</div>
+</SettingsPage>

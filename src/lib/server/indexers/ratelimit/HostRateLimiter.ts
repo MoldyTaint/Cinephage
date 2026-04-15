@@ -145,11 +145,14 @@ export class HostRateLimiter {
 
 		if (waitTime > 0) {
 			const host = extractHost(url);
-			log.debug('Host rate limited, waiting', {
-				host,
-				waitTimeMs: waitTime,
-				currentCount: limiter.getCurrentCount()
-			});
+			log.debug(
+				{
+					host,
+					waitTimeMs: waitTime,
+					currentCount: limiter.getCurrentCount()
+				},
+				'Host rate limited, waiting'
+			);
 			await new Promise((resolve) => setTimeout(resolve, waitTime));
 		}
 
@@ -297,14 +300,17 @@ export async function checkRateLimits(
 	const totalWait = Math.max(indexerWait, hostWait);
 
 	if (totalWait > 0) {
-		log.debug('Rate limited', {
-			indexerId,
-			url: extractHost(url),
-			indexerWaitMs: indexerWait,
-			hostWaitMs: hostWait,
-			totalWaitMs: totalWait,
-			limitedBy
-		});
+		log.debug(
+			{
+				indexerId,
+				url: extractHost(url),
+				indexerWaitMs: indexerWait,
+				hostWaitMs: hostWait,
+				totalWaitMs: totalWait,
+				limitedBy
+			},
+			'Rate limited'
+		);
 		await new Promise((resolve) => setTimeout(resolve, totalWait));
 	}
 

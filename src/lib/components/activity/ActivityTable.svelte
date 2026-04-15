@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { SvelteSet } from 'svelte/reactivity';
-	import type { UnifiedActivity } from '$lib/types/activity';
+	import * as m from '$lib/paraglide/messages.js';
 	import {
-		CheckCircle2,
-		XCircle,
-		AlertCircle,
+		isImportFailedActivity,
+		TASK_TYPE_LABELS,
+		type UnifiedActivity
+	} from '$lib/types/activity';
+	import {
 		Loader2,
 		Pause,
 		Play,
@@ -23,6 +25,16 @@
 	import { resolvePath } from '$lib/utils/routing';
 	import { formatBytes } from '$lib/utils/format';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import { createProgressiveRenderer } from '$lib/utils/progressive-render.svelte.js';
+	import {
+		statusConfig,
+		getCompactProgressLabel,
+		getStatusLabel,
+		formatRelativeTime,
+		formatTimestamp,
+		getDisplayTime,
+		getResolutionBadge
+	} from './activity-display-utils.js';
 
 	interface Props {
 		activities: UnifiedActivity[];
@@ -35,6 +47,14 @@
 		onRemove?: (id: string) => Promise<void>;
 		onRetry?: (id: string) => Promise<void>;
 		compact?: boolean;
+		selectionMode?: boolean;
+		selectedIds?: Set<string>;
+		isSelectable?: (activity: UnifiedActivity) => boolean;
+		onToggleSelection?: (activityId: string, selected: boolean) => void;
+		onToggleSelectionAll?: (activityIds: string[], selected: boolean) => void;
+		hasMore?: boolean;
+		isLoadingMore?: boolean;
+		onLoadMore?: () => void;
 	}
 
 	let {
@@ -47,13 +67,67 @@
 		onResume,
 		onRemove,
 		onRetry,
-		compact = false
+		compact = false,
+		selectionMode = false,
+		selectedIds = new Set<string>(),
+		isSelectable = () => false,
+		onToggleSelection,
+		onToggleSelectionAll,
+		hasMore = false,
+		isLoadingMore = false,
+		onLoadMore
 	}: Props = $props();
+
+	// Progressive renderer: only mount DOM nodes for a visible slice + buffer.
+	// When the sentinel becomes visible and we've exhausted the client-side
+	// items, trigger server-side pagination via onLoadMore.
+	const renderer = createProgressiveRenderer(() => activities, { batchSize: 24 });
+
+	// When the progressive renderer has shown everything but the server has
+	// more data, automatically request the next page.
+	$effect(() => {
+		if (!renderer.hasMore && hasMore && !isLoadingMore) {
+			onLoadMore?.();
+		}
+	});
+
+	// Responsive: only render mobile OR desktop view, not both
+	let isMobile = $state(false);
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+
+		const mq = window.matchMedia('(max-width: 1023px)');
+		isMobile = mq.matches;
+		const handler = (e: MediaQueryListEvent) => {
+			isMobile = e.matches;
+		};
+		mq.addEventListener('change', handler);
+		return () => mq.removeEventListener('change', handler);
+	});
 
 	// Track expanded rows
 	let expandedRows = new SvelteSet<string>();
 	let failedReasonExpandedRows = new SvelteSet<string>();
 	let queueActionLoadingRows = new SvelteSet<string>();
+	let selectAllCheckbox = $state<HTMLInputElement | null>(null);
+
+	const selectableIds = $derived.by(() =>
+		selectionMode
+			? activities.filter((activity) => isSelectable(activity)).map((activity) => activity.id)
+			: []
+	);
+	const allSelectableSelected = $derived.by(
+		() => selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id))
+	);
+	const someSelectableSelected = $derived.by(
+		() => selectableIds.some((id) => selectedIds.has(id)) && !allSelectableSelected
+	);
+
+	$effect(() => {
+		if (selectAllCheckbox) {
+			selectAllCheckbox.indeterminate = someSelectableSelected;
+		}
+	});
 
 	function toggleRow(id: string) {
 		if (expandedRows.has(id)) {
@@ -70,45 +144,6 @@
 			failedReasonExpandedRows.add(id);
 		}
 	}
-
-	// Format relative time
-	function formatRelativeTime(dateStr: string | null): string {
-		if (!dateStr) return '-';
-		const date = new Date(dateStr);
-		const now = new Date();
-		const diff = now.getTime() - date.getTime();
-		const minutes = Math.floor(diff / 60000);
-		const hours = Math.floor(diff / 3600000);
-		const days = Math.floor(diff / 86400000);
-
-		if (minutes < 1) return 'Just now';
-		if (minutes < 60) return `${minutes}m ago`;
-		if (hours < 24) return `${hours}h ago`;
-		if (days < 7) return `${days}d ago`;
-		return date.toLocaleDateString();
-	}
-
-	// Format timestamp for timeline
-	function formatTimestamp(dateStr: string): string {
-		const date = new Date(dateStr);
-		return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-	}
-
-	// Status config
-	const statusConfig: Record<
-		string,
-		{ label: string; variant: string; icon: typeof CheckCircle2 }
-	> = {
-		imported: { label: 'Imported', variant: 'badge-success', icon: CheckCircle2 },
-		streaming: { label: 'Streaming', variant: 'badge-info', icon: CheckCircle2 },
-		downloading: { label: 'Downloading', variant: 'badge-info', icon: Loader2 },
-		paused: { label: 'Paused', variant: 'badge-warning', icon: Pause },
-		failed: { label: 'Failed', variant: 'badge-error', icon: XCircle },
-		rejected: { label: 'Rejected', variant: 'badge-warning', icon: AlertCircle },
-		removed: { label: 'Removed', variant: 'badge-ghost', icon: XCircle },
-		no_results: { label: 'No Results', variant: 'badge-ghost', icon: Minus },
-		searching: { label: 'Searching', variant: 'badge-info', icon: Loader2 }
-	};
 
 	// Get media link
 	function getMediaLink(activity: UnifiedActivity): string {
@@ -146,22 +181,6 @@
 		return sortDirection === 'asc' ? ArrowUp : ArrowDown;
 	}
 
-	function getResolutionBadge(activity: UnifiedActivity): string | null {
-		const rawResolution = activity.quality?.resolution?.trim();
-		if (rawResolution && rawResolution.toLowerCase() !== 'unknown') {
-			return rawResolution;
-		}
-
-		const isCinephageLibraryStream =
-			activity.protocol === 'streaming' &&
-			(activity.indexerName?.toLowerCase().includes('cinephage library') ?? false);
-		if (isCinephageLibraryStream) {
-			return 'Auto';
-		}
-
-		return null;
-	}
-
 	async function runQueueAction(
 		activity: UnifiedActivity,
 		action: 'pause' | 'resume' | 'remove' | 'retry'
@@ -182,29 +201,54 @@
 		queueActionLoadingRows.add(activity.id);
 		try {
 			await handler(activity.queueItemId);
-			if (action === 'pause') toasts.success('Download paused');
-			if (action === 'resume') toasts.success('Download resumed');
-			if (action === 'remove') toasts.success('Download removed');
-			if (action === 'retry') toasts.success('Download retry initiated');
+			if (action === 'pause') toasts.success(m.activity_detail_downloadPaused());
+			if (action === 'resume') toasts.success(m.activity_detail_downloadResumed());
+			if (action === 'remove') toasts.success(m.activity_detail_downloadRemoved());
+			if (action === 'retry') {
+				toasts.success(
+					activity.status === 'failed' && isImportFailedActivity(activity)
+						? m.activity_detail_importRetryInitiated()
+						: m.activity_detail_downloadRetryInitiated()
+				);
+			}
 		} catch (error) {
-			const message = error instanceof Error ? error.message : `Failed to ${action} download`;
+			const message =
+				error instanceof Error ? error.message : m.activity_table_failedToAction({ action });
 			toasts.error(message);
 		} finally {
 			queueActionLoadingRows.delete(activity.id);
 		}
+	}
+
+	function isRowSelected(activityId: string): boolean {
+		return selectedIds.has(activityId);
+	}
+
+	function toggleSelection(activity: UnifiedActivity, selected: boolean): void {
+		if (!selectionMode || !isSelectable(activity)) {
+			return;
+		}
+		onToggleSelection?.(activity.id, selected);
+	}
+
+	function toggleSelectionAll(selected: boolean): void {
+		if (!selectionMode || selectableIds.length === 0) {
+			return;
+		}
+		onToggleSelectionAll?.(selectableIds, selected);
 	}
 </script>
 
 {#if activities.length === 0}
 	<div class="py-12 text-center text-base-content/60">
 		<Minus class="mx-auto mb-4 h-12 w-12 opacity-40" />
-		<p class="text-lg font-medium">No activity</p>
-		<p class="mt-1 text-sm">Download and search activity will appear here</p>
+		<p class="text-lg font-medium">{m.activity_table_noActivity()}</p>
+		<p class="mt-1 text-sm">{m.activity_table_noActivityHint()}</p>
 	</div>
-{:else}
+{:else if isMobile}
 	<!-- Mobile: Card View -->
-	<div class="space-y-3 lg:hidden">
-		{#each activities as activity (activity.id)}
+	<div class="space-y-3">
+		{#each renderer.visible as activity (activity.id)}
 			{@const config = statusConfig[activity.status] || statusConfig.no_results}
 			{@const StatusIcon = config.icon}
 			{@const isExpanded = expandedRows.has(activity.id)}
@@ -221,12 +265,27 @@
 						{#if activity.status === 'downloading' && activity.downloadProgress !== undefined}
 							{activity.downloadProgress}%
 						{:else}
-							{config.label}
+							{getStatusLabel(activity, config.label)}
 						{/if}
 					</span>
-					<span class="text-xs text-base-content/60" title={activity.startedAt}>
-						{formatRelativeTime(activity.startedAt)}
-					</span>
+					<div class="flex items-center gap-2">
+						<span class="text-xs text-base-content/60" title={getDisplayTime(activity)}>
+							{formatRelativeTime(getDisplayTime(activity))}
+						</span>
+						{#if selectionMode}
+							<input
+								type="checkbox"
+								class="checkbox checkbox-xs"
+								checked={isRowSelected(activity.id)}
+								disabled={!isSelectable(activity)}
+								aria-label={`Select ${activity.mediaTitle}`}
+								onclick={(e) => {
+									e.stopPropagation();
+									toggleSelection(activity, (e.currentTarget as HTMLInputElement).checked);
+								}}
+							/>
+						{/if}
+					</div>
 				</div>
 
 				<div class="mt-2">
@@ -309,35 +368,37 @@
 							value={activity.downloadProgress}
 							max="100"
 						></progress>
-					{:else if activity.status === 'failed' && activity.statusReason}
+					{:else if (activity.status === 'failed' || activity.status === 'search_error') && activity.statusReason}
 						<button
 							class="btn gap-1 btn-ghost btn-xs"
 							onclick={() => toggleFailedReason(activity.id)}
-							aria-label={isFailedReasonExpanded ? 'Hide failure reason' : 'Show failure reason'}
+							aria-label={isFailedReasonExpanded
+								? m.activity_table_hideReason()
+								: m.activity_table_showReason()}
 						>
 							<MessageSquare class="h-3 w-3" />
-							{isFailedReasonExpanded ? 'Hide reason' : 'Reason'}
+							{isFailedReasonExpanded ? m.activity_table_hideReason() : m.activity_table_reason()}
 						</button>
 						{#if isFailedReasonExpanded}
 							<div class="mt-2 rounded-md bg-base-300/60 p-2 text-xs text-base-content/70">
 								{activity.statusReason}
 							</div>
 						{/if}
-					{:else if activity.statusReason && activity.status !== 'failed'}
+					{:else if activity.statusReason}
 						<div class="text-xs text-base-content/60">{activity.statusReason}</div>
 					{/if}
 				</div>
 
 				{#if activity.queueItemId}
 					<div class="mt-3 flex flex-wrap gap-2">
-						{#if activity.status === 'downloading'}
+						{#if activity.status === 'downloading' || activity.status === 'seeding'}
 							<button
 								class="btn btn-ghost btn-xs"
 								onclick={() => runQueueAction(activity, 'pause')}
 								disabled={isQueueActionLoading}
 							>
 								<Pause class="h-3.5 w-3.5" />
-								Pause
+								{m.action_pause()}
 							</button>
 						{:else if activity.status === 'paused'}
 							<button
@@ -346,7 +407,7 @@
 								disabled={isQueueActionLoading}
 							>
 								<Play class="h-3.5 w-3.5" />
-								Resume
+								{m.action_resume()}
 							</button>
 						{/if}
 
@@ -357,7 +418,9 @@
 								disabled={isQueueActionLoading}
 							>
 								<RotateCcw class="h-3.5 w-3.5" />
-								Retry
+								{isImportFailedActivity(activity)
+									? m.activity_detail_retryImport()
+									: m.common_retry()}
 							</button>
 						{/if}
 
@@ -367,7 +430,7 @@
 							disabled={isQueueActionLoading}
 						>
 							<Trash2 class="h-3.5 w-3.5" />
-							Remove
+							{m.action_remove()}
 						</button>
 					</div>
 				{/if}
@@ -379,10 +442,10 @@
 					>
 						{#if isExpanded}
 							<ChevronUp class="h-3 w-3" />
-							Hide timeline
+							{m.activity_table_hideTimeline()}
 						{:else}
 							<ChevronDown class="h-3 w-3" />
-							Show timeline
+							{m.activity_table_showTimeline()}
 						{/if}
 					</button>
 				{/if}
@@ -404,18 +467,44 @@
 		{/each}
 	</div>
 
+	<!-- Progressive render sentinel + server load-more -->
+	{#if renderer.hasMore || hasMore}
+		<div bind:this={renderer.sentinel} class="flex justify-center py-4">
+			{#if isLoadingMore}
+				<Loader2 class="h-5 w-5 animate-spin text-base-content/40" />
+			{/if}
+		</div>
+	{/if}
+{:else}
 	<!-- Desktop: Table View -->
-	<div class="hidden overflow-x-auto lg:block">
+	<div class="overflow-x-auto">
 		<table class="table table-sm">
 			<thead>
 				<tr>
+					{#if selectionMode}
+						<th class="w-10">
+							{#if selectableIds.length > 0}
+								<input
+									bind:this={selectAllCheckbox}
+									type="checkbox"
+									class="checkbox checkbox-xs"
+									checked={allSelectableSelected}
+									aria-label={m.activity_table_selectAllVisible()}
+									onclick={(e) => {
+										e.stopPropagation();
+										toggleSelectionAll(!allSelectableSelected);
+									}}
+								/>
+							{/if}
+						</th>
+					{/if}
 					<th class="w-10"></th>
 					<th
 						class="cursor-pointer select-none hover:bg-base-200"
 						onclick={() => handleSort('status')}
 					>
 						<span class="flex items-center gap-1">
-							Status
+							{m.common_status()}
 							{#if onSort}
 								{@const Icon = getSortIcon('status')}
 								<Icon class="h-3 w-3 opacity-50" />
@@ -427,7 +516,7 @@
 						onclick={() => handleSort('media')}
 					>
 						<span class="flex items-center gap-1">
-							Media
+							{m.activity_table_media()}
 							{#if onSort}
 								{@const Icon = getSortIcon('media')}
 								<Icon class="h-3 w-3 opacity-50" />
@@ -440,7 +529,7 @@
 							onclick={() => handleSort('release')}
 						>
 							<span class="flex items-center gap-1">
-								Release
+								{m.activity_table_release()}
 								{#if onSort}
 									{@const Icon = getSortIcon('release')}
 									<Icon class="h-3 w-3 opacity-50" />
@@ -479,7 +568,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{#each activities as activity (activity.id)}
+				{#each renderer.visible as activity (activity.id)}
 					{@const config = statusConfig[activity.status] || statusConfig.no_results}
 					{@const StatusIcon = config.icon}
 					{@const isExpanded = expandedRows.has(activity.id)}
@@ -493,6 +582,21 @@
 							}
 						}}
 					>
+						{#if selectionMode}
+							<td class="w-10">
+								<input
+									type="checkbox"
+									class="checkbox checkbox-xs"
+									checked={isRowSelected(activity.id)}
+									disabled={!isSelectable(activity)}
+									aria-label={`Select ${activity.mediaTitle}`}
+									onclick={(e) => {
+										e.stopPropagation();
+										toggleSelection(activity, (e.currentTarget as HTMLInputElement).checked);
+									}}
+								/>
+							</td>
+						{/if}
 						<!-- Expand indicator -->
 						<td class="w-10">
 							{#if (activity.timeline?.length ?? 0) > 0}
@@ -516,7 +620,7 @@
 								{#if activity.status === 'downloading' && activity.downloadProgress !== undefined}
 									{activity.downloadProgress}%
 								{:else}
-									{config.label}
+									{getStatusLabel(activity, config.label)}
 								{/if}
 							</span>
 						</td>
@@ -602,7 +706,12 @@
 
 							<!-- Source -->
 							<td>
-								{#if activity.indexerName}
+								{#if activity.activitySource === 'monitoring' && activity.taskType}
+									{@const taskLabel = TASK_TYPE_LABELS[activity.taskType]}
+									<div class="text-sm">
+										<span class="text-base-content/70">{taskLabel ?? activity.taskType}</span>
+									</div>
+								{:else if activity.indexerName}
 									<div class="text-sm">
 										<span>{activity.indexerName}</span>
 										{#if activity.protocol}
@@ -627,22 +736,22 @@
 										max="100"
 									></progress>
 								</div>
-							{:else if activity.statusReason && activity.status !== 'failed'}
+							{:else if getCompactProgressLabel(activity)}
 								<span
 									class="max-w-32 truncate text-xs text-base-content/60"
 									title={activity.statusReason}
 								>
-									{activity.statusReason}
+									{getCompactProgressLabel(activity)}
 								</span>
 							{:else}
-								<span class="text-sm">{config.label}</span>
+								<span class="text-sm">{getStatusLabel(activity, config.label)}</span>
 							{/if}
 						</td>
 
 						<!-- Time -->
 						<td>
-							<span class="text-sm" title={activity.startedAt}>
-								{formatRelativeTime(activity.startedAt)}
+							<span class="text-sm" title={getDisplayTime(activity)}>
+								{formatRelativeTime(getDisplayTime(activity))}
 							</span>
 						</td>
 					</tr>
@@ -650,7 +759,7 @@
 					<!-- Expanded row with timeline -->
 					{#if isExpanded && (activity.timeline?.length ?? 0) > 0}
 						<tr class="bg-base-200/50">
-							<td colspan={compact ? 5 : 10} class="py-3">
+							<td colspan={(compact ? 5 : 10) + (selectionMode ? 1 : 0)} class="py-3">
 								<div class="px-4">
 									<div class="mb-2 text-sm font-medium">Timeline</div>
 									<div class="flex flex-wrap items-center gap-2 text-xs">
@@ -688,4 +797,13 @@
 			</tbody>
 		</table>
 	</div>
+
+	<!-- Progressive render sentinel + server load-more -->
+	{#if renderer.hasMore || hasMore}
+		<div bind:this={renderer.sentinel} class="flex justify-center py-4">
+			{#if isLoadingMore}
+				<Loader2 class="h-5 w-5 animate-spin text-base-content/40" />
+			{/if}
+		</div>
+	{/if}
 {/if}

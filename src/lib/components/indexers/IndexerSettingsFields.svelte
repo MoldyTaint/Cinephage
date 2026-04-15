@@ -40,9 +40,9 @@
 {#if settingsDefinitions.length > 0}
 	{#each settingsDefinitions as setting (setting.name)}
 		{#if isInfoType(setting.type)}
-			<!-- Info-only fields (not editable) -->
+			<!-- Info-only fields (not editable) - span full width in grid -->
 			{@const InfoIcon = getInfoIcon(setting.type)}
-			<div class="rounded-lg bg-info/10 p-3">
+			<div class="col-span-full rounded-lg bg-info/10 p-3">
 				<div class="flex items-start gap-2">
 					<InfoIcon class="mt-0.5 h-4 w-4 flex-shrink-0 text-info" />
 					<div class="min-w-0">
@@ -55,19 +55,21 @@
 			</div>
 		{:else}
 			<div class="form-control">
-				<label class="label py-1" for={setting.name}>
-					<span class="label-text flex items-center gap-1">
-						{setting.label}
-						{#if setting.required}
-							<span class="text-error">*</span>
-						{/if}
-						{#if setting.helpText}
-							<div class="tooltip tooltip-right" data-tip={setting.helpText}>
-								<HelpCircle class="h-3.5 w-3.5 text-base-content/50" />
-							</div>
-						{/if}
-					</span>
-				</label>
+				{#if setting.type !== 'checkbox'}
+					<label class="label py-1" for={setting.name}>
+						<span class="label-text flex items-center gap-1">
+							{setting.label}
+							{#if setting.required}
+								<span class="text-error">*</span>
+							{/if}
+							{#if setting.helpText}
+								<div class="tooltip tooltip-right" data-tip={setting.helpText}>
+									<HelpCircle class="h-3.5 w-3.5 text-base-content/50" />
+								</div>
+							{/if}
+						</span>
+					</label>
+				{/if}
 
 				{#if setting.type === 'password'}
 					<input
@@ -80,14 +82,15 @@
 						required={setting.required}
 					/>
 				{:else if setting.type === 'checkbox'}
-					<label class="label cursor-pointer justify-start gap-2 py-2">
+					<label class="flex cursor-pointer items-start gap-3 py-2">
 						<input
 							type="checkbox"
-							class="checkbox checkbox-sm"
+							class="checkbox mt-0.5 shrink-0 checkbox-sm"
 							checked={settings[setting.name] === 'true'}
 							onchange={(e) =>
 								updateSetting(setting.name, e.currentTarget.checked ? 'true' : 'false')}
 						/>
+						<span class="text-sm leading-tight">{setting.label}</span>
 					</label>
 				{:else if setting.type === 'select' && setting.options}
 					<select
@@ -122,7 +125,7 @@
 					/>
 				{/if}
 
-				{#if setting.helpText}
+				{#if setting.helpText && setting.type !== 'checkbox'}
 					<div class="label py-0.5">
 						<span class="label-text-alt text-base-content/60">{setting.helpText}</span>
 					</div>

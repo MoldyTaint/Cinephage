@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { X, Link, Trash2 } from 'lucide-svelte';
 	import { unmatchedFilesStore } from '$lib/stores/unmatched-files.svelte.js';
 
@@ -25,27 +26,27 @@
 		<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 			<div class="flex items-center gap-2 text-primary-content">
 				<span class="font-semibold">
-					{selectedCount} file{selectedCount !== 1 ? 's' : ''} selected
+					{m.unmatched_bulkActions_selectedCount({ count: selectedCount })}
 				</span>
 			</div>
 			<div class="flex flex-wrap gap-2">
 				<button class="btn text-primary-content btn-ghost btn-sm" onclick={selectAll}>
-					Select All
+					{m.unmatched_bulkActions_selectAll()}
 				</button>
 				<button class="btn text-primary-content btn-ghost btn-sm" onclick={clearSelection}>
 					<X class="h-4 w-4" />
-					Clear
+					{m.unmatched_bulkActions_clear()}
 				</button>
 				<div
 					class="divider mx-0 divider-horizontal before:bg-primary-content/30 after:bg-primary-content/30"
 				></div>
 				<button class="btn bg-white text-primary btn-sm hover:bg-white/90" onclick={onMatch}>
 					<Link class="h-4 w-4" />
-					Match Selected
+					{m.unmatched_bulkActions_matchSelected()}
 				</button>
 				<button class="btn bg-white/20 text-white btn-sm hover:bg-white/30" onclick={onDelete}>
 					<Trash2 class="h-4 w-4" />
-					Delete
+					{m.unmatched_bulkActions_delete()}
 				</button>
 			</div>
 		</div>

@@ -1,24 +1,15 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import type { PageData } from './$types';
 	import MediaHero from '$lib/components/tmdb/MediaHero.svelte';
 	import PersonCard from '$lib/components/tmdb/PersonCard.svelte';
 	import SectionRow from '$lib/components/discover/SectionRow.svelte';
 
 	let { data }: { data: PageData } = $props();
-
-	// Prefetch stream when page loads (warms cache for faster playback)
-	$effect(() => {
-		if (data.movie?.id) {
-			fetch(`/api/streaming/resolve/movie/${data.movie.id}?prefetch=1`, {
-				signal: AbortSignal.timeout(5000),
-				headers: { 'X-Prefetch': 'true' }
-			}).catch(() => {});
-		}
-	});
 </script>
 
 <svelte:head>
-	<title>{data.movie.title} - Cinephage</title>
+	<title>{m.discover_movie_pageTitle({ title: data.movie.title })}</title>
 </svelte:head>
 
 <div class="flex w-full flex-col gap-12 px-4 pb-20 lg:px-8">
@@ -28,7 +19,7 @@
 	<!-- Cast Section -->
 	{#if data.movie.credits.cast.length > 0}
 		<SectionRow
-			title="Top Cast"
+			title={m.discover_movie_topCast()}
 			items={data.movie.credits.cast.slice(0, 15)}
 			itemClass="w-[30vw] sm:w-36 md:w-44"
 		>
@@ -51,7 +42,7 @@
 	<!-- Recommendations -->
 	{#if data.movie.recommendations.results.length > 0}
 		<SectionRow
-			title="Recommendations"
+			title={m.discover_movie_recommendations()}
 			items={data.movie.recommendations.results}
 			endpoint={`movie/${data.movie.id}/recommendations`}
 		/>
@@ -60,7 +51,7 @@
 	<!-- Similar -->
 	{#if data.movie.similar.results.length > 0}
 		<SectionRow
-			title="Similar Titles"
+			title={m.discover_movie_similarTitles()}
 			items={data.movie.similar.results}
 			endpoint={`movie/${data.movie.id}/similar`}
 		/>

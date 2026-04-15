@@ -9,7 +9,9 @@ import { db } from '$lib/server/db';
 import { subtitleProviders } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import type {
 	ISubtitleProvider,
 	ProviderDefinition,
@@ -27,12 +29,46 @@ import {
 import { getThrottleConfig, PROVIDER_RESET_CALCULATORS } from '../throttle/ThrottleMap';
 
 /**
+ * Transient error types that should use a sliding window gate before throttling.
+ * These are temporary issues that may resolve on their own.
+ * Based on Bazarr's throttled_count() pattern (5 errors in 120s).
+ */
+const TRANSIENT_ERROR_NAMES = new Set([
+	'TooManyRequests',
+	'ServiceUnavailable',
+	'APIThrottled',
+	'TimeoutError',
+	'ConnectionError',
+	'ParseResponseError'
+]);
+
+/**
+ * Hard error types (DownloadLimitExceeded, SearchLimitReached, AuthenticationError,
+ * IPAddressBlocked, ConfigurationError) are NOT in the transient set and therefore
+ * throttle immediately on first occurrence.
+ */
+
+/** Number of transient errors within the window before throttling */
+const TRANSIENT_THROTTLE_COUNT = 5;
+
+/** Sliding window duration in milliseconds (120 seconds) */
+const TRANSIENT_WINDOW_MS = 120 * 1000;
+
+/**
  * Central service for managing subtitle providers
  */
 export class SubtitleProviderManager {
 	private static instance: SubtitleProviderManager | null = null;
 	private providerInstances: Map<string, ISubtitleProvider> = new Map();
 	private initialized: boolean = false;
+
+	/**
+	 * In-memory sliding window tracker for transient errors per provider.
+	 * Key: provider ID, Value: array of error timestamps (epoch ms).
+	 * Used to implement Bazarr's throttled_count() pattern:
+	 * only throttle after TRANSIENT_THROTTLE_COUNT errors within TRANSIENT_WINDOW_MS.
+	 */
+	private transientErrorTimestamps: Map<string, number[]> = new Map();
 
 	private constructor() {}
 
@@ -60,19 +96,25 @@ export class SubtitleProviderManager {
 			try {
 				await this.getProviderInstance(config.id);
 			} catch (error) {
-				logger.warn('Failed to initialize provider', {
-					providerId: config.id,
-					name: config.name,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.warn(
+					{
+						providerId: config.id,
+						name: config.name,
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'Failed to initialize provider'
+				);
 			}
 		}
 
 		this.initialized = true;
-		logger.info('SubtitleProviderManager initialized', {
-			providerCount: configs.length,
-			enabledCount: configs.filter((c) => c.enabled).length
-		});
+		logger.info(
+			{
+				providerCount: configs.length,
+				enabledCount: configs.filter((c) => c.enabled).length
+			},
+			'SubtitleProviderManager initialized'
+		);
 	}
 
 	// =========================================================================
@@ -128,7 +170,7 @@ export class SubtitleProviderManager {
 			throw new Error('Failed to create provider');
 		}
 
-		logger.info('Created subtitle provider', { id, name: config.name });
+		logger.info({ id, name: config.name }, 'Created subtitle provider');
 		return created;
 	}
 
@@ -168,7 +210,7 @@ export class SubtitleProviderManager {
 			throw new Error('Failed to update provider');
 		}
 
-		logger.info('Updated subtitle provider', { id, name: updated.name });
+		logger.info({ id, name: updated.name }, 'Updated subtitle provider');
 		return updated;
 	}
 
@@ -178,7 +220,7 @@ export class SubtitleProviderManager {
 	async deleteProvider(id: string): Promise<void> {
 		await db.delete(subtitleProviders).where(eq(subtitleProviders.id, id));
 		this.providerInstances.delete(id);
-		logger.info('Deleted subtitle provider', { id });
+		logger.info({ id }, 'Deleted subtitle provider');
 	}
 
 	// =========================================================================
@@ -204,10 +246,13 @@ export class SubtitleProviderManager {
 			this.providerInstances.set(id, instance);
 			return instance;
 		} catch (error) {
-			logger.error('Failed to create provider instance', {
-				providerId: id,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.error(
+				{
+					providerId: id,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to create provider instance'
+			);
 			return undefined;
 		}
 	}
@@ -245,7 +290,47 @@ export class SubtitleProviderManager {
 	}
 
 	/**
+	 * Check if a transient error should trigger throttling based on the sliding window.
+	 * Records the error timestamp and returns true if the threshold has been reached
+	 * (TRANSIENT_THROTTLE_COUNT errors within TRANSIENT_WINDOW_MS).
+	 *
+	 * Based on Bazarr's throttled_count() pattern from get_providers.py.
+	 */
+	private shouldThrottleTransient(providerId: string): boolean {
+		const now = Date.now();
+		const cutoff = now - TRANSIENT_WINDOW_MS;
+
+		// Get or initialize timestamps array
+		let timestamps = this.transientErrorTimestamps.get(providerId);
+		if (!timestamps) {
+			timestamps = [];
+			this.transientErrorTimestamps.set(providerId, timestamps);
+		}
+
+		// Prune timestamps outside the window
+		const pruned = timestamps.filter((t) => t > cutoff);
+
+		// Record this error
+		pruned.push(now);
+		this.transientErrorTimestamps.set(providerId, pruned);
+
+		// Check if threshold reached
+		return pruned.length >= TRANSIENT_THROTTLE_COUNT;
+	}
+
+	/**
+	 * Clear transient error tracking for a provider (called on success)
+	 */
+	private clearTransientErrors(providerId: string): void {
+		this.transientErrorTimestamps.delete(providerId);
+	}
+
+	/**
 	 * Record a provider error with exception-specific throttling
+	 *
+	 * Hard errors (DownloadLimitExceeded, AuthenticationError, etc.) throttle immediately.
+	 * Transient errors (TooManyRequests, ServiceUnavailable, TimeoutError, etc.) use a
+	 * sliding window gate: only throttle after 5 errors within 120 seconds.
 	 *
 	 * @param id Provider ID
 	 * @param error Error instance (typed errors get specific throttle durations)
@@ -274,29 +359,54 @@ export class SubtitleProviderManager {
 			errorType = error.name;
 			errorMessage = error.message;
 
-			// Check for provider-specific reset calculator (e.g., midnight reset)
-			const resetCalculator = PROVIDER_RESET_CALCULATORS[config.implementation];
+			const isTransient = TRANSIENT_ERROR_NAMES.has(error.name);
 
-			// Handle special cases where the error provides a reset time
-			if (error instanceof DownloadLimitExceeded && error.resetTime) {
-				throttledUntil = error.resetTime.toISOString();
-				throttleDescription = `until ${error.resetTime.toLocaleTimeString()}`;
-			} else if (error instanceof TooManyRequests && error.retryAfter) {
-				throttledUntil = new Date(Date.now() + error.retryAfter * 1000).toISOString();
-				throttleDescription = `${error.retryAfter} seconds`;
-			} else if (
-				resetCalculator &&
-				(error.name === 'DownloadLimitExceeded' || error.name === 'SearchLimitReached')
-			) {
-				// Use provider's daily reset time
-				const msUntilReset = resetCalculator();
-				throttledUntil = new Date(Date.now() + msUntilReset).toISOString();
-				throttleDescription = `until daily reset (~${Math.round(msUntilReset / 3600000)} hours)`;
+			if (isTransient && !this.shouldThrottleTransient(id)) {
+				// Transient error but sliding window threshold not yet reached.
+				// Record the failure count and error info but DON'T apply throttling yet.
+				logger.debug(
+					{
+						providerId: id,
+						providerName: config.name,
+						errorType,
+						windowCount: (this.transientErrorTimestamps.get(id) ?? []).length,
+						threshold: TRANSIENT_THROTTLE_COUNT
+					},
+					'Transient error recorded but below throttle threshold'
+				);
+				// throttledUntil stays undefined - no throttling applied
 			} else {
-				// Use configured throttle duration from map
-				const throttleConfig = getThrottleConfig(getErrorType(error), config.implementation);
-				throttledUntil = new Date(Date.now() + throttleConfig.duration).toISOString();
-				throttleDescription = throttleConfig.description;
+				// Hard error, or transient error that exceeded the sliding window threshold.
+				// Apply throttling with appropriate duration.
+
+				// Check for provider-specific reset calculator (e.g., midnight reset)
+				const resetCalculator = PROVIDER_RESET_CALCULATORS[config.implementation];
+
+				// Handle special cases where the error provides a reset time
+				if (error instanceof DownloadLimitExceeded && error.resetTime) {
+					throttledUntil = error.resetTime.toISOString();
+					throttleDescription = `until ${error.resetTime.toLocaleTimeString()}`;
+				} else if (error instanceof TooManyRequests && error.retryAfter) {
+					throttledUntil = new Date(Date.now() + error.retryAfter * 1000).toISOString();
+					throttleDescription = `${error.retryAfter} seconds`;
+				} else if (
+					resetCalculator &&
+					(error.name === 'DownloadLimitExceeded' || error.name === 'SearchLimitReached')
+				) {
+					// Use provider's daily reset time
+					const msUntilReset = resetCalculator();
+					throttledUntil = new Date(Date.now() + msUntilReset).toISOString();
+					throttleDescription = `until daily reset (~${Math.round(msUntilReset / 3600000)} hours)`;
+				} else {
+					// Use configured throttle duration from map
+					const throttleConfig = getThrottleConfig(getErrorType(error), config.implementation);
+					throttledUntil = new Date(Date.now() + throttleConfig.duration).toISOString();
+					throttleDescription = throttleConfig.description;
+				}
+
+				if (isTransient) {
+					throttleDescription += ` (after ${TRANSIENT_THROTTLE_COUNT} transient errors in ${TRANSIENT_WINDOW_MS / 1000}s)`;
+				}
 			}
 		} else {
 			// Generic Error - use progressive backoff
@@ -319,16 +429,33 @@ export class SubtitleProviderManager {
 			})
 			.where(eq(subtitleProviders.id, id));
 
-		logger.warn('Provider throttled', {
-			providerId: id,
-			providerName: config.name,
-			implementation: config.implementation,
-			errorType,
-			errorMessage,
-			failures,
-			throttledUntil,
-			throttleDescription
-		});
+		if (throttledUntil) {
+			logger.warn(
+				{
+					providerId: id,
+					providerName: config.name,
+					implementation: config.implementation,
+					errorType,
+					errorMessage,
+					failures,
+					throttledUntil,
+					throttleDescription
+				},
+				'Provider throttled'
+			);
+		} else {
+			logger.debug(
+				{
+					providerId: id,
+					providerName: config.name,
+					implementation: config.implementation,
+					errorType,
+					errorMessage,
+					failures
+				},
+				'Provider error recorded (not yet throttled)'
+			);
+		}
 	}
 
 	/**
@@ -338,6 +465,9 @@ export class SubtitleProviderManager {
 		const config = await this.getProvider(id);
 		const wasThrottled = config && this.isThrottled(config);
 		const hadErrors = config && config.consecutiveFailures > 0;
+
+		// Clear transient error sliding window on success
+		this.clearTransientErrors(id);
 
 		await db
 			.update(subtitleProviders)
@@ -352,12 +482,15 @@ export class SubtitleProviderManager {
 
 		// Log recovery from error state
 		if (wasThrottled || hadErrors) {
-			logger.info('Provider recovered from error state', {
-				providerId: id,
-				providerName: config?.name,
-				wasThrottled,
-				previousFailures: config?.consecutiveFailures
-			});
+			logger.info(
+				{
+					providerId: id,
+					providerName: config?.name,
+					wasThrottled,
+					previousFailures: config?.consecutiveFailures
+				},
+				'Provider recovered from error state'
+			);
 		}
 	}
 
@@ -420,7 +553,7 @@ export class SubtitleProviderManager {
 			})
 			.where(eq(subtitleProviders.id, id));
 
-		logger.info('Reset provider throttle', { providerId: id });
+		logger.info({ providerId: id }, 'Reset provider throttle');
 	}
 
 	// =========================================================================

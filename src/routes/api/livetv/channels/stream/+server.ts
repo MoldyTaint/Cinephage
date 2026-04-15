@@ -6,7 +6,7 @@
  * Events:
  * - connected: Initial connection established
  * - heartbeat: Keep-alive every 30s
- * - livetv:initial: Full lineup, categories, and EPG now/next data
+ * - livetv:sync: Current lineup, categories, and EPG now/next data
  * - lineup:updated: Lineup changed (add/remove/reorder)
  * - categories:updated: Categories changed
  * - channels:syncStarted: Channel sync started
@@ -21,6 +21,9 @@ import { channelLineupService } from '$lib/server/livetv/lineup';
 import { channelCategoryService } from '$lib/server/livetv/categories';
 import { getEpgService } from '$lib/server/livetv/epg';
 import type { RequestHandler } from './$types';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ component: 'LiveTVChannelsStream', logDomain: 'livetv' });
 
 interface NowNextEntry {
 	now: unknown;
@@ -63,9 +66,13 @@ export const GET: RequestHandler = async () => {
 		const sendInitialState = async () => {
 			try {
 				const data = await getInitialData();
-				send('livetv:initial', data);
-			} catch {
-				// Error fetching initial state
+				send('livetv:sync', {
+					...data,
+					lineupChannelIds: data.lineup.map((item) => item.channelId)
+				});
+			} catch (error) {
+				logger.error({ err: error }, 'Failed to fetch initial LiveTV state');
+				send('livetv:error', { message: 'Failed to fetch initial state' });
 			}
 		};
 
@@ -94,8 +101,8 @@ export const GET: RequestHandler = async () => {
 				}
 
 				send('epg:nowNext', { channels: epgNowNext });
-			} catch {
-				// Error fetching EPG data
+			} catch (error) {
+				logger.error({ err: error }, 'Failed to fetch EPG now/next data');
 			}
 		};
 
@@ -104,11 +111,18 @@ export const GET: RequestHandler = async () => {
 		epgInterval = setInterval(sendEpgNowNext, 60000);
 
 		const onLineupUpdated = async () => {
-			send('lineup:updated', await getInitialData());
+			const data = await getInitialData();
+			send('lineup:updated', {
+				lineup: data.lineup,
+				lineupChannelIds: data.lineup.map((item) => item.channelId)
+			});
 		};
 
 		const onCategoriesUpdated = async () => {
-			send('categories:updated', await getInitialData());
+			const data = await getInitialData();
+			send('categories:updated', {
+				categories: data.categories
+			});
 		};
 
 		const onChannelsSyncStarted = (event: { accountId: string }) => {

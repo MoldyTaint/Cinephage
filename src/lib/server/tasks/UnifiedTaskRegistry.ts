@@ -129,6 +129,17 @@ const SCHEDULED_TASKS: UnifiedTaskDefinition[] = [
 		defaultIntervalHours: 24,
 		minIntervalHours: 0.25,
 		intervalEditable: true
+	},
+	{
+		id: 'historyCleanup',
+		name: 'History Cleanup',
+		description: 'Automatically purge old history entries based on the retention period setting',
+		category: 'scheduled',
+		runEndpoint: '/api/monitoring/search/history-cleanup',
+		intervalKey: 'history_cleanup_interval_hours',
+		defaultIntervalHours: 24,
+		minIntervalHours: 1,
+		intervalEditable: false
 	}
 ];
 

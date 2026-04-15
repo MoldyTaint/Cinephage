@@ -8,6 +8,8 @@ import {
 	type NamingPreset
 } from '$lib/server/library/naming/presets';
 import { eq } from 'drizzle-orm';
+import { logger } from '$lib/logging';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 /**
  * GET /api/naming/presets/[id]
@@ -40,7 +42,7 @@ export const GET: RequestHandler = async ({ params }) => {
 			}
 		});
 	} catch (err) {
-		console.error('Error fetching naming preset:', err);
+		logger.error({ err, component: 'NamingPresetByIdApi' }, 'Error fetching naming preset');
 		return json({ error: 'Failed to fetch preset' }, { status: 500 });
 	}
 };
@@ -49,7 +51,11 @@ export const GET: RequestHandler = async ({ params }) => {
  * PUT /api/naming/presets/[id]
  * Update a custom preset (cannot update built-in presets)
  */
-export const PUT: RequestHandler = async ({ params, request }) => {
+export const PUT: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { params, request } = event;
 	try {
 		const { id } = params;
 
@@ -119,7 +125,7 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 			}
 		});
 	} catch (err) {
-		console.error('Error updating naming preset:', err);
+		logger.error({ err, component: 'NamingPresetByIdApi' }, 'Error updating naming preset');
 		return json({ error: 'Failed to update preset' }, { status: 500 });
 	}
 };
@@ -128,7 +134,11 @@ export const PUT: RequestHandler = async ({ params, request }) => {
  * DELETE /api/naming/presets/[id]
  * Delete a custom preset (cannot delete built-in presets)
  */
-export const DELETE: RequestHandler = async ({ params }) => {
+export const DELETE: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { params } = event;
 	try {
 		const { id } = params;
 
@@ -147,7 +157,7 @@ export const DELETE: RequestHandler = async ({ params }) => {
 
 		return json({ success: true });
 	} catch (err) {
-		console.error('Error deleting naming preset:', err);
+		logger.error({ err, component: 'NamingPresetByIdApi' }, 'Error deleting naming preset');
 		return json({ error: 'Failed to delete preset' }, { status: 500 });
 	}
 };

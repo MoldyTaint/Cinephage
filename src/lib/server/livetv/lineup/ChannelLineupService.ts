@@ -18,8 +18,11 @@ import {
 } from '$lib/server/db/schema';
 import { eq, asc, inArray, sql, and } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'livetv' as const });
 import { randomUUID } from 'crypto';
+import { normalizeLiveTvChannelName } from '$lib/livetv/channel-name-normalizer';
 import { liveTvEvents } from '../LiveTvEvents';
 import type {
 	ChannelLineupItemWithDetails,
@@ -54,15 +57,13 @@ function toChannelResponse(
 	record: LivetvChannelRecord,
 	categoryTitle: string | null
 ): CachedChannel {
-	const normalizedName = record.name.replace(/#+/g, ' ').replace(/\s+/g, ' ').trim();
-
 	// Build provider-specific data based on provider type
 	const providerData: CachedChannel = {
 		id: record.id,
 		accountId: record.accountId,
 		providerType: record.providerType,
 		externalId: record.externalId,
-		name: normalizedName,
+		name: record.name,
 		number: record.number,
 		logo: record.logo,
 		categoryId: record.categoryId,
@@ -119,7 +120,7 @@ function toLineupItem(
 		channel: channelData,
 		accountName,
 		category: toCategoryResponse(category),
-		displayName: record.customName || channelData.name,
+		displayName: record.customName || channel.name,
 		displayLogo: record.customLogo || channel.logo,
 		epgSourceChannel: epgSourceChannel
 			? toChannelResponse(epgSourceChannel, epgSourceCategoryTitle)
@@ -324,7 +325,7 @@ class ChannelLineupService {
 			existingIds.add(channel.channelId);
 		}
 
-		logger.info('[ChannelLineupService] Added channels to lineup', { added, skipped });
+		logger.info({ added, skipped }, '[ChannelLineupService] Added channels to lineup');
 		if (added > 0) {
 			liveTvEvents.emitLineupUpdated();
 		}
@@ -350,7 +351,7 @@ class ChannelLineupService {
 
 		const result = await db.delete(channelLineupItems).where(inArray(channelLineupItems.id, ids));
 
-		logger.info('[ChannelLineupService] Removed channels from lineup', { count: result.changes });
+		logger.info({ count: result.changes }, '[ChannelLineupService] Removed channels from lineup');
 		if (result.changes > 0) {
 			liveTvEvents.emitLineupUpdated();
 		}
@@ -397,7 +398,7 @@ class ChannelLineupService {
 				.where(eq(channelLineupItems.id, itemIds[i]));
 		}
 
-		logger.info('[ChannelLineupService] Reordered lineup', { count: itemIds.length });
+		logger.info({ count: itemIds.length }, '[ChannelLineupService] Reordered lineup');
 		liveTvEvents.emitLineupUpdated();
 	}
 
@@ -417,6 +418,72 @@ class ChannelLineupService {
 			liveTvEvents.emitLineupUpdated();
 		}
 		return result.changes;
+	}
+
+	/**
+	 * Apply cleaned names to lineup items that do not already have a custom name
+	 */
+	async bulkApplyCleanNames(itemIds: string[]): Promise<{
+		updated: number;
+		skippedExistingCustom: number;
+		skippedUnchanged: number;
+	}> {
+		if (itemIds.length === 0) {
+			return {
+				updated: 0,
+				skippedExistingCustom: 0,
+				skippedUnchanged: 0
+			};
+		}
+
+		const rows = await db
+			.select({
+				item: channelLineupItems,
+				channel: livetvChannels
+			})
+			.from(channelLineupItems)
+			.innerJoin(livetvChannels, eq(channelLineupItems.channelId, livetvChannels.id))
+			.where(inArray(channelLineupItems.id, itemIds));
+
+		const now = new Date().toISOString();
+		let updated = 0;
+		let skippedExistingCustom = 0;
+		let skippedUnchanged = 0;
+
+		for (const row of rows) {
+			if (row.item.customName?.trim()) {
+				skippedExistingCustom++;
+				continue;
+			}
+
+			const cleanedName = normalizeLiveTvChannelName(
+				row.channel.name,
+				row.channel.providerType
+			).trim();
+			const rawName = row.channel.name.trim();
+
+			if (!cleanedName || cleanedName === rawName) {
+				skippedUnchanged++;
+				continue;
+			}
+
+			await db
+				.update(channelLineupItems)
+				.set({ customName: cleanedName, updatedAt: now })
+				.where(eq(channelLineupItems.id, row.item.id));
+
+			updated++;
+		}
+
+		if (updated > 0) {
+			liveTvEvents.emitLineupUpdated();
+		}
+
+		return {
+			updated,
+			skippedExistingCustom,
+			skippedUnchanged
+		};
 	}
 
 	// =========================================================================
@@ -467,18 +534,24 @@ class ChannelLineupService {
 		// Get the lineup item to check it exists and that we're not adding primary as backup
 		const item = await this.getChannelById(lineupItemId);
 		if (!item) {
-			logger.warn('[ChannelLineupService] Cannot add backup: lineup item not found', {
-				lineupItemId
-			});
+			logger.warn(
+				{
+					lineupItemId
+				},
+				'[ChannelLineupService] Cannot add backup: lineup item not found'
+			);
 			return { backup: null, error: 'Lineup item not found' };
 		}
 
 		// Prevent adding the primary channel as a backup
 		if (channelId === item.channelId) {
-			logger.warn('[ChannelLineupService] Cannot add primary channel as backup', {
-				lineupItemId,
-				channelId
-			});
+			logger.warn(
+				{
+					lineupItemId,
+					channelId
+				},
+				'[ChannelLineupService] Cannot add primary channel as backup'
+			);
 			return { backup: null, error: 'Cannot add primary channel as backup' };
 		}
 
@@ -491,18 +564,24 @@ class ChannelLineupService {
 			.then((rows) => rows[0]);
 
 		if (!account) {
-			logger.warn('[ChannelLineupService] Cannot add backup: account not found', {
-				lineupItemId,
-				accountId
-			});
+			logger.warn(
+				{
+					lineupItemId,
+					accountId
+				},
+				'[ChannelLineupService] Cannot add backup: account not found'
+			);
 			return { backup: null, error: 'Account not found' };
 		}
 
 		if (!account.enabled) {
-			logger.warn('[ChannelLineupService] Cannot add backup: account is disabled', {
-				lineupItemId,
-				accountId
-			});
+			logger.warn(
+				{
+					lineupItemId,
+					accountId
+				},
+				'[ChannelLineupService] Cannot add backup: account is disabled'
+			);
 			return { backup: null, error: 'Account is disabled' };
 		}
 
@@ -515,20 +594,26 @@ class ChannelLineupService {
 			.then((rows) => rows[0]);
 
 		if (!channel) {
-			logger.warn('[ChannelLineupService] Cannot add backup: channel not found', {
-				lineupItemId,
-				channelId
-			});
+			logger.warn(
+				{
+					lineupItemId,
+					channelId
+				},
+				'[ChannelLineupService] Cannot add backup: channel not found'
+			);
 			return { backup: null, error: 'Channel not found' };
 		}
 
 		if (channel.accountId !== accountId) {
-			logger.warn('[ChannelLineupService] Cannot add backup: channel does not belong to account', {
-				lineupItemId,
-				channelId,
-				expectedAccountId: accountId,
-				actualAccountId: channel.accountId
-			});
+			logger.warn(
+				{
+					lineupItemId,
+					channelId,
+					expectedAccountId: accountId,
+					actualAccountId: channel.accountId
+				},
+				'[ChannelLineupService] Cannot add backup: channel does not belong to account'
+			);
 			return { backup: null, error: 'Channel does not belong to specified account' };
 		}
 
@@ -553,11 +638,14 @@ class ChannelLineupService {
 				updatedAt: now
 			});
 
-			logger.info('[ChannelLineupService] Added backup link', {
-				lineupItemId,
-				channelId,
-				priority: nextPriority
-			});
+			logger.info(
+				{
+					lineupItemId,
+					channelId,
+					priority: nextPriority
+				},
+				'[ChannelLineupService] Added backup link'
+			);
 
 			// Return the newly created backup with joined data
 			const backups = await this.getBackups(lineupItemId);
@@ -567,10 +655,13 @@ class ChannelLineupService {
 		} catch (error) {
 			// Unique constraint violation - backup already exists
 			if (error instanceof Error && error.message.includes('UNIQUE constraint')) {
-				logger.warn('[ChannelLineupService] Backup already exists', {
-					lineupItemId,
-					channelId
-				});
+				logger.warn(
+					{
+						lineupItemId,
+						channelId
+					},
+					'[ChannelLineupService] Backup already exists'
+				);
 				return { backup: null, error: 'Backup already exists' };
 			}
 			throw error;
@@ -598,7 +689,7 @@ class ChannelLineupService {
 			.where(eq(channelLineupBackups.id, backupId));
 
 		if (result.changes > 0) {
-			logger.info('[ChannelLineupService] Removed backup link', { backupId });
+			logger.info({ backupId }, '[ChannelLineupService] Removed backup link');
 
 			// Renormalize priorities for remaining backups
 			await this.normalizePriorities(backup.lineupItemId);
@@ -649,10 +740,13 @@ class ChannelLineupService {
 				);
 		}
 
-		logger.info('[ChannelLineupService] Reordered backups', {
-			lineupItemId,
-			count: backupIds.length
-		});
+		logger.info(
+			{
+				lineupItemId,
+				count: backupIds.length
+			},
+			'[ChannelLineupService] Reordered backups'
+		);
 		liveTvEvents.emitLineupUpdated();
 	}
 

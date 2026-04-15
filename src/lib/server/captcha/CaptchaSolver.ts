@@ -7,7 +7,9 @@
  */
 
 import type { Cookie } from 'playwright-core';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 import type { BackgroundService } from '$lib/server/services/background-service';
 import { captchaSolverSettingsService } from './CaptchaSolverSettings';
 import type {
@@ -88,13 +90,16 @@ export class CaptchaSolver implements BackgroundService {
 			this.startCacheCleanup();
 
 			this._status = 'ready';
-			logger.info('[CaptchaSolver] Ready', {
-				browserAvailable: camoufoxManager.browserAvailable()
-			});
+			logger.info(
+				{
+					browserAvailable: camoufoxManager.browserAvailable()
+				},
+				'[CaptchaSolver] Ready'
+			);
 		} catch (error) {
 			this._error = error instanceof Error ? error.message : String(error);
 			this._status = 'error';
-			logger.error('[CaptchaSolver] Initialization failed', { error: this._error });
+			logger.error({ err: error }, '[CaptchaSolver] Initialization failed');
 		}
 	}
 
@@ -143,7 +148,7 @@ export class CaptchaSolver implements BackgroundService {
 		const cached = this.getCached(domain);
 		if (cached) {
 			this.stats.cacheHits++;
-			logger.debug('[CaptchaSolver] Cache hit', { domain });
+			logger.debug({ domain }, '[CaptchaSolver] Cache hit');
 			return {
 				success: true,
 				cookies: cached.cookies,
@@ -156,7 +161,7 @@ export class CaptchaSolver implements BackgroundService {
 		// Check if there's already a pending solve for this domain
 		const pending = this.pendingSolves.get(domain);
 		if (pending) {
-			logger.debug('[CaptchaSolver] Waiting for pending solve', { domain });
+			logger.debug({ domain }, '[CaptchaSolver] Waiting for pending solve');
 			return pending;
 		}
 
@@ -346,7 +351,7 @@ export class CaptchaSolver implements BackgroundService {
 
 		if (removed > 0) {
 			this.stats.cacheSize = this.cache.size;
-			logger.debug('[CaptchaSolver] Cleaned up expired cache', { removed });
+			logger.debug({ removed }, '[CaptchaSolver] Cleaned up expired cache');
 		}
 	}
 

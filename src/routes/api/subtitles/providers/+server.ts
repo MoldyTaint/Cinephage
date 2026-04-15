@@ -4,6 +4,7 @@ import { getSubtitleProviderManager } from '$lib/server/subtitles/services/Subti
 import { getSubtitleProviderFactory } from '$lib/server/subtitles/providers/SubtitleProviderFactory';
 import { ensureProvidersRegistered } from '$lib/server/subtitles/providers/registry';
 import { subtitleProviderCreateSchema } from '$lib/validation/schemas';
+import { parseBody } from '$lib/server/api/validate.js';
 
 /**
  * GET /api/subtitles/providers
@@ -48,26 +49,7 @@ export const GET: RequestHandler = async () => {
  * Create a new subtitle provider.
  */
 export const POST: RequestHandler = async ({ request }) => {
-	let data: unknown;
-	try {
-		data = await request.json();
-	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
-	}
-
-	const result = subtitleProviderCreateSchema.safeParse(data);
-
-	if (!result.success) {
-		return json(
-			{
-				error: 'Validation failed',
-				details: result.error.flatten()
-			},
-			{ status: 400 }
-		);
-	}
-
-	const validated = result.data;
+	const validated = await parseBody(request, subtitleProviderCreateSchema);
 	const manager = await getSubtitleProviderManager();
 
 	// Verify the implementation is supported
@@ -84,22 +66,17 @@ export const POST: RequestHandler = async ({ request }) => {
 		);
 	}
 
-	try {
-		const created = await manager.createProvider({
-			name: validated.name,
-			implementation: validated.implementation,
-			enabled: validated.enabled,
-			priority: validated.priority,
-			apiKey: validated.apiKey ?? undefined,
-			username: validated.username ?? undefined,
-			password: validated.password ?? undefined,
-			settings: (validated.settings as Record<string, unknown>) ?? undefined,
-			requestsPerMinute: validated.requestsPerMinute
-		});
+	const created = await manager.createProvider({
+		name: validated.name,
+		implementation: validated.implementation,
+		enabled: validated.enabled,
+		priority: validated.priority,
+		apiKey: validated.apiKey ?? undefined,
+		username: validated.username ?? undefined,
+		password: validated.password ?? undefined,
+		settings: (validated.settings as Record<string, unknown>) ?? undefined,
+		requestsPerMinute: validated.requestsPerMinute
+	});
 
-		return json({ success: true, provider: created });
-	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Unknown error';
-		return json({ error: message }, { status: 500 });
-	}
+	return json({ success: true, provider: created });
 };

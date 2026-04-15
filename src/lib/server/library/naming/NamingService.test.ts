@@ -249,6 +249,12 @@ describe('NamingService', () => {
 			const result = service.generateEpisodeFileName(info);
 			expect(result).toContain('S01E01-E02');
 		});
+
+		it('should format repeat style', () => {
+			const service = new NamingService({ multiEpisodeStyle: 'repeat' });
+			const result = service.generateEpisodeFileName(baseInfo);
+			expect(result).toContain('S01E01 - S01E02 - S01E03');
+		});
 	});
 
 	describe('Colon Replacement', () => {
@@ -437,7 +443,7 @@ describe('NamingService', () => {
 			const info: MediaNamingInfo = {
 				title: 'Test',
 				year: 2023,
-				hdr: 'dolby-vision-hdr10',
+				hdr: 'dolby-vision',
 				codec: 'x265',
 				audioCodec: 'TrueHD',
 				audioChannels: '7.1',
@@ -446,9 +452,54 @@ describe('NamingService', () => {
 				originalExtension: '.mkv'
 			};
 			const result = service.generateMovieFileName(info);
-			expect(result).toContain('[DV HDR10]');
+			expect(result).toContain('[DV]');
 			expect(result).toContain('[TrueHD 7.1]');
 			expect(result).toContain('[x265]');
+		});
+	});
+
+	describe('Config controlled tokens', () => {
+		it('should suppress quality tokens when includeQuality is false', () => {
+			const service = new NamingService({ includeQuality: false });
+			const result = service.generateMovieFileName({
+				title: 'Test',
+				year: 2023,
+				source: 'bluray',
+				resolution: '1080p',
+				originalExtension: '.mkv'
+			});
+
+			expect(result).not.toContain('Bluray');
+			expect(result).not.toContain('1080p');
+		});
+
+		it('should suppress media info tokens when includeMediaInfo is false', () => {
+			const service = new NamingService({ includeMediaInfo: false });
+			const result = service.generateMovieFileName({
+				title: 'Test',
+				year: 2023,
+				source: 'bluray',
+				resolution: '1080p',
+				codec: 'x265',
+				audioCodec: 'truehd',
+				audioChannels: '7.1',
+				originalExtension: '.mkv'
+			});
+
+			expect(result).not.toContain('x265');
+			expect(result).not.toContain('TrueHD');
+		});
+
+		it('should suppress release group token when includeReleaseGroup is false', () => {
+			const service = new NamingService({ includeReleaseGroup: false });
+			const result = service.generateMovieFileName({
+				title: 'Test',
+				year: 2023,
+				releaseGroup: 'GROUP',
+				originalExtension: '.mkv'
+			});
+
+			expect(result).not.toContain('GROUP');
 		});
 	});
 

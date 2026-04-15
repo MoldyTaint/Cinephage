@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Database, Globe, Loader2, Check, AlertCircle } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 	import { onMount } from 'svelte';
 
 	// Types
@@ -67,7 +68,7 @@
 
 	// List source options - will be populated from fetched presets
 	let listSourceOptions = $state<Array<{ value: string; label: string; icon: typeof Database }>>([
-		{ value: 'tmdb-discover', label: 'TMDB Discover', icon: Database }
+		{ value: 'tmdb-discover', label: m.smartlists_source_tmdbDiscover(), icon: Database }
 	]);
 
 	// Update options when presets are loaded
@@ -79,9 +80,9 @@
 				icon: Globe
 			}));
 			listSourceOptions = [
-				{ value: 'tmdb-discover', label: 'TMDB Discover', icon: Database },
+				{ value: 'tmdb-discover', label: m.smartlists_source_tmdbDiscover(), icon: Database },
 				...presetOptions,
-				{ value: 'custom', label: 'Custom URL', icon: Globe }
+				{ value: 'custom', label: m.smartlists_source_customUrl(), icon: Globe }
 			];
 		}
 	});
@@ -90,7 +91,7 @@
 	onMount(async () => {
 		try {
 			const res = await fetch('/api/smartlists/presets');
-			if (!res.ok) throw new Error('Failed to fetch presets');
+			if (!res.ok) throw new Error(m.smartlists_error_fetchPresets());
 			presets = await res.json();
 
 			// Initialize selected preset if presetId is provided
@@ -114,7 +115,7 @@
 				headersText = JSON.stringify(customHeaders, null, 2);
 			}
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load presets';
+			error = e instanceof Error ? e.message : m.smartlists_error_loadPresets();
 		} finally {
 			loading = false;
 		}
@@ -198,7 +199,7 @@
 		const hasPreset = !!presetId && presetId !== 'custom';
 		const url = selectedPreset?.url || customUrl;
 		if (!hasPreset && !url) {
-			testResult = { success: false, message: 'Please enter a URL first' };
+			testResult = { success: false, message: m.smartlists_error_enterUrl() };
 			return;
 		}
 
@@ -223,19 +224,19 @@
 			if (res.ok) {
 				testResult = {
 					success: true,
-					message: `Successfully connected! Found ${data.totalCount} items.`,
+					message: m.smartlists_test_success({ count: data.totalCount }),
 					itemCount: data.totalCount
 				};
 			} else {
 				testResult = {
 					success: false,
-					message: data.error || 'Failed to fetch external list'
+					message: data.error || m.smartlists_error_fetchExternalList()
 				};
 			}
 		} catch (e) {
 			testResult = {
 				success: false,
-				message: e instanceof Error ? e.message : 'An error occurred'
+				message: e instanceof Error ? e.message : m.smartlists_error_generic()
 			};
 		} finally {
 			testing = false;
@@ -255,7 +256,7 @@
 	<div class="form-control">
 		<label class="label py-1" for="listSource">
 			<span class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase">
-				List Source
+				{m.smartlists_label_listSource()}
 			</span>
 		</label>
 		{#if loading}
@@ -284,7 +285,7 @@
 		<div class="space-y-3 rounded-lg border border-base-300 bg-base-100 p-4">
 			<div class="flex items-center gap-2">
 				<Globe class="h-4 w-4 text-primary" />
-				<span class="font-medium">{selectedPreset.name} Settings</span>
+				<span class="font-medium">{selectedPreset.name} {m.smartlists_label_settings()}</span>
 			</div>
 			<p class="text-xs text-base-content/60">{selectedPreset.description}</p>
 
@@ -351,10 +352,9 @@
 				<div class="flex items-start gap-2">
 					<AlertCircle class="mt-0.5 h-4 w-4 text-info" />
 					<div class="text-xs text-base-content/80">
-						<p class="font-medium">Import lists show all content types</p>
+						<p class="font-medium">{m.smartlists_info_mixedContentTitle()}</p>
 						<p class="mt-1">
-							Movies and TV shows from the source will be displayed together. The media type
-							selector at the top only affects TMDB Discover lists.
+							{m.smartlists_info_mixedContentDescription()}
 						</p>
 					</div>
 				</div>
@@ -365,10 +365,10 @@
 				<button class="btn btn-outline btn-sm" onclick={testConnection} disabled={testing}>
 					{#if testing}
 						<Loader2 class="h-4 w-4 animate-spin" />
-						Testing...
+						{m.common_testing()}
 					{:else}
 						<Globe class="h-4 w-4" />
-						Test Connection
+						{m.action_testConnection()}
 					{/if}
 				</button>
 
@@ -395,14 +395,14 @@
 		<div class="space-y-4 rounded-lg border border-base-300 bg-base-100 p-4">
 			<div class="flex items-center gap-2">
 				<Globe class="h-4 w-4 text-primary" />
-				<span class="font-medium">Custom URL Configuration</span>
+				<span class="font-medium">{m.smartlists_customUrlConfig_title()}</span>
 			</div>
 
 			<!-- URL Input -->
 			<div class="form-control">
 				<label class="label py-1" for="customUrl">
 					<span class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase">
-						JSON URL
+						{m.smartlists_label_jsonUrl()}
 					</span>
 				</label>
 				<input
@@ -414,7 +414,7 @@
 					class="input-bordered input input-sm w-full"
 				/>
 				<p class="mt-1 text-xs text-base-content/60">
-					Enter the URL to a JSON file containing Movie/TV show data.
+					{m.smartlists_customUrlConfig_urlDescription()}
 				</p>
 			</div>
 
@@ -422,7 +422,7 @@
 			<div class="form-control">
 				<label class="label py-1" for="customHeaders">
 					<span class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase">
-						Custom Headers (Optional)
+						{m.smartlists_label_customHeaders()}
 					</span>
 				</label>
 				<textarea
@@ -433,7 +433,7 @@
 					class="textarea-bordered textarea h-24 font-mono text-xs"
 				></textarea>
 				<p class="mt-1 text-xs text-base-content/60">
-					JSON object with custom headers for the request.
+					{m.smartlists_customUrlConfig_headersDescription()}
 				</p>
 			</div>
 
@@ -446,10 +446,10 @@
 				>
 					{#if testing}
 						<Loader2 class="h-4 w-4 animate-spin" />
-						Testing...
+						{m.common_testing()}
 					{:else}
 						<Globe class="h-4 w-4" />
-						Test Connection
+						{m.action_testConnection()}
 					{/if}
 				</button>
 

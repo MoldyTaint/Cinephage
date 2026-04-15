@@ -5,13 +5,17 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getMediaBrowserManager } from '$lib/server/notifications/mediabrowser';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 /**
  * POST /api/notifications/mediabrowser/trigger
  * Trigger a full library refresh on all enabled MediaBrowser servers.
  * Use this for manual refresh when automatic notifications are not sufficient.
  */
-export const POST: RequestHandler = async () => {
+export const POST: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
 	const manager = getMediaBrowserManager();
 
 	try {

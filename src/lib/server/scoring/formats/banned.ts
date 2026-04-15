@@ -31,16 +31,6 @@ export const BANNED_RETAGGING: CustomFormat[] = [
 		]
 	},
 	{
-		id: 'banned-lama',
-		name: 'LAMA',
-		description: 'Banned for retagging',
-		category: 'banned',
-		tags: ['Banned', 'Retagging', 'Deceptive'],
-		conditions: [
-			{ name: 'LAMA', type: 'release_group', pattern: '^LAMA$', required: true, negate: false }
-		]
-	},
-	{
 		id: 'banned-telly',
 		name: 'Telly',
 		description: 'Banned for retagging',
@@ -159,6 +149,22 @@ export const BANNED_CONTENT: CustomFormat[] = [
 				name: 'Sample',
 				type: 'release_title',
 				pattern: '\\bSample\\b',
+				required: true,
+				negate: false
+			}
+		]
+	},
+	{
+		id: 'banned-trailer',
+		name: 'Trailer / Promo',
+		description: 'Trailer, teaser, promo, preview, clip, or featurette content',
+		category: 'banned',
+		tags: ['Banned', 'Trailer', 'Promo'],
+		conditions: [
+			{
+				name: 'Trailer / Promo',
+				type: 'release_title',
+				pattern: '\\b(Trailer|Teaser|Promo|Preview|Clip|Featurette)\\b',
 				required: true,
 				negate: false
 			}
@@ -421,7 +427,6 @@ export const ALL_BANNED_FORMATS: CustomFormat[] = [
 export const BANNED_GROUP_NAMES = [
 	// Retagging groups (deceptive - claim to be other groups)
 	'AROMA',
-	'LAMA',
 	'Telly',
 	'VD0N',
 	// Fake HDR groups (deceptive - inject fake HDR metadata)

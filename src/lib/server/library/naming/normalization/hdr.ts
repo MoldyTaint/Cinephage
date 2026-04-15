@@ -21,13 +21,13 @@ const HDR_MAPPINGS: Record<string, string> = {
 	'hdr10+': 'HDR10+',
 	hdr10plus: 'HDR10+',
 
-	// Combined formats
-	'dolby-vision-hdr10': 'DV HDR10',
-	'dv-hdr10': 'DV HDR10',
-	'dv hdr10': 'DV HDR10',
-	'dolby-vision-hdr10+': 'DV HDR10+',
-	'dv-hdr10+': 'DV HDR10+',
-	'dv hdr10+': 'DV HDR10+',
+	// Dolby Vision variants collapse to plain DV
+	'dolby-vision-hdr10': 'DV',
+	'dv-hdr10': 'DV',
+	'dv hdr10': 'DV',
+	'dolby-vision-hdr10+': 'DV',
+	'dv-hdr10+': 'DV',
+	'dv hdr10+': 'DV',
 
 	// HLG
 	hlg: 'HLG'

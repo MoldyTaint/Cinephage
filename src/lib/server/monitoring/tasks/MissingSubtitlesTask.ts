@@ -23,6 +23,14 @@ import { normalizeLanguageCode } from '$lib/shared/languages';
 import type { TaskResult } from '../MonitoringScheduler.js';
 import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
 import { isMovieMonitored } from '$lib/server/monitoring/specifications/MonitoredSpecification.js';
+import {
+	isMovieSearchActive,
+	isEpisodeSearchActive,
+	recordMovieSearchFailure,
+	resetMovieSearchFailures,
+	recordEpisodeSearchFailure,
+	resetEpisodeSearchFailures
+} from '$lib/server/subtitles/adaptive-searching.js';
 
 /**
  * Default minimum score for auto-download (used if profile doesn't specify)
@@ -58,7 +66,7 @@ export async function executeMissingSubtitlesTask(
 ): Promise<TaskResult> {
 	const executedAt = new Date();
 	const taskHistoryId = ctx?.historyId;
-	logger.info('[MissingSubtitlesTask] Starting missing subtitles search', { taskHistoryId });
+	logger.info({ taskHistoryId }, '[MissingSubtitlesTask] Starting missing subtitles search');
 
 	// Check for cancellation before starting
 	ctx?.checkCancelled();
@@ -71,25 +79,31 @@ export async function executeMissingSubtitlesTask(
 
 	// Log provider health for observability
 	if (throttledProviders.length > 0) {
-		logger.info('[MissingSubtitlesTask] Throttled providers', {
-			count: throttledProviders.length,
-			providers: throttledProviders.map((p) => ({
-				name: p.providerName,
-				until: p.throttledUntil,
-				error: p.throttleErrorType
-			}))
-		});
+		logger.info(
+			{
+				count: throttledProviders.length,
+				providers: throttledProviders.map((p) => ({
+					name: p.providerName,
+					until: p.throttledUntil,
+					error: p.throttleErrorType
+				}))
+			},
+			'[MissingSubtitlesTask] Throttled providers'
+		);
 	}
 
 	if (unhealthyProviders.length > 0) {
-		logger.info('[MissingSubtitlesTask] Unhealthy providers', {
-			count: unhealthyProviders.length,
-			providers: unhealthyProviders.map((p) => ({
-				name: p.providerName,
-				failures: p.consecutiveFailures,
-				lastError: p.lastError
-			}))
-		});
+		logger.info(
+			{
+				count: unhealthyProviders.length,
+				providers: unhealthyProviders.map((p) => ({
+					name: p.providerName,
+					failures: p.consecutiveFailures,
+					lastError: p.lastError
+				}))
+			},
+			'[MissingSubtitlesTask] Unhealthy providers'
+		);
 	}
 
 	const availableProviders = await providerManager.getEnabledProviders();
@@ -107,11 +121,14 @@ export async function executeMissingSubtitlesTask(
 		};
 	}
 
-	logger.info('[MissingSubtitlesTask] Available providers', {
-		count: availableProviders.length,
-		providers: availableProviders.map((p) => p.name),
-		totalConfigured: healthStatus.length
-	});
+	logger.info(
+		{
+			count: availableProviders.length,
+			providers: availableProviders.map((p) => p.name),
+			totalConfigured: healthStatus.length
+		},
+		'[MissingSubtitlesTask] Available providers'
+	);
 
 	let itemsProcessed = 0;
 	let itemsGrabbed = 0;
@@ -137,11 +154,14 @@ export async function executeMissingSubtitlesTask(
 		itemsGrabbed += movieResults.downloaded;
 		errors += movieResults.errors;
 
-		logger.info('[MissingSubtitlesTask] Missing movie subtitles search completed', {
-			processed: movieResults.processed,
-			downloaded: movieResults.downloaded,
-			errors: movieResults.errors
-		});
+		logger.info(
+			{
+				processed: movieResults.processed,
+				downloaded: movieResults.downloaded,
+				errors: movieResults.errors
+			},
+			'[MissingSubtitlesTask] Missing movie subtitles search completed'
+		);
 
 		// Check for cancellation before episode search
 		ctx?.checkCancelled();
@@ -161,17 +181,23 @@ export async function executeMissingSubtitlesTask(
 		itemsGrabbed += episodeResults.downloaded;
 		errors += episodeResults.errors;
 
-		logger.info('[MissingSubtitlesTask] Missing episode subtitles search completed', {
-			processed: episodeResults.processed,
-			downloaded: episodeResults.downloaded,
-			errors: episodeResults.errors
-		});
+		logger.info(
+			{
+				processed: episodeResults.processed,
+				downloaded: episodeResults.downloaded,
+				errors: episodeResults.errors
+			},
+			'[MissingSubtitlesTask] Missing episode subtitles search completed'
+		);
 
-		logger.info('[MissingSubtitlesTask] Task completed', {
-			totalProcessed: itemsProcessed,
-			totalDownloaded: itemsGrabbed,
-			totalErrors: errors
-		});
+		logger.info(
+			{
+				totalProcessed: itemsProcessed,
+				totalDownloaded: itemsGrabbed,
+				totalErrors: errors
+			},
+			'[MissingSubtitlesTask] Task completed'
+		);
 
 		return {
 			taskType: 'missingSubtitles',
@@ -181,7 +207,7 @@ export async function executeMissingSubtitlesTask(
 			executedAt
 		};
 	} catch (error) {
-		logger.error('[MissingSubtitlesTask] Task failed', error);
+		logger.error({ err: error }, '[MissingSubtitlesTask] Task failed');
 		throw error;
 	}
 }
@@ -209,14 +235,29 @@ async function searchMissingMovieSubtitles(
 			and(eq(movies.hasFile, true), eq(movies.wantsSubtitles, true), eq(movies.monitored, true))
 		);
 
-	logger.debug('[MissingSubtitlesTask] Found movies to process', {
-		count: moviesWithProfiles.length
-	});
+	logger.debug(
+		{
+			count: moviesWithProfiles.length
+		},
+		'[MissingSubtitlesTask] Found movies to process'
+	);
+
+	// Get provider manager for per-batch health checks
+	const providerManager = getSubtitleProviderManager();
 
 	// Process movies in batches to limit concurrency
 	for (let i = 0; i < moviesWithProfiles.length; i += MAX_CONCURRENT_SEARCHES) {
 		// Check for cancellation between batches
 		ctx?.checkCancelled();
+
+		// Re-check provider availability each batch (Bazarr pattern: break when all throttled)
+		const currentProviders = await providerManager.getEnabledProviders();
+		if (currentProviders.length === 0) {
+			logger.warn(
+				'[MissingSubtitlesTask] All providers throttled or disabled mid-run, stopping movie search'
+			);
+			break;
+		}
 
 		const batch = moviesWithProfiles.slice(i, i + MAX_CONCURRENT_SEARCHES);
 
@@ -268,6 +309,11 @@ async function searchMissingMovieSubtitles(
 						return;
 					}
 
+					// Adaptive searching: skip if we've been failing for a long time
+					if (!isMovieSearchActive(movie)) {
+						return;
+					}
+
 					processed++;
 
 					// Get profile for minimum score
@@ -299,14 +345,17 @@ async function searchMissingMovieSubtitles(
 						// Log when we have results but none meet minimum score
 						if (!bestMatch && languageResults.length > 0) {
 							const bestScore = Math.max(...languageResults.map((r) => r.matchScore));
-							logger.debug('[MissingSubtitlesTask] No match meets minimum score for movie', {
-								movieId: movie.id,
-								title: movie.title,
-								language: missing.code,
-								resultsFound: languageResults.length,
-								bestScore,
-								minScore
-							});
+							logger.debug(
+								{
+									movieId: movie.id,
+									title: movie.title,
+									language: missing.code,
+									resultsFound: languageResults.length,
+									bestScore,
+									minScore
+								},
+								'[MissingSubtitlesTask] No match meets minimum score for movie'
+							);
 						}
 
 						if (bestMatch) {
@@ -331,22 +380,35 @@ async function searchMissingMovieSubtitles(
 
 								downloadedLanguages.push(normalizedLanguage);
 
-								logger.debug('[MissingSubtitlesTask] Downloaded subtitle for movie', {
-									movieId: movie.id,
-									language: normalizedLanguage,
-									score: bestMatch.matchScore
-								});
+								logger.debug(
+									{
+										movieId: movie.id,
+										language: normalizedLanguage,
+										score: bestMatch.matchScore
+									},
+									'[MissingSubtitlesTask] Downloaded subtitle for movie'
+								);
 							} catch (downloadError) {
 								errorCount++;
 								movieError =
 									downloadError instanceof Error ? downloadError.message : String(downloadError);
-								logger.warn('[MissingSubtitlesTask] Failed to download subtitle for movie', {
-									movieId: movie.id,
-									language: missing.code,
-									error: movieError
-								});
+								logger.warn(
+									{
+										movieId: movie.id,
+										language: missing.code,
+										error: movieError
+									},
+									'[MissingSubtitlesTask] Failed to download subtitle for movie'
+								);
 							}
 						}
+					}
+
+					// Update adaptive searching state
+					if (movieDownloaded > 0) {
+						await resetMovieSearchFailures(movie.id);
+					} else {
+						await recordMovieSearchFailure(movie.id);
 					}
 
 					// Record to monitoring history for activity tracking
@@ -367,10 +429,13 @@ async function searchMissingMovieSubtitles(
 				} catch (error) {
 					errorCount++;
 					const errorMsg = error instanceof Error ? error.message : String(error);
-					logger.warn('[MissingSubtitlesTask] Error processing movie', {
-						movieId: movie.id,
-						error: errorMsg
-					});
+					logger.warn(
+						{
+							movieId: movie.id,
+							error: errorMsg
+						},
+						'[MissingSubtitlesTask] Error processing movie'
+					);
 
 					// Record error to monitoring history
 					await db.insert(monitoringHistory).values({
@@ -412,11 +477,26 @@ async function searchMissingEpisodeSubtitles(
 		.from(series)
 		.where(and(eq(series.wantsSubtitles, true), eq(series.monitored, true)));
 
-	logger.debug('[MissingSubtitlesTask] Found series to process', {
-		count: seriesWithProfiles.length
-	});
+	logger.debug(
+		{
+			count: seriesWithProfiles.length
+		},
+		'[MissingSubtitlesTask] Found series to process'
+	);
+
+	// Get provider manager for per-batch health checks
+	const providerManager = getSubtitleProviderManager();
 
 	for (const show of seriesWithProfiles) {
+		// Re-check provider availability per series (break when all throttled)
+		const seriesProviders = await providerManager.getEnabledProviders();
+		if (seriesProviders.length === 0) {
+			logger.warn(
+				'[MissingSubtitlesTask] All providers throttled or disabled mid-run, stopping episode search'
+			);
+			break;
+		}
+
 		let profileId = show.languageProfileId ?? null;
 		if (!profileId) {
 			const defaultProfile = await profileService.getDefaultProfile();
@@ -445,6 +525,15 @@ async function searchMissingEpisodeSubtitles(
 			for (let i = 0; i < episodesMissing.length; i += MAX_CONCURRENT_SEARCHES) {
 				// Check for cancellation between batches
 				ctx?.checkCancelled();
+
+				// Re-check provider availability each batch (Bazarr pattern: break when all throttled)
+				const currentProviders = await providerManager.getEnabledProviders();
+				if (currentProviders.length === 0) {
+					logger.warn(
+						'[MissingSubtitlesTask] All providers throttled or disabled mid-run, stopping episode search'
+					);
+					break;
+				}
 
 				const batch = episodesMissing.slice(i, i + MAX_CONCURRENT_SEARCHES);
 
@@ -483,6 +572,11 @@ async function searchMissingEpisodeSubtitles(
 								return;
 							}
 
+							// Adaptive searching: skip if we've been failing for a long time
+							if (!isEpisodeSearchActive(episodeData)) {
+								return;
+							}
+
 							processed++;
 
 							// Get status for this episode
@@ -508,13 +602,16 @@ async function searchMissingEpisodeSubtitles(
 								// Log when we have results but none meet minimum score
 								if (!bestMatch && languageResults.length > 0) {
 									const bestScore = Math.max(...languageResults.map((r) => r.matchScore));
-									logger.debug('[MissingSubtitlesTask] No match meets minimum score for episode', {
-										episodeId,
-										language: missing.code,
-										resultsFound: languageResults.length,
-										bestScore,
-										minScore
-									});
+									logger.debug(
+										{
+											episodeId,
+											language: missing.code,
+											resultsFound: languageResults.length,
+											bestScore,
+											minScore
+										},
+										'[MissingSubtitlesTask] No match meets minimum score for episode'
+									);
 								}
 
 								if (bestMatch) {
@@ -539,24 +636,37 @@ async function searchMissingEpisodeSubtitles(
 
 										downloadedLanguages.push(normalizedLanguage);
 
-										logger.debug('[MissingSubtitlesTask] Downloaded subtitle for episode', {
-											episodeId,
-											language: normalizedLanguage,
-											score: bestMatch.matchScore
-										});
+										logger.debug(
+											{
+												episodeId,
+												language: normalizedLanguage,
+												score: bestMatch.matchScore
+											},
+											'[MissingSubtitlesTask] Downloaded subtitle for episode'
+										);
 									} catch (downloadError) {
 										errorCount++;
 										episodeError =
 											downloadError instanceof Error
 												? downloadError.message
 												: String(downloadError);
-										logger.warn('[MissingSubtitlesTask] Failed to download subtitle for episode', {
-											episodeId,
-											language: missing.code,
-											error: episodeError
-										});
+										logger.warn(
+											{
+												episodeId,
+												language: missing.code,
+												error: episodeError
+											},
+											'[MissingSubtitlesTask] Failed to download subtitle for episode'
+										);
 									}
 								}
+							}
+
+							// Update adaptive searching state
+							if (episodeDownloaded > 0) {
+								await resetEpisodeSearchFailures(episodeId);
+							} else {
+								await recordEpisodeSearchFailure(episodeId);
 							}
 
 							// Record to monitoring history for activity tracking
@@ -578,10 +688,13 @@ async function searchMissingEpisodeSubtitles(
 						} catch (error) {
 							errorCount++;
 							const errorMsg = error instanceof Error ? error.message : String(error);
-							logger.warn('[MissingSubtitlesTask] Error processing episode', {
-								episodeId,
-								error: errorMsg
-							});
+							logger.warn(
+								{
+									episodeId,
+									error: errorMsg
+								},
+								'[MissingSubtitlesTask] Error processing episode'
+							);
 
 							// Record error to monitoring history
 							await db.insert(monitoringHistory).values({
@@ -601,10 +714,13 @@ async function searchMissingEpisodeSubtitles(
 			}
 		} catch (error) {
 			errorCount++;
-			logger.warn('[MissingSubtitlesTask] Error processing series', {
-				seriesId: show.id,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					seriesId: show.id,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[MissingSubtitlesTask] Error processing series'
+			);
 		}
 	}
 

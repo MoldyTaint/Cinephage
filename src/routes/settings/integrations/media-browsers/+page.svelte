@@ -17,10 +17,12 @@
 		MediaBrowserTable
 	} from '$lib/components/mediaBrowsers';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import { SettingsPage } from '$lib/components/ui/settings';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface MediaBrowserFormData {
 		name: string;
-		serverType: 'jellyfin' | 'emby';
+		serverType: 'jellyfin' | 'emby' | 'plex';
 		host: string;
 		apiKey: string;
 		enabled: boolean;
@@ -47,7 +49,7 @@
 	let selectedIds = new SvelteSet<string>();
 
 	interface MediaBrowserPageFilters {
-		type: 'all' | 'jellyfin' | 'emby';
+		type: 'all' | 'jellyfin' | 'emby' | 'plex';
 		status: 'all' | 'enabled' | 'disabled';
 		search: string;
 	}
@@ -366,7 +368,7 @@
 			if (!response.ok || !result || typeof result === 'string' || !result.success) {
 				toasts.error(getServerErrorMessage(result, 'Connection test failed'));
 			} else {
-				toasts.success('Connection successful!');
+				toasts.success(m.settings_integrations_connectionSuccessful());
 			}
 		} finally {
 			await invalidateAll();
@@ -483,7 +485,12 @@
 			}
 
 			await invalidateAll();
-			toasts.info(`Bulk test complete: ${successCount} passed, ${failCount} failed`);
+			toasts.info(
+				m.settings_integrations_bulkTestComplete({
+					successCount: String(successCount),
+					failCount: String(failCount)
+				})
+			);
 		} catch (error) {
 			toasts.error(error instanceof Error ? error.message : 'Failed to test selected servers');
 		} finally {
@@ -492,20 +499,16 @@
 	}
 </script>
 
-<div class="w-full p-3 sm:p-4">
-	<div class="mb-5 sm:mb-6">
-		<h1 class="text-xl font-bold sm:text-2xl">Media Servers</h1>
-		<p class="text-base-content/70">
-			Configure Jellyfin and Emby servers for library update notifications.
-		</p>
-	</div>
-
-	<div class="mb-4 flex items-center justify-end">
+<SettingsPage
+	title={m.nav_mediaServers()}
+	subtitle={m.settings_integrations_mediaBrowsers_subtitle()}
+>
+	{#snippet actions()}
 		<button class="btn w-full gap-2 btn-sm btn-primary sm:w-auto" onclick={openAddModal}>
 			<Plus class="h-4 w-4" />
-			Add Server
+			{m.settings_integrations_mediaBrowsers_addServer()}
 		</button>
-	</div>
+	{/snippet}
 
 	<div class="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
 		<div class="form-control relative w-full sm:w-56">
@@ -514,7 +517,7 @@
 			/>
 			<input
 				type="text"
-				placeholder="Search servers..."
+				placeholder={m.settings_integrations_mediaBrowsers_searchPlaceholder()}
 				class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				value={filters.search}
 				oninput={(e) => updateFilter('search', e.currentTarget.value)}
@@ -527,7 +530,7 @@
 				class:btn-active={filters.type === 'all'}
 				onclick={() => updateFilter('type', 'all')}
 			>
-				All
+				{m.common_all()}
 			</button>
 			<button
 				class="btn join-item flex-1 btn-sm sm:flex-none"
@@ -543,6 +546,13 @@
 			>
 				Emby
 			</button>
+			<button
+				class="btn join-item flex-1 btn-sm sm:flex-none"
+				class:btn-active={filters.type === 'plex'}
+				onclick={() => updateFilter('type', 'plex')}
+			>
+				Plex
+			</button>
 		</div>
 
 		<div class="join w-full sm:w-auto">
@@ -551,21 +561,21 @@
 				class:btn-active={filters.status === 'all'}
 				onclick={() => updateFilter('status', 'all')}
 			>
-				All
+				{m.common_all()}
 			</button>
 			<button
 				class="btn join-item flex-1 btn-sm sm:flex-none"
 				class:btn-active={filters.status === 'enabled'}
 				onclick={() => updateFilter('status', 'enabled')}
 			>
-				Enabled
+				{m.common_enabled()}
 			</button>
 			<button
 				class="btn join-item flex-1 btn-sm sm:flex-none"
 				class:btn-active={filters.status === 'disabled'}
 				onclick={() => updateFilter('status', 'disabled')}
 			>
-				Disabled
+				{m.common_disabled()}
 			</button>
 		</div>
 	</div>
@@ -598,7 +608,7 @@
 			/>
 		</div>
 	</div>
-</div>
+</SettingsPage>
 
 <!-- Media Server Modal -->
 <MediaBrowserModal
@@ -616,11 +626,11 @@
 <!-- Delete Confirmation Modal -->
 <ConfirmationModal
 	open={confirmDeleteOpen}
-	title="Confirm Delete"
-	messagePrefix="Are you sure you want to delete "
-	messageEmphasis={deleteTarget?.name ?? 'this media server'}
-	messageSuffix="? This action cannot be undone."
-	confirmLabel="Delete"
+	title={m.ui_modal_confirmTitle()}
+	messagePrefix={m.settings_integrations_deleteConfirmPrefix()}
+	messageEmphasis={deleteTarget?.name ?? m.settings_integrations_mediaBrowsers_thisServer()}
+	messageSuffix={m.settings_integrations_deleteConfirmSuffix()}
+	confirmLabel={m.action_delete()}
 	confirmVariant="error"
 	onConfirm={handleConfirmDelete}
 	onCancel={() => {
@@ -631,11 +641,13 @@
 
 <ConfirmationModal
 	open={confirmBulkDeleteOpen}
-	title="Confirm Delete"
-	messagePrefix="Are you sure you want to delete "
-	messageEmphasis={`${selectedIds.size} media server(s)`}
-	messageSuffix="? This action cannot be undone."
-	confirmLabel="Delete"
+	title={m.ui_modal_confirmTitle()}
+	messagePrefix={m.settings_integrations_deleteConfirmPrefix()}
+	messageEmphasis={m.settings_integrations_mediaBrowsers_bulkDeleteCount({
+		count: selectedIds.size
+	})}
+	messageSuffix={m.settings_integrations_deleteConfirmSuffix()}
+	confirmLabel={m.action_delete()}
 	confirmVariant="error"
 	loading={bulkLoading}
 	onConfirm={handleConfirmBulkDelete}

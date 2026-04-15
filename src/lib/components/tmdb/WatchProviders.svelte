@@ -3,6 +3,7 @@
 	import type { WatchProvidersResponse, WatchProvider } from '$lib/types/tmdb';
 	import TmdbImage from './TmdbImage.svelte';
 	import { TMDB } from '$lib/config/constants';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let {
 		providers,
@@ -66,5 +67,5 @@
 		{/if}
 	</div>
 {:else}
-	<span class="text-base-content/40">Not available</span>
+	<span class="text-base-content/40">{m.tmdb_watchProviders_notAvailable()}</span>
 {/if}

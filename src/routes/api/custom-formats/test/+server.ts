@@ -4,6 +4,7 @@ import { parseRelease, evaluateCondition } from '$lib/server/scoring';
 import type { FormatCondition } from '$lib/server/scoring';
 import { z } from 'zod';
 import { logger } from '$lib/logging';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 /**
  * Condition schema for testing
@@ -16,10 +17,13 @@ const conditionSchema = z.object({
 		'release_title',
 		'release_group',
 		'codec',
-		'audio',
+		'audio_codec',
+		'audio_channels',
+		'audio_atmos',
 		'hdr',
 		'streaming_service',
-		'flag'
+		'flag',
+		'indexer'
 	]),
 	required: z.boolean(),
 	negate: z.boolean(),
@@ -27,10 +31,12 @@ const conditionSchema = z.object({
 	source: z.string().optional(),
 	pattern: z.string().optional(),
 	codec: z.string().optional(),
-	audio: z.string().optional(),
+	audioCodec: z.string().optional(),
+	audioChannels: z.string().optional(),
 	hdr: z.string().nullable().optional(),
 	streamingService: z.string().optional(),
-	flag: z.enum(['isRemux', 'isRepack', 'isProper', 'is3d']).optional()
+	flag: z.enum(['isRemux', 'isRepack', 'isProper', 'is3d']).optional(),
+	indexer: z.string().optional()
 });
 
 const testSchema = z.object({
@@ -42,7 +48,11 @@ const testSchema = z.object({
  * POST /api/custom-formats/test
  * Test format conditions against a release name
  */
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { request } = event;
 	try {
 		const body = await request.json();
 		const validation = testSchema.safeParse(body);
@@ -97,7 +107,9 @@ export const POST: RequestHandler = async ({ request }) => {
 				source: attributes.source,
 				codec: attributes.codec,
 				hdr: attributes.hdr,
-				audio: attributes.audio,
+				audioCodec: attributes.audioCodec,
+				audioChannels: attributes.audioChannels,
+				hasAtmos: attributes.hasAtmos,
 				releaseGroup: attributes.releaseGroup,
 				streamingService: attributes.streamingService,
 				isRemux: attributes.isRemux,

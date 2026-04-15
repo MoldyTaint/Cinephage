@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { subtitleProviderTestSchema } from '$lib/validation/schemas';
 import { getSubtitleProviderFactory } from '$lib/server/subtitles/providers/SubtitleProviderFactory';
 import { ensureProvidersRegistered } from '$lib/server/subtitles/providers/registry';
+import { parseBody } from '$lib/server/api/validate.js';
 
 /**
  * POST /api/subtitles/providers/test
@@ -12,26 +13,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	// Ensure providers are registered
 	await ensureProvidersRegistered();
 
-	let data: unknown;
-	try {
-		data = await request.json();
-	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
-	}
-
-	const result = subtitleProviderTestSchema.safeParse(data);
-
-	if (!result.success) {
-		return json(
-			{
-				error: 'Validation failed',
-				details: result.error.flatten()
-			},
-			{ status: 400 }
-		);
-	}
-
-	const validated = result.data;
+	const validated = await parseBody(request, subtitleProviderTestSchema);
 	const factory = getSubtitleProviderFactory();
 
 	// Create a temporary provider config for testing
@@ -49,24 +31,12 @@ export const POST: RequestHandler = async ({ request }) => {
 		consecutiveFailures: 0
 	};
 
-	try {
-		const provider = factory.createProvider(testConfig);
-		const testResult = await provider.test();
+	const provider = factory.createProvider(testConfig);
+	const testResult = await provider.test();
 
-		return json({
-			success: testResult.success,
-			message: testResult.message,
-			responseTime: testResult.responseTime
-		});
-	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Unknown error';
-		return json(
-			{
-				success: false,
-				message,
-				responseTime: 0
-			},
-			{ status: 200 }
-		); // Return 200 since the test itself completed, just with a failure
-	}
+	return json({
+		success: testResult.success,
+		message: testResult.message,
+		responseTime: testResult.responseTime
+	});
 };

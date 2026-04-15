@@ -10,6 +10,8 @@ import type { RequestHandler } from './$types';
 import { logger } from '$lib/logging';
 import { getUsenetStreamService } from '$lib/server/streaming/usenet/UsenetStreamService';
 
+const streamLog = { logDomain: 'streams' as const, component: 'UsenetStreamApi' };
+
 export const GET: RequestHandler = async ({ params, request }) => {
 	const { mountId, fileIndex } = params;
 	const fileIndexNum = parseInt(fileIndex, 10);
@@ -22,7 +24,10 @@ export const GET: RequestHandler = async ({ params, request }) => {
 
 	// Check if service is ready
 	if (!streamService.isReady()) {
-		logger.warn('[UsenetStream] Usenet streaming service not ready');
+		logger.warn(
+			{ mountId, fileIndex: fileIndexNum, ...streamLog },
+			'Usenet streaming service is not ready'
+		);
 		return new Response('Usenet streaming service not available', { status: 503 });
 	}
 
@@ -47,11 +52,17 @@ export const GET: RequestHandler = async ({ params, request }) => {
 			headers['Content-Range'] = `bytes ${result.startByte}-${result.endByte}/${result.totalSize}`;
 			headers['Content-Length'] = String(result.contentLength);
 
-			logger.debug('[UsenetStream] Serving partial content', {
-				mountId,
-				fileIndex: fileIndexNum,
-				range: `${result.startByte}-${result.endByte}/${result.totalSize}`
-			});
+			logger.debug(
+				{
+					mountId,
+					fileIndex: fileIndexNum,
+					rangeRequest: rangeHeader,
+					contentRange: `${result.startByte}-${result.endByte}/${result.totalSize}`,
+					contentType: result.contentType,
+					...streamLog
+				},
+				'Serving partial usenet stream response'
+			);
 
 			return new Response(webStream, {
 				status: 206,
@@ -62,11 +73,17 @@ export const GET: RequestHandler = async ({ params, request }) => {
 		// 200 OK for full content
 		headers['Content-Length'] = String(result.totalSize);
 
-		logger.debug('[UsenetStream] Serving full content', {
-			mountId,
-			fileIndex: fileIndexNum,
-			size: result.totalSize
-		});
+		logger.debug(
+			{
+				mountId,
+				fileIndex: fileIndexNum,
+				rangeRequest: rangeHeader,
+				totalSize: result.totalSize,
+				contentType: result.contentType,
+				...streamLog
+			},
+			'Serving full usenet stream response'
+		);
 
 		return new Response(webStream, {
 			status: 200,
@@ -76,19 +93,44 @@ export const GET: RequestHandler = async ({ params, request }) => {
 		const message = error instanceof Error ? error.message : 'Unknown error';
 
 		if (message.includes('not found') || message.includes('not available')) {
-			logger.warn('[UsenetStream] Not found', { mountId, fileIndex: fileIndexNum, error: message });
+			logger.warn(
+				{
+					mountId,
+					fileIndex: fileIndexNum,
+					rangeRequest: rangeHeader,
+					error: message,
+					...streamLog
+				},
+				'Usenet stream request failed because the mount or file was not found'
+			);
 			return new Response(message, { status: 404 });
 		}
 
 		if (message.includes('not ready')) {
+			logger.warn(
+				{
+					mountId,
+					fileIndex: fileIndexNum,
+					rangeRequest: rangeHeader,
+					error: message,
+					...streamLog
+				},
+				'Usenet stream request failed because the mount is not ready'
+			);
 			return new Response(message, { status: 503 });
 		}
 
-		logger.error('[UsenetStream] Stream error', {
-			mountId,
-			fileIndex: fileIndexNum,
-			error: message
-		});
+		logger.error(
+			{
+				mountId,
+				fileIndex: fileIndexNum,
+				rangeRequest: rangeHeader,
+				err: error,
+				error: message,
+				...streamLog
+			},
+			'Usenet stream request failed'
+		);
 
 		return new Response('Stream error', { status: 500 });
 	}

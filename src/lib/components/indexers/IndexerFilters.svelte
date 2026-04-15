@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Search } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 	import type { IndexerFilters } from '$lib/types/indexer';
 
 	interface Props {
@@ -22,7 +23,7 @@
 		/>
 		<input
 			type="text"
-			placeholder="Search indexers..."
+			placeholder={m.settings_indexers_searchPlaceholder()}
 			class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 			value={filters.search}
 			oninput={(e) => updateFilter('search', e.currentTarget.value)}
@@ -36,21 +37,21 @@
 			class:btn-active={filters.protocol === 'all'}
 			onclick={() => updateFilter('protocol', 'all')}
 		>
-			All
+			{m.common_all()}
 		</button>
 		<button
 			class="btn join-item flex-1 btn-sm sm:flex-none"
 			class:btn-active={filters.protocol === 'torrent'}
 			onclick={() => updateFilter('protocol', 'torrent')}
 		>
-			Torrent
+			{m.settings_indexers_protocolTorrent()}
 		</button>
 		<button
 			class="btn join-item flex-1 btn-sm sm:flex-none"
 			class:btn-active={filters.protocol === 'usenet'}
 			onclick={() => updateFilter('protocol', 'usenet')}
 		>
-			Usenet
+			{m.settings_indexers_protocolUsenet()}
 		</button>
 	</div>
 
@@ -61,21 +62,21 @@
 			class:btn-active={filters.status === 'all'}
 			onclick={() => updateFilter('status', 'all')}
 		>
-			All
+			{m.common_all()}
 		</button>
 		<button
 			class="btn join-item flex-1 btn-sm sm:flex-none"
 			class:btn-active={filters.status === 'enabled'}
 			onclick={() => updateFilter('status', 'enabled')}
 		>
-			Enabled
+			{m.common_enabled()}
 		</button>
 		<button
 			class="btn join-item flex-1 btn-sm sm:flex-none"
 			class:btn-active={filters.status === 'disabled'}
 			onclick={() => updateFilter('status', 'disabled')}
 		>
-			Disabled
+			{m.common_disabled()}
 		</button>
 	</div>
 </div>

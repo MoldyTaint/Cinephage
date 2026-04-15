@@ -7,7 +7,9 @@
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { load } from 'js-yaml';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'monitoring' as const });
 import type { PresetProvider, ExternalListPreset } from './types.js';
 
 const DEFAULT_PRESETS_DIR = join(process.cwd(), 'data', 'external-lists', 'presets');
@@ -27,13 +29,13 @@ export class PresetLoader {
 	loadPresets(): void {
 		if (this.loaded) return;
 
-		logger.info('[PresetLoader] Loading external list presets', { dirs: PRESET_DIRS });
+		logger.info({ dirs: PRESET_DIRS }, '[PresetLoader] Loading external list presets');
 
 		try {
 			for (const dir of PRESET_DIRS) {
 				if (!existsSync(dir)) {
 					if (dir === PRESETS_DIR) {
-						logger.warn('[PresetLoader] Presets directory not found', { dir });
+						logger.warn({ dir }, '[PresetLoader] Presets directory not found');
 					}
 					continue;
 				}
@@ -64,10 +66,13 @@ export class PresetLoader {
 							};
 
 							this.presets.set(fullPreset.id, fullPreset);
-							logger.debug('[PresetLoader] Loaded preset', {
-								id: fullPreset.id,
-								name: fullPreset.name
-							});
+							logger.debug(
+								{
+									id: fullPreset.id,
+									name: fullPreset.name
+								},
+								'[PresetLoader] Loaded preset'
+							);
 						}
 
 						// Create a "custom" preset for providers that allow user-defined lists
@@ -84,26 +89,32 @@ export class PresetLoader {
 							};
 
 							this.presets.set(customPreset.id, customPreset);
-							logger.debug('[PresetLoader] Loaded custom preset', {
-								id: customPreset.id,
-								provider: provider.provider
-							});
+							logger.debug(
+								{
+									id: customPreset.id,
+									provider: provider.provider
+								},
+								'[PresetLoader] Loaded custom preset'
+							);
 						}
 
-						logger.info('[PresetLoader] Loaded provider', {
-							provider: provider.provider,
-							presetCount: provider.presets.length
-						});
+						logger.info(
+							{
+								provider: provider.provider,
+								presetCount: provider.presets.length
+							},
+							'[PresetLoader] Loaded provider'
+						);
 					} catch (error) {
-						logger.error('[PresetLoader] Failed to load preset file', { file, error });
+						logger.error({ file, error }, '[PresetLoader] Failed to load preset file');
 					}
 				}
 			}
 
 			this.loaded = true;
-			logger.info('[PresetLoader] Finished loading presets', { count: this.presets.size });
+			logger.info({ count: this.presets.size }, '[PresetLoader] Finished loading presets');
 		} catch (error) {
-			logger.error('[PresetLoader] Failed to load presets directory', { error });
+			logger.error({ error }, '[PresetLoader] Failed to load presets directory');
 		}
 	}
 

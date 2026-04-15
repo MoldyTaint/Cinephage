@@ -4,7 +4,9 @@
  */
 
 import * as cheerio from 'cheerio';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 import type {
 	NewznabCapabilities,
 	NewznabCategory,
@@ -71,7 +73,7 @@ export class NewznabCapabilitiesProvider {
 		// Check cache
 		const cached = this.cache.get(cacheKey);
 		if (cached && Date.now() < cached.expiresAt) {
-			logger.debug('[Newznab] Using cached capabilities', { baseUrl });
+			logger.debug({ baseUrl }, '[Newznab] Using cached capabilities');
 			return cached.capabilities;
 		}
 
@@ -85,19 +87,25 @@ export class NewznabCapabilitiesProvider {
 				expiresAt: Date.now() + NewznabCapabilitiesProvider.CACHE_TTL
 			});
 
-			logger.info('[Newznab] Capabilities fetched and cached', {
-				baseUrl,
-				categoryCount: capabilities.categories.length,
-				movieSearch: capabilities.searching.movieSearch.available,
-				tvSearch: capabilities.searching.tvSearch.available
-			});
+			logger.info(
+				{
+					baseUrl,
+					categoryCount: capabilities.categories.length,
+					movieSearch: capabilities.searching.movieSearch.available,
+					tvSearch: capabilities.searching.tvSearch.available
+				},
+				'[Newznab] Capabilities fetched and cached'
+			);
 
 			return capabilities;
 		} catch (error) {
-			logger.warn('[Newznab] Failed to fetch capabilities, using defaults', {
-				baseUrl,
-				error: error instanceof Error ? error.message : 'Unknown error'
-			});
+			logger.warn(
+				{
+					baseUrl,
+					error: error instanceof Error ? error.message : 'Unknown error'
+				},
+				'[Newznab] Failed to fetch capabilities, using defaults'
+			);
 
 			// Return default capabilities on failure
 			return DEFAULT_CAPABILITIES;
@@ -121,7 +129,7 @@ export class NewznabCapabilitiesProvider {
 	clearCache(baseUrl: string, apiKey?: string): void {
 		const cacheKey = this.getCacheKey(baseUrl, apiKey);
 		this.cache.delete(cacheKey);
-		logger.debug('[Newznab] Cache cleared', { baseUrl });
+		logger.debug({ baseUrl }, '[Newznab] Cache cleared');
 	}
 
 	/**
@@ -153,9 +161,12 @@ export class NewznabCapabilitiesProvider {
 			url.searchParams.set('apikey', normalizedApiKey);
 		}
 
-		logger.debug('[Newznab] Fetching capabilities', {
-			url: url.toString().replace(/apikey=[^&]+/, 'apikey=***')
-		});
+		logger.debug(
+			{
+				url: url.toString().replace(/apikey=[^&]+/, 'apikey=***')
+			},
+			'[Newznab] Fetching capabilities'
+		);
 
 		const response = await fetch(url.toString(), {
 			headers: {

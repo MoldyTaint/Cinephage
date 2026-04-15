@@ -1,4 +1,6 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
+
 	// TMDB's image base URL is static and hasn't changed in 10+ years
 	const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/';
 
@@ -34,7 +36,7 @@
 	{:else}
 		<!-- No image available -->
 		<div class="flex h-full w-full items-center justify-center bg-base-300 text-base-content/30">
-			<span class="text-xs">No Image</span>
+			<span class="text-xs">{m.tmdb_noImage()}</span>
 		</div>
 	{/if}
 </div>

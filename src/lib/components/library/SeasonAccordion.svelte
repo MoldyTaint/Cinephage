@@ -8,11 +8,14 @@
 		Search,
 		Zap,
 		Loader2,
-		Trash2
+		Trash2,
+		Captions
 	} from 'lucide-svelte';
 	import EpisodeRow from './EpisodeRow.svelte';
 	import AutoSearchStatus from './AutoSearchStatus.svelte';
 	import { formatBytes } from '$lib/utils/format.js';
+	import { calculateEpisodeStats } from '$lib/utils/episode-stats.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Subtitle {
 		id: string;
@@ -20,6 +23,8 @@
 		isForced?: boolean;
 		isHearingImpaired?: boolean;
 		format?: string;
+		wasSynced?: boolean;
+		syncOffset?: number | null;
 	}
 
 	interface EpisodeFile {
@@ -77,6 +82,7 @@
 		season: Season;
 		seriesMonitored: boolean;
 		isStreamerProfile?: boolean;
+		wantsSubtitles?: boolean;
 		defaultOpen?: boolean;
 		selectedEpisodes?: Set<string>;
 		showCheckboxes?: boolean;
@@ -87,6 +93,8 @@
 		autoSearchingEpisodes?: Set<string>;
 		autoSearchEpisodeResults?: Map<string, AutoSearchResult>;
 		subtitleAutoSearchingEpisodes?: Set<string>;
+		subtitleSyncingId?: string | null;
+		subtitleDeletingId?: string | null;
 		onToggleOpen?: (seasonId: string) => void;
 		onSeasonMonitorToggle?: (seasonId: string, newValue: boolean) => void;
 		onEpisodeMonitorToggle?: (episodeId: string, newValue: boolean) => void;
@@ -98,6 +106,8 @@
 		onSelectAllInSeason?: (seasonId: string, selectAll: boolean) => void;
 		onSubtitleSearch?: (episode: Episode) => void;
 		onSubtitleAutoSearch?: (episode: Episode) => void;
+		onSubtitleSync?: (subtitleId: string) => void;
+		onSubtitleDelete?: (subtitleId: string) => void;
 		onSeasonDelete?: (season: Season) => void;
 		onEpisodeDelete?: (episode: Episode) => void;
 	}
@@ -106,6 +116,7 @@
 		season,
 		seriesMonitored,
 		isStreamerProfile = false,
+		wantsSubtitles = false,
 		defaultOpen = false,
 		selectedEpisodes = new Set(),
 		showCheckboxes = false,
@@ -116,6 +127,8 @@
 		autoSearchingEpisodes = new Set(),
 		autoSearchEpisodeResults = new Map(),
 		subtitleAutoSearchingEpisodes = new Set(),
+		subtitleSyncingId = null,
+		subtitleDeletingId = null,
 		onToggleOpen,
 		onSeasonMonitorToggle,
 		onEpisodeMonitorToggle,
@@ -127,6 +140,8 @@
 		onSelectAllInSeason,
 		onSubtitleSearch,
 		onSubtitleAutoSearch,
+		onSubtitleSync,
+		onSubtitleDelete,
 		onSeasonDelete,
 		onEpisodeDelete
 	}: Props = $props();
@@ -138,16 +153,24 @@
 	});
 
 	// Keep header counts aligned with visible rows (episodes array), not cached flags/aggregates.
-	const downloadedCount = $derived(
-		season.episodes.filter((episode) => episode.file !== null).length
-	);
-	const totalCount = $derived(season.episodes.length);
-	const percentComplete = $derived(
-		totalCount > 0 ? Math.round((downloadedCount / totalCount) * 100) : 0
-	);
+	const episodeStats = $derived(calculateEpisodeStats(season.episodes));
+	const downloadedCount = $derived(episodeStats.downloaded);
+	const totalCount = $derived(episodeStats.totalAired);
+	const percentComplete = $derived(episodeStats.percentComplete);
 
 	// Calculate cumulative season file size
 	const seasonSize = $derived(season.episodes.reduce((sum, ep) => sum + (ep.file?.size ?? 0), 0));
+
+	// Calculate subtitle stats for the season header
+	const episodesWithFiles = $derived(season.episodes.filter((ep) => ep.file !== null));
+	const episodesWithSubs = $derived(
+		episodesWithFiles.filter((ep) => (ep.subtitles?.length ?? 0) > 0)
+	);
+	const subtitleCoverage = $derived(
+		episodesWithFiles.length > 0
+			? { withSubs: episodesWithSubs.length, total: episodesWithFiles.length }
+			: null
+	);
 
 	// Calculate selection state for season checkbox
 	const seasonEpisodeIds = $derived(season.episodes.map((e) => e.id));
@@ -172,14 +195,14 @@
 	const seasonMonitorTooltip = $derived.by(() =>
 		seriesMonitored
 			? season.monitored
-				? 'Season monitored'
-				: 'Season not monitored'
-			: 'Series is unmonitored. Enable series monitoring to monitor seasons.'
+				? m.library_seasonAccordion_seasonMonitored()
+				: m.library_seasonAccordion_seasonNotMonitored()
+			: m.library_seasonAccordion_seriesUnmonitoredTooltip()
 	);
 
 	function getSeasonName(): string {
-		if (season.seasonNumber === 0) return 'Specials';
-		return season.name || `Season ${season.seasonNumber}`;
+		if (season.seasonNumber === 0) return m.library_seasonAccordion_specials();
+		return season.name || m.common_season({ number: season.seasonNumber });
 	}
 
 	function handleSeasonMonitorToggle() {
@@ -242,23 +265,41 @@
 					<h3 class="font-semibold">{getSeasonName()}</h3>
 					<div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-base-content/60">
 						<span class="whitespace-nowrap">
-							{downloadedCount}/{totalCount} episodes
+							{m.library_seasonAccordion_episodesCount({
+								count: totalCount
+							})}
 							{#if seasonSize > 0}
 								<span class="text-base-content/40">·</span>
 								{formatBytes(seasonSize)}
 							{/if}
 						</span>
 						{#if percentComplete === 100}
-							<span class="badge badge-xs badge-success">Complete</span>
+							<span class="badge badge-xs badge-success"
+								>{m.library_seasonAccordion_completeBadge()}</span
+							>
 						{:else if percentComplete > 0}
 							<span class="badge badge-xs badge-primary">{percentComplete}%</span>
+						{/if}
+						{#if wantsSubtitles && subtitleCoverage}
+							<span class="text-base-content/40">·</span>
+							<span
+								class="inline-flex items-center gap-1 whitespace-nowrap {subtitleCoverage.withSubs ===
+								subtitleCoverage.total
+									? 'text-success/70'
+									: subtitleCoverage.withSubs === 0
+										? 'text-warning/70'
+										: 'text-base-content/50'}"
+							>
+								<Captions size={12} />
+								{subtitleCoverage.withSubs}/{subtitleCoverage.total}
+							</span>
 						{/if}
 					</div>
 				</div>
 			</button>
 
 			<!-- Action buttons -->
-			<div class="flex shrink-0 items-center gap-2 sm:ml-auto" title={seasonMonitorTooltip}>
+			<div class="flex shrink-0 items-center gap-2 sm:ml-auto">
 				<!-- Season monitor toggle -->
 				<button
 					class="btn btn-ghost btn-sm {season.monitored
@@ -266,6 +307,7 @@
 						: 'text-base-content/40'} {seasonMonitorDisabled ? 'opacity-40' : ''}"
 					onclick={handleSeasonMonitorToggle}
 					disabled={seasonMonitorDisabled}
+					title={seasonMonitorTooltip}
 				>
 					{#if seasonMonitorDisabled}
 						<Lock size={16} />
@@ -289,7 +331,7 @@
 					class="btn btn-ghost btn-sm"
 					onclick={handleAutoSearchSeason}
 					disabled={autoSearchingSeason}
-					title="Auto-grab season pack"
+					title={m.library_seasonAccordion_autoGrabSeasonPack()}
 				>
 					{#if autoSearchingSeason}
 						<Loader2 size={16} class="animate-spin" />
@@ -302,7 +344,7 @@
 				<button
 					class="btn btn-ghost btn-sm"
 					onclick={handleSeasonSearch}
-					title="Interactive search for season"
+					title={m.library_seasonAccordion_searchSeason()}
 				>
 					<Search size={16} />
 				</button>
@@ -315,7 +357,9 @@
 							: 'text-error'}"
 						onclick={handleSeasonDelete}
 						disabled={downloadedCount === 0}
-						title={downloadedCount === 0 ? 'No files to delete' : 'Delete season'}
+						title={downloadedCount === 0
+							? m.library_seasonAccordion_noFilesToDelete()
+							: m.library_seasonAccordion_deleteSeason()}
 					>
 						<Trash2 size={16} />
 					</button>
@@ -328,7 +372,9 @@
 	{#if isOpen}
 		<div class="border-t border-base-300">
 			{#if season.episodes.length === 0}
-				<div class="p-8 text-center text-base-content/60">No episodes in this season</div>
+				<div class="p-8 text-center text-base-content/60">
+					{m.library_seasonAccordion_noEpisodes()}
+				</div>
 			{:else}
 				<div class="w-full max-w-full overflow-x-hidden sm:overflow-x-auto">
 					<table class="table w-full table-sm sm:min-w-160 sm:table-auto">
@@ -342,16 +388,21 @@
 											checked={isAllSelected}
 											indeterminate={isSomeSelected}
 											onchange={handleSelectAllChange}
-											title="Select all episodes in season"
+											title={m.library_seasonAccordion_selectAllEpisodes()}
 										/>
 									</th>
 								{/if}
-								<th class="w-12 text-center">#</th>
-								<th>Title</th>
-								<th class="hidden w-24 sm:table-cell">Air Date</th>
-								<th class="hidden w-32 sm:table-cell">Status</th>
-								<th class="hidden w-20 sm:table-cell">Size</th>
-								<th class="hidden w-28 sm:table-cell">Actions</th>
+								<th class="w-12 text-center">{m.library_seasonAccordion_episodeNumberColumn()}</th>
+								<th>{m.library_seasonAccordion_titleColumn()}</th>
+								<th class="hidden w-24 sm:table-cell"
+									>{m.library_seasonAccordion_airDateColumn()}</th
+								>
+								<th class="hidden w-32 sm:table-cell">{m.library_seasonAccordion_statusColumn()}</th
+								>
+								<th class="hidden w-20 sm:table-cell">{m.library_seasonAccordion_sizeColumn()}</th>
+								<th class="hidden w-28 sm:table-cell"
+									>{m.library_seasonAccordion_actionsColumn()}</th
+								>
 							</tr>
 						</thead>
 						<tbody>
@@ -360,6 +411,7 @@
 									{episode}
 									{seriesMonitored}
 									{isStreamerProfile}
+									{wantsSubtitles}
 									selected={selectedEpisodes.has(episode.id)}
 									showCheckbox={showCheckboxes}
 									isDownloading={downloadingEpisodeIds.has(episode.id) ||
@@ -367,12 +419,16 @@
 									autoSearching={autoSearchingEpisodes.has(episode.id)}
 									autoSearchResult={autoSearchEpisodeResults.get(episode.id) ?? null}
 									subtitleAutoSearching={subtitleAutoSearchingEpisodes.has(episode.id)}
+									{subtitleSyncingId}
+									{subtitleDeletingId}
 									onMonitorToggle={onEpisodeMonitorToggle}
 									onSearch={onEpisodeSearch}
 									onAutoSearch={onAutoSearchEpisode}
 									onSelectChange={onEpisodeSelectChange}
 									{onSubtitleSearch}
 									{onSubtitleAutoSearch}
+									{onSubtitleSync}
+									{onSubtitleDelete}
 									onDelete={onEpisodeDelete}
 								/>
 							{/each}

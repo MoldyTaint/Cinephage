@@ -65,7 +65,7 @@ export class DatabaseQueryExecutor {
 	async execute(criteria: SearchCriteria, context: DatabaseQueryContext): Promise<ReleaseResult[]> {
 		const searchType = criteria.searchType;
 
-		this.log.debug('Executing database query', { searchType, criteria });
+		this.log.debug({ searchType, criteria }, 'Executing database query');
 
 		// Set up template context
 		this.setupTemplateContext(criteria, context);
@@ -142,7 +142,7 @@ export class DatabaseQueryExecutor {
 		// Get the table reference
 		const tableRef = this.getTableRef(queryDef.table);
 		if (!tableRef) {
-			this.log.error('Unknown table in query definition', { table: queryDef.table });
+			this.log.error({ table: queryDef.table }, 'Unknown table in query definition');
 			return [];
 		}
 
@@ -161,7 +161,7 @@ export class DatabaseQueryExecutor {
 				results = await db.select().from(tableRef);
 			}
 		} catch (error) {
-			this.log.error('Database query failed', { error, queryDef });
+			this.log.error({ error, queryDef }, 'Database query failed');
 			return [];
 		}
 
@@ -195,14 +195,17 @@ export class DatabaseQueryExecutor {
 			conditions.push(eq(movies.monitored, true));
 		}
 
-		this.log.info('[DatabaseQueryExecutor] Executing movie query', {
-			indexer: context.indexerName,
-			tmdbId: criteria.tmdbId,
-			imdbId: criteria.imdbId,
-			query: criteria.query,
-			searchSource: criteria.searchSource,
-			conditionsCount: conditions.length
-		});
+		this.log.info(
+			{
+				indexer: context.indexerName,
+				tmdbId: criteria.tmdbId,
+				imdbId: criteria.imdbId,
+				query: criteria.query,
+				searchSource: criteria.searchSource,
+				conditionsCount: conditions.length
+			},
+			'[DatabaseQueryExecutor] Executing movie query'
+		);
 
 		let results: (typeof movies.$inferSelect)[];
 		if (conditions.length > 0) {
@@ -217,11 +220,14 @@ export class DatabaseQueryExecutor {
 			results = await db.select().from(movies).limit(100);
 		}
 
-		this.log.info('[DatabaseQueryExecutor] Movie query results', {
-			indexer: context.indexerName,
-			resultsCount: results.length,
-			movies: results.slice(0, 5).map((m) => ({ id: m.id, title: m.title, tmdbId: m.tmdbId }))
-		});
+		this.log.info(
+			{
+				indexer: context.indexerName,
+				resultsCount: results.length,
+				movies: results.slice(0, 5).map((m) => ({ id: m.id, title: m.title, tmdbId: m.tmdbId }))
+			},
+			'[DatabaseQueryExecutor] Movie query results'
+		);
 
 		const releaseResults: ReleaseResult[] = [];
 
@@ -253,7 +259,7 @@ export class DatabaseQueryExecutor {
 	 * Execute default TV query when no YAML query is defined.
 	 * Generates releases based on search criteria:
 	 * - Episode specified → single episode release
-	 * - Season specified (no episode) → season pack + individual episodes
+	 * - Season specified (no episode) → season pack only
 	 * - Neither specified → complete series + season packs
 	 *
 	 * Quality is determined at playback time by the streaming proxy.
@@ -303,11 +309,11 @@ export class DatabaseQueryExecutor {
 		const releaseResults: ReleaseResult[] = [];
 
 		for (const show of seriesResults) {
-			// Get all episodes for this series (excluding specials - season 0)
+			// Get all episodes for this series (including specials if monitorSpecials is enabled)
 			const allEpisodes = await db
 				.select()
 				.from(episodes)
-				.where(and(eq(episodes.seriesId, show.id), sql`${episodes.seasonNumber} > 0`))
+				.where(and(eq(episodes.seriesId, show.id)))
 				.orderBy(episodes.seasonNumber, episodes.episodeNumber);
 
 			if (allEpisodes.length === 0) {
@@ -334,18 +340,14 @@ export class DatabaseQueryExecutor {
 					releaseResults.push(this.createEpisodeRelease(show, episode, context));
 				}
 			} else if (hasSeasonFilter) {
-				// Specific season requested → season pack + individual episodes
+				// Specific season requested → season pack only.
+				// Episode-level selection is handled by explicit episode searches.
 				const seasonNum = criteria.season!;
 				const seasonEps = seasonMap.get(seasonNum) || [];
 
 				if (seasonEps.length > 0) {
 					// Add season pack release
 					releaseResults.push(this.createSeasonPackRelease(show, seasonNum, seasonEps, context));
-
-					// Also add individual episode releases for flexibility
-					for (const episode of seasonEps) {
-						releaseResults.push(this.createEpisodeRelease(show, episode, context));
-					}
 				}
 			} else {
 				// No season/episode filter → complete series + season packs + episodes
@@ -618,11 +620,14 @@ export class DatabaseQueryExecutor {
 	): ReturnType<typeof eq> | null {
 		// Validate field against column allowlist to prevent SQL injection
 		if (!DatabaseQueryExecutor.ALLOWED_COLUMNS.has(field)) {
-			this.log.warn('Rejected unknown column in database query condition', {
-				field,
-				operator,
-				logCategory: 'indexers'
-			});
+			this.log.warn(
+				{
+					field,
+					operator,
+					logDomain: 'indexers'
+				},
+				'Rejected unknown column in database query condition'
+			);
 			return null;
 		}
 		const sqlField = sql.raw(field);
@@ -697,7 +702,7 @@ export class DatabaseQueryExecutor {
 					}
 				});
 			} catch (error) {
-				this.log.warn('Failed to map result', { error, row });
+				this.log.warn({ error, row }, 'Failed to map result');
 			}
 		}
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import type { LibraryMovie, LibrarySeries } from '$lib/types/library';
 	import { isLibraryMovie, getBestQualityFromFiles } from '$lib/types/library';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
@@ -51,7 +52,7 @@
 	// Quality badge display
 	const qualityBadge = $derived(() => {
 		if (!isMovie || !movieQuality) return null;
-		if (isStreamerProfile) return 'Auto';
+		if (isStreamerProfile) return m.library_mediaCard_auto();
 		const parts: string[] = [];
 		if (movieQuality.quality) parts.push(movieQuality.quality);
 		if (movieQuality.hdr) parts.push(movieQuality.hdr);
@@ -98,7 +99,7 @@
 			class="badge border-none badge-sm shadow-sm {item.monitored
 				? 'bg-success/80 text-success-content'
 				: 'bg-base-300/80 text-base-content/60'}"
-			title={item.monitored ? 'Monitored' : 'Not Monitored'}
+			title={item.monitored ? m.library_mediaCard_monitored() : m.library_mediaCard_notMonitored()}
 		>
 			{#if item.monitored}
 				<Eye class="h-3 w-3" />
@@ -113,7 +114,7 @@
 				? 'bg-primary/80 text-primary-content'
 				: 'bg-secondary/80 text-secondary-content'}"
 		>
-			{isMovie ? 'Movie' : 'TV'}
+			{isMovie ? m.common_movie() : m.common_tvShow()}
 		</div>
 	</div>
 
@@ -127,7 +128,7 @@
 				class="badge border-none badge-sm shadow-sm {hasFile
 					? 'bg-success/80 text-success-content'
 					: 'bg-error/80 text-error-content'}"
-				title={hasFile ? 'File available' : 'Missing file'}
+				title={hasFile ? m.library_mediaCard_fileAvailable() : m.library_mediaCard_missingFile()}
 			>
 				{#if hasFile}
 					<Check class="h-3 w-3" />
@@ -173,7 +174,7 @@
 	{#if missingRootFolder}
 		<div
 			class="absolute right-2 bottom-2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-warning/90 text-warning-content shadow-sm"
-			title="Root folder not set"
+			title={m.library_mediaCard_rootFolderNotSet()}
 		>
 			<AlertTriangle class="h-3.5 w-3.5" />
 		</div>

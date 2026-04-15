@@ -15,12 +15,21 @@ import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadCl
 import { downloadMonitor } from '$lib/server/downloadClients/monitoring/index.js';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser.js';
 import { getDownloadResolutionService } from './DownloadResolutionService.js';
+import {
+	buildEpisodePointerFileSelection,
+	parseEpisodePointerFromGuid,
+	parseEpisodePointerFromTitle
+} from './episode-pointer.js';
 import { getNzbValidationService } from './nzb/index.js';
 import { checkNzbAvailability } from './nzb/NzbAvailabilityChecker.js';
 import { strmService, StrmService, getStreamingBaseUrl } from '$lib/server/streaming/index.js';
+import { NamingService } from '$lib/server/library/naming/NamingService.js';
+import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
+import { getRecoverableApiKeyByType } from '$lib/server/auth/index.js';
 import { getNzbMountManager } from '$lib/server/streaming/nzb/index.js';
 import { isMediaFile } from '$lib/server/streaming/usenet/types';
-import { fileExists } from '$lib/server/downloadClients/import/index.js';
+import { fileExists, importService } from '$lib/server/downloadClients/import/index.js';
+import { eventBuffer } from '$lib/server/sse/EventBuffer.js';
 import { mediaInfoService } from '$lib/server/library/media-info.js';
 import { getLibraryRelativePath } from '$lib/server/library/media-paths.js';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
@@ -127,6 +136,41 @@ export interface GrabResult {
  */
 class ReleaseGrabService {
 	/**
+	 * Cached streaming API key check to avoid hitting DB per release.
+	 * Caches the result for 60 seconds to handle key generation mid-task.
+	 */
+	private streamingKeyCache: { available: boolean; checkedAt: number } | null = null;
+	private streamingKeyWarned = false;
+	private static readonly STREAMING_KEY_CACHE_TTL_MS = 60_000;
+
+	/**
+	 * Check if streaming API key is available (cached, 60s TTL).
+	 * Returns true if key exists, false if missing.
+	 */
+	private async isStreamingKeyAvailable(): Promise<boolean> {
+		const now = Date.now();
+		if (
+			this.streamingKeyCache &&
+			now - this.streamingKeyCache.checkedAt < ReleaseGrabService.STREAMING_KEY_CACHE_TTL_MS
+		) {
+			return this.streamingKeyCache.available;
+		}
+
+		try {
+			const key = await getRecoverableApiKeyByType('streaming');
+			const available = !!key;
+			this.streamingKeyCache = { available, checkedAt: now };
+			if (available) {
+				this.streamingKeyWarned = false; // Reset so we warn again if it disappears
+			}
+			return available;
+		} catch {
+			this.streamingKeyCache = { available: false, checkedAt: now };
+			return false;
+		}
+	}
+
+	/**
 	 * Grab a release and add it to the download queue.
 	 *
 	 * Routes to appropriate handler based on release protocol:
@@ -147,13 +191,13 @@ class ReleaseGrabService {
 			if (!hasMatchingCategory) {
 				const actualContentType = getCategoryContentType(release.categories[0]);
 				logger.error(
-					'[ReleaseGrab] BLOCKED: Release category mismatch - potential wrong content type',
 					{
 						title: release.title,
 						expectedType: mediaType,
 						actualContentType,
 						categories: release.categories
-					}
+					},
+					'[ReleaseGrab] BLOCKED: Release category mismatch - potential wrong content type'
 				);
 				return {
 					success: false,
@@ -162,14 +206,17 @@ class ReleaseGrabService {
 			}
 		}
 
-		logger.info('[ReleaseGrab] Grabbing release', {
-			title: release.title,
-			mediaType,
-			protocol: release.protocol,
-			movieId: options.movieId,
-			seriesId: options.seriesId,
-			episodeIds: options.episodeIds?.length
-		});
+		logger.info(
+			{
+				title: release.title,
+				mediaType,
+				protocol: release.protocol,
+				movieId: options.movieId,
+				seriesId: options.seriesId,
+				episodeIds: options.episodeIds?.length
+			},
+			'[ReleaseGrab] Grabbing release'
+		);
 
 		try {
 			// Route based on release protocol
@@ -188,10 +235,13 @@ class ReleaseGrabService {
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[ReleaseGrab] Failed to grab release', {
-				title: release.title,
-				error: message
-			});
+			logger.error(
+				{
+					title: release.title,
+					err: error
+				},
+				'[ReleaseGrab] Failed to grab release'
+			);
 			return { success: false, error: message };
 		}
 	}
@@ -213,7 +263,7 @@ class ReleaseGrabService {
 		const clientResult = await clientManager.getClientForProtocol(protocol);
 
 		if (!clientResult) {
-			logger.warn('[ReleaseGrab] No enabled download client for protocol', { protocol });
+			logger.warn({ protocol }, '[ReleaseGrab] No enabled download client for protocol');
 			return { success: false, error: `No enabled ${protocol} download client configured` };
 		}
 
@@ -264,20 +314,73 @@ class ReleaseGrabService {
 		});
 
 		if (!resolved.success) {
-			logger.error('[ReleaseGrab] Failed to resolve download', {
-				title: release.title,
-				error: resolved.error
-			});
+			logger.error(
+				{
+					title: release.title,
+					error: resolved.error
+				},
+				'[ReleaseGrab] Failed to resolve download'
+			);
 			return { success: false, error: `Failed to resolve download: ${resolved.error}` };
 		}
 
-		logger.debug('[ReleaseGrab] Download resolved', {
-			title: release.title,
-			hasMagnet: !!resolved.magnetUrl,
-			hasTorrentFile: !!resolved.torrentFile,
-			infoHash: resolved.infoHash,
-			usedFallback: resolved.usedFallback
-		});
+		logger.debug(
+			{
+				title: release.title,
+				hasMagnet: !!resolved.magnetUrl,
+				hasTorrentFile: !!resolved.torrentFile,
+				infoHash: resolved.infoHash,
+				usedFallback: resolved.usedFallback
+			},
+			'[ReleaseGrab] Download resolved'
+		);
+
+		const episodePointerTarget =
+			parseEpisodePointerFromGuid(release.guid) ?? parseEpisodePointerFromTitle(release.title);
+		let pointerFileSelection:
+			| {
+					fileIndices: number[];
+					allFileIndices?: number[];
+					filePaths?: string[];
+			  }
+			| undefined;
+
+		if (episodePointerTarget) {
+			const supportsFileSelection =
+				clientInstance.implementation === 'qbittorrent' ||
+				clientInstance.implementation === 'transmission';
+			if (!supportsFileSelection) {
+				return {
+					success: false,
+					error: `Download client "${clientInstance.implementation}" does not support episode pointer downloads`
+				};
+			}
+
+			if (!resolved.torrentFile) {
+				return {
+					success: false,
+					error:
+						'Episode pointer download requires torrent metadata, but only a magnet/download URL was available'
+				};
+			}
+
+			const selection = await buildEpisodePointerFileSelection(
+				resolved.torrentFile,
+				episodePointerTarget
+			);
+			if (selection.fileIndices.length === 0) {
+				return {
+					success: false,
+					error: `Could not map ${episodePointerTarget.token} to files inside this season pack`
+				};
+			}
+
+			pointerFileSelection = {
+				fileIndices: selection.fileIndices,
+				allFileIndices: selection.allFileIndices,
+				filePaths: selection.filePaths
+			};
+		}
 
 		// Send to download client
 		let hash: string;
@@ -292,7 +395,8 @@ class ReleaseGrabService {
 				paused,
 				priority: clientConfig.recentPriority,
 				seedRatioLimit,
-				seedTimeLimit
+				seedTimeLimit,
+				fileSelection: pointerFileSelection
 			});
 		} catch (addError) {
 			// Check if this is a duplicate torrent error
@@ -300,14 +404,25 @@ class ReleaseGrabService {
 			existingTorrent =
 				(addError as Error & { existingTorrent?: DownloadInfo }).existingTorrent || null;
 
+			if (isDuplicate && existingTorrent && episodePointerTarget) {
+				return {
+					success: false,
+					error:
+						'Episode pointer already exists in the client. Remove the existing torrent and retry to apply episode-only file selection.'
+				};
+			}
+
 			if (isDuplicate && existingTorrent) {
-				logger.info('[ReleaseGrab] Handling duplicate torrent - linking to existing download', {
-					title: release.title,
-					existingName: existingTorrent.name,
-					existingStatus: existingTorrent.status,
-					existingProgress: Math.round(existingTorrent.progress * 100) + '%',
-					hash: existingTorrent.hash
-				});
+				logger.info(
+					{
+						title: release.title,
+						existingName: existingTorrent.name,
+						existingStatus: existingTorrent.status,
+						existingProgress: Math.round(existingTorrent.progress * 100) + '%',
+						hash: existingTorrent.hash
+					},
+					'[ReleaseGrab] Handling duplicate torrent - linking to existing download'
+				);
 
 				// Use the existing torrent's hash
 				hash = existingTorrent.hash;
@@ -345,17 +460,23 @@ class ReleaseGrabService {
 
 		// Log appropriate message based on whether it was a duplicate
 		if (existingTorrent) {
-			logger.info('[ReleaseGrab] Duplicate torrent linked to queue', {
-				title: release.title,
-				queueItemId: queueItem.id,
-				existingStatus: existingTorrent.status,
-				existingProgress: Math.round(existingTorrent.progress * 100) + '%'
-			});
+			logger.info(
+				{
+					title: release.title,
+					queueItemId: queueItem.id,
+					existingStatus: existingTorrent.status,
+					existingProgress: Math.round(existingTorrent.progress * 100) + '%'
+				},
+				'[ReleaseGrab] Duplicate torrent linked to queue'
+			);
 		} else {
-			logger.info('[ReleaseGrab] Release grabbed successfully', {
-				title: release.title,
-				queueItemId: queueItem.id
-			});
+			logger.info(
+				{
+					title: release.title,
+					queueItemId: queueItem.id
+				},
+				'[ReleaseGrab] Release grabbed successfully'
+			);
 		}
 
 		return {
@@ -399,11 +520,14 @@ class ReleaseGrabService {
 			hdr: parsed.hdr ?? undefined
 		};
 
-		logger.info('[ReleaseGrab] Grabbing usenet release', {
-			title: release.title,
-			indexer: release.indexerName,
-			client: clientConfig.name
-		});
+		logger.info(
+			{
+				title: release.title,
+				indexer: release.indexerName,
+				client: clientConfig.name
+			},
+			'[ReleaseGrab] Grabbing usenet release'
+		);
 
 		// Fetch NZB content through the indexer (handles auth/cookies)
 		let nzbContent: Buffer | undefined;
@@ -426,34 +550,46 @@ class ReleaseGrabService {
 						const nzbValidator = getNzbValidationService();
 						const validation = nzbValidator.validate(nzbContent);
 						if (!validation.valid) {
-							logger.error('[ReleaseGrab] Invalid NZB', {
-								title: release.title,
-								error: validation.error
-							});
+							logger.error(
+								{
+									title: release.title,
+									error: validation.error
+								},
+								'[ReleaseGrab] Invalid NZB'
+							);
 							return { success: false, error: `Invalid NZB: ${validation.error}` };
 						}
 
-						logger.debug('[ReleaseGrab] NZB validated', {
-							title: release.title,
-							fileCount: validation.fileCount,
-							totalSize: validation.totalSize
-						});
+						logger.debug(
+							{
+								title: release.title,
+								fileCount: validation.fileCount,
+								totalSize: validation.totalSize
+							},
+							'[ReleaseGrab] NZB validated'
+						);
 
 						// Check article availability on NNTP servers before sending to client
 						const availability = await checkNzbAvailability(nzbContent);
 						if (availability.skipped) {
 							// NNTP not available - log warning but continue
-							logger.warn('[ReleaseGrab] NZB availability check skipped - NNTP unavailable', {
-								title: release.title,
-								reason: availability.reason
-							});
+							logger.warn(
+								{
+									title: release.title,
+									reason: availability.reason
+								},
+								'[ReleaseGrab] NZB availability check skipped - NNTP unavailable'
+							);
 						} else if (!availability.available) {
-							logger.warn('[ReleaseGrab] NZB availability check failed', {
-								title: release.title,
-								completionPercentage: availability.completionPercentage,
-								checkedSegments: availability.checkedSegments,
-								missingSegments: availability.missingSegments
-							});
+							logger.warn(
+								{
+									title: release.title,
+									completionPercentage: availability.completionPercentage,
+									checkedSegments: availability.checkedSegments,
+									missingSegments: availability.missingSegments
+								},
+								'[ReleaseGrab] NZB availability check failed'
+							);
 
 							// Auto-blocklist this release from this specific indexer
 							// Uses 72-hour expiry in case the release becomes available later
@@ -474,16 +610,22 @@ class ReleaseGrabService {
 										expiresInHours: 72
 									}
 								);
-								logger.info('[ReleaseGrab] Auto-blocklisted unavailable release', {
-									title: release.title,
-									indexer: release.indexerName,
-									expiresInHours: 72
-								});
+								logger.info(
+									{
+										title: release.title,
+										indexer: release.indexerName,
+										expiresInHours: 72
+									},
+									'[ReleaseGrab] Auto-blocklisted unavailable release'
+								);
 							} catch (blocklistError) {
-								logger.warn('[ReleaseGrab] Failed to add to blocklist', {
-									title: release.title,
-									error: blocklistError instanceof Error ? blocklistError.message : 'Unknown'
-								});
+								logger.warn(
+									{
+										title: release.title,
+										err: blocklistError
+									},
+									'[ReleaseGrab] Failed to add to blocklist'
+								);
 							}
 
 							return {
@@ -491,25 +633,34 @@ class ReleaseGrabService {
 								error: `Release unavailable on usenet: ${availability.completionPercentage}% of articles found. Release may be incomplete or DMCA'd.`
 							};
 						} else {
-							logger.debug('[ReleaseGrab] NZB availability check passed', {
-								title: release.title,
-								completionPercentage: availability.completionPercentage,
-								checkedSegments: availability.checkedSegments
-							});
+							logger.debug(
+								{
+									title: release.title,
+									completionPercentage: availability.completionPercentage,
+									checkedSegments: availability.checkedSegments
+								},
+								'[ReleaseGrab] NZB availability check passed'
+							);
 						}
 					} else {
-						logger.error('[ReleaseGrab] Failed to fetch NZB', {
-							title: release.title,
-							error: downloadResult.error
-						});
+						logger.error(
+							{
+								title: release.title,
+								error: downloadResult.error
+							},
+							'[ReleaseGrab] Failed to fetch NZB'
+						);
 						return { success: false, error: `Failed to fetch NZB: ${downloadResult.error}` };
 					}
 				} catch (fetchError) {
 					const message = fetchError instanceof Error ? fetchError.message : 'Unknown error';
-					logger.error('[ReleaseGrab] Error fetching NZB', {
-						title: release.title,
-						error: message
-					});
+					logger.error(
+						{
+							title: release.title,
+							err: fetchError
+						},
+						'[ReleaseGrab] Error fetching NZB'
+					);
 					return { success: false, error: `Error fetching NZB: ${message}` };
 				}
 			} else {
@@ -521,11 +672,14 @@ class ReleaseGrabService {
 		// Add to usenet client
 		let nzoId: string;
 		try {
-			logger.info('[ReleaseGrab] Sending to client (pre-add)', {
-				title: release.title,
-				hasNzb: !!nzbContent,
-				client: clientConfig.name
-			});
+			logger.info(
+				{
+					title: release.title,
+					hasNzb: !!nzbContent,
+					client: clientConfig.name
+				},
+				'[ReleaseGrab] Sending to client (pre-add)'
+			);
 
 			nzoId = await clientInstance.addDownload({
 				nzbFile: nzbContent,
@@ -537,11 +691,14 @@ class ReleaseGrabService {
 			});
 		} catch (addError) {
 			const message = addError instanceof Error ? addError.message : 'Unknown error';
-			logger.error('[ReleaseGrab] Failed to add NZB to client', {
-				title: release.title,
-				client: clientConfig.name,
-				error: message
-			});
+			logger.error(
+				{
+					title: release.title,
+					client: clientConfig.name,
+					err: addError
+				},
+				'[ReleaseGrab] Failed to add NZB to client'
+			);
 			return { success: false, error: `Failed to add to ${clientConfig.name}: ${message}` };
 		}
 
@@ -565,12 +722,15 @@ class ReleaseGrabService {
 			isUpgrade: isUpgrade ?? false
 		});
 
-		logger.info('[ReleaseGrab] Usenet release grabbed successfully', {
-			title: release.title,
-			queueItemId: queueItem.id,
-			nzoId,
-			client: clientConfig.name
-		});
+		logger.info(
+			{
+				title: release.title,
+				queueItemId: queueItem.id,
+				nzoId,
+				client: clientConfig.name
+			},
+			'[ReleaseGrab] Usenet release grabbed successfully'
+		);
 
 		return {
 			success: true,
@@ -590,12 +750,15 @@ class ReleaseGrabService {
 	): Promise<GrabResult> {
 		const { mediaType, movieId, seriesId, episodeIds, seasonNumber } = options;
 
-		logger.info('[ReleaseGrab] Handling NZB streaming grab', {
-			title: release.title,
-			mediaType,
-			movieId,
-			seriesId
-		});
+		logger.info(
+			{
+				title: release.title,
+				mediaType,
+				movieId,
+				seriesId
+			},
+			'[ReleaseGrab] Handling NZB streaming grab'
+		);
 
 		// Fetch NZB content through the indexer
 		let nzbContent: Buffer | undefined;
@@ -644,10 +807,13 @@ class ReleaseGrabService {
 			});
 		} catch (mountError) {
 			const message = mountError instanceof Error ? mountError.message : 'Unknown error';
-			logger.error('[ReleaseGrab] Failed to create NZB mount', {
-				title: release.title,
-				error: message
-			});
+			logger.error(
+				{
+					title: release.title,
+					err: mountError
+				},
+				'[ReleaseGrab] Failed to create NZB mount'
+			);
 			return { success: false, error: `Failed to create stream mount: ${message}` };
 		}
 
@@ -658,7 +824,7 @@ class ReleaseGrabService {
 		const mediaFiles = mount.mediaFiles.filter((f) => isMediaFile(f.name) || f.isRar);
 
 		if (mediaFiles.length === 0) {
-			logger.warn('[ReleaseGrab] No media files found in NZB', { title: release.title });
+			logger.warn({ title: release.title }, '[ReleaseGrab] No media files found in NZB');
 			return { success: false, error: 'No media files found in NZB' };
 		}
 
@@ -678,10 +844,13 @@ class ReleaseGrabService {
 
 			if (result.success) {
 				strmCreated++;
-				logger.info('[ReleaseGrab] Created NZB stream file for movie', {
-					title: release.title,
-					filePath: result.filePath
-				});
+				logger.info(
+					{
+						title: release.title,
+						filePath: result.filePath
+					},
+					'[ReleaseGrab] Created NZB stream file for movie'
+				);
 			}
 		} else if (mediaType === 'tv' && seriesId) {
 			// TV - match files to episodes
@@ -711,11 +880,14 @@ class ReleaseGrabService {
 			return { success: false, error: 'Failed to create any stream files' };
 		}
 
-		logger.info('[ReleaseGrab] NZB streaming grab completed', {
-			title: release.title,
-			mountId: mount.id,
-			filesCreated: strmCreated
-		});
+		logger.info(
+			{
+				title: release.title,
+				mountId: mount.id,
+				filesCreated: strmCreated
+			},
+			'[ReleaseGrab] NZB streaming grab completed'
+		);
 
 		return {
 			success: true,
@@ -807,7 +979,7 @@ class ReleaseGrabService {
 		const safeName = this.sanitizeFilename(seriesRecord.title);
 		const year = seriesRecord.year ?? 'Unknown';
 		const seriesFolder = seriesRecord.path || `${safeName} (${year})`;
-		const seasonFolder = `Season ${seasonNumber.toString().padStart(2, '0')}`;
+		const seasonFolder = this.getNamingService().generateSeasonFolderName(seasonNumber);
 		const folderPath = join(rootFolder.path, seriesFolder, seasonFolder);
 
 		// Create folder if needed
@@ -839,6 +1011,13 @@ class ReleaseGrabService {
 	}
 
 	/**
+	 * Get a NamingService instance with current database config
+	 */
+	private getNamingService(): NamingService {
+		return new NamingService(namingSettingsService.getConfigSync());
+	}
+
+	/**
 	 * Verify that a resolved file path stays within the expected root folder.
 	 * Prevents path traversal via '../' in database-sourced path components.
 	 */
@@ -862,10 +1041,29 @@ class ReleaseGrabService {
 	): Promise<GrabResult> {
 		const { mediaType, movieId, seriesId, seasonNumber, episodeIds, isUpgrade } = options;
 
-		logger.info('[ReleaseGrab] Handling streaming release', {
-			title: release.title,
-			downloadUrl: release.downloadUrl
-		});
+		// Pre-check: verify streaming API key exists before processing.
+		// Uses cached check to avoid DB hit per release, and only logs warning once
+		// to prevent flooding activity history with identical errors.
+		if (!(await this.isStreamingKeyAvailable())) {
+			if (!this.streamingKeyWarned) {
+				logger.warn(
+					'[ReleaseGrab] Streaming API key not configured - skipping streaming releases. Generate API keys in Settings > System.'
+				);
+				this.streamingKeyWarned = true;
+			}
+			return {
+				success: false,
+				error: 'Streaming API key not configured. Generate API keys in Settings > System.'
+			};
+		}
+
+		logger.info(
+			{
+				title: release.title,
+				downloadUrl: release.downloadUrl
+			},
+			'[ReleaseGrab] Handling streaming release'
+		);
 
 		// Parse the stream:// URL to get TMDB ID and episode info
 		const parsed = StrmService.parseStreamUrl(release.downloadUrl);
@@ -900,17 +1098,23 @@ class ReleaseGrabService {
 		});
 
 		if (!result.success || !result.filePath) {
-			logger.error('[ReleaseGrab] Failed to create .strm file', {
-				title: release.title,
-				error: result.error
-			});
+			logger.error(
+				{
+					title: release.title,
+					error: result.error
+				},
+				'[ReleaseGrab] Failed to create .strm file'
+			);
 			return { success: false, error: result.error };
 		}
 
-		logger.info('[ReleaseGrab] Created .strm file for streaming release', {
-			title: release.title,
-			filePath: result.filePath
-		});
+		logger.info(
+			{
+				title: release.title,
+				filePath: result.filePath
+			},
+			'[ReleaseGrab] Created .strm file for streaming release'
+		);
 
 		// Now add the file to the database (immediate import)
 		return this.importStreamingFile(release, {
@@ -998,10 +1202,13 @@ class ReleaseGrabService {
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[ReleaseGrab] Failed to add streaming file to database', {
-				title: release.title,
-				error: message
-			});
+			logger.error(
+				{
+					title: release.title,
+					err: error
+				},
+				'[ReleaseGrab] Failed to add streaming file to database'
+			);
 			return { success: false, error: `Database error: ${message}` };
 		}
 	}
@@ -1050,6 +1257,7 @@ class ReleaseGrabService {
 			dateAdded: new Date().toISOString(),
 			sceneName: release.title,
 			releaseGroup: parsedRelease.releaseGroup ?? 'Streaming',
+			edition: parsedRelease.edition ?? undefined,
 			quality,
 			mediaInfo
 		});
@@ -1073,12 +1281,35 @@ class ReleaseGrabService {
 			importedAt: new Date().toISOString()
 		});
 
-		logger.info('[ReleaseGrab] Added streaming movie file to database', {
-			movieId,
-			fileId,
-			relativePath
-		});
+		logger.info(
+			{
+				movieId,
+				fileId,
+				relativePath
+			},
+			'[ReleaseGrab] Added streaming movie file to database'
+		);
 		libraryMediaEvents.emitMovieUpdated(movieId);
+
+		// Emit event for SSE clients to update UI in real-time
+		const movieEvent = {
+			mediaType: 'movie' as const,
+			movieId,
+			file: {
+				id: fileId,
+				relativePath,
+				size: fileSize,
+				dateAdded: new Date().toISOString(),
+				sceneName: release.title,
+				releaseGroup: parsedRelease.releaseGroup ?? 'Streaming',
+				quality,
+				mediaInfo
+			},
+			wasUpgrade: isUpgrade ?? false,
+			timestamp: Date.now()
+		};
+		importService.emit('file:imported', movieEvent);
+		eventBuffer.add(movieEvent);
 
 		void this.triggerSubtitleSearch('movie', movieId);
 
@@ -1162,6 +1393,7 @@ class ReleaseGrabService {
 			dateAdded: new Date().toISOString(),
 			sceneName: release.title,
 			releaseGroup: parsedRelease.releaseGroup ?? 'Streaming',
+			edition: parsedRelease.edition ?? undefined,
 			quality,
 			mediaInfo
 		});
@@ -1187,13 +1419,38 @@ class ReleaseGrabService {
 			importedAt: new Date().toISOString()
 		});
 
-		logger.info('[ReleaseGrab] Added streaming episode file to database', {
-			seriesId,
-			episodeId: episodeRow.id,
-			fileId,
-			relativePath
-		});
+		logger.info(
+			{
+				seriesId,
+				episodeId: episodeRow.id,
+				fileId,
+				relativePath
+			},
+			'[ReleaseGrab] Added streaming episode file to database'
+		);
 		libraryMediaEvents.emitSeriesUpdated(seriesId);
+
+		// Emit event for SSE clients to update UI in real-time
+		const episodeEvent = {
+			mediaType: 'episode' as const,
+			seriesId,
+			episodeIds: [episodeRow.id],
+			seasonNumber: season,
+			file: {
+				id: fileId,
+				relativePath,
+				size: fileSize,
+				dateAdded: new Date().toISOString(),
+				sceneName: release.title,
+				releaseGroup: parsedRelease.releaseGroup ?? 'Streaming',
+				quality,
+				mediaInfo
+			},
+			wasUpgrade: isUpgrade ?? false,
+			timestamp: Date.now()
+		};
+		importService.emit('file:imported', episodeEvent);
+		eventBuffer.add(episodeEvent);
 
 		void this.triggerSubtitleSearch('episode', episodeRow.id);
 
@@ -1220,11 +1477,14 @@ class ReleaseGrabService {
 	): Promise<GrabResult> {
 		const { seriesId, seasonNumber, tmdbId, baseUrl, isUpgrade } = options;
 
-		logger.info('[ReleaseGrab] Handling streaming season pack', {
-			seriesId,
-			seasonNumber,
-			title: release.title
-		});
+		logger.info(
+			{
+				seriesId,
+				seasonNumber,
+				title: release.title
+			},
+			'[ReleaseGrab] Handling streaming season pack'
+		);
 
 		// Get series for root folder path
 		const show = await db.query.series.findFirst({
@@ -1246,11 +1506,14 @@ class ReleaseGrabService {
 			: seasonEpisodes.filter((ep) => !ep.hasFile);
 
 		if (episodesNeedingFiles.length === 0) {
-			logger.info('[ReleaseGrab] All episodes already have files, skipping season pack', {
-				seriesId,
-				seasonNumber,
-				totalEpisodes: seasonEpisodes.length
-			});
+			logger.info(
+				{
+					seriesId,
+					seasonNumber,
+					totalEpisodes: seasonEpisodes.length
+				},
+				'[ReleaseGrab] All episodes already have files, skipping season pack'
+			);
 			return {
 				success: true,
 				releaseName: release.title,
@@ -1268,11 +1531,14 @@ class ReleaseGrabService {
 		});
 
 		if (!strmResult.success || strmResult.results.length === 0) {
-			logger.error('[ReleaseGrab] Failed to create season pack .strm files', {
-				seriesId,
-				seasonNumber,
-				error: strmResult.error
-			});
+			logger.error(
+				{
+					seriesId,
+					seasonNumber,
+					error: strmResult.error
+				},
+				'[ReleaseGrab] Failed to create season pack .strm files'
+			);
 			return { success: false, error: strmResult.error || 'Failed to create .strm files' };
 		}
 
@@ -1298,11 +1564,14 @@ class ReleaseGrabService {
 		// First pass: collect file info and validate (outside transaction)
 		for (const epResult of strmResult.results) {
 			if (!epResult.filePath) {
-				logger.warn('[ReleaseGrab] Skipping episode without .strm file', {
-					episodeId: epResult.episodeId,
-					episodeNumber: epResult.episodeNumber,
-					error: epResult.error
-				});
+				logger.warn(
+					{
+						episodeId: epResult.episodeId,
+						episodeNumber: epResult.episodeNumber,
+						error: epResult.error
+					},
+					'[ReleaseGrab] Skipping episode without .strm file'
+				);
 				continue;
 			}
 
@@ -1326,11 +1595,14 @@ class ReleaseGrabService {
 					mediaInfo
 				});
 			} catch (error) {
-				logger.error('[ReleaseGrab] Failed to get file info for episode', {
-					episodeId: epResult.episodeId,
-					episodeNumber: epResult.episodeNumber,
-					error: error instanceof Error ? error.message : 'Unknown error'
-				});
+				logger.error(
+					{
+						episodeId: epResult.episodeId,
+						episodeNumber: epResult.episodeNumber,
+						err: error
+					},
+					'[ReleaseGrab] Failed to get file info for episode'
+				);
 			}
 		}
 
@@ -1338,12 +1610,12 @@ class ReleaseGrabService {
 			// Don't clean up .strm files - let the LibraryWatcher try to link them
 			// Even if we failed to get file info, the watcher might succeed
 			logger.warn(
-				'[ReleaseGrab] Failed to get file info for any episodes, keeping files for watcher',
 				{
 					seriesId,
 					seasonNumber,
 					filesCreated: strmResult.results.filter((r) => r.filePath).length
-				}
+				},
+				'[ReleaseGrab] Failed to get file info for any episodes, keeping files for watcher'
 			);
 			return { success: false, error: 'Failed to get file info for any episodes' };
 		}
@@ -1364,11 +1636,14 @@ class ReleaseGrabService {
 
 					if (existingFile && !isUpgrade) {
 						// Watcher already linked this file - skip insert, just record the IDs
-						logger.debug('[ReleaseGrab] File already linked by watcher, using existing record', {
-							episodeId: epData.episodeId,
-							existingFileId: existingFile.id,
-							relativePath: epData.relativePath
-						});
+						logger.debug(
+							{
+								episodeId: epData.episodeId,
+								existingFileId: existingFile.id,
+								relativePath: epData.relativePath
+							},
+							'[ReleaseGrab] File already linked by watcher, using existing record'
+						);
 						createdFileIds.push(existingFile.id);
 						createdEpisodeIds.push(epData.episodeId);
 						totalSize += epData.fileSize;
@@ -1389,26 +1664,32 @@ class ReleaseGrabService {
 							try {
 								if (await fileExists(oldFilePath)) {
 									await unlink(oldFilePath);
-									logger.debug('[ReleaseGrab] Deleted old episode file from disk', {
-										episodeId: epData.episodeId,
-										path: oldFilePath
-									});
+									logger.debug(
+										{
+											episodeId: epData.episodeId,
+											path: oldFilePath
+										},
+										'[ReleaseGrab] Deleted old episode file from disk'
+									);
 								}
 							} catch (deleteError) {
 								logger.warn(
-									'[ReleaseGrab] Failed to delete old episode file from disk (continuing)',
 									{
 										path: oldFilePath,
-										error: deleteError instanceof Error ? deleteError.message : String(deleteError)
-									}
+										err: deleteError
+									},
+									'[ReleaseGrab] Failed to delete old episode file from disk (continuing)'
 								);
 							}
 							// Delete DB record
 							await tx.delete(episodeFiles).where(eq(episodeFiles.id, oldFile.id));
-							logger.debug('[ReleaseGrab] Deleted old episode file record for streaming upgrade', {
-								episodeId: epData.episodeId,
-								oldFileId: oldFile.id
-							});
+							logger.debug(
+								{
+									episodeId: epData.episodeId,
+									oldFileId: oldFile.id
+								},
+								'[ReleaseGrab] Deleted old episode file record for streaming upgrade'
+							);
 						}
 					}
 
@@ -1433,11 +1714,14 @@ class ReleaseGrabService {
 					createdFileIds.push(fileId);
 					totalSize += epData.fileSize;
 
-					logger.debug('[ReleaseGrab] Created episode file record', {
-						episodeId: epData.episodeId,
-						episodeNumber: epData.episodeNumber,
-						fileId
-					});
+					logger.debug(
+						{
+							episodeId: epData.episodeId,
+							episodeNumber: epData.episodeNumber,
+							fileId
+						},
+						'[ReleaseGrab] Created episode file record'
+					);
 				}
 
 				// Only create history record if we did any work
@@ -1463,13 +1747,16 @@ class ReleaseGrabService {
 			// Transaction failed - do NOT delete files, let LibraryWatcher handle them
 			// Deleting files here causes a race condition where E01 gets deleted before
 			// the watcher has a chance to process and link it
-			logger.error('[ReleaseGrab] Transaction failed for streaming season pack', {
-				seriesId,
-				seasonNumber,
-				error: txError instanceof Error ? txError.message : 'Unknown error',
-				filesCreated: episodeFileData.length,
-				note: 'Keeping .strm files for LibraryWatcher to process'
-			});
+			logger.error(
+				{
+					seriesId,
+					seasonNumber,
+					err: txError,
+					filesCreated: episodeFileData.length,
+					note: 'Keeping .strm files for LibraryWatcher to process'
+				},
+				'[ReleaseGrab] Transaction failed for streaming season pack'
+			);
 
 			// Don't delete files - the LibraryWatcher will detect them and link properly
 			// This avoids the race condition where files get deleted before watcher processes them
@@ -1484,12 +1771,15 @@ class ReleaseGrabService {
 			return { success: false, error: 'Failed to create any episode file records' };
 		}
 
-		logger.info('[ReleaseGrab] Created streaming season pack files', {
-			seriesId,
-			seasonNumber,
-			episodesCreated: createdFileIds.length,
-			totalEpisodes: strmResult.results.length
-		});
+		logger.info(
+			{
+				seriesId,
+				seasonNumber,
+				episodesCreated: createdFileIds.length,
+				totalEpisodes: strmResult.results.length
+			},
+			'[ReleaseGrab] Created streaming season pack files'
+		);
 		libraryMediaEvents.emitSeriesUpdated(seriesId);
 
 		void this.triggerSubtitleSearchForEpisodes(createdEpisodeIds);
@@ -1512,11 +1802,14 @@ class ReleaseGrabService {
 			}
 			await searchSubtitlesForNewMedia(mediaType, mediaId);
 		} catch (error) {
-			logger.warn('[ReleaseGrab] Subtitle search on import failed', {
-				mediaType,
-				mediaId,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					mediaType,
+					mediaId,
+					err: error
+				},
+				'[ReleaseGrab] Subtitle search on import failed'
+			);
 		}
 	}
 
@@ -1537,16 +1830,22 @@ class ReleaseGrabService {
 			const failed = results.filter((result) => result.status === 'rejected');
 
 			if (failed.length > 0) {
-				logger.warn('[ReleaseGrab] Subtitle search failed for some episodes', {
-					total: episodeIds.length,
-					failed: failed.length
-				});
+				logger.warn(
+					{
+						total: episodeIds.length,
+						failed: failed.length
+					},
+					'[ReleaseGrab] Subtitle search failed for some episodes'
+				);
 			}
 		} catch (error) {
-			logger.warn('[ReleaseGrab] Subtitle search on import failed for episodes', {
-				total: episodeIds.length,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					total: episodeIds.length,
+					err: error
+				},
+				'[ReleaseGrab] Subtitle search on import failed for episodes'
+			);
 		}
 	}
 
@@ -1568,23 +1867,32 @@ class ReleaseGrabService {
 			try {
 				if (await fileExists(oldFilePath)) {
 					await unlink(oldFilePath);
-					logger.info('[ReleaseGrab] Deleted old movie file from disk', {
-						movieId,
-						path: oldFilePath
-					});
+					logger.info(
+						{
+							movieId,
+							path: oldFilePath
+						},
+						'[ReleaseGrab] Deleted old movie file from disk'
+					);
 				}
 			} catch (deleteError) {
-				logger.warn('[ReleaseGrab] Failed to delete old file from disk (continuing)', {
-					path: oldFilePath,
-					error: deleteError instanceof Error ? deleteError.message : String(deleteError)
-				});
+				logger.warn(
+					{
+						path: oldFilePath,
+						err: deleteError
+					},
+					'[ReleaseGrab] Failed to delete old file from disk (continuing)'
+				);
 			}
 			// Delete DB record
 			await db.delete(movieFiles).where(eq(movieFiles.id, oldFile.id));
-			logger.info('[ReleaseGrab] Deleted old movie file record for streaming upgrade', {
-				movieId,
-				oldFileId: oldFile.id
-			});
+			logger.info(
+				{
+					movieId,
+					oldFileId: oldFile.id
+				},
+				'[ReleaseGrab] Deleted old movie file record for streaming upgrade'
+			);
 		}
 	}
 
@@ -1609,23 +1917,32 @@ class ReleaseGrabService {
 			try {
 				if (await fileExists(oldFilePath)) {
 					await unlink(oldFilePath);
-					logger.info('[ReleaseGrab] Deleted old episode file from disk', {
-						episodeId,
-						path: oldFilePath
-					});
+					logger.info(
+						{
+							episodeId,
+							path: oldFilePath
+						},
+						'[ReleaseGrab] Deleted old episode file from disk'
+					);
 				}
 			} catch (deleteError) {
-				logger.warn('[ReleaseGrab] Failed to delete old episode file from disk (continuing)', {
-					path: oldFilePath,
-					error: deleteError instanceof Error ? deleteError.message : String(deleteError)
-				});
+				logger.warn(
+					{
+						path: oldFilePath,
+						err: deleteError
+					},
+					'[ReleaseGrab] Failed to delete old episode file from disk (continuing)'
+				);
 			}
 			// Delete DB record
 			await db.delete(episodeFiles).where(eq(episodeFiles.id, oldFile.id));
-			logger.info('[ReleaseGrab] Deleted old episode file record for streaming upgrade', {
-				episodeId,
-				oldFileId: oldFile.id
-			});
+			logger.info(
+				{
+					episodeId,
+					oldFileId: oldFile.id
+				},
+				'[ReleaseGrab] Deleted old episode file record for streaming upgrade'
+			);
 		}
 	}
 }

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Calendar, Eye } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	export type MinimumAvailability = 'announced' | 'inCinemas' | 'released' | 'preDb';
 
@@ -23,6 +24,7 @@
 		monitored: boolean;
 		collection: CollectionInfo | null;
 		addEntireCollection: boolean;
+		onMonitoredInput?: () => void;
 	}
 
 	let {
@@ -30,23 +32,32 @@
 		minimumAvailability = $bindable(),
 		monitored = $bindable(),
 		collection,
-		addEntireCollection = $bindable()
+		addEntireCollection = $bindable(),
+		onMonitoredInput
 	}: Props = $props();
 
 	const availabilityOptions: { value: MinimumAvailability; label: string; description: string }[] =
 		[
 			{
 				value: 'announced',
-				label: 'Announced',
-				description: 'Search as soon as movie is announced'
+				label: m.library_availability_announcedLabel(),
+				description: m.library_availability_announcedDesc()
 			},
-			{ value: 'inCinemas', label: 'In Cinemas', description: 'Search when movie is in cinemas' },
+			{
+				value: 'inCinemas',
+				label: m.library_availability_inCinemasLabel(),
+				description: m.library_availability_inCinemasDesc()
+			},
 			{
 				value: 'released',
-				label: 'Released',
-				description: 'Search when movie is released on disc/streaming'
+				label: m.library_availability_releasedLabel(),
+				description: m.library_availability_releasedDesc()
 			},
-			{ value: 'preDb', label: 'PreDB', description: 'Search when movie appears on PreDB' }
+			{
+				value: 'preDb',
+				label: m.library_availability_preDbLabel(),
+				description: m.library_availability_preDbDesc()
+			}
 		];
 
 	// Collection movies not in library (excluding current movie)
@@ -60,7 +71,7 @@
 	<label class="label" for="minimum-availability">
 		<span class="label-text flex items-center gap-2 font-medium">
 			<Calendar class="h-4 w-4 shrink-0" />
-			Minimum Availability
+			{m.library_minimumAvailability()}
 		</span>
 	</label>
 	<select
@@ -87,13 +98,14 @@
 				bind:checked={addEntireCollection}
 			/>
 			<div class="min-w-0 flex-1">
-				<span class="label-text block truncate font-medium" title="Add entire {collection.name}">
-					Add entire {collection.name}
+				<span
+					class="label-text block truncate font-medium"
+					title={m.library_add_addEntireCollection({ name: collection.name })}
+				>
+					{m.library_add_addEntireCollection({ name: collection.name })}
 				</span>
 				<span class="label-text-alt block text-base-content/60">
-					Also add {missingCollectionMovies.length} other movie{missingCollectionMovies.length > 1
-						? 's'
-						: ''} from this collection
+					{m.library_add_alsoAddFromCollection({ count: missingCollectionMovies.length })}
 				</span>
 			</div>
 		</label>
@@ -102,16 +114,19 @@
 
 <!-- Monitored Toggle -->
 <label class="flex cursor-pointer items-start gap-4 py-2">
-	<input type="checkbox" class="toggle mt-0.5 shrink-0 toggle-primary" bind:checked={monitored} />
+	<input
+		type="checkbox"
+		class="toggle mt-0.5 shrink-0 toggle-primary"
+		bind:checked={monitored}
+		onchange={() => onMonitoredInput?.()}
+	/>
 	<div class="min-w-0">
 		<span class="flex items-center gap-2 text-sm font-medium">
 			<Eye class="h-4 w-4 shrink-0" />
-			Monitored
+			{m.common_monitored()}
 		</span>
 		<p class="text-xs text-base-content/60">
-			{monitored
-				? 'Will search for releases and upgrades automatically'
-				: 'Will not search for releases automatically'}
+			{monitored ? m.library_add_monitoredDescYes() : m.library_add_monitoredDescNo()}
 		</p>
 	</div>
 </label>

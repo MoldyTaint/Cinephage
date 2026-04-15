@@ -113,9 +113,9 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 				const fullPath = join(season.rootFolderPath, season.seriesPath, file.relativePath);
 				try {
 					await unlink(fullPath);
-					logger.debug('[API] Deleted file', { fullPath });
+					logger.debug({ fullPath }, '[API] Deleted file');
 				} catch {
-					logger.warn('[API] Could not delete file', { fullPath });
+					logger.warn({ fullPath }, '[API] Could not delete file');
 				}
 			}
 
@@ -127,7 +127,7 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 			);
 			try {
 				await rmdir(seasonFolder);
-				logger.debug('[API] Removed season folder', { seasonFolder });
+				logger.debug({ seasonFolder }, '[API] Removed season folder');
 			} catch {
 				// Folder not empty or doesn't exist - that's fine
 			}

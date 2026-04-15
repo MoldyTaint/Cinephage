@@ -13,10 +13,12 @@ import { parseRelease } from '../indexers/parser/index.js';
 import type { EpisodeInfo } from '../indexers/parser/types.js';
 import { qualityFilter, QualityFilter, type EnhancedQualityResult } from './QualityFilter.js';
 import { tmdbMatcher, TmdbMatcher, type TmdbHint } from './TmdbMatcher.js';
-import type { QualityPreset, ScoreComponents } from './types.js';
+import type { ScoreComponents } from './types.js';
 import type { ScoringProfile, SizeValidationContext, PackPreference } from '../scoring/index.js';
 import { calculatePackBonus } from '../scoring/types.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 import { getProtocolHandler, type ProtocolContext } from '../indexers/protocols';
 import type { ProtocolSettings } from '$lib/server/db/schema';
 
@@ -49,9 +51,6 @@ export interface EnrichmentOptions {
 	/** Minimum score to include (0-1000) */
 	minScore?: number;
 
-	/** Whether to use enhanced scoring (scoring engine) vs legacy */
-	useEnhancedScoring?: boolean;
-
 	/** Media type for size validation ('movie' or 'tv') */
 	mediaType?: 'movie' | 'tv';
 
@@ -66,6 +65,9 @@ export interface EnrichmentOptions {
 
 	/** Indexer configs for protocol-specific rejection (seeder minimums, dead torrents, etc.) */
 	indexerConfigs?: Map<string, IndexerConfigForEnrichment>;
+
+	/** Whether to use enhanced scoring with additional heuristics */
+	useEnhancedScoring?: boolean;
 }
 
 /**
@@ -103,35 +105,30 @@ export class ReleaseEnricher {
 	): Promise<EnrichmentResult> {
 		const startTime = Date.now();
 
-		// Default to enhanced scoring
-		const useEnhanced = options.useEnhancedScoring !== false;
-
-		// Use hardcoded default preset for legacy filtering
-		const preset = this.filter.getDefaultPreset();
-
-		// Load scoring profile if using enhanced scoring
+		// Load scoring profile
 		let profile: ScoringProfile | undefined;
-		if (useEnhanced) {
-			if (options.scoringProfileId) {
-				profile = (await this.filter.getProfile(options.scoringProfileId)) ?? undefined;
-			}
-			if (!profile) {
-				profile = await this.filter.getDefaultScoringProfile();
-			}
+		if (options.scoringProfileId) {
+			profile = (await this.filter.getProfile(options.scoringProfileId)) ?? undefined;
+		}
+		if (!profile) {
+			profile = await this.filter.getDefaultScoringProfile();
+		}
 
-			// Debug logging for profile scoring issues
-			logger.info('[ReleaseEnricher] Using profile', {
+		// Debug logging for profile scoring issues
+		logger.info(
+			{
 				requestedId: options.scoringProfileId,
 				loadedId: profile?.id,
 				loadedName: profile?.name,
 				formatScoresCount: profile ? Object.keys(profile.formatScores).length : 0,
 				sampleKeys: profile ? Object.keys(profile.formatScores).slice(0, 5) : []
-			});
-		}
+			},
+			'[ReleaseEnricher] Using profile'
+		);
 
 		// Enrich each release
 		const enrichedPromises = releases.map((release) =>
-			this.enrichSingle(release, preset!, profile, options)
+			this.enrichSingle(release, profile!, options)
 		);
 		let enriched = await Promise.all(enrichedPromises);
 
@@ -164,8 +161,7 @@ export class ReleaseEnricher {
 	 */
 	private async enrichSingle(
 		release: ReleaseResult,
-		preset: QualityPreset,
-		profile: ScoringProfile | undefined,
+		profile: ScoringProfile,
 		options: EnrichmentOptions
 	): Promise<EnhancedReleaseResult> {
 		// Use cached parsed result if available (from SearchOrchestrator.filterBySeasonEpisode)
@@ -173,47 +169,44 @@ export class ReleaseEnricher {
 		const releaseWithCache = release as ReleaseResult & {
 			_parsedRelease?: ReturnType<typeof parseRelease>;
 		};
-		const parsed = releaseWithCache._parsedRelease ?? parseRelease(release.title);
+		const parsed =
+			releaseWithCache._parsedRelease ??
+			parseRelease(release.title, {
+				sourceLanguage: release.sourceLanguage
+			});
 
-		// Calculate quality score using enhanced scoring if profile available
-		// Pass release.size (bytes) for file size filtering
-		let quality: EnhancedQualityResult;
-		if (profile) {
-			// Build size validation context if media type is specified
-			let sizeContext: SizeValidationContext | undefined;
-			if (options.mediaType) {
-				const isSeasonPack = parsed.episode?.isSeasonPack ?? false;
-				const episodeCount = isSeasonPack
-					? this.resolveSeasonPackEpisodeCount(parsed.episode, options)
-					: undefined;
-				sizeContext = {
-					mediaType: options.mediaType,
-					isSeasonPack,
-					episodeCount
-				};
-			}
-			quality = this.filter.calculateEnhancedScore(
-				parsed,
-				preset,
-				profile,
-				release.size,
-				sizeContext,
-				release.indexerName
-			);
-		} else {
-			// Fallback to legacy scoring
-			quality = this.filter.calculateScore(parsed, preset);
+		// Build size validation context if media type is specified
+		let sizeContext: SizeValidationContext | undefined;
+		if (options.mediaType) {
+			const isSeasonPack = parsed.episode?.isSeasonPack ?? false;
+			const episodeCount = isSeasonPack
+				? this.resolveSeasonPackEpisodeCount(parsed.episode, options)
+				: undefined;
+			sizeContext = {
+				mediaType: options.mediaType,
+				isSeasonPack,
+				episodeCount
+			};
 		}
+
+		// Calculate quality score using the scoring engine
+		// Pass release.size (bytes) for file size filtering
+		const quality = this.filter.calculateEnhancedScore(
+			parsed,
+			profile,
+			release.size,
+			sizeContext,
+			release.indexerName
+		);
 
 		// Calculate total score with detailed breakdown
 		// Pass pack preference from profile for TV content scoring
 		const { totalScore, components } = this.calculateTotalScoreWithComponents(
 			release,
 			quality.score,
-			quality.rawScore ?? quality.score,
 			parsed,
 			quality,
-			profile?.packPreference
+			profile.packPreference
 		);
 
 		// Check if release protocol is allowed by the profile
@@ -287,8 +280,8 @@ export class ReleaseEnricher {
 			rejectionCount: rejections.length,
 			// Keep rejectionReason for backwards compatibility (primary reason)
 			rejectionReason: rejections.length > 0 ? rejections[0] : undefined,
-			// qualityWeight is the normalized quality score (for debugging/display)
-			qualityWeight: components.normalizedQualityScore
+			// qualityWeight is the quality score (for debugging/display)
+			qualityWeight: components.qualityScore
 		};
 
 		// Add scoring result and matched formats if available
@@ -319,7 +312,7 @@ export class ReleaseEnricher {
 				}
 			} catch (error) {
 				// TMDB matching is optional, don't fail the whole enrichment
-				logger.error('TMDB matching failed', error, { releaseTitle: release.title });
+				logger.error({ err: error, ...{ releaseTitle: release.title } }, 'TMDB matching failed');
 			}
 		}
 
@@ -396,14 +389,13 @@ export class ReleaseEnricher {
 	 */
 	private calculateTotalScoreWithComponents(
 		release: ReleaseResult,
-		normalizedQualityScore: number,
-		rawQualityScore: number,
+		qualityScore: number,
 		parsed: ReturnType<typeof parseRelease>,
 		quality?: EnhancedQualityResult,
 		packPreference?: PackPreference
 	): { totalScore: number; components: ScoreComponents } {
-		// Start with the normalized quality score as the base
-		const baseScore = normalizedQualityScore;
+		// Start with the quality score as the base
+		const baseScore = qualityScore;
 
 		// Enhancement bonus for PROPER/REPACK (quality fixes)
 		// Only apply if not already scored by the format matcher
@@ -439,8 +431,7 @@ export class ReleaseEnricher {
 
 		// Build components breakdown
 		const components: ScoreComponents = {
-			rawQualityScore,
-			normalizedQualityScore: baseScore,
+			qualityScore: baseScore,
 			enhancementBonus,
 			packBonus,
 			hardcodedSubsPenalty,
@@ -463,7 +454,6 @@ export class ReleaseEnricher {
 		const { totalScore } = this.calculateTotalScoreWithComponents(
 			release,
 			qualityScore,
-			quality?.rawScore ?? qualityScore,
 			parsed,
 			quality
 		);

@@ -2,7 +2,7 @@
  * Release Parser Types
  *
  * Types and enums for parsing release names to extract structured metadata
- * like resolution, source, codec, audio format, and TV episode information.
+ * like resolution, source, codec, canonical audio attributes, and TV episode information.
  */
 
 // =============================================================================
@@ -14,6 +14,7 @@ export type Resolution = '2160p' | '1080p' | '720p' | '480p' | 'unknown';
 export type Source =
 	| 'remux'
 	| 'bluray'
+	| 'hdrip'
 	| 'webdl'
 	| 'webrip'
 	| 'hdtv'
@@ -36,12 +37,11 @@ export type Codec =
 	| 'mpeg2'
 	| 'unknown';
 
+export type BitDepth = '8' | '10' | '12' | 'unknown';
+
 /**
  * HDR Format Types
- * - dolby-vision: Dolby Vision (with or without fallback)
- * - dolby-vision-hdr10: DV with HDR10 fallback layer (Profile 7/8)
- * - dolby-vision-hlg: DV with HLG fallback
- * - dolby-vision-sdr: DV with SDR fallback (compatibility mode)
+ * - dolby-vision: Dolby Vision
  * - hdr10+: Samsung's dynamic HDR format
  * - hdr10: Static HDR metadata
  * - hdr: Generic HDR (assume HDR10)
@@ -49,23 +49,11 @@ export type Codec =
  * - pq: Perceptual Quantizer
  * - sdr: Standard Dynamic Range (explicit)
  */
-export type HdrFormat =
-	| 'dolby-vision'
-	| 'dolby-vision-hdr10+'
-	| 'dolby-vision-hdr10'
-	| 'dolby-vision-hlg'
-	| 'dolby-vision-sdr'
-	| 'hdr10+'
-	| 'hdr10'
-	| 'hdr'
-	| 'hlg'
-	| 'pq'
-	| 'sdr'
-	| null;
+export type HdrFormat = 'dolby-vision' | 'hdr10+' | 'hdr10' | 'hdr' | 'hlg' | 'pq' | 'sdr' | null;
 
 /**
  * Audio Codec Types (base codec, not including Atmos modifier)
- * Profilarr treats Atmos as a separate stackable modifier
+ * Atmos is tracked separately via hasAtmos.
  */
 export type AudioCodec =
 	| 'truehd'
@@ -89,25 +77,6 @@ export type AudioCodec =
  * Detected from release title for metadata/display
  */
 export type AudioChannels = '7.1' | '5.1' | '2.0' | '1.0' | 'unknown';
-
-/**
- * Legacy AudioFormat type for backwards compatibility
- * @deprecated Use AudioCodec instead
- */
-export type AudioFormat =
-	| 'atmos'
-	| 'truehd'
-	| 'dts-x'
-	| 'dts-hdma'
-	| 'dts-hd'
-	| 'dts'
-	| 'dd+'
-	| 'dd'
-	| 'aac'
-	| 'flac'
-	| 'mp3'
-	| 'opus'
-	| 'unknown';
 
 /**
  * Parsed episode information for TV releases
@@ -149,23 +118,29 @@ export interface ParsedRelease {
 	source: Source;
 	codec: Codec;
 	hdr: HdrFormat;
-	audio: AudioFormat;
+	bitDepth: BitDepth;
 
-	// Enhanced audio info
+	// Canonical audio attributes
 	/** Audio codec (base codec without Atmos modifier) */
-	audioCodec?: AudioCodec;
+	audioCodec: AudioCodec;
 	/** Audio channel configuration */
-	audioChannels?: AudioChannels;
+	audioChannels: AudioChannels;
 	/** Whether Atmos object audio is present (stackable modifier) */
-	hasAtmos?: boolean;
+	hasAtmos: boolean;
 
 	// TV-specific information
 	/** Episode info if this appears to be a TV release */
 	episode?: EpisodeInfo;
 
 	// Additional metadata
-	/** Detected languages (ISO 639-1 codes) */
+	/** Detected languages from title (ISO 639-1 codes) */
 	languages: string[];
+
+	/** Source indexer language (ISO 639-1 code) - where the release came from */
+	sourceLanguage?: string;
+
+	/** Detected streaming service tag (AMZN, NF, MA, etc.) */
+	streamingService?: string;
 
 	/** Release group name */
 	releaseGroup?: string;
@@ -209,10 +184,11 @@ export const RESOLUTION_ORDER: Record<Resolution, number> = {
 export const SOURCE_ORDER: Record<Source, number> = {
 	remux: 10,
 	bluray: 9,
-	webdl: 8,
-	webrip: 7,
-	hdtv: 6,
-	dvd: 5,
+	hdrip: 8,
+	webdl: 7,
+	webrip: 6,
+	hdtv: 5,
+	dvd: 4,
 	screener: 3,
 	telecine: 2,
 	telesync: 1,
@@ -259,34 +235,10 @@ export const AUDIO_CODEC_ORDER: Record<AudioCodec, number> = {
 };
 
 /**
- * Audio quality hierarchy (higher = better quality)
- * @deprecated Use AUDIO_CODEC_ORDER instead
- */
-export const AUDIO_ORDER: Record<AudioFormat, number> = {
-	atmos: 10,
-	truehd: 9,
-	'dts-x': 8,
-	'dts-hdma': 7,
-	'dts-hd': 6,
-	flac: 5,
-	dts: 4,
-	'dd+': 3,
-	dd: 2,
-	opus: 2,
-	aac: 1,
-	mp3: 0,
-	unknown: -1
-};
-
-/**
  * HDR format quality hierarchy (higher = better/more capable)
  */
 export const HDR_ORDER: Record<NonNullable<HdrFormat>, number> = {
-	'dolby-vision-hdr10+': 11, // DV + HDR10+ fallback (ultimate combo)
-	'dolby-vision-hdr10': 10, // DV + HDR10 fallback (best compatibility)
-	'dolby-vision': 9, // DV generic
-	'dolby-vision-hlg': 8, // DV + HLG fallback
-	'dolby-vision-sdr': 5, // DV + SDR fallback (limited)
+	'dolby-vision': 9, // Dolby Vision
 	'hdr10+': 7, // Samsung dynamic HDR
 	hdr10: 6, // Static HDR
 	hdr: 5, // Generic HDR

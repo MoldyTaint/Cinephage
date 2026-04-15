@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import type { UnifiedTask } from '$lib/server/tasks/UnifiedTaskRegistry';
 	import type { TaskHistoryEntry } from '$lib/types/task';
 	import TaskTableRow from './TaskTableRow.svelte';
@@ -70,7 +71,7 @@
 						<circle cx="12" cy="12" r="10" />
 						<polyline points="12 6 12 12 16 14" />
 					</svg>
-					<span class="font-semibold">Scheduled Tasks</span>
+					<span class="font-semibold">{m.task_table_scheduledTasks()}</span>
 					<span class="badge badge-ghost badge-sm">{scheduledTasks.length}</span>
 				</div>
 				<svg
@@ -107,11 +108,11 @@
 					<table class="table w-full table-zebra">
 						<thead>
 							<tr>
-								<th class="w-1/3">Task</th>
-								<th>Interval</th>
-								<th>Last Run</th>
-								<th>Next Run</th>
-								<th>Status</th>
+								<th class="w-1/3">{m.task_table_colTask()}</th>
+								<th>{m.task_table_colInterval()}</th>
+								<th>{m.task_table_colLastRun()}</th>
+								<th>{m.task_table_colNextRun()}</th>
+								<th>{m.task_table_colStatus()}</th>
 								<th class="w-px"></th>
 							</tr>
 						</thead>
@@ -158,7 +159,7 @@
 							d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"
 						/>
 					</svg>
-					<span class="font-semibold">Maintenance Tasks</span>
+					<span class="font-semibold">{m.task_table_maintenanceTasks()}</span>
 					<span class="badge badge-ghost badge-sm">{maintenanceTasks.length}</span>
 				</div>
 				<svg
@@ -195,10 +196,10 @@
 					<table class="table w-full table-zebra">
 						<thead>
 							<tr>
-								<th class="w-1/3">Task</th>
-								<th>Type</th>
-								<th>Last Run</th>
-								<th>Status</th>
+								<th class="w-1/3">{m.task_table_colTask()}</th>
+								<th>{m.task_table_colType()}</th>
+								<th>{m.task_table_colLastRun()}</th>
+								<th>{m.task_table_colStatus()}</th>
 								<th class="w-px"></th>
 							</tr>
 						</thead>
@@ -240,8 +241,8 @@
 					<circle cx="12" cy="12" r="10" />
 					<polyline points="12 6 12 12 16 14" />
 				</svg>
-				<h3 class="text-lg font-semibold">No Tasks Available</h3>
-				<p class="text-base-content/60">No tasks are currently configured.</p>
+				<h3 class="text-lg font-semibold">{m.task_table_noTasks()}</h3>
+				<p class="text-base-content/60">{m.task_table_noTasksConfigured()}</p>
 			</div>
 		</div>
 	{/if}

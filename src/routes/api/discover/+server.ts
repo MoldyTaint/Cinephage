@@ -18,6 +18,7 @@ const discoverQuerySchema = z.object({
 	with_watch_providers: z.string().default(''),
 	watch_region: z.string().default('US'),
 	with_genres: z.string().default(''),
+	with_original_language: z.string().nullable().default(null),
 	'primary_release_date.gte': z.string().nullable().default(null),
 	'primary_release_date.lte': z.string().nullable().default(null),
 	'vote_average.gte': z.string().nullable().default(null),
@@ -100,6 +101,7 @@ export const GET: RequestHandler = async ({ url }) => {
 				withWatchProviders: params.with_watch_providers,
 				watchRegion: params.watch_region,
 				withGenres: params.with_genres,
+				withOriginalLanguage: params.with_original_language,
 				minDate: params['primary_release_date.gte'],
 				maxDate: params['primary_release_date.lte'],
 				minRating: params['vote_average.gte']
@@ -120,7 +122,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		});
 	} catch (e) {
 		const message = e instanceof Error ? e.message : 'Unknown error';
-		logger.error('Discover API error', e, { errorMessage: message });
+		logger.error({ err: e, ...{ errorMessage: message } }, 'Discover API error');
 		return json({ error: 'Failed to load content' }, { status: 500 });
 	}
 };

@@ -13,7 +13,9 @@ import type {
 	ProviderSearchOptions,
 	LanguageCode
 } from '../../types';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import * as cheerio from 'cheerio';
 import {
 	TooManyRequests,
@@ -84,10 +86,13 @@ export class YIFYSubtitlesProvider extends BaseSubtitleProvider {
 			if (!response.ok) {
 				if (response.status === 404) {
 					// Movie not found - not an error
-					logger.debug('[YIFY] Movie not found', {
-						imdbId: criteria.imdbId,
-						title: criteria.title
-					});
+					logger.debug(
+						{
+							imdbId: criteria.imdbId,
+							title: criteria.title
+						},
+						'[YIFY] Movie not found'
+					);
 					return results;
 				}
 				this.handleErrorResponse(response);

@@ -1,4 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { ALL_FORMATS } from './formats/index.js';
+
+vi.mock('./formats/registry.js', () => ({
+	getActiveFormats: () => ALL_FORMATS,
+	invalidateFormatCache: () => {}
+}));
+
 import { scoreRelease, isUpgrade } from './scorer';
 import { DEFAULT_PROFILES } from './profiles';
 import type { ScoringProfile } from './types';
@@ -336,6 +343,32 @@ describe('Profile-Specific Behavior', () => {
 		expect(profileNames).toContain('Balanced');
 		expect(profileNames).toContain('Compact');
 		expect(profileNames).toContain('Streamer');
+	});
+
+	it('should score canonical parsed audio fields from parser output', () => {
+		const compactProfile = DEFAULT_PROFILES.find((p) => p.name === 'Compact');
+		expect(compactProfile).toBeDefined();
+
+		if (compactProfile) {
+			const release =
+				'Avatar.Fire.and.Ash.2025.Hybrid.1080p.MA.WEBRIP.DDP7.1.DoVi.HDR10P.x265.HuN-TRiNiTY';
+			const result = scoreRelease(release, compactProfile);
+
+			expect(result.matchedFormats.some((f) => f.format.id === 'audio-ddplus')).toBe(true);
+			expect(result.matchedFormats.some((f) => f.format.id === 'codec-x265')).toBe(true);
+			expect(result.matchedFormats.some((f) => f.format.id === 'source-webrip')).toBe(true);
+		}
+	});
+
+	it('should not award YTS group score from indexer/title heuristics alone', () => {
+		const compactProfile = DEFAULT_PROFILES.find((p) => p.name === 'Compact');
+		expect(compactProfile).toBeDefined();
+
+		if (compactProfile) {
+			const result = scoreRelease('Avatar: Fire and Ash (2025) 720p web x264', compactProfile);
+
+			expect(result.matchedFormats.some((f) => f.format.id === 'group-yts')).toBe(false);
+		}
 	});
 });
 

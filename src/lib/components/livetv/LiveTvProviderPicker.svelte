@@ -2,6 +2,7 @@
 	import { Tv, Radio, List } from 'lucide-svelte';
 	import { providerDefinitions } from './providerDefinitions';
 	import type { LiveTvProviderType } from '$lib/types/livetv';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		onSelect: (providerType: LiveTvProviderType) => void;
@@ -12,7 +13,7 @@
 </script>
 
 <div class="space-y-4">
-	<p class="text-base-content/70">Select the type of Live TV provider you want to add:</p>
+	<p class="text-base-content/70">{m.livetv_providerPicker_heading()}</p>
 
 	<div class="space-y-2">
 		{#each providerDefinitions as provider (provider.id)}
@@ -38,7 +39,7 @@
 								{#if provider.requiresAuth}
 									<span class="badge badge-ghost badge-sm">{provider.authDescription}</span>
 								{:else}
-									<span class="badge badge-ghost badge-sm">No Auth</span>
+									<span class="badge badge-ghost badge-sm">{m.livetv_providerPicker_noAuth()}</span>
 								{/if}
 							</div>
 							<p class="mt-1 text-sm text-base-content/60">{provider.description}</p>
@@ -46,13 +47,19 @@
 							<!-- Features -->
 							<div class="mt-2 flex flex-wrap gap-1">
 								{#if provider.features.supportsEpg}
-									<span class="badge badge-ghost badge-xs">EPG</span>
+									<span class="badge badge-ghost badge-xs"
+										>{m.livetv_providerPicker_epgBadge()}</span
+									>
 								{/if}
 								{#if provider.features.supportsArchive}
-									<span class="badge badge-ghost badge-xs">Archive</span>
+									<span class="badge badge-ghost badge-xs"
+										>{m.livetv_providerPicker_archiveBadge()}</span
+									>
 								{/if}
 								{#if provider.features.supportsAutoRefresh}
-									<span class="badge badge-ghost badge-xs">Auto-refresh</span>
+									<span class="badge badge-ghost badge-xs"
+										>{m.livetv_providerPicker_autoRefreshBadge()}</span
+									>
 								{/if}
 							</div>
 						</div>

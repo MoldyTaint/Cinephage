@@ -13,7 +13,9 @@ import type {
 	ProviderSearchOptions,
 	LanguageCode
 } from '../../types';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import {
 	TooManyRequests,
 	ServiceUnavailable,
@@ -105,7 +107,7 @@ export class SubDLProvider extends BaseSubtitleProvider {
 			const data = await response.json();
 
 			if (!data.status) {
-				logger.warn('[SubDL] Search returned unsuccessful status', { data });
+				logger.warn({ data }, '[SubDL] Search returned unsuccessful status');
 				return results;
 			}
 
@@ -197,10 +199,13 @@ export class SubDLProvider extends BaseSubtitleProvider {
 			const buffer = Buffer.from(await response.arrayBuffer());
 
 			// SubDL typically returns zip files
-			logger.debug('[SubDL] Downloaded subtitle', {
-				url: downloadUrl,
-				size: buffer.length
-			});
+			logger.debug(
+				{
+					url: downloadUrl,
+					size: buffer.length
+				},
+				'[SubDL] Downloaded subtitle'
+			);
 
 			return buffer;
 		} catch (error) {

@@ -141,16 +141,22 @@ export class CookieStore {
 				});
 			}
 
-			log.debug('Saved cookies to database', {
-				indexerId,
-				cookieCount: Object.keys(mergedCookies).length,
-				expiry: expiry.toISOString()
-			});
+			log.debug(
+				{
+					indexerId,
+					cookieCount: Object.keys(mergedCookies).length,
+					expiry: expiry.toISOString()
+				},
+				'Saved cookies to database'
+			);
 		} catch (error) {
-			log.error('Failed to persist cookies to database', {
-				indexerId,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			log.error(
+				{
+					indexerId,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to persist cookies to database'
+			);
 			// Still keep in memory even if DB fails
 		}
 	}
@@ -191,17 +197,23 @@ export class CookieStore {
 					// Populate cache
 					cookieMemoryStore.set(indexerId, stored);
 
-					log.debug('Loaded cookies from database', {
-						indexerId,
-						cookieCount: Object.keys(cookies).length,
-						expiry: expiry.toISOString()
-					});
+					log.debug(
+						{
+							indexerId,
+							cookieCount: Object.keys(cookies).length,
+							expiry: expiry.toISOString()
+						},
+						'Loaded cookies from database'
+					);
 				}
 			} catch (error) {
-				log.error('Failed to load cookies from database', {
-					indexerId,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				log.error(
+					{
+						indexerId,
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'Failed to load cookies from database'
+				);
 			}
 		}
 
@@ -213,7 +225,7 @@ export class CookieStore {
 
 		// Check if overall session has expired
 		if (stored.expiry < now) {
-			log.debug('Session expired, clearing cookies', { indexerId });
+			log.debug({ indexerId }, 'Session expired, clearing cookies');
 			await this.clear(indexerId);
 			return null;
 		}
@@ -236,7 +248,7 @@ export class CookieStore {
 		}
 
 		if (expiredCount > 0) {
-			log.debug('Filtered expired cookies', { indexerId, expiredCount });
+			log.debug({ indexerId, expiredCount }, 'Filtered expired cookies');
 
 			// Update stored cookies
 			stored.cookies = validCookies;
@@ -348,12 +360,15 @@ export class CookieStore {
 				})
 				.where(eq(indexerStatus.indexerId, indexerId));
 
-			log.debug('Cleared cookies from database', { indexerId });
+			log.debug({ indexerId }, 'Cleared cookies from database');
 		} catch (error) {
-			log.error('Failed to clear cookies from database', {
-				indexerId,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			log.error(
+				{
+					indexerId,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to clear cookies from database'
+			);
 		}
 	}
 
@@ -377,9 +392,12 @@ export class CookieStore {
 
 			log.debug('Cleared all cookies from database');
 		} catch (error) {
-			log.error('Failed to clear all cookies from database', {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			log.error(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to clear all cookies from database'
+			);
 		}
 	}
 

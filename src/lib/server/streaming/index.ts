@@ -2,7 +2,7 @@
  * Streaming Module
  *
  * Provides streaming functionality for Cinephage including:
- * - Stream extraction from multiple providers via EncDec API
+ * - Cinephage API-backed playback sessions
  * - HLS playlist parsing and best quality selection
  * - Stream validation for playability verification
  * - Caching for stream URLs
@@ -16,20 +16,11 @@ export * from './types';
 // Configuration constants
 export * from './constants';
 
-// Caching
-export * from './cache';
-
 // HLS parsing
 export * from './hls';
 
 // Stream validation
 export { getStreamValidator, createStreamValidator, quickValidateStream } from './validation';
-
-// Stream providers (replaces extractors)
-export { extractStreams, getAvailableProviders, getProviderById, clearCaches } from './providers';
-
-// EncDec API client
-export { getEncDecClient, EncDecClient } from './enc-dec';
 
 // STRM file service
 export * from './StrmService';
@@ -41,16 +32,10 @@ export * from './url';
 export * from './settings';
 
 // Shared HTTP utilities (also available via ./utils)
-export {
-	fetchWithTimeout,
-	fetchPlaylist,
-	fetchAndRewritePlaylist,
-	rewritePlaylistUrls,
-	ensureVodPlaylist,
-	checkStreamAvailability,
-	checkHlsAvailability
-} from './utils';
+export { fetchWithTimeout, checkStreamAvailability, checkHlsAvailability } from './utils';
 
-// Stream resolution service
-export { resolveStream } from './StreamResolveService';
-export type { ResolveParams } from './StreamResolveService';
+// Cinephage API playback services
+export * from './cinephage-api/CinephageApiService';
+export * from './sessions/session-store';
+export * from './sessions/PlaybackSessionService';
+export * from './sessions/SessionProxyService';

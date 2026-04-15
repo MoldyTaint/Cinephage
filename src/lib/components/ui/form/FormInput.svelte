@@ -4,7 +4,7 @@
 	interface Props {
 		label: string;
 		id: string;
-		value: string | number;
+		value: string | number | undefined;
 		type?: 'text' | 'number' | 'password' | 'email' | 'url';
 		placeholder?: string;
 		helpText?: string;
@@ -64,7 +64,7 @@
 	<input
 		{id}
 		{type}
-		class="input-bordered input input-{size}"
+		class="input-bordered input input-{size} w-full"
 		class:input-error={error}
 		{placeholder}
 		{disabled}

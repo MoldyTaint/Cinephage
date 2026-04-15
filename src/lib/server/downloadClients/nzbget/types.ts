@@ -1,6 +1,14 @@
 export interface NzbgetGroup {
-	Name: string;
+	NZBID: number;
+	NZBName: string;
+	Category: string;
+	Status: string;
+	DownloadedSizeLo: number;
+	DownloadedSizeHi: number;
+	FileSizeLo: number;
+	FileSizeHi: number;
 	DestDir: string;
+	Name: string;
 }
 
 export interface NzbgetStatus {

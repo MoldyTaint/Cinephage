@@ -6,7 +6,6 @@
  *
  * NOTE: Scheduling-related settings (search intervals, trigger timing) have been
  * consolidated into MonitoringScheduler. This service now only handles:
- * - autoSyncEnabled: ffsubsync auto-sync toggle
  * - defaultLanguageProfileId: default profile for new media
  * - defaultFallbackLanguage: fallback when subtitle language can't be detected
  */
@@ -14,12 +13,12 @@
 import { db } from '$lib/server/db';
 import { subtitleSettings } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 
 /** All available subtitle settings (non-scheduler related) */
 export interface SubtitleSettingsData {
-	/** Whether to auto-sync downloaded subtitles with ffsubsync */
-	autoSyncEnabled: boolean;
 	/** Default language profile ID for new media */
 	defaultLanguageProfileId: string | null;
 	/** Fallback language code when subtitle file language cannot be detected (ISO 639-1) */
@@ -28,14 +27,12 @@ export interface SubtitleSettingsData {
 
 /** Default settings values */
 const DEFAULT_SETTINGS: SubtitleSettingsData = {
-	autoSyncEnabled: true,
 	defaultLanguageProfileId: null,
 	defaultFallbackLanguage: 'en'
 };
 
 /** Mapping between camelCase and database keys */
 const SETTING_KEY_MAP: Record<keyof SubtitleSettingsData, string> = {
-	autoSyncEnabled: 'auto_sync_enabled',
 	defaultLanguageProfileId: 'default_language_profile_id',
 	defaultFallbackLanguage: 'default_fallback_language'
 };
@@ -97,7 +94,7 @@ export class SubtitleSettingsService {
 		// Update cache
 		this.cache[key] = value;
 
-		logger.debug('Subtitle setting updated', { key, value });
+		logger.debug({ key, value }, 'Subtitle setting updated');
 	}
 
 	/**
@@ -187,7 +184,7 @@ export class SubtitleSettingsService {
 		}
 
 		if (typeof defaultValue === 'boolean') {
-			return (value === 'true') as SubtitleSettingsData[K];
+			return (value === 'true') as unknown as SubtitleSettingsData[K];
 		}
 
 		return value as SubtitleSettingsData[K];

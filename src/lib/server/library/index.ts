@@ -32,3 +32,4 @@ export {
 	triggerSeriesSearch
 } from './LibraryAddService.js';
 export { unmatchedFileService, UnmatchedFileService } from './unmatched-file-service.js';
+export { getLibraryEntityService, LibraryEntityService } from './LibraryEntityService.js';

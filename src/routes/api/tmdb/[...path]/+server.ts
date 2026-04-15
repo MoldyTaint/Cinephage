@@ -27,7 +27,7 @@ const handler: RequestHandler = async ({ params, url, locals, getClientAddress }
 		const rateLimit = checkRateLimit(`tmdb:${clientIp}`, { windowMs: 60_000, maxRequests: 1000 });
 
 		if (!rateLimit.allowed) {
-			log.warn('Rate limit exceeded', { clientIp });
+			log.warn({ clientIp }, 'Rate limit exceeded');
 			return json(
 				{ error: 'Rate limit exceeded', correlationId },
 				{
@@ -49,11 +49,11 @@ const handler: RequestHandler = async ({ params, url, locals, getClientAddress }
 	const endpoint = query ? `${path}?${query}` : path;
 
 	try {
-		log.debug('Proxying TMDB request', { endpoint });
+		log.debug({ endpoint }, 'Proxying TMDB request');
 
 		const data = await tmdb.fetch(endpoint);
 
-		log.debug('TMDB request successful', { endpoint });
+		log.debug({ endpoint }, 'TMDB request successful');
 
 		// Enrich results with library status if this is a list response
 		if (data && typeof data === 'object' && 'results' in data && Array.isArray(data.results)) {
@@ -67,7 +67,7 @@ const handler: RequestHandler = async ({ params, url, locals, getClientAddress }
 		const message = getErrorMessage(e);
 		const statusCode = isAppError(e) ? e.statusCode : 500;
 
-		log.error('TMDB proxy error', e, { endpoint });
+		log.error({ err: e, ...{ endpoint } }, 'TMDB proxy error');
 
 		return json({ error: message, correlationId }, { status: statusCode });
 	}

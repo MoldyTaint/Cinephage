@@ -110,7 +110,7 @@ export const GET: RequestHandler = async ({ params }) => {
 			total: activity.length
 		});
 	} catch (error) {
-		logger.error('[TaskHistoryActivity] Failed to fetch activity', { historyId, error });
+		logger.error({ historyId, error }, '[TaskHistoryActivity] Failed to fetch activity');
 		return json({ error: 'Failed to fetch activity' }, { status: 500 });
 	}
 };

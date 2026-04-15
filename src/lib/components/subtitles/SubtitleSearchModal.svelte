@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
-	import { X, Search, Loader2, RefreshCw, Subtitles } from 'lucide-svelte';
+	import { X, Search, Loader2, RefreshCw, Captions } from 'lucide-svelte';
 	import SubtitleSearchResultRow from './SubtitleSearchResultRow.svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 
@@ -37,6 +37,8 @@
 		isForced?: boolean;
 		isHearingImpaired?: boolean;
 		format?: string;
+		wasSynced?: boolean;
+		syncOffset?: number | null;
 	}
 
 	interface Props {
@@ -194,7 +196,9 @@
 				language: data.subtitle?.language ?? result.language,
 				isForced: result.isForced,
 				isHearingImpaired: result.isHearingImpaired,
-				format: data.subtitle?.format ?? result.format
+				format: data.subtitle?.format ?? result.format,
+				wasSynced: data.subtitle?.wasSynced,
+				syncOffset: data.subtitle?.syncOffset ?? null
 			});
 		} catch (err) {
 			downloadErrors.set(key, err instanceof Error ? err.message : 'Download failed');
@@ -222,7 +226,7 @@
 	<div class="mb-4 flex items-center justify-between">
 		<div>
 			<h3 id="subtitle-search-modal-title" class="flex items-center gap-2 text-lg font-bold">
-				<Subtitles size={20} class="text-primary" />
+				<Captions size={20} class="text-primary" />
 				Subtitle Search
 			</h3>
 			<p class="text-sm text-base-content/60">{title}</p>

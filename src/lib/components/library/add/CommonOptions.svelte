@@ -1,12 +1,17 @@
 <script lang="ts">
-	import { FolderOpen, BarChart3, Search, Subtitles } from 'lucide-svelte';
+	import { FolderOpen, BarChart3, Search, Captions } from 'lucide-svelte';
 	import { resolve } from '$app/paths';
+	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
+	import * as m from '$lib/paraglide/messages.js';
+	import { formatBytes } from '$lib/utils/format.js';
 
 	interface RootFolder {
 		id: string;
 		name: string;
 		path: string;
 		mediaType: string;
+		mediaSubType?: 'standard' | 'anime';
+		isDefault?: boolean;
 		freeSpaceBytes?: number | null;
 	}
 
@@ -26,6 +31,9 @@
 		selectedScoringProfile: string;
 		searchOnAdd: boolean;
 		wantsSubtitles: boolean;
+		requiredMediaSubType?: 'standard' | 'anime';
+		onSearchOnAddInput?: () => void;
+		onWantsSubtitlesInput?: () => void;
 	}
 
 	let {
@@ -35,21 +43,19 @@
 		selectedRootFolder = $bindable(),
 		selectedScoringProfile = $bindable(),
 		searchOnAdd = $bindable(),
-		wantsSubtitles = $bindable()
+		wantsSubtitles = $bindable(),
+		requiredMediaSubType,
+		onSearchOnAddInput,
+		onWantsSubtitlesInput
 	}: Props = $props();
 
-	const filteredRootFolders = $derived(rootFolders.filter((f) => f.mediaType === mediaType));
+	const filteredRootFolders = $derived(
+		sortRootFoldersForMediaType(rootFolders, mediaType, requiredMediaSubType)
+	);
 	const selectedRootFolderObj = $derived(
 		filteredRootFolders.find((f) => f.id === selectedRootFolder)
 	);
 	const selectedProfileObj = $derived(scoringProfiles.find((p) => p.id === selectedScoringProfile));
-
-	function formatBytes(bytes: number | null | undefined): string {
-		if (!bytes) return '';
-		const gb = bytes / (1024 * 1024 * 1024);
-		if (gb >= 1000) return `${(gb / 1024).toFixed(1)} TB`;
-		return `${gb.toFixed(1)} GB`;
-	}
 </script>
 
 <!-- Root Folder Select -->
@@ -57,14 +63,27 @@
 	<label class="label" for="root-folder">
 		<span class="label-text flex items-center gap-2 font-medium">
 			<FolderOpen class="h-4 w-4 shrink-0" />
-			Root Folder
+			{m.common_rootFolder()}
 		</span>
 	</label>
 	{#if filteredRootFolders.length === 0}
 		<div class="alert text-sm alert-warning">
 			<span
-				>No root folders configured for {mediaType === 'movie' ? 'movies' : 'TV shows'}.
-				<a href={resolve('/settings/general')} class="link">Add one in settings.</a>
+				>{#if requiredMediaSubType === 'anime'}
+					No Anime root folders are available for this media type.
+				{:else if requiredMediaSubType === 'standard'}
+					No Standard root folders are available for this media type.
+				{:else}
+					{m.library_add_noRootFoldersConfigured({
+						mediaType:
+							mediaType === 'movie'
+								? m.common_movies().toLowerCase()
+								: m.common_tvShows().toLowerCase()
+					})}
+				{/if}
+				<a href={resolve('/settings/general/libraries')} class="link"
+					>{m.library_add_addOneInSettings()}</a
+				>
 			</span>
 		</div>
 	{:else}
@@ -77,7 +96,7 @@
 				<option value={folder.id}>
 					{folder.name}
 					{#if folder.freeSpaceBytes}
-						({formatBytes(folder.freeSpaceBytes)} free)
+						({m.library_add_rootFolderFree({ free: formatBytes(folder.freeSpaceBytes) })})
 					{/if}
 				</option>
 			{/each}
@@ -95,7 +114,7 @@
 	<label class="label" for="scoring-profile">
 		<span class="label-text flex items-center gap-2 font-medium">
 			<BarChart3 class="h-4 w-4 shrink-0" />
-			Quality Profile
+			{m.common_qualityProfile()}
 		</span>
 	</label>
 	<select
@@ -118,14 +137,21 @@
 
 <!-- Search on Add Toggle -->
 <label class="flex cursor-pointer items-start gap-4 py-2">
-	<input type="checkbox" class="toggle mt-0.5 shrink-0 toggle-success" bind:checked={searchOnAdd} />
+	<input
+		type="checkbox"
+		class="toggle mt-0.5 shrink-0 toggle-success"
+		bind:checked={searchOnAdd}
+		onchange={() => onSearchOnAddInput?.()}
+	/>
 	<div class="min-w-0">
 		<span class="flex items-center gap-2 text-sm font-medium">
 			<Search class="h-4 w-4 shrink-0" />
-			Search Immediately
+			{m.library_add_searchImmediately()}
 		</span>
 		<p class="text-xs text-base-content/60">
-			{searchOnAdd ? 'Search and grab best release right now' : 'Let scheduler find releases later'}
+			{searchOnAdd
+				? m.library_add_searchImmediatelyDescYes()
+				: m.library_add_searchImmediatelyDescNo()}
 		</p>
 	</div>
 </label>
@@ -136,16 +162,17 @@
 		type="checkbox"
 		class="toggle mt-0.5 shrink-0 toggle-primary"
 		bind:checked={wantsSubtitles}
+		onchange={() => onWantsSubtitlesInput?.()}
 	/>
 	<div class="min-w-0">
 		<span class="flex items-center gap-2 text-sm font-medium">
-			<Subtitles class="h-4 w-4 shrink-0" />
-			Auto-Download Subtitles
+			<Captions class="h-4 w-4 shrink-0" />
+			{m.library_add_autoDownloadSubtitles()}
 		</span>
 		<p class="text-xs text-base-content/60">
 			{wantsSubtitles
-				? 'Will automatically search and download subtitles when available'
-				: 'Subtitles will not be downloaded automatically'}
+				? m.library_add_autoDownloadSubtitlesYes()
+				: m.library_add_autoDownloadSubtitlesNo()}
 		</p>
 	</div>
 </label>

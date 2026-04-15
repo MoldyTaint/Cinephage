@@ -17,6 +17,7 @@ import {
 import { eq, and, isNotNull } from 'drizzle-orm';
 import { getSubtitleSearchService } from '$lib/server/subtitles/services/SubtitleSearchService.js';
 import { getSubtitleDownloadService } from '$lib/server/subtitles/services/SubtitleDownloadService.js';
+import { getSubtitleProviderManager } from '$lib/server/subtitles/services/SubtitleProviderManager.js';
 import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
 import { logger } from '$lib/logging/index.js';
 import { normalizeLanguageCode } from '$lib/shared/languages';
@@ -48,11 +49,35 @@ export async function executeSubtitleUpgradeTask(
 ): Promise<TaskResult> {
 	const executedAt = new Date();
 	const taskHistoryId = ctx?.historyId;
-	logger.info('[SubtitleUpgradeTask] Starting subtitle upgrade search', { taskHistoryId });
+	logger.info({ taskHistoryId }, '[SubtitleUpgradeTask] Starting subtitle upgrade search');
 
 	let itemsProcessed = 0;
 	let itemsGrabbed = 0;
 	let errors = 0;
+
+	// Check provider availability before starting (was missing - unlike MissingSubtitlesTask)
+	const providerManager = getSubtitleProviderManager();
+	const availableProviders = await providerManager.getEnabledProviders();
+	if (availableProviders.length === 0) {
+		logger.warn(
+			'[SubtitleUpgradeTask] No subtitle providers available (all throttled or disabled), skipping upgrade search'
+		);
+		return {
+			taskType: 'subtitleUpgrade',
+			itemsProcessed: 0,
+			itemsGrabbed: 0,
+			errors: 0,
+			executedAt
+		};
+	}
+
+	logger.info(
+		{
+			count: availableProviders.length,
+			providers: availableProviders.map((p) => p.name)
+		},
+		'[SubtitleUpgradeTask] Available providers'
+	);
 
 	const searchService = getSubtitleSearchService();
 	const downloadService = getSubtitleDownloadService();
@@ -77,11 +102,14 @@ export async function executeSubtitleUpgradeTask(
 		itemsGrabbed += movieResults.upgraded;
 		errors += movieResults.errors;
 
-		logger.info('[SubtitleUpgradeTask] Movie subtitle upgrades completed', {
-			processed: movieResults.processed,
-			upgraded: movieResults.upgraded,
-			errors: movieResults.errors
-		});
+		logger.info(
+			{
+				processed: movieResults.processed,
+				upgraded: movieResults.upgraded,
+				errors: movieResults.errors
+			},
+			'[SubtitleUpgradeTask] Movie subtitle upgrades completed'
+		);
 
 		// Check for cancellation before episode upgrades
 		ctx?.checkCancelled();
@@ -101,17 +129,23 @@ export async function executeSubtitleUpgradeTask(
 		itemsGrabbed += episodeResults.upgraded;
 		errors += episodeResults.errors;
 
-		logger.info('[SubtitleUpgradeTask] Episode subtitle upgrades completed', {
-			processed: episodeResults.processed,
-			upgraded: episodeResults.upgraded,
-			errors: episodeResults.errors
-		});
+		logger.info(
+			{
+				processed: episodeResults.processed,
+				upgraded: episodeResults.upgraded,
+				errors: episodeResults.errors
+			},
+			'[SubtitleUpgradeTask] Episode subtitle upgrades completed'
+		);
 
-		logger.info('[SubtitleUpgradeTask] Task completed', {
-			totalProcessed: itemsProcessed,
-			totalUpgraded: itemsGrabbed,
-			totalErrors: errors
-		});
+		logger.info(
+			{
+				totalProcessed: itemsProcessed,
+				totalUpgraded: itemsGrabbed,
+				totalErrors: errors
+			},
+			'[SubtitleUpgradeTask] Task completed'
+		);
 
 		return {
 			taskType: 'subtitleUpgrade',
@@ -121,7 +155,7 @@ export async function executeSubtitleUpgradeTask(
 			executedAt
 		};
 	} catch (error) {
-		logger.error('[SubtitleUpgradeTask] Task failed', error);
+		logger.error({ err: error }, '[SubtitleUpgradeTask] Task failed');
 		throw error;
 	}
 }
@@ -159,9 +193,12 @@ async function searchMovieSubtitleUpgrades(
 		)
 		.limit(MAX_SUBTITLES_PER_RUN);
 
-	logger.debug('[SubtitleUpgradeTask] Found movie subtitles to evaluate', {
-		count: movieSubtitles.length
-	});
+	logger.debug(
+		{
+			count: movieSubtitles.length
+		},
+		'[SubtitleUpgradeTask] Found movie subtitles to evaluate'
+	);
 
 	// Group by movie to avoid duplicate searches
 	const movieMap = new Map<
@@ -178,11 +215,23 @@ async function searchMovieSubtitleUpgrades(
 		}
 	}
 
+	// Get provider manager for per-batch health checks
+	const providerManager = getSubtitleProviderManager();
+
 	// Process movies
 	const movieEntries = Array.from(movieMap.values());
 	for (let i = 0; i < movieEntries.length; i += MAX_CONCURRENT_SEARCHES) {
 		// Check for cancellation between batches
 		ctx?.checkCancelled();
+
+		// Re-check provider availability each batch (Bazarr pattern: break when all throttled)
+		const currentProviders = await providerManager.getEnabledProviders();
+		if (currentProviders.length === 0) {
+			logger.warn(
+				'[SubtitleUpgradeTask] All providers throttled or disabled mid-run, stopping movie upgrade search'
+			);
+			break;
+		}
 
 		const batch = movieEntries.slice(i, i + MAX_CONCURRENT_SEARCHES);
 
@@ -247,21 +296,27 @@ async function searchMovieSubtitleUpgrades(
 									replacedSubtitleId: existingSub.id
 								});
 
-								logger.info('[SubtitleUpgradeTask] Upgraded movie subtitle', {
-									movieId: movie.id,
-									language: normalizedLanguage,
-									oldScore,
-									newScore: betterMatch.matchScore
-								});
+								logger.info(
+									{
+										movieId: movie.id,
+										language: normalizedLanguage,
+										oldScore,
+										newScore: betterMatch.matchScore
+									},
+									'[SubtitleUpgradeTask] Upgraded movie subtitle'
+								);
 							} catch (downloadError) {
 								errorCount++;
 								movieError =
 									downloadError instanceof Error ? downloadError.message : String(downloadError);
-								logger.warn('[SubtitleUpgradeTask] Failed to download upgraded subtitle', {
-									movieId: movie.id,
-									language: normalizedExisting,
-									error: movieError
-								});
+								logger.warn(
+									{
+										movieId: movie.id,
+										language: normalizedExisting,
+										error: movieError
+									},
+									'[SubtitleUpgradeTask] Failed to download upgraded subtitle'
+								);
 							}
 						}
 					}
@@ -283,10 +338,13 @@ async function searchMovieSubtitleUpgrades(
 				} catch (error) {
 					errorCount++;
 					const errorMsg = error instanceof Error ? error.message : String(error);
-					logger.warn('[SubtitleUpgradeTask] Error processing movie subtitles', {
-						movieId: movie.id,
-						error: errorMsg
-					});
+					logger.warn(
+						{
+							movieId: movie.id,
+							error: errorMsg
+						},
+						'[SubtitleUpgradeTask] Error processing movie subtitles'
+					);
 
 					// Record error to monitoring history
 					await db.insert(monitoringHistory).values({
@@ -333,9 +391,12 @@ async function searchEpisodeSubtitleUpgrades(
 		.where(and(isNotNull(subtitles.episodeId), isNotNull(subtitles.matchScore)))
 		.limit(MAX_SUBTITLES_PER_RUN);
 
-	logger.debug('[SubtitleUpgradeTask] Found episode subtitles to evaluate', {
-		count: episodeSubtitles.length
-	});
+	logger.debug(
+		{
+			count: episodeSubtitles.length
+		},
+		'[SubtitleUpgradeTask] Found episode subtitles to evaluate'
+	);
 
 	// Group by episode
 	const episodeMap = new Map<
@@ -361,11 +422,23 @@ async function searchEpisodeSubtitleUpgrades(
 
 	const seriesMap = new Map(seriesData.map((s) => [s.id, s]));
 
+	// Get provider manager for per-batch health checks
+	const providerManager = getSubtitleProviderManager();
+
 	// Process episodes
 	const episodeEntries = Array.from(episodeMap.values());
 	for (let i = 0; i < episodeEntries.length; i += MAX_CONCURRENT_SEARCHES) {
 		// Check for cancellation between batches
 		ctx?.checkCancelled();
+
+		// Re-check provider availability each batch (Bazarr pattern: break when all throttled)
+		const currentProviders = await providerManager.getEnabledProviders();
+		if (currentProviders.length === 0) {
+			logger.warn(
+				'[SubtitleUpgradeTask] All providers throttled or disabled mid-run, stopping episode upgrade search'
+			);
+			break;
+		}
 
 		const batch = episodeEntries.slice(i, i + MAX_CONCURRENT_SEARCHES);
 
@@ -435,21 +508,27 @@ async function searchEpisodeSubtitleUpgrades(
 									replacedSubtitleId: existingSub.id
 								});
 
-								logger.info('[SubtitleUpgradeTask] Upgraded episode subtitle', {
-									episodeId: episode.id,
-									language: normalizedLanguage,
-									oldScore,
-									newScore: betterMatch.matchScore
-								});
+								logger.info(
+									{
+										episodeId: episode.id,
+										language: normalizedLanguage,
+										oldScore,
+										newScore: betterMatch.matchScore
+									},
+									'[SubtitleUpgradeTask] Upgraded episode subtitle'
+								);
 							} catch (downloadError) {
 								errorCount++;
 								episodeError =
 									downloadError instanceof Error ? downloadError.message : String(downloadError);
-								logger.warn('[SubtitleUpgradeTask] Failed to download upgraded subtitle', {
-									episodeId: episode.id,
-									language: normalizedExisting,
-									error: episodeError
-								});
+								logger.warn(
+									{
+										episodeId: episode.id,
+										language: normalizedExisting,
+										error: episodeError
+									},
+									'[SubtitleUpgradeTask] Failed to download upgraded subtitle'
+								);
 							}
 						}
 					}
@@ -472,10 +551,13 @@ async function searchEpisodeSubtitleUpgrades(
 				} catch (error) {
 					errorCount++;
 					const errorMsg = error instanceof Error ? error.message : String(error);
-					logger.warn('[SubtitleUpgradeTask] Error processing episode subtitles', {
-						episodeId: episode.id,
-						error: errorMsg
-					});
+					logger.warn(
+						{
+							episodeId: episode.id,
+							error: errorMsg
+						},
+						'[SubtitleUpgradeTask] Error processing episode subtitles'
+					);
 
 					// Record error to monitoring history
 					await db.insert(monitoringHistory).values({

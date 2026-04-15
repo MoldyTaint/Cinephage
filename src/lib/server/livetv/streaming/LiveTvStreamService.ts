@@ -158,10 +158,13 @@ export class LiveTvStreamService implements BackgroundService {
 
 				if (source.priority > 0) {
 					this.failovers++;
-					logger.info('Used backup source', {
-						backupAccountId: source.accountId,
-						failoverCount: this.failovers
-					});
+					logger.info(
+						{
+							backupAccountId: source.accountId,
+							failoverCount: this.failovers
+						},
+						'Used backup source'
+					);
 				}
 
 				return result;
@@ -169,11 +172,14 @@ export class LiveTvStreamService implements BackgroundService {
 				const err = error instanceof Error ? error : new Error(String(error));
 				errors.push({ source, error: err });
 
-				logger.warn('Source failed', {
-					accountId: source.accountId,
-					channelId: source.channelId,
-					error: err.message
-				});
+				logger.warn(
+					{
+						accountId: source.accountId,
+						channelId: source.channelId,
+						error: err.message
+					},
+					'Source failed'
+				);
 			}
 		}
 
@@ -251,17 +257,23 @@ export class LiveTvStreamService implements BackgroundService {
 		// SSRF protection: validate resolved URL (with DNS resolution)
 		const safetyCheck = await resolveAndValidateUrl(streamUrl);
 		if (!safetyCheck.safe) {
-			logger.warn('Blocked unsafe stream URL', {
-				url: streamUrl.substring(0, 100)
-			});
+			logger.warn(
+				{
+					url: streamUrl.substring(0, 100)
+				},
+				'Blocked unsafe stream URL'
+			);
 			throw new ValidationError(`Stream URL blocked: ${safetyCheck.reason}`);
 		}
 
-		logger.info('Stream URL resolved', {
-			url: streamUrl.substring(0, 100),
-			type: resolutionResult.type,
-			providerType
-		});
+		logger.info(
+			{
+				url: streamUrl.substring(0, 100),
+				type: resolutionResult.type,
+				providerType
+			},
+			'Stream URL resolved'
+		);
 
 		return {
 			url: streamUrl,
@@ -318,10 +330,13 @@ export class LiveTvStreamService implements BackgroundService {
 					const redirectUrl = new URL(location, currentStreamUrl).toString();
 					const redirectSafetyCheck = await resolveAndValidateUrl(redirectUrl);
 					if (!redirectSafetyCheck.safe) {
-						logger.warn('Blocked unsafe stream redirect', {
-							url: redirectUrl.substring(0, 100),
-							reason: redirectSafetyCheck.reason
-						});
+						logger.warn(
+							{
+								url: redirectUrl.substring(0, 100),
+								reason: redirectSafetyCheck.reason
+							},
+							'Blocked unsafe stream redirect'
+						);
 						throw new ValidationError(`Stream redirect blocked: ${redirectSafetyCheck.reason}`);
 					}
 					currentStreamUrl = redirectUrl;
@@ -334,10 +349,13 @@ export class LiveTvStreamService implements BackgroundService {
 		}
 
 		if (!response.ok) {
-			logger.error('Stream fetch failed', {
-				status: response.status,
-				statusText: response.statusText
-			});
+			logger.error(
+				{
+					status: response.status,
+					statusText: response.statusText
+				},
+				'Stream fetch failed'
+			);
 			throw new ExternalServiceError(
 				providerType,
 				`Upstream error: ${response.status}`,

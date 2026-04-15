@@ -1,22 +1,17 @@
 /**
- * Multi-Level Stream Cache
- *
- * Provides tiered caching for stream extraction with:
- * - Stream URL cache (successful extractions)
- * - Validation cache (stream validation results)
- * - Negative cache (failed extractions - prevents hammering)
+ * Multi-level cache for resolved streams and validation results.
  */
 
 import { logger } from '$lib/logging';
 import type { StreamValidation, ExtractionResult } from '../types';
 
-const streamLog = { logCategory: 'streams' as const };
+const streamLog = { logDomain: 'streams' as const };
 
 // ============================================================================
 // Configuration
 // ============================================================================
 
-/** Default TTL for successful stream extractions (15 minutes) */
+/** Default TTL for successful resolved streams (15 minutes) */
 const STREAM_CACHE_TTL_MS = 15 * 60 * 1000;
 
 /** Default TTL for validation results (5 minutes) */
@@ -29,12 +24,12 @@ const NEGATIVE_CACHE_TTL_MS = 2 * 60 * 1000;
 // Failure Type TTLs
 // ============================================================================
 
-/** Types of extraction failures with different retry strategies */
+/** Failure classes with different retry strategies */
 export type FailureType =
-	| 'provider_offline' // Provider unavailable - retry in 5 min
+	| 'provider_offline' // Upstream unavailable - retry in 5 min
 	| 'content_not_found' // Content doesn't exist - retry in 24 hours
 	| 'timeout' // Network timeout - retry quickly (30 sec)
-	| 'validation_failed' // HLS validation failed - retry in 2 min
+	| 'validation_failed' // Playlist validation failed - retry in 2 min
 	| 'rate_limited' // Rate limited - retry in 5 min
 	| 'unknown'; // Unknown failure - default 2 min
 
@@ -171,7 +166,7 @@ export class MultiLevelStreamCache {
 	// --------------------------------------------------------------------------
 
 	/**
-	 * Get cached extraction result
+	 * Get cached stream resolution result
 	 */
 	getStream(key: string): ExtractionResult | null {
 		const entry = this.streamCache.get(key);
@@ -195,7 +190,7 @@ export class MultiLevelStreamCache {
 	}
 
 	/**
-	 * Cache an extraction result
+	 * Cache a stream resolution result
 	 */
 	setStream(key: string, result: ExtractionResult, provider?: string, ttlMs?: number): void {
 		this.evictIfNeeded(this.streamCache, this.streamMaxSize);
@@ -206,12 +201,15 @@ export class MultiLevelStreamCache {
 			createdAt: Date.now()
 		});
 
-		logger.debug('Cached stream extraction', {
-			key,
-			sourceCount: result.sources.length,
-			provider,
-			...streamLog
-		});
+		logger.debug(
+			{
+				key,
+				sourceCount: result.sources.length,
+				provider,
+				...streamLog
+			},
+			'Cached stream resolution'
+		);
 	}
 
 	// --------------------------------------------------------------------------
@@ -301,13 +299,16 @@ export class MultiLevelStreamCache {
 			createdAt: Date.now()
 		});
 
-		logger.debug('Added negative cache entry', {
-			key,
-			reason,
-			provider,
-			ttlMs: ttlMs ?? this.negativeTtl,
-			...streamLog
-		});
+		logger.debug(
+			{
+				key,
+				reason,
+				provider,
+				ttlMs: ttlMs ?? this.negativeTtl,
+				...streamLog
+			},
+			'Added negative cache entry'
+		);
 	}
 
 	/**
@@ -329,14 +330,17 @@ export class MultiLevelStreamCache {
 			createdAt: Date.now()
 		});
 
-		logger.debug('Added negative cache entry with failure type', {
-			key,
-			reason,
-			failureType,
-			provider,
-			ttlMs,
-			...streamLog
-		});
+		logger.debug(
+			{
+				key,
+				reason,
+				failureType,
+				provider,
+				ttlMs,
+				...streamLog
+			},
+			'Added negative cache entry with failure type'
+		);
 	}
 
 	/**
@@ -497,7 +501,7 @@ export class MultiLevelStreamCache {
 		}
 
 		if (cleaned > 0) {
-			logger.debug('Cache cleanup completed', { cleaned, ...streamLog });
+			logger.debug({ cleaned, ...streamLog }, 'Cache cleanup completed');
 		}
 	}
 

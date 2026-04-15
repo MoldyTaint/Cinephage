@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { X, Loader2, Search, Tv } from 'lucide-svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface ChannelWithEpg {
 		id: string;
@@ -72,14 +73,14 @@
 
 			const res = await fetch(`/api/livetv/channels/with-epg?${params}`);
 			if (!res.ok) {
-				throw new Error('Failed to load channels');
+				throw new Error(m.livetv_epgSourcePicker_failedToLoad());
 			}
 
 			const data = await res.json();
 			// Filter out the excluded channel (the channel we're setting EPG source for)
 			channels = (data.items || []).filter((c: ChannelWithEpg) => c.id !== excludeChannelId);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load channels';
+			error = e instanceof Error ? e.message : m.livetv_epgSourcePicker_failedToLoad();
 			channels = [];
 		} finally {
 			loading = false;
@@ -94,14 +95,16 @@
 <ModalWrapper {open} {onClose} maxWidth="2xl" labelledBy="epg-source-picker-modal-title">
 	<!-- Header -->
 	<div class="mb-4 flex items-center justify-between">
-		<h3 id="epg-source-picker-modal-title" class="text-lg font-bold">Select EPG Source</h3>
+		<h3 id="epg-source-picker-modal-title" class="text-lg font-bold">
+			{m.livetv_epgSourcePicker_title()}
+		</h3>
 		<button class="btn btn-circle btn-ghost btn-sm" onclick={onClose}>
 			<X class="h-4 w-4" />
 		</button>
 	</div>
 
 	<p class="mb-4 text-sm text-base-content/60">
-		Select a channel to use as the EPG source. Only channels with EPG data are shown.
+		{m.livetv_epgSourcePicker_description()}
 	</p>
 
 	<!-- Search -->
@@ -111,7 +114,7 @@
 			<input
 				type="text"
 				class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
-				placeholder="Search channels..."
+				placeholder={m.livetv_epgSourcePicker_searchPlaceholder()}
 				bind:value={searchQuery}
 			/>
 		</div>
@@ -133,9 +136,9 @@
 		{:else if channels.length === 0}
 			<div class="py-8 text-center text-base-content/50">
 				{#if debouncedSearch}
-					No channels found matching "{debouncedSearch}"
+					{m.livetv_epgSourcePicker_noResults({ query: debouncedSearch })}
 				{:else}
-					No channels with EPG data available
+					{m.livetv_epgSourcePicker_noChannelsAvailable()}
 				{/if}
 			</div>
 		{:else}
@@ -158,7 +161,9 @@
 							<div class="flex items-center gap-2 text-xs text-base-content/50">
 								<span>{channel.accountName}</span>
 								<span>-</span>
-								<span>{channel.programCount} programs</span>
+								<span
+									>{m.livetv_epgSourcePicker_programsCount({ count: channel.programCount })}</span
+								>
 							</div>
 						</div>
 					</button>
@@ -169,6 +174,6 @@
 
 	<!-- Footer -->
 	<div class="modal-action">
-		<button class="btn btn-ghost" onclick={onClose}>Cancel</button>
+		<button class="btn btn-ghost" onclick={onClose}>{m.action_cancel()}</button>
 	</div>
 </ModalWrapper>

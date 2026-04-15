@@ -199,22 +199,25 @@ export const POST: RequestHandler = async () => {
 			Array.from(episodeGroups.values()).reduce((sum, ids) => sum + ids.length, 0);
 		result.collapsedDuplicates = scannedRowCount - result.total;
 
-		logger.info('[StrmReprobeAPI] Completed', {
-			total: result.total,
-			distinctTotal: distinctPaths.size,
-			updated: result.updated,
-			probeFallbackUsed: result.probeFallbackUsed,
-			failed: result.failed,
-			skipped: result.skipped,
-			skippedStreamer: result.skippedStreamer,
-			collapsedDuplicates: result.collapsedDuplicates
-		});
+		logger.info(
+			{
+				total: result.total,
+				distinctTotal: distinctPaths.size,
+				updated: result.updated,
+				probeFallbackUsed: result.probeFallbackUsed,
+				failed: result.failed,
+				skipped: result.skipped,
+				skippedStreamer: result.skippedStreamer,
+				collapsedDuplicates: result.collapsedDuplicates
+			},
+			'[StrmReprobeAPI] Completed'
+		);
 
 		result.distinctTotal = distinctPaths.size;
 		return json(result);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
-		logger.error('[StrmReprobeAPI] Failed', { error: message });
+		logger.error({ error: message }, '[StrmReprobeAPI] Failed');
 		return json(
 			{
 				success: false,

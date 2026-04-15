@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService';
 import { languageProfileCreateSchema } from '$lib/validation/schemas';
 import type { LanguagePreference } from '$lib/server/db/schema';
+import { parseBody } from '$lib/server/api/validate.js';
 
 /**
  * GET /api/subtitles/language-profiles
@@ -20,41 +21,17 @@ export const GET: RequestHandler = async () => {
  * Create a new language profile.
  */
 export const POST: RequestHandler = async ({ request }) => {
-	let data: unknown;
-	try {
-		data = await request.json();
-	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
-	}
-
-	const result = languageProfileCreateSchema.safeParse(data);
-
-	if (!result.success) {
-		return json(
-			{
-				error: 'Validation failed',
-				details: result.error.flatten()
-			},
-			{ status: 400 }
-		);
-	}
-
-	const validated = result.data;
+	const validated = await parseBody(request, languageProfileCreateSchema);
 	const service = LanguageProfileService.getInstance();
 
-	try {
-		const created = await service.createProfile({
-			name: validated.name,
-			languages: validated.languages as LanguagePreference[],
-			upgradesAllowed: validated.upgradesAllowed,
-			isDefault: validated.isDefault,
-			cutoffIndex: validated.cutoffIndex,
-			minimumScore: validated.minimumScore
-		});
+	const created = await service.createProfile({
+		name: validated.name,
+		languages: validated.languages as LanguagePreference[],
+		upgradesAllowed: validated.upgradesAllowed,
+		isDefault: validated.isDefault,
+		cutoffIndex: validated.cutoffIndex,
+		minimumScore: validated.minimumScore
+	});
 
-		return json({ success: true, profile: created });
-	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Unknown error';
-		return json({ error: message }, { status: 500 });
-	}
+	return json({ success: true, profile: created });
 };

@@ -5,64 +5,56 @@
 		Database,
 		Download,
 		Server,
-		Subtitles,
+		Captions,
 		Languages,
 		Monitor,
-		Shield,
+		Archive,
 		ChevronLeft,
 		ChevronRight
 	} from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let { children } = $props();
 
 	const navItems = [
 		{
-			href: '/settings/integrations',
-			label: 'Overview',
-			icon: Database,
-			exact: true
-		},
-		{
 			href: '/settings/integrations/indexers',
-			label: 'Indexers',
+			label: m.nav_indexers(),
 			icon: Database
 		},
 		{
 			href: '/settings/integrations/download-clients',
-			label: 'Download Clients',
+			label: m.nav_downloadClients(),
 			icon: Download
 		},
 		{
 			href: '/settings/integrations/nntp-servers',
-			label: 'NNTP Servers',
+			label: m.nav_nntpServers(),
 			icon: Server
 		},
 		{
 			href: '/settings/integrations/subtitle-providers',
-			label: 'Subtitle Providers',
-			icon: Subtitles
+			label: m.nav_subtitleProviders(),
+			icon: Captions
 		},
 		{
 			href: '/settings/integrations/language-profiles',
-			label: 'Language Profiles',
+			label: m.nav_languageProfiles(),
 			icon: Languages
 		},
 		{
 			href: '/settings/integrations/media-browsers',
-			label: 'Media Servers',
+			label: m.nav_mediaServers(),
 			icon: Monitor
 		},
 		{
-			href: '/settings/integrations/captcha',
-			label: 'Captcha Solver',
-			icon: Shield
+			href: '/settings/integrations/streaming',
+			label: m.settings_streaming_heading(),
+			icon: Archive
 		}
 	];
 
-	function isActive(href: string, exact: boolean = false): boolean {
-		if (exact) {
-			return $page.url.pathname === href;
-		}
+	function isActive(href: string): boolean {
 		return $page.url.pathname.startsWith(href);
 	}
 
@@ -122,15 +114,14 @@
 			>
 				<nav
 					class="-mb-px flex min-w-max items-stretch gap-1 sm:gap-4"
-					aria-label="Integration tabs"
+					aria-label={m.settings_integrations_tabsAriaLabel()}
 				>
 					{#each navItems as item (item.href)}
 						{@const Icon = item.icon}
 						<a
 							href={resolvePath(item.href)}
 							class="flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 py-3 text-xs font-medium whitespace-nowrap transition-colors sm:gap-2 sm:px-3 sm:text-sm {isActive(
-								item.href,
-								item.exact
+								item.href
 							)
 								? 'border-primary text-primary'
 								: 'border-transparent text-base-content/70 hover:border-base-300 hover:text-base-content'}"

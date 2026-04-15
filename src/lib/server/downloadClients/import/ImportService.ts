@@ -10,9 +10,10 @@
 
 import { EventEmitter } from 'events';
 import { stat } from 'fs/promises';
-import { join, basename, extname } from 'path';
+import { join, basename, dirname, extname } from 'path';
 import { randomUUID } from 'node:crypto';
 import { db } from '$lib/server/db';
+import { eventBuffer } from '$lib/server/sse/EventBuffer.js';
 import {
 	downloadQueue,
 	downloadHistory,
@@ -45,7 +46,7 @@ import {
 	type MediaNamingInfo
 } from '$lib/server/library/naming/NamingService';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import {
 	DOWNLOAD,
 	EXCLUDED_FILE_PATTERNS,
@@ -59,8 +60,12 @@ import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import {
 	getMediaParseStem,
 	matchEpisodesByIdentifier,
-	resolveTvEpisodeIdentifier
+	resolveTvEpisodeIdentifier,
+	type ResolvedTvEpisodeIdentifier
 } from '$lib/server/library/tv-episode-resolver.js';
+import { isImportedQueueStatus, type QueueStatus } from '$lib/types/queue';
+
+const logger = createChildLogger({ logDomain: 'imports' as const });
 
 /**
  * Import result for a single file
@@ -160,6 +165,10 @@ export class ImportService extends EventEmitter {
 		this.parser = new ReleaseParser();
 	}
 
+	private isAlreadyImportedStatus(status: QueueStatus | string | null | undefined): boolean {
+		return status === 'imported' || status === 'seeding-imported';
+	}
+
 	static getInstance(): ImportService {
 		if (!ImportService.instance) {
 			ImportService.instance = new ImportService();
@@ -186,9 +195,12 @@ export class ImportService extends EventEmitter {
 		if (!this.retryTimer) {
 			this.retryTimer = setInterval(() => {
 				this.retryPendingImports().catch((err) => {
-					logger.warn('Error retrying pending imports', {
-						error: err instanceof Error ? err.message : String(err)
-					});
+					logger.warn(
+						{
+							error: err instanceof Error ? err.message : String(err)
+						},
+						'Error retrying pending imports'
+					);
 				});
 			}, IMPORT_RETRY_DELAY_MS);
 		}
@@ -244,12 +256,15 @@ export class ImportService extends EventEmitter {
 				continue;
 			}
 
-			logger.info('Found pending import from previous run', {
-				id: item.id,
-				title: item.title,
-				status: item.status,
-				progress: item.progress
-			});
+			logger.info(
+				{
+					id: item.id,
+					title: item.title,
+					status: item.status,
+					progress: item.progress
+				},
+				'Found pending import from previous run'
+			);
 			this.queueImport(item.id);
 		}
 	}
@@ -277,7 +292,7 @@ export class ImportService extends EventEmitter {
 	async requestImport(queueItemId: string): Promise<ImportRequestResult> {
 		// Check if already in processing queue
 		if (this.processingQueue.includes(queueItemId)) {
-			logger.debug('Import already queued', { queueItemId });
+			logger.debug({ queueItemId }, 'Import already queued');
 			return { status: 'already_importing' };
 		}
 
@@ -296,8 +311,15 @@ export class ImportService extends EventEmitter {
 		if (queueItem.status === 'importing') {
 			return { status: 'already_importing' };
 		}
-		if (queueItem.status === 'imported') {
+		if (this.isAlreadyImportedStatus(queueItem.status)) {
 			this.pendingImports.delete(queueItemId);
+			logger.debug(
+				{
+					queueItemId,
+					status: queueItem.status
+				},
+				'Skipping import request for already imported item'
+			);
 			return { status: 'already_imported' };
 		}
 
@@ -328,11 +350,14 @@ export class ImportService extends EventEmitter {
 		// Path is valid, clear from pending and queue the import
 		this.pendingImports.delete(queueItemId);
 
-		logger.info('Queueing import for completed download', {
-			queueId: queueItemId,
-			title: queueItem.title,
-			outputPath: queueItem.outputPath
-		});
+		logger.info(
+			{
+				queueId: queueItemId,
+				title: queueItem.title,
+				outputPath: queueItem.outputPath
+			},
+			'Queueing import for completed download'
+		);
 
 		this.queueImport(queueItemId);
 		return { status: 'queued' };
@@ -346,11 +371,14 @@ export class ImportService extends EventEmitter {
 		const attempts = (existing?.attempts ?? 0) + 1;
 
 		if (attempts > MAX_IMPORT_ATTEMPTS) {
-			logger.error('Max import retry attempts reached', {
-				queueItemId,
-				attempts,
-				reason
-			});
+			logger.error(
+				{
+					queueItemId,
+					attempts,
+					reason
+				},
+				'Max import retry attempts reached'
+			);
 			this.pendingImports.delete(queueItemId);
 			// Mark as failed in the database
 			downloadMonitor.markFailed(
@@ -366,11 +394,14 @@ export class ImportService extends EventEmitter {
 			reason
 		});
 
-		logger.info('Tracking pending import for retry', {
-			queueItemId,
-			attempts,
-			reason
-		});
+		logger.info(
+			{
+				queueItemId,
+				attempts,
+				reason
+			},
+			'Tracking pending import for retry'
+		);
 	}
 
 	/**
@@ -399,7 +430,7 @@ export class ImportService extends EventEmitter {
 
 			if (
 				!queueItem ||
-				queueItem.status === 'imported' ||
+				this.isAlreadyImportedStatus(queueItem.status) ||
 				queueItem.status === 'removed' ||
 				queueItem.status === 'failed'
 			) {
@@ -408,11 +439,14 @@ export class ImportService extends EventEmitter {
 				continue;
 			}
 
-			logger.info('Retrying pending import', {
-				queueItemId,
-				attempt: info.attempts + 1,
-				reason: info.reason
-			});
+			logger.info(
+				{
+					queueItemId,
+					attempt: info.attempts + 1,
+					reason: info.reason
+				},
+				'Retrying pending import'
+			);
 
 			// Try to request import again (will validate path and queue if ready)
 			await this.requestImport(queueItemId);
@@ -433,10 +467,13 @@ export class ImportService extends EventEmitter {
 		try {
 			await this.processImport(queueItemId);
 		} catch (error) {
-			logger.error('Import processing error', {
-				queueItemId,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.error(
+				{
+					queueItemId,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Import processing error'
+			);
 		}
 
 		this.isProcessing = false;
@@ -447,7 +484,7 @@ export class ImportService extends EventEmitter {
 	 * Process a single import
 	 */
 	async processImport(queueItemId: string): Promise<ImportJobResult> {
-		logger.info('Processing import', { queueItemId, category: 'imports' });
+		logger.info({ queueItemId }, 'Processing import');
 
 		// Get queue item
 		const [queueItem] = await db
@@ -468,7 +505,7 @@ export class ImportService extends EventEmitter {
 		}
 
 		// Check if already imported
-		if (queueItem.status === 'imported') {
+		if (isImportedQueueStatus(queueItem.status)) {
 			return {
 				success: true,
 				queueItemId,
@@ -501,11 +538,13 @@ export class ImportService extends EventEmitter {
 			workerManager.spawnInBackground(worker);
 		} catch (e) {
 			// Concurrency limit reached - continue without worker tracking
-			logger.warn('Could not create import worker', {
-				queueItemId,
-				error: e instanceof Error ? e.message : String(e),
-				category: 'imports'
-			});
+			logger.warn(
+				{
+					queueItemId,
+					error: e instanceof Error ? e.message : String(e)
+				},
+				'Could not create import worker'
+			);
 		}
 
 		// Mark as importing using atomic operation
@@ -583,21 +622,24 @@ export class ImportService extends EventEmitter {
 
 						if (downloadInfo) {
 							canMoveFiles = downloadInfo.canMoveFiles;
-							logger.debug('Determined import mode from download client', {
-								canMoveFiles,
-								status: downloadInfo.status,
-								protocol: queueItem.protocol,
-								downloadId
-							});
+							logger.debug(
+								{
+									canMoveFiles,
+									status: downloadInfo.status,
+									protocol: queueItem.protocol,
+									downloadId
+								},
+								'Determined import mode from download client'
+							);
 						}
 					}
 				} catch (err) {
 					logger.warn(
-						'Failed to get download info for import mode detection, defaulting to hardlink',
 						{
 							error: err instanceof Error ? err.message : String(err),
 							queueItemId
-						}
+						},
+						'Failed to get download info for import mode detection, defaulting to hardlink'
 					);
 					// If we can't determine, prefer hardlink/copy (safer for seeding)
 					canMoveFiles = queueItem.protocol === 'usenet';
@@ -716,10 +758,13 @@ export class ImportService extends EventEmitter {
 				.map((f) => `${basename(f.path)} (${f.extension})`)
 				.join(', ');
 			result.error = `Caution: Found potentially dangerous files: ${fileList}`;
-			logger.warn('Rejecting import due to dangerous files', {
-				downloadPath,
-				dangerousFiles: dangerousScan.dangerousFiles
-			});
+			logger.warn(
+				{
+					downloadPath,
+					dangerousFiles: dangerousScan.dangerousFiles
+				},
+				'Rejecting import due to dangerous files'
+			);
 			await downloadMonitor.markFailed(queueItem.id, result.error);
 			worker.log('error', result.error);
 			return result;
@@ -764,10 +809,13 @@ export class ImportService extends EventEmitter {
 
 		// Log upgrade detection but DON'T delete old files yet - wait until new file is imported
 		if (existingFiles.length > 0 && isUpgrade) {
-			logger.info('Upgrade detected - will replace existing files after successful import', {
-				movieId: movie.id,
-				existingCount: existingFiles.length
-			});
+			logger.info(
+				{
+					movieId: movie.id,
+					existingCount: existingFiles.length
+				},
+				'Upgrade detected - will replace existing files after successful import'
+			);
 		}
 
 		// Transfer the file FIRST (keep old file until new one is successfully imported)
@@ -827,6 +875,7 @@ export class ImportService extends EventEmitter {
 			dateAdded: new Date().toISOString(),
 			sceneName: importedMetadata.sceneName,
 			releaseGroup: importedMetadata.releaseGroup,
+			edition: importedMetadata.edition,
 			quality: importedMetadata.quality,
 			mediaInfo,
 			infoHash: queueItem.infoHash ?? undefined
@@ -837,7 +886,7 @@ export class ImportService extends EventEmitter {
 			// Update existing record instead of creating duplicate
 			fileId = existingFileRecord[0].id;
 			await db.update(movieFiles).set(fileData).where(eq(movieFiles.id, fileId));
-			logger.info('Updated existing movie file record', { movieId: movie.id, fileId });
+			logger.info({ movieId: movie.id, fileId }, 'Updated existing movie file record');
 		} else {
 			// Create new file record
 			fileId = randomUUID();
@@ -860,10 +909,13 @@ export class ImportService extends EventEmitter {
 		// NOW delete old files (after successful import - so media is never missing)
 		const deletedFileIds: string[] = [];
 		if (existingFiles.length > 0 && isUpgrade) {
-			logger.info('Import successful - now deleting old files', {
-				movieId: movie.id,
-				existingCount: existingFiles.length
-			});
+			logger.info(
+				{
+					movieId: movie.id,
+					existingCount: existingFiles.length
+				},
+				'Import successful - now deleting old files'
+			);
 
 			for (const oldFile of existingFiles) {
 				// Don't delete the file we just created/updated
@@ -871,18 +923,24 @@ export class ImportService extends EventEmitter {
 
 				const deleteResult = await this.deleteMovieFile(oldFile.id, movie.id);
 				if (deleteResult.success) {
-					logger.info('Deleted old movie file after upgrade', {
-						movieId: movie.id,
-						oldFileId: oldFile.id,
-						oldPath: oldFile.relativePath
-					});
+					logger.info(
+						{
+							movieId: movie.id,
+							oldFileId: oldFile.id,
+							oldPath: oldFile.relativePath
+						},
+						'Deleted old movie file after upgrade'
+					);
 					deletedFileIds.push(oldFile.id);
 				} else {
-					logger.warn('Failed to delete old movie file after upgrade', {
-						movieId: movie.id,
-						oldFileId: oldFile.id,
-						error: deleteResult.error
-					});
+					logger.warn(
+						{
+							movieId: movie.id,
+							oldFileId: oldFile.id,
+							error: deleteResult.error
+						},
+						'Failed to delete old movie file after upgrade'
+					);
 				}
 			}
 		}
@@ -913,18 +971,20 @@ export class ImportService extends EventEmitter {
 			quality: fileData.quality
 		});
 
-		logger.info('Movie imported successfully', {
-			movieId: movie.id,
-			title: movie.title,
-			destPath,
-			wasUpgrade: isUpgrade,
-			replacedFiles: deletedFileIds.length,
-			category: 'imports'
-		});
+		logger.info(
+			{
+				movieId: movie.id,
+				title: movie.title,
+				destPath,
+				wasUpgrade: isUpgrade,
+				replacedFiles: deletedFileIds.length
+			},
+			'Movie imported successfully'
+		);
 
-		// Emit event for SSE clients
-		this.emit('file:imported', {
-			mediaType: 'movie',
+		// Emit event for SSE clients and buffer for replay
+		const movieEvent = {
+			mediaType: 'movie' as const,
 			movieId: movie.id,
 			file: {
 				id: fileId,
@@ -935,28 +995,37 @@ export class ImportService extends EventEmitter {
 				releaseGroup: fileData.releaseGroup,
 				quality: fileData.quality,
 				mediaInfo,
-				edition: undefined
+				edition: fileData.edition
 			},
 			wasUpgrade: isUpgrade,
-			replacedFileIds: deletedFileIds.length > 0 ? deletedFileIds : undefined
-		});
+			replacedFileIds: deletedFileIds.length > 0 ? deletedFileIds : undefined,
+			timestamp: Date.now()
+		};
+		this.emit('file:imported', movieEvent);
+		eventBuffer.add(movieEvent);
 		libraryMediaEvents.emitMovieUpdated(movie.id);
 
 		// Trigger subtitle search asynchronously (don't await to avoid blocking)
 		this.triggerSubtitleSearch('movie', movie.id).catch((err) => {
-			logger.warn('[ImportService] Failed to trigger subtitle search for movie', {
-				movieId: movie.id,
-				error: err instanceof Error ? err.message : String(err)
-			});
+			logger.warn(
+				{
+					movieId: movie.id,
+					error: err instanceof Error ? err.message : String(err)
+				},
+				'[ImportService] Failed to trigger subtitle search for movie'
+			);
 		});
 
 		// For usenet downloads, delete source folder (no seeding needed)
 		if (queueItem.protocol === 'usenet' && queueItem.outputPath) {
 			this.cleanupUsenetSource(queueItem.outputPath).catch((err) => {
-				logger.warn('[ImportService] Failed to cleanup usenet source', {
-					outputPath: queueItem.outputPath,
-					error: err instanceof Error ? err.message : String(err)
-				});
+				logger.warn(
+					{
+						outputPath: queueItem.outputPath,
+						error: err instanceof Error ? err.message : String(err)
+					},
+					'[ImportService] Failed to cleanup usenet source'
+				);
 			});
 		}
 
@@ -1038,10 +1107,13 @@ export class ImportService extends EventEmitter {
 				.map((f) => `${basename(f.path)} (${f.extension})`)
 				.join(', ');
 			result.error = `Caution: Found potentially dangerous files: ${fileList}`;
-			logger.warn('Rejecting import due to dangerous files', {
-				downloadPath,
-				dangerousFiles: dangerousScan.dangerousFiles
-			});
+			logger.warn(
+				{
+					downloadPath,
+					dangerousFiles: dangerousScan.dangerousFiles
+				},
+				'Rejecting import due to dangerous files'
+			);
 			await downloadMonitor.markFailed(queueItem.id, result.error);
 			worker.log('error', result.error);
 			return result;
@@ -1072,13 +1144,15 @@ export class ImportService extends EventEmitter {
 						error: errorMessage
 					});
 					worker.fileProcessed(basename(videoFile.path), false, errorMessage);
-					logger.warn('Failed to import episode file', {
-						seriesId: seriesData.id,
-						seriesTitle: seriesData.title,
-						sourcePath: videoFile.path,
-						error: errorMessage,
-						category: 'imports'
-					});
+					logger.warn(
+						{
+							seriesId: seriesData.id,
+							seriesTitle: seriesData.title,
+							sourcePath: videoFile.path,
+							error: errorMessage
+						},
+						'Failed to import episode file'
+					);
 					continue;
 				}
 
@@ -1106,13 +1180,15 @@ export class ImportService extends EventEmitter {
 				} else {
 					result.failedFiles.push(importResult);
 					worker.fileProcessed(basename(videoFile.path), false, importResult.error);
-					logger.warn('Failed to import episode file', {
-						seriesId: seriesData.id,
-						seriesTitle: seriesData.title,
-						sourcePath: importResult.sourcePath,
-						error: importResult.error,
-						category: 'imports'
-					});
+					logger.warn(
+						{
+							seriesId: seriesData.id,
+							seriesTitle: seriesData.title,
+							sourcePath: importResult.sourcePath,
+							error: importResult.error
+						},
+						'Failed to import episode file'
+					);
 				}
 			} catch (error) {
 				const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1122,13 +1198,15 @@ export class ImportService extends EventEmitter {
 					error: errorMessage
 				});
 				worker.fileProcessed(basename(videoFile.path), false, errorMessage);
-				logger.error('Exception while importing episode file', {
-					seriesId: seriesData.id,
-					seriesTitle: seriesData.title,
-					sourcePath: videoFile.path,
-					error: errorMessage,
-					category: 'imports'
-				});
+				logger.error(
+					{
+						seriesId: seriesData.id,
+						seriesTitle: seriesData.title,
+						sourcePath: videoFile.path,
+						error: errorMessage
+					},
+					'Exception while importing episode file'
+				);
 			}
 		}
 
@@ -1154,30 +1232,39 @@ export class ImportService extends EventEmitter {
 				quality: representativeImport?.quality
 			});
 
-			logger.info('Series episodes imported', {
-				seriesId: seriesData.id,
-				title: seriesData.title,
-				importedCount: result.importedFiles.length,
-				failedCount: result.failedFiles.length
-			});
+			logger.info(
+				{
+					seriesId: seriesData.id,
+					title: seriesData.title,
+					importedCount: result.importedFiles.length,
+					failedCount: result.failedFiles.length
+				},
+				'Series episodes imported'
+			);
 
 			// Trigger subtitle search for each imported episode asynchronously
 			if (importedFileIds.length > 0) {
 				this.triggerSubtitleSearchForEpisodeFiles(importedFileIds).catch((err) => {
-					logger.warn('[ImportService] Failed to trigger subtitle search for episodes', {
-						seriesId: seriesData.id,
-						error: err instanceof Error ? err.message : String(err)
-					});
+					logger.warn(
+						{
+							seriesId: seriesData.id,
+							error: err instanceof Error ? err.message : String(err)
+						},
+						'[ImportService] Failed to trigger subtitle search for episodes'
+					);
 				});
 			}
 
 			// For usenet downloads, delete source folder (no seeding needed)
 			if (queueItem.protocol === 'usenet' && queueItem.outputPath) {
 				this.cleanupUsenetSource(queueItem.outputPath).catch((err) => {
-					logger.warn('[ImportService] Failed to cleanup usenet source', {
-						outputPath: queueItem.outputPath,
-						error: err instanceof Error ? err.message : String(err)
-					});
+					logger.warn(
+						{
+							outputPath: queueItem.outputPath,
+							error: err instanceof Error ? err.message : String(err)
+						},
+						'[ImportService] Failed to cleanup usenet source'
+					);
 				});
 			}
 		} else {
@@ -1191,6 +1278,61 @@ export class ImportService extends EventEmitter {
 	/**
 	 * Import a single episode file
 	 */
+	private resolveEpisodeIdentifierWithFallback(
+		videoFilePath: string,
+		queueItem: Pick<typeof downloadQueue.$inferSelect, 'title' | 'seasonNumber'>,
+		seriesType: 'standard' | 'anime' | 'daily'
+	): ResolvedTvEpisodeIdentifier | null {
+		const seasonHint = queueItem.seasonNumber ?? undefined;
+		const candidates: Array<{
+			source: 'file' | 'queueTitle' | 'parentFolder';
+			value?: string | null;
+		}> = [
+			{ source: 'file', value: videoFilePath },
+			{ source: 'queueTitle', value: queueItem.title },
+			{ source: 'parentFolder', value: basename(dirname(videoFilePath)) }
+		];
+		const seenStems = new Set<string>();
+
+		for (const candidate of candidates) {
+			if (!candidate.value) continue;
+			const stem = getMediaParseStem(candidate.value);
+			const normalizedStem = stem.trim().toLowerCase();
+			if (!normalizedStem || seenStems.has(normalizedStem)) {
+				continue;
+			}
+			seenStems.add(normalizedStem);
+
+			const parsed = this.parser.parse(stem);
+			const identifier = resolveTvEpisodeIdentifier({
+				filePath: videoFilePath,
+				fileName: stem,
+				parsed,
+				seasonHint,
+				seriesType
+			});
+
+			if (!identifier) {
+				continue;
+			}
+
+			if (candidate.source !== 'file') {
+				logger.info(
+					{
+						sourcePath: videoFilePath,
+						fallbackSource: candidate.source,
+						fallbackToken: stem
+					},
+					'[ImportService] Resolved episode identifier from fallback context'
+				);
+			}
+
+			return identifier;
+		}
+
+		return null;
+	}
+
 	private async importEpisodeFile(
 		videoFile: { path: string; size: number },
 		seriesData: typeof series.$inferSelect,
@@ -1198,19 +1340,22 @@ export class ImportService extends EventEmitter {
 		queueItem: typeof downloadQueue.$inferSelect,
 		canMoveFiles: boolean
 	): Promise<ImportResult> {
-		// Parse episode info from filename
-		const parsed = this.parser.parse(getMediaParseStem(videoFile.path));
-		const identifier = resolveTvEpisodeIdentifier({
-			filePath: videoFile.path,
-			parsed,
-			seasonHint: queueItem.seasonNumber ?? undefined,
-			seriesType:
-				seriesData.seriesType === 'anime' || seriesData.seriesType === 'daily'
-					? seriesData.seriesType
-					: 'standard'
-		});
+		const normalizedSeriesType =
+			seriesData.seriesType === 'anime' || seriesData.seriesType === 'daily'
+				? seriesData.seriesType
+				: 'standard';
 
-		if (!identifier) {
+		// Parse episode info from filename/release context (fallbacks handle obfuscated basenames).
+		const resolvedIdentifier = this.resolveEpisodeIdentifierWithFallback(
+			videoFile.path,
+			{
+				title: queueItem.title,
+				seasonNumber: queueItem.seasonNumber
+			},
+			normalizedSeriesType
+		);
+
+		if (!resolvedIdentifier) {
 			return {
 				success: false,
 				sourcePath: videoFile.path,
@@ -1222,7 +1367,14 @@ export class ImportService extends EventEmitter {
 			.select()
 			.from(episodes)
 			.where(eq(episodes.seriesId, seriesData.id));
-		const matchingEpisodes = matchEpisodesByIdentifier(seriesEpisodes, identifier);
+		let matchingEpisodes = matchEpisodesByIdentifier(seriesEpisodes, resolvedIdentifier);
+		if (matchingEpisodes.length === 0) {
+			matchingEpisodes = this.matchEpisodesFromQueueContext(
+				seriesEpisodes,
+				queueItem,
+				resolvedIdentifier
+			);
+		}
 		if (matchingEpisodes.length === 0) {
 			return {
 				success: false,
@@ -1240,9 +1392,6 @@ export class ImportService extends EventEmitter {
 
 		// Build destination path
 		const seriesFolder = join(rootFolder.path, seriesData.path);
-		const seasonFolder = seriesData.seasonFolder
-			? join(seriesFolder, `Season ${String(seasonNum).padStart(2, '0')}`)
-			: seriesFolder;
 
 		const destFileName = this.buildEpisodeFileName(
 			seriesData,
@@ -1254,10 +1403,15 @@ export class ImportService extends EventEmitter {
 			absoluteNumber,
 			firstEpisode?.airDate ?? undefined
 		);
-		const destPath = join(seasonFolder, destFileName);
+		const relativePath = this.buildEpisodeRelativePath(
+			seriesData.seasonFolder ?? true,
+			seasonNum,
+			destFileName
+		);
+		const destPath = join(seriesFolder, relativePath);
 
 		// Ensure season folder exists
-		await ensureDirectory(seasonFolder);
+		await ensureDirectory(dirname(destPath));
 
 		// Transfer file using mode based on seeding state
 		const preserveSymlinks = rootFolder.preserveSymlinks ?? false;
@@ -1301,19 +1455,17 @@ export class ImportService extends EventEmitter {
 			}
 
 			if (filesToReplace.length > 0) {
-				logger.info('Upgrade detected - will replace existing episode file(s)', {
-					seriesId: seriesData.id,
-					seasonNumber: seasonNum,
-					episodeNumbers: episodeNums,
-					filesToReplace
-				});
+				logger.info(
+					{
+						seriesId: seriesData.id,
+						seasonNumber: seasonNum,
+						episodeNumbers: episodeNums,
+						filesToReplace
+					},
+					'Upgrade detected - will replace existing episode file(s)'
+				);
 			}
 		}
-
-		// Build relative path
-		const relativePath = seriesData.seasonFolder
-			? join(`Season ${String(seasonNum).padStart(2, '0')}`, destFileName)
-			: destFileName;
 
 		// Check if a file record already exists for this path (prevent duplicates)
 		const existingFileRecord = await db
@@ -1334,6 +1486,7 @@ export class ImportService extends EventEmitter {
 			dateAdded: new Date().toISOString(),
 			sceneName: importedMetadata.sceneName,
 			releaseGroup: importedMetadata.releaseGroup,
+			edition: importedMetadata.edition,
 			releaseType: episodeNums.length > 1 ? 'multiEpisode' : 'singleEpisode',
 			quality: importedMetadata.quality,
 			mediaInfo,
@@ -1344,11 +1497,14 @@ export class ImportService extends EventEmitter {
 			// Update existing record instead of creating duplicate
 			fileId = existingFileRecord[0].id;
 			await db.update(episodeFiles).set(fileData).where(eq(episodeFiles.id, fileId));
-			logger.info('Updated existing episode file record', {
-				fileId,
-				relativePath,
-				seriesId: seriesData.id
-			});
+			logger.info(
+				{
+					fileId,
+					relativePath,
+					seriesId: seriesData.id
+				},
+				'Updated existing episode file record'
+			);
 		} else {
 			// Create new file record
 			fileId = randomUUID();
@@ -1363,9 +1519,9 @@ export class ImportService extends EventEmitter {
 			await db.update(episodes).set({ hasFile: true }).where(eq(episodes.id, episodeId));
 		}
 
-		// Emit event for SSE clients
-		this.emit('file:imported', {
-			mediaType: 'episode',
+		// Emit event for SSE clients and buffer for replay
+		const episodeEvent = {
+			mediaType: 'episode' as const,
 			seriesId: seriesData.id,
 			episodeIds,
 			seasonNumber: seasonNum,
@@ -1376,14 +1532,18 @@ export class ImportService extends EventEmitter {
 				dateAdded: fileData.dateAdded,
 				sceneName: fileData.sceneName,
 				releaseGroup: fileData.releaseGroup,
+				edition: fileData.edition,
 				releaseType: fileData.releaseType,
 				quality: fileData.quality,
 				mediaInfo,
-				languages: undefined
+				languages: undefined as string[] | undefined
 			},
 			wasUpgrade: isUpgrade,
-			replacedFileIds: filesToReplace.length > 0 ? filesToReplace : undefined
-		});
+			replacedFileIds: filesToReplace.length > 0 ? filesToReplace : undefined,
+			timestamp: Date.now()
+		};
+		this.emit('file:imported', episodeEvent);
+		eventBuffer.add(episodeEvent);
 		libraryMediaEvents.emitSeriesUpdated(seriesData.id);
 
 		// Delete old files if this was an upgrade
@@ -1391,16 +1551,22 @@ export class ImportService extends EventEmitter {
 			for (const oldFileId of filesToReplace) {
 				const deleteResult = await this.deleteEpisodeFile(oldFileId, seriesData.id);
 				if (deleteResult.success) {
-					logger.info('Successfully deleted old episode file during upgrade', {
-						seriesId: seriesData.id,
-						replacedFileId: oldFileId
-					});
+					logger.info(
+						{
+							seriesId: seriesData.id,
+							replacedFileId: oldFileId
+						},
+						'Successfully deleted old episode file during upgrade'
+					);
 				} else {
-					logger.warn('Failed to delete old episode file during upgrade', {
-						seriesId: seriesData.id,
-						replacedFileId: oldFileId,
-						error: deleteResult.error
-					});
+					logger.warn(
+						{
+							seriesId: seriesData.id,
+							replacedFileId: oldFileId,
+							error: deleteResult.error
+						},
+						'Failed to delete old episode file during upgrade'
+					);
 				}
 			}
 		}
@@ -1419,6 +1585,59 @@ export class ImportService extends EventEmitter {
 			releaseGroup: fileData.releaseGroup,
 			quality: fileData.quality
 		};
+	}
+
+	/**
+	 * Fallback matcher for releases that reset season episode numbering (e.g., E01..E16)
+	 * while the library stores global episode numbers for that season (e.g., E62..E77).
+	 *
+	 * Uses queueItem.episodeIds ordering context to map parsed episode indices.
+	 */
+	private matchEpisodesFromQueueContext(
+		seriesEpisodes: Array<typeof episodes.$inferSelect>,
+		queueItem: Pick<typeof downloadQueue.$inferSelect, 'episodeIds' | 'seasonNumber'>,
+		identifier: ResolvedTvEpisodeIdentifier
+	): Array<typeof episodes.$inferSelect> {
+		if (identifier.numbering !== 'standard') {
+			return [];
+		}
+
+		const queuedEpisodeIds = queueItem.episodeIds ?? [];
+		if (queuedEpisodeIds.length === 0) {
+			return [];
+		}
+
+		const targetSeason = queueItem.seasonNumber ?? identifier.seasonNumber;
+		if (targetSeason === undefined || targetSeason === null) {
+			return [];
+		}
+
+		// Require season alignment before applying relative index mapping.
+		if (identifier.seasonNumber !== targetSeason) {
+			return [];
+		}
+
+		const queuedEpisodesInSeason = seriesEpisodes
+			.filter(
+				(episode) => queuedEpisodeIds.includes(episode.id) && episode.seasonNumber === targetSeason
+			)
+			.sort((a, b) => a.episodeNumber - b.episodeNumber);
+
+		if (queuedEpisodesInSeason.length === 0) {
+			return [];
+		}
+
+		const resolved = identifier.episodeNumbers
+			.map((episodeNumber) => queuedEpisodesInSeason[episodeNumber - 1])
+			.filter((episode): episode is typeof episodes.$inferSelect => Boolean(episode));
+
+		if (resolved.length !== identifier.episodeNumbers.length) {
+			return [];
+		}
+
+		// Deduplicate in case a release token repeats an episode number.
+		const uniqueById = new Map(resolved.map((episode) => [episode.id, episode]));
+		return [...uniqueById.values()];
 	}
 
 	/**
@@ -1454,10 +1673,13 @@ export class ImportService extends EventEmitter {
 				}
 			}
 		} catch (error) {
-			logger.error('Failed to scan download path', {
-				downloadPath,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.error(
+				{
+					downloadPath,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to scan download path'
+			);
 		}
 
 		if (options.preferNonStrm) {
@@ -1474,13 +1696,15 @@ export class ImportService extends EventEmitter {
 		client?: typeof downloadClients.$inferSelect,
 		queueItem?: Pick<typeof downloadQueue.$inferSelect, 'outputPath' | 'clientDownloadPath'>
 	): ImportableFileOptions {
-		const isNzbMount = client?.implementation === 'nzb-mount';
+		const isMountModeClient =
+			client?.implementation === 'sabnzbd' &&
+			(client?.mountMode === 'nzbdav' || client?.mountMode === 'altmount');
 		const hasDirectStrmPath = [queueItem?.outputPath, queueItem?.clientDownloadPath].some(
 			(path) => path?.toLowerCase().endsWith('.strm') ?? false
 		);
 		return {
-			allowStrmSmall: isNzbMount || hasDirectStrmPath,
-			preferNonStrm: isNzbMount
+			allowStrmSmall: isMountModeClient || hasDirectStrmPath,
+			preferNonStrm: isMountModeClient
 		};
 	}
 
@@ -1510,11 +1734,14 @@ export class ImportService extends EventEmitter {
 			return null;
 		}
 
-		logger.debug('[ImportService] Retrying missing .strm file with refreshed scan', {
-			originalPath: file.path,
-			candidatePath: candidate.path,
-			downloadPath
-		});
+		logger.debug(
+			{
+				originalPath: file.path,
+				candidatePath: candidate.path,
+				downloadPath
+			},
+			'[ImportService] Retrying missing .strm file with refreshed scan'
+		);
 
 		return (await fileExists(candidate.path)) ? candidate : null;
 	}
@@ -1578,10 +1805,13 @@ export class ImportService extends EventEmitter {
 				await this.scanDirectoryForDangerousFiles(downloadPath, result);
 			}
 		} catch (error) {
-			logger.warn('Failed to scan for dangerous files', {
-				downloadPath,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					downloadPath,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to scan for dangerous files'
+			);
 		}
 
 		return result;
@@ -1619,10 +1849,13 @@ export class ImportService extends EventEmitter {
 				}
 			}
 		} catch (error) {
-			logger.warn('Failed to scan directory for dangerous files', {
-				dir,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					dir,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to scan directory for dangerous files'
+			);
 		}
 	}
 
@@ -1632,6 +1865,20 @@ export class ImportService extends EventEmitter {
 	private getNamingService(): NamingService {
 		const config = namingSettingsService.getConfigSync();
 		return new NamingService(config);
+	}
+
+	private buildSeasonFolderName(seasonNumber: number): string {
+		return this.getNamingService().generateSeasonFolderName(seasonNumber);
+	}
+
+	private buildEpisodeRelativePath(
+		useSeasonFolders: boolean,
+		seasonNumber: number,
+		destFileName: string
+	): string {
+		return useSeasonFolders
+			? join(this.buildSeasonFolderName(seasonNumber), destFileName)
+			: destFileName;
 	}
 
 	/**
@@ -1757,6 +2004,61 @@ export class ImportService extends EventEmitter {
 		);
 	}
 
+	private resolveSourceReleaseContext(sourcePath: string): {
+		sourceName: string;
+		parsed: ReturnType<ReleaseParser['parse']>;
+	} {
+		const fileSourceName = getMediaParseStem(sourcePath);
+		const parentFolderName = getMediaParseStem(basename(dirname(sourcePath)));
+		const candidates = [fileSourceName, parentFolderName].filter(
+			(candidate, index, all) =>
+				candidate && all.findIndex((value) => value === candidate) === index
+		);
+
+		const [primaryCandidate] = candidates;
+		if (!primaryCandidate) {
+			return {
+				sourceName: basename(sourcePath, extname(sourcePath)),
+				parsed: this.parser.parse(basename(sourcePath, extname(sourcePath)))
+			};
+		}
+
+		const primaryParsed = this.parser.parse(primaryCandidate);
+		if (this.hasKnownQualityMetadata(primaryParsed) || candidates.length === 1) {
+			return {
+				sourceName: primaryCandidate,
+				parsed: primaryParsed
+			};
+		}
+
+		for (let i = 1; i < candidates.length; i++) {
+			const fallbackCandidate = candidates[i];
+			if (!fallbackCandidate) continue;
+			const fallbackParsed = this.parser.parse(fallbackCandidate);
+			if (!this.hasKnownQualityMetadata(fallbackParsed)) {
+				continue;
+			}
+
+			logger.info(
+				{
+					sourcePath,
+					fallbackToken: fallbackCandidate
+				},
+				'[ImportService] Using fallback source context for metadata parsing'
+			);
+
+			return {
+				sourceName: fallbackCandidate,
+				parsed: fallbackParsed
+			};
+		}
+
+		return {
+			sourceName: primaryCandidate,
+			parsed: primaryParsed
+		};
+	}
+
 	private mapMediaInfoResolution(
 		mediaInfo?: { width?: number; height?: number } | null
 	): string | undefined {
@@ -1816,6 +2118,7 @@ export class ImportService extends EventEmitter {
 	): {
 		sceneName: string;
 		releaseGroup?: string;
+		edition?: string;
 		quality: {
 			resolution?: string;
 			source?: string;
@@ -1824,8 +2127,7 @@ export class ImportService extends EventEmitter {
 		};
 	} {
 		const queueParsed = this.parser.parse(queueItem.title);
-		const sourceName = basename(sourcePath, extname(sourcePath));
-		const sourceParsed = this.parser.parse(sourceName);
+		const { sourceName, parsed: sourceParsed } = this.resolveSourceReleaseContext(sourcePath);
 		const queueQuality = queueItem.quality ?? undefined;
 
 		const hasQueueMetadata =
@@ -1844,6 +2146,7 @@ export class ImportService extends EventEmitter {
 
 		return {
 			sceneName,
+			edition: queueParsed.edition ?? sourceParsed.edition ?? undefined,
 			releaseGroup: this.firstKnownValue(
 				queueItem.releaseGroup,
 				queueParsed.releaseGroup,
@@ -1881,8 +2184,12 @@ export class ImportService extends EventEmitter {
 		// Get all episodes for this series
 		const allEpisodes = await db.select().from(episodes).where(eq(episodes.seriesId, seriesId));
 
-		// Exclude specials (season 0) from series-level counts
-		const regularEpisodes = allEpisodes.filter((ep) => ep.seasonNumber !== 0);
+		const today = new Date().toISOString().split('T')[0];
+		const isAired = (ep: typeof episodes.$inferSelect) =>
+			Boolean(ep.airDate && ep.airDate !== '' && ep.airDate <= today);
+
+		// Exclude specials (season 0) and unaired episodes from series-level counts
+		const regularEpisodes = allEpisodes.filter((ep) => ep.seasonNumber !== 0 && isAired(ep));
 		const regularEpisodesWithFiles = regularEpisodes.filter((ep) => ep.hasFile);
 
 		// Update series counts
@@ -1894,9 +2201,10 @@ export class ImportService extends EventEmitter {
 			})
 			.where(eq(series.id, seriesId));
 
-		// Group by season and update each season's counts
+		// Group by season and update each season's counts (only aired episodes)
 		const seasonMap = new Map<number, { total: number; withFiles: number }>();
 		for (const ep of allEpisodes) {
+			if (!isAired(ep)) continue;
 			const stats = seasonMap.get(ep.seasonNumber) || { total: 0, withFiles: 0 };
 			stats.total++;
 			if (ep.hasFile) {
@@ -1961,14 +2269,17 @@ export class ImportService extends EventEmitter {
 			try {
 				if (await fileExists(fullPath)) {
 					await unlink(fullPath);
-					logger.info('Deleted old movie file', { fileId, path: fullPath });
+					logger.info({ fileId, path: fullPath }, 'Deleted old movie file');
 				}
 			} catch (error) {
-				logger.warn('Failed to delete physical file (continuing anyway)', {
-					fileId,
-					path: fullPath,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.warn(
+					{
+						fileId,
+						path: fullPath,
+						err: error
+					},
+					'Failed to delete physical file (continuing anyway)'
+				);
 			}
 
 			// Delete database record
@@ -1981,11 +2292,11 @@ export class ImportService extends EventEmitter {
 				fileId
 			});
 
-			logger.info('Deleted movie file record', { fileId, movieId });
+			logger.info({ fileId, movieId }, 'Deleted movie file record');
 			return { success: true };
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error);
-			logger.error('Failed to delete movie file', { fileId, error: errorMessage });
+			logger.error({ fileId, err: error }, 'Failed to delete movie file');
 			return { success: false, error: errorMessage };
 		}
 	}
@@ -2034,14 +2345,17 @@ export class ImportService extends EventEmitter {
 			try {
 				if (await fileExists(fullPath)) {
 					await unlink(fullPath);
-					logger.info('Deleted old episode file', { fileId, path: fullPath });
+					logger.info({ fileId, path: fullPath }, 'Deleted old episode file');
 				}
 			} catch (error) {
-				logger.warn('Failed to delete physical file (continuing anyway)', {
-					fileId,
-					path: fullPath,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.warn(
+					{
+						fileId,
+						path: fullPath,
+						err: error
+					},
+					'Failed to delete physical file (continuing anyway)'
+				);
 			}
 
 			// Delete database record
@@ -2073,11 +2387,11 @@ export class ImportService extends EventEmitter {
 				episodeIds: fileRecord.episodeIds ?? []
 			});
 
-			logger.info('Deleted episode file record', { fileId, seriesId });
+			logger.info({ fileId, seriesId }, 'Deleted episode file record');
 			return { success: true };
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error);
-			logger.error('Failed to delete episode file', { fileId, error: errorMessage });
+			logger.error({ fileId, err: error }, 'Failed to delete episode file');
 			return { success: false, error: errorMessage };
 		}
 	}
@@ -2094,29 +2408,38 @@ export class ImportService extends EventEmitter {
 			// Check if subtitle search on import is enabled
 			const settings = await monitoringScheduler.getSettings();
 			if (!settings.subtitleSearchOnImportEnabled) {
-				logger.debug('[ImportService] Subtitle search on import is disabled', {
-					mediaType,
-					mediaId
-				});
+				logger.debug(
+					{
+						mediaType,
+						mediaId
+					},
+					'[ImportService] Subtitle search on import is disabled'
+				);
 				return;
 			}
 
 			// Use the standalone import service for subtitle search
 			const result = await searchSubtitlesForNewMedia(mediaType, mediaId);
 
-			logger.info('[ImportService] Post-import subtitle search completed', {
-				mediaType,
-				mediaId,
-				downloaded: result.downloaded,
-				errors: result.errors.length
-			});
+			logger.info(
+				{
+					mediaType,
+					mediaId,
+					downloaded: result.downloaded,
+					errors: result.errors.length
+				},
+				'[ImportService] Post-import subtitle search completed'
+			);
 		} catch (error) {
 			// Log but don't fail - subtitle search is supplementary
-			logger.warn('[ImportService] Post-import subtitle search failed', {
-				mediaType,
-				mediaId,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					mediaType,
+					mediaId,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[ImportService] Post-import subtitle search failed'
+			);
 		}
 	}
 
@@ -2163,18 +2486,24 @@ export class ImportService extends EventEmitter {
 				totalErrors += result.errors.length;
 			} catch (error) {
 				totalErrors++;
-				logger.warn('[ImportService] Failed to search subtitles for episode', {
-					episodeId,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.warn(
+					{
+						episodeId,
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'[ImportService] Failed to search subtitles for episode'
+				);
 			}
 		}
 
-		logger.info('[ImportService] Post-import episode subtitle search completed', {
-			episodeCount: uniqueEpisodeIds.size,
-			downloaded: totalDownloaded,
-			errors: totalErrors
-		});
+		logger.info(
+			{
+				episodeCount: uniqueEpisodeIds.size,
+				downloaded: totalDownloaded,
+				errors: totalErrors
+			},
+			'[ImportService] Post-import episode subtitle search completed'
+		);
 	}
 
 	/**
@@ -2295,17 +2624,20 @@ export class ImportService extends EventEmitter {
 			// A valid usenet download path should have the download name as a subfolder
 			const pathParts = sourcePath.split('/').filter((p) => p.length > 0);
 			if (pathParts.length < 4) {
-				logger.warn('[ImportService] Refusing to delete path that looks like a base directory', {
-					sourcePath,
-					pathDepth: pathParts.length
-				});
+				logger.warn(
+					{
+						sourcePath,
+						pathDepth: pathParts.length
+					},
+					'[ImportService] Refusing to delete path that looks like a base directory'
+				);
 				return;
 			}
 
 			// Check if it exists first
 			const exists = await fileExists(sourcePath);
 			if (!exists) {
-				logger.debug('[ImportService] Usenet source already cleaned up', { sourcePath });
+				logger.debug({ sourcePath }, '[ImportService] Usenet source already cleaned up');
 				return;
 			}
 
@@ -2318,16 +2650,22 @@ export class ImportService extends EventEmitter {
 				await unlink(sourcePath);
 			}
 
-			logger.info('[ImportService] Deleted usenet source after import', {
-				sourcePath,
-				wasDirectory: stats.isDirectory()
-			});
+			logger.info(
+				{
+					sourcePath,
+					wasDirectory: stats.isDirectory()
+				},
+				'[ImportService] Deleted usenet source after import'
+			);
 		} catch (err) {
 			// Log but don't throw - cleanup failure shouldn't fail the import
-			logger.warn('[ImportService] Failed to delete usenet source', {
-				sourcePath,
-				error: err instanceof Error ? err.message : String(err)
-			});
+			logger.warn(
+				{
+					sourcePath,
+					error: err instanceof Error ? err.message : String(err)
+				},
+				'[ImportService] Failed to delete usenet source'
+			);
 		}
 	}
 }

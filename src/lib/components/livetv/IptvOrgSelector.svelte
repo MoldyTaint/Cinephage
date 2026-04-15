@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { X, Globe, Loader2, Search } from 'lucide-svelte';
 	import { onMount } from 'svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Country {
 		code: string;
@@ -75,7 +76,7 @@
 {#if loading}
 	<div class="flex items-center gap-2 text-base-content/60">
 		<Loader2 class="h-4 w-4 animate-spin" />
-		<span class="text-sm">Loading countries...</span>
+		<span class="text-sm">{m.livetv_iptvOrg_loadingCountries()}</span>
 	</div>
 {:else if error}
 	<div class="alert-sm alert alert-error">
@@ -86,8 +87,10 @@
 		<label class="label py-1" for="country-select">
 			<span class="label-text flex items-center gap-2">
 				<Globe class="h-4 w-4" />
-				Countries
-				<span class="text-xs text-base-content/60">({countries.length} available)</span>
+				{m.livetv_iptvOrg_countriesLabel()}
+				<span class="text-xs text-base-content/60"
+					>{m.livetv_iptvOrg_availableCount({ count: countries.length })}</span
+				>
 			</span>
 		</label>
 
@@ -102,14 +105,16 @@
 							class="ml-1 hover:text-error"
 							onclick={() => removeCountry(country.code)}
 							type="button"
-							aria-label="Remove {country.name}"
+							aria-label={m.livetv_iptvOrg_removeCountry({ country: country.name })}
 						>
 							<X class="h-3 w-3" />
 						</button>
 					</span>
 				{/each}
 				{#if selectedCountryObjects.length > 1}
-					<button class="btn btn-ghost btn-xs" onclick={clearAll} type="button">Clear all</button>
+					<button class="btn btn-ghost btn-xs" onclick={clearAll} type="button"
+						>{m.livetv_iptvOrg_clearAll()}</button
+					>
 				{/if}
 			</div>
 		{/if}
@@ -120,7 +125,7 @@
 			<input
 				type="text"
 				class="input-bordered input input-sm w-full pl-9"
-				placeholder="Search countries..."
+				placeholder={m.livetv_iptvOrg_searchPlaceholder()}
 				bind:value={searchQuery}
 			/>
 			{#if searchQuery}
@@ -152,11 +157,16 @@
 		<div class="label py-1">
 			<span class="label-text-alt text-xs">
 				{#if searchQuery}
-					{filteredCountries.length} of {countries.length} countries shown
+					{m.livetv_iptvOrg_filteredCount({
+						count: filteredCountries.length,
+						total: countries.length
+					})}
 				{:else if selectedCountries.length === 0}
-					Select one or more countries (Ctrl/Cmd+click for multiple)
+					{m.livetv_iptvOrg_selectHint()}
+				{:else if selectedCountries.length === 1}
+					{m.livetv_iptvOrg_selectedCountSingular({ count: selectedCountries.length })}
 				{:else}
-					{selectedCountries.length} countr{selectedCountries.length === 1 ? 'y' : 'ies'} selected
+					{m.livetv_iptvOrg_selectedCount({ count: selectedCountries.length })}
 				{/if}
 			</span>
 		</div>

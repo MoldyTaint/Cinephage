@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { SectionHeader } from '$lib/components/ui/modal';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		maxConnections: number;
@@ -9,11 +10,11 @@
 	let { maxConnections = $bindable(), priority = $bindable() }: Props = $props();
 </script>
 
-<SectionHeader title="Server Settings" />
+<SectionHeader title={m.settings_integrations_nntpServers_serverSettings()} />
 
 <div class="form-control">
 	<label class="label py-1" for="maxConnections">
-		<span class="label-text">Max Connections</span>
+		<span class="label-text">{m.settings_integrations_nntpServers_maxConnections()}</span>
 	</label>
 	<input
 		id="maxConnections"
@@ -25,14 +26,14 @@
 	/>
 	<div class="label py-1">
 		<span class="label-text-alt text-xs">
-			Check your usenet provider for connection limits (usually 10-50)
+			{m.settings_integrations_nntpServers_maxConnectionsHelp()}
 		</span>
 	</div>
 </div>
 
 <div class="form-control">
 	<label class="label py-1" for="priority">
-		<span class="label-text">Priority</span>
+		<span class="label-text">{m.common_priority()}</span>
 	</label>
 	<input
 		id="priority"
@@ -44,7 +45,7 @@
 	/>
 	<div class="label py-1">
 		<span class="label-text-alt text-xs">
-			Lower values = higher priority. Use for server failover.
+			{m.settings_integrations_nntpServers_priorityHelp()}
 		</span>
 	</div>
 </div>

@@ -37,22 +37,25 @@ export const GET: RequestHandler = async ({ params }) => {
 			});
 		}
 
-		logger.info('[UsenetCheck] Checked streamability', {
-			mountId,
-			canStream: streamability.canStream,
-			archiveType: streamability.archiveType
-		});
+		logger.info(
+			{
+				mountId,
+				canStream: streamability.canStream,
+				archiveType: streamability.archiveType
+			},
+			'[UsenetCheck] Checked streamability'
+		);
 
 		return json(streamability);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
 
 		if (message.includes('not found')) {
-			logger.warn('[UsenetCheck] Mount not found', { mountId });
+			logger.warn({ mountId }, '[UsenetCheck] Mount not found');
 			return json({ error: 'Mount not found' }, { status: 404 });
 		}
 
-		logger.error('[UsenetCheck] Check error', { mountId, error: message });
+		logger.error({ mountId, error: message }, '[UsenetCheck] Check error');
 		return json({ error: message }, { status: 500 });
 	}
 };

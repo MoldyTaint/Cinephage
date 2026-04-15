@@ -5,6 +5,7 @@ export { default as MediaTypeBadge } from './MediaTypeBadge.svelte';
 export { default as TmdbConfigRequired } from './TmdbConfigRequired.svelte';
 export { default as OperationProgress } from './OperationProgress.svelte';
 export { default as ThemeSelector } from './ThemeSelector.svelte';
+export { default as LanguageSelector } from './LanguageSelector.svelte';
 export { default as PageContainer } from './PageContainer.svelte';
 
 // Skeleton loaders
@@ -17,3 +18,6 @@ export * from './form/index';
 
 // Modal components
 export * from './modal/index';
+
+// Settings components
+export * from './settings/index';

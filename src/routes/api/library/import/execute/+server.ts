@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { manualImportService } from '$lib/server/library/manual-import-service.js';
 import { isPathAllowed, isPathInsideManagedRoot } from '$lib/server/filesystem/path-guard.js';
 import { logger } from '$lib/logging';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 const executeSchema = z
 	.object({
@@ -13,6 +14,7 @@ const executeSchema = z
 		tmdbId: z.number().int().positive(),
 		importTarget: z.enum(['new', 'existing']),
 		rootFolderId: z.string().optional(),
+		libraryId: z.string().optional(),
 		seasonNumber: z.number().int().min(0).optional(),
 		episodeNumber: z.number().int().min(1).optional()
 	})
@@ -39,7 +41,11 @@ function getExecuteErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : 'Failed to import file';
 }
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { request } = event;
 	try {
 		let body: unknown;
 		try {

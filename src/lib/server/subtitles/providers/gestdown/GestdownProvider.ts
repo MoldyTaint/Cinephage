@@ -13,7 +13,9 @@ import type {
 	ProviderSearchOptions,
 	LanguageCode
 } from '../../types';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import { TooManyRequests, ServiceUnavailable } from '../../errors/ProviderErrors';
 import {
 	GESTDOWN_LANGUAGES,
@@ -68,9 +70,12 @@ export class GestdownProvider extends BaseSubtitleProvider {
 			// First, find the show
 			const show = await this.findShow(criteria, options?.timeout);
 			if (!show) {
-				logger.debug('[Gestdown] Show not found', {
-					title: criteria.seriesTitle || criteria.title
-				});
+				logger.debug(
+					{
+						title: criteria.seriesTitle || criteria.title
+					},
+					'[Gestdown] Show not found'
+				);
 				return results;
 			}
 
@@ -243,11 +248,14 @@ export class GestdownProvider extends BaseSubtitleProvider {
 		// For now, return the first match
 		const bestMatch = shows[0];
 
-		logger.debug('[Gestdown] Found show', {
-			searchTitle: showTitle,
-			matchedShow: bestMatch.name,
-			showId: bestMatch.id
-		});
+		logger.debug(
+			{
+				searchTitle: showTitle,
+				matchedShow: bestMatch.name,
+				showId: bestMatch.id
+			},
+			'[Gestdown] Found show'
+		);
 
 		return bestMatch;
 	}

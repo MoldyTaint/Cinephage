@@ -16,9 +16,11 @@ import type {
 	SizeValidationContext
 } from './types.js';
 import { matchFormats, extractAttributes } from './matcher.js';
-import { ALL_FORMATS } from './formats/index.js';
+import { getActiveFormats } from './formats/registry.js';
 import { ReleaseParser } from '../indexers/parser/ReleaseParser.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 
 // Singleton parser instance
 const parser = new ReleaseParser();
@@ -52,7 +54,7 @@ export function scoreRelease(
 	const attrs = attributes ?? parseRelease(releaseName);
 
 	// 2. Match all formats against the release
-	let matchedFormats = matchFormats(attrs, ALL_FORMATS);
+	let matchedFormats = matchFormats(attrs, getActiveFormats());
 
 	// 2.5 Apply mutual exclusivity rules (only count best format per category)
 	matchedFormats = applyMutualExclusivity(matchedFormats, profile);
@@ -64,20 +66,23 @@ export function scoreRelease(
 	const formatScoresCount = Object.keys(profile.formatScores).length;
 	if (formatScoresCount > 0 && formatScoresCount < 20) {
 		// Only log for custom profiles (small number of format scores)
-		logger.debug('[Scorer] Scoring release', {
-			releaseName: releaseName.substring(0, 50),
-			profileId: profile.id,
-			profileName: profile.name,
-			formatScoresCount,
-			formatScoresKeys: Object.keys(profile.formatScores),
-			matchedFormatIds: matchedFormats.map((f) => f.format.id),
-			scoredFormats: scoredFormats.map((f) => ({
-				id: f.format.id,
-				name: f.format.name,
-				score: f.score,
-				profileHasScore: profile.formatScores[f.format.id] !== undefined
-			}))
-		});
+		logger.debug(
+			{
+				releaseName: releaseName.substring(0, 50),
+				profileId: profile.id,
+				profileName: profile.name,
+				formatScoresCount,
+				formatScoresKeys: Object.keys(profile.formatScores),
+				matchedFormatIds: matchedFormats.map((f) => f.format.id),
+				scoredFormats: scoredFormats.map((f) => ({
+					id: f.format.id,
+					name: f.format.name,
+					score: f.score,
+					profileHasScore: profile.formatScores[f.format.id] !== undefined
+				}))
+			},
+			'[Scorer] Scoring release'
+		);
 	}
 
 	// 4. Build score breakdown by category
@@ -177,15 +182,12 @@ export function scoreRelease(
 
 // HDR format priority order (most specific/best first)
 const HDR_PRIORITY = [
-	'hdr-dolby-vision', // DV with fallback is best
-	'hdr-dolby-vision-no-fallback', // DV without fallback
+	'hdr-dolby-vision', // Dolby Vision
 	'hdr-hdr10plus', // HDR10+ dynamic
 	'hdr-hdr10', // HDR10 static
-	'hdr10-missing', // Assumed HDR10
 	'hdr-generic', // Generic HDR
 	'hdr-hlg', // HLG
 	'hdr-pq', // PQ
-	'hdr-missing', // Assumed HDR
 	'hdr-sdr' // SDR (lowest)
 ];
 
@@ -482,7 +484,7 @@ export function explainScore(result: ScoringResult): string {
  */
 export function getMatchedFormatIds(releaseName: string, attributes?: ReleaseAttributes): string[] {
 	const attrs = attributes ?? parseRelease(releaseName);
-	const matched = matchFormats(attrs, ALL_FORMATS);
+	const matched = matchFormats(attrs, getActiveFormats());
 	return matched.map((m) => m.format.id);
 }
 
@@ -507,7 +509,7 @@ export function debugRelease(
 	}>;
 } {
 	const attrs = attributes ?? parseRelease(releaseName);
-	const matched = matchFormats(attrs, ALL_FORMATS);
+	const matched = matchFormats(attrs, getActiveFormats());
 
 	return {
 		releaseName,

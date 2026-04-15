@@ -13,7 +13,9 @@ import type {
 import { generateEpisodeFormat } from '../search/SearchFormatProvider';
 import type { FilterBlock, SettingsField } from '../schema/yamlDefinition';
 import { createSafeRegex, safeReplace } from './safeRegex';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 
 export type TemplateVariables = Map<string, unknown>;
 
@@ -364,7 +366,7 @@ export class TemplateEngine {
 			if (keywordFormat) {
 				keywords.push(keywordFormat);
 			}
-		} else if (criteria.season !== undefined) {
+		} else if (criteria.season !== undefined && criteria.season > 0) {
 			// Season-only search (e.g., "S01")
 			const seasonOnlyFormat = generateEpisodeFormat(season, undefined, 'standard');
 			this.variables.set('.Query.Episode', seasonOnlyFormat);
@@ -695,10 +697,13 @@ export class TemplateEngine {
 		// Limit iterations to prevent ReDoS attacks from malicious templates
 		while ((match = TemplateEngine.LOGIC_FUNCTION_REGEX.exec(result)) !== null) {
 			if (++iterations > TemplateEngine.MAX_LOGIC_ITERATIONS) {
-				logger.warn('Template logic processing exceeded max iterations', {
-					iterations,
-					templateLength: template.length
-				});
+				logger.warn(
+					{
+						iterations,
+						templateLength: template.length
+					},
+					'Template logic processing exceeded max iterations'
+				);
 				break;
 			}
 
@@ -1177,18 +1182,18 @@ export class TemplateEngine {
 				if (Array.isArray(args)) {
 					const start = parseInt(String(args[0]), 10) || 0;
 					const length = args.length > 1 ? parseInt(String(args[1]), 10) : undefined;
-					return length !== undefined ? value.substr(start, length) : value.substring(start);
+					return length !== undefined ? value.slice(start, start + length) : value.slice(start);
 				}
 				if (typeof args === 'string') {
 					const start = parseInt(args, 10) || 0;
-					return value.substring(start);
+					return value.slice(start);
 				}
 				return value;
 			}
 
 			default:
 				// Unknown filter, return as-is
-				logger.warn('Unknown inline filter', { name });
+				logger.warn({ name }, 'Unknown inline filter');
 				return value;
 		}
 	}

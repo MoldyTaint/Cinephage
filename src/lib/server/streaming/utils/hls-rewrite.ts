@@ -32,6 +32,8 @@ export type ProxyUrlBuilder = (absoluteUrl: string, isSegment: boolean) => strin
  * on relative URLs (common in Stalker portal playlists).
  */
 export function resolveHlsUrl(url: string, base: URL, basePath: string): string {
+	const queryString = base.search || '';
+
 	if (url.startsWith('http://') || url.startsWith('https://')) {
 		return url;
 	}
@@ -39,10 +41,14 @@ export function resolveHlsUrl(url: string, base: URL, basePath: string): string 
 		return `${base.protocol}${url}`;
 	}
 	if (url.startsWith('/')) {
-		return `${base.origin}${url}`;
+		return url.includes('?') ? `${base.origin}${url}` : `${base.origin}${url}${queryString}`;
 	}
 	// Relative path — preserve query parameters from base URL (e.g., auth tokens)
-	const queryString = base.search || '';
+	// If the relative URL already has query parameters (e.g., Pluto TV variant playlists),
+	// use it as-is since it has its own auth tokens. Otherwise append base URL params.
+	if (url.includes('?')) {
+		return `${base.origin}${basePath}${url}`;
+	}
 	return `${base.origin}${basePath}${url}${queryString}`;
 }
 
@@ -73,7 +79,7 @@ const URI_BEARING_TAGS = [
  * - /api/livetv/stream/[lineupId]/+server.ts
  * - /api/livetv/stream/[lineupId]/[...path]/+server.ts
  * - /lib/server/streaming/utils/http.ts
- * - /api/streaming/proxy/+server.ts
+ * - the streaming session playlist rewriter
  *
  * @param playlist - Raw HLS playlist text
  * @param playlistUrl - The original URL of this playlist (for resolving relative URLs)

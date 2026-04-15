@@ -3,16 +3,18 @@ import {
 	series,
 	episodes,
 	rootFolders,
+	libraries,
 	scoringProfiles,
 	profileSizeLimits,
 	episodeFiles,
 	downloadQueue
 } from '$lib/server/db/schema.js';
 import { eq, and, inArray, ne, isNotNull } from 'drizzle-orm';
-import type { PageServerLoad } from './$types';
+import type { Actions, PageServerLoad } from './$types';
 import type { LibrarySeries, EpisodeFile } from '$lib/types/library';
 import { logger } from '$lib/logging';
 import { DEFAULT_PROFILES } from '$lib/server/scoring/profiles.js';
+import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 
 const ACTIVE_DOWNLOAD_STATUSES = [
 	'queued',
@@ -44,8 +46,19 @@ export const load: PageServerLoad = async ({ url }) => {
 	const resolution = url.searchParams.get('resolution') || 'all';
 	const videoCodec = url.searchParams.get('videoCodec') || 'all';
 	const hdrFormat = url.searchParams.get('hdrFormat') || 'all';
+	const requestedLibraryScope = url.searchParams.get('library')?.trim() || '';
 
 	try {
+		const availableLibraries = await getLibraryEntityService().listLibraries({ mediaType: 'tv' });
+		const defaultLibrary =
+			availableLibraries.find((library) => library.isDefault) ?? availableLibraries[0] ?? null;
+		const selectedLibrary =
+			availableLibraries.find(
+				(library) => library.slug === requestedLibraryScope || library.id === requestedLibraryScope
+			) ?? defaultLibrary;
+		const hasSubLibraries = availableLibraries.some((library) => !library.isDefault);
+		const isSubLibraryScope = Boolean(selectedLibrary && !selectedLibrary.isDefault);
+
 		// Fetch all series with their root folder info
 		const allSeries = await db
 			.select({
@@ -64,8 +77,14 @@ export const load: PageServerLoad = async ({ url }) => {
 				genres: series.genres,
 				path: series.path,
 				rootFolderId: series.rootFolderId,
+				libraryId: series.libraryId,
 				rootFolderPath: rootFolders.path,
 				rootFolderMediaType: rootFolders.mediaType,
+				rootFolderMediaSubType: rootFolders.mediaSubType,
+				librarySlug: libraries.slug,
+				libraryName: libraries.name,
+				libraryMediaSubType: libraries.mediaSubType,
+				libraryIsDefault: libraries.isDefault,
 				scoringProfileId: series.scoringProfileId,
 				monitored: series.monitored,
 				seasonFolder: series.seasonFolder,
@@ -75,7 +94,8 @@ export const load: PageServerLoad = async ({ url }) => {
 				episodeFileCount: series.episodeFileCount
 			})
 			.from(series)
-			.leftJoin(rootFolders, eq(series.rootFolderId, rootFolders.id));
+			.leftJoin(rootFolders, eq(series.rootFolderId, rootFolders.id))
+			.leftJoin(libraries, eq(series.libraryId, libraries.id));
 
 		const seriesIds = allSeries.map((s) => s.id);
 
@@ -96,14 +116,20 @@ export const load: PageServerLoad = async ({ url }) => {
 				? await db
 						.select({
 							id: episodes.id,
-							seriesId: episodes.seriesId
+							seriesId: episodes.seriesId,
+							airDate: episodes.airDate
 						})
 						.from(episodes)
 						.where(and(inArray(episodes.seriesId, seriesIds), ne(episodes.seasonNumber, 0)))
 				: [];
-		const regularEpisodeIdToSeries = new Map(allRegularEpisodes.map((ep) => [ep.id, ep.seriesId]));
+		const today = new Date().toISOString().split('T')[0];
+		const isAired = (ep: { airDate: string | null }) =>
+			Boolean(ep.airDate && ep.airDate !== '' && ep.airDate <= today);
+		const regularEpisodeIdToSeries = new Map(
+			allRegularEpisodes.filter(isAired).map((ep) => [ep.id, ep.seriesId])
+		);
 		const episodeTotalsBySeries = new Map<string, number>();
-		for (const episode of allRegularEpisodes) {
+		for (const episode of allRegularEpisodes.filter(isAired)) {
 			episodeTotalsBySeries.set(
 				episode.seriesId,
 				(episodeTotalsBySeries.get(episode.seriesId) ?? 0) + 1
@@ -148,7 +174,11 @@ export const load: PageServerLoad = async ({ url }) => {
 			);
 		}
 
-		const seriesWithStats: LibrarySeries[] = allSeries.map((s) => {
+		const seriesWithStats: (LibrarySeries & {
+			libraryId?: string | null;
+			rootFolderMediaSubType?: string | null;
+			libraryMediaSubType?: string | null;
+		})[] = allSeries.map((s) => {
 			const derivedEpisodeCount = episodeTotalsBySeries.get(s.id) ?? 0;
 			const derivedEpisodeFileCount = episodeFilesBySeries.get(s.id)?.size ?? 0;
 			return {
@@ -160,9 +190,57 @@ export const load: PageServerLoad = async ({ url }) => {
 					derivedEpisodeCount > 0
 						? Math.round((derivedEpisodeFileCount / derivedEpisodeCount) * 100)
 						: 0,
-				totalSize: seriesTotalSizeMap.get(s.id) ?? 0
+				totalSize: seriesTotalSizeMap.get(s.id) ?? 0,
+				libraryId: s.libraryId ?? null
 			};
-		}) as LibrarySeries[];
+		}) as (LibrarySeries & {
+			libraryId?: string | null;
+			rootFolderMediaSubType?: string | null;
+			libraryMediaSubType?: string | null;
+		})[];
+
+		const inferLegacySubtype = (show: {
+			rootFolderMediaSubType?: string | null;
+			libraryMediaSubType?: string | null;
+		}): 'standard' | 'anime' => {
+			const candidate = show.rootFolderMediaSubType ?? show.libraryMediaSubType;
+			return candidate === 'anime' ? 'anime' : 'standard';
+		};
+
+		const belongsToScope = (
+			show: {
+				libraryId?: string | null;
+				rootFolderMediaSubType?: string | null;
+				libraryMediaSubType?: string | null;
+			},
+			scopeLibraryId: string,
+			scopeMediaSubType: string
+		): boolean => {
+			if (show.libraryId) {
+				return show.libraryId === scopeLibraryId;
+			}
+			const inferredSubtype = inferLegacySubtype(show);
+			if (scopeMediaSubType === 'anime') return inferredSubtype === 'anime';
+			if (scopeMediaSubType === 'standard') return inferredSubtype === 'standard';
+			return false;
+		};
+
+		const seriesInSelectedLibrary = selectedLibrary
+			? seriesWithStats.filter((show) =>
+					belongsToScope(show, selectedLibrary.id, selectedLibrary.mediaSubType)
+				)
+			: seriesWithStats;
+
+		const libraryScopeOptions = availableLibraries.map((library) => ({
+			id: library.id,
+			slug: library.slug,
+			name: library.name,
+			isDefault: library.isDefault,
+			mediaSubType: library.mediaSubType,
+			count: seriesWithStats.filter((show) =>
+				belongsToScope(show, library.id, library.mediaSubType)
+			).length
+		}));
 
 		// Extract unique file attribute values for filter dropdowns
 		const uniqueResolutions = new Set<string>();
@@ -244,8 +322,8 @@ export const load: PageServerLoad = async ({ url }) => {
 			}
 		}
 
-		// Apply filters
-		let filteredSeries = seriesWithStats;
+		// Apply filters (within selected library scope)
+		let filteredSeries = seriesInSelectedLibrary;
 
 		// Filter by monitored status
 		if (monitored === 'monitored') {
@@ -341,10 +419,11 @@ export const load: PageServerLoad = async ({ url }) => {
 		return {
 			series: filteredSeries,
 			total: filteredSeries.length,
-			totalUnfiltered: seriesWithStats.length,
+			totalUnfiltered: seriesInSelectedLibrary.length,
 			downloadingSeriesIds: [...downloadingSeriesIds],
 			filters: {
 				sort,
+				library: selectedLibrary?.slug ?? '',
 				monitored,
 				status,
 				progress,
@@ -353,13 +432,27 @@ export const load: PageServerLoad = async ({ url }) => {
 				videoCodec,
 				hdrFormat
 			},
+			libraryScope: {
+				selected: selectedLibrary
+					? {
+							id: selectedLibrary.id,
+							slug: selectedLibrary.slug,
+							name: selectedLibrary.name,
+							isDefault: selectedLibrary.isDefault,
+							mediaSubType: selectedLibrary.mediaSubType
+						}
+					: null,
+				options: libraryScopeOptions,
+				hasSubLibraries,
+				isSubLibraryScope
+			},
 			qualityProfiles,
 			uniqueResolutions: sortedResolutions,
 			uniqueCodecs: [...uniqueCodecs].sort(),
 			uniqueHdrFormats: [...uniqueHdrFormats].sort()
 		};
 	} catch (error) {
-		logger.error('[TV Page] Error loading series', error instanceof Error ? error : undefined);
+		logger.error({ err: error }, '[TV Page] Error loading series');
 		const emptySeries: LibrarySeries[] = [];
 		const emptyProfiles: QualityProfileSummary[] = [];
 		const emptyStrings: string[] = [];
@@ -370,6 +463,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			downloadingSeriesIds: [] as string[],
 			filters: {
 				sort,
+				library: '',
 				monitored,
 				status,
 				progress,
@@ -377,6 +471,12 @@ export const load: PageServerLoad = async ({ url }) => {
 				resolution,
 				videoCodec,
 				hdrFormat
+			},
+			libraryScope: {
+				selected: null,
+				options: [],
+				hasSubLibraries: false,
+				isSubLibraryScope: false
 			},
 			qualityProfiles: emptyProfiles,
 			uniqueResolutions: emptyStrings,
@@ -387,7 +487,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	}
 };
 
-export const actions = {
+export const actions: Actions = {
 	toggleAllMonitored: async ({ request }) => {
 		const formData = await request.formData();
 		const monitored = formData.get('monitored') === 'true';
@@ -396,10 +496,7 @@ export const actions = {
 			await db.update(series).set({ monitored });
 			return { success: true };
 		} catch (error) {
-			logger.error(
-				'[TV] Failed to toggle all monitored',
-				error instanceof Error ? error : undefined
-			);
+			logger.error({ err: error }, '[TV] Failed to toggle all monitored');
 			return { success: false, error: 'Failed to update series' };
 		}
 	}

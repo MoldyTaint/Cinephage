@@ -32,8 +32,9 @@ import {
 	MAX_REDIRECTS
 } from '$lib/server/http/ssrf-protection';
 import { rewriteHlsPlaylistUrls } from '$lib/server/streaming/utils/hls-rewrite.js';
+import { getCachedSession } from '$lib/server/streaming/utils/cloudflare-streaming';
 
-const streamLog = { logCategory: 'streams' as const };
+const streamLog = { logDomain: 'streams' as const };
 
 /**
  * Read response body with a maximum size limit.
@@ -103,12 +104,15 @@ async function fetchWithRetry(
 
 			// Only retry on 5xx server errors
 			if (response.status >= 500 && attempt < maxRetries) {
-				logger.debug('Proxy retrying after 5xx', {
-					url: url.substring(0, 100),
-					status: response.status,
-					attempt: attempt + 1,
-					...streamLog
-				});
+				logger.debug(
+					{
+						url: url.substring(0, 100),
+						status: response.status,
+						attempt: attempt + 1,
+						...streamLog
+					},
+					'Proxy retrying after 5xx'
+				);
 				await new Promise((r) => setTimeout(r, 100 * Math.pow(2, attempt)));
 				continue;
 			}
@@ -123,12 +127,15 @@ async function fetchWithRetry(
 			}
 
 			if (attempt < maxRetries) {
-				logger.debug('Proxy retrying after error', {
-					url: url.substring(0, 100),
-					error: lastError.message,
-					attempt: attempt + 1,
-					...streamLog
-				});
+				logger.debug(
+					{
+						url: url.substring(0, 100),
+						error: lastError.message,
+						attempt: attempt + 1,
+						...streamLog
+					},
+					'Proxy retrying after error'
+				);
 				await new Promise((r) => setTimeout(r, 100 * Math.pow(2, attempt)));
 			}
 		}
@@ -159,11 +166,14 @@ export const GET: RequestHandler = async ({ url, request }) => {
 		// SSRF protection: validate URL is safe before proxying (includes DNS resolution)
 		const safetyCheck = await resolveAndValidateUrl(decodedUrl);
 		if (!safetyCheck.safe) {
-			logger.warn('Blocked unsafe URL', {
-				url: decodedUrl,
-				reason: safetyCheck.reason,
-				logCategory: 'streams'
-			});
+			logger.warn(
+				{
+					url: decodedUrl,
+					reason: safetyCheck.reason,
+					logDomain: 'streams'
+				},
+				'Blocked unsafe URL'
+			);
 			return new Response(
 				JSON.stringify({ error: 'URL not allowed', reason: safetyCheck.reason }),
 				{ status: 403, headers: { 'Content-Type': 'application/json' } }
@@ -178,6 +188,25 @@ export const GET: RequestHandler = async ({ url, request }) => {
 			Referer: referer
 		};
 
+		// Add cached Cloudflare cookies if available for this domain
+		try {
+			const domain = new URL(decodedUrl).hostname;
+			const cachedSession = getCachedSession(domain);
+			if (cachedSession) {
+				headers['Cookie'] = cachedSession.cookies;
+				headers['User-Agent'] = cachedSession.userAgent;
+				logger.debug(
+					{
+						domain,
+						logDomain: 'streams'
+					},
+					'[Proxy] Using cached Cloudflare session'
+				);
+			}
+		} catch {
+			// Ignore URL parsing errors
+		}
+
 		// Follow redirects with loop protection
 		let currentUrl = decodedUrl;
 		let redirectCount = 0;
@@ -187,7 +216,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
 		while (true) {
 			// Check for redirect loop
 			if (visitedUrls.has(currentUrl)) {
-				logger.warn('Redirect loop detected', { url: currentUrl, logCategory: 'streams' });
+				logger.warn({ url: currentUrl, logDomain: 'streams' }, 'Redirect loop detected');
 				return new Response(JSON.stringify({ error: 'Redirect loop detected' }), {
 					status: 508,
 					headers: { 'Content-Type': 'application/json' }
@@ -197,11 +226,14 @@ export const GET: RequestHandler = async ({ url, request }) => {
 
 			// Check redirect limit
 			if (redirectCount >= MAX_REDIRECTS) {
-				logger.warn('Max redirects exceeded', {
-					url: decodedUrl,
-					maxRedirects: MAX_REDIRECTS,
-					logCategory: 'streams'
-				});
+				logger.warn(
+					{
+						url: decodedUrl,
+						maxRedirects: MAX_REDIRECTS,
+						logDomain: 'streams'
+					},
+					'Max redirects exceeded'
+				);
 				return new Response(
 					JSON.stringify({ error: 'Too many redirects', maxRedirects: MAX_REDIRECTS }),
 					{ status: 508, headers: { 'Content-Type': 'application/json' } }
@@ -222,11 +254,14 @@ export const GET: RequestHandler = async ({ url, request }) => {
 					// Validate redirect target for SSRF (with DNS resolution)
 					const redirectSafetyCheck = await resolveAndValidateUrl(redirectUrl);
 					if (!redirectSafetyCheck.safe) {
-						logger.warn('Blocked unsafe redirect', {
-							url: redirectUrl,
-							reason: redirectSafetyCheck.reason,
-							logCategory: 'streams'
-						});
+						logger.warn(
+							{
+								url: redirectUrl,
+								reason: redirectSafetyCheck.reason,
+								logDomain: 'streams'
+							},
+							'Blocked unsafe redirect'
+						);
 						return new Response(
 							JSON.stringify({
 								error: 'Redirect target not allowed',
@@ -260,12 +295,15 @@ export const GET: RequestHandler = async ({ url, request }) => {
 		if (contentLength) {
 			const size = parseInt(contentLength, 10);
 			if (size > PROXY_SEGMENT_MAX_SIZE) {
-				logger.warn('Segment too large', {
-					url: decodedUrl.substring(0, 100),
-					size,
-					maxSize: PROXY_SEGMENT_MAX_SIZE,
-					...streamLog
-				});
+				logger.warn(
+					{
+						url: decodedUrl.substring(0, 100),
+						size,
+						maxSize: PROXY_SEGMENT_MAX_SIZE,
+						...streamLog
+					},
+					'Segment too large'
+				);
 				return new Response(
 					JSON.stringify({
 						error: 'Segment too large',
@@ -315,19 +353,25 @@ export const GET: RequestHandler = async ({ url, request }) => {
 					const revalidation = validatePlaylist(sanitized);
 
 					if (revalidation.valid) {
-						logger.debug('HLS playlist sanitized successfully', {
-							url: decodedUrl.substring(0, 100),
-							originalErrors: validation.errors,
-							...streamLog
-						});
+						logger.debug(
+							{
+								url: decodedUrl.substring(0, 100),
+								originalErrors: validation.errors,
+								...streamLog
+							},
+							'HLS playlist sanitized successfully'
+						);
 						text = sanitized;
 					} else {
 						// Still invalid after sanitization - return error
-						logger.warn('HLS playlist validation failed', {
-							url: decodedUrl.substring(0, 100),
-							errors: validation.errors,
-							...streamLog
-						});
+						logger.warn(
+							{
+								url: decodedUrl.substring(0, 100),
+								errors: validation.errors,
+								...streamLog
+							},
+							'HLS playlist validation failed'
+						);
 						return new Response(
 							JSON.stringify({
 								error: 'Invalid HLS playlist',
@@ -340,12 +384,15 @@ export const GET: RequestHandler = async ({ url, request }) => {
 
 				// Log warnings for valid but potentially problematic playlists
 				if (validation.warnings.length > 0) {
-					logger.debug('HLS playlist warnings', {
-						url: decodedUrl.substring(0, 100),
-						warnings: validation.warnings,
-						type: validation.type,
-						...streamLog
-					});
+					logger.debug(
+						{
+							url: decodedUrl.substring(0, 100),
+							warnings: validation.warnings,
+							type: validation.type,
+							...streamLog
+						},
+						'HLS playlist warnings'
+					);
 				}
 			}
 
@@ -391,7 +438,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
 			}
 		});
 	} catch (error) {
-		logger.error('Proxy error', error, { url: targetUrl, logCategory: 'streams' });
+		logger.error({ err: error, ...{ url: targetUrl, logDomain: 'streams' } }, 'Proxy error');
 		return new Response(
 			JSON.stringify({
 				error: 'Proxy error',

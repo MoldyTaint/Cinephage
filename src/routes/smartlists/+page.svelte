@@ -16,6 +16,7 @@
 		ExternalLink
 	} from 'lucide-svelte';
 	import type { PageData } from './$types';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -95,7 +96,7 @@
 	}
 
 	function formatDate(dateString: string | null): string {
-		if (!dateString) return 'Never';
+		if (!dateString) return m.smartlists_formatDate_never();
 		const date = new Date(dateString);
 		const now = new Date();
 		const diffMs = now.getTime() - date.getTime();
@@ -103,56 +104,57 @@
 		const diffHours = Math.floor(diffMins / 60);
 		const diffDays = Math.floor(diffHours / 24);
 
-		if (diffMins < 1) return 'Just now';
-		if (diffMins < 60) return `${diffMins}m ago`;
-		if (diffHours < 24) return `${diffHours}h ago`;
-		if (diffDays < 7) return `${diffDays}d ago`;
+		if (diffMins < 1) return m.smartlists_formatDate_justNow();
+		if (diffMins < 60) return m.smartlists_formatDate_minutesAgo({ count: diffMins });
+		if (diffHours < 24) return m.smartlists_formatDate_hoursAgo({ count: diffHours });
+		if (diffDays < 7) return m.smartlists_formatDate_daysAgo({ count: diffDays });
 		return date.toLocaleDateString();
 	}
 
 	function getSortLabel(sortBy: string | null | undefined): string {
 		switch (sortBy) {
 			case 'popularity.desc':
-				return 'most popular first';
+				return m.smartlists_sort_mostPopularFirst();
 			case 'popularity.asc':
-				return 'least popular first';
+				return m.smartlists_sort_leastPopularFirst();
 			case 'vote_average.desc':
-				return 'highest rated first';
+				return m.smartlists_sort_highestRatedFirst();
 			case 'vote_average.asc':
-				return 'lowest rated first';
+				return m.smartlists_sort_lowestRatedFirst();
 			case 'primary_release_date.desc':
 			case 'first_air_date.desc':
-				return 'newest first';
+				return m.smartlists_sort_newestFirst();
 			case 'primary_release_date.asc':
 			case 'first_air_date.asc':
-				return 'oldest first';
+				return m.smartlists_sort_oldestFirst();
 			case 'title.asc':
-				return 'title A-Z';
+				return m.smartlists_sort_titleAZ();
 			case 'title.desc':
-				return 'title Z-A';
+				return m.smartlists_sort_titleZA();
 			default:
-				return 'custom order';
+				return m.smartlists_sort_customOrder();
 		}
 	}
 
 	function getSourceLabel(list: SmartListRow): string {
 		if (list.listSourceType === 'external-json') {
-			if (list.presetProvider === 'imdb-list') return 'IMDb';
-			if (list.presetProvider === 'tmdb-list') return 'TMDB list';
-			if (list.presetProvider === 'stevenlu') return 'StevenLu';
-			return 'an external source';
+			if (list.presetProvider === 'imdb-list') return m.smartlists_source_imdb();
+			if (list.presetProvider === 'tmdb-list') return m.smartlists_source_tmdbList();
+			if (list.presetProvider === 'stevenlu') return m.smartlists_source_stevenLu();
+			return m.smartlists_source_external();
 		}
-		if (list.listSourceType === 'trakt-list') return 'Trakt';
-		if (list.listSourceType === 'custom-manual') return 'manual curation';
-		return 'TMDB Discover';
+		if (list.listSourceType === 'trakt-list') return m.smartlists_source_trakt();
+		if (list.listSourceType === 'custom-manual') return m.smartlists_source_manualCuration();
+		return m.smartlists_source_tmdbDiscover();
 	}
 
 	function getDisplayDescription(list: SmartListRow): string {
 		const explicit = list.description?.trim();
 		if (explicit) return explicit;
 
-		const mediaLabel = list.mediaType === 'movie' ? 'movies' : 'TV shows';
-		const autoAddSuffix = list.autoAddBehavior !== 'disabled' ? ' Auto-add is enabled.' : '';
+		const mediaLabel = list.mediaType === 'movie' ? m.common_movies() : m.common_tvShows();
+		const autoAddSuffix =
+			list.autoAddBehavior !== 'disabled' ? ` ${m.smartlists_desc_autoAddEnabled()}` : '';
 
 		if (list.listSourceType === 'tmdb-discover') {
 			const filters = (list.filters ?? {}) as Record<string, unknown>;
@@ -164,39 +166,39 @@
 			const voteAverageMin =
 				typeof filters.voteAverageMin === 'number' ? filters.voteAverageMin : undefined;
 
-			if (withGenres > 0) hints.push(`${withGenres} genre filter${withGenres === 1 ? '' : 's'}`);
-			if (withKeywords > 0)
-				hints.push(`${withKeywords} keyword filter${withKeywords === 1 ? '' : 's'}`);
+			if (withGenres > 0) hints.push(m.smartlists_desc_genreFilters({ count: withGenres }));
+			if (withKeywords > 0) hints.push(m.smartlists_desc_keywordFilters({ count: withKeywords }));
 			if (yearMin || yearMax) {
-				const min = yearMin ?? 'any';
-				const max = yearMax ?? 'any';
-				hints.push(`years ${min}-${max}`);
+				const min = String(yearMin ?? m.smartlists_desc_yearAny());
+				const max = String(yearMax ?? m.smartlists_desc_yearAny());
+				hints.push(m.smartlists_desc_years({ min, max }));
 			}
-			if (voteAverageMin !== undefined) hints.push(`rated ${voteAverageMin}+`);
-			if (list.excludeInLibrary) hints.push('excluding items already in library');
+			if (voteAverageMin !== undefined)
+				hints.push(m.smartlists_desc_rated({ rating: String(voteAverageMin) }));
+			if (list.excludeInLibrary) hints.push(m.smartlists_desc_excludingInLibrary());
 
 			const hintText = hints.length > 0 ? ` ${hints.slice(0, 2).join(', ')}.` : '.';
-			return `TMDB Discover ${mediaLabel}, sorted ${getSortLabel(list.sortBy)}.${hintText}${autoAddSuffix}`;
+			return `${m.smartlists_desc_tmdbDiscover({ media: mediaLabel, sort: getSortLabel(list.sortBy) })}.${hintText}${autoAddSuffix}`;
 		}
 
 		if (list.listSourceType === 'external-json') {
-			return `Synced from ${getSourceLabel(list)} for ${mediaLabel}.${autoAddSuffix}`;
+			return `${m.smartlists_desc_syncedFrom({ source: getSourceLabel(list), media: mediaLabel })}.${autoAddSuffix}`;
 		}
 
 		if (list.listSourceType === 'trakt-list') {
-			return `Synced from Trakt for ${mediaLabel}.${autoAddSuffix}`;
+			return `${m.smartlists_desc_syncedFrom({ source: m.smartlists_source_trakt(), media: mediaLabel })}.${autoAddSuffix}`;
 		}
 
 		if (list.listSourceType === 'custom-manual') {
-			return `Manually curated ${mediaLabel}.${autoAddSuffix}`;
+			return `${m.smartlists_desc_manuallyCurated({ media: mediaLabel })}.${autoAddSuffix}`;
 		}
 
-		return `Dynamic ${mediaLabel} list.${autoAddSuffix}`;
+		return `${m.smartlists_desc_dynamicList({ media: mediaLabel })}.${autoAddSuffix}`;
 	}
 </script>
 
 <svelte:head>
-	<title>Smart Lists - Cinephage</title>
+	<title>{m.smartlists_pageTitle()}</title>
 </svelte:head>
 
 <div class="w-full p-3 sm:p-4">
@@ -209,14 +211,14 @@
 
 	<div class="mb-5 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
 		<div class="min-w-0">
-			<h1 class="text-2xl font-bold">Smart Lists</h1>
+			<h1 class="text-2xl font-bold">{m.smartlists_heading()}</h1>
 			<p class="text-base-content/70">
-				Create dynamic lists that automatically populate from TMDB based on your filters.
+				{m.smartlists_subtitle()}
 			</p>
 		</div>
 		<button class="btn gap-2 btn-sm btn-primary sm:w-auto" onclick={navigateToCreate}>
 			<Plus class="h-4 w-4" />
-			Create Smart List
+			{m.smartlists_createButton()}
 		</button>
 	</div>
 
@@ -224,14 +226,13 @@
 		<div class="card bg-base-100 shadow-xl">
 			<div class="card-body items-center text-center">
 				<List class="h-16 w-16 text-base-content/30" />
-				<h2 class="card-title">No Smart Lists Yet</h2>
+				<h2 class="card-title">{m.smartlists_emptyTitle()}</h2>
 				<p class="text-base-content/70">
-					Create your first smart list to automatically discover movies and TV shows based on your
-					preferences.
+					{m.smartlists_emptyDescription()}
 				</p>
 				<button class="btn mt-4 btn-primary" onclick={navigateToCreate}>
 					<Plus class="h-4 w-4" />
-					Create Smart List
+					{m.smartlists_createButton()}
 				</button>
 			</div>
 		</div>
@@ -269,30 +270,44 @@
 
 						<div class="mt-2 flex flex-wrap gap-1.5 sm:gap-2">
 							<div class="badge badge-ghost badge-sm">
-								{list.cachedItemCount ?? 0} items
+								{m.smartlists_itemsBadge({ count: list.cachedItemCount ?? 0 })}
 							</div>
 							<div class="badge badge-ghost badge-sm">
-								{list.itemsInLibrary ?? 0} in library
+								{m.smartlists_inLibraryBadge({ count: list.itemsInLibrary ?? 0 })}
 							</div>
 							{#if list.autoAddBehavior !== 'disabled'}
-								<div class="badge badge-outline badge-sm badge-info">Auto-add</div>
+								<div class="badge badge-outline badge-sm badge-info">
+									{m.smartlists_autoAddBadge()}
+								</div>
 							{/if}
 							{#if list.listSourceType === 'external-json'}
 								{#if list.presetProvider === 'imdb-list'}
-									<div class="badge badge-outline badge-sm badge-secondary">IMDb</div>
+									<div class="badge badge-outline badge-sm badge-secondary">
+										{m.smartlists_source_imdb()}
+									</div>
 								{:else if list.presetProvider === 'tmdb-list'}
-									<div class="badge badge-outline badge-sm badge-primary">TMDB List</div>
+									<div class="badge badge-outline badge-sm badge-primary">
+										{m.smartlists_source_tmdbList()}
+									</div>
 								{:else if list.presetProvider === 'stevenlu'}
-									<div class="badge badge-outline badge-sm badge-success">StevenLu</div>
+									<div class="badge badge-outline badge-sm badge-success">
+										{m.smartlists_source_stevenLu()}
+									</div>
 								{:else}
-									<div class="badge badge-outline badge-sm badge-secondary">External</div>
+									<div class="badge badge-outline badge-sm badge-secondary">
+										{m.smartlists_source_externalBadge()}
+									</div>
 								{/if}
 							{:else if list.listSourceType === 'trakt-list'}
-								<div class="badge badge-outline badge-sm badge-accent">Trakt</div>
+								<div class="badge badge-outline badge-sm badge-accent">
+									{m.smartlists_source_trakt()}
+								</div>
 							{:else if list.listSourceType === 'custom-manual'}
-								<div class="badge badge-outline badge-sm badge-warning">Custom</div>
+								<div class="badge badge-outline badge-sm badge-warning">{m.common_custom()}</div>
 							{:else if list.listSourceType === 'tmdb-discover'}
-								<div class="badge badge-outline badge-sm badge-primary">TMDB Discover</div>
+								<div class="badge badge-outline badge-sm badge-primary">
+									{m.smartlists_source_tmdbDiscover()}
+								</div>
 							{/if}
 						</div>
 
@@ -307,7 +322,9 @@
 								{:else}
 									<Clock class="h-4 w-4" />
 								{/if}
-								<span class="truncate">Last refresh: {formatDate(list.lastRefreshTime)}</span>
+								<span class="truncate"
+									>{m.smartlists_lastRefresh({ time: formatDate(list.lastRefreshTime) })}</span
+								>
 							</div>
 						</div>
 
@@ -316,16 +333,16 @@
 								class="btn gap-1 btn-outline btn-sm"
 								href={`/smartlists/${list.id}`}
 								data-sveltekit-preload-data="hover"
-								title="View list"
+								title={m.action_view()}
 							>
 								<ExternalLink class="h-4 w-4" />
-								View
+								{m.action_view()}
 							</a>
 							<button
 								class="btn gap-1 btn-outline btn-sm"
 								onclick={() => refreshList(list.id)}
 								disabled={refreshingIds.has(list.id)}
-								title="Refresh"
+								title={m.action_refresh()}
 							>
 								<RefreshCw class="h-4 w-4 {refreshingIds.has(list.id) ? 'animate-spin' : ''}" />
 							</button>
@@ -333,16 +350,16 @@
 								class="btn gap-1 btn-outline btn-sm"
 								href={`/smartlists/${list.id}/edit`}
 								data-sveltekit-preload-data="hover"
-								title="Edit"
+								title={m.action_edit()}
 							>
 								<Edit class="h-4 w-4" />
-								Edit
+								{m.action_edit()}
 							</a>
 							<button
 								class="btn gap-1 btn-outline btn-sm btn-error"
 								onclick={() => openDeleteModal(list)}
 								disabled={deletingIds.has(list.id)}
-								title="Delete"
+								title={m.action_delete()}
 							>
 								<Trash2 class="h-4 w-4" />
 							</button>
@@ -353,7 +370,7 @@
 								class="btn btn-ghost btn-sm"
 								href={`/smartlists/${list.id}`}
 								data-sveltekit-preload-data="hover"
-								title="View list"
+								title={m.action_view()}
 							>
 								<ExternalLink class="h-4 w-4" />
 							</a>
@@ -361,7 +378,7 @@
 								class="btn btn-ghost btn-sm"
 								onclick={() => refreshList(list.id)}
 								disabled={refreshingIds.has(list.id)}
-								title="Refresh"
+								title={m.action_refresh()}
 							>
 								<RefreshCw class="h-4 w-4 {refreshingIds.has(list.id) ? 'animate-spin' : ''}" />
 							</button>
@@ -369,7 +386,7 @@
 								class="btn btn-ghost btn-sm"
 								href={`/smartlists/${list.id}/edit`}
 								data-sveltekit-preload-data="hover"
-								title="Edit"
+								title={m.action_edit()}
 							>
 								<Edit class="h-4 w-4" />
 							</a>
@@ -377,7 +394,7 @@
 								class="btn btn-ghost btn-sm btn-error"
 								onclick={() => openDeleteModal(list)}
 								disabled={deletingIds.has(list.id)}
-								title="Delete"
+								title={m.action_delete()}
 							>
 								<Trash2 class="h-4 w-4" />
 							</button>
@@ -391,11 +408,11 @@
 
 <ConfirmationModal
 	open={confirmDeleteOpen}
-	title="Delete Smart List"
-	messagePrefix="Delete "
-	messageEmphasis={deleteTarget?.name ?? 'this smart list'}
-	messageSuffix="? This action cannot be undone."
-	confirmLabel="Delete"
+	title={m.smartlists_deleteTitle()}
+	messagePrefix={m.smartlists_deleteMessagePrefix()}
+	messageEmphasis={deleteTarget?.name ?? m.smartlists_deleteMessageFallback()}
+	messageSuffix={m.smartlists_deleteMessageSuffix()}
+	confirmLabel={m.action_delete()}
 	confirmVariant="error"
 	loading={deleteLoading}
 	onConfirm={handleConfirmDelete}

@@ -9,6 +9,7 @@ import type { RequestHandler } from './$types';
 import { getNntpServerService } from '$lib/server/streaming/nzb/NntpServerService';
 import { getNntpManager } from '$lib/server/streaming/usenet/NntpManager';
 import { nntpServerUpdateSchema } from '$lib/validation/schemas';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 /**
  * GET /api/usenet/servers/:id
@@ -29,7 +30,11 @@ export const GET: RequestHandler = async ({ params }) => {
  * PUT /api/usenet/servers/:id
  * Update an existing NNTP server.
  */
-export const PUT: RequestHandler = async ({ params, request }) => {
+export const PUT: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { params, request } = event;
 	let data: unknown;
 	try {
 		data = await request.json();
@@ -64,7 +69,11 @@ export const PUT: RequestHandler = async ({ params, request }) => {
  * DELETE /api/usenet/servers/:id
  * Delete an NNTP server.
  */
-export const DELETE: RequestHandler = async ({ params }) => {
+export const DELETE: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { params } = event;
 	const service = getNntpServerService();
 	const deleted = await service.deleteServer(params.id);
 

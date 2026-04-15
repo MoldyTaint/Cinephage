@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
 import { monitoringSearchService } from '$lib/server/monitoring/search/MonitoringSearchService.js';
 import { logger } from '$lib/logging';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 /**
  * POST /api/monitoring/search/upgrade
@@ -11,7 +12,11 @@ import { logger } from '$lib/logging';
  * Query params:
  * - dryRun=true: Simulate the search without grabbing. Logs what would happen and returns detailed upgrade decisions.
  */
-export const POST: RequestHandler = async ({ url }) => {
+export const POST: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { url } = event;
 	const dryRun = url.searchParams.get('dryRun') === 'true';
 
 	try {

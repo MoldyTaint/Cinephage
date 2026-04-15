@@ -13,7 +13,9 @@
 
 import { getLiveTvStreamService } from './LiveTvStreamService.js';
 import type { StreamUrlResolution } from './LiveTvStreamService.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'livetv' as const });
 
 // Expiration timeouts (in milliseconds) - matching Stalkerhek behavior
 // Stalker portals enforce ~30s session limits per play_token, so we use 20s
@@ -66,12 +68,15 @@ class StreamUrlCache {
 		// Try to use cached stream first
 		const cached = this.cache.get(cacheKey);
 		if (cached && this.isValid(cached)) {
-			logger.debug('[StreamUrlCache] Using cached URL', {
-				lineupItemId,
-				format,
-				url: cached.url.substring(0, 50),
-				age: Date.now() - cached.createdAt
-			});
+			logger.debug(
+				{
+					lineupItemId,
+					format,
+					url: cached.url.substring(0, 50),
+					age: Date.now() - cached.createdAt
+				},
+				'[StreamUrlCache] Using cached URL'
+			);
 			return this.toResolution(cached);
 		}
 
@@ -115,7 +120,7 @@ class StreamUrlCache {
 		if (format) {
 			const cacheKey = `${lineupItemId}:${format}`;
 			this.cache.delete(cacheKey);
-			logger.debug('[StreamUrlCache] Invalidated cache entry', { lineupItemId, format });
+			logger.debug({ lineupItemId, format }, '[StreamUrlCache] Invalidated cache entry');
 		} else {
 			// Invalidate all formats for this lineup item
 			for (const key of this.cache.keys()) {
@@ -123,7 +128,7 @@ class StreamUrlCache {
 					this.cache.delete(key);
 				}
 			}
-			logger.debug('[StreamUrlCache] Invalidated all cache entries for lineup', { lineupItemId });
+			logger.debug({ lineupItemId }, '[StreamUrlCache] Invalidated all cache entries for lineup');
 		}
 	}
 
@@ -150,7 +155,7 @@ class StreamUrlCache {
 		// Wait for any existing lock
 		const existingLock = this.locks.get(lockKey);
 		if (existingLock) {
-			logger.debug('[StreamUrlCache] Waiting for existing resolution', { lineupItemId, format });
+			logger.debug({ lineupItemId, format }, '[StreamUrlCache] Waiting for existing resolution');
 			await existingLock;
 			// After waiting, check cache again (another request may have resolved it)
 			const cached = this.cache.get(cacheKey);
@@ -174,7 +179,7 @@ class StreamUrlCache {
 			}
 
 			// Resolve URL only (no HTTP connection opened)
-			logger.info('[StreamUrlCache] Resolving fresh stream URL', { lineupItemId, format });
+			logger.info({ lineupItemId, format }, '[StreamUrlCache] Resolving fresh stream URL');
 			const streamService = getLiveTvStreamService();
 			const result = await streamService.resolveStream(lineupItemId, format);
 
@@ -191,12 +196,15 @@ class StreamUrlCache {
 				format
 			});
 
-			logger.info('[StreamUrlCache] URL resolved and cached', {
-				lineupItemId,
-				format,
-				url: result.url.substring(0, 50),
-				type: result.type
-			});
+			logger.info(
+				{
+					lineupItemId,
+					format,
+					url: result.url.substring(0, 50),
+					type: result.type
+				},
+				'[StreamUrlCache] URL resolved and cached'
+			);
 
 			return result;
 		} finally {

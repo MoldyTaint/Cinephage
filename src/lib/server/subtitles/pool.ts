@@ -15,7 +15,9 @@ import type { Subtitle } from './subtitle';
 import type { Video } from './video';
 import type { LanguageEquivalencePair } from './language';
 import { BaseSubtitleProvider } from './providers/BaseProvider';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 
 /**
  * Pool configuration
@@ -182,9 +184,12 @@ export class SubtitleProviderPool {
 			this.initializedProviders.set(name, provider);
 			return provider;
 		} catch (error) {
-			logger.error(`Failed to initialize provider ${name}`, {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.error(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				`Failed to initialize provider ${name}`
+			);
 			this.discardedProviders.add(name);
 			throw error;
 		}
@@ -215,7 +220,7 @@ export class SubtitleProviderPool {
 	 * Discard a provider (remove from active use)
 	 */
 	async discardProvider(name: string, reason?: string): Promise<void> {
-		logger.warn(`Discarding provider: ${name}`, { reason });
+		logger.warn({ reason }, `Discarding provider: ${name}`);
 
 		this.discardedProviders.add(name);
 
@@ -351,9 +356,12 @@ export class SubtitleProviderPool {
 			if (provider instanceof BaseSubtitleProvider) {
 				terminatePromises.push(
 					provider.terminate().catch((error) => {
-						logger.warn(`Error terminating provider ${name}`, {
-							error: error instanceof Error ? error.message : String(error)
-						});
+						logger.warn(
+							{
+								error: error instanceof Error ? error.message : String(error)
+							},
+							`Error terminating provider ${name}`
+						);
 					})
 				);
 			}

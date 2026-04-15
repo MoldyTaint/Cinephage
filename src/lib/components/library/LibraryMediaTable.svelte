@@ -18,9 +18,10 @@
 		Download
 	} from 'lucide-svelte';
 	import { resolvePath } from '$lib/utils/routing';
-	import { formatBytes } from '$lib/utils/format';
+	import { formatBytes, getStatusColor } from '$lib/utils/format';
 	import type { MediaType } from '$lib/utils/media-type';
 	import { goto } from '$app/navigation';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface QualityProfile {
 		id: string;
@@ -42,6 +43,7 @@
 		onAutoGrab?: (id: string) => void;
 		onManualGrab?: (id: string) => void;
 		downloadingIds?: Set<string>;
+		autoSearchingIds?: Set<string>;
 	}
 
 	let {
@@ -58,7 +60,8 @@
 		onDelete,
 		onAutoGrab,
 		onManualGrab,
-		downloadingIds = new Set()
+		downloadingIds = new Set(),
+		autoSearchingIds = new Set()
 	}: Props = $props();
 
 	// Track loading states for actions
@@ -81,22 +84,13 @@
 		return profileId === 'streamer' || profileName === 'streamer';
 	}
 
-	function getStatusColor(status: string | null): string {
-		if (!status) return 'badge-ghost';
-		const s = status.toLowerCase();
-		if (s.includes('returning') || s.includes('production')) return 'badge-success';
-		if (s.includes('ended')) return 'badge-error';
-		if (s.includes('canceled')) return 'badge-warning';
-		return 'badge-ghost';
-	}
-
 	function formatStatus(status: string | null): string {
-		if (!status) return 'Unknown';
+		if (!status) return m.common_unknown();
 		const s = status.toLowerCase();
-		if (s.includes('returning')) return 'Continuing';
-		if (s.includes('production')) return 'In Production';
-		if (s.includes('ended')) return 'Ended';
-		if (s.includes('canceled')) return 'Cancelled';
+		if (s.includes('returning')) return m.library_libraryMediaTable_continuing();
+		if (s.includes('production')) return m.library_libraryMediaTable_inProduction();
+		if (s.includes('ended')) return m.library_libraryMediaTable_ended();
+		if (s.includes('canceled')) return m.library_libraryMediaTable_cancelled();
 		return status;
 	}
 
@@ -228,16 +222,17 @@
 		const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
 		const diffDays = Math.round((today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24));
 
-		if (diffDays === 0) return { display: 'Today', full };
-		if (diffDays === 1) return { display: 'Yesterday', full };
-		if (diffDays < 7) return { display: `${diffDays} days ago`, full };
+		if (diffDays === 0) return { display: m.library_libraryMediaTable_today(), full };
+		if (diffDays === 1) return { display: m.library_libraryMediaTable_yesterday(), full };
+		if (diffDays < 7)
+			return { display: m.library_libraryMediaTable_daysAgo({ count: diffDays }), full };
 		if (diffDays < 30) {
 			const weeks = Math.floor(diffDays / 7);
-			return { display: `${weeks}w ago`, full };
+			return { display: m.library_libraryMediaTable_weeksAgo({ count: weeks }), full };
 		}
 		if (diffDays < 365) {
 			const months = Math.floor(diffDays / 30);
-			return { display: `${months}mo ago`, full };
+			return { display: m.library_libraryMediaTable_monthsAgo({ count: months }), full };
 		}
 		return { display: full, full };
 	}
@@ -265,7 +260,7 @@
 			{@const isItemMovie = isMovie(item)}
 			{@const size = getItemSize(item)}
 			{@const qualityBadges = getQualityBadges(item)}
-			{@const isLoading = actionLoadingRows.has(item.id)}
+			{@const isLoading = actionLoadingRows.has(item.id) || autoSearchingIds.has(item.id)}
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
@@ -291,29 +286,29 @@
 						{#if item.monitored}
 							<span class="badge gap-1.5 badge-sm badge-success">
 								<Eye class="h-3.5 w-3.5" />
-								Monitored
+								{m.library_monitorToggle_monitored()}
 							</span>
 						{:else}
 							<span class="badge gap-1.5 badge-sm badge-neutral">
 								<EyeOff class="h-3.5 w-3.5" />
-								Not Monitored
+								{m.library_monitorToggle_notMonitored()}
 							</span>
 						{/if}
 						{#if isItemMovie}
 							{#if item.hasFile}
 								<span class="badge gap-1.5 badge-sm badge-success">
 									<CheckCircle2 class="h-3.5 w-3.5" />
-									Downloaded
+									{m.common_downloaded()}
 								</span>
 							{:else if downloadingIds.has(item.id)}
 								<span class="badge gap-1.5 badge-sm badge-info">
 									<Download class="h-3.5 w-3.5 animate-pulse" />
-									Downloading
+									{m.status_downloading()}
 								</span>
 							{:else}
 								<span class="badge gap-1.5 badge-sm badge-warning">
 									<XCircle class="h-3.5 w-3.5" />
-									Missing
+									{m.common_missing()}
 								</span>
 							{/if}
 						{/if}
@@ -370,12 +365,12 @@
 							<div class="mt-1.5">
 								<div class="flex items-center gap-2 text-xs text-base-content/60">
 									<span>
-										{item.episodeFileCount ?? 0} / {item.episodeCount ?? 0} episodes
+										{m.library_libraryMediaTable_episodesCount({ count: item.episodeCount ?? 0 })}
 									</span>
 									{#if item.percentComplete === 100}
 										<span class="badge badge-sm badge-success">
 											<CheckCircle2 class="h-3 w-3" />
-											Complete
+											{m.library_libraryMediaTable_completeBadge()}
 										</span>
 									{:else if item.percentComplete > 0}
 										<span class="badge badge-xs badge-primary">{item.percentComplete}%</span>
@@ -410,10 +405,10 @@
 					>
 						{#if item.monitored}
 							<EyeOff class="h-3.5 w-3.5" />
-							Unmonitor
+							{m.library_libraryMediaTable_unmonitorButton()}
 						{:else}
 							<Eye class="h-3.5 w-3.5" />
-							Monitor
+							{m.library_libraryMediaTable_monitorButton()}
 						{/if}
 					</button>
 					{#if onAutoGrab}
@@ -423,7 +418,7 @@
 							disabled={isLoading}
 						>
 							<Zap class="h-3.5 w-3.5" />
-							Auto
+							{m.library_libraryMediaTable_autoButton()}
 						</button>
 					{/if}
 					{#if onManualGrab}
@@ -433,7 +428,7 @@
 							disabled={isLoading}
 						>
 							<Search class="h-3.5 w-3.5" />
-							Manual
+							{m.library_libraryMediaTable_manualButton()}
 						</button>
 					{/if}
 					<button
@@ -442,7 +437,7 @@
 						disabled={isLoading}
 					>
 						<Trash2 class="h-3.5 w-3.5" />
-						Delete
+						{m.action_delete()}
 					</button>
 				</div>
 			</div>
@@ -469,13 +464,13 @@
 							/>
 						</th>
 					{/if}
-					<th class="w-14 text-base">Poster</th>
+					<th class="w-14 text-base">{m.library_libraryMediaTable_posterColumn()}</th>
 					<th
 						class="cursor-pointer text-base select-none hover:bg-base-200"
 						onclick={() => handleSort('title')}
 					>
 						<span class="flex items-center gap-1">
-							Title
+							{m.library_libraryMediaTable_titleColumn()}
 							{#if onSort}
 								{@const Icon = getSortIcon('title')}
 								<Icon class="h-4 w-4 opacity-50" />
@@ -487,21 +482,21 @@
 						onclick={() => handleSort('year')}
 					>
 						<span class="flex items-center gap-1">
-							Year
+							{m.library_libraryMediaTable_yearColumn()}
 							{#if onSort}
 								{@const Icon = getSortIcon('year')}
 								<Icon class="h-4 w-4 opacity-50" />
 							{/if}
 						</span>
 					</th>
-					<th class="text-base">Status</th>
-					<th class="text-base">Quality</th>
+					<th class="text-base">{m.library_libraryMediaTable_statusColumn()}</th>
+					<th class="text-base">{m.library_libraryMediaTable_qualityColumn()}</th>
 					<th
 						class="cursor-pointer text-base select-none hover:bg-base-200"
 						onclick={() => handleSort('size')}
 					>
 						<span class="flex items-center gap-1">
-							Size
+							{m.library_libraryMediaTable_sizeColumn()}
 							{#if onSort}
 								{@const Icon = getSortIcon('size')}
 								<Icon class="h-4 w-4 opacity-50" />
@@ -509,14 +504,14 @@
 						</span>
 					</th>
 					{#if isTv}
-						<th class="text-base">Progress</th>
+						<th class="text-base">{m.library_libraryMediaTable_progressColumn()}</th>
 					{/if}
 					<th
 						class="cursor-pointer text-base select-none hover:bg-base-200"
 						onclick={() => handleSort('added')}
 					>
 						<span class="flex items-center gap-1">
-							Added
+							{m.library_libraryMediaTable_addedColumn()}
 							{#if onSort}
 								{@const Icon = getSortIcon('added')}
 								<Icon class="h-4 w-4 opacity-50" />
@@ -531,7 +526,7 @@
 					{@const isItemMovie = isMovie(item)}
 					{@const size = getItemSize(item)}
 					{@const qualityBadges = getQualityBadges(item)}
-					{@const isLoading = actionLoadingRows.has(item.id)}
+					{@const isLoading = actionLoadingRows.has(item.id) || autoSearchingIds.has(item.id)}
 					{@const isNearBottom = idx >= items.length - 3}
 					{@const missing = isItemMissing(item)}
 					{@const relDate = formatRelativeDate(item.added)}
@@ -611,17 +606,17 @@
 									{#if item.hasFile}
 										<span class="badge gap-1 badge-sm badge-success">
 											<CheckCircle2 class="h-3 w-3" />
-											Downloaded
+											{m.common_downloaded()}
 										</span>
 									{:else if downloadingIds.has(item.id)}
 										<span class="badge gap-1 badge-sm badge-info">
 											<Download class="h-3 w-3 animate-pulse" />
-											Downloading
+											{m.status_downloading()}
 										</span>
 									{:else}
 										<span class="badge gap-1 badge-sm badge-warning">
 											<XCircle class="h-3 w-3" />
-											Missing
+											{m.common_missing()}
 										</span>
 									{/if}
 								{/if}
@@ -676,7 +671,7 @@
 										{#if item.percentComplete === 100}
 											<span class="badge badge-sm badge-success">
 												<CheckCircle2 class="h-3 w-3" />
-												Complete
+												{m.library_libraryMediaTable_completeBadge()}
 											</span>
 										{/if}
 										{#if downloadingIds.has(item.id)}
@@ -709,10 +704,10 @@
 										<button onclick={() => handleMonitorToggle(item.id, item.monitored ?? false)}>
 											{#if item.monitored}
 												<EyeOff class="mr-2 h-4 w-4" />
-												Unmonitor
+												{m.library_libraryMediaTable_unmonitorButton()}
 											{:else}
 												<Eye class="mr-2 h-4 w-4" />
-												Monitor
+												{m.library_libraryMediaTable_monitorButton()}
 											{/if}
 										</button>
 									</li>
@@ -720,7 +715,7 @@
 										<li>
 											<button onclick={() => handleAutoGrab(item.id)}>
 												<Zap class="mr-2 h-4 w-4" />
-												Auto Grab
+												{m.library_libraryMediaTable_autoGrabButton()}
 											</button>
 										</li>
 									{/if}
@@ -728,14 +723,14 @@
 										<li>
 											<button onclick={() => handleManualGrab(item.id)}>
 												<Search class="mr-2 h-4 w-4" />
-												Manual Grab
+												{m.library_libraryMediaTable_manualGrabButton()}
 											</button>
 										</li>
 									{/if}
 									<li>
 										<button class="text-error" onclick={() => handleDelete(item.id)}>
 											<Trash2 class="mr-2 h-4 w-4" />
-											Delete
+											{m.action_delete()}
 										</button>
 									</li>
 								</ul>

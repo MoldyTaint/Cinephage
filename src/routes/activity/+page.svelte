@@ -1,34 +1,92 @@
 <script lang="ts">
-	import { SvelteURLSearchParams } from 'svelte/reactivity';
-	import { onMount } from 'svelte';
-	import { goto, invalidateAll } from '$app/navigation';
+	import * as m from '$lib/paraglide/messages.js';
+	import { onMount, untrack } from 'svelte';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { resolvePath } from '$lib/utils/routing';
 	import { createSSE } from '$lib/sse';
-	import { mobileSSEStatus } from '$lib/sse/mobileStatus.svelte';
+	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import ActivityTable from '$lib/components/activity/ActivityTable.svelte';
 	import ActivityDetailModal from '$lib/components/activity/ActivityDetailModal.svelte';
 	import ActivityFilters from '$lib/components/activity/ActivityFilters.svelte';
 	import ActiveFilters from '$lib/components/activity/ActiveFilters.svelte';
-	import type {
-		UnifiedActivity,
-		ActivityDetails,
-		ActivityFilters as FiltersType,
-		ActivityStatus
+	import QueueStatsCards from '$lib/components/activity/QueueStatsCards.svelte';
+	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import {
+		isActiveActivity,
+		type UnifiedActivity,
+		type ActivityFilters as FiltersType,
+		type ActivityStatus,
+		type ActivitySummary
 	} from '$lib/types/activity';
+	import type { ActivityStreamEvents } from '$lib/types/sse/events/activity-events.js';
 	import { Activity, Loader2, Wifi, WifiOff } from 'lucide-svelte';
+	import { toasts } from '$lib/stores/toast.svelte';
+	import {
+		ACTIVITY_REFRESH_MIN_INTERVAL_MS,
+		type ActivityTab,
+		type HistoryConfirmAction,
+		type ActiveBulkAction,
+		type QueueCardStats,
+		type QueueCardStatusFilter
+	} from './activity-constants.js';
+	import {
+		createDefaultFilters,
+		normalizeFiltersForTab,
+		isHistoryActivity,
+		isQueueActivityId,
+		shouldSyncSelectedActivity,
+		normalizeActivityStatus,
+		normalizeActivity,
+		sortActivitiesList,
+		parseQueueStats,
+		createDefaultQueueCardStats,
+		buildActivityApiQueryString,
+		buildFilterQueryString,
+		matchesActivityFilters,
+		getQueueActionErrorMessage
+	} from './activity-utils.js';
 
 	let { data } = $props();
 
 	// Local state for activities (for SSE updates)
+	// Initialize directly from server data so the first render already has correct content.
+	// The $effect below re-syncs on subsequent data changes (navigation / tab switch).
+	function getInitialTab(): ActivityTab {
+		return data.tab === 'active' ? 'active' : 'history';
+	}
+
+	function getInitialFilters(): FiltersType {
+		return data.filters ? { ...data.filters } : createDefaultFilters();
+	}
+
 	let activities = $state<UnifiedActivity[]>([]);
 	let total = $state(0);
+	let hasMore = $state(false);
+	// Track how many items were loaded from the server (excluding SSE additions)
+	// so loadMore() uses the correct offset.
+	let loadedOffset = $state(0);
+	let selectionMode = $state(false);
+	let selectedHistoryIds = new SvelteSet<string>();
+	let activeSelectionMode = $state(false);
+	let selectedActiveIds = new SvelteSet<string>();
+	let canManageHistory = $state(false);
+	let retentionDays = $state(90);
+	let settingsLoading = $state(true);
+	let saveRetentionLoading = $state(false);
+	let purgeOlderLoading = $state(false);
+	let purgeAllLoading = $state(false);
+	let deleteSelectedLoading = $state(false);
+	let historyConfirmOpen = $state(false);
+	let historyConfirmAction = $state<HistoryConfirmAction | null>(null);
+	let activeConfirmOpen = $state(false);
+	let activeConfirmAction = $state<ActiveBulkAction | null>(null);
+	let activeBulkLoading = $state(false);
 
-	// Filter state - initialize from URL/data
-	let filters = $state<FiltersType>({
-		status: 'all',
-		mediaType: 'all',
-		protocol: 'all'
-	});
+	// Filter state - initialize from server data
+	let filters = $state<FiltersType>(createDefaultFilters());
+	let activeTabFilters = $state<FiltersType>(createDefaultFilters());
+	let historyTabFilters = $state<FiltersType>(createDefaultFilters());
+	let activityTab = $state<ActivityTab>('history');
 
 	// Sort state
 	let sortField = $state('time');
@@ -38,240 +96,588 @@
 	let isLoading = $state(false);
 	let isLoadingMore = $state(false);
 
-	let hasInitialized = $state(false);
 	let refreshInFlight = $state(false);
+	let lastActivityRefreshAt = 0;
+	let activityRequestToken = 0;
 
-	function normalizeActivityStatus(status: unknown): ActivityStatus {
-		switch (status) {
-			case 'imported':
-			case 'streaming':
-			case 'downloading':
-			case 'paused':
-			case 'failed':
-			case 'rejected':
-			case 'removed':
-			case 'no_results':
-			case 'searching':
-				return status;
-			default:
-				return 'downloading';
+	let queueStats = $state<QueueCardStats>(createDefaultQueueCardStats());
+
+	function getFiltersForTab(tab: ActivityTab): FiltersType {
+		return tab === 'active' ? activeTabFilters : historyTabFilters;
+	}
+
+	function setFiltersForTab(tab: ActivityTab, nextFilters: FiltersType): void {
+		if (tab === 'active') {
+			activeTabFilters = { ...nextFilters };
+			return;
+		}
+		historyTabFilters = { ...nextFilters };
+	}
+
+	function isActiveQueueActivity(activity: UnifiedActivity): boolean {
+		return isActiveActivity(activity) && Boolean(activity.queueItemId);
+	}
+
+	function toggleSelectionMode(): void {
+		selectionMode = !selectionMode;
+		if (!selectionMode) {
+			selectedHistoryIds.clear();
 		}
 	}
 
-	function normalizeActivity(activity: Partial<UnifiedActivity>): UnifiedActivity | null {
-		if (!activity.id) return null;
-
-		return {
-			id: activity.id,
-			mediaType: activity.mediaType === 'episode' ? 'episode' : 'movie',
-			mediaId: activity.mediaId ?? '',
-			mediaTitle: activity.mediaTitle ?? 'Unknown',
-			mediaYear: activity.mediaYear ?? null,
-			seriesId: activity.seriesId,
-			seriesTitle: activity.seriesTitle,
-			seasonNumber: activity.seasonNumber,
-			episodeNumber: activity.episodeNumber,
-			episodeIds: activity.episodeIds,
-			releaseTitle: activity.releaseTitle ?? null,
-			quality: activity.quality ?? null,
-			releaseGroup: activity.releaseGroup ?? null,
-			size: activity.size ?? null,
-			indexerId: activity.indexerId ?? null,
-			indexerName: activity.indexerName ?? null,
-			protocol: activity.protocol ?? null,
-			downloadClientId: activity.downloadClientId ?? null,
-			downloadClientName: activity.downloadClientName ?? null,
-			status: normalizeActivityStatus(activity.status),
-			statusReason: activity.statusReason,
-			downloadProgress: activity.downloadProgress,
-			isUpgrade: activity.isUpgrade ?? false,
-			oldScore: activity.oldScore,
-			newScore: activity.newScore,
-			timeline: Array.isArray(activity.timeline) ? activity.timeline : [],
-			startedAt: activity.startedAt ?? new Date().toISOString(),
-			completedAt: activity.completedAt ?? null,
-			queueItemId: activity.queueItemId,
-			downloadHistoryId: activity.downloadHistoryId,
-			monitoringHistoryId: activity.monitoringHistoryId,
-			importedPath: activity.importedPath
-		};
+	function handleToggleSelection(activityId: string, selected: boolean): void {
+		if (selected) {
+			selectedHistoryIds.add(activityId);
+		} else {
+			selectedHistoryIds.delete(activityId);
+		}
 	}
 
-	function matchesLiveFilters(activity: UnifiedActivity): boolean {
-		// Status
-		if (filters.status && filters.status !== 'all') {
-			if (filters.status === 'success') {
-				if (activity.status !== 'imported' && activity.status !== 'streaming') return false;
-			} else if (activity.status !== filters.status) {
-				return false;
+	function handleToggleSelectionAll(activityIds: string[], selected: boolean): void {
+		if (selected) {
+			for (const id of activityIds) {
+				selectedHistoryIds.add(id);
+			}
+			return;
+		}
+
+		for (const id of activityIds) {
+			selectedHistoryIds.delete(id);
+		}
+	}
+
+	function toggleActiveSelectionMode(): void {
+		activeSelectionMode = !activeSelectionMode;
+		if (!activeSelectionMode) {
+			selectedActiveIds.clear();
+		}
+	}
+
+	function handleToggleActiveSelection(activityId: string, selected: boolean): void {
+		if (selected) {
+			selectedActiveIds.add(activityId);
+		} else {
+			selectedActiveIds.delete(activityId);
+		}
+	}
+
+	function handleToggleActiveSelectionAll(activityIds: string[], selected: boolean): void {
+		if (selected) {
+			for (const id of activityIds) {
+				selectedActiveIds.add(id);
+			}
+			return;
+		}
+
+		for (const id of activityIds) {
+			selectedActiveIds.delete(id);
+		}
+	}
+
+	function reconcileSelectedHistoryIds(sourceActivities: UnifiedActivity[]): void {
+		const validIds = new Set(
+			sourceActivities
+				.filter((a) => isHistoryActivity(a) && selectedHistoryIds.has(a.id))
+				.map((a) => a.id)
+		);
+		if (validIds.size === selectedHistoryIds.size) return;
+		selectedHistoryIds.clear();
+		for (const id of validIds) selectedHistoryIds.add(id);
+	}
+
+	function reconcileSelectedActiveIds(sourceActivities: UnifiedActivity[]): void {
+		const validIds = new Set(
+			sourceActivities
+				.filter((a) => isActiveQueueActivity(a) && selectedActiveIds.has(a.id))
+				.map((a) => a.id)
+		);
+		if (validIds.size === selectedActiveIds.size) return;
+		selectedActiveIds.clear();
+		for (const id of validIds) selectedActiveIds.add(id);
+	}
+
+	function getSelectedQueueIdsByStatus(statuses: ActivityStatus[]): string[] {
+		const queueIds: string[] = [];
+
+		for (const activity of activities) {
+			if (!selectedActiveIds.has(activity.id)) continue;
+			if (!isActiveQueueActivity(activity) || !activity.queueItemId) continue;
+			if (!statuses.includes(activity.status)) continue;
+			if (!queueIds.includes(activity.queueItemId)) {
+				queueIds.push(activity.queueItemId);
 			}
 		}
 
-		// Media type
-		if (filters.mediaType === 'movie' && activity.mediaType !== 'movie') return false;
-		if (filters.mediaType === 'tv' && activity.mediaType !== 'episode') return false;
+		return queueIds;
+	}
 
-		// Search
-		if (filters.search) {
-			const needle = filters.search.toLowerCase();
-			const matches =
-				activity.mediaTitle.toLowerCase().includes(needle) ||
-				activity.releaseTitle?.toLowerCase().includes(needle) ||
-				activity.seriesTitle?.toLowerCase().includes(needle) ||
-				activity.releaseGroup?.toLowerCase().includes(needle) ||
-				activity.indexerName?.toLowerCase().includes(needle);
-			if (!matches) return false;
+	const selectedPausableQueueIds = $derived.by(() =>
+		getSelectedQueueIdsByStatus(['downloading', 'seeding'])
+	);
+	const selectedPausedQueueIds = $derived.by(() => getSelectedQueueIdsByStatus(['paused']));
+	const selectedFailedQueueIds = $derived.by(() => getSelectedQueueIdsByStatus(['failed']));
+	const selectableHistoryIds = $derived.by(() =>
+		filteredActivities
+			.filter((activity) => isHistoryActivity(activity))
+			.map((activity) => activity.id)
+	);
+	const selectableActiveIds = $derived.by(() =>
+		filteredActivities
+			.filter((activity) => isActiveQueueActivity(activity))
+			.map((activity) => activity.id)
+	);
+	const allHistorySelectableSelected = $derived.by(
+		() =>
+			selectableHistoryIds.length > 0 &&
+			selectableHistoryIds.every((id) => selectedHistoryIds.has(id))
+	);
+	const allActiveSelectableSelected = $derived.by(
+		() =>
+			selectableActiveIds.length > 0 && selectableActiveIds.every((id) => selectedActiveIds.has(id))
+	);
+
+	function getActiveBulkActionQueueIds(action: ActiveBulkAction): string[] {
+		switch (action) {
+			case 'pause':
+				return selectedPausableQueueIds;
+			case 'resume':
+				return selectedPausedQueueIds;
+			case 'retry_failed':
+			case 'remove_failed':
+				return selectedFailedQueueIds;
+		}
+	}
+
+	function applyQueueCardFilter(status: QueueCardStatusFilter): void {
+		if (activityTab !== 'active') return;
+		const currentStatus = filters.status ?? 'all';
+		if (currentStatus === status) return;
+		applyFilters({ ...filters, status }, 'active');
+	}
+
+	function syncActivityUrl(nextFilters: FiltersType, tab: ActivityTab): void {
+		if (typeof window === 'undefined') return;
+		const queryString = buildFilterQueryString(nextFilters, tab);
+		const nextUrl = resolvePath(`/activity${queryString ? `?${queryString}` : ''}`);
+		window.history.replaceState(window.history.state, '', nextUrl);
+	}
+
+	function applyActivityResult(
+		payload: {
+			activities?: UnifiedActivity[];
+			total?: number;
+			hasMore?: boolean;
+			summary?: Partial<ActivitySummary> | null;
+		},
+		options: { append?: boolean } = {}
+	): void {
+		const { append = false } = options;
+		const nextActivities = Array.isArray(payload.activities) ? payload.activities : [];
+
+		activities = append ? [...activities, ...nextActivities] : nextActivities;
+		loadedOffset = activities.length;
+		total = typeof payload.total === 'number' ? payload.total : total;
+		hasMore = typeof payload.hasMore === 'boolean' ? payload.hasMore : false;
+		if (!append) {
+			queueStats = parseQueueStats((payload.summary ?? null) as Partial<ActivitySummary> | null);
+		}
+	}
+
+	async function fetchActivityData(
+		nextFilters: FiltersType,
+		tab: ActivityTab,
+		options: { offset?: number; append?: boolean; updateUrl?: boolean; force?: boolean } = {}
+	): Promise<void> {
+		const { offset = 0, append = false, updateUrl = false, force = false } = options;
+		const normalizedFilters = normalizeFiltersForTab(nextFilters, tab);
+		const requestToken = ++activityRequestToken;
+		const previousActivities = append ? activities : [...activities];
+		const previousHasMore = hasMore;
+
+		if (!append) {
+			activities = [];
+			hasMore = false;
 		}
 
-		// Protocol
-		if (filters.protocol && filters.protocol !== 'all' && activity.protocol !== filters.protocol) {
-			return false;
+		if (append) {
+			isLoadingMore = true;
+		} else {
+			isLoading = true;
 		}
 
-		// Download client
-		if (filters.downloadClientId && activity.downloadClientId !== filters.downloadClientId) {
-			return false;
+		try {
+			const queryString = buildActivityApiQueryString(normalizedFilters, tab, {
+				limit: 50,
+				offset
+			});
+			const response = await fetch(resolvePath(`/api/activity?${queryString}`));
+			if (!response.ok) {
+				throw new Error('Failed to load activity');
+			}
+
+			const payload = await response.json();
+			if (requestToken !== activityRequestToken) return;
+			if (!payload?.success) {
+				throw new Error(
+					typeof payload?.error === 'string' ? payload.error : 'Failed to load activity'
+				);
+			}
+
+			filters = normalizedFilters;
+			activityTab = tab;
+			setFiltersForTab(tab, normalizedFilters);
+			applyActivityResult(payload, { append });
+
+			if (!append && updateUrl) {
+				syncActivityUrl(normalizedFilters, tab);
+			}
+
+			if (!append && force) {
+				lastActivityRefreshAt = Date.now();
+			}
+		} catch (error) {
+			if (!append) {
+				activities = previousActivities ?? activities;
+				hasMore = previousHasMore;
+			}
+			throw error;
+		} finally {
+			if (requestToken === activityRequestToken) {
+				isLoading = false;
+				isLoadingMore = false;
+			}
+		}
+	}
+
+	// ── Derived sorted view (server handles filtering; client handles sort) ──
+	const filteredActivities = $derived.by(() => {
+		const field = sortField;
+		const direction = sortDirection;
+		return sortActivitiesList(activities, field, direction);
+	});
+
+	// Derived inline stats (replaces inline template computations)
+	const hasDownloading = $derived(
+		activityTab === 'active' && filteredActivities.some((a) => a.status === 'downloading')
+	);
+	const downloadingCount = $derived(
+		hasDownloading ? filteredActivities.filter((a) => a.status === 'downloading').length : 0
+	);
+
+	function removeStaleQueueLinkedRows(queueActivity: UnifiedActivity): number {
+		if (!isQueueActivityId(queueActivity.id) || !queueActivity.queueItemId) {
+			return 0;
 		}
 
-		// Indexer
-		if (filters.indexer && activity.indexerName?.toLowerCase() !== filters.indexer.toLowerCase()) {
-			return false;
+		const staleRowIds = new Set(
+			activities
+				.filter(
+					(activity) =>
+						activity.id !== queueActivity.id &&
+						!isQueueActivityId(activity.id) &&
+						activity.queueItemId === queueActivity.queueItemId
+				)
+				.map((activity) => activity.id)
+		);
+
+		if (staleRowIds.size === 0) {
+			return 0;
 		}
 
-		// Release group
+		activities = activities.filter((activity) => !staleRowIds.has(activity.id));
+
 		if (
-			filters.releaseGroup &&
-			!activity.releaseGroup?.toLowerCase().includes(filters.releaseGroup.toLowerCase())
+			selectedActivity &&
+			selectedActivity.queueItemId === queueActivity.queueItemId &&
+			staleRowIds.has(selectedActivity.id)
 		) {
-			return false;
+			selectedActivity = queueActivity;
 		}
 
-		// Resolution
-		if (
-			filters.resolution &&
-			activity.quality?.resolution?.toLowerCase() !== filters.resolution.toLowerCase()
-		) {
-			return false;
-		}
-
-		// Upgrade flag
-		if (filters.isUpgrade !== undefined && activity.isUpgrade !== filters.isUpgrade) return false;
-
-		// Date range
-		if (filters.startDate) {
-			const startTime = new Date(filters.startDate).getTime();
-			if (new Date(activity.startedAt).getTime() < startTime) return false;
-		}
-		if (filters.endDate) {
-			const endTime = new Date(filters.endDate).getTime();
-			if (new Date(activity.startedAt).getTime() > endTime) return false;
-		}
-
-		return true;
+		return staleRowIds.size;
 	}
 
 	function upsertActivity(activity: Partial<UnifiedActivity>): void {
 		const normalized = normalizeActivity(activity);
 		if (!normalized) return;
+		const inScope = matchesActivityFilters(normalized, filters, activityTab);
 
 		const existingIndex = activities.findIndex((a) => a.id === normalized.id);
-		const matchesFilters = matchesLiveFilters(normalized);
 
-		if (!matchesFilters) {
-			if (existingIndex >= 0) {
-				activities = activities.filter((a) => a.id !== normalized.id);
+		// If the item already exists, update in place
+		if (existingIndex >= 0) {
+			if (!inScope) {
+				const removed = activities[existingIndex];
+				activities = activities.filter((entry) => entry.id !== removed.id);
 				total = Math.max(0, total - 1);
-				if (selectedActivity?.id === normalized.id) {
+				if (selectedActivity && shouldSyncSelectedActivity(selectedActivity, normalized)) {
 					selectedActivity = null;
-					activityDetails = null;
 					isModalOpen = false;
 				}
+				return;
 			}
-			return;
-		}
 
-		if (existingIndex >= 0) {
 			const existing = activities[existingIndex];
 			Object.assign(existing, normalized);
-			if (selectedActivity?.id === existing.id && selectedActivity !== existing) {
+			const removedDuplicates = removeStaleQueueLinkedRows(existing);
+			if (
+				selectedActivity &&
+				selectedActivity !== existing &&
+				shouldSyncSelectedActivity(selectedActivity, existing)
+			) {
 				selectedActivity = existing;
+			}
+			if (removedDuplicates > 0) {
+				total = Math.max(0, total - removedDuplicates);
+			}
+			// Trigger reactivity by reassigning (no sort needed -- $derived handles it)
+			activities = activities;
+			return;
+		}
+
+		// New item: check if it belongs in the current tab scope at all
+		if (!inScope) {
+			if (selectedActivity && shouldSyncSelectedActivity(selectedActivity, normalized)) {
+				selectedActivity = { ...selectedActivity, ...normalized };
 			}
 			return;
 		}
 
+		// Add new item (no sort needed -- $derived handles it)
 		activities = [normalized, ...activities];
-		total += 1;
+		const removedDuplicates = removeStaleQueueLinkedRows(normalized);
+		total = Math.max(0, total + 1 - removedDuplicates);
 	}
 
 	// Detail modal state
 	let selectedActivity = $state<UnifiedActivity | null>(null);
-	let activityDetails = $state<ActivityDetails | null>(null);
-	let detailsLoading = $state(false);
 	let isModalOpen = $state(false);
 
-	// Update activities when data changes (navigation)
+	// Update activities when data changes (navigation / tab switch / filter change)
 	$effect(() => {
+		const nextTab = getInitialTab();
+		const initialFilters = getInitialFilters();
+		activityTab = nextTab;
+		activeTabFilters = nextTab === 'active' ? { ...initialFilters } : createDefaultFilters();
+		historyTabFilters = nextTab === 'history' ? { ...initialFilters } : createDefaultFilters();
+		// Store unsorted master list; $derived filteredActivities handles sort
 		activities = data.activities;
 		total = data.total;
-		if (!hasInitialized && data.filters) {
-			filters = { ...data.filters };
-			hasInitialized = true;
+		hasMore = data.hasMore;
+		loadedOffset = data.activities.length;
+		queueStats = parseQueueStats((data.summary ?? null) as Partial<ActivitySummary> | null);
+		filters = initialFilters;
+		setFiltersForTab(nextTab, initialFilters);
+		// Reconcile selections against the new data (untracked to avoid circular deps)
+		untrack(() => {
+			reconcileSelectedHistoryIds(data.activities);
+			reconcileSelectedActiveIds(data.activities);
+		});
+	});
+
+	$effect(() => {
+		// Only reconcile when selection mode is active to avoid unnecessary work
+		// Read activities to trigger on data changes, but untrack the mutations
+		const currentActivities = activities;
+		if (selectionMode && selectedHistoryIds.size > 0) {
+			untrack(() => reconcileSelectedHistoryIds(currentActivities));
+		}
+		if (activeSelectionMode && selectedActiveIds.size > 0) {
+			untrack(() => reconcileSelectedActiveIds(currentActivities));
 		}
 	});
 
-	// SSE Connection - internally handles browser/SSR
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const sse = createSSE<Record<string, any>>(resolvePath('/api/activity/stream'), {
-		'activity:new': (newActivity: Partial<UnifiedActivity>) => {
-			upsertActivity(newActivity);
-		},
-		'activity:updated': (updated: Partial<UnifiedActivity>) => {
-			upsertActivity(updated);
-		},
-		'activity:progress': (data: { id: string; progress: number; status?: string }) => {
-			let removed = false;
-			activities = activities.flatMap((a) => {
-				if (a.id !== data.id) return [a];
+	$effect(() => {
+		const currentSelected = selectedActivity;
+		if (!isModalOpen || !currentSelected) return;
 
-				a.downloadProgress = data.progress;
-				a.status = data.status ? normalizeActivityStatus(data.status) : a.status;
+		const linkedById = activities.find((activity) => activity.id === currentSelected.id);
+		const linkedByQueueId = currentSelected.queueItemId
+			? activities.filter((activity) => activity.queueItemId === currentSelected.queueItemId)
+			: [];
+		const preferredByQueueId =
+			linkedByQueueId.find((activity) => isQueueActivityId(activity.id)) || linkedByQueueId[0];
+		const linkedActivity = linkedById || preferredByQueueId;
 
-				if (!matchesLiveFilters(a)) {
-					removed = true;
-					return [];
-				}
+		if (
+			linkedActivity &&
+			linkedActivity !== currentSelected &&
+			shouldSyncSelectedActivity(currentSelected, linkedActivity)
+		) {
+			selectedActivity = linkedActivity;
+		}
+	});
 
-				return [a];
-			});
+	$effect(() => {
+		if (activityTab !== 'history' && (selectionMode || selectedHistoryIds.size > 0)) {
+			selectionMode = false;
+			selectedHistoryIds.clear();
+		}
+		if (activityTab !== 'active' && (activeSelectionMode || selectedActiveIds.size > 0)) {
+			activeSelectionMode = false;
+			selectedActiveIds.clear();
+		}
+		if (activityTab !== 'active' && activeConfirmOpen && !activeBulkLoading) {
+			activeConfirmOpen = false;
+			activeConfirmAction = null;
+		}
+	});
 
-			if (removed) {
-				total = Math.max(0, total - 1);
+	// ── Batched SSE progress updates ────────────────────────────────────
+	let pendingProgressUpdates = new SvelteMap<
+		string,
+		{ progress: UnifiedActivity['downloadProgress']; status?: string }
+	>();
+	let progressFlushFrame: ReturnType<typeof requestAnimationFrame> | null = null;
+
+	function flushProgressUpdates(): void {
+		progressFlushFrame = null;
+		if (pendingProgressUpdates.size === 0) return;
+
+		const updates = pendingProgressUpdates;
+		pendingProgressUpdates = new SvelteMap();
+
+		for (const activity of activities) {
+			const update = updates.get(activity.id);
+			if (!update) continue;
+			activity.downloadProgress = update.progress;
+			if (update.status) {
+				activity.status = normalizeActivityStatus(update.status);
 			}
 		}
+
+		// Sync selected activity if affected
+		if (selectedActivity) {
+			const selUpdate = updates.get(selectedActivity.id);
+			const queueItemId = selectedActivity.queueItemId;
+			if (selUpdate) {
+				selectedActivity.downloadProgress = selUpdate.progress;
+				if (selUpdate.status) {
+					selectedActivity.status = normalizeActivityStatus(selUpdate.status);
+				}
+				selectedActivity = { ...selectedActivity };
+			} else if (queueItemId) {
+				// Check by queueItemId
+				for (const [id, upd] of updates) {
+					const qId = id.startsWith('queue-') ? id.slice('queue-'.length) : undefined;
+					if (qId === queueItemId) {
+						selectedActivity.downloadProgress = upd.progress;
+						if (upd.status) {
+							selectedActivity.status = normalizeActivityStatus(upd.status);
+						}
+						selectedActivity = { ...selectedActivity };
+						break;
+					}
+				}
+			}
+		}
+
+		// Svelte 5 deep reactivity tracks individual property mutations on
+		// $state arrays, so the template updates for downloadProgress/status
+		// without needing to reassign the whole array.  Skipping the
+		// `activities = activities` pattern here avoids triggering a full
+		// $derived sort recomputation on every progress tick.
+	}
+
+	// SSE Connection - internally handles browser/SSR
+	const sse = createSSE<ActivityStreamEvents>(
+		resolvePath('/api/activity/stream'),
+		{
+			'activity:new': (newActivity) => {
+				upsertActivity(newActivity);
+			},
+			'activity:seed': (seedActivities) => {
+				for (const activity of seedActivities) {
+					upsertActivity(activity);
+				}
+			},
+			'activity:updated': (updated) => {
+				upsertActivity(updated);
+			},
+			'activity:progress': (data) => {
+				// Batch progress updates and flush on next animation frame
+				pendingProgressUpdates.set(data.id, {
+					progress: data.progress,
+					status: data.status
+				});
+				if (progressFlushFrame === null) {
+					progressFlushFrame = requestAnimationFrame(flushProgressUpdates);
+				}
+			},
+			'activity:refresh': () => {
+				void refreshActivityData({ force: true });
+			}
+		},
+		{
+			maxRetries: Infinity
+		}
+	);
+
+	$effect(() => {
+		layoutState.setMobileSseStatus(deriveMobileSseStatus(sse));
+		return () => {
+			layoutState.clearMobileSseStatus();
+		};
 	});
 
-	const MOBILE_SSE_SOURCE = 'activity';
-
-	async function refreshActivityData(): Promise<void> {
+	async function refreshActivityData(options: { force?: boolean } = {}): Promise<void> {
+		const { force = false } = options;
 		if (refreshInFlight) return;
+		const now = Date.now();
+		if (!force && now - lastActivityRefreshAt < ACTIVITY_REFRESH_MIN_INTERVAL_MS) {
+			return;
+		}
+
 		refreshInFlight = true;
 		try {
-			await invalidateAll();
+			await fetchActivityData(filters, activityTab, { force });
 		} finally {
 			refreshInFlight = false;
+			lastActivityRefreshAt = Date.now();
+		}
+	}
+
+	async function loadHistorySettings(): Promise<void> {
+		settingsLoading = true;
+		try {
+			const response = await fetch('/api/activity/settings');
+			if (response.status === 401 || response.status === 403) {
+				canManageHistory = false;
+				return;
+			}
+			if (!response.ok) {
+				throw new Error('Failed to load history settings');
+			}
+
+			const payload = await response.json();
+			if (payload.success && typeof payload.retentionDays === 'number') {
+				retentionDays = payload.retentionDays;
+			}
+			canManageHistory = true;
+		} catch (error) {
+			toasts.error(m.toast_activity_failedToLoadSettings(), {
+				description:
+					error instanceof Error ? error.message : m.toast_activity_failedToLoadSettings()
+			});
+			canManageHistory = false;
+		} finally {
+			settingsLoading = false;
 		}
 	}
 
 	onMount(() => {
-		// Ensure we don't show stale client-side snapshot state after route back/forward.
-		void refreshActivityData();
+		if (activityTab === 'history') {
+			void loadHistorySettings();
+		}
 
 		const handleFocus = () => {
-			void refreshActivityData();
+			if (!sse.isConnected) {
+				void refreshActivityData();
+			}
 		};
 
 		const handleVisibilityChange = () => {
-			if (document.visibilityState === 'visible') {
+			if (document.visibilityState === 'visible' && !sse.isConnected) {
 				void refreshActivityData();
 			}
 		};
@@ -285,6 +691,10 @@
 		window.addEventListener('pageshow', handlePageShow);
 
 		return () => {
+			if (progressFlushFrame !== null) {
+				cancelAnimationFrame(progressFlushFrame);
+				progressFlushFrame = null;
+			}
 			window.removeEventListener('focus', handleFocus);
 			document.removeEventListener('visibilitychange', handleVisibilityChange);
 			window.removeEventListener('pageshow', handlePageShow);
@@ -292,59 +702,451 @@
 	});
 
 	$effect(() => {
-		mobileSSEStatus.publish(MOBILE_SSE_SOURCE, sse.status);
-		return () => {
-			mobileSSEStatus.clear(MOBILE_SSE_SOURCE);
-		};
+		if (activityTab === 'history' && settingsLoading && !canManageHistory) {
+			void loadHistorySettings();
+		}
 	});
 
-	// Apply filters via URL navigation
-	async function applyFilters(newFilters: FiltersType) {
-		filters = newFilters;
-		isLoading = true;
+	async function saveRetention(): Promise<void> {
+		if (!canManageHistory || saveRetentionLoading) return;
 
-		const params = new SvelteURLSearchParams();
-		if (filters.status !== 'all') params.set('status', filters.status!);
-		if (filters.mediaType !== 'all') params.set('mediaType', filters.mediaType!);
-		if (filters.search) params.set('search', filters.search);
-		if (filters.protocol !== 'all') params.set('protocol', filters.protocol!);
-		if (filters.indexer) params.set('indexer', filters.indexer);
-		if (filters.releaseGroup) params.set('releaseGroup', filters.releaseGroup);
-		if (filters.resolution) params.set('resolution', filters.resolution);
-		if (filters.isUpgrade) params.set('isUpgrade', 'true');
-		if (filters.includeNoResults) params.set('includeNoResults', 'true');
-		if (filters.downloadClientId) params.set('downloadClientId', filters.downloadClientId);
-		if (filters.startDate) params.set('startDate', filters.startDate);
-		if (filters.endDate) params.set('endDate', filters.endDate);
+		saveRetentionLoading = true;
+		try {
+			const response = await fetch('/api/activity/settings', {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ retentionDays })
+			});
+			if (response.status === 401 || response.status === 403) {
+				canManageHistory = false;
+				throw new Error('Admin access is required');
+			}
 
-		const queryString = params.toString();
-		await goto(resolvePath(`/activity${queryString ? `?${queryString}` : ''}`), {
-			keepFocus: true
-		});
-		isLoading = false;
+			const payload = await response.json().catch(() => ({}));
+			if (!response.ok || !payload.success) {
+				throw new Error(
+					typeof payload.error === 'string' ? payload.error : 'Failed to save retention setting'
+				);
+			}
+
+			retentionDays = payload.retentionDays ?? retentionDays;
+			toasts.success(m.toast_activity_retentionUpdated({ count: retentionDays }));
+		} catch (error) {
+			toasts.error(
+				error instanceof Error ? error.message : m.toast_activity_failedToSaveRetention()
+			);
+		} finally {
+			saveRetentionLoading = false;
+		}
+	}
+
+	const historyConfirmTitle = $derived.by((): string => {
+		switch (historyConfirmAction) {
+			case 'purge_all':
+				return m.activity_history_confirmPurgeAllTitle();
+			case 'purge_older_than_retention':
+				return m.activity_history_confirmPurgeOlderTitle();
+			case 'delete_selected':
+				return m.activity_history_confirmDeleteSelectedTitle();
+			default:
+				return m.action_confirm();
+		}
+	});
+
+	const historyConfirmMessage = $derived.by((): string => {
+		switch (historyConfirmAction) {
+			case 'purge_all':
+				return m.activity_history_confirmPurgeAllMessage();
+			case 'purge_older_than_retention':
+				return m.activity_history_confirmPurgeOlderMessage({ days: retentionDays });
+			case 'delete_selected':
+				return m.activity_history_confirmDeleteSelectedMessage({ count: selectedHistoryIds.size });
+			default:
+				return '';
+		}
+	});
+
+	const historyConfirmLabel = $derived.by((): string => {
+		switch (historyConfirmAction) {
+			case 'purge_all':
+				return m.activity_history_purgeAll();
+			case 'purge_older_than_retention':
+				return m.activity_history_purgeOlder();
+			case 'delete_selected':
+				return m.activity_history_deleteSelectedCount({ count: selectedHistoryIds.size });
+			default:
+				return m.action_confirm();
+		}
+	});
+
+	const historyConfirmLoading = $derived.by((): boolean => {
+		switch (historyConfirmAction) {
+			case 'purge_all':
+				return purgeAllLoading;
+			case 'purge_older_than_retention':
+				return purgeOlderLoading;
+			case 'delete_selected':
+				return deleteSelectedLoading;
+			default:
+				return false;
+		}
+	});
+
+	const activeConfirmTargetCount = $derived.by(() =>
+		activeConfirmAction ? getActiveBulkActionQueueIds(activeConfirmAction).length : 0
+	);
+
+	const activeConfirmSkippedCount = $derived.by(() =>
+		Math.max(0, selectedActiveIds.size - activeConfirmTargetCount)
+	);
+
+	const activeConfirmTitle = $derived.by((): string => {
+		switch (activeConfirmAction) {
+			case 'pause':
+				return m.activity_queue_confirmPauseTitle();
+			case 'resume':
+				return m.activity_queue_confirmResumeTitle();
+			case 'retry_failed':
+				return m.activity_queue_confirmRetryTitle();
+			case 'remove_failed':
+				return m.activity_queue_confirmRemoveTitle();
+			default:
+				return m.action_confirm();
+		}
+	});
+
+	const activeConfirmMessage = $derived.by((): string => {
+		const targetCount = activeConfirmTargetCount;
+		const skippedCount = activeConfirmSkippedCount;
+		const skippedSuffix =
+			skippedCount > 0 ? ` ${m.activity_queue_skippedItems({ count: skippedCount })}` : '';
+
+		switch (activeConfirmAction) {
+			case 'pause':
+				return m.activity_queue_confirmPauseMessage({ count: targetCount }) + skippedSuffix;
+			case 'resume':
+				return m.activity_queue_confirmResumeMessage({ count: targetCount }) + skippedSuffix;
+			case 'retry_failed':
+				return m.activity_queue_confirmRetryMessage({ count: targetCount }) + skippedSuffix;
+			case 'remove_failed':
+				return m.activity_queue_confirmRemoveMessage({ count: targetCount }) + skippedSuffix;
+			default:
+				return '';
+		}
+	});
+
+	const activeConfirmLabel = $derived.by((): string => {
+		switch (activeConfirmAction) {
+			case 'pause':
+				return m.activity_queue_pauseSelected();
+			case 'resume':
+				return m.activity_queue_resumeSelected();
+			case 'retry_failed':
+				return m.activity_queue_retryFailed();
+			case 'remove_failed':
+				return m.activity_queue_removeFailed();
+			default:
+				return m.action_confirm();
+		}
+	});
+
+	const activeConfirmVariant = $derived.by((): 'error' | 'warning' | 'primary' => {
+		switch (activeConfirmAction) {
+			case 'remove_failed':
+				return 'error';
+			case 'retry_failed':
+				return 'warning';
+			default:
+				return 'primary';
+		}
+	});
+
+	function openHistoryConfirm(action: HistoryConfirmAction): void {
+		if (!canManageHistory) return;
+		if (action === 'purge_all' && (settingsLoading || purgeAllLoading)) return;
+		if (action === 'purge_older_than_retention' && (settingsLoading || purgeOlderLoading)) return;
+		if (action === 'delete_selected' && (deleteSelectedLoading || selectedHistoryIds.size === 0))
+			return;
+
+		historyConfirmAction = action;
+		historyConfirmOpen = true;
+	}
+
+	function closeHistoryConfirm(): void {
+		if (historyConfirmLoading) return;
+		historyConfirmOpen = false;
+		historyConfirmAction = null;
+	}
+
+	async function handleHistoryConfirm(): Promise<void> {
+		if (!historyConfirmAction || historyConfirmLoading) return;
+
+		if (historyConfirmAction === 'purge_all') {
+			await purgeHistory('all');
+		} else if (historyConfirmAction === 'purge_older_than_retention') {
+			await purgeHistory('older_than_retention');
+		} else {
+			await deleteSelectedHistory();
+		}
+
+		historyConfirmOpen = false;
+		historyConfirmAction = null;
+	}
+
+	async function purgeHistory(action: 'older_than_retention' | 'all'): Promise<void> {
+		if (!canManageHistory) return;
+		if (action === 'older_than_retention' && purgeOlderLoading) return;
+		if (action === 'all' && purgeAllLoading) return;
+
+		if (action === 'all') {
+			purgeAllLoading = true;
+		} else {
+			purgeOlderLoading = true;
+		}
+
+		try {
+			const response = await fetch('/api/activity/settings', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action })
+			});
+			if (response.status === 401 || response.status === 403) {
+				canManageHistory = false;
+				throw new Error('Admin access is required');
+			}
+
+			const payload = await response.json().catch(() => ({}));
+			if (!response.ok || !payload.success) {
+				throw new Error(
+					typeof payload.error === 'string' ? payload.error : 'Failed to purge activity entries'
+				);
+			}
+
+			const totalDeleted =
+				typeof payload.totalDeleted === 'number'
+					? payload.totalDeleted
+					: (payload.deletedDownloadHistory ?? 0) +
+						(payload.deletedMonitoringHistory ?? 0) +
+						(payload.deletedTaskHistory ?? 0);
+			toasts.success(m.toast_activity_deletedEntries({ count: totalDeleted }));
+			selectedHistoryIds.clear();
+		} catch (error) {
+			toasts.error(error instanceof Error ? error.message : m.toast_activity_failedToPurge());
+			return;
+		}
+
+		try {
+			await refreshActivityData({ force: true });
+		} catch (_error) {
+			toasts.info(m.toast_activity_purgeCompleted());
+		} finally {
+			purgeOlderLoading = false;
+			purgeAllLoading = false;
+		}
+	}
+
+	async function deleteSelectedHistory(): Promise<void> {
+		if (!canManageHistory || deleteSelectedLoading || selectedHistoryIds.size === 0) return;
+
+		deleteSelectedLoading = true;
+		try {
+			const response = await fetch('/api/activity', {
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ activityIds: [...selectedHistoryIds] })
+			});
+			if (response.status === 401 || response.status === 403) {
+				canManageHistory = false;
+				throw new Error(m.toast_activity_adminRequired());
+			}
+
+			const payload = await response.json().catch(() => ({}));
+			if (!response.ok || !payload.success) {
+				throw new Error(
+					typeof payload.error === 'string'
+						? payload.error
+						: m.toast_activity_failedToDeleteSelected()
+				);
+			}
+
+			const totalDeleted =
+				typeof payload.totalDeleted === 'number'
+					? payload.totalDeleted
+					: (payload.deletedDownloadHistory ?? 0) +
+						(payload.deletedMonitoringHistory ?? 0) +
+						(payload.deletedTaskHistory ?? 0);
+			const skippedQueue = typeof payload.skippedQueue === 'number' ? payload.skippedQueue : 0;
+			const skippedRetryableFailed =
+				typeof payload.skippedRetryableFailed === 'number' ? payload.skippedRetryableFailed : 0;
+
+			toasts.success(m.toast_activity_deletedEntries({ count: totalDeleted }));
+			if (skippedQueue > 0) {
+				toasts.info(m.activity_history_skippedActiveDownloads({ count: skippedQueue }));
+			}
+			if (skippedRetryableFailed > 0) {
+				toasts.info(m.activity_history_skippedRetryableFailed({ count: skippedRetryableFailed }));
+			}
+
+			selectedHistoryIds.clear();
+		} catch (error) {
+			toasts.error(
+				error instanceof Error ? error.message : m.toast_activity_failedToDeleteSelected()
+			);
+			return;
+		}
+
+		try {
+			await refreshActivityData({ force: true });
+		} catch (_error) {
+			toasts.info(m.toast_activity_deleteCompleted());
+		} finally {
+			deleteSelectedLoading = false;
+		}
+	}
+
+	function openActiveConfirm(action: ActiveBulkAction): void {
+		if (activityTab !== 'active' || !activeSelectionMode || activeBulkLoading) return;
+		if (getActiveBulkActionQueueIds(action).length === 0) return;
+
+		activeConfirmAction = action;
+		activeConfirmOpen = true;
+	}
+
+	function closeActiveConfirm(): void {
+		if (activeBulkLoading) return;
+		activeConfirmOpen = false;
+		activeConfirmAction = null;
+	}
+
+	async function handleActiveConfirm(): Promise<void> {
+		if (!activeConfirmAction || activeBulkLoading) return;
+
+		await executeActiveBulkAction(activeConfirmAction);
+		activeConfirmOpen = false;
+		activeConfirmAction = null;
+	}
+
+	async function executeActiveBulkAction(action: ActiveBulkAction): Promise<void> {
+		const queueIds = getActiveBulkActionQueueIds(action);
+		if (queueIds.length === 0) return;
+
+		activeBulkLoading = true;
+		let successCount = 0;
+		let failedCount = 0;
+		let firstFailureMessage: string | null = null;
+
+		const runForQueueId =
+			action === 'pause'
+				? (queueId: string) => runQueueAction(queueId, 'pause')
+				: action === 'resume'
+					? (queueId: string) => runQueueAction(queueId, 'resume')
+					: action === 'retry_failed'
+						? (queueId: string) => retryQueueItem(queueId, { refresh: false })
+						: (queueId: string) =>
+								removeQueueItem(queueId, {
+									refresh: false,
+									closeDetailModal: false,
+									removeFromClient: false
+								});
+
+		for (const queueId of queueIds) {
+			try {
+				await runForQueueId(queueId);
+				successCount += 1;
+			} catch (error) {
+				failedCount += 1;
+				if (!firstFailureMessage) {
+					firstFailureMessage =
+						error instanceof Error ? error.message : 'One or more actions failed';
+				}
+			}
+		}
+
+		try {
+			if (successCount > 0 && (action === 'retry_failed' || action === 'remove_failed')) {
+				await refreshActivityData({ force: true });
+			}
+		} catch (_error) {
+			toasts.info(m.toast_activity_queueActionCompleted());
+		} finally {
+			activeBulkLoading = false;
+		}
+
+		if (successCount > 0) {
+			const toastMessage =
+				action === 'pause'
+					? m.toast_activity_pausedDownloads({ count: successCount })
+					: action === 'resume'
+						? m.toast_activity_resumedDownloads({ count: successCount })
+						: action === 'retry_failed'
+							? m.toast_activity_retriedDownloads({ count: successCount })
+							: m.toast_activity_removedDownloads({ count: successCount });
+			toasts.success(toastMessage);
+		}
+		if (failedCount > 0) {
+			const suffix = firstFailureMessage ? ` First error: ${firstFailureMessage}` : '';
+			const toastMessage =
+				action === 'pause'
+					? m.toast_activity_failedToPause()
+					: action === 'resume'
+						? m.toast_activity_failedToResume()
+						: action === 'retry_failed'
+							? m.toast_activity_failedToRetry()
+							: m.toast_activity_failedToRemove();
+			toasts.error(`${toastMessage}${suffix}`);
+		}
+
+		if (action === 'retry_failed' || action === 'remove_failed') {
+			selectedActiveIds.clear();
+		}
+	}
+
+	// Apply filters by fetching activity data directly and syncing the URL.
+	async function applyFilters(newFilters: FiltersType, tab: ActivityTab = activityTab) {
+		const normalizedFilters = normalizeFiltersForTab(newFilters, tab);
+		try {
+			await fetchActivityData(normalizedFilters, tab, { updateUrl: true });
+		} catch (_error) {
+			toasts.error(m.activity_failedToUpdateFilters());
+		} finally {
+			// handled by fetchActivityData
+		}
+	}
+
+	async function switchTab(tab: ActivityTab): Promise<void> {
+		if (tab === activityTab) return;
+
+		const tabFilters = normalizeFiltersForTab(getFiltersForTab(tab), tab);
+		try {
+			await fetchActivityData(tabFilters, tab, { updateUrl: true });
+		} catch (_error) {
+			toasts.error(m.toast_activity_failedToSwitchTab());
+		} finally {
+			// handled by fetchActivityData
+		}
 	}
 
 	// Remove a specific filter
-	async function removeFilter(key: keyof FiltersType) {
+	function removeFilter(key: keyof FiltersType) {
 		const newFilters = { ...filters };
 		if (key === 'status' || key === 'mediaType' || key === 'protocol') {
 			newFilters[key] = 'all';
 		} else {
 			delete newFilters[key];
 		}
-		await applyFilters(newFilters);
+		applyFilters(newFilters);
 	}
 
 	// Clear all filters
-	async function clearAllFilters() {
-		await applyFilters({
+	function clearAllFilters() {
+		applyFilters({
 			status: 'all',
 			mediaType: 'all',
 			protocol: 'all'
 		});
 	}
 
-	// Handle sort
+	// Handle sort (just update state; $derived filteredActivities recomputes)
 	function handleSort(field: string) {
 		if (sortField === field) {
 			sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
@@ -352,113 +1154,49 @@
 			sortField = field;
 			sortDirection = 'desc';
 		}
-
-		// Sort locally
-		activities = [...activities].sort((a, b) => {
-			let aVal: string | number | null = null;
-			let bVal: string | number | null = null;
-
-			switch (field) {
-				case 'time':
-					aVal = a.startedAt;
-					bVal = b.startedAt;
-					break;
-				case 'media':
-					aVal = a.mediaTitle.toLowerCase();
-					bVal = b.mediaTitle.toLowerCase();
-					break;
-				case 'size':
-					aVal = a.size || 0;
-					bVal = b.size || 0;
-					break;
-				case 'status':
-					aVal = a.status;
-					bVal = b.status;
-					break;
-				case 'release':
-					aVal = a.releaseTitle?.toLowerCase() || '';
-					bVal = b.releaseTitle?.toLowerCase() || '';
-					break;
-			}
-
-			if (aVal === null || bVal === null) return 0;
-			if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-			if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-			return 0;
-		});
 	}
 
 	// Load more
 	async function loadMore() {
-		if (isLoadingMore || !data.hasMore) return;
-		isLoadingMore = true;
+		if (isLoadingMore || !hasMore) return;
 
 		try {
-			const apiUrl = new URL('/api/activity', window.location.origin);
-			apiUrl.searchParams.set('limit', '50');
-			apiUrl.searchParams.set('offset', String(activities.length));
-			if (filters.status !== 'all') apiUrl.searchParams.set('status', filters.status!);
-			if (filters.mediaType !== 'all') apiUrl.searchParams.set('mediaType', filters.mediaType!);
-			if (filters.search) apiUrl.searchParams.set('search', filters.search);
-			if (filters.protocol !== 'all') apiUrl.searchParams.set('protocol', filters.protocol!);
-			if (filters.indexer) apiUrl.searchParams.set('indexer', filters.indexer);
-			if (filters.releaseGroup) apiUrl.searchParams.set('releaseGroup', filters.releaseGroup);
-			if (filters.resolution) apiUrl.searchParams.set('resolution', filters.resolution);
-			if (filters.isUpgrade) apiUrl.searchParams.set('isUpgrade', 'true');
-			if (filters.includeNoResults) apiUrl.searchParams.set('includeNoResults', 'true');
-			if (filters.downloadClientId)
-				apiUrl.searchParams.set('downloadClientId', filters.downloadClientId);
-			if (filters.startDate) apiUrl.searchParams.set('startDate', filters.startDate);
-			if (filters.endDate) apiUrl.searchParams.set('endDate', filters.endDate);
-
-			const response = await fetch(apiUrl.toString());
-			const result = await response.json();
-
-			if (result.success && result.activities) {
-				activities = [...activities, ...result.activities];
-			}
-		} catch (error) {
-			console.error('Failed to load more:', error);
-		} finally {
-			isLoadingMore = false;
+			await fetchActivityData(filters, activityTab, { offset: loadedOffset, append: true });
+		} catch (_error) {
+			toasts.error(m.toast_activity_failedToLoadMore());
 		}
 	}
 
 	// Open detail modal
-	async function openDetailModal(activity: UnifiedActivity) {
+	function openDetailModal(activity: UnifiedActivity) {
 		selectedActivity = activity;
 		isModalOpen = true;
-		detailsLoading = true;
-		activityDetails = null;
-
-		// Fetch activity details
-		try {
-			const response = await fetch(`/api/activity/${activity.id}/details`);
-			if (response.ok) {
-				const data = await response.json();
-				activityDetails = data.details;
-			}
-		} catch (error) {
-			console.error('Failed to fetch activity details:', error);
-		}
-
-		detailsLoading = false;
 	}
 
 	function closeModal() {
 		isModalOpen = false;
-		selectedActivity = null;
-		activityDetails = null;
 	}
 
-	function applyQueueStatusLocally(id: string, status: ActivityStatus) {
+	function applyQueueStatusLocally(id: string, status: ActivityStatus, statusReason?: string) {
+		let changed = false;
 		for (const activity of activities) {
 			if (activity.queueItemId === id) {
 				activity.status = status;
+				if (statusReason !== undefined) {
+					activity.statusReason = statusReason;
+				}
+				changed = true;
 			}
+		}
+		if (changed) {
+			activities = activities;
 		}
 		if (selectedActivity?.queueItemId === id) {
 			selectedActivity.status = status;
+			if (statusReason !== undefined) {
+				selectedActivity.statusReason = statusReason;
+			}
+			selectedActivity = { ...selectedActivity };
 		}
 	}
 
@@ -469,18 +1207,56 @@
 			body: JSON.stringify({ action })
 		});
 		if (!response.ok) {
-			let message = `Failed to ${action}`;
-			try {
-				const payload = await response.json();
-				if (payload?.message && typeof payload.message === 'string') {
-					message = payload.message;
-				}
-			} catch {
-				// Ignore JSON parse errors and fall back to default message.
-			}
+			const message = await getQueueActionErrorMessage(response, `Failed to ${action}`);
 			throw new Error(message);
 		}
 		applyQueueStatusLocally(id, action === 'pause' ? 'paused' : 'downloading');
+	}
+
+	async function removeQueueItem(
+		id: string,
+		options: { refresh?: boolean; closeDetailModal?: boolean; removeFromClient?: boolean } = {}
+	): Promise<void> {
+		const { refresh = true, closeDetailModal = true, removeFromClient = true } = options;
+		const query = removeFromClient ? '' : '?removeFromClient=false';
+		const response = await fetch(`/api/queue/${id}${query}`, { method: 'DELETE' });
+		if (!response.ok) {
+			const message = await getQueueActionErrorMessage(response, 'Failed to remove');
+			throw new Error(message);
+		}
+
+		if (refresh) {
+			await refreshActivityData({ force: true });
+		}
+		if (closeDetailModal) {
+			closeModal();
+		}
+	}
+
+	async function retryQueueItem(id: string, options: { refresh?: boolean } = {}): Promise<void> {
+		const { refresh = true } = options;
+		const response = await fetch(`/api/queue/${id}/retry`, { method: 'POST' });
+		if (!response.ok) {
+			const message = await getQueueActionErrorMessage(response, 'Failed to retry');
+			throw new Error(message);
+		}
+
+		const payload = await response.json().catch(() => null);
+		const retryMode = typeof payload?.retryMode === 'string' ? payload.retryMode : 'download';
+		const importStatus = typeof payload?.importStatus === 'string' ? payload.importStatus : null;
+		if (retryMode === 'import') {
+			const reason =
+				importStatus === 'pending_retry'
+					? m.activity_retryMode_waitingForPath()
+					: m.activity_retryMode_importInProgress();
+			applyQueueStatusLocally(id, 'downloading', reason);
+		} else {
+			applyQueueStatusLocally(id, 'downloading');
+		}
+
+		if (refresh && retryMode !== 'import') {
+			await refreshActivityData({ force: true });
+		}
 	}
 
 	// Queue actions
@@ -493,34 +1269,16 @@
 	}
 
 	async function handleRemove(id: string) {
-		const response = await fetch(`/api/queue/${id}`, { method: 'DELETE' });
-		if (!response.ok) {
-			let message = 'Failed to remove';
-			try {
-				const payload = await response.json();
-				if (payload?.message && typeof payload.message === 'string') {
-					message = payload.message;
-				} else if (payload?.error && typeof payload.error === 'string') {
-					message = payload.error;
-				}
-			} catch {
-				// Ignore JSON parse errors and fall back to default message.
-			}
-			throw new Error(message);
-		}
-		await invalidateAll();
-		closeModal();
+		await removeQueueItem(id);
 	}
 
 	async function handleRetry(id: string) {
-		const response = await fetch(`/api/queue/${id}/retry`, { method: 'POST' });
-		if (!response.ok) throw new Error('Failed to retry');
-		await invalidateAll();
+		await retryQueueItem(id);
 	}
 </script>
 
 <svelte:head>
-	<title>Activity - Cinephage</title>
+	<title>{m.activity_pageTitle()}</title>
 </svelte:head>
 
 <div class="space-y-6">
@@ -529,96 +1287,298 @@
 		<div>
 			<h1 class="flex items-center gap-2 text-2xl font-bold">
 				<Activity class="h-8 w-8" />
-				Activity
+				{m.activity_title()}
 			</h1>
-			<p class="text-base-content/70">Download and search history</p>
+			<p class="text-base-content/70">{m.activity_subtitle()}</p>
 		</div>
 		<!-- Connection Status -->
 		<div class="hidden lg:block">
 			{#if sse.isConnected}
 				<span class="badge gap-1 badge-success">
 					<Wifi class="h-3 w-3" />
-					Live
+					{m.common_live()}
 				</span>
 			{:else if sse.status === 'connecting' || sse.status === 'error'}
 				<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
 					<Loader2 class="h-3 w-3 animate-spin" />
-					{sse.status === 'error' ? 'Reconnecting...' : 'Connecting...'}
+					{sse.status === 'error' ? m.common_reconnecting() : m.common_connecting()}
 				</span>
 			{:else}
 				<span class="badge gap-1 badge-ghost">
 					<WifiOff class="h-3 w-3" />
-					Disconnected
+					{m.common_disconnected()}
 				</span>
 			{/if}
 		</div>
 	</div>
 
-	<!-- Filters Component -->
+	<div class="tabs-boxed tabs w-fit">
+		<button
+			class="tab {activityTab === 'active' ? 'tab-active' : ''}"
+			onclick={() => switchTab('active')}
+		>
+			{m.activity_tabActive()}
+		</button>
+		<button
+			class="tab {activityTab === 'history' ? 'tab-active' : ''}"
+			onclick={() => switchTab('history')}
+		>
+			{m.activity_tabHistory()}
+		</button>
+	</div>
+
+	{#if activityTab === 'active'}
+		<QueueStatsCards
+			stats={queueStats}
+			activeFilter={(filters.status ?? 'all') as QueueCardStatusFilter}
+			onFilterSelect={applyQueueCardFilter}
+		/>
+	{/if}
+
+	<!-- Unified Toolbar -->
 	<ActivityFilters
 		{filters}
 		filterOptions={data.filterOptions}
+		statusContext={activityTab}
 		onFiltersChange={applyFilters}
 		onClearFilters={clearAllFilters}
-	/>
+		showActiveFilters={true}
+		showHistoryControls={canManageHistory && activityTab === 'history'}
+	>
+		{#snippet activeFiltersContent()}
+			<ActiveFilters
+				{filters}
+				downloadClients={data.filterOptions.downloadClients}
+				onFilterRemove={removeFilter}
+				onClearAll={clearAllFilters}
+			/>
+			{#if activityTab === 'active'}
+				<div class="mt-3 flex flex-wrap items-center gap-2">
+					<span class="text-sm font-bold tracking-wide text-base-content/70"
+						>{m.activity_queue_bulkActionsHeading()}</span
+					>
+					<div class="divider m-0 divider-horizontal h-6"></div>
+					<button class="btn btn-ghost btn-xs" onclick={toggleActiveSelectionMode}>
+						{activeSelectionMode ? m.activity_queue_exitSelection() : m.activity_queue_selectRows()}
+					</button>
 
-	<!-- Active Filters Display -->
-	<ActiveFilters
-		{filters}
-		downloadClients={data.filterOptions.downloadClients}
-		onFilterRemove={removeFilter}
-		onClearAll={clearAllFilters}
-	/>
+					{#if activeSelectionMode}
+						<span class="text-xs text-base-content/60"
+							>{m.common_selected({ count: selectedActiveIds.size })}</span
+						>
+						<button
+							class="btn btn-ghost btn-xs"
+							onclick={() =>
+								handleToggleActiveSelectionAll(selectableActiveIds, !allActiveSelectableSelected)}
+							disabled={activeBulkLoading || selectableActiveIds.length === 0}
+						>
+							{allActiveSelectableSelected
+								? m.activity_queue_deselectAllCount({ count: selectableActiveIds.length })
+								: m.activity_queue_selectAllCount({ count: selectableActiveIds.length })}
+						</button>
+						<button
+							class="btn btn-xs"
+							onclick={() => openActiveConfirm('pause')}
+							disabled={activeBulkLoading || selectedPausableQueueIds.length === 0}
+						>
+							{m.activity_queue_pauseCount({ count: selectedPausableQueueIds.length })}
+						</button>
+						<button
+							class="btn btn-xs"
+							onclick={() => openActiveConfirm('resume')}
+							disabled={activeBulkLoading || selectedPausedQueueIds.length === 0}
+						>
+							{m.activity_queue_resumeCount({ count: selectedPausedQueueIds.length })}
+						</button>
+						<button
+							class="btn btn-xs btn-warning"
+							onclick={() => openActiveConfirm('retry_failed')}
+							disabled={activeBulkLoading || selectedFailedQueueIds.length === 0}
+						>
+							{m.activity_queue_retryFailedCount({ count: selectedFailedQueueIds.length })}
+						</button>
+						<button
+							class="btn btn-xs btn-error"
+							onclick={() => openActiveConfirm('remove_failed')}
+							disabled={activeBulkLoading || selectedFailedQueueIds.length === 0}
+						>
+							{m.activity_queue_removeFailedCount({ count: selectedFailedQueueIds.length })}
+						</button>
+						<div class="ml-auto"></div>
+						<button
+							class="btn btn-ghost btn-xs"
+							onclick={() => {
+								selectedActiveIds.clear();
+							}}
+							disabled={activeBulkLoading || selectedActiveIds.size === 0}
+						>
+							{m.activity_queue_clearSelection()}
+						</button>
+					{:else}
+						<span class="text-xs text-base-content/60">
+							{m.activity_queue_bulkHint()}
+						</span>
+					{/if}
+				</div>
+			{/if}
+		{/snippet}
+
+		{#snippet historyControlsContent()}
+			<div class="flex flex-wrap items-center gap-2">
+				<span class="text-sm font-bold tracking-wide text-base-content/70"
+					>{m.activity_history_management()}</span
+				>
+				<div class="divider m-0 divider-horizontal h-6"></div>
+				<label class="flex items-center gap-2 text-sm">
+					<span class="text-base-content/70">{m.activity_history_retention()}</span>
+					<select
+						class="select-bordered select select-xs"
+						bind:value={retentionDays}
+						disabled={settingsLoading}
+					>
+						<option value={7}>{m.activity_history_days7()}</option>
+						<option value={14}>{m.activity_history_days14()}</option>
+						<option value={30}>{m.activity_history_days30()}</option>
+						<option value={60}>{m.activity_history_days60()}</option>
+						<option value={90}>{m.activity_history_days90()}</option>
+					</select>
+				</label>
+				<div class="divider m-0 divider-horizontal h-6"></div>
+				<button
+					class="btn btn-xs"
+					onclick={saveRetention}
+					disabled={settingsLoading || saveRetentionLoading}
+				>
+					{#if saveRetentionLoading}
+						<Loader2 class="h-3 w-3 animate-spin" />
+					{/if}
+					{m.action_save()}
+				</button>
+				<button
+					class="btn btn-xs"
+					onclick={() => openHistoryConfirm('purge_older_than_retention')}
+					disabled={settingsLoading || purgeOlderLoading}
+				>
+					{#if purgeOlderLoading}
+						<Loader2 class="h-3 w-3 animate-spin" />
+					{/if}
+					{m.activity_history_purgeOlder()}
+				</button>
+				<button class="btn btn-ghost btn-xs" onclick={toggleSelectionMode}>
+					{selectionMode ? m.activity_history_exitSelection() : m.activity_history_selectRows()}
+				</button>
+				{#if selectionMode}
+					<button
+						class="btn btn-ghost btn-xs"
+						onclick={() =>
+							handleToggleSelectionAll(selectableHistoryIds, !allHistorySelectableSelected)}
+						disabled={deleteSelectedLoading || selectableHistoryIds.length === 0}
+					>
+						{allHistorySelectableSelected
+							? m.activity_history_deselectAllCount({ count: selectableHistoryIds.length })
+							: m.activity_history_selectAllCount({ count: selectableHistoryIds.length })}
+					</button>
+					<button
+						class="btn btn-xs btn-error"
+						onclick={() => openHistoryConfirm('delete_selected')}
+						disabled={deleteSelectedLoading || selectedHistoryIds.size === 0}
+					>
+						{#if deleteSelectedLoading}
+							<Loader2 class="h-3 w-3 animate-spin" />
+						{/if}
+						{m.activity_history_deleteSelectedCount({ count: selectedHistoryIds.size })}
+					</button>
+				{/if}
+				<div class="ml-auto"></div>
+				<button
+					class="btn btn-xs btn-error"
+					onclick={() => openHistoryConfirm('purge_all')}
+					disabled={settingsLoading || purgeAllLoading}
+				>
+					{#if purgeAllLoading}
+						<Loader2 class="h-3 w-3 animate-spin" />
+					{/if}
+					{m.activity_history_purgeAll()}
+				</button>
+			</div>
+		{/snippet}
+	</ActivityFilters>
 
 	<!-- Activity Stats -->
 	<div class="flex items-center gap-4 text-sm text-base-content/70">
-		<span>{total} activities</span>
-		{#if activities.some((a) => a.status === 'downloading')}
+		<span
+			>{activityTab === 'active'
+				? m.activity_activeCount({ total })
+				: m.activity_historyCount({ total })}</span
+		>
+		{#if hasDownloading}
 			<span class="badge gap-1 badge-info">
 				<Loader2 class="h-3 w-3 animate-spin" />
-				{activities.filter((a) => a.status === 'downloading').length} downloading
+				{m.activity_downloadingCount({ count: downloadingCount })}
 			</span>
 		{/if}
 	</div>
 
 	<!-- Activity Table -->
-	{#if isLoading && activities.length === 0}
+	{#if isLoading && filteredActivities.length === 0}
 		<div class="flex items-center justify-center py-12">
 			<Loader2 class="h-8 w-8 animate-spin" />
 		</div>
 	{:else}
 		<ActivityTable
-			{activities}
+			activities={filteredActivities}
 			{sortField}
 			{sortDirection}
+			selectionMode={activityTab === 'history' ? selectionMode : activeSelectionMode}
+			selectedIds={activityTab === 'history' ? selectedHistoryIds : selectedActiveIds}
+			isSelectable={activityTab === 'history' ? isHistoryActivity : isActiveQueueActivity}
 			onSort={handleSort}
 			onRowClick={openDetailModal}
 			onPause={handlePause}
 			onResume={handleResume}
 			onRemove={handleRemove}
 			onRetry={handleRetry}
+			onToggleSelection={activityTab === 'history'
+				? handleToggleSelection
+				: handleToggleActiveSelection}
+			onToggleSelectionAll={activityTab === 'history'
+				? handleToggleSelectionAll
+				: handleToggleActiveSelectionAll}
+			{hasMore}
+			{isLoadingMore}
+			onLoadMore={loadMore}
 		/>
-
-		<!-- Load More -->
-		{#if data.hasMore}
-			<div class="flex justify-center py-4">
-				<button class="btn btn-ghost" onclick={loadMore} disabled={isLoadingMore}>
-					{#if isLoadingMore}
-						<Loader2 class="h-4 w-4 animate-spin" />
-					{/if}
-					Load More
-				</button>
-			</div>
-		{/if}
 	{/if}
 </div>
 
+<ConfirmationModal
+	open={historyConfirmOpen}
+	title={historyConfirmTitle}
+	message={historyConfirmMessage}
+	confirmLabel={historyConfirmLabel}
+	confirmVariant="error"
+	loading={historyConfirmLoading}
+	onConfirm={handleHistoryConfirm}
+	onCancel={closeHistoryConfirm}
+/>
+
+<ConfirmationModal
+	open={activeConfirmOpen}
+	title={activeConfirmTitle}
+	message={activeConfirmMessage}
+	confirmLabel={activeConfirmLabel}
+	confirmVariant={activeConfirmVariant}
+	loading={activeBulkLoading}
+	onConfirm={handleActiveConfirm}
+	onCancel={closeActiveConfirm}
+/>
+
 <!-- Detail Modal -->
-{#if isModalOpen && selectedActivity}
+
+{#if selectedActivity}
 	<ActivityDetailModal
+		open={isModalOpen}
 		activity={selectedActivity}
-		details={activityDetails}
-		loading={detailsLoading}
 		onClose={closeModal}
 		onPause={handlePause}
 		onResume={handleResume}

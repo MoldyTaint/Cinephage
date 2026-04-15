@@ -19,10 +19,13 @@ import {
 } from '$lib/server/db/schema';
 import { eq, and, inArray } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { writeFile, mkdir, unlink } from 'fs/promises';
-import { existsSync } from 'fs';
-import { dirname, join, basename, extname } from 'path';
-import { logger } from '$lib/logging';
+import { writeFile, mkdir, unlink } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { dirname, join, basename, extname } from 'node:path';
+import { createChildLogger } from '$lib/logging';
+import { getSubtitleSyncService } from './SubtitleSyncService';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import { normalizeLanguageCode } from '$lib/shared/languages';
 import type {
 	SubtitleSearchResult,
@@ -31,6 +34,7 @@ import type {
 	BlacklistReason
 } from '../types';
 import { getSubtitleProviderManager } from './SubtitleProviderManager';
+import { isThrottleableError } from '../errors/ProviderErrors';
 import AdmZip from 'adm-zip';
 
 /**
@@ -89,7 +93,8 @@ export class SubtitleDownloadService {
 			movieId,
 			mediaPath,
 			videoFileName: basename(file.relativePath),
-			format: result.format
+			format: result.format,
+			disableAutoSync: movie[0].scoringProfileId === 'streamer'
 		});
 	}
 
@@ -142,14 +147,15 @@ export class SubtitleDownloadService {
 		}
 
 		const rootPath = rootFolder?.[0]?.path || '';
-		const mediaPath = this.resolveEpisodeMediaDir(rootPath, seriesData[0].path, file.relativePath);
+		const mediaPath = join(rootPath, seriesData[0].path, dirname(file.relativePath));
 
 		// Download and save
 		return this.downloadAndSave(result, {
 			episodeId,
 			mediaPath,
 			videoFileName: basename(file.relativePath),
-			format: result.format
+			format: result.format,
+			disableAutoSync: seriesData[0].scoringProfileId === 'streamer'
 		});
 	}
 
@@ -171,7 +177,7 @@ export class SubtitleDownloadService {
 		const fullPath = await this.getSubtitleFullPath(subtitle[0]);
 		if (fullPath && existsSync(fullPath)) {
 			await unlink(fullPath);
-			logger.debug('Deleted subtitle file', { path: fullPath });
+			logger.debug({ path: fullPath }, 'Deleted subtitle file');
 		}
 
 		// Add to blacklist if requested
@@ -200,10 +206,13 @@ export class SubtitleDownloadService {
 		// Delete from database
 		await db.delete(subtitles).where(eq(subtitles.id, subtitleId));
 
-		logger.info('Subtitle deleted', {
-			subtitleId,
-			blacklisted: addToBlacklist
-		});
+		logger.info(
+			{
+				subtitleId,
+				blacklisted: addToBlacklist
+			},
+			'Subtitle deleted'
+		);
 	}
 
 	/**
@@ -224,6 +233,7 @@ export class SubtitleDownloadService {
 			mediaPath: string;
 			videoFileName: string;
 			format: SubtitleFormat;
+			disableAutoSync?: boolean;
 		}
 	): Promise<SubtitleDownloadResult> {
 		const providerManager = getSubtitleProviderManager();
@@ -239,10 +249,26 @@ export class SubtitleDownloadService {
 		try {
 			content = await provider.download(result);
 		} catch (error) {
-			logger.error('Failed to download subtitle', {
-				provider: result.providerName,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.error(
+				{
+					provider: result.providerName,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to download subtitle'
+			);
+
+			// Record the error for throttling (like Bazarr's throttle_callback)
+			// This ensures download-phase errors (e.g. DownloadLimitExceeded, TooManyRequests)
+			// trigger provider throttling, not just search-phase errors
+			if (isThrottleableError(error) || error instanceof Error) {
+				await providerManager.recordError(result.providerId, error as Error).catch((e) => {
+					logger.warn(
+						{ error: e instanceof Error ? e.message : String(e) },
+						'Failed to record download error for throttling'
+					);
+				});
+			}
+
 			throw error;
 		}
 
@@ -269,10 +295,13 @@ export class SubtitleDownloadService {
 		const subtitlePath = join(options.mediaPath, subtitleFileName);
 		await writeFile(subtitlePath, content);
 
-		logger.debug('Saved subtitle file', {
-			path: subtitlePath,
-			size: content.length
-		});
+		logger.debug(
+			{
+				path: subtitlePath,
+				size: content.length
+			},
+			'Saved subtitle file'
+		);
 
 		// Check for existing subtitle to upgrade
 		const existingSubtitle = await this.findExistingSubtitle(
@@ -332,21 +361,65 @@ export class SubtitleDownloadService {
 			replacedSubtitleId
 		});
 
-		logger.info('Subtitle downloaded', {
+		logger.info(
+			{
+				subtitleId,
+				provider: result.providerName,
+				language: normalizedLanguage,
+				wasUpgrade
+			},
+			'Subtitle downloaded'
+		);
+
+		const syncResult = await this.autoSyncSubtitle(
 			subtitleId,
-			provider: result.providerName,
-			language: normalizedLanguage,
-			wasUpgrade
-		});
+			result.isForced,
+			options.disableAutoSync ?? false
+		);
 
 		return {
 			subtitleId,
 			path: subtitlePath,
 			language: normalizedLanguage,
 			format: result.format,
+			wasSynced: syncResult.success,
+			syncOffset: syncResult.success ? syncResult.offsetMs : null,
 			wasUpgrade,
 			replacedSubtitleId
 		};
+	}
+
+	private async autoSyncSubtitle(
+		subtitleId: string,
+		isForced: boolean,
+		disableAutoSync: boolean
+	): Promise<{ success: boolean; offsetMs: number | null }> {
+		if (disableAutoSync) {
+			logger.debug({ subtitleId }, 'Skipping automatic subtitle sync for Streamer profile media');
+			return { success: false, offsetMs: null };
+		}
+
+		if (isForced) {
+			logger.debug({ subtitleId }, 'Skipping automatic subtitle sync for forced subtitle');
+			return { success: false, offsetMs: null };
+		}
+
+		const syncResult = await getSubtitleSyncService().syncSubtitle(subtitleId);
+
+		if (syncResult.success) {
+			logger.debug(
+				{ subtitleId, offsetMs: syncResult.offsetMs },
+				'Automatically synced subtitle after download'
+			);
+			return { success: true, offsetMs: syncResult.offsetMs };
+		}
+
+		logger.warn(
+			{ subtitleId, error: syncResult.error },
+			'Automatic subtitle sync failed after download'
+		);
+
+		return { success: false, offsetMs: null };
 	}
 
 	/**
@@ -493,11 +566,7 @@ export class SubtitleDownloadService {
 			});
 
 			if (file) {
-				const mediaDir = this.resolveEpisodeMediaDir(
-					rootPath,
-					seriesData[0].path,
-					file.relativePath
-				);
+				const mediaDir = join(rootPath, seriesData[0].path, dirname(file.relativePath));
 				return join(mediaDir, subtitle.relativePath);
 			}
 
@@ -506,21 +575,6 @@ export class SubtitleDownloadService {
 		}
 
 		return null;
-	}
-
-	private resolveEpisodeMediaDir(
-		rootPath: string,
-		seriesPath: string | null,
-		fileRelativePath: string
-	): string {
-		const seriesRel = (seriesPath ?? '').replace(/^[/\\]+/, '');
-		let fileDir = dirname(fileRelativePath).replace(/^[/\\]+/, '');
-
-		if (seriesRel && !(fileDir === seriesRel || fileDir.startsWith(`${seriesRel}/`))) {
-			fileDir = join(seriesRel, fileDir);
-		}
-
-		return join(rootPath, fileDir);
 	}
 }
 

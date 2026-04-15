@@ -132,10 +132,13 @@ class ReleaseDecisionService {
 		release: ReleaseInfo,
 		options: DecisionOptions = {}
 	): Promise<ReleaseDecisionResult> {
-		logger.debug('[ReleaseDecision] Evaluating release for movie', {
-			movieId,
-			release: release.title
-		});
+		logger.debug(
+			{
+				movieId,
+				release: release.title
+			},
+			'[ReleaseDecision] Evaluating release for movie'
+		);
 
 		try {
 			// Fetch movie with profile
@@ -241,7 +244,7 @@ class ReleaseDecisionService {
 				options
 			);
 		} catch (error) {
-			logger.error('[ReleaseDecision] Error evaluating movie release', { error, movieId });
+			logger.error({ error, movieId }, '[ReleaseDecision] Error evaluating movie release');
 			return this.createRejectedResult(
 				error instanceof Error ? error.message : 'Unknown error',
 				'error'
@@ -261,10 +264,13 @@ class ReleaseDecisionService {
 		release: ReleaseInfo,
 		options: DecisionOptions = {}
 	): Promise<ReleaseDecisionResult> {
-		logger.debug('[ReleaseDecision] Evaluating release for episode', {
-			episodeId,
-			release: release.title
-		});
+		logger.debug(
+			{
+				episodeId,
+				release: release.title
+			},
+			'[ReleaseDecision] Evaluating release for episode'
+		);
 
 		try {
 			// Fetch episode with series and profile
@@ -374,7 +380,7 @@ class ReleaseDecisionService {
 				options
 			);
 		} catch (error) {
-			logger.error('[ReleaseDecision] Error evaluating episode release', { error, episodeId });
+			logger.error({ error, episodeId }, '[ReleaseDecision] Error evaluating episode release');
 			return this.createRejectedResult(
 				error instanceof Error ? error.message : 'Unknown error',
 				'error'
@@ -396,11 +402,14 @@ class ReleaseDecisionService {
 		release: ReleaseInfo,
 		options: DecisionOptions = {}
 	): Promise<ReleaseDecisionResult> {
-		logger.debug('[ReleaseDecision] Evaluating release for season', {
-			seriesId,
-			seasonNumber,
-			release: release.title
-		});
+		logger.debug(
+			{
+				seriesId,
+				seasonNumber,
+				release: release.title
+			},
+			'[ReleaseDecision] Evaluating release for season'
+		);
 
 		try {
 			// Fetch series with profile
@@ -532,13 +541,16 @@ class ReleaseDecisionService {
 			const netBenefit = stats.improved + stats.newEpisodes - stats.downgraded;
 			const hasExistingFilesForDecision = stats.total > stats.newEpisodes;
 
-			logger.debug('[ReleaseDecision] Season pack stats', {
-				seriesId,
-				seasonNumber,
-				stats,
-				netBenefit,
-				hasExistingFiles: hasExistingFilesForDecision
-			});
+			logger.debug(
+				{
+					seriesId,
+					seasonNumber,
+					stats,
+					netBenefit,
+					hasExistingFiles: hasExistingFilesForDecision
+				},
+				'[ReleaseDecision] Season pack stats'
+			);
 
 			// If no existing files, this is all new content
 			if (!hasExistingFilesForDecision) {
@@ -586,11 +598,14 @@ class ReleaseDecisionService {
 				}
 			);
 		} catch (error) {
-			logger.error('[ReleaseDecision] Error evaluating season release', {
-				error,
-				seriesId,
-				seasonNumber
-			});
+			logger.error(
+				{
+					error,
+					seriesId,
+					seasonNumber
+				},
+				'[ReleaseDecision] Error evaluating season release'
+			);
 			return this.createRejectedResult(
 				error instanceof Error ? error.message : 'Unknown error',
 				'error'
@@ -611,10 +626,13 @@ class ReleaseDecisionService {
 		release: ReleaseInfo,
 		options: DecisionOptions = {}
 	): Promise<ReleaseDecisionResult> {
-		logger.debug('[ReleaseDecision] Evaluating release for series', {
-			seriesId,
-			release: release.title
-		});
+		logger.debug(
+			{
+				seriesId,
+				release: release.title
+			},
+			'[ReleaseDecision] Evaluating release for series'
+		);
 
 		try {
 			// Fetch series with profile
@@ -791,7 +809,7 @@ class ReleaseDecisionService {
 				}
 			);
 		} catch (error) {
-			logger.error('[ReleaseDecision] Error evaluating series release', { error, seriesId });
+			logger.error({ error, seriesId }, '[ReleaseDecision] Error evaluating series release');
 			return this.createRejectedResult(
 				error instanceof Error ? error.message : 'Unknown error',
 				'error'
@@ -812,10 +830,13 @@ class ReleaseDecisionService {
 		release: ReleaseInfo,
 		options: DecisionOptions = {}
 	): Promise<ReleaseDecisionResult> {
-		logger.debug('[ReleaseDecision] Evaluating release for episodes', {
-			episodeCount: episodeIds.length,
-			release: release.title
-		});
+		logger.debug(
+			{
+				episodeCount: episodeIds.length,
+				release: release.title
+			},
+			'[ReleaseDecision] Evaluating release for episodes'
+		);
 
 		if (options.force) {
 			return this.createAcceptedResult('new', 'Force override enabled');
@@ -982,10 +1003,13 @@ class ReleaseDecisionService {
 				}
 			);
 		} catch (error) {
-			logger.error('[ReleaseDecision] Error evaluating episodes release', {
-				error,
-				episodeIds
-			});
+			logger.error(
+				{
+					error,
+					episodeIds
+				},
+				'[ReleaseDecision] Error evaluating episodes release'
+			);
 			return this.createRejectedResult(
 				error instanceof Error ? error.message : 'Unknown error',
 				'error'
@@ -1053,18 +1077,21 @@ class ReleaseDecisionService {
 		});
 
 		// Log detailed upgrade comparison
-		logger.debug('[ReleaseDecision] Upgrade comparison result', {
-			existingFile: existingFileName,
-			candidateRelease: release.title,
-			existingScore: comparison.existing.totalScore,
-			candidateScore: comparison.candidate.totalScore,
-			improvement: comparison.improvement,
-			isUpgrade: comparison.isUpgrade,
-			candidateMeetsMinimum: comparison.candidate.meetsMinimum,
-			candidateIsBanned: comparison.candidate.isBanned,
-			candidateSizeRejected: comparison.candidate.sizeRejected,
-			minScoreIncrement: profile.minScoreIncrement
-		});
+		logger.debug(
+			{
+				existingFile: existingFileName,
+				candidateRelease: release.title,
+				existingScore: comparison.existing.totalScore,
+				candidateScore: comparison.candidate.totalScore,
+				improvement: comparison.improvement,
+				isUpgrade: comparison.isUpgrade,
+				candidateMeetsMinimum: comparison.candidate.meetsMinimum,
+				candidateIsBanned: comparison.candidate.isBanned,
+				candidateSizeRejected: comparison.candidate.sizeRejected,
+				minScoreIncrement: profile.minScoreIncrement
+			},
+			'[ReleaseDecision] Upgrade comparison result'
+		);
 
 		// Check if candidate passes basic requirements
 		if (comparison.candidate.isBanned) {
@@ -1141,7 +1168,7 @@ class ReleaseDecisionService {
 			if (profile) return profile;
 
 			// Profile ID specified but not found - log warning and fall through
-			logger.warn('Specified profile not found, falling back', { profileId });
+			logger.warn({ profileId }, 'Specified profile not found, falling back');
 		}
 
 		// Get default profile
@@ -1154,7 +1181,7 @@ class ReleaseDecisionService {
 		// No default set - fall back to first available profile
 		const anyProfile = await db.query.scoringProfiles.findFirst();
 		if (anyProfile) {
-			logger.warn('No default profile set, using first available', { profileId: anyProfile.id });
+			logger.warn({ profileId: anyProfile.id }, 'No default profile set, using first available');
 		}
 
 		return anyProfile || null;

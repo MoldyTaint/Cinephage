@@ -15,11 +15,28 @@ import { eq, and, inArray, not, notInArray } from 'drizzle-orm';
 import { getDownloadClientManager } from '../DownloadClientManager';
 import { mapClientPathToLocal } from './PathMapping';
 import { extractInfoHash } from '../utils/hashUtils';
-import { logger } from '$lib/logging';
+import {
+	cleanupExpiredQueueTombstones,
+	extendQueueTombstonesFromDownloads,
+	getQueueTombstoneCleanupIntervalMs,
+	isQueueItemSuppressed
+} from './QueueTombstoneService';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'imports' as const });
 import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service.js';
 import type { IDownloadClient, DownloadInfo } from '../core/interfaces';
 import type { DownloadClient } from '$lib/types/downloadClient';
-import type { QueueStatus, QueueItem, QueueStats, QueueEvent } from '$lib/types/queue';
+import {
+	isImportedQueueStatus,
+	POST_IMPORT_QUEUE_STATUSES,
+	TERMINAL_QUEUE_STATUSES,
+	type QueueStatus,
+	type QueueItem,
+	type QueueStats,
+	type QueueEvent
+} from '$lib/types/queue';
+import { parseEpisodePointerFromTitle } from '$lib/server/downloads/episode-pointer.js';
 
 // Import service is loaded lazily to avoid circular dependencies
 let importServiceInstance: import('../import').ImportService | null = null;
@@ -34,8 +51,44 @@ async function getImportService() {
 /**
  * Polling intervals in milliseconds
  */
-const POLL_INTERVAL_ACTIVE = 5_000; // 5 seconds when active downloads
-const POLL_INTERVAL_IDLE = 30_000; // 30 seconds when idle
+const DEFAULT_POLL_INTERVAL_ACTIVE_MS = 5_000; // 5 seconds when active downloads
+const DEFAULT_POLL_INTERVAL_IDLE_MS = 30_000; // 30 seconds when idle
+
+function getPositiveIntEnv(name: string, fallback: number): number {
+	const envValue = process.env[name];
+	if (!envValue) {
+		return fallback;
+	}
+
+	const parsed = Number(envValue);
+	if (!Number.isFinite(parsed) || parsed <= 0) {
+		return fallback;
+	}
+
+	return Math.round(parsed);
+}
+
+const POLL_INTERVAL_ACTIVE = getPositiveIntEnv(
+	'DOWNLOAD_MONITOR_POLL_ACTIVE_MS',
+	DEFAULT_POLL_INTERVAL_ACTIVE_MS
+);
+const POLL_INTERVAL_IDLE = getPositiveIntEnv(
+	'DOWNLOAD_MONITOR_POLL_IDLE_MS',
+	DEFAULT_POLL_INTERVAL_IDLE_MS
+);
+
+const STARTUP_SYNC_ENABLED = process.env.DOWNLOAD_MONITOR_STARTUP_SYNC_ENABLED !== 'false';
+const DEFAULT_STARTUP_SYNC_TIMEOUT_MS = 10_000; // 10 seconds per client
+
+function getStartupSyncTimeoutMs(): number {
+	return getPositiveIntEnv(
+		'DOWNLOAD_MONITOR_STARTUP_SYNC_TIMEOUT_MS',
+		DEFAULT_STARTUP_SYNC_TIMEOUT_MS
+	);
+}
+
+const STARTUP_SYNC_TIMEOUT_MS = getStartupSyncTimeoutMs();
+const QUEUE_TOMBSTONE_CLEANUP_INTERVAL_MS = getQueueTombstoneCleanupIntervalMs();
 
 /**
  * Max import attempts before marking as failed
@@ -57,13 +110,13 @@ const TORRENT_MAGNET_METADATA_GRACE_PERIOD_MS = 600_000; // 10 minutes
  * Terminal statuses - items that are completely done and hidden from queue UI.
  * Failed items stay visible for user action and should not be treated as terminal.
  */
-const TERMINAL_STATUSES: QueueStatus[] = ['imported', 'removed'];
+const TERMINAL_STATUSES: QueueStatus[] = [...TERMINAL_QUEUE_STATUSES];
 
 /**
  * Post-import statuses - items that are imported but still visible in queue (seeding)
  * These should NOT be updated by polling - they're managed by removeCompletedDownloads()
  */
-const POST_IMPORT_STATUSES: QueueStatus[] = ['imported', 'seeding-imported'];
+const POST_IMPORT_STATUSES: QueueStatus[] = [...POST_IMPORT_QUEUE_STATUSES];
 
 /**
  * Convert database row to QueueItem
@@ -140,12 +193,29 @@ function mapDownloadStatusToQueueStatus(
 			return 'failed';
 		default:
 			// Log unknown status for debugging
-			logger.warn('Unknown download status encountered, defaulting to queued', {
-				downloadStatus,
-				progress: safeProgress
-			});
+			logger.warn(
+				{
+					downloadStatus,
+					progress: safeProgress
+				},
+				'Unknown download status encountered, defaulting to queued'
+			);
 			return 'queued';
 	}
+}
+
+function shouldPreservePointerSize(
+	queueItem: typeof downloadQueue.$inferSelect,
+	download: DownloadInfo
+): boolean {
+	const pointerTarget = parseEpisodePointerFromTitle(queueItem.title);
+	if (!pointerTarget) {
+		return false;
+	}
+
+	const existingSize = queueItem.size ?? 0;
+	const clientSize = download.size ?? 0;
+	return existingSize > 0 && clientSize > existingSize;
 }
 
 /**
@@ -193,6 +263,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 	// Last time orphan cleanup was run (runs every 10 minutes)
 	private lastOrphanCleanupTime = 0;
+	private lastQueueTombstoneCleanupTime = 0;
 	private static readonly ORPHAN_CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
 	private constructor() {
@@ -238,6 +309,13 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 		// Perform async startup in background
 		setImmediate(() => {
+			if (!STARTUP_SYNC_ENABLED) {
+				logger.info('Skipping download monitor startup sync (disabled by config)');
+				this._status = 'ready';
+				this.schedulePoll(0); // Poll immediately on start
+				return;
+			}
+
 			this.performStartupSync()
 				.then(() => {
 					this._status = 'ready';
@@ -246,7 +324,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				.catch((err) => {
 					this._error = err instanceof Error ? err : new Error(String(err));
 					this._status = 'error';
-					logger.error('Download monitor startup failed', this._error);
+					logger.error({ err: this._error }, 'Download monitor startup failed');
 				});
 		});
 	}
@@ -293,7 +371,6 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			}
 
 			// Sync all clients in parallel with timeout for faster startup
-			const SYNC_TIMEOUT_MS = 10_000; // 10 second timeout per client
 			const syncResults = await Promise.all(
 				enabledClients.map(async ({ client, instance }) => {
 					try {
@@ -301,7 +378,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 						const downloads = await Promise.race([
 							instance.getDownloads(),
 							new Promise<never>((_, reject) =>
-								setTimeout(() => reject(new Error('Sync timeout')), SYNC_TIMEOUT_MS)
+								setTimeout(() => reject(new Error('Sync timeout')), STARTUP_SYNC_TIMEOUT_MS)
 							)
 						]);
 
@@ -327,19 +404,22 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 						}
 
 						if (orphanedDownloads.length > 0) {
-							logger.warn('Found orphaned downloads in client not tracked by queue', {
-								clientName: client.name,
-								clientId: client.id,
-								orphanCount: orphanedDownloads.length,
-								orphans: orphanedDownloads.map((d) => ({
-									name: d.name,
-									hash: d.hash,
-									status: d.status,
-									progress: Math.round(d.progress * 100) + '%',
-									category: d.category,
-									savePath: d.savePath
-								}))
-							});
+							logger.warn(
+								{
+									clientName: client.name,
+									clientId: client.id,
+									orphanCount: orphanedDownloads.length,
+									orphans: orphanedDownloads.map((d) => ({
+										name: d.name,
+										hash: d.hash,
+										status: d.status,
+										progress: Math.round(d.progress * 100) + '%',
+										category: d.category,
+										savePath: d.savePath
+									}))
+								},
+								'Found orphaned downloads in client not tracked by queue'
+							);
 
 							// For completed orphans, we could attempt to identify and import them
 							// For now, just log them so user is aware
@@ -349,7 +429,6 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 							if (completedOrphans.length > 0) {
 								logger.info(
-									'Some orphaned downloads are completed and may be ready for manual import',
 									{
 										clientName: client.name,
 										completedOrphans: completedOrphans.map((d) => ({
@@ -358,16 +437,20 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 											savePath: d.savePath,
 											contentPath: d.contentPath
 										}))
-									}
+									},
+									'Some orphaned downloads are completed and may be ready for manual import'
 								);
 							}
 						} else {
-							logger.debug('No orphaned downloads found in client', {
-								clientName: client.name,
-								totalDownloads: downloads.length,
-								trackedCount: activeQueueItems.filter((q) => q.downloadClientId === client.id)
-									.length
-							});
+							logger.debug(
+								{
+									clientName: client.name,
+									totalDownloads: downloads.length,
+									trackedCount: activeQueueItems.filter((q) => q.downloadClientId === client.id)
+										.length
+								},
+								'No orphaned downloads found in client'
+							);
 						}
 
 						return orphanedDownloads.length;
@@ -398,9 +481,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				logger.info('Startup sync complete: all downloads are properly tracked');
 			}
 		} catch (error) {
-			logger.error('Failed to perform startup sync', {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.error({ err: error }, 'Failed to perform startup sync');
 		}
 	}
 
@@ -423,7 +504,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			errors: [] as { name: string; hash: string; error: string }[]
 		};
 
-		logger.info('Starting orphaned download cleanup', { dryRun });
+		logger.info({ dryRun }, 'Starting orphaned download cleanup');
 
 		try {
 			const manager = getDownloadClientManager();
@@ -490,12 +571,15 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 								hash: download.hash,
 								ratio: download.ratio || 0
 							});
-							logger.info('[DRY RUN] Would remove orphaned torrent', {
-								name: download.name,
-								hash: download.hash,
-								ratio: download.ratio,
-								seedingTime: download.seedingTime
-							});
+							logger.info(
+								{
+									name: download.name,
+									hash: download.hash,
+									ratio: download.ratio,
+									seedingTime: download.seedingTime
+								},
+								'[DRY RUN] Would remove orphaned torrent'
+							);
 						} else {
 							try {
 								await instance.removeDownload(download.hash, false);
@@ -504,12 +588,15 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 									hash: download.hash,
 									ratio: download.ratio || 0
 								});
-								logger.info('Removed orphaned torrent', {
-									name: download.name,
-									hash: download.hash,
-									ratio: download.ratio,
-									seedingTime: download.seedingTime
-								});
+								logger.info(
+									{
+										name: download.name,
+										hash: download.hash,
+										ratio: download.ratio,
+										seedingTime: download.seedingTime
+									},
+									'Removed orphaned torrent'
+								);
 							} catch (removeError) {
 								result.errors.push({
 									name: download.name,
@@ -520,24 +607,25 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 						}
 					}
 				} catch (error) {
-					logger.error('Failed to process client for orphan cleanup', {
-						clientName: client.name,
-						error: error instanceof Error ? error.message : String(error)
-					});
+					logger.error(
+						{ err: error, clientName: client.name },
+						'Failed to process client for orphan cleanup'
+					);
 				}
 			}
 		} catch (error) {
-			logger.error('Failed to cleanup orphaned downloads', {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.error({ err: error }, 'Failed to cleanup orphaned downloads');
 		}
 
-		logger.info('Orphaned download cleanup complete', {
-			dryRun,
-			removed: result.removed.length,
-			skipped: result.skipped.length,
-			errors: result.errors.length
-		});
+		logger.info(
+			{
+				dryRun,
+				removed: result.removed.length,
+				skipped: result.skipped.length,
+				errors: result.errors.length
+			},
+			'Orphaned download cleanup complete'
+		);
 
 		return result;
 	}
@@ -561,7 +649,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 	}> {
 		const { olderThanDays, dryRun = false } = options;
 
-		logger.info('Clearing failed queue items', { olderThanDays, dryRun });
+		logger.info({ olderThanDays, dryRun }, 'Clearing failed queue items');
 
 		// Get all failed items
 		let failedItems = await db
@@ -613,20 +701,26 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 					this.emit('queue:removed', item.id);
 					this.emitSSE('queue:removed', { id: item.id });
 				} catch (error) {
-					logger.error('Failed to clear failed item', {
-						id: item.id,
-						title: item.title,
-						error: error instanceof Error ? error.message : String(error)
-					});
+					logger.error(
+						{
+							id: item.id,
+							title: item.title,
+							error: error instanceof Error ? error.message : String(error)
+						},
+						'Failed to clear failed item'
+					);
 				}
 			}
 		}
 
-		logger.info('Failed queue items cleared', {
-			dryRun,
-			cleared: result.cleared.length,
-			total: result.total
-		});
+		logger.info(
+			{
+				dryRun,
+				cleared: result.cleared.length,
+				total: result.total
+			},
+			'Failed queue items cleared'
+		);
 
 		return result;
 	}
@@ -670,7 +764,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			try {
 				client(event);
 			} catch (error) {
-				logger.warn('Failed to send SSE event, removing client', { error });
+				logger.warn({ error }, 'Failed to send SSE event, removing client');
 				failedClients.push(client);
 			}
 		}
@@ -719,15 +813,33 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				this.lastOrphanCleanupTime = startTime;
 				// Run orphan cleanup in background (don't block polling)
 				this.runOrphanCleanup().catch((err) => {
-					logger.warn('Orphan cleanup failed', {
-						error: err instanceof Error ? err.message : String(err)
-					});
+					logger.warn(
+						{
+							error: err instanceof Error ? err.message : String(err)
+						},
+						'Orphan cleanup failed'
+					);
+				});
+			}
+
+			if (startTime - this.lastQueueTombstoneCleanupTime > QUEUE_TOMBSTONE_CLEANUP_INTERVAL_MS) {
+				this.lastQueueTombstoneCleanupTime = startTime;
+				this.runQueueTombstoneCleanup().catch((err) => {
+					logger.warn(
+						{
+							error: err instanceof Error ? err.message : String(err)
+						},
+						'Queue tombstone cleanup failed'
+					);
 				});
 			}
 		} catch (error) {
-			logger.error('Error during download poll', {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.error(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Error during download poll'
+			);
 		} finally {
 			this.isPolling = false;
 		}
@@ -743,11 +855,14 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		logger.debug('Running periodic orphan cleanup');
 		const result = await this.cleanupOrphanedDownloads(false);
 		if (result.removed.length > 0) {
-			logger.info('Orphan cleanup completed', {
-				removed: result.removed.length,
-				skipped: result.skipped.length,
-				errors: result.errors.length
-			});
+			logger.info(
+				{
+					removed: result.removed.length,
+					skipped: result.skipped.length,
+					errors: result.errors.length
+				},
+				'Orphan cleanup completed'
+			);
 		}
 	}
 
@@ -804,11 +919,14 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				const activeCount = await this.pollClient(client, instance, clientItems);
 				totalActive += activeCount;
 			} catch (error) {
-				logger.error('Failed to poll download client', {
-					clientId: client.id,
-					clientName: client.name,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.error(
+					{
+						clientId: client.id,
+						clientName: client.name,
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'Failed to poll download client'
+				);
 			}
 		}
 
@@ -865,57 +983,80 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 				if (!download) {
 					// Download already removed from client, clean up queue entry
-					logger.debug('Download already removed from client, cleaning up queue entry', {
-						title: item.title,
-						hash: downloadHash,
-						protocol: item.protocol
-					});
+					logger.debug(
+						{
+							title: item.title,
+							hash: downloadHash,
+							protocol: item.protocol
+						},
+						'Download already removed from client, cleaning up queue entry'
+					);
 					await db.delete(downloadQueue).where(eq(downloadQueue.id, item.id));
+					this.emit('queue:removed', item.id);
 					this.emitSSE('queue:removed', { id: item.id });
 					continue;
 				}
 
 				if (download.canBeRemoved) {
 					// Download has met requirements (seeding limits for torrents, completed for usenet)
-					logger.info('Removing completed download from client', {
-						title: item.title,
-						hash: downloadHash,
-						protocol: item.protocol,
-						ratio: download.ratio,
-						seedingTime: download.seedingTime,
-						ratioLimit: download.ratioLimit,
-						seedingTimeLimit: download.seedingTimeLimit
-					});
+					logger.info(
+						{
+							title: item.title,
+							hash: downloadHash,
+							protocol: item.protocol,
+							ratio: download.ratio,
+							seedingTime: download.seedingTime,
+							ratioLimit: download.ratioLimit,
+							seedingTimeLimit: download.seedingTimeLimit
+						},
+						'Removing completed download from client'
+					);
 
-					await clientInstance.removeDownload(downloadHash, false);
+					const deleteFiles = item.protocol === 'torrent';
+					await clientInstance.removeDownload(downloadHash, deleteFiles);
 
 					// Clean up queue entry
 					await db.delete(downloadQueue).where(eq(downloadQueue.id, item.id));
 
-					logger.info('Successfully removed completed download', {
-						title: item.title,
-						hash: downloadHash,
-						protocol: item.protocol
-					});
+					logger.info(
+						{
+							title: item.title,
+							hash: downloadHash,
+							protocol: item.protocol,
+							deleteFiles
+						},
+						'Successfully removed completed download'
+					);
 
+					this.emit('queue:removed', item.id);
 					this.emitSSE('queue:removed', { id: item.id });
 				} else {
 					// Still seeding/processing, leave it alone
-					logger.debug('Imported download still active', {
-						title: item.title,
-						hash: downloadHash,
-						ratio: download.ratio,
-						status: download.status,
-						canBeRemoved: download.canBeRemoved
-					});
+					logger.debug(
+						{
+							title: item.title,
+							hash: downloadHash,
+							ratio: download.ratio,
+							status: download.status,
+							canBeRemoved: download.canBeRemoved
+						},
+						'Imported download still active'
+					);
 				}
 			} catch (error) {
-				logger.warn('Failed to check/remove completed download', {
-					title: item.title,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.warn(
+					{
+						title: item.title,
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'Failed to check/remove completed download'
+				);
 			}
 		}
+	}
+
+	private async runQueueTombstoneCleanup(): Promise<void> {
+		await cleanupExpiredQueueTombstones();
 	}
 
 	/**
@@ -928,6 +1069,15 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 	): Promise<number> {
 		// Get all downloads from this client
 		const downloads = await instance.getDownloads();
+		const clientProtocol =
+			client.implementation === 'sabnzbd' || client.implementation === 'nzbget'
+				? 'usenet'
+				: 'torrent';
+		await extendQueueTombstonesFromDownloads({
+			downloadClientId: client.id,
+			protocol: clientProtocol,
+			downloads
+		});
 
 		// Create a map for quick lookup by download ID (hash)
 		const downloadMap = new Map<string, DownloadInfo>();
@@ -964,7 +1114,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				}
 			}
 
-			// Fallback for SABnzbd: try matching by title
+			// Fallback for SABnzbd-compatible clients: try matching by title
 			// SABnzbd generates new nzo_id when downloads are re-added,
 			// unlike torrent hashes which are persistent
 			if (!download && client.implementation === 'sabnzbd') {
@@ -975,12 +1125,15 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			if (download) {
 				// If we matched by a fallback method, update downloadId for future lookups
 				if (matchedBy && matchedBy !== 'downloadId') {
-					logger.info('Updating downloadId from fallback match', {
-						title: queueItem.title,
-						oldDownloadId: queueItem.downloadId,
-						newDownloadId: download.hash,
-						matchedBy
-					});
+					logger.info(
+						{
+							title: queueItem.title,
+							oldDownloadId: queueItem.downloadId,
+							newDownloadId: download.hash,
+							matchedBy
+						},
+						'Updating downloadId from fallback match'
+					);
 					await db
 						.update(downloadQueue)
 						.set({
@@ -1031,11 +1184,14 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 						// Request import through ImportService (handles all validation and deduplication)
 						const importService = await getImportService();
 						importService.requestImport(updatedItem.id).catch((err) => {
-							logger.error('Failed to request import for completed download', {
-								queueId: updatedItem.id,
-								title: updatedItem.title,
-								error: err instanceof Error ? err.message : String(err)
-							});
+							logger.error(
+								{
+									queueId: updatedItem.id,
+									title: updatedItem.title,
+									error: err instanceof Error ? err.message : String(err)
+								},
+								'Failed to request import for completed download'
+							);
 						});
 					}
 				}
@@ -1085,7 +1241,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		// Build update object
 		const updates: Partial<typeof downloadQueue.$inferInsert> = {
 			progress: download.progress.toString(),
-			size: download.size,
+			size: shouldPreservePointerSize(queueItem, download) ? queueItem.size : download.size,
 			downloadSpeed: download.downloadSpeed,
 			uploadSpeed: download.uploadSpeed,
 			eta: download.eta,
@@ -1105,9 +1261,12 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			updates.completedAt = now;
 		}
 
-		// Capture error message when download fails
-		if (newStatus === 'failed' && download.errorMessage) {
-			updates.errorMessage = download.errorMessage;
+		// Capture error message and timestamp when download fails
+		if (newStatus === 'failed') {
+			if (download.errorMessage) {
+				updates.errorMessage = download.errorMessage;
+			}
+			updates.lastAttemptAt = now;
 		}
 
 		// Only update if something changed
@@ -1147,6 +1306,9 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		if (queueItem.status === 'importing' || queueItem.status === 'imported') {
 			return;
 		}
+		if (isImportedQueueStatus(queueItem.status)) {
+			return;
+		}
 
 		// Grace period before considering a not-found item truly missing.
 		// Torrent magnets can transiently disappear while metadata is fetched/parsing completes.
@@ -1167,14 +1329,17 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		const currentStatus = queueItem.status as QueueStatus;
 
 		if (timeSinceAdd < gracePeriodMs && transientStatuses.has(currentStatus)) {
-			logger.debug('Download not found but within grace period, skipping', {
-				title: queueItem.title,
-				status: currentStatus,
-				protocol: queueItem.protocol,
-				hasMagnet: !!queueItem.magnetUrl,
-				timeSinceAdd,
-				gracePeriod: gracePeriodMs
-			});
+			logger.debug(
+				{
+					title: queueItem.title,
+					status: currentStatus,
+					protocol: queueItem.protocol,
+					hasMagnet: !!queueItem.magnetUrl,
+					timeSinceAdd,
+					gracePeriod: gracePeriodMs
+				},
+				'Download not found but within grace period, skipping'
+			);
 			return;
 		}
 
@@ -1189,18 +1354,24 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			const timeSinceComplete = Date.now() - completedAt;
 
 			if (timeSinceComplete < COMPLETED_GRACE_PERIOD_MS) {
-				logger.debug('Completed download recently, waiting for client sync', {
-					title: queueItem.title,
-					timeSinceComplete,
-					gracePeriod: COMPLETED_GRACE_PERIOD_MS
-				});
+				logger.debug(
+					{
+						title: queueItem.title,
+						timeSinceComplete,
+						gracePeriod: COMPLETED_GRACE_PERIOD_MS
+					},
+					'Completed download recently, waiting for client sync'
+				);
 				return;
 			}
 
-			logger.info('Download removed from client after completion', {
-				title: queueItem.title,
-				clientName: client.name
-			});
+			logger.info(
+				{
+					title: queueItem.title,
+					clientName: client.name
+				},
+				'Download removed from client after completion'
+			);
 
 			// Mark as removed - the import service should have already imported it
 			await db
@@ -1220,11 +1391,14 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			try {
 				await stat(queueItem.outputPath);
 
-				logger.info('Usenet download missing from client but output path exists, queueing import', {
-					title: queueItem.title,
-					clientName: client.name,
-					outputPath: queueItem.outputPath
-				});
+				logger.info(
+					{
+						title: queueItem.title,
+						clientName: client.name,
+						outputPath: queueItem.outputPath
+					},
+					'Usenet download missing from client but output path exists, queueing import'
+				);
 
 				const now = new Date().toISOString();
 				await db
@@ -1243,22 +1417,28 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 					const importService = await getImportService();
 					importService.requestImport(updatedItem.id).catch((err) => {
-						logger.error('Failed to request import for missing usenet download', {
-							queueId: updatedItem.id,
-							title: updatedItem.title,
-							error: err instanceof Error ? err.message : String(err)
-						});
+						logger.error(
+							{
+								queueId: updatedItem.id,
+								title: updatedItem.title,
+								error: err instanceof Error ? err.message : String(err)
+							},
+							'Failed to request import for missing usenet download'
+						);
 					});
 				}
 
 				return;
 			} catch (error) {
 				// Path doesn't exist yet, continue with regular missing-download handling.
-				logger.debug('Missing usenet output path is not ready yet', {
-					title: queueItem.title,
-					outputPath: queueItem.outputPath,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.debug(
+					{
+						title: queueItem.title,
+						outputPath: queueItem.outputPath,
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'Missing usenet output path is not ready yet'
+				);
 			}
 		}
 
@@ -1268,15 +1448,18 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		}
 
 		// Log what downloads ARE available (for debugging)
-		logger.warn('Download disappeared from client unexpectedly', {
-			title: queueItem.title,
-			clientName: client.name,
-			previousStatus: queueItem.status,
-			downloadId: queueItem.downloadId,
-			infoHash: queueItem.infoHash,
-			magnetUrl: queueItem.magnetUrl?.substring(0, 60),
-			availableHashes: allDownloads.slice(0, 5).map((d) => d.hash)
-		});
+		logger.warn(
+			{
+				title: queueItem.title,
+				clientName: client.name,
+				previousStatus: queueItem.status,
+				downloadId: queueItem.downloadId,
+				infoHash: queueItem.infoHash,
+				magnetUrl: queueItem.magnetUrl?.substring(0, 60),
+				availableHashes: allDownloads.slice(0, 5).map((d) => d.hash)
+			},
+			'Download disappeared from client unexpectedly'
+		);
 
 		await db
 			.update(downloadQueue)
@@ -1413,19 +1596,36 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				and(
 					eq(downloadQueue.downloadClientId, params.downloadClientId),
 					eq(downloadQueue.downloadId, params.downloadId),
-					notInArray(downloadQueue.status, ['removed', 'failed', 'imported'])
+					notInArray(downloadQueue.status, ['removed', 'failed', ...POST_IMPORT_STATUSES])
 				)
 			)
 			.limit(1);
 
 		if (existing.length > 0) {
 			// Return existing queue item instead of creating duplicate
-			logger.info('Download already in queue, returning existing item', {
-				downloadId: params.downloadId,
-				existingId: existing[0].id,
-				status: existing[0].status
-			});
+			logger.info(
+				{
+					downloadId: params.downloadId,
+					existingId: existing[0].id,
+					status: existing[0].status
+				},
+				'Download already in queue, returning existing item'
+			);
 			return rowToQueueItem(existing[0]);
+		}
+
+		// Automatic grabs are suppressed for a short window when the same remote item
+		// was recently removed locally while the client was unavailable.
+		if (params.isAutomatic) {
+			const suppressed = await isQueueItemSuppressed({
+				downloadClientId: params.downloadClientId,
+				protocol: params.protocol,
+				downloadId: params.downloadId,
+				infoHash: params.infoHash
+			});
+			if (suppressed) {
+				throw new Error('Download temporarily suppressed after local removal');
+			}
 		}
 
 		// Create new queue item
@@ -1500,16 +1700,22 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 					const clientDownloadId = this.resolveClientDownloadId(queueItem, 'remove');
 					await instance.removeDownload(clientDownloadId, options.deleteFiles);
 				} catch (error) {
-					logger.warn('Failed to remove download from client, proceeding with queue cleanup', {
-						title: queueItem.title,
-						error: error instanceof Error ? error.message : String(error)
-					});
+					logger.warn(
+						{
+							title: queueItem.title,
+							error: error instanceof Error ? error.message : String(error)
+						},
+						'Failed to remove download from client, proceeding with queue cleanup'
+					);
 				}
 			} else {
-				logger.warn('Download client not available, removing from queue only', {
-					title: queueItem.title,
-					downloadClientId: queueItem.downloadClientId
-				});
+				logger.warn(
+					{
+						title: queueItem.title,
+						downloadClientId: queueItem.downloadClientId
+					},
+					'Download client not available, removing from queue only'
+				);
 			}
 		}
 
@@ -1640,7 +1846,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		if (current.status === 'importing') {
 			return 'already_importing';
 		}
-		if (current.status === 'imported') {
+		if (isImportedQueueStatus(current.status)) {
 			return 'already_imported';
 		}
 
@@ -1648,12 +1854,15 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 		// Enforce MAX_IMPORT_ATTEMPTS limit
 		if (newAttempts > MAX_IMPORT_ATTEMPTS) {
-			logger.error('Max import attempts exceeded, marking as failed', {
-				queueItemId: id,
-				title: current.title,
-				attempts: newAttempts,
-				maxAttempts: MAX_IMPORT_ATTEMPTS
-			});
+			logger.error(
+				{
+					queueItemId: id,
+					title: current.title,
+					attempts: newAttempts,
+					maxAttempts: MAX_IMPORT_ATTEMPTS
+				},
+				'Max import attempts exceeded, marking as failed'
+			);
 			await this.markFailed(id, `Import failed after ${newAttempts} attempts`);
 			return 'max_attempts';
 		}
@@ -1671,7 +1880,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				and(
 					eq(downloadQueue.id, id),
 					not(eq(downloadQueue.status, 'importing')),
-					not(eq(downloadQueue.status, 'imported'))
+					notInArray(downloadQueue.status, [...POST_IMPORT_STATUSES])
 				)
 			);
 
@@ -1679,7 +1888,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		// SQLite returns changes count in result
 		if (result.changes === 0) {
 			// Another process already marked it as importing
-			logger.debug('markImporting: race condition detected, another process won', { id });
+			logger.debug({ id }, 'markImporting: race condition detected, another process won');
 			return 'already_importing';
 		}
 
@@ -1726,12 +1935,15 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			this.emitSSE('queue:imported', updatedItem);
 		}
 
-		logger.info('Marked queue item as imported', {
-			id,
-			importedPath,
-			status,
-			protocol
-		});
+		logger.info(
+			{
+				id,
+				importedPath,
+				status,
+				protocol
+			},
+			'Marked queue item as imported'
+		);
 	}
 
 	/**
@@ -1742,7 +1954,8 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			.update(downloadQueue)
 			.set({
 				status: 'failed',
-				errorMessage
+				errorMessage,
+				lastAttemptAt: new Date().toISOString()
 			})
 			.where(eq(downloadQueue.id, id));
 
@@ -1817,11 +2030,14 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				importedAt: undefined
 			});
 		} catch (error) {
-			logger.warn('Failed to create failed download history record', {
-				queueItemId: queueItem.id,
-				title: queueItem.title,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					queueItemId: queueItem.id,
+					title: queueItem.title,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to create failed download history record'
+			);
 		}
 	}
 }

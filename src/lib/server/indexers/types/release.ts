@@ -89,6 +89,9 @@ export interface ReleaseResult {
 	season?: number;
 	/** Episode number if applicable */
 	episode?: number;
+
+	/** Source indexer language (ISO 639-1 code) - where the release came from */
+	sourceLanguage?: string;
 }
 
 /**

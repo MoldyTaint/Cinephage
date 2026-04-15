@@ -17,6 +17,10 @@
 	import { viewPreferences } from '$lib/stores/view-preferences.svelte';
 	import { enhance } from '$app/forms';
 	import { Eye } from 'lucide-svelte';
+	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
+	import { getPrimaryAutoSearchIssue } from '$lib/utils/autoSearchIssues';
+	import { createProgressiveRenderer } from '$lib/utils/progressive-render.svelte.js';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 
@@ -27,9 +31,14 @@
 
 	const filteredMovies = $derived(
 		searchQuery.trim()
-			? data.movies.filter((m) => m.title.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+			? data.movies.filter((mv) =>
+					mv.title.toLowerCase().includes(searchQuery.trim().toLowerCase())
+				)
 			: data.movies
 	);
+
+	// Progressive rendering: only render a screenful + buffer at a time
+	const renderer = createProgressiveRenderer(() => filteredMovies);
 	let bulkLoading = $state(false);
 	let currentBulkAction = $state<'monitor' | 'unmonitor' | 'quality' | 'delete' | null>(null);
 	let isQualityModalOpen = $state(false);
@@ -37,6 +46,11 @@
 	let pendingDeleteMovieId = $state<string | null>(null);
 	let isSearchModalOpen = $state(false);
 	let selectedMovieForSearch = $state<(typeof data.movies)[number] | null>(null);
+	let autoSearchingIds = new SvelteSet<string>();
+	const searchProgress = createSearchProgress();
+	const defaultScoringProfileId = $derived.by(
+		() => data.qualityProfiles.find((profile) => profile.isDefault)?.id ?? null
+	);
 
 	const selectedCount = $derived(selectedMovies.size);
 
@@ -85,14 +99,16 @@
 						selectedMovies.has(movie.id) ? { ...movie, monitored } : movie
 					)
 				};
-				toasts.success(`${monitored ? 'Monitoring' : 'Unmonitored'} ${result.updatedCount} movies`);
-				selectedMovies.clear();
-				showCheckboxes = false;
+				toasts.success(
+					monitored
+						? m.toast_library_movies_monitoringCount({ count: result.updatedCount })
+						: m.toast_library_movies_unmonitoredCount({ count: result.updatedCount })
+				);
 			} else {
-				toasts.error(result.error || 'Failed to update movies');
+				toasts.error(result.error || m.toast_library_movies_failedToUpdate());
 			}
 		} catch {
-			toasts.error('Failed to update movies');
+			toasts.error(m.toast_library_movies_failedToUpdate());
 		} finally {
 			bulkLoading = false;
 			currentBulkAction = null;
@@ -119,15 +135,12 @@
 						selectedMovies.has(movie.id) ? { ...movie, scoringProfileId: profileId } : movie
 					)
 				};
-				toasts.success(`Updated quality profile for ${result.updatedCount} movies`);
-				selectedMovies.clear();
-				showCheckboxes = false;
-				isQualityModalOpen = false;
+				toasts.success(m.toast_library_movies_qualityUpdatedCount({ count: result.updatedCount }));
 			} else {
-				toasts.error(result.error || 'Failed to update movies');
+				toasts.error(result.error || m.toast_library_movies_failedToUpdate());
 			}
 		} catch {
-			toasts.error('Failed to update movies');
+			toasts.error(m.toast_library_movies_failedToUpdate());
 		} finally {
 			bulkLoading = false;
 			currentBulkAction = null;
@@ -152,22 +165,22 @@
 				if (removeFromLibrary && result.removedCount > 0) {
 					const updatedMovies = data.movies.filter((movie) => !selectedMovies.has(movie.id));
 					data = { ...data, movies: updatedMovies };
-					toasts.success(`Removed ${result.removedCount} movies from library`);
+					toasts.success(m.toast_library_movies_removedCount({ count: result.removedCount }));
 				} else {
 					const updatedMovies = data.movies.map((movie) =>
 						selectedMovies.has(movie.id) ? { ...movie, hasFile: false, files: [] } : movie
 					);
 					data = { ...data, movies: updatedMovies };
-					toasts.success(`Deleted files for ${result.deletedCount} movies`);
+					toasts.success(m.toast_library_movies_deletedFilesCount({ count: result.deletedCount }));
 				}
 				selectedMovies.clear();
 				showCheckboxes = false;
 				isDeleteModalOpen = false;
 			} else {
-				toasts.error(result.error || 'Failed to delete');
+				toasts.error(result.error || m.toast_library_movies_failedToDelete());
 			}
 		} catch {
-			toasts.error('Failed to delete');
+			toasts.error(m.toast_library_movies_failedToDelete());
 		} finally {
 			bulkLoading = false;
 			currentBulkAction = null;
@@ -176,7 +189,7 @@
 
 	// Table action handlers
 	async function handleMonitorToggle(movieId: string, monitored: boolean) {
-		const movie = data.movies.find((m) => m.id === movieId);
+		const movie = data.movies.find((mv) => mv.id === movieId);
 		if (!movie) return;
 
 		try {
@@ -189,14 +202,19 @@
 			if (result.success) {
 				data = {
 					...data,
-					movies: data.movies.map((m) => (m.id === movieId ? { ...m, monitored } : m))
+					movies: data.movies.map((mv) => (mv.id === movieId ? { ...mv, monitored } : mv))
 				};
-				toasts.success(`"${movie.title}" ${monitored ? 'monitored' : 'unmonitored'}`);
+				toasts.success(
+					m.toast_library_movies_monitorToggle({
+						title: movie.title,
+						status: monitored ? m.common_monitored() : m.common_unmonitored()
+					})
+				);
 			} else {
-				toasts.error(result.error || 'Failed to update');
+				toasts.error(result.error || m.toast_library_movies_failedToUpdateSingle());
 			}
 		} catch {
-			toasts.error('Failed to update movie');
+			toasts.error(m.toast_library_movies_failedToUpdateMovie());
 		}
 	}
 
@@ -206,28 +224,45 @@
 	}
 
 	async function handleAutoGrab(movieId: string) {
-		const movie = data.movies.find((m) => m.id === movieId);
-		if (!movie) return;
+		const movie = data.movies.find((mv) => mv.id === movieId);
+		if (!movie || autoSearchingIds.has(movieId)) return;
+
+		autoSearchingIds.add(movieId);
 
 		try {
-			const response = await fetch(`/api/library/movies/${movieId}/auto-search`, {
-				method: 'POST'
-			});
-			const result = await response.json();
-			if (result.grabbed) {
-				toasts.success(`Auto-grabbed "${result.releaseName}" for "${movie.title}"`);
-			} else if (result.found) {
-				toasts.info(`Found releases but none met criteria for "${movie.title}"`);
-			} else {
-				toasts.info(`No releases found for "${movie.title}"`);
+			await searchProgress.startSearch(`/api/library/movies/${movieId}/auto-search`);
+
+			if (searchProgress.results) {
+				const issue = getPrimaryAutoSearchIssue(searchProgress.results);
+				if (searchProgress.results.grabbed) {
+					toasts.success(
+						m.toast_library_movies_autoGrabbed({
+							release: searchProgress.results.releaseName ?? '',
+							title: movie.title
+						})
+					);
+				} else if (issue) {
+					toasts.error(issue.message, { description: issue.description });
+				} else if (searchProgress.results.found) {
+					toasts.info(m.toast_library_movies_foundNoMatch({ title: movie.title }));
+				} else {
+					toasts.info(m.toast_library_movies_noReleases({ title: movie.title }));
+				}
 			}
-		} catch {
-			toasts.error(`Failed to auto-grab for "${movie.title}"`);
+		} catch (error) {
+			toasts.error(
+				error instanceof Error
+					? error.message
+					: m.toast_library_movies_failedAutoGrab({ title: movie.title })
+			);
+		} finally {
+			autoSearchingIds.delete(movieId);
+			searchProgress.reset();
 		}
 	}
 
 	function handleManualGrab(movieId: string) {
-		const movie = data.movies.find((m) => m.id === movieId);
+		const movie = data.movies.find((mv) => mv.id === movieId);
 		if (!movie) return;
 		selectedMovieForSearch = movie;
 		isSearchModalOpen = true;
@@ -258,13 +293,15 @@
 		},
 		streaming?: boolean
 	) {
-		if (!selectedMovieForSearch) return { success: false, error: 'No movie selected' };
+		if (!selectedMovieForSearch)
+			return { success: false, error: m.toast_library_movies_failedToGrab() };
 
 		try {
 			const response = await fetch('/api/download/grab', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
+					guid: release.guid,
 					downloadUrl: release.downloadUrl,
 					magnetUrl: release.magnetUrl,
 					infoHash: release.infoHash,
@@ -283,20 +320,21 @@
 								hdr: release.parsed.hdr
 							}
 						: undefined,
-					streamUsenet: streaming
+					streamUsenet: streaming,
+					commentsUrl: release.commentsUrl
 				})
 			});
 			const result = await response.json();
 			if (result.success) {
-				toasts.success(`Grabbed "${release.title}"`);
+				toasts.success(m.toast_library_movies_grabbed({ title: release.title }));
 				return { success: true };
 			} else {
-				toasts.error(result.error || 'Failed to grab release');
-				return { success: false, error: result.error };
+				toasts.error(result.error || m.toast_library_movies_failedToGrab());
+				return { success: false, error: result.error, errorCode: result.errorCode };
 			}
 		} catch {
-			toasts.error('Failed to grab release');
-			return { success: false, error: 'Failed to grab release' };
+			toasts.error(m.toast_library_movies_failedToGrab());
+			return { success: false, error: m.toast_library_movies_failedToGrab() };
 		}
 	}
 
@@ -310,7 +348,7 @@
 		if (pendingDeleteMovieId) {
 			// Single item delete from list view
 			const movieId = pendingDeleteMovieId;
-			const movie = data.movies.find((m) => m.id === movieId);
+			const movie = data.movies.find((mv) => mv.id === movieId);
 			if (!movie) return;
 
 			bulkLoading = true;
@@ -323,24 +361,24 @@
 				const result = await response.json();
 				if (result.success) {
 					if (removeFromLibrary) {
-						data = { ...data, movies: data.movies.filter((m) => m.id !== movieId) };
-						toasts.success(`Removed "${movie.title}" from library`);
+						data = { ...data, movies: data.movies.filter((m2) => m2.id !== movieId) };
+						toasts.success(m.toast_library_movies_removedFromLibrary({ title: movie.title }));
 					} else {
 						data = {
 							...data,
-							movies: data.movies.map((m) =>
-								m.id === movieId ? { ...m, hasFile: false, files: [] } : m
+							movies: data.movies.map((m2) =>
+								m2.id === movieId ? { ...m2, hasFile: false, files: [] } : m2
 							)
 						};
-						toasts.success(`"${movie.title}" files deleted`);
+						toasts.success(m.toast_library_movies_filesDeleted({ title: movie.title }));
 					}
 					isDeleteModalOpen = false;
 					pendingDeleteMovieId = null;
 				} else {
-					toasts.error(result.error || 'Failed to delete');
+					toasts.error(result.error || m.toast_library_movies_failedToDelete());
 				}
 			} catch {
-				toasts.error('Failed to delete movie');
+				toasts.error(m.toast_library_movies_failedToUpdateMovie());
 			} finally {
 				bulkLoading = false;
 				currentBulkAction = null;
@@ -352,43 +390,62 @@
 	}
 
 	const sortOptions = [
-		{ value: 'title-asc', label: 'Title (A-Z)' },
-		{ value: 'title-desc', label: 'Title (Z-A)' },
-		{ value: 'added-desc', label: 'Date Added (Newest)' },
-		{ value: 'added-asc', label: 'Date Added (Oldest)' },
-		{ value: 'year-desc', label: 'Year (Newest)' },
-		{ value: 'year-asc', label: 'Year (Oldest)' },
-		{ value: 'size-desc', label: 'Size (Largest)' },
-		{ value: 'size-asc', label: 'Size (Smallest)' }
+		{ value: 'title-asc', label: m.library_movies_sortTitleAsc() },
+		{ value: 'title-desc', label: m.library_movies_sortTitleDesc() },
+		{ value: 'added-desc', label: m.library_movies_sortAddedDesc() },
+		{ value: 'added-asc', label: m.library_movies_sortAddedAsc() },
+		{ value: 'year-desc', label: m.library_movies_sortYearDesc() },
+		{ value: 'year-asc', label: m.library_movies_sortYearAsc() },
+		{ value: 'size-desc', label: m.library_movies_sortSizeDesc() },
+		{ value: 'size-asc', label: m.library_movies_sortSizeAsc() }
 	];
 
+	const defaultLibrarySlug = $derived.by(
+		() => data.libraryScope?.options?.find((library) => library.isDefault)?.slug ?? ''
+	);
+	const showLibraryFilter = $derived.by(
+		() => Boolean(data.libraryScope?.hasSubLibraries) && !data.libraryScope?.isSubLibraryScope
+	);
+
 	const filterOptions = $derived([
+		...(showLibraryFilter
+			? [
+					{
+						key: 'library',
+						label: m.library_movies_filterLibrary(),
+						options: (data.libraryScope?.options ?? []).map((library) => ({
+							value: library.slug,
+							label: library.name
+						}))
+					}
+				]
+			: []),
 		{
 			key: 'monitored',
-			label: 'Monitored',
+			label: m.library_movies_filterMonitored(),
 			options: [
-				{ value: 'all', label: 'All' },
-				{ value: 'monitored', label: 'Monitored Only' },
-				{ value: 'unmonitored', label: 'Not Monitored' }
+				{ value: 'all', label: m.library_movies_filterAll() },
+				{ value: 'monitored', label: m.library_movies_filterMonitoredOnly() },
+				{ value: 'unmonitored', label: m.library_movies_filterNotMonitored() }
 			]
 		},
 		{
 			key: 'fileStatus',
-			label: 'File Status',
+			label: m.library_movies_filterFileStatus(),
 			options: [
-				{ value: 'all', label: 'All' },
-				{ value: 'hasFile', label: 'Has File' },
-				{ value: 'missingFile', label: 'Missing File' }
+				{ value: 'all', label: m.library_movies_filterAll() },
+				{ value: 'hasFile', label: m.library_movies_filterHasFile() },
+				{ value: 'missingFile', label: m.library_movies_filterMissingFile() }
 			]
 		},
 		{
 			key: 'qualityProfile',
-			label: 'Quality Profile',
+			label: m.library_movies_filterQualityProfile(),
 			options: [
-				{ value: 'all', label: 'All' },
+				{ value: 'all', label: m.library_movies_filterAll() },
 				...data.qualityProfiles.map((p) => ({
 					value: p.id,
-					label: p.isDefault ? `${p.name} (Default)` : p.name
+					label: p.isDefault ? m.library_movies_profileDefault({ name: p.name }) : p.name
 				}))
 			]
 		},
@@ -396,9 +453,9 @@
 			? [
 					{
 						key: 'resolution',
-						label: 'Resolution',
+						label: m.library_movies_filterResolution(),
 						options: [
-							{ value: 'all', label: 'All' },
+							{ value: 'all', label: m.library_movies_filterAll() },
 							...data.uniqueResolutions.map((r) => ({ value: r, label: r }))
 						]
 					}
@@ -408,9 +465,9 @@
 			? [
 					{
 						key: 'videoCodec',
-						label: 'Video Codec',
+						label: m.library_movies_filterVideoCodec(),
 						options: [
-							{ value: 'all', label: 'All' },
+							{ value: 'all', label: m.library_movies_filterAll() },
 							...data.uniqueCodecs.map((c) => ({ value: c, label: c }))
 						]
 					}
@@ -420,10 +477,10 @@
 			? [
 					{
 						key: 'hdrFormat',
-						label: 'HDR',
+						label: m.library_movies_filterHdr(),
 						options: [
-							{ value: 'all', label: 'All' },
-							{ value: 'sdr', label: 'SDR' },
+							{ value: 'all', label: m.library_movies_filterAll() },
+							{ value: 'sdr', label: m.library_movies_filterSdr() },
 							...data.uniqueHdrFormats.map((h) => ({ value: h, label: h }))
 						]
 					}
@@ -433,7 +490,13 @@
 
 	function updateUrlParam(key: string, value: string) {
 		const url = new URL($page.url);
-		if (value === 'all' || (key === 'sort' && value === 'title-asc')) {
+		if (key === 'library') {
+			if (!value || value === defaultLibrarySlug) {
+				url.searchParams.delete(key);
+			} else {
+				url.searchParams.set(key, value);
+			}
+		} else if (value === 'all' || (key === 'sort' && value === 'title-asc')) {
 			url.searchParams.delete(key);
 		} else {
 			url.searchParams.set(key, value);
@@ -442,10 +505,15 @@
 	}
 
 	function clearFilters() {
-		goto(resolve('/library/movies'), { keepFocus: true, noScroll: true });
+		const url = new URL(resolve('/library/movies'), $page.url.origin);
+		if (data.libraryScope?.isSubLibraryScope && data.libraryScope?.selected?.slug) {
+			url.searchParams.set('library', data.libraryScope.selected.slug);
+		}
+		goto(resolvePath(url.pathname + url.search), { keepFocus: true, noScroll: true });
 	}
 
 	const currentFilters = $derived({
+		library: data.filters.library,
 		monitored: data.filters.monitored,
 		fileStatus: data.filters.fileStatus,
 		qualityProfile: data.filters.qualityProfile,
@@ -456,7 +524,7 @@
 	const downloadingMovieIdSet = $derived(new Set(data.downloadingMovieIds));
 	const deleteModalCount = $derived(pendingDeleteMovieId ? 1 : selectedCount);
 	const pendingDeleteMovie = $derived(
-		pendingDeleteMovieId ? data.movies.find((m) => m.id === pendingDeleteMovieId) : null
+		pendingDeleteMovieId ? data.movies.find((mv) => mv.id === pendingDeleteMovieId) : null
 	);
 	const pendingDeleteMovieTitle = $derived(pendingDeleteMovie?.title ?? '');
 	const pendingDeleteMovieHasFiles = $derived(pendingDeleteMovie?.hasFile ?? false);
@@ -472,7 +540,7 @@
 </script>
 
 <svelte:head>
-	<title>Movies - Library - Cinephage</title>
+	<title>{m.library_movies_pageTitle()}</title>
 </svelte:head>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -489,12 +557,12 @@
 				<h1
 					class="min-w-0 bg-linear-to-r from-primary to-secondary bg-clip-text text-xl font-bold text-transparent sm:text-2xl"
 				>
-					Movies
+					{m.library_movies_heading()}
 				</h1>
 				<span class="badge badge-ghost badge-sm sm:badge-lg">{data.total}</span>
 				{#if data.total !== data.totalUnfiltered}
 					<span class="hidden text-sm text-base-content/50 sm:inline">
-						of {data.totalUnfiltered}
+						{m.library_movies_ofTotal({ total: data.totalUnfiltered })}
 					</span>
 				{/if}
 			</div>
@@ -507,7 +575,7 @@
 					/>
 					<input
 						type="text"
-						placeholder="Search Movies…"
+						placeholder={m.library_movies_searchPlaceholder()}
 						class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 						bind:value={searchQuery}
 					/>
@@ -515,7 +583,7 @@
 						<button
 							class="absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-0.5 text-base-content/40 transition-colors hover:bg-base-300 hover:text-base-content"
 							onclick={() => (searchQuery = '')}
-							aria-label="Clear search"
+							aria-label={m.library_movies_clearSearch()}
 						>
 							<X class="h-3.5 w-3.5" />
 						</button>
@@ -533,23 +601,23 @@
 			>
 				{#if showCheckboxes}
 					<button class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm" onclick={selectAll}>
-						<span class="hidden sm:inline">Select All</span>
-						<span class="sm:hidden">All</span>
+						<span class="hidden sm:inline">{m.library_movies_selectAll()}</span>
+						<span class="sm:hidden">{m.library_movies_selectAllShort()}</span>
 					</button>
 					<button class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm" onclick={toggleSelectionMode}>
 						<X class="h-4 w-4" />
-						<span class="hidden sm:inline">Done</span>
+						<span class="hidden sm:inline">{m.library_movies_done()}</span>
 					</button>
 				{:else}
 					<button class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm" onclick={toggleSelectionMode}>
 						<CheckSquare class="h-4 w-4" />
-						<span class="hidden sm:inline">Select</span>
+						<span class="hidden sm:inline">{m.library_movies_select()}</span>
 					</button>
 
 					<div class="dropdown dropdown-end">
 						<div tabindex="0" role="button" class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm">
 							<Eye class="h-4 w-4" />
-							<span class="hidden sm:inline">Monitor</span>
+							<span class="hidden sm:inline">{m.library_movies_monitor()}</span>
 						</div>
 						<form
 							id="movies-monitor-all"
@@ -578,12 +646,12 @@
 						>
 							<li>
 								<button type="submit" class="w-full text-left" form="movies-monitor-all">
-									Monitor All
+									{m.library_movies_monitorAll()}
 								</button>
 							</li>
 							<li>
 								<button type="submit" class="w-full text-left" form="movies-unmonitor-all">
-									Unmonitor All
+									{m.library_movies_unmonitorAll()}
 								</button>
 							</li>
 						</ul>
@@ -595,15 +663,15 @@
 					class="btn btn-ghost btn-xs sm:btn-sm"
 					onclick={() => viewPreferences.toggleViewMode()}
 					aria-label={viewPreferences.viewMode === 'grid'
-						? 'Switch to list view'
-						: 'Switch to grid view'}
+						? m.library_movies_switchToList()
+						: m.library_movies_switchToGrid()}
 				>
 					{#if viewPreferences.viewMode === 'grid'}
 						<List class="h-4 w-4" />
-						<span class="hidden sm:inline">List</span>
+						<span class="hidden sm:inline">{m.library_movies_list()}</span>
 					{:else}
 						<LayoutGrid class="h-4 w-4" />
-						<span class="hidden sm:inline">Grid</span>
+						<span class="hidden sm:inline">{m.library_movies_grid()}</span>
 					{/if}
 				</button>
 
@@ -612,6 +680,7 @@
 					{filterOptions}
 					currentSort={data.filters.sort}
 					{currentFilters}
+					hiddenActiveFilterKeys={['library']}
 					onSortChange={(sort) => updateUrlParam('sort', sort)}
 					onFilterChange={(key, value) => updateUrlParam(key, value)}
 					onClearFilters={clearFilters}
@@ -627,7 +696,7 @@
 				/>
 				<input
 					type="text"
-					placeholder="Search Movies…"
+					placeholder={m.library_movies_searchPlaceholder()}
 					class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 					bind:value={searchQuery}
 				/>
@@ -635,7 +704,7 @@
 					<button
 						class="absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-0.5 text-base-content/40 transition-colors hover:bg-base-300 hover:text-base-content"
 						onclick={() => (searchQuery = '')}
-						aria-label="Clear search"
+						aria-label={m.library_movies_clearSearch()}
 					>
 						<X class="h-3.5 w-3.5" />
 					</button>
@@ -672,10 +741,10 @@
 			<!-- Search Empty State -->
 			<div class="flex flex-col items-center justify-center py-20 text-center opacity-50">
 				<Search class="mb-4 h-16 w-16" />
-				<p class="text-2xl font-bold">No movies match "{searchQuery}"</p>
-				<p class="mt-2">Try a different search term.</p>
+				<p class="text-2xl font-bold">{m.library_movies_noSearchMatch({ query: searchQuery })}</p>
+				<p class="mt-2">{m.library_movies_tryDifferentSearch()}</p>
 				<button class="btn mt-6 btn-ghost" onclick={() => (searchQuery = '')}>
-					Clear Search
+					{m.library_movies_clearSearchBtn()}
 				</button>
 			</div>
 		{:else if data.movies.length === 0}
@@ -683,15 +752,17 @@
 			<div class="flex flex-col items-center justify-center py-20 text-center opacity-50">
 				<Clapperboard class="mb-4 h-20 w-20" />
 				{#if data.totalUnfiltered === 0}
-					<p class="text-2xl font-bold">No movies in your library</p>
-					<p class="mt-2">Add movies from the Discover page to see them here.</p>
+					<p class="text-2xl font-bold">{m.library_movies_emptyLibrary()}</p>
+					<p class="mt-2">{m.library_movies_emptyLibraryHint()}</p>
 					<a href={resolvePath('/discover?type=movie')} class="btn mt-6 btn-primary">
-						Discover Movies
+						{m.library_movies_discoverMovies()}
 					</a>
 				{:else}
-					<p class="text-2xl font-bold">No movies match your filters</p>
-					<p class="mt-2">Try adjusting your filters to see more results.</p>
-					<button class="btn mt-6 btn-primary" onclick={clearFilters}>Clear Filters</button>
+					<p class="text-2xl font-bold">{m.library_movies_noFilterMatch()}</p>
+					<p class="mt-2">{m.library_movies_noFilterMatchHint()}</p>
+					<button class="btn mt-6 btn-primary" onclick={clearFilters}
+						>{m.library_movies_clearFilters()}</button
+					>
 				{/if}
 			</div>
 		{:else}
@@ -702,7 +773,7 @@
 				<div class="animate-in fade-in slide-in-from-bottom-4 duration-500">
 					{#if viewPreferences.viewMode === 'grid'}
 						<div class="grid grid-cols-3 gap-3 sm:gap-4 lg:grid-cols-9">
-							{#each filteredMovies as movie (movie.id)}
+							{#each renderer.visible as movie (movie.id)}
 								<LibraryMediaCard
 									item={movie}
 									selectable={showCheckboxes}
@@ -713,17 +784,25 @@
 						</div>
 					{:else}
 						<LibraryMediaTable
-							items={filteredMovies}
+							items={renderer.visible}
 							mediaType="movie"
 							selectedItems={selectedMovies}
 							selectable={showCheckboxes}
 							downloadingIds={downloadingMovieIdSet}
+							{autoSearchingIds}
 							onSelectChange={handleItemSelectChange}
 							onMonitorToggle={handleMonitorToggle}
 							onDelete={handleDeleteMovie}
 							onAutoGrab={handleAutoGrab}
 							onManualGrab={handleManualGrab}
 						/>
+					{/if}
+
+					<!-- Progressive rendering sentinel -->
+					{#if renderer.hasMore}
+						<div bind:this={renderer.sentinel} class="flex justify-center py-8">
+							<span class="loading loading-md loading-dots text-base-content/30"></span>
+						</div>
 					{/if}
 				</div>
 			{/if}
@@ -758,7 +837,7 @@
 <!-- Single Item Delete Modal -->
 <DeleteConfirmationModal
 	open={isDeleteModalOpen && pendingDeleteMovieId !== null}
-	title="Delete Movie"
+	title={m.library_movies_deleteMovieTitle()}
 	itemName={pendingDeleteMovieTitle}
 	hasFiles={pendingDeleteMovieHasFiles}
 	hasActiveDownload={pendingDeleteMovieHasActiveDownload}
@@ -793,7 +872,9 @@
 		imdbId={selectedMovieForSearch.imdbId ?? undefined}
 		year={selectedMovieForSearch.year ?? undefined}
 		mediaType="movie"
-		scoringProfileId={selectedMovieForSearch.scoringProfileId ?? undefined}
+		scoringProfileId={selectedMovieForSearch.scoringProfileId ??
+			defaultScoringProfileId ??
+			undefined}
 		onClose={() => {
 			isSearchModalOpen = false;
 			selectedMovieForSearch = null;

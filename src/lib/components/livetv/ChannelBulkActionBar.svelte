@@ -1,14 +1,17 @@
 <script lang="ts">
-	import { X, FolderOpen, Trash2, Loader2 } from 'lucide-svelte';
+	import { X, FolderOpen, Trash2, Loader2, Pencil } from 'lucide-svelte';
 	import type { ChannelCategory } from '$lib/types/livetv';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		selectedCount: number;
 		categories: ChannelCategory[];
 		excludedCategoryIds?: Set<string | null>;
+		cleanNameCount?: number;
 		loading: boolean;
-		currentAction: 'category' | 'remove' | null;
+		currentAction: 'category' | 'clean-names' | 'remove' | null;
 		onSetCategory: (categoryId: string | null) => void;
+		onApplyCleanNames: () => void;
 		onRemove: () => void;
 		onClear: () => void;
 	}
@@ -17,9 +20,11 @@
 		selectedCount,
 		categories,
 		excludedCategoryIds = new Set<string | null>(),
+		cleanNameCount = 0,
 		loading,
 		currentAction,
 		onSetCategory,
+		onApplyCleanNames,
 		onRemove,
 		onClear
 	}: Props = $props();
@@ -37,7 +42,6 @@
 	const hasUncategorizedOption = $derived(!excludedCategoryIds.has(null));
 	const hasCategoryTargets = $derived(availableCategories.length > 0);
 	const canMoveToAnotherCategory = $derived(hasUncategorizedOption || hasCategoryTargets);
-	const channelLabel = $derived(selectedCount === 1 ? 'channel' : 'channels');
 
 	$effect(() => {
 		if (dropdownOpen && !canMoveToAnotherCategory) {
@@ -54,13 +58,29 @@
 			class="flex items-center gap-2 rounded-full border border-base-content/10 bg-base-300 px-3 py-2 shadow-xl sm:gap-3 sm:px-4 sm:py-2.5"
 		>
 			<span class="text-sm font-medium">
-				{selectedCount}
-				{channelLabel} selected
+				{m.livetv_channelBulkActionBar_selected({ count: selectedCount })}
 			</span>
 
 			<div class="h-4 w-px bg-base-content/20"></div>
 
 			<div class="flex items-center gap-1">
+				<button
+					class="btn gap-1.5 btn-ghost btn-sm"
+					onclick={onApplyCleanNames}
+					disabled={loading}
+					title="Apply cleaned names to selected channels"
+				>
+					{#if loading && currentAction === 'clean-names'}
+						<Loader2 size={16} class="animate-spin" />
+					{:else}
+						<Pencil size={16} />
+					{/if}
+					<span class="hidden sm:inline">{m.livetv_channelBulkActionBar_applyCleanedNames()}</span>
+					{#if cleanNameCount > 0}
+						<span class="badge badge-ghost badge-xs">{cleanNameCount}</span>
+					{/if}
+				</button>
+
 				<!-- Set Category Dropdown -->
 				<div class="relative">
 					<button
@@ -75,7 +95,7 @@
 						{:else}
 							<FolderOpen size={16} />
 						{/if}
-						<span class="hidden sm:inline">Category</span>
+						<span class="hidden sm:inline">{m.livetv_channelBulkActionBar_category()}</span>
 					</button>
 
 					{#if dropdownOpen}
@@ -87,13 +107,13 @@
 									<li>
 										<button onclick={() => handleCategorySelect(null)}>
 											<span class="h-3 w-3 rounded-full bg-base-content/20"></span>
-											Uncategorized
+											{m.livetv_channelBulkActionBar_uncategorized()}
 										</button>
 									</li>
 								{/if}
 								{#if hasCategoryTargets}
 									<li class="menu-title">
-										<span>Categories</span>
+										<span>{m.livetv_channelBulkActionBar_categories()}</span>
 									</li>
 									{#each availableCategories as cat (cat.id)}
 										<li>
@@ -126,7 +146,7 @@
 					{:else}
 						<Trash2 size={16} />
 					{/if}
-					<span class="hidden sm:inline">Remove</span>
+					<span class="hidden sm:inline">{m.livetv_channelBulkActionBar_remove()}</span>
 				</button>
 			</div>
 
@@ -137,7 +157,7 @@
 				class="btn btn-circle btn-ghost btn-sm"
 				onclick={onClear}
 				disabled={loading}
-				title="Clear selection"
+				title={m.livetv_channelBulkActionBar_clearSelection()}
 			>
 				<X size={16} />
 			</button>

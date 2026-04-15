@@ -13,7 +13,9 @@ import type {
 	LanguageCode
 } from '../types';
 import { TimeoutError, ConnectionError } from '../errors/ProviderErrors';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import { normalizeLanguageCode } from '$lib/shared/languages';
 
 /**
@@ -120,7 +122,7 @@ export abstract class BaseSubtitleProvider implements ISubtitleProvider {
 		} catch (error) {
 			this._state = ProviderState.ERROR;
 			this._lastError = error instanceof Error ? error : new Error(String(error));
-			logger.error(`[${this.name}] Failed to initialize`, { error: this._lastError.message });
+			logger.error({ err: this._lastError }, `[${this.name}] Failed to initialize`);
 			throw error;
 		}
 	}
@@ -149,9 +151,12 @@ export abstract class BaseSubtitleProvider implements ISubtitleProvider {
 			await this.onTerminate();
 			logger.debug(`[${this.name}] Provider terminated`);
 		} catch (error) {
-			logger.warn(`[${this.name}] Error during termination`, {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				`[${this.name}] Error during termination`
+			);
 		} finally {
 			this._state = ProviderState.TERMINATED;
 		}
@@ -306,22 +311,28 @@ export abstract class BaseSubtitleProvider implements ISubtitleProvider {
 	 * Helper: Log search operation
 	 */
 	protected logSearch(criteria: SubtitleSearchCriteria, resultCount: number): void {
-		logger.debug(`[${this.name}] Search completed`, {
-			provider: this.name,
-			title: criteria.title,
-			languages: criteria.languages,
-			resultCount
-		});
+		logger.debug(
+			{
+				provider: this.name,
+				title: criteria.title,
+				languages: criteria.languages,
+				resultCount
+			},
+			`[${this.name}] Search completed`
+		);
 	}
 
 	/**
 	 * Helper: Log error
 	 */
 	protected logError(operation: string, error: unknown): void {
-		logger.error(`[${this.name}] ${operation} failed`, {
-			provider: this.name,
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.error(
+			{
+				provider: this.name,
+				error: error instanceof Error ? error.message : String(error)
+			},
+			`[${this.name}] ${operation} failed`
+		);
 	}
 
 	/**

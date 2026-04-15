@@ -56,7 +56,7 @@ export class TaskExecutionContext {
 	 */
 	checkCancelled(): void {
 		if (this.signal.aborted) {
-			logger.info('[TaskExecutionContext] Task cancelled', { taskId: this._taskId });
+			logger.info({ taskId: this._taskId }, '[TaskExecutionContext] Task cancelled');
 			throw new TaskCancelledException(this._taskId);
 		}
 	}

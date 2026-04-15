@@ -91,7 +91,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		});
 	} catch (e) {
 		const message = e instanceof Error ? e.message : 'Unknown error';
-		logger.error('Search API error', e, { errorMessage: message, query });
+		logger.error({ err: e, ...{ errorMessage: message, query } }, 'Search API error');
 		return json({ error: 'Search failed' }, { status: 500 });
 	}
 };

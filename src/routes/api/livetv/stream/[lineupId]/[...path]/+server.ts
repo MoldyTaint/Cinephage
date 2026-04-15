@@ -48,10 +48,13 @@ async function fetchWithRetry(
 
 			// Handle 403 Forbidden - likely expired token
 			if (response.status === 403 && allowUrlRefresh && attempt < maxRetries) {
-				logger.warn('[LiveTV Segment] Got 403, refreshing stream URL', {
-					lineupId,
-					attempt: attempt + 1
-				});
+				logger.warn(
+					{
+						lineupId,
+						attempt: attempt + 1
+					},
+					'[LiveTV Segment] Got 403, refreshing stream URL'
+				);
 
 				// Refresh the URL and retry
 				const refreshed = await urlCache.refreshStream(lineupId);
@@ -193,19 +196,25 @@ async function validateAndRefreshUrl(
 	if (cached && cached.url === originalUrl) {
 		// Check if still valid
 		if (urlCache.isValid(cached)) {
-			logger.debug('[LiveTV Segment] Using valid cached URL', {
-				lineupId,
-				age: Date.now() - cached.createdAt
-			});
+			logger.debug(
+				{
+					lineupId,
+					age: Date.now() - cached.createdAt
+				},
+				'[LiveTV Segment] Using valid cached URL'
+			);
 			return { url: originalUrl, headers: providerHeaders || {} };
 		}
 
 		// URL is stale - refresh it
-		logger.info('[LiveTV Segment] Stream URL expired, refreshing', {
-			lineupId,
-			age: Date.now() - cached.createdAt,
-			maxAge: cached.type === 'hls' ? HLS_STREAM_TIMEOUT_MS : 5000
-		});
+		logger.info(
+			{
+				lineupId,
+				age: Date.now() - cached.createdAt,
+				maxAge: cached.type === 'hls' ? HLS_STREAM_TIMEOUT_MS : 5000
+			},
+			'[LiveTV Segment] Stream URL expired, refreshing'
+		);
 
 		const refreshed = await urlCache.refreshStream(lineupId);
 		return {
@@ -244,7 +253,10 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 		decodedUrl = validated.url;
 		providerHeaders = validated.headers;
 	} catch (error) {
-		logger.error('[LiveTV Segment] Failed to validate/refresh stream URL', error, { lineupId });
+		logger.error(
+			{ err: error, ...{ lineupId } },
+			'[LiveTV Segment] Failed to validate/refresh stream URL'
+		);
 		return new Response(JSON.stringify({ error: 'Failed to refresh stream URL' }), {
 			status: 502,
 			headers: { 'Content-Type': 'application/json' }
@@ -254,10 +266,13 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 	// SSRF protection (with DNS resolution)
 	const safetyCheck = await resolveAndValidateUrl(decodedUrl);
 	if (!safetyCheck.safe) {
-		logger.warn('[LiveTV Segment] Blocked unsafe URL', {
-			lineupId,
-			reason: safetyCheck.reason
-		});
+		logger.warn(
+			{
+				lineupId,
+				reason: safetyCheck.reason
+			},
+			'[LiveTV Segment] Blocked unsafe URL'
+		);
 		return new Response(JSON.stringify({ error: 'URL blocked', reason: safetyCheck.reason }), {
 			status: 403,
 			headers: { 'Content-Type': 'application/json' }
@@ -274,7 +289,7 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 
 		while (true) {
 			if (visitedUrls.has(currentUrl)) {
-				logger.warn('[LiveTV Segment] Redirect loop detected', { lineupId, url: currentUrl });
+				logger.warn({ lineupId, url: currentUrl }, '[LiveTV Segment] Redirect loop detected');
 				return new Response(JSON.stringify({ error: 'Redirect loop detected' }), {
 					status: 508,
 					headers: { 'Content-Type': 'application/json' }
@@ -283,7 +298,7 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 			visitedUrls.add(currentUrl);
 
 			if (redirectCount >= MAX_SEGMENT_REDIRECTS) {
-				logger.warn('[LiveTV Segment] Max redirects exceeded', { lineupId });
+				logger.warn({ lineupId }, '[LiveTV Segment] Max redirects exceeded');
 				return new Response(JSON.stringify({ error: 'Too many redirects' }), {
 					status: 508,
 					headers: { 'Content-Type': 'application/json' }
@@ -306,11 +321,14 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 					const redirectUrl = new URL(location, currentUrl).toString();
 					const redirectSafetyCheck = await resolveAndValidateUrl(redirectUrl);
 					if (!redirectSafetyCheck.safe) {
-						logger.warn('[LiveTV Segment] Blocked unsafe redirect', {
-							lineupId,
-							url: redirectUrl,
-							reason: redirectSafetyCheck.reason
-						});
+						logger.warn(
+							{
+								lineupId,
+								url: redirectUrl,
+								reason: redirectSafetyCheck.reason
+							},
+							'[LiveTV Segment] Blocked unsafe redirect'
+						);
 						return new Response(
 							JSON.stringify({
 								error: 'Redirect target not allowed',
@@ -341,11 +359,14 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 		if (contentLength) {
 			const size = parseInt(contentLength, 10);
 			if (size > LIVETV_SEGMENT_MAX_SIZE) {
-				logger.warn('[LiveTV Segment] Segment too large', {
-					lineupId,
-					size,
-					maxSize: LIVETV_SEGMENT_MAX_SIZE
-				});
+				logger.warn(
+					{
+						lineupId,
+						size,
+						maxSize: LIVETV_SEGMENT_MAX_SIZE
+					},
+					'[LiveTV Segment] Segment too large'
+				);
 				return new Response(JSON.stringify({ error: 'Segment too large' }), {
 					status: 413,
 					headers: { 'Content-Type': 'application/json' }
@@ -425,10 +446,16 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 			}
 		});
 	} catch (error) {
-		logger.error('[LiveTV Segment] Segment proxy failed', error, {
-			lineupId,
-			url: decodedUrl.substring(0, 100)
-		});
+		logger.error(
+			{
+				err: error,
+				...{
+					lineupId,
+					url: decodedUrl.substring(0, 100)
+				}
+			},
+			'[LiveTV Segment] Segment proxy failed'
+		);
 		return new Response(
 			JSON.stringify({ error: error instanceof Error ? error.message : 'Segment proxy error' }),
 			{

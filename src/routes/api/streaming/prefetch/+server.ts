@@ -10,7 +10,7 @@ import type { RequestHandler } from './$types';
 import { getStreamPrefetchService } from '$lib/server/streaming/prefetch';
 import { logger } from '$lib/logging';
 
-const streamLog = { logCategory: 'streams' as const };
+const streamLog = { logDomain: 'streams' as const };
 
 /**
  * POST - Trigger a stream prefetch cycle
@@ -63,10 +63,13 @@ export const POST: RequestHandler = async ({ request: _request }) => {
 			}
 		});
 	} catch (error) {
-		logger.error('Stream prefetch cycle failed', {
-			error: error instanceof Error ? error.message : String(error),
-			...streamLog
-		});
+		logger.error(
+			{
+				error: error instanceof Error ? error.message : String(error),
+				...streamLog
+			},
+			'Stream prefetch cycle failed'
+		);
 
 		return json(
 			{

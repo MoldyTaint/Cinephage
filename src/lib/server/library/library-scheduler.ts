@@ -13,7 +13,9 @@ import { mediaMatcherService } from './media-matcher.js';
 import { libraryWatcherService } from './library-watcher.js';
 import { getImportService } from '$lib/server/downloadClients/import/ImportService.js';
 import { EventEmitter } from 'events';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'scans' as const });
 import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service.js';
 
 /**
@@ -129,7 +131,7 @@ export class LibrarySchedulerService extends EventEmitter implements BackgroundS
 				.catch((err) => {
 					this._error = err instanceof Error ? err : new Error(String(err));
 					this._status = 'error';
-					logger.error('[LibraryScheduler] Failed to initialize', this._error);
+					logger.error({ err: this._error }, '[LibraryScheduler] Failed to initialize');
 				});
 		});
 	}
@@ -147,14 +149,14 @@ export class LibrarySchedulerService extends EventEmitter implements BackgroundS
 
 		// Add error listener to prevent unhandled error crashes
 		libraryWatcherService.on('error', (data) => {
-			logger.error('[LibraryScheduler] LibraryWatcher error', undefined, { data });
+			logger.error({ data }, '[LibraryScheduler] LibraryWatcher error');
 			// Emit to scheduler's own events for monitoring
 			this.emit('watcherError', data);
 		});
 
 		// Initialize the filesystem watcher in background (don't block startup)
 		libraryWatcherService.initialize().catch((error) => {
-			logger.error('[LibraryScheduler] Failed to initialize filesystem watcher', error);
+			logger.error({ err: error }, '[LibraryScheduler] Failed to initialize filesystem watcher');
 		});
 
 		// Set up periodic scans (doesn't need watcher to be ready)
@@ -176,9 +178,12 @@ export class LibrarySchedulerService extends EventEmitter implements BackgroundS
 			}
 
 			if (unscannedFolders.length > 0) {
-				logger.info('[LibraryScheduler] Scanning folders that have never been scanned', {
-					count: unscannedFolders.length
-				});
+				logger.info(
+					{
+						count: unscannedFolders.length
+					},
+					'[LibraryScheduler] Scanning folders that have never been scanned'
+				);
 
 				// Scan unscanned folders in background
 				for (const folderId of unscannedFolders) {
@@ -196,12 +201,15 @@ export class LibrarySchedulerService extends EventEmitter implements BackgroundS
 				if (hoursSinceLastScan >= scanInterval) {
 					logger.info('[LibraryScheduler] Periodic scan is due, starting startup scan...');
 					this.runFullScan().catch((error) => {
-						logger.error('[LibraryScheduler] Startup scan failed', error);
+						logger.error({ err: error }, '[LibraryScheduler] Startup scan failed');
 					});
 				} else {
-					logger.debug('[LibraryScheduler] No startup scan needed', {
-						hoursSinceLastScan: hoursSinceLastScan.toFixed(1)
-					});
+					logger.debug(
+						{
+							hoursSinceLastScan: hoursSinceLastScan.toFixed(1)
+						},
+						'[LibraryScheduler] No startup scan needed'
+					);
 				}
 			}
 		}
@@ -251,14 +259,14 @@ export class LibrarySchedulerService extends EventEmitter implements BackgroundS
 		const intervalHours = await this.getScanIntervalHours();
 		const intervalMs = intervalHours * 60 * 60 * 1000;
 
-		logger.info('[LibraryScheduler] Setting up periodic scans', { intervalHours });
+		logger.info({ intervalHours }, '[LibraryScheduler] Setting up periodic scans');
 
 		this.scanInterval = setInterval(async () => {
 			logger.info('[LibraryScheduler] Running scheduled scan...');
 			try {
 				await this.runFullScan();
 			} catch (error) {
-				logger.error('[LibraryScheduler] Scheduled scan failed', error);
+				logger.error({ err: error }, '[LibraryScheduler] Scheduled scan failed');
 			}
 		}, intervalMs);
 	}
@@ -372,16 +380,16 @@ export class LibrarySchedulerService extends EventEmitter implements BackgroundS
 	queueFolderScan(rootFolderId: string): void {
 		if (diskScanService.scanning) {
 			logger.debug(
-				'[LibraryScheduler] Scan already in progress, folder will be caught on next scan',
 				{
 					rootFolderId
-				}
+				},
+				'[LibraryScheduler] Scan already in progress, folder will be caught on next scan'
 			);
 			return;
 		}
 
 		this.runFolderScan(rootFolderId).catch((error) => {
-			logger.error('[LibraryScheduler] Queued folder scan failed', error, { rootFolderId });
+			logger.error({ err: error, rootFolderId }, '[LibraryScheduler] Queued folder scan failed');
 		});
 	}
 
@@ -393,7 +401,7 @@ export class LibrarySchedulerService extends EventEmitter implements BackgroundS
 		const allSeries = await db.select({ id: series.id }).from(series);
 		if (allSeries.length === 0) return;
 
-		logger.info('[LibraryScheduler] Updating series stats...', { count: allSeries.length });
+		logger.info({ count: allSeries.length }, '[LibraryScheduler] Updating series stats...');
 
 		const importService = getImportService();
 		for (const s of allSeries) {

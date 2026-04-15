@@ -25,7 +25,9 @@ import {
 } from './ffprobe.js';
 import { readFile } from 'node:fs/promises';
 import type { movieFiles } from '$lib/server/db/schema.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'scans' as const });
 
 // Type for the mediaInfo JSON field in our schema
 type MediaInfo = NonNullable<typeof movieFiles.$inferSelect.mediaInfo>;
@@ -353,10 +355,13 @@ export class MediaInfoService {
 
 					return this.parseFFprobeOutput(output);
 				} catch (error) {
-					logger.debug('[MediaInfoService] STRM probe failed', {
-						filePath,
-						error: error instanceof Error ? error.message : String(error)
-					});
+					logger.debug(
+						{
+							filePath,
+							error: error instanceof Error ? error.message : String(error)
+						},
+						'[MediaInfoService] STRM probe failed'
+					);
 					onStrmProbeFallback?.(
 						error instanceof Error ? error.message : 'Unknown STRM probe error'
 					);
@@ -370,23 +375,22 @@ export class MediaInfoService {
 			// If no video stream found, try extended analysis
 			if (output && !getPrimaryVideoStream(output)) {
 				logger.debug(
-					'[MediaInfoService] No video stream in initial probe, trying extended analysis',
-					{ filePath }
+					{ filePath },
+					'[MediaInfoService] No video stream in initial probe, trying extended analysis'
 				);
 				output = await runFFprobeExtended(filePath);
 			}
 
 			if (!output) {
-				logger.error('[MediaInfoService] FFprobe failed', undefined, { filePath });
+				logger.error({ filePath }, '[MediaInfoService] FFprobe failed');
 				return null;
 			}
 
 			return this.parseFFprobeOutput(output);
 		} catch (error) {
 			logger.error(
-				'[MediaInfoService] Failed to extract info',
-				error instanceof Error ? error : undefined,
-				{ filePath }
+				{ err: error instanceof Error ? error : undefined, ...{ filePath } },
+				'[MediaInfoService] Failed to extract info'
 			);
 			// Allow callers (e.g. reprobe task) to treat malformed .strm URLs as hard failures.
 			if (options.failOnInvalidStrmUrl) {

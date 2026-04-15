@@ -1,37 +1,21 @@
-/**
- * Integration tests for subtitle search and download flow
- *
- * These tests verify the actual end-to-end functionality of the subtitle system:
- * - Provider configuration and instantiation
- * - Searching for subtitles via providers
- * - Scoring and ranking results
- * - Download flow (mocked to avoid hitting real APIs repeatedly)
- */
-
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { initTestDb, closeTestDb, getTestDb } from '../../../../test/db-helper';
+import { createTestDb, destroyTestDb, type TestDatabase } from '../../../../test/db-helper';
 import { subtitleProviders } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import type { SubtitleSearchCriteria } from '../types';
 
-// Initialize the test database FIRST before any mocks
-initTestDb();
+const testDb: TestDatabase = createTestDb();
 
-// Must mock before importing the services that use db
-vi.mock('$lib/server/db', async () => {
-	const { getTestDb } = await import('../../../../test/db-helper');
-	return {
-		get db() {
-			return getTestDb().db;
-		},
-		get sqlite() {
-			return getTestDb().sqlite;
-		},
-		initializeDatabase: vi.fn().mockResolvedValue(undefined)
-	};
-});
+vi.mock('$lib/server/db', () => ({
+	get db() {
+		return testDb.db;
+	},
+	get sqlite() {
+		return testDb.sqlite;
+	},
+	initializeDatabase: vi.fn().mockResolvedValue(undefined)
+}));
 
-// Import after mocking
 const { SubtitleProviderManager } = await import('./SubtitleProviderManager');
 const { SubtitleSearchService } = await import('./SubtitleSearchService');
 const { SubtitleScoringService } = await import('./SubtitleScoringService');
@@ -45,7 +29,6 @@ describe('Subtitle System Integration', () => {
 	let testProviderId: string | null = null;
 
 	beforeAll(async () => {
-		// Initialize provider factory to register all built-in providers
 		await initializeProviderFactory();
 
 		providerManager = SubtitleProviderManager.getInstance();
@@ -54,12 +37,10 @@ describe('Subtitle System Integration', () => {
 	});
 
 	afterAll(async () => {
-		// Clean up test provider if created
 		if (testProviderId) {
-			const { db } = getTestDb();
-			await db.delete(subtitleProviders).where(eq(subtitleProviders.id, testProviderId));
+			await testDb.db.delete(subtitleProviders).where(eq(subtitleProviders.id, testProviderId));
 		}
-		closeTestDb();
+		destroyTestDb(testDb);
 	});
 
 	describe('Provider Factory', () => {
@@ -109,7 +90,7 @@ describe('Subtitle System Integration', () => {
 			const config = await providerManager.createProvider({
 				name: 'Test Subf2m',
 				implementation: 'subf2m',
-				enabled: false, // Disabled to avoid actual API calls in tests
+				enabled: false,
 				priority: 50,
 				requestsPerMinute: 30
 			});
@@ -195,7 +176,7 @@ describe('Subtitle System Integration', () => {
 			const textScore = scoringService.score(textResult, movieCriteria);
 
 			expect(hashScore).toBeGreaterThan(textScore);
-			expect(hashScore).toBeGreaterThanOrEqual(100); // Hash match base is 100 for movies
+			expect(hashScore).toBeGreaterThanOrEqual(100);
 		});
 
 		it('should calculate episode scores with higher thresholds', () => {
@@ -223,7 +204,7 @@ describe('Subtitle System Integration', () => {
 			};
 
 			const score = scoringService.score(hashResult, episodeCriteria);
-			expect(score).toBeGreaterThanOrEqual(300); // Episode hash match base is 300
+			expect(score).toBeGreaterThanOrEqual(300);
 		});
 	});
 
@@ -246,7 +227,6 @@ describe('Subtitle System Integration', () => {
 
 	describe('End-to-end flow validation', () => {
 		it('should have all components properly connected', () => {
-			// Verify singleton instances are consistent
 			expect(SubtitleProviderManager.getInstance()).toBe(providerManager);
 			expect(SubtitleSearchService.getInstance()).toBe(searchService);
 			expect(SubtitleScoringService.getInstance()).toBe(scoringService);
@@ -256,7 +236,6 @@ describe('Subtitle System Integration', () => {
 			const factory = getSubtitleProviderFactory();
 			const defs = factory.getDefinitions();
 
-			// Verify we have our core providers
 			const implementations = defs.map((d) => d.implementation);
 			expect(implementations).toContain('opensubtitles');
 			expect(implementations).toContain('addic7ed');
@@ -275,7 +254,7 @@ describe('Provider Implementation Smoke Tests', () => {
 			implementation: 'opensubtitles',
 			enabled: true,
 			priority: 1,
-			apiKey: 'test-key', // Fake key for instantiation only
+			apiKey: 'test-key',
 			consecutiveFailures: 0,
 			requestsPerMinute: 60
 		});

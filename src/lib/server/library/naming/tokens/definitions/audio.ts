@@ -11,20 +11,21 @@ export const audioTokens: TokenDefinition[] = [
 		category: 'audio',
 		description: 'Audio codec (TrueHD, DTS-HD MA, etc.)',
 		applicability: ['movie', 'episode'],
-		render: (info) => normalizeAudioCodec(info.audioCodec) || ''
+		render: (info, config) =>
+			config.includeMediaInfo ? normalizeAudioCodec(info.audioCodec) || '' : ''
 	},
 	{
 		name: 'AudioChannels',
 		category: 'audio',
 		description: 'Audio channels (5.1, 7.1, etc.)',
 		applicability: ['movie', 'episode'],
-		render: (info) => info.audioChannels || ''
+		render: (info, config) => (config.includeMediaInfo ? info.audioChannels || '' : '')
 	},
 	{
 		name: 'AudioLanguages',
 		category: 'audio',
 		description: 'Audio languages in file',
 		applicability: ['movie', 'episode'],
-		render: (info) => info.audioLanguages?.join(' ') || ''
+		render: (info, config) => (config.includeMediaInfo ? info.audioLanguages?.join(' ') || '' : '')
 	}
 ];

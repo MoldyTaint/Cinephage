@@ -5,8 +5,10 @@
  */
 
 import * as cheerio from 'cheerio';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { createHash } from 'crypto';
+
+const logger = createChildLogger({ logDomain: 'streams' as const });
 import { isMediaFile, isRarFile, type NzbSegment, type NzbFile, type ParsedNzb } from './types';
 
 /**
@@ -167,13 +169,16 @@ export function parseNzb(content: Buffer | string): ParsedNzb {
 	// Sort media files by size (largest first for streaming)
 	mediaFiles.sort((a, b) => b.size - a.size);
 
-	logger.debug('[NzbParser] Parsed NZB', {
-		hash: hash.slice(0, 12),
-		fileCount: files.length,
-		mediaFileCount: mediaFiles.length,
-		totalSize,
-		groupCount: allGroups.size
-	});
+	logger.debug(
+		{
+			hash: hash.slice(0, 12),
+			fileCount: files.length,
+			mediaFileCount: mediaFiles.length,
+			totalSize,
+			groupCount: allGroups.size
+		},
+		'[NzbParser] Parsed NZB'
+	);
 
 	return {
 		hash,

@@ -17,52 +17,6 @@ import { BALANCED_PROFILE } from './profiles.js';
 const qualityFilter = new QualityFilter();
 
 /**
- * Normalize a raw score to 0-1000 range for comparison with search results.
- * Uses the same tiered approach as QualityFilter.normalizeScore.
- */
-function normalizeScore(score: number): number {
-	if (score === -Infinity) return 0;
-	if (score === Infinity) return 1000;
-	if (score <= 0) return 0;
-
-	const tierBoundaries = {
-		lowQuality: 2000,
-		basicQuality: 5000,
-		goodQuality: 10000,
-		greatQuality: 15000,
-		bestQuality: 25000
-	};
-
-	let normalized: number;
-
-	if (score <= tierBoundaries.lowQuality) {
-		normalized = (score / tierBoundaries.lowQuality) * 200;
-	} else if (score <= tierBoundaries.basicQuality) {
-		const rangeScore = score - tierBoundaries.lowQuality;
-		const rangeSize = tierBoundaries.basicQuality - tierBoundaries.lowQuality;
-		normalized = 200 + (rangeScore / rangeSize) * 200;
-	} else if (score <= tierBoundaries.goodQuality) {
-		const rangeScore = score - tierBoundaries.basicQuality;
-		const rangeSize = tierBoundaries.goodQuality - tierBoundaries.basicQuality;
-		normalized = 400 + (rangeScore / rangeSize) * 200;
-	} else if (score <= tierBoundaries.greatQuality) {
-		const rangeScore = score - tierBoundaries.goodQuality;
-		const rangeSize = tierBoundaries.greatQuality - tierBoundaries.goodQuality;
-		normalized = 600 + (rangeScore / rangeSize) * 200;
-	} else if (score <= tierBoundaries.bestQuality) {
-		const rangeScore = score - tierBoundaries.greatQuality;
-		const rangeSize = tierBoundaries.bestQuality - tierBoundaries.greatQuality;
-		normalized = 800 + (rangeScore / rangeSize) * 150;
-	} else {
-		const excess = score - tierBoundaries.bestQuality;
-		const logBonus = Math.log10(excess / 1000 + 1) * 10;
-		normalized = 950 + Math.min(50, logBonus);
-	}
-
-	return Math.round(normalized);
-}
-
-/**
  * Upgrade status for a file
  */
 export interface UpgradeStatus {
@@ -107,8 +61,8 @@ export interface FileScoreResult {
 	sceneName: string | null;
 	/** Full scoring result from the engine */
 	scoringResult: ScoringResult;
-	/** Normalized score (0-1000) for comparison with search results */
-	normalizedScore: number;
+	/** Quality score for display/comparison */
+	score: number;
 	/** Upgrade eligibility status */
 	upgradeStatus: UpgradeStatus;
 	/** Profile information */
@@ -181,7 +135,7 @@ export async function computeMovieFileScore(movieId: string): Promise<FileScoreR
 		fileName: file.relativePath,
 		sceneName: file.sceneName ?? null,
 		scoringResult,
-		normalizedScore: normalizeScore(scoringResult.totalScore),
+		score: scoringResult.totalScore,
 		upgradeStatus,
 		profileInfo: {
 			id: profile.id,
@@ -280,7 +234,7 @@ export async function computeEpisodeFileScore(episodeId: string): Promise<FileSc
 		fileName: file.relativePath,
 		sceneName: file.sceneName ?? null,
 		scoringResult,
-		normalizedScore: normalizeScore(scoringResult.totalScore),
+		score: scoringResult.totalScore,
 		upgradeStatus,
 		profileInfo: {
 			id: profile.id,

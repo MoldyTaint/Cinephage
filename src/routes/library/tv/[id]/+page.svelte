@@ -10,17 +10,22 @@
 	import { TVSeriesSidebar, BulkActionBar } from '$lib/components/library/tv';
 	import { InteractiveSearchModal } from '$lib/components/search';
 	import { SubtitleSearchModal } from '$lib/components/subtitles';
+	import SubtitleSyncModal from '$lib/components/subtitles/SubtitleSyncModal.svelte';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import type { SeriesEditData } from '$lib/components/library/SeriesEditModal.svelte';
 	import type { SearchMode } from '$lib/components/search/InteractiveSearchModal.svelte';
-	import { CheckSquare, FileEdit, Wifi, WifiOff, Loader2 } from 'lucide-svelte';
+	import { CheckSquare, FileEdit, Wifi, WifiOff, Loader2, RefreshCw } from 'lucide-svelte';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
 	import { createDynamicSSE } from '$lib/sse';
-	import { mobileSSEStatus } from '$lib/sse/mobileStatus.svelte';
+	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
+	import { getPrimaryAutoSearchIssue } from '$lib/utils/autoSearchIssues';
+	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
+	import * as m from '$lib/paraglide/messages.js';
+	import { calculateEpisodeStats } from '$lib/utils/episode-stats.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -44,17 +49,20 @@
 	const series = $derived(seriesState ?? data.series);
 	const seasons = $derived(seasonsState ?? data.seasons);
 	const queueItems = $derived(queueItemsState ?? data.queueItems);
+	const effectiveScoringProfileId = $derived.by(
+		() => series.scoringProfileId ?? data.qualityProfiles.find((p) => p.isDefault)?.id ?? null
+	);
 
 	function computeSeriesEpisodeStats(seasonList: PageData['seasons']) {
 		const regularSeasons = seasonList.filter((season) => season.seasonNumber > 0);
-		const totalEpisodes = regularSeasons.reduce((sum, season) => sum + season.episodes.length, 0);
-		const totalFiles = regularSeasons.reduce(
-			(sum, season) => sum + season.episodes.filter((episode) => episode.file !== null).length,
-			0
-		);
-		const percentComplete = totalEpisodes > 0 ? Math.round((totalFiles / totalEpisodes) * 100) : 0;
+		const allEpisodes = regularSeasons.flatMap((season) => season.episodes);
+		const stats = calculateEpisodeStats(allEpisodes);
 
-		return { totalEpisodes, totalFiles, percentComplete };
+		return {
+			totalEpisodes: stats.totalAired,
+			totalFiles: stats.downloaded,
+			percentComplete: stats.percentComplete
+		};
 	}
 
 	// Keep series completion counters aligned with the actual episode rows shown in seasons.
@@ -87,20 +95,26 @@
 	});
 
 	// SSE Connection - internally handles browser/SSR
+	// Shared type for queue SSE payloads
+	type QueueEventPayload = {
+		id: string;
+		title: string;
+		status: string;
+		progress: number | null;
+		episodeIds?: string[];
+		seasonNumber?: number;
+	};
+
 	const sse = createDynamicSSE<{
-		'media:initial': {
+		'media:updated': {
 			series: typeof series;
 			seasons: typeof seasons;
 			queueItems: typeof queueItems;
 		};
-		'queue:updated': {
-			id: string;
-			title: string;
-			status: string;
-			progress: number | null;
-			episodeIds?: string[];
-			seasonNumber?: number;
-		};
+		'queue:sync': { queueItems: typeof queueItems };
+		'queue:added': QueueEventPayload;
+		'queue:updated': QueueEventPayload;
+		'queue:removed': { id: string };
 		'file:added': {
 			file: EpisodeFileInfo;
 			episodeIds: string[];
@@ -109,11 +123,33 @@
 			replacedFileIds?: string[];
 		};
 		'file:removed': { fileId: string; episodeIds: string[] };
+		'search:started': { seriesId: string };
+		'search:completed': { seriesId: string };
 	}>(() => `/api/library/series/${series.id}/stream`, {
-		'media:initial': (payload) => {
+		'media:updated': (payload) => {
 			seriesState = payload.series;
 			seasonsState = payload.seasons;
 			queueItemsState = payload.queueItems;
+		},
+		'queue:sync': (payload) => {
+			queueItemsState = payload.queueItems;
+		},
+		'queue:added': (payload) => {
+			// Add new queue item if not already tracked
+			const exists = queueItems.some((q) => q.id === payload.id);
+			if (!exists) {
+				queueItemsState = [
+					...queueItems,
+					{
+						id: payload.id,
+						title: payload.title,
+						status: payload.status,
+						progress: payload.progress,
+						episodeIds: payload.episodeIds || null,
+						seasonNumber: payload.seasonNumber || null
+					}
+				];
+			}
 		},
 		'queue:updated': (payload) => {
 			if (!ACTIVE_QUEUE_STATUSES.has(payload.status)) {
@@ -131,92 +167,110 @@
 					seasonNumber: payload.seasonNumber || null
 				};
 				if (existingIndex >= 0) {
-					queueItems[existingIndex] = newQueueItem;
+					queueItemsState = queueItems.map((q, idx) => (idx === existingIndex ? newQueueItem : q));
 				} else {
 					queueItemsState = [...queueItems, newQueueItem];
 				}
 			}
 		},
+		'queue:removed': (payload) => {
+			queueItemsState = queueItems.filter((q) => q.id !== payload.id);
+		},
 		'file:added': (payload) => {
-			// Find the season
-			const seasonIndex = seasons.findIndex((s) => s.seasonNumber === payload.seasonNumber);
-			if (seasonIndex === -1) return;
-
-			// Update episodes with the new file
-			for (const episodeId of payload.episodeIds) {
-				const episodeIndex = seasons[seasonIndex].episodes.findIndex((e) => e.id === episodeId);
-				if (episodeIndex !== -1) {
-					seasons[seasonIndex].episodes[episodeIndex].file = payload.file;
-					seasons[seasonIndex].episodes[episodeIndex].hasFile = true;
-				}
+			// Work with seasonsState to ensure reactivity
+			if (!seasonsState) {
+				return;
 			}
 
-			// Update season stats
-			seasons[seasonIndex].episodeFileCount = seasons[seasonIndex].episodes.filter(
-				(e) => e.file !== null
-			).length;
+			const seasonIndex = seasonsState.findIndex((s) => s.seasonNumber === payload.seasonNumber);
 
-			// Update series stats
-			const { totalEpisodes, totalFiles } = computeSeriesEpisodeStats(seasons);
-			series.episodeFileCount = totalFiles;
-			series.percentComplete =
-				totalEpisodes > 0 ? Math.round((totalFiles / totalEpisodes) * 100) : 0;
+			if (seasonIndex === -1) {
+				return;
+			}
+
+			// Create new seasons array with immutable updates
+			seasonsState = seasonsState.map((season, sIdx) => {
+				if (sIdx !== seasonIndex) return season;
+
+				// Update episodes immutably
+				const updatedEpisodes = season.episodes.map((episode) => {
+					if (!payload.episodeIds.includes(episode.id)) return episode;
+					return {
+						...episode,
+						file: payload.file,
+						hasFile: true
+					};
+				});
+
+				// Calculate new file count
+				const episodeFileCount = updatedEpisodes.filter((e) => e.file !== null).length;
+
+				return {
+					...season,
+					episodes: updatedEpisodes,
+					episodeFileCount
+				};
+			});
+
+			// Update series state immutably
+			if (seriesState) {
+				const { totalEpisodes, totalFiles } = computeSeriesEpisodeStats(seasonsState);
+				seriesState = {
+					...seriesState,
+					episodeFileCount: totalFiles,
+					percentComplete: totalEpisodes > 0 ? Math.round((totalFiles / totalEpisodes) * 100) : 0
+				};
+			}
 		},
 		'file:removed': (payload) => {
-			// Update episodes that had this file
-			for (const season of seasons) {
-				for (const episode of season.episodes) {
-					if (episode.file?.id === payload.fileId) {
-						episode.file = null;
-						episode.hasFile = false;
-					}
-				}
-				// Update season stats
-				season.episodeFileCount = season.episodes.filter((e) => e.file !== null).length;
-			}
+			// Work with seasonsState to ensure reactivity
+			if (!seasonsState) return;
 
-			// Update series stats
-			const { totalEpisodes, totalFiles } = computeSeriesEpisodeStats(seasons);
-			series.episodeFileCount = totalFiles;
-			series.percentComplete =
-				totalEpisodes > 0 ? Math.round((totalFiles / totalEpisodes) * 100) : 0;
+			// Create new seasons array with immutable updates
+			seasonsState = seasonsState.map((season) => {
+				// Update episodes immutably
+				const updatedEpisodes = season.episodes.map((episode) => {
+					if (episode.file?.id !== payload.fileId) return episode;
+					return {
+						...episode,
+						file: null,
+						hasFile: false
+					};
+				});
+
+				// Calculate new file count
+				const episodeFileCount = updatedEpisodes.filter((e) => e.file !== null).length;
+
+				return {
+					...season,
+					episodes: updatedEpisodes,
+					episodeFileCount
+				};
+			});
+
+			// Update series state immutably
+			if (seriesState) {
+				const { totalEpisodes, totalFiles } = computeSeriesEpisodeStats(seasonsState);
+				seriesState = {
+					...seriesState,
+					episodeFileCount: totalFiles,
+					percentComplete: totalEpisodes > 0 ? Math.round((totalFiles / totalEpisodes) * 100) : 0
+				};
+			}
+		},
+		'search:started': () => {
+			searchingMissing = true;
+		},
+		'search:completed': () => {
+			searchingMissing = false;
 		}
 	});
 
-	const MOBILE_SSE_SOURCE = 'library-series';
-
 	$effect(() => {
-		mobileSSEStatus.publish(MOBILE_SSE_SOURCE, sse.status);
+		layoutState.setMobileSseStatus(deriveMobileSseStatus(sse));
 		return () => {
-			mobileSSEStatus.clear(MOBILE_SSE_SOURCE);
+			layoutState.clearMobileSseStatus();
 		};
-	});
-
-	const prefetchProfileId = $derived.by(
-		() => series.scoringProfileId ?? data.qualityProfiles.find((p) => p.isDefault)?.id ?? null
-	);
-	let prefetchedStreamKey = $state<string | null>(null);
-
-	// Prefetch stream for first episode when page loads (warms cache for faster playback)
-	$effect(() => {
-		if (!(prefetchProfileId === 'streamer' && series?.tmdbId && seasons?.length > 0)) return;
-
-		// Find first season with episodes (skip specials/season 0)
-		const firstSeason = seasons.find((s) => s.seasonNumber > 0 && s.episodes?.length > 0);
-		if (!firstSeason || !firstSeason.episodes?.[0]) return;
-
-		const ep = firstSeason.episodes[0];
-		const key = `tv:${series.tmdbId}:${ep.seasonNumber}:${ep.episodeNumber}`;
-		if (prefetchedStreamKey === key) return;
-		prefetchedStreamKey = key;
-
-		fetch(
-			`/api/streaming/resolve/tv/${series.tmdbId}/${ep.seasonNumber}/${ep.episodeNumber}?prefetch=1`,
-			{
-				signal: AbortSignal.timeout(5000),
-				headers: { 'X-Prefetch': 'true' }
-			}
-		).catch(() => {});
 	});
 
 	// State
@@ -251,13 +305,36 @@
 		null
 	);
 
+	$effect(() => {
+		searchingMissing = data.isSearching;
+	});
+	const isStreamerProfile = $derived.by(() => series.scoringProfileId === 'streamer');
+
 	// Subtitle search state
 	let isSubtitleSearchModalOpen = $state(false);
+	let isSubtitleSyncModalOpen = $state(false);
+	let syncingSubtitleId = $state<string | null>(null);
+	let subtitleSyncError = $state<string | null>(null);
 	let subtitleSearchContext = $state<{
 		episodeId: string;
 		title: string;
 	} | null>(null);
 	let subtitleAutoSearchingEpisodes = new SvelteSet<string>();
+	let subtitleSyncingId = $state<string | null>(null);
+	let subtitleDeletingId = $state<string | null>(null);
+	let bulkSubtitleAutoSearching = $state(false);
+	let bulkSubtitleSyncing = $state(false);
+
+	function describeError(error: unknown, fallback: string): string {
+		return error instanceof Error ? error.message : fallback;
+	}
+
+	function showActionError(message: string, error: unknown): void {
+		toasts.error(message, { description: describeError(error, message) });
+	}
+
+	// Search progress store for auto-search
+	const searchProgress = createSearchProgress();
 
 	// Search context
 	let searchContext = $state<{
@@ -305,7 +382,7 @@
 		}
 		// No profile set - show the default
 		const defaultProfile = data.qualityProfiles.find((p) => p.isDefault);
-		return defaultProfile ? `${defaultProfile.name} (Default)` : null;
+		return defaultProfile ? m.library_tv_profileDefault({ name: defaultProfile.name }) : null;
 	});
 
 	// Build a set of episode IDs that are currently downloading
@@ -333,13 +410,14 @@
 		return seasons;
 	});
 
-	// Calculate missing episode count (monitored, aired, no file, not downloading)
+	// Calculate missing aired episode count for manual auto-grab.
 	const missingEpisodeCount = $derived.by(() => {
 		const now = new Date().toISOString().split('T')[0];
 		let count = 0;
 		for (const season of seasons) {
+			if (season.seasonNumber === 0) continue;
 			for (const episode of season.episodes) {
-				if (episode.monitored && !episode.file && episode.airDate && episode.airDate <= now) {
+				if (!episode.file && episode.airDate && episode.airDate <= now) {
 					// Don't count as missing if it's downloading
 					if (
 						!downloadingEpisodeIds.has(episode.id) &&
@@ -373,7 +451,7 @@
 				series.monitored = newValue;
 			}
 		} catch (error) {
-			console.error('Failed to update monitored status:', error);
+			showActionError(m.toast_library_tvDetail_failedToUpdateMonitor(), error);
 		} finally {
 			isSaving = false;
 		}
@@ -435,7 +513,7 @@
 				seasonsState = refreshedSeasons;
 			}
 		} catch (error) {
-			console.error('Failed to refresh series state:', error);
+			showActionError(m.toast_library_tvDetail_failedToRefresh(), error);
 		}
 	}
 
@@ -449,14 +527,14 @@
 			});
 
 			if (!response.ok) {
-				console.error('Failed to refresh series');
+				toasts.error(m.toast_library_tvDetail_refreshFailed());
 				return;
 			}
 
 			// Read the streaming response
 			const reader = response.body?.getReader();
 			if (!reader) {
-				console.error('No response body');
+				toasts.error(m.toast_library_tvDetail_refreshNoStream());
 				return;
 			}
 
@@ -492,7 +570,7 @@
 							} else if (eventType === 'complete' || eventData.type === 'complete') {
 								completed = true;
 							} else if (eventType === 'error' || eventData.type === 'error') {
-								console.error('Refresh error:', eventData.message);
+								toasts.error(eventData.message || m.toast_library_tvDetail_seriesRefreshFailed());
 							}
 						} catch {
 							// Ignore parse errors (e.g., heartbeat comments)
@@ -505,7 +583,7 @@
 				await refreshSeriesFromApi();
 			}
 		} catch (error) {
-			console.error('Failed to refresh series:', error);
+			showActionError(m.toast_library_tvDetail_refreshFailed(), error);
 		} finally {
 			isRefreshing = false;
 			refreshProgress = null;
@@ -521,21 +599,30 @@
 				body: JSON.stringify(editData)
 			});
 
-			if (response.ok) {
-				series.monitored = editData.monitored;
-				series.scoringProfileId = editData.scoringProfileId;
-				series.rootFolderId = editData.rootFolderId;
-				series.seasonFolder = editData.seasonFolder;
-				series.seriesType = editData.seriesType;
-				series.wantsSubtitles = editData.wantsSubtitles;
+			const result = await response.json().catch(() => null);
+			if (!response.ok) {
+				throw new Error(result?.error || m.toast_library_tvDetail_failedToUpdate());
+			}
 
+			series.monitored = editData.monitored;
+			series.scoringProfileId = editData.scoringProfileId;
+			series.seasonFolder = editData.seasonFolder;
+			series.seriesType = editData.seriesType;
+			series.wantsSubtitles = editData.wantsSubtitles;
+
+			if (result?.moveQueued) {
+				toasts.success(
+					'Move queued. File transfer has started and will appear in Activity until completion.'
+				);
+			} else {
+				series.rootFolderId = editData.rootFolderId;
 				const newFolder = data.rootFolders.find((f) => f.id === editData.rootFolderId);
 				series.rootFolderPath = newFolder?.path ?? null;
-
-				isEditModalOpen = false;
 			}
+
+			isEditModalOpen = false;
 		} catch (error) {
-			console.error('Failed to update series:', error);
+			showActionError(m.toast_library_tvDetail_failedToUpdate(), error);
 		} finally {
 			isSaving = false;
 		}
@@ -556,11 +643,11 @@
 
 			if (result.success) {
 				if (removeFromLibrary) {
-					toasts.success('Series removed from library');
+					toasts.success(m.toast_library_tvDetail_seriesRemoved());
 					// Navigate to library since the series no longer exists
 					window.location.href = '/library/tv';
 				} else {
-					toasts.success('Series files deleted');
+					toasts.success(m.toast_library_tvDetail_seriesFilesDeleted());
 					const updatedSeasons = seasons.map((season) => ({
 						...season,
 						episodeFileCount: 0,
@@ -575,11 +662,12 @@
 					queueItemsState = [];
 				}
 			} else {
-				toasts.error('Failed to delete series', { description: result.error });
+				toasts.error(m.toast_library_tvDetail_failedToDeleteSeries(), {
+					description: result.error
+				});
 			}
 		} catch (error) {
-			console.error('Failed to delete series:', error);
-			toasts.error('Failed to delete series');
+			showActionError(m.toast_library_tvDetail_failedToDeleteSeries(), error);
 		} finally {
 			isDeleting = false;
 			isDeleteModalOpen = false;
@@ -595,7 +683,8 @@
 
 	function handleSeasonDelete(season: Season) {
 		deletingSeasonId = season.id;
-		deletingSeasonName = season.name || `Season ${season.seasonNumber}`;
+		deletingSeasonName =
+			season.name || m.library_tvDetail_seasonFallback({ number: String(season.seasonNumber) });
 		isSeasonDeleteModalOpen = true;
 	}
 
@@ -611,7 +700,7 @@
 			const result = await response.json();
 
 			if (result.success) {
-				toasts.success('Season files deleted');
+				toasts.success(m.toast_library_tvDetail_seasonFilesDeleted());
 				// Mark all episodes in this season as missing
 				const updatedSeasons = seasons.map((s) =>
 					s.id === deletingSeasonId
@@ -629,11 +718,12 @@
 				seasonsState = updatedSeasons;
 				updateSeriesStatsFromSeasons(updatedSeasons);
 			} else {
-				toasts.error('Failed to delete season files', { description: result.error });
+				toasts.error(m.toast_library_tvDetail_failedToDeleteSeasonFiles(), {
+					description: result.error
+				});
 			}
 		} catch (error) {
-			console.error('Failed to delete season:', error);
-			toasts.error('Failed to delete season');
+			showActionError(m.toast_library_tvDetail_failedToDeleteSeason(), error);
 		} finally {
 			isDeletingSeason = false;
 			isSeasonDeleteModalOpen = false;
@@ -651,7 +741,9 @@
 
 	function handleEpisodeDelete(episode: Episode) {
 		deletingEpisodeId = episode.id;
-		const epTitle = episode.title || `Episode ${episode.episodeNumber}`;
+		const epTitle =
+			episode.title ||
+			m.library_tvDetail_episodeFallback({ number: String(episode.episodeNumber) });
 		deletingEpisodeName = `S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')} - ${epTitle}`;
 		isEpisodeDeleteModalOpen = true;
 	}
@@ -668,7 +760,7 @@
 			const result = await response.json();
 
 			if (result.success) {
-				toasts.success('Episode files deleted');
+				toasts.success(m.toast_library_tvDetail_episodeFilesDeleted());
 				// Mark episode as missing (hasFile: false) instead of removing it
 				const updatedSeasons = seasons.map((season) => {
 					const hasEpisode = season.episodes.some((e) => e.id === deletingEpisodeId);
@@ -692,11 +784,12 @@
 				seasonsState = updatedSeasons;
 				updateSeriesStatsFromSeasons(updatedSeasons);
 			} else {
-				toasts.error('Failed to delete episode files', { description: result.error });
+				toasts.error(m.toast_library_tvDetail_failedToDeleteEpisodeFiles(), {
+					description: result.error
+				});
 			}
 		} catch (error) {
-			console.error('Failed to delete episode:', error);
-			toasts.error('Failed to delete episode');
+			showActionError(m.toast_library_tvDetail_failedToDeleteEpisode(), error);
 		} finally {
 			isDeletingEpisode = false;
 			isEpisodeDeleteModalOpen = false;
@@ -724,7 +817,7 @@
 				);
 			}
 		} catch (error) {
-			console.error('Failed to update season monitored status:', error);
+			showActionError(m.toast_library_tvDetail_failedToUpdateSeasonMonitor(), error);
 		}
 	}
 
@@ -745,7 +838,7 @@
 				}));
 			}
 		} catch (error) {
-			console.error('Failed to update episode monitored status:', error);
+			showActionError(m.toast_library_tvDetail_failedToUpdateEpisodeMonitor(), error);
 		}
 	}
 
@@ -778,10 +871,11 @@
 
 	// Auto-search handlers
 	async function handleAutoSearchEpisode(episode: Episode & { id: string }) {
+		if (autoSearchingEpisodes.has(episode.id)) return;
 		autoSearchingEpisodes.add(episode.id);
 
 		try {
-			const response = await fetch(`/api/library/series/${series.id}/auto-search`, {
+			await searchProgress.startSearch(`/api/library/series/${series.id}/auto-search`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -790,36 +884,41 @@
 				})
 			});
 
-			const result = await response.json();
-			const itemResult = result.results?.[0];
+			if (searchProgress.results) {
+				const issue = getPrimaryAutoSearchIssue(searchProgress.results);
+				const itemResult = searchProgress.results.results?.[0] as
+					| { found?: boolean; grabbed?: boolean; releaseName?: string; error?: string }
+					| undefined;
+				autoSearchEpisodeResults.set(episode.id, {
+					found: itemResult?.found ?? false,
+					grabbed: itemResult?.grabbed ?? false,
+					releaseName: itemResult?.releaseName,
+					error: itemResult?.error ?? searchProgress.results.error ?? issue?.message
+				});
 
-			autoSearchEpisodeResults.set(episode.id, {
-				found: itemResult?.found ?? false,
-				grabbed: itemResult?.grabbed ?? false,
-				releaseName: itemResult?.releaseName,
-				error: itemResult?.error
-			});
-
-			// Clear result after 5 seconds
-			setTimeout(() => {
-				autoSearchEpisodeResults.delete(episode.id);
-			}, 5000);
+				// Clear result after 5 seconds
+				setTimeout(() => {
+					autoSearchEpisodeResults.delete(episode.id);
+				}, 5000);
+			}
 		} catch (error) {
 			autoSearchEpisodeResults.set(episode.id, {
 				found: false,
 				grabbed: false,
-				error: error instanceof Error ? error.message : 'Search failed'
+				error: error instanceof Error ? error.message : m.toast_library_tvDetail_searchFailed()
 			});
 		} finally {
 			autoSearchingEpisodes.delete(episode.id);
+			searchProgress.reset();
 		}
 	}
 
 	async function handleAutoSearchSeason(season: Season) {
+		if (autoSearchingSeasons.has(season.id)) return;
 		autoSearchingSeasons.add(season.id);
 
 		try {
-			const response = await fetch(`/api/library/series/${series.id}/auto-search`, {
+			await searchProgress.startSearch(`/api/library/series/${series.id}/auto-search`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -828,60 +927,87 @@
 				})
 			});
 
-			const result = await response.json();
-			const itemResult = result.results?.[0];
+			if (searchProgress.results) {
+				const issue = getPrimaryAutoSearchIssue(searchProgress.results);
+				const itemResult = searchProgress.results.results?.[0] as
+					| { found?: boolean; grabbed?: boolean; releaseName?: string; error?: string }
+					| undefined;
+				autoSearchSeasonResults.set(season.id, {
+					found: itemResult?.found ?? false,
+					grabbed: itemResult?.grabbed ?? false,
+					releaseName: itemResult?.releaseName,
+					error: itemResult?.error ?? searchProgress.results.error ?? issue?.message
+				});
 
-			autoSearchSeasonResults.set(season.id, {
-				found: itemResult?.found ?? false,
-				grabbed: itemResult?.grabbed ?? false,
-				releaseName: itemResult?.releaseName,
-				error: itemResult?.error
-			});
-
-			// Clear result after 5 seconds
-			setTimeout(() => {
-				autoSearchSeasonResults.delete(season.id);
-			}, 5000);
+				// Clear result after 5 seconds
+				setTimeout(() => {
+					autoSearchSeasonResults.delete(season.id);
+				}, 5000);
+			}
 		} catch (error) {
 			autoSearchSeasonResults.set(season.id, {
 				found: false,
 				grabbed: false,
-				error: error instanceof Error ? error.message : 'Search failed'
+				error: error instanceof Error ? error.message : m.toast_library_tvDetail_searchFailed()
 			});
 		} finally {
 			autoSearchingSeasons.delete(season.id);
+			searchProgress.reset();
 		}
 	}
 
 	async function handleSearchMissing() {
+		if (searchingMissing) return;
 		searchingMissing = true;
 		missingSearchProgress = null;
 		missingSearchResult = null;
 
 		try {
-			const response = await fetch(`/api/library/series/${series.id}/auto-search`, {
+			await searchProgress.startSearch(`/api/library/series/${series.id}/auto-search`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ type: 'missing' })
 			});
 
-			const result = await response.json();
+			if (searchProgress.results) {
+				const issue = getPrimaryAutoSearchIssue(searchProgress.results);
+				const results = searchProgress.results.results as
+					| Array<{ found?: boolean; grabbed?: boolean }>
+					| undefined;
+				missingSearchResult = searchProgress.results.summary ?? {
+					searched: results?.length ?? 0,
+					found: results?.filter((r) => r.found).length ?? 0,
+					grabbed: results?.filter((r) => r.grabbed).length ?? 0
+				};
 
-			missingSearchResult = result.summary ?? {
-				searched: result.results?.length ?? 0,
-				found: result.results?.filter((r: { found: boolean }) => r.found).length ?? 0,
-				grabbed: result.results?.filter((r: { grabbed: boolean }) => r.grabbed).length ?? 0
-			};
+				// Streaming grabs can complete before queue/file SSE updates arrive; refresh once so
+				// the episode/file counters reflect the completed auto-grab immediately.
+				if ((missingSearchResult.grabbed ?? 0) > 0) {
+					toasts.success(
+						m.toast_library_tvDetail_grabbedMissing({ count: String(missingSearchResult.grabbed) })
+					);
+					setTimeout(() => {
+						void refreshSeriesFromApi();
+					}, 500);
+				} else if (issue) {
+					toasts.error(issue.message, { description: issue.description });
+				} else if ((missingSearchResult.found ?? 0) > 0) {
+					toasts.info(m.toast_library_tvDetail_foundNotEligible());
+				} else {
+					toasts.info(m.toast_library_tvDetail_noSuitableReleases());
+				}
+			}
 
 			// Clear result after 10 seconds
 			setTimeout(() => {
 				missingSearchResult = null;
 			}, 10000);
 		} catch (error) {
-			console.error('Failed to search missing episodes:', error);
+			showActionError(m.toast_library_tvDetail_failedToSearchMissing(), error);
 		} finally {
 			searchingMissing = false;
 			missingSearchProgress = null;
+			searchProgress.reset();
 		}
 	}
 
@@ -895,7 +1021,7 @@
 		}
 
 		try {
-			const response = await fetch(`/api/library/series/${series.id}/auto-search`, {
+			await searchProgress.startSearch(`/api/library/series/${series.id}/auto-search`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -904,16 +1030,28 @@
 				})
 			});
 
-			const result = await response.json();
+			if (searchProgress.results) {
+				const results = searchProgress.results.results as
+					| Array<{
+							itemId?: string;
+							found?: boolean;
+							grabbed?: boolean;
+							releaseName?: string;
+							error?: string;
+					  }>
+					| undefined;
 
-			// Update results for each episode
-			for (const itemResult of result.results ?? []) {
-				autoSearchEpisodeResults.set(itemResult.itemId, {
-					found: itemResult.found,
-					grabbed: itemResult.grabbed,
-					releaseName: itemResult.releaseName,
-					error: itemResult.error
-				});
+				// Update results for each episode
+				for (const itemResult of results ?? []) {
+					if (itemResult.itemId) {
+						autoSearchEpisodeResults.set(itemResult.itemId, {
+							found: itemResult.found ?? false,
+							grabbed: itemResult.grabbed ?? false,
+							releaseName: itemResult.releaseName,
+							error: itemResult.error
+						});
+					}
+				}
 			}
 
 			// Clear selection after search
@@ -927,11 +1065,12 @@
 				}
 			}, 5000);
 		} catch (error) {
-			console.error('Bulk search failed:', error);
+			showActionError(m.toast_library_tvDetail_bulkSearchFailed(), error);
 		} finally {
 			for (const id of episodeIds) {
 				autoSearchingEpisodes.delete(id);
 			}
+			searchProgress.reset();
 		}
 	}
 
@@ -950,6 +1089,8 @@
 		isForced?: boolean;
 		isHearingImpaired?: boolean;
 		format?: string;
+		wasSynced?: boolean;
+		syncOffset?: number | null;
 	}
 
 	function appendSubtitleToEpisode(episodeId: string, subtitle: DownloadedSubtitle): void {
@@ -981,12 +1122,22 @@
 	}
 
 	function handleSubtitleSearch(episode: EpisodeForSubtitle) {
-		const episodeTitle = episode.title || `Episode ${episode.episodeNumber}`;
+		const episodeTitle =
+			episode.title ||
+			m.library_tvDetail_episodeFallback({ number: String(episode.episodeNumber) });
 		subtitleSearchContext = {
 			episodeId: episode.id,
 			title: `${series.title} S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')} - ${episodeTitle}`
 		};
 		isSubtitleSearchModalOpen = true;
+	}
+
+	function handleSubtitleSync() {
+		if (isStreamerProfile) {
+			return;
+		}
+		subtitleSyncError = null;
+		isSubtitleSyncModalOpen = true;
 	}
 
 	async function handleSubtitleAutoSearch(episode: EpisodeForSubtitle) {
@@ -1005,7 +1156,7 @@
 				appendSubtitleToEpisode(episode.id, result.subtitle);
 			}
 		} catch (error) {
-			console.error('Failed to auto-search subtitles:', error);
+			showActionError(m.toast_library_tvDetail_failedToAutoSearchSubs(), error);
 		} finally {
 			subtitleAutoSearchingEpisodes.delete(episode.id);
 		}
@@ -1015,6 +1166,358 @@
 		const episodeId = subtitleSearchContext?.episodeId;
 		if (!episodeId) return;
 		appendSubtitleToEpisode(episodeId, subtitle);
+	}
+
+	const syncableSubtitles = $derived.by(() => {
+		const results: Array<DownloadedSubtitle & { id: string; label: string }> = [];
+
+		for (const season of seasons) {
+			for (const episode of season.episodes) {
+				for (const subtitle of episode.subtitles ?? []) {
+					if ('isEmbedded' in subtitle && subtitle.isEmbedded) continue;
+					results.push({
+						...subtitle,
+						id: subtitle.id,
+						language: subtitle.language,
+						label: `S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')} - ${episode.title || m.library_tvDetail_episodeFallback({ number: String(episode.episodeNumber) })}`
+					});
+				}
+			}
+		}
+
+		return results;
+	});
+
+	async function handleSubtitleResync(
+		subtitleId: string,
+		settings?: { splitPenalty?: number; noSplits?: boolean }
+	): Promise<void> {
+		syncingSubtitleId = subtitleId;
+		subtitleSyncError = null;
+
+		try {
+			const response = await fetch('/api/subtitles/sync', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					subtitleId,
+					...(settings?.splitPenalty !== undefined && { splitPenalty: settings.splitPenalty }),
+					...(settings?.noSplits !== undefined && { noSplits: settings.noSplits })
+				})
+			});
+
+			const result = await response.json();
+
+			if (!response.ok || !result.success) {
+				throw new Error(result.error || m.toast_library_tvDetail_subtitleSyncFailed());
+			}
+
+			seasonsState = seasons.map((season) => ({
+				...season,
+				episodes: season.episodes.map((episode) => ({
+					...episode,
+					subtitles: (episode.subtitles ?? []).map((subtitle) =>
+						subtitle.id === subtitleId
+							? {
+									...subtitle,
+									wasSynced: true,
+									syncOffset: result.offsetMs
+								}
+							: subtitle
+					)
+				}))
+			}));
+
+			toasts.success(m.toast_library_tvDetail_subtitleSynced(), {
+				description: m.toast_library_tvDetail_subtitleSyncOffset({
+					offset: String(result.offsetMs)
+				})
+			});
+		} catch (error) {
+			subtitleSyncError = describeError(error, m.toast_library_tvDetail_subtitleSyncFailed());
+			showActionError(m.toast_library_tvDetail_failedToSyncSub(), error);
+		} finally {
+			syncingSubtitleId = null;
+		}
+	}
+
+	// Subtitle sync from popover (individual subtitle)
+	async function handleSubtitleSyncFromPopover(subtitleId: string): Promise<void> {
+		subtitleSyncingId = subtitleId;
+		try {
+			const response = await fetch('/api/subtitles/sync', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ subtitleId })
+			});
+
+			const result = await response.json();
+
+			if (!response.ok || !result.success) {
+				throw new Error(result.error || m.toast_library_tvDetail_subtitleSyncFailed());
+			}
+
+			seasonsState = seasons.map((season) => ({
+				...season,
+				episodes: season.episodes.map((episode) => ({
+					...episode,
+					subtitles: (episode.subtitles ?? []).map((subtitle) =>
+						subtitle.id === subtitleId
+							? { ...subtitle, wasSynced: true, syncOffset: result.offsetMs }
+							: subtitle
+					)
+				}))
+			}));
+
+			toasts.success(m.toast_library_tvDetail_subtitleSynced(), {
+				description: m.toast_library_tvDetail_subtitleSyncOffset({
+					offset: String(result.offsetMs)
+				})
+			});
+		} catch (error) {
+			showActionError(m.toast_library_tvDetail_failedToSyncSub(), error);
+		} finally {
+			subtitleSyncingId = null;
+		}
+	}
+
+	// Subtitle delete from popover
+	async function handleSubtitleDeleteFromPopover(subtitleId: string): Promise<void> {
+		subtitleDeletingId = subtitleId;
+		try {
+			const response = await fetch(`/api/subtitles/${subtitleId}`, {
+				method: 'DELETE'
+			});
+
+			const result = await response.json();
+
+			if (!response.ok || !result.success) {
+				throw new Error(result.error || m.toast_library_tvDetail_deleteFailed());
+			}
+
+			// Remove subtitle from seasons state
+			seasonsState = seasons.map((season) => ({
+				...season,
+				episodes: season.episodes.map((episode) => ({
+					...episode,
+					subtitles: (episode.subtitles ?? []).filter((s) => s.id !== subtitleId)
+				}))
+			}));
+
+			toasts.success(m.toast_library_tvDetail_subtitleDeleted());
+		} catch (error) {
+			showActionError(m.toast_library_tvDetail_failedToDeleteSubtitle(), error);
+		} finally {
+			subtitleDeletingId = null;
+		}
+	}
+
+	// Bulk sync handler for SubtitleSyncModal (NDJSON streaming)
+	async function handleBulkSubtitleSync(
+		subtitleIds: string[],
+		settings: { splitPenalty: number; noSplits: boolean },
+		onProgress: (result: {
+			subtitleId: string;
+			success: boolean;
+			offsetMs: number;
+			error?: string;
+			index: number;
+			total: number;
+		}) => void,
+		onComplete: () => void
+	): Promise<void> {
+		try {
+			const response = await fetch('/api/subtitles/sync/bulk', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ subtitleIds, ...settings })
+			});
+
+			if (!response.ok) {
+				throw new Error(m.toast_library_tvDetail_bulkSyncFailed());
+			}
+
+			const reader = response.body?.getReader();
+			if (!reader) {
+				throw new Error(m.toast_library_tvDetail_noResponseBody());
+			}
+
+			const decoder = new TextDecoder();
+			let buffer = '';
+
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+
+				buffer += decoder.decode(value, { stream: true });
+				const lines = buffer.split('\n');
+				buffer = lines.pop() || '';
+
+				for (const line of lines) {
+					if (!line.trim()) continue;
+					try {
+						const result = JSON.parse(line);
+						onProgress(result);
+
+						// Update seasons state for successful syncs
+						if (result.success) {
+							seasonsState = seasons.map((season) => ({
+								...season,
+								episodes: season.episodes.map((episode) => ({
+									...episode,
+									subtitles: (episode.subtitles ?? []).map((subtitle) =>
+										subtitle.id === result.subtitleId
+											? { ...subtitle, wasSynced: true, syncOffset: result.offsetMs }
+											: subtitle
+									)
+								}))
+							}));
+						}
+					} catch {
+						// Ignore parse errors
+					}
+				}
+			}
+
+			onComplete();
+		} catch (error) {
+			showActionError(m.toast_library_tvDetail_bulkSyncError(), error);
+			onComplete();
+		}
+	}
+
+	// Bulk subtitle auto-search for selected episodes (BulkActionBar)
+	async function handleBulkSubtitleAutoSearch(): Promise<void> {
+		const episodeIds = [...selectedEpisodes];
+		if (episodeIds.length === 0) return;
+
+		bulkSubtitleAutoSearching = true;
+		let successCount = 0;
+
+		try {
+			for (const episodeId of episodeIds) {
+				subtitleAutoSearchingEpisodes.add(episodeId);
+				try {
+					const response = await fetch('/api/subtitles/auto-search', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({ episodeId })
+					});
+
+					const result = await response.json();
+
+					if (result.success && result.subtitle) {
+						appendSubtitleToEpisode(episodeId, result.subtitle);
+						successCount++;
+					}
+				} catch {
+					// Continue with next episode
+				} finally {
+					subtitleAutoSearchingEpisodes.delete(episodeId);
+				}
+			}
+
+			if (successCount > 0) {
+				toasts.success(
+					m.toast_library_tvDetail_downloadedSubtitles({ count: String(successCount) })
+				);
+			} else {
+				toasts.info(m.toast_library_tvDetail_noSubtitlesFound());
+			}
+
+			selectedEpisodes.clear();
+			showCheckboxes = false;
+		} catch (error) {
+			showActionError(m.toast_library_tvDetail_bulkSubAutoSearchFailed(), error);
+		} finally {
+			bulkSubtitleAutoSearching = false;
+		}
+	}
+
+	// Bulk subtitle sync for selected episodes (BulkActionBar)
+	async function handleBulkSubtitleSyncSelected(): Promise<void> {
+		const episodeIds = [...selectedEpisodes];
+		if (episodeIds.length === 0) return;
+
+		// Collect all non-embedded subtitle IDs for selected episodes
+		const subtitleIds: string[] = [];
+		for (const season of seasons) {
+			for (const episode of season.episodes) {
+				if (!episodeIds.includes(episode.id)) continue;
+				for (const subtitle of episode.subtitles ?? []) {
+					if ('isEmbedded' in subtitle && subtitle.isEmbedded) continue;
+					subtitleIds.push(subtitle.id);
+				}
+			}
+		}
+
+		if (subtitleIds.length === 0) {
+			toasts.info(m.toast_library_tvDetail_noSyncableSubtitles());
+			return;
+		}
+
+		bulkSubtitleSyncing = true;
+
+		try {
+			const response = await fetch('/api/subtitles/sync/bulk', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ subtitleIds })
+			});
+
+			if (!response.ok) {
+				throw new Error(m.toast_library_tvDetail_bulkSyncFailed());
+			}
+
+			const reader = response.body?.getReader();
+			if (!reader) {
+				throw new Error(m.toast_library_tvDetail_noResponseBody());
+			}
+
+			const decoder = new TextDecoder();
+			let buffer = '';
+			let successCount = 0;
+
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+
+				buffer += decoder.decode(value, { stream: true });
+				const lines = buffer.split('\n');
+				buffer = lines.pop() || '';
+
+				for (const line of lines) {
+					if (!line.trim()) continue;
+					try {
+						const result = JSON.parse(line);
+						if (result.success) {
+							successCount++;
+							seasonsState = seasons.map((season) => ({
+								...season,
+								episodes: season.episodes.map((episode) => ({
+									...episode,
+									subtitles: (episode.subtitles ?? []).map((subtitle) =>
+										subtitle.id === result.subtitleId
+											? { ...subtitle, wasSynced: true, syncOffset: result.offsetMs }
+											: subtitle
+									)
+								}))
+							}));
+						}
+					} catch {
+						// Ignore parse errors
+					}
+				}
+			}
+
+			toasts.success(m.toast_library_tvDetail_syncedSubtitles({ count: String(successCount) }));
+			selectedEpisodes.clear();
+			showCheckboxes = false;
+		} catch (error) {
+			showActionError(m.toast_library_tvDetail_bulkSyncError(), error);
+		} finally {
+			bulkSubtitleSyncing = false;
+		}
 	}
 
 	// Selection handlers
@@ -1105,7 +1608,7 @@
 	async function handleGrab(
 		release: Release,
 		streaming?: boolean
-	): Promise<{ success: boolean; error?: string }> {
+	): Promise<{ success: boolean; error?: string; errorCode?: string }> {
 		try {
 			// Determine season/episode info from release metadata
 			const episodeMatch = release.episodeMatch || release.parsed?.episode;
@@ -1139,6 +1642,7 @@
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
+					guid: release.guid,
 					downloadUrl: release.downloadUrl,
 					magnetUrl: release.magnetUrl,
 					infoHash: release.infoHash,
@@ -1164,11 +1668,11 @@
 				}, 500);
 			}
 
-			return { success: result.success, error: result.error };
+			return { success: result.success, error: result.error, errorCode: result.errorCode };
 		} catch (error) {
 			return {
 				success: false,
-				error: error instanceof Error ? error.message : 'Failed to grab release'
+				error: error instanceof Error ? error.message : m.toast_library_tvDetail_failedToGrab()
 			};
 		}
 	}
@@ -1181,7 +1685,11 @@
 </script>
 
 <svelte:head>
-	<title>{series.title} - Library - Cinephage</title>
+	<title>{m.library_tvDetail_pageTitle({ title: series.title })}</title>
+	<meta
+		name="description"
+		content={series.overview || m.library_tvDetail_metaDescription({ title: series.title })}
+	/>
 </svelte:head>
 
 <div class="flex w-full flex-col gap-4 px-4 pb-20 md:gap-6 md:overflow-x-hidden md:px-6 lg:px-8">
@@ -1195,12 +1703,12 @@
 			<div class="flex items-start justify-between gap-3">
 				<div class="min-w-0">
 					{#if series.monitored}
-						Series monitoring is enabled.
+						{m.library_tvDetail_monitoringEnabled()}
 					{:else}
 						<div>
-							Monitoring is disabled.
+							{m.library_tvDetail_monitoringDisabled()}
 							<span class="block text-xs font-normal text-base-100/90">
-								Season and episode toggles are locked. Enable series monitoring to unlock them.
+								{m.library_tvDetail_monitoringDisabledHint()}
 							</span>
 						</div>
 					{/if}
@@ -1211,28 +1719,28 @@
 							class="inline-flex items-center gap-1 rounded-full border border-success/70 bg-success/90 px-2.5 py-1 text-xs font-medium text-success-content shadow-sm"
 						>
 							<Wifi class="h-3 w-3" />
-							Live
+							{m.library_tvDetail_sseLive()}
 						</span>
 					{:else if sse.status === 'error'}
 						<span
 							class="inline-flex items-center gap-1 rounded-full border border-warning/70 bg-warning/90 px-2.5 py-1 text-xs font-medium text-warning-content shadow-sm"
 						>
 							<Loader2 class="h-3 w-3 animate-spin" />
-							Reconnecting
+							{m.library_tvDetail_sseReconnecting()}
 						</span>
 					{:else if sse.status === 'connecting'}
 						<span
 							class="inline-flex items-center gap-1 rounded-full border border-info/70 bg-info/90 px-2.5 py-1 text-xs font-medium text-info-content shadow-sm"
 						>
 							<Loader2 class="h-3 w-3 animate-spin" />
-							Connecting
+							{m.library_tvDetail_sseConnecting()}
 						</span>
 					{:else}
 						<span
 							class="inline-flex items-center gap-1 rounded-full border border-base-100/35 bg-base-100/20 px-2.5 py-1 text-xs font-medium text-base-100 shadow-sm"
 						>
 							<WifiOff class="h-3 w-3" />
-							Offline
+							{m.library_tvDetail_sseOffline()}
 						</span>
 					{/if}
 				</div>
@@ -1265,37 +1773,46 @@
 		<!-- Seasons (takes 2 columns) -->
 		<div class="min-w-0 space-y-4 md:col-span-2 lg:col-span-2">
 			<div class="flex items-center justify-between">
-				<h2 class="text-lg font-semibold">Seasons</h2>
+				<h2 class="text-lg font-semibold">{m.library_tvDetail_seasonsHeading()}</h2>
 				<div class="flex gap-1">
+					{#if !isStreamerProfile && syncableSubtitles.length > 0}
+						<button class="btn gap-1 btn-ghost btn-sm" onclick={handleSubtitleSync}>
+							<RefreshCw class="h-4 w-4" />
+							{m.library_tvDetail_syncSubtitles()}
+						</button>
+					{/if}
 					<button
 						class="btn gap-1 btn-ghost btn-sm"
 						onclick={() => (isRenameModalOpen = true)}
-						title="Rename files"
+						title={m.library_tvDetail_renameFilesTitle()}
 					>
 						<FileEdit class="h-4 w-4" />
-						Rename
+						{m.library_tvDetail_rename()}
 					</button>
 					<button
 						class="btn gap-2 btn-ghost btn-sm"
 						onclick={toggleSelectionMode}
-						title={showCheckboxes ? 'Exit selection mode' : 'Select episodes'}
+						title={showCheckboxes
+							? m.library_tvDetail_exitSelectionMode()
+							: m.library_tvDetail_selectEpisodes()}
 					>
 						<CheckSquare size={16} />
-						{showCheckboxes ? 'Done' : 'Select'}
+						{showCheckboxes ? m.library_tvDetail_done() : m.library_tvDetail_select()}
 					</button>
 				</div>
 			</div>
 
 			{#if seasons.length === 0}
 				<div class="rounded-xl bg-base-200 p-8 text-center text-base-content/60">
-					No seasons found
+					{m.library_tvDetail_noSeasonsFound()}
 				</div>
 			{:else}
 				{#each seasons as season (season.id)}
 					<SeasonAccordion
 						{season}
 						seriesMonitored={series.monitored ?? false}
-						isStreamerProfile={series.scoringProfileId === 'streamer'}
+						{isStreamerProfile}
+						wantsSubtitles={series.wantsSubtitles ?? false}
 						defaultOpen={openSeasonId === season.id}
 						{selectedEpisodes}
 						{showCheckboxes}
@@ -1306,6 +1823,8 @@
 						{autoSearchingEpisodes}
 						{autoSearchEpisodeResults}
 						{subtitleAutoSearchingEpisodes}
+						{subtitleSyncingId}
+						{subtitleDeletingId}
 						onToggleOpen={handleSeasonToggle}
 						onSeasonMonitorToggle={handleSeasonMonitorToggle}
 						onEpisodeMonitorToggle={handleEpisodeMonitorToggle}
@@ -1317,6 +1836,8 @@
 						onSelectAllInSeason={handleSelectAllInSeason}
 						onSubtitleSearch={handleSubtitleSearch}
 						onSubtitleAutoSearch={handleSubtitleAutoSearch}
+						onSubtitleSync={isStreamerProfile ? undefined : handleSubtitleSyncFromPopover}
+						onSubtitleDelete={handleSubtitleDeleteFromPopover}
 						onSeasonDelete={handleSeasonDelete}
 						onEpisodeDelete={handleEpisodeDelete}
 					/>
@@ -1333,8 +1854,12 @@
 <BulkActionBar
 	{selectedCount}
 	searching={autoSearchingEpisodes.size > 0}
+	subtitleAutoSearching={bulkSubtitleAutoSearching}
+	subtitleSyncing={bulkSubtitleSyncing}
 	onSearch={handleBulkAutoSearch}
 	onClear={clearSelection}
+	onSubtitleAutoSearch={handleBulkSubtitleAutoSearch}
+	onSubtitleSync={isStreamerProfile ? undefined : handleBulkSubtitleSyncSelected}
 />
 
 <!-- Edit Modal -->
@@ -1355,9 +1880,10 @@
 	tmdbId={series.tmdbId}
 	imdbId={series.imdbId}
 	tvdbId={series.tvdbId}
+	expectedEpisodeCount={series.episodeCount}
 	year={series.year}
 	mediaType="tv"
-	scoringProfileId={series.scoringProfileId}
+	scoringProfileId={effectiveScoringProfileId ?? undefined}
 	season={searchContext?.season}
 	episode={searchContext?.episode}
 	searchMode={searchContext?.searchMode ?? 'all'}
@@ -1380,6 +1906,31 @@
 	onDownloaded={handleSubtitleDownloaded}
 />
 
+<SubtitleSyncModal
+	open={isSubtitleSyncModalOpen}
+	title={series.title}
+	subtitles={syncableSubtitles.map((subtitle) => ({
+		id: subtitle.id,
+		language: subtitle.language ?? 'unknown',
+		format: subtitle.format,
+		isForced: subtitle.isForced,
+		isHearingImpaired: subtitle.isHearingImpaired,
+		matchScore: (subtitle as { matchScore?: number | null }).matchScore,
+		dateAdded: (subtitle as { dateAdded?: string | null }).dateAdded,
+		wasSynced: subtitle.wasSynced,
+		syncOffset: subtitle.syncOffset,
+		label: subtitle.label
+	}))}
+	{syncingSubtitleId}
+	errorMessage={subtitleSyncError}
+	onClose={() => {
+		isSubtitleSyncModalOpen = false;
+		subtitleSyncError = null;
+	}}
+	onSync={handleSubtitleResync}
+	onBulkSync={handleBulkSubtitleSync}
+/>
+
 <!-- Rename Preview Modal -->
 <RenamePreviewModal
 	open={isRenameModalOpen}
@@ -1388,7 +1939,6 @@
 	mediaTitle={series.title}
 	onClose={() => (isRenameModalOpen = false)}
 	onRenamed={() => {
-		isRenameModalOpen = false;
 		void refreshSeriesFromApi();
 	}}
 />
@@ -1396,7 +1946,7 @@
 <!-- Delete Confirmation Modal -->
 <DeleteConfirmationModal
 	open={isDeleteModalOpen}
-	title="Delete Series"
+	title={m.library_tvDetail_deleteSeriesTitle()}
 	itemName={series.title}
 	hasFiles={(series.episodeFileCount ?? 0) > 0}
 	hasActiveDownload={queueItems.length > 0}
@@ -1408,7 +1958,7 @@
 <!-- Season Delete Confirmation Modal -->
 <DeleteConfirmationModal
 	open={isSeasonDeleteModalOpen}
-	title="Delete Season"
+	title={m.library_tvDetail_deleteSeasonTitle()}
 	itemName={deletingSeasonName}
 	allowRemoveFromLibrary={false}
 	hasFiles={deletingSeasonHasFiles}
@@ -1420,7 +1970,7 @@
 <!-- Episode Delete Confirmation Modal -->
 <DeleteConfirmationModal
 	open={isEpisodeDeleteModalOpen}
-	title="Delete Episode"
+	title={m.library_tvDetail_deleteEpisodeTitle()}
 	itemName={deletingEpisodeName}
 	allowRemoveFromLibrary={false}
 	hasFiles={deletingEpisodeHasFiles}

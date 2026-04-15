@@ -9,8 +9,13 @@
  */
 
 import { Readable, type ReadableOptions } from 'node:stream';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import type { NntpManager } from './NntpManager';
+
+const logger = createChildLogger({
+	logDomain: 'streams' as const,
+	component: 'UsenetSeekableStream'
+});
 import { SegmentStore } from './SegmentStore';
 import { AdaptivePrefetcher } from './AdaptivePrefetcher';
 import type { ByteRange, NzbFile } from './types';
@@ -58,6 +63,8 @@ export class UsenetSeekableStream extends Readable {
 	private reading = false;
 	private currentSegmentData: Buffer | null = null;
 	private _isDestroyed = false;
+	private mountId?: string;
+	private fileIndex?: number;
 
 	constructor(options: UsenetSeekableStreamOptions, readableOptions?: ReadableOptions) {
 		super({ highWaterMark: HIGH_WATER_MARK, ...readableOptions });
@@ -65,6 +72,8 @@ export class UsenetSeekableStream extends Readable {
 		this.file = options.file;
 		this.range = options.range ?? null;
 		this.onProgress = options.onProgress;
+		this.mountId = options.mountId;
+		this.fileIndex = options.fileIndex;
 
 		// Create segment store
 		this.store = new SegmentStore(options.file.segments);
@@ -81,12 +90,17 @@ export class UsenetSeekableStream extends Readable {
 		// Initialize state based on range
 		this.state = this.initializeState();
 
-		logger.debug('[UsenetSeekableStream] Created', {
-			file: this.file.name,
-			totalSize: this.store.totalSize,
-			segments: this.file.segments.length,
-			range: this.range
-		});
+		logger.debug(
+			{
+				mountId: this.mountId,
+				fileIndex: this.fileIndex,
+				file: this.file.name,
+				totalSize: this.store.totalSize,
+				segments: this.file.segments.length,
+				range: this.range
+			},
+			'Created usenet seekable stream'
+		);
 	}
 
 	/**
@@ -274,11 +288,18 @@ export class UsenetSeekableStream extends Readable {
 				}
 			}
 		} catch (error) {
-			logger.error('[UsenetSeekableStream] Stream error', {
-				file: this.file.name,
-				segment: this.state.currentSegmentIndex,
-				error: error instanceof Error ? error.message : 'Unknown error'
-			});
+			logger.error(
+				{
+					mountId: this.mountId,
+					fileIndex: this.fileIndex,
+					file: this.file.name,
+					segmentIndex: this.state.currentSegmentIndex,
+					bytesStreamed: this.state.bytesStreamed,
+					err: error,
+					error: error instanceof Error ? error.message : 'Unknown error'
+				},
+				'Usenet seekable stream failed while reading data'
+			);
 			throw error;
 		} finally {
 			this.reading = false;
@@ -302,11 +323,17 @@ export class UsenetSeekableStream extends Readable {
 		this.store.clearCache();
 		this.currentSegmentData = null;
 
-		logger.debug('[UsenetSeekableStream] Stream destroyed', {
-			file: this.file.name,
-			bytesStreamed: this.state.bytesStreamed,
-			error: error?.message
-		});
+		logger.debug(
+			{
+				mountId: this.mountId,
+				fileIndex: this.fileIndex,
+				file: this.file.name,
+				bytesStreamed: this.state.bytesStreamed,
+				currentSegmentIndex: this.state.currentSegmentIndex,
+				error: error?.message
+			},
+			'Usenet seekable stream destroyed'
+		);
 
 		callback(error);
 	}

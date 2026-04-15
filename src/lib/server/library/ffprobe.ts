@@ -9,7 +9,9 @@
 
 import { spawn } from 'child_process';
 import { access } from 'fs/promises';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'scans' as const });
 
 // =============================================================================
 // Types
@@ -276,7 +278,7 @@ export async function runFFprobe(
 			await access(filePath);
 		}
 	} catch {
-		logger.error('[FFprobe] File not accessible', undefined, { filePath });
+		logger.error({ filePath }, '[FFprobe] File not accessible');
 		return null;
 	}
 
@@ -319,7 +321,7 @@ export async function runFFprobe(
 		});
 
 		proc.on('error', (err) => {
-			logger.error('[FFprobe] Failed to spawn', err);
+			logger.error({ err }, '[FFprobe] Failed to spawn');
 			resolve(null);
 		});
 
@@ -331,13 +333,16 @@ export async function runFFprobe(
 					// STRM URL probes often fail and fall back to placeholder media info.
 					// Silence expected remote failures unless ffprobe emitted useful diagnostics.
 					if (stderrText) {
-						logger.debug('[FFprobe] Remote probe exited with non-zero code', {
-							code,
-							stderr: stderrText
-						});
+						logger.debug(
+							{
+								code,
+								stderr: stderrText
+							},
+							'[FFprobe] Remote probe exited with non-zero code'
+						);
 					}
 				} else {
-					logger.error('[FFprobe] Exited with non-zero code', undefined, { code, stderr });
+					logger.error({ code, stderr }, '[FFprobe] Exited with non-zero code');
 				}
 				resolve(null);
 				return;
@@ -347,17 +352,14 @@ export async function runFFprobe(
 				const output = JSON.parse(stdout) as FFprobeOutput;
 				resolve(output);
 			} catch (err) {
-				logger.error(
-					'[FFprobe] Failed to parse JSON output',
-					err instanceof Error ? err : undefined
-				);
+				logger.error({ err }, '[FFprobe] Failed to parse JSON output');
 				resolve(null);
 			}
 		});
 
 		// Timeout handler
 		const timeoutId = setTimeout(() => {
-			logger.error('[FFprobe] Timeout', undefined, { timeout, filePath });
+			logger.error({ timeout, filePath }, '[FFprobe] Timeout');
 			proc.kill('SIGKILL');
 			resolve(null);
 		}, timeout);

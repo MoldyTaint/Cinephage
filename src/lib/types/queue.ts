@@ -19,6 +19,19 @@ export type QueueStatus =
 	| 'seeding-imported' // Imported to library, torrent still seeding
 	| 'removed'; // Removed from queue
 
+export const POST_IMPORT_QUEUE_STATUSES = [
+	'imported',
+	'seeding-imported'
+] as const satisfies readonly QueueStatus[];
+
+export const TERMINAL_QUEUE_STATUSES = ['removed'] as const satisfies readonly QueueStatus[];
+
+export function isImportedQueueStatus(
+	status: QueueStatus | string | null | undefined
+): status is (typeof POST_IMPORT_QUEUE_STATUSES)[number] {
+	return status === 'imported' || status === 'seeding-imported';
+}
+
 /**
  * Download history status values
  */
@@ -191,6 +204,7 @@ export interface HistoryItemWithMedia extends HistoryItem {
  */
 export interface GrabRequest {
 	// Release info
+	guid?: string;
 	downloadUrl?: string;
 	magnetUrl?: string;
 	infoHash?: string;
@@ -250,6 +264,8 @@ export interface GrabResponse {
 		};
 	};
 	error?: string;
+	/** Machine-readable error code for UI handling */
+	errorCode?: string;
 	/** Machine-readable rejection type for UI handling */
 	rejectionType?: string;
 	/** Upgrade decision details */

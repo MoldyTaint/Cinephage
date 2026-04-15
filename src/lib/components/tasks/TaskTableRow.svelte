@@ -1,8 +1,11 @@
 <script lang="ts">
 	import { History } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 	import type { UnifiedTask } from '$lib/server/tasks/UnifiedTaskRegistry';
 	import type { TaskHistoryEntry } from '$lib/types/task';
+	import { toasts } from '$lib/stores/toast.svelte';
 	import TaskIntervalCell from './TaskIntervalCell.svelte';
+	import { formatDuration } from '$lib/utils/format.js';
 
 	interface Props {
 		task: UnifiedTask;
@@ -31,33 +34,6 @@
 
 	// Derived state for last run status (value, not function)
 	const lastRunStatus = $derived(history.length > 0 ? (history[0]?.status ?? null) : null);
-
-	/**
-	 * Format a duration in milliseconds to a human-readable string.
-	 * Shows live seconds for < 1 minute, minutes/hours only for >= 1 minute.
-	 * Uses tabular-nums friendly format to prevent layout shift.
-	 */
-	function formatDuration(diffMs: number): string {
-		const totalSeconds = Math.floor(diffMs / 1000);
-		const totalMinutes = Math.floor(totalSeconds / 60);
-		const totalHours = Math.floor(totalMinutes / 60);
-		const totalDays = Math.floor(totalHours / 24);
-
-		const minutes = totalMinutes % 60;
-		const hours = totalHours % 24;
-
-		if (totalDays > 0) {
-			return hours > 0 ? `${totalDays}d ${hours}h` : `${totalDays}d`;
-		}
-		if (totalHours > 0) {
-			return minutes > 0 ? `${totalHours}h ${minutes}m` : `${totalHours}h`;
-		}
-		if (totalMinutes > 0) {
-			return `${totalMinutes}m`;
-		}
-		// Under 1 minute - show live seconds
-		return `${totalSeconds}s`;
-	}
 
 	// Live-computed "time ago" string that updates every second
 	const liveTimeAgo = $derived.by(() => {
@@ -90,12 +66,15 @@
 		return diffMs > 0 && diffMs < 60000;
 	});
 
+	// Convert task ID to camelCase for translation lookup
+	const camelCaseId = $derived(task.id.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase()));
+
 	async function runTask() {
 		if (isRunning) return;
 		try {
 			await onRunTask(task.id);
 		} catch (error) {
-			console.error('Task failed:', error);
+			toasts.error(error instanceof Error ? error.message : 'Task failed');
 		}
 	}
 
@@ -105,7 +84,7 @@
 		try {
 			await onCancelTask(task.id);
 		} catch (error) {
-			console.error('Failed to cancel task:', error);
+			toasts.error(error instanceof Error ? error.message : 'Failed to cancel task');
 		}
 	}
 
@@ -121,18 +100,24 @@
 	<td>
 		<div class="flex items-center gap-3">
 			<div class="min-w-0 flex-1">
-				<div class="truncate font-medium">{task.name}</div>
-				<div class="truncate text-sm text-base-content/60">{task.description}</div>
+				<div class="truncate font-medium">
+					{(m as unknown as Record<string, () => string>)[`task_name_${camelCaseId}`]?.() ??
+						task.name}
+				</div>
+				<div class="truncate text-sm text-base-content/60">
+					{(m as unknown as Record<string, () => string>)[`task_desc_${camelCaseId}`]?.() ??
+						task.description}
+				</div>
 			</div>
 			{#if task.isRunning}
 				<span class="badge gap-1 badge-sm badge-primary">
 					<span class="loading loading-xs loading-spinner"></span>
-					Running
+					{m.task_row_running()}
 				</span>
 			{:else if lastRunStatus === 'completed'}
 				<span class="badge badge-sm badge-success">OK</span>
 			{:else if lastRunStatus === 'failed'}
-				<span class="badge badge-sm badge-error">Failed</span>
+				<span class="badge badge-sm badge-error">{m.task_row_failed()}</span>
 			{/if}
 		</div>
 	</td>
@@ -154,7 +139,7 @@
 		<!-- Next Run -->
 		<td class="text-sm whitespace-nowrap tabular-nums">
 			{#if task.isRunning}
-				<span class="text-primary">Running...</span>
+				<span class="text-primary">{m.task_row_running()}</span>
 			{:else if task.nextRunTime}
 				<span
 					class="{isOverdue ? 'font-medium text-warning' : ''} {isImminent
@@ -170,7 +155,7 @@
 		</td>
 	{:else}
 		<!-- Type -->
-		<td class="text-sm text-base-content/60">Manual</td>
+		<td class="text-sm text-base-content/60">{m.task_row_manual()}</td>
 
 		<!-- Last Run -->
 		<td
@@ -202,7 +187,7 @@
 					class="btn btn-square text-error btn-ghost btn-xs"
 					onclick={cancelTask}
 					disabled={isCancelling}
-					title="Cancel"
+					title={m.action_cancel()}
 				>
 					{#if isCancelling}
 						<span class="loading loading-xs loading-spinner"></span>
@@ -227,7 +212,7 @@
 					class="btn btn-square btn-ghost btn-xs"
 					onclick={runTask}
 					disabled={!task.enabled}
-					title="Run Now"
+					title={m.task_table_runNow()}
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
@@ -245,7 +230,11 @@
 				</button>
 			{/if}
 
-			<button class="btn btn-square btn-ghost btn-xs" onclick={onShowHistory} title="View History">
+			<button
+				class="btn btn-square btn-ghost btn-xs"
+				onclick={onShowHistory}
+				title={m.task_table_viewHistory()}
+			>
 				<History class="h-4 w-4" />
 			</button>
 		</div>

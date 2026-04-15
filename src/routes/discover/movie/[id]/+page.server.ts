@@ -35,9 +35,15 @@ export const load: PageServerLoad = async ({ params }) => {
 			try {
 				collection = await tmdb.getCollection(movie.belongs_to_collection.id);
 			} catch (e) {
-				logger.error('Failed to fetch collection', e, {
-					collectionId: movie.belongs_to_collection.id
-				});
+				logger.error(
+					{
+						err: e,
+						...{
+							collectionId: movie.belongs_to_collection.id
+						}
+					},
+					'Failed to fetch collection'
+				);
 			}
 		}
 
@@ -89,7 +95,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			collection: enrichedCollectionData
 		};
 	} catch (e) {
-		logger.error('Failed to fetch movie', e, { movieId: id });
+		logger.error({ err: e, ...{ movieId: id } }, 'Failed to fetch movie');
 		throw error(404, 'Movie not found');
 	}
 };

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Eye, Tv, Calendar, Film, ChevronDown, ChevronUp } from 'lucide-svelte';
 	import { SvelteSet } from 'svelte/reactivity';
+	import * as m from '$lib/paraglide/messages.js';
 
 	export type MonitorType =
 		| 'all'
@@ -33,6 +34,7 @@
 		seasonFolder: boolean;
 		monitoredSeasons: SvelteSet<number>;
 		showAdvanced: boolean;
+		onMonitoredInput?: () => void;
 	}
 
 	let {
@@ -43,68 +45,89 @@
 		seriesType = $bindable(),
 		seasonFolder = $bindable(),
 		monitoredSeasons,
-		showAdvanced = $bindable()
+		showAdvanced = $bindable(),
+		onMonitoredInput
 	}: Props = $props();
 
 	let showSeasonSelection = $state(false);
 
 	const monitorTypeOptions: { value: MonitorType; label: string; description: string }[] = [
-		{ value: 'all', label: 'All Episodes', description: 'Monitor all episodes except specials' },
+		{
+			value: 'all',
+			label: m.library_monitorType_allLabel(),
+			description: m.library_monitorType_allDesc()
+		},
 		{
 			value: 'future',
-			label: 'Future Episodes',
-			description: 'Monitor episodes that have not aired yet'
+			label: m.library_monitorType_futureLabel(),
+			description: m.library_monitorType_futureDesc()
 		},
 		{
 			value: 'missing',
-			label: 'Missing Episodes',
-			description: 'Monitor episodes without files (excludes specials)'
+			label: m.library_monitorType_missingLabel(),
+			description: m.library_monitorType_missingDesc()
 		},
 		{
 			value: 'existing',
-			label: 'Existing Episodes',
-			description: 'Monitor episodes that already have files on disk'
+			label: m.library_monitorType_existingLabel(),
+			description: m.library_monitorType_existingDesc()
 		},
 		{
 			value: 'firstSeason',
-			label: 'First Season',
-			description: 'Monitor only the first season'
+			label: m.library_monitorType_firstSeasonLabel(),
+			description: m.library_monitorType_firstSeasonDesc()
 		},
 		{
 			value: 'lastSeason',
-			label: 'Latest Season',
-			description: 'Monitor only the most recent season'
+			label: m.library_monitorType_lastSeasonLabel(),
+			description: m.library_monitorType_lastSeasonDesc()
 		},
 		{
 			value: 'recent',
-			label: 'Recent Episodes',
-			description: 'Monitor episodes from the last 90 days + all future episodes'
+			label: m.library_monitorType_recentLabel(),
+			description: m.library_monitorType_recentDesc()
 		},
 		{
 			value: 'pilot',
-			label: 'Pilot Episode',
-			description: 'Monitor only the first episode (S01E01)'
+			label: m.library_monitorType_pilotLabel(),
+			description: m.library_monitorType_pilotDesc()
 		},
-		{ value: 'none', label: 'None', description: 'Do not monitor any episodes automatically' }
+		{
+			value: 'none',
+			label: m.library_monitorType_noneLabel(),
+			description: m.library_monitorType_noneDesc()
+		}
 	];
 
 	const monitorNewItemsOptions: { value: MonitorNewItems; label: string; description: string }[] = [
 		{
 			value: 'all',
-			label: 'All',
-			description: 'Automatically monitor new seasons and episodes when they are added'
+			label: m.common_all(),
+			description: m.library_monitorNewItems_allDesc()
 		},
 		{
 			value: 'none',
-			label: 'None',
-			description: 'Do not automatically monitor new seasons or episodes'
+			label: m.common_none(),
+			description: m.library_monitorNewItems_noneDesc()
 		}
 	];
 
 	const seriesTypeOptions: { value: SeriesType; label: string; description: string }[] = [
-		{ value: 'standard', label: 'Standard', description: 'Episodes with S##E## numbering' },
-		{ value: 'anime', label: 'Anime', description: 'Episodes with absolute numbering' },
-		{ value: 'daily', label: 'Daily', description: 'Episodes with date-based numbering' }
+		{
+			value: 'standard',
+			label: m.library_seriesType_standardLabel(),
+			description: m.library_seriesType_standardDesc()
+		},
+		{
+			value: 'anime',
+			label: m.library_seriesType_animeLabel(),
+			description: m.library_seriesType_animeDesc()
+		},
+		{
+			value: 'daily',
+			label: m.library_seriesType_dailyLabel(),
+			description: m.library_seriesType_dailyDesc()
+		}
 	];
 
 	// Check if all seasons are monitored
@@ -136,44 +159,44 @@
 			case 'all':
 				estimatedMonitoredEpisodes = regularEpisodes + (monitorSpecials ? specialsEpisodes : 0);
 				monitorDescription = monitorSpecials
-					? 'All episodes including specials'
-					: 'All regular episodes';
+					? m.library_monitorDesc_allWithSpecials()
+					: m.library_monitorDesc_allRegular();
 				break;
 			case 'future':
-				monitorDescription = "Only episodes that haven't aired yet";
+				monitorDescription = m.library_monitorDesc_future();
 				estimatedMonitoredEpisodes = -1; // Unknown without air dates
 				break;
 			case 'missing':
-				monitorDescription = 'Episodes without files (after import)';
+				monitorDescription = m.library_monitorDesc_missing();
 				estimatedMonitoredEpisodes = -1;
 				break;
 			case 'existing':
-				monitorDescription = 'Episodes with files (after import)';
+				monitorDescription = m.library_monitorDesc_existing();
 				estimatedMonitoredEpisodes = -1;
 				break;
 			case 'firstSeason': {
 				const firstSeason = regularSeasons.find((s) => s.season_number === 1);
 				estimatedMonitoredEpisodes = firstSeason?.episode_count ?? 0;
-				monitorDescription = 'First season only';
+				monitorDescription = m.library_monitorDesc_firstSeason();
 				break;
 			}
 			case 'lastSeason': {
 				const lastSeason = regularSeasons[regularSeasons.length - 1];
 				estimatedMonitoredEpisodes = lastSeason?.episode_count ?? 0;
-				monitorDescription = 'Latest season only';
+				monitorDescription = m.library_monitorDesc_lastSeason();
 				break;
 			}
 			case 'recent':
-				monitorDescription = 'Episodes from last 90 days + future';
+				monitorDescription = m.library_monitorDesc_recent();
 				estimatedMonitoredEpisodes = -1;
 				break;
 			case 'pilot':
 				estimatedMonitoredEpisodes = 1;
-				monitorDescription = 'Pilot episode only (S01E01)';
+				monitorDescription = m.library_monitorDesc_pilot();
 				break;
 			case 'none':
 				estimatedMonitoredEpisodes = 0;
-				monitorDescription = 'No automatic monitoring';
+				monitorDescription = m.library_monitorDesc_none();
 				break;
 		}
 
@@ -216,6 +239,7 @@
 		class="toggle mt-0.5 shrink-0 toggle-primary"
 		checked={monitorType !== 'none'}
 		onchange={(e) => {
+			onMonitoredInput?.();
 			if (!e.currentTarget.checked) {
 				monitorType = 'none';
 			} else {
@@ -226,12 +250,10 @@
 	<div class="min-w-0">
 		<span class="flex items-center gap-2 text-sm font-medium">
 			<Eye class="h-4 w-4 shrink-0" />
-			Monitored
+			{m.common_monitored()}
 		</span>
 		<p class="text-xs text-base-content/60">
-			{monitorType !== 'none'
-				? 'Will search for releases and upgrades automatically'
-				: 'Will not search for releases automatically'}
+			{monitorType !== 'none' ? m.library_add_monitoredDescYes() : m.library_add_monitoredDescNo()}
 		</p>
 	</div>
 </label>
@@ -241,7 +263,7 @@
 	<label class="label" for="monitor-type">
 		<span class="label-text flex items-center gap-2 font-medium">
 			<Tv class="h-4 w-4 shrink-0" />
-			Monitor
+			{m.library_add_monitor()}
 		</span>
 	</label>
 	<select id="monitor-type" class="select-bordered select w-full" bind:value={monitorType}>
@@ -259,7 +281,7 @@
 	<label class="label" for="monitor-new-items">
 		<span class="label-text flex items-center gap-2 font-medium">
 			<Calendar class="h-4 w-4 shrink-0" />
-			Monitor New Items
+			{m.library_add_monitorNewItems()}
 		</span>
 	</label>
 	<select id="monitor-new-items" class="select-bordered select w-full" bind:value={monitorNewItems}>
@@ -280,11 +302,11 @@
 		bind:checked={monitorSpecials}
 	/>
 	<div class="min-w-0">
-		<span class="flex items-center gap-2 text-sm font-medium"> Monitor Specials </span>
+		<span class="flex items-center gap-2 text-sm font-medium"
+			>{m.library_add_monitorSpecials()}</span
+		>
 		<p class="text-xs text-base-content/60">
-			{monitorSpecials
-				? 'Specials (Season 0) will be monitored'
-				: 'Specials (Season 0) will not be monitored'}
+			{monitorSpecials ? m.library_add_monitorSpecialsYes() : m.library_add_monitorSpecialsNo()}
 		</p>
 	</div>
 </label>
@@ -299,7 +321,7 @@
 		>
 			<span class="flex items-center gap-2">
 				<Film class="h-4 w-4" />
-				Season Selection
+				{m.library_add_seasonSelection()}
 				<span class="badge badge-sm badge-primary">{monitoredSeasons.size}/{seasons.length}</span>
 			</span>
 			{#if showSeasonSelection}
@@ -319,7 +341,7 @@
 						checked={allSeasonsMonitored}
 						onchange={toggleAllSeasons}
 					/>
-					<span class="text-sm font-medium">Select All</span>
+					<span class="text-sm font-medium">{m.action_selectAll()}</span>
 				</label>
 
 				<div class="divider my-1"></div>
@@ -336,10 +358,12 @@
 							/>
 							<div class="min-w-0 flex-1">
 								<span class="text-sm font-medium">
-									{season.season_number === 0 ? 'Specials' : `Season ${season.season_number}`}
+									{season.season_number === 0
+										? m.library_add_specials()
+										: m.library_tvDetail_seasonFallback({ number: season.season_number })}
 								</span>
 								<span class="ml-2 text-xs text-base-content/60">
-									{season.episode_count} episode{season.episode_count !== 1 ? 's' : ''}
+									{m.library_add_episodeCount({ count: season.episode_count })}
 								</span>
 							</div>
 							{#if season.air_date}
@@ -361,32 +385,32 @@
 	<div class="rounded-lg border border-primary/20 bg-primary/5 p-4">
 		<h4 class="mb-2 flex items-center gap-2 text-sm font-semibold text-primary">
 			<Eye class="h-4 w-4" />
-			Monitoring Preview
+			{m.library_add_monitoringPreview()}
 		</h4>
 		<p class="mb-3 text-sm text-base-content/70">{summary.monitorDescription}</p>
 		<div class="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
 			<div class="rounded bg-base-200 px-2 py-1">
-				<span class="text-base-content/50">Seasons:</span>
+				<span class="text-base-content/50">{m.common_seasons()}:</span>
 				<span class="ml-1 font-medium">{summary.monitoredSeasons}/{summary.totalSeasons}</span>
 			</div>
 			{#if summary.estimatedMonitoredEpisodes >= 0}
 				<div class="rounded bg-base-200 px-2 py-1">
-					<span class="text-base-content/50">Episodes:</span>
+					<span class="text-base-content/50">{m.common_episodes()}:</span>
 					<span class="ml-1 font-medium">~{summary.estimatedMonitoredEpisodes}</span>
 				</div>
 			{:else}
 				<div class="rounded bg-base-200 px-2 py-1">
-					<span class="text-base-content/50">Episodes:</span>
-					<span class="ml-1 font-medium italic">Dynamic</span>
+					<span class="text-base-content/50">{m.common_episodes()}:</span>
+					<span class="ml-1 font-medium italic">{m.common_dynamic()}</span>
 				</div>
 			{/if}
 			{#if summary.hasSpecials}
 				<div class="rounded bg-base-200 px-2 py-1 sm:col-span-2">
-					<span class="text-base-content/50">Specials:</span>
+					<span class="text-base-content/50">{m.library_add_specials()}:</span>
 					<span class="ml-1 font-medium">
 						{summary.specialsMonitored
-							? `Monitored (${summary.specialsEpisodes} eps)`
-							: 'Not monitored'}
+							? m.library_add_monitoredEps({ count: summary.specialsEpisodes })
+							: m.library_add_notMonitored()}
 					</span>
 				</div>
 			{/if}
@@ -400,7 +424,8 @@
 	class="divider cursor-pointer text-xs text-base-content/50"
 	onclick={() => (showAdvanced = !showAdvanced)}
 >
-	{showAdvanced ? 'Hide' : 'Show'} Advanced Options
+	{showAdvanced ? m.common_hide() : m.common_show()}
+	{m.common_advancedOptions()}
 	{#if showAdvanced}
 		<ChevronUp class="ml-1 inline h-3 w-3" />
 	{:else}
@@ -412,7 +437,7 @@
 	<!-- Series Type -->
 	<div class="form-control">
 		<label class="label" for="series-type">
-			<span class="label-text font-medium">Series Type</span>
+			<span class="label-text font-medium">{m.library_add_seriesType()}</span>
 		</label>
 		<select
 			id="series-type"
@@ -436,9 +461,9 @@
 			bind:checked={seasonFolder}
 		/>
 		<div class="min-w-0">
-			<span class="text-sm font-medium">Use Season Folders</span>
+			<span class="text-sm font-medium">{m.library_add_useSeasonFolders()}</span>
 			<p class="text-xs text-base-content/60">
-				{seasonFolder ? 'Episodes organized in Season ## folders' : 'All episodes in series folder'}
+				{seasonFolder ? m.library_add_seasonFoldersYes() : m.library_add_seasonFoldersNo()}
 			</p>
 		</div>
 	</label>

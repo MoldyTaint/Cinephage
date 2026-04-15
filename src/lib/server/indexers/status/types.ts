@@ -68,15 +68,29 @@ export interface StatusTrackerConfig {
 	maxBackoffMs: number;
 	/** Backoff multiplier */
 	backoffMultiplier: number;
+	/** Minimum time between consecutive-failure increments (ms) */
+	minFailureIncrementIntervalMs: number;
+}
+
+function parsePositiveIntEnv(name: string, fallback: number): number {
+	const value = process.env[name];
+	if (!value) return fallback;
+	const parsed = Number(value);
+	if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+	return Math.round(parsed);
 }
 
 /** Default configuration */
 export const DEFAULT_STATUS_CONFIG: StatusTrackerConfig = {
-	failuresBeforeDisable: 3,
+	failuresBeforeDisable: parsePositiveIntEnv('INDEXER_FAILURES_BEFORE_DISABLE', 3),
 	maxRecentFailures: 10,
-	baseBackoffMs: 5_000, // 5 seconds
-	maxBackoffMs: 60_000, // 1 minute
-	backoffMultiplier: 2
+	baseBackoffMs: parsePositiveIntEnv('INDEXER_BACKOFF_BASE_MS', 5_000), // 5 seconds
+	maxBackoffMs: parsePositiveIntEnv('INDEXER_BACKOFF_MAX_MS', 60_000), // 1 minute
+	backoffMultiplier: parsePositiveIntEnv('INDEXER_BACKOFF_MULTIPLIER', 2),
+	minFailureIncrementIntervalMs: parsePositiveIntEnv(
+		'INDEXER_FAILURE_INCREMENT_INTERVAL_MS',
+		30_000
+	)
 };
 
 /** Create a default status for a new indexer */

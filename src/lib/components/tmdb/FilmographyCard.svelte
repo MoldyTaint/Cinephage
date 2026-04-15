@@ -3,6 +3,7 @@
 	import TmdbImage from './TmdbImage.svelte';
 	import { resolvePath } from '$lib/utils/routing';
 	import { Check, Clock } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	// Extended type that includes library status (added by enrichWithLibraryStatus)
 	type CreditWithLibraryStatus = (PersonCastCredit | PersonCrewCredit) & {
@@ -61,7 +62,7 @@
 				<!-- Available: Green checkmark -->
 				<div
 					class="flex h-6 w-6 items-center justify-center rounded-full bg-success/90 text-success-content shadow-md backdrop-blur-sm"
-					title="Available in library"
+					title={m.tmdb_availableInLibrary()}
 				>
 					<Check class="h-4 w-4" strokeWidth={3} />
 				</div>
@@ -69,7 +70,7 @@
 				<!-- Monitored but missing: Yellow clock -->
 				<div
 					class="flex h-6 w-6 items-center justify-center rounded-full bg-warning/90 text-warning-content shadow-md backdrop-blur-sm"
-					title="Monitored - not yet downloaded"
+					title={m.tmdb_monitoredNotDownloaded()}
 				>
 					<Clock class="h-4 w-4" strokeWidth={2.5} />
 				</div>
@@ -85,7 +86,7 @@
 				? 'bg-primary/80 text-primary-content'
 				: 'bg-secondary/80 text-secondary-content'}"
 		>
-			{credit.media_type === 'movie' ? 'Movie' : 'TV'}
+			{credit.media_type === 'movie' ? m.ui_mediaType_movie() : m.ui_mediaType_tv()}
 		</span>
 	</div>
 
@@ -102,7 +103,7 @@
 					{#if showRole && !isCastCredit}
 						{role}
 					{:else if role}
-						as {role}
+						{m.tmdb_filmographyCard_asRole({ role })}
 					{/if}
 				</p>
 			{/if}

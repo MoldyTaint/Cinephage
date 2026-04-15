@@ -8,8 +8,10 @@ import { randomUUID } from 'crypto';
 import { eq, lt, and, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { nzbStreamMounts } from '$lib/server/db/schema';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { parseNzb } from '$lib/server/streaming/usenet/NzbParser';
+
+const logger = createChildLogger({ logDomain: 'streams' as const });
 import type { NzbFile } from '$lib/server/streaming/usenet/types';
 import { getSegmentCacheService } from '$lib/server/streaming/usenet/SegmentCacheService';
 
@@ -156,13 +158,16 @@ class NzbMountManager {
 				})
 				.returning();
 
-			logger.info('[NzbMountManager] Created mount', {
-				id: inserted.id,
-				title: input.title,
-				hash: parsed.hash.slice(0, 12),
-				files: parsed.files.length,
-				mediaFiles: parsed.mediaFiles.length
-			});
+			logger.info(
+				{
+					id: inserted.id,
+					title: input.title,
+					hash: parsed.hash.slice(0, 12),
+					files: parsed.files.length,
+					mediaFiles: parsed.mediaFiles.length
+				},
+				'[NzbMountManager] Created mount'
+			);
 
 			// Prefetch critical segments for fast FFmpeg probing (async, non-blocking)
 			if (parsed.mediaFiles.length > 0) {
@@ -175,10 +180,13 @@ class NzbMountManager {
 							mainFile
 						);
 					} catch (error) {
-						logger.warn('[NzbMountManager] Prefetch failed (non-fatal)', {
-							mountId: inserted.id,
-							error: error instanceof Error ? error.message : String(error)
-						});
+						logger.warn(
+							{
+								mountId: inserted.id,
+								error: error instanceof Error ? error.message : String(error)
+							},
+							'[NzbMountManager] Prefetch failed (non-fatal)'
+						);
 					}
 				});
 			}
@@ -214,10 +222,13 @@ class NzbMountManager {
 				errorMessage: error instanceof Error ? error.message : 'Unknown parse error'
 			});
 
-			logger.error('[NzbMountManager] Failed to create mount', {
-				title: input.title,
-				error: error instanceof Error ? error.message : 'Unknown error'
-			});
+			logger.error(
+				{
+					title: input.title,
+					error: error instanceof Error ? error.message : 'Unknown error'
+				},
+				'[NzbMountManager] Failed to create mount'
+			);
 
 			throw error;
 		}
@@ -284,10 +295,13 @@ class NzbMountManager {
 		try {
 			await getSegmentCacheService().clearMountCache(id);
 		} catch (error) {
-			logger.warn('[NzbMountManager] Failed to clear segment cache', {
-				mountId: id,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					mountId: id,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[NzbMountManager] Failed to clear segment cache'
+			);
 		}
 
 		const result = await db.delete(nzbStreamMounts).where(eq(nzbStreamMounts.id, id));
@@ -333,11 +347,14 @@ class NzbMountManager {
 
 		await db.update(nzbStreamMounts).set(updateData).where(eq(nzbStreamMounts.id, id));
 
-		logger.debug('[NzbMountManager] Updated mount status', {
-			id,
-			status,
-			hasStreamability: !!options?.streamability
-		});
+		logger.debug(
+			{
+				id,
+				status,
+				hasStreamability: !!options?.streamability
+			},
+			'[NzbMountManager] Updated mount status'
+		);
 	}
 
 	/**
@@ -351,7 +368,7 @@ class NzbMountManager {
 			.where(and(lt(nzbStreamMounts.expiresAt, now), eq(nzbStreamMounts.status, 'ready')));
 
 		if (result.changes > 0) {
-			logger.info('[NzbMountManager] Cleaned up expired mounts', { count: result.changes });
+			logger.info({ count: result.changes }, '[NzbMountManager] Cleaned up expired mounts');
 		}
 
 		return result.changes;

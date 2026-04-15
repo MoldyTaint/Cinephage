@@ -34,7 +34,9 @@ import { getLiveTvStreamService } from './LiveTvStreamService.js';
 import { createHlsToTsStream } from './HlsToTsConverter.js';
 import { getBaseUrlAsync } from '$lib/server/streaming/url';
 import { rewriteHlsPlaylistUrls } from '$lib/server/streaming/utils/hls-rewrite.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'livetv' as const });
 
 /**
  * Encode provider headers as a base64 string for embedding in URLs.
@@ -116,11 +118,14 @@ export async function handleStreamGet(
 		if (formatParam === 'hls') {
 			const resolved = await urlCache.getStream(lineupId, 'hls');
 
-			logger.debug('[LiveTV Stream] HLS playlist mode', {
-				lineupId,
-				type: resolved.type,
-				url: resolved.url.substring(0, 50)
-			});
+			logger.debug(
+				{
+					lineupId,
+					type: resolved.type,
+					url: resolved.url.substring(0, 50)
+				},
+				'[LiveTV Stream] HLS playlist mode'
+			);
 
 			if (resolved.type === 'hls' || resolved.url.toLowerCase().includes('.m3u8')) {
 				const baseUrl = await getBaseUrlAsync(request);
@@ -136,10 +141,13 @@ export async function handleStreamGet(
 
 				if (!response.ok) {
 					// Retry once with a completely fresh URL
-					logger.warn('[LiveTV Stream] Playlist fetch failed, refreshing URL', {
-						lineupId,
-						status: response.status
-					});
+					logger.warn(
+						{
+							lineupId,
+							status: response.status
+						},
+						'[LiveTV Stream] Playlist fetch failed, refreshing URL'
+					);
 					const refreshed = await urlCache.getStream(lineupId);
 					urlCache.invalidate(lineupId);
 
@@ -172,9 +180,12 @@ export async function handleStreamGet(
 				const playlist = await response.text();
 
 				if (!playlist.includes('#EXTM3U')) {
-					logger.warn('[LiveTV Stream] Expected HLS but got non-playlist content', {
-						lineupId
-					});
+					logger.warn(
+						{
+							lineupId
+						},
+						'[LiveTV Stream] Expected HLS but got non-playlist content'
+					);
 					return new Response(playlist, {
 						status: 200,
 						headers: {
@@ -205,10 +216,13 @@ export async function handleStreamGet(
 		if (formatParam === 'ts') {
 			const resolved = await urlCache.getStream(lineupId, 'ts');
 
-			logger.info('[LiveTV Stream] Direct TS pipe', {
-				lineupId,
-				url: resolved.url.substring(0, 60)
-			});
+			logger.info(
+				{
+					lineupId,
+					url: resolved.url.substring(0, 60)
+				},
+				'[LiveTV Stream] Direct TS pipe'
+			);
 
 			const { response } = await streamService.fetchFromUrl(
 				resolved.url,
@@ -233,12 +247,15 @@ export async function handleStreamGet(
 			// Probe the stream type first to determine if HLS-to-TS is appropriate
 			const resolved = await urlCache.getStream(lineupId, 'hls');
 
-			logger.info('[LiveTV Stream] HLS-to-TS conversion mode', {
-				lineupId,
-				type: resolved.type,
-				providerType: resolved.providerType,
-				url: resolved.url.substring(0, 50)
-			});
+			logger.info(
+				{
+					lineupId,
+					type: resolved.type,
+					providerType: resolved.providerType,
+					url: resolved.url.substring(0, 50)
+				},
+				'[LiveTV Stream] HLS-to-TS conversion mode'
+			);
 
 			if (resolved.type === 'hls' || resolved.url.toLowerCase().includes('.m3u8')) {
 				// Create the HLS-to-TS conversion stream
@@ -253,11 +270,14 @@ export async function handleStreamGet(
 			}
 
 			// Non-HLS stream (e.g., M3U provider with direct TS URL) — pipe directly
-			logger.info('[LiveTV Stream] Non-HLS stream, direct pipe', {
-				lineupId,
-				type: resolved.type,
-				url: resolved.url.substring(0, 60)
-			});
+			logger.info(
+				{
+					lineupId,
+					type: resolved.type,
+					url: resolved.url.substring(0, 60)
+				},
+				'[LiveTV Stream] Non-HLS stream, direct pipe'
+			);
 
 			const { response } = await streamService.fetchFromUrl(
 				resolved.url,
@@ -276,7 +296,7 @@ export async function handleStreamGet(
 		}
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Stream failed';
-		logger.error('[LiveTV Stream] Stream failed', error, { lineupId });
+		logger.error({ err: error, ...{ lineupId } }, '[LiveTV Stream] Stream failed');
 
 		// Determine appropriate status code
 		let status = 502;

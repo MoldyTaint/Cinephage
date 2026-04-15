@@ -205,12 +205,15 @@ function selectBestVariant(variants: HlsVariant[]): string | null {
 	// Use first video variant, or fallback to first variant overall
 	const selected = videoVariants.length > 0 ? videoVariants[0] : variants[0];
 
-	logger.debug('[HlsToTsConverter] Selected variant from master playlist', {
-		bandwidth: selected.bandwidth,
-		resolution: selected.resolution,
-		codecs: selected.codecs,
-		totalVariants: variants.length
-	});
+	logger.debug(
+		{
+			bandwidth: selected.bandwidth,
+			resolution: selected.resolution,
+			codecs: selected.codecs,
+			totalVariants: variants.length
+		},
+		'[HlsToTsConverter] Selected variant from master playlist'
+	);
 
 	return selected.url;
 }
@@ -280,10 +283,16 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 			} catch (error) {
 				if (!cancelled) {
 					const msg = error instanceof Error ? error.message : String(error);
-					logger.error('[HlsToTsConverter] Fatal error in conversion loop', error, {
-						lineupItemId,
-						lastDeliveredSequence
-					});
+					logger.error(
+						{
+							err: error,
+							...{
+								lineupItemId,
+								lastDeliveredSequence
+							}
+						},
+						'[HlsToTsConverter] Fatal error in conversion loop'
+					);
 					try {
 						controller.error(new Error(`HLS-to-TS conversion failed: ${msg}`));
 					} catch {
@@ -295,7 +304,7 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 
 		cancel() {
 			cancelled = true;
-			logger.debug('[HlsToTsConverter] Stream cancelled by consumer', { lineupItemId });
+			logger.debug({ lineupItemId }, '[HlsToTsConverter] Stream cancelled by consumer');
 		}
 	});
 
@@ -303,7 +312,7 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 		const urlCache = getStreamUrlCache();
 		const streamService = getLiveTvStreamService();
 
-		logger.info('[HlsToTsConverter] Starting HLS-to-TS conversion', { lineupItemId });
+		logger.info({ lineupItemId }, '[HlsToTsConverter] Starting HLS-to-TS conversion');
 
 		while (!cancelled) {
 			try {
@@ -331,10 +340,14 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 				}
 
 				// 4. Check if this is a master playlist and fetch the best variant
+				let playlistUrl = finalUrl;
 				if (isMasterPlaylist(playlistText)) {
-					logger.info('[HlsToTsConverter] Detected master playlist, selecting best variant', {
-						lineupItemId
-					});
+					logger.info(
+						{
+							lineupItemId
+						},
+						'[HlsToTsConverter] Detected master playlist, selecting best variant'
+					);
 
 					const variants = parseMasterPlaylist(playlistText, finalUrl);
 					const bestVariantUrl = selectBestVariant(variants);
@@ -358,28 +371,35 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 					}
 
 					playlistText = await variantResponse.text();
-					logger.debug('[HlsToTsConverter] Fetched variant playlist', {
-						lineupItemId,
-						variantUrl: bestVariantUrl.substring(0, 80)
-					});
+					playlistUrl = bestVariantUrl;
+					logger.debug(
+						{
+							lineupItemId,
+							variantUrl: bestVariantUrl.substring(0, 80)
+						},
+						'[HlsToTsConverter] Fetched variant playlist'
+					);
 				}
 
 				// 5. Parse the media playlist
-				const playlist = parseHlsPlaylist(playlistText, finalUrl);
+				const playlist = parseHlsPlaylist(playlistText, playlistUrl);
 
 				if (playlist.segments.length === 0) {
-					logger.warn('[HlsToTsConverter] Empty playlist', { lineupItemId });
+					logger.warn({ lineupItemId }, '[HlsToTsConverter] Empty playlist');
 					await sleep(1000);
 					continue;
 				}
 
-				logger.debug('[HlsToTsConverter] Playlist fetched', {
-					lineupItemId,
-					segments: playlist.segments.length,
-					mediaSequence: playlist.mediaSequence,
-					targetDuration: playlist.targetDuration,
-					lastDeliveredSequence
-				});
+				logger.debug(
+					{
+						lineupItemId,
+						segments: playlist.segments.length,
+						mediaSequence: playlist.mediaSequence,
+						targetDuration: playlist.targetDuration,
+						lastDeliveredSequence
+					},
+					'[HlsToTsConverter] Playlist fetched'
+				);
 
 				// 6. Download and pipe new segments
 				let newSegmentsDelivered = 0;
@@ -407,21 +427,27 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 						newSegmentsDelivered++;
 						consecutiveErrors = 0;
 
-						logger.debug('[HlsToTsConverter] Segment delivered', {
-							lineupItemId,
-							sequence: segment.sequence,
-							size: segmentData.byteLength,
-							duration: segment.duration
-						});
+						logger.debug(
+							{
+								lineupItemId,
+								sequence: segment.sequence,
+								size: segmentData.byteLength,
+								duration: segment.duration
+							},
+							'[HlsToTsConverter] Segment delivered'
+						);
 					} catch (error) {
 						if (cancelled) break;
 						const msg = error instanceof Error ? error.message : String(error);
-						logger.warn('[HlsToTsConverter] Segment fetch failed, skipping', {
-							lineupItemId,
-							sequence: segment.sequence,
-							url: segment.url.substring(0, 80),
-							error: msg
-						});
+						logger.warn(
+							{
+								lineupItemId,
+								sequence: segment.sequence,
+								url: segment.url.substring(0, 80),
+								error: msg
+							},
+							'[HlsToTsConverter] Segment fetch failed, skipping'
+						);
 						// Skip this segment and continue with the next
 						lastDeliveredSequence = segment.sequence;
 					}
@@ -438,10 +464,13 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 
 				if (newSegmentsDelivered === 0) {
 					// No new segments — playlist hasn't advanced yet, wait a bit
-					logger.debug('[HlsToTsConverter] No new segments, waiting', {
-						lineupItemId,
-						waitMs: refreshInterval
-					});
+					logger.debug(
+						{
+							lineupItemId,
+							waitMs: refreshInterval
+						},
+						'[HlsToTsConverter] No new segments, waiting'
+					);
 				}
 
 				await sleep(refreshInterval);
@@ -451,12 +480,15 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 
 				consecutiveErrors++;
 				const msg = error instanceof Error ? error.message : String(error);
-				logger.warn('[HlsToTsConverter] Playlist cycle error', {
-					lineupItemId,
-					consecutiveErrors,
-					maxConsecutiveErrors,
-					error: msg
-				});
+				logger.warn(
+					{
+						lineupItemId,
+						consecutiveErrors,
+						maxConsecutiveErrors,
+						error: msg
+					},
+					'[HlsToTsConverter] Playlist cycle error'
+				);
 
 				if (consecutiveErrors >= maxConsecutiveErrors) {
 					throw new Error(`Too many consecutive errors (${consecutiveErrors}): ${msg}`);
@@ -477,11 +509,14 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 			}
 		}
 
-		logger.info('[HlsToTsConverter] Conversion loop ended', {
-			lineupItemId,
-			lastDeliveredSequence,
-			cancelled
-		});
+		logger.info(
+			{
+				lineupItemId,
+				lastDeliveredSequence,
+				cancelled
+			},
+			'[HlsToTsConverter] Conversion loop ended'
+		);
 	}
 }
 

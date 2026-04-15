@@ -20,7 +20,9 @@ import { eq, and } from 'drizzle-orm';
 import type { SubtitleFormat, LanguageCode } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { getSubtitleSettingsService } from './SubtitleSettingsService';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import { normalizeLanguageCode } from '$lib/shared/languages';
 
 /** Common subtitle file extensions */
@@ -222,7 +224,7 @@ class SubtitleScannerService {
 			this.fallbackLanguage = (await settingsService.getFallbackLanguage()) as LanguageCode;
 			this.settingsLoaded = true;
 		} catch (error) {
-			logger.warn('Failed to load subtitle settings, using default fallback language', { error });
+			logger.warn({ error }, 'Failed to load subtitle settings, using default fallback language');
 		}
 	}
 
@@ -337,12 +339,12 @@ class SubtitleScannerService {
 							videoFileName
 						});
 					} catch (error) {
-						logger.warn('Could not stat subtitle file', { path: fullPath, error });
+						logger.warn({ path: fullPath, error }, 'Could not stat subtitle file');
 					}
 				}
 			}
 		} catch (error) {
-			logger.error('Error reading directory for subtitles', { directoryPath, error });
+			logger.error({ directoryPath, error }, 'Error reading directory for subtitles');
 		}
 
 		return subtitleFiles;

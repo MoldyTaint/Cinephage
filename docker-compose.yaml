@@ -5,6 +5,9 @@
 # Optional: set IMAGE_TAG to pin a specific image tag
 # To build from source instead of pulling the image:
 #   Uncomment "build: ." and comment out "image:" below
+#
+# Configuration: Copy .env.example to .env and configure your values there.
+# All environment variables are read from .env via the env_file directive.
 # =============================================================================
 
 services:
@@ -13,17 +16,13 @@ services:
     # build: .  # Uncomment to build locally (requires cloning the repo)
     container_name: cinephage
     restart: unless-stopped
-    init: true # Use tini to prevent zombie browser processes
+    init: true
     security_opt:
       - no-new-privileges:true
     ports:
       - '3000:3000'
-    environment:
-      - PUID=1000 # Your user ID (run: id -u)
-      - PGID=1000 # Your group ID (run: id -g)
-      - TZ=UTC # Your timezone
-      - ORIGIN=http://localhost:3000 # Your access URL (required if using IP/FQDN)
+    env_file: .env
     volumes:
       - ./config:/config
-      - /path/to/media:/media # REQUIRED: Your media library
-      - /path/to/downloads:/downloads # REQUIRED: Download client output folder
+      - /path/to/media:/media
+      - /path/to/downloads:/downloads

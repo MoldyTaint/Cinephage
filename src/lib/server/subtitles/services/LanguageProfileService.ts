@@ -18,7 +18,9 @@ import {
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { extname } from 'node:path';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import type { SubtitleStatus, LanguageCode } from '../types';
 import { normalizeLanguageCode } from '$lib/shared/languages';
 
@@ -124,7 +126,7 @@ export class LanguageProfileService {
 			throw new Error('Failed to create profile');
 		}
 
-		logger.info('Created language profile', { id, name: profile.name });
+		logger.info({ id, name: profile.name }, 'Created language profile');
 		return created;
 	}
 
@@ -166,7 +168,7 @@ export class LanguageProfileService {
 			throw new Error('Failed to update profile');
 		}
 
-		logger.info('Updated language profile', { id, name: updated.name });
+		logger.info({ id, name: updated.name }, 'Updated language profile');
 		return updated;
 	}
 
@@ -192,7 +194,7 @@ export class LanguageProfileService {
 		// Delete the profile
 		await db.delete(languageProfiles).where(eq(languageProfiles.id, id));
 
-		logger.info('Deleted language profile', { id });
+		logger.info({ id }, 'Deleted language profile');
 	}
 
 	// =========================================================================

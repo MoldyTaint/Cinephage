@@ -11,7 +11,9 @@ import { tmdb } from '../tmdb.js';
 import { db } from '../db/index.js';
 import { externalIdCache } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 
 /**
  * TMDB match result
@@ -65,24 +67,27 @@ export class TmdbMatcher {
 		if (hint?.tmdbId) {
 			const result = await this.getMatchById(hint.tmdbId, hint.mediaType);
 			if (result && this.isYearValid(parsed.year, result.year)) {
-				logger.debug('[TmdbMatcher] Matched via TMDB ID hint with year validation', {
-					tmdbId: hint.tmdbId,
-					title: result.title,
-					releaseYear: parsed.year,
-					movieYear: result.year
-				});
+				logger.debug(
+					{
+						tmdbId: hint.tmdbId,
+						title: result.title,
+						releaseYear: parsed.year,
+						movieYear: result.year
+					},
+					'[TmdbMatcher] Matched via TMDB ID hint with year validation'
+				);
 				return result;
 			}
 			// Year mismatch - fall back to title search to find correct movie
 			logger.debug(
-				'[TmdbMatcher] TMDB ID hint rejected due to year mismatch, falling back to title search',
 				{
 					tmdbId: hint.tmdbId,
 					hintTitle: result?.title,
 					releaseYear: parsed.year,
 					hintYear: result?.year,
 					release: parsed.originalTitle
-				}
+				},
+				'[TmdbMatcher] TMDB ID hint rejected due to year mismatch, falling back to title search'
 			);
 		}
 
@@ -90,23 +95,26 @@ export class TmdbMatcher {
 		if (hint?.imdbId) {
 			const result = await this.findByImdbId(hint.imdbId);
 			if (result && this.isYearValid(parsed.year, result.year)) {
-				logger.debug('[TmdbMatcher] Matched via IMDB ID hint with year validation', {
-					imdbId: hint.imdbId,
-					tmdbId: result.tmdbId,
-					title: result.title,
-					releaseYear: parsed.year,
-					movieYear: result.year
-				});
+				logger.debug(
+					{
+						imdbId: hint.imdbId,
+						tmdbId: result.tmdbId,
+						title: result.title,
+						releaseYear: parsed.year,
+						movieYear: result.year
+					},
+					'[TmdbMatcher] Matched via IMDB ID hint with year validation'
+				);
 				return result;
 			}
 			if (result) {
 				logger.debug(
-					'[TmdbMatcher] IMDB ID hint rejected due to year mismatch, falling back to title search',
 					{
 						imdbId: hint.imdbId,
 						releaseYear: parsed.year,
 						movieYear: result.year
-					}
+					},
+					'[TmdbMatcher] IMDB ID hint rejected due to year mismatch, falling back to title search'
 				);
 			}
 		}
@@ -124,11 +132,14 @@ export class TmdbMatcher {
 		if (extractedIds.tmdbId) {
 			const result = await this.getMatchById(extractedIds.tmdbId, mediaType);
 			if (result) {
-				logger.debug('[TmdbMatcher] Matched via TMDB ID in release title', {
-					tmdbId: extractedIds.tmdbId,
-					title: result.title,
-					release: parsed.originalTitle
-				});
+				logger.debug(
+					{
+						tmdbId: extractedIds.tmdbId,
+						title: result.title,
+						release: parsed.originalTitle
+					},
+					'[TmdbMatcher] Matched via TMDB ID in release title'
+				);
 				return result;
 			}
 		}
@@ -136,12 +147,15 @@ export class TmdbMatcher {
 		if (extractedIds.tvdbId) {
 			const result = await this.findByTvdbId(extractedIds.tvdbId);
 			if (result) {
-				logger.debug('[TmdbMatcher] Matched via TVDB ID in release title', {
-					tvdbId: extractedIds.tvdbId,
-					tmdbId: result.tmdbId,
-					title: result.title,
-					release: parsed.originalTitle
-				});
+				logger.debug(
+					{
+						tvdbId: extractedIds.tvdbId,
+						tmdbId: result.tmdbId,
+						title: result.title,
+						release: parsed.originalTitle
+					},
+					'[TmdbMatcher] Matched via TVDB ID in release title'
+				);
 				return result;
 			}
 		}
@@ -149,12 +163,15 @@ export class TmdbMatcher {
 		if (extractedIds.imdbId) {
 			const result = await this.findByImdbId(extractedIds.imdbId);
 			if (result) {
-				logger.debug('[TmdbMatcher] Matched via IMDB ID in release title', {
-					imdbId: extractedIds.imdbId,
-					tmdbId: result.tmdbId,
-					title: result.title,
-					release: parsed.originalTitle
-				});
+				logger.debug(
+					{
+						imdbId: extractedIds.imdbId,
+						tmdbId: result.tmdbId,
+						title: result.title,
+						release: parsed.originalTitle
+					},
+					'[TmdbMatcher] Matched via IMDB ID in release title'
+				);
 				return result;
 			}
 		}
@@ -219,7 +236,10 @@ export class TmdbMatcher {
 				};
 			}
 		} catch (error) {
-			logger.error(`Failed to get TMDB ${mediaType} ${tmdbId}`, error, { mediaType, tmdbId });
+			logger.error(
+				{ err: error, ...{ mediaType, tmdbId } },
+				`Failed to get TMDB ${mediaType} ${tmdbId}`
+			);
 			return null;
 		}
 	}
@@ -261,7 +281,7 @@ export class TmdbMatcher {
 
 			return null;
 		} catch (error) {
-			logger.error(`Failed to find by IMDB ID ${imdbId}`, error, { imdbId });
+			logger.error({ err: error, ...{ imdbId } }, `Failed to find by IMDB ID ${imdbId}`);
 			return null;
 		}
 	}
@@ -289,7 +309,7 @@ export class TmdbMatcher {
 
 			return null;
 		} catch (error) {
-			logger.error(`Failed to find by TVDB ID ${tvdbId}`, error, { tvdbId });
+			logger.error({ err: error, ...{ tvdbId } }, `Failed to find by TVDB ID ${tvdbId}`);
 			return null;
 		}
 	}
@@ -320,7 +340,10 @@ export class TmdbMatcher {
 
 			return this.findBestMatch(result.results, title, year, mediaType);
 		} catch (error) {
-			logger.error(`Failed to search for "${title}"`, error, { title, year, mediaType });
+			logger.error(
+				{ err: error, ...{ title, year, mediaType } },
+				`Failed to search for "${title}"`
+			);
 			return null;
 		}
 	}
@@ -520,10 +543,16 @@ export class TmdbMatcher {
 				tvdbId: externalIds.tvdb_id
 			};
 		} catch (error) {
-			logger.error(`Failed to get external IDs for ${mediaType} ${tmdbId}`, error, {
-				mediaType,
-				tmdbId
-			});
+			logger.error(
+				{
+					err: error,
+					...{
+						mediaType,
+						tmdbId
+					}
+				},
+				`Failed to get external IDs for ${mediaType} ${tmdbId}`
+			);
 			return { imdbId: null, tvdbId: null };
 		}
 	}

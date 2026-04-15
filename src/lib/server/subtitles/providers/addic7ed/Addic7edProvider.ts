@@ -12,7 +12,9 @@ import type {
 	ProviderSearchOptions,
 	LanguageCode
 } from '../../types';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import * as cheerio from 'cheerio';
 import {
 	TooManyRequests,
@@ -107,7 +109,7 @@ export class Addic7edProvider extends BaseSubtitleProvider {
 
 			const searchResponse = await this.makeRequest(searchUrl, options?.timeout);
 			if (!searchResponse.ok) {
-				logger.warn('[Addic7ed] Search request failed', { status: searchResponse.status });
+				logger.warn({ status: searchResponse.status }, '[Addic7ed] Search request failed');
 				return results;
 			}
 
@@ -311,9 +313,12 @@ export class Addic7edProvider extends BaseSubtitleProvider {
 
 			logger.debug('[Addic7ed] Authentication completed');
 		} catch (error) {
-			logger.warn('[Addic7ed] Authentication failed', {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[Addic7ed] Authentication failed'
+			);
 		}
 	}
 

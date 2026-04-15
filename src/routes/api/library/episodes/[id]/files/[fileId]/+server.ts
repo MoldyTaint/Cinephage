@@ -67,9 +67,9 @@ export const DELETE: RequestHandler = async ({ params }) => {
 			const fullPath = join(file.rootFolderPath, file.seriesPath, file.relativePath);
 			try {
 				await unlink(fullPath);
-				logger.debug('[API] Deleted episode file', { fullPath });
+				logger.debug({ fullPath }, '[API] Deleted episode file');
 			} catch {
-				logger.warn('[API] Could not delete episode file from disk', { fullPath });
+				logger.warn({ fullPath }, '[API] Could not delete episode file from disk');
 			}
 
 			// Try to remove empty parent directories up to series folder
@@ -78,7 +78,7 @@ export const DELETE: RequestHandler = async ({ params }) => {
 			while (currentDir !== seriesFolder && currentDir.startsWith(seriesFolder)) {
 				try {
 					await rmdir(currentDir);
-					logger.debug('[API] Removed empty directory', { dir: currentDir });
+					logger.debug({ dir: currentDir }, '[API] Removed empty directory');
 					currentDir = dirname(currentDir);
 				} catch {
 					// Directory not empty or doesn't exist

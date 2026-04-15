@@ -60,7 +60,7 @@ async function getCachedCountries(): Promise<IptvOrgCountry[]> {
 		fetchedAt: Date.now()
 	};
 
-	logger.info('[IptvOrgCountries] Cached countries data', { count: countries.length });
+	logger.info({ count: countries.length }, '[IptvOrgCountries] Cached countries data');
 	return countries;
 }
 
@@ -83,7 +83,7 @@ export const GET: RequestHandler = async () => {
 		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		logger.error('[IptvOrgCountries] Failed to fetch countries', { error: message });
+		logger.error({ error: message }, '[IptvOrgCountries] Failed to fetch countries');
 
 		return json(
 			{

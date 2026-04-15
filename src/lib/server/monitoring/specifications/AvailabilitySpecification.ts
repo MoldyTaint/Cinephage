@@ -22,7 +22,9 @@ import type {
 } from './types.js';
 import { reject, accept } from './types.js';
 import { tmdb } from '$lib/server/tmdb.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'monitoring' as const });
 import { getMovieAvailabilityLevel } from '$lib/utils/movieAvailability';
 
 /**
@@ -113,10 +115,13 @@ export class MovieAvailabilitySpecification implements IMonitoringSpecification<
 			this.releaseInfoCache.set(tmdbId, releaseInfo);
 			return releaseInfo;
 		} catch (error) {
-			logger.warn('[MovieAvailabilitySpecification] Failed to fetch TMDB release info', {
-				tmdbId,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					tmdbId,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[MovieAvailabilitySpecification] Failed to fetch TMDB release info'
+			);
 			this.releaseInfoCache.set(tmdbId, null);
 			return null;
 		}

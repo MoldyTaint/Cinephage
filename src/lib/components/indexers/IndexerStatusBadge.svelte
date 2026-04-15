@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { AlertTriangle, CheckCircle, XCircle } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		enabled: boolean;
@@ -16,35 +17,35 @@
 	const statusInfo = $derived.by(() => {
 		if (!enabled) {
 			return {
-				text: 'Disabled',
+				text: m.settings_indexers_status_disabled(),
 				class: 'badge-ghost',
 				icon: XCircle,
-				tooltip: 'Indexer is disabled by user'
+				tooltip: m.settings_indexers_tooltip_disabled()
 			};
 		}
 		if (isAutoDisabled) {
-			const until = disabledUntil ? new Date(disabledUntil).toLocaleString() : 'Unknown';
+			const until = disabledUntil ? new Date(disabledUntil).toLocaleString() : m.common_unknown();
 			return {
-				text: 'Unhealthy',
+				text: m.settings_indexers_status_unhealthy(),
 				class: 'badge-error',
 				icon: AlertTriangle,
-				tooltip: `Auto-disabled until ${until} due to ${consecutiveFailures} consecutive failures`
+				tooltip: m.settings_indexers_tooltip_unhealthy({ until, consecutiveFailures })
 			};
 		}
 		if (hasFailures) {
-			const failureTime = lastFailure ? new Date(lastFailure).toLocaleString() : 'Unknown';
+			const failureTime = lastFailure ? new Date(lastFailure).toLocaleString() : m.common_unknown();
 			return {
-				text: 'Degraded',
+				text: m.settings_indexers_status_degraded(),
 				class: 'badge-warning',
 				icon: AlertTriangle,
-				tooltip: `${consecutiveFailures} consecutive failure(s). Last failure: ${failureTime}`
+				tooltip: m.settings_indexers_tooltip_degraded({ consecutiveFailures, failureTime })
 			};
 		}
 		return {
-			text: 'Healthy',
+			text: m.settings_indexers_status_healthy(),
 			class: 'badge-success',
 			icon: CheckCircle,
-			tooltip: 'Indexer is healthy and operational'
+			tooltip: m.settings_indexers_tooltip_healthy()
 		};
 	});
 

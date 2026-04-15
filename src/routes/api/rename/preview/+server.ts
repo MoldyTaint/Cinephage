@@ -12,6 +12,7 @@ import {
 	type RenamePreviewResult
 } from '$lib/server/library/naming/RenamePreviewService';
 import { logger } from '$lib/logging';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 /**
  * GET /api/rename/preview
@@ -20,7 +21,11 @@ import { logger } from '$lib/logging';
  * Query params:
  * - mediaType: 'movie' | 'tv' | 'all' (default: 'all')
  */
-export const GET: RequestHandler = async ({ url }) => {
+export const GET: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { url } = event;
 	try {
 		const mediaType = url.searchParams.get('mediaType') || 'all';
 
@@ -51,9 +56,12 @@ export const GET: RequestHandler = async ({ url }) => {
 
 		return json(result);
 	} catch (error) {
-		logger.error('[RenamePreview API] Failed to generate preview', {
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.error(
+			{
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'[RenamePreview API] Failed to generate preview'
+		);
 
 		return json(
 			{

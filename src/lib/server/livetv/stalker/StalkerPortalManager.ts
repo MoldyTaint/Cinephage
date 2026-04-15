@@ -240,12 +240,15 @@ export class StalkerPortalManager implements BackgroundService {
 
 		const record = db.insert(stalkerPortals).values(insertData).returning().get();
 
-		logger.info('Created portal', {
-			id: record.id,
-			name: record.name,
-			url: record.url,
-			endpoint: record.endpoint
-		});
+		logger.info(
+			{
+				id: record.id,
+				name: record.name,
+				url: record.url,
+				endpoint: record.endpoint
+			},
+			'Created portal'
+		);
 
 		return recordToPortal(record);
 	}
@@ -298,10 +301,13 @@ export class StalkerPortalManager implements BackgroundService {
 			.returning()
 			.get();
 
-		logger.info('Updated portal', {
-			id: record.id,
-			name: record.name
-		});
+		logger.info(
+			{
+				id: record.id,
+				name: record.name
+			},
+			'Updated portal'
+		);
 
 		return recordToPortal(record);
 	}
@@ -318,10 +324,13 @@ export class StalkerPortalManager implements BackgroundService {
 
 		db.delete(stalkerPortals).where(eq(stalkerPortals.id, id)).run();
 
-		logger.info('Deleted portal', {
-			id,
-			name: existing.name
-		});
+		logger.info(
+			{
+				id,
+				name: existing.name
+			},
+			'Deleted portal'
+		);
 	}
 
 	/**
@@ -352,10 +361,13 @@ export class StalkerPortalManager implements BackgroundService {
 					const text = await response.text();
 					// Check for version string pattern
 					if (text.includes('var ver') || text.includes('version')) {
-						logger.debug('Detected portal type', {
-							url: normalizedUrl,
-							endpoint
-						});
+						logger.debug(
+							{
+								url: normalizedUrl,
+								endpoint
+							},
+							'Detected portal type'
+						);
 
 						return {
 							success: true,

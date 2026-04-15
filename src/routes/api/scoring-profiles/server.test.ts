@@ -1,11 +1,10 @@
-/**
- * Scoring Profiles API Tests
- *
- * Tests for GET, POST, PUT, DELETE handlers at /api/scoring-profiles
- */
-
-import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
-import { initTestDb, closeTestDb, clearTestDb, getTestDb } from '../../../test/db-helper';
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
+import {
+	createTestDb,
+	destroyTestDb,
+	clearTestDb,
+	type TestDatabase
+} from '../../../test/db-helper';
 import {
 	api,
 	type ProfilesListResponse,
@@ -16,23 +15,17 @@ import {
 import { scoringProfiles, profileSizeLimits } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 
-// Initialize the test database FIRST before any mocks
-initTestDb();
+const testDb: TestDatabase = createTestDb();
 
-// Must mock before importing the handlers
-vi.mock('$lib/server/db', async () => {
-	// Dynamic import to get the actual test db
-	const { getTestDb } = await import('../../../test/db-helper');
-	return {
-		get db() {
-			return getTestDb().db;
-		},
-		get sqlite() {
-			return getTestDb().sqlite;
-		},
-		initializeDatabase: vi.fn().mockResolvedValue(undefined)
-	};
-});
+vi.mock('$lib/server/db', () => ({
+	get db() {
+		return testDb.db;
+	},
+	get sqlite() {
+		return testDb.sqlite;
+	},
+	initializeDatabase: vi.fn().mockResolvedValue(undefined)
+}));
 
 vi.mock('$lib/server/quality', () => ({
 	qualityFilter: {
@@ -40,50 +33,44 @@ vi.mock('$lib/server/quality', () => ({
 	}
 }));
 
-vi.mock('$lib/logging', () => ({
-	logger: {
-		info: vi.fn(),
-		error: vi.fn(),
-		warn: vi.fn(),
-		debug: vi.fn()
-	}
+const mockLogger = vi.hoisted(() => ({
+	info: vi.fn(),
+	error: vi.fn(),
+	warn: vi.fn(),
+	debug: vi.fn(),
+	child: vi.fn().mockReturnThis()
 }));
 
-// Import handlers after mocks are set up
+vi.mock('$lib/logging', () => ({
+	logger: mockLogger,
+	createChildLogger: vi.fn(() => mockLogger)
+}));
+
 const { GET, POST, PUT, DELETE } = await import('./+server');
 
 describe('Scoring Profiles API', () => {
-	beforeAll(() => {
-		initTestDb();
-	});
-
 	afterAll(() => {
-		closeTestDb();
+		destroyTestDb(testDb);
 	});
 
 	beforeEach(() => {
-		clearTestDb();
+		clearTestDb(testDb);
 	});
 
-	// =========================================================================
-	// GET Tests
-	// =========================================================================
 	describe('GET /api/scoring-profiles', () => {
 		it('returns built-in profiles when database is empty', async () => {
 			const { status, data } = await api.get<ProfilesListResponse>(GET);
 
 			expect(status).toBe(200);
-			expect(data.profiles.length).toBeGreaterThanOrEqual(4); // Quality, Balanced, Compact, Streamer
+			expect(data.profiles.length).toBeGreaterThanOrEqual(4);
 			expect(data.defaultProfileId).toBe('balanced');
 
-			// Check built-in profiles are present
 			const profileIds = data.profiles.map((p) => p.id);
 			expect(profileIds).toContain('quality');
 			expect(profileIds).toContain('balanced');
 			expect(profileIds).toContain('compact');
 			expect(profileIds).toContain('streamer');
 
-			// All built-in profiles should have isBuiltIn = true
 			const builtInProfiles = data.profiles.filter((p) => p.isBuiltIn);
 			expect(builtInProfiles.length).toBeGreaterThanOrEqual(4);
 		});
@@ -98,10 +85,7 @@ describe('Scoring Profiles API', () => {
 		});
 
 		it('returns custom profiles along with built-in profiles', async () => {
-			const { db } = getTestDb();
-
-			// Insert a custom profile
-			await db.insert(scoringProfiles).values({
+			await testDb.db.insert(scoringProfiles).values({
 				id: 'my-custom',
 				name: 'My Custom Profile',
 				description: 'Test profile'
@@ -116,10 +100,7 @@ describe('Scoring Profiles API', () => {
 		});
 
 		it('applies size limit overrides to built-in profiles', async () => {
-			const { db } = getTestDb();
-
-			// Add size limits for balanced profile
-			await db.insert(profileSizeLimits).values({
+			await testDb.db.insert(profileSizeLimits).values({
 				profileId: 'balanced',
 				movieMinSizeGb: 1.5,
 				movieMaxSizeGb: 50,
@@ -137,9 +118,7 @@ describe('Scoring Profiles API', () => {
 		});
 
 		it('returns custom profile as default when set', async () => {
-			const { db } = getTestDb();
-
-			await db.insert(scoringProfiles).values({
+			await testDb.db.insert(scoringProfiles).values({
 				id: 'my-default',
 				name: 'My Default',
 				isDefault: true
@@ -152,15 +131,11 @@ describe('Scoring Profiles API', () => {
 			const myDefault = data.profiles.find((p) => p.id === 'my-default');
 			expect(myDefault?.isDefault).toBe(true);
 
-			// Balanced should no longer be default
 			const balanced = data.profiles.find((p) => p.id === 'balanced');
 			expect(balanced?.isDefault).toBe(false);
 		});
 	});
 
-	// =========================================================================
-	// POST Tests (Create Profile)
-	// =========================================================================
 	describe('POST /api/scoring-profiles', () => {
 		it('creates profile with required fields only', async () => {
 			const { status, data } = await api.post<ProfileResponse>(POST, {
@@ -169,7 +144,7 @@ describe('Scoring Profiles API', () => {
 
 			expect(status).toBe(201);
 			expect(data.name).toBe('Test Profile');
-			expect(data.id).toBeDefined(); // Auto-generated
+			expect(data.id).toBeDefined();
 		});
 
 		it('creates profile with custom ID', async () => {
@@ -204,7 +179,6 @@ describe('Scoring Profiles API', () => {
 			expect(data.upgradeUntilScore).toBe(5000);
 			expect(data.minScoreIncrement).toBe(50);
 			expect(data.formatScores).toEqual({ 'format-1': 500, 'format-2': -200 });
-			// SQLite REAL values may be returned as strings in JSON
 			expect(Number(data.movieMinSizeGb)).toBe(2);
 			expect(Number(data.movieMaxSizeGb)).toBe(100);
 		});
@@ -216,20 +190,17 @@ describe('Scoring Profiles API', () => {
 			});
 
 			expect(status).toBe(201);
-			// Should have copied formatScores from quality profile
 			expect(data.formatScores).toBeDefined();
 			expect(Object.keys(data.formatScores!).length).toBeGreaterThan(0);
 		});
 
 		it('copies formatScores from custom profile', async () => {
-			// First create a custom profile with scores
 			await api.post<ProfileResponse>(POST, {
 				id: 'source-profile',
 				name: 'Source',
 				formatScores: { 'my-format': 1000 }
 			});
 
-			// Now copy from it
 			const { status, data } = await api.post<ProfileResponse>(POST, {
 				name: 'Copy of Source',
 				copyFromId: 'source-profile'
@@ -247,9 +218,7 @@ describe('Scoring Profiles API', () => {
 			});
 
 			expect(status).toBe(201);
-			// Should have the custom format score
 			expect(data.formatScores!['custom-format']).toBe(999);
-			// Should also have scores from quality (verify at least one exists)
 			expect(Object.keys(data.formatScores!).length).toBeGreaterThan(1);
 		});
 
@@ -264,10 +233,8 @@ describe('Scoring Profiles API', () => {
 		});
 
 		it('rejects duplicate profile IDs', async () => {
-			// Create first profile
 			await api.post<ProfileResponse>(POST, { id: 'duplicate-test', name: 'First' });
 
-			// Try to create second with same ID
 			const { status, data } = await api.post<ErrorResponse>(POST, {
 				id: 'duplicate-test',
 				name: 'Second'
@@ -288,14 +255,12 @@ describe('Scoring Profiles API', () => {
 		});
 
 		it('sets isDefault and clears other defaults', async () => {
-			// Create first profile as default
 			await api.post<ProfileResponse>(POST, {
 				id: 'first-default',
 				name: 'First Default',
 				isDefault: true
 			});
 
-			// Create second profile as default
 			const { data: second } = await api.post<ProfileResponse>(POST, {
 				id: 'second-default',
 				name: 'Second Default',
@@ -304,9 +269,7 @@ describe('Scoring Profiles API', () => {
 
 			expect(second.isDefault).toBe(true);
 
-			// Verify first is no longer default
-			const { db } = getTestDb();
-			const first = await db
+			const first = await testDb.db
 				.select()
 				.from(scoringProfiles)
 				.where(eq(scoringProfiles.id, 'first-default'));
@@ -323,18 +286,13 @@ describe('Scoring Profiles API', () => {
 		});
 	});
 
-	// =========================================================================
-	// PUT Tests (Update Profile)
-	// =========================================================================
 	describe('PUT /api/scoring-profiles', () => {
 		it('updates custom profile fields', async () => {
-			// Create a profile
 			await api.post<ProfileResponse>(POST, {
 				id: 'update-test',
 				name: 'Original Name'
 			});
 
-			// Update it
 			const { status, data } = await api.put<ProfileResponse>(PUT, {
 				id: 'update-test',
 				name: 'Updated Name',
@@ -347,7 +305,6 @@ describe('Scoring Profiles API', () => {
 		});
 
 		it('partial update preserves existing fields', async () => {
-			// Create profile with multiple fields
 			await api.post<ProfileResponse>(POST, {
 				id: 'partial-test',
 				name: 'Original',
@@ -356,7 +313,6 @@ describe('Scoring Profiles API', () => {
 				minScore: 100
 			});
 
-			// Update only name
 			const { data } = await api.put<ProfileResponse>(PUT, {
 				id: 'partial-test',
 				name: 'Updated'
@@ -382,14 +338,12 @@ describe('Scoring Profiles API', () => {
 		});
 
 		it('sets isDefault on built-in profile', async () => {
-			// First set a custom profile as default
 			await api.post<ProfileResponse>(POST, {
 				id: 'temp-default',
 				name: 'Temp Default',
 				isDefault: true
 			});
 
-			// Now set balanced as default
 			const { data } = await api.put<ProfileResponse>(PUT, {
 				id: 'balanced',
 				isDefault: true
@@ -397,9 +351,7 @@ describe('Scoring Profiles API', () => {
 
 			expect(data.isDefault).toBe(true);
 
-			// Verify custom profile is no longer default
-			const { db } = getTestDb();
-			const temp = await db
+			const temp = await testDb.db
 				.select()
 				.from(scoringProfiles)
 				.where(eq(scoringProfiles.id, 'temp-default'));
@@ -441,9 +393,6 @@ describe('Scoring Profiles API', () => {
 		});
 	});
 
-	// =========================================================================
-	// DELETE Tests
-	// =========================================================================
 	describe('DELETE /api/scoring-profiles', () => {
 		it('deletes custom profile', async () => {
 			await api.post<ProfileResponse>(POST, {
@@ -457,9 +406,7 @@ describe('Scoring Profiles API', () => {
 			expect(data.success).toBe(true);
 			expect(data.deleted.id).toBe('delete-me');
 
-			// Verify it's gone
-			const { db } = getTestDb();
-			const remaining = await db
+			const remaining = await testDb.db
 				.select()
 				.from(scoringProfiles)
 				.where(eq(scoringProfiles.id, 'delete-me'));

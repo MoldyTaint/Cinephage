@@ -5,6 +5,7 @@ import { stat } from 'node:fs/promises';
 import { manualImportService } from '$lib/server/library/manual-import-service.js';
 import { isPathAllowed, isPathInsideManagedRoot } from '$lib/server/filesystem/path-guard.js';
 import { logger } from '$lib/logging';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 const detectSchema = z.object({
 	sourcePath: z.string().min(1),
@@ -28,7 +29,11 @@ function getDetectErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : 'Failed to detect media from path';
 }
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { request } = event;
 	try {
 		let body: unknown;
 		try {

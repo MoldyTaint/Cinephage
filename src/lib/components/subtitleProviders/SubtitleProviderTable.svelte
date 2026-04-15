@@ -1,8 +1,9 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import {
 		ChevronUp,
 		ChevronDown,
-		Subtitles,
+		Captions,
 		GripVertical,
 		Loader2,
 		FlaskConical,
@@ -80,10 +81,10 @@
 
 		if (features.length < 3) {
 			if (provider.definition?.supportsHashSearch) {
-				features.push('Hash matching');
+				features.push(m.subtitleProviders_table_featureHashMatching());
 			}
 			if (provider.definition?.requiresApiKey || provider.definition?.accessType === 'api-key') {
-				features.push('API access');
+				features.push(m.subtitleProviders_table_featureApiAccess());
 			}
 			if (
 				provider.definition?.requiresCredentials ||
@@ -91,12 +92,16 @@
 				provider.definition?.accessType === 'paid' ||
 				provider.definition?.accessType === 'vip'
 			) {
-				features.push('Account auth');
+				features.push(m.subtitleProviders_table_featureAccountAuth());
 			}
 		}
 
 		const unique = Array.from(new Set(features));
-		const defaults = ['Subtitle search', 'Language matching', 'Provider API'];
+		const defaults = [
+			m.subtitleProviders_table_featureSubtitleSearch(),
+			m.subtitleProviders_table_featureLanguageMatching(),
+			m.subtitleProviders_table_featureProviderApi()
+		];
 		let idx = 0;
 		while (unique.length < 3 && idx < defaults.length) {
 			if (!unique.includes(defaults[idx])) {
@@ -111,10 +116,10 @@
 	function getCompactFeatureLabel(feature: string): string {
 		const normalized = feature.trim();
 		const compactMap: Record<string, string> = {
-			'No API key required': 'No API key',
-			'API key required': 'API key',
-			'Movies & TV subtitles': 'Movies & TV',
-			'Multi-language subtitles': 'Multi-language'
+			'No API key required': m.subtitleProviders_table_compactNoApiKey(),
+			'API key required': m.subtitleProviders_table_compactApiKey(),
+			'Movies & TV subtitles': m.subtitleProviders_table_compactMoviesTv(),
+			'Multi-language subtitles': m.subtitleProviders_table_compactMultiLanguage()
 		};
 		const compact = compactMap[normalized] ?? normalized;
 		return compact.length > 16 ? `${compact.slice(0, 15)}...` : compact;
@@ -190,9 +195,9 @@
 
 {#if providers.length === 0}
 	<div class="flex flex-col items-center justify-center py-12 text-base-content/50">
-		<Subtitles class="mb-4 h-12 w-12" />
-		<p class="text-lg font-medium">No subtitle providers configured</p>
-		<p class="text-sm">Add a provider to start searching for subtitles</p>
+		<Captions class="mb-4 h-12 w-12" />
+		<p class="text-lg font-medium">{m.subtitleProviders_table_noProvidersTitle()}</p>
+		<p class="text-sm">{m.subtitleProviders_table_noProvidersDescription()}</p>
 	</div>
 {:else}
 	<div class="space-y-3 overflow-x-hidden sm:hidden">
@@ -206,9 +211,11 @@
 						indeterminate={someSelected}
 						onchange={(e) => onSelectAll(e.currentTarget.checked)}
 					/>
-					Select all
+					{m.subtitleProviders_table_selectAll()}
 				</label>
-				<span class="text-xs text-base-content/60">{selectedIds.size} selected</span>
+				<span class="text-xs text-base-content/60"
+					>{m.subtitleProviders_table_selectedCount({ count: selectedIds.size })}</span
+				>
 			</div>
 
 			{#if onReorder}
@@ -217,20 +224,22 @@
 						<div
 							class="text-xs font-medium {reorderMode ? 'text-primary' : 'text-base-content/70'}"
 						>
-							{reorderMode ? 'Reorder mode is active' : 'Priority reordering'}
+							{reorderMode
+								? m.subtitleProviders_table_reorderModeActive()
+								: m.subtitleProviders_table_priorityReordering()}
 						</div>
 						<button
 							class="btn gap-1 btn-xs {reorderMode ? 'btn-primary' : 'btn-ghost'}"
 							onclick={toggleReorderMode}
 						>
 							<GripVertical class="h-3.5 w-3.5" />
-							{reorderMode ? 'Done' : 'Reorder'}
+							{reorderMode ? m.subtitleProviders_table_done() : m.subtitleProviders_table_reorder()}
 						</button>
 					</div>
 					<p class="mt-1 text-xs text-base-content/60">
 						{reorderMode
-							? 'Drag cards or use the up/down arrows to change priority.'
-							: 'Enable reorder mode to change Provider priority.'}
+							? m.subtitleProviders_table_reorderHint()
+							: m.subtitleProviders_table_reorderEnableHint()}
 					</p>
 				</div>
 			{/if}
@@ -289,8 +298,8 @@
 								class="btn btn-ghost btn-xs"
 								onclick={() => moveProvider(index, index - 1)}
 								disabled={index === 0}
-								title="Move up"
-								aria-label="Move up"
+								title={m.subtitleProviders_table_moveUp()}
+								aria-label={m.subtitleProviders_table_moveUp()}
 							>
 								<ChevronUp class="h-3.5 w-3.5" />
 							</button>
@@ -298,8 +307,8 @@
 								class="btn btn-ghost btn-xs"
 								onclick={() => moveProvider(index, index + 1)}
 								disabled={index === providers.length - 1}
-								title="Move down"
-								aria-label="Move down"
+								title={m.subtitleProviders_table_moveDown()}
+								aria-label={m.subtitleProviders_table_moveDown()}
 							>
 								<ChevronDown class="h-3.5 w-3.5" />
 							</button>
@@ -324,8 +333,8 @@
 						class="btn btn-ghost btn-xs"
 						onclick={() => onTest(provider)}
 						disabled={testingIds.has(provider.id) || reorderMode}
-						title="Test connection"
-						aria-label="Test connection"
+						title={m.subtitleProviders_table_testConnection()}
+						aria-label={m.subtitleProviders_table_testConnection()}
 					>
 						{#if testingIds.has(provider.id)}
 							<Loader2 class="h-4 w-4 animate-spin" />
@@ -337,8 +346,12 @@
 						class="btn btn-ghost btn-xs"
 						onclick={() => onToggle(provider)}
 						disabled={testingIds.has(provider.id) || reorderMode}
-						title={provider.enabled ? 'Disable' : 'Enable'}
-						aria-label={provider.enabled ? 'Disable provider' : 'Enable provider'}
+						title={provider.enabled
+							? m.subtitleProviders_table_disable()
+							: m.subtitleProviders_table_enable()}
+						aria-label={provider.enabled
+							? m.subtitleProviders_table_disable()
+							: m.subtitleProviders_table_enable()}
 					>
 						{#if provider.enabled}
 							<ToggleRight class="h-4 w-4 text-success" />
@@ -350,8 +363,8 @@
 						class="btn btn-ghost btn-xs"
 						onclick={() => onEdit(provider)}
 						disabled={reorderMode}
-						title="Edit provider"
-						aria-label="Edit provider"
+						title={m.subtitleProviders_table_editProvider()}
+						aria-label={m.subtitleProviders_table_editProvider()}
 					>
 						<Settings class="h-4 w-4" />
 					</button>
@@ -359,8 +372,8 @@
 						class="btn text-error btn-ghost btn-xs"
 						onclick={() => onDelete(provider)}
 						disabled={reorderMode}
-						title="Delete provider"
-						aria-label="Delete provider"
+						title={m.subtitleProviders_table_deleteProvider()}
+						aria-label={m.subtitleProviders_table_deleteProvider()}
 					>
 						<Trash2 class="h-4 w-4" />
 					</button>
@@ -377,7 +390,9 @@
 					onclick={toggleReorderMode}
 				>
 					<GripVertical class="h-4 w-4" />
-					{reorderMode ? 'Done Reordering' : 'Reorder Priorities'}
+					{reorderMode
+						? m.subtitleProviders_table_doneReordering()
+						: m.subtitleProviders_table_reorderPriorities()}
 				</button>
 			</div>
 		{/if}
@@ -385,7 +400,7 @@
 		{#if reorderMode}
 			<div class="flex items-center gap-2 bg-info/10 px-4 py-2 text-sm text-info">
 				<GripVertical class="h-4 w-4" />
-				Drag providers to reorder. Lower priority numbers are searched first.
+				{m.subtitleProviders_table_dragHint()}
 			</div>
 		{/if}
 
@@ -411,7 +426,7 @@
 							onclick={() => onSort('enabled')}
 							disabled={reorderMode}
 						>
-							Status
+							{m.subtitleProviders_table_status()}
 							{#if isSortedBy('enabled') && !reorderMode}
 								{#if isAscending()}
 									<ChevronUp class="h-3 w-3" />
@@ -427,7 +442,7 @@
 							onclick={() => onSort('name')}
 							disabled={reorderMode}
 						>
-							Name
+							{m.subtitleProviders_table_name()}
 							{#if isSortedBy('name') && !reorderMode}
 								{#if isAscending()}
 									<ChevronUp class="h-3 w-3" />
@@ -437,15 +452,15 @@
 							{/if}
 						</button>
 					</th>
-					<th>Provider</th>
-					<th>Features</th>
+					<th>{m.subtitleProviders_table_provider()}</th>
+					<th>{m.subtitleProviders_table_features()}</th>
 					<th class="text-center">
 						<button
 							class="mx-auto flex items-center gap-1 hover:text-primary"
 							onclick={() => onSort('priority')}
 							disabled={reorderMode}
 						>
-							Priority
+							{m.subtitleProviders_table_priority()}
 							{#if isSortedBy('priority') && !reorderMode}
 								{#if isAscending()}
 									<ChevronUp class="h-3 w-3" />
@@ -455,8 +470,8 @@
 							{/if}
 						</button>
 					</th>
-					<th class="text-center">Rate Limit</th>
-					<th class="pl-4! text-start">Actions</th>
+					<th class="text-center">{m.subtitleProviders_table_rateLimit()}</th>
+					<th class="pl-4! text-start">{m.subtitleProviders_table_actions()}</th>
 				</tr>
 			</thead>
 			<tbody>

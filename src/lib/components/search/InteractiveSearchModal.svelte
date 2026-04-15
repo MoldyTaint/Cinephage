@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { SvelteSet, SvelteMap, SvelteURLSearchParams } from 'svelte/reactivity';
 	import {
 		X,
@@ -12,14 +13,11 @@
 		ChevronDown,
 		ChevronUp,
 		Download,
-		Bug,
-		Check,
-		Play,
-		ExternalLink
+		Bug
 	} from 'lucide-svelte';
 	import SearchResultRow from './SearchResultRow.svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
-	import { formatBytes } from '$lib/utils/format';
+	import type { ScoreComponents } from '$lib/server/quality/types.js';
 
 	interface Release {
 		guid: string;
@@ -61,6 +59,21 @@
 			meetsMinimum: boolean;
 		};
 		totalScore?: number;
+		scoreComponents?: ScoreComponents;
+		scoringResult?: {
+			totalScore?: number;
+			breakdown?: {
+				resolution?: { score: number; formats: string[] };
+				source?: { score: number; formats: string[] };
+				codec?: { score: number; formats: string[] };
+				releaseGroupTier?: { score: number; formats: string[] };
+				audio?: { score: number; formats: string[] };
+				hdr?: { score: number; formats: string[] };
+				streaming?: { score: number; formats: string[] };
+				enhancement?: { score: number; formats: string[] };
+				banned?: { score: number; formats: string[] };
+			};
+		};
 		rejected?: boolean;
 	}
 
@@ -95,6 +108,10 @@
 		rejectedIndexers?: RejectedIndexer[];
 	}
 
+	interface NntpServerStatus {
+		enabled?: boolean;
+	}
+
 	export type SearchMode = 'all' | 'multiSeasonPack';
 
 	interface Props {
@@ -103,6 +120,7 @@
 		tmdbId?: number;
 		imdbId?: string | null;
 		tvdbId?: number | null;
+		expectedEpisodeCount?: number | null;
 		year?: number | null;
 		mediaType: 'movie' | 'tv';
 		scoringProfileId?: string | null;
@@ -113,7 +131,7 @@
 		onGrab: (
 			release: Release,
 			streaming?: boolean
-		) => Promise<{ success: boolean; error?: string }>;
+		) => Promise<{ success: boolean; error?: string; errorCode?: string }>;
 	}
 
 	let {
@@ -122,6 +140,7 @@
 		tmdbId,
 		imdbId,
 		tvdbId,
+		expectedEpisodeCount,
 		year,
 		mediaType,
 		scoringProfileId,
@@ -142,6 +161,9 @@
 	let streamingIds = new SvelteSet<string>();
 	let grabErrors = new SvelteMap<string, string>();
 	let searchTriggered = $state(false);
+	let usenetStreamingState = $state<
+		'unknown' | 'available' | 'noConfiguredServers' | 'noEnabledServers' | 'unavailable'
+	>('unknown');
 
 	// Sorting
 	let sortBy = $state<'score' | 'seeders' | 'size' | 'age'>('score');
@@ -191,8 +213,70 @@
 		return `${release.guid}-${release.indexerId}`;
 	}
 
+	async function loadUsenetStreamingAvailability() {
+		try {
+			usenetStreamingState = 'unknown';
+			const response = await fetch('/api/usenet/servers');
+
+			if (!response.ok) {
+				usenetStreamingState = 'unavailable';
+				return;
+			}
+
+			const servers = (await response.json()) as NntpServerStatus[];
+
+			if (servers.length === 0) {
+				usenetStreamingState = 'noConfiguredServers';
+				return;
+			}
+
+			if (!servers.some((server) => server.enabled)) {
+				usenetStreamingState = 'noEnabledServers';
+				return;
+			}
+
+			usenetStreamingState = 'available';
+		} catch {
+			usenetStreamingState = 'unavailable';
+		}
+	}
+
+	function getGrabErrorMessage(errorCode?: string, error?: string): string {
+		switch (errorCode) {
+			case 'NNTP_NOT_CONFIGURED':
+				return 'No NNTP server configured. Add one in Settings -> Integrations -> NNTP Servers.';
+			case 'NNTP_NOT_ENABLED':
+				return 'No enabled NNTP server. Enable at least one server to use Stream.';
+			case 'NNTP_UNAVAILABLE':
+				return 'NNTP streaming is unavailable right now. Check NNTP server connectivity.';
+			case 'NO_ENABLED_DOWNLOAD_CLIENT':
+				return 'No enabled download client is configured for this protocol.';
+			default:
+				return error || 'Failed to grab';
+		}
+	}
+
+	const showUsenetStreamButton = $derived.by(() => usenetStreamingState !== 'noConfiguredServers');
+	const canUsenetStream = $derived.by(() => usenetStreamingState === 'available');
+	const usenetStreamUnavailableReason = $derived.by(() => {
+		switch (usenetStreamingState) {
+			case 'unknown':
+				return 'Checking NNTP server availability...';
+			case 'noEnabledServers':
+				return 'NNTP servers are configured but disabled. Enable one to stream.';
+			case 'unavailable':
+				return 'Unable to verify NNTP server status right now.';
+			default:
+				return null;
+		}
+	});
+
 	// Helper to check if a release is a multi-season pack
 	function isMultiSeasonPack(release: Release): boolean {
+		const largeEpisodeThreshold = expectedEpisodeCount
+			? Math.max(50, Math.floor(expectedEpisodeCount * 0.8))
+			: 70;
+
 		// Check episodeMatch first (from enhanced search results)
 		const episodeMatch = release.episodeMatch;
 		if (episodeMatch) {
@@ -200,6 +284,14 @@
 			if (episodeMatch.isCompleteSeries) return true;
 			// Multiple seasons in the array
 			if (episodeMatch.seasons && episodeMatch.seasons.length > 1) return true;
+			// Trackers may encode multi-season packs as S1E1-171 style ranges.
+			if (
+				episodeMatch.isSeasonPack &&
+				episodeMatch.season === 1 &&
+				(episodeMatch.episodes?.length ?? 0) >= largeEpisodeThreshold
+			) {
+				return true;
+			}
 		}
 
 		// Fall back to parsed.episode info
@@ -207,7 +299,51 @@
 		if (episodeInfo) {
 			if (episodeInfo.isCompleteSeries) return true;
 			if (episodeInfo.seasons && episodeInfo.seasons.length > 1) return true;
+			// Tracker fallback: some complete/multi-season packs are encoded as S1E1-171.
+			// Treat very large season-1 episode spans as multi-pack candidates.
+			if (
+				episodeInfo.isSeasonPack &&
+				episodeInfo.season === 1 &&
+				(episodeInfo.episodes?.length ?? 0) >= largeEpisodeThreshold
+			) {
+				return true;
+			}
 		}
+
+		// Title-based fallback for tracker formats where parser metadata may be incomplete
+		const title = release.title;
+		if (/\bS\d{1,2}[\s._-]*[-–—][\s._-]*S?\d{1,2}\b/i.test(title)) return true;
+		if (/\bS\d{1,2}[\s._-]?E\d{1,3}\s*[-–—]\s*S\d{1,2}[\s._-]?E\d{1,3}\b/i.test(title)) return true;
+		if (/\b\d{1,2}x\d{1,3}\s*[-–—]\s*\d{1,2}x\d{1,3}\b/i.test(title)) return true;
+		if (
+			/\bSeasons?[\s:._-]*\d{1,2}\s*(?:[-–—]|to|through|thru)\s*\d{1,2}(?:\s*(?:of|\/)\s*\d{1,2})?\b/i.test(
+				title
+			)
+		)
+			return true;
+		if (
+			/\bСезоны?[\s:._-]*\d{1,2}\s*(?:[-–—]|до)\s*\d{1,2}(?:\s*(?:из|of|\/)\s*\d{1,2})?\b/i.test(
+				title
+			)
+		)
+			return true;
+		if (
+			/\b(?:every[\s._-]?season|all[\s._-]?seasons?|полный[\s._-]*сериал|все[\s._-]*сезоны)\b/i.test(
+				title
+			)
+		)
+			return true;
+
+		// Guardrail for generic words like "collection"/"bundle": require TV context nearby.
+		const hasTvContext =
+			/\b(?:series|seasons?|episodes?|s\d{1,2}(?:e\d{1,3})?|(?:\d{1,2})x\d{1,3})\b/i.test(title);
+		if (
+			hasTvContext &&
+			/\b(?:complete[\s._-]?collection|full[\s._-]?collection|mega[\s._-]?pack|bundle)\b/i.test(
+				title
+			)
+		)
+			return true;
 
 		return false;
 	}
@@ -263,6 +399,8 @@
 		return releases;
 	});
 
+	const rawReleaseCount = $derived.by(() => releases.length);
+
 	const modeRejectedCount = $derived.by(() => modeBaseReleases.filter((r) => r.rejected).length);
 
 	const reportedIndexerResults = $derived.by(() => {
@@ -283,6 +421,7 @@
 		return Object.entries(meta.indexerResults).map(([indexerId, result]) => ({
 			indexerId,
 			...result,
+			rawCount: result.count,
 			displayCount:
 				searchMode === 'multiSeasonPack' ? (modeCountsByIndexer.get(indexerId) ?? 0) : result.count
 		}));
@@ -292,7 +431,8 @@
 	$effect(() => {
 		if (open && releases.length === 0 && !searching && !searchTriggered) {
 			searchTriggered = true;
-			performSearch();
+			void loadUsenetStreamingAvailability();
+			void performSearch();
 		}
 	});
 
@@ -309,6 +449,7 @@
 			grabErrors.clear();
 			filterQuery = '';
 			searchTriggered = false;
+			usenetStreamingState = 'unknown';
 		}
 	});
 
@@ -322,6 +463,8 @@
 				enrich: 'true',
 				filterRejected: 'false' // Keep rejected for display, but mark them
 			});
+
+			if (searchMode) params.set('searchMode', searchMode);
 
 			if (tmdbId) params.set('tmdbId', tmdbId.toString());
 			if (imdbId) params.set('imdbId', imdbId);
@@ -353,6 +496,12 @@
 	}
 
 	async function handleGrab(release: Release, streaming?: boolean) {
+		if (streaming && !canUsenetStream) {
+			const reason = usenetStreamUnavailableReason ?? 'NNTP streaming is unavailable';
+			grabErrors.set(releaseKey(release), reason);
+			return;
+		}
+
 		const key = releaseKey(release);
 		grabbingIds.add(key);
 		if (streaming) {
@@ -365,7 +514,7 @@
 			if (result.success) {
 				grabbedIds.add(key);
 			} else {
-				grabErrors.set(key, result.error || 'Failed to grab');
+				grabErrors.set(key, getGrabErrorMessage(result.errorCode, result.error));
 			}
 		} catch (err) {
 			grabErrors.set(key, err instanceof Error ? err.message : 'Failed');
@@ -373,27 +522,6 @@
 			grabbingIds.delete(key);
 			streamingIds.delete(key);
 		}
-	}
-
-	function toggleSort(field: typeof sortBy) {
-		if (sortBy === field) {
-			sortDir = sortDir === 'desc' ? 'asc' : 'desc';
-		} else {
-			sortBy = field;
-			sortDir = 'desc';
-		}
-	}
-
-	function getTorrentAvailabilityText(
-		release: Release
-	): { seeders: string; leechers: string } | null {
-		if (release.protocol !== 'torrent') return null;
-		const hasSeederData = release.seeders !== undefined || release.leechers !== undefined;
-		if (!hasSeederData) return null;
-		return {
-			seeders: release.seeders !== undefined ? String(release.seeders) : '—',
-			leechers: release.leechers !== undefined ? String(release.leechers) : '—'
-		};
 	}
 </script>
 
@@ -449,7 +577,7 @@
 			<div class="mb-4 space-y-2">
 				<div class="flex flex-wrap items-center gap-4 text-sm text-base-content/70">
 					{#if searchMode === 'multiSeasonPack'}
-						<span>{filteredReleases.length} of {modeBaseReleases.length} results</span>
+						<span>{filteredReleases.length} of {modeBaseReleases.length} multi-pack matches</span>
 						{#if modeRejectedCount}
 							<span class="text-warning">{modeRejectedCount} rejected</span>
 						{/if}
@@ -579,7 +707,7 @@
 							<div class="mb-2">
 								<span class="font-medium text-base-content/80"
 									>{searchMode === 'multiSeasonPack'
-										? 'Searched (multi-pack matches):'
+										? 'Searched (multi-pack matches / raw):'
 										: 'Searched:'}</span
 								>
 								<div class="mt-1 flex flex-wrap gap-2">
@@ -596,7 +724,11 @@
 											{:else if result.displayCount > 0}
 												<CheckCircle2 size={12} />
 											{/if}
-											{result.name}: {result.displayCount}
+											{#if searchMode === 'multiSeasonPack'}
+												{result.name}: {result.displayCount}/{result.rawCount}
+											{:else}
+												{result.name}: {result.displayCount}
+											{/if}
 											{#if result.error}
 												<span class="tooltip" data-tip={result.error}>
 													<AlertCircle size={12} />
@@ -687,7 +819,7 @@
 			<div class="form-control w-full sm:w-auto">
 				<input
 					type="text"
-					placeholder="Search results…"
+					placeholder={m.search_placeholder_filterResults()}
 					class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 px-4 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none sm:w-48"
 					bind:value={filterQuery}
 				/>
@@ -695,12 +827,12 @@
 
 			<label class="label cursor-pointer gap-2">
 				<input type="checkbox" class="checkbox checkbox-sm" bind:checked={showRejected} />
-				<span class="label-text text-xs sm:text-sm">Show rejected</span>
+				<span class="label-text text-xs sm:text-sm">{m.search_label_showRejected()}</span>
 			</label>
 
 			<!-- Mobile sort control -->
 			<div class="ml-auto flex items-center gap-1 sm:hidden">
-				<span class="text-xs text-base-content/60">Sort:</span>
+				<span class="text-xs text-base-content/60">{m.search_label_sort()}</span>
 				<select
 					class="select-bordered select select-xs"
 					value={sortBy}
@@ -708,9 +840,9 @@
 						sortBy = e.currentTarget.value as typeof sortBy;
 					}}
 				>
-					<option value="score">Score</option>
-					<option value="seeders">Seeders</option>
-					<option value="size">Size</option>
+					<option value="score">{m.search_sort_score()}</option>
+					<option value="seeders">{m.search_sort_seeders()}</option>
+					<option value="size">{m.search_sort_size()}</option>
 					<option value="age">Age</option>
 				</select>
 				<button
@@ -737,6 +869,15 @@
 		{:else if filteredReleases.length === 0}
 			<div class="flex flex-col items-center justify-center py-12">
 				{#if searchMode === 'multiSeasonPack'}
+					{#if rawReleaseCount > 0}
+						<div
+							class="mb-4 max-w-xl rounded-lg border border-base-300 bg-base-200 p-3 text-center text-sm"
+						>
+							<p class="mt-1 text-base-content/60">
+								{rawReleaseCount} releases matched the title, but none matched complete/multi-season rules.
+							</p>
+						</div>
+					{/if}
 					<Package size={48} class="text-base-content/30" />
 					<p class="mt-4 text-base-content/60">No multi-season packs found</p>
 					<p class="mt-2 text-sm text-base-content/40">
@@ -748,196 +889,20 @@
 				{/if}
 			</div>
 		{:else}
-			<!-- Desktop table -->
-			<div class="hidden overflow-x-auto sm:block">
-				<table class="table table-sm">
-					<thead class="sticky top-0 z-10 bg-base-100">
-						<tr>
-							<th class="w-1/3">
-								<button class="btn btn-ghost btn-xs" onclick={() => toggleSort('score')}>
-									Release
-								</button>
-							</th>
-							<th>Indexer</th>
-							<th>
-								<button class="btn btn-ghost btn-xs" onclick={() => toggleSort('size')}>
-									Size {sortBy === 'size' ? (sortDir === 'desc' ? '↓' : '↑') : ''}
-								</button>
-							</th>
-							<th>
-								<button class="btn btn-ghost btn-xs" onclick={() => toggleSort('seeders')}>
-									S/L {sortBy === 'seeders' ? (sortDir === 'desc' ? '↓' : '↑') : ''}
-								</button>
-							</th>
-							<th>
-								<button class="btn btn-ghost btn-xs" onclick={() => toggleSort('age')}>
-									Age {sortBy === 'age' ? (sortDir === 'desc' ? '↓' : '↑') : ''}
-								</button>
-							</th>
-							<th>
-								<button class="btn btn-ghost btn-xs" onclick={() => toggleSort('score')}>
-									Score {sortBy === 'score' ? (sortDir === 'desc' ? '↓' : '↑') : ''}
-								</button>
-							</th>
-							<th>Actions</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each filteredReleases as release (releaseKey(release))}
-							<SearchResultRow
-								{release}
-								onGrab={handleGrab}
-								grabbing={grabbingIds.has(releaseKey(release))}
-								grabbed={grabbedIds.has(releaseKey(release))}
-								streaming={streamingIds.has(releaseKey(release))}
-								error={grabErrors.get(releaseKey(release))}
-								onClick={showDebugPanel ? () => (selectedDebugRelease = release) : undefined}
-								clickable={showDebugPanel}
-							/>
-						{/each}
-					</tbody>
-				</table>
-			</div>
-
-			<!-- Mobile card list -->
-			<div class="space-y-2 sm:hidden">
+			<!-- Results list - unified card layout (works on all screen sizes) -->
+			<div class="space-y-3">
 				{#each filteredReleases as release (releaseKey(release))}
-					{@const key = releaseKey(release)}
-					{@const isGrabbing = grabbingIds.has(key)}
-					{@const isGrabbed = grabbedIds.has(key)}
-					{@const isStreaming = streamingIds.has(key)}
-					{@const grabError = grabErrors.get(key)}
-					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-					<div
-						class="rounded-lg bg-base-200 p-3"
-						class:opacity-50={release.rejected}
-						class:cursor-pointer={showDebugPanel}
-						onclick={showDebugPanel ? () => (selectedDebugRelease = release) : undefined}
-						role={showDebugPanel ? 'button' : undefined}
-						tabindex={showDebugPanel ? 0 : undefined}
-					>
-						<!-- Release title -->
-						<p class="text-sm leading-snug font-medium break-all">{release.title}</p>
-
-						<!-- Quality badges -->
-						<div class="mt-1.5 flex flex-wrap gap-1">
-							<span
-								class="badge badge-xs {release.protocol === 'torrent'
-									? 'badge-info'
-									: release.protocol === 'streaming'
-										? 'badge-success'
-										: 'badge-warning'}"
-							>
-								{release.protocol === 'torrent'
-									? 'Torrent'
-									: release.protocol === 'streaming'
-										? 'Stream'
-										: 'Usenet'}
-							</span>
-							{#if release.parsed?.resolution && release.parsed.resolution.toLowerCase() !== 'unknown'}
-								<span class="badge badge-xs badge-primary">{release.parsed.resolution}</span>
-							{/if}
-							{#if release.parsed?.source && release.parsed.source.toLowerCase() !== 'unknown'}
-								<span class="badge badge-xs badge-primary">{release.parsed.source}</span>
-							{/if}
-							{#if release.parsed?.codec && release.parsed.codec.toLowerCase() !== 'unknown'}
-								<span class="badge badge-xs badge-primary">{release.parsed.codec}</span>
-							{/if}
-							{#if release.parsed?.hdr && release.parsed.hdr.toLowerCase() !== 'unknown'}
-								<span class="badge badge-xs badge-primary">{release.parsed.hdr}</span>
-							{/if}
-							{#if release.parsed?.releaseGroup && release.parsed.releaseGroup.toLowerCase() !== 'unknown'}
-								<span class="badge badge-ghost badge-xs">{release.parsed.releaseGroup}</span>
-							{/if}
-						</div>
-
-						<!-- Meta row: indexer, size, seeders, age, score -->
-						<div
-							class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-base-content/70"
-						>
-							<span>{release.indexerName}</span>
-							{#if release.size > 0}
-								<span>{formatBytes(release.size)}</span>
-							{/if}
-							{#if release.protocol === 'torrent'}
-								{@const availability = getTorrentAvailabilityText(release)}
-								{#if availability}
-									<span>
-										<span class="text-success">{availability.seeders}</span>/<span
-											class="text-error">{availability.leechers}</span
-										>
-									</span>
-								{:else}
-									<span class="text-base-content/50">—</span>
-								{/if}
-							{/if}
-							{#if release.totalScore !== undefined}
-								<span
-									class="font-medium {release.totalScore >= 700
-										? 'text-success'
-										: release.totalScore >= 400
-											? 'text-warning'
-											: 'text-error'}"
-								>
-									Score: {release.totalScore}
-								</span>
-							{/if}
-						</div>
-
-						<!-- Actions -->
-						<div class="mt-2 flex items-center gap-1">
-							{#if isGrabbed}
-								<span class="badge gap-1 badge-sm badge-success">
-									<Check size={12} />
-									Grabbed
-								</span>
-							{:else if grabError}
-								<span class="badge gap-1 badge-sm badge-error" title={grabError}>
-									<X size={12} />
-									Failed
-								</span>
-							{:else}
-								{#if release.protocol === 'usenet'}
-									<button
-										class="btn btn-xs btn-accent"
-										onclick={() => handleGrab(release, true)}
-										disabled={isGrabbing || isStreaming}
-									>
-										{#if isStreaming}
-											<Loader2 size={12} class="animate-spin" />
-										{:else}
-											<Play size={12} />
-										{/if}
-										Stream
-									</button>
-								{/if}
-								<button
-									class="btn btn-xs btn-primary"
-									onclick={() => handleGrab(release, false)}
-									disabled={isGrabbing || isStreaming}
-								>
-									{#if isGrabbing}
-										<Loader2 size={12} class="animate-spin" />
-									{:else}
-										<Download size={12} />
-									{/if}
-									Grab
-								</button>
-							{/if}
-							{#if release.commentsUrl}
-								<!-- eslint-disable svelte/no-navigation-without-resolve -- External URL -->
-								<a
-									href={release.commentsUrl}
-									target="_blank"
-									rel="noopener noreferrer"
-									class="btn btn-ghost btn-xs"
-								>
-									<ExternalLink size={12} />
-								</a>
-								<!-- eslint-enable svelte/no-navigation-without-resolve -->
-							{/if}
-						</div>
-					</div>
+					<SearchResultRow
+						{release}
+						onGrab={handleGrab}
+						grabbing={grabbingIds.has(releaseKey(release))}
+						grabbed={grabbedIds.has(releaseKey(release))}
+						streaming={streamingIds.has(releaseKey(release))}
+						error={grabErrors.get(releaseKey(release))}
+						{showUsenetStreamButton}
+						{canUsenetStream}
+						{usenetStreamUnavailableReason}
+					/>
 				{/each}
 			</div>
 		{/if}

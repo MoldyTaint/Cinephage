@@ -19,6 +19,7 @@ export { default as ChannelLineupRow } from './ChannelLineupRow.svelte';
 export { default as ChannelEditModal } from './ChannelEditModal.svelte';
 export { default as ChannelCategoryManagerModal } from './ChannelCategoryManagerModal.svelte';
 export { default as ChannelBulkActionBar } from './ChannelBulkActionBar.svelte';
+export { default as ChannelBulkCleanNamesModal } from './ChannelBulkCleanNamesModal.svelte';
 export { default as ChannelRemoveModal } from './ChannelRemoveModal.svelte';
 export { default as ChannelBrowserModal } from './ChannelBrowserModal.svelte';
 

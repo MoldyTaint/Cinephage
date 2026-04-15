@@ -19,6 +19,9 @@ import { createSSEStream } from '$lib/server/sse';
 import { liveTvEvents } from '$lib/server/livetv/LiveTvEvents';
 import { getLiveTvAccountManager } from '$lib/server/livetv/LiveTvAccountManager';
 import type { RequestHandler } from './$types';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LiveTVAccountsStream' });
 
 export const GET: RequestHandler = async () => {
 	return createSSEStream((send) => {
@@ -27,8 +30,14 @@ export const GET: RequestHandler = async () => {
 				const manager = getLiveTvAccountManager();
 				const accounts = await manager.getAccounts();
 				send('accounts:initial', { accounts });
-			} catch {
-				// Error fetching initial state
+			} catch (error) {
+				logger.error(
+					{
+						error: error instanceof Error ? error.message : 'Unknown error'
+					},
+					'Failed to fetch initial LiveTV accounts state'
+				);
+				send('accounts:error', { message: 'Failed to fetch initial state' });
 			}
 		};
 

@@ -10,6 +10,7 @@
 		X,
 		Search
 	} from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 	import type { ChannelLineupItemWithDetails, EpgProgram } from '$lib/types/livetv';
 	import { onMount } from 'svelte';
 	import { getEpgConfig } from './epgConfig';
@@ -92,7 +93,6 @@
 		Math.max(ROW_TOTAL_HEIGHT, filteredLineup.length * ROW_TOTAL_HEIGHT)
 	);
 	const isViewingToday = $derived(dayOffset === 0);
-	const currentDayActionLabel = $derived(isViewingToday ? 'Now' : 'Today');
 	let timeInterval: ReturnType<typeof setInterval> | null = null;
 
 	// Selected program for details
@@ -311,14 +311,14 @@
 		<div class="flex w-full items-center justify-between">
 			<button class="btn gap-1 px-3 btn-outline btn-sm" onclick={navigatePrev}>
 				<ChevronLeft class="h-4 w-4" />
-				<span class="hidden sm:inline">Previous</span>
-				<span class="sm:hidden">Prev</span>
+				<span class="hidden sm:inline">{m.livetv_epgGuide_previous()}</span>
+				<span class="sm:hidden">{m.livetv_epgGuide_prev()}</span>
 			</button>
 			<div class="text-center text-sm font-semibold text-base-content/80">
 				{formatLongDate(windowStart)}
 			</div>
 			<button class="btn gap-1 px-3 btn-outline btn-sm" onclick={navigateNext}>
-				<span>Next</span>
+				<span>{m.livetv_epgGuide_next()}</span>
 				<ChevronRight class="h-4 w-4" />
 			</button>
 		</div>
@@ -328,7 +328,7 @@
 			{:else}
 				<Calendar class="h-4 w-4" />
 			{/if}
-			<span>{currentDayActionLabel}</span>
+			<span>{isViewingToday ? m.livetv_epgGuide_now() : m.livetv_epgGuide_today()}</span>
 		</button>
 	</div>
 
@@ -339,18 +339,18 @@
 			/>
 			<input
 				type="text"
-				placeholder="Search channels..."
+				placeholder={m.livetv_epgGuide_searchPlaceholder()}
 				class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-9 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				bind:value={channelSearch}
 			/>
 		</div>
 		{#if channelSearch}
 			<div class="text-xs text-base-content/60">
-				Showing {filteredLineup.length} of {lineup.length}
+				{m.livetv_epgGuide_showingCount({ count: filteredLineup.length, total: lineup.length })}
 			</div>
 		{/if}
 		{#if loadingPrograms && programsByChannel.size > 0}
-			<div class="text-xs text-base-content/60">Updating guide data...</div>
+			<div class="text-xs text-base-content/60">{m.livetv_epgGuide_updating()}</div>
 		{/if}
 	</div>
 
@@ -360,9 +360,9 @@
 			<Loader2 class="h-8 w-8 animate-spin text-primary" />
 		</div>
 	{:else if lineup.length === 0}
-		<div class="py-12 text-center text-base-content/50">No channels in lineup</div>
+		<div class="py-12 text-center text-base-content/50">{m.livetv_epgGuide_noChannels()}</div>
 	{:else if filteredLineup.length === 0}
-		<div class="py-12 text-center text-base-content/50">No channels match your search</div>
+		<div class="py-12 text-center text-base-content/50">{m.livetv_epgGuide_noMatch()}</div>
 	{:else}
 		<div
 			class="relative overflow-auto rounded-lg border border-base-300 bg-base-100"
@@ -378,7 +378,7 @@
 						class="sticky top-0 left-0 z-40 flex shrink-0 items-center border-r border-base-300 bg-base-200 px-3 font-medium"
 						style="width: {CHANNEL_COLUMN_WIDTH}px; height: 40px;"
 					>
-						Channels
+						{m.livetv_epgGuide_channelsHeader()}
 					</div>
 					<!-- Time slots -->
 					<div class="relative flex" style="width: {gridWidth}px;">
@@ -465,7 +465,7 @@
 												<div
 													class="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-base-content/35"
 												>
-													N/A
+													{m.livetv_epgGuide_na()}
 												</div>
 											{/if}
 										</div>
@@ -515,8 +515,11 @@
 		<div class="modal-box w-full max-w-[min(28rem,calc(100vw-2rem))] wrap-break-word">
 			<div class="mb-4 flex items-start justify-between">
 				<div>
-					<h3 class="text-lg font-bold">{selectedProgram.program.title}</h3>
-					<p class="text-sm text-base-content/60">{selectedProgram.channel.displayName}</p>
+					<h3 class="text-lg font-bold">{m.livetv_epgGuide_programTitle()}</h3>
+					<p class="text-sm text-base-content/60">{selectedProgram.program.title}</p>
+					<p class="text-sm text-base-content/60">
+						{m.livetv_epgGuide_channel()}: {selectedProgram.channel.displayName}
+					</p>
 				</div>
 				<button class="btn btn-circle btn-ghost btn-sm" onclick={closeProgramDetails}>
 					<X class="h-4 w-4" />
@@ -531,7 +534,9 @@
 						{formatTime(new Date(selectedProgram.program.endTime))}
 					</span>
 					{#if isCurrentlyAiring(selectedProgram.program)}
-						<span class="badge badge-sm badge-primary">LIVE</span>
+						<span class="badge badge-sm badge-primary"
+							>{m.livetv_channelScheduleModal_liveBadge()}</span
+						>
 					{/if}
 				</div>
 
@@ -545,28 +550,28 @@
 
 				{#if selectedProgram.program.director}
 					<div class="text-sm">
-						<span class="text-base-content/50">Director:</span>
+						<span class="text-base-content/50">{m.livetv_epgGuide_director()}:</span>
 						{selectedProgram.program.director}
 					</div>
 				{/if}
 
 				{#if selectedProgram.program.actor}
 					<div class="text-sm">
-						<span class="text-base-content/50">Cast:</span>
+						<span class="text-base-content/50">{m.livetv_epgGuide_cast()}:</span>
 						{selectedProgram.program.actor}
 					</div>
 				{/if}
 			</div>
 
 			<div class="modal-action">
-				<button class="btn btn-ghost" onclick={closeProgramDetails}>Close</button>
+				<button class="btn btn-ghost" onclick={closeProgramDetails}>{m.action_close()}</button>
 			</div>
 		</div>
 		<button
 			type="button"
 			class="modal-backdrop cursor-default border-none bg-black/50"
 			onclick={closeProgramDetails}
-			aria-label="Close modal"
+			aria-label={m.ui_modal_closeModal()}
 		></button>
 	</div>
 {/if}

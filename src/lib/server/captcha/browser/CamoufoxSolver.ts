@@ -6,7 +6,9 @@
  */
 
 import type { Page } from 'playwright-core';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 import type {
 	ChallengeType,
 	SolveResult,
@@ -101,7 +103,7 @@ export async function solveChallenge(
 		}
 
 		// Navigate to the URL
-		logger.debug('[CamoufoxSolver] Navigating to URL', { url: request.url });
+		logger.debug({ url: request.url }, '[CamoufoxSolver] Navigating to URL');
 
 		const response = await page.goto(request.url, {
 			timeout: Math.min(timeout, 30000),
@@ -140,10 +142,13 @@ export async function solveChallenge(
 			};
 		}
 
-		logger.debug('[CamoufoxSolver] Challenge detected', {
-			type: challengeType,
-			confidence: detectionResult.confidence
-		});
+		logger.debug(
+			{
+				type: challengeType,
+				confidence: detectionResult.confidence
+			},
+			'[CamoufoxSolver] Challenge detected'
+		);
 
 		// Wait for challenge to complete
 		// Camoufox + humanize handles most of this automatically
@@ -153,10 +158,13 @@ export async function solveChallenge(
 			// Get final cookies
 			const cookies = await camoufoxManager.extractCookies(context);
 
-			logger.info('[CamoufoxSolver] Challenge solved', {
-				type: challengeType,
-				timeMs: Date.now() - startTime
-			});
+			logger.info(
+				{
+					type: challengeType,
+					timeMs: Date.now() - startTime
+				},
+				'[CamoufoxSolver] Challenge solved'
+			);
 
 			return {
 				success: true,
@@ -188,7 +196,7 @@ export async function solveChallenge(
 		return createErrorResult('Challenge not solved within timeout', startTime, challengeType);
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
-		logger.error('[CamoufoxSolver] Error solving challenge', { error: errorMessage });
+		logger.error({ err: error }, '[CamoufoxSolver] Error solving challenge');
 		return createErrorResult(errorMessage, startTime);
 	} finally {
 		// Always close the browser
@@ -249,10 +257,13 @@ export async function testForChallenge(
 			confidence: result.confidence
 		};
 	} catch (error) {
-		logger.warn('[CamoufoxSolver] Error testing for challenge', {
-			url,
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.warn(
+			{
+				url,
+				err: error
+			},
+			'[CamoufoxSolver] Error testing for challenge'
+		);
 		return { hasChallenge: false, type: 'unknown', confidence: 0 };
 	} finally {
 		if (managed) {
@@ -333,12 +344,15 @@ export async function browserFetch(
 		const body = await page.content();
 		const finalUrl = page.url();
 
-		logger.debug('[CamoufoxSolver] Browser fetch completed', {
-			url: request.url,
-			finalUrl,
-			bodyLength: body.length,
-			timeMs: Date.now() - startTime
-		});
+		logger.debug(
+			{
+				url: request.url,
+				finalUrl,
+				bodyLength: body.length,
+				timeMs: Date.now() - startTime
+			},
+			'[CamoufoxSolver] Browser fetch completed'
+		);
 
 		const userAgent = await page
 			.evaluate(() => navigator.userAgent)
@@ -363,7 +377,7 @@ export async function browserFetch(
 		};
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
-		logger.error('[CamoufoxSolver] Browser fetch error', { error: errorMessage });
+		logger.error({ err: error }, '[CamoufoxSolver] Browser fetch error');
 		return {
 			success: false,
 			body: '',

@@ -25,7 +25,11 @@ const SOURCE_PATTERNS: Array<{ pattern: RegExp; source: Source }> = [
 	{ pattern: /\bbdrip\b/i, source: 'bluray' },
 	{ pattern: /\bbrrip\b/i, source: 'bluray' },
 	{ pattern: /\bbd[\s._-]?rip\b/i, source: 'bluray' },
+	{ pattern: /\bbd(?:25|50)\b/i, source: 'bluray' },
 	{ pattern: /\bbdmv\b/i, source: 'bluray' },
+
+	// HDRip (keep distinct from WEBRip/BluRay)
+	{ pattern: /\bhd[\s._-]?rip\b/i, source: 'hdrip' },
 
 	// WEB-DL (download from streaming service, no re-encoding)
 	{ pattern: /\bweb[\s._-]?dl\b/i, source: 'webdl' },
@@ -60,6 +64,8 @@ const SOURCE_PATTERNS: Array<{ pattern: RegExp; source: Source }> = [
 	{ pattern: /\bdvd5\b/i, source: 'dvd' },
 
 	// Screener variants
+	{ pattern: /\bweb[\s._-]?screener\b/i, source: 'screener' },
+	{ pattern: /\bwebscr(?:eener)?\b/i, source: 'screener' },
 	{ pattern: /\bscreener\b/i, source: 'screener' },
 	{ pattern: /\bscr\b/i, source: 'screener' },
 	{ pattern: /\bdvdscr\b/i, source: 'screener' },

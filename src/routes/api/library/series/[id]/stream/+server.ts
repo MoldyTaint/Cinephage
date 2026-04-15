@@ -1,6 +1,7 @@
 import { createSSEStream } from '$lib/server/sse';
 import { downloadMonitor } from '$lib/server/downloadClients/monitoring';
 import { importService } from '$lib/server/downloadClients/import';
+import { eventBuffer } from '$lib/server/sse/EventBuffer.js';
 import { db } from '$lib/server/db';
 import {
 	series,
@@ -14,6 +15,7 @@ import {
 import { eq, asc, inArray, and } from 'drizzle-orm';
 import type { RequestHandler } from '@sveltejs/kit';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
+import { logger } from '$lib/logging';
 
 const ACTIVE_DOWNLOAD_STATUSES = [
 	'queued',
@@ -65,6 +67,11 @@ interface SubtitleInfo {
 	isForced?: boolean;
 	isHearingImpaired?: boolean;
 	format?: string;
+	matchScore?: number | null;
+	providerId?: string | null;
+	dateAdded?: string | null;
+	wasSynced?: boolean;
+	syncOffset?: number | null;
 }
 
 interface SeasonWithEpisodes {
@@ -224,7 +231,12 @@ async function getSeriesData(seriesId: string) {
 						language: subtitles.language,
 						isForced: subtitles.isForced,
 						isHearingImpaired: subtitles.isHearingImpaired,
-						format: subtitles.format
+						format: subtitles.format,
+						matchScore: subtitles.matchScore,
+						providerId: subtitles.providerId,
+						dateAdded: subtitles.dateAdded,
+						wasSynced: subtitles.wasSynced,
+						syncOffset: subtitles.syncOffset
 					})
 					.from(subtitles)
 					.where(inArray(subtitles.episodeId, episodeIds))
@@ -240,7 +252,12 @@ async function getSeriesData(seriesId: string) {
 				language: sub.language,
 				isForced: sub.isForced ?? undefined,
 				isHearingImpaired: sub.isHearingImpaired ?? undefined,
-				format: sub.format ?? undefined
+				format: sub.format ?? undefined,
+				matchScore: sub.matchScore,
+				providerId: sub.providerId,
+				dateAdded: sub.dateAdded,
+				wasSynced: sub.wasSynced ?? undefined,
+				syncOffset: sub.syncOffset
 			});
 			episodeIdToSubtitles.set(sub.episodeId, existing);
 		}
@@ -326,11 +343,14 @@ async function getQueueItems(seriesId: string): Promise<QueueItem[]> {
  * Server-Sent Events endpoint for real-time series detail updates
  *
  * Events emitted:
- * - media:initial - Full series state on connect
+ * - queue:sync - Current queue state after connect
+ * - media:updated - Refetched series state after metadata changes
+ * - queue:added - New download added for this series
  * - queue:updated - Queue item progress/status change
  * - file:added - New episode file imported
  * - file:removed - Episode file deleted
- * - episode:updated - Episode metadata changes
+ * - search:started - Series search began
+ * - search:completed - Series search finished
  */
 export const GET: RequestHandler = async ({ params }) => {
 	const seriesId = params.id;
@@ -340,24 +360,155 @@ export const GET: RequestHandler = async ({ params }) => {
 	}
 
 	return createSSEStream((send) => {
-		// Send initial state
-		const sendInitialState = async () => {
+		// Concurrency control for server-side refresh snapshots to prevent race conditions
+		// where multiple calls complete out of order and overwrite with stale data.
+		let isFetchingMediaUpdate = false;
+		let pendingVersion = 0;
+		let lastSentVersion = 0;
+		let queueSyncTime = 0;
+
+		const sendQueueSync = async () => {
 			try {
+				const queueItems = await getQueueItems(seriesId);
+				send('queue:sync', { queueItems });
+				return queueItems;
+			} catch (error) {
+				logger.error({ err: error, seriesId }, '[SeriesStream] Failed to fetch queue sync');
+				return [];
+			}
+		};
+
+		const sendMediaUpdate = async (version: number = Date.now()) => {
+			// If already fetching, just mark that we need another refresh with this version
+			if (isFetchingMediaUpdate) {
+				pendingVersion = Math.max(pendingVersion, version);
+				logger.debug(
+					{
+						seriesId,
+						version,
+						pendingVersion
+					},
+					'[SeriesStream] Queuing refresh request'
+				);
+				return;
+			}
+
+			isFetchingMediaUpdate = true;
+			try {
+				logger.info({ seriesId, version }, '[SeriesStream] Fetching media update');
 				const [data, queueItems] = await Promise.all([
 					getSeriesData(seriesId),
 					getQueueItems(seriesId)
 				]);
 
-				if (data) {
-					send('media:initial', { ...data, queueItems });
+				// Only send if this is still the latest request (not superseded by another)
+				if (version >= lastSentVersion && data) {
+					logger.info(
+						{
+							seriesId,
+							version,
+							episodeCount: data.seasons?.reduce((sum, s) => sum + (s.episodeFileCount || 0), 0)
+						},
+						'[SeriesStream] Sending media:updated'
+					);
+					send('media:updated', { ...data, queueItems });
+					lastSentVersion = version;
+				} else {
+					logger.debug(
+						{
+							seriesId,
+							version,
+							lastSentVersion
+						},
+						'[SeriesStream] Skipping stale media:updated'
+					);
 				}
-			} catch {
-				// Error fetching initial state
+			} catch (error) {
+				logger.error(
+					{ err: error, seriesId, version },
+					'[SeriesStream] Failed to fetch media update'
+				);
+			} finally {
+				isFetchingMediaUpdate = false;
+
+				// If another request was queued during our execution, process it now
+				if (pendingVersion > version) {
+					logger.info({ seriesId, pendingVersion }, '[SeriesStream] Processing queued refresh');
+					const nextVersion = pendingVersion;
+					pendingVersion = 0;
+					void sendMediaUpdate(nextVersion);
+				}
 			}
 		};
 
-		// Send initial state immediately
-		sendInitialState();
+		// Sync queue state and replay buffered file events after connection is established.
+		void sendQueueSync().then(() => {
+			queueSyncTime = Date.now();
+
+			// Replay recent buffered events (handles race condition where events fired before connection)
+			// Only replay events that happened BEFORE queue sync completed.
+			const recentEvents = eventBuffer.getRecentSeriesEvents(seriesId);
+			logger.info(
+				{
+					seriesId,
+					count: recentEvents.length,
+					bufferSize: recentEvents.length
+				},
+				'[SeriesStream] Replaying buffered events'
+			);
+			for (const event of recentEvents) {
+				// Skip events that happened after we started (they'll come through the live listener)
+				if (event.timestamp > queueSyncTime) {
+					logger.debug(
+						{
+							seriesId,
+							episodeIds: event.episodeIds,
+							timestamp: event.timestamp,
+							fetchTime: queueSyncTime
+						},
+						'[SeriesStream] Skipping future event in replay'
+					);
+					continue;
+				}
+				logger.info(
+					{
+						seriesId,
+						seasonNumber: event.seasonNumber,
+						episodeIds: event.episodeIds
+					},
+					'[SeriesStream] Replaying buffered event'
+				);
+				send('file:added', {
+					file: event.file,
+					episodeIds: event.episodeIds,
+					seasonNumber: event.seasonNumber,
+					wasUpgrade: event.wasUpgrade,
+					replacedFileIds: event.replacedFileIds
+				});
+			}
+		});
+
+		// Handle new queue items added for this series
+		const onQueueAdded = (item: unknown) => {
+			const typedItem = item as QueueItem & { seriesId?: string };
+			if (typedItem.seriesId === seriesId) {
+				logger.debug(
+					{
+						seriesId,
+						queueItemId: typedItem.id
+					},
+					'[SeriesStream] Queue item added for series'
+				);
+				send('queue:added', {
+					id: typedItem.id,
+					title: typedItem.title,
+					status: typedItem.status,
+					progress: typedItem.progress ? parseFloat(typedItem.progress) : null,
+					episodeIds: typedItem.episodeIds,
+					seasonNumber: typedItem.seasonNumber
+				});
+			}
+		};
 
 		// Handle queue updates for this series
 		const onQueueUpdated = (item: unknown) => {
@@ -374,10 +525,24 @@ export const GET: RequestHandler = async ({ params }) => {
 			}
 		};
 
+		const onQueueRemoved = (id: string) => {
+			send('queue:removed', { id });
+		};
+
 		// Handle file imports for this series
 		const onFileImported = (data: unknown) => {
 			const typedData = data as FileImportedEvent;
 			if (typedData.mediaType === 'episode' && typedData.seriesId === seriesId) {
+				logger.info(
+					{
+						seriesId,
+						fileId: typedData.file.id,
+						seasonNumber: typedData.seasonNumber,
+						episodeIds: typedData.episodeIds,
+						episodeCount: typedData.episodeIds?.length
+					},
+					'[SeriesStream] File imported event received, sending to client'
+				);
 				send('file:added', {
 					file: typedData.file,
 					episodeIds: typedData.episodeIds,
@@ -389,6 +554,13 @@ export const GET: RequestHandler = async ({ params }) => {
 				// If files were replaced, send deletion events
 				if (typedData.replacedFileIds) {
 					for (const replacedId of typedData.replacedFileIds) {
+						logger.info(
+							{
+								seriesId,
+								replacedFileId: replacedId
+							},
+							'[SeriesStream] Sending replaced file removal event'
+						);
 						send('file:removed', { fileId: replacedId });
 					}
 				}
@@ -409,22 +581,47 @@ export const GET: RequestHandler = async ({ params }) => {
 		// Handle metadata/subtitle/settings updates for this series
 		const onSeriesUpdated = (event: { seriesId: string }) => {
 			if (event.seriesId === seriesId) {
-				sendInitialState();
+				logger.info({ seriesId }, '[SeriesStream] Series update triggered, refreshing state');
+				// Pass a new version to ensure this refresh takes precedence over any in-flight refresh.
+				void sendMediaUpdate(Date.now());
+			}
+		};
+
+		// Handle search status updates
+		const onSeriesSearchStarted = (event: { seriesId: string }) => {
+			if (event.seriesId === seriesId) {
+				send('search:started', { seriesId });
+			}
+		};
+
+		const onSeriesSearchCompleted = (event: { seriesId: string }) => {
+			if (event.seriesId === seriesId) {
+				send('search:completed', { seriesId });
 			}
 		};
 
 		// Register handlers
+		downloadMonitor.on('queue:added', onQueueAdded);
 		downloadMonitor.on('queue:updated', onQueueUpdated);
+		downloadMonitor.on('queue:imported', onQueueUpdated);
+		downloadMonitor.on('queue:removed', onQueueRemoved);
 		importService.on('file:imported', onFileImported);
 		importService.on('file:deleted', onFileDeleted);
 		libraryMediaEvents.onSeriesUpdated(onSeriesUpdated);
+		libraryMediaEvents.onSeriesSearchStarted(onSeriesSearchStarted);
+		libraryMediaEvents.onSeriesSearchCompleted(onSeriesSearchCompleted);
 
 		// Return cleanup function
 		return () => {
+			downloadMonitor.off('queue:added', onQueueAdded);
 			downloadMonitor.off('queue:updated', onQueueUpdated);
+			downloadMonitor.off('queue:imported', onQueueUpdated);
+			downloadMonitor.off('queue:removed', onQueueRemoved);
 			importService.off('file:imported', onFileImported);
 			importService.off('file:deleted', onFileDeleted);
 			libraryMediaEvents.offSeriesUpdated(onSeriesUpdated);
+			libraryMediaEvents.offSeriesSearchStarted(onSeriesSearchStarted);
+			libraryMediaEvents.offSeriesSearchCompleted(onSeriesSearchCompleted);
 		};
 	});
 };

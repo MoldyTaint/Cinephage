@@ -9,7 +9,9 @@ import { db } from '$lib/server/db/index.js';
 import { unmatchedFiles, rootFolders } from '$lib/server/db/schema.js';
 import { eq, and, sql, desc, asc } from 'drizzle-orm';
 import { dirname, basename } from 'path';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'scans' as const });
 import { mediaMatcherService } from './media-matcher.js';
 import type {
 	UnmatchedFile,
@@ -228,12 +230,15 @@ export class UnmatchedFileService {
 					try {
 						const { unlink } = await import('node:fs/promises');
 						await unlink(file.path);
-						logger.debug('[UnmatchedFileService] Deleted file from disk', { path: file.path });
+						logger.debug({ path: file.path }, '[UnmatchedFileService] Deleted file from disk');
 					} catch (err) {
-						logger.warn('[UnmatchedFileService] Could not delete file from disk', {
-							path: file.path,
-							error: err instanceof Error ? err.message : String(err)
-						});
+						logger.warn(
+							{
+								path: file.path,
+								err
+							},
+							'[UnmatchedFileService] Could not delete file from disk'
+						);
 						errors.push(`Could not delete file from disk: ${file.path}`);
 						continue;
 					}
@@ -244,7 +249,7 @@ export class UnmatchedFileService {
 				deleted++;
 			} catch (err) {
 				const errorMsg = err instanceof Error ? err.message : String(err);
-				logger.error('[UnmatchedFileService] Error deleting file', { id, error: errorMsg });
+				logger.error({ id, err }, '[UnmatchedFileService] Error deleting file');
 				errors.push(`Error deleting ${id}: ${errorMsg}`);
 			}
 		}
@@ -260,10 +265,13 @@ export class UnmatchedFileService {
 			const result = await mediaMatcherService.processUnmatchedFile(id);
 			return result;
 		} catch (err) {
-			logger.error('[UnmatchedFileService] Error processing file', {
-				id,
-				error: err instanceof Error ? err.message : String(err)
-			});
+			logger.error(
+				{
+					id,
+					err
+				},
+				'[UnmatchedFileService] Error processing file'
+			);
 			return {
 				fileId: id,
 				filePath: '',

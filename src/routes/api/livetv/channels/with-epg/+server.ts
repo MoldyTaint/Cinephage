@@ -53,6 +53,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			.select({
 				id: livetvChannels.id,
 				accountId: livetvChannels.accountId,
+				providerType: livetvChannels.providerType,
 				name: livetvChannels.name,
 				number: livetvChannels.number,
 				logo: livetvChannels.logo,
@@ -75,6 +76,7 @@ export const GET: RequestHandler = async ({ url }) => {
 				.select({
 					id: livetvChannels.id,
 					accountId: livetvChannels.accountId,
+					providerType: livetvChannels.providerType,
 					name: livetvChannels.name,
 					number: livetvChannels.number,
 					logo: livetvChannels.logo,

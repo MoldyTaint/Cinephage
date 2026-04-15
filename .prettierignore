@@ -16,3 +16,6 @@ Cinephage-Streamer/
 
 # Build artifacts
 .svelte-kit/
+
+# Auto-generated files
+/src/lib/paraglide/

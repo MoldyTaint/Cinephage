@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import {
 		X,
 		Loader2,
@@ -34,42 +35,42 @@
 				return {
 					icon: Globe,
 					iconClass: 'text-success',
-					badge: 'Free',
+					badge: m.subtitleProviders_modal_accessFree(),
 					badgeClass: 'badge-success'
 				};
 			case 'free-account':
 				return {
 					icon: User,
 					iconClass: 'text-info',
-					badge: 'Free Account',
+					badge: m.subtitleProviders_modal_accessFreeAccount(),
 					badgeClass: 'badge-info'
 				};
 			case 'api-key':
 				return {
 					icon: Key,
 					iconClass: 'text-warning',
-					badge: 'API Key',
+					badge: m.subtitleProviders_modal_accessApiKey(),
 					badgeClass: 'badge-warning'
 				};
 			case 'paid':
 				return {
 					icon: CreditCard,
 					iconClass: 'text-error',
-					badge: 'Paid',
+					badge: m.subtitleProviders_modal_accessPaid(),
 					badgeClass: 'badge-error'
 				};
 			case 'vip':
 				return {
 					icon: Crown,
 					iconClass: 'text-secondary',
-					badge: 'VIP Only',
+					badge: m.subtitleProviders_modal_accessVipOnly(),
 					badgeClass: 'badge-secondary'
 				};
 			default:
 				return {
 					icon: Globe,
 					iconClass: 'text-base-content/50',
-					badge: 'Unknown',
+					badge: m.subtitleProviders_modal_accessUnknown(),
 					badgeClass: 'badge-ghost'
 				};
 		}
@@ -135,7 +136,9 @@
 	let testResult = $state<{ success: boolean; error?: string; responseTime?: number } | null>(null);
 
 	// Derived
-	const modalTitle = $derived(mode === 'add' ? 'Add Subtitle Provider' : 'Edit Subtitle Provider');
+	const modalTitle = $derived(
+		mode === 'add' ? m.subtitleProviders_modal_addTitle() : m.subtitleProviders_modal_editTitle()
+	);
 	const hasPassword = $derived(!!provider?.password);
 	const selectedDefinition = $derived(
 		implementation ? definitions.find((d) => d.implementation === implementation) : null
@@ -231,7 +234,7 @@
 					<input
 						type="text"
 						class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
-						placeholder="Search providers..."
+						placeholder={m.subtitleProviders_modal_searchPlaceholder()}
 						bind:value={searchQuery}
 					/>
 				</div>
@@ -256,7 +259,9 @@
 							<div class="flex items-center gap-2">
 								<span class="font-semibold">{def.name}</span>
 								{#if def.supportsHashSearch}
-									<span class="badge badge-xs badge-info">Hash</span>
+									<span class="badge badge-xs badge-info"
+										>{m.subtitleProviders_modal_badgeHash()}</span
+									>
 								{/if}
 							</div>
 							<p class="truncate text-sm text-base-content/60">{def.description}</p>
@@ -264,24 +269,26 @@
 						<div class="flex flex-col items-end gap-1">
 							<span class="badge badge-sm {accessInfo.badgeClass}">{accessInfo.badge}</span>
 							{#if def.requiresCredentials && def.accessType !== 'free-account'}
-								<span class="badge badge-ghost badge-xs">Account</span>
+								<span class="badge badge-ghost badge-xs"
+									>{m.subtitleProviders_modal_badgeAccount()}</span
+								>
 							{/if}
 						</div>
 					</button>
 				{:else}
 					<div class="p-8 text-center text-base-content/50">
-						No providers match "{searchQuery}"
+						{m.subtitleProviders_modal_noMatches({ query: searchQuery })}
 					</div>
 				{/each}
 			</div>
 
 			<p class="text-center text-sm text-base-content/50">
-				{definitions.length} providers available
+				{m.subtitleProviders_modal_providersAvailable({ count: definitions.length })}
 			</p>
 		</div>
 
 		<div class="modal-action">
-			<button class="btn btn-ghost" onclick={onClose}>Cancel</button>
+			<button class="btn btn-ghost" onclick={onClose}>{m.subtitleProviders_modal_cancel()}</button>
 		</div>
 	{:else}
 		<!-- Selected provider header (in add mode) -->
@@ -306,7 +313,7 @@
 					</div>
 				</div>
 				<button type="button" class="btn btn-ghost btn-sm" onclick={() => (implementation = '')}>
-					Change
+					{m.subtitleProviders_modal_change()}
 				</button>
 			</div>
 		{/if}
@@ -315,11 +322,11 @@
 		<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
 			<!-- Left Column: Basic Settings -->
 			<div class="space-y-4">
-				<SectionHeader title="Basic Settings" />
+				<SectionHeader title={m.subtitleProviders_modal_basicSettings()} />
 
 				<div class="form-control">
 					<label class="label py-1" for="name">
-						<span class="label-text">Name</span>
+						<span class="label-text">{m.subtitleProviders_modal_name()}</span>
 					</label>
 					<input
 						id="name"
@@ -336,9 +343,9 @@
 							{name.length}/{MAX_NAME_LENGTH}
 						</span>
 						{#if nameTooLong}
-							<span class="label-text-alt text-xs text-error"
-								>Max {MAX_NAME_LENGTH} characters.</span
-							>
+							<span class="label-text-alt text-xs text-error">
+								{m.subtitleProviders_modal_nameTooLong({ max: MAX_NAME_LENGTH })}
+							</span>
 						{/if}
 					</div>
 				</div>
@@ -346,7 +353,7 @@
 				<div class="grid grid-cols-2 gap-2 sm:gap-3">
 					<div class="form-control">
 						<label class="label py-1" for="priority">
-							<span class="label-text">Priority</span>
+							<span class="label-text">{m.subtitleProviders_modal_priority()}</span>
 						</label>
 						<input
 							id="priority"
@@ -357,13 +364,13 @@
 							max="100"
 						/>
 						<p class="label py-0">
-							<span class="label-text-alt text-xs">Lower = higher priority</span>
+							<span class="label-text-alt text-xs">{m.subtitleProviders_modal_priorityHint()}</span>
 						</p>
 					</div>
 
 					<div class="form-control">
 						<label class="label py-1" for="requestsPerMinute">
-							<span class="label-text">Rate Limit</span>
+							<span class="label-text">{m.subtitleProviders_modal_rateLimit()}</span>
 						</label>
 						<input
 							id="requestsPerMinute"
@@ -374,7 +381,9 @@
 							max="300"
 						/>
 						<p class="label py-0">
-							<span class="label-text-alt text-xs">Requests/min</span>
+							<span class="label-text-alt text-xs"
+								>{m.subtitleProviders_modal_requestsPerMin()}</span
+							>
 						</p>
 					</div>
 				</div>
@@ -382,27 +391,31 @@
 				<div class="flex gap-4 pt-2">
 					<label class="label cursor-pointer gap-2">
 						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={enabled} />
-						<span class="label-text">Enabled</span>
+						<span class="label-text">{m.subtitleProviders_modal_enabled()}</span>
 					</label>
 				</div>
 			</div>
 
 			<!-- Right Column: Authentication -->
 			<div class="space-y-4">
-				<SectionHeader title="Authentication" />
+				<SectionHeader title={m.subtitleProviders_modal_authentication()} />
 
 				{#if requiresApiKey}
 					<div class="form-control">
 						<label class="label py-1" for="apiKey">
-							<span class="label-text">API Key</span>
-							<span class="badge badge-xs badge-warning">Required</span>
+							<span class="label-text">{m.subtitleProviders_modal_apiKey()}</span>
+							<span class="badge badge-xs badge-warning"
+								>{m.subtitleProviders_modal_apiKeyRequired()}</span
+							>
 						</label>
 						<input
 							id="apiKey"
 							type="password"
 							class="input-bordered input input-sm"
 							bind:value={apiKey}
-							placeholder={mode === 'edit' && provider?.apiKey ? '••••••••' : 'Enter API key'}
+							placeholder={mode === 'edit' && provider?.apiKey
+								? m.subtitleProviders_modal_apiKeyPlaceholderExisting()
+								: m.subtitleProviders_modal_apiKeyPlaceholderNew()}
 						/>
 						{#if selectedDefinition?.website}
 							<p class="label py-1">
@@ -413,7 +426,7 @@
 									rel="noopener noreferrer"
 									class="label-text-alt link text-xs link-primary"
 								>
-									Get an API key from {selectedDefinition.name}
+									{m.subtitleProviders_modal_getApiKey({ name: selectedDefinition.name })}
 								</a>
 								<!-- eslint-enable svelte/no-navigation-without-resolve -->
 							</p>
@@ -423,10 +436,11 @@
 					<div class="rounded-lg bg-success/10 p-3">
 						<div class="flex items-center gap-2 text-success">
 							<CheckCircle2 class="h-4 w-4" />
-							<span class="text-sm font-medium">No API key required</span>
+							<span class="text-sm font-medium">{m.subtitleProviders_modal_noApiKeyRequired()}</span
+							>
 						</div>
 						<p class="mt-1 text-xs text-base-content/60">
-							This provider works without authentication.
+							{m.subtitleProviders_modal_noApiKeyDescription()}
 						</p>
 					</div>
 				{/if}
@@ -435,7 +449,7 @@
 					<div class="grid grid-cols-2 gap-2 sm:gap-3">
 						<div class="form-control">
 							<label class="label py-1" for="username">
-								<span class="label-text">Username</span>
+								<span class="label-text">{m.subtitleProviders_modal_username()}</span>
 							</label>
 							<input
 								id="username"
@@ -448,9 +462,11 @@
 						<div class="form-control">
 							<label class="label py-1" for="password">
 								<span class="label-text">
-									Password
+									{m.subtitleProviders_modal_password()}
 									{#if mode === 'edit' && hasPassword}
-										<span class="text-xs opacity-50">(blank to keep)</span>
+										<span class="text-xs opacity-50"
+											>{m.subtitleProviders_modal_passwordKeep()}</span
+										>
 									{/if}
 								</span>
 							</label>
@@ -459,7 +475,9 @@
 								type="password"
 								class="input-bordered input input-sm"
 								bind:value={password}
-								placeholder={mode === 'edit' && hasPassword ? '••••••••' : ''}
+								placeholder={mode === 'edit' && hasPassword
+									? m.subtitleProviders_modal_passwordPlaceholder()
+									: ''}
 							/>
 						</div>
 					</div>
@@ -467,7 +485,7 @@
 
 				<!-- Features info -->
 				{#if selectedDefinition}
-					<SectionHeader title="Features" class="mt-4" />
+					<SectionHeader title={m.subtitleProviders_modal_features()} class="mt-4" />
 					<div class="flex flex-wrap gap-2">
 						{#each selectedDefinition.features as feature (feature)}
 							<div class="badge badge-outline badge-sm">{feature}</div>
@@ -475,12 +493,14 @@
 						{#if selectedDefinition.supportsHashSearch}
 							<div class="badge gap-1 badge-sm badge-info">
 								<Hash class="h-3 w-3" />
-								Hash Matching
+								{m.subtitleProviders_modal_badgeHash()}
 							</div>
 						{/if}
 					</div>
 					<div class="mt-2 text-xs text-base-content/60">
-						Supports {selectedDefinition.supportedLanguages.length}+ languages
+						{m.subtitleProviders_modal_languagesSupported({
+							count: selectedDefinition.supportedLanguages.length
+						})}
 					</div>
 				{/if}
 			</div>
@@ -497,7 +517,9 @@
 		<!-- Actions -->
 		<div class="modal-action">
 			{#if mode === 'edit' && onDelete}
-				<button class="btn mr-auto btn-outline btn-error" onclick={onDelete}>Delete</button>
+				<button class="btn mr-auto btn-outline btn-error" onclick={onDelete}
+					>{m.subtitleProviders_modal_delete()}</button
+				>
 			{/if}
 
 			<button
@@ -508,10 +530,10 @@
 				{#if testing}
 					<Loader2 class="h-4 w-4 animate-spin" />
 				{/if}
-				Test
+				{m.subtitleProviders_modal_test()}
 			</button>
 
-			<button class="btn btn-ghost" onclick={onClose}>Cancel</button>
+			<button class="btn btn-ghost" onclick={onClose}>{m.subtitleProviders_modal_cancel()}</button>
 
 			<button
 				class="btn btn-primary"
@@ -521,7 +543,7 @@
 				{#if saving}
 					<Loader2 class="h-4 w-4 animate-spin" />
 				{/if}
-				Save
+				{m.subtitleProviders_modal_save()}
 			</button>
 		</div>
 	{/if}

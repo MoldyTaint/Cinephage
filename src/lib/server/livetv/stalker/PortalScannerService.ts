@@ -14,7 +14,9 @@ import {
 	type PortalScanResultRecord,
 	type PortalScanHistoryRecord
 } from '$lib/server/db/schema';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'livetv' as const });
 import { workerManager, PortalScanWorker, type PortalScanOptions } from '$lib/server/workers';
 import { getStalkerPortalManager } from './StalkerPortalManager';
 import { getLiveTvAccountManager } from '../LiveTvAccountManager';
@@ -144,18 +146,24 @@ export class PortalScannerService {
 
 		try {
 			workerManager.spawnInBackground(worker);
-			logger.info('[PortalScanner] Started random scan', {
-				portalId,
-				portalName: portal.name,
-				macPrefix: scanOptions.macPrefix,
-				macCount: options.macCount,
-				workerId: worker.id
-			});
+			logger.info(
+				{
+					portalId,
+					portalName: portal.name,
+					macPrefix: scanOptions.macPrefix,
+					macCount: options.macCount,
+					workerId: worker.id
+				},
+				'[PortalScanner] Started random scan'
+			);
 		} catch (error) {
-			logger.error('[PortalScanner] Failed to start random scan', {
-				portalId,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.error(
+				{
+					portalId,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[PortalScanner] Failed to start random scan'
+			);
 			throw error;
 		}
 
@@ -197,19 +205,25 @@ export class PortalScannerService {
 
 		try {
 			workerManager.spawnInBackground(worker);
-			logger.info('[PortalScanner] Started sequential scan', {
-				portalId,
-				portalName: portal.name,
-				macRangeStart: options.macRangeStart,
-				macRangeEnd: options.macRangeEnd,
-				rangeSize,
-				workerId: worker.id
-			});
+			logger.info(
+				{
+					portalId,
+					portalName: portal.name,
+					macRangeStart: options.macRangeStart,
+					macRangeEnd: options.macRangeEnd,
+					rangeSize,
+					workerId: worker.id
+				},
+				'[PortalScanner] Started sequential scan'
+			);
 		} catch (error) {
-			logger.error('[PortalScanner] Failed to start sequential scan', {
-				portalId,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.error(
+				{
+					portalId,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[PortalScanner] Failed to start sequential scan'
+			);
 			throw error;
 		}
 
@@ -247,17 +261,23 @@ export class PortalScannerService {
 
 		try {
 			workerManager.spawnInBackground(worker);
-			logger.info('[PortalScanner] Started import scan', {
-				portalId,
-				portalName: portal.name,
-				macCount: macs.length,
-				workerId: worker.id
-			});
+			logger.info(
+				{
+					portalId,
+					portalName: portal.name,
+					macCount: macs.length,
+					workerId: worker.id
+				},
+				'[PortalScanner] Started import scan'
+			);
 		} catch (error) {
-			logger.error('[PortalScanner] Failed to start import scan', {
-				portalId,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.error(
+				{
+					portalId,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[PortalScanner] Failed to start import scan'
+			);
 			throw error;
 		}
 
@@ -364,17 +384,23 @@ export class PortalScannerService {
 		// Trigger channel sync in background
 		const channelService = getLiveTvChannelService();
 		channelService.syncChannels(account.id).catch((error) => {
-			logger.warn('[PortalScanner] Channel sync failed after approval', {
-				accountId: account.id,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					accountId: account.id,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[PortalScanner] Channel sync failed after approval'
+			);
 		});
 
-		logger.info('[PortalScanner] Approved scan result', {
-			resultId,
-			accountId: account.id,
-			macAddress: result.macAddress
-		});
+		logger.info(
+			{
+				resultId,
+				accountId: account.id,
+				macAddress: result.macAddress
+			},
+			'[PortalScanner] Approved scan result'
+		);
 
 		return account.id;
 	}
@@ -390,10 +416,13 @@ export class PortalScannerService {
 				const accountId = await this.approveResult(resultId);
 				accountIds.push(accountId);
 			} catch (error) {
-				logger.warn('[PortalScanner] Failed to approve result', {
-					resultId,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.warn(
+					{
+						resultId,
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'[PortalScanner] Failed to approve result'
+				);
 			}
 		}
 
@@ -422,10 +451,13 @@ export class PortalScannerService {
 			.where(eq(portalScanResults.id, resultId))
 			.run();
 
-		logger.info('[PortalScanner] Ignored scan result', {
-			resultId,
-			macAddress: result.macAddress
-		});
+		logger.info(
+			{
+				resultId,
+				macAddress: result.macAddress
+			},
+			'[PortalScanner] Ignored scan result'
+		);
 	}
 
 	/**
@@ -442,9 +474,12 @@ export class PortalScannerService {
 			.where(inArray(portalScanResults.id, resultIds))
 			.run();
 
-		logger.info('[PortalScanner] Ignored multiple scan results', {
-			count: resultIds.length
-		});
+		logger.info(
+			{
+				count: resultIds.length
+			},
+			'[PortalScanner] Ignored multiple scan results'
+		);
 	}
 
 	/**
@@ -467,11 +502,14 @@ export class PortalScannerService {
 			deleted = result.changes;
 		}
 
-		logger.info('[PortalScanner] Cleared scan results', {
-			portalId,
-			status,
-			deleted
-		});
+		logger.info(
+			{
+				portalId,
+				status,
+				deleted
+			},
+			'[PortalScanner] Cleared scan results'
+		);
 
 		return deleted;
 	}

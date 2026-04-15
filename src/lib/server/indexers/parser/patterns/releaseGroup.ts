@@ -17,6 +17,8 @@ interface ReleaseGroupMatch {
 const GROUP_BLACKLIST = [
 	// Quality indicators
 	/^(720p?|1080p?|2160p?|4k|uhd|hd|sd|hdr|dv|hdr10|hlg)$/i,
+	/^(dl|rip)-\d{3,4}p$/i,
+	/^(web|webdl|webrip|bluray|brrip|bdrip|remux)-\d{3,4}p$/i,
 	// Codecs
 	/^(x264|x265|h264|h265|hevc|avc|av1|xvid|divx)$/i,
 	// Sources
@@ -26,13 +28,15 @@ const GROUP_BLACKLIST = [
 	// Common endings
 	/^(mkv|mp4|avi|proper|repack|internal|real|rerip)$/i,
 	// Languages
-	/^(english|german|french|spanish|multi|dual|audio)$/i,
+	/^(english|german|french|spanish|russian|ukrainian|hungarian|multi|dual|audio)$/i,
+	/^(eng|rus|ukr|hun|ita|spa|fre|ger|dub|sub|subs|esub|mvo|dvo|avo)$/i,
 	// File sizes
 	/^\d+(\.\d+)?\s*(gb|mb|tb)$/i,
 	// Dates
 	/^\d{4}$/,
 	// Generic terms
 	/^(extended|directors|cut|edition|unrated|theatrical|imax|esub)$/i,
+	/^(original|studio|tel|read|nfo|trailer|teaser|promo|preview|clip|featurette)$/i,
 	// Indexer-only suffixes (not release groups - RARBG is both indexer AND group so not included)
 	/^(eztv|yify|yts|ettv|ethd|tgx)$/i
 ];
@@ -77,14 +81,20 @@ const ANIME_GROUP_PATTERNS = [
 const YTS_PATTERNS = [
 	// Plain YTS at end: "-YTS" or ".YTS"
 	/[-.]YTS$/i,
+	/\bYTS(?:\s+[A-Z]{2,3})?$/i,
 	// Plain YIFY at end: "-YIFY" or ".YIFY"
 	/[-.]YIFY$/i,
+	/\bYIFY(?:\s+[A-Z]{2,3})?$/i,
 	// YTS with country code: "[YTS.MX]", "[YTS.AM]", "YTS.LT"
 	/\[YTS\.[A-Z]{2,3}\]$/i,
+	/\[YTS\s+[A-Z]{2,3}\]$/i,
 	/[-.]YTS\.[A-Z]{2,3}$/i,
+	/\bYTS\s+[A-Z]{2,3}$/i,
 	// YIFY with country code variants
 	/\[YIFY\.[A-Z]{2,3}\]$/i,
-	/[-.]YIFY\.[A-Z]{2,3}$/i
+	/\[YIFY\s+[A-Z]{2,3}\]$/i,
+	/[-.]YIFY\.[A-Z]{2,3}$/i,
+	/\bYIFY\s+[A-Z]{2,3}$/i
 ];
 
 /**
@@ -112,7 +122,8 @@ const GROUP_EXTRACTION_PATTERNS = [
 	// Group in unicode brackets (Chinese style): 【GroupName】
 	/[\u3010]([a-zA-Z0-9]+)[\u3011](?:\.mkv)?$/i,
 	// Space-separated group at end (capitalized): "...5.1 BONE" or "...x265 GROUP"
-	/\s([A-Z][A-Za-z0-9]{2,})$/
+	// Require a longer token to avoid metadata words like "Sub" or "Eng".
+	/\s([A-Z][A-Za-z0-9]{3,})$/
 ];
 
 /**
@@ -265,21 +276,6 @@ export function extractReleaseGroup(title: string): ReleaseGroupMatch | null {
 					index: match.index ?? 0
 				};
 			}
-		}
-	}
-
-	// Fallback: try to find the last dash-separated segment
-	// "Movie.2024.1080p.WEB-DL.x264-GROUP"
-	const parts = cleanTitle.split(/[-._]/);
-	if (parts.length > 0) {
-		const lastPart = parts[parts.length - 1];
-		if (isValidGroupName(lastPart)) {
-			const index = cleanTitle.lastIndexOf(lastPart);
-			return {
-				group: lastPart,
-				matchedText: lastPart,
-				index
-			};
 		}
 	}
 

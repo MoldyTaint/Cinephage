@@ -68,7 +68,7 @@ class TaskHistoryService {
 		// Store controller with historyId so we can cancel the correct entry
 		this.abortControllers.set(taskId, { controller, historyId: entry.id });
 
-		logger.info('[TaskHistoryService] Task started', { taskId, historyId: entry.id });
+		logger.info({ taskId, historyId: entry.id }, '[TaskHistoryService] Task started');
 
 		return entry.id;
 	}
@@ -109,7 +109,7 @@ class TaskHistoryService {
 		if (entry) {
 			this.runningTasks.delete(entry.taskId);
 			this.abortControllers.delete(entry.taskId);
-			logger.info('[TaskHistoryService] Task completed', { historyId, taskId: entry.taskId });
+			logger.info({ historyId, taskId: entry.taskId }, '[TaskHistoryService] Task completed');
 		}
 	}
 
@@ -130,11 +130,14 @@ class TaskHistoryService {
 		if (entry) {
 			this.runningTasks.delete(entry.taskId);
 			this.abortControllers.delete(entry.taskId);
-			logger.error('[TaskHistoryService] Task failed', {
-				historyId,
-				taskId: entry.taskId,
-				errors
-			});
+			logger.error(
+				{
+					historyId,
+					taskId: entry.taskId,
+					errors
+				},
+				'[TaskHistoryService] Task failed'
+			);
 		}
 	}
 
@@ -222,10 +225,13 @@ class TaskHistoryService {
 			})
 			.where(eq(taskHistory.id, controllerData.historyId));
 
-		logger.info('[TaskHistoryService] Task cancelled', {
-			taskId,
-			historyId: controllerData.historyId
-		});
+		logger.info(
+			{
+				taskId,
+				historyId: controllerData.historyId
+			},
+			'[TaskHistoryService] Task cancelled'
+		);
 
 		// Clean up in-memory state
 		this.runningTasks.delete(taskId);
@@ -250,10 +256,13 @@ class TaskHistoryService {
 			.returning({ id: taskHistory.id, taskId: taskHistory.taskId });
 
 		if (staleEntries.length > 0) {
-			logger.warn('[TaskHistoryService] Cleaned up stale running tasks', {
-				count: staleEntries.length,
-				tasks: staleEntries.map((e) => e.taskId)
-			});
+			logger.warn(
+				{
+					count: staleEntries.length,
+					tasks: staleEntries.map((e) => e.taskId)
+				},
+				'[TaskHistoryService] Cleaned up stale running tasks'
+			);
 		}
 
 		// Clear in-memory state
@@ -387,11 +396,14 @@ class TaskHistoryService {
 		const count = deletedEntries.length;
 
 		if (count > 0) {
-			logger.info('[TaskHistoryService] Cleaned up old history entries', {
-				deletedCount: count,
-				retentionDays,
-				cutoffDate: cutoffIso
-			});
+			logger.info(
+				{
+					deletedCount: count,
+					retentionDays,
+					cutoffDate: cutoffIso
+				},
+				'[TaskHistoryService] Cleaned up old history entries'
+			);
 		}
 
 		return count;

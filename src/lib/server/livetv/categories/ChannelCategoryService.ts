@@ -9,7 +9,9 @@ import {
 	type ChannelCategoryRecord
 } from '$lib/server/db/schema';
 import { eq, asc, sql } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'livetv' as const });
 import { randomUUID } from 'crypto';
 import { liveTvEvents } from '../LiveTvEvents';
 import type { ChannelCategory, ChannelCategoryFormData } from '$lib/types/livetv';
@@ -84,7 +86,7 @@ class ChannelCategoryService {
 			updatedAt: now
 		});
 
-		logger.info('[ChannelCategoryService] Created category', { id, name: data.name });
+		logger.info({ id, name: data.name }, '[ChannelCategoryService] Created category');
 		liveTvEvents.emitCategoriesUpdated();
 
 		return this.getCategoryById(id) as Promise<ChannelCategory>;
@@ -106,7 +108,7 @@ class ChannelCategoryService {
 			})
 			.where(eq(channelCategories.id, id));
 
-		logger.info('[ChannelCategoryService] Updated category', { id, name: data.name });
+		logger.info({ id, name: data.name }, '[ChannelCategoryService] Updated category');
 		liveTvEvents.emitCategoriesUpdated();
 
 		return this.getCategoryById(id);
@@ -120,7 +122,7 @@ class ChannelCategoryService {
 		const result = await db.delete(channelCategories).where(eq(channelCategories.id, id));
 
 		if (result.changes > 0) {
-			logger.info('[ChannelCategoryService] Deleted category', { id });
+			logger.info({ id }, '[ChannelCategoryService] Deleted category');
 			liveTvEvents.emitCategoriesUpdated();
 			return true;
 		}
@@ -140,7 +142,7 @@ class ChannelCategoryService {
 				.where(eq(channelCategories.id, categoryIds[i]));
 		}
 
-		logger.info('[ChannelCategoryService] Reordered categories', { count: categoryIds.length });
+		logger.info({ count: categoryIds.length }, '[ChannelCategoryService] Reordered categories');
 		liveTvEvents.emitCategoriesUpdated();
 	}
 

@@ -8,10 +8,132 @@ import {
 	series,
 	downloadClients
 } from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
 import { downloadMonitor } from '$lib/server/downloadClients/monitoring';
+import { upsertQueueTombstoneFromQueueItem } from '$lib/server/downloadClients/monitoring/QueueTombstoneService';
 import { logger } from '$lib/logging';
+
+const DEFAULT_QUEUE_REMOVE_CLIENT_TIMEOUT_MS = 3000;
+
+function getQueueRemoveClientTimeoutMs(): number {
+	const raw = process.env.QUEUE_REMOVE_CLIENT_TIMEOUT_MS;
+	if (!raw) {
+		return DEFAULT_QUEUE_REMOVE_CLIENT_TIMEOUT_MS;
+	}
+
+	const parsed = Number(raw);
+	if (!Number.isFinite(parsed) || parsed <= 0) {
+		return DEFAULT_QUEUE_REMOVE_CLIENT_TIMEOUT_MS;
+	}
+
+	return Math.round(parsed);
+}
+
+async function writeRemovedHistory(queueItem: typeof downloadQueue.$inferSelect): Promise<void> {
+	if (queueItem.status === 'failed') {
+		const historyConditions = [
+			eq(downloadHistory.status, 'failed'),
+			eq(downloadHistory.title, queueItem.title)
+		];
+
+		if (queueItem.addedAt) {
+			historyConditions.push(eq(downloadHistory.grabbedAt, queueItem.addedAt));
+		}
+
+		if (queueItem.downloadId) {
+			historyConditions.push(eq(downloadHistory.downloadId, queueItem.downloadId));
+		}
+
+		if (queueItem.downloadClientId) {
+			historyConditions.push(eq(downloadHistory.downloadClientId, queueItem.downloadClientId));
+		}
+
+		const existingFailedHistory = await db
+			.select({ id: downloadHistory.id })
+			.from(downloadHistory)
+			.where(and(...historyConditions))
+			.orderBy(desc(downloadHistory.createdAt))
+			.limit(1)
+			.get();
+
+		if (existingFailedHistory) {
+			await db
+				.update(downloadHistory)
+				.set({
+					status: 'removed',
+					statusReason: null,
+					size: queueItem.size,
+					quality: queueItem.quality,
+					releaseGroup: queueItem.releaseGroup,
+					completedAt: queueItem.completedAt
+				})
+				.where(eq(downloadHistory.id, existingFailedHistory.id));
+			return;
+		}
+	}
+
+	await db.insert(downloadHistory).values({
+		downloadClientId: queueItem.downloadClientId,
+		downloadId: queueItem.downloadId,
+		title: queueItem.title,
+		status: 'removed',
+		movieId: queueItem.movieId,
+		seriesId: queueItem.seriesId,
+		seasonNumber: queueItem.seasonNumber,
+		episodeIds: queueItem.episodeIds,
+		indexerId: queueItem.indexerId,
+		indexerName: queueItem.indexerName,
+		protocol: queueItem.protocol,
+		size: queueItem.size,
+		quality: queueItem.quality,
+		releaseGroup: queueItem.releaseGroup,
+		grabbedAt: queueItem.addedAt,
+		completedAt: queueItem.completedAt,
+		importedAt: queueItem.importedAt,
+		createdAt: new Date().toISOString()
+	});
+}
+
+function isDownloadClientUnavailableError(err: unknown): boolean {
+	const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+
+	return (
+		message.includes('unavailable') ||
+		message.includes('timeout') ||
+		message.includes('timed out') ||
+		message.includes('fetch failed') ||
+		message.includes('network') ||
+		message.includes('econnrefused') ||
+		message.includes('ehostunreach') ||
+		message.includes('enotfound') ||
+		message.includes('socket')
+	);
+}
+
+async function removeDownloadWithTimeout(
+	clientInstance: { removeDownload: (id: string, deleteFiles?: boolean) => Promise<void> },
+	clientDownloadId: string,
+	deleteFiles: boolean,
+	timeoutMs = getQueueRemoveClientTimeoutMs()
+): Promise<void> {
+	let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+	try {
+		await Promise.race([
+			clientInstance.removeDownload(clientDownloadId, deleteFiles),
+			new Promise<never>((_, reject) => {
+				timeoutHandle = setTimeout(() => {
+					reject(new Error(`Download client remove timed out after ${timeoutMs}ms`));
+				}, timeoutMs);
+			})
+		]);
+	} finally {
+		if (timeoutHandle) {
+			clearTimeout(timeoutHandle);
+		}
+	}
+}
 
 /**
  * GET - Get a single queue item by ID
@@ -124,7 +246,10 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 			throw error(404, 'Queue item not found');
 		}
 
-		// Remove from download client first (required when removeFromClient=true).
+		let removedFromClient = false;
+
+		// Remove from download client first when requested.
+		// If the client is unavailable, fall back to local removal and leave a tombstone.
 		if (removeFromClient) {
 			if (!queueItem.downloadClientId) {
 				throw error(400, 'Queue item is missing a download client');
@@ -136,45 +261,79 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 				? queueItem.infoHash || queueItem.downloadId
 				: queueItem.downloadId || queueItem.infoHash;
 			if (!clientDownloadId) {
-				throw error(400, 'Queue item is missing a client download identifier');
-			}
+				logger.warn(
+					{
+						queueId: queueItem.id,
+						title: queueItem.title
+					},
+					'Queue item missing client identifier; continuing with local removal only'
+				);
+			} else {
+				const clientInstance = await getDownloadClientManager().getClientInstance(
+					queueItem.downloadClientId
+				);
+				if (!clientInstance) {
+					logger.warn(
+						{
+							queueId: queueItem.id,
+							title: queueItem.title,
+							downloadClientId: queueItem.downloadClientId
+						},
+						'Download client unavailable during queue removal; falling back to local-only removal'
+					);
+				} else {
+					try {
+						await removeDownloadWithTimeout(clientInstance, clientDownloadId, deleteFiles);
+						removedFromClient = true;
+					} catch (removeError) {
+						if (!isDownloadClientUnavailableError(removeError)) {
+							throw removeError;
+						}
 
-			const clientInstance = await getDownloadClientManager().getClientInstance(
-				queueItem.downloadClientId
-			);
-			if (!clientInstance) {
-				throw error(503, 'Download client is unavailable');
+						logger.warn(
+							{
+								queueId: queueItem.id,
+								title: queueItem.title,
+								downloadClientId: queueItem.downloadClientId,
+								error: removeError instanceof Error ? removeError.message : String(removeError)
+							},
+							'Download client unavailable during queue removal; falling back to local-only removal'
+						);
+					}
+				}
 			}
-
-			await clientInstance.removeDownload(clientDownloadId, deleteFiles);
 		}
 
 		// Add to blocklist if requested
 		// Note: Blocklist table not yet implemented - would store infoHash to prevent re-downloading
 		if (addToBlocklist && queueItem.infoHash) {
-			logger.warn('Blocklist not yet implemented', { infoHash: queueItem.infoHash });
+			logger.warn({ infoHash: queueItem.infoHash }, 'Blocklist not yet implemented');
 		}
 
-		// Create history record before deleting
-		await db.insert(downloadHistory).values({
-			downloadClientId: queueItem.downloadClientId,
-			downloadId: queueItem.downloadId,
-			title: queueItem.title,
-			status: 'removed',
-			movieId: queueItem.movieId,
-			seriesId: queueItem.seriesId,
-			seasonNumber: queueItem.seasonNumber,
-			episodeIds: queueItem.episodeIds,
-			indexerId: queueItem.indexerId,
-			indexerName: queueItem.indexerName,
-			protocol: queueItem.protocol,
-			size: queueItem.size,
-			quality: queueItem.quality,
-			grabbedAt: queueItem.addedAt,
-			completedAt: queueItem.completedAt,
-			importedAt: null,
-			createdAt: new Date().toISOString()
-		});
+		// Add/refresh a suppression tombstone when local state is removed without confirmed
+		// removal from the remote client.
+		if (!removeFromClient || !removedFromClient) {
+			try {
+				await upsertQueueTombstoneFromQueueItem(
+					queueItem,
+					removeFromClient
+						? 'local_remove_client_unavailable'
+						: 'local_remove_without_client_delete'
+				);
+			} catch (tombstoneError) {
+				logger.warn(
+					{
+						queueId: queueItem.id,
+						title: queueItem.title,
+						error: tombstoneError instanceof Error ? tombstoneError.message : String(tombstoneError)
+					},
+					'Failed to upsert queue tombstone'
+				);
+			}
+		}
+
+		// Preserve the original failed attempt as a single history record when a user removes it.
+		await writeRemovedHistory(queueItem);
 
 		// Delete from queue
 		await db.delete(downloadQueue).where(eq(downloadQueue.id, id));

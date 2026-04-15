@@ -41,7 +41,7 @@ export async function executePendingReleaseTask(
 ): Promise<TaskResult> {
 	const startTime = Date.now();
 	const taskHistoryId = ctx?.historyId;
-	logger.info('[PendingReleaseTask] Starting pending release processing', { taskHistoryId });
+	logger.info({ taskHistoryId }, '[PendingReleaseTask] Starting pending release processing');
 
 	const stats: ProcessingStats = {
 		processed: 0,
@@ -57,7 +57,7 @@ export async function executePendingReleaseTask(
 
 		// Get releases ready to process
 		const readyReleases = await delayProfileService.getReadyReleases();
-		logger.info('[PendingReleaseTask] Found ready releases', { count: readyReleases.length });
+		logger.info({ count: readyReleases.length }, '[PendingReleaseTask] Found ready releases');
 
 		// Process releases with cancellation support
 		const releases = ctx ? ctx.iterate(readyReleases) : readyReleases;
@@ -75,11 +75,14 @@ export async function executePendingReleaseTask(
 				}
 			} catch (error) {
 				stats.failed++;
-				logger.error('[PendingReleaseTask] Failed to process release', {
-					id: release.id,
-					title: release.title,
-					error
-				});
+				logger.error(
+					{
+						id: release.id,
+						title: release.title,
+						error
+					},
+					'[PendingReleaseTask] Failed to process release'
+				);
 			}
 		}
 
@@ -87,7 +90,7 @@ export async function executePendingReleaseTask(
 		await delayProfileService.cleanupOldReleases(72);
 
 		const duration = Date.now() - startTime;
-		logger.info('[PendingReleaseTask] Completed', { stats, durationMs: duration });
+		logger.info({ stats, durationMs: duration }, '[PendingReleaseTask] Completed');
 
 		return {
 			taskType: 'pendingRelease',
@@ -98,8 +101,7 @@ export async function executePendingReleaseTask(
 		};
 	} catch (error) {
 		const duration = Date.now() - startTime;
-		const message = error instanceof Error ? error.message : 'Unknown error';
-		logger.error('[PendingReleaseTask] Task failed', { error: message, durationMs: duration });
+		logger.error({ err: error, durationMs: duration }, '[PendingReleaseTask] Task failed');
 
 		return {
 			taskType: 'pendingRelease',
@@ -126,9 +128,12 @@ async function processRelease(
 		});
 
 		if (!movie) {
-			logger.debug('[PendingReleaseTask] Movie no longer exists, expiring release', {
-				releaseId: release.id
-			});
+			logger.debug(
+				{
+					releaseId: release.id
+				},
+				'[PendingReleaseTask] Movie no longer exists, expiring release'
+			);
 			await delayProfileService.markAsExpired(release.id);
 			result.expired = true;
 			return result;
@@ -136,10 +141,13 @@ async function processRelease(
 
 		// Check if movie already has a file
 		if (movie.hasFile) {
-			logger.debug('[PendingReleaseTask] Movie already has file, expiring release', {
-				releaseId: release.id,
-				movieId: movie.id
-			});
+			logger.debug(
+				{
+					releaseId: release.id,
+					movieId: movie.id
+				},
+				'[PendingReleaseTask] Movie already has file, expiring release'
+			);
 			await delayProfileService.markAsExpired(release.id);
 			result.expired = true;
 			return result;
@@ -147,9 +155,12 @@ async function processRelease(
 
 		// Check if not monitored anymore
 		if (!movie.monitored) {
-			logger.debug('[PendingReleaseTask] Movie no longer monitored, expiring release', {
-				releaseId: release.id
-			});
+			logger.debug(
+				{
+					releaseId: release.id
+				},
+				'[PendingReleaseTask] Movie no longer monitored, expiring release'
+			);
 			await delayProfileService.markAsExpired(release.id);
 			result.expired = true;
 			return result;
@@ -162,9 +173,12 @@ async function processRelease(
 		});
 
 		if (!seriesData) {
-			logger.debug('[PendingReleaseTask] Series no longer exists, expiring release', {
-				releaseId: release.id
-			});
+			logger.debug(
+				{
+					releaseId: release.id
+				},
+				'[PendingReleaseTask] Series no longer exists, expiring release'
+			);
 			await delayProfileService.markAsExpired(release.id);
 			result.expired = true;
 			return result;
@@ -179,9 +193,12 @@ async function processRelease(
 			// Check if all episodes already have files
 			const allHaveFiles = episodeData.every((e) => e.hasFile);
 			if (allHaveFiles) {
-				logger.debug('[PendingReleaseTask] All episodes already have files, expiring release', {
-					releaseId: release.id
-				});
+				logger.debug(
+					{
+						releaseId: release.id
+					},
+					'[PendingReleaseTask] All episodes already have files, expiring release'
+				);
 				await delayProfileService.markAsExpired(release.id);
 				result.expired = true;
 				return result;
@@ -203,10 +220,13 @@ async function processRelease(
 	);
 
 	if (blocklistResult.blocked) {
-		logger.debug('[PendingReleaseTask] Release is now blocklisted, expiring', {
-			releaseId: release.id,
-			reason: blocklistResult.reason
-		});
+		logger.debug(
+			{
+				releaseId: release.id,
+				reason: blocklistResult.reason
+			},
+			'[PendingReleaseTask] Release is now blocklisted, expiring'
+		);
 		await delayProfileService.markAsExpired(release.id);
 		result.expired = true;
 		return result;
@@ -218,10 +238,13 @@ async function processRelease(
 	if (grabResult.success) {
 		await delayProfileService.markAsGrabbed(release.id);
 		result.grabbed = true;
-		logger.info('[PendingReleaseTask] Successfully grabbed pending release', {
-			releaseId: release.id,
-			title: release.title
-		});
+		logger.info(
+			{
+				releaseId: release.id,
+				title: release.title
+			},
+			'[PendingReleaseTask] Successfully grabbed pending release'
+		);
 	} else {
 		// If grab failed, add to blocklist and expire
 		await blocklistService.addToBlocklist(
@@ -245,10 +268,13 @@ async function processRelease(
 
 		await delayProfileService.markAsExpired(release.id);
 		result.expired = true;
-		logger.warn('[PendingReleaseTask] Failed to grab pending release, blocklisted', {
-			releaseId: release.id,
-			error: grabResult.error
-		});
+		logger.warn(
+			{
+				releaseId: release.id,
+				error: grabResult.error
+			},
+			'[PendingReleaseTask] Failed to grab pending release, blocklisted'
+		);
 	}
 
 	return result;
@@ -295,10 +321,13 @@ async function grabPendingRelease(
 			return { success: false, error: 'No download URL or magnet for release' };
 		}
 
-		logger.info('[PendingReleaseTask] Successfully sent to download client', {
-			title: release.title,
-			client: client.name
-		});
+		logger.info(
+			{
+				title: release.title,
+				client: client.name
+			},
+			'[PendingReleaseTask] Successfully sent to download client'
+		);
 
 		return { success: true };
 	} catch (error) {

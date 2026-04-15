@@ -14,6 +14,9 @@ npm run lint:fix         # Auto-fix lint issues
 npm run format           # Auto-format code with Prettier
 npm run test             # Run all tests once
 npm run test:unit        # Run tests in watch mode
+npm run test:coverage    # Run tests with coverage report
+npm run test:live        # Run live network tests (hits real APIs)
+npm run deps:audit       # Dependency audit (unused/unlisted packages)
 
 # Run a single test file
 npx vitest run path/to/test.ts
@@ -267,18 +270,28 @@ await db.update(movies).set({ monitored: true }).where(eq(movies.id, id));
 
 ## Testing
 
+### Test Conventions
+
+- **Naming**: Always `.test.ts`, never `.spec.ts`
+- **DB tests**: Use `createTestDb()` / `destroyTestDb()` from `$test/db-helper` for per-suite isolation. Never mock `$lib/server/db` when a real in-memory DB works.
+- **Avoid `as any`**: Use typed fixture functions for test data. If testing private methods, use `@ts-expect-error` with a comment.
+- **Coverage**: Run `npm run test:coverage` before committing. Thresholds are enforced in CI.
+- **Live tests**: Tests hitting real APIs must use `describe.skipIf()` gated on `LIVE_TESTS=true`. Run with `npm run test:live`.
+- **No dead tests**: Never commit placeholder or skipped tests.
+- **No `__tests__/` directories**: Tests are colocated with source files.
+
 ### Structure
 
 ```typescript
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { createTestDb, destroyTestDb, createDbMock, type TestDatabase } from '../../../test/db-helper';
+
+let testDb: TestDatabase;
+
+beforeAll(() => { testDb = createTestDb(); });
+afterAll(() => { destroyTestDb(testDb); });
 
 describe('MyService', () => {
-	let service: MyService;
-
-	beforeEach(() => {
-		service = new MyService();
-	});
-
 	it('should do something', async () => {
 		const result = await service.doSomething();
 		expect(result).toBe(true);
@@ -286,18 +299,32 @@ describe('MyService', () => {
 });
 ```
 
+### Database Isolation
+
+```typescript
+import { createTestDb, destroyTestDb, createDbMock, type TestDatabase } from '../../../test/db-helper';
+
+const testDb = createTestDb();
+
+vi.mock('$lib/server/db', () => createDbMock(testDb));
+
+afterAll(() => { destroyTestDb(testDb); });
+```
+
 ### Mocking
 
 ```typescript
-// Mock a module
+// Mock external services only (not internal DB)
 vi.mock('$lib/server/quality', () => ({
 	qualityFilter: {
 		getProfile: vi.fn(async (id: string) => TEST_PROFILES[id] ?? null)
 	}
 }));
 
-// Mock partial types in tests (allowed by ESLint)
-const mockMovie = { id: '1', title: 'Test' } as any;
+// Use typed fixture functions instead of 'as any'
+function createTestMovie(overrides: Partial<Movie> = {}): Movie {
+	return { id: '1', title: 'Test', ...overrides };
+}
 ```
 
 ### Test File Location

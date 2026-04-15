@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { ChevronLeft, ChevronRight } from 'lucide-svelte';
 	import { unmatchedFilesStore } from '$lib/stores/unmatched-files.svelte.js';
 
@@ -31,9 +32,11 @@
 {#if pagination.totalPages > 1}
 	<div class="flex flex-col items-center justify-between gap-4 sm:flex-row">
 		<div class="text-sm text-base-content/70">
-			Showing {(pagination.page - 1) * pagination.limit + 1} -
-			{Math.min(pagination.page * pagination.limit, pagination.total)} of
-			{pagination.total} files
+			{m.unmatched_pagination_showing({
+				start: (pagination.page - 1) * pagination.limit + 1,
+				end: Math.min(pagination.page * pagination.limit, pagination.total),
+				total: pagination.total
+			})}
 		</div>
 
 		<div class="flex items-center gap-2">
@@ -72,9 +75,9 @@
 			value={pagination.limit}
 			onchange={(e) => setLimit(parseInt(e.currentTarget.value))}
 		>
-			<option value={25}>25 per page</option>
-			<option value={50}>50 per page</option>
-			<option value={100}>100 per page</option>
+			<option value={25}>{m.unmatched_pagination_perPage25()}</option>
+			<option value={50}>{m.unmatched_pagination_perPage50()}</option>
+			<option value={100}>{m.unmatched_pagination_perPage100()}</option>
 		</select>
 	</div>
 {/if}

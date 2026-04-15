@@ -18,6 +18,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		withWatchProviders,
 		watchRegion,
 		withGenres,
+		withOriginalLanguage,
 		minDate,
 		maxDate,
 		minRating,
@@ -40,6 +41,7 @@ export const load: PageServerLoad = async ({ url }) => {
 				top_rated: topRated,
 				with_watch_providers: withWatchProviders,
 				with_genres: withGenres,
+				with_original_language: withOriginalLanguage,
 				exclude_in_library: excludeInLibrary
 			}
 		};
@@ -69,6 +71,7 @@ export const load: PageServerLoad = async ({ url }) => {
 					top_rated: topRated,
 					with_watch_providers: withWatchProviders,
 					with_genres: withGenres,
+					with_original_language: withOriginalLanguage,
 					exclude_in_library: excludeInLibrary
 				}
 			};
@@ -115,6 +118,7 @@ export const load: PageServerLoad = async ({ url }) => {
 					trending,
 					with_watch_providers: withWatchProviders,
 					with_genres: withGenres,
+					with_original_language: withOriginalLanguage,
 					exclude_in_library: excludeInLibrary
 				}
 			};
@@ -166,6 +170,7 @@ export const load: PageServerLoad = async ({ url }) => {
 						trending,
 						with_watch_providers: withWatchProviders,
 						with_genres: withGenres,
+						with_original_language: withOriginalLanguage,
 						exclude_in_library: excludeInLibrary
 					}
 				};
@@ -196,6 +201,7 @@ export const load: PageServerLoad = async ({ url }) => {
 					trending,
 					with_watch_providers: withWatchProviders,
 					with_genres: withGenres,
+					with_original_language: withOriginalLanguage,
 					exclude_in_library: excludeInLibrary
 				}
 			};
@@ -245,6 +251,7 @@ export const load: PageServerLoad = async ({ url }) => {
 					trending,
 					with_watch_providers: withWatchProviders,
 					with_genres: withGenres,
+					with_original_language: withOriginalLanguage,
 					exclude_in_library: excludeInLibrary
 				}
 			};
@@ -257,6 +264,7 @@ export const load: PageServerLoad = async ({ url }) => {
 				withWatchProviders,
 				watchRegion,
 				withGenres,
+				withOriginalLanguage,
 				minDate,
 				maxDate,
 				minRating
@@ -280,12 +288,13 @@ export const load: PageServerLoad = async ({ url }) => {
 					trending,
 					with_watch_providers: withWatchProviders,
 					with_genres: withGenres,
+					with_original_language: withOriginalLanguage,
 					exclude_in_library: excludeInLibrary
 				}
 			};
 		}
 	} catch (e) {
-		logger.error('Discover load error', e, { type, sortBy });
+		logger.error({ err: e, ...{ type, sortBy } }, 'Discover load error');
 		return {
 			viewType: 'error',
 			tmdbConfigured: true, // API key exists but request failed
@@ -299,6 +308,7 @@ export const load: PageServerLoad = async ({ url }) => {
 				top_rated: topRated,
 				with_watch_providers: withWatchProviders,
 				with_genres: withGenres,
+				with_original_language: withOriginalLanguage,
 				exclude_in_library: excludeInLibrary
 			}
 		};

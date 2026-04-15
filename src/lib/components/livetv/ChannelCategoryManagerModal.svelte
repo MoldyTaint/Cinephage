@@ -3,6 +3,8 @@
 	import type { ChannelCategory, ChannelLineupItemWithDetails } from '$lib/types/livetv';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import { toasts } from '$lib/stores/toast.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		open: boolean;
@@ -103,7 +105,9 @@
 			onChange();
 			cancelEdit();
 		} catch (e) {
-			console.error('Failed to update category:', e);
+			toasts.error(
+				e instanceof Error ? e.message : m.livetv_channelCategoryManagerModal_failedToUpdate()
+			);
 		} finally {
 			savingId = null;
 		}
@@ -124,8 +128,11 @@
 		if (!categoryToDelete) return '';
 		const count = getChannelCount(categoryToDelete.id);
 		return count > 0
-			? `Delete "${categoryToDelete.name}"? ${count} channel(s) will be moved to Uncategorized.`
-			: `Delete "${categoryToDelete.name}"?`;
+			? m.livetv_channelCategoryManagerModal_deleteCategoryWithChannels({
+					name: categoryToDelete.name,
+					count
+				})
+			: m.livetv_channelCategoryManagerModal_deleteCategoryEmpty({ name: categoryToDelete.name });
 	});
 
 	// Delete category
@@ -145,7 +152,9 @@
 			onChange();
 			closeDeleteConfirm(true);
 		} catch (e) {
-			console.error('Failed to delete category:', e);
+			toasts.error(
+				e instanceof Error ? e.message : m.livetv_channelCategoryManagerModal_failedToDelete()
+			);
 		} finally {
 			deletingId = null;
 		}
@@ -174,7 +183,9 @@
 			newName = '';
 			newColor = '';
 		} catch (e) {
-			console.error('Failed to create category:', e);
+			toasts.error(
+				e instanceof Error ? e.message : m.livetv_channelCategoryManagerModal_failedToCreate()
+			);
 		} finally {
 			isAdding = false;
 		}
@@ -230,7 +241,9 @@
 
 			onChange();
 		} catch (e) {
-			console.error('Failed to reorder categories:', e);
+			toasts.error(
+				e instanceof Error ? e.message : m.livetv_channelCategoryManagerModal_failedToReorder()
+			);
 		} finally {
 			reordering = false;
 		}
@@ -249,7 +262,9 @@
 <ModalWrapper {open} {onClose} maxWidth="lg" labelledBy="channel-category-manager-modal-title">
 	<!-- Header -->
 	<div class="mb-4 flex items-center justify-between">
-		<h3 id="channel-category-manager-modal-title" class="text-lg font-bold">Manage Categories</h3>
+		<h3 id="channel-category-manager-modal-title" class="text-lg font-bold">
+			{m.livetv_channelCategoryManagerModal_title()}
+		</h3>
 		<button class="btn btn-circle btn-ghost btn-sm" onclick={onClose}>
 			<X class="h-4 w-4" />
 		</button>
@@ -257,12 +272,12 @@
 
 	<!-- Add New Category -->
 	<div class="mb-4 rounded-lg bg-base-200 p-3">
-		<p class="mb-2 text-sm font-medium">Add New Category</p>
+		<p class="mb-2 text-sm font-medium">{m.livetv_channelCategoryManagerModal_addNew()}</p>
 		<div class="flex gap-2">
 			<input
 				type="text"
 				class="input-bordered input input-sm flex-1"
-				placeholder="Category name"
+				placeholder={m.livetv_channelCategoryManagerModal_categoryNamePlaceholder()}
 				bind:value={newName}
 				onkeydown={(e) => e.key === 'Enter' && addCategory()}
 			/>
@@ -295,8 +310,8 @@
 	<!-- Category List -->
 	{#if localCategories.length === 0}
 		<div class="py-8 text-center text-base-content/50">
-			<p>No categories yet</p>
-			<p class="text-sm">Create categories to organize your channels</p>
+			<p>{m.livetv_channelCategoryManagerModal_noCategories()}</p>
+			<p class="text-sm">{m.livetv_channelCategoryManagerModal_createCategoriesHint()}</p>
 		</div>
 	{:else}
 		<div class="space-y-1">
@@ -343,7 +358,7 @@
 													{editingColor === color ? 'border-white ring-2 ring-primary' : 'border-transparent'}"
 										style="background-color: {color}"
 										onclick={() => (editingColor = editingColor === color ? '' : color)}
-										title="Select {color}"
+										title={m.livetv_channelCategoryManagerModal_selectColor({ color })}
 									></button>
 								{/each}
 							</div>
@@ -377,7 +392,9 @@
 						<span class="flex-1 font-medium">{cat.name}</span>
 
 						<span class="text-sm text-base-content/50">
-							{getChannelCount(cat.id)} channels
+							{m.livetv_channelCategoryManagerModal_channelCount({
+								count: getChannelCount(cat.id)
+							})}
 						</span>
 
 						<button
@@ -409,19 +426,19 @@
 	{#if reordering}
 		<div class="mt-2 flex items-center justify-center gap-2 text-sm text-base-content/50">
 			<Loader2 class="h-4 w-4 animate-spin" />
-			Saving order...
+			{m.livetv_channelCategoryManagerModal_savingOrder()}
 		</div>
 	{/if}
 
 	<!-- Actions -->
 	<div class="modal-action">
-		<button class="btn" onclick={onClose}>Done</button>
+		<button class="btn" onclick={onClose}>{m.livetv_channelCategoryManagerModal_done()}</button>
 	</div>
 </ModalWrapper>
 
 <ConfirmationModal
 	open={deleteConfirmOpen}
-	title="Delete Category"
+	title={m.livetv_channelCategoryManagerModal_deleteCategory()}
 	message={deleteCategoryMessage}
 	confirmLabel="Delete"
 	confirmVariant="error"

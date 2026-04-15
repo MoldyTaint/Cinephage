@@ -11,7 +11,7 @@ export const releaseTokens: TokenDefinition[] = [
 		category: 'release',
 		description: 'Release group name',
 		applicability: ['movie', 'episode'],
-		render: (info) => info.releaseGroup || ''
+		render: (info, config) => (config.includeReleaseGroup ? info.releaseGroup || '' : '')
 	},
 	{
 		name: 'Edition',

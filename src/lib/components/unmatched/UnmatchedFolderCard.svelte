@@ -1,6 +1,8 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { Folder, ChevronDown, ChevronUp, Link } from 'lucide-svelte';
 	import type { UnmatchedFolder } from '$lib/types/unmatched.js';
+	import { getFileName } from '$lib/utils/format.js';
 
 	interface Props {
 		folder: UnmatchedFolder;
@@ -12,7 +14,7 @@
 	let { folder, expanded = false, onToggle, onMatch }: Props = $props();
 
 	function formatSize(bytes: number | null): string {
-		if (!bytes) return 'Unknown';
+		if (!bytes) return m.unmatched_file_unknown();
 		const gb = bytes / (1024 * 1024 * 1024);
 		if (gb >= 1) return `${gb.toFixed(2)} GB`;
 		const mb = bytes / (1024 * 1024);
@@ -31,20 +33,21 @@
 					<h3 class="truncate font-medium" title={folder.folderPath}>
 						{folder.folderName}
 						{#if folder.isShowFolder}
-							<span class="ml-2 badge badge-sm badge-primary">Show</span>
+							<span class="ml-2 badge badge-sm badge-primary">{m.unmatched_folder_showBadge()}</span
+							>
 						{/if}
 					</h3>
 					<p class="truncate text-sm text-base-content/60">{folder.folderPath}</p>
 					<div class="mt-1 flex flex-wrap items-center gap-2 text-xs">
 						<span class="badge badge-sm">
-							{folder.fileCount} file{folder.fileCount !== 1 ? 's' : ''}
+							{m.unmatched_folder_fileCount({ count: folder.fileCount })}
 						</span>
 						<span class="badge badge-outline badge-sm">
-							{folder.mediaType === 'movie' ? 'Movie' : 'TV'}
+							{folder.mediaType === 'movie' ? m.unmatched_folder_movie() : m.unmatched_folder_tv()}
 						</span>
 						{#if folder.seasonFolders && folder.seasonFolders.length > 0}
 							<span class="badge badge-sm badge-secondary">
-								{folder.seasonFolders.length} season{folder.seasonFolders.length !== 1 ? 's' : ''}
+								{m.unmatched_folder_seasonCount({ count: folder.seasonFolders.length })}
 							</span>
 						{/if}
 						{#each folder.reasons as reason (reason)}
@@ -53,7 +56,7 @@
 					</div>
 					{#if folder.commonParsedTitle}
 						<p class="mt-1 text-xs text-base-content/50">
-							Parsed: {folder.commonParsedTitle}
+							{m.unmatched_folder_parsed({ title: folder.commonParsedTitle })}
 						</p>
 					{/if}
 					{#if folder.seasonFolders && folder.seasonFolders.length > 0}
@@ -71,26 +74,28 @@
 				<button class="btn btn-ghost btn-sm" onclick={onToggle}>
 					{#if expanded}
 						<ChevronUp class="h-4 w-4" />
-						Collapse
+						{m.unmatched_folder_collapse()}
 					{:else}
 						<ChevronDown class="h-4 w-4" />
-						Expand
+						{m.unmatched_folder_expand()}
 					{/if}
 				</button>
 				<button class="btn btn-sm btn-primary" onclick={onMatch}>
 					<Link class="h-4 w-4" />
-					Match {folder.isShowFolder ? 'Show' : 'Folder'}
+					{folder.isShowFolder ? m.unmatched_folder_matchShow() : m.unmatched_folder_matchFolder()}
 				</button>
 			</div>
 		</div>
 
 		{#if expanded}
 			<div class="mt-4 border-t border-base-300 pt-4">
-				<p class="mb-2 text-xs font-medium text-base-content/60">Files in this folder:</p>
+				<p class="mb-2 text-xs font-medium text-base-content/60">
+					{m.unmatched_folder_filesInFolder()}
+				</p>
 				<div class="space-y-1">
 					{#each folder.files as file (file.id)}
 						<div class="flex items-center justify-between rounded bg-base-300/50 px-3 py-2 text-sm">
-							<span class="truncate">{file.path.split('/').pop()}</span>
+							<span class="truncate">{getFileName(file.path)}</span>
 							<div class="flex items-center gap-2">
 								{#if file.parsedSeason !== null && file.parsedEpisode !== null}
 									<span class="badge badge-sm badge-secondary">

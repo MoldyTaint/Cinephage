@@ -11,6 +11,10 @@
 import type { RequestHandler } from './$types';
 import { channelLineupService } from '$lib/server/livetv/lineup/ChannelLineupService';
 import { getEpgService } from '$lib/server/livetv/epg/EpgService';
+import {
+	buildResolvedPlanForLineup,
+	mapGuideDataToRequestedChannels
+} from '$lib/server/livetv/epg/epg-utils';
 import { logger } from '$lib/logging';
 import type { ChannelLineupItemWithDetails, EpgProgram } from '$lib/types/livetv';
 
@@ -143,11 +147,14 @@ export const GET: RequestHandler = async ({ url }) => {
 
 		// Get EPG data for all lineup channels
 		const epgService = getEpgService();
-		const channelIds = lineup.map((item) => item.channelId);
+		const resolvedPlan = buildResolvedPlanForLineup(lineup);
 		const now = new Date();
 		const end = new Date(now.getTime() + hours * 60 * 60 * 1000);
 
-		const epgData = epgService.getGuideData(channelIds, now, end);
+		const epgData = mapGuideDataToRequestedChannels(
+			resolvedPlan,
+			epgService.getGuideData(resolvedPlan.sourceChannelIds, now, end)
+		);
 
 		// Build channel ID mapping (channelId -> xmlId)
 		const channelXmlIdMap = new Map<string, string>();
@@ -182,11 +189,14 @@ export const GET: RequestHandler = async ({ url }) => {
 
 		const xml = xmlLines.join('\n');
 
-		logger.debug('[EPG XML] Generated XMLTV', {
-			channels: lineup.length,
-			programs: programCount,
-			hours
-		});
+		logger.debug(
+			{
+				channels: lineup.length,
+				programs: programCount,
+				hours
+			},
+			'[EPG XML] Generated XMLTV'
+		);
 
 		return new Response(xml, {
 			status: 200,

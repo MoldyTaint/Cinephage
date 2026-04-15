@@ -289,24 +289,25 @@ async function main() {
 	const allSeriesForUpdate = await db.select({ id: series.id }).from(series);
 
 	for (const s of allSeriesForUpdate) {
-		// Count episodes with hasFile=true (excluding specials/season 0)
-		const episodesWithFiles = await db
-			.select()
-			.from(episodes)
-			.where(
-				and(eq(episodes.seriesId, s.id), eq(episodes.hasFile, true), ne(episodes.seasonNumber, 0))
-			);
+		const today = new Date().toISOString().split('T')[0];
+		const isAired = (ep: typeof episodes.$inferSelect) =>
+			Boolean(ep.airDate && ep.airDate !== '' && ep.airDate <= today);
 
-		const totalEpisodes = await db
+		// Get all regular episodes for this series
+		const allRegularEpisodes = await db
 			.select()
 			.from(episodes)
 			.where(and(eq(episodes.seriesId, s.id), ne(episodes.seasonNumber, 0)));
+
+		// Count only aired episodes with hasFile=true
+		const airedEpisodes = allRegularEpisodes.filter(isAired);
+		const episodesWithFiles = airedEpisodes.filter((ep) => ep.hasFile);
 
 		await db
 			.update(series)
 			.set({
 				episodeFileCount: episodesWithFiles.length,
-				episodeCount: totalEpisodes.length
+				episodeCount: airedEpisodes.length
 			})
 			.where(eq(series.id, s.id));
 	}
@@ -320,30 +321,27 @@ async function main() {
 	const allSeasons = await db.select().from(seasons);
 
 	for (const season of allSeasons) {
-		// Count episodes with hasFile=true for this season
-		const episodesWithFiles = await db
-			.select()
-			.from(episodes)
-			.where(
-				and(
-					eq(episodes.seriesId, season.seriesId),
-					eq(episodes.seasonNumber, season.seasonNumber),
-					eq(episodes.hasFile, true)
-				)
-			);
+		const today = new Date().toISOString().split('T')[0];
+		const isAired = (ep: typeof episodes.$inferSelect) =>
+			Boolean(ep.airDate && ep.airDate !== '' && ep.airDate <= today);
 
-		const totalEpisodes = await db
+		// Get all episodes for this season
+		const allSeasonEpisodes = await db
 			.select()
 			.from(episodes)
 			.where(
 				and(eq(episodes.seriesId, season.seriesId), eq(episodes.seasonNumber, season.seasonNumber))
 			);
 
+		// Count only aired episodes with hasFile=true
+		const airedEpisodes = allSeasonEpisodes.filter(isAired);
+		const episodesWithFiles = airedEpisodes.filter((ep) => ep.hasFile);
+
 		await db
 			.update(seasons)
 			.set({
 				episodeFileCount: episodesWithFiles.length,
-				episodeCount: totalEpisodes.length
+				episodeCount: airedEpisodes.length
 			})
 			.where(eq(seasons.id, season.id));
 	}

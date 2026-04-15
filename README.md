@@ -29,15 +29,16 @@
 
 ---
 
-<p align="center">
-  <img src="docs/images/dashboard.png" width="400" alt="Dashboard">&nbsp;&nbsp;
-  <img src="docs/images/discover.png" width="400" alt="Discover">
-  <br><br>
-  <img src="docs/images/library-movies.png" width="400" alt="Library">&nbsp;&nbsp;
-  <img src="docs/images/movie-details.png" width="400" alt="Movie Details">
-  <br><br>
-  <a href="docs/images/">View all screenshots →</a>
-</p>
+<table>
+  <tr>
+    <td><img src="docs/images/Dashboard.png" alt="Dashboard" width="400" /></td>
+    <td><img src="docs/images/Discover.png" alt="Discover" width="400" /></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/LiveTV.png" alt="Live TV" width="400" /></td>
+    <td><img src="docs/images/SmartLists.png" alt="Smart Lists" width="400" /></td>
+  </tr>
+</table>
 
 ---
 
@@ -111,57 +112,115 @@ Dynamic content discovery with auto-add to library. Import from IMDb, Trakt, TMD
 
 ### Docker (Recommended)
 
-Create a `docker-compose.yaml` file:
+1. Download the [docker-compose.yaml](docker-compose.yaml) and [.env.example](.env.example) into a directory:
 
-```yaml
-services:
-  cinephage:
-    image: ghcr.io/moldytaint/cinephage:latest
-    container_name: cinephage
-    restart: unless-stopped
-    ports:
-      - '3000:3000'
-    environment:
-      - PUID=1000 # Your user ID (run: id -u)
-      - PGID=1000 # Your group ID (run: id -g)
-      - TZ=UTC
-      - ORIGIN=http://localhost:3000
-    volumes:
-      - ./config:/config
-      - /path/to/media:/media # CHANGE THIS
-      - /path/to/downloads:/downloads # CHANGE THIS
+```bash
+mkdir cinephage && cd cinephage
+curl -O https://raw.githubusercontent.com/MoldyTaint/Cinephage/main/docker-compose.yaml
+curl -o .env https://raw.githubusercontent.com/MoldyTaint/Cinephage/main/.env.example
 ```
 
-Then start it:
+2. Edit `.env` — at minimum set `BETTER_AUTH_SECRET` (generate one with `openssl rand -base64 32`).
+
+3. Update the volume mounts in `docker-compose.yaml` to point to your media and download directories.
+
+4. Start it:
 
 ```bash
 docker compose up -d
 ```
 
-**That's it.** Open http://localhost:3000 and follow the setup wizard.
+Open http://localhost:3000 and follow the setup wizard.
 
-> **Note:** Your data, config, and logs are stored in `./config` (automatically created). Never mount `/app` as it contains application code.
+**Image tags:** `latest` (stable) · `dev` (preview) · `vX.Y.Z` (pinned)
+
+> **Note:** Persistent data lives in `./config` (created automatically). Logs go to container stdout/stderr. Never mount `/app` — it contains application code.
 >
-> **Upgrading from older versions?** See [Migration Guide](docs/support/troubleshooting.md#migration-from-legacy-appdata-and-applogs-mounts) if you previously used `/app/data` and `/app/logs` mounts.
+> **Upgrading from older versions?** See the [Migration Guide](docs/support/troubleshooting.md#migration-from-legacy-appdata-mounts) if you previously used `/app/data` mounts.
+
+If you later access Cinephage through a hostname or reverse proxy, update `BETTER_AUTH_URL` in `.env` to that public URL. You can also set the External URL in the UI under **Settings > System**.
+
+### Bare Metal
+
+**Prerequisites:** Node.js 22+ · npm · git · ffmpeg (optional, for media info)
+
+```bash
+git clone https://github.com/MoldyTaint/Cinephage.git
+cd Cinephage
+npm ci
+npm run build
+cp .env.example .env
+```
+
+Edit `.env` — set at minimum:
+
+```
+BETTER_AUTH_SECRET=<your-secret>
+ORIGIN=http://localhost:3000
+BETTER_AUTH_URL=http://localhost:3000
+```
+
+Then start:
+
+```bash
+npm start
+```
+
+Data is stored in `./data` by default (no `/config` mount needed on bare metal).
+
+#### Running as a systemd service
+
+Create `/etc/systemd/system/cinephage.service`:
+
+```ini
+[Unit]
+Description=Cinephage Media Manager
+After=network.target
+
+[Service]
+Type=simple
+User=cinephage
+WorkingDirectory=/opt/Cinephage
+EnvironmentFile=/opt/Cinephage/.env
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo useradd -r -s /bin/false cinephage
+sudo chown -R cinephage:cinephage /opt/Cinephage
+sudo systemctl daemon-reload
+sudo systemctl enable --now cinephage
+```
+
+Adjust `User`, `WorkingDirectory`, and the node binary path to match your setup.
 
 ### Requirements
 
-- **TMDB API Key**: Free at [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api)
-- **Download Client** (optional): qBittorrent, SABnzbd, NZBGet, or NZBMount
+- **TMDB API Key** — Free at [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api)
+- **Download Client** (optional) — qBittorrent, SABnzbd, or NZBGet
   - Or use streaming mode — no download client needed
-- **Optional**: ffprobe for media info extraction
+
+### Configuration
+
+All environment variables are documented in [`.env.example`](.env.example). Key ones:
+
+| Variable             | Required    | Description                                   |
+| -------------------- | ----------- | --------------------------------------------- |
+| `BETTER_AUTH_SECRET` | Yes         | Session signing and API key encryption        |
+| `ORIGIN`             | Recommended | Trusted origin for CSRF protection            |
+| `BETTER_AUTH_URL`    | Recommended | Base URL for auth callbacks and redirects     |
+| `TZ`                 | No          | Timezone for scheduled tasks (default: `UTC`) |
 
 ---
 
 ## Documentation
 
-Comprehensive documentation is available in the [`docs/`](docs/INDEX.md) folder:
-
-- **[Getting Started](docs/getting-started/installation.md)** — Installation and first setup
-- **[Features](docs/INDEX.md#features)** — Detailed feature guides
-- **[Configuration](docs/INDEX.md#configuration)** — Setup all integrations
-- **[Operations](docs/INDEX.md#operations)** — Deployment and maintenance
-- **[Development](docs/INDEX.md#development)** — Contributing guidelines
+Comprehensive documentation is available at **[docs.cinephage.net](https://docs.cinephage.net/)**.
 
 ---
 

@@ -47,7 +47,10 @@ class ServiceManager {
 				service.start();
 				logger.debug(`Started service: ${service.name}`);
 			} catch (error) {
-				logger.error(`Failed to start service: ${service.name}`, error);
+				logger.error(
+					{ err: error, serviceName: service.name },
+					`Failed to start service: ${service.name}`
+				);
 			}
 		}
 	}
@@ -63,7 +66,10 @@ class ServiceManager {
 				await service.stop();
 				logger.debug(`Stopped service: ${service.name}`);
 			} catch (error) {
-				logger.error(`Error stopping service: ${service.name}`, error);
+				logger.error(
+					{ err: error, serviceName: service.name },
+					`Error stopping service: ${service.name}`
+				);
 			}
 		});
 

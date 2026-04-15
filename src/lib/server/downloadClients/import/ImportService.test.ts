@@ -13,12 +13,12 @@ async function createSizedFile(filePath: string, sizeBytes: number) {
 	await truncate(filePath, sizeBytes);
 }
 
-describe('ImportService NZB-Mount selection', () => {
+describe('ImportService SAB mount-mode STRM selection', () => {
 	beforeEach(() => {
 		ImportService.resetInstance();
 	});
 
-	it('prefers non-strm when present for NZB-Mount options', async () => {
+	it('prefers non-strm when present for mount-mode options', async () => {
 		const dir = await createTempDir();
 		try {
 			const strmPath = join(dir, 'movie.strm');
@@ -44,7 +44,7 @@ describe('ImportService NZB-Mount selection', () => {
 		}
 	});
 
-	it('allows small strm files when configured for NZB-Mount', async () => {
+	it('allows small strm files when configured for mount mode', async () => {
 		const dir = await createTempDir();
 		try {
 			const strmPath = join(dir, 'movie.strm');
@@ -132,6 +132,188 @@ describe('ImportService NZB-Mount selection', () => {
 		expect(options.allowStrmSmall).toBe(true);
 		expect(options.preferNonStrm).toBe(false);
 	});
+
+	it('treats SABnzbd mount mode as STRM-capable (parity with legacy mount alias)', () => {
+		const service = ImportService.getInstance() as unknown as {
+			getImportOptions: (
+				client?: { implementation?: string; mountMode?: string | null },
+				queueItem?: { outputPath?: string | null; clientDownloadPath?: string | null }
+			) => { allowStrmSmall: boolean; preferNonStrm: boolean };
+		};
+
+		const options = service.getImportOptions(
+			{
+				implementation: 'sabnzbd',
+				mountMode: 'nzbdav'
+			},
+			undefined
+		);
+
+		expect(options.allowStrmSmall).toBe(true);
+		expect(options.preferNonStrm).toBe(true);
+	});
+
+	it('keeps regular SABnzbd behavior unchanged when mount mode is not configured', () => {
+		const service = ImportService.getInstance() as unknown as {
+			getImportOptions: (
+				client?: { implementation?: string; mountMode?: string | null },
+				queueItem?: { outputPath?: string | null; clientDownloadPath?: string | null }
+			) => { allowStrmSmall: boolean; preferNonStrm: boolean };
+		};
+
+		const options = service.getImportOptions(
+			{
+				implementation: 'sabnzbd',
+				mountMode: null
+			},
+			undefined
+		);
+
+		expect(options.allowStrmSmall).toBe(false);
+		expect(options.preferNonStrm).toBe(false);
+	});
+});
+
+describe('ImportService queue-context episode fallback', () => {
+	beforeEach(() => {
+		ImportService.resetInstance();
+	});
+
+	it('maps relative season-pack episode numbers using queued episode IDs', () => {
+		const service = ImportService.getInstance() as unknown as {
+			matchEpisodesFromQueueContext: (
+				seriesEpisodes: Array<{
+					id: string;
+					seriesId: string;
+					seasonNumber: number;
+					episodeNumber: number;
+				}>,
+				queueItem: { episodeIds?: string[] | null; seasonNumber?: number | null },
+				identifier: {
+					numbering: 'standard';
+					seasonNumber: number;
+					episodeNumbers: number[];
+				}
+			) => Array<{ id: string; episodeNumber: number }>;
+		};
+
+		const seriesEpisodes = [
+			{ id: 'ep-62', seriesId: 'series-1', seasonNumber: 2, episodeNumber: 62 },
+			{ id: 'ep-63', seriesId: 'series-1', seasonNumber: 2, episodeNumber: 63 },
+			{ id: 'ep-64', seriesId: 'series-1', seasonNumber: 2, episodeNumber: 64 },
+			{ id: 'ep-65', seriesId: 'series-1', seasonNumber: 2, episodeNumber: 65 },
+			{ id: 'ep-66', seriesId: 'series-1', seasonNumber: 2, episodeNumber: 66 },
+			{ id: 'ep-67', seriesId: 'series-1', seasonNumber: 2, episodeNumber: 67 },
+			{ id: 'ep-68', seriesId: 'series-1', seasonNumber: 2, episodeNumber: 68 },
+			{ id: 'ep-69', seriesId: 'series-1', seasonNumber: 2, episodeNumber: 69 }
+		];
+
+		const matching = service.matchEpisodesFromQueueContext(
+			seriesEpisodes,
+			{
+				episodeIds: ['ep-62', 'ep-63', 'ep-64', 'ep-65', 'ep-66', 'ep-67', 'ep-68', 'ep-69'],
+				seasonNumber: 2
+			},
+			{
+				numbering: 'standard',
+				seasonNumber: 2,
+				episodeNumbers: [1, 2, 8]
+			}
+		);
+
+		expect(matching.map((episode) => episode.id)).toEqual(['ep-62', 'ep-63', 'ep-69']);
+	});
+
+	it('returns no fallback matches when parsed season differs from queued season', () => {
+		const service = ImportService.getInstance() as unknown as {
+			matchEpisodesFromQueueContext: (
+				seriesEpisodes: Array<{
+					id: string;
+					seriesId: string;
+					seasonNumber: number;
+					episodeNumber: number;
+				}>,
+				queueItem: { episodeIds?: string[] | null; seasonNumber?: number | null },
+				identifier: {
+					numbering: 'standard';
+					seasonNumber: number;
+					episodeNumbers: number[];
+				}
+			) => Array<{ id: string; episodeNumber: number }>;
+		};
+
+		const matching = service.matchEpisodesFromQueueContext(
+			[{ id: 'ep-62', seriesId: 'series-1', seasonNumber: 2, episodeNumber: 62 }],
+			{ episodeIds: ['ep-62'], seasonNumber: 2 },
+			{ numbering: 'standard', seasonNumber: 3, episodeNumbers: [1] }
+		);
+
+		expect(matching).toHaveLength(0);
+	});
+});
+
+describe('ImportService episode identifier fallback parsing', () => {
+	beforeEach(() => {
+		ImportService.resetInstance();
+	});
+
+	it('resolves episode from queue title when source basename is obfuscated', () => {
+		const service = ImportService.getInstance() as unknown as {
+			resolveEpisodeIdentifierWithFallback: (
+				videoFilePath: string,
+				queueItem: { title: string; seasonNumber?: number | null },
+				seriesType: 'standard' | 'anime' | 'daily'
+			) =>
+				| { numbering: 'standard'; seasonNumber: number; episodeNumbers: number[] }
+				| { numbering: 'daily'; airDate: string }
+				| { numbering: 'absolute'; absoluteEpisode: number }
+				| null;
+		};
+
+		const identifier = service.resolveEpisodeIdentifierWithFallback(
+			'/mnt/nzbdav/completed-downloads/tv/the-night-agent/yAGGjgtaYU29DAJR7VU2EZAyThCqGmPu.mkv.strm',
+			{
+				title: 'The.Night.Agent.S03E10.HDR.2160p.WEB.h265-ETHEL',
+				seasonNumber: 3
+			},
+			'standard'
+		);
+
+		expect(identifier).toEqual({
+			numbering: 'standard',
+			seasonNumber: 3,
+			episodeNumbers: [10]
+		});
+	});
+
+	it('resolves episode from parent folder when source basename is obfuscated', () => {
+		const service = ImportService.getInstance() as unknown as {
+			resolveEpisodeIdentifierWithFallback: (
+				videoFilePath: string,
+				queueItem: { title: string; seasonNumber?: number | null },
+				seriesType: 'standard' | 'anime' | 'daily'
+			) =>
+				| { numbering: 'standard'; seasonNumber: number; episodeNumbers: number[] }
+				| { numbering: 'daily'; airDate: string }
+				| { numbering: 'absolute'; absoluteEpisode: number }
+				| null;
+		};
+
+		const identifier = service.resolveEpisodeIdentifierWithFallback(
+			'/mnt/nzbdav/completed-downloads/tv/The.Night.Agent.S03E10.HDR.2160p.WEB.h265-ETHEL/yAGGjgtaYU29DAJR7VU2EZAyThCqGmPu.mkv.strm',
+			{
+				title: 'Unparseable Release Name',
+				seasonNumber: 3
+			},
+			'standard'
+		);
+
+		expect(identifier).toEqual({
+			numbering: 'standard',
+			seasonNumber: 3,
+			episodeNumbers: [10]
+		});
+	});
 });
 
 describe('ImportService metadata extraction', () => {
@@ -174,6 +356,44 @@ describe('ImportService metadata extraction', () => {
 		expect(metadata.quality.resolution).toBe('720p');
 		expect(metadata.quality.source).toBe('bluray');
 		expect(metadata.quality.codec).toBe('h264');
+	});
+
+	it('falls back to parent folder metadata when source filename is obfuscated', () => {
+		const service = ImportService.getInstance() as unknown as {
+			buildImportedMetadata: (
+				queueItem: {
+					title: string;
+					quality?: Record<string, string>;
+					releaseGroup?: string | null;
+				},
+				sourcePath: string,
+				mediaInfo: { width?: number; height?: number; videoCodec?: string } | null
+			) => {
+				sceneName: string;
+				releaseGroup?: string;
+				quality: {
+					resolution?: string;
+					source?: string;
+					codec?: string;
+					hdr?: string;
+				};
+			};
+		};
+
+		const metadata = service.buildImportedMetadata(
+			{
+				title: 'The Night Agent (2026)'
+			},
+			'/tmp/The.Night.Agent.S03E10.HDR.2160p.WEB.h265-ETHEL/yAGGjgtaYU29DAJR7VU2EZAyThCqGmPu.mkv.strm',
+			null
+		);
+
+		expect(metadata.sceneName).toBe('The.Night.Agent.S03E10.HDR.2160p.WEB.h265-ETHEL');
+		expect(metadata.releaseGroup).toBe('ETHEL');
+		expect(metadata.quality.resolution).toBe('2160p');
+		expect(metadata.quality.source).toBe('webrip');
+		expect(metadata.quality.codec).toBe('h265');
+		expect(metadata.quality.hdr).toBe('hdr');
 	});
 
 	it('uses probe metadata as fallback for resolution and codec', () => {
@@ -317,5 +537,45 @@ describe('ImportService episode naming', () => {
 		);
 
 		expect(absoluteNumber).toBe(3);
+	});
+
+	it('uses custom season folder naming consistently for import paths', () => {
+		const service = ImportService.getInstance() as unknown as {
+			buildEpisodeRelativePath: (
+				useSeasonFolders: boolean,
+				seasonNumber: number,
+				destFileName: string
+			) => string;
+			buildSeasonFolderName: (seasonNumber: number) => string;
+		};
+
+		const namingService = {
+			generateSeasonFolderName: (seasonNumber: number) => `Series ${seasonNumber}`
+		};
+
+		(service as unknown as { getNamingService: () => typeof namingService }).getNamingService =
+			() => namingService;
+
+		expect(service.buildSeasonFolderName(3)).toBe('Series 3');
+		expect(service.buildEpisodeRelativePath(true, 3, 'Episode 03.mkv')).toBe(
+			'Series 3/Episode 03.mkv'
+		);
+		expect(service.buildEpisodeRelativePath(false, 3, 'Episode 03.mkv')).toBe('Episode 03.mkv');
+	});
+});
+
+describe('ImportService post-import status handling', () => {
+	beforeEach(() => {
+		ImportService.resetInstance();
+	});
+
+	it('treats seeding-imported as already imported', () => {
+		const service = ImportService.getInstance() as unknown as {
+			isAlreadyImportedStatus: (status: string | null | undefined) => boolean;
+		};
+
+		expect(service.isAlreadyImportedStatus('seeding-imported')).toBe(true);
+		expect(service.isAlreadyImportedStatus('imported')).toBe(true);
+		expect(service.isAlreadyImportedStatus('seeding')).toBe(false);
 	});
 });

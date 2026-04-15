@@ -8,11 +8,18 @@ import { rootFolders as rootFoldersTable } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { ValidationError } from '$lib/errors';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'imports' as const });
 import {
 	findOverlappingRootFolder,
 	getRootFolderOverlapMessage
 } from '$lib/server/filesystem/root-folder-overlap.js';
+import {
+	isAnimeRootFolderEnforcementEnabled,
+	setAnimeRootFolderEnforcement
+} from '$lib/server/library/anime-root-enforcement-settings.js';
+import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { getLibraryScheduler } from '$lib/server/library/library-scheduler.js';
@@ -21,7 +28,8 @@ import { libraryWatcherService } from '$lib/server/library/library-watcher.js';
 import type {
 	RootFolder,
 	PathValidationResult,
-	RootFolderMediaType
+	RootFolderMediaType,
+	RootFolderMediaSubType
 } from '$lib/types/downloadClient';
 
 /**
@@ -31,10 +39,20 @@ export interface RootFolderInput {
 	name: string;
 	path: string;
 	mediaType: RootFolderMediaType;
+	mediaSubType?: RootFolderMediaSubType;
 	isDefault?: boolean;
 	readOnly?: boolean;
 	preserveSymlinks?: boolean;
 	defaultMonitored?: boolean;
+}
+
+export interface DeleteRootFolderResult {
+	autoDisabledAnimeEnforcement: boolean;
+}
+
+export interface UpdateRootFolderResult {
+	folder: RootFolder;
+	autoDisabledAnimeEnforcement: boolean;
 }
 
 /**
@@ -84,13 +102,21 @@ export class RootFolderService {
 	}
 
 	/**
-	 * Get the default folder for a media type.
+	 * Get the default folder for a media type and optional subtype.
 	 */
-	async getDefaultFolder(mediaType: RootFolderMediaType): Promise<RootFolder | undefined> {
-		const rows = await db
-			.select()
-			.from(rootFoldersTable)
-			.where(and(eq(rootFoldersTable.mediaType, mediaType), eq(rootFoldersTable.isDefault, true)));
+	async getDefaultFolder(
+		mediaType: RootFolderMediaType,
+		mediaSubType?: RootFolderMediaSubType
+	): Promise<RootFolder | undefined> {
+		const whereClause = mediaSubType
+			? and(
+					eq(rootFoldersTable.mediaType, mediaType),
+					eq(rootFoldersTable.mediaSubType, mediaSubType),
+					eq(rootFoldersTable.isDefault, true)
+				)
+			: and(eq(rootFoldersTable.mediaType, mediaType), eq(rootFoldersTable.isDefault, true));
+
+		const rows = await db.select().from(rootFoldersTable).where(whereClause);
 
 		if (!rows[0]) return undefined;
 		return this.rowToFolder(rows[0]);
@@ -108,12 +134,18 @@ export class RootFolderService {
 
 		await this.assertNoPathOverlap(input.path);
 
-		// If this is being set as default, unset any existing defaults for this media type
+		// If this is being set as default, unset any existing defaults for this media type + subtype.
+		const mediaSubType = input.mediaSubType ?? 'standard';
 		if (input.isDefault) {
 			await db
 				.update(rootFoldersTable)
 				.set({ isDefault: false })
-				.where(eq(rootFoldersTable.mediaType, input.mediaType));
+				.where(
+					and(
+						eq(rootFoldersTable.mediaType, input.mediaType),
+						eq(rootFoldersTable.mediaSubType, mediaSubType)
+					)
+				);
 		}
 
 		const id = randomUUID();
@@ -124,6 +156,7 @@ export class RootFolderService {
 			name: input.name,
 			path: input.path,
 			mediaType: input.mediaType,
+			mediaSubType,
 			isDefault: input.isDefault ?? false,
 			readOnly: input.readOnly ?? false,
 			preserveSymlinks: input.preserveSymlinks ?? false,
@@ -133,13 +166,16 @@ export class RootFolderService {
 			createdAt: now
 		});
 
-		logger.info('Root folder created', {
-			id,
-			name: input.name,
-			path: input.path,
-			readOnly: input.readOnly ?? false,
-			preserveSymlinks: input.preserveSymlinks ?? false
-		});
+		logger.info(
+			{
+				id,
+				name: input.name,
+				path: input.path,
+				readOnly: input.readOnly ?? false,
+				preserveSymlinks: input.preserveSymlinks ?? false
+			},
+			'Root folder created'
+		);
 
 		// Trigger initial scan for the new folder (non-blocking)
 		const scheduler = getLibraryScheduler();
@@ -147,11 +183,16 @@ export class RootFolderService {
 
 		// Start watching this folder for changes
 		libraryWatcherService.watchFolder(id, input.path).catch((error) => {
-			logger.warn('Failed to start watching new folder', {
-				id,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					id,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to start watching new folder'
+			);
 		});
+
+		await this.syncSystemLibraries();
 
 		const created = await this.getFolder(id);
 		if (!created) {
@@ -164,7 +205,10 @@ export class RootFolderService {
 	/**
 	 * Update a root folder.
 	 */
-	async updateFolder(id: string, updates: Partial<RootFolderInput>): Promise<RootFolder> {
+	async updateFolder(
+		id: string,
+		updates: Partial<RootFolderInput>
+	): Promise<UpdateRootFolderResult> {
 		const existing = await this.getFolder(id);
 		if (!existing) {
 			throw new Error(`Root folder not found: ${id}`);
@@ -185,19 +229,26 @@ export class RootFolderService {
 
 		await this.assertNoPathOverlap(updates.path ?? existing.path, id);
 
-		// If this is being set as default, unset any existing defaults for this media type
+		// If this is being set as default, unset any existing defaults for this media type + subtype.
 		const mediaType = updates.mediaType ?? existing.mediaType;
+		const mediaSubType = updates.mediaSubType ?? existing.mediaSubType;
 		if (updates.isDefault) {
 			await db
 				.update(rootFoldersTable)
 				.set({ isDefault: false })
-				.where(eq(rootFoldersTable.mediaType, mediaType));
+				.where(
+					and(
+						eq(rootFoldersTable.mediaType, mediaType),
+						eq(rootFoldersTable.mediaSubType, mediaSubType)
+					)
+				);
 		}
 
 		const updateData: Record<string, unknown> = {};
 		if (updates.name !== undefined) updateData.name = updates.name;
 		if (updates.path !== undefined) updateData.path = updates.path;
 		if (updates.mediaType !== undefined) updateData.mediaType = updates.mediaType;
+		if (updates.mediaSubType !== undefined) updateData.mediaSubType = updates.mediaSubType;
 		if (updates.isDefault !== undefined) updateData.isDefault = updates.isDefault;
 		if (updates.readOnly !== undefined) updateData.readOnly = updates.readOnly;
 		if (updates.preserveSymlinks !== undefined)
@@ -207,25 +258,75 @@ export class RootFolderService {
 
 		await db.update(rootFoldersTable).set(updateData).where(eq(rootFoldersTable.id, id));
 
-		logger.info('Root folder updated', { id });
+		logger.info({ id }, 'Root folder updated');
 
 		const updated = await this.getFolder(id);
 		if (!updated) {
 			throw new Error('Failed to update root folder');
 		}
 
-		return updated;
+		await this.syncSystemLibraries();
+
+		const autoDisabledAnimeEnforcement = await this.disableAnimeEnforcementIfNoAnimeFolders();
+
+		return { folder: updated, autoDisabledAnimeEnforcement };
 	}
 
 	/**
 	 * Delete a root folder.
 	 */
-	async deleteFolder(id: string): Promise<void> {
+	async deleteFolder(id: string): Promise<DeleteRootFolderResult> {
+		const existing = await this.getFolder(id);
+		if (!existing) {
+			throw new Error(`Root folder not found: ${id}`);
+		}
+
 		// Stop watching before delete
 		await libraryWatcherService.unwatchFolder(id);
 
 		await db.delete(rootFoldersTable).where(eq(rootFoldersTable.id, id));
-		logger.info('Root folder deleted', { id });
+		logger.info({ id }, 'Root folder deleted');
+
+		await this.syncSystemLibraries();
+
+		const autoDisabledAnimeEnforcement = await this.disableAnimeEnforcementIfNoAnimeFolders();
+
+		return { autoDisabledAnimeEnforcement };
+	}
+
+	private async disableAnimeEnforcementIfNoAnimeFolders(): Promise<boolean> {
+		const remainingAnimeFolders = await db
+			.select({ id: rootFoldersTable.id })
+			.from(rootFoldersTable)
+			.where(eq(rootFoldersTable.mediaSubType, 'anime'))
+			.limit(1);
+
+		if (remainingAnimeFolders.length > 0) {
+			return false;
+		}
+
+		if (await isAnimeRootFolderEnforcementEnabled()) {
+			await setAnimeRootFolderEnforcement(false);
+			logger.warn(
+				'Anime root folder enforcement auto-disabled because no anime subtype root folders remain'
+			);
+			return true;
+		}
+
+		return false;
+	}
+
+	private async syncSystemLibraries(): Promise<void> {
+		try {
+			await getLibraryEntityService().syncSystemLibrariesFromRootFolders();
+		} catch (error) {
+			logger.warn(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to synchronize system libraries after root folder update'
+			);
+		}
 	}
 
 	/**
@@ -298,7 +399,7 @@ export class RootFolderService {
 			// Check if writable by actually attempting to write a test file
 			const isWritable = await this.testWriteAccess(normalizedPath);
 			if (!isWritable) {
-				logger.warn('Write test failed for path', { path: normalizedPath });
+				logger.warn({ path: normalizedPath }, 'Write test failed for path');
 				return {
 					valid: false,
 					exists: true,
@@ -380,6 +481,18 @@ export class RootFolderService {
 	}
 
 	/**
+	 * Get total filesystem capacity for a path in bytes.
+	 */
+	async getTotalSpace(folderPath: string): Promise<number> {
+		try {
+			const stats = await fs.statfs(folderPath);
+			return stats.blocks * stats.bsize;
+		} catch {
+			return 0;
+		}
+	}
+
+	/**
 	 * Refresh free space for all folders.
 	 */
 	async refreshFreeSpace(): Promise<void> {
@@ -397,11 +510,14 @@ export class RootFolderService {
 					})
 					.where(eq(rootFoldersTable.id, folder.id));
 			} catch (error) {
-				logger.warn('Failed to refresh free space for folder', {
-					folderId: folder.id,
-					path: folder.path,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.warn(
+					{
+						folderId: folder.id,
+						path: folder.path,
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'Failed to refresh free space for folder'
+				);
 			}
 		}
 	}
@@ -432,12 +548,15 @@ export class RootFolderService {
 			return true;
 		} catch (err) {
 			const errObj = err as NodeJS.ErrnoException;
-			logger.warn('testWriteAccess failed', {
-				path: dirPath,
-				testDir,
-				errorCode: errObj.code,
-				errorMessage: errObj.message
-			});
+			logger.warn(
+				{
+					path: dirPath,
+					testDir,
+					errorCode: errObj.code,
+					errorMessage: errObj.message
+				},
+				'testWriteAccess failed'
+			);
 			// Attempt cleanup in case mkdir succeeded but rmdir failed
 			if (testDir) {
 				try {
@@ -457,6 +576,7 @@ export class RootFolderService {
 		// Check current accessibility
 		let accessible: boolean;
 		let freeSpaceBytes: number | null = null;
+		let totalSpaceBytes: number | null = null;
 		let freeSpaceFormatted: string | undefined;
 		const isReadOnly = !!row.readOnly;
 
@@ -480,6 +600,7 @@ export class RootFolderService {
 				} else {
 					freeSpaceBytes = row.freeSpaceBytes;
 				}
+				totalSpaceBytes = await this.getTotalSpace(row.path);
 
 				if (freeSpaceBytes) {
 					freeSpaceFormatted = this.formatBytes(freeSpaceBytes);
@@ -494,11 +615,13 @@ export class RootFolderService {
 			name: row.name,
 			path: row.path,
 			mediaType: row.mediaType as RootFolderMediaType,
+			mediaSubType: (row.mediaSubType ?? 'standard') as RootFolderMediaSubType,
 			isDefault: !!row.isDefault,
 			readOnly: isReadOnly,
 			preserveSymlinks: !!row.preserveSymlinks,
 			defaultMonitored: row.defaultMonitored ?? true,
 			freeSpaceBytes,
+			totalSpaceBytes,
 			freeSpaceFormatted,
 			accessible,
 			lastCheckedAt: row.lastCheckedAt ?? undefined,

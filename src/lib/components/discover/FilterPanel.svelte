@@ -1,6 +1,7 @@
 <script lang="ts">
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
 	import type { WatchProvider } from '$lib/types/tmdb';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let {
 		type,
@@ -9,6 +10,7 @@
 		providers,
 		genres,
 		selectedGenres,
+		selectedLanguage,
 		minYear,
 		maxYear,
 		minRating,
@@ -16,6 +18,7 @@
 		onSortChange,
 		onProviderToggle,
 		onGenreToggle,
+		onLanguageChange,
 		onYearChange,
 		onRatingChange
 	} = $props<{
@@ -25,6 +28,7 @@
 		providers: WatchProvider[];
 		genres: { id: number; name: string }[];
 		selectedGenres: number[];
+		selectedLanguage: string;
 		minYear: string;
 		maxYear: string;
 		minRating: number;
@@ -32,33 +36,51 @@
 		onSortChange: (sort: string) => void;
 		onProviderToggle: (id: number) => void;
 		onGenreToggle: (id: number) => void;
+		onLanguageChange: (language: string) => void;
 		onYearChange: (min: string, max: string) => void;
 		onRatingChange: (rating: number) => void;
 	}>();
+
+	// Common languages for filtering
+	const languages = [
+		{ code: '', name: 'All Languages' },
+		{ code: 'en', name: 'English' },
+		{ code: 'es', name: 'Spanish' },
+		{ code: 'fr', name: 'French' },
+		{ code: 'de', name: 'German' },
+		{ code: 'it', name: 'Italian' },
+		{ code: 'ja', name: 'Japanese' },
+		{ code: 'ko', name: 'Korean' },
+		{ code: 'zh', name: 'Chinese' },
+		{ code: 'hi', name: 'Hindi' },
+		{ code: 'pt', name: 'Portuguese' },
+		{ code: 'ru', name: 'Russian' },
+		{ code: 'ar', name: 'Arabic' }
+	];
 </script>
 
 <div class="space-y-8">
 	<!-- Type -->
 	<div class="form-control">
 		<span class="label text-sm font-bold tracking-wide text-base-content/70 uppercase"
-			>Media Type</span
+			>{m.discover_filter_mediaType()}</span
 		>
 		<div class="join w-full">
 			<button
 				class="btn join-item flex-1 {type === 'all'
 					? 'btn-primary'
 					: 'border-base-300 btn-outline'}"
-				onclick={() => onTypeChange('all')}>All</button
+				onclick={() => onTypeChange('all')}>{m.common_all()}</button
 			>
 			<button
 				class="btn join-item flex-1 {type === 'movie'
 					? 'btn-primary'
 					: 'border-base-300 btn-outline'}"
-				onclick={() => onTypeChange('movie')}>Movies</button
+				onclick={() => onTypeChange('movie')}>{m.common_movies()}</button
 			>
 			<button
 				class="btn join-item flex-1 {type === 'tv' ? 'btn-primary' : 'border-base-300 btn-outline'}"
-				onclick={() => onTypeChange('tv')}>TV</button
+				onclick={() => onTypeChange('tv')}>{m.common_tvShows()}</button
 			>
 		</div>
 	</div>
@@ -67,7 +89,8 @@
 	<div class="form-control">
 		<label
 			for="sort-by"
-			class="label text-sm font-bold tracking-wide text-base-content/70 uppercase">Sort By</label
+			class="label text-sm font-bold tracking-wide text-base-content/70 uppercase"
+			>{m.discover_filter_sortBy()}</label
 		>
 		<select
 			id="sort-by"
@@ -75,17 +98,36 @@
 			value={sortBy}
 			onchange={(e) => onSortChange(e.currentTarget.value)}
 		>
-			<option value="popularity.desc">Most Popular</option>
-			<option value="vote_average.desc">Highest Rated</option>
-			<option value="primary_release_date.desc">Newest Releases</option>
-			<option value="revenue.desc">Highest Revenue</option>
+			<option value="popularity.desc">{m.discover_sort_mostPopular()}</option>
+			<option value="vote_average.desc">{m.discover_sort_highestRated()}</option>
+			<option value="primary_release_date.desc">{m.discover_sort_newestReleases()}</option>
+			<option value="revenue.desc">{m.discover_sort_highestRevenue()}</option>
+		</select>
+	</div>
+
+	<!-- Original Language -->
+	<div class="form-control">
+		<label
+			for="original-language"
+			class="label text-sm font-bold tracking-wide text-base-content/70 uppercase"
+			>{m.discover_filter_originalLanguage()}</label
+		>
+		<select
+			id="original-language"
+			class="select-bordered select w-full bg-base-200 transition-colors focus:bg-base-100"
+			value={selectedLanguage}
+			onchange={(e) => onLanguageChange(e.currentTarget.value)}
+		>
+			{#each languages as language (language.code)}
+				<option value={language.code}>{language.name}</option>
+			{/each}
 		</select>
 	</div>
 
 	<!-- Release Year -->
 	<div class="form-control">
 		<span class="label text-sm font-bold tracking-wide text-base-content/70 uppercase"
-			>Release Year</span
+			>{m.discover_filter_releaseYear()}</span
 		>
 		<div class="flex items-center gap-2">
 			<input
@@ -112,7 +154,7 @@
 			for="min-rating"
 			class="label text-sm font-bold tracking-wide text-base-content/70 uppercase"
 		>
-			<span>Min Rating</span>
+			<span>{m.discover_filter_minRating()}</span>
 			<span class="badge font-bold badge-primary">{minRating}</span>
 		</label>
 		<input
@@ -135,7 +177,7 @@
 	<!-- Genres -->
 	<div class="form-control">
 		<span class="label text-sm font-bold tracking-wide text-base-content/70 uppercase">
-			<span>Genres</span>
+			<span>{m.common_genres()}</span>
 			{#if selectedGenres.length > 0}
 				<span class="badge badge-sm badge-primary">{selectedGenres.length}</span>
 			{/if}
@@ -157,7 +199,7 @@
 	<!-- Watch Providers -->
 	<div class="form-control">
 		<span class="label text-sm font-bold tracking-wide text-base-content/70 uppercase">
-			<span>Watch Providers</span>
+			<span>{m.discover_filter_watchProviders()}</span>
 			{#if selectedProviders.length > 0}
 				<span class="badge badge-sm badge-primary">{selectedProviders.length}</span>
 			{/if}

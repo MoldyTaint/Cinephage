@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { AlertCircle, CheckCircle, XCircle, Clock } from 'lucide-svelte';
 
 	interface Props {
@@ -16,38 +17,41 @@
 	const statusInfo = $derived.by(() => {
 		if (!enabled) {
 			return {
-				text: 'Disabled',
+				text: m.subtitleProviders_status_disabled(),
 				class: 'badge-ghost',
 				icon: XCircle,
-				tooltip: 'Subtitle provider is disabled by user'
+				tooltip: m.subtitleProviders_status_disabledTooltip()
 			};
 		}
 		if (isThrottled) {
 			const until = throttledUntil ? new Date(throttledUntil).toLocaleString() : 'unknown time';
 			return {
-				text: 'Throttled',
+				text: m.subtitleProviders_status_throttled(),
 				class: 'badge-warning',
 				icon: Clock,
 				tooltip: lastError
-					? `${lastError}. Throttled until ${until}`
-					: `Provider throttled until ${until}`
+					? m.subtitleProviders_status_throttledUntil({ error: lastError, time: until })
+					: m.subtitleProviders_status_throttledOnly({ time: until })
 			};
 		}
 		if (!healthy || consecutiveFailures > 0) {
 			return {
-				text: 'Unhealthy',
+				text: m.subtitleProviders_status_unhealthy(),
 				class: 'badge-error',
 				icon: AlertCircle,
 				tooltip: lastError
-					? `${consecutiveFailures} consecutive failures. Last error: ${lastError}`
-					: `${consecutiveFailures} consecutive failures`
+					? m.subtitleProviders_status_consecutiveFailures({
+							count: consecutiveFailures,
+							error: lastError
+						})
+					: m.subtitleProviders_status_failuresOnly({ count: consecutiveFailures })
 			};
 		}
 		return {
-			text: 'Healthy',
+			text: m.subtitleProviders_status_healthy(),
 			class: 'badge-success',
 			icon: CheckCircle,
-			tooltip: 'Subtitle provider is healthy and operational'
+			tooltip: m.subtitleProviders_status_healthyTooltip()
 		};
 	});
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
 	import MonitorToggle from './MonitorToggle.svelte';
 	import {
@@ -11,7 +12,7 @@
 		Zap,
 		Loader2
 	} from 'lucide-svelte';
-	import { formatBytes } from '$lib/utils/format.js';
+	import { formatBytes, getStatusColor } from '$lib/utils/format.js';
 
 	interface SeriesData {
 		tmdbId: number;
@@ -97,22 +98,13 @@
 		});
 	}
 
-	function getStatusColor(status: string | null): string {
-		if (!status) return 'badge-ghost';
-		const s = status.toLowerCase();
-		if (s.includes('returning') || s.includes('production')) return 'badge-success';
-		if (s.includes('ended')) return 'badge-error';
-		if (s.includes('canceled')) return 'badge-warning';
-		return 'badge-ghost';
-	}
-
 	function formatStatus(status: string | null): string {
-		if (!status) return 'Unknown';
+		if (!status) return m.common_unknown();
 		const s = status.toLowerCase();
-		if (s.includes('returning')) return 'Continuing';
-		if (s.includes('production')) return 'In Production';
-		if (s.includes('ended')) return 'Ended';
-		if (s.includes('canceled')) return 'Cancelled';
+		if (s.includes('returning')) return m.library_seriesHeader_statusContinuing();
+		if (s.includes('production')) return m.library_seriesHeader_statusInProduction();
+		if (s.includes('ended')) return m.library_seriesHeader_statusEnded();
+		if (s.includes('canceled')) return m.library_seriesHeader_statusCancelled();
 		return status;
 	}
 </script>
@@ -192,8 +184,8 @@
 						onclick={onSearchMissing}
 						disabled={searchingMissing || missingEpisodeCount === 0}
 						title={missingEpisodeCount > 0
-							? `Automatically search for ${missingEpisodeCount} missing episodes and download`
-							: 'No missing episodes'}
+							? m.library_seriesHeader_autoGrabTooltip({ count: missingEpisodeCount })
+							: m.library_seriesHeader_noMissingEpisodes()}
 					>
 						{#if searchingMissing}
 							<Loader2 size={16} class="animate-spin" />
@@ -202,16 +194,18 @@
 									>{missingSearchProgress.current}/{missingSearchProgress.total}</span
 								>
 							{:else}
-								<span class="hidden sm:inline">Searching...</span>
+								<span class="hidden sm:inline">{m.common_searching()}</span>
 							{/if}
 						{:else if missingSearchResult}
 							<Zap size={16} />
 							<span class="hidden sm:inline"
-								>Grabbed {missingSearchResult.grabbed}/{missingSearchResult.searched}</span
+								>{m.library_seriesHeader_grabbedCount({
+									count: missingSearchResult.grabbed
+								})}</span
 							>
 						{:else}
 							<Zap size={16} />
-							<span class="hidden sm:inline">Auto Grab</span>
+							<span class="hidden sm:inline">{m.library_seriesHeader_autoGrab()}</span>
 							{#if missingEpisodeCount > 0}
 								<span class="badge badge-sm badge-secondary">{missingEpisodeCount}</span>
 							{/if}
@@ -222,44 +216,48 @@
 					<button
 						class="btn gap-2 btn-ghost btn-sm"
 						onclick={onSearch}
-						title="Search for complete series or multi-season packs"
+						title={m.library_seriesHeader_seasonPacksTooltip()}
 					>
 						<Package size={16} />
-						<span class="hidden sm:inline">Season Packs</span>
+						<span class="hidden sm:inline">{m.library_seriesHeader_seasonPacks()}</span>
 					</button>
 					{#if onImport}
 						<button
 							class="btn gap-2 btn-ghost btn-sm"
 							onclick={onImport}
-							title="Import local media"
+							title={m.library_seriesHeader_importTooltip()}
 						>
 							<Download size={16} />
-							<span class="hidden sm:inline">Import</span>
+							<span class="hidden sm:inline">{m.action_import()}</span>
 						</button>
 					{/if}
 					<button
 						class="btn gap-2 btn-ghost btn-sm"
 						onclick={onRefresh}
 						disabled={refreshing}
-						title="Refresh from TMDB"
+						title={m.library_seriesHeader_refreshTooltip()}
 					>
 						{#if refreshing}
 							<Loader2 size={16} class="animate-spin" />
 							{#if refreshProgress}
 								<span class="hidden sm:inline"
-									>Season {refreshProgress.current}/{refreshProgress.total}</span
+									>{m.common_season()} {refreshProgress.current}/{refreshProgress.total}</span
 								>
 							{:else}
-								<span class="hidden sm:inline">Refreshing...</span>
+								<span class="hidden sm:inline">{m.common_loading()}</span>
 							{/if}
 						{:else}
 							<RefreshCw size={16} />
 						{/if}
 					</button>
-					<button class="btn btn-ghost btn-sm" onclick={onEdit} title="Edit">
+					<button class="btn btn-ghost btn-sm" onclick={onEdit} title={m.action_edit()}>
 						<Settings size={16} />
 					</button>
-					<button class="btn text-error btn-ghost btn-sm" onclick={onDelete} title="Delete">
+					<button
+						class="btn text-error btn-ghost btn-sm"
+						onclick={onDelete}
+						title={m.action_delete()}
+					>
 						<Trash2 size={16} />
 					</button>
 				</div>
@@ -270,14 +268,18 @@
 				<div class="flex items-center gap-2 text-sm">
 					<div class="flex min-w-0 items-center gap-3 sm:gap-4">
 						<span class="font-medium whitespace-nowrap">
-							{series.episodeFileCount ?? 0} / {series.episodeCount ?? 0} Episodes &nbsp;
+							{series.episodeFileCount ?? 0} / {series.episodeCount ?? 0}
+							{m.common_episodes()} &nbsp;
 							{#if series.episodeCount === 0}
-								<span class="badge badge-ghost badge-xs">No episodes</span>
+								<span class="badge badge-ghost badge-xs">{m.library_seriesHeader_noEpisodes()}</span
+								>
 							{:else if series.episodeFileCount === 0}
-								<span class="badge badge-xs badge-error">All missing</span>
+								<span class="badge badge-xs badge-error">{m.library_seriesHeader_allMissing()}</span
+								>
 							{/if}
 							{#if series.percentComplete === 100}
-								<span class="badge badge-sm badge-success">Complete</span>
+								<span class="badge badge-sm badge-success">{m.library_seriesHeader_complete()}</span
+								>
 							{:else if series.percentComplete > 0}
 								<span class="badge badge-sm badge-primary">{series.percentComplete}%</span>
 							{/if}
@@ -310,22 +312,24 @@
 			<!-- Settings info -->
 			<div class="flex flex-wrap gap-x-3 gap-y-2 text-sm md:gap-x-6">
 				<div class="shrink-0">
-					<span class="text-base-content/50">Quality Profile:</span>
-					<span class="ml-1 font-medium">{qualityProfileName || 'Default'}</span>
+					<span class="text-base-content/50">{m.library_seriesHeader_qualityProfileLabel()}:</span>
+					<span class="ml-1 font-medium">{qualityProfileName || m.common_default()}</span>
 				</div>
 				<div class="max-w-full min-w-0">
-					<span class="shrink-0 text-base-content/50">Root Folder:</span>
+					<span class="shrink-0 text-base-content/50"
+						>{m.library_seriesHeader_rootFolderLabel()}:</span
+					>
 					<span
 						class="ml-1 truncate font-medium {series.rootFolderPath
 							? ''
 							: 'rounded-md bg-warning/20 px-2 py-0.5 text-warning'}"
-						title={series.rootFolderPath || 'Not set'}
+						title={series.rootFolderPath || m.library_seriesHeader_notSet()}
 					>
-						{series.rootFolderPath || 'Not set'}
+						{series.rootFolderPath || m.library_seriesHeader_notSet()}
 					</span>
 				</div>
 				<div>
-					<span class="text-base-content/50">Added:</span>
+					<span class="text-base-content/50">{m.common_added()}:</span>
 					<span class="ml-1 font-medium">{formatDate(series.added)}</span>
 				</div>
 			</div>

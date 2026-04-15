@@ -11,8 +11,10 @@ import { join } from 'path';
 import { db } from '$lib/server/db';
 import { nzbStreamMounts, rootFolders } from '$lib/server/db/schema';
 import { eq, lt, and, isNotNull, sql } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service';
+
+const logger = createChildLogger({ logDomain: 'streams' as const });
 
 /**
  * Cache settings.
@@ -81,9 +83,12 @@ export class ExtractionCacheManager implements BackgroundService {
 		this.cleanupInterval = setInterval(
 			() => {
 				this.runCleanup().catch((err) => {
-					logger.error('[ExtractionCacheManager] Cleanup failed', {
-						error: err instanceof Error ? err.message : 'Unknown error'
-					});
+					logger.error(
+						{
+							error: err instanceof Error ? err.message : 'Unknown error'
+						},
+						'[ExtractionCacheManager] Cleanup failed'
+					);
 				});
 			},
 			60 * 60 * 1000
@@ -92,17 +97,23 @@ export class ExtractionCacheManager implements BackgroundService {
 		// Run initial cleanup after a short delay
 		setTimeout(() => {
 			this.runCleanup().catch((err) => {
-				logger.error('[ExtractionCacheManager] Initial cleanup failed', {
-					error: err instanceof Error ? err.message : 'Unknown error'
-				});
+				logger.error(
+					{
+						error: err instanceof Error ? err.message : 'Unknown error'
+					},
+					'[ExtractionCacheManager] Initial cleanup failed'
+				);
 			});
 		}, 10000);
 
 		this._status = 'ready';
-		logger.info('[ExtractionCacheManager] Started with settings', {
-			retentionHours: this.settings.retentionHours,
-			maxCacheSizeGB: this.settings.maxCacheSizeGB
-		});
+		logger.info(
+			{
+				retentionHours: this.settings.retentionHours,
+				maxCacheSizeGB: this.settings.maxCacheSizeGB
+			},
+			'[ExtractionCacheManager] Started with settings'
+		);
 	}
 
 	/**
@@ -122,10 +133,13 @@ export class ExtractionCacheManager implements BackgroundService {
 	 */
 	updateSettings(settings: Partial<CacheSettings>): void {
 		this.settings = { ...this.settings, ...settings };
-		logger.info('[ExtractionCacheManager] Settings updated', {
-			retentionHours: this.settings.retentionHours,
-			maxCacheSizeGB: this.settings.maxCacheSizeGB
-		});
+		logger.info(
+			{
+				retentionHours: this.settings.retentionHours,
+				maxCacheSizeGB: this.settings.maxCacheSizeGB
+			},
+			'[ExtractionCacheManager] Settings updated'
+		);
 	}
 
 	/**
@@ -173,10 +187,13 @@ export class ExtractionCacheManager implements BackgroundService {
 						.where(eq(nzbStreamMounts.id, mount.id))
 						.run();
 				} catch (err) {
-					logger.error('[ExtractionCacheManager] Failed to cleanup mount', {
-						mountId: mount.id,
-						error: err instanceof Error ? err.message : 'Unknown error'
-					});
+					logger.error(
+						{
+							mountId: mount.id,
+							error: err instanceof Error ? err.message : 'Unknown error'
+						},
+						'[ExtractionCacheManager] Failed to cleanup mount'
+					);
 				}
 			}
 
@@ -185,17 +202,23 @@ export class ExtractionCacheManager implements BackgroundService {
 			cleaned += orphanedCleaned;
 
 			if (cleaned > 0) {
-				logger.info('[ExtractionCacheManager] Cleanup complete', {
-					cleaned,
-					freedMB: Math.round(freedBytes / 1024 / 1024)
-				});
+				logger.info(
+					{
+						cleaned,
+						freedMB: Math.round(freedBytes / 1024 / 1024)
+					},
+					'[ExtractionCacheManager] Cleanup complete'
+				);
 			}
 
 			return { cleaned, freedBytes };
 		} catch (err) {
-			logger.error('[ExtractionCacheManager] Cleanup failed', {
-				error: err instanceof Error ? err.message : 'Unknown error'
-			});
+			logger.error(
+				{
+					error: err instanceof Error ? err.message : 'Unknown error'
+				},
+				'[ExtractionCacheManager] Cleanup failed'
+			);
 			return { cleaned, freedBytes };
 		}
 	}
@@ -235,9 +258,12 @@ export class ExtractionCacheManager implements BackgroundService {
 					try {
 						await rm(mountDir, { recursive: true, force: true });
 						cleaned++;
-						logger.debug('[ExtractionCacheManager] Cleaned orphaned directory', {
-							mountDir
-						});
+						logger.debug(
+							{
+								mountDir
+							},
+							'[ExtractionCacheManager] Cleaned orphaned directory'
+						);
 					} catch {
 						// Ignore errors
 					}
@@ -265,10 +291,13 @@ export class ExtractionCacheManager implements BackgroundService {
 			.where(eq(nzbStreamMounts.id, mountId))
 			.run();
 
-		logger.debug('[ExtractionCacheManager] Set expiration', {
-			mountId,
-			expiresAt: expiresAt.toISOString()
-		});
+		logger.debug(
+			{
+				mountId,
+				expiresAt: expiresAt.toISOString()
+			},
+			'[ExtractionCacheManager] Set expiration'
+		);
 	}
 
 	/**
@@ -379,13 +408,16 @@ export class ExtractionCacheManager implements BackgroundService {
 				.where(eq(nzbStreamMounts.id, mountId))
 				.run();
 
-			logger.info('[ExtractionCacheManager] Cleaned up mount', { mountId });
+			logger.info({ mountId }, '[ExtractionCacheManager] Cleaned up mount');
 			return true;
 		} catch (err) {
-			logger.error('[ExtractionCacheManager] Failed to cleanup mount', {
-				mountId,
-				error: err instanceof Error ? err.message : 'Unknown error'
-			});
+			logger.error(
+				{
+					mountId,
+					error: err instanceof Error ? err.message : 'Unknown error'
+				},
+				'[ExtractionCacheManager] Failed to cleanup mount'
+			);
 			return false;
 		}
 	}

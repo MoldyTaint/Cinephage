@@ -7,19 +7,59 @@
 
 import type { RequestEvent, RequestHandler } from '@sveltejs/kit';
 
+import { logger } from '$lib/logging';
+
 type AnyRequestHandler = RequestHandler<any, any>;
+type TestAuthMode = 'admin' | 'user' | false;
+
+interface RequestOptions {
+	url?: string;
+	headers?: Record<string, string>;
+	auth?: TestAuthMode;
+}
+
+interface HandlerOptions extends RequestOptions {
+	params?: Record<string, string>;
+}
+
+function createTestUser(role: 'admin' | 'user'): App.Locals['user'] {
+	const now = new Date().toISOString();
+
+	return {
+		id: `test-${role}-user`,
+		name: `${role} tester`,
+		email: `${role}@example.com`,
+		emailVerified: 1,
+		image: null,
+		username: `${role}_tester`,
+		displayUsername: `${role}_tester`,
+		role,
+		language: 'en',
+		banned: 0,
+		banReason: null,
+		banExpires: null,
+		createdAt: now,
+		updatedAt: now
+	};
+}
+
+function createTestLocals(auth: TestAuthMode): App.Locals {
+	return {
+		correlationId: 'test-correlation-id',
+		requestId: 'test-correlation-id',
+		supportId: 'test-support-id',
+		logger,
+		user: auth ? createTestUser(auth) : null,
+		session: null,
+		apiKey: null,
+		apiKeyPermissions: null
+	};
+}
 
 /**
  * Create a mock Request object for testing
  */
-export function createRequest(
-	method: string,
-	body?: unknown,
-	options?: {
-		url?: string;
-		headers?: Record<string, string>;
-	}
-): Request {
+export function createRequest(method: string, body?: unknown, options?: RequestOptions): Request {
 	const url = options?.url ?? 'http://localhost/api/test';
 	const headers = new Headers({
 		'Content-Type': 'application/json',
@@ -43,13 +83,14 @@ export function createRequest(
  */
 export function createRequestEvent(
 	request: Request,
-	params: Record<string, string> = {}
+	params: Record<string, string> = {},
+	options?: RequestOptions
 ): Partial<RequestEvent> {
 	return {
 		request,
 		params,
 		url: new URL(request.url),
-		locals: {} as App.Locals,
+		locals: createTestLocals(options?.auth ?? false),
 		platform: undefined,
 		cookies: {
 			get: () => undefined,
@@ -73,14 +114,10 @@ export async function callHandler<T = unknown>(
 	handler: AnyRequestHandler,
 	method: string,
 	body?: unknown,
-	options?: {
-		url?: string;
-		params?: Record<string, string>;
-		headers?: Record<string, string>;
-	}
+	options?: HandlerOptions
 ): Promise<{ status: number; data: T }> {
 	const request = createRequest(method, body, options);
-	const event = createRequestEvent(request, options?.params);
+	const event = createRequestEvent(request, options?.params, options);
 
 	const response = await handler(event as RequestEvent);
 	const data = (await response.json()) as T;
@@ -94,7 +131,7 @@ export async function callHandler<T = unknown>(
 export const api = {
 	async get<T = unknown>(
 		handler: AnyRequestHandler,
-		options?: { url?: string; params?: Record<string, string> }
+		options?: HandlerOptions
 	): Promise<{ status: number; data: T }> {
 		return callHandler<T>(handler, 'GET', undefined, options);
 	},
@@ -102,25 +139,34 @@ export const api = {
 	async post<T = unknown>(
 		handler: AnyRequestHandler,
 		body: unknown,
-		options?: { url?: string; params?: Record<string, string> }
+		options?: HandlerOptions
 	): Promise<{ status: number; data: T }> {
-		return callHandler<T>(handler, 'POST', body, options);
+		return callHandler<T>(handler, 'POST', body, {
+			auth: 'admin',
+			...options
+		});
 	},
 
 	async put<T = unknown>(
 		handler: AnyRequestHandler,
 		body: unknown,
-		options?: { url?: string; params?: Record<string, string> }
+		options?: HandlerOptions
 	): Promise<{ status: number; data: T }> {
-		return callHandler<T>(handler, 'PUT', body, options);
+		return callHandler<T>(handler, 'PUT', body, {
+			auth: 'admin',
+			...options
+		});
 	},
 
 	async delete<T = unknown>(
 		handler: AnyRequestHandler,
 		body: unknown,
-		options?: { url?: string; params?: Record<string, string> }
+		options?: HandlerOptions
 	): Promise<{ status: number; data: T }> {
-		return callHandler<T>(handler, 'DELETE', body, options);
+		return callHandler<T>(handler, 'DELETE', body, {
+			auth: 'admin',
+			...options
+		});
 	}
 };
 

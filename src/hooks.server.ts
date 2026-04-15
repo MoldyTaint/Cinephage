@@ -1,17 +1,21 @@
 import type { Handle, HandleServerError } from '@sveltejs/kit';
 import { json, redirect } from '@sveltejs/kit';
+import { sequence } from '@sveltejs/kit/hooks';
 import { randomUUID } from 'node:crypto';
+import { building } from '$app/environment';
 
-import { logger } from '$lib/logging';
-import { getLibraryScheduler, librarySchedulerService } from '$lib/server/library/index.js';
-import { isFFprobeAvailable, getFFprobeVersion } from '$lib/server/library/ffprobe.js';
-import { getDownloadMonitor, downloadMonitor } from '$lib/server/downloadClients/monitoring';
-import { importService } from '$lib/server/downloadClients/import';
+import { AUTH_BASE_PATH } from '$lib/auth/config.js';
 import {
-	getMonitoringScheduler,
-	monitoringScheduler
-} from '$lib/server/monitoring/MonitoringScheduler.js';
-import { taskHistoryService } from '$lib/server/tasks/TaskHistoryService.js';
+	createRequestLogger,
+	logger,
+	registerServerLogSinks,
+	runWithLogContext
+} from '$lib/logging';
+import { getLibraryScheduler } from '$lib/server/library/library-scheduler.js';
+import { isFFprobeAvailable, getFFprobeVersion } from '$lib/server/library/ffprobe.js';
+import { getDownloadMonitor } from '$lib/server/downloadClients/monitoring';
+import { getImportService } from '$lib/server/downloadClients/import/ImportService.js';
+import { getMonitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
 import { getExternalIdService } from '$lib/server/services/ExternalIdService.js';
 import { getDataRepairService } from '$lib/server/services/DataRepairService.js';
 import { qualityFilter } from '$lib/server/quality';
@@ -29,6 +33,17 @@ import { getLiveTvChannelService } from '$lib/server/livetv/LiveTvChannelService
 import { getLiveTvStreamService } from '$lib/server/livetv/streaming/LiveTvStreamService';
 import { getStalkerPortalManager } from '$lib/server/livetv/stalker/StalkerPortalManager';
 import { initializeProviderFactory } from '$lib/server/subtitles/providers/SubtitleProviderFactory.js';
+import {
+	auth,
+	ensureStreamingApiKeyRateLimit,
+	isSetupComplete,
+	repairCurrentUserAdminRole
+} from '$lib/server/auth/index.js';
+import { checkApiRateLimit, applyRateLimitHeaders } from '$lib/server/rate-limit.js';
+import type { SessionRecord, UserRecord } from '$lib/server/db/schema.js';
+import { paraglideMiddleware } from '$lib/paraglide/server.js';
+import { logCaptureStore } from '$lib/server/logging/log-capture-store.js';
+import { logHistoryService } from '$lib/server/logging/log-history.js';
 
 /**
  * Content Security Policy header.
@@ -42,533 +57,868 @@ const CSP_HEADER = [
 	"style-src 'self' 'unsafe-inline'",
 	"img-src 'self' data: https: http:",
 	"connect-src 'self'",
-	"font-src 'self'"
+	"font-src 'self'",
+	"media-src 'self' blob: https: http:",
+	"object-src 'none'",
+	"child-src 'self'",
+	"frame-ancestors 'self'"
 ].join('; ');
 
 /**
- * Base security headers applied to ALL responses (including streaming routes).
- * These headers are ignored by media players for non-HTML content, so they
- * don't break streaming/playback but still protect against content-type sniffing etc.
+ * Security headers for all responses
+ * Note: upgrade-insecure-requests and Strict-Transport-Security removed for HTTP-only deployment
  */
-const BASE_SECURITY_HEADERS: Record<string, string> = {
+const SECURITY_HEADERS = {
+	'X-Frame-Options': 'SAMEORIGIN',
 	'X-Content-Type-Options': 'nosniff',
-	'X-Frame-Options': 'DENY',
+	'X-XSS-Protection': '1; mode=block',
 	'Referrer-Policy': 'strict-origin-when-cross-origin',
-	'X-XSS-Protection': '1; mode=block'
-};
-
-/**
- * Full security headers for non-streaming routes (includes CSP).
- */
-const SECURITY_HEADERS: Record<string, string> = {
-	...BASE_SECURITY_HEADERS,
+	'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
 	'Content-Security-Policy': CSP_HEADER
 };
 
-// Initialize library scheduler on server startup
-// This sets up filesystem watching and periodic scans
-let libraryInitialized = false;
-let downloadMonitorInitialized = false;
-let monitoringInitialized = false;
-let externalIdServiceInitialized = false;
-let captchaSolverInitialized = false;
-let nntpManagerInitialized = false;
-let dataRepairServiceInitialized = false;
-let mediaBrowserNotifierInitialized = false;
-let epgSchedulerInitialized = false;
+/**
+ * Base security headers (for streaming routes - without CSP)
+ */
+const BASE_SECURITY_HEADERS = {
+	'X-Frame-Options': 'SAMEORIGIN',
+	'X-Content-Type-Options': 'nosniff',
+	'X-XSS-Protection': '1; mode=block',
+	'Referrer-Policy': 'strict-origin-when-cross-origin'
+};
 
-async function checkFFprobe() {
-	const available = await isFFprobeAvailable();
-	if (!available) {
-		logger.warn('⚠️  ffprobe not found in PATH');
-		logger.warn('   Media info extraction will not work without ffprobe.');
-		logger.warn('   Install ffmpeg/ffprobe:');
-		logger.warn('   - Ubuntu/Debian: sudo apt install ffmpeg');
-		logger.warn('   - macOS: brew install ffmpeg');
-		logger.warn('   - Or set FFPROBE_PATH environment variable');
+type AuthSessionUser = {
+	id: string;
+	email: string;
+	name?: string | null;
+	image?: string | null;
+	username?: string | null;
+	displayUsername?: string | null;
+	role?: string | null;
+	language?: string | null;
+	emailVerified?: boolean | number | null;
+	banned?: boolean | number | null;
+	banReason?: string | null;
+	banExpires?: string | Date | null;
+	createdAt?: string | Date | null;
+	updatedAt?: string | Date | null;
+};
+
+type AuthSessionRecord = {
+	id: string;
+	userId: string;
+	token: string;
+	expiresAt?: string | Date | null;
+	ipAddress?: string | null;
+	userAgent?: string | null;
+	impersonatedBy?: string | null;
+	createdAt?: string | Date | null;
+	updatedAt?: string | Date | null;
+};
+
+function createSupportId(): string {
+	return randomUUID().split('-')[0] ?? randomUUID();
+}
+
+function toIntegerFlag(value: boolean | number | null | undefined): number | null {
+	if (typeof value === 'number') {
+		return value;
+	}
+	if (typeof value === 'boolean') {
+		return value ? 1 : 0;
+	}
+	return null;
+}
+
+function toIsoString(value: string | Date | null | undefined): string {
+	if (value instanceof Date) {
+		return value.toISOString();
+	}
+	if (typeof value === 'string') {
+		return value;
+	}
+	return new Date().toISOString();
+}
+
+function normalizeAuthUser(user: AuthSessionUser): UserRecord {
+	return {
+		id: user.id,
+		name: user.name ?? null,
+		email: user.email,
+		emailVerified: toIntegerFlag(user.emailVerified),
+		image: user.image ?? null,
+		username: user.username ?? null,
+		displayUsername: user.displayUsername ?? null,
+		role: user.role ?? 'user',
+		language: user.language ?? 'en',
+		banned: toIntegerFlag(user.banned),
+		banReason: user.banReason ?? null,
+		banExpires:
+			user.banExpires instanceof Date ? user.banExpires.toISOString() : (user.banExpires ?? null),
+		createdAt: toIsoString(user.createdAt),
+		updatedAt: toIsoString(user.updatedAt)
+	};
+}
+
+function normalizeAuthSession(session: AuthSessionRecord): SessionRecord {
+	return {
+		id: session.id,
+		userId: session.userId,
+		token: session.token,
+		expiresAt: toIsoString(session.expiresAt),
+		ipAddress: session.ipAddress ?? null,
+		userAgent: session.userAgent ?? null,
+		impersonatedBy: session.impersonatedBy ?? null,
+		createdAt: toIsoString(session.createdAt),
+		updatedAt: toIsoString(session.updatedAt)
+	};
+}
+
+function setAuthenticatedLocals(
+	event: Parameters<Handle>[0]['event'],
+	session: { user: AuthSessionUser; session: AuthSessionRecord },
+	apiKey: string | null,
+	apiKeyPermissions: Record<string, string[]> | null = null
+): void {
+	event.locals.user = normalizeAuthUser(session.user);
+	event.locals.session = normalizeAuthSession(session.session);
+	event.locals.apiKey = apiKey;
+	event.locals.apiKeyPermissions = apiKeyPermissions;
+}
+
+function clearAuthenticatedLocals(event: Parameters<Handle>[0]['event']): void {
+	event.locals.user = null;
+	event.locals.session = null;
+	event.locals.apiKey = null;
+	event.locals.apiKeyPermissions = null;
+}
+
+/**
+ * Locale handler - Sets up i18n context for the request using Paraglide
+ * Must run early in the sequence to ensure locale is available for all handlers
+ */
+const localeHandler: Handle = async ({ event, resolve }) => {
+	// Use paraglide middleware to handle locale detection and setting
+	// The middleware reads/writes the PARAGLIDE_LOCALE cookie automatically
+	return paraglideMiddleware(event.request, () => {
+		// Continue with the SvelteKit request
+		return resolve(event);
+	});
+};
+
+/**
+ * Global initialization promise - ensures init runs only once
+ */
+let initializationPromise: Promise<void> | null = null;
+let initializationStarted = false;
+
+/**
+ * Initialize all background services
+ */
+async function initializeServices(): Promise<void> {
+	// Skip during build
+	if (building) {
+		logger.info('Skipping service initialization during build');
 		return;
 	}
 
-	const version = await getFFprobeVersion();
-	logger.info(`ffprobe available: ${version || 'unknown version'}`);
-}
-
-async function initializeLibrary() {
-	if (libraryInitialized) return;
-
-	try {
-		// Seed default scoring profiles to database (ensures foreign key targets exist)
-		await qualityFilter.seedDefaultScoringProfiles();
-
-		// Clear profile cache to ensure fresh profiles with size limits are loaded
-		qualityFilter.clearCache();
-
-		// Check ffprobe availability in background (informational only, doesn't block)
-		checkFFprobe().catch((e) => logger.error('FFprobe check failed', e));
-
-		await librarySchedulerService.initialize();
-		libraryInitialized = true;
-		logger.info('Library scheduler initialized');
-	} catch (error) {
-		logger.error('Failed to initialize library scheduler', error);
+	// Prevent concurrent initialization
+	if (initializationPromise) {
+		return initializationPromise;
 	}
-}
 
-async function initializeDownloadMonitor() {
-	if (downloadMonitorInitialized) return;
+	initializationPromise = (async () => {
+		try {
+			registerServerLogSinks({
+				logCaptureStore,
+				logHistoryService
+			});
 
-	try {
-		// Start the download monitor (polls clients and triggers imports)
-		// This now performs a startup sync to check for orphaned downloads
-		await downloadMonitor.start();
-
-		// Start the import service (checks for pending imports from previous runs)
-		importService.start();
-
-		downloadMonitorInitialized = true;
-		logger.info('Download monitor and import services started');
-	} catch (error) {
-		logger.error('Failed to start download monitor', error);
-	}
-}
-
-async function initializeMonitoring() {
-	if (monitoringInitialized) return;
-
-	try {
-		// Start the monitoring scheduler (automated searches for missing/upgrades/new episodes)
-		// Note: The scheduler has a built-in 5-minute grace period before running any tasks
-		await monitoringScheduler.initialize();
-
-		// Clean up old history entries (30-day retention)
-		// This runs on startup to prevent unbounded database growth
-		const deletedCount = await taskHistoryService.cleanupOldHistory(30);
-		if (deletedCount > 0) {
-			logger.info(`Cleaned up ${deletedCount} task history entries older than 30 days`);
-		}
-
-		monitoringInitialized = true;
-		logger.info('Monitoring scheduler initialized (tasks deferred by grace period)');
-	} catch (error) {
-		logger.error('Failed to initialize monitoring scheduler', error);
-	}
-}
-
-async function initializeExternalIdService() {
-	if (externalIdServiceInitialized) return;
-
-	try {
-		// Start the external ID service (ensures all media has IMDB/TVDB IDs)
-		const externalIdService = getExternalIdService();
-		externalIdService.start();
-
-		externalIdServiceInitialized = true;
-		logger.info('External ID service started');
-	} catch (error) {
-		logger.error('Failed to start external ID service', error);
-	}
-}
-
-async function initializeCaptchaSolver() {
-	if (captchaSolverInitialized) return;
-
-	try {
-		const captchaSolver = getCaptchaSolver();
-		captchaSolver.start();
-		captchaSolverInitialized = true;
-		logger.info('CaptchaSolver initialized for anti-bot bypass');
-	} catch (error) {
-		// Non-fatal - application continues without browser solving
-		// Users can still manually configure cookies for protected indexers
-		logger.error('Failed to initialize CaptchaSolver (anti-bot bypass disabled)', error);
-	}
-}
-
-async function initializeNntpManager() {
-	if (nntpManagerInitialized) return;
-
-	try {
-		// Start the NNTP manager (for direct usenet streaming)
-		const nntpManager = getNntpManager();
-		nntpManager.start();
-
-		nntpManagerInitialized = true;
-		logger.info('NNTP manager started for usenet streaming');
-	} catch (error) {
-		// Non-fatal - application continues without usenet streaming
-		logger.error('Failed to start NNTP manager (usenet streaming disabled)', error);
-	}
-}
-
-async function initializeExtractionCacheManager() {
-	try {
-		// Start the extraction cache manager (for auto-cleanup of extracted files)
-		const cacheManager = getExtractionCacheManager();
-		if (cacheManager.status !== 'pending') return; // Already started
-		cacheManager.start();
-		logger.info('Extraction cache manager started for auto-cleanup');
-	} catch (error) {
-		// Non-fatal - application continues without auto-cleanup
-		logger.error('Failed to start extraction cache manager', error);
-	}
-}
-
-async function initializeDataRepairService() {
-	if (dataRepairServiceInitialized) return;
-
-	try {
-		// Start the data repair service (fixes data from previous bugs)
-		// This runs once on startup and processes any repair flags from migrations
-		const dataRepairService = getDataRepairService();
-		dataRepairService.start();
-
-		dataRepairServiceInitialized = true;
-		logger.info('Data repair service started');
-	} catch (error) {
-		// Non-fatal - application continues, but data may need manual repair
-		logger.error('Failed to start data repair service', error);
-	}
-}
-
-async function initializeMediaBrowserNotifier() {
-	if (mediaBrowserNotifierInitialized) return;
-
-	try {
-		// Start the MediaBrowser notifier (Jellyfin/Emby library updates)
-		const notifier = getMediaBrowserNotifier();
-		notifier.start();
-
-		// Wire into download monitor events
-		downloadMonitor.on('queue:imported', (item) => {
-			if (item.importedPath) {
-				notifier.queueUpdate(item.importedPath, 'Created');
+			await initializeDatabase();
+			const updatedStreamingKeys = await ensureStreamingApiKeyRateLimit();
+			if (updatedStreamingKeys > 0) {
+				logger.info(
+					{
+						updatedKeys: updatedStreamingKeys
+					},
+					'Updated streaming API key rate limits'
+				);
 			}
-		});
+			logger.info('Initializing background services...');
 
-		mediaBrowserNotifierInitialized = true;
-		logger.info('MediaBrowser notifier initialized for Jellyfin/Emby integration');
-	} catch (error) {
-		// Non-fatal - library updates will not be sent to media servers
-		logger.error('Failed to initialize MediaBrowser notifier', error);
-	}
+			// Verify ffprobe is available
+			const ffprobeAvailable = await isFFprobeAvailable();
+			if (ffprobeAvailable) {
+				const version = await getFFprobeVersion();
+				logger.info(`ffprobe available: ${version}`);
+			} else {
+				logger.warn('ffprobe not found. Library refresh will be slower and less accurate.');
+			}
+
+			// Sync default scoring profiles (insert new or update existing built-in profiles)
+			await qualityFilter.seedDefaultScoringProfiles();
+
+			// Check quality profiles
+			const profiles = await qualityFilter.getAllProfiles();
+			logger.info(`Loaded ${profiles.length} quality profiles`);
+
+			// Register all services with the service manager
+			const serviceManager = getServiceManager();
+
+			// Register library scheduler first
+			const libraryScheduler = getLibraryScheduler();
+			serviceManager.register(libraryScheduler);
+
+			// Initialize library services
+			await getLibraryScheduler().initialize();
+			logger.info('Library scheduler initialized');
+
+			// Initialize provider factory for subtitle providers
+			await initializeProviderFactory();
+			logger.info('Provider registry initialized with 13 providers');
+
+			// Register download monitor
+			const downloadMonitor = getDownloadMonitor();
+			serviceManager.register(downloadMonitor);
+
+			// ImportService does not implement BackgroundService; start it directly.
+			getImportService().start();
+
+			// Register monitoring scheduler
+			const monitoringScheduler = getMonitoringScheduler();
+			serviceManager.register(monitoringScheduler);
+
+			// Register external ID service
+			const externalIdService = getExternalIdService();
+			serviceManager.register(externalIdService);
+
+			// Register data repair service
+			const dataRepairService = getDataRepairService();
+			serviceManager.register(dataRepairService);
+
+			// Initialize captcha solver
+			const captchaSolver = getCaptchaSolver();
+			if (captchaSolver) {
+				serviceManager.register(captchaSolver);
+				logger.info('CaptchaSolver initialized for anti-bot bypass');
+			}
+
+			// Initialize stream cache
+			await initPersistentStreamCache();
+
+			// Initialize NNTP manager
+			const nntpManager = getNntpManager();
+			serviceManager.register(nntpManager);
+
+			// Initialize extraction cache manager
+			const extractionCacheManager = getExtractionCacheManager();
+			serviceManager.register(extractionCacheManager);
+
+			// Initialize MediaBrowser notifier (Jellyfin/Emby/Plex library updates)
+			const mediaBrowserNotifier = getMediaBrowserNotifier();
+			serviceManager.register(mediaBrowserNotifier);
+			logger.info('MediaBrowser notifier initialized for Jellyfin/Emby/Plex integration');
+
+			// Initialize Live TV services
+			const liveTvAccountManager = getLiveTvAccountManager();
+			serviceManager.register(liveTvAccountManager);
+
+			const liveTvChannelService = getLiveTvChannelService();
+			serviceManager.register(liveTvChannelService);
+
+			const liveTvStreamService = getLiveTvStreamService();
+			serviceManager.register(liveTvStreamService);
+
+			const stalkerPortalManager = getStalkerPortalManager();
+			serviceManager.register(stalkerPortalManager);
+
+			const epgScheduler = getEpgScheduler();
+			serviceManager.register(epgScheduler);
+
+			// Start all registered services
+			serviceManager.startAll();
+
+			logger.info('All background services initialized and started');
+		} catch (error) {
+			logger.error('Failed to initialize services', error);
+			throw error;
+		}
+	})();
+
+	return initializationPromise;
 }
 
-async function initializeEpgScheduler() {
-	if (epgSchedulerInitialized) return;
-
-	try {
-		// Start the EPG scheduler (automatic EPG sync and cleanup for Live TV)
-		const epgScheduler = getEpgScheduler();
-		epgScheduler.start();
-
-		epgSchedulerInitialized = true;
-		logger.info('EPG scheduler started for Live TV');
-	} catch (error) {
-		// Non-fatal - EPG will not auto-update but manual sync still works
-		logger.error('Failed to start EPG scheduler', error);
-	}
-}
-
-// Start initialization in next tick - ensures module loading completes immediately
-// so the HTTP server can start responding to requests while services initialize in background.
-// Using setImmediate pushes the async work to the next event loop iteration.
-setImmediate(async () => {
-	try {
-		// 1. Run database migrations FIRST - creates/updates tables as needed
-		// This is the only truly blocking operation (other services depend on DB schema)
-		await initializeDatabase();
-
-		// 1b. Run data repair service to fix any flagged data from previous bugs
-		// This processes repair flags set by migrations (e.g., series missing episodes)
-		initializeDataRepairService().catch((e) => logger.error('Data repair service failed', e));
-
-		// 1c. Warm the stream cache from database (fast, improves first playback)
-		initPersistentStreamCache().catch((e) => logger.error('Stream cache warming failed', e));
-
-		// 1d. Initialize subtitle provider registry (no provider warm-up)
-		initializeProviderFactory().catch((e) =>
-			logger.error('Subtitle provider registry init failed', e)
-		);
-
-		// 2. Register all services with ServiceManager for centralized lifecycle management
-		const serviceManager = getServiceManager();
-		serviceManager.register(getDataRepairService());
-		serviceManager.register(getLibraryScheduler());
-		serviceManager.register(getDownloadMonitor());
-		serviceManager.register(getMonitoringScheduler());
-		serviceManager.register(getExternalIdService());
-		serviceManager.register(getNntpManager());
-		serviceManager.register(getExtractionCacheManager());
-		serviceManager.register(getMediaBrowserNotifier());
-		serviceManager.register(getEpgScheduler());
-		serviceManager.register(getLiveTvAccountManager());
-		serviceManager.register(getLiveTvChannelService());
-		serviceManager.register(getLiveTvStreamService());
-		serviceManager.register(getStalkerPortalManager());
-
-		// 3. Essential services run in parallel (fire-and-forget with error handling)
-		// These don't block each other or HTTP responses
-		Promise.all([
-			initializeLibrary().catch((e) => logger.error('Library init failed', e)),
-			initializeDownloadMonitor().catch((e) => logger.error('Download monitor init failed', e))
-		]).then(() => {
-			// Initialize MediaBrowser notifier after download monitor is ready
-			// so event listeners can be attached
-			initializeMediaBrowserNotifier().catch((e) =>
-				logger.error('MediaBrowser notifier init failed', e)
-			);
-		});
-
-		// 4. Background services start after a short delay
-		// The monitoring scheduler also has an internal 5-minute grace period before tasks run
-		setTimeout(() => {
-			initializeMonitoring().catch((e) => logger.error('Monitoring init failed', e));
-			initializeExternalIdService().catch((e) => logger.error('External ID init failed', e));
-			initializeNntpManager().catch((e) => logger.error('NNTP manager init failed', e));
-			initializeExtractionCacheManager().catch((e) =>
-				logger.error('Extraction cache init failed', e)
-			);
-			initializeEpgScheduler().catch((e) => logger.error('EPG scheduler init failed', e));
-		}, 5000);
-
-		// 5. Captcha solver starts after other services (resource-intensive, lower priority)
-		// This is delayed to allow core services to stabilize first
-		setTimeout(() => {
-			initializeCaptchaSolver().catch((e) => logger.error('CaptchaSolver init failed', e));
-		}, 10000);
-
-		logger.info('All services registered with ServiceManager');
-	} catch (error) {
-		logger.error('Critical: Database initialization failed - application may not function', error);
-	}
-});
-
-// Graceful shutdown handler - uses ServiceManager for coordinated shutdown
-async function gracefulShutdown(signal: string) {
-	logger.info(`Received ${signal}, shutting down gracefully...`);
-
-	const shutdownPromises: Promise<void>[] = [];
-
-	// Stop all registered services via ServiceManager
-	const serviceManager = getServiceManager();
-	shutdownPromises.push(
-		serviceManager
-			.stopAll()
-			.catch((e) => logger.error('Error stopping services via ServiceManager', e))
-	);
-
-	// Stop captcha solver (BackgroundService interface)
-	if (captchaSolverInitialized) {
-		shutdownPromises.push(
-			getCaptchaSolver()
-				.stop()
-				.catch((e: Error) => logger.error('Error shutting down CaptchaSolver', e))
-		);
+function ensureServicesInitialized(): void {
+	if (building || initializationStarted) {
+		return;
 	}
 
-	// Wait for all services to stop (with timeout)
-	await Promise.race([
-		Promise.all(shutdownPromises),
-		new Promise((resolve) => setTimeout(resolve, 5000)) // 5s timeout
-	]);
-
-	logger.info('Shutdown complete');
-	process.exit(0);
-}
-
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-
-// Safety net for unhandled promise rejections - prevents crashes from missed error handling
-process.on('unhandledRejection', (reason, _promise) => {
-	logger.error('Unhandled Promise Rejection (safety net caught)', {
-		reason: reason instanceof Error ? reason.message : String(reason),
-		stack: reason instanceof Error ? reason.stack : undefined
+	initializationStarted = true;
+	initializeServices().catch((error) => {
+		logger.error('Service initialization failed', error);
 	});
-	// Don't exit - let the app continue running
-});
+}
 
 /**
- * Server hooks for SvelteKit.
- * Adds correlation IDs to all requests for tracing.
+ * Handler 1: Better Auth routes
+ * Handles all /api/auth/* routes using Better Auth's SvelteKit handler
  */
-export const handle: Handle = async ({ event, resolve }) => {
+const authHandler: Handle = async ({ event, resolve }) => {
+	ensureServicesInitialized();
+
+	if (building) {
+		return resolve(event);
+	}
+
+	const normalizedBasePath = AUTH_BASE_PATH.endsWith('/')
+		? AUTH_BASE_PATH.slice(0, -1)
+		: AUTH_BASE_PATH;
+	const isAuthRoute =
+		event.url.pathname === normalizedBasePath ||
+		event.url.pathname.startsWith(`${normalizedBasePath}/`);
+
+	if (isAuthRoute) {
+		return auth.handler(event.request);
+	}
+
+	return resolve(event);
+};
+
+/**
+ * Handler 2: Custom Cinephage logic
+ * Handles setup flow, authentication checks, security headers, and request logging
+ */
+const customHandler: Handle = async ({ event, resolve }) => {
 	// Generate or extract correlation ID (validate format to prevent header/log injection)
 	const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 	const clientId = event.request.headers.get('x-correlation-id');
 	const correlationId = clientId && UUID_REGEX.test(clientId) ? clientId : randomUUID();
-
-	// Attach to locals for use in routes
-	event.locals.correlationId = correlationId;
-
-	// Route standardization redirects
-	const pathname = event.url.pathname;
-
-	if (
-		pathname === '/movies' ||
-		pathname === '/movies/' ||
-		pathname === '/library/movie' ||
-		pathname === '/library/movie/'
-	) {
-		throw redirect(308, '/library/movies');
-	}
-	if (pathname === '/tv' || pathname === '/tv/') {
-		throw redirect(308, '/library/tv');
-	}
-	if (
-		pathname === '/movie' ||
-		pathname === '/movie/' ||
-		pathname === '/discover/movie' ||
-		pathname === '/discover/movie/' ||
-		pathname === '/discover/tv' ||
-		pathname === '/discover/tv/' ||
-		pathname === '/discover/person' ||
-		pathname === '/discover/person/' ||
-		pathname === '/person' ||
-		pathname === '/person/'
-	) {
-		throw redirect(308, '/discover');
-	}
-	if (pathname.startsWith('/movie/')) {
-		throw redirect(308, `/discover/movie/${pathname.slice('/movie/'.length)}`);
-	}
-	if (pathname.startsWith('/tv/')) {
-		throw redirect(308, `/discover/tv/${pathname.slice('/tv/'.length)}`);
-	}
-	if (pathname.startsWith('/person/')) {
-		throw redirect(308, `/discover/person/${pathname.slice('/person/'.length)}`);
-	}
-
-	// Check if this is a streaming route - these handle their own errors
-	const isStreamingRoute = event.url.pathname.startsWith('/api/streaming/');
-
-	// Log incoming request
-	logger.debug('Incoming request', {
+	const supportId = createSupportId();
+	const requestLogger = createRequestLogger({
+		requestId: correlationId,
 		correlationId,
+		supportId,
+		logDomain: 'http',
 		method: event.request.method,
 		path: event.url.pathname
 	});
 
-	const startTime = performance.now();
+	// Attach to locals for use in routes
+	event.locals.correlationId = correlationId;
+	event.locals.requestId = correlationId;
+	event.locals.supportId = supportId;
+	event.locals.logger = requestLogger;
+	const pathname = event.url.pathname;
 
-	try {
-		// Disable JS modulepreload Link headers to reduce response header size.
-		// With 270+ JS chunks, these headers can exceed nginx's default buffer (4KB).
-		// Preload hints are still included in HTML <link> tags, so no functional impact.
-		const response = await resolve(event, {
-			preload: ({ type }) => type !== 'js'
-		});
-
-		// Add correlation ID to response headers
-		response.headers.set('x-correlation-id', correlationId);
-
-		// Add security headers (skip CSP for streaming routes - they need flexible origins)
-		if (isStreamingRoute) {
-			// Apply base security headers even for streaming routes
-			for (const [header, value] of Object.entries(BASE_SECURITY_HEADERS)) {
-				response.headers.set(header, value);
-			}
-			response.headers.set('Access-Control-Allow-Origin', '*');
-			response.headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-			response.headers.set('Access-Control-Allow-Headers', 'Range, Content-Type');
-		} else {
-			for (const [header, value] of Object.entries(SECURITY_HEADERS)) {
-				response.headers.set(header, value);
-			}
-		}
-
-		// Log completed request
-		const duration = Math.round(performance.now() - startTime);
-		logger.debug('Request completed', {
+	return runWithLogContext(
+		{
+			requestId: correlationId,
 			correlationId,
+			supportId,
+			logDomain: 'http',
 			method: event.request.method,
-			path: event.url.pathname,
-			status: response.status,
-			durationMs: duration
-		});
-
-		return response;
-	} catch (error) {
-		// Streaming routes handle their own errors - re-throw to let SvelteKit handle
-		if (isStreamingRoute) {
-			logger.error('Streaming route error', error, {
-				correlationId,
-				method: event.request.method,
-				path: event.url.pathname
-			});
-			// Return plain text error for streaming routes (media players expect this)
-			const message = error instanceof Error ? error.message : 'Stream error';
-			return new Response(message, {
-				status: 500,
-				headers: {
-					'Content-Type': 'text/plain',
-					'x-correlation-id': correlationId,
-					'Access-Control-Allow-Origin': '*',
-					...BASE_SECURITY_HEADERS
+			path: pathname
+		},
+		async () => {
+			function requiresStreamingApiKey(path: string): boolean {
+				// Live TV endpoints
+				if (path === '/api/livetv/playlist.m3u' || path.startsWith('/api/livetv/playlist.m3u/')) {
+					return true;
 				}
-			});
-		}
+				if (path === '/api/livetv/epg.xml' || path.startsWith('/api/livetv/epg.xml/')) {
+					return true;
+				}
+				if (path.startsWith('/api/livetv/stream/')) {
+					return true;
+				}
 
-		// Log unhandled errors
-		logger.error('Unhandled error in request', error, {
-			correlationId,
-			method: event.request.method,
-			path: event.url.pathname
-		});
+				// Streaming endpoints (Cinephage Streamer .strm files)
+				if (path.startsWith('/api/streaming/session/')) {
+					return true;
+				}
+				if (path.startsWith('/api/streaming/usenet/')) {
+					return true;
+				}
 
-		// Handle AppError instances with consistent formatting
-		if (isAppError(error)) {
-			const response = json(
-				{
-					success: false,
-					...error.toJSON()
-				},
-				{
-					status: error.statusCode,
-					headers: {
-						'x-correlation-id': correlationId,
-						...SECURITY_HEADERS
+				return false;
+			}
+
+			const isStreamingApiRoute = requiresStreamingApiKey(pathname);
+
+			function isHealthRoute(path: string): boolean {
+				if (path === '/health' || path.startsWith('/health/')) {
+					return true;
+				}
+				if (path === '/api/health' || path.startsWith('/api/health/')) {
+					return true;
+				}
+				if (path === '/api/ready' || path.startsWith('/api/ready/')) {
+					return true;
+				}
+				return false;
+			}
+
+			// Fetch session from Better Auth - check API key first, then cookie
+			let session = null;
+			let apiKey = null;
+
+			if (!isStreamingApiRoute) {
+				// Check for API key in header
+				const apiKeyHeader = event.request.headers.get('x-api-key');
+				if (apiKeyHeader) {
+					try {
+						// Get session from API key
+						session = await auth.api.getSession({
+							headers: new Headers({ 'x-api-key': apiKeyHeader })
+						});
+						apiKey = apiKeyHeader;
+					} catch {
+						// Invalid API key, continue to cookie auth
 					}
 				}
-			);
-			return response;
-		}
 
-		// For non-AppError exceptions, return generic 500 error
-		const response = json(
-			{
-				success: false,
-				error: 'Internal Server Error',
-				code: 'INTERNAL_ERROR'
-			},
-			{
-				status: 500,
-				headers: {
-					'x-correlation-id': correlationId,
-					...SECURITY_HEADERS
+				// If no API key session, try cookie-based session
+				if (!session) {
+					session = await auth.api.getSession({
+						headers: event.request.headers
+					});
+				}
+
+				if (session) {
+					if (
+						session.user?.id &&
+						session.user.role !== 'admin' &&
+						(await repairCurrentUserAdminRole(session.user.id))
+					) {
+						session = {
+							...session,
+							user: {
+								...session.user,
+								role: 'admin'
+							}
+						};
+					}
+
+					setAuthenticatedLocals(event, session, apiKey);
+				} else {
+					clearAuthenticatedLocals(event);
+				}
+			} else {
+				clearAuthenticatedLocals(event);
+			}
+
+			// Check if setup is complete
+			const setupComplete = await isSetupComplete();
+
+			// Auth routes are already handled by authHandler
+			if (pathname.startsWith(AUTH_BASE_PATH)) {
+				return resolve(event);
+			}
+
+			/**
+			 * Check if route is public (does not require authentication)
+			 * Public routes:
+			 * - /login - Login page
+			 * - /api/auth/* - Better Auth routes (login/logout/session management)
+			 * - /api/health - Health check endpoint
+			 * - /api/ready - Readiness endpoint
+			 * - /health - Legacy health endpoint (redirects to /api/health)
+			 * All other routes require authentication
+			 * Note: Live TV and Streaming endpoints require API key authentication (see requiresStreamingApiKey)
+			 */
+			function isPublicRoute(path: string): boolean {
+				// Login page
+				if (path === '/login' || path.startsWith('/login/')) {
+					return true;
+				}
+
+				// Better Auth routes (handles its own auth)
+				if (path.startsWith(AUTH_BASE_PATH)) {
+					return true;
+				}
+
+				// Health/readiness endpoints
+				if (isHealthRoute(path)) {
+					return true;
+				}
+
+				return false;
+			}
+
+			// Check if route requires Media Streaming API Key authentication
+			if (isStreamingApiRoute) {
+				// Get API key from query parameter (for .strm files) or header (for API clients)
+				const url = new URL(event.request.url);
+				const apiKeyFromQuery = url.searchParams.get('api_key');
+				const apiKeyFromHeader = event.request.headers.get('x-api-key');
+				const apiKey = apiKeyFromQuery || apiKeyFromHeader;
+
+				if (!apiKey) {
+					// No API key provided - reject request
+					return json(
+						{
+							success: false,
+							error: 'API key required',
+							code: 'API_KEY_REQUIRED'
+						},
+						{
+							status: 401,
+							headers: {
+								'x-correlation-id': correlationId,
+								'x-support-id': supportId,
+								...BASE_SECURITY_HEADERS
+							}
+						}
+					);
+				}
+
+				// Validate the API key using Better Auth
+				try {
+					// First verify the key has streaming permissions (not just any valid key)
+					const verifyResult = await auth.api.verifyApiKey({
+						body: {
+							key: apiKey,
+							permissions: {
+								streaming: ['*']
+							}
+						}
+					});
+
+					if (!verifyResult.valid) {
+						// Log for migration detection - Main API key attempting streaming access
+						requestLogger.warn(
+							{
+								logDomain: 'auth',
+								endpoint: pathname,
+								error: verifyResult.error?.message || 'Invalid permissions'
+							},
+							'[Auth] Main API key attempted to access streaming endpoint'
+						);
+
+						return json(
+							{
+								success: false,
+								error: 'Unauthorized',
+								code: 'UNAUTHORIZED'
+							},
+							{
+								status: 401,
+								headers: {
+									'x-correlation-id': correlationId,
+									'x-support-id': supportId,
+									...BASE_SECURITY_HEADERS
+								}
+							}
+						);
+					}
+
+					// Streaming routes do not rely on a full Better Auth session.
+					// Avoid fetching one here so API-key validation is only counted once.
+					event.locals.apiKey = apiKey;
+					event.locals.apiKeyPermissions = verifyResult.key?.permissions || null;
+				} catch (error) {
+					requestLogger.error(
+						{
+							err: error,
+							logDomain: 'auth',
+							endpoint: pathname
+						},
+						'[Auth] API key validation error'
+					);
+
+					return json(
+						{
+							success: false,
+							error: 'API key validation failed',
+							code: 'INVALID_API_KEY'
+						},
+						{
+							status: 401,
+							headers: {
+								'x-correlation-id': correlationId,
+								...BASE_SECURITY_HEADERS
+							}
+						}
+					);
+				}
+			} else {
+				// If setup not complete, force to setup wizard
+				if (!setupComplete) {
+					// Keep health endpoints available for orchestrators during setup
+					if (isHealthRoute(pathname)) {
+						return resolve(event);
+					}
+					if (!pathname.startsWith('/setup')) {
+						throw redirect(302, '/setup');
+					}
+				}
+				// Setup is complete - require authentication
+				else {
+					// Check if route requires authentication
+					if (!event.locals.user && !isPublicRoute(pathname)) {
+						// API routes return 401, page routes redirect to login
+						if (pathname.startsWith('/api/')) {
+							return json(
+								{
+									success: false,
+									error: 'Unauthorized',
+									code: 'UNAUTHORIZED'
+								},
+								{
+									status: 401,
+									headers: {
+										'x-correlation-id': correlationId,
+										'x-support-id': supportId,
+										...SECURITY_HEADERS
+									}
+								}
+							);
+						}
+						throw redirect(302, '/login');
+					}
 				}
 			}
-		);
-		return response;
-	}
+
+			// Apply rate limiting to API routes
+			if (pathname.startsWith('/api/')) {
+				const rateLimitResponse = checkApiRateLimit(event);
+				if (rateLimitResponse) {
+					return rateLimitResponse;
+				}
+			}
+
+			// Redirect away from setup/login if setup is complete and user is logged in
+			if (setupComplete && event.locals.user) {
+				if (pathname === '/setup' || pathname === '/login' || pathname.startsWith('/login/')) {
+					throw redirect(302, '/');
+				}
+			}
+
+			// Route standardization redirects
+			if (
+				pathname === '/movies' ||
+				pathname === '/movies/' ||
+				pathname === '/library/movie' ||
+				pathname === '/library/movie/'
+			) {
+				throw redirect(308, '/library/movies');
+			}
+			if (pathname === '/tv' || pathname === '/tv/') {
+				throw redirect(308, '/library/tv');
+			}
+			if (
+				pathname === '/movie' ||
+				pathname === '/movie/' ||
+				pathname === '/discover/movie' ||
+				pathname === '/discover/movie/' ||
+				pathname === '/discover/tv' ||
+				pathname === '/discover/tv/' ||
+				pathname === '/discover/person' ||
+				pathname === '/discover/person/' ||
+				pathname === '/person' ||
+				pathname === '/person/'
+			) {
+				throw redirect(308, '/discover');
+			}
+			if (pathname.startsWith('/movie/')) {
+				throw redirect(308, `/discover/movie/${pathname.slice('/movie/'.length)}`);
+			}
+			if (pathname.startsWith('/tv/')) {
+				throw redirect(308, `/discover/tv/${pathname.slice('/tv/'.length)}`);
+			}
+			if (pathname.startsWith('/person/')) {
+				throw redirect(308, `/discover/person/${pathname.slice('/person/'.length)}`);
+			}
+
+			// Check if this is a streaming route - these handle their own errors
+			const isStreamingRoute = event.url.pathname.startsWith('/api/streaming/');
+
+			// Log incoming request
+			requestLogger.debug('Incoming request');
+
+			const startTime = performance.now();
+
+			try {
+				// Disable JS modulepreload Link headers to reduce response header size.
+				// With 270+ JS chunks, these headers can exceed nginx's default buffer (4KB).
+				// Preload hints are still included in HTML <link> tags, so no functional impact.
+				const response = await resolve(event, {
+					preload: ({ type }) => type !== 'js'
+				});
+
+				// Add correlation ID to response headers
+				response.headers.set('x-correlation-id', correlationId);
+
+				// Add rate limit headers to API responses
+				if (pathname.startsWith('/api/')) {
+					const responseWithRateLimit = applyRateLimitHeaders(event, response);
+					// Copy headers from rate limit response
+					responseWithRateLimit.headers.forEach((value, key) => {
+						if (key.startsWith('x-ratelimit')) {
+							response.headers.set(key, value);
+						}
+					});
+				}
+
+				// Add security headers (skip CSP for streaming routes - they need flexible origins)
+				if (isStreamingRoute) {
+					// Apply base security headers even for streaming routes
+					for (const [header, value] of Object.entries(BASE_SECURITY_HEADERS)) {
+						response.headers.set(header, value);
+					}
+					response.headers.set('Access-Control-Allow-Origin', '*');
+					response.headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+					response.headers.set('Access-Control-Allow-Headers', 'Range, Content-Type');
+				} else {
+					for (const [header, value] of Object.entries(SECURITY_HEADERS)) {
+						response.headers.set(header, value);
+					}
+				}
+
+				// Log completed request
+				const duration = Math.round(performance.now() - startTime);
+				requestLogger.debug({ status: response.status, durationMs: duration }, 'Request completed');
+
+				return response;
+			} catch (error) {
+				// Streaming routes handle their own errors - re-throw to let SvelteKit handle
+				if (isStreamingRoute) {
+					requestLogger.error({ err: error, logDomain: 'streams' }, 'Streaming route error');
+					// Return plain text error for streaming routes (media players expect this)
+					const message = error instanceof Error ? error.message : 'Stream error';
+					return new Response(message, {
+						status: 500,
+						headers: {
+							'Content-Type': 'text/plain',
+							'x-correlation-id': correlationId,
+							'x-support-id': supportId,
+							...BASE_SECURITY_HEADERS
+						}
+					});
+				}
+
+				// Log unhandled errors
+				requestLogger.error({ err: error }, 'Unhandled error in request');
+
+				// Handle AppError instances with consistent formatting
+				if (isAppError(error)) {
+					const response = json(
+						{
+							success: false,
+							...error.toJSON()
+						},
+						{
+							status: error.statusCode,
+							headers: {
+								'x-correlation-id': correlationId,
+								'x-support-id': supportId,
+								...SECURITY_HEADERS
+							}
+						}
+					);
+					return response;
+				}
+
+				// For non-AppError exceptions, return generic 500 error
+				const response = json(
+					{
+						success: false,
+						error: 'Internal Server Error',
+						code: 'INTERNAL_ERROR'
+					},
+					{
+						status: 500,
+						headers: {
+							'x-correlation-id': correlationId,
+							'x-support-id': supportId,
+							...SECURITY_HEADERS
+						}
+					}
+				);
+				return response;
+			}
+		}
+	);
 };
+
+/**
+ * Export sequenced handlers
+ * authHandler runs first, then customHandler for non-auth routes
+ */
+export const handle = sequence(localeHandler, authHandler, customHandler);
 
 /**
  * Global error handler for uncaught exceptions.
  * This catches errors that weren't handled in the request handler.
  */
 export const handleError: HandleServerError = ({ error, event }) => {
-	const correlationId = event.locals.correlationId ?? 'unknown';
+	const correlationId = event.locals.requestId ?? event.locals.correlationId ?? 'unknown';
+	const supportId = event.locals.supportId ?? createSupportId();
+	const requestLogger = event.locals.logger ?? logger;
 
-	logger.error('Uncaught exception', error, {
-		correlationId,
-		method: event.request.method,
-		path: event.url.pathname
-	});
+	requestLogger.error(
+		{
+			err: error,
+			requestId: correlationId,
+			correlationId,
+			supportId,
+			logDomain: 'http',
+			method: event.request.method,
+			path: event.url.pathname
+		},
+		'Uncaught exception'
+	);
 
 	// Return safe error message to client
+	if (isAppError(error)) {
+		return {
+			message: error.message,
+			code: error.code,
+			supportId
+		};
+	}
+
 	return {
-		message: isAppError(error) ? error.message : 'An unexpected error occurred',
-		code: isAppError(error) ? error.code : 'INTERNAL_ERROR'
+		message: error instanceof Error ? error.message : 'An unexpected error occurred',
+		code: 'INTERNAL_ERROR',
+		supportId
 	};
 };
+
+/**
+ * Graceful shutdown handlers
+ * Ensure all background services are properly cleaned up on exit
+ */
+let isShuttingDown = false;
+
+async function gracefulShutdown(signal: string): Promise<void> {
+	if (isShuttingDown) {
+		logger.info('Shutdown already in progress, waiting...');
+		return;
+	}
+
+	isShuttingDown = true;
+	logger.info(`Received ${signal}, starting graceful shutdown...`);
+
+	try {
+		const serviceManager = getServiceManager();
+		// Set a timeout to force exit if graceful shutdown hangs
+		const timeout = setTimeout(() => {
+			logger.error('Graceful shutdown timed out after 30s, forcing exit');
+			process.exit(1);
+		}, 30000);
+
+		getImportService().stop();
+		await serviceManager.stopAll();
+		clearTimeout(timeout);
+
+		logger.info('All services stopped successfully');
+		process.exit(0);
+	} catch (error) {
+		logger.error('Error during graceful shutdown', error);
+		process.exit(1);
+	}
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

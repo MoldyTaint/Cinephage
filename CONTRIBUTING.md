@@ -57,77 +57,27 @@ npm run test:watch  # Run tests in watch mode
 npm run check       # Run svelte-check for TypeScript errors
 ```
 
+### Dependency Audit
+
+```bash
+npm run deps:audit  # Run dependency audit (unused/unlisted packages)
+```
+
 ### Building
 
 ```bash
 npm run build       # Build for production
 ```
 
-## Project Structure
+## Pull Request Process
 
-```
-src/
-├── routes/           # SvelteKit pages and API endpoints
-│   ├── api/         # REST API endpoints
-│   └── ...          # Page routes
-├── lib/
-│   ├── components/  # Reusable Svelte components
-│   ├── server/      # Server-side code
-│   │   ├── db/      # Database schema and queries
-│   │   ├── indexers/# Indexer system
-│   │   ├── downloadClients/
-│   │   ├── library/ # Library management
-│   │   ├── monitoring/
-│   │   ├── quality/ # Quality scoring
-│   │   ├── scoring/ # Release scoring
-│   │   └── subtitles/
-│   ├── types/       # TypeScript types
-│   ├── utils/       # Utility functions
-│   └── stores/      # Svelte stores
-├── test/            # Test setup and utilities
-data/
-├── indexers/        # Cardigann YAML indexer definitions
-```
-
-## Svelte 5 Patterns
-
-Cinephage uses Svelte 5 with runes. Key patterns:
-
-### Props and Reactivity
-
-```svelte
-<script lang="ts">
-	// Use $props() for component props
-	let { data } = $props();
-
-	// For mutable state that syncs from props, use $effect
-	let localValue = $state('');
-	$effect(() => {
-		localValue = data.value ?? '';
-	});
-
-	// For read-only computed values, use $derived
-	const computed = $derived(data.value * 2);
-</script>
-```
-
-### Modal Form Pattern
-
-```svelte
-<script lang="ts">
-	// Initialize with defaults (not prop values)
-	let name = $state('');
-	let enabled = $state(true);
-
-	// Sync from props when modal opens
-	$effect(() => {
-		if (open) {
-			name = prop?.name ?? '';
-			enabled = prop?.enabled ?? true;
-		}
-	});
-</script>
-```
+1. Fork the repository and create your branch from `main`
+2. Make your changes following the code style guidelines
+3. Add or update tests as needed
+4. Ensure all tests pass: `npm run test`
+5. Ensure type checking passes: `npm run check`
+6. Run formatting: `npm run format`
+7. Submit a pull request with a clear description
 
 ## Commit Messages
 
@@ -143,24 +93,15 @@ We follow conventional commit messages:
 
 Example: `feat: add subtitle auto-download scheduler`
 
-## Pull Request Process
+## Detailed Documentation
 
-1. Fork the repository and create your branch from `main`
-2. Make your changes following the code style guidelines
-3. Add or update tests as needed
-4. Ensure all tests pass: `npm run test`
-5. Ensure type checking passes: `npm run check`
-6. Run formatting: `npm run format`
-7. Submit a pull request with a clear description
+For more detailed development guides:
 
-## Adding New Indexers
-
-Cinephage uses a Cardigann-style YAML definition system for indexers:
-
-1. Create a new YAML file in `data/indexers/definitions/`
-2. Follow the existing patterns in other definition files
-3. Test the indexer thoroughly with different search queries
-4. Add appropriate rate limiting settings
+- [Architecture Overview](https://docs.cinephage.net/development/architecture)
+- [Svelte 5 Patterns](https://docs.cinephage.net/development/svelte-patterns)
+- [Project Structure](https://docs.cinephage.net/development/project-structure)
+- [Commit Message Guidelines](https://docs.cinephage.net/development/commits)
+- [Adding New Indexers](https://docs.cinephage.net/development/indexers)
 
 ## Reporting Issues
 

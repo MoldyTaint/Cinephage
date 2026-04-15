@@ -44,8 +44,7 @@ function formatEpisodeNumbers(
 			return formatted.join('-E');
 
 		case 'repeat':
-			// S01E01 - S01E02 - S01E03 (handled at higher level)
-			return formatted[0];
+			return formatted.join(' - ');
 
 		case 'scene':
 			// S01E01E02 (no padding for extra episodes)

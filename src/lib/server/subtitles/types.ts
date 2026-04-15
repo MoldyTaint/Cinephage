@@ -186,13 +186,12 @@ export const PROVIDER_IMPLEMENTATIONS = [
 /** Provider implementation type (derived from the const array) */
 export type ProviderImplementation = (typeof PROVIDER_IMPLEMENTATIONS)[number];
 
-/** Sync options for ffsubsync */
+/** Sync options for alass */
 export interface SyncOptionsType {
 	referenceType?: 'video' | 'subtitle';
 	referencePath?: string;
-	maxOffsetSeconds?: number;
-	noFixFramerate?: boolean;
-	gss?: boolean;
+	splitPenalty?: number;
+	noSplits?: boolean;
 }
 
 /** Subtitle history action types */
@@ -344,6 +343,8 @@ export interface SubtitleDownloadResult {
 	path: string;
 	language: LanguageCode;
 	format: SubtitleFormat;
+	wasSynced: boolean;
+	syncOffset: number | null;
 	wasUpgrade: boolean;
 	replacedSubtitleId?: string;
 }
@@ -368,12 +369,11 @@ export interface SubtitleStatus {
 }
 
 /**
- * Sync result from ffsubsync
+ * Sync result from alass
  */
 export interface SubtitleSyncResult {
 	success: boolean;
 	offsetMs: number;
-	confidence?: number;
 	error?: string;
 }
 

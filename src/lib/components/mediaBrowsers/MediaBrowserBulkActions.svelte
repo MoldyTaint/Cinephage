@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Loader2, CheckCircle, XCircle, Trash2, FlaskConical } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		selectedCount: number;
@@ -15,7 +16,7 @@
 
 <div class="mb-4 rounded-lg bg-base-200 p-3">
 	<div class="mb-2 flex items-center justify-between gap-2">
-		<span class="text-sm font-medium">{selectedCount} selected</span>
+		<span class="text-sm font-medium">{m.common_selected({ count: selectedCount })}</span>
 	</div>
 
 	<div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
@@ -25,7 +26,7 @@
 			{:else}
 				<CheckCircle class="h-4 w-4" />
 			{/if}
-			Enable
+			{m.action_enable()}
 		</button>
 
 		<button class="btn gap-1 btn-ghost btn-sm" onclick={onDisable} disabled={loading}>
@@ -34,7 +35,7 @@
 			{:else}
 				<XCircle class="h-4 w-4" />
 			{/if}
-			Disable
+			{m.action_disable()}
 		</button>
 
 		<button class="btn gap-1 btn-ghost btn-sm" onclick={onTestAll} disabled={loading}>
@@ -43,7 +44,7 @@
 			{:else}
 				<FlaskConical class="h-4 w-4" />
 			{/if}
-			Test
+			{m.action_test()}
 		</button>
 
 		<button class="btn gap-1 text-error btn-ghost btn-sm" onclick={onDelete} disabled={loading}>
@@ -52,7 +53,7 @@
 			{:else}
 				<Trash2 class="h-4 w-4" />
 			{/if}
-			Delete
+			{m.action_delete()}
 		</button>
 	</div>
 </div>

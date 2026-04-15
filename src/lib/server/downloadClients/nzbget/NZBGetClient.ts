@@ -1,4 +1,6 @@
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'imports' as const });
 import type {
 	IDownloadClient,
 	DownloadClientConfig,
@@ -15,12 +17,15 @@ export class NZBGetClient implements IDownloadClient {
 
 	constructor(config: DownloadClientConfig) {
 		this.config = config;
-		logger.debug('[NZBGet] Initialized with config', {
-			host: config.host,
-			port: config.port,
-			useSsl: config.useSsl,
-			hasAuth: !!(config.username && config.password)
-		});
+		logger.debug(
+			{
+				host: config.host,
+				port: config.port,
+				useSsl: config.useSsl,
+				hasAuth: !!(config.username && config.password)
+			},
+			'[NZBGet] Initialized with config'
+		);
 	}
 
 	private get baseUrl(): string {
@@ -52,7 +57,7 @@ export class NZBGetClient implements IDownloadClient {
 				headers['Authorization'] = `Basic ${auth}`;
 			}
 
-			logger.debug(`[NZBGet] Sending request`, { method });
+			logger.debug({ method }, `[NZBGet] Sending request`);
 
 			const response = await fetch(this.baseUrl, {
 				method: 'POST',
@@ -75,9 +80,12 @@ export class NZBGetClient implements IDownloadClient {
 
 			return data.result;
 		} catch (error) {
-			logger.error(`[NZBGet] Request failed: ${method}`, {
-				error: error instanceof Error ? error.message : 'Unknown error'
-			});
+			logger.error(
+				{
+					error: error instanceof Error ? error.message : 'Unknown error'
+				},
+				`[NZBGet] Request failed: ${method}`
+			);
 			throw error;
 		}
 	}
@@ -121,13 +129,16 @@ export class NZBGetClient implements IDownloadClient {
 		const dupeMode = 'SCORE';
 		const pparams = [{ Name: 'x-category', Value: category }];
 
-		logger.info('[NZBGet] Adding download', {
-			name,
-			category,
-			priority,
-			hasNzbFile: !!options.nzbFile,
-			hasUrl: !!options.downloadUrl
-		});
+		logger.info(
+			{
+				name,
+				category,
+				priority,
+				hasNzbFile: !!options.nzbFile,
+				hasUrl: !!options.downloadUrl
+			},
+			'[NZBGet] Adding download'
+		);
 
 		let nzbId: number;
 
@@ -163,7 +174,7 @@ export class NZBGetClient implements IDownloadClient {
 		}
 
 		if (nzbId > 0) {
-			logger.info('[NZBGet] Download added successfully', { nzbId });
+			logger.info({ nzbId }, '[NZBGet] Download added successfully');
 			return nzbId.toString();
 		} else {
 			throw new Error('NZBGet failed to add download');
@@ -178,21 +189,23 @@ export class NZBGetClient implements IDownloadClient {
 
 		const results: DownloadInfo[] = [];
 
-		logger.debug(`[NZBGet] Fetched ${groups.length} groups and ${history.length} history items`, {
-			categoryFilter: category
-		});
+		logger.debug(
+			{
+				categoryFilter: category
+			},
+			`[NZBGet] Fetched ${groups.length} groups and ${history.length} history items`
+		);
 
 		// Map active downloads (groups)
-		for (const task of groups) {
-			// Type assertion hack because nzbget types are loose and response varies by version
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const item = task as any;
-
-			logger.debug(`[NZBGet] Group item`, {
-				NZBID: item.NZBID,
-				NZBName: item.NZBName,
-				Category: item.Category
-			});
+		for (const item of groups) {
+			logger.debug(
+				{
+					NZBID: item.NZBID,
+					NZBName: item.NZBName,
+					Category: item.Category
+				},
+				`[NZBGet] Group item`
+			);
 
 			if (category && item.Category && item.Category.toLowerCase() !== category.toLowerCase())
 				continue;
@@ -201,19 +214,17 @@ export class NZBGetClient implements IDownloadClient {
 				id: item.NZBID.toString(),
 				name: item.NZBName,
 				hash: item.NZBID.toString(),
-				// Normalized to 0-1 range (downloaded / total)
 				progress:
 					(item.DownloadedSizeHi * 4294967296 + item.DownloadedSizeLo) /
 					(item.FileSizeHi * 4294967296 + item.FileSizeLo || 1),
 				status: this.mapStatus(item.Status),
 				size: item.FileSizeHi * 4294967296 + item.FileSizeLo,
-				downloadSpeed: 0, // Rate is global in 'status', not per-torrent easily
+				downloadSpeed: 0,
 				uploadSpeed: 0,
-				eta: 0, // Needs calculation or separate call
+				eta: 0,
 				category: item.Category,
 				savePath: item.DestDir,
 				contentPath: item.DestDir,
-				// Usenet downloads can always be moved (no seeding)
 				canMoveFiles: true,
 				// Can be removed when no longer actively downloading
 				canBeRemoved: false,
@@ -223,11 +234,14 @@ export class NZBGetClient implements IDownloadClient {
 
 		// Map history
 		for (const item of history) {
-			logger.debug(`[NZBGet] History item`, {
-				ID: item.ID,
-				Name: item.Name,
-				Category: item.Category
-			});
+			logger.debug(
+				{
+					ID: item.ID,
+					Name: item.Name,
+					Category: item.Category
+				},
+				`[NZBGet] History item`
+			);
 
 			if (category && item.Category && item.Category.toLowerCase() !== category.toLowerCase())
 				continue;
@@ -355,12 +369,15 @@ export class NZBGetClient implements IDownloadClient {
 				});
 			}
 
-			logger.info('[NZBGet] Fetched NNTP servers', { count: servers.length });
+			logger.info({ count: servers.length }, '[NZBGet] Fetched NNTP servers');
 			return servers;
 		} catch (error) {
-			logger.error('[NZBGet] Failed to fetch NNTP servers', {
-				error: error instanceof Error ? error.message : 'Unknown error'
-			});
+			logger.error(
+				{
+					error: error instanceof Error ? error.message : 'Unknown error'
+				},
+				'[NZBGet] Failed to fetch NNTP servers'
+			);
 			return [];
 		}
 	}

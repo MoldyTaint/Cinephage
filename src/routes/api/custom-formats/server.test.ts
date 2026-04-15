@@ -1,11 +1,10 @@
-/**
- * Custom Formats API Tests
- *
- * Tests for GET, POST, PUT, DELETE handlers at /api/custom-formats
- */
-
-import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
-import { initTestDb, closeTestDb, clearTestDb, getTestDb } from '../../../test/db-helper';
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
+import {
+	createTestDb,
+	destroyTestDb,
+	clearTestDb,
+	type TestDatabase
+} from '../../../test/db-helper';
 import {
 	api,
 	type ErrorResponse,
@@ -16,36 +15,33 @@ import {
 import { customFormats } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 
-// Initialize the test database FIRST before any mocks
-initTestDb();
+const testDb: TestDatabase = createTestDb();
 
-// Must mock before importing the handlers
-vi.mock('$lib/server/db', async () => {
-	const { getTestDb } = await import('../../../test/db-helper');
-	return {
-		get db() {
-			return getTestDb().db;
-		},
-		get sqlite() {
-			return getTestDb().sqlite;
-		},
-		initializeDatabase: vi.fn().mockResolvedValue(undefined)
-	};
-});
-
-vi.mock('$lib/logging', () => ({
-	logger: {
-		info: vi.fn(),
-		error: vi.fn(),
-		warn: vi.fn(),
-		debug: vi.fn()
-	}
+vi.mock('$lib/server/db', () => ({
+	get db() {
+		return testDb.db;
+	},
+	get sqlite() {
+		return testDb.sqlite;
+	},
+	initializeDatabase: vi.fn().mockResolvedValue(undefined)
 }));
 
-// Import handlers after mocks are set up
+const mockLogger = vi.hoisted(() => ({
+	info: vi.fn(),
+	error: vi.fn(),
+	warn: vi.fn(),
+	debug: vi.fn(),
+	child: vi.fn().mockReturnThis()
+}));
+
+vi.mock('$lib/logging', () => ({
+	logger: mockLogger,
+	createChildLogger: vi.fn(() => mockLogger)
+}));
+
 const { GET, POST, PUT, DELETE } = await import('./+server');
 
-// Valid condition for tests
 const validCondition = {
 	name: 'Test Condition',
 	type: 'release_title' as const,
@@ -55,21 +51,14 @@ const validCondition = {
 };
 
 describe('Custom Formats API', () => {
-	beforeAll(() => {
-		initTestDb();
-	});
-
 	afterAll(() => {
-		closeTestDb();
+		destroyTestDb(testDb);
 	});
 
 	beforeEach(() => {
-		clearTestDb();
+		clearTestDb(testDb);
 	});
 
-	// =========================================================================
-	// GET Tests
-	// =========================================================================
 	describe('GET /api/custom-formats', () => {
 		it('returns built-in formats when database is empty', async () => {
 			const { status, data } = await api.get<FormatsListResponse>(GET);
@@ -79,17 +68,13 @@ describe('Custom Formats API', () => {
 			expect(data.builtInCount).toBeGreaterThan(0);
 			expect(data.customCount).toBe(0);
 
-			// All formats should be built-in
 			data.formats.forEach((f) => {
 				expect(f.isBuiltIn).toBe(true);
 			});
 		});
 
 		it('returns custom formats along with built-in formats', async () => {
-			const { db } = getTestDb();
-
-			// Insert a custom format
-			await db.insert(customFormats).values({
+			await testDb.db.insert(customFormats).values({
 				id: 'my-custom-format',
 				name: 'My Custom Format',
 				description: 'Test format',
@@ -109,9 +94,7 @@ describe('Custom Formats API', () => {
 		});
 
 		it('filters by type=builtin', async () => {
-			const { db } = getTestDb();
-
-			await db.insert(customFormats).values({
+			await testDb.db.insert(customFormats).values({
 				id: 'test-custom',
 				name: 'Test Custom',
 				category: 'other',
@@ -128,9 +111,7 @@ describe('Custom Formats API', () => {
 		});
 
 		it('filters by type=custom', async () => {
-			const { db } = getTestDb();
-
-			await db.insert(customFormats).values({
+			await testDb.db.insert(customFormats).values({
 				id: 'test-custom',
 				name: 'Test Custom',
 				category: 'other',
@@ -173,9 +154,6 @@ describe('Custom Formats API', () => {
 		});
 	});
 
-	// =========================================================================
-	// POST Tests (Create Format)
-	// =========================================================================
 	describe('POST /api/custom-formats', () => {
 		it('creates format with required fields only', async () => {
 			const { status, data } = await api.post<FormatResponse>(POST, {
@@ -232,25 +210,24 @@ describe('Custom Formats API', () => {
 
 		it('validates condition types', async () => {
 			const { status, data } = await api.post<FormatResponse>(POST, {
-				name: 'Resolution Format',
-				category: 'resolution',
+				name: 'Audio Codec Format',
+				category: 'audio',
 				conditions: [
 					{
-						name: 'Resolution Check',
-						type: 'resolution',
+						name: 'Codec Check',
+						type: 'audio_codec',
 						required: true,
 						negate: false,
-						resolution: '2160p'
+						audioCodec: 'truehd'
 					}
 				]
 			});
 
 			expect(status).toBe(201);
-			expect(data.name).toBe('Resolution Format');
+			expect(data.name).toBe('Audio Codec Format');
 		});
 
 		it('rejects reserved format IDs', async () => {
-			// Using a known built-in format ID
 			const { status, data } = await api.post<ErrorResponse>(POST, {
 				id: 'audio-truehd',
 				name: 'Fake TrueHD',
@@ -263,7 +240,6 @@ describe('Custom Formats API', () => {
 		});
 
 		it('rejects duplicate format IDs', async () => {
-			// Create first format
 			await api.post<FormatResponse>(POST, {
 				id: 'duplicate-test',
 				name: 'First',
@@ -271,7 +247,6 @@ describe('Custom Formats API', () => {
 				conditions: [validCondition]
 			});
 
-			// Try to create second with same ID
 			const { status, data } = await api.post<ErrorResponse>(POST, {
 				id: 'duplicate-test',
 				name: 'Second',
@@ -316,12 +291,8 @@ describe('Custom Formats API', () => {
 		});
 	});
 
-	// =========================================================================
-	// PUT Tests (Update Format)
-	// =========================================================================
 	describe('PUT /api/custom-formats', () => {
 		it('updates custom format fields', async () => {
-			// Create a format
 			await api.post<FormatResponse>(POST, {
 				id: 'update-test',
 				name: 'Original Name',
@@ -329,7 +300,6 @@ describe('Custom Formats API', () => {
 				conditions: [validCondition]
 			});
 
-			// Update it
 			const { status, data } = await api.put<FormatResponse>(PUT, {
 				id: 'update-test',
 				name: 'Updated Name',
@@ -406,9 +376,6 @@ describe('Custom Formats API', () => {
 		});
 	});
 
-	// =========================================================================
-	// DELETE Tests
-	// =========================================================================
 	describe('DELETE /api/custom-formats', () => {
 		it('deletes custom format', async () => {
 			await api.post<FormatResponse>(POST, {
@@ -424,9 +391,7 @@ describe('Custom Formats API', () => {
 			expect(data.success).toBe(true);
 			expect(data.deleted.id).toBe('delete-me');
 
-			// Verify it's gone
-			const { db } = getTestDb();
-			const remaining = await db
+			const remaining = await testDb.db
 				.select()
 				.from(customFormats)
 				.where(eq(customFormats.id, 'delete-me'));

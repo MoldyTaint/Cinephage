@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { X, Loader2, StopCircle, CheckCircle2, XCircle, Search } from 'lucide-svelte';
 	import { onMount, onDestroy } from 'svelte';
+	import { toasts } from '$lib/stores/toast.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface WorkerState {
 		id: string;
@@ -96,7 +98,7 @@
 		try {
 			const response = await fetch(`/api/workers/${workerId}`);
 			if (!response.ok) {
-				throw new Error('Worker not found');
+				throw new Error(m.livetv_portalScanProgress_workerNotFound());
 			}
 			worker = await response.json();
 			loading = false;
@@ -107,7 +109,7 @@
 				pollInterval = null;
 			}
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load worker';
+			error = e instanceof Error ? e.message : m.livetv_portalScanProgress_failedToLoadWorker();
 			loading = false;
 			if (pollInterval) {
 				clearInterval(pollInterval);
@@ -123,11 +125,13 @@
 				method: 'DELETE'
 			});
 			if (!response.ok) {
-				throw new Error('Failed to cancel scan');
+				throw new Error(m.livetv_portalScanProgress_failedToCancelScan());
 			}
 			await fetchWorker();
 		} catch (e) {
-			console.error('Failed to cancel:', e);
+			toasts.error(
+				e instanceof Error ? e.message : m.livetv_portalScanProgress_failedToCancelScan()
+			);
 		} finally {
 			cancelling = false;
 		}
@@ -162,13 +166,15 @@
 			<div>
 				<h3 class="text-lg font-bold">
 					{#if isActive}
-						Scanning Portal
+						{m.livetv_portalScanProgress_scanningPortal({
+							name: worker?.metadata.portalName ?? ''
+						})}
 					{:else if isCompleted}
-						Scan Complete
+						{m.livetv_portalScanProgress_scanComplete()}
 					{:else if isCancelled}
-						Scan Cancelled
+						{m.livetv_portalScanProgress_scanCancelled()}
 					{:else}
-						Scan Failed
+						{m.livetv_portalScanProgress_scanFailed()}
 					{/if}
 				</h3>
 				{#if worker}
@@ -195,7 +201,7 @@
 		<!-- Progress Bar -->
 		<div class="mb-6">
 			<div class="mb-2 flex items-center justify-between text-sm">
-				<span>Progress</span>
+				<span>{m.livetv_portalScanProgress_progressLabel()}</span>
 				<span>{progressPercent.toFixed(1)}%</span>
 			</div>
 			<progress
@@ -212,31 +218,34 @@
 		<!-- Stats Grid -->
 		<div class="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
 			<div class="rounded-lg bg-base-200 p-3 text-center">
-				<div class="text-2xl font-bold">{testedCount.toLocaleString()}</div>
-				<div class="text-xs text-base-content/60">Tested</div>
+				<div class="text-2xl font-bold">{testedCount.toLocaleString(undefined)}</div>
+				<div class="text-xs text-base-content/60">{m.livetv_portalScanProgress_tested()}</div>
 			</div>
 			<div class="rounded-lg bg-base-200 p-3 text-center">
-				<div class="text-2xl font-bold">{totalCount.toLocaleString()}</div>
-				<div class="text-xs text-base-content/60">Total</div>
+				<div class="text-2xl font-bold">{totalCount.toLocaleString(undefined)}</div>
+				<div class="text-xs text-base-content/60">{m.livetv_portalScanProgress_total()}</div>
 			</div>
 			<div class="rounded-lg bg-success/10 p-3 text-center">
 				<div class="text-2xl font-bold text-success">{foundCount}</div>
-				<div class="text-xs text-base-content/60">Found</div>
+				<div class="text-xs text-base-content/60">{m.livetv_portalScanProgress_found()}</div>
 			</div>
 			<div class="rounded-lg bg-base-200 p-3 text-center">
 				<div class="text-lg font-medium">{elapsedTime()}</div>
-				<div class="text-xs text-base-content/60">Elapsed</div>
+				<div class="text-xs text-base-content/60">{m.livetv_portalScanProgress_elapsed()}</div>
 			</div>
 		</div>
 
 		<!-- Current MAC -->
 		{#if isActive && currentMac}
 			<div class="mb-6">
-				<div class="text-sm text-base-content/60">Currently testing:</div>
+				<div class="text-sm text-base-content/60">
+					{m.livetv_portalScanProgress_currentlyTesting({ mac: currentMac })}
+				</div>
 				<div class="font-mono text-lg">{currentMac}</div>
 				{#if estimatedTimeRemaining()}
 					<div class="text-sm text-base-content/60">
-						Estimated time remaining: {estimatedTimeRemaining()}
+						{m.livetv_portalScanProgress_timeRemaining()}
+						{estimatedTimeRemaining()}
 					</div>
 				{/if}
 			</div>
@@ -253,11 +262,11 @@
 		<!-- Scan Details -->
 		<div class="mb-6 rounded-lg bg-base-200 p-4">
 			<div class="grid grid-cols-2 gap-2 text-sm">
-				<div class="text-base-content/60">Scan Type:</div>
+				<div class="text-base-content/60">{m.livetv_portalScanProgress_scanType()}:</div>
 				<div class="capitalize">{worker.metadata.scanType}</div>
-				<div class="text-base-content/60">Rate Limit:</div>
+				<div class="text-base-content/60">{m.livetv_portalScanProgress_rateLimit()}:</div>
 				<div>{worker.metadata.rateLimit}ms</div>
-				<div class="text-base-content/60">Portal URL:</div>
+				<div class="text-base-content/60">{m.livetv_portalScanProgress_portalUrl()}:</div>
 				<div class="truncate">{worker.metadata.portalUrl}</div>
 			</div>
 		</div>
@@ -271,14 +280,16 @@
 					{:else}
 						<StopCircle class="h-4 w-4" />
 					{/if}
-					Cancel Scan
+					{m.livetv_portalScanProgress_cancelScanButton()}
 				</button>
 			{:else}
-				<button class="btn btn-ghost" onclick={onClose}> Close </button>
+				<button class="btn btn-ghost" onclick={onClose}
+					>{m.livetv_portalScanProgress_closeButton()}</button
+				>
 				{#if foundCount > 0}
 					<button class="btn btn-primary" onclick={handleViewResults}>
 						<Search class="h-4 w-4" />
-						View {foundCount} Result{foundCount !== 1 ? 's' : ''}
+						{m.livetv_portalScanProgress_viewResults({ count: foundCount })}
 					</button>
 				{/if}
 			{/if}

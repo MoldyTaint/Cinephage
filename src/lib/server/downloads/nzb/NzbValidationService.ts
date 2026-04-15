@@ -5,7 +5,9 @@
 
 import * as cheerio from 'cheerio';
 import { InvalidNzbError } from '$lib/errors';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'imports' as const });
 
 /**
  * Result of NZB validation.
@@ -53,7 +55,7 @@ export class NzbValidationService {
 				const desc = errorEl.attr('description') || errorEl.text() || 'Unknown error';
 				const error = `Indexer error ${code}: ${desc}`;
 
-				logger.warn('[NzbValidation] Received error response instead of NZB', { code, desc });
+				logger.warn({ code, desc }, '[NzbValidation] Received error response instead of NZB');
 
 				const result = { valid: false, error };
 				if (throwOnError) throw new InvalidNzbError(error, { code });
@@ -64,7 +66,7 @@ export class NzbValidationService {
 			const root = $('nzb');
 			if (root.length === 0) {
 				const error = 'Invalid NZB: No root <nzb> element found';
-				logger.warn('[NzbValidation] Invalid NZB structure', { error });
+				logger.warn({ error }, '[NzbValidation] Invalid NZB structure');
 
 				const result = { valid: false, error };
 				if (throwOnError) throw new InvalidNzbError(error);
@@ -75,7 +77,7 @@ export class NzbValidationService {
 			const files = root.find('file');
 			if (files.length === 0) {
 				const error = 'Invalid NZB: No <file> elements found';
-				logger.warn('[NzbValidation] NZB has no files', { error });
+				logger.warn({ error }, '[NzbValidation] NZB has no files');
 
 				const result = { valid: false, error };
 				if (throwOnError) throw new InvalidNzbError(error);
@@ -108,11 +110,14 @@ export class NzbValidationService {
 					});
 			});
 
-			logger.debug('[NzbValidation] NZB validated successfully', {
-				fileCount: files.length,
-				totalSize,
-				groupCount: groups.size
-			});
+			logger.debug(
+				{
+					fileCount: files.length,
+					totalSize,
+					groupCount: groups.size
+				},
+				'[NzbValidation] NZB validated successfully'
+			);
 
 			return {
 				valid: true,
@@ -127,7 +132,7 @@ export class NzbValidationService {
 			}
 
 			const message = `Failed to parse NZB: ${error instanceof Error ? error.message : 'Unknown error'}`;
-			logger.error('[NzbValidation] Parse error', { error: message });
+			logger.error({ err: error }, '[NzbValidation] Parse error');
 
 			const result = { valid: false, error: message };
 			if (throwOnError) throw new InvalidNzbError(message);

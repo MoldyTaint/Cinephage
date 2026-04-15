@@ -12,7 +12,9 @@
 import { db } from '$lib/server/db/index.js';
 import { taskSettings, type TaskSettingsRecord } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'system' as const });
 import { UNIFIED_TASK_DEFINITIONS } from './UnifiedTaskRegistry.js';
 
 /**

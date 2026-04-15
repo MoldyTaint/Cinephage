@@ -11,7 +11,9 @@
 
 import type { ISubtitleProvider, ProviderDefinition } from './interfaces';
 import type { SubtitleProviderConfig } from '../types';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 
 /** Provider constructor type */
 export type ProviderConstructor = new (config: SubtitleProviderConfig) => ISubtitleProvider;
@@ -144,7 +146,7 @@ export async function registerBuiltinProviders(): Promise<void> {
 			providerRegistry.register(opensubtitles.PROVIDER_INFO);
 		}
 	} catch (error) {
-		logger.warn('Failed to register opensubtitles provider', { error });
+		logger.warn({ error }, 'Failed to register opensubtitles provider');
 	}
 
 	try {
@@ -154,7 +156,7 @@ export async function registerBuiltinProviders(): Promise<void> {
 			providerRegistry.register(opensubtitlesorg.PROVIDER_INFO);
 		}
 	} catch (error) {
-		logger.warn('Failed to register opensubtitlesorg provider', { error });
+		logger.warn({ error }, 'Failed to register opensubtitlesorg provider');
 	}
 
 	try {
@@ -164,7 +166,7 @@ export async function registerBuiltinProviders(): Promise<void> {
 			providerRegistry.register(addic7ed.PROVIDER_INFO);
 		}
 	} catch (error) {
-		logger.warn('Failed to register addic7ed provider', { error });
+		logger.warn({ error }, 'Failed to register addic7ed provider');
 	}
 
 	try {
@@ -174,7 +176,7 @@ export async function registerBuiltinProviders(): Promise<void> {
 			providerRegistry.register(subdl.PROVIDER_INFO);
 		}
 	} catch (error) {
-		logger.warn('Failed to register subdl provider', { error });
+		logger.warn({ error }, 'Failed to register subdl provider');
 	}
 
 	try {
@@ -184,7 +186,7 @@ export async function registerBuiltinProviders(): Promise<void> {
 			providerRegistry.register(yifysubtitles.PROVIDER_INFO);
 		}
 	} catch (error) {
-		logger.warn('Failed to register yifysubtitles provider', { error });
+		logger.warn({ error }, 'Failed to register yifysubtitles provider');
 	}
 
 	try {
@@ -194,7 +196,7 @@ export async function registerBuiltinProviders(): Promise<void> {
 			providerRegistry.register(gestdown.PROVIDER_INFO);
 		}
 	} catch (error) {
-		logger.warn('Failed to register gestdown provider', { error });
+		logger.warn({ error }, 'Failed to register gestdown provider');
 	}
 
 	try {
@@ -204,7 +206,7 @@ export async function registerBuiltinProviders(): Promise<void> {
 			providerRegistry.register(subf2m.PROVIDER_INFO);
 		}
 	} catch (error) {
-		logger.warn('Failed to register subf2m provider', { error });
+		logger.warn({ error }, 'Failed to register subf2m provider');
 	}
 
 	try {
@@ -214,7 +216,7 @@ export async function registerBuiltinProviders(): Promise<void> {
 			providerRegistry.register(podnapisi.PROVIDER_INFO);
 		}
 	} catch (error) {
-		logger.warn('Failed to register podnapisi provider', { error });
+		logger.warn({ error }, 'Failed to register podnapisi provider');
 	}
 
 	try {
@@ -224,7 +226,7 @@ export async function registerBuiltinProviders(): Promise<void> {
 			providerRegistry.register(subscene.PROVIDER_INFO);
 		}
 	} catch (error) {
-		logger.warn('Failed to register subscene provider', { error });
+		logger.warn({ error }, 'Failed to register subscene provider');
 	}
 
 	// Regional providers
@@ -235,7 +237,7 @@ export async function registerBuiltinProviders(): Promise<void> {
 			providerRegistry.register(napiprojekt.PROVIDER_INFO);
 		}
 	} catch (error) {
-		logger.warn('Failed to register napiprojekt provider', { error });
+		logger.warn({ error }, 'Failed to register napiprojekt provider');
 	}
 
 	try {
@@ -245,7 +247,7 @@ export async function registerBuiltinProviders(): Promise<void> {
 			providerRegistry.register(legendasdivx.PROVIDER_INFO);
 		}
 	} catch (error) {
-		logger.warn('Failed to register legendasdivx provider', { error });
+		logger.warn({ error }, 'Failed to register legendasdivx provider');
 	}
 
 	try {
@@ -255,7 +257,7 @@ export async function registerBuiltinProviders(): Promise<void> {
 			providerRegistry.register(betaseries.PROVIDER_INFO);
 		}
 	} catch (error) {
-		logger.warn('Failed to register betaseries provider', { error });
+		logger.warn({ error }, 'Failed to register betaseries provider');
 	}
 
 	try {
@@ -265,7 +267,7 @@ export async function registerBuiltinProviders(): Promise<void> {
 			providerRegistry.register(assrt.PROVIDER_INFO);
 		}
 	} catch (error) {
-		logger.warn('Failed to register assrt provider', { error });
+		logger.warn({ error }, 'Failed to register assrt provider');
 	}
 
 	// Future regional providers will be added here

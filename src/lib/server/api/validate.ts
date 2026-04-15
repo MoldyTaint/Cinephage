@@ -2,112 +2,11 @@
  * API validation helpers.
  * Reduces boilerplate for Zod validation in API routes.
  *
- * Two patterns are available:
- * 1. Return-based: validateRequestBody() returns { success, data/response }
- * 2. Throw-based: assertFound(), parseBody() throw AppErrors (preferred)
- *
- * The throw-based pattern integrates with hooks.server.ts error handling.
+ * Throw-based pattern integrates with hooks.server.ts error handling.
  */
 
-import { json } from '@sveltejs/kit';
 import type { z } from 'zod';
 import { NotFoundError, ValidationError } from '$lib/errors';
-
-/**
- * Result of validating a request body.
- */
-export type ValidationResult<T> =
-	| { success: true; data: T }
-	| { success: false; response: Response };
-
-/**
- * Validate a request body against a Zod schema.
- *
- * @example
- * const validation = await validateRequestBody(request, mySchema);
- * if (!validation.success) return validation.response;
- * const { data } = validation;
- */
-export async function validateRequestBody<T>(
-	request: Request,
-	schema: z.ZodSchema<T>
-): Promise<ValidationResult<T>> {
-	let body: unknown;
-	try {
-		body = await request.json();
-	} catch {
-		return {
-			success: false,
-			response: json({ error: 'Invalid JSON body' }, { status: 400 })
-		};
-	}
-
-	const result = schema.safeParse(body);
-
-	if (!result.success) {
-		return {
-			success: false,
-			response: json(
-				{
-					error: 'Validation failed',
-					details: result.error.flatten()
-				},
-				{ status: 400 }
-			)
-		};
-	}
-
-	return { success: true, data: result.data };
-}
-
-/**
- * Validate URL search params against a Zod schema.
- *
- * @example
- * const validation = validateSearchParams(url.searchParams, mySchema);
- * if (!validation.success) return validation.response;
- * const { data } = validation;
- */
-export function validateSearchParams<T>(
-	searchParams: URLSearchParams,
-	schema: z.ZodSchema<T>
-): ValidationResult<T> {
-	const params = Object.fromEntries(searchParams.entries());
-	const result = schema.safeParse(params);
-
-	if (!result.success) {
-		return {
-			success: false,
-			response: json(
-				{
-					error: 'Invalid query parameters',
-					details: result.error.flatten()
-				},
-				{ status: 400 }
-			)
-		};
-	}
-
-	return { success: true, data: result.data };
-}
-
-/**
- * Create a standard error response.
- */
-export function errorResponse(message: string, status: number = 500): Response {
-	return json({ error: message }, { status });
-}
-
-/**
- * Create a standard success response.
- */
-export function successResponse<T>(data: T, status: number = 200): Response {
-	return json(data, { status });
-}
-
-// =============================================================================
-// Throw-based helpers (preferred - integrates with hooks.server.ts error handler)
-// =============================================================================
 
 /**
  * Assert that a value exists, throwing NotFoundError if null/undefined.
@@ -140,6 +39,32 @@ export async function parseBody<T>(request: Request, schema: z.ZodSchema<T>): Pr
 		body = await request.json();
 	} catch {
 		throw new ValidationError('Invalid JSON body');
+	}
+
+	const result = schema.safeParse(body);
+	if (!result.success) {
+		throw new ValidationError('Validation failed', {
+			details: result.error.flatten()
+		});
+	}
+
+	return result.data;
+}
+
+/**
+ * Parse and validate an optional request body.
+ * Falls back to an empty object if the body is missing or invalid JSON,
+ * then validates against the schema.
+ *
+ * @example
+ * const data = await parseOptionalBody(request, scanSchema);
+ */
+export async function parseOptionalBody<T>(request: Request, schema: z.ZodSchema<T>): Promise<T> {
+	let body: unknown;
+	try {
+		body = await request.json();
+	} catch {
+		body = {};
 	}
 
 	const result = schema.safeParse(body);

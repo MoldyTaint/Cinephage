@@ -14,7 +14,9 @@
 import { db } from '$lib/server/db/index.js';
 import { monitoringSettings } from '$lib/server/db/schema.js';
 import { EventEmitter } from 'events';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'monitoring' as const });
 import { taskHistoryService } from '$lib/server/tasks/TaskHistoryService.js';
 import { taskSettingsService } from '$lib/server/tasks/TaskSettingsService.js';
 import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
@@ -32,7 +34,8 @@ const DEFAULT_INTERVALS = {
 	pendingRelease: 0.25, // Every 15 minutes
 	missingSubtitles: 6, // Every 6 hours
 	subtitleUpgrade: 24, // Daily
-	smartListRefresh: 1 // Hourly (checks which smart lists are due based on their individual intervals)
+	smartListRefresh: 1, // Hourly (checks which smart lists are due based on their individual intervals)
+	historyCleanup: 24 // Daily
 } as const;
 
 /**
@@ -50,7 +53,23 @@ const SCHEDULER_POLL_INTERVAL_MS = 30 * 1000;
  * Grace period after startup before any automated tasks run (in milliseconds)
  * Allows the application to fully initialize before hammering indexers
  */
-const STARTUP_GRACE_PERIOD_MS = 5 * 60 * 1000; // 5 minutes
+const DEFAULT_STARTUP_GRACE_PERIOD_MS = 5 * 60 * 1000; // 5 minutes
+
+function getStartupGracePeriodMs(): number {
+	const envValue = process.env.MONITORING_STARTUP_GRACE_MINUTES;
+	if (!envValue) {
+		return DEFAULT_STARTUP_GRACE_PERIOD_MS;
+	}
+
+	const parsed = Number(envValue);
+	if (!Number.isFinite(parsed) || parsed < 0) {
+		return DEFAULT_STARTUP_GRACE_PERIOD_MS;
+	}
+
+	return Math.round(parsed * 60 * 1000);
+}
+
+const STARTUP_GRACE_PERIOD_MS = getStartupGracePeriodMs();
 
 /**
  * When to trigger subtitle search during import
@@ -98,6 +117,7 @@ export interface MonitoringStatus {
 		missingSubtitles: TaskStatus;
 		subtitleUpgrade: TaskStatus;
 		smartListRefresh: TaskStatus;
+		historyCleanup: TaskStatus;
 	};
 }
 
@@ -174,7 +194,8 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 			'pendingRelease',
 			'missingSubtitles',
 			'subtitleUpgrade',
-			'smartListRefresh'
+			'smartListRefresh',
+			'historyCleanup'
 		];
 		for (const taskType of taskTypes) {
 			// First try to load from task_settings (new system)
@@ -184,11 +205,11 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 				if (!isNaN(date.getTime())) {
 					this.lastRunTimes.set(taskType, date);
 					logger.debug(
-						`[MonitoringScheduler] Loaded last run time for ${taskType} from task_settings`,
 						{
 							taskType,
 							lastRunTime: date.toISOString()
-						}
+						},
+						`[MonitoringScheduler] Loaded last run time for ${taskType} from task_settings`
 					);
 					continue;
 				}
@@ -202,11 +223,11 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 				if (!isNaN(date.getTime())) {
 					this.lastRunTimes.set(taskType, date);
 					logger.debug(
-						`[MonitoringScheduler] Loaded last run time for ${taskType} from monitoring_settings`,
 						{
 							taskType,
 							lastRunTime: date.toISOString()
-						}
+						},
+						`[MonitoringScheduler] Loaded last run time for ${taskType} from monitoring_settings`
 					);
 				}
 			}
@@ -228,17 +249,24 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 			// Also update task_settings for new system
 			await taskSettingsService.recordTaskRun(taskType);
 
-			logger.debug(`[MonitoringScheduler] Saved last run time for ${taskType}`, {
-				taskType,
-				key,
-				time: time.toISOString()
-			});
+			logger.debug(
+				{
+					taskType,
+					key,
+					time: time.toISOString()
+				},
+				`[MonitoringScheduler] Saved last run time for ${taskType}`
+			);
 		} catch (error) {
-			logger.error(`[MonitoringScheduler] Failed to save last run time for ${taskType}`, error, {
-				taskType,
-				key,
-				time: time.toISOString()
-			});
+			logger.error(
+				{
+					err: error,
+					taskType,
+					key,
+					time: time.toISOString()
+				},
+				`[MonitoringScheduler] Failed to save last run time for ${taskType}`
+			);
 			throw error;
 		}
 	}
@@ -386,7 +414,7 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 				.catch((err) => {
 					this._error = err instanceof Error ? err : new Error(String(err));
 					this._status = 'error';
-					logger.error('[MonitoringScheduler] Failed to initialize', this._error);
+					logger.error({ err: this._error }, '[MonitoringScheduler] Failed to initialize');
 				});
 		});
 	}
@@ -440,6 +468,9 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 		const smartListRefreshInterval =
 			(await taskSettingsService.getTaskInterval('smartListRefresh')) ??
 			DEFAULT_INTERVALS.smartListRefresh;
+		const historyCleanupInterval =
+			(await taskSettingsService.getTaskInterval('historyCleanup')) ??
+			DEFAULT_INTERVALS.historyCleanup;
 
 		this.taskIntervals.set('missing', Math.max(missingInterval, MIN_INTERVAL_HOURS));
 		this.taskIntervals.set('upgrade', Math.max(upgradeInterval, MIN_INTERVAL_HOURS));
@@ -458,21 +489,25 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 			'smartListRefresh',
 			Math.max(smartListRefreshInterval, MIN_INTERVAL_HOURS)
 		);
+		this.taskIntervals.set('historyCleanup', Math.max(historyCleanupInterval, MIN_INTERVAL_HOURS));
 
 		// Log scheduled intervals
 		for (const [taskType, intervalHours] of this.taskIntervals.entries()) {
 			const lastRun = this.lastRunTimes.get(taskType);
-			logger.info(`[MonitoringScheduler] Task ${taskType} configured`, {
-				taskType,
-				intervalHours,
-				lastRunTime: lastRun?.toISOString() ?? 'never'
-			});
+			logger.info(
+				{
+					taskType,
+					intervalHours,
+					lastRunTime: lastRun?.toISOString() ?? 'never'
+				},
+				`[MonitoringScheduler] Task ${taskType} configured`
+			);
 		}
 
 		// Start the polling scheduler (checks every 30 seconds which tasks are due)
 		this.schedulerTimer = setInterval(() => {
 			this.pollAndExecuteDueTasks().catch((error) => {
-				logger.error('[MonitoringScheduler] Error in scheduler poll', error);
+				logger.error({ err: error }, '[MonitoringScheduler] Error in scheduler poll');
 			});
 		}, SCHEDULER_POLL_INTERVAL_MS);
 
@@ -600,7 +635,7 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 		// runningTasks is already set by pollAndExecuteDueTasks before calling this
 		this.emit('taskStarted', taskType);
 
-		logger.info(`[MonitoringScheduler] Executing ${taskType} task...`, { taskType });
+		logger.info({ taskType }, `[MonitoringScheduler] Executing ${taskType} task...`);
 
 		// Create execution context (includes history tracking and cancellation support)
 		let ctx: TaskExecutionContext | null = null;
@@ -608,10 +643,13 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 			ctx = await taskHistoryService.createExecutionContext(taskType);
 		} catch (historyError) {
 			// Log but don't fail the task if history recording fails
-			logger.warn(`[MonitoringScheduler] Failed to create execution context for ${taskType}`, {
-				taskType,
-				error: historyError
-			});
+			logger.warn(
+				{
+					taskType,
+					err: historyError
+				},
+				`[MonitoringScheduler] Failed to create execution context for ${taskType}`
+			);
 		}
 
 		try {
@@ -628,11 +666,14 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 						errors: result.errors
 					});
 				} catch (historyError) {
-					logger.warn(`[MonitoringScheduler] Failed to complete history for ${taskType}`, {
-						taskType,
-						historyId: ctx.historyId,
-						error: historyError
-					});
+					logger.warn(
+						{
+							taskType,
+							historyId: ctx.historyId,
+							err: historyError
+						},
+						`[MonitoringScheduler] Failed to complete history for ${taskType}`
+					);
 				}
 			}
 
@@ -644,23 +685,26 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 				this.lastRunTimes.set(taskType, completionTime);
 			} catch (dbError) {
 				logger.error(
-					`[MonitoringScheduler] Failed to persist last run time for ${taskType}`,
-					dbError
+					{ err: dbError, taskType },
+					`[MonitoringScheduler] Failed to persist last run time for ${taskType}`
 				);
 				// Still emit completion but don't update in-memory cache
 				// This way task will be retried on next poll
 			}
 
 			this.emit('taskCompleted', taskType, result);
-			logger.info(`[MonitoringScheduler] ${taskType} task completed`, {
-				taskType,
-				itemsGrabbed: result.itemsGrabbed,
-				itemsProcessed: result.itemsProcessed
-			});
+			logger.info(
+				{
+					taskType,
+					itemsGrabbed: result.itemsGrabbed,
+					itemsProcessed: result.itemsProcessed
+				},
+				`[MonitoringScheduler] ${taskType} task completed`
+			);
 		} catch (error) {
 			// Handle cancellation separately - don't treat as failure
 			if (TaskCancelledException.isTaskCancelled(error)) {
-				logger.info(`[MonitoringScheduler] ${taskType} task was cancelled`, { taskType });
+				logger.info({ taskType }, `[MonitoringScheduler] ${taskType} task was cancelled`);
 				this.emit('taskCancelled', taskType);
 				// History is already marked as cancelled by cancelTask()
 				return;
@@ -672,15 +716,18 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 					const errorMessage = error instanceof Error ? error.message : String(error);
 					await taskHistoryService.failTask(ctx.historyId, [errorMessage]);
 				} catch (historyError) {
-					logger.warn(`[MonitoringScheduler] Failed to record failure history for ${taskType}`, {
-						taskType,
-						historyId: ctx.historyId,
-						error: historyError
-					});
+					logger.warn(
+						{
+							taskType,
+							historyId: ctx.historyId,
+							err: historyError
+						},
+						`[MonitoringScheduler] Failed to record failure history for ${taskType}`
+					);
 				}
 			}
 
-			logger.error(`[MonitoringScheduler] ${taskType} task failed`, error, { taskType });
+			logger.error({ err: error, taskType }, `[MonitoringScheduler] ${taskType} task failed`);
 			this.emit('taskFailed', taskType, error);
 		} finally {
 			this.runningTasks.delete(taskType);
@@ -741,6 +788,10 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 				const { executeSmartListRefreshTask } = await import('./tasks/SmartListRefreshTask.js');
 				return await executeSmartListRefreshTask(ctx);
 			}
+			case 'historyCleanup': {
+				const { executeHistoryCleanupTask } = await import('./tasks/HistoryCleanupTask.js');
+				return await executeHistoryCleanupTask(ctx);
+			}
 			default:
 				throw new Error(`Unknown task type: ${taskType}`);
 		}
@@ -781,19 +832,26 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 		return await this.executeTaskManually('smartListRefresh');
 	}
 
+	async runHistoryCleanup(): Promise<TaskResult> {
+		return await this.executeTaskManually('historyCleanup');
+	}
+
 	private async executeTaskManually(taskType: string): Promise<TaskResult> {
 		// Check if task is already running (either automatic or manual)
 		if (this.runningTasks.has(taskType)) {
-			logger.warn(`[MonitoringScheduler] Cannot manually run ${taskType} - already running`, {
-				taskType
-			});
+			logger.warn(
+				{
+					taskType
+				},
+				`[MonitoringScheduler] Cannot manually run ${taskType} - already running`
+			);
 			throw new Error(`Task ${taskType} is already running`);
 		}
 
 		// Mark as running to prevent concurrent execution
 		this.runningTasks.add(taskType);
 
-		logger.info(`[MonitoringScheduler] Manually executing ${taskType} task...`, { taskType });
+		logger.info({ taskType }, `[MonitoringScheduler] Manually executing ${taskType} task...`);
 		this.emit('manualTaskStarted', taskType);
 
 		// Create execution context (includes history tracking and cancellation support)
@@ -803,11 +861,11 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 		} catch (historyError) {
 			// Log but don't fail the task if history recording fails
 			logger.warn(
-				`[MonitoringScheduler] Failed to create execution context for manual ${taskType}`,
 				{
 					taskType,
-					error: historyError
-				}
+					err: historyError
+				},
+				`[MonitoringScheduler] Failed to create execution context for manual ${taskType}`
 			);
 		}
 
@@ -825,11 +883,14 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 						errors: result.errors
 					});
 				} catch (historyError) {
-					logger.warn(`[MonitoringScheduler] Failed to complete history for manual ${taskType}`, {
-						taskType,
-						historyId: ctx.historyId,
-						error: historyError
-					});
+					logger.warn(
+						{
+							taskType,
+							historyId: ctx.historyId,
+							err: historyError
+						},
+						`[MonitoringScheduler] Failed to complete history for manual ${taskType}`
+					);
 				}
 			}
 
@@ -839,8 +900,8 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 				this.lastRunTimes.set(taskType, completionTime);
 			} catch (dbError) {
 				logger.error(
-					`[MonitoringScheduler] Failed to persist last run time for manual ${taskType}`,
-					dbError
+					{ err: dbError, taskType },
+					`[MonitoringScheduler] Failed to persist last run time for manual ${taskType}`
 				);
 				// Still continue - the task completed successfully
 			}
@@ -850,7 +911,7 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 		} catch (error) {
 			// Handle cancellation separately - don't treat as failure
 			if (TaskCancelledException.isTaskCancelled(error)) {
-				logger.info(`[MonitoringScheduler] Manual ${taskType} task was cancelled`, { taskType });
+				logger.info({ taskType }, `[MonitoringScheduler] Manual ${taskType} task was cancelled`);
 				this.emit('manualTaskCancelled', taskType);
 				// History is already marked as cancelled by cancelTask()
 				throw error; // Re-throw so caller knows it was cancelled
@@ -863,17 +924,20 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 					await taskHistoryService.failTask(ctx.historyId, [errorMessage]);
 				} catch (historyError) {
 					logger.warn(
-						`[MonitoringScheduler] Failed to record failure history for manual ${taskType}`,
 						{
 							taskType,
 							historyId: ctx.historyId,
-							error: historyError
-						}
+							err: historyError
+						},
+						`[MonitoringScheduler] Failed to record failure history for manual ${taskType}`
 					);
 				}
 			}
 
-			logger.error(`[MonitoringScheduler] Manual ${taskType} task failed`, error, { taskType });
+			logger.error(
+				{ err: error, taskType },
+				`[MonitoringScheduler] Manual ${taskType} task failed`
+			);
 			this.emit('manualTaskFailed', taskType, error);
 			throw error;
 		} finally {
@@ -934,7 +998,8 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 				smartListRefresh: await getTaskStatus(
 					'smartListRefresh',
 					DEFAULT_INTERVALS.smartListRefresh
-				)
+				),
+				historyCleanup: await getTaskStatus('historyCleanup', DEFAULT_INTERVALS.historyCleanup)
 			}
 		};
 	}

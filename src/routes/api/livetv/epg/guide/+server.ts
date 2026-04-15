@@ -12,6 +12,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getEpgService } from '$lib/server/livetv/epg';
+import {
+	buildResolvedEpgChannelPlan,
+	mapGuideDataToRequestedChannels
+} from '$lib/server/livetv/epg/epg-utils';
 import { channelLineupService } from '$lib/server/livetv/lineup';
 import { logger } from '$lib/logging';
 import { ValidationError } from '$lib/errors';
@@ -45,14 +49,14 @@ export const GET: RequestHandler = async ({ url }) => {
 
 		// Get channel IDs (from param or lineup)
 		let channelIds: string[];
+		const lineup = channelIdsParam ? [] : await channelLineupService.getLineup();
 		if (channelIdsParam) {
 			channelIds = channelIdsParam
 				.split(',')
 				.map((id) => id.trim())
 				.filter(Boolean);
 		} else {
-			const lineupChannelIds = await channelLineupService.getLineupChannelIds();
-			channelIds = Array.from(lineupChannelIds);
+			channelIds = lineup.map((item) => item.channelId);
 		}
 
 		if (channelIds.length === 0) {
@@ -67,7 +71,19 @@ export const GET: RequestHandler = async ({ url }) => {
 		}
 
 		// Get guide data
-		const guideMap = epgService.getGuideData(channelIds, start, end);
+		const resolvedPlan = buildResolvedEpgChannelPlan(
+			channelIds,
+			lineup.length > 0
+				? lineup.map((item) => ({
+						channelId: item.channelId,
+						epgSourceChannelId: item.epgSourceChannelId
+					}))
+				: []
+		);
+		const guideMap = mapGuideDataToRequestedChannels(
+			resolvedPlan,
+			epgService.getGuideData(resolvedPlan.sourceChannelIds, start, end)
+		);
 
 		// Convert map to object for JSON
 		const programs: Record<string, unknown[]> = {};

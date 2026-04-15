@@ -11,7 +11,7 @@ import { eq } from 'drizzle-orm';
 import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService';
 import { logger } from '$lib/logging';
 
-const streamLog = { logCategory: 'streams' as const };
+const streamLog = { logDomain: 'streams' as const };
 
 /**
  * Get preferred languages for a movie by TMDB ID
@@ -40,20 +40,26 @@ export async function getPreferredLanguagesForMovie(tmdbId: number): Promise<str
 		// Extract language codes in order of preference
 		const languages = profile.languages.map((lang) => lang.code);
 
-		logger.debug('Got language preferences for movie', {
-			tmdbId,
-			languages,
-			profileName: profile.name,
-			...streamLog
-		});
+		logger.debug(
+			{
+				tmdbId,
+				languages,
+				profileName: profile.name,
+				...streamLog
+			},
+			'Got language preferences for movie'
+		);
 
 		return languages;
 	} catch (error) {
-		logger.debug('Failed to get language preferences for movie', {
-			tmdbId,
-			error: error instanceof Error ? error.message : String(error),
-			...streamLog
-		});
+		logger.debug(
+			{
+				tmdbId,
+				error: error instanceof Error ? error.message : String(error),
+				...streamLog
+			},
+			'Failed to get language preferences for movie'
+		);
 		return [];
 	}
 }
@@ -85,20 +91,26 @@ export async function getPreferredLanguagesForSeries(tmdbId: number): Promise<st
 		// Extract language codes in order of preference
 		const languages = profile.languages.map((lang) => lang.code);
 
-		logger.debug('Got language preferences for series', {
-			tmdbId,
-			languages,
-			profileName: profile.name,
-			...streamLog
-		});
+		logger.debug(
+			{
+				tmdbId,
+				languages,
+				profileName: profile.name,
+				...streamLog
+			},
+			'Got language preferences for series'
+		);
 
 		return languages;
 	} catch (error) {
-		logger.debug('Failed to get language preferences for series', {
-			tmdbId,
-			error: error instanceof Error ? error.message : String(error),
-			...streamLog
-		});
+		logger.debug(
+			{
+				tmdbId,
+				error: error instanceof Error ? error.message : String(error),
+				...streamLog
+			},
+			'Failed to get language preferences for series'
+		);
 		return [];
 	}
 }

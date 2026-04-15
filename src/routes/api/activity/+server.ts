@@ -1,17 +1,20 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { activityService } from '$lib/server/activity';
+import { activityService, activityStreamEvents } from '$lib/server/activity';
 import { logger } from '$lib/logging';
-import type { ActivityFilters, ActivitySortOptions, FilterOptions } from '$lib/types/activity';
-import { db } from '$lib/server/db';
-import { downloadClients, indexers } from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
+import type { ActivityFilters, ActivitySortOptions, ActivityScope } from '$lib/types/activity';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { z } from 'zod';
+
+const deleteHistorySchema = z.object({
+	activityIds: z.array(z.string().min(1)).min(1).max(500)
+});
 
 /**
  * GET - Get unified activity with optional filtering
  *
  * Query params:
- * - status: Filter by status ('imported', 'failed', 'downloading', 'no_results', 'success', 'all')
+ * - status: Filter by status ('imported', 'failed', 'search_error', 'downloading', 'no_results', 'success', 'all')
  * - mediaType: Filter by media type ('movie', 'tv', 'all')
  * - search: Search in media title or release title
  * - protocol: Filter by protocol ('torrent', 'usenet', 'streaming', 'all')
@@ -23,6 +26,7 @@ import { eq } from 'drizzle-orm';
  * - downloadClientId: Filter by download client ID
  * - startDate: Filter activities after this date (ISO string)
  * - endDate: Filter activities before this date (ISO string)
+ * - scope: View scope ('all', 'active', 'history')
  * - limit: Max number of results (default 50)
  * - offset: Pagination offset (default 0)
  * - sort: Sort field ('time', 'media', 'size', 'status')
@@ -43,6 +47,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		const downloadClientId = url.searchParams.get('downloadClientId') || undefined;
 		const startDate = url.searchParams.get('startDate') || undefined;
 		const endDate = url.searchParams.get('endDate') || undefined;
+		const scopeParam = url.searchParams.get('scope');
 		const limitParam = url.searchParams.get('limit');
 		const offsetParam = url.searchParams.get('offset');
 		const sortField = url.searchParams.get('sort') as ActivitySortOptions['field'] | null;
@@ -72,18 +77,22 @@ export const GET: RequestHandler = async ({ url }) => {
 			direction: sortDirection || 'desc'
 		};
 
+		const scope: ActivityScope =
+			scopeParam === 'active' || scopeParam === 'history' ? scopeParam : 'all';
+
 		// Build pagination
 		const limit = Math.min(limitParam ? parseInt(limitParam, 10) : 50, 100);
 		const offset = offsetParam ? parseInt(offsetParam, 10) : 0;
 
 		// Get activities from service
-		const result = await activityService.getActivities(filters, sort, { limit, offset });
+		const result = await activityService.getActivities(filters, sort, { limit, offset }, scope);
 
 		return json({
 			success: true,
 			activities: result.activities,
 			total: result.total,
-			hasMore: result.hasMore
+			hasMore: result.hasMore,
+			summary: result.summary
 		});
 	} catch (err) {
 		logger.error('Error fetching activity', err instanceof Error ? err : undefined);
@@ -92,37 +101,54 @@ export const GET: RequestHandler = async ({ url }) => {
 };
 
 /**
- * GET /options - Get available filter options (indexers, clients, etc.)
+ * DELETE - Bulk delete history rows from activity IDs
+ *
+ * Supported IDs:
+ * - history-<downloadHistoryId>
+ * - monitoring-<monitoringHistoryId>
+ *
+ * Queue IDs are skipped (queue lifecycle uses /api/queue handlers).
  */
-export const OPTIONS: RequestHandler = async () => {
+export const DELETE: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	let body: unknown;
 	try {
-		// Fetch available indexers
-		const indexerRows = await db
-			.select({ id: indexers.id, name: indexers.name })
-			.from(indexers)
-			.where(eq(indexers.enabled, true))
-			.orderBy(indexers.name);
+		body = await event.request.json();
+	} catch {
+		return json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
+	}
 
-		// Fetch available download clients
-		const clientRows = await db
-			.select({ id: downloadClients.id, name: downloadClients.name })
-			.from(downloadClients)
-			.where(eq(downloadClients.enabled, true))
-			.orderBy(downloadClients.name);
+	const parsed = deleteHistorySchema.safeParse(body);
+	if (!parsed.success) {
+		return json(
+			{
+				success: false,
+				error: 'Validation failed',
+				details: parsed.error.flatten()
+			},
+			{ status: 400 }
+		);
+	}
 
-		// Common resolutions
-		const resolutions = ['4K', '2160p', '1080p', '720p', '480p', 'SD'];
-
-		const options: FilterOptions = {
-			indexers: indexerRows,
-			downloadClients: clientRows,
-			releaseGroups: [], // Will be populated from activity data
-			resolutions
-		};
-
-		return json({ success: true, options });
+	try {
+		const result = await activityService.deleteHistoryActivities(parsed.data.activityIds);
+		const totalDeleted =
+			result.deletedDownloadHistory + result.deletedMonitoringHistory + result.deletedTaskHistory;
+		if (totalDeleted > 0) {
+			activityStreamEvents.emitRefresh({
+				action: 'delete_selected',
+				timestamp: new Date().toISOString()
+			});
+		}
+		return json({
+			success: true,
+			...result,
+			totalDeleted
+		});
 	} catch (err) {
-		logger.error('Error fetching filter options', err instanceof Error ? err : undefined);
-		return json({ error: 'Failed to fetch filter options', success: false }, { status: 500 });
+		logger.error('Error deleting activity history rows', err instanceof Error ? err : undefined);
+		return json({ success: false, error: 'Failed to delete activity entries' }, { status: 500 });
 	}
 };

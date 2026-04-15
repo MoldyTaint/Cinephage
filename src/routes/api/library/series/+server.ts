@@ -5,19 +5,23 @@ import { series, seasons, episodes, rootFolders } from '$lib/server/db/schema.js
 import { eq } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
 import { z } from 'zod';
-import { NamingService, type MediaNamingInfo } from '$lib/server/library/naming/NamingService.js';
-import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
 import {
-	validateRootFolder,
-	getEffectiveScoringProfileId,
-	getLanguageProfileId,
 	fetchSeriesDetails,
 	fetchSeriesExternalIds,
+	validateRootFolder,
+	getAnimeSubtypeEnforcement,
+	getEffectiveScoringProfileId,
+	getLanguageProfileId,
 	triggerSeriesSearch
 } from '$lib/server/library/LibraryAddService.js';
+import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { fetchAndStoreSeriesAlternateTitles } from '$lib/server/services/AlternateTitleService.js';
-import { ValidationError } from '$lib/errors';
+import { ValidationError, isAppError } from '$lib/errors';
 import { logger } from '$lib/logging';
+import { requireAuth } from '$lib/server/auth/authorization.js';
+import { NamingService, type MediaNamingInfo } from '$lib/server/library/naming/NamingService.js';
+import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
+import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 
 /**
  * Schema for adding a series to the library
@@ -68,7 +72,11 @@ function generateSeriesFolderName(title: string, year?: number, tvdbId?: number)
  * GET /api/library/series
  * List all series in the library
  */
-export const GET: RequestHandler = async () => {
+export const GET: RequestHandler = async (event) => {
+	// Require authentication
+	const authError = requireAuth(event);
+	if (authError) return authError;
+
 	try {
 		const allSeries = await db
 			.select({
@@ -130,7 +138,13 @@ export const GET: RequestHandler = async () => {
  * POST /api/library/series
  * Add a TV series to the library by TMDB ID
  */
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async (event) => {
+	const { request } = event;
+
+	// Require authentication
+	const authError = requireAuth(event);
+	if (authError) return authError;
+
 	try {
 		const body = await request.json();
 		const result = addSeriesSchema.safeParse(body);
@@ -174,11 +188,28 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 
-		// Verify root folder exists and is for TV (shared logic)
-		await validateRootFolder(rootFolderId, 'tv');
-
 		// Fetch series details from TMDB (shared logic with error handling)
 		const tvDetails = await fetchSeriesDetails(tmdbId);
+		const enforceAnimeSubtype = await getAnimeSubtypeEnforcement();
+		const isAnimeMedia = isLikelyAnimeMedia({
+			genres: tvDetails.genres,
+			originalLanguage: tvDetails.original_language,
+			originCountries: tvDetails.origin_country,
+			productionCountries: tvDetails.production_countries,
+			title: tvDetails.name,
+			originalTitle: tvDetails.original_name
+		});
+
+		// Verify root folder exists and is for TV (with optional anime subtype enforcement)
+		await validateRootFolder(rootFolderId, 'tv', {
+			enforceAnimeSubtype,
+			isAnimeMedia,
+			mediaTitle: tvDetails.name
+		});
+		const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
+			rootFolderId,
+			'tv'
+		);
 
 		// Extract external IDs (shared logic)
 		const { imdbId, tvdbId } = await fetchSeriesExternalIds(tmdbId);
@@ -189,10 +220,10 @@ export const POST: RequestHandler = async ({ request }) => {
 			: undefined;
 		const folderName = generateSeriesFolderName(tvDetails.name, year, tvdbId ?? undefined);
 
-		// Calculate total episode count (excluding specials/season 0)
+		// Calculate total episode count (including specials if monitorSpecials is enabled)
 		const totalEpisodes =
 			tvDetails.seasons
-				?.filter((s) => s.season_number !== 0)
+				?.filter((s) => s.season_number !== 0 || monitorSpecials)
 				.reduce((sum, s) => sum + (s.episode_count ?? 0), 0) ?? 0;
 
 		// Get the effective scoring profile (shared logic)
@@ -218,6 +249,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				network: tvDetails.networks?.[0]?.name ?? null,
 				genres: tvDetails.genres?.map((g) => g.name) ?? [],
 				path: folderName,
+				libraryId: owningLibrary.id,
 				rootFolderId,
 				scoringProfileId: effectiveProfileId,
 				monitored,
@@ -234,11 +266,14 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		// Fetch and store alternate titles from TMDB (non-blocking)
 		fetchAndStoreSeriesAlternateTitles(newSeries.id, tmdbId).catch((err) => {
-			logger.warn('Failed to fetch alternate titles for series', {
-				seriesId: newSeries.id,
-				tmdbId,
-				error: err instanceof Error ? err.message : String(err)
-			});
+			logger.warn(
+				{
+					seriesId: newSeries.id,
+					tmdbId,
+					error: err instanceof Error ? err.message : String(err)
+				},
+				'Failed to fetch alternate titles for series'
+			);
 		});
 
 		// Insert seasons and episodes
@@ -366,9 +401,12 @@ export const POST: RequestHandler = async ({ request }) => {
 					// Small delay to avoid TMDB rate limiting
 					await new Promise((resolve) => setTimeout(resolve, 50));
 				} catch {
-					logger.warn('[API] Failed to fetch episodes for season', {
-						seasonNumber: s.season_number
-					});
+					logger.warn(
+						{
+							seasonNumber: s.season_number
+						},
+						'[API] Failed to fetch episodes for season'
+					);
 				}
 			}
 		}
@@ -399,6 +437,29 @@ export const POST: RequestHandler = async ({ request }) => {
 		});
 	} catch (error) {
 		logger.error('[API] Error adding series', error instanceof Error ? error : undefined);
+
+		if (isAppError(error)) {
+			return json(
+				{
+					success: false,
+					...error.toJSON()
+				},
+				{ status: error.statusCode }
+			);
+		}
+
+		if (error instanceof Error && /FOREIGN KEY constraint failed/i.test(error.message)) {
+			return json(
+				{
+					success: false,
+					error:
+						'The selected root folder or one of its linked library settings is no longer valid. Refresh the page and try again.',
+					code: 'LIBRARY_CONFIGURATION_STALE'
+				},
+				{ status: 409 }
+			);
+		}
+
 		return json(
 			{
 				success: false,

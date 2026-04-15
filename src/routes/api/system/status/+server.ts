@@ -8,14 +8,23 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { serviceManager } from '$lib/server/services/index.js';
+import { resolveAppVersion } from '$lib/server/version.js';
 
 export const GET: RequestHandler = async () => {
 	const services = serviceManager.getStatus();
 	const allReady = serviceManager.allReady();
 
-	return json({
-		success: true,
-		ready: allReady,
-		services
-	});
+	return json(
+		{
+			success: true,
+			ready: allReady,
+			version: resolveAppVersion(),
+			services
+		},
+		{
+			headers: {
+				'cache-control': 'no-store, no-cache, must-revalidate'
+			}
+		}
+	);
 };

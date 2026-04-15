@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import type { UICustomFormat, FormatCategory } from '$lib/types/format';
 	import { FORMAT_CATEGORY_LABELS, FORMAT_CATEGORY_ORDER } from '$lib/types/format';
@@ -117,21 +118,21 @@
 			<input
 				type="text"
 				class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-9 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
-				placeholder="Search formats..."
+				placeholder={m.formats_searchPlaceholder()}
 				bind:value={searchQuery}
 			/>
 		</div>
 
 		<!-- Type filter -->
 		<select class="select-bordered select w-full select-sm sm:w-48" bind:value={filterType}>
-			<option value="all">All Types</option>
-			<option value="builtin">Built-in</option>
-			<option value="custom">Custom</option>
+			<option value="all">{m.formats_allTypes()}</option>
+			<option value="builtin">{m.formats_builtin()}</option>
+			<option value="custom">{m.formats_custom()}</option>
 		</select>
 
 		<!-- Category filter -->
 		<select class="select-bordered select w-full select-sm sm:w-48" bind:value={filterCategory}>
-			<option value="all">All Categories</option>
+			<option value="all">{m.formats_allCategories()}</option>
 			{#each FORMAT_CATEGORY_ORDER as cat (cat)}
 				<option value={cat}>{FORMAT_CATEGORY_LABELS[cat]}</option>
 			{/each}
@@ -140,23 +141,23 @@
 		<!-- Create button -->
 		<button type="button" class="btn w-full gap-2 btn-sm btn-primary sm:w-auto" onclick={onCreate}>
 			<Plus class="h-4 w-4" />
-			Create Format
+			{m.formats_createFormat()}
 		</button>
 	</div>
 
 	<!-- Stats bar -->
 	<div class="flex flex-wrap gap-4 text-sm text-base-content/70">
 		<span>
-			<strong>{stats().total}</strong> formats
+			{m.formats_statsTotal({ count: stats().total })}
 		</span>
 		<span>
-			<strong>{stats().builtin}</strong> built-in
+			{m.formats_statsBuiltin({ count: stats().builtin })}
 		</span>
 		<span>
-			<strong>{stats().custom}</strong> custom
+			{m.formats_statsCustom({ count: stats().custom })}
 		</span>
 		<span>
-			<strong>{stats().enabled}</strong> enabled
+			{m.formats_statsEnabled({ count: stats().enabled })}
 		</span>
 	</div>
 
@@ -228,7 +229,8 @@
 											<div class="flex items-center gap-2">
 												<span class="truncate font-medium">{format.name}</span>
 												{#if !format.enabled}
-													<span class="badge badge-ghost badge-sm">disabled</span>
+													<span class="badge badge-ghost badge-sm">{m.formats_badgeDisabled()}</span
+													>
 												{/if}
 											</div>
 											{#if format.description}
@@ -245,7 +247,7 @@
 													type="button"
 													class="btn btn-ghost btn-xs"
 													onclick={() => onView(format)}
-													aria-label="View format"
+													aria-label={m.formats_ariaViewFormat()}
 												>
 													<Eye class="h-3.5 w-3.5" />
 												</button>
@@ -254,7 +256,7 @@
 													type="button"
 													class="btn btn-ghost btn-xs"
 													onclick={() => onEdit(format)}
-													aria-label="Edit format"
+													aria-label={m.formats_ariaEditFormat()}
 												>
 													<Edit class="h-3.5 w-3.5" />
 												</button>
@@ -272,7 +274,7 @@
 		{#if filteredFormats().length === 0}
 			<div class="rounded-lg bg-base-200 p-8 text-center">
 				<Filter class="mx-auto mb-2 h-8 w-8 text-base-content/40" />
-				<p class="text-base-content/60">No formats match your filters</p>
+				<p class="text-base-content/60">{m.formats_noMatches()}</p>
 			</div>
 		{/if}
 	</div>

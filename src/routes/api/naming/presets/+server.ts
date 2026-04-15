@@ -2,8 +2,16 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import { namingPresets } from '$lib/server/db/schema';
-import { BUILT_IN_PRESETS, type NamingPreset } from '$lib/server/library/naming/presets';
+import {
+	BUILT_IN_PRESETS,
+	NAMING_DETAIL_PRESETS,
+	NAMING_SERVER_PRESETS,
+	NAMING_STYLE_PRESETS,
+	type NamingPreset
+} from '$lib/server/library/naming/presets';
 import { eq } from 'drizzle-orm';
+import { logger } from '$lib/logging';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 /**
  * GET /api/naming/presets
@@ -28,10 +36,15 @@ export const GET: RequestHandler = async () => {
 
 		return json({
 			presets: allPresets,
-			builtInIds: BUILT_IN_PRESETS.map((p) => p.id)
+			builtInIds: BUILT_IN_PRESETS.map((p) => p.id),
+			setupPresets: {
+				servers: NAMING_SERVER_PRESETS,
+				styles: NAMING_STYLE_PRESETS,
+				details: NAMING_DETAIL_PRESETS
+			}
 		});
 	} catch (err) {
-		console.error('Error fetching naming presets:', err);
+		logger.error({ err, component: 'NamingPresetsApi' }, 'Error fetching naming presets');
 		return json({ error: 'Failed to fetch presets' }, { status: 500 });
 	}
 };
@@ -40,7 +53,11 @@ export const GET: RequestHandler = async () => {
  * POST /api/naming/presets
  * Create a new custom preset
  */
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { request } = event;
 	try {
 		const body = await request.json();
 		const { name, description, config } = body as {
@@ -96,7 +113,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			}
 		});
 	} catch (err) {
-		console.error('Error creating naming preset:', err);
+		logger.error({ err, component: 'NamingPresetsApi' }, 'Error creating naming preset');
 		return json({ error: 'Failed to create preset' }, { status: 500 });
 	}
 };

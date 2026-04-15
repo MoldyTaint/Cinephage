@@ -28,13 +28,17 @@ vi.mock('../detection/ChallengeDetector', () => ({
 }));
 
 // Mock logger
+const mockLogger = {
+	info: vi.fn(),
+	debug: vi.fn(),
+	warn: vi.fn(),
+	error: vi.fn(),
+	child: vi.fn().mockReturnThis()
+};
+
 vi.mock('$lib/logging', () => ({
-	logger: {
-		info: vi.fn(),
-		debug: vi.fn(),
-		warn: vi.fn(),
-		error: vi.fn()
-	}
+	logger: mockLogger,
+	createChildLogger: vi.fn(() => mockLogger)
 }));
 
 // Import after mocking

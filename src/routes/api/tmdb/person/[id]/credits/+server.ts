@@ -66,12 +66,15 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
 			const enrichedTv = enrichedAll.slice(moviePage.length, moviePage.length + tvPage.length);
 			const enrichedCrew = enrichedAll.slice(moviePage.length + tvPage.length);
 
-			log.debug('Returning batch person credits', {
-				personId,
-				movies: movieCredits.length,
-				tv: tvCredits.length,
-				crew: sortedCrew.length
-			});
+			log.debug(
+				{
+					personId,
+					movies: movieCredits.length,
+					tv: tvCredits.length,
+					crew: sortedCrew.length
+				},
+				'Returning batch person credits'
+			);
 
 			return json({
 				movies: {
@@ -120,13 +123,16 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
 		// Enrich with library status
 		const enrichedCredits = await enrichWithLibraryStatus(paginatedCredits, mediaType);
 
-		log.debug('Returning person credits', {
-			personId,
-			type,
-			page,
-			count: enrichedCredits.length,
-			totalResults
-		});
+		log.debug(
+			{
+				personId,
+				type,
+				page,
+				count: enrichedCredits.length,
+				totalResults
+			},
+			'Returning person credits'
+		);
 
 		return json({
 			results: enrichedCredits,
@@ -135,7 +141,7 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
 			total_results: totalResults
 		});
 	} catch (e) {
-		log.error('Failed to fetch person credits', e, { personId, type, page });
+		log.error({ err: e, ...{ personId, type, page } }, 'Failed to fetch person credits');
 		return json({ error: 'Failed to fetch credits' }, { status: 500 });
 	}
 };

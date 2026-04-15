@@ -15,7 +15,7 @@ import { logger } from '$lib/logging';
 export const POST: RequestHandler = async ({ url }) => {
 	const dryRun = url.searchParams.get('dryRun') === 'true';
 
-	logger.info('Queue cleanup requested', { dryRun });
+	logger.info({ dryRun }, 'Queue cleanup requested');
 
 	try {
 		const result = await downloadMonitor.cleanupOrphanedDownloads(dryRun);
@@ -34,7 +34,7 @@ export const POST: RequestHandler = async ({ url }) => {
 		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
-		logger.error('Queue cleanup failed', { error: message });
+		logger.error({ error: message }, 'Queue cleanup failed');
 
 		return json(
 			{

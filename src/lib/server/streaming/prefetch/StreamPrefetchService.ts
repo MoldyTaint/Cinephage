@@ -6,7 +6,7 @@
  *
  * Features:
  * - Prefetches streams for recently added library items
- * - Respects rate limits and provider health
+ * - Respects upstream rate limits and cache state
  * - Can be scheduled via monitoring scheduler
  * - Skips items with existing cache entries or negative cache
  */
@@ -15,15 +15,15 @@ import { db } from '$lib/server/db';
 import { movies, series, episodes } from '$lib/server/db/schema';
 import { desc, eq, and } from 'drizzle-orm';
 import { logger } from '$lib/logging';
-import { getStreamCache } from '../cache';
-import { MultiLevelStreamCache } from '../cache/StreamCache';
+import { getStreamCache, MultiLevelStreamCache } from '../cache';
+import { getPlaybackSessionService, getPlaybackSessionStore } from '..';
 
-const streamLog = { logCategory: 'streams' as const };
+const streamLog = { logDomain: 'streams' as const };
 
 /** Maximum items to prefetch in a single run */
 const MAX_PREFETCH_ITEMS = 20;
 
-/** Delay between prefetch requests (ms) to avoid overwhelming providers */
+/** Delay between prefetch requests (ms) to avoid overwhelming the resolver */
 const PREFETCH_DELAY_MS = 2000;
 
 /** Timeout for each prefetch request (ms) */
@@ -46,6 +46,7 @@ interface PrefetchResult {
 export class StreamPrefetchService {
 	private isRunning = false;
 	private abortController: AbortController | null = null;
+	private pendingPrefetches = new Map<string, Promise<PrefetchResult>>();
 
 	/**
 	 * Prefetch streams for recently added movies
@@ -74,10 +75,13 @@ export class StreamPrefetchService {
 				await this.delay(PREFETCH_DELAY_MS);
 			}
 		} catch (error) {
-			logger.error('Failed to prefetch recent movies', {
-				error: error instanceof Error ? error.message : String(error),
-				...streamLog
-			});
+			logger.error(
+				{
+					error: error instanceof Error ? error.message : String(error),
+					...streamLog
+				},
+				'Failed to prefetch recent movies'
+			);
 		}
 
 		return results;
@@ -118,10 +122,13 @@ export class StreamPrefetchService {
 				await this.delay(PREFETCH_DELAY_MS);
 			}
 		} catch (error) {
-			logger.error('Failed to prefetch recent episodes', {
-				error: error instanceof Error ? error.message : String(error),
-				...streamLog
-			});
+			logger.error(
+				{
+					error: error instanceof Error ? error.message : String(error),
+					...streamLog
+				},
+				'Failed to prefetch recent episodes'
+			);
 		}
 
 		return results;
@@ -136,6 +143,30 @@ export class StreamPrefetchService {
 		season?: number,
 		episode?: number
 	): Promise<PrefetchResult> {
+		const cacheKey = MultiLevelStreamCache.streamKey(tmdbId.toString(), mediaType, season, episode);
+		const pending = this.pendingPrefetches.get(cacheKey);
+		if (pending) {
+			return pending;
+		}
+
+		const prefetchPromise = this.runPrefetchStream(cacheKey, tmdbId, mediaType, season, episode);
+		this.pendingPrefetches.set(cacheKey, prefetchPromise);
+
+		try {
+			return await prefetchPromise;
+		} finally {
+			this.pendingPrefetches.delete(cacheKey);
+		}
+	}
+
+	private async runPrefetchStream(
+		cacheKey: string,
+		tmdbId: number,
+		mediaType: 'movie' | 'tv',
+		season?: number,
+		episode?: number
+	): Promise<PrefetchResult> {
+		const streamCache = getStreamCache();
 		const result: PrefetchResult = {
 			success: false,
 			tmdbId,
@@ -145,71 +176,70 @@ export class StreamPrefetchService {
 			cached: false
 		};
 
-		// Check if already cached (skip if so)
-		const cacheKey = MultiLevelStreamCache.streamKey(tmdbId.toString(), mediaType, season, episode);
-
-		const streamCache = getStreamCache();
-		if (streamCache.getStream(cacheKey)) {
+		// Reusable sessions should win even if an older prefetch failure left a
+		// negative-cache entry behind.
+		const sessionStore = getPlaybackSessionStore();
+		if (sessionStore.findReusableSession(mediaType, tmdbId, season, episode)) {
 			result.cached = true;
 			result.success = true;
 			return result;
 		}
 
-		// Check negative cache (skip if recently failed)
 		if (streamCache.hasNegative(cacheKey)) {
 			result.cached = true;
-			result.success = false;
-			result.error = 'In negative cache';
+			result.error = streamCache.getNegativeReason(cacheKey) ?? 'Recently failed';
 			return result;
 		}
 
 		try {
-			// Build the resolve URL
-			let resolveUrl: string;
-			if (mediaType === 'movie') {
-				resolveUrl = `/api/streaming/resolve/movie/${tmdbId}?prefetch=1`;
+			const signal = AbortSignal.timeout(PREFETCH_TIMEOUT_MS);
+			const sessionService = getPlaybackSessionService();
+			const sessionResult = await sessionService.createOrReuseSession({
+				tmdbId,
+				type: mediaType,
+				season,
+				episode,
+				signal
+			});
+
+			if (sessionResult.session) {
+				if (sessionResult.extractionResult?.sources.length) {
+					streamCache.setStream(
+						cacheKey,
+						{
+							success: sessionResult.extractionResult.success,
+							sources: sessionResult.extractionResult.sources,
+							error: sessionResult.extractionResult.error,
+							provider: sessionResult.session.provider
+						},
+						sessionResult.session.provider
+					);
+				}
+
+				result.success = true;
+				result.cached = false;
 			} else {
-				resolveUrl = `/api/streaming/resolve/tv/${tmdbId}/${season}/${episode}?prefetch=1`;
-			}
-
-			// Make the prefetch request
-			const controller = new AbortController();
-			const timeoutId = setTimeout(() => controller.abort(), PREFETCH_TIMEOUT_MS);
-
-			try {
-				// Use internal fetch to trigger the stream resolution
-				// This populates the cache as a side effect
-				const response = await fetch(`http://localhost:3000${resolveUrl}`, {
-					signal: controller.signal,
-					headers: {
-						'X-Prefetch': 'true'
-					}
-				});
-
-				clearTimeout(timeoutId);
-
-				if (response.ok) {
-					result.success = true;
-					logger.debug('Prefetched stream', {
-						tmdbId,
-						mediaType,
-						season,
-						episode,
-						...streamLog
-					});
-				} else {
-					result.error = `HTTP ${response.status}`;
-				}
-			} catch (fetchError) {
-				clearTimeout(timeoutId);
-				if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-					result.error = 'Timeout';
-				} else {
-					result.error = fetchError instanceof Error ? fetchError.message : 'Fetch failed';
-				}
+				result.error =
+					sessionResult.error === 'Aborted' && signal.aborted
+						? 'Timeout'
+						: (sessionResult.error ?? 'Playback session unavailable');
+				streamCache.setNegativeWithType(
+					cacheKey,
+					result.error,
+					result.error.toLowerCase().includes('not found')
+						? 'content_not_found'
+						: result.error.toLowerCase().includes('offline')
+							? 'provider_offline'
+							: 'unknown'
+				);
 			}
 		} catch (error) {
 			result.error = error instanceof Error ? error.message : 'Unknown error';
+			streamCache.setNegativeWithType(
+				cacheKey,
+				result.error,
+				result.error === 'Timeout' ? 'timeout' : 'unknown'
+			);
 		}
 
 		return result;
@@ -242,13 +272,16 @@ export class StreamPrefetchService {
 			const totalCached =
 				movieResults.filter((r) => r.cached).length + episodeResults.filter((r) => r.cached).length;
 
-			logger.info('Stream prefetch cycle completed', {
-				moviesProcessed: movieResults.length,
-				episodesProcessed: episodeResults.length,
-				totalSuccess,
-				alreadyCached: totalCached,
-				...streamLog
-			});
+			logger.info(
+				{
+					moviesProcessed: movieResults.length,
+					episodesProcessed: episodeResults.length,
+					totalSuccess,
+					alreadyCached: totalCached,
+					...streamLog
+				},
+				'Stream prefetch cycle completed'
+			);
 
 			return { movies: movieResults, episodes: episodeResults };
 		} finally {

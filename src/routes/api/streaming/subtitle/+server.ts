@@ -19,7 +19,7 @@ import {
 	MAX_REDIRECTS
 } from '$lib/server/http/ssrf-protection';
 
-const streamLog = { logCategory: 'streams' as const };
+const streamLog = { logDomain: 'streams' as const };
 
 // Maximum subtitle file size (2MB should be plenty for any subtitle file)
 const MAX_SUBTITLE_SIZE = 2 * 1024 * 1024;
@@ -43,11 +43,14 @@ export const GET: RequestHandler = async ({ url }) => {
 		// SSRF protection (with DNS resolution)
 		const safetyCheck = await resolveAndValidateUrl(decodedUrl);
 		if (!safetyCheck.safe) {
-			logger.warn('Blocked unsafe subtitle URL', {
-				url: decodedUrl,
-				reason: safetyCheck.reason,
-				...streamLog
-			});
+			logger.warn(
+				{
+					url: decodedUrl,
+					reason: safetyCheck.reason,
+					...streamLog
+				},
+				'Blocked unsafe subtitle URL'
+			);
 			return new Response(
 				JSON.stringify({ error: 'URL not allowed', reason: safetyCheck.reason }),
 				{ status: 403, headers: { 'Content-Type': 'application/json' } }
@@ -114,11 +117,14 @@ export const GET: RequestHandler = async ({ url }) => {
 		}
 
 		if (!response.ok) {
-			logger.warn('Subtitle fetch failed', {
-				url: decodedUrl.substring(0, 100),
-				status: response.status,
-				...streamLog
-			});
+			logger.warn(
+				{
+					url: decodedUrl.substring(0, 100),
+					status: response.status,
+					...streamLog
+				},
+				'Subtitle fetch failed'
+			);
 			return new Response(JSON.stringify({ error: `Upstream error: ${response.status}` }), {
 				status: response.status,
 				headers: { 'Content-Type': 'application/json' }
@@ -146,12 +152,15 @@ export const GET: RequestHandler = async ({ url }) => {
 		// Convert to VTT if needed (handles SRT and other formats)
 		content = ensureVttFormat(content);
 
-		logger.debug('Subtitle proxied successfully', {
-			url: decodedUrl.substring(0, 100),
-			originalSize: contentLength,
-			finalSize: content.length,
-			...streamLog
-		});
+		logger.debug(
+			{
+				url: decodedUrl.substring(0, 100),
+				originalSize: contentLength,
+				finalSize: content.length,
+				...streamLog
+			},
+			'Subtitle proxied successfully'
+		);
 
 		return new Response(content, {
 			status: 200,
@@ -172,7 +181,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			});
 		}
 
-		logger.error('Subtitle proxy error', error, { url: decodedUrl, ...streamLog });
+		logger.error({ err: error, ...{ url: decodedUrl, ...streamLog } }, 'Subtitle proxy error');
 		return new Response(JSON.stringify({ error: 'Subtitle proxy error', details: message }), {
 			status: 500,
 			headers: { 'Content-Type': 'application/json' }

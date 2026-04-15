@@ -10,6 +10,7 @@ import { redactUrl } from '$lib/server/utils/urlSecurity';
 import { db } from '$lib/server/db';
 import { movies, series } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
+import { evaluateIndexerSearchAvailability } from '$lib/server/indexers/search/availability';
 import {
 	getMovieSearchTitles,
 	getSeriesSearchTitles,
@@ -56,6 +57,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	const {
 		q,
 		searchType,
+		searchMode,
 		categories,
 		indexers,
 		limit,
@@ -71,10 +73,15 @@ export const GET: RequestHandler = async ({ url }) => {
 		filterRejected,
 		minScore
 	} = result.data;
+	let effectiveScoringProfileId = scoringProfileId;
+	const isMultiSeasonPackTvSearch = searchType === 'tv' && searchMode === 'multiSeasonPack';
 
 	// Build typed search criteria based on searchType
 	// Auto-apply categories based on search type if none specified
-	const effectiveCategories = categories ?? getCategoriesForSearchType(searchType);
+	const effectiveCategories = isMultiSeasonPackTvSearch
+		? (categories ?? [])
+		: (categories ?? getCategoriesForSearchType(searchType));
+	const effectiveLimit = isMultiSeasonPackTvSearch ? (limit ?? 200) : limit;
 
 	let criteria: SearchCriteria;
 
@@ -84,7 +91,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			query: q,
 			categories: effectiveCategories.length > 0 ? effectiveCategories : undefined,
 			indexerIds: indexers,
-			limit,
+			limit: effectiveLimit,
 			imdbId,
 			tmdbId,
 			year
@@ -95,7 +102,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			query: q,
 			categories: effectiveCategories.length > 0 ? effectiveCategories : undefined,
 			indexerIds: indexers,
-			limit,
+			limit: effectiveLimit,
 			imdbId,
 			tmdbId,
 			tvdbId,
@@ -112,8 +119,19 @@ export const GET: RequestHandler = async ({ url }) => {
 			query: q,
 			categories: effectiveCategories.length > 0 ? effectiveCategories : undefined,
 			indexerIds: indexers,
-			limit
+			limit: effectiveLimit
 		};
+	}
+
+	if (isMultiSeasonPackTvSearch) {
+		logger.info(
+			{
+				query: criteria.query,
+				limit: criteria.limit,
+				categoriesApplied: !!(criteria.categories && criteria.categories.length > 0)
+			},
+			'[SearchAPI] Multi-season TV search mode enabled'
+		);
 	}
 
 	// Populate searchTitles from alternate titles in the library database
@@ -152,35 +170,47 @@ export const GET: RequestHandler = async ({ url }) => {
 				criteria.searchTitles = searchTitles;
 			}
 		} catch (error) {
-			logger.warn('[SearchAPI] Failed to look up alternate titles', {
-				tmdbId,
-				searchType,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					tmdbId,
+					searchType,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[SearchAPI] Failed to look up alternate titles'
+			);
 		}
 	}
 
 	const manager = await getIndexerManager();
+	const configuredIndexers = await manager.getIndexers();
 
 	// Use enhanced search if enrichment is requested
 	if (enrich) {
+		if (!effectiveScoringProfileId) {
+			const defaultScoringProfile = await qualityFilter.getDefaultScoringProfile();
+			effectiveScoringProfileId = defaultScoringProfile.id;
+		}
+
 		// Load the scoring profile to get allowedProtocols for indexer filtering
 		let protocolFilter: string[] | undefined;
-		if (scoringProfileId) {
-			const profile = await qualityFilter.getProfile(scoringProfileId);
+		if (effectiveScoringProfileId) {
+			const profile = await qualityFilter.getProfile(effectiveScoringProfileId);
 			if (profile?.allowedProtocols && profile.allowedProtocols.length > 0) {
 				protocolFilter = profile.allowedProtocols;
 			}
 		}
 
 		// Debug logging for profile issues
-		logger.info('[SearchAPI] Enrichment requested', {
-			scoringProfileId: scoringProfileId ?? 'none',
-			protocolFilter
-		});
+		logger.info(
+			{
+				scoringProfileId: effectiveScoringProfileId ?? 'none',
+				protocolFilter
+			},
+			'[SearchAPI] Enrichment requested'
+		);
 
 		const enrichmentOpts: EnrichmentOptions = {
-			scoringProfileId,
+			scoringProfileId: effectiveScoringProfileId,
 			matchToTmdb: matchToTmdb ?? false,
 			filterRejected: filterRejected ?? false,
 			minScore,
@@ -195,6 +225,24 @@ export const GET: RequestHandler = async ({ url }) => {
 						}
 					: undefined
 		};
+
+		const availability = evaluateIndexerSearchAvailability(configuredIndexers, {
+			searchType,
+			searchSource: 'interactive',
+			protocolFilter,
+			scoringProfileId: effectiveScoringProfileId,
+			getDefinitionCapabilities: (definitionId) => manager.getDefinitionCapabilities(definitionId)
+		});
+
+		if (!availability.ok) {
+			return json(
+				{
+					error: availability.message,
+					errorCode: availability.code
+				},
+				{ status: 400 }
+			);
+		}
 
 		const searchResult = await manager.searchEnhanced(criteria, {
 			searchSource: 'interactive',
@@ -230,6 +278,23 @@ export const GET: RequestHandler = async ({ url }) => {
 				rejectedIndexers: searchResult.rejectedIndexers
 			}
 		});
+	}
+
+	const availability = evaluateIndexerSearchAvailability(configuredIndexers, {
+		searchType,
+		searchSource: 'interactive',
+		scoringProfileId: effectiveScoringProfileId,
+		getDefinitionCapabilities: (definitionId) => manager.getDefinitionCapabilities(definitionId)
+	});
+
+	if (!availability.ok) {
+		return json(
+			{
+				error: availability.message,
+				errorCode: availability.code
+			},
+			{ status: 400 }
+		);
 	}
 
 	// Standard search without enrichment (interactive)

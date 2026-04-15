@@ -5,7 +5,9 @@
  * and improve response times for frequently accessed data.
  */
 
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'system' as const });
 
 interface CacheEntry<T> {
 	data: T;
@@ -122,7 +124,7 @@ class TmdbCache {
 		if (!pattern) {
 			const size = this.cache.size;
 			this.cache.clear();
-			logger.debug('[TmdbCache] Cleared entire cache', { entriesRemoved: size });
+			logger.debug({ entriesRemoved: size }, '[TmdbCache] Cleared entire cache');
 			return size;
 		}
 
@@ -135,7 +137,7 @@ class TmdbCache {
 		}
 
 		if (removed > 0) {
-			logger.debug('[TmdbCache] Invalidated entries', { pattern, entriesRemoved: removed });
+			logger.debug({ pattern, entriesRemoved: removed }, '[TmdbCache] Invalidated entries');
 		}
 
 		return removed;

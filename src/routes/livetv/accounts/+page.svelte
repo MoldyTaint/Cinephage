@@ -1,14 +1,16 @@
 <script lang="ts">
 	import { Plus, RefreshCw, Loader2, Wifi, WifiOff } from 'lucide-svelte';
 	import { LiveTvAccountTable, LiveTvAccountModal } from '$lib/components/livetv';
+	import { toFriendlyLiveTvTestError } from '$lib/livetv/errorMessages';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import type { LiveTvAccount, LiveTvAccountTestResult } from '$lib/types/livetv';
 	import type { FormData, TestConfig } from '$lib/components/livetv/LiveTvAccountModal.svelte';
-	import { onMount } from 'svelte';
 	import { createSSE } from '$lib/sse';
-	import { mobileSSEStatus } from '$lib/sse/mobileStatus.svelte';
 	import { resolvePath } from '$lib/utils/routing';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import type { AccountStreamEvents } from '$lib/types/sse/events/livetv-account-events.js';
+	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	// State
 	let accounts = $state<LiveTvAccount[]>([]);
@@ -31,8 +33,7 @@
 	let syncingId = $state<string | null>(null);
 
 	// SSE Connection - internally handles browser/SSR
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const sse = createSSE<Record<string, any>>(resolvePath('/api/livetv/accounts/stream'), {
+	const sse = createSSE<AccountStreamEvents>(resolvePath('/api/livetv/accounts/stream'), {
 		'accounts:initial': (payload) => {
 			accounts = payload.accounts || [];
 			loading = false;
@@ -61,45 +62,44 @@
 		}
 	});
 
-	const MOBILE_SSE_SOURCE = 'livetv-accounts';
-
 	$effect(() => {
-		mobileSSEStatus.publish(MOBILE_SSE_SOURCE, sse.status);
+		layoutState.setMobileSseStatus(deriveMobileSseStatus(sse));
 		return () => {
-			mobileSSEStatus.clear(MOBILE_SSE_SOURCE);
+			layoutState.clearMobileSseStatus();
 		};
 	});
 
 	// Load accounts on mount
-	onMount(() => {
+	$effect(() => {
 		loadAccounts();
-
-		return () => {
-			sse.close();
-		};
 	});
 
-	async function loadAccounts() {
-		loading = true;
-		error = null;
+	async function loadAccounts(options: { foreground?: boolean } = {}) {
+		const { foreground = true } = options;
+		if (foreground) {
+			loading = true;
+			error = null;
+		}
 
 		try {
 			const response = await fetch('/api/livetv/accounts');
 			if (!response.ok) {
-				throw new Error('Failed to load accounts');
+				throw new Error(m.livetv_accounts_failedToLoadAccounts());
 			}
 			const data = await response.json();
 			accounts = data.accounts;
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load accounts';
+			error = e instanceof Error ? e.message : m.livetv_accounts_failedToLoadAccounts();
 		} finally {
-			loading = false;
+			if (foreground) {
+				loading = false;
+			}
 		}
 	}
 
 	async function refreshAccounts() {
 		refreshing = true;
-		await loadAccounts();
+		await loadAccounts({ foreground: false });
 		refreshing = false;
 	}
 
@@ -148,14 +148,17 @@
 						epgUrl: data.epgUrl || undefined
 					};
 					break;
-				case 'xstream':
+				case 'xstream': {
+					const normalizedXstreamEpgUrl = data.epgUrl.trim();
 					body.xstreamConfig = {
 						baseUrl: data.baseUrl,
 						username: data.username,
 						password: data.password,
-						epgUrl: data.epgUrl || undefined
+						// In edit mode, send empty string to explicitly clear an existing EPG URL.
+						epgUrl: normalizedXstreamEpgUrl || (modalMode === 'edit' ? '' : undefined)
 					};
 					break;
+				}
 				case 'm3u':
 					if (data.selectedCountries?.length) {
 						// IPTV-Org mode
@@ -164,11 +167,13 @@
 							countries: data.selectedCountries
 						};
 					} else {
+						const normalizedEpgUrl = data.epgUrl.trim();
 						// Regular M3U mode
 						body.m3uConfig = {
 							url: data.url || undefined,
 							fileContent: data.fileContent || undefined,
-							epgUrl: data.epgUrl || undefined,
+							// In edit mode, send empty string to explicitly clear an existing EPG URL.
+							epgUrl: normalizedEpgUrl || (modalMode === 'edit' ? '' : undefined),
 							autoRefresh: data.autoRefresh
 						};
 					}
@@ -183,13 +188,13 @@
 
 			if (!response.ok) {
 				const result = await response.json();
-				throw new Error(result.error || 'Failed to save account');
+				throw new Error(result.error || m.livetv_accounts_failedToSaveAccount());
 			}
 
-			await loadAccounts();
 			closeModal();
+			void loadAccounts({ foreground: false });
 		} catch (e) {
-			modalError = e instanceof Error ? e.message : 'Failed to save account';
+			modalError = e instanceof Error ? e.message : m.livetv_accounts_failedToSaveAccount();
 		} finally {
 			saving = false;
 		}
@@ -205,6 +210,35 @@
 		deleteConfirmOpen = false;
 	}
 
+	function getTestSummary(result: LiveTvAccountTestResult): string | undefined {
+		if (!result.profile) return undefined;
+
+		const parts = [
+			m.livetv_accounts_testSummaryChannels({
+				count: result.profile.channelCount.toLocaleString()
+			}),
+			m.livetv_accounts_testSummaryCategories({
+				count: result.profile.categoryCount.toLocaleString()
+			})
+		];
+
+		const epgStatus = result.profile.epg?.status;
+		if (epgStatus === 'reachable') {
+			parts.push(m.livetv_accounts_epgReachable());
+		} else if (epgStatus === 'unreachable') {
+			const epgError = result.profile.epg?.error;
+			parts.push(
+				epgError
+					? m.livetv_accounts_epgUnreachableWithError({ error: epgError })
+					: m.livetv_accounts_epgUnreachable()
+			);
+		} else if (epgStatus === 'not_configured') {
+			parts.push(m.livetv_accounts_epgNotConfigured());
+		}
+
+		return parts.join(' \u2022 ');
+	}
+
 	async function confirmDelete() {
 		if (!editingAccount) return;
 
@@ -218,14 +252,14 @@
 
 			if (!response.ok) {
 				const result = await response.json();
-				throw new Error(result.error || 'Failed to delete account');
+				throw new Error(result.error || m.livetv_accounts_failedToDeleteAccount());
 			}
 
-			await loadAccounts();
+			await loadAccounts({ foreground: false });
 			deleteConfirmOpen = false;
 			closeModal();
 		} catch (e) {
-			modalError = e instanceof Error ? e.message : 'Failed to delete account';
+			modalError = e instanceof Error ? e.message : m.livetv_accounts_failedToDeleteAccount();
 		} finally {
 			saving = false;
 		}
@@ -240,12 +274,14 @@
 			});
 
 			if (!response.ok) {
-				throw new Error('Failed to update account');
+				throw new Error(m.livetv_accounts_failedToUpdateAccount());
 			}
 
-			await loadAccounts();
+			await loadAccounts({ foreground: false });
 		} catch (e) {
-			console.error('Failed to toggle account:', e);
+			toasts.error(m.livetv_accounts_failedToUpdateAccount(), {
+				description: e instanceof Error ? e.message : m.livetv_accounts_failedToUpdateAccount()
+			});
 		}
 	}
 
@@ -261,20 +297,31 @@
 
 			if (!response.ok) {
 				throw new Error(
-					typeof payload?.error === 'string' ? payload.error : 'Failed to test account'
+					toFriendlyLiveTvTestError(
+						typeof payload?.error === 'string'
+							? payload.error
+							: m.livetv_accounts_failedToTestAccount(),
+						account.providerType
+					)
 				);
 			}
 
-			const testResult =
+			const rawTestResult =
 				payload?.result && typeof payload.result.success === 'boolean'
 					? payload.result
 					: payload && typeof payload.success === 'boolean'
 						? payload
 						: null;
 
-			if (!testResult) {
-				throw new Error('Invalid test response');
+			if (!rawTestResult) {
+				throw new Error(m.livetv_accounts_invalidTestResponse());
 			}
+			const testResult = rawTestResult.success
+				? rawTestResult
+				: {
+						...rawTestResult,
+						error: toFriendlyLiveTvTestError(rawTestResult.error, account.providerType)
+					};
 
 			const now = new Date().toISOString();
 			accounts = accounts.map((existing) => {
@@ -298,20 +345,20 @@
 			});
 
 			if (testResult.success) {
-				toasts.success(`Connection test passed: ${account.name}`, {
-					description: testResult.profile
-						? `${testResult.profile.channelCount.toLocaleString()} channels • ${testResult.profile.categoryCount.toLocaleString()} categories`
-						: undefined
+				toasts.success(m.livetv_accounts_connectionTestPassed({ name: account.name }), {
+					description: getTestSummary(testResult)
 				});
 			} else {
-				toasts.error(`Connection test failed: ${account.name}`, {
-					description: testResult.error || 'Unknown test failure'
+				toasts.error(m.livetv_accounts_connectionTestFailed({ name: account.name }), {
+					description: testResult.error || m.livetv_accounts_unknownTestFailure()
 				});
 			}
 		} catch (e) {
-			console.error('Failed to test account:', e);
-			toasts.error(`Connection test failed: ${account.name}`, {
-				description: e instanceof Error ? e.message : 'Failed to test account'
+			toasts.error(m.livetv_accounts_connectionTestFailed({ name: account.name }), {
+				description: toFriendlyLiveTvTestError(
+					e instanceof Error ? e.message : m.livetv_accounts_failedToTestAccount(),
+					account.providerType
+				)
 			});
 		} finally {
 			testingId = null;
@@ -329,12 +376,14 @@
 			});
 
 			if (!response.ok) {
-				throw new Error('Failed to sync account');
+				throw new Error(m.livetv_accounts_failedToSyncAccount());
 			}
 
-			await loadAccounts();
+			await loadAccounts({ foreground: false });
 		} catch (e) {
-			console.error('Failed to sync account:', e);
+			toasts.error(m.livetv_accounts_failedToSyncAccount(), {
+				description: e instanceof Error ? e.message : m.livetv_accounts_failedToSyncAccount()
+			});
 		} finally {
 			syncingId = null;
 		}
@@ -356,7 +405,8 @@
 				body.xstreamConfig = {
 					baseUrl: config.baseUrl,
 					username: config.username,
-					password: config.password
+					password: config.password,
+					epgUrl: config.epgUrl
 				};
 				break;
 			case 'm3u':
@@ -368,55 +418,82 @@
 				} else {
 					body.m3uConfig = {
 						url: config.url,
-						fileContent: config.fileContent
+						fileContent: config.fileContent,
+						epgUrl: config.epgUrl
 					};
 				}
 				break;
 		}
 
-		const response = await fetch('/api/livetv/accounts/test', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(body)
-		});
+		try {
+			const response = await fetch('/api/livetv/accounts/test', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(body)
+			});
 
-		const result = await response.json();
+			const result = await response.json();
 
-		if (!response.ok) {
+			if (!response.ok) {
+				return {
+					success: false,
+					error: toFriendlyLiveTvTestError(
+						typeof result?.error === 'string'
+							? result.error
+							: m.livetv_accounts_failedToTestConfig(),
+						config.providerType
+					)
+				};
+			}
+
+			// API currently returns { success, result }, but keep backward compatibility
+			// in case the endpoint returns LiveTvAccountTestResult directly.
+			if (result?.result && typeof result.result.success === 'boolean') {
+				const testResult = result.result as LiveTvAccountTestResult;
+				return testResult.success
+					? testResult
+					: {
+							...testResult,
+							error: toFriendlyLiveTvTestError(testResult.error, config.providerType)
+						};
+			}
+
+			if (typeof result?.success === 'boolean') {
+				const testResult = result as LiveTvAccountTestResult;
+				return testResult.success
+					? testResult
+					: {
+							...testResult,
+							error: toFriendlyLiveTvTestError(testResult.error, config.providerType)
+						};
+			}
+
 			return {
 				success: false,
-				error:
-					typeof result?.error === 'string' ? result.error : 'Failed to test account configuration'
+				error: m.livetv_accounts_invalidTestEndpointResponse()
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: toFriendlyLiveTvTestError(
+					error instanceof Error ? error.message : m.livetv_accounts_failedToTestConfig(),
+					config.providerType
+				)
 			};
 		}
-
-		// API currently returns { success, result }, but keep backward compatibility
-		// in case the endpoint returns LiveTvAccountTestResult directly.
-		if (result?.result && typeof result.result.success === 'boolean') {
-			return result.result as LiveTvAccountTestResult;
-		}
-
-		if (typeof result?.success === 'boolean') {
-			return result as LiveTvAccountTestResult;
-		}
-
-		return {
-			success: false,
-			error: 'Invalid response from test endpoint'
-		};
 	}
 </script>
 
 <svelte:head>
-	<title>Live TV Accounts - Cinephage</title>
+	<title>{m.livetv_accounts_pageTitle()}</title>
 </svelte:head>
 
 <div class="space-y-6">
 	<!-- Header -->
 	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 		<div>
-			<h1 class="text-2xl font-bold">Live TV Accounts</h1>
-			<p class="mt-1 text-base-content/60">Manage your IPTV accounts (Stalker, XStream, M3U)</p>
+			<h1 class="text-2xl font-bold">{m.livetv_accounts_heading()}</h1>
+			<p class="mt-1 text-base-content/60">{m.livetv_accounts_subtitle()}</p>
 		</div>
 		<div class="flex w-full items-center gap-2 sm:w-auto">
 			<!-- Connection Status -->
@@ -424,17 +501,17 @@
 				{#if sse.isConnected}
 					<span class="badge gap-1 badge-success">
 						<Wifi class="h-3 w-3" />
-						Live
+						{m.common_live()}
 					</span>
 				{:else if sse.status === 'connecting' || sse.status === 'error'}
 					<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
 						<Loader2 class="h-3 w-3 animate-spin" />
-						{sse.status === 'error' ? 'Reconnecting...' : 'Connecting...'}
+						{sse.status === 'error' ? m.common_reconnecting() : m.common_connecting()}
 					</span>
 				{:else}
 					<span class="badge gap-1 badge-ghost">
 						<WifiOff class="h-3 w-3" />
-						Disconnected
+						{m.common_disconnected()}
 					</span>
 				{/if}
 			</div>
@@ -442,7 +519,7 @@
 				class="btn btn-ghost btn-sm"
 				onclick={refreshAccounts}
 				disabled={loading || refreshing}
-				title="Refresh"
+				title={m.action_refresh()}
 			>
 				{#if refreshing}
 					<Loader2 class="h-4 w-4 animate-spin" />
@@ -452,7 +529,7 @@
 			</button>
 			<button class="btn flex-1 btn-sm btn-primary sm:flex-none" onclick={openAddModal}>
 				<Plus class="h-4 w-4" />
-				Add Account
+				{m.livetv_accounts_addAccount()}
 			</button>
 		</div>
 	</div>
@@ -465,7 +542,8 @@
 	{:else if error}
 		<div class="alert alert-error">
 			<span>{error}</span>
-			<button class="btn btn-ghost btn-sm" onclick={loadAccounts}>Retry</button>
+			<button class="btn btn-ghost btn-sm" onclick={() => loadAccounts()}>{m.common_retry()}</button
+			>
 		</div>
 	{:else}
 		<LiveTvAccountTable
@@ -499,9 +577,11 @@
 
 <ConfirmationModal
 	open={deleteConfirmOpen}
-	title="Delete Account"
-	message={`Delete "${editingAccount?.name ?? 'this account'}"? This will remove it from Live TV and stop channel sync.`}
-	confirmLabel="Delete"
+	title={m.livetv_accounts_deleteAccountTitle()}
+	messagePrefix={m.livetv_accounts_deleteAccountMessagePrefix()}
+	messageEmphasis={editingAccount?.name ?? 'this account'}
+	messageSuffix={m.livetv_accounts_deleteAccountMessageSuffix()}
+	confirmLabel={m.common_delete()}
 	confirmVariant="error"
 	loading={saving}
 	onConfirm={confirmDelete}

@@ -1,8 +1,12 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getIndexerManager } from '$lib/server/indexers/IndexerManager';
+import { CINEPHAGE_STREAM_DEFINITION_ID } from '$lib/server/indexers/types';
+import { sanitizeStreamingIndexerSettings } from '$lib/server/streaming/settings';
 import { indexerCreateSchema } from '$lib/validation/schemas';
 import { redactIndexer } from '$lib/server/utils/redaction.js';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { parseBody } from '$lib/server/api/validate.js';
 
 /**
  * GET /api/indexers
@@ -19,27 +23,12 @@ export const GET: RequestHandler = async () => {
 	return json(redactedIndexers);
 };
 
-export const POST: RequestHandler = async ({ request }) => {
-	let data: unknown;
-	try {
-		data = await request.json();
-	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
-	}
+export const POST: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
 
-	const result = indexerCreateSchema.safeParse(data);
-
-	if (!result.success) {
-		return json(
-			{
-				error: 'Validation failed',
-				details: result.error.flatten()
-			},
-			{ status: 400 }
-		);
-	}
-
-	const validated = result.data;
+	const { request } = event;
+	const validated = await parseBody(request, indexerCreateSchema);
 
 	const manager = await getIndexerManager();
 
@@ -55,30 +44,30 @@ export const POST: RequestHandler = async ({ request }) => {
 		);
 	}
 
-	try {
-		const created = await manager.createIndexer({
-			name: validated.name,
-			definitionId: validated.definitionId,
-			baseUrl: validated.baseUrl,
-			alternateUrls: validated.alternateUrls,
-			enabled: validated.enabled,
-			priority: validated.priority,
-			settings: (validated.settings ?? {}) as Record<string, string>,
+	const settings =
+		validated.definitionId === CINEPHAGE_STREAM_DEFINITION_ID
+			? sanitizeStreamingIndexerSettings(validated.settings as Record<string, unknown> | null)
+			: ((validated.settings ?? {}) as Record<string, string>);
 
-			// Search capability toggles
-			enableAutomaticSearch: validated.enableAutomaticSearch,
-			enableInteractiveSearch: validated.enableInteractiveSearch,
+	const created = await manager.createIndexer({
+		name: validated.name,
+		definitionId: validated.definitionId,
+		baseUrl: validated.baseUrl,
+		alternateUrls: validated.alternateUrls,
+		enabled: validated.enabled,
+		priority: validated.priority,
+		settings,
 
-			// Torrent seeding settings (stored in protocolSettings)
-			minimumSeeders: validated.minimumSeeders,
-			seedRatio: validated.seedRatio ?? null,
-			seedTime: validated.seedTime ?? null,
-			packSeedTime: validated.packSeedTime ?? null
-		});
+		// Search capability toggles
+		enableAutomaticSearch: validated.enableAutomaticSearch,
+		enableInteractiveSearch: validated.enableInteractiveSearch,
 
-		return json({ success: true, indexer: created });
-	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Unknown error';
-		return json({ error: message }, { status: 500 });
-	}
+		// Torrent seeding settings (stored in protocolSettings)
+		minimumSeeders: validated.minimumSeeders,
+		seedRatio: validated.seedRatio ?? null,
+		seedTime: validated.seedTime ?? null,
+		packSeedTime: validated.packSeedTime ?? null
+	});
+
+	return json({ success: true, indexer: created });
 };

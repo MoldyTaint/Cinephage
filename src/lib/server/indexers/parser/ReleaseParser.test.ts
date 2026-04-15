@@ -3,8 +3,8 @@ import { parseRelease, extractExternalIds } from './ReleaseParser';
 import { isTvRelease } from './patterns/episode';
 import { extractResolution } from './patterns/resolution';
 import { extractSource } from './patterns/source';
-import { extractCodec } from './patterns/codec';
-import { extractAudio, extractHdr } from './patterns/audio';
+import { extractBitDepth, extractCodec } from './patterns/codec';
+import { extractEnhancedAudio, extractHdr } from './patterns/audio';
 import { extractReleaseGroup } from './patterns/releaseGroup';
 
 describe('ReleaseParser', () => {
@@ -30,7 +30,8 @@ describe('ReleaseParser', () => {
 			expect(result.source).toBe('remux');
 			expect(result.codec).toBe('h265');
 			expect(result.hdr).toBe('hdr'); // Generic HDR without specific version
-			expect(result.audio).toBe('atmos');
+			expect(result.audioCodec).toBe('unknown');
+			expect(result.hasAtmos).toBe(true);
 			expect(result.isRemux).toBe(true);
 			expect(result.releaseGroup).toBe('FGT');
 		});
@@ -43,15 +44,16 @@ describe('ReleaseParser', () => {
 			expect(result.resolution).toBe('1080p');
 			expect(result.source).toBe('webdl');
 			expect(result.codec).toBe('h264');
-			expect(result.audio).toBe('dd+');
+			expect(result.audioCodec).toBe('dd+');
 			expect(result.releaseGroup).toBe('RUMOUR');
 		});
 
 		it('should detect Dolby Vision', () => {
 			const result = parseRelease('Interstellar.2014.2160p.WEB-DL.DV.HDR.DDP.5.1.Atmos.H.265-FLUX');
 
-			expect(result.hdr).toBe('dolby-vision-hdr10'); // DV + HDR indicates HDR10 fallback layer
-			expect(result.audio).toBe('atmos');
+			expect(result.hdr).toBe('dolby-vision');
+			expect(result.audioCodec).toBe('dd+');
+			expect(result.hasAtmos).toBe(true);
 		});
 
 		it('should parse YTS-style releases', () => {
@@ -61,6 +63,62 @@ describe('ReleaseParser', () => {
 			expect(result.year).toBe(2023);
 			expect(result.resolution).toBe('1080p');
 			expect(result.source).toBe('webrip');
+			expect(result.releaseGroup).toBe('YTS');
+		});
+
+		it('should parse normalized H 265 codec markers', () => {
+			const result = parseRelease('Movie.2024.2160p.MA.WEB-DL.DDP.7.1.DoVi.HDR10.H.265-GROUP');
+
+			expect(result.codec).toBe('h265');
+		});
+
+		it('should parse WEBSCREENER as screener source', () => {
+			const result = parseRelease('Movie.2024.1080p.WEBSCREENER.x265.AAC-GROUP');
+
+			expect(result.source).toBe('screener');
+		});
+
+		it('should parse HDRip as a distinct source', () => {
+			const result = parseRelease('Movie.2024.HDRip.1080p.x264-GROUP');
+
+			expect(result.source).toBe('hdrip');
+			expect(result.resolution).toBe('1080p');
+			expect(result.codec).toBe('h264');
+		});
+
+		it('should parse BD25 releases as bluray source', () => {
+			const result = parseRelease('Movie.2024.CUSTOM.BD25.AVC.x264.DD.Plus.7.1-GROUP');
+
+			expect(result.source).toBe('bluray');
+			expect(result.codec).toBe('h264');
+			expect(result.audioCodec).toBe('dd+');
+			expect(result.audioChannels).toBe('7.1');
+		});
+
+		it('should parse DD Plus punctuation variants as ddplus', () => {
+			const dotted = parseRelease('Movie.2024.1080p.WEB-DL.DD.Plus.5.1.H264-GROUP');
+			const spaced = parseRelease('Movie.2024.1080p.WEB-DL.DD Plus.5.1.H264-GROUP');
+
+			expect(dotted.audioCodec).toBe('dd+');
+			expect(spaced.audioCodec).toBe('dd+');
+		});
+
+		it('should parse bit depth as a canonical fact', () => {
+			const result = parseRelease('Movie.2024.1080p.10bit.WEBRip.x265.AAC-GROUP');
+
+			expect(result.bitDepth).toBe('10');
+			expect(result.codec).toBe('h265');
+		});
+
+		it('should detect streaming service and richer HDR combinations', () => {
+			const result = parseRelease(
+				'Avatar.Fire.and.Ash.2025.Hybrid.1080p.MA.WEBRIP.DDP7.1.DoVi.HDR10P.x265.HuN-TRiNiTY'
+			);
+
+			expect(result.streamingService).toBe('MA');
+			expect(result.audioCodec).toBe('dd+');
+			expect(result.audioChannels).toBe('7.1');
+			expect(result.hdr).toBe('dolby-vision');
 		});
 
 		it('should detect PROPER releases', () => {
@@ -81,12 +139,51 @@ describe('ReleaseParser', () => {
 			);
 
 			expect(result.cleanTitle).toContain('Blade Runner');
+			expect(result.edition).toBe('Final Cut');
+		});
+
+		it('should detect IMAX Enhanced releases', () => {
+			const result = parseRelease('Movie.2024.IMAX.Enhanced.2160p.WEB-DL.DDP5.1.H265-GROUP');
+
+			expect(result.edition).toBe('IMAX Enhanced');
+		});
+
+		it('should detect hybrid releases', () => {
+			const result = parseRelease('Movie.2024.Hybrid.1080p.BluRay.x264-GROUP');
+
+			expect(result.edition).toBe('Hybrid');
+		});
+
+		it('should not treat WEB-DL quality suffix as release group', () => {
+			const result = parseRelease('Movie (2024) [WEB-DL-1080p][AC3 5.1][x265].mkv');
+
+			expect(result.releaseGroup).toBeUndefined();
+		});
+
+		it('should not invent release groups from subtitle and language suffixes', () => {
+			const subResult = parseRelease('Avatar: Fire and Ash / 2025 / DUB, Sub / HEVC / WEBDL 1080p');
+			const engResult = parseRelease(
+				'Avatar: Fire and Ash (James Cameron) [2025, WEB-DL-AVC] MVO (HDRezka Studio) + Sub + Original Eng'
+			);
+			const telResult = parseRelease(
+				'Avatar Fire and Ash (2025) Telesync TS HD 1080p - x264 - [Tam.Tel.Hin]'
+			);
+
+			expect(subResult.releaseGroup).toBeUndefined();
+			expect(engResult.releaseGroup).toBeUndefined();
+			expect(telResult.releaseGroup).toBeUndefined();
 		});
 
 		it('should detect 3D releases', () => {
 			const result = parseRelease('Avatar.2009.3D.1080p.BluRay.x264-GROUP');
 
 			expect(result.is3d).toBe(true);
+		});
+
+		it('should not treat generic movie collection titles as TV packs', () => {
+			const result = parseRelease('War Movies Complete Collection 2024 1080p BluRay x264');
+
+			expect(result.episode).toBeUndefined();
 		});
 	});
 
@@ -125,6 +222,36 @@ describe('ReleaseParser', () => {
 			expect(result.episode?.isSeasonPack).toBe(true);
 		});
 
+		it('should parse tracker season packs with explicit episode range', () => {
+			const result = parseRelease(
+				'The Pitt / Season: 2 / Episodes: 1-10 of 15 [2026, USA, WEB-DLRip]'
+			);
+
+			expect(result.episode?.season).toBe(2);
+			expect(result.episode?.isSeasonPack).toBe(true);
+			expect(result.episode?.episodes).toContain(1);
+			expect(result.episode?.episodes).toContain(10);
+			expect(result.episode?.episodes).not.toContain(11);
+		});
+
+		it('should parse SxxExx-yy episode range packs', () => {
+			const result = parseRelease('Stranger Things S1E1-8 [2016, HEVC, WEB-DL]');
+
+			expect(result.episode?.season).toBe(1);
+			expect(result.episode?.isSeasonPack).toBe(true);
+			expect(result.episode?.episodes).toContain(1);
+			expect(result.episode?.episodes).toContain(8);
+			expect(result.episode?.episodes).not.toContain(9);
+		});
+
+		it('should not treat clock time episode titles as season-pack ranges', () => {
+			const result = parseRelease('The Pitt S02E01 - 7:00 A.M. [Streaming]');
+
+			expect(result.episode?.season).toBe(2);
+			expect(result.episode?.episodes).toEqual([1]);
+			expect(result.episode?.isSeasonPack).toBe(false);
+		});
+
 		it('should parse complete series packs', () => {
 			const result = parseRelease('Friends.Complete.Series.S01-S10.1080p.BluRay.x264-GROUP');
 
@@ -154,6 +281,92 @@ describe('ReleaseParser', () => {
 
 			expect(result.episode?.isSeasonPack).toBe(true);
 			expect(result.episode?.seasons).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+		});
+
+		it('should parse SxxExx-SyyEzz multi-season range notation', () => {
+			const result = parseRelease('Show.Name.S01E01-S08E99.1080p.WEB-DL');
+
+			expect(result.episode?.isSeasonPack).toBe(true);
+			expect(result.episode?.seasons).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+			expect(result.episode?.isCompleteSeries).toBe(true);
+		});
+
+		it('should parse 1x01-8x99 multi-season range notation', () => {
+			const result = parseRelease('Show Name 1x01-8x99 720p WEB-DL');
+
+			expect(result.episode?.isSeasonPack).toBe(true);
+			expect(result.episode?.seasons).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+		});
+
+		it('should parse "Season X through Y" notation', () => {
+			const result = parseRelease('The Show / Season: 1 through 5 / Episodes: 1-60 of 100');
+
+			expect(result.episode?.isSeasonPack).toBe(true);
+			expect(result.episode?.seasons).toEqual([1, 2, 3, 4, 5]);
+			expect(result.episode?.isCompleteSeries).toBe(true);
+		});
+
+		it('should parse "Every Season" as complete series', () => {
+			const result = parseRelease('The Show Every Season 1080p WEB-DL');
+
+			expect(result.episode?.isSeasonPack).toBe(true);
+			expect(result.episode?.isCompleteSeries).toBe(true);
+		});
+
+		it('should parse "Season: 1 of 1" as single-season complete series', () => {
+			const result = parseRelease('One Season Show / Season: 1 of 1 / Episodes: 1-10 of 10');
+
+			expect(result.episode?.season).toBe(1);
+			expect(result.episode?.isSeasonPack).toBe(true);
+			expect(result.episode?.isCompleteSeries).toBe(true);
+		});
+
+		it('should parse russian season ranges used by trackers', () => {
+			const result = parseRelease('Сериал / Сезоны: 1-4 из 4 / Эпизоды: 1-40 из 40');
+
+			expect(result.episode?.isSeasonPack).toBe(true);
+			expect(result.episode?.seasons).toEqual([1, 2, 3, 4]);
+			expect(result.episode?.isCompleteSeries).toBe(true);
+		});
+
+		it('should parse tracker multi-season packs with "Season: 1-8 of 8 / Episodes: 1-171 of 171" format', () => {
+			const result = parseRelease(
+				'The Vampire Diaries / Season: 1-8 of 8 / Episodes: 1-171 of 171 [2009-2017, USA, BDRip]'
+			);
+
+			expect(result.episode?.isSeasonPack).toBe(true);
+			expect(result.episode?.seasons).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+			expect(result.episode?.isCompleteSeries).toBe(true);
+		});
+
+		it('should parse tracker multi-season ranges with "Season: X-Y of N" where start season is not 1', () => {
+			const result = parseRelease(
+				'Some Show / Season: 3-5 of 8 / Episodes: 1-60 of 171 [2012-2015, WEB-DL]'
+			);
+
+			expect(result.episode?.isSeasonPack).toBe(true);
+			expect(result.episode?.seasons).toEqual([3, 4, 5]);
+			expect(result.episode?.isCompleteSeries).toBe(false);
+		});
+
+		it('should infer complete series from large S1E1-XXX of XXX ranges', () => {
+			const result = parseRelease(
+				'The Vampire Diaries: S1E1-171 of 171 [2009-2017, BDRip] MVO (LostFilm)'
+			);
+
+			expect(result.episode?.isSeasonPack).toBe(true);
+			expect(result.episode?.isCompleteSeries).toBe(true);
+			expect(result.episode?.season).toBe(1);
+			expect(result.episode?.episodes?.length).toBe(171);
+		});
+
+		it('should not infer complete series for normal single-season ranges', () => {
+			const result = parseRelease('The Vampire Diaries: S1E1-22 of 22 [2009-2010, BDRip]');
+
+			expect(result.episode?.isSeasonPack).toBe(true);
+			expect(result.episode?.isCompleteSeries).toBe(false);
+			expect(result.episode?.season).toBe(1);
+			expect(result.episode?.episodes?.length).toBe(22);
 		});
 
 		it('should parse 1x05 format', () => {
@@ -254,19 +467,25 @@ describe('ReleaseParser', () => {
 			expect(extractCodec('XviD')?.codec).toBe('xvid');
 		});
 
-		it('should detect all audio formats', () => {
-			expect(extractAudio('Atmos')?.audio).toBe('atmos');
-			expect(extractAudio('TrueHD')?.audio).toBe('truehd');
-			expect(extractAudio('DTS-X')?.audio).toBe('dts-x');
-			expect(extractAudio('DTS-HD.MA')?.audio).toBe('dts-hdma');
-			expect(extractAudio('DTS-HDMA')?.audio).toBe('dts-hdma');
-			expect(extractAudio('DTS-HD')?.audio).toBe('dts-hd');
-			expect(extractAudio('DTS')?.audio).toBe('dts');
-			expect(extractAudio('DD+')?.audio).toBe('dd+');
-			expect(extractAudio('EAC3')?.audio).toBe('dd+');
-			expect(extractAudio('AC3')?.audio).toBe('dd');
-			expect(extractAudio('AAC')?.audio).toBe('aac');
-			expect(extractAudio('FLAC')?.audio).toBe('flac');
+		it('should detect bit depth variants', () => {
+			expect(extractBitDepth('10bit')?.bitDepth).toBe('10');
+			expect(extractBitDepth('12-bit')?.bitDepth).toBe('12');
+			expect(extractBitDepth('8 bit')?.bitDepth).toBe('8');
+		});
+
+		it('should detect canonical audio attributes', () => {
+			expect(extractEnhancedAudio('Atmos').hasAtmos).toBe(true);
+			expect(extractEnhancedAudio('TrueHD').codec).toBe('truehd');
+			expect(extractEnhancedAudio('DTS-X').codec).toBe('dts-x');
+			expect(extractEnhancedAudio('DTS-HD.MA').codec).toBe('dts-hdma');
+			expect(extractEnhancedAudio('DTS-HDMA').codec).toBe('dts-hdma');
+			expect(extractEnhancedAudio('DTS-HD').codec).toBe('dts-hd');
+			expect(extractEnhancedAudio('DTS').codec).toBe('dts');
+			expect(extractEnhancedAudio('DD+').codec).toBe('dd+');
+			expect(extractEnhancedAudio('EAC3').codec).toBe('dd+');
+			expect(extractEnhancedAudio('AC3').codec).toBe('dd');
+			expect(extractEnhancedAudio('AAC').codec).toBe('aac');
+			expect(extractEnhancedAudio('FLAC').codec).toBe('flac');
 		});
 
 		it('should detect HDR formats', () => {
@@ -368,7 +587,9 @@ describe('ReleaseParser', () => {
 			expect(result.episode?.season).toBe(1);
 			expect(result.episode?.episodes).toEqual([1]);
 			expect(result.source).toBe('webdl');
-			expect(result.audio).toBe('atmos');
+			expect(result.audioCodec).toBe('dd+');
+			expect(result.audioChannels).toBe('5.1');
+			expect(result.hasAtmos).toBe(true);
 		});
 
 		it('should parse anime batch releases', () => {

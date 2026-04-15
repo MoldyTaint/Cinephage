@@ -20,7 +20,7 @@ on:
         type: boolean
         default: true
       keep_channel_builds:
-        description: 'Keep this many recent builds for each channel (edge/dev)'
+        description: 'Keep this many recent builds for each channel (main/dev plus legacy edge)'
         required: true
         type: string
         default: '5'
@@ -165,7 +165,7 @@ jobs:
               return 0
             fi
 
-            if [ "$tag" = 'edge' ] || [ "$tag" = 'dev' ]; then
+            if [ "$tag" = 'main' ] || [ "$tag" = 'dev' ]; then
               return 0
             fi
 
@@ -214,13 +214,14 @@ jobs:
           candidates=0
           deleted=0
           failed=0
-          edge_kept=0
+          legacy_edge_kept=0
+          main_kept=0
           dev_kept=0
 
           declare -A KEEP_RECENT_TAGS=()
 
           if [ "$KEEP_CHANNEL_BUILDS" -gt 0 ]; then
-            for channel in edge dev; do
+            for channel in edge main dev; do
               mapfile -t recent_base_tags < <(echo "$versions_json" | jq -r \
                 --arg channel "$channel" \
                 --argjson limit "$KEEP_CHANNEL_BUILDS" '
@@ -239,7 +240,9 @@ jobs:
                 ')
 
               if [ "$channel" = 'edge' ]; then
-                edge_kept=${#recent_base_tags[@]}
+                legacy_edge_kept=${#recent_base_tags[@]}
+              elif [ "$channel" = 'main' ]; then
+                main_kept=${#recent_base_tags[@]}
               else
                 dev_kept=${#recent_base_tags[@]}
               fi
@@ -270,7 +273,7 @@ jobs:
               tag_csv=$(IFS=, ; echo "${tags[*]}")
               [ -z "$tag_csv" ] && tag_csv='<untagged>'
               kept=$((kept + 1))
-              echo "Keep id=${id} created=${created_at} tags=${tag_csv} (recent edge/dev build)"
+              echo "Keep id=${id} created=${created_at} tags=${tag_csv} (recent channel build)"
               continue
             fi
 
@@ -341,7 +344,8 @@ jobs:
           echo "Package: ${PACKAGE_NAME}"
           echo "Dry run: ${DRY_RUN}"
           echo "Keep recent channel builds (each): ${KEEP_CHANNEL_BUILDS}"
-          echo "Recent edge builds protected: ${edge_kept}"
+          echo "Recent legacy edge builds protected: ${legacy_edge_kept}"
+          echo "Recent main builds protected: ${main_kept}"
           echo "Recent dev builds protected: ${dev_kept}"
           echo "Total versions: ${total_versions}"
           echo "Kept: ${kept}"
@@ -355,7 +359,8 @@ jobs:
             echo "- Package: \`${PACKAGE_NAME}\`"
             echo "- Dry run: \`${DRY_RUN}\`"
             echo "- Keep recent channel builds (each): \`${KEEP_CHANNEL_BUILDS}\`"
-            echo "- Protected recent edge builds: \`${edge_kept}\`"
+            echo "- Protected recent legacy edge builds: \`${legacy_edge_kept}\`"
+            echo "- Protected recent main builds: \`${main_kept}\`"
             echo "- Protected recent dev builds: \`${dev_kept}\`"
             echo "- Total versions: \`${total_versions}\`"
             echo "- Kept: \`${kept}\`"
@@ -368,9 +373,10 @@ jobs:
             if [ "$KEEP_LATEST" = 'true' ]; then
               echo "- \`latest\`"
             fi
-            echo "- \`edge\` and \`dev\`"
+            echo "- \`main\` and \`dev\`"
             if [ "$KEEP_CHANNEL_BUILDS" -gt 0 ]; then
-              echo "- Last \`${KEEP_CHANNEL_BUILDS}\` \`edge-YYYYMMDD-run\` builds"
+              echo "- Last \`${KEEP_CHANNEL_BUILDS}\` legacy \`edge-YYYYMMDD-run\` builds"
+              echo "- Last \`${KEEP_CHANNEL_BUILDS}\` \`main-YYYYMMDD-run\` builds"
               echo "- Last \`${KEEP_CHANNEL_BUILDS}\` \`dev-YYYYMMDD-run\` builds"
             fi
             if [ "$KEEP_ARCH_TAGS" = 'true' ]; then

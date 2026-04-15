@@ -65,7 +65,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			tv: tvWithStatus
 		};
 	} catch (e) {
-		logger.error('Failed to fetch TV show', e, { tvShowId: id });
+		logger.error({ err: e, ...{ tvShowId: id } }, 'Failed to fetch TV show');
 		throw error(404, 'TV Show not found');
 	}
 };

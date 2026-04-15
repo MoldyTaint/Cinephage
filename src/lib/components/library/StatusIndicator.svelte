@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { CheckCircle, XCircle, Download, Clock } from 'lucide-svelte';
 
 	type Status = 'downloaded' | 'missing' | 'downloading' | 'queued';
@@ -16,25 +17,25 @@
 			icon: CheckCircle,
 			color: 'text-success',
 			bgColor: 'bg-success/10',
-			label: 'Downloaded'
+			label: m.common_downloaded()
 		},
 		missing: {
 			icon: XCircle,
 			color: 'text-error',
 			bgColor: 'bg-error/10',
-			label: 'Missing'
+			label: m.common_missing()
 		},
 		downloading: {
 			icon: Download,
 			color: 'text-warning',
 			bgColor: 'bg-warning/10',
-			label: 'Downloading'
+			label: m.status_downloading()
 		},
 		queued: {
 			icon: Clock,
 			color: 'text-info',
 			bgColor: 'bg-info/10',
-			label: 'Queued'
+			label: m.status_queued()
 		}
 	};
 

@@ -9,23 +9,24 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getStreamValidator, quickValidateStream } from '$lib/server/streaming/validation';
-import type { StreamSource } from '$lib/server/streaming/types';
+import {
+	getBaseUrlAsync,
+	getPlaybackSessionService,
+	getSessionProxyService
+} from '$lib/server/streaming';
 import { logger } from '$lib/logging';
 import { z } from 'zod';
-import { resolveAndValidateUrl } from '$lib/server/http/ssrf-protection';
 
-const streamLog = { logCategory: 'streams' as const };
+const streamLog = { logDomain: 'streams' as const };
 
 /**
  * Request schema for stream verification
  */
 const verifyRequestSchema = z.object({
-	url: z.string().url(),
-	referer: z.string().optional(),
-	quick: z.boolean().optional().default(false),
-	timeout: z.number().min(1000).max(30000).optional().default(10000),
-	validateSegments: z.boolean().optional().default(false)
+	tmdbId: z.number().int().positive(),
+	type: z.enum(['movie', 'tv']),
+	season: z.number().int().positive().optional(),
+	episode: z.number().int().positive().optional()
 });
 
 /**
@@ -39,7 +40,7 @@ export interface StreamVerifyResponse {
 		playable: boolean;
 		responseTime?: number;
 		error?: string;
-		variantCount?: number;
+		provider?: string;
 	};
 }
 
@@ -72,75 +73,90 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 
-		const { url, referer, quick, timeout, validateSegments } = parsed.data;
+		const startedAt = Date.now();
+		const { tmdbId, type, season, episode } = parsed.data;
+		const sessionResult = await getPlaybackSessionService().createOrReuseSession({
+			tmdbId,
+			type,
+			season,
+			episode,
+			forceRefresh: true
+		});
 
-		// SSRF protection: validate URL before making any requests
-		const safetyCheck = await resolveAndValidateUrl(url);
-		if (!safetyCheck.safe) {
-			logger.warn('Blocked unsafe verify URL', {
-				url,
-				reason: safetyCheck.reason,
-				...streamLog
-			});
+		if (!sessionResult.session) {
+			logger.warn(
+				{
+					tmdbId,
+					type,
+					season,
+					episode,
+					error: sessionResult.error || 'Playback session unavailable',
+					...streamLog
+				},
+				'Stream verification could not create a playback session'
+			);
 			return json(
-				{ success: false, error: 'URL not allowed', reason: safetyCheck.reason },
-				{ status: 403 }
+				{
+					success: false,
+					error: sessionResult.error || 'Playback session unavailable'
+				},
+				{ status: 503 }
 			);
 		}
 
-		logger.debug('Verifying stream URL', { url, quick, timeout, ...streamLog });
+		const baseUrl = await getBaseUrlAsync(request);
+		const proxyService = getSessionProxyService();
+		const launchResponse = await proxyService.renderLaunchResponse(
+			sessionResult.session,
+			baseUrl,
+			undefined,
+			request
+		);
 
-		// Quick validation just checks if URL is reachable
-		if (quick) {
-			const isValid = await quickValidateStream(url, referer, timeout);
-			return json({
-				success: true,
-				url,
-				validation: {
-					valid: isValid,
-					playable: isValid
-				}
-			});
-		}
-
-		// Full validation
-		const validator = getStreamValidator();
-		const source: StreamSource = {
-			url,
-			referer: referer ?? '',
-			quality: 'unknown',
-			title: 'Verification',
-			type: 'hls',
-			requiresSegmentProxy: false
-		};
-
-		const validation = await validator.validateStream(source, {
-			timeout,
-			validateSegments
-		});
+		const playable = launchResponse.ok;
+		const launchUrl =
+			type === 'movie'
+				? `${baseUrl}/api/streaming/session/movie/${tmdbId}/master.m3u8`
+				: `${baseUrl}/api/streaming/session/tv/${tmdbId}/${season}/${episode}/master.m3u8`;
 
 		const response: StreamVerifyResponse = {
 			success: true,
-			url,
+			url: launchUrl,
 			validation: {
-				valid: validation.valid,
-				playable: validation.playable,
-				responseTime: validation.responseTime,
-				error: validation.error,
-				variantCount: validation.variantCount
+				valid: playable,
+				playable,
+				responseTime: Date.now() - startedAt,
+				error: playable ? undefined : `HTTP ${launchResponse.status}`,
+				provider: sessionResult.session.provider
 			}
 		};
 
-		logger.debug('Stream verification complete', {
-			url,
-			valid: validation.valid,
-			playable: validation.playable,
-			...streamLog
-		});
+		logger.debug(
+			{
+				sessionToken: sessionResult.session.token,
+				tmdbId,
+				type,
+				season,
+				episode,
+				launchUrl,
+				responseTimeMs: Date.now() - startedAt,
+				valid: playable,
+				playable,
+				provider: sessionResult.session.provider,
+				...streamLog
+			},
+			'Stream verification completed'
+		);
 
 		return json(response);
 	} catch (error) {
-		logger.error('Stream verification failed', error, streamLog);
+		logger.error(
+			{
+				err: error,
+				...streamLog
+			},
+			'Stream verification failed'
+		);
 		return json(
 			{
 				success: false,

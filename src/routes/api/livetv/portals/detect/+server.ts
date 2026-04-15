@@ -36,7 +36,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 
-		logger.error('[API] Failed to detect portal type', { error: message });
+		logger.error({ error: message }, '[API] Failed to detect portal type');
 
 		return json(
 			{

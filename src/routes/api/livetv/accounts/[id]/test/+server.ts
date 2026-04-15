@@ -8,6 +8,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getLiveTvAccountManager } from '$lib/server/livetv/LiveTvAccountManager';
 import { logger } from '$lib/logging';
+import { toFriendlyLiveTvTestError } from '$lib/livetv/errorMessages';
 
 /**
  * Test an existing Live TV account by ID
@@ -28,9 +29,16 @@ export const POST: RequestHandler = async ({ params }) => {
 			);
 		}
 
+		const responseResult = result.success
+			? result
+			: {
+					...result,
+					error: toFriendlyLiveTvTestError(result.error)
+				};
+
 		return json({
 			success: true,
-			result
+			result: responseResult
 		});
 	} catch (error) {
 		logger.error(
@@ -41,7 +49,9 @@ export const POST: RequestHandler = async ({ params }) => {
 		return json(
 			{
 				success: false,
-				error: error instanceof Error ? error.message : 'Failed to test account'
+				error: toFriendlyLiveTvTestError(
+					error instanceof Error ? error.message : 'Failed to test account'
+				)
 			},
 			{ status: 500 }
 		);
