@@ -74,15 +74,15 @@
 		"@rollup/rollup-linux-x64-gnu": "^4.60.0"
 	},
 	"dependencies": {
-		"@better-auth/api-key": "^1.5.6",
+		"@better-auth/api-key": "^1.6.3",
 		"adm-zip": "^0.5.16",
 		"better-sqlite3": "^12.9.0",
-		"camoufox-js": "^0.9.3",
+		"camoufox-js": "^0.10.0",
 		"cheerio": "^1.2.0",
 		"chokidar": "^5.0.0",
 		"crypto-js": "^4.2.0",
 		"dotenv": "^17.4.2",
-		"fast-xml-parser": "^5.5.12",
+		"fast-xml-parser": "^5.6.0",
 		"fflate": "^0.8.2",
 		"guessit-js": "^3.8.1",
 		"iconv-lite": "^0.7.2",
