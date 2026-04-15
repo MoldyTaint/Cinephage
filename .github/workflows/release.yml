@@ -49,7 +49,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: read
     outputs:
       version: ${{ steps.resolve-version.outputs.version }}
       is_prerelease: ${{ steps.release-mode.outputs.is_prerelease }}
@@ -265,7 +264,7 @@ jobs:
         id: auto-detect-source
         if: github.event.inputs.source_tag == ''
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
@@ -294,24 +293,14 @@ jobs:
 
           echo "Auto-detecting latest ${CHANNEL} CI candidate..."
 
-          RESPONSE=$(curl -sf \
-            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/user/packages/container/${IMAGE_NAME_LC}/versions?per_page=100")
-
-          if [ -z "$RESPONSE" ] || echo "$RESPONSE" | jq -e '.message' >/dev/null 2>&1; then
-            echo "❌ Failed to query GHCR for package versions"
-            echo "$RESPONSE" | jq -r '.message // "Unknown error"'
-            exit 1
-          fi
-
-          LATEST_TAG=$(echo "$RESPONSE" | jq -r '
-            [.[] | {tags: .metadata.container.tags, created: .created_at}]
-            | sort_by(.created) | reverse
-            | .[]
-            | .tags[]
-            | select(test("^'"$CHANNEL"'-[0-9]{8}-[0-9]+$"))
-          ' | head -n1)
+          LATEST_TAG=$(gh api --paginate "user/packages/container/${IMAGE_NAME_LC}/versions" \
+            --jq '
+              [.[] | {tags: .metadata.container.tags, created: .created_at}]
+              | sort_by(.created) | reverse
+              | .[]
+              | .tags[]
+              | select(test("^'"$CHANNEL"'-[0-9]{8}-[0-9]+$"))
+            ' | head -n1)
 
           if [ -z "$LATEST_TAG" ]; then
             echo "❌ No CI candidate tags found for channel: ${CHANNEL}"
