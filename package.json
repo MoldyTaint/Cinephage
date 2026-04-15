@@ -76,9 +76,9 @@
 		"@rollup/rollup-linux-x64-gnu": "^4.60.0"
 	},
 	"dependencies": {
-		"@better-auth/api-key": "^1.5.6",
+		"@better-auth/api-key": "^1.6.3",
 		"adm-zip": "^0.5.16",
-		"camoufox-js": "^0.9.3",
+		"camoufox-js": "^0.10.0",
 		"cheerio": "^1.2.0",
 		"chokidar": "^5.0.0",
 		"crypto-js": "^4.2.0",
