@@ -112,26 +112,20 @@
 			<!-- Type filter -->
 			<div class="join">
 				<button
-					class="btn join-item btn-sm {data.filters.type === 'all'
-						? 'btn-primary'
-						: 'btn-ghost'}"
+					class="btn join-item btn-sm {data.filters.type === 'all' ? 'btn-primary' : 'btn-ghost'}"
 					onclick={() => updateUrlParam('type', 'all')}
 				>
 					All
 				</button>
 				<button
-					class="btn join-item btn-sm {data.filters.type === 'movie'
-						? 'btn-primary'
-						: 'btn-ghost'}"
+					class="btn join-item btn-sm {data.filters.type === 'movie' ? 'btn-primary' : 'btn-ghost'}"
 					onclick={() => updateUrlParam('type', 'movie')}
 				>
 					<Film class="h-3.5 w-3.5" />
 					Movies
 				</button>
 				<button
-					class="btn join-item btn-sm {data.filters.type === 'tv'
-						? 'btn-primary'
-						: 'btn-ghost'}"
+					class="btn join-item btn-sm {data.filters.type === 'tv' ? 'btn-primary' : 'btn-ghost'}"
 					onclick={() => updateUrlParam('type', 'tv')}
 				>
 					<Tv class="h-3.5 w-3.5" />
@@ -197,7 +191,7 @@
 
 			{#if (data.libraries?.length ?? 0) > 1}
 				<select
-					class="select-bordered select select-sm w-auto"
+					class="select-bordered select w-auto select-sm"
 					value={data.filters.library}
 					onchange={(e) => updateUrlParam('library', (e.target as HTMLSelectElement).value)}
 				>
@@ -216,7 +210,7 @@
 				<SlidersHorizontal class="h-4 w-4" />
 				Quality &amp; Technical
 				{#if qualityActiveCount > 0}
-					<span class="badge badge-primary badge-xs">{qualityActiveCount}</span>
+					<span class="badge badge-xs badge-primary">{qualityActiveCount}</span>
 				{/if}
 				<ChevronDown
 					class="h-3.5 w-3.5 transition-transform {qualityExpanded ? 'rotate-180' : ''}"
@@ -228,10 +222,9 @@
 		{#if qualityExpanded}
 			<div class="flex flex-wrap items-center gap-2 rounded-lg bg-base-200/50 p-2">
 				<select
-					class="select-bordered select select-sm w-auto"
+					class="select-bordered select w-auto select-sm"
 					value={data.filters.classification}
-					onchange={(e) =>
-						updateUrlParam('classification', (e.target as HTMLSelectElement).value)}
+					onchange={(e) => updateUrlParam('classification', (e.target as HTMLSelectElement).value)}
 				>
 					<option value="all">All Classes</option>
 					<option value="standard">Standard</option>
@@ -240,10 +233,9 @@
 
 				{#if data.filterOptions.resolutions.length > 0}
 					<select
-						class="select-bordered select select-sm w-auto"
+						class="select-bordered select w-auto select-sm"
 						value={data.filters.resolution}
-						onchange={(e) =>
-							updateUrlParam('resolution', (e.target as HTMLSelectElement).value)}
+						onchange={(e) => updateUrlParam('resolution', (e.target as HTMLSelectElement).value)}
 					>
 						<option value="all">All Resolutions</option>
 						{#each data.filterOptions.resolutions as opt}
@@ -254,10 +246,9 @@
 
 				{#if data.filterOptions.videoCodecs.length > 0}
 					<select
-						class="select-bordered select select-sm w-auto"
+						class="select-bordered select w-auto select-sm"
 						value={data.filters.videoCodec}
-						onchange={(e) =>
-							updateUrlParam('videoCodec', (e.target as HTMLSelectElement).value)}
+						onchange={(e) => updateUrlParam('videoCodec', (e.target as HTMLSelectElement).value)}
 					>
 						<option value="all">All Codecs</option>
 						{#each data.filterOptions.videoCodecs as opt}
@@ -268,10 +259,9 @@
 
 				{#if data.filterOptions.hdrFormats.length > 0}
 					<select
-						class="select-bordered select select-sm w-auto"
+						class="select-bordered select w-auto select-sm"
 						value={data.filters.hdrFormat}
-						onchange={(e) =>
-							updateUrlParam('hdrFormat', (e.target as HTMLSelectElement).value)}
+						onchange={(e) => updateUrlParam('hdrFormat', (e.target as HTMLSelectElement).value)}
 					>
 						<option value="all">All HDR</option>
 						{#each data.filterOptions.hdrFormats as opt}
@@ -282,10 +272,9 @@
 
 				{#if data.filterOptions.audioCodecs.length > 0}
 					<select
-						class="select-bordered select select-sm w-auto"
+						class="select-bordered select w-auto select-sm"
 						value={data.filters.audioCodec}
-						onchange={(e) =>
-							updateUrlParam('audioCodec', (e.target as HTMLSelectElement).value)}
+						onchange={(e) => updateUrlParam('audioCodec', (e.target as HTMLSelectElement).value)}
 					>
 						<option value="all">All Audio</option>
 						{#each data.filterOptions.audioCodecs as opt}
@@ -296,10 +285,9 @@
 
 				{#if data.filterOptions.containers.length > 0}
 					<select
-						class="select-bordered select select-sm w-auto"
+						class="select-bordered select w-auto select-sm"
 						value={data.filters.container}
-						onchange={(e) =>
-							updateUrlParam('container', (e.target as HTMLSelectElement).value)}
+						onchange={(e) => updateUrlParam('container', (e.target as HTMLSelectElement).value)}
 					>
 						<option value="all">All Containers</option>
 						{#each data.filterOptions.containers as opt}
@@ -310,10 +298,9 @@
 
 				{#if (data.rootFolders?.length ?? 0) > 1}
 					<select
-						class="select-bordered select select-sm w-auto"
+						class="select-bordered select w-auto select-sm"
 						value={data.filters.rootFolder}
-						onchange={(e) =>
-							updateUrlParam('rootFolder', (e.target as HTMLSelectElement).value)}
+						onchange={(e) => updateUrlParam('rootFolder', (e.target as HTMLSelectElement).value)}
 					>
 						<option value="all">All Folders</option>
 						{#each data.rootFolders ?? [] as rf}

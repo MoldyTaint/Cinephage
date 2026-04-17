@@ -155,8 +155,8 @@ export const load: PageServerLoad = async ({ url, parent }) => {
 					tmdbId: mediaServerSyncedItems.tmdbId,
 					playCount: sql<number>`COALESCE(SUM(${mediaServerSyncedItems.playCount}), 0)`,
 					lastPlayedDate: sql<string | null>`MAX(${mediaServerSyncedItems.lastPlayedDate})`,
-				isPlayed: sql<number>`MAX(${mediaServerSyncedItems.isPlayed})`,
-				playedPercentage: sql<number | null>`MAX(${mediaServerSyncedItems.playedPercentage})`
+					isPlayed: sql<number>`MAX(${mediaServerSyncedItems.isPlayed})`,
+					playedPercentage: sql<number | null>`MAX(${mediaServerSyncedItems.playedPercentage})`
 				})
 				.from(mediaServerSyncedItems)
 				.where(sql`${mediaServerSyncedItems.tmdbId} IS NOT NULL`)

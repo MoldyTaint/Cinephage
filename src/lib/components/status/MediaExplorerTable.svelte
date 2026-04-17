@@ -210,16 +210,16 @@
 								{:else}
 									<HardDrive class="h-3.5 w-3.5 text-warning" />
 								{/if}
-							{#if item.playCount > 0}
-								<span class="badge badge-ghost badge-xs">
-									{#if item.isPlayed}
-										<Check class="h-2.5 w-2.5 text-success" />
-									{:else}
-										<Play class="h-2.5 w-2.5" />
-									{/if}
-									{item.playCount}
-								</span>
-							{/if}
+								{#if item.playCount > 0}
+									<span class="badge badge-ghost badge-xs">
+										{#if item.isPlayed}
+											<Check class="h-2.5 w-2.5 text-success" />
+										{:else}
+											<Play class="h-2.5 w-2.5" />
+										{/if}
+										{item.playCount}
+									</span>
+								{/if}
 							</div>
 
 							{#if progress !== null}
@@ -249,12 +249,9 @@
 							{#if item.playedPercentage !== null && item.playCount > 0}
 								<div class="mt-1.5">
 									<div class="flex items-center gap-1.5 text-xs text-base-content/60">
-										<div
-											class="h-1.5 w-full max-w-32 overflow-hidden rounded-full bg-base-300"
-										>
+										<div class="h-1.5 w-full max-w-32 overflow-hidden rounded-full bg-base-300">
 											<div
-												class="h-full transition-all duration-500 {item.playedPercentage >=
-												90
+												class="h-full transition-all duration-500 {item.playedPercentage >= 90
 													? 'bg-success'
 													: 'bg-primary'}"
 												style="width: {Math.min(100, Math.round(item.playedPercentage))}%"
@@ -460,12 +457,9 @@
 								</div>
 								{#if item.playedPercentage !== null && item.playCount > 0}
 									<div class="flex items-center gap-1.5">
-										<div
-											class="h-1.5 w-full max-w-16 overflow-hidden rounded-full bg-base-300"
-										>
+										<div class="h-1.5 w-full max-w-16 overflow-hidden rounded-full bg-base-300">
 											<div
-												class="h-full transition-all duration-500 {item.playedPercentage >=
-												90
+												class="h-full transition-all duration-500 {item.playedPercentage >= 90
 													? 'bg-success'
 													: 'bg-primary'}"
 												style="width: {Math.min(100, Math.round(item.playedPercentage))}%"
