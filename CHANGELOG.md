@@ -8,6 +8,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [0.2.0] - 2026-04-17
+
+### Added
+
+- Unified Status page combining storage health, disk usage, scan progress, and media server playback stats into a single dashboard at Settings > Status
+- MediaServerStatsSection component with total plays, unique items tracked, resolution/codec/HDR/audio/container breakdowns, top played items, and largest items tables
+- Media Explorer filter bar redesign with tiered layout - primary filter chips (Type, Status, Plays, Library) always visible, quality/technical filters (Resolution, Codec, HDR, Audio, Container, Class, Folder) collapsed behind expandable toggle with active-filter count badge
+- Playback column in Media Explorer showing isPlayed checkmark indicator, play count, watched percentage progress bar (synced from Jellyfin/Emby/Plex), and relative last-played date in both desktop table and mobile card views
+- Server sync status badges with per-server last sync indicators on the Status page
+
+### Changed
+
+- Codec, audio, and container format labels now display uppercase consistently across all stats breakdowns
+- HDR format labels now display uppercase in stats breakdowns
+
+### Removed
+
+- Separate Storage Maintenance and Media Server Stats pages in favor of unified Status page
+
+---
+
 ## [0.1.0] - 2026-04-15
 
 Initial public preview release.
