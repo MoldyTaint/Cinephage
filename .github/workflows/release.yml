@@ -119,12 +119,25 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install git-cliff
+        env:
+          CLIFF_VERSION: 2.8.0
+        run: |
+          curl -sSL "https://github.com/orhun/git-cliff/releases/download/v${CLIFF_VERSION}/git-cliff-${CLIFF_VERSION}-x86_64-unknown-linux-gnu.tar.gz" | \
+            tar -xz --strip-components=1 -C /usr/local/bin "git-cliff-${CLIFF_VERSION}/git-cliff"
+
+      - name: Generate changelog
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          git-cliff --tag "$TAG" -o CHANGELOG.md
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
         run: |
-          TAG="${GITHUB_REF#refs/tags/}"
           gh release create "$TAG" \
             --title "$TAG" \
-            --generate-notes \
+            --notes-file CHANGELOG.md \
             --verify-tag
