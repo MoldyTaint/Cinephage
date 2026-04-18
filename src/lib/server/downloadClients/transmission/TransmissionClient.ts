@@ -64,6 +64,24 @@ interface TransmissionTorrentAddResponse {
 type TransmissionTorrentStatus = DownloadInfo['status'];
 type TransmissionId = number | string;
 
+enum TransmissionRatioMode {
+	/* follow the global settings */
+	GLOBAL = 0,
+	/* override the global settings, seeding until a certain ratio */
+	SINGLE = 1,
+	/* override the global settings, seeding regardless of ratio */
+	UNLIMITED = 2
+}
+
+enum TransmissionIdleMode {
+	/* follow the global settings */
+	GLOBAL = 0,
+	/* override the global settings, seeding until a idle time */
+	SINGLE = 1,
+	/* override the global settings, seeding regardless of activity */
+	UNLIMITED = 2
+}
+
 const TORRENT_FIELDS = [
 	'id',
 	'name',
@@ -348,24 +366,6 @@ export class TransmissionClient implements IDownloadClient {
 			args.bandwidthPriority = 1;
 		}
 
-		if (typeof options.seedRatioLimit === 'number') {
-			if (options.seedRatioLimit < 0) {
-				args.seedRatioMode = 2;
-			} else {
-				args.seedRatioMode = 1;
-				args.seedRatioLimit = options.seedRatioLimit;
-			}
-		}
-
-		if (typeof options.seedTimeLimit === 'number') {
-			if (options.seedTimeLimit < 0) {
-				args.seedIdleMode = 2;
-			} else {
-				args.seedIdleMode = 1;
-				args.seedIdleLimit = Math.max(0, Math.round(options.seedTimeLimit));
-			}
-		}
-
 		if (selectedFileIndices.length > 0) {
 			args['files-wanted'] = selectedFileIndices;
 			const keepSet = new Set(selectedFileIndices);
@@ -395,7 +395,13 @@ export class TransmissionClient implements IDownloadClient {
 			throw new Error('Transmission did not return torrent add result');
 		}
 
-		return added.hashString || String(added.id);
+		const torrentId = added.hashString || String(added.id);
+		await this.setSeedingConfig(torrentId, {
+			ratioLimit: options.seedRatioLimit,
+			seedingTimeLimit: options.seedTimeLimit
+		});
+
+		return torrentId;
 	}
 
 	async getDownloads(category?: string): Promise<DownloadInfo[]> {
@@ -490,18 +496,18 @@ export class TransmissionClient implements IDownloadClient {
 
 		if (typeof config.ratioLimit === 'number') {
 			if (config.ratioLimit < 0) {
-				args.seedRatioMode = 2;
+				args.seedRatioMode = TransmissionRatioMode.UNLIMITED;
 			} else {
-				args.seedRatioMode = 1;
+				args.seedRatioMode = TransmissionRatioMode.SINGLE;
 				args.seedRatioLimit = config.ratioLimit;
 			}
 		}
 
 		if (typeof config.seedingTimeLimit === 'number') {
 			if (config.seedingTimeLimit < 0) {
-				args.seedIdleMode = 2;
+				args.seedIdleMode = TransmissionIdleMode.UNLIMITED;
 			} else {
-				args.seedIdleMode = 1;
+				args.seedIdleMode = TransmissionIdleMode.SINGLE;
 				args.seedIdleLimit = Math.max(0, Math.round(config.seedingTimeLimit));
 			}
 		}
