@@ -22,6 +22,8 @@ interface TransmissionSessionInfo {
 	version?: string;
 	'rpc-version'?: number;
 	'download-dir'?: string;
+	'idle-seeding-limit-enabled': boolean;
+	'idle-seeding-limit': number;
 }
 
 interface TransmissionTorrent {
@@ -30,6 +32,7 @@ interface TransmissionTorrent {
 	hashString: string;
 	percentDone: number;
 	status: number;
+	isFinished: boolean;
 	totalSize: number;
 	rateDownload: number;
 	rateUpload: number;
@@ -42,6 +45,7 @@ interface TransmissionTorrent {
 	uploadRatio?: number;
 	seedRatioLimit?: number;
 	seedIdleLimit?: number;
+	seedIdleMode?: TransmissionIdleMode;
 	error?: number;
 	errorString?: string;
 }
@@ -88,6 +92,7 @@ const TORRENT_FIELDS = [
 	'hashString',
 	'percentDone',
 	'status',
+	'isFinished',
 	'totalSize',
 	'rateDownload',
 	'rateUpload',
@@ -100,8 +105,17 @@ const TORRENT_FIELDS = [
 	'uploadRatio',
 	'seedRatioLimit',
 	'seedIdleLimit',
+	'seedIdleMode',
 	'error',
 	'errorString'
+];
+
+const SESSION_FIELDS = [
+	'version',
+	'rpc-version',
+	'download-dir',
+	'idle-seeding-limit-enabled',
+	'idle-seeding-limit'
 ];
 
 function mapTransmissionStatus(
@@ -146,8 +160,30 @@ export class TransmissionClient implements IDownloadClient {
 	private config: DownloadClientConfig;
 	private sessionId: string | null = null;
 
+	// Cache for session info (refresh every 5 minutes)
+	private sessionInfoCache: { prefs: TransmissionSessionInfo; expiry: number } | null = null;
+	private readonly SESSION_INFO_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 	constructor(config: DownloadClientConfig) {
 		this.config = config;
+	}
+
+	/**
+	 * Get session info with caching
+	 */
+	private async getSessionInfo(forceUpdate: boolean = false): Promise<TransmissionSessionInfo> {
+		if (!forceUpdate && this.sessionInfoCache && Date.now() < this.sessionInfoCache.expiry) {
+			return this.sessionInfoCache.prefs;
+		}
+
+		const prefs = await this.rpcRequest<TransmissionSessionInfo>('session-get', {
+			fields: SESSION_FIELDS
+		});
+		this.sessionInfoCache = {
+			prefs,
+			expiry: Date.now() + this.SESSION_INFO_CACHE_TTL
+		};
+		return prefs;
 	}
 
 	private get rpcUrl(): string {
@@ -193,7 +229,10 @@ export class TransmissionClient implements IDownloadClient {
 		return `${normalized}/${name}`;
 	}
 
-	private mapTorrent(torrent: TransmissionTorrent): DownloadInfo {
+	private mapTorrent(
+		torrent: TransmissionTorrent,
+		sessionInfo: TransmissionSessionInfo
+	): DownloadInfo {
 		const progress = normalizeProgress(torrent.percentDone);
 		const status = mapTransmissionStatus(torrent.status, progress, torrent.error);
 		const category = torrent.labels?.[0];
@@ -223,9 +262,51 @@ export class TransmissionClient implements IDownloadClient {
 			ratioLimit: torrent.seedRatioLimit,
 			seedingTimeLimit: torrent.seedIdleLimit,
 			canMoveFiles: status !== 'downloading' && status !== 'seeding' && status !== 'queued',
-			canBeRemoved: status !== 'downloading',
+			canBeRemoved: this.hasReachedSeedLimit(torrent, status, sessionInfo),
 			errorMessage
 		};
+	}
+
+	private hasReachedSeedLimit(
+		torrent: TransmissionTorrent,
+		status:
+			| 'downloading'
+			| 'stalled'
+			| 'seeding'
+			| 'paused'
+			| 'completed'
+			| 'postprocessing'
+			| 'error'
+			| 'queued',
+		sessionInfo: TransmissionSessionInfo
+	): boolean {
+		// isFinished is true if seeding ratio or seeding idle time is reached
+		if (torrent.isFinished) {
+			return true;
+		}
+
+		// Transmission only supports **idle** seeding time, so we abuse that as a simple seed limit time,
+		if (
+			torrent.seedIdleMode !== TransmissionIdleMode.UNLIMITED &&
+			(status === 'completed' || status === 'seeding') &&
+			torrent.seedIdleLimit !== undefined &&
+			torrent.secondsSeeding !== undefined
+		) {
+			let seedIdleLimit = torrent.seedIdleLimit; // seedIdleLimit is in minutes
+			if (torrent.seedIdleMode === TransmissionIdleMode.GLOBAL) {
+				if (!sessionInfo['idle-seeding-limit-enabled']) {
+					return false;
+				}
+
+				seedIdleLimit = sessionInfo['idle-seeding-limit'];
+			}
+
+			if (torrent.secondsSeeding >= seedIdleLimit * 60) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	private async rpcRequest<T>(method: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -291,7 +372,7 @@ export class TransmissionClient implements IDownloadClient {
 	async test(): Promise<ConnectionTestResult> {
 		try {
 			const [session, torrents] = await Promise.all([
-				this.rpcRequest<TransmissionSessionInfo>('session-get'),
+				this.getSessionInfo(true),
 				this.rpcRequest<{ torrents: Array<{ labels?: string[] }> }>('torrent-get', {
 					fields: ['labels'],
 					ids: 'recently-active'
@@ -405,11 +486,16 @@ export class TransmissionClient implements IDownloadClient {
 	}
 
 	async getDownloads(category?: string): Promise<DownloadInfo[]> {
-		const response = await this.rpcRequest<TransmissionTorrentGetResponse>('torrent-get', {
-			fields: TORRENT_FIELDS
-		});
+		const [response, sessionInfo] = await Promise.all([
+			this.rpcRequest<TransmissionTorrentGetResponse>('torrent-get', {
+				fields: TORRENT_FIELDS
+			}),
+			this.getSessionInfo()
+		]);
 
-		let downloads = (response.torrents || []).map((torrent) => this.mapTorrent(torrent));
+		let downloads = (response.torrents || []).map((torrent) =>
+			this.mapTorrent(torrent, sessionInfo)
+		);
 		if (category?.trim()) {
 			const needle = category.trim().toLowerCase();
 			downloads = downloads.filter((download) => download.category?.toLowerCase() === needle);
@@ -419,13 +505,16 @@ export class TransmissionClient implements IDownloadClient {
 	}
 
 	async getDownload(id: string): Promise<DownloadInfo | null> {
-		const response = await this.rpcRequest<TransmissionTorrentGetResponse>('torrent-get', {
-			fields: TORRENT_FIELDS,
-			ids: [this.toTransmissionId(id)]
-		});
+		const [response, sessionInfo] = await Promise.all([
+			this.rpcRequest<TransmissionTorrentGetResponse>('torrent-get', {
+				fields: TORRENT_FIELDS,
+				ids: [this.toTransmissionId(id)]
+			}),
+			this.getSessionInfo()
+		]);
 
 		const torrent = response.torrents?.[0];
-		return torrent ? this.mapTorrent(torrent) : null;
+		return torrent ? this.mapTorrent(torrent, sessionInfo) : null;
 	}
 
 	async removeDownload(id: string, deleteFiles: boolean = false): Promise<void> {
