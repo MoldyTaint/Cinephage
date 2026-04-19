@@ -1,0 +1,118 @@
+---
+id: milkie
+name: milkie.cc
+description: 'milkie is a HUNGARIAN Private Scene Torrent Tracker for MOVIES / TV / GENERAL run by the nCore team.'
+type: private
+language: hu-HU
+encoding: UTF-8
+protocol: torrent
+links:
+  - https://milkie.cc/
+
+settings:
+  - name: apikey
+    type: password
+    label: API Key
+    required: true
+  - name: info_apikey
+    type: info
+    label: 'Getting an API Key'
+    default: 'You can get an API Key from your <a href="https://milkie.cc/settings/security" target="_blank">security settings</a>'
+
+caps:
+  categories:
+    '1': Movies
+    '2': TV
+
+  categorymappings:
+    - { id: 1, cat: Movies, desc: 'Movies' }
+    - { id: 2, cat: TV, desc: 'TV shows' }
+    - { id: 3, cat: Audio, desc: 'Music' }
+    - { id: 4, cat: Games, desc: 'Games' }
+    - { id: 5, cat: Books, desc: 'Ebooks' }
+    - { id: 6, cat: Apps, desc: 'Apps' }
+
+  modes:
+    search: [q]
+    tv-search: [q]
+    movie-search: [q]
+    music-search: [q]
+    book-search: [q]
+
+  allowrawsearch: true
+
+  searchFormats:
+    episode:
+      - standard
+    movie:
+      - yearOnly
+
+search:
+  path: /api/v1/torrents
+  method: get
+  headers:
+    x-milkie-auth:
+      - '{{ .Config.apikey }}'
+  inputs:
+    query: '{{ .Keywords }}'
+    pi: '0' # Page index
+    ps: '100' # Page size
+    'categories[]': '{{ join .Categories "," }}'
+
+  response:
+    type: json
+
+  rows:
+    selector: torrents
+    count:
+      selector: hits
+
+  fields:
+    guid:
+      selector: id
+    title:
+      selector: releaseName
+    category:
+      selector: category
+    download:
+      selector: id
+      filters:
+        - name: prepend
+          args: 'api/v1/torrents/'
+        - name: append
+          args: '/torrent?key={{ .Config.apikey }}'
+    details:
+      selector: id
+      filters:
+        - name: prepend
+          args: 'browse/'
+    publishDate:
+      selector: createdAt
+      filters:
+        - name: dateparse
+          args: '2006-01-02T15:04:05.000000Z'
+    size:
+      selector: size
+    grabs:
+      selector: downloaded
+    seeders:
+      selector: seeders
+    partialSeeders:
+      selector: partialSeeders
+    leechers:
+      selector: leechers
+    verified:
+      selector: verified
+    groupId:
+      selector: groupId
+    comments:
+      selector: comments
+    imdbid:
+      selector: externals.imdb
+      optional: true
+    tmdbid:
+      selector: externals.tmdb
+      optional: true
+    tvmaze:
+      selector: externals.tvmaze
+      optional: true
