@@ -1,6 +1,6 @@
 # Release Pipeline
 #
-# Triggered by pushing a semver tag (v1.0.0, v0.2.0, etc.)
+# Triggered by pushing a semver tag (v1.0.0, v0.2.0, etc.) using PATCH range 0-9.
 #  1. CI gates — lint, typecheck, test, build (parallel)
 #  2. Docker images — multi-arch build via reusable docker-build workflow
 #  3. GitHub Release — auto-generated release notes
@@ -13,8 +13,8 @@ name: Release
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
-      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+      - 'v[0-9]+.[0-9]+.[0-9]'
+      - 'v[0-9]+.[0-9]+.[0-9]-*'
 
 concurrency:
   group: release-${{ github.ref }}
@@ -130,7 +130,7 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          git-cliff --tag "$TAG" -o CHANGELOG.md
+          git-cliff --tag "$TAG" --latest -o CHANGELOG.md
 
       - name: Create GitHub Release
         env:

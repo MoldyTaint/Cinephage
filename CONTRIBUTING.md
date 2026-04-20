@@ -8,9 +8,9 @@ Want to contribute? Here's how to get set up.
 
 - Node.js 20 or higher
 - npm 10 or higher
-- Optional: A running download client for integration testing (qBittorrent, Transmission, etc.)
+- A running instance of qBittorrent (for download client testing)
 
-### Getting Started (Bare Metal)
+### Getting Started
 
 1. Clone the repository:
 
@@ -35,36 +35,6 @@ Want to contribute? Here's how to get set up.
    ```bash
    npm run dev
    ```
-
-### Getting Started (Devcontainer)
-
-1. Open the repository in VS Code and choose **Reopen in Container**.
-2. The container will copy `.env.example` to `.env` (if missing), generate a `BETTER_AUTH_SECRET`, and install dependencies.
-3. Start the app from the container shell:
-   ```bash
-   npm run dev:host
-   ```
-
-Notes:
-
-- The devcontainer uses `node:24-trixie-slim` to stay aligned with the project runtime baseline.
-- Optional sidecars are available and not started by default:
-  - `download-client` profile: Transmission + qBittorrent
-  - `usenet-client` profile: SABnzbd
-
-Start optional sidecars from host:
-
-```bash
-cd .devcontainer
-docker compose --profile download-client up -d transmission qbittorrent
-docker compose --profile usenet-client up -d sabnzbd
-```
-
-Default sidecar ports:
-
-- Transmission Web UI: `9091`
-- qBittorrent Web UI: `8081`
-- SABnzbd Web UI: `8080`
 
 ## Development Workflow
 
@@ -122,6 +92,45 @@ We follow conventional commit messages:
 - `chore:` Build process or auxiliary tool changes
 
 Example: `feat: add subtitle auto-download scheduler`
+
+## Release Tagging
+
+Release tags must follow `vMAJOR.MINOR.PATCH` with a constrained patch cycle:
+
+- `0.1.0` -> `0.1.1` -> ... -> `0.1.9` -> `0.2.0`
+
+Use this flow when preparing a release:
+
+1. Compute next version:
+
+   ```bash
+   npm run version:next
+   ```
+
+2. Bump `package.json` version using the same cycle:
+
+   ```bash
+   npm run version:bump-cycle
+   ```
+
+3. Commit the version bump:
+
+   ```bash
+   git add package.json package-lock.json
+   git commit -m "chore: bump version to <MAJOR.MINOR.PATCH>"
+   ```
+
+4. Create and push the release tag:
+
+   ```bash
+   git tag v<MAJOR.MINOR.PATCH>
+   git push origin main --tags
+   ```
+
+Notes:
+
+- GitHub release notes are generated from commits since the previous tag.
+- Changelog lines include commit author attribution.
 
 ## Detailed Documentation
 

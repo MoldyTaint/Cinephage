@@ -6,7 +6,6 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
-		"dev:host": "vite dev --host",
 		"build": "NODE_OPTIONS=--max-old-space-size=8192 VITE_SSR_BUILD=1 vite build",
 		"start": "node server.js",
 		"preview": "vite preview",
@@ -21,6 +20,8 @@
 		"test:coverage": "vitest run --coverage",
 		"test:live": "LIVE_TESTS=true vitest run src/lib/server/subtitles/providers.live.test.ts",
 		"deps:audit": "npx --yes knip --dependencies --include dependencies,devDependencies --no-progress --reporter compact",
+		"version:next": "node scripts/next-version.js",
+		"version:bump-cycle": "node scripts/next-version.js --write",
 		"migrate:remove-enabled": "tsx scripts/remove-monitoring-enabled.ts",
 		"auth:reset-admin-password": "node scripts/reset-admin-password.js",
 		"fix:tv-subtitles": "node scripts/fix-tv-subtitle-paths.js",
