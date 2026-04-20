@@ -50,7 +50,7 @@
 		"@vitest/coverage-v8": "^4.1.4",
 		"daisyui": "^5.5.19",
 		"drizzle-orm": "^0.45.2",
-		"eslint": "^10.1.0",
+		"eslint": "^10.2.1",
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-plugin-svelte": "^3.17.0",
 		"globals": "^17.5.0",
@@ -73,19 +73,19 @@
 		"undici": "^7.25.0"
 	},
 	"optionalDependencies": {
-		"@rollup/rollup-linux-arm64-gnu": "^4.60.0",
-		"@rollup/rollup-linux-x64-gnu": "^4.60.0"
+		"@rollup/rollup-linux-arm64-gnu": "^4.60.2",
+		"@rollup/rollup-linux-x64-gnu": "^4.60.2"
 	},
 	"dependencies": {
-		"@better-auth/api-key": "^1.6.3",
+		"@better-auth/api-key": "^1.6.5",
 		"adm-zip": "^0.5.16",
 		"better-sqlite3": "^12.9.0",
-		"camoufox-js": "^0.10.0",
+		"camoufox-js": "^0.10.2",
 		"cheerio": "^1.2.0",
 		"chokidar": "^5.0.0",
 		"crypto-js": "^4.2.0",
 		"dotenv": "^17.4.2",
-		"fast-xml-parser": "^5.6.0",
+		"fast-xml-parser": "^5.7.1",
 		"fflate": "^0.8.2",
 		"guessit-js": "^3.8.1",
 		"iconv-lite": "^0.7.2",
