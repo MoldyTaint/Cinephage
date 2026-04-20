@@ -8,9 +8,9 @@ Want to contribute? Here's how to get set up.
 
 - Node.js 20 or higher
 - npm 10 or higher
-- A running instance of qBittorrent (for download client testing)
+- Optional: A running download client for integration testing (qBittorrent, Transmission, etc.)
 
-### Getting Started
+### Getting Started (Bare Metal)
 
 1. Clone the repository:
 
@@ -35,6 +35,37 @@ Want to contribute? Here's how to get set up.
    ```bash
    npm run dev
    ```
+
+### Getting Started (Devcontainer)
+
+1. a) VS Code: Open the repository in VS Code and choose **Reopen in Container**.  
+   b) IntelliJ IDEA: See the [official documentation](https://www.jetbrains.com/help/idea/dev-containers-starting-page.html) on how to use devcontainers.
+2. The container will copy `.env.example` to `.env` (if missing), generate a `BETTER_AUTH_SECRET`, and install dependencies.
+3. Start the app from the container shell:
+   ```bash
+   npm run dev:host
+   ```
+
+Notes:
+
+- The devcontainer uses `node:24-trixie-slim` to stay aligned with the project runtime baseline.
+- Optional sidecars are available and not started by default:
+  - `download-client` profile: Transmission + qBittorrent
+  - `usenet-client` profile: SABnzbd
+
+Start optional sidecars from host:
+
+```bash
+cd .devcontainer
+docker compose --profile download-client up -d transmission qbittorrent
+docker compose --profile usenet-client up -d sabnzbd
+```
+
+Default sidecar ports:
+
+- Transmission Web UI: `9091`
+- qBittorrent Web UI: `8081`
+- SABnzbd Web UI: `8080`
 
 ## Development Workflow
 
