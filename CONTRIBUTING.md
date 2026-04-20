@@ -48,6 +48,9 @@ Want to contribute? Here's how to get set up.
 
 Notes:
 
+- The devcontainer maps the internal container user's ID to the host user's ID, and also populates the `.devcontainer/.env`
+  file with the host user's UID and GID. Running the optional sidecars will use these ids, and can be changed freely
+  inside this environment file.
 - The devcontainer uses `node:24-trixie-slim` to stay aligned with the project runtime baseline.
 - Optional sidecars are available and not started by default:
   - `download-client` profile: Transmission + qBittorrent
