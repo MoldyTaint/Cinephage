@@ -9,7 +9,18 @@ jobs:
     name: Announce Release
     runs-on: ubuntu-latest
     steps:
+      - name: Skip dev prereleases
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          if echo "$TAG" | grep -qE '\-dev\.[0-9]+$'; then
+            echo "Skipping dev prerelease announcement"
+            exit 0
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+        id: filter
+
       - name: Post to Discord
+        if: steps.filter.outputs.tag != ''
         uses: SethCohen/github-releases-to-discord@v1.19.0
         with:
           webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
