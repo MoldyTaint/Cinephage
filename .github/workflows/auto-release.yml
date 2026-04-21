@@ -312,6 +312,10 @@ jobs:
           fetch-depth: 0
           ref: ${{ needs.bump-version.outputs.tag }}
 
+      - name: Generate release notes
+        run: |
+          git-cliff --tag "${{ needs.bump-version.outputs.tag }}" --latest -o RELEASE_NOTES.md
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -319,5 +323,5 @@ jobs:
         run: |
           gh release create "$TAG" \
             --title "$TAG" \
-            --notes-file CHANGELOG.md \
+            --notes-file RELEASE_NOTES.md \
             --verify-tag
