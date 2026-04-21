@@ -1,4 +1,4 @@
-## 0.3.0 (2026-04-21)
+## 0.4.0 (2026-04-21)
 
 ### Features
 
@@ -7,6 +7,7 @@
 - Support custom process IDs for sidecars ([1b0abf4](https://github.com/MoldyTaint/Cinephage/commit/1b0abf453ed031caf9c6b9fa85f39c1f231df77b)) — by Tamás Nagy (T-bond)
 - Add auto-release workflow ([d0d0a86](https://github.com/MoldyTaint/Cinephage/commit/d0d0a86e7973107a340ac0e7a042ccb97191708e)) — by MoldyTaint
 - Merge release pipeline into auto-release workflow ([eb2bba8](https://github.com/MoldyTaint/Cinephage/commit/eb2bba8bbe9dcf59011d6f7aa376e65d3223b5e3)) — by MoldyTaint
+- Add Discord announcement to auto-release workflow ([2fc3d54](https://github.com/MoldyTaint/Cinephage/commit/2fc3d545900a30fae344f383048542b119cf9274)) — by MoldyTaint
 
 ### Bug Fixes
 
@@ -18,6 +19,9 @@
 - Add bump-version to job dependencies for output access ([9ec3e40](https://github.com/MoldyTaint/Cinephage/commit/9ec3e40f4447e2bf2f4f86e1d5a9884ce7603010)) — by MoldyTaint
 - Use latest-only release notes to avoid body too long error ([6ada5cc](https://github.com/MoldyTaint/Cinephage/commit/6ada5cceffe564d4ea654a61edeac48d265fd18a)) — by MoldyTaint
 - Generate and upload release notes artifact from bump-version job ([aef948d](https://github.com/MoldyTaint/Cinephage/commit/aef948d4234be18f9f5eda26a3368465953df9ea)) — by MoldyTaint
+- Skip ci/docs/test/style scoped commits from release triggers ([d3a35c0](https://github.com/MoldyTaint/Cinephage/commit/d3a35c07b088bbae462ad0156ed33f8b1ede5387)) — by MoldyTaint
+- Resolve release workflow issues and backfill changelog ([3162f5e](https://github.com/MoldyTaint/Cinephage/commit/3162f5e437e862f9afbea7abba733e1f512798a8)) — by MoldyTaint
+- Fix commit detection in auto-release workflow ([1862b8c](https://github.com/MoldyTaint/Cinephage/commit/1862b8cc243b6d5c88ee291a61bc96087116c5cf)) — by MoldyTaint
 
 ### Refactoring
 
