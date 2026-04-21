@@ -189,6 +189,10 @@ jobs:
       - name: Format CHANGELOG
         run: npx prettier --write CHANGELOG.md
 
+      - name: Generate release notes
+        run: |
+          git-cliff --tag "v${{ steps.version.outputs.next }}" --latest -o RELEASE_NOTES.md
+
       - name: Commit version bump and changelog
         run: |
           git add package.json package-lock.json CHANGELOG.md
@@ -202,6 +206,13 @@ jobs:
           # Push only the tag, not the branch (branch may be protected)
           git push origin "$TAG"
           echo "Created and pushed tag: ${TAG}"
+
+      - name: Upload release notes artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: RELEASE_NOTES.md
+          retention-days: 1
 
   lint:
     name: Lint
@@ -312,9 +323,10 @@ jobs:
           fetch-depth: 0
           ref: ${{ needs.bump-version.outputs.tag }}
 
-      - name: Generate release notes
-        run: |
-          git-cliff --tag "${{ needs.bump-version.outputs.tag }}" --latest -o RELEASE_NOTES.md
+      - name: Download release notes
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
 
       - name: Create GitHub Release
         env:
