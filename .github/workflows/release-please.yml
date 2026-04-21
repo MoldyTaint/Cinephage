@@ -1,0 +1,43 @@
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/release-please-action@a02a34c4d625f9be7cb89156071d8567266a2445 # v4
+        id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Checkout for post-release
+        if: steps.release.outputs.release_created
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Trigger Docker release
+        if: steps.release.outputs.release_created
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799c5c3 # v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'docker-build.yml',
+              ref: '${{ steps.release.outputs.tag_name }}',
+              inputs: {
+                release_tag: '${{ steps.release.outputs.tag_name }}',
+                checkout_ref: '${{ steps.release.outputs.tag_name }}'
+              }
+            });
