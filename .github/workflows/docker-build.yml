@@ -28,42 +28,8 @@ on:
   push:
     branches: [main, dev, experimental, 'experimental/**']
     tags: ['v*']
-    paths:
-      - '.github/workflows/docker-build.yml'
-      - 'Dockerfile'
-      - '.dockerignore'
-      - 'docker-entrypoint.sh'
-      - 'docker-script-runner.sh'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.npmrc'
-      - 'server.js'
-      - 'svelte.config.js'
-      - 'tsconfig.json'
-      - 'vite.config.ts'
-      - 'src/**'
-      - 'static/**'
-      - 'data/**'
-      - 'scripts/fix-tv-subtitle-paths.js'
   pull_request:
     branches: [main]
-    paths:
-      - '.github/workflows/docker-build.yml'
-      - 'Dockerfile'
-      - '.dockerignore'
-      - 'docker-entrypoint.sh'
-      - 'docker-script-runner.sh'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.npmrc'
-      - 'server.js'
-      - 'svelte.config.js'
-      - 'tsconfig.json'
-      - 'vite.config.ts'
-      - 'src/**'
-      - 'static/**'
-      - 'data/**'
-      - 'scripts/fix-tv-subtitle-paths.js'
   workflow_dispatch:
 
 env:
