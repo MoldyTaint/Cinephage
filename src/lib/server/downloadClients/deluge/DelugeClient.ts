@@ -48,6 +48,9 @@ interface DelugeTorrentInfo {
 	finished_time?: number;
 	seeding_time?: number;
 	ratio?: number;
+	stop_at_ratio?: boolean;
+	stop_ratio?: number;
+	remove_at_ratio?: boolean;
 	hash?: string;
 	error?: string;
 }
@@ -69,6 +72,9 @@ const DELUGE_FIELDS = [
 	'finished_time',
 	'seeding_time',
 	'ratio',
+	'stop_at_ratio',
+	'stop_ratio',
+	'remove_at_ratio',
 	'hash',
 	'error'
 ];
@@ -241,6 +247,15 @@ export class DelugeClient implements IDownloadClient {
 		}
 	}
 
+	private hasReachedSeedLimit(torrent: DelugeTorrentInfo): boolean {
+		return (
+			torrent.stop_at_ratio === true &&
+			typeof torrent.ratio === 'number' &&
+			typeof torrent.stop_ratio === 'number' &&
+			torrent.ratio >= torrent.stop_ratio
+		);
+	}
+
 	private mapTorrent(hash: string, torrent: DelugeTorrentInfo): DownloadInfo {
 		const progressPercent = toNumber(torrent.progress);
 		const progress = Math.max(0, Math.min(1, progressPercent / 100));
@@ -270,8 +285,10 @@ export class DelugeClient implements IDownloadClient {
 			addedOn: toDate(torrent.time_added),
 			completedOn: toDate(torrent.finished_time),
 			seedingTime: typeof torrent.seeding_time === 'number' ? torrent.seeding_time : undefined,
+			ratioLimit: torrent.stop_at_ratio ? torrent.stop_ratio : undefined,
 			canMoveFiles: status !== 'downloading' && status !== 'seeding' && status !== 'queued',
-			canBeRemoved: status !== 'downloading',
+			canBeRemoved:
+				status !== 'downloading' && (status !== 'seeding' || this.hasReachedSeedLimit(torrent)),
 			errorMessage: torrent.error || undefined
 		};
 	}
