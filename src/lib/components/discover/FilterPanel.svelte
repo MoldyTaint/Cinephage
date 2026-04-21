@@ -194,15 +194,6 @@
 					</button>
 				{/if}
 			</span>
-			{#if type === 'tv' && selectedCertification}
-				<p class="mb-2 text-xs text-warning">
-					{m.discover_certificationTvNote()}
-				</p>
-			{:else if type === 'tv'}
-				<p class="mb-2 text-xs text-base-content/50">
-					{m.discover_certificationTvNote()}
-				</p>
-			{/if}
 			<div class="flex flex-wrap gap-2">
 				{#each certifications as cert (cert.certification)}
 					<button
