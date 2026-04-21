@@ -39,6 +39,14 @@
 - Bump the minor-and-patch group with 6 updates ([dab5934](https://github.com/MoldyTaint/Cinephage/commit/dab5934a97e0b4134fdeaa26562eba9a237f42f2)) — by dependabot[bot]
 - Bump typescript from 5.9.3 to 6.0.3 ([a05396a](https://github.com/MoldyTaint/Cinephage/commit/a05396a683c70f3b581a565e9a96a02196c05140)) — by dependabot[bot]
 
+## [0.5.1](https://github.com/MoldyTaint/Cinephage/compare/v0.5.0...v0.5.1) (2026-04-21)
+
+
+### Styling
+
+* add CHANGELOG.md to .prettierignore and format ([df9eca6](https://github.com/MoldyTaint/Cinephage/commit/df9eca61b53fb9738536e9cc41b1f15c5a3a83cd))
+* format CHANGELOG.md with Prettier ([50e7311](https://github.com/MoldyTaint/Cinephage/commit/50e73115940786a9f8e57a7ac69b07831ce84f59))
+
 ## [0.5.0](https://github.com/MoldyTaint/Cinephage/compare/v0.4.0...v0.5.0) (2026-04-21)
 
 ### ⚠ BREAKING CHANGES
