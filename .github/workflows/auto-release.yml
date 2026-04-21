@@ -189,10 +189,6 @@ jobs:
       - name: Format CHANGELOG
         run: npx prettier --write CHANGELOG.md
 
-      - name: Generate release notes
-        run: |
-          git-cliff --tag "v${{ steps.version.outputs.next }}" --latest -o RELEASE_NOTES.md
-
       - name: Commit version bump and changelog
         run: |
           git add package.json package-lock.json CHANGELOG.md
@@ -203,9 +199,17 @@ jobs:
         run: |
           TAG="v${{ steps.version.outputs.next }}"
           git tag "$TAG"
-          # Push only the tag, not the branch (branch may be protected)
+          # Push tag first (always works)
           git push origin "$TAG"
+          # Try to push the release commit to main as well
+          # If this fails (e.g. branch protection), the tag still exists
+          git push origin HEAD:main || echo "Branch push failed (possibly protected), tag is still released"
           echo "Created and pushed tag: ${TAG}"
+
+      - name: Generate release notes
+        run: |
+          # Generate notes AFTER tag exists so --latest picks up the correct version
+          git-cliff --tag "v${{ steps.version.outputs.next }}" --latest -o RELEASE_NOTES.md
 
       - name: Upload release notes artifact
         uses: actions/upload-artifact@v4
