@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   dev-release:
@@ -106,3 +107,18 @@ jobs:
             --title "$TAG (dev prerelease)" \
             --notes-file RELEASE_NOTES.md \
             --prerelease
+
+      - name: Trigger Docker build
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'docker-build.yml',
+              ref: '${{ steps.version.outputs.tag }}',
+              inputs: {
+                release_tag: '${{ steps.version.outputs.tag }}',
+                checkout_ref: '${{ steps.version.outputs.tag }}'
+              }
+            });
