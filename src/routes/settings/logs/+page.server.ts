@@ -17,10 +17,14 @@ export const load = async ({ locals }: RequestEvent) => {
 		throw error(403, 'Forbidden');
 	}
 
+	const oneDayAgo = new Date();
+	oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+
 	const initialHistory = await logHistoryService.search({
 		page: 1,
 		pageSize: 100,
-		levels: ['debug', 'info', 'warn', 'error']
+		levels: ['debug', 'info', 'warn', 'error'],
+		from: oneDayAgo.toISOString()
 	});
 
 	return {

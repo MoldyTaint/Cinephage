@@ -116,7 +116,7 @@ async function readLinesReverse(filePath: string, visitor: ReverseLineVisitor): 
 
 	try {
 		const { size } = await handle.stat();
-		const chunkSize = 64 * 1024;
+		const chunkSize = 1024 * 1024;
 		let position = size;
 		let remainder = '';
 
@@ -367,7 +367,8 @@ class LogHistoryService {
 		const offset = (page - 1) * pageSize;
 		const result = await getMatchingEntryPage(query, {
 			offset,
-			limit: pageSize
+			limit: pageSize,
+			stopWhenLimitReached: offset === 0
 		});
 
 		return {
