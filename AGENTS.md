@@ -41,18 +41,19 @@ npx vitest run -t "test name pattern"
 npx vitest run src/lib/server/monitoring
 ```
 
-**CI Pipeline Order:** The CI runs `lint` → `build` → `check` → `test:coverage` → `build` (in parallel jobs). Note that `npm run check` requires generated Paraglide files, so in CI it runs `rm -rf src/lib/paraglide && npm run build` first.
+**CI Pipeline:** Four parallel jobs — `lint`, `typecheck`, `test:coverage`, `build`. The `typecheck` job runs `rm -rf src/lib/paraglide && npm run build` first because `npm run check` requires generated Paraglide files.
 
 ## Code Style
 
 ### Formatting (Prettier)
 
-- **Tabs** for indentation (not spaces)
+Config lives in `.prettierrc`:
+- **Tabs** for indentation
 - **Single quotes** for strings
 - **No trailing commas**
 - **Print width**: 100 characters
-- Plugins: `prettier-plugin-svelte`, `prettier-plugin-tailwindcss`
-- Tailwind stylesheet: `src/routes/layout.css`
+- **Plugins**: `prettier-plugin-svelte`, `prettier-plugin-tailwindcss`
+- **Tailwind stylesheet**: `src/routes/layout.css`
 
 Run `npm run format` before committing.
 
@@ -403,7 +404,22 @@ Example: `feat: add subtitle auto-download scheduler`
 | `src/test/setup.ts` | Vitest setup (env mocking) |
 | `vite.config.ts` | Vite config with eager init plugin, coverage thresholds |
 | `svelte.config.js` | SvelteKit config with CSRF trusted origins |
+| `server.js` | Custom production entrypoint (wraps adapter-node, loads dotenv) |
 | `.env.example` | All environment variables documented |
+
+## Domain-Specific Guides
+
+Several subdirectories contain their own `AGENTS.md` with deeper architectural context:
+
+| Domain | Path |
+|--------|------|
+| Indexers | `src/lib/server/indexers/AGENTS.md` |
+| Live TV / IPTV | `src/lib/server/livetv/AGENTS.md` |
+| Monitoring / Specifications | `src/lib/server/monitoring/AGENTS.md` |
+| Streaming / Usenet | `src/lib/server/streaming/AGENTS.md` |
+| Subtitles | `src/lib/server/subtitles/AGENTS.md` |
+| Library | `src/lib/server/library/AGENTS.md` |
+| Download Clients | `src/lib/server/downloadClients/AGENTS.md` |
 
 ## Devcontainer
 

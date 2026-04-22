@@ -6,7 +6,8 @@
 
 <p align="center">
   <strong>Self-hosted media management. Everything in one app.</strong><br>
-  <em>The all-in-one platform that just happens to replace a bunch of tools</em>
+  <em>One app that actually replaces your entire media stack</em><br>
+  <sub>Node.js 22+ · Svelte 5 · SQLite · TypeScript</sub>
 </p>
 
 <p align="center">
@@ -31,12 +32,12 @@
 
 <table>
   <tr>
-    <td><img src="docs/images/Dashboard.png" alt="Dashboard" width="400" /></td>
-    <td><img src="docs/images/Discover.png" alt="Discover" width="400" /></td>
+    <td><img src="docs/images/Dashboard.png" alt="Dashboard showing active downloads and recent additions" width="400" /></td>
+    <td><img src="docs/images/Discover.png" alt="Content discovery with filtering and smart lists" width="400" /></td>
   </tr>
   <tr>
-    <td><img src="docs/images/LiveTV.png" alt="Live TV" width="400" /></td>
-    <td><img src="docs/images/SmartLists.png" alt="Smart Lists" width="400" /></td>
+    <td><img src="docs/images/LiveTV.png" alt="Live TV channel guide with EPG integration" width="400" /></td>
+    <td><img src="docs/images/SmartLists.png" alt="Smart list creation with auto-add rules" width="400" /></td>
   </tr>
 </table>
 
@@ -44,11 +45,11 @@
 
 ## What is Cinephage?
 
-Cinephage unifies your entire media workflow into a single, modern application. Instead of running multiple services that don't talk to each other, you get one cohesive platform that handles everything.
+Cinephage is a single app for your whole media setup. Instead of running multiple services that don't talk to each other, you get one tool that handles everything.
 
-**One database.** All your movies, TV shows, live TV channels, subtitles, and indexer configs live together. No sync issues, no data fragmentation.
+**One database.** All your movies, TV shows, live TV channels, subtitles, and indexer configs live together. No sync issues, everything stays together.
 
-**One interface.** Browse, search, monitor, and manage everything from a single, responsive UI built with Svelte 5.
+**One interface.** Browse, search, monitor, and manage everything from a single UI that works on desktop and mobile.
 
 **One configuration.** Set up your indexers, download clients, and preferences once. They work across movies, TV, and streaming.
 
@@ -73,31 +74,31 @@ The \*arr projects are fantastic at what they do. We just took a different path 
 
 ## Key Features
 
-### Stream Without Downloading
+### Stream without downloading
 
 Create `.strm` files that point to online sources and watch instantly. No disk space, no waiting for downloads, no seeding. Works with Jellyfin, Emby, Kodi, or any player that supports .strm files.
 
-### Built-in Cloudflare Bypass
+### Built-in Cloudflare bypass
 
 Camoufox integration handles Cloudflare challenges automatically. No separate FlareSolverr container to maintain, no configuration headaches. It just works.
 
-### Usenet Streaming
+### Usenet streaming
 
 Stream directly from NZBs without downloading the entire file first. Unique seekable stream implementation with adaptive prefetching and segment caching.
 
-### Live TV with Portal Discovery
+### Live TV with portal discovery
 
 Connect Stalker portals and automatically discover working MAC addresses. Full EPG support, channel management, and HLS streaming.
 
-### Smart Quality Scoring
+### Smart quality scoring
 
 50+ scoring factors including codec efficiency (x265/AV1), HDR formats, audio quality, and release group reputation. Custom format creation for personalized scoring rules.
 
-### Smart Lists
+### Smart lists
 
 Dynamic content discovery with auto-add to library. Import from IMDb, Trakt, TMDb lists, or create custom queries. "Automatically add all 2024 movies rated 7.5+" — fully automated.
 
-### Everything Else You'd Expect
+### Everything else you'd expect
 
 - File watching and auto-import
 - Multi-indexer search with deduplication
@@ -108,7 +109,15 @@ Dynamic content discovery with auto-add to library. Import from IMDb, Trakt, TMD
 
 ---
 
+## Requirements
+
+- **TMDB API Key** — Free at [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api)
+- **Download Client** (optional) — qBittorrent, SABnzbd, or NZBGet
+  - Or use streaming mode — no download client needed
+
 ## Quick Start
+
+Cinephage runs on port 3000 by default.
 
 ### Docker (Recommended)
 
@@ -117,7 +126,8 @@ Dynamic content discovery with auto-add to library. Import from IMDb, Trakt, TMD
 ```bash
 mkdir cinephage && cd cinephage
 curl -O https://raw.githubusercontent.com/MoldyTaint/Cinephage/main/docker-compose.yaml
-curl -o .env https://raw.githubusercontent.com/MoldyTaint/Cinephage/main/.env.example
+curl -O https://raw.githubusercontent.com/MoldyTaint/Cinephage/main/.env.example
+cp .env.example .env
 ```
 
 2. Edit `.env` — at minimum set `BETTER_AUTH_SECRET` (generate one with `openssl rand -base64 32`).
@@ -135,8 +145,6 @@ Open http://localhost:3000 and follow the setup wizard.
 **Image tags:** `latest` (stable) · `dev` (preview) · `vX.Y.Z` (pinned)
 
 > **Note:** Persistent data lives in `./config` (created automatically). Logs go to container stdout/stderr. Never mount `/app` — it contains application code.
->
-> **Upgrading from older versions?** See the [Migration Guide](docs/support/troubleshooting.md#migration-from-legacy-appdata-mounts) if you previously used `/app/data` mounts.
 
 If you later access Cinephage through a hostname or reverse proxy, update `BETTER_AUTH_URL` in `.env` to that public URL. You can also set the External URL in the UI under **Settings > System**.
 
@@ -199,22 +207,16 @@ sudo systemctl enable --now cinephage
 
 Adjust `User`, `WorkingDirectory`, and the node binary path to match your setup.
 
-### Requirements
-
-- **TMDB API Key** — Free at [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api)
-- **Download Client** (optional) — qBittorrent, SABnzbd, or NZBGet
-  - Or use streaming mode — no download client needed
-
 ### Configuration
 
 All environment variables are documented in [`.env.example`](.env.example). Key ones:
 
-| Variable             | Required    | Description                                   |
-| -------------------- | ----------- | --------------------------------------------- |
-| `BETTER_AUTH_SECRET` | Yes         | Session signing and API key encryption        |
-| `ORIGIN`             | Recommended | Trusted origin for CSRF protection            |
-| `BETTER_AUTH_URL`    | Recommended | Base URL for auth callbacks and redirects     |
-| `TZ`                 | No          | Timezone for scheduled tasks (default: `UTC`) |
+| Variable           | Required    | Description                                   |
+| ------------------ | ----------- | --------------------------------------------- |
+| BETTER_AUTH_SECRET | Yes         | Session signing and API key encryption        |
+| ORIGIN             | Recommended | Trusted origin for CSRF protection            |
+| BETTER_AUTH_URL    | Recommended | Base URL for auth callbacks and redirects     |
+| TZ                 | No          | Timezone for scheduled tasks (default: `UTC`) |
 
 ---
 
