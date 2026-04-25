@@ -97,3 +97,18 @@ jobs:
 
       - name: Build application
         run: npm run build
+
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, test, build]
+    if: always()
+    steps:
+      - run: |
+          results='${{ toJson(needs) }}'
+          failed=$(echo "$results" | jq '[.[] | select(.result == "failure")] | length')
+          if [ "$failed" -ne 0 ]; then
+            echo "::error::$failed CI job(s) failed"
+            exit 1
+          fi
+          echo "All CI checks passed"
