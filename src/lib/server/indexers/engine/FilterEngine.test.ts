@@ -74,13 +74,23 @@ const DATE_PARSER_TEST_CASES: { date: string; layout: string; expected: Date }[]
 		expected: new Date(2026, 10, 14, 13, 31, 0, 0)
 	},
 	{
-		date: '2026-04-2422:38:22+02:00',
-		layout: 'YYYY-MM-DDHH:mm:ssZ',
+		date: '2026-04-2422:38:22 +02:00',
+		layout: 'YYYY-MM-DDHH:mm:ss Z',
 		expected: new Date(2026, 3, 24, 20, 38, 22, 0)
+	},
+	{
+		date: '2026-04-24T22:38:22.123Z',
+		layout: 'YYYY-MM-DDTHH:mm:ss.SSSZ',
+		expected: new Date(2026, 3, 24, 22, 38, 22, 123)
+	},
+	{
+		date: '2026-04-24T22:38:22Z',
+		layout: 'YYYY-MM-DDTHH:mm:ssZ',
+		expected: new Date(2026, 3, 24, 22, 38, 22, 0)
 	}
 ];
 
-describe('FilterEngine Go-Style date layout parser', () => {
+describe('FilterEngine date layout parser', () => {
 	it('parses date layout correctly', () => {
 		for (const testCase of DATE_PARSER_TEST_CASES) {
 			const output = parseDateWithLayout(testCase.date, testCase.layout);

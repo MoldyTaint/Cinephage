@@ -38,7 +38,11 @@ function parseDateWithLayout(dateStr: string, layout: string): Date | null {
 		return new Date(timestamp);
 	}
 
-	const parsedDate: Date = dateParse(dateStr, layout);
+	let parsedDate: Date = dateParse(dateStr, layout);
+	if (isNaN(parsedDate.getTime()) && dateStr.endsWith('Z') && /Z\s*$/.test(layout)) {
+		const normalised = dateStr.replace(/Z$/, '+00:00');
+		parsedDate = dateParse(normalised, layout);
+	}
 	if (isNaN(parsedDate.getTime())) {
 		logger.error({ dateStr, layout }, `Parsing date failed`);
 		return null;
