@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createTemplateEngine } from './TemplateEngine';
-import { createFilterEngine } from './FilterEngine';
+import { createFilterEngine, parseDateWithLayout } from './FilterEngine';
 import type { FilterBlock } from '../schema/yamlDefinition';
 
 const RUTRACKER_STRIP_FILTERS: FilterBlock[] = [
@@ -48,5 +48,44 @@ describe('FilterEngine RuTracker strip pipeline', () => {
 
 		expect(output).toContain('Военная');
 		expect(output).toContain('War Machine');
+	});
+});
+
+const DATE_PARSER_TEST_CASES: { date: string; layout: string; expected: Date }[] = [
+	{
+		date: 'Friday, April 24, 2026 at 4:12am',
+		layout: 'dddd, MMMM DD, YYYY at H:mma',
+		expected: new Date(2026, 3, 24, 4, 12, 0, 0)
+	},
+	{ date: '2/3/2026', layout: 'M/D/YYYY', expected: new Date(2026, 1, 3, 0, 0, 0, 0) },
+	{
+		date: '2026-04-24T22:38:22+02:00',
+		layout: 'YYYY-MM-DDTHH:mm:ssZ',
+		expected: new Date(2026, 3, 24, 20, 38, 22, 0)
+	},
+	{
+		date: 'Fri, 24 Apr 2026 04:12:22 +0100',
+		layout: 'ddd, DD MMM YYYY HH:mm:ss ZZ',
+		expected: new Date(2026, 3, 24, 3, 12, 22, 0)
+	},
+	{
+		date: '14.11.2026 13:31',
+		layout: 'DD.MM.YYYY HH:mm',
+		expected: new Date(2026, 10, 14, 13, 31, 0, 0)
+	},
+	{
+		date: '2026-04-2422:38:22+02:00',
+		layout: 'YYYY-MM-DDHH:mm:ssZ',
+		expected: new Date(2026, 3, 24, 20, 38, 22, 0)
+	}
+];
+
+describe('FilterEngine Go-Style date layout parser', () => {
+	it('parses date layout correctly', () => {
+		for (const testCase of DATE_PARSER_TEST_CASES) {
+			const output = parseDateWithLayout(testCase.date, testCase.layout);
+
+			expect(output).toStrictEqual(testCase.expected);
+		}
 	});
 });

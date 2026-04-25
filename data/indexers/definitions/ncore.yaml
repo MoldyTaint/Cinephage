@@ -169,7 +169,7 @@ search:
         - name: append
           args: ' +01:00' # CET
         - name: dateparse
-          args: 'yyyy-MM-ddHH:mm:ss zzz'
+          args: 'YYYY-MM-DDHH:mm:ss Z'
     downloadvolumefactor:
       text: 0
     uploadvolumefactor:

@@ -131,7 +131,7 @@ search:
       selector: createdAt
       filters:
         - name: dateparse
-          args: '2006-01-02T15:04:05.000000Z'
+          args: 'YYYY-MM-DDTHH:mm:ssZ'
     size:
       selector: size
     grabs:

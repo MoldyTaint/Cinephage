@@ -79,7 +79,7 @@ search:
       optional: true
       filters:
         - name: dateparse
-          args: 'M/d/yyyy'
+          args: 'M/D/YYYY'
     date_ago:
       selector: div.space-y-2 > span:nth-child(3):contains("ago"), span.space-x-1:nth-child(3):contains("ago")
       optional: true

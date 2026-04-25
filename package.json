@@ -82,6 +82,7 @@
 		"cheerio": "^1.2.0",
 		"chokidar": "^5.0.0",
 		"crypto-js": "^4.2.0",
+		"date-format-parse": "^0.2.7",
 		"dotenv": "^17.4.2",
 		"fast-xml-parser": "^5.7.1",
 		"fflate": "^0.8.2",

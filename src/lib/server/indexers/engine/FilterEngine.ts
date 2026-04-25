@@ -8,6 +8,7 @@ import type { FilterBlock } from '../schema/yamlDefinition';
 import type { TemplateEngine } from './TemplateEngine';
 import { createSafeRegex, safeMatch, safeReplace } from './safeRegex';
 import { createChildLogger } from '$lib/logging';
+import { parse as dateParse } from 'date-format-parse';
 
 const logger = createChildLogger({ logDomain: 'indexers' as const });
 
@@ -18,24 +19,10 @@ export type FilterFunction = (
 ) => string;
 
 /**
- * Parse Go-style date layout to JavaScript Date.
- * Go reference: Mon Jan 2 15:04:05 MST 2006
- * - 2006 = year (YYYY)
- * - 01 = month (MM)
- * - 02 = day (DD)
- * - 15 = hour 24h (HH)
- * - 03 = hour 12h (hh)
- * - 04 = minute (mm)
- * - 05 = second (ss)
- * - Mon = weekday short
- * - Monday = weekday long
- * - Jan = month short
- * - January = month long
- * - PM/pm = AM/PM indicator
- * - MST = timezone
- * - -0700 = timezone offset
+ * Parse ISO token-based date layout to JavaScript Date.
+ * Available tokens: https://www.npmjs.com/package/date-format-parse#tokens
  */
-function parseGoDateLayout(dateStr: string, layout: string): Date | null {
+function parseDateWithLayout(dateStr: string, layout: string): Date | null {
 	if (!dateStr || !layout) return null;
 
 	// Handle special unix layouts
@@ -51,129 +38,13 @@ function parseGoDateLayout(dateStr: string, layout: string): Date | null {
 		return new Date(timestamp);
 	}
 
-	// Build regex from Go layout
-	let pattern = layout;
-	const captures: string[] = [];
-
-	// Order matters - longer patterns first
-	const replacements: [RegExp, string, string][] = [
-		[/2006/g, '(\\d{4})', 'year'],
-		[/06/g, '(\\d{2})', 'year2'],
-		[/January/g, '(\\w+)', 'monthLong'],
-		[/Jan/g, '(\\w+)', 'monthShort'],
-		[/01/g, '(\\d{2})', 'month'],
-		[/1/g, '(\\d{1,2})', 'month1'],
-		[/Monday/g, '(\\w+)', 'weekdayLong'],
-		[/Mon/g, '(\\w+)', 'weekdayShort'],
-		[/02/g, '(\\d{2})', 'day'],
-		[/2/g, '(\\d{1,2})', 'day1'],
-		[/_2/g, '(\\s?\\d{1,2})', 'day_'],
-		[/15/g, '(\\d{2})', 'hour24'],
-		[/03/g, '(\\d{2})', 'hour12'],
-		[/3/g, '(\\d{1,2})', 'hour12_1'],
-		[/04/g, '(\\d{2})', 'minute'],
-		[/4/g, '(\\d{1,2})', 'minute1'],
-		[/05/g, '(\\d{2})', 'second'],
-		[/5/g, '(\\d{1,2})', 'second1'],
-		[/PM/g, '(AM|PM)', 'ampm'],
-		[/pm/g, '(am|pm)', 'ampm_lower'],
-		[/MST/g, '([A-Z]{3,4})', 'timezone'],
-		[/-0700/g, '([+-]\\d{4})', 'tzoffset'],
-		[/-07:00/g, '([+-]\\d{2}:\\d{2})', 'tzoffset_colon'],
-		[/-07/g, '([+-]\\d{2})', 'tzoffset_short']
-	];
-
-	for (const [search, replace, name] of replacements) {
-		if (pattern.match(search)) {
-			captures.push(name);
-			pattern = pattern.replace(search, replace);
-		}
+	const parsedDate: Date = dateParse(dateStr, layout);
+	if (isNaN(parsedDate.getTime())) {
+		logger.error({ dateStr, layout }, `Parsing date failed`);
+		return null;
 	}
 
-	// Escape remaining regex special chars
-	pattern = pattern.replace(/[.*+?^${}()|[\]\\]/g, (m) => (m === '(' || m === ')' ? m : '\\' + m));
-
-	// Use safe regex creation and matching to prevent ReDoS
-	const regex = createSafeRegex(`^${pattern}$`, 'i');
-	if (!regex) return null;
-
-	const match = safeMatch(dateStr, regex);
-	if (!match) return null;
-
-	const values: Record<string, string> = {};
-	captures.forEach((name, i) => {
-		values[name] = match[i + 1];
-	});
-
-	// Build date
-	let year = new Date().getFullYear();
-	let month = 0;
-	let day = 1;
-	let hour = 0;
-	let minute = 0;
-	let second = 0;
-
-	if (values.year) year = parseInt(values.year, 10);
-	if (values.year2) year = 2000 + parseInt(values.year2, 10);
-
-	if (values.month) month = parseInt(values.month, 10) - 1;
-	if (values.month1) month = parseInt(values.month1, 10) - 1;
-	if (values.monthShort) month = parseMonthName(values.monthShort);
-	if (values.monthLong) month = parseMonthName(values.monthLong);
-
-	if (values.day) day = parseInt(values.day, 10);
-	if (values.day1) day = parseInt(values.day1, 10);
-	if (values.day_) day = parseInt(values.day_.trim(), 10);
-
-	if (values.hour24) hour = parseInt(values.hour24, 10);
-	if (values.hour12) {
-		hour = parseInt(values.hour12, 10);
-		if ((values.ampm === 'PM' || values.ampm_lower === 'pm') && hour !== 12) hour += 12;
-		if ((values.ampm === 'AM' || values.ampm_lower === 'am') && hour === 12) hour = 0;
-	}
-	if (values.hour12_1) {
-		hour = parseInt(values.hour12_1, 10);
-		if ((values.ampm === 'PM' || values.ampm_lower === 'pm') && hour !== 12) hour += 12;
-		if ((values.ampm === 'AM' || values.ampm_lower === 'am') && hour === 12) hour = 0;
-	}
-
-	if (values.minute) minute = parseInt(values.minute, 10);
-	if (values.minute1) minute = parseInt(values.minute1, 10);
-
-	if (values.second) second = parseInt(values.second, 10);
-	if (values.second1) second = parseInt(values.second1, 10);
-
-	return new Date(year, month, day, hour, minute, second);
-}
-
-function parseMonthName(name: string): number {
-	const months: Record<string, number> = {
-		jan: 0,
-		january: 0,
-		feb: 1,
-		february: 1,
-		mar: 2,
-		march: 2,
-		apr: 3,
-		april: 3,
-		may: 4,
-		jun: 5,
-		june: 5,
-		jul: 6,
-		july: 6,
-		aug: 7,
-		august: 7,
-		sep: 8,
-		sept: 8,
-		september: 8,
-		oct: 9,
-		october: 9,
-		nov: 10,
-		november: 10,
-		dec: 11,
-		december: 11
-	};
-	return months[name.toLowerCase()] ?? 0;
+	return parsedDate;
 }
 
 /**
@@ -532,7 +403,7 @@ const FILTERS: Record<string, FilterFunction> = {
 	// Date/time
 	dateparse: (data, args) => {
 		const layout = String(args ?? '');
-		const date = parseGoDateLayout(data, layout);
+		const date = parseDateWithLayout(data, layout);
 		return date ? formatRfc1123(date) : data;
 	},
 
@@ -1091,7 +962,7 @@ export function createFilterEngine(templateEngine?: TemplateEngine): FilterEngin
 
 // Export utility functions for direct use
 export {
-	parseGoDateLayout,
+	parseDateWithLayout,
 	parseRelativeTime,
 	parseFuzzyTime,
 	formatRfc1123,

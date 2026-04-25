@@ -206,7 +206,7 @@ search:
       optional: true
       filters:
         - name: dateparse
-          args: 'Monday, January 02, 2006 at 3:04pm'
+          args: 'dddd, MMMM DD, YYYY at H:mma'
     category:
       selector: td:nth-child(1) a[href*="cat="]
       attribute: href

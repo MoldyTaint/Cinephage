@@ -109,7 +109,7 @@ search:
       selector: pubDate
       filters:
         - name: dateparse
-          args: 'Mon, 02 Jan 2006 15:04:05 -0700'
+          args: 'ddd, DD MMM YYYY HH:mm:ss ZZ'
     size:
       selector: enclosure
       attribute: length
