@@ -148,7 +148,7 @@ search:
       selector: attributes.created_at
       filters:
         - name: dateparse
-          args: 'YYYY-MM-DDTHH:mm:ss.SSSZ'
+          args: '2006-01-02T15:04:05.000000Z'
     category:
       selector: attributes.category_id
     imdbid:
