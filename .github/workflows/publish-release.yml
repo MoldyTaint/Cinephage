@@ -1,0 +1,43 @@
+name: Publish Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    name: Publish to API
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Skip dev prereleases
+        id: filter
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          if echo "$TAG" | grep -qE '\-dev\.[0-9]+$'; then
+            echo "Skipping dev prerelease: ${TAG}"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release to API
+        if: steps.filter.outputs.skip != 'true'
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#v}"
+          COMMIT="${{ github.sha }}"
+
+          echo "Publishing release ${TAG} (${COMMIT})"
+
+          RESPONSE=$(curl -sf -X POST "https://api.cinephage.net/sys/a7x9k2m/publish" \
+            -H "Content-Type: application/json" \
+            -H "X-API-Key: ${{ secrets.AUTOMATION_KEY }}" \
+            -d "{\"version\":\"${VERSION}\",\"commit\":\"${COMMIT}\"}")
+
+          if [ "$(echo "$RESPONSE" | jq -r '.success')" != "true" ]; then
+            echo "::error::API did not return success: ${RESPONSE}"
+            exit 1
+          fi
+
+          echo "Published successfully: ${RESPONSE}"
