@@ -1,8 +1,8 @@
 name: Publish Release
 
 on:
-  release:
-    types: [published]
+  push:
+    tags: ['v*']
 
 jobs:
   publish:
@@ -11,22 +11,18 @@ jobs:
 
     steps:
       - name: Skip dev prereleases
-        id: filter
         run: |
-          TAG="${{ github.event.release.tag_name }}"
+          TAG="${GITHUB_REF_NAME}"
           if echo "$TAG" | grep -qE '\-dev\.[0-9]+$'; then
             echo "Skipping dev prerelease: ${TAG}"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          echo "skip=false" >> "$GITHUB_OUTPUT"
 
       - name: Publish release to API
-        if: steps.filter.outputs.skip != 'true'
         run: |
-          TAG="${{ github.event.release.tag_name }}"
+          TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
-          COMMIT="${{ github.sha }}"
+          COMMIT="${GITHUB_SHA}"
 
           echo "Publishing release ${TAG} (${COMMIT})"
 
