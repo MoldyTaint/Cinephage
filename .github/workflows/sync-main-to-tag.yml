@@ -1,0 +1,37 @@
+name: Sync main to tag
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fast-forward main to tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          TAG_COMMIT="$(git rev-parse "refs/tags/${{ github.ref_name }}")"
+          echo "Tag commit: ${TAG_COMMIT}"
+
+          git fetch origin main
+          MAIN_COMMIT="$(git rev-parse origin/main)"
+          echo "Current main: ${MAIN_COMMIT}"
+
+          if git merge-base --is-ancestor "$MAIN_COMMIT" "$TAG_COMMIT"; then
+            echo "Tag is ahead of main, fast-forwarding"
+            git push origin "$TAG_COMMIT:refs/heads/main"
+          else
+            echo "Tag commit is not a descendant of main — skipping to avoid non-fast-forward push"
+            echo "This may require manual intervention"
+          fi
