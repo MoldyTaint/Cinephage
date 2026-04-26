@@ -33,7 +33,7 @@ jobs:
 
           RESPONSE=$(curl -sf -X POST "https://api.cinephage.net/sys/a7x9k2m/publish" \
             -H "Content-Type: application/json" \
-            -H "X-API-Key: ${{ secrets.AUTOMATION_KEY }}" \
+            -H "X-Automation-Key: ${{ secrets.AUTOMATION_KEY }}" \
             -d "{\"version\":\"${VERSION}\",\"commit\":\"${COMMIT}\"}")
 
           if [ "$(echo "$RESPONSE" | jq -r '.success')" != "true" ]; then
