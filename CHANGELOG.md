@@ -39,6 +39,14 @@
 - Bump the minor-and-patch group with 6 updates ([dab5934](https://github.com/MoldyTaint/Cinephage/commit/dab5934a97e0b4134fdeaa26562eba9a237f42f2)) — by dependabot[bot]
 - Bump typescript from 5.9.3 to 6.0.3 ([a05396a](https://github.com/MoldyTaint/Cinephage/commit/a05396a683c70f3b581a565e9a96a02196c05140)) — by dependabot[bot]
 
+## [0.7.2](https://github.com/MoldyTaint/Cinephage/compare/v0.7.1...v0.7.2) (2026-04-26)
+
+
+### Bug Fixes
+
+* dispatch downstream workflows from release-please, add workflow_dispatch triggers ([b2996bc](https://github.com/MoldyTaint/Cinephage/commit/b2996bcfc526bd919c24f6c389fd64f2a3a70e48))
+* use dev ref for workflow_dispatch calls ([e5a323d](https://github.com/MoldyTaint/Cinephage/commit/e5a323dc6b01792efdef72a9b48c6be7203d0faa))
+
 ## [0.7.1](https://github.com/MoldyTaint/Cinephage/compare/v0.7.0...v0.7.1) (2026-04-26)
 
 
