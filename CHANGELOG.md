@@ -39,6 +39,13 @@
 - Bump the minor-and-patch group with 6 updates ([dab5934](https://github.com/MoldyTaint/Cinephage/commit/dab5934a97e0b4134fdeaa26562eba9a237f42f2)) — by dependabot[bot]
 - Bump typescript from 5.9.3 to 6.0.3 ([a05396a](https://github.com/MoldyTaint/Cinephage/commit/a05396a683c70f3b581a565e9a96a02196c05140)) — by dependabot[bot]
 
+## [0.7.1](https://github.com/MoldyTaint/Cinephage/compare/v0.7.0...v0.7.1) (2026-04-26)
+
+
+### Bug Fixes
+
+* switch publish and discord workflows from release event to tag push ([52f2f1c](https://github.com/MoldyTaint/Cinephage/commit/52f2f1cfdcdf8a1ec653fbb6d8d9d27c8d427386))
+
 ## [0.7.0](https://github.com/MoldyTaint/Cinephage/compare/v0.6.1...v0.7.0) (2026-04-26)
 
 
