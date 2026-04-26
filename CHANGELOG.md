@@ -39,6 +39,13 @@
 - Bump the minor-and-patch group with 6 updates ([dab5934](https://github.com/MoldyTaint/Cinephage/commit/dab5934a97e0b4134fdeaa26562eba9a237f42f2)) — by dependabot[bot]
 - Bump typescript from 5.9.3 to 6.0.3 ([a05396a](https://github.com/MoldyTaint/Cinephage/commit/a05396a683c70f3b581a565e9a96a02196c05140)) — by dependabot[bot]
 
+## [0.6.1](https://github.com/MoldyTaint/Cinephage/compare/v0.6.0...v0.6.1) (2026-04-26)
+
+
+### Bug Fixes
+
+* bump postcss and uuid to resolve security vulnerabilities ([835fe6f](https://github.com/MoldyTaint/Cinephage/commit/835fe6fe29f68ac2ee53616b8379e10a47d87925))
+
 ## [0.6.0](https://github.com/MoldyTaint/Cinephage/compare/v0.5.0...v0.6.0) (2026-04-25)
 
 
