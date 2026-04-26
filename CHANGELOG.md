@@ -39,6 +39,45 @@
 - Bump the minor-and-patch group with 6 updates ([dab5934](https://github.com/MoldyTaint/Cinephage/commit/dab5934a97e0b4134fdeaa26562eba9a237f42f2)) — by dependabot[bot]
 - Bump typescript from 5.9.3 to 6.0.3 ([a05396a](https://github.com/MoldyTaint/Cinephage/commit/a05396a683c70f3b581a565e9a96a02196c05140)) — by dependabot[bot]
 
+## [0.6.0](https://github.com/MoldyTaint/Cinephage/compare/v0.5.0...v0.6.0) (2026-04-25)
+
+
+### Features
+
+* skip stream probing for instant playback startup ([390ec20](https://github.com/MoldyTaint/Cinephage/commit/390ec2034bf2f970993b6dfbffa6918325df5483))
+
+
+### Bug Fixes
+
+* add seeding limit checks for Transmission and Deluge ([168e509](https://github.com/MoldyTaint/Cinephage/commit/168e509c5cc92a8804fbdc1ffc4d79af3ab2a9f2))
+* address date parser edge cases — bare Z handling, test fixes, coverage ([f81dc59](https://github.com/MoldyTaint/Cinephage/commit/f81dc593ee208d46edd542d129b5cc1c962f530d))
+* address date parser edge cases — bare Z handling, test fixes, coverage ([7393e02](https://github.com/MoldyTaint/Cinephage/commit/7393e02e2a554e17a0abde2be8b536c8b15e4c55))
+* **ci:** add gate job matching branch protection required check ([2f8ea4d](https://github.com/MoldyTaint/Cinephage/commit/2f8ea4df3501f22a2e32b12959e273e48c5e046b))
+* Replace GO style date parser with a working one ([aad1501](https://github.com/MoldyTaint/Cinephage/commit/aad15014c35a02be797c2e2e5bb2ed06d945bf38))
+* Replace GO style date parser with a working one ([6a7c923](https://github.com/MoldyTaint/Cinephage/commit/6a7c923b9f5886f26fc59097b71c0ce9939a4364))
+* restore canBeRemoved for non-seeding torrents after PR 291 ([e44138c](https://github.com/MoldyTaint/Cinephage/commit/e44138cf8f5ecdbfe8520de0df48b8bde54af9a7))
+
+
+### Performance
+
+* optimize logs page load time by 30-50x ([91463f1](https://github.com/MoldyTaint/Cinephage/commit/91463f16cfdceb36f6994b691a662d6d59d3aa9e))
+
+
+### Styling
+
+* add CHANGELOG.md to .prettierignore and format ([df9eca6](https://github.com/MoldyTaint/Cinephage/commit/df9eca61b53fb9738536e9cc41b1f15c5a3a83cd))
+* format CHANGELOG.md with Prettier ([50e7311](https://github.com/MoldyTaint/Cinephage/commit/50e73115940786a9f8e57a7ac69b07831ce84f59))
+
+
+### Documentation
+
+* improve README clarity and structure ([b7f66a4](https://github.com/MoldyTaint/Cinephage/commit/b7f66a4e6b8659da4d78903404fc7777ec0f4efd))
+
+
+### Miscellaneous
+
+* remove .vscode directory and add to .gitignore ([775e00b](https://github.com/MoldyTaint/Cinephage/commit/775e00b5754d0ad636b9ba39a09892a941468a90))
+
 ## [0.5.0](https://github.com/MoldyTaint/Cinephage/compare/v0.4.0...v0.5.0) (2026-04-21)
 
 ### ⚠ BREAKING CHANGES
