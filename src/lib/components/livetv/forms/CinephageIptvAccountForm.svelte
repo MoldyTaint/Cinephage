@@ -2,7 +2,6 @@
 	import { Globe, X, Loader2, Search } from 'lucide-svelte';
 	import { onMount } from 'svelte';
 	import { SectionHeader } from '$lib/components/ui/modal';
-	import * as m from '$lib/paraglide/messages.js';
 
 	interface Country {
 		code: string;
@@ -24,7 +23,7 @@
 		name,
 		selectedCountries,
 		enabled,
-		mode,
+		mode: _mode,
 		onNameChange,
 		onCountriesChange,
 		onEnabledChange
