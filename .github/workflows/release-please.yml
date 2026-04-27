@@ -26,7 +26,7 @@ jobs:
 
       - name: Trigger Docker build
         if: steps.release.outputs.release_created
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             await github.rest.actions.createWorkflowDispatch({
@@ -42,7 +42,7 @@ jobs:
 
       - name: Trigger publish to API
         if: steps.release.outputs.release_created
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             await github.rest.actions.createWorkflowDispatch({
@@ -57,7 +57,7 @@ jobs:
 
       - name: Trigger Discord announcement
         if: steps.release.outputs.release_created
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             await github.rest.actions.createWorkflowDispatch({
@@ -72,7 +72,7 @@ jobs:
 
       - name: Trigger sync main to tag
         if: steps.release.outputs.release_created
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             await github.rest.actions.createWorkflowDispatch({
