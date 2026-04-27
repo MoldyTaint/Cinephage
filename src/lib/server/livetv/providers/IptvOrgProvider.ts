@@ -6,7 +6,7 @@
  */
 
 import { db } from '$lib/server/db';
-import { livetvAccounts, livetvChannels, livetvCategories, settings } from '$lib/server/db/schema';
+import { livetvAccounts, livetvChannels, livetvCategories } from '$lib/server/db/schema';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
 import { randomUUID } from 'crypto';
@@ -28,47 +28,6 @@ import type {
 } from '$lib/types/livetv';
 import { recordToAccount } from '../LiveTvAccountManager.js';
 
-// IPTV-Org API endpoints
-const IPTVORG_API_BASE = 'https://iptv-org.github.io/api';
-
-// IPTV-Org API Response Types
-interface IptvOrgChannel {
-	id: string;
-	name: string;
-	alt_names?: string[];
-	network?: string | null;
-	owners?: string[];
-	country: string;
-	categories?: string[];
-	is_nsfw: boolean;
-	launched?: string | null;
-	closed?: string | null;
-	replaced_by?: string | null;
-	website?: string | null;
-}
-
-interface IptvOrgStream {
-	channel: string;
-	feed?: string | null;
-	title: string;
-	url: string;
-	referrer?: string | null;
-	user_agent?: string | null;
-	quality?: string | null;
-}
-
-interface IptvOrgCategory {
-	id: string;
-	name: string;
-	description: string;
-}
-
-interface IptvOrgBlocklistEntry {
-	channel: string;
-	reason: 'dmca' | 'nsfw';
-	ref: string;
-}
-
 export class IptvOrgProvider implements LiveTvProvider {
 	readonly type = 'iptvorg';
 
@@ -79,8 +38,6 @@ export class IptvOrgProvider implements LiveTvProvider {
 		requiresAuthentication: false,
 		streamUrlExpires: false
 	};
-
-	private blocklist: Set<string> = new Set();
 
 	getDisplayName(): string {
 		return 'IPTV-Org (Free Channels)';
@@ -481,178 +438,6 @@ export class IptvOrgProvider implements LiveTvProvider {
 	// ============================================================================
 	// Private Helpers
 	// ============================================================================
-
-	private async loadBlocklist(): Promise<void> {
-		try {
-			const response = await fetch(`${IPTVORG_API_BASE}/blocklist.json`, {
-				headers: {
-					'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-				},
-				signal: AbortSignal.timeout(30000)
-			});
-
-			if (!response.ok) {
-				logger.warn({ status: response.status }, '[IptvOrgProvider] Failed to fetch blocklist');
-				return;
-			}
-
-			const blocklist: IptvOrgBlocklistEntry[] = await response.json();
-			this.blocklist = new Set(blocklist.map((entry) => entry.channel));
-
-			logger.info({ count: this.blocklist.size }, '[IptvOrgProvider] Blocklist loaded');
-		} catch (error) {
-			logger.warn({ err: error }, '[IptvOrgProvider] Failed to load blocklist');
-		}
-	}
-
-	private async getGlobalAdultFilter(): Promise<boolean> {
-		try {
-			const result = await db
-				.select({ value: settings.value })
-				.from(settings)
-				.where(eq(settings.key, 'global_filters'))
-				.limit(1);
-
-			if (result[0]?.value) {
-				const filters = JSON.parse(result[0].value);
-				return filters.include_adult ?? false;
-			}
-		} catch (e) {
-			logger.warn({ err: e }, '[IptvOrgProvider] Failed to read global adult filter');
-		}
-		return false;
-	}
-
-	private async fetchIptvOrgChannels(config: IptvOrgConfig): Promise<IptvOrgChannel[]> {
-		const response = await fetch(`${IPTVORG_API_BASE}/channels.json`, {
-			headers: {
-				'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-			},
-			signal: AbortSignal.timeout(60000)
-		});
-
-		if (!response.ok) {
-			throw new Error(`Failed to fetch channels: HTTP ${response.status}`);
-		}
-
-		const allChannels: IptvOrgChannel[] = await response.json();
-
-		// Read global adult filter setting
-		const includeAdult = await this.getGlobalAdultFilter();
-
-		// Filter channels based on config
-		return allChannels.filter((channel) => {
-			// Skip blocked channels
-			if (this.blocklist.has(channel.id)) {
-				return false;
-			}
-
-			// Skip NSFW unless globally allowed
-			if (channel.is_nsfw && !includeAdult) {
-				return false;
-			}
-
-			// Filter by countries
-			if (config.countries && config.countries.length > 0) {
-				if (!config.countries.includes(channel.country)) {
-					return false;
-				}
-			}
-
-			// Filter by categories
-			if (config.categories && config.categories.length > 0) {
-				if (
-					!channel.categories ||
-					!channel.categories.some((c) => config.categories?.includes(c))
-				) {
-					return false;
-				}
-			}
-
-			return true;
-		});
-	}
-
-	private async fetchIptvOrgStreams(config: IptvOrgConfig): Promise<IptvOrgStream[]> {
-		const response = await fetch(`${IPTVORG_API_BASE}/streams.json`, {
-			headers: {
-				'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-			},
-			signal: AbortSignal.timeout(60000)
-		});
-
-		if (!response.ok) {
-			throw new Error(`Failed to fetch streams: HTTP ${response.status}`);
-		}
-
-		const allStreams: IptvOrgStream[] = await response.json();
-
-		// Filter streams by quality if specified
-		if (config.preferredQuality) {
-			return allStreams.filter((stream) => {
-				if (!stream.quality) return true;
-				return stream.quality === config.preferredQuality;
-			});
-		}
-
-		return allStreams;
-	}
-
-	private async fetchIptvOrgCategories(): Promise<IptvOrgCategory[]> {
-		const response = await fetch(`${IPTVORG_API_BASE}/categories.json`, {
-			headers: {
-				'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-			},
-			signal: AbortSignal.timeout(30000)
-		});
-
-		if (!response.ok) {
-			logger.warn({ status: response.status }, '[IptvOrgProvider] Failed to fetch categories');
-			return [];
-		}
-
-		return response.json();
-	}
-
-	private matchChannelsToStreams(
-		channels: IptvOrgChannel[],
-		streams: IptvOrgStream[],
-		config: IptvOrgConfig
-	): Array<IptvOrgChannel & { stream: IptvOrgStream }> {
-		// Create a map of channel ID to streams
-		const streamMap = new Map<string, IptvOrgStream[]>();
-
-		for (const stream of streams) {
-			if (!stream.channel) continue;
-
-			if (!streamMap.has(stream.channel)) {
-				streamMap.set(stream.channel, []);
-			}
-			streamMap.get(stream.channel)!.push(stream);
-		}
-
-		// Match channels to streams
-		const matched: Array<IptvOrgChannel & { stream: IptvOrgStream }> = [];
-
-		for (const channel of channels) {
-			const channelStreams = streamMap.get(channel.id);
-			if (!channelStreams || channelStreams.length === 0) continue;
-
-			// Pick best stream (prefer specified quality, otherwise first available)
-			let bestStream = channelStreams[0];
-
-			if (config.preferredQuality) {
-				const qualityMatch = channelStreams.find((s) => s.quality === config.preferredQuality);
-				if (qualityMatch) {
-					bestStream = qualityMatch;
-				}
-			}
-
-			matched.push({ ...channel, stream: bestStream });
-		}
-
-		return matched;
-	}
 
 	private detectStreamType(url: string): 'hls' | 'direct' | 'unknown' {
 		const lowerUrl = url.toLowerCase();
