@@ -1,0 +1,14 @@
+{
+	"branches": ["dev"],
+	"plugins": [
+		"@semantic-release/commit-analyzer",
+		"@semantic-release/release-notes-generator",
+		[
+			"@semantic-release/exec",
+			{
+				"successCmd": "echo \"RELEASE_TAG=${nextRelease.gitTag}\" >> $GITHUB_ENV"
+			}
+		],
+		"@semantic-release/github"
+	]
+}

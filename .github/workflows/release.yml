@@ -1,0 +1,114 @@
+name: Release
+
+on:
+	push:
+		branches: [dev]
+
+concurrency:
+	group: release
+	cancel-in-progress: false
+
+permissions:
+	contents: write
+	issues: write
+	pull-requests: write
+	actions: write
+
+jobs:
+	release:
+		name: Release
+		runs-on: ubuntu-latest
+		steps:
+			- name: Checkout
+				uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+				with:
+					fetch-depth: 0
+
+			- name: Setup Node.js
+				uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+				with:
+					node-version: 22
+					cache: npm
+
+			- name: Install dependencies
+				run: npm ci
+
+			- name: Release
+				env:
+					GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+				run: npx semantic-release
+
+			- name: Fast-forward main
+				if: env.RELEASE_TAG
+				run: git push origin dev:refs/heads/main
+
+			- name: Trigger Docker build
+				if: env.RELEASE_TAG
+				uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+				with:
+					script: |
+						await github.rest.actions.createWorkflowDispatch({
+							owner: context.repo.owner,
+							repo: context.repo.repo,
+							workflow_id: 'docker-build.yml',
+							ref: '${{ env.RELEASE_TAG }}',
+							inputs: {
+								release_tag: '${{ env.RELEASE_TAG }}',
+								checkout_ref: '${{ env.RELEASE_TAG }}'
+							}
+						});
+
+			- name: Publish to Cinephage API
+				if: env.RELEASE_TAG
+				run: |
+					VERSION="${RELEASE_TAG#v}"
+					COMMIT=$(git rev-list -n 1 "$RELEASE_TAG")
+
+					echo "Publishing ${VERSION} (${COMMIT})"
+
+					RESPONSE=$(curl -sS -w '\n%{http_code}' \
+						-X POST "${{ secrets.CINEPHAGE_BUILD_URL }}" \
+						-H "Content-Type: application/json" \
+						-H "X-API-Key: ${{ secrets.CINEPHAGE_BUILD_KEY }}" \
+						-d "{\"version\":\"${VERSION}\",\"commit\":\"${COMMIT}\",\"platform\":\"cinephage\"}")
+
+					HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+					BODY=$(echo "$RESPONSE" | sed '$d')
+
+					echo "HTTP ${HTTP_CODE}"
+
+					if [ "$HTTP_CODE" != "201" ]; then
+						echo "::error::API returned HTTP ${HTTP_CODE}, expected 201: ${BODY}"
+						exit 1
+					fi
+
+					echo "Published successfully: ${BODY}"
+
+			- name: Discord announcement
+				if: env.RELEASE_TAG
+				env:
+					WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+				run: |
+					VERSION="${RELEASE_TAG#v}"
+					TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+					curl -sf -X POST "$WEBHOOK" \
+						-H "Content-Type: application/json" \
+						-d "$(cat <<EOJSON
+					{
+						"content": "<@&1449935793958293585>",
+						"username": "Cinephage Releases",
+						"avatar_url": "https://raw.githubusercontent.com/${{ github.repository }}/main/static/logo.png",
+						"embeds": [{
+							"color": 2067276,
+							"title": "${RELEASE_TAG}",
+							"url": "https://github.com/${{ github.repository }}/releases/tag/${RELEASE_TAG}",
+							"description": "A new Cinephage release is now available.",
+							"footer": { "text": "Cinephage" },
+							"timestamp": "${TIMESTAMP}"
+						}]
+					}
+					EOJSON
+					)"
+
+					echo "Discord announcement sent for ${RELEASE_TAG}"

@@ -1,0 +1,33 @@
+name: Sync Check
+
+on:
+	schedule:
+		- cron: '0 */6 * * *'
+	workflow_dispatch:
+
+permissions:
+	contents: write
+
+jobs:
+	sync:
+		name: Sync main to dev
+		runs-on: ubuntu-latest
+		steps:
+			- name: Checkout
+				uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+				with:
+					fetch-depth: 0
+
+			- name: Check and sync
+				run: |
+					git fetch origin main dev
+
+					if git merge-base --is-ancestor origin/dev origin/main; then
+						echo "main is up to date with dev"
+					elif git merge-base --is-ancestor origin/main origin/dev; then
+						echo "main is behind dev, fast-forwarding"
+						git push origin origin/dev:refs/heads/main
+					else
+						echo "::error::main and dev have diverged!"
+						exit 1
+					fi
