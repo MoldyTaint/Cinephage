@@ -55,7 +55,6 @@ const liveTvAccountTestSchema = z.object({
 			languages: z.array(z.string()).optional()
 		})
 		.optional()
-
 });
 
 /**
@@ -100,7 +99,7 @@ function getFriendlyValidationMessage(error: ValidationError): string {
 				if (field === 'm3uConfig') {
 					return 'Please provide a valid M3U URL or playlist content.';
 				}
-					const friendlyField = field
+				const friendlyField = field
 					.replace(/([a-z])([A-Z])/g, '$1 $2')
 					.replace(/Config$/, ' configuration')
 					.toLowerCase();

@@ -7,6 +7,7 @@
 		Tv,
 		Radio,
 		List,
+		Globe,
 		FlaskConical,
 		Loader2,
 		Calendar,
@@ -72,6 +73,8 @@
 				};
 			case 'm3u':
 				return { class: 'badge-accent', text: m.livetv_accountTable_providerM3u(), icon: List };
+			case 'cinephage-iptv':
+				return { class: 'badge-info', text: 'Cinephage IPTV', icon: Globe };
 			default:
 				return { class: 'badge-ghost', text: type, icon: Tv };
 		}
@@ -143,6 +146,12 @@
 				return account.m3uConfig?.url
 					? m.livetv_accountTable_urlSource()
 					: m.livetv_accountTable_fileUpload();
+			case 'cinephage-iptv': {
+				const cinephageCountries = account.cinephageIptvConfig?.countries;
+				return cinephageCountries?.length
+					? cinephageCountries.slice(0, 3).join(', ') + (cinephageCountries.length > 3 ? '...' : '')
+					: '';
+			}
 			default:
 				return '';
 		}
@@ -156,6 +165,8 @@
 				return account.xstreamConfig?.baseUrl ?? '';
 			case 'm3u':
 				return account.m3uConfig?.url ?? '';
+			case 'cinephage-iptv':
+				return 'Cinephage API';
 			default:
 				return '';
 		}

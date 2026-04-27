@@ -17,7 +17,12 @@ import { resolveAndValidateUrl } from '$lib/server/http/ssrf-protection';
 import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service.js';
 import { ValidationError, ExternalServiceError } from '$lib/errors';
 import { STB_USER_AGENT } from '$lib/server/livetv/stalker/StalkerPortalClient.js';
-import type { FetchStreamResult, StreamError, CachedChannel, LiveTvProviderType } from '$lib/types/livetv';
+import type {
+	FetchStreamResult,
+	StreamError,
+	CachedChannel,
+	LiveTvProviderType
+} from '$lib/types/livetv';
 
 const logger = createChildLogger({ module: 'LiveTvStreamService' });
 

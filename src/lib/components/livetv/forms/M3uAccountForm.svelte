@@ -111,7 +111,6 @@
 				<FileText class="mr-2 inline h-4 w-4" />
 				{m.livetv_form_m3u_fileTab()}
 			</button>
-
 		</div>
 	{/if}
 

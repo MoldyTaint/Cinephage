@@ -246,9 +246,7 @@ export class CinephageIptvProvider implements LiveTvProvider {
 					backupUrls: entry.backupUrls.length > 0 ? entry.backupUrls : undefined
 				};
 
-				const categoryId = entry.groupTitle
-					? categoryMap.get(entry.groupTitle) ?? null
-					: null;
+				const categoryId = entry.groupTitle ? (categoryMap.get(entry.groupTitle) ?? null) : null;
 
 				const existingId = channelMap.get(entry.channelId);
 

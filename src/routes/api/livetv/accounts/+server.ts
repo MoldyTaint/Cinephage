@@ -58,7 +58,6 @@ const liveTvAccountCreateSchema = z.object({
 			languages: z.array(z.string()).optional()
 		})
 		.optional()
-
 });
 
 /**

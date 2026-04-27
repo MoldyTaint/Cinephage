@@ -171,6 +171,11 @@
 						};
 					}
 					break;
+				case 'cinephage-iptv':
+					if (data.cinephageIptvConfig) {
+						body.cinephageIptvConfig = data.cinephageIptvConfig;
+					}
+					break;
 			}
 
 			const response = await fetch(url, {
@@ -408,6 +413,11 @@
 					fileContent: config.fileContent,
 					epgUrl: config.epgUrl
 				};
+				break;
+			case 'cinephage-iptv':
+				if (config.cinephageIptvConfig) {
+					body.cinephageIptvConfig = config.cinephageIptvConfig;
+				}
 				break;
 		}
 
