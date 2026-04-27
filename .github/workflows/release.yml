@@ -83,32 +83,3 @@ jobs:
           fi
 
           echo "Published successfully: ${BODY}"
-
-      - name: Discord announcement
-        if: env.RELEASE_TAG
-        env:
-          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        run: |
-          VERSION="${RELEASE_TAG#v}"
-          TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-
-          curl -sf -X POST "$WEBHOOK" \
-            -H "Content-Type: application/json" \
-            -d "$(cat <<EOJSON
-          {
-            "content": "<@&1449935793958293585>",
-            "username": "Cinephage Releases",
-            "avatar_url": "https://raw.githubusercontent.com/${{ github.repository }}/main/static/logo.png",
-            "embeds": [{
-              "color": 2067276,
-              "title": "${RELEASE_TAG}",
-              "url": "https://github.com/${{ github.repository }}/releases/tag/${RELEASE_TAG}",
-              "description": "A new Cinephage release is now available.",
-              "footer": { "text": "Cinephage" },
-              "timestamp": "${TIMESTAMP}"
-            }]
-          }
-          EOJSON
-          )"
-
-          echo "Discord announcement sent for ${RELEASE_TAG}"
