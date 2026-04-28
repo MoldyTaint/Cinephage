@@ -516,38 +516,37 @@
 				/>
 			</div>
 		{:else}
-			<!-- Name (full width, above columns) -->
-			<div class="form-control mb-4">
-				<label class="label py-1" for="name">
-					<span class="label-text">{m.common_name()}</span>
-				</label>
-				<input
-					id="name"
-					type="text"
-					class="input-bordered input input-sm"
-					bind:value={name}
-					maxlength={MAX_NAME_LENGTH}
-					placeholder={selectedDefinition?.name ?? 'My Download Client'}
-				/>
-				<div class="label py-1">
-					<span
-						class="label-text-alt text-xs {nameTooLong ? 'text-error' : 'text-base-content/60'}"
-					>
-						{name.length}/{MAX_NAME_LENGTH}
-					</span>
-					{#if nameTooLong}
-						<span class="label-text-alt text-xs text-error"
-							>{m.validation_maxChars({ max: MAX_NAME_LENGTH })}</span
-						>
-					{/if}
-				</div>
-			</div>
-
-			<!-- Two Column Layout -->
+			<!-- Main Form - Responsive Two Column Layout -->
 			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
 				<!-- Left Column: Connection -->
 				<div class="space-y-4">
 					<SectionHeader title={m.connection_section_title()} />
+
+					<div class="form-control">
+						<label class="label py-1" for="name">
+							<span class="label-text">{m.common_name()}</span>
+						</label>
+						<input
+							id="name"
+							type="text"
+							class="input-bordered input input-sm"
+							bind:value={name}
+							maxlength={MAX_NAME_LENGTH}
+							placeholder={selectedDefinition?.name ?? 'My Download Client'}
+						/>
+						<div class="label py-1">
+							<span
+								class="label-text-alt text-xs {nameTooLong ? 'text-error' : 'text-base-content/60'}"
+							>
+								{name.length}/{MAX_NAME_LENGTH}
+							</span>
+							{#if nameTooLong}
+								<span class="label-text-alt text-xs text-error"
+									>{m.validation_maxChars({ max: MAX_NAME_LENGTH })}</span
+								>
+							{/if}
+						</div>
+					</div>
 
 					<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 						<div class="form-control">
@@ -745,17 +744,19 @@
 
 			<!-- Path Mapping (full width, below columns) -->
 			{#if !isNntpServer}
-				<DownloadClientSettings
-					section="paths"
-					definition={selectedDefinition}
-					bind:downloadPathLocal
-					bind:downloadPathRemote
-					bind:tempPathLocal
-					bind:tempPathRemote
-					isSabnzbd={usesApiKey}
-					isMountMode={isMountModeClient}
-					onBrowse={openFolderBrowser}
-				/>
+				<div class="mt-6">
+					<DownloadClientSettings
+						section="paths"
+						definition={selectedDefinition}
+						bind:downloadPathLocal
+						bind:downloadPathRemote
+						bind:tempPathLocal
+						bind:tempPathRemote
+						isSabnzbd={usesApiKey}
+						isMountMode={isMountModeClient}
+						onBrowse={openFolderBrowser}
+					/>
+				</div>
 			{/if}
 
 			<!-- Save Error -->
