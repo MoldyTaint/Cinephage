@@ -1,6 +1,6 @@
 import { db } from '$lib/server/db/index.js';
-import { movies } from '$lib/server/db/schema.js';
-import { isNull, eq } from 'drizzle-orm';
+import { movies, series } from '$lib/server/db/schema.js';
+import { eq } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
 import { logger } from '$lib/logging/index.js';
 import type { TaskResult } from '../MonitoringScheduler.js';
@@ -20,21 +20,17 @@ export async function executeMetadataRefreshTask(
 	try {
 		ctx?.checkCancelled();
 
-		const staleMovies = await db
+		const allMovies = await db
 			.select({
 				id: movies.id,
 				tmdbId: movies.tmdbId,
 				title: movies.title
 			})
-			.from(movies)
-			.where(isNull(movies.tmdbCollectionId));
+			.from(movies);
 
-		logger.info(
-			{ count: staleMovies.length },
-			'[MetadataRefreshTask] Found movies with missing collection data'
-		);
+		logger.info({ count: allMovies.length }, '[MetadataRefreshTask] Found movies to refresh');
 
-		for await (const movie of ctx?.iterate?.(staleMovies) ?? staleMovies) {
+		for await (const movie of ctx?.iterate?.(allMovies) ?? allMovies) {
 			try {
 				const tmdbMovie = await tmdb.getMovie(movie.tmdbId);
 
@@ -61,6 +57,7 @@ export async function executeMetadataRefreshTask(
 						year: tmdbMovie.release_date
 							? new Date(tmdbMovie.release_date).getFullYear()
 							: undefined,
+						releaseDate: tmdbMovie.release_date ?? undefined,
 						imdbId: externalIds?.imdb_id ?? undefined,
 						tmdbCollectionId: tmdbMovie.belongs_to_collection?.id ?? null,
 						collectionName: tmdbMovie.belongs_to_collection?.name ?? null
@@ -80,9 +77,61 @@ export async function executeMetadataRefreshTask(
 
 			if (itemsProcessed % 50 === 0) {
 				logger.info(
-					{ itemsProcessed, itemsUpdated, errors, total: staleMovies.length },
+					{ itemsProcessed, itemsUpdated, errors, total: allMovies.length },
 					'[MetadataRefreshTask] Progress'
 				);
+			}
+
+			await ctx?.delay(250);
+		}
+
+		ctx?.checkCancelled();
+
+		const allSeries = await db
+			.select({
+				id: series.id,
+				tmdbId: series.tmdbId,
+				title: series.title
+			})
+			.from(series);
+
+		logger.info({ count: allSeries.length }, '[MetadataRefreshTask] Found series to refresh');
+
+		for await (const s of ctx?.iterate?.(allSeries) ?? allSeries) {
+			try {
+				const tmdbSeries = await tmdb.getTVShow(s.tmdbId);
+
+				await db
+					.update(series)
+					.set({
+						title: tmdbSeries.name,
+						originalTitle: tmdbSeries.original_name,
+						overview: tmdbSeries.overview,
+						posterPath: tmdbSeries.poster_path,
+						backdropPath: tmdbSeries.backdrop_path,
+						status: tmdbSeries.status,
+						network: tmdbSeries.networks?.[0]?.name ?? undefined,
+						genres: tmdbSeries.genres?.map((g) => g.name),
+						year: tmdbSeries.first_air_date
+							? new Date(tmdbSeries.first_air_date).getFullYear()
+							: undefined,
+						firstAirDate: tmdbSeries.first_air_date ?? undefined
+					})
+					.where(eq(series.id, s.id));
+
+				itemsUpdated++;
+			} catch (err) {
+				errors++;
+				logger.error(
+					{ err, seriesId: s.id, tmdbId: s.tmdbId },
+					'[MetadataRefreshTask] Failed to refresh series'
+				);
+			}
+
+			itemsProcessed++;
+
+			if (itemsProcessed % 50 === 0) {
+				logger.info({ itemsProcessed, itemsUpdated, errors }, '[MetadataRefreshTask] Progress');
 			}
 
 			await ctx?.delay(250);
