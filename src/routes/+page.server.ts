@@ -6,6 +6,7 @@ import {
 	getRecentlyAdded,
 	getMissingEpisodes
 } from '$lib/server/dashboard/queries';
+import { getUpcomingItems } from '$lib/server/calendar/queries.js';
 
 export const load: PageServerLoad = async () => {
 	try {
@@ -45,11 +46,20 @@ export const load: PageServerLoad = async () => {
 				return [];
 			});
 
+		const upcomingPromise = getUpcomingItems(7).catch((error) => {
+			logger.error(
+				{ err: error, component: 'DashboardPage' },
+				'[Dashboard] Error fetching upcoming items'
+			);
+			return [];
+		});
+
 		return {
 			stats,
 			recentlyAdded: recentlyAddedPromise,
 			missingEpisodes: missingEpisodesPromise,
-			recentActivity: activityPromise
+			recentActivity: activityPromise,
+			upcoming: upcomingPromise
 		};
 	} catch (error) {
 		logger.error(
@@ -93,7 +103,8 @@ export const load: PageServerLoad = async () => {
 			},
 			recentlyAdded: { movies: [], series: [] },
 			missingEpisodes: [],
-			recentActivity: []
+			recentActivity: [],
+			upcoming: []
 		};
 	}
 };

@@ -79,24 +79,40 @@
 		series: RecentlyAddedSeries[];
 	}
 
+	interface UpcomingItem {
+		type: 'movie' | 'episode';
+		date: string;
+		title: string;
+		posterPath: string | null;
+		subtitle?: string;
+		tmdbId?: number;
+		movieId?: string;
+		seriesId?: string;
+		episodeId?: string;
+	}
+
 	// Resolve promises with initial empty state for smooth transitions
 	let recentlyAddedResolved = $state<RecentlyAddedData>({ movies: [], series: [] });
 	let missingEpisodesResolved = $state<MissingEpisode[]>([]);
 	let recentActivityResolved = $state<UnifiedActivity[]>([]);
+	let upcomingResolved = $state<UpcomingItem[]>([]);
 	let isRecentlyAddedLoading = $state(true);
 	let isMissingEpisodesLoading = $state(true);
 	let isActivityLoading = $state(true);
+	let isUpcomingLoading = $state(true);
 
 	// Local SSE-overridable state; derived values fall back to resolved server data or SSR/initial render.
 	let statsState = $state<typeof data.stats | null>(null);
 	let recentActivityState = $state<UnifiedActivity[] | null>(null);
 	let recentlyAddedState = $state<typeof recentlyAddedResolved | null>(null);
 	let missingEpisodesState = $state<typeof missingEpisodesResolved | null>(null);
+	let upcomingState = $state<UpcomingItem[] | null>(null);
 
 	const stats = $derived(statsState ?? data.stats);
 	const recentActivity = $derived(recentActivityState ?? recentActivityResolved);
 	const recentlyAdded = $derived(recentlyAddedState ?? recentlyAddedResolved);
 	const missingEpisodes = $derived(missingEpisodesState ?? missingEpisodesResolved);
+	const upcoming = $derived(upcomingState ?? upcomingResolved);
 
 	// Resolve promises when they resolve
 	$effect(() => {
@@ -144,6 +160,21 @@
 			recentActivityResolved = data.recentActivity;
 			isActivityLoading = false;
 		}
+
+		// Handle upcoming promise
+		if (data.upcoming instanceof Promise) {
+			data.upcoming
+				.then((result: UpcomingItem[]) => {
+					upcomingResolved = result;
+					isUpcomingLoading = false;
+				})
+				.catch(() => {
+					isUpcomingLoading = false;
+				});
+		} else {
+			upcomingResolved = data.upcoming;
+			isUpcomingLoading = false;
+		}
 	});
 
 	// Sync from server data when it changes (e.g., on navigation)
@@ -165,6 +196,9 @@
 		},
 		'dashboard:recentActivity': (newRecentActivity) => {
 			recentActivityState = newRecentActivity as UnifiedActivity[];
+		},
+		'dashboard:upcoming': (newUpcoming) => {
+			upcomingState = newUpcoming as UpcomingItem[];
 		}
 	});
 
@@ -781,6 +815,81 @@
 									</div>
 									<div class="text-right text-sm text-base-content/50">
 										{formatDate(typedEpisode.airDate)}
+									</div>
+								</div>
+							{/each}
+						</div>
+					</div>
+				</div>
+			{/if}
+
+			<!-- Coming Up Section -->
+			{#if isUpcomingLoading}
+				<div class="card bg-base-200">
+					<div class="card-body">
+						<h2 class="card-title">
+							<Calendar class="h-5 w-5" />
+							{m.calendar_comingUp()}
+						</h2>
+						<div class="divide-y divide-base-300">
+							{#each Array.from({ length: 5 }, (_, index) => index) as index (index)}
+								<div class="flex items-center gap-3 py-2">
+									<Skeleton variant="rect" class="h-12 w-8 shrink-0" />
+									<div class="min-w-0 flex-1">
+										<Skeleton variant="text" class="mb-1 w-32" />
+										<Skeleton variant="text" class="w-24" />
+									</div>
+									<Skeleton variant="text" class="w-16" />
+								</div>
+							{/each}
+						</div>
+					</div>
+				</div>
+			{:else if upcoming.length > 0}
+				<div class="card bg-base-200">
+					<div class="card-body">
+						<div class="flex items-center justify-between">
+							<h2 class="card-title">
+								<Calendar class="h-5 w-5" />
+								{m.calendar_comingUp()}
+							</h2>
+							<a href={resolvePath('/calendar')} class="btn gap-1 btn-ghost btn-xs">
+								{m.calendar_viewAll()}
+								<ArrowRight class="h-3 w-3" />
+							</a>
+						</div>
+						<div class="divide-y divide-base-300">
+							{#each upcoming as item (item.type === 'episode' ? item.episodeId : item.tmdbId)}
+								<div class="flex items-center gap-3 py-2">
+									{#if item.posterPath}
+										<div class="h-12 w-8 shrink-0 overflow-hidden rounded">
+											<TmdbImage
+												path={item.posterPath}
+												alt={item.title}
+												size="w92"
+												class="h-full w-full object-cover"
+											/>
+										</div>
+									{:else}
+										<div class="flex h-12 w-8 shrink-0 items-center justify-center rounded bg-base-300">
+											{#if item.type === 'movie'}
+												<Clapperboard class="h-4 w-4 text-base-content/50" />
+											{:else}
+												<Tv class="h-4 w-4 text-base-content/50" />
+											{/if}
+										</div>
+									{/if}
+									<div class="min-w-0 flex-1">
+										<p class="font-medium wrap-break-word whitespace-normal">{item.title}</p>
+										<p class="wrap-break-words text-sm whitespace-normal text-base-content/70">
+											{item.subtitle ?? (item.type === 'movie' ? m.common_movie() : m.common_episode())}
+										</p>
+									</div>
+									<div class="flex flex-col items-end gap-1">
+										<span class="text-sm text-base-content/50">{formatDate(item.date)}</span>
+										<span class="badge badge-xs {item.type === 'movie' ? 'badge-primary' : 'badge-secondary'}">
+											{item.type === 'movie' ? m.common_movie() : m.common_episode()}
+										</span>
 									</div>
 								</div>
 							{/each}
