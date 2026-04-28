@@ -23,6 +23,9 @@ export function buildTokensResponse() {
 				.map(formatTokenForApi),
 			...metadata.release.filter((t) => t.name === 'Edition').map(formatTokenForApi)
 		],
+		collection: metadata.collection
+			.filter((t) => t.applicability.includes('movie'))
+			.map(formatTokenForApi),
 		quality: metadata.quality.map(formatTokenForApi),
 		video: metadata.video.map(formatTokenForApi),
 		audio: metadata.audio.map(formatTokenForApi),
@@ -55,6 +58,7 @@ export function buildTokensResponse() {
 
 export const TOKEN_CATEGORIES = [
 	{ id: 'movie', name: 'Movie', description: 'Movie-specific tokens' },
+	{ id: 'collection', name: 'Collection', description: 'TMDB collection tokens' },
 	{ id: 'series', name: 'Series', description: 'Series-specific tokens' },
 	{ id: 'episode', name: 'Episode', description: 'Episode-specific tokens' },
 	{ id: 'quality', name: 'Quality', description: 'Quality and resolution tokens' },

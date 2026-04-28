@@ -348,6 +348,9 @@
 						<span class="line-clamp-2 text-sm font-medium">
 							{item.title}
 						</span>
+						{#if isItemMovie && 'collectionName' in item && item.collectionName}
+							<span class="mt-1 badge badge-outline badge-xs">{item.collectionName}</span>
+						{/if}
 						<div class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
 							{#if item.year}
 								<span class="text-xs text-base-content/60">({item.year})</span>
@@ -583,6 +586,9 @@
 							>
 								{item.title}
 							</a>
+							{#if isItemMovie && 'collectionName' in item && item.collectionName}
+								<span class="mt-0.5 badge badge-outline badge-xs">{item.collectionName}</span>
+							{/if}
 						</td>
 
 						<!-- Year -->

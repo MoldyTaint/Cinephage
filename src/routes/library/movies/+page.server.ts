@@ -86,7 +86,9 @@ export const load: PageServerLoad = async ({ url }) => {
 				minimumAvailability: movies.minimumAvailability,
 				wantsSubtitles: movies.wantsSubtitles,
 				added: movies.added,
-				hasFile: movies.hasFile
+				hasFile: movies.hasFile,
+				tmdbCollectionId: movies.tmdbCollectionId,
+				collectionName: movies.collectionName
 			})
 			.from(movies)
 			.leftJoin(rootFolders, eq(movies.rootFolderId, rootFolders.id))
@@ -206,6 +208,14 @@ export const load: PageServerLoad = async ({ url }) => {
 			}
 		}
 
+		const uniqueCollections = new Set<string>();
+		for (const movie of moviesWithFiles) {
+			if (movie.collectionName) {
+				uniqueCollections.add(movie.collectionName);
+			}
+		}
+		const sortedCollections = [...uniqueCollections].sort();
+
 		// Fetch quality profiles and resolve the effective default profile ID
 		const dbProfiles = await db
 			.select({
@@ -299,6 +309,12 @@ export const load: PageServerLoad = async ({ url }) => {
 						a.files.reduce((s, f) => s + (f.size ?? 0), 0) -
 						b.files.reduce((s, f) => s + (f.size ?? 0), 0);
 					break;
+				case 'collection':
+					comparison =
+						(a.collectionName ?? '\u{10FFFF}') === (b.collectionName ?? '\u{10FFFF}')
+							? (a.title || '').localeCompare(b.title || '')
+							: (a.collectionName ?? '\u{10FFFF}').localeCompare(b.collectionName ?? '\u{10FFFF}');
+					break;
 				default:
 					comparison = (a.title || '').localeCompare(b.title || '');
 			}
@@ -346,7 +362,8 @@ export const load: PageServerLoad = async ({ url }) => {
 			qualityProfiles,
 			uniqueResolutions: sortedResolutions,
 			uniqueCodecs: [...uniqueCodecs].sort(),
-			uniqueHdrFormats: [...uniqueHdrFormats].sort()
+			uniqueHdrFormats: [...uniqueHdrFormats].sort(),
+			uniqueCollections: sortedCollections
 		};
 	} catch (error) {
 		logger.error({ err: error }, '[Movies Page] Error loading movies');
@@ -378,6 +395,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			uniqueResolutions: emptyStrings,
 			uniqueCodecs: emptyStrings,
 			uniqueHdrFormats: emptyStrings,
+			uniqueCollections: emptyStrings,
 			error: 'Failed to load movies'
 		};
 	}

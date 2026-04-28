@@ -12,7 +12,7 @@
 	import BulkDeleteModal from '$lib/components/library/BulkDeleteModal.svelte';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
 	import InteractiveSearchModal from '$lib/components/search/InteractiveSearchModal.svelte';
-	import { Clapperboard, CheckSquare, X, LayoutGrid, List, Search } from 'lucide-svelte';
+	import { Clapperboard, CheckSquare, X, LayoutGrid, List, Layers, Search } from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { viewPreferences } from '$lib/stores/view-preferences.svelte';
 	import { enhance } from '$app/forms';
@@ -28,6 +28,40 @@
 	let selectedMovies = new SvelteSet<string>();
 	let showCheckboxes = $state(false);
 	let searchQuery = $state('');
+	let groupByCollection = $state(false);
+	let collapsedGroups = new SvelteSet<string>();
+
+	function groupMoviesByCollection(moviesList: typeof data.movies) {
+		const groups = new Map<string, typeof data.movies>();
+		for (const movie of moviesList) {
+			const key = movie.collectionName ?? '__none__';
+			if (!groups.has(key)) {
+				groups.set(key, []);
+			}
+			groups.get(key)!.push(movie);
+		}
+		const result: { name: string | null; movies: typeof data.movies }[] = [];
+		for (const [key, groupMovies] of groups) {
+			result.push({
+				name: key === '__none__' ? null : key,
+				movies: groupMovies
+			});
+		}
+		result.sort((a, b) => {
+			if (!a.name) return 1;
+			if (!b.name) return -1;
+			return a.name.localeCompare(b.name);
+		});
+		return result;
+	}
+
+	function toggleCollectionGroup(key: string) {
+		if (collapsedGroups.has(key)) {
+			collapsedGroups.delete(key);
+		} else {
+			collapsedGroups.add(key);
+		}
+	}
 
 	const filteredMovies = $derived(
 		searchQuery.trim()
@@ -397,7 +431,9 @@
 		{ value: 'year-desc', label: m.library_movies_sortYearDesc() },
 		{ value: 'year-asc', label: m.library_movies_sortYearAsc() },
 		{ value: 'size-desc', label: m.library_movies_sortSizeDesc() },
-		{ value: 'size-asc', label: m.library_movies_sortSizeAsc() }
+		{ value: 'size-asc', label: m.library_movies_sortSizeAsc() },
+		{ value: 'collection-asc', label: m.library_movies_sortCollectionAsc() },
+		{ value: 'collection-desc', label: m.library_movies_sortCollectionDesc() }
 	];
 
 	const defaultLibrarySlug = $derived.by(
@@ -675,6 +711,19 @@
 					{/if}
 				</button>
 
+				<!-- Group by Collection Toggle -->
+				{#if data.uniqueCollections.length > 0}
+					<button
+						class="btn btn-xs sm:btn-sm {groupByCollection ? 'btn-primary' : 'btn-ghost'}"
+						onclick={() => (groupByCollection = !groupByCollection)}
+						aria-label="Toggle group by collection"
+						title={groupByCollection ? 'Ungroup collections' : 'Group by collection'}
+					>
+						<Layers class="h-4 w-4" />
+						<span class="hidden sm:inline">{groupByCollection ? 'Grouped' : 'Group'}</span>
+					</button>
+				{/if}
+
 				<LibraryControls
 					{sortOptions}
 					{filterOptions}
@@ -771,38 +820,109 @@
 				<!-- Defer until client resolves view preference to avoid grid flash -->
 			{:else}
 				<div class="animate-in fade-in slide-in-from-bottom-4 duration-500">
-					{#if viewPreferences.viewMode === 'grid'}
-						<div class="grid grid-cols-3 gap-3 sm:gap-4 lg:grid-cols-9">
-							{#each renderer.visible as movie (movie.id)}
-								<LibraryMediaCard
-									item={movie}
-									selectable={showCheckboxes}
-									selected={selectedMovies.has(movie.id)}
-									onSelectChange={handleItemSelectChange}
-								/>
-							{/each}
-						</div>
+					{#if groupByCollection}
+						{@const collectionGroups = groupMoviesByCollection(filteredMovies)}
+						{#each collectionGroups as group (group.name ?? '__none__')}
+							<div class="mb-8">
+								<button
+									class="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-base-200/60"
+									onclick={() => toggleCollectionGroup(group.name ?? '__none__')}
+								>
+									<svg
+										class="h-4 w-4 shrink-0 transition-transform {collapsedGroups.has(
+											group.name ?? '__none__'
+										)
+											? ''
+											: 'rotate-90'}"
+										viewBox="0 0 20 20"
+										fill="currentColor"
+									>
+										<path
+											fill-rule="evenodd"
+											d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+											clip-rule="evenodd"
+										/>
+									</svg>
+									<h3 class="text-lg font-semibold">
+										{group.name ?? m.library_movies_other()}
+									</h3>
+									<span class="badge badge-ghost badge-sm">
+										{group.movies.length}
+										{group.movies.length === 1 ? 'movie' : 'movies'}
+									</span>
+									<span class="text-xs text-base-content/50">
+										{group.movies.filter((mv) => mv.hasFile).length}/{group.movies.length} files,
+										{group.movies.filter((mv) => mv.monitored).length}/{group.movies.length} monitored
+									</span>
+								</button>
+								{#if !collapsedGroups.has(group.name ?? '__none__')}
+									{#if viewPreferences.viewMode === 'grid'}
+										<div class="grid grid-cols-3 gap-3 pt-2 sm:gap-4 lg:grid-cols-9">
+											{#each group.movies as movie (movie.id)}
+												<LibraryMediaCard
+													item={movie}
+													selectable={showCheckboxes}
+													selected={selectedMovies.has(movie.id)}
+													onSelectChange={handleItemSelectChange}
+													collectionName={movie.collectionName ?? undefined}
+												/>
+											{/each}
+										</div>
+									{:else}
+										<div class="pt-2">
+											<LibraryMediaTable
+												items={group.movies}
+												mediaType="movie"
+												selectedItems={selectedMovies}
+												selectable={showCheckboxes}
+												downloadingIds={downloadingMovieIdSet}
+												{autoSearchingIds}
+												onSelectChange={handleItemSelectChange}
+												onMonitorToggle={handleMonitorToggle}
+												onDelete={handleDeleteMovie}
+												onAutoGrab={handleAutoGrab}
+												onManualGrab={handleManualGrab}
+											/>
+										</div>
+									{/if}
+								{/if}
+							</div>
+						{/each}
 					{:else}
-						<LibraryMediaTable
-							items={renderer.visible}
-							mediaType="movie"
-							selectedItems={selectedMovies}
-							selectable={showCheckboxes}
-							downloadingIds={downloadingMovieIdSet}
-							{autoSearchingIds}
-							onSelectChange={handleItemSelectChange}
-							onMonitorToggle={handleMonitorToggle}
-							onDelete={handleDeleteMovie}
-							onAutoGrab={handleAutoGrab}
-							onManualGrab={handleManualGrab}
-						/>
-					{/if}
+						{#if viewPreferences.viewMode === 'grid'}
+							<div class="grid grid-cols-3 gap-3 sm:gap-4 lg:grid-cols-9">
+								{#each renderer.visible as movie (movie.id)}
+									<LibraryMediaCard
+										item={movie}
+										selectable={showCheckboxes}
+										selected={selectedMovies.has(movie.id)}
+										onSelectChange={handleItemSelectChange}
+										collectionName={movie.collectionName ?? undefined}
+									/>
+								{/each}
+							</div>
+						{:else}
+							<LibraryMediaTable
+								items={renderer.visible}
+								mediaType="movie"
+								selectedItems={selectedMovies}
+								selectable={showCheckboxes}
+								downloadingIds={downloadingMovieIdSet}
+								{autoSearchingIds}
+								onSelectChange={handleItemSelectChange}
+								onMonitorToggle={handleMonitorToggle}
+								onDelete={handleDeleteMovie}
+								onAutoGrab={handleAutoGrab}
+								onManualGrab={handleManualGrab}
+							/>
+						{/if}
 
-					<!-- Progressive rendering sentinel -->
-					{#if renderer.hasMore}
-						<div bind:this={renderer.sentinel} class="flex justify-center py-8">
-							<span class="loading loading-md loading-dots text-base-content/30"></span>
-						</div>
+						<!-- Progressive rendering sentinel -->
+						{#if renderer.hasMore}
+							<div bind:this={renderer.sentinel} class="flex justify-center py-8">
+								<span class="loading loading-md loading-dots text-base-content/30"></span>
+							</div>
+						{/if}
 					{/if}
 				</div>
 			{/if}

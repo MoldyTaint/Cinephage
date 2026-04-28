@@ -22,6 +22,8 @@ export interface MediaNamingInfo {
 	tmdbId?: number;
 	tvdbId?: number;
 	imdbId?: string;
+	collectionName?: string;
+	localizedTitles?: Record<string, string>;
 
 	// Edition/version
 	edition?: string;
@@ -120,7 +122,7 @@ export const DEFAULT_NAMING_CONFIG: NamingConfig = {
  * Characters that are illegal in file/folder names
  */
 // eslint-disable-next-line no-control-regex
-const ILLEGAL_CHARS = /[<>:"/\\|?*\x00-\x1f]/g;
+const ILLEGAL_CHARS = /[<>"\\|?*\x00-\x1f]/g;
 
 /**
  * Smart colon replacement patterns
@@ -241,13 +243,11 @@ export class NamingService {
 	 * Format a name using the given format string and info
 	 */
 	private formatName(format: string, info: MediaNamingInfo): string {
-		// Use template engine for token replacement
-		let result = this.templateEngine.render(format, info, this.config);
-
-		// Clean up the result (filesystem safety)
-		result = this.cleanName(result);
-
-		return result;
+		const segments = format.split('/').map((segment) => {
+			const result = this.templateEngine.render(segment, info, this.config);
+			return this.cleanName(result);
+		});
+		return segments.filter((s) => s.length > 0).join('/');
 	}
 
 	/**

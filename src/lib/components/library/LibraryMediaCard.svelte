@@ -13,9 +13,16 @@
 		selectable?: boolean;
 		selected?: boolean;
 		onSelectChange?: (id: string, selected: boolean) => void;
+		collectionName?: string;
 	}
 
-	let { item, selectable = false, selected = false, onSelectChange }: Props = $props();
+	let {
+		item,
+		selectable = false,
+		selected = false,
+		onSelectChange,
+		collectionName
+	}: Props = $props();
 
 	function handleCheckboxClick(e: MouseEvent) {
 		e.preventDefault();
@@ -201,6 +208,13 @@
 					</span>
 				{/if}
 			</div>
+			{#if collectionName}
+				<span
+					class="mt-1 inline-block max-w-full truncate rounded bg-white/20 px-1.5 py-0.5 text-xs text-white/80"
+				>
+					{collectionName}
+				</span>
+			{/if}
 		</div>
 	</div>
 </a>

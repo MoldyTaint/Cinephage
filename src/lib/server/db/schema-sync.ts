@@ -110,7 +110,7 @@ interface MigrationDefinition {
  * Version 80: Built-in profile score overrides table
  * Version 81: Unify scoring profile architecture - add isBuiltIn, min/max resolution, source columns
  */
-export const CURRENT_SCHEMA_VERSION = 82;
+export const CURRENT_SCHEMA_VERSION = 83;
 
 const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -629,7 +629,11 @@ const TABLE_DEFINITIONS: string[] = [
 		"added" text,
 		"has_file" integer DEFAULT false,
 		"wants_subtitles" integer DEFAULT true,
-		"last_search_time" text
+		"last_search_time" text,
+		"failed_subtitle_attempts" integer DEFAULT 0,
+		"first_subtitle_search_at" text,
+		"tmdb_collection_id" integer,
+		"collection_name" text
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS "movie_files" (
@@ -5875,6 +5879,19 @@ const MIGRATIONS: MigrationDefinition[] = [
 				)
 				.run();
 			logger.info('[SchemaSync] Added media_server_stats_tables (v82)');
+		}
+	},
+	{
+		version: 83,
+		name: 'add_movie_collection_columns',
+		apply: (sqlite) => {
+			if (!columnExists(sqlite, 'movies', 'tmdb_collection_id')) {
+				sqlite.prepare(`ALTER TABLE movies ADD COLUMN tmdb_collection_id integer`).run();
+			}
+			if (!columnExists(sqlite, 'movies', 'collection_name')) {
+				sqlite.prepare(`ALTER TABLE movies ADD COLUMN collection_name text`).run();
+			}
+			logger.info('[SchemaSync] Added movie collection columns (v83)');
 		}
 	}
 ];

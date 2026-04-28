@@ -14,7 +14,8 @@ export type TokenCategory =
 	| 'audio'
 	| 'release'
 	| 'mediaId'
-	| 'episode';
+	| 'episode'
+	| 'collection';
 
 /**
  * Media types a token can apply to

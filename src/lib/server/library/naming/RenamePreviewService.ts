@@ -958,6 +958,7 @@ export class RenamePreviewService {
 				year: movie.year ?? undefined,
 				tmdbId: movie.tmdbId,
 				imdbId: movie.imdbId ?? undefined,
+				collectionName: movie.collectionName ?? undefined,
 				edition: file.edition ?? parsedFromFilename.edition ?? undefined,
 
 				// Video info: prefer release parsing, fall back to filename, then mediaInfo

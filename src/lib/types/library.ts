@@ -92,6 +92,8 @@ export interface LibraryMovie {
 	releaseDate?: string | null;
 	added: string;
 	hasFile: boolean | null;
+	tmdbCollectionId?: number | null;
+	collectionName?: string | null;
 	files: MovieFile[];
 	subtitles?: Subtitle[];
 }

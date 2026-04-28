@@ -10,6 +10,7 @@ import { audioTokens } from './definitions/audio';
 import { releaseTokens } from './definitions/release';
 import { mediaIdTokens } from './definitions/mediaId';
 import { episodeTokens } from './definitions/episode';
+import { collectionTokens } from './definitions/collection';
 
 // Register all tokens
 tokenRegistry.registerAll(coreTokens);
@@ -19,6 +20,7 @@ tokenRegistry.registerAll(audioTokens);
 tokenRegistry.registerAll(releaseTokens);
 tokenRegistry.registerAll(mediaIdTokens);
 tokenRegistry.registerAll(episodeTokens);
+tokenRegistry.registerAll(collectionTokens);
 
 // Export registry and types
 export { tokenRegistry, TokenRegistry } from './registry';
@@ -38,3 +40,4 @@ export { audioTokens } from './definitions/audio';
 export { releaseTokens } from './definitions/release';
 export { mediaIdTokens } from './definitions/mediaId';
 export { episodeTokens } from './definitions/episode';
+export { collectionTokens } from './definitions/collection';

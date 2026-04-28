@@ -199,7 +199,8 @@ export class TokenRegistry {
 			audio: [],
 			release: [],
 			mediaId: [],
-			episode: []
+			episode: [],
+			collection: []
 		};
 
 		for (const token of this.getAll()) {

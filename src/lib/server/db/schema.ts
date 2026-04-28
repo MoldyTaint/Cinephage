@@ -723,7 +723,9 @@ export const movies = sqliteTable(
 		// Adaptive subtitle searching: consecutive failed subtitle search count
 		failedSubtitleAttempts: integer('failed_subtitle_attempts').default(0),
 		// Adaptive subtitle searching: when subtitle searching first began (ISO timestamp)
-		firstSubtitleSearchAt: text('first_subtitle_search_at')
+		firstSubtitleSearchAt: text('first_subtitle_search_at'),
+		tmdbCollectionId: integer('tmdb_collection_id'),
+		collectionName: text('collection_name')
 	},
 	(table) => [index('idx_movies_monitored_hasfile').on(table.monitored, table.hasFile)]
 );
