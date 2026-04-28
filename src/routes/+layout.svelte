@@ -204,6 +204,7 @@
 				children: libraryChildren
 			},
 			{ href: '/activity', label: m.nav_activity, icon: Activity },
+			{ href: '/calendar', label: m.nav_calendar, icon: Calendar },
 			{
 				label: m.nav_liveTv,
 				icon: Radio,
