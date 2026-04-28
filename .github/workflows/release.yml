@@ -38,10 +38,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx semantic-release
 
-      - name: Fast-forward main
-        if: env.RELEASE_TAG
-        run: git push origin dev:refs/heads/main
-
       - name: Trigger Docker build
         if: env.RELEASE_TAG
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
