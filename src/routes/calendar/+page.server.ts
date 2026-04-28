@@ -5,8 +5,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	const monthParam = url.searchParams.get('month');
 	const now = new Date();
 	const currentMonth =
-		monthParam ??
-		`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+		monthParam ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
 	const days = await getCalendarData(currentMonth, 'all');
 	return { days, currentMonth };

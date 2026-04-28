@@ -871,7 +871,9 @@
 											/>
 										</div>
 									{:else}
-										<div class="flex h-12 w-8 shrink-0 items-center justify-center rounded bg-base-300">
+										<div
+											class="flex h-12 w-8 shrink-0 items-center justify-center rounded bg-base-300"
+										>
 											{#if item.type === 'movie'}
 												<Clapperboard class="h-4 w-4 text-base-content/50" />
 											{:else}
@@ -882,12 +884,17 @@
 									<div class="min-w-0 flex-1">
 										<p class="font-medium wrap-break-word whitespace-normal">{item.title}</p>
 										<p class="wrap-break-words text-sm whitespace-normal text-base-content/70">
-											{item.subtitle ?? (item.type === 'movie' ? m.common_movie() : m.common_episode())}
+											{item.subtitle ??
+												(item.type === 'movie' ? m.common_movie() : m.common_episode())}
 										</p>
 									</div>
 									<div class="flex flex-col items-end gap-1">
 										<span class="text-sm text-base-content/50">{formatDate(item.date)}</span>
-										<span class="badge badge-xs {item.type === 'movie' ? 'badge-primary' : 'badge-secondary'}">
+										<span
+											class="badge badge-xs {item.type === 'movie'
+												? 'badge-primary'
+												: 'badge-secondary'}"
+										>
 											{item.type === 'movie' ? m.common_movie() : m.common_episode()}
 										</span>
 									</div>
