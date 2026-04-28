@@ -516,39 +516,40 @@
 				/>
 			</div>
 		{:else}
-			<!-- Main Form - Responsive Two Column Layout -->
+			<!-- Name (full width, above columns) -->
+			<div class="form-control mb-4">
+				<label class="label py-1" for="name">
+					<span class="label-text">{m.common_name()}</span>
+				</label>
+				<input
+					id="name"
+					type="text"
+					class="input-bordered input input-sm"
+					bind:value={name}
+					maxlength={MAX_NAME_LENGTH}
+					placeholder={selectedDefinition?.name ?? 'My Download Client'}
+				/>
+				<div class="label py-1">
+					<span
+						class="label-text-alt text-xs {nameTooLong ? 'text-error' : 'text-base-content/60'}"
+					>
+						{name.length}/{MAX_NAME_LENGTH}
+					</span>
+					{#if nameTooLong}
+						<span class="label-text-alt text-xs text-error"
+							>{m.validation_maxChars({ max: MAX_NAME_LENGTH })}</span
+						>
+					{/if}
+				</div>
+			</div>
+
+			<!-- Two Column Layout -->
 			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
 				<!-- Left Column: Connection -->
 				<div class="space-y-4">
 					<SectionHeader title={m.connection_section_title()} />
 
-					<div class="form-control">
-						<label class="label py-1" for="name">
-							<span class="label-text">{m.common_name()}</span>
-						</label>
-						<input
-							id="name"
-							type="text"
-							class="input-bordered input input-sm"
-							bind:value={name}
-							maxlength={MAX_NAME_LENGTH}
-							placeholder={selectedDefinition?.name ?? 'My Download Client'}
-						/>
-						<div class="label py-1">
-							<span
-								class="label-text-alt text-xs {nameTooLong ? 'text-error' : 'text-base-content/60'}"
-							>
-								{name.length}/{MAX_NAME_LENGTH}
-							</span>
-							{#if nameTooLong}
-								<span class="label-text-alt text-xs text-error"
-									>{m.validation_maxChars({ max: MAX_NAME_LENGTH })}</span
-								>
-							{/if}
-						</div>
-					</div>
-
-					<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
+					<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 						<div class="form-control">
 							<label class="label py-1" for="host">
 								<span class="label-text">{m.connection_host_label()}</span>
@@ -577,19 +578,7 @@
 						</div>
 					</div>
 
-					{#if !isNntpServer}
-						<DownloadClientSettings
-							mode="connection"
-							bind:urlBaseEnabled
-							bind:urlBase
-							{urlBasePlaceholder}
-							showMountMode={isSabnzbd}
-							bind:mountMode
-						/>
-					{/if}
-
 					{#if usesApiKey}
-						<!-- API Key auth for SABnzbd -->
 						<div class="form-control">
 							<label class="label py-1" for="password">
 								<span class="label-text">
@@ -615,8 +604,7 @@
 							</div>
 						</div>
 					{:else}
-						<!-- Username/password auth for torrent clients and NZBGet -->
-						<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
+						<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 							<div class="form-control">
 								<label class="label py-1" for="username">
 									<span class="label-text">{m.auth_username_label()}</span>
@@ -667,66 +655,25 @@
 						</label>
 					</div>
 
-					<!-- Stalled Downloads Behavior (global) -->
-					<div class="rounded-lg bg-base-200/50 p-3">
-						<div class="mb-2 flex items-center gap-1.5">
-							<Clock class="h-3.5 w-3.5 text-base-content/50" />
-							<span class="text-xs font-semibold text-base-content/70">Stalled downloads</span>
-							<span class="badge badge-ghost badge-xs text-[10px]">global</span>
-						</div>
-						<div class="flex items-end gap-2">
-							<div class="form-control w-24">
-								<label class="label p-0 pb-0.5" for="stalled-timeout-modal">
-									<span class="text-[11px] text-base-content/60">Timeout</span>
-								</label>
-								<input
-									id="stalled-timeout-modal"
-									type="number"
-									class="input-bordered input input-xs w-full"
-									min="0"
-									step="5"
-									bind:value={stalledTimeout}
-								/>
-							</div>
-							<span class="pb-1.5 text-[11px] text-base-content/40">min</span>
-							<div class="form-control w-24">
-								<label class="label p-0 pb-0.5" for="stalled-threshold-modal">
-									<span class="text-[11px] text-base-content/60">Below</span>
-								</label>
-								<input
-									id="stalled-threshold-modal"
-									type="number"
-									class="input-bordered input input-xs w-full"
-									min="0"
-									max="100"
-									step="5"
-									bind:value={stalledThreshold}
-								/>
-							</div>
-							<span class="pb-1.5 text-[11px] text-base-content/40">%</span>
-							{#if saveStalledBehaviorSuccess}
-								<span class="flex items-center gap-1 pb-1.5 text-[11px] text-success">
-									<Check class="h-3 w-3" />
-									Saved
-								</span>
-							{/if}
-						</div>
-						<p class="mt-1.5 text-[10px] leading-tight text-base-content/50">
-							{#if stalledTimeout === 0}
-								Stalled download handling is disabled.
-							{:else}
-								Auto-remove stalled torrents after {stalledTimeout}m if progress is below {stalledThreshold}%.
-							{/if}
-						</p>
-					</div>
+					{#if !isNntpServer}
+						<DownloadClientSettings
+							mode="connection"
+							bind:urlBaseEnabled
+							bind:urlBase
+							{urlBasePlaceholder}
+							showMountMode={isSabnzbd}
+							bind:mountMode
+						/>
+					{/if}
 				</div>
 
-				<!-- Right Column: Settings -->
+				<!-- Right Column: Client Behavior -->
 				<div class="space-y-4">
 					{#if isNntpServer}
 						<NntpServerSettings bind:maxConnections bind:priority />
 					{:else}
 						<DownloadClientSettings
+							section="categories"
 							definition={selectedDefinition}
 							bind:movieCategory
 							bind:tvCategory
@@ -742,8 +689,74 @@
 							onBrowse={openFolderBrowser}
 						/>
 					{/if}
+
+					<!-- Stalled Downloads Behavior (global) -->
+					<div class="rounded-lg bg-base-200/50 p-3">
+						<div class="mb-2 flex items-center gap-1.5">
+							<Clock class="h-3.5 w-3.5 text-base-content/50" />
+							<span class="text-xs font-semibold text-base-content/70">Stalled downloads</span>
+							<span class="badge badge-ghost badge-xs text-[10px]">global</span>
+						</div>
+						<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+							<div class="form-control">
+								<label class="label py-1" for="stalled-timeout-modal">
+									<span class="label-text">Timeout (min)</span>
+								</label>
+								<input
+									id="stalled-timeout-modal"
+									type="number"
+									class="input-bordered input input-sm w-full"
+									min="0"
+									step="5"
+									bind:value={stalledTimeout}
+								/>
+							</div>
+							<div class="form-control">
+								<label class="label py-1" for="stalled-threshold-modal">
+									<span class="label-text">Progress below (%)</span>
+								</label>
+								<input
+									id="stalled-threshold-modal"
+									type="number"
+									class="input-bordered input input-sm w-full"
+									min="0"
+									max="100"
+									step="5"
+									bind:value={stalledThreshold}
+								/>
+							</div>
+						</div>
+						{#if saveStalledBehaviorSuccess}
+							<p class="mt-1 flex items-center gap-1 text-xs text-success">
+								<Check class="h-3 w-3" />
+								Saved
+							</p>
+						{/if}
+						<p class="mt-1 text-xs text-base-content/50">
+							{#if stalledTimeout === 0}
+								Stalled download handling is disabled.
+							{:else}
+								Auto-remove stalled torrents after {stalledTimeout}m if progress is below {stalledThreshold}%.
+							{/if}
+						</p>
+					</div>
 				</div>
 			</div>
+
+			<!-- Path Mapping (full width, below columns) -->
+			{#if !isNntpServer}
+				<DownloadClientSettings
+					section="paths"
+					definition={selectedDefinition}
+					bind:downloadPathLocal
+					bind:downloadPathRemote
+					bind:tempPathLocal
+					bind:tempPathRemote
+					isSabnzbd={usesApiKey}
+					isMountMode={isMountModeClient}
+					onBrowse={openFolderBrowser}
+				/>
+			{/if}
 
 			<!-- Save Error -->
 			{#if error}
