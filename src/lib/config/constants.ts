@@ -10,9 +10,6 @@ export const TMDB = {
 	/** Base URL for TMDB API v3 */
 	BASE_URL: 'https://api.themoviedb.org/3',
 
-	/** Default language for API requests */
-	DEFAULT_LANGUAGE: 'en-US',
-
 	/** Default region for watch providers */
 	DEFAULT_REGION: 'US'
 } as const;
