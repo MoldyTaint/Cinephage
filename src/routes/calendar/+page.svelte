@@ -1,12 +1,9 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import { Calendar, ChevronLeft, ChevronRight, X, Film, Tv, Loader2 } from 'lucide-svelte';
+	import { SvelteMap } from 'svelte/reactivity';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
-	import type {
-		CalendarDay,
-		CalendarMovieItem,
-		CalendarEpisodeItem
-	} from '$lib/server/calendar/queries.js';
+	import type { CalendarDay } from '$lib/server/calendar/queries.js';
 
 	let { data } = $props();
 
@@ -35,7 +32,7 @@
 		const today = new Date();
 		const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-		const dayMap = new Map<string, CalendarDay>();
+		const dayMap = new SvelteMap<string, CalendarDay>();
 		for (const d of days) {
 			dayMap.set(d.date, d);
 		}
@@ -173,11 +170,11 @@
 			</div>
 
 			<div class="flex items-center gap-2">
-				<button class="btn btn-sm btn-circle btn-ghost" onclick={() => goToMonth(-1)}>
+				<button class="btn btn-circle btn-ghost btn-sm" onclick={() => goToMonth(-1)}>
 					<ChevronLeft class="h-5 w-5" />
 				</button>
 				<span class="min-w-[180px] text-center text-lg font-semibold">{monthLabel}</span>
-				<button class="btn btn-sm btn-circle btn-ghost" onclick={() => goToMonth(1)}>
+				<button class="btn btn-circle btn-ghost btn-sm" onclick={() => goToMonth(1)}>
 					<ChevronRight class="h-5 w-5" />
 				</button>
 			</div>
@@ -190,15 +187,15 @@
 		{:else}
 			<div class="overflow-x-auto">
 				<div class="grid grid-cols-7 gap-px rounded-lg bg-base-300">
-					{#each dayNames as name}
+					{#each dayNames as name, i (i)}
 						<div
-							class="bg-base-200 p-2 text-center text-xs font-bold uppercase tracking-wide text-base-content/70"
+							class="bg-base-200 p-2 text-center text-xs font-bold tracking-wide text-base-content/70 uppercase"
 						>
 							{name}
 						</div>
 					{/each}
 
-					{#each monthGrid as week, wi}
+					{#each monthGrid as week, _wi (_wi)}
 						{#each week as cell (cell.date)}
 							{@const movieCount = cell.items?.movies.length ?? 0}
 							{@const episodeCount = cell.items?.episodes.length ?? 0}
@@ -235,7 +232,8 @@
 										>
 											S{String(ep.seasonNumber).padStart(2, '0')}E{String(
 												ep.episodeNumber
-											).padStart(2, '0')} {ep.seriesTitle}
+											).padStart(2, '0')}
+											{ep.seriesTitle}
 										</div>
 									{/each}
 									{#if totalItems > 3}
@@ -262,11 +260,13 @@
 	></div>
 
 	<div
-		class="fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col overflow-y-auto bg-base-100 shadow-2xl transition-transform duration-300"
+		class="fixed top-0 right-0 z-50 flex h-full w-full max-w-md flex-col overflow-y-auto bg-base-100 shadow-2xl transition-transform duration-300"
 	>
-		<div class="sticky top-0 z-10 flex items-center justify-between border-b border-base-200 bg-base-100 px-4 py-3">
+		<div
+			class="sticky top-0 z-10 flex items-center justify-between border-b border-base-200 bg-base-100 px-4 py-3"
+		>
 			<h2 class="text-lg font-bold">{formatPanelDate(selectedDay.date)}</h2>
-			<button class="btn btn-sm btn-circle btn-ghost" onclick={closePanel}>
+			<button class="btn btn-circle btn-ghost btn-sm" onclick={closePanel}>
 				<X class="h-5 w-5" />
 			</button>
 		</div>
@@ -274,7 +274,9 @@
 		<div class="space-y-4 p-4">
 			{#if selectedDay.movies.length > 0}
 				<div>
-					<h3 class="mb-2 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-base-content/70">
+					<h3
+						class="mb-2 flex items-center gap-2 text-sm font-bold tracking-wide text-base-content/70 uppercase"
+					>
 						<Film class="h-4 w-4" />
 						Movies
 					</h3>
@@ -302,7 +304,7 @@
 												{m.calendar_inLibrary()}
 											</span>
 										{:else}
-											<span class="badge badge-sm badge-outline">
+											<span class="badge badge-outline badge-sm">
 												{m.calendar_inTheaters()}
 											</span>
 										{/if}
@@ -316,7 +318,9 @@
 
 			{#if selectedDay.episodes.length > 0}
 				<div>
-					<h3 class="mb-2 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-base-content/70">
+					<h3
+						class="mb-2 flex items-center gap-2 text-sm font-bold tracking-wide text-base-content/70 uppercase"
+					>
 						<Tv class="h-4 w-4" />
 						Episodes
 					</h3>
@@ -337,9 +341,10 @@
 								<div class="min-w-0 flex-1">
 									<div class="truncate text-sm font-medium">{ep.seriesTitle}</div>
 									<div class="text-xs text-base-content/60">
-										S{String(ep.seasonNumber).padStart(2, '0')}E{String(
-											ep.episodeNumber
-										).padStart(2, '0')}
+										S{String(ep.seasonNumber).padStart(2, '0')}E{String(ep.episodeNumber).padStart(
+											2,
+											'0'
+										)}
 										{#if ep.title}
 											- {ep.title}
 										{/if}
