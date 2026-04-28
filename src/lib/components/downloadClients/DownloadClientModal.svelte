@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, Loader2, XCircle } from 'lucide-svelte';
+	import { X, Loader2, XCircle, Clock, Check } from 'lucide-svelte';
 	import type {
 		DownloadClient,
 		DownloadClientFormData,
@@ -60,6 +60,12 @@
 			data: DownloadClientFormData | NntpServerFormData,
 			isNntp: boolean
 		) => Promise<ConnectionTestResult>;
+		/** Global stalled download timeout (minutes) */
+		stalledTimeoutMinutes: number;
+		/** Global stalled progress threshold (0-100%). Kill torrens only below this % */
+		stalledProgressThreshold: number;
+		/** Called when stalled download behavior settings should be saved */
+		onSaveStalledBehavior: (timeout: number, threshold: number) => Promise<void>;
 	}
 
 	let {
@@ -73,7 +79,10 @@
 		onClose,
 		onSave,
 		onDelete,
-		onTest
+		onTest,
+		stalledTimeoutMinutes,
+		stalledProgressThreshold,
+		onSaveStalledBehavior
 	}: Props = $props();
 
 	// Form state - Implementation selection (defaults only, effect syncs from props)
@@ -112,6 +121,42 @@
 
 	// Form state - NNTP specific
 	let maxConnections = $state(10);
+
+	// Form state - Download Behavior (global)
+	let stalledTimeout = $state(0);
+	let stalledThreshold = $state(0);
+	let saveStalledBehaviorSuccess = $state(false);
+
+	// Sync stalled behavior from props when modal opens
+	$effect(() => {
+		if (open) {
+			stalledTimeout = stalledTimeoutMinutes;
+			stalledThreshold = stalledProgressThreshold;
+			saveStalledBehaviorSuccess = false;
+		}
+	});
+
+	// Auto-save stalled behavior when values change (debounced)
+	$effect(() => {
+		if (!open) return;
+		const timeout = stalledTimeout;
+		const threshold = stalledThreshold;
+
+		// Skip if values match the props (initial sync, not a user edit)
+		if (timeout === stalledTimeoutMinutes && threshold === stalledProgressThreshold) return;
+
+		const timer = setTimeout(async () => {
+			try {
+				await onSaveStalledBehavior(timeout, threshold);
+				saveStalledBehaviorSuccess = true;
+				setTimeout(() => (saveStalledBehaviorSuccess = false), 2000);
+			} catch {
+				// Revert to props on failure
+			}
+		}, 600);
+
+		return () => clearTimeout(timer);
+	});
 
 	// UI state
 	let testing = $state(false);
@@ -620,6 +665,59 @@
 							<input type="checkbox" class="checkbox checkbox-sm" bind:checked={enabled} />
 							<span class="label-text">{m.common_enabled()}</span>
 						</label>
+					</div>
+
+					<!-- Stalled Downloads Behavior (global) -->
+					<div class="rounded-lg bg-base-200/50 p-3">
+						<div class="mb-2 flex items-center gap-1.5">
+							<Clock class="h-3.5 w-3.5 text-base-content/50" />
+							<span class="text-xs font-semibold text-base-content/70">Stalled downloads</span>
+							<span class="badge badge-ghost badge-xs text-[10px]">global</span>
+						</div>
+						<div class="flex items-end gap-2">
+							<div class="form-control w-24">
+								<label class="label p-0 pb-0.5" for="stalled-timeout-modal">
+									<span class="text-[11px] text-base-content/60">Timeout</span>
+								</label>
+								<input
+									id="stalled-timeout-modal"
+									type="number"
+									class="input-bordered input input-xs w-full"
+									min="0"
+									step="5"
+									bind:value={stalledTimeout}
+								/>
+							</div>
+							<span class="pb-1.5 text-[11px] text-base-content/40">min</span>
+							<div class="form-control w-24">
+								<label class="label p-0 pb-0.5" for="stalled-threshold-modal">
+									<span class="text-[11px] text-base-content/60">Below</span>
+								</label>
+								<input
+									id="stalled-threshold-modal"
+									type="number"
+									class="input-bordered input input-xs w-full"
+									min="0"
+									max="100"
+									step="5"
+									bind:value={stalledThreshold}
+								/>
+							</div>
+							<span class="pb-1.5 text-[11px] text-base-content/40">%</span>
+							{#if saveStalledBehaviorSuccess}
+								<span class="flex items-center gap-1 pb-1.5 text-[11px] text-success">
+									<Check class="h-3 w-3" />
+									Saved
+								</span>
+							{/if}
+						</div>
+						<p class="mt-1.5 text-[10px] leading-tight text-base-content/50">
+							{#if stalledTimeout === 0}
+								Stalled download handling is disabled.
+							{:else}
+								Auto-remove stalled torrents after {stalledTimeout}m if progress is below {stalledThreshold}%.
+							{/if}
+						</p>
 					</div>
 				</div>
 
