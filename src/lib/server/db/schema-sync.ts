@@ -109,8 +109,11 @@ interface MigrationDefinition {
  * Version 79: Migrate custom format audio conditions to canonical audio schema
  * Version 80: Built-in profile score overrides table
  * Version 81: Unify scoring profile architecture - add isBuiltIn, min/max resolution, source columns
+ * Version 82: Add media server sync tables
+ * Version 83: Add movie collection columns
+ * Version 84: Add release_date to movies and first_air_date to series
  */
-export const CURRENT_SCHEMA_VERSION = 83;
+export const CURRENT_SCHEMA_VERSION = 84;
 
 const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -633,7 +636,8 @@ const TABLE_DEFINITIONS: string[] = [
 		"failed_subtitle_attempts" integer DEFAULT 0,
 		"first_subtitle_search_at" text,
 		"tmdb_collection_id" integer,
-		"collection_name" text
+		"collection_name" text,
+		"release_date" text
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS "movie_files" (
@@ -678,7 +682,8 @@ const TABLE_DEFINITIONS: string[] = [
 		"added" text,
 		"episode_count" integer DEFAULT 0,
 		"episode_file_count" integer DEFAULT 0,
-		"wants_subtitles" integer DEFAULT true
+		"wants_subtitles" integer DEFAULT true,
+		"first_air_date" text
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS "seasons" (
@@ -5892,6 +5897,29 @@ const MIGRATIONS: MigrationDefinition[] = [
 				sqlite.prepare(`ALTER TABLE movies ADD COLUMN collection_name text`).run();
 			}
 			logger.info('[SchemaSync] Added movie collection columns (v83)');
+		}
+	},
+	{
+		version: 84,
+		name: 'add_release_date_columns',
+		apply: (sqlite) => {
+			if (!columnExists(sqlite, 'movies', 'release_date')) {
+				sqlite.prepare(`ALTER TABLE movies ADD COLUMN release_date text`).run();
+			}
+			if (!columnExists(sqlite, 'series', 'first_air_date')) {
+				sqlite.prepare(`ALTER TABLE series ADD COLUMN first_air_date text`).run();
+			}
+			sqlite
+				.prepare(
+					`CREATE INDEX IF NOT EXISTS "idx_movies_release_date" ON "movies" ("release_date")`
+				)
+				.run();
+			sqlite
+				.prepare(
+					`CREATE INDEX IF NOT EXISTS "idx_series_first_air_date" ON "series" ("first_air_date")`
+				)
+				.run();
+			logger.info('[SchemaSync] Added release_date and first_air_date columns (v84)');
 		}
 	}
 ];

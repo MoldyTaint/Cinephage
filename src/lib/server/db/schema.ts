@@ -725,9 +725,13 @@ export const movies = sqliteTable(
 		// Adaptive subtitle searching: when subtitle searching first began (ISO timestamp)
 		firstSubtitleSearchAt: text('first_subtitle_search_at'),
 		tmdbCollectionId: integer('tmdb_collection_id'),
-		collectionName: text('collection_name')
+		collectionName: text('collection_name'),
+		releaseDate: text('release_date')
 	},
-	(table) => [index('idx_movies_monitored_hasfile').on(table.monitored, table.hasFile)]
+	(table) => [
+		index('idx_movies_monitored_hasfile').on(table.monitored, table.hasFile),
+		index('idx_movies_release_date').on(table.releaseDate)
+	]
 );
 
 /**
@@ -829,9 +833,13 @@ export const series = sqliteTable(
 		episodeCount: integer('episode_count').default(0),
 		episodeFileCount: integer('episode_file_count').default(0),
 		// Whether to search for subtitles for this series (inherited by episodes by default)
-		wantsSubtitles: integer('wants_subtitles', { mode: 'boolean' }).default(true)
+		wantsSubtitles: integer('wants_subtitles', { mode: 'boolean' }).default(true),
+		firstAirDate: text('first_air_date')
 	},
-	(table) => [index('idx_series_monitored').on(table.monitored)]
+	(table) => [
+		index('idx_series_monitored').on(table.monitored),
+		index('idx_series_first_air_date').on(table.firstAirDate)
+	]
 );
 
 /**
