@@ -71,14 +71,6 @@ export function formatBytes(bytes: number | null | undefined): string {
 }
 
 /**
- * Format speed (bytes per second) to human-readable string (e.g., "1.5 MB/s")
- */
-export function formatSpeed(bytesPerSecond: number | null | undefined): string {
-	if (!bytesPerSecond) return '-';
-	return formatBytes(bytesPerSecond) + '/s';
-}
-
-/**
  * Format milliseconds to human-readable duration (e.g., "2d 3h 15m" or "30s")
  * Shows days/hours/minutes for longer durations, seconds for shorter.
  */

@@ -132,36 +132,6 @@ export function isLibraryMovie(item: LibraryItem): item is LibraryMovie {
 	return 'hasFile' in item && 'files' in item;
 }
 
-export function isLibrarySeries(item: LibraryItem): item is LibrarySeries {
-	return 'episodeCount' in item && 'episodeFileCount' in item;
-}
-
-// Sort options
-export type SortDirection = 'asc' | 'desc';
-
-export interface SortOption<T extends string = string> {
-	field: T;
-	direction: SortDirection;
-	label: string;
-}
-
-// Filter options
-export type MonitoredFilter = 'all' | 'monitored' | 'unmonitored';
-export type FileStatusFilter = 'all' | 'hasFile' | 'missingFile';
-export type SeriesStatusFilter = 'all' | 'continuing' | 'ended';
-export type ProgressFilter = 'all' | 'complete' | 'inProgress' | 'notStarted';
-
-export interface MovieFilters {
-	monitored: MonitoredFilter;
-	fileStatus: FileStatusFilter;
-}
-
-export interface SeriesFilters {
-	monitored: MonitoredFilter;
-	status: SeriesStatusFilter;
-	progress: ProgressFilter;
-}
-
 // Helper to get quality display string
 export function getQualityDisplay(quality: QualityInfo | null): string | null {
 	if (!quality) return null;

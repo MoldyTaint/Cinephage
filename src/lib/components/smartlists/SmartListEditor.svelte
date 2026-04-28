@@ -5,16 +5,11 @@
 	import { onMount } from 'svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import type { SmartListRecord, SmartListFilters } from '$lib/server/db/schema.js';
+	import type { RootFolderBasic as RootFolder } from '$lib/types/downloadClient.js';
 	import FilterBuilder from './FilterBuilder.svelte';
 	import PreviewPanel from './PreviewPanel.svelte';
 	import SettingsPanel from './SettingsPanel.svelte';
 	import ExternalSourceConfig from './ExternalSourceConfig.svelte';
-
-	interface RootFolder {
-		id: string;
-		path: string;
-		mediaType: string;
-	}
 
 	interface ScoringProfile {
 		id: string;

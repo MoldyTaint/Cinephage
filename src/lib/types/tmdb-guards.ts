@@ -39,14 +39,6 @@ export function isCastMember(person: CastMember | CrewMember): person is CastMem
 }
 
 /**
- * Type guard to check if a cast/crew member is a CrewMember.
- * CrewMembers have 'job' property.
- */
-export function isCrewMember(person: CastMember | CrewMember): person is CrewMember {
-	return 'job' in person;
-}
-
-/**
  * Get the title from a media item (works for Movie, TVShow, or Person).
  */
 export function getMediaTitle(item: TmdbMediaItem): string {

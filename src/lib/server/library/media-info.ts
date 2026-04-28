@@ -26,6 +26,7 @@ import {
 import { readFile } from 'node:fs/promises';
 import type { movieFiles } from '$lib/server/db/schema.js';
 import { createChildLogger } from '$lib/logging';
+import { VIDEO_EXTENSIONS } from '$lib/config/constants.js';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });
 
@@ -44,34 +45,14 @@ const HDR_DETECTION = {
 	pqTransfer: ['smpte2084', 'smpte-st-2084', 'smpte st 2084']
 } as const;
 
-/**
- * Common video container formats
- */
-const VIDEO_EXTENSIONS = new Set([
-	'.mkv',
-	'.mp4',
-	'.avi',
-	'.mov',
-	'.wmv',
-	'.flv',
-	'.webm',
-	'.m4v',
-	'.mpg',
-	'.mpeg',
-	'.ts',
-	'.m2ts',
-	'.vob',
-	'.ogv',
-	'.3gp',
-	'.strm'
-]);
+const MEDIA_INFO_EXTENSIONS = new Set([...VIDEO_EXTENSIONS, '.ogv', '.3gp', '.strm']);
 
 /**
  * Check if a file path has a video extension
  */
 export function isVideoFile(filePath: string): boolean {
 	const ext = filePath.toLowerCase().slice(filePath.lastIndexOf('.'));
-	return VIDEO_EXTENSIONS.has(ext);
+	return MEDIA_INFO_EXTENSIONS.has(ext);
 }
 
 /**

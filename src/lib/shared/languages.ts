@@ -235,22 +235,3 @@ export function getLanguageName(code: string): string {
 	const normalized = normalizeLanguageCode(code);
 	return LANGUAGE_CODE_TO_NAME.get(normalized) ?? code.toUpperCase();
 }
-
-/**
- * Get all language codes that a provider supports
- * This function is used by providers to filter search requests
- */
-export function getProviderSupportedCodes(supportedCodes: readonly string[]): Set<string> {
-	const supported = new Set<string>();
-	for (const code of supportedCodes) {
-		supported.add(code.toLowerCase());
-		// Also add variants for base languages
-		const lang = SUPPORTED_LANGUAGES.find((l) => l.code === code.toLowerCase());
-		if (lang?.variants) {
-			for (const v of lang.variants) {
-				supported.add(v.code);
-			}
-		}
-	}
-	return supported;
-}

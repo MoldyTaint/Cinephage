@@ -66,17 +66,6 @@ export const DOWNLOAD = {
 } as const;
 
 /**
- * Library scanning configuration.
- */
-export const LIBRARY = {
-	/** Default library scan interval (12 hours) */
-	DEFAULT_SCAN_INTERVAL_HOURS: 12,
-
-	/** Default auto-match confidence threshold (0.8) */
-	DEFAULT_AUTO_MATCH_THRESHOLD: 0.8
-} as const;
-
-/**
  * Video file extensions for media library.
  */
 export const VIDEO_EXTENSIONS = [
@@ -95,17 +84,7 @@ export const VIDEO_EXTENSIONS = [
 	'.vob'
 ] as const;
 
-/**
- * System folders to exclude from scanning.
- */
-export const EXCLUDED_SYSTEM_FOLDERS = [
-	/^\./, // Hidden folders (., .., .git, etc.)
-	/@eaDir/i, // Synology
-	/\$RECYCLE\.BIN/i, // Windows
-	/System Volume Information/i,
-	/lost\+found/i,
-	/#recycle/i
-] as const;
+export const VIDEO_EXTENSIONS_SET = new Set<string>(VIDEO_EXTENSIONS);
 
 /**
  * Sample/extra file patterns to exclude from import.
@@ -143,35 +122,6 @@ export const DANGEROUS_EXTENSIONS = [
  * @see https://github.com/Radarr/Radarr/blob/develop/src/NzbDrone.Core/MediaFiles/MediaFileExtensions.cs
  */
 export const EXECUTABLE_EXTENSIONS = ['.bat', '.cmd', '.exe', '.sh'] as const;
-
-/**
- * Archive file extensions.
- * Used to detect nested archives that may need extraction.
- * @see https://github.com/Radarr/Radarr/blob/develop/src/NzbDrone.Core/MediaFiles/MediaFileExtensions.cs
- */
-export const ARCHIVE_EXTENSIONS = ['.7z', '.bz2', '.gz', '.r00', '.rar', '.tar', '.zip'] as const;
-
-/**
- * HTTP and API configuration.
- */
-export const HTTP = {
-	/** Default API timeout (2 minutes) */
-	DEFAULT_TIMEOUT_MS: 120_000,
-
-	/** qBittorrent cookie expiry refresh window (50 minutes) */
-	QBITTORRENT_COOKIE_REFRESH_MS: 50 * 60 * 1000
-} as const;
-
-/**
- * Cache configuration.
- */
-export const CACHE = {
-	/** TMDB cache TTL (24 hours) */
-	TMDB_TTL_MS: 24 * 60 * 60 * 1000,
-
-	/** Release cache TTL (15 minutes) */
-	RELEASE_TTL_MS: 15 * 60 * 1000
-} as const;
 
 /**
  * Genre ID mappings between Movie and TV APIs.

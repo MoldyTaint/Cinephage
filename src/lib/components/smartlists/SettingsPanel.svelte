@@ -1,12 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import { Settings, Zap } from 'lucide-svelte';
-
-	interface RootFolder {
-		id: string;
-		path: string;
-		mediaType: string;
-	}
+	import type { RootFolderBasic as RootFolder } from '$lib/types/downloadClient.js';
 
 	interface ScoringProfile {
 		id: string;

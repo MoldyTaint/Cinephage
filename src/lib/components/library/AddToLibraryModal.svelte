@@ -7,6 +7,7 @@
 	import CommonOptions from './add/CommonOptions.svelte';
 	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
 	import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
+	import type { RootFolderWithSpaceAndDefault as RootFolder } from '$lib/types/downloadClient.js';
 	import MovieAddOptions, { type MinimumAvailability } from './add/MovieAddOptions.svelte';
 	import SeriesAddOptions, {
 		type MonitorType,
@@ -27,17 +28,6 @@
 	}
 
 	let { open, mediaType, tmdbId, title, year, posterPath, onClose, onSuccess }: Props = $props();
-
-	// Types
-	interface RootFolder {
-		id: string;
-		name: string;
-		path: string;
-		mediaType: string;
-		mediaSubType?: 'standard' | 'anime';
-		isDefault?: boolean;
-		freeSpaceBytes?: number | null;
-	}
 
 	interface LibraryEntity {
 		id: string;

@@ -5,6 +5,7 @@
  */
 
 import type { Readable } from 'node:stream';
+import { VIDEO_EXTENSIONS_SET } from '$lib/config/constants.js';
 
 /**
  * NNTP server configuration.
@@ -205,30 +206,10 @@ export interface ClassifiedError {
 /**
  * Common video file extensions.
  */
-export const VIDEO_EXTENSIONS = new Set([
-	'.mkv',
-	'.mp4',
-	'.avi',
-	'.mov',
-	'.wmv',
-	'.flv',
-	'.webm',
-	'.m4v',
-	'.mpg',
-	'.mpeg',
-	'.ts',
-	'.m2ts',
-	'.vob'
-]);
+export const VIDEO_EXTENSIONS = VIDEO_EXTENSIONS_SET;
 
-/**
- * Common audio file extensions.
- */
 export const AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.aac', '.ogg', '.wav', '.m4a', '.wma']);
 
-/**
- * All media file extensions.
- */
 export const MEDIA_EXTENSIONS = new Set([...VIDEO_EXTENSIONS, ...AUDIO_EXTENSIONS]);
 
 /**

@@ -70,16 +70,6 @@ export class ConfigurationError extends AppError {
 }
 
 /**
- * Rate limit error when request limits are exceeded.
- */
-export class RateLimitError extends AppError {
-	constructor(retryAfter: number) {
-		super('Rate limit exceeded', 'RATE_LIMIT_EXCEEDED', 429, { retryAfter });
-		this.name = 'RateLimitError';
-	}
-}
-
-/**
  * Invalid NZB error for malformed or empty NZB files.
  */
 export class InvalidNzbError extends AppError {

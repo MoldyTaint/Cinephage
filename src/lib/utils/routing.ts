@@ -20,6 +20,3 @@ export function resolvePath(path: string): string {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	return resolve(path as any);
 }
-
-// Re-export resolve for ESLint compatibility
-export { resolve };

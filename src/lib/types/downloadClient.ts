@@ -133,6 +133,29 @@ export interface RootFolder {
 	createdAt?: string;
 }
 
+export type RootFolderWithSpace = Omit<
+	Pick<RootFolder, 'id' | 'name' | 'path' | 'mediaType' | 'mediaSubType' | 'freeSpaceBytes'>,
+	'mediaType' | 'mediaSubType'
+> & {
+	mediaType: string;
+	mediaSubType?: string | null;
+};
+
+export type RootFolderWithSpaceAndDefault = Omit<
+	Pick<
+		RootFolder,
+		'id' | 'name' | 'path' | 'mediaType' | 'mediaSubType' | 'isDefault' | 'freeSpaceBytes'
+	>,
+	'mediaType' | 'mediaSubType'
+> & {
+	mediaType: string;
+	mediaSubType?: string | null;
+};
+
+export type RootFolderBasic = Omit<Pick<RootFolder, 'id' | 'path' | 'mediaType'>, 'mediaType'> & {
+	mediaType: string;
+};
+
 /**
  * Form data for creating/editing root folder
  */

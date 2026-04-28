@@ -12,6 +12,7 @@ import type {
 	DownloadInfo,
 	IDownloadClient
 } from '../core/interfaces';
+import { getBasicAuthHeader } from '../core/client-utils.js';
 import {
 	buildMagnetFromInfoHash,
 	extractInfoHashFromMagnet,
@@ -132,10 +133,7 @@ export class DelugeClient implements IDownloadClient {
 	}
 
 	private getAuthHeader(): string | null {
-		if (!this.config.username) return null;
-		const password = this.config.password ?? '';
-		const encoded = Buffer.from(`${this.config.username}:${password}`).toString('base64');
-		return `Basic ${encoded}`;
+		return getBasicAuthHeader(this.config.username, this.config.password);
 	}
 
 	private async request<T>(method: string, params: unknown[] = []): Promise<T> {

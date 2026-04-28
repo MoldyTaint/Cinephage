@@ -7,6 +7,7 @@
 	import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { formatBytes } from '$lib/utils/format.js';
+	import type { RootFolderWithSpace as RootFolder } from '$lib/types/downloadClient.js';
 
 	interface SeriesData {
 		tmdbId: number;
@@ -21,21 +22,12 @@
 		seriesType: string | null;
 	}
 
-	interface QualityProfile {
+	interface QualityProfileOption {
 		id: string;
 		name: string;
 		description: string;
 		isBuiltIn: boolean;
 		isDefault: boolean;
-	}
-
-	interface RootFolder {
-		id: string;
-		name: string;
-		path: string;
-		mediaType: string;
-		mediaSubType?: string | null;
-		freeSpaceBytes: number | null;
 	}
 
 	interface TmdbTvDetails {
@@ -50,7 +42,7 @@
 	interface Props {
 		open: boolean;
 		series: SeriesData;
-		qualityProfiles: QualityProfile[];
+		qualityProfiles: QualityProfileOption[];
 		rootFolders: RootFolder[];
 		saving: boolean;
 		onClose: () => void;

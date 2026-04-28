@@ -52,7 +52,3 @@ export function getMovieAvailabilityLevel(
 	if (daysSinceAdded > 120) return 'released';
 	return 'inCinemas';
 }
-
-export function isMovieReleased(movie: MovieAvailabilityInput, now: Date = new Date()): boolean {
-	return getMovieAvailabilityLevel(movie, now) === 'released';
-}

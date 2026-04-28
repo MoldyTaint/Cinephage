@@ -3,19 +3,12 @@
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import { mediaTypeCountLabel, type MediaType } from '$lib/utils/media-type';
 	import * as m from '$lib/paraglide/messages.js';
-
-	interface QualityProfile {
-		id: string;
-		name: string;
-		description: string;
-		isBuiltIn: boolean;
-		isDefault: boolean;
-	}
+	import type { QualityProfileOption } from '$lib/types/profile.js';
 
 	interface Props {
 		open: boolean;
 		selectedCount: number;
-		qualityProfiles: QualityProfile[];
+		qualityProfiles: QualityProfileOption[];
 		saving: boolean;
 		mediaType: MediaType;
 		onSave: (profileId: string | null) => void;

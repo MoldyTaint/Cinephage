@@ -266,7 +266,7 @@ describe('Custom Formats API', () => {
 			});
 
 			expect(status).toBe(400);
-			expect(data.error).toContain('Invalid');
+			expect(data.error).toContain('Validation failed');
 		});
 
 		it('validates required name field', async () => {
@@ -276,7 +276,7 @@ describe('Custom Formats API', () => {
 			});
 
 			expect(status).toBe(400);
-			expect(data.error).toContain('Invalid');
+			expect(data.error).toContain('Validation failed');
 		});
 
 		it('validates category enum', async () => {
@@ -287,7 +287,7 @@ describe('Custom Formats API', () => {
 			});
 
 			expect(status).toBe(400);
-			expect(data.error).toContain('Invalid');
+			expect(data.error).toContain('Validation failed');
 		});
 	});
 
@@ -372,7 +372,7 @@ describe('Custom Formats API', () => {
 			});
 
 			expect(status).toBe(400);
-			expect(data.error).toContain('ID is required');
+			expect(data.error).toContain('Validation failed');
 		});
 	});
 
@@ -416,7 +416,7 @@ describe('Custom Formats API', () => {
 			const { status, data } = await api.delete<ErrorResponse>(DELETE, {});
 
 			expect(status).toBe(400);
-			expect(data.error).toContain('ID is required');
+			expect(data.error).toContain('Validation failed');
 		});
 	});
 });

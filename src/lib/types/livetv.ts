@@ -810,21 +810,6 @@ export interface StalkerAccount extends Omit<LiveTvAccount, 'providerType' | 'st
 	hasPassword: boolean;
 }
 
-/** @deprecated Use LiveTvAccountInput with providerType='stalker' */
-export interface StalkerAccountInput {
-	name: string;
-	portalUrl: string;
-	macAddress: string;
-	enabled?: boolean;
-	serialNumber?: string;
-	deviceId?: string;
-	deviceId2?: string;
-	model?: string;
-	timezone?: string;
-	username?: string;
-	password?: string;
-}
-
 /** @deprecated Use LiveTvAccountUpdate instead */
 export interface StalkerAccountUpdate {
 	name?: string;
@@ -842,19 +827,6 @@ export interface StalkerAccountUpdate {
 
 /** @deprecated Use LiveTvAccountTestResult instead */
 export type StalkerAccountTestResult = LiveTvAccountTestResult;
-
-/** @deprecated Use LiveTvAccountInput with providerType='stalker' for testing */
-export interface StalkerAccountTestConfig {
-	portalUrl: string;
-	macAddress: string;
-	serialNumber?: string;
-	deviceId?: string;
-	deviceId2?: string;
-	model?: string;
-	timezone?: string;
-	username?: string;
-	password?: string;
-}
 
 /** @deprecated Use LiveTvCategory instead */
 export interface StalkerCategory {
@@ -884,24 +856,6 @@ export interface StalkerChannelData {
 	archiveDuration: number;
 }
 
-/** @deprecated Use ChannelSyncResult instead */
-export type StalkerChannelSyncResult = ChannelSyncResult;
-
-/** @deprecated Use XstreamChannelData instead */
-export type XstreamChannelInfo = XstreamChannelData;
-
-/** @deprecated Use M3uChannelData instead */
-export type M3uChannelInfo = M3uChannelData;
-
-/** @deprecated Use CachedChannel['externalId'] instead of stalkerId */
-export type StalkerId = string;
-
-/** @deprecated Use LiveTvProviderType instead */
-export type ProviderType = LiveTvProviderType;
-
-/** @deprecated Use LiveTvCategory instead */
-export type CachedCategory = LiveTvCategory;
-
 // ============================================================================
 // STALKER RAW PROFILE (for internal portal API responses)
 // ============================================================================
@@ -923,6 +877,3 @@ export interface StalkerRawProfile {
 	default_timezone: string;
 	[key: string]: unknown;
 }
-
-/** @deprecated Use ChannelSyncResult instead */
-export type StalkerChannelSyncResultDuplicate = ChannelSyncResult;

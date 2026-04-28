@@ -36,12 +36,3 @@ export function createDbMock(testDb: TestDatabase) {
 		initializeDatabase: vi.fn().mockResolvedValue(undefined)
 	};
 }
-
-export function mockQualityFilter() {
-	return {
-		qualityFilter: {
-			clearProfileCache: vi.fn(),
-			getProfile: vi.fn()
-		}
-	};
-}

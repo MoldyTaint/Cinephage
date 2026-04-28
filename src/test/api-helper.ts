@@ -5,8 +5,9 @@
  * Creates mock Request objects and parses Response objects for assertions.
  */
 
-import type { RequestEvent, RequestHandler } from '@sveltejs/kit';
+import { json, type RequestEvent, type RequestHandler } from '@sveltejs/kit';
 
+import { isAppError } from '$lib/errors';
 import { logger } from '$lib/logging';
 
 type AnyRequestHandler = RequestHandler<any, any>;
@@ -119,7 +120,16 @@ export async function callHandler<T = unknown>(
 	const request = createRequest(method, body, options);
 	const event = createRequestEvent(request, options?.params, options);
 
-	const response = await handler(event as RequestEvent);
+	let response: Response;
+	try {
+		response = await handler(event as RequestEvent);
+	} catch (error) {
+		if (isAppError(error)) {
+			response = json({ success: false, ...error.toJSON() }, { status: error.statusCode });
+		} else {
+			throw error;
+		}
+	}
 	const data = (await response.json()) as T;
 
 	return { status: response.status, data };

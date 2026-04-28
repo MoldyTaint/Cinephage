@@ -4,16 +4,7 @@
 	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import { formatBytes } from '$lib/utils/format.js';
-
-	interface RootFolder {
-		id: string;
-		name: string;
-		path: string;
-		mediaType: string;
-		mediaSubType?: 'standard' | 'anime';
-		isDefault?: boolean;
-		freeSpaceBytes?: number | null;
-	}
+	import type { RootFolderWithSpaceAndDefault as RootFolder } from '$lib/types/downloadClient.js';
 
 	interface ScoringProfile {
 		id: string;

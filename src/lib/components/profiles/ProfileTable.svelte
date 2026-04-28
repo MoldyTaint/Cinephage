@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { ScoringProfile } from '$lib/types/profile';
 	import { Settings, Trash2, Lock, Star, Check, Film, Tv, Sliders } from 'lucide-svelte';
+	import { toNullableNumber } from '$lib/utils/number.js';
 
 	interface Props {
 		profiles: ScoringProfile[];
@@ -10,18 +11,6 @@
 	}
 
 	let { profiles, onEdit, onDelete, onSetDefault }: Props = $props();
-
-	function toNullableNumber(value: unknown): number | null {
-		if (value === null || value === undefined) return null;
-		if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-		if (typeof value === 'string') {
-			const trimmed = value.trim();
-			if (!trimmed) return null;
-			const parsed = Number(trimmed);
-			return Number.isFinite(parsed) ? parsed : null;
-		}
-		return null;
-	}
 
 	// Format size limit display
 	function formatMovieSize(profile: ScoringProfile): string {

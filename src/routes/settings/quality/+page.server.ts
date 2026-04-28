@@ -3,21 +3,10 @@ import type { Resolution } from '$lib/server/scoring/types';
 import { db } from '$lib/server/db';
 import { scoringProfiles, customFormats } from '$lib/server/db/schema';
 import { DEFAULT_PROFILES, DEFAULT_RESOLUTION_ORDER, ALL_FORMATS } from '$lib/server/scoring';
+import { toNullableNumber } from '$lib/utils/number.js';
 
 // Built-in profile IDs - derived from DEFAULT_PROFILES for single source of truth
 const BUILT_IN_PROFILE_IDS = DEFAULT_PROFILES.map((p) => p.id);
-
-function toNullableNumber(value: unknown): number | null {
-	if (value === null || value === undefined) return null;
-	if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-	if (typeof value === 'string') {
-		const trimmed = value.trim();
-		if (!trimmed) return null;
-		const parsed = Number(trimmed);
-		return Number.isFinite(parsed) ? parsed : null;
-	}
-	return null;
-}
 
 export const load: PageServerLoad = async ({ url }) => {
 	// Get active tab from URL params (default to profiles)

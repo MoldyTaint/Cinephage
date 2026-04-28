@@ -12,6 +12,7 @@ import type {
 	DownloadInfo,
 	IDownloadClient
 } from '../core/interfaces';
+import { getBasicAuthHeader } from '../core/client-utils.js';
 
 interface TransmissionRpcResponse<T> {
 	result: string;
@@ -211,13 +212,7 @@ export class TransmissionClient implements IDownloadClient {
 	}
 
 	private getAuthHeader(): string | null {
-		if (!this.config.username) {
-			return null;
-		}
-
-		const password = this.config.password ?? '';
-		const credentials = Buffer.from(`${this.config.username}:${password}`).toString('base64');
-		return `Basic ${credentials}`;
+		return getBasicAuthHeader(this.config.username, this.config.password);
 	}
 
 	private toTransmissionId(id: string): TransmissionId {

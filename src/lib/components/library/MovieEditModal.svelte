@@ -8,22 +8,14 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { formatBytes } from '$lib/utils/format.js';
+	import type { RootFolderWithSpace as RootFolder } from '$lib/types/downloadClient.js';
 
-	interface QualityProfile {
+	interface QualityProfileOption {
 		id: string;
 		name: string;
 		description: string;
 		isBuiltIn: boolean;
 		isDefault: boolean;
-	}
-
-	interface RootFolder {
-		id: string;
-		name: string;
-		path: string;
-		mediaType: string;
-		mediaSubType?: string | null;
-		freeSpaceBytes: number | null;
 	}
 
 	interface TmdbMovieDetails {
@@ -37,7 +29,7 @@
 	interface Props {
 		open: boolean;
 		movie: LibraryMovie;
-		qualityProfiles: QualityProfile[];
+		qualityProfiles: QualityProfileOption[];
 		rootFolders: RootFolder[];
 		saving: boolean;
 		onClose: () => void;

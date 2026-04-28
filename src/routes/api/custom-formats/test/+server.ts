@@ -3,41 +3,9 @@ import type { RequestHandler } from './$types';
 import { parseRelease, evaluateCondition } from '$lib/server/scoring';
 import type { FormatCondition } from '$lib/server/scoring';
 import { z } from 'zod';
+import { conditionSchema } from '$lib/validation/schemas.js';
 import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
-
-/**
- * Condition schema for testing
- */
-const conditionSchema = z.object({
-	name: z.string().min(1).max(100),
-	type: z.enum([
-		'resolution',
-		'source',
-		'release_title',
-		'release_group',
-		'codec',
-		'audio_codec',
-		'audio_channels',
-		'audio_atmos',
-		'hdr',
-		'streaming_service',
-		'flag',
-		'indexer'
-	]),
-	required: z.boolean(),
-	negate: z.boolean(),
-	resolution: z.string().optional(),
-	source: z.string().optional(),
-	pattern: z.string().optional(),
-	codec: z.string().optional(),
-	audioCodec: z.string().optional(),
-	audioChannels: z.string().optional(),
-	hdr: z.string().nullable().optional(),
-	streamingService: z.string().optional(),
-	flag: z.enum(['isRemux', 'isRepack', 'isProper', 'is3d']).optional(),
-	indexer: z.string().optional()
-});
 
 const testSchema = z.object({
 	releaseName: z.string().min(1),

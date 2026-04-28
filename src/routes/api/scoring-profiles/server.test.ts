@@ -307,7 +307,7 @@ describe('Scoring Profiles API', () => {
 			});
 
 			expect(status).toBe(400);
-			expect(data.error).toContain('Invalid');
+			expect(data.error).toContain('Validation failed');
 		});
 	});
 
@@ -399,7 +399,7 @@ describe('Scoring Profiles API', () => {
 			});
 
 			expect(status).toBe(400);
-			expect(data.error).toContain('ID is required');
+			expect(data.error).toContain('Validation failed');
 		});
 
 		it('updates formatScores', async () => {
@@ -456,7 +456,7 @@ describe('Scoring Profiles API', () => {
 			const { status, data } = await api.delete<ErrorResponse>(DELETE, {});
 
 			expect(status).toBe(400);
-			expect(data.error).toContain('ID is required');
+			expect(data.error).toContain('Validation failed');
 		});
 	});
 });

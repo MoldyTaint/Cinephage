@@ -46,7 +46,7 @@ export interface UnmatchedFolder {
 	seasonFolders?: SeasonFolderInfo[];
 }
 
-export interface SeasonFolderInfo {
+interface SeasonFolderInfo {
 	path: string;
 	name: string;
 	seasonNumber?: number;
@@ -114,16 +114,6 @@ export interface RootFolderOption {
 	name: string;
 	path: string;
 	mediaType: 'movie' | 'tv';
-}
-
-export interface UnmatchedState {
-	files: UnmatchedFile[];
-	folders: UnmatchedFolder[];
-	filters: UnmatchedFilters;
-	pagination: PaginationState;
-	selectedFiles: Set<string>;
-	loading: boolean;
-	error: string | null;
 }
 
 export type ViewMode = 'list' | 'folder';

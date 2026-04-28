@@ -30,14 +30,6 @@ export function getFirstFocusable(container: HTMLElement): HTMLElement | null {
 }
 
 /**
- * Get the last focusable element in a container
- */
-export function getLastFocusable(container: HTMLElement): HTMLElement | null {
-	const focusable = getFocusableElements(container);
-	return focusable[focusable.length - 1] ?? null;
-}
-
-/**
  * Create a focus trap within a container element.
  * Returns a cleanup function to remove the trap.
  */

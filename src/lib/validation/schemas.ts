@@ -1616,6 +1616,112 @@ export const unmatchedSingleMatchSchema = z.object({
 });
 
 // ============================================================================
+// Custom Format Schemas
+// ============================================================================
+
+export const conditionSchema = z.object({
+	name: z.string().min(1).max(100),
+	type: z.enum([
+		'resolution',
+		'source',
+		'release_title',
+		'release_group',
+		'codec',
+		'audio_codec',
+		'audio_channels',
+		'audio_atmos',
+		'hdr',
+		'streaming_service',
+		'flag',
+		'indexer'
+	]),
+	required: z.boolean(),
+	negate: z.boolean(),
+	resolution: z.string().optional(),
+	source: z.string().optional(),
+	pattern: z.string().optional(),
+	codec: z.string().optional(),
+	audioCodec: z.string().optional(),
+	audioChannels: z.string().optional(),
+	hdr: z.string().nullable().optional(),
+	streamingService: z.string().optional(),
+	flag: z.enum(['isRemux', 'isRepack', 'isProper', 'is3d']).optional(),
+	indexer: z.string().optional()
+});
+
+export type Condition = z.infer<typeof conditionSchema>;
+
+export const customFormatSchema = z.object({
+	id: z.string().min(1).max(50).optional(),
+	name: z.string().min(1).max(100),
+	description: z.string().max(500).optional(),
+	category: z.enum([
+		'resolution',
+		'release_group_tier',
+		'audio',
+		'hdr',
+		'streaming',
+		'micro',
+		'low_quality',
+		'banned',
+		'enhancement',
+		'codec',
+		'other'
+	]),
+	tags: z.array(z.string()).optional().default([]),
+	conditions: z.array(conditionSchema).min(1),
+	enabled: z.boolean().optional().default(true)
+});
+
+export const customFormatUpdateSchema = customFormatSchema.extend({
+	id: z.string().min(1)
+});
+
+export const customFormatDeleteSchema = z.object({
+	id: z.string().min(1)
+});
+
+export type CustomFormatCreate = z.infer<typeof customFormatSchema>;
+export type CustomFormatUpdateBody = z.infer<typeof customFormatUpdateSchema>;
+export type CustomFormatDelete = z.infer<typeof customFormatDeleteSchema>;
+
+// ============================================================================
+// Scoring Profile Schemas
+// ============================================================================
+
+export const scoringProfileCreateSchema = z.object({
+	id: z.string().min(1).max(50).optional(),
+	name: z.string().min(1).max(100),
+	description: z.string().max(500).optional(),
+	copyFromId: z.string().optional(),
+	upgradesAllowed: z.boolean().optional(),
+	minScore: z.number().int().optional(),
+	upgradeUntilScore: z.number().int().optional(),
+	minScoreIncrement: z.number().int().optional(),
+	formatScores: z.record(z.string(), z.number().int()).optional(),
+	movieMinSizeGb: z.number().nullable().optional(),
+	movieMaxSizeGb: z.number().nullable().optional(),
+	episodeMinSizeMb: z.number().nullable().optional(),
+	episodeMaxSizeMb: z.number().nullable().optional(),
+	isDefault: z.boolean().optional()
+});
+
+export const scoringProfileUpdateSchema = scoringProfileCreateSchema.partial();
+
+export const scoringProfileUpdateBodySchema = scoringProfileUpdateSchema
+	.extend({
+		id: z.string().min(1, 'Profile ID is required')
+	})
+	.passthrough();
+
+export const scoringProfileDeleteSchema = z.object({
+	id: z.string().min(1, 'Profile ID is required')
+});
+
+export type ScoringProfileCreate = z.infer<typeof scoringProfileCreateSchema>;
+export type ScoringProfileUpdate = z.infer<typeof scoringProfileUpdateSchema>;
+
+// ============================================================================
 // Streaming Schemas
 // ============================================================================
 

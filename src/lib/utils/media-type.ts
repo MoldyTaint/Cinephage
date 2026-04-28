@@ -20,17 +20,6 @@ export function mediaTypeApiSegment(type: MediaType): 'movies' | 'series' {
 }
 
 /**
- * Get the route path segment for a media type.
- * For library detail pages: /library/movie/:id, /library/tv/:id
- *
- * @example mediaTypeRouteSegment('movie')  // 'movie'
- * @example mediaTypeRouteSegment('tv')     // 'tv'
- */
-export function mediaTypeRouteSegment(type: MediaType): 'movie' | 'tv' {
-	return type;
-}
-
-/**
  * Get the singular display label for a media type.
  *
  * @example mediaTypeLabel('movie')  // 'movie'
@@ -38,16 +27,6 @@ export function mediaTypeRouteSegment(type: MediaType): 'movie' | 'tv' {
  */
 export function mediaTypeLabel(type: MediaType): string {
 	return type === 'movie' ? 'movie' : 'series';
-}
-
-/**
- * Get the plural display label for a media type.
- *
- * @example mediaTypeLabelPlural('movie')  // 'movies'
- * @example mediaTypeLabelPlural('tv')     // 'series'
- */
-export function mediaTypeLabelPlural(type: MediaType): string {
-	return type === 'movie' ? 'movies' : 'series';
 }
 
 /**

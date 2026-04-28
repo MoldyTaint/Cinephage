@@ -13,7 +13,7 @@ import type { Resolution } from '$lib/server/scoring/types';
 /**
  * Profile category for UI grouping and styling
  */
-export type ProfileCategory = 'quality' | 'efficient' | 'micro' | 'streaming' | 'custom';
+type ProfileCategory = 'quality' | 'efficient' | 'micro' | 'streaming' | 'custom';
 
 /**
  * Base scoring profile structure
@@ -53,6 +53,14 @@ export interface ScoringProfile {
 /**
  * Form data for creating/updating scoring profiles
  */
+export interface QualityProfileOption {
+	id: string;
+	name: string;
+	description: string;
+	isBuiltIn: boolean;
+	isDefault: boolean;
+}
+
 export interface ScoringProfileFormData {
 	id?: string;
 	name?: string;
@@ -71,33 +79,4 @@ export interface ScoringProfileFormData {
 	movieMaxSizeGb?: number | null;
 	episodeMinSizeMb?: number | null;
 	episodeMaxSizeMb?: number | null;
-}
-
-// =============================================================================
-// Custom Format Types (for UI)
-// =============================================================================
-
-/**
- * Format category for grouping in the UI
- */
-export type FormatCategory =
-	| 'resolution'
-	| 'release_group_tier'
-	| 'audio'
-	| 'hdr'
-	| 'streaming'
-	| 'micro'
-	| 'banned'
-	| 'enhancement'
-	| 'codec'
-	| 'source'
-	| 'other';
-
-// =============================================================================
-// API Response Types
-// =============================================================================
-
-export interface ScoringProfilesResponse {
-	profiles: ScoringProfile[];
-	count: number;
 }
