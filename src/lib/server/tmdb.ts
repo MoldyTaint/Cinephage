@@ -386,6 +386,14 @@ export const tmdb = {
 		return this.fetch(endpoint, {}, skipFilters) as Promise<DiscoverResponse>;
 	},
 
+	async getNowPlaying(page = 1): Promise<DiscoverResponse> {
+		return this.fetch(`/movie/now_playing?page=${page}`) as Promise<DiscoverResponse>;
+	},
+
+	async getUpcoming(page = 1): Promise<DiscoverResponse> {
+		return this.fetch(`/movie/upcoming?page=${page}`) as Promise<DiscoverResponse>;
+	},
+
 	/**
 	 * Get movie genres list
 	 */
