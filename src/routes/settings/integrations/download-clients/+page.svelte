@@ -678,10 +678,10 @@
 			})
 		});
 		if (!response.ok) {
-			const err = await response.json().catch(() => ({ error: 'Failed to save' }));
-			throw new Error(err.error || 'Failed to save stalled download settings');
+			const err = await response.json().catch(() => ({ error: m.common_failedToSave() }));
+			throw new Error(err.error || m.toast_settings_failedToSaveStalledSettings());
 		}
-		toasts.success('Stalled download settings updated');
+		toasts.success(m.toast_settings_stalledSettingsUpdated());
 	}}
 	onClose={closeModal}
 	onSave={handleSave}
