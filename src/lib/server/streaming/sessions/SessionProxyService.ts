@@ -6,6 +6,7 @@ import {
 } from '$lib/server/http/ssrf-protection';
 import { isHLSPlaylist, sanitizePlaylist, validatePlaylist } from '../hls';
 import { ensureVttFormat } from '../utils/srt-to-vtt';
+import { isPngWrappedSegment, stripPngWrapper } from '../utils/png-wrapper';
 import type { PlaybackSession } from '../types';
 import { getPlaybackSessionStore } from './session-store';
 import { rewriteSessionPlaylist } from './playlist-rewriter';
@@ -65,7 +66,11 @@ function buildUpstreamHeaders(session: PlaybackSession, request?: Request): Reco
 	return headers;
 }
 
-function buildStreamingResponseHeaders(response: Response, fallbackContentType: string): Headers {
+function buildStreamingResponseHeaders(
+	response: Response,
+	fallbackContentType: string,
+	overrideContentType?: boolean
+): Headers {
 	const headers = new Headers();
 
 	for (const [name, value] of response.headers.entries()) {
@@ -75,7 +80,7 @@ function buildStreamingResponseHeaders(response: Response, fallbackContentType: 
 		headers.set(name, value);
 	}
 
-	if (!headers.has('Content-Type')) {
+	if (!headers.has('Content-Type') || overrideContentType) {
 		headers.set('Content-Type', fallbackContentType);
 	}
 
@@ -354,7 +359,38 @@ ${fileUrl.toString()}
 			});
 		}
 
-		const contentType = detectBinaryContentType(url, response.headers.get('content-type'));
+		const upstreamContentType = response.headers.get('content-type');
+		let body = response.body;
+		let contentType = detectBinaryContentType(url, upstreamContentType);
+
+		if (upstreamContentType?.includes('image/png') && body) {
+			const arrayBuffer = await new Response(body).arrayBuffer();
+			const bytes = new Uint8Array(arrayBuffer);
+			if (isPngWrappedSegment(bytes, upstreamContentType)) {
+				const stripped = stripPngWrapper(bytes);
+				if (stripped) {
+					logger.debug(
+						{
+							sessionToken: session.token,
+							provider: session.provider,
+							resourceUrl: url.substring(0, 100),
+							wrapperSize: bytes.length - stripped.length,
+							tsSize: stripped.length,
+							...streamLog
+						},
+						'Stripped PNG wrapper from CDN segment'
+					);
+					body = new ReadableStream({
+						start(controller) {
+							controller.enqueue(stripped);
+							controller.close();
+						}
+					});
+					contentType = 'video/mp2t';
+				}
+			}
+		}
+
 		logger.debug(
 			{
 				sessionToken: session.token,
@@ -366,9 +402,12 @@ ${fileUrl.toString()}
 			'Proxying playback session resource'
 		);
 
-		return new Response(response.body, {
+		const strippedPng =
+			upstreamContentType?.includes('image/png') && contentType === 'video/mp2t';
+
+		return new Response(body, {
 			status: response.status,
-			headers: buildStreamingResponseHeaders(response, fallbackContentType ?? contentType)
+			headers: buildStreamingResponseHeaders(response, fallbackContentType ?? contentType, strippedPng)
 		});
 	}
 }
