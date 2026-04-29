@@ -1,6 +1,6 @@
 import { tmdb } from '$lib/server/tmdb';
 import type { Movie, TVShow, PaginatedResponse } from '$lib/types/tmdb';
-import { GENRE_MAPPINGS, SEARCH } from '$lib/config/constants';
+import { GENRE_MAPPINGS, SEARCH, TMDB } from '$lib/config/constants';
 
 /**
  * Maps movie genre IDs to TV genre IDs or vice versa.
@@ -109,7 +109,7 @@ export async function getDiscoverResults(params: DiscoverParams) {
 
 		if (certification && endpoint.includes('movie')) {
 			queryParams.set('certification', certification);
-			queryParams.set('certification_country', 'US');
+			queryParams.set('certification_country', watchRegion || TMDB.DEFAULT_REGION);
 		}
 
 		return `${endpoint}?${queryParams.toString()}`;

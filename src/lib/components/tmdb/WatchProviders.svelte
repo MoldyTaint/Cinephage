@@ -1,19 +1,21 @@
 <script lang="ts">
 	import { SvelteSet } from 'svelte/reactivity';
-	import type { WatchProvidersResponse, WatchProvider } from '$lib/types/tmdb';
-	import TmdbImage from './TmdbImage.svelte';
-	import { TMDB } from '$lib/config/constants';
-	import * as m from '$lib/paraglide/messages.js';
+import type { WatchProvidersResponse, WatchProvider } from '$lib/types/tmdb';
+import TmdbImage from './TmdbImage.svelte';
+import { page } from '$app/stores';
+import { TMDB } from '$lib/config/constants.js';
+import * as m from '$lib/paraglide/messages.js';
 
-	let {
-		providers,
-		countryCode = TMDB.DEFAULT_REGION
-	}: {
-		providers?: WatchProvidersResponse;
-		countryCode?: string;
-	} = $props();
+let {
+	providers,
+	countryCode
+}: {
+	providers?: WatchProvidersResponse;
+	countryCode?: string;
+} = $props();
 
-	const countryData = $derived(providers?.results?.[countryCode]);
+const effectiveCountryCode = $derived(countryCode || $page.data.defaultRegion || TMDB.DEFAULT_REGION);
+const countryData = $derived(providers?.results?.[effectiveCountryCode]);
 
 	// Flatten all providers, prioritizing streaming
 	const allProviders = $derived.by(() => {

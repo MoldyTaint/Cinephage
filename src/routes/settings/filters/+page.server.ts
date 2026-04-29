@@ -6,6 +6,8 @@ import type { PageServerLoad } from './$types';
 import type { GlobalTmdbFilters } from '$lib/types/tmdb';
 import { logger } from '$lib/logging';
 
+import { TMDB } from '$lib/config/constants.js';
+
 export const load: PageServerLoad = async () => {
 	// Fetch current settings
 	const settingsData = await db.query.settings.findFirst({
@@ -16,8 +18,8 @@ export const load: PageServerLoad = async () => {
 		include_adult: false,
 		min_vote_average: 0,
 		min_vote_count: 0,
-		language: 'en-US',
-		region: 'US',
+		language: `en-${TMDB.DEFAULT_REGION}`,
+		region: TMDB.DEFAULT_REGION,
 		excluded_genre_ids: []
 	};
 

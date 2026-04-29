@@ -3,6 +3,8 @@
  * Centralizes magic numbers and hardcoded values for maintainability.
  */
 
+import { getRuntimeEnv } from './env.js';
+
 /**
  * TMDB API configuration.
  */
@@ -11,8 +13,9 @@ export const TMDB = {
 	BASE_URL: 'https://api.themoviedb.org/3',
 
 	/** Default region for watch providers */
-	DEFAULT_REGION: 'US'
-} as const;
+	DEFAULT_REGION:
+		getRuntimeEnv('VITE_WATCH_REGION') || getRuntimeEnv('WATCH_REGION') || 'US'
+};
 
 /**
  * Search and indexer configuration.

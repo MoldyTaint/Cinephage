@@ -7,13 +7,16 @@
 	import type { GlobalTmdbFilters } from '$lib/types/tmdb';
 	import type { PageData } from './$types';
 
+	import { page } from '$app/stores';
+	import { TMDB } from '$lib/config/constants.js';
+
 	let { data }: { data: PageData } = $props();
 	let filtersState = $state<GlobalTmdbFilters>({
 		include_adult: false,
 		min_vote_average: 0,
 		min_vote_count: 0,
-		language: 'en-US',
-		region: 'US',
+		language: `en-${$page.data.defaultRegion || TMDB.DEFAULT_REGION}`,
+		region: $page.data.defaultRegion || TMDB.DEFAULT_REGION,
 		excluded_genre_ids: []
 	});
 	let saving = $state(false);

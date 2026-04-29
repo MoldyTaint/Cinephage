@@ -2,6 +2,8 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { Loader2, X, Plus, Sparkles } from 'lucide-svelte';
 	import type { SmartListFilters } from '$lib/server/db/schema.js';
+	import { page } from '$app/stores';
+	import { TMDB } from '$lib/config/constants.js';
 
 	import { createEventDispatcher } from 'svelte';
 
@@ -12,6 +14,12 @@
 	}
 
 	let { mediaType, filters = $bindable(), forceCloseSignal = 0 }: Props = $props();
+
+	$effect(() => {
+		if (!filters.watchRegion) {
+			filters.watchRegion = $page.data.defaultRegion || TMDB.DEFAULT_REGION;
+		}
+	});
 
 	const dispatch = createEventDispatcher<{
 		sortByChange: { sortBy: string };
@@ -169,7 +177,7 @@
 		loadingProviders = true;
 		try {
 			const res = await fetch(
-				`/api/smartlists/helpers?helper=providers&type=${mediaType}&region=${filters.watchRegion ?? 'US'}`
+				`/api/smartlists/helpers?helper=providers&type=${mediaType}&region=${filters.watchRegion ?? ($page.data.defaultRegion || TMDB.DEFAULT_REGION)}`
 			);
 			if (res.ok) {
 				providers = await res.json();
