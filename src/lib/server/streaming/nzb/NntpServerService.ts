@@ -11,7 +11,7 @@ import {
 } from '$lib/server/db/schema';
 import { eq, asc } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 
 const logger = createChildLogger({ logDomain: 'streams' as const });
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';

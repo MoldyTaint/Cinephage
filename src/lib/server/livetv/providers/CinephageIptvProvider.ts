@@ -10,7 +10,7 @@ import { livetvAccounts, livetvChannels, livetvCategories } from '$lib/server/db
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
 import { getStreamingIndexerSettings } from '$lib/server/streaming/settings.js';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 
 const logger = createChildLogger({ logDomain: 'livetv' as const });
 import type {

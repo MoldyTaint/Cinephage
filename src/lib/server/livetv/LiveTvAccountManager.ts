@@ -10,7 +10,7 @@ import { db } from '$lib/server/db';
 import { epgPrograms, livetvAccounts, type LivetvAccountRecord } from '$lib/server/db/schema';
 import { createChildLogger } from '$lib/logging';
 import { toFriendlyLiveTvTestError } from '$lib/livetv/errorMessages';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { getProvider, getProviderForAccount } from './providers';
 import { detectStalkerEndpoint } from './stalker/StalkerPortalClient';
 import { liveTvEvents } from './LiveTvEvents';

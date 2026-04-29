@@ -11,7 +11,7 @@
  */
 
 import Database from 'better-sqlite3';
-import { createHash } from 'crypto';
+import { createHash } from 'node:crypto';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'system' as const });

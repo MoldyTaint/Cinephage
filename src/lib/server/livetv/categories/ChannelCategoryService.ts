@@ -12,7 +12,7 @@ import { eq, asc, sql } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'livetv' as const });
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { liveTvEvents } from '../LiveTvEvents';
 import type { ChannelCategory, ChannelCategoryFormData } from '$lib/types/livetv';
 

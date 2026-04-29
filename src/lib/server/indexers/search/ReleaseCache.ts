@@ -1,6 +1,6 @@
 import type { ReleaseResult, SearchCriteria } from '../types';
 import { isMovieSearch, isTvSearch, isMusicSearch, isBookSearch } from '../types';
-import * as crypto from 'crypto';
+import * as crypto from 'node:crypto';
 
 /**
  * Cached search result entry.

@@ -12,7 +12,7 @@ import { portalScanResults, portalScanHistory } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { MacGenerator } from '$lib/server/livetv/stalker/MacGenerator';
 import { StalkerPortalClient } from '$lib/server/livetv/stalker/StalkerPortalClient';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 
 export interface PortalScanOptions {
 	portalId: string;
