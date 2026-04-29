@@ -10,30 +10,11 @@ import {
 import { eq, and, inArray } from 'drizzle-orm';
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import type { LibraryMovie, MovieFile } from '$lib/types/library';
+import type { LibraryMovie, MovieFile, QualityProfileSummary } from '$lib/types/library';
 import { tmdb } from '$lib/server/tmdb.js';
 import { logger } from '$lib/logging';
 import { isMovieSearching } from '$lib/server/library/ActiveSearchTracker.js';
-
-const ACTIVE_DOWNLOAD_STATUSES = [
-	'queued',
-	'downloading',
-	'stalled',
-	'paused',
-	'completed',
-	'postprocessing',
-	'importing',
-	'seeding',
-	'seeding-imported'
-] as const;
-
-export interface QualityProfileSummary {
-	id: string;
-	name: string;
-	description: string;
-	isBuiltIn: boolean;
-	isDefault: boolean;
-}
+import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
 
 export interface QueueItemInfo {
 	id: string;

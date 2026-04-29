@@ -26,20 +26,11 @@
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { calculateEpisodeStats } from '$lib/utils/episode-stats.svelte';
+	import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
 
 	let { data }: { data: PageData } = $props();
 
-	const ACTIVE_QUEUE_STATUSES = new Set([
-		'queued',
-		'downloading',
-		'stalled',
-		'paused',
-		'completed',
-		'postprocessing',
-		'importing',
-		'seeding',
-		'seeding-imported'
-	]);
+	const activeStatusSet: Set<string> = new Set(ACTIVE_DOWNLOAD_STATUSES);
 
 	// Reactive data that will be updated via SSE
 	let seriesState = $state<PageData['series'] | null>(null);
@@ -152,7 +143,7 @@
 			}
 		},
 		'queue:updated': (payload) => {
-			if (!ACTIVE_QUEUE_STATUSES.has(payload.status)) {
+			if (!activeStatusSet.has(payload.status)) {
 				// Remove from queue state when no longer active
 				queueItemsState = queueItems.filter((q) => q.id !== payload.id);
 			} else {

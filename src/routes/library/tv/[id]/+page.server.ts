@@ -13,26 +13,8 @@ import { eq, asc, inArray, and } from 'drizzle-orm';
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { isSeriesSearching } from '$lib/server/library/ActiveSearchTracker.js';
-
-const ACTIVE_DOWNLOAD_STATUSES = [
-	'queued',
-	'downloading',
-	'stalled',
-	'paused',
-	'completed',
-	'postprocessing',
-	'importing',
-	'seeding',
-	'seeding-imported'
-] as const;
-
-export interface QualityProfileSummary {
-	id: string;
-	name: string;
-	description: string;
-	isBuiltIn: boolean;
-	isDefault: boolean;
-}
+import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
+import type { QualityProfileSummary } from '$lib/types/library';
 
 export interface SeasonWithEpisodes {
 	id: string;

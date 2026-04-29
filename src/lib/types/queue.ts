@@ -26,6 +26,18 @@ export const POST_IMPORT_QUEUE_STATUSES = [
 
 export const TERMINAL_QUEUE_STATUSES = ['removed'] as const satisfies readonly QueueStatus[];
 
+export const ACTIVE_DOWNLOAD_STATUSES = [
+	'queued',
+	'downloading',
+	'stalled',
+	'paused',
+	'completed',
+	'postprocessing',
+	'importing',
+	'seeding',
+	'seeding-imported'
+] as const satisfies readonly QueueStatus[];
+
 export function isImportedQueueStatus(
 	status: QueueStatus | string | null | undefined
 ): status is (typeof POST_IMPORT_QUEUE_STATUSES)[number] {
