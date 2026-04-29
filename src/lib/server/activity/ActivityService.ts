@@ -1816,10 +1816,13 @@ export class ActivityService {
 				const firstEp = mediaMaps.episodes.get(item.episodeIds[0]);
 				if (firstEp) {
 					const episodeNumber = firstEp.episodeNumber;
+					const endEp = mediaMaps.episodes.get(item.episodeIds[item.episodeIds.length - 1]);
 					const mediaTitle =
-						item.episodeIds.length > 1
-							? `${s.title} S${String(seasonNumber).padStart(2, '0')}E${String(episodeNumber).padStart(2, '0')}-E${String(mediaMaps.episodes.get(item.episodeIds[item.episodeIds.length - 1])?.episodeNumber).padStart(2, '0')}`
-							: `${s.title} S${String(seasonNumber).padStart(2, '0')}E${String(episodeNumber).padStart(2, '0')}`;
+						seasonNumber !== undefined
+							? item.episodeIds.length > 1
+								? `${s.title} S${String(seasonNumber).padStart(2, '0')}E${String(episodeNumber).padStart(2, '0')}-E${String(endEp?.episodeNumber).padStart(2, '0')}`
+								: `${s.title} S${String(seasonNumber).padStart(2, '0')}E${String(episodeNumber).padStart(2, '0')}`
+							: `${s.title} E${String(episodeNumber).padStart(2, '0')}`;
 
 					return {
 						mediaType: 'episode',
@@ -1886,7 +1889,10 @@ export class ActivityService {
 				return {
 					mediaType: 'episode',
 					mediaId: ep.id,
-					mediaTitle: `${s.title} S${String(seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')}`,
+					mediaTitle:
+					seasonNumber !== undefined
+						? `${s.title} S${String(seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')}`
+						: `${s.title} E${String(ep.episodeNumber).padStart(2, '0')}`,
 					mediaYear: s.year,
 					seriesId: mon.seriesId,
 					seriesTitle: s.title,
