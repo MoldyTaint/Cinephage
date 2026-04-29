@@ -11,6 +11,7 @@
  */
 
 import { createChildLogger } from '$lib/logging';
+import { randomBytes } from 'node:crypto';
 
 const logger = createChildLogger({ logDomain: 'livetv' as const });
 import type {
@@ -215,12 +216,7 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
  * Generate a random 32-character hex token
  */
 function generateToken(): string {
-	const chars = 'ABCDEF0123456789';
-	let token = '';
-	for (let i = 0; i < 32; i++) {
-		token += chars[Math.floor(Math.random() * chars.length)];
-	}
-	return token;
+	return randomBytes(16).toString('hex').toUpperCase();
 }
 
 /**
