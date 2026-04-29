@@ -84,6 +84,10 @@ function buildStreamingResponseHeaders(
 		headers.set('Content-Type', fallbackContentType);
 	}
 
+	if (overrideContentType) {
+		headers.delete('content-length');
+	}
+
 	headers.set('Access-Control-Allow-Origin', '*');
 	headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
 	headers.set('Access-Control-Allow-Headers', 'Range, Content-Type');
@@ -382,7 +386,7 @@ ${fileUrl.toString()}
 					);
 					body = new ReadableStream({
 						start(controller) {
-							controller.enqueue(stripped);
+							controller.enqueue(new Uint8Array(stripped));
 							controller.close();
 						}
 					});
@@ -402,12 +406,15 @@ ${fileUrl.toString()}
 			'Proxying playback session resource'
 		);
 
-		const strippedPng =
-			upstreamContentType?.includes('image/png') && contentType === 'video/mp2t';
+		const strippedPng = upstreamContentType?.includes('image/png') && contentType === 'video/mp2t';
 
 		return new Response(body, {
 			status: response.status,
-			headers: buildStreamingResponseHeaders(response, fallbackContentType ?? contentType, strippedPng)
+			headers: buildStreamingResponseHeaders(
+				response,
+				fallbackContentType ?? contentType,
+				strippedPng
+			)
 		});
 	}
 }

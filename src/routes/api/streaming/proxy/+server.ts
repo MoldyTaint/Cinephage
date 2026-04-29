@@ -343,8 +343,8 @@ export const GET: RequestHandler = async ({ url, request }) => {
 					},
 					'Stripped PNG wrapper from CDN segment'
 				);
-				bytes = stripped;
-				arrayBuffer = stripped.buffer as ArrayBuffer;
+				bytes = new Uint8Array(stripped);
+				arrayBuffer = bytes.buffer;
 			}
 		}
 
