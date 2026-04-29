@@ -1890,9 +1890,9 @@ export class ActivityService {
 					mediaType: 'episode',
 					mediaId: ep.id,
 					mediaTitle:
-					seasonNumber !== undefined
-						? `${s.title} S${String(seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')}`
-						: `${s.title} E${String(ep.episodeNumber).padStart(2, '0')}`,
+						seasonNumber !== undefined
+							? `${s.title} S${String(seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')}`
+							: `${s.title} E${String(ep.episodeNumber).padStart(2, '0')}`,
 					mediaYear: s.year,
 					seriesId: mon.seriesId,
 					seriesTitle: s.title,

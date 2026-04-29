@@ -252,8 +252,6 @@
 	<!-- Mobile: Card View -->
 	<div class="space-y-3">
 		{#each renderer.visible as activity (activity.id)}
-			{@const config = statusConfig[activity.status] || statusConfig.no_results}
-			{@const StatusIcon = config.icon}
 			{@const isExpanded = expandedRows.has(activity.id)}
 			{@const isFailedReasonExpanded = failedReasonExpandedRows.has(activity.id)}
 			{@const isQueueActionLoading = queueActionLoadingRows.has(activity.id)}
@@ -568,7 +566,6 @@
 			<tbody>
 				{#each renderer.visible as activity (activity.id)}
 					{@const config = statusConfig[activity.status] || statusConfig.no_results}
-					{@const StatusIcon = config.icon}
 					{@const isExpanded = expandedRows.has(activity.id)}
 					{@const categoryTag = getActivityCategoryTag(activity)}
 					<tr
