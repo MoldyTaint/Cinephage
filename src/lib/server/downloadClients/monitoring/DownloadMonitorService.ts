@@ -747,6 +747,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			clearTimeout(this.pollTimer);
 			this.pollTimer = null;
 		}
+		this.stalledSince.clear();
 		this._status = 'pending';
 		logger.info('Stopped download monitor service');
 	}

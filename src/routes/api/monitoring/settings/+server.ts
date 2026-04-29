@@ -23,7 +23,10 @@ const monitoringSettingsSchema = z.object({
  * GET /api/monitoring/settings
  * Returns current monitoring settings and status
  */
-export const GET: RequestHandler = async () => {
+export const GET: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
 	try {
 		// Get both status and settings
 		const status = await monitoringScheduler.getStatus();
