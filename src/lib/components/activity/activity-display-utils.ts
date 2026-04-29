@@ -176,3 +176,42 @@ export function formatTimestamp(dateStr: string): string {
 	const date = new Date(dateStr);
 	return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
+
+const SUBTITLE_TASK_TYPES = new Set(['missingSubtitles', 'subtitleUpgrade']);
+
+const MEDIA_TASK_TYPES = new Set([
+	'missing',
+	'upgrade',
+	'cutoffUnmet',
+	'cutoff_unmet',
+	'new_episode'
+]);
+
+export interface ActivityCategoryTag {
+	label: string;
+	variant: string;
+}
+
+export function getActivityCategoryTag(
+	activity: Pick<UnifiedActivity, 'taskType' | 'activitySource'>
+): ActivityCategoryTag | null {
+	if (activity.taskType && SUBTITLE_TASK_TYPES.has(activity.taskType)) {
+		return { label: 'Sub', variant: 'badge-ghost badge-xs' };
+	}
+	if (activity.taskType && MEDIA_TASK_TYPES.has(activity.taskType)) {
+		return { label: 'Media', variant: 'badge-primary badge-xs' };
+	}
+	if (activity.taskType === 'smartListRefresh') {
+		return { label: 'List', variant: 'badge-ghost badge-xs' };
+	}
+	if (activity.taskType === 'media_move') {
+		return { label: 'Move', variant: 'badge-ghost badge-xs' };
+	}
+	if (
+		!activity.taskType &&
+		(activity.activitySource === 'queue' || activity.activitySource === 'download_history')
+	) {
+		return { label: 'Download', variant: 'badge-accent badge-xs' };
+	}
+	return null;
+}
