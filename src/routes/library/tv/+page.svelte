@@ -6,17 +6,16 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import LibraryMediaCard from '$lib/components/library/LibraryMediaCard.svelte';
 	import LibraryMediaTable from '$lib/components/library/LibraryMediaTable.svelte';
-	import LibraryControls from '$lib/components/library/LibraryControls.svelte';
+	import LibraryDrawer from '$lib/components/library/LibraryDrawer.svelte';
 	import LibraryBulkActionBar from '$lib/components/library/LibraryBulkActionBar.svelte';
 	import BulkQualityProfileModal from '$lib/components/library/BulkQualityProfileModal.svelte';
 	import BulkDeleteModal from '$lib/components/library/BulkDeleteModal.svelte';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
 	import InteractiveSearchModal from '$lib/components/search/InteractiveSearchModal.svelte';
-	import { Tv, CheckSquare, X, LayoutGrid, List, Search } from 'lucide-svelte';
+	import { Tv, X, LayoutGrid, List, Search, SlidersHorizontal } from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { viewPreferences } from '$lib/stores/view-preferences.svelte';
 	import { enhance } from '$app/forms';
-	import { Eye } from 'lucide-svelte';
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
 	import { getPrimaryAutoSearchIssue } from '$lib/utils/autoSearchIssues';
 	import { createProgressiveRenderer } from '$lib/utils/progressive-render.svelte.js';
@@ -28,6 +27,7 @@
 	let selectedSeries = new SvelteSet<string>();
 	let showCheckboxes = $state(false);
 	let searchQuery = $state('');
+	let drawerOpen = $state(false);
 
 	const filteredSeries = $derived(
 		searchQuery.trim()
@@ -526,6 +526,14 @@
 		goto(resolvePath(url.pathname + url.search), { keepFocus: true, noScroll: true });
 	}
 
+	function handleMonitorAll() {
+		(document.getElementById('tv-monitor-all') as HTMLFormElement)?.requestSubmit();
+	}
+
+	function handleUnmonitorAll() {
+		(document.getElementById('tv-unmonitor-all') as HTMLFormElement)?.requestSubmit();
+	}
+
 	const currentFilters = $derived({
 		library: data.filters.library,
 		monitored: data.filters.monitored,
@@ -536,6 +544,10 @@
 		videoCodec: data.filters.videoCodec,
 		hdrFormat: data.filters.hdrFormat
 	});
+	const activeFilterCount = $derived(
+		Object.entries(currentFilters).filter(([key, value]) => key !== 'library' && value !== 'all')
+			.length
+	);
 	const downloadingSeriesIdSet = $derived(new Set(data.downloadingSeriesIds));
 	const deleteModalCount = $derived(pendingDeleteSeriesId ? 1 : selectedCount);
 	const pendingDeleteSeries = $derived(
@@ -565,10 +577,9 @@
 	<div
 		class="sticky top-16 z-30 -mx-4 border-b border-base-200 bg-base-100/80 backdrop-blur-md lg:top-0 lg:mx-0"
 	>
-		<div
-			class="flex h-16 w-full flex-nowrap items-center gap-2 px-4 md:grid md:grid-cols-[minmax(0,1fr)_minmax(18rem,32rem)_minmax(0,1fr)] md:gap-4 lg:px-8"
-		>
-			<div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 md:flex-none">
+		<div class="flex h-16 items-center gap-3 px-4 lg:px-8">
+			<!-- Left: Title -->
+			<div class="flex min-w-0 items-center gap-2 sm:gap-3">
 				<h1
 					class="min-w-0 bg-linear-to-r from-primary to-secondary bg-clip-text text-xl font-bold text-transparent sm:text-2xl"
 				>
@@ -582,9 +593,9 @@
 				{/if}
 			</div>
 
-			<!-- Search (desktop) -->
-			<div class="hidden w-full items-center gap-2 md:flex md:justify-self-center">
-				<div class="group relative w-full">
+			<!-- Center: Search (desktop) -->
+			<div class="hidden flex-1 items-center justify-center gap-2 md:flex">
+				<div class="group relative w-full max-w-lg">
 					<Search
 						class="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-base-content/40 transition-colors group-focus-within:text-primary"
 					/>
@@ -611,9 +622,8 @@
 				{/if}
 			</div>
 
-			<div
-				class="flex shrink-0 flex-nowrap items-center justify-end gap-2 sm:gap-2 md:justify-self-end"
-			>
+			<!-- Right: Quick Actions -->
+			<div class="flex shrink-0 items-center gap-1.5">
 				{#if showCheckboxes}
 					<button class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm" onclick={selectAll}>
 						<span class="hidden sm:inline">{m.library_tv_selectAll()}</span>
@@ -623,59 +633,11 @@
 						<X class="h-4 w-4" />
 						<span class="hidden sm:inline">{m.library_tv_done()}</span>
 					</button>
-				{:else}
-					<button class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm" onclick={toggleSelectionMode}>
-						<CheckSquare class="h-4 w-4" />
-						<span class="hidden sm:inline">{m.library_tv_select()}</span>
-					</button>
-
-					<div class="dropdown dropdown-end">
-						<div tabindex="0" role="button" class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm">
-							<Eye class="h-4 w-4" />
-							<span class="hidden sm:inline">{m.library_tv_monitor()}</span>
-						</div>
-						<form
-							id="tv-monitor-all"
-							action="?/toggleAllMonitored"
-							method="POST"
-							use:enhance
-							class="hidden"
-							aria-hidden="true"
-						>
-							<input type="hidden" name="monitored" value="true" />
-						</form>
-						<form
-							id="tv-unmonitor-all"
-							action="?/toggleAllMonitored"
-							method="POST"
-							use:enhance
-							class="hidden"
-							aria-hidden="true"
-						>
-							<input type="hidden" name="monitored" value="false" />
-						</form>
-						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-						<ul
-							tabindex="0"
-							class="dropdown-content menu z-2 w-52 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
-						>
-							<li>
-								<button type="submit" class="w-full text-left" form="tv-monitor-all">
-									{m.library_tv_monitorAll()}
-								</button>
-							</li>
-							<li>
-								<button type="submit" class="w-full text-left" form="tv-unmonitor-all">
-									{m.library_tv_unmonitorAll()}
-								</button>
-							</li>
-						</ul>
-					</div>
 				{/if}
 
 				<!-- View Toggle -->
 				<button
-					class="btn btn-ghost btn-xs sm:btn-sm"
+					class="btn btn-ghost btn-sm"
 					onclick={() => viewPreferences.toggleViewMode()}
 					aria-label={viewPreferences.viewMode === 'grid'
 						? m.library_tv_switchToList()
@@ -683,23 +645,22 @@
 				>
 					{#if viewPreferences.viewMode === 'grid'}
 						<List class="h-4 w-4" />
-						<span class="hidden sm:inline">{m.library_tv_list()}</span>
 					{:else}
 						<LayoutGrid class="h-4 w-4" />
-						<span class="hidden sm:inline">{m.library_tv_grid()}</span>
 					{/if}
 				</button>
 
-				<LibraryControls
-					{sortOptions}
-					{filterOptions}
-					currentSort={data.filters.sort}
-					{currentFilters}
-					hiddenActiveFilterKeys={['library']}
-					onSortChange={(sort) => updateUrlParam('sort', sort)}
-					onFilterChange={(key, value) => updateUrlParam(key, value)}
-					onClearFilters={clearFilters}
-				/>
+				<!-- Options Drawer Button -->
+				<button
+					class="btn gap-1.5 btn-sm {activeFilterCount > 0 ? 'btn-primary' : 'btn-ghost'}"
+					onclick={() => (drawerOpen = true)}
+					aria-label={m.library_drawer_title()}
+				>
+					<SlidersHorizontal class="h-4 w-4" />
+					{#if activeFilterCount > 0}
+						<span class="badge badge-sm">{activeFilterCount}</span>
+					{/if}
+				</button>
 			</div>
 		</div>
 
@@ -824,6 +785,45 @@
 			{/if}
 		{/if}
 	</main>
+
+	<!-- Hidden forms for monitor actions -->
+	<form
+		id="tv-monitor-all"
+		action="?/toggleAllMonitored"
+		method="POST"
+		use:enhance
+		class="hidden"
+		aria-hidden="true"
+	>
+		<input type="hidden" name="monitored" value="true" />
+	</form>
+	<form
+		id="tv-unmonitor-all"
+		action="?/toggleAllMonitored"
+		method="POST"
+		use:enhance
+		class="hidden"
+		aria-hidden="true"
+	>
+		<input type="hidden" name="monitored" value="false" />
+	</form>
+
+	<LibraryDrawer
+		isOpen={drawerOpen}
+		onClose={() => (drawerOpen = false)}
+		{sortOptions}
+		{filterOptions}
+		currentSort={data.filters.sort}
+		{currentFilters}
+		hiddenActiveFilterKeys={['library']}
+		showSelectMode={showCheckboxes}
+		onSortChange={(sort) => updateUrlParam('sort', sort)}
+		onFilterChange={(key, value) => updateUrlParam(key, value)}
+		onClearFilters={clearFilters}
+		onMonitorAll={handleMonitorAll}
+		onUnmonitorAll={handleUnmonitorAll}
+		onSelectModeToggle={toggleSelectionMode}
+	/>
 </div>
 
 <!-- Bulk Action Bar -->
