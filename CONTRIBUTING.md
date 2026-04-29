@@ -114,7 +114,7 @@ npm run build       # Build for production
 4. Ensure all tests pass: `npm run test`
 5. Ensure type checking passes: `npm run check`
 6. Run formatting: `npm run format`
-7. Submit a pull request with a clear description
+7. Submit a pull request targeting `dev` with a clear description
 
 ## Commit Messages
 
@@ -132,15 +132,15 @@ Example: `feat: add subtitle auto-download scheduler`
 
 ## Releases
 
-Releases are automated via [release-please](https://github.com/google-github-actions/release-please-action)
-which runs on every push to `dev`. When it detects unreleased conventional commits:
+The repository uses a two-branch delivery model:
 
-1. release-please opens a release PR against `dev` with version bumps and changelog updates
-2. Merging the release PR creates a git tag (e.g., `v0.7.0`)
-3. The tag fast-forwards `main` to match the release commit
-4. GitHub Release is created from the tag
-5. Docker images are built and pushed (`:latest`, `:X.Y.Z`, etc.)
-6. Discord announcement is posted
+1. `dev` is the integration branch and the target for normal pull requests
+2. Pushes to `dev` run CI and publish preview Docker images tagged `dev` and `dev-YYYYMMDD-RUN`
+3. `main` is the only stable release branch
+4. Pushes to `main` run semantic-release, create the GitHub Release tag (for example `v0.7.0`), and publish stable Docker images from that release only
+5. Stable Docker tags are `latest` plus semver tags such as `0.7.0`, `0.7`, and `0`
+
+Supporting automation that updates project dependencies, such as the flake lock workflow, intentionally targets `dev`.
 
 ### Commit Types and Version Bumps
 
@@ -151,19 +151,9 @@ which runs on every push to `dev`. When it detects unreleased conventional commi
 | `feat!:` or `BREAKING CHANGE:`           | Major (x.0.0) | `feat!: redesign API`         |
 | `docs:`, `test:`, `style:`, `chore(ci):` | No release    | `docs: update README`         |
 
-### Manual Override
+### Release Notes
 
-To force a specific version, include `Release-As: x.y.z` in any commit body:
-
-```bash
-git commit -m "chore: prepare release" -m "Release-As: 1.0.0"
-```
-
-### Dry Run
-
-You can test the release process without creating an actual release using the
-[Release Please workflow](https://github.com/MoldyTaint/Cinephage/actions/workflows/release-please.yml)
-with `workflow_dispatch` (dry-run mode).
+Use conventional commits on work merged through `dev` so semantic-release can compute the next stable version correctly when changes are promoted to `main`.
 
 ## Detailed Documentation
 

@@ -142,7 +142,7 @@ docker compose up -d
 
 Open http://localhost:3000 and follow the setup wizard.
 
-**Image tags:** `latest` (stable) · `dev` (preview) · `vX.Y.Z` (pinned)
+**Image tags:** `latest` (stable) · `X.Y.Z`/`X.Y`/`X` (stable semver) · `dev` and `dev-YYYYMMDD-RUN` (preview)
 
 > **Note:** Persistent data lives in `./config` (created automatically). Logs go to container stdout/stderr. Never mount `/app` — it contains application code.
 
