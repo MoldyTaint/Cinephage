@@ -666,6 +666,23 @@
 	client={editingClient as unknown as import('$lib/types/downloadClient').DownloadClient | null}
 	{saving}
 	error={saveError}
+	stalledTimeoutMinutes={data.stalledDownloadTimeoutMinutes}
+	stalledProgressThreshold={data.stalledDownloadProgressThreshold}
+	onSaveStalledBehavior={async (timeout, threshold) => {
+		const response = await fetch('/api/monitoring/settings', {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				stalledDownloadTimeoutMinutes: timeout,
+				stalledDownloadProgressThreshold: threshold
+			})
+		});
+		if (!response.ok) {
+			const err = await response.json().catch(() => ({ error: 'Failed to save' }));
+			throw new Error(err.error || 'Failed to save stalled download settings');
+		}
+		toasts.success('Stalled download settings updated');
+	}}
 	onClose={closeModal}
 	onSave={handleSave}
 	onDelete={handleDelete}
