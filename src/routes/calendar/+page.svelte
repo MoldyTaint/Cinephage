@@ -2,6 +2,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { Calendar, ChevronLeft, ChevronRight, X, Film, Tv, Loader2 } from 'lucide-svelte';
 	import { SvelteMap } from 'svelte/reactivity';
+	import { getLocale } from '$lib/paraglide/runtime.js';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
 	import type { CalendarDay } from '$lib/server/calendar/queries.js';
 
@@ -11,8 +12,13 @@
 	let days = $state<CalendarDay[]>(data.days as CalendarDay[]);
 	let loading = $state(false);
 	let selectedDay = $state<CalendarDay | null>(null);
+	let abortController = $state<AbortController | null>(null);
 
-	const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+	const currentLocale = getLocale();
+	const dayNames = [...Array(7)].map((_, i) => {
+		const d = new Date(2024, 0, i);
+		return d.toLocaleDateString(currentLocale, { weekday: 'short' });
+	});
 
 	interface GridCell {
 		date: string;
@@ -113,7 +119,7 @@
 	const monthLabel = $derived.by(() => {
 		const [year, month] = currentMonth.split('-').map(Number);
 		const d = new Date(year, month - 1, 1);
-		return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+		return d.toLocaleDateString(currentLocale, { month: 'long', year: 'numeric' });
 	});
 
 	function goToMonth(offset: number) {
@@ -123,13 +129,18 @@
 		currentMonth = newMonth;
 		loading = true;
 		selectedDay = null;
-		fetch(`/api/calendar?month=${newMonth}`)
+		if (abortController) abortController.abort();
+		const controller = new AbortController();
+		abortController = controller;
+		fetch(`/api/calendar?month=${newMonth}`, { signal: controller.signal })
 			.then((r) => r.json())
 			.then((result: CalendarDay[]) => {
+				if (controller.signal.aborted) return;
 				days = result;
 				loading = false;
 			})
-			.catch(() => {
+			.catch((err) => {
+				if (err instanceof DOMException && err.name === 'AbortError') return;
 				loading = false;
 			});
 	}
@@ -146,7 +157,7 @@
 
 	function formatPanelDate(dateStr: string): string {
 		const d = new Date(dateStr + 'T00:00:00');
-		return d.toLocaleDateString('en-US', {
+		return d.toLocaleDateString(currentLocale, {
 			weekday: 'long',
 			month: 'long',
 			day: 'numeric',
@@ -236,9 +247,14 @@
 											{ep.seriesTitle}
 										</div>
 									{/each}
-									{#if totalItems > 3}
+									{#if totalItems > Math.min(movieCount, 2) + Math.min(episodeCount, 2 - Math.min(movieCount, 2))}
 										<div class="text-[10px] text-base-content/50">
-											+{totalItems - 3} more
+											{m.calendar_more({
+												count:
+													totalItems -
+													(Math.min(movieCount, 2) +
+														Math.min(episodeCount, 2 - Math.min(movieCount, 2)))
+											})}
 										</div>
 									{/if}
 								</div>

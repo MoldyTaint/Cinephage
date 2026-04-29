@@ -73,11 +73,6 @@ async function fetchTmdbUpcoming(): Promise<DiscoverItem[]> {
 	}
 }
 
-async function getLibraryMovieTmdbIds(): Promise<Set<number>> {
-	const rows = await db.select({ tmdbId: movies.tmdbId }).from(movies);
-	return new Set(rows.map((r) => r.tmdbId));
-}
-
 export async function getCalendarData(
 	monthStr: string,
 	type: 'all' | 'movies' | 'episodes'
@@ -99,13 +94,13 @@ export async function getCalendarData(
 	const includeEpisodes = type === 'all' || type === 'episodes';
 
 	if (includeMovies) {
-		const [tmdbItems, libraryTmdbIds, libraryMovies] = await Promise.all([
+		const [tmdbItems, libraryMovies] = await Promise.all([
 			fetchTmdbUpcoming(),
-			getLibraryMovieTmdbIds(),
 			db.select({ tmdbId: movies.tmdbId, id: movies.id }).from(movies)
 		]);
 
 		const libraryMovieMap = new Map(libraryMovies.map((m) => [m.tmdbId, m.id]));
+		const libraryTmdbIds = new Set(libraryMovieMap.keys());
 
 		for (const item of tmdbItems) {
 			const releaseDate = item.release_date;
@@ -208,9 +203,9 @@ export async function getUpcomingItems(limit = 7): Promise<UpcomingItem[]> {
 	}
 
 	if (items.length < limit) {
-		const libraryTmdbIds = await getLibraryMovieTmdbIds();
 		const libraryMovies = await db.select({ tmdbId: movies.tmdbId, id: movies.id }).from(movies);
 		const libraryMovieMap = new Map(libraryMovies.map((m) => [m.tmdbId, m.id]));
+		const libraryTmdbIds = new Set(libraryMovieMap.keys());
 
 		for (const item of tmdbItems) {
 			if (items.length >= limit) break;
