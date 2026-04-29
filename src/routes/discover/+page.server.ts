@@ -92,11 +92,13 @@ export const load: PageServerLoad = async ({ url }) => {
 		tvGenresData.genres.forEach((g) => allGenres.set(g.id, g));
 		const genres = Array.from(allGenres.values()).sort((a, b) => a.name.localeCompare(b.name));
 
-		const usCertifications = (movieCertifications.certifications[TMDB.DEFAULT_REGION] ?? []).map((c) => ({
-			certification: c.certification,
-			meaning: c.meaning,
-			order: c.order
-		}));
+		const usCertifications = (movieCertifications.certifications[TMDB.DEFAULT_REGION] ?? []).map(
+			(c) => ({
+				certification: c.certification,
+				meaning: c.meaning,
+				order: c.order
+			})
+		);
 
 		// Type for paginated TMDB results
 		interface TmdbPaginatedResult {

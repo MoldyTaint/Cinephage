@@ -459,7 +459,7 @@
 			{#if item['watch/providers']}
 				<div class="mt-4 border-t border-base-content/10 pt-4">
 					<div class="mb-2 text-sm text-base-content/50">Where to Watch</div>
-					<WatchProviders providers={item['watch/providers']} countryCode={countryCode} />
+					<WatchProviders providers={item['watch/providers']} {countryCode} />
 				</div>
 			{/if}
 		</div>

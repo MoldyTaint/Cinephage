@@ -125,7 +125,7 @@
 	{#if item['watch/providers']}
 		<div class="mt-6 border-t border-base-content/10 pt-6">
 			<h3 class="mb-3 text-sm font-medium text-white/60">{m.tmdb_meta_whereToWatch()}</h3>
-			<WatchProviders providers={item['watch/providers']} countryCode={countryCode} />
+			<WatchProviders providers={item['watch/providers']} {countryCode} />
 		</div>
 	{/if}
 </section>
