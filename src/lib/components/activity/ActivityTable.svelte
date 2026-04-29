@@ -33,8 +33,11 @@
 		formatRelativeTime,
 		formatTimestamp,
 		getDisplayTime,
-		getResolutionBadge
+		getResolutionBadge,
+		getActivityCategoryTag
 	} from './activity-display-utils.js';
+	import ActivityTypeTag from './ActivityTypeTag.svelte';
+	import ActivityStatusPopover from './ActivityStatusPopover.svelte';
 
 	interface Props {
 		activities: UnifiedActivity[];
@@ -254,20 +257,15 @@
 			{@const isExpanded = expandedRows.has(activity.id)}
 			{@const isFailedReasonExpanded = failedReasonExpandedRows.has(activity.id)}
 			{@const isQueueActionLoading = queueActionLoadingRows.has(activity.id)}
+			{@const categoryTag = getActivityCategoryTag(activity)}
 			<div class="rounded-xl bg-base-200 p-4">
 				<div class="flex items-start justify-between gap-2">
-					<span class="badge gap-1 {config.variant}">
-						<StatusIcon
-							class="h-3 w-3 {activity.status === 'downloading' || activity.status === 'searching'
-								? 'animate-spin'
-								: ''}"
-						/>
-						{#if activity.status === 'downloading' && activity.downloadProgress !== undefined}
-							{activity.downloadProgress}%
-						{:else}
-							{getStatusLabel(activity, config.label)}
+					<div class="flex items-center gap-1">
+						{#if categoryTag}
+							<ActivityTypeTag tag={categoryTag} />
 						{/if}
-					</span>
+						<ActivityStatusPopover {activity} />
+					</div>
 					<div class="flex items-center gap-2">
 						<span class="text-xs text-base-content/60" title={getDisplayTime(activity)}>
 							{formatRelativeTime(getDisplayTime(activity))}
@@ -572,6 +570,7 @@
 					{@const config = statusConfig[activity.status] || statusConfig.no_results}
 					{@const StatusIcon = config.icon}
 					{@const isExpanded = expandedRows.has(activity.id)}
+					{@const categoryTag = getActivityCategoryTag(activity)}
 					<tr
 						class="hover cursor-pointer"
 						onclick={() => {
@@ -610,19 +609,12 @@
 
 						<!-- Status -->
 						<td>
-							<span class="badge gap-1 {config.variant}">
-								<StatusIcon
-									class="h-3 w-3 {activity.status === 'downloading' ||
-									activity.status === 'searching'
-										? 'animate-spin'
-										: ''}"
-								/>
-								{#if activity.status === 'downloading' && activity.downloadProgress !== undefined}
-									{activity.downloadProgress}%
-								{:else}
-									{getStatusLabel(activity, config.label)}
+							<div class="flex items-center gap-1">
+								{#if categoryTag}
+									<ActivityTypeTag tag={categoryTag} />
 								{/if}
-							</span>
+								<ActivityStatusPopover {activity} />
+							</div>
 						</td>
 
 						<!-- Media -->
