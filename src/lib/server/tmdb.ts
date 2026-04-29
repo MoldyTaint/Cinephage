@@ -47,6 +47,7 @@ async function loadTmdbSettings(): Promise<{ apiKey: string; filters: GlobalTmdb
 				if (filtersSetting) {
 					try {
 						_cachedFilters = JSON.parse(filtersSetting.value);
+						logger.debug({ filters: _cachedFilters }, '[TMDB] Loaded settings filters');
 					} catch (e) {
 						logger.error({ err: e }, 'Failed to parse global filters');
 					}
@@ -82,7 +83,7 @@ export const tmdb = {
 		const isGetRequest = !options.method || options.method === 'GET';
 
 		const { apiKey, filters } = await loadTmdbSettings();
-		const cacheKey = getCacheKey(path, skipFilters, filters?.language);
+		const cacheKey = getCacheKey(path, skipFilters, filters?.language, filters?.region);
 
 		if (isGetRequest) {
 			const cached = tmdbCache.get(cacheKey);
@@ -100,6 +101,7 @@ export const tmdb = {
 		const requestPromise = (async () => {
 			try {
 				const url = new URL(TMDB.BASE_URL + path);
+				logger.debug({ url: url.toString(), skipFilters }, '[TMDB] Fetching');
 
 				// Add API key
 				url.searchParams.set('api_key', apiKey);
@@ -413,7 +415,7 @@ export const tmdb = {
 	 */
 	async getWatchProviders(
 		mediaType: 'movie' | 'tv',
-		region = 'US'
+		region = TMDB.DEFAULT_REGION
 	): Promise<{ results: TmdbWatchProvider[] }> {
 		return this.fetch(`/watch/providers/${mediaType}?watch_region=${region}`) as Promise<{
 			results: TmdbWatchProvider[];

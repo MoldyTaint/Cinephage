@@ -1,5 +1,6 @@
 import type { LayoutServerLoad } from './$types';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
+import { TMDB } from '$lib/config/constants.js';
 
 export const load: LayoutServerLoad = async () => {
 	try {
@@ -31,6 +32,7 @@ export const load: LayoutServerLoad = async () => {
 		);
 
 		return {
+			defaultRegion: TMDB.DEFAULT_REGION,
 			libraryNav: {
 				movieLibraries,
 				tvLibraries,
@@ -40,6 +42,7 @@ export const load: LayoutServerLoad = async () => {
 		};
 	} catch {
 		return {
+			defaultRegion: TMDB.DEFAULT_REGION,
 			libraryNav: {
 				movieLibraries: [],
 				tvLibraries: [],
