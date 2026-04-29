@@ -600,7 +600,8 @@ export class StalkerProvider implements LiveTvProvider {
 			timezone: config.timezone ?? 'Europe/London',
 			token: config.token,
 			username: config.username,
-			password: config.password
+			password: config.password,
+			endpoint: config.endpoint
 		};
 	}
 

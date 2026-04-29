@@ -221,7 +221,8 @@ export class PortalScanWorker extends TaskWorker<PortalScanWorkerMetadata> {
 			deviceId,
 			deviceId2,
 			model: 'MAG254',
-			timezone: 'Europe/London'
+			timezone: 'Europe/London',
+			endpoint: this.options.portalEndpoint
 		});
 
 		try {

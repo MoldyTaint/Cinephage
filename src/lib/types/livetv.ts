@@ -123,6 +123,7 @@ export interface StalkerConfig {
 	portalId?: string;
 	discoveredFromScan?: boolean;
 	streamUrlType?: 'direct' | 'create_link' | 'unknown';
+	endpoint?: string;
 }
 
 /**
