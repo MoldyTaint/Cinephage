@@ -4,12 +4,9 @@
 		Clapperboard,
 		Tv,
 		Download,
-		Upload,
 		AlertCircle,
-		PauseCircle,
 		Clock,
 		CheckCircle,
-		XCircle,
 		Search,
 		Plus,
 		FileQuestion,
@@ -18,8 +15,6 @@
 		TrendingUp,
 		Compass,
 		ArrowRight,
-		Loader2,
-		Minus,
 		Wifi,
 		ListTodo,
 		HardDrive
@@ -31,6 +26,15 @@
 	import type { UnifiedActivity } from '$lib/types/activity';
 	import { createSSE } from '$lib/sse';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
+	import {
+		statusConfig,
+		getStatusLabel,
+		getCompactProgressLabel,
+		formatRelativeTime,
+		getActivityCategoryTag
+	} from '$lib/components/activity/activity-display-utils.js';
+	import ActivityTypeTag from '$lib/components/activity/ActivityTypeTag.svelte';
+	import ActivityStatusPopover from '$lib/components/activity/ActivityStatusPopover.svelte';
 
 	let { data } = $props();
 
@@ -209,44 +213,11 @@
 		};
 	});
 
-	// Format relative time
-	function formatRelativeTime(dateStr: string | null): string {
-		if (!dateStr) return m.common_unknown();
-		const date = new Date(dateStr);
-		const now = new Date();
-		const diff = now.getTime() - date.getTime();
-		const minutes = Math.floor(diff / 60000);
-		const hours = Math.floor(diff / 3600000);
-		const days = Math.floor(diff / 86400000);
-
-		if (minutes < 1) return m.dashboard_relativeTime_justNow();
-		if (minutes < 60) return m.dashboard_relativeTime_minutesAgo({ count: minutes });
-		if (hours < 24) return m.dashboard_relativeTime_hoursAgo({ count: hours });
-		if (days < 7) return m.dashboard_relativeTime_daysAgo({ count: days });
-		return date.toLocaleDateString();
-	}
-
 	// Format date
 	function formatDate(dateStr: string | null): string {
 		if (!dateStr) return m.common_unknown();
 		return new Date(dateStr).toLocaleDateString();
 	}
-
-	// Status config for activity
-	const statusConfig: Record<string, { label: string; variant: string; icon: typeof CheckCircle }> =
-		{
-			imported: { label: m.status_imported(), variant: 'badge-success', icon: CheckCircle },
-			streaming: { label: m.status_streaming(), variant: 'badge-info', icon: CheckCircle },
-			downloading: { label: m.status_downloading(), variant: 'badge-info', icon: Loader2 },
-			seeding: { label: m.status_seeding(), variant: 'badge-success', icon: Upload },
-			paused: { label: m.status_paused(), variant: 'badge-warning', icon: PauseCircle },
-			failed: { label: m.status_failed(), variant: 'badge-error', icon: XCircle },
-			search_error: { label: m.status_searchError(), variant: 'badge-warning', icon: AlertCircle },
-			rejected: { label: m.status_rejected(), variant: 'badge-warning', icon: AlertCircle },
-			removed: { label: m.status_removed(), variant: 'badge-ghost', icon: XCircle },
-			no_results: { label: m.status_noResults(), variant: 'badge-ghost', icon: Minus },
-			searching: { label: m.status_searching(), variant: 'badge-info', icon: Loader2 }
-		};
 
 	// Get media link
 	function getMediaLink(activity: UnifiedActivity): string {
@@ -260,22 +231,6 @@
 		if (activity.status === 'removed') return false;
 		if (activity.mediaType === 'movie') return Boolean(activity.mediaId);
 		return Boolean(activity.seriesId || activity.mediaId);
-	}
-
-	function getCompactProgressLabel(activity: UnifiedActivity): string | null {
-		if (!activity.statusReason) {
-			return null;
-		}
-
-		if (activity.status === 'failed') {
-			return m.status_error();
-		}
-
-		if (activity.status === 'search_error') {
-			return m.status_searchError();
-		}
-
-		return activity.statusReason;
 	}
 
 	function formatBytes(bytes: number): string {
@@ -975,22 +930,15 @@
 							<tbody>
 								{#each recentActivity as activity (activity.id)}
 									{@const config = statusConfig[activity.status] || statusConfig.no_results}
-									{@const StatusIcon = config.icon}
+									{@const categoryTag = getActivityCategoryTag(activity)}
 									<tr class="hover">
 										<td>
-											<span class="badge gap-1 {config.variant} badge-xs">
-												<StatusIcon
-													class="h-3 w-3 {activity.status === 'downloading' ||
-													activity.status === 'searching'
-														? 'animate-spin'
-														: ''}"
-												/>
-												{#if activity.status === 'downloading' && activity.downloadProgress !== undefined}
-													{activity.downloadProgress}%
-												{:else}
-													{config.label}
+											<div class="flex items-center gap-1">
+												{#if categoryTag}
+													<ActivityTypeTag tag={categoryTag} />
 												{/if}
-											</span>
+												<ActivityStatusPopover {activity} />
+											</div>
 										</td>
 										<td>
 											{#if canLinkToMedia(activity)}
@@ -1035,7 +983,9 @@
 													{getCompactProgressLabel(activity)}
 												</span>
 											{:else}
-												<span class="text-xs text-base-content/50">{config.label}</span>
+												<span class="text-xs text-base-content/50"
+													>{getStatusLabel(activity, config.label)}</span
+												>
 											{/if}
 										</td>
 										<td>
