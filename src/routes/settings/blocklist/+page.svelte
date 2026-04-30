@@ -5,6 +5,7 @@
 	import { SettingsPage } from '$lib/components/ui/settings';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { BlocklistTable, BlocklistBulkActions } from '$lib/components/blocklist';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface BlocklistEntry {
 		id: string;
@@ -73,7 +74,7 @@
 			entries = result.entries;
 			total = result.total;
 		} catch (err) {
-			toasts.error(err instanceof Error ? err.message : 'Failed to load blocklist');
+			toasts.error(err instanceof Error ? err.message : m.common_failedToSave());
 		}
 	}
 
@@ -139,10 +140,10 @@
 				body: JSON.stringify({ ids: [deleteTarget.id] })
 			});
 			if (!res.ok) throw new Error('Failed to delete');
-			toasts.success('Entry removed from blocklist');
+			toasts.success(m.blocklist_entryRemoved());
 			await fetchEntries();
 		} catch (err) {
-			toasts.error(err instanceof Error ? err.message : 'Failed to delete entry');
+			toasts.error(err instanceof Error ? err.message : m.common_failedToSave());
 		} finally {
 			confirmDeleteOpen = false;
 			deleteTarget = null;
@@ -160,11 +161,11 @@
 				body: JSON.stringify({ ids })
 			});
 			if (!res.ok) throw new Error('Failed to delete');
-			toasts.success(`${ids.length} entries removed`);
+			toasts.success(m.blocklist_entriesRemoved({ count: ids.length }));
 			selectedIds.clear();
 			await fetchEntries();
 		} catch (err) {
-			toasts.error(err instanceof Error ? err.message : 'Failed to delete entries');
+			toasts.error(err instanceof Error ? err.message : m.common_failedToSave());
 		} finally {
 			confirmBulkDeleteOpen = false;
 			bulkLoading = false;
@@ -180,26 +181,24 @@
 				body: JSON.stringify({ action: 'purgeExpired' })
 			});
 			if (!res.ok) throw new Error('Failed to purge');
-			toasts.success('Expired entries purged');
+			toasts.success(m.blocklist_expiredPurged());
 			await fetchEntries();
 		} catch (err) {
-			toasts.error(err instanceof Error ? err.message : 'Failed to purge expired entries');
+			toasts.error(err instanceof Error ? err.message : m.common_failedToSave());
 		} finally {
 			confirmPurgeExpiredOpen = false;
 			bulkLoading = false;
 		}
 	}
 
-	const bulkDeleteMessage = $derived(
-		`Remove ${selectedIds.size} ${selectedIds.size === 1 ? 'entry' : 'entries'} from the blocklist?`
-	);
+	const bulkDeleteMessage = $derived(m.blocklist_bulkDeleteMessage({ count: selectedIds.size }));
 </script>
 
-<SettingsPage title="Blocklist" subtitle="Manage blocked releases that won't be re-downloaded">
+<SettingsPage title={m.blocklist_pageTitle()} subtitle={m.blocklist_pageSubtitle()}>
 	{#snippet actions()}
 		<button class="btn gap-1 btn-ghost btn-sm" onclick={() => (confirmPurgeExpiredOpen = true)}>
 			<Clock class="h-4 w-4" />
-			Purge Expired
+			{m.blocklist_purgeExpired()}
 		</button>
 	{/snippet}
 
@@ -210,37 +209,36 @@
 			/>
 			<input
 				type="text"
-				placeholder="Search releases..."
+				placeholder={m.blocklist_searchPlaceholder()}
 				class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				bind:value={filters.search}
 			/>
 		</div>
 
 		<select class="select-bordered select select-sm" bind:value={filters.reason}>
-			<option value="">All Reasons</option>
-			<option value="download_failed">Download Failed</option>
-			<option value="import_failed">Import Failed</option>
-			<option value="quality_mismatch">Quality Mismatch</option>
-			<option value="manual">Manual</option>
-			<option value="duplicate">Duplicate</option>
-			<option value="bad_release">Bad Release</option>
+			<option value="">{m.blocklist_filterAllReasons()}</option>
+			<option value="download_failed">{m.blocklist_reason_downloadFailed()}</option>
+			<option value="import_failed">{m.blocklist_reason_importFailed()}</option>
+			<option value="quality_mismatch">{m.blocklist_reason_qualityMismatch()}</option>
+			<option value="manual">{m.blocklist_reason_manual()}</option>
+			<option value="duplicate">{m.blocklist_reason_duplicate()}</option>
+			<option value="bad_release">{m.blocklist_reason_badRelease()}</option>
 		</select>
 
 		<select class="select-bordered select select-sm" bind:value={filters.protocol}>
-			<option value="">All Protocols</option>
-			<option value="torrent">Torrent</option>
-			<option value="usenet">Usenet</option>
-			<option value="streaming">Streaming</option>
+			<option value="">{m.blocklist_filterAllProtocols()}</option>
+			<option value="torrent">{m.common_torrent()}</option>
+			<option value="usenet">{m.common_usenet()}</option>
+			<option value="streaming">{m.common_live()}</option>
 		</select>
 
 		<label class="label cursor-pointer gap-2">
 			<input type="checkbox" class="checkbox checkbox-xs" bind:checked={filters.activeOnly} />
-			<span class="label-text text-sm">Active only</span>
+			<span class="label-text text-sm">{m.blocklist_filterActiveOnly()}</span>
 		</label>
 
 		<span class="text-sm text-base-content/60">
-			{total}
-			{total === 1 ? 'entry' : 'entries'}
+			{m.blocklist_entryCount({ total })}
 		</span>
 	</div>
 
@@ -268,9 +266,9 @@
 			{:else}
 				<div class="py-12 text-center text-base-content/50">
 					<Ban class="mx-auto mb-4 h-12 w-12 opacity-40" />
-					<p class="text-lg font-medium">No blocklisted releases</p>
+					<p class="text-lg font-medium">{m.blocklist_emptyTitle()}</p>
 					<p class="mt-1 text-sm">
-						Blocked releases will appear here when downloads fail repeatedly.
+						{m.blocklist_emptyDescription()}
 					</p>
 				</div>
 			{/if}
@@ -282,9 +280,9 @@
 	open={confirmDeleteOpen}
 	onCancel={() => (confirmDeleteOpen = false)}
 	onConfirm={confirmDelete}
-	title="Remove from Blocklist"
-	message="Remove this release from the blocklist? It may be grabbed again by monitoring."
-	confirmLabel="Remove"
+	title={m.blocklist_confirmRemoveTitle()}
+	message={m.blocklist_confirmRemoveMessage()}
+	confirmLabel={m.blocklist_confirmRemoveLabel()}
 	confirmVariant="error"
 />
 
@@ -292,9 +290,9 @@
 	open={confirmBulkDeleteOpen}
 	onCancel={() => (confirmBulkDeleteOpen = false)}
 	onConfirm={confirmBulkDelete}
-	title="Remove Selected"
+	title={m.blocklist_confirmBulkDeleteTitle()}
 	message={bulkDeleteMessage}
-	confirmLabel={`Remove ${selectedIds.size}`}
+	confirmLabel={`${m.blocklist_confirmRemoveLabel()} ${selectedIds.size}`}
 	confirmVariant="error"
 />
 
@@ -302,8 +300,8 @@
 	open={confirmPurgeExpiredOpen}
 	onCancel={() => (confirmPurgeExpiredOpen = false)}
 	onConfirm={confirmPurgeExpired}
-	title="Purge Expired Entries"
-	message="Remove all expired blocklist entries? This cannot be undone."
-	confirmLabel="Purge"
+	title={m.blocklist_confirmPurgeTitle()}
+	message={m.blocklist_confirmPurgeMessage()}
+	confirmLabel={m.blocklist_confirmPurgeLabel()}
 	confirmVariant="warning"
 />
