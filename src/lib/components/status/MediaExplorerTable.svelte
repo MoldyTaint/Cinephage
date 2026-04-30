@@ -12,6 +12,8 @@
 		Check
 	} from 'lucide-svelte';
 	import { formatBytes } from '$lib/utils/format';
+	import { formatRelativeDate } from '$lib/utils/format-relative-date.js';
+	import { getPosterUrl } from '$lib/utils/poster-url.js';
 
 	type MediaExplorerItem = {
 		id: string;
@@ -47,42 +49,6 @@
 	}
 
 	let { items, currentSort = 'title-asc', onSortChange }: Props = $props();
-
-	function formatRelativeDate(dateStr: string): { display: string; full: string } {
-		const date = new Date(dateStr);
-		const now = new Date();
-		const full = date.toLocaleDateString();
-
-		const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-		const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-		const diffDays = Math.round((today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24));
-
-		if (diffDays === 0) return { display: 'today', full };
-		if (diffDays === 1) return { display: 'yesterday', full };
-		if (diffDays < 7) return { display: `${diffDays} days ago`, full };
-		if (diffDays < 30) {
-			const weeks = Math.floor(diffDays / 7);
-			return {
-				display: weeks === 1 ? '1 week ago' : `${weeks} weeks ago`,
-				full
-			};
-		}
-		if (diffDays < 365) {
-			const months = Math.floor(diffDays / 30);
-			return {
-				display: months === 1 ? '1 month ago' : `${months} months ago`,
-				full
-			};
-		}
-		return { display: full, full };
-	}
-
-	function getPosterUrl(item: MediaExplorerItem): string {
-		if (item.posterPath) {
-			return `https://image.tmdb.org/t/p/w92${item.posterPath}`;
-		}
-		return '';
-	}
 
 	function getDetailUrl(item: MediaExplorerItem): string {
 		if (item.mediaType === 'movie') {
@@ -138,7 +104,7 @@
 						{#if item.posterPath}
 							<div class="shrink-0">
 								<img
-									src={getPosterUrl(item)}
+									src={getPosterUrl(item.posterPath)}
 									alt={item.title}
 									class="h-24 w-16 rounded object-cover"
 									loading="lazy"
@@ -360,7 +326,7 @@
 							{#if item.posterPath}
 								<a href={getDetailUrl(item)}>
 									<img
-										src={getPosterUrl(item)}
+										src={getPosterUrl(item.posterPath)}
 										alt={item.title}
 										class="h-14 w-10 rounded object-cover"
 										loading="lazy"

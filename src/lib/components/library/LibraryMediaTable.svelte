@@ -19,6 +19,9 @@
 	} from 'lucide-svelte';
 	import { resolvePath } from '$lib/utils/routing';
 	import { formatBytes, getStatusColor } from '$lib/utils/format';
+	import { formatRelativeDate } from '$lib/utils/format-relative-date.js';
+	import { formatSeriesStatus } from '$lib/utils/format-status.js';
+	import { getPosterUrl } from '$lib/utils/poster-url.js';
 	import type { MediaType } from '$lib/utils/media-type';
 	import { goto } from '$app/navigation';
 	import * as m from '$lib/paraglide/messages.js';
@@ -82,16 +85,6 @@
 		const profileId = item.scoringProfileId?.toLowerCase();
 		const profileName = getProfileName(item)?.toLowerCase();
 		return profileId === 'streamer' || profileName === 'streamer';
-	}
-
-	function formatStatus(status: string | null): string {
-		if (!status) return m.common_unknown();
-		const s = status.toLowerCase();
-		if (s.includes('returning')) return m.library_libraryMediaTable_continuing();
-		if (s.includes('production')) return m.library_libraryMediaTable_inProduction();
-		if (s.includes('ended')) return m.library_libraryMediaTable_ended();
-		if (s.includes('canceled')) return m.library_libraryMediaTable_cancelled();
-		return status;
 	}
 
 	function handleSort(field: string) {
@@ -205,38 +198,6 @@
 		return badges;
 	}
 
-	function getPosterUrl(item: LibraryMovie | LibrarySeries): string {
-		if (item.posterPath) {
-			return `https://image.tmdb.org/t/p/w92${item.posterPath}`;
-		}
-		return '';
-	}
-
-	function formatRelativeDate(dateStr: string): { display: string; full: string } {
-		const date = new Date(dateStr);
-		const now = new Date();
-		const full = date.toLocaleDateString();
-
-		// Strip time for day comparison
-		const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-		const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-		const diffDays = Math.round((today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24));
-
-		if (diffDays === 0) return { display: m.library_libraryMediaTable_today(), full };
-		if (diffDays === 1) return { display: m.library_libraryMediaTable_yesterday(), full };
-		if (diffDays < 7)
-			return { display: m.library_libraryMediaTable_daysAgo({ count: diffDays }), full };
-		if (diffDays < 30) {
-			const weeks = Math.floor(diffDays / 7);
-			return { display: m.library_libraryMediaTable_weeksAgo({ count: weeks }), full };
-		}
-		if (diffDays < 365) {
-			const months = Math.floor(diffDays / 30);
-			return { display: m.library_libraryMediaTable_monthsAgo({ count: months }), full };
-		}
-		return { display: full, full };
-	}
-
 	function isItemMissing(item: LibraryMovie | LibrarySeries): boolean {
 		if (isMovie(item)) return !item.hasFile;
 		if (isSeries(item)) return (item.percentComplete ?? 0) === 0;
@@ -317,7 +278,7 @@
 						{/if}
 						{#if isSeries(item) && item.status}
 							<span class="badge badge-sm {getStatusColor(item.status)}">
-								{formatStatus(item.status)}
+								{formatSeriesStatus(item.status)}
 							</span>
 						{/if}
 					</div>
@@ -328,7 +289,7 @@
 					{#if item.posterPath}
 						<div class="shrink-0">
 							<img
-								src={getPosterUrl(item)}
+								src={getPosterUrl(item.posterPath)}
 								alt={item.title}
 								class="h-20 w-14 rounded object-cover"
 								loading="lazy"
@@ -558,7 +519,7 @@
 							{#if item.posterPath}
 								<a href={resolvePath(`/library/${mediaType}/${item.id}`)}>
 									<img
-										src={getPosterUrl(item)}
+										src={getPosterUrl(item.posterPath)}
 										alt={item.title}
 										class="h-14 w-10 rounded object-cover"
 										loading="lazy"
@@ -625,7 +586,7 @@
 								{/if}
 								{#if isSeries(item) && item.status}
 									<span class="badge badge-sm {getStatusColor(item.status)}">
-										{formatStatus(item.status)}
+										{formatSeriesStatus(item.status)}
 									</span>
 								{/if}
 							</div>
