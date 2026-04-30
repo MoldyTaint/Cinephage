@@ -168,7 +168,6 @@ export {
 	// Release groups (individual detection, no tiers)
 	RELEASE_GROUP_FORMATS,
 	RELEASE_GROUP_NAMES,
-	ALL_GROUP_TIER_FORMATS,
 	isKnownGroup,
 
 	// Audio formats
@@ -190,7 +189,6 @@ export {
 	HLG_FORMAT,
 	PQ_FORMAT,
 	SDR_FORMAT,
-	HDR_FORMATS,
 	ALL_HDR_FORMATS,
 
 	// Streaming services

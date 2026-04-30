@@ -70,5 +70,3 @@ export const SOURCE_FORMATS: CustomFormat[] = [
 		conditions: [{ name: 'DVD', type: 'source', source: 'dvd', required: true, negate: false }]
 	}
 ];
-
-export const ALL_SOURCE_FORMATS: CustomFormat[] = SOURCE_FORMATS;

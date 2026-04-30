@@ -100,5 +100,3 @@ export const ALL_RESOLUTION_FORMATS: CustomFormat[] = [
 		]
 	}
 ];
-
-export const RESOLUTION_ONLY_FORMATS = ALL_RESOLUTION_FORMATS;

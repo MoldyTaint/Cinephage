@@ -21,13 +21,13 @@ export * from './source.js';
 
 // Import for aggregation
 import { ALL_RESOLUTION_FORMATS } from './resolution.js';
-import { ALL_GROUP_TIER_FORMATS } from './groups.js';
+import { RELEASE_GROUP_FORMATS } from './groups.js';
 import { ALL_AUDIO_FORMATS } from './audio.js';
 import { ALL_HDR_FORMATS } from './hdr.js';
 import { ALL_STREAMING_FORMATS } from './streaming.js';
 import { ALL_BANNED_FORMATS } from './banned.js';
 import { ALL_ENHANCEMENT_FORMATS } from './enhancement.js';
-import { ALL_SOURCE_FORMATS } from './source.js';
+import { SOURCE_FORMATS } from './source.js';
 
 import type { CustomFormat } from '../types.js';
 
@@ -36,13 +36,13 @@ import type { CustomFormat } from '../types.js';
  */
 export const ALL_FORMATS: CustomFormat[] = [
 	...ALL_RESOLUTION_FORMATS,
-	...ALL_GROUP_TIER_FORMATS,
+	...RELEASE_GROUP_FORMATS,
 	...ALL_AUDIO_FORMATS,
 	...ALL_HDR_FORMATS,
 	...ALL_STREAMING_FORMATS,
 	...ALL_BANNED_FORMATS,
 	...ALL_ENHANCEMENT_FORMATS,
-	...ALL_SOURCE_FORMATS
+	...SOURCE_FORMATS
 ];
 
 /**
@@ -76,12 +76,12 @@ export function getFormatsByTag(tag: string): CustomFormat[] {
  */
 export const FORMAT_COUNTS = {
 	resolution: ALL_RESOLUTION_FORMATS.length,
-	releaseGroups: ALL_GROUP_TIER_FORMATS.length,
+	releaseGroups: RELEASE_GROUP_FORMATS.length,
 	audio: ALL_AUDIO_FORMATS.length,
 	hdr: ALL_HDR_FORMATS.length,
 	streaming: ALL_STREAMING_FORMATS.length,
 	banned: ALL_BANNED_FORMATS.length,
 	enhancement: ALL_ENHANCEMENT_FORMATS.length,
-	source: ALL_SOURCE_FORMATS.length,
+	source: SOURCE_FORMATS.length,
 	total: ALL_FORMATS.length
 };
