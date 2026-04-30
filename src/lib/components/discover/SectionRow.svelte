@@ -150,7 +150,7 @@
 		<div
 			bind:this={container}
 			onscroll={handleScroll}
-			class="custom-scrollbar flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth px-1 pb-4 sm:gap-4"
+			class="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth px-1 pb-4 [scrollbar-width:none] sm:gap-4 [&::-webkit-scrollbar]:hidden"
 		>
 			{#each displayedItems as item (item.id)}
 				<div class={`flex-none snap-start ${resolvedItemClass}`}>
@@ -194,15 +194,3 @@
 		{/if}
 	</div>
 </div>
-
-<style>
-	/* Hide scrollbar for Chrome, Safari and Opera */
-	.custom-scrollbar::-webkit-scrollbar {
-		display: none;
-	}
-	/* Hide scrollbar for IE, Edge and Firefox */
-	.custom-scrollbar {
-		-ms-overflow-style: none; /* IE and Edge */
-		scrollbar-width: none; /* Firefox */
-	}
-</style>

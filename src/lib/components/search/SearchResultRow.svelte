@@ -128,20 +128,20 @@
 	function getProtocolColor(): string {
 		switch (release.protocol) {
 			case 'torrent':
-				return 'bg-blue-500';
+				return 'bg-info';
 			case 'streaming':
-				return 'bg-green-500';
+				return 'bg-success';
 			case 'usenet':
-				return 'bg-yellow-500';
+				return 'bg-warning';
 			default:
 				return 'bg-base-300';
 		}
 	}
 
 	function getScoreColor(score: number): string {
-		if (score >= 700) return 'text-green-500';
-		if (score >= 400) return 'text-yellow-500';
-		return 'text-red-500';
+		if (score >= 700) return 'text-success';
+		if (score >= 400) return 'text-warning';
+		return 'text-error';
 	}
 
 	async function handleGrab() {
@@ -222,11 +222,11 @@
 				{@const availability = getTorrentAvailabilityText()}
 				{#if availability}
 					<div class="flex items-center gap-1">
-						<ArrowUpCircle size={12} class="text-green-500" />
-						<span class="text-green-500">{availability.seeders}</span>
+						<ArrowUpCircle size={12} class="text-success" />
+						<span class="text-success">{availability.seeders}</span>
 						<span class="text-base-content/30">/</span>
-						<ArrowDownCircle size={12} class="text-red-500" />
-						<span class="text-red-500">{availability.leechers}</span>
+						<ArrowDownCircle size={12} class="text-error" />
+						<span class="text-error">{availability.leechers}</span>
 					</div>
 				{/if}
 			{/if}
@@ -320,7 +320,7 @@
 								{@const label =
 									key === 'releaseGroupTier' ? 'Group' : key.charAt(0).toUpperCase() + key.slice(1)}
 								{@const scoreClass =
-									cat.score > 0 ? 'bg-green-500/10 text-green-600' : 'bg-red-500/10 text-red-600'}
+									cat.score > 0 ? 'bg-success/10 text-success' : 'bg-error/10 text-error'}
 								{@const prefix = cat.score > 0 ? '+' : ''}
 								<span class="rounded-full px-2 py-1 text-xs {scoreClass}">
 									{prefix}{cat.score}
@@ -330,17 +330,17 @@
 						{/each}
 						{#if release.scoreComponents}
 							{#if release.scoreComponents.enhancementBonus > 0}
-								<span class="rounded-full bg-green-500/10 px-2 py-1 text-xs text-green-600">
+								<span class="rounded-full bg-success/10 px-2 py-1 text-xs text-success">
 									+{release.scoreComponents.enhancementBonus} Enhancement
 								</span>
 							{/if}
 							{#if release.scoreComponents.packBonus > 0}
-								<span class="rounded-full bg-green-500/10 px-2 py-1 text-xs text-green-600">
+								<span class="rounded-full bg-success/10 px-2 py-1 text-xs text-success">
 									+{release.scoreComponents.packBonus} Pack
 								</span>
 							{/if}
 							{#if release.scoreComponents.hardcodedSubsPenalty < 0}
-								<span class="rounded-full bg-red-500/10 px-2 py-1 text-xs text-red-600">
+								<span class="rounded-full bg-error/10 px-2 py-1 text-xs text-error">
 									{release.scoreComponents.hardcodedSubsPenalty} Hardcoded Subs
 								</span>
 							{/if}
@@ -411,25 +411,25 @@
 						{#if release.torrent?.freeleech || release.torrent?.downloadFactor === 0}
 							<div class="flex justify-between">
 								<dt class="text-base-content/60">Ratio</dt>
-								<dd class="font-medium text-green-500">Freeleech</dd>
+								<dd class="font-medium text-success">Freeleech</dd>
 							</div>
 						{/if}
 						{#if release.torrent?.uploadFactor && release.torrent.uploadFactor > 1}
 							<div class="flex justify-between">
 								<dt class="text-base-content/60">Upload</dt>
-								<dd class="font-medium text-blue-500">{release.torrent.uploadFactor}x</dd>
+								<dd class="font-medium text-info">{release.torrent.uploadFactor}x</dd>
 							</div>
 						{/if}
 						{#if release.seeders !== undefined}
 							<div class="flex justify-between">
 								<dt class="text-base-content/60">Seeders</dt>
-								<dd class="font-medium text-green-500">{release.seeders}</dd>
+								<dd class="font-medium text-success">{release.seeders}</dd>
 							</div>
 						{/if}
 						{#if release.leechers !== undefined}
 							<div class="flex justify-between">
 								<dt class="text-base-content/60">Leechers</dt>
-								<dd class="font-medium text-red-500">{release.leechers}</dd>
+								<dd class="font-medium text-error">{release.leechers}</dd>
 							</div>
 						{/if}
 						<div class="flex justify-between">

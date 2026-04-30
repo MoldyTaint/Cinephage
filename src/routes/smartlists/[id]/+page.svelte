@@ -357,7 +357,7 @@
 						<div class="flex flex-wrap gap-4 text-sm text-base-content/70">
 							{#if selectedItem.voteAverage}
 								<div class="flex items-center gap-1">
-									<Star class="h-4 w-4 fill-yellow-400 text-yellow-400" />
+									<Star class="h-4 w-4 fill-warning text-warning" />
 									<span>{parseFloat(selectedItem.voteAverage).toFixed(1)}</span>
 								</div>
 							{/if}
@@ -628,7 +628,7 @@
 							<div
 								class="absolute top-2 right-2 z-10 flex items-center gap-0.5 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white shadow-sm backdrop-blur-sm"
 							>
-								<Star class="h-2.5 w-2.5 fill-yellow-400 text-yellow-400" />
+								<Star class="h-2.5 w-2.5 fill-warning text-warning" />
 								{parseFloat(item.voteAverage).toFixed(1)}
 							</div>
 						{/if}

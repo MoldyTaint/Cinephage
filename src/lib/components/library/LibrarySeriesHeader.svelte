@@ -297,16 +297,13 @@
 						</span>
 					</div>
 				</div>
-				<div class="h-2 w-full max-w-md overflow-hidden rounded-full bg-base-300">
-					<div
-						class="h-full transition-all duration-500 {series.percentComplete === 100
-							? 'bg-success'
-							: series.percentComplete > 0
-								? 'bg-primary'
-								: 'bg-base-300'}"
-						style="width: {series.percentComplete}%"
-					></div>
-				</div>
+				<progress
+					class="progress h-2 w-full max-w-md {series.percentComplete === 100
+						? 'progress-success'
+						: 'progress-primary'}"
+					value={series.percentComplete}
+					max="100"
+				></progress>
 			</div>
 
 			<!-- Settings info -->

@@ -337,8 +337,10 @@
 		</div>
 
 		<!-- Tabs -->
-		<div class="tabs-boxed mb-4 tabs flex w-full flex-wrap gap-1">
+		<div role="tablist" class="tabs-boxed mb-4 tabs flex w-full flex-wrap gap-1">
 			<button
+				type="button"
+				role="tab"
 				class="tab gap-2"
 				class:tab-active={activeTab === 'willChange'}
 				onclick={() => (activeTab = 'willChange')}
@@ -348,6 +350,8 @@
 				<span class="badge badge-sm badge-info">{counts.willChange}</span>
 			</button>
 			<button
+				type="button"
+				role="tab"
 				class="tab gap-2"
 				class:tab-active={activeTab === 'alreadyCorrect'}
 				onclick={() => (activeTab = 'alreadyCorrect')}
@@ -357,6 +361,8 @@
 				<span class="badge badge-sm badge-success">{counts.alreadyCorrect}</span>
 			</button>
 			<button
+				type="button"
+				role="tab"
 				class="tab gap-2"
 				class:tab-active={activeTab === 'collisions'}
 				onclick={() => (activeTab = 'collisions')}
@@ -368,6 +374,8 @@
 				>
 			</button>
 			<button
+				type="button"
+				role="tab"
 				class="tab gap-2"
 				class:tab-active={activeTab === 'errors'}
 				onclick={() => (activeTab = 'errors')}

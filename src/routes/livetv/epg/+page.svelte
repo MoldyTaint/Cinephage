@@ -310,9 +310,11 @@
 	</div>
 
 	<!-- Tabs -->
-	<div class="tabs-boxed tabs w-full overflow-x-auto sm:w-fit">
+	<div role="tablist" class="tabs-boxed tabs w-full overflow-x-auto sm:w-fit">
 		{#each tabs as tab (tab.id)}
 			<button
+				type="button"
+				role="tab"
 				class="tab-sm tab flex-1 gap-1 whitespace-nowrap sm:flex-none sm:gap-2 {activeTab === tab.id
 					? 'tab-active'
 					: ''}"

@@ -36,7 +36,6 @@
 		getResolutionBadge,
 		getActivityCategoryTag
 	} from './activity-display-utils.js';
-	import ActivityTypeTag from './ActivityTypeTag.svelte';
 	import ActivityStatusPopover from './ActivityStatusPopover.svelte';
 
 	interface Props {
@@ -574,7 +573,6 @@
 				{#each renderer.visible as activity (activity.id)}
 					{@const config = statusConfig[activity.status] || statusConfig.no_results}
 					{@const isExpanded = expandedRows.has(activity.id)}
-					{@const categoryTag = getActivityCategoryTag(activity)}
 					<tr
 						class="hover cursor-pointer"
 						onclick={() => {
@@ -613,12 +611,10 @@
 
 						<!-- Status -->
 						<td>
-							<div class="flex items-center gap-1">
-								{#if categoryTag}
-									<ActivityTypeTag tag={categoryTag} />
-								{/if}
-								<ActivityStatusPopover {activity} />
-							</div>
+							<ActivityStatusPopover
+								{activity}
+								compactLabel={getCompactStatusLabel(activity, config.label)}
+							/>
 						</td>
 
 						<!-- Media -->

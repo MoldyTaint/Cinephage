@@ -383,16 +383,13 @@
 									{/if}
 								</div>
 								{#if (item.episodeCount ?? 0) > 0}
-									<div class="mt-1 h-1.5 w-full max-w-40 overflow-hidden rounded-full bg-base-300">
-										<div
-											class="h-full transition-all duration-500 {item.percentComplete === 100
-												? 'bg-success'
-												: item.percentComplete > 0
-													? 'bg-primary'
-													: 'bg-base-300'}"
-											style="width: {item.percentComplete}%"
-										></div>
-									</div>
+									<progress
+										class="progress mt-1 h-1.5 w-full max-w-40 {item.percentComplete === 100
+											? 'progress-success'
+											: 'progress-primary'}"
+										value={item.percentComplete}
+										max="100"
+									></progress>
 								{/if}
 							</div>
 						{/if}

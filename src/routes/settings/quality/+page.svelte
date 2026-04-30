@@ -263,9 +263,10 @@
 
 <SettingsPage title={m.settings_quality_heading()} subtitle={m.settings_quality_subtitle()}>
 	<!-- Tabs -->
-	<div class="tabs-boxed tabs w-fit">
+	<div role="tablist" class="tabs-boxed tabs w-fit">
 		<button
 			type="button"
+			role="tab"
 			class="tab gap-2"
 			class:tab-active={activeTab === 'profiles'}
 			onclick={() => setTab('profiles')}
@@ -275,6 +276,7 @@
 		</button>
 		<button
 			type="button"
+			role="tab"
 			class="tab gap-2"
 			class:tab-active={activeTab === 'formats'}
 			onclick={() => setTab('formats')}

@@ -165,16 +165,13 @@
 
 	<!-- Series progress bar -->
 	{#if !isMovie}
-		<div class="absolute right-0 bottom-0 left-0 h-1 bg-base-300/50">
-			<div
-				class="h-full transition-all duration-300 {seriesProgress === 100
-					? 'bg-success'
-					: seriesProgress > 0
-						? 'bg-primary'
-						: 'bg-base-300'}"
-				style="width: {seriesProgress}%"
-			></div>
-		</div>
+		<progress
+			class="progress absolute right-0 bottom-0 left-0 h-1 w-full {seriesProgress === 100
+				? 'progress-success'
+				: 'progress-primary'}"
+			value={seriesProgress}
+			max="100"
+		></progress>
 	{/if}
 
 	<!-- Missing root folder warning -->

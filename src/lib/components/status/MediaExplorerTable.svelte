@@ -228,30 +228,26 @@
 										{/if}
 									</div>
 									{#if progress > 0}
-										<div
-											class="mt-1 h-1.5 w-full max-w-40 overflow-hidden rounded-full bg-base-300"
-										>
-											<div
-												class="h-full transition-all duration-500 {progress === 100
-													? 'bg-success'
-													: 'bg-primary'}"
-												style="width: {progress}%"
-											></div>
-										</div>
+										<progress
+											class="progress mt-1 h-1.5 w-full max-w-40 {progress === 100
+												? 'progress-success'
+												: 'progress-primary'}"
+											value={progress}
+											max="100"
+										></progress>
 									{/if}
 								</div>
 							{/if}
 							{#if item.playedPercentage !== null && item.playCount > 0}
 								<div class="mt-1.5">
 									<div class="flex items-center gap-1.5 text-xs text-base-content/60">
-										<div class="h-1.5 w-full max-w-32 overflow-hidden rounded-full bg-base-300">
-											<div
-												class="h-full transition-all duration-500 {item.playedPercentage >= 90
-													? 'bg-success'
-													: 'bg-primary'}"
-												style="width: {Math.min(100, Math.round(item.playedPercentage))}%"
-											></div>
-										</div>
+										<progress
+											class="progress h-1.5 w-full max-w-32 {item.playedPercentage >= 90
+												? 'progress-success'
+												: 'progress-primary'}"
+											value={Math.min(100, Math.round(item.playedPercentage))}
+											max="100"
+										></progress>
 										<span>{Math.min(100, Math.round(item.playedPercentage))}%</span>
 									</div>
 								</div>
@@ -452,14 +448,13 @@
 								</div>
 								{#if item.playedPercentage !== null && item.playCount > 0}
 									<div class="flex items-center gap-1.5">
-										<div class="h-1.5 w-full max-w-16 overflow-hidden rounded-full bg-base-300">
-											<div
-												class="h-full transition-all duration-500 {item.playedPercentage >= 90
-													? 'bg-success'
-													: 'bg-primary'}"
-												style="width: {Math.min(100, Math.round(item.playedPercentage))}%"
-											></div>
-										</div>
+										<progress
+											class="progress h-1.5 w-full max-w-16 {item.playedPercentage >= 90
+												? 'progress-success'
+												: 'progress-primary'}"
+											value={Math.min(100, Math.round(item.playedPercentage))}
+											max="100"
+										></progress>
 										<span class="text-xs text-base-content/50"
 											>{Math.min(100, Math.round(item.playedPercentage))}%</span
 										>

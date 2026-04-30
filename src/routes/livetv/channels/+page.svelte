@@ -1048,14 +1048,11 @@
 			{:else if downloadingLogos && logoDownloadProgress}
 				<!-- Progress Bar -->
 				<div class="flex w-48 items-center gap-2">
-					<div class="h-2 flex-1 rounded-full bg-base-300">
-						<div
-							class="h-full rounded-full bg-primary transition-all duration-300"
-							style="width: {logoDownloadProgress.total > 0
-								? (logoDownloadProgress.downloaded / logoDownloadProgress.total) * 100
-								: 0}%"
-						></div>
-					</div>
+					<progress
+						class="progress flex-1 progress-primary"
+						value={logoDownloadProgress.downloaded}
+						max={logoDownloadProgress.total || 1}
+					></progress>
 					<span class="text-xs text-base-content/70">
 						{logoDownloadProgress.downloaded}/{logoDownloadProgress.total}
 					</span>
