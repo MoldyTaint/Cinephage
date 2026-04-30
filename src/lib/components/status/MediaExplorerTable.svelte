@@ -14,6 +14,7 @@
 	import { formatBytes } from '$lib/utils/format';
 	import { formatRelativeDate } from '$lib/utils/format-relative-date.js';
 	import { getPosterUrl } from '$lib/utils/poster-url.js';
+	import * as m from '$lib/paraglide/messages.js';
 
 	type MediaExplorerItem = {
 		id: string;
@@ -90,7 +91,7 @@
 {#if items.length === 0}
 	<div class="py-12 text-center text-base-content/60">
 		<Film class="mx-auto mb-4 h-12 w-12 opacity-40" />
-		<p class="text-lg font-medium">No media found</p>
+		<p class="text-lg font-medium">{m.mediaExplorer_noMediaFound()}</p>
 	</div>
 {:else}
 	<!-- Mobile: Card View -->
@@ -133,14 +134,14 @@
 								<span class="badge badge-ghost badge-sm">
 									{#if item.mediaType === 'movie'}
 										<Film class="h-3 w-3" />
-										Movie
+										{m.mediaExplorer_typeMovie()}
 									{:else}
 										<Tv class="h-3 w-3" />
-										TV
+										{m.mediaExplorer_typeTv()}
 									{/if}
 								</span>
 								{#if item.mediaSubType === 'anime'}
-									<span class="badge badge-xs badge-secondary">Anime</span>
+									<span class="badge badge-xs badge-secondary">{m.mediaExplorer_typeAnime()}</span>
 								{/if}
 							</div>
 
@@ -186,9 +187,9 @@
 							{#if progress !== null}
 								<div class="mt-1.5">
 									<div class="flex items-center gap-2 text-xs text-base-content/60">
-										<span>{item.episodeFileCount ?? 0}/{item.episodeCount ?? 0} episodes</span>
+										<span>{item.episodeFileCount ?? 0}/{item.episodeCount ?? 0} {m.mediaExplorer_episodes()}</span>
 										{#if progress === 100}
-											<span class="badge badge-xs badge-success">Complete</span>
+											<span class="badge badge-xs badge-success">{m.mediaExplorer_complete()}</span>
 										{:else if progress > 0}
 											<span class="badge badge-xs badge-primary">{progress}%</span>
 										{/if}
@@ -240,7 +241,7 @@
 								: 'text-base-content/50 hover:text-base-content'}"
 							onclick={() => handleHeaderSort('title')}
 						>
-							Title
+							{m.mediaExplorer_headerTitle()}
 							{#if getSortDirection('title') === 'asc'}
 								<ArrowUp class="h-3 w-3" />
 							{:else if getSortDirection('title') === 'desc'}
@@ -250,9 +251,9 @@
 							{/if}
 						</button>
 					</th>
-					<th>Type</th>
-					<th>Library</th>
-					<th>Quality</th>
+					<th>{m.mediaExplorer_headerType()}</th>
+					<th>{m.mediaExplorer_headerLibrary()}</th>
+					<th>{m.mediaExplorer_headerQuality()}</th>
 					<th>
 						<button
 							class="flex items-center gap-1 text-xs font-medium tracking-wide uppercase {getSortDirection(
@@ -262,7 +263,7 @@
 								: 'text-base-content/50 hover:text-base-content'}"
 							onclick={() => handleHeaderSort('size')}
 						>
-							Size
+							{m.mediaExplorer_headerSize()}
 							{#if getSortDirection('size') === 'asc'}
 								<ArrowUp class="h-3 w-3" />
 							{:else if getSortDirection('size') === 'desc'}
@@ -281,7 +282,7 @@
 								: 'text-base-content/50 hover:text-base-content'}"
 							onclick={() => handleHeaderSort('plays')}
 						>
-							Playback
+							{m.mediaExplorer_headerPlayback()}
 							{#if getSortDirection('plays') === 'asc'}
 								<ArrowUp class="h-3 w-3" />
 							{:else if getSortDirection('plays') === 'desc'}
@@ -291,7 +292,7 @@
 							{/if}
 						</button>
 					</th>
-					<th>Status</th>
+					<th>{m.mediaExplorer_headerStatus()}</th>
 					<th>
 						<button
 							class="flex items-center gap-1 text-xs font-medium tracking-wide uppercase {getSortDirection(
@@ -301,7 +302,7 @@
 								: 'text-base-content/50 hover:text-base-content'}"
 							onclick={() => handleHeaderSort('added')}
 						>
-							Added
+							{m.mediaExplorer_headerAdded()}
 							{#if getSortDirection('added') === 'asc'}
 								<ArrowUp class="h-3 w-3" />
 							{:else if getSortDirection('added') === 'desc'}
@@ -357,7 +358,7 @@
 									</span>
 								{/if}
 								{#if item.mediaSubType === 'anime'}
-									<span class="badge badge-xs badge-secondary">Anime</span>
+									<span class="badge badge-xs badge-secondary">{m.mediaExplorer_typeAnime()}</span>
 								{/if}
 							</div>
 						</td>
@@ -366,10 +367,10 @@
 							<span class="badge badge-ghost badge-sm">
 								{#if item.mediaType === 'movie'}
 									<Film class="h-3 w-3" />
-									Movie
+									{m.mediaExplorer_typeMovie()}
 								{:else}
 									<Tv class="h-3 w-3" />
-									TV
+									{m.mediaExplorer_typeTv()}
 								{/if}
 							</span>
 						</td>
@@ -437,20 +438,20 @@
 						<td>
 							<div class="flex items-center gap-1.5">
 								{#if item.monitored}
-									<span class="badge badge-sm badge-success" title="Monitored">
+									<span class="badge badge-sm badge-success" title={m.mediaExplorer_statusMonitored()}>
 										<Eye class="h-3.5 w-3.5" />
 									</span>
 								{:else}
-									<span class="badge badge-ghost badge-sm" title="Unmonitored">
+									<span class="badge badge-ghost badge-sm" title={m.mediaExplorer_statusUnmonitored()}>
 										<EyeOff class="h-3.5 w-3.5" />
 									</span>
 								{/if}
 								{#if item.hasFile}
-									<span class="badge badge-sm badge-success" title="File available">
+									<span class="badge badge-sm badge-success" title={m.mediaExplorer_statusFileAvailable()}>
 										<HardDrive class="h-3.5 w-3.5" />
 									</span>
 								{:else}
-									<span class="badge badge-sm badge-warning" title="No file">
+									<span class="badge badge-sm badge-warning" title={m.mediaExplorer_statusNoFile()}>
 										<HardDrive class="h-3.5 w-3.5" />
 									</span>
 								{/if}
@@ -462,7 +463,7 @@
 										<progress class="progress w-12 progress-primary" value={progress} max="100"
 										></progress>
 									{:else if progress === 100}
-										<span class="badge badge-xs badge-success">Done</span>
+										<span class="badge badge-xs badge-success">{m.mediaExplorer_statusDone()}</span>
 									{/if}
 								{/if}
 							</div>
