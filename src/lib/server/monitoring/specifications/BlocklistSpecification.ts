@@ -10,7 +10,7 @@
 
 import { db } from '$lib/server/db/index.js';
 import { blocklist } from '$lib/server/db/schema.js';
-import { eq, or, and, gt, isNull, lte, inArray } from 'drizzle-orm';
+import { eq, or, and, gt, isNull, lte, inArray, count } from 'drizzle-orm';
 import { reject, accept } from './types.js';
 import type { SpecificationResult, ReleaseCandidate } from './types.js';
 
@@ -243,12 +243,12 @@ class BlocklistService {
 			conditions.push(or(isNull(blocklist.expiresAt), gt(blocklist.expiresAt, now)));
 		}
 
-		const results = await db
-			.select({ count: blocklist.id })
+		const [result] = await db
+			.select({ count: count() })
 			.from(blocklist)
 			.where(conditions.length > 0 ? and(...conditions) : undefined);
 
-		return results.length;
+		return result.count;
 	}
 
 	async removeFromBlocklistByIds(ids: string[]): Promise<void> {
