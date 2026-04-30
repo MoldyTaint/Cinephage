@@ -6,11 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
-import {
-	type YamlDefinition,
-	type CardigannDefinition,
-	safeValidateCardigannDefinition
-} from '../schema/yamlDefinition';
+import { type YamlDefinition, safeValidateYamlDefinition } from '../schema/yamlDefinition';
 import { createChildLogger } from '$lib/logging';
 import { yamlToUnifiedDefinition, type IndexerDefinition } from './types';
 
@@ -149,7 +145,7 @@ export class YamlDefinitionLoader {
 				}
 			}
 
-			const validationResult = safeValidateCardigannDefinition(parsed);
+			const validationResult = safeValidateYamlDefinition(parsed);
 
 			if (!validationResult.success) {
 				const errorMessage = validationResult.error.issues
@@ -215,28 +211,28 @@ export class YamlDefinitionLoader {
 	/**
 	 * Gets a definition by ID.
 	 */
-	getDefinition(id: string): CardigannDefinition | undefined {
+	getDefinition(id: string): YamlDefinition | undefined {
 		return this.cache.get(id)?.definition;
 	}
 
 	/**
 	 * Alias for getDefinition - gets a definition by ID.
 	 */
-	get(id: string): CardigannDefinition | undefined {
+	get(id: string): YamlDefinition | undefined {
 		return this.getDefinition(id);
 	}
 
 	/**
 	 * Gets all loaded definitions.
 	 */
-	getAllDefinitions(): CardigannDefinition[] {
+	getAllDefinitions(): YamlDefinition[] {
 		return Array.from(this.cache.values()).map((r) => r.definition);
 	}
 
 	/**
 	 * Alias for getAllDefinitions - gets all loaded definitions.
 	 */
-	getAll(): CardigannDefinition[] {
+	getAll(): YamlDefinition[] {
 		return this.getAllDefinitions();
 	}
 
@@ -278,7 +274,7 @@ export class YamlDefinitionLoader {
 	/**
 	 * Search definitions by name.
 	 */
-	searchByName(query: string): CardigannDefinition[] {
+	searchByName(query: string): YamlDefinition[] {
 		const queryLower = query.toLowerCase();
 		return this.getAllDefinitions().filter(
 			(def) =>

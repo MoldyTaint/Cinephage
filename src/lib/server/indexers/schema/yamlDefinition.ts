@@ -610,10 +610,6 @@ export const yamlDefinitionSchema = z.object({
 
 export type YamlDefinition = z.infer<typeof yamlDefinitionSchema>;
 
-// Backwards compatibility alias
-export const cardigannDefinitionSchema = yamlDefinitionSchema;
-export type CardigannDefinition = YamlDefinition;
-
 // ============================================================================
 // Validation Helpers
 // ============================================================================
@@ -626,15 +622,9 @@ export function validateYamlDefinition(data: unknown): YamlDefinition {
 	return yamlDefinitionSchema.parse(data);
 }
 
-// Backwards compatibility alias
-export const validateCardigannDefinition = validateYamlDefinition;
-
 export function safeValidateYamlDefinition(data: unknown): SafeParseResult {
 	return yamlDefinitionSchema.safeParse(data);
 }
-
-// Backwards compatibility alias
-export const safeValidateCardigannDefinition = safeValidateYamlDefinition;
 
 export function formatValidationError(error: z.ZodError): string {
 	return error.issues

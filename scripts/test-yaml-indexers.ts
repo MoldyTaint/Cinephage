@@ -222,7 +222,7 @@ async function runValidation(options: TestOptions): Promise<ValidationResult[]> 
 	console.log(`\n${c.bold}${c.cyan}▸ Phase 1: YAML Validation${c.reset}\n`);
 
 	// Dynamically import to avoid issues before module resolution
-	const { safeValidateCardigannDefinition, formatValidationError } =
+	const { safeValidateYamlDefinition, formatValidationError } =
 		await import('../src/lib/server/indexers/schema/yamlDefinition.js');
 
 	const results: ValidationResult[] = [];
@@ -234,7 +234,7 @@ async function runValidation(options: TestOptions): Promise<ValidationResult[]> 
 	console.log(`  Validating schemas...\n`);
 
 	for (const filePath of yamlFiles) {
-		const result = await validateYamlFile(filePath, safeValidateCardigannDefinition, options);
+		const result = await validateYamlFile(filePath, safeValidateYamlDefinition, options);
 
 		// Apply filters
 		if (options.indexer && result.id.toLowerCase() !== options.indexer) {
