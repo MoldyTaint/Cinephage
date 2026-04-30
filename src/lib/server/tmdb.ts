@@ -77,6 +77,15 @@ export const tmdb = {
 		_settingsCacheTimestamp = 0;
 	},
 
+	async getRegion(): Promise<string> {
+		try {
+			const { filters } = await loadTmdbSettings();
+			return filters?.region || TMDB.DEFAULT_REGION;
+		} catch {
+			return TMDB.DEFAULT_REGION;
+		}
+	},
+
 	async fetch(endpoint: string, options: RequestInit = {}, skipFilters = false) {
 		const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 		const isGetRequest = !options.method || options.method === 'GET';
@@ -114,6 +123,20 @@ export const tmdb = {
 					}
 					if (filters.region) {
 						url.searchParams.set('region', filters.region);
+
+						if (
+							(path.includes('/discover/') || path.includes('/watch/providers/')) &&
+							!url.searchParams.has('watch_region')
+						) {
+							url.searchParams.set('watch_region', filters.region);
+						}
+
+						if (
+							path.includes('/discover/') &&
+							!url.searchParams.has('certification_country')
+						) {
+							url.searchParams.set('certification_country', filters.region);
+						}
 					}
 
 					// Apply Discover-specific filters
@@ -459,6 +482,16 @@ export const tmdb = {
 	 */
 	async getLanguages(): Promise<TmdbLanguage[]> {
 		return this.fetch('/configuration/languages') as Promise<TmdbLanguage[]>;
+	},
+
+	async getCountries(): Promise<
+		{ iso_3166_1: string; english_name: string; native_name: string }[]
+	> {
+		return (await this.fetch('/configuration/countries')) as {
+			iso_3166_1: string;
+			english_name: string;
+			native_name: string;
+		}[];
 	}
 };
 
