@@ -126,6 +126,17 @@ class BlocklistService {
 			? new Date(Date.now() + options.expiresInHours * 60 * 60 * 1000).toISOString()
 			: null;
 
+		const dedupConditions = [eq(blocklist.title, release.title)];
+		if (options.movieId) dedupConditions.push(eq(blocklist.movieId, options.movieId));
+		if (options.seriesId) dedupConditions.push(eq(blocklist.seriesId, options.seriesId));
+		if (release.infoHash) dedupConditions.push(eq(blocklist.infoHash, release.infoHash));
+		else if (release.indexerId)
+			dedupConditions.push(
+				or(eq(blocklist.indexerId, release.indexerId), isNull(blocklist.indexerId))!
+			);
+
+		await db.delete(blocklist).where(and(...dedupConditions));
+
 		const [entry] = await db
 			.insert(blocklist)
 			.values({
