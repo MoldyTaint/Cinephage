@@ -127,12 +127,16 @@ function buildDiscoverParams(filters: SmartListFilters, sortBy: string): Discove
 
 	if (filters.withWatchProviders?.length) {
 		params.with_watch_providers = filters.withWatchProviders.join('|');
-		params.watch_region = filters.watchRegion ?? 'US';
+		if (filters.watchRegion) {
+			params.watch_region = filters.watchRegion;
+		}
 	}
 
 	if (filters.certification) {
 		params.certification = filters.certification;
-		params.certification_country = filters.certificationCountry ?? 'US';
+		if (filters.certificationCountry) {
+			params.certification_country = filters.certificationCountry;
+		}
 	}
 
 	if (filters.runtimeMin !== undefined) {

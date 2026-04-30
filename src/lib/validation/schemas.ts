@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PROVIDER_IMPLEMENTATIONS } from '$lib/server/subtitles/types';
+import { TMDB } from '$lib/config/constants.js';
 
 /**
  * Validation schemas for API inputs and database rows.
@@ -309,7 +310,7 @@ export const globalTmdbFiltersSchema = z.object({
 	min_vote_average: z.number().min(0).max(10).default(0),
 	min_vote_count: z.number().int().min(0).default(0),
 	language: z.string().default('en-US'),
-	region: z.string().default('US'),
+	region: z.string().default(TMDB.DEFAULT_REGION),
 	excluded_genre_ids: z.array(z.number().int()).default([])
 });
 
@@ -1489,17 +1490,6 @@ export const queueActionSchema = z.object({
 // Workers Schemas
 // ============================================================================
 
-/**
- * Schema for worker config update
- */
-export const workerConfigUpdateSchema = z.object({
-	maxConcurrent: z
-		.record(z.enum(['stream', 'import', 'scan', 'monitoring']), z.number().int().min(0).max(100))
-		.optional(),
-	cleanupAfterMs: z.number().int().min(0).optional(),
-	maxLogsPerWorker: z.number().int().min(10).max(10000).optional()
-});
-
 // ============================================================================
 // Naming Schemas
 // ============================================================================
@@ -1763,9 +1753,6 @@ export type SeriesBatchDelete = z.infer<typeof seriesBatchDeleteSchema>;
 // Download & Queue Type Exports
 export type GrabRequest = z.infer<typeof grabRequestSchema>;
 export type QueueAction = z.infer<typeof queueActionSchema>;
-
-// Workers Type Exports
-export type WorkerConfigUpdate = z.infer<typeof workerConfigUpdateSchema>;
 
 // Naming Type Exports
 export type NamingPresetCreate = z.infer<typeof namingPresetCreateSchema>;

@@ -109,7 +109,6 @@ export async function getDiscoverResults(params: DiscoverParams) {
 
 		if (certification && endpoint.includes('movie')) {
 			queryParams.set('certification', certification);
-			queryParams.set('certification_country', 'US');
 		}
 
 		return `${endpoint}?${queryParams.toString()}`;

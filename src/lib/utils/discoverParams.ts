@@ -23,6 +23,8 @@ export interface DiscoverParams {
 /**
  * Parse discover URL search params into a typed object.
  */
+import { TMDB } from '$lib/config/constants.js';
+
 export function parseDiscoverParams(searchParams: URLSearchParams): DiscoverParams {
 	return {
 		type: searchParams.get('type') || 'all',
@@ -31,7 +33,7 @@ export function parseDiscoverParams(searchParams: URLSearchParams): DiscoverPara
 		trending: searchParams.get('trending'),
 		topRated: searchParams.get('top_rated'),
 		withWatchProviders: searchParams.get('with_watch_providers') || '',
-		watchRegion: searchParams.get('watch_region') || 'US',
+		watchRegion: searchParams.get('watch_region') || TMDB.DEFAULT_REGION,
 		withGenres: searchParams.get('with_genres') || '',
 		withOriginalLanguage: searchParams.get('with_original_language') || null,
 		minDate: searchParams.get('primary_release_date.gte') || null,

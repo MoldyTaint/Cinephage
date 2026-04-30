@@ -4,6 +4,7 @@ import { tmdb } from '$lib/server/tmdb';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
+import { TMDB } from '$lib/config/constants.js';
 import { logger } from '$lib/logging';
 
 /**
@@ -16,7 +17,7 @@ const discoverQuerySchema = z.object({
 	trending: z.enum(['day', 'week']).optional(),
 	top_rated: z.enum(['true', 'false']).optional(),
 	with_watch_providers: z.string().default(''),
-	watch_region: z.string().default('US'),
+	watch_region: z.string().default(TMDB.DEFAULT_REGION),
 	with_genres: z.string().default(''),
 	with_original_language: z.string().nullable().default(null),
 	'primary_release_date.gte': z.string().nullable().default(null),

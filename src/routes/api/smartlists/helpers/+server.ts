@@ -6,12 +6,13 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { tmdb } from '$lib/server/tmdb.js';
+import { TMDB } from '$lib/config/constants.js';
 
 export const GET: RequestHandler = async ({ url }) => {
 	const type = url.searchParams.get('type') as 'movie' | 'tv' | null;
 	const helper = url.searchParams.get('helper');
 	const query = url.searchParams.get('q') ?? '';
-	const region = url.searchParams.get('region') ?? 'US';
+	const region = url.searchParams.get('region') ?? TMDB.DEFAULT_REGION;
 
 	if (!helper) {
 		return json({ error: 'Missing helper parameter' }, { status: 400 });
@@ -41,7 +42,7 @@ export const GET: RequestHandler = async ({ url }) => {
 				}
 				const result = await tmdb.getCertifications(type);
 				// Return US certifications by default, or specified country
-				const country = url.searchParams.get('country') ?? 'US';
+				const country = url.searchParams.get('country') ?? region;
 				return json(result.certifications[country] ?? []);
 			}
 
