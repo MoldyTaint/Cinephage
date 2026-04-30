@@ -49,7 +49,12 @@
 		tabindex="0"
 		role="button"
 		onclick={toggle}
-		onkeydown={(e) => e.key === 'Enter' && toggle()}
+		onkeydown={(e) => {
+			if (e.key === 'Enter' || e.key === ' ') {
+				e.preventDefault();
+				toggle();
+			}
+		}}
 	>
 		<StatusIcon
 			class="h-3 w-3 {activity.status === 'downloading' || activity.status === 'searching'
