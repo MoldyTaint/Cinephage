@@ -26,6 +26,7 @@
 	import type { UnifiedActivity } from '$lib/types/activity';
 	import { createSSE } from '$lib/sse';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
+	import { formatBytes } from '$lib/utils/format.js';
 	import {
 		statusConfig,
 		getStatusLabel,
@@ -239,14 +240,6 @@
 		const tag = getActivityCategoryTag(activity);
 		if (tag) return `${tag.label} ${fallbackLabel}`;
 		return getStatusLabel(activity, fallbackLabel);
-	}
-
-	function formatBytes(bytes: number): string {
-		if (bytes === 0) return '0 B';
-		const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
-		const i = Math.floor(Math.log(bytes) / Math.log(1024));
-		const value = bytes / Math.pow(1024, i);
-		return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[i]}`;
 	}
 </script>
 
