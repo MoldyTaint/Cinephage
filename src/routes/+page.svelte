@@ -237,9 +237,8 @@
 		fallbackLabel: string
 	): string | undefined {
 		const tag = getActivityCategoryTag(activity);
-		const label = getStatusLabel(activity, fallbackLabel);
-		if (tag) return `${tag.label} ${label}`;
-		return label;
+		if (tag) return `${tag.label} ${fallbackLabel}`;
+		return getStatusLabel(activity, fallbackLabel);
 	}
 
 	function formatBytes(bytes: number): string {
