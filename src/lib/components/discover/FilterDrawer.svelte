@@ -67,7 +67,13 @@
 		onclick={close}
 		role="button"
 		tabindex="0"
-		onkeydown={(e) => e.key === 'Escape' && close()}
+		aria-label="Close filter drawer"
+		onkeydown={(e) => {
+			if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+				e.preventDefault();
+				close();
+			}
+		}}
 	></div>
 
 	<!-- Drawer -->
