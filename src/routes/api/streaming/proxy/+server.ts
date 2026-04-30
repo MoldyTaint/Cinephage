@@ -33,6 +33,7 @@ import {
 } from '$lib/server/http/ssrf-protection';
 import { rewriteHlsPlaylistUrls } from '$lib/server/streaming/utils/hls-rewrite.js';
 import { getCachedSession } from '$lib/server/streaming/utils/cloudflare-streaming';
+import { isPngWrappedSegment, stripPngWrapper } from '$lib/server/streaming/utils/png-wrapper';
 
 const streamLog = { logDomain: 'streams' as const };
 
@@ -328,7 +329,26 @@ export const GET: RequestHandler = async ({ url, request }) => {
 				{ status: 413, headers: { 'Content-Type': 'application/json' } }
 			);
 		}
-		const firstBytes = new Uint8Array(arrayBuffer.slice(0, 4));
+
+		let bytes = new Uint8Array(arrayBuffer);
+		if (contentType.includes('image/png') && isPngWrappedSegment(bytes, contentType)) {
+			const stripped = stripPngWrapper(bytes);
+			if (stripped) {
+				logger.debug(
+					{
+						url: decodedUrl.substring(0, 100),
+						wrapperSize: bytes.length - stripped.length,
+						tsSize: stripped.length,
+						...streamLog
+					},
+					'Stripped PNG wrapper from CDN segment'
+				);
+				bytes = new Uint8Array(stripped);
+				arrayBuffer = bytes.buffer;
+			}
+		}
+
+		const firstBytes = bytes.slice(0, 4);
 		const isMpegTs = firstBytes[0] === 0x47;
 		const isFmp4 = firstBytes[0] === 0x00 && firstBytes[1] === 0x00 && firstBytes[2] === 0x00;
 		const isVideoData = isMpegTs || isFmp4;

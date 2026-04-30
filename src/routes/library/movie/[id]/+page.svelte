@@ -24,20 +24,11 @@
 	import { getFileName } from '$lib/utils/format.js';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
 
 	let { data }: { data: PageData } = $props();
 
-	const ACTIVE_QUEUE_STATUSES = new Set([
-		'queued',
-		'downloading',
-		'stalled',
-		'paused',
-		'completed',
-		'postprocessing',
-		'importing',
-		'seeding',
-		'seeding-imported'
-	]);
+	const activeStatusSet: Set<string> = new Set(ACTIVE_DOWNLOAD_STATUSES);
 
 	// Reactive data that will be updated via SSE
 	let movieState = $state<LibraryMovie | null>(null);
@@ -93,7 +84,7 @@
 			};
 		},
 		'queue:updated': (payload) => {
-			if (!ACTIVE_QUEUE_STATUSES.has(payload.status)) {
+			if (!activeStatusSet.has(payload.status)) {
 				queueItemState = null;
 			} else {
 				queueItemState = {
@@ -411,9 +402,7 @@
 			movie.wantsSubtitles = editData.wantsSubtitles;
 
 			if (result?.moveQueued) {
-				toasts.success(
-					'Move queued. File transfer has started and will appear in Activity until completion.'
-				);
+				toasts.success(m.library_movieDetail_moveQueued());
 			} else {
 				movie.rootFolderId = editData.rootFolderId;
 				const newFolder = data.rootFolders.find((f) => f.id === editData.rootFolderId);
@@ -445,7 +434,7 @@
 				if (removeFromLibrary) {
 					toasts.success(m.toast_library_movieDetail_movieRemoved());
 					// Navigate to library since the movie no longer exists
-					window.location.href = '/library/movies';
+					goto(resolvePath('/library/movies'));
 				} else {
 					toasts.success(m.toast_library_movieDetail_movieFilesDeleted());
 					movie.files = [];
@@ -856,7 +845,7 @@
 
 	{#if data.collectionMovies && data.collectionMovies.length > 0}
 		<div class="mt-2 rounded-xl bg-base-200 p-4 md:p-6">
-			<h2 class="mb-4 text-lg font-semibold">Other movies in this collection</h2>
+			<h2 class="mb-4 text-lg font-semibold">{m.library_movieDetail_otherMoviesInCollection()}</h2>
 			<div class="flex gap-3 overflow-x-auto pb-2">
 				{#each data.collectionMovies as collMovie (collMovie.id)}
 					<a

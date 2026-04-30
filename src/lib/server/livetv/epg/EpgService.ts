@@ -7,7 +7,7 @@
  */
 
 import { eq, and, gte, lte, inArray, isNull, sql } from 'drizzle-orm';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { db } from '$lib/server/db';
 import {
 	livetvAccounts,

@@ -71,7 +71,7 @@
 			<ArrowUpDown class="h-4 w-4" />
 			<span class="hidden sm:inline">{m.action_sort()}</span>
 		</button>
-		<ul class="dropdown-content menu z-50 w-52 rounded-box bg-base-200 p-2 shadow-lg">
+		<ul class="dropdown-content menu w-52 rounded-box bg-base-200 p-2 shadow-lg">
 			{#each sortOptions as option (option.value)}
 				<li>
 					<button
@@ -98,7 +98,7 @@
 			{/if}
 		</button>
 		<div
-			class="dropdown-content z-50 w-[min(18rem,calc(100vw-2rem))] rounded-box bg-base-200 p-4 shadow-lg"
+			class="dropdown-content w-[min(18rem,calc(100vw-2rem))] rounded-box bg-base-200 p-4 shadow-lg"
 			class:hidden={!isFilterOpen}
 		>
 			<div class="space-y-4">

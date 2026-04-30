@@ -117,7 +117,7 @@ describe('MetadataRefreshTask', () => {
 
 		const result = await executeMetadataRefreshTask(null);
 
-		expect(result.taskType).toBe('metadataRefresh');
+		expect(result.taskType).toBe('metadata-refresh');
 		expect(result.itemsProcessed).toBe(1);
 		expect(result.itemsGrabbed).toBe(1);
 		expect(result.errors).toBe(0);
@@ -183,7 +183,7 @@ describe('MetadataRefreshTask', () => {
 
 		const abortController = new AbortController();
 		const { TaskExecutionContext } = await import('$lib/server/tasks/TaskExecutionContext.js');
-		const ctx = new TaskExecutionContext('metadataRefresh', 'history-1', abortController.signal);
+		const ctx = new TaskExecutionContext('metadata-refresh', 'history-1', abortController.signal);
 
 		abortController.abort();
 

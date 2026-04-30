@@ -99,7 +99,6 @@ function normalizePortalUrl(url: string): string {
 	normalized = normalized
 		.replace(/\/portal\.php.*$/i, '')
 		.replace(/\/stalker_portal\/server\/load\.php.*$/i, '')
-		.replace(/\/stalker_portal.*$/i, '')
 		.replace(/\/c\/?$/i, '')
 		.replace(/\/server.*$/i, '');
 

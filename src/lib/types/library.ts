@@ -176,3 +176,11 @@ export function getBestQualityFromFiles(files: MovieFile[]): {
 		hdr: getHdrDisplay(file.mediaInfo)
 	};
 }
+
+export interface QualityProfileSummary {
+	id: string;
+	name: string;
+	description: string;
+	isBuiltIn: boolean;
+	isDefault: boolean;
+}

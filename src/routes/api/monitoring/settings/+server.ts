@@ -14,17 +14,23 @@ const monitoringSettingsSchema = z.object({
 	newEpisodeCheckIntervalHours: z.number().min(0.25).optional(),
 	cutoffUnmetSearchIntervalHours: z.number().min(0.25).optional(),
 	autoReplaceEnabled: z.boolean().optional(),
-	searchOnMonitorEnabled: z.boolean().optional()
+	searchOnMonitorEnabled: z.boolean().optional(),
+	stalledDownloadTimeoutMinutes: z.number().min(0).optional(),
+	stalledDownloadProgressThreshold: z.number().min(0).max(100).optional()
 });
 
 /**
  * GET /api/monitoring/settings
  * Returns current monitoring settings and status
  */
-export const GET: RequestHandler = async () => {
+export const GET: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
 	try {
 		// Get both status and settings
 		const status = await monitoringScheduler.getStatus();
+		const fullSettings = await monitoringScheduler.getSettings();
 
 		return json({
 			success: true,
@@ -32,7 +38,9 @@ export const GET: RequestHandler = async () => {
 				missingSearchIntervalHours: status.tasks.missing.intervalHours,
 				upgradeSearchIntervalHours: status.tasks.upgrade.intervalHours,
 				newEpisodeCheckIntervalHours: status.tasks.newEpisode.intervalHours,
-				cutoffUnmetSearchIntervalHours: status.tasks.cutoffUnmet.intervalHours
+				cutoffUnmetSearchIntervalHours: status.tasks.cutoffUnmet.intervalHours,
+				stalledDownloadTimeoutMinutes: fullSettings.stalledDownloadTimeoutMinutes,
+				stalledDownloadProgressThreshold: fullSettings.stalledDownloadProgressThreshold
 			},
 			status: {
 				tasks: status.tasks
@@ -84,6 +92,7 @@ export const PUT: RequestHandler = async (event) => {
 
 		// Get updated status
 		const status = await monitoringScheduler.getStatus();
+		const fullUpdatedSettings = await monitoringScheduler.getSettings();
 
 		return json({
 			success: true,
@@ -92,7 +101,9 @@ export const PUT: RequestHandler = async (event) => {
 				missingSearchIntervalHours: status.tasks.missing.intervalHours,
 				upgradeSearchIntervalHours: status.tasks.upgrade.intervalHours,
 				newEpisodeCheckIntervalHours: status.tasks.newEpisode.intervalHours,
-				cutoffUnmetSearchIntervalHours: status.tasks.cutoffUnmet.intervalHours
+				cutoffUnmetSearchIntervalHours: status.tasks.cutoffUnmet.intervalHours,
+				stalledDownloadTimeoutMinutes: fullUpdatedSettings.stalledDownloadTimeoutMinutes,
+				stalledDownloadProgressThreshold: fullUpdatedSettings.stalledDownloadProgressThreshold
 			},
 			status: {
 				tasks: status.tasks

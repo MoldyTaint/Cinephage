@@ -4,27 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       source_tag:
-        description: 'Stable release tag to copy to latest (e.g., v1.0.0)'
+        description: 'Stable Docker tag to copy to latest (e.g., 1.0.0)'
         required: true
         type: string
-        default: 'v1.0.0'
+        default: '1.0.0'
       dry_run:
         description: 'Preview only (no retag)'
         required: true
         type: boolean
         default: true
-      allow_channel_rollback:
-        description: 'Allow main-YYYYMMDD-RUN or legacy edge-YYYYMMDD-RUN tags for emergency rollback'
-        required: true
-        type: boolean
-        default: false
       confirm:
         description: 'Type RETAG to allow non-dry-run retag'
-        required: true
-        type: string
-        default: 'NO'
-      channel_confirm:
-        description: 'Type CHANNEL_ROLLBACK to allow channel rollback when allow_channel_rollback=true'
         required: true
         type: string
         default: 'NO'
@@ -55,8 +45,6 @@ jobs:
         id: refs
         env:
           SOURCE_TAG_INPUT: ${{ github.event.inputs.source_tag }}
-          ALLOW_CHANNEL_ROLLBACK: ${{ github.event.inputs.allow_channel_rollback }}
-          CHANNEL_CONFIRM: ${{ github.event.inputs.channel_confirm }}
         run: |
           set -euo pipefail
 
@@ -68,35 +56,15 @@ jobs:
             exit 1
           fi
 
-          # Normalize plain semver input (e.g. 1.0.0 -> v1.0.0) without touching channel tags.
-          if [[ "$SOURCE_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            SOURCE_TAG="v${SOURCE_TAG}"
-          fi
-
-          IS_STABLE_TAG='false'
-          IS_CHANNEL_BUILD_TAG='false'
+          # Normalize release tag input (e.g. v1.0.0 -> 1.0.0) without touching channel tags.
           if [[ "$SOURCE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            IS_STABLE_TAG='true'
-          fi
-          if [[ "$SOURCE_TAG" =~ ^(main|edge)-[0-9]{8}-[0-9]+$ ]]; then
-            IS_CHANNEL_BUILD_TAG='true'
+            SOURCE_TAG="${SOURCE_TAG#v}"
           fi
 
-          if [ "$IS_STABLE_TAG" != 'true' ] && [ "$IS_CHANNEL_BUILD_TAG" != 'true' ]; then
-            echo "source_tag must be stable semver (vX.Y.Z), main-YYYYMMDD-RUN, or legacy edge-YYYYMMDD-RUN."
+          if ! [[ "$SOURCE_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "source_tag must be a stable semver tag (X.Y.Z)."
             echo "Got: ${SOURCE_TAG}"
             exit 1
-          fi
-
-          if [ "$IS_CHANNEL_BUILD_TAG" = 'true' ]; then
-            if [ "$ALLOW_CHANNEL_ROLLBACK" != 'true' ]; then
-              echo "Refusing channel rollback: set allow_channel_rollback=true for main/edge tags."
-              exit 1
-            fi
-            if [ "$CHANNEL_CONFIRM" != 'CHANNEL_ROLLBACK' ]; then
-              echo "Refusing channel rollback: set channel_confirm=CHANNEL_ROLLBACK."
-              exit 1
-            fi
           fi
 
           SOURCE_IMAGE="ghcr.io/${IMAGE_NAME_LC}:${SOURCE_TAG}"
@@ -150,7 +118,6 @@ jobs:
         env:
           SOURCE_IMAGE: ${{ steps.refs.outputs.source_image }}
           SOURCE_TAG: ${{ steps.refs.outputs.source_tag }}
-          ALLOW_CHANNEL_ROLLBACK: ${{ github.event.inputs.allow_channel_rollback }}
         run: |
           set -euo pipefail
 
@@ -172,26 +139,8 @@ jobs:
             [[ "$value" =~ (^dev-|-dev($|[.-])|-rc($|[.-])|-beta($|[.-])|-alpha($|[.-])|-pre($|[.-])|-preview($|[.-])) ]]
           }
 
-          is_channel_build() {
-            local value="$1"
-            if [ -z "$value" ]; then
-              return 1
-            fi
-            [[ "$value" =~ (^main-|-main($|[.-])|^edge-|-edge($|[.-])) ]]
-          }
-
-          IS_CHANNEL_ROLLBACK='false'
-          if [ "$ALLOW_CHANNEL_ROLLBACK" = 'true' ] && [[ "$SOURCE_TAG" =~ ^(main|edge)-[0-9]{8}-[0-9]+$ ]]; then
-            IS_CHANNEL_ROLLBACK='true'
-          fi
-
           if is_dev_or_prerelease "$SOURCE_TAG"; then
             echo "Refusing retag: source tag appears to be dev/prerelease."
-            exit 1
-          fi
-
-          if [ "$IS_CHANNEL_ROLLBACK" != 'true' ] && is_channel_build "$SOURCE_TAG"; then
-            echo "Refusing retag: source tag appears to be a main/edge channel build, but channel rollback is not enabled."
             exit 1
           fi
 
@@ -200,8 +149,8 @@ jobs:
               echo "Refusing retag: source image metadata appears to be dev/prerelease."
               exit 1
             fi
-            if [ "$IS_CHANNEL_ROLLBACK" != 'true' ] && is_channel_build "$value"; then
-              echo "Refusing retag: source image metadata appears to be a main/edge channel build, but channel rollback is not enabled."
+            if [[ "$value" =~ (^main-|-main($|[.-])|^edge-|-edge($|[.-])) ]]; then
+              echo "Refusing retag: source image metadata appears to be a legacy channel build."
               exit 1
             fi
           done

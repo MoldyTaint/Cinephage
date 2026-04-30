@@ -10,18 +10,7 @@ import type { LibraryMovie, MovieFile } from '$lib/types/library';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import { tmdb } from '$lib/server/tmdb';
 import { logger } from '$lib/logging';
-
-const ACTIVE_DOWNLOAD_STATUSES = [
-	'queued',
-	'downloading',
-	'stalled',
-	'paused',
-	'completed',
-	'postprocessing',
-	'importing',
-	'seeding',
-	'seeding-imported'
-] as const;
+import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
 
 interface QueueItem {
 	id: string;

@@ -9,7 +9,7 @@ import { db } from '$lib/server/db';
 import { livetvAccounts, livetvChannels, livetvCategories } from '$lib/server/db/schema';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 
 const logger = createChildLogger({ logDomain: 'livetv' as const });
 import type {
@@ -600,7 +600,8 @@ export class StalkerProvider implements LiveTvProvider {
 			timezone: config.timezone ?? 'Europe/London',
 			token: config.token,
 			username: config.username,
-			password: config.password
+			password: config.password,
+			endpoint: config.endpoint
 		};
 	}
 

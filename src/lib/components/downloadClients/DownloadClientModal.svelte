@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, Loader2, XCircle } from 'lucide-svelte';
+	import { X, Loader2, XCircle, Clock, Check } from 'lucide-svelte';
 	import type {
 		DownloadClient,
 		DownloadClientFormData,
@@ -60,6 +60,12 @@
 			data: DownloadClientFormData | NntpServerFormData,
 			isNntp: boolean
 		) => Promise<ConnectionTestResult>;
+		/** Global stalled download timeout (minutes) */
+		stalledTimeoutMinutes: number;
+		/** Global stalled progress threshold (0-100%). Kill torrens only below this % */
+		stalledProgressThreshold: number;
+		/** Called when stalled download behavior settings should be saved */
+		onSaveStalledBehavior: (timeout: number, threshold: number) => Promise<void>;
 	}
 
 	let {
@@ -73,7 +79,10 @@
 		onClose,
 		onSave,
 		onDelete,
-		onTest
+		onTest,
+		stalledTimeoutMinutes,
+		stalledProgressThreshold,
+		onSaveStalledBehavior
 	}: Props = $props();
 
 	// Form state - Implementation selection (defaults only, effect syncs from props)
@@ -112,6 +121,42 @@
 
 	// Form state - NNTP specific
 	let maxConnections = $state(10);
+
+	// Form state - Download Behavior (global)
+	let stalledTimeout = $state(0);
+	let stalledThreshold = $state(0);
+	let saveStalledBehaviorSuccess = $state(false);
+
+	// Sync stalled behavior from props when modal opens
+	$effect(() => {
+		if (open) {
+			stalledTimeout = stalledTimeoutMinutes;
+			stalledThreshold = stalledProgressThreshold;
+			saveStalledBehaviorSuccess = false;
+		}
+	});
+
+	// Auto-save stalled behavior when values change (debounced)
+	$effect(() => {
+		if (!open) return;
+		const timeout = stalledTimeout;
+		const threshold = stalledThreshold;
+
+		// Skip if values match the props (initial sync, not a user edit)
+		if (timeout === stalledTimeoutMinutes && threshold === stalledProgressThreshold) return;
+
+		const timer = setTimeout(async () => {
+			try {
+				await onSaveStalledBehavior(timeout, threshold);
+				saveStalledBehaviorSuccess = true;
+				setTimeout(() => (saveStalledBehaviorSuccess = false), 2000);
+			} catch {
+				// Revert to props on failure
+			}
+		}, 600);
+
+		return () => clearTimeout(timer);
+	});
 
 	// UI state
 	let testing = $state(false);
@@ -442,7 +487,7 @@
 		</div>
 
 		<div class="modal-action">
-			<button class="btn btn-ghost" onclick={onClose}>Cancel</button>
+			<button class="btn btn-ghost" onclick={onClose}>{m.action_cancel()}</button>
 		</div>
 	{:else}
 		<!-- Selected client header (in add mode) -->
@@ -503,7 +548,7 @@
 						</div>
 					</div>
 
-					<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
+					<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 						<div class="form-control">
 							<label class="label py-1" for="host">
 								<span class="label-text">{m.connection_host_label()}</span>
@@ -532,19 +577,7 @@
 						</div>
 					</div>
 
-					{#if !isNntpServer}
-						<DownloadClientSettings
-							mode="connection"
-							bind:urlBaseEnabled
-							bind:urlBase
-							{urlBasePlaceholder}
-							showMountMode={isSabnzbd}
-							bind:mountMode
-						/>
-					{/if}
-
 					{#if usesApiKey}
-						<!-- API Key auth for SABnzbd -->
 						<div class="form-control">
 							<label class="label py-1" for="password">
 								<span class="label-text">
@@ -570,8 +603,7 @@
 							</div>
 						</div>
 					{:else}
-						<!-- Username/password auth for torrent clients and NZBGet -->
-						<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
+						<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 							<div class="form-control">
 								<label class="label py-1" for="username">
 									<span class="label-text">{m.auth_username_label()}</span>
@@ -621,14 +653,26 @@
 							<span class="label-text">{m.common_enabled()}</span>
 						</label>
 					</div>
+
+					{#if !isNntpServer}
+						<DownloadClientSettings
+							mode="connection"
+							bind:urlBaseEnabled
+							bind:urlBase
+							{urlBasePlaceholder}
+							showMountMode={isSabnzbd}
+							bind:mountMode
+						/>
+					{/if}
 				</div>
 
-				<!-- Right Column: Settings -->
+				<!-- Right Column: Client Behavior -->
 				<div class="space-y-4">
 					{#if isNntpServer}
 						<NntpServerSettings bind:maxConnections bind:priority />
 					{:else}
 						<DownloadClientSettings
+							section="categories"
 							definition={selectedDefinition}
 							bind:movieCategory
 							bind:tvCategory
@@ -644,8 +688,83 @@
 							onBrowse={openFolderBrowser}
 						/>
 					{/if}
+
+					<!-- Stalled Downloads Behavior (global) -->
+					<div class="rounded-lg bg-base-200/50 p-3">
+						<div class="mb-2 flex items-center gap-1.5">
+							<Clock class="h-3.5 w-3.5 text-base-content/50" />
+							<span class="text-xs font-semibold text-base-content/70"
+								>{m.downloadClientModal_stalledDownloads()}</span
+							>
+							<span class="badge badge-ghost badge-xs text-[10px]"
+								>{m.downloadClientModal_stalledGlobal()}</span
+							>
+						</div>
+						<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+							<div class="form-control">
+								<label class="label py-1" for="stalled-timeout-modal">
+									<span class="label-text">{m.downloadClientModal_stalledTimeout()}</span>
+								</label>
+								<input
+									id="stalled-timeout-modal"
+									type="number"
+									class="input-bordered input input-sm w-full"
+									min="0"
+									step="5"
+									bind:value={stalledTimeout}
+								/>
+							</div>
+							<div class="form-control">
+								<label class="label py-1" for="stalled-threshold-modal">
+									<span class="label-text">{m.downloadClientModal_stalledProgress()}</span>
+								</label>
+								<input
+									id="stalled-threshold-modal"
+									type="number"
+									class="input-bordered input input-sm w-full"
+									min="0"
+									max="100"
+									step="5"
+									bind:value={stalledThreshold}
+								/>
+							</div>
+						</div>
+						{#if saveStalledBehaviorSuccess}
+							<p class="mt-1 flex items-center gap-1 text-xs text-success">
+								<Check class="h-3 w-3" />
+								{m.downloadClientModal_stalledSaved()}
+							</p>
+						{/if}
+						<p class="mt-1 text-xs text-base-content/50">
+							{#if stalledTimeout === 0}
+								{m.downloadClientModal_stalledDisabled()}
+							{:else}
+								{m.downloadClientModal_stalledDescription({
+									timeout: stalledTimeout,
+									threshold: stalledThreshold
+								})}
+							{/if}
+						</p>
+					</div>
 				</div>
 			</div>
+
+			<!-- Path Mapping (full width, below columns) -->
+			{#if !isNntpServer}
+				<div class="mt-6">
+					<DownloadClientSettings
+						section="paths"
+						definition={selectedDefinition}
+						bind:downloadPathLocal
+						bind:downloadPathRemote
+						bind:tempPathLocal
+						bind:tempPathRemote
+						isSabnzbd={usesApiKey}
+						isMountMode={isMountModeClient}
+						onBrowse={openFolderBrowser}
+					/>
+				</div>
+			{/if}
 
 			<!-- Save Error -->
 			{#if error}

@@ -21,7 +21,7 @@ import { alias } from 'drizzle-orm/sqlite-core';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'livetv' as const });
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { normalizeLiveTvChannelName } from '$lib/livetv/channel-name-normalizer';
 import { liveTvEvents } from '../LiveTvEvents';
 import type {

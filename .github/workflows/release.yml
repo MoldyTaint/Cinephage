@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    branches: [dev]
+    branches: [main]
 
 concurrency:
   group: release
@@ -12,12 +12,14 @@ permissions:
   contents: write
   issues: write
   pull-requests: write
-  actions: write
+  packages: write
 
 jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.release-tag.outputs.release_tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -38,21 +40,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx semantic-release
 
-      - name: Trigger Docker build
+      - name: Capture release tag
+        id: release-tag
         if: env.RELEASE_TAG
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
-        with:
-          script: |
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'docker-build.yml',
-              ref: '${{ env.RELEASE_TAG }}',
-              inputs: {
-                release_tag: '${{ env.RELEASE_TAG }}',
-                checkout_ref: '${{ env.RELEASE_TAG }}'
-              }
-            });
+        run: echo "release_tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Publish to Cinephage API
         if: env.RELEASE_TAG
@@ -79,3 +70,13 @@ jobs:
           fi
 
           echo "Published successfully: ${BODY}"
+
+  docker-release:
+    name: Publish Stable Docker Images
+    needs: [release]
+    if: needs.release.outputs.release_tag != ''
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      release_tag: ${{ needs.release.outputs.release_tag }}
+      checkout_ref: ${{ needs.release.outputs.release_tag }}
+    secrets: inherit

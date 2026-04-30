@@ -4,7 +4,7 @@
  * Provides common functionality for logging, status tracking, and lifecycle management.
  */
 
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'system' as const });

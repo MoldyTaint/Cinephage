@@ -6,17 +6,16 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import LibraryMediaCard from '$lib/components/library/LibraryMediaCard.svelte';
 	import LibraryMediaTable from '$lib/components/library/LibraryMediaTable.svelte';
-	import LibraryControls from '$lib/components/library/LibraryControls.svelte';
+	import LibraryDrawer from '$lib/components/library/LibraryDrawer.svelte';
 	import LibraryBulkActionBar from '$lib/components/library/LibraryBulkActionBar.svelte';
 	import BulkQualityProfileModal from '$lib/components/library/BulkQualityProfileModal.svelte';
 	import BulkDeleteModal from '$lib/components/library/BulkDeleteModal.svelte';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
 	import InteractiveSearchModal from '$lib/components/search/InteractiveSearchModal.svelte';
-	import { Clapperboard, CheckSquare, X, LayoutGrid, List, Layers, Search } from 'lucide-svelte';
+	import { Clapperboard, X, LayoutGrid, List, Search, SlidersHorizontal } from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { viewPreferences } from '$lib/stores/view-preferences.svelte';
 	import { enhance } from '$app/forms';
-	import { Eye } from 'lucide-svelte';
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
 	import { getPrimaryAutoSearchIssue } from '$lib/utils/autoSearchIssues';
 	import { createProgressiveRenderer } from '$lib/utils/progressive-render.svelte.js';
@@ -30,6 +29,7 @@
 	let searchQuery = $state('');
 	let groupByCollection = $state(false);
 	let collapsedGroups = new SvelteSet<string>();
+	let drawerOpen = $state(false);
 
 	function groupMoviesByCollection(moviesList: typeof data.movies) {
 		const groups: Record<string, typeof data.movies> = {};
@@ -548,6 +548,14 @@
 		goto(resolvePath(url.pathname + url.search), { keepFocus: true, noScroll: true });
 	}
 
+	function handleMonitorAll() {
+		(document.getElementById('movies-monitor-all') as HTMLFormElement)?.requestSubmit();
+	}
+
+	function handleUnmonitorAll() {
+		(document.getElementById('movies-unmonitor-all') as HTMLFormElement)?.requestSubmit();
+	}
+
 	const currentFilters = $derived({
 		library: data.filters.library,
 		monitored: data.filters.monitored,
@@ -557,6 +565,10 @@
 		videoCodec: data.filters.videoCodec,
 		hdrFormat: data.filters.hdrFormat
 	});
+	const activeFilterCount = $derived(
+		Object.entries(currentFilters).filter(([key, value]) => key !== 'library' && value !== 'all')
+			.length
+	);
 	const downloadingMovieIdSet = $derived(new Set(data.downloadingMovieIds));
 	const deleteModalCount = $derived(pendingDeleteMovieId ? 1 : selectedCount);
 	const pendingDeleteMovie = $derived(
@@ -586,10 +598,9 @@
 	<div
 		class="sticky top-16 z-30 -mx-4 border-b border-base-200 bg-base-100/80 backdrop-blur-md lg:top-0 lg:mx-0"
 	>
-		<div
-			class="flex h-16 w-full flex-nowrap items-center gap-2 px-4 md:grid md:grid-cols-[minmax(0,1fr)_minmax(18rem,32rem)_minmax(0,1fr)] md:gap-4 lg:px-8"
-		>
-			<div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 md:flex-none">
+		<div class="flex h-16 items-center gap-3 px-4 lg:px-8">
+			<!-- Left: Title -->
+			<div class="flex min-w-0 items-center gap-2 sm:gap-3">
 				<h1
 					class="min-w-0 bg-linear-to-r from-primary to-secondary bg-clip-text text-xl font-bold text-transparent sm:text-2xl"
 				>
@@ -603,9 +614,9 @@
 				{/if}
 			</div>
 
-			<!-- Search (desktop) -->
-			<div class="hidden w-full items-center gap-2 md:flex md:justify-self-center">
-				<div class="group relative w-full">
+			<!-- Center: Search (desktop) -->
+			<div class="hidden flex-1 items-center justify-center gap-2 md:flex">
+				<div class="group relative w-full max-w-lg">
 					<Search
 						class="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-base-content/40 transition-colors group-focus-within:text-primary"
 					/>
@@ -632,9 +643,8 @@
 				{/if}
 			</div>
 
-			<div
-				class="flex shrink-0 flex-nowrap items-center justify-end gap-2 sm:gap-2 md:justify-self-end"
-			>
+			<!-- Right: Quick Actions -->
+			<div class="flex shrink-0 items-center gap-1.5">
 				{#if showCheckboxes}
 					<button class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm" onclick={selectAll}>
 						<span class="hidden sm:inline">{m.library_movies_selectAll()}</span>
@@ -644,59 +654,11 @@
 						<X class="h-4 w-4" />
 						<span class="hidden sm:inline">{m.library_movies_done()}</span>
 					</button>
-				{:else}
-					<button class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm" onclick={toggleSelectionMode}>
-						<CheckSquare class="h-4 w-4" />
-						<span class="hidden sm:inline">{m.library_movies_select()}</span>
-					</button>
-
-					<div class="dropdown dropdown-end">
-						<div tabindex="0" role="button" class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm">
-							<Eye class="h-4 w-4" />
-							<span class="hidden sm:inline">{m.library_movies_monitor()}</span>
-						</div>
-						<form
-							id="movies-monitor-all"
-							action="?/toggleAllMonitored"
-							method="POST"
-							use:enhance
-							class="hidden"
-							aria-hidden="true"
-						>
-							<input type="hidden" name="monitored" value="true" />
-						</form>
-						<form
-							id="movies-unmonitor-all"
-							action="?/toggleAllMonitored"
-							method="POST"
-							use:enhance
-							class="hidden"
-							aria-hidden="true"
-						>
-							<input type="hidden" name="monitored" value="false" />
-						</form>
-						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-						<ul
-							tabindex="0"
-							class="dropdown-content menu z-2 w-52 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
-						>
-							<li>
-								<button type="submit" class="w-full text-left" form="movies-monitor-all">
-									{m.library_movies_monitorAll()}
-								</button>
-							</li>
-							<li>
-								<button type="submit" class="w-full text-left" form="movies-unmonitor-all">
-									{m.library_movies_unmonitorAll()}
-								</button>
-							</li>
-						</ul>
-					</div>
 				{/if}
 
 				<!-- View Toggle -->
 				<button
-					class="btn btn-ghost btn-xs sm:btn-sm"
+					class="btn btn-ghost btn-sm"
 					onclick={() => viewPreferences.toggleViewMode()}
 					aria-label={viewPreferences.viewMode === 'grid'
 						? m.library_movies_switchToList()
@@ -704,36 +666,22 @@
 				>
 					{#if viewPreferences.viewMode === 'grid'}
 						<List class="h-4 w-4" />
-						<span class="hidden sm:inline">{m.library_movies_list()}</span>
 					{:else}
 						<LayoutGrid class="h-4 w-4" />
-						<span class="hidden sm:inline">{m.library_movies_grid()}</span>
 					{/if}
 				</button>
 
-				<!-- Group by Collection Toggle -->
-				{#if data.uniqueCollections.length > 0}
-					<button
-						class="btn btn-xs sm:btn-sm {groupByCollection ? 'btn-primary' : 'btn-ghost'}"
-						onclick={() => (groupByCollection = !groupByCollection)}
-						aria-label="Toggle group by collection"
-						title={groupByCollection ? 'Ungroup collections' : 'Group by collection'}
-					>
-						<Layers class="h-4 w-4" />
-						<span class="hidden sm:inline">{groupByCollection ? 'Grouped' : 'Group'}</span>
-					</button>
-				{/if}
-
-				<LibraryControls
-					{sortOptions}
-					{filterOptions}
-					currentSort={data.filters.sort}
-					{currentFilters}
-					hiddenActiveFilterKeys={['library']}
-					onSortChange={(sort) => updateUrlParam('sort', sort)}
-					onFilterChange={(key, value) => updateUrlParam(key, value)}
-					onClearFilters={clearFilters}
-				/>
+				<!-- Options Drawer Button -->
+				<button
+					class="btn gap-1.5 btn-sm {activeFilterCount > 0 ? 'btn-primary' : 'btn-ghost'}"
+					onclick={() => (drawerOpen = true)}
+					aria-label={m.library_drawer_title()}
+				>
+					<SlidersHorizontal class="h-4 w-4" />
+					{#if activeFilterCount > 0}
+						<span class="badge badge-sm">{activeFilterCount}</span>
+					{/if}
+				</button>
 			</div>
 		</div>
 
@@ -928,6 +876,48 @@
 			{/if}
 		{/if}
 	</main>
+
+	<!-- Hidden forms for monitor actions -->
+	<form
+		id="movies-monitor-all"
+		action="?/toggleAllMonitored"
+		method="POST"
+		use:enhance
+		class="hidden"
+		aria-hidden="true"
+	>
+		<input type="hidden" name="monitored" value="true" />
+	</form>
+	<form
+		id="movies-unmonitor-all"
+		action="?/toggleAllMonitored"
+		method="POST"
+		use:enhance
+		class="hidden"
+		aria-hidden="true"
+	>
+		<input type="hidden" name="monitored" value="false" />
+	</form>
+
+	<LibraryDrawer
+		isOpen={drawerOpen}
+		onClose={() => (drawerOpen = false)}
+		{sortOptions}
+		{filterOptions}
+		currentSort={data.filters.sort}
+		{currentFilters}
+		hiddenActiveFilterKeys={['library']}
+		{groupByCollection}
+		hasCollections={data.uniqueCollections.length > 0}
+		showSelectMode={showCheckboxes}
+		onSortChange={(sort) => updateUrlParam('sort', sort)}
+		onFilterChange={(key, value) => updateUrlParam(key, value)}
+		onClearFilters={clearFilters}
+		onGroupToggle={() => (groupByCollection = !groupByCollection)}
+		onMonitorAll={handleMonitorAll}
+		onUnmonitorAll={handleUnmonitorAll}
+		onSelectModeToggle={toggleSelectionMode}
+	/>
 </div>
 
 <!-- Bulk Action Bar -->

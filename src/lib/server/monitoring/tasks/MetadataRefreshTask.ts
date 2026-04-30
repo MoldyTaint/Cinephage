@@ -143,7 +143,7 @@ export async function executeMetadataRefreshTask(
 		);
 
 		return {
-			taskType: 'metadataRefresh',
+			taskType: 'metadata-refresh',
 			itemsProcessed,
 			itemsGrabbed: itemsUpdated,
 			errors,

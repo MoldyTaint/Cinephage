@@ -91,6 +91,9 @@ export interface MonitoringSettings {
 	subtitleUpgradeIntervalHours: number;
 	subtitleSearchOnImportEnabled: boolean;
 	subtitleSearchTrigger: SubtitleSearchTrigger;
+	// Download behavior
+	stalledDownloadTimeoutMinutes: number;
+	stalledDownloadProgressThreshold: number;
 }
 
 /**
@@ -307,7 +310,13 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 			subtitleSearchOnImportEnabled:
 				settingsMap.get('subtitle_search_on_import_enabled') !== 'false',
 			subtitleSearchTrigger:
-				(settingsMap.get('subtitle_search_trigger') as SubtitleSearchTrigger) || 'after_metadata'
+				(settingsMap.get('subtitle_search_trigger') as SubtitleSearchTrigger) || 'after_metadata',
+			stalledDownloadTimeoutMinutes: parseFloat(
+				settingsMap.get('stalled_download_timeout_minutes') || '60'
+			),
+			stalledDownloadProgressThreshold: parseFloat(
+				settingsMap.get('stalled_download_progress_threshold') || '0'
+			)
 		};
 	}
 
@@ -373,6 +382,18 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 			updates.push({
 				key: 'subtitle_search_trigger',
 				value: settings.subtitleSearchTrigger
+			});
+		}
+		if (settings.stalledDownloadTimeoutMinutes !== undefined) {
+			updates.push({
+				key: 'stalled_download_timeout_minutes',
+				value: String(settings.stalledDownloadTimeoutMinutes)
+			});
+		}
+		if (settings.stalledDownloadProgressThreshold !== undefined) {
+			updates.push({
+				key: 'stalled_download_progress_threshold',
+				value: String(settings.stalledDownloadProgressThreshold)
 			});
 		}
 
@@ -792,7 +813,7 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 				const { executeHistoryCleanupTask } = await import('./tasks/HistoryCleanupTask.js');
 				return await executeHistoryCleanupTask(ctx);
 			}
-			case 'metadataRefresh': {
+			case 'metadata-refresh': {
 				const { executeMetadataRefreshTask } = await import('./tasks/MetadataRefreshTask.js');
 				return await executeMetadataRefreshTask(ctx);
 			}
@@ -841,7 +862,7 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 	}
 
 	async runMetadataRefresh(): Promise<TaskResult> {
-		return await this.executeTaskManually('metadataRefresh');
+		return await this.executeTaskManually('metadata-refresh');
 	}
 
 	private async executeTaskManually(taskType: string): Promise<TaskResult> {

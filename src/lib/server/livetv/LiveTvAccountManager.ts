@@ -10,8 +10,9 @@ import { db } from '$lib/server/db';
 import { epgPrograms, livetvAccounts, type LivetvAccountRecord } from '$lib/server/db/schema';
 import { createChildLogger } from '$lib/logging';
 import { toFriendlyLiveTvTestError } from '$lib/livetv/errorMessages';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { getProvider, getProviderForAccount } from './providers';
+import { detectStalkerEndpoint } from './stalker/StalkerPortalClient';
 import { liveTvEvents } from './LiveTvEvents';
 import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service.js';
 import { ExternalServiceError } from '$lib/errors';
@@ -313,7 +314,8 @@ export class LiveTvAccountManager implements BackgroundService {
 				model: input.stalkerConfig.model || 'MAG254',
 				timezone: input.stalkerConfig.timezone || 'Europe/London',
 				username: input.stalkerConfig.username,
-				password: input.stalkerConfig.password
+				password: input.stalkerConfig.password,
+				endpoint: detectStalkerEndpoint(input.stalkerConfig.portalUrl)
 			};
 		} else if (input.providerType === 'xstream' && input.xstreamConfig) {
 			xstreamConfig = {

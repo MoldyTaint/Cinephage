@@ -10,29 +10,10 @@ import {
 } from '$lib/server/db/schema.js';
 import { eq, and, inArray, ne, isNotNull } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
-import type { LibrarySeries, EpisodeFile } from '$lib/types/library';
+import type { LibrarySeries, EpisodeFile, QualityProfileSummary } from '$lib/types/library';
 import { logger } from '$lib/logging';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
-
-const ACTIVE_DOWNLOAD_STATUSES = [
-	'queued',
-	'downloading',
-	'stalled',
-	'paused',
-	'completed',
-	'postprocessing',
-	'importing',
-	'seeding',
-	'seeding-imported'
-] as const;
-
-export interface QualityProfileSummary {
-	id: string;
-	name: string;
-	description: string;
-	isBuiltIn: boolean;
-	isDefault: boolean;
-}
+import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
 
 export const load: PageServerLoad = async ({ url }) => {
 	// Parse URL params for sorting and filtering

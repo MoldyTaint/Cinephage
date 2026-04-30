@@ -12,7 +12,7 @@ import { portalScanResults, portalScanHistory } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { MacGenerator } from '$lib/server/livetv/stalker/MacGenerator';
 import { StalkerPortalClient } from '$lib/server/livetv/stalker/StalkerPortalClient';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 
 export interface PortalScanOptions {
 	portalId: string;
@@ -221,7 +221,8 @@ export class PortalScanWorker extends TaskWorker<PortalScanWorkerMetadata> {
 			deviceId,
 			deviceId2,
 			model: 'MAG254',
-			timezone: 'Europe/London'
+			timezone: 'Europe/London',
+			endpoint: this.options.portalEndpoint
 		});
 
 		try {

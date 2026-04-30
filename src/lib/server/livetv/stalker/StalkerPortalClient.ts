@@ -11,6 +11,7 @@
  */
 
 import { createChildLogger } from '$lib/logging';
+import { randomBytes } from 'node:crypto';
 
 const logger = createChildLogger({ logDomain: 'livetv' as const });
 import type {
@@ -95,6 +96,23 @@ function generatePrehash(_macAddress: string): string {
 }
 
 /**
+ * Detect the Stalker portal endpoint type from a portal URL.
+ *
+ * Portals that use the "/stalker_portal/" path structure use
+ * "stalker_portal/server/load.php" as their API endpoint.
+ * All other patterns (e.g. "/c", "/c/portal.php") use "portal.php".
+ *
+ * @param portalUrl - The raw portal URL as provided by the user or stored in config
+ * @returns The endpoint path (e.g. "portal.php" or "stalker_portal/server/load.php")
+ */
+export function detectStalkerEndpoint(portalUrl: string): string {
+	if (portalUrl.includes('/stalker_portal/') || portalUrl.endsWith('/stalker_portal')) {
+		return 'stalker_portal/server/load.php';
+	}
+	return 'portal.php';
+}
+
+/**
  * Configuration for Stalker Portal client
  */
 export interface StalkerPortalConfig {
@@ -108,6 +126,7 @@ export interface StalkerPortalConfig {
 	token?: string;
 	username?: string;
 	password?: string;
+	endpoint?: string;
 }
 
 interface StalkerResponse<T> {
@@ -197,12 +216,7 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
  * Generate a random 32-character hex token
  */
 function generateToken(): string {
-	const chars = 'ABCDEF0123456789';
-	let token = '';
-	for (let i = 0; i < 32; i++) {
-		token += chars[Math.floor(Math.random() * chars.length)];
-	}
-	return token;
+	return randomBytes(16).toString('hex').toUpperCase();
 }
 
 /**
@@ -284,19 +298,39 @@ export class StalkerPortalClient {
 	}
 
 	/**
-	 * Get the portal.php endpoint URL
+	 * Get the portal API endpoint URL.
+	 *
+	 * Supports two endpoint types:
+	 *   — "portal.php" (default): /c/portal.php or /portal.php
+	 *   — "stalker_portal/server/load.php": for portals that use
+	 *     the stalker_portal directory structure
+	 *
+	 * Auto-detection heuristic:
+	 *   — If `config.endpoint` is explicitly set, use it.
+	 *   — If the portal URL path contains "/stalker_portal/", use
+	 *     the load.php endpoint (these portals consistently return
+	 *     404 on /c/portal.php).
+	 *   — Otherwise, fall back to the legacy portal.php logic.
 	 */
 	private getPortalEndpoint(): string {
-		const url = this.config.portalUrl;
+		const url = this.config.portalUrl.trim().replace(/\/+$/, '');
 
-		// Handle different portal URL formats
+		const hasStalkerPortal = url.includes('/stalker_portal/') || url.endsWith('/stalker_portal');
+		const endpoint =
+			this.config.endpoint || (hasStalkerPortal ? 'stalker_portal/server/load.php' : null);
+
+		if (endpoint === 'stalker_portal/server/load.php') {
+			const idx = url.indexOf('/stalker_portal');
+			const base = idx > 0 ? url.substring(0, idx) : url;
+			return `${base}/${endpoint}`;
+		}
+
 		if (url.includes('/portal.php')) {
 			return url;
 		}
-		if (url.endsWith('/c') || url.endsWith('/c/')) {
-			return `${url.replace(/\/+$/, '')}/portal.php`;
+		if (url.endsWith('/c')) {
+			return `${url}/portal.php`;
 		}
-		// Default: append /portal.php
 		return `${url}/portal.php`;
 	}
 

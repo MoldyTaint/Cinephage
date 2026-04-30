@@ -12,9 +12,9 @@ interface RewritePlaylistOptions {
 }
 
 const URI_ATTRIBUTE_TAGS = {
-	'#EXT-X-MEDIA:': 'asset',
+	'#EXT-X-MEDIA:': 'playlist',
 	'#EXT-X-KEY:': 'asset',
-	'#EXT-X-MAP:': 'asset',
+	'#EXT-X-MAP:': 'segment',
 	'#EXT-X-I-FRAME-STREAM-INF:': 'playlist'
 } as const;
 
@@ -201,8 +201,6 @@ export function rewriteSessionPlaylist(options: RewritePlaylistOptions): string 
 
 		if (line.startsWith('#') || trimmed === '') {
 			result.push(line);
-			previousWasExtinf = false;
-			previousWasStreamInf = false;
 			continue;
 		}
 

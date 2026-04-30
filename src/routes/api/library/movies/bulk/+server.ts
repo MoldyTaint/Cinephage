@@ -4,7 +4,7 @@ import { db } from '$lib/server/db/index.js';
 import { movies } from '$lib/server/db/schema.js';
 import { inArray } from 'drizzle-orm';
 import { z } from 'zod';
-import { NamingService, type MediaNamingInfo } from '$lib/server/library/naming/NamingService.js';
+import { buildMovieFolderName } from '$lib/server/library/naming/naming-helpers.js';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
 import {
 	extractLanguageCodes,
@@ -36,29 +36,6 @@ const bulkAddMoviesSchema = z.object({
 	searchOnAdd: z.boolean().default(true),
 	wantsSubtitles: z.boolean().default(true)
 });
-
-/**
- * Generate a folder name for a movie using the naming service
- * Uses database naming configuration instead of defaults
- */
-function generateMovieFolderName(
-	title: string,
-	year?: number,
-	tmdbId?: number,
-	collectionName?: string,
-	localizedTitles?: Record<string, string>
-): string {
-	const config = namingSettingsService.getConfigSync();
-	const namingService = new NamingService(config);
-	const info: MediaNamingInfo = {
-		title,
-		year,
-		tmdbId,
-		collectionName,
-		localizedTitles
-	};
-	return namingService.generateMovieFolderName(info);
-}
 
 interface BulkAddResult {
 	added: number;
@@ -158,7 +135,7 @@ export const POST: RequestHandler = async ({ request }) => {
 					uniqueLangCodes.length > 0
 						? await resolveLocalizedTitles(tmdbId, uniqueLangCodes)
 						: undefined;
-				const folderName = generateMovieFolderName(
+				const folderName = buildMovieFolderName(
 					movieDetails.title,
 					year,
 					tmdbId,
@@ -196,7 +173,8 @@ export const POST: RequestHandler = async ({ request }) => {
 						wantsSubtitles,
 						languageProfileId,
 						tmdbCollectionId: collectionData?.id ?? null,
-						collectionName: collectionData?.name ?? null
+						collectionName: collectionData?.name ?? null,
+						releaseDate: movieDetails.release_date ?? null
 					})
 					.returning();
 

@@ -1,10 +1,11 @@
 # Build and push Docker images to GitHub Container Registry
 #
 # Triggers:
-# - Pull requests to main: Build only (validates Dockerfile)
-# - Push to main: Build and push with main channel tags
-# - Push to dev/experimental branches: Build and push branch-scoped prerelease tags
-# - Runs only when Docker-relevant files change (paths filter)
+# - Pull requests to dev: Build only (validates Docker image)
+# - Push to dev: Build and push preview tags (dev, dev-YYYYMMDD-RUN)
+# - Push to main: Build only validation with no image publication
+# - Stable publication happens only when called from the stable release workflow with release_tag
+# - Runs on pushes to main/dev, pull requests to dev, and stable release workflow calls
 #
 # Images are pushed to ghcr.io/<owner>/cinephage
 #
@@ -26,22 +27,9 @@ on:
         type: string
         default: ''
   push:
-    branches: [main, dev, experimental, 'experimental/**']
-    tags: ['v*']
+    branches: [main, dev]
   pull_request:
     branches: [dev]
-  workflow_dispatch:
-    inputs:
-      release_tag:
-        description: 'Semver release tag (e.g. v1.0.0)'
-        required: false
-        type: string
-        default: ''
-      checkout_ref:
-        description: 'Git ref to checkout (defaults to workflow ref)'
-        required: false
-        type: string
-        default: ''
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
@@ -61,38 +49,23 @@ jobs:
       app_version: ${{ steps.meta.outputs.app_version }}
       arch_tag_amd64: ${{ steps.meta.outputs.arch_tag_amd64 }}
       arch_tag_arm64: ${{ steps.meta.outputs.arch_tag_arm64 }}
+      should_publish: ${{ steps.meta.outputs.should_publish }}
 
     steps:
       - name: Compute version and arch tags
         id: meta
         run: |
-          branch_channel() {
-            local ref="$1"
-            if [ "$ref" = 'dev' ]; then
-              echo 'dev'
-            elif [[ "$ref" =~ ^experimental([/-].*)?$ ]]; then
-              printf '%s' "$ref" \
-                | tr '[:upper:]' '[:lower:]' \
-                | sed -E 's|[^a-z0-9]+|-|g; s|^-+||; s|-+$||; s|-+|-|g'
-            else
-              return 1
-            fi
-          }
-
           RUN_DATE="$(date +%Y%m%d)"
 
           if [ -n "${{ inputs.release_tag }}" ]; then
             APP_VERSION="${{ inputs.release_tag }}"
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.release_tag }}" ]; then
-            APP_VERSION="${{ inputs.release_tag }}"
+            SHOULD_PUBLISH='true'
           elif [ "${{ github.ref }}" = "refs/heads/dev" ]; then
             APP_VERSION="dev-${RUN_DATE}-${{ github.run_number }}"
-          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            APP_VERSION="main-${RUN_DATE}-${{ github.run_number }}"
-          elif CHANNEL="$(branch_channel "${{ github.ref_name }}")"; then
-            APP_VERSION="${CHANNEL}-${RUN_DATE}-${{ github.run_number }}"
+            SHOULD_PUBLISH='true'
           else
             APP_VERSION="sha-${GITHUB_SHA::7}"
+            SHOULD_PUBLISH='false'
           fi
 
           {
@@ -100,6 +73,7 @@ jobs:
             echo "app_version=${APP_VERSION}"
             echo "arch_tag_amd64=${APP_VERSION}-amd64"
             echo "arch_tag_arm64=${APP_VERSION}-arm64"
+            echo "should_publish=${SHOULD_PUBLISH}"
           } >> "$GITHUB_OUTPUT"
 
   build-amd64:
@@ -126,7 +100,7 @@ jobs:
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
       - name: Log in to Container Registry
-        if: github.event_name != 'pull_request'
+        if: needs.prepare.outputs.should_publish == 'true'
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
         with:
           registry: ${{ env.REGISTRY }}
@@ -167,7 +141,7 @@ jobs:
         with:
           context: .
           platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ needs.prepare.outputs.should_publish == 'true' }}
           provenance: false
           sbom: false
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:${{ needs.prepare.outputs.arch_tag_amd64 }}
@@ -200,7 +174,7 @@ jobs:
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
       - name: Log in to Container Registry
-        if: github.event_name != 'pull_request'
+        if: needs.prepare.outputs.should_publish == 'true'
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
         with:
           registry: ${{ env.REGISTRY }}
@@ -213,7 +187,7 @@ jobs:
         with:
           context: .
           platforms: linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ needs.prepare.outputs.should_publish == 'true' }}
           provenance: false
           sbom: false
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:${{ needs.prepare.outputs.arch_tag_arm64 }}
@@ -226,7 +200,7 @@ jobs:
     name: Create Multi-Arch Manifest
     runs-on: ubuntu-latest
     needs: [prepare, build-amd64, build-arm64]
-    if: github.event_name != 'pull_request'
+    if: needs.prepare.outputs.should_publish == 'true'
     permissions:
       contents: read
       packages: write
@@ -251,17 +225,12 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}
           tags: |
-            type=raw,value=${{ inputs.release_tag }},enable=${{ inputs.release_tag != '' }}
             type=semver,pattern={{version}},value=${{ inputs.release_tag }},enable=${{ inputs.release_tag != '' }}
             type=semver,pattern={{major}}.{{minor}},value=${{ inputs.release_tag }},enable=${{ inputs.release_tag != '' }}
             type=semver,pattern={{major}},value=${{ inputs.release_tag }},enable=${{ inputs.release_tag != '' }}
             type=raw,value=latest,enable=${{ inputs.release_tag != '' }}
-            type=raw,value=${{ inputs.release_tag }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.release_tag != '' }}
-            type=raw,value=main-${{ needs.prepare.outputs.run_date }}-${{ github.run_number }},enable=${{ github.ref == 'refs/heads/main' }}
-            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
             type=raw,value=dev-${{ needs.prepare.outputs.run_date }}-${{ github.run_number }},enable=${{ github.ref == 'refs/heads/dev' }}
             type=raw,value=dev,enable=${{ github.ref == 'refs/heads/dev' }}
-            type=raw,value=${{ needs.prepare.outputs.app_version }},enable=${{ startsWith(github.ref, 'refs/heads/experimental') }}
           labels: |
             org.opencontainers.image.title=Cinephage
             org.opencontainers.image.description=Self-hosted media management application

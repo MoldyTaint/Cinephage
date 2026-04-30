@@ -10,7 +10,14 @@ import { EventEmitter } from 'events';
 import { randomUUID } from 'node:crypto';
 import { stat } from 'fs/promises';
 import { db } from '$lib/server/db';
-import { downloadQueue, downloadHistory, downloadClients } from '$lib/server/db/schema';
+import {
+	downloadQueue,
+	downloadHistory,
+	downloadClients,
+	monitoringSettings,
+	movies,
+	episodes
+} from '$lib/server/db/schema';
 import { eq, and, inArray, not, notInArray } from 'drizzle-orm';
 import { getDownloadClientManager } from '../DownloadClientManager';
 import { mapClientPathToLocal } from './PathMapping';
@@ -260,6 +267,9 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 	// SSE clients for real-time updates
 	private sseClients: Set<(event: QueueEvent) => void> = new Set();
+
+	// Track when downloads first entered stalled state (key = queueItem.id)
+	private stalledSince = new Map<string, Date>();
 
 	// Last time orphan cleanup was run (runs every 10 minutes)
 	private lastOrphanCleanupTime = 0;
@@ -737,6 +747,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			clearTimeout(this.pollTimer);
 			this.pollTimer = null;
 		}
+		this.stalledSince.clear();
 		this._status = 'pending';
 		logger.info('Stopped download monitor service');
 	}
@@ -935,6 +946,9 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		// Check for and remove completed downloads that have met seeding requirements
 		// This follows Radarr's pattern of removing after seeding is done
 		await this.removeCompletedDownloads(enabledClients);
+
+		// Handle stalled downloads that have timed out
+		await this.handleStalledDownloads();
 
 		// Note: Pending import retries are now handled by ImportService
 
@@ -1237,6 +1251,13 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		const newClientDownloadPath = download.contentPath || download.savePath;
 		const pathChanged =
 			queueItem.clientDownloadPath !== newClientDownloadPath || queueItem.outputPath !== outputPath;
+
+		// Track stalled start time for timeout detection
+		if (newStatus === 'stalled' && queueItem.status !== 'stalled') {
+			this.stalledSince.set(queueItem.id, new Date());
+		} else if (newStatus !== 'stalled' && queueItem.status === 'stalled') {
+			this.stalledSince.delete(queueItem.id);
+		}
 
 		// Build update object
 		const updates: Partial<typeof downloadQueue.$inferInsert> = {
@@ -1949,6 +1970,207 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 	/**
 	 * Mark a queue item as failed
 	 */
+	/**
+	 * Default stalled download timeout in minutes (1 hour)
+	 */
+	private static readonly DEFAULT_STALLED_TIMEOUT_MINUTES = 60;
+
+	/**
+	 * Minimum stalled download timeout in minutes
+	 */
+	private static readonly MIN_STALLED_TIMEOUT_MINUTES = 5;
+
+	/**
+	 * Default progress threshold (%): only kills stalled torrents below this percentage
+	 */
+	private static readonly DEFAULT_STALLED_PROGRESS_THRESHOLD = 0; // 0%
+
+	/**
+	 * Read the stalled download timeout from monitoring settings
+	 */
+	private async getStalledTimeoutMinutes(): Promise<number> {
+		try {
+			const [row] = await db
+				.select({ value: monitoringSettings.value })
+				.from(monitoringSettings)
+				.where(eq(monitoringSettings.key, 'stalled_download_timeout_minutes'))
+				.limit(1);
+
+			if (row) {
+				const value = parseFloat(row.value);
+				if (Number.isFinite(value) && value >= 0) {
+					return value;
+				}
+			}
+		} catch (error) {
+			logger.warn(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to read stalled download timeout from settings'
+			);
+		}
+
+		return DownloadMonitorService.DEFAULT_STALLED_TIMEOUT_MINUTES;
+	}
+
+	/**
+	 * Read the stalled download progress threshold from monitoring settings.
+	 * Torrents stalled below this percentage will be eligible for removal.
+	 * Defaults to 0 (only kills torrents at 0%).
+	 */
+	private async getStalledProgressThreshold(): Promise<number> {
+		try {
+			const [row] = await db
+				.select({ value: monitoringSettings.value })
+				.from(monitoringSettings)
+				.where(eq(monitoringSettings.key, 'stalled_download_progress_threshold'))
+				.limit(1);
+
+			if (row) {
+				const value = parseFloat(row.value);
+				if (Number.isFinite(value) && value >= 0 && value <= 100) {
+					return value;
+				}
+			}
+		} catch (error) {
+			logger.warn(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to read stalled progress threshold from settings'
+			);
+		}
+
+		return DownloadMonitorService.DEFAULT_STALLED_PROGRESS_THRESHOLD;
+	}
+
+	/**
+	 * Handle stalled downloads that have timed out.
+	 *
+	 * Only acts on stalled downloads below the configured progress threshold — these
+	 * never got off the ground (e.g. magnet metadata never fetched, no seeders ever
+	 * connected). Downloads at or above the threshold are left alone since they may
+	 * still complete when a seeder appears.
+	 *
+	 * For each timed-out stalled item below the threshold:
+	 * 1. Remove from the download client
+	 * 2. Mark as failed in the queue (creates history record and emits events)
+	 * 3. Reset the search cooldown on the media item so it gets re-searched
+	 *
+	 * A timeout of 0 disables stalled download handling entirely.
+	 */
+	private async handleStalledDownloads(): Promise<void> {
+		const timeoutMinutes = await this.getStalledTimeoutMinutes();
+
+		// A timeout of 0 means the feature is disabled
+		if (timeoutMinutes === 0) return;
+
+		const progressThreshold = await this.getStalledProgressThreshold();
+
+		const effectiveTimeout = Math.max(
+			timeoutMinutes,
+			DownloadMonitorService.MIN_STALLED_TIMEOUT_MINUTES
+		);
+		const timeoutMs = effectiveTimeout * 60 * 1000;
+		const now = Date.now();
+
+		// Find stalled items that have exceeded the timeout
+		const timedOutIds: string[] = [];
+		for (const [id, stalledAt] of this.stalledSince) {
+			if (now - stalledAt.getTime() >= timeoutMs) {
+				timedOutIds.push(id);
+			}
+		}
+
+		if (timedOutIds.length === 0) return;
+
+		const stalledItems = await db
+			.select()
+			.from(downloadQueue)
+			.where(and(eq(downloadQueue.status, 'stalled'), inArray(downloadQueue.id, timedOutIds)));
+
+		// Only act on items below the progress threshold
+		const timedOutItems = stalledItems.filter(
+			(item) => parseFloat(item.progress || '0') * 100 < progressThreshold
+		);
+
+		if (timedOutItems.length === 0) return;
+
+		logger.info(
+			{
+				count: timedOutItems.length,
+				timeoutMinutes: effectiveTimeout,
+				progressThreshold
+			},
+			'Processing timed-out stalled downloads'
+		);
+
+		const manager = getDownloadClientManager();
+		const errorMessage = 'Download stalled - no seeders available';
+
+		for (const item of timedOutItems) {
+			// Remove from download client (best-effort)
+			try {
+				const instance = await manager.getClientInstance(item.downloadClientId);
+				if (instance) {
+					try {
+						const clientDownloadId = this.resolveClientDownloadId(item, 'remove');
+						await instance.removeDownload(clientDownloadId, true);
+					} catch (clientError) {
+						logger.warn(
+							{
+								title: item.title,
+								error: clientError instanceof Error ? clientError.message : String(clientError)
+							},
+							'Failed to remove stalled download from client'
+						);
+					}
+				}
+			} catch (error) {
+				logger.warn(
+					{
+						title: item.title,
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'Error accessing download client for stalled download removal'
+				);
+			}
+
+			// Clean up stall tracking
+			this.stalledSince.delete(item.id);
+
+			// Mark as failed (creates history record, emits queue:failed event)
+			await this.markFailed(item.id, errorMessage);
+
+			// Reset search cooldown so the monitoring cycle re-searches immediately
+			try {
+				if (item.movieId) {
+					await db
+						.update(movies)
+						.set({ lastSearchTime: new Date(0).toISOString() })
+						.where(eq(movies.id, item.movieId));
+				}
+				if (item.seriesId && item.episodeIds?.length) {
+					await db
+						.update(episodes)
+						.set({ lastSearchTime: new Date(0).toISOString() })
+						.where(inArray(episodes.id, item.episodeIds));
+				}
+			} catch (error) {
+				logger.warn(
+					{
+						movieId: item.movieId,
+						seriesId: item.seriesId,
+						title: item.title,
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'Failed to reset search cooldown for stalled download'
+				);
+			}
+		}
+	}
+
 	async markFailed(id: string, errorMessage: string): Promise<void> {
 		await db
 			.update(downloadQueue)
