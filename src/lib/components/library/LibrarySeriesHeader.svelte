@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
+	import { getLocale } from '$lib/paraglide/runtime.js';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
 	import MonitorToggle from './MonitorToggle.svelte';
 	import {
@@ -91,7 +92,7 @@
 	}: Props = $props();
 
 	function formatDate(dateString: string): string {
-		return new Date(dateString).toLocaleDateString('en-US', {
+		return new Date(dateString).toLocaleDateString(getLocale(), {
 			year: 'numeric',
 			month: 'short',
 			day: 'numeric'
