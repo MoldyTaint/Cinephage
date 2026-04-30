@@ -18,7 +18,7 @@ import {
 } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
 import type { SubtitleFormat, LanguageCode } from '../types';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 import { getSubtitleSettingsService } from './SubtitleSettingsService';
 import { createChildLogger } from '$lib/logging';
 
@@ -423,7 +423,7 @@ class SubtitleScannerService {
 
 					// Register the subtitle
 					await db.insert(subtitles).values({
-						id: uuidv4(),
+						id: randomUUID(),
 						movieId,
 						relativePath: sub.relativePath,
 						language: sub.language,
@@ -436,7 +436,7 @@ class SubtitleScannerService {
 
 					// Record in history
 					await db.insert(subtitleHistory).values({
-						id: uuidv4(),
+						id: randomUUID(),
 						movieId,
 						action: 'discovered',
 						language: sub.language,
@@ -550,7 +550,7 @@ class SubtitleScannerService {
 
 					// Register the subtitle
 					await db.insert(subtitles).values({
-						id: uuidv4(),
+						id: randomUUID(),
 						episodeId: matchedEpisodeId,
 						relativePath: sub.relativePath,
 						language: sub.language,
@@ -563,7 +563,7 @@ class SubtitleScannerService {
 
 					// Record in history
 					await db.insert(subtitleHistory).values({
-						id: uuidv4(),
+						id: randomUUID(),
 						episodeId: matchedEpisodeId,
 						action: 'discovered',
 						language: sub.language,

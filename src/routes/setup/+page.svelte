@@ -383,7 +383,7 @@
 					<p class="text-base-content/70">{m.setup_completeMessage()}</p>
 					<p class="text-sm text-base-content/50">{m.setup_redirecting()}</p>
 					<div class="mt-4 h-2 w-full rounded-full bg-base-200">
-						<div class="h-2 animate-pulse rounded-full bg-success" style="width: 100%"></div>
+						<div class="h-2 w-full animate-pulse rounded-full bg-success"></div>
 					</div>
 				</div>
 			{/if}

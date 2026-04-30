@@ -75,7 +75,7 @@ describe('NamingSettingsService', () => {
 			presetSelection: {
 				selectedServerPresetId: 'jellyfin',
 				selectedStylePresetId: 'scene',
-				selectedDetailPresetId: 'detailed',
+				selectedDetailPresetId: 'balanced',
 				selectedCustomPresetId: 'custom-1'
 			}
 		});
@@ -85,7 +85,7 @@ describe('NamingSettingsService', () => {
 		expect(result.presetSelection).toEqual({
 			selectedServerPresetId: 'jellyfin',
 			selectedStylePresetId: 'scene',
-			selectedDetailPresetId: 'detailed',
+			selectedDetailPresetId: 'balanced',
 			selectedCustomPresetId: 'custom-1'
 		});
 	});

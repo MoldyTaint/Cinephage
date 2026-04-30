@@ -798,34 +798,6 @@ export interface M3uImportResult {
 // BACKWARD COMPATIBILITY (Deprecated types for old Stalker-specific code)
 // ============================================================================
 
-/** @deprecated Use LiveTvAccount instead */
-export interface StalkerAccount extends Omit<LiveTvAccount, 'providerType' | 'stalkerConfig'> {
-	portalUrl: string;
-	macAddress: string;
-	serialNumber?: string;
-	deviceId?: string;
-	deviceId2?: string;
-	model: string;
-	timezone: string;
-	username?: string;
-	hasPassword: boolean;
-}
-
-/** @deprecated Use LiveTvAccountUpdate instead */
-export interface StalkerAccountUpdate {
-	name?: string;
-	portalUrl?: string;
-	macAddress?: string;
-	enabled?: boolean;
-	serialNumber?: string;
-	deviceId?: string;
-	deviceId2?: string;
-	model?: string;
-	timezone?: string;
-	username?: string;
-	password?: string;
-}
-
 /** @deprecated Use LiveTvAccountTestResult instead */
 export type StalkerAccountTestResult = LiveTvAccountTestResult;
 
@@ -844,14 +816,6 @@ export interface StalkerChannel {
 	number: string;
 	logo: string;
 	genreId: string;
-	cmd: string;
-	tvArchive: boolean;
-	archiveDuration: number;
-}
-
-/** @deprecated Use LiveTvChannel['stalkerData'] instead */
-export interface StalkerChannelData {
-	stalkerGenreId?: string;
 	cmd: string;
 	tvArchive: boolean;
 	archiveDuration: number;

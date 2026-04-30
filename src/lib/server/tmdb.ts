@@ -131,10 +131,7 @@ export const tmdb = {
 							url.searchParams.set('watch_region', filters.region);
 						}
 
-						if (
-							path.includes('/discover/') &&
-							!url.searchParams.has('certification_country')
-						) {
+						if (path.includes('/discover/') && !url.searchParams.has('certification_country')) {
 							url.searchParams.set('certification_country', filters.region);
 						}
 					}

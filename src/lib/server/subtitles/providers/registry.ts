@@ -270,12 +270,6 @@ export async function registerBuiltinProviders(): Promise<void> {
 		logger.warn({ error }, 'Failed to register assrt provider');
 	}
 
-	// Future regional providers will be added here
-	// try {
-	//   const napiprojekt = await import('./napiprojekt');
-	//   providerRegistry.register(napiprojekt.PROVIDER_INFO);
-	// } catch (error) { ... }
-
 	providerRegistry.setInitialized();
 
 	logger.info(`Provider registry initialized with ${providerRegistry.count} providers`);

@@ -48,18 +48,15 @@ export function createSSE<T = Record<string, unknown>>(
 	handlers: SSEHandlers<T>,
 	options: SSEOptions = {}
 ): SSEState {
-	// Merge with defaults
 	const config = { ...DEFAULT_SSE_OPTIONS, ...options };
 	const getUrl = typeof url === 'function' ? url : () => url;
 
-	// Reactive state using Svelte 5 runes
 	let status = $state<SSEStatus>('idle');
 	let error = $state<SSEError | null>(null);
 	let reconnectCount = $state(0);
 	let isPaused = $state(false);
 	let maxRetriesExceeded = $state(false);
 
-	// Internal state (not reactive)
 	let eventSource: EventSource | null = null;
 	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 	let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -67,21 +64,8 @@ export function createSSE<T = Record<string, unknown>>(
 	let lastUrl = getUrl();
 	let lastServerActivity = Date.now();
 
-	// Store event listener references for cleanup
 	const activeListeners: Array<{ event: string; handler: (e: MessageEvent) => void }> = [];
 
-	/**
-	 * Debug logging
-	 */
-	function debug(...args: unknown[]): void {
-		if (config.debug) {
-			void args;
-		}
-	}
-
-	/**
-	 * Update status and sync with connection pool
-	 */
 	function setStatus(newStatus: SSEStatus): void {
 		status = newStatus;
 	}
@@ -99,7 +83,6 @@ export function createSSE<T = Record<string, unknown>>(
 			setStatus('error');
 
 			const delay = getBackoffDelay(reconnectCount, config.baseDelay, config.maxDelay);
-			debug(`Reconnecting in ${delay}ms (attempt ${reconnectCount + 1})`);
 
 			reconnectTimer = setTimeout(() => {
 				reconnectCount++;
@@ -108,14 +91,10 @@ export function createSSE<T = Record<string, unknown>>(
 			return;
 		}
 
-		debug('Max retries reached, giving up');
 		setStatus('error');
 		maxRetriesExceeded = true;
 	}
 
-	/**
-	 * Watch heartbeats/messages and recover stale connections.
-	 */
 	function setupHeartbeat(): void {
 		if (heartbeatTimer) {
 			clearInterval(heartbeatTimer);
@@ -136,16 +115,12 @@ export function createSSE<T = Record<string, unknown>>(
 			const elapsedSeconds = Math.floor(elapsedMs / 1000);
 			const timeoutError = createSSEError('timeout', `No SSE activity for ${elapsedSeconds}s`);
 			error = timeoutError;
-			debug('Heartbeat timeout detected, reconnecting', { elapsedMs, staleAfterMs });
 			handlers.error?.(timeoutError);
 			closeConnection();
 			scheduleReconnect();
 		}, checkIntervalMs);
 	}
 
-	/**
-	 * Clear all timers
-	 */
 	function clearTimers(): void {
 		if (reconnectTimer) {
 			clearTimeout(reconnectTimer);
@@ -157,16 +132,11 @@ export function createSSE<T = Record<string, unknown>>(
 		}
 	}
 
-	/**
-	 * Close current connection
-	 */
 	function closeConnection(nextStatus: SSEStatus = 'closed'): void {
 		clearTimers();
 
 		if (eventSource) {
-			// Remove all event listeners before closing
 			for (const { event, handler } of activeListeners) {
-				// Cast handler to EventListener for removeEventListener
 				eventSource.removeEventListener(event, handler as EventListener);
 			}
 			activeListeners.length = 0;
@@ -179,39 +149,28 @@ export function createSSE<T = Record<string, unknown>>(
 		setStatus(nextStatus);
 	}
 
-	/**
-	 * Attempt to connect
-	 */
 	function connect(nextUrl = getUrl()): void {
 		if (!browser || isManuallyClosed || isPaused) {
 			return;
 		}
 
 		if (!nextUrl) {
-			debug('Skipping SSE connection because URL is empty');
 			closeConnection('closed');
 			return;
 		}
 
-		// Check if already connected
 		if (eventSource?.readyState === EventSource.OPEN) {
-			debug('Already connected');
 			return;
 		}
 
-		// Close existing connection
 		closeConnection();
 
 		setStatus('connecting');
-		debug('Connecting to:', nextUrl);
 
 		try {
-			// Create new connection
 			eventSource = new EventSource(nextUrl);
 
-			// Handle connection open
 			const onOpen = () => {
-				debug('Connection opened');
 				setStatus('connected');
 				reconnectCount = 0;
 				error = null;
@@ -221,21 +180,18 @@ export function createSSE<T = Record<string, unknown>>(
 			eventSource.addEventListener('open', onOpen);
 			activeListeners.push({ event: 'open', handler: onOpen });
 
-			// Handle connected event (custom)
 			const onConnected = (e: MessageEvent) => {
 				markServerActivity();
 				try {
 					const data = JSON.parse(e.data) as SSEConnectedEvent;
-					debug('Connected event:', data);
 					handlers.connected?.(data);
-				} catch (err) {
-					debug('Failed to parse connected event:', err);
+				} catch {
+					// Ignore parse errors for connected event
 				}
 			};
 			eventSource.addEventListener('connected', onConnected);
 			activeListeners.push({ event: 'connected', handler: onConnected });
 
-			// Handle heartbeat
 			const onHeartbeat = (e: MessageEvent) => {
 				markServerActivity();
 				try {
@@ -248,7 +204,6 @@ export function createSSE<T = Record<string, unknown>>(
 			eventSource.addEventListener('heartbeat', onHeartbeat);
 			activeListeners.push({ event: 'heartbeat', handler: onHeartbeat });
 
-			// Wire up custom event handlers
 			for (const [eventName, handler] of Object.entries(handlers)) {
 				if (eventName === 'connected' || eventName === 'heartbeat' || eventName === 'error') {
 					continue;
@@ -258,17 +213,15 @@ export function createSSE<T = Record<string, unknown>>(
 					markServerActivity();
 					try {
 						const data = JSON.parse(e.data);
-						debug(`Event: ${eventName}`, data);
 						handler?.(data);
-					} catch (err) {
-						debug(`Failed to parse event "${eventName}":`, err);
+					} catch {
+						// Ignore parse errors for custom events
 					}
 				};
 				eventSource.addEventListener(eventName, listener);
 				activeListeners.push({ event: eventName, handler: listener });
 			}
 
-			// Handle errors
 			eventSource.onerror = (e) => {
 				if (isManuallyClosed) return;
 
@@ -276,17 +229,13 @@ export function createSSE<T = Record<string, unknown>>(
 				const nextError = createSSEError(type, message);
 				error = nextError;
 
-				debug('Connection error:', type, message);
-
 				handlers.error?.(nextError);
 
-				// Close current connection
 				closeConnection();
 
 				scheduleReconnect();
 			};
 		} catch (err) {
-			debug('Failed to create EventSource:', err);
 			const message = err instanceof Error ? err.message : 'Unknown error';
 			const nextError = createSSEError('client', message);
 			error = nextError;
@@ -296,53 +245,38 @@ export function createSSE<T = Record<string, unknown>>(
 		}
 	}
 
-	/**
-	 * Manual close function
-	 */
 	function close(): void {
-		debug('Manual close called');
 		isManuallyClosed = true;
 		closeConnection('closed');
 	}
 
-	/**
-	 * Manual reconnect function
-	 */
 	function reconnect(): void {
-		debug('Manual reconnect called');
 		isManuallyClosed = false;
 		reconnectCount = 0;
 		maxRetriesExceeded = false;
 		connect();
 	}
 
-	// Main connection lifecycle using SvelteKit navigation hooks
-	// Connect AFTER navigation completes so query/tab navigation can recover if needed.
 	afterNavigate(() => {
 		if (!browser) return;
 		connect();
 	});
 
-	// Only force-close on full page unload; in-app navigation should not disable reconnect.
 	beforeNavigate((navigation) => {
 		if (navigation.willUnload) {
 			closeConnection('closed');
 		}
 	});
 
-	// Cleanup on component destroy (for non-navigation scenarios)
 	$effect(() => {
 		return () => {
-			debug('Cleaning up connection');
 			closeConnection('closed');
 		};
 	});
 
-	// Watch for URL changes (for reactive URLs)
 	$effect(() => {
 		const resolvedUrl = getUrl();
 		if (resolvedUrl !== lastUrl) {
-			debug('URL changed, reconnecting');
 			lastUrl = resolvedUrl;
 			reconnectCount = 0;
 			isManuallyClosed = false;
@@ -350,17 +284,14 @@ export function createSSE<T = Record<string, unknown>>(
 		}
 	});
 
-	// Tab visibility handling
 	$effect(() => {
 		if (!browser || !config.pauseOnHidden) return;
 
 		function handleVisibilityChange(): void {
 			if (document.hidden) {
-				debug('Tab hidden, pausing connection');
 				isPaused = true;
 				closeConnection('paused');
 			} else if (config.reconnectOnVisible) {
-				debug('Tab visible, resuming connection');
 				isPaused = false;
 				connect();
 			}
@@ -373,19 +304,16 @@ export function createSSE<T = Record<string, unknown>>(
 		};
 	});
 
-	// Network status handling
 	$effect(() => {
 		if (!browser) return;
 
 		function handleOnline(): void {
-			debug('Network online');
 			if (status === 'offline') {
 				connect();
 			}
 		}
 
 		function handleOffline(): void {
-			debug('Network offline');
 			closeConnection('offline');
 		}
 
@@ -398,7 +326,6 @@ export function createSSE<T = Record<string, unknown>>(
 		};
 	});
 
-	// Return reactive state object (Svelte-compatible)
 	return {
 		get status() {
 			return status;

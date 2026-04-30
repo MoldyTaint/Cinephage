@@ -44,11 +44,9 @@
 		"@types/js-yaml": "^4.0.9",
 		"@types/node": "^25.6.0",
 		"@types/parse-torrent": "^5.8.8",
-		"@types/unzipper": "^0.10.11",
 		"@vitest/browser": "^4.1.5",
 		"@vitest/browser-playwright": "^4.1.5",
 		"@vitest/coverage-v8": "^4.1.5",
-		"conventional-changelog-conventionalcommits": "^9.3.1",
 		"daisyui": "^5.5.19",
 		"drizzle-orm": "^0.45.2",
 		"eslint": "^10.2.1",
@@ -80,12 +78,12 @@
 	},
 	"dependencies": {
 		"@better-auth/api-key": "^1.6.9",
+		"better-auth": "^1.6.9",
 		"adm-zip": "^0.5.16",
 		"better-sqlite3": "^12.9.0",
 		"camoufox-js": "^0.10.2",
 		"cheerio": "^1.2.0",
 		"chokidar": "^5.0.0",
-		"crypto-js": "^4.2.0",
 		"date-format-parse": "^0.2.7",
 		"dotenv": "^17.4.2",
 		"fast-xml-parser": "^5.7.2",
@@ -95,8 +93,7 @@
 		"js-yaml": "^4.1.1",
 		"parse-torrent": "^11.0.19",
 		"pino": "^10.3.1",
-		"sax": "^1.6.0",
-		"unzipper": "^0.12.3",
+		"playwright-core": "^1.53.0",
 		"zod": "^4.3.6"
 	}
 }
