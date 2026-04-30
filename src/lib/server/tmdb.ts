@@ -47,6 +47,7 @@ async function loadTmdbSettings(): Promise<{ apiKey: string; filters: GlobalTmdb
 				if (filtersSetting) {
 					try {
 						_cachedFilters = JSON.parse(filtersSetting.value);
+						logger.debug({ filters: _cachedFilters }, '[TMDB] Loaded settings filters');
 					} catch (e) {
 						logger.error({ err: e }, 'Failed to parse global filters');
 					}
@@ -77,12 +78,17 @@ export const tmdb = {
 		_settingsCacheTimestamp = 0;
 	},
 
+	async getRegion(): Promise<string> {
+		const { filters } = await loadTmdbSettings();
+		return filters?.region || TMDB.DEFAULT_REGION;
+	},
+
 	async fetch(endpoint: string, options: RequestInit = {}, skipFilters = false) {
 		const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 		const isGetRequest = !options.method || options.method === 'GET';
 
 		const { apiKey, filters } = await loadTmdbSettings();
-		const cacheKey = getCacheKey(path, skipFilters, filters?.language);
+		const cacheKey = getCacheKey(path, skipFilters, filters?.language, filters?.region);
 
 		if (isGetRequest) {
 			const cached = tmdbCache.get(cacheKey);
@@ -100,6 +106,7 @@ export const tmdb = {
 		const requestPromise = (async () => {
 			try {
 				const url = new URL(TMDB.BASE_URL + path);
+				logger.debug({ url: url.toString(), skipFilters }, '[TMDB] Fetching');
 
 				// Add API key
 				url.searchParams.set('api_key', apiKey);
@@ -114,6 +121,16 @@ export const tmdb = {
 					}
 					if (filters.region) {
 						url.searchParams.set('region', filters.region);
+						// Automatically set watch_region for discovery or provider endpoints if not already set
+						if (
+							(path.includes('/discover/') || path.includes('/watch/providers/')) &&
+							!url.searchParams.has('watch_region')
+						) {
+							url.searchParams.set('watch_region', filters.region);
+						}
+						if (path.includes('/discover/') && !url.searchParams.has('certification_country')) {
+							url.searchParams.set('certification_country', filters.region);
+						}
 					}
 
 					// Apply Discover-specific filters
@@ -217,7 +234,7 @@ export const tmdb = {
 	},
 	async getMovie(id: number): Promise<MovieDetails> {
 		return this.fetch(
-			`/movie/${id}?append_to_response=credits,videos,images,recommendations,similar,watch/providers,release_dates`
+			`/movie/${id}?append_to_response=credits,recommendations,similar,watch/providers,videos,images,release_dates`
 		) as Promise<MovieDetails>;
 	},
 	async getTVShow(id: number): Promise<TVShowDetails> {
@@ -236,6 +253,15 @@ export const tmdb = {
 		return this.fetch(
 			`/person/${id}?append_to_response=combined_credits,external_ids`
 		) as Promise<PersonDetails>;
+	},
+	async getCountries(): Promise<
+		{ iso_3166_1: string; english_name: string; native_name: string }[]
+	> {
+		return (await this.fetch('/configuration/countries')) as {
+			iso_3166_1: string;
+			english_name: string;
+			native_name: string;
+		}[];
 	},
 
 	/**
@@ -413,9 +439,10 @@ export const tmdb = {
 	 */
 	async getWatchProviders(
 		mediaType: 'movie' | 'tv',
-		region = 'US'
+		region?: string
 	): Promise<{ results: TmdbWatchProvider[] }> {
-		return this.fetch(`/watch/providers/${mediaType}?watch_region=${region}`) as Promise<{
+		const url = `/watch/providers/${mediaType}${region ? `?watch_region=${region}` : ''}`;
+		return this.fetch(url) as Promise<{
 			results: TmdbWatchProvider[];
 		}>;
 	},

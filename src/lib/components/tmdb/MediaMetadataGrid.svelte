@@ -10,6 +10,8 @@
 		formatCountry,
 		formatDateShort
 	} from '$lib/utils/format';
+	import { page } from '$app/stores';
+	import { TMDB } from '$lib/config/constants.js';
 	import * as m from '$lib/paraglide/messages.js';
 
 	let {
@@ -19,6 +21,8 @@
 		item: MovieDetails | TVShowDetails;
 		mediaType: 'movie' | 'tv';
 	} = $props();
+
+	const countryCode = $derived($page.data.defaultRegion || TMDB.DEFAULT_REGION);
 
 	const isMovie = $derived(mediaType === 'movie');
 	const movie = $derived(isMovie ? (item as MovieDetails) : null);
@@ -121,7 +125,7 @@
 	{#if item['watch/providers']}
 		<div class="mt-6 border-t border-base-content/10 pt-6">
 			<h3 class="mb-3 text-sm font-medium text-white/60">{m.tmdb_meta_whereToWatch()}</h3>
-			<WatchProviders providers={item['watch/providers']} />
+			<WatchProviders providers={item['watch/providers']} {countryCode} />
 		</div>
 	{/if}
 </section>

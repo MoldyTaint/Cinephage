@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { MovieDetails, TVShowDetails, ReleaseDate } from '$lib/types/tmdb';
+	import { page } from '$app/stores';
 	import TmdbImage from './TmdbImage.svelte';
 	import CrewList from './CrewList.svelte';
 	import WatchProviders from './WatchProviders.svelte';
@@ -86,12 +87,15 @@
 			: null
 	);
 
+	const countryCode = $derived(
+		$page.url.searchParams.get('watch_region') || $page.data.defaultRegion || TMDB.DEFAULT_REGION
+	);
+
 	// Get release info for movies (certification and release types)
 	const releaseInfo = $derived.by(() => {
 		if (!isMovieDetails(item) || !item.release_dates?.results) return null;
 
 		// Find releases for user's region, fallback to US
-		const countryCode = TMDB.DEFAULT_REGION;
 		const countryReleases =
 			item.release_dates.results.find((r) => r.iso_3166_1 === countryCode) ||
 			item.release_dates.results.find((r) => r.iso_3166_1 === 'US');
@@ -134,7 +138,6 @@
 	const tvRating = $derived.by(() => {
 		if (isMovieDetails(item) || !item.content_ratings?.results) return '';
 
-		const countryCode = TMDB.DEFAULT_REGION;
 		const rating =
 			item.content_ratings.results.find((r) => r.iso_3166_1 === countryCode) ||
 			item.content_ratings.results.find((r) => r.iso_3166_1 === 'US');
@@ -458,7 +461,7 @@
 			{#if item['watch/providers']}
 				<div class="mt-4 border-t border-base-content/10 pt-4">
 					<div class="mb-2 text-sm text-base-content/50">Where to Watch</div>
-					<WatchProviders providers={item['watch/providers']} />
+					<WatchProviders providers={item['watch/providers']} {countryCode} />
 				</div>
 			{/if}
 		</div>

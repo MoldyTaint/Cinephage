@@ -21,6 +21,7 @@ import {
 import { eq, and, desc, asc, sql, lt, inArray } from 'drizzle-orm';
 import { tmdb, type DiscoverParams, type DiscoverItem } from '$lib/server/tmdb.js';
 import { createChildLogger } from '$lib/logging';
+import { TMDB } from '$lib/config/constants.js';
 
 const logger = createChildLogger({ logDomain: 'monitoring' as const });
 import { ValidationError } from '$lib/errors';
@@ -1190,13 +1191,17 @@ export class SmartListService {
 		// Watch Providers
 		if (filters.withWatchProviders?.length) {
 			params.with_watch_providers = filters.withWatchProviders.join('|');
-			params.watch_region = filters.watchRegion ?? 'US';
+			if (filters.watchRegion) {
+				params.watch_region = filters.watchRegion;
+			}
 		}
 
 		// Certification
 		if (filters.certification) {
 			params.certification = filters.certification;
-			params.certification_country = filters.certificationCountry ?? 'US';
+			if (filters.certificationCountry) {
+				params.certification_country = filters.certificationCountry;
+			}
 		}
 
 		// Runtime

@@ -5,6 +5,7 @@ import type { WatchProvider } from '$lib/types/tmdb';
 import type { TmdbCertificationsResponse } from '$lib/server/tmdb';
 import { logger } from '$lib/logging';
 import { parseDiscoverParams, isDefaultView as checkDefaultView } from '$lib/utils/discoverParams';
+import { TMDB } from '$lib/config/constants.js';
 
 import type { PageServerLoad } from './$types';
 
@@ -52,10 +53,9 @@ export const load: PageServerLoad = async ({ url }) => {
 	}
 
 	try {
+		const systemRegion = await tmdb.getRegion();
 		const [providersData, movieGenresData, tvGenresData, movieCertifications] = await Promise.all([
-			tmdb.fetch(`/watch/providers/movie?watch_region=${watchRegion}`) as Promise<{
-				results: WatchProvider[];
-			} | null>,
+			tmdb.getWatchProviders('movie', watchRegion || systemRegion),
 			tmdb.fetch('/genre/movie/list') as Promise<{ genres: { id: number; name: string }[] } | null>,
 			tmdb.fetch('/genre/tv/list') as Promise<{ genres: { id: number; name: string }[] } | null>,
 			tmdb.getCertifications('movie') as Promise<TmdbCertificationsResponse>
@@ -91,7 +91,9 @@ export const load: PageServerLoad = async ({ url }) => {
 		tvGenresData.genres.forEach((g) => allGenres.set(g.id, g));
 		const genres = Array.from(allGenres.values()).sort((a, b) => a.name.localeCompare(b.name));
 
-		const usCertifications = (movieCertifications.certifications['US'] ?? []).map((c) => ({
+		const usCertifications = (
+			movieCertifications.certifications[watchRegion || systemRegion] ?? []
+		).map((c) => ({
 			certification: c.certification,
 			meaning: c.meaning,
 			order: c.order
