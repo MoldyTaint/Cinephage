@@ -6,13 +6,12 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { tmdb } from '$lib/server/tmdb.js';
-import { TMDB } from '$lib/config/constants.js';
 
 export const GET: RequestHandler = async ({ url }) => {
 	const type = url.searchParams.get('type') as 'movie' | 'tv' | null;
 	const helper = url.searchParams.get('helper');
 	const query = url.searchParams.get('q') ?? '';
-	const region = url.searchParams.get('region') ?? TMDB.DEFAULT_REGION;
+	const region = url.searchParams.get('region') ?? (await tmdb.getRegion());
 
 	if (!helper) {
 		return json({ error: 'Missing helper parameter' }, { status: 400 });
