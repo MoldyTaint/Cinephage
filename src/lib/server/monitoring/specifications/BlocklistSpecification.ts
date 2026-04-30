@@ -135,28 +135,34 @@ class BlocklistService {
 				or(eq(blocklist.indexerId, release.indexerId), isNull(blocklist.indexerId))!
 			);
 
-		await db.delete(blocklist).where(and(...dedupConditions));
+		let entryId: string;
 
-		const [entry] = await db
-			.insert(blocklist)
-			.values({
-				title: release.title,
-				infoHash: release.infoHash ?? null,
-				indexerId: release.indexerId ?? null,
-				movieId: options.movieId ?? null,
-				seriesId: options.seriesId ?? null,
-				episodeIds: options.episodeIds ?? null,
-				reason: options.reason,
-				message: options.message ?? null,
-				sourceTitle: release.title,
-				quality: release.quality ?? null,
-				size: release.size ?? null,
-				protocol: release.protocol ?? null,
-				expiresAt
-			})
-			.returning();
+		await db.transaction(async (tx) => {
+			await tx.delete(blocklist).where(and(...dedupConditions));
 
-		return entry.id;
+			const [entry] = await tx
+				.insert(blocklist)
+				.values({
+					title: release.title,
+					infoHash: release.infoHash ?? null,
+					indexerId: release.indexerId ?? null,
+					movieId: options.movieId ?? null,
+					seriesId: options.seriesId ?? null,
+					episodeIds: options.episodeIds ?? null,
+					reason: options.reason,
+					message: options.message ?? null,
+					sourceTitle: release.title,
+					quality: release.quality ?? null,
+					size: release.size ?? null,
+					protocol: release.protocol ?? null,
+					expiresAt
+				})
+				.returning();
+
+			entryId = entry.id;
+		});
+
+		return entryId;
 	}
 
 	/**
