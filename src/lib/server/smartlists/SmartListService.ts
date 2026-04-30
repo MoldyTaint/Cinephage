@@ -79,38 +79,12 @@ export class SmartListService {
 			Date.now() + (input.refreshIntervalHours ?? 24) * 60 * 60 * 1000
 		).toISOString();
 
-		// Determine list source type and URL
 		const listSourceType = input.listSourceType ?? 'tmdb-discover';
-		let externalSourceConfig:
-			| { url?: string; headers?: Record<string, string>; listId?: string; username?: string }
-			| undefined;
-
-		// If using a preset, resolve the URL
-		if (listSourceType === 'external-json' && input.presetId) {
-			const presetUrl = presetService.getListUrl(input.presetId, input.externalSourceConfig?.url);
-			if (presetUrl) {
-				externalSourceConfig = {
-					url: presetUrl,
-					headers: input.externalSourceConfig?.headers as Record<string, string> | undefined,
-					listId: input.externalSourceConfig?.listId,
-					username: input.externalSourceConfig?.username
-				};
-			} else if (input.externalSourceConfig) {
-				externalSourceConfig = {
-					url: input.externalSourceConfig.url,
-					headers: input.externalSourceConfig.headers as Record<string, string> | undefined,
-					listId: input.externalSourceConfig.listId,
-					username: input.externalSourceConfig.username
-				};
-			}
-		} else if (input.externalSourceConfig) {
-			externalSourceConfig = {
-				url: input.externalSourceConfig.url,
-				headers: input.externalSourceConfig.headers as Record<string, string> | undefined,
-				listId: input.externalSourceConfig.listId,
-				username: input.externalSourceConfig.username
-			};
-		}
+		const externalSourceConfig = this.resolveExternalSourceConfig({
+			listSourceType,
+			presetId: input.presetId,
+			inputConfig: input.externalSourceConfig as SmartListExternalSourceConfig | undefined
+		});
 
 		this.validateExternalSourceConfiguration({
 			listSourceType,
@@ -197,50 +171,21 @@ export class SmartListService {
 		if (input.presetProvider !== undefined) updates.presetProvider = input.presetProvider;
 		if (input.presetSettings !== undefined) updates.presetSettings = input.presetSettings;
 
-		// Handle external source config - resolve preset URL if needed
 		if (input.externalSourceConfig !== undefined) {
-			const listSourceType = input.listSourceType ?? existing.listSourceType;
-			const presetId = input.presetId ?? existing.presetId;
-			const inputConfig = input.externalSourceConfig;
-
-			if (listSourceType === 'external-json' && presetId) {
-				const presetUrl = presetService.getListUrl(presetId, inputConfig?.url);
-				if (presetUrl) {
-					updates.externalSourceConfig = {
-						url: presetUrl,
-						headers: inputConfig?.headers as Record<string, string> | undefined,
-						listId: inputConfig?.listId,
-						username: inputConfig?.username
-					};
-				} else {
-					updates.externalSourceConfig = {
-						url: inputConfig?.url,
-						headers: inputConfig?.headers as Record<string, string> | undefined,
-						listId: inputConfig?.listId,
-						username: inputConfig?.username
-					};
-				}
-			} else {
-				updates.externalSourceConfig = {
-					url: inputConfig?.url,
-					headers: inputConfig?.headers as Record<string, string> | undefined,
-					listId: inputConfig?.listId,
-					username: inputConfig?.username
-				};
-			}
+			updates.externalSourceConfig = this.resolveExternalSourceConfig({
+				listSourceType: (input.listSourceType ?? existing.listSourceType) as string,
+				presetId: input.presetId ?? existing.presetId ?? undefined,
+				inputConfig: input.externalSourceConfig as SmartListExternalSourceConfig | undefined
+			});
 		} else if (input.presetId !== undefined && existing.listSourceType === 'external-json') {
-			// If preset changed but config not provided, resolve URL from new preset
-			const presetUrl = presetService.getListUrl(
-				input.presetId,
-				existing.externalSourceConfig?.url
-			);
-			if (presetUrl) {
-				updates.externalSourceConfig = {
-					url: presetUrl,
-					headers: existing.externalSourceConfig?.headers,
-					listId: existing.externalSourceConfig?.listId,
-					username: existing.externalSourceConfig?.username
-				};
+			const resolved = this.resolveExternalSourceConfig({
+				listSourceType: existing.listSourceType as string,
+				presetId: input.presetId,
+				inputConfig: existing.externalSourceConfig as SmartListExternalSourceConfig | undefined,
+				fallbackToInput: false
+			});
+			if (resolved) {
+				updates.externalSourceConfig = resolved;
 			}
 		}
 
@@ -292,6 +237,38 @@ export class SmartListService {
 			where: eq(smartLists.enabled, true),
 			orderBy: [desc(smartLists.createdAt)]
 		});
+	}
+
+	private resolveExternalSourceConfig(params: {
+		listSourceType: string;
+		presetId?: string;
+		inputConfig?: SmartListExternalSourceConfig;
+		fallbackToInput?: boolean;
+	}): SmartListExternalSourceConfig | undefined {
+		const { listSourceType, presetId, inputConfig, fallbackToInput = true } = params;
+
+		if (listSourceType === 'external-json' && presetId) {
+			const presetUrl = presetService.getListUrl(presetId, inputConfig?.url);
+			if (presetUrl) {
+				return {
+					url: presetUrl,
+					headers: inputConfig?.headers,
+					listId: inputConfig?.listId,
+					username: inputConfig?.username
+				};
+			}
+		}
+
+		if (fallbackToInput && inputConfig) {
+			return {
+				url: inputConfig.url,
+				headers: inputConfig.headers,
+				listId: inputConfig.listId,
+				username: inputConfig.username
+			};
+		}
+
+		return undefined;
 	}
 
 	private validateExternalSourceConfiguration({
