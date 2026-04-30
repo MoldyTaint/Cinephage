@@ -75,6 +75,11 @@ export const GET: RequestHandler = async ({ url }) => {
 				return json(result);
 			}
 
+			case 'countries': {
+				const result = await tmdb.getCountries();
+				return json(result);
+			}
+
 			default:
 				return json({ error: `Unknown helper: ${helper}` }, { status: 400 });
 		}
