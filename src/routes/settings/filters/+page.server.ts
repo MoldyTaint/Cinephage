@@ -34,20 +34,24 @@ export const load: PageServerLoad = async () => {
 	// Check if TMDB is configured
 	const tmdbConfigured = await tmdb.isConfigured();
 
-	// Fetch Genres (only if TMDB is configured)
+	// Fetch Genres, Countries, and Languages (only if TMDB is configured)
 	let genres: { id: number; name: string }[] = [];
+	let countries: { code: string; name: string }[] = [];
+	let languages: { code: string; name: string }[] = [];
+
 	if (tmdbConfigured) {
 		try {
-			const [movieGenres, tvGenres] = await Promise.all([
+			const [movieGenres, tvGenres, countriesData, languagesData] = await Promise.all([
 				tmdb.fetch('/genre/movie/list') as Promise<{
 					genres: { id: number; name: string }[];
 				} | null>,
-				tmdb.fetch('/genre/tv/list') as Promise<{ genres: { id: number; name: string }[] } | null>
+				tmdb.fetch('/genre/tv/list') as Promise<{ genres: { id: number; name: string }[] } | null>,
+				tmdb.getCountries(),
+				tmdb.getLanguages()
 			]);
 
-			// Handle null responses (API key not configured)
+			// Handle genres
 			if (movieGenres && tvGenres) {
-				// Merge and deduplicate
 				const genreMap = new Map<number, string>();
 				movieGenres.genres.forEach((g) => genreMap.set(g.id, g.name));
 				tvGenres.genres.forEach((g) => genreMap.set(g.id, g.name));
@@ -56,14 +60,36 @@ export const load: PageServerLoad = async () => {
 					.map(([id, name]) => ({ id, name }))
 					.sort((a, b) => a.name.localeCompare(b.name));
 			}
+
+			// Handle countries
+			if (countriesData) {
+				countries = countriesData
+					.map((c) => ({
+						code: c.iso_3166_1,
+						name: c.english_name
+					}))
+					.sort((a, b) => a.name.localeCompare(b.name));
+			}
+
+			// Handle languages
+			if (languagesData) {
+				languages = languagesData
+					.map((l) => ({
+						code: l.iso_639_1,
+						name: l.english_name
+					}))
+					.sort((a, b) => a.name.localeCompare(b.name));
+			}
 		} catch (e) {
-			logger.error({ err: e }, 'Failed to fetch genres');
+			logger.error({ err: e }, 'Failed to fetch TMDB configuration');
 		}
 	}
 
 	return {
 		filters: currentFilters,
 		genres,
+		countries,
+		languages,
 		tmdbConfigured
 	};
 };

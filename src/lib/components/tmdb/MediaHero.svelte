@@ -87,7 +87,9 @@
 			: null
 	);
 
-	const countryCode = $derived($page.data.defaultRegion || TMDB.DEFAULT_REGION);
+	const countryCode = $derived(
+		$page.url.searchParams.get('watch_region') || $page.data.defaultRegion || TMDB.DEFAULT_REGION
+	);
 
 	// Get release info for movies (certification and release types)
 	const releaseInfo = $derived.by(() => {

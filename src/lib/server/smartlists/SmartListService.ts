@@ -1191,13 +1191,17 @@ export class SmartListService {
 		// Watch Providers
 		if (filters.withWatchProviders?.length) {
 			params.with_watch_providers = filters.withWatchProviders.join('|');
-			params.watch_region = filters.watchRegion ?? TMDB.DEFAULT_REGION;
+			if (filters.watchRegion) {
+				params.watch_region = filters.watchRegion;
+			}
 		}
 
 		// Certification
 		if (filters.certification) {
 			params.certification = filters.certification;
-			params.certification_country = filters.certificationCountry ?? TMDB.DEFAULT_REGION;
+			if (filters.certificationCountry) {
+				params.certification_country = filters.certificationCountry;
+			}
 		}
 
 		// Runtime

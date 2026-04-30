@@ -62,7 +62,8 @@ export const load: PageServerLoad = async ({ params }) => {
 		}
 
 		return {
-			tv: tvWithStatus
+			tv: tvWithStatus,
+			defaultRegion: await tmdb.getRegion()
 		};
 	} catch (e) {
 		logger.error({ err: e, ...{ tvShowId: id } }, 'Failed to fetch TV show');

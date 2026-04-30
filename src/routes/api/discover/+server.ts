@@ -17,7 +17,7 @@ const discoverQuerySchema = z.object({
 	trending: z.enum(['day', 'week']).optional(),
 	top_rated: z.enum(['true', 'false']).optional(),
 	with_watch_providers: z.string().default(''),
-	watch_region: z.string().default(TMDB.DEFAULT_REGION),
+	watch_region: z.string().optional(),
 	with_genres: z.string().default(''),
 	with_original_language: z.string().nullable().default(null),
 	'primary_release_date.gte': z.string().nullable().default(null),

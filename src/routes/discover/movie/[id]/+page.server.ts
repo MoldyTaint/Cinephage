@@ -92,7 +92,8 @@ export const load: PageServerLoad = async ({ params }) => {
 
 		return {
 			movie: movieWithStatus,
-			collection: enrichedCollectionData
+			collection: enrichedCollectionData,
+			defaultRegion: await tmdb.getRegion()
 		};
 	} catch (e) {
 		logger.error({ err: e, ...{ movieId: id } }, 'Failed to fetch movie');

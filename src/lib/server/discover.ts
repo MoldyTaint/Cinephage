@@ -37,7 +37,7 @@ export interface DiscoverParams {
 	sortBy: string;
 	trending?: string | null;
 	withWatchProviders: string;
-	watchRegion: string;
+	watchRegion?: string;
 	withGenres: string;
 	withOriginalLanguage: string | null;
 	minDate: string | null;
@@ -77,7 +77,9 @@ export async function getDiscoverResults(params: DiscoverParams) {
 
 		if (withWatchProviders) {
 			queryParams.set('with_watch_providers', withWatchProviders);
-			queryParams.set('watch_region', watchRegion);
+			if (watchRegion) {
+				queryParams.set('watch_region', watchRegion);
+			}
 		}
 
 		if (withGenres) {
@@ -109,7 +111,9 @@ export async function getDiscoverResults(params: DiscoverParams) {
 
 		if (certification && endpoint.includes('movie')) {
 			queryParams.set('certification', certification);
-			queryParams.set('certification_country', watchRegion || TMDB.DEFAULT_REGION);
+			if (watchRegion) {
+				queryParams.set('certification_country', watchRegion);
+			}
 		}
 
 		return `${endpoint}?${queryParams.toString()}`;

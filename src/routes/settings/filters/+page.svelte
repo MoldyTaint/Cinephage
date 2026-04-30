@@ -22,25 +22,8 @@
 	let saving = $state(false);
 	let saveSuccess = $state(false);
 
-	const languages = [
-		{ code: 'en-US', name: 'English (US)' },
-		{ code: 'en-GB', name: 'English (UK)' },
-		{ code: 'fr-FR', name: 'French' },
-		{ code: 'de-DE', name: 'German' },
-		{ code: 'es-ES', name: 'Spanish' },
-		{ code: 'ja-JP', name: 'Japanese' },
-		{ code: 'ko-KR', name: 'Korean' }
-	];
-
-	const regions = [
-		{ code: 'US', name: 'United States' },
-		{ code: 'GB', name: 'United Kingdom' },
-		{ code: 'FR', name: 'France' },
-		{ code: 'DE', name: 'Germany' },
-		{ code: 'ES', name: 'Spain' },
-		{ code: 'JP', name: 'Japan' },
-		{ code: 'KR', name: 'South Korea' }
-	];
+	const languages = $derived(data.languages);
+	const regions = $derived(data.countries);
 
 	function toggleExcludedGenre(genreId: number, checked: boolean) {
 		if (checked) {
@@ -75,6 +58,8 @@
 
 			saveSuccess = true;
 			toasts.success(m.settings_filters_updated());
+			const { invalidateAll } = await import('$app/navigation');
+			await invalidateAll();
 		} catch (error) {
 			toasts.error(error instanceof Error ? error.message : m.settings_filters_failedToSave());
 		} finally {

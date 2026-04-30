@@ -40,6 +40,8 @@
 	let loadingCertifications = $state(false);
 	let languages = $state<Array<{ iso_639_1: string; english_name: string }>>([]);
 	let loadingLanguages = $state(false);
+	let countries = $state<Array<{ iso_3166_1: string; english_name: string }>>([]);
+	let loadingCountries = $state(false);
 
 	// People search
 	let peopleQuery = $state('');
@@ -134,9 +136,10 @@
 		loadCertifications();
 	});
 
-	// Load languages once
+	// Load languages and countries once
 	$effect(() => {
 		loadLanguages();
+		loadCountries();
 	});
 
 	// Initialize selected people from filters
@@ -211,6 +214,20 @@
 			}
 		} finally {
 			loadingLanguages = false;
+		}
+	}
+
+	async function loadCountries() {
+		if (countries.length > 0) return;
+		loadingCountries = true;
+		try {
+			const res = await fetch('/api/smartlists/helpers?helper=countries');
+			if (res.ok) {
+				countries = await res.json();
+				countries.sort((a, b) => a.english_name.localeCompare(b.english_name));
+			}
+		} finally {
+			loadingCountries = false;
 		}
 	}
 
@@ -874,16 +891,13 @@
 						class="select-bordered select w-full select-sm"
 						onchange={() => loadProviders()}
 					>
-						<option value="US">United States</option>
-						<option value="GB">United Kingdom</option>
-						<option value="CA">Canada</option>
-						<option value="AU">Australia</option>
-						<option value="DE">Germany</option>
-						<option value="FR">France</option>
-						<option value="IT">Italy</option>
-						<option value="ES">Spain</option>
-						<option value="NL">Netherlands</option>
-						<option value="JP">Japan</option>
+						{#if loadingCountries}
+							<option disabled>{m.smartlists_filter_loading()}</option>
+						{:else}
+							{#each countries as country (country.iso_3166_1)}
+								<option value={country.iso_3166_1}>{country.english_name}</option>
+							{/each}
+						{/if}
 					</select>
 				</div>
 
