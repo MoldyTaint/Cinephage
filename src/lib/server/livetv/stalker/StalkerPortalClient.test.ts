@@ -2,6 +2,7 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 import {
 	StalkerPortalClient,
 	detectStalkerEndpoint,
+	probeStalkerEndpoint,
 	type StalkerPortalConfig
 } from './StalkerPortalClient';
 
@@ -60,6 +61,60 @@ describe('detectStalkerEndpoint', () => {
 
 	it('returns portal.php for plain host URLs', () => {
 		expect(detectStalkerEndpoint('http://example.com')).toBe('portal.php');
+	});
+});
+
+describe('probeStalkerEndpoint', () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('returns portal.php when portal.php responds OK for stalker_portal URL', async () => {
+		vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
+			const urlStr = typeof url === 'string' ? url : url.toString();
+			if (urlStr.includes('/stalker_portal/c/portal.php')) {
+				return Promise.resolve(new Response('{"js":{"token":"OK"}}', { status: 200 }));
+			}
+			return Promise.resolve(new Response('', { status: 404 }));
+		});
+
+		const result = await probeStalkerEndpoint('http://xp1.tv/stalker_portal/c/');
+		expect(result).toBe('portal.php');
+	});
+
+	it('returns stalker_portal/server/load.php when that endpoint responds OK', async () => {
+		vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
+			const urlStr = typeof url === 'string' ? url : url.toString();
+			if (urlStr.includes('/stalker_portal/server/load.php')) {
+				return Promise.resolve(new Response('{"js":{"token":"OK"}}', { status: 200 }));
+			}
+			return Promise.resolve(new Response('', { status: 404 }));
+		});
+
+		const result = await probeStalkerEndpoint('http://tv.banjotv.tv/stalker_portal/c');
+		expect(result).toBe('stalker_portal/server/load.php');
+	});
+
+	it('returns heuristic fallback when portal is offline', async () => {
+		vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+			Promise.reject(new Error('ECONNREFUSED'))
+		);
+
+		const result = await probeStalkerEndpoint('http://offline.example.com/stalker_portal/c');
+		expect(result).toBe('stalker_portal/server/load.php');
+	});
+
+	it('returns portal.php for standard /c URLs', async () => {
+		vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
+			const urlStr = typeof url === 'string' ? url : url.toString();
+			if (urlStr.includes('/c/portal.php')) {
+				return Promise.resolve(new Response('{"js":{"token":"OK"}}', { status: 200 }));
+			}
+			return Promise.resolve(new Response('', { status: 404 }));
+		});
+
+		const result = await probeStalkerEndpoint('http://skunkytv.live/c');
+		expect(result).toBe('portal.php');
 	});
 });
 
@@ -144,5 +199,24 @@ describe('StalkerPortalClient endpoint URL generation', () => {
 
 		const url = spy.mock.calls[0]?.[0] as string;
 		expect(url).toContain('/c/portal.php?');
+	});
+
+	it('falls back to alternative endpoint on 404 for stalker_portal URLs', async () => {
+		const spy = vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
+			const urlStr = typeof url === 'string' ? url : url.toString();
+			if (urlStr.includes('/stalker_portal/server/load.php')) {
+				return Promise.resolve(new Response('', { status: 404 }));
+			}
+			return Promise.resolve(new Response('{"js":{"token":"FALLBACK"}}', { status: 200 }));
+		});
+
+		const client = new StalkerPortalClient(
+			createConfig({ portalUrl: 'http://xp1.tv/stalker_portal/c' })
+		);
+
+		await client.handshake();
+
+		const lastUrl = spy.mock.calls[spy.mock.calls.length - 1]?.[0] as string;
+		expect(lastUrl).toContain('/stalker_portal/c/portal.php');
 	});
 });

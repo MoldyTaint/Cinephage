@@ -12,7 +12,7 @@ import { createChildLogger } from '$lib/logging';
 import { toFriendlyLiveTvTestError } from '$lib/livetv/errorMessages';
 import { randomUUID } from 'node:crypto';
 import { getProvider, getProviderForAccount } from './providers';
-import { detectStalkerEndpoint } from './stalker/StalkerPortalClient';
+import { probeStalkerEndpoint } from './stalker/StalkerPortalClient';
 import { liveTvEvents } from './LiveTvEvents';
 import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service.js';
 import { ExternalServiceError } from '$lib/errors';
@@ -315,7 +315,7 @@ export class LiveTvAccountManager implements BackgroundService {
 				timezone: input.stalkerConfig.timezone || 'Europe/London',
 				username: input.stalkerConfig.username,
 				password: input.stalkerConfig.password,
-				endpoint: detectStalkerEndpoint(input.stalkerConfig.portalUrl)
+				endpoint: await probeStalkerEndpoint(input.stalkerConfig.portalUrl)
 			};
 		} else if (input.providerType === 'xstream' && input.xstreamConfig) {
 			xstreamConfig = {
@@ -454,10 +454,19 @@ export class LiveTvAccountManager implements BackgroundService {
 
 		// Update provider configs
 		if (updates.stalkerConfig && existing.providerType === 'stalker') {
-			updateData.stalkerConfig = {
+			const mergedConfig = {
 				...existing.stalkerConfig,
 				...updates.stalkerConfig
 			} as StalkerConfig;
+
+			if (
+				updates.stalkerConfig.portalUrl &&
+				updates.stalkerConfig.portalUrl !== existing.stalkerConfig?.portalUrl
+			) {
+				mergedConfig.endpoint = await probeStalkerEndpoint(updates.stalkerConfig.portalUrl);
+			}
+
+			updateData.stalkerConfig = mergedConfig;
 		}
 
 		if (updates.xstreamConfig && existing.providerType === 'xstream') {
