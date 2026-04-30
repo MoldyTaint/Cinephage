@@ -10,6 +10,7 @@
 		Image,
 		Download
 	} from 'lucide-svelte';
+	import { getPosterUrl } from '$lib/utils/poster-url.js';
 
 	interface PreviewItem {
 		id: number;
@@ -105,16 +106,6 @@
 
 	function getTitle(item: PreviewItem): string {
 		return item.title ?? item.name ?? 'Unknown';
-	}
-
-	function getPosterUrl(path: string | null): string {
-		if (!path) return '';
-		// Check if it's already a full URL (e.g., from IMDb)
-		if (path.startsWith('http://') || path.startsWith('https://')) {
-			return path;
-		}
-		// Otherwise, treat as TMDB path - use w185 for smaller posters
-		return `https://image.tmdb.org/t/p/w185${path}`;
 	}
 
 	function getRatingColor(rating: number): string {
@@ -229,7 +220,7 @@
 								>
 									{#if item.poster_path}
 										<img
-											src={getPosterUrl(item.poster_path)}
+											src={getPosterUrl(item.poster_path, 'w185')}
 											alt={getTitle(item)}
 											class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
 											loading="lazy"

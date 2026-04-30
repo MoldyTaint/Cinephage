@@ -14,6 +14,7 @@
 		Loader2
 	} from 'lucide-svelte';
 	import { formatBytes, getStatusColor } from '$lib/utils/format.js';
+	import { formatSeriesStatus } from '$lib/utils/format-status.js';
 
 	interface SeriesData {
 		tmdbId: number;
@@ -92,21 +93,11 @@
 	}: Props = $props();
 
 	function formatDate(dateString: string): string {
-		return new Date(dateString).toLocaleDateString(getLocale(), {
+		return new Date(dateString).toLocaleDateString('en-US', {
 			year: 'numeric',
 			month: 'short',
 			day: 'numeric'
 		});
-	}
-
-	function formatStatus(status: string | null): string {
-		if (!status) return m.common_unknown();
-		const s = status.toLowerCase();
-		if (s.includes('returning')) return m.library_seriesHeader_statusContinuing();
-		if (s.includes('production')) return m.library_seriesHeader_statusInProduction();
-		if (s.includes('ended')) return m.library_seriesHeader_statusEnded();
-		if (s.includes('canceled')) return m.library_seriesHeader_statusCancelled();
-		return status;
 	}
 </script>
 
@@ -158,7 +149,7 @@
 					>
 						{#if series.status}
 							<span class="badge {getStatusColor(series.status)} badge-sm">
-								{formatStatus(series.status)}
+								{formatSeriesStatus(series.status)}
 							</span>
 						{/if}
 						{#if series.network}
