@@ -33,7 +33,6 @@
 		formatRelativeTime,
 		getActivityCategoryTag
 	} from '$lib/components/activity/activity-display-utils.js';
-	import ActivityTypeTag from '$lib/components/activity/ActivityTypeTag.svelte';
 	import ActivityStatusPopover from '$lib/components/activity/ActivityStatusPopover.svelte';
 
 	let { data } = $props();
@@ -231,6 +230,16 @@
 		if (activity.status === 'removed') return false;
 		if (activity.mediaType === 'movie') return Boolean(activity.mediaId);
 		return Boolean(activity.seriesId || activity.mediaId);
+	}
+
+	function getCompactStatusLabel(
+		activity: UnifiedActivity,
+		fallbackLabel: string
+	): string | undefined {
+		const tag = getActivityCategoryTag(activity);
+		const label = getStatusLabel(activity, fallbackLabel);
+		if (tag) return `${tag.label} ${label}`;
+		return label;
 	}
 
 	function formatBytes(bytes: number): string {
@@ -930,15 +939,12 @@
 							<tbody>
 								{#each recentActivity as activity (activity.id)}
 									{@const config = statusConfig[activity.status] || statusConfig.no_results}
-									{@const categoryTag = getActivityCategoryTag(activity)}
 									<tr class="hover">
 										<td>
-											<div class="flex items-center gap-1">
-												{#if categoryTag}
-													<ActivityTypeTag tag={categoryTag} />
-												{/if}
-												<ActivityStatusPopover {activity} />
-											</div>
+											<ActivityStatusPopover
+												{activity}
+												compactLabel={getCompactStatusLabel(activity, config.label)}
+											/>
 										</td>
 										<td>
 											{#if canLinkToMedia(activity)}

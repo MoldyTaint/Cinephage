@@ -240,6 +240,16 @@
 		}
 		onToggleSelectionAll?.(selectableIds, selected);
 	}
+
+	function getCompactStatusLabel(
+		activity: UnifiedActivity,
+		fallbackLabel: string
+	): string | undefined {
+		const tag = getActivityCategoryTag(activity);
+		const label = getStatusLabel(activity, fallbackLabel);
+		if (tag) return `${tag.label} ${label}`;
+		return label;
+	}
 </script>
 
 {#if activities.length === 0}
@@ -252,18 +262,16 @@
 	<!-- Mobile: Card View -->
 	<div class="space-y-3">
 		{#each renderer.visible as activity (activity.id)}
+			{@const config = statusConfig[activity.status] || statusConfig.no_results}
 			{@const isExpanded = expandedRows.has(activity.id)}
 			{@const isFailedReasonExpanded = failedReasonExpandedRows.has(activity.id)}
 			{@const isQueueActionLoading = queueActionLoadingRows.has(activity.id)}
-			{@const categoryTag = getActivityCategoryTag(activity)}
 			<div class="rounded-xl bg-base-200 p-4">
 				<div class="flex items-start justify-between gap-2">
-					<div class="flex items-center gap-1">
-						{#if categoryTag}
-							<ActivityTypeTag tag={categoryTag} />
-						{/if}
-						<ActivityStatusPopover {activity} />
-					</div>
+					<ActivityStatusPopover
+						{activity}
+						compactLabel={getCompactStatusLabel(activity, config.label)}
+					/>
 					<div class="flex items-center gap-2">
 						<span class="text-xs text-base-content/60" title={getDisplayTime(activity)}>
 							{formatRelativeTime(getDisplayTime(activity))}

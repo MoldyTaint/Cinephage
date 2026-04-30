@@ -13,9 +13,10 @@
 
 	interface Props {
 		activity: UnifiedActivity;
+		compactLabel?: string;
 	}
 
-	let { activity }: Props = $props();
+	let { activity, compactLabel }: Props = $props();
 
 	let open = $state(false);
 
@@ -57,6 +58,8 @@
 		/>
 		{#if activity.status === 'downloading' && activity.downloadProgress !== undefined}
 			{activity.downloadProgress}%
+		{:else if compactLabel}
+			{compactLabel}
 		{:else}
 			{getStatusLabel(activity, config.label)}
 		{/if}
