@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { ChevronDown, ChevronUp, Trash2 } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface BlocklistEntry {
 		id: string;
@@ -39,12 +40,12 @@
 
 	function formatReason(reason: string): string {
 		const map: Record<string, string> = {
-			download_failed: 'Download Failed',
-			import_failed: 'Import Failed',
-			quality_mismatch: 'Quality Mismatch',
-			manual: 'Manual',
-			duplicate: 'Duplicate',
-			bad_release: 'Bad Release'
+			download_failed: m.blocklist_reason_downloadFailed(),
+			import_failed: m.blocklist_reason_importFailed(),
+			quality_mismatch: m.blocklist_reason_qualityMismatch(),
+			manual: m.blocklist_reason_manual(),
+			duplicate: m.blocklist_reason_duplicate(),
+			bad_release: m.blocklist_reason_badRelease()
 		};
 		return map[reason] ?? reason;
 	}
@@ -60,10 +61,10 @@
 	}
 
 	function getExpiryLabel(expiresAt: string | null): { label: string; variant: string } {
-		if (!expiresAt) return { label: 'Permanent', variant: 'badge-ghost' };
+		if (!expiresAt) return { label: m.blocklist_duration_permanent(), variant: 'badge-ghost' };
 		const now = Date.now();
 		const expires = new Date(expiresAt).getTime();
-		if (expires < now) return { label: 'Expired', variant: 'badge-warning' };
+		if (expires < now) return { label: m.blocklist_duration_expired(), variant: 'badge-warning' };
 		const hoursLeft = Math.round((expires - now) / (1000 * 60 * 60));
 		if (hoursLeft < 24) return { label: `${hoursLeft}h left`, variant: 'badge-info' };
 		const daysLeft = Math.round(hoursLeft / 24);

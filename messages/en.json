@@ -3907,5 +3907,16 @@
 	"activity_popover_reason": "Reason:",
 	"activity_popover_release": "Release:",
 	"activity_popover_when": "When:",
-	"activity_popover_viewInActivity": "View in Activity"
+	"activity_popover_viewInActivity": "View in Activity",
+	"blocklist_reason_downloadFailed": "Download Failed",
+	"blocklist_reason_importFailed": "Import Failed",
+	"blocklist_reason_qualityMismatch": "Quality Mismatch",
+	"blocklist_reason_manual": "Manual",
+	"blocklist_reason_duplicate": "Duplicate",
+	"blocklist_reason_badRelease": "Bad Release",
+	"blocklist_duration_permanent": "Permanent",
+	"blocklist_duration_expired": "Expired",
+	"blocklist_selected": "{selectedCount} selected",
+	"blocklist_deleteSelected": "Delete Selected",
+	"blocklist_purgeExpired": "Purge Expired"
 }
