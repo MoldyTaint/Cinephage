@@ -22,7 +22,7 @@
 		ArrowUp,
 		ArrowDown
 	} from 'lucide-svelte';
-	import { resolvePath } from '$lib/utils/routing';
+	import { getMediaLink, canLinkToMedia } from '$lib/utils/media-link.js';
 	import { formatBytes } from '$lib/utils/format';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { createProgressiveRenderer } from '$lib/utils/progressive-render.svelte.js';
@@ -145,22 +145,6 @@
 		} else {
 			failedReasonExpandedRows.add(id);
 		}
-	}
-
-	// Get media link
-	function getMediaLink(activity: UnifiedActivity): string {
-		if (activity.mediaType === 'movie') {
-			return resolvePath(`/library/movie/${activity.mediaId}`);
-		}
-		// For episodes, link to the series
-		return resolvePath(`/library/tv/${activity.seriesId || activity.mediaId}`);
-	}
-
-	function canLinkToMedia(activity: UnifiedActivity): boolean {
-		// Removed items should remain readable in history but should not deep-link to deleted media.
-		if (activity.status === 'removed') return false;
-		if (activity.mediaType === 'movie') return Boolean(activity.mediaId);
-		return Boolean(activity.seriesId || activity.mediaId);
 	}
 
 	// Protocol labels
