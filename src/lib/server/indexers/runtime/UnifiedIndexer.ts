@@ -26,7 +26,8 @@ import type {
 } from '../types';
 import type { YamlDefinition } from '../schema/yamlDefinition';
 import { resolveCategoryId } from '../schema/yamlDefinition';
-import type { IndexerRecord, ProtocolSettings } from '$lib/server/db/schema';
+import type { IndexerRecord } from '$lib/server/db/schema';
+import type { ProtocolSettings } from '$lib/server/indexers/types/index.js';
 import { TemplateEngine, createTemplateEngine } from '../engine/TemplateEngine';
 import { FilterEngine, createFilterEngine } from '../engine/FilterEngine';
 import { SelectorEngine, createSelectorEngine } from '../engine/SelectorEngine';

@@ -10,6 +10,7 @@ import {
 } from 'drizzle-orm/sqlite-core';
 import { relations } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
+import type { ProtocolSettings } from '$lib/server/indexers/types/index.js';
 
 // ============================================================================
 // Better Auth Tables
@@ -213,38 +214,6 @@ export type NewIndexerDefinitionRecord = typeof indexerDefinitions.$inferInsert;
 // ============================================================================
 // Indexers - User-configured indexer instances
 // ============================================================================
-
-/**
- * Protocol-specific settings types
- */
-export interface TorrentProtocolSettings {
-	minimumSeeders: number;
-	seedRatio: string | null;
-	seedTime: number | null;
-	packSeedTime: number | null;
-	rejectDeadTorrents: boolean;
-}
-
-export interface UsenetProtocolSettings {
-	minimumRetention: number | null;
-	maximumRetention: number | null;
-	downloadPriority: 'normal' | 'high' | 'low';
-	preferCompleteNzb: boolean;
-	rejectPasswordProtected: boolean;
-}
-
-export interface StreamingProtocolSettings {
-	baseUrl: string | null;
-	preferredQuality: '4k' | '1080p' | '720p' | '480p' | 'auto';
-	includeInAutoSearch: boolean;
-	enabledProviders: string[] | null;
-	blockedProviders: string[] | null;
-}
-
-export type ProtocolSettings =
-	| TorrentProtocolSettings
-	| UsenetProtocolSettings
-	| StreamingProtocolSettings;
 
 /**
  * Indexers - User-configured indexer instances.

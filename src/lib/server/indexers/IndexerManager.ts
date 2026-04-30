@@ -6,12 +6,12 @@
  */
 
 import { db } from '$lib/server/db';
+import { indexers as indexersTable } from '$lib/server/db/schema';
 import {
-	indexers as indexersTable,
 	type TorrentProtocolSettings,
 	type UsenetProtocolSettings,
 	type StreamingProtocolSettings
-} from '$lib/server/db/schema';
+} from './types/index.js';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { createChildLogger } from '$lib/logging';
@@ -283,8 +283,7 @@ export class IndexerManager {
 				baseUrl: null,
 				preferredQuality: 'auto',
 				includeInAutoSearch: true,
-				enabledProviders: null,
-				blockedProviders: null
+				blockedProviders: undefined
 			};
 		}
 		return null;
