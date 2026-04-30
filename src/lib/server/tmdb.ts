@@ -75,6 +75,7 @@ export const tmdb = {
 		_cachedApiKey = null;
 		_cachedFilters = null;
 		_settingsCacheTimestamp = 0;
+		_settingsCachePromise = null;
 	},
 
 	async getRegion(): Promise<string> {
