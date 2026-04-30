@@ -547,8 +547,8 @@
 					{mediaType}
 					bind:filters
 					forceCloseSignal={filterCloseSignal}
-					on:sectionOpen={handleFilterSectionOpen}
-					on:sortByChange={(e) => (sortBy = e.detail.sortBy)}
+					onSectionOpen={handleFilterSectionOpen}
+					onSortByChange={(data) => (sortBy = data.sortBy)}
 				/>
 			{/if}
 

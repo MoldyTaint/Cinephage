@@ -5,26 +5,27 @@
 	import { page } from '$app/stores';
 	import { TMDB } from '$lib/config/constants.js';
 
-	import { createEventDispatcher } from 'svelte';
-
 	interface Props {
 		mediaType: 'movie' | 'tv';
 		filters: SmartListFilters;
 		forceCloseSignal?: number;
+		onSortByChange?: (data: { sortBy: string }) => void;
+		onSectionOpen?: (data: { section: string }) => void;
 	}
 
-	let { mediaType, filters = $bindable(), forceCloseSignal = 0 }: Props = $props();
+	let {
+		mediaType,
+		filters = $bindable(),
+		forceCloseSignal = 0,
+		onSortByChange,
+		onSectionOpen
+	}: Props = $props();
 
 	$effect(() => {
 		if (!filters.watchRegion) {
 			filters.watchRegion = $page.data.defaultRegion || TMDB.DEFAULT_REGION;
 		}
 	});
-
-	const dispatch = createEventDispatcher<{
-		sortByChange: { sortBy: string };
-		sectionOpen: { section: string };
-	}>();
 
 	// Section collapse state (single-open accordion, default basic)
 	let openSection = $state<string | null>('basic');
@@ -110,14 +111,14 @@
 		filters = { ...preset.filters };
 
 		// Dispatch event to update sortBy in parent
-		dispatch('sortByChange', { sortBy: preset.sortBy });
+		onSortByChange?.({ sortBy: preset.sortBy });
 	}
 
 	function toggleSection(section: string) {
 		const willOpen = openSection !== section;
 		openSection = willOpen ? section : null;
 		if (willOpen) {
-			dispatch('sectionOpen', { section });
+			onSectionOpen?.({ section });
 		}
 	}
 
