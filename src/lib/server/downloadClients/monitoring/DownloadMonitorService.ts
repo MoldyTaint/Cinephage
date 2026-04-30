@@ -2143,6 +2143,38 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			// Mark as failed (creates history record, emits queue:failed event)
 			await this.markFailed(item.id, errorMessage);
 
+			// Auto-blocklist the stalled release to prevent re-grabbing the same dead torrent
+			try {
+				const { blocklistService } =
+					await import('$lib/server/monitoring/specifications/BlocklistSpecification.js');
+				await blocklistService.addToBlocklist(
+					{
+						title: item.title,
+						infoHash: item.infoHash ?? undefined,
+						indexerId: item.indexerId ?? undefined,
+						quality: item.quality ?? undefined,
+						size: item.size ?? undefined,
+						protocol: item.protocol
+					},
+					{
+						movieId: item.movieId ?? undefined,
+						seriesId: item.seriesId ?? undefined,
+						episodeIds: item.episodeIds ?? undefined,
+						reason: 'download_failed',
+						message: errorMessage,
+						expiresInHours: 72
+					}
+				);
+			} catch (blocklistError) {
+				logger.warn(
+					{
+						title: item.title,
+						error: blocklistError instanceof Error ? blocklistError.message : String(blocklistError)
+					},
+					'Failed to add stalled release to blocklist'
+				);
+			}
+
 			// Reset search cooldown so the monitoring cycle re-searches immediately
 			try {
 				if (item.movieId) {
