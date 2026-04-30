@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { resolvePath } from '$lib/utils/routing';
 	import { TASK_TYPE_LABELS, type UnifiedActivity } from '$lib/types/activity';
 	import {
@@ -91,27 +92,27 @@
 
 				{#if activity.mediaTitle}
 					<div>
-						<span class="text-base-content/50">Media:</span>
+						<span class="text-base-content/50">{m.activity_popover_media()}</span>
 						<span class="ml-1">{activity.mediaTitle}</span>
 					</div>
 				{/if}
 
 				{#if activity.statusReason}
 					<div>
-						<span class="text-base-content/50">Reason:</span>
+						<span class="text-base-content/50">{m.activity_popover_reason()}</span>
 						<span class="ml-1">{activity.statusReason}</span>
 					</div>
 				{/if}
 
 				{#if activity.releaseTitle}
 					<div>
-						<span class="text-base-content/50">Release:</span>
+						<span class="text-base-content/50">{m.activity_popover_release()}</span>
 						<span class="ml-1 text-xs break-all">{activity.releaseTitle}</span>
 					</div>
 				{/if}
 
 				<div>
-					<span class="text-base-content/50">When:</span>
+					<span class="text-base-content/50">{m.activity_popover_when()}</span>
 					<span class="ml-1">{formatRelativeTime(activity.startedAt)}</span>
 				</div>
 
@@ -121,7 +122,7 @@
 						class="flex link items-center gap-1 text-xs link-primary link-hover"
 						onclick={close}
 					>
-						View in Activity
+						{m.activity_popover_viewInActivity()}
 						<ExternalLink class="h-3 w-3" />
 					</a>
 				</div>
