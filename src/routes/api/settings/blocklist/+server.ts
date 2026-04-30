@@ -4,8 +4,8 @@ import { blocklistService } from '$lib/server/monitoring/specifications/Blocklis
 import { z } from 'zod';
 
 export const GET: RequestHandler = async ({ url }) => {
-	const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50'), 200);
-	const offset = parseInt(url.searchParams.get('offset') ?? '0');
+	const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50') || 50, 200);
+	const offset = parseInt(url.searchParams.get('offset') ?? '0') || 0;
 	const reason = url.searchParams.get('reason') ?? undefined;
 	const protocol = url.searchParams.get('protocol') ?? undefined;
 	const activeOnly = url.searchParams.get('activeOnly') === 'true';
