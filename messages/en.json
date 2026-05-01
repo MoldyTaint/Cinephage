@@ -4036,5 +4036,8 @@
 	"library_episodeProgress": "{episodeFileCount} of {episodeCount} episodes",
 	"sectionRow_scrollLeft": "Scroll left",
 	"sectionRow_scrollRight": "Scroll right",
-	"nav_blocklist": "Blocklist"
+	"nav_blocklist": "Blocklist",
+	"blocklist_tableSelectAll": "Select all",
+	"blocklist_tableSelectEntry": "Select {title}",
+	"blocklist_tableRemoveEntry": "Remove {title}"
 }

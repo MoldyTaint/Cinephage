@@ -27,6 +27,7 @@
 	import { createSSE } from '$lib/sse';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import { formatBytes } from '$lib/utils/format.js';
+	import { getMediaLink, canLinkToMedia } from '$lib/utils/media-link.js';
 	import {
 		statusConfig,
 		getStatusLabel,
@@ -217,20 +218,6 @@
 	function formatDate(dateStr: string | null): string {
 		if (!dateStr) return m.common_unknown();
 		return new Date(dateStr).toLocaleDateString();
-	}
-
-	// Get media link
-	function getMediaLink(activity: UnifiedActivity): string {
-		if (activity.mediaType === 'movie') {
-			return resolvePath(`/library/movie/${activity.mediaId}`);
-		}
-		return resolvePath(`/library/tv/${activity.seriesId || activity.mediaId}`);
-	}
-
-	function canLinkToMedia(activity: UnifiedActivity): boolean {
-		if (activity.status === 'removed') return false;
-		if (activity.mediaType === 'movie') return Boolean(activity.mediaId);
-		return Boolean(activity.seriesId || activity.mediaId);
 	}
 
 	function getCompactStatusLabel(

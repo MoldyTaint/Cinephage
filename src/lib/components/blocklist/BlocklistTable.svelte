@@ -66,9 +66,10 @@
 		const expires = new Date(expiresAt).getTime();
 		if (expires < now) return { label: m.blocklist_duration_expired(), variant: 'badge-warning' };
 		const hoursLeft = Math.round((expires - now) / (1000 * 60 * 60));
-		if (hoursLeft < 24) return { label: `${hoursLeft}h left`, variant: 'badge-info' };
+		if (hoursLeft < 24)
+			return { label: m.blocklist_hoursLeft({ hours: hoursLeft }), variant: 'badge-info' };
 		const daysLeft = Math.round(hoursLeft / 24);
-		return { label: `${daysLeft}d left`, variant: 'badge-ghost' };
+		return { label: m.blocklist_daysLeft({ days: daysLeft }), variant: 'badge-ghost' };
 	}
 
 	function protocolBadge(protocol: string | null): string {
@@ -98,7 +99,7 @@
 						checked={allSelected}
 						indeterminate={someSelected}
 						onchange={(e) => onSelectAll((e.currentTarget as HTMLInputElement).checked)}
-						aria-label="Select all"
+						aria-label={m.blocklist_tableSelectAll()}
 					/>
 				</th>
 				<th>
@@ -106,7 +107,7 @@
 						class="btn flex items-center gap-1 btn-ghost btn-xs"
 						onclick={() => onSort('title')}
 					>
-						Title
+						{m.blocklist_tableTitle()}
 						<svelte:component this={sortIcon('title')} class="h-3 w-3" />
 					</button>
 				</th>
@@ -115,18 +116,18 @@
 						class="btn flex items-center gap-1 btn-ghost btn-xs"
 						onclick={() => onSort('reason')}
 					>
-						Reason
+						{m.blocklist_tableReason()}
 						<svelte:component this={sortIcon('reason')} class="h-3 w-3" />
 					</button>
 				</th>
-				<th>Message</th>
-				<th>Protocol</th>
+				<th>{m.blocklist_tableMessage()}</th>
+				<th>{m.blocklist_tableProtocol()}</th>
 				<th>
 					<button
 						class="btn flex items-center gap-1 btn-ghost btn-xs"
 						onclick={() => onSort('createdAt')}
 					>
-						Added
+						{m.blocklist_tableAdded()}
 						<svelte:component this={sortIcon('createdAt')} class="h-3 w-3" />
 					</button>
 				</th>
@@ -135,11 +136,11 @@
 						class="btn flex items-center gap-1 btn-ghost btn-xs"
 						onclick={() => onSort('expiresAt')}
 					>
-						Expires
+						{m.blocklist_tableExpires()}
 						<svelte:component this={sortIcon('expiresAt')} class="h-3 w-3" />
 					</button>
 				</th>
-				<th class="w-16">Actions</th>
+				<th class="w-16">{m.blocklist_tableActions()}</th>
 			</tr>
 		</thead>
 		<tbody>
@@ -151,7 +152,7 @@
 							class="checkbox checkbox-xs"
 							checked={selectedIds.has(entry.id)}
 							onchange={(e) => onSelect(entry.id, (e.currentTarget as HTMLInputElement).checked)}
-							aria-label="Select {entry.title}"
+							aria-label={m.blocklist_tableSelectEntry({ title: entry.title })}
 						/>
 					</td>
 					<td>
@@ -189,7 +190,7 @@
 						<button
 							class="btn text-error btn-ghost btn-xs"
 							onclick={() => onDelete(entry)}
-							aria-label="Remove {entry.title}"
+							aria-label={m.blocklist_tableRemoveEntry({ title: entry.title })}
 						>
 							<Trash2 class="h-3.5 w-3.5" />
 						</button>
