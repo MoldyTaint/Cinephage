@@ -522,23 +522,21 @@
 								{/if}
 							</span>
 						</th>
-						<th>Quality</th>
-						<th>Group</th>
+						<th>{m.activity_table_quality()}</th>
+						<th>{m.activity_table_group()}</th>
 						<th
 							class="cursor-pointer select-none hover:bg-base-200"
 							onclick={() => handleSort('size')}
 						>
 							<span class="flex items-center gap-1">
-								Size
+								{m.common_size()}
 								{#if onSort}
 									{@const Icon = getSortIcon('size')}
 									<Icon class="h-3 w-3 opacity-50" />
 								{/if}
 							</span>
 						</th>
-						<th>Source</th>
-					{/if}
-					<th>Progress</th>
+						<th>{m.activity_table_source()}</th>
 					<th
 						class="cursor-pointer select-none hover:bg-base-200"
 						onclick={() => handleSort('time')}
@@ -737,7 +735,7 @@
 						<tr class="bg-base-200/50">
 							<td colspan={(compact ? 5 : 10) + (selectionMode ? 1 : 0)} class="py-3">
 								<div class="px-4">
-									<div class="mb-2 text-sm font-medium">Timeline</div>
+									<div class="mb-2 text-sm font-medium">{m.activity_table_timeline()}</div>
 									<div class="flex flex-wrap items-center gap-2 text-xs">
 										{#each activity.timeline ?? [] as event, i (event.timestamp + event.type)}
 											<span class="flex items-center gap-1 rounded bg-base-300 px-2 py-1">
@@ -754,14 +752,14 @@
 
 									{#if activity.importedPath}
 										<div class="mt-3">
-											<span class="text-xs text-base-content/60">Imported to: </span>
+										<span class="text-xs text-base-content/60">{m.activity_table_importedTo()} </span>
 											<span class="font-mono text-xs">{activity.importedPath}</span>
 										</div>
 									{/if}
 
 									{#if activity.isUpgrade && activity.oldScore !== undefined && activity.newScore !== undefined}
 										<div class="mt-2">
-											<span class="text-xs text-base-content/60">Upgrade: </span>
+											<span class="text-xs text-base-content/60">{m.activity_table_upgrade()} </span>
 											<span class="text-xs">{activity.oldScore} → {activity.newScore}</span>
 										</div>
 									{/if}

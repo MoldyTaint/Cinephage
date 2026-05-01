@@ -4026,5 +4026,11 @@
 	"hero_metadata_firstAired": "First Aired",
 	"hero_metadata_nextEpisode": "Next Episode",
 	"hero_metadata_studio": "Studio",
-	"hero_metadata_whereToWatch": "Where to Watch"
+	"hero_metadata_whereToWatch": "Where to Watch",
+	"activity_table_quality": "Quality",
+	"activity_table_group": "Group",
+	"activity_table_source": "Source",
+	"activity_table_timeline": "Timeline",
+	"activity_table_importedTo": "Imported to:",
+	"activity_table_upgrade": "Upgrade:"
 }
