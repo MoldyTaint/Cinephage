@@ -4032,5 +4032,9 @@
 	"activity_table_source": "Source",
 	"activity_table_timeline": "Timeline",
 	"activity_table_importedTo": "Imported to:",
-	"activity_table_upgrade": "Upgrade:"
+	"activity_table_upgrade": "Upgrade:",
+	"library_episodeProgress": "{episodeFileCount} of {episodeCount} episodes",
+	"sectionRow_scrollLeft": "Scroll left",
+	"sectionRow_scrollRight": "Scroll right",
+	"nav_blocklist": "Blocklist"
 }

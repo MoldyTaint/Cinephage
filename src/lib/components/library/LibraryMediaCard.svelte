@@ -147,7 +147,7 @@
 			<!-- Episode count for series -->
 			<div
 				class="badge border-none bg-base-100/80 badge-sm text-base-content shadow-sm"
-				title="{episodeFileCount} of {episodeCount} episodes"
+				title={m.library_episodeProgress({ episodeFileCount, episodeCount })}
 			>
 				{episodeFileCount}/{episodeCount}
 			</div>
