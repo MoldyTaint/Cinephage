@@ -537,6 +537,8 @@
 							</span>
 						</th>
 						<th>{m.activity_table_source()}</th>
+					{/if}
+					<th>Progress</th>
 					<th
 						class="cursor-pointer select-none hover:bg-base-200"
 						onclick={() => handleSort('time')}
@@ -752,14 +754,18 @@
 
 									{#if activity.importedPath}
 										<div class="mt-3">
-										<span class="text-xs text-base-content/60">{m.activity_table_importedTo()} </span>
+											<span class="text-xs text-base-content/60"
+												>{m.activity_table_importedTo()}
+											</span>
 											<span class="font-mono text-xs">{activity.importedPath}</span>
 										</div>
 									{/if}
 
 									{#if activity.isUpgrade && activity.oldScore !== undefined && activity.newScore !== undefined}
 										<div class="mt-2">
-											<span class="text-xs text-base-content/60">{m.activity_table_upgrade()} </span>
+											<span class="text-xs text-base-content/60"
+												>{m.activity_table_upgrade()}
+											</span>
 											<span class="text-xs">{activity.oldScore} → {activity.newScore}</span>
 										</div>
 									{/if}
