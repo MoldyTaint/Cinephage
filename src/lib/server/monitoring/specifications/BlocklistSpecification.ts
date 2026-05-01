@@ -135,9 +135,7 @@ class BlocklistService {
 				or(eq(blocklist.indexerId, release.indexerId), isNull(blocklist.indexerId))!
 			);
 
-		let entryId: string;
-
-		await db.transaction(async (tx) => {
+		const entryId = await db.transaction(async (tx) => {
 			await tx.delete(blocklist).where(and(...dedupConditions));
 
 			const [entry] = await tx
@@ -159,7 +157,7 @@ class BlocklistService {
 				})
 				.returning();
 
-			entryId = entry.id;
+			return entry.id;
 		});
 
 		return entryId;

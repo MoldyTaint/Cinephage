@@ -220,7 +220,7 @@ async function runValidation(options: TestOptions): Promise<ValidationResult[]> 
 	console.log(`\n${c.bold}${c.cyan}▸ Phase 1: YAML Validation${c.reset}\n`);
 
 	// Dynamically import to avoid issues before module resolution
-	const { safeValidateYamlDefinition, formatValidationError } =
+	const { safeValidateYamlDefinition } =
 		await import('../src/lib/server/indexers/schema/yamlDefinition.js');
 
 	const results: ValidationResult[] = [];

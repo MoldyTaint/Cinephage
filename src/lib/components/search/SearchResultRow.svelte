@@ -257,7 +257,9 @@
 						class="btn btn-sm btn-accent"
 						onclick={handleStream}
 						disabled={grabbing || streaming || !canUsenetStream}
-						title={canUsenetStream ? m.search_stream() : (usenetStreamUnavailableReason ?? m.search_unavailable())}
+						title={canUsenetStream
+							? m.search_stream()
+							: (usenetStreamUnavailableReason ?? m.search_unavailable())}
 					>
 						{#if streaming}
 							<Loader2 size={14} class="animate-spin" />
@@ -319,7 +321,9 @@
 						{#each Object.entries(release.scoringResult.breakdown) as [key, cat] (key)}
 							{#if cat && cat.score !== 0}
 								{@const label =
-									key === 'releaseGroupTier' ? m.search_group() : key.charAt(0).toUpperCase() + key.slice(1)}
+									key === 'releaseGroupTier'
+										? m.search_group()
+										: key.charAt(0).toUpperCase() + key.slice(1)}
 								{@const scoreClass =
 									cat.score > 0 ? 'bg-success/10 text-success' : 'bg-error/10 text-error'}
 								{@const prefix = cat.score > 0 ? '+' : ''}
@@ -332,17 +336,20 @@
 						{#if release.scoreComponents}
 							{#if release.scoreComponents.enhancementBonus > 0}
 								<span class="rounded-full bg-success/10 px-2 py-1 text-xs text-success">
-									+{release.scoreComponents.enhancementBonus} {m.search_enhancement()}
+									+{release.scoreComponents.enhancementBonus}
+									{m.search_enhancement()}
 								</span>
 							{/if}
 							{#if release.scoreComponents.packBonus > 0}
 								<span class="rounded-full bg-success/10 px-2 py-1 text-xs text-success">
-									+{release.scoreComponents.packBonus} {m.search_pack()}
+									+{release.scoreComponents.packBonus}
+									{m.search_pack()}
 								</span>
 							{/if}
 							{#if release.scoreComponents.hardcodedSubsPenalty < 0}
 								<span class="rounded-full bg-error/10 px-2 py-1 text-xs text-error">
-									{release.scoreComponents.hardcodedSubsPenalty} {m.search_hardcodedSubs()}
+									{release.scoreComponents.hardcodedSubsPenalty}
+									{m.search_hardcodedSubs()}
 								</span>
 							{/if}
 						{/if}

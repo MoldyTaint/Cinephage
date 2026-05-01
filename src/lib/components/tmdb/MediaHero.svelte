@@ -395,7 +395,7 @@
 
 					{#if releaseInfo?.releases && releaseInfo.releases.length > 1}
 						{#each releaseInfo.releases
-							.filter((_r, i) => priorityOrder[i] !== 3)
+							.filter((r) => r.type !== m.hero_releaseType_theatrical())
 							.slice(0, 2) as release (release.type)}
 							<div>
 								<div class="text-sm text-base-content/50">{release.type}</div>

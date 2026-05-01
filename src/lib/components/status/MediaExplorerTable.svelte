@@ -187,7 +187,10 @@
 							{#if progress !== null}
 								<div class="mt-1.5">
 									<div class="flex items-center gap-2 text-xs text-base-content/60">
-										<span>{item.episodeFileCount ?? 0}/{item.episodeCount ?? 0} {m.mediaExplorer_episodes()}</span>
+										<span
+											>{item.episodeFileCount ?? 0}/{item.episodeCount ?? 0}
+											{m.mediaExplorer_episodes()}</span
+										>
 										{#if progress === 100}
 											<span class="badge badge-xs badge-success">{m.mediaExplorer_complete()}</span>
 										{:else if progress > 0}
@@ -438,16 +441,25 @@
 						<td>
 							<div class="flex items-center gap-1.5">
 								{#if item.monitored}
-									<span class="badge badge-sm badge-success" title={m.mediaExplorer_statusMonitored()}>
+									<span
+										class="badge badge-sm badge-success"
+										title={m.mediaExplorer_statusMonitored()}
+									>
 										<Eye class="h-3.5 w-3.5" />
 									</span>
 								{:else}
-									<span class="badge badge-ghost badge-sm" title={m.mediaExplorer_statusUnmonitored()}>
+									<span
+										class="badge badge-ghost badge-sm"
+										title={m.mediaExplorer_statusUnmonitored()}
+									>
 										<EyeOff class="h-3.5 w-3.5" />
 									</span>
 								{/if}
 								{#if item.hasFile}
-									<span class="badge badge-sm badge-success" title={m.mediaExplorer_statusFileAvailable()}>
+									<span
+										class="badge badge-sm badge-success"
+										title={m.mediaExplorer_statusFileAvailable()}
+									>
 										<HardDrive class="h-3.5 w-3.5" />
 									</span>
 								{:else}
