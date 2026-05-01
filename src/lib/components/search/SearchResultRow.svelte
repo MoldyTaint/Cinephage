@@ -15,6 +15,7 @@
 	} from 'lucide-svelte';
 	import { formatBytes } from '$lib/utils/format';
 	import type { ScoreComponents } from '$lib/server/quality/types.js';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Release {
 		guid: string;
@@ -94,7 +95,7 @@
 		const diffMs = now.getTime() - publishDate.getTime();
 		const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-		if (diffDays === 0) return 'Today';
+		if (diffDays === 0) return m.search_today();
 		if (diffDays === 1) return '1d';
 		if (diffDays < 7) return `${diffDays}d`;
 		if (diffDays < 30) return `${Math.floor(diffDays / 7)}w`;
@@ -177,7 +178,7 @@
 				class="shrink-0 rounded px-1.5 py-0.5 text-sm font-semibold {getScoreColor(
 					release.totalScore
 				)}"
-				title="Quality score"
+				title={m.search_qualityScore()}
 			>
 				{release.totalScore}
 			</span>
@@ -196,7 +197,7 @@
 					<span class="badge badge-ghost badge-sm">{release.parsed.releaseGroup}</span>
 				{/if}
 				{#if release.torrent?.freeleech || release.torrent?.downloadFactor === 0}
-					<span class="badge badge-sm badge-success">Freeleech</span>
+					<span class="badge badge-sm badge-success">{m.search_freeleechBadge()}</span>
 				{/if}
 			</div>
 		</div>
@@ -243,12 +244,12 @@
 			{#if grabbed}
 				<span class="badge gap-1 badge-success">
 					<Check size={12} />
-					Grabbed
+					{m.search_grabbedBadge()}
 				</span>
 			{:else if error}
 				<span class="badge gap-1 badge-error" title={error}>
 					<X size={12} />
-					Failed
+					{m.search_failedBadge()}
 				</span>
 			{:else}
 				{#if release.protocol === 'usenet' && showUsenetStreamButton}
@@ -256,7 +257,7 @@
 						class="btn btn-sm btn-accent"
 						onclick={handleStream}
 						disabled={grabbing || streaming || !canUsenetStream}
-						title={canUsenetStream ? 'Stream' : (usenetStreamUnavailableReason ?? 'Unavailable')}
+						title={canUsenetStream ? m.search_stream() : (usenetStreamUnavailableReason ?? m.search_unavailable())}
 					>
 						{#if streaming}
 							<Loader2 size={14} class="animate-spin" />
@@ -284,7 +285,7 @@
 					target="_blank"
 					rel="noopener noreferrer"
 					class="btn btn-ghost btn-sm"
-					title="View comments"
+					title={m.search_viewComments()}
 				>
 					<ExternalLink size={14} />
 				</a>
@@ -294,7 +295,7 @@
 			<button
 				class="btn btn-ghost btn-sm"
 				onclick={() => (expanded = !expanded)}
-				title={expanded ? 'Collapse details' : 'Expand details'}
+				title={expanded ? m.search_collapseDetails() : m.search_expandDetails()}
 			>
 				{#if expanded}
 					<ChevronUp size={14} />
@@ -312,13 +313,13 @@
 			{#if release.scoringResult?.breakdown}
 				<div class="mb-4">
 					<h4 class="mb-2 text-xs font-medium tracking-wide text-base-content/50 uppercase">
-						Score Breakdown
+						{m.search_scoreBreakdown()}
 					</h4>
 					<div class="flex flex-wrap gap-2">
 						{#each Object.entries(release.scoringResult.breakdown) as [key, cat] (key)}
 							{#if cat && cat.score !== 0}
 								{@const label =
-									key === 'releaseGroupTier' ? 'Group' : key.charAt(0).toUpperCase() + key.slice(1)}
+									key === 'releaseGroupTier' ? m.search_group() : key.charAt(0).toUpperCase() + key.slice(1)}
 								{@const scoreClass =
 									cat.score > 0 ? 'bg-success/10 text-success' : 'bg-error/10 text-error'}
 								{@const prefix = cat.score > 0 ? '+' : ''}
@@ -331,17 +332,17 @@
 						{#if release.scoreComponents}
 							{#if release.scoreComponents.enhancementBonus > 0}
 								<span class="rounded-full bg-success/10 px-2 py-1 text-xs text-success">
-									+{release.scoreComponents.enhancementBonus} Enhancement
+									+{release.scoreComponents.enhancementBonus} {m.search_enhancement()}
 								</span>
 							{/if}
 							{#if release.scoreComponents.packBonus > 0}
 								<span class="rounded-full bg-success/10 px-2 py-1 text-xs text-success">
-									+{release.scoreComponents.packBonus} Pack
+									+{release.scoreComponents.packBonus} {m.search_pack()}
 								</span>
 							{/if}
 							{#if release.scoreComponents.hardcodedSubsPenalty < 0}
 								<span class="rounded-full bg-error/10 px-2 py-1 text-xs text-error">
-									{release.scoreComponents.hardcodedSubsPenalty} Hardcoded Subs
+									{release.scoreComponents.hardcodedSubsPenalty} {m.search_hardcodedSubs()}
 								</span>
 							{/if}
 						{/if}
@@ -354,39 +355,39 @@
 				<!-- Left: technical details -->
 				<div>
 					<h4 class="mb-2 text-xs font-medium tracking-wide text-base-content/50 uppercase">
-						Technical Details
+						{m.search_technicalDetails()}
 					</h4>
 					<dl class="space-y-1.5 text-sm">
 						{#if release.parsed?.resolution}
 							<div class="flex justify-between">
-								<dt class="text-base-content/60">Resolution</dt>
+								<dt class="text-base-content/60">{m.search_labelResolution()}</dt>
 								<dd class="font-medium">{release.parsed.resolution}</dd>
 							</div>
 						{/if}
 						{#if release.parsed?.source}
 							<div class="flex justify-between">
-								<dt class="text-base-content/60">Source</dt>
+								<dt class="text-base-content/60">{m.search_labelSource()}</dt>
 								<dd class="font-medium">{release.parsed.source}</dd>
 							</div>
 						{/if}
 						{#if release.parsed?.codec}
 							<div class="flex justify-between">
-								<dt class="text-base-content/60">Codec</dt>
+								<dt class="text-base-content/60">{m.search_labelCodec()}</dt>
 								<dd class="font-medium">{release.parsed.codec}</dd>
 							</div>
 						{/if}
 						{#if release.parsed?.hdr}
 							<div class="flex justify-between">
-								<dt class="text-base-content/60">HDR</dt>
+								<dt class="text-base-content/60">{m.search_labelHdr()}</dt>
 								<dd class="font-medium">{release.parsed.hdr}</dd>
 							</div>
 						{/if}
 						<div class="flex justify-between">
-							<dt class="text-base-content/60">Protocol</dt>
+							<dt class="text-base-content/60">{m.search_labelProtocol()}</dt>
 							<dd class="font-medium capitalize">{release.protocol}</dd>
 						</div>
 						<div class="flex justify-between">
-							<dt class="text-base-content/60">Size</dt>
+							<dt class="text-base-content/60">{m.search_labelSize()}</dt>
 							<dd class="font-medium">{formatBytes(release.size)}</dd>
 						</div>
 					</dl>
@@ -395,46 +396,46 @@
 				<!-- Right: torrent/indexer info -->
 				<div>
 					<h4 class="mb-2 text-xs font-medium tracking-wide text-base-content/50 uppercase">
-						Indexer & Torrent
+						{m.search_indexerAndTorrent()}
 					</h4>
 					<dl class="space-y-1.5 text-sm">
 						<div class="flex justify-between">
-							<dt class="text-base-content/60">Indexer</dt>
+							<dt class="text-base-content/60">{m.search_labelIndexer()}</dt>
 							<dd class="font-medium">{release.indexerName}</dd>
 						</div>
 						{#if release.infoHash}
 							<div class="flex justify-between">
-								<dt class="text-base-content/60">Hash</dt>
+								<dt class="text-base-content/60">{m.search_labelHash()}</dt>
 								<dd class="truncate font-mono text-xs">{release.infoHash}</dd>
 							</div>
 						{/if}
 						{#if release.torrent?.freeleech || release.torrent?.downloadFactor === 0}
 							<div class="flex justify-between">
-								<dt class="text-base-content/60">Ratio</dt>
-								<dd class="font-medium text-success">Freeleech</dd>
+								<dt class="text-base-content/60">{m.search_labelRatio()}</dt>
+								<dd class="font-medium text-success">{m.search_freeleechBadge()}</dd>
 							</div>
 						{/if}
 						{#if release.torrent?.uploadFactor && release.torrent.uploadFactor > 1}
 							<div class="flex justify-between">
-								<dt class="text-base-content/60">Upload</dt>
+								<dt class="text-base-content/60">{m.search_labelUpload()}</dt>
 								<dd class="font-medium text-info">{release.torrent.uploadFactor}x</dd>
 							</div>
 						{/if}
 						{#if release.seeders !== undefined}
 							<div class="flex justify-between">
-								<dt class="text-base-content/60">Seeders</dt>
+								<dt class="text-base-content/60">{m.search_labelSeeders()}</dt>
 								<dd class="font-medium text-success">{release.seeders}</dd>
 							</div>
 						{/if}
 						{#if release.leechers !== undefined}
 							<div class="flex justify-between">
-								<dt class="text-base-content/60">Leechers</dt>
+								<dt class="text-base-content/60">{m.search_labelLeechers()}</dt>
 								<dd class="font-medium text-error">{release.leechers}</dd>
 							</div>
 						{/if}
 						<div class="flex justify-between">
-							<dt class="text-base-content/60">Published</dt>
-							<dd class="font-medium">{formatAge(release.publishDate)} ago</dd>
+							<dt class="text-base-content/60">{m.search_labelPublished()}</dt>
+							<dd class="font-medium">{formatAge(release.publishDate)} {m.search_ago()}</dd>
 						</div>
 					</dl>
 				</div>
@@ -450,7 +451,7 @@
 						class="btn btn-outline btn-sm"
 					>
 						<Download size={14} />
-						Direct Download
+						{m.search_directDownload()}
 					</a>
 				{/if}
 				{#if release.magnetUrl}
@@ -460,7 +461,7 @@
 						rel="noopener noreferrer"
 						class="btn btn-outline btn-sm"
 					>
-						Magnet Link
+						{m.search_magnetLink()}
 					</a>
 				{/if}
 				{#if release.commentsUrl}
@@ -471,7 +472,7 @@
 						class="btn btn-ghost btn-sm"
 					>
 						<ExternalLink size={14} />
-						Comments
+						{m.search_comments()}
 					</a>
 				{/if}
 			</div>
