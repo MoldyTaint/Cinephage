@@ -1,72 +1,39 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createTestDb, destroyTestDb } from '../../../../test/db-helper';
 import { DEFAULT_NAMING_PRESET_SELECTION } from '$lib/naming/editor-state';
 
-const mockRows = new Map<string, string>();
+const testDb = createTestDb();
 
-vi.mock('$lib/server/db', () => {
-	const createQuery = () => ({
-		all: () => Array.from(mockRows.entries()).map(([key, value]) => ({ key, value })),
-		get: () => undefined,
-		where(condition: { right: string }) {
-			return {
-				get: () => {
-					const value = mockRows.get(condition.right);
-					return value === undefined ? undefined : { key: condition.right, value };
-				},
-				all: () => {
-					const value = mockRows.get(condition.right);
-					return value === undefined ? [] : [{ key: condition.right, value }];
-				}
-			};
-		}
-	});
+vi.mock('$lib/server/db', () => ({
+	get db() {
+		return testDb.db;
+	},
+	get sqlite() {
+		return testDb.sqlite;
+	},
+	initializeDatabase: vi.fn().mockResolvedValue(undefined)
+}));
 
-	return {
-		db: {
-			select: () => ({
-				from: () => createQuery()
-			}),
-			insert: () => ({
-				values: ({ key, value }: { key: string; value: string }) => ({
-					run: () => {
-						mockRows.set(key, value);
-					}
-				})
-			}),
-			update: () => ({
-				set: ({ value }: { value: string }) => ({
-					where: (condition: { right: string }) => ({
-						run: () => {
-							mockRows.set(condition.right, value);
-						}
-					})
-				})
-			}),
-			delete: () => ({
-				run: () => {
-					mockRows.clear();
-				}
-			})
-		}
-	};
-});
+const { namingSettingsService } = await import('./NamingSettingsService');
+const { namingSettings } = await import('$lib/server/db/schema');
 
 describe('NamingSettingsService', () => {
-	beforeEach(async () => {
-		mockRows.clear();
-		vi.resetModules();
+	beforeEach(() => {
+		testDb.db.delete(namingSettings).run();
+		namingSettingsService.invalidateCache();
+	});
+
+	afterAll(() => {
+		destroyTestDb(testDb);
 	});
 
 	it('returns default preset selection when nothing is stored', async () => {
-		const { namingSettingsService } = await import('./NamingSettingsService');
 		expect(await namingSettingsService.getPresetSelection()).toEqual(
 			DEFAULT_NAMING_PRESET_SELECTION
 		);
 	});
 
 	it('persists preset selection metadata with naming settings', async () => {
-		const { namingSettingsService } = await import('./NamingSettingsService');
-
 		const result = await namingSettingsService.updateSettings({
 			config: {
 				replaceSpacesWith: '',
@@ -88,5 +55,28 @@ describe('NamingSettingsService', () => {
 			selectedDetailPresetId: 'balanced',
 			selectedCustomPresetId: 'custom-1'
 		});
+	});
+
+	it('reads back persisted settings from the database', async () => {
+		await namingSettingsService.updateSettings({
+			config: {
+				replaceSpacesWith: '',
+				includeReleaseGroup: false
+			},
+			presetSelection: {
+				selectedServerPresetId: 'jellyfin',
+				selectedStylePresetId: 'scene',
+				selectedDetailPresetId: 'balanced',
+				selectedCustomPresetId: 'custom-1'
+			}
+		});
+
+		namingSettingsService.invalidateCache();
+
+		const presetSelection = await namingSettingsService.getPresetSelection();
+		expect(presetSelection.selectedServerPresetId).toBe('jellyfin');
+		expect(presetSelection.selectedStylePresetId).toBe('scene');
+		expect(presetSelection.selectedDetailPresetId).toBe('balanced');
+		expect(presetSelection.selectedCustomPresetId).toBe('custom-1');
 	});
 });
