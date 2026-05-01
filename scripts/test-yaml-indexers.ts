@@ -1,5 +1,4 @@
 #!/usr/bin/env npx tsx
-/* eslint-disable @typescript-eslint/no-unused-vars */
 /**
  * YAML Indexer Test Suite
  *
@@ -19,7 +18,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { performance } from 'perf_hooks';
-import { randomUUID } from 'crypto';
 
 // =============================================================================
 // ANSI Colors
