@@ -1,6 +1,7 @@
 import type { UnifiedActivity } from '$lib/types/activity';
 import { isImportFailedActivity, TASK_TYPE_LABELS } from '$lib/types/activity';
 import * as m from '$lib/paraglide/messages.js';
+import { getLocale } from '$lib/paraglide/runtime.js';
 import {
 	CheckCircle2,
 	XCircle,
@@ -123,7 +124,7 @@ export function formatRelativeTime(dateStr: string | null | undefined): string {
 	if (minutes < 60) return m.activity_relativeTime_minutesAgo({ count: minutes });
 	if (hours < 24) return m.activity_relativeTime_hoursAgo({ count: hours });
 	if (days < 7) return m.activity_relativeTime_daysAgo({ count: days });
-	return date.toLocaleDateString();
+	return date.toLocaleDateString(getLocale());
 }
 
 /**
@@ -174,7 +175,7 @@ export function getDisplayTime(activity: UnifiedActivity): string | null {
  */
 export function formatTimestamp(dateStr: string): string {
 	const date = new Date(dateStr);
-	return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+	return date.toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' });
 }
 
 const SUBTITLE_TASK_TYPES = new Set(['missingSubtitles', 'subtitleUpgrade']);
@@ -196,22 +197,22 @@ export function getActivityCategoryTag(
 	activity: Pick<UnifiedActivity, 'taskType' | 'activitySource'>
 ): ActivityCategoryTag | null {
 	if (activity.taskType && SUBTITLE_TASK_TYPES.has(activity.taskType)) {
-		return { label: 'Sub', variant: 'badge-ghost badge-xs' };
+		return { label: m.activity_tag_sub(), variant: 'badge-ghost badge-xs' };
 	}
 	if (activity.taskType && MEDIA_TASK_TYPES.has(activity.taskType)) {
-		return { label: 'Media', variant: 'badge-primary badge-xs' };
+		return { label: m.activity_tag_media(), variant: 'badge-primary badge-xs' };
 	}
 	if (activity.taskType === 'smartListRefresh') {
-		return { label: 'List', variant: 'badge-ghost badge-xs' };
+		return { label: m.activity_tag_list(), variant: 'badge-ghost badge-xs' };
 	}
 	if (activity.taskType === 'media_move') {
-		return { label: 'Move', variant: 'badge-ghost badge-xs' };
+		return { label: m.activity_tag_move(), variant: 'badge-ghost badge-xs' };
 	}
 	if (
 		!activity.taskType &&
 		(activity.activitySource === 'queue' || activity.activitySource === 'download_history')
 	) {
-		return { label: 'Download', variant: 'badge-accent badge-xs' };
+		return { label: m.activity_tag_download(), variant: 'badge-accent badge-xs' };
 	}
 	return null;
 }

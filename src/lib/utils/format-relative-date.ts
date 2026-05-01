@@ -1,4 +1,5 @@
 import * as m from '$lib/paraglide/messages.js';
+import { getLocale } from '$lib/paraglide/runtime.js';
 
 export function formatRelativeDate(dateStr: string): { display: string; full: string } {
 	const date = new Date(dateStr);
@@ -6,7 +7,7 @@ export function formatRelativeDate(dateStr: string): { display: string; full: st
 	const diffMs = now.getTime() - date.getTime();
 	const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-	const full = date.toLocaleDateString();
+	const full = date.toLocaleDateString(getLocale());
 
 	if (diffDays === 0) return { display: m.library_libraryMediaTable_today(), full };
 	if (diffDays === 1) return { display: m.library_libraryMediaTable_yesterday(), full };

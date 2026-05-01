@@ -2,23 +2,7 @@
 	import { ChevronDown, ChevronUp, Trash2 } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages.js';
 
-	interface BlocklistEntry {
-		id: string;
-		title: string;
-		infoHash: string | null;
-		indexerId: string | null;
-		movieId: string | null;
-		seriesId: string | null;
-		episodeIds: string[] | null;
-		reason: string;
-		message: string | null;
-		sourceTitle: string | null;
-		quality: { resolution?: string; source?: string; codec?: string; hdr?: string } | null;
-		size: number | null;
-		protocol: string | null;
-		createdAt: string | null;
-		expiresAt: string | null;
-	}
+	import type { BlocklistEntry } from './index.js';
 
 	interface Props {
 		entries: BlocklistEntry[];
@@ -50,9 +34,11 @@
 		return map[reason] ?? reason;
 	}
 
+	import { getLocale } from '$lib/paraglide/runtime.js';
+
 	function formatDate(dateStr: string | null): string {
 		if (!dateStr) return '-';
-		return new Date(dateStr).toLocaleDateString(undefined, {
+		return new Date(dateStr).toLocaleDateString(getLocale(), {
 			month: 'short',
 			day: 'numeric',
 			hour: '2-digit',
@@ -81,11 +67,6 @@
 		};
 		return map[protocol] ?? 'badge-ghost';
 	}
-
-	function sortIcon(column: typeof sort.column): typeof ChevronDown | typeof ChevronUp {
-		if (sort.column !== column) return ChevronDown;
-		return sort.direction === 'asc' ? ChevronUp : ChevronDown;
-	}
 </script>
 
 <div class="overflow-x-auto">
@@ -108,7 +89,11 @@
 						onclick={() => onSort('title')}
 					>
 						{m.blocklist_tableTitle()}
-						<svelte:component this={sortIcon('title')} class="h-3 w-3" />
+						{#if sort.column === 'title' && sort.direction === 'asc'}
+							<ChevronUp class="h-3 w-3" />
+						{:else}
+							<ChevronDown class="h-3 w-3" />
+						{/if}
 					</button>
 				</th>
 				<th>
@@ -117,7 +102,11 @@
 						onclick={() => onSort('reason')}
 					>
 						{m.blocklist_tableReason()}
-						<svelte:component this={sortIcon('reason')} class="h-3 w-3" />
+						{#if sort.column === 'reason' && sort.direction === 'asc'}
+							<ChevronUp class="h-3 w-3" />
+						{:else}
+							<ChevronDown class="h-3 w-3" />
+						{/if}
 					</button>
 				</th>
 				<th>{m.blocklist_tableMessage()}</th>
@@ -128,7 +117,11 @@
 						onclick={() => onSort('createdAt')}
 					>
 						{m.blocklist_tableAdded()}
-						<svelte:component this={sortIcon('createdAt')} class="h-3 w-3" />
+						{#if sort.column === 'createdAt' && sort.direction === 'asc'}
+							<ChevronUp class="h-3 w-3" />
+						{:else}
+							<ChevronDown class="h-3 w-3" />
+						{/if}
 					</button>
 				</th>
 				<th>
@@ -137,7 +130,11 @@
 						onclick={() => onSort('expiresAt')}
 					>
 						{m.blocklist_tableExpires()}
-						<svelte:component this={sortIcon('expiresAt')} class="h-3 w-3" />
+						{#if sort.column === 'expiresAt' && sort.direction === 'asc'}
+							<ChevronUp class="h-3 w-3" />
+						{:else}
+							<ChevronDown class="h-3 w-3" />
+						{/if}
 					</button>
 				</th>
 				<th class="w-16">{m.blocklist_tableActions()}</th>

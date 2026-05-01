@@ -5,25 +5,8 @@
 	import { SettingsPage } from '$lib/components/ui/settings';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { BlocklistTable, BlocklistBulkActions } from '$lib/components/blocklist';
+	import type { BlocklistEntry } from '$lib/components/blocklist';
 	import * as m from '$lib/paraglide/messages.js';
-
-	interface BlocklistEntry {
-		id: string;
-		title: string;
-		infoHash: string | null;
-		indexerId: string | null;
-		movieId: string | null;
-		seriesId: string | null;
-		episodeIds: string[] | null;
-		reason: string;
-		message: string | null;
-		sourceTitle: string | null;
-		quality: { resolution?: string; source?: string; codec?: string; hdr?: string } | null;
-		size: number | null;
-		protocol: string | null;
-		createdAt: string | null;
-		expiresAt: string | null;
-	}
 
 	let { data }: { data: { entries: BlocklistEntry[]; total: number } } = $props();
 
