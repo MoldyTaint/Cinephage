@@ -81,10 +81,11 @@ export const load: PageServerLoad = async ({ parent }) => {
 		if (!row.isHDR) {
 			sdrCount += row.count;
 		} else {
-			hdrBreakdown.push({ label: (row.hdrFormat ?? 'HDR').toUpperCase(), count: row.count });
+			hdrBreakdown.push({ label: row.hdrFormat ?? 'HDR', count: row.count });
 		}
 	}
 	if (sdrCount > 0) hdrBreakdown.unshift({ label: 'SDR', count: sdrCount });
+	hdrBreakdown.sort((a, b) => b.count - a.count);
 
 	const audioCodecRows = await db
 		.select({

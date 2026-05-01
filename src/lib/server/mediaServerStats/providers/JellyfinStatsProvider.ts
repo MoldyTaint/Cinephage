@@ -4,6 +4,7 @@ import type {
 	SyncedMediaItem,
 	SyncResult
 } from '../types.js';
+import { normalizeJellyfinHdr } from '../hdr-normalize.js';
 
 const PAGE_SIZE = 1000;
 
@@ -95,6 +96,8 @@ export class JellyfinStatsProvider implements MediaServerStatsProvider {
 		const isHDR =
 			videoRangeType !== undefined && videoRangeType !== null && videoRangeType !== 'SDR';
 
+		const normalizedHdr = isHDR ? normalizeJellyfinHdr(videoRangeType) : null;
+
 		return {
 			serverItemId: raw.Id ?? '',
 			tmdbId: this.parseIntOrNull(raw.ProviderIds?.Tmdb),
@@ -116,7 +119,7 @@ export class JellyfinStatsProvider implements MediaServerStatsProvider {
 			width: videoStream?.Width ?? null,
 			height: videoStream?.Height ?? null,
 			isHDR,
-			hdrFormat: isHDR ? videoRangeType : null,
+			hdrFormat: normalizedHdr,
 			videoBitrate: videoStream?.BitRate ?? null,
 			audioCodec: mainAudio?.Codec ?? null,
 			audioChannels: mainAudio?.Channels ?? null,

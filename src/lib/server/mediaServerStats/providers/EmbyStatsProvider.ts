@@ -4,6 +4,7 @@ import type {
 	SyncedMediaItem,
 	SyncResult
 } from '../types.js';
+import { normalizeEmbyHdr } from '../hdr-normalize.js';
 
 const PAGE_SIZE = 1000;
 const TIMEOUT_MS = 30_000;
@@ -160,11 +161,11 @@ export class EmbyStatsProvider implements MediaServerStatsProvider {
 
 		const extendedType = videoStream.ExtendedVideoType;
 		if (extendedType && extendedType !== 'None') {
-			return { isHDR: true, hdrFormat: extendedType };
+			return { isHDR: true, hdrFormat: normalizeEmbyHdr(extendedType) ?? extendedType };
 		}
 
 		if (videoStream.VideoRange === 'HDR') {
-			return { isHDR: true, hdrFormat: null };
+			return { isHDR: true, hdrFormat: 'HDR' };
 		}
 
 		return { isHDR: false, hdrFormat: null };

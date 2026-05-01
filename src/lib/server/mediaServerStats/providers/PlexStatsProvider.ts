@@ -4,6 +4,7 @@ import type {
 	SyncedMediaItem,
 	SyncResult
 } from '../types.js';
+import { buildPlexHdrLabel } from '../hdr-normalize.js';
 
 const PAGE_SIZE = 1000;
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -235,14 +236,18 @@ export class PlexStatsProvider implements MediaServerStatsProvider {
 		const videoStream = streams.find((s: any) => s.streamType === 1);
 		if (!videoStream) return { isHDR: false, hdrFormat: null };
 
-		const colorTrc = String(videoStream.colorTrc ?? '').toLowerCase();
+		const doViPresent =
+			videoStream.DOVIPresent === true ||
+			videoStream.DOVIPresent === 1 ||
+			videoStream.DOVIPresent === '1';
+		const doViProfile =
+			videoStream.DOVIBLCompatID != null ? Number(videoStream.DOVIBLCompatID) : null;
+		const colorTrc = String(videoStream.colorTrc ?? '');
 
-		if (colorTrc.includes('smpte2084')) {
-			return { isHDR: true, hdrFormat: 'HDR10' };
-		}
+		const label = buildPlexHdrLabel({ doViPresent, doViProfile, colorTrc });
 
-		if (colorTrc.includes('arib-std-b67')) {
-			return { isHDR: true, hdrFormat: 'HLG' };
+		if (label) {
+			return { isHDR: true, hdrFormat: label };
 		}
 
 		const allValues = Object.values(videoStream).map((v) => String(v ?? '').toLowerCase());
@@ -252,7 +257,7 @@ export class PlexStatsProvider implements MediaServerStatsProvider {
 
 		if (hasHDRKeyword) {
 			const hasDV = allValues.some((v) => v.includes('dolbyvision') || v.includes('dolby vision'));
-			return { isHDR: true, hdrFormat: hasDV ? 'Dolby Vision' : 'HDR10' };
+			return { isHDR: true, hdrFormat: hasDV ? 'DV' : 'HDR10' };
 		}
 
 		return { isHDR: false, hdrFormat: null };

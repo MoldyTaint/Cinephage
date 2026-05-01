@@ -171,6 +171,84 @@ describe('EmbyStatsProvider', () => {
 		expect(result.items[0].hdrFormat).toBe('HDR10');
 	});
 
+	it('should normalize Emby DolbyVision to Dolby Vision', async () => {
+		const dvItem = makeEmbyItem({
+			MediaSources: [
+				{
+					Container: 'mkv',
+					MediaStreams: [
+						{
+							Type: 'Video',
+							Codec: 'hevc',
+							ExtendedVideoType: 'DolbyVision'
+						}
+					]
+				}
+			]
+		});
+
+		mockFetch.mockResolvedValueOnce(mockAdminResponse());
+		mockFetch.mockResolvedValueOnce(mockFetchResponse({ TotalRecordCount: 1, Items: [dvItem] }));
+
+		const provider = new EmbyStatsProvider(mockConfig);
+		const result = await provider.fetchAllItems();
+
+		expect(result.items[0].isHDR).toBe(true);
+		expect(result.items[0].hdrFormat).toBe('DV');
+	});
+
+	it('should normalize Emby Hdr10Plus to HDR10+', async () => {
+		const item = makeEmbyItem({
+			MediaSources: [
+				{
+					Container: 'mkv',
+					MediaStreams: [
+						{
+							Type: 'Video',
+							Codec: 'hevc',
+							ExtendedVideoType: 'Hdr10Plus'
+						}
+					]
+				}
+			]
+		});
+
+		mockFetch.mockResolvedValueOnce(mockAdminResponse());
+		mockFetch.mockResolvedValueOnce(mockFetchResponse({ TotalRecordCount: 1, Items: [item] }));
+
+		const provider = new EmbyStatsProvider(mockConfig);
+		const result = await provider.fetchAllItems();
+
+		expect(result.items[0].isHDR).toBe(true);
+		expect(result.items[0].hdrFormat).toBe('HDR10+');
+	});
+
+	it('should normalize Emby HyperLogGamma to HLG', async () => {
+		const item = makeEmbyItem({
+			MediaSources: [
+				{
+					Container: 'mkv',
+					MediaStreams: [
+						{
+							Type: 'Video',
+							Codec: 'hevc',
+							ExtendedVideoType: 'HyperLogGamma'
+						}
+					]
+				}
+			]
+		});
+
+		mockFetch.mockResolvedValueOnce(mockAdminResponse());
+		mockFetch.mockResolvedValueOnce(mockFetchResponse({ TotalRecordCount: 1, Items: [item] }));
+
+		const provider = new EmbyStatsProvider(mockConfig);
+		const result = await provider.fetchAllItems();
+
+		expect(result.items[0].isHDR).toBe(true);
+		expect(result.items[0].hdrFormat).toBe('HLG');
+	});
+
 	it('should handle pagination', async () => {
 		const items = Array.from({ length: 3 }, (_, i) =>
 			makeEmbyItem({ Id: `emby-item-${i}`, Name: `Movie ${i}` })

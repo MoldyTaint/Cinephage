@@ -228,6 +228,136 @@ describe('JellyfinStatsProvider', () => {
 		expect(result.items[0].hdrFormat).toBe('HDR10');
 	});
 
+	it('should normalize DOVIWithHDR10 to Dolby Vision HDR10', async () => {
+		const dvItem = makeJellyfinItem({
+			MediaSources: [
+				{
+					Container: 'mkv',
+					MediaStreams: [
+						{
+							Type: 'Video',
+							Codec: 'hevc',
+							VideoRangeType: 'DOVIWithHDR10'
+						}
+					]
+				}
+			]
+		});
+
+		mockFetch.mockResolvedValueOnce(mockAdminResponse());
+		mockFetch.mockResolvedValueOnce(mockFetchResponse({ TotalRecordCount: 1, Items: [dvItem] }));
+
+		const provider = new JellyfinStatsProvider(mockConfig);
+		const result = await provider.fetchAllItems();
+
+		expect(result.items[0].isHDR).toBe(true);
+		expect(result.items[0].hdrFormat).toBe('DVHDR10');
+	});
+
+	it('should normalize HDR10Plus', async () => {
+		const item = makeJellyfinItem({
+			MediaSources: [
+				{
+					Container: 'mkv',
+					MediaStreams: [
+						{
+							Type: 'Video',
+							Codec: 'hevc',
+							VideoRangeType: 'HDR10Plus'
+						}
+					]
+				}
+			]
+		});
+
+		mockFetch.mockResolvedValueOnce(mockAdminResponse());
+		mockFetch.mockResolvedValueOnce(mockFetchResponse({ TotalRecordCount: 1, Items: [item] }));
+
+		const provider = new JellyfinStatsProvider(mockConfig);
+		const result = await provider.fetchAllItems();
+
+		expect(result.items[0].isHDR).toBe(true);
+		expect(result.items[0].hdrFormat).toBe('HDR10+');
+	});
+
+	it('should normalize DOVIWithHDR10Plus to Dolby Vision HDR10+', async () => {
+		const item = makeJellyfinItem({
+			MediaSources: [
+				{
+					Container: 'mkv',
+					MediaStreams: [
+						{
+							Type: 'Video',
+							Codec: 'hevc',
+							VideoRangeType: 'DOVIWithHDR10Plus'
+						}
+					]
+				}
+			]
+		});
+
+		mockFetch.mockResolvedValueOnce(mockAdminResponse());
+		mockFetch.mockResolvedValueOnce(mockFetchResponse({ TotalRecordCount: 1, Items: [item] }));
+
+		const provider = new JellyfinStatsProvider(mockConfig);
+		const result = await provider.fetchAllItems();
+
+		expect(result.items[0].isHDR).toBe(true);
+		expect(result.items[0].hdrFormat).toBe('DVHDR10+');
+	});
+
+	it('should normalize DOVI to DV', async () => {
+		const item = makeJellyfinItem({
+			MediaSources: [
+				{
+					Container: 'mkv',
+					MediaStreams: [
+						{
+							Type: 'Video',
+							Codec: 'hevc',
+							VideoRangeType: 'DOVI'
+						}
+					]
+				}
+			]
+		});
+
+		mockFetch.mockResolvedValueOnce(mockAdminResponse());
+		mockFetch.mockResolvedValueOnce(mockFetchResponse({ TotalRecordCount: 1, Items: [item] }));
+
+		const provider = new JellyfinStatsProvider(mockConfig);
+		const result = await provider.fetchAllItems();
+
+		expect(result.items[0].isHDR).toBe(true);
+		expect(result.items[0].hdrFormat).toBe('DV');
+	});
+
+	it('should mark SDR as not HDR', async () => {
+		const sdrItem = makeJellyfinItem({
+			MediaSources: [
+				{
+					Container: 'mkv',
+					MediaStreams: [
+						{
+							Type: 'Video',
+							Codec: 'h264',
+							VideoRangeType: 'SDR'
+						}
+					]
+				}
+			]
+		});
+
+		mockFetch.mockResolvedValueOnce(mockAdminResponse());
+		mockFetch.mockResolvedValueOnce(mockFetchResponse({ TotalRecordCount: 1, Items: [sdrItem] }));
+
+		const provider = new JellyfinStatsProvider(mockConfig);
+		const result = await provider.fetchAllItems();
+
+		expect(result.items[0].isHDR).toBe(false);
+		expect(result.items[0].hdrFormat).toBeNull();
+	});
+
 	it('should extract audio and subtitle languages', async () => {
 		const multilingualItem = makeJellyfinItem({
 			MediaSources: [
