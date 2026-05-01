@@ -11,15 +11,15 @@
 	import { page } from '$app/stores';
 	import { TMDB } from '$lib/config/constants.js';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
-	// Release type labels
-	const RELEASE_TYPE_LABELS: Record<number, string> = {
-		1: 'Premiere',
-		2: 'Limited Theatrical',
-		3: 'Theatrical',
-		4: 'Digital',
-		5: 'Physical',
-		6: 'TV'
+	const RELEASE_TYPE_LABELS: Record<number, () => string> = {
+		1: () => m.hero_releaseType_premiere(),
+		2: () => m.hero_releaseType_limitedTheatrical(),
+		3: () => m.hero_releaseType_theatrical(),
+		4: () => m.hero_releaseType_digital(),
+		5: () => m.hero_releaseType_physical(),
+		6: () => m.hero_releaseType_tv()
 	};
 
 	// Extended type that includes library status (added by enrichWithLibraryStatus)
@@ -121,7 +121,7 @@
 			if (release) {
 				const releaseDate = new Date(release.release_date);
 				releases.push({
-					type: RELEASE_TYPE_LABELS[typeNum],
+					type: RELEASE_TYPE_LABELS[typeNum]!(),
 					date: formatDateShort(release.release_date),
 					isPast: releaseDate <= now
 				});
@@ -154,8 +154,8 @@
 				}
 			}
 		} catch (e) {
-			toasts.error('Failed to check library status', {
-				description: e instanceof Error ? e.message : 'Failed to check library status'
+			toasts.error(m.hero_failedToCheckLibraryStatus(), {
+				description: e instanceof Error ? e.message : m.hero_failedToCheckLibraryStatus()
 			});
 		}
 	}
@@ -265,7 +265,7 @@
 								class="flex items-center gap-2 rounded-lg bg-success/20 px-3 py-1.5 text-sm text-success"
 							>
 								<Check class="h-4 w-4" />
-								<span>Available</span>
+								<span>{m.hero_available()}</span>
 							</div>
 							{#if libraryPageLink}
 								<a
@@ -273,7 +273,7 @@
 									class="btn gap-1 btn-outline btn-sm btn-success"
 								>
 									<Film class="h-4 w-4" />
-									View in Library
+									{m.hero_viewInLibrary()}
 								</a>
 							{/if}
 						{:else}
@@ -281,7 +281,7 @@
 								class="flex items-center gap-2 rounded-lg bg-warning/20 px-3 py-1.5 text-sm text-warning"
 							>
 								<Clock class="h-4 w-4" />
-								<span>Monitored</span>
+								<span>{m.hero_monitored()}</span>
 							</div>
 							{#if libraryPageLink}
 								<a
@@ -289,21 +289,21 @@
 									class="btn gap-1 btn-outline btn-sm btn-warning"
 								>
 									<Film class="h-4 w-4" />
-									View in Library
+									{m.hero_viewInLibrary()}
 								</a>
 							{/if}
 						{/if}
 					{:else}
 						<button class="btn gap-1 btn-sm btn-primary" onclick={() => (showAddModal = true)}>
 							<Plus class="h-4 w-4" />
-							Add to Library
+							{m.hero_addToLibrary()}
 						</button>
 					{/if}
 
 					{#if item.videos?.results?.some((v) => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser'))}
 						<button class="btn gap-1 btn-ghost btn-sm" onclick={openTrailer}>
 							<Play class="h-4 w-4" />
-							Trailer
+							{m.hero_trailer()}
 						</button>
 					{/if}
 				</div>
@@ -338,7 +338,7 @@
 							rel="noopener noreferrer"
 							class="btn gap-1 btn-ghost btn-xs"
 						>
-							Website
+							{m.hero_website()}
 							<ExternalLink size={12} />
 						</a>
 						<!-- eslint-enable svelte/no-navigation-without-resolve -->
@@ -353,12 +353,12 @@
 		>
 			<div class="grid grid-cols-2 gap-x-4 gap-y-2 lg:gap-x-6 lg:gap-y-3">
 				<div>
-					<div class="text-sm text-base-content/50">Status</div>
+					<div class="text-sm text-base-content/50">{m.hero_metadata_status()}</div>
 					<div class="font-medium">{item.status}</div>
 				</div>
 
 				<div>
-					<div class="text-sm text-base-content/50">Language</div>
+					<div class="text-sm text-base-content/50">{m.hero_metadata_language()}</div>
 					<div class="font-medium">{formatLanguage(item.original_language)}</div>
 				</div>
 
@@ -367,7 +367,7 @@
 
 					{#if releaseInfo?.certification}
 						<div>
-							<div class="text-sm text-base-content/50">Rated</div>
+							<div class="text-sm text-base-content/50">{m.hero_metadata_rated()}</div>
 							<div>
 								<span class="badge badge-outline badge-sm">{releaseInfo.certification}</span>
 							</div>
@@ -375,27 +375,27 @@
 					{/if}
 
 					<div>
-						<div class="text-sm text-base-content/50">Released</div>
+						<div class="text-sm text-base-content/50">{m.hero_metadata_released()}</div>
 						<div class="font-medium">{formatDateShort(movie.release_date)}</div>
 					</div>
 
 					{#if movie.budget > 0}
 						<div>
-							<div class="text-sm text-base-content/50">Budget</div>
+							<div class="text-sm text-base-content/50">{m.hero_metadata_budget()}</div>
 							<div class="font-medium">{formatCurrency(movie.budget)}</div>
 						</div>
 					{/if}
 
 					{#if movie.revenue > 0}
 						<div>
-							<div class="text-sm text-base-content/50">Revenue</div>
+							<div class="text-sm text-base-content/50">{m.hero_metadata_revenue()}</div>
 							<div class="font-medium">{formatCurrency(movie.revenue)}</div>
 						</div>
 					{/if}
 
 					{#if releaseInfo?.releases && releaseInfo.releases.length > 1}
 						{#each releaseInfo.releases
-							.filter((r) => r.type !== 'Theatrical')
+							.filter((_r, i) => priorityOrder[i] !== 3)
 							.slice(0, 2) as release (release.type)}
 							<div>
 								<div class="text-sm text-base-content/50">{release.type}</div>
@@ -408,38 +408,38 @@
 
 					{#if tvRating}
 						<div>
-							<div class="text-sm text-base-content/50">Rated</div>
+							<div class="text-sm text-base-content/50">{m.hero_metadata_rated()}</div>
 							<div><span class="badge badge-outline badge-sm">{tvRating}</span></div>
 						</div>
 					{/if}
 
 					{#if tv.networks && tv.networks.length > 0}
 						<div>
-							<div class="text-sm text-base-content/50">Network</div>
+							<div class="text-sm text-base-content/50">{m.hero_metadata_network()}</div>
 							<div class="font-medium">{tv.networks[0].name}</div>
 						</div>
 					{/if}
 
 					<div>
-						<div class="text-sm text-base-content/50">Seasons</div>
+						<div class="text-sm text-base-content/50">{m.hero_metadata_seasons()}</div>
 						<div class="font-medium">{tv.number_of_seasons}</div>
 					</div>
 
 					<div>
-						<div class="text-sm text-base-content/50">Episodes</div>
+						<div class="text-sm text-base-content/50">{m.hero_metadata_episodes()}</div>
 						<div class="font-medium">{tv.number_of_episodes}</div>
 					</div>
 
 					{#if tv.first_air_date}
 						<div>
-							<div class="text-sm text-base-content/50">First Aired</div>
+							<div class="text-sm text-base-content/50">{m.hero_metadata_firstAired()}</div>
 							<div class="font-medium">{formatDateShort(tv.first_air_date)}</div>
 						</div>
 					{/if}
 
 					{#if tv.next_episode_to_air}
 						<div>
-							<div class="text-sm text-base-content/50">Next Episode</div>
+							<div class="text-sm text-base-content/50">{m.hero_metadata_nextEpisode()}</div>
 							<div class="font-medium text-primary">
 								S{tv.next_episode_to_air.season_number}E{tv.next_episode_to_air.episode_number}
 							</div>
@@ -449,7 +449,7 @@
 
 				{#if item.production_companies && item.production_companies.length > 0}
 					<div class="col-span-2">
-						<div class="text-sm text-base-content/50">Studio</div>
+						<div class="text-sm text-base-content/50">{m.hero_metadata_studio()}</div>
 						<div class="font-medium">{item.production_companies[0].name}</div>
 					</div>
 				{/if}
@@ -457,7 +457,7 @@
 
 			{#if item['watch/providers']}
 				<div class="mt-4 border-t border-base-content/10 pt-4">
-					<div class="mb-2 text-sm text-base-content/50">Where to Watch</div>
+					<div class="mb-2 text-sm text-base-content/50">{m.hero_metadata_whereToWatch()}</div>
 					<WatchProviders providers={item['watch/providers']} {countryCode} />
 				</div>
 			{/if}
