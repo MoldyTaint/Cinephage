@@ -33,7 +33,7 @@ import {
 	findVideoFiles,
 	ensureDirectory,
 	fileExists,
-	VIDEO_EXTENSIONS,
+	isVideoFile,
 	ImportMode
 } from './FileTransfer';
 import { getDownloadClientManager } from '../DownloadClientManager';
@@ -1761,7 +1761,7 @@ export class ImportService extends EventEmitter {
 		}
 
 		// Check extension
-		if (!VIDEO_EXTENSIONS.includes(ext)) {
+		if (!isVideoFile(filePath)) {
 			return false;
 		}
 

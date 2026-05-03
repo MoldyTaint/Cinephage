@@ -83,6 +83,17 @@ export const VIDEO_EXTENSIONS = [
 
 export const VIDEO_EXTENSIONS_SET = new Set<string>(VIDEO_EXTENSIONS);
 
+export function isVideoFile(filePath: string, extraExtensions?: readonly string[]): boolean {
+	const ext = filePath.toLowerCase().slice(filePath.lastIndexOf('.'));
+	if (VIDEO_EXTENSIONS_SET.has(ext)) return true;
+	if (extraExtensions) {
+		for (const extra of extraExtensions) {
+			if (ext === extra) return true;
+		}
+	}
+	return false;
+}
+
 /**
  * Sample/extra file patterns to exclude from import.
  */

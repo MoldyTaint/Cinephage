@@ -5,7 +5,7 @@
  */
 
 import type { Readable } from 'node:stream';
-import { VIDEO_EXTENSIONS_SET } from '$lib/config/constants.js';
+import { VIDEO_EXTENSIONS_SET, isVideoFile as isBaseVideoFile } from '$lib/config/constants.js';
 
 /**
  * NNTP server configuration.
@@ -251,12 +251,8 @@ export function isMediaFile(filename: string): boolean {
 	return MEDIA_EXTENSIONS.has(ext);
 }
 
-/**
- * Check if a filename is a video file.
- */
 export function isVideoFile(filename: string): boolean {
-	const ext = filename.substring(filename.lastIndexOf('.')).toLowerCase();
-	return VIDEO_EXTENSIONS.has(ext);
+	return isBaseVideoFile(filename);
 }
 
 /**

@@ -26,9 +26,7 @@ import {
 } from 'fs/promises';
 import { join, dirname, basename, extname } from 'path';
 import { createChildLogger } from '$lib/logging';
-import { VIDEO_EXTENSIONS } from '$lib/config/constants.js';
-
-const FILE_TRANSFER_EXTENSIONS = [...VIDEO_EXTENSIONS, '.strm'];
+import { VIDEO_EXTENSIONS, isVideoFile as isBaseVideoFile } from '$lib/config/constants.js';
 
 const logger = createChildLogger({ logDomain: 'imports' as const });
 
@@ -572,14 +570,10 @@ async function findFilesRecursive(dir: string, extensions?: string[]): Promise<s
 	return files;
 }
 
-/**
- * Video file extensions
- */
-export { FILE_TRANSFER_EXTENSIONS as VIDEO_EXTENSIONS };
+const FILE_TRANSFER_EXTRA_EXTENSIONS = ['.strm'] as const;
 
 export function isVideoFile(filePath: string): boolean {
-	const ext = extname(filePath).toLowerCase();
-	return FILE_TRANSFER_EXTENSIONS.includes(ext);
+	return isBaseVideoFile(filePath, FILE_TRANSFER_EXTRA_EXTENSIONS);
 }
 
 /**
@@ -641,5 +635,5 @@ export async function isVideoFileByMagic(filePath: string): Promise<boolean> {
  * Find all video files in a directory
  */
 export async function findVideoFiles(dir: string): Promise<string[]> {
-	return findFilesRecursive(dir, FILE_TRANSFER_EXTENSIONS);
+	return findFilesRecursive(dir, [...VIDEO_EXTENSIONS, '.strm']);
 }
