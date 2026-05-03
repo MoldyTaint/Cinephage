@@ -66,6 +66,31 @@ async function loadTmdbSettings(): Promise<{ apiKey: string; filters: GlobalTmdb
 	return { apiKey: _cachedApiKey, filters: _cachedFilters };
 }
 
+async function fetchWithRetry(url: string, options?: RequestInit, retries = 3): Promise<Response> {
+	const BASE_DELAY_MS = 1000;
+
+	for (let attempt = 0; attempt <= retries; attempt++) {
+		const res = await fetch(url, options);
+
+		if (attempt === retries || res.ok || res.status !== 429) {
+			return res;
+		}
+
+		const retryAfter = res.headers.get('Retry-After');
+		const parsed = parseInt(retryAfter ?? '', 10);
+		const delayMs = !isNaN(parsed) ? parsed * 1000 : BASE_DELAY_MS * Math.pow(2, attempt);
+
+		logger.warn(
+			{ url: url.split('?')[0], attempt: attempt + 1, delayMs },
+			'TMDB rate limited, retrying'
+		);
+		await new Promise((resolve) => setTimeout(resolve, delayMs));
+	}
+
+	// Unreachable — satisfies TypeScript return type
+	return fetch(url, options);
+}
+
 export const tmdb = {
 	/**
 	 * Invalidate the cached TMDB settings. Call this after updating
@@ -152,7 +177,7 @@ export const tmdb = {
 					}
 				}
 
-				const res = await fetch(url.toString(), options);
+				const res = await fetchWithRetry(url.toString(), options);
 
 				if (!res.ok) {
 					let errorMessage = `TMDB Error: ${res.status} ${res.statusText}`;
