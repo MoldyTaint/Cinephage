@@ -1235,27 +1235,32 @@ export class SmartListService {
 			where: eq(smartListItems.smartListId, smartListId)
 		});
 
-		for (const item of items) {
-			let inLibrary = false;
-			let libraryId: string | null = null;
+		if (items.length === 0) return;
 
-			if (mediaType === 'movie') {
-				const movie = await db.query.movies.findFirst({
-					where: eq(movies.tmdbId, item.tmdbId)
-				});
-				if (movie) {
-					inLibrary = true;
-					libraryId = movie.id;
-				}
-			} else {
-				const show = await db.query.series.findFirst({
-					where: eq(series.tmdbId, item.tmdbId)
-				});
-				if (show) {
-					inLibrary = true;
-					libraryId = show.id;
-				}
+		const tmdbIds = [...new Set(items.map((i) => i.tmdbId))];
+
+		// Batch-fetch all library entries for these tmdbIds in one query
+		const libraryMap = new Map<number, string>();
+		if (mediaType === 'movie') {
+			const libraryMovies = await db.query.movies.findMany({
+				where: inArray(movies.tmdbId, tmdbIds)
+			});
+			for (const movie of libraryMovies) {
+				libraryMap.set(movie.tmdbId, movie.id);
 			}
+		} else {
+			const librarySeries = await db.query.series.findMany({
+				where: inArray(series.tmdbId, tmdbIds)
+			});
+			for (const show of librarySeries) {
+				libraryMap.set(show.tmdbId, show.id);
+			}
+		}
+
+		// Update items with in-memory lookup
+		for (const item of items) {
+			const libraryId = libraryMap.get(item.tmdbId) ?? null;
+			const inLibrary = libraryId !== null;
 
 			if (item.inLibrary !== inLibrary) {
 				await db
