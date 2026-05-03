@@ -1374,26 +1374,38 @@ export class SmartListService {
 	): Promise<number> {
 		let added = 0;
 
-		for (const item of items) {
+		// Batch check which items already exist in library (N+1 fix)
+		const tmdbIds = items.map((i) => i.tmdbId);
+		const existingMovies = await db.query.movies.findMany({
+			where: inArray(movies.tmdbId, tmdbIds)
+		});
+		const existingMovieIds = new Map(existingMovies.map((m) => [m.tmdbId, m.id]));
+
+		// Update items that already exist (in-memory lookup, no per-item DB call)
+		const alreadyExisting = items.filter((i) => existingMovieIds.has(i.tmdbId));
+		try {
+			for (const item of alreadyExisting) {
+				await db
+					.update(smartListItems)
+					.set({
+						inLibrary: true,
+						movieId: existingMovieIds.get(item.tmdbId) ?? null,
+						updatedAt: new Date().toISOString()
+					})
+					.where(eq(smartListItems.id, item.id));
+			}
+		} catch (error) {
+			logger.error(
+				{ err: error, listId: list.id },
+				'[SmartListService] Failed to update existing items'
+			);
+		}
+
+		// Process only new items
+		const newItems = items.filter((i) => !existingMovieIds.has(i.tmdbId));
+
+		for (const item of newItems) {
 			try {
-				// Check if movie already exists in library (double-check)
-				const existing = await db.query.movies.findFirst({
-					where: eq(movies.tmdbId, item.tmdbId)
-				});
-
-				if (existing) {
-					// Update smart list item to reflect it's in library
-					await db
-						.update(smartListItems)
-						.set({
-							inLibrary: true,
-							movieId: existing.id,
-							updatedAt: new Date().toISOString()
-						})
-						.where(eq(smartListItems.id, item.id));
-					continue;
-				}
-
 				// Fetch movie details from TMDB
 				const movieDetails = await fetchMovieDetails(item.tmdbId);
 
@@ -1508,26 +1520,38 @@ export class SmartListService {
 	): Promise<number> {
 		let added = 0;
 
-		for (const item of items) {
+		// Batch check which items already exist in library (N+1 fix)
+		const tmdbIds = items.map((i) => i.tmdbId);
+		const existingSeries = await db.query.series.findMany({
+			where: inArray(series.tmdbId, tmdbIds)
+		});
+		const existingSeriesIds = new Map(existingSeries.map((s) => [s.tmdbId, s.id]));
+
+		// Update items that already exist (in-memory lookup, no per-item DB call)
+		const alreadyExisting = items.filter((i) => existingSeriesIds.has(i.tmdbId));
+		try {
+			for (const item of alreadyExisting) {
+				await db
+					.update(smartListItems)
+					.set({
+						inLibrary: true,
+						seriesId: existingSeriesIds.get(item.tmdbId) ?? null,
+						updatedAt: new Date().toISOString()
+					})
+					.where(eq(smartListItems.id, item.id));
+			}
+		} catch (error) {
+			logger.error(
+				{ err: error, listId: list.id },
+				'[SmartListService] Failed to update existing items'
+			);
+		}
+
+		// Process only new items
+		const newItems = items.filter((i) => !existingSeriesIds.has(i.tmdbId));
+
+		for (const item of newItems) {
 			try {
-				// Check if series already exists in library (double-check)
-				const existing = await db.query.series.findFirst({
-					where: eq(series.tmdbId, item.tmdbId)
-				});
-
-				if (existing) {
-					// Update smart list item to reflect it's in library
-					await db
-						.update(smartListItems)
-						.set({
-							inLibrary: true,
-							seriesId: existing.id,
-							updatedAt: new Date().toISOString()
-						})
-						.where(eq(smartListItems.id, item.id));
-					continue;
-				}
-
 				// Fetch series details from TMDB
 				const seriesDetails = await fetchSeriesDetails(item.tmdbId);
 
