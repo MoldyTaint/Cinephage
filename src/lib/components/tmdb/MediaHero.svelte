@@ -44,7 +44,7 @@
 		libraryId = item.libraryId;
 	});
 
-	const countryCode = $derived($page.data.defaultRegion || TMDB.DEFAULT_REGION);
+	const countryCode = $derived(page.data.defaultRegion || TMDB.DEFAULT_REGION);
 
 	function isMovieDetails(
 		item: MediaDetailsWithLibraryStatus

@@ -343,7 +343,7 @@
 	);
 	const renameHref = $derived(
 		hasChanges
-			? `/settings/naming/rename?unsaved=1&returnTo=${encodeURIComponent($page.url.pathname)}`
+			? `/settings/naming/rename?unsaved=1&returnTo=${encodeURIComponent(page.url.pathname)}`
 			: '/settings/naming/rename'
 	);
 	const savedCustomPresetName = $derived(

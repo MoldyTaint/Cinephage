@@ -177,21 +177,21 @@
 	});
 
 	// Derived state from URL params
-	let type = $derived($page.url.searchParams.get('type') || 'all');
-	let sortBy = $derived($page.url.searchParams.get('sort_by') || 'popularity.desc');
+	let type = $derived(page.url.searchParams.get('type') || 'all');
+	let sortBy = $derived(page.url.searchParams.get('sort_by') || 'popularity.desc');
 	let selectedProviders = $derived(
-		parseProviderIds($page.url.searchParams.get('with_watch_providers'))
+		parseProviderIds(page.url.searchParams.get('with_watch_providers'))
 	);
-	let selectedGenres = $derived(parseGenreIds($page.url.searchParams.get('with_genres')));
-	let selectedLanguage = $derived($page.url.searchParams.get('with_original_language') || '');
-	let minYear = $derived(extractYear($page.url.searchParams.get('primary_release_date.gte')));
-	let maxYear = $derived(extractYear($page.url.searchParams.get('primary_release_date.lte')));
-	let minRating = $derived(Number($page.url.searchParams.get('vote_average.gte')) || 0);
-	let selectedCertification = $derived($page.url.searchParams.get('certification') || '');
-	let excludeInLibrary = $derived($page.url.searchParams.get('exclude_in_library') === 'true');
+	let selectedGenres = $derived(parseGenreIds(page.url.searchParams.get('with_genres')));
+	let selectedLanguage = $derived(page.url.searchParams.get('with_original_language') || '');
+	let minYear = $derived(extractYear(page.url.searchParams.get('primary_release_date.gte')));
+	let maxYear = $derived(extractYear(page.url.searchParams.get('primary_release_date.lte')));
+	let minRating = $derived(Number(page.url.searchParams.get('vote_average.gte')) || 0);
+	let selectedCertification = $derived(page.url.searchParams.get('certification') || '');
+	let excludeInLibrary = $derived(page.url.searchParams.get('exclude_in_library') === 'true');
 
 	function updateFilter(key: string, value: string | null) {
-		const url = new URL($page.url);
+		const url = new URL(page.url);
 		if (value) {
 			url.searchParams.set(key, value);
 		} else {
@@ -205,7 +205,7 @@
 	}
 
 	function updateYear(min: string, max: string) {
-		const url = new URL($page.url);
+		const url = new URL(page.url);
 		if (min) url.searchParams.set('primary_release_date.gte', `${min}-01-01`);
 		else url.searchParams.delete('primary_release_date.gte');
 
@@ -299,7 +299,7 @@
 		isLoadingMore = true;
 		try {
 			const nextPage = currentPage + 1;
-			const params = new SvelteURLSearchParams($page.url.searchParams);
+			const params = new SvelteURLSearchParams(page.url.searchParams);
 			params.set('page', String(nextPage));
 
 			const res = await fetch(`/api/discover?${params.toString()}`);

@@ -72,7 +72,7 @@
 	const editingLibraryIsSystem = $derived(editingLibrary?.isSystem ?? false);
 
 	async function clearEditQueryParam() {
-		const url = new URL($page.url);
+		const url = new URL(page.url);
 		if (!url.searchParams.has('edit')) return;
 		url.searchParams.delete('edit');
 		await goto(url.toString(), { replaceState: true, noScroll: true, keepFocus: true });
@@ -123,7 +123,7 @@
 	}
 
 	$effect(() => {
-		const editLibraryId = $page.url.searchParams.get('edit');
+		const editLibraryId = page.url.searchParams.get('edit');
 		if (!editLibraryId || libraryModalOpen) return;
 		const target = data.libraries.find((library) => library.id === editLibraryId) as
 			| LibraryEntity

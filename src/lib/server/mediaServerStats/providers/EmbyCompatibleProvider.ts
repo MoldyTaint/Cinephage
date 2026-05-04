@@ -23,7 +23,10 @@ export abstract class EmbyCompatibleProvider implements MediaServerStatsProvider
 	abstract buildUrl(path: string): string;
 	abstract getAuthHeaders(): Record<string, string>;
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	protected abstract resolveHDR(videoStream: any | null): { isHDR: boolean; hdrFormat: string | null };
+	protected abstract resolveHDR(videoStream: any | null): {
+		isHDR: boolean;
+		hdrFormat: string | null;
+	};
 
 	async fetchAllItems(): Promise<SyncResult> {
 		const userId = await this.getAdminUserId();
@@ -76,9 +79,7 @@ export abstract class EmbyCompatibleProvider implements MediaServerStatsProvider
 			});
 
 			if (!response.ok) {
-				throw new Error(
-					`${this.serverName} API error: ${response.status} ${response.statusText}`
-				);
+				throw new Error(`${this.serverName} API error: ${response.status} ${response.statusText}`);
 			}
 
 			return response.json();

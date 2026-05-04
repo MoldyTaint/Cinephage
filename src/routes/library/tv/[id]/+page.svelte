@@ -361,7 +361,7 @@
 	});
 
 	$effect(() => {
-		if ($page.url.searchParams.get('edit') === '1') {
+		if (page.url.searchParams.get('edit') === '1') {
 			isEditModalOpen = true;
 		}
 	});
@@ -474,8 +474,8 @@
 
 	function handleEditClose() {
 		isEditModalOpen = false;
-		if ($page.url.searchParams.get('edit') === '1') {
-			goto($page.url.pathname, { replaceState: true, keepFocus: true, noScroll: true });
+		if (page.url.searchParams.get('edit') === '1') {
+			goto(page.url.pathname, { replaceState: true, keepFocus: true, noScroll: true });
 		}
 	}
 

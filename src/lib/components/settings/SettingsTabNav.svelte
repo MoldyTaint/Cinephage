@@ -17,7 +17,7 @@
 	let { navItems, ariaLabel }: Props = $props();
 
 	function isActive(href: string): boolean {
-		return $page.url.pathname.startsWith(href);
+		return page.url.pathname.startsWith(href);
 	}
 
 	let navScroller = $state<HTMLDivElement | null>(null);

@@ -23,7 +23,7 @@
 
 	$effect(() => {
 		if (!filters.watchRegion) {
-			filters.watchRegion = $page.data.defaultRegion || TMDB.DEFAULT_REGION;
+			filters.watchRegion = page.data.defaultRegion || TMDB.DEFAULT_REGION;
 		}
 	});
 
@@ -181,7 +181,7 @@
 		loadingProviders = true;
 		try {
 			const res = await fetch(
-				`/api/smartlists/helpers?helper=providers&type=${mediaType}&region=${filters.watchRegion ?? ($page.data.defaultRegion || TMDB.DEFAULT_REGION)}`
+				`/api/smartlists/helpers?helper=providers&type=${mediaType}&region=${filters.watchRegion ?? (page.data.defaultRegion || TMDB.DEFAULT_REGION)}`
 			);
 			if (res.ok) {
 				providers = await res.json();

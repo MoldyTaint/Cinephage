@@ -29,7 +29,7 @@
 		tmdbError = null;
 		tmdbModalOpen = false;
 
-		const url = new URL($page.url);
+		const url = new URL(page.url);
 		if (url.searchParams.get('open') === 'tmdb') {
 			url.searchParams.delete('open');
 			goto(url.toString(), { replaceState: true, noScroll: true });
@@ -69,7 +69,7 @@
 
 	// Open modal if navigated with ?open=tmdb
 	$effect(() => {
-		const shouldOpenTmdbModal = $page.url.searchParams.get('open') === 'tmdb';
+		const shouldOpenTmdbModal = page.url.searchParams.get('open') === 'tmdb';
 		if (shouldOpenTmdbModal && !tmdbModalOpen) {
 			openTmdbModal();
 		}

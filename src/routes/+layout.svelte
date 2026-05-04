@@ -92,7 +92,7 @@
 	}
 
 	function buildNavHref(href: string): string {
-		if (href === '/library/import' && $page.url.pathname === '/library/import') {
+		if (href === '/library/import' && page.url.pathname === '/library/import') {
 			return resolvePath(`/library/import?newSession=${Date.now()}`);
 		}
 		return resolvePath(href);
@@ -100,20 +100,20 @@
 
 	function handleNavClick(event: MouseEvent, href: string): void {
 		closeMobileDrawer();
-		if (href === '/library/import' && $page.url.pathname === '/library/import') {
+		if (href === '/library/import' && page.url.pathname === '/library/import') {
 			event.preventDefault();
 			void goto(buildNavHref(href));
 		}
 	}
 
 	function isChildActive(child: MenuChildItem): boolean {
-		if (child.match) return child.match($page.url);
+		if (child.match) return child.match(page.url);
 		const [childPath, childQuery] = child.href.split('?');
-		if ($page.url.pathname !== childPath) return false;
+		if (page.url.pathname !== childPath) return false;
 		if (!childQuery) return true;
 		const queryParams = new URLSearchParams(childQuery);
 		for (const [key, value] of queryParams) {
-			if ($page.url.searchParams.get(key) !== value) return false;
+			if (page.url.searchParams.get(key) !== value) return false;
 		}
 		return true;
 	}
@@ -123,8 +123,8 @@
 			return item.children.some((child) => isChildActive(child));
 		}
 		if (!item.href) return false;
-		if (item.href === '/') return $page.url.pathname === '/';
-		return $page.url.pathname === item.href || $page.url.pathname.startsWith(`${item.href}/`);
+		if (item.href === '/') return page.url.pathname === '/';
+		return page.url.pathname === item.href || page.url.pathname.startsWith(`${item.href}/`);
 	}
 
 	async function handleLogout(): Promise<void> {
@@ -271,7 +271,7 @@
 		}
 	}
 
-	const useFocusedLayout = $derived(usesFocusedLayout($page.url.pathname));
+	const useFocusedLayout = $derived(usesFocusedLayout(page.url.pathname));
 
 	$effect(() => {
 		if (useFocusedLayout) {
@@ -280,7 +280,7 @@
 	});
 
 	$effect(() => {
-		void $page.url.pathname;
+		void page.url.pathname;
 		layoutState.clearMobileSseStatus();
 	});
 

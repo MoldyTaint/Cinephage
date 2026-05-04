@@ -36,7 +36,7 @@
 	let savingAnimeSubtype = $state(false);
 
 	async function clearEditQueryParam() {
-		const url = new URL($page.url);
+		const url = new URL(page.url);
 		if (!url.searchParams.has('edit')) return;
 		url.searchParams.delete('edit');
 		await goto(url.toString(), { replaceState: true, noScroll: true, keepFocus: true });
@@ -63,7 +63,7 @@
 	}
 
 	$effect(() => {
-		const editFolderId = $page.url.searchParams.get('edit');
+		const editFolderId = page.url.searchParams.get('edit');
 		if (!editFolderId || folderModalOpen) return;
 		const target = data.rootFolders.find((folder) => folder.id === editFolderId);
 		if (!target) return;

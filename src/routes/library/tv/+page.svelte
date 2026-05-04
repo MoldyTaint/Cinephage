@@ -503,7 +503,7 @@
 	]);
 
 	function updateUrlParam(key: string, value: string) {
-		const url = new URL($page.url);
+		const url = new URL(page.url);
 		if (key === 'library') {
 			if (!value || value === defaultLibrarySlug) {
 				url.searchParams.delete(key);
@@ -519,7 +519,7 @@
 	}
 
 	function clearFilters() {
-		const url = new URL(resolve('/library/tv'), $page.url.origin);
+		const url = new URL(resolve('/library/tv'), page.url.origin);
 		if (data.libraryScope?.isSubLibraryScope && data.libraryScope?.selected?.slug) {
 			url.searchParams.set('library', data.libraryScope.selected.slug);
 		}

@@ -198,7 +198,7 @@
 	let leaveImportModalOpen = $state(false);
 	let pendingNavigation = $state<PendingNavigation | null>(null);
 	let lastNewSessionToken = $state<string | null>(null);
-	const routeImportContext = $derived.by(() => parseImportContext($page.url.searchParams));
+	const routeImportContext = $derived.by(() => parseImportContext(page.url.searchParams));
 	const isDirectLibraryImportContext = $derived.by(() => Boolean(routeImportContext?.libraryId));
 	const isMediaTypeLockedByContext = $derived.by(() => Boolean(routeImportContext));
 	const isFileOnlyContext = $derived.by(() =>
@@ -465,7 +465,7 @@
 		}
 
 		const destinationUrl = navigation.to?.url;
-		if (destinationUrl && destinationUrl.href === $page.url.href) {
+		if (destinationUrl && destinationUrl.href === page.url.href) {
 			return;
 		}
 
@@ -493,7 +493,7 @@
 	});
 
 	$effect(() => {
-		const newSessionToken = $page.url.searchParams.get('newSession');
+		const newSessionToken = page.url.searchParams.get('newSession');
 		if (!newSessionToken || newSessionToken === lastNewSessionToken) {
 			return;
 		}

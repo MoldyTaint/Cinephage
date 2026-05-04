@@ -16,10 +16,10 @@
 	let { data }: { data: PageData } = $props();
 
 	// Tab state - derived from URL
-	const activeTab = $derived($page.url.searchParams.get('tab') || 'profiles');
+	const activeTab = $derived(page.url.searchParams.get('tab') || 'profiles');
 
 	function setTab(tab: string) {
-		const url = new URL($page.url);
+		const url = new URL(page.url);
 		url.searchParams.set('tab', tab);
 		goto(url.toString(), { replaceState: true });
 	}

@@ -14,8 +14,8 @@
 		include_adult: false,
 		min_vote_average: 0,
 		min_vote_count: 0,
-		language: `en-${$page.data.defaultRegion || TMDB.DEFAULT_REGION}`,
-		region: $page.data.defaultRegion || TMDB.DEFAULT_REGION,
+		language: `en-${page.data.defaultRegion || TMDB.DEFAULT_REGION}`,
+		region: page.data.defaultRegion || TMDB.DEFAULT_REGION,
 		excluded_genre_ids: []
 	});
 	let saving = $state(false);

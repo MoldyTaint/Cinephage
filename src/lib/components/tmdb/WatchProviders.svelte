@@ -15,7 +15,7 @@
 	} = $props();
 
 	const effectiveCountryCode = $derived(
-		countryCode || $page.data.defaultRegion || TMDB.DEFAULT_REGION
+		countryCode || page.data.defaultRegion || TMDB.DEFAULT_REGION
 	);
 	const countryData = $derived(providers?.results?.[effectiveCountryCode]);
 
