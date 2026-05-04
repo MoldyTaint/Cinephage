@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { resolvePath } from '$lib/utils/routing';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { ChevronLeft, ChevronRight } from 'lucide-svelte';
 
 	interface NavItem {

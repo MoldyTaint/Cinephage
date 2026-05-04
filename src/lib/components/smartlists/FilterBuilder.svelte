@@ -2,7 +2,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { Loader2, X, Plus, Sparkles } from 'lucide-svelte';
 	import type { SmartListFilters } from '$lib/server/db/schema.js';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { TMDB } from '$lib/config/constants.js';
 
 	interface Props {

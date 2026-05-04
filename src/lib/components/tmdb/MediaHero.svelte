@@ -8,7 +8,7 @@
 	import { formatCurrency, formatLanguage, formatDateShort } from '$lib/utils/format';
 	import { resolvePath } from '$lib/utils/routing';
 	import { SvelteMap } from 'svelte/reactivity';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { TMDB } from '$lib/config/constants.js';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import * as m from '$lib/paraglide/messages.js';
