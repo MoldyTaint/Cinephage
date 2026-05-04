@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPatch, apiDelete } from './client.js';
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from './client.js';
 
 export async function detectMedia(sourcePath: string, mediaType?: string) {
 	return apiPost('/api/library/import/detect', { sourcePath, mediaType });
@@ -81,6 +81,54 @@ export async function autoSearchSeries(seriesId: string) {
 
 export async function refreshMovie(movieId: string) {
 	return apiPost(`/api/library/movies/${movieId}/refresh`);
+}
+
+export async function getMovie(movieId: string) {
+	return apiGet(`/api/library/movies/${movieId}`);
+}
+
+export async function updateMovie(movieId: string, data: Record<string, unknown>) {
+	return apiPut(`/api/library/movies/${movieId}`, data);
+}
+
+export async function deleteMovie(
+	movieId: string,
+	deleteFiles?: boolean,
+	removeFromLibrary?: boolean
+) {
+	const params = new URLSearchParams();
+	if (deleteFiles) params.set('deleteFiles', 'true');
+	if (removeFromLibrary) params.set('removeFromLibrary', 'true');
+	const query = params.toString();
+	return apiDelete(`/api/library/movies/${movieId}${query ? '?' + query : ''}`);
+}
+
+export async function deleteMovieFile(movieId: string, fileId: string) {
+	return apiDelete(`/api/library/movies/${movieId}/files/${fileId}`);
+}
+
+export async function getMovieScore(movieId: string) {
+	return apiGet(`/api/library/movies/${movieId}/score`);
+}
+
+export async function getSeries(seriesId: string) {
+	return apiGet(`/api/library/series/${seriesId}`);
+}
+
+export async function updateSeries(seriesId: string, data: Record<string, unknown>) {
+	return apiPut(`/api/library/series/${seriesId}`, data);
+}
+
+export async function deleteSeries(
+	seriesId: string,
+	deleteFiles?: boolean,
+	removeFromLibrary?: boolean
+) {
+	const params = new URLSearchParams();
+	if (deleteFiles) params.set('deleteFiles', 'true');
+	if (removeFromLibrary) params.set('removeFromLibrary', 'true');
+	const query = params.toString();
+	return apiDelete(`/api/library/series/${seriesId}${query ? '?' + query : ''}`);
 }
 
 export async function refreshSeries(seriesId: string) {

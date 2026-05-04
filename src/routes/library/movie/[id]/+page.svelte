@@ -15,6 +15,9 @@
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import { grabRelease } from '$lib/api/downloads.js';
+	import { autoSearchSubtitles, syncSubtitle } from '$lib/api/subtitles.js';
+	import { ApiError } from '$lib/api/client.js';
 	import type { MovieEditData } from '$lib/components/library/MovieEditModal.svelte';
 	import { FileEdit, Wifi, WifiOff, Loader2, RefreshCw } from 'lucide-svelte';
 	import { page } from '$app/state';
@@ -340,32 +343,27 @@
 		streaming?: boolean
 	): Promise<{ success: boolean; error?: string; errorCode?: string }> {
 		try {
-			const response = await fetch('/api/download/grab', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					guid: release.guid,
-					downloadUrl: release.downloadUrl,
-					magnetUrl: release.magnetUrl,
-					infoHash: release.infoHash,
-					title: release.title,
-					indexerId: release.indexerId,
-					indexerName: release.indexerName,
-					protocol: release.protocol,
-					movieId: movie.id,
-					mediaType: 'movie',
-					streamUsenet: streaming && release.protocol === 'usenet',
-					commentsUrl: release.commentsUrl
-				})
+			const result = await grabRelease({
+				guid: release.guid,
+				downloadUrl: release.downloadUrl,
+				magnetUrl: release.magnetUrl,
+				infoHash: release.infoHash,
+				title: release.title,
+				indexerId: release.indexerId,
+				indexerName: release.indexerName,
+				protocol: release.protocol,
+				movieId: movie.id,
+				mediaType: 'movie',
+				streamUsenet: streaming && release.protocol === 'usenet',
+				commentsUrl: release.commentsUrl
 			});
-
-			const result = await response.json();
 
 			return { success: result.success, error: result.error, errorCode: result.errorCode };
 		} catch (error) {
 			return {
 				success: false,
-				error: error instanceof Error ? error.message : m.toast_library_movieDetail_failedToGrab()
+				error:
+					error instanceof ApiError ? error.message : m.toast_library_movieDetail_failedToGrab()
 			};
 		}
 	}
@@ -514,13 +512,7 @@
 	async function handleSubtitleAutoSearch() {
 		subtitleAutoSearching = true;
 		try {
-			const response = await fetch('/api/subtitles/auto-search', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ movieId: movie.id })
-			});
-
-			const result = await response.json();
+			const result = await autoSearchSubtitles({ movieId: movie.id });
 
 			if (result.success && result.subtitle) {
 				const subtitleId = result.subtitle.id ?? result.subtitle.subtitleId;
@@ -567,19 +559,12 @@
 		subtitleSyncError = null;
 
 		try {
-			const response = await fetch('/api/subtitles/sync', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					subtitleId,
-					...(settings?.splitPenalty !== undefined && { splitPenalty: settings.splitPenalty }),
-					...(settings?.noSplits !== undefined && { noSplits: settings.noSplits })
-				})
+			const result = await syncSubtitle(subtitleId, {
+				...(settings?.splitPenalty !== undefined && { splitPenalty: settings.splitPenalty }),
+				...(settings?.noSplits !== undefined && { noSplits: settings.noSplits })
 			});
 
-			const result = await response.json();
-
-			if (!response.ok || !result.success) {
+			if (!result.success) {
 				throw new Error(result.error || m.toast_library_movieDetail_subtitleSyncFailed());
 			}
 

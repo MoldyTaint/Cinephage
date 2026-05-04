@@ -13,6 +13,9 @@
 	import SubtitleSyncModal from '$lib/components/subtitles/SubtitleSyncModal.svelte';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import { grabRelease } from '$lib/api/downloads.js';
+	import { autoSearchSubtitles, syncSubtitle, deleteSubtitle } from '$lib/api/subtitles.js';
+	import { ApiError } from '$lib/api/client.js';
 	import type { SeriesEditData } from '$lib/components/library/SeriesEditModal.svelte';
 	import type { SearchMode } from '$lib/components/search/InteractiveSearchModal.svelte';
 	import { CheckSquare, FileEdit, Wifi, WifiOff, Loader2, RefreshCw } from 'lucide-svelte';
@@ -1135,13 +1138,7 @@
 		subtitleAutoSearchingEpisodes.add(episode.id);
 
 		try {
-			const response = await fetch('/api/subtitles/auto-search', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ episodeId: episode.id })
-			});
-
-			const result = await response.json();
+			const result = await autoSearchSubtitles({ episodeId: episode.id });
 
 			if (result.success && result.subtitle) {
 				appendSubtitleToEpisode(episode.id, result.subtitle);
@@ -1187,19 +1184,12 @@
 		subtitleSyncError = null;
 
 		try {
-			const response = await fetch('/api/subtitles/sync', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					subtitleId,
-					...(settings?.splitPenalty !== undefined && { splitPenalty: settings.splitPenalty }),
-					...(settings?.noSplits !== undefined && { noSplits: settings.noSplits })
-				})
+			const result = await syncSubtitle(subtitleId, {
+				...(settings?.splitPenalty !== undefined && { splitPenalty: settings.splitPenalty }),
+				...(settings?.noSplits !== undefined && { noSplits: settings.noSplits })
 			});
 
-			const result = await response.json();
-
-			if (!response.ok || !result.success) {
+			if (!result.success) {
 				throw new Error(result.error || m.toast_library_tvDetail_subtitleSyncFailed());
 			}
 
@@ -1236,15 +1226,9 @@
 	async function handleSubtitleSyncFromPopover(subtitleId: string): Promise<void> {
 		subtitleSyncingId = subtitleId;
 		try {
-			const response = await fetch('/api/subtitles/sync', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ subtitleId })
-			});
+			const result = await syncSubtitle(subtitleId);
 
-			const result = await response.json();
-
-			if (!response.ok || !result.success) {
+			if (!result.success) {
 				throw new Error(result.error || m.toast_library_tvDetail_subtitleSyncFailed());
 			}
 
@@ -1276,17 +1260,12 @@
 	async function handleSubtitleDeleteFromPopover(subtitleId: string): Promise<void> {
 		subtitleDeletingId = subtitleId;
 		try {
-			const response = await fetch(`/api/subtitles/${subtitleId}`, {
-				method: 'DELETE'
-			});
+			const result = await deleteSubtitle(subtitleId);
 
-			const result = await response.json();
-
-			if (!response.ok || !result.success) {
+			if (!result.success) {
 				throw new Error(result.error || m.toast_library_tvDetail_deleteFailed());
 			}
 
-			// Remove subtitle from seasons state
 			seasonsState = seasons.map((season) => ({
 				...season,
 				episodes: season.episodes.map((episode) => ({
@@ -1389,13 +1368,7 @@
 			for (const episodeId of episodeIds) {
 				subtitleAutoSearchingEpisodes.add(episodeId);
 				try {
-					const response = await fetch('/api/subtitles/auto-search', {
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({ episodeId })
-					});
-
-					const result = await response.json();
+					const result = await autoSearchSubtitles({ episodeId });
 
 					if (result.success && result.subtitle) {
 						appendSubtitleToEpisode(episodeId, result.subtitle);
@@ -1601,7 +1574,6 @@
 		streaming?: boolean
 	): Promise<{ success: boolean; error?: string; errorCode?: string }> {
 		try {
-			// Determine season/episode info from release metadata
 			const episodeMatch = release.episodeMatch || release.parsed?.episode;
 
 			let seasonNumber: number | undefined;
@@ -1609,19 +1581,15 @@
 
 			if (episodeMatch) {
 				if (episodeMatch.isSeasonPack && episodeMatch.season !== undefined) {
-					// Season pack - just need seasonNumber
 					seasonNumber = episodeMatch.season;
 				} else if (episodeMatch.seasons && episodeMatch.seasons.length === 1) {
-					// Single season from seasons array (also a season pack)
 					seasonNumber = episodeMatch.seasons[0];
 				} else if (episodeMatch.season !== undefined && episodeMatch.episodes?.length) {
-					// Specific episode(s) - need to look up episode IDs
 					seasonNumber = episodeMatch.season;
 					episodeIds = lookupEpisodeIds(episodeMatch.season, episodeMatch.episodes);
 				}
 			}
 
-			// Fallback to search context if no episodeMatch data
 			if (seasonNumber === undefined && searchContext?.season !== undefined) {
 				seasonNumber = searchContext.season;
 				if (searchContext.episode !== undefined) {
@@ -1629,30 +1597,23 @@
 				}
 			}
 
-			const response = await fetch('/api/download/grab', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					guid: release.guid,
-					downloadUrl: release.downloadUrl,
-					magnetUrl: release.magnetUrl,
-					infoHash: release.infoHash,
-					title: release.title,
-					indexerId: release.indexerId,
-					indexerName: release.indexerName,
-					protocol: release.protocol,
-					seriesId: series.id,
-					mediaType: 'tv',
-					seasonNumber,
-					episodeIds,
-					streamUsenet: streaming && release.protocol === 'usenet',
-					commentsUrl: release.commentsUrl
-				})
+			const result = await grabRelease({
+				guid: release.guid,
+				downloadUrl: release.downloadUrl,
+				magnetUrl: release.magnetUrl,
+				infoHash: release.infoHash,
+				title: release.title,
+				indexerId: release.indexerId,
+				indexerName: release.indexerName,
+				protocol: release.protocol,
+				seriesId: series.id,
+				mediaType: 'tv',
+				seasonNumber,
+				episodeIds,
+				streamUsenet: streaming && release.protocol === 'usenet',
+				commentsUrl: release.commentsUrl
 			});
 
-			const result = await response.json();
-
-			// For streaming grabs, refresh the page since files are created instantly
 			if (result.success && (release.protocol === 'streaming' || streaming)) {
 				setTimeout(() => {
 					void refreshSeriesFromApi();
@@ -1663,7 +1624,7 @@
 		} catch (error) {
 			return {
 				success: false,
-				error: error instanceof Error ? error.message : m.toast_library_tvDetail_failedToGrab()
+				error: error instanceof ApiError ? error.message : m.toast_library_tvDetail_failedToGrab()
 			};
 		}
 	}

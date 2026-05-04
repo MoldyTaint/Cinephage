@@ -114,3 +114,7 @@ export async function getSubtitleBlacklist() {
 export async function deleteSubtitleBlacklistEntry(id: string) {
 	return apiDelete(`/api/subtitles/blacklist/${id}`);
 }
+
+export async function deleteSubtitle(subtitleId: string) {
+	return apiDelete(`/api/subtitles/${subtitleId}`);
+}

@@ -16,6 +16,9 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { viewPreferences } from '$lib/stores/view-preferences.svelte';
 	import { enhance } from '$app/forms';
+	import { batchSeries, batchDeleteSeriesFiles } from '$lib/api/library.js';
+	import { grabRelease } from '$lib/api/downloads.js';
+	import { ApiError } from '$lib/api/client.js';
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
 	import { getPrimaryAutoSearchIssue } from '$lib/utils/autoSearchIssues';
 	import { createProgressiveRenderer } from '$lib/utils/progressive-render.svelte.js';
@@ -81,15 +84,7 @@
 		bulkLoading = true;
 		currentBulkAction = monitored ? 'monitor' : 'unmonitor';
 		try {
-			const response = await fetch('/api/library/series/batch', {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					seriesIds: [...selectedSeries],
-					updates: { monitored }
-				})
-			});
-			const result = await response.json();
+			const result = await batchSeries([...selectedSeries], { monitored });
 			if (result.success) {
 				data = {
 					...data,
@@ -105,8 +100,8 @@
 			} else {
 				toasts.error(result.error || m.toast_library_tv_failedToUpdate());
 			}
-		} catch {
-			toasts.error(m.toast_library_tv_failedToUpdate());
+		} catch (error) {
+			toasts.error(error instanceof ApiError ? error.message : m.toast_library_tv_failedToUpdate());
 		} finally {
 			bulkLoading = false;
 			currentBulkAction = null;
@@ -117,15 +112,7 @@
 		bulkLoading = true;
 		currentBulkAction = 'quality';
 		try {
-			const response = await fetch('/api/library/series/batch', {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					seriesIds: [...selectedSeries],
-					updates: { scoringProfileId: profileId }
-				})
-			});
-			const result = await response.json();
+			const result = await batchSeries([...selectedSeries], { scoringProfileId: profileId });
 			if (result.success) {
 				data = {
 					...data,
@@ -137,8 +124,8 @@
 			} else {
 				toasts.error(result.error || m.toast_library_tv_failedToUpdate());
 			}
-		} catch {
-			toasts.error(m.toast_library_tv_failedToUpdate());
+		} catch (error) {
+			toasts.error(error instanceof ApiError ? error.message : m.toast_library_tv_failedToUpdate());
 		} finally {
 			bulkLoading = false;
 			currentBulkAction = null;
@@ -149,16 +136,11 @@
 		bulkLoading = true;
 		currentBulkAction = 'delete';
 		try {
-			const response = await fetch('/api/library/series/batch', {
-				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					seriesIds: [...selectedSeries],
-					deleteFiles,
-					removeFromLibrary
-				})
-			});
-			const result = await response.json();
+			const result = await batchDeleteSeriesFiles(
+				[...selectedSeries],
+				deleteFiles,
+				removeFromLibrary
+			);
 			if (result.success || result.deletedCount > 0 || result.removedCount > 0) {
 				if (removeFromLibrary && result.removedCount > 0) {
 					const updatedSeries = data.series.filter((show) => !selectedSeries.has(show.id));
@@ -179,8 +161,8 @@
 			} else {
 				toasts.error(result.error || m.toast_library_tv_failedToDelete());
 			}
-		} catch {
-			toasts.error(m.toast_library_tv_failedToDelete());
+		} catch (error) {
+			toasts.error(error instanceof ApiError ? error.message : m.toast_library_tv_failedToDelete());
 		} finally {
 			bulkLoading = false;
 			currentBulkAction = null;
@@ -299,34 +281,29 @@
 			return { success: false, error: m.toast_library_tv_failedToGrab() };
 
 		try {
-			const response = await fetch('/api/download/grab', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					guid: release.guid,
-					downloadUrl: release.downloadUrl,
-					magnetUrl: release.magnetUrl,
-					infoHash: release.infoHash,
-					title: release.title,
-					indexerId: release.indexerId,
-					indexerName: release.indexerName,
-					protocol: release.protocol,
-					size: release.size,
-					seriesId: selectedSeriesForSearch.id,
-					mediaType: 'tv',
-					quality: release.parsed
-						? {
-								resolution: release.parsed.resolution,
-								source: release.parsed.source,
-								codec: release.parsed.codec,
-								hdr: release.parsed.hdr
-							}
-						: undefined,
-					streamUsenet: streaming,
-					commentsUrl: release.commentsUrl
-				})
+			const result = await grabRelease({
+				guid: release.guid,
+				downloadUrl: release.downloadUrl,
+				magnetUrl: release.magnetUrl,
+				infoHash: release.infoHash,
+				title: release.title,
+				indexerId: release.indexerId,
+				indexerName: release.indexerName,
+				protocol: release.protocol,
+				size: release.size,
+				seriesId: selectedSeriesForSearch.id,
+				mediaType: 'tv',
+				quality: release.parsed
+					? {
+							resolution: release.parsed.resolution,
+							source: release.parsed.source,
+							codec: release.parsed.codec,
+							hdr: release.parsed.hdr
+						}
+					: undefined,
+				streamUsenet: streaming,
+				commentsUrl: release.commentsUrl
 			});
-			const result = await response.json();
 			if (result.success) {
 				toasts.success(m.toast_library_tv_grabbed({ title: release.title }));
 				return { success: true };
@@ -334,8 +311,8 @@
 				toasts.error(result.error || m.toast_library_tv_failedToGrab());
 				return { success: false, error: result.error, errorCode: result.errorCode };
 			}
-		} catch {
-			toasts.error(m.toast_library_tv_failedToGrab());
+		} catch (error) {
+			toasts.error(error instanceof ApiError ? error.message : m.toast_library_tv_failedToGrab());
 			return { success: false, error: m.toast_library_tv_failedToGrab() };
 		}
 	}
