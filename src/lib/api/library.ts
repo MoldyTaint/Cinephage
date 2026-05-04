@@ -55,8 +55,8 @@ export async function batchDeleteSeriesFiles(
 	return apiDelete('/api/library/series/batch', { seriesIds, deleteFiles, removeFromLibrary });
 }
 
-export async function scanLibrary() {
-	return apiPost('/api/library/scan');
+export async function scanLibrary(payload?: Record<string, unknown>) {
+	return apiPost('/api/library/scan', payload);
 }
 
 export async function getScanStatus() {

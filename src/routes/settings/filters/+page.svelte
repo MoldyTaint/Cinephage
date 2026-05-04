@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
-	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';
+	import { updateTmdbFilters } from '$lib/api/settings.js';
 	import TmdbConfigRequired from '$lib/components/ui/TmdbConfigRequired.svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
@@ -42,18 +42,7 @@
 		saveSuccess = false;
 
 		try {
-			const response = await fetch('/api/settings/filters', {
-				method: 'PUT',
-				headers: {
-					'Content-Type': 'application/json',
-					Accept: 'application/json'
-				},
-				body: JSON.stringify(filtersState)
-			});
-			const result = await readResponsePayload<Record<string, unknown>>(response);
-			if (!response.ok) {
-				throw new Error(getResponseErrorMessage(result, 'Failed to save global filters'));
-			}
+			await updateTmdbFilters(filtersState as Record<string, unknown>);
 
 			saveSuccess = true;
 			toasts.success(m.settings_filters_updated());

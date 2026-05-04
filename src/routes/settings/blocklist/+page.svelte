@@ -1,12 +1,17 @@
 <script lang="ts">
 	import { Search, Ban, Clock } from 'lucide-svelte';
-	import { SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { SettingsPage } from '$lib/components/ui/settings';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { BlocklistTable, BlocklistBulkActions } from '$lib/components/blocklist';
 	import type { BlocklistEntry } from '$lib/components/blocklist';
 	import * as m from '$lib/paraglide/messages.js';
+	import {
+		getBlocklist,
+		deleteBlocklistEntries,
+		purgeBlocklistExpired
+	} from '$lib/api/settings.js';
 
 	let { data }: { data: { entries: BlocklistEntry[]; total: number } } = $props();
 
@@ -46,14 +51,11 @@
 
 	async function fetchEntries() {
 		try {
-			const params = new SvelteURLSearchParams();
-			if (filters.reason) params.set('reason', filters.reason);
-			if (filters.protocol) params.set('protocol', filters.protocol);
-			if (filters.activeOnly) params.set('activeOnly', 'true');
-
-			const res = await fetch(`/api/settings/blocklist?${params.toString()}`);
-			if (!res.ok) throw new Error('Failed to fetch');
-			const result = await res.json();
+			const result = await getBlocklist({
+				reason: filters.reason || undefined,
+				protocol: filters.protocol || undefined,
+				activeOnly: filters.activeOnly || undefined
+			});
 			entries = result.entries;
 			total = result.total;
 		} catch (err) {
@@ -117,12 +119,7 @@
 	async function confirmDelete() {
 		if (!deleteTarget) return;
 		try {
-			const res = await fetch('/api/settings/blocklist', {
-				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ ids: [deleteTarget.id] })
-			});
-			if (!res.ok) throw new Error('Failed to delete');
+			await deleteBlocklistEntries([deleteTarget.id]);
 			toasts.success(m.blocklist_entryRemoved());
 			await fetchEntries();
 		} catch (err) {
@@ -138,12 +135,7 @@
 		try {
 			bulkLoading = true;
 			const ids = Array.from(selectedIds);
-			const res = await fetch('/api/settings/blocklist', {
-				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ ids })
-			});
-			if (!res.ok) throw new Error('Failed to delete');
+			await deleteBlocklistEntries(ids);
 			toasts.success(m.blocklist_entriesRemoved({ count: ids.length }));
 			selectedIds.clear();
 			await fetchEntries();
@@ -158,12 +150,7 @@
 	async function confirmPurgeExpired() {
 		try {
 			bulkLoading = true;
-			const res = await fetch('/api/settings/blocklist', {
-				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'purgeExpired' })
-			});
-			if (!res.ok) throw new Error('Failed to purge');
+			await purgeBlocklistExpired();
 			toasts.success(m.blocklist_expiredPurged());
 			await fetchEntries();
 		} catch (err) {

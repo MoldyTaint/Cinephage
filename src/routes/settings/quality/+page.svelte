@@ -12,6 +12,12 @@
 	import { SettingsPage } from '$lib/components/ui/settings';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { Sliders, Layers } from 'lucide-svelte';
+	import {
+		createScoringProfile,
+		updateScoringProfile,
+		deleteScoringProfile
+	} from '$lib/api/settings.js';
+	import { createCustomFormat, updateCustomFormat, deleteCustomFormat } from '$lib/api/indexers.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -62,19 +68,12 @@
 		profileError = null;
 
 		try {
-			const url = '/api/scoring-profiles';
-			const method = profileModalMode === 'add' ? 'POST' : 'PUT';
 			const body = profileModalMode === 'add' ? formData : { id: selectedProfile?.id, ...formData };
 
-			const response = await fetch(url, {
-				method,
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(body)
-			});
-
-			if (!response.ok) {
-				const data = await response.json();
-				throw new Error(data.error || 'Failed to save profile');
+			if (profileModalMode === 'add') {
+				await createScoringProfile(body as Record<string, unknown>);
+			} else {
+				await updateScoringProfile(body as { id: string } & Record<string, unknown>);
 			}
 
 			await invalidateAll();
@@ -91,17 +90,7 @@
 		profileError = null;
 
 		try {
-			// Reset built-in profile scores by saving with empty formatScores (server computes diff)
-			const response = await fetch('/api/scoring-profiles', {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ id: profileId, formatScores: {} })
-			});
-
-			if (!response.ok) {
-				const data = await response.json();
-				throw new Error(data.error || 'Failed to reset profile');
-			}
+			await updateScoringProfile({ id: profileId, formatScores: {} });
 
 			await invalidateAll();
 		} catch (e) {
@@ -120,16 +109,7 @@
 		if (!profileDeleteTarget) return;
 
 		try {
-			const response = await fetch('/api/scoring-profiles', {
-				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ id: profileDeleteTarget.id })
-			});
-
-			if (!response.ok) {
-				const data = await response.json();
-				throw new Error(data.error || 'Failed to delete profile');
-			}
+			await deleteScoringProfile(profileDeleteTarget.id);
 
 			await invalidateAll();
 		} catch (e) {
@@ -142,19 +122,10 @@
 
 	async function handleSetDefault(profile: ScoringProfile) {
 		try {
-			const response = await fetch('/api/scoring-profiles', {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					id: profile.id,
-					isDefault: true
-				})
+			await updateScoringProfile({
+				id: profile.id,
+				isDefault: true
 			});
-
-			if (!response.ok) {
-				const data = await response.json();
-				throw new Error(data.error || 'Failed to set default');
-			}
 
 			await invalidateAll();
 		} catch (e) {
@@ -207,19 +178,15 @@
 		formatError = null;
 
 		try {
-			const url = '/api/custom-formats';
-			const method = formatModalMode === 'add' ? 'POST' : 'PUT';
 			const body = formatModalMode === 'add' ? formData : { id: selectedFormat?.id, ...formData };
 
-			const response = await fetch(url, {
-				method,
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(body)
-			});
-
-			if (!response.ok) {
-				const responseData = await response.json();
-				throw new Error(responseData.error || 'Failed to save format');
+			if (formatModalMode === 'add') {
+				await createCustomFormat(body as Record<string, unknown>);
+			} else {
+				await updateCustomFormat(
+					(selectedFormat?.id as string) ?? '',
+					body as Record<string, unknown>
+				);
 			}
 
 			await invalidateAll();
@@ -240,16 +207,7 @@
 		if (!formatDeleteTarget) return;
 
 		try {
-			const response = await fetch('/api/custom-formats', {
-				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ id: formatDeleteTarget.id })
-			});
-
-			if (!response.ok) {
-				const responseData = await response.json();
-				throw new Error(responseData.error || 'Failed to delete format');
-			}
+			await deleteCustomFormat(formatDeleteTarget.id);
 
 			await invalidateAll();
 		} catch (e) {

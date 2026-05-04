@@ -12,6 +12,7 @@
 	} from '$lib/logging/log-capture';
 	import { createDynamicSSE } from '$lib/sse';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import { updateLogSettings } from '$lib/api/settings.js';
 
 	interface LogSeedEvent {
 		entries: CapturedLogEntry[];
@@ -464,16 +465,7 @@
 	async function saveRetentionDays(): Promise<void> {
 		retentionSaving = true;
 		try {
-			const response = await fetch('/api/settings/logs/settings', {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ retentionDays })
-			});
-
-			const payload = await response.json().catch(() => null);
-			if (!response.ok || !payload?.success) {
-				throw new Error(payload?.error ?? 'Failed to save log retention');
-			}
+			const payload = await updateLogSettings(retentionDays);
 
 			retentionDays = payload.retentionDays ?? retentionDays;
 			toasts.success(`Log retention updated to ${retentionDays} days`);

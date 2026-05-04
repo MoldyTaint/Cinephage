@@ -87,8 +87,16 @@ export async function getSubtitleProviders() {
 	return apiGet('/api/subtitles/providers');
 }
 
+export async function createSubtitleProvider(payload: Record<string, unknown>) {
+	return apiPost('/api/subtitles/providers', payload);
+}
+
 export async function updateSubtitleProvider(id: string, payload: Record<string, unknown>) {
 	return apiPut(`/api/subtitles/providers/${id}`, payload);
+}
+
+export async function deleteSubtitleProvider(id: string) {
+	return apiDelete(`/api/subtitles/providers/${id}`);
 }
 
 export async function testSubtitleProvider(payload: Record<string, unknown>) {

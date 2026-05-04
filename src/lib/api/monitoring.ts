@@ -60,6 +60,6 @@ export async function getSubtitleUpgrade() {
 	return apiGet('/api/monitoring/search/subtitle-upgrade');
 }
 
-export async function getMetadataRefresh() {
-	return apiGet('/api/monitoring/search/metadata-refresh');
+export async function clearCaptchaSolverCache() {
+	return apiDelete('/api/captcha-solver/health');
 }

@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { SvelteSet } from 'svelte/reactivity';
 	import * as m from '$lib/paraglide/messages.js';
+	import { getRenamePreview, executeRename } from '$lib/api/settings.js';
 	import {
 		RefreshCw,
 		CheckCircle,
@@ -54,14 +55,13 @@
 		executeResult = null;
 
 		try {
-			const response = await fetch(`/api/rename/preview?mediaType=${mediaTypeFilter}`);
+			const result = await getRenamePreview(mediaTypeFilter);
 
-			if (!response.ok) {
-				const result = await response.json();
+			if (!result.success) {
 				throw new Error(result.error || 'Failed to load preview');
 			}
 
-			preview = await response.json();
+			preview = result as unknown as RenamePreviewResult;
 
 			// Auto-select all "will change" items
 			selectedIds.clear();
@@ -83,22 +83,16 @@
 		success = null;
 
 		try {
-			const response = await fetch('/api/rename/execute', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					fileIds: Array.from(selectedIds),
-					mediaType:
-						mediaTypeFilter === 'all' ? 'mixed' : mediaTypeFilter === 'movie' ? 'movie' : 'episode'
-				})
-			});
+			const response = await executeRename(
+				Array.from(selectedIds),
+				mediaTypeFilter === 'all' ? 'mixed' : mediaTypeFilter === 'movie' ? 'movie' : 'episode'
+			);
 
-			if (!response.ok) {
-				const result = await response.json();
-				throw new Error(result.error || 'Failed to execute renames');
+			if (!response.success) {
+				throw new Error(response.error || 'Failed to execute renames');
 			}
 
-			executeResult = await response.json();
+			executeResult = response as unknown as RenameExecuteResult;
 
 			if (executeResult && executeResult.succeeded > 0) {
 				success = m.settings_naming_rename_successCount({ count: executeResult.succeeded });

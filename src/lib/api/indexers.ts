@@ -4,6 +4,10 @@ export async function getIndexers() {
 	return apiGet('/api/indexers');
 }
 
+export async function getIndexer(id: string) {
+	return apiGet(`/api/indexers/${id}`);
+}
+
 export async function createIndexer(payload: Record<string, unknown>) {
 	return apiPost('/api/indexers', payload);
 }

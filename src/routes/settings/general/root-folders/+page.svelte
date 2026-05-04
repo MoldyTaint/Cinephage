@@ -13,7 +13,14 @@
 	import { RootFolderModal, RootFolderList } from '$lib/components/rootFolders';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { toasts } from '$lib/stores/toast.svelte';
-	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';
+	import {
+		validateRootFolder,
+		createRootFolder,
+		updateRootFolder,
+		deleteRootFolder,
+		updateLibraryClassificationSettings
+	} from '$lib/api/settings.js';
+	import { scanLibrary } from '$lib/api/library.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -73,34 +80,12 @@
 
 	async function handleValidatePath(
 		path: string,
-		readOnly = false,
-		folderId?: string
+		_readOnly = false,
+		_folderId?: string
 	): Promise<PathValidationResult> {
 		try {
-			const response = await fetch('/api/root-folders/validate', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ path, readOnly, folderId })
-			});
-			const payload = await readResponsePayload<PathValidationResult>(response);
-
-			if (!response.ok) {
-				return {
-					valid: false,
-					exists: false,
-					writable: false,
-					error: getResponseErrorMessage(payload, 'Failed to validate path')
-				};
-			}
-
-			return payload && typeof payload === 'object'
-				? (payload as PathValidationResult)
-				: {
-						valid: false,
-						exists: false,
-						writable: false,
-						error: 'Invalid response from path validation'
-					};
+			const payload = await validateRootFolder(path);
+			return payload as unknown as PathValidationResult;
 		} catch (error) {
 			return {
 				valid: false,
@@ -117,29 +102,10 @@
 
 		try {
 			const isCreating = folderModalMode === 'add';
-			const response =
+			const payload =
 				folderModalMode === 'edit' && editingFolder
-					? await fetch(`/api/root-folders/${editingFolder.id}`, {
-							method: 'PUT',
-							headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-							body: JSON.stringify(formData)
-						})
-					: await fetch('/api/root-folders', {
-							method: 'POST',
-							headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-							body: JSON.stringify(formData)
-						});
-
-			const payload = await readResponsePayload<{
-				folder?: { id?: string };
-				autoDisabledAnimeEnforcement?: boolean;
-				error?: string;
-			}>(response);
-
-			if (!response.ok) {
-				folderSaveError = getResponseErrorMessage(payload, 'Failed to save root folder');
-				return;
-			}
+					? await updateRootFolder(editingFolder.id, formData as Record<string, unknown>)
+					: await createRootFolder(formData as Record<string, unknown>);
 
 			await invalidateAll();
 			closeFolderModal();
@@ -171,15 +137,7 @@
 		if (!deleteFolderTarget) return;
 
 		try {
-			const response = await fetch(`/api/root-folders/${deleteFolderTarget.id}`, {
-				method: 'DELETE',
-				headers: { Accept: 'application/json' }
-			});
-			const payload = await readResponsePayload<Record<string, unknown>>(response);
-
-			if (!response.ok) {
-				throw new Error(getResponseErrorMessage(payload, 'Failed to delete root folder'));
-			}
+			const payload = await deleteRootFolder(deleteFolderTarget.id);
 
 			showAnimeEnforcementAutoDisabledWarning(payload);
 			await invalidateAll();
@@ -203,18 +161,7 @@
 		savingAnimeSubtype = true;
 
 		try {
-			const response = await fetch('/api/settings/library/classification', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ enforceAnimeSubtype: enabled })
-			});
-
-			if (!response.ok) {
-				const payload = await readResponsePayload<Record<string, unknown>>(response);
-				throw new Error(
-					getResponseErrorMessage(payload, m.settings_general_failedToSaveAnimeSubtypeSetting())
-				);
-			}
+			await updateLibraryClassificationSettings({ enforceAnimeSubtype: enabled });
 
 			toasts.success(
 				enabled
@@ -245,11 +192,7 @@
 	}
 
 	async function triggerLibraryScan(rootFolderId?: string) {
-		fetch('/api/library/scan', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(rootFolderId ? { rootFolderId } : { fullScan: true })
-		}).catch(() => {
+		scanLibrary({ rootFolderId, fullScan: !rootFolderId }).catch(() => {
 			// Scan start failure is non-critical; invalidateAll will refresh state on next poll
 		});
 	}

@@ -9,6 +9,7 @@
 	import { Wifi, Plus, XCircle, CheckCircle2 } from 'lucide-svelte';
 	import { createSSE } from '$lib/sse';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
+	import { cancelTask, setTaskEnabled } from '$lib/api/tasks.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -260,10 +261,9 @@
 	 */
 	async function handleCancelTask(taskId: string): Promise<void> {
 		try {
-			const response = await fetch(`/api/tasks/${taskId}/cancel`, { method: 'POST' });
-			const result = await response.json();
+			const result = await cancelTask(taskId);
 
-			if (!response.ok || !result.success) {
+			if (!result.success) {
 				throw new Error(result.error || m.settings_tasks_failedToCancelTask());
 			}
 
@@ -286,18 +286,7 @@
 		updateTask(taskId, { enabled });
 
 		try {
-			const response = await fetch(`/api/tasks/${taskId}/enabled`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ enabled })
-			});
-
-			if (!response.ok) {
-				// Revert on failure
-				updateTask(taskId, { enabled: !enabled });
-				const result = await response.json();
-				errorMessage = result.message || m.settings_tasks_failedToUpdateTask();
-			}
+			await setTaskEnabled(taskId, enabled);
 			// SSE will confirm the update via task:updated event
 		} catch (error) {
 			updateTask(taskId, { enabled: !enabled });

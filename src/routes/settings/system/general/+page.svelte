@@ -7,6 +7,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
+	import { createApiKeys, regenerateApiKey, updateExternalUrl } from '$lib/api/settings.js';
 
 	let { data }: { data: LayoutData } = $props();
 
@@ -50,19 +51,7 @@
 		generatingKeys = true;
 
 		try {
-			const response = await fetch('/api/settings/system/api-keys', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' }
-			});
-
-			if (!response.ok) {
-				const errorData = await response
-					.json()
-					.catch(() => ({ error: m.settings_system_failedToGenerate() }));
-				throw new Error(errorData.error || m.settings_system_failedToGenerateApiKeys());
-			}
-
-			const result = await response.json();
+			const result = await createApiKeys();
 
 			if (result.success) {
 				await invalidateAll();
@@ -97,19 +86,7 @@
 		else regeneratingStreaming = true;
 
 		try {
-			const response = await fetch(`/api/settings/system/api-keys/${keyId}/regenerate`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' }
-			});
-
-			if (!response.ok) {
-				const errorData = await response
-					.json()
-					.catch(() => ({ error: m.settings_system_failedToRegenerate() }));
-				throw new Error(errorData.error || m.settings_system_failedToRegenerateKey({ label }));
-			}
-
-			const result = await response.json();
+			const result = await regenerateApiKey(keyId);
 
 			if (result.success && result.data?.key) {
 				await invalidateAll();
@@ -150,18 +127,7 @@
 				return;
 			}
 
-			const response = await fetch('/api/settings/external-url', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ url: externalUrl || null })
-			});
-
-			if (!response.ok) {
-				const errorData = await response
-					.json()
-					.catch(() => ({ error: m.settings_system_failedToSave() }));
-				throw new Error(errorData.error || m.settings_system_failedToSaveExternalUrl());
-			}
+			await updateExternalUrl(externalUrl || '');
 
 			saveUrlSuccess = true;
 			setTimeout(() => (saveUrlSuccess = false), 3000);

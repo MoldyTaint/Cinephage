@@ -14,6 +14,13 @@
 	} from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
+	import {
+		getCaptchaSolverHealth,
+		getCaptchaSolverSettings,
+		updateCaptchaSolverSettings,
+		testCaptchaSolver,
+		clearCaptchaSolverCache
+	} from '$lib/api/monitoring.js';
 
 	// =====================
 	// Captcha Solver State
@@ -73,19 +80,12 @@
 		captchaLoading = true;
 		try {
 			const [healthRes, settingsRes] = await Promise.all([
-				fetch('/api/captcha-solver/health'),
-				fetch('/api/captcha-solver')
+				getCaptchaSolverHealth(),
+				getCaptchaSolverSettings()
 			]);
 
-			if (healthRes.ok) {
-				const data = await healthRes.json();
-				health = data.health;
-			}
-
-			if (settingsRes.ok) {
-				const data = await settingsRes.json();
-				captchaSettings = data.settings;
-			}
+			health = (healthRes as Record<string, unknown>).health as SolverHealth | null;
+			captchaSettings = (settingsRes as Record<string, unknown>).settings as SolverSettings;
 		} catch (error) {
 			toasts.error(m.settings_integrations_captcha_failedToLoad(), {
 				description:
@@ -107,11 +107,8 @@
 
 		const pollInterval = setInterval(async () => {
 			try {
-				const res = await fetch('/api/captcha-solver/health');
-				if (res.ok) {
-					const data = await res.json();
-					health = data.health;
-				}
+				const res = await getCaptchaSolverHealth();
+				health = (res as Record<string, unknown>).health as SolverHealth | null;
 			} catch {
 				// Ignore errors during polling
 			}
@@ -126,18 +123,7 @@
 		captchaSaveSuccess = false;
 
 		try {
-			const response = await fetch('/api/captcha-solver', {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(captchaSettings)
-			});
-
-			const result = await response.json();
-
-			if (!response.ok || !result.success) {
-				captchaSaveError = result.error || m.settings_integrations_captcha_failedToSaveSettings();
-				return;
-			}
+			const result = await updateCaptchaSolverSettings(captchaSettings as Record<string, unknown>);
 
 			captchaSettings = result.settings;
 			captchaSaveSuccess = true;
@@ -162,13 +148,7 @@
 		testResult = null;
 
 		try {
-			const response = await fetch('/api/captcha-solver/test', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ url: testUrl })
-			});
-
-			const result = await response.json();
+			const result = await testCaptchaSolver({ url: testUrl });
 
 			if (result.success) {
 				if (result.hasChallenge) {
@@ -207,13 +187,8 @@
 	async function clearCache() {
 		captchaClearing = true;
 		try {
-			const response = await fetch('/api/captcha-solver/health', {
-				method: 'DELETE'
-			});
-
-			if (response.ok) {
-				await loadCaptchaData();
-			}
+			await clearCaptchaSolverCache();
+			await loadCaptchaData();
 		} catch (error) {
 			toasts.error(m.settings_integrations_captcha_failedToClearCache(), {
 				description:

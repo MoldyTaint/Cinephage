@@ -35,6 +35,16 @@
 		type NamingPresetSelection
 	} from '$lib/naming/editor-state';
 	import { buildConfigFromSetup, type NamingPreset } from '$lib/naming/setup-presets';
+	import {
+		getNamingPresets,
+		getNamingPreset,
+		createNamingPreset,
+		deleteNamingPreset,
+		previewNaming,
+		validateNamingFormats,
+		updateNamingConfig,
+		resetNamingConfig
+	} from '$lib/api/settings.js';
 
 	interface ValidationResult {
 		valid: boolean;
@@ -220,16 +230,10 @@
 	async function loadPresets() {
 		loadingPresets = true;
 		try {
-			const response = await fetch('/api/naming/presets');
-			if (response.ok) {
-				const result = await response.json();
-				presets = result.presets;
-				if (
-					selectedPresetId &&
-					!result.presets.some((preset: NamingPreset) => preset.id === selectedPresetId)
-				) {
-					selectedPresetId = '';
-				}
+			const result = await getNamingPresets();
+			presets = (result as Record<string, unknown>).presets as NamingPreset[];
+			if (selectedPresetId && !presets.some((preset) => preset.id === selectedPresetId)) {
+				selectedPresetId = '';
 			}
 		} catch {
 			// Ignore preset loading errors
@@ -247,17 +251,11 @@
 
 		try {
 			error = null;
-			const response = await fetch(`/api/naming/presets/${selectedPresetId}`);
-			if (!response.ok) {
-				const result = await response.json();
-				throw new Error(result.error || 'Failed to load preset');
-			}
-
-			const result = await response.json();
-			if (result.preset?.config) {
+			const result = await getNamingPreset(selectedPresetId);
+			if ((result as Record<string, unknown>).preset?.config) {
 				config = createNormalizedNamingConfig({
 					...config,
-					...result.preset.config
+					...((result as Record<string, unknown>).preset as Record<string, string>)
 				});
 			}
 		} catch (e) {
@@ -272,20 +270,11 @@
 		error = null;
 
 		try {
-			const response = await fetch('/api/naming/presets', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					name: newPresetName.trim(),
-					description: newPresetDescription.trim(),
-					config: createNormalizedNamingConfig(config)
-				})
+			await createNamingPreset({
+				name: newPresetName.trim(),
+				description: newPresetDescription.trim(),
+				config: createNormalizedNamingConfig(config)
 			});
-
-			if (!response.ok) {
-				const result = await response.json();
-				throw new Error(result.error || 'Failed to save preset');
-			}
 
 			await loadPresets();
 			closeSavePresetModal();
@@ -308,14 +297,7 @@
 		if (!confirm(m.settings_naming_confirmDeletePreset({ name: presetName }))) return;
 
 		try {
-			const response = await fetch(`/api/naming/presets/${presetId}`, {
-				method: 'DELETE'
-			});
-
-			if (!response.ok) {
-				const result = await response.json();
-				throw new Error(result.error || 'Failed to delete preset');
-			}
+			await deleteNamingPreset(presetId);
 
 			await loadPresets();
 			if (selectedPresetId === presetId) {
@@ -366,15 +348,8 @@
 	async function loadPreviews(previewConfig: PageData['config']) {
 		loadingPreviews = true;
 		try {
-			const response = await fetch('/api/naming/preview', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ config: previewConfig })
-			});
-			if (response.ok) {
-				const result = await response.json();
-				previews = result.previews;
-			}
+			const result = await previewNaming({ config: previewConfig } as Record<string, unknown>);
+			previews = (result as Record<string, unknown>).previews as typeof previews;
 		} catch {
 			// Ignore preview errors
 		} finally {
@@ -387,20 +362,12 @@
 		validatingFormats = true;
 		const requestId = ++validationRequestId;
 		try {
-			const response = await fetch('/api/naming/validate', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					formats: Object.fromEntries(FORMAT_FIELDS.map((field) => [field, previewConfig[field]]))
-				})
-			});
+			const result = await validateNamingFormats(
+				Object.fromEntries(FORMAT_FIELDS.map((field) => [field, previewConfig[field]]))
+			);
 
-			if (response.ok) {
-				const result = await response.json();
-				if (requestId === validationRequestId) {
-					validationResults = result.results ?? {};
-				}
-			}
+			validationResults =
+				((result as Record<string, unknown>).results as Record<string, ValidationResult>) ?? {};
 		} catch {
 			// Ignore validation errors
 		} finally {
@@ -409,8 +376,6 @@
 			}
 		}
 	}
-
-	let previewTimeout: ReturnType<typeof setTimeout>;
 	$effect(() => {
 		const previewConfig = createNormalizedNamingConfig($state.snapshot(config));
 		clearTimeout(previewTimeout);
@@ -430,24 +395,19 @@
 		try {
 			const normalizedConfig = createNormalizedNamingConfig($state.snapshot(config));
 			const presetSelection = getDraftPresetSelection();
-			const response = await fetch('/api/naming', {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					config: normalizedConfig,
-					presetSelection
-				})
-			});
-
-			if (!response.ok) {
-				const result = await response.json();
-				throw new Error(result.error || 'Failed to save');
-			}
-
-			const result = await response.json();
-			savedConfigSnapshot = createNormalizedNamingConfig(result.config);
-			savedPresetSelection = normalizeNamingPresetSelection(result.presetSelection);
-			config = createNormalizedNamingConfig(result.config);
+			const result = await updateNamingConfig(
+				normalizedConfig as Record<string, unknown>,
+				presetSelection as Record<string, unknown>
+			);
+			savedConfigSnapshot = createNormalizedNamingConfig(
+				(result as Record<string, unknown>).config as Record<string, string>
+			);
+			savedPresetSelection = normalizeNamingPresetSelection(
+				(result as Record<string, unknown>).presetSelection as NamingPresetSelection
+			);
+			config = createNormalizedNamingConfig(
+				(result as Record<string, unknown>).config as Record<string, string>
+			);
 			applyPresetSelection(savedPresetSelection);
 			await invalidateAll();
 			success = true;
@@ -466,17 +426,17 @@
 		error = null;
 
 		try {
-			const response = await fetch('/api/naming', { method: 'DELETE' });
+			const result = await resetNamingConfig();
 
-			if (!response.ok) {
-				const result = await response.json();
-				throw new Error(result.error || 'Failed to reset');
-			}
-
-			const result = await response.json();
-			config = createNormalizedNamingConfig(result.config);
-			savedConfigSnapshot = createNormalizedNamingConfig(result.config);
-			savedPresetSelection = normalizeNamingPresetSelection(result.presetSelection);
+			config = createNormalizedNamingConfig(
+				(result as Record<string, unknown>).config as Record<string, string>
+			);
+			savedConfigSnapshot = createNormalizedNamingConfig(
+				(result as Record<string, unknown>).config as Record<string, string>
+			);
+			savedPresetSelection = normalizeNamingPresetSelection(
+				(result as Record<string, unknown>).presetSelection as NamingPresetSelection
+			);
 			applyPresetSelection(savedPresetSelection);
 			await invalidateAll();
 			success = true;

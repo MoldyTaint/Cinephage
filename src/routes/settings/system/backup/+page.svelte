@@ -5,7 +5,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
-	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';
+	import { exportConfig, importConfig } from '$lib/api/settings.js';
 
 	let { data: _data }: { data: LayoutData } = $props();
 
@@ -289,25 +289,7 @@
 		backupWarnings = [];
 
 		try {
-			const response = await fetch('/api/settings/system/backup', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					passphrase: backupExportPassphrase,
-					includeIndexerCookies: backupIncludeIndexerCookies
-				})
-			});
-			const payload = await readResponsePayload<Record<string, unknown>>(response);
-
-			if (!response.ok) {
-				throw new Error(
-					getResponseErrorMessage(payload, m.settings_system_backup_errorExportFailed())
-				);
-			}
-
-			if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-				throw new Error(m.settings_system_backup_errorInvalidExportResponse());
-			}
+			const payload = await exportConfig(backupExportPassphrase, backupIncludeIndexerCookies);
 
 			const backup = payload.backup;
 			const fileName =
@@ -355,23 +337,11 @@
 
 		try {
 			const backup = JSON.parse(await selectedBackupFile.text());
-			const response = await fetch('/api/settings/system/backup', {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					passphrase: backupImportPassphrase.trim(),
-					sections: selectedRestoreSections,
-					mode: 'apply',
-					backup
-				})
-			});
-			const payload = await readResponsePayload<Record<string, unknown>>(response);
-
-			if (!response.ok) {
-				throw new Error(
-					getResponseErrorMessage(payload, m.settings_system_backup_errorRestoreFailed())
-				);
-			}
+			const payload = await importConfig(
+				backupImportPassphrase.trim(),
+				backup as Record<string, unknown>,
+				{ sections: selectedRestoreSections, mode: 'apply' }
+			);
 
 			const result =
 				payload && typeof payload === 'object' && !Array.isArray(payload)

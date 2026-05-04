@@ -9,7 +9,7 @@
 	import { LibraryList } from '$lib/components/libraries';
 	import { ModalWrapper, ModalHeader, ModalFooter } from '$lib/components/ui/modal';
 	import { toasts } from '$lib/stores/toast.svelte';
-	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';
+	import { createLibrary, updateLibrary, deleteLibrary } from '$lib/api/settings.js';
 
 	type RootFolderRef = {
 		id: string;
@@ -138,23 +138,10 @@
 		librarySaveError = null;
 
 		try {
-			const response = editingLibrary
-				? await fetch(`/api/libraries/${editingLibrary.id}`, {
-						method: 'PUT',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify(libraryForm)
-					})
-				: await fetch('/api/libraries', {
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify(libraryForm)
-					});
-
-			const payload = await readResponsePayload<Record<string, unknown>>(response);
-
-			if (!response.ok) {
-				librarySaveError = getResponseErrorMessage(payload, 'Failed to save library');
-				return;
+			if (editingLibrary) {
+				await updateLibrary(editingLibrary.id, libraryForm as Record<string, unknown>);
+			} else {
+				await createLibrary(libraryForm as Record<string, unknown>);
 			}
 
 			toasts.success(editingLibrary ? 'Library updated' : 'Library created');
@@ -224,18 +211,7 @@
 				body.targetLibraryId = deleteLibraryDestinationId;
 			}
 
-			const response = await fetch(`/api/libraries/${deleteLibraryTarget.id}`, {
-				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(body)
-			});
-
-			const payload = await readResponsePayload<Record<string, unknown>>(response);
-
-			if (!response.ok) {
-				toasts.error(getResponseErrorMessage(payload, 'Failed to delete library'));
-				return;
-			}
+			await deleteLibrary(deleteLibraryTarget.id, Object.keys(body).length > 0 ? body : undefined);
 
 			toasts.success('Library deleted');
 			confirmLibraryDeleteOpen = false;

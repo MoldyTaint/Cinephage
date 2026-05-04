@@ -35,8 +35,8 @@ export async function updateLibrary(id: string, payload: Record<string, unknown>
 	return apiPut(`/api/libraries/${id}`, payload);
 }
 
-export async function deleteLibrary(id: string) {
-	return apiDelete(`/api/libraries/${id}`);
+export async function deleteLibrary(id: string, body?: Record<string, unknown>) {
+	return apiDelete(`/api/libraries/${id}`, body);
 }
 
 export async function getNamingConfig() {
@@ -58,12 +58,32 @@ export async function getNamingPresets() {
 	return apiGet('/api/naming/presets');
 }
 
+export async function getNamingPreset(id: string) {
+	return apiGet(`/api/naming/presets/${id}`);
+}
+
+export async function createNamingPreset(payload: Record<string, unknown>) {
+	return apiPost('/api/naming/presets', payload);
+}
+
+export async function updateNamingPreset(id: string, payload: Record<string, unknown>) {
+	return apiPut(`/api/naming/presets/${id}`, payload);
+}
+
+export async function deleteNamingPreset(id: string) {
+	return apiDelete(`/api/naming/presets/${id}`);
+}
+
 export async function previewNaming(payload: Record<string, unknown>) {
 	return apiPost('/api/naming/preview', payload);
 }
 
 export async function validateNaming(pattern: string) {
 	return apiPost('/api/naming/validate', { pattern });
+}
+
+export async function validateNamingFormats(formats: Record<string, string>) {
+	return apiPost('/api/naming/validate', { formats });
 }
 
 export async function getNamingTokens() {
@@ -176,6 +196,10 @@ export async function createApiKeys() {
 	return apiPost('/api/settings/system/api-keys');
 }
 
+export async function regenerateApiKey(keyId: string) {
+	return apiPost(`/api/settings/system/api-keys/${keyId}/regenerate`);
+}
+
 export async function cleanupStreamingCache() {
 	return apiPost('/api/settings/streaming/cache/cleanup');
 }
@@ -251,12 +275,28 @@ export async function getMediaBrowserNotifications() {
 	return apiGet('/api/notifications/mediabrowser');
 }
 
+export async function getMediaBrowserNotification(id: string) {
+	return apiGet(`/api/notifications/mediabrowser/${id}`);
+}
+
 export async function createMediaBrowserNotification(payload: Record<string, unknown>) {
 	return apiPost('/api/notifications/mediabrowser', payload);
 }
 
+export async function updateMediaBrowserNotification(id: string, payload: Record<string, unknown>) {
+	return apiPut(`/api/notifications/mediabrowser/${id}`, payload);
+}
+
+export async function deleteMediaBrowserNotification(id: string) {
+	return apiDelete(`/api/notifications/mediabrowser/${id}`);
+}
+
 export async function testMediaBrowserNotification(id: string) {
 	return apiPost(`/api/notifications/mediabrowser/${id}/test`);
+}
+
+export async function testNewMediaBrowserNotification(payload: Record<string, unknown>) {
+	return apiPost('/api/notifications/mediabrowser/test', payload);
 }
 
 export async function updateLogoSettings(payload: Record<string, unknown>) {
