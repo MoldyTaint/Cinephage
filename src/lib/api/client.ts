@@ -2,7 +2,7 @@ import { browser } from '$app/environment';
 
 export type ApiResponse<T = unknown> = { success: boolean; error?: string } & T;
 
-class ApiError extends Error {
+export class ApiError extends Error {
 	status: number;
 	response: ApiResponse;
 

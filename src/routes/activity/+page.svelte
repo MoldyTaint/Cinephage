@@ -4,6 +4,14 @@
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { resolvePath } from '$lib/utils/routing';
 	import { createSSE } from '$lib/sse';
+	import {
+		getActivity,
+		getActivitySettings,
+		setRetentionDays,
+		deleteActivity,
+		purgeHistory as purgeHistoryApi
+	} from '$lib/api/activity.js';
+	import { ApiError } from '$lib/api/client.js';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import ActivityTable from '$lib/components/activity/ActivityTable.svelte';
 	import ActivityDetailModal from '$lib/components/activity/ActivityDetailModal.svelte';
@@ -310,12 +318,8 @@
 				limit: 50,
 				offset
 			});
-			const response = await fetch(resolvePath(`/api/activity?${queryString}`));
-			if (!response.ok) {
-				throw new Error('Failed to load activity');
-			}
-
-			const payload = await response.json();
+			const params = Object.fromEntries(new URLSearchParams(queryString));
+			const payload = await getActivity(params);
 			if (requestToken !== activityRequestToken) return;
 			if (!payload?.success) {
 				throw new Error(
@@ -640,16 +644,16 @@
 	async function loadHistorySettings(): Promise<void> {
 		settingsLoading = true;
 		try {
-			const response = await fetch('/api/activity/settings');
-			if (response.status === 401 || response.status === 403) {
-				canManageHistory = false;
-				return;
+			let payload;
+			try {
+				payload = await getActivitySettings();
+			} catch (error) {
+				if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+					canManageHistory = false;
+					return;
+				}
+				throw error;
 			}
-			if (!response.ok) {
-				throw new Error('Failed to load history settings');
-			}
-
-			const payload = await response.json();
 			if (payload.success && typeof payload.retentionDays === 'number') {
 				retentionDays = payload.retentionDays;
 			}
@@ -712,18 +716,18 @@
 
 		saveRetentionLoading = true;
 		try {
-			const response = await fetch('/api/activity/settings', {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ retentionDays })
-			});
-			if (response.status === 401 || response.status === 403) {
-				canManageHistory = false;
-				throw new Error('Admin access is required');
+			let payload;
+			try {
+				payload = await setRetentionDays(retentionDays);
+			} catch (error) {
+				if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+					canManageHistory = false;
+					throw new Error('Admin access is required');
+				}
+				throw error;
 			}
 
-			const payload = await response.json().catch(() => ({}));
-			if (!response.ok || !payload.success) {
+			if (!payload.success) {
 				throw new Error(
 					typeof payload.error === 'string' ? payload.error : 'Failed to save retention setting'
 				);
@@ -905,18 +909,18 @@
 		}
 
 		try {
-			const response = await fetch('/api/activity/settings', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action })
-			});
-			if (response.status === 401 || response.status === 403) {
-				canManageHistory = false;
-				throw new Error('Admin access is required');
+			let payload;
+			try {
+				payload = await purgeHistoryApi(action);
+			} catch (error) {
+				if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+					canManageHistory = false;
+					throw new Error('Admin access is required');
+				}
+				throw error;
 			}
 
-			const payload = await response.json().catch(() => ({}));
-			if (!response.ok || !payload.success) {
+			if (!payload.success) {
 				throw new Error(
 					typeof payload.error === 'string' ? payload.error : 'Failed to purge activity entries'
 				);
@@ -950,18 +954,18 @@
 
 		deleteSelectedLoading = true;
 		try {
-			const response = await fetch('/api/activity', {
-				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ activityIds: [...selectedHistoryIds] })
-			});
-			if (response.status === 401 || response.status === 403) {
-				canManageHistory = false;
-				throw new Error(m.toast_activity_adminRequired());
+			let payload;
+			try {
+				payload = await deleteActivity([...selectedHistoryIds]);
+			} catch (error) {
+				if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+					canManageHistory = false;
+					throw new Error(m.toast_activity_adminRequired());
+				}
+				throw error;
 			}
 
-			const payload = await response.json().catch(() => ({}));
-			if (!response.ok || !payload.success) {
+			if (!payload.success) {
 				throw new Error(
 					typeof payload.error === 'string'
 						? payload.error
