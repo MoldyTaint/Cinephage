@@ -6,7 +6,7 @@
 	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
 	import type { GlobalTmdbFilters } from '$lib/types/tmdb';
 	import type { PageData } from './$types';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { TMDB } from '$lib/config/constants.js';
 
 	let { data }: { data: PageData } = $props();

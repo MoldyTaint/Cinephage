@@ -4,7 +4,7 @@
 	import type { LayoutData } from '../$types';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { invalidateAll, goto } from '$app/navigation';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { ModalWrapper, ModalHeader, ModalFooter } from '$lib/components/ui/modal';
 	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
 	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';

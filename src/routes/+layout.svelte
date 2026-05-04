@@ -7,7 +7,7 @@
 	import { layoutState } from '$lib/layout.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { resolvePath } from '$lib/utils/routing';
 	import { authClient } from '$lib/auth/client.js';
 	import { PLACEHOLDER_PACKAGE_VERSION } from '$lib/version.js';

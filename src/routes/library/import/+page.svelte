@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import { beforeNavigate, goto } from '$app/navigation';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { resolvePath } from '$lib/utils/routing';
 	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';

@@ -17,7 +17,7 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import type { MovieEditData } from '$lib/components/library/MovieEditModal.svelte';
 	import { FileEdit, Wifi, WifiOff, Loader2, RefreshCw } from 'lucide-svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
 	import { createDynamicSSE } from '$lib/sse';

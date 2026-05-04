@@ -3,7 +3,7 @@
 	import { Plus, FolderOpen, AlertCircle } from 'lucide-svelte';
 	import { SettingsPage } from '$lib/components/ui/settings';
 	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import type { PageData } from './$types';
 	import type { RootFolderMediaSubType, RootFolderMediaType } from '$lib/types/downloadClient';
 	import { LibraryList } from '$lib/components/libraries';

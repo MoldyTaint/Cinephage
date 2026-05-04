@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import { goto, invalidateAll } from '$app/navigation';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import type { PageData } from './$types';
 	import type { ScoringProfile, ScoringProfileFormData } from '$lib/types/profile';
 	import type { UICustomFormat } from '$lib/types/format';

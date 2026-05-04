@@ -17,7 +17,7 @@
 	import type { SearchMode } from '$lib/components/search/InteractiveSearchModal.svelte';
 	import { CheckSquare, FileEdit, Wifi, WifiOff, Loader2, RefreshCw } from 'lucide-svelte';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
 	import { createDynamicSSE } from '$lib/sse';

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import { goto, invalidateAll } from '$app/navigation';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { Plus } from 'lucide-svelte';
 	import { SettingsPage } from '$lib/components/ui/settings';
 	import type { PageData } from './$types';
