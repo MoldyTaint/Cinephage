@@ -12,12 +12,15 @@ import {
 import { and, desc, gte, inArray, eq, lte, lt, sql, count } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { extractReleaseGroup } from '$lib/server/indexers/parser/patterns/releaseGroup';
-import { parseRelease } from '$lib/server/indexers/parser/ReleaseParser';
 import { ActivityDeduplicationService, type ActiveQueueIndex } from './ActivityDeduplicationService.js';
 import {
 	buildFailedQueueIndex,
 	findFailedQueueItemId,
-	buildHistoryTimeline
+	buildHistoryTimeline,
+	resolveMediaInfo as transformerResolveMediaInfo,
+	resolveMonitoringMediaInfo as transformerResolveMonitoringMediaInfo,
+	deriveFallbackMediaInfo as transformerDeriveFallbackMediaInfo,
+	type MediaMaps
 } from './activity-transformers.js';
 import {
 	isActiveActivity,
@@ -50,29 +53,6 @@ import {
 	DEFAULT_ACTIVITY_RETENTION_DAYS,
 	MAX_ACTIVITY_RETENTION_DAYS
 } from './activity-filters.js';
-
-interface MediaInfo {
-	id: string;
-	title: string;
-	year: number | null;
-}
-
-interface SeriesInfo extends MediaInfo {
-	seasonNumber?: number;
-}
-
-interface EpisodeInfo {
-	id: string;
-	seriesId: string;
-	episodeNumber: number;
-	seasonNumber: number;
-}
-
-interface MediaMaps {
-	movies: Map<string, MediaInfo>;
-	series: Map<string, SeriesInfo>;
-	episodes: Map<string, EpisodeInfo>;
-}
 
 interface PaginationOptions {
 	limit: number;
@@ -1441,199 +1421,22 @@ export class ActivityService {
 	private resolveMediaInfo(
 		item: DownloadQueueRecord | DownloadHistoryRecord,
 		mediaMaps: MediaMaps
-	): {
-		mediaType: 'movie' | 'episode';
-		mediaId: string;
-		mediaTitle: string;
-		mediaYear: number | null;
-		seriesId?: string;
-		seriesTitle?: string;
-		seasonNumber?: number;
-		episodeNumber?: number;
-	} {
-		if (item.movieId && mediaMaps.movies.has(item.movieId)) {
-			const movie = mediaMaps.movies.get(item.movieId)!;
-			return {
-				mediaType: 'movie',
-				mediaId: movie.id,
-				mediaTitle: movie.title,
-				mediaYear: movie.year
-			};
-		}
-
-		if (item.seriesId && mediaMaps.series.has(item.seriesId)) {
-			const s = mediaMaps.series.get(item.seriesId)!;
-			const seasonNumber = item.seasonNumber ?? undefined;
-
-			if (item.episodeIds && item.episodeIds.length > 0) {
-				const firstEp = mediaMaps.episodes.get(item.episodeIds[0]);
-				if (firstEp) {
-					const episodeNumber = firstEp.episodeNumber;
-					const endEp = mediaMaps.episodes.get(item.episodeIds[item.episodeIds.length - 1]);
-					const mediaTitle =
-						seasonNumber !== undefined
-							? item.episodeIds.length > 1
-								? `${s.title} S${String(seasonNumber).padStart(2, '0')}E${String(episodeNumber).padStart(2, '0')}-E${String(endEp?.episodeNumber).padStart(2, '0')}`
-								: `${s.title} S${String(seasonNumber).padStart(2, '0')}E${String(episodeNumber).padStart(2, '0')}`
-							: `${s.title} E${String(episodeNumber).padStart(2, '0')}`;
-
-					return {
-						mediaType: 'episode',
-						mediaId: firstEp.id,
-						mediaTitle,
-						mediaYear: s.year,
-						seriesId: item.seriesId,
-						seriesTitle: s.title,
-						seasonNumber,
-						episodeNumber
-					};
-				}
-			}
-
-			return {
-				mediaType: 'episode',
-				mediaId: s.id,
-				mediaTitle: item.seasonNumber ? `${s.title} Season ${item.seasonNumber}` : s.title,
-				mediaYear: s.year,
-				seriesId: item.seriesId,
-				seriesTitle: s.title,
-				seasonNumber
-			};
-		}
-
-		return {
-			...this.deriveFallbackMediaInfo(
-				item.title,
-				Boolean(item.seriesId || (item.episodeIds?.length ?? 0) > 0 || item.seasonNumber)
-			),
-			mediaId: ''
-		};
+	) {
+		return transformerResolveMediaInfo(item, mediaMaps);
 	}
 
 	private resolveMonitoringMediaInfo(
 		mon: MonitoringHistoryRecord,
 		mediaMaps: MediaMaps
-	): {
-		mediaType: 'movie' | 'episode';
-		mediaId: string;
-		mediaTitle: string;
-		mediaYear: number | null;
-		seriesId?: string;
-		seriesTitle?: string;
-		seasonNumber?: number;
-		episodeNumber?: number;
-	} {
-		if (mon.movieId && mediaMaps.movies.has(mon.movieId)) {
-			const movie = mediaMaps.movies.get(mon.movieId)!;
-			return {
-				mediaType: 'movie',
-				mediaId: movie.id,
-				mediaTitle: movie.title,
-				mediaYear: movie.year
-			};
-		}
-
-		if (mon.seriesId && mediaMaps.series.has(mon.seriesId)) {
-			const s = mediaMaps.series.get(mon.seriesId)!;
-			const seasonNumber = mon.seasonNumber ?? undefined;
-
-			if (mon.episodeId && mediaMaps.episodes.has(mon.episodeId)) {
-				const ep = mediaMaps.episodes.get(mon.episodeId)!;
-				return {
-					mediaType: 'episode',
-					mediaId: ep.id,
-					mediaTitle:
-						seasonNumber !== undefined
-							? `${s.title} S${String(seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')}`
-							: `${s.title} E${String(ep.episodeNumber).padStart(2, '0')}`,
-					mediaYear: s.year,
-					seriesId: mon.seriesId,
-					seriesTitle: s.title,
-					seasonNumber,
-					episodeNumber: ep.episodeNumber
-				};
-			}
-
-			return {
-				mediaType: 'episode',
-				mediaId: s.id,
-				mediaTitle: mon.seasonNumber ? `${s.title} Season ${mon.seasonNumber}` : s.title,
-				mediaYear: s.year,
-				seriesId: mon.seriesId,
-				seriesTitle: s.title,
-				seasonNumber
-			};
-		}
-
-		return {
-			...this.deriveFallbackMediaInfo(mon.releaseGrabbed, Boolean(mon.seriesId || mon.episodeId)),
-			mediaId: ''
-		};
+	) {
+		return transformerResolveMonitoringMediaInfo(mon, mediaMaps);
 	}
 
 	private deriveFallbackMediaInfo(
 		releaseTitle: string | null | undefined,
 		isEpisode: boolean
-	): {
-		mediaType: 'movie' | 'episode';
-		mediaId: string;
-		mediaTitle: string;
-		mediaYear: number | null;
-		seasonNumber?: number;
-		episodeNumber?: number;
-	} {
-		if (!releaseTitle) {
-			return {
-				mediaType: isEpisode ? 'episode' : 'movie',
-				mediaId: '',
-				mediaTitle: 'Unknown',
-				mediaYear: null
-			};
-		}
-
-		const parsed = parseRelease(releaseTitle);
-		const fallbackTitle = releaseTitle.replace(/[._]/g, ' ').replace(/\s+/g, ' ').trim();
-		const baseTitle = parsed.cleanTitle?.trim() || fallbackTitle || 'Unknown';
-
-		if (!isEpisode) {
-			return {
-				mediaType: 'movie',
-				mediaId: '',
-				mediaTitle: baseTitle,
-				mediaYear: parsed.year ?? null
-			};
-		}
-
-		const seasonNumber = parsed.episode?.season;
-		const episodeNumbers = parsed.episode?.episodes;
-		const firstEpisode = episodeNumbers?.[0];
-		const lastEpisode =
-			episodeNumbers && episodeNumbers.length > 0
-				? episodeNumbers[episodeNumbers.length - 1]
-				: undefined;
-
-		let mediaTitle = baseTitle;
-		if (seasonNumber && firstEpisode) {
-			const season = String(seasonNumber).padStart(2, '0');
-			const startEpisode = String(firstEpisode).padStart(2, '0');
-			if (lastEpisode && lastEpisode !== firstEpisode) {
-				const endEpisode = String(lastEpisode).padStart(2, '0');
-				mediaTitle = `${baseTitle} S${season}E${startEpisode}-E${endEpisode}`;
-			} else {
-				mediaTitle = `${baseTitle} S${season}E${startEpisode}`;
-			}
-		} else if (seasonNumber && parsed.episode?.isSeasonPack) {
-			mediaTitle = `${baseTitle} Season ${seasonNumber}`;
-		}
-
-		return {
-			mediaType: 'episode',
-			mediaId: '',
-			mediaTitle,
-			mediaYear: parsed.year ?? null,
-			seasonNumber: seasonNumber ?? undefined,
-			episodeNumber: firstEpisode ?? undefined
-		};
+	) {
+		return transformerDeriveFallbackMediaInfo(releaseTitle, isEpisode);
 	}
 
 	private sortActivities(activities: UnifiedActivity[], sort: ActivitySortOptions): void {

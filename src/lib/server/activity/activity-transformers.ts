@@ -1,5 +1,220 @@
-import type { DownloadQueueRecord, DownloadHistoryRecord } from './types.js';
+import type { DownloadQueueRecord, DownloadHistoryRecord, MonitoringHistoryRecord } from './types.js';
 import type { ActivityEvent } from '$lib/types/activity';
+import { parseRelease } from '$lib/server/indexers/parser/ReleaseParser.js';
+
+export interface MediaInfo {
+	id: string;
+	title: string;
+	year: number | null;
+}
+
+export interface SeriesInfo extends MediaInfo {
+	seasonNumber?: number;
+}
+
+export interface EpisodeInfo {
+	id: string;
+	seriesId: string;
+	episodeNumber: number;
+	seasonNumber: number;
+}
+
+export interface MediaMaps {
+	movies: Map<string, MediaInfo>;
+	series: Map<string, SeriesInfo>;
+	episodes: Map<string, EpisodeInfo>;
+}
+
+export interface ResolvedMediaInfo {
+	mediaType: 'movie' | 'episode';
+	mediaId: string;
+	mediaTitle: string;
+	mediaYear: number | null;
+	seriesId?: string;
+	seriesTitle?: string;
+	seasonNumber?: number;
+	episodeNumber?: number;
+}
+
+export function deriveFallbackMediaInfo(
+	releaseTitle: string | null | undefined,
+	isEpisode: boolean
+): {
+	mediaType: 'movie' | 'episode';
+	mediaId: string;
+	mediaTitle: string;
+	mediaYear: number | null;
+	seasonNumber?: number;
+	episodeNumber?: number;
+} {
+	if (!releaseTitle) {
+		return {
+			mediaType: isEpisode ? 'episode' : 'movie',
+			mediaId: '',
+			mediaTitle: 'Unknown',
+			mediaYear: null
+		};
+	}
+
+	const parsed = parseRelease(releaseTitle);
+	const fallbackTitle = releaseTitle.replace(/[._]/g, ' ').replace(/\s+/g, ' ').trim();
+	const baseTitle = parsed.cleanTitle?.trim() || fallbackTitle || 'Unknown';
+
+	if (!isEpisode) {
+		return {
+			mediaType: 'movie',
+			mediaId: '',
+			mediaTitle: baseTitle,
+			mediaYear: parsed.year ?? null
+		};
+	}
+
+	const seasonNumber = parsed.episode?.season;
+	const episodeNumbers = parsed.episode?.episodes;
+	const firstEpisode = episodeNumbers?.[0];
+	const lastEpisode =
+		episodeNumbers && episodeNumbers.length > 0
+			? episodeNumbers[episodeNumbers.length - 1]
+			: undefined;
+
+	let mediaTitle = baseTitle;
+	if (seasonNumber && firstEpisode) {
+		const season = String(seasonNumber).padStart(2, '0');
+		const startEpisode = String(firstEpisode).padStart(2, '0');
+		if (lastEpisode && lastEpisode !== firstEpisode) {
+			const endEpisode = String(lastEpisode).padStart(2, '0');
+			mediaTitle = `${baseTitle} S${season}E${startEpisode}-E${endEpisode}`;
+		} else {
+			mediaTitle = `${baseTitle} S${season}E${startEpisode}`;
+		}
+	} else if (seasonNumber && parsed.episode?.isSeasonPack) {
+		mediaTitle = `${baseTitle} Season ${seasonNumber}`;
+	}
+
+	return {
+		mediaType: 'episode',
+		mediaId: '',
+		mediaTitle,
+		mediaYear: parsed.year ?? null,
+		seasonNumber: seasonNumber ?? undefined,
+		episodeNumber: firstEpisode ?? undefined
+	};
+}
+
+export function resolveMediaInfo(
+	item: DownloadQueueRecord | DownloadHistoryRecord,
+	mediaMaps: MediaMaps
+): ResolvedMediaInfo {
+	if (item.movieId && mediaMaps.movies.has(item.movieId)) {
+		const movie = mediaMaps.movies.get(item.movieId)!;
+		return {
+			mediaType: 'movie',
+			mediaId: movie.id,
+			mediaTitle: movie.title,
+			mediaYear: movie.year
+		};
+	}
+
+	if (item.seriesId && mediaMaps.series.has(item.seriesId)) {
+		const s = mediaMaps.series.get(item.seriesId)!;
+		const seasonNumber = item.seasonNumber ?? undefined;
+
+		if (item.episodeIds && item.episodeIds.length > 0) {
+			const firstEp = mediaMaps.episodes.get(item.episodeIds[0]);
+			if (firstEp) {
+				const episodeNumber = firstEp.episodeNumber;
+				const endEp = mediaMaps.episodes.get(item.episodeIds[item.episodeIds.length - 1]);
+				const mediaTitle =
+					seasonNumber !== undefined
+						? item.episodeIds.length > 1
+							? `${s.title} S${String(seasonNumber).padStart(2, '0')}E${String(episodeNumber).padStart(2, '0')}-E${String(endEp?.episodeNumber).padStart(2, '0')}`
+							: `${s.title} S${String(seasonNumber).padStart(2, '0')}E${String(episodeNumber).padStart(2, '0')}`
+						: `${s.title} E${String(episodeNumber).padStart(2, '0')}`;
+
+				return {
+					mediaType: 'episode',
+					mediaId: firstEp.id,
+					mediaTitle,
+					mediaYear: s.year,
+					seriesId: item.seriesId,
+					seriesTitle: s.title,
+					seasonNumber,
+					episodeNumber
+				};
+			}
+		}
+
+		return {
+			mediaType: 'episode',
+			mediaId: s.id,
+			mediaTitle: item.seasonNumber ? `${s.title} Season ${item.seasonNumber}` : s.title,
+			mediaYear: s.year,
+			seriesId: item.seriesId,
+			seriesTitle: s.title,
+			seasonNumber
+		};
+	}
+
+	return {
+		...deriveFallbackMediaInfo(
+			item.title,
+			Boolean(item.seriesId || (item.episodeIds?.length ?? 0) > 0 || item.seasonNumber)
+		),
+		mediaId: ''
+	};
+}
+
+export function resolveMonitoringMediaInfo(
+	mon: MonitoringHistoryRecord,
+	mediaMaps: MediaMaps
+): ResolvedMediaInfo {
+	if (mon.movieId && mediaMaps.movies.has(mon.movieId)) {
+		const movie = mediaMaps.movies.get(mon.movieId)!;
+		return {
+			mediaType: 'movie',
+			mediaId: movie.id,
+			mediaTitle: movie.title,
+			mediaYear: movie.year
+		};
+	}
+
+	if (mon.seriesId && mediaMaps.series.has(mon.seriesId)) {
+		const s = mediaMaps.series.get(mon.seriesId)!;
+		const seasonNumber = mon.seasonNumber ?? undefined;
+
+		if (mon.episodeId && mediaMaps.episodes.has(mon.episodeId)) {
+			const ep = mediaMaps.episodes.get(mon.episodeId)!;
+			return {
+				mediaType: 'episode',
+				mediaId: ep.id,
+				mediaTitle:
+					seasonNumber !== undefined
+						? `${s.title} S${String(seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')}`
+						: `${s.title} E${String(ep.episodeNumber).padStart(2, '0')}`,
+				mediaYear: s.year,
+				seriesId: mon.seriesId,
+				seriesTitle: s.title,
+				seasonNumber,
+				episodeNumber: ep.episodeNumber
+			};
+		}
+
+		return {
+			mediaType: 'episode',
+			mediaId: s.id,
+			mediaTitle: mon.seasonNumber ? `${s.title} Season ${mon.seasonNumber}` : s.title,
+			mediaYear: s.year,
+			seriesId: mon.seriesId,
+			seriesTitle: s.title,
+			seasonNumber
+		};
+	}
+
+	return {
+		...deriveFallbackMediaInfo(mon.releaseGrabbed, Boolean(mon.seriesId || mon.episodeId)),
+		mediaId: ''
+	};
+}
 
 export function buildFailedQueueIndex(
 	queueItems: Pick<DownloadQueueRecord, 'id' | 'downloadId' | 'title' | 'addedAt'>[]
