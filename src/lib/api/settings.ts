@@ -315,7 +315,10 @@ export async function createMediaBrowserNotification(payload: MediaBrowserServer
 	return apiPost('/api/notifications/mediabrowser', payload);
 }
 
-export async function updateMediaBrowserNotification(id: string, payload: MediaBrowserServerUpdate) {
+export async function updateMediaBrowserNotification(
+	id: string,
+	payload: MediaBrowserServerUpdate
+) {
 	return apiPut(`/api/notifications/mediabrowser/${id}`, payload);
 }
 

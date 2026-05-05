@@ -1,4 +1,8 @@
-import type { DownloadQueueRecord, DownloadHistoryRecord, MonitoringHistoryRecord } from './types.js';
+import type {
+	DownloadQueueRecord,
+	DownloadHistoryRecord,
+	MonitoringHistoryRecord
+} from './types.js';
 import type { ActivityEvent } from '$lib/types/activity';
 import { parseRelease } from '$lib/server/indexers/parser/ReleaseParser.js';
 

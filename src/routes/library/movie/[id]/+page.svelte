@@ -17,6 +17,13 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { grabRelease } from '$lib/api/downloads.js';
 	import { autoSearchSubtitles, syncSubtitle } from '$lib/api/subtitles.js';
+	import {
+		getMovie,
+		updateMovie,
+		deleteMovie,
+		deleteMovieFile,
+		getMovieScore
+	} from '$lib/api/library.js';
 	import { ApiError } from '$lib/api/client.js';
 	import type { MovieEditData } from '$lib/components/library/MovieEditModal.svelte';
 	import { FileEdit, Wifi, WifiOff, Loader2, RefreshCw } from 'lucide-svelte';
@@ -223,10 +230,8 @@
 
 	async function refreshMovieFromApi(): Promise<void> {
 		try {
-			const response = await fetch(`/api/library/movies/${movie.id}`);
-			if (!response.ok) return;
-			const result = await response.json();
-			if (!result.success || !result.movie) return;
+			const result = (await getMovie(movie.id)) as { movie?: LibraryMovie };
+			if (!result.movie) return;
 
 			const refreshed = result.movie as LibraryMovie;
 			movieState = {
@@ -240,19 +245,11 @@
 		}
 	}
 
-	// Handlers
 	async function handleMonitorToggle(newValue: boolean) {
 		isSaving = true;
 		try {
-			const response = await fetch(`/api/library/movies/${movie.id}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ monitored: newValue })
-			});
-
-			if (response.ok) {
-				movie.monitored = newValue;
-			}
+			await updateMovie(movie.id, { monitored: newValue });
+			movie.monitored = newValue;
 		} catch (error) {
 			showActionError(m.toast_library_movieDetail_failedToUpdateMonitor(), error);
 		} finally {
@@ -382,16 +379,7 @@
 	async function handleEditSave(editData: MovieEditData) {
 		isSaving = true;
 		try {
-			const response = await fetch(`/api/library/movies/${movie.id}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(editData)
-			});
-
-			const result = await response.json().catch(() => null);
-			if (!response.ok) {
-				throw new Error(result?.error || m.toast_library_movieDetail_failedToUpdate());
-			}
+			const result = await updateMovie(movie.id, editData as unknown as Record<string, unknown>);
 
 			// Update local state
 			movie.monitored = editData.monitored;
@@ -422,11 +410,7 @@
 	async function performDelete(deleteFiles: boolean, removeFromLibrary: boolean) {
 		isDeleting = true;
 		try {
-			const response = await fetch(
-				`/api/library/movies/${movie.id}?deleteFiles=${deleteFiles}&removeFromLibrary=${removeFromLibrary}`,
-				{ method: 'DELETE' }
-			);
-			const result = await response.json();
+			const result = await deleteMovie(movie.id, deleteFiles, removeFromLibrary);
 
 			if (result.success) {
 				if (removeFromLibrary) {
@@ -473,10 +457,7 @@
 
 		isDeletingFile = true;
 		try {
-			const response = await fetch(`/api/library/movies/${movie.id}/files/${deletingFileId}`, {
-				method: 'DELETE'
-			});
-			const result = await response.json();
+			const result = await deleteMovieFile(movie.id, deletingFileId);
 
 			if (result.success) {
 				toasts.success(m.toast_library_movieDetail_fileDeleted());
@@ -597,12 +578,9 @@
 
 		scoreLoading = true;
 		try {
-			const response = await fetch(`/api/library/movies/${movie.id}/score`);
-			if (response.ok) {
-				const result = await response.json();
-				if (result.success) {
-					scoreData = result.score;
-				}
+			const result = await getMovieScore(movie.id);
+			if (result.success) {
+				scoreData = result.score;
 			}
 		} catch (error) {
 			showActionError(m.toast_library_movieDetail_failedToLoadScore(), error);

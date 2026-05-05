@@ -2,6 +2,7 @@
 	import { tick } from 'svelte';
 	import type { UnifiedTask } from '$lib/server/tasks/UnifiedTaskRegistry';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import { setTaskInterval } from '$lib/api/tasks.js';
 
 	interface Props {
 		task: UnifiedTask;
@@ -25,18 +26,9 @@
 		if (!task.intervalEditable) return;
 		isSaving = true;
 		try {
-			const response = await fetch(`/api/tasks/${task.id}/interval`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ intervalHours: editValue })
-			});
-			if (response.ok) {
-				// SSE will push the updated interval and nextRunTime
-				isEditing = false;
-			} else {
-				const data = await response.json();
-				toasts.error(data?.error || 'Failed to save interval');
-			}
+			await setTaskInterval(task.id, editValue);
+			// SSE will push the updated interval and nextRunTime
+			isEditing = false;
 		} catch (error) {
 			toasts.error(error instanceof Error ? error.message : 'Failed to save interval');
 		} finally {

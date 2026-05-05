@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { X, Loader2, Search, Tv } from 'lucide-svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
+	import { getChannelsWithEpg } from '$lib/api/livetv.js';
 	import * as m from '$lib/paraglide/messages.js';
 
 	interface ChannelWithEpg {
@@ -66,19 +67,18 @@
 		error = null;
 
 		try {
-			const params = new URLSearchParams({
-				search: debouncedSearch,
-				pageSize: '100'
-			});
-
-			const res = await fetch(`/api/livetv/channels/with-epg?${params}`);
-			if (!res.ok) {
-				throw new Error(m.livetv_epgSourcePicker_failedToLoad());
+			const data = (await getChannelsWithEpg()) as { items?: ChannelWithEpg[] };
+			// Filter by search query client-side and exclude the target channel
+			const filtered = (data.items || []).filter((c: ChannelWithEpg) => c.id !== excludeChannelId);
+			if (debouncedSearch) {
+				const q = debouncedSearch.toLowerCase();
+				channels = filtered.filter(
+					(c: ChannelWithEpg) =>
+						c.name.toLowerCase().includes(q) || (c.number || '').toLowerCase().includes(q)
+				);
+			} else {
+				channels = filtered;
 			}
-
-			const data = await res.json();
-			// Filter out the excluded channel (the channel we're setting EPG source for)
-			channels = (data.items || []).filter((c: ChannelWithEpg) => c.id !== excludeChannelId);
 		} catch (e) {
 			error = e instanceof Error ? e.message : m.livetv_epgSourcePicker_failedToLoad();
 			channels = [];

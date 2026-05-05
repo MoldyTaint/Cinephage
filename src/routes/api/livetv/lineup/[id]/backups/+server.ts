@@ -68,10 +68,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 
 		const parsed = addBackupLinkSchema.safeParse(await request.json());
 		if (!parsed.success) {
-			return json(
-				{ success: false, error: parsed.error.issues[0].message },
-				{ status: 400 }
-			);
+			return json({ success: false, error: parsed.error.issues[0].message }, { status: 400 });
 		}
 		const body = parsed.data;
 

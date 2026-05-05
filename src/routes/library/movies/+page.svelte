@@ -16,7 +16,12 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { viewPreferences } from '$lib/stores/view-preferences.svelte';
 	import { enhance } from '$app/forms';
-	import { batchMovies, batchDeleteMovieFiles } from '$lib/api/library.js';
+	import {
+		batchMovies,
+		batchDeleteMovieFiles,
+		updateMovie,
+		deleteMovie
+	} from '$lib/api/library.js';
 	import { grabRelease } from '$lib/api/downloads.js';
 	import { ApiError } from '$lib/api/client.js';
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
@@ -215,12 +220,7 @@
 		if (!movie) return;
 
 		try {
-			const response = await fetch(`/api/library/movies/${movieId}`, {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ monitored })
-			});
-			const result = await response.json();
+			const result = await updateMovie(movieId, { monitored });
 			if (result.success) {
 				data = {
 					...data,
@@ -373,11 +373,7 @@
 			bulkLoading = true;
 			currentBulkAction = 'delete';
 			try {
-				const response = await fetch(
-					`/api/library/movies/${movieId}?deleteFiles=${deleteFiles}&removeFromLibrary=${removeFromLibrary}`,
-					{ method: 'DELETE' }
-				);
-				const result = await response.json();
+				const result = await deleteMovie(movieId, deleteFiles, removeFromLibrary);
 				if (result.success) {
 					if (removeFromLibrary) {
 						data = { ...data, movies: data.movies.filter((m2) => m2.id !== movieId) };

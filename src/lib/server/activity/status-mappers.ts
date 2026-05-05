@@ -1,14 +1,5 @@
 import type { ActivityFilters, ActivityStatus, ActivityScope } from '$lib/types/activity';
-
-interface MoveTaskRecord {
-	id: string;
-	taskId: string;
-	status: 'running' | 'completed' | 'failed' | 'cancelled';
-	results: Record<string, unknown> | null;
-	errors: string[] | null;
-	startedAt: string | null;
-	completedAt: string | null;
-}
+import type { MoveTaskRecord } from './types.js';
 
 export function mapFilterStatusToQueueStatuses(status: string): string[] | null {
 	switch (status) {

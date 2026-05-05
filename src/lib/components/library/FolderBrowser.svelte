@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import { Folder, ChevronUp, Loader2, Home, Check } from 'lucide-svelte';
-	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';
+	import { browseFilesystem } from '$lib/api/filesystem.js';
 
 	interface DirectoryEntry {
 		name: string;
@@ -29,18 +29,7 @@
 		error = null;
 
 		try {
-			const response = await fetch(`/api/filesystem/browse?path=${encodeURIComponent(path)}`);
-			const payload = await readResponsePayload<{
-				currentPath?: string;
-				parentPath?: string | null;
-				entries?: DirectoryEntry[];
-				error?: string;
-			}>(response);
-
-			if (!response.ok) {
-				error = getResponseErrorMessage(payload, 'Failed to browse directory');
-				return;
-			}
+			const payload = await browseFilesystem(path);
 
 			if (!payload || typeof payload !== 'object') {
 				error = 'Invalid response from filesystem browser';

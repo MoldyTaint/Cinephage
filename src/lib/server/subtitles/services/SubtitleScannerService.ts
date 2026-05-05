@@ -498,14 +498,13 @@ class SubtitleScannerService {
 				.where(eq(episodeFiles.seriesId, seriesId));
 
 			// Collect all unique episode IDs and batch-fetch existing subtitles
-			const allEpisodeIds = [
-				...new Set(epFiles.flatMap((ef) => ef.episodeIds ?? []))
-			];
-			const existingSubtitles = allEpisodeIds.length > 0
-				? await db.query.subtitles.findMany({
-						where: inArray(subtitles.episodeId, allEpisodeIds)
-					})
-				: [];
+			const allEpisodeIds = [...new Set(epFiles.flatMap((ef) => ef.episodeIds ?? []))];
+			const existingSubtitles =
+				allEpisodeIds.length > 0
+					? await db.query.subtitles.findMany({
+							where: inArray(subtitles.episodeId, allEpisodeIds)
+						})
+					: [];
 			const existingKeys = new Set(
 				existingSubtitles.map((s) => `${s.episodeId}::${s.relativePath}`)
 			);

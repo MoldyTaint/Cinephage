@@ -1,4 +1,8 @@
-import type { NntpServerCreate, NntpServerUpdate, NntpServerTest } from '$lib/validation/schemas.js';
+import type {
+	NntpServerCreate,
+	NntpServerUpdate,
+	NntpServerTest
+} from '$lib/validation/schemas.js';
 
 import { apiGet, apiPost, apiPut, apiDelete } from './client.js';
 

@@ -189,10 +189,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		const rawBody = await request.json();
 		const parsed = seriesUpdateSchema.safeParse(rawBody);
 		if (!parsed.success) {
-			return json(
-				{ success: false, error: parsed.error.issues[0].message },
-				{ status: 400 }
-			);
+			return json({ success: false, error: parsed.error.issues[0].message }, { status: 400 });
 		}
 		const body = parsed.data;
 		const {

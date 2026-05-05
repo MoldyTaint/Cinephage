@@ -15,6 +15,7 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { grabRelease } from '$lib/api/downloads.js';
 	import { autoSearchSubtitles, syncSubtitle, deleteSubtitle } from '$lib/api/subtitles.js';
+	import { updateSeries, getSeries, deleteSeries } from '$lib/api/library.js';
 	import { ApiError } from '$lib/api/client.js';
 	import type { SeriesEditData } from '$lib/components/library/SeriesEditModal.svelte';
 	import type { SearchMode } from '$lib/components/search/InteractiveSearchModal.svelte';
@@ -435,15 +436,8 @@
 	async function handleMonitorToggle(newValue: boolean) {
 		isSaving = true;
 		try {
-			const response = await fetch(`/api/library/series/${series.id}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ monitored: newValue })
-			});
-
-			if (response.ok) {
-				series.monitored = newValue;
-			}
+			await updateSeries(series.id, { monitored: newValue });
+			series.monitored = newValue;
 		} catch (error) {
 			showActionError(m.toast_library_tvDetail_failedToUpdateMonitor(), error);
 		} finally {
@@ -495,11 +489,10 @@
 
 	async function refreshSeriesFromApi(): Promise<void> {
 		try {
-			const response = await fetch(`/api/library/series/${series.id}`);
-			if (!response.ok) return;
-
-			const result = await response.json();
-			if (!result.success || !result.series) return;
+			const result = (await getSeries(series.id)) as {
+				series?: Record<string, unknown> & { seasons?: PageData['seasons'] };
+			};
+			if (!result.series) return;
 
 			const { seasons: refreshedSeasons, ...seriesFields } = result.series;
 			seriesState = { ...series, ...seriesFields };
@@ -587,16 +580,7 @@
 	async function handleEditSave(editData: SeriesEditData) {
 		isSaving = true;
 		try {
-			const response = await fetch(`/api/library/series/${series.id}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(editData)
-			});
-
-			const result = await response.json().catch(() => null);
-			if (!response.ok) {
-				throw new Error(result?.error || m.toast_library_tvDetail_failedToUpdate());
-			}
+			const result = await updateSeries(series.id, editData as unknown as Record<string, unknown>);
 
 			series.monitored = editData.monitored;
 			series.scoringProfileId = editData.scoringProfileId;
@@ -629,11 +613,7 @@
 	async function performDelete(deleteFiles: boolean, removeFromLibrary: boolean) {
 		isDeleting = true;
 		try {
-			const response = await fetch(
-				`/api/library/series/${series.id}?deleteFiles=${deleteFiles}&removeFromLibrary=${removeFromLibrary}`,
-				{ method: 'DELETE' }
-			);
-			const result = await response.json();
+			const result = await deleteSeries(series.id, deleteFiles, removeFromLibrary);
 
 			if (result.success) {
 				if (removeFromLibrary) {

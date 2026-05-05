@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Search, Loader2, X } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import { searchTmdb } from '$lib/api/discover.js';
 
 	export interface TmdbSearchResult {
 		id: number;
@@ -35,11 +36,9 @@
 
 		isSearching = true;
 		try {
-			const res = await fetch(
-				`/api/discover/search?query=${encodeURIComponent(val.trim())}&type=${mediaType}`
-			);
-			if (!res.ok) throw new Error('Search failed');
-			const data = await res.json();
+			const data = (await searchTmdb({ query: val.trim(), type: mediaType })) as {
+				results?: TmdbSearchResult[];
+			};
 			results = (data.results ?? []).slice(0, 10);
 		} catch {
 			results = [];

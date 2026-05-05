@@ -24,7 +24,8 @@
 		syncEpg,
 		syncEpgForAccount,
 		cancelEpgSync,
-		cancelEpgSyncForAccount
+		cancelEpgSyncForAccount,
+		updateLineupItem
 	} from '$lib/api';
 
 	type TabId = 'status' | 'coverage' | 'guide';
@@ -244,16 +245,10 @@
 
 		try {
 			const update: UpdateChannelRequest = { epgSourceChannelId: channelId };
-			const res = await fetch(`/api/livetv/lineup/${epgSourcePickerChannel.id}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(update)
-			});
+			await updateLineupItem(epgSourcePickerChannel.id, update);
 
-			if (res.ok) {
-				await loadLineup();
-				await fetchEpgData();
-			}
+			await loadLineup();
+			await fetchEpgData();
 		} catch {
 			// Silent failure
 		}

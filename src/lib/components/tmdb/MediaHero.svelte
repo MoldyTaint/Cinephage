@@ -11,6 +11,7 @@
 	import { page } from '$app/state';
 	import { TMDB } from '$lib/config/constants.js';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import { getLibraryStatus } from '$lib/api/library.js';
 	import * as m from '$lib/paraglide/messages.js';
 
 	const RELEASE_TYPE_LABELS: Record<number, () => string> = {
@@ -144,14 +145,14 @@
 
 	async function refreshLibraryStatus() {
 		try {
-			const response = await fetch(`/api/library/status?tmdbId=${item.id}&mediaType=${mediaType}`);
-			if (response.ok) {
-				const data = await response.json();
-				if (data.success && data.status) {
-					inLibrary = data.status.inLibrary;
-					hasFile = data.status.hasFile;
-					libraryId = data.status.libraryId;
-				}
+			const data = (await getLibraryStatus({ tmdbId: item.id, mediaType })) as {
+				success: boolean;
+				status?: { inLibrary: boolean; hasFile: boolean; libraryId: string };
+			};
+			if (data.success && data.status) {
+				inLibrary = data.status.inLibrary;
+				hasFile = data.status.hasFile;
+				libraryId = data.status.libraryId;
 			}
 		} catch (e) {
 			toasts.error(m.hero_failedToCheckLibraryStatus(), {

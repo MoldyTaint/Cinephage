@@ -12,14 +12,16 @@ import {
 import { and, desc, gte, inArray, eq, lte, lt, sql, count } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { extractReleaseGroup } from '$lib/server/indexers/parser/patterns/releaseGroup';
-import { ActivityDeduplicationService, type ActiveQueueIndex } from './ActivityDeduplicationService.js';
+import {
+	ActivityDeduplicationService,
+	type ActiveQueueIndex
+} from './ActivityDeduplicationService.js';
 import {
 	buildFailedQueueIndex,
 	findFailedQueueItemId,
 	buildHistoryTimeline,
-	resolveMediaInfo as transformerResolveMediaInfo,
-	resolveMonitoringMediaInfo as transformerResolveMonitoringMediaInfo,
-	deriveFallbackMediaInfo as transformerDeriveFallbackMediaInfo,
+	resolveMediaInfo,
+	resolveMonitoringMediaInfo,
 	type MediaMaps
 } from './activity-transformers.js';
 import {
@@ -31,39 +33,32 @@ import {
 	type ActivityScope,
 	type ActivitySummary
 } from '$lib/types/activity';
-import type { DownloadQueueRecord, DownloadHistoryRecord, MonitoringHistoryRecord } from './types';
+import type {
+	DownloadQueueRecord,
+	DownloadHistoryRecord,
+	MonitoringHistoryRecord,
+	MoveTaskRecord
+} from './types';
 import { projectQueueActivity } from './projectors';
 import { parseMoveTaskId } from '$lib/server/library/MediaMoveService.js';
 import {
-	mapFilterStatusToQueueStatuses as mappersMapFilterStatusToQueueStatuses,
-	mapFilterStatusToHistoryStatuses as mappersMapFilterStatusToHistoryStatuses,
-	mapMoveStatusesForScopeAndFilter as mappersMapMoveStatusesForScopeAndFilter,
-	mapMoveTaskStatus as mappersMapMoveTaskStatus
+	mapFilterStatusToQueueStatuses,
+	mapFilterStatusToHistoryStatuses,
+	mapMoveStatusesForScopeAndFilter,
+	mapMoveTaskStatus
 } from './status-mappers.js';
 import {
-	sortActivities as filtersSortActivities,
-	withoutStatusFilter as filtersWithoutStatusFilter,
-	applyRequestedStatusFilter as filtersApplyRequestedStatusFilter,
-	applyFilters as filtersApplyFilters,
-	createEmptySummary,
-	buildActivitySummary as filtersBuildActivitySummary,
-	parseRetentionDays as filtersParseRetentionDays,
-	compareActivityPriority as filtersCompareActivityPriority
+	sortActivities,
+	withoutStatusFilter,
+	applyRequestedStatusFilter,
+	applyFilters,
+	buildActivitySummary,
+	parseRetentionDays
 } from './activity-filters.js';
 
 interface PaginationOptions {
 	limit: number;
 	offset: number;
-}
-
-interface MoveTaskRecord {
-	id: string;
-	taskId: string;
-	status: 'running' | 'completed' | 'failed' | 'cancelled';
-	results: Record<string, unknown> | null;
-	errors: string[] | null;
-	startedAt: string | null;
-	completedAt: string | null;
 }
 
 interface ActivityQueryResult {
@@ -73,7 +68,10 @@ interface ActivityQueryResult {
 	summary: ActivitySummary | null;
 }
 
-export { DEFAULT_ACTIVITY_RETENTION_DAYS, MAX_ACTIVITY_RETENTION_DAYS } from './activity-filters.js';
+export {
+	DEFAULT_ACTIVITY_RETENTION_DAYS,
+	MAX_ACTIVITY_RETENTION_DAYS
+} from './activity-filters.js';
 
 const ACTIVITY_RETENTION_SETTINGS_KEY = 'activity_history_retention_days';
 
@@ -127,7 +125,7 @@ export class ActivityService {
 	): Promise<ActivityQueryResult> {
 		const needsActive = scope === 'all' || scope === 'active';
 		const needsHistory = scope === 'all' || scope === 'history';
-		const summaryFilters = this.withoutStatusFilter(filters);
+		const summaryFilters = withoutStatusFilter(filters);
 
 		// Check if any JS-only filters are active (search, resolution,
 		// releaseGroup, isUpgrade).  When they are, we cannot compute an
@@ -209,24 +207,21 @@ export class ActivityService {
 			...moveActivities
 		];
 
-		let filtered = this.applyRequestedStatusFilter(
-			this.applyFilters(activities, filters, scope),
-			filters
-		);
+		let filtered = applyRequestedStatusFilter(applyFilters(activities, filters, scope), filters);
 		if (scope === 'active') {
 			filtered = this.deduplicationService.dedupeActiveActivities(filtered);
 		}
-		this.sortActivities(filtered, sort);
+		sortActivities(filtered, sort);
 
 		let activeFilteredCount = 0;
 		let summary: ActivitySummary | null = null;
 		if (needsActive) {
-			let activeUniverse = this.applyFilters(activities, summaryFilters, 'active');
+			let activeUniverse = applyFilters(activities, summaryFilters, 'active');
 			activeUniverse = this.deduplicationService.dedupeActiveActivities(activeUniverse);
-			activeFilteredCount = this.applyRequestedStatusFilter(activeUniverse, filters).length;
+			activeFilteredCount = applyRequestedStatusFilter(activeUniverse, filters).length;
 
 			if (scope === 'active') {
-				summary = this.buildActivitySummary(activeUniverse);
+				summary = buildActivitySummary(activeUniverse);
 			}
 		}
 
@@ -289,11 +284,11 @@ export class ActivityService {
 			.from(settings)
 			.where(eq(settings.key, ACTIVITY_RETENTION_SETTINGS_KEY))
 			.get();
-		return this.parseRetentionDays(row?.value);
+		return parseRetentionDays(row?.value);
 	}
 
 	async setRetentionDays(days: number): Promise<number> {
-		const normalized = this.parseRetentionDays(days);
+		const normalized = parseRetentionDays(days);
 		await db
 			.insert(settings)
 			.values({
@@ -471,7 +466,7 @@ export class ActivityService {
 	}
 
 	async purgeHistoryOlderThan(retentionDays: number): Promise<PurgeHistoryResult> {
-		const normalizedRetentionDays = this.parseRetentionDays(retentionDays);
+		const normalizedRetentionDays = parseRetentionDays(retentionDays);
 		const cutoffDate = new Date();
 		cutoffDate.setDate(cutoffDate.getDate() - normalizedRetentionDays);
 		const cutoffIso = cutoffDate.toISOString();
@@ -545,7 +540,7 @@ export class ActivityService {
 		mediaMaps: MediaMaps,
 		linkedMonitoring: MonitoringHistoryRecord[] = []
 	): UnifiedActivity {
-		const mediaInfo = this.resolveMediaInfo(download, mediaMaps);
+		const mediaInfo = resolveMediaInfo(download, mediaMaps);
 
 		return projectQueueActivity(download, mediaInfo, linkedMonitoring);
 	}
@@ -567,11 +562,9 @@ export class ActivityService {
 		}
 
 		const timeline = buildHistoryTimeline(history);
-		const mediaInfo = this.resolveMediaInfo(history, mediaMaps);
+		const mediaInfo = resolveMediaInfo(history, mediaMaps);
 		const queueItemId =
-			history.status === 'failed'
-				? findFailedQueueItemId(history, failedQueueIndex)
-				: undefined;
+			history.status === 'failed' ? findFailedQueueItemId(history, failedQueueIndex) : undefined;
 
 		return {
 			id: `history-${history.id}`,
@@ -630,7 +623,7 @@ export class ActivityService {
 		if (processedKeys?.has(mediaKey)) return null;
 		processedKeys?.add(mediaKey);
 
-		const mediaInfo = this.resolveMonitoringMediaInfo(mon, mediaMaps);
+		const mediaInfo = resolveMonitoringMediaInfo(mon, mediaMaps);
 
 		const timeline: ActivityEvent[] = [
 			{
@@ -691,7 +684,7 @@ export class ActivityService {
 		// Apply status filter at SQL level when possible
 		let statusFilter: string[] = baseStatuses;
 		if (filters.status && filters.status !== 'all') {
-			const mapped = this.mapFilterStatusToQueueStatuses(filters.status);
+			const mapped = mapFilterStatusToQueueStatuses(filters.status);
 			if (mapped) {
 				statusFilter = mapped.filter((s) => baseStatuses.includes(s));
 				// If no overlap (e.g. filtering for 'success' on active tab), return empty
@@ -785,7 +778,7 @@ export class ActivityService {
 
 		// Status filter at SQL level
 		if (filters.status && filters.status !== 'all') {
-			const mapped = this.mapFilterStatusToHistoryStatuses(filters.status);
+			const mapped = mapFilterStatusToHistoryStatuses(filters.status);
 			if (mapped) {
 				if (mapped.length === 0) return [];
 				conditions.push(inArray(downloadHistory.status, mapped));
@@ -869,7 +862,7 @@ export class ActivityService {
 		const conditions: SQL[] = [];
 
 		if (filters.status && filters.status !== 'all') {
-			const mapped = this.mapFilterStatusToHistoryStatuses(filters.status);
+			const mapped = mapFilterStatusToHistoryStatuses(filters.status);
 			if (mapped) {
 				if (mapped.length === 0) return 0;
 				conditions.push(inArray(downloadHistory.status, mapped));
@@ -1056,7 +1049,7 @@ export class ActivityService {
 	): Promise<MoveTaskRecord[]> {
 		const conditions: SQL[] = [sql`${taskHistory.taskId} LIKE 'media-move:%'`];
 
-		const statuses = this.mapMoveStatusesForScopeAndFilter(scope, filters.status ?? 'all');
+		const statuses = mapMoveStatusesForScopeAndFilter(scope, filters.status ?? 'all');
 		if (statuses.length === 0) return [];
 		conditions.push(inArray(taskHistory.status, statuses));
 
@@ -1104,7 +1097,7 @@ export class ActivityService {
 	): Promise<number> {
 		const conditions: SQL[] = [sql`${taskHistory.taskId} LIKE 'media-move:%'`];
 
-		const statuses = this.mapMoveStatusesForScopeAndFilter(scope, filters.status ?? 'all');
+		const statuses = mapMoveStatusesForScopeAndFilter(scope, filters.status ?? 'all');
 		if (statuses.length === 0) return 0;
 		conditions.push(inArray(taskHistory.status, statuses));
 
@@ -1156,7 +1149,7 @@ export class ActivityService {
 				: null;
 		const mediaTitle = resultsMediaTitle ?? defaultTitle;
 
-		const mappedStatus = this.mapMoveTaskStatus(task.status);
+		const mappedStatus = mapMoveTaskStatus(task.status);
 		const statusReason =
 			task.status === 'failed'
 				? (task.errors?.[0] ?? 'Failed to move media files')
@@ -1356,11 +1349,9 @@ export class ActivityService {
 		}
 
 		const timeline = buildHistoryTimeline(history);
-		const mediaInfo = this.resolveMediaInfo(history, mediaMaps);
+		const mediaInfo = resolveMediaInfo(history, mediaMaps);
 		const queueItemId =
-			history.status === 'failed'
-				? findFailedQueueItemId(history, failedQueueIndex)
-				: undefined;
+			history.status === 'failed' ? findFailedQueueItemId(history, failedQueueIndex) : undefined;
 
 		return {
 			id: `history-${history.id}`,
@@ -1408,114 +1399,6 @@ export class ActivityService {
 		return monitoringItems
 			.map((mon) => this.transformMonitoringItem(mon, mediaMaps, processedKeys))
 			.filter((activity): activity is UnifiedActivity => activity !== null);
-	}
-
-	private dedupeActiveActivities(activities: UnifiedActivity[]): UnifiedActivity[] {
-		return this.deduplicationService.dedupeActiveActivities(activities);
-	}
-
-	private resolveMediaInfo(
-		item: DownloadQueueRecord | DownloadHistoryRecord,
-		mediaMaps: MediaMaps
-	) {
-		return transformerResolveMediaInfo(item, mediaMaps);
-	}
-
-	private resolveMonitoringMediaInfo(
-		mon: MonitoringHistoryRecord,
-		mediaMaps: MediaMaps
-	) {
-		return transformerResolveMonitoringMediaInfo(mon, mediaMaps);
-	}
-
-	private deriveFallbackMediaInfo(
-		releaseTitle: string | null | undefined,
-		isEpisode: boolean
-	) {
-		return transformerDeriveFallbackMediaInfo(releaseTitle, isEpisode);
-	}
-
-	private sortActivities(activities: UnifiedActivity[], sort: ActivitySortOptions): void {
-		filtersSortActivities(activities, sort);
-	}
-
-	private parseRetentionDays(value: unknown): number {
-		return filtersParseRetentionDays(value);
-	}
-
-	private compareActivityPriority(a: UnifiedActivity, b: UnifiedActivity): number {
-		return filtersCompareActivityPriority(a, b);
-	}
-
-	/**
-	 * Map a UI-facing filter status to download_queue status values.
-	 * Returns null if the filter does not constrain queue statuses.
-	 */
-	private mapFilterStatusToQueueStatuses(status: string): string[] | null {
-		return mappersMapFilterStatusToQueueStatuses(status);
-	}
-
-	/**
-	 * Map a UI-facing filter status to download_history status values.
-	 * Returns null if the filter does not constrain history statuses.
-	 */
-	private mapFilterStatusToHistoryStatuses(status: string): string[] | null {
-		return mappersMapFilterStatusToHistoryStatuses(status);
-	}
-
-	private mapMoveStatusesForScopeAndFilter(
-		scope: ActivityScope,
-		status: ActivityFilters['status'] | 'all'
-	): Array<'running' | 'completed' | 'failed' | 'cancelled'> {
-		return mappersMapMoveStatusesForScopeAndFilter(scope, status);
-	}
-
-	private mapMoveTaskStatus(
-		status: MoveTaskRecord['status']
-	): Extract<ActivityStatus, 'downloading' | 'imported' | 'failed' | 'removed'> {
-		return mappersMapMoveTaskStatus(status);
-	}
-
-	private withoutStatusFilter(filters: ActivityFilters): ActivityFilters {
-		return filtersWithoutStatusFilter(filters);
-	}
-
-	private applyRequestedStatusFilter(
-		activities: UnifiedActivity[],
-		filters: ActivityFilters
-	): UnifiedActivity[] {
-		return filtersApplyRequestedStatusFilter(activities, filters);
-	}
-
-	private createEmptySummary(): ActivitySummary {
-		return createEmptySummary();
-	}
-
-	private buildActivitySummary(activeActivities: UnifiedActivity[]): ActivitySummary {
-		return filtersBuildActivitySummary(activeActivities);
-	}
-
-	/**
-	 * Apply filters that cannot be expressed in SQL.
-	 *
-	 * Filters already pushed to SQL in fetchActiveDownloads / fetchHistoryItems /
-	 * fetchMonitoringItems: status, protocol, indexer, downloadClientId,
-	 * mediaType, startDate, endDate.  DO NOT re-apply them here.
-	 *
-	 * This method handles only:
-	 *  - scope (active vs history) — determined by source table, but transformed
-	 *    activities need the isActiveActivity check after merging
-	 *  - search — matches across joined/transformed fields (mediaTitle, seriesTitle, etc.)
-	 *  - releaseGroup — extracted from the release title at transform time
-	 *  - resolution — parsed from the JSON quality blob
-	 *  - isUpgrade — only available after transform
-	 */
-	private applyFilters(
-		activities: UnifiedActivity[],
-		filters: ActivityFilters,
-		scope: ActivityScope = 'all'
-	): UnifiedActivity[] {
-		return filtersApplyFilters(activities, filters, scope);
 	}
 }
 

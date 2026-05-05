@@ -10,9 +10,7 @@ export function normalizeReleaseKey(value: string | null | undefined): string {
 
 export function toEpisodeIdList(value: unknown): string[] {
 	if (Array.isArray(value)) {
-		return value.filter(
-			(entry): entry is string => typeof entry === 'string' && entry.length > 0
-		);
+		return value.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0);
 	}
 
 	if (typeof value === 'string') {

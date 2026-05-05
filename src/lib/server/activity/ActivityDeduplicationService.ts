@@ -204,10 +204,7 @@ export class ActivityDeduplicationService {
 		return [statusPriority, sourcePriority, recencyPriority];
 	}
 
-	shouldPreferActiveCandidate(
-		candidate: UnifiedActivity,
-		existing: UnifiedActivity
-	): boolean {
+	shouldPreferActiveCandidate(candidate: UnifiedActivity, existing: UnifiedActivity): boolean {
 		const [candidateStatus, candidateSource, candidateRecency] =
 			this.getActiveDedupPriority(candidate);
 		const [existingStatus, existingSource, existingRecency] = this.getActiveDedupPriority(existing);

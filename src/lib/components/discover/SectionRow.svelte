@@ -5,6 +5,7 @@
 	import { type Snippet } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import { resolvePath } from '$lib/utils/routing';
+	import { getTmdb } from '$lib/api/discover.js';
 	import * as m from '$lib/paraglide/messages.js';
 
 	let { title, items, link, endpoint, cardSnippet, onAddToLibrary, itemClass, excludeInLibrary } =
@@ -42,23 +43,20 @@
 		loading = true;
 		try {
 			const next = page + 1;
-			const res = await fetch(`/api/tmdb/${endpoint}?page=${next}`);
-			if (res.ok) {
-				const data: { results?: T[] } = await res.json();
-				if (data.results && data.results.length > 0) {
-					// Filter out duplicates
-					const existingIds = new Set(displayedItems.map((i: T) => i.id));
-					let newResults = data.results.filter((i: T) => !existingIds.has(i.id));
+			const data = (await getTmdb(endpoint, { page: String(next) })) as { results?: T[] };
+			if (data.results && data.results.length > 0) {
+				// Filter out duplicates
+				const existingIds = new Set(displayedItems.map((i: T) => i.id));
+				let newResults = data.results.filter((i: T) => !existingIds.has(i.id));
 
-					// Filter out items in library if excludeInLibrary is true
-					if (excludeInLibrary) {
-						newResults = newResults.filter((i: T & { inLibrary?: boolean }) => !i.inLibrary);
-					}
+				// Filter out items in library if excludeInLibrary is true
+				if (excludeInLibrary) {
+					newResults = newResults.filter((i: T & { inLibrary?: boolean }) => !i.inLibrary);
+				}
 
-					if (newResults.length > 0) {
-						displayedItems = [...displayedItems, ...newResults];
-						page = next;
-					}
+				if (newResults.length > 0) {
+					displayedItems = [...displayedItems, ...newResults];
+					page = next;
 				}
 			}
 		} catch (e) {

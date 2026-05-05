@@ -1,6 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import { Loader2, X } from 'lucide-svelte';
+	import { getSmartListHelpers } from '$lib/api/smartlists.js';
 
 	interface PersonResult {
 		id: number;
@@ -34,12 +35,8 @@
 		}
 		searching = true;
 		try {
-			const res = await fetch(
-				`/api/smartlists/helpers?helper=people&q=${encodeURIComponent(query)}`
-			);
-			if (res.ok) {
-				results = await res.json();
-			}
+			const res = await getSmartListHelpers({ helper: 'people', q: query });
+			results = Array.isArray(res) ? res : [];
 		} finally {
 			searching = false;
 		}

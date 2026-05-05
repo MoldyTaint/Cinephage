@@ -1,4 +1,11 @@
-import type { SubtitleSettingsUpdate, LanguageProfileCreate, LanguageProfileUpdate, SubtitleProviderCreate, SubtitleProviderUpdate, SubtitleProviderTest } from '$lib/validation/schemas.js';
+import type {
+	SubtitleSettingsUpdate,
+	LanguageProfileCreate,
+	LanguageProfileUpdate,
+	SubtitleProviderCreate,
+	SubtitleProviderUpdate,
+	SubtitleProviderTest
+} from '$lib/validation/schemas.js';
 
 import { apiGet, apiPost, apiPut, apiDelete } from './client.js';
 

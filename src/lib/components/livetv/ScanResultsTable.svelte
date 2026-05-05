@@ -12,6 +12,7 @@
 	} from 'lucide-svelte';
 	import { onMount } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
+	import { getPortalScanResults } from '$lib/api/livetv.js';
 	import * as m from '$lib/paraglide/messages.js';
 
 	interface ScanResult {
@@ -71,11 +72,7 @@
 		error = null;
 
 		try {
-			const response = await fetch(`/api/livetv/portals/${portalId}/scan/results`);
-			if (!response.ok) throw new Error(m.livetv_scanResults_failedToLoadResults());
-			const result = await response.json();
-			if (!result.success)
-				throw new Error(result.error || m.livetv_scanResults_failedToLoadResults());
+			const result = await getPortalScanResults(portalId);
 			results = result.results || [];
 		} catch (e) {
 			error = e instanceof Error ? e.message : m.livetv_scanResults_failedToLoadResults();

@@ -1,4 +1,11 @@
-import { isActiveActivity, type UnifiedActivity, type ActivityFilters, type ActivitySortOptions, type ActivityScope, type ActivitySummary } from '$lib/types/activity';
+import {
+	isActiveActivity,
+	type UnifiedActivity,
+	type ActivityFilters,
+	type ActivitySortOptions,
+	type ActivityScope,
+	type ActivitySummary
+} from '$lib/types/activity';
 
 export const DEFAULT_ACTIVITY_RETENTION_DAYS = 90;
 export const MAX_ACTIVITY_RETENTION_DAYS = 90;

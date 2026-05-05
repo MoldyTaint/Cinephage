@@ -28,10 +28,7 @@ export const POST: RequestHandler = async (event) => {
 
 	const parsed = testWithIdSchema.safeParse(await request.json());
 	if (!parsed.success) {
-		return json(
-			{ success: false, error: parsed.error.issues[0].message },
-			{ status: 400 }
-		);
+		return json({ success: false, error: parsed.error.issues[0].message }, { status: 400 });
 	}
 	const body = parsed.data;
 

@@ -16,7 +16,12 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { viewPreferences } from '$lib/stores/view-preferences.svelte';
 	import { enhance } from '$app/forms';
-	import { batchSeries, batchDeleteSeriesFiles } from '$lib/api/library.js';
+	import {
+		batchSeries,
+		batchDeleteSeriesFiles,
+		updateSeries,
+		deleteSeries
+	} from '$lib/api/library.js';
 	import { grabRelease } from '$lib/api/downloads.js';
 	import { ApiError } from '$lib/api/client.js';
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
@@ -175,12 +180,7 @@
 		if (!show) return;
 
 		try {
-			const response = await fetch(`/api/library/series/${seriesId}`, {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ monitored })
-			});
-			const result = await response.json();
+			const result = await updateSeries(seriesId, { monitored });
 			if (result.success) {
 				data = {
 					...data,
@@ -333,11 +333,7 @@
 			bulkLoading = true;
 			currentBulkAction = 'delete';
 			try {
-				const response = await fetch(
-					`/api/library/series/${seriesId}?deleteFiles=${deleteFiles}&removeFromLibrary=${removeFromLibrary}`,
-					{ method: 'DELETE' }
-				);
-				const result = await response.json();
+				const result = await deleteSeries(seriesId, deleteFiles, removeFromLibrary);
 				if (result.success) {
 					if (removeFromLibrary) {
 						data = { ...data, series: data.series.filter((s) => s.id !== seriesId) };

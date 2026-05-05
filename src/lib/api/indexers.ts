@@ -1,4 +1,10 @@
-import type { IndexerCreate, IndexerUpdate, IndexerTest, CustomFormatCreate, CustomFormatUpdateBody } from '$lib/validation/schemas.js';
+import type {
+	IndexerCreate,
+	IndexerUpdate,
+	IndexerTest,
+	CustomFormatCreate,
+	CustomFormatUpdateBody
+} from '$lib/validation/schemas.js';
 
 import { apiGet, apiPost, apiPut, apiDelete } from './client.js';
 
