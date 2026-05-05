@@ -22,3 +22,9 @@ export { default as LibrarySeriesHeader } from './LibrarySeriesHeader.svelte';
 export { default as SeasonAccordion } from './SeasonAccordion.svelte';
 export { default as EpisodeRow } from './EpisodeRow.svelte';
 export { default as SeriesEditModal } from './SeriesEditModal.svelte';
+
+// Library media table sub-components
+export { default as LibraryMediaTable } from './LibraryMediaTable.svelte';
+export { default as LibraryMediaMobileCard } from './LibraryMediaMobileCard.svelte';
+export { default as LibraryMediaTableRow } from './LibraryMediaTableRow.svelte';
+export { default as LibraryMediaTableHeader } from './LibraryMediaTableHeader.svelte';

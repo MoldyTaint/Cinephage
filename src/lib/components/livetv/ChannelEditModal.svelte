@@ -2,15 +2,9 @@
 	import {
 		AlertCircle,
 		Archive,
-		Check,
-		ChevronDown,
-		ChevronUp,
-		Copy,
 		Link,
 		Loader2,
-		Plus,
 		Search,
-		Trash2,
 		Tv,
 		X
 	} from 'lucide-svelte';
@@ -18,7 +12,6 @@
 	import { normalizeLiveTvChannelName } from '$lib/livetv/channel-name-normalizer';
 	import { copyToClipboard as copyTextToClipboard } from '$lib/utils/clipboard';
 	import { toasts } from '$lib/stores/toast.svelte';
-	import { SvelteURLSearchParams } from 'svelte/reactivity';
 	import type {
 		ChannelBackupLink,
 		ChannelCategory,
@@ -26,6 +19,10 @@
 		UpdateChannelRequest
 	} from '$lib/types/livetv';
 	import * as m from '$lib/paraglide/messages.js';
+	import { getLineupBackups, deleteLineupBackup, reorderLineupBackups } from '$lib/api/livetv.js';
+	import LogoLibraryPicker from './LogoLibraryPicker.svelte';
+	import ChannelTechnicalDetails from './ChannelTechnicalDetails.svelte';
+	import BackupSourceList from './BackupSourceList.svelte';
 
 	interface Props {
 		open: boolean;
@@ -38,20 +35,6 @@
 		onDelete?: () => void;
 		onOpenBackupBrowser?: (lineupItemId: string, excludeChannelId: string) => void;
 		onOpenEpgSourcePicker?: (channelId: string) => void;
-	}
-
-	interface LogoLibraryItem {
-		path: string;
-		country: string;
-		name: string;
-		filename: string;
-		url: string;
-	}
-
-	interface LogoCountryOption {
-		code: string;
-		name: string;
-		logoCount: number;
 	}
 
 	let {
@@ -83,17 +66,6 @@
 	let backupsOpen = $state(false);
 	let copiedCmd = $state(false);
 	let logoPickerOpen = $state(false);
-	let logoPickerSearch = $state('');
-	let logoPickerCountry = $state('');
-	let logoPickerLoading = $state(false);
-	let logoPickerLoadingMore = $state(false);
-	let logoPickerError = $state<string | null>(null);
-	let logoPickerItems = $state<LogoLibraryItem[]>([]);
-	let logoPickerCountries = $state<LogoCountryOption[]>([]);
-	let logoLibraryReady = $state<boolean | null>(null);
-	let logoPickerOffset = $state(0);
-	let logoPickerHasMore = $state(false);
-	let logoPickerRequestId = 0;
 
 	const channelNumberError = $derived(
 		channelNumber !== null && channelNumber < 1
@@ -127,6 +99,10 @@
 		return channel?.displayLogo ?? channel?.channel.logo ?? null;
 	});
 
+	const archiveDurationFormatted = $derived(
+		formatArchiveDuration(channel?.channel.stalker?.archiveDuration ?? 0)
+	);
+
 	$effect(() => {
 		if (channel && open) {
 			channelNumber = channel.channelNumber;
@@ -139,27 +115,9 @@
 			copiedCmd = false;
 			technicalDetailsOpen = false;
 			backupsOpen = false;
-			closeLogoPicker();
+			logoPickerOpen = false;
 			loadBackups();
 		}
-	});
-
-	$effect(() => {
-		if (!open || !logoPickerOpen) return;
-
-		const currentSearch = logoPickerSearch;
-		const currentCountry = logoPickerCountry;
-		const timer = setTimeout(() => {
-			loadLogoLibrary(currentSearch, currentCountry);
-		}, 250);
-
-		return () => clearTimeout(timer);
-	});
-
-	$effect(() => {
-		if (!open || !logoPickerOpen || logoPickerCountries.length > 0 || logoLibraryReady === false)
-			return;
-		loadLogoCountries();
 	});
 
 	export function refreshBackups() {
@@ -175,13 +133,8 @@
 		loadingBackups = true;
 		backupError = null;
 		try {
-			const res = await fetch(`/api/livetv/lineup/${channel.id}/backups`);
-			if (res.ok) {
-				const data = await res.json();
-				backups = data.backups || [];
-			} else {
-				backupError = m.livetv_channelEditModal_failedToLoadBackups();
-			}
+			const data = await getLineupBackups(channel.id);
+			backups = data.backups || [];
 		} catch {
 			backupError = m.livetv_channelEditModal_failedToLoadBackups();
 		} finally {
@@ -196,13 +149,7 @@
 		backupError = null;
 
 		try {
-			const res = await fetch(`/api/livetv/lineup/${channel.id}/backups/${backupId}`, {
-				method: 'DELETE'
-			});
-			if (!res.ok) {
-				backups = previousBackups;
-				backupError = m.livetv_channelEditModal_failedToRemoveBackup();
-			}
+			await deleteLineupBackup(channel.id, backupId);
 		} catch {
 			backups = previousBackups;
 			backupError = m.livetv_channelEditModal_failedToRemoveBackup();
@@ -232,15 +179,10 @@
 		backupError = null;
 
 		try {
-			const res = await fetch(`/api/livetv/lineup/${channel.id}/backups/reorder`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ backupIds: backups.map((backup) => backup.id) })
-			});
-			if (!res.ok) {
-				backups = previousOrder;
-				backupError = m.livetv_channelEditModal_failedToReorderBackups();
-			}
+			await reorderLineupBackups(
+				channel.id,
+				backups.map((backup) => backup.id)
+			);
 		} catch {
 			backups = previousOrder;
 			backupError = m.livetv_channelEditModal_failedToReorderBackups();
@@ -294,123 +236,14 @@
 		logoPickerOpen = !logoPickerOpen;
 	}
 
-	function closeLogoPicker() {
-		logoPickerOpen = false;
-		logoPickerSearch = '';
-		logoPickerCountry = '';
-		logoPickerLoading = false;
-		logoPickerLoadingMore = false;
-		logoPickerError = null;
-		logoPickerItems = [];
-		logoPickerCountries = [];
-		logoLibraryReady = null;
-		logoPickerOffset = 0;
-		logoPickerHasMore = false;
-	}
-
-	function applyLogoSelection(url: string) {
+	function handleLogoSelect(url: string) {
 		customLogo = url;
 		logoPickerOpen = false;
 	}
 
-	function clearCustomLogo() {
+	function handleLogoClear() {
 		customLogo = '';
 		logoPickerOpen = false;
-	}
-
-	async function loadLogoCountries() {
-		try {
-			const res = await fetch('/api/logos/countries');
-			const body = await res.json().catch(() => null);
-
-			if (!res.ok || !body?.success) {
-				if (body?.code === 'NOT_DOWNLOADED') {
-					logoLibraryReady = false;
-				}
-				return;
-			}
-
-			logoPickerCountries = body.data ?? [];
-		} catch {
-			// Ignore country filter failures. The picker can still work without them.
-		}
-	}
-
-	function handleLogoPickerScroll(event: Event) {
-		const target = event.currentTarget;
-		if (!(target instanceof HTMLDivElement)) return;
-
-		const nearBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 48;
-		if (!nearBottom || logoPickerLoading || logoPickerLoadingMore || !logoPickerHasMore) return;
-
-		loadLogoLibrary(logoPickerSearch, logoPickerCountry, true);
-	}
-
-	async function loadLogoLibrary(search = '', country = '', append = false) {
-		if (append && (logoPickerLoading || logoPickerLoadingMore || !logoPickerHasMore)) {
-			return;
-		}
-
-		const requestId = ++logoPickerRequestId;
-		const offset = append ? logoPickerOffset : 0;
-
-		if (append) {
-			logoPickerLoadingMore = true;
-		} else {
-			logoPickerLoading = true;
-			logoPickerItems = [];
-			logoPickerOffset = 0;
-			logoPickerHasMore = false;
-		}
-
-		logoPickerError = null;
-
-		try {
-			const params = new SvelteURLSearchParams({ limit: '18', offset: String(offset) });
-			if (search.trim()) params.set('search', search.trim());
-			if (country) params.set('country', country);
-
-			const res = await fetch(`/api/logos?${params.toString()}`);
-			const body = await res.json().catch(() => null);
-
-			if (requestId !== logoPickerRequestId) {
-				return;
-			}
-
-			if (!res.ok || !body?.success) {
-				logoPickerItems = [];
-				logoPickerOffset = 0;
-				logoPickerHasMore = false;
-				if (body?.code === 'NOT_DOWNLOADED') {
-					logoLibraryReady = false;
-					logoPickerError =
-						'Download logos from the Live TV channels page to browse the logo library.';
-				} else {
-					logoLibraryReady = null;
-					logoPickerError = body?.error || 'Failed to load logos';
-				}
-				return;
-			}
-
-			logoLibraryReady = true;
-			const nextItems = body.data ?? [];
-			logoPickerItems = append ? [...logoPickerItems, ...nextItems] : nextItems;
-			logoPickerOffset = offset + nextItems.length;
-			logoPickerHasMore = body.pagination?.hasMore ?? false;
-		} catch {
-			if (requestId !== logoPickerRequestId) {
-				return;
-			}
-
-			logoLibraryReady = null;
-			logoPickerItems = [];
-			logoPickerError = 'Failed to load logos';
-		} finally {
-			if (requestId === logoPickerRequestId) {
-				logoPickerLoading = false;
-				logoPickerLoadingMore = false;
-			}
-		}
 	}
 
 	function formatArchiveDuration(hours: number): string {
@@ -552,107 +385,13 @@
 						</button>
 					</div>
 
-					{#if logoPickerOpen}
-						<div
-							class="fixed inset-0 z-40"
-							onclick={closeLogoPicker}
-							onkeydown={(e) => e.key === 'Escape' && closeLogoPicker()}
-							role="button"
-							tabindex="-1"
-						></div>
-
-						<div
-							class="absolute inset-x-0 z-50 mt-2 rounded-xl border border-base-content/10 bg-base-100 p-3 shadow-xl"
-						>
-							<div class="mb-3 flex items-center gap-2">
-								<div class="relative flex-1">
-									<Search
-										class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/40"
-									/>
-									<input
-										type="text"
-										class="input-bordered input input-sm w-full pl-9"
-										placeholder={m.livetv_channelEditModal_searchLogosPlaceholder()}
-										bind:value={logoPickerSearch}
-									/>
-								</div>
-								<select
-									class="select-bordered select w-36 select-sm"
-									bind:value={logoPickerCountry}
-									disabled={logoPickerCountries.length === 0 || logoLibraryReady === false}
-								>
-									<option value="">{m.livetv_channelEditModal_allCountries()}</option>
-									{#each logoPickerCountries as countryOption (countryOption.code)}
-										<option value={countryOption.code}>
-											{countryOption.name} ({countryOption.logoCount})
-										</option>
-									{/each}
-								</select>
-							</div>
-
-							<div
-								class="max-h-64 overflow-y-auto rounded-lg bg-base-200/60 p-1"
-								onscroll={handleLogoPickerScroll}
-							>
-								{#if logoPickerLoading}
-									<div class="flex items-center justify-center py-8 text-base-content/60">
-										<Loader2 class="h-5 w-5 animate-spin" />
-									</div>
-								{:else if logoPickerError}
-									<div class="px-3 py-6 text-center text-sm text-base-content/60">
-										{logoPickerError}
-									</div>
-								{:else if logoPickerItems.length === 0}
-									<div class="px-3 py-6 text-center text-sm text-base-content/60">
-										{m.livetv_channelEditModal_noLogosMatch()}
-									</div>
-								{:else}
-									<div class="space-y-1">
-										{#each logoPickerItems as logoItem (logoItem.path)}
-											<button
-												type="button"
-												class="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-base-100"
-												onclick={() => applyLogoSelection(logoItem.url)}
-											>
-												<img
-													src={logoItem.url}
-													alt=""
-													class="h-9 w-9 rounded bg-base-100 object-contain"
-												/>
-												<div class="min-w-0 flex-1">
-													<div class="truncate text-sm font-medium">{logoItem.name}</div>
-													<div class="truncate text-xs text-base-content/50">
-														{logoItem.country}
-													</div>
-												</div>
-											</button>
-										{/each}
-										{#if logoPickerLoadingMore}
-											<div class="flex items-center justify-center py-2 text-base-content/60">
-												<Loader2 class="h-4 w-4 animate-spin" />
-											</div>
-										{/if}
-									</div>
-								{/if}
-							</div>
-
-							<div class="mt-3 flex items-center justify-between gap-2">
-								<p class="text-xs text-base-content/50">
-									{m.livetv_channelEditModal_pasteOrPickLogo()}
-								</p>
-								<div class="flex items-center gap-2">
-									{#if customLogo.trim()}
-										<button type="button" class="btn btn-ghost btn-xs" onclick={clearCustomLogo}>
-											Clear
-										</button>
-									{/if}
-									<button type="button" class="btn btn-ghost btn-xs" onclick={closeLogoPicker}>
-										Done
-									</button>
-								</div>
-							</div>
-						</div>
-					{/if}
+					<LogoLibraryPicker
+						open={logoPickerOpen}
+						hasCustomLogo={customLogo.trim().length > 0}
+						onSelectLogo={handleLogoSelect}
+						onClose={() => (logoPickerOpen = false)}
+						onClear={handleLogoClear}
+					/>
 				</div>
 				{#if customLogoError}
 					<p class="mt-1 text-xs text-error">{customLogoError}</p>
@@ -738,177 +477,35 @@
 			</div>
 		</div>
 
-		<div class="collapse mt-4 rounded-lg bg-base-200" class:collapse-open={technicalDetailsOpen}>
-			<button
-				type="button"
-				class="collapse-title flex min-h-0 items-center justify-between px-3 py-2 text-sm font-medium"
-				onclick={() => (technicalDetailsOpen = !technicalDetailsOpen)}
-			>
-				<span>{m.livetv_channelEditModal_technicalDetails()}</span>
-				<ChevronDown
-					class="h-4 w-4 transition-transform {technicalDetailsOpen ? 'rotate-180' : ''}"
-				/>
-			</button>
-			<div class="collapse-content px-3 pb-3">
-				<div class="space-y-2 text-sm">
-					<div class="flex justify-between gap-4">
-						<span class="text-base-content/50">{m.livetv_channelEditModal_originalName()}</span>
-						<span class="truncate font-medium">{channel.channel.name}</span>
-					</div>
-					<div class="flex justify-between">
-						<span class="text-base-content/50"
-							>{m.livetv_channelEditModal_originalNumber({
-								number: channel.channel.number ?? 'None'
-							})}</span
-						>
-						<span class="font-medium">{channel.channel.number || 'None'}</span>
-					</div>
-					<div class="flex justify-between gap-4">
-						<span class="text-base-content/50">{m.livetv_channelEditModal_providerCategory()}</span>
-						<span class="truncate font-medium">{channel.channel.categoryTitle || 'None'}</span>
-					</div>
-					<div class="flex justify-between">
-						<span class="text-base-content/50">{m.livetv_channelEditModal_archive()}</span>
-						<span class="font-medium">
-							{#if channel.channel.stalker?.tvArchive}
-								{m.livetv_channelEditModal_archiveYes({
-									duration: formatArchiveDuration(channel.channel.stalker.archiveDuration || 0)
-								})}
-							{:else}
-								{m.livetv_channelEditModal_archiveNo()}
-							{/if}
-						</span>
-					</div>
-					<div>
-						<span class="text-base-content/50">{m.livetv_channelEditModal_streamCommand()}</span>
-						<div class="mt-1 flex items-center gap-2">
-							<code
-								class="flex-1 truncate rounded bg-base-300 px-2 py-1 font-mono text-xs"
-								title={channel.channel.stalker?.cmd}
-							>
-								{channel.channel.stalker?.cmd}
-							</code>
-							<button
-								type="button"
-								class="btn btn-ghost btn-xs"
-								onclick={copyStreamCommand}
-								title={m.livetv_channelEditModal_copy()}
-							>
-								{#if copiedCmd}
-									<Check class="h-3.5 w-3.5 text-success" />
-								{:else}
-									<Copy class="h-3.5 w-3.5" />
-								{/if}
-							</button>
-						</div>
-					</div>
-					<div class="flex justify-between">
-						<span class="text-base-content/50">{m.livetv_channelEditModal_accountId()}</span>
-						<span class="font-mono text-xs">{channel.accountId}</span>
-					</div>
-					<div class="flex justify-between">
-						<span class="text-base-content/50">{m.livetv_channelEditModal_channelId()}</span>
-						<span class="font-mono text-xs">{channel.channelId}</span>
-					</div>
-				</div>
-			</div>
-		</div>
+		<ChannelTechnicalDetails
+			open={technicalDetailsOpen}
+			onToggle={() => (technicalDetailsOpen = !technicalDetailsOpen)}
+			channelName={channel.channel.name}
+			channelNumber={channel.channel.number ?? null}
+			providerCategory={channel.channel.categoryTitle ?? null}
+			tvArchive={!!channel.channel.stalker?.tvArchive}
+			{archiveDurationFormatted}
+			streamCommand={channel.channel.stalker?.cmd}
+			{copiedCmd}
+			onCopyStreamCommand={copyStreamCommand}
+			accountId={channel.accountId}
+			channelDbId={channel.channelId}
+		/>
 
-		<div class="collapse mt-2 rounded-lg bg-base-200" class:collapse-open={backupsOpen}>
-			<button
-				type="button"
-				class="collapse-title flex min-h-0 items-center justify-between px-3 py-2 text-sm font-medium"
-				onclick={() => (backupsOpen = !backupsOpen)}
-			>
-				<span class="flex items-center gap-2">
-					{m.livetv_channelEditModal_backupSources()}
-					{#if backups.length > 0}
-						<span class="badge badge-xs badge-neutral">{backups.length}</span>
-					{/if}
-				</span>
-				<ChevronDown class="h-4 w-4 transition-transform {backupsOpen ? 'rotate-180' : ''}" />
-			</button>
-			<div class="collapse-content px-3 pb-3">
-				{#if backupError}
-					<div class="mb-2 alert py-2 alert-error">
-						<AlertCircle class="h-4 w-4" />
-						<span class="text-sm">{backupError}</span>
-					</div>
-				{/if}
-
-				{#if loadingBackups}
-					<div class="flex justify-center py-3">
-						<Loader2 class="h-5 w-5 animate-spin text-base-content/50" />
-					</div>
-				{:else if backups.length === 0}
-					<p class="py-2 text-xs text-base-content/50">
-						{m.livetv_channelEditModal_noBackups()}
-					</p>
-				{:else}
-					<div class="space-y-2">
-						{#each backups as backup, i (backup.id)}
-							<div class="flex items-center gap-2 rounded bg-base-300 px-2 py-1.5">
-								<span class="badge badge-xs badge-neutral">{i + 1}</span>
-								{#if backup.channel.logo}
-									<img
-										src={backup.channel.logo}
-										alt=""
-										class="h-6 w-6 rounded bg-base-100 object-contain"
-									/>
-								{:else}
-									<div class="flex h-6 w-6 items-center justify-center rounded bg-base-100">
-										<Tv class="h-3 w-3 text-base-content/30" />
-									</div>
-								{/if}
-								<div class="min-w-0 flex-1">
-									<span class="block truncate text-xs font-medium">{backup.channel.name}</span>
-									<span class="text-xs text-base-content/50">{backup.accountName}</span>
-								</div>
-								<div class="flex gap-0.5">
-									<button
-										type="button"
-										class="btn btn-ghost btn-xs"
-										onclick={() => moveBackupUp(i)}
-										disabled={i === 0 || backupSaving}
-										title={m.livetv_channelEditModal_moveUp()}
-									>
-										<ChevronUp class="h-3 w-3" />
-									</button>
-									<button
-										type="button"
-										class="btn btn-ghost btn-xs"
-										onclick={() => moveBackupDown(i)}
-										disabled={i >= backups.length - 1 || backupSaving}
-										title={m.livetv_channelEditModal_moveDown()}
-									>
-										<ChevronDown class="h-3 w-3" />
-									</button>
-									<button
-										type="button"
-										class="btn text-error btn-ghost btn-xs"
-										onclick={() => removeBackup(backup.id)}
-										title={m.livetv_channelEditModal_remove()}
-									>
-										<Trash2 class="h-3 w-3" />
-									</button>
-								</div>
-							</div>
-						{/each}
-					</div>
-				{/if}
-
-				{#if onOpenBackupBrowser}
-					<button
-						type="button"
-						class="btn mt-2 gap-1 btn-ghost btn-xs"
-						onclick={() => onOpenBackupBrowser(channel.id, channel.channelId)}
-					>
-						<Plus class="h-3 w-3" />
-						{m.livetv_channelEditModal_addBackup()}
-					</button>
-				{/if}
-			</div>
-		</div>
+		<BackupSourceList
+			open={backupsOpen}
+			onToggle={() => (backupsOpen = !backupsOpen)}
+			{backups}
+			loading={loadingBackups}
+			saving={backupSaving}
+			error={backupError}
+			onMoveUp={moveBackupUp}
+			onMoveDown={moveBackupDown}
+			onRemove={removeBackup}
+			onAddBackup={onOpenBackupBrowser
+				? () => onOpenBackupBrowser(channel.id, channel.channelId)
+				: undefined}
+		/>
 
 		<div class="modal-action mt-4">
 			{#if onDelete}
