@@ -2,6 +2,7 @@
 	import { Database, Globe, Loader2, Check, AlertCircle } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { onMount } from 'svelte';
+	import { getSmartListPresets, testExternalList } from '$lib/api/smartlists.js';
 
 	// Types
 	interface PresetSetting {
@@ -90,9 +91,7 @@
 	// Fetch presets on mount
 	onMount(async () => {
 		try {
-			const res = await fetch('/api/smartlists/presets');
-			if (!res.ok) throw new Error(m.smartlists_error_fetchPresets());
-			presets = await res.json();
+			presets = await getSmartListPresets();
 
 			// Initialize selected preset if presetId is provided
 			if (presetId && presetId !== 'custom') {
@@ -207,32 +206,19 @@
 		testResult = null;
 
 		try {
-			const res = await fetch('/api/smartlists/external/test', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					url,
-					headers: customHeaders,
-					mediaType,
-					presetId,
-					config: presetSettings
-				})
+			const data = await testExternalList({
+				url,
+				headers: customHeaders,
+				mediaType,
+				presetId,
+				config: presetSettings
 			});
 
-			const data = await res.json();
-
-			if (res.ok) {
-				testResult = {
-					success: true,
-					message: m.smartlists_test_success({ count: data.totalCount }),
-					itemCount: data.totalCount
-				};
-			} else {
-				testResult = {
-					success: false,
-					message: data.error || m.smartlists_error_fetchExternalList()
-				};
-			}
+			testResult = {
+				success: true,
+				message: m.smartlists_test_success({ count: data.totalCount }),
+				itemCount: data.totalCount
+			};
 		} catch (e) {
 			testResult = {
 				success: false,

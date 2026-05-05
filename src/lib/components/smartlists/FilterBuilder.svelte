@@ -4,6 +4,10 @@
 	import type { SmartListFilters } from '$lib/server/db/schema.js';
 	import { page } from '$app/state';
 	import { TMDB } from '$lib/config/constants.js';
+	import { getSmartListHelpers } from '$lib/api/smartlists.js';
+	import GenreFilter from './GenreFilter.svelte';
+	import ChipSelector from './ChipSelector.svelte';
+	import NumericRangeFilter from './NumericRangeFilter.svelte';
 
 	interface Props {
 		mediaType: 'movie' | 'tv';
@@ -168,10 +172,7 @@
 	async function loadGenres() {
 		loadingGenres = true;
 		try {
-			const res = await fetch(`/api/smartlists/helpers?helper=genres&type=${mediaType}`);
-			if (res.ok) {
-				genres = await res.json();
-			}
+			genres = await getSmartListHelpers({ helper: 'genres', type: mediaType });
 		} finally {
 			loadingGenres = false;
 		}
@@ -180,12 +181,11 @@
 	async function loadProviders() {
 		loadingProviders = true;
 		try {
-			const res = await fetch(
-				`/api/smartlists/helpers?helper=providers&type=${mediaType}&region=${filters.watchRegion ?? (page.data.defaultRegion || TMDB.DEFAULT_REGION)}`
-			);
-			if (res.ok) {
-				providers = await res.json();
-			}
+			providers = await getSmartListHelpers({
+				helper: 'providers',
+				type: mediaType,
+				region: filters.watchRegion ?? (page.data.defaultRegion || TMDB.DEFAULT_REGION)
+			});
 		} finally {
 			loadingProviders = false;
 		}
@@ -194,11 +194,13 @@
 	async function loadCertifications() {
 		loadingCertifications = true;
 		try {
-			const res = await fetch(`/api/smartlists/helpers?helper=certifications&type=${mediaType}`);
-			if (res.ok) {
-				certifications = await res.json();
-				certifications.sort((a, b) => a.order - b.order);
-			}
+			const result = await getSmartListHelpers({ helper: 'certifications', type: mediaType });
+			certifications = result as unknown as Array<{
+				certification: string;
+				meaning: string;
+				order: number;
+			}>;
+			certifications.sort((a, b) => a.order - b.order);
 		} finally {
 			loadingCertifications = false;
 		}
@@ -208,11 +210,9 @@
 		if (languages.length > 0) return;
 		loadingLanguages = true;
 		try {
-			const res = await fetch('/api/smartlists/helpers?helper=languages');
-			if (res.ok) {
-				languages = await res.json();
-				languages.sort((a, b) => a.english_name.localeCompare(b.english_name));
-			}
+			const result = await getSmartListHelpers({ helper: 'languages' });
+			languages = result as unknown as Array<{ iso_639_1: string; english_name: string }>;
+			languages.sort((a, b) => a.english_name.localeCompare(b.english_name));
 		} finally {
 			loadingLanguages = false;
 		}
@@ -222,11 +222,9 @@
 		if (countries.length > 0) return;
 		loadingCountries = true;
 		try {
-			const res = await fetch('/api/smartlists/helpers?helper=countries');
-			if (res.ok) {
-				countries = await res.json();
-				countries.sort((a, b) => a.english_name.localeCompare(b.english_name));
-			}
+			const result = await getSmartListHelpers({ helper: 'countries' });
+			countries = result as unknown as Array<{ iso_3166_1: string; english_name: string }>;
+			countries.sort((a, b) => a.english_name.localeCompare(b.english_name));
 		} finally {
 			loadingCountries = false;
 		}
@@ -239,12 +237,10 @@
 		}
 		searchingPeople = true;
 		try {
-			const res = await fetch(
-				`/api/smartlists/helpers?helper=people&q=${encodeURIComponent(peopleQuery)}`
-			);
-			if (res.ok) {
-				peopleResults = await res.json();
-			}
+			peopleResults = (await getSmartListHelpers({
+				helper: 'people',
+				q: peopleQuery
+			})) as unknown as Array<{ id: number; name: string; profile_path: string | null }>;
 		} finally {
 			searchingPeople = false;
 		}
@@ -257,12 +253,10 @@
 		}
 		searchingKeywords = true;
 		try {
-			const res = await fetch(
-				`/api/smartlists/helpers?helper=keywords&q=${encodeURIComponent(keywordQuery)}`
-			);
-			if (res.ok) {
-				keywordResults = await res.json();
-			}
+			keywordResults = (await getSmartListHelpers({
+				helper: 'keywords',
+				q: keywordQuery
+			})) as unknown as Array<{ id: number; name: string }>;
 		} finally {
 			searchingKeywords = false;
 		}
@@ -438,176 +432,45 @@
 		<div class="collapse-title font-medium">{m.smartlists_filter_basicFilters()}</div>
 		<div class="collapse-content">
 			<div class="space-y-4 pt-2">
-				<!-- Genres Include -->
-				<div class="form-control">
-					<div class="label py-1">
-						<span
-							class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-							>{m.smartlists_filter_includeGenres()}</span
-						>
-						{#if filters.withGenres?.length}
-							<span class="badge badge-sm badge-primary">{filters.withGenres.length}</span>
-						{/if}
-					</div>
-					{#if loadingGenres}
-						<div class="flex items-center gap-2 py-2">
-							<Loader2 class="h-4 w-4 animate-spin" />
-							<span class="text-sm text-base-content/60">{m.smartlists_filter_loading()}</span>
-						</div>
-					{:else}
-						<div class="flex flex-wrap gap-1.5">
-							{#each genres as genre (genre.id)}
-								<button
-									type="button"
-									class="badge cursor-pointer transition-all {isGenreIncluded(genre.id)
-										? 'badge-primary'
-										: 'hover:badge-primary/30 badge-ghost'}"
-									onclick={() => toggleGenre(genre.id, true)}
-								>
-									{genre.name}
-								</button>
-							{/each}
-						</div>
-					{/if}
-				</div>
+				<GenreFilter
+					{genres}
+					withGenres={filters.withGenres ?? []}
+					withoutGenres={filters.withoutGenres ?? []}
+					genreMode={filters.genreMode ?? 'or'}
+					loading={loadingGenres}
+					onToggleGenre={toggleGenre}
+					onGenreModeChange={(mode) => (filters.genreMode = mode)}
+				/>
 
-				<!-- Genres Exclude -->
-				<div class="form-control">
-					<div class="label py-1">
-						<span
-							class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-							>{m.smartlists_filter_excludeGenres()}</span
-						>
-						{#if filters.withoutGenres?.length}
-							<span class="badge badge-sm badge-error">{filters.withoutGenres.length}</span>
-						{/if}
-					</div>
-					<div class="flex flex-wrap gap-1.5">
-						{#each genres as genre (genre.id)}
-							<button
-								type="button"
-								class="badge cursor-pointer transition-all {isGenreExcluded(genre.id)
-									? 'badge-error'
-									: 'hover:badge-error/30 badge-ghost'}"
-								onclick={() => toggleGenre(genre.id, false)}
-							>
-								{genre.name}
-							</button>
-						{/each}
-					</div>
-				</div>
+				<NumericRangeFilter
+					minLabel={m.smartlists_filter_yearFrom()}
+					maxLabel={m.smartlists_filter_yearTo()}
+					minValue={filters.yearMin}
+					maxValue={filters.yearMax}
+					minPlaceholder="1900"
+					maxPlaceholder="2025"
+					minMin={1900}
+					minMax={2030}
+					maxMin={1900}
+					maxMax={2030}
+					onMinChange={(v) => (filters.yearMin = v)}
+					onMaxChange={(v) => (filters.yearMax = v)}
+				/>
 
-				<!-- Genre Mode -->
-				{#if filters.withGenres && filters.withGenres.length > 1}
-					<div class="form-control">
-						<div class="label py-1">
-							<span
-								class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-								>{m.smartlists_filter_genreMatchMode()}</span
-							>
-						</div>
-						<div class="flex gap-4">
-							<label class="label cursor-pointer gap-2">
-								<input
-									type="radio"
-									name="genreMode"
-									class="radio radio-sm"
-									value="or"
-									checked={filters.genreMode !== 'and'}
-									onchange={() => (filters.genreMode = 'or')}
-								/>
-								<span class="text-sm">{m.smartlists_filter_matchAny()}</span>
-							</label>
-							<label class="label cursor-pointer gap-2">
-								<input
-									type="radio"
-									name="genreMode"
-									class="radio radio-sm"
-									value="and"
-									checked={filters.genreMode === 'and'}
-									onchange={() => (filters.genreMode = 'and')}
-								/>
-								<span class="text-sm">{m.smartlists_filter_matchAll()}</span>
-							</label>
-						</div>
-					</div>
-				{/if}
-
-				<!-- Year Range -->
-				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-					<div class="form-control">
-						<label class="label py-1" for="yearMin">
-							<span
-								class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-								>{m.smartlists_filter_yearFrom()}</span
-							>
-						</label>
-						<input
-							type="number"
-							id="yearMin"
-							bind:value={filters.yearMin}
-							placeholder="1900"
-							min="1900"
-							max="2030"
-							class="input-bordered input input-sm w-full"
-						/>
-					</div>
-					<div class="form-control">
-						<label class="label py-1" for="yearMax">
-							<span
-								class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-								>{m.smartlists_filter_yearTo()}</span
-							>
-						</label>
-						<input
-							type="number"
-							id="yearMax"
-							bind:value={filters.yearMax}
-							placeholder="2025"
-							min="1900"
-							max="2030"
-							class="input-bordered input input-sm w-full"
-						/>
-					</div>
-				</div>
-
-				<!-- Rating -->
-				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-					<div class="form-control">
-						<label class="label py-1" for="ratingMin">
-							<span
-								class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-								>{m.smartlists_filter_minRating()}</span
-							>
-						</label>
-						<input
-							type="number"
-							id="ratingMin"
-							bind:value={filters.voteAverageMin}
-							placeholder="0"
-							min="0"
-							max="10"
-							step="0.5"
-							class="input-bordered input input-sm w-full"
-						/>
-					</div>
-					<div class="form-control">
-						<label class="label py-1" for="voteCount">
-							<span
-								class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-								>{m.smartlists_filter_minVotes()}</span
-							>
-						</label>
-						<input
-							type="number"
-							id="voteCount"
-							bind:value={filters.voteCountMin}
-							placeholder="100"
-							min="0"
-							class="input-bordered input input-sm w-full"
-						/>
-					</div>
-				</div>
+				<NumericRangeFilter
+					minLabel={m.smartlists_filter_minRating()}
+					maxLabel={m.smartlists_filter_minVotes()}
+					minValue={filters.voteAverageMin}
+					maxValue={filters.voteCountMin}
+					minPlaceholder="0"
+					maxPlaceholder="100"
+					minMin={0}
+					minMax={10}
+					maxMin={0}
+					step="0.5"
+					onMinChange={(v) => (filters.voteAverageMin = v)}
+					onMaxChange={(v) => (filters.voteCountMin = v)}
+				/>
 			</div>
 		</div>
 	</div>
@@ -712,41 +575,18 @@
 					</select>
 				</div>
 
-				<!-- Runtime -->
-				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-					<div class="form-control">
-						<label class="label py-1" for="runtimeMin">
-							<span
-								class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-								>{m.smartlists_filter_minRuntime()}</span
-							>
-						</label>
-						<input
-							type="number"
-							id="runtimeMin"
-							bind:value={filters.runtimeMin}
-							placeholder="0"
-							min="0"
-							class="input-bordered input input-sm w-full"
-						/>
-					</div>
-					<div class="form-control">
-						<label class="label py-1" for="runtimeMax">
-							<span
-								class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-								>{m.smartlists_filter_maxRuntime()}</span
-							>
-						</label>
-						<input
-							type="number"
-							id="runtimeMax"
-							bind:value={filters.runtimeMax}
-							placeholder="300"
-							min="0"
-							class="input-bordered input input-sm w-full"
-						/>
-					</div>
-				</div>
+				<NumericRangeFilter
+					minLabel={m.smartlists_filter_minRuntime()}
+					maxLabel={m.smartlists_filter_maxRuntime()}
+					minValue={filters.runtimeMin}
+					maxValue={filters.runtimeMax}
+					minPlaceholder="0"
+					maxPlaceholder="300"
+					minMin={0}
+					maxMin={0}
+					onMinChange={(v) => (filters.runtimeMin = v)}
+					onMaxChange={(v) => (filters.runtimeMax = v)}
+				/>
 
 				<!-- Certification -->
 				<div class="form-control">
@@ -903,22 +743,14 @@
 				</div>
 
 				<!-- Providers Grid -->
-				<div class="form-control">
-					<div class="label py-1">
-						<span
-							class="label-text text-xs font-medium tracking-wide text-base-content/60 uppercase"
-							>{m.smartlists_filter_availableOn()}</span
-						>
-						{#if filters.withWatchProviders?.length}
-							<span class="badge badge-sm badge-primary">{filters.withWatchProviders.length}</span>
-						{/if}
-					</div>
-					{#if loadingProviders}
-						<div class="flex items-center gap-2 py-2">
-							<Loader2 class="h-4 w-4 animate-spin" />
-							<span class="text-sm text-base-content/60">{m.smartlists_filter_loading()}</span>
-						</div>
-					{:else}
+				<ChipSelector
+					loading={loadingProviders}
+					loadingMessage={m.smartlists_filter_loading()}
+					labelText={m.smartlists_filter_availableOn()}
+					selectedCount={filters.withWatchProviders?.length ?? 0}
+					selectedBadgeClass="badge-primary"
+				>
+					{#snippet children()}
 						<div class="grid grid-cols-5 gap-2 sm:grid-cols-6">
 							{#each providers.slice(0, 24) as provider (provider.provider_id)}
 								<button
@@ -939,8 +771,8 @@
 								</button>
 							{/each}
 						</div>
-					{/if}
-				</div>
+					{/snippet}
+				</ChipSelector>
 			</div>
 		</div>
 	</div>

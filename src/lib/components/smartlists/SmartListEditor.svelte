@@ -10,6 +10,12 @@
 	import PreviewPanel from './PreviewPanel.svelte';
 	import SettingsPanel from './SettingsPanel.svelte';
 	import ExternalSourceConfig from './ExternalSourceConfig.svelte';
+	import {
+		getSmartListPreview,
+		getExternalListPreview,
+		createSmartList,
+		updateSmartList
+	} from '$lib/api/smartlists.js';
 
 	interface ScoringProfile {
 		id: string;
@@ -150,27 +156,16 @@
 	async function fetchPreview() {
 		previewLoading = true;
 		previewError = null;
-		previewItems = []; // Clear old items immediately to prevent showing stale data
+		previewItems = [];
 
 		try {
-			const res = await fetch('/api/smartlists/preview', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					mediaType,
-					filters,
-					sortBy,
-					itemLimit: effectivePreviewItemLimit,
-					page: previewPage
-				})
+			const data = await getSmartListPreview({
+				mediaType,
+				filters,
+				sortBy,
+				itemLimit: effectivePreviewItemLimit,
+				page: previewPage
 			});
-
-			if (!res.ok) {
-				const data = await res.json();
-				throw new Error(data.error || 'Preview failed');
-			}
-
-			const data = await res.json();
 			previewItems = data.items;
 			previewTotalResults = data.totalResults;
 			previewTotalPages = data.totalPages;
@@ -187,29 +182,18 @@
 	async function fetchExternalPreview() {
 		previewLoading = true;
 		previewError = null;
-		previewItems = []; // Clear old items immediately to prevent showing stale data
+		previewItems = [];
 
 		try {
-			const res = await fetch('/api/smartlists/external/preview', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					mediaType,
-					url: externalSourceConfig.url,
-					headers: externalSourceConfig.headers,
-					presetId,
-					config: presetSettings,
-					itemLimit: effectivePreviewItemLimit,
-					page: previewPage
-				})
+			const data = await getExternalListPreview({
+				mediaType,
+				url: externalSourceConfig.url,
+				headers: externalSourceConfig.headers,
+				presetId,
+				config: presetSettings,
+				itemLimit: effectivePreviewItemLimit,
+				page: previewPage
 			});
-
-			if (!res.ok) {
-				const data = await res.json();
-				throw new Error(data.error || 'Preview failed');
-			}
-
-			const data = await res.json();
 			previewItems = data.items;
 			previewTotalResults = data.totalResults;
 			previewTotalPages = data.totalPages;
@@ -403,21 +387,7 @@
 				autoAddMonitored
 			};
 
-			const url = list ? `/api/smartlists/${list.id}` : '/api/smartlists';
-			const method = list ? 'PUT' : 'POST';
-
-			const res = await fetch(url, {
-				method,
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(body)
-			});
-
-			if (!res.ok) {
-				const data = await res.json();
-				throw new Error(data.error || 'Failed to save');
-			}
-
-			const result = await res.json();
+			const result = list ? await updateSmartList(list.id, body) : await createSmartList(body);
 			await goto(`/smartlists/${result.id}`);
 		} catch (e) {
 			toasts.error('Save failed', {
