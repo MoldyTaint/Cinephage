@@ -23,7 +23,6 @@ import {
 	type MediaMaps
 } from './activity-transformers.js';
 import {
-	isActiveActivity,
 	type UnifiedActivity,
 	type ActivityEvent,
 	type ActivityStatus,
@@ -49,9 +48,7 @@ import {
 	createEmptySummary,
 	buildActivitySummary as filtersBuildActivitySummary,
 	parseRetentionDays as filtersParseRetentionDays,
-	compareActivityPriority as filtersCompareActivityPriority,
-	DEFAULT_ACTIVITY_RETENTION_DAYS,
-	MAX_ACTIVITY_RETENTION_DAYS
+	compareActivityPriority as filtersCompareActivityPriority
 } from './activity-filters.js';
 
 interface PaginationOptions {
@@ -79,7 +76,6 @@ interface ActivityQueryResult {
 export { DEFAULT_ACTIVITY_RETENTION_DAYS, MAX_ACTIVITY_RETENTION_DAYS } from './activity-filters.js';
 
 const ACTIVITY_RETENTION_SETTINGS_KEY = 'activity_history_retention_days';
-const MIN_ACTIVITY_RETENTION_DAYS = 1;
 
 interface DeleteHistoryResult {
 	deletedDownloadHistory: number;
