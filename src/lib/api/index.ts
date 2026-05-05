@@ -4,6 +4,8 @@ export {
 	apiPatch,
 	apiPut,
 	apiDelete,
+	apiGetStream,
+	apiPostStream,
 	type ApiResponse,
 	ApiError
 } from './client.js';

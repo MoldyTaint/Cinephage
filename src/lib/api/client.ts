@@ -85,3 +85,43 @@ export async function apiDelete<T = Record<string, never>>(
 		body: body ? JSON.stringify(body) : undefined
 	});
 }
+
+export async function apiGetStream(
+	url: string,
+	params?: Record<string, string>,
+	options?: RequestInit
+): Promise<Response> {
+	if (!browser) throw new Error('apiGetStream can only be called on client');
+	const queryString = params ? `?${new URLSearchParams(params).toString()}` : '';
+	const res = await fetch(`${url}${queryString}`, { ...options, method: 'GET' });
+	if (!res.ok) {
+		const body = await res.text();
+		throw new ApiError(`Stream request failed: ${res.statusText}`, res.status, {
+			success: false,
+			error: body
+		});
+	}
+	return res;
+}
+
+export async function apiPostStream(
+	url: string,
+	body?: unknown,
+	options?: RequestInit
+): Promise<Response> {
+	if (!browser) throw new Error('apiPostStream can only be called on client');
+	const res = await fetch(url, {
+		...options,
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', ...options?.headers },
+		body: body !== undefined ? JSON.stringify(body) : undefined
+	});
+	if (!res.ok) {
+		const errorBody = await res.text();
+		throw new ApiError(`Stream request failed: ${res.statusText}`, res.status, {
+			success: false,
+			error: errorBody
+		});
+	}
+	return res;
+}
