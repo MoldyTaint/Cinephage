@@ -53,8 +53,8 @@ export async function getEpgStatus() {
 	return apiGet('/api/livetv/epg/status');
 }
 
-export async function getEpgChannel(id: string) {
-	return apiGet(`/api/livetv/epg/channel/${id}`);
+export async function getEpgChannel(id: string, params?: Record<string, string>) {
+	return apiGet(`/api/livetv/epg/channel/${id}`, params);
 }
 
 export async function getLineup() {
@@ -185,8 +185,20 @@ export async function approvePortalScanResult(portalId: string, resultId: string
 	return apiPost(`/api/livetv/portals/${portalId}/scan/results/approve`, { resultId });
 }
 
+export async function batchApprovePortalScanResults(portalId: string, resultIds: string[]) {
+	return apiPost(`/api/livetv/portals/${portalId}/scan/results/approve`, { resultIds });
+}
+
 export async function ignorePortalScanResult(portalId: string, resultId: string) {
 	return apiPost(`/api/livetv/portals/${portalId}/scan/results/ignore`, { resultId });
+}
+
+export async function batchIgnorePortalScanResults(portalId: string, resultIds: string[]) {
+	return apiPost(`/api/livetv/portals/${portalId}/scan/results/ignore`, { resultIds });
+}
+
+export async function clearIgnoredScanResults(portalId: string) {
+	return apiDelete(`/api/livetv/portals/${portalId}/scan/results`, { status: 'ignored' });
 }
 
 export async function detectPortal(url: string) {

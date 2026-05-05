@@ -1,6 +1,6 @@
 import type { GrabRequest } from '$lib/validation/schemas.js';
 
-import { apiGet, apiPost, apiPatch, apiDelete } from './client.js';
+import { apiGet, apiPost, apiPatch, apiDelete, type ApiResponse } from './client.js';
 
 export async function grabRelease(payload: GrabRequest) {
 	return apiPost('/api/download/grab', payload);
@@ -31,6 +31,10 @@ export async function removeQueueItem(
 	if (opts?.deleteFiles) params.deleteFiles = 'true';
 	if (opts?.blocklist) params.blocklist = 'true';
 	return apiDelete(`/api/queue/${id}${buildQuery(params)}`);
+}
+
+export async function retryQueueItem(id: string): Promise<ApiResponse> {
+	return apiPost(`/api/queue/${id}/retry`);
 }
 
 function buildQuery(params: Record<string, string>): string {

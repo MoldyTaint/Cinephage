@@ -260,6 +260,14 @@ export async function updateLibraryClassificationSettings(payload: LibraryClassi
 	return apiPut('/api/settings/library/classification', payload);
 }
 
+export async function getWorker(id: string) {
+	return apiGet(`/api/workers/${id}`);
+}
+
+export async function deleteWorker(id: string) {
+	return apiDelete(`/api/workers/${id}`);
+}
+
 export async function getWorkers(type?: string, activeOnly?: boolean) {
 	const params: Record<string, string> = {};
 	if (type) params.type = type;

@@ -10,7 +10,7 @@ import type {
 	SeriesUpdate
 } from '$lib/validation/schemas.js';
 
-import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from './client.js';
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete, type ApiResponse } from './client.js';
 
 export async function detectMedia(sourcePath: string, mediaType?: string, requireFile?: boolean) {
 	return apiPost('/api/library/import/detect', {
@@ -169,4 +169,35 @@ export async function getUnmatchedIssues() {
 
 export async function batchUnmatchedMatch(payload: UnmatchedMatch) {
 	return apiPost('/api/library/unmatched/match', payload);
+}
+
+export async function deleteSeason(seasonId: string, deleteFiles?: boolean): Promise<ApiResponse> {
+	const params = new URLSearchParams();
+	if (deleteFiles) params.set('deleteFiles', 'true');
+	const query = params.toString();
+	return apiDelete(`/api/library/seasons/${seasonId}${query ? '?' + query : ''}`);
+}
+
+export async function deleteEpisode(
+	episodeId: string,
+	deleteFiles?: boolean
+): Promise<ApiResponse> {
+	const params = new URLSearchParams();
+	if (deleteFiles) params.set('deleteFiles', 'true');
+	const query = params.toString();
+	return apiDelete(`/api/library/episodes/${episodeId}${query ? '?' + query : ''}`);
+}
+
+export async function updateSeason(
+	seasonId: string,
+	data: Record<string, unknown>
+): Promise<ApiResponse> {
+	return apiPut(`/api/library/seasons/${seasonId}`, data);
+}
+
+export async function updateEpisode(
+	episodeId: string,
+	data: Record<string, unknown>
+): Promise<ApiResponse> {
+	return apiPut(`/api/library/episodes/${episodeId}`, data);
 }

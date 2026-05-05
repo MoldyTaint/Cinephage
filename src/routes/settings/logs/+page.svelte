@@ -12,7 +12,7 @@
 	} from '$lib/logging/log-capture';
 	import { createDynamicSSE } from '$lib/sse';
 	import { toasts } from '$lib/stores/toast.svelte';
-	import { updateLogSettings } from '$lib/api/settings.js';
+	import { updateLogSettings, getLogHistory } from '$lib/api/settings.js';
 
 	interface LogSeedEvent {
 		entries: CapturedLogEntry[];
@@ -58,28 +58,6 @@
 	let historyTotal = $state(0);
 	let historyHasMore = $state(false);
 	let historyPagesLoaded = new SvelteSet<number>();
-
-	let search = $state('');
-	let supportId = $state('');
-	let requestId = $state('');
-	let correlationId = $state('');
-	let selectedDomain = $state<CapturedLogDomain | 'all'>('all');
-	let levels = new SvelteSet<CapturedLogLevel>(DEFAULT_LEVELS);
-	let from = $state('');
-	let to = $state('');
-
-	let retentionDays = $state(7);
-	let retentionSaving = $state(false);
-
-	let livePaused = $state(false);
-	let autoFollowEnabled = $state(true);
-	let listViewport = $state<HTMLDivElement | null>(null);
-	let isNearTop = $state(true);
-	let pendingLiveEntries = $state<CapturedLogEntry[]>([]);
-
-	let selectedEntryId = $state<string | null>(null);
-
-	let historyAbortController: AbortController | null = null;
 	let historyDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 	let lastLoadedFilterKey = '';
 	let initialized = false;
@@ -344,24 +322,19 @@
 		page: number,
 		mode: 'replace' | 'append' = 'replace'
 	): Promise<void> {
-		historyAbortController?.abort();
-		const controller = new AbortController();
-		historyAbortController = controller;
-
 		historyLoading = true;
 		historyError = '';
 
 		try {
-			const response = await fetch(
-				`/api/settings/logs/history?${buildQueryParams(page).toString()}`,
-				{
-					signal: controller.signal
-				}
-			);
+			const sp = buildQueryParams(page);
+			const queryParams: Record<string, string> = {};
+			for (const [key, value] of sp) {
+				queryParams[key] = value;
+			}
 
-			const payload = (await response.json().catch(() => null)) as LogHistoryResponse | null;
-			if (!response.ok || !payload?.success) {
-				throw new Error(payload?.error ?? 'Failed to load log history');
+			const payload = (await getLogHistory(queryParams)) as LogHistoryResponse;
+			if (!payload.success) {
+				throw new Error(payload.error ?? 'Failed to load log history');
 			}
 
 			const nextEntries = payload.entries ?? [];
@@ -390,15 +363,8 @@
 				selectedEntryId = null;
 			}
 		} catch (error) {
-			if (error instanceof DOMException && error.name === 'AbortError') {
-				return;
-			}
-
 			historyError = error instanceof Error ? error.message : 'Failed to load log history';
 		} finally {
-			if (historyAbortController === controller) {
-				historyAbortController = null;
-			}
 			historyLoading = false;
 		}
 	}

@@ -10,6 +10,7 @@
 	import { page } from '$app/state';
 	import { resolvePath } from '$lib/utils/routing';
 	import { authClient } from '$lib/auth/client.js';
+	import { getSystemStatus } from '$lib/api/settings.js';
 	import { PLACEHOLDER_PACKAGE_VERSION } from '$lib/version.js';
 	import {
 		Menu,
@@ -255,11 +256,7 @@
 	async function refreshAppVersion(): Promise<void> {
 		if (!browser) return;
 		try {
-			const response = await fetch(`/api/system/status?_=${Date.now()}`, {
-				cache: 'no-store'
-			});
-			if (!response.ok) return;
-			const payload = (await response.json()) as { version?: string };
+			const payload = (await getSystemStatus()) as { version?: string };
 			const candidate = payload.version?.trim();
 			if (!candidate || candidate === PLACEHOLDER_PACKAGE_VERSION) {
 				appVersion = 'dev-local';

@@ -15,7 +15,15 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { grabRelease } from '$lib/api/downloads.js';
 	import { autoSearchSubtitles, syncSubtitle, deleteSubtitle } from '$lib/api/subtitles.js';
-	import { updateSeries, getSeries, deleteSeries } from '$lib/api/library.js';
+	import {
+		updateSeries,
+		getSeries,
+		deleteSeries,
+		deleteSeason,
+		deleteEpisode,
+		updateSeason,
+		updateEpisode
+	} from '$lib/api/library.js';
 	import { ApiError } from '$lib/api/client.js';
 	import type { SeriesEditData } from '$lib/components/library/SeriesEditModal.svelte';
 	import type { SearchMode } from '$lib/components/search/InteractiveSearchModal.svelte';
@@ -667,11 +675,7 @@
 
 		isDeletingSeason = true;
 		try {
-			const response = await fetch(
-				`/api/library/seasons/${deletingSeasonId}?deleteFiles=${deleteFiles}`,
-				{ method: 'DELETE' }
-			);
-			const result = await response.json();
+			const result = await deleteSeason(deletingSeasonId, deleteFiles);
 
 			if (result.success) {
 				toasts.success(m.toast_library_tvDetail_seasonFilesDeleted());
@@ -727,11 +731,7 @@
 
 		isDeletingEpisode = true;
 		try {
-			const response = await fetch(
-				`/api/library/episodes/${deletingEpisodeId}?deleteFiles=${deleteFiles}`,
-				{ method: 'DELETE' }
-			);
-			const result = await response.json();
+			const result = await deleteEpisode(deletingEpisodeId, deleteFiles);
 
 			if (result.success) {
 				toasts.success(m.toast_library_tvDetail_episodeFilesDeleted());
@@ -773,23 +773,17 @@
 
 	async function handleSeasonMonitorToggle(seasonId: string, newValue: boolean) {
 		try {
-			const response = await fetch(`/api/library/seasons/${seasonId}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ monitored: newValue, updateEpisodes: true })
-			});
+			await updateSeason(seasonId, { monitored: newValue, updateEpisodes: true });
 
-			if (response.ok) {
-				seasonsState = seasons.map((season) =>
-					season.id === seasonId
-						? {
-								...season,
-								monitored: newValue,
-								episodes: season.episodes.map((ep) => ({ ...ep, monitored: newValue }))
-							}
-						: season
-				);
-			}
+			seasonsState = seasons.map((season) =>
+				season.id === seasonId
+					? {
+							...season,
+							monitored: newValue,
+							episodes: season.episodes.map((ep) => ({ ...ep, monitored: newValue }))
+						}
+					: season
+			);
 		} catch (error) {
 			showActionError(m.toast_library_tvDetail_failedToUpdateSeasonMonitor(), error);
 		}
@@ -797,20 +791,14 @@
 
 	async function handleEpisodeMonitorToggle(episodeId: string, newValue: boolean) {
 		try {
-			const response = await fetch(`/api/library/episodes/${episodeId}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ monitored: newValue })
-			});
+			await updateEpisode(episodeId, { monitored: newValue });
 
-			if (response.ok) {
-				seasonsState = seasons.map((season) => ({
-					...season,
-					episodes: season.episodes.map((ep) =>
-						ep.id === episodeId ? { ...ep, monitored: newValue } : ep
-					)
-				}));
-			}
+			seasonsState = seasons.map((season) => ({
+				...season,
+				episodes: season.episodes.map((ep) =>
+					ep.id === episodeId ? { ...ep, monitored: newValue } : ep
+				)
+			}));
 		} catch (error) {
 			showActionError(m.toast_library_tvDetail_failedToUpdateEpisodeMonitor(), error);
 		}

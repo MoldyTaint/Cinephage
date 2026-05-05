@@ -12,7 +12,12 @@
 	} from 'lucide-svelte';
 	import { onMount } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
-	import { getPortalScanResults } from '$lib/api/livetv.js';
+	import {
+		getPortalScanResults,
+		batchApprovePortalScanResults,
+		batchIgnorePortalScanResults,
+		clearIgnoredScanResults
+	} from '$lib/api/livetv.js';
 	import * as m from '$lib/paraglide/messages.js';
 
 	interface ScanResult {
@@ -103,16 +108,7 @@
 
 		approving = true;
 		try {
-			const response = await fetch(`/api/livetv/portals/${portalId}/scan/results/approve`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ resultIds: Array.from(selectedIds) })
-			});
-
-			if (!response.ok) {
-				const data = await response.json();
-				throw new Error(data.error || m.livetv_scanResults_failedToApprove());
-			}
+			await batchApprovePortalScanResults(portalId, Array.from(selectedIds));
 
 			selectedIds.clear();
 			await loadResults();
@@ -129,16 +125,7 @@
 
 		ignoring = true;
 		try {
-			const response = await fetch(`/api/livetv/portals/${portalId}/scan/results/ignore`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ resultIds: Array.from(selectedIds) })
-			});
-
-			if (!response.ok) {
-				const data = await response.json();
-				throw new Error(data.error || m.livetv_scanResults_failedToIgnore());
-			}
+			await batchIgnorePortalScanResults(portalId, Array.from(selectedIds));
 
 			selectedIds.clear();
 			await loadResults();
@@ -152,14 +139,7 @@
 	async function clearIgnored() {
 		clearing = true;
 		try {
-			const response = await fetch(`/api/livetv/portals/${portalId}/scan/results?status=ignored`, {
-				method: 'DELETE'
-			});
-
-			if (!response.ok) {
-				const data = await response.json();
-				throw new Error(data.error || m.livetv_scanResults_failedToClear());
-			}
+			await clearIgnoredScanResults(portalId);
 
 			await loadResults();
 		} catch (e) {

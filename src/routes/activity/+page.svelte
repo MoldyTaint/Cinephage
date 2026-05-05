@@ -12,6 +12,12 @@
 		purgeHistory as purgeHistoryApi
 	} from '$lib/api/activity.js';
 	import { ApiError } from '$lib/api/client.js';
+	import {
+		pauseQueueItem,
+		resumeQueueItem,
+		removeQueueItem as removeQueueItemApi,
+		retryQueueItem as retryQueueItemApi
+	} from '$lib/api/downloads.js';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import ActivityTable from '$lib/components/activity/ActivityTable.svelte';
 	import ActivityDetailModal from '$lib/components/activity/ActivityDetailModal.svelte';
@@ -50,8 +56,7 @@
 		createDefaultQueueCardStats,
 		buildActivityApiQueryString,
 		buildFilterQueryString,
-		matchesActivityFilters,
-		getQueueActionErrorMessage
+		matchesActivityFilters
 	} from './activity-utils.js';
 
 	let { data } = $props();
@@ -1205,16 +1210,22 @@
 	}
 
 	async function runQueueAction(id: string, action: 'pause' | 'resume') {
-		const response = await fetch(`/api/queue/${id}`, {
-			method: 'PATCH',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ action })
-		});
-		if (!response.ok) {
-			const message = await getQueueActionErrorMessage(response, `Failed to ${action}`);
+		try {
+			if (action === 'pause') {
+				await pauseQueueItem(id);
+			} else {
+				await resumeQueueItem(id);
+			}
+			applyQueueStatusLocally(id, action === 'pause' ? 'paused' : 'downloading');
+		} catch (error) {
+			const message =
+				error instanceof ApiError
+					? error.message
+					: error instanceof Error
+						? error.message
+						: `Failed to ${action}`;
 			throw new Error(message);
 		}
-		applyQueueStatusLocally(id, action === 'pause' ? 'paused' : 'downloading');
 	}
 
 	async function removeQueueItem(
@@ -1222,12 +1233,7 @@
 		options: { refresh?: boolean; closeDetailModal?: boolean; removeFromClient?: boolean } = {}
 	): Promise<void> {
 		const { refresh = true, closeDetailModal = true, removeFromClient = true } = options;
-		const query = removeFromClient ? '' : '?removeFromClient=false';
-		const response = await fetch(`/api/queue/${id}${query}`, { method: 'DELETE' });
-		if (!response.ok) {
-			const message = await getQueueActionErrorMessage(response, 'Failed to remove');
-			throw new Error(message);
-		}
+		await removeQueueItemApi(id, { removeFromClient });
 
 		if (refresh) {
 			await refreshActivityData({ force: true });
@@ -1239,15 +1245,11 @@
 
 	async function retryQueueItem(id: string, options: { refresh?: boolean } = {}): Promise<void> {
 		const { refresh = true } = options;
-		const response = await fetch(`/api/queue/${id}/retry`, { method: 'POST' });
-		if (!response.ok) {
-			const message = await getQueueActionErrorMessage(response, 'Failed to retry');
-			throw new Error(message);
-		}
+		const data = await retryQueueItemApi(id);
+		const payload = data as Record<string, unknown>;
 
-		const payload = await response.json().catch(() => null);
-		const retryMode = typeof payload?.retryMode === 'string' ? payload.retryMode : 'download';
-		const importStatus = typeof payload?.importStatus === 'string' ? payload.importStatus : null;
+		const retryMode = typeof payload.retryMode === 'string' ? payload.retryMode : 'download';
+		const importStatus = typeof payload.importStatus === 'string' ? payload.importStatus : null;
 		if (retryMode === 'import') {
 			const reason =
 				importStatus === 'pending_retry'

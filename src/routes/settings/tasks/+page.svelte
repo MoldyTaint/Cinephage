@@ -9,7 +9,8 @@
 	import { Wifi, Plus, XCircle, CheckCircle2 } from 'lucide-svelte';
 	import { createSSE } from '$lib/sse';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
-	import { cancelTask, setTaskEnabled } from '$lib/api/tasks.js';
+	import { cancelTask, setTaskEnabled, runTask } from '$lib/api/tasks.js';
+	import { apiPost } from '$lib/api/client.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -197,22 +198,14 @@
 		// Determine the endpoint: maintenance tasks go through the generic runner
 		// (which emits SSE events), scheduled tasks call their endpoint directly
 		// (MonitoringScheduler emits SSE events).
-		const endpoint =
-			task.category === 'maintenance' ? `/api/tasks/${taskId}/run` : task.runEndpoint;
+		const fireRequest =
+			task.category === 'maintenance' ? runTask(taskId) : apiPost(task.runEndpoint);
 
 		if (sse.isConnected) {
 			// Fire-and-forget: SSE will push state updates.
 			// We only need to handle errors from the initial request (e.g. 409 already running).
-			fetch(endpoint, { method: 'POST' })
-				.then(async (response) => {
-					if (!response.ok) {
-						const result = await response.json().catch(() => ({}));
-						updateTask(taskId, { isRunning: false });
-						errorMessage =
-							result.error ||
-							result.message ||
-							m.settings_tasks_taskFailedStatus({ status: String(response.status) });
-					}
+			fireRequest
+				.then(() => {
 					// On success: SSE events handle the rest (started/completed/failed)
 				})
 				.catch((err) => {
@@ -222,10 +215,9 @@
 		} else {
 			// SSE not connected: await the response and handle the result directly
 			try {
-				const response = await fetch(endpoint, { method: 'POST' });
-				const result = await response.json();
+				const result = await fireRequest;
 
-				if (!response.ok || !result.success) {
+				if (!result.success) {
 					updateTask(taskId, { isRunning: false });
 					throw new Error(result.error || result.message || m.settings_tasks_taskFailedGeneric());
 				}
