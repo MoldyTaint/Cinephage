@@ -5,6 +5,8 @@
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import {
 		Step1PathSelector,
+		DetectionGroupList,
+		GroupEditorPanel,
 		Step3MultiImport,
 		Step3SingleImport,
 		Step4Completion
@@ -23,7 +25,6 @@
 	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
 	import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 	import { toasts } from '$lib/stores/toast.svelte';
-	import { Check, Clapperboard, Loader2, Search, Tv, X } from 'lucide-svelte';
 
 	type MediaType = 'movie' | 'tv';
 
@@ -1103,10 +1104,6 @@
 		return skippedGroupIds.includes(groupId);
 	}
 
-	function isGroupPending(groupId: string): boolean {
-		return !isGroupImported(groupId) && !isGroupSkipped(groupId);
-	}
-
 	function getGroupState(group: DetectionGroup): GroupReviewState {
 		return groupReviewState[group.id] ?? createInitialGroupState(group);
 	}
@@ -1312,20 +1309,6 @@
 		if (activeGroup && section.items.some((group) => group.id === activeGroup.id)) {
 			loadGroupState(activeGroup.id);
 		}
-	}
-
-	function handleSectionSeasonOverrideChange(section: DetectionSection, event: Event) {
-		const target = event.target as HTMLInputElement;
-		const value = target.value.trim();
-		if (!value) {
-			applySeasonOverrideToSection(section, null);
-			return;
-		}
-		const parsed = parseInt(value, 10);
-		if (isNaN(parsed) || parsed < 0) {
-			return;
-		}
-		applySeasonOverrideToSection(section, parsed);
 	}
 
 	function selectReviewSeriesSection(sectionId: string) {
@@ -2162,405 +2145,42 @@
 	{#if step === 2 && detection && activeGroup}
 		<div class="space-y-4">
 			{#if detectionGroups.length > 1}
-				<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
-					<div class="flex flex-wrap items-center justify-between gap-2">
-						<div>
-							<h2 class="text-lg font-semibold">{m.library_import_detectedItems()}</h2>
-							<p class="mt-1 text-sm text-base-content/70">
-								{m.library_import_detectedItemsHint()}
-							</p>
-						</div>
-						<div class="flex flex-wrap items-center gap-2 text-xs">
-							<span class="badge badge-outline"
-								>{m.library_import_needsInputCount({ count: pendingGroupCount })}</span
-							>
-							<span class="badge badge-primary"
-								>{m.library_import_selectedCount({ count: remainingGroupCount })}</span
-							>
-							<span class="badge badge-success"
-								>{m.library_import_importedCount({ count: importedGroupIds.length })}</span
-							>
-							{#if skippedGroupCount > 0}
-								<span class="badge badge-ghost"
-									>{m.library_import_skippedCount({ count: skippedGroupCount })}</span
-								>
-							{/if}
-						</div>
-					</div>
-
-					<div class="mt-3 flex flex-col gap-2 lg:flex-row">
-						<div class="group relative flex-1">
-							<div class="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2">
-								<Search
-									class="h-4 w-4 text-base-content/40 transition-colors group-focus-within:text-primary"
-								/>
-							</div>
-							<input
-								type="text"
-								placeholder={m.library_import_searchDetectedItems()}
-								class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
-								bind:value={detectedGroupQuery}
-							/>
-							{#if detectedGroupQuery}
-								<button
-									class="absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-0.5 text-base-content/40 transition-colors hover:bg-base-300 hover:text-base-content"
-									onclick={() => (detectedGroupQuery = '')}
-									aria-label={m.library_import_clearDetectedSearch()}
-								>
-									<X class="h-3.5 w-3.5" />
-								</button>
-							{/if}
-						</div>
-						<div class="flex flex-wrap items-center gap-2">
-							<div class="join">
-								<button
-									type="button"
-									class="btn join-item btn-sm {detectedGroupFilter === 'pending'
-										? 'btn-primary'
-										: 'btn-ghost'}"
-									onclick={() => (detectedGroupFilter = 'pending')}
-								>
-									{m.library_import_filterNeedsInput()}
-								</button>
-								<button
-									type="button"
-									class="btn join-item btn-sm {detectedGroupFilter === 'ready'
-										? 'btn-primary'
-										: 'btn-ghost'}"
-									onclick={() => (detectedGroupFilter = 'ready')}
-								>
-									{m.library_import_filterReady()}
-								</button>
-								<button
-									type="button"
-									class="btn join-item btn-sm {detectedGroupFilter === 'skipped'
-										? 'btn-primary'
-										: 'btn-ghost'}"
-									onclick={() => (detectedGroupFilter = 'skipped')}
-								>
-									{m.library_import_filterSkipped()}
-								</button>
-								<button
-									type="button"
-									class="btn join-item btn-sm {detectedGroupFilter === 'imported'
-										? 'btn-primary'
-										: 'btn-ghost'}"
-									onclick={() => (detectedGroupFilter = 'imported')}
-								>
-									{m.library_import_filterImported()}
-								</button>
-								<button
-									type="button"
-									class="btn join-item btn-sm {detectedGroupFilter === 'all'
-										? 'btn-primary'
-										: 'btn-ghost'}"
-									onclick={() => (detectedGroupFilter = 'all')}
-								>
-									{m.common_all()}
-								</button>
-							</div>
-							<div class="join">
-								<button
-									type="button"
-									class="btn join-item btn-sm {detectedMediaFilter === 'all'
-										? 'btn-primary'
-										: 'btn-ghost'}"
-									onclick={() => (detectedMediaFilter = 'all')}
-								>
-									{m.library_import_filterAllMedia()}
-								</button>
-								<button
-									type="button"
-									class="btn join-item btn-sm {detectedMediaFilter === 'movie'
-										? 'btn-primary'
-										: 'btn-ghost'}"
-									onclick={() => (detectedMediaFilter = 'movie')}
-								>
-									{m.common_movies()}
-								</button>
-								<button
-									type="button"
-									class="btn join-item btn-sm {detectedMediaFilter === 'tv'
-										? 'btn-primary'
-										: 'btn-ghost'}"
-									onclick={() => (detectedMediaFilter = 'tv')}
-								>
-									{m.common_tvShows()}
-								</button>
-							</div>
-						</div>
-					</div>
-
-					<div class="mt-3 space-y-3">
-						{#if reviewDetectionSections.length === 0}
-							<div
-								class="rounded-lg border border-dashed border-base-300 p-4 text-center text-sm text-base-content/60"
-							>
-								{m.library_import_noDetectedItemsMatch()}
-							</div>
-						{:else}
-							{#if reviewMovieSections.length > 0}
-								<div class="max-h-72 space-y-2 overflow-y-auto pr-1">
-									{#each reviewMovieSections as section (section.id)}
-										{#each section.items as group (group.id)}
-											<div class="rounded-lg border border-base-300 p-2">
-												<div
-													class="flex items-center gap-2 rounded-lg border p-2 sm:p-3 {selectedGroupId ===
-													group.id
-														? 'border-primary bg-primary/5'
-														: 'border-base-300'}"
-												>
-													<button
-														type="button"
-														class="min-w-0 flex-1 text-left"
-														onclick={() => switchGroup(group.id)}
-													>
-														<div class="truncate text-sm font-medium sm:text-base">
-															{group.displayName}
-														</div>
-														<div
-															class="mt-1 flex flex-wrap items-center gap-2 text-xs text-base-content/70"
-														>
-															<span>{formatMediaTypeLabel(getEffectiveMediaType(group))}</span>
-															<span>•</span>
-															<span
-																>{group.detectedFileCount === 1
-																	? m.library_import_fileCountSingular({
-																			count: group.detectedFileCount
-																		})
-																	: m.library_import_fileCount({
-																			count: group.detectedFileCount
-																		})}</span
-															>
-															{#if canImportGroup(group)}
-																<span class="text-success">{m.library_import_ready()}</span>
-															{:else if isGroupPending(group.id)}
-																<span class="text-warning">{m.library_import_needsInput()}</span>
-															{/if}
-														</div>
-													</button>
-													<div class="flex shrink-0 items-center gap-2">
-														{#if isGroupImported(group.id)}
-															<span class="badge badge-sm badge-success"
-																>{m.library_import_badgeImported()}</span
-															>
-														{:else if isGroupSkipped(group.id)}
-															<span class="badge badge-ghost badge-sm"
-																>{m.library_import_badgeSkipped()}</span
-															>
-														{/if}
-														{#if !isGroupImported(group.id) && skipActionsEnabled}
-															<button
-																type="button"
-																class="btn btn-ghost btn-xs"
-																onclick={() =>
-																	isGroupSkipped(group.id)
-																		? unskipGroup(group.id)
-																		: markGroupSkipped(group.id)}
-															>
-																{isGroupSkipped(group.id)
-																	? m.action_select()
-																	: m.library_import_skipItem()}
-															</button>
-														{/if}
-													</div>
-												</div>
-											</div>
-										{/each}
-									{/each}
-								</div>
-							{/if}
-
-							{#if reviewTvSections.length > 0}
-								<div class="overflow-hidden rounded-lg border border-base-300 p-2">
-									<div
-										class="grid gap-3 {hasMultipleReviewTvSeries
-											? 'xl:grid-cols-[280px_minmax(0,1fr)]'
-											: ''}"
-									>
-										{#if hasMultipleReviewTvSeries}
-											<div class="max-h-80 space-y-1 overflow-y-auto pr-1">
-												{#each reviewTvSections as section (section.id)}
-													<button
-														type="button"
-														class="w-full rounded-md border px-3 py-2 text-left transition-colors {activeReviewTvSection?.id ===
-														section.id
-															? 'border-primary bg-primary/5'
-															: 'border-base-300 hover:bg-base-200/50'}"
-														onclick={() => selectReviewSeriesSection(section.id)}
-													>
-														<div class="truncate text-sm font-medium">{section.label}</div>
-														<div class="mt-1 text-xs text-base-content/70">
-															{section.items.length === 1
-																? m.library_import_episodeCountSingular({
-																		count: section.items.length
-																	})
-																: m.library_import_episodeCount({ count: section.items.length })} •
-															{m.library_import_seasonsLabel({
-																seasons: getDetectedSeasonsLabel(section)
-															})}
-														</div>
-													</button>
-												{/each}
-											</div>
-										{/if}
-
-										<div class="min-w-0 overflow-hidden rounded-md border border-base-300 p-2">
-											{#if activeReviewTvSection}
-												<div class="flex flex-wrap items-center justify-between gap-2">
-													<div class="min-w-0">
-														<div class="truncate font-medium">{activeReviewTvSection.label}</div>
-														<div class="text-xs text-base-content/70">
-															{activeReviewTvSection.items.length === 1
-																? m.library_import_episodeCountSingular({
-																		count: activeReviewTvSection.items.length
-																	})
-																: m.library_import_episodeCount({
-																		count: activeReviewTvSection.items.length
-																	})}
-														</div>
-													</div>
-													{#if hasUnknownSeasonItems(activeReviewTvSection)}
-														<div class="flex items-center gap-2">
-															<span class="text-xs text-base-content/70"
-																>{m.library_import_overrideSeason()}</span
-															>
-															<input
-																type="number"
-																min="0"
-																class="input-bordered input input-xs w-20"
-																value={getSectionSeasonOverride(activeReviewTvSection) ?? ''}
-																onchange={(event) =>
-																	handleSectionSeasonOverrideChange(activeReviewTvSection, event)}
-															/>
-														</div>
-													{/if}
-												</div>
-
-												{#if activeReviewTvSection.seasonSections}
-													<div class="mt-2 flex flex-wrap gap-2">
-														{#each activeReviewTvSection.seasonSections as seasonSection (seasonSection.key)}
-															<button
-																type="button"
-																class="btn btn-xs {activeReviewSeasonSection?.key ===
-																seasonSection.key
-																	? 'btn-primary'
-																	: 'btn-ghost'}"
-																onclick={() => selectReviewSeasonSection(seasonSection.key)}
-															>
-																{seasonSection.label} ({seasonSection.items.length})
-															</button>
-														{/each}
-													</div>
-												{/if}
-												{#if activeReviewSeasonSection && getSkippableSeasonGroups(activeReviewSeasonSection).length > 0}
-													<div
-														class="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-base-300 bg-base-200/40 p-2"
-													>
-														<div class="text-xs text-base-content/70">
-															{activeReviewSeasonSection.label}: {m.library_import_skippedOfTotal({
-																skipped: getSeasonSectionSkippedCount(activeReviewSeasonSection),
-																total: getSkippableSeasonGroups(activeReviewSeasonSection).length
-															})}
-														</div>
-														<div class="flex flex-wrap items-center gap-2">
-															<button
-																type="button"
-																class="btn btn-ghost btn-xs"
-																disabled={!canApplySelectedMatchToSeason(activeReviewSeasonSection)}
-																onclick={() =>
-																	applySelectedMatchToSeason(activeReviewSeasonSection)}
-															>
-																{m.library_import_applyMatchToSeason()}
-															</button>
-															<button
-																type="button"
-																class="btn btn-ghost btn-xs"
-																onclick={() =>
-																	toggleSeasonSectionSkipped(activeReviewSeasonSection)}
-															>
-																{isSeasonSectionFullySkipped(activeReviewSeasonSection)
-																	? m.library_import_selectSeason()
-																	: m.library_import_skipSeason()}
-															</button>
-														</div>
-													</div>
-												{/if}
-
-												<div class="mt-2 max-h-72 space-y-2 overflow-y-auto pr-1">
-													{#each activeReviewSeasonSection?.items ?? activeReviewTvSection.items as group (group.id)}
-														<div
-															class="flex items-center gap-2 rounded-lg border p-2 sm:p-3 {selectedGroupId ===
-															group.id
-																? 'border-primary bg-primary/5'
-																: 'border-base-300'}"
-														>
-															<button
-																type="button"
-																class="min-w-0 flex-1 text-left"
-																onclick={() => switchGroup(group.id)}
-															>
-																<div class="truncate text-sm font-medium sm:text-base">
-																	{group.displayName}
-																</div>
-																<div
-																	class="mt-1 flex flex-wrap items-center gap-2 text-xs text-base-content/70"
-																>
-																	<span>{formatMediaTypeLabel(getEffectiveMediaType(group))}</span>
-																	<span>•</span>
-																	<span
-																		>{group.detectedFileCount === 1
-																			? m.library_import_fileCountSingular({
-																					count: group.detectedFileCount
-																				})
-																			: m.library_import_fileCount({
-																					count: group.detectedFileCount
-																				})}</span
-																	>
-																	{#if canImportGroup(group)}
-																		<span class="text-success">{m.library_import_ready()}</span>
-																	{:else if isGroupPending(group.id)}
-																		<span class="text-warning">{m.library_import_needsInput()}</span
-																		>
-																	{/if}
-																</div>
-															</button>
-															<div class="flex shrink-0 items-center gap-2">
-																{#if isGroupImported(group.id)}
-																	<span class="badge badge-sm badge-success"
-																		>{m.library_import_badgeImported()}</span
-																	>
-																{:else if isGroupSkipped(group.id)}
-																	<span class="badge badge-ghost badge-sm"
-																		>{m.library_import_badgeSkipped()}</span
-																	>
-																{/if}
-																{#if !isGroupImported(group.id) && skipActionsEnabled}
-																	<button
-																		type="button"
-																		class="btn btn-ghost btn-xs"
-																		onclick={() =>
-																			isGroupSkipped(group.id)
-																				? unskipGroup(group.id)
-																				: markGroupSkipped(group.id)}
-																	>
-																		{isGroupSkipped(group.id)
-																			? m.action_select()
-																			: m.library_import_skipItem()}
-																	</button>
-																{/if}
-															</div>
-														</div>
-													{/each}
-												</div>
-											{/if}
-										</div>
-									</div>
-								</div>
-							{/if}
-						{/if}
-					</div>
-				</div>
+				<DetectionGroupList
+					{reviewDetectionSections}
+					{reviewMovieSections}
+					{reviewTvSections}
+					{activeReviewTvSection}
+					{activeReviewSeasonSection}
+					{hasMultipleReviewTvSeries}
+					bind:detectedGroupQuery
+					bind:detectedGroupFilter
+					bind:detectedMediaFilter
+					{selectedGroupId}
+					{importedGroupIds}
+					{skippedGroupIds}
+					{pendingGroupCount}
+					{remainingGroupCount}
+					{skippedGroupCount}
+					{skipActionsEnabled}
+					{getEffectiveMediaType}
+					{formatMediaTypeLabel}
+					{canImportGroup}
+					{hasUnknownSeasonItems}
+					{getSectionSeasonOverride}
+					{getSkippableSeasonGroups}
+					{getSeasonSectionSkippedCount}
+					{isSeasonSectionFullySkipped}
+					{getDetectedSeasonsLabel}
+					{canApplySelectedMatchToSeason}
+					onSwitchGroup={switchGroup}
+					onSkipGroup={markGroupSkipped}
+					onUnskipGroup={unskipGroup}
+					onSelectReviewSeriesSection={selectReviewSeriesSection}
+					onSelectReviewSeasonSection={selectReviewSeasonSection}
+					onApplyMatchToSeason={applySelectedMatchToSeason}
+					onToggleSeasonSkipped={toggleSeasonSectionSkipped}
+					onSeasonOverrideChange={applySeasonOverrideToSection}
+				/>
 			{/if}
 
 			{#if isMultiGroupReview && !showSelectedItemEditor}
@@ -2586,311 +2206,39 @@
 					</div>
 				</div>
 			{:else}
-				<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
-					<div class="grid gap-4 lg:grid-cols-2">
-						<div class="space-y-1">
-							<div class="text-sm text-base-content/60">{m.library_import_source()}</div>
-							<div class="font-medium break-all">{activeGroup.sourcePath}</div>
-							<div class="text-xs break-all text-base-content/60">
-								{m.library_import_primaryFile({ path: activeGroup.selectedFilePath })}
-							</div>
-							<div class="text-sm text-base-content/70">
-								{m.library_import_parsed()}
-								<span class="font-medium">{activeGroup.parsedTitle}</span>
-								{#if activeGroup.parsedYear}
-									({activeGroup.parsedYear})
-								{/if}
-							</div>
-							<div class="text-sm text-base-content/70">
-								{m.library_import_filesDetected()}
-								<span class="font-medium">{activeGroup.detectedFileCount}</span>
-								{#if activeGroup.detectedSeasons && activeGroup.detectedSeasons.length > 1}
-									<span class="ml-2"
-										>{m.library_import_seasonsDetectedInline({
-											seasons: activeGroup.detectedSeasons.join(', ')
-										})}</span
-									>
-								{/if}
-							</div>
-							<div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
-								{#if isGroupImported(activeGroup.id)}
-									<span class="badge badge-sm badge-success"
-										>{m.library_import_badgeImported()}</span
-									>
-								{:else if isGroupSkipped(activeGroup.id)}
-									<span class="badge badge-ghost badge-sm">{m.library_import_badgeSkipped()}</span>
-								{:else if canImportGroup(activeGroup)}
-									<span class="badge badge-sm badge-primary">{m.library_import_badgeReady()}</span>
-								{:else}
-									<span class="badge badge-sm badge-warning"
-										>{m.library_import_badgeNeedsInput()}</span
-									>
-								{/if}
-								{#if !isGroupImported(activeGroup.id) && skipActionsEnabled}
-									<button class="btn btn-ghost btn-xs" onclick={toggleSkipActiveGroup}>
-										{isGroupSkipped(activeGroup.id)
-											? m.library_import_selectItem()
-											: m.library_import_skipItem()}
-									</button>
-								{/if}
-							</div>
-						</div>
-						<div class="space-y-2">
-							<div class="text-sm text-base-content/60">{m.library_import_mediaTypeHeading()}</div>
-							<div class="flex gap-2">
-								<button
-									type="button"
-									class="btn btn-sm {selectedMediaType === 'movie' ? 'btn-primary' : 'btn-ghost'}"
-									onclick={() => switchMediaType('movie')}
-									disabled={isMediaTypeLockedByContext}
-								>
-									<Clapperboard class="h-4 w-4" />
-									{m.common_movie()}
-								</button>
-								<button
-									type="button"
-									class="btn btn-sm {selectedMediaType === 'tv' ? 'btn-primary' : 'btn-ghost'}"
-									onclick={() => switchMediaType('tv')}
-									disabled={isMediaTypeLockedByContext}
-								>
-									<Tv class="h-4 w-4" />
-									{m.ui_mediaType_tv()}
-								</button>
-							</div>
-							{#if isMediaTypeLockedByContext}
-								<div class="text-xs text-base-content/60">
-									{m.library_import_mediaTypeLocked()}
-								</div>
-							{/if}
-							{#if selectedMediaType === 'tv' && !isBatchTvImport}
-								<div class="grid grid-cols-2 gap-2">
-									<label class="form-control">
-										<span class="label-text text-xs">{m.library_import_seasonLabel()}</span>
-										<input
-											type="number"
-											min="0"
-											class="input-bordered input input-sm"
-											bind:value={seasonNumber}
-											onchange={handleSeasonNumberChange}
-										/>
-										{#if canApplyActiveSeasonOverride()}
-											<div class="mt-2">
-												<button
-													type="button"
-													class="btn btn-ghost btn-xs"
-													onclick={handleSeasonNumberChange}
-												>
-													{m.action_apply()}
-												</button>
-											</div>
-										{/if}
-									</label>
-									<label class="form-control">
-										<span class="label-text text-xs">{m.library_import_episodeLabel()}</span>
-										<input
-											type="number"
-											min="1"
-											class="input-bordered input input-sm"
-											bind:value={episodeNumber}
-											onchange={persistActiveGroupState}
-										/>
-									</label>
-								</div>
-							{:else if selectedMediaType === 'tv' && isBatchTvImport}
-								<div class="space-y-2 rounded border border-base-300 bg-base-200/40 p-2">
-									<div class="text-xs text-base-content/70">
-										{m.library_import_episodeMappingAutoDetected()}
-									</div>
-									<label class="form-control">
-										<span class="label-text text-xs">{m.library_import_seasonOverrideLabel()}</span>
-										<input
-											type="number"
-											min="0"
-											class="input-bordered input input-sm"
-											placeholder={m.library_import_seasonOverridePlaceholder()}
-											bind:value={batchSeasonOverride}
-											onchange={persistActiveGroupState}
-										/>
-										<div class="label-text-alt text-xs text-base-content/60">
-											{m.library_import_seasonOverrideHint()}
-										</div>
-									</label>
-								</div>
-							{/if}
-							{#if isGroupImported(activeGroup.id)}
-								<div class="text-xs text-success">
-									{m.library_import_alreadyImported()}
-								</div>
-							{:else if isGroupSkipped(activeGroup.id)}
-								<div class="text-xs text-base-content/70">
-									{m.library_import_itemSkipped()}
-								</div>
-							{/if}
-						</div>
-						{#if parsedSourceContextMismatch && routeImportContext}
-							<div class="alert text-sm alert-warning lg:col-span-2">
-								<span>
-									{m.library_import_parsedFileSuggests()}
-									<strong
-										>{activeGroup.parsedTitle}
-										{#if activeGroup.parsedYear}
-											({activeGroup.parsedYear})
-										{/if}</strong
-									>, {m.library_import_butImportOpenedFor()}
-									<strong
-										>{routeImportContext.title || `TMDB ${routeImportContext.tmdbId}`}
-										{#if routeImportContext.year}
-											({routeImportContext.year})
-										{/if}</strong
-									>.
-								</span>
-							</div>
-						{/if}
-					</div>
-				</div>
-
-				<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
-					{#if routeImportContext}
-						<div class="mb-3 alert text-sm alert-info">
-							<span>
-								{m.library_import_directImportFor()}
-								<strong
-									>{routeImportContext.title || `TMDB ${routeImportContext.tmdbId}`}
-									{#if routeImportContext.year}
-										({routeImportContext.year})
-									{/if}</strong
-								>.
-							</span>
-						</div>
-					{:else}
-						<div class="mb-3 flex items-center gap-2">
-							<div class="group relative w-full">
-								<div class="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2">
-									{#if searchingMatches}
-										<Loader2
-											class="h-4 w-4 animate-spin text-base-content/40 transition-colors group-focus-within:text-primary"
-										/>
-									{:else}
-										<Search
-											class="h-4 w-4 text-base-content/40 transition-colors group-focus-within:text-primary"
-										/>
-									{/if}
-								</div>
-								<input
-									type="text"
-									placeholder={m.library_import_searchTmdbPlaceholder()}
-									class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
-									value={searchQuery}
-									oninput={handleMatchSearchInput}
-									onkeydown={(event) => {
-										if (event.key === 'Enter') {
-											event.preventDefault();
-											searchTmdb();
-										}
-										if (event.key === 'Escape') {
-											clearMatchSearch();
-										}
-									}}
-								/>
-								{#if searchQuery}
-									<button
-										class="absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-0.5 text-base-content/40 transition-colors hover:bg-base-300 hover:text-base-content"
-										onclick={clearMatchSearch}
-										aria-label={m.library_import_clearTmdbSearch()}
-									>
-										<X class="h-3.5 w-3.5" />
-									</button>
-								{/if}
-							</div>
-						</div>
-					{/if}
-					{#if selectedMatchContextMismatch && routeImportContext && selectedMatch}
-						<div class="mt-3 mb-3 alert text-sm alert-warning">
-							<span>
-								{m.library_import_importOpenedFor()}
-								<strong
-									>{routeImportContext.title || `TMDB ${routeImportContext.tmdbId}`}
-									{#if routeImportContext.year}
-										({routeImportContext.year})
-									{/if}</strong
-								>, {m.library_import_butSelectedMatchIs()}
-								<strong
-									>{selectedMatch.title}
-									{#if selectedMatch.year}
-										({selectedMatch.year})
-									{/if}</strong
-								>".
-							</span>
-						</div>
-					{/if}
-					{#if canApplyMatchSelectionToActiveSeason}
-						<div class="mt-3 mb-3 rounded-lg border border-base-300 bg-base-200/40 p-3">
-							<label class="flex cursor-pointer items-center justify-between gap-3">
-								<span class="text-sm font-medium">
-									{m.library_import_matchEntireSelectedSeason()}
-								</span>
-								<input
-									type="checkbox"
-									class="toggle toggle-sm"
-									bind:checked={applySelectedMatchToSeasonOnSelect}
-								/>
-							</label>
-							<p class="mt-1 text-xs text-base-content/70">
-								{m.library_import_matchEntireSelectedSeasonHint()}
-							</p>
-						</div>
-					{/if}
-
-					{#if matchCandidates.length === 0}
-						<div
-							class="rounded-lg border border-dashed border-base-300 p-4 text-sm text-base-content/60"
-						>
-							{m.library_import_noMatchesYet()}
-						</div>
-					{:else}
-						<div class="max-h-80 space-y-2 overflow-y-auto pr-1">
-							{#each matchCandidates as match (match.mediaType + '-' + match.tmdbId)}
-								<button
-									type="button"
-									class="flex w-full items-center justify-between rounded-lg border p-3 text-left transition-colors hover:border-primary/50 {selectedMatch?.tmdbId ===
-										match.tmdbId && selectedMatch?.mediaType === match.mediaType
-										? 'border-primary bg-primary/5'
-										: 'border-base-300'}"
-									onclick={() => chooseMatch(match)}
-								>
-									<div class="min-w-0">
-										<div class="truncate font-medium">
-											{match.title}
-											{#if match.year}
-												<span class="text-base-content/60">({match.year})</span>
-											{/if}
-										</div>
-										<div class="mt-1 flex flex-wrap items-center gap-2 text-xs">
-											<span class="badge badge-outline badge-sm">
-												{match.mediaType === 'movie' ? m.common_movie() : m.ui_mediaType_tv()}
-											</span>
-											{#if match.confidence > 0}
-												<span class="badge badge-ghost badge-sm"
-													>{m.library_import_confidenceMatch({
-														percent: Math.round(match.confidence * 100)
-													})}</span
-												>
-											{/if}
-											{#if match.inLibrary}
-												<span class="badge badge-sm badge-success"
-													>{m.library_import_inLibrary()}</span
-												>
-											{/if}
-										</div>
-									</div>
-									{#if selectedMatch?.tmdbId === match.tmdbId && selectedMatch?.mediaType === match.mediaType}
-										<Check class="h-4 w-4 text-primary" />
-									{/if}
-								</button>
-							{/each}
-						</div>
-					{/if}
-				</div>
+				<GroupEditorPanel
+					{activeGroup}
+					{selectedMediaType}
+					{selectedMatch}
+					bind:searchQuery
+					{matchCandidates}
+					bind:importTarget
+					bind:seasonNumber
+					bind:episodeNumber
+					bind:batchSeasonOverride
+					bind:selectedRootFolder
+					{isMediaTypeLockedByContext}
+					{isBatchTvImport}
+					isGroupImported={isGroupImported(activeGroup?.id ?? '')}
+					isGroupSkipped={isGroupSkipped(activeGroup?.id ?? '')}
+					{skipActionsEnabled}
+					{searchingMatches}
+					{routeImportContext}
+					{selectedMatchContextMismatch}
+					{parsedSourceContextMismatch}
+					{canApplyMatchSelectionToActiveSeason}
+					bind:applyMatchToSeasonOnSelect={applySelectedMatchToSeasonOnSelect}
+					{canImportGroup}
+					{canApplyActiveSeasonOverride}
+					onSwitchMediaType={switchMediaType}
+					onChooseMatch={chooseMatch}
+					onSearchInput={handleMatchSearchInput}
+					onSearch={searchTmdb}
+					onClearSearch={clearMatchSearch}
+					onSeasonNumberChange={handleSeasonNumberChange}
+					onEpisodeNumberChange={persistActiveGroupState}
+					onToggleSkip={toggleSkipActiveGroup}
+				/>
 			{/if}
 
 			<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
