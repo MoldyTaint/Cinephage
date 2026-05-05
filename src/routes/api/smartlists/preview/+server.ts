@@ -10,74 +10,7 @@ import { movies, series, type SmartListFilters } from '$lib/server/db/schema.js'
 import { db } from '$lib/server/db/index.js';
 import { logger } from '$lib/logging';
 import { z } from 'zod';
-
-// Helper to handle empty strings from HTML number inputs
-const optionalNumber = z.preprocess(
-	(v) => (v === '' || v === null ? undefined : v),
-	z.number().optional()
-);
-
-const optionalNumberWithRange = (min: number, max: number) =>
-	z.preprocess(
-		(v) => (v === '' || v === null ? undefined : v),
-		z.number().min(min).max(max).optional()
-	);
-
-const previewSchema = z.object({
-	mediaType: z.enum(['movie', 'tv']),
-	filters: z.object({
-		withGenres: z.array(z.number()).optional(),
-		withoutGenres: z.array(z.number()).optional(),
-		genreMode: z.enum(['and', 'or']).optional(),
-		yearMin: optionalNumber,
-		yearMax: optionalNumber,
-		releaseDateMin: z.string().optional(),
-		releaseDateMax: z.string().optional(),
-		voteAverageMin: optionalNumberWithRange(0, 10),
-		voteAverageMax: optionalNumberWithRange(0, 10),
-		voteCountMin: optionalNumber,
-		popularityMin: optionalNumber,
-		popularityMax: optionalNumber,
-		withCast: z.array(z.number()).optional(),
-		withCrew: z.array(z.number()).optional(),
-		withKeywords: z.array(z.number()).optional(),
-		withoutKeywords: z.array(z.number()).optional(),
-		withWatchProviders: z.array(z.number()).optional(),
-		watchRegion: z.string().optional(),
-		certification: z.string().optional(),
-		certificationCountry: z.string().optional(),
-		runtimeMin: optionalNumber,
-		runtimeMax: optionalNumber,
-		withOriginalLanguage: z.string().optional(),
-		withStatus: z.string().optional(),
-		withReleaseType: z.array(z.number()).optional()
-	}),
-	sortBy: z
-		.enum([
-			'popularity.desc',
-			'popularity.asc',
-			'vote_average.desc',
-			'vote_average.asc',
-			'primary_release_date.desc',
-			'primary_release_date.asc',
-			'first_air_date.desc',
-			'first_air_date.asc',
-			'revenue.desc',
-			'revenue.asc',
-			'title.asc',
-			'title.desc'
-		])
-		.optional()
-		.default('popularity.desc'),
-	itemLimit: z.preprocess(
-		(v) => (v === '' || v === null ? undefined : v),
-		z.number().min(1).max(1000).optional().default(100)
-	),
-	page: z.preprocess(
-		(v) => (v === '' || v === null ? undefined : v),
-		z.number().optional().default(1)
-	)
-});
+import { smartListPreviewSchema } from '$lib/validation/schemas.js';
 
 function buildDiscoverParams(filters: SmartListFilters, sortBy: string): DiscoverParams {
 	const params: DiscoverParams = {
@@ -165,7 +98,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	try {
 		const body = await request.json();
 		logger.debug('[Preview API] Received body', body);
-		const data = previewSchema.parse(body);
+		const data = smartListPreviewSchema.parse(body);
 
 		const params = buildDiscoverParams(data.filters, data.sortBy);
 		const TMDB_PAGE_SIZE = 20;

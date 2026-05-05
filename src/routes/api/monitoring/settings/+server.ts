@@ -1,23 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
-import { z } from 'zod';
+import { monitoringSettingsUpdateSchema } from '$lib/validation/schemas.js';
 import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
-
-/**
- * Schema for updating monitoring settings
- */
-const monitoringSettingsSchema = z.object({
-	missingSearchIntervalHours: z.number().min(0.25).optional(),
-	upgradeSearchIntervalHours: z.number().min(0.25).optional(),
-	newEpisodeCheckIntervalHours: z.number().min(0.25).optional(),
-	cutoffUnmetSearchIntervalHours: z.number().min(0.25).optional(),
-	autoReplaceEnabled: z.boolean().optional(),
-	searchOnMonitorEnabled: z.boolean().optional(),
-	stalledDownloadTimeoutMinutes: z.number().min(0).optional(),
-	stalledDownloadProgressThreshold: z.number().min(0).max(100).optional()
-});
 
 /**
  * GET /api/monitoring/settings
@@ -72,7 +58,7 @@ export const PUT: RequestHandler = async (event) => {
 	const { request } = event;
 	try {
 		const body = await request.json();
-		const validation = monitoringSettingsSchema.safeParse(body);
+		const validation = monitoringSettingsUpdateSchema.safeParse(body);
 
 		if (!validation.success) {
 			return json(

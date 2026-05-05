@@ -11,26 +11,16 @@ import { externalIdResolver } from '$lib/server/smartlists/ExternalIdResolver.js
 import { presetService } from '$lib/server/smartlists/presets/PresetService.js';
 import { logger } from '$lib/logging';
 import { z } from 'zod';
+import { smartListExternalPreviewSchema } from '$lib/validation/schemas.js';
 import { movies, series } from '$lib/server/db/schema.js';
 import { db } from '$lib/server/db/index.js';
-
-const previewSchema = z.object({
-	url: z.string().url().optional(),
-	headers: z.record(z.string(), z.unknown()).optional(),
-	mediaType: z.enum(['movie', 'tv']).optional(),
-	presetId: z.string().optional(),
-	providerType: z.string().optional(),
-	config: z.record(z.string(), z.unknown()).optional(),
-	page: z.number().int().min(1).default(1),
-	itemLimit: z.number().int().min(1).max(1000).default(100)
-});
 
 export const POST: RequestHandler = async ({ request, url }) => {
 	const isTest = url.pathname.endsWith('/test');
 
 	try {
 		const body = await request.json();
-		const data = previewSchema.parse(body);
+		const data = smartListExternalPreviewSchema.parse(body);
 
 		let providerType: string;
 		let providerConfig: Record<string, unknown>;

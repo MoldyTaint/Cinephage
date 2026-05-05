@@ -6,11 +6,7 @@ import {
 	getEffectiveAnimeRootFolderEnforcement,
 	setAnimeRootFolderEnforcement
 } from '$lib/server/library/anime-root-enforcement-settings.js';
-import { z } from 'zod';
-
-const updateSchema = z.object({
-	enforceAnimeSubtype: z.boolean()
-});
+import { libraryClassificationUpdateSchema } from '$lib/validation/schemas.js';
 
 export const GET: RequestHandler = async (event) => {
 	const authError = requireAuth(event);
@@ -31,7 +27,7 @@ export const POST: RequestHandler = async (event) => {
 		return json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
 
-	const parsed = updateSchema.safeParse(data);
+	const parsed = libraryClassificationUpdateSchema.safeParse(data);
 	if (!parsed.success) {
 		return json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 	}

@@ -1,32 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { z } from 'zod';
+import { manualImportSchema } from '$lib/validation/schemas.js';
 import { manualImportService } from '$lib/server/library/manual-import-service.js';
 import { isPathAllowed, isPathInsideManagedRoot } from '$lib/server/filesystem/path-guard.js';
 import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
-
-const executeSchema = z
-	.object({
-		sourcePath: z.string().min(1).optional(),
-		selectedFilePath: z.string().min(1).optional(),
-		mediaType: z.enum(['movie', 'tv']),
-		tmdbId: z.number().int().positive(),
-		importTarget: z.enum(['new', 'existing']),
-		rootFolderId: z.string().optional(),
-		libraryId: z.string().optional(),
-		seasonNumber: z.number().int().min(0).optional(),
-		episodeNumber: z.number().int().min(1).optional()
-	})
-	.superRefine((value, ctx) => {
-		if (!value.sourcePath && !value.selectedFilePath) {
-			ctx.addIssue({
-				code: z.ZodIssueCode.custom,
-				message: 'sourcePath or selectedFilePath is required',
-				path: ['sourcePath']
-			});
-		}
-	});
 
 function getExecuteErrorMessage(error: unknown): string {
 	const fsError = error as NodeJS.ErrnoException;
@@ -54,7 +32,7 @@ export const POST: RequestHandler = async (event) => {
 			return json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
 		}
 
-		const parsed = executeSchema.safeParse(body);
+		const parsed = manualImportSchema.safeParse(body);
 		if (!parsed.success) {
 			return json(
 				{

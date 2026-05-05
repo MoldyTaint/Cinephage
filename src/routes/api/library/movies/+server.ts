@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types.js';
 import { db } from '$lib/server/db/index.js';
 import { movies, movieFiles, rootFolders } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { z } from 'zod';
+import { addMovieSchema } from '$lib/validation/schemas.js';
 import { buildMovieFolderName } from '$lib/server/library/naming/naming-helpers.js';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
 import {
@@ -25,19 +25,6 @@ import { getLibraryEntityService } from '$lib/server/library/LibraryEntityServic
 import { ValidationError, isAppError } from '$lib/errors';
 import { logger } from '$lib/logging';
 import { requireAuth } from '$lib/server/auth/authorization.js';
-
-/**
- * Schema for adding a movie to the library
- */
-const addMovieSchema = z.object({
-	tmdbId: z.number().int().positive(),
-	rootFolderId: z.string().min(1),
-	scoringProfileId: z.string().optional(),
-	monitored: z.boolean().default(true),
-	minimumAvailability: z.enum(['announced', 'inCinemas', 'released', 'preDb']).default('released'),
-	searchOnAdd: z.boolean().default(true),
-	wantsSubtitles: z.boolean().default(true)
-});
 
 /**
  * GET /api/library/movies

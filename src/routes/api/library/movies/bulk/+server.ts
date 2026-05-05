@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types.js';
 import { db } from '$lib/server/db/index.js';
 import { movies } from '$lib/server/db/schema.js';
 import { inArray } from 'drizzle-orm';
-import { z } from 'zod';
+import { bulkAddMoviesSchema } from '$lib/validation/schemas.js';
 import { buildMovieFolderName } from '$lib/server/library/naming/naming-helpers.js';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
 import {
@@ -23,19 +23,6 @@ import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { ValidationError } from '$lib/errors';
 import { logger } from '$lib/logging';
-
-/**
- * Schema for bulk adding movies to the library
- */
-const bulkAddMoviesSchema = z.object({
-	tmdbIds: z.array(z.number().int().positive()).min(1).max(50),
-	rootFolderId: z.string().min(1),
-	scoringProfileId: z.string().optional(),
-	monitored: z.boolean().default(true),
-	minimumAvailability: z.enum(['announced', 'inCinemas', 'released', 'preDb']).default('released'),
-	searchOnAdd: z.boolean().default(true),
-	wantsSubtitles: z.boolean().default(true)
-});
 
 interface BulkAddResult {
 	added: number;

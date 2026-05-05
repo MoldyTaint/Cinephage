@@ -8,6 +8,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getSmartListService } from '$lib/server/smartlists/index.js';
 import { z } from 'zod';
+import { smartListItemsActionSchema } from '$lib/validation/schemas.js';
 
 export const GET: RequestHandler = async ({ params, url }) => {
 	const service = getSmartListService();
@@ -44,16 +45,10 @@ export const GET: RequestHandler = async ({ params, url }) => {
 	});
 };
 
-const actionSchema = z.object({
-	action: z.enum(['exclude', 'include', 'addToLibrary']),
-	itemIds: z.array(z.string()).optional(),
-	tmdbIds: z.array(z.number()).optional()
-});
-
 export const POST: RequestHandler = async ({ params, request }) => {
 	try {
 		const body = await request.json();
-		const data = actionSchema.parse(body);
+		const data = smartListItemsActionSchema.parse(body);
 
 		const service = getSmartListService();
 

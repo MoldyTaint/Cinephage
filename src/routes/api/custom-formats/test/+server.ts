@@ -2,15 +2,9 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { parseRelease, evaluateCondition } from '$lib/server/scoring';
 import type { FormatCondition } from '$lib/server/scoring';
-import { z } from 'zod';
-import { conditionSchema } from '$lib/validation/schemas.js';
+import { conditionSchema, customFormatTestSchema } from '$lib/validation/schemas.js';
 import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
-
-const testSchema = z.object({
-	releaseName: z.string().min(1),
-	conditions: z.array(conditionSchema).min(1)
-});
 
 /**
  * POST /api/custom-formats/test
@@ -23,7 +17,7 @@ export const POST: RequestHandler = async (event) => {
 	const { request } = event;
 	try {
 		const body = await request.json();
-		const validation = testSchema.safeParse(body);
+		const validation = customFormatTestSchema.safeParse(body);
 
 		if (!validation.success) {
 			return json(

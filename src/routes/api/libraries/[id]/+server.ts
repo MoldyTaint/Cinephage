@@ -3,13 +3,8 @@ import type { RequestHandler } from './$types.js';
 import { requireAdmin, requireAuth } from '$lib/server/auth/authorization.js';
 import { parseBody, parseOptionalBody } from '$lib/server/api/validate.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
-import { libraryUpdateSchema } from '$lib/validation/schemas.js';
+import { libraryUpdateSchema, libraryDeleteSchema } from '$lib/validation/schemas.js';
 import { NotFoundError, isAppError } from '$lib/errors';
-import { z } from 'zod';
-
-const libraryDeleteSchema = z.object({
-	targetLibraryId: z.string().uuid().optional().nullable()
-});
 
 export const GET: RequestHandler = async (event) => {
 	const authError = requireAuth(event);

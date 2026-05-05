@@ -9,57 +9,8 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getLiveTvAccountManager } from '$lib/server/livetv/LiveTvAccountManager';
 import { logger } from '$lib/logging';
-import { z } from 'zod';
+import { liveTvAccountCreateSchema } from '$lib/validation/schemas.js';
 import { ValidationError, isAppError } from '$lib/errors';
-
-// Validation schema for creating Live TV accounts (supports all provider types)
-const liveTvAccountCreateSchema = z.object({
-	name: z.string().min(1).max(100),
-	providerType: z.enum(['stalker', 'xstream', 'm3u', 'cinephage-iptv']),
-	enabled: z.boolean().optional(),
-	// Stalker-specific config
-	stalkerConfig: z
-		.object({
-			portalUrl: z.string().url(),
-			macAddress: z.string().min(1),
-			serialNumber: z.string().optional(),
-			deviceId: z.string().optional(),
-			deviceId2: z.string().optional(),
-			model: z.string().optional(),
-			timezone: z.string().optional(),
-			username: z.string().optional(),
-			password: z.string().optional()
-		})
-		.optional(),
-	// XStream-specific config
-	xstreamConfig: z
-		.object({
-			baseUrl: z.string().url(),
-			username: z.string().min(1),
-			password: z.string().min(1),
-			epgUrl: z.string().url().optional()
-		})
-		.optional(),
-	// M3U-specific config
-	m3uConfig: z
-		.object({
-			url: z.string().url().optional(),
-			fileContent: z.string().optional(),
-			epgUrl: z.string().url().optional(),
-			refreshIntervalHours: z.number().min(1).max(168).optional(),
-			autoRefresh: z.boolean().optional()
-		})
-		.optional(),
-	// Cinephage IPTV config
-		cinephageIptvConfig: z
-			.object({
-				countries: z.array(z.string()).optional(),
-				categories: z.array(z.string()).optional(),
-				languages: z.array(z.string()).optional()
-			})
-			.optional(),
-	testFirst: z.boolean().optional().default(true)
-});
 
 /**
  * List all Live TV accounts
