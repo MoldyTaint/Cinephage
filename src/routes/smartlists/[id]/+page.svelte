@@ -131,7 +131,7 @@
 			const result = (await addSmartListItems(data.list.id, {
 				action: 'addToLibrary',
 				tmdbIds: [tmdbId]
-			} as Record<string, unknown>)) as AddToLibraryResponse | null;
+			})) as unknown as AddToLibraryResponse | null;
 
 			if (!result) {
 				throw new Error(m.smartlists_detail_invalidAddResponse());
@@ -162,7 +162,7 @@
 			await addSmartListItems(data.list.id, {
 				action: 'exclude',
 				tmdbIds: [tmdbId]
-			} as Record<string, unknown>);
+			});
 			toasts.success(m.smartlists_detail_excludedFromList({ title }));
 			closeItemDetails();
 			await invalidateAll();
@@ -180,7 +180,7 @@
 			await addSmartListItems(data.list.id, {
 				action: 'include',
 				tmdbIds: [tmdbId]
-			} as Record<string, unknown>);
+			});
 			toasts.success(m.smartlists_detail_includedInList({ title }));
 			closeItemDetails();
 			await invalidateAll();
@@ -207,7 +207,7 @@
 			const result = (await addSmartListItems(data.list.id, {
 				action: 'addToLibrary',
 				tmdbIds
-			} as Record<string, unknown>)) as AddToLibraryResponse | null;
+			})) as unknown as AddToLibraryResponse | null;
 
 			if (!result) {
 				throw new Error(m.smartlists_detail_invalidAddResponse());

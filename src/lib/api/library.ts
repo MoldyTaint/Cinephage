@@ -1,4 +1,14 @@
-import type { LibraryScanRequest, MovieUpdate, UnmatchedMatch, AddMovieRequest, AddSeriesRequest, BulkAddMoviesRequest, UnmatchedSingleMatch } from '$lib/validation/schemas.js';
+import type {
+	LibraryScanRequest,
+	MovieUpdate,
+	UnmatchedMatch,
+	AddMovieRequest,
+	AddSeriesRequest,
+	BulkAddMoviesRequest,
+	UnmatchedSingleMatch,
+	ManualImportRequest,
+	SeriesUpdate
+} from '$lib/validation/schemas.js';
 
 import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from './client.js';
 
@@ -10,7 +20,7 @@ export async function detectMedia(sourcePath: string, mediaType?: string, requir
 	});
 }
 
-export async function executeImport(payload: Record<string, unknown>) {
+export async function executeImport(payload: ManualImportRequest) {
 	return apiPost('/api/library/import/execute', payload);
 }
 
@@ -121,7 +131,7 @@ export async function getSeries(seriesId: string) {
 	return apiGet(`/api/library/series/${seriesId}`);
 }
 
-export async function updateSeries(seriesId: string, data: Record<string, unknown>) {
+export async function updateSeries(seriesId: string, data: SeriesUpdate) {
 	return apiPut(`/api/library/series/${seriesId}`, data);
 }
 

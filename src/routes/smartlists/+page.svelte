@@ -82,7 +82,7 @@
 	}
 
 	async function toggleEnabled(list: (typeof data.lists)[0]) {
-		await updateSmartList(list.id, { enabled: !list.enabled } as Record<string, unknown>);
+		await updateSmartList(list.id, { enabled: !list.enabled });
 		await invalidateAll();
 	}
 

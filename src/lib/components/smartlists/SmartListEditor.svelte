@@ -5,6 +5,7 @@
 	import { onMount } from 'svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import type { SmartListRecord, SmartListFilters } from '$lib/server/db/schema.js';
+	import type { SmartListCreateRequest } from '$lib/validation/schemas.js';
 	import type { RootFolderBasic as RootFolder } from '$lib/types/downloadClient.js';
 	import FilterBuilder from './FilterBuilder.svelte';
 	import PreviewPanel from './PreviewPanel.svelte';
@@ -165,7 +166,7 @@
 				sortBy,
 				itemLimit: effectivePreviewItemLimit,
 				page: previewPage
-			});
+			} as unknown as import('$lib/validation/schemas.js').SmartListPreviewRequest);
 			previewItems = data.items;
 			previewTotalResults = data.totalResults;
 			previewTotalPages = data.totalPages;
@@ -369,7 +370,7 @@
 			const normalizedDescription = description.trim();
 			const body = {
 				name,
-				description: list ? normalizedDescription || null : normalizedDescription || undefined,
+				description: normalizedDescription || undefined,
 				mediaType,
 				listSourceType,
 				externalSourceConfig,
@@ -387,7 +388,9 @@
 				autoAddMonitored
 			};
 
-			const result = list ? await updateSmartList(list.id, body) : await createSmartList(body);
+			const result = list
+				? await updateSmartList(list.id, body as unknown as Partial<SmartListCreateRequest>)
+				: await createSmartList(body as unknown as SmartListCreateRequest);
 			await goto(`/smartlists/${result.id}`);
 		} catch (e) {
 			toasts.error('Save failed', {

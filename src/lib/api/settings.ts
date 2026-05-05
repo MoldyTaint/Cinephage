@@ -3,6 +3,7 @@ import type {
 	RootFolderUpdate,
 	LibraryCreate,
 	LibraryUpdate,
+	LibraryDeleteRequest,
 	NamingConfigUpdate,
 	NamingPresetSelection,
 	ScoringProfileCreate,
@@ -58,7 +59,7 @@ export async function updateLibrary(id: string, payload: LibraryUpdate) {
 	return apiPut(`/api/libraries/${id}`, payload);
 }
 
-export async function deleteLibrary(id: string, body?: Record<string, unknown>) {
+export async function deleteLibrary(id: string, body?: LibraryDeleteRequest) {
 	return apiDelete(`/api/libraries/${id}`, body);
 }
 

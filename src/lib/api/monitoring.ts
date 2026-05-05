@@ -1,3 +1,9 @@
+import type {
+	MonitoringSettingsUpdate,
+	CaptchaSolverSettingsUpdate,
+	CaptchaSolverTestRequest
+} from '$lib/validation/schemas.js';
+
 import { apiGet, apiPut, apiDelete, apiPost } from './client.js';
 
 export async function getMonitoringStatus() {
@@ -8,7 +14,7 @@ export async function getMonitoringSettings() {
 	return apiGet('/api/monitoring/settings');
 }
 
-export async function updateMonitoringSettings(payload: Record<string, unknown>) {
+export async function updateMonitoringSettings(payload: MonitoringSettingsUpdate) {
 	return apiPut('/api/monitoring/settings', payload);
 }
 
@@ -16,7 +22,7 @@ export async function getCaptchaSolverSettings() {
 	return apiGet('/api/captcha-solver');
 }
 
-export async function updateCaptchaSolverSettings(payload: Record<string, unknown>) {
+export async function updateCaptchaSolverSettings(payload: CaptchaSolverSettingsUpdate) {
 	return apiPut('/api/captcha-solver', payload);
 }
 
@@ -24,7 +30,7 @@ export async function resetCaptchaSolverSettings() {
 	return apiDelete('/api/captcha-solver');
 }
 
-export async function testCaptchaSolver(payload?: Record<string, unknown>) {
+export async function testCaptchaSolver(payload?: CaptchaSolverTestRequest) {
 	return apiPost('/api/captcha-solver/test', payload);
 }
 
