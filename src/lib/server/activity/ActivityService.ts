@@ -32,6 +32,12 @@ import {
 	hasEpisodeOverlap as dedupHasEpisodeOverlap,
 	isSameMediaTarget as dedupIsSameMediaTarget
 } from './dedup-utils.js';
+import {
+	mapFilterStatusToQueueStatuses as mappersMapFilterStatusToQueueStatuses,
+	mapFilterStatusToHistoryStatuses as mappersMapFilterStatusToHistoryStatuses,
+	mapMoveStatusesForScopeAndFilter as mappersMapMoveStatusesForScopeAndFilter,
+	mapMoveTaskStatus as mappersMapMoveTaskStatus
+} from './status-mappers.js';
 
 interface MediaInfo {
 	id: string;
@@ -1994,21 +2000,7 @@ export class ActivityService {
 	 * Returns null if the filter does not constrain queue statuses.
 	 */
 	private mapFilterStatusToQueueStatuses(status: string): string[] | null {
-		switch (status) {
-			case 'downloading':
-				return ['downloading', 'queued', 'stalled', 'completed', 'postprocessing', 'importing'];
-			case 'seeding':
-				return ['seeding'];
-			case 'paused':
-				return ['paused'];
-			case 'failed':
-				return ['failed'];
-			case 'success':
-				// Queue items are never in a "success" state visible to the user
-				return [];
-			default:
-				return null;
-		}
+		return mappersMapFilterStatusToQueueStatuses(status);
 	}
 
 	/**
@@ -2016,80 +2008,20 @@ export class ActivityService {
 	 * Returns null if the filter does not constrain history statuses.
 	 */
 	private mapFilterStatusToHistoryStatuses(status: string): string[] | null {
-		switch (status) {
-			case 'success':
-				return ['imported'];
-			case 'failed':
-				return ['failed'];
-			case 'search_error':
-				// search_error items come from monitoring, not download history
-				return [];
-			case 'removed':
-				return ['removed'];
-			case 'rejected':
-				return ['rejected'];
-			case 'downloading':
-			case 'seeding':
-			case 'paused':
-			case 'no_results':
-				// History items never have these statuses
-				return [];
-			default:
-				return null;
-		}
+		return mappersMapFilterStatusToHistoryStatuses(status);
 	}
 
 	private mapMoveStatusesForScopeAndFilter(
 		scope: ActivityScope,
 		status: ActivityFilters['status'] | 'all'
 	): Array<'running' | 'completed' | 'failed' | 'cancelled'> {
-		let base: Array<'running' | 'completed' | 'failed' | 'cancelled'>;
-		if (scope === 'active') {
-			base = ['running'];
-		} else if (scope === 'history') {
-			base = ['completed', 'failed', 'cancelled'];
-		} else {
-			base = ['running', 'completed', 'failed', 'cancelled'];
-		}
-
-		switch (status) {
-			case 'all':
-				return base;
-			case 'downloading':
-				return base.includes('running') ? ['running'] : [];
-			case 'success':
-				return base.includes('completed') ? ['completed'] : [];
-			case 'failed':
-				return base.includes('failed') ? ['failed'] : [];
-			case 'removed':
-				return base.includes('cancelled') ? ['cancelled'] : [];
-			case 'seeding':
-			case 'paused':
-			case 'search_error':
-			case 'rejected':
-			case 'no_results':
-			case 'streaming':
-			case 'searching':
-			case 'imported':
-				return [];
-			default:
-				return base;
-		}
+		return mappersMapMoveStatusesForScopeAndFilter(scope, status);
 	}
 
 	private mapMoveTaskStatus(
 		status: MoveTaskRecord['status']
 	): Extract<ActivityStatus, 'downloading' | 'imported' | 'failed' | 'removed'> {
-		switch (status) {
-			case 'running':
-				return 'downloading';
-			case 'completed':
-				return 'imported';
-			case 'failed':
-				return 'failed';
-			case 'cancelled':
-				return 'removed';
-		}
+		return mappersMapMoveTaskStatus(status);
 	}
 
 	private withoutStatusFilter(filters: ActivityFilters): ActivityFilters {
