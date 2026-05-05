@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, Loader2, XCircle, Clock, Check } from 'lucide-svelte';
+	import { X } from 'lucide-svelte';
 	import type {
 		DownloadClient,
 		DownloadClientFormData,
@@ -8,14 +8,14 @@
 	} from '$lib/types/downloadClient';
 	import { FolderBrowser } from '$lib/components/library';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
-	import { SectionHeader, TestResult } from '$lib/components/ui/modal';
 	import { clientDefinitions } from './forms/clientDefinitions';
-	import NntpServerSettings from './forms/NntpServerSettings.svelte';
 	import DownloadClientSettings from './forms/DownloadClientSettings.svelte';
+	import ClientFormFields from './ClientFormFields.svelte';
+	import ClientSpecificOptions from './ClientSpecificOptions.svelte';
+	import ClientTestConnection from './ClientTestConnection.svelte';
 	import { toFriendlyDownloadClientError } from '$lib/downloadClients/errorMessages';
 	import * as m from '$lib/paraglide/messages.js';
 
-	// NNTP server form data type
 	interface NntpServerFormData {
 		name: string;
 		host: string;
@@ -28,7 +28,6 @@
 		enabled: boolean;
 	}
 
-	// NNTP server type for editing
 	interface NntpServer {
 		id: string;
 		name: string;
@@ -60,11 +59,8 @@
 			data: DownloadClientFormData | NntpServerFormData,
 			isNntp: boolean
 		) => Promise<ConnectionTestResult>;
-		/** Global stalled download timeout (minutes) */
 		stalledTimeoutMinutes: number;
-		/** Global stalled progress threshold (0-100%). Kill torrens only below this % */
 		stalledProgressThreshold: number;
-		/** Called when stalled download behavior settings should be saved */
 		onSaveStalledBehavior: (timeout: number, threshold: number) => Promise<void>;
 	}
 
@@ -85,10 +81,8 @@
 		onSaveStalledBehavior
 	}: Props = $props();
 
-	// Form state - Implementation selection (defaults only, effect syncs from props)
 	let implementation = $state<DownloadClientImplementation | ''>('');
 
-	// Form state - Basic
 	let name = $state('');
 	let enabled = $state(true);
 	let host = $state('localhost');
@@ -100,71 +94,31 @@
 	let username = $state('');
 	let password = $state('');
 
-	// Form state - Categories
 	let movieCategory = $state('movies');
 	let tvCategory = $state('tv');
 
-	// Form state - Priority & State
 	let recentPriority = $state<'normal' | 'high' | 'force'>('normal');
 	let olderPriority = $state<'normal' | 'high' | 'force'>('normal');
 	let initialState = $state<'start' | 'pause' | 'force'>('start');
 
-	// Form state - Path (completed downloads)
 	let downloadPathLocal = $state('');
 	let downloadPathRemote = $state('');
-	// Form state - Path (temp downloads - SABnzbd only)
 	let tempPathLocal = $state('');
 	let tempPathRemote = $state('');
 
-	// Form state - Priority order
 	let priority = $state(1);
 
-	// Form state - NNTP specific
 	let maxConnections = $state(10);
 
-	// Form state - Download Behavior (global)
 	let stalledTimeout = $state(0);
 	let stalledThreshold = $state(0);
 	let saveStalledBehaviorSuccess = $state(false);
 
-	// Sync stalled behavior from props when modal opens
-	$effect(() => {
-		if (open) {
-			stalledTimeout = stalledTimeoutMinutes;
-			stalledThreshold = stalledProgressThreshold;
-			saveStalledBehaviorSuccess = false;
-		}
-	});
-
-	// Auto-save stalled behavior when values change (debounced)
-	$effect(() => {
-		if (!open) return;
-		const timeout = stalledTimeout;
-		const threshold = stalledThreshold;
-
-		// Skip if values match the props (initial sync, not a user edit)
-		if (timeout === stalledTimeoutMinutes && threshold === stalledProgressThreshold) return;
-
-		const timer = setTimeout(async () => {
-			try {
-				await onSaveStalledBehavior(timeout, threshold);
-				saveStalledBehaviorSuccess = true;
-				setTimeout(() => (saveStalledBehaviorSuccess = false), 2000);
-			} catch {
-				// Revert to props on failure
-			}
-		}, 600);
-
-		return () => clearTimeout(timer);
-	});
-
-	// UI state
 	let testing = $state(false);
 	let testResult = $state<ConnectionTestResult | null>(null);
 	let showFolderBrowser = $state(false);
 	let browsingField = $state<'downloadPathLocal' | 'tempPathLocal'>('downloadPathLocal');
 
-	// Derived
 	const modalTitle = $derived(
 		mode === 'add' ? m.downloadClient_addDownloadClient() : m.downloadClient_editDownloadClient()
 	);
@@ -176,11 +130,9 @@
 		allowNntp ? clientDefinitions : clientDefinitions.filter((d) => d.id !== 'nntp')
 	);
 	const pickerClientDefinitions = $derived(visibleClientDefinitions);
-	// Check if selected client uses API key auth (SABnzbd)
 	const usesApiKey = $derived(
 		selectedDefinition?.protocol === 'usenet' && selectedDefinition?.id === 'sabnzbd'
 	);
-	// Check if this is an NNTP server
 	const isNntpServer = $derived(implementation === 'nntp');
 	const isSabnzbd = $derived(implementation === 'sabnzbd');
 	const isMountModeClient = $derived(
@@ -211,10 +163,36 @@
 		})()
 	);
 
-	// Reset form when modal opens or client changes
 	$effect(() => {
 		if (open) {
-			// Check if editing an NNTP server (has maxConnections but no movieCategory)
+			stalledTimeout = stalledTimeoutMinutes;
+			stalledThreshold = stalledProgressThreshold;
+			saveStalledBehaviorSuccess = false;
+		}
+	});
+
+	$effect(() => {
+		if (!open) return;
+		const timeout = stalledTimeout;
+		const threshold = stalledThreshold;
+
+		if (timeout === stalledTimeoutMinutes && threshold === stalledProgressThreshold) return;
+
+		const timer = setTimeout(async () => {
+			try {
+				await onSaveStalledBehavior(timeout, threshold);
+				saveStalledBehaviorSuccess = true;
+				setTimeout(() => (saveStalledBehaviorSuccess = false), 2000);
+			} catch {
+				// Revert to props on failure
+			}
+		}, 600);
+
+		return () => clearTimeout(timer);
+	});
+
+	$effect(() => {
+		if (open) {
 			const isNntpEdit = client && 'maxConnections' in client && !('movieCategory' in client);
 			if (mode === 'add') {
 				implementation = '';
@@ -234,7 +212,6 @@
 			username = client?.username ?? '';
 			password = '';
 
-			// Download client fields
 			const dcClient = client as DownloadClient | undefined;
 			movieCategory = dcClient?.movieCategory ?? 'movies';
 			tvCategory = dcClient?.tvCategory ?? 'tv';
@@ -246,17 +223,14 @@
 			tempPathLocal = dcClient?.tempPathLocal ?? '';
 			tempPathRemote = dcClient?.tempPathRemote ?? '';
 
-			// NNTP-specific fields
 			const nntpClient = client as NntpServer | undefined;
 			maxConnections = nntpClient?.maxConnections ?? 10;
 
-			// Priority (used by both types)
 			priority = client?.priority ?? 1;
 
 			testResult = null;
 			showFolderBrowser = false;
 
-			// If caller wants to add a specific type directly (e.g. NNTP), skip picker.
 			if (mode === 'add' && initialImplementation) {
 				handleImplementationChange(initialImplementation);
 			}
@@ -274,7 +248,6 @@
 			if (def) {
 				port = def.defaultPort;
 				name = def.name;
-				// NNTP defaults to SSL on
 				if (newImpl === 'nntp') {
 					useSsl = true;
 				}
@@ -285,7 +258,6 @@
 		}
 	}
 
-	// Auto-update port when SSL changes for NNTP
 	function handleSslChange() {
 		if (isNntpServer && mode === 'add') {
 			port = useSsl ? 563 : 119;
@@ -309,7 +281,6 @@
 				priority,
 				enabled
 			};
-			// In edit mode, only include password if user actually typed something new
 			if (mode === 'edit' && !password) {
 				delete (data as unknown as Record<string, unknown>).password;
 			}
@@ -340,7 +311,6 @@
 			tempPathRemote: tempPathRemote || null,
 			priority
 		};
-		// In edit mode, only include password if user actually typed something new
 		if (mode === 'edit' && !password) {
 			delete (data as unknown as Record<string, unknown>).password;
 		}
@@ -380,7 +350,6 @@
 	async function handleSave() {
 		const formData = getFormData();
 
-		// Match indexer behavior: enabled clients must pass connection test before save.
 		if (enabled) {
 			testing = true;
 			testResult = null;
@@ -441,7 +410,6 @@
 </script>
 
 <ModalWrapper {open} {onClose} maxWidth="3xl" labelledBy="download-client-modal-title">
-	<!-- Header -->
 	<div class="mb-6 flex items-center justify-between">
 		<h3 id="download-client-modal-title" class="text-xl font-bold">{modalTitle}</h3>
 		<button class="btn btn-circle btn-ghost btn-sm" onclick={onClose}>
@@ -449,7 +417,6 @@
 		</button>
 	</div>
 
-	<!-- Client Type Selection (only in add mode when not selected) -->
 	{#if mode === 'add' && !implementation}
 		<div class="space-y-4">
 			<p class="text-base-content/70">{m.downloadClient_selectType()}</p>
@@ -490,7 +457,6 @@
 			<button class="btn btn-ghost" onclick={onClose}>{m.action_cancel()}</button>
 		</div>
 	{:else}
-		<!-- Selected client header (in add mode) -->
 		{#if mode === 'add' && selectedDefinition}
 			<div class="mb-6 flex items-center justify-between rounded-lg bg-base-200 px-4 py-3">
 				<div class="flex items-center gap-3">
@@ -506,7 +472,6 @@
 			</div>
 		{/if}
 
-		<!-- Folder Browser Overlay -->
 		{#if showFolderBrowser}
 			<div class="mb-6">
 				<FolderBrowser
@@ -516,240 +481,57 @@
 				/>
 			</div>
 		{:else}
-			<!-- Main Form - Responsive Two Column Layout -->
 			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
-				<!-- Left Column: Connection -->
 				<div class="space-y-4">
-					<SectionHeader title={m.connection_section_title()} />
-
-					<div class="form-control">
-						<label class="label py-1" for="name">
-							<span class="label-text">{m.common_name()}</span>
-						</label>
-						<input
-							id="name"
-							type="text"
-							class="input-bordered input input-sm"
-							bind:value={name}
-							maxlength={MAX_NAME_LENGTH}
-							placeholder={selectedDefinition?.name ?? 'My Download Client'}
-						/>
-						<div class="label py-1">
-							<span
-								class="label-text-alt text-xs {nameTooLong ? 'text-error' : 'text-base-content/60'}"
-							>
-								{name.length}/{MAX_NAME_LENGTH}
-							</span>
-							{#if nameTooLong}
-								<span class="label-text-alt text-xs text-error"
-									>{m.validation_maxChars({ max: MAX_NAME_LENGTH })}</span
-								>
-							{/if}
-						</div>
-					</div>
-
-					<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-						<div class="form-control">
-							<label class="label py-1" for="host">
-								<span class="label-text">{m.connection_host_label()}</span>
-							</label>
-							<input
-								id="host"
-								type="text"
-								class="input-bordered input input-sm"
-								bind:value={host}
-								placeholder="localhost"
-							/>
-						</div>
-
-						<div class="form-control">
-							<label class="label py-1" for="port">
-								<span class="label-text">{m.common_port()}</span>
-							</label>
-							<input
-								id="port"
-								type="number"
-								class="input-bordered input input-sm"
-								bind:value={port}
-								min="1"
-								max="65535"
-							/>
-						</div>
-					</div>
-
-					{#if usesApiKey}
-						<div class="form-control">
-							<label class="label py-1" for="password">
-								<span class="label-text">
-									{m.auth_apiKey_label()}
-									{#if mode === 'edit' && hasPassword}
-										<span class="text-xs opacity-50">({m.auth_blankToKeep()})</span>
-									{/if}
-								</span>
-							</label>
-							<input
-								id="password"
-								type="password"
-								class="input-bordered input input-sm"
-								bind:value={password}
-								placeholder={mode === 'edit' && hasPassword
-									? '********'
-									: 'Find in SABnzbd Config > General'}
-							/>
-							<div class="label py-1">
-								<span class="label-text-alt text-xs">
-									{m.downloadClient_apiKeyHelp()}
-								</span>
-							</div>
-						</div>
-					{:else}
-						<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-							<div class="form-control">
-								<label class="label py-1" for="username">
-									<span class="label-text">{m.auth_username_label()}</span>
-								</label>
-								<input
-									id="username"
-									type="text"
-									class="input-bordered input input-sm"
-									bind:value={username}
-									placeholder="admin"
-								/>
-							</div>
-
-							<div class="form-control">
-								<label class="label py-1" for="password">
-									<span class="label-text">
-										{m.auth_password_label()}
-										{#if mode === 'edit' && hasPassword}
-											<span class="text-xs opacity-50">({m.auth_blankToKeep()})</span>
-										{/if}
-									</span>
-								</label>
-								<input
-									id="password"
-									type="password"
-									class="input-bordered input input-sm"
-									bind:value={password}
-									placeholder={mode === 'edit' && hasPassword ? '********' : ''}
-								/>
-							</div>
-						</div>
-					{/if}
-
-					<div class="flex gap-4">
-						<label class="label cursor-pointer gap-2">
-							<input
-								type="checkbox"
-								class="checkbox checkbox-sm"
-								bind:checked={useSsl}
-								onchange={handleSslChange}
-							/>
-							<span class="label-text">{m.connection_useSsl_label()}</span>
-						</label>
-
-						<label class="label cursor-pointer gap-2">
-							<input type="checkbox" class="checkbox checkbox-sm" bind:checked={enabled} />
-							<span class="label-text">{m.common_enabled()}</span>
-						</label>
-					</div>
-
-					{#if !isNntpServer}
-						<DownloadClientSettings
-							mode="connection"
-							bind:urlBaseEnabled
-							bind:urlBase
-							{urlBasePlaceholder}
-							showMountMode={isSabnzbd}
-							bind:mountMode
-						/>
-					{/if}
+					<ClientFormFields
+						bind:name
+						bind:host
+						bind:port
+						bind:useSsl
+						bind:enabled
+						bind:username
+						bind:password
+						bind:urlBase
+						bind:urlBaseEnabled
+						bind:mountMode
+						{isNntpServer}
+						{usesApiKey}
+						{isSabnzbd}
+						{mode}
+						{hasPassword}
+						selectedDefinitionName={selectedDefinition?.name ?? ''}
+						maxNameLength={MAX_NAME_LENGTH}
+						{nameTooLong}
+						{urlBasePlaceholder}
+						onSslChange={handleSslChange}
+					/>
 				</div>
 
-				<!-- Right Column: Client Behavior -->
 				<div class="space-y-4">
-					{#if isNntpServer}
-						<NntpServerSettings bind:maxConnections bind:priority />
-					{:else}
-						<DownloadClientSettings
-							section="categories"
-							definition={selectedDefinition}
-							bind:movieCategory
-							bind:tvCategory
-							bind:recentPriority
-							bind:olderPriority
-							bind:initialState
-							bind:downloadPathLocal
-							bind:downloadPathRemote
-							bind:tempPathLocal
-							bind:tempPathRemote
-							isSabnzbd={usesApiKey}
-							isMountMode={isMountModeClient}
-							onBrowse={openFolderBrowser}
-						/>
-					{/if}
-
-					<!-- Stalled Downloads Behavior (global) -->
-					<div class="rounded-lg bg-base-200/50 p-3">
-						<div class="mb-2 flex items-center gap-1.5">
-							<Clock class="h-3.5 w-3.5 text-base-content/50" />
-							<span class="text-xs font-semibold text-base-content/70"
-								>{m.downloadClientModal_stalledDownloads()}</span
-							>
-							<span class="badge badge-ghost badge-xs text-[10px]"
-								>{m.downloadClientModal_stalledGlobal()}</span
-							>
-						</div>
-						<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-							<div class="form-control">
-								<label class="label py-1" for="stalled-timeout-modal">
-									<span class="label-text">{m.downloadClientModal_stalledTimeout()}</span>
-								</label>
-								<input
-									id="stalled-timeout-modal"
-									type="number"
-									class="input-bordered input input-sm w-full"
-									min="0"
-									step="5"
-									bind:value={stalledTimeout}
-								/>
-							</div>
-							<div class="form-control">
-								<label class="label py-1" for="stalled-threshold-modal">
-									<span class="label-text">{m.downloadClientModal_stalledProgress()}</span>
-								</label>
-								<input
-									id="stalled-threshold-modal"
-									type="number"
-									class="input-bordered input input-sm w-full"
-									min="0"
-									max="100"
-									step="5"
-									bind:value={stalledThreshold}
-								/>
-							</div>
-						</div>
-						{#if saveStalledBehaviorSuccess}
-							<p class="mt-1 flex items-center gap-1 text-xs text-success">
-								<Check class="h-3 w-3" />
-								{m.downloadClientModal_stalledSaved()}
-							</p>
-						{/if}
-						<p class="mt-1 text-xs text-base-content/50">
-							{#if stalledTimeout === 0}
-								{m.downloadClientModal_stalledDisabled()}
-							{:else}
-								{m.downloadClientModal_stalledDescription({
-									timeout: stalledTimeout,
-									threshold: stalledThreshold
-								})}
-							{/if}
-						</p>
-					</div>
+					<ClientSpecificOptions
+						bind:maxConnections
+						bind:priority
+						bind:movieCategory
+						bind:tvCategory
+						bind:recentPriority
+						bind:olderPriority
+						bind:initialState
+						bind:downloadPathLocal
+						bind:downloadPathRemote
+						bind:tempPathLocal
+						bind:tempPathRemote
+						bind:stalledTimeout
+						bind:stalledThreshold
+						bind:saveStalledBehaviorSuccess
+						{isNntpServer}
+						{selectedDefinition}
+						{usesApiKey}
+						{isMountModeClient}
+						onBrowse={openFolderBrowser}
+					/>
 				</div>
 			</div>
 
-			<!-- Path Mapping (full width, below columns) -->
 			{#if !isNntpServer}
 				<div class="mt-6">
 					<DownloadClientSettings
@@ -765,62 +547,21 @@
 					/>
 				</div>
 			{/if}
-
-			<!-- Save Error -->
-			{#if error}
-				<div class="mt-6 alert alert-error">
-					<XCircle class="h-5 w-5" />
-					<div>
-						<div class="font-medium">{m.common_failedToSave()}</div>
-						<div class="text-sm opacity-80">{error}</div>
-					</div>
-				</div>
-			{/if}
-
-			<!-- Test Result -->
-			<TestResult
-				result={testResult}
-				successDetails={testResult?.greeting
-					? `Server greeting: ${testResult.greeting}`
-					: testResult?.details
-						? `Version: ${testResult.details.version} (API ${testResult.details.apiVersion})${testResult.details.savePath ? ` | Save Path: ${testResult.details.savePath}` : ''}`
-						: undefined}
-			/>
 		{/if}
 
-		<!-- Actions -->
 		{#if !showFolderBrowser}
-			<div class="modal-action">
-				{#if mode === 'edit' && onDelete}
-					<button class="btn mr-auto btn-outline btn-error" onclick={onDelete}
-						>{m.common_delete()}</button
-					>
-				{/if}
-
-				<button
-					class="btn btn-ghost"
-					onclick={handleTest}
-					disabled={testing || saving || !isFormValid()}
-				>
-					{#if testing}
-						<Loader2 class="h-4 w-4 animate-spin" />
-					{/if}
-					{m.action_test()}
-				</button>
-
-				<button class="btn btn-ghost" onclick={onClose}>{m.action_cancel()}</button>
-
-				<button
-					class="btn btn-primary"
-					onclick={handleSave}
-					disabled={saving || testing || !isFormValid()}
-				>
-					{#if saving}
-						<Loader2 class="h-4 w-4 animate-spin" />
-					{/if}
-					{m.action_save()}
-				</button>
-			</div>
+			<ClientTestConnection
+				{testing}
+				{testResult}
+				{saving}
+				{error}
+				isFormValid={isFormValid()}
+				{mode}
+				onTest={handleTest}
+				onSave={handleSave}
+				{onClose}
+				{onDelete}
+			/>
 		{/if}
 	{/if}
 </ModalWrapper>
