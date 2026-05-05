@@ -25,6 +25,7 @@
 		updateEpisode
 	} from '$lib/api/library.js';
 	import { ApiError } from '$lib/api/client.js';
+	import { apiPostStream } from '$lib/api';
 	import type { SeriesEditData } from '$lib/components/library/SeriesEditModal.svelte';
 	import type { SearchMode } from '$lib/components/search/InteractiveSearchModal.svelte';
 	import { CheckSquare, FileEdit, Wifi, WifiOff, Loader2, RefreshCw } from 'lucide-svelte';
@@ -517,14 +518,7 @@
 		refreshProgress = null;
 
 		try {
-			const response = await fetch(`/api/library/series/${series.id}/refresh`, {
-				method: 'POST'
-			});
-
-			if (!response.ok) {
-				toasts.error(m.toast_library_tvDetail_refreshFailed());
-				return;
-			}
+			const response = await apiPostStream(`/api/library/series/${series.id}/refresh`);
 
 			// Read the streaming response
 			const reader = response.body?.getReader();
@@ -1265,15 +1259,7 @@
 		onComplete: () => void
 	): Promise<void> {
 		try {
-			const response = await fetch('/api/subtitles/sync/bulk', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ subtitleIds, ...settings })
-			});
-
-			if (!response.ok) {
-				throw new Error(m.toast_library_tvDetail_bulkSyncFailed());
-			}
+			const response = await apiPostStream('/api/subtitles/sync/bulk', { subtitleIds, ...settings });
 
 			const reader = response.body?.getReader();
 			if (!reader) {
@@ -1391,15 +1377,7 @@
 		bulkSubtitleSyncing = true;
 
 		try {
-			const response = await fetch('/api/subtitles/sync/bulk', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ subtitleIds })
-			});
-
-			if (!response.ok) {
-				throw new Error(m.toast_library_tvDetail_bulkSyncFailed());
-			}
+			const response = await apiPostStream('/api/subtitles/sync/bulk', { subtitleIds });
 
 			const reader = response.body?.getReader();
 			if (!reader) {

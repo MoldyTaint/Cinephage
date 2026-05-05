@@ -25,6 +25,7 @@
 		getMovieScore
 	} from '$lib/api/library.js';
 	import { ApiError } from '$lib/api/client.js';
+	import { apiGetStream } from '$lib/api';
 	import type { MovieEditData } from '$lib/components/library/MovieEditModal.svelte';
 	import { FileEdit, Wifi, WifiOff, Loader2, RefreshCw } from 'lucide-svelte';
 	import { page } from '$app/state';
@@ -150,10 +151,11 @@
 		if (prefetchedStreamKey === key) return;
 		prefetchedStreamKey = key;
 
-		fetch(`/api/streaming/session/movie/${movie.tmdbId}/master.m3u8?prefetch=1`, {
-			signal: AbortSignal.timeout(5000),
-			headers: { 'X-Prefetch': 'true' }
-		}).catch(() => {});
+		apiGetStream(
+			`/api/streaming/session/movie/${movie.tmdbId}/master.m3u8`,
+			{ prefetch: '1' },
+			{ signal: AbortSignal.timeout(5000), headers: { 'X-Prefetch': 'true' } }
+		).catch(() => {});
 	});
 
 	// State

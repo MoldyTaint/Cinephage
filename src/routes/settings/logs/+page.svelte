@@ -13,6 +13,7 @@
 	import { createDynamicSSE } from '$lib/sse';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { updateLogSettings, getLogHistory } from '$lib/api/settings.js';
+	import { apiGetStream } from '$lib/api';
 
 	interface LogSeedEvent {
 		entries: CapturedLogEntry[];
@@ -170,13 +171,6 @@
 			from || 'none',
 			to || 'none'
 		].join('||');
-	}
-
-	function buildDownloadUrl(): string {
-		const params = buildQueryParams();
-		params.set('limit', '5000');
-		params.set('format', 'jsonl');
-		return `/api/settings/logs/download?${params.toString()}`;
 	}
 
 	function buildLiveUrl(): string {
@@ -409,10 +403,12 @@
 
 	async function downloadHistoryLogs(): Promise<void> {
 		try {
-			const response = await fetch(buildDownloadUrl());
-			if (!response.ok) {
-				throw new Error('Failed to download log history');
-			}
+			const params: Record<string, string> = {};
+			const queryParams = buildQueryParams();
+			queryParams.set('limit', '5000');
+			queryParams.set('format', 'jsonl');
+			queryParams.forEach((value, key) => { params[key] = value; });
+			const response = await apiGetStream('/api/settings/logs/download', params);
 
 			const blob = await response.blob();
 			const href = URL.createObjectURL(blob);
