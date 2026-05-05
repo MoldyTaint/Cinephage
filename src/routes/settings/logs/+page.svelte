@@ -63,6 +63,26 @@
 	let lastLoadedFilterKey = '';
 	let initialized = false;
 
+	let search = $state('');
+	let supportId = $state('');
+	let requestId = $state('');
+	let correlationId = $state('');
+	let selectedDomain = $state<CapturedLogDomain | 'all'>('all');
+	let levels = new SvelteSet<CapturedLogLevel>(DEFAULT_LEVELS);
+	let from = $state('');
+	let to = $state('');
+
+	let retentionDays = $state(7);
+	let retentionSaving = $state(false);
+
+	let livePaused = $state(false);
+	let autoFollowEnabled = $state(true);
+	let listViewport = $state<HTMLDivElement | null>(null);
+	let isNearTop = $state(true);
+	let pendingLiveEntries = $state<CapturedLogEntry[]>([]);
+
+	let selectedEntryId = $state<string | null>(null);
+
 	$effect(() => {
 		if (initialized) return;
 		initialized = true;
@@ -407,7 +427,9 @@
 			const queryParams = buildQueryParams();
 			queryParams.set('limit', '5000');
 			queryParams.set('format', 'jsonl');
-			queryParams.forEach((value, key) => { params[key] = value; });
+			queryParams.forEach((value, key) => {
+				params[key] = value;
+			});
 			const response = await apiGetStream('/api/settings/logs/download', params);
 
 			const blob = await response.blob();

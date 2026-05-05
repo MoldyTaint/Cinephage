@@ -9,8 +9,9 @@
 
 	let { data } = $props();
 
-	let currentMonth = $state(data.currentMonth);
-	let days = $state<CalendarDay[]>(data.days as CalendarDay[]);
+	const { currentMonth: initialMonth, days: initialDays } = data;
+	let currentMonth = $state(initialMonth);
+	let days = $state<CalendarDay[]>(initialDays as CalendarDay[]);
 	let loading = $state(false);
 	let selectedDay = $state<CalendarDay | null>(null);
 	let abortController = $state<AbortController | null>(null);

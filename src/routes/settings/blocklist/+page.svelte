@@ -15,8 +15,9 @@
 
 	let { data }: { data: { entries: BlocklistEntry[]; total: number } } = $props();
 
-	let entries = $state<BlocklistEntry[]>(data.entries);
-	let total = $state(data.total);
+	const { entries: initialEntries, total: initialTotal } = data;
+	let entries = $state<BlocklistEntry[]>(initialEntries);
+	let total = $state(initialTotal);
 	let selectedIds = new SvelteSet<string>();
 	let bulkLoading = $state(false);
 
