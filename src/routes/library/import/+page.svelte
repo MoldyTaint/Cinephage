@@ -3,6 +3,12 @@
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import {
+		Step1PathSelector,
+		Step3MultiImport,
+		Step3SingleImport,
+		Step4Completion
+	} from '$lib/components/library/import/index.js';
 	import { resolvePath } from '$lib/utils/routing';
 	import {
 		getRootFolders,
@@ -17,20 +23,7 @@
 	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
 	import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 	import { toasts } from '$lib/stores/toast.svelte';
-	import {
-		ArrowUp,
-		Check,
-		ChevronRight,
-		Clapperboard,
-		FileVideo,
-		Folder,
-		Home,
-		Loader2,
-		Search,
-		Sparkles,
-		Tv,
-		X
-	} from 'lucide-svelte';
+	import { Check, Clapperboard, Loader2, Search, Tv, X } from 'lucide-svelte';
 
 	type MediaType = 'movie' | 'tv';
 
@@ -793,16 +786,6 @@
 		} finally {
 			browserLoading = false;
 		}
-	}
-
-	function formatSize(bytes?: number) {
-		if (!bytes) return '';
-		const gb = bytes / (1024 * 1024 * 1024);
-		if (gb >= 1) {
-			return `${gb.toFixed(2)} GB`;
-		}
-		const mb = bytes / (1024 * 1024);
-		return `${mb.toFixed(1)} MB`;
 	}
 
 	function parseImportContext(searchParams: URLSearchParams): ImportRouteContext | null {
@@ -2160,131 +2143,20 @@
 	</ul>
 
 	{#if step === 1}
-		<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
-			<div class="grid gap-3 md:grid-cols-[180px_minmax(0,1fr)_auto] md:items-start">
-				<label class="form-control">
-					<span class="label-text text-sm font-medium">{m.library_import_mediaTypeLabel()}</span>
-					<select
-						class="select-bordered select w-full"
-						bind:value={preferredMediaType}
-						disabled={isMediaTypeLockedByContext}
-					>
-						<option value="auto">{m.library_import_autoDetect()}</option>
-						<option value="movie">{m.common_movie()}</option>
-						<option value="tv">{m.ui_mediaType_tv()}</option>
-					</select>
-				</label>
-
-				<label class="form-control">
-					<span class="label-text text-sm font-medium">{m.library_import_sourcePathLabel()}</span>
-					<span class="text-xs text-base-content/60 md:col-span-2 md:col-start-2">
-						{#if isFileOnlyContext}
-							{m.library_import_sourcePathHintFile()}
-						{:else}
-							{m.library_import_sourcePathHintGeneral()}
-						{/if}</span
-					>
-					<input
-						class="input-bordered input w-full"
-						placeholder={m.library_import_sourcePathPlaceholder()}
-						bind:value={sourcePath}
-					/>
-				</label>
-
-				<div class="md:self-end">
-					<span class="label-text invisible hidden text-sm font-medium md:block"
-						>{m.library_import_detectMedia()}</span
-					>
-					<button
-						type="button"
-						class="btn w-full btn-primary md:w-auto"
-						onclick={runDetection}
-						disabled={detecting}
-					>
-						{#if detecting}
-							<Loader2 class="h-4 w-4 animate-spin" />
-							{m.library_import_detecting()}
-						{:else}
-							<Sparkles class="h-4 w-4" />
-							{m.library_import_detectMedia()}
-						{/if}
-					</button>
-				</div>
-			</div>
-
-			<div class="mt-4 overflow-hidden rounded-lg border border-base-300">
-				<div class="flex items-center gap-2 border-b border-base-300 bg-base-200 p-3">
-					<button
-						type="button"
-						class="btn btn-square btn-ghost btn-sm"
-						onclick={() => browse('/')}
-						title={m.library_import_goToRoot()}
-					>
-						<Home class="h-4 w-4" />
-					</button>
-					<button
-						class="btn btn-square btn-ghost btn-sm"
-						disabled={!browserParentPath}
-						onclick={() => browserParentPath && browse(browserParentPath)}
-					>
-						<ArrowUp class="h-4 w-4" />
-					</button>
-					<div class="min-w-0 flex-1 truncate rounded bg-base-100 px-2 py-1 font-mono text-sm">
-						{browserPath}
-					</div>
-					{#if !isFileOnlyContext}
-						<button class="btn btn-outline btn-xs" onclick={() => (sourcePath = browserPath)}>
-							{m.library_import_useFolder()}
-						</button>
-					{/if}
-				</div>
-
-				<div class="max-h-80 overflow-y-auto p-2">
-					{#if browserLoading}
-						<div class="flex items-center justify-center py-8">
-							<Loader2 class="h-5 w-5 animate-spin text-base-content/60" />
-						</div>
-					{:else if browserError}
-						<div class="alert text-sm alert-error">
-							<span>{browserError}</span>
-						</div>
-					{:else if browserEntries.length === 0}
-						<div class="py-6 text-center text-sm text-base-content/60">
-							{m.library_import_noFoldersOrFiles()}
-						</div>
-					{:else}
-						<div class="space-y-1">
-							{#each browserEntries as entry (entry.path)}
-								<button
-									type="button"
-									class="flex w-full items-center gap-2 rounded px-2 py-2 text-left transition-colors hover:bg-base-200"
-									onclick={() =>
-										entry.isDirectory ? browse(entry.path) : (sourcePath = entry.path)}
-								>
-									{#if entry.isDirectory}
-										<Folder class="h-4 w-4 shrink-0 text-warning" />
-									{:else}
-										<FileVideo class="h-4 w-4 shrink-0 text-info" />
-									{/if}
-									<div class="min-w-0 flex-1">
-										<div class="truncate text-sm font-medium">{entry.name}</div>
-										{#if !entry.isDirectory}
-											<div class="text-xs text-base-content/60">{formatSize(entry.size)}</div>
-										{/if}
-									</div>
-									{#if sourcePath === entry.path}
-										<Check class="h-4 w-4 text-success" />
-									{/if}
-									{#if entry.isDirectory}
-										<ChevronRight class="h-4 w-4 text-base-content/40" />
-									{/if}
-								</button>
-							{/each}
-						</div>
-					{/if}
-				</div>
-			</div>
-		</div>
+		<Step1PathSelector
+			bind:preferredMediaType
+			bind:sourcePath
+			{browserPath}
+			{browserParentPath}
+			{browserEntries}
+			{browserLoading}
+			{browserError}
+			{detecting}
+			{isMediaTypeLockedByContext}
+			{isFileOnlyContext}
+			onBrowse={browse}
+			onDetect={runDetection}
+		/>
 	{/if}
 
 	{#if step === 2 && detection && activeGroup}
@@ -3035,592 +2907,76 @@
 	{/if}
 
 	{#if step === 3 && isMultiGroupReview && detection}
-		<div class="space-y-4">
-			<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
-				<h2 class="text-lg font-semibold">{m.library_import_importSelectionHeading()}</h2>
-				<p class="mt-1 text-sm text-base-content/70">
-					{m.library_import_importSelectionHint()}
-				</p>
-
-				<div class="mt-3 flex flex-wrap items-center gap-2 text-sm">
-					<span class="badge badge-primary"
-						>{m.library_import_selectedCount({ count: selectedImportGroupCount })}</span
-					>
-					<span class="badge badge-success"
-						>{m.library_import_readyCount({ count: readyGroupCount })}</span
-					>
-					{#if selectedNeedsInputCount > 0}
-						<span class="badge badge-warning"
-							>{m.library_import_needInputCount({ count: selectedNeedsInputCount })}</span
-						>
-					{/if}
-					{#if skippedGroupCount > 0}
-						<span class="badge badge-ghost"
-							>{m.library_import_skippedCount({ count: skippedGroupCount })}</span
-						>
-					{/if}
-				</div>
-			</div>
-
-			<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
-				<h3 class="font-semibold">{m.library_import_selectedItemsHeading()}</h3>
-				<div class="mt-3 flex flex-wrap items-center justify-between gap-2">
-					<p class="text-xs text-base-content/70">{m.library_import_filterByMediaType()}</p>
-					<div class="join">
-						<button
-							type="button"
-							class="btn join-item btn-sm {importMediaFilter === 'all'
-								? 'btn-primary'
-								: 'btn-ghost'}"
-							onclick={() => (importMediaFilter = 'all')}
-						>
-							{m.library_import_filterAllMedia()}
-						</button>
-						<button
-							type="button"
-							class="btn join-item btn-sm {importMediaFilter === 'movie'
-								? 'btn-primary'
-								: 'btn-ghost'}"
-							onclick={() => (importMediaFilter = 'movie')}
-						>
-							{m.common_movies()}
-						</button>
-						<button
-							type="button"
-							class="btn join-item btn-sm {importMediaFilter === 'tv'
-								? 'btn-primary'
-								: 'btn-ghost'}"
-							onclick={() => (importMediaFilter = 'tv')}
-						>
-							{m.common_tvShows()}
-						</button>
-					</div>
-				</div>
-				{#if selectedImportGroupCount === 0}
-					<div
-						class="mt-3 rounded-lg border border-dashed border-base-300 p-4 text-sm text-base-content/60"
-					>
-						{m.library_import_noItemsSelected()}
-					</div>
-				{:else if importSelectionSections.length === 0}
-					<div
-						class="mt-3 rounded-lg border border-dashed border-base-300 p-4 text-sm text-base-content/60"
-					>
-						{m.library_import_noItemsMatchFilter()}
-					</div>
-				{:else}
-					<div class="mt-3 space-y-3">
-						{#if importMovieSections.length > 0}
-							<div class="max-h-72 space-y-2 overflow-y-auto pr-1">
-								{#each importMovieSections as section (section.id)}
-									{#each section.items as group (group.id)}
-										<div class="rounded-lg border border-base-300 p-2">
-											<div
-												class="flex items-center justify-between gap-3 rounded-lg border border-base-300 p-3"
-											>
-												<div class="min-w-0">
-													<div class="truncate font-medium">{group.displayName}</div>
-													<div
-														class="mt-1 flex flex-wrap items-center gap-2 text-xs text-base-content/70"
-													>
-														<span>{formatMediaTypeLabel(getEffectiveMediaType(group))}</span>
-														<span>•</span>
-														<span
-															>{group.detectedFileCount === 1
-																? m.library_import_fileCountSingular({
-																		count: group.detectedFileCount
-																	})
-																: m.library_import_fileCount({
-																		count: group.detectedFileCount
-																	})}</span
-														>
-														{#if canImportGroup(group)}
-															<span class="text-success">{m.library_import_ready()}</span>
-														{:else}
-															<span class="text-warning">{m.library_import_needsInput()}</span>
-														{/if}
-													</div>
-												</div>
-												<button
-													class="btn btn-ghost btn-xs"
-													onclick={() => {
-														switchGroup(group.id);
-														step = 2;
-														showSelectedItemEditor = true;
-													}}
-												>
-													{m.library_import_review()}
-												</button>
-											</div>
-										</div>
-									{/each}
-								{/each}
-							</div>
-						{/if}
-
-						{#if importTvSections.length > 0}
-							<div class="overflow-hidden rounded-lg border border-base-300 p-2">
-								<div
-									class="grid gap-3 {hasMultipleImportTvSeries
-										? 'xl:grid-cols-[280px_minmax(0,1fr)]'
-										: ''}"
-								>
-									{#if hasMultipleImportTvSeries}
-										<div class="max-h-80 space-y-1 overflow-y-auto pr-1">
-											{#each importTvSections as section (section.id)}
-												<button
-													type="button"
-													class="w-full rounded-md border px-3 py-2 text-left transition-colors {activeImportTvSection?.id ===
-													section.id
-														? 'border-primary bg-primary/5'
-														: 'border-base-300 hover:bg-base-200/50'}"
-													onclick={() => selectImportSeriesSection(section.id)}
-												>
-													<div class="truncate text-sm font-medium">{section.label}</div>
-													<div class="mt-1 text-xs text-base-content/70">
-														{section.items.length === 1
-															? m.library_import_episodeCountSingular({
-																	count: section.items.length
-																})
-															: m.library_import_episodeCount({ count: section.items.length })} • {m.library_import_seasonsLabel(
-															{ seasons: getDetectedSeasonsLabel(section) }
-														)}
-													</div>
-												</button>
-											{/each}
-										</div>
-									{/if}
-
-									<div class="min-w-0 overflow-hidden rounded-md border border-base-300 p-2">
-										{#if activeImportTvSection}
-											<div class="min-w-0">
-												<div class="truncate font-medium">{activeImportTvSection.label}</div>
-												<div class="text-xs text-base-content/70">
-													{activeImportTvSection.items.length === 1
-														? m.library_import_episodeCountSingular({
-																count: activeImportTvSection.items.length
-															})
-														: m.library_import_episodeCount({
-																count: activeImportTvSection.items.length
-															})}
-												</div>
-											</div>
-
-											{@const mediaDestinationOptions =
-												getSectionDestinationOptions(activeImportTvSection)}
-											{@const mediaDestinationEligibleCount =
-												getSectionDestinationEligibleGroups(activeImportTvSection).length}
-											{#if mediaDestinationOptions.length > 0}
-												<div
-													class="mt-2 flex flex-wrap items-end gap-2 rounded-md border border-base-300 bg-base-200/40 p-2"
-												>
-													<div class="min-w-64 flex-1">
-														<div class="pb-1 text-xs text-base-content/80">
-															{m.library_import_destinationRootFolder()}
-														</div>
-														<select
-															class="select-bordered select w-full select-xs"
-															value={bulkDestinationBySectionId[activeImportTvSection.id] ?? ''}
-															onchange={(event) =>
-																updateSectionDestination(
-																	activeImportTvSection.id,
-																	(event.target as HTMLSelectElement).value
-																)}
-														>
-															<option disabled value=""
-																>{m.library_import_selectRootFolder()}</option
-															>
-															{#each mediaDestinationOptions as folder (folder.id)}
-																<option value={folder.id}
-																	>{folder.name}
-																	{#if folder.defaultRootFolderPath}
-																		- {folder.defaultRootFolderPath}
-																	{/if}</option
-																>
-															{/each}
-														</select>
-													</div>
-													<button
-														type="button"
-														class="btn btn-ghost btn-xs"
-														disabled={!canApplySelectedDestinationToMedia(activeImportTvSection)}
-														onclick={() => applySelectedDestinationToMedia(activeImportTvSection)}
-													>
-														{m.library_import_applyDestinationToMedia()}
-													</button>
-												</div>
-											{:else}
-												<div
-													class="mt-2 rounded-md border border-base-300 bg-base-200/40 p-2 text-xs text-base-content/70"
-												>
-													{#if mediaDestinationEligibleCount === 0}
-														{m.library_import_destinationNotNeededForExistingMedia()}
-													{:else}
-														{m.library_import_noCommonDestinationForMedia()}
-													{/if}
-												</div>
-											{/if}
-
-											{#if activeImportTvSection.seasonSections}
-												<div class="mt-2 flex flex-wrap gap-2">
-													{#each activeImportTvSection.seasonSections as seasonSection (seasonSection.key)}
-														<button
-															type="button"
-															class="btn btn-xs {activeImportSeasonSection?.key ===
-															seasonSection.key
-																? 'btn-primary'
-																: 'btn-ghost'}"
-															onclick={() => selectImportSeasonSection(seasonSection.key)}
-														>
-															{seasonSection.label} ({seasonSection.items.length})
-														</button>
-													{/each}
-												</div>
-											{/if}
-
-											<div class="mt-2 max-h-72 space-y-2 overflow-y-auto pr-1">
-												{#each activeImportSeasonSection?.items ?? activeImportTvSection.items as group (group.id)}
-													<div
-														class="flex items-center justify-between gap-3 rounded-lg border border-base-300 p-3"
-													>
-														<div class="min-w-0">
-															<div class="truncate font-medium">{group.displayName}</div>
-															<div
-																class="mt-1 flex flex-wrap items-center gap-2 text-xs text-base-content/70"
-															>
-																<span>{formatMediaTypeLabel(getEffectiveMediaType(group))}</span>
-																<span>•</span>
-																<span
-																	>{group.detectedFileCount === 1
-																		? m.library_import_fileCountSingular({
-																				count: group.detectedFileCount
-																			})
-																		: m.library_import_fileCount({
-																				count: group.detectedFileCount
-																			})}</span
-																>
-																{#if canImportGroup(group)}
-																	<span class="text-success">{m.library_import_ready()}</span>
-																{:else}
-																	<span class="text-warning">{m.library_import_needsInput()}</span>
-																{/if}
-															</div>
-														</div>
-														<button
-															class="btn btn-ghost btn-xs"
-															onclick={() => {
-																switchGroup(group.id);
-																step = 2;
-																showSelectedItemEditor = true;
-															}}
-														>
-															{m.library_import_review()}
-														</button>
-													</div>
-												{/each}
-											</div>
-										{/if}
-									</div>
-								</div>
-							</div>
-						{/if}
-					</div>
-				{/if}
-			</div>
-
-			{#if selectedNeedsInputCount > 0}
-				<div class="alert text-sm alert-warning">
-					<span>
-						{m.library_import_needsInputWarning({ count: selectedNeedsInputCount })}
-					</span>
-				</div>
-			{/if}
-
-			<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-				<button class="btn btn-ghost" onclick={() => goToStep(2)}
-					>{m.library_import_backToReview()}</button
-				>
-				<button
-					class="btn btn-primary"
-					onclick={executeBulkImportFlow}
-					disabled={executingImport ||
-						selectedImportGroupCount === 0 ||
-						selectedNeedsInputCount > 0}
-				>
-					{#if executingImport}
-						<Loader2 class="h-4 w-4 animate-spin" />
-						{m.library_import_importing()}
-					{:else}
-						<Check class="h-4 w-4" />
-						{m.library_import_startImportCount({ count: selectedImportGroupCount })}
-					{/if}
-				</button>
-			</div>
-		</div>
+		<Step3MultiImport
+			{importMovieSections}
+			{importTvSections}
+			{activeImportTvSection}
+			{activeImportSeasonSection}
+			{hasMultipleImportTvSeries}
+			bind:importMediaFilter
+			{bulkDestinationBySectionId}
+			{selectedImportGroupCount}
+			{selectedNeedsInputCount}
+			{readyGroupCount}
+			{skippedGroupCount}
+			{executingImport}
+			canImport={canImportGroup}
+			{getEffectiveMediaType}
+			getSectionDestinations={getSectionDestinationOptions}
+			getSectionEligibleCount={(section) => getSectionDestinationEligibleGroups(section).length}
+			canApplyDestination={canApplySelectedDestinationToMedia}
+			onSelectImportSeriesSection={selectImportSeriesSection}
+			onSelectImportSeasonSection={selectImportSeasonSection}
+			onBulkImport={executeBulkImportFlow}
+			onUpdateSectionDestination={updateSectionDestination}
+			onApplyDestination={applySelectedDestinationToMedia}
+			onReviewGroup={(groupId) => {
+				switchGroup(groupId);
+				step = 2;
+				showSelectedItemEditor = true;
+			}}
+			onGoToStep={goToStep}
+		/>
 	{/if}
 
 	{#if step === 3 && !isMultiGroupReview && activeGroup && selectedMatch}
-		<div class="space-y-4">
-			<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
-				<h2 class="text-lg font-semibold">{m.library_import_importTargetHeading()}</h2>
-				<p class="mt-1 text-sm text-base-content/70">
-					{m.library_import_importTargetHint()}
-				</p>
-				<div class="mt-4 grid gap-2 sm:grid-cols-2">
-					<label
-						class="flex cursor-pointer items-start gap-3 rounded-lg border border-base-300 p-3 {selectedMatch.inLibrary
-							? 'opacity-60'
-							: ''}"
-					>
-						<input
-							type="radio"
-							name="import-target"
-							class="radio mt-1 radio-primary"
-							checked={importTarget === 'new'}
-							onchange={() => !selectedMatch?.inLibrary && (importTarget = 'new')}
-							disabled={selectedMatch?.inLibrary}
-						/>
-						<div>
-							<div class="font-medium">{m.library_import_createNew()}</div>
-							<div class="text-sm text-base-content/70">
-								{m.library_import_createNewHint()}
-							</div>
-						</div>
-					</label>
-					<label
-						class="flex cursor-pointer items-start gap-3 rounded-lg border border-base-300 p-3 {selectedMatch.inLibrary
-							? ''
-							: 'opacity-60'}"
-					>
-						<input
-							type="radio"
-							name="import-target"
-							class="radio mt-1 radio-primary"
-							checked={importTarget === 'existing'}
-							onchange={() => selectedMatch?.inLibrary && (importTarget = 'existing')}
-							disabled={!selectedMatch?.inLibrary}
-						/>
-						<div>
-							<div class="font-medium">{m.library_import_matchExisting()}</div>
-							<div class="text-sm text-base-content/70">
-								{m.library_import_matchExistingHint()}
-							</div>
-						</div>
-					</label>
-				</div>
-			</div>
-
-			{#if importTarget === 'new'}
-				<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
-					<h3 class="font-semibold">{m.library_import_destinationRootFolder()}</h3>
-					{#if loadingRootFolders}
-						<div class="mt-2 flex items-center gap-2 text-sm text-base-content/70">
-							<Loader2 class="h-4 w-4 animate-spin" />
-							{m.library_import_loadingFolders()}
-						</div>
-					{:else if destinationLibrariesForType.length === 0}
-						<div class="mt-3 alert text-sm alert-warning">
-							<span>{m.library_import_noWritableFolders()}</span>
-						</div>
-					{:else}
-						<select
-							class="select-bordered select mt-3 w-full"
-							bind:value={selectedRootFolder}
-							onchange={persistActiveGroupState}
-						>
-							<option disabled value="">{m.library_import_selectRootFolder()}</option>
-							{#each destinationLibrariesForType as library (library.id)}
-								<option value={library.id}
-									>{library.name}
-									{#if library.defaultRootFolderPath}
-										- {library.defaultRootFolderPath}
-									{/if}</option
-								>
-							{/each}
-						</select>
-					{/if}
-				</div>
-			{:else}
-				<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
-					<h3 class="font-semibold">{m.library_import_existingItemMatch()}</h3>
-					<div class="mt-2 text-sm text-base-content/70">
-						{m.library_import_importingIntoExisting()}
-						<span class="font-medium text-base-content">{selectedMatch.title}</span>
-					</div>
-				</div>
-			{/if}
-
-			<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
-				<h3 class="font-semibold">{m.library_import_summaryHeading()}</h3>
-				{#if selectedMatchContextMismatch && routeImportContext}
-					<div class="mt-3 alert text-sm alert-warning">
-						<span>
-							{m.library_import_importOpenedFor()}
-							<strong
-								>{routeImportContext.title || `TMDB ${routeImportContext.tmdbId}`}
-								{#if routeImportContext.year}
-									({routeImportContext.year})
-								{/if}</strong
-							>, {m.library_import_butSelectedMatchIs()}
-							<strong
-								>{selectedMatch.title}
-								{#if selectedMatch.year}
-									({selectedMatch.year})
-								{/if}</strong
-							>.
-						</span>
-					</div>
-				{/if}
-				<div class="mt-2 space-y-1 text-sm">
-					<div>
-						<span class="text-base-content/60">{m.library_import_summarySource()}</span>
-						{activeGroup.sourcePath}
-					</div>
-					<div>
-						<span class="text-base-content/60">{m.library_import_summaryMatch()}</span>
-						{selectedMatch.title}
-						{#if selectedMatch.year}
-							({selectedMatch.year})
-						{/if}
-					</div>
-					<div>
-						<span class="text-base-content/60">{m.library_import_summaryType()}</span>
-						{formatMediaTypeLabel(selectedMediaType)}
-					</div>
-					{#if selectedMediaType === 'tv'}
-						<div>
-							{#if activeGroup.detectedFileCount > 1}
-								<span class="text-base-content/60"
-									>{m.library_import_summaryDetectedEpisodes()}</span
-								>
-								{m.library_import_summaryFilesCount({ count: activeGroup.detectedFileCount })}
-								{#if activeGroup.detectedSeasons && activeGroup.detectedSeasons.length > 0}
-									({m.library_import_summarySeasonsInline({
-										seasons: activeGroup.detectedSeasons.join(', ')
-									})})
-								{/if}
-								{#if batchSeasonOverride !== null}
-									<span class="ml-2 text-base-content/70"
-										>{m.library_import_summaryOverrideSeason({ season: batchSeasonOverride })}</span
-									>
-								{/if}
-							{:else}
-								<span class="text-base-content/60">{m.library_import_summaryEpisode()}</span>
-								S{seasonNumber}E{episodeNumber}
-							{/if}
-						</div>
-					{/if}
-				</div>
-			</div>
-
-			<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-				<button class="btn btn-ghost" onclick={() => goToStep(2)}>{m.action_back()}</button>
-				<button
-					class="btn btn-primary"
-					onclick={executeImportFlow}
-					disabled={!canProceedToImport || executingImport}
-				>
-					{#if executingImport}
-						<Loader2 class="h-4 w-4 animate-spin" />
-						{m.library_import_importing()}
-					{:else}
-						<Check class="h-4 w-4" />
-						{m.library_import_startImport()}
-					{/if}
-				</button>
-			</div>
-		</div>
+		<Step3SingleImport
+			{activeGroup}
+			{selectedMatch}
+			{selectedMediaType}
+			bind:importTarget
+			{destinationLibrariesForType}
+			bind:selectedRootFolder
+			{loadingRootFolders}
+			{seasonNumber}
+			{episodeNumber}
+			{batchSeasonOverride}
+			{canProceedToImport}
+			{executingImport}
+			{selectedMatchContextMismatch}
+			{routeImportContext}
+			onGoToStep={goToStep}
+			onExecuteImport={executeImportFlow}
+			onRootFolderChange={persistActiveGroupState}
+		/>
 	{/if}
 
-	{#if step === 4 && executeError}
-		<div class="rounded-xl border border-error/40 bg-error/5 p-5">
-			<div class="flex items-start gap-3">
-				<div class="mt-0.5 rounded-full bg-error/20 p-2">
-					<X class="h-5 w-5 text-error" />
-				</div>
-				<div class="min-w-0 flex-1">
-					<h2 class="text-xl font-semibold">{m.library_import_importFailed()}</h2>
-					<p class="mt-1 text-sm text-base-content/80">
-						{executeError}
-					</p>
-					<div class="mt-4 flex flex-wrap gap-2">
-						<button
-							class="btn btn-sm btn-primary"
-							onclick={() => {
-								executeError = null;
-								step = 3;
-							}}
-						>
-							{m.library_import_tryAgain()}
-						</button>
-						{#if originLibraryLink}
-							<a class="btn btn-outline btn-sm" href={originLibraryLink}
-								>{m.library_import_backToLibraryItem()}</a
-							>
-						{/if}
-					</div>
-				</div>
-			</div>
-		</div>
-	{:else if step === 4 && executeResult}
-		<div class="rounded-xl border border-success/40 bg-success/5 p-5">
-			<div class="flex items-start gap-3">
-				<div class="mt-0.5 rounded-full bg-success/20 p-2">
-					<Check class="h-5 w-5 text-success" />
-				</div>
-				<div class="min-w-0 flex-1">
-					<h2 class="text-xl font-semibold">{m.library_import_importComplete()}</h2>
-					{#if bulkImportSummary}
-						<p class="mt-1 text-sm text-base-content/80">
-							{#if bulkImportSummary.failedGroups > 0}
-								{m.library_import_bulkImportedWithFailures({
-									imported: bulkImportSummary.importedGroups,
-									failed: bulkImportSummary.failedGroups
-								})}
-							{:else}
-								{m.library_import_bulkImportedSuccess({
-									imported: bulkImportSummary.importedGroups
-								})}
-							{/if}
-						</p>
-						{#if skippedGroupCount > 0}
-							<p class="mt-1 text-sm text-base-content/70">
-								{m.library_import_bulkSkippedItems({ count: skippedGroupCount })}
-							</p>
-						{/if}
-					{:else}
-						<p class="mt-1 text-sm text-base-content/80">
-							{executeResult.importedCount && executeResult.importedCount > 1
-								? m.library_import_filesImportedPlural({ count: executeResult.importedCount })
-								: m.library_import_fileImportedSingular()}
-						</p>
-					{/if}
-					<div class="mt-3 rounded-lg bg-base-100 p-3 text-sm break-all">
-						<div>
-							<span class="text-base-content/60">{m.library_import_importedPathLabel()}</span>
-							{executeResult.importedPath}
-						</div>
-					</div>
-					<div class="mt-4 flex flex-wrap gap-2">
-						{#if completionLink}
-							<a class="btn btn-sm btn-primary" href={completionLink}>
-								{bulkImportSummary
-									? m.library_import_viewLastImported()
-									: m.library_import_viewInLibrary()}
-							</a>
-						{/if}
-						{#if remainingGroupCount > 0}
-							<button class="btn btn-outline btn-sm" onclick={continueWithNextDetected}>
-								{m.library_import_importNextDetected({ count: remainingGroupCount })}
-							</button>
-						{/if}
-						<button class="btn btn-ghost btn-sm" onclick={resetWizard}
-							>{m.library_import_importAnother()}</button
-						>
-					</div>
-				</div>
-			</div>
-		</div>
+	{#if step === 4}
+		<Step4Completion
+			{executeError}
+			{executeResult}
+			{bulkImportSummary}
+			{skippedGroupCount}
+			{remainingGroupCount}
+			{completionLink}
+			{originLibraryLink}
+			onTryAgain={() => {
+				executeError = null;
+				step = 3;
+			}}
+			onReset={resetWizard}
+			onContinueWithNext={continueWithNextDetected}
+		/>
 	{/if}
 </div>
 
