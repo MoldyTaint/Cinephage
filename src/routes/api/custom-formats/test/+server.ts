@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { parseRelease, evaluateCondition } from '$lib/server/scoring';
 import type { FormatCondition } from '$lib/server/scoring';
-import { conditionSchema, customFormatTestSchema } from '$lib/validation/schemas.js';
+import { customFormatTestSchema } from '$lib/validation/schemas.js';
 import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 

@@ -10,7 +10,7 @@ import type { RequestHandler } from './$types';
 import { getLiveTvAccountManager } from '$lib/server/livetv/LiveTvAccountManager';
 import { logger } from '$lib/logging';
 import { liveTvAccountCreateSchema } from '$lib/validation/schemas.js';
-import { ValidationError, isAppError } from '$lib/errors';
+import { isAppError } from '$lib/errors';
 
 /**
  * List all Live TV accounts

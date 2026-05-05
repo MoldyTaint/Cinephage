@@ -253,14 +253,6 @@
 		}
 	}
 
-	function isGenreIncluded(genreId: number): boolean {
-		return (filters.withGenres ?? []).includes(genreId);
-	}
-
-	function isGenreExcluded(genreId: number): boolean {
-		return (filters.withoutGenres ?? []).includes(genreId);
-	}
-
 	function toggleProvider(providerId: number) {
 		const current = filters.withWatchProviders ?? [];
 		if (current.includes(providerId)) {
@@ -502,28 +494,26 @@
 				selectedCount={filters.withWatchProviders?.length ?? 0}
 				selectedBadgeClass="badge-primary"
 			>
-				{#snippet children()}
-					<div class="grid grid-cols-5 gap-2 sm:grid-cols-6">
-						{#each providers.slice(0, 24) as provider (provider.provider_id)}
-							<button
-								type="button"
-								class="relative aspect-square overflow-hidden rounded-lg border-2 transition-all {isProviderSelected(
-									provider.provider_id
-								)
-									? 'border-primary ring-2 ring-primary/30'
-									: 'border-base-300 opacity-60 hover:opacity-100'}"
-								onclick={() => toggleProvider(provider.provider_id)}
-								title={provider.provider_name}
-							>
-								<img
-									src="https://image.tmdb.org/t/p/w92{provider.logo_path}"
-									alt={provider.provider_name}
-									class="h-full w-full object-cover"
-								/>
-							</button>
-						{/each}
-					</div>
-				{/snippet}
+				<div class="grid grid-cols-5 gap-2 sm:grid-cols-6">
+					{#each providers.slice(0, 24) as provider (provider.provider_id)}
+						<button
+							type="button"
+							class="relative aspect-square overflow-hidden rounded-lg border-2 transition-all {isProviderSelected(
+								provider.provider_id
+							)
+								? 'border-primary ring-2 ring-primary/30'
+								: 'border-base-300 opacity-60 hover:opacity-100'}"
+							onclick={() => toggleProvider(provider.provider_id)}
+							title={provider.provider_name}
+						>
+							<img
+								src="https://image.tmdb.org/t/p/w92{provider.logo_path}"
+								alt={provider.provider_name}
+								class="h-full w-full object-cover"
+							/>
+						</button>
+					{/each}
+				</div>
 			</ChipSelector>
 		</div>
 	</FilterAccordion>

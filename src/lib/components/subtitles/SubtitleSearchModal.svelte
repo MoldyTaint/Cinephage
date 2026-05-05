@@ -20,18 +20,6 @@
 		uploadDate?: string;
 	}
 
-	interface SearchResponse {
-		results: SubtitleResult[];
-		totalResults: number;
-		searchTimeMs: number;
-		providers: Array<{
-			providerId: string;
-			providerName: string;
-			resultsCount: number;
-			error?: string;
-		}>;
-	}
-
 	interface DownloadedSubtitle {
 		id: string;
 		language: string;
