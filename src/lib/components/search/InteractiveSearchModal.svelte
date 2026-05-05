@@ -8,6 +8,9 @@
 	import SearchResultsList from './SearchResultsList.svelte';
 	import { getUsenetServers } from '$lib/api/usenet.js';
 	import { searchReleases } from '$lib/api/indexers.js';
+	import { isMultiSeasonPack } from '$lib/utils/release-analysis.js';
+	import { getGrabErrorMessage } from './grab-errors.js';
+	import { downloadDebugJson as downloadJsonFile } from './debug-export.js';
 
 	interface Release {
 		guid: string;
@@ -98,10 +101,6 @@
 		rejectedIndexers?: RejectedIndexer[];
 	}
 
-	interface NntpServerStatus {
-		enabled?: boolean;
-	}
-
 	export type SearchMode = 'all' | 'multiSeasonPack';
 
 	interface Props {
@@ -184,13 +183,10 @@
 			allReleases: releases,
 			filteredReleases: filteredReleases
 		};
-		const blob = new Blob([JSON.stringify(debugData, null, 2)], { type: 'application/json' });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = `search-debug-${title.replace(/[^a-z0-9]/gi, '-')}-${Date.now()}.json`;
-		a.click();
-		URL.revokeObjectURL(url);
+		downloadJsonFile(
+			debugData,
+			`search-debug-${title.replace(/[^a-z0-9]/gi, '-')}-${Date.now()}.json`
+		);
 	}
 
 	function releaseKey(release: Release): string {
@@ -218,21 +214,6 @@
 		}
 	}
 
-	function getGrabErrorMessage(errorCode?: string, error?: string): string {
-		switch (errorCode) {
-			case 'NNTP_NOT_CONFIGURED':
-				return 'No NNTP server configured. Add one in Settings -> Integrations -> NNTP Servers.';
-			case 'NNTP_NOT_ENABLED':
-				return 'No enabled NNTP server. Enable at least one server to use Stream.';
-			case 'NNTP_UNAVAILABLE':
-				return 'NNTP streaming is unavailable right now. Check NNTP server connectivity.';
-			case 'NO_ENABLED_DOWNLOAD_CLIENT':
-				return 'No enabled download client is configured for this protocol.';
-			default:
-				return error || 'Failed to grab';
-		}
-	}
-
 	const showUsenetStreamButton = $derived.by(() => usenetStreamingState !== 'noConfiguredServers');
 	const canUsenetStream = $derived.by(() => usenetStreamingState === 'available');
 	const usenetStreamUnavailableReason = $derived.by(() => {
@@ -248,74 +229,11 @@
 		}
 	});
 
-	function isMultiSeasonPack(release: Release): boolean {
-		const largeEpisodeThreshold = expectedEpisodeCount
-			? Math.max(50, Math.floor(expectedEpisodeCount * 0.8))
-			: 70;
-
-		const episodeMatch = release.episodeMatch;
-		if (episodeMatch) {
-			if (episodeMatch.isCompleteSeries) return true;
-			if (episodeMatch.seasons && episodeMatch.seasons.length > 1) return true;
-			if (
-				episodeMatch.isSeasonPack &&
-				episodeMatch.season === 1 &&
-				(episodeMatch.episodes?.length ?? 0) >= largeEpisodeThreshold
-			) {
-				return true;
-			}
-		}
-
-		const episodeInfo = release.parsed?.episode;
-		if (episodeInfo) {
-			if (episodeInfo.isCompleteSeries) return true;
-			if (episodeInfo.seasons && episodeInfo.seasons.length > 1) return true;
-			if (
-				episodeInfo.isSeasonPack &&
-				episodeInfo.season === 1 &&
-				(episodeInfo.episodes?.length ?? 0) >= largeEpisodeThreshold
-			) {
-				return true;
-			}
-		}
-
-		const t = release.title;
-		if (/\bS\d{1,2}[\s._-]*[-–—][\s._-]*S?\d{1,2}\b/i.test(t)) return true;
-		if (/\bS\d{1,2}[\s._-]?E\d{1,3}\s*[-–—]\s*S\d{1,2}[\s._-]?E\d{1,3}\b/i.test(t)) return true;
-		if (/\b\d{1,2}x\d{1,3}\s*[-–—]\s*\d{1,2}x\d{1,3}\b/i.test(t)) return true;
-		if (
-			/\bSeasons?[\s:._-]*\d{1,2}\s*(?:[-–—]|to|through|thru)\s*\d{1,2}(?:\s*(?:of|\/)\s*\d{1,2})?\b/i.test(
-				t
-			)
-		)
-			return true;
-		if (
-			/\bСезоны?[\s:._-]*\d{1,2}\s*(?:[-–—]|до)\s*\d{1,2}(?:\s*(?:из|of|\/)\s*\d{1,2})?\b/i.test(t)
-		)
-			return true;
-		if (
-			/\b(?:every[\s._-]?season|all[\s._-]?seasons?|полный[\s._-]*сериал|все[\s._-]*сезоны)\b/i.test(
-				t
-			)
-		)
-			return true;
-
-		const hasTvContext =
-			/\b(?:series|seasons?|episodes?|s\d{1,2}(?:e\d{1,3})?|(?:\d{1,2})x\d{1,3})\b/i.test(t);
-		if (
-			hasTvContext &&
-			/\b(?:complete[\s._-]?collection|full[\s._-]?collection|mega[\s._-]?pack|bundle)\b/i.test(t)
-		)
-			return true;
-
-		return false;
-	}
-
 	const filteredReleases = $derived.by(() => {
 		let result = [...releases];
 
 		if (searchMode === 'multiSeasonPack') {
-			result = result.filter(isMultiSeasonPack);
+			result = result.filter((r) => isMultiSeasonPack(r, expectedEpisodeCount));
 		}
 
 		if (!showRejected) {
@@ -351,7 +269,7 @@
 
 	const modeBaseReleases = $derived.by(() => {
 		if (searchMode === 'multiSeasonPack') {
-			return releases.filter(isMultiSeasonPack);
+			return releases.filter((r) => isMultiSeasonPack(r, expectedEpisodeCount));
 		}
 		return releases;
 	});
