@@ -13,6 +13,12 @@ import { and, desc, gte, inArray, eq, lte, lt, sql, count } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { extractReleaseGroup } from '$lib/server/indexers/parser/patterns/releaseGroup';
 import { parseRelease } from '$lib/server/indexers/parser/ReleaseParser';
+import { ActivityDeduplicationService, type ActiveQueueIndex } from './ActivityDeduplicationService.js';
+import {
+	buildFailedQueueIndex,
+	findFailedQueueItemId,
+	buildHistoryTimeline
+} from './activity-transformers.js';
 import {
 	isActiveActivity,
 	type UnifiedActivity,
@@ -26,12 +32,6 @@ import {
 import type { DownloadQueueRecord, DownloadHistoryRecord, MonitoringHistoryRecord } from './types';
 import { projectQueueActivity } from './projectors';
 import { parseMoveTaskId } from '$lib/server/library/MediaMoveService.js';
-import {
-	normalizeReleaseKey as dedupNormalizeReleaseKey,
-	toEpisodeIdList as dedupToEpisodeIdList,
-	hasEpisodeOverlap as dedupHasEpisodeOverlap,
-	isSameMediaTarget as dedupIsSameMediaTarget
-} from './dedup-utils.js';
 import {
 	mapFilterStatusToQueueStatuses as mappersMapFilterStatusToQueueStatuses,
 	mapFilterStatusToHistoryStatuses as mappersMapFilterStatusToHistoryStatuses,
@@ -89,17 +89,6 @@ interface MoveTaskRecord {
 	completedAt: string | null;
 }
 
-interface ActiveQueueIndex {
-	byDownloadId: Map<string, DownloadQueueRecord>;
-	byNormalizedTitle: Map<string, DownloadQueueRecord>;
-	byMovieId: Set<string>;
-	bySeriesId: Set<string>;
-	byAddedAt: Map<string, DownloadQueueRecord[]>;
-	titleEntries: { key: string; item: DownloadQueueRecord }[];
-	hasAnyWithoutMediaLink: boolean;
-	items: DownloadQueueRecord[];
-}
-
 interface ActivityQueryResult {
 	activities: UnifiedActivity[];
 	total: number;
@@ -136,6 +125,7 @@ interface PurgeHistoryResult {
  */
 export class ActivityService {
 	private static instance: ActivityService;
+	private deduplicationService = new ActivityDeduplicationService();
 
 	private constructor() {}
 
@@ -221,7 +211,7 @@ export class ActivityService {
 			? await this.fetchMonitoringForQueue(activeDownloads.map((d) => d.id))
 			: new Map<string, MonitoringHistoryRecord[]>();
 
-		const failedQueueIndex = this.buildFailedQueueIndex(failedQueueItems);
+		const failedQueueIndex = buildFailedQueueIndex(failedQueueItems);
 
 		const queueActivities = this.transformQueueItems(
 			activeDownloads,
@@ -248,7 +238,7 @@ export class ActivityService {
 			filters
 		);
 		if (scope === 'active') {
-			filtered = this.dedupeActiveActivities(filtered);
+			filtered = this.deduplicationService.dedupeActiveActivities(filtered);
 		}
 		this.sortActivities(filtered, sort);
 
@@ -256,7 +246,7 @@ export class ActivityService {
 		let summary: ActivitySummary | null = null;
 		if (needsActive) {
 			let activeUniverse = this.applyFilters(activities, summaryFilters, 'active');
-			activeUniverse = this.dedupeActiveActivities(activeUniverse);
+			activeUniverse = this.deduplicationService.dedupeActiveActivities(activeUniverse);
 			activeFilteredCount = this.applyRequestedStatusFilter(activeUniverse, filters).length;
 
 			if (scope === 'active') {
@@ -407,7 +397,7 @@ export class ActivityService {
 				.where(inArray(downloadHistory.id, historyIdList))
 				.all();
 
-			const failedQueueIndex = this.buildFailedQueueIndex(await this.fetchFailedQueueItems());
+			const failedQueueIndex = buildFailedQueueIndex(await this.fetchFailedQueueItems());
 			const protectedHistoryIds = new Set<string>();
 
 			for (const row of requestedHistoryRows) {
@@ -595,16 +585,16 @@ export class ActivityService {
 	): UnifiedActivity | null {
 		// Skip if this release is already represented by an active queue row.
 		// This avoids duplicate active entries when a failed history record is retried.
-		const index = this.buildActiveQueueIndex(activeDownloads);
-		if (this.isHistoryRepresentedByActiveQueueIndexed(history, index)) {
+		const index = this.deduplicationService.buildActiveQueueIndex(activeDownloads);
+		if (this.deduplicationService.isHistoryRepresentedByActiveQueueIndexed(history, index)) {
 			return null;
 		}
 
-		const timeline = this.buildHistoryTimeline(history);
+		const timeline = buildHistoryTimeline(history);
 		const mediaInfo = this.resolveMediaInfo(history, mediaMaps);
 		const queueItemId =
 			history.status === 'failed'
-				? this.findFailedQueueItemId(history, failedQueueIndex)
+				? findFailedQueueItemId(history, failedQueueIndex)
 				: undefined;
 
 		return {
@@ -1367,7 +1357,7 @@ export class ActivityService {
 		failedQueueIndex?: Map<string, string>
 	): UnifiedActivity[] {
 		// Build the active queue index once for all history items (O(n) build, O(1) lookups)
-		const activeIndex = this.buildActiveQueueIndex(activeDownloads);
+		const activeIndex = this.deduplicationService.buildActiveQueueIndex(activeDownloads);
 
 		return historyItems
 			.map((history) =>
@@ -1385,15 +1375,15 @@ export class ActivityService {
 		activeIndex: ActiveQueueIndex,
 		failedQueueIndex?: Map<string, string>
 	): UnifiedActivity | null {
-		if (this.isHistoryRepresentedByActiveQueueIndexed(history, activeIndex)) {
+		if (this.deduplicationService.isHistoryRepresentedByActiveQueueIndexed(history, activeIndex)) {
 			return null;
 		}
 
-		const timeline = this.buildHistoryTimeline(history);
+		const timeline = buildHistoryTimeline(history);
 		const mediaInfo = this.resolveMediaInfo(history, mediaMaps);
 		const queueItemId =
 			history.status === 'failed'
-				? this.findFailedQueueItemId(history, failedQueueIndex)
+				? findFailedQueueItemId(history, failedQueueIndex)
 				: undefined;
 
 		return {
@@ -1444,322 +1434,8 @@ export class ActivityService {
 			.filter((activity): activity is UnifiedActivity => activity !== null);
 	}
 
-	private buildFailedQueueIndex(
-		queueItems: Pick<DownloadQueueRecord, 'id' | 'downloadId' | 'title' | 'addedAt'>[]
-	): Map<string, string> {
-		const index = new Map<string, string>();
-
-		for (const item of queueItems) {
-			if (item.downloadId) {
-				index.set(`download:${item.downloadId}`, item.id);
-			}
-			if (item.title && item.addedAt) {
-				index.set(`title:${item.title.toLowerCase()}|grabbed:${item.addedAt}`, item.id);
-			}
-		}
-
-		return index;
-	}
-
-	private findFailedQueueItemId(
-		history: DownloadHistoryRecord,
-		failedQueueIndex?: Map<string, string>
-	): string | undefined {
-		if (!failedQueueIndex) return undefined;
-
-		if (history.downloadId) {
-			const byDownloadId = failedQueueIndex.get(`download:${history.downloadId}`);
-			if (byDownloadId) return byDownloadId;
-		}
-
-		if (history.title && history.grabbedAt) {
-			return failedQueueIndex.get(
-				`title:${history.title.toLowerCase()}|grabbed:${history.grabbedAt}`
-			);
-		}
-
-		return undefined;
-	}
-
-	private normalizeReleaseKey(value: string | null | undefined): string {
-		return dedupNormalizeReleaseKey(value);
-	}
-
-	private toEpisodeIdList(value: unknown): string[] {
-		return dedupToEpisodeIdList(value);
-	}
-
-	private hasEpisodeOverlap(left: unknown, right: unknown): boolean {
-		return dedupHasEpisodeOverlap(left, right);
-	}
-
-	private isSameMediaTarget(
-		history: Pick<DownloadHistoryRecord, 'movieId' | 'seriesId' | 'episodeIds' | 'seasonNumber'>,
-		queueItem: Pick<DownloadQueueRecord, 'movieId' | 'seriesId' | 'episodeIds' | 'seasonNumber'>
-	): boolean {
-		return dedupIsSameMediaTarget(history, queueItem);
-	}
-
-	/**
-	 * Pre-built index for fast active queue lookups.
-	 * Replaces O(n*m) iteration with O(1) lookups for most match paths.
-	 */
-	private buildActiveQueueIndex(activeDownloads: DownloadQueueRecord[]): ActiveQueueIndex {
-		const byDownloadId = new Map<string, DownloadQueueRecord>();
-		const byNormalizedTitle = new Map<string, DownloadQueueRecord>();
-		const byMovieId = new Set<string>();
-		const bySeriesId = new Set<string>();
-		const byAddedAt = new Map<string, DownloadQueueRecord[]>();
-		const titleEntries: { key: string; item: DownloadQueueRecord }[] = [];
-		const hasAnyWithoutMediaLink = activeDownloads.some((d) => !d.movieId && !d.seriesId);
-
-		for (const item of activeDownloads) {
-			if (item.downloadId) {
-				byDownloadId.set(item.downloadId, item);
-			}
-			const titleKey = this.normalizeReleaseKey(item.title);
-			if (titleKey) {
-				byNormalizedTitle.set(titleKey, item);
-				titleEntries.push({ key: titleKey, item });
-			}
-			if (item.movieId) byMovieId.add(item.movieId);
-			if (item.seriesId) bySeriesId.add(item.seriesId);
-			if (item.addedAt) {
-				const existing = byAddedAt.get(item.addedAt) || [];
-				existing.push(item);
-				byAddedAt.set(item.addedAt, existing);
-			}
-		}
-
-		return {
-			byDownloadId,
-			byNormalizedTitle,
-			byMovieId,
-			bySeriesId,
-			byAddedAt,
-			titleEntries,
-			hasAnyWithoutMediaLink,
-			items: activeDownloads
-		};
-	}
-
-	private isHistoryRepresentedByActiveQueueIndexed(
-		history: DownloadHistoryRecord,
-		index: ActiveQueueIndex
-	): boolean {
-		if (index.items.length === 0) return false;
-
-		// Fast path 1: exact downloadId match
-		if (history.downloadId && index.byDownloadId.has(history.downloadId)) {
-			return true;
-		}
-
-		const historyTitleKey = this.normalizeReleaseKey(history.title);
-		const hasHistoryMediaLink = Boolean(history.movieId || history.seriesId);
-
-		// Fast path 2: exact title match + (same media OR same grabbedAt OR no media link)
-		if (historyTitleKey) {
-			const queueByTitle = index.byNormalizedTitle.get(historyTitleKey);
-			if (queueByTitle) {
-				// sameTitle is true, check remaining conditions
-				const sameMovie = Boolean(
-					history.movieId && queueByTitle.movieId && history.movieId === queueByTitle.movieId
-				);
-				const sameSeries = Boolean(
-					history.seriesId && queueByTitle.seriesId && history.seriesId === queueByTitle.seriesId
-				);
-				const sameGrabbedAt = Boolean(
-					history.grabbedAt && queueByTitle.addedAt && history.grabbedAt === queueByTitle.addedAt
-				);
-				const hasQueueMediaLink = Boolean(queueByTitle.movieId || queueByTitle.seriesId);
-				const sameProtocol = Boolean(
-					history.protocol && queueByTitle.protocol && history.protocol === queueByTitle.protocol
-				);
-				const protocolCompatible = !history.protocol || !queueByTitle.protocol || sameProtocol;
-
-				if (sameMovie || sameSeries || sameGrabbedAt) return true;
-				if (this.isSameMediaTarget(history, queueByTitle)) return true;
-				if (protocolCompatible && (!hasHistoryMediaLink || !hasQueueMediaLink)) return true;
-			}
-		}
-
-		// Fast path 3: same grabbedAt + same movie/series
-		if (history.grabbedAt) {
-			const queueItemsAtTime = index.byAddedAt.get(history.grabbedAt);
-			if (queueItemsAtTime) {
-				for (const queueItem of queueItemsAtTime) {
-					const sameMovie = Boolean(
-						history.movieId && queueItem.movieId && history.movieId === queueItem.movieId
-					);
-					const sameSeries = Boolean(
-						history.seriesId && queueItem.seriesId && history.seriesId === queueItem.seriesId
-					);
-					if (sameMovie || sameSeries) return true;
-					if (this.isSameMediaTarget(history, queueItem)) return true;
-				}
-			}
-		}
-
-		// Fast path 4: same media + same grabbedAt (check media exists in index)
-		if (history.movieId && index.byMovieId.has(history.movieId) && history.grabbedAt) {
-			const queueItemsAtTime = index.byAddedAt.get(history.grabbedAt);
-			if (queueItemsAtTime?.some((q) => q.movieId === history.movieId)) return true;
-		}
-		if (history.seriesId && index.bySeriesId.has(history.seriesId) && history.grabbedAt) {
-			const queueItemsAtTime = index.byAddedAt.get(history.grabbedAt);
-			if (queueItemsAtTime?.some((q) => q.seriesId === history.seriesId)) return true;
-		}
-
-		// Slow path: substring title matching (only when exact title didn't match)
-		// This handles cases where title normalization results in containment rather than equality
-		if (historyTitleKey && historyTitleKey.length > 12) {
-			for (const entry of index.titleEntries) {
-				if (entry.key === historyTitleKey) continue; // already checked exact match above
-				const isSubstring =
-					(entry.key.length > 12 && entry.key.includes(historyTitleKey)) ||
-					historyTitleKey.includes(entry.key);
-				if (!isSubstring) continue;
-
-				const queueItem = entry.item;
-				const sameMovie = Boolean(
-					history.movieId && queueItem.movieId && history.movieId === queueItem.movieId
-				);
-				const sameSeries = Boolean(
-					history.seriesId && queueItem.seriesId && history.seriesId === queueItem.seriesId
-				);
-				const sameGrabbedAt = Boolean(
-					history.grabbedAt && queueItem.addedAt && history.grabbedAt === queueItem.addedAt
-				);
-				const hasQueueMediaLink = Boolean(queueItem.movieId || queueItem.seriesId);
-				const sameProtocol = Boolean(
-					history.protocol && queueItem.protocol && history.protocol === queueItem.protocol
-				);
-				const protocolCompatible = !history.protocol || !queueItem.protocol || sameProtocol;
-
-				if (sameMovie || sameSeries || sameGrabbedAt) return true;
-				if (this.isSameMediaTarget(history, queueItem)) return true;
-				if (protocolCompatible && (!hasHistoryMediaLink || !hasQueueMediaLink)) return true;
-			}
-		}
-
-		// Fallback for short-titled items with no media link (rare case)
-		if (historyTitleKey && !hasHistoryMediaLink && index.hasAnyWithoutMediaLink) {
-			const queueByTitle = index.byNormalizedTitle.get(historyTitleKey);
-			if (queueByTitle) {
-				const hasQueueMediaLink = Boolean(queueByTitle.movieId || queueByTitle.seriesId);
-				if (!hasQueueMediaLink) {
-					const protocolCompatible =
-						!history.protocol ||
-						!queueByTitle.protocol ||
-						history.protocol === queueByTitle.protocol;
-					if (protocolCompatible) return true;
-				}
-			}
-		}
-
-		return false;
-	}
-
-	private buildActiveDedupKey(activity: UnifiedActivity): string {
-		const releaseKey = this.normalizeReleaseKey(
-			activity.releaseTitle || activity.mediaTitle || activity.id
-		);
-		const mediaTitleKey = this.normalizeReleaseKey(activity.mediaTitle || activity.id);
-		const mediaKey =
-			activity.mediaType === 'movie'
-				? `movie:${activity.mediaId || mediaTitleKey}`
-				: activity.seriesId
-					? `series:${activity.seriesId}`
-					: `fallback:${activity.mediaType}:${mediaTitleKey}`;
-
-		return `${mediaKey}|release:${releaseKey}`;
-	}
-
-	private getActiveDedupPriority(activity: UnifiedActivity): [number, number, number] {
-		const statusPriority =
-			activity.status === 'downloading' || activity.status === 'seeding'
-				? 0
-				: activity.status === 'paused' || activity.status === 'searching'
-					? 1
-					: activity.status === 'failed'
-						? 2
-						: 3;
-
-		const sourcePriority = activity.id.startsWith('queue-') ? 0 : 1;
-		const startedAtMs = Number.isFinite(new Date(activity.startedAt).getTime())
-			? new Date(activity.startedAt).getTime()
-			: 0;
-		const recencyPriority = -startedAtMs;
-
-		return [statusPriority, sourcePriority, recencyPriority];
-	}
-
-	private shouldPreferActiveCandidate(
-		candidate: UnifiedActivity,
-		existing: UnifiedActivity
-	): boolean {
-		const [candidateStatus, candidateSource, candidateRecency] =
-			this.getActiveDedupPriority(candidate);
-		const [existingStatus, existingSource, existingRecency] = this.getActiveDedupPriority(existing);
-
-		if (candidateStatus !== existingStatus) return candidateStatus < existingStatus;
-		if (candidateSource !== existingSource) return candidateSource < existingSource;
-		return candidateRecency < existingRecency;
-	}
-
 	private dedupeActiveActivities(activities: UnifiedActivity[]): UnifiedActivity[] {
-		const dedupedByKey = new Map<string, UnifiedActivity>();
-		const stableOrder: string[] = [];
-
-		for (const activity of activities) {
-			const key = this.buildActiveDedupKey(activity);
-			if (!dedupedByKey.has(key)) {
-				dedupedByKey.set(key, activity);
-				stableOrder.push(key);
-				continue;
-			}
-
-			const existing = dedupedByKey.get(key)!;
-			if (this.shouldPreferActiveCandidate(activity, existing)) {
-				dedupedByKey.set(key, activity);
-			}
-		}
-
-		return stableOrder
-			.map((key) => dedupedByKey.get(key))
-			.filter((activity): activity is UnifiedActivity => Boolean(activity));
-	}
-
-	private buildHistoryTimeline(history: DownloadHistoryRecord): ActivityEvent[] {
-		const timeline: ActivityEvent[] = [];
-
-		if (history.grabbedAt) {
-			timeline.push({ type: 'grabbed', timestamp: history.grabbedAt });
-		}
-		if (history.completedAt) {
-			timeline.push({ type: 'completed', timestamp: history.completedAt });
-		}
-		if (history.importedAt && history.status === 'imported') {
-			timeline.push({ type: 'imported', timestamp: history.importedAt });
-		}
-		if (history.status === 'failed' && history.createdAt) {
-			timeline.push({
-				type: 'failed',
-				timestamp: history.createdAt,
-				details: history.statusReason ?? undefined
-			});
-		}
-		if (history.status === 'rejected' && history.createdAt) {
-			timeline.push({
-				type: 'rejected',
-				timestamp: history.createdAt,
-				details: history.statusReason ?? undefined
-			});
-		}
-
-		timeline.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-		return timeline;
+		return this.deduplicationService.dedupeActiveActivities(activities);
 	}
 
 	private resolveMediaInfo(
