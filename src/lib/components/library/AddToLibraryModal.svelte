@@ -424,7 +424,7 @@
 				return;
 			}
 
-			const payload: Record<string, unknown> = {
+			const basePayload = {
 				tmdbId,
 				rootFolderId: selectedRootFolder,
 				scoringProfileId: selectedScoringProfile || undefined,
@@ -433,19 +433,18 @@
 				wantsSubtitles
 			};
 
-			if (mediaType === 'movie') {
-				payload.minimumAvailability = minimumAvailability;
-			} else {
-				payload.monitorType = monitorType;
-				payload.monitorNewItems = monitorNewItems;
-				payload.monitorSpecials = monitorSpecials;
-				payload.seriesType = seriesType;
-				payload.seasonFolder = seasonFolder;
-				payload.monitoredSeasons = Array.from(monitoredSeasons);
-			}
-
 			const result =
-				mediaType === 'movie' ? await createMovie(payload) : await createSeries(payload);
+				mediaType === 'movie'
+					? await createMovie({ ...basePayload, minimumAvailability })
+					: await createSeries({
+							...basePayload,
+							monitorType,
+							monitorNewItems,
+							monitorSpecials,
+							seriesType,
+							seasonFolder,
+							monitoredSeasons: Array.from(monitoredSeasons)
+						});
 
 			toasts.success(`${title} added to library`, {
 				description: willSearchOnAdd ? 'Searching for releases...' : undefined,

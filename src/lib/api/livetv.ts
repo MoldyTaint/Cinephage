@@ -1,3 +1,12 @@
+import type {
+	StalkerPortalCreate,
+	StalkerPortalUpdate,
+	LiveTvAccountCreate,
+	UpdateChannel,
+	AddBackupLink,
+	ChannelCategoryForm
+} from '$lib/validation/schemas.js';
+
 import { apiGet, apiPost, apiPut, apiDelete } from './client.js';
 
 export async function getChannels(params?: Record<string, string>) {
@@ -56,7 +65,7 @@ export async function addToLineup(channels: Array<{ accountId: string; channelId
 	return apiPost('/api/livetv/lineup', { channels });
 }
 
-export async function updateLineupItem(id: string, payload: Record<string, unknown>) {
+export async function updateLineupItem(id: string, payload: UpdateChannel) {
 	return apiPut(`/api/livetv/lineup/${id}`, payload);
 }
 
@@ -88,7 +97,7 @@ export async function reorderLineupBackups(lineupId: string, backupIds: string[]
 	return apiPut(`/api/livetv/lineup/${lineupId}/backups/reorder`, { backupIds });
 }
 
-export async function addLineupBackup(lineupId: string, payload: Record<string, unknown>) {
+export async function addLineupBackup(lineupId: string, payload: AddBackupLink) {
 	return apiPost(`/api/livetv/lineup/${lineupId}/backups`, payload);
 }
 
@@ -96,7 +105,7 @@ export async function getAccounts() {
 	return apiGet('/api/livetv/accounts');
 }
 
-export async function createAccount(payload: Record<string, unknown>) {
+export async function createAccount(payload: LiveTvAccountCreate) {
 	return apiPost('/api/livetv/accounts', payload);
 }
 
@@ -124,11 +133,11 @@ export async function getChannelCategories(params?: Record<string, string>) {
 	return apiGet('/api/livetv/channel-categories', params);
 }
 
-export async function createChannelCategory(payload: Record<string, unknown>) {
+export async function createChannelCategory(payload: ChannelCategoryForm) {
 	return apiPost('/api/livetv/channel-categories', payload);
 }
 
-export async function updateChannelCategory(id: string, payload: Record<string, unknown>) {
+export async function updateChannelCategory(id: string, payload: Partial<ChannelCategoryForm>) {
 	return apiPut(`/api/livetv/channel-categories/${id}`, payload);
 }
 
@@ -148,11 +157,11 @@ export async function getPortals() {
 	return apiGet('/api/livetv/portals');
 }
 
-export async function createPortal(payload: Record<string, unknown>) {
+export async function createPortal(payload: StalkerPortalCreate) {
 	return apiPost('/api/livetv/portals', payload);
 }
 
-export async function updatePortal(id: string, payload: Record<string, unknown>) {
+export async function updatePortal(id: string, payload: StalkerPortalUpdate) {
 	return apiPut(`/api/livetv/portals/${id}`, payload);
 }
 

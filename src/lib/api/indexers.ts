@@ -1,3 +1,5 @@
+import type { IndexerCreate, IndexerUpdate, IndexerTest, CustomFormatCreate, CustomFormatUpdateBody } from '$lib/validation/schemas.js';
+
 import { apiGet, apiPost, apiPut, apiDelete } from './client.js';
 
 export async function getIndexers() {
@@ -8,11 +10,11 @@ export async function getIndexer(id: string) {
 	return apiGet(`/api/indexers/${id}`);
 }
 
-export async function createIndexer(payload: Record<string, unknown>) {
+export async function createIndexer(payload: IndexerCreate) {
 	return apiPost('/api/indexers', payload);
 }
 
-export async function updateIndexer(id: string, payload: Record<string, unknown>) {
+export async function updateIndexer(id: string, payload: IndexerUpdate) {
 	return apiPut(`/api/indexers/${id}`, payload);
 }
 
@@ -20,7 +22,7 @@ export async function deleteIndexer(id: string) {
 	return apiDelete(`/api/indexers/${id}`);
 }
 
-export async function testIndexer(payload: Record<string, unknown>) {
+export async function testIndexer(payload: IndexerTest) {
 	return apiPost('/api/indexers/test', payload);
 }
 
@@ -36,11 +38,11 @@ export async function getCustomFormats() {
 	return apiGet('/api/custom-formats');
 }
 
-export async function createCustomFormat(payload: Record<string, unknown>) {
+export async function createCustomFormat(payload: CustomFormatCreate) {
 	return apiPost('/api/custom-formats', payload);
 }
 
-export async function updateCustomFormat(id: string, payload: Record<string, unknown>) {
+export async function updateCustomFormat(id: string, payload: CustomFormatUpdateBody) {
 	return apiPut(`/api/custom-formats/${id}`, payload);
 }
 

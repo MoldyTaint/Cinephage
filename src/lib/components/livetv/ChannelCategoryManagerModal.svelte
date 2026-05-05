@@ -97,7 +97,7 @@
 		try {
 			await updateChannelCategory(editingId, {
 				name: editingName.trim(),
-				color: editingColor || null
+				color: editingColor || undefined
 			});
 
 			onChange();
@@ -160,7 +160,7 @@
 		try {
 			await createChannelCategory({
 				name: newName.trim(),
-				color: newColor || null
+				color: newColor || undefined
 			});
 
 			onChange();

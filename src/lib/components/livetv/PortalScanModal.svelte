@@ -195,7 +195,8 @@
 			if (!portalId && newPortalUrl.trim()) {
 				const newPortal = await createPortal({
 					name: newPortalName.trim(),
-					url: newPortalUrl.trim()
+					url: newPortalUrl.trim(),
+					enabled: true
 				});
 
 				portalId = newPortal.id;

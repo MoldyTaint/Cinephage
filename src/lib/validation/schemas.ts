@@ -1858,6 +1858,7 @@ export const scoringProfileDeleteSchema = z.object({
 
 export type ScoringProfileCreate = z.infer<typeof scoringProfileCreateSchema>;
 export type ScoringProfileUpdate = z.infer<typeof scoringProfileUpdateSchema>;
+export type ScoringProfileUpdateBody = z.infer<typeof scoringProfileUpdateBodySchema>;
 
 // ============================================================================
 // Smart List Schemas
@@ -2081,6 +2082,10 @@ export type UnmatchedSingleMatch = z.infer<typeof unmatchedSingleMatchSchema>;
 // Streaming Type Exports
 export type StreamingStatusAction = z.infer<typeof streamingStatusActionSchema>;
 export type StrmUpdate = z.infer<typeof strmUpdateSchema>;
+
+// Backup Type Exports
+export type BackupExport = z.infer<typeof backupExportSchema>;
+export type BackupImport = z.infer<typeof backupImportSchema>;
 
 // Manual Import Type Exports
 export type ManualImportRequest = z.infer<typeof manualImportSchema>;

@@ -1,14 +1,37 @@
+import type {
+	RootFolderCreate,
+	RootFolderUpdate,
+	LibraryCreate,
+	LibraryUpdate,
+	NamingConfigUpdate,
+	NamingPresetSelection,
+	ScoringProfileCreate,
+	ScoringProfileUpdate,
+	GlobalTmdbFilters,
+	DownloadClientCreate,
+	DownloadClientUpdate,
+	DownloadClientTest,
+	MediaBrowserServerCreate,
+	MediaBrowserServerUpdate,
+	MediaBrowserServerTest,
+	NamingPresetCreate,
+	NamingPresetUpdate,
+	NamingPreview,
+	LibraryClassificationUpdate,
+	BackupImport
+} from '$lib/validation/schemas.js';
+
 import { apiGet, apiPost, apiPut, apiDelete } from './client.js';
 
 export async function getRootFolders() {
 	return apiGet('/api/root-folders');
 }
 
-export async function createRootFolder(payload: Record<string, unknown>) {
+export async function createRootFolder(payload: RootFolderCreate) {
 	return apiPost('/api/root-folders', payload);
 }
 
-export async function updateRootFolder(id: string, payload: Record<string, unknown>) {
+export async function updateRootFolder(id: string, payload: RootFolderUpdate) {
 	return apiPut(`/api/root-folders/${id}`, payload);
 }
 
@@ -27,11 +50,11 @@ export async function getLibraries(params?: { mediaType?: string; includeSystem?
 	return apiGet('/api/libraries', query);
 }
 
-export async function createLibrary(payload: Record<string, unknown>) {
+export async function createLibrary(payload: LibraryCreate) {
 	return apiPost('/api/libraries', payload);
 }
 
-export async function updateLibrary(id: string, payload: Record<string, unknown>) {
+export async function updateLibrary(id: string, payload: LibraryUpdate) {
 	return apiPut(`/api/libraries/${id}`, payload);
 }
 
@@ -44,8 +67,8 @@ export async function getNamingConfig() {
 }
 
 export async function updateNamingConfig(
-	config: Record<string, unknown>,
-	presetSelection?: Record<string, unknown>
+	config: NamingConfigUpdate,
+	presetSelection?: NamingPresetSelection
 ) {
 	return apiPut('/api/naming', { config, presetSelection });
 }
@@ -62,11 +85,11 @@ export async function getNamingPreset(id: string) {
 	return apiGet(`/api/naming/presets/${id}`);
 }
 
-export async function createNamingPreset(payload: Record<string, unknown>) {
+export async function createNamingPreset(payload: NamingPresetCreate) {
 	return apiPost('/api/naming/presets', payload);
 }
 
-export async function updateNamingPreset(id: string, payload: Record<string, unknown>) {
+export async function updateNamingPreset(id: string, payload: NamingPresetUpdate) {
 	return apiPut(`/api/naming/presets/${id}`, payload);
 }
 
@@ -74,7 +97,7 @@ export async function deleteNamingPreset(id: string) {
 	return apiDelete(`/api/naming/presets/${id}`);
 }
 
-export async function previewNaming(payload: Record<string, unknown>) {
+export async function previewNaming(payload: NamingPreview) {
 	return apiPost('/api/naming/preview', payload);
 }
 
@@ -112,11 +135,11 @@ export async function getScoringProfiles() {
 	return apiGet('/api/scoring-profiles');
 }
 
-export async function createScoringProfile(payload: Record<string, unknown>) {
+export async function createScoringProfile(payload: ScoringProfileCreate) {
 	return apiPost('/api/scoring-profiles', payload);
 }
 
-export async function updateScoringProfile(payload: { id: string } & Record<string, unknown>) {
+export async function updateScoringProfile(payload: { id: string } & ScoringProfileUpdate) {
 	return apiPut('/api/scoring-profiles', payload);
 }
 
@@ -136,7 +159,7 @@ export async function getTmdbFilters() {
 	return apiGet('/api/settings/filters');
 }
 
-export async function updateTmdbFilters(filters: Record<string, unknown>) {
+export async function updateTmdbFilters(filters: GlobalTmdbFilters) {
 	return apiPut('/api/settings/filters', filters);
 }
 
@@ -170,8 +193,8 @@ export async function exportConfig(passphrase: string, includeIndexerCookies?: b
 
 export async function importConfig(
 	passphrase: string,
-	backup: Record<string, unknown>,
-	opts?: { sections?: string[]; mode?: string }
+	backup: BackupImport['backup'],
+	opts?: { sections?: BackupImport['sections']; mode?: BackupImport['mode'] }
 ) {
 	return apiPut('/api/settings/system/backup', { passphrase, backup, ...opts });
 }
@@ -232,7 +255,7 @@ export async function getLibraryClassificationSettings() {
 	return apiGet('/api/settings/library/classification');
 }
 
-export async function updateLibraryClassificationSettings(payload: Record<string, unknown>) {
+export async function updateLibraryClassificationSettings(payload: LibraryClassificationUpdate) {
 	return apiPut('/api/settings/library/classification', payload);
 }
 
@@ -259,11 +282,11 @@ export async function getDownloadClients() {
 	return apiGet('/api/download-clients');
 }
 
-export async function createDownloadClient(payload: Record<string, unknown>) {
+export async function createDownloadClient(payload: DownloadClientCreate) {
 	return apiPost('/api/download-clients', payload);
 }
 
-export async function updateDownloadClient(id: string, payload: Record<string, unknown>) {
+export async function updateDownloadClient(id: string, payload: DownloadClientUpdate) {
 	return apiPut(`/api/download-clients/${id}`, payload);
 }
 
@@ -275,7 +298,7 @@ export async function testDownloadClient(id: string) {
 	return apiPost(`/api/download-clients/${id}/test`);
 }
 
-export async function testNewDownloadClient(payload: Record<string, unknown>) {
+export async function testNewDownloadClient(payload: DownloadClientTest) {
 	return apiPost('/api/download-clients/test', payload);
 }
 
@@ -287,11 +310,11 @@ export async function getMediaBrowserNotification(id: string) {
 	return apiGet(`/api/notifications/mediabrowser/${id}`);
 }
 
-export async function createMediaBrowserNotification(payload: Record<string, unknown>) {
+export async function createMediaBrowserNotification(payload: MediaBrowserServerCreate) {
 	return apiPost('/api/notifications/mediabrowser', payload);
 }
 
-export async function updateMediaBrowserNotification(id: string, payload: Record<string, unknown>) {
+export async function updateMediaBrowserNotification(id: string, payload: MediaBrowserServerUpdate) {
 	return apiPut(`/api/notifications/mediabrowser/${id}`, payload);
 }
 
@@ -303,7 +326,7 @@ export async function testMediaBrowserNotification(id: string, payload?: Record<
 	return apiPost(`/api/notifications/mediabrowser/${id}/test`, payload);
 }
 
-export async function testNewMediaBrowserNotification(payload: Record<string, unknown>) {
+export async function testNewMediaBrowserNotification(payload: MediaBrowserServerTest) {
 	return apiPost('/api/notifications/mediabrowser/test', payload);
 }
 

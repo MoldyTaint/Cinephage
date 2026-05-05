@@ -1,6 +1,8 @@
+import type { GrabRequest } from '$lib/validation/schemas.js';
+
 import { apiGet, apiPost, apiPatch, apiDelete } from './client.js';
 
-export async function grabRelease(payload: Record<string, unknown>) {
+export async function grabRelease(payload: GrabRequest) {
 	return apiPost('/api/download/grab', payload);
 }
 

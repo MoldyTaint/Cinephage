@@ -1,3 +1,5 @@
+import type { LibraryScanRequest, MovieUpdate, UnmatchedMatch, AddMovieRequest, AddSeriesRequest, BulkAddMoviesRequest, UnmatchedSingleMatch } from '$lib/validation/schemas.js';
+
 import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from './client.js';
 
 export async function detectMedia(sourcePath: string, mediaType?: string, requireFile?: boolean) {
@@ -59,7 +61,7 @@ export async function batchDeleteSeriesFiles(
 	return apiDelete('/api/library/series/batch', { seriesIds, deleteFiles, removeFromLibrary });
 }
 
-export async function scanLibrary(payload?: Record<string, unknown>) {
+export async function scanLibrary(payload?: LibraryScanRequest) {
 	return apiPost('/api/library/scan', payload);
 }
 
@@ -71,7 +73,7 @@ export async function getUnmatchedItems() {
 	return apiGet('/api/library/unmatched');
 }
 
-export async function matchUnmatched(id: string, payload: Record<string, unknown>) {
+export async function matchUnmatched(id: string, payload: UnmatchedSingleMatch) {
 	return apiPost('/api/library/unmatched/match', { id, ...payload });
 }
 
@@ -91,7 +93,7 @@ export async function getMovie(movieId: string) {
 	return apiGet(`/api/library/movies/${movieId}`);
 }
 
-export async function updateMovie(movieId: string, data: Record<string, unknown>) {
+export async function updateMovie(movieId: string, data: MovieUpdate) {
 	return apiPut(`/api/library/movies/${movieId}`, data);
 }
 
@@ -139,15 +141,15 @@ export async function refreshSeries(seriesId: string) {
 	return apiPost(`/api/library/series/${seriesId}/refresh`);
 }
 
-export async function createMovie(payload: Record<string, unknown>) {
+export async function createMovie(payload: AddMovieRequest) {
 	return apiPost('/api/library/movies', payload);
 }
 
-export async function createSeries(payload: Record<string, unknown>) {
+export async function createSeries(payload: AddSeriesRequest) {
 	return apiPost('/api/library/series', payload);
 }
 
-export async function bulkAddMovies(payload: Record<string, unknown>) {
+export async function bulkAddMovies(payload: BulkAddMoviesRequest) {
 	return apiPost('/api/library/movies/bulk', payload);
 }
 
@@ -155,6 +157,6 @@ export async function getUnmatchedIssues() {
 	return apiGet('/api/library/unmatched/issues');
 }
 
-export async function batchUnmatchedMatch(payload: Record<string, unknown>) {
+export async function batchUnmatchedMatch(payload: UnmatchedMatch) {
 	return apiPost('/api/library/unmatched/match', payload);
 }

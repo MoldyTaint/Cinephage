@@ -1,3 +1,5 @@
+import type { SubtitleSettingsUpdate, LanguageProfileCreate, LanguageProfileUpdate, SubtitleProviderCreate, SubtitleProviderUpdate, SubtitleProviderTest } from '$lib/validation/schemas.js';
+
 import { apiGet, apiPost, apiPut, apiDelete } from './client.js';
 
 export async function searchSubtitles(payload: {
@@ -43,7 +45,7 @@ export async function getSubtitleSettings() {
 	return apiGet('/api/subtitles/settings');
 }
 
-export async function updateSubtitleSettings(payload: Record<string, unknown>) {
+export async function updateSubtitleSettings(payload: SubtitleSettingsUpdate) {
 	return apiPut('/api/subtitles/settings', payload);
 }
 
@@ -71,11 +73,11 @@ export async function getLanguageProfiles() {
 	return apiGet('/api/subtitles/language-profiles');
 }
 
-export async function createLanguageProfile(payload: Record<string, unknown>) {
+export async function createLanguageProfile(payload: LanguageProfileCreate) {
 	return apiPost('/api/subtitles/language-profiles', payload);
 }
 
-export async function updateLanguageProfile(id: string, payload: Record<string, unknown>) {
+export async function updateLanguageProfile(id: string, payload: LanguageProfileUpdate) {
 	return apiPut(`/api/subtitles/language-profiles/${id}`, payload);
 }
 
@@ -87,11 +89,11 @@ export async function getSubtitleProviders() {
 	return apiGet('/api/subtitles/providers');
 }
 
-export async function createSubtitleProvider(payload: Record<string, unknown>) {
+export async function createSubtitleProvider(payload: SubtitleProviderCreate) {
 	return apiPost('/api/subtitles/providers', payload);
 }
 
-export async function updateSubtitleProvider(id: string, payload: Record<string, unknown>) {
+export async function updateSubtitleProvider(id: string, payload: SubtitleProviderUpdate) {
 	return apiPut(`/api/subtitles/providers/${id}`, payload);
 }
 
@@ -99,7 +101,7 @@ export async function deleteSubtitleProvider(id: string) {
 	return apiDelete(`/api/subtitles/providers/${id}`);
 }
 
-export async function testSubtitleProvider(payload: Record<string, unknown>) {
+export async function testSubtitleProvider(payload: SubtitleProviderTest) {
 	return apiPost('/api/subtitles/providers/test', payload);
 }
 
