@@ -113,6 +113,7 @@
 	let loadingPreviews = $state(false);
 	let validationResults = $state<Record<string, ValidationResult>>({});
 	let validatingFormats = $state(false);
+	let previewTimeout: ReturnType<typeof setTimeout> | undefined;
 
 	let movieSectionOpen = $state(true);
 	let seriesSectionOpen = $state(true);
