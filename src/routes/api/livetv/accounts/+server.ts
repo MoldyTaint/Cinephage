@@ -51,13 +51,14 @@ const liveTvAccountCreateSchema = z.object({
 		})
 		.optional(),
 	// Cinephage IPTV config
-	cinephageIptvConfig: z
-		.object({
-			countries: z.array(z.string()).optional(),
-			categories: z.array(z.string()).optional(),
-			languages: z.array(z.string()).optional()
-		})
-		.optional()
+		cinephageIptvConfig: z
+			.object({
+				countries: z.array(z.string()).optional(),
+				categories: z.array(z.string()).optional(),
+				languages: z.array(z.string()).optional()
+			})
+			.optional(),
+	testFirst: z.boolean().optional().default(true)
 });
 
 /**
@@ -82,15 +83,13 @@ export const POST: RequestHandler = async ({ request }) => {
 	// Validate input
 	const parsed = liveTvAccountCreateSchema.safeParse(body);
 	if (!parsed.success) {
-		throw new ValidationError('Validation failed', {
-			details: parsed.error.flatten()
-		});
+		return json({ success: false, error: parsed.error.issues[0].message }, { status: 400 });
 	}
 
 	const manager = getLiveTvAccountManager();
 
 	// Check if testFirst is explicitly set to false
-	const testFirst = body.testFirst !== false;
+	const testFirst = parsed.data.testFirst;
 
 	try {
 		const account = await manager.createAccount(parsed.data, testFirst);

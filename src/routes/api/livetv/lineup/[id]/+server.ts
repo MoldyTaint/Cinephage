@@ -11,7 +11,7 @@ import type { RequestHandler } from './$types';
 import { channelLineupService } from '$lib/server/livetv/lineup';
 import { ValidationError } from '$lib/errors';
 import { logger } from '$lib/logging';
-import type { UpdateChannelRequest } from '$lib/types/livetv';
+import { updateChannelSchema } from '$lib/validation/schemas.js';
 
 export const GET: RequestHandler = async ({ params }) => {
 	try {
@@ -45,9 +45,16 @@ export const GET: RequestHandler = async ({ params }) => {
 
 export const PUT: RequestHandler = async ({ params, request }) => {
 	try {
-		const body = (await request.json()) as UpdateChannelRequest;
+		const parsed = updateChannelSchema.safeParse(await request.json());
+		if (!parsed.success) {
+			return json(
+				{ success: false, error: parsed.error.issues[0].message },
+				{ status: 400 }
+			);
+		}
+		const data = parsed.data;
 
-		const item = await channelLineupService.updateChannel(params.id, body);
+		const item = await channelLineupService.updateChannel(params.id, data);
 
 		if (!item) {
 			return json(

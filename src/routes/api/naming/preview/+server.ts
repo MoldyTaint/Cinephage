@@ -8,6 +8,7 @@ import {
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService';
 import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { namingPreviewSchema } from '$lib/validation/schemas.js';
 
 /**
  * Sample data for previews
@@ -108,8 +109,11 @@ export const POST: RequestHandler = async (event) => {
 
 	const { request } = event;
 	try {
-		const body = await request.json();
-		const { config: customConfig } = body;
+		const parsed = namingPreviewSchema.safeParse(await request.json());
+		if (!parsed.success) {
+			return json({ success: false, error: parsed.error.issues[0].message }, { status: 400 });
+		}
+		const { config: customConfig } = parsed.data;
 
 		// Merge custom config with current settings
 		const currentConfig = await namingSettingsService.getConfig();

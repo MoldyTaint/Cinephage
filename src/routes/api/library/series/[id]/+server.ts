@@ -28,6 +28,7 @@ import {
 import { mediaMoveService } from '$lib/server/library/MediaMoveService.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
+import { seriesUpdateSchema } from '$lib/validation/schemas.js';
 import { tmdb } from '$lib/server/tmdb.js';
 
 /**
@@ -185,17 +186,25 @@ export const GET: RequestHandler = async ({ params }) => {
  */
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	try {
-		const body = await request.json();
+		const rawBody = await request.json();
+		const parsed = seriesUpdateSchema.safeParse(rawBody);
+		if (!parsed.success) {
+			return json(
+				{ success: false, error: parsed.error.issues[0].message },
+				{ status: 400 }
+			);
+		}
+		const body = parsed.data;
 		const {
 			monitored,
 			scoringProfileId,
 			seasonFolder,
 			seriesType,
 			rootFolderId,
-			moveFilesOnRootChange,
 			wantsSubtitles,
 			languageProfileId
 		} = body;
+		const moveFilesOnRootChange = rawBody.moveFilesOnRootChange;
 
 		// Get current series state BEFORE update to detect monitoring changes
 		const [currentSeries] = await db
@@ -226,20 +235,20 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			  }
 			| undefined;
 
-		if (typeof monitored === 'boolean') {
+		if (monitored !== undefined) {
 			updateData.monitored = monitored;
 		}
 		if (scoringProfileId !== undefined) {
 			updateData.scoringProfileId = scoringProfileId;
 		}
-		if (typeof seasonFolder === 'boolean') {
+		if (seasonFolder !== undefined) {
 			updateData.seasonFolder = seasonFolder;
 		}
-		if (seriesType === 'standard' || seriesType === 'anime' || seriesType === 'daily') {
+		if (seriesType !== undefined) {
 			updateData.seriesType = seriesType;
 		}
 		if (rootFolderId !== undefined) {
-			const nextRootFolderId = typeof rootFolderId === 'string' ? rootFolderId.trim() : '';
+			const nextRootFolderId = rootFolderId.trim();
 			const currentRootFolderId = currentSeries?.rootFolderId ?? null;
 			if (!nextRootFolderId) {
 				return json(
@@ -310,7 +319,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 				}
 			}
 		}
-		if (typeof wantsSubtitles === 'boolean') {
+		if (wantsSubtitles !== undefined) {
 			updateData.wantsSubtitles = wantsSubtitles;
 		}
 		if (languageProfileId !== undefined) {

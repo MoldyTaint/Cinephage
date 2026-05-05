@@ -9,7 +9,7 @@ import type { RequestHandler } from './$types';
 import { channelLineupService } from '$lib/server/livetv/lineup/ChannelLineupService';
 import { logger } from '$lib/logging';
 import { ValidationError } from '$lib/errors';
-import type { AddBackupLinkRequest } from '$lib/types/livetv';
+import { addBackupLinkSchema } from '$lib/validation/schemas.js';
 
 /**
  * Get all backup links for a lineup item
@@ -66,16 +66,14 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			);
 		}
 
-		let body: AddBackupLinkRequest;
-		try {
-			body = await request.json();
-		} catch {
-			throw new ValidationError('Invalid JSON body');
+		const parsed = addBackupLinkSchema.safeParse(await request.json());
+		if (!parsed.success) {
+			return json(
+				{ success: false, error: parsed.error.issues[0].message },
+				{ status: 400 }
+			);
 		}
-
-		if (!body.accountId || !body.channelId) {
-			throw new ValidationError('Missing required fields: accountId, channelId');
-		}
+		const body = parsed.data;
 
 		// Service handles all validation including primary channel check
 		const result = await channelLineupService.addBackup(id, body.accountId, body.channelId);

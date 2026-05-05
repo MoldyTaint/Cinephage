@@ -6,6 +6,8 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getMediaBrowserManager } from '$lib/server/notifications/mediabrowser';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { z } from 'zod/v4';
+import { mediaBrowserServerTestSchema } from '$lib/validation/schemas.js';
 
 /**
  * POST /api/notifications/mediabrowser/:id/test
@@ -19,42 +21,22 @@ export const POST: RequestHandler = async (event) => {
 
 	const { params, request } = event;
 	const manager = getMediaBrowserManager();
-	let overrides:
-		| {
-				host?: string;
-				apiKey?: string;
-				serverType?: 'jellyfin' | 'emby' | 'plex';
-				persist?: boolean;
-		  }
-		| undefined;
 
-	try {
-		// Optional JSON body allows edit-modal tests to validate entered values
-		// without saving them yet.
-		const contentType = request.headers.get('content-type') ?? '';
-		if (contentType.includes('application/json')) {
-			const body = await request.json();
-			if (body && typeof body === 'object') {
-				const candidate = body as Record<string, unknown>;
-				overrides = {};
-				if (typeof candidate.host === 'string') overrides.host = candidate.host;
-				if (typeof candidate.apiKey === 'string') overrides.apiKey = candidate.apiKey;
-				if (
-					candidate.serverType === 'jellyfin' ||
-					candidate.serverType === 'emby' ||
-					candidate.serverType === 'plex'
-				) {
-					overrides.serverType = candidate.serverType;
-				}
-				if (typeof candidate.persist === 'boolean') overrides.persist = candidate.persist;
-			}
-		}
-	} catch {
-		return json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
+	const testWithIdSchema = mediaBrowserServerTestSchema.extend({
+		persist: z.boolean().optional().default(false)
+	});
+
+	const parsed = testWithIdSchema.safeParse(await request.json());
+	if (!parsed.success) {
+		return json(
+			{ success: false, error: parsed.error.issues[0].message },
+			{ status: 400 }
+		);
 	}
+	const body = parsed.data;
 
 	try {
-		const testResult = await manager.testServer(params.id, overrides);
+		const testResult = await manager.testServer(params.id, body);
 		return json(testResult);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';

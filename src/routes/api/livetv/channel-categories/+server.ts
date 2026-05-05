@@ -10,7 +10,7 @@ import type { RequestHandler } from './$types';
 import { channelCategoryService } from '$lib/server/livetv/categories';
 import { ValidationError } from '$lib/errors';
 import { logger } from '$lib/logging';
-import type { ChannelCategoryFormData } from '$lib/types/livetv';
+import { channelCategoryFormSchema } from '$lib/validation/schemas.js';
 
 export const GET: RequestHandler = async () => {
 	try {
@@ -45,11 +45,14 @@ export const GET: RequestHandler = async () => {
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
-		const body = (await request.json()) as ChannelCategoryFormData;
-
-		if (!body.name || typeof body.name !== 'string') {
-			throw new ValidationError('name is required');
+		const parsed = channelCategoryFormSchema.safeParse(await request.json());
+		if (!parsed.success) {
+			return json(
+				{ success: false, error: parsed.error.issues[0].message },
+				{ status: 400 }
+			);
 		}
+		const body = parsed.data;
 
 		const category = await channelCategoryService.createCategory({
 			name: body.name.trim(),
