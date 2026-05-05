@@ -26,6 +26,12 @@ import {
 import type { DownloadQueueRecord, DownloadHistoryRecord, MonitoringHistoryRecord } from './types';
 import { projectQueueActivity } from './projectors';
 import { parseMoveTaskId } from '$lib/server/library/MediaMoveService.js';
+import {
+	normalizeReleaseKey as dedupNormalizeReleaseKey,
+	toEpisodeIdList as dedupToEpisodeIdList,
+	hasEpisodeOverlap as dedupHasEpisodeOverlap,
+	isSameMediaTarget as dedupIsSameMediaTarget
+} from './dedup-utils.js';
 
 interface MediaInfo {
 	id: string;
@@ -1458,69 +1464,22 @@ export class ActivityService {
 	}
 
 	private normalizeReleaseKey(value: string | null | undefined): string {
-		if (!value) return '';
-		return value
-			.toLowerCase()
-			.replace(/[^a-z0-9]+/g, '')
-			.trim();
+		return dedupNormalizeReleaseKey(value);
 	}
 
 	private toEpisodeIdList(value: unknown): string[] {
-		if (Array.isArray(value)) {
-			return value.filter(
-				(entry): entry is string => typeof entry === 'string' && entry.length > 0
-			);
-		}
-
-		if (typeof value === 'string') {
-			try {
-				const parsed = JSON.parse(value) as unknown;
-				if (Array.isArray(parsed)) {
-					return parsed.filter(
-						(entry): entry is string => typeof entry === 'string' && entry.length > 0
-					);
-				}
-			} catch {
-				// Ignore malformed JSON episode arrays and fall through.
-			}
-		}
-
-		return [];
+		return dedupToEpisodeIdList(value);
 	}
 
 	private hasEpisodeOverlap(left: unknown, right: unknown): boolean {
-		const leftIds = this.toEpisodeIdList(left);
-		const rightIds = this.toEpisodeIdList(right);
-		if (leftIds.length === 0 || rightIds.length === 0) return false;
-		const rightSet = new Set(rightIds);
-		return leftIds.some((episodeId) => rightSet.has(episodeId));
+		return dedupHasEpisodeOverlap(left, right);
 	}
 
 	private isSameMediaTarget(
 		history: Pick<DownloadHistoryRecord, 'movieId' | 'seriesId' | 'episodeIds' | 'seasonNumber'>,
 		queueItem: Pick<DownloadQueueRecord, 'movieId' | 'seriesId' | 'episodeIds' | 'seasonNumber'>
 	): boolean {
-		if (history.movieId && queueItem.movieId) {
-			return history.movieId === queueItem.movieId;
-		}
-
-		if (history.seriesId && queueItem.seriesId && history.seriesId === queueItem.seriesId) {
-			if (this.hasEpisodeOverlap(history.episodeIds, queueItem.episodeIds)) {
-				return true;
-			}
-
-			if (history.seasonNumber && queueItem.seasonNumber) {
-				return history.seasonNumber === queueItem.seasonNumber;
-			}
-
-			const historyEpisodeIds = this.toEpisodeIdList(history.episodeIds);
-			const queueEpisodeIds = this.toEpisodeIdList(queueItem.episodeIds);
-			if (historyEpisodeIds.length === 0 && queueEpisodeIds.length === 0) {
-				return true;
-			}
-		}
-
-		return false;
+		return dedupIsSameMediaTarget(history, queueItem);
 	}
 
 	/**
