@@ -170,9 +170,8 @@
 								{item.title || item.name || ''}
 							</div>
 							<div class="flex items-center gap-2 text-xs text-base-content/50">
-								{@const year = formatYear(item)}
-								{#if year}
-									<span>{year}</span>
+								{#if formatYear(item)}
+									<span>{formatYear(item)}</span>
 								{/if}
 								{#if item.original_language}
 									<span class="badge badge-outline badge-xs"

@@ -199,7 +199,7 @@
 		}
 	}
 
-	async function cancelEpgSync() {
+	async function handleCancelEpgSync() {
 		if (!epgSyncingAny) return;
 		epgCancelRequestedAll = true;
 
@@ -322,7 +322,7 @@
 			cancelRequestedAccountIds={epgCancelRequestedAccountList}
 			onSync={triggerEpgSync}
 			onSyncAccount={triggerAccountSync}
-			onCancel={cancelEpgSync}
+			onCancel={handleCancelEpgSync}
 			onCancelAccount={cancelAccountSync}
 		/>
 	{:else if activeTab === 'coverage'}

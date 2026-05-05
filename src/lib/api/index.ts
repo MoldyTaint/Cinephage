@@ -1,4 +1,4 @@
-export { apiGet, apiPost, apiPatch, apiPut, apiDelete, type ApiResponse } from './client.js';
+export { apiGet, apiPost, apiPatch, apiPut, apiDelete, type ApiResponse, ApiError } from './client.js';
 export * from './activity.js';
 export * from './library.js';
 export * from './downloads.js';
