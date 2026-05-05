@@ -4,7 +4,16 @@
 	import { page } from '$app/state';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { resolvePath } from '$lib/utils/routing';
-	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';
+	import {
+		getRootFolders,
+		getLibraryClassificationSettings,
+		getLibraries,
+		executeImport,
+		detectMedia,
+		getLibraryStatus
+	} from '$lib/api';
+	import { searchTmdb as searchTmdbApi } from '$lib/api';
+	import { browseFilesystem } from '$lib/api';
 	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
 	import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 	import { toasts } from '$lib/stores/toast.svelte';
@@ -702,49 +711,44 @@
 	async function loadRootFolders() {
 		loadingRootFolders = true;
 		try {
-			const [foldersResponse, classificationResponse, librariesResponse] = await Promise.all([
-				fetch('/api/root-folders'),
-				fetch('/api/settings/library/classification'),
-				fetch('/api/libraries?includeSystem=true')
+			const [foldersResult, classificationResult, librariesResult] = await Promise.allSettled([
+				getRootFolders(),
+				getLibraryClassificationSettings(),
+				getLibraries({ includeSystem: true })
 			]);
 
-			const foldersPayload = await readResponsePayload<RootFolder[] | { folders?: RootFolder[] }>(
-				foldersResponse
-			);
-			const classificationPayload = await readResponsePayload<{
-				enforceAnimeSubtype?: boolean;
-			}>(classificationResponse);
-			const librariesPayload = await readResponsePayload<{
-				libraries?: DestinationLibrary[];
-			}>(librariesResponse);
+			if (foldersResult.status === 'rejected') throw foldersResult.reason;
 
-			if (!foldersResponse.ok) {
-				throw new Error(getResponseErrorMessage(foldersPayload, 'Failed to load root folders'));
-			}
+			const foldersPayload = foldersResult.value;
 			if (Array.isArray(foldersPayload)) {
 				rootFolders = foldersPayload;
 			} else if (foldersPayload && typeof foldersPayload === 'object') {
-				rootFolders = foldersPayload.folders ?? [];
+				rootFolders = (foldersPayload as { folders?: RootFolder[] }).folders ?? [];
 			} else {
 				rootFolders = [];
 			}
 
-			enforceAnimeSubtype = Boolean(
-				classificationResponse.ok &&
-				classificationPayload &&
-				typeof classificationPayload === 'object' &&
-				classificationPayload.enforceAnimeSubtype === true
-			);
+			enforceAnimeSubtype = false;
+			if (classificationResult.status === 'fulfilled') {
+				const classificationPayload = classificationResult.value;
+				enforceAnimeSubtype = Boolean(
+					classificationPayload &&
+					typeof classificationPayload === 'object' &&
+					(classificationPayload as { enforceAnimeSubtype?: boolean }).enforceAnimeSubtype === true
+				);
+			}
 
-			if (
-				librariesResponse.ok &&
-				librariesPayload &&
-				typeof librariesPayload === 'object' &&
-				Array.isArray(librariesPayload.libraries)
-			) {
-				destinationLibraries = librariesPayload.libraries;
-			} else {
-				destinationLibraries = [];
+			destinationLibraries = [];
+			if (librariesResult.status === 'fulfilled') {
+				const librariesPayload = librariesResult.value;
+				if (
+					librariesPayload &&
+					typeof librariesPayload === 'object' &&
+					Array.isArray((librariesPayload as { libraries?: DestinationLibrary[] }).libraries)
+				) {
+					destinationLibraries = (librariesPayload as { libraries?: DestinationLibrary[] })
+						.libraries;
+				}
 			}
 		} catch {
 			toasts.error(m.toast_library_import_failedToLoadRootFolders());
@@ -757,36 +761,33 @@
 		browserLoading = true;
 		browserError = null;
 		try {
-			const query = new URLSearchParams({
-				includeFiles: 'true',
+			const payload = await browseFilesystem(path, {
+				includeFiles: true,
 				fileFilter: 'video',
-				excludeManagedRoots: 'true',
-				...(path ? { path } : {})
+				excludeManagedRoots: true
 			});
-			const response = await fetch(`/api/filesystem/browse?${query.toString()}`);
-			const payload = await readResponsePayload<{
-				currentPath?: string;
-				parentPath?: string | null;
-				entries?: BrowseEntry[];
-				error?: string;
-			}>(response);
-			if (!response.ok) {
-				browserError = getResponseErrorMessage(payload, 'Failed to browse path');
-				return;
-			}
+
 			if (!payload || typeof payload !== 'object') {
 				browserError = 'Invalid response from filesystem browser';
 				return;
 			}
-			if (payload.error) {
-				browserError = payload.error;
+
+			const data = payload as {
+				currentPath?: string;
+				parentPath?: string | null;
+				entries?: BrowseEntry[];
+				error?: string;
+			};
+
+			if (data.error) {
+				browserError = data.error;
 			}
-			browserPath = payload.currentPath ?? path ?? '';
-			if (!sourcePath && payload.currentPath) {
-				sourcePath = payload.currentPath;
+			browserPath = data.currentPath ?? path ?? '';
+			if (!sourcePath && data.currentPath) {
+				sourcePath = data.currentPath;
 			}
-			browserParentPath = payload.parentPath ?? null;
-			browserEntries = payload.entries ?? [];
+			browserParentPath = data.parentPath ?? null;
+			browserEntries = data.entries ?? [];
 		} catch (error) {
 			browserError = error instanceof Error ? error.message : 'Failed to browse path';
 		} finally {
@@ -1693,15 +1694,7 @@
 	}
 
 	async function executeImportRequest(payload: Record<string, unknown>): Promise<ExecuteResult> {
-		const response = await fetch('/api/library/import/execute', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(payload)
-		});
-		const data = await response.json();
-		if (!response.ok || !data.success) {
-			throw new Error(data.error || 'Import failed');
-		}
+		const data = await executeImport(payload);
 		return data.data as ExecuteResult;
 	}
 
@@ -1750,20 +1743,11 @@
 
 		detecting = true;
 		try {
-			const response = await fetch('/api/library/import/detect', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					sourcePath,
-					...(preferredMediaType !== 'auto' ? { mediaType: preferredMediaType } : {}),
-					...(isFileOnlyContext ? { requireFile: true } : {})
-				})
-			});
-			const data = await response.json();
-			if (!response.ok || !data.success) {
-				throw new Error(data.error || 'Failed to detect media');
-			}
-
+			const data = await detectMedia(
+				sourcePath,
+				preferredMediaType !== 'auto' ? preferredMediaType : undefined,
+				isFileOnlyContext || undefined
+			);
 			const detectedData = data.data as DetectionResult;
 			executeResult = null;
 			bulkImportSummary = null;
@@ -1858,23 +1842,18 @@
 
 		searchingMatches = true;
 		try {
-			const searchResponse = await fetch(
-				`/api/discover/search?query=${encodeURIComponent(searchQuery)}&type=${selectedMediaType}`
-			);
-			const searchData = await searchResponse.json();
-			const results = searchData.results ?? [];
+			const searchData = await searchTmdbApi({
+				query: searchQuery,
+				type: selectedMediaType
+			});
+			const results = (searchData as { results?: Array<{ id: number }> }).results ?? [];
 
 			const tmdbIds = results.map((item: { id: number }) => item.id);
-			const statusResponse = await fetch('/api/library/status', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					tmdbIds,
-					mediaType: selectedMediaType
-				})
+			const statusData = await getLibraryStatus({
+				tmdbIds,
+				mediaType: selectedMediaType
 			});
-			const statusData = await statusResponse.json();
-			const statusMap = statusData.status ?? {};
+			const statusMap = (statusData as { status?: Record<string, unknown> }).status ?? {};
 
 			matchCandidates = results.map((item: Record<string, unknown>) => {
 				const tmdbId = item.id as number;

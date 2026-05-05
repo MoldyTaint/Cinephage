@@ -3,6 +3,7 @@
 	import { Shield, User, Lock, CheckCircle, AlertCircle } from 'lucide-svelte';
 	import { authClient } from '$lib/auth/client.js';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import { createApiKeys } from '$lib/api';
 	import {
 		isHardReservedUsername,
 		USERNAME_MAX_LENGTH,
@@ -121,17 +122,7 @@
 
 			// Create API keys for the new user
 			try {
-				const apiKeyResponse = await fetch('/api/settings/system/api-keys', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					credentials: 'include'
-				});
-
-				if (!apiKeyResponse.ok) {
-					toasts.warning(m.setup_apiKeyWarning(), {
-						description: await apiKeyResponse.text()
-					});
-				}
+				await createApiKeys();
 			} catch (apiKeyError) {
 				// Don't fail setup if API key creation fails - keys can be regenerated later
 				toasts.warning(m.setup_apiKeyFailed(), {

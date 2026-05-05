@@ -1,7 +1,11 @@
 import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from './client.js';
 
-export async function detectMedia(sourcePath: string, mediaType?: string) {
-	return apiPost('/api/library/import/detect', { sourcePath, mediaType });
+export async function detectMedia(sourcePath: string, mediaType?: string, requireFile?: boolean) {
+	return apiPost('/api/library/import/detect', {
+		sourcePath,
+		mediaType,
+		...(requireFile ? { requireFile } : {})
+	});
 }
 
 export async function executeImport(payload: Record<string, unknown>) {
