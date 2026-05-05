@@ -107,8 +107,7 @@
 				<span class="text-warning">{modeRejectedCount} rejected</span>
 			{/if}
 		{:else}
-			<span>{filteredReleases.length} of {meta.afterEnrichment ?? meta.totalResults} results</span
-			>
+			<span>{filteredReleases.length} of {meta.afterEnrichment ?? meta.totalResults} results</span>
 			{#if meta.rejectedCount}
 				<span class="text-warning">{meta.rejectedCount} rejected</span>
 			{/if}
@@ -118,10 +117,7 @@
 			<span>Enrich: {meta.enrichTimeMs}ms</span>
 		{/if}
 		{#if meta.indexerCount !== undefined}
-			<button
-				class="btn gap-1 btn-ghost btn-xs"
-				onclick={onToggleIndexerDetails}
-			>
+			<button class="btn gap-1 btn-ghost btn-xs" onclick={onToggleIndexerDetails}>
 				{meta.indexerCount} indexers
 				{#if showIndexerDetails}
 					<ChevronUp size={12} />
@@ -131,10 +127,7 @@
 			</button>
 		{/if}
 		{#if searchMode === 'multiSeasonPack' || meta.afterDedup || meta.afterFiltering || meta.afterEnrichment}
-			<button
-				class="btn gap-1 btn-ghost btn-xs"
-				onclick={onTogglePipelineDetails}
-			>
+			<button class="btn gap-1 btn-ghost btn-xs" onclick={onTogglePipelineDetails}>
 				Pipeline
 				{#if showPipelineDetails}
 					<ChevronUp size={12} />
@@ -199,9 +192,7 @@
 							<span class="font-mono"
 								>{meta.afterEnrichment}
 								{#if meta.afterFiltering !== undefined && meta.afterEnrichment < meta.afterFiltering}
-									<span class="text-error"
-										>(-{meta.afterFiltering - meta.afterEnrichment})</span
-									>
+									<span class="text-error">(-{meta.afterFiltering - meta.afterEnrichment})</span>
 								{/if}</span
 							>
 						</div>
