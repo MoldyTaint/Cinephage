@@ -12,6 +12,13 @@
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { SettingsPage } from '$lib/components/ui/settings';
 	import * as m from '$lib/paraglide/messages.js';
+	import {
+		createUsenetServer,
+		updateUsenetServer,
+		deleteUsenetServer,
+		testUsenetServer,
+		ApiError
+	} from '$lib/api';
 
 	interface NntpServer {
 		id: string;
@@ -180,21 +187,22 @@
 
 	async function handleTest(data: NntpServerFormData): Promise<ConnectionTestResult> {
 		try {
-			const response = await fetch('/api/usenet/servers/test', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(data)
-			});
-			const result = await response.json();
+			const result = await testUsenetServer(data);
 			return {
 				success: !!result.success,
-				error: result.error,
-				greeting: result.greeting
+				error: result.error as string | undefined,
+				greeting: result.greeting as string | undefined
 			};
 		} catch (error) {
 			return {
 				success: false,
-				error: error instanceof Error ? error.message : 'Unknown error'
+				error:
+					error instanceof ApiError
+						? ((error.response as Record<string, unknown>).error as string) ||
+							'Connection test failed'
+						: error instanceof Error
+							? error.message
+							: 'Unknown error'
 			};
 		}
 	}
@@ -204,31 +212,21 @@
 		saveError = null;
 
 		try {
-			let response: Response;
 			if (modalMode === 'edit' && editingServer) {
-				response = await fetch(`/api/usenet/servers/${editingServer.id}`, {
-					method: 'PUT',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify(formData)
-				});
+				await updateUsenetServer(editingServer.id, formData);
 			} else {
-				response = await fetch('/api/usenet/servers', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify(formData)
-				});
-			}
-
-			const result = await response.json();
-			if (!response.ok || result.error) {
-				saveError = result.error || 'Failed to save NNTP server';
-				return;
+				await createUsenetServer(formData);
 			}
 
 			await invalidateAll();
 			closeModal();
 		} catch (error) {
-			saveError = error instanceof Error ? error.message : 'An unexpected error occurred';
+			if (error instanceof ApiError) {
+				const err = (error.response as Record<string, unknown>).error;
+				saveError = (typeof err === 'string' ? err : null) || 'Failed to save NNTP server';
+			} else {
+				saveError = error instanceof Error ? error.message : 'An unexpected error occurred';
+			}
 		} finally {
 			saving = false;
 		}
@@ -237,9 +235,11 @@
 	async function handleDelete() {
 		if (!editingServer) return;
 
-		await fetch(`/api/usenet/servers/${editingServer.id}`, {
-			method: 'DELETE'
-		});
+		try {
+			await deleteUsenetServer(editingServer.id);
+		} catch {
+			// silently fail for modal delete
+		}
 		await invalidateAll();
 		closeModal();
 	}
@@ -252,29 +252,29 @@
 	async function handleConfirmDelete() {
 		if (!deleteTarget) return;
 
-		await fetch(`/api/usenet/servers/${deleteTarget.id}`, {
-			method: 'DELETE'
-		});
+		try {
+			await deleteUsenetServer(deleteTarget.id);
+		} catch {
+			// silently fail
+		}
 		await invalidateAll();
 		confirmDeleteOpen = false;
 		deleteTarget = null;
 	}
 
 	async function handleToggle(server: NntpServer) {
-		await fetch(`/api/usenet/servers/${server.id}`, {
-			method: 'PUT',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ enabled: !server.enabled })
-		});
+		try {
+			await updateUsenetServer(server.id, { enabled: !server.enabled });
+		} catch {
+			// silently fail
+		}
 		await invalidateAll();
 	}
 
 	async function handleNntpTest(server: NntpServer) {
 		testingId = server.id;
 		try {
-			await fetch(`/api/usenet/servers/${server.id}/test`, {
-				method: 'POST'
-			});
+			await testUsenetServer(server.id);
 			await invalidateAll();
 		} finally {
 			testingId = null;
@@ -304,11 +304,7 @@
 		bulkLoading = true;
 		try {
 			for (const id of selectedIds) {
-				await fetch(`/api/usenet/servers/${id}`, {
-					method: 'PUT',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ enabled: true })
-				});
+				await updateUsenetServer(id, { enabled: true });
 			}
 			await invalidateAll();
 			selectedIds.clear();
@@ -322,11 +318,7 @@
 		bulkLoading = true;
 		try {
 			for (const id of selectedIds) {
-				await fetch(`/api/usenet/servers/${id}`, {
-					method: 'PUT',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ enabled: false })
-				});
+				await updateUsenetServer(id, { enabled: false });
 			}
 			await invalidateAll();
 			selectedIds.clear();
@@ -349,9 +341,7 @@
 		bulkLoading = true;
 		try {
 			for (const id of selectedIds) {
-				await fetch(`/api/usenet/servers/${id}`, {
-					method: 'DELETE'
-				});
+				await deleteUsenetServer(id);
 			}
 			await invalidateAll();
 			selectedIds.clear();
@@ -368,12 +358,10 @@
 		let failCount = 0;
 		try {
 			for (const id of selectedIds) {
-				const response = await fetch(`/api/usenet/servers/${id}/test`, {
-					method: 'POST'
-				});
-				if (response.ok) {
+				try {
+					await testUsenetServer(id);
 					successCount += 1;
-				} else {
+				} catch {
 					failCount += 1;
 				}
 			}
@@ -391,22 +379,9 @@
 
 	async function handleReorder(serverIds: string[]) {
 		try {
-			const responses = await Promise.all(
-				serverIds.map((id, index) =>
-					fetch(`/api/usenet/servers/${id}`, {
-						method: 'PUT',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({ priority: index + 1 })
-					})
-				)
+			await Promise.all(
+				serverIds.map((id, index) => updateUsenetServer(id, { priority: index + 1 }))
 			);
-
-			const failed = responses.find((response) => !response.ok);
-			if (failed) {
-				toasts.error(m.settings_integrations_nntpServers_failedToReorder());
-				return;
-			}
-
 			await invalidateAll();
 		} catch (error) {
 			toasts.error(error instanceof Error ? error.message : 'Failed to reorder priorities');

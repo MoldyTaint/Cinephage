@@ -3,7 +3,7 @@
 	import { Plus, Search } from 'lucide-svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { toasts } from '$lib/stores/toast.svelte';
-	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';
+	import { getResponseErrorMessage } from '$lib/utils/http';
 	import type { PageData } from './$types';
 	import type {
 		MediaBrowserServerPublic,
@@ -19,6 +19,14 @@
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { SettingsPage } from '$lib/components/ui/settings';
 	import * as m from '$lib/paraglide/messages.js';
+	import {
+		createMediaBrowserNotification,
+		updateMediaBrowserNotification,
+		deleteMediaBrowserNotification,
+		testMediaBrowserNotification,
+		testNewMediaBrowserNotification,
+		ApiError
+	} from '$lib/api';
 
 	interface MediaBrowserFormData {
 		name: string;
@@ -190,48 +198,31 @@
 	async function handleTest(formData: MediaBrowserFormData): Promise<MediaBrowserTestResult> {
 		try {
 			if (editingServer) {
-				// Edit mode: test current form values against saved server context,
-				// but do not persist this ad-hoc result to DB status.
-				const response = await fetch(`/api/notifications/mediabrowser/${editingServer.id}/test`, {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						host: formData.host,
-						serverType: formData.serverType,
-						apiKey: formData.apiKey?.trim() ? formData.apiKey : undefined,
-						persist: false
-					})
+				const payload = await testMediaBrowserNotification(editingServer.id, {
+					host: formData.host,
+					serverType: formData.serverType,
+					apiKey: formData.apiKey?.trim() ? formData.apiKey : undefined,
+					persist: false
 				});
-				const payload = await readResponsePayload<MediaBrowserTestResult>(response);
-				if (!response.ok || !payload || typeof payload === 'string') {
-					return {
-						success: false,
-						error: getServerErrorMessage(payload, 'Connection test failed')
-					};
-				}
 				return payload;
 			}
 
-			// Add mode: validate unsaved server config directly.
-			const response = await fetch('/api/notifications/mediabrowser/test', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					host: formData.host,
-					apiKey: formData.apiKey,
-					serverType: formData.serverType
-				})
+			const payload = await testNewMediaBrowserNotification({
+				host: formData.host,
+				apiKey: formData.apiKey,
+				serverType: formData.serverType
 			});
-			const payload = await readResponsePayload<MediaBrowserTestResult>(response);
-			if (!response.ok || !payload || typeof payload === 'string') {
-				return {
-					success: false,
-					error: getServerErrorMessage(payload, 'Connection test failed')
-				};
-			}
 			return payload;
 		} catch (e) {
-			return { success: false, error: e instanceof Error ? e.message : 'Unknown error' };
+			return {
+				success: false,
+				error:
+					e instanceof ApiError
+						? getServerErrorMessage(e.response, 'Connection test failed')
+						: e instanceof Error
+							? e.message
+							: 'Unknown error'
+			};
 		}
 	}
 
@@ -244,35 +235,20 @@
 				delete payload.apiKey;
 			}
 
-			const response =
-				modalMode === 'edit' && editingServer
-					? await fetch(`/api/notifications/mediabrowser/${editingServer.id}`, {
-							method: 'PUT',
-							headers: {
-								'Content-Type': 'application/json',
-								Accept: 'application/json'
-							},
-							body: JSON.stringify(payload)
-						})
-					: await fetch('/api/notifications/mediabrowser', {
-							method: 'POST',
-							headers: {
-								'Content-Type': 'application/json',
-								Accept: 'application/json'
-							},
-							body: JSON.stringify(payload)
-						});
-
-			const result = await readResponsePayload<Record<string, unknown>>(response);
-			if (!response.ok) {
-				saveError = getServerErrorMessage(result, 'Failed to save server');
-				return;
+			if (modalMode === 'edit' && editingServer) {
+				await updateMediaBrowserNotification(editingServer.id, payload);
+			} else {
+				await createMediaBrowserNotification(payload);
 			}
 
 			await invalidateAll();
 			closeModal();
 		} catch (error) {
-			saveError = error instanceof Error ? error.message : 'An unexpected error occurred';
+			if (error instanceof ApiError) {
+				saveError = getServerErrorMessage(error.response, 'Failed to save server');
+			} else {
+				saveError = error instanceof Error ? error.message : 'An unexpected error occurred';
+			}
 		} finally {
 			saving = false;
 		}
@@ -281,21 +257,17 @@
 	async function handleDelete() {
 		if (!editingServer) return;
 		try {
-			const response = await fetch(`/api/notifications/mediabrowser/${editingServer.id}`, {
-				method: 'DELETE',
-				headers: { Accept: 'application/json' }
-			});
-			const result = await readResponsePayload<Record<string, unknown>>(response);
-			if (!response.ok) {
-				throw new Error(getServerErrorMessage(result, 'Failed to delete server'));
-			}
-
+			await deleteMediaBrowserNotification(editingServer.id);
 			await invalidateAll();
 			closeModal();
 		} catch (error) {
 			toasts.error(
 				getServerErrorMessage(
-					error instanceof Error ? error.message : null,
+					error instanceof ApiError
+						? error.response
+						: error instanceof Error
+							? error.message
+							: null,
 					'Failed to delete server'
 				)
 			);
@@ -310,22 +282,18 @@
 	async function handleConfirmDelete() {
 		if (!deleteTarget) return;
 		try {
-			const response = await fetch(`/api/notifications/mediabrowser/${deleteTarget.id}`, {
-				method: 'DELETE',
-				headers: { Accept: 'application/json' }
-			});
-			const result = await readResponsePayload<Record<string, unknown>>(response);
-			if (!response.ok) {
-				throw new Error(getServerErrorMessage(result, 'Failed to delete server'));
-			}
-
+			await deleteMediaBrowserNotification(deleteTarget.id);
 			await invalidateAll();
 			confirmDeleteOpen = false;
 			deleteTarget = null;
 		} catch (error) {
 			toasts.error(
 				getServerErrorMessage(
-					error instanceof Error ? error.message : null,
+					error instanceof ApiError
+						? error.response
+						: error instanceof Error
+							? error.message
+							: null,
 					'Failed to delete server'
 				)
 			);
@@ -334,24 +302,16 @@
 
 	async function handleToggle(server: MediaBrowserServerPublic) {
 		try {
-			const response = await fetch(`/api/notifications/mediabrowser/${server.id}`, {
-				method: 'PUT',
-				headers: {
-					'Content-Type': 'application/json',
-					Accept: 'application/json'
-				},
-				body: JSON.stringify({ enabled: !server.enabled })
-			});
-			const result = await readResponsePayload<Record<string, unknown>>(response);
-			if (!response.ok) {
-				throw new Error(getServerErrorMessage(result, 'Failed to update server state'));
-			}
-
+			await updateMediaBrowserNotification(server.id, { enabled: !server.enabled });
 			await invalidateAll();
 		} catch (error) {
 			toasts.error(
 				getServerErrorMessage(
-					error instanceof Error ? error.message : null,
+					error instanceof ApiError
+						? error.response
+						: error instanceof Error
+							? error.message
+							: null,
 					'Failed to update server state'
 				)
 			);
@@ -361,15 +321,23 @@
 	async function handleTestFromTable(server: MediaBrowserServerPublic) {
 		testingId = server.id;
 		try {
-			const response = await fetch(`/api/notifications/mediabrowser/${server.id}/test`, {
-				method: 'POST'
-			});
-			const result = await readResponsePayload<MediaBrowserTestResult>(response);
-			if (!response.ok || !result || typeof result === 'string' || !result.success) {
+			const result = await testMediaBrowserNotification(server.id);
+			if (!result || !result.success) {
 				toasts.error(getServerErrorMessage(result, 'Connection test failed'));
 			} else {
 				toasts.success(m.settings_integrations_connectionSuccessful());
 			}
+		} catch (error) {
+			toasts.error(
+				getServerErrorMessage(
+					error instanceof ApiError
+						? error.response
+						: error instanceof Error
+							? error.message
+							: null,
+					'Connection test failed'
+				)
+			);
 		} finally {
 			await invalidateAll();
 			testingId = null;
@@ -381,24 +349,19 @@
 		bulkLoading = true;
 		try {
 			for (const id of selectedIds) {
-				const response = await fetch(`/api/notifications/mediabrowser/${id}`, {
-					method: 'PUT',
-					headers: {
-						'Content-Type': 'application/json',
-						Accept: 'application/json'
-					},
-					body: JSON.stringify({ enabled: true })
-				});
-				const result = await readResponsePayload<Record<string, unknown>>(response);
-				if (!response.ok) {
-					throw new Error(getServerErrorMessage(result, 'Failed to enable selected servers'));
-				}
+				await updateMediaBrowserNotification(id, { enabled: true });
 			}
 
 			await invalidateAll();
 			selectedIds.clear();
 		} catch (error) {
-			toasts.error(error instanceof Error ? error.message : 'Failed to enable selected servers');
+			toasts.error(
+				error instanceof ApiError
+					? getServerErrorMessage(error.response, 'Failed to enable selected servers')
+					: error instanceof Error
+						? error.message
+						: 'Failed to enable selected servers'
+			);
 		} finally {
 			bulkLoading = false;
 		}
@@ -409,24 +372,19 @@
 		bulkLoading = true;
 		try {
 			for (const id of selectedIds) {
-				const response = await fetch(`/api/notifications/mediabrowser/${id}`, {
-					method: 'PUT',
-					headers: {
-						'Content-Type': 'application/json',
-						Accept: 'application/json'
-					},
-					body: JSON.stringify({ enabled: false })
-				});
-				const result = await readResponsePayload<Record<string, unknown>>(response);
-				if (!response.ok) {
-					throw new Error(getServerErrorMessage(result, 'Failed to disable selected servers'));
-				}
+				await updateMediaBrowserNotification(id, { enabled: false });
 			}
 
 			await invalidateAll();
 			selectedIds.clear();
 		} catch (error) {
-			toasts.error(error instanceof Error ? error.message : 'Failed to disable selected servers');
+			toasts.error(
+				error instanceof ApiError
+					? getServerErrorMessage(error.response, 'Failed to disable selected servers')
+					: error instanceof Error
+						? error.message
+						: 'Failed to disable selected servers'
+			);
 		} finally {
 			bulkLoading = false;
 		}
@@ -446,21 +404,20 @@
 		bulkLoading = true;
 		try {
 			for (const id of selectedIds) {
-				const response = await fetch(`/api/notifications/mediabrowser/${id}`, {
-					method: 'DELETE',
-					headers: { Accept: 'application/json' }
-				});
-				const result = await readResponsePayload<Record<string, unknown>>(response);
-				if (!response.ok) {
-					throw new Error(getServerErrorMessage(result, 'Failed to delete selected servers'));
-				}
+				await deleteMediaBrowserNotification(id);
 			}
 
 			await invalidateAll();
 			selectedIds.clear();
 			confirmBulkDeleteOpen = false;
 		} catch (error) {
-			toasts.error(error instanceof Error ? error.message : 'Failed to delete selected servers');
+			toasts.error(
+				error instanceof ApiError
+					? getServerErrorMessage(error.response, 'Failed to delete selected servers')
+					: error instanceof Error
+						? error.message
+						: 'Failed to delete selected servers'
+			);
 		} finally {
 			bulkLoading = false;
 		}
@@ -473,13 +430,14 @@
 		let failCount = 0;
 		try {
 			for (const id of selectedIds) {
-				const response = await fetch(`/api/notifications/mediabrowser/${id}/test`, {
-					method: 'POST'
-				});
-				const result = await readResponsePayload<MediaBrowserTestResult>(response);
-				if (response.ok && result && typeof result !== 'string' && result.success) {
-					successCount += 1;
-				} else {
+				try {
+					const result = await testMediaBrowserNotification(id);
+					if (result && result.success) {
+						successCount += 1;
+					} else {
+						failCount += 1;
+					}
+				} catch {
 					failCount += 1;
 				}
 			}

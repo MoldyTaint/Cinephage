@@ -291,8 +291,8 @@ export async function deleteMediaBrowserNotification(id: string) {
 	return apiDelete(`/api/notifications/mediabrowser/${id}`);
 }
 
-export async function testMediaBrowserNotification(id: string) {
-	return apiPost(`/api/notifications/mediabrowser/${id}/test`);
+export async function testMediaBrowserNotification(id: string, payload?: Record<string, unknown>) {
+	return apiPost(`/api/notifications/mediabrowser/${id}/test`, payload);
 }
 
 export async function testNewMediaBrowserNotification(payload: Record<string, unknown>) {

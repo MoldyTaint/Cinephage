@@ -18,6 +18,14 @@
 	import type { EpgStreamEvents } from '$lib/types/sse/events/livetv-epg-events.js';
 	import type { NowNextEntry } from '$lib/types/sse/events/livetv-channel-events.js';
 	import * as m from '$lib/paraglide/messages.js';
+	import {
+		getLineup,
+		getEpgNow,
+		syncEpg,
+		syncEpgForAccount,
+		cancelEpgSync,
+		cancelEpgSyncForAccount
+	} from '$lib/api';
 
 	type TabId = 'status' | 'coverage' | 'guide';
 
@@ -142,11 +150,8 @@
 	async function loadLineup() {
 		loadingLineup = true;
 		try {
-			const res = await fetch('/api/livetv/lineup');
-			if (res.ok) {
-				const data = await res.json();
-				lineup = data.lineup || [];
-			}
+			const data = await getLineup();
+			lineup = data.lineup || [];
 		} catch {
 			// Silent failure
 		} finally {
@@ -156,9 +161,7 @@
 
 	async function fetchEpgData() {
 		try {
-			const res = await fetch('/api/livetv/epg/now');
-			if (!res.ok) return;
-			const data = await res.json();
+			const data = await getEpgNow();
 			if (data.channels) {
 				epgData.clear();
 				for (const [channelId, entry] of Object.entries(data.channels)) {
@@ -176,11 +179,7 @@
 		epgCancelRequestedAccountIds.clear();
 		epgSyncingAll = true;
 		try {
-			const response = await fetch('/api/livetv/epg/sync', { method: 'POST' });
-			if (!response.ok) {
-				throw new Error('Failed to trigger EPG sync');
-			}
-			const payload = (await response.json()) as { started?: boolean; alreadyRunning?: boolean };
+			const payload = (await syncEpg()) as { started?: boolean; alreadyRunning?: boolean };
 			if (payload?.started === false && payload?.alreadyRunning) {
 				epgSyncingAll = true;
 			}
@@ -194,13 +193,7 @@
 		epgCancelRequestedAccountIds.delete(accountId);
 		epgSyncingAccountIds.add(accountId);
 		try {
-			const response = await fetch(`/api/livetv/epg/sync?accountId=${accountId}`, {
-				method: 'POST'
-			});
-			if (!response.ok) {
-				throw new Error('Failed to trigger EPG sync');
-			}
-			await response.json();
+			await syncEpgForAccount(accountId);
 		} catch {
 			epgSyncingAccountIds.delete(accountId);
 		}
@@ -211,11 +204,7 @@
 		epgCancelRequestedAll = true;
 
 		try {
-			const response = await fetch('/api/livetv/epg/sync', { method: 'DELETE' });
-			if (!response.ok) {
-				throw new Error('Failed to cancel EPG sync');
-			}
-			const payload = (await response.json()) as { cancelRequested?: boolean };
+			const payload = (await cancelEpgSync()) as { cancelRequested?: boolean };
 			if (payload?.cancelRequested === false) {
 				epgCancelRequestedAll = false;
 			}
@@ -229,14 +218,10 @@
 		epgCancelRequestedAccountIds.add(accountId);
 
 		try {
-			const response = await fetch(`/api/livetv/epg/sync?accountId=${accountId}`, {
-				method: 'DELETE'
-			});
-			if (!response.ok) {
-				throw new Error('Failed to cancel EPG sync');
-			}
-			const payload = (await response.json()) as { cancelRequested?: boolean };
-			if (payload?.cancelRequested === false) {
+			const response = (await cancelEpgSyncForAccount(accountId)) as {
+				cancelRequested?: boolean;
+			};
+			if (response?.cancelRequested === false) {
 				epgCancelRequestedAccountIds.delete(accountId);
 			}
 		} catch {

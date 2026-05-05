@@ -17,6 +17,7 @@
 	} from 'lucide-svelte';
 	import type { PageData } from './$types';
 	import * as m from '$lib/paraglide/messages.js';
+	import { refreshSmartList, deleteSmartList, updateSmartList } from '$lib/api';
 
 	let { data }: { data: PageData } = $props();
 
@@ -36,14 +37,13 @@
 		actionError = null;
 		refreshingIds.add(id);
 		try {
-			const response = await fetch(`/api/smartlists/${id}/refresh`, { method: 'POST' });
-			const result = (await response.json().catch(() => null)) as {
+			const result = (await refreshSmartList(id)) as {
 				error?: string;
 				errorMessage?: string;
 				status?: string;
-			} | null;
+			};
 
-			if (!response.ok || result?.status === 'failed') {
+			if (result?.status === 'failed') {
 				throw new Error(result?.errorMessage ?? result?.error ?? 'Smart list refresh failed');
 			}
 
@@ -68,12 +68,7 @@
 		deleteLoading = true;
 		deletingIds.add(id);
 		try {
-			const response = await fetch(`/api/smartlists/${id}`, { method: 'DELETE' });
-			const result = (await response.json().catch(() => null)) as { error?: string } | null;
-
-			if (!response.ok) {
-				throw new Error(result?.error ?? 'Failed to delete smart list');
-			}
+			await deleteSmartList(id);
 
 			await invalidateAll();
 			confirmDeleteOpen = false;
@@ -87,11 +82,7 @@
 	}
 
 	async function toggleEnabled(list: (typeof data.lists)[0]) {
-		await fetch(`/api/smartlists/${list.id}`, {
-			method: 'PUT',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ enabled: !list.enabled })
-		});
+		await updateSmartList(list.id, { enabled: !list.enabled } as Record<string, unknown>);
 		await invalidateAll();
 	}
 

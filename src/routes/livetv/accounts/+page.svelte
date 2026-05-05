@@ -11,6 +11,7 @@
 	import type { AccountStreamEvents } from '$lib/types/sse/events/livetv-account-events.js';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import { getAccounts, syncChannels, testAccountConfig } from '$lib/api';
 
 	// State
 	let accounts = $state<LiveTvAccount[]>([]);
@@ -82,11 +83,7 @@
 		}
 
 		try {
-			const response = await fetch('/api/livetv/accounts');
-			if (!response.ok) {
-				throw new Error(m.livetv_accounts_failedToLoadAccounts());
-			}
-			const data = await response.json();
+			const data = await getAccounts();
 			accounts = data.accounts;
 		} catch (e) {
 			error = e instanceof Error ? e.message : m.livetv_accounts_failedToLoadAccounts();
@@ -367,15 +364,7 @@
 		syncingId = account.id;
 
 		try {
-			const response = await fetch('/api/livetv/channels/sync', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ accountIds: [account.id] })
-			});
-
-			if (!response.ok) {
-				throw new Error(m.livetv_accounts_failedToSyncAccount());
-			}
+			await syncChannels({ accountIds: [account.id] });
 
 			await loadAccounts({ foreground: false });
 		} catch (e) {
@@ -422,29 +411,28 @@
 		}
 
 		try {
-			const response = await fetch('/api/livetv/accounts/test', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(body)
-			});
+			const response = await testAccountConfig(body as Record<string, unknown>);
 
-			const result = await response.json();
-
-			if (!response.ok) {
+			if (!response.success) {
 				return {
 					success: false,
 					error: toFriendlyLiveTvTestError(
-						typeof result?.error === 'string'
-							? result.error
+						typeof response?.error === 'string'
+							? response.error
 							: m.livetv_accounts_failedToTestConfig(),
 						config.providerType
 					)
 				};
 			}
 
+			const result = response as Record<string, unknown>;
+
 			// API currently returns { success, result }, but keep backward compatibility
 			// in case the endpoint returns LiveTvAccountTestResult directly.
-			if (result?.result && typeof result.result.success === 'boolean') {
+			if (
+				result?.result &&
+				typeof (result.result as LiveTvAccountTestResult).success === 'boolean'
+			) {
 				const testResult = result.result as LiveTvAccountTestResult;
 				return testResult.success
 					? testResult

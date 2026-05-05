@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import { Plus, Trash2, Pencil, Star, Globe, CheckCircle } from 'lucide-svelte';
-	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';
+	import { getResponseErrorMessage } from '$lib/utils/http';
 	import type { PageData } from './$types';
 	import {
 		ALL_LANGUAGE_OPTIONS,
@@ -16,6 +16,13 @@
 		ModalFooter
 	} from '$lib/components/ui/modal';
 	import * as m from '$lib/paraglide/messages.js';
+	import {
+		createLanguageProfile,
+		updateLanguageProfile,
+		deleteLanguageProfile,
+		updateSubtitleSettings,
+		ApiError
+	} from '$lib/api';
 
 	interface LanguagePreference {
 		code: string;
@@ -148,33 +155,20 @@
 				minimumScore: formMinimumScore
 			};
 
-			const response =
-				modalMode === 'edit' && editingProfile
-					? await fetch(`/api/subtitles/language-profiles/${editingProfile.id}`, {
-							method: 'PUT',
-							headers: {
-								'Content-Type': 'application/json',
-								Accept: 'application/json'
-							},
-							body: JSON.stringify(payload)
-						})
-					: await fetch('/api/subtitles/language-profiles', {
-							method: 'POST',
-							headers: {
-								'Content-Type': 'application/json',
-								Accept: 'application/json'
-							},
-							body: JSON.stringify(payload)
-						});
-
-			const result = await readResponsePayload<Record<string, unknown>>(response);
-			if (!response.ok) {
-				toasts.error(getResponseErrorMessage(result, 'Failed to save language profile'));
-				return;
+			if (modalMode === 'edit' && editingProfile) {
+				await updateLanguageProfile(editingProfile.id, payload);
+			} else {
+				await createLanguageProfile(payload);
 			}
 
 			await invalidateAll();
 			closeModal();
+		} catch (e) {
+			if (e instanceof ApiError) {
+				toasts.error(getResponseErrorMessage(e.response, 'Failed to save language profile'));
+			} else {
+				toasts.error(e instanceof Error ? e.message : 'Failed to save language profile');
+			}
 		} finally {
 			saving = false;
 		}
@@ -188,45 +182,37 @@
 	async function handleConfirmDelete() {
 		if (!deleteTarget) return;
 		try {
-			const response = await fetch(`/api/subtitles/language-profiles/${deleteTarget.id}`, {
-				method: 'DELETE',
-				headers: { Accept: 'application/json' }
-			});
-			const result = await readResponsePayload<Record<string, unknown>>(response);
-			if (!response.ok) {
-				throw new Error(getResponseErrorMessage(result, 'Failed to delete language profile'));
-			}
-
+			await deleteLanguageProfile(deleteTarget.id);
 			await invalidateAll();
 			confirmDeleteOpen = false;
 			deleteTarget = null;
 		} catch (error) {
-			toasts.error(error instanceof Error ? error.message : 'Failed to delete language profile');
+			toasts.error(
+				error instanceof ApiError
+					? getResponseErrorMessage(error.response, 'Failed to delete language profile')
+					: error instanceof Error
+						? error.message
+						: 'Failed to delete language profile'
+			);
 		}
 	}
 
 	async function handleSaveSettings() {
 		try {
-			const response = await fetch('/api/subtitles/settings', {
-				method: 'PUT',
-				headers: {
-					'Content-Type': 'application/json',
-					Accept: 'application/json'
-				},
-				body: JSON.stringify({
-					defaultLanguageProfileId: selectedDefaultProfile || null,
-					defaultFallbackLanguage: selectedFallbackLanguage
-				})
+			await updateSubtitleSettings({
+				defaultLanguageProfileId: selectedDefaultProfile || null,
+				defaultFallbackLanguage: selectedFallbackLanguage
 			});
-			const result = await readResponsePayload<Record<string, unknown>>(response);
-			if (!response.ok) {
-				throw new Error(getResponseErrorMessage(result, 'Failed to save subtitle settings'));
-			}
-
 			await invalidateAll();
 			toasts.success(m.settings_integrations_languageProfiles_defaultsSaved());
 		} catch (error) {
-			toasts.error(error instanceof Error ? error.message : 'Failed to save subtitle settings');
+			toasts.error(
+				error instanceof ApiError
+					? getResponseErrorMessage(error.response, 'Failed to save subtitle settings')
+					: error instanceof Error
+						? error.message
+						: 'Failed to save subtitle settings'
+			);
 		}
 	}
 </script>

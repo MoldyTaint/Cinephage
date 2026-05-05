@@ -29,7 +29,6 @@
 		BulkApplyCleanNamesResult,
 		ChannelLineupItemWithDetails,
 		ChannelCategory,
-		BulkApplyCleanNamesRequest,
 		ChannelCleanNamePreview,
 		UpdateChannelRequest
 	} from '$lib/types/livetv';
@@ -46,6 +45,19 @@
 	} from '$lib/types/sse/events/livetv-channel-events.js';
 	import type { LogoDownloadProgress } from '$lib/server/logos/LogoDownloadService';
 	import { normalizeLiveTvChannelName } from '$lib/livetv/channel-name-normalizer';
+	import {
+		getLogoStatus,
+		downloadLogos as apiDownloadLogos,
+		getEpgNow,
+		getLineup,
+		getChannelCategories,
+		reorderLineup,
+		removeFromLineup,
+		bulkAssignCategory,
+		bulkCleanChannelNames,
+		updateLineupItem,
+		deleteLineupItem
+	} from '$lib/api';
 
 	// Receive data from server load function (includes streaming API key)
 	let { data }: { data: PageData } = $props();
@@ -172,12 +184,12 @@
 	async function loadLogoStatus() {
 		loadingLogos = true;
 		try {
-			const res = await fetch('/api/logos/status');
-			if (res.ok) {
-				const data = await res.json();
-				if (data.success) {
-					logoDownloaded = data.data.downloaded;
-					logoCount = data.data.count;
+			const data = await getLogoStatus();
+			if (data.success) {
+				const logoData = data.data as { downloaded: boolean; count: number } | undefined;
+				if (logoData) {
+					logoDownloaded = logoData.downloaded;
+					logoCount = logoData.count;
 				}
 			}
 		} catch {
@@ -195,14 +207,14 @@
 		logoDownloadProgress = null;
 
 		try {
-			const res = await fetch('/api/logos/download', { method: 'POST' });
-			const data = await res.json();
+			const data = await apiDownloadLogos({});
 
 			if (data.success) {
-				if (data.data?.downloaded) {
+				const logoData = data.data as { downloaded?: boolean; count?: number } | undefined;
+				if (logoData?.downloaded) {
 					// Already downloaded
 					logoDownloaded = true;
-					logoCount = data.data.count;
+					logoCount = logoData.count;
 					downloadingLogos = false;
 					toasts.success(m.livetv_channels_logosAlreadyAvailable());
 				} else {
@@ -323,9 +335,7 @@
 
 	async function fetchEpgData() {
 		try {
-			const res = await fetch('/api/livetv/epg/now');
-			if (!res.ok) return;
-			const response = await res.json();
+			const response = await getEpgNow();
 			if (response.channels) {
 				updateEpgData(response.channels);
 			}
@@ -339,20 +349,7 @@
 		error = null;
 
 		try {
-			const [lineupRes, categoriesRes] = await Promise.all([
-				fetch('/api/livetv/lineup'),
-				fetch('/api/livetv/channel-categories')
-			]);
-
-			if (!lineupRes.ok) {
-				throw new Error(m.livetv_channels_failedToLoadLineup());
-			}
-			if (!categoriesRes.ok) {
-				throw new Error(m.livetv_channels_failedToLoadCategories());
-			}
-
-			const lineupData = await lineupRes.json();
-			const categoriesData = await categoriesRes.json();
+			const [lineupData, categoriesData] = await Promise.all([getLineup(), getChannelCategories()]);
 
 			lineup = lineupData.lineup || [];
 			syncLineupChannelIds(lineupData.lineupChannelIds || []);
@@ -581,15 +578,7 @@
 		if (item && item.categoryId !== categoryId) {
 			// Update category
 			try {
-				const response = await fetch(`/api/livetv/lineup/${draggedItemId}`, {
-					method: 'PUT',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ categoryId })
-				});
-
-				if (!response.ok) {
-					throw new Error(m.livetv_channels_failedToUpdateCategory());
-				}
+				await updateLineupItem(draggedItemId, { categoryId } as Record<string, unknown>);
 
 				await loadData();
 			} catch (e) {
@@ -622,15 +611,7 @@
 		}
 
 		try {
-			const response = await fetch('/api/livetv/lineup/reorder', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ itemIds: allItemIds })
-			});
-
-			if (!response.ok) {
-				throw new Error(m.livetv_channels_failedToReorderChannels());
-			}
+			await reorderLineup(allItemIds);
 
 			await loadData();
 		} catch (e) {
@@ -678,16 +659,7 @@
 		editModalError = null;
 
 		try {
-			const response = await fetch(`/api/livetv/lineup/${id}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(data)
-			});
-
-			if (!response.ok) {
-				const result = await response.json();
-				throw new Error(result.error || m.livetv_channels_failedToSaveChannel());
-			}
+			await updateLineupItem(id, data as Record<string, unknown>);
 
 			await loadData();
 			closeEditModal();
@@ -739,30 +711,14 @@
 
 		try {
 			if (removeMode === 'single' && singleChannel) {
-				const response = await fetch(`/api/livetv/lineup/${singleChannel.id}`, {
-					method: 'DELETE'
-				});
-
-				if (!response.ok) {
-					throw new Error(m.livetv_channels_failedToRemoveChannel());
-				}
+				await deleteLineupItem(singleChannel.id);
 
 				// Remove from selection if selected
 				if (selectedIds.has(singleChannel.id)) {
 					selectedIds.delete(singleChannel.id);
 				}
 			} else {
-				const response = await fetch('/api/livetv/lineup/remove', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						itemIds: bulkItemIds
-					})
-				});
-
-				if (!response.ok) {
-					throw new Error(m.livetv_channels_failedToRemoveChannels());
-				}
+				await removeFromLineup(bulkItemIds);
 
 				clearSelection();
 			}
@@ -784,16 +740,7 @@
 	): Promise<boolean> {
 		try {
 			const data: Partial<UpdateChannelRequest> = { [field]: value };
-			const response = await fetch(`/api/livetv/lineup/${id}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(data)
-			});
-
-			if (!response.ok) {
-				toasts.error(m.livetv_channels_failedToSaveInlineEdit());
-				return false;
-			}
+			await updateLineupItem(id, data as Record<string, unknown>);
 
 			await loadData();
 			return true;
@@ -825,19 +772,7 @@
 		bulkAction = 'category';
 
 		try {
-			const response = await fetch('/api/livetv/lineup/bulk-category', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					itemIds: Array.from(selectedIds),
-					categoryId
-				})
-			});
-
-			if (!response.ok) {
-				const result = await response.json().catch(() => null);
-				throw new Error(result?.error || m.livetv_channels_failedToUpdateCategories());
-			}
+			await bulkAssignCategory(Array.from(selectedIds), categoryId);
 
 			await loadData();
 			clearSelection();
@@ -857,23 +792,9 @@
 		bulkAction = 'clean-names';
 
 		try {
-			const payload: BulkApplyCleanNamesRequest = {
-				itemIds: Array.from(selectedIds)
-			};
-
-			const response = await fetch('/api/livetv/lineup/bulk-clean-names', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(payload)
-			});
-
-			const result = (await response.json().catch(() => null)) as BulkApplyCleanNamesResult | null;
-			if (!response.ok) {
-				throw new Error(
-					(result as { error?: string } | null)?.error ||
-						m.livetv_channels_failedToApplyCleanedNames()
-				);
-			}
+			const result = (await bulkCleanChannelNames(
+				Array.from(selectedIds)
+			)) as BulkApplyCleanNamesResult | null;
 
 			await loadData();
 			clearSelection();

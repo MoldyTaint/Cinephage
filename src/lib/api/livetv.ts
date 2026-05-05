@@ -4,8 +4,8 @@ export async function getChannels(params?: Record<string, string>) {
 	return apiGet('/api/livetv/channels', params);
 }
 
-export async function syncChannels() {
-	return apiPost('/api/livetv/channels/sync');
+export async function syncChannels(payload?: { accountIds?: string[] }) {
+	return apiPost('/api/livetv/channels/sync', payload);
 }
 
 export async function getChannelSyncStatus() {
@@ -28,6 +28,18 @@ export async function syncEpg() {
 	return apiPost('/api/livetv/epg/sync');
 }
 
+export async function syncEpgForAccount(accountId: string) {
+	return apiPost(`/api/livetv/epg/sync?accountId=${accountId}`);
+}
+
+export async function cancelEpgSync() {
+	return apiDelete('/api/livetv/epg/sync');
+}
+
+export async function cancelEpgSyncForAccount(accountId: string) {
+	return apiDelete(`/api/livetv/epg/sync?accountId=${accountId}`);
+}
+
 export async function getEpgStatus() {
 	return apiGet('/api/livetv/epg/status');
 }
@@ -44,12 +56,20 @@ export async function addToLineup(channels: Array<{ accountId: string; channelId
 	return apiPost('/api/livetv/lineup', { channels });
 }
 
-export async function removeFromLineup(ids: string[]) {
-	return apiPost('/api/livetv/lineup/remove', { ids });
+export async function updateLineupItem(id: string, payload: Record<string, unknown>) {
+	return apiPut(`/api/livetv/lineup/${id}`, payload);
 }
 
-export async function reorderLineup(items: Array<{ id: string; order: number }>) {
-	return apiPost('/api/livetv/lineup/reorder', { items });
+export async function deleteLineupItem(id: string) {
+	return apiDelete(`/api/livetv/lineup/${id}`);
+}
+
+export async function removeFromLineup(itemIds: string[]) {
+	return apiPost('/api/livetv/lineup/remove', { itemIds });
+}
+
+export async function reorderLineup(itemIds: string[]) {
+	return apiPost('/api/livetv/lineup/reorder', { itemIds });
 }
 
 export async function getLineupBackups(lineupId: string) {
@@ -78,6 +98,10 @@ export async function deleteAccount(id: string) {
 
 export async function testAccount(id: string) {
 	return apiPost(`/api/livetv/accounts/${id}/test`);
+}
+
+export async function testAccountConfig(payload: Record<string, unknown>) {
+	return apiPost('/api/livetv/accounts/test', payload);
 }
 
 export async function getCategories() {
@@ -148,10 +172,10 @@ export async function detectPortal(url: string) {
 	return apiPost('/api/livetv/portals/detect', { url });
 }
 
-export async function bulkAssignCategory(lineupIds: string[], categoryId: string) {
-	return apiPost('/api/livetv/lineup/bulk-category', { lineupIds, categoryId });
+export async function bulkAssignCategory(itemIds: string[], categoryId: string | null) {
+	return apiPost('/api/livetv/lineup/bulk-category', { itemIds, categoryId });
 }
 
-export async function bulkCleanChannelNames(lineupIds: string[]) {
-	return apiPost('/api/livetv/lineup/bulk-clean-names', { ids: lineupIds });
+export async function bulkCleanChannelNames(itemIds: string[]) {
+	return apiPost('/api/livetv/lineup/bulk-clean-names', { itemIds });
 }

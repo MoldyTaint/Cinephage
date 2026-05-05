@@ -12,6 +12,6 @@ export async function getTmdb(path: string, params?: Record<string, string>) {
 	return apiGet(`/api/tmdb/${path}`, params);
 }
 
-export async function getPersonCredits(personId: number) {
-	return apiGet(`/api/tmdb/person/${personId}/credits`);
+export async function getPersonCredits(personId: number, params?: Record<string, string>) {
+	return apiGet(`/api/tmdb/person/${personId}/credits`, params);
 }

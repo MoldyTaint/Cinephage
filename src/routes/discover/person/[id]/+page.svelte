@@ -6,6 +6,7 @@
 	import PersonHero from '$lib/components/tmdb/PersonHero.svelte';
 	import FilmographyCard from '$lib/components/tmdb/FilmographyCard.svelte';
 	import { Film, Tv, Clapperboard } from 'lucide-svelte';
+	import { getPersonCredits } from '$lib/api';
 
 	type CreditWithStatus = (PersonCastCredit | PersonCrewCredit) & {
 		inLibrary?: boolean;
@@ -64,32 +65,30 @@
 		const personId = data.person.id;
 		loading = true;
 
-		fetch(`/api/tmdb/person/${personId}/credits`)
-			.then((r) => r.json())
-			.then((response) => {
-				movieCredits = response.movies?.results ?? [];
-				tvCredits = response.tv?.results ?? [];
-				crewCredits = response.crew?.results ?? [];
+		getPersonCredits(personId).then((response) => {
+			movieCredits = response.movies?.results ?? [];
+			tvCredits = response.tv?.results ?? [];
+			crewCredits = response.crew?.results ?? [];
 
-				movieTotalPages = response.movies?.total_pages ?? 1;
-				tvTotalPages = response.tv?.total_pages ?? 1;
-				crewTotalPages = response.crew?.total_pages ?? 1;
+			movieTotalPages = response.movies?.total_pages ?? 1;
+			tvTotalPages = response.tv?.total_pages ?? 1;
+			crewTotalPages = response.crew?.total_pages ?? 1;
 
-				movieTotal = response.movies?.total_results ?? 0;
-				tvTotal = response.tv?.total_results ?? 0;
-				crewTotal = response.crew?.total_results ?? 0;
+			movieTotal = response.movies?.total_results ?? 0;
+			tvTotal = response.tv?.total_results ?? 0;
+			crewTotal = response.crew?.total_results ?? 0;
 
-				// Auto-select first non-empty tab
-				if (movieCredits.length > 0) {
-					activeTab = 'movies';
-				} else if (tvCredits.length > 0) {
-					activeTab = 'tv';
-				} else if (crewCredits.length > 0) {
-					activeTab = 'crew';
-				}
+			// Auto-select first non-empty tab
+			if (movieCredits.length > 0) {
+				activeTab = 'movies';
+			} else if (tvCredits.length > 0) {
+				activeTab = 'tv';
+			} else if (crewCredits.length > 0) {
+				activeTab = 'crew';
+			}
 
-				loading = false;
-			});
+			loading = false;
+		});
 	});
 
 	// Infinite scroll observer
@@ -117,25 +116,23 @@
 		const nextPage = activePage + 1;
 
 		try {
-			const res = await fetch(
-				`/api/tmdb/person/${data.person.id}/credits?type=${type}&page=${nextPage}`
-			);
-			if (res.ok) {
-				const result = await res.json();
-				const newItems = result.results ?? [];
+			const result = await getPersonCredits(data.person.id, {
+				type,
+				page: String(nextPage)
+			});
+			const newItems = result.results ?? [];
 
-				if (activeTab === 'movies') {
-					movieCredits = [...movieCredits, ...newItems];
-					moviePage = nextPage;
-				} else if (activeTab === 'tv') {
-					tvCredits = [...tvCredits, ...newItems];
-					tvPage = nextPage;
-				} else {
-					crewCredits = [...crewCredits, ...newItems];
-					crewPage = nextPage;
-				}
+			if (activeTab === 'movies') {
+				movieCredits = [...movieCredits, ...newItems];
+				moviePage = nextPage;
+			} else if (activeTab === 'tv') {
+				tvCredits = [...tvCredits, ...newItems];
+				tvPage = nextPage;
+			} else {
+				crewCredits = [...crewCredits, ...newItems];
+				crewPage = nextPage;
 			}
-		} finally {
+		} catch {
 			loadingMore = false;
 		}
 	}

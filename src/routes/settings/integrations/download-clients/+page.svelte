@@ -2,7 +2,6 @@
 	import { invalidateAll } from '$app/navigation';
 	import { Plus, Search } from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
-	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { toFriendlyDownloadClientError } from '$lib/downloadClients/errorMessages';
 	import type { PageData } from './$types';
@@ -19,6 +18,15 @@
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { SettingsPage } from '$lib/components/ui/settings';
 	import * as m from '$lib/paraglide/messages.js';
+	import {
+		createDownloadClient,
+		updateDownloadClient,
+		deleteDownloadClient,
+		testDownloadClient,
+		testNewDownloadClient,
+		updateMonitoringSettings,
+		ApiError
+	} from '$lib/api';
 
 	let { data }: { data: PageData } = $props();
 
@@ -218,8 +226,16 @@
 		saveError = null;
 	}
 
+	function errorFromResponse(payload: unknown, fallback: string): string {
+		if (payload && typeof payload === 'object') {
+			const err = (payload as Record<string, unknown>).error;
+			if (typeof err === 'string' && err.trim()) return err;
+		}
+		return fallback;
+	}
+
 	function toDownloadClientErrorMessage(payload: unknown, fallback: string): string {
-		return toFriendlyDownloadClientError(getResponseErrorMessage(payload, fallback));
+		return toFriendlyDownloadClientError(errorFromResponse(payload, fallback));
 	}
 
 	async function handleTest(
@@ -240,31 +256,27 @@
 			modalMode === 'edit' && editingClient && !hasPasswordOverride ? editingClient.id : undefined;
 
 		try {
-			const response = await fetch('/api/download-clients/test', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					id: fallbackId,
-					implementation: dcFormData.implementation,
-					host: dcFormData.host,
-					port: dcFormData.port,
-					useSsl: dcFormData.useSsl,
-					urlBase: dcFormData.urlBase,
-					mountMode: dcFormData.mountMode,
-					username: dcFormData.username || null,
-					password: dcFormData.password || null
-				})
+			return await testNewDownloadClient({
+				id: fallbackId,
+				implementation: dcFormData.implementation,
+				host: dcFormData.host,
+				port: dcFormData.port,
+				useSsl: dcFormData.useSsl,
+				urlBase: dcFormData.urlBase,
+				mountMode: dcFormData.mountMode,
+				username: dcFormData.username || null,
+				password: dcFormData.password || null
 			});
-			const payload = await readResponsePayload<ConnectionTestResult>(response);
-			if (!response.ok || !payload || typeof payload === 'string') {
-				return {
-					success: false,
-					error: toDownloadClientErrorMessage(payload, 'Connection test failed')
-				};
-			}
-			return payload;
 		} catch (e) {
-			return { success: false, error: e instanceof Error ? e.message : 'Unknown error' };
+			return {
+				success: false,
+				error:
+					e instanceof ApiError
+						? toDownloadClientErrorMessage(e.response, 'Connection test failed')
+						: toFriendlyDownloadClientError(
+								e instanceof Error ? e.message : 'Connection test failed'
+							)
+			};
 		}
 	}
 
@@ -281,37 +293,22 @@
 		saveError = null;
 		try {
 			const payload = formData as DownloadClientFormData;
-			const response =
-				modalMode === 'edit' && editingClient
-					? await fetch(`/api/download-clients/${editingClient.id}`, {
-							method: 'PUT',
-							headers: {
-								'Content-Type': 'application/json',
-								Accept: 'application/json'
-							},
-							body: JSON.stringify(payload)
-						})
-					: await fetch('/api/download-clients', {
-							method: 'POST',
-							headers: {
-								'Content-Type': 'application/json',
-								Accept: 'application/json'
-							},
-							body: JSON.stringify(payload)
-						});
-
-			const result = await readResponsePayload<Record<string, unknown>>(response);
-			if (!response.ok) {
-				saveError = toDownloadClientErrorMessage(result, 'Failed to save download client');
-				return;
+			if (modalMode === 'edit' && editingClient) {
+				await updateDownloadClient(editingClient.id, payload);
+			} else {
+				await createDownloadClient(payload);
 			}
 
 			await invalidateAll();
 			closeModal();
 		} catch (error) {
-			saveError = toFriendlyDownloadClientError(
-				error instanceof Error ? error.message : 'An unexpected error occurred'
-			);
+			if (error instanceof ApiError) {
+				saveError = toDownloadClientErrorMessage(error.response, 'Failed to save download client');
+			} else {
+				saveError = toFriendlyDownloadClientError(
+					error instanceof Error ? error.message : 'An unexpected error occurred'
+				);
+			}
 		} finally {
 			saving = false;
 		}
@@ -320,21 +317,17 @@
 	async function handleDelete() {
 		if (!editingClient) return;
 		try {
-			const response = await fetch(`/api/download-clients/${editingClient.id}`, {
-				method: 'DELETE',
-				headers: { Accept: 'application/json' }
-			});
-			const result = await readResponsePayload<Record<string, unknown>>(response);
-			if (!response.ok) {
-				throw new Error(toDownloadClientErrorMessage(result, 'Failed to delete download client'));
-			}
-
+			await deleteDownloadClient(editingClient.id);
 			await invalidateAll();
 			closeModal();
 		} catch (error) {
 			toasts.error(
 				toDownloadClientErrorMessage(
-					error instanceof Error ? error.message : null,
+					error instanceof ApiError
+						? error.response
+						: error instanceof Error
+							? error.message
+							: null,
 					'Failed to delete download client'
 				)
 			);
@@ -349,22 +342,18 @@
 	async function handleConfirmDelete() {
 		if (!deleteTarget) return;
 		try {
-			const response = await fetch(`/api/download-clients/${deleteTarget.id}`, {
-				method: 'DELETE',
-				headers: { Accept: 'application/json' }
-			});
-			const result = await readResponsePayload<Record<string, unknown>>(response);
-			if (!response.ok) {
-				throw new Error(toDownloadClientErrorMessage(result, 'Failed to delete download client'));
-			}
-
+			await deleteDownloadClient(deleteTarget.id);
 			await invalidateAll();
 			confirmDeleteOpen = false;
 			deleteTarget = null;
 		} catch (error) {
 			toasts.error(
 				toDownloadClientErrorMessage(
-					error instanceof Error ? error.message : null,
+					error instanceof ApiError
+						? error.response
+						: error instanceof Error
+							? error.message
+							: null,
 					'Failed to delete download client'
 				)
 			);
@@ -373,24 +362,16 @@
 
 	async function handleToggle(client: UnifiedClientItem) {
 		try {
-			const response = await fetch(`/api/download-clients/${client.id}`, {
-				method: 'PUT',
-				headers: {
-					'Content-Type': 'application/json',
-					Accept: 'application/json'
-				},
-				body: JSON.stringify({ enabled: !client.enabled })
-			});
-			const result = await readResponsePayload<Record<string, unknown>>(response);
-			if (!response.ok) {
-				throw new Error(toDownloadClientErrorMessage(result, 'Failed to update client state'));
-			}
-
+			await updateDownloadClient(client.id, { enabled: !client.enabled });
 			await invalidateAll();
 		} catch (error) {
 			toasts.error(
 				toDownloadClientErrorMessage(
-					error instanceof Error ? error.message : null,
+					error instanceof ApiError
+						? error.response
+						: error instanceof Error
+							? error.message
+							: null,
 					'Failed to update client state'
 				)
 			);
@@ -400,11 +381,8 @@
 	async function handleRowTest(client: UnifiedClientItem) {
 		testingId = client.id;
 		try {
-			const response = await fetch(`/api/download-clients/${client.id}/test`, {
-				method: 'POST'
-			});
-			const result = await readResponsePayload<ConnectionTestResult>(response);
-			if (!response.ok || !result || typeof result === 'string' || !result.success) {
+			const result = await testDownloadClient(client.id);
+			if (!result || !result.success) {
 				toasts.error(toDownloadClientErrorMessage(result, 'Connection test failed'));
 				return;
 			}
@@ -427,26 +405,22 @@
 		bulkLoading = true;
 		try {
 			for (const id of selectedIds) {
-				const response = await fetch(`/api/download-clients/${id}`, {
-					method: 'PUT',
-					headers: {
-						'Content-Type': 'application/json',
-						Accept: 'application/json'
-					},
-					body: JSON.stringify({ enabled: true })
-				});
-				const result = await readResponsePayload<Record<string, unknown>>(response);
-				if (!response.ok) {
-					throw new Error(
-						toDownloadClientErrorMessage(result, 'Failed to enable selected clients')
-					);
-				}
+				await updateDownloadClient(id, { enabled: true });
 			}
 
 			await invalidateAll();
 			selectedIds.clear();
 		} catch (error) {
-			toasts.error(error instanceof Error ? error.message : 'Failed to enable selected clients');
+			toasts.error(
+				toDownloadClientErrorMessage(
+					error instanceof ApiError
+						? error.response
+						: error instanceof Error
+							? error.message
+							: null,
+					'Failed to enable selected clients'
+				)
+			);
 		} finally {
 			bulkLoading = false;
 		}
@@ -457,26 +431,22 @@
 		bulkLoading = true;
 		try {
 			for (const id of selectedIds) {
-				const response = await fetch(`/api/download-clients/${id}`, {
-					method: 'PUT',
-					headers: {
-						'Content-Type': 'application/json',
-						Accept: 'application/json'
-					},
-					body: JSON.stringify({ enabled: false })
-				});
-				const result = await readResponsePayload<Record<string, unknown>>(response);
-				if (!response.ok) {
-					throw new Error(
-						toDownloadClientErrorMessage(result, 'Failed to disable selected clients')
-					);
-				}
+				await updateDownloadClient(id, { enabled: false });
 			}
 
 			await invalidateAll();
 			selectedIds.clear();
 		} catch (error) {
-			toasts.error(error instanceof Error ? error.message : 'Failed to disable selected clients');
+			toasts.error(
+				toDownloadClientErrorMessage(
+					error instanceof ApiError
+						? error.response
+						: error instanceof Error
+							? error.message
+							: null,
+					'Failed to disable selected clients'
+				)
+			);
 		} finally {
 			bulkLoading = false;
 		}
@@ -496,23 +466,23 @@
 		bulkLoading = true;
 		try {
 			for (const id of selectedIds) {
-				const response = await fetch(`/api/download-clients/${id}`, {
-					method: 'DELETE',
-					headers: { Accept: 'application/json' }
-				});
-				const result = await readResponsePayload<Record<string, unknown>>(response);
-				if (!response.ok) {
-					throw new Error(
-						toDownloadClientErrorMessage(result, 'Failed to delete selected clients')
-					);
-				}
+				await deleteDownloadClient(id);
 			}
 
 			await invalidateAll();
 			selectedIds.clear();
 			confirmBulkDeleteOpen = false;
 		} catch (error) {
-			toasts.error(error instanceof Error ? error.message : 'Failed to delete selected clients');
+			toasts.error(
+				toDownloadClientErrorMessage(
+					error instanceof ApiError
+						? error.response
+						: error instanceof Error
+							? error.message
+							: null,
+					'Failed to delete selected clients'
+				)
+			);
 		} finally {
 			bulkLoading = false;
 		}
@@ -527,13 +497,14 @@
 
 		try {
 			for (const id of selectedIds) {
-				const response = await fetch(`/api/download-clients/${id}/test`, {
-					method: 'POST'
-				});
-				const result = await readResponsePayload<ConnectionTestResult>(response);
-				if (response.ok && result && typeof result !== 'string' && result.success) {
-					successCount += 1;
-				} else {
+				try {
+					const result = await testDownloadClient(id);
+					if (result && result.success) {
+						successCount += 1;
+					} else {
+						failCount += 1;
+					}
+				} catch {
 					failCount += 1;
 				}
 			}
@@ -669,19 +640,20 @@
 	stalledTimeoutMinutes={data.stalledDownloadTimeoutMinutes}
 	stalledProgressThreshold={data.stalledDownloadProgressThreshold}
 	onSaveStalledBehavior={async (timeout, threshold) => {
-		const response = await fetch('/api/monitoring/settings', {
-			method: 'PUT',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
+		try {
+			await updateMonitoringSettings({
 				stalledDownloadTimeoutMinutes: timeout,
 				stalledDownloadProgressThreshold: threshold
-			})
-		});
-		if (!response.ok) {
-			const err = await response.json().catch(() => ({ error: m.common_failedToSave() }));
-			throw new Error(err.error || m.toast_settings_failedToSaveStalledSettings());
+			});
+			toasts.success(m.toast_settings_stalledSettingsUpdated());
+		} catch (e) {
+			const err = e instanceof ApiError ? e.response : undefined;
+			throw new Error(
+				(err && typeof err === 'object' && 'error' in (err as Record<string, unknown>)
+					? (err as Record<string, unknown>).error
+					: m.common_failedToSave()) as string
+			);
 		}
-		toasts.success(m.toast_settings_stalledSettingsUpdated());
 	}}
 	onClose={closeModal}
 	onSave={handleSave}

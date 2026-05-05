@@ -6,7 +6,7 @@
 	import { resolvePath } from '$lib/utils/routing';
 	import type { TmdbMediaItem } from '$lib/types/tmdb';
 	import { tick } from 'svelte';
-	import { SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
+	import { SvelteSet } from 'svelte/reactivity';
 	import MediaCard from '$lib/components/tmdb/MediaCard.svelte';
 	import FilterDrawer from '$lib/components/discover/FilterDrawer.svelte';
 	import SectionRow from '$lib/components/discover/SectionRow.svelte';
@@ -17,6 +17,7 @@
 	import { Search, Eye, EyeOff, X, Loader2 } from 'lucide-svelte';
 	import { getMediaTypeLabel } from '$lib/types/tmdb-guards';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import { searchTmdb, getDiscover } from '$lib/api';
 
 	let { data } = $props();
 
@@ -107,12 +108,11 @@
 
 		isSearching = true;
 		try {
-			const res = await fetch(
-				`/api/discover/search?query=${encodeURIComponent(normalizedQuery)}&type=${type}${exclude ? '&exclude_in_library=true' : ''}`
-			);
-			if (!res.ok) throw new Error('Search failed');
-
-			const result = await res.json();
+			const result = await searchTmdb({
+				query: normalizedQuery,
+				type,
+				...(exclude ? { exclude_in_library: 'true' } : {})
+			});
 			searchResults = result.results;
 			searchPagination = result.pagination;
 		} catch (e) {
@@ -132,12 +132,12 @@
 		isSearching = true;
 		try {
 			const nextPage = searchPagination.page + 1;
-			const res = await fetch(
-				`/api/discover/search?query=${encodeURIComponent(normalizedSearchQuery)}&type=${type}&page=${nextPage}${excludeInLibrary ? '&exclude_in_library=true' : ''}`
-			);
-			if (!res.ok) return;
-
-			const result = await res.json();
+			const result = await searchTmdb({
+				query: normalizedSearchQuery,
+				type,
+				page: String(nextPage),
+				...(excludeInLibrary ? { exclude_in_library: 'true' } : {})
+			});
 			// Deduplicate
 			const existingIds = new Set(searchResults.map((r) => r.id + (r.media_type || '')));
 			const newResults = result.results.filter(
@@ -299,13 +299,13 @@
 		isLoadingMore = true;
 		try {
 			const nextPage = currentPage + 1;
-			const params = new SvelteURLSearchParams(page.url.searchParams);
-			params.set('page', String(nextPage));
+			const params: Record<string, string> = {};
+			page.url.searchParams.forEach((value, key) => {
+				params[key] = value;
+			});
+			params.page = String(nextPage);
 
-			const res = await fetch(`/api/discover?${params.toString()}`);
-			if (!res.ok) return;
-
-			const newData = await res.json();
+			const newData = await getDiscover(params);
 			if (!newData.results || newData.results.length === 0) return;
 
 			// Filter out duplicates based on ID and media_type

@@ -25,6 +25,7 @@
 	} from 'lucide-svelte';
 	import type { PageData } from './$types';
 	import * as m from '$lib/paraglide/messages.js';
+	import { refreshSmartList, addSmartListItems } from '$lib/api';
 
 	let { data }: { data: PageData } = $props();
 
@@ -100,14 +101,13 @@
 	async function refreshList() {
 		refreshing = true;
 		try {
-			const response = await fetch(`/api/smartlists/${data.list.id}/refresh`, { method: 'POST' });
-			const result = (await response.json().catch(() => null)) as {
+			const result = (await refreshSmartList(data.list.id)) as {
 				error?: string;
 				errorMessage?: string;
 				status?: string;
-			} | null;
+			};
 
-			if (!response.ok || result?.status === 'failed') {
+			if (result?.status === 'failed') {
 				throw new Error(result?.errorMessage ?? result?.error ?? 'Smart list refresh failed');
 			}
 
@@ -128,16 +128,10 @@
 		addingIds.add(tmdbId);
 		addingIds = addingIds;
 		try {
-			const response = await fetch(`/api/smartlists/${data.list.id}/items`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'addToLibrary', tmdbIds: [tmdbId] })
-			});
-			const result = (await response.json().catch(() => null)) as AddToLibraryResponse | null;
-
-			if (!response.ok) {
-				throw new Error(result?.error ?? m.smartlists_detail_failedToAddToLibrary());
-			}
+			const result = (await addSmartListItems(data.list.id, {
+				action: 'addToLibrary',
+				tmdbIds: [tmdbId]
+			} as Record<string, unknown>)) as AddToLibraryResponse | null;
 
 			if (!result) {
 				throw new Error(m.smartlists_detail_invalidAddResponse());
@@ -165,11 +159,10 @@
 		excludingIds.add(tmdbId);
 		excludingIds = excludingIds;
 		try {
-			await fetch(`/api/smartlists/${data.list.id}/items`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'exclude', tmdbIds: [tmdbId] })
-			});
+			await addSmartListItems(data.list.id, {
+				action: 'exclude',
+				tmdbIds: [tmdbId]
+			} as Record<string, unknown>);
 			toasts.success(m.smartlists_detail_excludedFromList({ title }));
 			closeItemDetails();
 			await invalidateAll();
@@ -184,11 +177,10 @@
 		excludingIds.add(tmdbId);
 		excludingIds = excludingIds;
 		try {
-			await fetch(`/api/smartlists/${data.list.id}/items`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'include', tmdbIds: [tmdbId] })
-			});
+			await addSmartListItems(data.list.id, {
+				action: 'include',
+				tmdbIds: [tmdbId]
+			} as Record<string, unknown>);
 			toasts.success(m.smartlists_detail_includedInList({ title }));
 			closeItemDetails();
 			await invalidateAll();
@@ -212,16 +204,10 @@
 
 		bulkAdding = true;
 		try {
-			const response = await fetch(`/api/smartlists/${data.list.id}/items`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'addToLibrary', tmdbIds })
-			});
-			const result = (await response.json().catch(() => null)) as AddToLibraryResponse | null;
-
-			if (!response.ok) {
-				throw new Error(result?.error ?? m.smartlists_detail_failedToAddItems());
-			}
+			const result = (await addSmartListItems(data.list.id, {
+				action: 'addToLibrary',
+				tmdbIds
+			} as Record<string, unknown>)) as AddToLibraryResponse | null;
 
 			if (!result) {
 				throw new Error(m.smartlists_detail_invalidAddResponse());

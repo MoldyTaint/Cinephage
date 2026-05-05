@@ -15,11 +15,12 @@
 	import IndexerBulkActions from '$lib/components/indexers/IndexerBulkActions.svelte';
 	import IndexerModal from '$lib/components/indexers/IndexerModal.svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
-	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';
+	import { getResponseErrorMessage } from '$lib/utils/http';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { SettingsPage } from '$lib/components/ui/settings';
 	import * as m from '$lib/paraglide/messages.js';
+	import { createIndexer, updateIndexer, deleteIndexer, testIndexer, ApiError } from '$lib/api';
 
 	let { data }: { data: PageData } = $props();
 
@@ -189,21 +190,15 @@
 		payload: Record<string, unknown>,
 		fallback: string
 	): Promise<boolean> {
-		const response = await fetch(`/api/indexers/${id}`, {
-			method: 'PUT',
-			headers: {
-				'Content-Type': 'application/json',
-				Accept: 'application/json'
-			},
-			body: JSON.stringify(payload)
-		});
-
-		if (!response.ok) {
-			const result = await readResponsePayload<Record<string, unknown>>(response);
-			throw new Error(getResponseErrorMessage(result, fallback));
+		try {
+			await updateIndexer(id, payload);
+			return true;
+		} catch (e) {
+			if (e instanceof ApiError) {
+				throw new Error(getResponseErrorMessage(e.response, fallback));
+			}
+			throw e;
 		}
-
-		return true;
 	}
 
 	async function handleTest(
@@ -213,19 +208,14 @@
 	): Promise<boolean> {
 		testingIds.add(indexer.id);
 		try {
-			const response = await fetch('/api/indexers/test', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					indexerId: indexer.id,
-					name: indexer.name,
-					definitionId: indexer.definitionId,
-					baseUrl: indexer.baseUrl,
-					settings: indexer.settings
-				})
+			const result = await testIndexer({
+				indexerId: indexer.id,
+				name: indexer.name,
+				definitionId: indexer.definitionId,
+				baseUrl: indexer.baseUrl,
+				settings: indexer.settings
 			});
-			const result = await readResponsePayload<{ success?: boolean; error?: string }>(response);
-			if (!response.ok || !result || typeof result === 'string' || !result.success) {
+			if (!result || !result.success) {
 				if (notify) {
 					toasts.error(getResponseErrorMessage(result, 'Connection test failed'));
 				}
@@ -238,7 +228,13 @@
 			}
 		} catch (e) {
 			if (notify) {
-				toasts.error(e instanceof Error ? e.message : 'Connection test failed');
+				toasts.error(
+					e instanceof ApiError
+						? getResponseErrorMessage(e.response, 'Connection test failed')
+						: e instanceof Error
+							? e.message
+							: 'Connection test failed'
+				);
 			}
 			return false;
 		} finally {
@@ -253,28 +249,25 @@
 		formData: IndexerFormData
 	): Promise<{ success: boolean; error?: string }> {
 		try {
-			const response = await fetch('/api/indexers/test', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					indexerId: modalMode === 'edit' ? editingIndexer?.id : undefined,
-					name: formData.name,
-					definitionId: formData.definitionId,
-					baseUrl: formData.baseUrl,
-					protocol: formData.protocol,
-					settings: formData.settings
-				})
+			const result = await testIndexer({
+				indexerId: modalMode === 'edit' ? editingIndexer?.id : undefined,
+				name: formData.name,
+				definitionId: formData.definitionId,
+				baseUrl: formData.baseUrl,
+				protocol: formData.protocol,
+				settings: formData.settings
 			});
-			const result = await readResponsePayload<{ success?: boolean; error?: string }>(response);
-			if (!response.ok || !result || typeof result === 'string') {
-				return {
-					success: false,
-					error: getResponseErrorMessage(result, 'Connection test failed')
-				};
-			}
 			return { success: Boolean(result.success), error: result.error };
 		} catch (e) {
-			return { success: false, error: e instanceof Error ? e.message : 'Unknown error' };
+			return {
+				success: false,
+				error:
+					e instanceof ApiError
+						? getResponseErrorMessage(e.response, 'Connection test failed')
+						: e instanceof Error
+							? e.message
+							: 'Unknown error'
+			};
 		}
 	}
 
@@ -282,29 +275,10 @@
 		saving = true;
 		try {
 			const payload = buildIndexerPayload(formData);
-			const response =
-				modalMode === 'edit' && editingIndexer
-					? await fetch(`/api/indexers/${editingIndexer.id}`, {
-							method: 'PUT',
-							headers: {
-								'Content-Type': 'application/json',
-								Accept: 'application/json'
-							},
-							body: JSON.stringify(payload)
-						})
-					: await fetch('/api/indexers', {
-							method: 'POST',
-							headers: {
-								'Content-Type': 'application/json',
-								Accept: 'application/json'
-							},
-							body: JSON.stringify(payload)
-						});
-
-			if (!response.ok) {
-				const result = await readResponsePayload<Record<string, unknown>>(response);
-				toasts.error(getResponseErrorMessage(result, 'Failed to save indexer'));
-				return;
+			if (modalMode === 'edit' && editingIndexer) {
+				await updateIndexer(editingIndexer.id, payload);
+			} else {
+				await createIndexer(payload);
 			}
 
 			await invalidateAll();
@@ -315,7 +289,11 @@
 					: m.settings_integrations_indexers_created()
 			);
 		} catch (e) {
-			toasts.error(`Failed to save: ${e instanceof Error ? e.message : 'Unknown error'}`);
+			toasts.error(
+				e instanceof ApiError
+					? getResponseErrorMessage(e.response, 'Failed to save indexer')
+					: `Failed to save: ${e instanceof Error ? e.message : 'Unknown error'}`
+			);
 		} finally {
 			saving = false;
 		}
@@ -325,20 +303,17 @@
 		if (!editingIndexer) return;
 
 		try {
-			const response = await fetch(`/api/indexers/${editingIndexer.id}`, {
-				method: 'DELETE',
-				headers: { Accept: 'application/json' }
-			});
-
-			if (!response.ok) {
-				const result = await readResponsePayload<Record<string, unknown>>(response);
-				throw new Error(getResponseErrorMessage(result, 'Failed to delete indexer'));
-			}
-
+			await deleteIndexer(editingIndexer.id);
 			await invalidateAll();
 			closeModal();
 		} catch (e) {
-			toasts.error(e instanceof Error ? e.message : 'Failed to delete indexer');
+			toasts.error(
+				e instanceof ApiError
+					? getResponseErrorMessage(e.response, 'Failed to delete indexer')
+					: e instanceof Error
+						? e.message
+						: 'Failed to delete indexer'
+			);
 		}
 	}
 
@@ -346,21 +321,18 @@
 		if (!deleteTarget) return;
 
 		try {
-			const response = await fetch(`/api/indexers/${deleteTarget.id}`, {
-				method: 'DELETE',
-				headers: { Accept: 'application/json' }
-			});
-
-			if (!response.ok) {
-				const result = await readResponsePayload<Record<string, unknown>>(response);
-				throw new Error(getResponseErrorMessage(result, 'Failed to delete indexer'));
-			}
-
+			await deleteIndexer(deleteTarget.id);
 			await invalidateAll();
 			confirmDeleteOpen = false;
 			deleteTarget = null;
 		} catch (e) {
-			toasts.error(e instanceof Error ? e.message : 'Failed to delete indexer');
+			toasts.error(
+				e instanceof ApiError
+					? getResponseErrorMessage(e.response, 'Failed to delete indexer')
+					: e instanceof Error
+						? e.message
+						: 'Failed to delete indexer'
+			);
 		}
 	}
 
@@ -408,21 +380,19 @@
 		bulkLoading = true;
 		try {
 			for (const id of selectedIds) {
-				const response = await fetch(`/api/indexers/${id}`, {
-					method: 'DELETE',
-					headers: { Accept: 'application/json' }
-				});
-
-				if (!response.ok) {
-					const result = await readResponsePayload<Record<string, unknown>>(response);
-					throw new Error(getResponseErrorMessage(result, 'Failed to delete selected indexers'));
-				}
+				await deleteIndexer(id);
 			}
 			await invalidateAll();
 			selectedIds.clear();
 			confirmBulkDeleteOpen = false;
 		} catch (e) {
-			toasts.error(e instanceof Error ? e.message : 'Failed to delete selected indexers');
+			toasts.error(
+				e instanceof ApiError
+					? getResponseErrorMessage(e.response, 'Failed to delete selected indexers')
+					: e instanceof Error
+						? e.message
+						: 'Failed to delete selected indexers'
+			);
 		} finally {
 			bulkLoading = false;
 		}

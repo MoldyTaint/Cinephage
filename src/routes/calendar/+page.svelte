@@ -5,6 +5,7 @@
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
 	import type { CalendarDay } from '$lib/server/calendar/queries.js';
+	import { getCalendar } from '$lib/api';
 
 	let { data } = $props();
 
@@ -132,11 +133,10 @@
 		if (abortController) abortController.abort();
 		const controller = new AbortController();
 		abortController = controller;
-		fetch(`/api/calendar?month=${newMonth}`, { signal: controller.signal })
-			.then((r) => r.json())
-			.then((result: CalendarDay[]) => {
+		getCalendar(newMonth)
+			.then((result) => {
 				if (controller.signal.aborted) return;
-				days = result;
+				days = result as unknown as CalendarDay[];
 				loading = false;
 			})
 			.catch((err) => {
