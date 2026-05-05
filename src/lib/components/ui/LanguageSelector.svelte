@@ -3,6 +3,7 @@
 	import { setLocale, getLocale, locales, type Locale } from '$lib/paraglide/runtime.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import { updateUserLanguage } from '$lib/api/settings.js';
 
 	interface Props {
 		class?: string;
@@ -28,19 +29,8 @@
 		isOpen = false;
 
 		try {
-			// Step 1: Persist to user account via API (before reload can interrupt)
-			const response = await fetch('/api/user/language', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ language: locale })
-			});
+			await updateUserLanguage(locale);
 
-			if (!response.ok) {
-				// Non-fatal - language is still set in cookie
-				// Silently ignore persistence failures
-			}
-
-			// Step 2: Set the locale cookie WITHOUT triggering reload
 			setLocale(locale, { reload: false });
 			currentLocale = locale;
 

@@ -3,6 +3,7 @@
 	import { X, Search, Loader2, RefreshCw, Captions } from 'lucide-svelte';
 	import SubtitleSearchResultRow from './SubtitleSearchResultRow.svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
+	import { searchSubtitles, downloadSubtitle } from '$lib/api/subtitles.js';
 
 	interface SubtitleResult {
 		providerId: string;
@@ -136,17 +137,7 @@
 			if (movieId) body.movieId = movieId;
 			if (episodeId) body.episodeId = episodeId;
 
-			const response = await fetch('/api/subtitles/search', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(body)
-			});
-
-			const data: SearchResponse = await response.json();
-
-			if (!response.ok) {
-				throw new Error((data as unknown as { error: string }).error || 'Search failed');
-			}
+			const data = await searchSubtitles(body);
 
 			results = data.results || [];
 			searchMeta = {
@@ -178,17 +169,7 @@
 			if (movieId) body.movieId = movieId;
 			if (episodeId) body.episodeId = episodeId;
 
-			const response = await fetch('/api/subtitles/download', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(body)
-			});
-
-			const data = await response.json();
-
-			if (!response.ok) {
-				throw new Error(data.error || 'Download failed');
-			}
+			const data = await downloadSubtitle(body);
 
 			downloadedIds.add(key);
 			onDownloaded?.({

@@ -12,6 +12,7 @@
 	} from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import type { LibraryIssue, RootFolderOption } from '$lib/types/unmatched.js';
+	import { getUnmatchedIssues, updateMovie, updateSeries } from '$lib/api/library.js';
 
 	interface Props {
 		unmatchedFileCount?: number;
@@ -146,10 +147,9 @@
 	async function loadIssues(): Promise<void> {
 		loading = true;
 		try {
-			const response = await fetch('/api/library/unmatched/issues');
-			const result = await response.json();
+			const result = await getUnmatchedIssues();
 
-			if (response.ok && result.success) {
+			if (result.success) {
 				libraryItems = result.data.libraryItems ?? [];
 				rootFolders = result.data.rootFolders ?? [];
 				if ((result.data.total ?? 0) > 0) {
@@ -168,17 +168,16 @@
 	}
 
 	async function assignRootFolder(item: LibraryIssue, rootFolderId: string): Promise<boolean> {
-		const endpoint =
-			item.mediaType === 'movie'
-				? `/api/library/movies/${item.id}`
-				: `/api/library/series/${item.id}`;
-		const response = await fetch(endpoint, {
-			method: 'PATCH',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ rootFolderId })
-		});
-		const result = await response.json();
-		return response.ok && result.success !== false;
+		try {
+			if (item.mediaType === 'movie') {
+				await updateMovie(item.id, { rootFolderId });
+			} else {
+				await updateSeries(item.id, { rootFolderId });
+			}
+			return true;
+		} catch {
+			return false;
+		}
 	}
 
 	async function updateRootFolder(item: LibraryIssue): Promise<void> {

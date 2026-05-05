@@ -9,6 +9,8 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { formatBytes } from '$lib/utils/format.js';
 	import type { RootFolderWithSpace as RootFolder } from '$lib/types/downloadClient.js';
+	import { getLibraryClassificationSettings } from '$lib/api/settings.js';
+	import { getTmdb } from '$lib/api/discover.js';
 
 	interface QualityProfileOption {
 		id: string;
@@ -77,32 +79,27 @@
 
 	async function loadAnimeRoutingContext(tmdbId: number) {
 		try {
-			const [classificationRes, movieRes] = await Promise.all([
-				fetch('/api/settings/library/classification'),
-				fetch(`/api/tmdb/movie/${tmdbId}`)
+			const [classificationData, details] = await Promise.all([
+				getLibraryClassificationSettings(),
+				getTmdb(`movie/${tmdbId}`)
 			]);
 
 			let nextEnforceAnimeSubtype = false;
 			let nextDetectedAnime = false;
 
-			if (classificationRes.ok) {
-				const classificationData = await classificationRes.json();
-				nextEnforceAnimeSubtype = classificationData?.enforceAnimeSubtype === true;
-			}
+			nextEnforceAnimeSubtype = classificationData?.enforceAnimeSubtype === true;
 
-			if (movieRes.ok) {
-				const details: TmdbMovieDetails = await movieRes.json();
-				nextDetectedAnime = isLikelyAnimeMedia({
-					genres: details.genres,
-					originalLanguage: details.original_language,
-					productionCountries: details.production_countries,
-					originCountries: details.production_countries
-						?.map((country) => country.iso_3166_1)
-						.filter((country): country is string => Boolean(country)),
-					title: details.title,
-					originalTitle: details.original_title
-				});
-			}
+			const movieDetails = details as TmdbMovieDetails;
+			nextDetectedAnime = isLikelyAnimeMedia({
+				genres: movieDetails.genres,
+				originalLanguage: movieDetails.original_language,
+				productionCountries: movieDetails.production_countries,
+				originCountries: movieDetails.production_countries
+					?.map((country) => country.iso_3166_1)
+					.filter((country): country is string => Boolean(country)),
+				title: movieDetails.title,
+				originalTitle: movieDetails.original_title
+			});
 
 			// Apply detection before enabling enforcement to avoid transient standard-folder re-selection.
 			detectedAnime = nextDetectedAnime;

@@ -80,6 +80,18 @@ export async function restoreLineupBackup(lineupId: string, backupId: string) {
 	return apiPost(`/api/livetv/lineup/${lineupId}/backups/${backupId}`);
 }
 
+export async function deleteLineupBackup(lineupId: string, backupId: string) {
+	return apiDelete(`/api/livetv/lineup/${lineupId}/backups/${backupId}`);
+}
+
+export async function reorderLineupBackups(lineupId: string, backupIds: string[]) {
+	return apiPut(`/api/livetv/lineup/${lineupId}/backups/reorder`, { backupIds });
+}
+
+export async function addLineupBackup(lineupId: string, payload: Record<string, unknown>) {
+	return apiPost(`/api/livetv/lineup/${lineupId}/backups`, payload);
+}
+
 export async function getAccounts() {
 	return apiGet('/api/livetv/accounts');
 }
@@ -148,8 +160,8 @@ export async function deletePortal(id: string) {
 	return apiDelete(`/api/livetv/portals/${id}`);
 }
 
-export async function scanPortal(id: string) {
-	return apiPost(`/api/livetv/portals/${id}/scan`);
+export async function scanPortal(id: string, payload?: Record<string, unknown>) {
+	return apiPost(`/api/livetv/portals/${id}/scan`, payload);
 }
 
 export async function getPortalScanHistory(id: string) {

@@ -96,6 +96,14 @@ export async function getRenamePreview(mediaType?: string) {
 	return apiGet('/api/rename/preview', params);
 }
 
+export async function getMovieRenamePreview(movieId: string) {
+	return apiGet(`/api/rename/preview/movie/${movieId}`);
+}
+
+export async function getSeriesRenamePreview(seriesId: string) {
+	return apiGet(`/api/rename/preview/series/${seriesId}`);
+}
+
 export async function executeRename(fileIds: string[], mediaType?: string) {
 	return apiPost('/api/rename/execute', { fileIds, mediaType });
 }

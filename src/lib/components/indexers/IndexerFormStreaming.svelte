@@ -4,6 +4,7 @@
 	import type { IndexerDefinition } from '$lib/types/indexer';
 	import * as m from '$lib/paraglide/messages.js';
 	import { SectionHeader, ToggleSetting } from '$lib/components/ui/modal';
+	import { getGithubRelease } from '$lib/api/settings.js';
 
 	interface Props {
 		definition: IndexerDefinition;
@@ -61,14 +62,7 @@
 		autofillLoading = true;
 		autofillError = '';
 		try {
-			const res = await fetch('/api/system/github-release');
-			if (!res.ok) throw new Error('Failed to fetch release');
-			const data = (await res.json()) as {
-				success?: boolean;
-				version?: string;
-				commit?: string;
-				error?: string;
-			};
+			const data = await getGithubRelease();
 			if (!data.success || !data.version || !data.commit) {
 				throw new Error(data.error ?? 'Invalid response');
 			}

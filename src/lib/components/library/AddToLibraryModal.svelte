@@ -3,7 +3,6 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
-	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';
 	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
 	import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 	import type { RootFolderWithSpaceAndDefault as RootFolder } from '$lib/types/downloadClient.js';
@@ -11,6 +10,14 @@
 	import type { MonitorType, MonitorNewItems, SeriesType } from './add/SeriesAddOptions.svelte';
 	import AddMovieForm from './AddMovieForm.svelte';
 	import AddSeriesForm from './AddSeriesForm.svelte';
+	import {
+		getRootFolders,
+		getLibraries,
+		getScoringProfiles,
+		getLibraryClassificationSettings
+	} from '$lib/api/settings.js';
+	import { getLibraryStatus, createMovie, createSeries, bulkAddMovies } from '$lib/api/library.js';
+	import { getTmdb } from '$lib/api/discover.js';
 
 	interface Props {
 		open: boolean;
@@ -319,53 +326,36 @@
 		error = null;
 
 		try {
-			const requests: Promise<Response>[] = [
-				fetch('/api/root-folders'),
-				fetch(`/api/libraries?mediaType=${mediaType}`),
-				fetch('/api/scoring-profiles'),
-				fetch('/api/settings/library/classification')
-			];
+			const tmdbPromise = mediaType === 'tv' ? getTmdb(`tv/${tmdbId}`) : getTmdb(`movie/${tmdbId}`);
 
-			if (mediaType === 'tv') {
-				requests.push(fetch(`/api/tmdb/tv/${tmdbId}`));
-			} else {
-				requests.push(fetch(`/api/tmdb/movie/${tmdbId}`));
-			}
-
-			const responses = await Promise.all(requests);
-			const [foldersRes, librariesRes, profilesRes, classificationRes] = responses;
-
-			if (!foldersRes.ok || !librariesRes.ok || !profilesRes.ok || !classificationRes.ok) {
-				throw new Error('Failed to load configuration');
-			}
-
-			const foldersData = await foldersRes.json();
-			const librariesData = await librariesRes.json();
-			const profilesData = await profilesRes.json();
-			const classificationData = await classificationRes.json();
+			const [foldersData, librariesData, profilesData, classificationData, tmdbRes] =
+				await Promise.all([
+					getRootFolders(),
+					getLibraries({ mediaType }),
+					getScoringProfiles(),
+					getLibraryClassificationSettings(),
+					tmdbPromise
+				]);
 
 			rootFolders = Array.isArray(foldersData) ? foldersData : (foldersData.folders ?? []);
 			libraries = librariesData.libraries ?? [];
 			scoringProfiles = profilesData.profiles ?? [];
 			enforceAnimeSubtype = classificationData?.enforceAnimeSubtype === true;
 
-			if (mediaType === 'tv' && responses[4]) {
-				const tvRes = responses[4];
-				if (tvRes.ok) {
-					const tvData: TmdbTvDetails = await tvRes.json();
-					seasons = tvData.seasons?.filter((s: Season) => s.episode_count > 0) ?? [];
-					monitoredSeasons.clear();
-					for (const s of seasons) {
-						monitoredSeasons.add(s.season_number);
-					}
-					updateAnimeDetectionFromSeries(tvData);
+			if (mediaType === 'tv' && tmdbRes) {
+				const tvData = tmdbRes as TmdbTvDetails;
+				seasons = tvData.seasons?.filter((s: Season) => s.episode_count > 0) ?? [];
+				monitoredSeasons.clear();
+				for (const s of seasons) {
+					monitoredSeasons.add(s.season_number);
 				}
+				updateAnimeDetectionFromSeries(tvData);
 			}
 
 			if (mediaType === 'movie') {
-				const movieRes = responses[4];
-				if (movieRes?.ok) {
-					const movieData: TmdbMovieDetails = await movieRes.json();
+				const movieRes = tmdbRes;
+				if (movieRes) {
+					const movieData = movieRes as TmdbMovieDetails;
 					updateAnimeDetectionFromMovie(movieData);
 					fetchCollectionData();
 				} else {
@@ -392,33 +382,19 @@
 
 	async function fetchCollectionData() {
 		try {
-			let movieData: TmdbMovieDetails;
-			const movieRes = await fetch(`/api/tmdb/movie/${tmdbId}`);
-			if (!movieRes.ok) return;
-
-			movieData = await movieRes.json();
+			const movieData = (await getTmdb(`movie/${tmdbId}`)) as TmdbMovieDetails;
 			if (!movieData.belongs_to_collection) return;
 
-			const collectionRes = await fetch(
-				`/api/tmdb/collection/${movieData.belongs_to_collection.id}`
-			);
-			if (!collectionRes.ok) return;
-
-			const collectionData = await collectionRes.json();
+			const collectionData = (await getTmdb(
+				`collection/${movieData.belongs_to_collection.id}`
+			)) as { id: number; name: string; parts: CollectionPart[] };
 			if (!collectionData.parts || collectionData.parts.length <= 1) return;
 
 			const tmdbIds = collectionData.parts.map((p: CollectionPart) => p.id);
-			const statusRes = await fetch('/api/library/status', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ tmdbIds, mediaType: 'movie' })
-			});
+			const statusData = await getLibraryStatus({ tmdbIds, mediaType: 'movie' });
 
 			let statusMap: Record<number, { inLibrary: boolean }> = {};
-			if (statusRes.ok) {
-				const statusData = await statusRes.json();
-				statusMap = statusData.status ?? {};
-			}
+			statusMap = statusData.status ?? {};
 
 			collection = {
 				id: collectionData.id,
@@ -448,8 +424,6 @@
 				return;
 			}
 
-			const endpoint = mediaType === 'movie' ? '/api/library/movies' : '/api/library/series';
-
 			const payload: Record<string, unknown> = {
 				tmdbId,
 				rootFolderId: selectedRootFolder,
@@ -470,18 +444,8 @@
 				payload.monitoredSeasons = Array.from(monitoredSeasons);
 			}
 
-			const response = await fetch(endpoint, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(payload)
-			});
-
-			if (!response.ok) {
-				const payload = await readResponsePayload(response);
-				throw new Error(getResponseErrorMessage(payload, `Failed to add ${mediaType}`));
-			}
-
-			const result = await response.json();
+			const result =
+				mediaType === 'movie' ? await createMovie(payload) : await createSeries(payload);
 
 			toasts.success(`${title} added to library`, {
 				description: willSearchOnAdd ? 'Searching for releases...' : undefined,
@@ -519,18 +483,7 @@
 				wantsSubtitles
 			};
 
-			const response = await fetch('/api/library/movies/bulk', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(payload)
-			});
-
-			if (!response.ok) {
-				const payload = await readResponsePayload(response);
-				throw new Error(getResponseErrorMessage(payload, 'Failed to add collection'));
-			}
-
-			const result = await response.json();
+			const result = await bulkAddMovies(payload);
 
 			const addedCount = result.added ?? 0;
 			const errorCount = result.errors?.length ?? 0;

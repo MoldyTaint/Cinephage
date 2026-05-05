@@ -2,6 +2,7 @@
 	import { Globe, X, Loader2, Search } from 'lucide-svelte';
 	import { onMount } from 'svelte';
 	import { SectionHeader } from '$lib/components/ui/modal';
+	import { getCinephageIptvCountries } from '$lib/api/livetv.js';
 
 	interface Country {
 		code: string;
@@ -52,8 +53,7 @@
 
 	onMount(async () => {
 		try {
-			const response = await fetch('/api/livetv/cinephage-iptv/countries');
-			const result = await response.json();
+			const result = await getCinephageIptvCountries();
 
 			if (!result.success) {
 				throw new Error(result.error || 'Failed to load countries');

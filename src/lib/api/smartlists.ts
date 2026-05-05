@@ -44,8 +44,8 @@ export async function testExternalList(payload: Record<string, unknown>) {
 	return apiPost('/api/smartlists/external/test', payload);
 }
 
-export async function getSmartListHelpers() {
-	return apiGet('/api/smartlists/helpers');
+export async function getSmartListHelpers(params?: Record<string, string>) {
+	return apiGet('/api/smartlists/helpers', params);
 }
 
 export async function addSmartListItems(listId: string, payload: Record<string, unknown>) {

@@ -1,13 +1,5 @@
 <script lang="ts">
-	import {
-		AlertCircle,
-		Archive,
-		Link,
-		Loader2,
-		Search,
-		Tv,
-		X
-	} from 'lucide-svelte';
+	import { AlertCircle, Archive, Link, Loader2, Search, Tv, X } from 'lucide-svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import { normalizeLiveTvChannelName } from '$lib/livetv/channel-name-normalizer';
 	import { copyToClipboard as copyTextToClipboard } from '$lib/utils/clipboard';

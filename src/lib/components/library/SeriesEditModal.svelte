@@ -8,6 +8,8 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { formatBytes } from '$lib/utils/format.js';
 	import type { RootFolderWithSpace as RootFolder } from '$lib/types/downloadClient.js';
+	import { getLibraryClassificationSettings } from '$lib/api/settings.js';
+	import { getTmdb } from '$lib/api/discover.js';
 
 	interface SeriesData {
 		tmdbId: number;
@@ -92,30 +94,25 @@
 
 	async function loadAnimeRoutingContext(tmdbId: number) {
 		try {
-			const [classificationRes, tvRes] = await Promise.all([
-				fetch('/api/settings/library/classification'),
-				fetch(`/api/tmdb/tv/${tmdbId}`)
+			const [classificationData, details] = await Promise.all([
+				getLibraryClassificationSettings(),
+				getTmdb(`tv/${tmdbId}`)
 			]);
 
 			let nextEnforceAnimeSubtype = false;
 			let nextDetectedAnime = false;
 
-			if (classificationRes.ok) {
-				const classificationData = await classificationRes.json();
-				nextEnforceAnimeSubtype = classificationData?.enforceAnimeSubtype === true;
-			}
+			nextEnforceAnimeSubtype = classificationData?.enforceAnimeSubtype === true;
 
-			if (tvRes.ok) {
-				const details: TmdbTvDetails = await tvRes.json();
-				nextDetectedAnime = isLikelyAnimeMedia({
-					genres: details.genres,
-					originalLanguage: details.original_language,
-					originCountries: details.origin_country,
-					productionCountries: details.production_countries,
-					title: details.name,
-					originalTitle: details.original_name
-				});
-			}
+			const tvDetails = details as TmdbTvDetails;
+			nextDetectedAnime = isLikelyAnimeMedia({
+				genres: tvDetails.genres,
+				originalLanguage: tvDetails.original_language,
+				originCountries: tvDetails.origin_country,
+				productionCountries: tvDetails.production_countries,
+				title: tvDetails.name,
+				originalTitle: tvDetails.original_name
+			});
 
 			// Apply detection before enabling enforcement to avoid transient standard-folder re-selection.
 			detectedAnime = nextDetectedAnime;

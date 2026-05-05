@@ -5,6 +5,11 @@
 	import type { RenamePreviewResult } from '$lib/server/library/naming/RenamePreviewService';
 	import { createFocusTrap, lockBodyScroll } from '$lib/utils/focus';
 	import { mediaTypeLabel, type MediaType } from '$lib/utils/media-type';
+	import {
+		getMovieRenamePreview,
+		getSeriesRenamePreview,
+		executeRename
+	} from '$lib/api/settings.js';
 
 	interface Props {
 		open: boolean;
@@ -47,19 +52,10 @@
 		error = null;
 
 		try {
-			const endpoint =
+			const preview =
 				mediaType === 'movie'
-					? `/api/rename/preview/movie/${mediaId}`
-					: `/api/rename/preview/series/${mediaId}`; // rename API uses 'series' not 'tv'
-
-			const response = await fetch(endpoint);
-
-			if (!response.ok) {
-				const result = await response.json();
-				throw new Error(result.error || m.library_renamePreview_failedToLoad());
-			}
-
-			preview = await response.json();
+					? await getMovieRenamePreview(mediaId)
+					: await getSeriesRenamePreview(mediaId);
 
 			// Auto-select all "will change" items
 			selectedIds.clear();
@@ -81,21 +77,10 @@
 		success = null;
 
 		try {
-			const response = await fetch('/api/rename/execute', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					fileIds: Array.from(selectedIds),
-					mediaType: mediaType === 'movie' ? 'movie' : 'episode' // rename API expects 'episode' for TV
-				})
-			});
-
-			if (!response.ok) {
-				const result = await response.json();
-				throw new Error(result.error || m.library_renamePreview_failedToExecute());
-			}
-
-			const result = await response.json();
+			const result = await executeRename(
+				Array.from(selectedIds),
+				mediaType === 'movie' ? 'movie' : 'episode'
+			);
 
 			if (result.succeeded > 0) {
 				success = m.library_renamePreview_renamedCount({ count: result.succeeded });

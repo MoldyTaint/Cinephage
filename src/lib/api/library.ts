@@ -138,3 +138,23 @@ export async function deleteSeries(
 export async function refreshSeries(seriesId: string) {
 	return apiPost(`/api/library/series/${seriesId}/refresh`);
 }
+
+export async function createMovie(payload: Record<string, unknown>) {
+	return apiPost('/api/library/movies', payload);
+}
+
+export async function createSeries(payload: Record<string, unknown>) {
+	return apiPost('/api/library/series', payload);
+}
+
+export async function bulkAddMovies(payload: Record<string, unknown>) {
+	return apiPost('/api/library/movies/bulk', payload);
+}
+
+export async function getUnmatchedIssues() {
+	return apiGet('/api/library/unmatched/issues');
+}
+
+export async function batchUnmatchedMatch(payload: Record<string, unknown>) {
+	return apiPost('/api/library/unmatched/match', payload);
+}

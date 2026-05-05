@@ -16,7 +16,7 @@ import {
 	rootFolders,
 	series
 } from '$lib/server/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import type { SubtitleFormat, LanguageCode } from '../types';
 import { randomUUID } from 'node:crypto';
 import { getSubtitleSettingsService } from './SubtitleSettingsService';
@@ -409,14 +409,14 @@ class SubtitleScannerService {
 			const discovered = await this.discoverSubtitles(moviePath, moviePath);
 			result.discovered = discovered.length;
 
+			const existingSubtitles = await db.query.subtitles.findMany({
+				where: eq(subtitles.movieId, movieId)
+			});
+			const existingPaths = new Set(existingSubtitles.map((s) => s.relativePath));
+
 			for (const sub of discovered) {
 				try {
-					// Check if already registered
-					const existing = await db.query.subtitles.findFirst({
-						where: and(eq(subtitles.movieId, movieId), eq(subtitles.relativePath, sub.relativePath))
-					});
-
-					if (existing) {
+					if (existingPaths.has(sub.relativePath)) {
 						result.skipped++;
 						continue;
 					}
@@ -497,6 +497,19 @@ class SubtitleScannerService {
 				.from(episodeFiles)
 				.where(eq(episodeFiles.seriesId, seriesId));
 
+			// Collect all unique episode IDs and batch-fetch existing subtitles
+			const allEpisodeIds = [
+				...new Set(epFiles.flatMap((ef) => ef.episodeIds ?? []))
+			];
+			const existingSubtitles = allEpisodeIds.length > 0
+				? await db.query.subtitles.findMany({
+						where: inArray(subtitles.episodeId, allEpisodeIds)
+					})
+				: [];
+			const existingKeys = new Set(
+				existingSubtitles.map((s) => `${s.episodeId}::${s.relativePath}`)
+			);
+
 			for (const sub of discovered) {
 				try {
 					// Try to match to an episode based on path proximity
@@ -535,15 +548,7 @@ class SubtitleScannerService {
 						continue;
 					}
 
-					// Check if already registered
-					const existing = await db.query.subtitles.findFirst({
-						where: and(
-							eq(subtitles.episodeId, matchedEpisodeId),
-							eq(subtitles.relativePath, sub.relativePath)
-						)
-					});
-
-					if (existing) {
+					if (existingKeys.has(`${matchedEpisodeId}::${sub.relativePath}`)) {
 						result.skipped++;
 						continue;
 					}

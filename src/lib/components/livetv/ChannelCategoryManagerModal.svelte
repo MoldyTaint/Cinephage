@@ -5,6 +5,12 @@
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import {
+		updateChannelCategory,
+		deleteChannelCategory,
+		createChannelCategory,
+		reorderChannelCategories
+	} from '$lib/api/livetv.js';
 
 	interface Props {
 		open: boolean;
@@ -89,18 +95,10 @@
 
 		savingId = editingId;
 		try {
-			const response = await fetch(`/api/livetv/channel-categories/${editingId}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					name: editingName.trim(),
-					color: editingColor || null
-				})
+			await updateChannelCategory(editingId, {
+				name: editingName.trim(),
+				color: editingColor || null
 			});
-
-			if (!response.ok) {
-				throw new Error('Failed to update category');
-			}
 
 			onChange();
 			cancelEdit();
@@ -141,13 +139,7 @@
 
 		deletingId = categoryToDelete.id;
 		try {
-			const response = await fetch(`/api/livetv/channel-categories/${categoryToDelete.id}`, {
-				method: 'DELETE'
-			});
-
-			if (!response.ok) {
-				throw new Error('Failed to delete category');
-			}
+			await deleteChannelCategory(categoryToDelete.id);
 
 			onChange();
 			closeDeleteConfirm(true);
@@ -166,18 +158,10 @@
 
 		isAdding = true;
 		try {
-			const response = await fetch('/api/livetv/channel-categories', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					name: newName.trim(),
-					color: newColor || null
-				})
+			await createChannelCategory({
+				name: newName.trim(),
+				color: newColor || null
 			});
-
-			if (!response.ok) {
-				throw new Error('Failed to create category');
-			}
 
 			onChange();
 			newName = '';
@@ -224,20 +208,9 @@
 
 		resetDragState();
 
-		// Save to server
 		reordering = true;
 		try {
-			const response = await fetch('/api/livetv/channel-categories/reorder', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					categoryIds: newOrder.map((c) => c.id)
-				})
-			});
-
-			if (!response.ok) {
-				throw new Error('Failed to reorder categories');
-			}
+			await reorderChannelCategories(newOrder.map((c) => c.id));
 
 			onChange();
 		} catch (e) {

@@ -5,6 +5,8 @@
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
 	import { getFileName } from '$lib/utils/format.js';
+	import { batchUnmatchedMatch } from '$lib/api/library.js';
+	import { searchTmdb } from '$lib/api/discover.js';
 
 	import type { UnmatchedFolder } from '$lib/types/unmatched.js';
 
@@ -67,10 +69,10 @@
 
 		isSearching = true;
 		try {
-			const response = await fetch(
-				`/api/discover/search?query=${encodeURIComponent(searchQuery)}&type=${searchType}`
-			);
-			const data = await response.json();
+			const data = await searchTmdb({
+				query: searchQuery,
+				type: searchType
+			});
 			searchResults = data.results || [];
 		} catch {
 			toasts.error(m.library_matchFolder_searchFailed());
@@ -101,16 +103,11 @@
 			// Get all file IDs from the folder
 			const fileIds = folder.files.map((f) => f.id);
 
-			const response = await fetch('/api/library/unmatched/match', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					fileIds,
-					tmdbId: selectedMedia.id,
-					mediaType: searchType
-				})
+			const result = await batchUnmatchedMatch({
+				fileIds,
+				tmdbId: selectedMedia.id,
+				mediaType: searchType
 			});
-			const result = await response.json();
 
 			if (result.success) {
 				toasts.success(

@@ -2,6 +2,12 @@
 	import { X, Loader2, Search, ChevronRight, ChevronLeft, Radio } from 'lucide-svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import {
+		getPortals,
+		detectPortal as detectPortalApi,
+		createPortal,
+		scanPortal as scanPortalApi
+	} from '$lib/api/livetv.js';
 
 	interface StalkerPortal {
 		id: string;
@@ -122,9 +128,7 @@
 		portalError = null;
 
 		try {
-			const response = await fetch('/api/livetv/portals');
-			if (!response.ok) throw new Error(m.livetv_portalScanModal_failedToLoadPortals());
-			const result = await response.json();
+			const result = await getPortals();
 			if (!result.success)
 				throw new Error(result.error || m.livetv_portalScanModal_failedToLoadPortals());
 			portals = result.portals || [];
@@ -142,19 +146,8 @@
 		portalError = null;
 
 		try {
-			const response = await fetch('/api/livetv/portals/detect', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ url: newPortalUrl.trim() })
-			});
+			await detectPortalApi(newPortalUrl.trim());
 
-			if (!response.ok) {
-				const data = await response.json();
-				throw new Error(data.error || m.livetv_portalScanModal_failedToDetectPortal());
-			}
-
-			await response.json();
-			// Auto-generate name from URL if not set
 			if (!newPortalName.trim()) {
 				try {
 					const url = new URL(newPortalUrl);
@@ -199,23 +192,12 @@
 		try {
 			let portalId = selectedPortalId;
 
-			// Create new portal if needed
 			if (!portalId && newPortalUrl.trim()) {
-				const createResponse = await fetch('/api/livetv/portals', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						name: newPortalName.trim(),
-						url: newPortalUrl.trim()
-					})
+				const newPortal = await createPortal({
+					name: newPortalName.trim(),
+					url: newPortalUrl.trim()
 				});
 
-				if (!createResponse.ok) {
-					const data = await createResponse.json();
-					throw new Error(data.error || m.livetv_portalScanModal_failedToCreatePortal());
-				}
-
-				const newPortal = await createResponse.json();
 				portalId = newPortal.id;
 			}
 
@@ -223,7 +205,6 @@
 				throw new Error('No portal selected');
 			}
 
-			// Build scan request - use 'type' to match API schema
 			const scanRequest: Record<string, unknown> = {
 				type: scanType,
 				rateLimit
@@ -242,19 +223,7 @@
 					.filter((m) => m.length > 0);
 			}
 
-			// Start the scan
-			const scanResponse = await fetch(`/api/livetv/portals/${portalId}/scan`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(scanRequest)
-			});
-
-			if (!scanResponse.ok) {
-				const data = await scanResponse.json();
-				throw new Error(data.error || m.livetv_portalScanModal_failedToStartScan());
-			}
-
-			const scanData = await scanResponse.json();
+			const scanData = await scanPortalApi(portalId, scanRequest);
 			onScanStarted(scanData.workerId, portalId);
 		} catch (e) {
 			scanError = e instanceof Error ? e.message : m.livetv_portalScanModal_failedToStartScan();

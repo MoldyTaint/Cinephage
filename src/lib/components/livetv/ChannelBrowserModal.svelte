@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { X } from 'lucide-svelte';
 	import type { LiveTvAccount, LiveTvCategory, CachedChannel } from '$lib/types/livetv';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
@@ -8,7 +8,15 @@
 	import ChannelBrowserFilters from './ChannelBrowserFilters.svelte';
 	import ChannelBrowserActions from './ChannelBrowserActions.svelte';
 	import ChannelBrowserList from './ChannelBrowserList.svelte';
-	import ChannelBrowserPagination from './ChannelBrowserPagination.svelte';
+	import {
+		getAccounts,
+		getCategories,
+		getChannels,
+		addToLineup,
+		getChannelCategories,
+		createChannelCategory,
+		addLineupBackup
+	} from '$lib/api/livetv.js';
 
 	type BrowserMode = 'add-to-lineup' | 'select-backup';
 
@@ -157,11 +165,8 @@
 
 	async function loadAccounts() {
 		try {
-			const response = await fetch('/api/livetv/accounts');
-			if (response.ok) {
-				const result = await response.json();
-				accounts = result.accounts?.filter((a: LiveTvAccount) => a.enabled) || [];
-			}
+			const result = await getAccounts();
+			accounts = result.accounts?.filter((a: LiveTvAccount) => a.enabled) || [];
 		} catch (e) {
 			toasts.error(m.livetv_channelBrowserModal_failedToLoadAccounts(), {
 				description:
@@ -172,12 +177,9 @@
 
 	async function loadCategories(accountId: string) {
 		try {
-			const response = await fetch(`/api/livetv/categories?accountId=${accountId}`);
-			if (response.ok) {
-				const data = await response.json();
-				categories = data.categories || [];
-				selectedCategoryId = '';
-			}
+			const data = await getCategories({ accountId });
+			categories = data.categories || [];
+			selectedCategoryId = '';
 		} catch (e) {
 			toasts.error(m.livetv_channelBrowserModal_failedToLoadCategories(), {
 				description:
@@ -191,25 +193,22 @@
 		loading = true;
 		error = null;
 
-		const params = new SvelteURLSearchParams();
-		params.set('page', String(page));
-		params.set('pageSize', String(pageSize));
+		const params: Record<string, string> = {};
+		params.page = String(page);
+		params.pageSize = String(pageSize);
 
 		if (selectedAccountId) {
-			params.set('accountIds', selectedAccountId);
+			params.accountIds = selectedAccountId;
 		}
 		if (selectedCategoryId) {
-			params.set('categoryIds', selectedCategoryId);
+			params.categoryIds = selectedCategoryId;
 		}
 		if (debouncedSearch) {
-			params.set('search', debouncedSearch);
+			params.search = debouncedSearch;
 		}
 
 		try {
-			const response = await fetch(`/api/livetv/channels?${params}`);
-			if (!response.ok) throw new Error(m.livetv_channelBrowserModal_failedToLoadChannels());
-
-			const result = await response.json();
+			const result = await getChannels(params);
 			if (!result.success)
 				throw new Error(result.error || m.livetv_channelBrowserModal_failedToLoadChannels());
 			channels = result.channels || [];
@@ -255,15 +254,7 @@
 		addingIds.add(channel.id);
 
 		try {
-			const response = await fetch('/api/livetv/lineup', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					channels: [{ accountId: channel.accountId, channelId: channel.id }]
-				})
-			});
-
-			if (!response.ok) throw new Error(m.livetv_channelBrowserModal_failedToAddChannel());
+			await addToLineup([{ accountId: channel.accountId, channelId: channel.id }]);
 
 			localLineupIds.add(channel.id);
 
@@ -292,13 +283,7 @@
 			.map((c) => ({ accountId: c.accountId, channelId: c.id }));
 
 		try {
-			const response = await fetch('/api/livetv/lineup', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ channels: channelsToAdd })
-			});
-
-			if (!response.ok) throw new Error(m.livetv_channelBrowserModal_failedToAddChannels());
+			await addToLineup(channelsToAdd);
 
 			for (const id of selectedIds) {
 				localLineupIds.add(id);
@@ -324,18 +309,14 @@
 		const fetchPageSize = 500;
 
 		while (hasMore) {
-			const params = new SvelteURLSearchParams();
-			params.set('page', String(currentPage));
-			params.set('pageSize', String(fetchPageSize));
-			params.set('accountIds', selectedAccountId);
-			params.set('categoryIds', selectedCategoryId);
+			const params: Record<string, string> = {
+				page: String(currentPage),
+				pageSize: String(fetchPageSize),
+				accountIds: selectedAccountId,
+				categoryIds: selectedCategoryId
+			};
 
-			const response = await fetch(`/api/livetv/channels?${params.toString()}`);
-			if (!response.ok) {
-				throw new Error(m.livetv_channelBrowserModal_failedToLoadChannels());
-			}
-
-			const result = await response.json();
+			const result = await getChannels(params);
 			if (!result.success) {
 				throw new Error(result.error || m.livetv_channelBrowserModal_failedToLoadChannels());
 			}
@@ -357,12 +338,7 @@
 			throw new Error('Selected category has no name');
 		}
 
-		const existingResponse = await fetch('/api/livetv/channel-categories');
-		if (!existingResponse.ok) {
-			throw new Error(m.livetv_channelBrowserModal_failedToLoadCategories());
-		}
-
-		const existingData = await existingResponse.json();
+		const existingData = await getChannelCategories();
 		const existingCategories = (existingData.categories ?? []) as Array<{
 			id: string;
 			name: string;
@@ -374,18 +350,7 @@
 			return existing.id;
 		}
 
-		const createResponse = await fetch('/api/livetv/channel-categories', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ name: normalizedName })
-		});
-
-		if (!createResponse.ok) {
-			const data = await createResponse.json().catch(() => ({}));
-			throw new Error(data.error || m.livetv_channelBrowserModal_failedToCreate());
-		}
-
-		const createData = await createResponse.json();
+		const createData = await createChannelCategory({ name: normalizedName });
 		const categoryId = createData.category?.id as string | undefined;
 		if (!categoryId) {
 			throw new Error(m.livetv_channelBrowserModal_failedToCreate());
@@ -412,22 +377,13 @@
 				return;
 			}
 
-			const response = await fetch('/api/livetv/lineup', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					channels: categoryChannels.map((channel) => ({
-						accountId: channel.accountId,
-						channelId: channel.id,
-						categoryId: lineupCategoryId
-					}))
-				})
-			});
-
-			if (!response.ok) {
-				const data = await response.json().catch(() => ({}));
-				throw new Error(data.error || m.livetv_channelBrowserModal_failedToAddCategory());
-			}
+			await addToLineup(
+				categoryChannels.map((channel) => ({
+					accountId: channel.accountId,
+					channelId: channel.id,
+					categoryId: lineupCategoryId
+				}))
+			);
 
 			for (const channel of categoryChannels) {
 				localLineupIds.add(channel.id);
@@ -449,19 +405,10 @@
 
 		addingBackup = true;
 		try {
-			const response = await fetch(`/api/livetv/lineup/${lineupItemId}/backups`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					accountId: channel.accountId,
-					channelId: channel.id
-				})
+			await addLineupBackup(lineupItemId, {
+				accountId: channel.accountId,
+				channelId: channel.id
 			});
-
-			if (!response.ok) {
-				const data = await response.json().catch(() => ({}));
-				throw new Error(data.error || m.livetv_channelBrowserModal_failedToAddBackup());
-			}
 
 			onBackupSelected(channel.accountId, channel.id);
 			onClose();

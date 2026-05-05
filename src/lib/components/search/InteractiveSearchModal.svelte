@@ -1,11 +1,13 @@
 <script lang="ts">
-	import { SvelteSet, SvelteMap, SvelteURLSearchParams } from 'svelte/reactivity';
+	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import type { ScoreComponents } from '$lib/server/quality/types.js';
 	import SearchHeader from './SearchHeader.svelte';
 	import SearchStats from './SearchStats.svelte';
 	import SearchFilters from './SearchFilters.svelte';
 	import SearchResultsList from './SearchResultsList.svelte';
+	import { getUsenetServers } from '$lib/api/usenet.js';
+	import { searchReleases } from '$lib/api/indexers.js';
 
 	interface Release {
 		guid: string;
@@ -198,14 +200,7 @@
 	async function loadUsenetStreamingAvailability() {
 		try {
 			usenetStreamingState = 'unknown';
-			const response = await fetch('/api/usenet/servers');
-
-			if (!response.ok) {
-				usenetStreamingState = 'unavailable';
-				return;
-			}
-
-			const servers = (await response.json()) as NntpServerStatus[];
+			const servers = await getUsenetServers();
 
 			if (servers.length === 0) {
 				usenetStreamingState = 'noConfiguredServers';
@@ -418,30 +413,25 @@
 		searchError = null;
 
 		try {
-			const params = new SvelteURLSearchParams({
+			const params: Record<string, string> = {
 				searchType: mediaType,
 				enrich: 'true',
 				filterRejected: 'false'
-			});
+			};
 
-			if (searchMode) params.set('searchMode', searchMode);
+			if (searchMode) params.searchMode = searchMode;
 
-			if (tmdbId) params.set('tmdbId', tmdbId.toString());
-			if (imdbId) params.set('imdbId', imdbId);
-			if (tvdbId) params.set('tvdbId', tvdbId.toString());
-			if (year) params.set('year', year.toString());
-			if (scoringProfileId) params.set('scoringProfileId', scoringProfileId);
-			if (season !== undefined) params.set('season', season.toString());
-			if (episode !== undefined) params.set('episode', episode.toString());
+			if (tmdbId) params.tmdbId = tmdbId.toString();
+			if (imdbId) params.imdbId = imdbId;
+			if (tvdbId) params.tvdbId = tvdbId.toString();
+			if (year) params.year = year.toString();
+			if (scoringProfileId) params.scoringProfileId = scoringProfileId;
+			if (season !== undefined) params.season = season.toString();
+			if (episode !== undefined) params.episode = episode.toString();
 
-			params.set('q', title);
+			params.q = title;
 
-			const response = await fetch(`/api/search?${params}`);
-			const data = await response.json();
-
-			if (!response.ok) {
-				throw new Error(data.error || 'Search failed');
-			}
+			const data = await searchReleases(params);
 
 			releases = data.releases || [];
 			meta = data.meta;
