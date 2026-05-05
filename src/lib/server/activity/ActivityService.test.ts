@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { ActivityFilters, ActivitySummary, UnifiedActivity } from '$lib/types/activity';
 import { ActivityService } from './ActivityService';
 import type { DownloadHistoryRecord, DownloadQueueRecord } from './types';
+import { applyFilters, sortActivities, buildActivitySummary, applyRequestedStatusFilter } from './activity-filters.js';
+import { ActivityDeduplicationService } from './ActivityDeduplicationService.js';
 
 function createActivity(id: string, overrides: Partial<UnifiedActivity> = {}): UnifiedActivity {
 	return {
@@ -137,7 +139,7 @@ describe('ActivityService download client filtering', () => {
 
 		// downloadClientId filtering is now pushed to SQL.
 		// applyFilters only handles JS-only filters (search, releaseGroup, resolution, isUpgrade).
-		const filtered = service.applyFilters(activities, {
+		const filtered = applyFilters(activities, {
 			status: 'all',
 			mediaType: 'all',
 			protocol: 'all',
@@ -167,7 +169,7 @@ describe('ActivityService date filtering', () => {
 
 		// endDate filtering is now pushed to SQL (fetchHistoryItems / fetchMonitoringItems).
 		// applyFilters only handles JS-only filters (search, releaseGroup, resolution, isUpgrade).
-		const filtered = service.applyFilters(activities, {
+		const filtered = applyFilters(activities, {
 			status: 'all',
 			mediaType: 'all',
 			protocol: 'all',
@@ -203,7 +205,7 @@ describe('ActivityService sorting priority', () => {
 			})
 		];
 
-		service.sortActivities(activities, { field: 'time', direction: 'desc' });
+		sortActivities(activities, { field: 'time', direction: 'desc' });
 
 		expect(activities.map((activity) => activity.id)).toEqual([
 			'downloading-older',
@@ -443,7 +445,7 @@ describe('ActivityService active dedupe', () => {
 			startedAt: '2026-03-12T05:30:00.000Z'
 		});
 
-		const deduped = service.dedupeActiveActivities([duplicateFailedHistory, activeQueue]);
+		const deduped = new ActivityDeduplicationService().dedupeActiveActivities([duplicateFailedHistory, activeQueue]);
 		expect(deduped).toHaveLength(1);
 		expect(deduped[0].id).toBe('queue-active-1');
 	});
@@ -474,7 +476,7 @@ describe('ActivityService active dedupe', () => {
 			releaseTitle: 'One.Piece.S08.1080p.NF.WEB-DL.AAC2.0.H.264-7sprite7'
 		});
 
-		const deduped = service.dedupeActiveActivities([failedHistory, activeQueue]);
+		const deduped = new ActivityDeduplicationService().dedupeActiveActivities([failedHistory, activeQueue]);
 		expect(deduped).toHaveLength(1);
 		expect(deduped[0].id).toBe('queue-active-series-no-episodes');
 	});
@@ -507,11 +509,11 @@ describe('ActivityService unified summary', () => {
 			releaseTitle: 'Success.Movie.2026.1080p.WEB-DL-GRP'
 		});
 
-		const activeUniverse = service.dedupeActiveActivities(
-			service.applyFilters([failedQueue, downloadingQueue], { status: 'all' }, 'active')
+		const activeUniverse = new ActivityDeduplicationService().dedupeActiveActivities(
+			applyFilters([failedQueue, downloadingQueue], { status: 'all' }, 'active')
 		);
-		const failedOnly = service.applyRequestedStatusFilter(activeUniverse, { status: 'failed' });
-		const summary = service.buildActivitySummary(activeUniverse);
+		const failedOnly = applyRequestedStatusFilter(activeUniverse, { status: 'failed' });
+		const summary = buildActivitySummary(activeUniverse);
 
 		expect(failedOnly.map((activity) => activity.id)).toEqual(['queue-failed']);
 		expect(summary.failedCount).toBe(1);
