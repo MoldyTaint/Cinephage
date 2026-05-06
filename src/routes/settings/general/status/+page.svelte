@@ -17,6 +17,7 @@
 	import { RootFolderModal } from '$lib/components/rootFolders';
 	import { ModalWrapper, ModalHeader, ModalFooter } from '$lib/components/ui/modal';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import type { RootFolderUpdate } from '$lib/validation/schemas.js';
 	import {
 		validateRootFolder,
 		updateRootFolder,
@@ -275,7 +276,7 @@
 		folderSaveError = null;
 
 		try {
-			await updateRootFolder(editingFolder.id, formData as Record<string, unknown>);
+			await updateRootFolder(editingFolder.id, formData as RootFolderUpdate);
 
 			await invalidateAll();
 			closeFolderModal();

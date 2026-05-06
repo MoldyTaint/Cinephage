@@ -13,12 +13,13 @@
 	import { RootFolderModal, RootFolderList } from '$lib/components/rootFolders';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import type { RootFolderCreate, RootFolderUpdate } from '$lib/validation/schemas.js';
 	import {
-		validateRootFolder,
 		createRootFolder,
 		updateRootFolder,
 		deleteRootFolder,
-		updateLibraryClassificationSettings
+		updateLibraryClassificationSettings,
+		validateRootFolder
 	} from '$lib/api/settings.js';
 	import { scanLibrary } from '$lib/api/library.js';
 
@@ -104,8 +105,8 @@
 			const isCreating = folderModalMode === 'add';
 			const payload =
 				folderModalMode === 'edit' && editingFolder
-					? await updateRootFolder(editingFolder.id, formData as Record<string, unknown>)
-					: await createRootFolder(formData as Record<string, unknown>);
+					? await updateRootFolder(editingFolder.id, formData as RootFolderUpdate)
+					: await createRootFolder(formData as RootFolderCreate);
 
 			await invalidateAll();
 			closeFolderModal();
@@ -116,9 +117,13 @@
 				payload &&
 				typeof payload === 'object' &&
 				'folder' in payload &&
-				payload.folder?.id
+				(payload as Record<string, unknown>).folder &&
+				typeof (payload as Record<string, unknown>).folder === 'object' &&
+				((payload as Record<string, unknown>).folder as Record<string, unknown>).id
 			) {
-				void triggerLibraryScan(payload.folder.id);
+				void triggerLibraryScan(
+					((payload as Record<string, unknown>).folder as Record<string, unknown>).id as string
+				);
 			}
 		} catch (error) {
 			folderSaveError =

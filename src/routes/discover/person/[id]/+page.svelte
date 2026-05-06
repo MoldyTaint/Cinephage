@@ -66,17 +66,22 @@
 		loading = true;
 
 		getPersonCredits(personId).then((response) => {
-			movieCredits = response.movies?.results ?? [];
-			tvCredits = response.tv?.results ?? [];
-			crewCredits = response.crew?.results ?? [];
+			const credits = response as unknown as {
+				movies?: { results?: CreditWithStatus[]; total_pages?: number; total_results?: number };
+				tv?: { results?: CreditWithStatus[]; total_pages?: number; total_results?: number };
+				crew?: { results?: CreditWithStatus[]; total_pages?: number; total_results?: number };
+			};
+			movieCredits = credits.movies?.results ?? [];
+			tvCredits = credits.tv?.results ?? [];
+			crewCredits = credits.crew?.results ?? [];
 
-			movieTotalPages = response.movies?.total_pages ?? 1;
-			tvTotalPages = response.tv?.total_pages ?? 1;
-			crewTotalPages = response.crew?.total_pages ?? 1;
+			movieTotalPages = credits.movies?.total_pages ?? 1;
+			tvTotalPages = credits.tv?.total_pages ?? 1;
+			crewTotalPages = credits.crew?.total_pages ?? 1;
 
-			movieTotal = response.movies?.total_results ?? 0;
-			tvTotal = response.tv?.total_results ?? 0;
-			crewTotal = response.crew?.total_results ?? 0;
+			movieTotal = credits.movies?.total_results ?? 0;
+			tvTotal = credits.tv?.total_results ?? 0;
+			crewTotal = credits.crew?.total_results ?? 0;
 
 			// Auto-select first non-empty tab
 			if (movieCredits.length > 0) {
@@ -116,10 +121,11 @@
 		const nextPage = activePage + 1;
 
 		try {
-			const result = await getPersonCredits(data.person.id, {
+			const raw = await getPersonCredits(data.person.id, {
 				type,
 				page: String(nextPage)
 			});
+			const result = raw as unknown as { results?: CreditWithStatus[]; total_pages?: number };
 			const newItems = result.results ?? [];
 
 			if (activeTab === 'movies') {

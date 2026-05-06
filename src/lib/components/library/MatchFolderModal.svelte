@@ -69,10 +69,10 @@
 
 		isSearching = true;
 		try {
-			const data = await searchTmdb({
+			const data = (await searchTmdb({
 				query: searchQuery,
 				type: searchType
-			});
+			})) as unknown as { results?: TmdbSearchResult[] };
 			searchResults = data.results || [];
 		} catch {
 			toasts.error(m.library_matchFolder_searchFailed());
@@ -103,11 +103,15 @@
 			// Get all file IDs from the folder
 			const fileIds = folder.files.map((f) => f.id);
 
-			const result = await batchUnmatchedMatch({
+			const result = (await batchUnmatchedMatch({
 				fileIds,
 				tmdbId: selectedMedia.id,
 				mediaType: searchType
-			});
+			})) as unknown as {
+				success: boolean;
+				data: { matched: number; failed: number };
+				error?: string;
+			};
 
 			if (result.success) {
 				toasts.success(

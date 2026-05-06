@@ -1,17 +1,17 @@
 <script lang="ts">
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import { Loader2, Package, Search } from 'lucide-svelte';
-	import SearchResultRow from './SearchResultRow.svelte';
+	import SearchResultRow, { type Release } from './SearchResultRow.svelte';
 
 	type SearchMode = 'all' | 'multiSeasonPack';
 
 	interface Props {
 		searching: boolean;
 		searchError: string | null;
-		filteredReleases: Array<{ guid: string; indexerId: string; title: string }>;
+		filteredReleases: Release[];
 		rawReleaseCount: number;
 		searchMode: SearchMode;
-		getReleaseKey: (release: { guid: string; indexerId: string }) => string;
+		getReleaseKey: (release: Release) => string;
 		grabbingIds: SvelteSet<string>;
 		grabbedIds: SvelteSet<string>;
 		streamingIds: SvelteSet<string>;
@@ -19,7 +19,7 @@
 		showUsenetStreamButton: boolean;
 		canUsenetStream: boolean;
 		usenetStreamUnavailableReason: string | null;
-		onGrab: (release: Record<string, unknown>, streaming?: boolean) => Promise<void>;
+		onGrab: (release: Release, streaming?: boolean) => Promise<void>;
 	}
 
 	let {

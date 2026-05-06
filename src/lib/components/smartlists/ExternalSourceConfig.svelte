@@ -91,7 +91,7 @@
 	// Fetch presets on mount
 	onMount(async () => {
 		try {
-			presets = await getSmartListPresets();
+			presets = (await getSmartListPresets()) as unknown as ExternalListPreset[];
 
 			// Initialize selected preset if presetId is provided
 			if (presetId && presetId !== 'custom') {
@@ -206,13 +206,13 @@
 		testResult = null;
 
 		try {
-			const data = await testExternalList({
+			const data = (await testExternalList({
 				url,
 				headers: customHeaders,
 				mediaType,
 				presetId,
 				config: presetSettings
-			});
+			})) as unknown as { totalCount: number };
 
 			testResult = {
 				success: true,

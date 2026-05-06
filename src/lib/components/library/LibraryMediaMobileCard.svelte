@@ -85,7 +85,7 @@
 				</span>
 			{/if}
 			{#if itemIsMovie}
-				{#if item.hasFile}
+				{#if 'hasFile' in item && item.hasFile}
 					<span class="badge gap-1.5 badge-sm badge-success">
 						<CheckCircle2 class="h-3.5 w-3.5" />
 						{m.common_downloaded()}

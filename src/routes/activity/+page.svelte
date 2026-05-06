@@ -324,7 +324,14 @@
 				offset
 			});
 			const params = Object.fromEntries(new URLSearchParams(queryString));
-			const payload = await getActivity(params);
+			const payload = (await getActivity(params)) as unknown as {
+				success?: boolean;
+				error?: string;
+				activities?: UnifiedActivity[];
+				total?: number;
+				hasMore?: boolean;
+				summary?: Partial<ActivitySummary> | null;
+			};
 			if (requestToken !== activityRequestToken) return;
 			if (!payload?.success) {
 				throw new Error(
@@ -649,9 +656,13 @@
 	async function loadHistorySettings(): Promise<void> {
 		settingsLoading = true;
 		try {
-			let payload;
+			let payload: { success?: boolean; retentionDays?: number; error?: string };
 			try {
-				payload = await getActivitySettings();
+				payload = (await getActivitySettings()) as unknown as {
+					success?: boolean;
+					retentionDays?: number;
+					error?: string;
+				};
 			} catch (error) {
 				if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
 					canManageHistory = false;

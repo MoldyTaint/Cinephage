@@ -329,13 +329,19 @@
 			const tmdbPromise = mediaType === 'tv' ? getTmdb(`tv/${tmdbId}`) : getTmdb(`movie/${tmdbId}`);
 
 			const [foldersData, librariesData, profilesData, classificationData, tmdbRes] =
-				await Promise.all([
+				(await Promise.all([
 					getRootFolders(),
 					getLibraries({ mediaType }),
 					getScoringProfiles(),
 					getLibraryClassificationSettings(),
 					tmdbPromise
-				]);
+				])) as unknown as [
+					{ folders?: RootFolder[] } | RootFolder[],
+					{ libraries?: LibraryEntity[] },
+					{ profiles?: ScoringProfile[]; defaultProfileId?: string },
+					{ enforceAnimeSubtype?: boolean },
+					unknown
+				];
 
 			rootFolders = Array.isArray(foldersData) ? foldersData : (foldersData.folders ?? []);
 			libraries = librariesData.libraries ?? [];
@@ -343,7 +349,7 @@
 			enforceAnimeSubtype = classificationData?.enforceAnimeSubtype === true;
 
 			if (mediaType === 'tv' && tmdbRes) {
-				const tvData = tmdbRes as TmdbTvDetails;
+				const tvData = tmdbRes as unknown as TmdbTvDetails;
 				seasons = tvData.seasons?.filter((s: Season) => s.episode_count > 0) ?? [];
 				monitoredSeasons.clear();
 				for (const s of seasons) {
@@ -355,7 +361,7 @@
 			if (mediaType === 'movie') {
 				const movieRes = tmdbRes;
 				if (movieRes) {
-					const movieData = movieRes as TmdbMovieDetails;
+					const movieData = tmdbRes as unknown as TmdbMovieDetails;
 					updateAnimeDetectionFromMovie(movieData);
 					fetchCollectionData();
 				} else {
@@ -382,12 +388,12 @@
 
 	async function fetchCollectionData() {
 		try {
-			const movieData = (await getTmdb(`movie/${tmdbId}`)) as TmdbMovieDetails;
+			const movieData = (await getTmdb(`movie/${tmdbId}`)) as unknown as TmdbMovieDetails;
 			if (!movieData.belongs_to_collection) return;
 
 			const collectionData = (await getTmdb(
 				`collection/${movieData.belongs_to_collection.id}`
-			)) as { id: number; name: string; parts: CollectionPart[] };
+			)) as unknown as { id: number; name: string; parts: CollectionPart[] };
 			if (!collectionData.parts || collectionData.parts.length <= 1) return;
 
 			const tmdbIds = collectionData.parts.map((p: CollectionPart) => p.id);
@@ -433,18 +439,17 @@
 				wantsSubtitles
 			};
 
-			const result =
-				mediaType === 'movie'
-					? await createMovie({ ...basePayload, minimumAvailability })
-					: await createSeries({
-							...basePayload,
-							monitorType,
-							monitorNewItems,
-							monitorSpecials,
-							seriesType,
-							seasonFolder,
-							monitoredSeasons: Array.from(monitoredSeasons)
-						});
+			const result = (mediaType === 'movie'
+				? await createMovie({ ...basePayload, minimumAvailability })
+				: await createSeries({
+						...basePayload,
+						monitorType,
+						monitorNewItems,
+						monitorSpecials,
+						seriesType,
+						seasonFolder,
+						monitoredSeasons: Array.from(monitoredSeasons)
+					})) as unknown as { success: boolean; id?: string };
 
 			toasts.success(`${title} added to library`, {
 				description: willSearchOnAdd ? 'Searching for releases...' : undefined,
@@ -482,7 +487,10 @@
 				wantsSubtitles
 			};
 
-			const result = await bulkAddMovies(payload);
+			const result = (await bulkAddMovies(payload)) as unknown as {
+				added?: number;
+				errors?: unknown[];
+			};
 
 			const addedCount = result.added ?? 0;
 			const errorCount = result.errors?.length ?? 0;

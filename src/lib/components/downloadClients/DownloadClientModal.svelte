@@ -14,19 +14,12 @@
 	import ClientSpecificOptions from './ClientSpecificOptions.svelte';
 	import ClientTestConnection from './ClientTestConnection.svelte';
 	import { toFriendlyDownloadClientError } from '$lib/downloadClients/errorMessages';
+	import {
+		serializeDownloadClientForm,
+		type DownloadClientFormState,
+		type NntpServerFormData
+	} from './formSerializer.js';
 	import * as m from '$lib/paraglide/messages.js';
-
-	interface NntpServerFormData {
-		name: string;
-		host: string;
-		port: number;
-		useSsl: boolean;
-		username: string | null;
-		password: string | null;
-		maxConnections: number;
-		priority: number;
-		enabled: boolean;
-	}
 
 	interface NntpServer {
 		id: string;
@@ -124,7 +117,7 @@
 	);
 	const hasPassword = $derived(client?.hasPassword ?? false);
 	const selectedDefinition = $derived(
-		implementation ? clientDefinitions.find((d) => d.id === implementation) : null
+		implementation ? (clientDefinitions.find((d) => d.id === implementation) ?? null) : null
 	);
 	const visibleClientDefinitions = $derived(
 		allowNntp ? clientDefinitions : clientDefinitions.filter((d) => d.id !== 'nntp')
@@ -265,56 +258,31 @@
 	}
 
 	function getFormData(): DownloadClientFormData | NntpServerFormData {
-		const normalizedUrlBase = urlBase.trim().replace(/^\/+|\/+$/g, '');
-		const normalizedName = name.trim();
-		const normalizedHost = host.trim();
-		const normalizedUsername = username.trim();
-		if (isNntpServer) {
-			const data: NntpServerFormData = {
-				name: normalizedName,
-				host: normalizedHost,
-				port,
-				useSsl,
-				username: normalizedUsername || null,
-				password: password || null,
-				maxConnections,
-				priority,
-				enabled
-			};
-			if (mode === 'edit' && !password) {
-				delete (data as unknown as Record<string, unknown>).password;
-			}
-			return data;
-		}
-
-		const data: DownloadClientFormData = {
-			name: normalizedName,
-			implementation: implementation as DownloadClientImplementation,
+		const formState: DownloadClientFormState = {
+			name,
 			enabled,
-			host: normalizedHost,
+			host,
 			port,
 			useSsl,
-			urlBase: urlBaseEnabled ? normalizedUrlBase || null : null,
-			mountMode: implementation === 'sabnzbd' && mountMode ? 'nzbdav' : null,
-			username: normalizedUsername || null,
-			password: password || null,
+			urlBase,
+			urlBaseEnabled,
+			mountMode,
+			username,
+			password,
 			movieCategory,
 			tvCategory,
 			recentPriority,
 			olderPriority,
 			initialState,
-			seedRatioLimit: null,
-			seedTimeLimit: null,
-			downloadPathLocal: downloadPathLocal || null,
-			downloadPathRemote: downloadPathRemote || null,
-			tempPathLocal: tempPathLocal || null,
-			tempPathRemote: tempPathRemote || null,
-			priority
+			downloadPathLocal,
+			downloadPathRemote,
+			tempPathLocal,
+			tempPathRemote,
+			maxConnections,
+			priority,
+			implementation: implementation as DownloadClientImplementation
 		};
-		if (mode === 'edit' && !password) {
-			delete (data as unknown as Record<string, unknown>).password;
-		}
-		return data;
+		return serializeDownloadClientForm(formState, isNntpServer, mode);
 	}
 
 	async function handleTest() {

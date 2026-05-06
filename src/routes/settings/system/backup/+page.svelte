@@ -6,6 +6,7 @@
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
 	import { exportConfig, importConfig } from '$lib/api/settings.js';
+	import type { BackupImport } from '$lib/validation/schemas.js';
 
 	let { data: _data }: { data: LayoutData } = $props();
 
@@ -336,12 +337,11 @@
 		backupWarnings = [];
 
 		try {
-			const backup = JSON.parse(await selectedBackupFile.text());
-			const payload = await importConfig(
-				backupImportPassphrase.trim(),
-				backup as Record<string, unknown>,
-				{ sections: selectedRestoreSections, mode: 'apply' }
-			);
+			const backup = JSON.parse(await selectedBackupFile.text()) as BackupImport['backup'];
+			const payload = await importConfig(backupImportPassphrase.trim(), backup, {
+				sections: selectedRestoreSections,
+				mode: 'apply'
+			});
 
 			const result =
 				payload && typeof payload === 'object' && !Array.isArray(payload)

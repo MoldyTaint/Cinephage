@@ -1,8 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import { Check, Loader2 } from 'lucide-svelte';
-
-	type MediaType = 'movie' | 'tv';
+	import type { MediaType, DetectionGroup, DetectionSection, TvSeasonSection } from './types.js';
 
 	interface DestinationLibrary {
 		id: string;
@@ -13,38 +12,6 @@
 		isDefault?: boolean;
 		defaultRootFolderId?: string | null;
 		defaultRootFolderPath?: string | null;
-	}
-
-	interface DetectionGroup {
-		id: string;
-		displayName: string;
-		sourceType: 'file' | 'folder';
-		sourcePath: string;
-		selectedFilePath: string;
-		fileName: string;
-		detectedFileCount: number;
-		detectedSeasons?: number[];
-		suggestedSeason?: number;
-		parsedTitle: string;
-		parsedYear?: number;
-		parsedSeason?: number;
-		parsedEpisode?: number;
-		inferredMediaType: MediaType;
-	}
-
-	interface TvSeasonSection {
-		key: string;
-		label: string;
-		seasonNumber: number | null;
-		items: DetectionGroup[];
-	}
-
-	interface DetectionSection {
-		id: string;
-		label: string;
-		mediaType: MediaType;
-		items: DetectionGroup[];
-		seasonSections?: TvSeasonSection[];
 	}
 
 	type QueueMediaFilter = 'all' | MediaType;

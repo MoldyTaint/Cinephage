@@ -24,6 +24,7 @@
 		reorderSubtitleProviders,
 		ApiError
 	} from '$lib/api';
+	import type { SubtitleProviderImplementation } from '$lib/validation/schemas.js';
 
 	interface SubtitleProviderFormData {
 		name: string;
@@ -213,15 +214,21 @@
 		testingIds.add(provider.id);
 		try {
 			const result = await testProviderConnection(provider);
-			if (!result.success) {
+			const data = result as {
+				success: boolean;
+				error?: string;
+				message?: string;
+				responseTime?: number;
+			};
+			if (!data.success) {
 				toasts.error(
-					`Test failed: ${result.message || result.error || m.settings_integrations_subtitleProviders_connectionTestFailed()}`
+					`Test failed: ${data.message || data.error || m.settings_integrations_subtitleProviders_connectionTestFailed()}`
 				);
 			} else {
 				toasts.success(
 					m.settings_integrations_subtitleProviders_connectionSuccessful({
 						name: provider.name,
-						responseTime: String(result.responseTime)
+						responseTime: String(data.responseTime)
 					})
 				);
 			}
@@ -365,7 +372,7 @@
 	): Promise<{ success: boolean; error?: string }> {
 		try {
 			const result = await testSubtitleProvider({
-				implementation: formData.implementation,
+				implementation: formData.implementation as SubtitleProviderImplementation,
 				apiKey: formData.apiKey,
 				username: formData.username,
 				password: formData.password
@@ -387,10 +394,14 @@
 	async function handleSave(formData: SubtitleProviderFormData) {
 		saving = true;
 		try {
+			const typedFormData = {
+				...formData,
+				implementation: formData.implementation as SubtitleProviderImplementation
+			};
 			if (modalMode === 'edit' && editingProvider) {
-				await updateSubtitleProvider(editingProvider.id, formData);
+				await updateSubtitleProvider(editingProvider.id, typedFormData);
 			} else {
-				await createSubtitleProvider(formData);
+				await createSubtitleProvider(typedFormData);
 			}
 
 			await invalidateAll();
@@ -436,7 +447,7 @@
 		} catch (e) {
 			toasts.error(
 				e instanceof ApiError
-					? (e.response as Record<string, unknown>)?.error || 'Failed to reorder providers'
+					? String((e.response as Record<string, unknown>)?.error || 'Failed to reorder providers')
 					: e instanceof Error
 						? e.message
 						: 'Failed to reorder providers'

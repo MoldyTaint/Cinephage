@@ -9,6 +9,7 @@
 	} from '$lib/components/library';
 	import { TVSeriesSidebar, BulkActionBar } from '$lib/components/library/tv';
 	import { InteractiveSearchModal } from '$lib/components/search';
+	import type { Release } from '$lib/components/search/SearchResultRow.svelte';
 	import { SubtitleSearchModal } from '$lib/components/subtitles';
 	import SubtitleSyncModal from '$lib/components/subtitles/SubtitleSyncModal.svelte';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
@@ -1259,7 +1260,10 @@
 		onComplete: () => void
 	): Promise<void> {
 		try {
-			const response = await apiPostStream('/api/subtitles/sync/bulk', { subtitleIds, ...settings });
+			const response = await apiPostStream('/api/subtitles/sync/bulk', {
+				subtitleIds,
+				...settings
+			});
 
 			const reader = response.body?.getReader();
 			if (!reader) {
@@ -1469,34 +1473,6 @@
 
 	function handleSeasonToggle(seasonId: string) {
 		openSeasonId = openSeasonId === seasonId ? null : seasonId;
-	}
-
-	interface Release {
-		guid: string;
-		title: string;
-		downloadUrl: string;
-		magnetUrl?: string;
-		infoHash?: string;
-		indexerId: string;
-		indexerName: string;
-		protocol: string;
-		commentsUrl?: string;
-		episodeMatch?: {
-			season?: number;
-			seasons?: number[];
-			episodes?: number[];
-			isSeasonPack?: boolean;
-			isCompleteSeries?: boolean;
-		};
-		parsed?: {
-			episode?: {
-				season?: number;
-				seasons?: number[];
-				episodes?: number[];
-				isSeasonPack?: boolean;
-				isCompleteSeries?: boolean;
-			};
-		};
 	}
 
 	// Helper function to look up episode IDs from local data

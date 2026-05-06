@@ -213,6 +213,7 @@
 				name: indexer.name,
 				definitionId: indexer.definitionId,
 				baseUrl: indexer.baseUrl,
+				alternateUrls: indexer.alternateUrls,
 				settings: indexer.settings
 			});
 			if (!result || !result.success) {
@@ -254,7 +255,7 @@
 				name: formData.name,
 				definitionId: formData.definitionId,
 				baseUrl: formData.baseUrl,
-				protocol: formData.protocol,
+				alternateUrls: formData.alternateUrls,
 				settings: formData.settings
 			});
 			return { success: Boolean(result.success), error: result.error };

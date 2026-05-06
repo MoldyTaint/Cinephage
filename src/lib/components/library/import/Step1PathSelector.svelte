@@ -21,8 +21,8 @@
 	}
 
 	let {
-		preferredMediaType = 'auto',
-		sourcePath = '/',
+		preferredMediaType = $bindable('auto'),
+		sourcePath = $bindable('/'),
 		browserPath = '/',
 		browserParentPath = null,
 		browserEntries = [],

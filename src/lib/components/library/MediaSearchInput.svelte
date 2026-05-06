@@ -117,9 +117,7 @@
 		<input
 			type="text"
 			class="grow bg-transparent outline-none"
-			placeholder={mediaType === 'movie'
-				? m.library_add_searchMovies()
-				: m.library_add_searchTvShows()}
+			placeholder={mediaType === 'movie' ? 'Search movies...' : 'Search TV shows...'}
 			value={query}
 			oninput={(e) => onInput(e.currentTarget.value)}
 			onkeydown={handleKeydown}

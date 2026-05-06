@@ -27,6 +27,10 @@
 		testNewMediaBrowserNotification,
 		ApiError
 	} from '$lib/api';
+	import type {
+		MediaBrowserServerCreate,
+		MediaBrowserServerUpdate
+	} from '$lib/validation/schemas.js';
 
 	interface MediaBrowserFormData {
 		name: string;
@@ -236,9 +240,12 @@
 			}
 
 			if (modalMode === 'edit' && editingServer) {
-				await updateMediaBrowserNotification(editingServer.id, payload);
+				await updateMediaBrowserNotification(
+					editingServer.id,
+					payload as unknown as MediaBrowserServerUpdate
+				);
 			} else {
-				await createMediaBrowserNotification(payload);
+				await createMediaBrowserNotification(payload as unknown as MediaBrowserServerCreate);
 			}
 
 			await invalidateAll();

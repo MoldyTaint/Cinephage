@@ -12,6 +12,7 @@
 	import BulkDeleteModal from '$lib/components/library/BulkDeleteModal.svelte';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
 	import InteractiveSearchModal from '$lib/components/search/InteractiveSearchModal.svelte';
+	import type { Release } from '$lib/components/search/SearchResultRow.svelte';
 	import { Tv, X, LayoutGrid, List, Search, SlidersHorizontal } from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { viewPreferences } from '$lib/stores/view-preferences.svelte';
@@ -252,31 +253,7 @@
 		isSearchModalOpen = true;
 	}
 
-	async function handleGrabRelease(
-		release: {
-			guid: string;
-			title: string;
-			downloadUrl: string;
-			magnetUrl?: string;
-			infoHash?: string;
-			size: number;
-			seeders?: number;
-			leechers?: number;
-			publishDate: string | Date;
-			indexerId: string;
-			indexerName: string;
-			protocol: string;
-			commentsUrl?: string;
-			parsed?: {
-				resolution?: string;
-				source?: string;
-				codec?: string;
-				hdr?: string;
-				releaseGroup?: string;
-			};
-		},
-		streaming?: boolean
-	) {
+	async function handleGrabRelease(release: Release, streaming?: boolean) {
 		if (!selectedSeriesForSearch)
 			return { success: false, error: m.toast_library_tv_failedToGrab() };
 

@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
-	import type { ScoreComponents } from '$lib/server/quality/types.js';
 	import SearchHeader from './SearchHeader.svelte';
 	import SearchStats from './SearchStats.svelte';
 	import SearchFilters from './SearchFilters.svelte';
@@ -11,64 +10,7 @@
 	import { isMultiSeasonPack } from '$lib/utils/release-analysis.js';
 	import { getGrabErrorMessage } from './grab-errors.js';
 	import { downloadDebugJson as downloadJsonFile } from './debug-export.js';
-
-	interface Release {
-		guid: string;
-		title: string;
-		downloadUrl: string;
-		magnetUrl?: string;
-		infoHash?: string;
-		size: number;
-		seeders?: number;
-		leechers?: number;
-		publishDate: string | Date;
-		indexerId: string;
-		indexerName: string;
-		protocol: string;
-		commentsUrl?: string;
-		parsed?: {
-			resolution?: string;
-			source?: string;
-			codec?: string;
-			hdr?: string;
-			releaseGroup?: string;
-			episode?: {
-				season?: number;
-				seasons?: number[];
-				episodes?: number[];
-				isSeasonPack?: boolean;
-				isCompleteSeries?: boolean;
-			};
-		};
-		episodeMatch?: {
-			season?: number;
-			seasons?: number[];
-			episodes?: number[];
-			isSeasonPack?: boolean;
-			isCompleteSeries?: boolean;
-		};
-		quality?: {
-			score: number;
-			meetsMinimum: boolean;
-		};
-		totalScore?: number;
-		scoreComponents?: ScoreComponents;
-		scoringResult?: {
-			totalScore?: number;
-			breakdown?: {
-				resolution?: { score: number; formats: string[] };
-				source?: { score: number; formats: string[] };
-				codec?: { score: number; formats: string[] };
-				releaseGroupTier?: { score: number; formats: string[] };
-				audio?: { score: number; formats: string[] };
-				hdr?: { score: number; formats: string[] };
-				streaming?: { score: number; formats: string[] };
-				enhancement?: { score: number; formats: string[] };
-				banned?: { score: number; formats: string[] };
-			};
-		};
-		rejected?: boolean;
-	}
+	import type { Release } from './SearchResultRow.svelte';
 
 	interface IndexerResult {
 		name: string;
@@ -162,7 +104,7 @@
 	let showIndexerDetails = $state(false);
 	let showPipelineDetails = $state(false);
 	let showDebugPanel = $state(false);
-	let selectedDebugRelease = $state<Release | null>(null);
+	let selectedDebugRelease = $state<Record<string, unknown> | null>(null);
 
 	function downloadDebugJson() {
 		const debugData = {
@@ -196,7 +138,8 @@
 	async function loadUsenetStreamingAvailability() {
 		try {
 			usenetStreamingState = 'unknown';
-			const servers = await getUsenetServers();
+			const response = await getUsenetServers();
+			const servers = (response as unknown as Array<{ enabled: boolean }>) || [];
 
 			if (servers.length === 0) {
 				usenetStreamingState = 'noConfiguredServers';
@@ -418,7 +361,7 @@
 				onTogglePipelineDetails={() => (showPipelineDetails = !showPipelineDetails)}
 				onToggleDebugPanel={() => (showDebugPanel = !showDebugPanel)}
 				onDownloadDebugJson={downloadDebugJson}
-				onSelectDebugRelease={(r: Release | null) => (selectedDebugRelease = r)}
+				onSelectDebugRelease={(r: Record<string, unknown> | null) => (selectedDebugRelease = r)}
 			/>
 		{/if}
 

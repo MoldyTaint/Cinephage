@@ -9,10 +9,15 @@
 
 	let { data } = $props();
 
-	const { currentMonth: initialMonth, days: initialDays } = data;
-	let currentMonth = $state(initialMonth);
-	let days = $state<CalendarDay[]>(initialDays as CalendarDay[]);
+	let currentMonth = $state('');
+	let days = $state<CalendarDay[]>([]);
 	let loading = $state(false);
+
+	$effect(() => {
+		const snap = $state.snapshot(data);
+		currentMonth = snap.currentMonth;
+		days = snap.days as CalendarDay[];
+	});
 	let selectedDay = $state<CalendarDay | null>(null);
 	let abortController = $state<AbortController | null>(null);
 

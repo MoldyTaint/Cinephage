@@ -418,7 +418,7 @@
 			}
 
 			if (typeof result?.success === 'boolean') {
-				const testResult = result as LiveTvAccountTestResult;
+				const testResult = result as unknown as LiveTvAccountTestResult;
 				return testResult.success
 					? testResult
 					: {

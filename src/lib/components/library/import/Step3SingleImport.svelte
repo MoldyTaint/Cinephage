@@ -1,8 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import { Check, Loader2 } from 'lucide-svelte';
-
-	type MediaType = 'movie' | 'tv';
+	import type { MediaType, DetectionGroup, MatchResult } from './types.js';
 
 	interface DestinationLibrary {
 		id: string;
@@ -13,36 +12,6 @@
 		isDefault?: boolean;
 		defaultRootFolderId?: string | null;
 		defaultRootFolderPath?: string | null;
-	}
-
-	interface MatchResult {
-		tmdbId: number;
-		title: string;
-		year?: number;
-		mediaType: MediaType;
-		isAnime?: boolean;
-		confidence: number;
-		inLibrary: boolean;
-		libraryId?: string;
-		rootFolderId?: string | null;
-		rootFolderPath?: string | null;
-	}
-
-	interface DetectionGroup {
-		id: string;
-		displayName: string;
-		sourceType: 'file' | 'folder';
-		sourcePath: string;
-		selectedFilePath: string;
-		fileName: string;
-		detectedFileCount: number;
-		detectedSeasons?: number[];
-		suggestedSeason?: number;
-		parsedTitle: string;
-		parsedYear?: number;
-		parsedSeason?: number;
-		parsedEpisode?: number;
-		inferredMediaType: MediaType;
 	}
 
 	interface ImportRouteContext {
@@ -72,7 +41,9 @@
 		onExecuteImport = () => {},
 		onRootFolderChange = () => {}
 	}: {
+		// eslint-disable-next-line svelte/no-unused-props
 		activeGroup: DetectionGroup;
+		// eslint-disable-next-line svelte/no-unused-props
 		selectedMatch: MatchResult;
 		selectedMediaType: MediaType;
 		importTarget: 'new' | 'existing';

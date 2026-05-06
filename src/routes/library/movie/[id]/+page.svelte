@@ -10,6 +10,7 @@
 	} from '$lib/components/library';
 	import type { FileScoreResponse } from '$lib/types/score';
 	import { InteractiveSearchModal } from '$lib/components/search';
+	import type { Release } from '$lib/components/search/SearchResultRow.svelte';
 	import { SubtitleSearchModal } from '$lib/components/subtitles';
 	import SubtitleSyncModal from '$lib/components/subtitles/SubtitleSyncModal.svelte';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
@@ -325,18 +326,6 @@
 		}
 	}
 
-	interface Release {
-		guid: string;
-		title: string;
-		downloadUrl: string;
-		magnetUrl?: string;
-		infoHash?: string;
-		indexerId: string;
-		indexerName: string;
-		protocol: string;
-		commentsUrl?: string;
-	}
-
 	async function handleGrab(
 		release: Release,
 		streaming?: boolean
@@ -495,7 +484,18 @@
 	async function handleSubtitleAutoSearch() {
 		subtitleAutoSearching = true;
 		try {
-			const result = await autoSearchSubtitles({ movieId: movie.id });
+			const raw = await autoSearchSubtitles({ movieId: movie.id });
+			const result = raw as unknown as {
+				success: boolean;
+				subtitle?: {
+					id?: string;
+					subtitleId?: string;
+					language?: string;
+					isForced?: boolean;
+					isHearingImpaired?: boolean;
+					format?: string;
+				};
+			};
 
 			if (result.success && result.subtitle) {
 				const subtitleId = result.subtitle.id ?? result.subtitle.subtitleId;

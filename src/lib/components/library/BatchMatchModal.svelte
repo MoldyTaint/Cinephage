@@ -124,10 +124,10 @@
 
 		isSearching = true;
 		try {
-			const data = await searchTmdb({
+			const data = (await searchTmdb({
 				query: searchQuery,
 				type: searchType
-			});
+			})) as unknown as { results?: TmdbSearchResult[] };
 			searchResults = data.results || [];
 		} catch {
 			toasts.error(m.library_batchMatch_searchFailed());
@@ -194,12 +194,16 @@
 				}
 			}
 
-			const result = await batchUnmatchedMatch({
+			const result = (await batchUnmatchedMatch({
 				fileIds: selectedFileIds,
 				tmdbId: selectedMedia.id,
 				mediaType: searchType,
 				...(searchType === 'tv' && Object.keys(episodeMapping).length > 0 ? { episodeMapping } : {})
-			});
+			})) as unknown as {
+				success: boolean;
+				data: { matched: number; failed: number; errors: string[] };
+				error?: string;
+			};
 
 			if (result.success) {
 				toasts.success(

@@ -229,7 +229,7 @@ export async function createApiKeys() {
 }
 
 export async function regenerateApiKey(keyId: string) {
-	return apiPost(`/api/settings/system/api-keys/${keyId}/regenerate`);
+	return apiPost<{ data: { key: string } }>(`/api/settings/system/api-keys/${keyId}/regenerate`);
 }
 
 export async function cleanupStreamingCache() {

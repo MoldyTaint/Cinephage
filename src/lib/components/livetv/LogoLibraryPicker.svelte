@@ -74,7 +74,11 @@
 
 	async function loadLogoCountries() {
 		try {
-			const body = await getLogoCountries();
+			const body = (await getLogoCountries()) as unknown as {
+				success?: boolean;
+				code?: string;
+				data?: LogoCountryOption[];
+			};
 
 			if (!body?.success) {
 				if (body?.code === 'NOT_DOWNLOADED') {
@@ -126,7 +130,13 @@
 			if (searchText.trim()) params.search = searchText.trim();
 			if (countryFilter) params.country = countryFilter;
 
-			const body = await getLogos(params);
+			const body = (await getLogos(params)) as unknown as {
+				success?: boolean;
+				code?: string;
+				error?: string;
+				data?: LogoLibraryItem[];
+				pagination?: { hasMore?: boolean };
+			};
 
 			if (currentRequestId !== requestId) return;
 

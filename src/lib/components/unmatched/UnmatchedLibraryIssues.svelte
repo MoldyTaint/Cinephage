@@ -147,7 +147,15 @@
 	async function loadIssues(): Promise<void> {
 		loading = true;
 		try {
-			const result = await getUnmatchedIssues();
+			const result = (await getUnmatchedIssues()) as unknown as {
+				success: boolean;
+				data: {
+					libraryItems?: LibraryIssue[];
+					rootFolders?: RootFolderOption[];
+					total?: number;
+				};
+				error?: string;
+			};
 
 			if (result.success) {
 				libraryItems = result.data.libraryItems ?? [];

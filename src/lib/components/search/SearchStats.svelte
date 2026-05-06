@@ -11,6 +11,8 @@
 
 	type SearchMode = 'all' | 'multiSeasonPack';
 
+	import type { Release } from './SearchResultRow.svelte';
+
 	interface IndexerResult {
 		name: string;
 		count: number;
@@ -47,14 +49,6 @@
 		error?: string;
 	}
 
-	interface Release {
-		guid: string;
-		title: string;
-		indexerId: string;
-		rejected?: boolean;
-		[index: string]: unknown;
-	}
-
 	interface Props {
 		meta: SearchMeta;
 		searchMode: SearchMode;
@@ -65,13 +59,13 @@
 		showIndexerDetails: boolean;
 		showPipelineDetails: boolean;
 		showDebugPanel: boolean;
-		selectedDebugRelease: Release | null;
+		selectedDebugRelease: Record<string, unknown> | null;
 		releases: Release[];
 		onToggleIndexerDetails: () => void;
 		onTogglePipelineDetails: () => void;
 		onToggleDebugPanel: () => void;
 		onDownloadDebugJson: () => void;
-		onSelectDebugRelease: (release: Release | null) => void;
+		onSelectDebugRelease: (release: Record<string, unknown> | null) => void;
 	}
 
 	let {
@@ -300,7 +294,7 @@
 				</button>
 				{#if selectedDebugRelease}
 					<span class="text-sm text-base-content/70">
-						Selected: {trimTitle(selectedDebugRelease.title)}
+						Selected: {trimTitle(String(selectedDebugRelease.title ?? ''))}
 					</span>
 				{/if}
 			</div>

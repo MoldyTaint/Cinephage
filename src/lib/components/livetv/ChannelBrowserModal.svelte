@@ -8,6 +8,7 @@
 	import ChannelBrowserFilters from './ChannelBrowserFilters.svelte';
 	import ChannelBrowserActions from './ChannelBrowserActions.svelte';
 	import ChannelBrowserList from './ChannelBrowserList.svelte';
+	import ChannelBrowserPagination from './ChannelBrowserPagination.svelte';
 	import {
 		getAccounts,
 		getCategories,
@@ -165,7 +166,9 @@
 
 	async function loadAccounts() {
 		try {
-			const result = await getAccounts();
+			const result = (await getAccounts()) as unknown as {
+				accounts?: LiveTvAccount[];
+			};
 			accounts = result.accounts?.filter((a: LiveTvAccount) => a.enabled) || [];
 		} catch (e) {
 			toasts.error(m.livetv_channelBrowserModal_failedToLoadAccounts(), {
@@ -175,9 +178,9 @@
 		}
 	}
 
-	async function loadCategories(accountId: string) {
+	async function loadCategories(_accountId: string) {
 		try {
-			const data = await getCategories({ accountId });
+			const data = (await getCategories()) as unknown as { categories?: LiveTvCategory[] };
 			categories = data.categories || [];
 			selectedCategoryId = '';
 		} catch (e) {
@@ -350,7 +353,9 @@
 			return existing.id;
 		}
 
-		const createData = await createChannelCategory({ name: normalizedName });
+		const createData = (await createChannelCategory({ name: normalizedName })) as unknown as {
+			category?: { id?: string };
+		};
 		const categoryId = createData.category?.id as string | undefined;
 		if (!categoryId) {
 			throw new Error(m.livetv_channelBrowserModal_failedToCreate());

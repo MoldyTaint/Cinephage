@@ -62,9 +62,7 @@ export function isMultiSeasonPack(
 		)
 	)
 		return true;
-	if (
-		/\bСезоны?[\s:._-]*\d{1,2}\s*(?:[-–—]|до)\s*\d{1,2}(?:\s*(?:из|of|\/)\s*\d{1,2})?\b/i.test(t)
-	)
+	if (/\bСезоны?[\s:._-]*\d{1,2}\s*(?:[-–—]|до)\s*\d{1,2}(?:\s*(?:из|of|\/)\s*\d{1,2})?\b/i.test(t))
 		return true;
 	if (
 		/\b(?:every[\s._-]?season|all[\s._-]?seasons?|полный[\s._-]*сериал|все[\s._-]*сезоны)\b/i.test(

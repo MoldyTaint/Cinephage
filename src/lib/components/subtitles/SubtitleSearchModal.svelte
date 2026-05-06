@@ -121,11 +121,16 @@
 		searchError = null;
 
 		try {
-			const body: Record<string, unknown> = {};
-			if (movieId) body.movieId = movieId;
-			if (episodeId) body.episodeId = episodeId;
+			const searchBody = {
+				...(movieId ? { movieId } : {}),
+				...(episodeId ? { episodeId } : {})
+			};
 
-			const data = await searchSubtitles(body);
+			const data = (await searchSubtitles(searchBody)) as unknown as {
+				results?: SubtitleResult[];
+				totalResults: number;
+				searchTimeMs: number;
+			};
 
 			results = data.results || [];
 			searchMeta = {
@@ -146,18 +151,26 @@
 		downloadErrors.delete(key);
 
 		try {
-			const body: Record<string, unknown> = {
+			const downloadBody = {
 				providerId: result.providerId,
 				providerSubtitleId: result.providerSubtitleId,
 				language: result.language,
 				isForced: result.isForced,
-				isHearingImpaired: result.isHearingImpaired
+				isHearingImpaired: result.isHearingImpaired,
+				...(movieId ? { movieId } : {}),
+				...(episodeId ? { episodeId } : {})
 			};
 
-			if (movieId) body.movieId = movieId;
-			if (episodeId) body.episodeId = episodeId;
-
-			const data = await downloadSubtitle(body);
+			const data = (await downloadSubtitle(downloadBody)) as unknown as {
+				success: boolean;
+				subtitle?: {
+					subtitleId?: string;
+					language?: string;
+					format?: string;
+					wasSynced?: boolean;
+					syncOffset?: number | null;
+				};
+			};
 
 			downloadedIds.add(key);
 			onDownloaded?.({

@@ -42,7 +42,7 @@
 		saveSuccess = false;
 
 		try {
-			await updateTmdbFilters(filtersState as Record<string, unknown>);
+			await updateTmdbFilters(filtersState);
 
 			saveSuccess = true;
 			toasts.success(m.settings_filters_updated());

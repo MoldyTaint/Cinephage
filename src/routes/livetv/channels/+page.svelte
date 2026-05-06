@@ -214,7 +214,7 @@
 				if (logoData?.downloaded) {
 					// Already downloaded
 					logoDownloaded = true;
-					logoCount = logoData.count;
+					logoCount = logoData.count ?? 0;
 					downloadingLogos = false;
 					toasts.success(m.livetv_channels_logosAlreadyAvailable());
 				} else {
@@ -794,7 +794,7 @@
 		try {
 			const result = (await bulkCleanChannelNames(
 				Array.from(selectedIds)
-			)) as BulkApplyCleanNamesResult | null;
+			)) as unknown as BulkApplyCleanNamesResult | null;
 
 			await loadData();
 			clearSelection();

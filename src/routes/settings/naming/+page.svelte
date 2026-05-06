@@ -35,6 +35,7 @@
 		type NamingPresetSelection
 	} from '$lib/naming/editor-state';
 	import { buildConfigFromSetup, type NamingPreset } from '$lib/naming/setup-presets';
+	import type { NamingConfigUpdate } from '$lib/validation/schemas.js';
 	import {
 		getNamingPresets,
 		getNamingPreset,
@@ -253,10 +254,11 @@
 		try {
 			error = null;
 			const result = await getNamingPreset(selectedPresetId);
-			if ((result as Record<string, unknown>).preset?.config) {
+			const preset = (result as unknown as { preset?: { config?: Record<string, string> } }).preset;
+			if (preset?.config) {
 				config = createNormalizedNamingConfig({
 					...config,
-					...((result as Record<string, unknown>).preset as Record<string, string>)
+					...preset.config
 				});
 			}
 		} catch (e) {
@@ -274,7 +276,7 @@
 			await createNamingPreset({
 				name: newPresetName.trim(),
 				description: newPresetDescription.trim(),
-				config: createNormalizedNamingConfig(config)
+				config: createNormalizedNamingConfig(config) as unknown as Record<string, unknown>
 			});
 
 			await loadPresets();
@@ -397,18 +399,16 @@
 			const normalizedConfig = createNormalizedNamingConfig($state.snapshot(config));
 			const presetSelection = getDraftPresetSelection();
 			const result = await updateNamingConfig(
-				normalizedConfig as Record<string, unknown>,
-				presetSelection as Record<string, unknown>
+				normalizedConfig as NamingConfigUpdate,
+				presetSelection
 			);
-			savedConfigSnapshot = createNormalizedNamingConfig(
-				(result as Record<string, unknown>).config as Record<string, string>
-			);
-			savedPresetSelection = normalizeNamingPresetSelection(
-				(result as Record<string, unknown>).presetSelection as NamingPresetSelection
-			);
-			config = createNormalizedNamingConfig(
-				(result as Record<string, unknown>).config as Record<string, string>
-			);
+			const responseData = result as unknown as {
+				config: Record<string, string>;
+				presetSelection: NamingPresetSelection;
+			};
+			savedConfigSnapshot = createNormalizedNamingConfig(responseData.config);
+			savedPresetSelection = normalizeNamingPresetSelection(responseData.presetSelection);
+			config = createNormalizedNamingConfig(responseData.config);
 			applyPresetSelection(savedPresetSelection);
 			await invalidateAll();
 			success = true;

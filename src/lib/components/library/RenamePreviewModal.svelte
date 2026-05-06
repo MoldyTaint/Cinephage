@@ -52,14 +52,13 @@
 		error = null;
 
 		try {
-			const preview =
-				mediaType === 'movie'
-					? await getMovieRenamePreview(mediaId)
-					: await getSeriesRenamePreview(mediaId);
+			const previewResult = (mediaType === 'movie'
+				? await getMovieRenamePreview(mediaId)
+				: await getSeriesRenamePreview(mediaId)) as unknown as RenamePreviewResult | null;
 
 			// Auto-select all "will change" items
 			selectedIds.clear();
-			for (const item of preview?.willChange || []) {
+			for (const item of previewResult?.willChange || []) {
 				selectedIds.add(item.fileId);
 			}
 		} catch (e) {
@@ -77,10 +76,14 @@
 		success = null;
 
 		try {
-			const result = await executeRename(
+			const result = (await executeRename(
 				Array.from(selectedIds),
 				mediaType === 'movie' ? 'movie' : 'episode'
-			);
+			)) as unknown as {
+				succeeded: number;
+				failed: number;
+				results?: Array<{ success: boolean; error?: string }>;
+			};
 
 			if (result.succeeded > 0) {
 				success = m.library_renamePreview_renamedCount({ count: result.succeeded });

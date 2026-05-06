@@ -10,6 +10,7 @@
 	import { ModalWrapper, ModalHeader, ModalFooter } from '$lib/components/ui/modal';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { createLibrary, updateLibrary, deleteLibrary } from '$lib/api/settings.js';
+	import type { LibraryCreate, LibraryUpdate } from '$lib/validation/schemas.js';
 
 	type RootFolderRef = {
 		id: string;
@@ -139,9 +140,9 @@
 
 		try {
 			if (editingLibrary) {
-				await updateLibrary(editingLibrary.id, libraryForm as Record<string, unknown>);
+				await updateLibrary(editingLibrary.id, libraryForm as LibraryUpdate);
 			} else {
-				await createLibrary(libraryForm as Record<string, unknown>);
+				await createLibrary(libraryForm as LibraryCreate);
 			}
 
 			toasts.success(editingLibrary ? 'Library updated' : 'Library created');

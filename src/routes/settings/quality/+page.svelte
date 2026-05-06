@@ -18,6 +18,12 @@
 		deleteScoringProfile
 	} from '$lib/api/settings.js';
 	import { createCustomFormat, updateCustomFormat, deleteCustomFormat } from '$lib/api/indexers.js';
+	import type {
+		ScoringProfileCreate,
+		ScoringProfileUpdate,
+		CustomFormatCreate,
+		CustomFormatUpdateBody
+	} from '$lib/validation/schemas.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -68,12 +74,12 @@
 		profileError = null;
 
 		try {
-			const body = profileModalMode === 'add' ? formData : { id: selectedProfile?.id, ...formData };
-
 			if (profileModalMode === 'add') {
-				await createScoringProfile(body as Record<string, unknown>);
+				await createScoringProfile(formData as ScoringProfileCreate);
 			} else {
-				await updateScoringProfile(body as { id: string } & Record<string, unknown>);
+				await updateScoringProfile({ id: selectedProfile?.id, ...formData } as {
+					id: string;
+				} & ScoringProfileUpdate);
 			}
 
 			await invalidateAll();
@@ -178,14 +184,12 @@
 		formatError = null;
 
 		try {
-			const body = formatModalMode === 'add' ? formData : { id: selectedFormat?.id, ...formData };
-
 			if (formatModalMode === 'add') {
-				await createCustomFormat(body as Record<string, unknown>);
+				await createCustomFormat(formData as CustomFormatCreate);
 			} else {
 				await updateCustomFormat(
 					(selectedFormat?.id as string) ?? '',
-					body as Record<string, unknown>
+					formData as CustomFormatUpdateBody
 				);
 			}
 

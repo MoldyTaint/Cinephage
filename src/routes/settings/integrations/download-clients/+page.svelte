@@ -27,6 +27,11 @@
 		updateMonitoringSettings,
 		ApiError
 	} from '$lib/api';
+	import type {
+		DownloadClientCreate,
+		DownloadClientUpdate,
+		DownloadClientTest
+	} from '$lib/validation/schemas.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -266,7 +271,7 @@
 				mountMode: dcFormData.mountMode,
 				username: dcFormData.username || null,
 				password: dcFormData.password || null
-			});
+			} as DownloadClientTest);
 		} catch (e) {
 			return {
 				success: false,
@@ -294,9 +299,9 @@
 		try {
 			const payload = formData as DownloadClientFormData;
 			if (modalMode === 'edit' && editingClient) {
-				await updateDownloadClient(editingClient.id, payload);
+				await updateDownloadClient(editingClient.id, payload as unknown as DownloadClientUpdate);
 			} else {
-				await createDownloadClient(payload);
+				await createDownloadClient(payload as unknown as DownloadClientCreate);
 			}
 
 			await invalidateAll();

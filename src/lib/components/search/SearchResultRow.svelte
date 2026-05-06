@@ -17,7 +17,7 @@
 	import type { ScoreComponents } from '$lib/server/quality/types.js';
 	import * as m from '$lib/paraglide/messages.js';
 
-	interface Release {
+	export interface Release {
 		guid: string;
 		title: string;
 		downloadUrl: string;
@@ -29,7 +29,7 @@
 		publishDate: string | Date;
 		indexerId: string;
 		indexerName: string;
-		protocol: string;
+		protocol: 'torrent' | 'usenet' | 'streaming';
 		commentsUrl?: string;
 		sourceIndexers?: string[];
 		torrent?: {
@@ -43,6 +43,24 @@
 			codec?: string;
 			hdr?: string;
 			releaseGroup?: string;
+			episode?: {
+				season?: number;
+				seasons?: number[];
+				episodes?: number[];
+				isSeasonPack?: boolean;
+				isCompleteSeries?: boolean;
+			};
+		};
+		episodeMatch?: {
+			season?: number;
+			seasons?: number[];
+			episodes?: number[];
+			isSeasonPack?: boolean;
+			isCompleteSeries?: boolean;
+		};
+		quality?: {
+			score: number;
+			meetsMinimum: boolean;
 		};
 		totalScore?: number;
 		scoreComponents?: ScoreComponents;

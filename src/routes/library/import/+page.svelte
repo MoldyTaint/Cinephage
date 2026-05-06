@@ -25,8 +25,16 @@
 	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
 	import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import type {
+		MediaType,
+		MatchResult,
+		DetectionGroup,
+		DetectionSection,
+		TvSeasonSection
+	} from '$lib/components/library/import/types.js';
+	import type { ManualImportRequest } from '$lib/validation/schemas.js';
 
-	type MediaType = 'movie' | 'tv';
+	type WizardStep = 1 | 2 | 3 | 4;
 
 	interface BrowseEntry {
 		name: string;
@@ -54,37 +62,6 @@
 		isDefault?: boolean;
 		defaultRootFolderId?: string | null;
 		defaultRootFolderPath?: string | null;
-	}
-
-	interface MatchResult {
-		tmdbId: number;
-		title: string;
-		year?: number;
-		mediaType: MediaType;
-		isAnime?: boolean;
-		confidence: number;
-		inLibrary: boolean;
-		libraryId?: string;
-		rootFolderId?: string | null;
-		rootFolderPath?: string | null;
-	}
-
-	interface DetectionGroup {
-		id: string;
-		displayName: string;
-		sourceType: 'file' | 'folder';
-		sourcePath: string;
-		selectedFilePath: string;
-		fileName: string;
-		detectedFileCount: number;
-		detectedSeasons?: number[];
-		suggestedSeason?: number;
-		parsedTitle: string;
-		parsedYear?: number;
-		parsedSeason?: number;
-		parsedEpisode?: number;
-		inferredMediaType: MediaType;
-		matches: MatchResult[];
 	}
 
 	interface DetectionResult extends DetectionGroup {
@@ -130,23 +107,6 @@
 	}
 
 	type QueueMediaFilter = 'all' | MediaType;
-
-	interface DetectionSection {
-		id: string;
-		label: string;
-		mediaType: MediaType;
-		items: DetectionGroup[];
-		seasonSections?: TvSeasonSection[];
-	}
-
-	interface TvSeasonSection {
-		key: string;
-		label: string;
-		seasonNumber: number | null;
-		items: DetectionGroup[];
-	}
-
-	type WizardStep = 1 | 2 | 3 | 4;
 
 	let step = $state<WizardStep>(1);
 	let preferredMediaType = $state<'auto' | MediaType>('auto');
@@ -740,8 +700,8 @@
 					typeof librariesPayload === 'object' &&
 					Array.isArray((librariesPayload as { libraries?: DestinationLibrary[] }).libraries)
 				) {
-					destinationLibraries = (librariesPayload as { libraries?: DestinationLibrary[] })
-						.libraries;
+					destinationLibraries =
+						(librariesPayload as { libraries?: DestinationLibrary[] }).libraries ?? [];
 				}
 			}
 		} catch {
@@ -1660,7 +1620,7 @@
 	}
 
 	async function executeImportRequest(payload: Record<string, unknown>): Promise<ExecuteResult> {
-		const data = await executeImport(payload);
+		const data = await executeImport(payload as ManualImportRequest);
 		return data.data as ExecuteResult;
 	}
 
@@ -1669,7 +1629,7 @@
 		searchQuery = '';
 		const state = getGroupState(activeGroup);
 		matchCandidates =
-			state.matchCandidates.length > 0 ? state.matchCandidates : activeGroup.matches;
+			state.matchCandidates.length > 0 ? state.matchCandidates : (activeGroup.matches ?? []);
 		if (selectedMatch && !matchCandidates.some((match) => match.tmdbId === selectedMatch?.tmdbId)) {
 			selectedMatch = matchCandidates[0] ?? null;
 		}
@@ -1819,13 +1779,14 @@
 				tmdbIds,
 				mediaType: selectedMediaType
 			});
-			const statusMap = (statusData as { status?: Record<string, unknown> }).status ?? {};
+			const statusMap =
+				(statusData as unknown as { status?: Record<string, unknown> }).status ?? {};
 
 			matchCandidates = results.map((item: Record<string, unknown>) => {
 				const tmdbId = item.id as number;
 				const date = (item.release_date || item.first_air_date) as string | undefined;
 				const year = date ? parseInt(date.split('-')[0], 10) : undefined;
-				const status = statusMap[tmdbId];
+				const status = statusMap[tmdbId] as Record<string, unknown> | undefined;
 				const genreIds = Array.isArray(item.genre_ids)
 					? item.genre_ids.filter((value): value is number => typeof value === 'number')
 					: [];
@@ -1853,7 +1814,7 @@
 					isAnime,
 					confidence: 0,
 					inLibrary: Boolean(status?.inLibrary),
-					libraryId: status?.libraryId
+					libraryId: status?.libraryId as string | undefined
 				} satisfies MatchResult;
 			});
 
@@ -2283,7 +2244,7 @@
 				step = 2;
 				showSelectedItemEditor = true;
 			}}
-			onGoToStep={goToStep}
+			onGoToStep={(s: number) => goToStep(s as WizardStep)}
 		/>
 	{/if}
 
@@ -2303,7 +2264,7 @@
 			{executingImport}
 			{selectedMatchContextMismatch}
 			{routeImportContext}
-			onGoToStep={goToStep}
+			onGoToStep={(s: number) => goToStep(s as WizardStep)}
 			onExecuteImport={executeImportFlow}
 			onRootFolderChange={persistActiveGroupState}
 		/>

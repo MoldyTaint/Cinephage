@@ -21,6 +21,7 @@
 		testCaptchaSolver,
 		clearCaptchaSolverCache
 	} from '$lib/api/monitoring.js';
+	import type { CaptchaSolverSettingsUpdate } from '$lib/validation/schemas.js';
 
 	// =====================
 	// Captcha Solver State
@@ -123,7 +124,9 @@
 		captchaSaveSuccess = false;
 
 		try {
-			const result = await updateCaptchaSolverSettings(captchaSettings as Record<string, unknown>);
+			const result = await updateCaptchaSolverSettings(
+				captchaSettings as CaptchaSolverSettingsUpdate
+			);
 
 			captchaSettings = result.settings;
 			captchaSaveSuccess = true;

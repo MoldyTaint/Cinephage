@@ -108,12 +108,15 @@
 
 		isSearching = true;
 		try {
-			const result = await searchTmdb({
+			const result = (await searchTmdb({
 				query: normalizedQuery,
 				type,
 				...(exclude ? { exclude_in_library: 'true' } : {})
-			});
-			searchResults = result.results;
+			})) as unknown as {
+				results: Array<Record<string, unknown> & { id: number; media_type?: string }>;
+				pagination: { page: number; total_pages: number; total_results: number };
+			};
+			searchResults = result.results ?? [];
 			searchPagination = result.pagination;
 		} catch (e) {
 			toasts.error(m.discover_searchFailed(), {
@@ -132,12 +135,15 @@
 		isSearching = true;
 		try {
 			const nextPage = searchPagination.page + 1;
-			const result = await searchTmdb({
+			const result = (await searchTmdb({
 				query: normalizedSearchQuery,
 				type,
 				page: String(nextPage),
 				...(excludeInLibrary ? { exclude_in_library: 'true' } : {})
-			});
+			})) as unknown as {
+				results: Array<Record<string, unknown> & { id: number; media_type?: string }>;
+				pagination: { page: number; total_pages: number; total_results: number };
+			};
 			// Deduplicate
 			const existingIds = new Set(searchResults.map((r) => r.id + (r.media_type || '')));
 			const newResults = result.results.filter(
@@ -305,7 +311,9 @@
 			});
 			params.page = String(nextPage);
 
-			const newData = await getDiscover(params);
+			const newData = (await getDiscover(params)) as unknown as {
+				results: Array<{ id: number; media_type?: string | null }>;
+			};
 			if (!newData.results || newData.results.length === 0) return;
 
 			// Filter out duplicates based on ID and media_type
