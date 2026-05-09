@@ -1086,36 +1086,6 @@ export class SearchOrchestrator {
 			}
 
 			if (idReleases.length > 0) {
-				// For interactive movie searches, supplement ID results with text variants.
-				// This matches NZBHydra-style behavior where text variants can surface
-				// additional releases even when ID lookup succeeds.
-				const shouldSupplementWithText =
-					isMovieSearch(criteria) &&
-					criteria.searchSource === 'interactive' &&
-					hasTextFallbackSource;
-				if (shouldSupplementWithText) {
-					const textReleases = await this.executeMultiTitleTextSearch(indexer, criteria);
-					if (textReleases.length > 0) {
-						const merged = [...idReleases];
-						const seenGuids = new Set(idReleases.map((r) => r.guid));
-						for (const release of textReleases) {
-							if (!seenGuids.has(release.guid)) {
-								seenGuids.add(release.guid);
-								merged.push(release);
-							}
-						}
-						logger.debug(
-							{
-								indexer: indexer.name,
-								idResults: idReleases.length,
-								textResults: textReleases.length,
-								mergedResults: merged.length
-							},
-							'Supplemented movie ID results with text fallback'
-						);
-						return { releases: merged, searchMethod: 'text' };
-					}
-				}
 				return { releases: idReleases, searchMethod: 'id' };
 			}
 

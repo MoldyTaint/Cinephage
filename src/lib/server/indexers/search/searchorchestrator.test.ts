@@ -505,7 +505,7 @@ describe('SearchOrchestrator.executeWithTiering', () => {
 		expect(cap1.imdbId).toBe('tt4712810');
 	});
 
-	it('supplements interactive movie ID results with text fallback variants', async () => {
+	it('returns ID results directly for interactive movie search without text supplementation', async () => {
 		const orchestrator = new SearchOrchestrator();
 		const captured: SearchCriteria[] = [];
 
@@ -556,14 +556,12 @@ describe('SearchOrchestrator.executeWithTiering', () => {
 
 		const result = await privateApi(orchestrator).executeWithTiering(fakeIndexer, criteria);
 
-		expect(result.searchMethod).toBe('text');
-		expect(result.releases).toHaveLength(2);
-		expect(result.releases.some((r) => r.guid === 'id-result')).toBe(true);
-		expect(result.releases.some((r) => r.guid === 'text-result')).toBe(true);
+		expect(result.searchMethod).toBe('id');
+		expect(result.releases).toHaveLength(1);
+		expect(result.releases[0].guid).toBe('id-result');
+		expect(captured).toHaveLength(1);
 		const cap0 = captured[0] as MovieSearchCriteria;
 		expect(cap0.imdbId).toBe('tt4712810');
-		const cap1 = captured[1] as MovieSearchCriteria;
-		expect(cap1.imdbId).toBeUndefined();
 	});
 });
 
