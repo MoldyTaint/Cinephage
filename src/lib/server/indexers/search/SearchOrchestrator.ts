@@ -210,6 +210,16 @@ export class SearchOrchestrator {
 	private deduplicator: ReleaseDeduplicator;
 	private ranker: ReleaseRanker;
 	private cache: ReleaseCache;
+	private enhancedCache: Map<
+		string,
+		{
+			releases: EnhancedReleaseResult[];
+			indexerResults: IndexerSearchResult[];
+			rejectedIndexers: RejectedIndexer[];
+			cachedAt: number;
+		}
+	>;
+	private static readonly ENHANCED_CACHE_TTL_MS = 5 * 60 * 1000;
 
 	constructor() {
 		this.statusTracker = getPersistentStatusTracker();
@@ -218,6 +228,7 @@ export class SearchOrchestrator {
 		this.deduplicator = new ReleaseDeduplicator();
 		this.ranker = new ReleaseRanker();
 		this.cache = new ReleaseCache();
+		this.enhancedCache = new Map();
 	}
 
 	/** Search across all provided indexers */
@@ -374,23 +385,27 @@ export class SearchOrchestrator {
 
 		const { eligible: eligibleIndexers, rejected: rejectedIndexers } = indexerFilterResult;
 
-		if (opts.useCache) {
-			const cached = this.cache.get(enrichedCriteria);
-			if (cached) {
-				logger.debug({ resultCount: cached.length }, 'Enhanced search cache hit');
+		if (opts.useCache && opts.searchSource === 'interactive') {
+			const cacheKey = this.cache.generateKey(enrichedCriteria);
+			const cached = this.enhancedCache.get(cacheKey);
+			if (cached && Date.now() - cached.cachedAt < SearchOrchestrator.ENHANCED_CACHE_TTL_MS) {
+				logger.debug({ resultCount: cached.releases.length }, 'Enhanced search cache hit');
 				return {
-					releases: cached as EnhancedReleaseResult[],
-					totalResults: cached.length,
-					afterDedup: cached.length,
-					afterFiltering: cached.length,
-					afterEnrichment: cached.length,
+					releases: cached.releases,
+					totalResults: cached.releases.length,
+					afterDedup: cached.releases.length,
+					afterFiltering: cached.releases.length,
+					afterEnrichment: cached.releases.length,
 					rejectedCount: 0,
 					searchTimeMs: Date.now() - startTime,
 					enrichTimeMs: 0,
 					fromCache: true,
-					indexerResults: [],
-					rejectedIndexers: []
+					indexerResults: cached.indexerResults,
+					rejectedIndexers: cached.rejectedIndexers
 				};
+			}
+			if (cached) {
+				this.enhancedCache.delete(cacheKey);
 			}
 		}
 
@@ -595,8 +610,14 @@ export class SearchOrchestrator {
 			scoringProfileId: enrichResult.scoringProfile?.id
 		};
 
-		if (opts.useCache && withWeights.length > 0) {
-			this.cache.set(enrichedCriteria, withWeights);
+		if (opts.useCache && opts.searchSource === 'interactive' && withWeights.length > 0) {
+			const cacheKey = this.cache.generateKey(enrichedCriteria);
+			this.enhancedCache.set(cacheKey, {
+				releases: withWeights,
+				indexerResults,
+				rejectedIndexers,
+				cachedAt: Date.now()
+			});
 		}
 
 		logger.info(
@@ -1196,39 +1217,41 @@ export class SearchOrchestrator {
 			}
 		}
 
-		const settled = await Promise.allSettled(variantCriteria.map((vc) => indexer.search(vc)));
-
 		const allReleases: ReleaseResult[] = [];
 		const seenGuids = new Set<string>();
 		let successfulVariants = 0;
 		const variantErrors: string[] = [];
+		const BATCH_SIZE = 3;
 
-		for (let i = 0; i < settled.length; i++) {
-			const vc = variantCriteria[i];
-			const result = settled[i];
-			if (result.status === 'fulfilled') {
-				successfulVariants++;
-				for (const release of result.value) {
-					if (!seenGuids.has(release.guid)) {
-						seenGuids.add(release.guid);
-						allReleases.push(release);
+		for (let i = 0; i < variantCriteria.length; i += BATCH_SIZE) {
+			const batch = variantCriteria.slice(i, i + BATCH_SIZE);
+			const settled = await Promise.allSettled(batch.map((vc) => indexer.search(vc)));
+
+			for (let j = 0; j < settled.length; j++) {
+				const vc = batch[j];
+				const result = settled[j];
+				if (result.status === 'fulfilled') {
+					successfulVariants++;
+					for (const release of result.value) {
+						if (!seenGuids.has(release.guid)) {
+							seenGuids.add(release.guid);
+							allReleases.push(release);
+						}
 					}
+				} else {
+					const message =
+						result.reason instanceof Error ? result.reason.message : String(result.reason);
+					variantErrors.push(message);
+					logger.debug(
+						{
+							indexer: indexer.name,
+							query: vc.query,
+							format: (vc as { preferredEpisodeFormat?: string }).preferredEpisodeFormat,
+							error: message
+						},
+						'Multi-title search variant failed'
+					);
 				}
-			} else {
-				const message =
-					result.reason instanceof Error
-						? result.reason.message
-						: String(result.reason);
-				variantErrors.push(message);
-				logger.debug(
-					{
-						indexer: indexer.name,
-						query: vc.query,
-						format: (vc as { preferredEpisodeFormat?: string }).preferredEpisodeFormat,
-						error: message
-					},
-					'Multi-title search variant failed'
-				);
 			}
 		}
 

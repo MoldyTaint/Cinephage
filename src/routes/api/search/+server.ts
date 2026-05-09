@@ -246,7 +246,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			searchSource: 'interactive',
 			enrichment: enrichmentOpts,
 			protocolFilter,
-			timeout: 15000
+			timeout: 20000
 		});
 
 		return json({
@@ -298,7 +298,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	// Standard search without enrichment (interactive)
 	const searchResult = await manager.search(criteria, {
 		searchSource: 'interactive',
-		timeout: 15000
+		timeout: 20000
 	});
 
 	return json({

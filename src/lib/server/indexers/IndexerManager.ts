@@ -54,6 +54,7 @@ export class IndexerManager {
 	private definitionLoader: YamlDefinitionLoader;
 	private indexerFactory: YamlIndexerFactory;
 	private indexerInstances: Map<string, IIndexer> = new Map();
+	private indexerCreationInFlight: Map<string, Promise<IIndexer | null>> = new Map();
 
 	constructor(options: IndexerManagerOptions = {}) {
 		const path = options.definitionsPath;
@@ -436,22 +437,37 @@ export class IndexerManager {
 			}
 		}
 
-		// Create uncached instances in parallel (async to allow capability fetching)
+		// Create uncached instances in parallel with in-flight dedup
 		const created: IIndexer[] = [];
-		const creationResults = await Promise.allSettled(
-			needsCreation.map((config) => this.createIndexerInstance(config))
-		);
+		const creationPromises = needsCreation.map(async (config) => {
+			const existing = this.indexerInstances.get(config.id);
+			if (existing) return existing;
 
-		for (let i = 0; i < creationResults.length; i++) {
-			const result = creationResults[i];
+			let promise = this.indexerCreationInFlight.get(config.id);
+			if (!promise) {
+				promise = this.createIndexerInstance(config)
+					.then((instance) => {
+						if (instance) {
+							this.indexerInstances.set(config.id, instance);
+						}
+						this.indexerCreationInFlight.delete(config.id);
+						return instance;
+					})
+					.catch((error) => {
+						logger.error({ err: error, indexerId: config.id }, 'Failed to create indexer instance');
+						this.indexerCreationInFlight.delete(config.id);
+						return null;
+					});
+				this.indexerCreationInFlight.set(config.id, promise);
+			}
+			return promise;
+		});
+
+		const creationResults = await Promise.allSettled(creationPromises);
+
+		for (const result of creationResults) {
 			if (result.status === 'fulfilled' && result.value) {
-				this.indexerInstances.set(needsCreation[i].id, result.value);
 				created.push(result.value);
-			} else if (result.status === 'rejected') {
-				logger.error(
-					{ err: result.reason, indexerId: needsCreation[i].id },
-					'Failed to create indexer instance'
-				);
 			}
 		}
 
