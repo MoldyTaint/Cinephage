@@ -374,7 +374,26 @@ export class SearchOrchestrator {
 		// Enrich criteria with missing IDs (e.g., look up IMDB ID from TMDB ID)
 		const enrichedCriteria = await this.enrichCriteriaWithIds(criteriaWithSource);
 
-		// Filter indexers
+		if (opts.useCache) {
+			const cached = this.cache.get(enrichedCriteria);
+			if (cached) {
+				logger.debug({ resultCount: cached.length }, 'Enhanced search cache hit');
+				return {
+					releases: cached as EnhancedReleaseResult[],
+					totalResults: cached.length,
+					afterDedup: cached.length,
+					afterFiltering: cached.length,
+					afterEnrichment: cached.length,
+					rejectedCount: 0,
+					searchTimeMs: Date.now() - startTime,
+					enrichTimeMs: 0,
+					fromCache: true,
+					indexerResults: [],
+					rejectedIndexers: []
+				};
+			}
+		}
+
 		const { eligible: eligibleIndexers, rejected: rejectedIndexers } = this.filterIndexers(
 			indexers,
 			enrichedCriteria,
@@ -639,6 +658,10 @@ export class SearchOrchestrator {
 			rejectedIndexers,
 			scoringProfileId: enrichResult.scoringProfile?.id
 		};
+
+		if (opts.useCache && withWeights.length > 0) {
+			this.cache.set(enrichedCriteria, withWeights);
+		}
 
 		logger.info(
 			{
