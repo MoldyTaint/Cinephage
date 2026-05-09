@@ -59,8 +59,6 @@ export interface SearchOrchestratorOptions {
 	respectBackoff?: boolean;
 	/** Use tiered search strategy (default: true) */
 	useTieredSearch?: boolean;
-	/** Maximum concurrent indexer searches (default: 5) */
-	concurrency?: number;
 	/** Timeout per indexer in ms (default: 30000) */
 	timeout?: number;
 	/** Use cache (default: true) */
@@ -114,7 +112,6 @@ const DEFAULT_OPTIONS: Required<
 	respectEnabled: true,
 	respectBackoff: true,
 	useTieredSearch: true,
-	concurrency: getPositiveIntEnv('INDEXER_SEARCH_CONCURRENCY', 5),
 	timeout: getPositiveIntEnv('INDEXER_SEARCH_TIMEOUT_MS', 30_000),
 	useCache: true
 };
@@ -855,7 +852,6 @@ export class SearchOrchestrator {
 		return { eligible, rejected };
 	}
 
-	/** Execute searches across indexers with concurrency control */
 	private async executeSearches(
 		indexers: IIndexer[],
 		criteria: SearchCriteria,
@@ -867,23 +863,20 @@ export class SearchOrchestrator {
 		logger.info(
 			{
 				indexerCount: indexers.length,
-				criteria: { type: criteria.searchType, query: criteria.query },
-				concurrency: options.concurrency
+				criteria: { type: criteria.searchType, query: criteria.query }
 			},
 			'[executeSearches] Starting'
 		);
 
-		// Process in batches for concurrency control
-		for (let i = 0; i < indexers.length; i += options.concurrency) {
-			const batch = indexers.slice(i, i + options.concurrency);
+		const allSettled = await Promise.allSettled(
+			indexers.map((indexer) =>
+				this.searchIndexer(indexer, criteria, options.timeout, options.useTieredSearch)
+			)
+		);
 
-			const batchResults = await Promise.all(
-				batch.map((indexer) =>
-					this.searchIndexer(indexer, criteria, options.timeout, options.useTieredSearch)
-				)
-			);
-
-			for (const result of batchResults) {
+		for (const settled of allSettled) {
+			if (settled.status === 'fulfilled') {
+				const result = settled.value;
 				logger.info(
 					{
 						indexer: result.indexerName,
@@ -895,6 +888,11 @@ export class SearchOrchestrator {
 				);
 				results.push(result);
 				allReleases.push(...result.results);
+			} else {
+				logger.warn(
+					{ error: settled.reason },
+					'[executeSearches] Indexer search failed'
+				);
 			}
 		}
 
