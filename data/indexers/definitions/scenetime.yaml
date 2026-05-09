@@ -162,29 +162,22 @@ search:
     type: html
 
   rows:
-    selector: table.movehere > tbody > tr:has(a[href*="details.php"])
+    selector: table#torrenttable tr:has(a[href*="details.php"])
 
   fields:
     title:
-      selector: td:nth-child(2) a[href*="details.php"]
-      filters:
-        - name: replace
-          args: ['<font>', '']
-        - name: replace
-          args: ['</font>', '']
+      selector: a.bw-torrent-link[href*="details.php"] span.bw-torrent-name
     guid:
-      selector: td:nth-child(2) a[href*="details.php"]
+      selector: a.bw-torrent-link[href*="details.php"]
       attribute: href
       filters:
         - name: regexp
           args: 'id=(\d+)'
     details:
-      selector: td:nth-child(2) a[href*="details.php"]
+      selector: a.bw-torrent-link[href*="details.php"]
       attribute: href
-    # Download URL is NOT in the table - must be constructed from torrent ID
-    # Pattern: download.php/{id}/download.torrent
     download:
-      selector: td:nth-child(2) a[href*="details.php"]
+      selector: a.bw-torrent-link[href*="details.php"]
       attribute: href
       filters:
         - name: regexp
@@ -193,7 +186,6 @@ search:
           args: 'download.php/'
         - name: append
           args: '/download.torrent'
-    # Actual table structure: Type(1), Name(2), Comments(3), Size(4), Seeders(5), Leechers(6)
     size:
       selector: td:nth-child(4)
     seeders:
@@ -206,7 +198,7 @@ search:
       optional: true
       filters:
         - name: dateparse
-          args: 'dddd, MMMM DD, YYYY at H:mma'
+          args: 'dddd, MMMM D, YYYY at h:mma'
     category:
       selector: td:nth-child(1) a[href*="cat="]
       attribute: href
@@ -214,7 +206,7 @@ search:
         - name: regexp
           args: 'cat=(\d+)'
     downloadvolumefactor:
-      selector: font > b:contains("Freeleech"), span.freeleech
+      selector: span.bw-tag-fl:contains("Freeleech")
       optional: true
       case:
         '*': '0'
