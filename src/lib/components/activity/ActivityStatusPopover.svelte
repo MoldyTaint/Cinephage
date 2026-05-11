@@ -15,9 +15,10 @@
 	interface Props {
 		activity: UnifiedActivity;
 		compactLabel?: string;
+		mobileCompactLabel?: string;
 	}
 
-	let { activity, compactLabel }: Props = $props();
+	let { activity, compactLabel, mobileCompactLabel }: Props = $props();
 
 	let open = $state(false);
 
@@ -46,7 +47,7 @@
 
 <div class="dropdown dropdown-end {open ? 'dropdown-open' : ''}">
 	<div
-		class="badge gap-1 {config.variant} cursor-pointer"
+		class="badge gap-1 whitespace-nowrap {config.variant} cursor-pointer"
 		tabindex="0"
 		role="button"
 		onclick={toggle}
@@ -64,6 +65,9 @@
 		/>
 		{#if activity.status === 'downloading' && activity.downloadProgress !== undefined}
 			{activity.downloadProgress}%
+		{:else if mobileCompactLabel && compactLabel}
+			<span class="sm:hidden">{mobileCompactLabel}</span>
+			<span class="hidden sm:inline">{compactLabel}</span>
 		{:else if compactLabel}
 			{compactLabel}
 		{:else}

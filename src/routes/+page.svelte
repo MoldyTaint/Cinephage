@@ -31,7 +31,6 @@
 	import {
 		statusConfig,
 		getStatusLabel,
-		getCompactProgressLabel,
 		formatRelativeTime,
 		getActivityCategoryTag
 	} from '$lib/components/activity/activity-display-utils.js';
@@ -225,6 +224,18 @@
 		fallbackLabel: string
 	): string | undefined {
 		const tag = getActivityCategoryTag(activity);
+		if (tag) return `${tag.label} ${fallbackLabel}`;
+		return getStatusLabel(activity, fallbackLabel);
+	}
+
+	function getMobileCompactStatusLabel(
+		activity: UnifiedActivity,
+		fallbackLabel: string
+	): string | undefined {
+		if (activity.status === 'search_error') return m.action_search();
+
+		const tag = getActivityCategoryTag(activity);
+		if (tag?.label === m.activity_tag_download()) return getStatusLabel(activity, fallbackLabel);
 		if (tag) return `${tag.label} ${fallbackLabel}`;
 		return getStatusLabel(activity, fallbackLabel);
 	}
@@ -888,7 +899,7 @@
 								<tr>
 									<th>{m.dashboard_recentHistory_colStatus()}</th>
 									<th>{m.dashboard_recentHistory_colMedia()}</th>
-									<th>{m.dashboard_recentHistory_colProgress()}</th>
+									<th>{m.common_size()}</th>
 									<th>{m.dashboard_recentHistory_colTime()}</th>
 								</tr>
 							</thead>
@@ -897,7 +908,7 @@
 									<tr>
 										<td><Skeleton variant="text" class="w-16" /></td>
 										<td><Skeleton variant="text" class="w-24" /></td>
-										<td><Skeleton variant="text" class="w-12" /></td>
+										<td><Skeleton variant="text" class="w-10" /></td>
 										<td><Skeleton variant="text" class="w-10" /></td>
 									</tr>
 								{/each}
@@ -911,7 +922,7 @@
 								<tr>
 									<th>{m.dashboard_recentHistory_colStatus()}</th>
 									<th>{m.dashboard_recentHistory_colMedia()}</th>
-									<th>{m.dashboard_recentHistory_colProgress()}</th>
+									<th>{m.common_size()}</th>
 									<th>{m.dashboard_recentHistory_colTime()}</th>
 								</tr>
 							</thead>
@@ -923,7 +934,15 @@
 											<ActivityStatusPopover
 												{activity}
 												compactLabel={getCompactStatusLabel(activity, config.label)}
+												mobileCompactLabel={getMobileCompactStatusLabel(activity, config.label)}
 											/>
+											{#if activity.status === 'downloading' && activity.downloadProgress !== undefined}
+												<progress
+													class="progress mt-0.5 w-12 progress-info"
+													value={activity.downloadProgress}
+													max="100"
+												></progress>
+											{/if}
 										</td>
 										<td>
 											{#if canLinkToMedia(activity)}
@@ -954,24 +973,9 @@
 											{/if}
 										</td>
 										<td>
-											{#if activity.status === 'downloading' && activity.downloadProgress !== undefined}
-												<progress
-													class="progress w-12 progress-info"
-													value={activity.downloadProgress}
-													max="100"
-												></progress>
-											{:else if getCompactProgressLabel(activity)}
-												<span
-													class="max-w-16 truncate text-xs text-base-content/50"
-													title={activity.statusReason}
-												>
-													{getCompactProgressLabel(activity)}
-												</span>
-											{:else}
-												<span class="text-xs text-base-content/50"
-													>{getStatusLabel(activity, config.label)}</span
-												>
-											{/if}
+											<span class="text-xs text-base-content/70">
+												{activity.size ? formatBytes(activity.size) : '-'}
+											</span>
 										</td>
 										<td>
 											<span class="text-xs text-base-content/50">
