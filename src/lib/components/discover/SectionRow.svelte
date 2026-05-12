@@ -148,7 +148,7 @@
 		<div
 			bind:this={container}
 			onscroll={handleScroll}
-			class="flex snap-x snap-mandatory [scrollbar-width:none] gap-3 overflow-x-auto scroll-smooth px-1 pb-4 sm:gap-4 [&::-webkit-scrollbar]:hidden"
+			class="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth px-1 pb-4 [scrollbar-width:none] sm:gap-4 [&::-webkit-scrollbar]:hidden"
 		>
 			{#each displayedItems as item (item.id)}
 				<div class={`flex-none snap-start ${resolvedItemClass}`}>

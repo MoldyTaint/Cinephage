@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Drawer from '$lib/components/ui/Drawer.svelte';
-	import { ArrowUpDown, Filter, X, Layers, Eye } from 'lucide-svelte';
+	import { ArrowUpDown, Filter, X } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages.js';
 
 	interface SortOption {
@@ -21,15 +21,10 @@
 		currentSort: string;
 		currentFilters: Record<string, string>;
 		hiddenActiveFilterKeys?: string[];
-		groupByCollection?: boolean;
-		hasCollections?: boolean;
 		onClose: () => void;
 		onSortChange: (sort: string) => void;
 		onFilterChange: (key: string, value: string) => void;
 		onClearFilters: () => void;
-		onGroupToggle?: () => void;
-		onMonitorAll?: () => void;
-		onUnmonitorAll?: () => void;
 	}
 
 	let {
@@ -39,15 +34,10 @@
 		currentSort,
 		currentFilters = {},
 		hiddenActiveFilterKeys = [],
-		groupByCollection = false,
-		hasCollections = false,
 		onClose,
 		onSortChange,
 		onFilterChange,
-		onClearFilters,
-		onGroupToggle,
-		onMonitorAll,
-		onUnmonitorAll
+		onClearFilters
 	}: Props = $props();
 
 	const visibleActiveFilterEntries = $derived(
@@ -136,42 +126,5 @@
 				</div>
 			</div>
 		{/if}
-
-		<!-- Display Actions -->
-		<div>
-			<h3 class="mb-2 flex items-center gap-2 text-sm font-medium text-base-content/60">
-				{m.library_drawer_display()}
-			</h3>
-			<div class="space-y-1">
-				<!-- Group by Collection (movies only) -->
-				{#if hasCollections && onGroupToggle}
-					<button
-						class="btn w-full justify-start btn-sm {groupByCollection
-							? 'btn-primary'
-							: 'btn-ghost'}"
-						onclick={onGroupToggle}
-					>
-						<Layers class="h-4 w-4" />
-						{groupByCollection ? 'Collections' : 'Collections'}
-					</button>
-				{/if}
-
-				<!-- Monitor All -->
-				{#if onMonitorAll}
-					<button class="btn w-full justify-start btn-ghost btn-sm" onclick={onMonitorAll}>
-						<Eye class="h-4 w-4" />
-						{m.library_movies_monitorAll()}
-					</button>
-				{/if}
-
-				<!-- Unmonitor All -->
-				{#if onUnmonitorAll}
-					<button class="btn w-full justify-start btn-ghost btn-sm" onclick={onUnmonitorAll}>
-						<Eye class="h-4 w-4" />
-						{m.library_movies_unmonitorAll()}
-					</button>
-				{/if}
-			</div>
-		</div>
 	</div>
 </Drawer>

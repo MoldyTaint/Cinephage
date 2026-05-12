@@ -21,7 +21,10 @@
 		Search,
 		SlidersHorizontal,
 		CheckSquare,
-		XSquare
+		XSquare,
+		Eye,
+		EyeOff,
+		ChevronDown
 	} from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { viewPreferences } from '$lib/stores/view-preferences.svelte';
@@ -598,6 +601,34 @@
 
 			<!-- Right: Quick Actions -->
 			<div class="flex shrink-0 items-center gap-1.5">
+				<div class="dropdown dropdown-end">
+					<button
+						class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm"
+						tabindex="0"
+						aria-label="Monitoring actions"
+					>
+						<Eye class="h-4 w-4" />
+						<span class="hidden xl:inline">Monitoring</span>
+						<ChevronDown class="hidden h-3 w-3 sm:block" />
+					</button>
+					<ul
+						class="dropdown-content menu z-50 mt-2 w-44 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl"
+					>
+						<li>
+							<button onclick={handleMonitorAll}>
+								<Eye class="h-4 w-4" />
+								{m.library_tv_monitorAll()}
+							</button>
+						</li>
+						<li>
+							<button onclick={handleUnmonitorAll}>
+								<EyeOff class="h-4 w-4" />
+								{m.library_tv_unmonitorAll()}
+							</button>
+						</li>
+					</ul>
+				</div>
+
 				<button
 					class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm {showCheckboxes ? 'btn-primary' : ''}"
 					onclick={handleSelectToggle}
@@ -798,8 +829,6 @@
 		onSortChange={(sort) => updateUrlParam('sort', sort)}
 		onFilterChange={(key, value) => updateUrlParam(key, value)}
 		onClearFilters={clearFilters}
-		onMonitorAll={handleMonitorAll}
-		onUnmonitorAll={handleUnmonitorAll}
 	/>
 </div>
 

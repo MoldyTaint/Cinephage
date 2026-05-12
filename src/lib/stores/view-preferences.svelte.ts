@@ -1,6 +1,7 @@
 import { browser } from '$app/environment';
 
 const VIEW_MODE_KEY = 'library-view-mode';
+const GROUP_BY_COLLECTION_KEY = 'library-group-by-collection';
 
 export type ViewMode = 'grid' | 'list';
 
@@ -14,8 +15,16 @@ function getInitialViewMode(): ViewMode {
 	return 'grid';
 }
 
+function getInitialGroupByCollection(): boolean {
+	if (browser) {
+		return sessionStorage.getItem(GROUP_BY_COLLECTION_KEY) === 'true';
+	}
+	return false;
+}
+
 class ViewPreferencesStore {
 	viewMode = $state<ViewMode>(getInitialViewMode());
+	groupByCollection = $state(getInitialGroupByCollection());
 	/** True once the client has resolved the stored preference. Use to avoid SSR flash. */
 	isReady = $state(browser);
 
@@ -28,6 +37,17 @@ class ViewPreferencesStore {
 
 	toggleViewMode() {
 		this.setViewMode(this.viewMode === 'grid' ? 'list' : 'grid');
+	}
+
+	setGroupByCollection(grouped: boolean) {
+		this.groupByCollection = grouped;
+		if (browser) {
+			sessionStorage.setItem(GROUP_BY_COLLECTION_KEY, String(grouped));
+		}
+	}
+
+	toggleGroupByCollection() {
+		this.setGroupByCollection(!this.groupByCollection);
 	}
 }
 

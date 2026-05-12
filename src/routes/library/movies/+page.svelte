@@ -21,7 +21,12 @@
 		Search,
 		SlidersHorizontal,
 		CheckSquare,
-		XSquare
+		XSquare,
+		Layers,
+		Eye,
+		EyeOff,
+		ChevronDown,
+		HardDrive
 	} from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { viewPreferences } from '$lib/stores/view-preferences.svelte';
@@ -45,7 +50,6 @@
 	let selectedMovies = new SvelteSet<string>();
 	let showCheckboxes = $state(false);
 	let searchQuery = $state('');
-	let groupByCollection = $state(false);
 	let collapsedGroups = new SvelteSet<string>();
 	let drawerOpen = $state(false);
 
@@ -627,6 +631,53 @@
 
 			<!-- Right: Quick Actions -->
 			<div class="flex shrink-0 items-center gap-1.5">
+				{#if data.uniqueCollections.length > 0}
+					<button
+						class="btn gap-1.5 btn-xs sm:btn-sm {viewPreferences.groupByCollection
+							? 'btn-primary'
+							: 'btn-ghost'}"
+						onclick={() => viewPreferences.toggleGroupByCollection()}
+						aria-pressed={viewPreferences.groupByCollection}
+						aria-label={viewPreferences.groupByCollection ? 'Hide collections' : 'Show collections'}
+						title={viewPreferences.groupByCollection ? 'Hide collections' : 'Show collections'}
+					>
+						{#if viewPreferences.groupByCollection}
+							<Layers class="h-4 w-4" />
+						{:else}
+							<Layers class="h-4 w-4" />
+						{/if}
+						<span class="hidden xl:inline">Collections</span>
+					</button>
+				{/if}
+
+				<div class="dropdown dropdown-end">
+					<button
+						class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm"
+						tabindex="0"
+						aria-label="Monitoring actions"
+					>
+						<Eye class="h-4 w-4" />
+						<span class="hidden xl:inline">Monitoring</span>
+						<ChevronDown class="hidden h-3 w-3 sm:block" />
+					</button>
+					<ul
+						class="dropdown-content menu z-50 mt-2 w-44 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl"
+					>
+						<li>
+							<button onclick={handleMonitorAll}>
+								<Eye class="h-4 w-4" />
+								{m.library_movies_monitorAll()}
+							</button>
+						</li>
+						<li>
+							<button onclick={handleUnmonitorAll}>
+								<EyeOff class="h-4 w-4" />
+								{m.library_movies_unmonitorAll()}
+							</button>
+						</li>
+					</ul>
+				</div>
+
 				<button
 					class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm {showCheckboxes ? 'btn-primary' : ''}"
 					onclick={handleSelectToggle}
@@ -755,9 +806,11 @@
 				<!-- Defer until client resolves view preference to avoid grid flash -->
 			{:else}
 				<div class="animate-in fade-in slide-in-from-bottom-4 duration-500">
-					{#if groupByCollection}
+					{#if data.uniqueCollections.length > 0 && viewPreferences.groupByCollection}
 						{@const collectionGroups = groupMoviesByCollection(filteredMovies)}
 						{#each collectionGroups as group (group.name ?? '__none__')}
+							{@const fileCount = group.movies.filter((mv) => mv.hasFile).length}
+							{@const monitoredCount = group.movies.filter((mv) => mv.monitored).length}
 							<div class="mb-8">
 								<button
 									class="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-base-200/60"
@@ -778,16 +831,26 @@
 											clip-rule="evenodd"
 										/>
 									</svg>
-									<h3 class="text-lg font-semibold">
-										{group.name ?? m.library_movies_other()}
-									</h3>
-									<span class="badge badge-ghost badge-sm">
-										{group.movies.length}
-										{group.movies.length === 1 ? 'movie' : 'movies'}
-									</span>
-									<span class="text-xs text-base-content/50">
-										{group.movies.filter((mv) => mv.hasFile).length}/{group.movies.length} files,
-										{group.movies.filter((mv) => mv.monitored).length}/{group.movies.length} monitored
+									<div class="flex min-w-0 flex-1 items-center gap-2">
+										<h3 class="min-w-0 truncate text-lg font-semibold">
+											{group.name ?? m.library_movies_other()}
+										</h3>
+										<span class="badge shrink-0 badge-ghost badge-sm">
+											{group.movies.length}
+										</span>
+									</div>
+									<span
+										class="flex shrink-0 items-center gap-3 text-xs text-base-content/50"
+										aria-label={`${fileCount}/${group.movies.length} files, ${monitoredCount}/${group.movies.length} monitored`}
+									>
+										<span class="inline-flex items-center gap-1">
+											<HardDrive class="h-3.5 w-3.5" />
+											{fileCount}/{group.movies.length}
+										</span>
+										<span class="inline-flex items-center gap-1">
+											<Eye class="h-3.5 w-3.5" />
+											{monitoredCount}/{group.movies.length}
+										</span>
 									</span>
 								</button>
 								{#if !collapsedGroups.has(group.name ?? '__none__')}
@@ -894,14 +957,9 @@
 		currentSort={data.filters.sort}
 		{currentFilters}
 		hiddenActiveFilterKeys={['library']}
-		{groupByCollection}
-		hasCollections={data.uniqueCollections.length > 0}
 		onSortChange={(sort) => updateUrlParam('sort', sort)}
 		onFilterChange={(key, value) => updateUrlParam(key, value)}
 		onClearFilters={clearFilters}
-		onGroupToggle={() => (groupByCollection = !groupByCollection)}
-		onMonitorAll={handleMonitorAll}
-		onUnmonitorAll={handleUnmonitorAll}
 	/>
 </div>
 

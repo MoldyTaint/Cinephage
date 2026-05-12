@@ -106,7 +106,7 @@
 			</button>
 		</div>
 
-		<div class="flex-1 [scrollbar-width:none] overflow-y-auto p-4 [&::-webkit-scrollbar]:hidden">
+		<div class="flex-1 overflow-y-auto p-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 			<FilterPanel
 				{type}
 				{sortBy}
