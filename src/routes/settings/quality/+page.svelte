@@ -44,6 +44,16 @@
 	let selectedProfile = $state<ScoringProfile | null>(null);
 	let profileSaving = $state(false);
 	let profileError = $state<string | null>(null);
+	let profileErrorHtml = $state<string | null>(null);
+
+	function escapeHtml(value: string): string {
+		return value
+			.replaceAll('&', '&amp;')
+			.replaceAll('<', '&lt;')
+			.replaceAll('>', '&gt;')
+			.replaceAll('"', '&quot;')
+			.replaceAll("'", '&#39;');
+	}
 
 	// Profile delete confirmation
 	let profileDeleteConfirmOpen = $state(false);
@@ -53,6 +63,7 @@
 		profileModalMode = 'add';
 		selectedProfile = null;
 		profileError = null;
+		profileErrorHtml = null;
 		profileModalOpen = true;
 	}
 
@@ -60,6 +71,7 @@
 		profileModalMode = 'edit';
 		selectedProfile = profile;
 		profileError = null;
+		profileErrorHtml = null;
 		profileModalOpen = true;
 	}
 
@@ -67,11 +79,13 @@
 		profileModalOpen = false;
 		selectedProfile = null;
 		profileError = null;
+		profileErrorHtml = null;
 	}
 
 	async function handleProfileSave(formData: ScoringProfileFormData) {
 		profileSaving = true;
 		profileError = null;
+		profileErrorHtml = null;
 
 		try {
 			if (profileModalMode === 'add') {
@@ -86,6 +100,11 @@
 			closeProfileModal();
 		} catch (e) {
 			profileError = e instanceof Error ? e.message : 'An unexpected error occurred';
+			const duplicateMatch = profileError.match(/^Profile with name '(.+)' already exists$/);
+			if (duplicateMatch) {
+				const profileName = escapeHtml(duplicateMatch[1] ?? '');
+				profileErrorHtml = `Profile with name '<strong>${profileName}</strong>' already exists`;
+			}
 		} finally {
 			profileSaving = false;
 		}
@@ -287,6 +306,7 @@
 	defaultCopyFromId={data.defaultProfileId}
 	saving={profileSaving}
 	error={profileError}
+	errorHtml={profileErrorHtml}
 	onClose={closeProfileModal}
 	onSave={handleProfileSave}
 	onReset={handleProfileReset}

@@ -1,6 +1,4 @@
 <script lang="ts">
-	import { randomUUID } from 'node:crypto';
-
 	interface Props {
 		minLabel: string;
 		maxLabel: string;
@@ -33,7 +31,15 @@
 		onMaxChange
 	}: Props = $props();
 
-	const id = randomUUID().slice(0, 8);
+	function createClientSafeId(): string {
+		if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+			return crypto.randomUUID().slice(0, 8);
+		}
+
+		return Math.random().toString(36).slice(2, 10);
+	}
+
+	const id = createClientSafeId();
 
 	function handleMinInput(e: Event) {
 		const target = e.target as HTMLInputElement;

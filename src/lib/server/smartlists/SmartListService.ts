@@ -127,8 +127,10 @@ export class SmartListService {
 
 		logger.info({ id: result.id, name: result.name }, '[SmartListService] Created smart list');
 
-		// Perform initial refresh
-		await this.refreshSmartList(result.id, 'manual');
+		// Trigger initial refresh in the background so create/edit UX does not block on provider/network latency.
+		void this.refreshSmartList(result.id, 'manual').catch((error) => {
+			logger.error({ err: error, id: result.id }, '[SmartListService] Initial refresh failed');
+		});
 
 		return result;
 	}

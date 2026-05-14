@@ -359,5 +359,5 @@ export async function downloadLogos(payload: Record<string, unknown>) {
 }
 
 export async function updateUserLanguage(language: string) {
-	return apiPut('/api/user/language', { language });
+	return apiPost('/api/user/language', { language });
 }
