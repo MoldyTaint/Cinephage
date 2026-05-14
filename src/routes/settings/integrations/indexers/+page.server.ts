@@ -1,5 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { getIndexerManager, IndexerManager } from '$lib/server/indexers/IndexerManager';
+import { getIndexerManager } from '$lib/server/indexers/IndexerManager';
 import { toUIDefinition } from '$lib/server/indexers/loader';
 import { getPersistentStatusTracker } from '$lib/server/indexers/status';
 import { CINEPHAGE_STREAM_DEFINITION_ID } from '$lib/server/indexers/types';
@@ -50,29 +50,10 @@ export const load: PageServerLoad = async () => {
 		return `${protocol}://${host}`.replace(/\/$/, '');
 	};
 
-	const definitions: IndexerDefinition[] = manager
-		.getUnifiedDefinitions()
-		.map(toUIDefinition)
-		.sort((a, b) => a.name.localeCompare(b.name));
-
 	const indexers: IndexerWithStatus[] = indexerConfigs.map((config) => {
 		const status = statusByIndexerId.get(config.id);
 		const settings = toStringSettings(config.settings);
 		const displayBaseUrl = getDisplayBaseUrl(config, settings);
-
-		let redactedSettings: Record<string, string> | null = null;
-		if (settings) {
-			const redactedSettingKeys = definitions
-				.filter((d) => d.id === config.definitionId)[0]
-				.settings.filter((s) => s.type === 'password')
-				.map((s) => s.name);
-			redactedSettings = Object.fromEntries(
-				Object.entries(settings).map(([key, value]) => [
-					key,
-					redactedSettingKeys.includes(key) ? IndexerManager.REDACTED_KEY_VALUE : value
-				])
-			);
-		}
 
 		return {
 			id: config.id,
@@ -83,7 +64,7 @@ export const load: PageServerLoad = async () => {
 			alternateUrls: config.alternateUrls,
 			priority: config.priority,
 			protocol: config.protocol,
-			settings: redactedSettings,
+			settings,
 			enableAutomaticSearch: config.enableAutomaticSearch,
 			enableInteractiveSearch: config.enableInteractiveSearch,
 			minimumSeeders: config.minimumSeeders,
@@ -103,6 +84,11 @@ export const load: PageServerLoad = async () => {
 				: undefined
 		};
 	});
+
+	const definitions: IndexerDefinition[] = manager
+		.getUnifiedDefinitions()
+		.map(toUIDefinition)
+		.sort((a, b) => a.name.localeCompare(b.name));
 
 	return {
 		indexers,
