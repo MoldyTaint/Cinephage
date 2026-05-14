@@ -55,7 +55,6 @@ export class IndexerManager {
 	private indexerFactory: YamlIndexerFactory;
 	private indexerInstances: Map<string, IIndexer> = new Map();
 	private indexerCreationInFlight: Map<string, Promise<IIndexer | null>> = new Map();
-	static readonly REDACTED_KEY_VALUE = '[REDACTED]';
 
 	constructor(options: IndexerManagerOptions = {}) {
 		const path = options.definitionsPath;
@@ -307,15 +306,7 @@ export class IndexerManager {
 		if (updates.baseUrl !== undefined) updateData.baseUrl = updates.baseUrl;
 		if (updates.alternateUrls !== undefined) updateData.alternateUrls = updates.alternateUrls;
 		if (updates.priority !== undefined) updateData.priority = updates.priority;
-
-		const definition = this.getDefinition(existing.definitionId);
-		if (existing.settings && updates.settings && definition) {
-			updateData.settings = this.reintroduceSecrets(
-				existing.settings,
-				updates.settings,
-				definition
-			);
-		}
+		if (updates.settings !== undefined) updateData.settings = updates.settings;
 
 		// Search capability toggles
 		if (updates.enableAutomaticSearch !== undefined)
@@ -515,50 +506,11 @@ export class IndexerManager {
 		return orchestrator.searchEnhanced(indexers, criteria, options);
 	}
 
-	private reintroduceSecrets(
-		existingSettings: Record<string, string | boolean | number | undefined>,
-		updatedSettings: Record<string, string | boolean | number | undefined>,
-		definition: YamlDefinition
-	): Record<string, string | boolean | number | undefined> {
-		if (!definition.settings) {
-			return updatedSettings;
-		}
-
-		// Merge settings while preserving existing sensitive values (passwords, keys, etc.)
-		// Only update fields that do not have IndexerManager.REDACTED_KEY_VALUE value in the update payload
-		const mergedSettings = { ...existingSettings };
-		const settingTypes = Object.fromEntries(definition.settings.map((s) => [s.name, s.type]));
-		for (const [key, value] of Object.entries(updatedSettings)) {
-			const isSensitive = settingTypes?.[key] === 'password';
-
-			if (isSensitive) {
-				if (value && value !== IndexerManager.REDACTED_KEY_VALUE) {
-					mergedSettings[key] = value;
-				}
-			} else {
-				mergedSettings[key] = value;
-			}
-		}
-
-		return mergedSettings;
-	}
-
 	/** Test an indexer's connectivity (YAML-only) */
 	async testIndexer(config: Omit<IndexerConfig, 'id'>, statusIndexerId?: string): Promise<void> {
 		const definition = this.definitionLoader.get(config.definitionId);
 		if (!definition) {
 			throw new Error(`Unknown definition: ${config.definitionId}`);
-		}
-
-		if (statusIndexerId) {
-			const existingIndexer = await managerInstance?.getIndexer(statusIndexerId);
-			if (existingIndexer?.settings && config.settings && definition) {
-				config.settings = this.reintroduceSecrets(
-					existingIndexer.settings,
-					config.settings,
-					definition
-				);
-			}
 		}
 
 		const tempConfig: IndexerConfig = {
