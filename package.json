@@ -42,14 +42,14 @@
 		"@types/adm-zip": "^0.5.8",
 		"@types/better-sqlite3": "^7.6.13",
 		"@types/js-yaml": "^4.0.9",
-		"@types/node": "^25.6.2",
+		"@types/node": "^25.8.0",
 		"@types/parse-torrent": "^5.8.8",
 		"@vitest/browser": "^4.1.5",
 		"@vitest/browser-playwright": "^4.1.5",
 		"@vitest/coverage-v8": "^4.1.5",
 		"daisyui": "^5.5.19",
 		"drizzle-orm": "^0.45.2",
-		"eslint": "^10.3.0",
+		"eslint": "^10.4.0",
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-plugin-svelte": "^3.17.1",
 		"globals": "^17.6.0",
@@ -64,7 +64,7 @@
 		"tailwindcss": "^4.3.0",
 		"typescript": "^6.0.3",
 		"typescript-eslint": "^8.59.2",
-		"vite": "^8.0.11",
+		"vite": "^8.0.13",
 		"vitest": "^4.1.5"
 	},
 	"overrides": {
@@ -73,21 +73,21 @@
 		"undici": "^7.25.0"
 	},
 	"optionalDependencies": {
-		"@rollup/rollup-linux-arm64-gnu": "^4.60.3",
-		"@rollup/rollup-linux-x64-gnu": "^4.60.3"
+		"@rollup/rollup-linux-arm64-gnu": "^4.60.4",
+		"@rollup/rollup-linux-x64-gnu": "^4.60.4"
 	},
 	"dependencies": {
-		"@better-auth/api-key": "^1.6.10",
+		"@better-auth/api-key": "^1.6.11",
 		"better-auth": "^1.6.10",
 		"adm-zip": "^0.5.16",
-		"better-sqlite3": "^12.9.0",
+		"better-sqlite3": "^12.10.0",
 		"camoufox-js": "^0.10.2",
 		"cheerio": "^1.2.0",
 		"chokidar": "^5.0.0",
 		"date-format-parse": "^0.2.7",
 		"dotenv": "^17.4.2",
-		"fast-xml-parser": "^5.7.3",
-		"fflate": "^0.8.2",
+		"fast-xml-parser": "^5.8.0",
+		"fflate": "^0.8.3",
 		"guessit-js": "^3.8.1",
 		"iconv-lite": "^0.7.2",
 		"js-yaml": "^4.1.1",
