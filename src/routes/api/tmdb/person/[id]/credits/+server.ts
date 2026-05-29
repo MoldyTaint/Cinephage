@@ -49,8 +49,8 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
 
 		// Batch mode: return all types in one response
 		if (!type) {
-			let movieCredits = sortedCast.filter((c) => c.media_type === 'movie');
-			let tvCredits = sortedCast.filter((c) => c.media_type === 'tv');
+			const movieCredits = sortedCast.filter((c) => c.media_type === 'movie');
+			const tvCredits = sortedCast.filter((c) => c.media_type === 'tv');
 
 			const filteredMovies = await filterBlockedMedia(movieCredits, 'movie');
 			const filteredTv = await filterBlockedMedia(tvCredits, 'tv');
