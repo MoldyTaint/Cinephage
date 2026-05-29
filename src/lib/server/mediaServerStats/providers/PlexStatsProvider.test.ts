@@ -299,6 +299,119 @@ describe('PlexStatsProvider', () => {
 		expect(result.items[0].hdrFormat).toBe('HDR10');
 	});
 
+	it('should detect Dolby Vision from DOVIPresent', async () => {
+		const dvMovie = makePlexMovie({
+			Media: [
+				{
+					container: 'mkv',
+					Part: [
+						{
+							size: 100,
+							Stream: [
+								{
+									streamType: 1,
+									codec: 'hevc',
+									DOVIPresent: 1,
+									DOVIBLCompatID: 0
+								}
+							]
+						}
+					]
+				}
+			]
+		});
+
+		mockFetch.mockResolvedValueOnce(
+			mockSectionsResponse([{ key: '1', type: 'movie', title: 'Movies' }])
+		);
+		mockFetch.mockResolvedValueOnce(
+			mockFetchResponse({
+				MediaContainer: { Metadata: [dvMovie], totalSize: 1 }
+			})
+		);
+
+		const provider = new PlexStatsProvider(mockConfig);
+		const result = await provider.fetchAllItems();
+
+		expect(result.items[0].isHDR).toBe(true);
+		expect(result.items[0].hdrFormat).toBe('DV');
+	});
+
+	it('should detect Dolby Vision HDR10 from DOVIPresent with profile 7', async () => {
+		const dvMovie = makePlexMovie({
+			Media: [
+				{
+					container: 'mkv',
+					Part: [
+						{
+							size: 100,
+							Stream: [
+								{
+									streamType: 1,
+									codec: 'hevc',
+									DOVIPresent: 1,
+									DOVIBLCompatID: 7
+								}
+							]
+						}
+					]
+				}
+			]
+		});
+
+		mockFetch.mockResolvedValueOnce(
+			mockSectionsResponse([{ key: '1', type: 'movie', title: 'Movies' }])
+		);
+		mockFetch.mockResolvedValueOnce(
+			mockFetchResponse({
+				MediaContainer: { Metadata: [dvMovie], totalSize: 1 }
+			})
+		);
+
+		const provider = new PlexStatsProvider(mockConfig);
+		const result = await provider.fetchAllItems();
+
+		expect(result.items[0].isHDR).toBe(true);
+		expect(result.items[0].hdrFormat).toBe('DVHDR10');
+	});
+
+	it('should detect HLG from colorTrc', async () => {
+		const hlgMovie = makePlexMovie({
+			Media: [
+				{
+					container: 'mkv',
+					Part: [
+						{
+							size: 100,
+							Stream: [
+								{
+									streamType: 1,
+									codec: 'hevc',
+									colorTrc: 'arib-std-b67'
+								}
+							]
+						}
+					]
+				}
+			]
+		});
+
+		mockFetch.mockResolvedValueOnce(
+			mockSectionsResponse([{ key: '1', type: 'movie', title: 'Movies' }])
+		);
+		mockFetch.mockResolvedValueOnce(
+			mockFetchResponse({
+				MediaContainer: { Metadata: [hlgMovie], totalSize: 1 }
+			})
+		);
+
+		const provider = new PlexStatsProvider(mockConfig);
+		const result = await provider.fetchAllItems();
+
+		expect(result.items[0].isHDR).toBe(true);
+		expect(result.items[0].hdrFormat).toBe('HLG');
+	});
+
 	it('should handle pagination with X-Plex-Container-Start', async () => {
 		const movies = Array.from({ length: 3 }, (_, i) =>
 			makePlexMovie({ ratingKey: String(100 + i), title: `Movie ${i}` })

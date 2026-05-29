@@ -5,7 +5,6 @@
 	import type { PageData } from './$types';
 	import { StorageMaintenanceSection } from '$lib/components/libraries';
 	import { MediaServerStatsSection } from '$lib/components/status';
-	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';
 	import { createSSE } from '$lib/sse';
 	import { invalidateAll } from '$app/navigation';
 	import type {
@@ -18,6 +17,14 @@
 	import { RootFolderModal } from '$lib/components/rootFolders';
 	import { ModalWrapper, ModalHeader, ModalFooter } from '$lib/components/ui/modal';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import type { RootFolderUpdate } from '$lib/validation/schemas.js';
+	import {
+		validateRootFolder,
+		updateRootFolder,
+		updateLibrary,
+		syncMediaServerStats
+	} from '$lib/api/settings.js';
+	import { scanLibrary } from '$lib/api/library.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -55,6 +62,7 @@
 		name: string;
 		mediaType: RootFolderMediaType;
 		mediaSubType: RootFolderMediaSubType;
+		metadataProvider: 'auto' | 'tmdb' | 'anilist' | 'mal';
 		rootFolderIds: string[];
 		defaultMonitored: boolean;
 		defaultSearchOnAdd: boolean;
@@ -76,6 +84,7 @@
 		name: '',
 		mediaType: 'movie',
 		mediaSubType: 'standard',
+		metadataProvider: 'auto',
 		rootFolderIds: [],
 		defaultMonitored: true,
 		defaultSearchOnAdd: true,
@@ -164,16 +173,7 @@
 		resetScanState();
 
 		try {
-			const response = await fetch('/api/library/scan', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(rootFolderId ? { rootFolderId } : { fullScan: true })
-			});
-
-			if (!response.ok) {
-				const payload = await readResponsePayload<Record<string, unknown>>(response);
-				throw new Error(getResponseErrorMessage(payload, 'Failed to start scan'));
-			}
+			await scanLibrary(rootFolderId ? { rootFolderId } : { fullScan: true });
 		} catch (error) {
 			scanError = error instanceof Error ? error.message : m.settings_general_failedToStartScan();
 			scanning = false;
@@ -183,11 +183,7 @@
 	async function triggerServerSync() {
 		syncing = true;
 		try {
-			const response = await fetch('/api/media-server-stats/sync', { method: 'POST' });
-			if (!response.ok) {
-				const payload = await response.json().catch(() => ({}));
-				toasts.error(payload.error ?? 'Sync failed');
-			}
+			await syncMediaServerStats();
 			await invalidateAll();
 		} catch (error) {
 			toasts.error(error instanceof Error ? error.message : 'Sync failed');
@@ -209,6 +205,7 @@
 			name: library.name,
 			mediaType: library.mediaType,
 			mediaSubType: library.mediaSubType,
+			metadataProvider: library.metadataProvider ?? 'auto',
 			rootFolderIds: library.rootFolders?.map((folder: RootFolderRef) => folder.id) ?? [],
 			defaultMonitored: library.defaultMonitored ?? true,
 			defaultSearchOnAdd: library.defaultSearchOnAdd ?? true,
@@ -228,17 +225,7 @@
 		librarySaveError = null;
 
 		try {
-			const response = await fetch(`/api/libraries/${editingLibrary.id}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(libraryForm)
-			});
-
-			const payload = await readResponsePayload<Record<string, unknown>>(response);
-			if (!response.ok) {
-				librarySaveError = getResponseErrorMessage(payload, 'Failed to save library');
-				return;
-			}
+			await updateLibrary(editingLibrary.id, libraryForm as Record<string, unknown>);
 
 			await invalidateAll();
 			closeLibraryModal();
@@ -270,34 +257,12 @@
 
 	async function handleValidatePath(
 		path: string,
-		readOnly = false,
-		folderId?: string
+		_readOnly = false,
+		_folderId?: string
 	): Promise<PathValidationResult> {
 		try {
-			const response = await fetch('/api/root-folders/validate', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ path, readOnly, folderId })
-			});
-			const payload = await readResponsePayload<PathValidationResult>(response);
-
-			if (!response.ok) {
-				return {
-					valid: false,
-					exists: false,
-					writable: false,
-					error: getResponseErrorMessage(payload, 'Failed to validate path')
-				};
-			}
-
-			return payload && typeof payload === 'object'
-				? (payload as PathValidationResult)
-				: {
-						valid: false,
-						exists: false,
-						writable: false,
-						error: 'Invalid response from path validation'
-					};
+			const payload = await validateRootFolder(path);
+			return payload as unknown as PathValidationResult;
 		} catch (error) {
 			return {
 				valid: false,
@@ -314,17 +279,7 @@
 		folderSaveError = null;
 
 		try {
-			const response = await fetch(`/api/root-folders/${editingFolder.id}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-				body: JSON.stringify(formData)
-			});
-
-			const payload = await readResponsePayload<Record<string, unknown>>(response);
-			if (!response.ok) {
-				folderSaveError = getResponseErrorMessage(payload, 'Failed to save root folder');
-				return;
-			}
+			await updateRootFolder(editingFolder.id, formData as RootFolderUpdate);
 
 			await invalidateAll();
 			closeFolderModal();
@@ -477,6 +432,22 @@
 					>
 						<option value="standard">{m.settings_general_standard()}</option>
 						<option value="anime">{m.settings_general_badgeAnime()}</option>
+					</select>
+				</div>
+
+				<div class="form-control">
+					<label class="label py-1" for="status-library-metadata-provider">
+						<span class="label-text">Metadata provider (Anime)</span>
+					</label>
+					<select
+						id="status-library-metadata-provider"
+						class="select-bordered select select-sm"
+						bind:value={libraryForm.metadataProvider}
+					>
+						<option value="auto">Auto</option>
+						<option value="tmdb">TMDB</option>
+						<option value="anilist">AniList</option>
+						<option value="mal">MyAnimeList</option>
 					</select>
 				</div>
 

@@ -12,6 +12,9 @@
 		Check
 	} from 'lucide-svelte';
 	import { formatBytes } from '$lib/utils/format';
+	import { formatRelativeDate } from '$lib/utils/format-relative-date.js';
+	import { getPosterUrl } from '$lib/utils/poster-url.js';
+	import * as m from '$lib/paraglide/messages.js';
 
 	type MediaExplorerItem = {
 		id: string;
@@ -47,42 +50,6 @@
 	}
 
 	let { items, currentSort = 'title-asc', onSortChange }: Props = $props();
-
-	function formatRelativeDate(dateStr: string): { display: string; full: string } {
-		const date = new Date(dateStr);
-		const now = new Date();
-		const full = date.toLocaleDateString();
-
-		const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-		const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-		const diffDays = Math.round((today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24));
-
-		if (diffDays === 0) return { display: 'today', full };
-		if (diffDays === 1) return { display: 'yesterday', full };
-		if (diffDays < 7) return { display: `${diffDays} days ago`, full };
-		if (diffDays < 30) {
-			const weeks = Math.floor(diffDays / 7);
-			return {
-				display: weeks === 1 ? '1 week ago' : `${weeks} weeks ago`,
-				full
-			};
-		}
-		if (diffDays < 365) {
-			const months = Math.floor(diffDays / 30);
-			return {
-				display: months === 1 ? '1 month ago' : `${months} months ago`,
-				full
-			};
-		}
-		return { display: full, full };
-	}
-
-	function getPosterUrl(item: MediaExplorerItem): string {
-		if (item.posterPath) {
-			return `https://image.tmdb.org/t/p/w92${item.posterPath}`;
-		}
-		return '';
-	}
 
 	function getDetailUrl(item: MediaExplorerItem): string {
 		if (item.mediaType === 'movie') {
@@ -124,7 +91,7 @@
 {#if items.length === 0}
 	<div class="py-12 text-center text-base-content/60">
 		<Film class="mx-auto mb-4 h-12 w-12 opacity-40" />
-		<p class="text-lg font-medium">No media found</p>
+		<p class="text-lg font-medium">{m.mediaExplorer_noMediaFound()}</p>
 	</div>
 {:else}
 	<!-- Mobile: Card View -->
@@ -138,7 +105,7 @@
 						{#if item.posterPath}
 							<div class="shrink-0">
 								<img
-									src={getPosterUrl(item)}
+									src={getPosterUrl(item.posterPath)}
 									alt={item.title}
 									class="h-24 w-16 rounded object-cover"
 									loading="lazy"
@@ -167,14 +134,14 @@
 								<span class="badge badge-ghost badge-sm">
 									{#if item.mediaType === 'movie'}
 										<Film class="h-3 w-3" />
-										Movie
+										{m.mediaExplorer_typeMovie()}
 									{:else}
 										<Tv class="h-3 w-3" />
-										TV
+										{m.mediaExplorer_typeTv()}
 									{/if}
 								</span>
 								{#if item.mediaSubType === 'anime'}
-									<span class="badge badge-xs badge-secondary">Anime</span>
+									<span class="badge badge-xs badge-secondary">{m.mediaExplorer_typeAnime()}</span>
 								{/if}
 							</div>
 
@@ -220,38 +187,37 @@
 							{#if progress !== null}
 								<div class="mt-1.5">
 									<div class="flex items-center gap-2 text-xs text-base-content/60">
-										<span>{item.episodeFileCount ?? 0}/{item.episodeCount ?? 0} episodes</span>
+										<span
+											>{item.episodeFileCount ?? 0}/{item.episodeCount ?? 0}
+											{m.mediaExplorer_episodes()}</span
+										>
 										{#if progress === 100}
-											<span class="badge badge-xs badge-success">Complete</span>
+											<span class="badge badge-xs badge-success">{m.mediaExplorer_complete()}</span>
 										{:else if progress > 0}
 											<span class="badge badge-xs badge-primary">{progress}%</span>
 										{/if}
 									</div>
 									{#if progress > 0}
-										<div
-											class="mt-1 h-1.5 w-full max-w-40 overflow-hidden rounded-full bg-base-300"
-										>
-											<div
-												class="h-full transition-all duration-500 {progress === 100
-													? 'bg-success'
-													: 'bg-primary'}"
-												style="width: {progress}%"
-											></div>
-										</div>
+										<progress
+											class="progress mt-1 h-1.5 w-full max-w-40 {progress === 100
+												? 'progress-success'
+												: 'progress-primary'}"
+											value={progress}
+											max="100"
+										></progress>
 									{/if}
 								</div>
 							{/if}
 							{#if item.playedPercentage !== null && item.playCount > 0}
 								<div class="mt-1.5">
 									<div class="flex items-center gap-1.5 text-xs text-base-content/60">
-										<div class="h-1.5 w-full max-w-32 overflow-hidden rounded-full bg-base-300">
-											<div
-												class="h-full transition-all duration-500 {item.playedPercentage >= 90
-													? 'bg-success'
-													: 'bg-primary'}"
-												style="width: {Math.min(100, Math.round(item.playedPercentage))}%"
-											></div>
-										</div>
+										<progress
+											class="progress h-1.5 w-full max-w-32 {item.playedPercentage >= 90
+												? 'progress-success'
+												: 'progress-primary'}"
+											value={Math.min(100, Math.round(item.playedPercentage))}
+											max="100"
+										></progress>
 										<span>{Math.min(100, Math.round(item.playedPercentage))}%</span>
 									</div>
 								</div>
@@ -278,7 +244,7 @@
 								: 'text-base-content/50 hover:text-base-content'}"
 							onclick={() => handleHeaderSort('title')}
 						>
-							Title
+							{m.mediaExplorer_headerTitle()}
 							{#if getSortDirection('title') === 'asc'}
 								<ArrowUp class="h-3 w-3" />
 							{:else if getSortDirection('title') === 'desc'}
@@ -288,9 +254,9 @@
 							{/if}
 						</button>
 					</th>
-					<th>Type</th>
-					<th>Library</th>
-					<th>Quality</th>
+					<th>{m.mediaExplorer_headerType()}</th>
+					<th>{m.mediaExplorer_headerLibrary()}</th>
+					<th>{m.mediaExplorer_headerQuality()}</th>
 					<th>
 						<button
 							class="flex items-center gap-1 text-xs font-medium tracking-wide uppercase {getSortDirection(
@@ -300,7 +266,7 @@
 								: 'text-base-content/50 hover:text-base-content'}"
 							onclick={() => handleHeaderSort('size')}
 						>
-							Size
+							{m.mediaExplorer_headerSize()}
 							{#if getSortDirection('size') === 'asc'}
 								<ArrowUp class="h-3 w-3" />
 							{:else if getSortDirection('size') === 'desc'}
@@ -319,7 +285,7 @@
 								: 'text-base-content/50 hover:text-base-content'}"
 							onclick={() => handleHeaderSort('plays')}
 						>
-							Playback
+							{m.mediaExplorer_headerPlayback()}
 							{#if getSortDirection('plays') === 'asc'}
 								<ArrowUp class="h-3 w-3" />
 							{:else if getSortDirection('plays') === 'desc'}
@@ -329,7 +295,7 @@
 							{/if}
 						</button>
 					</th>
-					<th>Status</th>
+					<th>{m.mediaExplorer_headerStatus()}</th>
 					<th>
 						<button
 							class="flex items-center gap-1 text-xs font-medium tracking-wide uppercase {getSortDirection(
@@ -339,7 +305,7 @@
 								: 'text-base-content/50 hover:text-base-content'}"
 							onclick={() => handleHeaderSort('added')}
 						>
-							Added
+							{m.mediaExplorer_headerAdded()}
 							{#if getSortDirection('added') === 'asc'}
 								<ArrowUp class="h-3 w-3" />
 							{:else if getSortDirection('added') === 'desc'}
@@ -364,7 +330,7 @@
 							{#if item.posterPath}
 								<a href={getDetailUrl(item)}>
 									<img
-										src={getPosterUrl(item)}
+										src={getPosterUrl(item.posterPath)}
 										alt={item.title}
 										class="h-14 w-10 rounded object-cover"
 										loading="lazy"
@@ -395,7 +361,7 @@
 									</span>
 								{/if}
 								{#if item.mediaSubType === 'anime'}
-									<span class="badge badge-xs badge-secondary">Anime</span>
+									<span class="badge badge-xs badge-secondary">{m.mediaExplorer_typeAnime()}</span>
 								{/if}
 							</div>
 						</td>
@@ -404,10 +370,10 @@
 							<span class="badge badge-ghost badge-sm">
 								{#if item.mediaType === 'movie'}
 									<Film class="h-3 w-3" />
-									Movie
+									{m.mediaExplorer_typeMovie()}
 								{:else}
 									<Tv class="h-3 w-3" />
-									TV
+									{m.mediaExplorer_typeTv()}
 								{/if}
 							</span>
 						</td>
@@ -452,14 +418,13 @@
 								</div>
 								{#if item.playedPercentage !== null && item.playCount > 0}
 									<div class="flex items-center gap-1.5">
-										<div class="h-1.5 w-full max-w-16 overflow-hidden rounded-full bg-base-300">
-											<div
-												class="h-full transition-all duration-500 {item.playedPercentage >= 90
-													? 'bg-success'
-													: 'bg-primary'}"
-												style="width: {Math.min(100, Math.round(item.playedPercentage))}%"
-											></div>
-										</div>
+										<progress
+											class="progress h-1.5 w-full max-w-16 {item.playedPercentage >= 90
+												? 'progress-success'
+												: 'progress-primary'}"
+											value={Math.min(100, Math.round(item.playedPercentage))}
+											max="100"
+										></progress>
 										<span class="text-xs text-base-content/50"
 											>{Math.min(100, Math.round(item.playedPercentage))}%</span
 										>
@@ -476,20 +441,29 @@
 						<td>
 							<div class="flex items-center gap-1.5">
 								{#if item.monitored}
-									<span class="badge badge-sm badge-success" title="Monitored">
+									<span
+										class="badge badge-sm badge-success"
+										title={m.mediaExplorer_statusMonitored()}
+									>
 										<Eye class="h-3.5 w-3.5" />
 									</span>
 								{:else}
-									<span class="badge badge-ghost badge-sm" title="Unmonitored">
+									<span
+										class="badge badge-ghost badge-sm"
+										title={m.mediaExplorer_statusUnmonitored()}
+									>
 										<EyeOff class="h-3.5 w-3.5" />
 									</span>
 								{/if}
 								{#if item.hasFile}
-									<span class="badge badge-sm badge-success" title="File available">
+									<span
+										class="badge badge-sm badge-success"
+										title={m.mediaExplorer_statusFileAvailable()}
+									>
 										<HardDrive class="h-3.5 w-3.5" />
 									</span>
 								{:else}
-									<span class="badge badge-sm badge-warning" title="No file">
+									<span class="badge badge-sm badge-warning" title={m.mediaExplorer_statusNoFile()}>
 										<HardDrive class="h-3.5 w-3.5" />
 									</span>
 								{/if}
@@ -501,7 +475,7 @@
 										<progress class="progress w-12 progress-primary" value={progress} max="100"
 										></progress>
 									{:else if progress === 100}
-										<span class="badge badge-xs badge-success">Done</span>
+										<span class="badge badge-xs badge-success">{m.mediaExplorer_statusDone()}</span>
 									{/if}
 								{/if}
 							</div>

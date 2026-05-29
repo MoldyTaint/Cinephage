@@ -12,6 +12,7 @@ import { NotFoundError, ValidationError } from '$lib/errors';
 
 export type LibraryMediaType = 'movie' | 'tv';
 export type LibraryMediaSubType = 'standard' | 'anime';
+export type MetadataProviderSelection = 'auto' | 'tmdb' | 'anilist' | 'mal';
 
 export interface LibraryRootFolder {
 	id: string;
@@ -36,6 +37,7 @@ export interface LibraryEntity {
 	defaultMonitored: boolean;
 	defaultSearchOnAdd: boolean;
 	defaultWantsSubtitles: boolean;
+	metadataProvider: MetadataProviderSelection;
 	sortOrder: number;
 	createdAt: string;
 	updatedAt: string;
@@ -50,6 +52,7 @@ export interface CreateLibraryInput {
 	defaultMonitored?: boolean;
 	defaultSearchOnAdd?: boolean;
 	defaultWantsSubtitles?: boolean;
+	metadataProvider?: MetadataProviderSelection;
 	sortOrder?: number;
 }
 
@@ -305,6 +308,7 @@ export class LibraryEntityService {
 				defaultMonitored: libraries.defaultMonitored,
 				defaultSearchOnAdd: libraries.defaultSearchOnAdd,
 				defaultWantsSubtitles: libraries.defaultWantsSubtitles,
+				metadataProvider: libraries.metadataProvider,
 				sortOrder: libraries.sortOrder,
 				createdAt: libraries.createdAt,
 				updatedAt: libraries.updatedAt
@@ -376,6 +380,7 @@ export class LibraryEntityService {
 				defaultMonitored: row.defaultMonitored ?? true,
 				defaultSearchOnAdd: row.defaultSearchOnAdd ?? true,
 				defaultWantsSubtitles: row.defaultWantsSubtitles ?? true,
+				metadataProvider: (row.metadataProvider as MetadataProviderSelection) ?? 'auto',
 				sortOrder: row.sortOrder ?? 0,
 				createdAt: row.createdAt ?? '',
 				updatedAt: row.updatedAt ?? ''
@@ -402,6 +407,7 @@ export class LibraryEntityService {
 					defaultMonitored: true,
 					defaultSearchOnAdd: true,
 					defaultWantsSubtitles: true,
+					metadataProvider: 'auto',
 					sortOrder: def.sortOrder,
 					createdAt: now,
 					updatedAt: now
@@ -751,6 +757,7 @@ export class LibraryEntityService {
 			defaultMonitored: input.defaultMonitored ?? true,
 			defaultSearchOnAdd: input.defaultSearchOnAdd ?? true,
 			defaultWantsSubtitles: input.defaultWantsSubtitles ?? true,
+			metadataProvider: input.metadataProvider ?? 'auto',
 			sortOrder: nextSortOrder,
 			createdAt: now,
 			updatedAt: now
@@ -828,6 +835,9 @@ export class LibraryEntityService {
 		}
 		if (updates.defaultWantsSubtitles !== undefined) {
 			updateData.defaultWantsSubtitles = updates.defaultWantsSubtitles;
+		}
+		if (updates.metadataProvider !== undefined) {
+			updateData.metadataProvider = updates.metadataProvider;
 		}
 		if (updates.sortOrder !== undefined) {
 			updateData.sortOrder = updates.sortOrder;

@@ -42,6 +42,9 @@ export interface BaseSearchCriteria {
 	 * Used for text-based fallback when ID-based search fails.
 	 */
 	searchTitles?: string[];
+	/** Preferred audio language (ISO 639-1 code, e.g. 'fr', 'de').
+	 * Used for post-search language boosting of releases. */
+	language?: string;
 }
 
 // =============================================================================

@@ -4,9 +4,20 @@
 
 	interface Props {
 		series: LibrarySeries;
+		configuredProviders?: { anilist: boolean; mal: boolean };
+		onResolveProviderRef?: (provider: 'anilist' | 'mal') => void;
 	}
 
-	let { series }: Props = $props();
+	let {
+		series,
+		configuredProviders = { anilist: false, mal: false },
+		onResolveProviderRef
+	}: Props = $props();
+
+	const usesAnimeMetadataProvider = $derived(
+		(series.metadataProvider === 'anilist' && Boolean(series.providerRefs?.anilist)) ||
+			(series.metadataProvider === 'mal' && Boolean(series.providerRefs?.mal))
+	);
 
 	const seriesStoragePath = $derived.by(() => {
 		const rootPath = series.rootFolderPath ?? '';
@@ -24,6 +35,57 @@
 		const normalizedRelative = relativePath.startsWith('/') ? relativePath.slice(1) : relativePath;
 
 		return `${normalizedRoot}/${normalizedRelative}`;
+	});
+
+	const providerLinkRows = $derived.by(() => {
+		const isAnimeItem =
+			(series.rootFolderPath ?? '').toLowerCase().includes('/anime/') ||
+			series.metadataProvider === 'anilist' ||
+			series.metadataProvider === 'mal' ||
+			Boolean(series.providerRefs?.anilist) ||
+			Boolean(series.providerRefs?.mal);
+		if (!isAnimeItem) return [];
+
+		const refs = series.providerRefs ?? {};
+		const rows: Array<
+			{ label: string; value: string } & (
+				| { resolved: true; href: string; provider: 'anilist' | 'mal' }
+				| { resolved: false; provider: 'anilist' | 'mal' }
+			)
+		> = [];
+		if (configuredProviders.anilist && refs.anilist) {
+			rows.push({
+				label: 'AniList ID',
+				href: `https://anilist.co/anime/${refs.anilist}`,
+				value: refs.anilist,
+				resolved: true,
+				provider: 'anilist'
+			});
+		} else if (configuredProviders.anilist) {
+			rows.push({
+				label: 'AniList ID',
+				value: 'N/A',
+				resolved: false,
+				provider: 'anilist'
+			});
+		}
+		if (configuredProviders.mal && refs.mal) {
+			rows.push({
+				label: 'MAL ID',
+				href: `https://myanimelist.net/anime/${refs.mal}`,
+				value: refs.mal,
+				resolved: true,
+				provider: 'mal'
+			});
+		} else if (configuredProviders.mal) {
+			rows.push({
+				label: 'MAL ID',
+				value: 'N/A',
+				resolved: false,
+				provider: 'mal'
+			});
+		}
+		return rows;
 	});
 </script>
 
@@ -50,7 +112,9 @@
 			{/if}
 			{#if series.network}
 				<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-					<dt class="text-base-content/60">{m.common_network()}</dt>
+					<dt class="text-base-content/60">
+						{usesAnimeMetadataProvider ? 'Studios' : m.common_network()}
+					</dt>
 					<dd>{series.network}</dd>
 				</div>
 			{/if}
@@ -109,6 +173,31 @@
 					</dd>
 				</div>
 			{/if}
+			{#each providerLinkRows as row (row.label)}
+				<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
+					<dt class="text-base-content/60">{row.label}</dt>
+					<dd>
+						{#if row.resolved}
+							<a
+								href={row.href}
+								target="_blank"
+								rel="noopener noreferrer"
+								class="link link-primary"
+							>
+								{row.value}
+							</a>
+						{:else}
+							<button
+								type="button"
+								class="link link-warning"
+								onclick={() => onResolveProviderRef?.(row.provider)}
+							>
+								{row.value}
+							</button>
+						{/if}
+					</dd>
+				</div>
+			{/each}
 		</dl>
 	</div>
 

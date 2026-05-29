@@ -4,12 +4,9 @@
 		Clapperboard,
 		Tv,
 		Download,
-		Upload,
 		AlertCircle,
-		PauseCircle,
 		Clock,
 		CheckCircle,
-		XCircle,
 		Search,
 		Plus,
 		FileQuestion,
@@ -18,8 +15,6 @@
 		TrendingUp,
 		Compass,
 		ArrowRight,
-		Loader2,
-		Minus,
 		Wifi,
 		ListTodo,
 		HardDrive
@@ -31,6 +26,15 @@
 	import type { UnifiedActivity } from '$lib/types/activity';
 	import { createSSE } from '$lib/sse';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
+	import { formatBytes } from '$lib/utils/format.js';
+	import { getMediaLink, canLinkToMedia } from '$lib/utils/media-link.js';
+	import {
+		statusConfig,
+		getStatusLabel,
+		formatRelativeTime,
+		getActivityCategoryTag
+	} from '$lib/components/activity/activity-display-utils.js';
+	import ActivityStatusPopover from '$lib/components/activity/ActivityStatusPopover.svelte';
 
 	let { data } = $props();
 
@@ -79,24 +83,40 @@
 		series: RecentlyAddedSeries[];
 	}
 
+	interface UpcomingItem {
+		type: 'movie' | 'episode';
+		date: string;
+		title: string;
+		posterPath: string | null;
+		subtitle?: string;
+		tmdbId?: number;
+		movieId?: string;
+		seriesId?: string;
+		episodeId?: string;
+	}
+
 	// Resolve promises with initial empty state for smooth transitions
 	let recentlyAddedResolved = $state<RecentlyAddedData>({ movies: [], series: [] });
 	let missingEpisodesResolved = $state<MissingEpisode[]>([]);
 	let recentActivityResolved = $state<UnifiedActivity[]>([]);
+	let upcomingResolved = $state<UpcomingItem[]>([]);
 	let isRecentlyAddedLoading = $state(true);
 	let isMissingEpisodesLoading = $state(true);
 	let isActivityLoading = $state(true);
+	let isUpcomingLoading = $state(true);
 
 	// Local SSE-overridable state; derived values fall back to resolved server data or SSR/initial render.
 	let statsState = $state<typeof data.stats | null>(null);
 	let recentActivityState = $state<UnifiedActivity[] | null>(null);
 	let recentlyAddedState = $state<typeof recentlyAddedResolved | null>(null);
 	let missingEpisodesState = $state<typeof missingEpisodesResolved | null>(null);
+	let upcomingState = $state<UpcomingItem[] | null>(null);
 
 	const stats = $derived(statsState ?? data.stats);
 	const recentActivity = $derived(recentActivityState ?? recentActivityResolved);
 	const recentlyAdded = $derived(recentlyAddedState ?? recentlyAddedResolved);
 	const missingEpisodes = $derived(missingEpisodesState ?? missingEpisodesResolved);
+	const upcoming = $derived(upcomingState ?? upcomingResolved);
 
 	// Resolve promises when they resolve
 	$effect(() => {
@@ -144,6 +164,21 @@
 			recentActivityResolved = data.recentActivity;
 			isActivityLoading = false;
 		}
+
+		// Handle upcoming promise
+		if (data.upcoming instanceof Promise) {
+			data.upcoming
+				.then((result: UpcomingItem[]) => {
+					upcomingResolved = result;
+					isUpcomingLoading = false;
+				})
+				.catch(() => {
+					isUpcomingLoading = false;
+				});
+		} else {
+			upcomingResolved = data.upcoming;
+			isUpcomingLoading = false;
+		}
 	});
 
 	// Sync from server data when it changes (e.g., on navigation)
@@ -165,6 +200,9 @@
 		},
 		'dashboard:recentActivity': (newRecentActivity) => {
 			recentActivityState = newRecentActivity as UnifiedActivity[];
+		},
+		'dashboard:upcoming': (newUpcoming) => {
+			upcomingState = newUpcoming as UpcomingItem[];
 		}
 	});
 
@@ -175,81 +213,36 @@
 		};
 	});
 
-	// Format relative time
-	function formatRelativeTime(dateStr: string | null): string {
-		if (!dateStr) return m.common_unknown();
-		const date = new Date(dateStr);
-		const now = new Date();
-		const diff = now.getTime() - date.getTime();
-		const minutes = Math.floor(diff / 60000);
-		const hours = Math.floor(diff / 3600000);
-		const days = Math.floor(diff / 86400000);
-
-		if (minutes < 1) return m.dashboard_relativeTime_justNow();
-		if (minutes < 60) return m.dashboard_relativeTime_minutesAgo({ count: minutes });
-		if (hours < 24) return m.dashboard_relativeTime_hoursAgo({ count: hours });
-		if (days < 7) return m.dashboard_relativeTime_daysAgo({ count: days });
-		return date.toLocaleDateString();
-	}
-
 	// Format date
 	function formatDate(dateStr: string | null): string {
 		if (!dateStr) return m.common_unknown();
 		return new Date(dateStr).toLocaleDateString();
 	}
 
-	// Status config for activity
-	const statusConfig: Record<string, { label: string; variant: string; icon: typeof CheckCircle }> =
-		{
-			imported: { label: m.status_imported(), variant: 'badge-success', icon: CheckCircle },
-			streaming: { label: m.status_streaming(), variant: 'badge-info', icon: CheckCircle },
-			downloading: { label: m.status_downloading(), variant: 'badge-info', icon: Loader2 },
-			seeding: { label: m.status_seeding(), variant: 'badge-success', icon: Upload },
-			paused: { label: m.status_paused(), variant: 'badge-warning', icon: PauseCircle },
-			failed: { label: m.status_failed(), variant: 'badge-error', icon: XCircle },
-			search_error: { label: m.status_searchError(), variant: 'badge-warning', icon: AlertCircle },
-			rejected: { label: m.status_rejected(), variant: 'badge-warning', icon: AlertCircle },
-			removed: { label: m.status_removed(), variant: 'badge-ghost', icon: XCircle },
-			no_results: { label: m.status_noResults(), variant: 'badge-ghost', icon: Minus },
-			searching: { label: m.status_searching(), variant: 'badge-info', icon: Loader2 }
-		};
-
-	// Get media link
-	function getMediaLink(activity: UnifiedActivity): string {
-		if (activity.mediaType === 'movie') {
-			return resolvePath(`/library/movie/${activity.mediaId}`);
-		}
-		return resolvePath(`/library/tv/${activity.seriesId || activity.mediaId}`);
+	function getCompactStatusLabel(
+		activity: UnifiedActivity,
+		fallbackLabel: string
+	): string | undefined {
+		const tag = getActivityCategoryTag(activity);
+		if (tag) return `${tag.label} ${fallbackLabel}`;
+		return getStatusLabel(activity, fallbackLabel);
 	}
 
-	function canLinkToMedia(activity: UnifiedActivity): boolean {
-		if (activity.status === 'removed') return false;
-		if (activity.mediaType === 'movie') return Boolean(activity.mediaId);
-		return Boolean(activity.seriesId || activity.mediaId);
+	function getMobileCompactStatusLabel(
+		activity: UnifiedActivity,
+		fallbackLabel: string
+	): string | undefined {
+		if (activity.status === 'search_error') return m.action_search();
+
+		const tag = getActivityCategoryTag(activity);
+		if (tag?.label === m.activity_tag_download()) return getStatusLabel(activity, fallbackLabel);
+		if (tag) return `${tag.label} ${fallbackLabel}`;
+		return getStatusLabel(activity, fallbackLabel);
 	}
 
-	function getCompactProgressLabel(activity: UnifiedActivity): string | null {
-		if (!activity.statusReason) {
-			return null;
-		}
-
-		if (activity.status === 'failed') {
-			return m.status_error();
-		}
-
-		if (activity.status === 'search_error') {
-			return m.status_searchError();
-		}
-
-		return activity.statusReason;
-	}
-
-	function formatBytes(bytes: number): string {
-		if (bytes === 0) return '0 B';
-		const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
-		const i = Math.floor(Math.log(bytes) / Math.log(1024));
-		const value = bytes / Math.pow(1024, i);
-		return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[i]}`;
+	function splitFormattedSize(bytes: number): { value: string; unit: string } {
+		const [value, ...unitParts] = formatBytes(bytes).split(' ');
+		return { value, unit: unitParts.join(' ') };
 	}
 </script>
 
@@ -499,17 +492,21 @@
 						<div class="text-sm text-base-content/70">{m.dashboard_stats_storage()}</div>
 					</div>
 				</div>
-				<div class="mt-2 flex gap-2 text-xs">
+				<div class="mt-2 flex min-w-0 gap-1.5 overflow-hidden text-xs">
 					{#if stats.storage.movieBytes > 0}
-						<span class="badge badge-sm whitespace-nowrap badge-primary">
-							<Clapperboard class="mr-0 h-3 w-3" />
-							{formatBytes(stats.storage.movieBytes)}
+						{@const movieSize = splitFormattedSize(stats.storage.movieBytes)}
+						<span class="badge min-w-0 flex-1 gap-1 badge-sm whitespace-nowrap badge-primary">
+							<Clapperboard class="h-3 w-3 shrink-0" />
+							<span class="shrink-0">{movieSize.value}</span>
+							<span class="shrink-0">{movieSize.unit}</span>
 						</span>
 					{/if}
 					{#if stats.storage.tvBytes > 0}
-						<span class="badge badge-sm whitespace-nowrap badge-secondary">
-							<Tv class="mr-0 h-3 w-3" />
-							{formatBytes(stats.storage.tvBytes)}
+						{@const tvSize = splitFormattedSize(stats.storage.tvBytes)}
+						<span class="badge min-w-0 flex-1 gap-1 badge-sm whitespace-nowrap badge-secondary">
+							<Tv class="h-3 w-3 shrink-0" />
+							<span class="shrink-0">{tvSize.value}</span>
+							<span class="shrink-0">{tvSize.unit}</span>
 						</span>
 					{/if}
 					{#if stats.storage.totalBytes === 0}
@@ -789,6 +786,88 @@
 				</div>
 			{/if}
 
+			<!-- Coming Up Section -->
+			{#if isUpcomingLoading}
+				<div class="card bg-base-200">
+					<div class="card-body">
+						<h2 class="card-title">
+							<Calendar class="h-5 w-5" />
+							{m.calendar_comingUp()}
+						</h2>
+						<div class="divide-y divide-base-300">
+							{#each Array.from({ length: 5 }, (_, index) => index) as index (index)}
+								<div class="flex items-center gap-3 py-2">
+									<Skeleton variant="rect" class="h-12 w-8 shrink-0" />
+									<div class="min-w-0 flex-1">
+										<Skeleton variant="text" class="mb-1 w-32" />
+										<Skeleton variant="text" class="w-24" />
+									</div>
+									<Skeleton variant="text" class="w-16" />
+								</div>
+							{/each}
+						</div>
+					</div>
+				</div>
+			{:else if upcoming.length > 0}
+				<div class="card bg-base-200">
+					<div class="card-body">
+						<div class="flex items-center justify-between">
+							<h2 class="card-title">
+								<Calendar class="h-5 w-5" />
+								{m.calendar_comingUp()}
+							</h2>
+							<a href={resolvePath('/calendar')} class="btn gap-1 btn-ghost btn-xs">
+								{m.calendar_viewAll()}
+								<ArrowRight class="h-3 w-3" />
+							</a>
+						</div>
+						<div class="divide-y divide-base-300">
+							{#each upcoming as item (item.type === 'episode' ? item.episodeId : item.tmdbId)}
+								<div class="flex items-center gap-3 py-2">
+									{#if item.posterPath}
+										<div class="h-12 w-8 shrink-0 overflow-hidden rounded">
+											<TmdbImage
+												path={item.posterPath}
+												alt={item.title}
+												size="w92"
+												class="h-full w-full object-cover"
+											/>
+										</div>
+									{:else}
+										<div
+											class="flex h-12 w-8 shrink-0 items-center justify-center rounded bg-base-300"
+										>
+											{#if item.type === 'movie'}
+												<Clapperboard class="h-4 w-4 text-base-content/50" />
+											{:else}
+												<Tv class="h-4 w-4 text-base-content/50" />
+											{/if}
+										</div>
+									{/if}
+									<div class="min-w-0 flex-1">
+										<p class="font-medium wrap-break-word whitespace-normal">{item.title}</p>
+										<p class="wrap-break-words text-sm whitespace-normal text-base-content/70">
+											{item.subtitle ??
+												(item.type === 'movie' ? m.common_movie() : m.common_episode())}
+										</p>
+									</div>
+									<div class="flex flex-col items-end gap-1">
+										<span class="text-sm text-base-content/50">{formatDate(item.date)}</span>
+										<span
+											class="badge badge-xs {item.type === 'movie'
+												? 'badge-primary'
+												: 'badge-secondary'}"
+										>
+											{item.type === 'movie' ? m.common_movie() : m.common_episode()}
+										</span>
+									</div>
+								</div>
+							{/each}
+						</div>
+					</div>
+				</div>
+			{/if}
+
 			<!-- Empty State -->
 			{#if !isRecentlyAddedLoading && recentlyAdded.movies.length === 0 && recentlyAdded.series.length === 0}
 				<div class="card bg-base-200">
@@ -829,7 +908,7 @@
 								<tr>
 									<th>{m.dashboard_recentHistory_colStatus()}</th>
 									<th>{m.dashboard_recentHistory_colMedia()}</th>
-									<th>{m.dashboard_recentHistory_colProgress()}</th>
+									<th>{m.common_size()}</th>
 									<th>{m.dashboard_recentHistory_colTime()}</th>
 								</tr>
 							</thead>
@@ -838,7 +917,7 @@
 									<tr>
 										<td><Skeleton variant="text" class="w-16" /></td>
 										<td><Skeleton variant="text" class="w-24" /></td>
-										<td><Skeleton variant="text" class="w-12" /></td>
+										<td><Skeleton variant="text" class="w-10" /></td>
 										<td><Skeleton variant="text" class="w-10" /></td>
 									</tr>
 								{/each}
@@ -852,29 +931,27 @@
 								<tr>
 									<th>{m.dashboard_recentHistory_colStatus()}</th>
 									<th>{m.dashboard_recentHistory_colMedia()}</th>
-									<th>{m.dashboard_recentHistory_colProgress()}</th>
+									<th>{m.common_size()}</th>
 									<th>{m.dashboard_recentHistory_colTime()}</th>
 								</tr>
 							</thead>
 							<tbody>
 								{#each recentActivity as activity (activity.id)}
 									{@const config = statusConfig[activity.status] || statusConfig.no_results}
-									{@const StatusIcon = config.icon}
 									<tr class="hover">
 										<td>
-											<span class="badge gap-1 {config.variant} badge-xs">
-												<StatusIcon
-													class="h-3 w-3 {activity.status === 'downloading' ||
-													activity.status === 'searching'
-														? 'animate-spin'
-														: ''}"
-												/>
-												{#if activity.status === 'downloading' && activity.downloadProgress !== undefined}
-													{activity.downloadProgress}%
-												{:else}
-													{config.label}
-												{/if}
-											</span>
+											<ActivityStatusPopover
+												{activity}
+												compactLabel={getCompactStatusLabel(activity, config.label)}
+												mobileCompactLabel={getMobileCompactStatusLabel(activity, config.label)}
+											/>
+											{#if activity.status === 'downloading' && activity.downloadProgress !== undefined}
+												<progress
+													class="progress mt-0.5 w-12 progress-info"
+													value={activity.downloadProgress}
+													max="100"
+												></progress>
+											{/if}
 										</td>
 										<td>
 											{#if canLinkToMedia(activity)}
@@ -905,22 +982,9 @@
 											{/if}
 										</td>
 										<td>
-											{#if activity.status === 'downloading' && activity.downloadProgress !== undefined}
-												<progress
-													class="progress w-12 progress-info"
-													value={activity.downloadProgress}
-													max="100"
-												></progress>
-											{:else if getCompactProgressLabel(activity)}
-												<span
-													class="max-w-16 truncate text-xs text-base-content/50"
-													title={activity.statusReason}
-												>
-													{getCompactProgressLabel(activity)}
-												</span>
-											{:else}
-												<span class="text-xs text-base-content/50">{config.label}</span>
-											{/if}
+											<span class="text-xs text-base-content/70">
+												{activity.size ? formatBytes(activity.size) : '-'}
+											</span>
 										</td>
 										<td>
 											<span class="text-xs text-base-content/50">

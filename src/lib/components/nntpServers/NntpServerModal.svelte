@@ -3,6 +3,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { SectionHeader, TestResult } from '$lib/components/ui/modal';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
+	import { isBlankOrRedacted } from '$lib/shared/sensitiveSettings';
 
 	interface NntpServer {
 		id: string;
@@ -118,10 +119,7 @@
 			enabled
 		};
 
-		// In edit mode, only include password if user actually typed something new
-		// This prevents accidentally clearing existing passwords
-		if (mode === 'edit' && !password) {
-			// Remove password from payload to preserve existing value
+		if (mode === 'edit' && isBlankOrRedacted(password?.trim())) {
 			delete (data as unknown as Record<string, unknown>).password;
 		}
 
@@ -160,7 +158,10 @@
 
 			<div class="form-control">
 				<label class="label py-1" for="name">
-					<span class="label-text">{m.common_name()}</span>
+					<span class="label-text">
+						{m.common_name()}
+						<span class="text-error">* </span>
+					</span>
 				</label>
 				<input
 					id="name"
@@ -187,7 +188,10 @@
 			<div class="grid grid-cols-2 gap-2 sm:gap-3">
 				<div class="form-control">
 					<label class="label py-1" for="host">
-						<span class="label-text">{m.connection_host_label()}</span>
+						<span class="label-text">
+							{m.connection_host_label()}
+							<span class="text-error">* </span>
+						</span>
 					</label>
 					<input
 						id="host"

@@ -8,7 +8,7 @@ import { qualityFilter, type EnrichmentOptions } from '$lib/server/quality';
 import { logger } from '$lib/logging';
 import { redactUrl } from '$lib/server/utils/urlSecurity';
 import { db } from '$lib/server/db';
-import { movies, series } from '$lib/server/db/schema';
+import { movies, series, settings } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { evaluateIndexerSearchAvailability } from '$lib/server/indexers/search/availability';
 import {
@@ -67,6 +67,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		year,
 		season,
 		episode,
+		language,
 		enrich,
 		scoringProfileId,
 		matchToTmdb,
@@ -83,6 +84,26 @@ export const GET: RequestHandler = async ({ url }) => {
 		: (categories ?? getCategoriesForSearchType(searchType));
 	const effectiveLimit = isMultiSeasonPackTvSearch ? (limit ?? 200) : limit;
 
+	// Resolve language preference:
+	// 1. Explicit query param (e.g., ?language=fr) takes precedence
+	// 2. Fall back to global TMDB language filter (e.g., 'fr-FR' -> 'fr')
+	let effectiveLanguage: string | undefined = language;
+	if (!effectiveLanguage) {
+		try {
+			const filtersSetting = await db.query.settings.findFirst({
+				where: eq(settings.key, 'global_filters')
+			});
+			if (filtersSetting?.value) {
+				const globalFilters = JSON.parse(filtersSetting.value);
+				if (globalFilters?.language && typeof globalFilters.language === 'string') {
+					effectiveLanguage = globalFilters.language.toLowerCase().split('-')[0];
+				}
+			}
+		} catch {
+			// If settings are unavailable, proceed without language preference
+		}
+	}
+
 	let criteria: SearchCriteria;
 
 	if (searchType === 'movie') {
@@ -94,7 +115,8 @@ export const GET: RequestHandler = async ({ url }) => {
 			limit: effectiveLimit,
 			imdbId,
 			tmdbId,
-			year
+			year,
+			language: effectiveLanguage
 		};
 	} else if (searchType === 'tv') {
 		criteria = {
@@ -107,7 +129,8 @@ export const GET: RequestHandler = async ({ url }) => {
 			tmdbId,
 			tvdbId,
 			season,
-			episode
+			episode,
+			language: effectiveLanguage
 		};
 	} else {
 		// Basic search requires a query
@@ -119,7 +142,8 @@ export const GET: RequestHandler = async ({ url }) => {
 			query: q,
 			categories: effectiveCategories.length > 0 ? effectiveCategories : undefined,
 			indexerIds: indexers,
-			limit: effectiveLimit
+			limit: effectiveLimit,
+			language: effectiveLanguage
 		};
 	}
 
@@ -146,9 +170,8 @@ export const GET: RequestHandler = async ({ url }) => {
 				});
 				if (movie) {
 					searchTitles = await getMovieSearchTitles(movie.id);
-					// If we only have a single title variant, refresh alternates from TMDB once.
 					if (searchTitles.length <= 1) {
-						await fetchAndStoreMovieAlternateTitles(movie.id, tmdbId);
+						fetchAndStoreMovieAlternateTitles(movie.id, tmdbId).catch(() => {});
 						searchTitles = await getMovieSearchTitles(movie.id);
 					}
 				}
@@ -159,9 +182,8 @@ export const GET: RequestHandler = async ({ url }) => {
 				});
 				if (show) {
 					searchTitles = await getSeriesSearchTitles(show.id);
-					// If we only have a single title variant, refresh alternates from TMDB once.
 					if (searchTitles.length <= 1) {
-						await fetchAndStoreSeriesAlternateTitles(show.id, tmdbId);
+						fetchAndStoreSeriesAlternateTitles(show.id, tmdbId).catch(() => {});
 						searchTitles = await getSeriesSearchTitles(show.id);
 					}
 				}
@@ -248,7 +270,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			searchSource: 'interactive',
 			enrichment: enrichmentOpts,
 			protocolFilter,
-			timeout: 70000
+			timeout: 20000
 		});
 
 		return json({
@@ -300,7 +322,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	// Standard search without enrichment (interactive)
 	const searchResult = await manager.search(criteria, {
 		searchSource: 'interactive',
-		timeout: 70000
+		timeout: 20000
 	});
 
 	return json({

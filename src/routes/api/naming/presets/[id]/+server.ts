@@ -10,6 +10,7 @@ import {
 import { eq } from 'drizzle-orm';
 import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { namingPresetUpdateSchema } from '$lib/validation/schemas.js';
 
 /**
  * GET /api/naming/presets/[id]
@@ -72,20 +73,13 @@ export const PUT: RequestHandler = async (event) => {
 			return json({ error: 'Preset not found' }, { status: 404 });
 		}
 
-		const body = await request.json();
-		const { name, description, config } = body as {
-			name?: string;
-			description?: string;
-			config?: Record<string, unknown>;
-		};
+		const parsed = namingPresetUpdateSchema.safeParse(await request.json());
+		if (!parsed.success) {
+			return json({ success: false, error: parsed.error.issues[0].message }, { status: 400 });
+		}
+		const { name, description, config } = parsed.data;
 
-		// Validate name if provided
 		if (name !== undefined) {
-			if (typeof name !== 'string' || name.trim().length === 0) {
-				return json({ error: 'Name cannot be empty' }, { status: 400 });
-			}
-
-			// Check if name conflicts with built-in preset
 			const builtInConflict = BUILT_IN_PRESETS.find(
 				(p) => p.name.toLowerCase() === name.trim().toLowerCase()
 			);

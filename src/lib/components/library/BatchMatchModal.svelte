@@ -5,6 +5,8 @@
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { getFileName } from '$lib/utils/format.js';
+	import { batchUnmatchedMatch } from '$lib/api/library.js';
+	import { searchTmdb } from '$lib/api/discover.js';
 
 	interface UnmatchedFile {
 		id: string;
@@ -122,10 +124,10 @@
 
 		isSearching = true;
 		try {
-			const response = await fetch(
-				`/api/discover/search?query=${encodeURIComponent(searchQuery)}&type=${searchType}`
-			);
-			const data = await response.json();
+			const data = (await searchTmdb({
+				query: searchQuery,
+				type: searchType
+			})) as unknown as { results?: TmdbSearchResult[] };
 			searchResults = data.results || [];
 		} catch {
 			toasts.error(m.library_batchMatch_searchFailed());
@@ -192,20 +194,16 @@
 				}
 			}
 
-			const response = await fetch('/api/library/unmatched/match', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					fileIds: selectedFileIds,
-					tmdbId: selectedMedia.id,
-					mediaType: searchType,
-					...(searchType === 'tv' && Object.keys(episodeMapping).length > 0
-						? { episodeMapping }
-						: {})
-				})
-			});
-
-			const result = await response.json();
+			const result = (await batchUnmatchedMatch({
+				fileIds: selectedFileIds,
+				tmdbId: selectedMedia.id,
+				mediaType: searchType,
+				...(searchType === 'tv' && Object.keys(episodeMapping).length > 0 ? { episodeMapping } : {})
+			})) as unknown as {
+				success: boolean;
+				data: { matched: number; failed: number; errors: string[] };
+				error?: string;
+			};
 
 			if (result.success) {
 				toasts.success(

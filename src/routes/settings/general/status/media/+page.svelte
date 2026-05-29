@@ -12,7 +12,7 @@
 
 	let searchQuery = $state('');
 
-	let qualityExpanded = $state(
+	let qualityExpanded = $derived(
 		Object.entries(data.filters).some(
 			([key, value]) =>
 				!['sort', 'type', 'monitored', 'hasPlays', 'library'].includes(key) && value !== 'all'

@@ -81,6 +81,20 @@
 	}
 
 	function getStatusBadge(account: LiveTvAccount): { class: string; text: string } {
+		const errorCode = parseStreamErrorCode(account.lastTestError);
+		if (errorCode === '458' || errorCode === 'blocked') {
+			return { class: 'badge-error', text: 'Blocked (458)' };
+		}
+		if (errorCode === '456' || errorCode === '459') {
+			return { class: 'badge-warning', text: 'Rate Limited (456)' };
+		}
+		if (errorCode === '429') {
+			return { class: 'badge-warning', text: 'Too Many Requests' };
+		}
+		if (errorCode === '407') {
+			return { class: 'badge-warning', text: 'Proxy Required (407)' };
+		}
+
 		if (account.lastTestSuccess === false) {
 			return { class: 'badge-error', text: m.livetv_accountTable_statusError() };
 		}
@@ -102,6 +116,19 @@
 		}
 
 		return { class: 'badge-success', text: m.livetv_accountTable_statusActive() };
+	}
+
+	function parseStreamErrorCode(error: string | null | undefined): string | null {
+		if (!error) return null;
+		if (/\b458\b/.test(error)) return '458';
+		if (/\b456\b/.test(error)) return '456';
+		if (/\b459\b/.test(error)) return '459';
+		if (/\b429\b/.test(error)) return '429';
+		if (/\b407\b/.test(error)) return '407';
+		if (/blocked/i.test(error)) return 'blocked';
+		if (/rate.?limit/i.test(error)) return '456';
+		if (/max.?connection/i.test(error)) return '456';
+		return null;
 	}
 
 	function getSyncStatusBadge(account: LiveTvAccount): { class: string; text: string } {

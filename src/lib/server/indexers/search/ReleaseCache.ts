@@ -1,6 +1,6 @@
 import type { ReleaseResult, SearchCriteria } from '../types';
 import { isMovieSearch, isTvSearch, isMusicSearch, isBookSearch } from '../types';
-import * as crypto from 'crypto';
+import * as crypto from 'node:crypto';
 
 /**
  * Cached search result entry.
@@ -54,7 +54,7 @@ export class ReleaseCache {
 	 * Generates a cache key from search criteria.
 	 * Uses SHA-256 for better collision resistance and includes cache version.
 	 */
-	private generateKey(criteria: SearchCriteria): string {
+	private generateKeyInternal(criteria: SearchCriteria): string {
 		// Build normalized object based on search type
 		const normalized: Record<string, unknown> = {
 			_v: CACHE_VERSION, // Cache version for invalidation on format changes
@@ -89,12 +89,16 @@ export class ReleaseCache {
 		return crypto.createHash('sha256').update(str).digest('hex').substring(0, 32);
 	}
 
+	generateKey(criteria: SearchCriteria): string {
+		return this.generateKeyInternal(criteria);
+	}
+
 	/**
 	 * Gets cached results if available and not expired.
 	 * Updates LRU access order on hit.
 	 */
 	get(criteria: SearchCriteria): ReleaseResult[] | null {
-		const key = this.generateKey(criteria);
+		const key = this.generateKeyInternal(criteria);
 		const entry = this.cache.get(key);
 
 		if (!entry) {
@@ -117,7 +121,7 @@ export class ReleaseCache {
 	 * Sets cached results with LRU eviction if cache is full.
 	 */
 	set(criteria: SearchCriteria, results: ReleaseResult[]): void {
-		const key = this.generateKey(criteria);
+		const key = this.generateKeyInternal(criteria);
 		const now = Date.now();
 
 		// Evict LRU entries if at capacity
@@ -150,7 +154,7 @@ export class ReleaseCache {
 	 * Invalidates a specific cache entry.
 	 */
 	invalidate(criteria: SearchCriteria): boolean {
-		const key = this.generateKey(criteria);
+		const key = this.generateKeyInternal(criteria);
 		this.removeFromAccessOrder(key);
 		return this.cache.delete(key);
 	}

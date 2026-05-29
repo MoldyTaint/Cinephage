@@ -252,11 +252,6 @@ export const RELEASE_GROUP_FORMATS: CustomFormat[] = [
 ];
 
 /**
- * All release group tier formats (for backwards compat with index.ts)
- */
-export const ALL_GROUP_TIER_FORMATS: CustomFormat[] = RELEASE_GROUP_FORMATS;
-
-/**
  * Get all group names for quick lookup
  */
 export const RELEASE_GROUP_NAMES = RELEASE_GROUP_FORMATS.map((f) => f.name);

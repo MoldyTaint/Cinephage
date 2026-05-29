@@ -19,6 +19,9 @@
 		defaultCopyFromId?: string;
 		saving?: boolean;
 		error?: string | null;
+		errorPrefix?: string | null;
+		errorEmphasis?: string | null;
+		errorSuffix?: string | null;
 		onClose: () => void;
 		onSave: (data: ScoringProfileFormData) => void;
 		/** Called when resetting a built-in profile's scores to defaults */
@@ -34,6 +37,9 @@
 		defaultCopyFromId = 'balanced',
 		saving = false,
 		error = null,
+		errorPrefix = null,
+		errorEmphasis = null,
+		errorSuffix = null,
 		onClose,
 		onSave,
 		onReset
@@ -299,7 +305,11 @@
 
 	{#if error}
 		<div class="mb-4 alert alert-error">
-			<span>{error}</span>
+			{#if errorPrefix !== null && errorEmphasis !== null && errorSuffix !== null}
+				<span>{errorPrefix}<strong>{errorEmphasis}</strong>{errorSuffix}</span>
+			{:else}
+				<span>{error}</span>
+			{/if}
 		</div>
 	{/if}
 

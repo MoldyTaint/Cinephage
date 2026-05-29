@@ -54,6 +54,17 @@ export const PATCH: RequestHandler = async ({ request }) => {
 
 		const result = await db.update(series).set(updateData).where(inArray(series.id, seriesIds));
 
+		if (typeof updates.monitored === 'boolean') {
+			await db
+				.update(seasons)
+				.set({ monitored: updates.monitored })
+				.where(inArray(seasons.seriesId, seriesIds));
+			await db
+				.update(episodes)
+				.set({ monitored: updates.monitored })
+				.where(inArray(episodes.seriesId, seriesIds));
+		}
+
 		return json({
 			success: true,
 			updatedCount: result.changes

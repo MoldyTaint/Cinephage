@@ -1,7 +1,10 @@
 import type { LayoutServerLoad } from './$types';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
+import { tmdb } from '$lib/server/tmdb.js';
 
 export const load: LayoutServerLoad = async () => {
+	const defaultRegion = await tmdb.getRegion();
+
 	try {
 		const libraries = await getLibraryEntityService().listLibraries({ includeSystem: true });
 		const movieLibraries = libraries
@@ -31,6 +34,7 @@ export const load: LayoutServerLoad = async () => {
 		);
 
 		return {
+			defaultRegion,
 			libraryNav: {
 				movieLibraries,
 				tvLibraries,
@@ -40,6 +44,7 @@ export const load: LayoutServerLoad = async () => {
 		};
 	} catch {
 		return {
+			defaultRegion,
 			libraryNav: {
 				movieLibraries: [],
 				tvLibraries: [],

@@ -1,6 +1,6 @@
 import { db } from '$lib/server/db/index.js';
-import { movies, series } from '$lib/server/db/schema.js';
-import { inArray } from 'drizzle-orm';
+import { movies, series, blockedMedia } from '$lib/server/db/schema.js';
+import { inArray, eq, and } from 'drizzle-orm';
 
 /**
  * Library status for a single TMDB item
@@ -138,4 +138,61 @@ export function filterInLibrary<T extends { inLibrary?: boolean }>(
 ): T[] {
 	if (!exclude) return items;
 	return items.filter((item) => !item.inLibrary);
+}
+
+/**
+ * Get all blocked TMDB IDs as a Set for fast lookup.
+ * Cached per-request via module-level cache with TTL.
+ */
+let blockedCache: Record<string, { ids: Set<number>; expiry: number }> = {};
+const BLOCKED_CACHE_TTL = 30_000;
+
+export async function getBlockedTmdbIdSet(
+	mediaType: 'movie' | 'tv' | 'all' = 'all'
+): Promise<Set<number>> {
+	const now = Date.now();
+	const cached = blockedCache[mediaType];
+	if (cached && cached.expiry > now) {
+		return cached.ids;
+	}
+
+	const conditions = mediaType !== 'all' ? [eq(blockedMedia.mediaType, mediaType)] : [];
+
+	const rows = await db
+		.select({ tmdbId: blockedMedia.tmdbId })
+		.from(blockedMedia)
+		.where(conditions.length > 0 ? and(...conditions) : undefined);
+
+	const ids = new Set(rows.map((r) => r.tmdbId));
+	blockedCache[mediaType] = { ids, expiry: now + BLOCKED_CACHE_TTL };
+
+	return ids;
+}
+
+export function invalidateBlockedCache(): void {
+	blockedCache = {};
+}
+
+/**
+ * Filter out blocked media items from a list.
+ * Items are matched by their `id` (TMDB ID) property.
+ *
+ * @param items - Array of items with `id` (TMDB ID) property
+ * @param mediaType - Filter for which media type to check
+ * @returns Filtered array with blocked items removed
+ */
+export async function filterBlockedMedia<T extends { id: number; media_type?: string }>(
+	items: T[],
+	mediaType: 'movie' | 'tv' | 'all' = 'all'
+): Promise<T[]> {
+	if (!items || items.length === 0) {
+		return items ?? [];
+	}
+
+	const blockedIds = await getBlockedTmdbIdSet(mediaType);
+	if (blockedIds.size === 0) {
+		return items;
+	}
+
+	return items.filter((item) => !blockedIds.has(item.id));
 }

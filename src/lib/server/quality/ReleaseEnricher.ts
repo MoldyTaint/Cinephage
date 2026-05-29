@@ -20,7 +20,7 @@ import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'indexers' as const });
 import { getProtocolHandler, type ProtocolContext } from '../indexers/protocols';
-import type { ProtocolSettings } from '$lib/server/db/schema';
+import type { ProtocolSettings } from '$lib/server/indexers/types/index.js';
 
 /**
  * Indexer configuration for protocol-specific rejection

@@ -1,14 +1,22 @@
 <script lang="ts">
 	import type { DefinitionSetting } from '$lib/types/indexer';
 	import { HelpCircle, Info, Cookie, Shield, User } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages.js';
+	import { isSensitiveDefinitionSetting } from '$lib/shared/sensitiveSettings';
 
 	interface Props {
 		settingsDefinitions: DefinitionSetting[];
 		settings: Record<string, string>;
+		hasSensitiveSettings?: Record<string, boolean>;
 		onchange?: (settings: Record<string, string>) => void;
 	}
 
-	let { settingsDefinitions, settings = $bindable(), onchange }: Props = $props();
+	let {
+		settingsDefinitions,
+		settings = $bindable(),
+		hasSensitiveSettings = {},
+		onchange
+	}: Props = $props();
 
 	function updateSetting(name: string, value: string) {
 		settings[name] = value;
@@ -35,6 +43,10 @@
 				return Info;
 		}
 	}
+
+	function shouldPreserveSetting(setting: DefinitionSetting): boolean {
+		return isSensitiveDefinitionSetting(setting) && Boolean(hasSensitiveSettings[setting.name]);
+	}
 </script>
 
 {#if settingsDefinitions.length > 0}
@@ -44,7 +56,7 @@
 			{@const InfoIcon = getInfoIcon(setting.type)}
 			<div class="col-span-full rounded-lg bg-info/10 p-3">
 				<div class="flex items-start gap-2">
-					<InfoIcon class="mt-0.5 h-4 w-4 flex-shrink-0 text-info" />
+					<InfoIcon class="mt-0.5 h-4 w-4 shrink-0 text-info" />
 					<div class="min-w-0">
 						<span class="text-sm font-medium text-base-content">{setting.label}</span>
 						{#if setting.default}
@@ -59,8 +71,11 @@
 					<label class="label py-1" for={setting.name}>
 						<span class="label-text flex items-center gap-1">
 							{setting.label}
-							{#if setting.required}
-								<span class="text-error">*</span>
+							{#if setting.required && !shouldPreserveSetting(setting)}
+								<span class="text-error">* </span>
+							{/if}
+							{#if shouldPreserveSetting(setting)}
+								<span class="text-xs opacity-50">({m.auth_blankToKeep()})</span>
 							{/if}
 							{#if setting.helpText}
 								<div class="tooltip tooltip-right" data-tip={setting.helpText}>
@@ -76,10 +91,12 @@
 						type="password"
 						id={setting.name}
 						class="input-bordered input input-sm"
-						placeholder={String(setting.default ?? '')}
+						placeholder={shouldPreserveSetting(setting)
+							? '********'
+							: String(setting.default ?? '')}
 						value={settings[setting.name] ?? ''}
 						oninput={(e) => updateSetting(setting.name, e.currentTarget.value)}
-						required={setting.required}
+						required={setting.required && !shouldPreserveSetting(setting)}
 					/>
 				{:else if setting.type === 'checkbox'}
 					<label class="flex cursor-pointer items-start gap-3 py-2">
@@ -108,20 +125,24 @@
 						type="number"
 						id={setting.name}
 						class="input-bordered input input-sm"
-						placeholder={String(setting.default ?? '')}
+						placeholder={shouldPreserveSetting(setting)
+							? '********'
+							: String(setting.default ?? '')}
 						value={settings[setting.name] ?? ''}
 						oninput={(e) => updateSetting(setting.name, e.currentTarget.value)}
-						required={setting.required}
+						required={setting.required && !shouldPreserveSetting(setting)}
 					/>
 				{:else}
 					<input
 						type="text"
 						id={setting.name}
 						class="input-bordered input input-sm"
-						placeholder={String(setting.default ?? '')}
+						placeholder={shouldPreserveSetting(setting)
+							? '********'
+							: String(setting.default ?? '')}
 						value={settings[setting.name] ?? ''}
 						oninput={(e) => updateSetting(setting.name, e.currentTarget.value)}
-						required={setting.required}
+						required={setting.required && !shouldPreserveSetting(setting)}
 					/>
 				{/if}
 

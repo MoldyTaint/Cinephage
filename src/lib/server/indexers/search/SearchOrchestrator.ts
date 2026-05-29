@@ -38,6 +38,7 @@ import { ReleaseDeduplicator } from './ReleaseDeduplicator';
 import { ReleaseRanker } from './ReleaseRanker';
 import { ReleaseCache } from './ReleaseCache';
 import { parseRelease } from '../parser';
+import { extractLanguages } from '../parser/patterns/language';
 import { CloudflareProtectedError } from '../http/CloudflareDetection';
 import {
 	releaseEnricher,
@@ -59,8 +60,6 @@ export interface SearchOrchestratorOptions {
 	respectBackoff?: boolean;
 	/** Use tiered search strategy (default: true) */
 	useTieredSearch?: boolean;
-	/** Maximum concurrent indexer searches (default: 5) */
-	concurrency?: number;
 	/** Timeout per indexer in ms (default: 30000) */
 	timeout?: number;
 	/** Use cache (default: true) */
@@ -114,7 +113,6 @@ const DEFAULT_OPTIONS: Required<
 	respectEnabled: true,
 	respectBackoff: true,
 	useTieredSearch: true,
-	concurrency: getPositiveIntEnv('INDEXER_SEARCH_CONCURRENCY', 5),
 	timeout: getPositiveIntEnv('INDEXER_SEARCH_TIMEOUT_MS', 30_000),
 	useCache: true
 };
@@ -213,6 +211,16 @@ export class SearchOrchestrator {
 	private deduplicator: ReleaseDeduplicator;
 	private ranker: ReleaseRanker;
 	private cache: ReleaseCache;
+	private enhancedCache: Map<
+		string,
+		{
+			releases: EnhancedReleaseResult[];
+			indexerResults: IndexerSearchResult[];
+			rejectedIndexers: RejectedIndexer[];
+			cachedAt: number;
+		}
+	>;
+	private static readonly ENHANCED_CACHE_TTL_MS = 5 * 60 * 1000;
 
 	constructor() {
 		this.statusTracker = getPersistentStatusTracker();
@@ -221,6 +229,7 @@ export class SearchOrchestrator {
 		this.deduplicator = new ReleaseDeduplicator();
 		this.ranker = new ReleaseRanker();
 		this.cache = new ReleaseCache();
+		this.enhancedCache = new Map();
 	}
 
 	/** Search across all provided indexers */
@@ -245,10 +254,13 @@ export class SearchOrchestrator {
 			'Starting search orchestration'
 		);
 
-		// Enrich criteria with missing IDs (e.g., look up IMDB ID from TMDB ID)
-		const enrichedCriteria = await this.enrichCriteriaWithIds(criteriaWithSource);
+		const [enrichedCriteria, indexerFilterResult] = await Promise.all([
+			this.enrichCriteriaWithIds(criteriaWithSource),
+			this.filterIndexers(indexers, criteriaWithSource, opts)
+		]);
 
-		// Check cache first (use enriched criteria for cache key)
+		const { eligible: eligibleIndexers, rejected: rejectedIndexers } = indexerFilterResult;
+
 		if (opts.useCache) {
 			const cached = this.cache.get(enrichedCriteria);
 			if (cached) {
@@ -262,13 +274,6 @@ export class SearchOrchestrator {
 				};
 			}
 		}
-
-		// Filter indexers (use enriched criteria for eligibility check)
-		const { eligible: eligibleIndexers, rejected: rejectedIndexers } = this.filterIndexers(
-			indexers,
-			enrichedCriteria,
-			opts
-		);
 
 		if (eligibleIndexers.length === 0) {
 			logger.warn(
@@ -316,6 +321,9 @@ export class SearchOrchestrator {
 			filtered = this.filterByCategoryMatch(filtered, searchType);
 		}
 		filtered = this.filterOutNonVideoArtifacts(filtered, criteriaWithSource);
+
+		// Boost releases matching preferred language
+		filtered = this.boostByLanguage(filtered, criteriaWithSource);
 
 		// Rank
 		const ranked = this.ranker.rank(filtered);
@@ -374,15 +382,36 @@ export class SearchOrchestrator {
 			'Starting enhanced search orchestration'
 		);
 
-		// Enrich criteria with missing IDs (e.g., look up IMDB ID from TMDB ID)
-		const enrichedCriteria = await this.enrichCriteriaWithIds(criteriaWithSource);
+		const [enrichedCriteria, indexerFilterResult] = await Promise.all([
+			this.enrichCriteriaWithIds(criteriaWithSource),
+			this.filterIndexers(indexers, criteriaWithSource, opts)
+		]);
 
-		// Filter indexers
-		const { eligible: eligibleIndexers, rejected: rejectedIndexers } = this.filterIndexers(
-			indexers,
-			enrichedCriteria,
-			opts
-		);
+		const { eligible: eligibleIndexers, rejected: rejectedIndexers } = indexerFilterResult;
+
+		if (opts.useCache && opts.searchSource === 'interactive') {
+			const cacheKey = this.cache.generateKey(enrichedCriteria);
+			const cached = this.enhancedCache.get(cacheKey);
+			if (cached && Date.now() - cached.cachedAt < SearchOrchestrator.ENHANCED_CACHE_TTL_MS) {
+				logger.debug({ resultCount: cached.releases.length }, 'Enhanced search cache hit');
+				return {
+					releases: cached.releases,
+					totalResults: cached.releases.length,
+					afterDedup: cached.releases.length,
+					afterFiltering: cached.releases.length,
+					afterEnrichment: cached.releases.length,
+					rejectedCount: 0,
+					searchTimeMs: Date.now() - startTime,
+					enrichTimeMs: 0,
+					fromCache: true,
+					indexerResults: cached.indexerResults,
+					rejectedIndexers: cached.rejectedIndexers
+				};
+			}
+			if (cached) {
+				this.enhancedCache.delete(cacheKey);
+			}
+		}
 
 		if (eligibleIndexers.length === 0) {
 			logger.warn(
@@ -420,8 +449,7 @@ export class SearchOrchestrator {
 
 		const searchTimeMs = Date.now() - startTime;
 
-		// TEMP DEBUG: Log per-indexer result counts
-		logger.info(
+		logger.debug(
 			{
 				indexerCounts: indexerResults.map((r) => ({
 					indexer: r.indexerName,
@@ -430,24 +458,12 @@ export class SearchOrchestrator {
 					error: r.error
 				}))
 			},
-			'[SearchOrchestrator] PER-INDEXER RESULT COUNTS (DEBUG)'
+			'Per-indexer result counts'
 		);
 
 		// Pass 1: Basic deduplication (by infoHash/title, prefer more seeders)
 		const { releases: deduped } = this.deduplicator.deduplicate(allReleases);
 		const afterDedupCount = deduped.length;
-
-		// Debug: log YTS releases after deduplication
-		const ytsAfterDedup = deduped.filter((r) => r.indexerName === 'YTS');
-		logger.info(
-			{
-				totalDeduped: deduped.length,
-				ytsCount: ytsAfterDedup.length,
-				ytsTitles: ytsAfterDedup.slice(0, 5).map((r) => r.title),
-				sampleIndexers: deduped.slice(0, 10).map((r) => r.indexerName)
-			},
-			'[SearchOrchestrator] After deduplication'
-		);
 
 		// Get TV episode counts from TMDB for season-pack size validation and
 		// RuTracker season-pack completion gating.
@@ -481,7 +497,6 @@ export class SearchOrchestrator {
 			seasonEpisodeCount,
 			seasonEpisodeCounts
 		});
-		// TEMP DEBUG: Log after season/episode filter
 		logger.debug(
 			{ afterSeasonEpisode: filtered.length },
 			'[SearchOrchestrator] DEBUG: after season/episode filter'
@@ -492,14 +507,12 @@ export class SearchOrchestrator {
 			const searchType = enrichedCriteria.searchType as 'movie' | 'tv' | 'music' | 'book';
 			filtered = this.filterByCategoryMatch(filtered, searchType);
 		}
-		// TEMP DEBUG: Log after category filter
 		logger.debug(
 			{ afterCategory: filtered.length },
 			'[SearchOrchestrator] DEBUG: after category filter'
 		);
 
 		filtered = this.filterOutNonVideoArtifacts(filtered, enrichedCriteria);
-		// TEMP DEBUG: Log after non-video filter
 		logger.debug(
 			{ afterNonVideo: filtered.length },
 			'[SearchOrchestrator] DEBUG: after non-video filter'
@@ -510,7 +523,6 @@ export class SearchOrchestrator {
 		if (isMovieSearch(enrichedCriteria) || isTvSearch(enrichedCriteria)) {
 			filtered = this.filterByIdOrTitleMatch(filtered, enrichedCriteria);
 		}
-		// TEMP DEBUG: Log after ID/title filter
 		logger.debug(
 			{ afterIdTitle: filtered.length },
 			'[SearchOrchestrator] DEBUG: after ID/title filter'
@@ -520,11 +532,14 @@ export class SearchOrchestrator {
 		if (enrichedCriteria.searchType !== 'basic') {
 			filtered = this.filterByTitleRelevance(filtered, enrichedCriteria);
 		}
-		// TEMP DEBUG: Log after title relevance filter
 		logger.debug(
 			{ afterTitleRelevance: filtered.length },
 			'[SearchOrchestrator] DEBUG: after title relevance filter'
 		);
+
+		// Boost releases matching preferred language before enrichment
+		filtered = this.boostByLanguage(filtered, enrichedCriteria);
+
 		const afterFilteringCount = filtered.length;
 
 		// Enrich with quality scoring and optional TMDB matching
@@ -562,46 +577,6 @@ export class SearchOrchestrator {
 		};
 
 		const enrichResult = await releaseEnricher.enrich(filtered, enrichmentOpts);
-
-		// TEMP DEBUG: Log enrichment results per indexer
-		logger.info(
-			{
-				beforeEnrich: filtered.length,
-				afterEnrichTotal: enrichResult.releases.length,
-				rejectedCount: enrichResult.rejectedCount,
-				acceptedCount: enrichResult.releases.filter((r) => !r.rejected).length,
-				perIndexer: [...new Set(enrichResult.releases.map((r) => r.indexerName))].map((name) => ({
-					indexer: name,
-					total: enrichResult.releases.filter((r) => r.indexerName === name).length,
-					rejected: enrichResult.releases.filter((r) => r.indexerName === name && r.rejected)
-						.length,
-					accepted: enrichResult.releases.filter((r) => r.indexerName === name && !r.rejected)
-						.length,
-					sampleTitles: enrichResult.releases
-						.filter((r) => r.indexerName === name)
-						.slice(0, 3)
-						.map((r) => r.title)
-				}))
-			},
-			'[SearchOrchestrator] DEBUG: After enrichment - per indexer results'
-		);
-
-		// TEMP DEBUG: Log rejected releases details
-		const rejectedReleases = enrichResult.releases.filter((r) => r.rejected);
-		if (rejectedReleases.length > 0) {
-			logger.info(
-				{
-					rejectedCount: rejectedReleases.length,
-					sampleRejected: rejectedReleases.slice(0, 5).map((r) => ({
-						indexer: r.indexerName,
-						title: r.title,
-						size: r.size,
-						rejectionReason: r.rejectionReason
-					}))
-				},
-				'[SearchOrchestrator] DEBUG: Sample rejected releases'
-			);
-		}
 
 		// Pass 2: Enhanced deduplication using Radarr-style preference logic
 		// Now that we have rejection counts, prefer releases with fewer rejections and higher indexer priority
@@ -642,6 +617,16 @@ export class SearchOrchestrator {
 			rejectedIndexers,
 			scoringProfileId: enrichResult.scoringProfile?.id
 		};
+
+		if (opts.useCache && opts.searchSource === 'interactive' && withWeights.length > 0) {
+			const cacheKey = this.cache.generateKey(enrichedCriteria);
+			this.enhancedCache.set(cacheKey, {
+				releases: withWeights,
+				indexerResults,
+				rejectedIndexers,
+				cachedAt: Date.now()
+			});
+		}
 
 		logger.info(
 			{
@@ -855,7 +840,6 @@ export class SearchOrchestrator {
 		return { eligible, rejected };
 	}
 
-	/** Execute searches across indexers with concurrency control */
 	private async executeSearches(
 		indexers: IIndexer[],
 		criteria: SearchCriteria,
@@ -867,23 +851,20 @@ export class SearchOrchestrator {
 		logger.info(
 			{
 				indexerCount: indexers.length,
-				criteria: { type: criteria.searchType, query: criteria.query },
-				concurrency: options.concurrency
+				criteria: { type: criteria.searchType, query: criteria.query }
 			},
 			'[executeSearches] Starting'
 		);
 
-		// Process in batches for concurrency control
-		for (let i = 0; i < indexers.length; i += options.concurrency) {
-			const batch = indexers.slice(i, i + options.concurrency);
+		const allSettled = await Promise.allSettled(
+			indexers.map((indexer) =>
+				this.searchIndexer(indexer, criteria, options.timeout, options.useTieredSearch)
+			)
+		);
 
-			const batchResults = await Promise.all(
-				batch.map((indexer) =>
-					this.searchIndexer(indexer, criteria, options.timeout, options.useTieredSearch)
-				)
-			);
-
-			for (const result of batchResults) {
+		for (const settled of allSettled) {
+			if (settled.status === 'fulfilled') {
+				const result = settled.value;
 				logger.info(
 					{
 						indexer: result.indexerName,
@@ -895,6 +876,8 @@ export class SearchOrchestrator {
 				);
 				results.push(result);
 				allReleases.push(...result.results);
+			} else {
+				logger.warn({ error: settled.reason }, '[executeSearches] Indexer search failed');
 			}
 		}
 
@@ -1068,36 +1051,6 @@ export class SearchOrchestrator {
 			}
 
 			if (idReleases.length > 0) {
-				// For interactive movie searches, supplement ID results with text variants.
-				// This matches NZBHydra-style behavior where text variants can surface
-				// additional releases even when ID lookup succeeds.
-				const shouldSupplementWithText =
-					isMovieSearch(criteria) &&
-					criteria.searchSource === 'interactive' &&
-					hasTextFallbackSource;
-				if (shouldSupplementWithText) {
-					const textReleases = await this.executeMultiTitleTextSearch(indexer, criteria);
-					if (textReleases.length > 0) {
-						const merged = [...idReleases];
-						const seenGuids = new Set(idReleases.map((r) => r.guid));
-						for (const release of textReleases) {
-							if (!seenGuids.has(release.guid)) {
-								seenGuids.add(release.guid);
-								merged.push(release);
-							}
-						}
-						logger.debug(
-							{
-								indexer: indexer.name,
-								idResults: idReleases.length,
-								textResults: textReleases.length,
-								mergedResults: merged.length
-							},
-							'Supplemented movie ID results with text fallback'
-						);
-						return { releases: merged, searchMethod: 'text' };
-					}
-				}
 				return { releases: idReleases, searchMethod: 'id' };
 			}
 
@@ -1156,10 +1109,6 @@ export class SearchOrchestrator {
 		indexer: IIndexer,
 		criteria: SearchCriteria
 	): Promise<ReleaseResult[]> {
-		const allReleases: ReleaseResult[] = [];
-		const seenGuids = new Set<string>();
-
-		// Build list of titles to search and drop empty/noise variants.
 		const rawTitles: string[] =
 			criteria.searchTitles && criteria.searchTitles.length > 0
 				? criteria.searchTitles
@@ -1190,9 +1139,6 @@ export class SearchOrchestrator {
 			return this.executeRuTrackerAutomaticSeasonSearch(indexer, criteria, titlesToSearch);
 		}
 
-		// Get episode formats to try based on indexer capabilities.
-		// Do not force season-only tokens for season 0 (specials / unknown season),
-		// because many trackers return no results for S00-only keyword suffixes.
 		let episodeFormats: EpisodeFormat[] = [];
 		if (isTvSearch(criteria)) {
 			const hasEpisode = criteria.episode !== undefined;
@@ -1200,22 +1146,17 @@ export class SearchOrchestrator {
 			if (!hasEpisode && !hasPositiveSeason) {
 				episodeFormats = [];
 			} else {
-				// Get format types from indexer capabilities, or use all formats as fallback
 				const formatTypes = getEffectiveEpisodeFormats(
 					indexer.capabilities.searchFormats?.episode,
-					true // useAllFormats fallback for backwards compatibility
+					true
 				);
 				episodeFormats = getEpisodeFormats(criteria, formatTypes);
 			}
 		}
 
-		let attemptedVariants = 0;
-		let successfulVariants = 0;
-		const variantErrors: string[] = [];
-
-		// Search with each title variant. Russian trackers benefit from a slightly
-		// larger budget because native-script titles may appear after English variants.
 		const titleBudget = prefersNativeCyrillicTitles(indexer) ? 5 : 3;
+		const variantCriteria: SearchCriteria[] = [];
+
 		for (const title of titlesToSearch.slice(0, titleBudget)) {
 			if (episodeFormats.length > 0) {
 				const shouldTryInteractiveTvTitleOnlyFallback =
@@ -1223,85 +1164,28 @@ export class SearchOrchestrator {
 					criteria.searchSource === 'interactive' &&
 					(criteria.season !== undefined || criteria.episode !== undefined);
 
-				// TV search: try each episode format
-				// Pass CLEAN query (just title) with preferredEpisodeFormat set
-				// TemplateEngine uses preferredEpisodeFormat to add the correct token
 				for (const format of episodeFormats) {
-					const textCriteria = createTextOnlyCriteria({
-						...criteria,
-						// Clean query: just the title, no episode token embedded
-						query: title,
-						// Tell TemplateEngine which format to use for this request
-						preferredEpisodeFormat: format.type
-					});
-
-					attemptedVariants++;
-					try {
-						const releases = await indexer.search(textCriteria);
-						successfulVariants++;
-
-						// Add unique releases (dedupe by guid)
-						for (const release of releases) {
-							if (!seenGuids.has(release.guid)) {
-								seenGuids.add(release.guid);
-								allReleases.push(release);
-							}
-						}
-					} catch (error) {
-						const message = error instanceof Error ? error.message : String(error);
-						variantErrors.push(message);
-						logger.debug(
-							{
-								indexer: indexer.name,
-								title,
-								format: format.type,
-								error: message
-							},
-							'Multi-title search variant failed'
-						);
-					}
+					variantCriteria.push(
+						createTextOnlyCriteria({
+							...criteria,
+							query: title,
+							preferredEpisodeFormat: format.type
+						})
+					);
 				}
 
-				// Interactive TV fallback: also try title-only (no season/episode token in query).
-				// Some trackers index packs as "Season X / Episodes 1-9" and miss SxxEyy forms.
 				if (shouldTryInteractiveTvTitleOnlyFallback) {
-					const titleOnlyCriteria = createTextOnlyCriteria({
-						...criteria,
-						query: title,
-						season: undefined,
-						episode: undefined,
-						preferredEpisodeFormat: undefined
-					});
-
-					attemptedVariants++;
-					try {
-						const releases = await indexer.search(titleOnlyCriteria);
-						successfulVariants++;
-
-						for (const release of releases) {
-							if (!seenGuids.has(release.guid)) {
-								seenGuids.add(release.guid);
-								allReleases.push(release);
-							}
-						}
-					} catch (error) {
-						const message = error instanceof Error ? error.message : String(error);
-						variantErrors.push(message);
-						logger.debug(
-							{
-								indexer: indexer.name,
-								title,
-								format: 'titleOnly',
-								error: message
-							},
-							'Multi-title search variant failed'
-						);
-					}
+					variantCriteria.push(
+						createTextOnlyCriteria({
+							...criteria,
+							query: title,
+							season: undefined,
+							episode: undefined,
+							preferredEpisodeFormat: undefined
+						})
+					);
 				}
 			} else if (isMovieSearch(criteria)) {
-				// Movie search: try provider-configured format variants.
-				// Default fallback includes noYear to avoid false negatives on indexers
-				// that over-constrain title+year keyword searches.
 				const movieFormats = indexer.capabilities.searchFormats?.movie ?? ['standard', 'noYear'];
 				const seenMovieVariants = new Set<string>();
 
@@ -1323,64 +1207,54 @@ export class SearchOrchestrator {
 					}
 					seenMovieVariants.add(variantKey);
 
-					const textCriteria = createTextOnlyCriteria({
-						...criteria,
-						query: movieQuery,
-						year: movieYear
-					});
-
-					attemptedVariants++;
-					try {
-						const releases = await indexer.search(textCriteria);
-						successfulVariants++;
-
-						for (const release of releases) {
-							if (!seenGuids.has(release.guid)) {
-								seenGuids.add(release.guid);
-								allReleases.push(release);
-							}
-						}
-					} catch (error) {
-						const message = error instanceof Error ? error.message : String(error);
-						variantErrors.push(message);
-						logger.debug(
-							{
-								indexer: indexer.name,
-								title: movieQuery,
-								year: movieYear,
-								format,
-								error: message
-							},
-							'Multi-title search variant failed'
-						);
-					}
+					variantCriteria.push(
+						createTextOnlyCriteria({
+							...criteria,
+							query: movieQuery,
+							year: movieYear
+						})
+					);
 				}
 			} else {
-				// Other search types: just use title
-				const textCriteria = createTextOnlyCriteria({
-					...criteria,
-					query: title
-				});
+				variantCriteria.push(
+					createTextOnlyCriteria({
+						...criteria,
+						query: title
+					})
+				);
+			}
+		}
 
-				attemptedVariants++;
-				try {
-					const releases = await indexer.search(textCriteria);
+		const allReleases: ReleaseResult[] = [];
+		const seenGuids = new Set<string>();
+		let successfulVariants = 0;
+		const variantErrors: string[] = [];
+		const BATCH_SIZE = 3;
+
+		for (let i = 0; i < variantCriteria.length; i += BATCH_SIZE) {
+			const batch = variantCriteria.slice(i, i + BATCH_SIZE);
+			const settled = await Promise.allSettled(batch.map((vc) => indexer.search(vc)));
+
+			for (let j = 0; j < settled.length; j++) {
+				const vc = batch[j];
+				const result = settled[j];
+				if (result.status === 'fulfilled') {
 					successfulVariants++;
-
-					// Add unique releases
-					for (const release of releases) {
+					for (const release of result.value) {
 						if (!seenGuids.has(release.guid)) {
 							seenGuids.add(release.guid);
 							allReleases.push(release);
 						}
 					}
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
+				} else {
+					const message =
+						result.reason instanceof Error ? result.reason.message : String(result.reason);
 					variantErrors.push(message);
 					logger.debug(
 						{
 							indexer: indexer.name,
-							title,
+							query: vc.query,
+							format: (vc as { preferredEpisodeFormat?: string }).preferredEpisodeFormat,
 							error: message
 						},
 						'Multi-title search variant failed'
@@ -1389,8 +1263,7 @@ export class SearchOrchestrator {
 			}
 		}
 
-		// If every variant failed, surface failure so status tracking records it.
-		if (attemptedVariants > 0 && successfulVariants === 0 && variantErrors.length > 0) {
+		if (variantCriteria.length > 0 && successfulVariants === 0 && variantErrors.length > 0) {
 			const uniqueErrors = [...new Set(variantErrors.filter(Boolean))];
 			throw new Error(uniqueErrors.slice(0, 2).join('; ') || 'All text search attempts failed');
 		}
@@ -1399,11 +1272,11 @@ export class SearchOrchestrator {
 			logger.debug(
 				{
 					indexer: indexer.name,
-					titlesSearched: Math.min(titlesToSearch.length, 3),
+					titlesSearched: Math.min(titlesToSearch.length, titleBudget),
 					formatsUsed: episodeFormats.length || 1,
 					totalResults: allReleases.length
 				},
-				'Multi-title search completed'
+				'Multi-title text search completed'
 			);
 		}
 
@@ -2146,6 +2019,72 @@ export class SearchOrchestrator {
 	}
 
 	/**
+	 * Boost releases that match the preferred audio language.
+	 * Uses extractLanguages() to detect language from release titles.
+	 * Matching releases are boosted in place (inflated seeders for rank path,
+	 * boosted totalScore for enhanced path). Non-matching releases pass through.
+	 *
+	 * The boost is a soft preference: non-matching releases still appear but
+	 * are ranked below matching ones. This mirrors how Sonarr/Radarr handle
+	 * language preferences via custom format scoring.
+	 */
+	private boostByLanguage<T extends ReleaseResult>(releases: T[], criteria: SearchCriteria): T[] {
+		const preferredLanguage = criteria.language;
+		if (!preferredLanguage || releases.length === 0) {
+			return releases;
+		}
+
+		// Skip English default — when the preferred language is English,
+		// most releases already default to English, so boosting adds noise.
+		if (preferredLanguage === 'en') {
+			return releases;
+		}
+
+		const beforeMatches = releases.filter((r) => {
+			const { languages } = extractLanguages(r.title);
+			return languages.includes(preferredLanguage);
+		});
+
+		// Only boost if there are actual matching releases in the results
+		if (beforeMatches.length === 0) {
+			return releases;
+		}
+
+		for (const release of releases) {
+			const { languages } = extractLanguages(release.title);
+			const matchesLanguage = languages.includes(preferredLanguage);
+
+			if (matchesLanguage) {
+				// Boost seeders for the non-enhanced rank path.
+				// The ReleaseRanker weights seeders at 0.4 — a 30x multiplier
+				// pushes matching releases well above non-matching ones.
+				if (typeof release.seeders === 'number') {
+					(release as { seeders?: number }).seeders = Math.max(1, release.seeders * 30);
+				}
+
+				// Boost totalScore for the enhanced search path.
+				// EnhancedReleaseResult has totalScore; we add a large score bonus
+				// that places language-matched releases above non-matched ones.
+				const enhanced = release as { totalScore?: number };
+				if (typeof enhanced.totalScore === 'number') {
+					enhanced.totalScore += 5000;
+				}
+			}
+		}
+
+		logger.debug(
+			{
+				preferredLanguage,
+				totalReleases: releases.length,
+				boostedCount: beforeMatches.length
+			},
+			'[SearchOrchestrator] Language boost applied'
+		);
+
+		return releases;
+	}
+
+	/**
 	 * Filter releases by title relevance.
 	 * Safety net to reject releases that are clearly for a different title
 	 * (e.g., random TV shows returned by a generic RSS feed when ID search fails).
@@ -2216,7 +2155,6 @@ export class SearchOrchestrator {
 			});
 
 			if (!matches) {
-				// TEMP DEBUG: Log detailed similarity info for rejected releases
 				const simDetails = normalizedExpected.map((expected) => ({
 					expected,
 					similarity: this.calculateTitleSimilarity(releaseName, expected),
@@ -2282,35 +2220,36 @@ export class SearchOrchestrator {
 
 		const m = a.length;
 		const n = b.length;
-
-		// Create distance matrix
-		const d: number[][] = [];
-		for (let i = 0; i <= n; i++) {
-			d[i] = [i];
-		}
-		for (let j = 0; j <= m; j++) {
-			d[0][j] = j;
-		}
-
-		// Fill the matrix
-		for (let i = 1; i <= n; i++) {
-			for (let j = 1; j <= m; j++) {
-				if (b.charAt(i - 1) === a.charAt(j - 1)) {
-					d[i][j] = d[i - 1][j - 1];
-				} else {
-					d[i][j] = Math.min(
-						d[i - 1][j - 1] + 1, // substitution
-						d[i][j - 1] + 1, // insertion
-						d[i - 1][j] + 1 // deletion
-					);
-				}
-			}
-		}
-
 		const maxLength = Math.max(m, n);
 		if (maxLength === 0) return 1.0;
 
-		return 1 - d[n][m] / maxLength;
+		const maxDistance = Math.floor(maxLength * 0.3);
+
+		if (Math.abs(m - n) > maxDistance) return 0;
+
+		const prev = new Uint16Array(m + 1);
+		const curr = new Uint16Array(m + 1);
+		for (let j = 0; j <= m; j++) prev[j] = j;
+
+		for (let i = 1; i <= n; i++) {
+			curr[0] = i;
+			let rowMin = i;
+			for (let j = 1; j <= m; j++) {
+				if (b.charAt(i - 1) === a.charAt(j - 1)) {
+					curr[j] = prev[j - 1];
+				} else {
+					curr[j] = Math.min(prev[j - 1] + 1, curr[j - 1] + 1, prev[j] + 1);
+				}
+				if (curr[j] < rowMin) rowMin = curr[j];
+			}
+			if (rowMin > maxDistance) return 0;
+			prev.set(curr);
+		}
+
+		const distance = curr[m];
+		if (distance > maxDistance) return 0;
+
+		return 1 - distance / maxLength;
 	}
 
 	/**
@@ -2376,7 +2315,6 @@ export class SearchOrchestrator {
 			// TMDB ID check
 			if (searchTmdbId && release.tmdbId) {
 				if (release.tmdbId !== searchTmdbId) {
-					// TEMP DEBUG: Log TMDB ID mismatch with indexer
 					logger.info(
 						{
 							releaseTitle: release.title,
@@ -2396,7 +2334,6 @@ export class SearchOrchestrator {
 			// IMDB ID check
 			if (searchImdbId && release.imdbId) {
 				if (release.imdbId !== searchImdbId) {
-					// TEMP DEBUG: Log IMDB ID mismatch with indexer
 					logger.info(
 						{
 							releaseTitle: release.title,
@@ -2436,7 +2373,6 @@ export class SearchOrchestrator {
 			if (isMovieSearch(criteria) && searchYear) {
 				const parsedRelease = getParsed();
 				if (parsedRelease.year && parsedRelease.year !== searchYear) {
-					// TEMP DEBUG: Log year mismatch details
 					logger.info(
 						{
 							releaseTitle: release.title,
@@ -2528,7 +2464,6 @@ export class SearchOrchestrator {
 						return true;
 					}
 
-					// TEMP DEBUG: Log title/year mismatch details
 					const simDetails = normalizedCandidates.map((expectedName) => ({
 						expected: expectedName,
 						similarity: this.calculateTitleSimilarity(releaseName, expectedName),

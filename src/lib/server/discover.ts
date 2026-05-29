@@ -1,6 +1,7 @@
 import { tmdb } from '$lib/server/tmdb';
 import type { Movie, TVShow, PaginatedResponse } from '$lib/types/tmdb';
 import { GENRE_MAPPINGS, SEARCH } from '$lib/config/constants';
+import { hasActiveDiscoverFilters } from '$lib/utils/discoverParams';
 
 /**
  * Maps movie genre IDs to TV genre IDs or vice versa.
@@ -109,7 +110,6 @@ export async function getDiscoverResults(params: DiscoverParams) {
 
 		if (certification && endpoint.includes('movie')) {
 			queryParams.set('certification', certification);
-			queryParams.set('certification_country', 'US');
 		}
 
 		return `${endpoint}?${queryParams.toString()}`;
@@ -122,7 +122,20 @@ export async function getDiscoverResults(params: DiscoverParams) {
 	let totalPages: number;
 	let totalResults: number;
 
-	if (trending === 'day' || trending === 'week') {
+	if (
+		(trending === 'day' || trending === 'week') &&
+		!hasActiveDiscoverFilters({
+			type,
+			sortBy,
+			withWatchProviders,
+			withGenres,
+			withOriginalLanguage,
+			minDate,
+			maxDate,
+			minRating,
+			certification
+		})
+	) {
 		const trendingEndpoint = `/trending/all/${trending}`;
 		const url = `${trendingEndpoint}?page=${encodeURIComponent(page)}`;
 		const data = (await tmdb.fetch(url)) as PaginatedResponse<Movie | TVShow>;

@@ -2,6 +2,7 @@
 	import { X, Loader2, StopCircle, CheckCircle2, XCircle, Search } from 'lucide-svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import { getWorker, deleteWorker } from '$lib/api/settings.js';
 	import * as m from '$lib/paraglide/messages.js';
 
 	interface WorkerState {
@@ -96,11 +97,8 @@
 
 	async function fetchWorker() {
 		try {
-			const response = await fetch(`/api/workers/${workerId}`);
-			if (!response.ok) {
-				throw new Error(m.livetv_portalScanProgress_workerNotFound());
-			}
-			worker = await response.json();
+			const result = await getWorker(workerId);
+			worker = result as unknown as WorkerState;
 			loading = false;
 
 			// Stop polling if no longer active
@@ -121,12 +119,7 @@
 	async function handleCancel() {
 		cancelling = true;
 		try {
-			const response = await fetch(`/api/workers/${workerId}`, {
-				method: 'DELETE'
-			});
-			if (!response.ok) {
-				throw new Error(m.livetv_portalScanProgress_failedToCancelScan());
-			}
+			await deleteWorker(workerId);
 			await fetchWorker();
 		} catch (e) {
 			toasts.error(

@@ -1,22 +1,23 @@
 <script lang="ts">
-	import { SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
-	import {
-		X,
-		Loader2,
-		Search,
-		Tv,
-		Radio,
-		List,
-		Plus,
-		Check,
-		ChevronLeft,
-		ChevronRight
-	} from 'lucide-svelte';
-	import type { LiveTvProviderType } from '$lib/types/livetv';
+	import { SvelteSet } from 'svelte/reactivity';
+	import { X } from 'lucide-svelte';
 	import type { LiveTvAccount, LiveTvCategory, CachedChannel } from '$lib/types/livetv';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import ChannelBrowserFilters from './ChannelBrowserFilters.svelte';
+	import ChannelBrowserActions from './ChannelBrowserActions.svelte';
+	import ChannelBrowserList from './ChannelBrowserList.svelte';
+	import ChannelBrowserPagination from './ChannelBrowserPagination.svelte';
+	import {
+		getAccounts,
+		getCategories,
+		getChannels,
+		addToLineup,
+		getChannelCategories,
+		createChannelCategory,
+		addLineupBackup
+	} from '$lib/api/livetv.js';
 
 	type BrowserMode = 'add-to-lineup' | 'select-backup';
 
@@ -25,10 +26,9 @@
 		lineupChannelIds: Set<string>;
 		onClose: () => void;
 		onChannelsAdded: () => void;
-		// Backup selection mode props
 		mode?: BrowserMode;
-		lineupItemId?: string; // The lineup item we're adding backup for
-		excludeChannelId?: string; // The primary channel to exclude from selection
+		lineupItemId?: string;
+		excludeChannelId?: string;
 		onBackupSelected?: (accountId: string, channelId: string) => void;
 	}
 
@@ -43,49 +43,38 @@
 		onBackupSelected
 	}: Props = $props();
 
-	// Derived mode checks
 	const isBackupMode = $derived(mode === 'select-backup');
 
-	// Data state
 	let accounts = $state<LiveTvAccount[]>([]);
 	let categories = $state<LiveTvCategory[]>([]);
 	let channels = $state<CachedChannel[]>([]);
 	let loading = $state(false);
 	let error = $state<string | null>(null);
 
-	// Filter state
 	let selectedAccountId = $state('');
 	let selectedCategoryId = $state('');
 	let searchQuery = $state('');
 	let debouncedSearch = $state('');
 	let showAdded = $state(false);
 
-	// Pagination state
 	let page = $state(1);
 	let pageSize = $state(50);
 	let total = $state(0);
 	let totalPages = $state(0);
 
-	// Selection state
 	let selectedIds = new SvelteSet<string>();
 	let addingIds = new SvelteSet<string>();
 	let bulkAdding = $state(false);
 	let addingCategory = $state(false);
 
-	// Local copy of lineup IDs (updated after successful adds)
 	let localLineupIds = new SvelteSet<string>();
 
-	// Track modal open state for transition detection
 	let wasOpen = $state(false);
 
-	// Debounce timer
 	let searchDebounceTimer: ReturnType<typeof setTimeout>;
 
-	// Backup selection state
 	let addingBackup = $state(false);
 
-	// Derived
-	// In backup mode, only exclude the primary channel; in lineup mode, exclude already-added channels
 	const isExcluded = (channelId: string) => {
 		if (isBackupMode) {
 			return channelId === excludeChannelId;
@@ -96,7 +85,6 @@
 		return localLineupIds.has(channelId);
 	};
 
-	// Legacy alias for lineup mode
 	const isInLineup = (channelId: string) => localLineupIds.has(channelId);
 
 	const selectableChannels = $derived(channels.filter((c) => !isExcluded(c.id)));
@@ -113,7 +101,6 @@
 		categories.find((category) => category.id === selectedCategoryId)
 	);
 
-	// Reset state only when modal OPENS (transition from closed to open)
 	$effect(() => {
 		const justOpened = open && !wasOpen;
 		wasOpen = open;
@@ -136,7 +123,6 @@
 		}
 	});
 
-	// Sync lineup IDs from parent without resetting filters
 	$effect(() => {
 		if (open && wasOpen) {
 			localLineupIds.clear();
@@ -146,9 +132,8 @@
 		}
 	});
 
-	// Debounce search input
 	$effect(() => {
-		const query = searchQuery; // Read synchronously to track as dependency
+		const query = searchQuery;
 		clearTimeout(searchDebounceTimer);
 		searchDebounceTimer = setTimeout(() => {
 			if (debouncedSearch !== query) {
@@ -158,7 +143,6 @@
 		}, 300);
 	});
 
-	// Reload categories when account changes
 	$effect(() => {
 		if (open) {
 			if (selectedAccountId) {
@@ -170,10 +154,8 @@
 		}
 	});
 
-	// Reload channels when filters or page changes
 	$effect(() => {
 		if (open) {
-			// Dependencies: selectedAccountId, selectedCategoryId, debouncedSearch, page
 			void selectedAccountId;
 			void selectedCategoryId;
 			void debouncedSearch;
@@ -184,11 +166,10 @@
 
 	async function loadAccounts() {
 		try {
-			const response = await fetch('/api/livetv/accounts');
-			if (response.ok) {
-				const result = await response.json();
-				accounts = result.accounts?.filter((a: LiveTvAccount) => a.enabled) || [];
-			}
+			const result = (await getAccounts()) as unknown as {
+				accounts?: LiveTvAccount[];
+			};
+			accounts = result.accounts?.filter((a: LiveTvAccount) => a.enabled) || [];
 		} catch (e) {
 			toasts.error(m.livetv_channelBrowserModal_failedToLoadAccounts(), {
 				description:
@@ -197,14 +178,11 @@
 		}
 	}
 
-	async function loadCategories(accountId: string) {
+	async function loadCategories(_accountId: string) {
 		try {
-			const response = await fetch(`/api/livetv/categories?accountId=${accountId}`);
-			if (response.ok) {
-				const data = await response.json();
-				categories = data.categories || [];
-				selectedCategoryId = '';
-			}
+			const data = (await getCategories()) as unknown as { categories?: LiveTvCategory[] };
+			categories = data.categories || [];
+			selectedCategoryId = '';
 		} catch (e) {
 			toasts.error(m.livetv_channelBrowserModal_failedToLoadCategories(), {
 				description:
@@ -218,25 +196,22 @@
 		loading = true;
 		error = null;
 
-		const params = new SvelteURLSearchParams();
-		params.set('page', String(page));
-		params.set('pageSize', String(pageSize));
+		const params: Record<string, string> = {};
+		params.page = String(page);
+		params.pageSize = String(pageSize);
 
 		if (selectedAccountId) {
-			params.set('accountIds', selectedAccountId);
+			params.accountIds = selectedAccountId;
 		}
 		if (selectedCategoryId) {
-			params.set('categoryIds', selectedCategoryId);
+			params.categoryIds = selectedCategoryId;
 		}
 		if (debouncedSearch) {
-			params.set('search', debouncedSearch);
+			params.search = debouncedSearch;
 		}
 
 		try {
-			const response = await fetch(`/api/livetv/channels?${params}`);
-			if (!response.ok) throw new Error(m.livetv_channelBrowserModal_failedToLoadChannels());
-
-			const result = await response.json();
+			const result = await getChannels(params);
 			if (!result.success)
 				throw new Error(result.error || m.livetv_channelBrowserModal_failedToLoadChannels());
 			channels = result.channels || [];
@@ -262,12 +237,10 @@
 
 	function toggleAllVisible() {
 		if (allVisibleSelected) {
-			// Deselect all visible
 			for (const channel of selectableChannels) {
 				selectedIds.delete(channel.id);
 			}
 		} else {
-			// Select all visible
 			for (const channel of selectableChannels) {
 				selectedIds.add(channel.id);
 			}
@@ -284,20 +257,10 @@
 		addingIds.add(channel.id);
 
 		try {
-			const response = await fetch('/api/livetv/lineup', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					channels: [{ accountId: channel.accountId, channelId: channel.id }]
-				})
-			});
+			await addToLineup([{ accountId: channel.accountId, channelId: channel.id }]);
 
-			if (!response.ok) throw new Error(m.livetv_channelBrowserModal_failedToAddChannel());
-
-			// Update local state for immediate feedback
 			localLineupIds.add(channel.id);
 
-			// Remove from selection if selected
 			if (selectedIds.has(channel.id)) {
 				selectedIds.delete(channel.id);
 			}
@@ -323,15 +286,8 @@
 			.map((c) => ({ accountId: c.accountId, channelId: c.id }));
 
 		try {
-			const response = await fetch('/api/livetv/lineup', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ channels: channelsToAdd })
-			});
+			await addToLineup(channelsToAdd);
 
-			if (!response.ok) throw new Error(m.livetv_channelBrowserModal_failedToAddChannels());
-
-			// Update local state
 			for (const id of selectedIds) {
 				localLineupIds.add(id);
 			}
@@ -356,18 +312,14 @@
 		const fetchPageSize = 500;
 
 		while (hasMore) {
-			const params = new SvelteURLSearchParams();
-			params.set('page', String(currentPage));
-			params.set('pageSize', String(fetchPageSize));
-			params.set('accountIds', selectedAccountId);
-			params.set('categoryIds', selectedCategoryId);
+			const params: Record<string, string> = {
+				page: String(currentPage),
+				pageSize: String(fetchPageSize),
+				accountIds: selectedAccountId,
+				categoryIds: selectedCategoryId
+			};
 
-			const response = await fetch(`/api/livetv/channels?${params.toString()}`);
-			if (!response.ok) {
-				throw new Error(m.livetv_channelBrowserModal_failedToLoadChannels());
-			}
-
-			const result = await response.json();
+			const result = await getChannels(params);
 			if (!result.success) {
 				throw new Error(result.error || m.livetv_channelBrowserModal_failedToLoadChannels());
 			}
@@ -389,12 +341,7 @@
 			throw new Error('Selected category has no name');
 		}
 
-		const existingResponse = await fetch('/api/livetv/channel-categories');
-		if (!existingResponse.ok) {
-			throw new Error(m.livetv_channelBrowserModal_failedToLoadCategories());
-		}
-
-		const existingData = await existingResponse.json();
+		const existingData = await getChannelCategories();
 		const existingCategories = (existingData.categories ?? []) as Array<{
 			id: string;
 			name: string;
@@ -406,18 +353,9 @@
 			return existing.id;
 		}
 
-		const createResponse = await fetch('/api/livetv/channel-categories', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ name: normalizedName })
-		});
-
-		if (!createResponse.ok) {
-			const data = await createResponse.json().catch(() => ({}));
-			throw new Error(data.error || m.livetv_channelBrowserModal_failedToCreate());
-		}
-
-		const createData = await createResponse.json();
+		const createData = (await createChannelCategory({ name: normalizedName })) as unknown as {
+			category?: { id?: string };
+		};
 		const categoryId = createData.category?.id as string | undefined;
 		if (!categoryId) {
 			throw new Error(m.livetv_channelBrowserModal_failedToCreate());
@@ -444,22 +382,13 @@
 				return;
 			}
 
-			const response = await fetch('/api/livetv/lineup', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					channels: categoryChannels.map((channel) => ({
-						accountId: channel.accountId,
-						channelId: channel.id,
-						categoryId: lineupCategoryId
-					}))
-				})
-			});
-
-			if (!response.ok) {
-				const data = await response.json().catch(() => ({}));
-				throw new Error(data.error || m.livetv_channelBrowserModal_failedToAddCategory());
-			}
+			await addToLineup(
+				categoryChannels.map((channel) => ({
+					accountId: channel.accountId,
+					channelId: channel.id,
+					categoryId: lineupCategoryId
+				}))
+			);
 
 			for (const channel of categoryChannels) {
 				localLineupIds.add(channel.id);
@@ -475,26 +404,16 @@
 		}
 	}
 
-	// Add a channel as backup (backup mode only)
 	async function selectAsBackup(channel: CachedChannel) {
 		if (!lineupItemId || !onBackupSelected || addingBackup) return;
 		if (channel.id === excludeChannelId) return;
 
 		addingBackup = true;
 		try {
-			const response = await fetch(`/api/livetv/lineup/${lineupItemId}/backups`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					accountId: channel.accountId,
-					channelId: channel.id
-				})
+			await addLineupBackup(lineupItemId, {
+				accountId: channel.accountId,
+				channelId: channel.id
 			});
-
-			if (!response.ok) {
-				const data = await response.json().catch(() => ({}));
-				throw new Error(data.error || m.livetv_channelBrowserModal_failedToAddBackup());
-			}
 
 			onBackupSelected(channel.accountId, channel.id);
 			onClose();
@@ -510,42 +429,37 @@
 		selectedIds.clear();
 	}
 
-	// Helper to get category display name (handles M3U group-title)
-	function getCategoryDisplayName(channel: CachedChannel): string {
-		if (channel.categoryTitle) return channel.categoryTitle;
-		if (channel.m3u?.groupTitle) return channel.m3u.groupTitle;
-		return '-';
+	function onAccountChange(accountId: string) {
+		selectedAccountId = accountId;
+		handleFilterChange();
 	}
 
-	// Helper to get provider badge info
-	function getProviderBadgeInfo(type: LiveTvProviderType) {
-		switch (type) {
-			case 'stalker':
-				return {
-					class: 'badge-primary',
-					icon: Tv,
-					label: m.livetv_channelBrowserModal_providerStalker()
-				};
-			case 'xstream':
-				return {
-					class: 'badge-secondary',
-					icon: Radio,
-					label: m.livetv_channelBrowserModal_providerXstream()
-				};
-			case 'm3u':
-				return {
-					class: 'badge-accent',
-					icon: List,
-					label: m.livetv_channelBrowserModal_providerM3u()
-				};
-			default:
-				return { class: 'badge-ghost', icon: Tv, label: type };
-		}
+	function onCategoryChange(categoryId: string) {
+		selectedCategoryId = categoryId;
+		handleFilterChange();
+	}
+
+	function onSearchInput(value: string) {
+		searchQuery = value;
+	}
+
+	function onToggleAdded() {
+		showAdded = !showAdded;
+		pageSize = showAdded ? 50 : 200;
+		page = 1;
+		selectedIds.clear();
+	}
+
+	function onPagePrevious() {
+		page = page - 1;
+	}
+
+	function onPageNext() {
+		page = page + 1;
 	}
 </script>
 
 <ModalWrapper {open} {onClose} maxWidth="5xl" labelledBy="channel-browser-modal-title">
-	<!-- Header -->
 	<div class="mb-4 flex items-center justify-between">
 		<div>
 			<h3 id="channel-browser-modal-title" class="text-lg font-bold">
@@ -564,123 +478,42 @@
 		</button>
 	</div>
 
-	<!-- Filters Row -->
-	<div class="mb-4 flex flex-wrap items-center gap-3">
-		<!-- Account Filter -->
-		<select
-			class="select-bordered select w-full select-sm sm:w-48"
-			bind:value={selectedAccountId}
-			onchange={handleFilterChange}
-		>
-			<option value="">{m.livetv_channelBrowserModal_allAccounts()}</option>
-			{#each accounts as account (account.id)}
-				<option value={account.id}>
-					{account.name}
-					{#if account.channelCount}({account.channelCount.toLocaleString(undefined)}){/if}
-				</option>
-			{/each}
-		</select>
+	<ChannelBrowserFilters
+		{accounts}
+		{categories}
+		{selectedAccountId}
+		{selectedCategoryId}
+		{searchQuery}
+		{onAccountChange}
+		{onCategoryChange}
+		{onSearchInput}
+	/>
 
-		<!-- Category Filter -->
-		<select
-			class="select-bordered select w-full select-sm sm:w-48"
-			bind:value={selectedCategoryId}
-			onchange={handleFilterChange}
-			disabled={!selectedAccountId}
-		>
-			<option value="">{m.livetv_channelBrowserModal_allCategories()}</option>
-			{#each categories as category (category.id)}
-				<option value={category.id}>
-					{category.title}
-					({category.channelCount})
-				</option>
-			{/each}
-		</select>
-
-		<!-- Search Input -->
-		<div class="relative flex-1">
-			<Search
-				class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/40"
-			/>
-			<input
-				type="text"
-				placeholder={m.livetv_channelBrowserModal_searchPlaceholder()}
-				class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-9 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
-				bind:value={searchQuery}
-			/>
-		</div>
-	</div>
-
-	<!-- Results Summary & Bulk Actions -->
-	<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-		<span class="text-sm text-base-content/60">
+	{#if !isBackupMode}
+		<ChannelBrowserActions
+			{total}
+			selectedCount={selectedIds.size}
+			selectableChannelCount={selectableChannels.length}
+			{showAdded}
+			{selectedAccountId}
+			{selectedCategoryId}
+			selectedCategoryName={selectedCategory?.title}
+			selectedCategoryCount={selectedCategory?.channelCount ?? 0}
+			{loading}
+			{addingCategory}
+			{bulkAdding}
+			{onToggleAdded}
+			onAddCategory={addSelectedCategoryChannels}
+			onAddSelected={addSelectedChannels}
+			onClearSelection={clearSelection}
+			onToggleAllVisible={toggleAllVisible}
+		/>
+	{:else}
+		<div class="mb-2 text-sm text-base-content/60">
 			{m.livetv_channelBrowserModal_resultsCount({ count: total })}
-			{#if !isBackupMode && selectedIds.size > 0}
-				<span class="text-primary"
-					>{m.livetv_channelBrowserModal_selectedCount({ count: selectedIds.size })}</span
-				>
-			{/if}
-		</span>
+		</div>
+	{/if}
 
-		{#if !isBackupMode}
-			<label class="flex items-center gap-2 text-xs text-base-content/60">
-				<input
-					type="checkbox"
-					class="checkbox checkbox-xs"
-					bind:checked={showAdded}
-					onchange={() => {
-						pageSize = showAdded ? 50 : 200;
-						page = 1;
-						selectedIds.clear();
-					}}
-				/>
-				{m.livetv_channelBrowserModal_showAlreadyAdded()}
-			</label>
-			{#if selectedAccountId && selectedCategoryId}
-				<button
-					class="btn btn-outline btn-sm"
-					onclick={addSelectedCategoryChannels}
-					disabled={addingCategory || loading}
-					title="Add all channels in this provider category"
-				>
-					{#if addingCategory}
-						<Loader2 class="h-4 w-4 animate-spin" />
-					{:else}
-						<Plus class="h-4 w-4" />
-					{/if}
-					{m.livetv_channelBrowserModal_addEntireCategory()}
-					{#if selectedCategory}
-						({selectedCategory.channelCount})
-					{/if}
-				</button>
-			{/if}
-			{#if selectedIds.size > 0}
-				<div class="flex gap-2">
-					<button class="btn btn-ghost btn-xs" onclick={clearSelection}
-						>{m.livetv_channelBrowserModal_clear()}</button
-					>
-					<button
-						class="btn btn-sm btn-primary"
-						onclick={addSelectedChannels}
-						disabled={bulkAdding}
-					>
-						{#if bulkAdding}
-							<Loader2 class="h-4 w-4 animate-spin" />
-						{:else}
-							<Plus class="h-4 w-4" />
-						{/if}
-						{m.livetv_channelBrowserModal_addSelected({ count: selectedIds.size })}
-					</button>
-				</div>
-			{:else if selectableChannels.length > 0}
-				<button class="btn btn-ghost btn-xs" onclick={toggleAllVisible}>
-					{m.livetv_channelBrowserModal_selectAllVisible()}
-				</button>
-			{/if}
-		{/if}
-	</div>
-
-	<!-- Error Display -->
 	{#if error}
 		<div class="mb-2 alert alert-error">
 			<span>{error}</span>
@@ -688,267 +521,36 @@
 		</div>
 	{/if}
 
-	<!-- Channel List -->
-	<div class="flex-1 overflow-auto rounded-lg border border-base-300">
-		{#if loading}
-			<div class="flex items-center justify-center py-12">
-				<Loader2 class="h-8 w-8 animate-spin text-primary" />
-			</div>
-		{:else if channels.length === 0}
-			<div class="flex flex-col items-center justify-center py-12 text-base-content/50">
-				<Tv class="mb-4 h-12 w-12" />
-				<p>{m.livetv_channelBrowserModal_noChannelsFound()}</p>
-				{#if debouncedSearch || selectedAccountId || selectedCategoryId}
-					<p class="text-sm">{m.livetv_channelBrowserModal_tryAdjustingFilters()}</p>
-				{/if}
-			</div>
-		{:else if visibleChannels.length === 0}
-			<div class="flex flex-col items-center justify-center py-12 text-base-content/50">
-				<p class="text-center text-sm">{m.livetv_channelBrowserModal_allChannelsAdded()}</p>
-				<p class="text-xs">{m.livetv_channelBrowserModal_tryNextPage()}</p>
-			</div>
-		{:else}
-			<!-- Mobile cards -->
-			<div class="space-y-3 p-3 sm:hidden">
-				{#each visibleChannels as channel (channel.id)}
-					{@const excluded = isExcluded(channel.id)}
-					{@const inLineup = isInLineup(channel.id)}
-					{@const isSelected = selectedIds.has(channel.id)}
-					{@const isAdding = addingIds.has(channel.id)}
-					{@const providerBadge = getProviderBadgeInfo(channel.providerType)}
-					<div class="rounded-xl bg-base-200 p-3 {excluded ? 'opacity-60' : ''}">
-						<div class="flex items-start gap-3">
-							{#if !isBackupMode}
-								<input
-									type="checkbox"
-									class="checkbox mt-1 checkbox-sm"
-									checked={isSelected}
-									disabled={inLineup}
-									onchange={() => toggleSelection(channel.id)}
-								/>
-							{/if}
-							{#if channel.logo}
-								<img
-									src={channel.logo}
-									alt=""
-									class="h-10 w-10 rounded bg-base-200 object-contain"
-								/>
-							{:else}
-								<div class="flex h-10 w-10 items-center justify-center rounded bg-base-200">
-									<Tv class="h-4 w-4 text-base-content/30" />
-								</div>
-							{/if}
-							<div class="min-w-0 flex-1">
-								<div class="text-sm font-medium break-words sm:text-base" title={channel.name}>
-									{channel.name}
-								</div>
-								<div class="mt-1 text-xs text-base-content/60">
-									{#if channel.number}
-										#{channel.number}
-										<span class="text-base-content/40">•</span>
-									{/if}
-									{getCategoryDisplayName(channel)}
-									<span class="text-base-content/40">•</span>
-									{channel.accountName || '-'}
-									<span class="text-base-content/40">•</span>
-									<span class="badge {providerBadge.class} gap-1 badge-xs">
-										<providerBadge.icon class="h-3 w-3" />
-										{providerBadge.label}
-									</span>
-								</div>
-							</div>
-							<div class="flex items-center gap-2">
-								{#if isBackupMode}
-									{#if excluded}
-										<span class="badge badge-ghost badge-sm">Primary</span>
-									{:else}
-										<button
-											class="btn btn-ghost btn-xs"
-											onclick={() => selectAsBackup(channel)}
-											disabled={addingBackup}
-										>
-											{#if addingBackup}
-												<Loader2 class="h-3 w-3 animate-spin" />
-											{:else}
-												<Plus class="h-3 w-3" />
-											{/if}
-											{m.livetv_channelBrowserModal_select()}
-										</button>
-									{/if}
-								{:else if inLineup}
-									<span class="badge gap-1 badge-ghost badge-sm">
-										<Check class="h-3 w-3" />
-										{m.livetv_channelBrowserModal_added()}
-									</span>
-								{:else}
-									<button
-										class="btn btn-ghost btn-xs"
-										onclick={() => addSingleChannel(channel)}
-										disabled={isAdding}
-									>
-										{#if isAdding}
-											<Loader2 class="h-3 w-3 animate-spin" />
-										{:else}
-											<Plus class="h-3 w-3" />
-										{/if}
-										{m.livetv_channelBrowserModal_add()}
-									</button>
-								{/if}
-							</div>
-						</div>
-					</div>
-				{/each}
-			</div>
+	<ChannelBrowserList
+		{channels}
+		{visibleChannels}
+		{selectedIds}
+		{addingIds}
+		{loading}
+		{isBackupMode}
+		{addingBackup}
+		{isExcluded}
+		{isInLineup}
+		{allVisibleSelected}
+		{someVisibleSelected}
+		{selectableChannels}
+		{debouncedSearch}
+		{selectedAccountId}
+		{selectedCategoryId}
+		onToggleSelection={toggleSelection}
+		onAddSingleChannel={addSingleChannel}
+		onSelectBackup={selectAsBackup}
+		onToggleAllVisible={toggleAllVisible}
+	/>
 
-			<!-- Desktop table -->
-			<div class="hidden sm:block">
-				<table class="table table-sm">
-					<thead class="sticky top-0 z-10 bg-base-200">
-						<tr>
-							{#if !isBackupMode}
-								<th class="w-10">
-									<input
-										type="checkbox"
-										class="checkbox checkbox-sm"
-										checked={allVisibleSelected}
-										indeterminate={someVisibleSelected}
-										disabled={selectableChannels.length === 0}
-										onchange={toggleAllVisible}
-									/>
-								</th>
-							{/if}
-							<th>{m.livetv_channelBrowserModal_columnChannel()}</th>
-							<th>{m.livetv_channelBrowserModal_columnCategory()}</th>
-							<th>{m.livetv_channelBrowserModal_columnAccount()}</th>
-							<th>{m.livetv_channelBrowserModal_columnProvider()}</th>
-							<th class="w-24">{m.livetv_channelBrowserModal_columnActions()}</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each visibleChannels as channel (channel.id)}
-							{@const excluded = isExcluded(channel.id)}
-							{@const inLineup = isInLineup(channel.id)}
-							{@const isSelected = selectedIds.has(channel.id)}
-							{@const isAdding = addingIds.has(channel.id)}
-							{@const providerBadge = getProviderBadgeInfo(channel.providerType)}
+	<ChannelBrowserPagination
+		{page}
+		{totalPages}
+		{loading}
+		onPrevious={onPagePrevious}
+		onNext={onPageNext}
+	/>
 
-							<tr class={excluded ? 'bg-base-200/50 opacity-50' : ''}>
-								{#if !isBackupMode}
-									<td>
-										<input
-											type="checkbox"
-											class="checkbox checkbox-sm"
-											checked={isSelected}
-											disabled={inLineup}
-											onchange={() => toggleSelection(channel.id)}
-										/>
-									</td>
-								{/if}
-								<td>
-									<div class="flex items-center gap-3">
-										{#if channel.logo}
-											<img
-												src={channel.logo}
-												alt=""
-												class="h-8 w-8 rounded bg-base-200 object-contain"
-											/>
-										{:else}
-											<div class="flex h-8 w-8 items-center justify-center rounded bg-base-200">
-												<Tv class="h-4 w-4 text-base-content/30" />
-											</div>
-										{/if}
-										<div>
-											<p class="max-w-xs font-medium break-words" title={channel.name}>
-												{channel.name}
-											</p>
-											{#if channel.number}
-												<p class="text-xs text-base-content/50">#{channel.number}</p>
-											{/if}
-										</div>
-									</div>
-								</td>
-								<td class="text-sm">{getCategoryDisplayName(channel)}</td>
-								<td class="text-sm">{channel.accountName || '-'}</td>
-								<td>
-									<span class="badge {providerBadge.class} gap-1 badge-sm">
-										<providerBadge.icon class="h-3 w-3" />
-										{providerBadge.label}
-									</span>
-								</td>
-								<td>
-									{#if isBackupMode}
-										{#if excluded}
-											<span class="badge badge-ghost badge-sm"
-												>{m.livetv_channelBrowserModal_primary()}</span
-											>
-										{:else}
-											<button
-												class="btn btn-ghost btn-xs"
-												onclick={() => selectAsBackup(channel)}
-												disabled={addingBackup}
-											>
-												{#if addingBackup}
-													<Loader2 class="h-3 w-3 animate-spin" />
-												{:else}
-													<Plus class="h-3 w-3" />
-												{/if}
-												{m.livetv_channelBrowserModal_select()}
-											</button>
-										{/if}
-									{:else if inLineup}
-										<span class="badge gap-1 badge-ghost badge-sm">
-											<Check class="h-3 w-3" />
-											{m.livetv_channelBrowserModal_added()}
-										</span>
-									{:else}
-										<button
-											class="btn btn-ghost btn-xs"
-											onclick={() => addSingleChannel(channel)}
-											disabled={isAdding}
-										>
-											{#if isAdding}
-												<Loader2 class="h-3 w-3 animate-spin" />
-											{:else}
-												<Plus class="h-3 w-3" />
-											{/if}
-											{m.livetv_channelBrowserModal_add()}
-										</button>
-									{/if}
-								</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-			</div>
-		{/if}
-	</div>
-
-	<!-- Pagination -->
-	{#if totalPages > 1}
-		<div class="mt-4 flex items-center justify-center gap-2">
-			<button
-				class="btn btn-ghost btn-sm"
-				disabled={page === 1 || loading}
-				onclick={() => (page = page - 1)}
-			>
-				<ChevronLeft class="h-4 w-4" />
-				{m.livetv_channelBrowserModal_previous()}
-			</button>
-			<span class="text-sm">
-				{m.livetv_channelBrowserModal_pageOf({ page, totalPages })}
-			</span>
-			<button
-				class="btn btn-ghost btn-sm"
-				disabled={page === totalPages || loading}
-				onclick={() => (page = page + 1)}
-			>
-				{m.livetv_channelBrowserModal_next()}
-				<ChevronRight class="h-4 w-4" />
-			</button>
-		</div>
-	{/if}
-
-	<!-- Footer -->
 	<div class="modal-action">
 		<button class="btn" onclick={onClose}>{m.livetv_channelBrowserModal_done()}</button>
 	</div>

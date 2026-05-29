@@ -5,6 +5,7 @@
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import FormatConditionBuilder from './FormatConditionBuilder.svelte';
 	import { X, Save, Loader2, FlaskConical, Check, AlertTriangle, Info } from 'lucide-svelte';
+	import { testCustomFormat } from '$lib/api/indexers.js';
 
 	interface Props {
 		open: boolean;
@@ -105,26 +106,17 @@
 		testResult = null;
 
 		try {
-			const response = await fetch('/api/custom-formats/test', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					releaseName: testReleaseName,
-					conditions
-				})
+			const data = await testCustomFormat({
+				releaseName: testReleaseName,
+				conditions
 			});
 
-			if (response.ok) {
-				const data = await response.json();
-				testResult = {
-					matched: data.matched,
-					details: data.matched
-						? `Matched ${data.matchedConditions}/${data.totalConditions} conditions`
-						: `Did not match. ${data.failedConditions} required conditions failed.`
-				};
-			} else {
-				testResult = { matched: false, details: 'Test failed - check format conditions' };
-			}
+			testResult = {
+				matched: data.matched,
+				details: data.matched
+					? `Matched ${data.matchedConditions}/${data.totalConditions} conditions`
+					: `Did not match. ${data.failedConditions} required conditions failed.`
+			};
 		} catch {
 			testResult = { matched: false, details: 'Test request failed' };
 		} finally {

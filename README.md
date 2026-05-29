@@ -32,12 +32,12 @@
 
 <table>
   <tr>
-    <td><img src="docs/images/Dashboard.png" alt="Dashboard showing active downloads and recent additions" width="400" /></td>
-    <td><img src="docs/images/Discover.png" alt="Content discovery with filtering and smart lists" width="400" /></td>
+    <td><img src="https://github.com/MoldyTaint/Cinephage-Docs/blob/main/static/img/Dashboard.png" alt="Dashboard showing active downloads and recent additions" width="400" /></td>
+    <td><img src="https://github.com/MoldyTaint/Cinephage-Docs/blob/main/static/img/Discover.png" alt="Content discovery with filtering and smart lists" width="400" /></td>
   </tr>
   <tr>
-    <td><img src="docs/images/LiveTV.png" alt="Live TV channel guide with EPG integration" width="400" /></td>
-    <td><img src="docs/images/SmartLists.png" alt="Smart list creation with auto-add rules" width="400" /></td>
+    <td><img src="https://github.com/MoldyTaint/Cinephage-Docs/blob/main/static/img/LiveTV.png" alt="Live TV channel guide with EPG integration" width="400" /></td>
+    <td><img src="https://github.com/MoldyTaint/Cinephage-Docs/blob/main/static/img/SmartLists.png" alt="Smart list creation with auto-add rules" width="400" /></td>
   </tr>
 </table>
 
@@ -142,7 +142,7 @@ docker compose up -d
 
 Open http://localhost:3000 and follow the setup wizard.
 
-**Image tags:** `latest` (stable) · `dev` (preview) · `vX.Y.Z` (pinned)
+**Image tags:** `latest` (stable) · `X.Y.Z`/`X.Y`/`X` (stable semver) · `dev` and `dev-YYYYMMDD-RUN` (preview)
 
 > **Note:** Persistent data lives in `./config` (created automatically). Logs go to container stdout/stderr. Never mount `/app` — it contains application code.
 

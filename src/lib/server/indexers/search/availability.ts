@@ -97,7 +97,18 @@ export function evaluateIndexerSearchAvailability(
 		};
 	}
 
-	const searchTypeCompatible = profileScoped.filter((config) =>
+	const activelyEnabled = profileScoped.filter((config) => config.enabled);
+	if (activelyEnabled.length === 0) {
+		return {
+			ok: false,
+			code: 'NO_INDEXER_ENABLED',
+			message: isStreamerProfile
+				? 'Cinephage Library indexer is disabled. Enable it in Settings -> Integrations -> Indexers for Streamer profile.'
+				: 'No enabled indexers are available. Enable at least one indexer in Settings -> Integrations -> Indexers.'
+		};
+	}
+
+	const searchTypeCompatible = activelyEnabled.filter((config) =>
 		supportsSearchType(options.getDefinitionCapabilities(config.definitionId), options.searchType)
 	);
 
@@ -107,7 +118,7 @@ export function evaluateIndexerSearchAvailability(
 			code: 'NO_INDEXER_COMPATIBLE',
 			message: isStreamerProfile
 				? `Cinephage Library indexer does not support this ${options.searchType} search.`
-				: `No configured indexers support ${options.searchType} searches.`
+				: `None of your configured indexers support ${options.searchType} searches.`
 		};
 	}
 
@@ -124,17 +135,6 @@ export function evaluateIndexerSearchAvailability(
 			message: isStreamerProfile
 				? `Cinephage Library indexer has ${options.searchSource} search disabled. Enable it for Streamer profile searches.`
 				: `No indexers are enabled for ${options.searchSource} search. Enable ${options.searchSource} search on at least one indexer.`
-		};
-	}
-
-	const activelyEnabled = sourceEnabled.filter((config) => config.enabled);
-	if (activelyEnabled.length === 0) {
-		return {
-			ok: false,
-			code: 'NO_INDEXER_ENABLED',
-			message: isStreamerProfile
-				? 'Cinephage Library indexer is disabled. Enable it in Settings -> Integrations -> Indexers for Streamer profile.'
-				: 'No enabled indexers are available. Enable at least one indexer in Settings -> Integrations -> Indexers.'
 		};
 	}
 

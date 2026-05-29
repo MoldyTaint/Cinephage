@@ -33,7 +33,9 @@ const settings: MonitoringSettings = {
 	missingSubtitlesIntervalHours: 6,
 	subtitleUpgradeIntervalHours: 24,
 	subtitleSearchOnImportEnabled: true,
-	subtitleSearchTrigger: 'immediate'
+	subtitleSearchTrigger: 'immediate',
+	stalledDownloadTimeoutMinutes: 60,
+	stalledDownloadProgressThreshold: 0
 };
 
 const baseResult = {

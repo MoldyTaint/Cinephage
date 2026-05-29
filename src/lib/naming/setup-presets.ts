@@ -246,16 +246,6 @@ export const NAMING_DETAIL_PRESETS: NamingDetailPreset[] = [
 			includeMediaInfo: true,
 			includeReleaseGroup: true
 		}
-	},
-	{
-		id: 'detailed',
-		name: 'Detailed',
-		description: 'Keep as much useful quality and media metadata as possible.',
-		config: {
-			includeQuality: true,
-			includeMediaInfo: true,
-			includeReleaseGroup: true
-		}
 	}
 ];
 
@@ -307,7 +297,14 @@ export const BUILT_IN_PRESETS: NamingPreset[] = [
 	buildBuiltInPreset(
 		'generic',
 		'scene',
-		'detailed',
+		'balanced',
+		'Scene-Style',
+		'Dot-separated naming for users who prefer a scene-inspired look.'
+	),
+	buildBuiltInPreset(
+		'generic',
+		'anime-focused',
+		'balanced',
 		'Scene-Style',
 		'Dot-separated naming for users who prefer a scene-inspired look.'
 	),

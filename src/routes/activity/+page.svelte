@@ -4,6 +4,20 @@
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { resolvePath } from '$lib/utils/routing';
 	import { createSSE } from '$lib/sse';
+	import {
+		getActivity,
+		getActivitySettings,
+		setRetentionDays,
+		deleteActivity,
+		purgeHistory as purgeHistoryApi
+	} from '$lib/api/activity.js';
+	import { ApiError } from '$lib/api/client.js';
+	import {
+		pauseQueueItem,
+		resumeQueueItem,
+		removeQueueItem as removeQueueItemApi,
+		retryQueueItem as retryQueueItemApi
+	} from '$lib/api/downloads.js';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import ActivityTable from '$lib/components/activity/ActivityTable.svelte';
 	import ActivityDetailModal from '$lib/components/activity/ActivityDetailModal.svelte';
@@ -42,8 +56,7 @@
 		createDefaultQueueCardStats,
 		buildActivityApiQueryString,
 		buildFilterQueryString,
-		matchesActivityFilters,
-		getQueueActionErrorMessage
+		matchesActivityFilters
 	} from './activity-utils.js';
 
 	let { data } = $props();
@@ -310,12 +323,15 @@
 				limit: 50,
 				offset
 			});
-			const response = await fetch(resolvePath(`/api/activity?${queryString}`));
-			if (!response.ok) {
-				throw new Error('Failed to load activity');
-			}
-
-			const payload = await response.json();
+			const params = Object.fromEntries(new URLSearchParams(queryString));
+			const payload = (await getActivity(params)) as unknown as {
+				success?: boolean;
+				error?: string;
+				activities?: UnifiedActivity[];
+				total?: number;
+				hasMore?: boolean;
+				summary?: Partial<ActivitySummary> | null;
+			};
 			if (requestToken !== activityRequestToken) return;
 			if (!payload?.success) {
 				throw new Error(
@@ -640,16 +656,20 @@
 	async function loadHistorySettings(): Promise<void> {
 		settingsLoading = true;
 		try {
-			const response = await fetch('/api/activity/settings');
-			if (response.status === 401 || response.status === 403) {
-				canManageHistory = false;
-				return;
+			let payload: { success?: boolean; retentionDays?: number; error?: string };
+			try {
+				payload = (await getActivitySettings()) as unknown as {
+					success?: boolean;
+					retentionDays?: number;
+					error?: string;
+				};
+			} catch (error) {
+				if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+					canManageHistory = false;
+					return;
+				}
+				throw error;
 			}
-			if (!response.ok) {
-				throw new Error('Failed to load history settings');
-			}
-
-			const payload = await response.json();
 			if (payload.success && typeof payload.retentionDays === 'number') {
 				retentionDays = payload.retentionDays;
 			}
@@ -712,18 +732,18 @@
 
 		saveRetentionLoading = true;
 		try {
-			const response = await fetch('/api/activity/settings', {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ retentionDays })
-			});
-			if (response.status === 401 || response.status === 403) {
-				canManageHistory = false;
-				throw new Error('Admin access is required');
+			let payload;
+			try {
+				payload = await setRetentionDays(retentionDays);
+			} catch (error) {
+				if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+					canManageHistory = false;
+					throw new Error('Admin access is required');
+				}
+				throw error;
 			}
 
-			const payload = await response.json().catch(() => ({}));
-			if (!response.ok || !payload.success) {
+			if (!payload.success) {
 				throw new Error(
 					typeof payload.error === 'string' ? payload.error : 'Failed to save retention setting'
 				);
@@ -905,18 +925,18 @@
 		}
 
 		try {
-			const response = await fetch('/api/activity/settings', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action })
-			});
-			if (response.status === 401 || response.status === 403) {
-				canManageHistory = false;
-				throw new Error('Admin access is required');
+			let payload;
+			try {
+				payload = await purgeHistoryApi(action);
+			} catch (error) {
+				if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+					canManageHistory = false;
+					throw new Error('Admin access is required');
+				}
+				throw error;
 			}
 
-			const payload = await response.json().catch(() => ({}));
-			if (!response.ok || !payload.success) {
+			if (!payload.success) {
 				throw new Error(
 					typeof payload.error === 'string' ? payload.error : 'Failed to purge activity entries'
 				);
@@ -950,18 +970,18 @@
 
 		deleteSelectedLoading = true;
 		try {
-			const response = await fetch('/api/activity', {
-				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ activityIds: [...selectedHistoryIds] })
-			});
-			if (response.status === 401 || response.status === 403) {
-				canManageHistory = false;
-				throw new Error(m.toast_activity_adminRequired());
+			let payload;
+			try {
+				payload = await deleteActivity([...selectedHistoryIds]);
+			} catch (error) {
+				if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+					canManageHistory = false;
+					throw new Error(m.toast_activity_adminRequired());
+				}
+				throw error;
 			}
 
-			const payload = await response.json().catch(() => ({}));
-			if (!response.ok || !payload.success) {
+			if (!payload.success) {
 				throw new Error(
 					typeof payload.error === 'string'
 						? payload.error
@@ -1201,16 +1221,22 @@
 	}
 
 	async function runQueueAction(id: string, action: 'pause' | 'resume') {
-		const response = await fetch(`/api/queue/${id}`, {
-			method: 'PATCH',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ action })
-		});
-		if (!response.ok) {
-			const message = await getQueueActionErrorMessage(response, `Failed to ${action}`);
+		try {
+			if (action === 'pause') {
+				await pauseQueueItem(id);
+			} else {
+				await resumeQueueItem(id);
+			}
+			applyQueueStatusLocally(id, action === 'pause' ? 'paused' : 'downloading');
+		} catch (error) {
+			const message =
+				error instanceof ApiError
+					? error.message
+					: error instanceof Error
+						? error.message
+						: `Failed to ${action}`;
 			throw new Error(message);
 		}
-		applyQueueStatusLocally(id, action === 'pause' ? 'paused' : 'downloading');
 	}
 
 	async function removeQueueItem(
@@ -1218,12 +1244,7 @@
 		options: { refresh?: boolean; closeDetailModal?: boolean; removeFromClient?: boolean } = {}
 	): Promise<void> {
 		const { refresh = true, closeDetailModal = true, removeFromClient = true } = options;
-		const query = removeFromClient ? '' : '?removeFromClient=false';
-		const response = await fetch(`/api/queue/${id}${query}`, { method: 'DELETE' });
-		if (!response.ok) {
-			const message = await getQueueActionErrorMessage(response, 'Failed to remove');
-			throw new Error(message);
-		}
+		await removeQueueItemApi(id, { removeFromClient });
 
 		if (refresh) {
 			await refreshActivityData({ force: true });
@@ -1235,15 +1256,11 @@
 
 	async function retryQueueItem(id: string, options: { refresh?: boolean } = {}): Promise<void> {
 		const { refresh = true } = options;
-		const response = await fetch(`/api/queue/${id}/retry`, { method: 'POST' });
-		if (!response.ok) {
-			const message = await getQueueActionErrorMessage(response, 'Failed to retry');
-			throw new Error(message);
-		}
+		const data = await retryQueueItemApi(id);
+		const payload = data as Record<string, unknown>;
 
-		const payload = await response.json().catch(() => null);
-		const retryMode = typeof payload?.retryMode === 'string' ? payload.retryMode : 'download';
-		const importStatus = typeof payload?.importStatus === 'string' ? payload.importStatus : null;
+		const retryMode = typeof payload.retryMode === 'string' ? payload.retryMode : 'download';
+		const importStatus = typeof payload.importStatus === 'string' ? payload.importStatus : null;
 		if (retryMode === 'import') {
 			const reason =
 				importStatus === 'pending_retry'

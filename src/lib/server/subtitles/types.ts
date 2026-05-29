@@ -170,7 +170,6 @@ export const PROVIDER_IMPLEMENTATIONS = [
 	'opensubtitles',
 	'opensubtitlesorg',
 	'podnapisi',
-	'subscene',
 	'addic7ed',
 	'subdl',
 	'yifysubtitles',

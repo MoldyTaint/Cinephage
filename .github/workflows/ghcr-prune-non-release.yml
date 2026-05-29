@@ -20,7 +20,7 @@ on:
         type: boolean
         default: true
       keep_channel_builds:
-        description: 'Keep this many recent builds for each channel (main/dev plus legacy edge)'
+        description: 'Keep this many recent preview builds for dev plus any legacy main/edge channel tags'
         required: true
         type: string
         default: '5'
@@ -147,7 +147,8 @@ jobs:
           set -euo pipefail
 
           API_ROOT='https://api.github.com'
-          RELEASE_TAG_REGEX='^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z]+)*(\+[0-9A-Za-z.-]+)?$'
+          RELEASE_TAG_REGEX='^[0-9]+(\.[0-9]+){0,2}([.-][0-9A-Za-z]+)*(\+[0-9A-Za-z.-]+)?$'
+          LEGACY_RELEASE_TAG_REGEX='^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z]+)*(\+[0-9A-Za-z.-]+)?$'
 
           if ! [[ "$KEEP_CHANNEL_BUILDS" =~ ^[0-9]+$ ]]; then
             echo "Invalid keep_channel_builds value: ${KEEP_CHANNEL_BUILDS} (must be a non-negative integer)"
@@ -165,11 +166,11 @@ jobs:
               return 0
             fi
 
-            if [ "$tag" = 'main' ] || [ "$tag" = 'dev' ]; then
+            if [ "$tag" = 'dev' ]; then
               return 0
             fi
 
-            if [[ "$tag" =~ $RELEASE_TAG_REGEX ]]; then
+            if [[ "$tag" =~ $RELEASE_TAG_REGEX ]] || [[ "$tag" =~ $LEGACY_RELEASE_TAG_REGEX ]]; then
               return 0
             fi
 
@@ -369,11 +370,12 @@ jobs:
             echo "- Failed: \`${failed}\`"
             echo ""
             echo "Kept tags:"
-            echo "- Semver release tags matching \`${RELEASE_TAG_REGEX}\`"
+            echo "- Stable semver tags matching \`${RELEASE_TAG_REGEX}\` (for example: \`X\`, \`X.Y\`, \`X.Y.Z\`)"
+            echo "- Legacy v-prefixed release tags matching \`${LEGACY_RELEASE_TAG_REGEX}\`"
             if [ "$KEEP_LATEST" = 'true' ]; then
               echo "- \`latest\`"
             fi
-            echo "- \`main\` and \`dev\`"
+            echo "- \`dev\`"
             if [ "$KEEP_CHANNEL_BUILDS" -gt 0 ]; then
               echo "- Last \`${KEEP_CHANNEL_BUILDS}\` legacy \`edge-YYYYMMDD-run\` builds"
               echo "- Last \`${KEEP_CHANNEL_BUILDS}\` \`main-YYYYMMDD-run\` builds"

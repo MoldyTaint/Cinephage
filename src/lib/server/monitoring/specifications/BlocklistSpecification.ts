@@ -10,7 +10,7 @@
 
 import { db } from '$lib/server/db/index.js';
 import { blocklist } from '$lib/server/db/schema.js';
-import { eq, or, and, gt, isNull, lte } from 'drizzle-orm';
+import { eq, or, and, gt, isNull, lte, inArray, count } from 'drizzle-orm';
 import { reject, accept } from './types.js';
 import type { SpecificationResult, ReleaseCandidate } from './types.js';
 
@@ -126,26 +126,41 @@ class BlocklistService {
 			? new Date(Date.now() + options.expiresInHours * 60 * 60 * 1000).toISOString()
 			: null;
 
-		const [entry] = await db
-			.insert(blocklist)
-			.values({
-				title: release.title,
-				infoHash: release.infoHash ?? null,
-				indexerId: release.indexerId ?? null,
-				movieId: options.movieId ?? null,
-				seriesId: options.seriesId ?? null,
-				episodeIds: options.episodeIds ?? null,
-				reason: options.reason,
-				message: options.message ?? null,
-				sourceTitle: release.title,
-				quality: release.quality ?? null,
-				size: release.size ?? null,
-				protocol: release.protocol ?? null,
-				expiresAt
-			})
-			.returning();
+		const dedupConditions = [eq(blocklist.title, release.title)];
+		if (options.movieId) dedupConditions.push(eq(blocklist.movieId, options.movieId));
+		if (options.seriesId) dedupConditions.push(eq(blocklist.seriesId, options.seriesId));
+		if (release.infoHash) dedupConditions.push(eq(blocklist.infoHash, release.infoHash));
+		else if (release.indexerId)
+			dedupConditions.push(
+				or(eq(blocklist.indexerId, release.indexerId), isNull(blocklist.indexerId))!
+			);
 
-		return entry.id;
+		const entryId = await db.transaction(async (tx) => {
+			await tx.delete(blocklist).where(and(...dedupConditions));
+
+			const [entry] = await tx
+				.insert(blocklist)
+				.values({
+					title: release.title,
+					infoHash: release.infoHash ?? null,
+					indexerId: release.indexerId ?? null,
+					movieId: options.movieId ?? null,
+					seriesId: options.seriesId ?? null,
+					episodeIds: options.episodeIds ?? null,
+					reason: options.reason,
+					message: options.message ?? null,
+					sourceTitle: release.title,
+					quality: release.quality ?? null,
+					size: release.size ?? null,
+					protocol: release.protocol ?? null,
+					expiresAt
+				})
+				.returning();
+
+			return entry.id;
+		});
+
+		return entryId;
 	}
 
 	/**
@@ -175,17 +190,26 @@ class BlocklistService {
 	async getBlocklist(options?: {
 		movieId?: string;
 		seriesId?: string;
+		reason?: string;
+		protocol?: string;
+		activeOnly?: boolean;
+		search?: string;
 		limit?: number;
 		offset?: number;
 	}): Promise<(typeof blocklist.$inferSelect)[]> {
-		const query = options?.movieId
-			? eq(blocklist.movieId, options.movieId)
-			: options?.seriesId
-				? eq(blocklist.seriesId, options.seriesId)
-				: undefined;
+		const conditions = [];
+
+		if (options?.movieId) conditions.push(eq(blocklist.movieId, options.movieId));
+		if (options?.seriesId) conditions.push(eq(blocklist.seriesId, options.seriesId));
+		if (options?.reason) conditions.push(eq(blocklist.reason, options.reason));
+		if (options?.protocol) conditions.push(eq(blocklist.protocol, options.protocol));
+		if (options?.activeOnly) {
+			const now = new Date().toISOString();
+			conditions.push(or(isNull(blocklist.expiresAt), gt(blocklist.expiresAt, now)));
+		}
 
 		return db.query.blocklist.findMany({
-			where: query,
+			where: conditions.length > 0 ? and(...conditions) : undefined,
 			limit: options?.limit ?? 100,
 			offset: options?.offset ?? 0,
 			orderBy: (blocklist, { desc }) => [desc(blocklist.createdAt)]
@@ -202,6 +226,51 @@ class BlocklistService {
 
 		// SQLite doesn't return count directly, return 0 as placeholder
 		return 0;
+	}
+
+	async getBlocklistCount(options?: {
+		movieId?: string;
+		seriesId?: string;
+		reason?: string;
+		protocol?: string;
+		activeOnly?: boolean;
+		search?: string;
+	}): Promise<number> {
+		const conditions = [];
+
+		if (options?.movieId) conditions.push(eq(blocklist.movieId, options.movieId));
+		if (options?.seriesId) conditions.push(eq(blocklist.seriesId, options.seriesId));
+		if (options?.reason) conditions.push(eq(blocklist.reason, options.reason));
+		if (options?.protocol) conditions.push(eq(blocklist.protocol, options.protocol));
+		if (options?.activeOnly) {
+			const now = new Date().toISOString();
+			conditions.push(or(isNull(blocklist.expiresAt), gt(blocklist.expiresAt, now)));
+		}
+
+		const [result] = await db
+			.select({ count: count() })
+			.from(blocklist)
+			.where(conditions.length > 0 ? and(...conditions) : undefined);
+
+		return result.count;
+	}
+
+	async removeFromBlocklistByIds(ids: string[]): Promise<void> {
+		if (ids.length === 0) return;
+		await db.delete(blocklist).where(inArray(blocklist.id, ids));
+	}
+
+	/**
+	 * Update the expiry of a blocklist entry.
+	 * @param id - The blocklist entry ID
+	 * @param expiresInHours - Hours until expiry, or null for permanent
+	 */
+	async updateExpiry(id: string, expiresInHours: number | null): Promise<void> {
+		const expiresAt =
+			expiresInHours !== null
+				? new Date(Date.now() + expiresInHours * 60 * 60 * 1000).toISOString()
+				: null;
+		await db.update(blocklist).set({ expiresAt }).where(eq(blocklist.id, id));
 	}
 }
 

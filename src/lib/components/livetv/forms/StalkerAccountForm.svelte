@@ -79,7 +79,10 @@
 
 		<div class="form-control">
 			<label class="label py-1" for="stalker-name">
-				<span class="label-text">{m.livetv_form_stalker_nameLabel()}</span>
+				<span class="label-text">
+					{m.livetv_form_stalker_nameLabel()}
+					<span class="text-error">* </span>
+				</span>
 			</label>
 			<input
 				id="stalker-name"
@@ -96,7 +99,10 @@
 
 		<div class="form-control">
 			<label class="label py-1" for="portal-url">
-				<span class="label-text">{m.livetv_form_stalker_portalUrlLabel()}</span>
+				<span class="label-text">
+					{m.livetv_form_stalker_portalUrlLabel()}
+					<span class="text-error">* </span>
+				</span>
 			</label>
 			<div class="relative">
 				<input
@@ -125,7 +131,10 @@
 
 		<div class="form-control">
 			<label class="label py-1" for="mac-address">
-				<span class="label-text">{m.livetv_form_stalker_macAddressLabel()}</span>
+				<span class="label-text">
+					{m.livetv_form_stalker_macAddressLabel()}
+					<span class="text-error">* </span>
+				</span>
 			</label>
 			<div class="relative">
 				<input

@@ -333,7 +333,7 @@
 								>
 							</div>
 						</td>
-						<td class="pl-2!">
+						<td class="pl-4!">
 							<div class="flex gap-0">
 								{#if onTest}
 									<button

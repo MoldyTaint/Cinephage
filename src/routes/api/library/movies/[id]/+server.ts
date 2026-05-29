@@ -29,6 +29,21 @@ import {
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { mediaMoveService } from '$lib/server/library/MediaMoveService.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
+import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
+import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
+import { buildMetadataProviderRegistry } from '$lib/server/metadata/provider-registry.js';
+
+function isAnimeMovieSignal(input: {
+	rootFolderPath: string | null;
+	genres: string[] | null;
+	title: string;
+}): boolean {
+	const path = (input.rootFolderPath ?? '').toLowerCase();
+	if (path.includes('/anime/')) return true;
+	const genres = input.genres ?? [];
+	if (genres.some((genre) => genre.toLowerCase() === 'animation')) return true;
+	return /\banime\b/i.test(input.title);
+}
 
 /**
  * GET /api/library/movies/[id]
@@ -41,6 +56,9 @@ export const GET: RequestHandler = async ({ params }) => {
 				id: movies.id,
 				tmdbId: movies.tmdbId,
 				imdbId: movies.imdbId,
+				metadataProvider: movies.metadataProvider,
+				providerRefs: movies.providerRefs,
+				pinnedExternal: movies.pinnedExternal,
 				title: movies.title,
 				originalTitle: movies.originalTitle,
 				year: movies.year,
@@ -84,11 +102,53 @@ export const GET: RequestHandler = async ({ params }) => {
 				return null;
 			})
 		]);
+		const providerConfig = await getMetadataProviderConfig();
+		const enrichedProviderRefs = await resolveMissingAnimeProviderRefs({
+			title: movie.title,
+			aliases: [movie.originalTitle ?? ''],
+			year: movie.year,
+			isAnime: isAnimeMovieSignal({
+				rootFolderPath: movie.rootFolderPath ?? null,
+				genres: (movie.genres as string[] | null) ?? null,
+				title: movie.title
+			}),
+			configured: {
+				anilist: providerConfig.anilistEnabled,
+				mal: Boolean(providerConfig.malClientId)
+			},
+			existingRefs:
+				(movie.providerRefs as Partial<Record<'tmdb' | 'anilist' | 'mal', string>> | null) ??
+				undefined
+		});
+		let studios: string[] | null = null;
+		const selectedMovieProvider = movie.metadataProvider as
+			| 'auto'
+			| 'tmdb'
+			| 'anilist'
+			| 'mal'
+			| null;
+		if (selectedMovieProvider === 'anilist' || selectedMovieProvider === 'mal') {
+			const providerRef = enrichedProviderRefs[selectedMovieProvider];
+			if (providerRef) {
+				const { providers } = await buildMetadataProviderRegistry();
+				const provider = providers.get(selectedMovieProvider);
+				if (provider?.isConfigured()) {
+					try {
+						const details = await provider.getDetails(providerRef, 'anime');
+						studios = details?.studios ?? null;
+					} catch {
+						studios = null;
+					}
+				}
+			}
+		}
 
 		return json({
 			success: true,
 			movie: {
 				...movie,
+				providerRefs: enrichedProviderRefs,
+				studios,
 				tmdbStatus: releaseInfo?.status ?? null,
 				releaseDate: releaseInfo?.release_date ?? null,
 				files: files.map((f) => ({
@@ -146,6 +206,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		monitored,
 		scoringProfileId,
 		minimumAvailability,
+		metadataProvider,
+		providerRefs,
 		rootFolderId,
 		moveFilesOnRootChange,
 		wantsSubtitles,
@@ -185,6 +247,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	}
 	if (minimumAvailability) {
 		updateData.minimumAvailability = minimumAvailability;
+	}
+	if (metadataProvider !== undefined) {
+		updateData.metadataProvider = metadataProvider;
+	}
+	if (providerRefs !== undefined) {
+		updateData.providerRefs = providerRefs;
 	}
 	if (rootFolderId !== undefined) {
 		const nextRootFolderId = typeof rootFolderId === 'string' ? rootFolderId.trim() : '';

@@ -26,7 +26,8 @@ import type {
 } from '../types';
 import type { YamlDefinition } from '../schema/yamlDefinition';
 import { resolveCategoryId } from '../schema/yamlDefinition';
-import type { IndexerRecord, ProtocolSettings } from '$lib/server/db/schema';
+import type { IndexerRecord } from '$lib/server/db/schema';
+import type { ProtocolSettings } from '$lib/server/indexers/types/index.js';
 import { TemplateEngine, createTemplateEngine } from '../engine/TemplateEngine';
 import { FilterEngine, createFilterEngine } from '../engine/FilterEngine';
 import { SelectorEngine, createSelectorEngine } from '../engine/SelectorEngine';
@@ -97,6 +98,9 @@ export class UnifiedIndexer implements IIndexer {
 
 	private cookies: Record<string, string> = {};
 	private isLoggedIn = false;
+	private lastCookieRefreshMs = 0;
+
+	private static readonly COOKIE_REFRESH_THROTTLE_MS = 60_000;
 
 	/** Public getter for protocol-specific settings */
 	get protocolSettings(): ProtocolSettings | undefined {
@@ -612,14 +616,19 @@ export class UnifiedIndexer implements IIndexer {
 		}
 
 		// Refresh cookie expiration after successful request to keep session alive
+		// Throttled to avoid SQLite I/O on every parallel variant within a search
 		if (Object.keys(this.cookies).length > 0) {
-			const context = {
-				indexerId: this.id,
-				baseUrl: this.requestBuilder.getBaseUrl(),
-				settings: this.settings,
-				encoding: this.definition.encoding
-			};
-			await this.authManager.refreshCookieExpiration(context);
+			const now = Date.now();
+			if (now - this.lastCookieRefreshMs > UnifiedIndexer.COOKIE_REFRESH_THROTTLE_MS) {
+				this.lastCookieRefreshMs = now;
+				const context = {
+					indexerId: this.id,
+					baseUrl: this.requestBuilder.getBaseUrl(),
+					settings: this.settings,
+					encoding: this.definition.encoding
+				};
+				await this.authManager.refreshCookieExpiration(context);
+			}
 		}
 
 		return this.parseResponse(response.body, request.searchPath);
@@ -766,15 +775,12 @@ export class UnifiedIndexer implements IIndexer {
 				return;
 			}
 
-			const testCriteria: SearchCriteria = {
-				searchType: 'basic',
-				query: 'test',
-				limit: 1
-			};
-
-			// Ensure test will actually perform at least one HTTP request.
-			// Otherwise test could return a false positive.
-			const requests = this.requestBuilder.buildSearchRequests(testCriteria);
+			const testCriteriaCandidates: SearchCriteria[] = [
+				{ searchType: 'basic', query: 'test', limit: 1 },
+				{ searchType: 'tv', query: 'test', imdbId: 'tt0944947', season: 1, episode: 1, limit: 1 },
+				{ searchType: 'movie', query: 'test', imdbId: 'tt0133093', year: 1999, limit: 1 }
+			];
+			const requests = this.buildTestRequests(testCriteriaCandidates);
 			if (requests.length === 0) {
 				throw new Error('No test request could be generated for this indexer definition');
 			}
@@ -816,6 +822,19 @@ export class UnifiedIndexer implements IIndexer {
 			this.log.error({ error: message }, 'Indexer test failed');
 			throw error instanceof Error ? error : new Error(message);
 		}
+	}
+
+	/**
+	 * Build at least one valid test request using capability-aware fallback criteria.
+	 */
+	private buildTestRequests(candidates: SearchCriteria[]) {
+		for (const criteria of candidates) {
+			const requests = this.requestBuilder.buildSearchRequests(criteria);
+			if (requests.length > 0) {
+				return requests;
+			}
+		}
+		return [];
 	}
 
 	/**

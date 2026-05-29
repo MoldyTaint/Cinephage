@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
+	import { getLocale } from '$lib/paraglide/runtime.js';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
 	import MonitorToggle from './MonitorToggle.svelte';
 	import {
@@ -10,14 +11,21 @@
 		Package,
 		Download,
 		Zap,
-		Loader2
+		Loader2,
+		Ban
 	} from 'lucide-svelte';
 	import { formatBytes, getStatusColor } from '$lib/utils/format.js';
+	import { formatSeriesStatus } from '$lib/utils/format-status.js';
+	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import { toasts } from '$lib/stores/toast.svelte';
+	import { blockMedia } from '$lib/api/settings.js';
 
 	interface SeriesData {
 		tmdbId: number;
 		tvdbId: number | null;
 		imdbId: string | null;
+		metadataProvider?: 'auto' | 'tmdb' | 'anilist' | 'mal' | null;
+		providerRefs?: Partial<Record<'tmdb' | 'anilist' | 'mal', string>> | null;
 		title: string;
 		year: number | null;
 		status: string | null;
@@ -52,6 +60,7 @@
 
 	interface Props {
 		series: SeriesData;
+		configuredProviders?: { anilist: boolean; mal: boolean };
 		totalSize?: number;
 		qualityProfileName?: string | null;
 		refreshing?: boolean;
@@ -72,6 +81,7 @@
 
 	let {
 		series,
+		configuredProviders = { anilist: false, mal: false },
 		totalSize = 0,
 		qualityProfileName = null,
 		refreshing = false,
@@ -90,22 +100,53 @@
 		onRefresh
 	}: Props = $props();
 
+	let showBlockConfirm = $state(false);
+
+	async function handleBlock() {
+		try {
+			await blockMedia({
+				tmdbId: series.tmdbId,
+				mediaType: 'tv',
+				title: series.title,
+				posterPath: series.posterPath ?? null,
+				year: series.year ?? null
+			});
+			toasts.success(m.blockedMedia_blocked({ title: series.title }));
+			window.location.href = '/settings/blocklist/blocked-media';
+		} catch (err) {
+			toasts.error(err instanceof Error ? err.message : 'Failed to block media');
+		}
+	}
+
+	const providerLinks = $derived.by(() => {
+		const refs = series.providerRefs ?? {};
+		const links: Array<{ label: string; href: string }> = [];
+		if (configuredProviders.anilist && refs.anilist) {
+			links.push({
+				label: 'AniList',
+				href: `https://anilist.co/anime/${refs.anilist}`
+			});
+		}
+		if (configuredProviders.mal && refs.mal) {
+			links.push({
+				label: 'MAL',
+				href: `https://myanimelist.net/anime/${refs.mal}`
+			});
+		}
+		return links;
+	});
+
+	const usesAnimeMetadataProvider = $derived(
+		(series.metadataProvider === 'anilist' && Boolean(series.providerRefs?.anilist)) ||
+			(series.metadataProvider === 'mal' && Boolean(series.providerRefs?.mal))
+	);
+
 	function formatDate(dateString: string): string {
-		return new Date(dateString).toLocaleDateString('en-US', {
+		return new Date(dateString).toLocaleDateString(getLocale(), {
 			year: 'numeric',
 			month: 'short',
 			day: 'numeric'
 		});
-	}
-
-	function formatStatus(status: string | null): string {
-		if (!status) return m.common_unknown();
-		const s = status.toLowerCase();
-		if (s.includes('returning')) return m.library_seriesHeader_statusContinuing();
-		if (s.includes('production')) return m.library_seriesHeader_statusInProduction();
-		if (s.includes('ended')) return m.library_seriesHeader_statusEnded();
-		if (s.includes('canceled')) return m.library_seriesHeader_statusCancelled();
-		return status;
 	}
 </script>
 
@@ -157,11 +198,13 @@
 					>
 						{#if series.status}
 							<span class="badge {getStatusColor(series.status)} badge-sm">
-								{formatStatus(series.status)}
+								{formatSeriesStatus(series.status)}
 							</span>
 						{/if}
 						{#if series.network}
-							<span>{series.network}</span>
+							<span
+								>{usesAnimeMetadataProvider ? `Studios: ${series.network}` : series.network}</span
+							>
 						{/if}
 						{#if series.genres && series.genres.length > 0}
 							<span>•</span>
@@ -260,6 +303,13 @@
 					>
 						<Trash2 size={16} />
 					</button>
+					<button
+						class="btn text-error btn-ghost btn-sm"
+						onclick={() => (showBlockConfirm = true)}
+						title={m.library_blockMediaTooltip()}
+					>
+						<Ban size={16} />
+					</button>
 				</div>
 			</div>
 
@@ -297,16 +347,13 @@
 						</span>
 					</div>
 				</div>
-				<div class="h-2 w-full max-w-md overflow-hidden rounded-full bg-base-300">
-					<div
-						class="h-full transition-all duration-500 {series.percentComplete === 100
-							? 'bg-success'
-							: series.percentComplete > 0
-								? 'bg-primary'
-								: 'bg-base-300'}"
-						style="width: {series.percentComplete}%"
-					></div>
-				</div>
+				<progress
+					class="progress h-2 w-full max-w-md {series.percentComplete === 100
+						? 'progress-success'
+						: 'progress-primary'}"
+					value={series.percentComplete}
+					max="100"
+				></progress>
 			</div>
 
 			<!-- Settings info -->
@@ -335,13 +382,13 @@
 			</div>
 
 			<!-- Bottom row: External links -->
-			<div class="flex items-center gap-2">
+			<div class="flex flex-wrap items-center gap-2">
 				{#if series.tmdbId}
 					<a
 						href="https://www.themoviedb.org/tv/{series.tmdbId}"
 						target="_blank"
 						rel="noopener noreferrer"
-						class="btn gap-1 btn-ghost btn-xs"
+						class="btn shrink-0 gap-1 btn-ghost btn-xs"
 					>
 						TMDB
 						<ExternalLink size={12} />
@@ -352,7 +399,7 @@
 						href="https://thetvdb.com/series/{series.tvdbId}"
 						target="_blank"
 						rel="noopener noreferrer"
-						class="btn gap-1 btn-ghost btn-xs"
+						class="btn shrink-0 gap-1 btn-ghost btn-xs"
 					>
 						TVDB
 						<ExternalLink size={12} />
@@ -363,13 +410,34 @@
 						href="https://www.imdb.com/title/{series.imdbId}"
 						target="_blank"
 						rel="noopener noreferrer"
-						class="btn gap-1 btn-ghost btn-xs"
+						class="btn shrink-0 gap-1 btn-ghost btn-xs"
 					>
 						IMDb
 						<ExternalLink size={12} />
 					</a>
 				{/if}
+				{#each providerLinks as provider (provider.label)}
+					<a
+						href={provider.href}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="btn shrink-0 gap-1 btn-ghost btn-xs"
+					>
+						{provider.label}
+						<ExternalLink size={12} />
+					</a>
+				{/each}
 			</div>
 		</div>
 	</div>
 </div>
+
+<ConfirmationModal
+	open={showBlockConfirm}
+	onCancel={() => (showBlockConfirm = false)}
+	onConfirm={handleBlock}
+	title={m.blockedMedia_confirmBlockTitle()}
+	message={m.blockedMedia_confirmBlockMessage({ title: series.title })}
+	confirmLabel={m.blockedMedia_confirmBlockLabel()}
+	confirmVariant="error"
+/>

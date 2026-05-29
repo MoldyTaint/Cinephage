@@ -11,6 +11,7 @@
  */
 
 import { createChildLogger } from '$lib/logging';
+import { randomBytes } from 'node:crypto';
 
 const logger = createChildLogger({ logDomain: 'livetv' as const });
 import type {
@@ -95,6 +96,96 @@ function generatePrehash(_macAddress: string): string {
 }
 
 /**
+ * Detect the Stalker portal endpoint type from a portal URL.
+ *
+ * Portals that use the "/stalker_portal/" path structure use
+ * "stalker_portal/server/load.php" as their API endpoint.
+ * All other patterns (e.g. "/c", "/c/portal.php") use "portal.php".
+ *
+ * @param portalUrl - The raw portal URL as provided by the user or stored in config
+ * @returns The endpoint path (e.g. "portal.php" or "stalker_portal/server/load.php")
+ */
+export function detectStalkerEndpoint(portalUrl: string): string {
+	if (portalUrl.includes('/stalker_portal/') || portalUrl.endsWith('/stalker_portal')) {
+		return 'stalker_portal/server/load.php';
+	}
+	return 'portal.php';
+}
+
+/**
+ * Probe a Stalker portal URL to determine the correct API endpoint.
+ *
+ * Builds candidate endpoint URLs the same way getPortalEndpoint() would,
+ * then tests each with a lightweight handshake request. Returns the endpoint
+ * value that produces a valid response.
+ *
+ * Falls back to the URL-path heuristic if probing fails (offline portal, etc.).
+ */
+export async function probeStalkerEndpoint(portalUrl: string): Promise<string> {
+	const url = portalUrl.trim().replace(/\/+$/, '');
+	const hasStalkerPortal = url.includes('/stalker_portal/') || url.endsWith('/stalker_portal');
+
+	interface Candidate {
+		endpoint: string;
+		testUrl: string;
+	}
+
+	const candidates: Candidate[] = [];
+
+	if (hasStalkerPortal) {
+		if (!url.includes('/portal.php')) {
+			candidates.push({ endpoint: 'portal.php', testUrl: `${url}/portal.php` });
+		} else {
+			candidates.push({ endpoint: 'portal.php', testUrl: url });
+		}
+
+		const idx = url.indexOf('/stalker_portal');
+		const base = idx > 0 ? url.substring(0, idx) : url;
+		candidates.push({
+			endpoint: 'stalker_portal/server/load.php',
+			testUrl: `${base}/stalker_portal/server/load.php`
+		});
+
+		// Some stalker_portal URLs include a sub-path like /c/ or /stalker_portal/c/
+		// that routes API calls through portal.php at that path. Test this variant.
+		// Example: http://xp1.tv/stalker_portal/c/ → needs /stalker_portal/c/portal.php
+		const afterStalker = url.substring(idx + '/stalker_portal'.length);
+		if (afterStalker !== '' && afterStalker !== '/') {
+			const subPathUrl = `${url}/portal.php`;
+			if (subPathUrl !== candidates[0]?.testUrl) {
+				candidates.push({ endpoint: 'portal.php', testUrl: subPathUrl });
+			}
+		}
+	} else {
+		if (url.includes('/portal.php')) {
+			candidates.push({ endpoint: 'portal.php', testUrl: url });
+		} else {
+			candidates.push({ endpoint: 'portal.php', testUrl: `${url}/portal.php` });
+		}
+	}
+
+	for (const { endpoint, testUrl } of candidates) {
+		try {
+			const response = await fetch(
+				`${testUrl}?type=stb&action=handshake&token=PROBE&prehash=0&JsHttpRequest=1-xml`,
+				{
+					method: 'GET',
+					signal: AbortSignal.timeout(10000),
+					headers: { 'User-Agent': STB_USER_AGENT_PROBE }
+				}
+			);
+			if (response.ok || response.status === 403) {
+				return endpoint;
+			}
+		} catch {
+			continue;
+		}
+	}
+
+	return detectStalkerEndpoint(portalUrl);
+}
+
+/**
  * Configuration for Stalker Portal client
  */
 export interface StalkerPortalConfig {
@@ -108,6 +199,7 @@ export interface StalkerPortalConfig {
 	token?: string;
 	username?: string;
 	password?: string;
+	endpoint?: string;
 }
 
 interface StalkerResponse<T> {
@@ -197,12 +289,7 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
  * Generate a random 32-character hex token
  */
 function generateToken(): string {
-	const chars = 'ABCDEF0123456789';
-	let token = '';
-	for (let i = 0; i < 32; i++) {
-		token += chars[Math.floor(Math.random() * chars.length)];
-	}
-	return token;
+	return randomBytes(16).toString('hex').toUpperCase();
 }
 
 /**
@@ -255,6 +342,7 @@ export class StalkerPortalClient {
 	private authenticated: boolean = false;
 	private lastProfile: StalkerRawProfile | null = null;
 	private watchdogInterval: ReturnType<typeof setInterval> | null = null;
+	private workingEndpoint: string | null = null;
 	private static readonly WATCHDOG_INTERVAL_MS = 120_000; // 2 minutes (matches stalkerhek)
 
 	constructor(config: StalkerPortalConfig) {
@@ -284,19 +372,63 @@ export class StalkerPortalClient {
 	}
 
 	/**
-	 * Get the portal.php endpoint URL
+	 * Get the portal API endpoint URL.
+	 *
+	 * Supports two endpoint types:
+	 *   — "portal.php" (default): /c/portal.php or /portal.php
+	 *   — "stalker_portal/server/load.php": for portals that use
+	 *     the stalker_portal directory structure
+	 *
+	 * Auto-detection heuristic:
+	 *   — If `config.endpoint` is explicitly set, use it.
+	 *   — If the portal URL path contains "/stalker_portal/", use
+	 *     the load.php endpoint (these portals consistently return
+	 *     404 on /c/portal.php).
+	 *   — Otherwise, fall back to the legacy portal.php logic.
 	 */
-	private getPortalEndpoint(): string {
-		const url = this.config.portalUrl;
+	private getAlternativeEndpoint(primaryEndpoint: string): string | null {
+		const url = this.config.portalUrl.trim().replace(/\/+$/, '');
+		const hasStalkerPortal = url.includes('/stalker_portal/') || url.endsWith('/stalker_portal');
 
-		// Handle different portal URL formats
+		if (!hasStalkerPortal) {
+			return null;
+		}
+
+		if (primaryEndpoint.includes('server/load.php')) {
+			if (!url.includes('/portal.php')) {
+				return `${url}/portal.php`;
+			}
+			return url;
+		}
+
+		const idx = url.indexOf('/stalker_portal');
+		const base = idx > 0 ? url.substring(0, idx) : url;
+		return `${base}/stalker_portal/server/load.php`;
+	}
+
+	private getPortalEndpoint(): string {
+		if (this.workingEndpoint) {
+			return this.workingEndpoint;
+		}
+
+		const url = this.config.portalUrl.trim().replace(/\/+$/, '');
+
+		const hasStalkerPortal = url.includes('/stalker_portal/') || url.endsWith('/stalker_portal');
+		const endpoint =
+			this.config.endpoint || (hasStalkerPortal ? 'stalker_portal/server/load.php' : null);
+
+		if (endpoint === 'stalker_portal/server/load.php') {
+			const idx = url.indexOf('/stalker_portal');
+			const base = idx > 0 ? url.substring(0, idx) : url;
+			return `${base}/${endpoint}`;
+		}
+
 		if (url.includes('/portal.php')) {
 			return url;
 		}
-		if (url.endsWith('/c') || url.endsWith('/c/')) {
-			return `${url.replace(/\/+$/, '')}/portal.php`;
+		if (url.endsWith('/c')) {
+			return `${url}/portal.php`;
 		}
-		// Default: append /portal.php
 		return `${url}/portal.php`;
 	}
 
@@ -476,8 +608,44 @@ export class StalkerPortalClient {
 			'[StalkerPortal] Performing handshake'
 		);
 
-		const endpoint = this.getPortalEndpoint();
-		const url = new URL(endpoint);
+		try {
+			await this.doHandshake(this.getPortalEndpoint());
+		} catch (error) {
+			const status = error instanceof StalkerProtocolError ? error.statusCode : 0;
+
+			if (status === 404) {
+				const primaryEndpoint = this.getPortalEndpoint();
+				const alternative = this.getAlternativeEndpoint(primaryEndpoint);
+
+				if (alternative) {
+					logger.debug(
+						{
+							primaryEndpoint,
+							alternativeEndpoint: alternative
+						},
+						'[StalkerPortal] Primary endpoint returned 404, trying alternative'
+					);
+
+					try {
+						await this.doHandshake(alternative);
+						this.workingEndpoint = alternative;
+						logger.info(
+							{ workingEndpoint: alternative },
+							'[StalkerPortal] Alternative endpoint works, cached for future requests'
+						);
+						return;
+					} catch {
+						// Alternative also failed, throw original error
+					}
+				}
+			}
+
+			throw error;
+		}
+	}
+
+	private async doHandshake(endpointUrl: string): Promise<void> {
+		const url = new URL(endpointUrl);
 		url.searchParams.set('type', 'stb');
 		url.searchParams.set('action', 'handshake');
 		url.searchParams.set('token', this.token);
@@ -493,7 +661,6 @@ export class StalkerPortalClient {
 			throw new Error(`Invalid JSON from handshake: ${text.substring(0, 200)}`);
 		}
 
-		// If server provides a new token, use it
 		if (data.js?.token && data.js.token !== '') {
 			logger.debug('[StalkerPortal] Server provided new token');
 			this.token = data.js.token;
@@ -795,10 +962,17 @@ export class StalkerPortalClient {
 		const result = await this.request<ChannelsResponse | ChannelData[]>('itv', 'get_all_channels');
 
 		// Some portals return an array directly, others return {data: [], total_items: N}
-		const channels: ChannelData[] = Array.isArray(result)
+		// A few portals return a dict keyed by channel ID: {"1": {id: "1", ...}, "2": {...}}
+		let channels: ChannelData[] | undefined = Array.isArray(result)
 			? result
 			: (result as ChannelsResponse).data;
-		if (!channels || !Array.isArray(channels)) {
+
+		// Handle dict-format: convert object values to array
+		if (!Array.isArray(channels) && typeof channels === 'object' && channels !== null) {
+			channels = Object.values(channels as Record<string, ChannelData>);
+		}
+
+		if (!channels || !Array.isArray(channels) || channels.length === 0) {
 			return [];
 		}
 
@@ -822,11 +996,23 @@ export class StalkerPortalClient {
 		const result = await this.request<ChannelsResponse | ChannelData[]>('itv', 'get_all_channels');
 
 		// Some portals return an array directly, others return {data: [], total_items: N}
+		// A few portals return a dict keyed by channel ID
 		if (Array.isArray(result)) {
 			return result.length;
 		}
 		const response = result as ChannelsResponse;
-		return response.total_items || response.data?.length || 0;
+		if (response.total_items) {
+			return response.total_items;
+		}
+		if (response.data) {
+			if (Array.isArray(response.data)) {
+				return response.data.length;
+			}
+			if (typeof response.data === 'object') {
+				return Object.keys(response.data as Record<string, unknown>).length;
+			}
+		}
+		return 0;
 	}
 
 	/**

@@ -16,18 +16,7 @@ import { eq, asc, inArray, and } from 'drizzle-orm';
 import type { RequestHandler } from '@sveltejs/kit';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import { logger } from '$lib/logging';
-
-const ACTIVE_DOWNLOAD_STATUSES = [
-	'queued',
-	'downloading',
-	'stalled',
-	'paused',
-	'completed',
-	'postprocessing',
-	'importing',
-	'seeding',
-	'seeding-imported'
-] as const;
+import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
 
 // Local type definitions
 interface EpisodeFileInfo {

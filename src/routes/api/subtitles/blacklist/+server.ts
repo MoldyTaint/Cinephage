@@ -4,7 +4,7 @@ import { subtitleBlacklistSchema } from '$lib/validation/schemas';
 import { db } from '$lib/server/db';
 import { subtitleBlacklist, subtitles } from '$lib/server/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 import { parseBody } from '$lib/server/api/validate.js';
 
 /**
@@ -68,7 +68,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	const [created] = await db
 		.insert(subtitleBlacklist)
 		.values({
-			id: uuidv4(),
+			id: randomUUID(),
 			providerId: validated.providerId,
 			providerSubtitleId: validated.providerSubtitleId,
 			movieId: validated.movieId ?? null,

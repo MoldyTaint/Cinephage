@@ -94,7 +94,7 @@
 			<textarea
 				{id}
 				bind:this={inputRef}
-				class="textarea min-h-[120px] w-full resize-y textarea-ghost font-mono text-sm leading-relaxed focus:bg-base-200/50"
+				class="textarea min-h-[120px] w-full resize-y textarea-ghost font-mono text-sm leading-relaxed [font-variant-ligatures:none] focus:bg-base-200/50"
 				{placeholder}
 				aria-label={label}
 				aria-describedby={describedBy}
@@ -107,7 +107,7 @@
 				{id}
 				bind:this={inputRef}
 				type="text"
-				class="input w-full input-ghost font-mono text-sm focus:bg-base-200/50"
+				class="input w-full input-ghost font-mono text-sm [font-variant-ligatures:none] focus:bg-base-200/50"
 				{placeholder}
 				aria-label={label}
 				aria-describedby={describedBy}
@@ -137,16 +137,3 @@
 		</div>
 	{/if}
 </div>
-
-<style>
-	/* Ensure textareas don't get too small */
-	textarea {
-		min-height: 120px;
-	}
-
-	/* Better mono font rendering */
-	input,
-	textarea {
-		font-variant-ligatures: none;
-	}
-</style>

@@ -1,22 +1,42 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { resolvePath } from '$lib/utils/routing';
 	import { SvelteSet } from 'svelte/reactivity';
 	import LibraryMediaCard from '$lib/components/library/LibraryMediaCard.svelte';
 	import LibraryMediaTable from '$lib/components/library/LibraryMediaTable.svelte';
-	import LibraryControls from '$lib/components/library/LibraryControls.svelte';
+	import LibraryDrawer from '$lib/components/library/LibraryDrawer.svelte';
 	import LibraryBulkActionBar from '$lib/components/library/LibraryBulkActionBar.svelte';
 	import BulkQualityProfileModal from '$lib/components/library/BulkQualityProfileModal.svelte';
 	import BulkDeleteModal from '$lib/components/library/BulkDeleteModal.svelte';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
 	import InteractiveSearchModal from '$lib/components/search/InteractiveSearchModal.svelte';
-	import { Tv, CheckSquare, X, LayoutGrid, List, Search } from 'lucide-svelte';
+	import type { Release } from '$lib/components/search/SearchResultRow.svelte';
+	import {
+		Tv,
+		X,
+		LayoutGrid,
+		List,
+		Search,
+		SlidersHorizontal,
+		CheckSquare,
+		XSquare,
+		Eye,
+		EyeOff,
+		ChevronDown
+	} from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { viewPreferences } from '$lib/stores/view-preferences.svelte';
 	import { enhance } from '$app/forms';
-	import { Eye } from 'lucide-svelte';
+	import {
+		batchSeries,
+		batchDeleteSeriesFiles,
+		updateSeries,
+		deleteSeries
+	} from '$lib/api/library.js';
+	import { grabRelease } from '$lib/api/downloads.js';
+	import { ApiError } from '$lib/api/client.js';
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
 	import { getPrimaryAutoSearchIssue } from '$lib/utils/autoSearchIssues';
 	import { createProgressiveRenderer } from '$lib/utils/progressive-render.svelte.js';
@@ -28,6 +48,7 @@
 	let selectedSeries = new SvelteSet<string>();
 	let showCheckboxes = $state(false);
 	let searchQuery = $state('');
+	let drawerOpen = $state(false);
 
 	const filteredSeries = $derived(
 		searchQuery.trim()
@@ -77,19 +98,26 @@
 		selectedSeries.clear();
 	}
 
+	const allSelected = $derived(
+		showCheckboxes && selectedSeries.size > 0 && selectedSeries.size === filteredSeries.length
+	);
+
+	function handleSelectToggle() {
+		if (!showCheckboxes) {
+			showCheckboxes = true;
+		} else if (!allSelected) {
+			selectAll();
+		} else {
+			showCheckboxes = false;
+			selectedSeries.clear();
+		}
+	}
+
 	async function handleBulkMonitor(monitored: boolean) {
 		bulkLoading = true;
 		currentBulkAction = monitored ? 'monitor' : 'unmonitor';
 		try {
-			const response = await fetch('/api/library/series/batch', {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					seriesIds: [...selectedSeries],
-					updates: { monitored }
-				})
-			});
-			const result = await response.json();
+			const result = await batchSeries([...selectedSeries], { monitored });
 			if (result.success) {
 				data = {
 					...data,
@@ -105,8 +133,8 @@
 			} else {
 				toasts.error(result.error || m.toast_library_tv_failedToUpdate());
 			}
-		} catch {
-			toasts.error(m.toast_library_tv_failedToUpdate());
+		} catch (error) {
+			toasts.error(error instanceof ApiError ? error.message : m.toast_library_tv_failedToUpdate());
 		} finally {
 			bulkLoading = false;
 			currentBulkAction = null;
@@ -117,15 +145,7 @@
 		bulkLoading = true;
 		currentBulkAction = 'quality';
 		try {
-			const response = await fetch('/api/library/series/batch', {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					seriesIds: [...selectedSeries],
-					updates: { scoringProfileId: profileId }
-				})
-			});
-			const result = await response.json();
+			const result = await batchSeries([...selectedSeries], { scoringProfileId: profileId });
 			if (result.success) {
 				data = {
 					...data,
@@ -137,8 +157,8 @@
 			} else {
 				toasts.error(result.error || m.toast_library_tv_failedToUpdate());
 			}
-		} catch {
-			toasts.error(m.toast_library_tv_failedToUpdate());
+		} catch (error) {
+			toasts.error(error instanceof ApiError ? error.message : m.toast_library_tv_failedToUpdate());
 		} finally {
 			bulkLoading = false;
 			currentBulkAction = null;
@@ -149,16 +169,11 @@
 		bulkLoading = true;
 		currentBulkAction = 'delete';
 		try {
-			const response = await fetch('/api/library/series/batch', {
-				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					seriesIds: [...selectedSeries],
-					deleteFiles,
-					removeFromLibrary
-				})
-			});
-			const result = await response.json();
+			const result = await batchDeleteSeriesFiles(
+				[...selectedSeries],
+				deleteFiles,
+				removeFromLibrary
+			);
 			if (result.success || result.deletedCount > 0 || result.removedCount > 0) {
 				if (removeFromLibrary && result.removedCount > 0) {
 					const updatedSeries = data.series.filter((show) => !selectedSeries.has(show.id));
@@ -179,8 +194,8 @@
 			} else {
 				toasts.error(result.error || m.toast_library_tv_failedToDelete());
 			}
-		} catch {
-			toasts.error(m.toast_library_tv_failedToDelete());
+		} catch (error) {
+			toasts.error(error instanceof ApiError ? error.message : m.toast_library_tv_failedToDelete());
 		} finally {
 			bulkLoading = false;
 			currentBulkAction = null;
@@ -193,12 +208,7 @@
 		if (!show) return;
 
 		try {
-			const response = await fetch(`/api/library/series/${seriesId}`, {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ monitored })
-			});
-			const result = await response.json();
+			const result = await updateSeries(seriesId, { monitored });
 			if (result.success) {
 				data = {
 					...data,
@@ -270,63 +280,34 @@
 		isSearchModalOpen = true;
 	}
 
-	async function handleGrabRelease(
-		release: {
-			guid: string;
-			title: string;
-			downloadUrl: string;
-			magnetUrl?: string;
-			infoHash?: string;
-			size: number;
-			seeders?: number;
-			leechers?: number;
-			publishDate: string | Date;
-			indexerId: string;
-			indexerName: string;
-			protocol: string;
-			commentsUrl?: string;
-			parsed?: {
-				resolution?: string;
-				source?: string;
-				codec?: string;
-				hdr?: string;
-				releaseGroup?: string;
-			};
-		},
-		streaming?: boolean
-	) {
+	async function handleGrabRelease(release: Release, streaming?: boolean) {
 		if (!selectedSeriesForSearch)
 			return { success: false, error: m.toast_library_tv_failedToGrab() };
 
 		try {
-			const response = await fetch('/api/download/grab', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					guid: release.guid,
-					downloadUrl: release.downloadUrl,
-					magnetUrl: release.magnetUrl,
-					infoHash: release.infoHash,
-					title: release.title,
-					indexerId: release.indexerId,
-					indexerName: release.indexerName,
-					protocol: release.protocol,
-					size: release.size,
-					seriesId: selectedSeriesForSearch.id,
-					mediaType: 'tv',
-					quality: release.parsed
-						? {
-								resolution: release.parsed.resolution,
-								source: release.parsed.source,
-								codec: release.parsed.codec,
-								hdr: release.parsed.hdr
-							}
-						: undefined,
-					streamUsenet: streaming,
-					commentsUrl: release.commentsUrl
-				})
+			const result = await grabRelease({
+				guid: release.guid,
+				downloadUrl: release.downloadUrl,
+				magnetUrl: release.magnetUrl,
+				infoHash: release.infoHash,
+				title: release.title,
+				indexerId: release.indexerId,
+				indexerName: release.indexerName,
+				protocol: release.protocol,
+				size: release.size,
+				seriesId: selectedSeriesForSearch.id,
+				mediaType: 'tv',
+				quality: release.parsed
+					? {
+							resolution: release.parsed.resolution,
+							source: release.parsed.source,
+							codec: release.parsed.codec,
+							hdr: release.parsed.hdr
+						}
+					: undefined,
+				streamUsenet: streaming,
+				commentsUrl: release.commentsUrl
 			});
-			const result = await response.json();
 			if (result.success) {
 				toasts.success(m.toast_library_tv_grabbed({ title: release.title }));
 				return { success: true };
@@ -334,8 +315,8 @@
 				toasts.error(result.error || m.toast_library_tv_failedToGrab());
 				return { success: false, error: result.error, errorCode: result.errorCode };
 			}
-		} catch {
-			toasts.error(m.toast_library_tv_failedToGrab());
+		} catch (error) {
+			toasts.error(error instanceof ApiError ? error.message : m.toast_library_tv_failedToGrab());
 			return { success: false, error: m.toast_library_tv_failedToGrab() };
 		}
 	}
@@ -356,11 +337,7 @@
 			bulkLoading = true;
 			currentBulkAction = 'delete';
 			try {
-				const response = await fetch(
-					`/api/library/series/${seriesId}?deleteFiles=${deleteFiles}&removeFromLibrary=${removeFromLibrary}`,
-					{ method: 'DELETE' }
-				);
-				const result = await response.json();
+				const result = await deleteSeries(seriesId, deleteFiles, removeFromLibrary);
 				if (result.success) {
 					if (removeFromLibrary) {
 						data = { ...data, series: data.series.filter((s) => s.id !== seriesId) };
@@ -503,7 +480,7 @@
 	]);
 
 	function updateUrlParam(key: string, value: string) {
-		const url = new URL($page.url);
+		const url = new URL(page.url);
 		if (key === 'library') {
 			if (!value || value === defaultLibrarySlug) {
 				url.searchParams.delete(key);
@@ -519,11 +496,19 @@
 	}
 
 	function clearFilters() {
-		const url = new URL(resolve('/library/tv'), $page.url.origin);
+		const url = new URL(resolve('/library/tv'), page.url.origin);
 		if (data.libraryScope?.isSubLibraryScope && data.libraryScope?.selected?.slug) {
 			url.searchParams.set('library', data.libraryScope.selected.slug);
 		}
 		goto(resolvePath(url.pathname + url.search), { keepFocus: true, noScroll: true });
+	}
+
+	function handleMonitorAll() {
+		(document.getElementById('tv-monitor-all') as HTMLFormElement)?.requestSubmit();
+	}
+
+	function handleUnmonitorAll() {
+		(document.getElementById('tv-unmonitor-all') as HTMLFormElement)?.requestSubmit();
 	}
 
 	const currentFilters = $derived({
@@ -536,6 +521,10 @@
 		videoCodec: data.filters.videoCodec,
 		hdrFormat: data.filters.hdrFormat
 	});
+	const activeFilterCount = $derived(
+		Object.entries(currentFilters).filter(([key, value]) => key !== 'library' && value !== 'all')
+			.length
+	);
 	const downloadingSeriesIdSet = $derived(new Set(data.downloadingSeriesIds));
 	const deleteModalCount = $derived(pendingDeleteSeriesId ? 1 : selectedCount);
 	const pendingDeleteSeries = $derived(
@@ -565,10 +554,9 @@
 	<div
 		class="sticky top-16 z-30 -mx-4 border-b border-base-200 bg-base-100/80 backdrop-blur-md lg:top-0 lg:mx-0"
 	>
-		<div
-			class="flex h-16 w-full flex-nowrap items-center gap-2 px-4 md:grid md:grid-cols-[minmax(0,1fr)_minmax(18rem,32rem)_minmax(0,1fr)] md:gap-4 lg:px-8"
-		>
-			<div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 md:flex-none">
+		<div class="flex h-16 items-center gap-3 px-4 lg:px-8">
+			<!-- Left: Title -->
+			<div class="flex min-w-0 items-center gap-2 sm:gap-3">
 				<h1
 					class="min-w-0 bg-linear-to-r from-primary to-secondary bg-clip-text text-xl font-bold text-transparent sm:text-2xl"
 				>
@@ -582,9 +570,9 @@
 				{/if}
 			</div>
 
-			<!-- Search (desktop) -->
-			<div class="hidden w-full items-center gap-2 md:flex md:justify-self-center">
-				<div class="group relative w-full">
+			<!-- Center: Search (desktop) -->
+			<div class="hidden flex-1 items-center justify-center gap-2 md:flex">
+				<div class="group relative w-full max-w-lg">
 					<Search
 						class="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-base-content/40 transition-colors group-focus-within:text-primary"
 					/>
@@ -611,71 +599,55 @@
 				{/if}
 			</div>
 
-			<div
-				class="flex shrink-0 flex-nowrap items-center justify-end gap-2 sm:gap-2 md:justify-self-end"
-			>
-				{#if showCheckboxes}
-					<button class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm" onclick={selectAll}>
-						<span class="hidden sm:inline">{m.library_tv_selectAll()}</span>
-						<span class="sm:hidden">{m.library_tv_selectAllShort()}</span>
+			<!-- Right: Quick Actions -->
+			<div class="flex shrink-0 items-center gap-1.5">
+				<div class="dropdown dropdown-end">
+					<button
+						class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm"
+						tabindex="0"
+						aria-label="Monitoring actions"
+					>
+						<Eye class="h-4 w-4" />
+						<span class="hidden xl:inline">Monitoring</span>
+						<ChevronDown class="hidden h-3 w-3 sm:block" />
 					</button>
-					<button class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm" onclick={toggleSelectionMode}>
-						<X class="h-4 w-4" />
-						<span class="hidden sm:inline">{m.library_tv_done()}</span>
-					</button>
-				{:else}
-					<button class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm" onclick={toggleSelectionMode}>
+					<ul
+						class="dropdown-content menu z-50 mt-2 w-44 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl"
+					>
+						<li>
+							<button onclick={handleMonitorAll}>
+								<Eye class="h-4 w-4" />
+								{m.library_tv_monitorAll()}
+							</button>
+						</li>
+						<li>
+							<button onclick={handleUnmonitorAll}>
+								<EyeOff class="h-4 w-4" />
+								{m.library_tv_unmonitorAll()}
+							</button>
+						</li>
+					</ul>
+				</div>
+
+				<button
+					class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm {showCheckboxes ? 'btn-primary' : ''}"
+					onclick={handleSelectToggle}
+				>
+					{#if !showCheckboxes}
 						<CheckSquare class="h-4 w-4" />
 						<span class="hidden sm:inline">{m.library_tv_select()}</span>
-					</button>
-
-					<div class="dropdown dropdown-end">
-						<div tabindex="0" role="button" class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm">
-							<Eye class="h-4 w-4" />
-							<span class="hidden sm:inline">{m.library_tv_monitor()}</span>
-						</div>
-						<form
-							id="tv-monitor-all"
-							action="?/toggleAllMonitored"
-							method="POST"
-							use:enhance
-							class="hidden"
-							aria-hidden="true"
-						>
-							<input type="hidden" name="monitored" value="true" />
-						</form>
-						<form
-							id="tv-unmonitor-all"
-							action="?/toggleAllMonitored"
-							method="POST"
-							use:enhance
-							class="hidden"
-							aria-hidden="true"
-						>
-							<input type="hidden" name="monitored" value="false" />
-						</form>
-						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-						<ul
-							tabindex="0"
-							class="dropdown-content menu z-2 w-52 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
-						>
-							<li>
-								<button type="submit" class="w-full text-left" form="tv-monitor-all">
-									{m.library_tv_monitorAll()}
-								</button>
-							</li>
-							<li>
-								<button type="submit" class="w-full text-left" form="tv-unmonitor-all">
-									{m.library_tv_unmonitorAll()}
-								</button>
-							</li>
-						</ul>
-					</div>
-				{/if}
+					{:else if !allSelected}
+						<CheckSquare class="h-4 w-4" />
+						<span class="hidden sm:inline">{m.library_tv_selectAll()}</span>
+					{:else}
+						<XSquare class="h-4 w-4" />
+						<span class="hidden sm:inline">{m.library_tv_done()}</span>
+					{/if}
+				</button>
 
 				<!-- View Toggle -->
 				<button
-					class="btn btn-ghost btn-xs sm:btn-sm"
+					class="btn btn-ghost btn-sm"
 					onclick={() => viewPreferences.toggleViewMode()}
 					aria-label={viewPreferences.viewMode === 'grid'
 						? m.library_tv_switchToList()
@@ -683,23 +655,22 @@
 				>
 					{#if viewPreferences.viewMode === 'grid'}
 						<List class="h-4 w-4" />
-						<span class="hidden sm:inline">{m.library_tv_list()}</span>
 					{:else}
 						<LayoutGrid class="h-4 w-4" />
-						<span class="hidden sm:inline">{m.library_tv_grid()}</span>
 					{/if}
 				</button>
 
-				<LibraryControls
-					{sortOptions}
-					{filterOptions}
-					currentSort={data.filters.sort}
-					{currentFilters}
-					hiddenActiveFilterKeys={['library']}
-					onSortChange={(sort) => updateUrlParam('sort', sort)}
-					onFilterChange={(key, value) => updateUrlParam(key, value)}
-					onClearFilters={clearFilters}
-				/>
+				<!-- Options Drawer Button -->
+				<button
+					class="btn gap-1.5 btn-sm {activeFilterCount > 0 ? 'btn-primary' : 'btn-ghost'}"
+					onclick={() => (drawerOpen = true)}
+					aria-label={m.library_drawer_title()}
+				>
+					<SlidersHorizontal class="h-4 w-4" />
+					{#if activeFilterCount > 0}
+						<span class="badge badge-sm">{activeFilterCount}</span>
+					{/if}
+				</button>
 			</div>
 		</div>
 
@@ -824,6 +795,41 @@
 			{/if}
 		{/if}
 	</main>
+
+	<!-- Hidden forms for monitor actions -->
+	<form
+		id="tv-monitor-all"
+		action="?/toggleAllMonitored"
+		method="POST"
+		use:enhance
+		class="hidden"
+		aria-hidden="true"
+	>
+		<input type="hidden" name="monitored" value="true" />
+	</form>
+	<form
+		id="tv-unmonitor-all"
+		action="?/toggleAllMonitored"
+		method="POST"
+		use:enhance
+		class="hidden"
+		aria-hidden="true"
+	>
+		<input type="hidden" name="monitored" value="false" />
+	</form>
+
+	<LibraryDrawer
+		isOpen={drawerOpen}
+		onClose={() => (drawerOpen = false)}
+		{sortOptions}
+		{filterOptions}
+		currentSort={data.filters.sort}
+		{currentFilters}
+		hiddenActiveFilterKeys={['library']}
+		onSortChange={(sort) => updateUrlParam('sort', sort)}
+		onFilterChange={(key, value) => updateUrlParam(key, value)}
+		onClearFilters={clearFilters}
+	/>
 </div>
 
 <!-- Bulk Action Bar -->

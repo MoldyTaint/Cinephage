@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { User, Lock, AlertCircle } from 'lucide-svelte';
+	import { User, Lock, AlertCircle, Eye, EyeOff } from 'lucide-svelte';
 	import { authClient } from '$lib/auth/client.js';
 	import * as m from '$lib/paraglide/messages.js';
 
@@ -9,6 +9,7 @@
 	let rememberMe = $state(false);
 	let isLoading = $state(false);
 	let error = $state('');
+	let showPassword = $state(false);
 
 	async function handleSubmit() {
 		error = '';
@@ -44,6 +45,7 @@
 	<div class="card w-full max-w-md bg-base-100 shadow-xl">
 		<div class="card-body">
 			<div class="mb-6 space-y-2 text-center">
+				<img src="/logo.png" alt="Cinephage" class="mx-auto h-20 w-20 rounded-2xl object-contain" />
 				<h1 class="text-3xl font-bold">{m.login_welcomeBack()}</h1>
 				<p class="text-base-content/70">{m.login_subtitle()}</p>
 			</div>
@@ -88,14 +90,29 @@
 							{m.login_passwordLabel()}
 						</span>
 					</label>
-					<input
-						type="password"
-						class="input-bordered input w-full"
-						placeholder="••••••••"
-						bind:value={password}
-						required
-						autocomplete="current-password"
-					/>
+					<div class="relative">
+						<input
+							type={showPassword ? 'text' : 'password'}
+							class="input-bordered input w-full pr-12"
+							placeholder="••••••••"
+							bind:value={password}
+							required
+							autocomplete="current-password"
+						/>
+						<button
+							type="button"
+							class="btn absolute top-1/2 right-2 -translate-y-1/2 btn-ghost btn-sm"
+							aria-label={showPassword ? 'Hide password' : 'Show password'}
+							aria-pressed={showPassword}
+							onclick={() => (showPassword = !showPassword)}
+						>
+							{#if showPassword}
+								<EyeOff class="h-4 w-4" />
+							{:else}
+								<Eye class="h-4 w-4" />
+							{/if}
+						</button>
+					</div>
 				</div>
 
 				<!-- Remember Me -->

@@ -6,7 +6,7 @@
 
 import * as cheerio from 'cheerio';
 import { createChildLogger } from '$lib/logging';
-import { createHash } from 'crypto';
+import { createHash } from 'node:crypto';
 
 const logger = createChildLogger({ logDomain: 'streams' as const });
 import { isMediaFile, isRarFile, type NzbSegment, type NzbFile, type ParsedNzb } from './types';

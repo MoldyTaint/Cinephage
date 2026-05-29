@@ -14,6 +14,7 @@
 		LiveTvAccountTestResult
 	} from '$lib/types/livetv';
 	import * as m from '$lib/paraglide/messages.js';
+	import { isBlankOrRedacted } from '$lib/shared/sensitiveSettings';
 
 	interface Props {
 		open: boolean;
@@ -157,7 +158,7 @@
 		name.trim().length > 0 &&
 			baseUrl.trim().length > 0 &&
 			username.trim().length > 0 &&
-			(mode === 'add' || password.trim().length > 0 || account?.xstreamConfig?.password)
+			(mode === 'add' || !isBlankOrRedacted(password?.trim()) || !!account?.xstreamConfig?.password)
 	);
 	const isM3uValid = $derived(() => {
 		if (name.trim().length === 0) return false;
@@ -199,7 +200,7 @@
 			case 'xstream':
 				data.baseUrl = baseUrl.trim();
 				data.username = username.trim();
-				if (password.trim()) {
+				if (!isBlankOrRedacted(password?.trim())) {
 					data.password = password.trim();
 				}
 				break;
@@ -231,7 +232,10 @@
 			case 'xstream':
 				config.baseUrl = baseUrl.trim();
 				config.username = username.trim();
-				config.password = password.trim() || account?.xstreamConfig?.password || '';
+				config.password =
+					(isBlankOrRedacted(password?.trim())
+						? account?.xstreamConfig?.password
+						: password.trim()) || '';
 				if (epgUrl.trim()) {
 					config.epgUrl = epgUrl.trim();
 				}

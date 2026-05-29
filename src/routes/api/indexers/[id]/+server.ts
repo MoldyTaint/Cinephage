@@ -4,6 +4,7 @@ import { getIndexerManager } from '$lib/server/indexers/IndexerManager';
 import { CINEPHAGE_STREAM_DEFINITION_ID } from '$lib/server/indexers/types';
 import { sanitizeStreamingIndexerSettings } from '$lib/server/streaming/settings';
 import { indexerUpdateSchema } from '$lib/validation/schemas';
+import { mergeBlankSensitiveIndexerSettings } from '$lib/server/indexers/settingsSecrets';
 import { createChildLogger } from '$lib/logging';
 import { assertFound, parseBody } from '$lib/server/api/validate';
 import { NotFoundError } from '$lib/errors';
@@ -56,12 +57,19 @@ export const PUT: RequestHandler = async (event) => {
 	const isStreamingIndexer = existingIndexer.definitionId === CINEPHAGE_STREAM_DEFINITION_ID;
 	const oldBaseUrl = existingIndexer.baseUrl;
 	const newBaseUrl = validated.baseUrl;
+	const definition = manager
+		.getUnifiedDefinitions()
+		.find((d) => d.id === existingIndexer.definitionId);
 	const settings =
 		validated.settings === undefined
 			? undefined
 			: isStreamingIndexer
 				? sanitizeStreamingIndexerSettings(validated.settings as Record<string, unknown> | null)
-				: (validated.settings as Record<string, string> | undefined);
+				: mergeBlankSensitiveIndexerSettings(
+						validated.settings,
+						existingIndexer.settings,
+						definition?.settings
+					);
 
 	try {
 		const updated = await manager.updateIndexer(params.id, {

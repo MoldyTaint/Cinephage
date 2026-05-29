@@ -1,9 +1,9 @@
 /**
  * Gestdown Provider Implementation
  *
- * Gestdown is a TV subtitle database that uses TVDB IDs.
+ * Gestdown is a TV subtitle database (Addic7ed proxy).
  * Features: JSON API, TV shows only, good European language coverage.
- * API: https://api.gestdown.info
+ * API v4: https://api.gestdown.info
  */
 
 import { BaseSubtitleProvider } from '../BaseProvider';
@@ -21,7 +21,7 @@ import {
 	GESTDOWN_LANGUAGES,
 	GESTDOWN_LANGUAGE_REVERSE,
 	type GestdownShowResponse,
-	type GestdownSubtitleResponse,
+	type GestdownSeasonResponse,
 	type GestdownSubtitle,
 	type GestdownShow
 } from './types';
@@ -45,7 +45,6 @@ export class GestdownProvider extends BaseSubtitleProvider {
 	 * Gestdown only supports TV shows - check criteria
 	 */
 	canSearch(criteria: SubtitleSearchCriteria): boolean {
-		// Gestdown is TV only - require season info
 		if (criteria.season === undefined) {
 			return false;
 		}
@@ -59,7 +58,6 @@ export class GestdownProvider extends BaseSubtitleProvider {
 		criteria: SubtitleSearchCriteria,
 		options?: ProviderSearchOptions
 	): Promise<SubtitleSearchResult[]> {
-		// Only TV shows supported
 		if (criteria.season === undefined) {
 			return [];
 		}
@@ -67,7 +65,6 @@ export class GestdownProvider extends BaseSubtitleProvider {
 		try {
 			const results: SubtitleSearchResult[] = [];
 
-			// First, find the show
 			const show = await this.findShow(criteria, options?.timeout);
 			if (!show) {
 				logger.debug(
@@ -79,65 +76,82 @@ export class GestdownProvider extends BaseSubtitleProvider {
 				return results;
 			}
 
-			// Search for subtitles by season/episode
-			const subtitles = await this.searchSubtitles(
-				show.id,
-				criteria.season,
-				criteria.episode,
-				options?.timeout
-			);
+			const requestedLangs = criteria.languages.filter((lang) => GESTDOWN_LANGUAGES[lang]);
 
-			// Filter by requested languages and transform
-			for (const sub of subtitles) {
-				// Map Gestdown language to ISO code
-				const isoLang =
-					GESTDOWN_LANGUAGE_REVERSE[sub.language.toLowerCase()] ||
-					this.normalizeLanguage(sub.language);
+			for (const langCode of requestedLangs) {
+				const gestdownLang = GESTDOWN_LANGUAGES[langCode];
+				if (!gestdownLang) continue;
 
-				// Check if this language was requested
-				if (!criteria.languages.includes(isoLang)) {
-					continue;
+				try {
+					const seasonData = await this.fetchSeason(
+						show.id,
+						criteria.season,
+						gestdownLang,
+						options?.timeout
+					);
+
+					if (!seasonData.episodes) continue;
+
+					for (const episode of seasonData.episodes) {
+						if (criteria.episode !== undefined && episode.number !== criteria.episode) {
+							continue;
+						}
+
+						for (const sub of episode.subtitles) {
+							if (!sub.completed) continue;
+
+							const isoLang =
+								GESTDOWN_LANGUAGE_REVERSE[sub.language.toLowerCase()] ||
+								this.normalizeLanguage(sub.language);
+
+							const episodeLabel = criteria.episode
+								? `S${criteria.season.toString().padStart(2, '0')}E${criteria.episode.toString().padStart(2, '0')}`
+								: `Season ${criteria.season}`;
+
+							results.push({
+								providerId: this.id,
+								providerName: this.name,
+								providerSubtitleId: sub.downloadUri,
+
+								language: isoLang,
+								title: `${criteria.seriesTitle || criteria.title} ${episodeLabel}`,
+								releaseName: sub.version || sub.release || undefined,
+
+								isForced: false,
+								isHearingImpaired: sub.hearingImpaired || false,
+								format: 'srt',
+
+								isHashMatch: false,
+								matchScore: this.calculateScore(sub),
+								scoreBreakdown: {
+									hashMatch: 0,
+									titleMatch: 50,
+									yearMatch: 0,
+									releaseGroupMatch: sub.version ? 15 : 0,
+									sourceMatch: sub.hd ? 10 : 0,
+									codecMatch: 0,
+									hiPenalty: 0,
+									forcedBonus: 0
+								},
+
+								downloadCount: sub.downloadCount,
+								uploader: sub.source
+							});
+						}
+					}
+				} catch (error) {
+					logger.warn(
+						{
+							langCode,
+							error: error instanceof Error ? error.message : 'Unknown error'
+						},
+						'[Gestdown] Failed to fetch language season'
+					);
 				}
-
-				const episodeLabel = criteria.episode
-					? `S${criteria.season.toString().padStart(2, '0')}E${criteria.episode.toString().padStart(2, '0')}`
-					: `Season ${criteria.season}`;
-
-				results.push({
-					providerId: this.id,
-					providerName: this.name,
-					providerSubtitleId: sub.downloadUri,
-
-					language: isoLang,
-					title: `${criteria.seriesTitle || criteria.title} ${episodeLabel}`,
-					releaseName: sub.hd ? 'HD' : undefined,
-
-					isForced: false,
-					isHearingImpaired: sub.hearingImpaired || false,
-					format: 'srt',
-
-					isHashMatch: false,
-					matchScore: this.calculateScore(sub),
-					scoreBreakdown: {
-						hashMatch: 0,
-						titleMatch: 50,
-						yearMatch: 0,
-						releaseGroupMatch: 0,
-						sourceMatch: sub.hd ? 10 : 0,
-						codecMatch: 0,
-						hiPenalty: 0,
-						forcedBonus: 0
-					},
-
-					downloadCount: sub.downloadCount,
-					uploader: sub.contributor
-				});
 			}
 
-			// Sort by download count
 			results.sort((a, b) => (b.downloadCount || 0) - (a.downloadCount || 0));
 
-			// Limit results
 			const maxResults = options?.maxResults || 25;
 			const limited = results.slice(0, maxResults);
 
@@ -183,7 +197,6 @@ export class GestdownProvider extends BaseSubtitleProvider {
 	async test(): Promise<{ success: boolean; message: string; responseTime: number }> {
 		const startTime = Date.now();
 		try {
-			// Simple show search to test API
 			const response = await this.fetchWithTimeout(`${API_BASE_URL}/shows/search/test`, {
 				timeout: 10000,
 				headers: {
@@ -211,7 +224,7 @@ export class GestdownProvider extends BaseSubtitleProvider {
 	}
 
 	/**
-	 * Find a show by title or TVDB ID
+	 * Find a show by title
 	 */
 	private async findShow(
 		criteria: SubtitleSearchCriteria,
@@ -219,7 +232,6 @@ export class GestdownProvider extends BaseSubtitleProvider {
 	): Promise<GestdownShow | null> {
 		const showTitle = criteria.seriesTitle || criteria.title;
 
-		// Search for the show
 		const searchUrl = `${API_BASE_URL}/shows/search/${encodeURIComponent(showTitle)}`;
 		const response = await this.fetchWithTimeout(searchUrl, {
 			timeout: timeout || 15000,
@@ -243,9 +255,6 @@ export class GestdownProvider extends BaseSubtitleProvider {
 			return null;
 		}
 
-		// If we have a TVDB ID, try to match it
-		// (Note: criteria doesn't have tvdbId, but some series records do)
-		// For now, return the first match
 		const bestMatch = shows[0];
 
 		logger.debug(
@@ -261,22 +270,16 @@ export class GestdownProvider extends BaseSubtitleProvider {
 	}
 
 	/**
-	 * Search for subtitles by show ID and episode
+	 * Fetch all subtitles for a season/language using v4 API
+	 * GET /shows/{showId}/{seasonNumber}/{language}
 	 */
-	private async searchSubtitles(
+	private async fetchSeason(
 		showId: string,
 		season: number,
-		episode?: number,
+		gestdownLanguage: string,
 		timeout?: number
-	): Promise<GestdownSubtitle[]> {
-		// Build search URL
-		let searchUrl: string;
-		if (episode !== undefined) {
-			searchUrl = `${API_BASE_URL}/subtitles/get/${showId}/${season}/${episode}`;
-		} else {
-			// Season pack search
-			searchUrl = `${API_BASE_URL}/subtitles/get/${showId}/${season}`;
-		}
+	): Promise<GestdownSeasonResponse> {
+		const searchUrl = `${API_BASE_URL}/shows/${showId}/${season}/${gestdownLanguage}`;
 
 		const response = await this.fetchWithTimeout(searchUrl, {
 			timeout: timeout || 15000,
@@ -288,13 +291,12 @@ export class GestdownProvider extends BaseSubtitleProvider {
 
 		if (!response.ok) {
 			if (response.status === 404) {
-				return [];
+				return { episodes: [], seasonPacks: [] };
 			}
 			this.handleErrorResponse(response);
 		}
 
-		const data: GestdownSubtitleResponse = await response.json();
-		return data.subtitles || data.matchingSubtitles || [];
+		return (await response.json()) as GestdownSeasonResponse;
 	}
 
 	/**
@@ -320,19 +322,16 @@ export class GestdownProvider extends BaseSubtitleProvider {
 	 * Calculate match score
 	 */
 	private calculateScore(sub: GestdownSubtitle): number {
-		let score = 50; // Base score for show/episode match
+		let score = 50;
 
-		// Completed subtitle bonus
 		if (sub.completed) {
 			score += 20;
 		}
 
-		// HD bonus
 		if (sub.hd) {
 			score += 10;
 		}
 
-		// Popularity bonus (capped)
 		if (sub.downloadCount) {
 			score += Math.min(sub.downloadCount / 100, 15);
 		}

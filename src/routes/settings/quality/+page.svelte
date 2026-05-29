@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import { goto, invalidateAll } from '$app/navigation';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import type { PageData } from './$types';
 	import type { ScoringProfile, ScoringProfileFormData } from '$lib/types/profile';
 	import type { UICustomFormat } from '$lib/types/format';
@@ -12,14 +12,26 @@
 	import { SettingsPage } from '$lib/components/ui/settings';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { Sliders, Layers } from 'lucide-svelte';
+	import {
+		createScoringProfile,
+		updateScoringProfile,
+		deleteScoringProfile
+	} from '$lib/api/settings.js';
+	import { createCustomFormat, updateCustomFormat, deleteCustomFormat } from '$lib/api/indexers.js';
+	import type {
+		ScoringProfileCreate,
+		ScoringProfileUpdate,
+		CustomFormatCreate,
+		CustomFormatUpdateBody
+	} from '$lib/validation/schemas.js';
 
 	let { data }: { data: PageData } = $props();
 
 	// Tab state - derived from URL
-	const activeTab = $derived($page.url.searchParams.get('tab') || 'profiles');
+	const activeTab = $derived(page.url.searchParams.get('tab') || 'profiles');
 
 	function setTab(tab: string) {
-		const url = new URL($page.url);
+		const url = new URL(page.url);
 		url.searchParams.set('tab', tab);
 		goto(url.toString(), { replaceState: true });
 	}
@@ -32,6 +44,9 @@
 	let selectedProfile = $state<ScoringProfile | null>(null);
 	let profileSaving = $state(false);
 	let profileError = $state<string | null>(null);
+	let profileErrorPrefix = $state<string | null>(null);
+	let profileErrorEmphasis = $state<string | null>(null);
+	let profileErrorSuffix = $state<string | null>(null);
 
 	// Profile delete confirmation
 	let profileDeleteConfirmOpen = $state(false);
@@ -41,6 +56,9 @@
 		profileModalMode = 'add';
 		selectedProfile = null;
 		profileError = null;
+		profileErrorPrefix = null;
+		profileErrorEmphasis = null;
+		profileErrorSuffix = null;
 		profileModalOpen = true;
 	}
 
@@ -48,6 +66,9 @@
 		profileModalMode = 'edit';
 		selectedProfile = profile;
 		profileError = null;
+		profileErrorPrefix = null;
+		profileErrorEmphasis = null;
+		profileErrorSuffix = null;
 		profileModalOpen = true;
 	}
 
@@ -55,32 +76,37 @@
 		profileModalOpen = false;
 		selectedProfile = null;
 		profileError = null;
+		profileErrorPrefix = null;
+		profileErrorEmphasis = null;
+		profileErrorSuffix = null;
 	}
 
 	async function handleProfileSave(formData: ScoringProfileFormData) {
 		profileSaving = true;
 		profileError = null;
+		profileErrorPrefix = null;
+		profileErrorEmphasis = null;
+		profileErrorSuffix = null;
 
 		try {
-			const url = '/api/scoring-profiles';
-			const method = profileModalMode === 'add' ? 'POST' : 'PUT';
-			const body = profileModalMode === 'add' ? formData : { id: selectedProfile?.id, ...formData };
-
-			const response = await fetch(url, {
-				method,
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(body)
-			});
-
-			if (!response.ok) {
-				const data = await response.json();
-				throw new Error(data.error || 'Failed to save profile');
+			if (profileModalMode === 'add') {
+				await createScoringProfile(formData as ScoringProfileCreate);
+			} else {
+				await updateScoringProfile({ id: selectedProfile?.id, ...formData } as {
+					id: string;
+				} & ScoringProfileUpdate);
 			}
 
 			await invalidateAll();
 			closeProfileModal();
 		} catch (e) {
 			profileError = e instanceof Error ? e.message : 'An unexpected error occurred';
+			const duplicateMatch = profileError.match(/^Profile with name '(.+)' already exists$/);
+			if (duplicateMatch) {
+				profileErrorPrefix = "Profile with name '";
+				profileErrorEmphasis = duplicateMatch[1] ?? '';
+				profileErrorSuffix = "' already exists";
+			}
 		} finally {
 			profileSaving = false;
 		}
@@ -91,17 +117,7 @@
 		profileError = null;
 
 		try {
-			// Reset built-in profile scores by saving with empty formatScores (server computes diff)
-			const response = await fetch('/api/scoring-profiles', {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ id: profileId, formatScores: {} })
-			});
-
-			if (!response.ok) {
-				const data = await response.json();
-				throw new Error(data.error || 'Failed to reset profile');
-			}
+			await updateScoringProfile({ id: profileId, formatScores: {} });
 
 			await invalidateAll();
 		} catch (e) {
@@ -120,16 +136,7 @@
 		if (!profileDeleteTarget) return;
 
 		try {
-			const response = await fetch('/api/scoring-profiles', {
-				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ id: profileDeleteTarget.id })
-			});
-
-			if (!response.ok) {
-				const data = await response.json();
-				throw new Error(data.error || 'Failed to delete profile');
-			}
+			await deleteScoringProfile(profileDeleteTarget.id);
 
 			await invalidateAll();
 		} catch (e) {
@@ -142,19 +149,10 @@
 
 	async function handleSetDefault(profile: ScoringProfile) {
 		try {
-			const response = await fetch('/api/scoring-profiles', {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					id: profile.id,
-					isDefault: true
-				})
+			await updateScoringProfile({
+				id: profile.id,
+				isDefault: true
 			});
-
-			if (!response.ok) {
-				const data = await response.json();
-				throw new Error(data.error || 'Failed to set default');
-			}
 
 			await invalidateAll();
 		} catch (e) {
@@ -207,19 +205,13 @@
 		formatError = null;
 
 		try {
-			const url = '/api/custom-formats';
-			const method = formatModalMode === 'add' ? 'POST' : 'PUT';
-			const body = formatModalMode === 'add' ? formData : { id: selectedFormat?.id, ...formData };
-
-			const response = await fetch(url, {
-				method,
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(body)
-			});
-
-			if (!response.ok) {
-				const responseData = await response.json();
-				throw new Error(responseData.error || 'Failed to save format');
+			if (formatModalMode === 'add') {
+				await createCustomFormat(formData as CustomFormatCreate);
+			} else {
+				await updateCustomFormat(
+					(selectedFormat?.id as string) ?? '',
+					formData as CustomFormatUpdateBody
+				);
 			}
 
 			await invalidateAll();
@@ -240,16 +232,7 @@
 		if (!formatDeleteTarget) return;
 
 		try {
-			const response = await fetch('/api/custom-formats', {
-				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ id: formatDeleteTarget.id })
-			});
-
-			if (!response.ok) {
-				const responseData = await response.json();
-				throw new Error(responseData.error || 'Failed to delete format');
-			}
+			await deleteCustomFormat(formatDeleteTarget.id);
 
 			await invalidateAll();
 		} catch (e) {
@@ -263,9 +246,10 @@
 
 <SettingsPage title={m.settings_quality_heading()} subtitle={m.settings_quality_subtitle()}>
 	<!-- Tabs -->
-	<div class="tabs-boxed tabs w-fit">
+	<div role="tablist" class="tabs-boxed tabs w-fit">
 		<button
 			type="button"
+			role="tab"
 			class="tab gap-2"
 			class:tab-active={activeTab === 'profiles'}
 			onclick={() => setTab('profiles')}
@@ -275,6 +259,7 @@
 		</button>
 		<button
 			type="button"
+			role="tab"
 			class="tab gap-2"
 			class:tab-active={activeTab === 'formats'}
 			onclick={() => setTab('formats')}
@@ -323,6 +308,9 @@
 	defaultCopyFromId={data.defaultProfileId}
 	saving={profileSaving}
 	error={profileError}
+	errorPrefix={profileErrorPrefix}
+	errorEmphasis={profileErrorEmphasis}
+	errorSuffix={profileErrorSuffix}
 	onClose={closeProfileModal}
 	onSave={handleProfileSave}
 	onReset={handleProfileReset}

@@ -67,7 +67,13 @@
 		onclick={close}
 		role="button"
 		tabindex="0"
-		onkeydown={(e) => e.key === 'Escape' && close()}
+		aria-label="Close filter drawer"
+		onkeydown={(e) => {
+			if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+				e.preventDefault();
+				close();
+			}
+		}}
 	></div>
 
 	<!-- Drawer -->
@@ -100,7 +106,7 @@
 			</button>
 		</div>
 
-		<div class="custom-scrollbar flex-1 overflow-y-auto p-4">
+		<div class="flex-1 [scrollbar-width:none] overflow-y-auto p-4 [&::-webkit-scrollbar]:hidden">
 			<FilterPanel
 				{type}
 				{sortBy}
@@ -138,15 +144,3 @@
 		</div>
 	</div>
 {/if}
-
-<style>
-	/* Hide scrollbar for Chrome, Safari and Opera */
-	.custom-scrollbar::-webkit-scrollbar {
-		display: none;
-	}
-	/* Hide scrollbar for IE, Edge and Firefox */
-	.custom-scrollbar {
-		-ms-overflow-style: none; /* IE and Edge */
-		scrollbar-width: none; /* Firefox */
-	}
-</style>

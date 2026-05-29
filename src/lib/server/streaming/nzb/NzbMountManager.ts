@@ -4,7 +4,7 @@
  * Handles creation, retrieval, and cleanup of stream mounts in the database.
  */
 
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { eq, lt, and, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { nzbStreamMounts } from '$lib/server/db/schema';

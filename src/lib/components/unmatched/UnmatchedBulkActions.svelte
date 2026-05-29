@@ -40,11 +40,11 @@
 				<div
 					class="divider mx-0 divider-horizontal before:bg-primary-content/30 after:bg-primary-content/30"
 				></div>
-				<button class="btn bg-white text-primary btn-sm hover:bg-white/90" onclick={onMatch}>
+				<button class="btn btn-sm btn-neutral" onclick={onMatch}>
 					<Link class="h-4 w-4" />
 					{m.unmatched_bulkActions_matchSelected()}
 				</button>
-				<button class="btn bg-white/20 text-white btn-sm hover:bg-white/30" onclick={onDelete}>
+				<button class="btn text-primary-content btn-ghost btn-sm" onclick={onDelete}>
 					<Trash2 class="h-4 w-4" />
 					{m.unmatched_bulkActions_delete()}
 				</button>

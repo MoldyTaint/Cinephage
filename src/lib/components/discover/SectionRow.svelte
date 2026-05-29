@@ -5,6 +5,7 @@
 	import { type Snippet } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import { resolvePath } from '$lib/utils/routing';
+	import { getTmdb } from '$lib/api/discover.js';
 	import * as m from '$lib/paraglide/messages.js';
 
 	let { title, items, link, endpoint, cardSnippet, onAddToLibrary, itemClass, excludeInLibrary } =
@@ -42,23 +43,20 @@
 		loading = true;
 		try {
 			const next = page + 1;
-			const res = await fetch(`/api/tmdb/${endpoint}?page=${next}`);
-			if (res.ok) {
-				const data: { results?: T[] } = await res.json();
-				if (data.results && data.results.length > 0) {
-					// Filter out duplicates
-					const existingIds = new Set(displayedItems.map((i: T) => i.id));
-					let newResults = data.results.filter((i: T) => !existingIds.has(i.id));
+			const data = (await getTmdb(endpoint, { page: String(next) })) as { results?: T[] };
+			if (data.results && data.results.length > 0) {
+				// Filter out duplicates
+				const existingIds = new Set(displayedItems.map((i: T) => i.id));
+				let newResults = data.results.filter((i: T) => !existingIds.has(i.id));
 
-					// Filter out items in library if excludeInLibrary is true
-					if (excludeInLibrary) {
-						newResults = newResults.filter((i: T & { inLibrary?: boolean }) => !i.inLibrary);
-					}
+				// Filter out items in library if excludeInLibrary is true
+				if (excludeInLibrary) {
+					newResults = newResults.filter((i: T & { inLibrary?: boolean }) => !i.inLibrary);
+				}
 
-					if (newResults.length > 0) {
-						displayedItems = [...displayedItems, ...newResults];
-						page = next;
-					}
+				if (newResults.length > 0) {
+					displayedItems = [...displayedItems, ...newResults];
+					page = next;
 				}
 			}
 		} catch (e) {
@@ -128,7 +126,7 @@
 				class="btn absolute top-1/2 left-0 z-20 btn-circle -translate-x-1/2 -translate-y-1/2 border-none bg-base-100/80 opacity-0 shadow-lg backdrop-blur-sm transition-all duration-300 btn-sm btn-neutral group-hover/carousel:opacity-100"
 				onclick={() => scroll('left')}
 				transition:fade
-				aria-label="Scroll left"
+				aria-label={m.sectionRow_scrollLeft()}
 			>
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
@@ -150,7 +148,7 @@
 		<div
 			bind:this={container}
 			onscroll={handleScroll}
-			class="custom-scrollbar flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth px-1 pb-4 sm:gap-4"
+			class="flex snap-x snap-mandatory [scrollbar-width:none] gap-3 overflow-x-auto scroll-smooth px-1 pb-4 sm:gap-4 [&::-webkit-scrollbar]:hidden"
 		>
 			{#each displayedItems as item (item.id)}
 				<div class={`flex-none snap-start ${resolvedItemClass}`}>
@@ -179,7 +177,7 @@
 				class="btn absolute top-1/2 right-0 z-20 btn-circle translate-x-1/2 -translate-y-1/2 border-none bg-base-100/80 opacity-0 shadow-lg backdrop-blur-sm transition-all duration-300 btn-sm btn-neutral group-hover/carousel:opacity-100"
 				onclick={() => scroll('right')}
 				transition:fade
-				aria-label="Scroll right"
+				aria-label={m.sectionRow_scrollRight()}
 			>
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
@@ -194,15 +192,3 @@
 		{/if}
 	</div>
 </div>
-
-<style>
-	/* Hide scrollbar for Chrome, Safari and Opera */
-	.custom-scrollbar::-webkit-scrollbar {
-		display: none;
-	}
-	/* Hide scrollbar for IE, Edge and Firefox */
-	.custom-scrollbar {
-		-ms-overflow-style: none; /* IE and Edge */
-		scrollbar-width: none; /* Firefox */
-	}
-</style>

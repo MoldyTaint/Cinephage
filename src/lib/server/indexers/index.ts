@@ -91,7 +91,6 @@ export {
 // Schema types
 export {
 	type YamlDefinition,
-	type CardigannDefinition,
 	type LoginBlock,
 	type SearchBlock,
 	type DownloadBlock,

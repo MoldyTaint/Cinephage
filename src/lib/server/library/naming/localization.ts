@@ -14,20 +14,22 @@ export async function resolveLocalizedTitles(
 
 	const result: Record<string, string> = {};
 
-	for (const lang of languages) {
-		try {
-			const locale = lang.includes('-') ? lang : `${lang}-${lang.toUpperCase()}`;
-			const movie = (await tmdb.fetch(`/movie/${tmdbId}?language=${locale}`, {}, true)) as Record<
-				string,
-				unknown
-			>;
-			if (typeof movie.title === 'string') {
-				result[lang] = movie.title;
+	await Promise.allSettled(
+		languages.map(async (lang) => {
+			try {
+				const locale = lang.includes('-') ? lang : `${lang}-${lang.toUpperCase()}`;
+				const movie = (await tmdb.fetch(`/movie/${tmdbId}?language=${locale}`, {}, true)) as Record<
+					string,
+					unknown
+				>;
+				if (typeof movie.title === 'string') {
+					result[lang] = movie.title;
+				}
+			} catch {
+				// Non-fatal: fallback to default title
 			}
-		} catch {
-			// Non-fatal: fallback to default title
-		}
-	}
+		})
+	);
 
 	return result;
 }

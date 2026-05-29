@@ -1,8 +1,8 @@
 /**
  * Gestdown API Types
  *
- * Gestdown is a TV subtitle database that uses TVDB IDs.
- * API: https://api.gestdown.info
+ * Gestdown is a TV subtitle database (Addic7ed proxy).
+ * API v4: https://api.gestdown.info
  */
 
 /** Gestdown show search response */
@@ -14,31 +14,47 @@ export interface GestdownShowResponse {
 export interface GestdownShow {
 	id: string;
 	name: string;
-	tvdbId?: number;
+	nbSeasons?: number;
+	seasons?: number[];
+	tvDbId?: number | null;
+	tmdbId?: number;
 	slug?: string;
 }
 
-/** Gestdown subtitle search response */
-export interface GestdownSubtitleResponse {
-	subtitles?: GestdownSubtitle[];
-	matchingSubtitles?: GestdownSubtitle[];
+/** Gestdown v4 season subtitle response (GET /shows/{id}/{season}/{lang}) */
+export interface GestdownSeasonResponse {
+	episodes?: GestdownEpisode[];
+	seasonPacks?: unknown[];
 }
 
-/** Gestdown subtitle entry */
+/** Gestdown episode with nested subtitles */
+export interface GestdownEpisode {
+	subtitles: GestdownSubtitle[];
+	season: number;
+	number: number;
+	title: string;
+	show: string;
+	discovered?: string;
+}
+
+/** Gestdown subtitle entry (v4 format) */
 export interface GestdownSubtitle {
 	subtitleId: string;
+	version?: string;
 	language: string;
 	downloadUri: string;
 	completed?: boolean;
 	hearingImpaired?: boolean;
 	hd?: boolean;
-	/** Download count */
+	corrected?: boolean;
 	downloadCount?: number;
-	/** Contributor/uploader name */
-	contributor?: string;
+	source?: string;
+	qualities?: string[];
+	release?: string | null;
+	discovered?: string;
 }
 
-/** Gestdown language mapping - ISO 639-1 to Gestdown language codes */
+/** Gestdown language mapping - ISO 639-1 to Gestdown language path names */
 export const GESTDOWN_LANGUAGES: Record<string, string> = {
 	en: 'english',
 	es: 'spanish',

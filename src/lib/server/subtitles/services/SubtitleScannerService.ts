@@ -16,9 +16,9 @@ import {
 	rootFolders,
 	series
 } from '$lib/server/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import type { SubtitleFormat, LanguageCode } from '../types';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 import { getSubtitleSettingsService } from './SubtitleSettingsService';
 import { createChildLogger } from '$lib/logging';
 
@@ -409,21 +409,21 @@ class SubtitleScannerService {
 			const discovered = await this.discoverSubtitles(moviePath, moviePath);
 			result.discovered = discovered.length;
 
+			const existingSubtitles = await db.query.subtitles.findMany({
+				where: eq(subtitles.movieId, movieId)
+			});
+			const existingPaths = new Set(existingSubtitles.map((s) => s.relativePath));
+
 			for (const sub of discovered) {
 				try {
-					// Check if already registered
-					const existing = await db.query.subtitles.findFirst({
-						where: and(eq(subtitles.movieId, movieId), eq(subtitles.relativePath, sub.relativePath))
-					});
-
-					if (existing) {
+					if (existingPaths.has(sub.relativePath)) {
 						result.skipped++;
 						continue;
 					}
 
 					// Register the subtitle
 					await db.insert(subtitles).values({
-						id: uuidv4(),
+						id: randomUUID(),
 						movieId,
 						relativePath: sub.relativePath,
 						language: sub.language,
@@ -436,7 +436,7 @@ class SubtitleScannerService {
 
 					// Record in history
 					await db.insert(subtitleHistory).values({
-						id: uuidv4(),
+						id: randomUUID(),
 						movieId,
 						action: 'discovered',
 						language: sub.language,
@@ -497,6 +497,18 @@ class SubtitleScannerService {
 				.from(episodeFiles)
 				.where(eq(episodeFiles.seriesId, seriesId));
 
+			// Collect all unique episode IDs and batch-fetch existing subtitles
+			const allEpisodeIds = [...new Set(epFiles.flatMap((ef) => ef.episodeIds ?? []))];
+			const existingSubtitles =
+				allEpisodeIds.length > 0
+					? await db.query.subtitles.findMany({
+							where: inArray(subtitles.episodeId, allEpisodeIds)
+						})
+					: [];
+			const existingKeys = new Set(
+				existingSubtitles.map((s) => `${s.episodeId}::${s.relativePath}`)
+			);
+
 			for (const sub of discovered) {
 				try {
 					// Try to match to an episode based on path proximity
@@ -535,22 +547,14 @@ class SubtitleScannerService {
 						continue;
 					}
 
-					// Check if already registered
-					const existing = await db.query.subtitles.findFirst({
-						where: and(
-							eq(subtitles.episodeId, matchedEpisodeId),
-							eq(subtitles.relativePath, sub.relativePath)
-						)
-					});
-
-					if (existing) {
+					if (existingKeys.has(`${matchedEpisodeId}::${sub.relativePath}`)) {
 						result.skipped++;
 						continue;
 					}
 
 					// Register the subtitle
 					await db.insert(subtitles).values({
-						id: uuidv4(),
+						id: randomUUID(),
 						episodeId: matchedEpisodeId,
 						relativePath: sub.relativePath,
 						language: sub.language,
@@ -563,7 +567,7 @@ class SubtitleScannerService {
 
 					// Record in history
 					await db.insert(subtitleHistory).values({
-						id: uuidv4(),
+						id: randomUUID(),
 						episodeId: matchedEpisodeId,
 						action: 'discovered',
 						language: sub.language,

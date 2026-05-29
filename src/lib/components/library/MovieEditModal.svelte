@@ -9,6 +9,8 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { formatBytes } from '$lib/utils/format.js';
 	import type { RootFolderWithSpace as RootFolder } from '$lib/types/downloadClient.js';
+	import { getLibraryClassificationSettings } from '$lib/api/settings.js';
+	import { getTmdb } from '$lib/api/discover.js';
 
 	interface QualityProfileOption {
 		id: string;
@@ -43,6 +45,7 @@
 		moveFilesOnRootChange: boolean;
 		minimumAvailability: string;
 		wantsSubtitles: boolean;
+		metadataProvider: 'auto' | 'tmdb' | 'anilist' | 'mal';
 	}
 
 	let { open, movie, qualityProfiles, rootFolders, saving, onClose, onSave }: Props = $props();
@@ -53,6 +56,7 @@
 	let rootFolderId = $state('');
 	let minimumAvailability = $state('released');
 	let wantsSubtitles = $state(true);
+	let metadataProvider = $state<'auto' | 'tmdb' | 'anilist' | 'mal'>('auto');
 	let moveFilesOnRootChange = $state(false);
 	let moveOptionTouched = $state(false);
 	let animeRootWarningShown = $state(false);
@@ -74,35 +78,33 @@
 	const hasExistingFiles = $derived(movie.hasFile === true);
 	const rootFolderChanged = $derived((rootFolderId || null) !== (movie.rootFolderId ?? null));
 	const canMoveExistingFiles = $derived(hasExistingFiles && rootFolderChanged && !!rootFolderId);
+	const showAnimeMetadataProviderControl = $derived(
+		detectedAnime || metadataProvider === 'anilist' || metadataProvider === 'mal'
+	);
 
 	async function loadAnimeRoutingContext(tmdbId: number) {
 		try {
-			const [classificationRes, movieRes] = await Promise.all([
-				fetch('/api/settings/library/classification'),
-				fetch(`/api/tmdb/movie/${tmdbId}`)
+			const [classificationData, details] = await Promise.all([
+				getLibraryClassificationSettings(),
+				getTmdb(`movie/${tmdbId}`)
 			]);
 
 			let nextEnforceAnimeSubtype = false;
 			let nextDetectedAnime = false;
 
-			if (classificationRes.ok) {
-				const classificationData = await classificationRes.json();
-				nextEnforceAnimeSubtype = classificationData?.enforceAnimeSubtype === true;
-			}
+			nextEnforceAnimeSubtype = classificationData?.enforceAnimeSubtype === true;
 
-			if (movieRes.ok) {
-				const details: TmdbMovieDetails = await movieRes.json();
-				nextDetectedAnime = isLikelyAnimeMedia({
-					genres: details.genres,
-					originalLanguage: details.original_language,
-					productionCountries: details.production_countries,
-					originCountries: details.production_countries
-						?.map((country) => country.iso_3166_1)
-						.filter((country): country is string => Boolean(country)),
-					title: details.title,
-					originalTitle: details.original_title
-				});
-			}
+			const movieDetails = details as TmdbMovieDetails;
+			nextDetectedAnime = isLikelyAnimeMedia({
+				genres: movieDetails.genres,
+				originalLanguage: movieDetails.original_language,
+				productionCountries: movieDetails.production_countries,
+				originCountries: movieDetails.production_countries
+					?.map((country) => country.iso_3166_1)
+					.filter((country): country is string => Boolean(country)),
+				title: movieDetails.title,
+				originalTitle: movieDetails.original_title
+			});
 
 			// Apply detection before enabling enforcement to avoid transient standard-folder re-selection.
 			detectedAnime = nextDetectedAnime;
@@ -125,6 +127,7 @@
 			rootFolderId = movie.rootFolderId ?? '';
 			minimumAvailability = movie.minimumAvailability ?? 'released';
 			wantsSubtitles = movie.wantsSubtitles ?? true;
+			metadataProvider = movie.metadataProvider ?? 'auto';
 			moveFilesOnRootChange = false;
 			moveOptionTouched = false;
 			animeRootWarningShown = false;
@@ -211,7 +214,8 @@
 			rootFolderId: rootFolderId || null,
 			moveFilesOnRootChange,
 			minimumAvailability,
-			wantsSubtitles
+			wantsSubtitles,
+			metadataProvider: showAnimeMetadataProviderControl ? metadataProvider : 'auto'
 		});
 	}
 </script>
@@ -250,6 +254,25 @@
 			description={m.library_editMovie_autoDownloadSubtitlesDesc()}
 			variant="toggle"
 		/>
+
+		{#if showAnimeMetadataProviderControl}
+			<!-- Metadata Provider -->
+			<div class="form-control">
+				<label class="label" for="movie-metadata-provider">
+					<span class="label-text font-medium">Metadata Provider (Anime)</span>
+				</label>
+				<select
+					id="movie-metadata-provider"
+					bind:value={metadataProvider}
+					class="select-bordered select w-full"
+				>
+					<option value="auto">Auto (inherit from library)</option>
+					<option value="tmdb">TMDB</option>
+					<option value="anilist">AniList</option>
+					<option value="mal">MyAnimeList</option>
+				</select>
+			</div>
+		{/if}
 
 		<!-- Quality Profile -->
 		<div class="form-control">

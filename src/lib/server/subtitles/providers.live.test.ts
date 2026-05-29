@@ -10,10 +10,10 @@
  * TESTED PROVIDERS (no API key required):
  * - yifysubtitles (movies only)
  * - subf2m (movies + TV, web scraper)
+ * - gestdown (TV only, JSON API)
  *
  * OPTIONAL/UNSTABLE (opt-in via env flag):
  * - addic7ed (TV only)
- * - gestdown (TV only)
  *
  * Set SUBTITLE_LIVE_TESTS_INCLUDE_OPTIONAL=true to enable optional providers.
  *
@@ -23,7 +23,7 @@
  *
  * REMOVED PROVIDERS (non-functional):
  * - podnapisi (server not responding)
- * - subscene (CloudFlare blocked)
+ * - subscene (CloudFlare blocked - removed, see Bazarr)
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -72,10 +72,10 @@ const ERROR_TIMEOUT_MS = 90000;
 // ============================================================================
 
 /** Providers to test (no API key required) */
-const NO_AUTH_PROVIDERS: ProviderImplementation[] = ['yifysubtitles', 'subf2m'];
+const NO_AUTH_PROVIDERS: ProviderImplementation[] = ['yifysubtitles', 'subf2m', 'gestdown'];
 
 /** Providers to test only when explicitly enabled */
-const OPTIONAL_NO_AUTH_PROVIDERS: ProviderImplementation[] = ['addic7ed', 'gestdown'];
+const OPTIONAL_NO_AUTH_PROVIDERS: ProviderImplementation[] = ['addic7ed'];
 
 /** Include optional providers if explicitly enabled */
 const INCLUDE_OPTIONAL_PROVIDERS = process.env.SUBTITLE_LIVE_TESTS_INCLUDE_OPTIONAL === 'true';
@@ -86,7 +86,7 @@ const MOVIE_PROVIDERS: ProviderImplementation[] = ['yifysubtitles', 'subf2m'];
 /** Providers that support TV shows */
 const TV_PROVIDERS: ProviderImplementation[] = INCLUDE_OPTIONAL_PROVIDERS
 	? ['addic7ed', 'gestdown', 'subf2m']
-	: ['subf2m'];
+	: ['gestdown', 'subf2m'];
 
 // ============================================================================
 // Helper Functions
@@ -808,13 +808,13 @@ describe.skipIf(!LIVE_TESTS_ENABLED)('Individual Provider Deep Tests', () => {
 		tv?: TvTestContent;
 	}> = [
 		{ impl: 'yifysubtitles', movie: TEST_MOVIES[0] }, // Inception only
-		{ impl: 'subf2m', movie: TEST_MOVIES[0], tv: TEST_TV_SHOWS[0] } // Inception, Breaking Bad
+		{ impl: 'subf2m', movie: TEST_MOVIES[0], tv: TEST_TV_SHOWS[0] }, // Inception, Breaking Bad
+		{ impl: 'gestdown', tv: TEST_TV_SHOWS[0] } // Breaking Bad
 	];
 
 	if (INCLUDE_OPTIONAL_PROVIDERS) {
 		providerTests.push(
-			{ impl: 'addic7ed', tv: TEST_TV_SHOWS[1] }, // Game of Thrones
-			{ impl: 'gestdown', tv: TEST_TV_SHOWS[2] } // Rick and Morty
+			{ impl: 'addic7ed', tv: TEST_TV_SHOWS[1] } // Game of Thrones
 		);
 	}
 

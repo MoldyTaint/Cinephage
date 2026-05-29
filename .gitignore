@@ -46,6 +46,13 @@ claude.md
 CLAUDE.md
 .mcp.json
 
+# Codex local settings
+.codex
+.codex/
+codex.md
+CODEX.md
+
+
 # OpenCode local settings
 .opencode/
 opencode.json
@@ -53,6 +60,13 @@ opencode
 opencode.md
 OPENCODE.md
 AGENTS.md
+
+# Qwen local settings
+.qwen/
+qwen.md
+QWEN.md
+settings.json
+settings.json.orig
 
 # Backup files
 *.bak
@@ -98,4 +112,5 @@ data/external-lists/presets/custom/
 data/reports/
 
 # Local notes
+docs/
 docs/notes/

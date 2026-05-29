@@ -12,10 +12,13 @@ import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { createSSEOperationStream } from '$lib/server/sse';
 import { db } from '$lib/server/db/index.js';
-import { series, seasons, episodes } from '$lib/server/db/schema.js';
+import { series, seasons, episodes, libraries } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
 import { logger } from '$lib/logging';
+import { resolveProviderWithFallback } from '$lib/server/metadata/provider-resolution.js';
+import { resolveAnimeProviderRef } from '$lib/server/metadata/provider-ref-resolver.js';
+import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import {
 	startRefresh,
@@ -78,18 +81,101 @@ export const POST: RequestHandler = async ({ params, request }) => {
 					tmdb.getTvExternalIds(seriesData.tmdbId).catch(() => null)
 				]);
 
+				// Resolve configured metadata provider chain for textual anime metadata enrichment
+				const [libraryRow] = seriesData.libraryId
+					? await db
+							.select({ metadataProvider: libraries.metadataProvider })
+							.from(libraries)
+							.where(eq(libraries.id, seriesData.libraryId))
+							.limit(1)
+					: [];
+				const animeSignal = isLikelyAnimeMedia({
+					genres: tmdbSeries.genres,
+					originalLanguage: tmdbSeries.original_language,
+					originCountries: tmdbSeries.origin_country,
+					productionCountries: tmdbSeries.production_countries,
+					title: tmdbSeries.name,
+					originalTitle: tmdbSeries.original_name
+				});
+				const mediaType = seriesData.seriesType === 'anime' || animeSignal ? 'anime' : 'tv';
+				const providerResolution = await resolveProviderWithFallback({
+					mediaType,
+					seriesProvider:
+						(seriesData.metadataProvider as 'auto' | 'tmdb' | 'anilist' | 'mal') ?? 'auto',
+					libraryProvider:
+						(libraryRow?.metadataProvider as 'auto' | 'tmdb' | 'anilist' | 'mal') ?? 'auto'
+				});
+
+				const providerRefs = (seriesData.providerRefs ?? {}) as Record<string, string>;
+				const pinnedExternal = seriesData.pinnedExternal as {
+					provider: 'tmdb' | 'anilist' | 'mal';
+					id: string;
+				} | null;
+				let resolvedProviderRef: string | undefined =
+					pinnedExternal?.provider === providerResolution.selectedProviderId
+						? pinnedExternal.id
+						: providerRefs[providerResolution.selectedProviderId];
+				let providerDetails: {
+					id: string;
+					title: string;
+					originalTitle?: string;
+					overview?: string;
+					year?: number | null;
+					genres?: string[];
+					status?: string;
+					studios?: string[];
+				} | null = null;
+				if (providerResolution.selectedProviderId !== 'tmdb') {
+					if (!resolvedProviderRef) {
+						resolvedProviderRef = await resolveAnimeProviderRef({
+							providerId: providerResolution.selectedProviderId,
+							title: tmdbSeries.name,
+							aliases: [
+								tmdbSeries.original_name ?? '',
+								seriesData.title,
+								seriesData.originalTitle ?? ''
+							],
+							year: tmdbSeries.first_air_date
+								? parseInt(tmdbSeries.first_air_date.split('-')[0], 10)
+								: seriesData.year
+						});
+					}
+
+					if (resolvedProviderRef) {
+						providerDetails = await providerResolution.provider.getDetails(
+							resolvedProviderRef,
+							mediaType
+						);
+					}
+				}
+
 				// Update series metadata
 				await db
 					.update(series)
 					.set({
-						title: tmdbSeries.name,
-						originalTitle: tmdbSeries.original_name,
-						overview: tmdbSeries.overview,
 						posterPath: tmdbSeries.poster_path,
 						backdropPath: tmdbSeries.backdrop_path,
-						status: tmdbSeries.status,
-						network: tmdbSeries.networks?.[0]?.name,
-						genres: tmdbSeries.genres?.map((g) => g.name),
+						status: providerDetails?.status ?? tmdbSeries.status,
+						network: providerDetails?.studios?.[0] ?? tmdbSeries.networks?.[0]?.name,
+						metadataProvider:
+							seriesData.metadataProvider ??
+							(libraryRow?.metadataProvider as 'auto' | 'tmdb' | 'anilist' | 'mal') ??
+							'auto',
+						providerRefs:
+							providerResolution.selectedProviderId !== 'tmdb' && resolvedProviderRef
+								? {
+										...providerRefs,
+										[providerResolution.selectedProviderId]: resolvedProviderRef
+									}
+								: providerRefs,
+						// Keep canonical identity from TMDB to avoid provider switches renaming media.
+						title: tmdbSeries.name,
+						originalTitle: tmdbSeries.original_name,
+						overview: providerDetails?.overview ?? tmdbSeries.overview,
+						year: tmdbSeries.first_air_date
+							? parseInt(tmdbSeries.first_air_date.split('-')[0], 10)
+							: seriesData.year,
+						genres: providerDetails?.genres ?? tmdbSeries.genres?.map((g) => g.name),
 						tvdbId: externalIds?.tvdb_id || seriesData.tvdbId,
 						imdbId: externalIds?.imdb_id || seriesData.imdbId
 					})

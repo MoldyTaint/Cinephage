@@ -41,6 +41,7 @@
 	let enabled = $state(true);
 	let priority = $state(25);
 	let settings = $state<Record<string, string>>({});
+	let hasSensitiveSettings = $state<Record<string, boolean>>({});
 
 	// Form state - Search capabilities
 	let enableAutomaticSearch = $state(true);
@@ -162,6 +163,7 @@
 			enabled = indexer?.enabled ?? true;
 			priority = indexer?.priority ?? 25;
 			settings = { ...(indexer?.settings ?? {}) };
+			hasSensitiveSettings = indexer?.sensitiveSettings ?? {};
 
 			enableAutomaticSearch = indexer?.enableAutomaticSearch ?? true;
 			enableInteractiveSearch = indexer?.enableInteractiveSearch ?? true;
@@ -359,6 +361,7 @@
 				{priority}
 				{enabled}
 				{settings}
+				{hasSensitiveSettings}
 				{enableAutomaticSearch}
 				{enableInteractiveSearch}
 				{minimumSeeders}

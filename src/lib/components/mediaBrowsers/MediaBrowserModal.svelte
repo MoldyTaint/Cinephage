@@ -6,6 +6,7 @@
 		MediaBrowserPathMapping,
 		MediaBrowserTestResult
 	} from '$lib/server/notifications/mediabrowser/types';
+	import { isBlankOrRedacted } from '$lib/shared/sensitiveSettings';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import { SectionHeader, TestResult, ToggleSetting } from '$lib/components/ui/modal';
 	import * as m from '$lib/paraglide/messages.js';
@@ -75,7 +76,7 @@
 	const modalTitle = $derived(
 		mode === 'add' ? m.mediaBrowser_addServer() : m.mediaBrowser_editServer()
 	);
-	const hasApiKey = $derived(!!server?.id); // In edit mode, server has existing API key
+	const hasApiKey = $derived(mode === 'edit' && !!server?.id);
 
 	// Reset form when modal opens or server changes
 	$effect(() => {
@@ -133,7 +134,7 @@
 			name,
 			serverType: serverType as MediaBrowserServerType,
 			host,
-			apiKey,
+			apiKey: isBlankOrRedacted(apiKey?.trim()) ? '' : apiKey.trim(),
 			enabled,
 			onImport,
 			onUpgrade,
@@ -250,7 +251,10 @@
 
 				<div class="form-control">
 					<label class="label py-1" for="name">
-						<span class="label-text">{m.common_name()}</span>
+						<span class="label-text">
+							{m.common_name()}
+							<span class="text-error">* </span>
+						</span>
 					</label>
 					<input
 						id="name"
@@ -276,7 +280,10 @@
 
 				<div class="form-control">
 					<label class="label py-1" for="host">
-						<span class="label-text">{m.mediaBrowser_host()}</span>
+						<span class="label-text">
+							{m.mediaBrowser_host()}
+							<span class="text-error">* </span>
+						</span>
 					</label>
 					<input
 						id="host"
@@ -294,8 +301,11 @@
 					<label class="label py-1" for="apiKey">
 						<span class="label-text">
 							{m.mediaBrowser_apiKey()}
+							{#if mode === 'add' || !hasApiKey}
+								<span class="text-error">* </span>
+							{/if}
 							{#if mode === 'edit' && hasApiKey}
-								<span class="text-xs opacity-50">({m.mediaBrowser_apiKeyKeep()})</span>
+								<span class="text-xs opacity-50">({m.auth_blankToKeep()})</span>
 							{/if}
 						</span>
 					</label>

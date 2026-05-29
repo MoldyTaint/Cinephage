@@ -259,6 +259,35 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 	let lastDeliveredSequence = -1;
 	let consecutiveErrors = 0;
 	let cancelled = false;
+	let tsFallbackActive = false;
+
+	async function pipeTsStream(
+		response: Response,
+		controller: ReadableStreamDefaultController<Uint8Array>
+	): Promise<void> {
+		const reader = response.body!.getReader();
+		try {
+			while (!cancelled) {
+				const { done, value } = await reader.read();
+				if (done) break;
+				if (value && value.length > 0) {
+					controller.enqueue(value);
+					lastDeliveredSequence++;
+					consecutiveErrors = 0;
+				}
+			}
+		} catch (error) {
+			if (!cancelled) {
+				throw error;
+			}
+		} finally {
+			try {
+				reader.releaseLock();
+			} catch {
+				// Reader may already be released
+			}
+		}
+	}
 
 	return new ReadableStream<Uint8Array>({
 		async start(controller) {
@@ -317,12 +346,12 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 		while (!cancelled) {
 			try {
 				// 1. Resolve a fresh stream URL (new play_token via createLink)
-				const resolved = await urlCache.getStream(lineupItemId, 'hls');
+				const resolved = await urlCache.getStream(lineupItemId, tsFallbackActive ? 'ts' : 'hls');
 
 				// 2. Invalidate cache immediately — the token will be consumed by the fetch
 				urlCache.invalidate(lineupItemId);
 
-				// 3. Fetch the HLS playlist (follows 302 redirect, consuming the play_token)
+				// 3. Fetch the HLS playlist (or TS stream in fallback mode)
 				const { response, finalUrl } = await streamService.fetchFromUrl(
 					resolved.url,
 					resolved.providerType,
@@ -330,7 +359,38 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 				);
 
 				if (!response.ok) {
+					// If HLS mode is permanently rejected by the portal (4XX, not 404),
+					// switch to direct TS fallback on the first attempt
+					if (
+						!tsFallbackActive &&
+						lastDeliveredSequence === -1 &&
+						response.status >= 400 &&
+						response.status < 500 &&
+						response.status !== 404 &&
+						response.status !== 401 &&
+						response.status !== 403
+					) {
+						logger.info(
+							{
+								lineupItemId,
+								status: response.status
+							},
+							'[HlsToTsConverter] HLS rejected by portal, switching to TS fallback'
+						);
+						tsFallbackActive = true;
+						consecutiveErrors = 0;
+						continue;
+					}
 					throw new Error(`Playlist fetch failed: ${response.status}`);
+				}
+
+				// TS fallback mode — pipe response body directly
+				if (tsFallbackActive) {
+					if (!response.body) {
+						throw new Error('TS stream has no body');
+					}
+					await pipeTsStream(response, controller);
+					continue;
 				}
 
 				let playlistText = await response.text();

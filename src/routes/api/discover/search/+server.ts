@@ -1,7 +1,11 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { tmdb } from '$lib/server/tmdb';
-import { enrichWithLibraryStatus, filterInLibrary } from '$lib/server/library/status';
+import {
+	enrichWithLibraryStatus,
+	filterInLibrary,
+	filterBlockedMedia
+} from '$lib/server/library/status';
 import { z } from 'zod';
 import { logger } from '$lib/logging';
 
@@ -80,9 +84,10 @@ export const GET: RequestHandler = async ({ url }) => {
 		const enrichedResults = await enrichWithLibraryStatus(results, mediaTypeFilter);
 		const shouldExcludeInLibrary = exclude_in_library === 'true';
 		const filteredResults = filterInLibrary(enrichedResults, shouldExcludeInLibrary);
+		const blockedFilteredResults = await filterBlockedMedia(filteredResults, mediaTypeFilter);
 
 		return json({
-			results: filteredResults,
+			results: blockedFilteredResults,
 			pagination: {
 				page,
 				total_pages: totalPages,

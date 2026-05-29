@@ -3,6 +3,7 @@
 	import { X, Search, Loader2, RefreshCw, Captions } from 'lucide-svelte';
 	import SubtitleSearchResultRow from './SubtitleSearchResultRow.svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
+	import { searchSubtitles, downloadSubtitle } from '$lib/api/subtitles.js';
 
 	interface SubtitleResult {
 		providerId: string;
@@ -17,18 +18,6 @@
 		matchScore: number;
 		downloadCount?: number;
 		uploadDate?: string;
-	}
-
-	interface SearchResponse {
-		results: SubtitleResult[];
-		totalResults: number;
-		searchTimeMs: number;
-		providers: Array<{
-			providerId: string;
-			providerName: string;
-			resultsCount: number;
-			error?: string;
-		}>;
 	}
 
 	interface DownloadedSubtitle {
@@ -132,21 +121,16 @@
 		searchError = null;
 
 		try {
-			const body: Record<string, unknown> = {};
-			if (movieId) body.movieId = movieId;
-			if (episodeId) body.episodeId = episodeId;
+			const searchBody = {
+				...(movieId ? { movieId } : {}),
+				...(episodeId ? { episodeId } : {})
+			};
 
-			const response = await fetch('/api/subtitles/search', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(body)
-			});
-
-			const data: SearchResponse = await response.json();
-
-			if (!response.ok) {
-				throw new Error((data as unknown as { error: string }).error || 'Search failed');
-			}
+			const data = (await searchSubtitles(searchBody)) as unknown as {
+				results?: SubtitleResult[];
+				totalResults: number;
+				searchTimeMs: number;
+			};
 
 			results = data.results || [];
 			searchMeta = {
@@ -167,28 +151,26 @@
 		downloadErrors.delete(key);
 
 		try {
-			const body: Record<string, unknown> = {
+			const downloadBody = {
 				providerId: result.providerId,
 				providerSubtitleId: result.providerSubtitleId,
 				language: result.language,
 				isForced: result.isForced,
-				isHearingImpaired: result.isHearingImpaired
+				isHearingImpaired: result.isHearingImpaired,
+				...(movieId ? { movieId } : {}),
+				...(episodeId ? { episodeId } : {})
 			};
 
-			if (movieId) body.movieId = movieId;
-			if (episodeId) body.episodeId = episodeId;
-
-			const response = await fetch('/api/subtitles/download', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(body)
-			});
-
-			const data = await response.json();
-
-			if (!response.ok) {
-				throw new Error(data.error || 'Download failed');
-			}
+			const data = (await downloadSubtitle(downloadBody)) as unknown as {
+				success: boolean;
+				subtitle?: {
+					subtitleId?: string;
+					language?: string;
+					format?: string;
+					wasSynced?: boolean;
+					syncOffset?: number | null;
+				};
+			};
 
 			downloadedIds.add(key);
 			onDownloaded?.({

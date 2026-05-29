@@ -12,6 +12,8 @@
 	} from '$lib/logging/log-capture';
 	import { createDynamicSSE } from '$lib/sse';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import { updateLogSettings, getLogHistory } from '$lib/api/settings.js';
+	import { apiGetStream } from '$lib/api';
 
 	interface LogSeedEvent {
 		entries: CapturedLogEntry[];
@@ -57,6 +59,9 @@
 	let historyTotal = $state(0);
 	let historyHasMore = $state(false);
 	let historyPagesLoaded = new SvelteSet<number>();
+	let historyDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+	let lastLoadedFilterKey = '';
+	let initialized = false;
 
 	let search = $state('');
 	let supportId = $state('');
@@ -77,11 +82,6 @@
 	let pendingLiveEntries = $state<CapturedLogEntry[]>([]);
 
 	let selectedEntryId = $state<string | null>(null);
-
-	let historyAbortController: AbortController | null = null;
-	let historyDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-	let lastLoadedFilterKey = '';
-	let initialized = false;
 
 	$effect(() => {
 		if (initialized) return;
@@ -191,13 +191,6 @@
 			from || 'none',
 			to || 'none'
 		].join('||');
-	}
-
-	function buildDownloadUrl(): string {
-		const params = buildQueryParams();
-		params.set('limit', '5000');
-		params.set('format', 'jsonl');
-		return `/api/settings/logs/download?${params.toString()}`;
 	}
 
 	function buildLiveUrl(): string {
@@ -343,24 +336,19 @@
 		page: number,
 		mode: 'replace' | 'append' = 'replace'
 	): Promise<void> {
-		historyAbortController?.abort();
-		const controller = new AbortController();
-		historyAbortController = controller;
-
 		historyLoading = true;
 		historyError = '';
 
 		try {
-			const response = await fetch(
-				`/api/settings/logs/history?${buildQueryParams(page).toString()}`,
-				{
-					signal: controller.signal
-				}
-			);
+			const sp = buildQueryParams(page);
+			const queryParams: Record<string, string> = {};
+			for (const [key, value] of sp) {
+				queryParams[key] = value;
+			}
 
-			const payload = (await response.json().catch(() => null)) as LogHistoryResponse | null;
-			if (!response.ok || !payload?.success) {
-				throw new Error(payload?.error ?? 'Failed to load log history');
+			const payload = (await getLogHistory(queryParams)) as LogHistoryResponse;
+			if (!payload.success) {
+				throw new Error(payload.error ?? 'Failed to load log history');
 			}
 
 			const nextEntries = payload.entries ?? [];
@@ -389,15 +377,8 @@
 				selectedEntryId = null;
 			}
 		} catch (error) {
-			if (error instanceof DOMException && error.name === 'AbortError') {
-				return;
-			}
-
 			historyError = error instanceof Error ? error.message : 'Failed to load log history';
 		} finally {
-			if (historyAbortController === controller) {
-				historyAbortController = null;
-			}
 			historyLoading = false;
 		}
 	}
@@ -442,10 +423,14 @@
 
 	async function downloadHistoryLogs(): Promise<void> {
 		try {
-			const response = await fetch(buildDownloadUrl());
-			if (!response.ok) {
-				throw new Error('Failed to download log history');
-			}
+			const params: Record<string, string> = {};
+			const queryParams = buildQueryParams();
+			queryParams.set('limit', '5000');
+			queryParams.set('format', 'jsonl');
+			queryParams.forEach((value, key) => {
+				params[key] = value;
+			});
+			const response = await apiGetStream('/api/settings/logs/download', params);
 
 			const blob = await response.blob();
 			const href = URL.createObjectURL(blob);
@@ -464,16 +449,7 @@
 	async function saveRetentionDays(): Promise<void> {
 		retentionSaving = true;
 		try {
-			const response = await fetch('/api/settings/logs/settings', {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ retentionDays })
-			});
-
-			const payload = await response.json().catch(() => null);
-			if (!response.ok || !payload?.success) {
-				throw new Error(payload?.error ?? 'Failed to save log retention');
-			}
+			const payload = await updateLogSettings(retentionDays);
 
 			retentionDays = payload.retentionDays ?? retentionDays;
 			toasts.success(`Log retention updated to ${retentionDays} days`);

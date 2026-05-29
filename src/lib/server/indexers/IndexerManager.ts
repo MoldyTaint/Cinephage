@@ -6,12 +6,12 @@
  */
 
 import { db } from '$lib/server/db';
+import { indexers as indexersTable } from '$lib/server/db/schema';
 import {
-	indexers as indexersTable,
 	type TorrentProtocolSettings,
 	type UsenetProtocolSettings,
 	type StreamingProtocolSettings
-} from '$lib/server/db/schema';
+} from './types/index.js';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { createChildLogger } from '$lib/logging';
@@ -54,6 +54,7 @@ export class IndexerManager {
 	private definitionLoader: YamlDefinitionLoader;
 	private indexerFactory: YamlIndexerFactory;
 	private indexerInstances: Map<string, IIndexer> = new Map();
+	private indexerCreationInFlight: Map<string, Promise<IIndexer | null>> = new Map();
 
 	constructor(options: IndexerManagerOptions = {}) {
 		const path = options.definitionsPath;
@@ -283,8 +284,7 @@ export class IndexerManager {
 				baseUrl: null,
 				preferredQuality: 'auto',
 				includeInAutoSearch: true,
-				enabledProviders: null,
-				blockedProviders: null
+				blockedProviders: undefined
 			};
 		}
 		return null;
@@ -437,20 +437,37 @@ export class IndexerManager {
 			}
 		}
 
-		// Create uncached instances (async to allow capability fetching)
+		// Create uncached instances in parallel with in-flight dedup
 		const created: IIndexer[] = [];
-		for (const config of needsCreation) {
-			try {
-				const instance = await this.createIndexerInstance(config);
-				if (instance) {
-					this.indexerInstances.set(config.id, instance);
-					created.push(instance);
-				}
-			} catch (error) {
-				logger.error(
-					{ err: error, ...{ indexerId: config.id } },
-					'Failed to create indexer instance'
-				);
+		const creationPromises = needsCreation.map(async (config) => {
+			const existing = this.indexerInstances.get(config.id);
+			if (existing) return existing;
+
+			let promise = this.indexerCreationInFlight.get(config.id);
+			if (!promise) {
+				promise = this.createIndexerInstance(config)
+					.then((instance) => {
+						if (instance) {
+							this.indexerInstances.set(config.id, instance);
+						}
+						this.indexerCreationInFlight.delete(config.id);
+						return instance;
+					})
+					.catch((error) => {
+						logger.error({ err: error, indexerId: config.id }, 'Failed to create indexer instance');
+						this.indexerCreationInFlight.delete(config.id);
+						return null;
+					});
+				this.indexerCreationInFlight.set(config.id, promise);
+			}
+			return promise;
+		});
+
+		const creationResults = await Promise.allSettled(creationPromises);
+
+		for (const result of creationResults) {
+			if (result.status === 'fulfilled' && result.value) {
+				created.push(result.value);
 			}
 		}
 

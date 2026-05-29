@@ -2,6 +2,7 @@
 	import { Globe, X, Loader2, Search } from 'lucide-svelte';
 	import { onMount } from 'svelte';
 	import { SectionHeader } from '$lib/components/ui/modal';
+	import { getCinephageIptvCountries } from '$lib/api/livetv.js';
 
 	interface Country {
 		code: string;
@@ -52,8 +53,7 @@
 
 	onMount(async () => {
 		try {
-			const response = await fetch('/api/livetv/cinephage-iptv/countries');
-			const result = await response.json();
+			const result = await getCinephageIptvCountries();
 
 			if (!result.success) {
 				throw new Error(result.error || 'Failed to load countries');
@@ -87,7 +87,10 @@
 	<!-- Name -->
 	<div class="form-control">
 		<label class="label py-1" for="cinephage-name">
-			<span class="label-text">Account Name</span>
+			<span class="label-text">
+				Account Name
+				<span class="text-error">* </span>
+			</span>
 		</label>
 		<input
 			id="cinephage-name"
@@ -119,6 +122,7 @@
 						<span class="label-text flex items-center gap-2">
 							<Globe class="h-4 w-4" />
 							Select Countries
+							<span class="text-error">* </span>
 							<span class="text-xs text-base-content/60">({countries.length} available)</span>
 						</span>
 					</label>

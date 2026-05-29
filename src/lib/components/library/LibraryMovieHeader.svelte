@@ -17,10 +17,14 @@
 		Loader2,
 		Check,
 		X,
-		Zap
+		Zap,
+		Ban
 	} from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { formatBytes } from '$lib/utils/format.js';
+	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import { toasts } from '$lib/stores/toast.svelte';
+	import { blockMedia } from '$lib/api/settings.js';
 
 	interface AutoSearchResult {
 		found: boolean;
@@ -37,6 +41,7 @@
 
 	interface Props {
 		movie: LibraryMovie;
+		configuredProviders?: { anilist: boolean; mal: boolean };
 		qualityProfileName?: string | null;
 		isDownloading?: boolean;
 		autoSearching?: boolean;
@@ -54,6 +59,7 @@
 
 	let {
 		movie,
+		configuredProviders = { anilist: false, mal: false },
 		qualityProfileName = null,
 		isDownloading = false,
 		autoSearching = false,
@@ -68,6 +74,46 @@
 		onDelete,
 		onScoreClick
 	}: Props = $props();
+
+	let showBlockConfirm = $state(false);
+
+	async function handleBlock() {
+		try {
+			await blockMedia({
+				tmdbId: movie.tmdbId,
+				mediaType: 'movie',
+				title: movie.title,
+				posterPath: movie.posterPath ?? null,
+				year: movie.year ?? null
+			});
+			toasts.success(m.blockedMedia_blocked({ title: movie.title }));
+			window.location.href = '/settings/blocklist/blocked-media';
+		} catch (err) {
+			toasts.error(err instanceof Error ? err.message : 'Failed to block media');
+		}
+	}
+
+	const providerLinks = $derived.by(() => {
+		const refs = movie.providerRefs ?? {};
+		const links: Array<{ label: string; href: string }> = [];
+		if (configuredProviders.anilist && refs.anilist) {
+			links.push({
+				label: 'AniList',
+				href: `https://anilist.co/anime/${refs.anilist}`
+			});
+		}
+		if (configuredProviders.mal && refs.mal) {
+			links.push({
+				label: 'MAL',
+				href: `https://myanimelist.net/anime/${refs.mal}`
+			});
+		}
+		return links;
+	});
+	const usesAnimeMetadataProvider = $derived(
+		(movie.metadataProvider === 'anilist' && Boolean(movie.providerRefs?.anilist)) ||
+			(movie.metadataProvider === 'mal' && Boolean(movie.providerRefs?.mal))
+	);
 
 	const bestQuality = $derived(getBestQualityFromFiles(movie.files));
 	const isStreamerProfile = $derived(movie.scoringProfileId === 'streamer');
@@ -152,6 +198,10 @@
 						{#if movie.runtime}
 							<span>{formatRuntime(movie.runtime)}</span>
 						{/if}
+						{#if usesAnimeMetadataProvider && movie.studios && movie.studios.length > 0}
+							<span>•</span>
+							<span class="min-w-0 truncate">Studios: {movie.studios.slice(0, 2).join(', ')}</span>
+						{/if}
 						{#if movie.genres && movie.genres.length > 0}
 							<span>•</span>
 							<span class="min-w-0 truncate">{movie.genres.slice(0, 3).join(', ')}</span>
@@ -215,6 +265,13 @@
 						title={m.action_delete()}
 					>
 						<Trash2 size={16} />
+					</button>
+					<button
+						class="btn text-error btn-ghost btn-sm"
+						onclick={() => (showBlockConfirm = true)}
+						title={m.library_blockMediaTooltip()}
+					>
+						<Ban size={16} />
 					</button>
 				</div>
 			</div>
@@ -308,8 +365,29 @@
 							<ExternalLink size={12} />
 						</a>
 					{/if}
+					{#each providerLinks as providerLink (providerLink.label)}
+						<a
+							href={providerLink.href}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="btn gap-1 btn-ghost btn-xs"
+						>
+							{providerLink.label}
+							<ExternalLink size={12} />
+						</a>
+					{/each}
 				</div>
 			</div>
 		</div>
 	</div>
 </div>
+
+<ConfirmationModal
+	open={showBlockConfirm}
+	onCancel={() => (showBlockConfirm = false)}
+	onConfirm={handleBlock}
+	title={m.blockedMedia_confirmBlockTitle()}
+	message={m.blockedMedia_confirmBlockMessage({ title: movie.title })}
+	confirmLabel={m.blockedMedia_confirmBlockLabel()}
+	confirmVariant="error"
+/>

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PROVIDER_IMPLEMENTATIONS } from '$lib/server/subtitles/types';
+import { TMDB } from '$lib/config/constants.js';
 
 /**
  * Validation schemas for API inputs and database rows.
@@ -270,6 +271,8 @@ export const searchQuerySchema = z.object({
 	year: z.coerce.number().int().min(1888).max(2100).optional(),
 	season: z.coerce.number().int().min(0).optional(),
 	episode: z.coerce.number().int().min(0).optional(),
+	// Language preference (ISO 639-1 code)
+	language: z.string().optional(),
 	// Enrichment options
 	enrich: z
 		.string()
@@ -309,7 +312,7 @@ export const globalTmdbFiltersSchema = z.object({
 	min_vote_average: z.number().min(0).max(10).default(0),
 	min_vote_count: z.number().int().min(0).default(0),
 	language: z.string().default('en-US'),
-	region: z.string().default('US'),
+	region: z.string().default(TMDB.DEFAULT_REGION),
 	excluded_genre_ids: z.array(z.number().int()).default([])
 });
 
@@ -573,6 +576,7 @@ export type RootFolderUpdate = z.infer<typeof rootFolderUpdateSchema>;
  */
 export const libraryMediaTypeSchema = z.enum(['movie', 'tv']);
 export const libraryMediaSubTypeSchema = z.enum(['standard', 'anime']);
+export const metadataProviderSelectionSchema = z.enum(['auto', 'tmdb', 'anilist', 'mal']);
 
 /**
  * Schema for creating a library entity.
@@ -587,6 +591,7 @@ export const libraryCreateSchema = z.object({
 	defaultMonitored: z.boolean().default(true),
 	defaultSearchOnAdd: z.boolean().default(true),
 	defaultWantsSubtitles: z.boolean().default(true),
+	metadataProvider: metadataProviderSelectionSchema.default('auto'),
 	sortOrder: z.number().int().min(0).default(100)
 });
 
@@ -594,6 +599,20 @@ export const libraryCreateSchema = z.object({
  * Schema for updating a library entity.
  */
 export const libraryUpdateSchema = libraryCreateSchema.partial();
+
+/**
+ * Schema for updating library classification settings.
+ */
+export const libraryClassificationUpdateSchema = z.object({
+	enforceAnimeSubtype: z.boolean()
+});
+
+/**
+ * Schema for deleting a library with optional target library for reassignment.
+ */
+export const libraryDeleteSchema = z.object({
+	targetLibraryId: z.string().uuid().optional().nullable()
+});
 
 // Library Entity Type Exports
 export type LibraryMediaType = z.infer<typeof libraryMediaTypeSchema>;
@@ -1228,13 +1247,61 @@ export const stalkerPortalUpdateSchema = z.object({
  * Schema for detecting portal type.
  */
 export const stalkerPortalDetectSchema = z.object({
-	url: z.string().min(1, 'URL is required')
+	url: z.string().url('Must be a valid URL').min(1, 'URL is required')
 });
 
 // Stalker Portal Type Exports
 export type StalkerPortalCreate = z.infer<typeof stalkerPortalCreateSchema>;
 export type StalkerPortalUpdate = z.infer<typeof stalkerPortalUpdateSchema>;
 export type StalkerPortalDetect = z.infer<typeof stalkerPortalDetectSchema>;
+
+// ============================================================================
+// LiveTV Account Schema (multi-provider)
+// ============================================================================
+
+export const liveTvAccountCreateSchema = z.object({
+	name: z.string().min(1).max(100),
+	providerType: z.enum(['stalker', 'xstream', 'm3u', 'cinephage-iptv']),
+	enabled: z.boolean().optional(),
+	stalkerConfig: z
+		.object({
+			portalUrl: z.string().url(),
+			macAddress: z.string().min(1),
+			serialNumber: z.string().optional(),
+			deviceId: z.string().optional(),
+			deviceId2: z.string().optional(),
+			model: z.string().optional(),
+			timezone: z.string().optional(),
+			username: z.string().optional(),
+			password: z.string().optional()
+		})
+		.optional(),
+	xstreamConfig: z
+		.object({
+			baseUrl: z.string().url(),
+			username: z.string().min(1),
+			password: z.string().min(1),
+			epgUrl: z.string().url().optional()
+		})
+		.optional(),
+	m3uConfig: z
+		.object({
+			url: z.string().url().optional(),
+			fileContent: z.string().optional(),
+			epgUrl: z.string().url().optional(),
+			refreshIntervalHours: z.number().min(1).max(168).optional(),
+			autoRefresh: z.boolean().optional()
+		})
+		.optional(),
+	cinephageIptvConfig: z
+		.object({
+			countries: z.array(z.string()).optional(),
+			categories: z.array(z.string()).optional(),
+			languages: z.array(z.string()).optional()
+		})
+		.optional(),
+	testFirst: z.boolean().optional().default(true)
+});
 
 // ============================================================
 // Log Filter Schemas
@@ -1322,6 +1389,8 @@ export const movieUpdateSchema = z.object({
 	monitored: z.boolean().optional(),
 	scoringProfileId: z.string().nullable().optional(),
 	minimumAvailability: z.string().min(1).optional(),
+	metadataProvider: metadataProviderSelectionSchema.optional(),
+	providerRefs: z.partialRecord(z.enum(['tmdb', 'anilist', 'mal']), z.string().min(1)).optional(),
 	rootFolderId: z.string().optional(),
 	moveFilesOnRootChange: z.boolean().optional(),
 	wantsSubtitles: z.boolean().optional(),
@@ -1336,6 +1405,8 @@ export const seriesUpdateSchema = z.object({
 	scoringProfileId: z.string().nullable().optional(),
 	seasonFolder: z.boolean().optional(),
 	seriesType: z.enum(['standard', 'anime', 'daily']).optional(),
+	metadataProvider: metadataProviderSelectionSchema.optional(),
+	providerRefs: z.partialRecord(z.enum(['tmdb', 'anilist', 'mal']), z.string().min(1)).optional(),
 	rootFolderId: z.string().optional(),
 	wantsSubtitles: z.boolean().optional(),
 	languageProfileId: z.string().nullable().optional()
@@ -1380,6 +1451,87 @@ export const libraryScanSchema = z
 	})
 	.optional()
 	.default({});
+
+/**
+ * Schema for manual import execution.
+ */
+export const manualImportSchema = z
+	.object({
+		sourcePath: z.string().min(1).optional(),
+		selectedFilePath: z.string().min(1).optional(),
+		mediaType: z.enum(['movie', 'tv']),
+		tmdbId: z.number().int().positive(),
+		importTarget: z.enum(['new', 'existing']),
+		rootFolderId: z.string().optional(),
+		libraryId: z.string().optional(),
+		seasonNumber: z.number().int().min(0).optional(),
+		episodeNumber: z.number().int().min(1).optional()
+	})
+	.superRefine((value, ctx) => {
+		if (!value.sourcePath && !value.selectedFilePath) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: 'sourcePath or selectedFilePath is required',
+				path: ['sourcePath']
+			});
+		}
+	});
+
+/**
+ * Schema for adding a movie to the library.
+ */
+export const addMovieSchema = z.object({
+	tmdbId: z.number().int().positive(),
+	rootFolderId: z.string().min(1),
+	scoringProfileId: z.string().optional(),
+	monitored: z.boolean().default(true),
+	minimumAvailability: z.enum(['announced', 'inCinemas', 'released', 'preDb']).default('released'),
+	searchOnAdd: z.boolean().default(true),
+	wantsSubtitles: z.boolean().default(true)
+});
+
+/**
+ * Schema for adding a series to the library.
+ */
+export const addSeriesSchema = z.object({
+	tmdbId: z.number().int().positive(),
+	rootFolderId: z.string().min(1),
+	scoringProfileId: z.string().optional(),
+	monitored: z.boolean().default(true),
+	seasonFolder: z.boolean().default(true),
+	seriesType: z.enum(['standard', 'anime', 'daily']).default('standard'),
+	monitorType: z
+		.enum([
+			'all',
+			'future',
+			'missing',
+			'existing',
+			'firstSeason',
+			'lastSeason',
+			'recent',
+			'pilot',
+			'none'
+		])
+		.default('all'),
+	monitorNewItems: z.enum(['all', 'none']).default('all'),
+	monitorSpecials: z.boolean().default(false),
+	monitoredSeasons: z.array(z.number().int()).optional(),
+	searchOnAdd: z.boolean().default(true),
+	wantsSubtitles: z.boolean().default(true)
+});
+
+/**
+ * Schema for bulk adding movies to the library.
+ */
+export const bulkAddMoviesSchema = z.object({
+	tmdbIds: z.array(z.number().int().positive()).min(1).max(50),
+	rootFolderId: z.string().min(1),
+	scoringProfileId: z.string().optional(),
+	monitored: z.boolean().default(true),
+	minimumAvailability: z.enum(['announced', 'inCinemas', 'released', 'preDb']).default('released'),
+	searchOnAdd: z.boolean().default(true),
+	wantsSubtitles: z.boolean().default(true)
+});
 
 /**
  * Schema for batch episode update
@@ -1488,17 +1640,6 @@ export const queueActionSchema = z.object({
 // ============================================================================
 // Workers Schemas
 // ============================================================================
-
-/**
- * Schema for worker config update
- */
-export const workerConfigUpdateSchema = z.object({
-	maxConcurrent: z
-		.record(z.enum(['stream', 'import', 'scan', 'monitoring']), z.number().int().min(0).max(100))
-		.optional(),
-	cleanupAfterMs: z.number().int().min(0).optional(),
-	maxLogsPerWorker: z.number().int().min(10).max(10000).optional()
-});
 
 // ============================================================================
 // Naming Schemas
@@ -1651,6 +1792,11 @@ export const conditionSchema = z.object({
 
 export type Condition = z.infer<typeof conditionSchema>;
 
+export const customFormatTestSchema = z.object({
+	releaseName: z.string().min(1),
+	conditions: z.array(conditionSchema).min(1)
+});
+
 export const customFormatSchema = z.object({
 	id: z.string().min(1).max(50).optional(),
 	name: z.string().min(1).max(100),
@@ -1720,6 +1866,168 @@ export const scoringProfileDeleteSchema = z.object({
 
 export type ScoringProfileCreate = z.infer<typeof scoringProfileCreateSchema>;
 export type ScoringProfileUpdate = z.infer<typeof scoringProfileUpdateSchema>;
+export type ScoringProfileUpdateBody = z.infer<typeof scoringProfileUpdateBodySchema>;
+
+// ============================================================================
+// Smart List Schemas
+// ============================================================================
+
+/** Helper: coerce empty strings to undefined for optional number fields */
+const optionalSmartNumber = z.preprocess(
+	(v: unknown) => (v === '' || v === null ? undefined : v),
+	z.number().optional()
+);
+
+/** Helper: coerce empty strings to undefined for optional number fields with range */
+const optionalSmartNumberRange = (min: number, max: number) =>
+	z.preprocess(
+		(v: unknown) => (v === '' || v === null ? undefined : v),
+		z.number().min(min).max(max).optional()
+	);
+
+const smartListFiltersSchema = z.object({
+	withGenres: z.array(z.number()).optional(),
+	withoutGenres: z.array(z.number()).optional(),
+	genreMode: z.enum(['and', 'or']).optional(),
+	yearMin: optionalSmartNumber,
+	yearMax: optionalSmartNumber,
+	releaseDateMin: z.string().optional(),
+	releaseDateMax: z.string().optional(),
+	voteAverageMin: optionalSmartNumberRange(0, 10),
+	voteAverageMax: optionalSmartNumberRange(0, 10),
+	voteCountMin: optionalSmartNumber,
+	popularityMin: optionalSmartNumber,
+	popularityMax: optionalSmartNumber,
+	withCast: z.array(z.number()).optional(),
+	withCrew: z.array(z.number()).optional(),
+	withKeywords: z.array(z.number()).optional(),
+	withoutKeywords: z.array(z.number()).optional(),
+	withWatchProviders: z.array(z.number()).optional(),
+	watchRegion: z.string().optional(),
+	certification: z.string().optional(),
+	certificationCountry: z.string().optional(),
+	runtimeMin: optionalSmartNumber,
+	runtimeMax: optionalSmartNumber,
+	withOriginalLanguage: z.string().optional(),
+	withStatus: z.string().optional(),
+	withReleaseType: z.array(z.number()).optional()
+});
+
+const smartListSortBySchema = z
+	.enum([
+		'popularity.desc',
+		'popularity.asc',
+		'vote_average.desc',
+		'vote_average.asc',
+		'primary_release_date.desc',
+		'primary_release_date.asc',
+		'first_air_date.desc',
+		'first_air_date.asc',
+		'revenue.desc',
+		'revenue.asc',
+		'title.asc',
+		'title.desc'
+	])
+	.optional();
+
+export const smartListCreateSchema = z.object({
+	name: z.string().min(1).max(100),
+	description: z.string().max(101).optional(),
+	mediaType: z.enum(['movie', 'tv']),
+	filters: smartListFiltersSchema,
+	sortBy: smartListSortBySchema,
+	itemLimit: z.number().min(1).max(1000).optional(),
+	excludeInLibrary: z.boolean().optional(),
+	showUpgradeableOnly: z.boolean().optional(),
+	excludedTmdbIds: z.array(z.number()).optional(),
+	scoringProfileId: z.string().optional(),
+	autoAddBehavior: z.enum(['disabled', 'add_only', 'add_and_search']).optional(),
+	rootFolderId: z.string().optional(),
+	autoAddMonitored: z.boolean().optional(),
+	minimumAvailability: z.string().optional(),
+	wantsSubtitles: z.boolean().optional(),
+	languageProfileId: z.string().optional(),
+	refreshIntervalHours: z.number().min(1).max(168).optional(),
+	enabled: z.boolean().optional(),
+	listSourceType: z
+		.enum(['tmdb-discover', 'external-json', 'trakt-list', 'custom-manual'])
+		.optional(),
+	externalSourceConfig: z
+		.object({
+			url: z.string().optional(),
+			headers: z.record(z.string(), z.unknown()).optional(),
+			listId: z.string().optional(),
+			username: z.string().optional()
+		})
+		.optional(),
+	presetId: z.string().optional(),
+	presetProvider: z.string().optional(),
+	presetSettings: z.record(z.string(), z.unknown()).optional()
+});
+
+export const smartListPreviewSchema = z.object({
+	mediaType: z.enum(['movie', 'tv']),
+	filters: smartListFiltersSchema,
+	sortBy: smartListSortBySchema.optional().default('popularity.desc'),
+	itemLimit: z.preprocess(
+		(v: unknown) => (v === '' || v === null ? undefined : v),
+		z.number().min(1).max(1000).optional().default(100)
+	),
+	page: z.preprocess(
+		(v: unknown) => (v === '' || v === null ? undefined : v),
+		z.number().optional().default(1)
+	)
+});
+
+export const smartListExternalPreviewSchema = z.object({
+	url: z.string().url().optional(),
+	headers: z.record(z.string(), z.unknown()).optional(),
+	mediaType: z.enum(['movie', 'tv']).optional(),
+	presetId: z.string().optional(),
+	providerType: z.string().optional(),
+	config: z.record(z.string(), z.unknown()).optional(),
+	page: z.number().int().min(1).default(1),
+	itemLimit: z.number().int().min(1).max(1000).default(100)
+});
+
+export const smartListItemsActionSchema = z.object({
+	action: z.enum(['exclude', 'include', 'addToLibrary']),
+	itemIds: z.array(z.string()).optional(),
+	tmdbIds: z.array(z.number()).optional()
+});
+
+// ============================================================================
+// Monitoring Settings Schema
+// ============================================================================
+
+export const monitoringSettingsUpdateSchema = z.object({
+	missingSearchIntervalHours: z.number().min(0.25).optional(),
+	upgradeSearchIntervalHours: z.number().min(0.25).optional(),
+	newEpisodeCheckIntervalHours: z.number().min(0.25).optional(),
+	cutoffUnmetSearchIntervalHours: z.number().min(0.25).optional(),
+	autoReplaceEnabled: z.boolean().optional(),
+	searchOnMonitorEnabled: z.boolean().optional(),
+	stalledDownloadTimeoutMinutes: z.number().min(0).optional(),
+	stalledDownloadProgressThreshold: z.number().min(0).max(100).optional()
+});
+
+// ============================================================================
+// Captcha Solver Schemas
+// ============================================================================
+
+export const captchaSolverSettingsUpdateSchema = z.object({
+	enabled: z.boolean().optional(),
+	timeoutSeconds: z.number().min(10).max(300).optional(),
+	cacheTtlSeconds: z.number().min(60).max(86400).optional(),
+	headless: z.boolean().optional(),
+	proxyUrl: z.string().optional(),
+	proxyUsername: z.string().optional(),
+	proxyPassword: z.string().optional()
+});
+
+export const captchaSolverTestSchema = z.object({
+	url: z.string().url()
+});
 
 // ============================================================================
 // Streaming Schemas
@@ -1743,6 +2051,61 @@ export const strmUpdateSchema = z
 	.optional();
 
 // ============================================================================
+// Blocked Media Schemas
+// ============================================================================
+
+/**
+ * Schema for blocking media (movies/series) from appearing in discover/search.
+ */
+export const blockMediaSchema = z.object({
+	tmdbId: z.number().int().positive(),
+	mediaType: z.enum(['movie', 'tv']),
+	title: z.string().min(1),
+	posterPath: z.string().nullable().optional(),
+	year: z.number().nullable().optional(),
+	reason: z.string().optional()
+});
+
+/**
+ * Schema for unblocking media by ID.
+ */
+export const unblockMediaSchema = z.object({
+	ids: z.array(z.string()).min(1)
+});
+
+// ============================================================================
+// Blocklist Schemas (Release-Level)
+// ============================================================================
+
+/**
+ * Schema for adding a release to the blocklist.
+ */
+export const addToBlocklistSchema = z.object({
+	title: z.string().min(1),
+	infoHash: z.string().optional(),
+	indexerId: z.string().optional(),
+	movieId: z.string().nullable().optional(),
+	seriesId: z.string().nullable().optional(),
+	size: z.number().nonnegative().optional(),
+	protocol: z.enum(['torrent', 'usenet', 'streaming']).optional(),
+	reason: z.enum(['manual']).default('manual'),
+	message: z.string().optional(),
+	expiresInHours: z.number().positive().nullable().optional()
+});
+
+export type AddToBlocklistRequest = z.infer<typeof addToBlocklistSchema>;
+
+/**
+ * Schema for updating a blocklist entry's expiry.
+ */
+export const updateBlocklistExpirySchema = z.object({
+	id: z.string().min(1),
+	expiresInHours: z.number().positive().nullable()
+});
+
+export type UpdateBlocklistExpiryRequest = z.infer<typeof updateBlocklistExpirySchema>;
+
+// ============================================================================
 // Type Exports for New Schemas
 // ============================================================================
 
@@ -1764,9 +2127,6 @@ export type SeriesBatchDelete = z.infer<typeof seriesBatchDeleteSchema>;
 export type GrabRequest = z.infer<typeof grabRequestSchema>;
 export type QueueAction = z.infer<typeof queueActionSchema>;
 
-// Workers Type Exports
-export type WorkerConfigUpdate = z.infer<typeof workerConfigUpdateSchema>;
-
 // Naming Type Exports
 export type NamingPresetCreate = z.infer<typeof namingPresetCreateSchema>;
 export type NamingPresetUpdate = z.infer<typeof namingPresetUpdateSchema>;
@@ -1785,3 +2145,34 @@ export type UnmatchedSingleMatch = z.infer<typeof unmatchedSingleMatchSchema>;
 // Streaming Type Exports
 export type StreamingStatusAction = z.infer<typeof streamingStatusActionSchema>;
 export type StrmUpdate = z.infer<typeof strmUpdateSchema>;
+
+// Backup Type Exports
+export type BackupExport = z.infer<typeof backupExportSchema>;
+export type BackupImport = z.infer<typeof backupImportSchema>;
+
+// Manual Import Type Exports
+export type ManualImportRequest = z.infer<typeof manualImportSchema>;
+export type AddMovieRequest = z.infer<typeof addMovieSchema>;
+export type AddSeriesRequest = z.infer<typeof addSeriesSchema>;
+export type BulkAddMoviesRequest = z.infer<typeof bulkAddMoviesSchema>;
+
+// Library Classification & Delete Type Exports
+export type LibraryClassificationUpdate = z.infer<typeof libraryClassificationUpdateSchema>;
+export type LibraryDeleteRequest = z.infer<typeof libraryDeleteSchema>;
+
+// Smart List Type Exports
+export type SmartListCreateRequest = z.infer<typeof smartListCreateSchema>;
+export type SmartListPreviewRequest = z.infer<typeof smartListPreviewSchema>;
+export type SmartListExternalPreviewRequest = z.infer<typeof smartListExternalPreviewSchema>;
+export type SmartListItemsAction = z.infer<typeof smartListItemsActionSchema>;
+
+// Monitoring & Captcha Type Exports
+export type MonitoringSettingsUpdate = z.infer<typeof monitoringSettingsUpdateSchema>;
+export type CaptchaSolverSettingsUpdate = z.infer<typeof captchaSolverSettingsUpdateSchema>;
+export type CaptchaSolverTestRequest = z.infer<typeof captchaSolverTestSchema>;
+
+// Custom Format Test Type Export
+export type CustomFormatTestRequest = z.infer<typeof customFormatTestSchema>;
+
+// LiveTV Account Type Export
+export type LiveTvAccountCreate = z.infer<typeof liveTvAccountCreateSchema>;

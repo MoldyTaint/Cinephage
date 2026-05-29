@@ -1,12 +1,12 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { resolvePath } from '$lib/utils/routing';
 	import type { TmdbMediaItem } from '$lib/types/tmdb';
 	import { tick } from 'svelte';
-	import { SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
+	import { SvelteSet } from 'svelte/reactivity';
 	import MediaCard from '$lib/components/tmdb/MediaCard.svelte';
 	import FilterDrawer from '$lib/components/discover/FilterDrawer.svelte';
 	import SectionRow from '$lib/components/discover/SectionRow.svelte';
@@ -17,6 +17,7 @@
 	import { Search, Eye, EyeOff, X, Loader2 } from 'lucide-svelte';
 	import { getMediaTypeLabel } from '$lib/types/tmdb-guards';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import { searchTmdb, getDiscover } from '$lib/api';
 
 	let { data } = $props();
 
@@ -107,13 +108,15 @@
 
 		isSearching = true;
 		try {
-			const res = await fetch(
-				`/api/discover/search?query=${encodeURIComponent(normalizedQuery)}&type=${type}${exclude ? '&exclude_in_library=true' : ''}`
-			);
-			if (!res.ok) throw new Error('Search failed');
-
-			const result = await res.json();
-			searchResults = result.results;
+			const result = (await searchTmdb({
+				query: normalizedQuery,
+				type,
+				...(exclude ? { exclude_in_library: 'true' } : {})
+			})) as unknown as {
+				results: Array<Record<string, unknown> & { id: number; media_type?: string }>;
+				pagination: { page: number; total_pages: number; total_results: number };
+			};
+			searchResults = result.results ?? [];
 			searchPagination = result.pagination;
 		} catch (e) {
 			toasts.error(m.discover_searchFailed(), {
@@ -132,12 +135,15 @@
 		isSearching = true;
 		try {
 			const nextPage = searchPagination.page + 1;
-			const res = await fetch(
-				`/api/discover/search?query=${encodeURIComponent(normalizedSearchQuery)}&type=${type}&page=${nextPage}${excludeInLibrary ? '&exclude_in_library=true' : ''}`
-			);
-			if (!res.ok) return;
-
-			const result = await res.json();
+			const result = (await searchTmdb({
+				query: normalizedSearchQuery,
+				type,
+				page: String(nextPage),
+				...(excludeInLibrary ? { exclude_in_library: 'true' } : {})
+			})) as unknown as {
+				results: Array<Record<string, unknown> & { id: number; media_type?: string }>;
+				pagination: { page: number; total_pages: number; total_results: number };
+			};
 			// Deduplicate
 			const existingIds = new Set(searchResults.map((r) => r.id + (r.media_type || '')));
 			const newResults = result.results.filter(
@@ -177,21 +183,34 @@
 	});
 
 	// Derived state from URL params
-	let type = $derived($page.url.searchParams.get('type') || 'all');
-	let sortBy = $derived($page.url.searchParams.get('sort_by') || 'popularity.desc');
+	let type = $derived(page.url.searchParams.get('type') || 'all');
+	let sortBy = $derived(page.url.searchParams.get('sort_by') || 'popularity.desc');
 	let selectedProviders = $derived(
-		parseProviderIds($page.url.searchParams.get('with_watch_providers'))
+		parseProviderIds(page.url.searchParams.get('with_watch_providers'))
 	);
-	let selectedGenres = $derived(parseGenreIds($page.url.searchParams.get('with_genres')));
-	let selectedLanguage = $derived($page.url.searchParams.get('with_original_language') || '');
-	let minYear = $derived(extractYear($page.url.searchParams.get('primary_release_date.gte')));
-	let maxYear = $derived(extractYear($page.url.searchParams.get('primary_release_date.lte')));
-	let minRating = $derived(Number($page.url.searchParams.get('vote_average.gte')) || 0);
-	let selectedCertification = $derived($page.url.searchParams.get('certification') || '');
-	let excludeInLibrary = $derived($page.url.searchParams.get('exclude_in_library') === 'true');
+	let selectedGenres = $derived(parseGenreIds(page.url.searchParams.get('with_genres')));
+	let selectedLanguage = $derived(page.url.searchParams.get('with_original_language') || '');
+	let minYear = $derived(extractYear(page.url.searchParams.get('primary_release_date.gte')));
+	let maxYear = $derived(extractYear(page.url.searchParams.get('primary_release_date.lte')));
+	let minRating = $derived(Number(page.url.searchParams.get('vote_average.gte')) || 0);
+	let selectedCertification = $derived(page.url.searchParams.get('certification') || '');
+	let excludeInLibrary = $derived(page.url.searchParams.get('exclude_in_library') === 'true');
+	let isFilteredTrending = $derived(
+		(page.url.searchParams.get('trending') === 'day' ||
+			page.url.searchParams.get('trending') === 'week') &&
+			(type !== 'all' ||
+				sortBy !== 'popularity.desc' ||
+				selectedProviders.length > 0 ||
+				selectedGenres.length > 0 ||
+				!!selectedLanguage ||
+				!!minYear ||
+				!!maxYear ||
+				minRating > 0 ||
+				!!selectedCertification)
+	);
 
 	function updateFilter(key: string, value: string | null) {
-		const url = new URL($page.url);
+		const url = new URL(page.url);
 		if (value) {
 			url.searchParams.set(key, value);
 		} else {
@@ -205,7 +224,7 @@
 	}
 
 	function updateYear(min: string, max: string) {
-		const url = new URL($page.url);
+		const url = new URL(page.url);
 		if (min) url.searchParams.set('primary_release_date.gte', `${min}-01-01`);
 		else url.searchParams.delete('primary_release_date.gte');
 
@@ -299,13 +318,15 @@
 		isLoadingMore = true;
 		try {
 			const nextPage = currentPage + 1;
-			const params = new SvelteURLSearchParams($page.url.searchParams);
-			params.set('page', String(nextPage));
+			const params: Record<string, string> = {};
+			page.url.searchParams.forEach((value, key) => {
+				params[key] = value;
+			});
+			params.page = String(nextPage);
 
-			const res = await fetch(`/api/discover?${params.toString()}`);
-			if (!res.ok) return;
-
-			const newData = await res.json();
+			const newData = (await getDiscover(params)) as unknown as {
+				results: Array<{ id: number; media_type?: string | null }>;
+			};
 			if (!newData.results || newData.results.length === 0) return;
 
 			// Filter out duplicates based on ID and media_type
@@ -640,9 +661,20 @@
 			<!-- Grid View -->
 			<div class="animate-in fade-in slide-in-from-bottom-4 duration-500">
 				<div class="mb-6 flex items-center justify-between">
-					<h2 class="text-xl font-bold opacity-70">
-						{m.discover_resultsCount({ count: data.pagination.total_results.toLocaleString() })}
-					</h2>
+					<div>
+						<h2 class="text-xl font-bold opacity-70">
+							{#if isFilteredTrending}
+								Popular & Matching
+							{:else}
+								{m.discover_resultsCount({ count: data.pagination.total_results.toLocaleString() })}
+							{/if}
+						</h2>
+						{#if isFilteredTrending}
+							<p class="text-sm text-base-content/50">
+								{m.discover_resultsCount({ count: data.pagination.total_results.toLocaleString() })}
+							</p>
+						{/if}
+					</div>
 				</div>
 
 				<div class="grid grid-cols-3 gap-2 sm:gap-4 lg:grid-cols-9">

@@ -4,7 +4,7 @@ import type { RequestHandler } from './$types';
 import { createChildLogger } from '$lib/logging';
 import { isAppError, getErrorMessage } from '$lib/errors';
 import { checkRateLimit, rateLimitHeaders } from '$lib/server/rateLimit';
-import { enrichWithLibraryStatus } from '$lib/server/library/status';
+import { enrichWithLibraryStatus, filterBlockedMedia } from '$lib/server/library/status';
 
 /**
  * Determine media type from TMDB endpoint path for library status enrichment
@@ -59,7 +59,8 @@ const handler: RequestHandler = async ({ params, url, locals, getClientAddress }
 		if (data && typeof data === 'object' && 'results' in data && Array.isArray(data.results)) {
 			const mediaType = getMediaTypeFromPath(path);
 			const enrichedResults = await enrichWithLibraryStatus(data.results, mediaType);
-			return json({ ...data, results: enrichedResults });
+			const filteredResults = await filterBlockedMedia(enrichedResults, mediaType);
+			return json({ ...data, results: filteredResults });
 		}
 
 		return json(data);

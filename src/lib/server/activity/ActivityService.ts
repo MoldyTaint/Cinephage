@@ -12,9 +12,19 @@ import {
 import { and, desc, gte, inArray, eq, lte, lt, sql, count } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { extractReleaseGroup } from '$lib/server/indexers/parser/patterns/releaseGroup';
-import { parseRelease } from '$lib/server/indexers/parser/ReleaseParser';
 import {
-	isActiveActivity,
+	ActivityDeduplicationService,
+	type ActiveQueueIndex
+} from './ActivityDeduplicationService.js';
+import {
+	buildFailedQueueIndex,
+	findFailedQueueItemId,
+	buildHistoryTimeline,
+	resolveMediaInfo,
+	resolveMonitoringMediaInfo,
+	type MediaMaps
+} from './activity-transformers.js';
+import {
 	type UnifiedActivity,
 	type ActivityEvent,
 	type ActivityStatus,
@@ -23,57 +33,32 @@ import {
 	type ActivityScope,
 	type ActivitySummary
 } from '$lib/types/activity';
-import type { DownloadQueueRecord, DownloadHistoryRecord, MonitoringHistoryRecord } from './types';
+import type {
+	DownloadQueueRecord,
+	DownloadHistoryRecord,
+	MonitoringHistoryRecord,
+	MoveTaskRecord
+} from './types';
 import { projectQueueActivity } from './projectors';
 import { parseMoveTaskId } from '$lib/server/library/MediaMoveService.js';
-
-interface MediaInfo {
-	id: string;
-	title: string;
-	year: number | null;
-}
-
-interface SeriesInfo extends MediaInfo {
-	seasonNumber?: number;
-}
-
-interface EpisodeInfo {
-	id: string;
-	seriesId: string;
-	episodeNumber: number;
-	seasonNumber: number;
-}
-
-interface MediaMaps {
-	movies: Map<string, MediaInfo>;
-	series: Map<string, SeriesInfo>;
-	episodes: Map<string, EpisodeInfo>;
-}
+import {
+	mapFilterStatusToQueueStatuses,
+	mapFilterStatusToHistoryStatuses,
+	mapMoveStatusesForScopeAndFilter,
+	mapMoveTaskStatus
+} from './status-mappers.js';
+import {
+	sortActivities,
+	withoutStatusFilter,
+	applyRequestedStatusFilter,
+	applyFilters,
+	buildActivitySummary,
+	parseRetentionDays
+} from './activity-filters.js';
 
 interface PaginationOptions {
 	limit: number;
 	offset: number;
-}
-
-interface MoveTaskRecord {
-	id: string;
-	taskId: string;
-	status: 'running' | 'completed' | 'failed' | 'cancelled';
-	results: Record<string, unknown> | null;
-	errors: string[] | null;
-	startedAt: string | null;
-	completedAt: string | null;
-}
-
-interface ActiveQueueIndex {
-	byDownloadId: Map<string, DownloadQueueRecord>;
-	byNormalizedTitle: Map<string, DownloadQueueRecord>;
-	byMovieId: Set<string>;
-	bySeriesId: Set<string>;
-	byAddedAt: Map<string, DownloadQueueRecord[]>;
-	titleEntries: { key: string; item: DownloadQueueRecord }[];
-	hasAnyWithoutMediaLink: boolean;
-	items: DownloadQueueRecord[];
 }
 
 interface ActivityQueryResult {
@@ -83,10 +68,12 @@ interface ActivityQueryResult {
 	summary: ActivitySummary | null;
 }
 
+export {
+	DEFAULT_ACTIVITY_RETENTION_DAYS,
+	MAX_ACTIVITY_RETENTION_DAYS
+} from './activity-filters.js';
+
 const ACTIVITY_RETENTION_SETTINGS_KEY = 'activity_history_retention_days';
-export const DEFAULT_ACTIVITY_RETENTION_DAYS = 90;
-export const MAX_ACTIVITY_RETENTION_DAYS = 90;
-const MIN_ACTIVITY_RETENTION_DAYS = 1;
 
 interface DeleteHistoryResult {
 	deletedDownloadHistory: number;
@@ -112,6 +99,7 @@ interface PurgeHistoryResult {
  */
 export class ActivityService {
 	private static instance: ActivityService;
+	private deduplicationService = new ActivityDeduplicationService();
 
 	private constructor() {}
 
@@ -137,7 +125,7 @@ export class ActivityService {
 	): Promise<ActivityQueryResult> {
 		const needsActive = scope === 'all' || scope === 'active';
 		const needsHistory = scope === 'all' || scope === 'history';
-		const summaryFilters = this.withoutStatusFilter(filters);
+		const summaryFilters = withoutStatusFilter(filters);
 
 		// Check if any JS-only filters are active (search, resolution,
 		// releaseGroup, isUpgrade).  When they are, we cannot compute an
@@ -197,7 +185,7 @@ export class ActivityService {
 			? await this.fetchMonitoringForQueue(activeDownloads.map((d) => d.id))
 			: new Map<string, MonitoringHistoryRecord[]>();
 
-		const failedQueueIndex = this.buildFailedQueueIndex(failedQueueItems);
+		const failedQueueIndex = buildFailedQueueIndex(failedQueueItems);
 
 		const queueActivities = this.transformQueueItems(
 			activeDownloads,
@@ -219,24 +207,21 @@ export class ActivityService {
 			...moveActivities
 		];
 
-		let filtered = this.applyRequestedStatusFilter(
-			this.applyFilters(activities, filters, scope),
-			filters
-		);
+		let filtered = applyRequestedStatusFilter(applyFilters(activities, filters, scope), filters);
 		if (scope === 'active') {
-			filtered = this.dedupeActiveActivities(filtered);
+			filtered = this.deduplicationService.dedupeActiveActivities(filtered);
 		}
-		this.sortActivities(filtered, sort);
+		sortActivities(filtered, sort);
 
 		let activeFilteredCount = 0;
 		let summary: ActivitySummary | null = null;
 		if (needsActive) {
-			let activeUniverse = this.applyFilters(activities, summaryFilters, 'active');
-			activeUniverse = this.dedupeActiveActivities(activeUniverse);
-			activeFilteredCount = this.applyRequestedStatusFilter(activeUniverse, filters).length;
+			let activeUniverse = applyFilters(activities, summaryFilters, 'active');
+			activeUniverse = this.deduplicationService.dedupeActiveActivities(activeUniverse);
+			activeFilteredCount = applyRequestedStatusFilter(activeUniverse, filters).length;
 
 			if (scope === 'active') {
-				summary = this.buildActivitySummary(activeUniverse);
+				summary = buildActivitySummary(activeUniverse);
 			}
 		}
 
@@ -299,11 +284,11 @@ export class ActivityService {
 			.from(settings)
 			.where(eq(settings.key, ACTIVITY_RETENTION_SETTINGS_KEY))
 			.get();
-		return this.parseRetentionDays(row?.value);
+		return parseRetentionDays(row?.value);
 	}
 
 	async setRetentionDays(days: number): Promise<number> {
-		const normalized = this.parseRetentionDays(days);
+		const normalized = parseRetentionDays(days);
 		await db
 			.insert(settings)
 			.values({
@@ -383,7 +368,7 @@ export class ActivityService {
 				.where(inArray(downloadHistory.id, historyIdList))
 				.all();
 
-			const failedQueueIndex = this.buildFailedQueueIndex(await this.fetchFailedQueueItems());
+			const failedQueueIndex = buildFailedQueueIndex(await this.fetchFailedQueueItems());
 			const protectedHistoryIds = new Set<string>();
 
 			for (const row of requestedHistoryRows) {
@@ -481,7 +466,7 @@ export class ActivityService {
 	}
 
 	async purgeHistoryOlderThan(retentionDays: number): Promise<PurgeHistoryResult> {
-		const normalizedRetentionDays = this.parseRetentionDays(retentionDays);
+		const normalizedRetentionDays = parseRetentionDays(retentionDays);
 		const cutoffDate = new Date();
 		cutoffDate.setDate(cutoffDate.getDate() - normalizedRetentionDays);
 		const cutoffIso = cutoffDate.toISOString();
@@ -555,7 +540,7 @@ export class ActivityService {
 		mediaMaps: MediaMaps,
 		linkedMonitoring: MonitoringHistoryRecord[] = []
 	): UnifiedActivity {
-		const mediaInfo = this.resolveMediaInfo(download, mediaMaps);
+		const mediaInfo = resolveMediaInfo(download, mediaMaps);
 
 		return projectQueueActivity(download, mediaInfo, linkedMonitoring);
 	}
@@ -571,17 +556,15 @@ export class ActivityService {
 	): UnifiedActivity | null {
 		// Skip if this release is already represented by an active queue row.
 		// This avoids duplicate active entries when a failed history record is retried.
-		const index = this.buildActiveQueueIndex(activeDownloads);
-		if (this.isHistoryRepresentedByActiveQueueIndexed(history, index)) {
+		const index = this.deduplicationService.buildActiveQueueIndex(activeDownloads);
+		if (this.deduplicationService.isHistoryRepresentedByActiveQueueIndexed(history, index)) {
 			return null;
 		}
 
-		const timeline = this.buildHistoryTimeline(history);
-		const mediaInfo = this.resolveMediaInfo(history, mediaMaps);
+		const timeline = buildHistoryTimeline(history);
+		const mediaInfo = resolveMediaInfo(history, mediaMaps);
 		const queueItemId =
-			history.status === 'failed'
-				? this.findFailedQueueItemId(history, failedQueueIndex)
-				: undefined;
+			history.status === 'failed' ? findFailedQueueItemId(history, failedQueueIndex) : undefined;
 
 		return {
 			id: `history-${history.id}`,
@@ -640,7 +623,7 @@ export class ActivityService {
 		if (processedKeys?.has(mediaKey)) return null;
 		processedKeys?.add(mediaKey);
 
-		const mediaInfo = this.resolveMonitoringMediaInfo(mon, mediaMaps);
+		const mediaInfo = resolveMonitoringMediaInfo(mon, mediaMaps);
 
 		const timeline: ActivityEvent[] = [
 			{
@@ -701,7 +684,7 @@ export class ActivityService {
 		// Apply status filter at SQL level when possible
 		let statusFilter: string[] = baseStatuses;
 		if (filters.status && filters.status !== 'all') {
-			const mapped = this.mapFilterStatusToQueueStatuses(filters.status);
+			const mapped = mapFilterStatusToQueueStatuses(filters.status);
 			if (mapped) {
 				statusFilter = mapped.filter((s) => baseStatuses.includes(s));
 				// If no overlap (e.g. filtering for 'success' on active tab), return empty
@@ -795,7 +778,7 @@ export class ActivityService {
 
 		// Status filter at SQL level
 		if (filters.status && filters.status !== 'all') {
-			const mapped = this.mapFilterStatusToHistoryStatuses(filters.status);
+			const mapped = mapFilterStatusToHistoryStatuses(filters.status);
 			if (mapped) {
 				if (mapped.length === 0) return [];
 				conditions.push(inArray(downloadHistory.status, mapped));
@@ -879,7 +862,7 @@ export class ActivityService {
 		const conditions: SQL[] = [];
 
 		if (filters.status && filters.status !== 'all') {
-			const mapped = this.mapFilterStatusToHistoryStatuses(filters.status);
+			const mapped = mapFilterStatusToHistoryStatuses(filters.status);
 			if (mapped) {
 				if (mapped.length === 0) return 0;
 				conditions.push(inArray(downloadHistory.status, mapped));
@@ -1066,7 +1049,7 @@ export class ActivityService {
 	): Promise<MoveTaskRecord[]> {
 		const conditions: SQL[] = [sql`${taskHistory.taskId} LIKE 'media-move:%'`];
 
-		const statuses = this.mapMoveStatusesForScopeAndFilter(scope, filters.status ?? 'all');
+		const statuses = mapMoveStatusesForScopeAndFilter(scope, filters.status ?? 'all');
 		if (statuses.length === 0) return [];
 		conditions.push(inArray(taskHistory.status, statuses));
 
@@ -1114,7 +1097,7 @@ export class ActivityService {
 	): Promise<number> {
 		const conditions: SQL[] = [sql`${taskHistory.taskId} LIKE 'media-move:%'`];
 
-		const statuses = this.mapMoveStatusesForScopeAndFilter(scope, filters.status ?? 'all');
+		const statuses = mapMoveStatusesForScopeAndFilter(scope, filters.status ?? 'all');
 		if (statuses.length === 0) return 0;
 		conditions.push(inArray(taskHistory.status, statuses));
 
@@ -1166,7 +1149,7 @@ export class ActivityService {
 				: null;
 		const mediaTitle = resultsMediaTitle ?? defaultTitle;
 
-		const mappedStatus = this.mapMoveTaskStatus(task.status);
+		const mappedStatus = mapMoveTaskStatus(task.status);
 		const statusReason =
 			task.status === 'failed'
 				? (task.errors?.[0] ?? 'Failed to move media files')
@@ -1343,7 +1326,7 @@ export class ActivityService {
 		failedQueueIndex?: Map<string, string>
 	): UnifiedActivity[] {
 		// Build the active queue index once for all history items (O(n) build, O(1) lookups)
-		const activeIndex = this.buildActiveQueueIndex(activeDownloads);
+		const activeIndex = this.deduplicationService.buildActiveQueueIndex(activeDownloads);
 
 		return historyItems
 			.map((history) =>
@@ -1361,16 +1344,14 @@ export class ActivityService {
 		activeIndex: ActiveQueueIndex,
 		failedQueueIndex?: Map<string, string>
 	): UnifiedActivity | null {
-		if (this.isHistoryRepresentedByActiveQueueIndexed(history, activeIndex)) {
+		if (this.deduplicationService.isHistoryRepresentedByActiveQueueIndexed(history, activeIndex)) {
 			return null;
 		}
 
-		const timeline = this.buildHistoryTimeline(history);
-		const mediaInfo = this.resolveMediaInfo(history, mediaMaps);
+		const timeline = buildHistoryTimeline(history);
+		const mediaInfo = resolveMediaInfo(history, mediaMaps);
 		const queueItemId =
-			history.status === 'failed'
-				? this.findFailedQueueItemId(history, failedQueueIndex)
-				: undefined;
+			history.status === 'failed' ? findFailedQueueItemId(history, failedQueueIndex) : undefined;
 
 		return {
 			id: `history-${history.id}`,
@@ -1418,846 +1399,6 @@ export class ActivityService {
 		return monitoringItems
 			.map((mon) => this.transformMonitoringItem(mon, mediaMaps, processedKeys))
 			.filter((activity): activity is UnifiedActivity => activity !== null);
-	}
-
-	private buildFailedQueueIndex(
-		queueItems: Pick<DownloadQueueRecord, 'id' | 'downloadId' | 'title' | 'addedAt'>[]
-	): Map<string, string> {
-		const index = new Map<string, string>();
-
-		for (const item of queueItems) {
-			if (item.downloadId) {
-				index.set(`download:${item.downloadId}`, item.id);
-			}
-			if (item.title && item.addedAt) {
-				index.set(`title:${item.title.toLowerCase()}|grabbed:${item.addedAt}`, item.id);
-			}
-		}
-
-		return index;
-	}
-
-	private findFailedQueueItemId(
-		history: DownloadHistoryRecord,
-		failedQueueIndex?: Map<string, string>
-	): string | undefined {
-		if (!failedQueueIndex) return undefined;
-
-		if (history.downloadId) {
-			const byDownloadId = failedQueueIndex.get(`download:${history.downloadId}`);
-			if (byDownloadId) return byDownloadId;
-		}
-
-		if (history.title && history.grabbedAt) {
-			return failedQueueIndex.get(
-				`title:${history.title.toLowerCase()}|grabbed:${history.grabbedAt}`
-			);
-		}
-
-		return undefined;
-	}
-
-	private normalizeReleaseKey(value: string | null | undefined): string {
-		if (!value) return '';
-		return value
-			.toLowerCase()
-			.replace(/[^a-z0-9]+/g, '')
-			.trim();
-	}
-
-	private toEpisodeIdList(value: unknown): string[] {
-		if (Array.isArray(value)) {
-			return value.filter(
-				(entry): entry is string => typeof entry === 'string' && entry.length > 0
-			);
-		}
-
-		if (typeof value === 'string') {
-			try {
-				const parsed = JSON.parse(value) as unknown;
-				if (Array.isArray(parsed)) {
-					return parsed.filter(
-						(entry): entry is string => typeof entry === 'string' && entry.length > 0
-					);
-				}
-			} catch {
-				// Ignore malformed JSON episode arrays and fall through.
-			}
-		}
-
-		return [];
-	}
-
-	private hasEpisodeOverlap(left: unknown, right: unknown): boolean {
-		const leftIds = this.toEpisodeIdList(left);
-		const rightIds = this.toEpisodeIdList(right);
-		if (leftIds.length === 0 || rightIds.length === 0) return false;
-		const rightSet = new Set(rightIds);
-		return leftIds.some((episodeId) => rightSet.has(episodeId));
-	}
-
-	private isSameMediaTarget(
-		history: Pick<DownloadHistoryRecord, 'movieId' | 'seriesId' | 'episodeIds' | 'seasonNumber'>,
-		queueItem: Pick<DownloadQueueRecord, 'movieId' | 'seriesId' | 'episodeIds' | 'seasonNumber'>
-	): boolean {
-		if (history.movieId && queueItem.movieId) {
-			return history.movieId === queueItem.movieId;
-		}
-
-		if (history.seriesId && queueItem.seriesId && history.seriesId === queueItem.seriesId) {
-			if (this.hasEpisodeOverlap(history.episodeIds, queueItem.episodeIds)) {
-				return true;
-			}
-
-			if (history.seasonNumber && queueItem.seasonNumber) {
-				return history.seasonNumber === queueItem.seasonNumber;
-			}
-
-			const historyEpisodeIds = this.toEpisodeIdList(history.episodeIds);
-			const queueEpisodeIds = this.toEpisodeIdList(queueItem.episodeIds);
-			if (historyEpisodeIds.length === 0 && queueEpisodeIds.length === 0) {
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	/**
-	 * Pre-built index for fast active queue lookups.
-	 * Replaces O(n*m) iteration with O(1) lookups for most match paths.
-	 */
-	private buildActiveQueueIndex(activeDownloads: DownloadQueueRecord[]): ActiveQueueIndex {
-		const byDownloadId = new Map<string, DownloadQueueRecord>();
-		const byNormalizedTitle = new Map<string, DownloadQueueRecord>();
-		const byMovieId = new Set<string>();
-		const bySeriesId = new Set<string>();
-		const byAddedAt = new Map<string, DownloadQueueRecord[]>();
-		const titleEntries: { key: string; item: DownloadQueueRecord }[] = [];
-		const hasAnyWithoutMediaLink = activeDownloads.some((d) => !d.movieId && !d.seriesId);
-
-		for (const item of activeDownloads) {
-			if (item.downloadId) {
-				byDownloadId.set(item.downloadId, item);
-			}
-			const titleKey = this.normalizeReleaseKey(item.title);
-			if (titleKey) {
-				byNormalizedTitle.set(titleKey, item);
-				titleEntries.push({ key: titleKey, item });
-			}
-			if (item.movieId) byMovieId.add(item.movieId);
-			if (item.seriesId) bySeriesId.add(item.seriesId);
-			if (item.addedAt) {
-				const existing = byAddedAt.get(item.addedAt) || [];
-				existing.push(item);
-				byAddedAt.set(item.addedAt, existing);
-			}
-		}
-
-		return {
-			byDownloadId,
-			byNormalizedTitle,
-			byMovieId,
-			bySeriesId,
-			byAddedAt,
-			titleEntries,
-			hasAnyWithoutMediaLink,
-			items: activeDownloads
-		};
-	}
-
-	private isHistoryRepresentedByActiveQueueIndexed(
-		history: DownloadHistoryRecord,
-		index: ActiveQueueIndex
-	): boolean {
-		if (index.items.length === 0) return false;
-
-		// Fast path 1: exact downloadId match
-		if (history.downloadId && index.byDownloadId.has(history.downloadId)) {
-			return true;
-		}
-
-		const historyTitleKey = this.normalizeReleaseKey(history.title);
-		const hasHistoryMediaLink = Boolean(history.movieId || history.seriesId);
-
-		// Fast path 2: exact title match + (same media OR same grabbedAt OR no media link)
-		if (historyTitleKey) {
-			const queueByTitle = index.byNormalizedTitle.get(historyTitleKey);
-			if (queueByTitle) {
-				// sameTitle is true, check remaining conditions
-				const sameMovie = Boolean(
-					history.movieId && queueByTitle.movieId && history.movieId === queueByTitle.movieId
-				);
-				const sameSeries = Boolean(
-					history.seriesId && queueByTitle.seriesId && history.seriesId === queueByTitle.seriesId
-				);
-				const sameGrabbedAt = Boolean(
-					history.grabbedAt && queueByTitle.addedAt && history.grabbedAt === queueByTitle.addedAt
-				);
-				const hasQueueMediaLink = Boolean(queueByTitle.movieId || queueByTitle.seriesId);
-				const sameProtocol = Boolean(
-					history.protocol && queueByTitle.protocol && history.protocol === queueByTitle.protocol
-				);
-				const protocolCompatible = !history.protocol || !queueByTitle.protocol || sameProtocol;
-
-				if (sameMovie || sameSeries || sameGrabbedAt) return true;
-				if (this.isSameMediaTarget(history, queueByTitle)) return true;
-				if (protocolCompatible && (!hasHistoryMediaLink || !hasQueueMediaLink)) return true;
-			}
-		}
-
-		// Fast path 3: same grabbedAt + same movie/series
-		if (history.grabbedAt) {
-			const queueItemsAtTime = index.byAddedAt.get(history.grabbedAt);
-			if (queueItemsAtTime) {
-				for (const queueItem of queueItemsAtTime) {
-					const sameMovie = Boolean(
-						history.movieId && queueItem.movieId && history.movieId === queueItem.movieId
-					);
-					const sameSeries = Boolean(
-						history.seriesId && queueItem.seriesId && history.seriesId === queueItem.seriesId
-					);
-					if (sameMovie || sameSeries) return true;
-					if (this.isSameMediaTarget(history, queueItem)) return true;
-				}
-			}
-		}
-
-		// Fast path 4: same media + same grabbedAt (check media exists in index)
-		if (history.movieId && index.byMovieId.has(history.movieId) && history.grabbedAt) {
-			const queueItemsAtTime = index.byAddedAt.get(history.grabbedAt);
-			if (queueItemsAtTime?.some((q) => q.movieId === history.movieId)) return true;
-		}
-		if (history.seriesId && index.bySeriesId.has(history.seriesId) && history.grabbedAt) {
-			const queueItemsAtTime = index.byAddedAt.get(history.grabbedAt);
-			if (queueItemsAtTime?.some((q) => q.seriesId === history.seriesId)) return true;
-		}
-
-		// Slow path: substring title matching (only when exact title didn't match)
-		// This handles cases where title normalization results in containment rather than equality
-		if (historyTitleKey && historyTitleKey.length > 12) {
-			for (const entry of index.titleEntries) {
-				if (entry.key === historyTitleKey) continue; // already checked exact match above
-				const isSubstring =
-					(entry.key.length > 12 && entry.key.includes(historyTitleKey)) ||
-					historyTitleKey.includes(entry.key);
-				if (!isSubstring) continue;
-
-				const queueItem = entry.item;
-				const sameMovie = Boolean(
-					history.movieId && queueItem.movieId && history.movieId === queueItem.movieId
-				);
-				const sameSeries = Boolean(
-					history.seriesId && queueItem.seriesId && history.seriesId === queueItem.seriesId
-				);
-				const sameGrabbedAt = Boolean(
-					history.grabbedAt && queueItem.addedAt && history.grabbedAt === queueItem.addedAt
-				);
-				const hasQueueMediaLink = Boolean(queueItem.movieId || queueItem.seriesId);
-				const sameProtocol = Boolean(
-					history.protocol && queueItem.protocol && history.protocol === queueItem.protocol
-				);
-				const protocolCompatible = !history.protocol || !queueItem.protocol || sameProtocol;
-
-				if (sameMovie || sameSeries || sameGrabbedAt) return true;
-				if (this.isSameMediaTarget(history, queueItem)) return true;
-				if (protocolCompatible && (!hasHistoryMediaLink || !hasQueueMediaLink)) return true;
-			}
-		}
-
-		// Fallback for short-titled items with no media link (rare case)
-		if (historyTitleKey && !hasHistoryMediaLink && index.hasAnyWithoutMediaLink) {
-			const queueByTitle = index.byNormalizedTitle.get(historyTitleKey);
-			if (queueByTitle) {
-				const hasQueueMediaLink = Boolean(queueByTitle.movieId || queueByTitle.seriesId);
-				if (!hasQueueMediaLink) {
-					const protocolCompatible =
-						!history.protocol ||
-						!queueByTitle.protocol ||
-						history.protocol === queueByTitle.protocol;
-					if (protocolCompatible) return true;
-				}
-			}
-		}
-
-		return false;
-	}
-
-	private buildActiveDedupKey(activity: UnifiedActivity): string {
-		const releaseKey = this.normalizeReleaseKey(
-			activity.releaseTitle || activity.mediaTitle || activity.id
-		);
-		const mediaTitleKey = this.normalizeReleaseKey(activity.mediaTitle || activity.id);
-		const mediaKey =
-			activity.mediaType === 'movie'
-				? `movie:${activity.mediaId || mediaTitleKey}`
-				: activity.seriesId
-					? `series:${activity.seriesId}`
-					: `fallback:${activity.mediaType}:${mediaTitleKey}`;
-
-		return `${mediaKey}|release:${releaseKey}`;
-	}
-
-	private getActiveDedupPriority(activity: UnifiedActivity): [number, number, number] {
-		const statusPriority =
-			activity.status === 'downloading' || activity.status === 'seeding'
-				? 0
-				: activity.status === 'paused' || activity.status === 'searching'
-					? 1
-					: activity.status === 'failed'
-						? 2
-						: 3;
-
-		const sourcePriority = activity.id.startsWith('queue-') ? 0 : 1;
-		const startedAtMs = Number.isFinite(new Date(activity.startedAt).getTime())
-			? new Date(activity.startedAt).getTime()
-			: 0;
-		const recencyPriority = -startedAtMs;
-
-		return [statusPriority, sourcePriority, recencyPriority];
-	}
-
-	private shouldPreferActiveCandidate(
-		candidate: UnifiedActivity,
-		existing: UnifiedActivity
-	): boolean {
-		const [candidateStatus, candidateSource, candidateRecency] =
-			this.getActiveDedupPriority(candidate);
-		const [existingStatus, existingSource, existingRecency] = this.getActiveDedupPriority(existing);
-
-		if (candidateStatus !== existingStatus) return candidateStatus < existingStatus;
-		if (candidateSource !== existingSource) return candidateSource < existingSource;
-		return candidateRecency < existingRecency;
-	}
-
-	private dedupeActiveActivities(activities: UnifiedActivity[]): UnifiedActivity[] {
-		const dedupedByKey = new Map<string, UnifiedActivity>();
-		const stableOrder: string[] = [];
-
-		for (const activity of activities) {
-			const key = this.buildActiveDedupKey(activity);
-			if (!dedupedByKey.has(key)) {
-				dedupedByKey.set(key, activity);
-				stableOrder.push(key);
-				continue;
-			}
-
-			const existing = dedupedByKey.get(key)!;
-			if (this.shouldPreferActiveCandidate(activity, existing)) {
-				dedupedByKey.set(key, activity);
-			}
-		}
-
-		return stableOrder
-			.map((key) => dedupedByKey.get(key))
-			.filter((activity): activity is UnifiedActivity => Boolean(activity));
-	}
-
-	private buildHistoryTimeline(history: DownloadHistoryRecord): ActivityEvent[] {
-		const timeline: ActivityEvent[] = [];
-
-		if (history.grabbedAt) {
-			timeline.push({ type: 'grabbed', timestamp: history.grabbedAt });
-		}
-		if (history.completedAt) {
-			timeline.push({ type: 'completed', timestamp: history.completedAt });
-		}
-		if (history.importedAt && history.status === 'imported') {
-			timeline.push({ type: 'imported', timestamp: history.importedAt });
-		}
-		if (history.status === 'failed' && history.createdAt) {
-			timeline.push({
-				type: 'failed',
-				timestamp: history.createdAt,
-				details: history.statusReason ?? undefined
-			});
-		}
-		if (history.status === 'rejected' && history.createdAt) {
-			timeline.push({
-				type: 'rejected',
-				timestamp: history.createdAt,
-				details: history.statusReason ?? undefined
-			});
-		}
-
-		timeline.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-		return timeline;
-	}
-
-	private resolveMediaInfo(
-		item: DownloadQueueRecord | DownloadHistoryRecord,
-		mediaMaps: MediaMaps
-	): {
-		mediaType: 'movie' | 'episode';
-		mediaId: string;
-		mediaTitle: string;
-		mediaYear: number | null;
-		seriesId?: string;
-		seriesTitle?: string;
-		seasonNumber?: number;
-		episodeNumber?: number;
-	} {
-		if (item.movieId && mediaMaps.movies.has(item.movieId)) {
-			const movie = mediaMaps.movies.get(item.movieId)!;
-			return {
-				mediaType: 'movie',
-				mediaId: movie.id,
-				mediaTitle: movie.title,
-				mediaYear: movie.year
-			};
-		}
-
-		if (item.seriesId && mediaMaps.series.has(item.seriesId)) {
-			const s = mediaMaps.series.get(item.seriesId)!;
-			const seasonNumber = item.seasonNumber ?? undefined;
-
-			if (item.episodeIds && item.episodeIds.length > 0) {
-				const firstEp = mediaMaps.episodes.get(item.episodeIds[0]);
-				if (firstEp) {
-					const episodeNumber = firstEp.episodeNumber;
-					const mediaTitle =
-						item.episodeIds.length > 1
-							? `${s.title} S${String(seasonNumber).padStart(2, '0')}E${String(episodeNumber).padStart(2, '0')}-E${String(mediaMaps.episodes.get(item.episodeIds[item.episodeIds.length - 1])?.episodeNumber).padStart(2, '0')}`
-							: `${s.title} S${String(seasonNumber).padStart(2, '0')}E${String(episodeNumber).padStart(2, '0')}`;
-
-					return {
-						mediaType: 'episode',
-						mediaId: firstEp.id,
-						mediaTitle,
-						mediaYear: s.year,
-						seriesId: item.seriesId,
-						seriesTitle: s.title,
-						seasonNumber,
-						episodeNumber
-					};
-				}
-			}
-
-			return {
-				mediaType: 'episode',
-				mediaId: s.id,
-				mediaTitle: item.seasonNumber ? `${s.title} Season ${item.seasonNumber}` : s.title,
-				mediaYear: s.year,
-				seriesId: item.seriesId,
-				seriesTitle: s.title,
-				seasonNumber
-			};
-		}
-
-		return {
-			...this.deriveFallbackMediaInfo(
-				item.title,
-				Boolean(item.seriesId || (item.episodeIds?.length ?? 0) > 0 || item.seasonNumber)
-			),
-			mediaId: ''
-		};
-	}
-
-	private resolveMonitoringMediaInfo(
-		mon: MonitoringHistoryRecord,
-		mediaMaps: MediaMaps
-	): {
-		mediaType: 'movie' | 'episode';
-		mediaId: string;
-		mediaTitle: string;
-		mediaYear: number | null;
-		seriesId?: string;
-		seriesTitle?: string;
-		seasonNumber?: number;
-		episodeNumber?: number;
-	} {
-		if (mon.movieId && mediaMaps.movies.has(mon.movieId)) {
-			const movie = mediaMaps.movies.get(mon.movieId)!;
-			return {
-				mediaType: 'movie',
-				mediaId: movie.id,
-				mediaTitle: movie.title,
-				mediaYear: movie.year
-			};
-		}
-
-		if (mon.seriesId && mediaMaps.series.has(mon.seriesId)) {
-			const s = mediaMaps.series.get(mon.seriesId)!;
-			const seasonNumber = mon.seasonNumber ?? undefined;
-
-			if (mon.episodeId && mediaMaps.episodes.has(mon.episodeId)) {
-				const ep = mediaMaps.episodes.get(mon.episodeId)!;
-				return {
-					mediaType: 'episode',
-					mediaId: ep.id,
-					mediaTitle: `${s.title} S${String(seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')}`,
-					mediaYear: s.year,
-					seriesId: mon.seriesId,
-					seriesTitle: s.title,
-					seasonNumber,
-					episodeNumber: ep.episodeNumber
-				};
-			}
-
-			return {
-				mediaType: 'episode',
-				mediaId: s.id,
-				mediaTitle: mon.seasonNumber ? `${s.title} Season ${mon.seasonNumber}` : s.title,
-				mediaYear: s.year,
-				seriesId: mon.seriesId,
-				seriesTitle: s.title,
-				seasonNumber
-			};
-		}
-
-		return {
-			...this.deriveFallbackMediaInfo(mon.releaseGrabbed, Boolean(mon.seriesId || mon.episodeId)),
-			mediaId: ''
-		};
-	}
-
-	private deriveFallbackMediaInfo(
-		releaseTitle: string | null | undefined,
-		isEpisode: boolean
-	): {
-		mediaType: 'movie' | 'episode';
-		mediaId: string;
-		mediaTitle: string;
-		mediaYear: number | null;
-		seasonNumber?: number;
-		episodeNumber?: number;
-	} {
-		if (!releaseTitle) {
-			return {
-				mediaType: isEpisode ? 'episode' : 'movie',
-				mediaId: '',
-				mediaTitle: 'Unknown',
-				mediaYear: null
-			};
-		}
-
-		const parsed = parseRelease(releaseTitle);
-		const fallbackTitle = releaseTitle.replace(/[._]/g, ' ').replace(/\s+/g, ' ').trim();
-		const baseTitle = parsed.cleanTitle?.trim() || fallbackTitle || 'Unknown';
-
-		if (!isEpisode) {
-			return {
-				mediaType: 'movie',
-				mediaId: '',
-				mediaTitle: baseTitle,
-				mediaYear: parsed.year ?? null
-			};
-		}
-
-		const seasonNumber = parsed.episode?.season;
-		const episodeNumbers = parsed.episode?.episodes;
-		const firstEpisode = episodeNumbers?.[0];
-		const lastEpisode =
-			episodeNumbers && episodeNumbers.length > 0
-				? episodeNumbers[episodeNumbers.length - 1]
-				: undefined;
-
-		let mediaTitle = baseTitle;
-		if (seasonNumber && firstEpisode) {
-			const season = String(seasonNumber).padStart(2, '0');
-			const startEpisode = String(firstEpisode).padStart(2, '0');
-			if (lastEpisode && lastEpisode !== firstEpisode) {
-				const endEpisode = String(lastEpisode).padStart(2, '0');
-				mediaTitle = `${baseTitle} S${season}E${startEpisode}-E${endEpisode}`;
-			} else {
-				mediaTitle = `${baseTitle} S${season}E${startEpisode}`;
-			}
-		} else if (seasonNumber && parsed.episode?.isSeasonPack) {
-			mediaTitle = `${baseTitle} Season ${seasonNumber}`;
-		}
-
-		return {
-			mediaType: 'episode',
-			mediaId: '',
-			mediaTitle,
-			mediaYear: parsed.year ?? null,
-			seasonNumber: seasonNumber ?? undefined,
-			episodeNumber: firstEpisode ?? undefined
-		};
-	}
-
-	private sortActivities(activities: UnifiedActivity[], sort: ActivitySortOptions): void {
-		activities.sort((a, b) => {
-			const priorityComparison = this.compareActivityPriority(a, b);
-			if (priorityComparison !== 0) {
-				return priorityComparison;
-			}
-
-			let comparison = 0;
-
-			switch (sort.field) {
-				case 'time':
-					comparison = new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime();
-					break;
-				case 'media':
-					comparison = a.mediaTitle.localeCompare(b.mediaTitle);
-					break;
-				case 'size':
-					comparison = (b.size || 0) - (a.size || 0);
-					break;
-				case 'status':
-					comparison = a.status.localeCompare(b.status);
-					break;
-			}
-
-			if (comparison === 0) {
-				comparison = new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime();
-			}
-
-			return sort.direction === 'asc' ? -comparison : comparison;
-		});
-	}
-
-	private parseRetentionDays(value: unknown): number {
-		const numeric = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10);
-		if (!Number.isFinite(numeric)) {
-			return DEFAULT_ACTIVITY_RETENTION_DAYS;
-		}
-
-		return Math.max(MIN_ACTIVITY_RETENTION_DAYS, Math.min(MAX_ACTIVITY_RETENTION_DAYS, numeric));
-	}
-
-	private compareActivityPriority(a: UnifiedActivity, b: UnifiedActivity): number {
-		const aPriority = a.status === 'downloading' || a.status === 'seeding' ? 0 : 1;
-		const bPriority = b.status === 'downloading' || b.status === 'seeding' ? 0 : 1;
-		return aPriority - bPriority;
-	}
-
-	/**
-	 * Map a UI-facing filter status to download_queue status values.
-	 * Returns null if the filter does not constrain queue statuses.
-	 */
-	private mapFilterStatusToQueueStatuses(status: string): string[] | null {
-		switch (status) {
-			case 'downloading':
-				return ['downloading', 'queued', 'stalled', 'completed', 'postprocessing', 'importing'];
-			case 'seeding':
-				return ['seeding'];
-			case 'paused':
-				return ['paused'];
-			case 'failed':
-				return ['failed'];
-			case 'success':
-				// Queue items are never in a "success" state visible to the user
-				return [];
-			default:
-				return null;
-		}
-	}
-
-	/**
-	 * Map a UI-facing filter status to download_history status values.
-	 * Returns null if the filter does not constrain history statuses.
-	 */
-	private mapFilterStatusToHistoryStatuses(status: string): string[] | null {
-		switch (status) {
-			case 'success':
-				return ['imported'];
-			case 'failed':
-				return ['failed'];
-			case 'search_error':
-				// search_error items come from monitoring, not download history
-				return [];
-			case 'removed':
-				return ['removed'];
-			case 'rejected':
-				return ['rejected'];
-			case 'downloading':
-			case 'seeding':
-			case 'paused':
-			case 'no_results':
-				// History items never have these statuses
-				return [];
-			default:
-				return null;
-		}
-	}
-
-	private mapMoveStatusesForScopeAndFilter(
-		scope: ActivityScope,
-		status: ActivityFilters['status'] | 'all'
-	): Array<'running' | 'completed' | 'failed' | 'cancelled'> {
-		let base: Array<'running' | 'completed' | 'failed' | 'cancelled'>;
-		if (scope === 'active') {
-			base = ['running'];
-		} else if (scope === 'history') {
-			base = ['completed', 'failed', 'cancelled'];
-		} else {
-			base = ['running', 'completed', 'failed', 'cancelled'];
-		}
-
-		switch (status) {
-			case 'all':
-				return base;
-			case 'downloading':
-				return base.includes('running') ? ['running'] : [];
-			case 'success':
-				return base.includes('completed') ? ['completed'] : [];
-			case 'failed':
-				return base.includes('failed') ? ['failed'] : [];
-			case 'removed':
-				return base.includes('cancelled') ? ['cancelled'] : [];
-			case 'seeding':
-			case 'paused':
-			case 'search_error':
-			case 'rejected':
-			case 'no_results':
-			case 'streaming':
-			case 'searching':
-			case 'imported':
-				return [];
-			default:
-				return base;
-		}
-	}
-
-	private mapMoveTaskStatus(
-		status: MoveTaskRecord['status']
-	): Extract<ActivityStatus, 'downloading' | 'imported' | 'failed' | 'removed'> {
-		switch (status) {
-			case 'running':
-				return 'downloading';
-			case 'completed':
-				return 'imported';
-			case 'failed':
-				return 'failed';
-			case 'cancelled':
-				return 'removed';
-		}
-	}
-
-	private withoutStatusFilter(filters: ActivityFilters): ActivityFilters {
-		if (!filters.status || filters.status === 'all') {
-			return filters;
-		}
-
-		return {
-			...filters,
-			status: 'all'
-		};
-	}
-
-	private applyRequestedStatusFilter(
-		activities: UnifiedActivity[],
-		filters: ActivityFilters
-	): UnifiedActivity[] {
-		const status = filters.status ?? 'all';
-		if (status === 'all') return activities;
-
-		switch (status) {
-			case 'success':
-				return activities.filter((activity) => activity.status === 'imported');
-			case 'downloading':
-				return activities.filter((activity) => activity.status === 'downloading');
-			case 'failed':
-			case 'search_error':
-			case 'seeding':
-			case 'paused':
-			case 'removed':
-			case 'rejected':
-			case 'no_results':
-				return activities.filter((activity) => activity.status === status);
-			default:
-				return activities;
-		}
-	}
-
-	private createEmptySummary(): ActivitySummary {
-		return {
-			totalCount: 0,
-			downloadingCount: 0,
-			seedingCount: 0,
-			pausedCount: 0,
-			failedCount: 0
-		};
-	}
-
-	private buildActivitySummary(activeActivities: UnifiedActivity[]): ActivitySummary {
-		const summary = this.createEmptySummary();
-
-		for (const activity of activeActivities) {
-			summary.totalCount += 1;
-			switch (activity.status) {
-				case 'seeding':
-					summary.seedingCount += 1;
-					break;
-				case 'paused':
-					summary.pausedCount += 1;
-					break;
-				case 'failed':
-					summary.failedCount += 1;
-					break;
-				default:
-					summary.downloadingCount += 1;
-					break;
-			}
-		}
-
-		return summary;
-	}
-
-	/**
-	 * Apply filters that cannot be expressed in SQL.
-	 *
-	 * Filters already pushed to SQL in fetchActiveDownloads / fetchHistoryItems /
-	 * fetchMonitoringItems: status, protocol, indexer, downloadClientId,
-	 * mediaType, startDate, endDate.  DO NOT re-apply them here.
-	 *
-	 * This method handles only:
-	 *  - scope (active vs history) — determined by source table, but transformed
-	 *    activities need the isActiveActivity check after merging
-	 *  - search — matches across joined/transformed fields (mediaTitle, seriesTitle, etc.)
-	 *  - releaseGroup — extracted from the release title at transform time
-	 *  - resolution — parsed from the JSON quality blob
-	 *  - isUpgrade — only available after transform
-	 */
-	private applyFilters(
-		activities: UnifiedActivity[],
-		filters: ActivityFilters,
-		scope: ActivityScope = 'all'
-	): UnifiedActivity[] {
-		let filtered = activities;
-
-		if (scope === 'active') {
-			filtered = filtered.filter((activity) => isActiveActivity(activity));
-		} else if (scope === 'history') {
-			filtered = filtered.filter((activity) => !isActiveActivity(activity));
-		}
-
-		// Search filter (spans joined fields not available in SQL)
-		if (filters.search) {
-			const searchLower = filters.search.toLowerCase();
-			filtered = filtered.filter(
-				(a) =>
-					a.mediaTitle.toLowerCase().includes(searchLower) ||
-					a.releaseTitle?.toLowerCase().includes(searchLower) ||
-					a.seriesTitle?.toLowerCase().includes(searchLower) ||
-					a.releaseGroup?.toLowerCase().includes(searchLower) ||
-					a.indexerName?.toLowerCase().includes(searchLower)
-			);
-		}
-
-		// Release group filter (extracted at transform time)
-		if (filters.releaseGroup) {
-			filtered = filtered.filter((a) =>
-				a.releaseGroup?.toLowerCase().includes(filters.releaseGroup!.toLowerCase())
-			);
-		}
-
-		// Resolution filter (parsed from JSON quality blob)
-		if (filters.resolution) {
-			filtered = filtered.filter(
-				(a) => a.quality?.resolution?.toLowerCase() === filters.resolution?.toLowerCase()
-			);
-		}
-
-		// Is upgrade filter (only known after transform)
-		if (filters.isUpgrade !== undefined) {
-			filtered = filtered.filter((a) => a.isUpgrade === filters.isUpgrade);
-		}
-
-		return filtered;
 	}
 }
 

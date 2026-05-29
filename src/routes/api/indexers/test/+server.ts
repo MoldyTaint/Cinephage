@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { getIndexerManager } from '$lib/server/indexers/IndexerManager';
 import { getNewznabCapabilitiesProvider } from '$lib/server/indexers/newznab/NewznabCapabilitiesProvider';
 import { indexerTestSchema } from '$lib/validation/schemas';
+import { mergeBlankSensitiveIndexerSettings } from '$lib/server/indexers/settingsSecrets';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 function redactSensitiveDetails(message: string): string {
@@ -169,6 +170,8 @@ export const POST: RequestHandler = async (event) => {
 		);
 	}
 
+	let existingSettings: Record<string, unknown> | undefined;
+
 	// If testing an existing saved indexer from overview, verify it exists
 	// so health tracking updates apply only to real indexers.
 	if (indexerId) {
@@ -182,12 +185,17 @@ export const POST: RequestHandler = async (event) => {
 				{ status: 400 }
 			);
 		}
+		existingSettings = existing.settings;
 	}
 
 	try {
 		// Get protocol from YAML definition
 		const protocol = definition.protocol;
-		const settings = (validated.settings ?? {}) as Record<string, string | number | boolean>;
+		const settings = mergeBlankSensitiveIndexerSettings(
+			validated.settings,
+			existingSettings,
+			definition.settings
+		);
 
 		// Torznab validation uses the canonical caps endpoint.
 		// API key is optional and only included when provided.

@@ -1,22 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { captchaSolverSettingsService } from '$lib/server/captcha';
-import { z } from 'zod';
+import { captchaSolverSettingsUpdateSchema } from '$lib/validation/schemas.js';
 import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
-
-/**
- * Schema for updating captcha solver settings
- */
-const captchaSolverSettingsSchema = z.object({
-	enabled: z.boolean().optional(),
-	timeoutSeconds: z.number().min(10).max(300).optional(),
-	cacheTtlSeconds: z.number().min(60).max(86400).optional(),
-	headless: z.boolean().optional(),
-	proxyUrl: z.string().optional(),
-	proxyUsername: z.string().optional(),
-	proxyPassword: z.string().optional()
-});
 
 /**
  * GET /api/captcha-solver
@@ -67,7 +54,7 @@ export const PUT: RequestHandler = async (event) => {
 	const { request } = event;
 	try {
 		const body = await request.json();
-		const validation = captchaSolverSettingsSchema.safeParse(body);
+		const validation = captchaSolverSettingsUpdateSchema.safeParse(body);
 
 		if (!validation.success) {
 			return json(

@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import { scoringProfiles } from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 import { DEFAULT_PROFILES, getProfile, isBuiltInProfile } from '$lib/server/scoring';
 import { qualityFilter } from '$lib/server/quality';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
@@ -16,6 +16,25 @@ import {
 } from '$lib/validation/schemas.js';
 
 const BUILT_IN_IDS = DEFAULT_PROFILES.map((p) => p.id);
+
+function normalizeProfileName(name: string): string {
+	return name.trim().toLowerCase();
+}
+
+async function findProfileByNameCaseInsensitive(name: string, excludeId?: string) {
+	const normalized = normalizeProfileName(name);
+	const whereClause = excludeId
+		? and(sql`lower(${scoringProfiles.name}) = ${normalized}`, ne(scoringProfiles.id, excludeId))
+		: sql`lower(${scoringProfiles.name}) = ${normalized}`;
+
+	const existing = await db
+		.select({ id: scoringProfiles.id, name: scoringProfiles.name })
+		.from(scoringProfiles)
+		.where(whereClause)
+		.limit(1);
+
+	return existing[0] ?? null;
+}
 
 export const GET: RequestHandler = async () => {
 	const dbProfiles = await db.select().from(scoringProfiles);
@@ -85,6 +104,10 @@ export const POST: RequestHandler = async (event) => {
 
 	const { request } = event;
 	const data = await parseBody(request, scoringProfileCreateSchema);
+	const duplicateByName = await findProfileByNameCaseInsensitive(data.name);
+	if (duplicateByName) {
+		return json({ error: `Profile with name '${data.name}' already exists` }, { status: 409 });
+	}
 
 	if (data.id) {
 		if (BUILT_IN_IDS.includes(data.id)) {
@@ -234,6 +257,16 @@ export const PUT: RequestHandler = async (event) => {
 
 	if (existing.length === 0) {
 		throw new NotFoundError('Profile', id);
+	}
+
+	if (updateData.name !== undefined) {
+		const duplicateByName = await findProfileByNameCaseInsensitive(updateData.name, id);
+		if (duplicateByName) {
+			return json(
+				{ error: `Profile with name '${updateData.name}' already exists` },
+				{ status: 409 }
+			);
+		}
 	}
 
 	if (updateData.isDefault) {

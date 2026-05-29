@@ -79,7 +79,10 @@
 	<!-- Name (full width) -->
 	<div class="form-control">
 		<label class="label py-1" for="m3u-name">
-			<span class="label-text">{m.livetv_form_m3u_nameLabel()}</span>
+			<span class="label-text">
+				{m.livetv_form_m3u_nameLabel()}
+				<span class="text-error">* </span>
+			</span>
 		</label>
 		<input
 			id="m3u-name"
@@ -122,7 +125,10 @@
 			{#if inputMode === 'url'}
 				<div class="form-control">
 					<label class="label py-1" for="m3u-url">
-						<span class="label-text">{m.livetv_form_m3u_m3uUrlLabel()}</span>
+						<span class="label-text">
+							{m.livetv_form_m3u_m3uUrlLabel()}
+							<span class="text-error">* </span>
+						</span>
 					</label>
 					<div class="relative">
 						<input
@@ -151,7 +157,10 @@
 			{:else if inputMode === 'file'}
 				<div class="form-control">
 					<label class="label py-1" for="m3u-file">
-						<span class="label-text">{m.livetv_form_m3u_uploadFileLabel()}</span>
+						<span class="label-text">
+							{m.livetv_form_m3u_uploadFileLabel()}
+							<span class="text-error">* </span>
+						</span>
 					</label>
 					<input
 						id="m3u-file"

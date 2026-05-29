@@ -20,7 +20,6 @@ export {
 	fileExists,
 	getFileSize,
 	isVideoFile,
-	VIDEO_EXTENSIONS,
 	ImportMode,
 	type TransferMode,
 	type TransferResult,

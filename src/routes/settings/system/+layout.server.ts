@@ -24,6 +24,27 @@ export const load: LayoutServerLoad = async ({ request, locals }) => {
 		const apiKeySetting = await db.query.settings.findFirst({
 			where: eq(settings.key, 'tmdb_api_key')
 		});
+		const metadataProviderSetting = await db.query.settings.findFirst({
+			where: eq(settings.key, 'metadata_providers')
+		});
+		let metadataProviders = {
+			hasMalClientId: false,
+			hasAniListEnabled: false
+		};
+		if (metadataProviderSetting) {
+			try {
+				const parsed = JSON.parse(metadataProviderSetting.value) as {
+					malClientId?: string;
+					anilistEnabled?: boolean;
+				};
+				metadataProviders = {
+					hasMalClientId: Boolean(parsed.malClientId),
+					hasAniListEnabled: Boolean(parsed.anilistEnabled)
+				};
+			} catch {
+				// Ignore malformed setting and return defaults
+			}
+		}
 
 		return {
 			mainApiKey,
@@ -32,7 +53,8 @@ export const load: LayoutServerLoad = async ({ request, locals }) => {
 			tmdb: {
 				hasApiKey: !!apiKeySetting,
 				configured: !!apiKeySetting
-			}
+			},
+			metadataProviders
 		};
 	} catch (err) {
 		logger.error({ err, component: 'SystemSettingsPage' }, 'Error loading system settings');
@@ -41,6 +63,10 @@ export const load: LayoutServerLoad = async ({ request, locals }) => {
 			streamingApiKey: null,
 			externalUrl: null,
 			tmdb: { hasApiKey: false, configured: false },
+			metadataProviders: {
+				hasMalClientId: false,
+				hasAniListEnabled: false
+			},
 			error: 'Failed to load system settings'
 		};
 	}

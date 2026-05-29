@@ -2,6 +2,7 @@
 	import { X, Loader2, Tv, Clock, Calendar } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { ChannelLineupItemWithDetails, EpgProgram } from '$lib/types/livetv';
+	import { getEpgChannel } from '$lib/api/livetv.js';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 
 	interface Props {
@@ -45,17 +46,10 @@
 			const now = new Date();
 			const end = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-			const params = new URLSearchParams({
+			const data = await getEpgChannel(channelId, {
 				start: now.toISOString(),
 				end: end.toISOString()
 			});
-
-			const res = await fetch(`/api/livetv/epg/channel/${channelId}?${params}`);
-			if (!res.ok) {
-				throw new Error(m.livetv_channelScheduleModal_failedToLoad());
-			}
-
-			const data = await res.json();
 			programs = data.programs || [];
 		} catch (e) {
 			error = e instanceof Error ? e.message : m.livetv_channelScheduleModal_failedToLoad();

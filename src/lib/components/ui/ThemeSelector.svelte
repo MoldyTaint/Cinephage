@@ -1,32 +1,73 @@
 <script lang="ts">
 	import { theme } from '$lib/theme.svelte';
 	import { themes } from '$lib/themes';
-	import { Palette } from 'lucide-svelte';
+	import { Palette, Check } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages.js';
 
-	let { class: className = 'dropdown-end', showLabel = true } = $props();
+	let { class: className = 'dropdown-end', showLabel = true, triggerId = '' } = $props();
+	let isOpen = $state(false);
+
+	const currentThemeLabel = $derived.by(() => {
+		const current = theme.current ?? 'system';
+		return current.charAt(0).toUpperCase() + current.slice(1);
+	});
+
+	function toggleDropdown() {
+		isOpen = !isOpen;
+	}
+
+	function handleThemeChange(nextTheme: (typeof themes)[number]) {
+		theme.set(nextTheme);
+		isOpen = false;
+	}
+
+	function handleKeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape') {
+			isOpen = false;
+		}
+	}
+
+	function handleClickOutside(event: MouseEvent) {
+		const target = event.target as HTMLElement;
+		if (!target.closest('.theme-selector')) {
+			isOpen = false;
+		}
+	}
 </script>
 
-<div class="dropdown {className}">
-	<div tabindex="0" role="button" class="btn m-1 btn-ghost">
+<svelte:window onkeydown={handleKeydown} onclick={handleClickOutside} />
+
+<div class="theme-selector dropdown {className}" class:dropdown-open={isOpen}>
+	<button
+		id={triggerId || undefined}
+		class="btn w-full justify-between btn-ghost btn-sm"
+		onclick={toggleDropdown}
+		title={m.ui_selectTheme()}
+		aria-haspopup="true"
+		aria-expanded={isOpen}
+	>
 		<Palette class="h-5 w-5" />
 		{#if showLabel}
-			<span class="hidden md:inline">{m.ui_themeLabel()}</span>
+			<span class="ml-2 flex-1 text-left">{m.ui_themeLabel()}</span>
+			<span class="ml-2 truncate text-right text-base-content/70">{currentThemeLabel}</span>
 		{/if}
-	</div>
-	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+	</button>
 	<ul
-		tabindex="0"
-		class="dropdown-content z-60 h-96 w-52 overflow-y-auto rounded-box bg-base-300 p-2 shadow-2xl"
+		class="dropdown-content menu z-1 h-96 w-40 flex-col flex-nowrap overflow-x-hidden overflow-y-auto rounded-box bg-base-200 p-2 shadow"
+		class:hidden={!isOpen}
+		role="menu"
 	>
 		{#each themes as t (t)}
-			<li>
+			<li role="menuitem" class="w-full">
 				<button
-					class="btn btn-block justify-start capitalize btn-ghost btn-sm"
-					class:btn-active={theme.current === t}
-					onclick={() => theme.set(t)}
+					class="flex w-full items-center justify-between capitalize"
+					class:active={theme.current === t}
+					onclick={() => handleThemeChange(t)}
 				>
-					{t}
+					<span>{t}</span>
+					{#if theme.current === t}
+						<Check class="h-4 w-4 text-success" />
+					{/if}
 				</button>
 			</li>
 		{/each}

@@ -12,9 +12,19 @@ export { default as MovieFilesTab } from './MovieFilesTab.svelte';
 export { default as LibraryMovieHeader } from './LibraryMovieHeader.svelte';
 export { default as MovieEditModal } from './MovieEditModal.svelte';
 export { default as RenamePreviewModal } from './RenamePreviewModal.svelte';
+export { default as AddToLibraryModal } from './AddToLibraryModal.svelte';
+export { default as AddMovieForm } from './AddMovieForm.svelte';
+export { default as AddSeriesForm } from './AddSeriesForm.svelte';
+export { default as MediaSearchInput } from './MediaSearchInput.svelte';
 
 // TV Series components
 export { default as LibrarySeriesHeader } from './LibrarySeriesHeader.svelte';
 export { default as SeasonAccordion } from './SeasonAccordion.svelte';
 export { default as EpisodeRow } from './EpisodeRow.svelte';
 export { default as SeriesEditModal } from './SeriesEditModal.svelte';
+
+// Library media table sub-components
+export { default as LibraryMediaTable } from './LibraryMediaTable.svelte';
+export { default as LibraryMediaMobileCard } from './LibraryMediaMobileCard.svelte';
+export { default as LibraryMediaTableRow } from './LibraryMediaTableRow.svelte';
+export { default as LibraryMediaTableHeader } from './LibraryMediaTableHeader.svelte';

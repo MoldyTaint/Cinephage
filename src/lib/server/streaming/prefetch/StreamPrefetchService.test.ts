@@ -1,26 +1,30 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const createOrReuseSessionMock = vi.fn();
+const findReusableSessionMock = vi.fn();
+const clearSessionStoreMock = vi.fn();
 
-vi.mock('..', async () => {
-	const actual = await vi.importActual<typeof import('..')>('..');
+vi.mock('..', () => {
+	const mockedSessionStore = {
+		findReusableSession: findReusableSessionMock,
+		clear: clearSessionStoreMock
+	};
+
 	return {
-		...actual,
 		getPlaybackSessionService: () => ({
 			createOrReuseSession: createOrReuseSessionMock
-		})
+		}),
+		getPlaybackSessionStore: () => mockedSessionStore
 	};
 });
 
 describe('StreamPrefetchService', () => {
 	beforeEach(async () => {
 		vi.clearAllMocks();
+		findReusableSessionMock.mockReturnValue(null);
 
 		const { getStreamCache } = await import('../cache');
 		getStreamCache().clear();
-
-		const { getPlaybackSessionStore } = await import('../sessions/session-store');
-		getPlaybackSessionStore().clear();
 	});
 
 	it('warms the positive stream cache after a successful prefetch session', async () => {

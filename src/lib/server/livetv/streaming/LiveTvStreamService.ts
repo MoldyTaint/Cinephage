@@ -11,8 +11,8 @@ import { channelLineupService } from '$lib/server/livetv/lineup/ChannelLineupSer
 import { getProvider } from '$lib/server/livetv/providers';
 import { recordToAccount } from '$lib/server/livetv/LiveTvAccountManager.js';
 import { db } from '$lib/server/db';
-import { livetvAccounts } from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
+import { livetvAccounts, livetvChannels } from '$lib/server/db/schema';
+import { and, eq, ne } from 'drizzle-orm';
 import { resolveAndValidateUrl } from '$lib/server/http/ssrf-protection';
 import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service.js';
 import { ValidationError, ExternalServiceError } from '$lib/errors';
@@ -143,6 +143,47 @@ export class LiveTvStreamService implements BackgroundService {
 				priority: 0
 			}
 		];
+
+		// Add internal channel-level fallback from the same account.
+		// When the primary channel fails (dead stream, unreachable redirect),
+		// try 2 other channels from the same working account before failing
+		// over to cross-account backups.
+		const internalFallbackCount = 2;
+		const fallbackRows = await db
+			.select()
+			.from(livetvChannels)
+			.where(
+				and(eq(livetvChannels.accountId, item.accountId), ne(livetvChannels.id, item.channelId))
+			)
+			.limit(internalFallbackCount);
+
+		for (let i = 0; i < fallbackRows.length; i++) {
+			const row = fallbackRows[i];
+			const stalkerData = (row.stalkerData ?? undefined) as
+				| import('$lib/types/livetv').StalkerChannelData
+				| undefined;
+			sources.push({
+				accountId: row.accountId,
+				channelId: row.id,
+				channel: {
+					id: row.id,
+					accountId: row.accountId,
+					providerType: row.providerType as import('$lib/types/livetv').LiveTvProviderType,
+					externalId: row.externalId,
+					name: row.name,
+					number: row.number,
+					logo: row.logo,
+					categoryId: row.categoryId,
+					categoryTitle: null,
+					providerCategoryId: row.providerCategoryId,
+					stalker: stalkerData,
+					createdAt: row.createdAt ?? new Date().toISOString(),
+					updatedAt: row.updatedAt ?? new Date().toISOString()
+				},
+				providerType: row.providerType as import('$lib/types/livetv').LiveTvProviderType,
+				priority: 0.1 + i * 0.1
+			});
+		}
 
 		for (const backup of item.backups) {
 			sources.push({

@@ -29,6 +29,13 @@ import type {
 import { getSubtitleProviderManager } from './SubtitleProviderManager';
 import { getSubtitleScoringService } from './SubtitleScoringService';
 
+const criteriaIdCache = new Map<string, { imdbId?: string; tvdbId?: number; expires: number }>();
+const CACHE_TTL_MS = 30 * 60 * 1000;
+
+export function clearIdCacheForTests(): void {
+	criteriaIdCache.clear();
+}
+
 /** Search options */
 export interface SubtitleSearchOptions {
 	/** Specific provider IDs to search (null = all enabled) */
@@ -171,6 +178,67 @@ export class SubtitleSearchService {
 	}
 
 	/**
+	 * Resolve missing external IDs (imdbId, tvdbId) from TMDB when tmdbId is available.
+	 * This ensures all providers get the IDs they need regardless of what's stored in the DB.
+	 */
+	private async enrichCriteria(criteria: SubtitleSearchCriteria): Promise<SubtitleSearchCriteria> {
+		if (!criteria.tmdbId) return criteria;
+
+		const needsImdb = !criteria.imdbId;
+		const needsTvdb = !criteria.tvdbId && criteria.season !== undefined;
+		if (!needsImdb && !needsTvdb) return criteria;
+
+		const cacheKey = `${criteria.tmdbId}:${criteria.season !== undefined ? 'tv' : 'movie'}`;
+		const cached = criteriaIdCache.get(cacheKey);
+		if (cached && cached.expires > Date.now()) {
+			if (needsImdb && cached.imdbId) criteria.imdbId = cached.imdbId;
+			if (needsTvdb && cached.tvdbId) criteria.tvdbId = cached.tvdbId;
+			return criteria;
+		}
+
+		try {
+			const { tmdb } = await import('$lib/server/tmdb');
+			const isTv = criteria.season !== undefined;
+			let resolvedImdb: string | undefined;
+			let resolvedTvdb: number | undefined;
+
+			if (isTv) {
+				const ids = await tmdb.getTvExternalIds(criteria.tmdbId);
+				resolvedImdb = ids.imdb_id ?? undefined;
+				resolvedTvdb = ids.tvdb_id ?? undefined;
+			} else {
+				const ids = await tmdb.getMovieExternalIds(criteria.tmdbId);
+				resolvedImdb = ids.imdb_id ?? undefined;
+			}
+
+			if (resolvedImdb || resolvedTvdb) {
+				logger.debug(
+					{
+						tmdbId: criteria.tmdbId,
+						imdbId: resolvedImdb,
+						tvdbId: resolvedTvdb,
+						type: isTv ? 'tv' : 'movie'
+					},
+					'[Subtitles] Resolved external IDs via TMDB'
+				);
+			}
+
+			criteriaIdCache.set(cacheKey, {
+				imdbId: resolvedImdb,
+				tvdbId: resolvedTvdb,
+				expires: Date.now() + CACHE_TTL_MS
+			});
+
+			if (needsImdb && resolvedImdb) criteria.imdbId = resolvedImdb;
+			if (needsTvdb && resolvedTvdb) criteria.tvdbId = resolvedTvdb;
+		} catch {
+			logger.debug({ tmdbId: criteria.tmdbId }, '[Subtitles] TMDB ID resolution failed');
+		}
+
+		return criteria;
+	}
+
+	/**
 	 * Search with custom criteria
 	 */
 	async search(
@@ -181,6 +249,8 @@ export class SubtitleSearchService {
 		const startTime = Date.now();
 		const providerManager = getSubtitleProviderManager();
 		const scoringService = getSubtitleScoringService();
+
+		const enrichedCriteria = await this.enrichCriteria(criteria);
 
 		// Get providers to search
 		let providers = await providerManager.getEnabledProviders();
@@ -211,7 +281,7 @@ export class SubtitleSearchService {
 			const providerStart = Date.now();
 			try {
 				// Check if provider can search
-				if (!provider.canSearch(criteria)) {
+				if (!provider.canSearch(enrichedCriteria)) {
 					return {
 						providerId: provider.id,
 						providerName: provider.name,
@@ -221,14 +291,14 @@ export class SubtitleSearchService {
 					};
 				}
 
-				const results = await provider.search(criteria, {
+				const results = await provider.search(enrichedCriteria, {
 					maxResults: options?.maxResultsPerProvider || 25,
 					timeout: options?.timeout || 30000
 				});
 
 				// Score each result
 				for (const result of results) {
-					result.matchScore = scoringService.score(result, criteria);
+					result.matchScore = scoringService.score(result, enrichedCriteria);
 				}
 
 				// Record success

@@ -10,34 +10,42 @@
 	} from '$lib/components/library';
 	import type { FileScoreResponse } from '$lib/types/score';
 	import { InteractiveSearchModal } from '$lib/components/search';
+	import type { Release } from '$lib/components/search/SearchResultRow.svelte';
 	import { SubtitleSearchModal } from '$lib/components/subtitles';
 	import SubtitleSyncModal from '$lib/components/subtitles/SubtitleSyncModal.svelte';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
-	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import {
+		ConfirmationModal,
+		ModalWrapper,
+		ModalHeader,
+		ModalFooter
+	} from '$lib/components/ui/modal';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import { grabRelease } from '$lib/api/downloads.js';
+	import { autoSearchSubtitles, syncSubtitle } from '$lib/api/subtitles.js';
+	import {
+		getMovie,
+		updateMovie,
+		deleteMovie,
+		deleteMovieFile,
+		getMovieScore
+	} from '$lib/api/library.js';
+	import { ApiError } from '$lib/api/client.js';
+	import { apiGetStream } from '$lib/api';
 	import type { MovieEditData } from '$lib/components/library/MovieEditModal.svelte';
 	import { FileEdit, Wifi, WifiOff, Loader2, RefreshCw } from 'lucide-svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
 	import { createDynamicSSE } from '$lib/sse';
 	import { getFileName } from '$lib/utils/format.js';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
 
 	let { data }: { data: PageData } = $props();
 
-	const ACTIVE_QUEUE_STATUSES = new Set([
-		'queued',
-		'downloading',
-		'stalled',
-		'paused',
-		'completed',
-		'postprocessing',
-		'importing',
-		'seeding',
-		'seeding-imported'
-	]);
+	const activeStatusSet: Set<string> = new Set(ACTIVE_DOWNLOAD_STATUSES);
 
 	// Reactive data that will be updated via SSE
 	let movieState = $state<LibraryMovie | null>(null);
@@ -93,7 +101,7 @@
 			};
 		},
 		'queue:updated': (payload) => {
-			if (!ACTIVE_QUEUE_STATUSES.has(payload.status)) {
+			if (!activeStatusSet.has(payload.status)) {
 				queueItemState = null;
 			} else {
 				queueItemState = {
@@ -149,10 +157,11 @@
 		if (prefetchedStreamKey === key) return;
 		prefetchedStreamKey = key;
 
-		fetch(`/api/streaming/session/movie/${movie.tmdbId}/master.m3u8?prefetch=1`, {
-			signal: AbortSignal.timeout(5000),
-			headers: { 'X-Prefetch': 'true' }
-		}).catch(() => {});
+		apiGetStream(
+			`/api/streaming/session/movie/${movie.tmdbId}/master.m3u8`,
+			{ prefetch: '1' },
+			{ signal: AbortSignal.timeout(5000), headers: { 'X-Prefetch': 'true' } }
+		).catch(() => {});
 	});
 
 	// State
@@ -171,6 +180,10 @@
 	let isSaving = $state(false);
 	let isDeleting = $state(false);
 	let isDeletingFile = $state(false);
+	let isProviderLinkModalOpen = $state(false);
+	let resolvingProvider = $state<'anilist' | 'mal'>('anilist');
+	let providerRefInput = $state('');
+	let isSavingProviderRef = $state(false);
 	let subtitleAutoSearching = $state(false);
 	let autoSearching = $state(false);
 	let autoSearchResult = $state<{
@@ -184,7 +197,7 @@
 	let scoreFetched = $state(false);
 
 	$effect(() => {
-		if ($page.url.searchParams.get('edit') === '1') {
+		if (page.url.searchParams.get('edit') === '1') {
 			isEditModalOpen = true;
 		}
 	});
@@ -227,12 +240,108 @@
 		return `${normalizedRoot}/${normalizedRelative}`;
 	});
 
+	const providerLinkRows = $derived.by(() => {
+		const isAnimeItem =
+			(movie.rootFolderPath ?? '').toLowerCase().includes('/anime/') ||
+			movie.metadataProvider === 'anilist' ||
+			movie.metadataProvider === 'mal' ||
+			Boolean(movie.providerRefs?.anilist) ||
+			Boolean(movie.providerRefs?.mal);
+		if (!isAnimeItem) return [];
+
+		const refs = movie.providerRefs ?? {};
+		const rows: Array<
+			{ label: string; value: string } & (
+				| { resolved: true; href: string; provider: 'anilist' | 'mal' }
+				| { resolved: false; provider: 'anilist' | 'mal' }
+			)
+		> = [];
+		if (data.configuredMetadataProviders.anilist) {
+			if (refs.anilist) {
+				rows.push({
+					label: 'AniList',
+					href: `https://anilist.co/anime/${refs.anilist}`,
+					value: refs.anilist,
+					resolved: true,
+					provider: 'anilist'
+				});
+			} else {
+				rows.push({
+					label: 'AniList',
+					value: 'N/A',
+					resolved: false,
+					provider: 'anilist'
+				});
+			}
+		}
+		if (data.configuredMetadataProviders.mal) {
+			if (refs.mal) {
+				rows.push({
+					label: 'MAL',
+					href: `https://myanimelist.net/anime/${refs.mal}`,
+					value: refs.mal,
+					resolved: true,
+					provider: 'mal'
+				});
+			} else {
+				rows.push({
+					label: 'MAL',
+					value: 'N/A',
+					resolved: false,
+					provider: 'mal'
+				});
+			}
+		}
+		return rows;
+	});
+	const usesAnimeMetadataProvider = $derived(
+		(movie.metadataProvider === 'anilist' && Boolean(movie.providerRefs?.anilist)) ||
+			(movie.metadataProvider === 'mal' && Boolean(movie.providerRefs?.mal))
+	);
+
+	function buildProviderSearchLink(provider: 'anilist' | 'mal'): string {
+		const query = `${movie.title}${movie.year ? ` ${movie.year}` : ''}`;
+		if (provider === 'anilist') {
+			return `https://anilist.co/search/anime?search=${encodeURIComponent(query)}`;
+		}
+		return `https://myanimelist.net/anime.php?q=${encodeURIComponent(query)}&cat=anime`;
+	}
+
+	function openProviderLinkModal(provider: 'anilist' | 'mal'): void {
+		resolvingProvider = provider;
+		providerRefInput = '';
+		isProviderLinkModalOpen = true;
+	}
+
+	function closeProviderLinkModal(): void {
+		isProviderLinkModalOpen = false;
+		providerRefInput = '';
+	}
+
+	async function saveProviderRef(): Promise<void> {
+		const normalized = providerRefInput.trim();
+		if (!normalized) return;
+
+		isSavingProviderRef = true;
+		try {
+			const nextRefs = { ...(movie.providerRefs ?? {}), [resolvingProvider]: normalized };
+			await updateMovie(movie.id, {
+				providerRefs: nextRefs
+			} as unknown as Record<string, unknown>);
+			closeProviderLinkModal();
+			await refreshMovieFromApi();
+			toasts.success('Provider link updated');
+		} catch (error) {
+			showActionError('Failed to update provider link', error);
+		} finally {
+			isSavingProviderRef = false;
+		}
+	}
+
 	async function refreshMovieFromApi(): Promise<void> {
 		try {
-			const response = await fetch(`/api/library/movies/${movie.id}`);
-			if (!response.ok) return;
-			const result = await response.json();
-			if (!result.success || !result.movie) return;
+			const result = (await getMovie(movie.id)) as { movie?: LibraryMovie };
+			if (!result.movie) return;
 
 			const refreshed = result.movie as LibraryMovie;
 			movieState = {
@@ -246,19 +355,11 @@
 		}
 	}
 
-	// Handlers
 	async function handleMonitorToggle(newValue: boolean) {
 		isSaving = true;
 		try {
-			const response = await fetch(`/api/library/movies/${movie.id}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ monitored: newValue })
-			});
-
-			if (response.ok) {
-				movie.monitored = newValue;
-			}
+			await updateMovie(movie.id, { monitored: newValue });
+			movie.monitored = newValue;
 		} catch (error) {
 			showActionError(m.toast_library_movieDetail_failedToUpdateMonitor(), error);
 		} finally {
@@ -332,49 +433,32 @@
 		}
 	}
 
-	interface Release {
-		guid: string;
-		title: string;
-		downloadUrl: string;
-		magnetUrl?: string;
-		infoHash?: string;
-		indexerId: string;
-		indexerName: string;
-		protocol: string;
-		commentsUrl?: string;
-	}
-
 	async function handleGrab(
 		release: Release,
 		streaming?: boolean
 	): Promise<{ success: boolean; error?: string; errorCode?: string }> {
 		try {
-			const response = await fetch('/api/download/grab', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					guid: release.guid,
-					downloadUrl: release.downloadUrl,
-					magnetUrl: release.magnetUrl,
-					infoHash: release.infoHash,
-					title: release.title,
-					indexerId: release.indexerId,
-					indexerName: release.indexerName,
-					protocol: release.protocol,
-					movieId: movie.id,
-					mediaType: 'movie',
-					streamUsenet: streaming && release.protocol === 'usenet',
-					commentsUrl: release.commentsUrl
-				})
+			const result = await grabRelease({
+				guid: release.guid,
+				downloadUrl: release.downloadUrl,
+				magnetUrl: release.magnetUrl,
+				infoHash: release.infoHash,
+				title: release.title,
+				indexerId: release.indexerId,
+				indexerName: release.indexerName,
+				protocol: release.protocol,
+				movieId: movie.id,
+				mediaType: 'movie',
+				streamUsenet: streaming && release.protocol === 'usenet',
+				commentsUrl: release.commentsUrl
 			});
-
-			const result = await response.json();
 
 			return { success: result.success, error: result.error, errorCode: result.errorCode };
 		} catch (error) {
 			return {
 				success: false,
-				error: error instanceof Error ? error.message : m.toast_library_movieDetail_failedToGrab()
+				error:
+					error instanceof ApiError ? error.message : m.toast_library_movieDetail_failedToGrab()
 			};
 		}
 	}
@@ -385,35 +469,26 @@
 
 	function handleEditClose() {
 		isEditModalOpen = false;
-		if ($page.url.searchParams.get('edit') === '1') {
-			goto($page.url.pathname, { replaceState: true, keepFocus: true, noScroll: true });
+		if (page.url.searchParams.get('edit') === '1') {
+			goto(page.url.pathname, { replaceState: true, keepFocus: true, noScroll: true });
 		}
 	}
 
 	async function handleEditSave(editData: MovieEditData) {
 		isSaving = true;
 		try {
-			const response = await fetch(`/api/library/movies/${movie.id}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(editData)
-			});
-
-			const result = await response.json().catch(() => null);
-			if (!response.ok) {
-				throw new Error(result?.error || m.toast_library_movieDetail_failedToUpdate());
-			}
+			const previousMetadataProvider = movie.metadataProvider ?? 'auto';
+			const result = await updateMovie(movie.id, editData as unknown as Record<string, unknown>);
 
 			// Update local state
 			movie.monitored = editData.monitored;
 			movie.scoringProfileId = editData.scoringProfileId;
 			movie.minimumAvailability = editData.minimumAvailability;
 			movie.wantsSubtitles = editData.wantsSubtitles;
+			movie.metadataProvider = editData.metadataProvider;
 
 			if (result?.moveQueued) {
-				toasts.success(
-					'Move queued. File transfer has started and will appear in Activity until completion.'
-				);
+				toasts.success(m.library_movieDetail_moveQueued());
 			} else {
 				movie.rootFolderId = editData.rootFolderId;
 				const newFolder = data.rootFolders.find((f) => f.id === editData.rootFolderId);
@@ -421,6 +496,15 @@
 			}
 
 			isEditModalOpen = false;
+
+			if (previousMetadataProvider !== editData.metadataProvider) {
+				try {
+					await fetch(`/api/library/movies/${movie.id}/refresh`, { method: 'POST' });
+				} catch {
+					// Ignore refresh trigger errors and fallback to normal state refresh
+				}
+				await refreshMovieFromApi();
+			}
 		} catch (error) {
 			showActionError(m.toast_library_movieDetail_failedToUpdate(), error);
 		} finally {
@@ -435,17 +519,13 @@
 	async function performDelete(deleteFiles: boolean, removeFromLibrary: boolean) {
 		isDeleting = true;
 		try {
-			const response = await fetch(
-				`/api/library/movies/${movie.id}?deleteFiles=${deleteFiles}&removeFromLibrary=${removeFromLibrary}`,
-				{ method: 'DELETE' }
-			);
-			const result = await response.json();
+			const result = await deleteMovie(movie.id, deleteFiles, removeFromLibrary);
 
 			if (result.success) {
 				if (removeFromLibrary) {
 					toasts.success(m.toast_library_movieDetail_movieRemoved());
 					// Navigate to library since the movie no longer exists
-					window.location.href = '/library/movies';
+					goto(resolvePath('/library/movies'));
 				} else {
 					toasts.success(m.toast_library_movieDetail_movieFilesDeleted());
 					movie.files = [];
@@ -486,10 +566,7 @@
 
 		isDeletingFile = true;
 		try {
-			const response = await fetch(`/api/library/movies/${movie.id}/files/${deletingFileId}`, {
-				method: 'DELETE'
-			});
-			const result = await response.json();
+			const result = await deleteMovieFile(movie.id, deletingFileId);
 
 			if (result.success) {
 				toasts.success(m.toast_library_movieDetail_fileDeleted());
@@ -525,13 +602,18 @@
 	async function handleSubtitleAutoSearch() {
 		subtitleAutoSearching = true;
 		try {
-			const response = await fetch('/api/subtitles/auto-search', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ movieId: movie.id })
-			});
-
-			const result = await response.json();
+			const raw = await autoSearchSubtitles({ movieId: movie.id });
+			const result = raw as unknown as {
+				success: boolean;
+				subtitle?: {
+					id?: string;
+					subtitleId?: string;
+					language?: string;
+					isForced?: boolean;
+					isHearingImpaired?: boolean;
+					format?: string;
+				};
+			};
 
 			if (result.success && result.subtitle) {
 				const subtitleId = result.subtitle.id ?? result.subtitle.subtitleId;
@@ -578,19 +660,12 @@
 		subtitleSyncError = null;
 
 		try {
-			const response = await fetch('/api/subtitles/sync', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					subtitleId,
-					...(settings?.splitPenalty !== undefined && { splitPenalty: settings.splitPenalty }),
-					...(settings?.noSplits !== undefined && { noSplits: settings.noSplits })
-				})
+			const result = await syncSubtitle(subtitleId, {
+				...(settings?.splitPenalty !== undefined && { splitPenalty: settings.splitPenalty }),
+				...(settings?.noSplits !== undefined && { noSplits: settings.noSplits })
 			});
 
-			const result = await response.json();
-
-			if (!response.ok || !result.success) {
+			if (!result.success) {
 				throw new Error(result.error || m.toast_library_movieDetail_subtitleSyncFailed());
 			}
 
@@ -623,12 +698,9 @@
 
 		scoreLoading = true;
 		try {
-			const response = await fetch(`/api/library/movies/${movie.id}/score`);
-			if (response.ok) {
-				const result = await response.json();
-				if (result.success) {
-					scoreData = result.score;
-				}
+			const result = await getMovieScore(movie.id);
+			if (result.success) {
+				scoreData = result.score;
 			}
 		} catch (error) {
 			showActionError(m.toast_library_movieDetail_failedToLoadScore(), error);
@@ -719,6 +791,7 @@
 	<!-- Header -->
 	<LibraryMovieHeader
 		{movie}
+		configuredProviders={data.configuredMetadataProviders}
 		{qualityProfileName}
 		isDownloading={queueItem !== null}
 		onMonitorToggle={handleMonitorToggle}
@@ -737,8 +810,8 @@
 	<!-- Main Content -->
 	<div class="grid gap-4 lg:grid-cols-2 lg:gap-6 xl:grid-cols-3">
 		<!-- Files Section (takes 2 columns on large screens) -->
-		<div class="md:col-span-2 lg:col-span-2">
-			<div class="rounded-xl bg-base-200 p-4 md:p-6">
+		<div class="min-w-0 md:col-span-2 lg:col-span-2">
+			<div class="min-w-0 overflow-hidden rounded-xl bg-base-200 p-4 md:p-6">
 				<div class="mb-4 flex items-center justify-between">
 					<h2 class="text-lg font-semibold">{m.library_movieDetail_filesHeading()}</h2>
 					<div class="flex flex-wrap items-center gap-2">
@@ -767,10 +840,65 @@
 					{subtitleAutoSearching}
 				/>
 			</div>
+
+			{#if data.collectionMovies && data.collectionMovies.length > 0}
+				<div class="mt-4 hidden rounded-xl bg-base-200 p-4 md:mt-6 md:block md:p-6">
+					<h2 class="mb-4 text-lg font-semibold">
+						{m.library_movieDetail_otherMoviesInCollection()}
+					</h2>
+					<div class="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
+						{#each data.collectionMovies as collMovie (collMovie.id)}
+							<a
+								href={resolvePath(`/library/movie/${collMovie.id}`)}
+								class="flex min-w-0 flex-col items-center gap-1.5 rounded-lg p-2 transition-colors hover:bg-base-300"
+							>
+								<div class="relative aspect-2/3 w-full overflow-hidden rounded bg-base-300">
+									{#if collMovie.posterPath}
+										<img
+											src="https://image.tmdb.org/t/p/w185{collMovie.posterPath}"
+											alt={collMovie.title}
+											class="h-full w-full object-cover"
+											loading="lazy"
+										/>
+									{:else}
+										<div
+											class="flex h-full w-full items-center justify-center text-base-content/30"
+										>
+											<span class="text-2xl">🎬</span>
+										</div>
+									{/if}
+									{#if collMovie.hasFile}
+										<span
+											class="absolute right-0.5 bottom-0.5 rounded-full bg-success/80 p-0.5 text-success-content"
+										>
+											<svg
+												xmlns="http://www.w3.org/2000/svg"
+												class="h-2.5 w-2.5"
+												fill="none"
+												viewBox="0 0 24 24"
+												stroke="currentColor"
+												stroke-width="3"
+											>
+												<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+											</svg>
+										</span>
+									{/if}
+								</div>
+								<span class="line-clamp-2 text-center text-xs leading-tight font-medium">
+									{collMovie.title}
+								</span>
+								{#if collMovie.year}
+									<span class="text-[10px] text-base-content/50">{collMovie.year}</span>
+								{/if}
+							</a>
+						{/each}
+					</div>
+				</div>
+			{/if}
 		</div>
 
 		<!-- Sidebar -->
-		<div class="space-y-4 md:space-y-6">
+		<div class="min-w-0 space-y-4 md:space-y-6">
 			<!-- Overview -->
 			{#if movie.overview}
 				<div class="rounded-xl bg-base-200 p-4 md:p-6">
@@ -789,6 +917,12 @@
 						<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
 							<dt class="text-base-content/60">{m.library_movieDetail_originalTitle()}</dt>
 							<dd class="sm:text-right">{movie.originalTitle}</dd>
+						</div>
+					{/if}
+					{#if usesAnimeMetadataProvider && movie.studios && movie.studios.length > 0}
+						<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
+							<dt class="text-base-content/60">Studios</dt>
+							<dd class="sm:text-right">{movie.studios.join(', ')}</dd>
 						</div>
 					{/if}
 					{#if movie.runtime}
@@ -836,6 +970,31 @@
 							</a>
 						</dd>
 					</div>
+					{#each providerLinkRows as row (row.label)}
+						<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
+							<dt class="text-base-content/60">{row.label}</dt>
+							<dd>
+								{#if row.resolved}
+									<a
+										href={row.href}
+										target="_blank"
+										rel="noopener noreferrer"
+										class="link link-primary"
+									>
+										{row.value}
+									</a>
+								{:else}
+									<button
+										type="button"
+										class="link link-warning"
+										onclick={() => openProviderLinkModal(row.provider)}
+									>
+										{row.value}
+									</button>
+								{/if}
+							</dd>
+						</div>
+					{/each}
 				</dl>
 			</div>
 
@@ -851,59 +1010,63 @@
 					</div>
 				</dl>
 			</div>
+
+			{#if data.collectionMovies && data.collectionMovies.length > 0}
+				<div class="rounded-xl bg-base-200 p-4 md:hidden">
+					<h2 class="mb-4 text-lg font-semibold">
+						{m.library_movieDetail_otherMoviesInCollection()}
+					</h2>
+					<div class="-mx-1 flex max-w-full gap-3 overflow-x-auto overscroll-x-contain px-1 pb-2">
+						{#each data.collectionMovies as collMovie (collMovie.id)}
+							<a
+								href={resolvePath(`/library/movie/${collMovie.id}`)}
+								class="flex w-24 shrink-0 flex-col items-center gap-1.5 rounded-lg p-2 transition-colors hover:bg-base-300"
+							>
+								<div class="relative aspect-2/3 w-full overflow-hidden rounded bg-base-300">
+									{#if collMovie.posterPath}
+										<img
+											src="https://image.tmdb.org/t/p/w185{collMovie.posterPath}"
+											alt={collMovie.title}
+											class="h-full w-full object-cover"
+											loading="lazy"
+										/>
+									{:else}
+										<div
+											class="flex h-full w-full items-center justify-center text-base-content/30"
+										>
+											<span class="text-2xl">🎬</span>
+										</div>
+									{/if}
+									{#if collMovie.hasFile}
+										<span
+											class="absolute right-0.5 bottom-0.5 rounded-full bg-success/80 p-0.5 text-success-content"
+										>
+											<svg
+												xmlns="http://www.w3.org/2000/svg"
+												class="h-2.5 w-2.5"
+												fill="none"
+												viewBox="0 0 24 24"
+												stroke="currentColor"
+												stroke-width="3"
+											>
+												<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+											</svg>
+										</span>
+									{/if}
+								</div>
+								<span class="line-clamp-2 text-center text-xs leading-tight font-medium">
+									{collMovie.title}
+								</span>
+								{#if collMovie.year}
+									<span class="text-[10px] text-base-content/50">{collMovie.year}</span>
+								{/if}
+							</a>
+						{/each}
+					</div>
+				</div>
+			{/if}
 		</div>
 	</div>
-
-	{#if data.collectionMovies && data.collectionMovies.length > 0}
-		<div class="mt-2 rounded-xl bg-base-200 p-4 md:p-6">
-			<h2 class="mb-4 text-lg font-semibold">Other movies in this collection</h2>
-			<div class="flex gap-3 overflow-x-auto pb-2">
-				{#each data.collectionMovies as collMovie (collMovie.id)}
-					<a
-						href={resolvePath(`/library/movie/${collMovie.id}`)}
-						class="flex w-28 shrink-0 flex-col items-center gap-1.5 rounded-lg p-2 transition-colors hover:bg-base-300"
-					>
-						<div class="relative aspect-[2/3] w-full overflow-hidden rounded bg-base-300">
-							{#if collMovie.posterPath}
-								<img
-									src="https://image.tmdb.org/t/p/w185{collMovie.posterPath}"
-									alt={collMovie.title}
-									class="h-full w-full object-cover"
-									loading="lazy"
-								/>
-							{:else}
-								<div class="flex h-full w-full items-center justify-center text-base-content/30">
-									<span class="text-2xl">🎬</span>
-								</div>
-							{/if}
-							{#if collMovie.hasFile}
-								<span
-									class="absolute right-0.5 bottom-0.5 rounded-full bg-success/80 p-0.5 text-success-content"
-								>
-									<svg
-										xmlns="http://www.w3.org/2000/svg"
-										class="h-2.5 w-2.5"
-										fill="none"
-										viewBox="0 0 24 24"
-										stroke="currentColor"
-										stroke-width="3"
-									>
-										<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-									</svg>
-								</span>
-							{/if}
-						</div>
-						<span class="line-clamp-2 text-center text-xs leading-tight font-medium">
-							{collMovie.title}
-						</span>
-						{#if collMovie.year}
-							<span class="text-[10px] text-base-content/50">{collMovie.year}</span>
-						{/if}
-					</a>
-				{/each}
-			</div>
-		</div>
-	{/if}
 </div>
 
 <!-- Edit Modal -->
@@ -992,3 +1155,48 @@
 
 <!-- Score Detail Modal -->
 <ScoreDetailModal open={isScoreModalOpen} onClose={() => (isScoreModalOpen = false)} {scoreData} />
+
+<ModalWrapper
+	open={isProviderLinkModalOpen}
+	onClose={closeProviderLinkModal}
+	maxWidth="md"
+	labelledBy="movie-provider-link-modal-title"
+>
+	<ModalHeader
+		title={`Link ${resolvingProvider === 'anilist' ? 'AniList' : 'MAL'} ID`}
+		onClose={closeProviderLinkModal}
+	/>
+	<div class="space-y-4">
+		<p class="text-sm text-base-content/70">
+			This item is not linked for {resolvingProvider === 'anilist' ? 'AniList' : 'MAL'}.
+		</p>
+		<div class="rounded-lg bg-base-200 p-3 text-sm">
+			<a
+				href={buildProviderSearchLink(resolvingProvider)}
+				target="_blank"
+				rel="noopener noreferrer"
+				class="link link-primary"
+			>
+				Open provider search
+			</a>
+		</div>
+		<label class="form-control w-full">
+			<span class="label-text mb-1 text-sm">
+				{resolvingProvider === 'anilist' ? 'AniList ID' : 'MAL ID'}
+			</span>
+			<input
+				type="text"
+				class="input-bordered input w-full"
+				bind:value={providerRefInput}
+				placeholder={resolvingProvider === 'anilist' ? 'e.g. 154587' : 'e.g. 33218'}
+			/>
+		</label>
+	</div>
+	<ModalFooter
+		onCancel={closeProviderLinkModal}
+		onSave={() => void saveProviderRef()}
+		saving={isSavingProviderRef}
+		saveDisabled={!providerRefInput.trim()}
+		saveLabel="Save Link"
+	/>
+</ModalWrapper>

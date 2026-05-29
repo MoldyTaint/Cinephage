@@ -3,8 +3,8 @@ import type { RequestHandler } from './$types.js';
 import { db } from '$lib/server/db/index.js';
 import { movies } from '$lib/server/db/schema.js';
 import { inArray } from 'drizzle-orm';
-import { z } from 'zod';
-import { NamingService, type MediaNamingInfo } from '$lib/server/library/naming/NamingService.js';
+import { bulkAddMoviesSchema } from '$lib/validation/schemas.js';
+import { buildMovieFolderName } from '$lib/server/library/naming/naming-helpers.js';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
 import {
 	extractLanguageCodes,
@@ -23,42 +23,6 @@ import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { ValidationError } from '$lib/errors';
 import { logger } from '$lib/logging';
-
-/**
- * Schema for bulk adding movies to the library
- */
-const bulkAddMoviesSchema = z.object({
-	tmdbIds: z.array(z.number().int().positive()).min(1).max(50),
-	rootFolderId: z.string().min(1),
-	scoringProfileId: z.string().optional(),
-	monitored: z.boolean().default(true),
-	minimumAvailability: z.enum(['announced', 'inCinemas', 'released', 'preDb']).default('released'),
-	searchOnAdd: z.boolean().default(true),
-	wantsSubtitles: z.boolean().default(true)
-});
-
-/**
- * Generate a folder name for a movie using the naming service
- * Uses database naming configuration instead of defaults
- */
-function generateMovieFolderName(
-	title: string,
-	year?: number,
-	tmdbId?: number,
-	collectionName?: string,
-	localizedTitles?: Record<string, string>
-): string {
-	const config = namingSettingsService.getConfigSync();
-	const namingService = new NamingService(config);
-	const info: MediaNamingInfo = {
-		title,
-		year,
-		tmdbId,
-		collectionName,
-		localizedTitles
-	};
-	return namingService.generateMovieFolderName(info);
-}
 
 interface BulkAddResult {
 	added: number;
@@ -158,7 +122,7 @@ export const POST: RequestHandler = async ({ request }) => {
 					uniqueLangCodes.length > 0
 						? await resolveLocalizedTitles(tmdbId, uniqueLangCodes)
 						: undefined;
-				const folderName = generateMovieFolderName(
+				const folderName = buildMovieFolderName(
 					movieDetails.title,
 					year,
 					tmdbId,
@@ -196,7 +160,8 @@ export const POST: RequestHandler = async ({ request }) => {
 						wantsSubtitles,
 						languageProfileId,
 						tmdbCollectionId: collectionData?.id ?? null,
-						collectionName: collectionData?.name ?? null
+						collectionName: collectionData?.name ?? null,
+						releaseDate: movieDetails.release_date ?? null
 					})
 					.returning();
 

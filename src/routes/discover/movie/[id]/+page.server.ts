@@ -2,7 +2,11 @@ import { tmdb } from '$lib/server/tmdb';
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { logger } from '$lib/logging';
-import { enrichWithLibraryStatus, getLibraryStatus } from '$lib/server/library/status';
+import {
+	enrichWithLibraryStatus,
+	getLibraryStatus,
+	filterBlockedMedia
+} from '$lib/server/library/status';
 
 export const load: PageServerLoad = async ({ params }) => {
 	const id = parseInt(params.id);
@@ -67,26 +71,32 @@ export const load: PageServerLoad = async ({ params }) => {
 			collection?.parts ? enrichWithLibraryStatus(collection.parts, 'movie') : Promise.resolve(null)
 		]);
 
+		const [filteredRecommendations, filteredSimilar, filteredCollection] = await Promise.all([
+			filterBlockedMedia(enrichedRecommendations, 'movie'),
+			filterBlockedMedia(enrichedSimilar, 'movie'),
+			enrichedCollection ? filterBlockedMedia(enrichedCollection, 'movie') : Promise.resolve(null)
+		]);
+
 		// Update movie object with enriched data
 		if (movieWithStatus.recommendations) {
 			movieWithStatus.recommendations = {
 				...movieWithStatus.recommendations,
-				results: enrichedRecommendations
+				results: filteredRecommendations
 			};
 		}
 		if (movieWithStatus.similar) {
 			movieWithStatus.similar = {
 				...movieWithStatus.similar,
-				results: enrichedSimilar
+				results: filteredSimilar
 			};
 		}
 
 		// Update collection with enriched parts
 		const enrichedCollectionData =
-			collection && enrichedCollection
+			collection && filteredCollection
 				? {
 						...collection,
-						parts: enrichedCollection
+						parts: filteredCollection
 					}
 				: null;
 

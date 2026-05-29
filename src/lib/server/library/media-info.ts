@@ -26,7 +26,7 @@ import {
 import { readFile } from 'node:fs/promises';
 import type { movieFiles } from '$lib/server/db/schema.js';
 import { createChildLogger } from '$lib/logging';
-import { VIDEO_EXTENSIONS } from '$lib/config/constants.js';
+import { isVideoFile as isBaseVideoFile } from '$lib/config/constants.js';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });
 
@@ -45,14 +45,10 @@ const HDR_DETECTION = {
 	pqTransfer: ['smpte2084', 'smpte-st-2084', 'smpte st 2084']
 } as const;
 
-const MEDIA_INFO_EXTENSIONS = new Set([...VIDEO_EXTENSIONS, '.ogv', '.3gp', '.strm']);
+const EXTRA_VIDEO_EXTENSIONS = ['.ogv', '.3gp', '.strm'] as const;
 
-/**
- * Check if a file path has a video extension
- */
 export function isVideoFile(filePath: string): boolean {
-	const ext = filePath.toLowerCase().slice(filePath.lastIndexOf('.'));
-	return MEDIA_INFO_EXTENSIONS.has(ext);
+	return isBaseVideoFile(filePath, EXTRA_VIDEO_EXTENSIONS);
 }
 
 /**

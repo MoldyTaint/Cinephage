@@ -5,6 +5,7 @@
 import type { PageServerLoad } from './$types';
 import { getSmartListService } from '$lib/server/smartlists/index.js';
 import { error } from '@sveltejs/kit';
+import { getBlockedTmdbIdSet } from '$lib/server/library/status.js';
 
 export const load: PageServerLoad = async ({ params, url }) => {
 	const service = getSmartListService();
@@ -28,9 +29,13 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		query
 	});
 
+	const blockedIds = await getBlockedTmdbIdSet('all');
+	const filteredItems =
+		blockedIds.size > 0 ? items.items.filter((item) => !blockedIds.has(item.tmdbId)) : items.items;
+
 	return {
 		list,
-		items: items.items,
+		items: filteredItems,
 		filters: {
 			inLibrary: inLibrary === 'true' ? 'in' : inLibrary === 'false' ? 'out' : 'all',
 			showExcluded: includeExcluded,

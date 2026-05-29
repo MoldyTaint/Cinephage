@@ -236,6 +236,3 @@ export const ALL_HDR_FORMATS: CustomFormat[] = [
 	// SDR (baseline)
 	SDR_FORMAT
 ];
-
-// Legacy export for backwards compatibility
-export const HDR_FORMATS = ALL_HDR_FORMATS;

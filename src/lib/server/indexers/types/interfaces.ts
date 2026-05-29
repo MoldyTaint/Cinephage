@@ -11,7 +11,7 @@ import type { IndexerCapabilities } from './definition';
 import type { SearchCriteria } from './search';
 import type { ReleaseResult } from './release';
 import type { IndexerConfig } from './config';
-import type { ProtocolSettings } from '$lib/server/db/schema';
+import type { ProtocolSettings } from './index.js';
 
 // =============================================================================
 // INDEXER INTERFACE

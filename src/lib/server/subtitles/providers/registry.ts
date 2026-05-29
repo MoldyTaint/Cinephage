@@ -219,16 +219,6 @@ export async function registerBuiltinProviders(): Promise<void> {
 		logger.warn({ error }, 'Failed to register podnapisi provider');
 	}
 
-	try {
-		// Import and register Subscene
-		const subscene = await import('./subscene');
-		if (subscene.PROVIDER_INFO) {
-			providerRegistry.register(subscene.PROVIDER_INFO);
-		}
-	} catch (error) {
-		logger.warn({ error }, 'Failed to register subscene provider');
-	}
-
 	// Regional providers
 	try {
 		// Import and register Napiprojekt (Polish)
@@ -269,12 +259,6 @@ export async function registerBuiltinProviders(): Promise<void> {
 	} catch (error) {
 		logger.warn({ error }, 'Failed to register assrt provider');
 	}
-
-	// Future regional providers will be added here
-	// try {
-	//   const napiprojekt = await import('./napiprojekt');
-	//   providerRegistry.register(napiprojekt.PROVIDER_INFO);
-	// } catch (error) { ... }
 
 	providerRegistry.setInitialized();
 

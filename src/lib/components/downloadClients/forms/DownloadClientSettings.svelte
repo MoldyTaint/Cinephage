@@ -19,6 +19,7 @@
 		isMountMode?: boolean;
 		onBrowse?: (field: 'downloadPathLocal' | 'tempPathLocal') => void;
 		mode?: 'connection' | 'settings';
+		section?: 'categories' | 'paths';
 		urlBaseEnabled?: boolean;
 		urlBase?: string;
 		urlBaseLabel?: string;
@@ -43,6 +44,7 @@
 		isMountMode = false,
 		onBrowse = () => {},
 		mode = 'settings',
+		section,
 		urlBaseEnabled = $bindable(),
 		urlBase = $bindable(),
 		urlBaseLabel = m.settings_integrations_downloadClients_urlBaseLabel(),
@@ -110,104 +112,106 @@
 			</div>
 		{/if}
 	</div>
-{:else}
-	<!-- Categories (if supported) -->
-	{#if definition?.supportsCategories}
+{:else if section === 'categories' || (!section && mode === 'settings')}
+	{#if definition?.supportsCategories || definition?.supportsPriority}
 		<SectionHeader title={m.settings_integrations_downloadClients_categories()} />
 
-		<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-			<div class="form-control">
-				<label class="label py-1" for="movieCategory">
-					<span class="label-text">{m.common_movies()}</span>
-				</label>
-				<input
-					id="movieCategory"
-					type="text"
-					class="input-bordered input input-sm"
-					bind:value={movieCategory}
-					placeholder="movies"
-				/>
+		{#if definition?.supportsCategories}
+			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+				<div class="form-control">
+					<label class="label py-1" for="movieCategory">
+						<span class="label-text">{m.common_movies()}</span>
+					</label>
+					<input
+						id="movieCategory"
+						type="text"
+						class="input-bordered input input-sm"
+						bind:value={movieCategory}
+						placeholder="movies"
+					/>
+				</div>
+
+				<div class="form-control">
+					<label class="label py-1" for="tvCategory">
+						<span class="label-text">{m.common_tvShows()}</span>
+					</label>
+					<input
+						id="tvCategory"
+						type="text"
+						class="input-bordered input input-sm"
+						bind:value={tvCategory}
+						placeholder="tv"
+					/>
+				</div>
 			</div>
+		{/if}
 
-			<div class="form-control">
-				<label class="label py-1" for="tvCategory">
-					<span class="label-text">{m.common_tvShows()}</span>
-				</label>
-				<input
-					id="tvCategory"
-					type="text"
-					class="input-bordered input input-sm"
-					bind:value={tvCategory}
-					placeholder="tv"
-				/>
-			</div>
-		</div>
-	{/if}
-
-	<!-- Priority & Initial State (if supported) -->
-	{#if definition?.supportsPriority}
-		<SectionHeader
-			title={m.settings_integrations_downloadClients_downloadBehavior()}
-			class={definition?.supportsCategories ? 'mt-4' : ''}
-		/>
-
-		<div class="grid grid-cols-3 gap-3">
-			<div class="form-control">
-				<label class="label py-1" for="recentPriority">
-					<span class="label-text text-xs">{m.settings_integrations_downloadClients_recent()}</span>
-				</label>
-				<select
-					id="recentPriority"
-					class="select-bordered select select-sm"
-					bind:value={recentPriority}
-				>
-					<option value="normal">{m.common_default()}</option>
-					<option value="high">{m.settings_integrations_downloadClients_highPriority()}</option>
-					<option value="force">{m.settings_integrations_downloadClients_forcePriority()}</option>
-				</select>
-			</div>
-
-			<div class="form-control">
-				<label class="label py-1" for="olderPriority">
-					<span class="label-text text-xs">{m.settings_integrations_downloadClients_older()}</span>
-				</label>
-				<select
-					id="olderPriority"
-					class="select-bordered select select-sm"
-					bind:value={olderPriority}
-				>
-					<option value="normal">{m.common_default()}</option>
-					<option value="high">{m.settings_integrations_downloadClients_highPriority()}</option>
-					<option value="force">{m.settings_integrations_downloadClients_forcePriority()}</option>
-				</select>
-			</div>
-
-			<div class="form-control">
-				<label class="label py-1" for="initialState">
-					<span class="label-text text-xs">{m.settings_integrations_downloadClients_startAs()}</span
+		{#if definition?.supportsPriority}
+			<div class="grid grid-cols-3 gap-3" class:mt-3={definition?.supportsCategories ?? false}>
+				<div class="form-control">
+					<label class="label py-1" for="recentPriority">
+						<span class="label-text text-xs"
+							>{m.settings_integrations_downloadClients_recent()}</span
+						>
+					</label>
+					<select
+						id="recentPriority"
+						class="select-bordered select select-sm"
+						bind:value={recentPriority}
 					>
-				</label>
-				<select
-					id="initialState"
-					class="select-bordered select select-sm"
-					bind:value={initialState}
-				>
-					<option value="start">{m.settings_integrations_downloadClients_start()}</option>
-					<option value="pause">{m.action_pause()}</option>
-					<option value="force">{m.settings_integrations_downloadClients_forcePriority()}</option>
-				</select>
-			</div>
-		</div>
-	{/if}
+						<option value="normal">{m.common_default()}</option>
+						<option value="high">{m.settings_integrations_downloadClients_highPriority()}</option>
+						<option value="force">{m.settings_integrations_downloadClients_forcePriority()}</option>
+					</select>
+				</div>
 
-	<!-- Path Mapping -->
-	<SectionHeader title={m.settings_integrations_downloadClients_pathMapping()} class="mt-4" />
+				<div class="form-control">
+					<label class="label py-1" for="olderPriority">
+						<span class="label-text text-xs">{m.settings_integrations_downloadClients_older()}</span
+						>
+					</label>
+					<select
+						id="olderPriority"
+						class="select-bordered select select-sm"
+						bind:value={olderPriority}
+					>
+						<option value="normal">{m.common_default()}</option>
+						<option value="high">{m.settings_integrations_downloadClients_highPriority()}</option>
+						<option value="force">{m.settings_integrations_downloadClients_forcePriority()}</option>
+					</select>
+				</div>
+
+				<div class="form-control">
+					<label class="label py-1" for="initialState">
+						<span class="label-text text-xs"
+							>{m.settings_integrations_downloadClients_startAs()}</span
+						>
+					</label>
+					<select
+						id="initialState"
+						class="select-bordered select select-sm"
+						bind:value={initialState}
+					>
+						<option value="start">{m.settings_integrations_downloadClients_start()}</option>
+						<option value="pause">{m.action_pause()}</option>
+						<option value="force">{m.settings_integrations_downloadClients_forcePriority()}</option>
+					</select>
+				</div>
+			</div>
+		{/if}
+	{/if}
+{/if}
+
+{#if section === 'paths' || (!section && mode === 'settings')}
+	<SectionHeader
+		title={m.settings_integrations_downloadClients_pathMapping()}
+		class={section === 'paths' ? '' : 'mt-4'}
+	/>
 
 	<p class="mb-2 text-xs text-base-content/60">
 		{m.settings_integrations_downloadClients_pathMappingDescription()}
 	</p>
 
-	<!-- Completed Downloads Path Mapping -->
 	<div class="mb-3 rounded-lg bg-base-200/50 p-3">
 		<div class="mb-2 text-xs font-medium text-base-content/80">
 			{isSabnzbd
@@ -215,7 +219,7 @@
 				: m.settings_integrations_downloadClients_downloadFolder()}
 		</div>
 
-		<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+		<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 			<div class="form-control">
 				<label class="label py-0.5" for="downloadPathRemote">
 					<span class="label-text text-xs"
@@ -225,7 +229,7 @@
 				<input
 					id="downloadPathRemote"
 					type="text"
-					class="input-bordered input input-xs"
+					class="input-bordered input input-sm"
 					bind:value={downloadPathRemote}
 					placeholder={isSabnzbd ? '/complete' : '/downloads'}
 				/>
@@ -241,7 +245,7 @@
 					<input
 						id="downloadPathLocal"
 						type="text"
-						class="input-bordered input input-xs join-item flex-1"
+						class="input-bordered input input-sm join-item flex-1"
 						bind:value={downloadPathLocal}
 						placeholder="/mnt/downloads"
 					/>
@@ -258,14 +262,13 @@
 		</div>
 	</div>
 
-	<!-- Temp Downloads Path Mapping (SABnzbd only) -->
 	{#if isSabnzbd && !isMountMode}
 		<div class="rounded-lg bg-base-200/50 p-3">
 			<div class="mb-2 text-xs font-medium text-base-content/80">
 				{m.settings_integrations_downloadClients_tempDownloadFolder()}
 			</div>
 
-			<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 				<div class="form-control">
 					<label class="label py-0.5" for="tempPathRemote">
 						<span class="label-text text-xs"
@@ -275,7 +278,7 @@
 					<input
 						id="tempPathRemote"
 						type="text"
-						class="input-bordered input input-xs"
+						class="input-bordered input input-sm"
 						bind:value={tempPathRemote}
 						placeholder="/incomplete"
 					/>
@@ -291,7 +294,7 @@
 						<input
 							id="tempPathLocal"
 							type="text"
-							class="input-bordered input input-xs join-item flex-1"
+							class="input-bordered input input-sm join-item flex-1"
 							bind:value={tempPathLocal}
 							placeholder="/mnt/incomplete"
 						/>

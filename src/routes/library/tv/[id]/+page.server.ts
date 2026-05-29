@@ -7,32 +7,16 @@ import {
 	rootFolders,
 	scoringProfiles,
 	downloadQueue,
-	subtitles
+	subtitles,
+	settings
 } from '$lib/server/db/schema.js';
 import { eq, asc, inArray, and } from 'drizzle-orm';
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { isSeriesSearching } from '$lib/server/library/ActiveSearchTracker.js';
-
-const ACTIVE_DOWNLOAD_STATUSES = [
-	'queued',
-	'downloading',
-	'stalled',
-	'paused',
-	'completed',
-	'postprocessing',
-	'importing',
-	'seeding',
-	'seeding-imported'
-] as const;
-
-export interface QualityProfileSummary {
-	id: string;
-	name: string;
-	description: string;
-	isBuiltIn: boolean;
-	isDefault: boolean;
-}
+import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
+import type { QualityProfileSummary } from '$lib/types/library';
+import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
 
 export interface SeasonWithEpisodes {
 	id: string;
@@ -124,6 +108,9 @@ export interface LibrarySeriesPageData {
 		tmdbId: number;
 		tvdbId: number | null;
 		imdbId: string | null;
+		metadataProvider: 'auto' | 'tmdb' | 'anilist' | 'mal' | null;
+		providerRefs: Partial<Record<'tmdb' | 'anilist' | 'mal', string>> | null;
+		pinnedExternal: { provider: 'tmdb' | 'anilist' | 'mal'; id: string } | null;
 		title: string;
 		originalTitle: string | null;
 		year: number | null;
@@ -158,6 +145,10 @@ export interface LibrarySeriesPageData {
 	}>;
 	queueItems: QueueItemInfo[];
 	isSearching: boolean;
+	configuredMetadataProviders: {
+		anilist: boolean;
+		mal: boolean;
+	};
 }
 
 export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPageData> => {
@@ -170,6 +161,9 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 			tmdbId: series.tmdbId,
 			tvdbId: series.tvdbId,
 			imdbId: series.imdbId,
+			metadataProvider: series.metadataProvider,
+			providerRefs: series.providerRefs,
+			pinnedExternal: series.pinnedExternal,
 			title: series.title,
 			originalTitle: series.originalTitle,
 			year: series.year,
@@ -389,10 +383,45 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 
 	// Check if a search is currently running for this series
 	const isSearching = isSeriesSearching(id);
+	let configuredMetadataProviders = {
+		anilist: false,
+		mal: false
+	};
+	const settingsRow = await db.query.settings.findFirst({
+		where: eq(settings.key, 'metadata_providers')
+	});
+	if (settingsRow) {
+		try {
+			const parsed = JSON.parse(settingsRow.value) as {
+				anilistEnabled?: boolean;
+				malClientId?: string;
+			};
+			configuredMetadataProviders = {
+				anilist: parsed.anilistEnabled === true,
+				mal: Boolean(parsed.malClientId)
+			};
+		} catch {
+			// ignore malformed settings
+		}
+	}
+
+	const enrichedProviderRefs = await resolveMissingAnimeProviderRefs({
+		title: seriesData.title,
+		aliases: [seriesData.originalTitle ?? ''],
+		year: seriesData.year,
+		isAnime: (seriesData.seriesType ?? '').toLowerCase() === 'anime',
+		configured: configuredMetadataProviders,
+		existingRefs:
+			(seriesData.providerRefs as Partial<Record<'tmdb' | 'anilist' | 'mal', string>> | null) ??
+			undefined
+	});
 
 	return {
 		series: {
 			...seriesData,
+			providerRefs: enrichedProviderRefs,
+			metadataProvider:
+				(seriesData.metadataProvider as 'auto' | 'tmdb' | 'anilist' | 'mal' | null) ?? 'auto',
 			added: seriesData.added ?? new Date().toISOString(),
 			percentComplete
 		},
@@ -400,6 +429,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 		qualityProfiles: allQualityProfiles,
 		rootFolders: folders,
 		queueItems,
-		isSearching
+		isSearching,
+		configuredMetadataProviders
 	};
 };

@@ -63,7 +63,10 @@
 
 		<div class="form-control">
 			<label class="label py-1" for="xstream-name">
-				<span class="label-text">{m.livetv_form_xstream_nameLabel()}</span>
+				<span class="label-text">
+					{m.livetv_form_xstream_nameLabel()}
+					<span class="text-error">* </span>
+				</span>
 			</label>
 			<input
 				id="xstream-name"
@@ -80,7 +83,10 @@
 
 		<div class="form-control">
 			<label class="label py-1" for="base-url">
-				<span class="label-text">{m.livetv_form_xstream_serverUrlLabel()}</span>
+				<span class="label-text">
+					{m.livetv_form_xstream_serverUrlLabel()}
+					<span class="text-error">* </span>
+				</span>
 			</label>
 			<div class="relative">
 				<input
@@ -110,7 +116,10 @@
 		<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
 			<div class="form-control">
 				<label class="label py-1" for="username">
-					<span class="label-text">{m.livetv_form_xstream_usernameLabel()}</span>
+					<span class="label-text">
+						{m.livetv_form_xstream_usernameLabel()}
+						<span class="text-error">* </span>
+					</span>
 				</label>
 				<input
 					id="username"
@@ -126,8 +135,11 @@
 				<label class="label py-1" for="password">
 					<span class="label-text">
 						{m.livetv_form_xstream_passwordLabel()}
+						{#if mode === 'add' || !hasPassword}
+							<span class="text-error">* </span>
+						{/if}
 						{#if mode === 'edit' && hasPassword}
-							<span class="text-xs opacity-50">{m.livetv_form_xstream_passwordKeep()}</span>
+							<span class="text-xs opacity-50">({m.auth_blankToKeep()})</span>
 						{/if}
 					</span>
 				</label>

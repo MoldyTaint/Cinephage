@@ -1,43 +1,28 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
-	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';
+	import { updateTmdbFilters } from '$lib/api/settings.js';
 	import TmdbConfigRequired from '$lib/components/ui/TmdbConfigRequired.svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
 	import type { GlobalTmdbFilters } from '$lib/types/tmdb';
 	import type { PageData } from './$types';
+	import { page } from '$app/state';
+	import { TMDB } from '$lib/config/constants.js';
 
 	let { data }: { data: PageData } = $props();
 	let filtersState = $state<GlobalTmdbFilters>({
 		include_adult: false,
 		min_vote_average: 0,
 		min_vote_count: 0,
-		language: 'en-US',
-		region: 'US',
+		language: `en-${page.data.defaultRegion || TMDB.DEFAULT_REGION}`,
+		region: page.data.defaultRegion || TMDB.DEFAULT_REGION,
 		excluded_genre_ids: []
 	});
 	let saving = $state(false);
 	let saveSuccess = $state(false);
 
-	const languages = [
-		{ code: 'en-US', name: 'English (US)' },
-		{ code: 'en-GB', name: 'English (UK)' },
-		{ code: 'fr-FR', name: 'French' },
-		{ code: 'de-DE', name: 'German' },
-		{ code: 'es-ES', name: 'Spanish' },
-		{ code: 'ja-JP', name: 'Japanese' },
-		{ code: 'ko-KR', name: 'Korean' }
-	];
-
-	const regions = [
-		{ code: 'US', name: 'United States' },
-		{ code: 'GB', name: 'United Kingdom' },
-		{ code: 'FR', name: 'France' },
-		{ code: 'DE', name: 'Germany' },
-		{ code: 'ES', name: 'Spain' },
-		{ code: 'JP', name: 'Japan' },
-		{ code: 'KR', name: 'South Korea' }
-	];
+	let languages = $derived(data.languages);
+	let regions = $derived(data.countries);
 
 	function toggleExcludedGenre(genreId: number, checked: boolean) {
 		if (checked) {
@@ -57,18 +42,7 @@
 		saveSuccess = false;
 
 		try {
-			const response = await fetch('/api/settings/filters', {
-				method: 'PUT',
-				headers: {
-					'Content-Type': 'application/json',
-					Accept: 'application/json'
-				},
-				body: JSON.stringify(filtersState)
-			});
-			const result = await readResponsePayload<Record<string, unknown>>(response);
-			if (!response.ok) {
-				throw new Error(getResponseErrorMessage(result, 'Failed to save global filters'));
-			}
+			await updateTmdbFilters(filtersState);
 
 			saveSuccess = true;
 			toasts.success(m.settings_filters_updated());

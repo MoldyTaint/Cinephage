@@ -9,29 +9,10 @@ import {
 } from '$lib/server/db/schema.js';
 import { eq, and, inArray, isNotNull } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
-import type { LibraryMovie, MovieFile } from '$lib/types/library';
+import type { LibraryMovie, MovieFile, QualityProfileSummary } from '$lib/types/library';
 import { logger } from '$lib/logging';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
-
-const ACTIVE_DOWNLOAD_STATUSES = [
-	'queued',
-	'downloading',
-	'stalled',
-	'paused',
-	'completed',
-	'postprocessing',
-	'importing',
-	'seeding',
-	'seeding-imported'
-] as const;
-
-export interface QualityProfileSummary {
-	id: string;
-	name: string;
-	description: string;
-	isBuiltIn: boolean;
-	isDefault: boolean;
-}
+import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
 
 export const load: PageServerLoad = async ({ url }) => {
 	// Parse URL params for sorting and filtering
@@ -402,12 +383,64 @@ export const load: PageServerLoad = async ({ url }) => {
 };
 
 export const actions: Actions = {
-	toggleAllMonitored: async ({ request }) => {
+	toggleAllMonitored: async ({ request, url }) => {
 		const formData = await request.formData();
 		const monitored = formData.get('monitored') === 'true';
 
 		try {
-			await db.update(movies).set({ monitored });
+			const requestedLibraryScope = url.searchParams.get('library')?.trim() || '';
+
+			const availableLibraries = await getLibraryEntityService().listLibraries({
+				mediaType: 'movie'
+			});
+			const defaultLibrary =
+				availableLibraries.find((library) => library.isDefault) ?? availableLibraries[0] ?? null;
+			const selectedLibrary =
+				availableLibraries.find(
+					(library) =>
+						library.slug === requestedLibraryScope || library.id === requestedLibraryScope
+				) ?? defaultLibrary;
+
+			if (!selectedLibrary) {
+				await db.update(movies).set({ monitored });
+				return { success: true };
+			}
+
+			const allMovies = await db
+				.select({
+					id: movies.id,
+					libraryId: movies.libraryId,
+					rootFolderMediaSubType: rootFolders.mediaSubType,
+					libraryMediaSubType: libraries.mediaSubType
+				})
+				.from(movies)
+				.leftJoin(rootFolders, eq(movies.rootFolderId, rootFolders.id))
+				.leftJoin(libraries, eq(movies.libraryId, libraries.id));
+
+			const inferLegacySubtype = (movie: {
+				rootFolderMediaSubType?: string | null;
+				libraryMediaSubType?: string | null;
+			}): 'standard' | 'anime' => {
+				const candidate = movie.rootFolderMediaSubType ?? movie.libraryMediaSubType;
+				return candidate === 'anime' ? 'anime' : 'standard';
+			};
+
+			const scopedIds = allMovies
+				.filter((movie) => {
+					if (movie.libraryId) {
+						return movie.libraryId === selectedLibrary.id;
+					}
+					const inferredSubtype = inferLegacySubtype(movie);
+					if (selectedLibrary.mediaSubType === 'anime') return inferredSubtype === 'anime';
+					if (selectedLibrary.mediaSubType === 'standard') return inferredSubtype === 'standard';
+					return false;
+				})
+				.map((m) => m.id);
+
+			if (scopedIds.length > 0) {
+				await db.update(movies).set({ monitored }).where(inArray(movies.id, scopedIds));
+			}
+
 			return { success: true };
 		} catch (error) {
 			logger.error({ err: error }, '[Movies] Failed to toggle all monitored');

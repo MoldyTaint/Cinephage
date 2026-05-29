@@ -31,7 +31,7 @@ export function parseDiscoverParams(searchParams: URLSearchParams): DiscoverPara
 		trending: searchParams.get('trending'),
 		topRated: searchParams.get('top_rated'),
 		withWatchProviders: searchParams.get('with_watch_providers') || '',
-		watchRegion: searchParams.get('watch_region') || 'US',
+		watchRegion: searchParams.get('watch_region') || '',
 		withGenres: searchParams.get('with_genres') || '',
 		withOriginalLanguage: searchParams.get('with_original_language') || null,
 		minDate: searchParams.get('primary_release_date.gte') || null,
@@ -59,6 +59,33 @@ export function isDefaultView(searchParams: URLSearchParams, params: DiscoverPar
 		!searchParams.has('certification') &&
 		(!searchParams.has('page') || searchParams.get('page') === '1') &&
 		params.sortBy === 'popularity.desc'
+	);
+}
+
+export function hasActiveDiscoverFilters(
+	params: Pick<
+		DiscoverParams,
+		| 'type'
+		| 'sortBy'
+		| 'withWatchProviders'
+		| 'withGenres'
+		| 'withOriginalLanguage'
+		| 'minDate'
+		| 'maxDate'
+		| 'minRating'
+		| 'certification'
+	>
+): boolean {
+	return (
+		params.type !== 'all' ||
+		params.sortBy !== 'popularity.desc' ||
+		!!params.withWatchProviders ||
+		!!params.withGenres ||
+		!!params.withOriginalLanguage ||
+		!!params.minDate ||
+		!!params.maxDate ||
+		Number(params.minRating ?? 0) > 0 ||
+		!!params.certification
 	);
 }
 

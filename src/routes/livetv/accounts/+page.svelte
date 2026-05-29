@@ -11,6 +11,15 @@
 	import type { AccountStreamEvents } from '$lib/types/sse/events/livetv-account-events.js';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import {
+		getAccounts,
+		createAccount,
+		updateAccount,
+		deleteAccount,
+		testAccount,
+		syncChannels,
+		testAccountConfig
+	} from '$lib/api';
 
 	// State
 	let accounts = $state<LiveTvAccount[]>([]);
@@ -82,11 +91,7 @@
 		}
 
 		try {
-			const response = await fetch('/api/livetv/accounts');
-			if (!response.ok) {
-				throw new Error(m.livetv_accounts_failedToLoadAccounts());
-			}
-			const data = await response.json();
+			const data = await getAccounts();
 			accounts = data.accounts;
 		} catch (e) {
 			error = e instanceof Error ? e.message : m.livetv_accounts_failedToLoadAccounts();
@@ -129,14 +134,11 @@
 		modalError = null;
 
 		try {
-			const url =
-				modalMode === 'add' ? '/api/livetv/accounts' : `/api/livetv/accounts/${editingAccount!.id}`;
-			const method = modalMode === 'add' ? 'POST' : 'PUT';
-
 			// Build request body based on provider type
 			const body: Record<string, unknown> = {
 				name: data.name,
 				providerType: data.providerType,
+				testFirst: false,
 				enabled: data.enabled
 			};
 
@@ -178,15 +180,11 @@
 					break;
 			}
 
-			const response = await fetch(url, {
-				method,
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(body)
-			});
-
-			if (!response.ok) {
-				const result = await response.json();
-				throw new Error(result.error || m.livetv_accounts_failedToSaveAccount());
+			if (modalMode === 'add') {
+				// @ts-expect-error body shape matches expected type at runtime
+				await createAccount(body);
+			} else {
+				await updateAccount(editingAccount!.id, body);
 			}
 
 			closeModal();
@@ -244,14 +242,7 @@
 		modalError = null;
 
 		try {
-			const response = await fetch(`/api/livetv/accounts/${editingAccount.id}`, {
-				method: 'DELETE'
-			});
-
-			if (!response.ok) {
-				const result = await response.json();
-				throw new Error(result.error || m.livetv_accounts_failedToDeleteAccount());
-			}
+			await deleteAccount(editingAccount.id);
 
 			await loadAccounts({ foreground: false });
 			deleteConfirmOpen = false;
@@ -265,15 +256,7 @@
 
 	async function handleToggle(account: LiveTvAccount) {
 		try {
-			const response = await fetch(`/api/livetv/accounts/${account.id}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ enabled: !account.enabled })
-			});
-
-			if (!response.ok) {
-				throw new Error(m.livetv_accounts_failedToUpdateAccount());
-			}
+			await updateAccount(account.id, { enabled: !account.enabled });
 
 			await loadAccounts({ foreground: false });
 		} catch (e) {
@@ -287,22 +270,11 @@
 		testingId = account.id;
 
 		try {
-			const response = await fetch(`/api/livetv/accounts/${account.id}/test`, {
-				method: 'POST'
-			});
-
-			const payload = await response.json();
-
-			if (!response.ok) {
-				throw new Error(
-					toFriendlyLiveTvTestError(
-						typeof payload?.error === 'string'
-							? payload.error
-							: m.livetv_accounts_failedToTestAccount(),
-						account.providerType
-					)
-				);
-			}
+			const payload = (await testAccount(account.id)) as {
+				success?: boolean;
+				error?: string;
+				result?: LiveTvAccountTestResult;
+			} & LiveTvAccountTestResult;
 
 			const rawTestResult =
 				payload?.result && typeof payload.result.success === 'boolean'
@@ -367,15 +339,7 @@
 		syncingId = account.id;
 
 		try {
-			const response = await fetch('/api/livetv/channels/sync', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ accountIds: [account.id] })
-			});
-
-			if (!response.ok) {
-				throw new Error(m.livetv_accounts_failedToSyncAccount());
-			}
+			await syncChannels({ accountIds: [account.id] });
 
 			await loadAccounts({ foreground: false });
 		} catch (e) {
@@ -422,29 +386,28 @@
 		}
 
 		try {
-			const response = await fetch('/api/livetv/accounts/test', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(body)
-			});
+			const response = await testAccountConfig(body as Record<string, unknown>);
 
-			const result = await response.json();
-
-			if (!response.ok) {
+			if (!response.success) {
 				return {
 					success: false,
 					error: toFriendlyLiveTvTestError(
-						typeof result?.error === 'string'
-							? result.error
+						typeof response?.error === 'string'
+							? response.error
 							: m.livetv_accounts_failedToTestConfig(),
 						config.providerType
 					)
 				};
 			}
 
+			const result = response as Record<string, unknown>;
+
 			// API currently returns { success, result }, but keep backward compatibility
 			// in case the endpoint returns LiveTvAccountTestResult directly.
-			if (result?.result && typeof result.result.success === 'boolean') {
+			if (
+				result?.result &&
+				typeof (result.result as LiveTvAccountTestResult).success === 'boolean'
+			) {
 				const testResult = result.result as LiveTvAccountTestResult;
 				return testResult.success
 					? testResult
@@ -455,7 +418,7 @@
 			}
 
 			if (typeof result?.success === 'boolean') {
-				const testResult = result as LiveTvAccountTestResult;
+				const testResult = result as unknown as LiveTvAccountTestResult;
 				return testResult.success
 					? testResult
 					: {

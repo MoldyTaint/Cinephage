@@ -10,6 +10,7 @@ import {
 } from 'drizzle-orm/sqlite-core';
 import { relations } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
+import type { ProtocolSettings } from '$lib/server/indexers/types/index.js';
 
 // ============================================================================
 // Better Auth Tables
@@ -213,38 +214,6 @@ export type NewIndexerDefinitionRecord = typeof indexerDefinitions.$inferInsert;
 // ============================================================================
 // Indexers - User-configured indexer instances
 // ============================================================================
-
-/**
- * Protocol-specific settings types
- */
-export interface TorrentProtocolSettings {
-	minimumSeeders: number;
-	seedRatio: string | null;
-	seedTime: number | null;
-	packSeedTime: number | null;
-	rejectDeadTorrents: boolean;
-}
-
-export interface UsenetProtocolSettings {
-	minimumRetention: number | null;
-	maximumRetention: number | null;
-	downloadPriority: 'normal' | 'high' | 'low';
-	preferCompleteNzb: boolean;
-	rejectPasswordProtected: boolean;
-}
-
-export interface StreamingProtocolSettings {
-	baseUrl: string | null;
-	preferredQuality: '4k' | '1080p' | '720p' | '480p' | 'auto';
-	includeInAutoSearch: boolean;
-	enabledProviders: string[] | null;
-	blockedProviders: string[] | null;
-}
-
-export type ProtocolSettings =
-	| TorrentProtocolSettings
-	| UsenetProtocolSettings
-	| StreamingProtocolSettings;
 
 /**
  * Indexers - User-configured indexer instances.
@@ -646,6 +615,7 @@ export const libraries = sqliteTable(
 		defaultWantsSubtitles: integer('default_wants_subtitles', { mode: 'boolean' })
 			.notNull()
 			.default(true),
+		metadataProvider: text('metadata_provider').notNull().default('auto'),
 		sortOrder: integer('sort_order').notNull().default(0),
 		createdAt: text('created_at').$defaultFn(() => new Date().toISOString()),
 		updatedAt: text('updated_at').$defaultFn(() => new Date().toISOString())
@@ -699,6 +669,14 @@ export const movies = sqliteTable(
 		backdropPath: text('backdrop_path'),
 		runtime: integer('runtime'), // Minutes
 		genres: text('genres', { mode: 'json' }).$type<string[]>(),
+		metadataProvider: text('metadata_provider').notNull().default('auto'),
+		providerRefs: text('provider_refs', { mode: 'json' }).$type<
+			Partial<Record<'tmdb' | 'mal' | 'anilist', string>>
+		>(),
+		pinnedExternal: text('pinned_external', { mode: 'json' }).$type<{
+			provider: 'tmdb' | 'mal' | 'anilist';
+			id: string;
+		}>(),
 		// Path to the movie folder (relative to root folder)
 		path: text('path').notNull(),
 		libraryId: text('library_id').references(() => libraries.id, { onDelete: 'set null' }),
@@ -725,9 +703,13 @@ export const movies = sqliteTable(
 		// Adaptive subtitle searching: when subtitle searching first began (ISO timestamp)
 		firstSubtitleSearchAt: text('first_subtitle_search_at'),
 		tmdbCollectionId: integer('tmdb_collection_id'),
-		collectionName: text('collection_name')
+		collectionName: text('collection_name'),
+		releaseDate: text('release_date')
 	},
-	(table) => [index('idx_movies_monitored_hasfile').on(table.monitored, table.hasFile)]
+	(table) => [
+		index('idx_movies_monitored_hasfile').on(table.monitored, table.hasFile),
+		index('idx_movies_release_date').on(table.releaseDate)
+	]
 );
 
 /**
@@ -804,6 +786,14 @@ export const series = sqliteTable(
 		status: text('status'), // 'Continuing', 'Ended', 'Upcoming'
 		network: text('network'),
 		genres: text('genres', { mode: 'json' }).$type<string[]>(),
+		metadataProvider: text('metadata_provider').notNull().default('auto'),
+		providerRefs: text('provider_refs', { mode: 'json' }).$type<
+			Partial<Record<'tmdb' | 'mal' | 'anilist', string>>
+		>(),
+		pinnedExternal: text('pinned_external', { mode: 'json' }).$type<{
+			provider: 'tmdb' | 'mal' | 'anilist';
+			id: string;
+		}>(),
 		// Path to the series folder (relative to root folder)
 		path: text('path').notNull(),
 		libraryId: text('library_id').references(() => libraries.id, { onDelete: 'set null' }),
@@ -829,9 +819,13 @@ export const series = sqliteTable(
 		episodeCount: integer('episode_count').default(0),
 		episodeFileCount: integer('episode_file_count').default(0),
 		// Whether to search for subtitles for this series (inherited by episodes by default)
-		wantsSubtitles: integer('wants_subtitles', { mode: 'boolean' }).default(true)
+		wantsSubtitles: integer('wants_subtitles', { mode: 'boolean' }).default(true),
+		firstAirDate: text('first_air_date')
 	},
-	(table) => [index('idx_series_monitored').on(table.monitored)]
+	(table) => [
+		index('idx_series_monitored').on(table.monitored),
+		index('idx_series_first_air_date').on(table.firstAirDate)
+	]
 );
 
 /**
@@ -1394,6 +1388,23 @@ export const blocklist = sqliteTable(
 		index('idx_blocklist_series').on(table.seriesId),
 		index('idx_blocklist_infohash').on(table.infoHash)
 	]
+);
+
+export const blockedMedia = sqliteTable(
+	'blocked_media',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => randomUUID()),
+		tmdbId: integer('tmdb_id').notNull(),
+		mediaType: text('media_type').notNull(),
+		title: text('title').notNull(),
+		posterPath: text('poster_path'),
+		year: integer('year'),
+		reason: text('reason'),
+		createdAt: text('created_at').$defaultFn(() => new Date().toISOString())
+	},
+	(table) => [uniqueIndex('idx_blocked_media_unique').on(table.tmdbId, table.mediaType)]
 );
 
 /**

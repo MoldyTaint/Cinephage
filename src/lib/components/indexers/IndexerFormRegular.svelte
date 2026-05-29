@@ -4,6 +4,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import IndexerSettingsFields from './IndexerSettingsFields.svelte';
 	import { SectionHeader, ToggleSetting } from '$lib/components/ui/modal';
+	import { isSensitiveDefinitionSetting } from '$lib/shared/sensitiveSettings';
 
 	interface Props {
 		definition: IndexerDefinition | null;
@@ -13,6 +14,7 @@
 		priority: number;
 		enabled: boolean;
 		settings: Record<string, string>;
+		hasSensitiveSettings?: Record<string, boolean>;
 		enableAutomaticSearch: boolean;
 		enableInteractiveSearch: boolean;
 		minimumSeeders: number;
@@ -48,6 +50,7 @@
 		priority,
 		enabled,
 		settings,
+		hasSensitiveSettings = {},
 		enableAutomaticSearch,
 		enableInteractiveSearch,
 		minimumSeeders,
@@ -82,7 +85,12 @@
 	let authSettingsOpen = $state(true);
 	let torrentSettingsOpen = $state(false);
 
-	// Build auth settings summary
+	function shouldTreatSettingConfigured(name: string, type: string): boolean {
+		return isSensitiveDefinitionSetting({ name, type })
+			? Boolean(hasSensitiveSettings[name])
+			: false;
+	}
+
 	const authSummary = $derived.by(() => {
 		if (!definition?.settings) return 'No configuration required';
 
@@ -92,7 +100,7 @@
 
 		const configuredCount = editableSettings.filter((s) => {
 			const val = settings[s.name];
-			return val && val.trim() !== '';
+			return shouldTreatSettingConfigured(s.name, s.type) || (val && val.trim() !== '');
 		}).length;
 
 		if (configuredCount === 0) return 'Not configured';
@@ -107,7 +115,7 @@
 
 		const configuredCount = editableSettings.filter((s) => {
 			const val = settings[s.name];
-			return val && val.trim() !== '';
+			return shouldTreatSettingConfigured(s.name, s.type) || (val && val.trim() !== '');
 		}).length;
 
 		if (configuredCount === editableSettings.length) return Shield;
@@ -282,6 +290,7 @@
 					<IndexerSettingsFields
 						settingsDefinitions={definition.settings}
 						{settings}
+						{hasSensitiveSettings}
 						onchange={(newSettings) => onSettingsChange(newSettings)}
 					/>
 				</div>

@@ -72,6 +72,9 @@ export interface LibraryMovie {
 	id: string;
 	tmdbId: number;
 	imdbId: string | null;
+	metadataProvider?: 'auto' | 'tmdb' | 'anilist' | 'mal' | null;
+	providerRefs?: Partial<Record<'tmdb' | 'anilist' | 'mal', string>> | null;
+	pinnedExternal?: { provider: 'tmdb' | 'anilist' | 'mal'; id: string } | null;
 	title: string;
 	originalTitle: string | null;
 	year: number | null;
@@ -80,6 +83,7 @@ export interface LibraryMovie {
 	backdropPath: string | null;
 	runtime: number | null;
 	genres: string[] | null;
+	studios?: string[] | null;
 	path: string | null;
 	rootFolderId: string | null;
 	rootFolderPath: string | null;
@@ -103,6 +107,9 @@ export interface LibrarySeries {
 	tmdbId: number;
 	tvdbId: number | null;
 	imdbId: string | null;
+	metadataProvider?: 'auto' | 'tmdb' | 'anilist' | 'mal' | null;
+	providerRefs?: Partial<Record<'tmdb' | 'anilist' | 'mal', string>> | null;
+	pinnedExternal?: { provider: 'tmdb' | 'anilist' | 'mal'; id: string } | null;
 	title: string;
 	originalTitle: string | null;
 	year: number | null;
@@ -175,4 +182,12 @@ export function getBestQualityFromFiles(files: MovieFile[]): {
 		quality: getQualityDisplay(file.quality),
 		hdr: getHdrDisplay(file.mediaInfo)
 	};
+}
+
+export interface QualityProfileSummary {
+	id: string;
+	name: string;
+	description: string;
+	isBuiltIn: boolean;
+	isDefault: boolean;
 }

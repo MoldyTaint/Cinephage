@@ -231,23 +231,27 @@ export class QBittorrentClient implements IDownloadClient {
 			body: formData.toString()
 		});
 
+		if (response.status === 401) {
+			throw new Error('QBittorrent authentication failed: Invalid credentials');
+		}
+
 		if (!response.ok) {
 			throw new Error(`QBittorrent authentication failed: ${response.status}`);
 		}
 
+		// qBittorrent <5.2 returns 200 with "Ok.", 5.2+ returns 204 with empty body
 		const text = await response.text();
-		if (text !== 'Ok.') {
+		if (text && text !== 'Ok.') {
 			throw new Error('QBittorrent authentication failed: Invalid credentials');
 		}
 
 		// Extract session cookie
+		// 5.2+ uses QBT_SID_<port>, older versions use SID
 		const setCookie = response.headers.get('set-cookie');
 		if (setCookie) {
-			// Extract just the SID cookie
-			const match = setCookie.match(/SID=([^;]+)/);
+			const match = setCookie.match(/([^=;\s]*SID[^=]*)=([^;]+)/);
 			if (match) {
-				this.sessionCookie = `SID=${match[1]}`;
-				// Session typically lasts 1 hour, refresh at 50 minutes
+				this.sessionCookie = `${match[1]}=${match[2]}`;
 				this.cookieExpiry = Date.now() + 50 * 60 * 1000;
 			}
 		}

@@ -65,15 +65,17 @@ export class YIFYSubtitlesProvider extends BaseSubtitleProvider {
 		try {
 			const results: SubtitleSearchResult[] = [];
 
-			// Build search URL using IMDB ID (most reliable)
-			let searchUrl: string;
-			if (criteria.imdbId) {
-				searchUrl = `${BASE_URL}/movie-imdb/${criteria.imdbId}`;
-			} else {
-				// Fall back to title search
-				const searchTitle = criteria.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-				searchUrl = `${BASE_URL}/movie/${searchTitle}`;
+			let movieImdbId = criteria.imdbId;
+
+			if (!movieImdbId) {
+				movieImdbId = await this.resolveImdbId(criteria.title, criteria.year, options?.timeout);
+				if (!movieImdbId) {
+					logger.debug({ title: criteria.title }, '[YIFY] Movie not found via title search');
+					return results;
+				}
 			}
+
+			const searchUrl = `${BASE_URL}/movie-imdb/${movieImdbId}`;
 
 			const response = await this.fetchWithTimeout(searchUrl, {
 				timeout: options?.timeout || 15000,
@@ -85,10 +87,9 @@ export class YIFYSubtitlesProvider extends BaseSubtitleProvider {
 
 			if (!response.ok) {
 				if (response.status === 404) {
-					// Movie not found - not an error
 					logger.debug(
 						{
-							imdbId: criteria.imdbId,
+							imdbId: movieImdbId,
 							title: criteria.title
 						},
 						'[YIFY] Movie not found'
@@ -344,22 +345,70 @@ export class YIFYSubtitlesProvider extends BaseSubtitleProvider {
 	}
 
 	/**
+	 * Resolve IMDB ID from TMDB, then fall back to YIFY's AJAX search
+	 */
+	private async resolveImdbId(
+		title: string,
+		year?: number,
+		timeout?: number
+	): Promise<string | undefined> {
+		// Try TMDB external IDs first (most reliable)
+		try {
+			const { tmdb } = await import('$lib/server/tmdb');
+			const searchResult = await tmdb.searchMovies(title, year);
+			if (searchResult.results?.length > 0) {
+				const match = searchResult.results[0];
+				const externalIds = await tmdb.getMovieExternalIds(match.id);
+				if (externalIds.imdb_id) {
+					logger.debug({ title, imdbId: externalIds.imdb_id }, '[YIFY] Resolved IMDB ID via TMDB');
+					return externalIds.imdb_id;
+				}
+			}
+		} catch {
+			logger.debug({ title }, '[YIFY] TMDB resolution failed, trying AJAX search');
+		}
+
+		// Fall back to YIFY's own AJAX search endpoint
+		try {
+			const ajaxUrl = `${BASE_URL}/ajax/search/?mov=${encodeURIComponent(title)}`;
+			const response = await this.fetchWithTimeout(ajaxUrl, {
+				timeout: timeout || 10000,
+				headers: {
+					'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+					Accept: 'application/json'
+				}
+			});
+
+			if (!response.ok) return undefined;
+
+			const results: Array<{ movie: string; imdb: string }> = await response.json();
+			if (results.length === 0) return undefined;
+
+			if (year) {
+				const yearMatch = results.find((r) => r.movie.includes(String(year)));
+				if (yearMatch) return yearMatch.imdb;
+			}
+
+			return results[0].imdb;
+		} catch {
+			logger.debug({ title }, '[YIFY] AJAX search failed');
+			return undefined;
+		}
+	}
+
+	/**
 	 * Calculate match score
 	 */
 	private calculateScore(item: { rating?: number; releaseName?: string }): number {
-		let score = 50; // Base score for movie match (via IMDB)
+		let score = 50;
 
-		// Year match implied by IMDB search
 		score += 20;
 
-		// Release name bonus
 		if (item.releaseName) {
 			score += 15;
 		}
 
-		// Rating bonus (YIFY uses 1-5 or 1-10 scale)
 		if (item.rating) {
-			// Normalize to max 10 points
 			const normalizedRating = item.rating > 5 ? item.rating : item.rating * 2;
 			score += Math.min(normalizedRating, 10);
 		}

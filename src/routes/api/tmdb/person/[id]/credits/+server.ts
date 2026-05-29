@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { tmdb } from '$lib/server/tmdb';
-import { enrichWithLibraryStatus } from '$lib/server/library/status';
+import { enrichWithLibraryStatus, filterBlockedMedia } from '$lib/server/library/status';
 import { createChildLogger } from '$lib/logging';
 import type { PersonCastCredit, PersonCrewCredit } from '$lib/types/tmdb';
 
@@ -52,10 +52,14 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
 			const movieCredits = sortedCast.filter((c) => c.media_type === 'movie');
 			const tvCredits = sortedCast.filter((c) => c.media_type === 'tv');
 
+			const filteredMovies = await filterBlockedMedia(movieCredits, 'movie');
+			const filteredTv = await filterBlockedMedia(tvCredits, 'tv');
+			const filteredCrew = await filterBlockedMedia(sortedCrew, 'all');
+
 			// Paginate first page of each
-			const moviePage = movieCredits.slice(0, PAGE_SIZE);
-			const tvPage = tvCredits.slice(0, PAGE_SIZE);
-			const crewPage = sortedCrew.slice(0, PAGE_SIZE);
+			const moviePage = filteredMovies.slice(0, PAGE_SIZE);
+			const tvPage = filteredTv.slice(0, PAGE_SIZE);
+			const crewPage = filteredCrew.slice(0, PAGE_SIZE);
 
 			// Collect all IDs for single library status lookup
 			const allItems = [...moviePage, ...tvPage, ...crewPage];
@@ -69,9 +73,9 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
 			log.debug(
 				{
 					personId,
-					movies: movieCredits.length,
-					tv: tvCredits.length,
-					crew: sortedCrew.length
+					movies: filteredMovies.length,
+					tv: filteredTv.length,
+					crew: filteredCrew.length
 				},
 				'Returning batch person credits'
 			);
@@ -80,20 +84,20 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
 				movies: {
 					results: enrichedMovies,
 					page: 1,
-					total_pages: Math.ceil(movieCredits.length / PAGE_SIZE),
-					total_results: movieCredits.length
+					total_pages: Math.ceil(filteredMovies.length / PAGE_SIZE),
+					total_results: filteredMovies.length
 				} as PaginatedSection<PersonCastCredit>,
 				tv: {
 					results: enrichedTv,
 					page: 1,
-					total_pages: Math.ceil(tvCredits.length / PAGE_SIZE),
-					total_results: tvCredits.length
+					total_pages: Math.ceil(filteredTv.length / PAGE_SIZE),
+					total_results: filteredTv.length
 				} as PaginatedSection<PersonCastCredit>,
 				crew: {
 					results: enrichedCrew,
 					page: 1,
-					total_pages: Math.ceil(sortedCrew.length / PAGE_SIZE),
-					total_results: sortedCrew.length
+					total_pages: Math.ceil(filteredCrew.length / PAGE_SIZE),
+					total_results: filteredCrew.length
 				} as PaginatedSection<PersonCrewCredit>
 			});
 		}
@@ -114,11 +118,13 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
 			mediaType = type as 'movie' | 'tv';
 		}
 
-		// Calculate pagination
-		const totalResults = filteredCredits.length;
+		const filtered = await filterBlockedMedia(filteredCredits, mediaType);
+
+		// Calculate pagination from filtered results
+		const totalResults = filtered.length;
 		const totalPages = Math.ceil(totalResults / PAGE_SIZE);
 		const startIndex = (page - 1) * PAGE_SIZE;
-		const paginatedCredits = filteredCredits.slice(startIndex, startIndex + PAGE_SIZE);
+		const paginatedCredits = filtered.slice(startIndex, startIndex + PAGE_SIZE);
 
 		// Enrich with library status
 		const enrichedCredits = await enrichWithLibraryStatus(paginatedCredits, mediaType);

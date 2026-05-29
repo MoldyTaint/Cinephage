@@ -137,6 +137,7 @@ export interface Indexer {
 	priority: number;
 	protocol: IndexerProtocol;
 	settings?: Record<string, string> | null;
+	sensitiveSettings?: Record<string, boolean>;
 
 	// Search capability toggles
 	enableAutomaticSearch: boolean;

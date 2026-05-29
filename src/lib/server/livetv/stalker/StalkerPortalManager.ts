@@ -99,9 +99,12 @@ function normalizePortalUrl(url: string): string {
 	normalized = normalized
 		.replace(/\/portal\.php.*$/i, '')
 		.replace(/\/stalker_portal\/server\/load\.php.*$/i, '')
-		.replace(/\/stalker_portal.*$/i, '')
-		.replace(/\/c\/?$/i, '')
 		.replace(/\/server.*$/i, '');
+
+	// Only strip /c when it is at the root path level (e.g. http://host/c).
+	// Preserve /c when preceded by /stalker_portal/ (e.g. http://host/stalker_portal/c)
+	// because those portals use /stal ker_portal/c/portal.php as their API endpoint.
+	normalized = normalized.replace(/^(https?:\/\/[^/]+)\/c\/?$/, '$1');
 
 	// Ensure http:// or https://
 	if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
@@ -340,13 +343,24 @@ export class StalkerPortalManager implements BackgroundService {
 	async detectPortalType(url: string): Promise<PortalDetectionResult> {
 		const normalizedUrl = normalizePortalUrl(url);
 
-		// Try different portal endpoints
-		const endpoints = [
-			{ path: '/c/version.js', endpoint: 'portal.php' },
-			{ path: '/stalker_portal/c/version.js', endpoint: 'stalker_portal/server/load.php' }
-		];
+		// Determine if the URL already has a subpath (e.g. /stalker_portal/c)
+		// to avoid constructing doubled paths like /stalker_portal/c/stalker_portal/c/version.js
+		const hasSubpath = normalizedUrl.includes('/stalker_portal/c');
 
-		for (const { path, endpoint } of endpoints) {
+		// Try different portal endpoints, ordered by likelihood
+		const probes: Array<{ path: string; endpoint: string }> = hasSubpath
+			? [
+					// For subpath portals (e.g. /stalker_portal/c), probe version.js at the subpath
+					{ path: '/version.js', endpoint: 'portal.php' },
+					// Also try the handshake probe directly
+					{ path: '/portal.php?type=stb&action=handshake&token=', endpoint: 'portal.php' }
+				]
+			: [
+					{ path: '/c/version.js', endpoint: 'portal.php' },
+					{ path: '/stalker_portal/c/version.js', endpoint: 'stalker_portal/server/load.php' }
+				];
+
+		for (const { path, endpoint } of probes) {
 			try {
 				const testUrl = `${normalizedUrl}${path}`;
 				const response = await fetch(testUrl, {
@@ -357,10 +371,10 @@ export class StalkerPortalManager implements BackgroundService {
 					}
 				});
 
-				if (response.ok) {
+				if (response.ok || (endpoint === 'portal.php' && response.status === 403)) {
 					const text = await response.text();
-					// Check for version string pattern
-					if (text.includes('var ver') || text.includes('version')) {
+					// Check for version string pattern (skip for handshake endpoint)
+					if (path.includes('portal.php') || text.includes('var ver') || text.includes('version')) {
 						logger.debug(
 							{
 								url: normalizedUrl,

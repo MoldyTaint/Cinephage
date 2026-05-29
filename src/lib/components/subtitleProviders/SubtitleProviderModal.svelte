@@ -16,6 +16,7 @@
 	import type { ProviderDefinition } from '$lib/server/subtitles/providers/interfaces';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import { SectionHeader, TestResult } from '$lib/components/ui/modal';
+	import { isBlankOrRedacted } from '$lib/shared/sensitiveSettings';
 
 	/**
 	 * Get access type info for display
@@ -139,6 +140,7 @@
 	const modalTitle = $derived(
 		mode === 'add' ? m.subtitleProviders_modal_addTitle() : m.subtitleProviders_modal_editTitle()
 	);
+	const hasApiKey = $derived(!!provider?.apiKey);
 	const hasPassword = $derived(!!provider?.password);
 	const selectedDefinition = $derived(
 		implementation ? definitions.find((d) => d.implementation === implementation) : null
@@ -167,7 +169,7 @@
 			name = provider?.name ?? '';
 			enabled = provider?.enabled ?? true;
 			priority = provider?.priority ?? 25;
-			apiKey = provider?.apiKey ?? '';
+			apiKey = '';
 			username = provider?.username ?? '';
 			password = '';
 			requestsPerMinute = provider?.requestsPerMinute ?? 60;
@@ -193,9 +195,9 @@
 			implementation,
 			enabled,
 			priority,
-			apiKey: apiKey || undefined,
+			apiKey: isBlankOrRedacted(apiKey?.trim()) ? undefined : apiKey.trim(),
 			username: username || undefined,
-			password: password || undefined,
+			password: isBlankOrRedacted(password?.trim()) ? undefined : password.trim(),
 			requestsPerMinute
 		};
 	}
@@ -326,7 +328,10 @@
 
 				<div class="form-control">
 					<label class="label py-1" for="name">
-						<span class="label-text">{m.subtitleProviders_modal_name()}</span>
+						<span class="label-text">
+							{m.subtitleProviders_modal_name()}
+							<span class="text-error">* </span>
+						</span>
 					</label>
 					<input
 						id="name"
@@ -403,7 +408,12 @@
 				{#if requiresApiKey}
 					<div class="form-control">
 						<label class="label py-1" for="apiKey">
-							<span class="label-text">{m.subtitleProviders_modal_apiKey()}</span>
+							<span class="label-text">
+								{m.subtitleProviders_modal_apiKey()}
+								{#if mode === 'add' || !hasApiKey}
+									<span class="text-error">* </span>
+								{/if}
+							</span>
 							<span class="badge badge-xs badge-warning"
 								>{m.subtitleProviders_modal_apiKeyRequired()}</span
 							>
@@ -413,7 +423,7 @@
 							type="password"
 							class="input-bordered input input-sm"
 							bind:value={apiKey}
-							placeholder={mode === 'edit' && provider?.apiKey
+							placeholder={mode === 'edit' && hasApiKey
 								? m.subtitleProviders_modal_apiKeyPlaceholderExisting()
 								: m.subtitleProviders_modal_apiKeyPlaceholderNew()}
 						/>
@@ -464,9 +474,7 @@
 								<span class="label-text">
 									{m.subtitleProviders_modal_password()}
 									{#if mode === 'edit' && hasPassword}
-										<span class="text-xs opacity-50"
-											>{m.subtitleProviders_modal_passwordKeep()}</span
-										>
+										<span class="text-xs opacity-50">({m.auth_blankToKeep()})</span>
 									{/if}
 								</span>
 							</label>
@@ -525,7 +533,11 @@
 			<button
 				class="btn btn-ghost"
 				onclick={handleTest}
-				disabled={testing || saving || !name || nameTooLong || (requiresApiKey && !apiKey)}
+				disabled={testing ||
+					saving ||
+					!name ||
+					nameTooLong ||
+					(requiresApiKey && !apiKey.trim() && !(mode === 'edit' && hasApiKey))}
 			>
 				{#if testing}
 					<Loader2 class="h-4 w-4 animate-spin" />
@@ -538,7 +550,10 @@
 			<button
 				class="btn btn-primary"
 				onclick={handleSave}
-				disabled={saving || !name || nameTooLong || (requiresApiKey && !apiKey)}
+				disabled={saving ||
+					!name ||
+					nameTooLong ||
+					(requiresApiKey && !apiKey.trim() && !(mode === 'edit' && hasApiKey))}
 			>
 				{#if saving}
 					<Loader2 class="h-4 w-4 animate-spin" />

@@ -3,7 +3,7 @@
  * Implements all Prowlarr/Cardigann data transformation filters.
  */
 
-import { createHash } from 'crypto';
+import { createHash } from 'node:crypto';
 import type { FilterBlock } from '../schema/yamlDefinition';
 import type { TemplateEngine } from './TemplateEngine';
 import { createSafeRegex, safeMatch, safeReplace } from './safeRegex';

@@ -4,7 +4,7 @@ import { db } from '$lib/server/db/index.js';
 import { series, seasons, episodes, rootFolders } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
-import { z } from 'zod';
+import { addSeriesSchema } from '$lib/validation/schemas.js';
 import {
 	fetchSeriesDetails,
 	fetchSeriesExternalIds,
@@ -22,36 +22,6 @@ import { requireAuth } from '$lib/server/auth/authorization.js';
 import { NamingService, type MediaNamingInfo } from '$lib/server/library/naming/NamingService.js';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
-
-/**
- * Schema for adding a series to the library
- */
-const addSeriesSchema = z.object({
-	tmdbId: z.number().int().positive(),
-	rootFolderId: z.string().min(1),
-	scoringProfileId: z.string().optional(),
-	monitored: z.boolean().default(true),
-	seasonFolder: z.boolean().default(true),
-	seriesType: z.enum(['standard', 'anime', 'daily']).default('standard'),
-	monitorType: z
-		.enum([
-			'all',
-			'future',
-			'missing',
-			'existing',
-			'firstSeason',
-			'lastSeason',
-			'recent',
-			'pilot',
-			'none'
-		])
-		.default('all'),
-	monitorNewItems: z.enum(['all', 'none']).default('all'),
-	monitorSpecials: z.boolean().default(false),
-	monitoredSeasons: z.array(z.number().int()).optional(),
-	searchOnAdd: z.boolean().default(true),
-	wantsSubtitles: z.boolean().default(true)
-});
 
 /**
  * Generate a folder name for a series using the naming service

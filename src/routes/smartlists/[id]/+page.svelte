@@ -25,6 +25,7 @@
 	} from 'lucide-svelte';
 	import type { PageData } from './$types';
 	import * as m from '$lib/paraglide/messages.js';
+	import { refreshSmartList, addSmartListItems } from '$lib/api';
 
 	let { data }: { data: PageData } = $props();
 
@@ -100,14 +101,13 @@
 	async function refreshList() {
 		refreshing = true;
 		try {
-			const response = await fetch(`/api/smartlists/${data.list.id}/refresh`, { method: 'POST' });
-			const result = (await response.json().catch(() => null)) as {
+			const result = (await refreshSmartList(data.list.id)) as {
 				error?: string;
 				errorMessage?: string;
 				status?: string;
-			} | null;
+			};
 
-			if (!response.ok || result?.status === 'failed') {
+			if (result?.status === 'failed') {
 				throw new Error(result?.errorMessage ?? result?.error ?? 'Smart list refresh failed');
 			}
 
@@ -128,16 +128,10 @@
 		addingIds.add(tmdbId);
 		addingIds = addingIds;
 		try {
-			const response = await fetch(`/api/smartlists/${data.list.id}/items`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'addToLibrary', tmdbIds: [tmdbId] })
-			});
-			const result = (await response.json().catch(() => null)) as AddToLibraryResponse | null;
-
-			if (!response.ok) {
-				throw new Error(result?.error ?? m.smartlists_detail_failedToAddToLibrary());
-			}
+			const result = (await addSmartListItems(data.list.id, {
+				action: 'addToLibrary',
+				tmdbIds: [tmdbId]
+			})) as unknown as AddToLibraryResponse | null;
 
 			if (!result) {
 				throw new Error(m.smartlists_detail_invalidAddResponse());
@@ -165,10 +159,9 @@
 		excludingIds.add(tmdbId);
 		excludingIds = excludingIds;
 		try {
-			await fetch(`/api/smartlists/${data.list.id}/items`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'exclude', tmdbIds: [tmdbId] })
+			await addSmartListItems(data.list.id, {
+				action: 'exclude',
+				tmdbIds: [tmdbId]
 			});
 			toasts.success(m.smartlists_detail_excludedFromList({ title }));
 			closeItemDetails();
@@ -184,10 +177,9 @@
 		excludingIds.add(tmdbId);
 		excludingIds = excludingIds;
 		try {
-			await fetch(`/api/smartlists/${data.list.id}/items`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'include', tmdbIds: [tmdbId] })
+			await addSmartListItems(data.list.id, {
+				action: 'include',
+				tmdbIds: [tmdbId]
 			});
 			toasts.success(m.smartlists_detail_includedInList({ title }));
 			closeItemDetails();
@@ -212,16 +204,10 @@
 
 		bulkAdding = true;
 		try {
-			const response = await fetch(`/api/smartlists/${data.list.id}/items`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'addToLibrary', tmdbIds })
-			});
-			const result = (await response.json().catch(() => null)) as AddToLibraryResponse | null;
-
-			if (!response.ok) {
-				throw new Error(result?.error ?? m.smartlists_detail_failedToAddItems());
-			}
+			const result = (await addSmartListItems(data.list.id, {
+				action: 'addToLibrary',
+				tmdbIds
+			})) as unknown as AddToLibraryResponse | null;
 
 			if (!result) {
 				throw new Error(m.smartlists_detail_invalidAddResponse());
@@ -357,7 +343,7 @@
 						<div class="flex flex-wrap gap-4 text-sm text-base-content/70">
 							{#if selectedItem.voteAverage}
 								<div class="flex items-center gap-1">
-									<Star class="h-4 w-4 fill-yellow-400 text-yellow-400" />
+									<Star class="h-4 w-4 fill-warning text-warning" />
 									<span>{parseFloat(selectedItem.voteAverage).toFixed(1)}</span>
 								</div>
 							{/if}
@@ -628,7 +614,7 @@
 							<div
 								class="absolute top-2 right-2 z-10 flex items-center gap-0.5 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white shadow-sm backdrop-blur-sm"
 							>
-								<Star class="h-2.5 w-2.5 fill-yellow-400 text-yellow-400" />
+								<Star class="h-2.5 w-2.5 fill-warning text-warning" />
 								{parseFloat(item.voteAverage).toFixed(1)}
 							</div>
 						{/if}

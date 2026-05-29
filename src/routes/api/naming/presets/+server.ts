@@ -12,6 +12,7 @@ import {
 import { eq } from 'drizzle-orm';
 import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { namingPresetCreateSchema } from '$lib/validation/schemas.js';
 
 /**
  * GET /api/naming/presets
@@ -59,20 +60,11 @@ export const POST: RequestHandler = async (event) => {
 
 	const { request } = event;
 	try {
-		const body = await request.json();
-		const { name, description, config } = body as {
-			name: string;
-			description?: string;
-			config: Record<string, unknown>;
-		};
-
-		if (!name || typeof name !== 'string' || name.trim().length === 0) {
-			return json({ error: 'Name is required' }, { status: 400 });
+		const parsed = namingPresetCreateSchema.safeParse(await request.json());
+		if (!parsed.success) {
+			return json({ success: false, error: parsed.error.issues[0].message }, { status: 400 });
 		}
-
-		if (!config || typeof config !== 'object') {
-			return json({ error: 'Config is required' }, { status: 400 });
-		}
+		const { name, description, config } = parsed.data;
 
 		// Check if name conflicts with built-in preset
 		const builtInConflict = BUILT_IN_PRESETS.find(

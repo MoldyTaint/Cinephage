@@ -69,5 +69,5 @@ export const POST: RequestHandler = async (event) => {
 		packSeedTime: validated.packSeedTime ?? null
 	});
 
-	return json({ success: true, indexer: created });
+	return json({ success: true, indexer: redactIndexer(created) });
 };

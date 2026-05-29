@@ -5,6 +5,8 @@
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
 	import { getFileName } from '$lib/utils/format.js';
+	import { searchTmdb } from '$lib/api/discover.js';
+	import { matchUnmatched } from '$lib/api/library.js';
 
 	interface UnmatchedFile {
 		id: string;
@@ -66,10 +68,7 @@
 
 		isSearching = true;
 		try {
-			const response = await fetch(
-				`/api/discover/search?query=${encodeURIComponent(searchQuery)}&type=${searchType}`
-			);
-			const data = await response.json();
+			const data = await searchTmdb({ query: searchQuery, type: searchType });
 			searchResults = data.results || [];
 		} catch {
 			toasts.error(m.library_matchFile_searchFailed());
@@ -90,15 +89,10 @@
 	async function matchToMovie(movie: TmdbSearchResult) {
 		isMatching = true;
 		try {
-			const response = await fetch(`/api/library/unmatched/${file.id}`, {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					tmdbId: movie.id,
-					mediaType: 'movie'
-				})
+			const result = await matchUnmatched(file.id, {
+				tmdbId: movie.id,
+				mediaType: 'movie'
 			});
-			const result = await response.json();
 
 			if (result.success) {
 				toasts.success(m.library_matchFile_matchedTo({ title: movie.title || movie.name || '' }));
@@ -124,17 +118,12 @@
 
 		isMatching = true;
 		try {
-			const response = await fetch(`/api/library/unmatched/${file.id}`, {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					tmdbId: selectedShow.id,
-					mediaType: 'tv',
-					season,
-					episode
-				})
+			const result = await matchUnmatched(file.id, {
+				tmdbId: selectedShow.id,
+				mediaType: 'tv',
+				season,
+				episode
 			});
-			const result = await response.json();
 
 			if (result.success) {
 				toasts.success(

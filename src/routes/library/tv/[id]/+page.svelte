@@ -9,15 +9,30 @@
 	} from '$lib/components/library';
 	import { TVSeriesSidebar, BulkActionBar } from '$lib/components/library/tv';
 	import { InteractiveSearchModal } from '$lib/components/search';
+	import type { Release } from '$lib/components/search/SearchResultRow.svelte';
 	import { SubtitleSearchModal } from '$lib/components/subtitles';
 	import SubtitleSyncModal from '$lib/components/subtitles/SubtitleSyncModal.svelte';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
+	import { ModalWrapper, ModalHeader, ModalFooter } from '$lib/components/ui/modal';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import { grabRelease } from '$lib/api/downloads.js';
+	import { autoSearchSubtitles, syncSubtitle, deleteSubtitle } from '$lib/api/subtitles.js';
+	import {
+		updateSeries,
+		getSeries,
+		deleteSeries,
+		deleteSeason,
+		deleteEpisode,
+		updateSeason,
+		updateEpisode
+	} from '$lib/api/library.js';
+	import { ApiError } from '$lib/api/client.js';
+	import { apiPostStream } from '$lib/api';
 	import type { SeriesEditData } from '$lib/components/library/SeriesEditModal.svelte';
 	import type { SearchMode } from '$lib/components/search/InteractiveSearchModal.svelte';
 	import { CheckSquare, FileEdit, Wifi, WifiOff, Loader2, RefreshCw } from 'lucide-svelte';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
 	import { createDynamicSSE } from '$lib/sse';
@@ -26,20 +41,11 @@
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { calculateEpisodeStats } from '$lib/utils/episode-stats.svelte';
+	import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
 
 	let { data }: { data: PageData } = $props();
 
-	const ACTIVE_QUEUE_STATUSES = new Set([
-		'queued',
-		'downloading',
-		'stalled',
-		'paused',
-		'completed',
-		'postprocessing',
-		'importing',
-		'seeding',
-		'seeding-imported'
-	]);
+	const activeStatusSet: Set<string> = new Set(ACTIVE_DOWNLOAD_STATUSES);
 
 	// Reactive data that will be updated via SSE
 	let seriesState = $state<PageData['series'] | null>(null);
@@ -152,7 +158,7 @@
 			}
 		},
 		'queue:updated': (payload) => {
-			if (!ACTIVE_QUEUE_STATUSES.has(payload.status)) {
+			if (!activeStatusSet.has(payload.status)) {
 				// Remove from queue state when no longer active
 				queueItemsState = queueItems.filter((q) => q.id !== payload.id);
 			} else {
@@ -282,6 +288,10 @@
 	let isRefreshing = $state(false);
 	let refreshProgress = $state<{ current: number; total: number; message: string } | null>(null);
 	let isDeleting = $state(false);
+	let isProviderLinkModalOpen = $state(false);
+	let resolvingProvider = $state<'anilist' | 'mal'>('anilist');
+	let providerRefInput = $state('');
+	let isSavingProviderRef = $state(false);
 
 	// Selection state
 	let selectedEpisodes = new SvelteSet<string>();
@@ -370,7 +380,7 @@
 	});
 
 	$effect(() => {
-		if ($page.url.searchParams.get('edit') === '1') {
+		if (page.url.searchParams.get('edit') === '1') {
 			isEditModalOpen = true;
 		}
 	});
@@ -441,15 +451,8 @@
 	async function handleMonitorToggle(newValue: boolean) {
 		isSaving = true;
 		try {
-			const response = await fetch(`/api/library/series/${series.id}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ monitored: newValue })
-			});
-
-			if (response.ok) {
-				series.monitored = newValue;
-			}
+			await updateSeries(series.id, { monitored: newValue });
+			series.monitored = newValue;
 		} catch (error) {
 			showActionError(m.toast_library_tvDetail_failedToUpdateMonitor(), error);
 		} finally {
@@ -477,14 +480,53 @@
 		void goto(resolvePath(`/library/import?${query}`));
 	}
 
+	function buildProviderSearchLink(provider: 'anilist' | 'mal'): string {
+		const query = `${series.title}${series.year ? ` ${series.year}` : ''}`;
+		if (provider === 'anilist') {
+			return `https://anilist.co/search/anime?search=${encodeURIComponent(query)}`;
+		}
+		return `https://myanimelist.net/anime.php?q=${encodeURIComponent(query)}&cat=anime`;
+	}
+
+	function openProviderLinkModal(provider: 'anilist' | 'mal'): void {
+		resolvingProvider = provider;
+		providerRefInput = '';
+		isProviderLinkModalOpen = true;
+	}
+
+	function closeProviderLinkModal(): void {
+		isProviderLinkModalOpen = false;
+		providerRefInput = '';
+	}
+
+	async function saveProviderRef(): Promise<void> {
+		const normalized = providerRefInput.trim();
+		if (!normalized) return;
+
+		isSavingProviderRef = true;
+		try {
+			const nextRefs = { ...(series.providerRefs ?? {}), [resolvingProvider]: normalized };
+			await updateSeries(series.id, {
+				providerRefs: nextRefs
+			} as unknown as Record<string, unknown>);
+			closeProviderLinkModal();
+			await refreshSeriesFromApi();
+			toasts.success('Provider link updated');
+		} catch (error) {
+			showActionError('Failed to update provider link', error);
+		} finally {
+			isSavingProviderRef = false;
+		}
+	}
+
 	function handleEdit() {
 		isEditModalOpen = true;
 	}
 
 	function handleEditClose() {
 		isEditModalOpen = false;
-		if ($page.url.searchParams.get('edit') === '1') {
-			goto($page.url.pathname, { replaceState: true, keepFocus: true, noScroll: true });
+		if (page.url.searchParams.get('edit') === '1') {
+			goto(page.url.pathname, { replaceState: true, keepFocus: true, noScroll: true });
 		}
 	}
 
@@ -501,11 +543,10 @@
 
 	async function refreshSeriesFromApi(): Promise<void> {
 		try {
-			const response = await fetch(`/api/library/series/${series.id}`);
-			if (!response.ok) return;
-
-			const result = await response.json();
-			if (!result.success || !result.series) return;
+			const result = (await getSeries(series.id)) as {
+				series?: Record<string, unknown> & { seasons?: PageData['seasons'] };
+			};
+			if (!result.series) return;
 
 			const { seasons: refreshedSeasons, ...seriesFields } = result.series;
 			seriesState = { ...series, ...seriesFields };
@@ -522,14 +563,7 @@
 		refreshProgress = null;
 
 		try {
-			const response = await fetch(`/api/library/series/${series.id}/refresh`, {
-				method: 'POST'
-			});
-
-			if (!response.ok) {
-				toasts.error(m.toast_library_tvDetail_refreshFailed());
-				return;
-			}
+			const response = await apiPostStream(`/api/library/series/${series.id}/refresh`);
 
 			// Read the streaming response
 			const reader = response.body?.getReader();
@@ -593,22 +627,15 @@
 	async function handleEditSave(editData: SeriesEditData) {
 		isSaving = true;
 		try {
-			const response = await fetch(`/api/library/series/${series.id}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(editData)
-			});
-
-			const result = await response.json().catch(() => null);
-			if (!response.ok) {
-				throw new Error(result?.error || m.toast_library_tvDetail_failedToUpdate());
-			}
+			const previousMetadataProvider = series.metadataProvider ?? 'auto';
+			const result = await updateSeries(series.id, editData as unknown as Record<string, unknown>);
 
 			series.monitored = editData.monitored;
 			series.scoringProfileId = editData.scoringProfileId;
 			series.seasonFolder = editData.seasonFolder;
 			series.seriesType = editData.seriesType;
 			series.wantsSubtitles = editData.wantsSubtitles;
+			series.metadataProvider = editData.metadataProvider;
 
 			if (result?.moveQueued) {
 				toasts.success(
@@ -621,6 +648,10 @@
 			}
 
 			isEditModalOpen = false;
+
+			if (previousMetadataProvider !== editData.metadataProvider) {
+				void handleRefresh();
+			}
 		} catch (error) {
 			showActionError(m.toast_library_tvDetail_failedToUpdate(), error);
 		} finally {
@@ -635,11 +666,7 @@
 	async function performDelete(deleteFiles: boolean, removeFromLibrary: boolean) {
 		isDeleting = true;
 		try {
-			const response = await fetch(
-				`/api/library/series/${series.id}?deleteFiles=${deleteFiles}&removeFromLibrary=${removeFromLibrary}`,
-				{ method: 'DELETE' }
-			);
-			const result = await response.json();
+			const result = await deleteSeries(series.id, deleteFiles, removeFromLibrary);
 
 			if (result.success) {
 				if (removeFromLibrary) {
@@ -693,11 +720,7 @@
 
 		isDeletingSeason = true;
 		try {
-			const response = await fetch(
-				`/api/library/seasons/${deletingSeasonId}?deleteFiles=${deleteFiles}`,
-				{ method: 'DELETE' }
-			);
-			const result = await response.json();
+			const result = await deleteSeason(deletingSeasonId, deleteFiles);
 
 			if (result.success) {
 				toasts.success(m.toast_library_tvDetail_seasonFilesDeleted());
@@ -753,11 +776,7 @@
 
 		isDeletingEpisode = true;
 		try {
-			const response = await fetch(
-				`/api/library/episodes/${deletingEpisodeId}?deleteFiles=${deleteFiles}`,
-				{ method: 'DELETE' }
-			);
-			const result = await response.json();
+			const result = await deleteEpisode(deletingEpisodeId, deleteFiles);
 
 			if (result.success) {
 				toasts.success(m.toast_library_tvDetail_episodeFilesDeleted());
@@ -799,23 +818,17 @@
 
 	async function handleSeasonMonitorToggle(seasonId: string, newValue: boolean) {
 		try {
-			const response = await fetch(`/api/library/seasons/${seasonId}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ monitored: newValue, updateEpisodes: true })
-			});
+			await updateSeason(seasonId, { monitored: newValue, updateEpisodes: true });
 
-			if (response.ok) {
-				seasonsState = seasons.map((season) =>
-					season.id === seasonId
-						? {
-								...season,
-								monitored: newValue,
-								episodes: season.episodes.map((ep) => ({ ...ep, monitored: newValue }))
-							}
-						: season
-				);
-			}
+			seasonsState = seasons.map((season) =>
+				season.id === seasonId
+					? {
+							...season,
+							monitored: newValue,
+							episodes: season.episodes.map((ep) => ({ ...ep, monitored: newValue }))
+						}
+					: season
+			);
 		} catch (error) {
 			showActionError(m.toast_library_tvDetail_failedToUpdateSeasonMonitor(), error);
 		}
@@ -823,20 +836,14 @@
 
 	async function handleEpisodeMonitorToggle(episodeId: string, newValue: boolean) {
 		try {
-			const response = await fetch(`/api/library/episodes/${episodeId}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ monitored: newValue })
-			});
+			await updateEpisode(episodeId, { monitored: newValue });
 
-			if (response.ok) {
-				seasonsState = seasons.map((season) => ({
-					...season,
-					episodes: season.episodes.map((ep) =>
-						ep.id === episodeId ? { ...ep, monitored: newValue } : ep
-					)
-				}));
-			}
+			seasonsState = seasons.map((season) => ({
+				...season,
+				episodes: season.episodes.map((ep) =>
+					ep.id === episodeId ? { ...ep, monitored: newValue } : ep
+				)
+			}));
 		} catch (error) {
 			showActionError(m.toast_library_tvDetail_failedToUpdateEpisodeMonitor(), error);
 		}
@@ -1144,13 +1151,7 @@
 		subtitleAutoSearchingEpisodes.add(episode.id);
 
 		try {
-			const response = await fetch('/api/subtitles/auto-search', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ episodeId: episode.id })
-			});
-
-			const result = await response.json();
+			const result = await autoSearchSubtitles({ episodeId: episode.id });
 
 			if (result.success && result.subtitle) {
 				appendSubtitleToEpisode(episode.id, result.subtitle);
@@ -1196,19 +1197,12 @@
 		subtitleSyncError = null;
 
 		try {
-			const response = await fetch('/api/subtitles/sync', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					subtitleId,
-					...(settings?.splitPenalty !== undefined && { splitPenalty: settings.splitPenalty }),
-					...(settings?.noSplits !== undefined && { noSplits: settings.noSplits })
-				})
+			const result = await syncSubtitle(subtitleId, {
+				...(settings?.splitPenalty !== undefined && { splitPenalty: settings.splitPenalty }),
+				...(settings?.noSplits !== undefined && { noSplits: settings.noSplits })
 			});
 
-			const result = await response.json();
-
-			if (!response.ok || !result.success) {
+			if (!result.success) {
 				throw new Error(result.error || m.toast_library_tvDetail_subtitleSyncFailed());
 			}
 
@@ -1245,15 +1239,9 @@
 	async function handleSubtitleSyncFromPopover(subtitleId: string): Promise<void> {
 		subtitleSyncingId = subtitleId;
 		try {
-			const response = await fetch('/api/subtitles/sync', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ subtitleId })
-			});
+			const result = await syncSubtitle(subtitleId);
 
-			const result = await response.json();
-
-			if (!response.ok || !result.success) {
+			if (!result.success) {
 				throw new Error(result.error || m.toast_library_tvDetail_subtitleSyncFailed());
 			}
 
@@ -1285,17 +1273,12 @@
 	async function handleSubtitleDeleteFromPopover(subtitleId: string): Promise<void> {
 		subtitleDeletingId = subtitleId;
 		try {
-			const response = await fetch(`/api/subtitles/${subtitleId}`, {
-				method: 'DELETE'
-			});
+			const result = await deleteSubtitle(subtitleId);
 
-			const result = await response.json();
-
-			if (!response.ok || !result.success) {
+			if (!result.success) {
 				throw new Error(result.error || m.toast_library_tvDetail_deleteFailed());
 			}
 
-			// Remove subtitle from seasons state
 			seasonsState = seasons.map((season) => ({
 				...season,
 				episodes: season.episodes.map((episode) => ({
@@ -1327,15 +1310,10 @@
 		onComplete: () => void
 	): Promise<void> {
 		try {
-			const response = await fetch('/api/subtitles/sync/bulk', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ subtitleIds, ...settings })
+			const response = await apiPostStream('/api/subtitles/sync/bulk', {
+				subtitleIds,
+				...settings
 			});
-
-			if (!response.ok) {
-				throw new Error(m.toast_library_tvDetail_bulkSyncFailed());
-			}
 
 			const reader = response.body?.getReader();
 			if (!reader) {
@@ -1398,13 +1376,7 @@
 			for (const episodeId of episodeIds) {
 				subtitleAutoSearchingEpisodes.add(episodeId);
 				try {
-					const response = await fetch('/api/subtitles/auto-search', {
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({ episodeId })
-					});
-
-					const result = await response.json();
+					const result = await autoSearchSubtitles({ episodeId });
 
 					if (result.success && result.subtitle) {
 						appendSubtitleToEpisode(episodeId, result.subtitle);
@@ -1459,15 +1431,7 @@
 		bulkSubtitleSyncing = true;
 
 		try {
-			const response = await fetch('/api/subtitles/sync/bulk', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ subtitleIds })
-			});
-
-			if (!response.ok) {
-				throw new Error(m.toast_library_tvDetail_bulkSyncFailed());
-			}
+			const response = await apiPostStream('/api/subtitles/sync/bulk', { subtitleIds });
 
 			const reader = response.body?.getReader();
 			if (!reader) {
@@ -1561,34 +1525,6 @@
 		openSeasonId = openSeasonId === seasonId ? null : seasonId;
 	}
 
-	interface Release {
-		guid: string;
-		title: string;
-		downloadUrl: string;
-		magnetUrl?: string;
-		infoHash?: string;
-		indexerId: string;
-		indexerName: string;
-		protocol: string;
-		commentsUrl?: string;
-		episodeMatch?: {
-			season?: number;
-			seasons?: number[];
-			episodes?: number[];
-			isSeasonPack?: boolean;
-			isCompleteSeries?: boolean;
-		};
-		parsed?: {
-			episode?: {
-				season?: number;
-				seasons?: number[];
-				episodes?: number[];
-				isSeasonPack?: boolean;
-				isCompleteSeries?: boolean;
-			};
-		};
-	}
-
 	// Helper function to look up episode IDs from local data
 	function lookupEpisodeIds(season: number, episodes: number[]): string[] {
 		const ids: string[] = [];
@@ -1610,7 +1546,6 @@
 		streaming?: boolean
 	): Promise<{ success: boolean; error?: string; errorCode?: string }> {
 		try {
-			// Determine season/episode info from release metadata
 			const episodeMatch = release.episodeMatch || release.parsed?.episode;
 
 			let seasonNumber: number | undefined;
@@ -1618,19 +1553,15 @@
 
 			if (episodeMatch) {
 				if (episodeMatch.isSeasonPack && episodeMatch.season !== undefined) {
-					// Season pack - just need seasonNumber
 					seasonNumber = episodeMatch.season;
 				} else if (episodeMatch.seasons && episodeMatch.seasons.length === 1) {
-					// Single season from seasons array (also a season pack)
 					seasonNumber = episodeMatch.seasons[0];
 				} else if (episodeMatch.season !== undefined && episodeMatch.episodes?.length) {
-					// Specific episode(s) - need to look up episode IDs
 					seasonNumber = episodeMatch.season;
 					episodeIds = lookupEpisodeIds(episodeMatch.season, episodeMatch.episodes);
 				}
 			}
 
-			// Fallback to search context if no episodeMatch data
 			if (seasonNumber === undefined && searchContext?.season !== undefined) {
 				seasonNumber = searchContext.season;
 				if (searchContext.episode !== undefined) {
@@ -1638,30 +1569,23 @@
 				}
 			}
 
-			const response = await fetch('/api/download/grab', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					guid: release.guid,
-					downloadUrl: release.downloadUrl,
-					magnetUrl: release.magnetUrl,
-					infoHash: release.infoHash,
-					title: release.title,
-					indexerId: release.indexerId,
-					indexerName: release.indexerName,
-					protocol: release.protocol,
-					seriesId: series.id,
-					mediaType: 'tv',
-					seasonNumber,
-					episodeIds,
-					streamUsenet: streaming && release.protocol === 'usenet',
-					commentsUrl: release.commentsUrl
-				})
+			const result = await grabRelease({
+				guid: release.guid,
+				downloadUrl: release.downloadUrl,
+				magnetUrl: release.magnetUrl,
+				infoHash: release.infoHash,
+				title: release.title,
+				indexerId: release.indexerId,
+				indexerName: release.indexerName,
+				protocol: release.protocol,
+				seriesId: series.id,
+				mediaType: 'tv',
+				seasonNumber,
+				episodeIds,
+				streamUsenet: streaming && release.protocol === 'usenet',
+				commentsUrl: release.commentsUrl
 			});
 
-			const result = await response.json();
-
-			// For streaming grabs, refresh the page since files are created instantly
 			if (result.success && (release.protocol === 'streaming' || streaming)) {
 				setTimeout(() => {
 					void refreshSeriesFromApi();
@@ -1672,7 +1596,7 @@
 		} catch (error) {
 			return {
 				success: false,
-				error: error instanceof Error ? error.message : m.toast_library_tvDetail_failedToGrab()
+				error: error instanceof ApiError ? error.message : m.toast_library_tvDetail_failedToGrab()
 			};
 		}
 	}
@@ -1750,6 +1674,7 @@
 	<!-- Header -->
 	<LibrarySeriesHeader
 		series={seriesForDisplay}
+		configuredProviders={data.configuredMetadataProviders}
 		totalSize={totalSeriesSize}
 		{qualityProfileName}
 		refreshing={isRefreshing}
@@ -1846,7 +1771,11 @@
 		</div>
 
 		<!-- Sidebar -->
-		<TVSeriesSidebar series={seriesForDisplay} />
+		<TVSeriesSidebar
+			series={seriesForDisplay}
+			configuredProviders={data.configuredMetadataProviders}
+			onResolveProviderRef={openProviderLinkModal}
+		/>
 	</div>
 </div>
 
@@ -1978,3 +1907,48 @@
 	onConfirm={performEpisodeDelete}
 	onCancel={() => (isEpisodeDeleteModalOpen = false)}
 />
+
+<ModalWrapper
+	open={isProviderLinkModalOpen}
+	onClose={closeProviderLinkModal}
+	maxWidth="md"
+	labelledBy="provider-link-modal-title"
+>
+	<ModalHeader
+		title={`Link ${resolvingProvider === 'anilist' ? 'AniList' : 'MAL'} ID`}
+		onClose={closeProviderLinkModal}
+	/>
+	<div class="space-y-4">
+		<p class="text-sm text-base-content/70">
+			This item is not linked for {resolvingProvider === 'anilist' ? 'AniList' : 'MAL'}.
+		</p>
+		<div class="rounded-lg bg-base-200 p-3 text-sm">
+			<a
+				href={buildProviderSearchLink(resolvingProvider)}
+				target="_blank"
+				rel="noopener noreferrer"
+				class="link link-primary"
+			>
+				Open provider search
+			</a>
+		</div>
+		<label class="form-control w-full">
+			<span class="label-text mb-1 text-sm">
+				{resolvingProvider === 'anilist' ? 'AniList ID' : 'MAL ID'}
+			</span>
+			<input
+				type="text"
+				class="input-bordered input w-full"
+				bind:value={providerRefInput}
+				placeholder={resolvingProvider === 'anilist' ? 'e.g. 154587' : 'e.g. 33218'}
+			/>
+		</label>
+	</div>
+	<ModalFooter
+		onCancel={closeProviderLinkModal}
+		onSave={() => void saveProviderRef()}
+		saving={isSavingProviderRef}
+		saveDisabled={!providerRefInput.trim()}
+		saveLabel="Save Link"
+	/>
+</ModalWrapper>

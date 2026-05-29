@@ -9,7 +9,7 @@ import { eq, asc } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { MediaBrowserClient } from './MediaBrowserClient';
 import type {
 	MediaBrowserServerInput,

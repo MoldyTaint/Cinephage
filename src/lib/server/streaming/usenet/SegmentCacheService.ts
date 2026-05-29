@@ -12,7 +12,7 @@
  * These survive app restarts since they're stored in SQLite.
  */
 
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { db } from '$lib/server/db';
 import { nzbSegmentCache } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';

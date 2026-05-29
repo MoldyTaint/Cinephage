@@ -13,6 +13,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import type { ChannelLineupItemWithDetails, EpgProgram } from '$lib/types/livetv';
 	import { onMount } from 'svelte';
+	import { getEpgGuide } from '$lib/api/livetv.js';
 	import { getEpgConfig } from './epgConfig';
 
 	interface Props {
@@ -200,18 +201,12 @@
 		loadingPrograms = true;
 		try {
 			const channelIds = lineup.map((ch) => ch.epgSourceChannelId ?? ch.channelId);
-			const params = new URLSearchParams({
+			const data = await getEpgGuide({
 				start: windowStart.toISOString(),
 				end: windowEnd.toISOString(),
 				channelIds: channelIds.join(',')
 			});
 
-			const res = await fetch(`/api/livetv/epg/guide?${params}`);
-			if (!res.ok || requestId !== loadProgramsRequestId) {
-				return;
-			}
-
-			const data = await res.json();
 			if (requestId !== loadProgramsRequestId) {
 				return;
 			}

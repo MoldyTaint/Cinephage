@@ -9,7 +9,7 @@ import { db } from '$lib/server/db';
 import { livetvAccounts, livetvChannels, livetvCategories } from '$lib/server/db/schema';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { XMLParser } from 'fast-xml-parser';
 
 const logger = createChildLogger({ logDomain: 'livetv' as const });

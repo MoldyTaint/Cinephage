@@ -8,6 +8,8 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { formatBytes } from '$lib/utils/format.js';
 	import type { RootFolderWithSpace as RootFolder } from '$lib/types/downloadClient.js';
+	import { getLibraryClassificationSettings } from '$lib/api/settings.js';
+	import { getTmdb } from '$lib/api/discover.js';
 
 	interface SeriesData {
 		tmdbId: number;
@@ -20,6 +22,7 @@
 		seasonFolder: boolean | null;
 		wantsSubtitles: boolean | null;
 		seriesType: string | null;
+		metadataProvider?: 'auto' | 'tmdb' | 'anilist' | 'mal' | null;
 	}
 
 	interface QualityProfileOption {
@@ -57,6 +60,7 @@
 		seasonFolder: boolean;
 		wantsSubtitles: boolean;
 		seriesType: 'standard' | 'anime' | 'daily';
+		metadataProvider: 'auto' | 'tmdb' | 'anilist' | 'mal';
 	}
 
 	let { open, series, qualityProfiles, rootFolders, saving, onClose, onSave }: Props = $props();
@@ -68,6 +72,7 @@
 	let seasonFolder = $state(true);
 	let wantsSubtitles = $state(true);
 	let seriesType = $state<'standard' | 'anime' | 'daily'>('standard');
+	let metadataProvider = $state<'auto' | 'tmdb' | 'anilist' | 'mal'>('auto');
 	let moveFilesOnRootChange = $state(false);
 	let moveOptionTouched = $state(false);
 	let animeRootWarningShown = $state(false);
@@ -89,33 +94,34 @@
 	const hasExistingFiles = $derived((series.episodeFileCount ?? 0) > 0);
 	const rootFolderChanged = $derived((rootFolderId || null) !== (series.rootFolderId ?? null));
 	const canMoveExistingFiles = $derived(hasExistingFiles && rootFolderChanged && !!rootFolderId);
+	const showAnimeMetadataProviderControl = $derived(
+		seriesType === 'anime' ||
+			detectedAnime ||
+			metadataProvider === 'anilist' ||
+			metadataProvider === 'mal'
+	);
 
 	async function loadAnimeRoutingContext(tmdbId: number) {
 		try {
-			const [classificationRes, tvRes] = await Promise.all([
-				fetch('/api/settings/library/classification'),
-				fetch(`/api/tmdb/tv/${tmdbId}`)
+			const [classificationData, details] = await Promise.all([
+				getLibraryClassificationSettings(),
+				getTmdb(`tv/${tmdbId}`)
 			]);
 
 			let nextEnforceAnimeSubtype = false;
 			let nextDetectedAnime = false;
 
-			if (classificationRes.ok) {
-				const classificationData = await classificationRes.json();
-				nextEnforceAnimeSubtype = classificationData?.enforceAnimeSubtype === true;
-			}
+			nextEnforceAnimeSubtype = classificationData?.enforceAnimeSubtype === true;
 
-			if (tvRes.ok) {
-				const details: TmdbTvDetails = await tvRes.json();
-				nextDetectedAnime = isLikelyAnimeMedia({
-					genres: details.genres,
-					originalLanguage: details.original_language,
-					originCountries: details.origin_country,
-					productionCountries: details.production_countries,
-					title: details.name,
-					originalTitle: details.original_name
-				});
-			}
+			const tvDetails = details as TmdbTvDetails;
+			nextDetectedAnime = isLikelyAnimeMedia({
+				genres: tvDetails.genres,
+				originalLanguage: tvDetails.original_language,
+				originCountries: tvDetails.origin_country,
+				productionCountries: tvDetails.production_countries,
+				title: tvDetails.name,
+				originalTitle: tvDetails.original_name
+			});
 
 			// Apply detection before enabling enforcement to avoid transient standard-folder re-selection.
 			detectedAnime = nextDetectedAnime;
@@ -165,6 +171,7 @@
 			seasonFolder = series.seasonFolder ?? true;
 			wantsSubtitles = series.wantsSubtitles ?? true;
 			seriesType = normalizeSeriesType(series.seriesType);
+			metadataProvider = series.metadataProvider ?? 'auto';
 			moveFilesOnRootChange = false;
 			moveOptionTouched = false;
 			animeRootWarningShown = false;
@@ -229,7 +236,8 @@
 			moveFilesOnRootChange,
 			seasonFolder,
 			wantsSubtitles,
-			seriesType
+			seriesType,
+			metadataProvider: showAnimeMetadataProviderControl ? metadataProvider : 'auto'
 		});
 	}
 </script>
@@ -294,6 +302,25 @@
 				</span>
 			</div>
 		</div>
+
+		{#if showAnimeMetadataProviderControl}
+			<!-- Metadata Provider -->
+			<div class="form-control">
+				<label class="label" for="series-metadata-provider">
+					<span class="label-text font-medium">Metadata Provider (Anime)</span>
+				</label>
+				<select
+					id="series-metadata-provider"
+					bind:value={metadataProvider}
+					class="select-bordered select w-full"
+				>
+					<option value="auto">Auto (inherit from library)</option>
+					<option value="tmdb">TMDB</option>
+					<option value="anilist">AniList</option>
+					<option value="mal">MyAnimeList</option>
+				</select>
+			</div>
+		{/if}
 
 		<!-- Quality Profile -->
 		<div class="form-control">

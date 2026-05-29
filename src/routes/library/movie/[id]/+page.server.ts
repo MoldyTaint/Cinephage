@@ -5,35 +5,19 @@ import {
 	rootFolders,
 	scoringProfiles,
 	downloadQueue,
-	subtitles
+	subtitles,
+	settings
 } from '$lib/server/db/schema.js';
 import { eq, and, inArray } from 'drizzle-orm';
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import type { LibraryMovie, MovieFile } from '$lib/types/library';
+import type { LibraryMovie, MovieFile, QualityProfileSummary } from '$lib/types/library';
 import { tmdb } from '$lib/server/tmdb.js';
 import { logger } from '$lib/logging';
 import { isMovieSearching } from '$lib/server/library/ActiveSearchTracker.js';
-
-const ACTIVE_DOWNLOAD_STATUSES = [
-	'queued',
-	'downloading',
-	'stalled',
-	'paused',
-	'completed',
-	'postprocessing',
-	'importing',
-	'seeding',
-	'seeding-imported'
-] as const;
-
-export interface QualityProfileSummary {
-	id: string;
-	name: string;
-	description: string;
-	isBuiltIn: boolean;
-	isDefault: boolean;
-}
+import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
+import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
+import { buildMetadataProviderRegistry } from '$lib/server/metadata/provider-registry.js';
 
 export interface QueueItemInfo {
 	id: string;
@@ -55,6 +39,10 @@ export interface LibraryMoviePageData {
 	}>;
 	queueItem: QueueItemInfo | null;
 	isSearching: boolean;
+	configuredMetadataProviders: {
+		anilist: boolean;
+		mal: boolean;
+	};
 	collectionMovies: {
 		id: string;
 		title: string;
@@ -63,6 +51,18 @@ export interface LibraryMoviePageData {
 		hasFile: boolean | null;
 		monitored: boolean | null;
 	}[];
+}
+
+function isAnimeMovieSignal(input: {
+	rootFolderPath: string | null;
+	genres: string[] | null;
+	title: string;
+}): boolean {
+	const path = (input.rootFolderPath ?? '').toLowerCase();
+	if (path.includes('/anime/')) return true;
+	const genres = input.genres ?? [];
+	if (genres.some((genre) => genre.toLowerCase() === 'animation')) return true;
+	return /\banime\b/i.test(input.title);
 }
 
 export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePageData> => {
@@ -74,6 +74,9 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 			id: movies.id,
 			tmdbId: movies.tmdbId,
 			imdbId: movies.imdbId,
+			metadataProvider: movies.metadataProvider,
+			providerRefs: movies.providerRefs,
+			pinnedExternal: movies.pinnedExternal,
 			title: movies.title,
 			originalTitle: movies.originalTitle,
 			year: movies.year,
@@ -135,6 +138,8 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 
 	const movieWithFiles: LibraryMovie = {
 		...movie,
+		metadataProvider:
+			(movie.metadataProvider as 'auto' | 'tmdb' | 'anilist' | 'mal' | null) ?? 'auto',
 		tmdbStatus: releaseInfo?.status ?? null,
 		releaseDate: releaseInfo?.release_date ?? null,
 		// Ensure added is always a string
@@ -249,6 +254,59 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 	}
 
 	const isSearching = isMovieSearching(id);
+	let configuredMetadataProviders = {
+		anilist: false,
+		mal: false
+	};
+	const settingsRow = await db.query.settings.findFirst({
+		where: eq(settings.key, 'metadata_providers')
+	});
+	if (settingsRow) {
+		try {
+			const parsed = JSON.parse(settingsRow.value) as {
+				anilistEnabled?: boolean;
+				malClientId?: string;
+			};
+			configuredMetadataProviders = {
+				anilist: parsed.anilistEnabled === true,
+				mal: Boolean(parsed.malClientId)
+			};
+		} catch {
+			// ignore malformed settings
+		}
+	}
+
+	const enrichedProviderRefs = await resolveMissingAnimeProviderRefs({
+		title: movieWithFiles.title,
+		aliases: [movieWithFiles.originalTitle ?? ''],
+		year: movieWithFiles.year,
+		isAnime: isAnimeMovieSignal({
+			rootFolderPath: movieWithFiles.rootFolderPath ?? null,
+			genres: movieWithFiles.genres ?? null,
+			title: movieWithFiles.title
+		}),
+		configured: configuredMetadataProviders,
+		existingRefs:
+			(movieWithFiles.providerRefs as Partial<Record<'tmdb' | 'anilist' | 'mal', string>> | null) ??
+			undefined
+	});
+	movieWithFiles.providerRefs = enrichedProviderRefs;
+	const selectedMovieProvider = movieWithFiles.metadataProvider;
+	if (selectedMovieProvider === 'anilist' || selectedMovieProvider === 'mal') {
+		const providerRef = enrichedProviderRefs[selectedMovieProvider];
+		if (providerRef) {
+			const { providers } = await buildMetadataProviderRegistry();
+			const provider = providers.get(selectedMovieProvider);
+			if (provider?.isConfigured()) {
+				try {
+					const details = await provider.getDetails(providerRef, 'anime');
+					movieWithFiles.studios = details?.studios ?? null;
+				} catch {
+					movieWithFiles.studios = null;
+				}
+			}
+		}
+	}
 
 	return {
 		movie: movieWithFiles,
@@ -256,6 +314,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 		rootFolders: folders,
 		queueItem,
 		isSearching,
+		configuredMetadataProviders,
 		collectionMovies
 	};
 };

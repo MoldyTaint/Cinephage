@@ -3,6 +3,10 @@ import { getIndexerManager } from '$lib/server/indexers/IndexerManager';
 import { toUIDefinition } from '$lib/server/indexers/loader';
 import { getPersistentStatusTracker } from '$lib/server/indexers/status';
 import { CINEPHAGE_STREAM_DEFINITION_ID } from '$lib/server/indexers/types';
+import {
+	getSensitiveIndexerSettingsPresence,
+	redactIndexerSettingsForForm
+} from '$lib/server/indexers/settingsSecrets';
 import type { IndexerDefinition, IndexerWithStatus } from '$lib/types/indexer';
 
 export const load: PageServerLoad = async () => {
@@ -16,19 +20,9 @@ export const load: PageServerLoad = async () => {
 		)
 	);
 	const statusByIndexerId = new Map(statusEntries);
-
-	const toStringSettings = (
-		settings: Record<string, unknown> | undefined
-	): Record<string, string> | null => {
-		if (!settings) return null;
-		const result: Record<string, string> = {};
-		for (const [key, value] of Object.entries(settings)) {
-			if (value !== undefined && value !== null) {
-				result[key] = String(value);
-			}
-		}
-		return Object.keys(result).length > 0 ? result : null;
-	};
+	const definitionsById = new Map(
+		manager.getUnifiedDefinitions().map((definition) => [definition.id, definition])
+	);
 
 	const getDisplayBaseUrl = (
 		config: (typeof indexerConfigs)[number],
@@ -52,7 +46,12 @@ export const load: PageServerLoad = async () => {
 
 	const indexers: IndexerWithStatus[] = indexerConfigs.map((config) => {
 		const status = statusByIndexerId.get(config.id);
-		const settings = toStringSettings(config.settings);
+		const definition = definitionsById.get(config.definitionId);
+		const settings = redactIndexerSettingsForForm(config.settings, definition?.settings);
+		const sensitiveSettings = getSensitiveIndexerSettingsPresence(
+			config.settings,
+			definition?.settings
+		);
 		const displayBaseUrl = getDisplayBaseUrl(config, settings);
 
 		return {
@@ -65,6 +64,7 @@ export const load: PageServerLoad = async () => {
 			priority: config.priority,
 			protocol: config.protocol,
 			settings,
+			sensitiveSettings,
 			enableAutomaticSearch: config.enableAutomaticSearch,
 			enableInteractiveSearch: config.enableInteractiveSearch,
 			minimumSeeders: config.minimumSeeders,

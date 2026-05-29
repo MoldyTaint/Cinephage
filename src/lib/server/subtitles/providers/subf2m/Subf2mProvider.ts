@@ -126,7 +126,6 @@ export class Subf2mProvider extends BaseSubtitleProvider {
 	 */
 	async download(result: SubtitleSearchResult): Promise<Buffer> {
 		try {
-			// First get the subtitle page to find the actual download link
 			const subtitlePageUrl = result.providerSubtitleId.startsWith('http')
 				? result.providerSubtitleId
 				: `${BASE_URL}${result.providerSubtitleId}`;
@@ -143,11 +142,8 @@ export class Subf2mProvider extends BaseSubtitleProvider {
 			const html = await pageResponse.text();
 			const $ = cheerio.load(html);
 
-			// Find download link
 			const downloadLink =
-				$('a.download[href*="/dl/"]').attr('href') ||
-				$('a[href*="/subtitle/download"]').attr('href') ||
-				$('.download a').attr('href');
+				$('#downloadButton').attr('href') || $('a[href*="/download"]').attr('href');
 
 			if (!downloadLink) {
 				throw new ParseResponseError('subf2m', 'Download link not found on page');
@@ -157,7 +153,6 @@ export class Subf2mProvider extends BaseSubtitleProvider {
 				? downloadLink
 				: `${BASE_URL}${downloadLink}`;
 
-			// Download the file
 			const downloadResponse = await this.fetchWithTimeout(downloadUrl, {
 				timeout: 30000,
 				headers: {
@@ -378,8 +373,8 @@ export class Subf2mProvider extends BaseSubtitleProvider {
 				const html = await response.text();
 				const $ = cheerio.load(html);
 
-				// Parse subtitle rows - Subf2m structure: ul.sublist > li.item
-				$('ul.sublist li.item').each((_, row) => {
+				// Parse subtitle rows - Subf2m structure: li.item inside content div
+				$('li.item').each((_, row) => {
 					const $row = $(row);
 
 					// Get subtitle URL - uses /subtitles/ (plural) path

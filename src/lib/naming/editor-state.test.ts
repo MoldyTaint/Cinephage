@@ -26,13 +26,13 @@ describe('naming editor state helpers', () => {
 			normalizeNamingPresetSelection({
 				selectedServerPresetId: 'jellyfin',
 				selectedStylePresetId: 'scene',
-				selectedDetailPresetId: 'detailed',
+				selectedDetailPresetId: 'balanced',
 				selectedCustomPresetId: '   '
 			})
 		).toEqual({
 			selectedServerPresetId: 'jellyfin',
 			selectedStylePresetId: 'scene',
-			selectedDetailPresetId: 'detailed',
+			selectedDetailPresetId: 'balanced',
 			selectedCustomPresetId: undefined
 		});
 	});

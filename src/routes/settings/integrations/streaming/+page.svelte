@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import { HardDrive, Trash2, RefreshCw, Archive, Clock } from 'lucide-svelte';
-	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';
+	import { cleanupStreamingCache } from '$lib/api/settings.js';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
 	import type { PageData } from './$types';
@@ -14,23 +14,11 @@
 	async function handleCleanup() {
 		cleaning = true;
 		try {
-			const response = await fetch('/api/settings/streaming/cache/cleanup', {
-				method: 'POST',
-				headers: { Accept: 'application/json' }
-			});
-			const result = await readResponsePayload<{
-				success?: boolean;
-				cleaned?: number;
-				freedMB?: number;
-			}>(response);
-
-			if (!response.ok || !result || typeof result === 'string') {
-				throw new Error(getResponseErrorMessage(result, 'Failed to clean expired files'));
-			}
+			const result = await cleanupStreamingCache();
 
 			cleanupResult = {
-				cleaned: result.cleaned ?? 0,
-				freedMB: result.freedMB ?? 0
+				cleaned: ((result as Record<string, unknown>).cleaned as number) ?? 0,
+				freedMB: ((result as Record<string, unknown>).freedMB as number) ?? 0
 			};
 			toasts.success(m.settings_streaming_expiredCleaned());
 		} catch (error) {

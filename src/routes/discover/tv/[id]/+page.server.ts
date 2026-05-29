@@ -2,7 +2,11 @@ import { tmdb } from '$lib/server/tmdb';
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { logger } from '$lib/logging';
-import { enrichWithLibraryStatus, getLibraryStatus } from '$lib/server/library/status';
+import {
+	enrichWithLibraryStatus,
+	getLibraryStatus,
+	filterBlockedMedia
+} from '$lib/server/library/status';
 
 export const load: PageServerLoad = async ({ params }) => {
 	const id = parseInt(params.id);
@@ -47,17 +51,22 @@ export const load: PageServerLoad = async ({ params }) => {
 			tv.similar?.results ? enrichWithLibraryStatus(tv.similar.results, 'tv') : Promise.resolve([])
 		]);
 
+		const [filteredRecommendations, filteredSimilar] = await Promise.all([
+			filterBlockedMedia(enrichedRecommendations, 'tv'),
+			filterBlockedMedia(enrichedSimilar, 'tv')
+		]);
+
 		// Update tv object with enriched data
 		if (tvWithStatus.recommendations) {
 			tvWithStatus.recommendations = {
 				...tvWithStatus.recommendations,
-				results: enrichedRecommendations
+				results: filteredRecommendations
 			};
 		}
 		if (tvWithStatus.similar) {
 			tvWithStatus.similar = {
 				...tvWithStatus.similar,
-				results: enrichedSimilar
+				results: filteredSimilar
 			};
 		}
 

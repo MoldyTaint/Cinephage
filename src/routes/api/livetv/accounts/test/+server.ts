@@ -9,6 +9,7 @@ import type { RequestHandler } from './$types';
 import { getProvider } from '$lib/server/livetv/providers';
 import { logger } from '$lib/logging';
 import { toFriendlyLiveTvTestError } from '$lib/livetv/errorMessages';
+import { probeStalkerEndpoint } from '$lib/server/livetv/stalker/StalkerPortalClient';
 import { z } from 'zod';
 import { ValidationError } from '$lib/errors';
 import type { LiveTvAccount } from '$lib/types/livetv';
@@ -163,6 +164,14 @@ export const POST: RequestHandler = async ({ request }) => {
 			createdAt: new Date().toISOString(),
 			updatedAt: new Date().toISOString()
 		};
+
+		// Probe stalker endpoint before testing so the client uses the correct one
+		if (tempAccount.stalkerConfig?.portalUrl) {
+			tempAccount.stalkerConfig = {
+				...tempAccount.stalkerConfig,
+				endpoint: await probeStalkerEndpoint(tempAccount.stalkerConfig.portalUrl)
+			};
+		}
 
 		// Get provider and test
 		const provider = getProvider(parsed.data.providerType);

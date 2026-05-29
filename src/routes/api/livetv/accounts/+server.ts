@@ -9,56 +9,8 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getLiveTvAccountManager } from '$lib/server/livetv/LiveTvAccountManager';
 import { logger } from '$lib/logging';
-import { z } from 'zod';
-import { ValidationError, isAppError } from '$lib/errors';
-
-// Validation schema for creating Live TV accounts (supports all provider types)
-const liveTvAccountCreateSchema = z.object({
-	name: z.string().min(1).max(100),
-	providerType: z.enum(['stalker', 'xstream', 'm3u', 'cinephage-iptv']),
-	enabled: z.boolean().optional(),
-	// Stalker-specific config
-	stalkerConfig: z
-		.object({
-			portalUrl: z.string().url(),
-			macAddress: z.string().min(1),
-			serialNumber: z.string().optional(),
-			deviceId: z.string().optional(),
-			deviceId2: z.string().optional(),
-			model: z.string().optional(),
-			timezone: z.string().optional(),
-			username: z.string().optional(),
-			password: z.string().optional()
-		})
-		.optional(),
-	// XStream-specific config
-	xstreamConfig: z
-		.object({
-			baseUrl: z.string().url(),
-			username: z.string().min(1),
-			password: z.string().min(1),
-			epgUrl: z.string().url().optional()
-		})
-		.optional(),
-	// M3U-specific config
-	m3uConfig: z
-		.object({
-			url: z.string().url().optional(),
-			fileContent: z.string().optional(),
-			epgUrl: z.string().url().optional(),
-			refreshIntervalHours: z.number().min(1).max(168).optional(),
-			autoRefresh: z.boolean().optional()
-		})
-		.optional(),
-	// Cinephage IPTV config
-	cinephageIptvConfig: z
-		.object({
-			countries: z.array(z.string()).optional(),
-			categories: z.array(z.string()).optional(),
-			languages: z.array(z.string()).optional()
-		})
-		.optional()
-});
+import { liveTvAccountCreateSchema } from '$lib/validation/schemas.js';
+import { isAppError } from '$lib/errors';
 
 /**
  * List all Live TV accounts
@@ -82,15 +34,13 @@ export const POST: RequestHandler = async ({ request }) => {
 	// Validate input
 	const parsed = liveTvAccountCreateSchema.safeParse(body);
 	if (!parsed.success) {
-		throw new ValidationError('Validation failed', {
-			details: parsed.error.flatten()
-		});
+		return json({ success: false, error: parsed.error.issues[0].message }, { status: 400 });
 	}
 
 	const manager = getLiveTvAccountManager();
 
 	// Check if testFirst is explicitly set to false
-	const testFirst = body.testFirst !== false;
+	const testFirst = parsed.data.testFirst;
 
 	try {
 		const account = await manager.createAccount(parsed.data, testFirst);

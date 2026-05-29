@@ -32,7 +32,8 @@ const TTL = {
 	/** Season data */
 	SEASON: 10 * 60 * 1000, // 10 minutes
 	/** Collection data */
-	COLLECTION: 10 * 60 * 1000 // 10 minutes
+	COLLECTION: 10 * 60 * 1000, // 10 minutes
+	UPCOMING: 60 * 60 * 1000 // 1 hour
 } as const;
 
 /**
@@ -56,6 +57,9 @@ function getTtlForEndpoint(endpoint: string): number {
 	}
 	if (endpoint.includes('/collection/')) {
 		return TTL.COLLECTION;
+	}
+	if (endpoint.includes('/now_playing') || endpoint.includes('/upcoming')) {
+		return TTL.UPCOMING;
 	}
 	// Default for movie/tv details
 	return TTL.DETAILS;

@@ -22,6 +22,10 @@ export { default as ChannelBulkActionBar } from './ChannelBulkActionBar.svelte';
 export { default as ChannelBulkCleanNamesModal } from './ChannelBulkCleanNamesModal.svelte';
 export { default as ChannelRemoveModal } from './ChannelRemoveModal.svelte';
 export { default as ChannelBrowserModal } from './ChannelBrowserModal.svelte';
+export { default as ChannelBrowserFilters } from './ChannelBrowserFilters.svelte';
+export { default as ChannelBrowserActions } from './ChannelBrowserActions.svelte';
+export { default as ChannelBrowserList } from './ChannelBrowserList.svelte';
+export { default as ChannelBrowserPagination } from './ChannelBrowserPagination.svelte';
 
 // EPG
 export { default as EpgStatusCard } from './EpgStatusCard.svelte';
@@ -30,3 +34,8 @@ export { default as EpgSourcePickerModal } from './EpgSourcePickerModal.svelte';
 export { default as EpgCoverageTable } from './EpgCoverageTable.svelte';
 export { default as EpgGuideGrid } from './EpgGuideGrid.svelte';
 export { default as ChannelScheduleModal } from './ChannelScheduleModal.svelte';
+
+// Channel edit sub-components
+export { default as LogoLibraryPicker } from './LogoLibraryPicker.svelte';
+export { default as ChannelTechnicalDetails } from './ChannelTechnicalDetails.svelte';
+export { default as BackupSourceList } from './BackupSourceList.svelte';

@@ -52,7 +52,7 @@
 	position: relative;
 	background-color: color-mix(in oklab, oklch(var(--b2)) 82%, oklch(var(--p)) 18%);
 	color: oklch(var(--pc));
-	font-weight: 600;
+	font-weight: 700;
 }
 
 .drawer-side .menu a.active::before,
@@ -66,6 +66,43 @@
 	transform: translateY(-50%);
 	border-radius: 9999px;
 	background-color: oklch(var(--p));
+}
+
+/* Collapsed desktop sidebar: lighter active treatment so icon state reads clearly */
+.drawer-side .sidebar-collapsed .menu a.active,
+.drawer-side .sidebar-collapsed .menu .active-nav {
+	background-color: color-mix(in oklab, oklch(var(--b2)) 86%, oklch(var(--p)) 14%);
+	color: oklch(var(--bc));
+}
+
+/* Use custom submenu chevron near label */
+.drawer-side .menu details > summary::-webkit-details-marker {
+	display: none;
+}
+
+.drawer-side .menu details > summary::after {
+	display: none;
+}
+
+.drawer-side .sidebar-collapsed .menu.sidebar-collapsed-shell {
+	width: 100%;
+}
+
+.drawer-side .sidebar-collapsed .menu.sidebar-collapsed-shell > li {
+	width: 100%;
+	display: flex;
+	justify-content: center;
+}
+
+.drawer-side .sidebar-collapsed .menu.sidebar-collapsed-shell > li > a,
+.drawer-side .sidebar-collapsed .menu.sidebar-collapsed-shell > li > button,
+.drawer-side .sidebar-collapsed .menu.sidebar-collapsed-shell > li > details > summary {
+	width: 2.75rem !important;
+	height: 2.75rem !important;
+	padding-left: 0 !important;
+	padding-right: 0 !important;
+	justify-content: center !important;
+	gap: 0 !important;
 }
 
 /* Keep selected in-page modals below desktop sidebar (used by settings maintenance edit dialogs) */

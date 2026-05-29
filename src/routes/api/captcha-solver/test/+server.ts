@@ -1,16 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getCaptchaSolver } from '$lib/server/captcha';
-import { z } from 'zod';
+import { captchaSolverTestSchema } from '$lib/validation/schemas.js';
 import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
-
-/**
- * Schema for test request
- */
-const testRequestSchema = z.object({
-	url: z.string().url()
-});
 
 /**
  * POST /api/captcha-solver/test
@@ -23,7 +16,7 @@ export const POST: RequestHandler = async (event) => {
 	const { request } = event;
 	try {
 		const body = await request.json();
-		const validation = testRequestSchema.safeParse(body);
+		const validation = captchaSolverTestSchema.safeParse(body);
 
 		if (!validation.success) {
 			return json(

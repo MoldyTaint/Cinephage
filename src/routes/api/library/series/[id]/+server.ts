@@ -28,7 +28,10 @@ import {
 import { mediaMoveService } from '$lib/server/library/MediaMoveService.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
+import { seriesUpdateSchema } from '$lib/validation/schemas.js';
 import { tmdb } from '$lib/server/tmdb.js';
+import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
+import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
 
 /**
  * GET /api/library/series/[id]
@@ -59,6 +62,9 @@ export const GET: RequestHandler = async ({ params }) => {
 				monitored: series.monitored,
 				seasonFolder: series.seasonFolder,
 				seriesType: series.seriesType,
+				metadataProvider: series.metadataProvider,
+				providerRefs: series.providerRefs,
+				pinnedExternal: series.pinnedExternal,
 				added: series.added,
 				episodeCount: series.episodeCount,
 				episodeFileCount: series.episodeFileCount,
@@ -120,6 +126,21 @@ export const GET: RequestHandler = async ({ params }) => {
 		}
 
 		// Build structured response
+		const providerConfig = await getMetadataProviderConfig();
+		const enrichedProviderRefs = await resolveMissingAnimeProviderRefs({
+			title: seriesItem.title,
+			aliases: [seriesItem.originalTitle ?? ''],
+			year: seriesItem.year,
+			isAnime: (seriesItem.seriesType ?? '').toLowerCase() === 'anime',
+			configured: {
+				anilist: providerConfig.anilistEnabled,
+				mal: Boolean(providerConfig.malClientId)
+			},
+			existingRefs:
+				(seriesItem.providerRefs as Partial<Record<'tmdb' | 'anilist' | 'mal', string>> | null) ??
+				undefined
+		});
+
 		const seasonsWithEpisodes = allSeasons.map((season) => ({
 			...season,
 			episodes: allEpisodes
@@ -155,6 +176,7 @@ export const GET: RequestHandler = async ({ params }) => {
 			success: true,
 			series: {
 				...seriesItem,
+				providerRefs: enrichedProviderRefs,
 				percentComplete:
 					seriesItem.episodeCount && seriesItem.episodeCount > 0
 						? Math.round(((seriesItem.episodeFileCount || 0) / seriesItem.episodeCount) * 100)
@@ -185,17 +207,24 @@ export const GET: RequestHandler = async ({ params }) => {
  */
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	try {
-		const body = await request.json();
+		const rawBody = await request.json();
+		const parsed = seriesUpdateSchema.safeParse(rawBody);
+		if (!parsed.success) {
+			return json({ success: false, error: parsed.error.issues[0].message }, { status: 400 });
+		}
+		const body = parsed.data;
 		const {
 			monitored,
 			scoringProfileId,
 			seasonFolder,
 			seriesType,
+			metadataProvider,
+			providerRefs,
 			rootFolderId,
-			moveFilesOnRootChange,
 			wantsSubtitles,
 			languageProfileId
 		} = body;
+		const moveFilesOnRootChange = rawBody.moveFilesOnRootChange;
 
 		// Get current series state BEFORE update to detect monitoring changes
 		const [currentSeries] = await db
@@ -226,20 +255,26 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			  }
 			| undefined;
 
-		if (typeof monitored === 'boolean') {
+		if (monitored !== undefined) {
 			updateData.monitored = monitored;
 		}
 		if (scoringProfileId !== undefined) {
 			updateData.scoringProfileId = scoringProfileId;
 		}
-		if (typeof seasonFolder === 'boolean') {
+		if (seasonFolder !== undefined) {
 			updateData.seasonFolder = seasonFolder;
 		}
-		if (seriesType === 'standard' || seriesType === 'anime' || seriesType === 'daily') {
+		if (seriesType !== undefined) {
 			updateData.seriesType = seriesType;
 		}
+		if (metadataProvider !== undefined) {
+			updateData.metadataProvider = metadataProvider;
+		}
+		if (providerRefs !== undefined) {
+			updateData.providerRefs = providerRefs;
+		}
 		if (rootFolderId !== undefined) {
-			const nextRootFolderId = typeof rootFolderId === 'string' ? rootFolderId.trim() : '';
+			const nextRootFolderId = rootFolderId.trim();
 			const currentRootFolderId = currentSeries?.rootFolderId ?? null;
 			if (!nextRootFolderId) {
 				return json(
@@ -310,7 +345,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 				}
 			}
 		}
-		if (typeof wantsSubtitles === 'boolean') {
+		if (wantsSubtitles !== undefined) {
 			updateData.wantsSubtitles = wantsSubtitles;
 		}
 		if (languageProfileId !== undefined) {
