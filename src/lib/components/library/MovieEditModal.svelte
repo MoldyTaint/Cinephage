@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { X } from 'lucide-svelte';
+	import { X, FolderOpen } from 'lucide-svelte';
+	import { FolderBrowser } from '$lib/components/library';
 	import type { LibraryMovie } from '$lib/types/library';
 	import { ModalWrapper, ModalFooter } from '$lib/components/ui/modal';
 	import { FormCheckbox } from '$lib/components/ui/form';
@@ -46,6 +47,7 @@
 		minimumAvailability: string;
 		wantsSubtitles: boolean;
 		metadataProvider: 'auto' | 'tmdb' | 'anilist' | 'mal';
+		folderPath?: string;
 	}
 
 	let { open, movie, qualityProfiles, rootFolders, saving, onClose, onSave }: Props = $props();
@@ -59,6 +61,8 @@
 	let metadataProvider = $state<'auto' | 'tmdb' | 'anilist' | 'mal'>('auto');
 	let moveFilesOnRootChange = $state(false);
 	let moveOptionTouched = $state(false);
+	let folderPath = $state('');
+	let showFolderPicker = $state(false);
 	let animeRootWarningShown = $state(false);
 	let enforceAnimeSubtype = $state(false);
 	let detectedAnime = $state(false);
@@ -133,6 +137,7 @@
 			animeRootWarningShown = false;
 			enforceAnimeSubtype = false;
 			detectedAnime = false;
+			folderPath = movie.path ?? '';
 			void loadAnimeRoutingContext(movie.tmdbId);
 		}
 	});
@@ -207,6 +212,8 @@
 		qualityProfiles.find((p) => p.id === qualityProfileId) ?? defaultProfile
 	);
 
+	const folderPathChanged = $derived(folderPath.trim() !== (movie.path ?? '').trim());
+
 	function handleSave() {
 		onSave({
 			monitored,
@@ -215,7 +222,8 @@
 			moveFilesOnRootChange,
 			minimumAvailability,
 			wantsSubtitles,
-			metadataProvider: showAnimeMetadataProviderControl ? metadataProvider : 'auto'
+			metadataProvider: showAnimeMetadataProviderControl ? metadataProvider : 'auto',
+			...(folderPathChanged && folderPath.trim() ? { folderPath: folderPath.trim() } : {})
 		});
 	}
 </script>
@@ -264,7 +272,7 @@
 				<select
 					id="movie-metadata-provider"
 					bind:value={metadataProvider}
-					class="select-bordered select w-full"
+					class="select-bordered select select-sm w-full"
 				>
 					<option value="auto">Auto (inherit from library)</option>
 					<option value="tmdb">TMDB</option>
@@ -282,7 +290,7 @@
 			<select
 				id="movie-quality-profile"
 				bind:value={qualityProfileId}
-				class="select-bordered select w-full"
+				class="select-bordered select select-sm w-full"
 			>
 				<option value=""
 					>{m.library_movies_profileDefault({
@@ -312,7 +320,7 @@
 			<select
 				id="movie-root-folder"
 				bind:value={rootFolderId}
-				class="select-bordered select w-full"
+				class="select-bordered select select-sm w-full"
 			>
 				{#if !rootFolderId}
 					<option value="" disabled>{m.common_notSet()}</option>
@@ -356,6 +364,55 @@
 			/>
 		{/if}
 
+		<!-- Folder path correction -->
+		{#if movie.path}
+			<div class="form-control">
+				<label class="label" for="movie-folder-path">
+					<span class="label-text font-medium">Folder name</span>
+				</label>
+				{#if showFolderPicker}
+					<FolderBrowser
+						value={selectedRootFolderObj?.path ?? '/'}
+						onSelect={(selected) => {
+							const root = selectedRootFolderObj?.path ?? '';
+							folderPath =
+								root && selected.startsWith(root + '/')
+									? selected.slice(root.length + 1)
+									: selected;
+							showFolderPicker = false;
+						}}
+						onCancel={() => (showFolderPicker = false)}
+					/>
+				{:else}
+					<div class="join w-full">
+						<input
+							id="movie-folder-path"
+							type="text"
+							class="input-bordered input input-sm join-item flex-1 font-mono"
+							bind:value={folderPath}
+						/>
+						<button
+							type="button"
+							class="btn join-item border border-base-300 btn-ghost btn-sm"
+							onclick={() => (showFolderPicker = true)}
+							title="Browse folders"
+						>
+							<FolderOpen class="h-4 w-4" />
+						</button>
+					</div>
+					<p class="mt-1 text-xs text-base-content/60">
+						Folder name relative to the root folder. Edit only if the name on disk no longer matches
+						— saving will update the database and trigger a rescan to re-link existing files.
+					</p>
+					{#if folderPathChanged}
+						<p class="mt-1 text-xs text-warning">
+							Folder name changed. A rescan will run automatically after saving.
+						</p>
+					{/if}
+				{/if}
+			</div>
+		{/if}
+
 		<!-- Minimum Availability -->
 		<div class="form-control">
 			<label class="label" for="movie-min-availability">
@@ -364,7 +421,7 @@
 			<select
 				id="movie-min-availability"
 				bind:value={minimumAvailability}
-				class="select-bordered select w-full"
+				class="select-bordered select select-sm w-full"
 			>
 				{#each availabilityOptions as option (option.value)}
 					<option value={option.value}>{option.label}</option>

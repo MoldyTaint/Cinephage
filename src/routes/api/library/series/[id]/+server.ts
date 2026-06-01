@@ -27,6 +27,7 @@ import {
 } from '$lib/server/library/LibraryAddService.js';
 import { mediaMoveService } from '$lib/server/library/MediaMoveService.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
+import { getLibraryScheduler } from '$lib/server/library/library-scheduler.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { seriesUpdateSchema } from '$lib/validation/schemas.js';
 import { tmdb } from '$lib/server/tmdb.js';
@@ -222,7 +223,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			providerRefs,
 			rootFolderId,
 			wantsSubtitles,
-			languageProfileId
+			languageProfileId,
+			folderPath
 		} = body;
 		const moveFilesOnRootChange = rawBody.moveFilesOnRootChange;
 
@@ -351,6 +353,9 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		if (languageProfileId !== undefined) {
 			updateData.languageProfileId = languageProfileId;
 		}
+		if (folderPath !== undefined) {
+			updateData.path = folderPath.trim();
+		}
 
 		if (Object.keys(updateData).length === 0 && !moveRequest) {
 			return json({ success: false, error: 'No valid fields to update' }, { status: 400 });
@@ -451,6 +456,10 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		}
 
 		libraryMediaEvents.emitSeriesUpdated(params.id);
+
+		if (folderPath !== undefined && currentSeries?.rootFolderId) {
+			getLibraryScheduler().queueFolderScan(currentSeries.rootFolderId);
+		}
 
 		return json({
 			success: true,

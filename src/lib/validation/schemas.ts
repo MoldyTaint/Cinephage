@@ -1404,7 +1404,16 @@ export const movieUpdateSchema = z.object({
 	rootFolderId: z.string().optional(),
 	moveFilesOnRootChange: z.boolean().optional(),
 	wantsSubtitles: z.boolean().optional(),
-	languageProfileId: z.string().nullable().optional()
+	languageProfileId: z.string().nullable().optional(),
+	/** Relative folder name within the root folder (e.g. "Brokenwood Mysteries"). Used to
+	 *  correct a drifted DB path without touching files on disk. */
+	folderPath: z
+		.string()
+		.min(1)
+		.refine((v) => !v.includes('..') && !v.startsWith('/'), {
+			message: 'Folder path must be a relative name with no path traversal'
+		})
+		.optional()
 });
 
 /**
@@ -1419,7 +1428,15 @@ export const seriesUpdateSchema = z.object({
 	providerRefs: z.partialRecord(z.enum(['tmdb', 'anilist', 'mal']), z.string().min(1)).optional(),
 	rootFolderId: z.string().optional(),
 	wantsSubtitles: z.boolean().optional(),
-	languageProfileId: z.string().nullable().optional()
+	languageProfileId: z.string().nullable().optional(),
+	/** Relative folder name within the root folder. Used to correct a drifted DB path. */
+	folderPath: z
+		.string()
+		.min(1)
+		.refine((v) => !v.includes('..') && !v.startsWith('/'), {
+			message: 'Folder path must be a relative name with no path traversal'
+		})
+		.optional()
 });
 
 /**

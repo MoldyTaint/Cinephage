@@ -1,6 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
-	import { X } from 'lucide-svelte';
+	import { X, FolderOpen } from 'lucide-svelte';
+	import { FolderBrowser } from '$lib/components/library';
 	import { ModalWrapper, ModalFooter } from '$lib/components/ui/modal';
 	import { FormCheckbox } from '$lib/components/ui/form';
 	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
@@ -23,6 +24,7 @@
 		wantsSubtitles: boolean | null;
 		seriesType: string | null;
 		metadataProvider?: 'auto' | 'tmdb' | 'anilist' | 'mal' | null;
+		path?: string | null;
 	}
 
 	interface QualityProfileOption {
@@ -61,6 +63,7 @@
 		wantsSubtitles: boolean;
 		seriesType: 'standard' | 'anime' | 'daily';
 		metadataProvider: 'auto' | 'tmdb' | 'anilist' | 'mal';
+		folderPath?: string;
 	}
 
 	let { open, series, qualityProfiles, rootFolders, saving, onClose, onSave }: Props = $props();
@@ -75,6 +78,8 @@
 	let metadataProvider = $state<'auto' | 'tmdb' | 'anilist' | 'mal'>('auto');
 	let moveFilesOnRootChange = $state(false);
 	let moveOptionTouched = $state(false);
+	let folderPath = $state('');
+	let showFolderPicker = $state(false);
 	let animeRootWarningShown = $state(false);
 	let enforceAnimeSubtype = $state(false);
 	let detectedAnime = $state(false);
@@ -177,6 +182,7 @@
 			animeRootWarningShown = false;
 			enforceAnimeSubtype = false;
 			detectedAnime = false;
+			folderPath = series.path ?? '';
 			void loadAnimeRoutingContext(series.tmdbId);
 		}
 	});
@@ -228,6 +234,8 @@
 		qualityProfiles.find((p) => p.id === qualityProfileId) ?? defaultProfile
 	);
 
+	const folderPathChanged = $derived(folderPath.trim() !== (series.path ?? '').trim());
+
 	function handleSave() {
 		onSave({
 			monitored,
@@ -237,7 +245,8 @@
 			seasonFolder,
 			wantsSubtitles,
 			seriesType,
-			metadataProvider: showAnimeMetadataProviderControl ? metadataProvider : 'auto'
+			metadataProvider: showAnimeMetadataProviderControl ? metadataProvider : 'auto',
+			...(folderPathChanged && folderPath.trim() ? { folderPath: folderPath.trim() } : {})
 		});
 	}
 </script>
@@ -291,7 +300,11 @@
 			<label class="label" for="series-type">
 				<span class="label-text font-medium">{m.library_seriesEdit_seriesType()}</span>
 			</label>
-			<select id="series-type" bind:value={seriesType} class="select-bordered select w-full">
+			<select
+				id="series-type"
+				bind:value={seriesType}
+				class="select-bordered select select-sm w-full"
+			>
 				{#each seriesTypeOptions as option (option.value)}
 					<option value={option.value}>{option.label}</option>
 				{/each}
@@ -312,7 +325,7 @@
 				<select
 					id="series-metadata-provider"
 					bind:value={metadataProvider}
-					class="select-bordered select w-full"
+					class="select-bordered select select-sm w-full"
 				>
 					<option value="auto">Auto (inherit from library)</option>
 					<option value="tmdb">TMDB</option>
@@ -330,7 +343,7 @@
 			<select
 				id="series-quality-profile"
 				bind:value={qualityProfileId}
-				class="select-bordered select w-full"
+				class="select-bordered select select-sm w-full"
 			>
 				<option value="">{defaultProfile?.name ?? m.common_default()} ({m.common_default()})</option
 				>
@@ -357,7 +370,7 @@
 			<select
 				id="series-root-folder"
 				bind:value={rootFolderId}
-				class="select-bordered select w-full"
+				class="select-bordered select select-sm w-full"
 			>
 				{#if !rootFolderId}
 					<option value="" disabled>{m.common_notSet()}</option>
@@ -399,6 +412,55 @@
 				variant="toggle"
 				color="warning"
 			/>
+		{/if}
+
+		<!-- Folder path correction -->
+		{#if series.path}
+			<div class="form-control">
+				<label class="label" for="series-folder-path">
+					<span class="label-text font-medium">Folder name</span>
+				</label>
+				{#if showFolderPicker}
+					<FolderBrowser
+						value={selectedRootFolderObj?.path ?? '/'}
+						onSelect={(selected) => {
+							const root = selectedRootFolderObj?.path ?? '';
+							folderPath =
+								root && selected.startsWith(root + '/')
+									? selected.slice(root.length + 1)
+									: selected;
+							showFolderPicker = false;
+						}}
+						onCancel={() => (showFolderPicker = false)}
+					/>
+				{:else}
+					<div class="join w-full">
+						<input
+							id="series-folder-path"
+							type="text"
+							class="input-bordered input input-sm join-item flex-1 font-mono"
+							bind:value={folderPath}
+						/>
+						<button
+							type="button"
+							class="btn join-item border border-base-300 btn-ghost btn-sm"
+							onclick={() => (showFolderPicker = true)}
+							title="Browse folders"
+						>
+							<FolderOpen class="h-4 w-4" />
+						</button>
+					</div>
+					<p class="mt-1 text-xs text-base-content/60">
+						Folder name relative to the root folder. Edit only if the name on disk no longer matches
+						— saving will update the database and trigger a rescan to re-link existing files.
+					</p>
+					{#if folderPathChanged}
+						<p class="mt-1 text-xs text-warning">
+							Folder name changed. A rescan will run automatically after saving.
+						</p>
+					{/if}
+				{/if}
+			</div>
 		{/if}
 	</div>
 

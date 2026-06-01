@@ -29,6 +29,7 @@ import {
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { mediaMoveService } from '$lib/server/library/MediaMoveService.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
+import { getLibraryScheduler } from '$lib/server/library/library-scheduler.js';
 import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
 import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
 import { buildMetadataProviderRegistry } from '$lib/server/metadata/provider-registry.js';
@@ -211,7 +212,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		rootFolderId,
 		moveFilesOnRootChange,
 		wantsSubtitles,
-		languageProfileId
+		languageProfileId,
+		folderPath
 	} = body;
 
 	// Capture current state before update (for subtitle trigger detection)
@@ -332,6 +334,9 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	if (languageProfileId !== undefined) {
 		updateData.languageProfileId = languageProfileId;
 	}
+	if (folderPath !== undefined) {
+		updateData.path = folderPath.trim();
+	}
 
 	if (Object.keys(updateData).length === 0 && !moveRequest) {
 		return json({ success: false, error: 'No valid fields to update' }, { status: 400 });
@@ -390,6 +395,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	}
 
 	libraryMediaEvents.emitMovieUpdated(params.id);
+
+	// When the folder path was corrected, queue a rescan of the root folder so
+	// the scanner re-links files at the new path without any manual intervention.
+	if (folderPath !== undefined && currentMovie?.rootFolderId) {
+		getLibraryScheduler().queueFolderScan(currentMovie.rootFolderId);
+	}
 
 	return json({
 		success: true,
