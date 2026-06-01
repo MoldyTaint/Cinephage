@@ -213,6 +213,11 @@
 	);
 
 	const folderPathChanged = $derived(folderPath.trim() !== (movie.path ?? '').trim());
+	const resolvedFolderPath = $derived(
+		selectedRootFolderObj?.path && folderPath.trim()
+			? `${selectedRootFolderObj.path}/${folderPath.trim()}`
+			: null
+	);
 
 	function handleSave() {
 		onSave({
@@ -400,9 +405,12 @@
 							<FolderOpen class="h-4 w-4" />
 						</button>
 					</div>
+					{#if resolvedFolderPath}
+						<p class="mt-1 font-mono text-xs text-base-content/50">{resolvedFolderPath}</p>
+					{/if}
 					<p class="mt-1 text-xs text-base-content/60">
-						Folder name relative to the root folder. Edit only if the name on disk no longer matches
-						— saving will update the database and trigger a rescan to re-link existing files.
+						Folder name relative to the root folder. Edit only if the name on disk no longer
+						matches; saving will update the database and trigger a rescan to re-link existing files.
 					</p>
 					{#if folderPathChanged}
 						<p class="mt-1 text-xs text-warning">

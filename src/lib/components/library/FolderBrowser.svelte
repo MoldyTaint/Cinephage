@@ -131,13 +131,11 @@
 	</div>
 
 	<!-- Footer with actions -->
-	<div
-		class="flex flex-col gap-2 border-t border-base-300 bg-base-200 p-3 sm:flex-row sm:items-center sm:justify-between"
-	>
+	<div class="flex flex-col gap-2 border-t border-base-300 bg-base-200 p-3">
 		<div class="text-sm text-base-content/60">
 			{m.library_folderBrowser_hint()}
 		</div>
-		<div class="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row">
+		<div class="flex justify-end gap-2">
 			<button type="button" class="btn btn-ghost btn-sm" onclick={onCancel}>
 				{m.action_cancel()}
 			</button>

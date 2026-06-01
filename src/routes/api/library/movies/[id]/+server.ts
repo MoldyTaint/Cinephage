@@ -1,5 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
+import { stat } from 'node:fs/promises';
+import { join, resolve, normalize } from 'node:path';
 import { db } from '$lib/server/db/index.js';
 import {
 	downloadHistory,
@@ -335,7 +337,33 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		updateData.languageProfileId = languageProfileId;
 	}
 	if (folderPath !== undefined) {
-		updateData.path = folderPath.trim();
+		const trimmed = folderPath.trim();
+		if (currentMovie?.rootFolderId) {
+			const [rootFolder] = await db
+				.select({ path: rootFolders.path })
+				.from(rootFolders)
+				.where(eq(rootFolders.id, currentMovie.rootFolderId))
+				.limit(1);
+			if (!rootFolder) {
+				return json({ success: false, error: 'Root folder not found' }, { status: 400 });
+			}
+			const resolved = normalize(join(rootFolder.path, trimmed));
+			if (!resolved.startsWith(normalize(rootFolder.path) + '/')) {
+				return json(
+					{ success: false, error: 'Folder must be within the root folder' },
+					{ status: 400 }
+				);
+			}
+			try {
+				await stat(resolved);
+			} catch {
+				return json(
+					{ success: false, error: `Folder does not exist on disk: ${resolve(resolved)}` },
+					{ status: 400 }
+				);
+			}
+		}
+		updateData.path = trimmed;
 	}
 
 	if (Object.keys(updateData).length === 0 && !moveRequest) {
