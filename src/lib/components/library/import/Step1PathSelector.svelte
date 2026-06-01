@@ -23,6 +23,7 @@
 	let {
 		preferredMediaType = $bindable('auto'),
 		sourcePath = $bindable('/'),
+		showRootFolders = $bindable(false),
 		browserPath = '/',
 		browserParentPath = null,
 		browserEntries = [],
@@ -36,6 +37,7 @@
 	}: {
 		preferredMediaType: 'auto' | MediaType;
 		sourcePath: string;
+		showRootFolders: boolean;
 		browserPath: string;
 		browserParentPath: string | null;
 		browserEntries: BrowseEntry[];
@@ -131,6 +133,15 @@
 			<div class="min-w-0 flex-1 truncate rounded bg-base-100 px-2 py-1 font-mono text-sm">
 				{browserPath}
 			</div>
+			<label class="flex cursor-pointer items-center gap-1.5 text-xs text-base-content/70">
+				<input
+					type="checkbox"
+					class="checkbox checkbox-xs"
+					bind:checked={showRootFolders}
+					onchange={() => onBrowse(browserPath)}
+				/>
+				{m.library_import_showRootFolders()}
+			</label>
 			{#if !isFileOnlyContext}
 				<button class="btn btn-outline btn-xs" onclick={() => (sourcePath = browserPath)}>
 					{m.library_import_useFolder()}

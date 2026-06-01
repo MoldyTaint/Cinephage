@@ -870,6 +870,7 @@
 	"library_import_tvShowLabel": "TV-Sendung",
 	"library_import_unmatchedTvSeries": "Nicht zugeordnete TV-Serie",
 	"library_import_useFolder": "Ordner verwenden",
+	"library_import_showRootFolders": "Stammordner anzeigen",
 	"library_import_viewInLibrary": "In Bibliothek anzeigen",
 	"library_import_viewLastImported": "Zuletzt importiert anzeigen",
 	"library_libraryMediaTable_addedColumn": "Hinzugefügt",

@@ -870,6 +870,7 @@
 	"library_import_tvShowLabel": "TV Show",
 	"library_import_unmatchedTvSeries": "Unmatched TV Series",
 	"library_import_useFolder": "Use Folder",
+	"library_import_showRootFolders": "Show root folders",
 	"library_import_viewInLibrary": "View in Library",
 	"library_import_viewLastImported": "View Last Imported",
 	"library_libraryMediaTable_addedColumn": "Added",

@@ -112,6 +112,7 @@
 	let preferredMediaType = $state<'auto' | MediaType>('auto');
 
 	let sourcePath = $state('/');
+	let showRootFolders = $state(false);
 	let browserPath = $state('/');
 	let browserEntries = $state<BrowseEntry[]>([]);
 	let browserParentPath = $state<string | null>(null);
@@ -718,7 +719,7 @@
 			const payload = await browseFilesystem(path, {
 				includeFiles: true,
 				fileFilter: 'video',
-				excludeManagedRoots: true
+				excludeManagedRoots: !showRootFolders
 			});
 
 			if (!payload || typeof payload !== 'object') {
@@ -1886,6 +1887,7 @@
 	function resetWizard() {
 		preferredMediaType = routeImportContext?.mediaType ?? 'auto';
 		sourcePath = '/';
+		showRootFolders = false;
 		browserPath = '/';
 		browserParentPath = null;
 		browserEntries = [];
@@ -2090,6 +2092,7 @@
 		<Step1PathSelector
 			bind:preferredMediaType
 			bind:sourcePath
+			bind:showRootFolders
 			{browserPath}
 			{browserParentPath}
 			{browserEntries}
