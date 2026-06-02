@@ -100,8 +100,10 @@
 			} else {
 				toasts.error(m.library_matchFile_failedToMatch(), { description: result.error });
 			}
-		} catch {
-			toasts.error(m.library_matchFile_errorMatching());
+		} catch (err) {
+			const description =
+				err instanceof Error ? err.message : m.library_matchFile_errorMatching();
+			toasts.error(m.library_matchFile_errorMatching(), { description });
 		} finally {
 			isMatching = false;
 		}
@@ -136,8 +138,10 @@
 			} else {
 				toasts.error(m.library_matchFile_failedToMatch(), { description: result.error });
 			}
-		} catch {
-			toasts.error(m.library_matchFile_errorMatching());
+		} catch (err) {
+			const description =
+				err instanceof Error ? err.message : m.library_matchFile_errorMatching();
+			toasts.error(m.library_matchFile_errorMatching(), { description });
 		} finally {
 			isMatching = false;
 		}

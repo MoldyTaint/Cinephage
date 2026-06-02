@@ -84,7 +84,7 @@ export async function getUnmatchedItems() {
 }
 
 export async function matchUnmatched(id: string, payload: UnmatchedSingleMatch) {
-	return apiPost('/api/library/unmatched/match', { id, ...payload });
+	return apiPost('/api/library/unmatched/match', { fileIds: [id], ...payload });
 }
 
 export async function autoSearchMovie(movieId: string) {

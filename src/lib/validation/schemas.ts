@@ -1754,6 +1754,7 @@ export const unmatchedMatchSchema = z.object({
 	tmdbId: z.number().int(),
 	mediaType: z.enum(['movie', 'tv']),
 	season: z.number().int().optional(),
+	episode: z.number().int().optional(),
 	episodeMapping: z
 		.record(
 			z.string(),

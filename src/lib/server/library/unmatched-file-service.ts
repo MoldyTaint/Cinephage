@@ -313,7 +313,7 @@ export class UnmatchedFileService {
 	 * Match files to TMDB entry
 	 */
 	async matchFiles(request: MatchRequest): Promise<BatchMatchResult> {
-		const { fileIds, tmdbId, mediaType, season, episodeMapping } = request;
+		const { fileIds, tmdbId, mediaType, season, episode, episodeMapping } = request;
 		const errors: string[] = [];
 		let matched = 0;
 		let failed = 0;
@@ -347,13 +347,17 @@ export class UnmatchedFileService {
 						fileEpisode = episodeMapping[fileId].episode;
 					} else {
 						fileSeason = fileSeason ?? file.parsedSeason ?? undefined;
-						fileEpisode = file.parsedEpisode ?? undefined;
+						// Prefer explicitly supplied episode, fall back to parsed value
+						fileEpisode = episode ?? file.parsedEpisode ?? undefined;
 					}
 
 					if (fileSeason === undefined || fileEpisode === undefined) {
-						errors.push(
-							`Failed to match ${fileId}: could not determine season/episode from filename`
+						const reason = `Could not determine ${fileSeason === undefined ? 'season' : 'episode'} for "${file.path}" - the filename could not be parsed and no value was provided`;
+						logger.warn(
+							{ fileId, filePath: file.path, fileSeason, fileEpisode },
+							`[UnmatchedFileService] ${reason}`
 						);
+						errors.push(reason);
 						failed++;
 						continue;
 					}
@@ -411,7 +415,6 @@ export class UnmatchedFileService {
 		episode: number
 	): Promise<{ success: boolean; mediaId?: string; error?: string }> {
 		try {
-			// Get the file record to use with mediaMatcherService
 			const [fileRecord] = await db
 				.select()
 				.from(unmatchedFiles)
@@ -421,22 +424,21 @@ export class UnmatchedFileService {
 				return { success: false, error: 'File record not found' };
 			}
 
-			// Update parsed season/episode before matching
+			// Write season/episode before acceptMatch reads them from the DB
 			await db
 				.update(unmatchedFiles)
-				.set({
-					parsedSeason: season,
-					parsedEpisode: episode
-				})
+				.set({ parsedSeason: season, parsedEpisode: episode })
 				.where(eq(unmatchedFiles.id, file.id));
 
 			await mediaMatcherService.acceptMatch(file.id, tmdbId, 'tv');
 			return { success: true };
 		} catch (err) {
-			return {
-				success: false,
-				error: err instanceof Error ? err.message : 'Failed to match episode'
-			};
+			const errorMsg = err instanceof Error ? err.message : 'Failed to match episode';
+			logger.error(
+				{ fileId: file.id, filePath: file.path, tmdbId, season, episode, err },
+				`[UnmatchedFileService] Episode match failed: ${errorMsg}`
+			);
+			return { success: false, error: errorMsg };
 		}
 	}
 
