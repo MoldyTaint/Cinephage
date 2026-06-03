@@ -229,7 +229,11 @@ export class ManualImportService {
 			parsedYear: parsed.year,
 			parsedSeason: tvIdentifier?.numbering === 'standard' ? tvIdentifier.seasonNumber : undefined,
 			parsedEpisode:
-				tvIdentifier?.numbering === 'standard' ? tvIdentifier.episodeNumbers[0] : undefined,
+				tvIdentifier?.numbering === 'standard'
+					? tvIdentifier.episodeNumbers[0]
+					: tvIdentifier?.numbering === 'absolute'
+						? tvIdentifier.absoluteEpisode
+						: undefined,
 			inferredMediaType,
 			matches: enrichedMatches
 		};

@@ -99,8 +99,28 @@ const EPISODE_PATTERNS: Array<{
 
 	// Multi-season pack patterns: S01-S05, Season 1-5, S01-05, Seasons 1-5
 	// These must come BEFORE generic "complete series" text patterns
+	//
+	// Split into two patterns to avoid consuming fansub episode notation like "S1 - 08":
+	// - With explicit S prefix before second number: allows spaces (S01-S05, S1 - S3)
+	// - Without S prefix: tight separators only, no spaces (S01-05, S1-3)
+	//   "S1 - 08" uses spaces + no second S, so it must NOT match here.
 	{
-		pattern: /\bS(\d{1,2})[\s._-]*[-–—][\s._-]*S?(\d{1,2})\b(?![\s._-]?E)/i,
+		pattern: /\bS(\d{1,2})[\s._-]*[-–—][\s._-]*S(\d{1,2})\b(?![\s._-]?E)/i,
+		extract: (match) => {
+			const startSeason = parseInt(match[1], 10);
+			const endSeason = parseInt(match[2], 10);
+			if (endSeason > startSeason && endSeason - startSeason < 20) {
+				const seasons: number[] = [];
+				for (let s = startSeason; s <= endSeason; s++) {
+					seasons.push(s);
+				}
+				return { seasons, isSeasonPack: true, isCompleteSeries: startSeason === 1 };
+			}
+			return { seasons: [startSeason, endSeason], isSeasonPack: true };
+		}
+	},
+	{
+		pattern: /\bS(\d{1,2})[._-]?[-–—][._-]?(\d{1,2})\b(?![\s._-]?E)/i,
 		extract: (match) => {
 			const startSeason = parseInt(match[1], 10);
 			const endSeason = parseInt(match[2], 10);
