@@ -101,8 +101,7 @@
 				toasts.error(m.library_matchFile_failedToMatch(), { description: result.error });
 			}
 		} catch (err) {
-			const description =
-				err instanceof Error ? err.message : m.library_matchFile_errorMatching();
+			const description = err instanceof Error ? err.message : m.library_matchFile_errorMatching();
 			toasts.error(m.library_matchFile_errorMatching(), { description });
 		} finally {
 			isMatching = false;
@@ -139,8 +138,7 @@
 				toasts.error(m.library_matchFile_failedToMatch(), { description: result.error });
 			}
 		} catch (err) {
-			const description =
-				err instanceof Error ? err.message : m.library_matchFile_errorMatching();
+			const description = err instanceof Error ? err.message : m.library_matchFile_errorMatching();
 			toasts.error(m.library_matchFile_errorMatching(), { description });
 		} finally {
 			isMatching = false;

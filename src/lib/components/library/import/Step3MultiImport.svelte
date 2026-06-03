@@ -32,7 +32,7 @@
 		canImport = (_group: DetectionGroup) => false,
 		getEffectiveMediaType = (_group: DetectionGroup) => 'movie' as MediaType,
 		getGroupEpisodeInfo = (_group: DetectionGroup) =>
-			null as { season: number; episode: number } | null,
+			null as { season: number; episode: number; title?: string } | null,
 		lockedMediaType = undefined as MediaType | undefined,
 		getSectionDestinations = (_section: DetectionSection): DestinationLibrary[] => [],
 		getSectionEligibleCount = (_section: DetectionSection) => 0,
@@ -59,7 +59,11 @@
 		executingImport: boolean;
 		canImport: (group: DetectionGroup) => boolean;
 		getEffectiveMediaType: (group: DetectionGroup) => MediaType;
-		getGroupEpisodeInfo: (group: DetectionGroup) => { season: number; episode: number } | null;
+		getGroupEpisodeInfo: (group: DetectionGroup) => {
+			season: number;
+			episode: number;
+			title?: string;
+		} | null;
 		lockedMediaType?: MediaType;
 		getSectionDestinations: (section: DetectionSection) => DestinationLibrary[];
 		getSectionEligibleCount: (section: DetectionSection) => number;
@@ -126,9 +130,7 @@
 				<div class="join">
 					<button
 						type="button"
-						class="btn join-item btn-sm {importMediaFilter === 'all'
-							? 'btn-primary'
-							: 'btn-ghost'}"
+						class="btn join-item btn-sm {importMediaFilter === 'all' ? 'btn-primary' : 'btn-ghost'}"
 						onclick={() => (importMediaFilter = 'all')}
 					>
 						{m.library_import_filterAllMedia()}
@@ -138,15 +140,15 @@
 						class="btn join-item btn-sm {importMediaFilter === 'movie'
 							? 'btn-primary'
 							: 'btn-ghost'}"
+						disabled={importMovieSections.length === 0}
 						onclick={() => (importMediaFilter = 'movie')}
 					>
 						{m.common_movies()}
 					</button>
 					<button
 						type="button"
-						class="btn join-item btn-sm {importMediaFilter === 'tv'
-							? 'btn-primary'
-							: 'btn-ghost'}"
+						class="btn join-item btn-sm {importMediaFilter === 'tv' ? 'btn-primary' : 'btn-ghost'}"
+						disabled={importTvSections.length === 0}
 						onclick={() => (importMediaFilter = 'tv')}
 					>
 						{m.common_tvShows()}
@@ -356,6 +358,11 @@
 															<span class="badge badge-primary badge-outline badge-xs font-mono">
 																{formatEpisodePill(episodeInfo)}
 															</span>
+															{#if episodeInfo.title}
+																<span class="max-w-48 truncate italic">
+																	{episodeInfo.title}
+																</span>
+															{/if}
 														{/if}
 													</div>
 												</div>

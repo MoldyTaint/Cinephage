@@ -20,6 +20,7 @@
 		importedGroupIds = [],
 		skippedGroupIds = [],
 		pendingGroupCount = 0,
+		readyGroupCount = 0,
 		remainingGroupCount = 0,
 		skippedGroupCount = 0,
 		skipActionsEnabled = false,
@@ -34,7 +35,7 @@
 		getDetectedSeasonsLabel = (_section: DetectionSection) => '',
 		canApplySelectedMatchToSeason = (_season: TvSeasonSection) => false,
 		getGroupEpisodeInfo = (_group: DetectionGroup) =>
-			null as { season: number; episode: number } | null,
+			null as { season: number; episode: number; title?: string } | null,
 		onSwitchGroup = (_id: string) => {},
 		onSkipGroup = (_id: string) => {},
 		onUnskipGroup = (_id: string) => {},
@@ -58,6 +59,7 @@
 		importedGroupIds: string[];
 		skippedGroupIds: string[];
 		pendingGroupCount: number;
+		readyGroupCount: number;
 		remainingGroupCount: number;
 		skippedGroupCount: number;
 		skipActionsEnabled: boolean;
@@ -71,7 +73,11 @@
 		isSeasonSectionFullySkipped: (season: TvSeasonSection) => boolean;
 		getDetectedSeasonsLabel: (section: DetectionSection) => string;
 		canApplySelectedMatchToSeason: (season: TvSeasonSection) => boolean;
-		getGroupEpisodeInfo: (group: DetectionGroup) => { season: number; episode: number } | null;
+		getGroupEpisodeInfo: (group: DetectionGroup) => {
+			season: number;
+			episode: number;
+			title?: string;
+		} | null;
 		onSwitchGroup: (id: string) => void;
 		onSkipGroup: (id: string) => void;
 		onUnskipGroup: (id: string) => void;
@@ -147,6 +153,7 @@
 					class="btn join-item btn-sm {detectedGroupFilter === 'pending'
 						? 'btn-primary'
 						: 'btn-ghost'}"
+					disabled={pendingGroupCount === 0}
 					onclick={() => (detectedGroupFilter = 'pending')}
 				>
 					{m.library_import_filterNeedsInput()}
@@ -156,6 +163,7 @@
 					class="btn join-item btn-sm {detectedGroupFilter === 'ready'
 						? 'btn-primary'
 						: 'btn-ghost'}"
+					disabled={readyGroupCount === 0}
 					onclick={() => (detectedGroupFilter = 'ready')}
 				>
 					{m.library_import_filterReady()}
@@ -165,6 +173,7 @@
 					class="btn join-item btn-sm {detectedGroupFilter === 'skipped'
 						? 'btn-primary'
 						: 'btn-ghost'}"
+					disabled={skippedGroupCount === 0}
 					onclick={() => (detectedGroupFilter = 'skipped')}
 				>
 					{m.library_import_filterSkipped()}
@@ -174,6 +183,7 @@
 					class="btn join-item btn-sm {detectedGroupFilter === 'imported'
 						? 'btn-primary'
 						: 'btn-ghost'}"
+					disabled={importedGroupIds.length === 0}
 					onclick={() => (detectedGroupFilter = 'imported')}
 				>
 					{m.library_import_filterImported()}
@@ -403,23 +413,25 @@
 											})}
 										</div>
 										<div class="flex flex-wrap items-center gap-2">
-											<button
-												type="button"
-												class="btn btn-ghost btn-xs"
-												disabled={!canApplySelectedMatchToSeason(activeReviewSeasonSection)}
-												onclick={() => onApplyMatchToSeason(activeReviewSeasonSection)}
-											>
-												{m.library_import_applyMatchToSeason()}
-											</button>
-											<button
-												type="button"
-												class="btn btn-ghost btn-xs"
-												onclick={() => onToggleSeasonSkipped(activeReviewSeasonSection)}
-											>
-												{isSeasonSectionFullySkipped(activeReviewSeasonSection)
-													? m.library_import_selectSeason()
-													: m.library_import_skipSeason()}
-											</button>
+											{#if !lockedMediaType}
+												<button
+													type="button"
+													class="btn btn-ghost btn-xs"
+													disabled={!canApplySelectedMatchToSeason(activeReviewSeasonSection)}
+													onclick={() => onApplyMatchToSeason(activeReviewSeasonSection)}
+												>
+													{m.library_import_applyMatchToSeason()}
+												</button>
+												<button
+													type="button"
+													class="btn btn-ghost btn-xs"
+													onclick={() => onToggleSeasonSkipped(activeReviewSeasonSection)}
+												>
+													{isSeasonSectionFullySkipped(activeReviewSeasonSection)
+														? m.library_import_selectSeason()
+														: m.library_import_skipSeason()}
+												</button>
+											{/if}
 										</div>
 									</div>
 								{/if}
@@ -461,9 +473,16 @@
 														<span class="text-warning">{m.library_import_needsInput()}</span>
 													{/if}
 													{#if episodeInfo}
-														<span class="badge badge-primary badge-outline badge-xs font-mono font-bold text-base-content border-primary">
+														<span
+															class="badge badge-primary badge-outline badge-xs font-mono font-bold text-base-content border-primary"
+														>
 															{formatEpisodePill(episodeInfo)}
 														</span>
+														{#if episodeInfo.title}
+															<span class="max-w-48 truncate italic">
+																{episodeInfo.title}
+															</span>
+														{/if}
 													{/if}
 												</div>
 											</button>
