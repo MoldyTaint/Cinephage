@@ -21,6 +21,7 @@
 		getLibraryStatus
 	} from '$lib/api';
 	import { searchTmdb as searchTmdbApi } from '$lib/api';
+	import { getTmdb } from '$lib/api/discover.js';
 	import { browseFilesystem } from '$lib/api';
 	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
 	import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
@@ -129,7 +130,6 @@
 	let selectedGroupId = $state<string | null>(null);
 	let importedGroupIds = $state<string[]>([]);
 	let skippedGroupIds = $state<string[]>([]);
-	let showSelectedItemEditor = $state(false);
 	let groupReviewState = $state<Record<string, GroupReviewState>>({});
 	let detectedGroupQuery = $state('');
 	let detectedGroupFilter = $state<'all' | 'pending' | 'ready' | 'imported' | 'skipped'>('pending');
@@ -158,6 +158,8 @@
 	let executeResult = $state<ExecuteResult | null>(null);
 	let executeError = $state<string | null>(null);
 	let bulkImportSummary = $state<{ importedGroups: number; failedGroups: number } | null>(null);
+	// Cache keyed by "{tmdbId}-S{season}" → map of episodeNumber → title
+	let episodeTitleCache = $state<Record<string, Record<number, string>>>({});
 	let bypassNavigationGuard = false;
 	let leaveImportModalOpen = $state(false);
 	let pendingNavigation = $state<PendingNavigation | null>(null);
@@ -165,6 +167,7 @@
 	const routeImportContext = $derived.by(() => parseImportContext(page.url.searchParams));
 	const isDirectLibraryImportContext = $derived.by(() => Boolean(routeImportContext?.libraryId));
 	const isMediaTypeLockedByContext = $derived.by(() => Boolean(routeImportContext));
+	const lockedMediaType = $derived.by(() => routeImportContext?.mediaType ?? undefined);
 	const isFileOnlyContext = $derived.by(() =>
 		Boolean(
 			routeImportContext && routeImportContext.mediaType === 'movie' && routeImportContext.libraryId
@@ -663,6 +666,42 @@
 		}
 	});
 
+	// Fetch TMDB episode titles for matched TV groups and cache by tmdbId+season
+	$effect(() => {
+		if (step !== 2 && step !== 3) return;
+		for (const group of detectionGroups) {
+			if (getEffectiveMediaType(group) !== 'tv' || group.detectedFileCount > 1) continue;
+			const state = groupReviewState[group.id];
+			if (!state) continue;
+			const tmdbId = state.selectedMatch?.tmdbId;
+			const season = state.seasonNumber;
+			if (!tmdbId || season < 0) continue;
+			const cacheKey = `${tmdbId}-S${season}`;
+			if (cacheKey in episodeTitleCache) continue;
+			episodeTitleCache = { ...episodeTitleCache, [cacheKey]: {} };
+			fetchSeasonEpisodeTitles(tmdbId, season, cacheKey);
+		}
+	});
+
+	async function fetchSeasonEpisodeTitles(tmdbId: number, season: number, cacheKey: string) {
+		try {
+			const data = (await getTmdb(`tv/${tmdbId}/season/${season}`)) as {
+				episodes?: Array<{ episode_number?: number; name?: string }>;
+			} | null;
+			if (data?.episodes && Array.isArray(data.episodes)) {
+				const titles: Record<number, string> = {};
+				for (const ep of data.episodes) {
+					if (typeof ep.episode_number === 'number' && ep.name) {
+						titles[ep.episode_number] = ep.name;
+					}
+				}
+				episodeTitleCache = { ...episodeTitleCache, [cacheKey]: titles };
+			}
+		} catch {
+			// episode titles are a nice-to-have - silently skip on error
+		}
+	}
+
 	async function loadRootFolders() {
 		loadingRootFolders = true;
 		try {
@@ -920,28 +959,11 @@
 		return typeof activeGroup.parsedSeason !== 'number';
 	}
 
-	function shouldPreserveSelectedItemEditor(nextGroupId: string): boolean {
-		if (!showSelectedItemEditor || !isMultiGroupReview || step !== 2) {
-			return false;
-		}
-
-		const nextGroup = detectionGroups.find((group) => group.id === nextGroupId);
-		if (!nextGroup) {
-			return false;
-		}
-
-		return getEffectiveMediaType(nextGroup) === 'tv';
-	}
-
 	function switchGroup(groupId: string) {
 		if (groupId === selectedGroupId) return;
-		const preserveSelectedItemEditor = shouldPreserveSelectedItemEditor(groupId);
 		persistActiveGroupState();
 		selectedGroupId = groupId;
 		loadGroupState(groupId);
-		if (isMultiGroupReview && !preserveSelectedItemEditor) {
-			showSelectedItemEditor = false;
-		}
 	}
 
 	function markGroupImported(groupId: string) {
@@ -1536,6 +1558,19 @@
 		importSelectedSeasonSectionKey = seasonKey;
 	}
 
+	function getGroupEpisodeInfo(
+		group: DetectionGroup
+	): { season: number; episode: number; title?: string } | null {
+		if (getEffectiveMediaType(group) !== 'tv') return null;
+		const state = getGroupState(group);
+		if (group.detectedFileCount > 1) return null;
+		if (state.seasonNumber < 0 || state.episodeNumber < 1) return null;
+		const tmdbId = state.selectedMatch?.tmdbId;
+		const cacheKey = tmdbId ? `${tmdbId}-S${state.seasonNumber}` : null;
+		const title = cacheKey ? episodeTitleCache[cacheKey]?.[state.episodeNumber] : undefined;
+		return { season: state.seasonNumber, episode: state.episodeNumber, title };
+	}
+
 	function canImportGroup(group: DetectionGroup): boolean {
 		if (importedGroupIds.includes(group.id) || skippedGroupIds.includes(group.id)) {
 			return false;
@@ -1684,7 +1719,6 @@
 			detectedGroupFilter = 'pending';
 			detectedMediaFilter = 'all';
 			importMediaFilter = 'all';
-			showSelectedItemEditor = false;
 			reviewSelectedSeriesSectionId = null;
 			reviewSelectedSeasonSectionKey = null;
 			importSelectedSeriesSectionId = null;
@@ -1914,7 +1948,6 @@
 		detectedGroupFilter = 'pending';
 		detectedMediaFilter = 'all';
 		importMediaFilter = 'all';
-		showSelectedItemEditor = false;
 		reviewSelectedSeriesSectionId = null;
 		reviewSelectedSeasonSectionKey = null;
 		importSelectedSeriesSectionId = null;
@@ -2123,6 +2156,7 @@
 					{importedGroupIds}
 					{skippedGroupIds}
 					{pendingGroupCount}
+					{readyGroupCount}
 					{remainingGroupCount}
 					{skippedGroupCount}
 					{skipActionsEnabled}
@@ -2136,6 +2170,8 @@
 					{isSeasonSectionFullySkipped}
 					{getDetectedSeasonsLabel}
 					{canApplySelectedMatchToSeason}
+					{getGroupEpisodeInfo}
+					{lockedMediaType}
 					onSwitchGroup={switchGroup}
 					onSkipGroup={markGroupSkipped}
 					onUnskipGroup={unskipGroup}
@@ -2147,63 +2183,39 @@
 				/>
 			{/if}
 
-			{#if isMultiGroupReview && !showSelectedItemEditor}
-				<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
-					<div class="flex flex-wrap items-center justify-between gap-3">
-						<div class="min-w-0">
-							<div class="text-sm text-base-content/60">{m.library_import_selectedItem()}</div>
-							<div class="truncate text-lg font-semibold">{activeGroup.displayName}</div>
-							<div class="text-sm text-base-content/70">
-								{formatMediaTypeLabel(activeGroup.inferredMediaType)} • {activeGroup.detectedFileCount ===
-								1
-									? m.library_import_fileCountSingular({ count: activeGroup.detectedFileCount })
-									: m.library_import_fileCount({ count: activeGroup.detectedFileCount })}
-							</div>
-						</div>
-						<button
-							class="btn btn-outline"
-							onclick={() => (showSelectedItemEditor = true)}
-							disabled={isGroupImported(activeGroup.id)}
-						>
-							{m.library_import_configureSelectedItem()}
-						</button>
-					</div>
-				</div>
-			{:else}
-				<GroupEditorPanel
-					{activeGroup}
-					{selectedMediaType}
-					{selectedMatch}
-					bind:searchQuery
-					{matchCandidates}
-					bind:importTarget
-					bind:seasonNumber
-					bind:episodeNumber
-					bind:batchSeasonOverride
-					bind:selectedRootFolder
-					{isMediaTypeLockedByContext}
-					{isBatchTvImport}
-					isGroupImported={isGroupImported(activeGroup?.id ?? '')}
-					isGroupSkipped={isGroupSkipped(activeGroup?.id ?? '')}
-					{skipActionsEnabled}
-					{searchingMatches}
-					{routeImportContext}
-					{selectedMatchContextMismatch}
-					{parsedSourceContextMismatch}
-					{canApplyMatchSelectionToActiveSeason}
-					bind:applyMatchToSeasonOnSelect={applySelectedMatchToSeasonOnSelect}
-					{canImportGroup}
-					{canApplyActiveSeasonOverride}
-					onSwitchMediaType={switchMediaType}
-					onChooseMatch={chooseMatch}
-					onSearchInput={handleMatchSearchInput}
-					onSearch={searchTmdb}
-					onClearSearch={clearMatchSearch}
-					onSeasonNumberChange={handleSeasonNumberChange}
-					onEpisodeNumberChange={persistActiveGroupState}
-					onToggleSkip={toggleSkipActiveGroup}
-				/>
-			{/if}
+			<GroupEditorPanel
+				{activeGroup}
+				{selectedMediaType}
+				{selectedMatch}
+				bind:searchQuery
+				{matchCandidates}
+				bind:importTarget
+				bind:seasonNumber
+				bind:episodeNumber
+				bind:batchSeasonOverride
+				bind:selectedRootFolder
+				{isMediaTypeLockedByContext}
+				{isBatchTvImport}
+				isGroupImported={isGroupImported(activeGroup?.id ?? '')}
+				isGroupSkipped={isGroupSkipped(activeGroup?.id ?? '')}
+				{skipActionsEnabled}
+				{searchingMatches}
+				{routeImportContext}
+				{selectedMatchContextMismatch}
+				{parsedSourceContextMismatch}
+				{canApplyMatchSelectionToActiveSeason}
+				bind:applyMatchToSeasonOnSelect={applySelectedMatchToSeasonOnSelect}
+				{canImportGroup}
+				{canApplyActiveSeasonOverride}
+				onSwitchMediaType={switchMediaType}
+				onChooseMatch={chooseMatch}
+				onSearchInput={handleMatchSearchInput}
+				onSearch={searchTmdb}
+				onClearSearch={clearMatchSearch}
+				onSeasonNumberChange={handleSeasonNumberChange}
+				onEpisodeNumberChange={persistActiveGroupState}
+				onToggleSkip={toggleSkipActiveGroup}
+			/>
 
 			<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 				<button class="btn btn-ghost" onclick={() => goToStep(1)}>{m.action_back()}</button>
@@ -2234,6 +2246,8 @@
 			{executingImport}
 			canImport={canImportGroup}
 			{getEffectiveMediaType}
+			{getGroupEpisodeInfo}
+			{lockedMediaType}
 			getSectionDestinations={getSectionDestinationOptions}
 			getSectionEligibleCount={(section) => getSectionDestinationEligibleGroups(section).length}
 			canApplyDestination={canApplySelectedDestinationToMedia}
@@ -2245,7 +2259,6 @@
 			onReviewGroup={(groupId) => {
 				switchGroup(groupId);
 				step = 2;
-				showSelectedItemEditor = true;
 			}}
 			onGoToStep={(s: number) => goToStep(s as WizardStep)}
 		/>

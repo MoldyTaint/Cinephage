@@ -70,7 +70,7 @@
 	<div class="relative">
 		<div
 			bind:this={navScroller}
-			class="[scrollbar-width:none] overflow-x-auto px-2 sm:px-4 [&::-webkit-scrollbar]:hidden"
+			class="scrollbar-none overflow-x-auto px-2 sm:px-4 [&::-webkit-scrollbar]:hidden"
 		>
 			<nav class="-mb-px flex min-w-max items-stretch gap-1 sm:gap-4" aria-label={ariaLabel}>
 				{#each navItems as item (item.href)}

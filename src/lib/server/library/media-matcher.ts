@@ -26,6 +26,11 @@ import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/Subti
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
 import { logger } from '$lib/logging/index.js';
 import { parseRelease, extractExternalIds } from '$lib/server/indexers/parser/ReleaseParser.js';
+import {
+	resolveTvEpisodeIdentifier,
+	extractSeasonFromPath,
+	getMediaParseStem
+} from './tv-episode-resolver.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { resolveProviderWithFallback } from '$lib/server/metadata/provider-resolution.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
@@ -975,13 +980,50 @@ export class MediaMatcherService {
 			}
 		}
 
-		// Determine season and episode from parsed info
-		if (file.parsedSeason === null || file.parsedEpisode === null) {
+		// Determine season and episode - fall back to re-parsing when DB values are incomplete
+		let resolvedSeason = file.parsedSeason;
+		let resolvedEpisode = file.parsedEpisode;
+
+		if (resolvedSeason === null || resolvedEpisode === null) {
+			const stem = getMediaParseStem(file.path);
+			const reparsed = parseRelease(stem);
+			const tvId = resolveTvEpisodeIdentifier({
+				filePath: file.path,
+				parsed: reparsed,
+				seasonHint: extractSeasonFromPath(file.path)
+			});
+
+			if (tvId?.numbering === 'standard') {
+				resolvedSeason = resolvedSeason ?? tvId.seasonNumber;
+				resolvedEpisode = resolvedEpisode ?? tvId.episodeNumbers[0];
+			} else if (tvId?.numbering === 'absolute') {
+				// Absolute episode - resolve to season/episode via DB (populated above)
+				const [epRecord] = await db
+					.select({
+						seasonNumber: episodes.seasonNumber,
+						episodeNumber: episodes.episodeNumber
+					})
+					.from(episodes)
+					.where(
+						and(
+							eq(episodes.seriesId, seriesId),
+							eq(episodes.absoluteEpisodeNumber, tvId.absoluteEpisode)
+						)
+					)
+					.limit(1);
+				if (epRecord) {
+					resolvedSeason = epRecord.seasonNumber;
+					resolvedEpisode = epRecord.episodeNumber;
+				}
+			}
+		}
+
+		if (resolvedSeason === null || resolvedEpisode === null) {
 			throw new Error('Could not determine season/episode from filename');
 		}
 
-		const seasonNumber = file.parsedSeason;
-		const episodeNumber = file.parsedEpisode;
+		const seasonNumber = resolvedSeason;
+		const episodeNumber = resolvedEpisode;
 
 		// Fetch season details from TMDB (needed for both season and episode metadata)
 		let tmdbSeason: Awaited<ReturnType<typeof tmdb.getSeason>> | null = null;

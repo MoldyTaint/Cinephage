@@ -577,6 +577,32 @@ describe('ReleaseParser', () => {
 		});
 	});
 
+	describe('Fansub anime with season prefix (Moozzi2-style)', () => {
+		const moozziFiles = [
+			{ stem: '[Moozzi2] Seitokai Yakuindomo S1 - 01 (BD 1920x1080 x.264 FLACx2)', episode: 1 },
+			{ stem: '[Moozzi2] Seitokai Yakuindomo S1 - 02 (BD 1920x1080 x.264 FLACx2)', episode: 2 },
+			{ stem: '[Moozzi2] Seitokai Yakuindomo S1 - 06 (BD 1920x1080 x.264 FLACx2)', episode: 6 },
+			{ stem: '[Moozzi2] Seitokai Yakuindomo S1 - 12 (BD 1920x1080 x.264 FLACx2)', episode: 12 },
+			{ stem: '[Moozzi2] Seitokai Yakuindomo S1 - 13 END (BD 1920x1080 x.264 FLACx2)', episode: 13 }
+		];
+
+		for (const { stem, episode } of moozziFiles) {
+			it(`should parse episode ${episode} from "${stem}"`, () => {
+				const result = parseRelease(stem);
+				expect(result.episode?.isSeasonPack).toBe(false);
+				expect(result.episode?.season).toBe(1);
+				expect(result.episode?.episodes).toEqual([episode]);
+			});
+		}
+
+		it('should not treat "S1 - 02" as a multi-season range', () => {
+			const result = parseRelease('[Moozzi2] Show S1 - 02 (BD 1080p)');
+			expect(result.episode?.isSeasonPack).toBe(false);
+			expect(result.episode?.season).toBe(1);
+			expect(result.episode?.episodes).toEqual([2]);
+		});
+	});
+
 	describe('Real-world samples', () => {
 		it('should parse streaming service releases', () => {
 			const result = parseRelease(

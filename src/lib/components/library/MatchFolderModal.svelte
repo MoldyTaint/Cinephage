@@ -37,6 +37,7 @@
 	let isMatching = $state(false);
 	let selectedMedia = $state<TmdbSearchResult | null>(null);
 	let matchPreview = $state<Array<{ file: string; season?: number; episode?: number }>>([]);
+	let seasonOverride = $state<number | null>(null);
 
 	// Reset state when folder changes
 	$effect(() => {
@@ -46,6 +47,7 @@
 			selectedMedia = null;
 			searchResults = [];
 			matchPreview = [];
+			seasonOverride = null;
 		}
 	});
 
@@ -62,6 +64,10 @@
 			});
 		}
 	});
+
+	const hasMissingSeasons = $derived(
+		searchType === 'tv' && matchPreview.some((item) => item.season === undefined)
+	);
 
 	// Search TMDB
 	async function search() {
@@ -106,7 +112,8 @@
 			const result = (await batchUnmatchedMatch({
 				fileIds,
 				tmdbId: selectedMedia.id,
-				mediaType: searchType
+				mediaType: searchType,
+				...(seasonOverride !== null ? { season: seasonOverride } : {})
 			})) as unknown as {
 				success: boolean;
 				data: { matched: number; failed: number };
@@ -207,6 +214,33 @@
 				<button class="btn btn-ghost btn-sm" onclick={backToSearch}> {m.action_change()} </button>
 			</div>
 
+			<!-- Season override for TV shows with unparsed seasons -->
+			{#if hasMissingSeasons}
+				<div class="rounded-lg border border-warning/40 bg-warning/10 p-3">
+					<p class="mb-2 text-sm font-medium text-warning-content">
+						Season number could not be parsed from the filenames. Specify it below to match all
+						files correctly.
+					</p>
+					<div class="flex items-center gap-3">
+						<label class="flex items-center gap-2 text-sm">
+							Season
+							<input
+								type="number"
+								min="0"
+								class="input input-bordered input-sm w-20"
+								placeholder="1"
+								bind:value={seasonOverride}
+							/>
+						</label>
+						{#if seasonOverride !== null}
+							<span class="text-xs text-base-content/60"
+								>Will be applied to all files without a parsed season.</span
+							>
+						{/if}
+					</div>
+				</div>
+			{/if}
+
 			<!-- Match Preview -->
 			<div>
 				<p class="mb-2 text-sm font-medium">
@@ -214,12 +248,20 @@
 				</p>
 				<div class="max-h-48 space-y-1 overflow-y-auto rounded-lg bg-base-200 p-2">
 					{#each matchPreview.slice(0, 10) as item, index (`${item.file}-${index}`)}
+						{@const resolvedSeason =
+							item.season ?? (seasonOverride !== null ? seasonOverride : undefined)}
 						<div class="flex items-center justify-between rounded bg-base-300/50 px-2 py-1 text-sm">
 							<span class="flex-1 truncate" title={item.file}>{item.file}</span>
-							{#if item.season !== undefined && item.episode !== undefined}
-								<span class="ml-2 badge shrink-0 badge-sm badge-secondary">
-									S{String(item.season).padStart(2, '0')}E{String(item.episode).padStart(2, '0')}
+							{#if resolvedSeason !== undefined && item.episode !== undefined}
+								<span
+									class="ml-2 badge shrink-0 badge-sm {item.season === undefined
+										? 'badge-warning'
+										: 'badge-secondary'}"
+								>
+									S{String(resolvedSeason).padStart(2, '0')}E{String(item.episode).padStart(2, '0')}
 								</span>
+							{:else if resolvedSeason === undefined && item.episode !== undefined}
+								<span class="ml-2 badge shrink-0 badge-sm badge-error">No season</span>
 							{/if}
 						</div>
 					{/each}
@@ -236,7 +278,11 @@
 				<button class="btn btn-ghost" onclick={backToSearch} disabled={isMatching}>
 					{m.action_back()}
 				</button>
-				<button class="btn btn-primary" onclick={matchFolder} disabled={isMatching}>
+				<button
+					class="btn btn-primary"
+					onclick={matchFolder}
+					disabled={isMatching || (hasMissingSeasons && seasonOverride === null)}
+				>
 					{#if isMatching}
 						<Loader2 class="h-4 w-4 animate-spin" />
 					{:else}

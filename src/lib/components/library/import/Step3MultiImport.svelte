@@ -31,6 +31,9 @@
 		executingImport = false,
 		canImport = (_group: DetectionGroup) => false,
 		getEffectiveMediaType = (_group: DetectionGroup) => 'movie' as MediaType,
+		getGroupEpisodeInfo = (_group: DetectionGroup) =>
+			null as { season: number; episode: number; title?: string } | null,
+		lockedMediaType = undefined as MediaType | undefined,
 		getSectionDestinations = (_section: DetectionSection): DestinationLibrary[] => [],
 		getSectionEligibleCount = (_section: DetectionSection) => 0,
 		canApplyDestination = (_section: DetectionSection) => false,
@@ -56,6 +59,12 @@
 		executingImport: boolean;
 		canImport: (group: DetectionGroup) => boolean;
 		getEffectiveMediaType: (group: DetectionGroup) => MediaType;
+		getGroupEpisodeInfo: (group: DetectionGroup) => {
+			season: number;
+			episode: number;
+			title?: string;
+		} | null;
+		lockedMediaType?: MediaType;
 		getSectionDestinations: (section: DetectionSection) => DestinationLibrary[];
 		getSectionEligibleCount: (section: DetectionSection) => number;
 		canApplyDestination: (section: DetectionSection) => boolean;
@@ -70,6 +79,10 @@
 
 	function formatMediaTypeLabel(mediaType: MediaType): string {
 		return mediaType === 'movie' ? m.library_import_movieLabel() : m.library_import_tvShowLabel();
+	}
+
+	function formatEpisodePill(info: { season: number; episode: number }): string {
+		return `S${String(info.season).padStart(2, '0')}E${String(info.episode).padStart(2, '0')}`;
 	}
 
 	function getDetectedSeasonsLabel(section: DetectionSection): string {
@@ -111,32 +124,38 @@
 
 	<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
 		<h3 class="font-semibold">{m.library_import_selectedItemsHeading()}</h3>
-		<div class="mt-3 flex flex-wrap items-center justify-between gap-2">
-			<p class="text-xs text-base-content/70">{m.library_import_filterByMediaType()}</p>
-			<div class="join">
-				<button
-					type="button"
-					class="btn join-item btn-sm {importMediaFilter === 'all' ? 'btn-primary' : 'btn-ghost'}"
-					onclick={() => (importMediaFilter = 'all')}
-				>
-					{m.library_import_filterAllMedia()}
-				</button>
-				<button
-					type="button"
-					class="btn join-item btn-sm {importMediaFilter === 'movie' ? 'btn-primary' : 'btn-ghost'}"
-					onclick={() => (importMediaFilter = 'movie')}
-				>
-					{m.common_movies()}
-				</button>
-				<button
-					type="button"
-					class="btn join-item btn-sm {importMediaFilter === 'tv' ? 'btn-primary' : 'btn-ghost'}"
-					onclick={() => (importMediaFilter = 'tv')}
-				>
-					{m.common_tvShows()}
-				</button>
+		{#if !lockedMediaType}
+			<div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+				<p class="text-xs text-base-content/70">{m.library_import_filterByMediaType()}</p>
+				<div class="join">
+					<button
+						type="button"
+						class="btn join-item btn-sm {importMediaFilter === 'all' ? 'btn-primary' : 'btn-ghost'}"
+						onclick={() => (importMediaFilter = 'all')}
+					>
+						{m.library_import_filterAllMedia()}
+					</button>
+					<button
+						type="button"
+						class="btn join-item btn-sm {importMediaFilter === 'movie'
+							? 'btn-primary'
+							: 'btn-ghost'}"
+						disabled={importMovieSections.length === 0}
+						onclick={() => (importMediaFilter = 'movie')}
+					>
+						{m.common_movies()}
+					</button>
+					<button
+						type="button"
+						class="btn join-item btn-sm {importMediaFilter === 'tv' ? 'btn-primary' : 'btn-ghost'}"
+						disabled={importTvSections.length === 0}
+						onclick={() => (importMediaFilter = 'tv')}
+					>
+						{m.common_tvShows()}
+					</button>
+				</div>
 			</div>
-		</div>
+		{/if}
 		{#if selectedImportGroupCount === 0}
 			<div
 				class="mt-3 rounded-lg border border-dashed border-base-300 p-4 text-sm text-base-content/60"
@@ -310,6 +329,7 @@
 
 									<div class="mt-2 max-h-72 space-y-2 overflow-y-auto pr-1">
 										{#each activeImportSeasonSection?.items ?? activeImportTvSection.items as group (group.id)}
+											{@const episodeInfo = getGroupEpisodeInfo(group)}
 											<div
 												class="flex items-center justify-between gap-3 rounded-lg border border-base-300 p-3"
 											>
@@ -333,6 +353,16 @@
 															<span class="text-success">{m.library_import_ready()}</span>
 														{:else}
 															<span class="text-warning">{m.library_import_needsInput()}</span>
+														{/if}
+														{#if episodeInfo}
+															<span class="badge badge-primary badge-outline badge-xs font-mono">
+																{formatEpisodePill(episodeInfo)}
+															</span>
+															{#if episodeInfo.title}
+																<span class="max-w-48 truncate italic">
+																	{episodeInfo.title}
+																</span>
+															{/if}
 														{/if}
 													</div>
 												</div>

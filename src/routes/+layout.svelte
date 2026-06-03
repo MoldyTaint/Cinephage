@@ -436,7 +436,7 @@
 			<label for="main-drawer" aria-label={m.nav_closeSidebar()} class="drawer-overlay"></label>
 			<aside
 				class:sidebar-collapsed={!layoutState.isSidebarExpanded}
-				class="relative z-40 flex min-h-full flex-col overflow-x-visible bg-base-200 transition-[width] duration-300 ease-in-out
+				class="relative z-40 flex h-dvh flex-col overflow-x-visible bg-base-200 transition-[width] duration-300 ease-in-out
 		            {layoutState.isSidebarExpanded ? 'w-64' : 'w-20'}"
 			>
 				<!-- Sidebar Header -->
@@ -489,7 +489,7 @@
 
 				<!-- Navigation -->
 				<div
-					class="grow"
+					class="min-h-0 grow overflow-y-auto"
 					class:px-2={layoutState.isSidebarExpanded}
 					class:pl-2={!layoutState.isSidebarExpanded}
 					class:pr-0={!layoutState.isSidebarExpanded}

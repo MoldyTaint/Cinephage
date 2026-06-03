@@ -66,15 +66,30 @@ export function getMediaParseStem(pathValue: string): string {
 
 export function extractSeasonFromPath(pathValue: string): number | undefined {
 	const normalizedPath = resolve(pathValue).replace(/\\/g, '/');
-	const seasonPatterns = [
+
+	// First pass: match season as a complete path segment boundary
+	// e.g. /Season 1/, /s01/, /Season.1/
+	const segmentPatterns = [
 		/(?:^|\/)season[\s._-]*(\d{1,3})(?:\/|$)/i,
 		/(?:^|\/)s(\d{1,3})(?:\/|$)/i
 	];
 
-	for (const pattern of seasonPatterns) {
+	for (const pattern of segmentPatterns) {
 		const match = normalizedPath.match(pattern);
 		const season = match?.[1] ? parseInt(match[1], 10) : NaN;
 		if (!isNaN(season)) {
+			return season;
+		}
+	}
+
+	// Second pass: scan each path segment for a standalone S-number token
+	// Handles folder names like "[Group] Title S1 BD-BOX" or "Show S2 Complete"
+	// Requires word boundary on both sides and must not be followed by an episode number
+	for (const segment of normalizedPath.split('/')) {
+		const match = segment.match(/\bS(\d{1,2})\b(?![\s._-]?E\d)/i);
+		if (!match) continue;
+		const season = parseInt(match[1], 10);
+		if (!isNaN(season) && season >= 1 && season <= 30) {
 			return season;
 		}
 	}

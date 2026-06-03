@@ -71,6 +71,7 @@ export interface MatchRequest {
 	tmdbId: number;
 	mediaType: 'movie' | 'tv';
 	season?: number;
+	episode?: number;
 	episodeMapping?: Record<string, { season: number; episode: number }>;
 }
 

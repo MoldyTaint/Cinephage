@@ -941,7 +941,12 @@ export class DiskScanService extends EventEmitter {
 			parsedTitle: parsed.cleanTitle || null,
 			parsedYear: parsed.year || null,
 			parsedSeason: identifier?.numbering === 'standard' ? identifier.seasonNumber : null,
-			parsedEpisode: identifier?.numbering === 'standard' ? identifier.episodeNumbers[0] : null,
+			parsedEpisode:
+				identifier?.numbering === 'standard'
+					? identifier.episodeNumbers[0]
+					: identifier?.numbering === 'absolute'
+						? identifier.absoluteEpisode
+						: null,
 			reason: 'no_match'
 		});
 	}
