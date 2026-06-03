@@ -130,7 +130,6 @@
 	let selectedGroupId = $state<string | null>(null);
 	let importedGroupIds = $state<string[]>([]);
 	let skippedGroupIds = $state<string[]>([]);
-	let showSelectedItemEditor = $state(false);
 	let groupReviewState = $state<Record<string, GroupReviewState>>({});
 	let detectedGroupQuery = $state('');
 	let detectedGroupFilter = $state<'all' | 'pending' | 'ready' | 'imported' | 'skipped'>('pending');
@@ -686,7 +685,9 @@
 
 	async function fetchSeasonEpisodeTitles(tmdbId: number, season: number, cacheKey: string) {
 		try {
-			const data = await getTmdb(`tv/${tmdbId}/season/${season}`);
+			const data = (await getTmdb(`tv/${tmdbId}/season/${season}`)) as {
+				episodes?: Array<{ episode_number?: number; name?: string }>;
+			} | null;
 			if (data?.episodes && Array.isArray(data.episodes)) {
 				const titles: Record<number, string> = {};
 				for (const ep of data.episodes) {
@@ -963,9 +964,6 @@
 		persistActiveGroupState();
 		selectedGroupId = groupId;
 		loadGroupState(groupId);
-		if (isMultiGroupReview) {
-			showSelectedItemEditor = true;
-		}
 	}
 
 	function markGroupImported(groupId: string) {
@@ -1721,7 +1719,6 @@
 			detectedGroupFilter = 'pending';
 			detectedMediaFilter = 'all';
 			importMediaFilter = 'all';
-			showSelectedItemEditor = true;
 			reviewSelectedSeriesSectionId = null;
 			reviewSelectedSeasonSectionKey = null;
 			importSelectedSeriesSectionId = null;
@@ -1951,7 +1948,6 @@
 		detectedGroupFilter = 'pending';
 		detectedMediaFilter = 'all';
 		importMediaFilter = 'all';
-		showSelectedItemEditor = false;
 		reviewSelectedSeriesSectionId = null;
 		reviewSelectedSeasonSectionKey = null;
 		importSelectedSeriesSectionId = null;
@@ -2263,7 +2259,6 @@
 			onReviewGroup={(groupId) => {
 				switchGroup(groupId);
 				step = 2;
-				showSelectedItemEditor = true;
 			}}
 			onGoToStep={(s: number) => goToStep(s as WizardStep)}
 		/>
