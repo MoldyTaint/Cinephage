@@ -12,7 +12,8 @@
 		Download,
 		Zap,
 		Loader2,
-		Ban
+		Ban,
+		Captions
 	} from 'lucide-svelte';
 	import { formatBytes, getStatusColor } from '$lib/utils/format.js';
 	import { formatSeriesStatus } from '$lib/utils/format-status.js';
@@ -73,6 +74,8 @@
 		onMonitorToggle?: (newValue: boolean) => void;
 		onSearch?: () => void;
 		onSearchMissing?: () => void;
+		onSubtitleAutoSearch?: () => void;
+		subtitleAutoSearching?: boolean;
 		onImport?: () => void;
 		onEdit?: () => void;
 		onDelete?: () => void;
@@ -94,6 +97,8 @@
 		onMonitorToggle,
 		onSearch,
 		onSearchMissing,
+		onSubtitleAutoSearch,
+		subtitleAutoSearching = false,
 		onImport,
 		onEdit,
 		onDelete,
@@ -254,6 +259,24 @@
 							{/if}
 						{/if}
 					</button>
+
+					<!-- Auto-download subtitles series -->
+					{#if onSubtitleAutoSearch}
+						<button
+							class="btn gap-2 btn-sm btn-secondary"
+							onclick={onSubtitleAutoSearch}
+							disabled={subtitleAutoSearching}
+							title={m.library_seriesHeader_autoDownloadSubsTooltip()}
+						>
+							{#if subtitleAutoSearching}
+								<Loader2 size={16} class="animate-spin" />
+								<span class="hidden sm:inline">{m.common_downloading()}</span>
+							{:else}
+								<Captions size={16} />
+								<span class="hidden sm:inline">{m.library_seriesHeader_autoDownloadSubs()}</span>
+							{/if}
+						</button>
+					{/if}
 
 					<!-- Season Packs (Interactive Search) -->
 					<button

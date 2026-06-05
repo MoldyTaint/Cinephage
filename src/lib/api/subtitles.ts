@@ -4,10 +4,12 @@ import type {
 	LanguageProfileUpdate,
 	SubtitleProviderCreate,
 	SubtitleProviderUpdate,
-	SubtitleProviderTest
+	SubtitleProviderTest,
+	SubtitleBatchAutoSearchRequest
 } from '$lib/validation/schemas.js';
 
 import { apiGet, apiPost, apiPut, apiDelete } from './client.js';
+import { browser } from '$app/environment';
 
 export async function searchSubtitles(payload: {
 	movieId?: string;
@@ -134,4 +136,17 @@ export async function deleteSubtitleBlacklistEntry(id: string) {
 
 export async function deleteSubtitle(subtitleId: string) {
 	return apiDelete(`/api/subtitles/${subtitleId}`);
+}
+
+export async function batchAutoSearchSubtitles(
+	payload: SubtitleBatchAutoSearchRequest
+): Promise<Response> {
+	if (!browser) {
+		throw new Error('batchAutoSearchSubtitles can only be used in the browser');
+	}
+	return fetch('/api/subtitles/auto-search/batch', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(payload)
+	});
 }

@@ -37,6 +37,7 @@
 	import { resolvePath } from '$lib/utils/routing';
 	import { createDynamicSSE } from '$lib/sse';
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
+	import { createSubtitleProgress } from '$lib/stores/subtitleProgress.svelte';
 	import { getPrimaryAutoSearchIssue } from '$lib/utils/autoSearchIssues';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import * as m from '$lib/paraglide/messages.js';
@@ -334,6 +335,8 @@
 	let subtitleDeletingId = $state<string | null>(null);
 	let bulkSubtitleAutoSearching = $state(false);
 	let bulkSubtitleSyncing = $state(false);
+	let subtitleAutoSearchingSeries = $state(false);
+	let subtitleAutoSearchingSeasons = new SvelteSet<string>();
 
 	function describeError(error: unknown, fallback: string): string {
 		return error instanceof Error ? error.message : fallback;
@@ -345,6 +348,7 @@
 
 	// Search progress store for auto-search
 	const searchProgress = createSearchProgress();
+	const subtitleProgress = createSubtitleProgress();
 
 	// Search context
 	let searchContext = $state<{
@@ -1365,33 +1369,29 @@
 	}
 
 	// Bulk subtitle auto-search for selected episodes (BulkActionBar)
+	// Refactored to use the batch SSE endpoint with real-time progress
 	async function handleBulkSubtitleAutoSearch(): Promise<void> {
 		const episodeIds = [...selectedEpisodes];
 		if (episodeIds.length === 0) return;
 
 		bulkSubtitleAutoSearching = true;
-		let successCount = 0;
 
 		try {
-			for (const episodeId of episodeIds) {
-				subtitleAutoSearchingEpisodes.add(episodeId);
-				try {
-					const result = await autoSearchSubtitles({ episodeId });
+			const results = await subtitleProgress.startBatch({ type: 'episodes', episodeIds });
 
-					if (result.success && result.subtitle) {
-						appendSubtitleToEpisode(episodeId, result.subtitle);
-						successCount++;
-					}
-				} catch {
-					// Continue with next episode
-				} finally {
-					subtitleAutoSearchingEpisodes.delete(episodeId);
+			for (const item of subtitleProgress.items) {
+				if (item.episodeId && item.status === 'downloaded' && item.subtitle) {
+					appendSubtitleToEpisode(item.episodeId, {
+						language: item.subtitle.language,
+						isForced: false,
+						isHearingImpaired: false
+					});
 				}
 			}
 
-			if (successCount > 0) {
+			if (results.downloaded > 0) {
 				toasts.success(
-					m.toast_library_tvDetail_downloadedSubtitles({ count: String(successCount) })
+					m.toast_library_tvDetail_downloadedSubtitles({ count: String(results.downloaded) })
 				);
 			} else {
 				toasts.info(m.toast_library_tvDetail_noSubtitlesFound());
@@ -1403,6 +1403,81 @@
 			showActionError(m.toast_library_tvDetail_bulkSubAutoSearchFailed(), error);
 		} finally {
 			bulkSubtitleAutoSearching = false;
+			subtitleProgress.reset();
+		}
+	}
+
+	// Per-season subtitle auto-search
+	async function handleSubtitleAutoSearchSeason(season: {
+		id: string;
+		seasonNumber: number;
+	}): Promise<void> {
+		subtitleAutoSearchingSeasons.add(season.id);
+
+		try {
+			const results = await subtitleProgress.startBatch({
+				type: 'season',
+				seriesId: series.id,
+				seasonNumber: season.seasonNumber
+			});
+
+			for (const item of subtitleProgress.items) {
+				if (item.episodeId && item.status === 'downloaded' && item.subtitle) {
+					appendSubtitleToEpisode(item.episodeId, {
+						language: item.subtitle.language,
+						isForced: false,
+						isHearingImpaired: false
+					});
+				}
+			}
+
+			if (results.downloaded > 0) {
+				toasts.success(
+					m.toast_library_tvDetail_downloadedSubtitles({ count: String(results.downloaded) })
+				);
+			} else {
+				toasts.info(m.toast_library_tvDetail_noSubtitlesFound());
+			}
+		} catch (error) {
+			showActionError(m.toast_library_tvDetail_failedToAutoSearchSubs(), error);
+		} finally {
+			subtitleAutoSearchingSeasons.delete(season.id);
+			subtitleProgress.reset();
+		}
+	}
+
+	// Per-series subtitle auto-search (all missing)
+	async function handleSubtitleAutoSearchSeries(): Promise<void> {
+		subtitleAutoSearchingSeries = true;
+
+		try {
+			const results = await subtitleProgress.startBatch({
+				type: 'series',
+				seriesId: series.id
+			});
+
+			for (const item of subtitleProgress.items) {
+				if (item.episodeId && item.status === 'downloaded' && item.subtitle) {
+					appendSubtitleToEpisode(item.episodeId, {
+						language: item.subtitle.language,
+						isForced: false,
+						isHearingImpaired: false
+					});
+				}
+			}
+
+			if (results.downloaded > 0) {
+				toasts.success(
+					m.toast_library_tvDetail_downloadedSubtitles({ count: String(results.downloaded) })
+				);
+			} else {
+				toasts.info(m.toast_library_tvDetail_noSubtitlesFound());
+			}
+		} catch (error) {
+			showActionError(m.toast_library_tvDetail_failedToAutoSearchSubs(), error);
+		} finally {
+			subtitleAutoSearchingSeries = false;
+			subtitleProgress.reset();
 		}
 	}
 
@@ -1687,6 +1762,8 @@
 		onMonitorToggle={handleMonitorToggle}
 		onSearch={handleSearch}
 		onSearchMissing={handleSearchMissing}
+		onSubtitleAutoSearch={handleSubtitleAutoSearchSeries}
+		subtitleAutoSearching={subtitleAutoSearchingSeries}
 		onImport={handleImport}
 		onEdit={handleEdit}
 		onDelete={handleDelete}
@@ -1748,6 +1825,7 @@
 						{autoSearchingEpisodes}
 						{autoSearchEpisodeResults}
 						{subtitleAutoSearchingEpisodes}
+						subtitleAutoSearchingSeason={subtitleAutoSearchingSeasons.has(season.id)}
 						{subtitleSyncingId}
 						{subtitleDeletingId}
 						onToggleOpen={handleSeasonToggle}
@@ -1755,6 +1833,7 @@
 						onEpisodeMonitorToggle={handleEpisodeMonitorToggle}
 						onSeasonSearch={handleSeasonSearch}
 						onAutoSearchSeason={handleAutoSearchSeason}
+						onSubtitleAutoSearchSeason={handleSubtitleAutoSearchSeason}
 						onEpisodeSearch={handleEpisodeSearch}
 						onAutoSearchEpisode={handleAutoSearchEpisode}
 						onEpisodeSelectChange={handleEpisodeSelectChange}

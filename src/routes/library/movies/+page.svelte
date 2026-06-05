@@ -26,7 +26,9 @@
 		Eye,
 		EyeOff,
 		ChevronDown,
-		HardDrive
+		HardDrive,
+		Captions,
+		Loader2
 	} from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { viewPreferences } from '$lib/stores/view-preferences.svelte';
@@ -40,6 +42,7 @@
 	import { grabRelease } from '$lib/api/downloads.js';
 	import { ApiError } from '$lib/api/client.js';
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
+	import { createSubtitleProgress } from '$lib/stores/subtitleProgress.svelte';
 	import { getPrimaryAutoSearchIssue } from '$lib/utils/autoSearchIssues';
 	import { createProgressiveRenderer } from '$lib/utils/progressive-render.svelte.js';
 	import * as m from '$lib/paraglide/messages.js';
@@ -52,6 +55,9 @@
 	let searchQuery = $state('');
 	let collapsedGroups = new SvelteSet<string>();
 	let drawerOpen = $state(false);
+	let collectionSubtitleAutoSearching = new SvelteSet<number>();
+
+	const subtitleProgress = createSubtitleProgress();
 
 	function groupMoviesByCollection(moviesList: typeof data.movies) {
 		const groups: Record<string, typeof data.movies> = {};
@@ -62,10 +68,16 @@
 			}
 			groups[key].push(movie);
 		}
-		const result: { name: string | null; movies: typeof data.movies }[] = [];
+		const result: {
+			name: string | null;
+			collectionId: number | null;
+			movies: typeof data.movies;
+		}[] = [];
 		for (const [key, groupMovies] of Object.entries(groups)) {
+			const firstWithId = groupMovies.find((m) => m.tmdbCollectionId != null);
 			result.push({
 				name: key === '__none__' ? null : key,
+				collectionId: firstWithId?.tmdbCollectionId ?? null,
 				movies: groupMovies
 			});
 		}
@@ -309,6 +321,36 @@
 		} finally {
 			autoSearchingIds.delete(movieId);
 			searchProgress.reset();
+		}
+	}
+
+	async function handleCollectionSubtitleAutoSearch(
+		collectionId: number,
+		_collectionName: string
+	): Promise<void> {
+		if (collectionSubtitleAutoSearching.has(collectionId)) return;
+		collectionSubtitleAutoSearching.add(collectionId);
+
+		try {
+			const results = await subtitleProgress.startBatch({
+				type: 'collection',
+				collectionId
+			});
+
+			if (results.downloaded > 0) {
+				toasts.success(
+					m.toast_library_tvDetail_downloadedSubtitles({ count: String(results.downloaded) })
+				);
+			} else {
+				toasts.info(m.toast_library_tvDetail_noSubtitlesFound());
+			}
+		} catch (error) {
+			toasts.error(
+				error instanceof Error ? error.message : 'Failed to auto-search collection subtitles'
+			);
+		} finally {
+			collectionSubtitleAutoSearching.delete(collectionId);
+			subtitleProgress.reset();
 		}
 	}
 
@@ -812,47 +854,64 @@
 							{@const fileCount = group.movies.filter((mv) => mv.hasFile).length}
 							{@const monitoredCount = group.movies.filter((mv) => mv.monitored).length}
 							<div class="mb-8">
-								<button
-									class="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-base-200/60"
-									onclick={() => toggleCollectionGroup(group.name ?? '__none__')}
-								>
-									<svg
-										class="h-4 w-4 shrink-0 transition-transform {collapsedGroups.has(
-											group.name ?? '__none__'
-										)
-											? ''
-											: 'rotate-90'}"
-										viewBox="0 0 20 20"
-										fill="currentColor"
+								<div class="flex items-center">
+									<button
+										class="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-base-200/60"
+										onclick={() => toggleCollectionGroup(group.name ?? '__none__')}
 									>
-										<path
-											fill-rule="evenodd"
-											d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
-											clip-rule="evenodd"
-										/>
-									</svg>
-									<div class="flex min-w-0 flex-1 items-center gap-2">
-										<h3 class="min-w-0 truncate text-lg font-semibold">
-											{group.name ?? m.library_movies_other()}
-										</h3>
-										<span class="badge shrink-0 badge-ghost badge-sm">
-											{group.movies.length}
+										<svg
+											class="h-4 w-4 shrink-0 transition-transform {collapsedGroups.has(
+												group.name ?? '__none__'
+											)
+												? ''
+												: 'rotate-90'}"
+											viewBox="0 0 20 20"
+											fill="currentColor"
+										>
+											<path
+												fill-rule="evenodd"
+												d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+												clip-rule="evenodd"
+											/>
+										</svg>
+										<div class="flex min-w-0 flex-1 items-center gap-2">
+											<h3 class="min-w-0 truncate text-lg font-semibold">
+												{group.name ?? m.library_movies_other()}
+											</h3>
+											<span class="badge shrink-0 badge-ghost badge-sm">
+												{group.movies.length}
+											</span>
+										</div>
+										<span
+											class="flex shrink-0 items-center gap-3 text-xs text-base-content/50"
+											aria-label={`${fileCount}/${group.movies.length} files, ${monitoredCount}/${group.movies.length} monitored`}
+										>
+											<span class="inline-flex items-center gap-1">
+												<HardDrive class="h-3.5 w-3.5" />
+												{fileCount}/{group.movies.length}
+											</span>
+											<span class="inline-flex items-center gap-1">
+												<Eye class="h-3.5 w-3.5" />
+												{monitoredCount}/{group.movies.length}
+											</span>
 										</span>
-									</div>
-									<span
-										class="flex shrink-0 items-center gap-3 text-xs text-base-content/50"
-										aria-label={`${fileCount}/${group.movies.length} files, ${monitoredCount}/${group.movies.length} monitored`}
-									>
-										<span class="inline-flex items-center gap-1">
-											<HardDrive class="h-3.5 w-3.5" />
-											{fileCount}/{group.movies.length}
-										</span>
-										<span class="inline-flex items-center gap-1">
-											<Eye class="h-3.5 w-3.5" />
-											{monitoredCount}/{group.movies.length}
-										</span>
-									</span>
-								</button>
+									</button>
+									{#if group.collectionId}
+										<button
+											class="btn shrink-0 btn-ghost btn-sm"
+											onclick={() =>
+												handleCollectionSubtitleAutoSearch(group.collectionId!, group.name ?? '')}
+											disabled={collectionSubtitleAutoSearching.has(group.collectionId)}
+											title="Auto-download subtitles for collection"
+										>
+											{#if collectionSubtitleAutoSearching.has(group.collectionId)}
+												<Loader2 size={14} class="animate-spin" />
+											{:else}
+												<Captions size={14} />
+											{/if}
+										</button>
+									{/if}
+								</div>
 								{#if !collapsedGroups.has(group.name ?? '__none__')}
 									{#if viewPreferences.viewMode === 'grid'}
 										<div class="grid grid-cols-3 gap-3 pt-2 sm:gap-4 lg:grid-cols-9">

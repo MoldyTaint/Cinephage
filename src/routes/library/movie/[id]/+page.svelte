@@ -33,7 +33,7 @@
 	import { ApiError } from '$lib/api/client.js';
 	import { apiGetStream } from '$lib/api';
 	import type { MovieEditData } from '$lib/components/library/MovieEditModal.svelte';
-	import { FileEdit, Wifi, WifiOff, Loader2, RefreshCw } from 'lucide-svelte';
+	import { FileEdit, Wifi, WifiOff, Loader2, RefreshCw, Captions } from 'lucide-svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
@@ -42,6 +42,7 @@
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
+	import { createSubtitleProgress } from '$lib/stores/subtitleProgress.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -195,6 +196,9 @@
 	let scoreData = $state<FileScoreResponse | null>(null);
 	let scoreLoading = $state(false);
 	let scoreFetched = $state(false);
+	let collectionSubtitleAutoSearching = $state(false);
+
+	const subtitleProgress = createSubtitleProgress();
 
 	$effect(() => {
 		if (page.url.searchParams.get('edit') === '1') {
@@ -634,6 +638,33 @@
 		}
 	}
 
+	async function handleCollectionSubtitleAutoSearch(): Promise<void> {
+		if (!movie.tmdbCollectionId) return;
+		collectionSubtitleAutoSearching = true;
+
+		try {
+			const results = await subtitleProgress.startBatch({
+				type: 'collection',
+				collectionId: movie.tmdbCollectionId
+			});
+
+			if (results.downloaded > 0) {
+				toasts.success(
+					m.toast_library_movieDetail_foundAndGrabbed({
+						release: `${results.downloaded} subtitles`
+					})
+				);
+			} else {
+				toasts.info(m.toast_library_tvDetail_noSubtitlesFound());
+			}
+		} catch (error) {
+			showActionError(m.toast_library_movieDetail_failedToAutoSearchSubs(), error);
+		} finally {
+			collectionSubtitleAutoSearching = false;
+			subtitleProgress.reset();
+		}
+	}
+
 	function handleSubtitleDownloaded(subtitle: {
 		id: string;
 		language: string;
@@ -843,9 +874,23 @@
 
 			{#if data.collectionMovies && data.collectionMovies.length > 0}
 				<div class="mt-4 hidden rounded-xl bg-base-200 p-4 md:mt-6 md:block md:p-6">
-					<h2 class="mb-4 text-lg font-semibold">
-						{m.library_movieDetail_otherMoviesInCollection()}
-					</h2>
+					<div class="mb-4 flex items-center justify-between">
+						<h2 class="text-lg font-semibold">
+							{m.library_movieDetail_otherMoviesInCollection()}
+						</h2>
+						<button
+							class="btn gap-2 btn-ghost btn-sm"
+							onclick={handleCollectionSubtitleAutoSearch}
+							disabled={collectionSubtitleAutoSearching}
+							title="Auto-download subtitles for all movies in collection"
+						>
+							{#if collectionSubtitleAutoSearching}
+								<Loader2 size={16} class="animate-spin" />
+							{:else}
+								<Captions size={16} />
+							{/if}
+						</button>
+					</div>
 					<div class="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
 						{#each data.collectionMovies as collMovie (collMovie.id)}
 							<a
@@ -1013,9 +1058,23 @@
 
 			{#if data.collectionMovies && data.collectionMovies.length > 0}
 				<div class="rounded-xl bg-base-200 p-4 md:hidden">
-					<h2 class="mb-4 text-lg font-semibold">
-						{m.library_movieDetail_otherMoviesInCollection()}
-					</h2>
+					<div class="mb-4 flex items-center justify-between">
+						<h2 class="text-lg font-semibold">
+							{m.library_movieDetail_otherMoviesInCollection()}
+						</h2>
+						<button
+							class="btn gap-2 btn-ghost btn-sm"
+							onclick={handleCollectionSubtitleAutoSearch}
+							disabled={collectionSubtitleAutoSearching}
+							title="Auto-download subtitles for all movies in collection"
+						>
+							{#if collectionSubtitleAutoSearching}
+								<Loader2 size={16} class="animate-spin" />
+							{:else}
+								<Captions size={16} />
+							{/if}
+						</button>
+					</div>
 					<div class="-mx-1 flex max-w-full gap-3 overflow-x-auto overscroll-x-contain px-1 pb-2">
 						{#each data.collectionMovies as collMovie (collMovie.id)}
 							<a

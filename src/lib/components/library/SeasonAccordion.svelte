@@ -93,6 +93,7 @@
 		autoSearchingEpisodes?: Set<string>;
 		autoSearchEpisodeResults?: Map<string, AutoSearchResult>;
 		subtitleAutoSearchingEpisodes?: Set<string>;
+		subtitleAutoSearchingSeason?: boolean;
 		subtitleSyncingId?: string | null;
 		subtitleDeletingId?: string | null;
 		onToggleOpen?: (seasonId: string) => void;
@@ -100,6 +101,7 @@
 		onEpisodeMonitorToggle?: (episodeId: string, newValue: boolean) => void;
 		onSeasonSearch?: (season: Season) => void;
 		onAutoSearchSeason?: (season: Season) => void;
+		onSubtitleAutoSearchSeason?: (season: Season) => void;
 		onEpisodeSearch?: (episode: Episode) => void;
 		onAutoSearchEpisode?: (episode: Episode) => void;
 		onEpisodeSelectChange?: (episodeId: string, selected: boolean) => void;
@@ -127,6 +129,7 @@
 		autoSearchingEpisodes = new Set(),
 		autoSearchEpisodeResults = new Map(),
 		subtitleAutoSearchingEpisodes = new Set(),
+		subtitleAutoSearchingSeason = false,
 		subtitleSyncingId = null,
 		subtitleDeletingId = null,
 		onToggleOpen,
@@ -134,6 +137,7 @@
 		onEpisodeMonitorToggle,
 		onSeasonSearch,
 		onAutoSearchSeason,
+		onSubtitleAutoSearchSeason,
 		onEpisodeSearch,
 		onAutoSearchEpisode,
 		onEpisodeSelectChange,
@@ -228,6 +232,12 @@
 		const target = event.target as HTMLInputElement;
 		if (onSelectAllInSeason) {
 			onSelectAllInSeason(season.id, target.checked);
+		}
+	}
+
+	function handleSubtitleAutoSearchSeason() {
+		if (onSubtitleAutoSearchSeason) {
+			onSubtitleAutoSearchSeason(season);
 		}
 	}
 
@@ -339,6 +349,22 @@
 						<Zap size={16} />
 					{/if}
 				</button>
+
+				<!-- Auto-download subtitles for season -->
+				{#if onSubtitleAutoSearchSeason}
+					<button
+						class="btn btn-ghost btn-sm"
+						onclick={handleSubtitleAutoSearchSeason}
+						disabled={subtitleAutoSearchingSeason}
+						title={m.library_seasonAccordion_autoDownloadSubs()}
+					>
+						{#if subtitleAutoSearchingSeason}
+							<Loader2 size={16} class="animate-spin" />
+						{:else}
+							<Captions size={16} />
+						{/if}
+					</button>
+				{/if}
 
 				<!-- Interactive search season -->
 				<button

@@ -327,9 +327,7 @@ export const BLOCKED_EXTENSION_DEFAULTS = [
  * Users toggle which file extensions should be blocked from search results.
  */
 export const blockedSearchExtensionsSchema = z.object({
-	extensions: z
-		.array(z.string().min(1).max(20))
-		.default([...BLOCKED_EXTENSION_DEFAULTS])
+	extensions: z.array(z.string().min(1).max(20)).default([...BLOCKED_EXTENSION_DEFAULTS])
 });
 
 export type BlockedSearchExtensions = z.infer<typeof blockedSearchExtensionsSchema>;
@@ -859,6 +857,30 @@ export type SubtitleSearchRequest = z.infer<typeof subtitleSearchSchema>;
 export type SubtitleDownloadRequest = z.infer<typeof subtitleDownloadSchema>;
 export type SubtitleSyncRequest = z.infer<typeof subtitleSyncSchema>;
 export type SubtitleBlacklistRequest = z.infer<typeof subtitleBlacklistSchema>;
+/**
+ * Schema for batch subtitle auto-search request.
+ */
+export const subtitleBatchAutoSearchSchema = z.discriminatedUnion('type', [
+	z.object({
+		type: z.literal('season'),
+		seriesId: z.string().uuid(),
+		seasonNumber: z.number().int().min(0)
+	}),
+	z.object({
+		type: z.literal('series'),
+		seriesId: z.string().uuid()
+	}),
+	z.object({
+		type: z.literal('collection'),
+		collectionId: z.number().int().positive()
+	}),
+	z.object({
+		type: z.literal('episodes'),
+		episodeIds: z.array(z.string().uuid()).min(1).max(500)
+	})
+]);
+export type SubtitleBatchAutoSearchRequest = z.infer<typeof subtitleBatchAutoSearchSchema>;
+
 export type SubtitleSettingsUpdate = z.infer<typeof subtitleSettingsUpdateSchema>;
 
 // ============================================================
@@ -2117,6 +2139,14 @@ export const blockMediaSchema = z.object({
  */
 export const unblockMediaSchema = z.object({
 	ids: z.array(z.string()).min(1)
+});
+
+export const addBlockedKeywordSchema = z.object({
+	keywordId: z.number().int().positive()
+});
+
+export const removeBlockedKeywordSchema = z.object({
+	id: z.number().int().positive()
 });
 
 // ============================================================================
