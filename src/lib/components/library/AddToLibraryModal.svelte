@@ -356,6 +356,7 @@
 					monitoredSeasons.add(s.season_number);
 				}
 				updateAnimeDetectionFromSeries(tvData);
+				if (detectedAnime) seriesType = 'anime';
 			}
 
 			if (mediaType === 'movie') {
