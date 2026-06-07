@@ -3,38 +3,38 @@ import { settings } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
 import {
-	blockedSearchExtensionsSchema,
-	type BlockedSearchExtensions
+	globalBlockedVideoExtensionsSchema,
+	type GlobalBlockedVideoExtensions
 } from '$lib/validation/schemas.js';
 
-const logger = createChildLogger({ module: 'BlockedExtensions' });
-const SETTINGS_KEY = 'blocked_search_extensions';
+const logger = createChildLogger({ module: 'BlockedVideoExtensions' });
+const SETTINGS_KEY = 'global_blocked_video_extensions';
 
-let cached: BlockedSearchExtensions | null = null;
+let cached: GlobalBlockedVideoExtensions | null = null;
 
-export async function getBlockedExtensions(): Promise<BlockedSearchExtensions> {
+export async function getBlockedVideoExtensions(): Promise<GlobalBlockedVideoExtensions> {
 	if (cached) return cached;
 
 	const row = await db.query.settings.findFirst({ where: eq(settings.key, SETTINGS_KEY) });
 
 	if (row?.value) {
 		try {
-			const parsed = blockedSearchExtensionsSchema.parse(JSON.parse(row.value));
+			const parsed = globalBlockedVideoExtensionsSchema.parse(JSON.parse(row.value));
 			cached = parsed;
 			return parsed;
 		} catch {
-			logger.warn('Failed to parse blocked extensions, using defaults');
+			logger.warn('Failed to parse global blocked video extensions, using defaults');
 		}
 	}
 
-	const defaults = blockedSearchExtensionsSchema.parse({});
+	const defaults = globalBlockedVideoExtensionsSchema.parse({});
 	cached = defaults;
 	return defaults;
 }
 
-export async function setBlockedExtensions(
-	data: BlockedSearchExtensions
-): Promise<BlockedSearchExtensions> {
+export async function setBlockedVideoExtensions(
+	data: GlobalBlockedVideoExtensions
+): Promise<GlobalBlockedVideoExtensions> {
 	await db
 		.insert(settings)
 		.values({ key: SETTINGS_KEY, value: JSON.stringify(data) })
@@ -44,6 +44,6 @@ export async function setBlockedExtensions(
 	return data;
 }
 
-export function invalidateBlockedExtensionsCache(): void {
+export function invalidateBlockedVideoExtensionsCache(): void {
 	cached = null;
 }

@@ -345,9 +345,15 @@ export class DiskScanService extends EventEmitter {
 			const customPatterns = rootFolder.skipFolderPatterns
 				? (JSON.parse(rootFolder.skipFolderPatterns) as string[])
 				: [];
-			const blockedExtensions = rootFolder.blockedVideoExtensions
-				? (JSON.parse(rootFolder.blockedVideoExtensions) as string[])
-				: [];
+			let blockedExtensions: string[];
+			if (rootFolder.blockedVideoExtensions) {
+				blockedExtensions = JSON.parse(rootFolder.blockedVideoExtensions) as string[];
+			} else {
+				const { getBlockedVideoExtensions } =
+					await import('$lib/server/settings/blocked-extensions.js');
+				const global = await getBlockedVideoExtensions();
+				blockedExtensions = global.extensions;
+			}
 
 			const scanner = new StreamingDiskScanner({
 				batchSize: 500,

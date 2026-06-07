@@ -43,7 +43,6 @@
 		FolderCog,
 		Shield,
 		Ban,
-		FileWarning,
 		Globe,
 		Palette
 	} from 'lucide-svelte';
@@ -289,11 +288,6 @@
 						match: (url) => url.pathname.startsWith('/settings/blocklist')
 					},
 					{ href: '/settings/filters', label: m.nav_globalFilters, icon: Filter },
-					{
-						href: '/settings/blocked-extensions',
-						label: m.nav_blockedExtensions,
-						icon: FileWarning
-					},
 					{ href: '/profile', label: m.nav_profile, icon: User }
 				]
 			}

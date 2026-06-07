@@ -167,9 +167,9 @@ const VIDEO_SIGNAL_PATTERN =
 	/\b(?:\d{3,4}p|4k|8k|web[-.\s]?dl|web[-.\s]?rip|webrip|bluray|bdrip|bdremux|remux|hdtv|dvdrip|x264|x265|h\.?264|h\.?265|hevc|av1|s\d{1,2}e\d{1,3}|\d{1,2}x\d{2,3})\b/i;
 
 /**
- * Default pattern for executable/dangerous file extensions in release titles.
+ * Hardcoded pattern for executable/dangerous file extensions in release titles.
  * Built from DANGEROUS_EXTENSIONS + EXECUTABLE_EXTENSIONS in constants.ts.
- * Overridden at search time by user-configured blocked extensions settings.
+ * Not user-configurable — these are security rules, not preferences.
  */
 function buildDangerousExtensionPattern(extensions: string[]): RegExp {
 	const alternation = extensions
@@ -239,9 +239,6 @@ export class SearchOrchestrator {
 		}
 	>;
 	private static readonly ENHANCED_CACHE_TTL_MS = 5 * 60 * 1000;
-	/** Active blocked extension pattern from user settings (overrides default at search time) */
-	private blockedExtensionPattern: RegExp | null = null;
-
 	constructor() {
 		this.statusTracker = getPersistentStatusTracker();
 		this.rateLimitRegistry = getRateLimitRegistry();
@@ -330,9 +327,6 @@ export class SearchOrchestrator {
 		// Deduplicate
 		const { releases: deduped } = this.deduplicator.deduplicate(allReleases);
 
-		// Load user-configured blocked extensions for pre-filtering
-		await this.loadBlockedExtensionPattern();
-
 		// Filter by season/episode if specified.
 		// Use criteriaWithSource so interactive/automatic behavior is respected.
 		// (season/episode fields are unchanged from original criteria)
@@ -411,9 +405,6 @@ export class SearchOrchestrator {
 		]);
 
 		const { eligible: eligibleIndexers, rejected: rejectedIndexers } = indexerFilterResult;
-
-		// Load user-configured blocked extensions for pre-filtering
-		await this.loadBlockedExtensionPattern();
 
 		if (opts.useCache && opts.searchSource === 'interactive') {
 			const cacheKey = this.cache.generateKey(enrichedCriteria);
@@ -1952,24 +1943,6 @@ export class SearchOrchestrator {
 	}
 
 	/**
-	 * Load user-configured blocked extensions from settings and build the matching pattern.
-	 * Falls back to DEFAULT_DANGEROUS_EXTENSION_PATTERN (from constants) on error.
-	 */
-	private async loadBlockedExtensionPattern(): Promise<void> {
-		try {
-			const { getBlockedExtensions } = await import('$lib/server/settings/blocked-extensions.js');
-			const { extensions } = await getBlockedExtensions();
-			if (extensions.length > 0) {
-				this.blockedExtensionPattern = buildDangerousExtensionPattern(extensions);
-				return;
-			}
-		} catch {
-			// Settings table may not be available (e.g., during schema sync)
-		}
-		this.blockedExtensionPattern = null;
-	}
-
-	/**
 	 * Filter non-video artifacts (soundtracks/scores/audio collections) for movie/TV searches.
 	 * This is a safety net for indexers that mislabel categories or provide incomplete metadata.
 	 */
@@ -1987,8 +1960,7 @@ export class SearchOrchestrator {
 
 			// Hard-reject executable/dangerous file extensions masquerading as video.
 			// No escape hatch — these are never legitimate video content.
-			// Uses user-configured blocked extensions from settings, with constants as default.
-			if ((this.blockedExtensionPattern ?? DEFAULT_DANGEROUS_EXTENSION_PATTERN).test(title)) {
+			if (DEFAULT_DANGEROUS_EXTENSION_PATTERN.test(title)) {
 				logger.debug(
 					{
 						title: release.title,
