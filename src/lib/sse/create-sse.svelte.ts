@@ -280,6 +280,7 @@ export function createSSE<T = Record<string, unknown>>(
 			lastUrl = resolvedUrl;
 			reconnectCount = 0;
 			isManuallyClosed = false;
+			closeConnection(); // force-close before reconnect so the open-connection guard in connect() doesn't skip it
 			connect(resolvedUrl);
 		}
 	});

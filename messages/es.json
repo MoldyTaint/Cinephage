@@ -2564,7 +2564,7 @@
 	"settings_integrations_captcha_timing": "Temporización",
 	"settings_integrations_configured": "Configurado",
 	"settings_integrations_connectionSuccessful": "Conexión exitosa",
-	"settings_integrations_deleteConfirmPrefix": "¿Estás seguro de que quieres eliminar",
+	"settings_integrations_deleteConfirmPrefix": "¿Estás seguro de que quieres eliminar ",
 	"settings_integrations_deleteConfirmSuffix": "? Esta acción no se puede deshacer.",
 	"settings_integrations_downloadClientsDesc": "Aplicaciones que manejan la descarga de lanzamientos desde indexadores.",
 	"settings_integrations_downloadClients_addButton": "Añadir cliente de descarga",

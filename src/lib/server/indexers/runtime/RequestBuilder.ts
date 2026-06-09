@@ -730,6 +730,21 @@ export class RequestBuilder {
 		}
 
 		try {
+			// Torznab paths are always empty strings — the base URL IS the endpoint.
+			// Jackett URLs like http://host/torznab/all must end with /api, but users often omit it.
+			// Apply the same normalization that the caps-fetch does so searches hit the right endpoint.
+			if (this.definition.id === 'torznab' && !path) {
+				const base = new URL(this.baseUrl);
+				const normalizedPath = base.pathname.replace(/\/+$/, '');
+				const lowerPath = normalizedPath.toLowerCase();
+				const isTorznabEndpoint =
+					lowerPath.endsWith('/torznab') || lowerPath.includes('/results/torznab');
+				if (!isTorznabEndpoint && !lowerPath.endsWith('/api')) {
+					base.pathname = normalizedPath ? `${normalizedPath}/api` : '/api';
+				}
+				return base.toString();
+			}
+
 			// Newznab endpoints are commonly hosted under a sub-path (e.g., /newznab).
 			// Keep that base path when definition paths are absolute like "/api".
 			if (this.definition.id === 'newznab' && path.startsWith('/')) {

@@ -308,7 +308,7 @@
 		<div class="flex gap-2">
 			<button
 				type="button"
-				class="btn ml-auto w-full gap-2 btn-sm btn-primary sm:w-auto"
+				class="btn ml-auto gap-2 btn-sm btn-primary"
 				onclick={() => void triggerLibraryScan()}
 				disabled={scanning || data.rootFolders.length === 0}
 			>
@@ -323,7 +323,7 @@
 			{#if data.servers.length > 0}
 				<button
 					type="button"
-					class="btn ml-auto w-full gap-2 btn-outline btn-sm sm:w-auto"
+					class="btn ml-auto gap-2 btn-outline btn-sm"
 					onclick={() => void triggerServerSync()}
 					disabled={syncing}
 				>

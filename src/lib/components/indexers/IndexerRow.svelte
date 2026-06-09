@@ -21,6 +21,8 @@
 		reorderMode: boolean;
 		isDragOver: boolean;
 		isDragging: boolean;
+		prowlarrBaseUrl?: string | null;
+		jackettBaseUrl?: string | null;
 		onSelect: (id: string, selected: boolean) => void;
 		onEdit: (indexer: IndexerWithStatus) => void;
 		onDelete: (indexer: IndexerWithStatus) => void;
@@ -41,6 +43,8 @@
 		reorderMode,
 		isDragOver,
 		isDragging,
+		prowlarrBaseUrl = null,
+		jackettBaseUrl = null,
 		onSelect,
 		onEdit,
 		onDelete,
@@ -52,6 +56,23 @@
 		onDrop,
 		onDragEnd
 	}: Props = $props();
+
+	function isProwlarrIndexer(): boolean {
+		if (!prowlarrBaseUrl) return false;
+		const base = prowlarrBaseUrl.replace(/\/+$/, '');
+		if (!indexer.baseUrl.startsWith(base + '/')) return false;
+		const suffix = indexer.baseUrl.slice(base.length + 1).replace(/\/+$/, '');
+		return /^\d+$/.test(suffix);
+	}
+
+	function isJackettIndexer(): boolean {
+		if (!jackettBaseUrl) return false;
+		const base = jackettBaseUrl.replace(/\/+$/, '');
+		return (
+			indexer.baseUrl.startsWith(base + '/api/v2.0/indexers/') &&
+			indexer.baseUrl.includes('/results/torznab')
+		);
+	}
 
 	function truncateUrl(url: string, maxLength: number = 30): string {
 		if (url.length <= maxLength) return url;
@@ -93,14 +114,25 @@
 			consecutiveFailures={indexer.status?.consecutiveFailures ?? 0}
 			lastFailure={indexer.status?.lastFailure}
 			disabledUntil={indexer.status?.disabledUntil}
+			jackettManaged={isJackettIndexer()}
 		/>
 	</td>
 
 	<!-- Name -->
 	<td>
-		<button class="link font-bold link-hover" onclick={() => onEdit(indexer)}>
-			{indexer.name}
-		</button>
+		<div class="flex flex-wrap items-center gap-1.5">
+			<button class="link font-bold link-hover" onclick={() => onEdit(indexer)}>
+				{indexer.name}
+			</button>
+			{#if isProwlarrIndexer()}
+				<span class="badge badge-primary badge-xs">Prowlarr</span>
+				{#if indexer.settings?.prowlarrEnabled === 'false'}
+					<span class="badge badge-warning badge-xs">Disabled in Prowlarr</span>
+				{/if}
+			{:else if isJackettIndexer()}
+				<span class="badge badge-secondary badge-xs">Jackett</span>
+			{/if}
+		</div>
 	</td>
 
 	<!-- Definition -->
@@ -148,7 +180,7 @@
 
 	<!-- URL -->
 	<td class="max-w-50">
-		<div class="tooltip" data-tip={indexer.baseUrl}>
+		<div class="tooltip block w-full" data-tip={indexer.baseUrl}>
 			<span class="block truncate text-sm text-base-content/70">
 				{truncateUrl(indexer.baseUrl)}
 			</span>

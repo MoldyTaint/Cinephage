@@ -7,9 +7,20 @@
 		consecutiveFailures?: number;
 		lastFailure?: string;
 		disabledUntil?: string;
+		jackettManaged?: boolean;
 	}
 
-	let { enabled, consecutiveFailures = 0, lastFailure, disabledUntil }: Props = $props();
+	let {
+		enabled,
+		consecutiveFailures = 0,
+		lastFailure,
+		disabledUntil,
+		jackettManaged = false
+	}: Props = $props();
+
+	const flaresolverrHint = $derived(
+		jackettManaged ? ' If FlareSolverr is involved, click Test to reset.' : ''
+	);
 
 	const hasFailures = $derived(consecutiveFailures > 0);
 	const isAutoDisabled = $derived(!!disabledUntil && new Date(disabledUntil) > new Date());
@@ -29,7 +40,8 @@
 				text: m.settings_indexers_status_unhealthy(),
 				class: 'badge-error',
 				icon: AlertTriangle,
-				tooltip: m.settings_indexers_tooltip_unhealthy({ until, consecutiveFailures })
+				tooltip:
+					m.settings_indexers_tooltip_unhealthy({ until, consecutiveFailures }) + flaresolverrHint
 			};
 		}
 		if (hasFailures) {
@@ -38,7 +50,9 @@
 				text: m.settings_indexers_status_degraded(),
 				class: 'badge-warning',
 				icon: AlertTriangle,
-				tooltip: m.settings_indexers_tooltip_degraded({ consecutiveFailures, failureTime })
+				tooltip:
+					m.settings_indexers_tooltip_degraded({ consecutiveFailures, failureTime }) +
+					flaresolverrHint
 			};
 		}
 		return {

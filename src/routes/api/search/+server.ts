@@ -19,6 +19,19 @@ import {
 } from '$lib/server/services/AlternateTitleService';
 
 /**
+ * Per-indexer search timeout for interactive searches.
+ * Interactive searches wait longer because the user is actively waiting and
+ * proxied indexers (Prowlarr, Jackett) add upstream latency on top of the
+ * network round trip to the remote tracker.
+ * Matches INDEXER_SEARCH_TIMEOUT_MS env var if set, otherwise defaults to 45 s.
+ */
+const INTERACTIVE_SEARCH_TIMEOUT_MS = (() => {
+	const raw = process.env.INDEXER_SEARCH_TIMEOUT_MS;
+	const parsed = raw ? parseInt(raw, 10) : NaN;
+	return parsed > 0 ? parsed : 45_000;
+})();
+
+/**
  * Redact sensitive URLs from release objects before returning in API responses.
  * This prevents API keys from being exposed to clients.
  */
@@ -169,10 +182,10 @@ export const GET: RequestHandler = async ({ url }) => {
 					columns: { id: true }
 				});
 				if (movie) {
-					searchTitles = await getMovieSearchTitles(movie.id);
+					searchTitles = await getMovieSearchTitles(movie.id, effectiveLanguage);
 					if (searchTitles.length <= 1) {
 						fetchAndStoreMovieAlternateTitles(movie.id, tmdbId).catch(() => {});
-						searchTitles = await getMovieSearchTitles(movie.id);
+						searchTitles = await getMovieSearchTitles(movie.id, effectiveLanguage);
 					}
 				}
 			} else {
@@ -181,10 +194,10 @@ export const GET: RequestHandler = async ({ url }) => {
 					columns: { id: true }
 				});
 				if (show) {
-					searchTitles = await getSeriesSearchTitles(show.id);
+					searchTitles = await getSeriesSearchTitles(show.id, effectiveLanguage);
 					if (searchTitles.length <= 1) {
 						fetchAndStoreSeriesAlternateTitles(show.id, tmdbId).catch(() => {});
-						searchTitles = await getSeriesSearchTitles(show.id);
+						searchTitles = await getSeriesSearchTitles(show.id, effectiveLanguage);
 					}
 				}
 			}
@@ -270,7 +283,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			searchSource: 'interactive',
 			enrichment: enrichmentOpts,
 			protocolFilter,
-			timeout: 20000
+			timeout: INTERACTIVE_SEARCH_TIMEOUT_MS
 		});
 
 		return json({
@@ -322,7 +335,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	// Standard search without enrichment (interactive)
 	const searchResult = await manager.search(criteria, {
 		searchSource: 'interactive',
-		timeout: 20000
+		timeout: INTERACTIVE_SEARCH_TIMEOUT_MS
 	});
 
 	return json({

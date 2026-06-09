@@ -253,6 +253,8 @@ async function getMatchingEntryPage(
 	const entries: CapturedLogEntry[] = [];
 	const offset = Math.max(0, options.offset ?? 0);
 	const limit = Math.max(1, options.limit ?? 100);
+	// Collect one extra entry to detect whether more exist without a full scan.
+	const collectLimit = options.stopWhenLimitReached ? limit + 1 : limit;
 	let parseErrors = 0;
 	let total = 0;
 
@@ -267,12 +269,12 @@ async function getMatchingEntryPage(
 			}
 			if (!parsed.entry) return;
 			if (matchesHistoryFilters(parsed.entry, filters)) {
-				if (total >= offset && entries.length < limit) {
+				if (total >= offset && entries.length < collectLimit) {
 					entries.push(parsed.entry);
 				}
 				total += 1;
 
-				if (options.stopWhenLimitReached && entries.length >= limit) {
+				if (options.stopWhenLimitReached && entries.length >= collectLimit) {
 					reachedLimit = true;
 					return false;
 				}
@@ -291,10 +293,11 @@ async function getMatchingEntryPage(
 		);
 	}
 
+	const hasMore = entries.length > limit || total > offset + entries.length;
 	return {
-		entries,
+		entries: entries.slice(0, limit),
 		total,
-		hasMore: total > offset + entries.length
+		hasMore
 	};
 }
 
@@ -368,7 +371,7 @@ class LogHistoryService {
 		const result = await getMatchingEntryPage(query, {
 			offset,
 			limit: pageSize,
-			stopWhenLimitReached: offset === 0
+			stopWhenLimitReached: true
 		});
 
 		return {

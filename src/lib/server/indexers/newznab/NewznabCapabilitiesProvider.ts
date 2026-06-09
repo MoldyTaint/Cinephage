@@ -63,6 +63,9 @@ export class NewznabCapabilitiesProvider {
 	/** In-memory cache: baseUrl -> cached capabilities */
 	private cache: Map<string, CachedCapabilities> = new Map();
 
+	/** Resolved torznab URL cache: raw URL -> discovered endpoint URL */
+	private resolvedUrlCache: Map<string, string> = new Map();
+
 	/**
 	 * Get capabilities for a Newznab indexer.
 	 * Returns cached capabilities if available and not expired.
@@ -124,11 +127,62 @@ export class NewznabCapabilitiesProvider {
 	}
 
 	/**
+	 * Resolve the actual Torznab endpoint URL for a given raw base URL.
+	 * If the URL already ends with /api it is returned as-is.
+	 * Otherwise, candidate paths are probed in order:
+	 *   1. {path}/torznab/all/api  (Jackett all-indexers aggregated)
+	 *   2. {path}/api              (Prowlarr per-indexer and generic torznab)
+	 * The first responding endpoint is cached and returned.
+	 * Falls back to appending /api without caching if no candidate responds.
+	 *
+	 * Note: Prowlarr has no aggregate multi-indexer endpoint. Each Prowlarr indexer
+	 * must be added separately using its numeric ID (e.g. http://host:9696/23).
+	 */
+	async resolveTorznabBaseUrl(rawUrl: string, apiKey?: string): Promise<string> {
+		const cacheKey = `resolved:${this.getCacheKey(rawUrl, apiKey)}`;
+		const cached = this.resolvedUrlCache.get(cacheKey);
+		if (cached) return cached;
+
+		const url = new URL(rawUrl);
+		const normalizedPath = url.pathname.replace(/\/+$/, '');
+		const lowerPath = normalizedPath.toLowerCase();
+
+		// A valid torznab endpoint always ends with /api ; anything else needs discovery.
+		if (lowerPath.endsWith('/api')) {
+			this.resolvedUrlCache.set(cacheKey, rawUrl);
+			return rawUrl;
+		}
+
+		// Jackett all-indexers: /torznab/all/api?apikey={key}
+		// Prowlarr per-indexer and generic: /api (appended to whatever path the user provided)
+		const candidates: string[] = [`${normalizedPath}/torznab/all/api`, `${normalizedPath}/api`];
+
+		for (const candidatePath of candidates) {
+			const candidate = new URL(rawUrl);
+			candidate.pathname = candidatePath;
+			logger.debug({ url: candidate.toString() }, '[Torznab] Probing candidate endpoint');
+			if (await this.probeTorznabEndpoint(candidate, apiKey)) {
+				const resolved = candidate.toString();
+				this.resolvedUrlCache.set(cacheKey, resolved);
+				logger.info({ rawUrl, resolved }, '[Torznab] Auto-discovered endpoint');
+				return resolved;
+			}
+		}
+
+		// No candidate responded; fall back to /api without caching so we re-probe next time
+		const fallback = new URL(rawUrl);
+		fallback.pathname = normalizedPath ? `${normalizedPath}/api` : '/api';
+		logger.warn({ rawUrl }, '[Torznab] Could not auto-discover endpoint, falling back to /api');
+		return fallback.toString();
+	}
+
+	/**
 	 * Clear cached capabilities for an indexer.
 	 */
 	clearCache(baseUrl: string, apiKey?: string): void {
 		const cacheKey = this.getCacheKey(baseUrl, apiKey);
 		this.cache.delete(cacheKey);
+		this.resolvedUrlCache.delete(`resolved:${cacheKey}`);
 		logger.debug({ baseUrl }, '[Newznab] Cache cleared');
 	}
 
@@ -137,7 +191,50 @@ export class NewznabCapabilitiesProvider {
 	 */
 	clearAllCache(): void {
 		this.cache.clear();
+		this.resolvedUrlCache.clear();
 		logger.debug('[Newznab] All cache cleared');
+	}
+
+	/**
+	 * Probe a candidate torznab URL by requesting ?t=caps and checking for a valid XML caps response.
+	 */
+	private async probeTorznabEndpoint(url: URL, apiKey?: string): Promise<boolean> {
+		const probe = new URL(url.toString());
+		probe.searchParams.set('t', 'caps');
+		const normalizedApiKey = apiKey?.trim();
+		if (normalizedApiKey) {
+			probe.searchParams.set('apikey', normalizedApiKey);
+		}
+		const probeUrl = probe.toString().replace(/apikey=[^&]+/, 'apikey=***');
+		try {
+			const response = await fetch(probe.toString(), {
+				headers: { Accept: 'application/xml, text/xml, */*' },
+				signal: AbortSignal.timeout(5000)
+			});
+			const ct = (response.headers.get('content-type') ?? '').toLowerCase();
+			if (!response.ok) {
+				logger.debug({ url: probeUrl, status: response.status }, '[Torznab] Probe: non-OK status');
+				return false;
+			}
+			if (ct.includes('text/html')) {
+				logger.debug({ url: probeUrl, ct }, '[Torznab] Probe: HTML response');
+				return false;
+			}
+			const text = await response.text();
+			// Case-insensitive: .NET apps (Prowlarr) may return <Caps> instead of <caps>
+			const hasCaps = text.toLowerCase().includes('<caps');
+			logger.debug(
+				{ url: probeUrl, ct, status: response.status, hasCaps, preview: text.slice(0, 120) },
+				'[Torznab] Probe: response'
+			);
+			return hasCaps;
+		} catch (err) {
+			logger.debug(
+				{ url: probeUrl, err: err instanceof Error ? err.message : String(err) },
+				'[Torznab] Probe: fetch error'
+			);
+			return false;
+		}
 	}
 
 	/**
@@ -148,10 +245,10 @@ export class NewznabCapabilitiesProvider {
 		const url = new URL(baseUrl);
 		const normalizedPath = url.pathname.replace(/\/+$/, '');
 		const lowerPath = normalizedPath.toLowerCase();
-		// Torznab-style endpoints can be full paths ending in /torznab.
-		// For plain indexer host URLs, append /api to match Newznab conventions.
-		const isTorznabEndpoint =
-			lowerPath.endsWith('/torznab') || lowerPath.includes('/results/torznab');
+		// Append /api for host-only URLs (newznab convention).
+		// Skip only if the path already ends with /api, or if it's a bare /torznab path
+		// (e.g. Prowlarr per-indexer direct endpoint that exposes the torznab root).
+		const isTorznabEndpoint = lowerPath.endsWith('/torznab');
 		if (!isTorznabEndpoint && !lowerPath.endsWith('/api')) {
 			url.pathname = normalizedPath ? `${normalizedPath}/api` : '/api';
 		}
@@ -187,6 +284,11 @@ export class NewznabCapabilitiesProvider {
 				'Indexer returned HTML instead of XML from the caps endpoint'
 			);
 		}
+		if (contentType.includes('application/json') || contentType.includes('text/json')) {
+			throw new CapabilitiesFetchError(
+				'Indexer returned JSON instead of XML from the caps endpoint'
+			);
+		}
 
 		const xml = await response.text();
 		if (!xml.trim()) {
@@ -201,14 +303,15 @@ export class NewznabCapabilitiesProvider {
 	private parseCapabilities(xml: string): NewznabCapabilities {
 		const $ = cheerio.load(xml, { xmlMode: true });
 
-		if ($('caps').length === 0) {
+		// Case-insensitive: Prowlarr/.NET may return <Caps> instead of <caps>
+		if ($('caps').length === 0 && $('Caps').length === 0) {
 			throw new CapabilitiesFetchError(
 				'Invalid capabilities response: missing <caps> root element'
 			);
 		}
 
 		// Check for error response
-		const errorEl = $('error');
+		const errorEl = $('error, Error');
 		if (errorEl.length > 0) {
 			const code = errorEl.attr('code') || 'unknown';
 			const desc = errorEl.attr('description') || 'Unknown error';

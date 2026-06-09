@@ -18,6 +18,75 @@ import { tmdb } from '$lib/server/tmdb.js';
 import { logger } from '$lib/logging/index.js';
 
 /**
+ * Maps ISO 639-1 language codes to the ISO 3166-1 country codes where that
+ * language is the primary language. Used to rank TMDB alternate titles by
+ * relevance when a preferred language is known.
+ *
+ * TMDB alternate titles only carry country codes (not language codes), so
+ * this mapping is the best proxy available without a TMDB API change.
+ */
+const LANGUAGE_COUNTRIES: Record<string, Set<string>> = {
+	en: new Set(['US', 'GB', 'AU', 'CA', 'NZ', 'IE', 'ZA']),
+	fr: new Set(['FR', 'BE', 'CH', 'CA', 'LU', 'MC']),
+	de: new Set(['DE', 'AT', 'CH', 'LI', 'LU']),
+	es: new Set([
+		'ES',
+		'MX',
+		'AR',
+		'CO',
+		'CL',
+		'PE',
+		'VE',
+		'EC',
+		'BO',
+		'PY',
+		'UY',
+		'CR',
+		'GT',
+		'HN',
+		'NI',
+		'PA',
+		'SV',
+		'DO',
+		'CU',
+		'PR'
+	]),
+	pt: new Set(['PT', 'BR', 'AO', 'MZ']),
+	it: new Set(['IT', 'SM', 'VA', 'CH']),
+	ru: new Set(['RU', 'BY', 'KZ', 'KG']),
+	ja: new Set(['JP']),
+	ko: new Set(['KR']),
+	zh: new Set(['CN', 'TW', 'HK', 'MO', 'SG']),
+	nl: new Set(['NL', 'BE', 'SR']),
+	pl: new Set(['PL']),
+	sv: new Set(['SE']),
+	no: new Set(['NO']),
+	da: new Set(['DK']),
+	fi: new Set(['FI']),
+	tr: new Set(['TR']),
+	ar: new Set([
+		'SA',
+		'AE',
+		'EG',
+		'DZ',
+		'MA',
+		'TN',
+		'LY',
+		'IQ',
+		'SY',
+		'JO',
+		'LB',
+		'KW',
+		'QA',
+		'BH',
+		'OM',
+		'YE'
+	]),
+	hi: new Set(['IN']),
+	th: new Set(['TH'])
+};
+
+/**
  * Normalize a title for matching (like Radarr's CleanTitle)
  * Removes special characters, accents, and normalizes whitespace
  */
@@ -66,12 +135,21 @@ function pushUniqueSearchTitle(
 }
 
 /**
- * Get all search titles for a movie (primary + original + alternates)
- * Returns deduplicated list with primary/original title text preserved for searching.
- * Deduplication is still done using normalized titles for stable matching.
+ * Get all search titles for a movie (primary + original + alternates).
+ *
+ * Order of precedence:
+ * 1. Display title (user's preferred language)
+ * 2. Original title (if different - covers non-English originals)
+ * 3. TMDB alternates from countries matching the preferred language
+ * 4. Remaining TMDB alternates (last-resort fallback for regional trackers)
+ *
+ * The early-exit in SearchOrchestrator means later entries are only tried
+ * when the primary titles return nothing, so the ordering matters more than the count.
  */
-export async function getMovieSearchTitles(movieId: string): Promise<string[]> {
-	// Get the movie's primary and original titles
+export async function getMovieSearchTitles(
+	movieId: string,
+	preferredLanguage?: string
+): Promise<string[]> {
 	const movie = await db.query.movies.findFirst({
 		where: eq(movies.id, movieId),
 		columns: { title: true, originalTitle: true }
@@ -82,33 +160,44 @@ export async function getMovieSearchTitles(movieId: string): Promise<string[]> {
 	const titles: string[] = [];
 	const seen = new Set<string>();
 
-	// Prefer original/native title first for tracker search ordering.
+	// Display title first - user's preferred language, most likely to match standard trackers.
+	pushUniqueSearchTitle(titles, seen, movie.title);
+	// Original title second - needed for non-English films on origin-language trackers.
 	if (movie.originalTitle && movie.originalTitle !== movie.title) {
 		pushUniqueSearchTitle(titles, seen, movie.originalTitle);
 	}
-	pushUniqueSearchTitle(titles, seen, movie.title);
 
-	// Get alternate titles from database, preserving their original text for searching.
 	const alternates = await db.query.alternateTitles.findMany({
 		where: and(eq(alternateTitles.mediaType, 'movie'), eq(alternateTitles.mediaId, movieId)),
-		columns: { title: true }
+		columns: { title: true, country: true }
 	});
 
-	for (const alt of alternates) {
+	// Split alternates: preferred-language countries first, others as fallback.
+	const preferredCountries = preferredLanguage
+		? (LANGUAGE_COUNTRIES[preferredLanguage.toLowerCase()] ?? null)
+		: null;
+	const [langAlts, otherAlts] = preferredCountries
+		? [
+				alternates.filter((a) => a.country && preferredCountries.has(a.country)),
+				alternates.filter((a) => !a.country || !preferredCountries.has(a.country))
+			]
+		: [alternates, []];
+
+	for (const alt of [...langAlts, ...otherAlts]) {
 		pushUniqueSearchTitle(titles, seen, alt.title);
 	}
 
-	// Limit to prevent excessive searches
 	return titles.slice(0, 5);
 }
 
 /**
- * Get all search titles for a series (primary + original + alternates)
- * Returns deduplicated list with primary/original title text preserved for searching.
- * Deduplication is still done using normalized titles for stable matching.
+ * Get all search titles for a series (primary + original + alternates).
+ * Same ordering strategy as getMovieSearchTitles.
  */
-export async function getSeriesSearchTitles(seriesId: string): Promise<string[]> {
-	// Get the series' primary and original titles
+export async function getSeriesSearchTitles(
+	seriesId: string,
+	preferredLanguage?: string
+): Promise<string[]> {
 	const show = await db.query.series.findFirst({
 		where: eq(series.id, seriesId),
 		columns: { title: true, originalTitle: true }
@@ -119,23 +208,32 @@ export async function getSeriesSearchTitles(seriesId: string): Promise<string[]>
 	const titles: string[] = [];
 	const seen = new Set<string>();
 
-	// Prefer original/native title first for tracker search ordering.
+	// Display title first - user's preferred language, most likely to match standard trackers.
+	pushUniqueSearchTitle(titles, seen, show.title);
+	// Original title second - needed for non-English shows on origin-language trackers.
 	if (show.originalTitle && show.originalTitle !== show.title) {
 		pushUniqueSearchTitle(titles, seen, show.originalTitle);
 	}
-	pushUniqueSearchTitle(titles, seen, show.title);
 
-	// Get alternate titles from database, preserving their original text for searching.
 	const alternates = await db.query.alternateTitles.findMany({
 		where: and(eq(alternateTitles.mediaType, 'series'), eq(alternateTitles.mediaId, seriesId)),
-		columns: { title: true }
+		columns: { title: true, country: true }
 	});
 
-	for (const alt of alternates) {
+	const preferredCountries = preferredLanguage
+		? (LANGUAGE_COUNTRIES[preferredLanguage.toLowerCase()] ?? null)
+		: null;
+	const [langAlts, otherAlts] = preferredCountries
+		? [
+				alternates.filter((a) => a.country && preferredCountries.has(a.country)),
+				alternates.filter((a) => !a.country || !preferredCountries.has(a.country))
+			]
+		: [alternates, []];
+
+	for (const alt of [...langAlts, ...otherAlts]) {
 		pushUniqueSearchTitle(titles, seen, alt.title);
 	}
 
-	// Limit to prevent excessive searches
 	return titles.slice(0, 5);
 }
 

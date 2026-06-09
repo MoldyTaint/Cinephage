@@ -15,6 +15,8 @@
 		indexer?: Indexer | null;
 		definitions: IndexerDefinition[];
 		saving: boolean;
+		prowlarrBaseUrl?: string | null;
+		jackettBaseUrl?: string | null;
 		onClose: () => void;
 		onSave: (data: IndexerFormData) => void | Promise<void>;
 		onDelete?: () => void;
@@ -27,6 +29,8 @@
 		indexer = null,
 		definitions,
 		saving,
+		prowlarrBaseUrl = null,
+		jackettBaseUrl = null,
 		onClose,
 		onSave,
 		onDelete,
@@ -82,6 +86,23 @@
 		selectedDefinition?.protocol ?? indexer?.protocol ?? 'torrent'
 	);
 	const isInternalIndexer = $derived(mode === 'edit' && indexer && !selectedDefinition);
+
+	const isProwlarrManaged = $derived.by(() => {
+		if (mode !== 'edit' || !indexer || !prowlarrBaseUrl) return false;
+		const base = prowlarrBaseUrl.replace(/\/+$/, '');
+		if (!indexer.baseUrl.startsWith(base + '/')) return false;
+		const suffix = indexer.baseUrl.slice(base.length + 1).replace(/\/+$/, '');
+		return /^\d+$/.test(suffix);
+	});
+
+	const isJackettManaged = $derived.by(() => {
+		if (mode !== 'edit' || !indexer || !jackettBaseUrl) return false;
+		const base = jackettBaseUrl.replace(/\/+$/, '');
+		return (
+			indexer.baseUrl.startsWith(base + '/api/v2.0/indexers/') &&
+			indexer.baseUrl.includes('/results/torznab')
+		);
+	});
 
 	const uiHints = $derived(() => {
 		if (selectedDefinition) {
@@ -297,6 +318,44 @@
 			</div>
 		{/if}
 
+		<!-- Prowlarr-managed indexer header -->
+		{#if isProwlarrManaged && indexer}
+			<div class="mb-6 flex items-center gap-3 rounded-lg bg-primary/10 px-4 py-3">
+				<div class="rounded-lg bg-primary/20 p-2">
+					<Lock class="h-5 w-5 text-primary" />
+				</div>
+				<div>
+					<div class="flex items-center gap-2">
+						<span class="font-semibold">{indexer.name}</span>
+						<span class="badge badge-primary badge-sm">Prowlarr</span>
+						<span class="badge badge-ghost badge-sm">{indexer.protocol}</span>
+					</div>
+					<div class="text-sm text-base-content/60">
+						Name, URL, and authentication are managed by Prowlarr.
+					</div>
+				</div>
+			</div>
+		{/if}
+
+		<!-- Jackett-managed indexer header -->
+		{#if isJackettManaged && indexer}
+			<div class="mb-6 flex items-center gap-3 rounded-lg bg-secondary/10 px-4 py-3">
+				<div class="rounded-lg bg-secondary/20 p-2">
+					<Lock class="h-5 w-5 text-secondary" />
+				</div>
+				<div>
+					<div class="flex items-center gap-2">
+						<span class="font-semibold">{indexer.name}</span>
+						<span class="badge badge-secondary badge-sm">Jackett</span>
+						<span class="badge badge-ghost badge-sm">{indexer.protocol}</span>
+					</div>
+					<div class="text-sm text-base-content/60">
+						Name, URL, and authentication are managed by Jackett.
+					</div>
+				</div>
+			</div>
+		{/if}
+
 		<!-- Internal indexer header (edit mode for auto-managed indexers) -->
 		{#if isInternalIndexer && indexer}
 			<div class="mb-6 flex items-center justify-between rounded-lg bg-info/10 px-4 py-3">
@@ -374,6 +433,8 @@
 				hasAuthSettings={hasAuthSettings ?? false}
 				{definitionUrls}
 				{alternateUrls}
+				prowlarrManaged={isProwlarrManaged}
+				jackettManaged={isJackettManaged}
 				onNameChange={(v) => (name = v)}
 				onUrlChange={(v) => (url = v)}
 				onUrlBlur={() => (urlTouched = true)}
@@ -396,7 +457,9 @@
 		<!-- Actions -->
 		<div class="modal-action">
 			{#if mode === 'edit' && onDelete}
-				<button class="btn mr-auto btn-outline btn-error" onclick={onDelete}>Delete</button>
+				<button class="btn mr-auto btn-outline btn-error" onclick={onDelete}>
+					{isProwlarrManaged || isJackettManaged ? 'Remove' : 'Delete'}
+				</button>
 			{/if}
 
 			<button

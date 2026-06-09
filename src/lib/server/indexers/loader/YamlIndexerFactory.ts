@@ -95,17 +95,27 @@ export class YamlIndexerFactory implements IIndexerFactory {
 
 		// For Newznab/Torznab, fetch live capabilities from the indexer's caps endpoint.
 		// This allows us to filter out unsupported search params (e.g., tmdbid if not supported).
+		// For torznab, auto-discover the correct endpoint first so bare host URLs work.
 		let liveCapabilities;
 		if (NEWZNAB_DEFINITIONS.includes(config.definitionId)) {
 			try {
 				const provider = getNewznabCapabilitiesProvider();
 				const rawApiKey = cleanSettings?.apikey;
-				const apiKey = typeof rawApiKey === 'string' ? rawApiKey : undefined;
-				liveCapabilities = await provider.getCapabilities(config.baseUrl, apiKey?.trim());
+				const apiKey = typeof rawApiKey === 'string' ? rawApiKey.trim() : undefined;
+
+				let resolvedBaseUrl = config.baseUrl;
+				if (config.definitionId === 'torznab') {
+					resolvedBaseUrl = await provider.resolveTorznabBaseUrl(config.baseUrl, apiKey);
+					if (resolvedBaseUrl !== config.baseUrl) {
+						record.baseUrl = resolvedBaseUrl;
+					}
+				}
+
+				liveCapabilities = await provider.getCapabilities(resolvedBaseUrl, apiKey);
 				log.info(
 					{
 						indexerId: config.id,
-						baseUrl: config.baseUrl,
+						baseUrl: resolvedBaseUrl,
 						movieSearch: liveCapabilities.searching.movieSearch.supportedParams,
 						tvSearch: liveCapabilities.searching.tvSearch.supportedParams
 					},

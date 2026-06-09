@@ -14,6 +14,7 @@
 		ArrowDownCircle,
 		Ban
 	} from 'lucide-svelte';
+	import { getContext } from 'svelte';
 	import { formatBytes } from '$lib/utils/format';
 	import type { ScoreComponents } from '$lib/server/quality/types.js';
 	import * as m from '$lib/paraglide/messages.js';
@@ -112,6 +113,11 @@
 
 	let expanded = $state(false);
 
+	const indexerSourceCtx = getContext<{ map: Map<string, 'prowlarr' | 'jackett'> } | undefined>(
+		'indexerSources'
+	);
+	const indexerSource = $derived(indexerSourceCtx?.map.get(release.indexerId) ?? null);
+
 	function formatAge(date: string | Date): string {
 		const publishDate = typeof date === 'string' ? new Date(date) : date;
 		const now = new Date();
@@ -182,8 +188,8 @@
 		const hasSeederData = release.seeders !== undefined || release.leechers !== undefined;
 		if (!hasSeederData) return null;
 		return {
-			seeders: release.seeders !== undefined ? String(release.seeders) : '—',
-			leechers: release.leechers !== undefined ? String(release.leechers) : '—'
+			seeders: release.seeders !== undefined ? String(release.seeders) : '-',
+			leechers: release.leechers !== undefined ? String(release.leechers) : '-'
 		};
 	}
 </script>
@@ -231,6 +237,11 @@
 			<div class="flex items-center gap-1.5">
 				<span class="h-2 w-2 rounded-full {getProtocolColor()}"></span>
 				<span class="text-base-content/60">{release.indexerName}</span>
+				{#if indexerSource === 'prowlarr'}
+					<span class="badge badge-primary badge-xs">Prowlarr</span>
+				{:else if indexerSource === 'jackett'}
+					<span class="badge badge-secondary badge-xs">Jackett</span>
+				{/if}
 			</div>
 
 			<!-- Size -->
@@ -447,7 +458,14 @@
 					<dl class="space-y-1.5 text-sm">
 						<div class="flex justify-between">
 							<dt class="text-base-content/60">{m.search_labelIndexer()}</dt>
-							<dd class="font-medium">{release.indexerName}</dd>
+							<dd class="flex items-center gap-1.5 font-medium">
+								{release.indexerName}
+								{#if indexerSource === 'prowlarr'}
+									<span class="badge badge-primary badge-xs">Prowlarr</span>
+								{:else if indexerSource === 'jackett'}
+									<span class="badge badge-secondary badge-xs">Jackett</span>
+								{/if}
+							</dd>
 						</div>
 						{#if release.infoHash}
 							<div class="flex justify-between">

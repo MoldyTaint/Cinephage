@@ -27,6 +27,8 @@
 		hasAuthSettings: boolean;
 		definitionUrls: string[];
 		alternateUrls: string[];
+		prowlarrManaged?: boolean;
+		jackettManaged?: boolean;
 		onNameChange: (value: string) => void;
 		onUrlChange: (value: string) => void;
 		onUrlBlur: () => void;
@@ -63,6 +65,8 @@
 		hasAuthSettings,
 		definitionUrls,
 		alternateUrls,
+		prowlarrManaged = false,
+		jackettManaged = false,
 		onNameChange,
 		onUrlChange,
 		onUrlBlur,
@@ -150,23 +154,31 @@
 		<div class="form-control">
 			<label class="label py-1" for="regular-name">
 				<span class="label-text">Name</span>
-				<span class="label-text-alt text-xs {nameTooLong ? 'text-error' : 'text-base-content/60'}">
-					{name.length}/{MAX_NAME_LENGTH}
-				</span>
+				{#if !prowlarrManaged && !jackettManaged}
+					<span
+						class="label-text-alt text-xs {nameTooLong ? 'text-error' : 'text-base-content/60'}"
+					>
+						{name.length}/{MAX_NAME_LENGTH}
+					</span>
+				{/if}
 			</label>
-			<input
-				id="regular-name"
-				type="text"
-				class="input-bordered input input-sm"
-				value={name}
-				oninput={(e) => onNameChange(e.currentTarget.value)}
-				maxlength={MAX_NAME_LENGTH}
-				placeholder={definition?.name ?? 'My Indexer'}
-			/>
-			{#if nameTooLong}
-				<p class="label py-0">
-					<span class="label-text-alt text-xs text-error">Max {MAX_NAME_LENGTH} characters.</span>
-				</p>
+			{#if prowlarrManaged || jackettManaged}
+				<p class="py-1.5 text-sm font-medium">{name}</p>
+			{:else}
+				<input
+					id="regular-name"
+					type="text"
+					class="input-bordered input input-sm"
+					value={name}
+					oninput={(e) => onNameChange(e.currentTarget.value)}
+					maxlength={MAX_NAME_LENGTH}
+					placeholder={definition?.name ?? 'My Indexer'}
+				/>
+				{#if nameTooLong}
+					<p class="label py-0">
+						<span class="label-text-alt text-xs text-error">Max {MAX_NAME_LENGTH} characters.</span>
+					</p>
+				{/if}
 			{/if}
 		</div>
 
@@ -174,13 +186,15 @@
 		<div class="form-control">
 			<label class="label py-1" for="regular-url">
 				<span class="label-text">URL</span>
-				{#if alternateUrls.length > 0}
+				{#if !prowlarrManaged && !jackettManaged && alternateUrls.length > 0}
 					<span class="label-text-alt text-xs text-base-content/60">
 						+{alternateUrls.length} failover{alternateUrls.length > 1 ? 's' : ''}
 					</span>
 				{/if}
 			</label>
-			{#if definitionUrls.length > 1}
+			{#if prowlarrManaged || jackettManaged}
+				<p class="py-1.5 font-mono text-xs break-all text-base-content/70">{url}</p>
+			{:else if definitionUrls.length > 1}
 				<select
 					id="regular-url"
 					class="select-bordered select select-sm"
@@ -264,7 +278,17 @@
 	</div>
 
 	<!-- Authentication Section (collapsible, only when has settings) -->
-	{#if hasAuthSettings && definition}
+	{#if prowlarrManaged || jackettManaged}
+		<div
+			class="rounded-box flex items-center gap-3 border border-base-300 bg-base-200/60 px-4 py-3 text-sm text-base-content/70"
+		>
+			<Lock class="h-4 w-4 shrink-0" />
+			<span
+				>Authentication is managed by {prowlarrManaged ? 'Prowlarr' : 'Jackett'}. Use the sync
+				action to apply credential changes.</span
+			>
+		</div>
+	{:else if hasAuthSettings && definition}
 		{@const AuthIcon = authIcon}
 		<div class="collapse rounded-lg bg-base-200" class:collapse-open={authSettingsOpen}>
 			<button

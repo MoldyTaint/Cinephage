@@ -1,7 +1,7 @@
 ---
 id: torznab
 name: Torznab
-description: Connect to any Torznab-compatible API endpoint you host or control (e.g., your own Prowlarr/Jackett instance)
+description: Connect to a self-hosted or third-party Torznab-compatible endpoint
 type: semi-private
 language: en-US
 encoding: UTF-8

@@ -19,6 +19,8 @@ import { getMediaBrowserNotifier } from '$lib/server/notifications/mediabrowser'
 import { getMediaServerStatsSyncService } from '$lib/server/mediaServerStats/MediaServerStatsSyncService.js';
 import { getEpgScheduler } from '$lib/server/livetv/epg';
 import { getLiveTvAccountManager } from '$lib/server/livetv/LiveTvAccountManager';
+import { getProwlarrSyncScheduler } from '$lib/server/indexers/prowlarr/ProwlarrSyncScheduler.js';
+import { getJackettSyncScheduler } from '$lib/server/indexers/jackett/JackettSyncScheduler.js';
 import { getLiveTvChannelService } from '$lib/server/livetv/LiveTvChannelService';
 import { getLiveTvStreamService } from '$lib/server/livetv/streaming/LiveTvStreamService';
 import { getStalkerPortalManager } from '$lib/server/livetv/stalker/StalkerPortalManager';
@@ -134,6 +136,12 @@ async function initializeServices(): Promise<void> {
 
 			const epgScheduler = getEpgScheduler();
 			serviceManager.register(epgScheduler);
+
+			const prowlarrSyncScheduler = getProwlarrSyncScheduler();
+			serviceManager.register(prowlarrSyncScheduler);
+
+			const jackettSyncScheduler = getJackettSyncScheduler();
+			serviceManager.register(jackettSyncScheduler);
 
 			serviceManager.startAll();
 

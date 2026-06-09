@@ -2565,7 +2565,7 @@
 	"settings_integrations_captcha_timing": "Timing",
 	"settings_integrations_configured": "Configured",
 	"settings_integrations_connectionSuccessful": "Connection successful",
-	"settings_integrations_deleteConfirmPrefix": "Are you sure you want to delete",
+	"settings_integrations_deleteConfirmPrefix": "Are you sure you want to delete ",
 	"settings_integrations_deleteConfirmSuffix": "? This action cannot be undone.",
 	"settings_integrations_downloadClientsDesc": "Applications that handle downloading releases from indexers.",
 	"settings_integrations_downloadClients_addButton": "Add Download Client",

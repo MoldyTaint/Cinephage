@@ -8,10 +8,15 @@
 		Download,
 		XCircle
 	} from 'lucide-svelte';
+	import { getContext } from 'svelte';
 
 	type SearchMode = 'all' | 'multiSeasonPack';
 
 	import type { Release } from './SearchResultRow.svelte';
+
+	const indexerSourceCtx = getContext<{ map: Map<string, 'prowlarr' | 'jackett'> } | undefined>(
+		'indexerSources'
+	);
 
 	interface IndexerResult {
 		name: string;
@@ -234,6 +239,11 @@
 								{:else}
 									{result.name}: {result.displayCount}
 								{/if}
+								{#if indexerSourceCtx?.map.get(result.indexerId) === 'prowlarr'}
+									<span class="badge badge-primary badge-xs opacity-80">P</span>
+								{:else if indexerSourceCtx?.map.get(result.indexerId) === 'jackett'}
+									<span class="badge badge-secondary badge-xs opacity-80">J</span>
+								{/if}
 								{#if result.error}
 									<span class="tooltip" data-tip={result.error}>
 										<AlertCircle size={12} />
@@ -256,6 +266,11 @@
 							>
 								<XCircle size={12} />
 								{rejected.indexerName}
+								{#if indexerSourceCtx?.map.get(rejected.indexerId) === 'prowlarr'}
+									<span class="badge badge-primary badge-xs opacity-80">P</span>
+								{:else if indexerSourceCtx?.map.get(rejected.indexerId) === 'jackett'}
+									<span class="badge badge-secondary badge-xs opacity-80">J</span>
+								{/if}
 							</div>
 						{/each}
 					</div>

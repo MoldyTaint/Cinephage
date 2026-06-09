@@ -30,7 +30,7 @@
 	import { apiPostStream } from '$lib/api';
 	import type { SeriesEditData } from '$lib/components/library/SeriesEditModal.svelte';
 	import type { SearchMode } from '$lib/components/search/InteractiveSearchModal.svelte';
-	import { CheckSquare, FileEdit, Wifi, WifiOff, Loader2, RefreshCw } from 'lucide-svelte';
+	import { CheckSquare, FileEdit, Wifi, WifiOff, Loader2, RefreshCw, X } from 'lucide-svelte';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -285,6 +285,7 @@
 	let isSearchModalOpen = $state(false);
 	let isRenameModalOpen = $state(false);
 	let isDeleteModalOpen = $state(false);
+	let cascadeMonitorOpen = $state(false);
 	let isSaving = $state(false);
 	let isRefreshing = $state(false);
 	let refreshProgress = $state<{ current: number; total: number; message: string } | null>(null);
@@ -453,10 +454,53 @@
 
 	// Handlers
 	async function handleMonitorToggle(newValue: boolean) {
+		if (newValue && !series.monitored) {
+			cascadeMonitorOpen = true;
+			return;
+		}
 		isSaving = true;
 		try {
 			await updateSeries(series.id, { monitored: newValue });
 			series.monitored = newValue;
+		} catch (error) {
+			showActionError(m.toast_library_tvDetail_failedToUpdateMonitor(), error);
+		} finally {
+			isSaving = false;
+		}
+	}
+
+	async function enableMonitorSeriesOnly() {
+		cascadeMonitorOpen = false;
+		isSaving = true;
+		try {
+			await updateSeries(series.id, { monitored: true });
+			series.monitored = true;
+		} catch (error) {
+			showActionError(m.toast_library_tvDetail_failedToUpdateMonitor(), error);
+		} finally {
+			isSaving = false;
+		}
+	}
+
+	async function enableMonitorCascade() {
+		cascadeMonitorOpen = false;
+		isSaving = true;
+		try {
+			await updateSeries(series.id, { monitored: true });
+			series.monitored = true;
+			await Promise.all(
+				seasons
+					.filter((s) => s.seasonNumber > 0)
+					.map((s) => updateSeason(s.id, { monitored: true, updateEpisodes: true }))
+			);
+			if (seasonsState) {
+				seasonsState = seasonsState.map((s) => ({
+					...s,
+					monitored: s.seasonNumber > 0 ? true : s.monitored,
+					episodes:
+						s.seasonNumber > 0 ? s.episodes.map((ep) => ({ ...ep, monitored: true })) : s.episodes
+				}));
+			}
 		} catch (error) {
 			showActionError(m.toast_library_tvDetail_failedToUpdateMonitor(), error);
 		} finally {
@@ -1950,6 +1994,36 @@
 		void refreshSeriesFromApi();
 	}}
 />
+
+<!-- Cascade Monitor Prompt -->
+{#if cascadeMonitorOpen}
+	<ModalWrapper
+		open={cascadeMonitorOpen}
+		onClose={() => (cascadeMonitorOpen = false)}
+		maxWidth="sm"
+	>
+		<div class="mb-4 flex items-center justify-between">
+			<h3 class="text-lg font-bold">Enable monitoring</h3>
+			<button
+				type="button"
+				class="btn btn-circle btn-ghost btn-sm"
+				onclick={() => (cascadeMonitorOpen = false)}
+				aria-label="Close"
+			>
+				<X class="h-4 w-4" />
+			</button>
+		</div>
+		<p class="py-2 text-base-content/80">Also enable monitoring for all seasons and episodes?</p>
+		<div class="modal-action">
+			<button type="button" class="btn btn-ghost" onclick={enableMonitorSeriesOnly}>
+				Series only
+			</button>
+			<button type="button" class="btn btn-primary" onclick={enableMonitorCascade}>
+				Yes, enable all
+			</button>
+		</div>
+	</ModalWrapper>
+{/if}
 
 <!-- Delete Confirmation Modal -->
 <DeleteConfirmationModal

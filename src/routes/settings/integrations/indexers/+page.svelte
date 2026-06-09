@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
-	import { Plus } from 'lucide-svelte';
+	import { Plus, Download } from 'lucide-svelte';
 	import type { PageData } from './$types';
 	import type {
 		Indexer,
@@ -14,6 +14,8 @@
 	import IndexerFilters from '$lib/components/indexers/IndexerFilters.svelte';
 	import IndexerBulkActions from '$lib/components/indexers/IndexerBulkActions.svelte';
 	import IndexerModal from '$lib/components/indexers/IndexerModal.svelte';
+	import ProwlarrImportModal from '$lib/components/indexers/ProwlarrImportModal.svelte';
+	import JackettImportModal from '$lib/components/indexers/JackettImportModal.svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { getResponseErrorMessage } from '$lib/utils/http';
 	import { SvelteSet } from 'svelte/reactivity';
@@ -49,10 +51,33 @@
 		direction: 'asc'
 	});
 
+	// Prowlarr import modal state
+	let prowlarrImportOpen = $state(false);
+
+	// Jackett import modal state
+	let jackettImportOpen = $state(false);
+
 	// Confirmation dialog state
 	let confirmDeleteOpen = $state(false);
 	let deleteTarget = $state<Indexer | null>(null);
 	let confirmBulkDeleteOpen = $state(false);
+
+	const isDeleteTargetProwlarr = $derived.by(() => {
+		const prowlarrBase = data.prowlarrConnection?.url?.replace(/\/+$/, '');
+		if (!prowlarrBase || !deleteTarget) return false;
+		if (!deleteTarget.baseUrl.startsWith(prowlarrBase + '/')) return false;
+		const suffix = deleteTarget.baseUrl.slice(prowlarrBase.length + 1).replace(/\/+$/, '');
+		return /^\d+$/.test(suffix);
+	});
+
+	const isDeleteTargetJackett = $derived.by(() => {
+		const jackettBase = data.jackettConnection?.url?.replace(/\/+$/, '');
+		if (!jackettBase || !deleteTarget) return false;
+		const prefix = `${jackettBase}/api/v2.0/indexers/`;
+		return (
+			deleteTarget.baseUrl.startsWith(prefix) && deleteTarget.baseUrl.includes('/results/torznab')
+		);
+	});
 
 	// Derived: filtered and sorted indexers
 	const filteredIndexers = $derived(() => {
@@ -464,7 +489,15 @@
 
 <SettingsPage title={m.nav_indexers()} subtitle={m.settings_integrations_indexers_subtitle()}>
 	{#snippet actions()}
-		<button class="btn w-full gap-2 btn-sm btn-primary sm:w-auto" onclick={openAddModal}>
+		<button class="btn gap-2 btn-outline btn-sm" onclick={() => (jackettImportOpen = true)}>
+			<Download class="h-4 w-4" />
+			{data.jackettConnection ? 'Jackett' : 'Connect Jackett'}
+		</button>
+		<button class="btn gap-2 btn-outline btn-sm" onclick={() => (prowlarrImportOpen = true)}>
+			<Download class="h-4 w-4" />
+			{data.prowlarrConnection ? 'Prowlarr' : 'Connect Prowlarr'}
+		</button>
+		<button class="btn gap-2 btn-sm btn-primary" onclick={openAddModal}>
 			<Plus class="h-4 w-4" />
 			{m.settings_integrations_indexers_addButton()}
 		</button>
@@ -512,6 +545,8 @@
 				{canReorder}
 				{testingIds}
 				{togglingIds}
+				prowlarrBaseUrl={data.prowlarrConnection?.url ?? null}
+				jackettBaseUrl={data.jackettConnection?.url ?? null}
 				onSelect={handleSelect}
 				onSelectAll={handleSelectAll}
 				onSort={handleSort}
@@ -533,6 +568,8 @@
 	indexer={editingIndexer}
 	definitions={data.definitions}
 	{saving}
+	prowlarrBaseUrl={data.prowlarrConnection?.url ?? null}
+	jackettBaseUrl={data.jackettConnection?.url ?? null}
 	onClose={closeModal}
 	onSave={handleSave}
 	onDelete={handleDelete}
@@ -542,11 +579,19 @@
 <!-- Delete Confirmation Modal -->
 <ConfirmationModal
 	open={confirmDeleteOpen}
-	title={m.ui_modal_deleteTitle()}
-	messagePrefix={m.settings_integrations_deleteConfirmPrefix()}
+	title={isDeleteTargetProwlarr || isDeleteTargetJackett
+		? 'Remove from Cinephage'
+		: m.ui_modal_deleteTitle()}
+	messagePrefix={isDeleteTargetProwlarr || isDeleteTargetJackett
+		? 'Remove '
+		: m.settings_integrations_deleteConfirmPrefix()}
 	messageEmphasis={deleteTarget?.name ?? ''}
-	messageSuffix={m.settings_integrations_deleteConfirmSuffix()}
-	confirmLabel={m.action_delete()}
+	messageSuffix={isDeleteTargetProwlarr
+		? ' from Cinephage? It will still exist in Prowlarr and can be re-imported.'
+		: isDeleteTargetJackett
+			? ' from Cinephage? It will still exist in Jackett and can be re-imported.'
+			: m.settings_integrations_deleteConfirmSuffix()}
+	confirmLabel={isDeleteTargetProwlarr || isDeleteTargetJackett ? 'Remove' : m.action_delete()}
 	confirmVariant="error"
 	onConfirm={handleConfirmDelete}
 	onCancel={() => (confirmDeleteOpen = false)}
@@ -562,4 +607,18 @@
 	confirmVariant="error"
 	onConfirm={handleConfirmBulkDelete}
 	onCancel={() => (confirmBulkDeleteOpen = false)}
+/>
+
+<!-- Prowlarr Import Modal -->
+<ProwlarrImportModal
+	open={prowlarrImportOpen}
+	storedConnection={data.prowlarrConnection}
+	onClose={() => (prowlarrImportOpen = false)}
+/>
+
+<!-- Jackett Import Modal -->
+<JackettImportModal
+	open={jackettImportOpen}
+	storedConnection={data.jackettConnection}
+	onClose={() => (jackettImportOpen = false)}
 />

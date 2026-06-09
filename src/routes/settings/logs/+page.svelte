@@ -1,9 +1,18 @@
 <script lang="ts">
 	import { SvelteMap, SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
-	import { Download, Loader2, Wifi, WifiOff } from 'lucide-svelte';
+	import {
+		Download,
+		Loader2,
+		Search,
+		CalendarSync,
+		CalendarClock,
+		Wifi,
+		WifiOff,
+		X
+	} from 'lucide-svelte';
 
 	import * as m from '$lib/paraglide/messages.js';
-	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
+	import { SettingsPage } from '$lib/components/ui/settings';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import type {
 		CapturedLogDomain,
@@ -64,9 +73,6 @@
 	let initialized = false;
 
 	let search = $state('');
-	let supportId = $state('');
-	let requestId = $state('');
-	let correlationId = $state('');
 	let selectedDomain = $state<CapturedLogDomain | 'all'>('all');
 	let levels = new SvelteSet<CapturedLogLevel>(DEFAULT_LEVELS);
 	let from = $state('');
@@ -82,6 +88,10 @@
 	let pendingLiveEntries = $state<CapturedLogEntry[]>([]);
 
 	let selectedEntryId = $state<string | null>(null);
+	let activeQuickRange = $state<number | null>(null);
+	let mobileInspectorOpen = $state(false);
+	let mobileDateOpen = $state(false);
+	let mobileDateManual = $state(false);
 
 	$effect(() => {
 		if (initialized) return;
@@ -96,7 +106,7 @@
 			historyPagesLoaded.add(data.initialPage);
 		}
 		retentionDays = data.retentionDays;
-		selectedEntryId = data.initialEntries[0]?.id ?? null;
+		selectedEntryId = null;
 		lastLoadedFilterKey = buildFilterKey();
 	});
 
@@ -107,26 +117,36 @@
 	});
 
 	const selectedEntry = $derived.by(
-		() => entries.find((entry) => entry.id === selectedEntryId) ?? entries[0] ?? null
+		() => entries.find((entry) => entry.id === selectedEntryId) ?? null
 	);
 
 	const pendingLiveCount = $derived(pendingLiveEntries.length);
 	const showJumpToLatest = $derived.by(
 		() => pendingLiveCount > 0 || !isNearTop || !autoFollowEnabled || livePaused
 	);
+	const activeFilterLabel = $derived.by(() => {
+		const parts: string[] = [];
+		if (levels.size === 1) {
+			const [level] = [...levels];
+			parts.push(`${level} only`);
+		} else if (levels.size < availableLevels.length) {
+			parts.push(`${levels.size} levels`);
+		}
+		if (selectedDomain !== 'all') parts.push(selectedDomain);
+		if (search.trim()) parts.push(`"${search.trim()}"`);
+		return parts.length > 0 ? `Filtered: ${parts.join(', ')}` : '';
+	});
+
 	const liveStatusLabel = $derived.by(() => {
 		if (livePaused) return 'Live paused';
 		if (autoFollowEnabled && isNearTop) return 'Following newest entries';
-		if (pendingLiveCount > 0) return 'Browsing while new entries queue';
-		return 'Browsing current results';
+		if (pendingLiveCount > 0) return 'New entries queuing';
+		return activeFilterLabel;
 	});
 
 	const hasActiveFilters = $derived.by(
 		() =>
 			search.trim().length > 0 ||
-			supportId.trim().length > 0 ||
-			requestId.trim().length > 0 ||
-			correlationId.trim().length > 0 ||
 			selectedDomain !== 'all' ||
 			levels.size !== availableLevels.length ||
 			from.length > 0 ||
@@ -145,37 +165,11 @@
 		params.set('pageSize', String(historyPageSize));
 		params.set('levels', [...levels].join(','));
 
-		if (page) {
-			params.set('page', String(page));
-		}
-
-		if (selectedDomain !== 'all') {
-			params.set('logDomain', selectedDomain);
-		}
-
-		if (search.trim()) {
-			params.set('search', search.trim());
-		}
-
-		if (supportId.trim()) {
-			params.set('supportId', supportId.trim());
-		}
-
-		if (requestId.trim()) {
-			params.set('requestId', requestId.trim());
-		}
-
-		if (correlationId.trim()) {
-			params.set('correlationId', correlationId.trim());
-		}
-
-		if (from) {
-			params.set('from', new Date(from).toISOString());
-		}
-
-		if (to) {
-			params.set('to', new Date(to).toISOString());
-		}
+		if (page) params.set('page', String(page));
+		if (selectedDomain !== 'all') params.set('logDomain', selectedDomain);
+		if (search.trim()) params.set('search', search.trim());
+		if (from) params.set('from', new Date(from).toISOString());
+		if (to) params.set('to', new Date(to).toISOString());
 
 		return params;
 	}
@@ -185,9 +179,6 @@
 			[...levels].sort().join(','),
 			selectedDomain,
 			search.trim(),
-			supportId.trim(),
-			requestId.trim(),
-			correlationId.trim(),
 			from || 'none',
 			to || 'none'
 		].join('||');
@@ -201,24 +192,36 @@
 
 	function dedupeAndSort(items: CapturedLogEntry[], limit?: number): CapturedLogEntry[] {
 		const byId = new SvelteMap<string, CapturedLogEntry>();
-
 		for (const item of items) {
-			if (!byId.has(item.id)) {
-				byId.set(item.id, item);
-			}
+			if (!byId.has(item.id)) byId.set(item.id, item);
 		}
-
 		const sorted = [...byId.values()].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 		return typeof limit === 'number' ? sorted.slice(0, limit) : sorted;
 	}
 
-	function selectEntry(entry: CapturedLogEntry): void {
-		selectedEntryId = entry.id;
+	function handleRowClick(entry: CapturedLogEntry): void {
+		if (selectedEntryId === entry.id) {
+			selectedEntryId = null;
+			mobileInspectorOpen = false;
+		} else {
+			selectedEntryId = entry.id;
+			mobileInspectorOpen = true;
+		}
+	}
+
+	function closeInspector(): void {
+		selectedEntryId = null;
+		mobileInspectorOpen = false;
 	}
 
 	function handleListScroll(): void {
 		if (!listViewport) return;
 		isNearTop = listViewport.scrollTop < 24;
+		const nearBottom =
+			listViewport.scrollHeight - listViewport.scrollTop - listViewport.clientHeight < 120;
+		if (nearBottom && historyHasMore && !historyLoading) {
+			loadOlderHistory();
+		}
 	}
 
 	async function scrollToLatest(): Promise<void> {
@@ -233,35 +236,31 @@
 			levels.delete(level);
 			return;
 		}
-
 		levels.add(level);
 	}
 
 	function resetFilters(): void {
 		search = '';
-		supportId = '';
-		requestId = '';
-		correlationId = '';
 		selectedDomain = 'all';
 		levels.clear();
-		for (const level of DEFAULT_LEVELS) {
-			levels.add(level);
-		}
+		for (const level of DEFAULT_LEVELS) levels.add(level);
 		from = '';
 		to = '';
+		activeQuickRange = null;
+		if (!mobileDateManual) mobileDateOpen = false;
 	}
 
 	function setQuickRange(hours: number): void {
 		const nextTo = new Date();
 		to = toDateTimeLocalValue(nextTo);
 		from = toDateTimeLocalValue(new Date(nextTo.getTime() - hours * 60 * 60 * 1000));
+		activeQuickRange = hours;
+		mobileDateOpen = true;
+		mobileDateManual = false;
 	}
 
 	function replaceEntries(nextEntries: CapturedLogEntry[]): void {
 		entries = dedupeAndSort(nextEntries);
-		if (!selectedEntryId && entries[0]) {
-			selectedEntryId = entries[0].id;
-		}
 	}
 
 	function queueLiveEntry(entry: CapturedLogEntry): void {
@@ -270,18 +269,12 @@
 
 	function flushPendingLiveEntries(options: { scroll?: boolean } = {}): void {
 		if (pendingLiveEntries.length === 0) {
-			if (options.scroll) {
-				void scrollToLatest();
-			}
+			if (options.scroll) void scrollToLatest();
 			return;
 		}
-
 		replaceEntries([...pendingLiveEntries, ...entries]);
 		pendingLiveEntries = [];
-
-		if (options.scroll) {
-			void scrollToLatest();
-		}
+		if (options.scroll) void scrollToLatest();
 	}
 
 	function mergeLiveSeed(seedEntries: CapturedLogEntry[]): void {
@@ -293,7 +286,6 @@
 			queueLiveEntry(entry);
 			return;
 		}
-
 		replaceEntries([entry, ...entries]);
 		void scrollToLatest();
 	}
@@ -304,31 +296,19 @@
 	}>(
 		() => buildLiveUrl(),
 		{
-			'logs:seed': ({ entries: seedEntries }) => {
-				mergeLiveSeed(seedEntries);
-			},
-			'log:entry': (entry) => {
-				mergeLiveEntry(entry);
-			}
+			'logs:seed': ({ entries: seedEntries }) => mergeLiveSeed(seedEntries),
+			'log:entry': (entry) => mergeLiveEntry(entry)
 		},
-		{
-			heartbeatInterval: 30000
-		}
+		{ heartbeatInterval: 30000 }
 	);
 
 	$effect(() => {
 		layoutState.setMobileSseStatus(deriveMobileSseStatus(sse));
-		return () => {
-			layoutState.clearMobileSseStatus();
-		};
+		return () => layoutState.clearMobileSseStatus();
 	});
 
 	$effect(() => {
-		if (livePaused) return;
-		if (!autoFollowEnabled) return;
-		if (!isNearTop) return;
-		if (pendingLiveEntries.length === 0) return;
-
+		if (livePaused || !autoFollowEnabled || !isNearTop || pendingLiveEntries.length === 0) return;
 		flushPendingLiveEntries({ scroll: true });
 	});
 
@@ -342,14 +322,10 @@
 		try {
 			const sp = buildQueryParams(page);
 			const queryParams: Record<string, string> = {};
-			for (const [key, value] of sp) {
-				queryParams[key] = value;
-			}
+			for (const [key, value] of sp) queryParams[key] = value;
 
 			const payload = (await getLogHistory(queryParams)) as LogHistoryResponse;
-			if (!payload.success) {
-				throw new Error(payload.error ?? 'Failed to load log history');
-			}
+			if (!payload.success) throw new Error(payload.error ?? 'Failed to load log history');
 
 			const nextEntries = payload.entries ?? [];
 			entries =
@@ -369,11 +345,7 @@
 			lastLoadedFilterKey = buildFilterKey();
 			pendingLiveEntries = [];
 
-			if (entries[0]) {
-				selectedEntryId = entries.some((entry) => entry.id === selectedEntryId)
-					? selectedEntryId
-					: entries[0].id;
-			} else {
+			if (!entries.some((e) => e.id === selectedEntryId)) {
 				selectedEntryId = null;
 			}
 		} catch (error) {
@@ -401,13 +373,9 @@
 	$effect(() => {
 		if (!initialized) return;
 		const filterKey = buildFilterKey();
-		if (filterKey === lastLoadedFilterKey) {
-			return;
-		}
+		if (filterKey === lastLoadedFilterKey) return;
 
-		if (historyDebounceTimer) {
-			clearTimeout(historyDebounceTimer);
-		}
+		if (historyDebounceTimer) clearTimeout(historyDebounceTimer);
 
 		historyDebounceTimer = setTimeout(() => {
 			void loadHistoryPage(1, 'replace');
@@ -427,9 +395,7 @@
 			const queryParams = buildQueryParams();
 			queryParams.set('limit', '5000');
 			queryParams.set('format', 'jsonl');
-			queryParams.forEach((value, key) => {
-				params[key] = value;
-			});
+			queryParams.forEach((value, key) => (params[key] = value));
 			const response = await apiGetStream('/api/settings/logs/download', params);
 
 			const blob = await response.blob();
@@ -450,7 +416,6 @@
 		retentionSaving = true;
 		try {
 			const payload = await updateLogSettings(retentionDays);
-
 			retentionDays = payload.retentionDays ?? retentionDays;
 			toasts.success(`Log retention updated to ${retentionDays} days`);
 		} catch (error) {
@@ -483,22 +448,8 @@
 		}).format(new Date(value));
 	}
 
-	function levelColor(level: CapturedLogLevel): string {
-		switch (level) {
-			case 'debug':
-				return 'text-base-content/50';
-			case 'info':
-				return 'text-info';
-			case 'warn':
-				return 'text-warning';
-			case 'error':
-				return 'text-error';
-		}
-	}
-
 	function levelBadgeClass(level: CapturedLogLevel, active: boolean): string {
 		if (!active) return 'border-base-300 bg-base-200 text-base-content/45';
-
 		switch (level) {
 			case 'debug':
 				return 'border-base-content/20 bg-base-content/10 text-base-content/70';
@@ -511,17 +462,27 @@
 		}
 	}
 
+	function rowAccentClass(level: CapturedLogLevel): string {
+		switch (level) {
+			case 'error':
+				return 'border-l-[3px] border-l-error';
+			case 'warn':
+				return 'border-l-[3px] border-l-warning';
+			default:
+				return 'border-l-[3px] border-l-transparent';
+		}
+	}
+
 	function getSource(entry: CapturedLogEntry): string {
 		const parts = [entry.logDomain, entry.component, entry.service, entry.module].filter(
-			(value): value is string => typeof value === 'string' && value.length > 0
+			(v): v is string => typeof v === 'string' && v.length > 0
 		);
-		const deduped = parts.filter((value, index) => index === 0 || value !== parts[index - 1]);
+		const deduped = parts.filter((v, i) => i === 0 || v !== parts[i - 1]);
 		return deduped.length > 0 ? deduped.join('/') : 'unscoped';
 	}
 
 	function formatDetails(entry: CapturedLogEntry): string {
 		const obj: Record<string, unknown> = {};
-
 		if (entry.method || entry.path || entry.requestId || entry.supportId || entry.correlationId) {
 			const req: Record<string, unknown> = {};
 			if (entry.method) req.method = entry.method;
@@ -531,16 +492,13 @@
 			if (entry.correlationId) req.correlationId = entry.correlationId;
 			obj.request = req;
 		}
-
 		if (entry.data) obj.data = entry.data;
 		if (entry.err) obj.err = entry.err;
-
 		return JSON.stringify(obj, null, 2);
 	}
 
 	async function copyText(value: string, label: string): Promise<void> {
 		if (!value || !navigator.clipboard) return;
-
 		try {
 			await navigator.clipboard.writeText(value);
 			toasts.success(`${label} copied`);
@@ -554,190 +512,356 @@
 	<title>{m.settings_logs_pageTitle()}</title>
 </svelte:head>
 
+<svelte:window
+	onkeydown={(e) => {
+		if (e.key === 'Escape' && selectedEntryId) closeInspector();
+	}}
+/>
+
+{#snippet inspectorBody(entry: CapturedLogEntry)}
+	<div class="space-y-4 p-4">
+		<div class="space-y-2">
+			<div class="flex flex-wrap items-center gap-2">
+				<span
+					class={`rounded border px-2 py-0.5 font-mono text-[10px] font-semibold tracking-widest uppercase ${levelBadgeClass(entry.level, true)}`}
+				>
+					{entry.level}
+				</span>
+				<span class="font-mono text-xs text-base-content/55">
+					{formatFullTimestamp(entry.timestamp)}
+				</span>
+			</div>
+			<p class="text-sm leading-6 wrap-break-word">{entry.msg}</p>
+			<p class="font-mono text-xs text-base-content/60">{getSource(entry)}</p>
+		</div>
+
+		{#if entry.method || entry.path || entry.requestId || entry.correlationId || entry.supportId}
+			<div>
+				<p class="mb-2 text-[10px] font-medium tracking-widest text-base-content/50 uppercase">
+					Identifiers
+				</p>
+				<div class="flex flex-wrap gap-2">
+					{#if entry.method && entry.path}
+						<button
+							class="rounded bg-base-300 px-2 py-1 font-mono text-xs text-base-content/70 transition hover:bg-base-300/80"
+							onclick={() => copyText(`${entry.method} ${entry.path}`, 'Request path')}
+						>
+							{entry.method}
+							{entry.path}
+						</button>
+					{/if}
+					{#if entry.requestId}
+						<button
+							class="rounded bg-base-300 px-2 py-1 font-mono text-xs text-base-content/70 transition hover:bg-base-300/80"
+							onclick={() => copyText(entry.requestId ?? '', 'Request ID')}
+						>
+							req:{entry.requestId}
+						</button>
+					{/if}
+					{#if entry.correlationId}
+						<button
+							class="rounded bg-base-300 px-2 py-1 font-mono text-xs text-base-content/70 transition hover:bg-base-300/80"
+							onclick={() => copyText(entry.correlationId ?? '', 'Correlation ID')}
+						>
+							corr:{entry.correlationId}
+						</button>
+					{/if}
+					{#if entry.supportId}
+						<button
+							class="rounded bg-base-300 px-2 py-1 font-mono text-xs text-base-content/70 transition hover:bg-base-300/80"
+							onclick={() => copyText(entry.supportId ?? '', 'Issue ID')}
+						>
+							issue:{entry.supportId}
+						</button>
+					{/if}
+				</div>
+			</div>
+		{/if}
+
+		<div>
+			<div class="mb-2 flex items-center justify-between">
+				<p class="text-[10px] font-medium tracking-widest text-base-content/50 uppercase">
+					Payload
+				</p>
+				<button
+					class="btn btn-ghost btn-xs"
+					onclick={() => copyText(formatDetails(entry), 'Payload')}
+				>
+					Copy
+				</button>
+			</div>
+			<pre
+				class="max-h-88 overflow-auto bg-base-300/50 p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-base-content/80">{formatDetails(
+					entry
+				)}</pre>
+		</div>
+	</div>
+{/snippet}
+
 <SettingsPage title={m.settings_logs_heading()} subtitle={m.settings_logs_subtitle()}>
 	{#snippet actions()}
-		<span
-			class:badge-success={sse.isConnected}
-			class:badge-warning={!sse.isConnected}
-			class="badge gap-1.5 text-xs"
-		>
+		<div class="hidden items-center gap-2 sm:flex">
 			{#if sse.isConnected}
-				<Wifi class="h-3 w-3" />
-				Live connected
+				<span class="badge gap-1 badge-success">
+					<Wifi class="h-3 w-3" />
+					{m.common_live()}
+				</span>
+			{:else if sse.status === 'connecting' || sse.status === 'error'}
+				<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
+					<Loader2 class="h-3 w-3 animate-spin" />
+					{sse.status === 'error' ? m.common_reconnecting() : m.common_connecting()}
+				</span>
 			{:else}
-				<WifiOff class="h-3 w-3" />
-				Live reconnecting
+				<span class="badge gap-1 badge-ghost">
+					<WifiOff class="h-3 w-3" />
+					{m.common_disconnected()}
+				</span>
 			{/if}
-		</span>
-		<span class="badge badge-ghost text-xs">{historyTotal} matches</span>
-		{#if pendingLiveCount > 0}
-			<button
-				class="badge cursor-pointer badge-outline text-xs badge-warning"
-				onclick={() => flushPendingLiveEntries({ scroll: true })}
-			>
-				{pendingLiveCount} new entries
-			</button>
-		{/if}
+		</div>
 	{/snippet}
 
-	<SettingsSection
-		title="Unified Live Logs"
-		description="One live log surface that stays current while still letting you search and load older persisted history into the same stream."
-	>
-		<div class="border border-base-300 bg-base-100">
-			<div
-				class="sticky top-0 z-10 border-b border-base-300 bg-base-100/95 px-4 py-4 backdrop-blur"
-			>
-				<div class="grid gap-3 xl:grid-cols-[minmax(0,2.4fr)_repeat(4,minmax(0,1fr))]">
+	<!-- Log viewer card -->
+	<div class="flex flex-col rounded-xl border border-base-300 bg-base-200">
+		<!-- Toolbar (sticky) -->
+		<div class="sticky top-0 z-10 border-b border-base-300 bg-base-200/95 backdrop-blur">
+			<div class="flex flex-wrap items-center gap-x-2 gap-y-2 px-3 py-3">
+				<!-- Search -->
+				<div class="relative min-w-0 flex-1" style="min-width: 180px;">
+					<Search
+						class="pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2 text-base-content/40"
+					/>
 					<input
 						type="text"
-						class="input-bordered input input-sm w-full"
+						class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-9 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 						bind:value={search}
-						placeholder="Search message, source, path, payload, or error text"
+						placeholder="Search message, source, path, payload…"
 					/>
-					<select class="select-bordered select w-full select-sm" bind:value={selectedDomain}>
+				</div>
+
+				<!-- Domain -->
+				<div class="w-full sm:w-48">
+					<select
+						class="select select-sm border-base-content/20 transition-all duration-200 hover:bg-base-200 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 focus:outline-none w-full"
+						bind:value={selectedDomain}
+					>
 						<option value="all">All domains</option>
 						{#each availableDomains as domain (domain)}
 							<option value={domain}>{domain}</option>
 						{/each}
 					</select>
+				</div>
+
+				<span class="h-5 w-px shrink-0 bg-base-300"></span>
+
+				<!-- Level pills -->
+				<div class="flex items-center gap-1">
+					{#each availableLevels as level (level)}
+						<button
+							class={`rounded border px-2 py-1 font-mono text-[10px] font-semibold tracking-[0.15em] uppercase transition ${levelBadgeClass(level, levels.has(level))}`}
+							onclick={() => toggleLevel(level)}
+						>
+							{level}
+						</button>
+					{/each}
+				</div>
+
+				<span class="h-5 w-px shrink-0 bg-base-300"></span>
+
+				<!-- Quick date range + mobile custom toggle -->
+				<div class="flex items-center gap-1">
+					{#each [{ label: '1h', hours: 1 }, { label: '6h', hours: 6 }, { label: '24h', hours: 24 }, { label: '7d', hours: 168 }] as range (range.label)}
+						<button
+							class="btn btn-xs font-mono {activeQuickRange === range.hours
+								? 'btn-primary'
+								: 'btn-ghost'}"
+							onclick={() => setQuickRange(range.hours)}
+						>
+							{range.label}
+						</button>
+					{/each}
+					<!-- Mobile: toggle custom date inputs -->
+					<button
+						class="btn btn-xs sm:hidden {mobileDateOpen || from || to
+							? 'btn-primary'
+							: 'btn-ghost'}"
+						onclick={() => {
+							mobileDateOpen = !mobileDateOpen;
+							mobileDateManual = mobileDateOpen;
+						}}
+						aria-label="Custom date range"
+					>
+						<CalendarClock class="h-3 w-3" />
+					</button>
+				</div>
+
+				<!-- Custom from/to inputs: desktop only (inline) -->
+				<div class="hidden items-center gap-2 sm:flex">
+					<span class="h-5 w-px shrink-0 bg-base-300"></span>
 					<input
-						type="text"
-						class="input-bordered input input-sm w-full font-mono"
-						bind:value={supportId}
-						placeholder="Issue ID"
+						type="datetime-local"
+						class="input input-sm w-44 rounded-full border-base-content/20 bg-base-200/60 px-3 text-xs transition-all hover:bg-base-200 focus:border-primary/50 focus:outline-none"
+						bind:value={from}
+						title="From"
+						oninput={() => (activeQuickRange = null)}
 					/>
 					<input
-						type="text"
-						class="input-bordered input input-sm w-full font-mono"
-						bind:value={requestId}
-						placeholder="Request ID"
-					/>
-					<input
-						type="text"
-						class="input-bordered input input-sm w-full font-mono"
-						bind:value={correlationId}
-						placeholder="Correlation ID"
+						type="datetime-local"
+						class="input input-sm w-44 rounded-full border-base-content/20 bg-base-200/60 px-3 text-xs transition-all hover:bg-base-200 focus:border-primary/50 focus:outline-none"
+						bind:value={to}
+						title="To"
+						oninput={() => (activeQuickRange = null)}
 					/>
 				</div>
 
-				<div class="mt-3 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-					<div class="flex flex-wrap items-center gap-2">
-						{#each availableLevels as level (level)}
-							<button
-								class={`rounded-md border px-2.5 py-1 font-mono text-[11px] font-semibold tracking-[0.18em] uppercase transition ${levelBadgeClass(level, levels.has(level))}`}
-								onclick={() => toggleLevel(level)}
+				<span class="hidden flex-1 xl:block"></span>
+
+				<!-- Auto-follow + Pause (right side with actions) -->
+				<label class="label cursor-pointer gap-2 px-1 py-0">
+					<input type="checkbox" class="toggle toggle-xs" bind:checked={autoFollowEnabled} />
+					<span class="label-text text-xs">Auto-follow</span>
+				</label>
+				<label class="label cursor-pointer gap-2 px-1 py-0">
+					<input type="checkbox" class="toggle toggle-xs" bind:checked={livePaused} />
+					<span class="label-text text-xs">Pause</span>
+				</label>
+
+				<span class="h-5 w-px shrink-0 bg-base-300"></span>
+
+				<!-- Retention dropdown -->
+				<div class="dropdown">
+					<button class="btn btn-ghost btn-sm gap-1.5 text-xs" aria-label="Log retention settings">
+						<CalendarSync class="h-3.5 w-3.5" />
+						<span class="font-mono">{retentionDays}d</span>
+					</button>
+					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+					<div
+						tabindex="0"
+						class="dropdown-content z-20 mt-1 w-56 rounded-xl border border-base-300 bg-base-200 shadow-lg xl:right-0 xl:left-auto"
+					>
+						<div class="p-3">
+							<p
+								class="mb-3 text-[10px] font-medium tracking-widest text-base-content/50 uppercase"
 							>
-								{level}
+								Log Retention
+							</p>
+							<div class="mb-3 flex items-center gap-2">
+								<input
+									id="retention-days"
+									type="number"
+									min="1"
+									max={maxRetentionDays}
+									class="input input-bordered input-xs w-20"
+									bind:value={retentionDays}
+								/>
+								<span class="text-xs text-base-content/60">days</span>
+								<button
+									class="btn btn-ghost btn-xs ml-auto"
+									onclick={() => (retentionDays = defaultRetentionDays)}
+									disabled={retentionSaving}
+								>
+									Default
+								</button>
+							</div>
+							<button
+								class="btn btn-primary btn-xs w-full"
+								onclick={saveRetentionDays}
+								disabled={retentionSaving}
+							>
+								{#if retentionSaving}
+									<Loader2 class="h-3 w-3 animate-spin" />
+								{/if}
+								Save
 							</button>
-						{/each}
-						<label class="label cursor-pointer gap-2 px-1 py-0">
-							<input type="checkbox" class="toggle toggle-xs" bind:checked={livePaused} />
-							<span class="label-text text-xs">Pause</span>
-						</label>
-						<label class="label cursor-pointer gap-2 px-1 py-0">
-							<input type="checkbox" class="toggle toggle-xs" bind:checked={autoFollowEnabled} />
-							<span class="label-text text-xs">Auto-follow</span>
-						</label>
-					</div>
-
-					<div class="flex flex-wrap items-center gap-2">
-						<button class="btn btn-ghost btn-xs" onclick={() => setQuickRange(1)}>1h</button>
-						<button class="btn btn-ghost btn-xs" onclick={() => setQuickRange(6)}>6h</button>
-						<button class="btn btn-ghost btn-xs" onclick={() => setQuickRange(24)}>24h</button>
-						<button class="btn btn-ghost btn-xs" onclick={() => setQuickRange(168)}>7d</button>
-						<input
-							type="datetime-local"
-							class="input-bordered input input-sm w-full sm:w-44"
-							bind:value={from}
-						/>
-						<input
-							type="datetime-local"
-							class="input-bordered input input-sm w-full sm:w-44"
-							bind:value={to}
-						/>
-						<button class="btn text-xs btn-ghost btn-sm" onclick={refreshCurrentView}>
-							{#if historyLoading}
-								<Loader2 class="h-3.5 w-3.5 animate-spin" />
-							{/if}
-							Refresh
-						</button>
-						<button class="btn text-xs btn-ghost btn-sm" onclick={downloadHistoryLogs}>
-							<Download class="h-3.5 w-3.5" />
-							Export
-						</button>
-						{#if hasActiveFilters}
-							<button class="btn text-xs btn-ghost btn-sm" onclick={resetFilters}>Clear</button>
-						{/if}
+						</div>
 					</div>
 				</div>
 
-				<div
-					class="mt-3 flex flex-col gap-2 border-t border-base-300 pt-3 text-xs text-base-content/60 xl:flex-row xl:items-center xl:justify-between"
-				>
-					<div class="flex flex-wrap items-center gap-3">
-						<span>{entries.length} visible rows</span>
-						<span>{historyTotal} persisted matches</span>
-						<span
-							>{historyPagesLoaded.size} page{historyPagesLoaded.size === 1 ? '' : 's'} loaded</span
-						>
-						<span>{liveStatusLabel}</span>
-					</div>
-					<div class="flex flex-wrap items-center gap-2">
-						<input
-							id="retention-days"
-							type="number"
-							min="1"
-							max={maxRetentionDays}
-							class="input-bordered input input-xs w-24"
-							bind:value={retentionDays}
-						/>
-						<span>Retention days</span>
-						<button
-							class="btn btn-ghost btn-xs"
-							onclick={() => (retentionDays = defaultRetentionDays)}
-							disabled={retentionSaving}
-						>
-							Default
-						</button>
-						<button
-							class="btn btn-xs btn-primary"
-							onclick={saveRetentionDays}
-							disabled={retentionSaving}
-						>
-							{#if retentionSaving}
-								<Loader2 class="h-3 w-3 animate-spin" />
-							{/if}
-							Save
-						</button>
-					</div>
-				</div>
+				<!-- Refresh (shows spinner inline while loading) -->
+				<button class="btn btn-ghost btn-sm text-xs" onclick={refreshCurrentView}>
+					{#if historyLoading}
+						<Loader2 class="h-3.5 w-3.5 animate-spin" />
+					{/if}
+					Refresh
+				</button>
+
+				<button class="btn btn-ghost btn-sm text-xs" onclick={downloadHistoryLogs}>
+					<Download class="h-3.5 w-3.5" />
+					<span class="sm:inline">Export</span>
+				</button>
+
+				{#if hasActiveFilters}
+					<button class="btn btn-ghost btn-xs gap-1 text-error" onclick={resetFilters}>
+						<X class="h-3 w-3" />
+						Clear filters
+					</button>
+				{/if}
 			</div>
 
-			{#if historyError}
-				<div class="border-b border-base-300 px-4 py-4 text-sm text-error">{historyError}</div>
+			<!-- Mobile: expandable custom date range row -->
+			{#if mobileDateOpen}
+				<div class="flex flex-col gap-2 border-t border-base-300 px-3 py-3 sm:hidden">
+					<input
+						type="datetime-local"
+						class="input input-bordered input-sm w-full"
+						bind:value={from}
+						oninput={() => (activeQuickRange = null)}
+					/>
+					<input
+						type="datetime-local"
+						class="input input-bordered input-sm w-full"
+						bind:value={to}
+						oninput={() => (activeQuickRange = null)}
+					/>
+				</div>
 			{/if}
 
-			<div class="max-h-[42rem] overflow-auto" bind:this={listViewport} onscroll={handleListScroll}>
+			<!-- Status bar -->
+			<div
+				class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-base-300 px-3 py-2 text-xs text-base-content/50"
+			>
+				{#if historyTotal > entries.length}
+					<span>Showing {entries.length} of {historyTotal}</span>
+				{:else}
+					<span>{entries.length} entries</span>
+				{/if}
+				{#if liveStatusLabel}
+					<span class="text-base-content/20">·</span>
+					<span>{liveStatusLabel}</span>
+				{/if}
+			</div>
+		</div>
+
+		{#if historyError}
+			<div class="border-b border-base-300 px-3 py-3 text-sm text-error">{historyError}</div>
+		{/if}
+
+		<!-- Table + inspector side panel -->
+		<div class="flex overflow-hidden" style="min-height: 20rem; height: calc(100svh - 22rem);">
+			<!-- Log table -->
+			<div
+				class="min-w-0 flex-1 overflow-y-auto"
+				bind:this={listViewport}
+				onscroll={handleListScroll}
+			>
 				{#if historyLoading && entries.length === 0}
-					<div class="flex items-center gap-2 px-4 py-4 text-sm text-base-content/60">
+					<div class="flex items-center gap-2 px-1 py-6 text-sm text-base-content/60">
 						<Loader2 class="h-4 w-4 animate-spin" />
 						Loading logs
 					</div>
 				{:else if entries.length === 0}
-					<div class="px-4 py-4 text-sm text-base-content/60">
+					<div class="px-1 py-6 text-sm text-base-content/60">
 						No logs matched the current filters. Clear filters or wait for new matching entries.
 					</div>
 				{:else}
-					<table class="table-pin-rows table table-sm">
+					<table class="table-pin-rows table table-sm w-full">
 						<thead>
 							<tr
-								class="bg-base-200/90 text-[11px] tracking-[0.18em] text-base-content/55 uppercase"
+								class="bg-base-200/90 text-[10px] tracking-[0.12em] text-base-content/50 uppercase"
 							>
-								<th class="w-28">Time</th>
-								<th class="w-18">Level</th>
-								<th class="w-52">Source</th>
-								<th class="w-32">Issue ID</th>
+								<th class="w-4 pl-0 pr-0"></th>
+								<th class="w-24">Time</th>
+								<th class="w-16">Level</th>
+								<th class="hidden w-32 sm:table-cell">Source</th>
 								<th>Message</th>
 							</tr>
 						</thead>
@@ -746,21 +870,31 @@
 								<tr
 									class={[
 										'cursor-pointer border-b border-base-200/70 align-top transition-colors',
+										rowAccentClass(entry.level),
 										selectedEntry?.id === entry.id ? 'bg-primary/8' : 'hover:bg-base-200/60'
 									]}
-									onclick={() => selectEntry(entry)}
+									onclick={() => handleRowClick(entry)}
 								>
-									<td class="font-mono text-xs text-base-content/70"
-										>{formatTimestamp(entry.timestamp)}</td
+									<td class="px-0 py-2"></td>
+									<td class="py-3 font-mono text-xs text-base-content/60 sm:py-2">
+										{formatTimestamp(entry.timestamp)}
+									</td>
+									<td class="py-3 sm:py-2">
+										<span
+											class={`rounded border px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wide uppercase ${levelBadgeClass(entry.level, true)}`}
+										>
+											{entry.level}
+										</span>
+									</td>
+									<td class="hidden py-2 sm:table-cell">
+										<span
+											class="rounded bg-base-300 px-1.5 py-0.5 font-mono text-[10px] text-base-content/65"
+										>
+											{getSource(entry)}
+										</span>
+									</td>
+									<td class="py-3 text-sm wrap-break-word whitespace-normal sm:py-2">{entry.msg}</td
 									>
-									<td class={`font-mono text-xs uppercase ${levelColor(entry.level)}`}
-										>{entry.level}</td
-									>
-									<td class="max-w-52 truncate font-mono text-xs text-base-content/60"
-										>{getSource(entry)}</td
-									>
-									<td class="font-mono text-xs text-base-content/55">{entry.supportId ?? '-'}</td>
-									<td class="max-w-[48rem] text-sm break-words whitespace-normal">{entry.msg}</td>
 								</tr>
 							{/each}
 						</tbody>
@@ -768,120 +902,88 @@
 				{/if}
 			</div>
 
-			<div class="border-t border-base-300 px-4 py-3">
-				<div class="flex flex-wrap items-center justify-between gap-3 text-xs text-base-content/60">
-					<div class="flex flex-wrap items-center gap-3">
-						{#if pendingLiveCount > 0}
-							<span>{pendingLiveCount} live entries queued</span>
-						{/if}
-						{#if historyHasMore}
-							<span>Older persisted results are available</span>
-						{/if}
-					</div>
-					<div class="flex flex-wrap items-center gap-2">
-						{#if showJumpToLatest}
-							<button class="btn btn-xs btn-primary" onclick={jumpToLatest}>
-								Jump to latest
-							</button>
-						{/if}
+			<!-- Desktop inspector side panel -->
+			{#if selectedEntry}
+				<div
+					class="hidden w-104 shrink-0 flex-col overflow-y-auto border-l border-base-300 bg-base-200/30 xl:flex"
+				>
+					<div
+						class="sticky top-0 flex items-center justify-between border-b border-base-300 bg-base-200/80 px-4 py-3 backdrop-blur"
+					>
+						<p class="text-[10px] font-medium tracking-widest text-base-content/50 uppercase">
+							Inspector
+						</p>
 						<button
-							class="btn btn-ghost btn-xs"
-							onclick={loadOlderHistory}
-							disabled={historyLoading || !historyHasMore}
+							type="button"
+							class="btn btn-circle btn-ghost btn-xs"
+							onclick={closeInspector}
+							aria-label="Close inspector"
 						>
-							{#if historyLoading && historyHasMore}
-								<Loader2 class="h-3 w-3 animate-spin" />
-							{/if}
-							Load older
+							<X class="h-3.5 w-3.5" />
 						</button>
 					</div>
+					{@render inspectorBody(selectedEntry)}
 				</div>
-			</div>
+			{/if}
+		</div>
 
-			<div class="border-t border-base-300 bg-base-200/20 px-4 py-4">
-				<div class="mb-3 flex items-center justify-between gap-3">
-					<div>
-						<p class="text-xs tracking-[0.18em] text-base-content/55 uppercase">Inspector</p>
-						<p class="mt-1 text-xs text-base-content/60">
-							Selected row details stay below the unified stream.
-						</p>
-					</div>
+		<!-- Footer bar (sticky bottom so it's always accessible) -->
+		<div
+			class="sticky bottom-0 z-10 border-t border-base-300 bg-base-200/95 px-3 py-3 backdrop-blur"
+		>
+			<div class="flex flex-wrap items-center justify-between gap-3 text-xs text-base-content/55">
+				<div>
+					{#if historyHasMore}
+						<span>Older persisted results are available</span>
+					{/if}
 				</div>
-
-				{#if selectedEntry}
-					<div class="space-y-4">
-						<div class="space-y-2">
-							<div class="flex flex-wrap items-center gap-2">
-								<span class={`font-mono text-xs uppercase ${levelColor(selectedEntry.level)}`}>
-									{selectedEntry.level}
-								</span>
-								<span class="font-mono text-xs text-base-content/55">
-									{formatFullTimestamp(selectedEntry.timestamp)}
-								</span>
-							</div>
-							<p class="text-sm leading-6 break-words">{selectedEntry.msg}</p>
-							<p class="font-mono text-xs text-base-content/60">{getSource(selectedEntry)}</p>
-						</div>
-
-						<div class="flex flex-wrap gap-2">
-							{#if selectedEntry.method && selectedEntry.path}
-								<button
-									class="rounded-md bg-base-300 px-2 py-1 font-mono text-xs text-base-content/70"
-									onclick={() =>
-										copyText(`${selectedEntry.method} ${selectedEntry.path}`, 'Request path')}
-								>
-									{selectedEntry.method}
-									{selectedEntry.path}
-								</button>
+				<div class="flex items-center gap-2">
+					{#if showJumpToLatest}
+						<button class="btn btn-primary btn-xs" onclick={jumpToLatest}>
+							{#if pendingLiveCount > 0}
+								Jump to latest ({pendingLiveCount} new)
+							{:else}
+								Jump to latest
 							{/if}
-							{#if selectedEntry.requestId}
-								<button
-									class="rounded-md bg-base-300 px-2 py-1 font-mono text-xs text-base-content/70"
-									onclick={() => copyText(selectedEntry.requestId ?? '', 'Request ID')}
-								>
-									req:{selectedEntry.requestId}
-								</button>
-							{/if}
-							{#if selectedEntry.correlationId}
-								<button
-									class="rounded-md bg-base-300 px-2 py-1 font-mono text-xs text-base-content/70"
-									onclick={() => copyText(selectedEntry.correlationId ?? '', 'Correlation ID')}
-								>
-									corr:{selectedEntry.correlationId}
-								</button>
-							{/if}
-							{#if selectedEntry.supportId}
-								<button
-									class="rounded-md bg-base-300 px-2 py-1 font-mono text-xs text-base-content/70"
-									onclick={() => copyText(selectedEntry.supportId ?? '', 'Issue ID')}
-								>
-									issue:{selectedEntry.supportId}
-								</button>
-							{/if}
-						</div>
-
-						<div>
-							<div class="mb-2 flex items-center justify-between">
-								<p class="text-xs tracking-[0.18em] text-base-content/55 uppercase">Payload</p>
-								<button
-									class="btn btn-ghost btn-xs"
-									onclick={() => copyText(formatDetails(selectedEntry), 'Payload')}
-								>
-									Copy
-								</button>
-							</div>
-							<pre
-								class="max-h-[22rem] overflow-auto bg-base-300/50 p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-base-content/80">{formatDetails(
-									selectedEntry
-								)}</pre>
-						</div>
-					</div>
-				{:else}
-					<div class="text-sm text-base-content/60">
-						Select a row to inspect request IDs, payload data, and structured errors.
-					</div>
-				{/if}
+						</button>
+					{/if}
+					<button
+						class="btn btn-ghost btn-xs"
+						onclick={loadOlderHistory}
+						disabled={historyLoading || !historyHasMore}
+					>
+						{#if historyLoading && historyHasMore}
+							<Loader2 class="h-3 w-3 animate-spin" />
+						{/if}
+						Load older
+					</button>
+				</div>
 			</div>
 		</div>
-	</SettingsSection>
+	</div>
 </SettingsPage>
+
+<!-- Mobile inspector bottom sheet -->
+{#if selectedEntry && mobileInspectorOpen}
+	<div class="fixed inset-0 z-40 xl:hidden" role="presentation" onclick={closeInspector}></div>
+	<div
+		class="fixed right-0 bottom-0 left-0 z-50 max-h-[60vh] overflow-y-auto border-t border-base-300 bg-base-100 xl:hidden"
+	>
+		<div
+			class="sticky top-0 flex items-center justify-between border-b border-base-300 bg-base-100/90 px-4 py-3 backdrop-blur"
+		>
+			<p class="text-[10px] font-medium tracking-widest text-base-content/50 uppercase">
+				Inspector
+			</p>
+			<button
+				type="button"
+				class="btn btn-circle btn-ghost btn-xs"
+				onclick={closeInspector}
+				aria-label="Close inspector"
+			>
+				<X class="h-3.5 w-3.5" />
+			</button>
+		</div>
+		{@render inspectorBody(selectedEntry)}
+	</div>
+{/if}

@@ -24,6 +24,8 @@
 		canReorder: boolean;
 		testingIds: Set<string>;
 		togglingIds: Set<string>;
+		prowlarrBaseUrl?: string | null;
+		jackettBaseUrl?: string | null;
 		onSelect: (id: string, selected: boolean) => void;
 		onSelectAll: (selected: boolean) => void;
 		onSort: (column: IndexerSort['column']) => void;
@@ -42,6 +44,8 @@
 		canReorder,
 		testingIds,
 		togglingIds,
+		prowlarrBaseUrl = null,
+		jackettBaseUrl = null,
 		onSelect,
 		onSelectAll,
 		onSort,
@@ -62,6 +66,23 @@
 	const reorderDisabledReason = $derived(
 		canReorder ? '' : 'Clear filters to reorder all indexers by priority'
 	);
+
+	function isProwlarrIndexer(indexer: IndexerWithStatus): boolean {
+		if (!prowlarrBaseUrl) return false;
+		const base = prowlarrBaseUrl.replace(/\/+$/, '');
+		if (!indexer.baseUrl.startsWith(base + '/')) return false;
+		const suffix = indexer.baseUrl.slice(base.length + 1).replace(/\/+$/, '');
+		return /^\d+$/.test(suffix);
+	}
+
+	function isJackettIndexer(indexer: IndexerWithStatus): boolean {
+		if (!jackettBaseUrl) return false;
+		const base = jackettBaseUrl.replace(/\/+$/, '');
+		return (
+			indexer.baseUrl.startsWith(base + '/api/v2.0/indexers/') &&
+			indexer.baseUrl.includes('/results/torznab')
+		);
+	}
 
 	function isSortedBy(column: IndexerSort['column']): boolean {
 		return sort.column === column;
@@ -236,10 +257,21 @@
 									consecutiveFailures={indexer.status?.consecutiveFailures ?? 0}
 									lastFailure={indexer.status?.lastFailure}
 									disabledUntil={indexer.status?.disabledUntil}
+									jackettManaged={isJackettIndexer(indexer)}
 								/>
 							</div>
-							<div class="truncate text-xs text-base-content/60">
-								{indexer.definitionName ?? indexer.definitionId}
+							<div class="mt-0.5 flex flex-wrap items-center gap-1">
+								<span class="text-xs text-base-content/60">
+									{indexer.definitionName ?? indexer.definitionId}
+								</span>
+								{#if isProwlarrIndexer(indexer)}
+									<span class="badge badge-primary badge-xs">Prowlarr</span>
+									{#if indexer.settings?.prowlarrEnabled === 'false'}
+										<span class="badge badge-warning badge-xs">Disabled in Prowlarr</span>
+									{/if}
+								{:else if isJackettIndexer(indexer)}
+									<span class="badge badge-secondary badge-xs">Jackett</span>
+								{/if}
 							</div>
 						</div>
 					</div>
@@ -460,6 +492,8 @@
 						{reorderMode}
 						isDragOver={dragOverIndex === index}
 						isDragging={draggedIndex === index}
+						{prowlarrBaseUrl}
+						{jackettBaseUrl}
 						{onSelect}
 						{onEdit}
 						{onDelete}

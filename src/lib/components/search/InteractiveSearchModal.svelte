@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
+	import { setContext } from 'svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import SearchHeader from './SearchHeader.svelte';
 	import SearchStats from './SearchStats.svelte';
@@ -105,6 +106,50 @@
 	let usenetStreamingState = $state<
 		'unknown' | 'available' | 'noConfiguredServers' | 'noEnabledServers' | 'unavailable'
 	>('unknown');
+
+	// Indexer source lookup: maps Cinephage indexer UUID → 'prowlarr' | 'jackett'.
+	// Populated lazily on first open by fetching the indexers list and connection URLs.
+	const indexerSourceCtx = $state<{ map: Map<string, 'prowlarr' | 'jackett'> }>({ map: new Map() });
+	setContext('indexerSources', indexerSourceCtx);
+	let indexerSourceLoaded = $state(false);
+
+	$effect(() => {
+		if (!open || indexerSourceLoaded) return;
+		indexerSourceLoaded = true;
+		Promise.all([
+			fetch('/api/indexers').then((r) => (r.ok ? r.json() : [])),
+			fetch('/api/indexers/prowlarr/connection').then((r) =>
+				r.ok ? r.json() : { connection: null }
+			),
+			fetch('/api/indexers/jackett/connection').then((r) =>
+				r.ok ? r.json() : { connection: null }
+			)
+		])
+			.then(([allIndexers, prowlarrData, jackettData]) => {
+				const prowlarrBase = prowlarrData.connection?.url?.replace(/\/+$/, '') ?? null;
+				const jackettBase = jackettData.connection?.url?.replace(/\/+$/, '') ?? null;
+				const map = new SvelteMap<string, 'prowlarr' | 'jackett'>();
+				for (const idx of allIndexers as { id: string; baseUrl: string }[]) {
+					const url = idx.baseUrl;
+					if (prowlarrBase && url.startsWith(prowlarrBase + '/')) {
+						const suffix = url.slice(prowlarrBase.length + 1).replace(/\/+$/, '');
+						if (/^\d+$/.test(suffix)) {
+							map.set(idx.id, 'prowlarr');
+							continue;
+						}
+					}
+					if (
+						jackettBase &&
+						url.startsWith(jackettBase + '/api/v2.0/indexers/') &&
+						url.includes('/results/torznab')
+					) {
+						map.set(idx.id, 'jackett');
+					}
+				}
+				indexerSourceCtx.map = map;
+			})
+			.catch(() => {});
+	});
 
 	let sortBy = $state<'score' | 'seeders' | 'size' | 'age'>('score');
 	let sortDir = $state<'asc' | 'desc'>('desc');

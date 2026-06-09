@@ -22,41 +22,64 @@ const DEFAULT_HOST_RATE_LIMIT: RateLimitConfig = {
 };
 
 /**
- * Extract hostname from URL.
+ * Extract host identifier from URL, including port when present.
+ * Including the port ensures that two different services on the same
+ * machine (e.g., Prowlarr on :9696 and Jackett on :9117) get separate buckets.
  */
 function extractHost(url: string): string {
 	try {
-		return new URL(url).hostname.toLowerCase();
+		const parsed = new URL(url);
+		const host = parsed.hostname.toLowerCase();
+		return parsed.port ? `${host}:${parsed.port}` : host;
 	} catch {
-		// Fallback for invalid URLs
 		return url.toLowerCase();
 	}
 }
 
 /**
- * Get base domain from hostname (e.g., "api.example.com" -> "example.com")
- * This groups subdomains together.
+ * Get base domain from a host string (optionally including port).
+ *
+ * For IP addresses and localhost the full host:port is returned as-is so
+ * rate limit buckets map precisely to one service rather than accidentally
+ * grouping unrelated IPs that share the same last two octets.
+ *
+ * For named hosts the registered domain is returned, grouping subdomains
+ * (e.g., "api.example.com:443" -> "example.com:443").
  */
-function getBaseDomain(hostname: string): string {
-	const parts = hostname.split('.');
+function getBaseDomain(hostWithPort: string): string {
+	// Separate port suffix (e.g., "example.com:8080" -> host="example.com", suffix=":8080")
+	// Safe for IPv4 — IPv6 would be "[::1]:port" which we don't currently handle.
+	let host = hostWithPort;
+	let portSuffix = '';
+	const lastColon = hostWithPort.lastIndexOf(':');
+	if (lastColon > -1) {
+		const afterColon = hostWithPort.slice(lastColon + 1);
+		if (/^\d+$/.test(afterColon)) {
+			host = hostWithPort.slice(0, lastColon);
+			portSuffix = hostWithPort.slice(lastColon);
+		}
+	}
 
-	// Handle special cases like .co.uk, .com.au, etc.
+	// IP addresses and localhost — return full host:port, no stripping
+	if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host === 'localhost' || host === '127.0.0.1') {
+		return hostWithPort;
+	}
+
+	const parts = host.split('.');
 	const multiPartTLDs = ['co.uk', 'com.au', 'co.nz', 'org.uk', 'net.au'];
 
 	if (parts.length >= 3) {
 		const lastTwo = parts.slice(-2).join('.');
 		if (multiPartTLDs.includes(lastTwo)) {
-			// e.g., "www.example.co.uk" -> "example.co.uk"
-			return parts.slice(-3).join('.');
+			return parts.slice(-3).join('.') + portSuffix;
 		}
 	}
 
-	// Standard case: "api.example.com" -> "example.com"
 	if (parts.length >= 2) {
-		return parts.slice(-2).join('.');
+		return parts.slice(-2).join('.') + portSuffix;
 	}
 
-	return hostname;
+	return hostWithPort;
 }
 
 /**
@@ -243,6 +266,41 @@ export class HostRateLimiter {
 				reason: `host ${host}`
 			};
 		}
+	}
+
+	/**
+	 * Atomically check both rate limits and record the request if it can proceed.
+	 *
+	 * No await occurs between the check and the record, so concurrent callers in
+	 * the same JS event-loop tick each see the updated count from previous callers.
+	 * This prevents the thundering-herd bug where all parallel callers see count=0
+	 * when recording is deferred to after the response.
+	 *
+	 * When canProceed is false the request has NOT been recorded — the caller must
+	 * wait the returned waitTimeMs and then record manually before dispatching.
+	 */
+	checkAndRecord(
+		indexerId: string,
+		url: string,
+		indexerLimiter: RateLimiter
+	): { canProceed: boolean; waitTimeMs: number; reason: string } {
+		const hostLimiter = this.getLimiterForUrl(url);
+
+		// Synchronous — no await between check and record
+		if (indexerLimiter.canProceed() && hostLimiter.canProceed()) {
+			indexerLimiter.recordRequest();
+			hostLimiter.recordRequest();
+			return { canProceed: true, waitTimeMs: 0, reason: 'none' };
+		}
+
+		const indexerWait = indexerLimiter.getWaitTime();
+		const hostWait = hostLimiter.getWaitTime();
+
+		if (indexerWait >= hostWait) {
+			return { canProceed: false, waitTimeMs: indexerWait, reason: `indexer ${indexerId}` };
+		}
+		const host = extractHost(url);
+		return { canProceed: false, waitTimeMs: hostWait, reason: `host ${host}` };
 	}
 
 	private getHostKey(hostname: string): string {

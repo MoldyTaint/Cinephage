@@ -11,7 +11,8 @@
 		SlidersHorizontal,
 		LayoutGrid,
 		List,
-		Plus
+		Plus,
+		Info
 	} from 'lucide-svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { getLocale } from '$lib/paraglide/runtime.js';
@@ -528,6 +529,16 @@
 				</div>
 			</div>
 		{/if}
+
+		<div
+			class="flex items-start gap-2 rounded-lg bg-base-200 px-3 py-2 text-sm text-base-content/50"
+		>
+			<Info class="mt-0.5 h-3.5 w-3.5 shrink-0" />
+			<p>
+				TV series must be in your library and monitored for upcoming episodes to appear here. Movies
+				can optionally include upcoming releases outside your library.
+			</p>
+		</div>
 
 		{#if loading}
 			<div class="flex items-center justify-center py-12">
