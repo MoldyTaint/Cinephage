@@ -47,7 +47,7 @@
 		"@vitest/browser": "^4.1.7",
 		"@vitest/browser-playwright": "^4.1.5",
 		"@vitest/coverage-v8": "^4.1.5",
-		"daisyui": "^5.5.19",
+		"daisyui": "^5.5.23",
 		"drizzle-orm": "^0.45.2",
 		"eslint": "^10.3.0",
 		"eslint-config-prettier": "^10.1.8",
