@@ -52,6 +52,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			scoringProfileId,
 			monitored,
 			minimumAvailability,
+			availabilityDelay,
 			searchOnAdd: shouldSearch,
 			wantsSubtitles
 		} = result.data;
@@ -156,6 +157,7 @@ export const POST: RequestHandler = async ({ request }) => {
 						scoringProfileId: effectiveProfileId,
 						monitored,
 						minimumAvailability,
+						availabilityDelay,
 						hasFile: false,
 						wantsSubtitles,
 						languageProfileId,

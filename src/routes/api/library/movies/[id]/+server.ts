@@ -80,7 +80,11 @@ export const GET: RequestHandler = async ({ params }) => {
 				minimumAvailability: movies.minimumAvailability,
 				added: movies.added,
 				hasFile: movies.hasFile,
-				wantsSubtitles: movies.wantsSubtitles
+				wantsSubtitles: movies.wantsSubtitles,
+				releaseDate: movies.releaseDate,
+				digitalReleaseDate: movies.digitalReleaseDate,
+				physicalReleaseDate: movies.physicalReleaseDate,
+				availabilityDelay: movies.availabilityDelay
 			})
 			.from(movies)
 			.leftJoin(rootFolders, eq(movies.rootFolderId, rootFolders.id))
@@ -210,6 +214,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		monitored,
 		scoringProfileId,
 		minimumAvailability,
+		availabilityDelay,
 		metadataProvider,
 		providerRefs,
 		rootFolderId,
@@ -253,6 +258,9 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	}
 	if (minimumAvailability) {
 		updateData.minimumAvailability = minimumAvailability;
+	}
+	if (availabilityDelay !== undefined) {
+		updateData.availabilityDelay = availabilityDelay;
 	}
 	if (metadataProvider !== undefined) {
 		updateData.metadataProvider = metadataProvider;

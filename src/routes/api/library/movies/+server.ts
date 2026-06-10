@@ -60,7 +60,11 @@ export const GET: RequestHandler = async (event) => {
 				added: movies.added,
 				hasFile: movies.hasFile,
 				tmdbCollectionId: movies.tmdbCollectionId,
-				collectionName: movies.collectionName
+				collectionName: movies.collectionName,
+				releaseDate: movies.releaseDate,
+				digitalReleaseDate: movies.digitalReleaseDate,
+				physicalReleaseDate: movies.physicalReleaseDate,
+				availabilityDelay: movies.availabilityDelay
 			})
 			.from(movies)
 			.leftJoin(rootFolders, eq(movies.rootFolderId, rootFolders.id));
@@ -140,6 +144,7 @@ export const POST: RequestHandler = async (event) => {
 			scoringProfileId,
 			monitored,
 			minimumAvailability,
+			availabilityDelay,
 			searchOnAdd: shouldSearch,
 			wantsSubtitles
 		} = result.data;
@@ -237,6 +242,7 @@ export const POST: RequestHandler = async (event) => {
 				scoringProfileId: effectiveProfileId,
 				monitored,
 				minimumAvailability,
+				availabilityDelay,
 				hasFile: false,
 				wantsSubtitles,
 				languageProfileId,

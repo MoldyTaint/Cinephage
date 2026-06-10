@@ -1434,6 +1434,7 @@ export const movieUpdateSchema = z.object({
 	monitored: z.boolean().optional(),
 	scoringProfileId: z.string().nullable().optional(),
 	minimumAvailability: z.string().min(1).optional(),
+	availabilityDelay: z.number().int().min(0).max(365).optional(),
 	metadataProvider: metadataProviderSelectionSchema.optional(),
 	providerRefs: z.partialRecord(z.enum(['tmdb', 'anilist', 'mal']), z.string().min(1)).optional(),
 	rootFolderId: z.string().optional(),

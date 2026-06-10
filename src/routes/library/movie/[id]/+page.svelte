@@ -488,6 +488,7 @@
 			movie.monitored = editData.monitored;
 			movie.scoringProfileId = editData.scoringProfileId;
 			movie.minimumAvailability = editData.minimumAvailability;
+			movie.availabilityDelay = editData.availabilityDelay;
 			movie.wantsSubtitles = editData.wantsSubtitles;
 			movie.metadataProvider = editData.metadataProvider;
 
