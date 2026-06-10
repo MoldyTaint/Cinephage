@@ -30,7 +30,7 @@
 	import { apiPostStream } from '$lib/api';
 	import type { SeriesEditData } from '$lib/components/library/SeriesEditModal.svelte';
 	import type { SearchMode } from '$lib/components/search/InteractiveSearchModal.svelte';
-	import { CheckSquare, FileEdit, Wifi, WifiOff, Loader2, RefreshCw, X } from 'lucide-svelte';
+	import { CheckSquare, FileEdit, RefreshCw, X } from 'lucide-svelte';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -1754,37 +1754,6 @@
 								{m.library_tvDetail_monitoringDisabledHint()}
 							</span>
 						</div>
-					{/if}
-				</div>
-				<div class="hidden shrink-0 items-center lg:flex">
-					{#if sse.isConnected}
-						<span
-							class="inline-flex items-center gap-1 rounded-full border border-success/70 bg-success/90 px-2.5 py-1 text-xs font-medium text-success-content shadow-sm"
-						>
-							<Wifi class="h-3 w-3" />
-							{m.library_tvDetail_sseLive()}
-						</span>
-					{:else if sse.status === 'error'}
-						<span
-							class="inline-flex items-center gap-1 rounded-full border border-warning/70 bg-warning/90 px-2.5 py-1 text-xs font-medium text-warning-content shadow-sm"
-						>
-							<Loader2 class="h-3 w-3 animate-spin" />
-							{m.library_tvDetail_sseReconnecting()}
-						</span>
-					{:else if sse.status === 'connecting'}
-						<span
-							class="inline-flex items-center gap-1 rounded-full border border-info/70 bg-info/90 px-2.5 py-1 text-xs font-medium text-info-content shadow-sm"
-						>
-							<Loader2 class="h-3 w-3 animate-spin" />
-							{m.library_tvDetail_sseConnecting()}
-						</span>
-					{:else}
-						<span
-							class="inline-flex items-center gap-1 rounded-full border border-base-100/35 bg-base-100/20 px-2.5 py-1 text-xs font-medium text-base-100 shadow-sm"
-						>
-							<WifiOff class="h-3 w-3" />
-							{m.library_tvDetail_sseOffline()}
-						</span>
 					{/if}
 				</div>
 			</div>

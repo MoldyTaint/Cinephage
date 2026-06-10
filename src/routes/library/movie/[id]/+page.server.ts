@@ -12,6 +12,7 @@ import { eq, and, inArray } from 'drizzle-orm';
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import type { LibraryMovie, MovieFile, QualityProfileSummary } from '$lib/types/library';
+import type { MovieDetails } from '$lib/types/tmdb';
 import { tmdb } from '$lib/server/tmdb.js';
 import { logger } from '$lib/logging';
 import { isMovieSearching } from '$lib/server/library/ActiveSearchTracker.js';
@@ -28,6 +29,7 @@ export interface QueueItemInfo {
 
 export interface LibraryMoviePageData {
 	movie: LibraryMovie;
+	tmdbDetails: MovieDetails | null;
 	qualityProfiles: QualityProfileSummary[];
 	rootFolders: Array<{
 		id: string;
@@ -106,7 +108,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 
 	const movie = movieResult[0];
 
-	const [files, movieSubtitles, releaseInfo] = await Promise.all([
+	const [files, movieSubtitles, releaseInfo, tmdbDetails] = await Promise.all([
 		db.select().from(movieFiles).where(eq(movieFiles.movieId, id)),
 		db
 			.select({
@@ -131,6 +133,17 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 					error: err instanceof Error ? err.message : String(err)
 				},
 				'[LibraryMovie] Failed to fetch TMDB release info'
+			);
+			return null;
+		}),
+		tmdb.getMovie(movie.tmdbId).catch((err) => {
+			logger.warn(
+				{
+					movieId: id,
+					tmdbId: movie.tmdbId,
+					error: err instanceof Error ? err.message : String(err)
+				},
+				'[LibraryMovie] Failed to fetch TMDB movie details'
 			);
 			return null;
 		})
@@ -310,6 +323,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 
 	return {
 		movie: movieWithFiles,
+		tmdbDetails,
 		qualityProfiles: allQualityProfiles,
 		rootFolders: folders,
 		queueItem,

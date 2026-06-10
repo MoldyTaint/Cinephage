@@ -33,7 +33,7 @@
 		type ActivitySummary
 	} from '$lib/types/activity';
 	import type { ActivityStreamEvents } from '$lib/types/sse/events/activity-events.js';
-	import { Activity, Loader2, Wifi, WifiOff } from 'lucide-svelte';
+	import { Activity, Loader2 } from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import {
 		ACTIVITY_REFRESH_MIN_INTERVAL_MS,
@@ -1307,25 +1307,6 @@
 				{m.activity_title()}
 			</h1>
 			<p class="text-base-content/70">{m.activity_subtitle()}</p>
-		</div>
-		<!-- Connection Status -->
-		<div class="hidden lg:block">
-			{#if sse.isConnected}
-				<span class="badge gap-1 badge-success">
-					<Wifi class="h-3 w-3" />
-					{m.common_live()}
-				</span>
-			{:else if sse.status === 'connecting' || sse.status === 'error'}
-				<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
-					<Loader2 class="h-3 w-3 animate-spin" />
-					{sse.status === 'error' ? m.common_reconnecting() : m.common_connecting()}
-				</span>
-			{:else}
-				<span class="badge gap-1 badge-ghost">
-					<WifiOff class="h-3 w-3" />
-					{m.common_disconnected()}
-				</span>
-			{/if}
 		</div>
 	</div>
 

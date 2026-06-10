@@ -33,7 +33,7 @@
 	import { ApiError } from '$lib/api/client.js';
 	import { apiGetStream } from '$lib/api';
 	import type { MovieEditData } from '$lib/components/library/MovieEditModal.svelte';
-	import { FileEdit, Wifi, WifiOff, Loader2, RefreshCw, Captions } from 'lucide-svelte';
+	import { FileEdit, Loader2, RefreshCw, Captions } from 'lucide-svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
@@ -765,63 +765,11 @@
 </svelte:head>
 
 <div class="flex w-full flex-col gap-4 overflow-x-hidden px-4 pb-20 md:gap-6 md:px-6 lg:px-8">
-	<div class="flex flex-col gap-2">
-		<!-- Monitoring Status Banner -->
-		<div
-			class="rounded-lg px-3 py-2 text-sm font-medium text-base-100 md:px-4 md:py-3 {movie.monitored
-				? 'bg-success/80'
-				: 'bg-error/80'}"
-		>
-			<div class="flex items-start justify-between gap-3">
-				<div class="min-w-0">
-					{#if movie.monitored}
-						{m.library_movieDetail_monitoringEnabled()}
-					{:else}
-						<div>
-							{m.library_movieDetail_monitoringDisabled()}
-							<span class="block text-xs font-normal text-base-100/90">
-								{m.library_movieDetail_monitoringDisabledHint()}
-							</span>
-						</div>
-					{/if}
-				</div>
-				<div class="hidden shrink-0 items-center lg:flex">
-					{#if sse.isConnected}
-						<span
-							class="inline-flex items-center gap-1 rounded-full border border-success/70 bg-success/90 px-2.5 py-1 text-xs font-medium text-success-content shadow-sm"
-						>
-							<Wifi class="h-3 w-3" />
-							{m.library_movieDetail_sseLive()}
-						</span>
-					{:else if sse.status === 'error'}
-						<span
-							class="inline-flex items-center gap-1 rounded-full border border-warning/70 bg-warning/90 px-2.5 py-1 text-xs font-medium text-warning-content shadow-sm"
-						>
-							<Loader2 class="h-3 w-3 animate-spin" />
-							{m.library_movieDetail_sseReconnecting()}
-						</span>
-					{:else if sse.status === 'connecting'}
-						<span
-							class="inline-flex items-center gap-1 rounded-full border border-info/70 bg-info/90 px-2.5 py-1 text-xs font-medium text-info-content shadow-sm"
-						>
-							<Loader2 class="h-3 w-3 animate-spin" />
-							{m.library_movieDetail_sseConnecting()}
-						</span>
-					{:else}
-						<span
-							class="inline-flex items-center gap-1 rounded-full border border-base-100/35 bg-base-100/20 px-2.5 py-1 text-xs font-medium text-base-100 shadow-sm"
-						>
-							<WifiOff class="h-3 w-3" />
-							{m.library_movieDetail_sseOffline()}
-						</span>
-					{/if}
-				</div>
-			</div>
-		</div>
-	</div>
 	<!-- Header -->
 	<LibraryMovieHeader
 		{movie}
+		tmdbMovie={data.tmdbDetails}
+		defaultRegion={page.data.defaultRegion}
 		configuredProviders={data.configuredMetadataProviders}
 		{qualityProfileName}
 		isDownloading={queueItem !== null}
@@ -944,16 +892,6 @@
 
 		<!-- Sidebar -->
 		<div class="min-w-0 space-y-4 md:space-y-6">
-			<!-- Overview -->
-			{#if movie.overview}
-				<div class="rounded-xl bg-base-200 p-4 md:p-6">
-					<h3 class="mb-2 font-semibold">{m.library_movieDetail_overviewHeading()}</h3>
-					<p class="text-sm leading-relaxed text-base-content/80">
-						{movie.overview}
-					</p>
-				</div>
-			{/if}
-
 			<!-- Details -->
 			<div class="rounded-xl bg-base-200 p-4 md:p-6">
 				<h3 class="mb-3 font-semibold">{m.library_movieDetail_detailsHeading()}</h3>

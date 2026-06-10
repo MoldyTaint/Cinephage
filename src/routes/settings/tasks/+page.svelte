@@ -6,7 +6,7 @@
 	import TasksTable from '$lib/components/tasks/TasksTable.svelte';
 	import CreateTaskPlaceholder from '$lib/components/tasks/CreateTaskPlaceholder.svelte';
 	import { SettingsPage } from '$lib/components/ui/settings';
-	import { Wifi, Plus, XCircle, CheckCircle2 } from 'lucide-svelte';
+	import { Plus, XCircle, CheckCircle2 } from 'lucide-svelte';
 	import { createSSE } from '$lib/sse';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import { cancelTask, setTaskEnabled, runTask } from '$lib/api/tasks.js';
@@ -293,18 +293,6 @@
 
 <SettingsPage title={m.settings_tasks_heading()} subtitle={m.settings_tasks_subtitle()}>
 	{#snippet actions()}
-		<div class="hidden items-center gap-2 lg:flex">
-			{#if sse.isConnected}
-				<span class="badge gap-1 badge-success">
-					<Wifi class="h-3 w-3" />
-					{m.common_live()}
-				</span>
-			{:else if sse.status === 'connecting' || sse.status === 'error'}
-				<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
-					{sse.status === 'error' ? m.common_reconnecting() : m.common_connecting()}
-				</span>
-			{/if}
-		</div>
 		<button
 			class="btn w-full gap-2 btn-sm btn-primary sm:w-auto"
 			onclick={() => (showCreateModal = true)}

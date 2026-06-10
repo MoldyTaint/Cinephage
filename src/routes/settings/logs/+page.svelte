@@ -6,8 +6,7 @@
 		Search,
 		CalendarSync,
 		CalendarClock,
-		Wifi,
-		WifiOff,
+
 		X
 	} from 'lucide-svelte';
 
@@ -600,24 +599,7 @@
 
 <SettingsPage title={m.settings_logs_heading()} subtitle={m.settings_logs_subtitle()}>
 	{#snippet actions()}
-		<div class="hidden items-center gap-2 sm:flex">
-			{#if sse.isConnected}
-				<span class="badge gap-1 badge-success">
-					<Wifi class="h-3 w-3" />
-					{m.common_live()}
-				</span>
-			{:else if sse.status === 'connecting' || sse.status === 'error'}
-				<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
-					<Loader2 class="h-3 w-3 animate-spin" />
-					{sse.status === 'error' ? m.common_reconnecting() : m.common_connecting()}
-				</span>
-			{:else}
-				<span class="badge gap-1 badge-ghost">
-					<WifiOff class="h-3 w-3" />
-					{m.common_disconnected()}
-				</span>
-			{/if}
-		</div>
+
 	{/snippet}
 
 	<!-- Log viewer card -->
@@ -641,7 +623,7 @@
 				<!-- Domain -->
 				<div class="w-full sm:w-48">
 					<select
-						class="select select-sm border-base-content/20 transition-all duration-200 hover:bg-base-200 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 focus:outline-none w-full"
+						class="select w-full border-base-content/20 select-sm transition-all duration-200 hover:bg-base-200 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 						bind:value={selectedDomain}
 					>
 						<option value="all">All domains</option>
@@ -671,7 +653,7 @@
 				<div class="flex items-center gap-1">
 					{#each [{ label: '1h', hours: 1 }, { label: '6h', hours: 6 }, { label: '24h', hours: 24 }, { label: '7d', hours: 168 }] as range (range.label)}
 						<button
-							class="btn btn-xs font-mono {activeQuickRange === range.hours
+							class="btn font-mono btn-xs {activeQuickRange === range.hours
 								? 'btn-primary'
 								: 'btn-ghost'}"
 							onclick={() => setQuickRange(range.hours)}
@@ -729,7 +711,7 @@
 
 				<!-- Retention dropdown -->
 				<div class="dropdown">
-					<button class="btn btn-ghost btn-sm gap-1.5 text-xs" aria-label="Log retention settings">
+					<button class="btn gap-1.5 text-xs btn-ghost btn-sm" aria-label="Log retention settings">
 						<CalendarSync class="h-3.5 w-3.5" />
 						<span class="font-mono">{retentionDays}d</span>
 					</button>
@@ -750,12 +732,12 @@
 									type="number"
 									min="1"
 									max={maxRetentionDays}
-									class="input input-bordered input-xs w-20"
+									class="input-bordered input input-xs w-20"
 									bind:value={retentionDays}
 								/>
 								<span class="text-xs text-base-content/60">days</span>
 								<button
-									class="btn btn-ghost btn-xs ml-auto"
+									class="btn ml-auto btn-ghost btn-xs"
 									onclick={() => (retentionDays = defaultRetentionDays)}
 									disabled={retentionSaving}
 								>
@@ -763,7 +745,7 @@
 								</button>
 							</div>
 							<button
-								class="btn btn-primary btn-xs w-full"
+								class="btn w-full btn-xs btn-primary"
 								onclick={saveRetentionDays}
 								disabled={retentionSaving}
 							>
@@ -777,20 +759,20 @@
 				</div>
 
 				<!-- Refresh (shows spinner inline while loading) -->
-				<button class="btn btn-ghost btn-sm text-xs" onclick={refreshCurrentView}>
+				<button class="btn text-xs btn-ghost btn-sm" onclick={refreshCurrentView}>
 					{#if historyLoading}
 						<Loader2 class="h-3.5 w-3.5 animate-spin" />
 					{/if}
 					Refresh
 				</button>
 
-				<button class="btn btn-ghost btn-sm text-xs" onclick={downloadHistoryLogs}>
+				<button class="btn text-xs btn-ghost btn-sm" onclick={downloadHistoryLogs}>
 					<Download class="h-3.5 w-3.5" />
 					<span class="sm:inline">Export</span>
 				</button>
 
 				{#if hasActiveFilters}
-					<button class="btn btn-ghost btn-xs gap-1 text-error" onclick={resetFilters}>
+					<button class="btn gap-1 text-error btn-ghost btn-xs" onclick={resetFilters}>
 						<X class="h-3 w-3" />
 						Clear filters
 					</button>
@@ -802,13 +784,13 @@
 				<div class="flex flex-col gap-2 border-t border-base-300 px-3 py-3 sm:hidden">
 					<input
 						type="datetime-local"
-						class="input input-bordered input-sm w-full"
+						class="input-bordered input input-sm w-full"
 						bind:value={from}
 						oninput={() => (activeQuickRange = null)}
 					/>
 					<input
 						type="datetime-local"
-						class="input input-bordered input-sm w-full"
+						class="input-bordered input input-sm w-full"
 						bind:value={to}
 						oninput={() => (activeQuickRange = null)}
 					/>
@@ -853,12 +835,12 @@
 						No logs matched the current filters. Clear filters or wait for new matching entries.
 					</div>
 				{:else}
-					<table class="table-pin-rows table table-sm w-full">
+					<table class="table-pin-rows table w-full table-sm">
 						<thead>
 							<tr
 								class="bg-base-200/90 text-[10px] tracking-[0.12em] text-base-content/50 uppercase"
 							>
-								<th class="w-4 pl-0 pr-0"></th>
+								<th class="w-4 pr-0 pl-0"></th>
 								<th class="w-24">Time</th>
 								<th class="w-16">Level</th>
 								<th class="hidden w-32 sm:table-cell">Source</th>
@@ -939,7 +921,7 @@
 				</div>
 				<div class="flex items-center gap-2">
 					{#if showJumpToLatest}
-						<button class="btn btn-primary btn-xs" onclick={jumpToLatest}>
+						<button class="btn btn-xs btn-primary" onclick={jumpToLatest}>
 							{#if pendingLiveCount > 0}
 								Jump to latest ({pendingLiveCount} new)
 							{:else}

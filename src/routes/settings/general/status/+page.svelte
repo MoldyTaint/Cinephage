@@ -6,6 +6,7 @@
 	import { StorageMaintenanceSection } from '$lib/components/libraries';
 	import { MediaServerStatsSection } from '$lib/components/status';
 	import { createSSE } from '$lib/sse';
+	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import type {
 		RootFolder,
@@ -145,6 +146,11 @@
 			scanning = false;
 			scanProgress = null;
 		}
+	});
+
+	$effect(() => {
+		layoutState.setMobileSseStatus(deriveMobileSseStatus(sse));
+		return () => layoutState.clearMobileSseStatus();
 	});
 
 	function formatBytes(value: number) {

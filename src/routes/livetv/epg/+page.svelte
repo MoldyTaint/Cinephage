@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-	import { Calendar, LayoutGrid, Settings, Wifi, WifiOff, Loader2 } from 'lucide-svelte';
+	import { Calendar, LayoutGrid, Settings } from 'lucide-svelte';
 	import {
 		EpgStatusPanel,
 		EpgCoverageTable,
@@ -267,25 +267,6 @@
 		<div>
 			<h1 class="text-2xl font-bold">{m.livetv_epg_heading()}</h1>
 			<p class="mt-1 text-base-content/60">{m.livetv_epg_subtitle()}</p>
-		</div>
-		<!-- Connection Status -->
-		<div class="hidden lg:block">
-			{#if sse.isConnected}
-				<span class="badge gap-1 badge-success">
-					<Wifi class="h-3 w-3" />
-					{m.common_live()}
-				</span>
-			{:else if sse.status === 'connecting' || sse.status === 'error'}
-				<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
-					<Loader2 class="h-3 w-3 animate-spin" />
-					{sse.status === 'error' ? m.common_reconnecting() : m.common_connecting()}
-				</span>
-			{:else}
-				<span class="badge gap-1 badge-ghost">
-					<WifiOff class="h-3 w-3" />
-					{m.common_disconnected()}
-				</span>
-			{/if}
 		</div>
 	</div>
 

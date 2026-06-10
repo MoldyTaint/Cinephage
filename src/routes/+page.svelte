@@ -15,7 +15,6 @@
 		TrendingUp,
 		Compass,
 		ArrowRight,
-		Wifi,
 		ListTodo,
 		HardDrive
 	} from 'lucide-svelte';
@@ -258,18 +257,6 @@
 			<p class="text-base-content/70">{m.dashboard_subtitle()}</p>
 		</div>
 		<div class="flex items-center gap-2">
-			<div class="hidden items-center gap-2 lg:flex">
-				{#if sse?.isConnected}
-					<span class="badge gap-1 badge-success">
-						<Wifi class="h-3 w-3" />
-						{m.common_live()}
-					</span>
-				{:else if sse?.status === 'connecting' || sse?.status === 'error'}
-					<span class="badge gap-1 {sse?.status === 'error' ? 'badge-error' : 'badge-warning'}">
-						{sse?.status === 'error' ? m.common_reconnecting() : m.common_connecting()}
-					</span>
-				{/if}
-			</div>
 			<a href={resolve('/discover')} class="btn gap-2 btn-sm btn-primary sm:w-auto">
 				<Plus class="h-4 w-4" />
 				{m.dashboard_addContent()}
@@ -301,6 +288,12 @@
 					{#if stats.movies.missing > 0}
 						<span class="badge badge-sm badge-warning"
 							>{m.dashboard_stats_missingCount({ count: stats.movies.missing })}</span
+						>
+					{/if}
+					{#if (stats.movies.inCinemas || 0) > 0}
+						<span class="badge badge-sm badge-info"
+							>{m.dashboard_stats_inTheatersCount?.({ count: stats.movies.inCinemas }) ??
+								`${stats.movies.inCinemas} in theaters`}</span
 						>
 					{/if}
 					{#if (stats.movies.unreleased || 0) > 0}
