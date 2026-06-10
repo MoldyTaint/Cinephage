@@ -280,7 +280,7 @@
 	<!-- Authentication Section (collapsible, only when has settings) -->
 	{#if prowlarrManaged || jackettManaged}
 		<div
-			class="rounded-box flex items-center gap-3 border border-base-300 bg-base-200/60 px-4 py-3 text-sm text-base-content/70"
+			class="flex items-center gap-3 rounded-box border border-base-300 bg-base-200/60 px-4 py-3 text-sm text-base-content/70"
 		>
 			<Lock class="h-4 w-4 shrink-0" />
 			<span

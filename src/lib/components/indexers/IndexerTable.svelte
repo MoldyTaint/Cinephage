@@ -265,12 +265,12 @@
 									{indexer.definitionName ?? indexer.definitionId}
 								</span>
 								{#if isProwlarrIndexer(indexer)}
-									<span class="badge badge-primary badge-xs">Prowlarr</span>
+									<span class="badge badge-xs badge-primary">Prowlarr</span>
 									{#if indexer.settings?.prowlarrEnabled === 'false'}
-										<span class="badge badge-warning badge-xs">Disabled in Prowlarr</span>
+										<span class="badge badge-xs badge-warning">Disabled in Prowlarr</span>
 									{/if}
 								{:else if isJackettIndexer(indexer)}
-									<span class="badge badge-secondary badge-xs">Jackett</span>
+									<span class="badge badge-xs badge-secondary">Jackett</span>
 								{/if}
 							</div>
 						</div>

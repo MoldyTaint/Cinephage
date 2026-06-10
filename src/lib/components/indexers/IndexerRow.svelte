@@ -125,12 +125,12 @@
 				{indexer.name}
 			</button>
 			{#if isProwlarrIndexer()}
-				<span class="badge badge-primary badge-xs">Prowlarr</span>
+				<span class="badge badge-xs badge-primary">Prowlarr</span>
 				{#if indexer.settings?.prowlarrEnabled === 'false'}
-					<span class="badge badge-warning badge-xs">Disabled in Prowlarr</span>
+					<span class="badge badge-xs badge-warning">Disabled in Prowlarr</span>
 				{/if}
 			{:else if isJackettIndexer()}
-				<span class="badge badge-secondary badge-xs">Jackett</span>
+				<span class="badge badge-xs badge-secondary">Jackett</span>
 			{/if}
 		</div>
 	</td>

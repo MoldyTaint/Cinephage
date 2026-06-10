@@ -327,7 +327,7 @@
 				<div>
 					<div class="flex items-center gap-2">
 						<span class="font-semibold">{indexer.name}</span>
-						<span class="badge badge-primary badge-sm">Prowlarr</span>
+						<span class="badge badge-sm badge-primary">Prowlarr</span>
 						<span class="badge badge-ghost badge-sm">{indexer.protocol}</span>
 					</div>
 					<div class="text-sm text-base-content/60">
@@ -346,7 +346,7 @@
 				<div>
 					<div class="flex items-center gap-2">
 						<span class="font-semibold">{indexer.name}</span>
-						<span class="badge badge-secondary badge-sm">Jackett</span>
+						<span class="badge badge-sm badge-secondary">Jackett</span>
 						<span class="badge badge-ghost badge-sm">{indexer.protocol}</span>
 					</div>
 					<div class="text-sm text-base-content/60">

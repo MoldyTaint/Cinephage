@@ -240,9 +240,9 @@
 									{result.name}: {result.displayCount}
 								{/if}
 								{#if indexerSourceCtx?.map.get(result.indexerId) === 'prowlarr'}
-									<span class="badge badge-primary badge-xs opacity-80">P</span>
+									<span class="badge badge-xs opacity-80 badge-primary">P</span>
 								{:else if indexerSourceCtx?.map.get(result.indexerId) === 'jackett'}
-									<span class="badge badge-secondary badge-xs opacity-80">J</span>
+									<span class="badge badge-xs opacity-80 badge-secondary">J</span>
 								{/if}
 								{#if result.error}
 									<span class="tooltip" data-tip={result.error}>
@@ -267,9 +267,9 @@
 								<XCircle size={12} />
 								{rejected.indexerName}
 								{#if indexerSourceCtx?.map.get(rejected.indexerId) === 'prowlarr'}
-									<span class="badge badge-primary badge-xs opacity-80">P</span>
+									<span class="badge badge-xs opacity-80 badge-primary">P</span>
 								{:else if indexerSourceCtx?.map.get(rejected.indexerId) === 'jackett'}
-									<span class="badge badge-secondary badge-xs opacity-80">J</span>
+									<span class="badge badge-xs opacity-80 badge-secondary">J</span>
 								{/if}
 							</div>
 						{/each}

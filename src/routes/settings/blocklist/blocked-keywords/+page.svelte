@@ -166,7 +166,7 @@
 	subtitle="Content matching these TMDB keywords will be hidden from discover and smartlist results."
 >
 	{#snippet actions()}
-		<button class="btn btn-outline btn-sm gap-2" onclick={handleSeedDefaults} disabled={seeding}>
+		<button class="btn gap-2 btn-outline btn-sm" onclick={handleSeedDefaults} disabled={seeding}>
 			{#if seeding}
 				<Loader2 class="h-4 w-4 animate-spin" />
 			{:else}
@@ -208,7 +208,7 @@
 							{#if alreadyBlocked}
 								<button
 									type="button"
-									class="btn btn-xs btn-error btn-outline gap-1"
+									class="btn gap-1 btn-outline btn-xs btn-error"
 									onclick={() => removeKeywordByKeywordId(keyword.id)}
 								>
 									<X class="h-3 w-3" /> Remove
@@ -216,7 +216,7 @@
 							{:else}
 								<button
 									type="button"
-									class="btn btn-xs btn-primary gap-1"
+									class="btn gap-1 btn-xs btn-primary"
 									onclick={() => addKeyword(keyword)}
 								>
 									<Plus class="h-3 w-3" /> Add
@@ -241,14 +241,14 @@
 						{#if selectedIds.size > 0}
 							<span class="text-sm text-base-content/60">{selectedIds.size} selected</span>
 							<button
-								class="btn btn-sm btn-error gap-1.5"
+								class="btn gap-1.5 btn-sm btn-error"
 								onclick={() => (confirmBulkRemoveOpen = true)}
 							>
 								<Trash2 class="h-3.5 w-3.5" /> Remove selected
 							</button>
 						{/if}
 						<button
-							class="btn btn-sm btn-ghost btn-error gap-1.5"
+							class="btn gap-1.5 btn-ghost btn-sm btn-error"
 							onclick={() => (confirmRemoveAllOpen = true)}
 						>
 							<Trash2 class="h-3.5 w-3.5" /> Remove all
@@ -305,7 +305,7 @@
 									>
 									<td>
 										<button
-											class="btn btn-ghost btn-xs text-error"
+											class="btn text-error btn-ghost btn-xs"
 											onclick={() => removeKeyword(kw.id)}
 										>
 											<X class="h-3 w-3" /> Remove

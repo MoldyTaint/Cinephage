@@ -199,13 +199,13 @@
 
 <SettingsPage title={m.blocklist_pageTitle()} subtitle={m.blocklist_pageSubtitle()}>
 	{#snippet actions()}
-		<button class="btn btn-ghost btn-sm gap-1" onclick={() => (confirmPurgeExpiredOpen = true)}>
+		<button class="btn gap-1 btn-ghost btn-sm" onclick={() => (confirmPurgeExpiredOpen = true)}>
 			<Clock class="h-4 w-4" />
 			{m.blocklist_purgeExpired()}
 		</button>
 		{#if entries.length > 0}
 			<button
-				class="btn btn-ghost btn-error btn-sm gap-1"
+				class="btn gap-1 btn-ghost btn-sm btn-error"
 				onclick={() => (confirmRemoveAllOpen = true)}
 			>
 				<Trash2 class="h-4 w-4" />
@@ -228,7 +228,7 @@
 		</div>
 
 		<div class="w-full sm:w-48">
-			<select class="select-bordered select select-sm w-full" bind:value={filters.reason}>
+			<select class="select-bordered select w-full select-sm" bind:value={filters.reason}>
 				<option value="">{m.blocklist_filterAllReasons()}</option>
 				<option value="download_failed">{m.blocklist_reason_downloadFailed()}</option>
 				<option value="import_failed">{m.blocklist_reason_importFailed()}</option>
@@ -240,7 +240,7 @@
 		</div>
 
 		<div class="w-full sm:w-48">
-			<select class="select-bordered select select-sm w-full" bind:value={filters.protocol}>
+			<select class="select-bordered select w-full select-sm" bind:value={filters.protocol}>
 				<option value="">{m.blocklist_filterAllProtocols()}</option>
 				<option value="torrent">{m.common_torrent()}</option>
 				<option value="usenet">{m.common_usenet()}</option>

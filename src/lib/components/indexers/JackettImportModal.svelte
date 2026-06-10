@@ -348,7 +348,7 @@
 			{#if step === 'selectIndexers'}
 				<button
 					type="button"
-					class="btn btn-ghost btn-xs btn-square -ml-1"
+					class="btn -ml-1 btn-square btn-ghost btn-xs"
 					onclick={() => (step = connection ? 'manage' : 'connect')}
 					aria-label="Back"
 				>
@@ -358,7 +358,7 @@
 			<Download class="h-5 w-5 text-primary" />
 			<h2 class="text-lg font-semibold">{stepTitle}</h2>
 		</div>
-		<button type="button" class="btn btn-ghost btn-sm btn-square" onclick={handleClose}>
+		<button type="button" class="btn btn-square btn-ghost btn-sm" onclick={handleClose}>
 			<X class="h-4 w-4" />
 		</button>
 	</div>
@@ -378,7 +378,7 @@
 				<input
 					id="jackett-url"
 					type="url"
-					class="input input-bordered w-full"
+					class="input-bordered input w-full"
 					placeholder="http://localhost:9117"
 					bind:value={jackettUrl}
 					disabled={connecting}
@@ -391,7 +391,7 @@
 				<input
 					id="jackett-key"
 					type="password"
-					class="input input-bordered w-full font-mono"
+					class="input-bordered input w-full font-mono"
 					placeholder="Your Jackett API key"
 					bind:value={apiKey}
 					disabled={connecting}
@@ -410,7 +410,7 @@
 				<input
 					id="jackett-admin-password"
 					type="password"
-					class="input input-bordered w-full"
+					class="input-bordered input w-full"
 					placeholder="Leave blank if no password is set"
 					bind:value={adminPassword}
 					disabled={connecting}
@@ -436,7 +436,7 @@
 					</label>
 					<select
 						id="sync-interval"
-						class="select select-bordered select-sm"
+						class="select-bordered select select-sm"
 						bind:value={syncIntervalHours}
 					>
 						<option value={6}>Every 6 hours</option>
@@ -457,14 +457,14 @@
 				<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={syncAddNew} />
 			</div>
 			{#if connectError}
-				<div class="alert alert-error py-2 text-sm">{connectError}</div>
+				<div class="alert py-2 text-sm alert-error">{connectError}</div>
 			{/if}
 		</div>
 		<div class="flex shrink-0 justify-between gap-2 border-t border-base-300 px-6 py-4">
 			<button type="button" class="btn btn-ghost btn-sm" onclick={handleClose}>Cancel</button>
 			<button
 				type="button"
-				class="btn btn-primary btn-sm"
+				class="btn btn-sm btn-primary"
 				onclick={handleConnect}
 				disabled={!jackettUrl || !apiKey || connecting}
 			>
@@ -481,13 +481,13 @@
 	{:else if step === 'manage'}
 		<div class="flex-1 space-y-4 overflow-y-auto p-6">
 			<div
-				class="rounded-box space-y-2 p-4 {connection?.lastSyncError
+				class="space-y-2 rounded-box p-4 {connection?.lastSyncError
 					? 'border border-warning/30 bg-warning/5'
 					: 'bg-base-200/60'}"
 			>
 				<div class="flex items-start justify-between gap-4">
 					<div class="min-w-0">
-						<p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">
+						<p class="text-xs font-semibold tracking-wide text-base-content/50 uppercase">
 							Connected to
 						</p>
 						<p class="mt-0.5 truncate text-sm font-medium">{connection?.url}</p>
@@ -529,7 +529,7 @@
 				</div>
 				<button
 					type="button"
-					class="btn btn-primary btn-sm gap-1.5"
+					class="btn gap-1.5 btn-sm btn-primary"
 					onclick={handleSyncNow}
 					disabled={syncing}
 				>
@@ -544,7 +544,7 @@
 			</div>
 
 			{#if syncError}
-				<div class="alert alert-error py-2 text-sm">{syncError}</div>
+				<div class="alert py-2 text-sm alert-error">{syncError}</div>
 			{/if}
 
 			<div class="divider my-1 text-xs text-base-content/50">Auto-sync settings</div>
@@ -571,7 +571,7 @@
 					</label>
 					<select
 						id="manage-sync-interval"
-						class="select select-bordered select-sm"
+						class="select-bordered select select-sm"
 						value={syncIntervalHours}
 						onchange={(e) => {
 							syncIntervalHours = Number((e.currentTarget as HTMLSelectElement).value);
@@ -606,20 +606,20 @@
 			</div>
 
 			{#if connectError}
-				<div class="alert alert-error py-2 text-sm">{connectError}</div>
+				<div class="alert py-2 text-sm alert-error">{connectError}</div>
 			{/if}
 
 			<div class="divider my-1"></div>
 
 			{#if confirmingDelete}
-				<div class="rounded-box space-y-2 border border-error/30 bg-error/5 p-3">
+				<div class="space-y-2 rounded-box border border-error/30 bg-error/5 p-3">
 					<p class="text-sm font-medium text-error">Delete this connection?</p>
 					<p class="text-xs text-base-content/70">
 						Already imported indexers will remain in Cinephage. Only the saved connection and
 						auto-sync will be removed.
 					</p>
 					<div class="flex gap-2 pt-1">
-						<button type="button" class="btn btn-error btn-xs" onclick={handleDeleteConnection}>
+						<button type="button" class="btn btn-xs btn-error" onclick={handleDeleteConnection}>
 							<Trash2 class="h-3.5 w-3.5" />
 							Yes, delete
 						</button>
@@ -634,7 +634,7 @@
 				<div class="flex items-center justify-between">
 					<button
 						type="button"
-						class="btn btn-ghost btn-sm gap-1.5 text-base-content/60"
+						class="btn gap-1.5 text-base-content/60 btn-ghost btn-sm"
 						onclick={() => {
 							jackettUrl = connection?.url ?? '';
 							apiKey = '';
@@ -647,7 +647,7 @@
 					</button>
 					<button
 						type="button"
-						class="btn btn-ghost btn-sm gap-1.5 text-error/70"
+						class="btn gap-1.5 text-error/70 btn-ghost btn-sm"
 						onclick={() => (confirmingDelete = true)}
 					>
 						<Trash2 class="h-4 w-4" />
@@ -659,7 +659,7 @@
 		<div class="flex shrink-0 justify-between gap-2 border-t border-base-300 px-6 py-4">
 			<button
 				type="button"
-				class="btn btn-ghost btn-sm gap-1.5"
+				class="btn gap-1.5 btn-ghost btn-sm"
 				disabled={browsingIndexers}
 				onclick={browseAndImport}
 			>
@@ -671,7 +671,7 @@
 					Browse &amp; import
 				{/if}
 			</button>
-			<button type="button" class="btn btn-primary btn-sm" onclick={handleClose}>
+			<button type="button" class="btn btn-sm btn-primary" onclick={handleClose}>
 				{#if savingSettings}
 					<Loader2 class="h-4 w-4 animate-spin" />
 				{/if}
@@ -713,7 +713,7 @@
 						>
 							<input
 								type="checkbox"
-								class="checkbox checkbox-sm shrink-0"
+								class="checkbox shrink-0 checkbox-sm"
 								checked={selected.has(indexer.id)}
 								disabled={indexer.alreadyImported}
 								onchange={(e) => toggleOne(indexer.id, (e.target as HTMLInputElement).checked)}
@@ -743,7 +743,7 @@
 				</button>
 				<button
 					type="button"
-					class="btn btn-primary btn-sm"
+					class="btn btn-sm btn-primary"
 					onclick={handleImport}
 					disabled={selected.size === 0 || importing}
 				>
@@ -807,7 +807,7 @@
 			{/if}
 		</div>
 		<div class="flex shrink-0 justify-end border-t border-base-300 px-6 py-4">
-			<button type="button" class="btn btn-primary btn-sm" onclick={handleClose}>Done</button>
+			<button type="button" class="btn btn-sm btn-primary" onclick={handleClose}>Done</button>
 		</div>
 	{/if}
 </ModalWrapper>

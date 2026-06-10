@@ -61,7 +61,7 @@
 	subtitle="Video file extensions listed here will be skipped during library scans globally. A root folder's own blocked extension list takes priority over this global setting."
 >
 	{#snippet actions()}
-		<button class="btn btn-primary btn-sm" onclick={handleSave} disabled={saving}>
+		<button class="btn btn-sm btn-primary" onclick={handleSave} disabled={saving}>
 			{saving ? 'Saving...' : 'Save'}
 		</button>
 	{/snippet}
@@ -92,7 +92,7 @@
 			{#if extensions.length > 0}
 				<div class="flex flex-wrap gap-2">
 					{#each extensions as ext (ext)}
-						<span class="badge badge-outline gap-1.5 font-mono text-sm">
+						<span class="badge gap-1.5 badge-outline font-mono text-sm">
 							{ext}
 							<button
 								onclick={() => removeExtension(ext)}
@@ -114,10 +114,10 @@
 					bind:value={inputValue}
 					onkeydown={handleKeydown}
 					placeholder=".avi"
-					class="input input-bordered input-sm w-32 font-mono"
+					class="input-bordered input input-sm w-32 font-mono"
 					maxlength="10"
 				/>
-				<button class="btn btn-sm btn-outline" onclick={addExtension} disabled={!inputValue.trim()}>
+				<button class="btn btn-outline btn-sm" onclick={addExtension} disabled={!inputValue.trim()}>
 					Add
 				</button>
 			</div>

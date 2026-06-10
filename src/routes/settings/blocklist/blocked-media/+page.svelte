@@ -139,7 +139,7 @@
 			/>
 		</div>
 		<div class="w-full sm:w-48">
-			<select class="select-bordered select select-sm w-full" bind:value={filters.mediaType}>
+			<select class="select-bordered select w-full select-sm" bind:value={filters.mediaType}>
 				<option value="">{m.blockedMedia_filterAll()}</option>
 				<option value="movie">{m.blockedMedia_filterMovies()}</option>
 				<option value="tv">{m.blockedMedia_filterTV()}</option>
@@ -150,14 +150,14 @@
 		</span>
 		{#if selectedIds.size > 0}
 			<span class="text-sm text-base-content/60">{selectedIds.size} selected</span>
-			<button class="btn btn-sm btn-error gap-1.5" onclick={() => (confirmBulkUnblockOpen = true)}>
+			<button class="btn gap-1.5 btn-sm btn-error" onclick={() => (confirmBulkUnblockOpen = true)}>
 				<Trash2 class="h-3.5 w-3.5" />
 				{m.blockedMedia_unblock()}
 			</button>
 		{/if}
 		{#if entries.length > 0}
 			<button
-				class="btn btn-sm btn-ghost btn-error gap-1.5 sm:ml-auto"
+				class="btn gap-1.5 btn-ghost btn-sm btn-error sm:ml-auto"
 				onclick={() => (confirmUnblockAllOpen = true)}
 			>
 				<Trash2 class="h-3.5 w-3.5" /> Remove all

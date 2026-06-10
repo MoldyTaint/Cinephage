@@ -238,9 +238,9 @@
 				<span class="h-2 w-2 rounded-full {getProtocolColor()}"></span>
 				<span class="text-base-content/60">{release.indexerName}</span>
 				{#if indexerSource === 'prowlarr'}
-					<span class="badge badge-primary badge-xs">Prowlarr</span>
+					<span class="badge badge-xs badge-primary">Prowlarr</span>
 				{:else if indexerSource === 'jackett'}
-					<span class="badge badge-secondary badge-xs">Jackett</span>
+					<span class="badge badge-xs badge-secondary">Jackett</span>
 				{/if}
 			</div>
 
@@ -461,9 +461,9 @@
 							<dd class="flex items-center gap-1.5 font-medium">
 								{release.indexerName}
 								{#if indexerSource === 'prowlarr'}
-									<span class="badge badge-primary badge-xs">Prowlarr</span>
+									<span class="badge badge-xs badge-primary">Prowlarr</span>
 								{:else if indexerSource === 'jackett'}
-									<span class="badge badge-secondary badge-xs">Jackett</span>
+									<span class="badge badge-xs badge-secondary">Jackett</span>
 								{/if}
 							</dd>
 						</div>
