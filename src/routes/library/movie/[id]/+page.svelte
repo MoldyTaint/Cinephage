@@ -771,7 +771,6 @@
 		tmdbMovie={data.tmdbDetails}
 		defaultRegion={page.data.defaultRegion}
 		configuredProviders={data.configuredMetadataProviders}
-		{qualityProfileName}
 		isDownloading={queueItem !== null}
 		onMonitorToggle={handleMonitorToggle}
 		onAutoSearch={handleAutoSearch}
@@ -925,6 +924,20 @@
 							<dd class="sm:text-right">{movie.genres.join(', ')}</dd>
 						</div>
 					{/if}
+					<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
+						<dt class="text-base-content/60">{m.library_movieHeader_qualityProfileLabel()}</dt>
+						<dd>{qualityProfileName || m.common_default()}</dd>
+					</div>
+					<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
+						<dt class="text-base-content/60">{m.common_added()}</dt>
+						<dd>
+							{new Date(movie.added).toLocaleDateString(undefined, {
+								year: 'numeric',
+								month: 'short',
+								day: 'numeric'
+							})}
+						</dd>
+					</div>
 					{#if movie.imdbId}
 						<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
 							<dt class="text-base-content/60">{m.library_movieDetail_imdb()}</dt>

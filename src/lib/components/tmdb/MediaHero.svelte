@@ -226,7 +226,7 @@
 		</div>
 
 		<!-- Main Info -->
-		<div class="flex min-w-0 flex-1 flex-col justify-between gap-4">
+		<div class="flex min-w-0 flex-1 flex-col gap-4">
 			<!-- Title and basic info -->
 			<div>
 				<h1 class="text-2xl font-bold md:text-3xl">
@@ -277,7 +277,7 @@
 			{/if}
 
 			<!-- Actions row -->
-			<div class="flex flex-wrap items-center justify-between gap-4">
+			<div class="mt-auto flex flex-wrap items-center justify-between gap-4">
 				<div class="flex flex-wrap items-center gap-2">
 					{#if inLibrary}
 						{#if hasFile}

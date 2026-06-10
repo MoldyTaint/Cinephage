@@ -29,7 +29,7 @@
 		{#if data.blockedKeywords.length > 0}
 			<div class="mt-3 flex flex-wrap justify-center gap-1.5">
 				{#each data.blockedKeywords as keyword (keyword)}
-					<span class="badge badge-error badge-outline badge-sm">{keyword}</span>
+					<span class="badge badge-outline badge-sm badge-error">{keyword}</span>
 				{/each}
 			</div>
 		{/if}
@@ -42,13 +42,14 @@
 	</div>
 {:else}
 	<div class="flex w-full flex-col gap-12 px-4 pb-20 lg:px-8">
-		<a href="/discover" onclick={goBack} class="btn btn-ghost btn-sm -ml-2 w-fit gap-1.5">
-			<ArrowLeft class="h-4 w-4" />
-			{m.action_back()}
-		</a>
-
 		<!-- Hero Section -->
-		<MediaHero item={data.tv} />
+		<div class="flex flex-col gap-3">
+			<a href="/discover" onclick={goBack} class="btn -ml-2 w-fit gap-1.5 btn-ghost btn-sm">
+				<ArrowLeft class="h-4 w-4" />
+				{m.action_back()}
+			</a>
+			<MediaHero item={data.tv} />
+		</div>
 
 		<!-- Cast Section -->
 		{#if data.tv.credits.cast.length > 0}

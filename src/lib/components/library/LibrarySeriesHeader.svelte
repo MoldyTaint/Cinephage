@@ -1,7 +1,9 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
-	import { getLocale } from '$lib/paraglide/runtime.js';
+	import type { TVShowDetails } from '$lib/types/tmdb';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
+	import CrewList from '$lib/components/tmdb/CrewList.svelte';
+	import WatchProviders from '$lib/components/tmdb/WatchProviders.svelte';
 	import MonitorToggle from './MonitorToggle.svelte';
 	import {
 		Settings,
@@ -13,13 +15,16 @@
 		Zap,
 		Loader2,
 		Ban,
-		Captions
+		Captions,
+		Play,
+		MoreHorizontal
 	} from 'lucide-svelte';
-	import { formatBytes, getStatusColor } from '$lib/utils/format.js';
+	import { formatLanguage, formatDateShort, getStatusColor } from '$lib/utils/format.js';
 	import { formatSeriesStatus } from '$lib/utils/format-status.js';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { blockMedia } from '$lib/api/settings.js';
+	import { TMDB } from '$lib/config/constants.js';
 
 	interface SeriesData {
 		tmdbId: number;
@@ -29,6 +34,7 @@
 		providerRefs?: Partial<Record<'tmdb' | 'anilist' | 'mal', string>> | null;
 		title: string;
 		year: number | null;
+		overview: string | null;
 		status: string | null;
 		network: string | null;
 		genres: string[] | null;
@@ -61,13 +67,12 @@
 
 	interface Props {
 		series: SeriesData;
+		tmdbSeries?: TVShowDetails | null;
+		defaultRegion?: string;
 		configuredProviders?: { anilist: boolean; mal: boolean };
-		totalSize?: number;
-		qualityProfileName?: string | null;
 		refreshing?: boolean;
 		refreshProgress?: RefreshProgress | null;
 		missingEpisodeCount?: number;
-		downloadingCount?: number;
 		searchingMissing?: boolean;
 		missingSearchProgress?: MissingSearchProgress | null;
 		missingSearchResult?: MissingSearchResult | null;
@@ -84,13 +89,12 @@
 
 	let {
 		series,
+		tmdbSeries = null,
+		defaultRegion = TMDB.DEFAULT_REGION,
 		configuredProviders = { anilist: false, mal: false },
-		totalSize = 0,
-		qualityProfileName = null,
 		refreshing = false,
 		refreshProgress = null,
 		missingEpisodeCount = 0,
-		downloadingCount = 0,
 		searchingMissing = false,
 		missingSearchProgress = null,
 		missingSearchResult = null,
@@ -123,6 +127,15 @@
 		}
 	}
 
+	function openTrailer() {
+		const trailer = tmdbSeries?.videos?.results?.find(
+			(v) => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser')
+		);
+		if (trailer) {
+			window.open(`https://www.youtube.com/watch?v=${trailer.key}`, '_blank');
+		}
+	}
+
 	const providerLinks = $derived.by(() => {
 		const refs = series.providerRefs ?? {};
 		const links: Array<{ label: string; href: string }> = [];
@@ -146,311 +159,321 @@
 			(series.metadataProvider === 'mal' && Boolean(series.providerRefs?.mal))
 	);
 
-	function formatDate(dateString: string): string {
-		return new Date(dateString).toLocaleDateString(getLocale(), {
-			year: 'numeric',
-			month: 'short',
-			day: 'numeric'
-		});
-	}
+	const overview = $derived(tmdbSeries?.overview ?? series.overview);
+	const hasTrailer = $derived(
+		tmdbSeries?.videos?.results?.some(
+			(v) => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser')
+		) ?? false
+	);
+
+	const contentRating = $derived.by(() => {
+		if (!tmdbSeries?.content_ratings?.results) return null;
+		const rating =
+			tmdbSeries.content_ratings.results.find((r) => r.iso_3166_1 === defaultRegion) ||
+			tmdbSeries.content_ratings.results.find((r) => r.iso_3166_1 === 'US');
+		return rating?.rating || null;
+	});
 </script>
 
-<div class="relative w-full overflow-hidden rounded-xl bg-base-200">
-	<!-- Backdrop (subtle) -->
+<div class="relative w-full overflow-hidden rounded-xl bg-base-200 shadow-xl">
+	<!-- Backdrop -->
 	<div class="absolute inset-0 h-full w-full">
 		{#if series.backdropPath}
 			<TmdbImage
 				path={series.backdropPath}
-				size="w780"
+				size="original"
 				alt={series.title}
-				class="h-full w-full object-cover opacity-40"
+				class="h-full w-full object-cover opacity-40 blur-sm"
 			/>
 		{/if}
-		<div
-			class="absolute inset-0 bg-linear-to-r from-base-200/80 via-base-200/75 to-base-200/60 sm:from-base-200 sm:via-base-200/95 sm:to-base-200/80"
-		></div>
+		<div class="absolute inset-0 bg-linear-to-t from-base-200 via-base-200/80 to-transparent"></div>
+		<div class="absolute inset-0 bg-linear-to-r from-base-200 via-base-200/60 to-transparent"></div>
 	</div>
 
 	<!-- Content -->
-	<div class="relative z-10 flex gap-4 p-4 md:gap-6 md:p-6">
-		<!-- Poster -->
-		<div class="hidden shrink-0 sm:block">
-			<div class="w-32 overflow-hidden rounded-lg shadow-lg md:w-40">
-				<TmdbImage
-					path={series.posterPath}
-					size="w342"
-					alt={series.title}
-					class="h-auto w-full object-cover"
-				/>
-			</div>
-		</div>
-
-		<!-- Info -->
-		<div class="flex min-w-0 flex-1 flex-col justify-between gap-4">
-			<!-- Top row: Title and actions -->
-			<div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between md:gap-4">
-				<div class="min-w-0 flex-1">
-					<h1 class="text-2xl font-bold md:text-3xl">
-						{series.title}
-						{#if series.year}
-							<span class="font-normal text-base-content/60">({series.year})</span>
-						{/if}
-					</h1>
-
-					<!-- Meta row -->
-					<div
-						class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-base-content/70"
-					>
-						{#if series.status}
-							<span class="badge {getStatusColor(series.status)} badge-sm">
-								{formatSeriesStatus(series.status)}
-							</span>
-						{/if}
-						{#if series.network}
-							<span
-								>{usesAnimeMetadataProvider ? `Studios: ${series.network}` : series.network}</span
-							>
-						{/if}
-						{#if series.genres && series.genres.length > 0}
-							<span>•</span>
-							<span class="min-w-0 truncate">{series.genres.slice(0, 3).join(', ')}</span>
-						{/if}
-					</div>
-				</div>
-
-				<!-- Action buttons -->
-				<div class="flex flex-wrap items-center gap-1 sm:justify-end sm:gap-2">
-					<MonitorToggle
-						monitored={series.monitored ?? false}
-						onToggle={onMonitorToggle}
-						size="md"
+	<div class="relative z-10">
+		<!-- Main content -->
+		<div class="flex flex-col gap-6 p-6 md:flex-row md:p-8">
+			<!-- Poster -->
+			<div class="hidden shrink-0 sm:block">
+				<div class="w-32 overflow-hidden rounded-lg shadow-lg md:w-40">
+					<TmdbImage
+						path={series.posterPath}
+						size="w342"
+						alt={series.title}
+						class="h-auto w-full object-cover"
 					/>
-
-					<!-- Auto Grab Button -->
-					<button
-						class="btn gap-2 btn-sm btn-primary"
-						onclick={onSearchMissing}
-						disabled={searchingMissing || missingEpisodeCount === 0}
-						title={missingEpisodeCount > 0
-							? m.library_seriesHeader_autoGrabTooltip({ count: missingEpisodeCount })
-							: m.library_seriesHeader_noMissingEpisodes()}
-					>
-						{#if searchingMissing}
-							<Loader2 size={16} class="animate-spin" />
-							{#if missingSearchProgress}
-								<span class="hidden sm:inline"
-									>{missingSearchProgress.current}/{missingSearchProgress.total}</span
-								>
-							{:else}
-								<span class="hidden sm:inline">{m.common_searching()}</span>
-							{/if}
-						{:else if missingSearchResult}
-							<Zap size={16} />
-							<span class="hidden sm:inline"
-								>{m.library_seriesHeader_grabbedCount({
-									count: missingSearchResult.grabbed
-								})}</span
-							>
-						{:else}
-							<Zap size={16} />
-							<span class="hidden sm:inline">{m.library_seriesHeader_autoGrab()}</span>
-							{#if missingEpisodeCount > 0}
-								<span class="badge badge-sm badge-secondary">{missingEpisodeCount}</span>
-							{/if}
-						{/if}
-					</button>
-
-					<!-- Auto-download subtitles series -->
-					{#if onSubtitleAutoSearch}
-						<button
-							class="btn gap-2 btn-sm btn-secondary"
-							onclick={onSubtitleAutoSearch}
-							disabled={subtitleAutoSearching}
-							title={m.library_seriesHeader_autoDownloadSubsTooltip()}
-						>
-							{#if subtitleAutoSearching}
-								<Loader2 size={16} class="animate-spin" />
-								<span class="hidden sm:inline">{m.common_downloading()}</span>
-							{:else}
-								<Captions size={16} />
-								<span class="hidden sm:inline">{m.library_seriesHeader_autoDownloadSubs()}</span>
-							{/if}
-						</button>
-					{/if}
-
-					<!-- Season Packs (Interactive Search) -->
-					<button
-						class="btn gap-2 btn-ghost btn-sm"
-						onclick={onSearch}
-						title={m.library_seriesHeader_seasonPacksTooltip()}
-					>
-						<Package size={16} />
-						<span class="hidden sm:inline">{m.library_seriesHeader_seasonPacks()}</span>
-					</button>
-					{#if onImport}
-						<button
-							class="btn gap-2 btn-ghost btn-sm"
-							onclick={onImport}
-							title={m.library_seriesHeader_importTooltip()}
-						>
-							<Download size={16} />
-							<span class="hidden sm:inline">{m.action_import()}</span>
-						</button>
-					{/if}
-					<button
-						class="btn gap-2 btn-ghost btn-sm"
-						onclick={onRefresh}
-						disabled={refreshing}
-						title={m.library_seriesHeader_refreshTooltip()}
-					>
-						{#if refreshing}
-							<Loader2 size={16} class="animate-spin" />
-							{#if refreshProgress}
-								<span class="hidden sm:inline"
-									>{m.common_season()} {refreshProgress.current}/{refreshProgress.total}</span
-								>
-							{:else}
-								<span class="hidden sm:inline">{m.common_loading()}</span>
-							{/if}
-						{:else}
-							<RefreshCw size={16} />
-						{/if}
-					</button>
-					<button class="btn btn-ghost btn-sm" onclick={onEdit} title={m.action_edit()}>
-						<Settings size={16} />
-					</button>
-					<button
-						class="btn text-error btn-ghost btn-sm"
-						onclick={onDelete}
-						title={m.action_delete()}
-					>
-						<Trash2 size={16} />
-					</button>
-					<button
-						class="btn text-error btn-ghost btn-sm"
-						onclick={() => (showBlockConfirm = true)}
-						title={m.library_blockMediaTooltip()}
-					>
-						<Ban size={16} />
-					</button>
 				</div>
 			</div>
 
-			<!-- Middle row: Episode progress -->
-			<div class="flex flex-col gap-2">
-				<div class="flex items-center gap-2 text-sm">
-					<div class="flex min-w-0 items-center gap-3 sm:gap-4">
-						<span class="font-medium whitespace-nowrap">
-							{series.episodeFileCount ?? 0} / {series.episodeCount ?? 0}
-							{m.common_episodes()} &nbsp;
-							{#if series.episodeCount === 0}
-								<span class="badge badge-ghost badge-xs">{m.library_seriesHeader_noEpisodes()}</span
-								>
-							{:else if series.episodeFileCount === 0}
-								<span class="badge badge-xs badge-error">{m.library_seriesHeader_allMissing()}</span
-								>
+			<!-- Main Info -->
+			<div class="flex min-w-0 flex-1 flex-col gap-4">
+				<!-- Title and actions -->
+				<div class="flex items-start justify-between gap-2">
+					<div class="min-w-0">
+						<h1 class="text-2xl font-bold md:text-3xl">
+							{series.title}
+							{#if series.year}
+								<span class="font-normal text-base-content/60">({series.year})</span>
 							{/if}
-							{#if series.percentComplete === 100}
-								<span class="badge badge-sm badge-success">{m.library_seriesHeader_complete()}</span
-								>
-							{:else if series.percentComplete > 0}
-								<span class="badge badge-sm badge-primary">{series.percentComplete}%</span>
-							{/if}
-							&nbsp;
-							{#if totalSize > 0}
-								<span class="badge badge-sm badge-info">{formatBytes(totalSize)} </span>
-							{/if}
-							&nbsp;
-							{#if downloadingCount > 0}
-								<span class="text-bold badge badge-sm font-semibold badge-success">
-									<Download size={16} class="animate-pulse" />
-									<span>{downloadingCount}</span>
+						</h1>
+
+						<div
+							class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-base-content/70"
+						>
+							{#if tmdbSeries?.vote_average}
+								<span class="flex items-center gap-1 font-semibold text-warning">
+									★ {tmdbSeries.vote_average.toFixed(1)}
 								</span>
 							{/if}
-						</span>
+							{#if series.status}
+								<span class="badge {getStatusColor(series.status)} badge-sm">
+									{formatSeriesStatus(series.status)}
+								</span>
+							{/if}
+							{#if usesAnimeMetadataProvider && series.network}
+								<span class="hidden sm:inline">•</span>
+								<span class="hidden sm:inline min-w-0 truncate">Studios: {series.network}</span>
+							{:else if series.network}
+								<span class="hidden sm:inline">•</span>
+								<span class="hidden sm:inline">{series.network}</span>
+							{/if}
+							{#if series.genres && series.genres.length > 0}
+								<span class="hidden sm:inline">•</span>
+								<span class="hidden sm:inline">{series.genres.slice(0, 3).join(', ')}</span>
+							{/if}
+						</div>
+					</div>
+					<div class="flex shrink-0 items-center gap-1">
+						<MonitorToggle
+							monitored={series.monitored ?? false}
+							onToggle={onMonitorToggle}
+							size="md"
+						/>
+						<div class="dropdown dropdown-end">
+							<button tabindex="0" class="btn btn-ghost btn-sm">
+								<MoreHorizontal size={18} />
+							</button>
+							<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+							<ul
+								tabindex="0"
+								class="dropdown-content menu z-50 w-56 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
+							>
+								<li>
+									<button
+										onclick={onSearchMissing}
+										disabled={searchingMissing || missingEpisodeCount === 0}
+									>
+										<Zap size={16} />
+										{m.library_seriesHeader_autoGrab()}
+										{#if missingEpisodeCount > 0}
+											<span class="badge badge-sm badge-secondary">{missingEpisodeCount}</span>
+										{/if}
+									</button>
+								</li>
+								{#if onSubtitleAutoSearch}
+									<li>
+										<button onclick={onSubtitleAutoSearch} disabled={subtitleAutoSearching}>
+											<Captions size={16} />
+											{m.library_seriesHeader_autoDownloadSubs()}
+										</button>
+									</li>
+								{/if}
+								<li>
+									<button onclick={onSearch}>
+										<Package size={16} />
+										{m.library_seriesHeader_seasonPacks()}
+									</button>
+								</li>
+								{#if onImport}
+									<li>
+										<button onclick={onImport}>
+											<Download size={16} />
+											{m.action_import()}
+										</button>
+									</li>
+								{/if}
+								<li>
+									<button onclick={onRefresh} disabled={refreshing}>
+										<RefreshCw size={16} />
+										{#if refreshing}
+											{m.common_loading()}
+										{:else}
+											{m.library_seriesHeader_refreshTooltip()}
+										{/if}
+									</button>
+								</li>
+								<div class="divider my-1"></div>
+								<li>
+									<button onclick={onEdit}>
+										<Settings size={16} />
+										{m.action_edit()}
+									</button>
+								</li>
+								<li>
+									<button class="text-error" onclick={onDelete}>
+										<Trash2 size={16} />
+										{m.action_delete()}
+									</button>
+								</li>
+								<li>
+									<button class="text-error" onclick={() => (showBlockConfirm = true)}>
+										<Ban size={16} />
+										{m.library_blockMediaTooltip()}
+									</button>
+								</li>
+							</ul>
+						</div>
 					</div>
 				</div>
-				<progress
-					class="progress h-2 w-full max-w-md {series.percentComplete === 100
-						? 'progress-success'
-						: 'progress-primary'}"
-					value={series.percentComplete}
-					max="100"
-				></progress>
+
+				{#if tmdbSeries?.tagline}
+					<p class="text-base text-base-content/50 italic">"{tmdbSeries.tagline}"</p>
+				{/if}
+
+				{#if overview}
+					<p class="text-base leading-relaxed text-base-content/90">{overview}</p>
+				{/if}
+
+				{#if tmdbSeries?.credits?.crew?.length || tmdbSeries?.created_by?.length}
+					<div class="text-sm">
+						<CrewList
+							crew={tmdbSeries?.credits?.crew ?? []}
+							creators={tmdbSeries?.created_by ?? []}
+						/>
+					</div>
+				{/if}
+
+				<!-- External links -->
+				<div class="mt-auto flex flex-wrap items-center gap-2">
+					{#if series.tmdbId}
+						<a
+							href="https://www.themoviedb.org/tv/{series.tmdbId}"
+							target="_blank"
+							rel="noopener noreferrer"
+							class="btn shrink-0 gap-1 btn-ghost btn-xs"
+						>
+							TMDB
+							<ExternalLink size={12} />
+						</a>
+					{/if}
+					{#if series.tvdbId}
+						<a
+							href="https://thetvdb.com/series/{series.tvdbId}"
+							target="_blank"
+							rel="noopener noreferrer"
+							class="btn shrink-0 gap-1 btn-ghost btn-xs"
+						>
+							TVDB
+							<ExternalLink size={12} />
+						</a>
+					{/if}
+					{#if series.imdbId}
+						<a
+							href="https://www.imdb.com/title/{series.imdbId}"
+							target="_blank"
+							rel="noopener noreferrer"
+							class="btn shrink-0 gap-1 btn-ghost btn-xs"
+						>
+							IMDb
+							<ExternalLink size={12} />
+						</a>
+					{/if}
+					{#each providerLinks as provider (provider.label)}
+						<a
+							href={provider.href}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="btn shrink-0 gap-1 btn-ghost btn-xs"
+						>
+							{provider.label}
+							<ExternalLink size={12} />
+						</a>
+					{/each}
+					{#if hasTrailer}
+						<button class="btn shrink-0 gap-1 btn-ghost btn-xs" onclick={openTrailer}>
+							<Play size={12} />
+							{m.hero_trailer()}
+						</button>
+					{/if}
+				</div>
 			</div>
 
-			<!-- Settings info -->
-			<div class="flex flex-wrap gap-x-3 gap-y-2 text-sm md:gap-x-6">
-				<div class="shrink-0">
-					<span class="text-base-content/50">{m.library_seriesHeader_qualityProfileLabel()}:</span>
-					<span class="ml-1 font-medium">{qualityProfileName || m.common_default()}</span>
-				</div>
-				<div class="max-w-full min-w-0">
-					<span class="shrink-0 text-base-content/50"
-						>{m.library_seriesHeader_rootFolderLabel()}:</span
-					>
-					<span
-						class="ml-1 truncate font-medium {series.rootFolderPath
-							? ''
-							: 'rounded-md bg-warning/20 px-2 py-0.5 text-warning'}"
-						title={series.rootFolderPath || m.library_seriesHeader_notSet()}
-					>
-						{series.rootFolderPath || m.library_seriesHeader_notSet()}
-					</span>
-				</div>
-				<div>
-					<span class="text-base-content/50">{m.common_added()}:</span>
-					<span class="ml-1 font-medium">{formatDate(series.added)}</span>
-				</div>
-			</div>
+			<!-- Right side metadata panel -->
+			{#if tmdbSeries}
+				<div
+					class="hidden w-64 shrink-0 rounded-lg bg-base-100/30 p-4 backdrop-blur-sm md:block lg:w-80 lg:p-5"
+				>
+					<div class="grid grid-cols-2 gap-x-4 gap-y-2 lg:gap-x-6 lg:gap-y-3">
+						<div>
+							<div class="text-sm text-base-content/50">{m.hero_metadata_status()}</div>
+							<div class="font-medium">{tmdbSeries.status}</div>
+						</div>
 
-			<!-- Bottom row: External links -->
-			<div class="flex flex-wrap items-center gap-2">
-				{#if series.tmdbId}
-					<a
-						href="https://www.themoviedb.org/tv/{series.tmdbId}"
-						target="_blank"
-						rel="noopener noreferrer"
-						class="btn shrink-0 gap-1 btn-ghost btn-xs"
-					>
-						TMDB
-						<ExternalLink size={12} />
-					</a>
-				{/if}
-				{#if series.tvdbId}
-					<a
-						href="https://thetvdb.com/series/{series.tvdbId}"
-						target="_blank"
-						rel="noopener noreferrer"
-						class="btn shrink-0 gap-1 btn-ghost btn-xs"
-					>
-						TVDB
-						<ExternalLink size={12} />
-					</a>
-				{/if}
-				{#if series.imdbId}
-					<a
-						href="https://www.imdb.com/title/{series.imdbId}"
-						target="_blank"
-						rel="noopener noreferrer"
-						class="btn shrink-0 gap-1 btn-ghost btn-xs"
-					>
-						IMDb
-						<ExternalLink size={12} />
-					</a>
-				{/if}
-				{#each providerLinks as provider (provider.label)}
-					<a
-						href={provider.href}
-						target="_blank"
-						rel="noopener noreferrer"
-						class="btn shrink-0 gap-1 btn-ghost btn-xs"
-					>
-						{provider.label}
-						<ExternalLink size={12} />
-					</a>
-				{/each}
-			</div>
+						<div>
+							<div class="text-sm text-base-content/50">{m.hero_metadata_language()}</div>
+							<div class="font-medium">{formatLanguage(tmdbSeries.original_language)}</div>
+						</div>
+
+						{#if contentRating}
+							<div>
+								<div class="text-sm text-base-content/50">{m.hero_metadata_rated()}</div>
+								<div>
+									<span class="badge badge-outline badge-sm">{contentRating}</span>
+								</div>
+							</div>
+						{/if}
+
+						<div>
+							<div class="text-sm text-base-content/50">{m.hero_metadata_released()}</div>
+							<div class="font-medium">{formatDateShort(tmdbSeries.first_air_date)}</div>
+						</div>
+
+						{#if tmdbSeries.last_air_date}
+							<div>
+								<div class="text-sm text-base-content/50">Last Aired</div>
+								<div class="font-medium">{formatDateShort(tmdbSeries.last_air_date)}</div>
+							</div>
+						{/if}
+
+						{#if tmdbSeries.type}
+							<div>
+								<div class="text-sm text-base-content/50">Type</div>
+								<div class="font-medium">{tmdbSeries.type}</div>
+							</div>
+						{/if}
+
+						{#if tmdbSeries.number_of_seasons}
+							<div>
+								<div class="text-sm text-base-content/50">Seasons</div>
+								<div class="font-medium">{tmdbSeries.number_of_seasons}</div>
+							</div>
+						{/if}
+
+						{#if tmdbSeries.networks && tmdbSeries.networks.length > 0}
+							<div class="col-span-2">
+								<div class="text-sm text-base-content/50">Network</div>
+								<div class="font-medium">
+									{tmdbSeries.networks
+										.slice(0, 2)
+										.map((n) => n.name)
+										.join(', ')}
+								</div>
+							</div>
+						{/if}
+					</div>
+
+					{#if tmdbSeries['watch/providers']}
+						<div class="mt-4 border-t border-base-content/10 pt-4">
+							<div class="mb-2 text-sm text-base-content/50">{m.hero_metadata_whereToWatch()}</div>
+							<WatchProviders
+								providers={tmdbSeries['watch/providers']}
+								countryCode={defaultRegion}
+							/>
+						</div>
+					{/if}
+				</div>
+			{/if}
 		</div>
 	</div>
 </div>

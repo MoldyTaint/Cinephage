@@ -16,6 +16,9 @@ import type { PageServerLoad } from './$types';
 import { isSeriesSearching } from '$lib/server/library/ActiveSearchTracker.js';
 import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
 import type { QualityProfileSummary } from '$lib/types/library';
+import type { TVShowDetails } from '$lib/types/tmdb';
+import { tmdb } from '$lib/server/tmdb.js';
+import { logger } from '$lib/logging';
 import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
 
 export interface SeasonWithEpisodes {
@@ -133,6 +136,7 @@ export interface LibrarySeriesPageData {
 		episodeFileCount: number | null;
 		percentComplete: number;
 	};
+	tmdbDetails: TVShowDetails | null;
 	seasons: SeasonWithEpisodes[];
 	qualityProfiles: QualityProfileSummary[];
 	rootFolders: Array<{
@@ -416,6 +420,18 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 			undefined
 	});
 
+	const tmdbDetails = await tmdb.getTVShow(seriesData.tmdbId).catch((err) => {
+		logger.warn(
+			{
+				seriesId: id,
+				tmdbId: seriesData.tmdbId,
+				error: err instanceof Error ? err.message : String(err)
+			},
+			'[LibrarySeries] Failed to fetch TMDB TV show details'
+		);
+		return null;
+	});
+
 	return {
 		series: {
 			...seriesData,
@@ -425,6 +441,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 			added: seriesData.added ?? new Date().toISOString(),
 			percentComplete
 		},
+		tmdbDetails,
 		seasons: seasonsWithEpisodes,
 		qualityProfiles: allQualityProfiles,
 		rootFolders: folders,

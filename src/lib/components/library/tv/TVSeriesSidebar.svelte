@@ -4,20 +4,17 @@
 
 	interface Props {
 		series: LibrarySeries;
+		qualityProfileName?: string | null;
 		configuredProviders?: { anilist: boolean; mal: boolean };
 		onResolveProviderRef?: (provider: 'anilist' | 'mal') => void;
 	}
 
 	let {
 		series,
+		qualityProfileName = null,
 		configuredProviders = { anilist: false, mal: false },
 		onResolveProviderRef
 	}: Props = $props();
-
-	const usesAnimeMetadataProvider = $derived(
-		(series.metadataProvider === 'anilist' && Boolean(series.providerRefs?.anilist)) ||
-			(series.metadataProvider === 'mal' && Boolean(series.providerRefs?.mal))
-	);
 
 	const seriesStoragePath = $derived.by(() => {
 		const rootPath = series.rootFolderPath ?? '';
@@ -90,16 +87,6 @@
 </script>
 
 <div class="space-y-4 md:space-y-6">
-	<!-- Overview -->
-	{#if series.overview}
-		<div class="rounded-xl bg-base-200 p-4 md:p-6">
-			<h3 class="mb-2 font-semibold">{m.library_tvDetail_overviewHeading()}</h3>
-			<p class="text-sm leading-relaxed text-base-content/80">
-				{series.overview}
-			</p>
-		</div>
-	{/if}
-
 	<!-- Details -->
 	<div class="rounded-xl bg-base-200 p-4 md:p-6">
 		<h3 class="mb-3 font-semibold">{m.common_details()}</h3>
@@ -110,26 +97,26 @@
 					<dd class="sm:text-right">{series.originalTitle}</dd>
 				</div>
 			{/if}
-			{#if series.network}
-				<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-					<dt class="text-base-content/60">
-						{usesAnimeMetadataProvider ? 'Studios' : m.common_network()}
-					</dt>
-					<dd>{series.network}</dd>
-				</div>
-			{/if}
-			{#if series.status}
-				<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-					<dt class="text-base-content/60">{m.common_status()}</dt>
-					<dd>{series.status}</dd>
-				</div>
-			{/if}
 			{#if series.genres && series.genres.length > 0}
 				<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
 					<dt class="text-base-content/60">{m.common_genres()}</dt>
 					<dd class="sm:text-right">{series.genres.join(', ')}</dd>
 				</div>
 			{/if}
+			<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
+				<dt class="text-base-content/60">{m.library_seriesHeader_qualityProfileLabel()}</dt>
+				<dd>{qualityProfileName || m.common_default()}</dd>
+			</div>
+			<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
+				<dt class="text-base-content/60">{m.common_added()}</dt>
+				<dd>
+					{new Date(series.added).toLocaleDateString(undefined, {
+						year: 'numeric',
+						month: 'short',
+						day: 'numeric'
+					})}
+				</dd>
+			</div>
 			{#if series.imdbId}
 				<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
 					<dt class="text-base-content/60">{m.library_movieDetail_imdb()}</dt>

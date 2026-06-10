@@ -91,7 +91,7 @@
 		</div>
 
 		<!-- Main Info -->
-		<div class="flex min-w-0 flex-1 flex-col justify-between gap-4">
+		<div class="flex min-w-0 flex-1 flex-col gap-4">
 			<div>
 				<h1 class="text-2xl font-bold md:text-3xl">{person.name}</h1>
 
@@ -117,7 +117,7 @@
 			{/if}
 
 			<!-- External links -->
-			<div class="flex flex-wrap items-center gap-2">
+			<div class="mt-auto flex flex-wrap items-center gap-2">
 				<a
 					href={`https://www.themoviedb.org/person/${person.id}`}
 					target="_blank"

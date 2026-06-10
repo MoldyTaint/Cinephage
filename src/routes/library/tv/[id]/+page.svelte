@@ -30,7 +30,8 @@
 	import { apiPostStream } from '$lib/api';
 	import type { SeriesEditData } from '$lib/components/library/SeriesEditModal.svelte';
 	import type { SearchMode } from '$lib/components/search/InteractiveSearchModal.svelte';
-	import { CheckSquare, FileEdit, RefreshCw, X } from 'lucide-svelte';
+	import { CheckSquare, Download, FileEdit, RefreshCw, X } from 'lucide-svelte';
+	import { formatBytes } from '$lib/utils/format.js';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -1762,13 +1763,12 @@
 	<!-- Header -->
 	<LibrarySeriesHeader
 		series={seriesForDisplay}
+		tmdbSeries={data.tmdbDetails}
+		defaultRegion={page.data.defaultRegion}
 		configuredProviders={data.configuredMetadataProviders}
-		totalSize={totalSeriesSize}
-		{qualityProfileName}
 		refreshing={isRefreshing}
 		{refreshProgress}
 		{missingEpisodeCount}
-		{downloadingCount}
 		{searchingMissing}
 		{missingSearchProgress}
 		{missingSearchResult}
@@ -1788,7 +1788,29 @@
 		<!-- Seasons (takes 2 columns) -->
 		<div class="min-w-0 space-y-4 md:col-span-2 lg:col-span-2">
 			<div class="flex items-center justify-between">
-				<h2 class="text-lg font-semibold">{m.library_tvDetail_seasonsHeading()}</h2>
+				<div class="flex items-center gap-3">
+					<h2 class="text-lg font-semibold">{m.library_tvDetail_seasonsHeading()}</h2>
+					<span class="flex flex-wrap items-center gap-2 text-sm text-base-content/70">
+						<span
+							>{seriesForDisplay.episodeFileCount ?? 0} / {seriesForDisplay.episodeCount ?? 0}
+							{m.common_episodes()}</span
+						>
+						{#if seriesForDisplay.percentComplete === 100}
+							<span class="badge badge-sm badge-success">{m.library_seriesHeader_complete()}</span>
+						{:else if seriesForDisplay.percentComplete > 0}
+							<span class="badge badge-sm badge-primary">{seriesForDisplay.percentComplete}%</span>
+						{/if}
+						{#if totalSeriesSize > 0}
+							<span class="badge badge-sm badge-info">{formatBytes(totalSeriesSize)}</span>
+						{/if}
+						{#if downloadingCount > 0}
+							<span class="badge badge-sm font-semibold badge-success">
+								<Download size={14} class="animate-pulse" />
+								<span>{downloadingCount}</span>
+							</span>
+						{/if}
+					</span>
+				</div>
 				<div class="flex gap-1">
 					{#if !isStreamerProfile && syncableSubtitles.length > 0}
 						<button class="btn gap-1 btn-ghost btn-sm" onclick={handleSubtitleSync}>
@@ -1865,6 +1887,7 @@
 		<!-- Sidebar -->
 		<TVSeriesSidebar
 			series={seriesForDisplay}
+			{qualityProfileName}
 			configuredProviders={data.configuredMetadataProviders}
 			onResolveProviderRef={openProviderLinkModal}
 		/>

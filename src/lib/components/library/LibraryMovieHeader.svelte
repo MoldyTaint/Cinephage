@@ -22,7 +22,8 @@
 		X,
 		Zap,
 		Ban,
-		Play
+		Play,
+		MoreHorizontal
 	} from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import {
@@ -64,7 +65,6 @@
 		tmdbMovie?: MovieDetails | null;
 		defaultRegion?: string;
 		configuredProviders?: { anilist: boolean; mal: boolean };
-		qualityProfileName?: string | null;
 		isDownloading?: boolean;
 		autoSearching?: boolean;
 		autoSearchResult?: AutoSearchResult | null;
@@ -84,7 +84,6 @@
 		tmdbMovie = null,
 		defaultRegion = TMDB.DEFAULT_REGION,
 		configuredProviders = { anilist: false, mal: false },
-		qualityProfileName = null,
 		isDownloading = false,
 		autoSearching = false,
 		autoSearchResult = null,
@@ -247,14 +246,6 @@
 		const mins = minutes % 60;
 		return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
 	}
-
-	function formatDate(dateString: string): string {
-		return new Date(dateString).toLocaleDateString('en-US', {
-			year: 'numeric',
-			month: 'short',
-			day: 'numeric'
-		});
-	}
 </script>
 
 <div class="relative w-full overflow-hidden rounded-xl bg-base-200 shadow-xl">
@@ -274,78 +265,6 @@
 
 	<!-- Content -->
 	<div class="relative z-10">
-		<!-- Actions toolbar -->
-		<div
-			class="flex flex-wrap items-center justify-between gap-2 border-b border-base-content/10 px-6 pb-4 pt-4 md:px-8 md:pt-6"
-		>
-			<div class="flex flex-wrap items-center gap-1 sm:gap-2">
-				<MonitorToggle monitored={movie.monitored ?? false} onToggle={onMonitorToggle} size="md" />
-				<button
-					class="btn gap-2 btn-sm btn-primary"
-					onclick={onAutoSearch}
-					disabled={autoSearching}
-					title={m.library_movieHeader_autoGrabTooltip()}
-				>
-					{#if autoSearching}
-						<Loader2 size={16} class="animate-spin" />
-						<span class="hidden sm:inline">{m.library_movieHeader_searching()}</span>
-					{:else if autoSearchResult?.grabbed}
-						<Check size={16} />
-						<span class="hidden sm:inline">{m.library_movieHeader_grabbed()}</span>
-					{:else if autoSearchResult?.error}
-						<X size={16} />
-						<span class="hidden sm:inline">{m.library_movieHeader_failed()}</span>
-					{:else}
-						<Zap size={16} />
-						<span class="hidden sm:inline">{m.library_movieHeader_autoGrab()}</span>
-					{/if}
-				</button>
-				<button
-					class="btn gap-2 btn-ghost btn-sm"
-					onclick={onSearch}
-					title={m.library_movieHeader_manualSearchTooltip()}
-				>
-					<Search size={16} />
-					<span class="hidden sm:inline">{m.library_movieHeader_manual()}</span>
-				</button>
-				{#if onImport}
-					<button
-						class="btn gap-2 btn-ghost btn-sm"
-						onclick={onImport}
-						title={m.library_movieHeader_importTooltip()}
-					>
-						<Download size={16} />
-						<span class="hidden sm:inline">{m.action_import()}</span>
-					</button>
-				{/if}
-				{#if hasTrailer}
-					<button class="btn gap-1 btn-ghost btn-sm" onclick={openTrailer}>
-						<Play class="h-4 w-4" />
-						{m.hero_trailer()}
-					</button>
-				{/if}
-			</div>
-			<div class="flex flex-wrap items-center gap-1 sm:gap-2">
-				<button class="btn btn-ghost btn-sm" onclick={onEdit} title={m.action_edit()}>
-					<Settings size={16} />
-				</button>
-				<button
-					class="btn text-error btn-ghost btn-sm"
-					onclick={onDelete}
-					title={m.action_delete()}
-				>
-					<Trash2 size={16} />
-				</button>
-				<button
-					class="btn text-error btn-ghost btn-sm"
-					onclick={() => (showBlockConfirm = true)}
-					title={m.library_blockMediaTooltip()}
-				>
-					<Ban size={16} />
-				</button>
-			</div>
-		</div>
-
 		<!-- Main content -->
 		<div class="flex flex-col gap-6 p-6 md:flex-row md:p-8">
 			<!-- Poster -->
@@ -361,40 +280,99 @@
 			</div>
 
 			<!-- Main Info -->
-			<div class="flex min-w-0 flex-1 flex-col justify-between gap-4">
-				<!-- Title and basic info -->
-				<div>
-					<h1 class="text-2xl font-bold md:text-3xl">
-						{movie.title}
-						{#if movie.year}
-							<span class="font-normal text-base-content/60">({movie.year})</span>
-						{/if}
-					</h1>
-
-					<div
-						class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-base-content/70"
-					>
-						{#if tmdbMovie?.vote_average}
-							<span class="flex items-center gap-1 font-semibold text-warning">
-								★ {tmdbMovie.vote_average.toFixed(1)}
-							</span>
-						{/if}
-						{#if movie.runtime}
-							{#if tmdbMovie?.vote_average}
-								<span class="hidden sm:inline">•</span>
+			<div class="flex min-w-0 flex-1 flex-col gap-4">
+				<!-- Title and actions -->
+				<div class="flex items-start justify-between gap-2">
+					<div class="min-w-0">
+						<h1 class="text-2xl font-bold md:text-3xl">
+							{movie.title}
+							{#if movie.year}
+								<span class="font-normal text-base-content/60">({movie.year})</span>
 							{/if}
-							<span>{formatRuntime(movie.runtime)}</span>
-						{/if}
-						{#if usesAnimeMetadataProvider && movie.studios && movie.studios.length > 0}
-							<span class="hidden sm:inline">•</span>
-							<span class="hidden sm:inline min-w-0 truncate"
-								>Studios: {movie.studios.slice(0, 2).join(', ')}</span
+						</h1>
+
+						<div
+							class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-base-content/70"
+						>
+							{#if tmdbMovie?.vote_average}
+								<span class="flex items-center gap-1 font-semibold text-warning">
+									★ {tmdbMovie.vote_average.toFixed(1)}
+								</span>
+							{/if}
+							{#if movie.runtime}
+								{#if tmdbMovie?.vote_average}
+									<span class="hidden sm:inline">•</span>
+								{/if}
+								<span>{formatRuntime(movie.runtime)}</span>
+							{/if}
+							{#if usesAnimeMetadataProvider && movie.studios && movie.studios.length > 0}
+								<span class="hidden sm:inline">•</span>
+								<span class="hidden sm:inline min-w-0 truncate"
+									>Studios: {movie.studios.slice(0, 2).join(', ')}</span
+								>
+							{/if}
+							{#if movie.genres && movie.genres.length > 0}
+								<span class="hidden sm:inline">•</span>
+								<span class="hidden sm:inline">{movie.genres.slice(0, 3).join(', ')}</span>
+							{/if}
+						</div>
+					</div>
+					<div class="flex shrink-0 items-center gap-1">
+						<MonitorToggle
+							monitored={movie.monitored ?? false}
+							onToggle={onMonitorToggle}
+							size="md"
+						/>
+						<div class="dropdown dropdown-end">
+							<button tabindex="0" class="btn btn-ghost btn-sm">
+								<MoreHorizontal size={18} />
+							</button>
+							<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+							<ul
+								tabindex="0"
+								class="dropdown-content menu z-50 w-52 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
 							>
-						{/if}
-						{#if movie.genres && movie.genres.length > 0}
-							<span class="hidden sm:inline">•</span>
-							<span class="hidden sm:inline">{movie.genres.slice(0, 3).join(', ')}</span>
-						{/if}
+								<li>
+									<button onclick={onAutoSearch} disabled={autoSearching}>
+										<Zap size={16} />
+										{m.library_movieHeader_autoGrab()}
+									</button>
+								</li>
+								<li>
+									<button onclick={onSearch}>
+										<Search size={16} />
+										{m.library_movieHeader_manual()}
+									</button>
+								</li>
+								{#if onImport}
+									<li>
+										<button onclick={onImport}>
+											<Download size={16} />
+											{m.action_import()}
+										</button>
+									</li>
+								{/if}
+								<div class="divider my-1"></div>
+								<li>
+									<button onclick={onEdit}>
+										<Settings size={16} />
+										{m.action_edit()}
+									</button>
+								</li>
+								<li>
+									<button class="text-error" onclick={onDelete}>
+										<Trash2 size={16} />
+										{m.action_delete()}
+									</button>
+								</li>
+								<li>
+									<button class="text-error" onclick={() => (showBlockConfirm = true)}>
+										<Ban size={16} />
+										{m.library_blockMediaTooltip()}
+									</button>
+								</li>
+							</ul>
+						</div>
 					</div>
 				</div>
 
@@ -412,33 +390,8 @@
 					</div>
 				{/if}
 
-				<!-- Settings info -->
-				<div class="flex flex-wrap gap-x-3 gap-y-2 text-sm md:gap-x-6">
-					<div class="shrink-0">
-						<span class="text-base-content/50">{m.library_movieHeader_qualityProfileLabel()}</span>
-						<span class="ml-1 font-medium">{qualityProfileName || m.common_default()}</span>
-					</div>
-					<div class="max-w-full min-w-0">
-						<span class="shrink-0 text-base-content/50"
-							>{m.library_movieHeader_rootFolderLabel()}</span
-						>
-						<span
-							class="ml-1 truncate font-medium {movie.rootFolderId
-								? ''
-								: 'rounded-md bg-warning/20 px-2 py-0.5 text-warning'}"
-							title={movie.rootFolderPath || m.library_movieHeader_notSet()}
-						>
-							{movie.rootFolderPath || m.library_movieHeader_notSet()}
-						</span>
-					</div>
-					<div>
-						<span class="text-base-content/50">{m.common_added()}:</span>
-						<span class="ml-1 font-medium">{formatDate(movie.added)}</span>
-					</div>
-				</div>
-
 				<!-- Status and external links -->
-				<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+				<div class="mt-auto flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 					<div class="flex flex-wrap items-center gap-2 sm:gap-4">
 						<StatusIndicator status={fileStatus} qualityText={statusQualityText} />
 						{#if showUnreleasedBadge}
@@ -512,6 +465,12 @@
 								<ExternalLink size={12} />
 							</a>
 						{/each}
+						{#if hasTrailer}
+							<button class="btn gap-1 btn-ghost btn-xs" onclick={openTrailer}>
+								<Play size={12} />
+								{m.hero_trailer()}
+							</button>
+						{/if}
 					</div>
 				</div>
 			</div>
