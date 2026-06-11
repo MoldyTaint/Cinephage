@@ -23,7 +23,9 @@ describe('BannedFormatStage', () => {
 		});
 
 		it('returns false when force is true', () => {
-			const ctx = makeCtx({ options: { force: true, skipBlocklist: false, allowSidegrade: false, isAutomatic: true } });
+			const ctx = makeCtx({
+				options: { force: true, skipBlocklist: false, allowSidegrade: false, isAutomatic: true }
+			});
 			expect(stage.isEnabled(ctx)).toBe(false);
 		});
 	});

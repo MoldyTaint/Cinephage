@@ -20,7 +20,7 @@ import {
 } from '$lib/server/db/schema.js';
 import { eq, and, lte, gte, inArray } from 'drizzle-orm';
 import { getIndexerManager } from '$lib/server/indexers/IndexerManager.js';
-import { getReleaseGrabService } from '$lib/server/downloads/ReleaseGrabService.js';
+
 import {
 	parseEpisodePointerFromGuid,
 	parseEpisodePointerFromTitle
@@ -2734,7 +2734,7 @@ export class MonitoringSearchService {
 
 	/**
 	 * Grab a release and add to download queue.
-	 * Delegates to ReleaseGrabService for proper protocol-specific handling.
+	 * Delegates to GrabService for proper protocol-specific handling.
 	 */
 	private async grabRelease(
 		release: EnhancedReleaseResult,
@@ -2748,11 +2748,59 @@ export class MonitoringSearchService {
 			isUpgrade?: boolean;
 		}
 	): Promise<{ success: boolean; releaseName?: string; error?: string; queueItemId?: string }> {
-		const releaseGrabService = getReleaseGrabService();
-		return releaseGrabService.grabRelease(release, {
-			...options,
-			isAutomatic: options.isAutomatic ?? true
+		const { grabService } = await import('$lib/server/downloads/GrabService.js');
+
+		let target;
+		if (options.movieId) {
+			target = { type: 'movie' as const, movieId: options.movieId };
+		} else if (options.seasonNumber && options.seriesId) {
+			target = {
+				type: 'season' as const,
+				seriesId: options.seriesId,
+				seasonNumber: options.seasonNumber,
+				episodeIds: options.episodeIds ?? []
+			};
+		} else if (options.episodeIds && options.episodeIds.length > 0 && options.seriesId) {
+			target = {
+				type: 'episode' as const,
+				episodeId: options.episodeIds[0],
+				seriesId: options.seriesId
+			};
+		} else {
+			target = {
+				type: 'series' as const,
+				seriesId: options.seriesId!,
+				episodeIds: options.episodeIds ?? []
+			};
+		}
+
+		const result = await grabService.grab({
+			release: {
+				title: release.title,
+				infoHash: release.infoHash,
+				magnetUrl: release.magnetUrl,
+				downloadUrl: release.downloadUrl,
+				indexerId: release.indexerId,
+				indexerName: release.indexerName,
+				size: release.size,
+				protocol: release.protocol as 'torrent' | 'usenet' | 'streaming' | undefined
+			},
+			target,
+			options: {
+				force: false,
+				skipBlocklist: false,
+				allowSidegrade: false,
+				isAutomatic: options.isAutomatic ?? true,
+				isUpgrade: options.isUpgrade
+			}
 		});
+
+		return {
+			success: result.success,
+			releaseName: result.success ? release.title : undefined,
+			error: result.error ?? (result.success ? undefined : result.decision?.reason),
+			queueItemId: result.download?.queueId
+		};
 	}
 
 	/**

@@ -37,7 +37,13 @@ describe('ScoringStage', () => {
 	describe('isEnabled', () => {
 		it('always returns true', () => {
 			expect(stage.isEnabled(makeCtx())).toBe(true);
-			expect(stage.isEnabled(makeCtx({ options: { force: true, skipBlocklist: true, allowSidegrade: true, isAutomatic: false } }))).toBe(true);
+			expect(
+				stage.isEnabled(
+					makeCtx({
+						options: { force: true, skipBlocklist: true, allowSidegrade: true, isAutomatic: false }
+					})
+				)
+			).toBe(true);
 		});
 	});
 

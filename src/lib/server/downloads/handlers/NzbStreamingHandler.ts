@@ -264,10 +264,7 @@ export class NzbStreamingHandler {
 						mediaInfo
 					});
 
-					await db
-						.update(episodes)
-						.set({ hasFile: true })
-						.where(eq(episodes.id, episodeRow.id));
+					await db.update(episodes).set({ hasFile: true }).where(eq(episodes.id, episodeRow.id));
 
 					createdFiles.push(fileId);
 				}

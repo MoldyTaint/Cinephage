@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
 	episodeFilesFindMany: vi.fn(),
 	searchEnhanced: vi.fn(),
 	evaluateForEpisode: vi.fn(),
-	grabRelease: vi.fn(),
+	grab: vi.fn(),
 	getIndexerManager: vi.fn(),
 	searchWithMultiSeasonPriority: vi.fn(),
 	getMultiSeasonSearchStrategy: vi.fn(),
@@ -37,10 +37,13 @@ vi.mock('$lib/server/downloads/index.js', () => ({
 	releaseDecisionService: {
 		evaluateForEpisode: mocks.evaluateForEpisode
 	},
-	getReleaseGrabService: () => ({
-		grabRelease: mocks.grabRelease
-	}),
 	getCascadingSearchStrategy: vi.fn()
+}));
+
+vi.mock('$lib/server/downloads/GrabService.js', () => ({
+	grabService: {
+		grab: mocks.grab
+	}
 }));
 
 vi.mock('$lib/server/downloads/MultiSeasonSearchStrategy.js', () => ({
@@ -169,7 +172,7 @@ describe('SearchOnAddService.searchForEpisode monitoring behavior', () => {
 
 		expect(result).toEqual({ success: true });
 		expect(mocks.searchEnhanced).not.toHaveBeenCalled();
-		expect(mocks.grabRelease).not.toHaveBeenCalled();
+		expect(mocks.grab).not.toHaveBeenCalled();
 	});
 
 	it('searches and grabs when bypassMonitoring is true', async () => {
@@ -212,10 +215,23 @@ describe('SearchOnAddService.searchForEpisode monitoring behavior', () => {
 			accepted: true,
 			isUpgrade: false
 		});
-		mocks.grabRelease.mockResolvedValue({
+		mocks.grab.mockResolvedValue({
 			success: true,
-			releaseName: 'The.Pitt.S02E01.1080p.WEB.H264-GROUP',
-			queueItemId: 'queue-1'
+			decision: {
+				accepted: true,
+				reason: 'ok',
+				upgradeStatus: 'new',
+				scores: { candidate: 100 },
+				audit: { stages: [] }
+			},
+			download: {
+				queueId: 'queue-1',
+				clientId: 'c1',
+				clientName: 'test',
+				category: 'tv',
+				wasDuplicate: false,
+				isUpgrade: false
+			}
 		});
 
 		const result = await searchOnAdd.searchForEpisode({
@@ -228,7 +244,7 @@ describe('SearchOnAddService.searchForEpisode monitoring behavior', () => {
 			expect.any(Object),
 			expect.objectContaining({ searchSource: 'interactive' })
 		);
-		expect(mocks.grabRelease).toHaveBeenCalledOnce();
+		expect(mocks.grab).toHaveBeenCalledOnce();
 		expect(result).toMatchObject({
 			success: true,
 			releaseName: 'The.Pitt.S02E01.1080p.WEB.H264-GROUP'
@@ -276,10 +292,23 @@ describe('SearchOnAddService.searchForEpisode monitoring behavior', () => {
 			accepted: true,
 			isUpgrade: false
 		});
-		mocks.grabRelease.mockResolvedValue({
+		mocks.grab.mockResolvedValue({
 			success: true,
-			releaseName: 'The.Pitt.S02E01.1080p.WEB.H264-GROUP',
-			queueItemId: 'queue-1'
+			decision: {
+				accepted: true,
+				reason: 'ok',
+				upgradeStatus: 'new',
+				scores: { candidate: 100 },
+				audit: { stages: [] }
+			},
+			download: {
+				queueId: 'queue-1',
+				clientId: 'c1',
+				clientName: 'test',
+				category: 'tv',
+				wasDuplicate: false,
+				isUpgrade: false
+			}
 		});
 
 		const result = await searchOnAdd.searchForEpisode({ episodeId: 'ep-1' });
@@ -290,7 +319,7 @@ describe('SearchOnAddService.searchForEpisode monitoring behavior', () => {
 			}),
 			expect.objectContaining({ searchSource: 'automatic' })
 		);
-		expect(mocks.grabRelease).toHaveBeenCalledOnce();
+		expect(mocks.grab).toHaveBeenCalledOnce();
 		expect(result).toMatchObject({
 			success: true,
 			releaseName: 'The.Pitt.S02E01.1080p.WEB.H264-GROUP'
@@ -346,10 +375,23 @@ describe('SearchOnAddService.searchForEpisode monitoring behavior', () => {
 			accepted: true,
 			isUpgrade: false
 		});
-		mocks.grabRelease.mockResolvedValue({
+		mocks.grab.mockResolvedValue({
 			success: true,
-			releaseName: 'The.Pitt.S02E01.1080p.WEB.H264-GROUP',
-			queueItemId: 'queue-1'
+			decision: {
+				accepted: true,
+				reason: 'ok',
+				upgradeStatus: 'new',
+				scores: { candidate: 100 },
+				audit: { stages: [] }
+			},
+			download: {
+				queueId: 'queue-1',
+				clientId: 'c1',
+				clientName: 'test',
+				category: 'tv',
+				wasDuplicate: false,
+				isUpgrade: false
+			}
 		});
 
 		await searchOnAdd.searchForEpisode({ episodeId: 'ep-1' });
@@ -370,10 +412,23 @@ describe('SearchOnAddService.searchForMovie monitoring behavior', () => {
 		mocks.fetchAndStoreMovieAlternateTitles.mockResolvedValue(0);
 		mocks.fetchAndStoreSeriesAlternateTitles.mockResolvedValue(0);
 		mocks.movieFilesFindFirst.mockResolvedValue(undefined);
-		mocks.grabRelease.mockResolvedValue({
+		mocks.grab.mockResolvedValue({
 			success: true,
-			releaseName: 'The.Interview.2014.1080p.WEB.H264-GROUP',
-			queueItemId: 'queue-1'
+			decision: {
+				accepted: true,
+				reason: 'ok',
+				upgradeStatus: 'new',
+				scores: { candidate: 100 },
+				audit: { stages: [] }
+			},
+			download: {
+				queueId: 'queue-1',
+				clientId: 'c1',
+				clientName: 'test',
+				category: 'tv',
+				wasDuplicate: false,
+				isUpgrade: false
+			}
 		});
 	});
 
@@ -413,7 +468,7 @@ describe('SearchOnAddService.searchForMovie monitoring behavior', () => {
 			expect.any(Object),
 			expect.objectContaining({ searchSource: 'interactive' })
 		);
-		expect(mocks.grabRelease).toHaveBeenCalledOnce();
+		expect(mocks.grab).toHaveBeenCalledOnce();
 		expect(result).toMatchObject({
 			success: true,
 			releaseName: 'The.Interview.2014.1080p.WEB.H264-GROUP'
@@ -458,7 +513,7 @@ describe('SearchOnAddService.searchForMovie monitoring behavior', () => {
 			}),
 			expect.objectContaining({ searchSource: 'automatic' })
 		);
-		expect(mocks.grabRelease).toHaveBeenCalledOnce();
+		expect(mocks.grab).toHaveBeenCalledOnce();
 		expect(result).toMatchObject({
 			success: true,
 			releaseName: 'The.Interview.2014.1080p.WEB.H264-GROUP'

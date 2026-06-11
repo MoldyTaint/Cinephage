@@ -129,12 +129,10 @@ export class TorrentHandler {
 					Array.isArray(parsedTorrent.files) &&
 					parsedTorrent.files.length > 0
 				) {
-					const { resolveBlockedExtensionsForQueueItem } = await import(
-						'$lib/server/settings/blocked-extensions.js'
-					);
-					const { DANGEROUS_EXTENSIONS, EXECUTABLE_EXTENSIONS } = await import(
-						'$lib/config/constants.js'
-					);
+					const { resolveBlockedExtensionsForQueueItem } =
+						await import('$lib/server/settings/blocked-extensions.js');
+					const { DANGEROUS_EXTENSIONS, EXECUTABLE_EXTENSIONS } =
+						await import('$lib/config/constants.js');
 					const userBlocked = await resolveBlockedExtensionsForQueueItem({
 						movieId: movieId ?? null,
 						seriesId: seriesId ?? null

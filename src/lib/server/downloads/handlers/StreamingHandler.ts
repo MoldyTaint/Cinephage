@@ -300,8 +300,17 @@ export class StreamingHandler {
 			isUpgrade?: boolean;
 		}
 	): Promise<HandlerResult> {
-		const { seriesId, season, episode, filePath, fileSize, mediaInfo, quality, parsedRelease, isUpgrade } =
-			options;
+		const {
+			seriesId,
+			season,
+			episode,
+			filePath,
+			fileSize,
+			mediaInfo,
+			quality,
+			parsedRelease,
+			isUpgrade
+		} = options;
 
 		const show = await db.query.series.findFirst({
 			where: eq(series.id, seriesId),
@@ -327,7 +336,12 @@ export class StreamingHandler {
 		const relativePath = getLibraryRelativePath(show.rootFolder.path, show.path, filePath);
 
 		if (isUpgrade) {
-			await this.deleteExistingEpisodeFiles(seriesId, episodeRow.id, show.rootFolder.path, show.path);
+			await this.deleteExistingEpisodeFiles(
+				seriesId,
+				episodeRow.id,
+				show.rootFolder.path,
+				show.path
+			);
 		}
 
 		const fileId = await upsertEpisodeFileByPath({
@@ -620,9 +634,7 @@ export class StreamingHandler {
 		try {
 			const settings = await monitoringScheduler.getSettings();
 			if (!settings.subtitleSearchOnImportEnabled) return;
-			await Promise.allSettled(
-				episodeIds.map((id) => searchSubtitlesForNewMedia('episode', id))
-			);
+			await Promise.allSettled(episodeIds.map((id) => searchSubtitlesForNewMedia('episode', id)));
 		} catch (error) {
 			logger.warn({ total: episodeIds.length, err: error }, 'Subtitle search failed for episodes');
 		}

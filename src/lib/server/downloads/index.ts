@@ -20,14 +20,6 @@ export {
 } from './ReleaseDecisionService';
 
 export {
-	getReleaseGrabService,
-	resetReleaseGrabService,
-	ReleaseGrabService,
-	type GrabOptions,
-	type GrabResult
-} from './ReleaseGrabService';
-
-export {
 	getCascadingSearchStrategy,
 	resetCascadingSearchStrategy,
 	CascadingSearchStrategy,

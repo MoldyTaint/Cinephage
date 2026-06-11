@@ -112,11 +112,28 @@ vi.mock('$lib/server/downloads/episode-pointer.js', () => ({
 	})
 }));
 
-// Mock ReleaseGrabService
-vi.mock('$lib/server/downloads/ReleaseGrabService.js', () => ({
-	getReleaseGrabService: vi.fn(() => ({
-		grabRelease: vi.fn()
-	}))
+// Mock GrabService
+vi.mock('$lib/server/downloads/GrabService.js', () => ({
+	grabService: {
+		grab: vi.fn().mockResolvedValue({
+			success: true,
+			decision: {
+				accepted: true,
+				reason: 'ok',
+				upgradeStatus: 'new',
+				scores: { candidate: 100 },
+				audit: { stages: [] }
+			},
+			download: {
+				queueId: 'test-queue-id',
+				clientId: 'c1',
+				clientName: 'test',
+				category: 'tv',
+				wasDuplicate: false,
+				isUpgrade: false
+			}
+		})
+	}
 }));
 
 // Mock ReleaseParser
