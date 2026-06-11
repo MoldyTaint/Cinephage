@@ -1,11 +1,11 @@
 import { LibraryStage } from './stages/LibraryStage.js';
 import { BlockedMediaStage } from './stages/BlockedMediaStage.js';
-import { composeStages } from './stages/Compositor.js';
-import type { FilterContext, StageRun } from './stages/types.js';
+import { composeFilterStages } from './compositor.js';
+import type { FilterContext, FilterStageRun } from './types.js';
 
 export interface ContentFilterResult<T> {
 	results: T[];
-	stages: StageRun[];
+	stages: FilterStageRun[];
 }
 
 export class ContentFilterPipeline {
@@ -15,7 +15,7 @@ export class ContentFilterPipeline {
 		items: T[],
 		ctx: FilterContext
 	): Promise<ContentFilterResult<T>> {
-		return composeStages(this.stages, items, ctx) as Promise<ContentFilterResult<T>>;
+		return composeFilterStages(this.stages, items, ctx) as Promise<ContentFilterResult<T>>;
 	}
 }
 

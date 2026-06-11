@@ -1,7 +1,10 @@
 import { filterBlockedMedia } from '$lib/server/library/status.js';
-import type { FilterStage, FilterContext } from './types.js';
+import type { FilterStage, FilterContext } from '../types.js';
 
-export class BlockedMediaStage implements FilterStage<{ id: number; media_type?: string }> {
+export class BlockedMediaStage implements FilterStage<
+	{ id: number; media_type?: string },
+	FilterContext
+> {
 	name = 'blockedMedia';
 
 	isEnabled(ctx: FilterContext): boolean {

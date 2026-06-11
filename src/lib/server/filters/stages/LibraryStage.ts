@@ -1,7 +1,10 @@
 import { enrichWithLibraryStatus, filterInLibrary } from '$lib/server/library/status.js';
-import type { FilterStage, FilterContext } from './types.js';
+import type { FilterStage, FilterContext } from '../types.js';
 
-export class LibraryStage implements FilterStage<{ id: number; media_type?: string }> {
+export class LibraryStage implements FilterStage<
+	{ id: number; media_type?: string },
+	FilterContext
+> {
 	name = 'library';
 
 	isEnabled(_ctx: FilterContext): boolean {

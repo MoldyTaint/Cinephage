@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LibraryStage } from './LibraryStage.js';
-import type { FilterContext } from './types.js';
+import type { FilterContext } from '../types.js';
 
 const mockEnrich = vi.hoisted(() => vi.fn());
 const mockFilter = vi.hoisted(() => vi.fn());
