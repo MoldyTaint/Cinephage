@@ -5,6 +5,7 @@ import { rootFolderUpdateSchema } from '$lib/validation/schemas';
 import { assertFound, parseBody } from '$lib/server/api/validate';
 import { NotFoundError, isAppError } from '$lib/errors';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { downloadMonitor } from '$lib/server/downloadClients/monitoring/DownloadMonitorService.js';
 
 /**
  * GET /api/root-folders/[id]
@@ -31,6 +32,9 @@ export const PUT: RequestHandler = async (event) => {
 
 	try {
 		const result = await service.updateFolder(params.id, data);
+		if (data.blockedVideoExtensions !== undefined) {
+			downloadMonitor.checkBlockedExtensions().catch(() => {});
+		}
 		return json({ success: true, ...result });
 	} catch (error) {
 		if (isAppError(error)) {

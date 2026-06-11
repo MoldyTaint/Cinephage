@@ -9,7 +9,6 @@
 		Download,
 		Copy,
 		Check,
-
 		Image
 	} from 'lucide-svelte';
 	import type { PageData } from './$types';

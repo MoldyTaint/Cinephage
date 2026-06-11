@@ -11,6 +11,7 @@
  * - Duplicate torrent detection and linking
  */
 
+import parseTorrent from 'parse-torrent';
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager.js';
 import { downloadMonitor } from '$lib/server/downloadClients/monitoring/index.js';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser.js';
@@ -380,6 +381,92 @@ class ReleaseGrabService {
 				allFileIndices: selection.allFileIndices,
 				filePaths: selection.filePaths
 			};
+		}
+
+		// Pre-grab blocked extension check: parse torrent file and check for blocked extensions
+		// before ever sending it to the download client (zero wasted bandwidth)
+		if (resolved.torrentFile) {
+			try {
+				const parsed = await parseTorrent(Buffer.from(resolved.torrentFile));
+				if (parsed && 'files' in parsed && Array.isArray(parsed.files) && parsed.files.length > 0) {
+					const { resolveBlockedExtensionsForQueueItem } =
+						await import('$lib/server/settings/blocked-extensions.js');
+					const { DANGEROUS_EXTENSIONS, EXECUTABLE_EXTENSIONS } =
+						await import('$lib/config/constants.js');
+					const userBlocked = await resolveBlockedExtensionsForQueueItem({
+						movieId: movieId ?? null,
+						seriesId: seriesId ?? null
+					});
+					const blockedExtensions = [
+						...userBlocked,
+						...DANGEROUS_EXTENSIONS,
+						...EXECUTABLE_EXTENSIONS
+					];
+
+					const parsedFiles = parsed.files as Array<{ path?: string; name?: string }>;
+					const matchedFiles = parsedFiles.filter((f) => {
+						const fileName = String(f.path || f.name || '');
+						const dotIndex = fileName.lastIndexOf('.');
+						if (dotIndex === -1) return false;
+						const ext = fileName.slice(dotIndex).toLowerCase();
+						return blockedExtensions.includes(ext);
+					});
+
+					if (matchedFiles.length > 0) {
+						const fileList = matchedFiles
+							.map((f) =>
+								String(f.path || f.name || '')
+									.split('/')
+									.pop()
+							)
+							.join(', ');
+						const errorMessage = `Blocked extension detected: ${fileList}`;
+
+						logger.info(
+							{
+								title: release.title,
+								matchedFiles: matchedFiles.map((f) => String(f.path || f.name || '')),
+								blockedExtensions: userBlocked
+							},
+							'[ReleaseGrab] Rejecting release due to blocked extensions (pre-grab check)'
+						);
+
+						try {
+							const { blocklistService } =
+								await import('$lib/server/monitoring/specifications/BlocklistSpecification.js');
+							await blocklistService.addToBlocklist(
+								{
+									title: release.title,
+									infoHash: resolved.infoHash ?? release.infoHash,
+									indexerId: release.indexerId,
+									quality,
+									size: release.size,
+									protocol
+								},
+								{
+									movieId: movieId ?? undefined,
+									seriesId: seriesId ?? undefined,
+									episodeIds: episodeIds ?? undefined,
+									reason: 'blocked_extension',
+									message: errorMessage
+								}
+							);
+						} catch {
+							// blocklist failure is non-critical
+						}
+
+						return { success: false, error: errorMessage };
+					}
+				}
+			} catch (parseError) {
+				logger.debug(
+					{
+						title: release.title,
+						error: parseError instanceof Error ? parseError.message : String(parseError)
+					},
+					'[ReleaseGrab] Could not parse torrent for pre-grab extension check, continuing'
+				);
+			}
 		}
 
 		// Send to download client
@@ -1627,135 +1714,125 @@ class ReleaseGrabService {
 		// Use transaction for all database operations to ensure atomicity
 		// Handle race condition: LibraryWatcher may have already linked some files
 		try {
-			await db.transaction(async (tx) => {
-				for (const epData of episodeFileData) {
-					// Check if file was already linked by the watcher during our operation
-					const existingFile = await tx.query.episodeFiles.findFirst({
-						where: eq(episodeFiles.relativePath, epData.relativePath)
-					});
+			for (const epData of episodeFileData) {
+				const existingFile = await db.query.episodeFiles.findFirst({
+					where: eq(episodeFiles.relativePath, epData.relativePath)
+				});
 
-					if (existingFile && !isUpgrade) {
-						// Watcher already linked this file - skip insert, just record the IDs
-						logger.debug(
-							{
-								episodeId: epData.episodeId,
-								existingFileId: existingFile.id,
-								relativePath: epData.relativePath
-							},
-							'[ReleaseGrab] File already linked by watcher, using existing record'
-						);
-						createdFileIds.push(existingFile.id);
-						createdEpisodeIds.push(epData.episodeId);
-						totalSize += epData.fileSize;
-						continue;
-					}
-
-					// Delete existing episode file if this is an upgrade
-					if (isUpgrade) {
-						const allSeriesFiles = await tx.query.episodeFiles.findMany({
-							where: eq(episodeFiles.seriesId, seriesId)
-						});
-						const existingFiles = allSeriesFiles.filter((f) =>
-							f.episodeIds?.includes(epData.episodeId)
-						);
-						for (const oldFile of existingFiles) {
-							// Delete physical file from disk (best effort)
-							const oldFilePath = join(show.rootFolder!.path, show.path, oldFile.relativePath);
-							try {
-								if (await fileExists(oldFilePath)) {
-									await unlink(oldFilePath);
-									logger.debug(
-										{
-											episodeId: epData.episodeId,
-											path: oldFilePath
-										},
-										'[ReleaseGrab] Deleted old episode file from disk'
-									);
-								}
-							} catch (deleteError) {
-								logger.warn(
-									{
-										path: oldFilePath,
-										err: deleteError
-									},
-									'[ReleaseGrab] Failed to delete old episode file from disk (continuing)'
-								);
-							}
-							// Delete DB record
-							await tx.delete(episodeFiles).where(eq(episodeFiles.id, oldFile.id));
-							logger.debug(
-								{
-									episodeId: epData.episodeId,
-									oldFileId: oldFile.id
-								},
-								'[ReleaseGrab] Deleted old episode file record for streaming upgrade'
-							);
-						}
-					}
-
-					// Create/update episode file record
-					const fileId = await upsertEpisodeFileByPath(tx, {
-						seriesId,
-						seasonNumber,
-						episodeIds: [epData.episodeId],
-						relativePath: epData.relativePath,
-						size: epData.fileSize,
-						dateAdded: new Date().toISOString(),
-						sceneName: release.title,
-						releaseGroup: parsedRelease.releaseGroup ?? 'Streaming',
-						quality,
-						mediaInfo: epData.mediaInfo
-					});
-
-					// Update episode hasFile flag
-					await tx.update(episodes).set({ hasFile: true }).where(eq(episodes.id, epData.episodeId));
-
-					createdEpisodeIds.push(epData.episodeId);
-					createdFileIds.push(fileId);
-					totalSize += epData.fileSize;
-
+				if (existingFile && !isUpgrade) {
 					logger.debug(
 						{
 							episodeId: epData.episodeId,
-							episodeNumber: epData.episodeNumber,
-							fileId
+							existingFileId: existingFile.id,
+							relativePath: epData.relativePath
 						},
-						'[ReleaseGrab] Created episode file record'
+						'[ReleaseGrab] File already linked by watcher, using existing record'
 					);
+					createdFileIds.push(existingFile.id);
+					createdEpisodeIds.push(epData.episodeId);
+					totalSize += epData.fileSize;
+					continue;
 				}
 
-				// Only create history record if we did any work
-				if (createdFileIds.length > 0) {
-					await tx.insert(downloadHistory).values({
-						title: release.title,
-						indexerId: release.indexerId,
-						indexerName: release.indexerName,
-						protocol: 'streaming',
-						seriesId,
-						episodeIds: createdEpisodeIds,
-						seasonNumber,
-						status: 'streaming',
-						size: totalSize,
-						quality,
-						episodeFileIds: createdFileIds,
-						grabbedAt: new Date().toISOString(),
-						importedAt: new Date().toISOString()
+				if (isUpgrade) {
+					const allSeriesFiles = await db.query.episodeFiles.findMany({
+						where: eq(episodeFiles.seriesId, seriesId)
 					});
+					const existingFiles = allSeriesFiles.filter((f) =>
+						f.episodeIds?.includes(epData.episodeId)
+					);
+					for (const oldFile of existingFiles) {
+						const oldFilePath = join(show.rootFolder!.path, show.path, oldFile.relativePath);
+						try {
+							if (await fileExists(oldFilePath)) {
+								await unlink(oldFilePath);
+								logger.debug(
+									{
+										episodeId: epData.episodeId,
+										path: oldFilePath
+									},
+									'[ReleaseGrab] Deleted old episode file from disk'
+								);
+							}
+						} catch (deleteError) {
+							logger.warn(
+								{
+									path: oldFilePath,
+									err: deleteError
+								},
+								'[ReleaseGrab] Failed to delete old episode file from disk (continuing)'
+							);
+						}
+						await db.delete(episodeFiles).where(eq(episodeFiles.id, oldFile.id));
+						logger.debug(
+							{
+								episodeId: epData.episodeId,
+								oldFileId: oldFile.id
+							},
+							'[ReleaseGrab] Deleted old episode file record for streaming upgrade'
+						);
+					}
 				}
-			});
-		} catch (txError) {
-			// Transaction failed - do NOT delete files, let LibraryWatcher handle them
+
+				const fileId = await upsertEpisodeFileByPath(db, {
+					seriesId,
+					seasonNumber,
+					episodeIds: [epData.episodeId],
+					relativePath: epData.relativePath,
+					size: epData.fileSize,
+					dateAdded: new Date().toISOString(),
+					sceneName: release.title,
+					releaseGroup: parsedRelease.releaseGroup ?? 'Streaming',
+					quality,
+					mediaInfo: epData.mediaInfo
+				});
+
+				await db.update(episodes).set({ hasFile: true }).where(eq(episodes.id, epData.episodeId));
+
+				createdEpisodeIds.push(epData.episodeId);
+				createdFileIds.push(fileId);
+				totalSize += epData.fileSize;
+
+				logger.debug(
+					{
+						episodeId: epData.episodeId,
+						episodeNumber: epData.episodeNumber,
+						fileId
+					},
+					'[ReleaseGrab] Created episode file record'
+				);
+			}
+
+			if (createdFileIds.length > 0) {
+				await db.insert(downloadHistory).values({
+					title: release.title,
+					indexerId: release.indexerId,
+					indexerName: release.indexerName,
+					protocol: 'streaming',
+					seriesId,
+					episodeIds: createdEpisodeIds,
+					seasonNumber,
+					status: 'streaming',
+					size: totalSize,
+					quality,
+					episodeFileIds: createdFileIds,
+					grabbedAt: new Date().toISOString(),
+					importedAt: new Date().toISOString()
+				});
+			}
+		} catch (dbError) {
+			// DB operation failed - do NOT delete files, let LibraryWatcher handle them
 			// Deleting files here causes a race condition where E01 gets deleted before
 			// the watcher has a chance to process and link it
 			logger.error(
 				{
 					seriesId,
 					seasonNumber,
-					err: txError,
+					err: dbError,
 					filesCreated: episodeFileData.length,
 					note: 'Keeping .strm files for LibraryWatcher to process'
 				},
-				'[ReleaseGrab] Transaction failed for streaming season pack'
+				'[ReleaseGrab] Database operation failed for streaming season pack'
 			);
 
 			// Don't delete files - the LibraryWatcher will detect them and link properly
@@ -1763,7 +1840,7 @@ class ReleaseGrabService {
 
 			return {
 				success: false,
-				error: txError instanceof Error ? txError.message : 'Database transaction failed'
+				error: dbError instanceof Error ? dbError.message : 'Database operation failed'
 			};
 		}
 

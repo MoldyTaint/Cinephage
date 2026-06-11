@@ -8,6 +8,7 @@ import {
 	setBlockedVideoExtensions,
 	invalidateBlockedVideoExtensionsCache
 } from '$lib/server/settings/blocked-extensions.js';
+import { downloadMonitor } from '$lib/server/downloadClients/monitoring/DownloadMonitorService.js';
 
 export const GET: RequestHandler = async (event) => {
 	const authError = requireAdmin(event);
@@ -26,6 +27,8 @@ export const PUT: RequestHandler = async (event) => {
 	await setBlockedVideoExtensions(result);
 
 	invalidateBlockedVideoExtensionsCache();
+
+	downloadMonitor.checkBlockedExtensions().catch(() => {});
 
 	return json({ success: true, ...result });
 };

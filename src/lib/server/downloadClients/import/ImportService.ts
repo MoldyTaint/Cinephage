@@ -779,6 +779,19 @@ export class ImportService extends EventEmitter {
 			return result;
 		}
 
+		// Check for user-configured blocked video extensions
+		const blockedExtCheck = await this.checkBlockedVideoExtensions(
+			videoFiles,
+			rootFolder.blockedVideoExtensions,
+			queueItem
+		);
+		if (blockedExtCheck) {
+			result.error = blockedExtCheck;
+			await downloadMonitor.markFailed(queueItem.id, result.error);
+			worker.log('error', result.error);
+			return result;
+		}
+
 		worker.setTotalFiles(1); // Movies typically have 1 main file
 
 		// For movies, typically take the largest file
@@ -1125,6 +1138,19 @@ export class ImportService extends EventEmitter {
 		if (videoFiles.length === 0) {
 			result.error = 'No video files found in download';
 			await downloadMonitor.markFailed(queueItem.id, result.error);
+			return result;
+		}
+
+		// Check for user-configured blocked video extensions
+		const blockedExtCheck = await this.checkBlockedVideoExtensions(
+			videoFiles,
+			rootFolder.blockedVideoExtensions,
+			queueItem
+		);
+		if (blockedExtCheck) {
+			result.error = blockedExtCheck;
+			await downloadMonitor.markFailed(queueItem.id, result.error);
+			worker.log('error', result.error);
 			return result;
 		}
 
@@ -1774,6 +1800,85 @@ export class ImportService extends EventEmitter {
 		}
 
 		return true;
+	}
+
+	private async checkBlockedVideoExtensions(
+		videoFiles: Array<{ path: string; size: number }>,
+		rootFolderBlockedExts: string | null,
+		queueItem: typeof downloadQueue.$inferSelect
+	): Promise<string | null> {
+		let blockedExtensions: string[] = [];
+
+		if (rootFolderBlockedExts) {
+			try {
+				const parsed = JSON.parse(rootFolderBlockedExts) as string[];
+				if (parsed.length > 0) blockedExtensions = parsed;
+			} catch {
+				// fall through to global
+			}
+		}
+
+		if (blockedExtensions.length === 0) {
+			const { getBlockedVideoExtensions } =
+				await import('$lib/server/settings/blocked-extensions.js');
+			const global = await getBlockedVideoExtensions();
+			blockedExtensions = global.extensions;
+		}
+
+		if (blockedExtensions.length === 0) return null;
+
+		const matchedFiles = videoFiles.filter((f) => {
+			const dotIndex = f.path.lastIndexOf('.');
+			if (dotIndex === -1) return false;
+			const ext = f.path.slice(dotIndex).toLowerCase();
+			return blockedExtensions.includes(ext);
+		});
+
+		if (matchedFiles.length === 0) return null;
+
+		const fileList = matchedFiles.map((f) => basename(f.path)).join(', ');
+		const errorMessage = `Blocked video extension detected: ${fileList}`;
+
+		logger.warn(
+			{
+				title: queueItem.title,
+				matchedFiles: matchedFiles.map((f) => f.path),
+				blockedExtensions
+			},
+			'Rejecting import due to blocked video extensions'
+		);
+
+		try {
+			const { blocklistService } =
+				await import('$lib/server/monitoring/specifications/BlocklistSpecification.js');
+			await blocklistService.addToBlocklist(
+				{
+					title: queueItem.title,
+					infoHash: queueItem.infoHash ?? undefined,
+					indexerId: queueItem.indexerId ?? undefined,
+					quality: queueItem.quality ?? undefined,
+					size: queueItem.size ?? undefined,
+					protocol: queueItem.protocol
+				},
+				{
+					movieId: queueItem.movieId ?? undefined,
+					seriesId: queueItem.seriesId ?? undefined,
+					episodeIds: queueItem.episodeIds ?? undefined,
+					reason: 'blocked_extension',
+					message: errorMessage
+				}
+			);
+		} catch (blocklistError) {
+			logger.warn(
+				{
+					title: queueItem.title,
+					error: blocklistError instanceof Error ? blocklistError.message : String(blocklistError)
+				},
+				'Failed to add blocked extension release to blocklist'
+			);
+		}
+
+		return errorMessage;
 	}
 
 	/**

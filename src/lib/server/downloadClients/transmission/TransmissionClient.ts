@@ -9,6 +9,7 @@ import type { ConnectionTestResult } from '$lib/types/downloadClient';
 import type {
 	AddDownloadOptions,
 	DownloadClientConfig,
+	DownloadFileInfo,
 	DownloadInfo,
 	IDownloadClient
 } from '../core/interfaces';
@@ -568,5 +569,23 @@ export class TransmissionClient implements IDownloadClient {
 	async getBasePath(): Promise<string | undefined> {
 		const savePath = await this.getDefaultSavePath();
 		return savePath || undefined;
+	}
+
+	async getFiles(id: string): Promise<DownloadFileInfo[]> {
+		const response = await this.rpcRequest<{
+			torrents: Array<{ files?: Array<{ name: string; length: number }> }>;
+		}>('torrent-get', {
+			fields: ['files'],
+			ids: [this.toTransmissionId(id)]
+		});
+
+		const torrent = response.torrents?.[0];
+		if (!torrent?.files) return [];
+
+		return torrent.files.map((f, index) => ({
+			index,
+			name: f.name,
+			size: f.length
+		}));
 	}
 }

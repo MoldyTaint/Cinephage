@@ -1,14 +1,6 @@
 <script lang="ts">
 	import { SvelteMap, SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
-	import {
-		Download,
-		Loader2,
-		Search,
-		CalendarSync,
-		CalendarClock,
-
-		X
-	} from 'lucide-svelte';
+	import { Download, Loader2, Search, CalendarSync, CalendarClock, X } from 'lucide-svelte';
 
 	import * as m from '$lib/paraglide/messages.js';
 	import { SettingsPage } from '$lib/components/ui/settings';

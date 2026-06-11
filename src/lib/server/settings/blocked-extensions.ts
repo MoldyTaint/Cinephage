@@ -1,5 +1,5 @@
 import { db } from '$lib/server/db';
-import { settings } from '$lib/server/db/schema';
+import { settings, movies, series, rootFolders } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
 import {
@@ -46,4 +46,47 @@ export async function setBlockedVideoExtensions(
 
 export function invalidateBlockedVideoExtensionsCache(): void {
 	cached = null;
+}
+
+export async function resolveBlockedExtensionsForQueueItem(options: {
+	movieId?: string | null;
+	seriesId?: string | null;
+}): Promise<string[]> {
+	let rootFolderId: string | null = null;
+
+	if (options.movieId) {
+		const [movie] = await db
+			.select({ rootFolderId: movies.rootFolderId })
+			.from(movies)
+			.where(eq(movies.id, options.movieId))
+			.limit(1);
+		rootFolderId = movie?.rootFolderId ?? null;
+	} else if (options.seriesId) {
+		const [seriesData] = await db
+			.select({ rootFolderId: series.rootFolderId })
+			.from(series)
+			.where(eq(series.id, options.seriesId))
+			.limit(1);
+		rootFolderId = seriesData?.rootFolderId ?? null;
+	}
+
+	if (rootFolderId) {
+		const [folder] = await db
+			.select({ blockedVideoExtensions: rootFolders.blockedVideoExtensions })
+			.from(rootFolders)
+			.where(eq(rootFolders.id, rootFolderId))
+			.limit(1);
+
+		if (folder?.blockedVideoExtensions) {
+			try {
+				const parsed = JSON.parse(folder.blockedVideoExtensions) as string[];
+				if (parsed.length > 0) return parsed;
+			} catch {
+				logger.warn('Failed to parse root folder blocked video extensions');
+			}
+		}
+	}
+
+	const global = await getBlockedVideoExtensions();
+	return global.extensions;
 }

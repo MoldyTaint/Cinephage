@@ -4,6 +4,7 @@ import { getRootFolderService } from '$lib/server/downloadClients/RootFolderServ
 import { rootFolderCreateSchema } from '$lib/validation/schemas';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { parseBody } from '$lib/server/api/validate.js';
+import { downloadMonitor } from '$lib/server/downloadClients/monitoring/DownloadMonitorService.js';
 
 /**
  * GET /api/root-folders
@@ -40,6 +41,10 @@ export const POST: RequestHandler = async (event) => {
 		skipFolderPatterns: validated.skipFolderPatterns,
 		blockedVideoExtensions: validated.blockedVideoExtensions
 	});
+
+	if (validated.blockedVideoExtensions && validated.blockedVideoExtensions.length > 0) {
+		downloadMonitor.checkBlockedExtensions().catch(() => {});
+	}
 
 	return json({ success: true, folder: created.folder, scanJobId: created.scanJobId });
 };

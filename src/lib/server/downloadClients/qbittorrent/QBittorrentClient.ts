@@ -9,7 +9,8 @@ import type {
 	IDownloadClient,
 	DownloadClientConfig,
 	AddDownloadOptions,
-	DownloadInfo
+	DownloadInfo,
+	DownloadFileInfo
 } from '../core/interfaces';
 import { createChildLogger } from '$lib/logging';
 
@@ -69,6 +70,7 @@ interface QBittorrentTorrent {
 interface QBittorrentTorrentFile {
 	index: number;
 	name: string;
+	size: number;
 	priority: number;
 }
 
@@ -1092,5 +1094,14 @@ export class QBittorrentClient implements IDownloadClient {
 			);
 			throw error;
 		}
+	}
+
+	async getFiles(hash: string): Promise<DownloadFileInfo[]> {
+		const files = await this.getTorrentFiles(hash);
+		return files.map((f) => ({
+			index: f.index,
+			name: f.name,
+			size: f.size
+		}));
 	}
 }

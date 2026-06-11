@@ -114,6 +114,12 @@ export interface DownloadInfo {
 	errorMessage?: string;
 }
 
+export interface DownloadFileInfo {
+	index: number;
+	name: string;
+	size: number;
+}
+
 /**
  * NNTP server configuration fetched from download clients.
  * Used for NZB streaming to connect directly to Usenet servers.
@@ -233,4 +239,12 @@ export interface IDownloadClient {
 		id: string,
 		config: { ratioLimit?: number; seedingTimeLimit?: number }
 	): Promise<void>;
+
+	/**
+	 * Get the list of files in a download.
+	 * Optional - only implemented by torrent clients that expose file metadata.
+	 *
+	 * @param id - Download ID/hash
+	 */
+	getFiles?(id: string): Promise<DownloadFileInfo[]>;
 }
