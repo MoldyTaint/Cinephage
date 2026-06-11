@@ -13,7 +13,6 @@
 		Package,
 		Download,
 		Zap,
-		Loader2,
 		Ban,
 		Captions,
 		Play,
@@ -41,11 +40,6 @@
 		posterPath: string | null;
 		backdropPath: string | null;
 		monitored: boolean | null;
-		rootFolderPath: string | null;
-		added: string;
-		episodeCount: number | null;
-		episodeFileCount: number | null;
-		percentComplete: number;
 	}
 
 	interface MissingSearchProgress {
@@ -93,11 +87,11 @@
 		defaultRegion = TMDB.DEFAULT_REGION,
 		configuredProviders = { anilist: false, mal: false },
 		refreshing = false,
-		refreshProgress = null,
+		refreshProgress: _refreshProgress = null,
 		missingEpisodeCount = 0,
 		searchingMissing = false,
-		missingSearchProgress = null,
-		missingSearchResult = null,
+		missingSearchProgress: _missingSearchProgress = null,
+		missingSearchResult: _missingSearchResult = null,
 		onMonitorToggle,
 		onSearch,
 		onSearchMissing,
