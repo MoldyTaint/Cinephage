@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { tmdb } from '$lib/server/tmdb';
 import { contentFilterPipeline } from '$lib/server/filters/ContentFilterPipeline.js';
+import { enrichWithReleaseDates } from '$lib/server/release-enrichment.js';
 import { z } from 'zod';
 import { logger } from '$lib/logging';
 
@@ -80,9 +81,10 @@ export const GET: RequestHandler = async ({ url }) => {
 			mediaType: mediaTypeFilter,
 			excludeInLibrary: exclude_in_library === 'true'
 		});
+		const enrichedResults = await enrichWithReleaseDates(filteredResults);
 
 		return json({
-			results: filteredResults,
+			results: enrichedResults,
 			pagination: {
 				page,
 				total_pages: totalPages,

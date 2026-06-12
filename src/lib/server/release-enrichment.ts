@@ -22,6 +22,7 @@ export async function enrichWithReleaseDates<T extends { id: number; media_type?
 			theatricalDate: string | null;
 			digitalReleaseDate: string | null;
 			physicalReleaseDate: string | null;
+			status: string | null;
 		}
 	>();
 
@@ -30,10 +31,10 @@ export async function enrichWithReleaseDates<T extends { id: number; media_type?
 			try {
 				const releaseInfo = await tmdb.getMovieReleaseInfo(movie.id);
 				if (releaseInfo?.release_dates) {
-					releaseDateMap.set(
-						movie.id,
-						extractReleaseDates(releaseInfo.release_dates, effectiveRegion)
-					);
+					releaseDateMap.set(movie.id, {
+						...extractReleaseDates(releaseInfo.release_dates, effectiveRegion),
+						status: releaseInfo.status ?? null
+					});
 				}
 			} catch {
 				// Missing release dates aren't critical
@@ -51,7 +52,8 @@ export async function enrichWithReleaseDates<T extends { id: number; media_type?
 			...item,
 			releaseDate: dates.theatricalDate ?? rec.release_date ?? null,
 			digitalReleaseDate: dates.digitalReleaseDate,
-			physicalReleaseDate: dates.physicalReleaseDate
+			physicalReleaseDate: dates.physicalReleaseDate,
+			tmdbStatus: dates.status
 		} as T;
 	});
 }

@@ -234,7 +234,8 @@
 		return getSmartReleaseLine({
 			releaseDate: dates.theatricalDate,
 			digitalReleaseDate: dates.digitalReleaseDate,
-			physicalReleaseDate: dates.physicalReleaseDate
+			physicalReleaseDate: dates.physicalReleaseDate,
+			status: tmdbMovie.status
 		});
 	});
 

@@ -235,10 +235,7 @@
 					<span class="badge badge-sm badge-success">{m.search_freeleechBadge()}</span>
 				{/if}
 				{#if release.rejected && release.rejections?.length}
-					<span
-						class="badge badge-sm badge-error gap-1"
-						title={release.rejections.join('\n')}
-					>
+					<span class="badge badge-sm badge-error gap-1" title={release.rejections.join('\n')}>
 						<Ban size={10} />
 						{release.rejectionReason || release.rejections[0]}
 						{#if release.rejections.length > 1}

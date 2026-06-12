@@ -8,6 +8,7 @@ import {
 	filterBlockedMedia
 } from '$lib/server/library/status';
 import { keywordBlocklistService } from '$lib/server/settings/KeywordBlocklistService.js';
+import { enrichWithReleaseDates } from '$lib/server/release-enrichment.js';
 
 export const load: PageServerLoad = async ({ params }) => {
 	const id = parseInt(params.id);
@@ -84,26 +85,33 @@ export const load: PageServerLoad = async ({ params }) => {
 			enrichedCollection ? filterBlockedMedia(enrichedCollection, 'movie') : Promise.resolve(null)
 		]);
 
+		const [releaseEnrichedRecommendations, releaseEnrichedSimilar, releaseEnrichedCollection] =
+			await Promise.all([
+				enrichWithReleaseDates(filteredRecommendations),
+				enrichWithReleaseDates(filteredSimilar),
+				filteredCollection ? enrichWithReleaseDates(filteredCollection) : Promise.resolve(null)
+			]);
+
 		// Update movie object with enriched data
 		if (movieWithStatus.recommendations) {
 			movieWithStatus.recommendations = {
 				...movieWithStatus.recommendations,
-				results: filteredRecommendations
+				results: releaseEnrichedRecommendations
 			};
 		}
 		if (movieWithStatus.similar) {
 			movieWithStatus.similar = {
 				...movieWithStatus.similar,
-				results: filteredSimilar
+				results: releaseEnrichedSimilar
 			};
 		}
 
 		// Update collection with enriched parts
 		const enrichedCollectionData =
-			collection && filteredCollection
+			collection && releaseEnrichedCollection
 				? {
 						...collection,
-						parts: filteredCollection
+						parts: releaseEnrichedCollection
 					}
 				: null;
 

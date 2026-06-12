@@ -9,6 +9,7 @@ export interface ReleaseLineInput {
 	releaseDate: string | null | undefined;
 	digitalReleaseDate: string | null | undefined;
 	physicalReleaseDate: string | null | undefined;
+	status?: string | null;
 }
 
 export function getSmartReleaseLine(
@@ -17,7 +18,7 @@ export function getSmartReleaseLine(
 ): SmartReleaseLineResult | null {
 	if (!input) return null;
 
-	const { releaseDate, digitalReleaseDate, physicalReleaseDate } = input;
+	const { releaseDate, digitalReleaseDate, physicalReleaseDate, status } = input;
 	const nowMs = now.getTime();
 
 	const digitalMs = digitalReleaseDate ? new Date(digitalReleaseDate).getTime() : null;
@@ -39,6 +40,9 @@ export function getSmartReleaseLine(
 		if (nextRelease) {
 			const days = Math.ceil((nextRelease.ms - nowMs) / (1000 * 60 * 60 * 24));
 			return { text: `${nextRelease.type} in ${days} days`, variant: 'upcoming' };
+		}
+		if (status === 'Released') {
+			return { text: 'Available', variant: 'released' };
 		}
 		return { text: 'In Theaters', variant: 'theaters' };
 	}

@@ -51,9 +51,8 @@ export class GrabDecisionPipeline {
 				ctx.computed.upgradeStatus ?? (ctx.existingFiles.length === 0 ? 'new' : 'rejected'),
 			scores: {
 				candidate: candidateScore,
-				existing: existingScore !== undefined && Number.isFinite(existingScore)
-					? existingScore
-					: undefined,
+				existing:
+					existingScore !== undefined && Number.isFinite(existingScore) ? existingScore : undefined,
 				improvement:
 					existingScore !== undefined && Number.isFinite(existingScore)
 						? candidateScore - existingScore

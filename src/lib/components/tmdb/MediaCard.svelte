@@ -63,7 +63,8 @@
 		return getSmartReleaseLine({
 			releaseDate: rd,
 			digitalReleaseDate: enriched.digitalReleaseDate ?? null,
-			physicalReleaseDate: enriched.physicalReleaseDate ?? null
+			physicalReleaseDate: enriched.physicalReleaseDate ?? null,
+			status: rec.tmdbStatus as string | null | undefined
 		});
 	});
 </script>

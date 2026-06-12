@@ -119,7 +119,13 @@ export const POST: RequestHandler = async (event) => {
 		}
 	};
 
-	let result: { success: false; decision: Awaited<ReturnType<typeof grabService.grab>>['decision']; error: string } | Awaited<ReturnType<typeof grabService.grab>>;
+	let result:
+		| {
+				success: false;
+				decision: Awaited<ReturnType<typeof grabService.grab>>['decision'];
+				error: string;
+		  }
+		| Awaited<ReturnType<typeof grabService.grab>>;
 	try {
 		result = await grabService.grab(serviceRequest);
 	} catch (error) {

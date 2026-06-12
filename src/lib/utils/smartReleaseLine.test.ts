@@ -48,6 +48,32 @@ describe('getSmartReleaseLine', () => {
 		expect(result).toEqual({ text: 'In Theaters', variant: 'theaters' });
 	});
 
+	it('returns "Available" when theatrical is past and TMDB status is Released', () => {
+		const result = getSmartReleaseLine(
+			{
+				releaseDate: '1957-04-10',
+				digitalReleaseDate: null,
+				physicalReleaseDate: null,
+				status: 'Released'
+			},
+			now
+		);
+		expect(result).toEqual({ text: 'Available', variant: 'released' });
+	});
+
+	it('returns "In Theaters" when theatrical is past and TMDB status is not Released', () => {
+		const result = getSmartReleaseLine(
+			{
+				releaseDate: '2026-05-08',
+				digitalReleaseDate: null,
+				physicalReleaseDate: null,
+				status: 'Post Production'
+			},
+			now
+		);
+		expect(result).toEqual({ text: 'In Theaters', variant: 'theaters' });
+	});
+
 	it('returns "In Theaters in N days" when theatrical date is in future', () => {
 		const result = getSmartReleaseLine(
 			{ releaseDate: '2026-06-20', digitalReleaseDate: null, physicalReleaseDate: null },
