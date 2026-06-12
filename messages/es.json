@@ -3953,8 +3953,8 @@
 	"blockedMedia_mediaTypeTV": "TV",
 	"blockedMedia_dateBlocked": "Bloqueado {date}",
 	"blockedMedia_noReason": "Sin razón",
-	"hero_blockMedia": "Bloquear",
-	"hero_blockMediaTooltip": "Ocultar del descubrimiento y biblioteca",
-	"library_blockMedia": "Bloquear",
-	"library_blockMediaTooltip": "Eliminar de la biblioteca y ocultar en todas partes"
+	"hero_blockMedia": "Bloquear medio",
+	"hero_blockMediaTooltip": "Bloquear del descubrimiento y biblioteca",
+	"library_blockMedia": "Eliminar y bloquear",
+	"library_blockMediaTooltip": "Eliminar de la biblioteca y bloquear"
 }

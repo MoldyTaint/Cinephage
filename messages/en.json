@@ -4110,8 +4110,8 @@
 	"blockedMedia_mediaTypeTV": "TV",
 	"blockedMedia_dateBlocked": "Blocked {date}",
 	"blockedMedia_noReason": "No reason",
-	"hero_blockMedia": "Block",
-	"hero_blockMediaTooltip": "Hide from discover and library",
-	"library_blockMedia": "Block",
-	"library_blockMediaTooltip": "Remove from library and hide everywhere"
+	"hero_blockMedia": "Block Media",
+	"hero_blockMediaTooltip": "Block from discover and library",
+	"library_blockMedia": "Remove and Block",
+	"library_blockMediaTooltip": "Remove from library and block"
 }

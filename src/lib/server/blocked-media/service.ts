@@ -1,9 +1,18 @@
 import { db } from '$lib/server/db/index.js';
-import { blockedMedia, movies, series } from '$lib/server/db/schema.js';
+import {
+	blockedMedia,
+	movies,
+	series,
+	downloadQueue,
+	downloadHistory
+} from '$lib/server/db/schema.js';
 import { eq, and, count, desc, sql } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
 import { randomUUID } from 'node:crypto';
 import { invalidateBlockedCache } from '$lib/server/library/status.js';
+import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager.js';
+import { deleteAllAlternateTitles } from '$lib/server/services/index.js';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
 
@@ -153,10 +162,118 @@ class BlockedMediaService {
 
 	private async removeFromLibrary(tmdbId: number, mediaType: 'movie' | 'tv'): Promise<void> {
 		if (mediaType === 'movie') {
-			await db.delete(movies).where(eq(movies.tmdbId, tmdbId));
+			const matchingMovies = await db
+				.select({ id: movies.id })
+				.from(movies)
+				.where(eq(movies.tmdbId, tmdbId));
+
+			for (const movie of matchingMovies) {
+				await this.removeSingleMovie(movie.id);
+			}
 		} else {
-			await db.delete(series).where(eq(series.tmdbId, tmdbId));
+			const matchingSeries = await db
+				.select({ id: series.id })
+				.from(series)
+				.where(eq(series.tmdbId, tmdbId));
+
+			for (const s of matchingSeries) {
+				await this.removeSingleSeries(s.id);
+			}
 		}
+	}
+
+	private async removeSingleMovie(movieId: string): Promise<void> {
+		const activeQueueItems = await db
+			.select()
+			.from(downloadQueue)
+			.where(eq(downloadQueue.movieId, movieId));
+
+		for (const queueItem of activeQueueItems) {
+			if (queueItem.downloadClientId) {
+				try {
+					const isTorrent = queueItem.protocol === 'torrent';
+					const clientDownloadId = isTorrent
+						? queueItem.infoHash || queueItem.downloadId
+						: queueItem.downloadId || queueItem.infoHash;
+					if (clientDownloadId) {
+						const clientInstance = await getDownloadClientManager().getClientInstance(
+							queueItem.downloadClientId
+						);
+						if (clientInstance) {
+							await clientInstance.removeDownload(clientDownloadId, true);
+						}
+					}
+				} catch (err) {
+					logger.warn(
+						{
+							queueItemId: queueItem.id,
+							error: err instanceof Error ? err.message : 'Unknown'
+						},
+						'[BlockedMedia] Failed to remove download from client'
+					);
+				}
+			}
+			await db.delete(downloadQueue).where(eq(downloadQueue.id, queueItem.id));
+		}
+
+		await db
+			.update(downloadHistory)
+			.set({ status: 'removed', statusReason: null })
+			.where(eq(downloadHistory.movieId, movieId));
+
+		await deleteAllAlternateTitles('movie', movieId);
+
+		await db.delete(movies).where(eq(movies.id, movieId));
+		libraryMediaEvents.emitMovieUpdated(movieId);
+
+		logger.info({ movieId }, '[BlockedMedia] Removed movie from library');
+	}
+
+	private async removeSingleSeries(seriesId: string): Promise<void> {
+		const activeQueueItems = await db
+			.select()
+			.from(downloadQueue)
+			.where(eq(downloadQueue.seriesId, seriesId));
+
+		for (const queueItem of activeQueueItems) {
+			if (queueItem.downloadClientId) {
+				try {
+					const isTorrent = queueItem.protocol === 'torrent';
+					const clientDownloadId = isTorrent
+						? queueItem.infoHash || queueItem.downloadId
+						: queueItem.downloadId || queueItem.infoHash;
+					if (clientDownloadId) {
+						const clientInstance = await getDownloadClientManager().getClientInstance(
+							queueItem.downloadClientId
+						);
+						if (clientInstance) {
+							await clientInstance.removeDownload(clientDownloadId, true);
+						}
+					}
+				} catch (err) {
+					logger.warn(
+						{
+							queueItemId: queueItem.id,
+							error: err instanceof Error ? err.message : 'Unknown'
+						},
+						'[BlockedMedia] Failed to remove download from client'
+					);
+				}
+			}
+			await db.delete(downloadQueue).where(eq(downloadQueue.id, queueItem.id));
+		}
+
+		await db
+			.update(downloadHistory)
+			.set({ status: 'removed', statusReason: null })
+			.where(eq(downloadHistory.seriesId, seriesId));
+
+		await deleteAllAlternateTitles('series', seriesId);
+
+		await db.delete(series).where(eq(series.id, seriesId));
+		libraryMediaEvents.emitSeriesUpdated(seriesId);
+
+		logger.info({ seriesId }, '[BlockedMedia] Removed series from library');
 	}
 }
 
