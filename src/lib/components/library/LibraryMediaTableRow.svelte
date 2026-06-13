@@ -226,7 +226,6 @@
 
 	<td>
 		<div class="dropdown dropdown-end" class:dropdown-top={isNearBottom}>
-			<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 			<div
 				tabindex={isLoading ? -1 : 0}
 				role="button"

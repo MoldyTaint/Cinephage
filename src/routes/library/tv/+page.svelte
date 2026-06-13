@@ -602,7 +602,6 @@
 			<!-- Right: Quick Actions -->
 			<div class="flex shrink-0 items-center gap-1.5">
 				<div class="dropdown dropdown-end">
-					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 					<div
 						tabindex="0"
 						role="button"

@@ -49,7 +49,6 @@
 </script>
 
 <div class="dropdown dropdown-end">
-	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 	<div tabindex="0" role="button" class="btn btn-ghost btn-xs">
 		<Info size={14} />
 	</div>

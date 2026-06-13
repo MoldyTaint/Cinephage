@@ -285,7 +285,6 @@
 						size="xs"
 					/>
 					<div class="dropdown dropdown-end">
-						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 						<div
 							tabindex={autoSearching ? -1 : 0}
 							role="button"
@@ -324,7 +323,6 @@
 					</div>
 					{#if episode.file?.mediaInfo}
 						<div class="dropdown dropdown-end">
-							<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 							<div tabindex="0" role="button" class="btn btn-ghost btn-xs">
 								<Info size={14} />
 							</div>
@@ -428,7 +426,6 @@
 					{/if}
 					<!-- Subtitle popover trigger -->
 					<div class="dropdown dropdown-end">
-						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 						<div
 							tabindex="0"
 							role="button"
@@ -497,7 +494,6 @@
 				</div>
 				<!-- Subtitle popover trigger (desktop) -->
 				<div class="dropdown dropdown-end">
-					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 					<div
 						tabindex="0"
 						role="button"
@@ -605,7 +601,6 @@
 
 			<!-- Search dropdown with auto-grab and interactive options -->
 			<div class="dropdown dropdown-end">
-				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 				<div
 					tabindex={autoSearching ? -1 : 0}
 					role="button"
@@ -646,7 +641,6 @@
 			<!-- File info -->
 			{#if episode.file?.mediaInfo}
 				<div class="dropdown dropdown-end">
-					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 					<div tabindex="0" role="button" class="btn btn-ghost btn-xs">
 						<Info size={14} />
 					</div>
