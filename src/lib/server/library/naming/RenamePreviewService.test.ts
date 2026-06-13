@@ -7,10 +7,31 @@
  * - Real-world regression suite (scene releases, multi-episode, anime, etc.)
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
+import { createTestDb, destroyTestDb } from '../../../../test/db-helper';
 import { RenamePreviewService, type RenamePreviewResult } from './RenamePreviewService';
 import { NamingService, type MediaNamingInfo, DEFAULT_NAMING_CONFIG } from './NamingService';
 import { chooseBestParsedRelease } from './preview-metadata';
+
+const testDb = createTestDb();
+
+vi.mock('$lib/server/db', () => ({
+	get db() {
+		return testDb.db;
+	},
+	get sqlite() {
+		return testDb.sqlite;
+	},
+	initializeDatabase: vi.fn().mockResolvedValue(undefined)
+}));
+
+vi.mock('$lib/server/notifications/mediabrowser', () => ({
+	getMediaBrowserNotifier: () => ({ queueUpdate: vi.fn() })
+}));
+
+afterAll(() => {
+	destroyTestDb(testDb);
+});
 
 describe('RenamePreviewService', () => {
 	describe('preview metadata trust', () => {
