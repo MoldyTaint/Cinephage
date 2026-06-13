@@ -76,6 +76,7 @@
 	"action_upload": "Hochladen",
 	"action_view": "Anzeigen",
 	"activity_activeCount": "{total} aktive Downloads",
+	"activity_statusCount": "{total} {status}",
 	"activity_activeFilters_clearAll": "Alle löschen",
 	"activity_activeFilters_client": "Client",
 	"activity_activeFilters_from": "Von",

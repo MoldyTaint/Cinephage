@@ -76,6 +76,7 @@
 	"action_upload": "Upload",
 	"action_view": "View",
 	"activity_activeCount": "{total} active downloads",
+	"activity_statusCount": "{total} {status}",
 	"activity_activeFilters_clearAll": "Clear All",
 	"activity_activeFilters_client": "Client",
 	"activity_activeFilters_from": "From",

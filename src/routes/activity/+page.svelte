@@ -266,6 +266,9 @@
 		if (currentStatus === status && activityTab === (status === 'failed' ? 'history' : 'active'))
 			return;
 
+		// Failed downloads live in history (they are never active queue items),
+		// so route the "Failed" card to the history tab. All other stat cards
+		// filter the active queue.
 		const targetTab: ActivityTab = status === 'failed' ? 'history' : 'active';
 		const tabFilters = normalizeFiltersForTab({ ...filters, status }, targetTab);
 		fetchActivityData(tabFilters, targetTab, { updateUrl: true });
@@ -382,6 +385,43 @@
 	const downloadingCount = $derived(
 		hasDownloading ? filteredActivities.filter((a) => a.status === 'downloading').length : 0
 	);
+
+	function getStatusLabel(status: NonNullable<FiltersType['status']>): string {
+		switch (status) {
+			case 'downloading':
+				return m.status_downloading();
+			case 'seeding':
+				return m.status_seeding();
+			case 'paused':
+				return m.status_paused();
+			case 'failed':
+				return m.status_failed();
+			case 'success':
+				return m.status_success();
+			case 'search_error':
+				return m.status_searchError();
+			case 'removed':
+				return m.status_removed();
+			case 'rejected':
+				return m.status_rejected();
+			case 'no_results':
+				return m.status_noResults();
+			default:
+				return status;
+		}
+	}
+
+	// Contextual count label: reflects the active status filter instead of
+	// always saying "active downloads" / "history items".
+	const countLabel = $derived.by((): string => {
+		const status = filters.status ?? 'all';
+		if (status === 'all') {
+			return activityTab === 'active'
+				? m.activity_activeCount({ total })
+				: m.activity_historyCount({ total });
+		}
+		return m.activity_statusCount({ total, status: getStatusLabel(status) });
+	});
 
 	function removeStaleQueueLinkedRows(queueActivity: UnifiedActivity): number {
 		if (!isQueueActivityId(queueActivity.id) || !queueActivity.queueItemId) {
@@ -1511,11 +1551,7 @@
 
 	<!-- Activity Stats -->
 	<div class="flex items-center gap-4 text-sm text-base-content/70">
-		<span
-			>{activityTab === 'active'
-				? m.activity_activeCount({ total })
-				: m.activity_historyCount({ total })}</span
-		>
+		<span>{countLabel}</span>
 		{#if hasDownloading}
 			<span class="badge gap-1 badge-info">
 				<Loader2 class="h-3 w-3 animate-spin" />
