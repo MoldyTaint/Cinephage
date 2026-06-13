@@ -26,6 +26,7 @@ import { moveFile, fileExists } from '$lib/server/downloadClients/import/FileTra
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
 import { rename } from 'node:fs/promises';
 import { chooseBestParsedRelease } from './preview-metadata';
+import { getMediaBrowserNotifier } from '$lib/server/notifications/mediabrowser';
 
 /**
  * Status of a rename preview item
@@ -688,6 +689,8 @@ export class RenamePreviewService {
 				},
 				'[RenamePreviewService] File renamed successfully'
 			);
+
+			getMediaBrowserNotifier().queueUpdate(item.newFullPath, 'Modified');
 
 			return {
 				fileId: item.fileId,
