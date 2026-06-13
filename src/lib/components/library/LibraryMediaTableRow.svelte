@@ -226,9 +226,15 @@
 
 	<td>
 		<div class="dropdown dropdown-end" class:dropdown-top={isNearBottom}>
-			<button tabindex="0" class="btn btn-ghost btn-xs" disabled={isLoading}>
+			<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+			<div
+				tabindex={isLoading ? -1 : 0}
+				role="button"
+				class="btn btn-ghost btn-xs"
+				class:btn-disabled={isLoading}
+			>
 				<MoreVertical class="h-4 w-4" />
-			</button>
+			</div>
 			<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 			<ul
 				tabindex="0"

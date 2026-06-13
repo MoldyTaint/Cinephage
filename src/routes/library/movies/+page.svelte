@@ -693,15 +693,17 @@
 				{/if}
 
 				<div class="dropdown dropdown-end">
-					<button
-						class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm"
+					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+					<div
 						tabindex="0"
+						role="button"
+						class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm"
 						aria-label="Monitoring actions"
 					>
 						<Eye class="h-4 w-4" />
 						<span class="hidden xl:inline">Monitoring</span>
 						<ChevronDown class="hidden h-3 w-3 sm:block" />
-					</button>
+					</div>
 					<ul
 						class="dropdown-content menu z-50 mt-2 w-44 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl"
 					>

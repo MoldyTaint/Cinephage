@@ -6,6 +6,7 @@ import {
 	isMovieSearch,
 	type IIndexer,
 	type IndexerCapabilities,
+	type IndexerProtocol,
 	type SearchCriteria,
 	type TvSearchCriteria,
 	type MovieSearchCriteria,
@@ -39,10 +40,12 @@ function buildIndexer(
 	return _createMockIndexer({
 		id: 'test-indexer',
 		name: overrides.name ?? 'FakeIndexer',
-		capabilities: (overrides.capabilities ?? mockCapabilities) as Record<string, unknown>,
+		capabilities: (overrides.capabilities ?? mockCapabilities) as unknown as Record<
+			string,
+			unknown
+		>,
 		baseUrl: overrides.baseUrl ?? 'https://example.test',
-		search: overrides.search ?? (async () => []),
-		canSearch: () => true
+		search: (overrides.search ?? (async () => [])) as unknown as (...args: unknown[]) => unknown
 	}) as unknown as IIndexer;
 }
 
