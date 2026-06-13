@@ -89,22 +89,23 @@ export default defineConfig(
 	{
 		// Enforce use of shared test fixtures instead of local factories
 		files: ['src/**/*.test.ts'],
-		ignores: [
-			'src/test/**',
-			'src/lib/server/db/schema-sync.test.ts'
-		],
+		ignores: ['src/test/**', 'src/lib/server/db/schema-sync.test.ts'],
 		rules: {
 			// Discourage local makeCtx / makeGrabContext / makeEligibilityContext
 			// Point to src/test/fixtures/filters.ts instead
 			'no-restricted-syntax': [
 				'warn',
 				{
-					selector: "FunctionDeclaration[id.name=/^make(Ctx|GrabContext|EligibilityContext|GrabDecisionContext|SearchEligibilityContext)$/]",
-					message: 'Use makeGrabDecisionContext() or makeSearchEligibilityContext() from src/test/fixtures/filters.js instead of defining a local makeCtx.'
+					selector:
+						'FunctionDeclaration[id.name=/^make(Ctx|GrabContext|EligibilityContext|GrabDecisionContext|SearchEligibilityContext)$/]',
+					message:
+						'Use makeGrabDecisionContext() or makeSearchEligibilityContext() from src/test/fixtures/filters.js instead of defining a local makeCtx.'
 				},
 				{
-					selector: "FunctionDeclaration[id.name=/^create(TestMovie|TestSeries|TestEpisode|TestEpisodeFile|TestMovieFile|TestRelease|TestProfile|MockIndexer|MockIndexerManager)$/]",
-					message: 'Use shared fixture factories from src/test/fixtures/ instead of defining local create* functions.'
+					selector:
+						'FunctionDeclaration[id.name=/^create(TestMovie|TestSeries|TestEpisode|TestEpisodeFile|TestMovieFile|TestRelease|TestProfile|MockIndexer|MockIndexerManager)$/]',
+					message:
+						'Use shared fixture factories from src/test/fixtures/ instead of defining local create* functions.'
 				}
 			]
 		}

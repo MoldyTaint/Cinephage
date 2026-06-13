@@ -150,21 +150,25 @@ describe('SearchOnAddService.searchForEpisode monitoring behavior', () => {
 	});
 
 	it('skips when series is unmonitored by default', async () => {
-		mocks.episodesFindFirst.mockResolvedValue(createEpisode({
-			id: 'ep-1',
-			seriesId: 'series-1',
-			seasonNumber: 2,
-			episodeNumber: 1
-		}));
-		mocks.seriesFindFirst.mockResolvedValue(createSeries({
-			id: 'series-1',
-			title: 'The Pitt',
-			tmdbId: 250307,
-			tvdbId: 448176,
-			imdbId: 'tt3193862',
-			monitored: false,
-			scoringProfileId: null
-		}));
+		mocks.episodesFindFirst.mockResolvedValue(
+			createEpisode({
+				id: 'ep-1',
+				seriesId: 'series-1',
+				seasonNumber: 2,
+				episodeNumber: 1
+			})
+		);
+		mocks.seriesFindFirst.mockResolvedValue(
+			createSeries({
+				id: 'series-1',
+				title: 'The Pitt',
+				tmdbId: 250307,
+				tvdbId: 448176,
+				imdbId: 'tt3193862',
+				monitored: false,
+				scoringProfileId: null
+			})
+		);
 
 		const result = await searchOnAdd.searchForEpisode({ episodeId: 'ep-1' });
 
@@ -174,21 +178,25 @@ describe('SearchOnAddService.searchForEpisode monitoring behavior', () => {
 	});
 
 	it('searches and grabs when bypassMonitoring is true', async () => {
-		mocks.episodesFindFirst.mockResolvedValue(createEpisode({
-			id: 'ep-1',
-			seriesId: 'series-1',
-			seasonNumber: 2,
-			episodeNumber: 1
-		}));
-		mocks.seriesFindFirst.mockResolvedValue(createSeries({
-			id: 'series-1',
-			title: 'The Pitt',
-			tmdbId: 250307,
-			tvdbId: 448176,
-			imdbId: 'tt3193862',
-			monitored: false,
-			scoringProfileId: null
-		}));
+		mocks.episodesFindFirst.mockResolvedValue(
+			createEpisode({
+				id: 'ep-1',
+				seriesId: 'series-1',
+				seasonNumber: 2,
+				episodeNumber: 1
+			})
+		);
+		mocks.seriesFindFirst.mockResolvedValue(
+			createSeries({
+				id: 'series-1',
+				title: 'The Pitt',
+				tmdbId: 250307,
+				tvdbId: 448176,
+				imdbId: 'tt3193862',
+				monitored: false,
+				scoringProfileId: null
+			})
+		);
 		mocks.episodeFilesFindMany.mockResolvedValue([]);
 		mocks.searchEnhanced.mockResolvedValue({
 			releases: [
@@ -221,21 +229,25 @@ describe('SearchOnAddService.searchForEpisode monitoring behavior', () => {
 
 	it('uses automatic search source for monitored-series episode auto-search', async () => {
 		mocks.getSeriesSearchTitles.mockResolvedValue(['The Pitt', 'Питт']);
-		mocks.episodesFindFirst.mockResolvedValue(createEpisode({
-			id: 'ep-1',
-			seriesId: 'series-1',
-			seasonNumber: 2,
-			episodeNumber: 1
-		}));
-		mocks.seriesFindFirst.mockResolvedValue(createSeries({
-			id: 'series-1',
-			title: 'The Pitt',
-			tmdbId: 250307,
-			tvdbId: 448176,
-			imdbId: 'tt3193862',
-			monitored: true,
-			scoringProfileId: null
-		}));
+		mocks.episodesFindFirst.mockResolvedValue(
+			createEpisode({
+				id: 'ep-1',
+				seriesId: 'series-1',
+				seasonNumber: 2,
+				episodeNumber: 1
+			})
+		);
+		mocks.seriesFindFirst.mockResolvedValue(
+			createSeries({
+				id: 'series-1',
+				title: 'The Pitt',
+				tmdbId: 250307,
+				tvdbId: 448176,
+				imdbId: 'tt3193862',
+				monitored: true,
+				scoringProfileId: null
+			})
+		);
 		mocks.episodeFilesFindMany.mockResolvedValue([]);
 		mocks.searchEnhanced.mockResolvedValue({
 			releases: [
@@ -268,27 +280,33 @@ describe('SearchOnAddService.searchForEpisode monitoring behavior', () => {
 		mocks.getSeriesSearchTitles.mockResolvedValue(['The Pitt']);
 		mocks.fetchAndStoreSeriesAlternateTitles.mockResolvedValue(0);
 		mocks.episodesFindFirst
-			.mockResolvedValueOnce(createEpisode({
-				id: 'ep-1',
-				seriesId: 'series-1',
-				seasonNumber: 2,
-				episodeNumber: 1
-			}))
-			.mockResolvedValueOnce(createEpisode({
-				id: 'ep-2',
-				seriesId: 'series-1',
-				seasonNumber: 2,
-				episodeNumber: 2
-			}));
-		mocks.seriesFindFirst.mockResolvedValue(createSeries({
-			id: 'series-1',
-			title: 'The Pitt',
-			tmdbId: 250307,
-			tvdbId: 448176,
-			imdbId: 'tt3193862',
-			monitored: true,
-			scoringProfileId: null
-		}));
+			.mockResolvedValueOnce(
+				createEpisode({
+					id: 'ep-1',
+					seriesId: 'series-1',
+					seasonNumber: 2,
+					episodeNumber: 1
+				})
+			)
+			.mockResolvedValueOnce(
+				createEpisode({
+					id: 'ep-2',
+					seriesId: 'series-1',
+					seasonNumber: 2,
+					episodeNumber: 2
+				})
+			);
+		mocks.seriesFindFirst.mockResolvedValue(
+			createSeries({
+				id: 'series-1',
+				title: 'The Pitt',
+				tmdbId: 250307,
+				tvdbId: 448176,
+				imdbId: 'tt3193862',
+				monitored: true,
+				scoringProfileId: null
+			})
+		);
 		mocks.episodeFilesFindMany.mockResolvedValue([]);
 		mocks.searchEnhanced.mockResolvedValue({
 			releases: [
@@ -457,14 +475,16 @@ describe('SearchOnAddService.searchForMissingEpisodes monitoring behavior', () =
 	});
 
 	it('filters to monitored episodes by default', async () => {
-		mocks.seriesFindFirst.mockResolvedValue(createSeries({
-			id: 'series-1',
-			title: 'Afro Samurai',
-			tmdbId: 19544,
-			tvdbId: 79755,
-			imdbId: 'tt0465316',
-			scoringProfileId: 'streamer'
-		}));
+		mocks.seriesFindFirst.mockResolvedValue(
+			createSeries({
+				id: 'series-1',
+				title: 'Afro Samurai',
+				tmdbId: 19544,
+				tvdbId: 79755,
+				imdbId: 'tt0465316',
+				scoringProfileId: 'streamer'
+			})
+		);
 		mocks.episodesFindMany.mockResolvedValue([
 			createEpisode({
 				id: 'ep-1',
@@ -493,14 +513,16 @@ describe('SearchOnAddService.searchForMissingEpisodes monitoring behavior', () =
 	});
 
 	it('includes unmonitored episodes when bypassMonitoring is true', async () => {
-		mocks.seriesFindFirst.mockResolvedValue(createSeries({
-			id: 'series-1',
-			title: 'Afro Samurai',
-			tmdbId: 19544,
-			tvdbId: 79755,
-			imdbId: 'tt0465316',
-			scoringProfileId: 'streamer'
-		}));
+		mocks.seriesFindFirst.mockResolvedValue(
+			createSeries({
+				id: 'series-1',
+				title: 'Afro Samurai',
+				tmdbId: 19544,
+				tvdbId: 79755,
+				imdbId: 'tt0465316',
+				scoringProfileId: 'streamer'
+			})
+		);
 		mocks.episodesFindMany.mockResolvedValue([
 			createEpisode({
 				id: 'ep-1',
@@ -547,14 +569,16 @@ describe('SearchOnAddService.searchForMissingEpisodes monitoring behavior', () =
 	});
 
 	it('keeps default pack thresholds for non-bypassed missing searches', async () => {
-		mocks.seriesFindFirst.mockResolvedValue(createSeries({
-			id: 'series-1',
-			title: 'Afro Samurai',
-			tmdbId: 19544,
-			tvdbId: 79755,
-			imdbId: 'tt0465316',
-			scoringProfileId: 'streamer'
-		}));
+		mocks.seriesFindFirst.mockResolvedValue(
+			createSeries({
+				id: 'series-1',
+				title: 'Afro Samurai',
+				tmdbId: 19544,
+				tvdbId: 79755,
+				imdbId: 'tt0465316',
+				scoringProfileId: 'streamer'
+			})
+		);
 		mocks.episodesFindMany.mockResolvedValue([
 			createEpisode({
 				id: 'ep-1',
@@ -591,14 +615,16 @@ describe('SearchOnAddService.searchForMissingEpisodes monitoring behavior', () =
 			}
 		]);
 		mocks.getIndexerManager.mockResolvedValue(ruTrackerOnlyIndexerManager);
-		mocks.seriesFindFirst.mockResolvedValue(createSeries({
-			id: 'series-1',
-			title: 'Afro Samurai',
-			tmdbId: 19544,
-			tvdbId: 79755,
-			imdbId: 'tt0465316',
-			scoringProfileId: 'balanced'
-		}));
+		mocks.seriesFindFirst.mockResolvedValue(
+			createSeries({
+				id: 'series-1',
+				title: 'Afro Samurai',
+				tmdbId: 19544,
+				tvdbId: 79755,
+				imdbId: 'tt0465316',
+				scoringProfileId: 'balanced'
+			})
+		);
 		mocks.episodesFindMany
 			.mockResolvedValueOnce([
 				createEpisode({
@@ -668,14 +694,16 @@ describe('SearchOnAddService.searchForMissingEpisodes monitoring behavior', () =
 			}
 		]);
 		mocks.getIndexerManager.mockResolvedValue(kinozalOnlyIndexerManager);
-		mocks.seriesFindFirst.mockResolvedValue(createSeries({
-			id: 'series-1',
-			title: 'Afro Samurai',
-			tmdbId: 19544,
-			tvdbId: 79755,
-			imdbId: 'tt0465316',
-			scoringProfileId: 'balanced'
-		}));
+		mocks.seriesFindFirst.mockResolvedValue(
+			createSeries({
+				id: 'series-1',
+				title: 'Afro Samurai',
+				tmdbId: 19544,
+				tvdbId: 79755,
+				imdbId: 'tt0465316',
+				scoringProfileId: 'balanced'
+			})
+		);
 		mocks.episodesFindMany
 			.mockResolvedValueOnce([
 				createEpisode({
@@ -744,14 +772,16 @@ describe('SearchOnAddService.searchForMissingEpisodes monitoring behavior', () =
 			}
 		]);
 		mocks.getIndexerManager.mockResolvedValue(mixedIndexerManager);
-		mocks.seriesFindFirst.mockResolvedValue(createSeries({
-			id: 'series-1',
-			title: 'Afro Samurai',
-			tmdbId: 19544,
-			tvdbId: 79755,
-			imdbId: 'tt0465316',
-			scoringProfileId: 'balanced'
-		}));
+		mocks.seriesFindFirst.mockResolvedValue(
+			createSeries({
+				id: 'series-1',
+				title: 'Afro Samurai',
+				tmdbId: 19544,
+				tvdbId: 79755,
+				imdbId: 'tt0465316',
+				scoringProfileId: 'balanced'
+			})
+		);
 		mocks.episodesFindMany.mockResolvedValue([
 			createEpisode({
 				id: 'ep-1',
@@ -778,14 +808,16 @@ describe('SearchOnAddService.searchForMissingEpisodes monitoring behavior', () =
 	});
 
 	it('uses episode-only strategy when requested for manual missing auto-grab', async () => {
-		mocks.seriesFindFirst.mockResolvedValue(createSeries({
-			id: 'series-1',
-			title: 'Afro Samurai',
-			tmdbId: 19544,
-			tvdbId: 79755,
-			imdbId: 'tt0465316',
-			scoringProfileId: 'streamer'
-		}));
+		mocks.seriesFindFirst.mockResolvedValue(
+			createSeries({
+				id: 'series-1',
+				title: 'Afro Samurai',
+				tmdbId: 19544,
+				tvdbId: 79755,
+				imdbId: 'tt0465316',
+				scoringProfileId: 'streamer'
+			})
+		);
 		mocks.episodesFindMany
 			.mockResolvedValueOnce([
 				createEpisode({
@@ -893,14 +925,16 @@ describe('SearchOnAddService.searchForMissingEpisodes monitoring behavior', () =
 	});
 
 	it('counts successful episode grabs even when releaseName is missing', async () => {
-		mocks.seriesFindFirst.mockResolvedValue(createSeries({
-			id: 'series-1',
-			title: 'Afro Samurai',
-			tmdbId: 19544,
-			tvdbId: 79755,
-			imdbId: 'tt0465316',
-			scoringProfileId: 'streamer'
-		}));
+		mocks.seriesFindFirst.mockResolvedValue(
+			createSeries({
+				id: 'series-1',
+				title: 'Afro Samurai',
+				tmdbId: 19544,
+				tvdbId: 79755,
+				imdbId: 'tt0465316',
+				scoringProfileId: 'streamer'
+			})
+		);
 		mocks.episodesFindMany
 			.mockResolvedValueOnce([
 				createEpisode({
@@ -997,14 +1031,16 @@ describe('SearchOnAddService.searchForMissingEpisodes monitoring behavior', () =
 	});
 
 	it('uses season-pack grab in episode-only mode when the full aired season is missing', async () => {
-		mocks.seriesFindFirst.mockResolvedValue(createSeries({
-			id: 'series-1',
-			title: 'Afro Samurai',
-			tmdbId: 19544,
-			tvdbId: 79755,
-			imdbId: 'tt0465316',
-			scoringProfileId: 'streamer'
-		}));
+		mocks.seriesFindFirst.mockResolvedValue(
+			createSeries({
+				id: 'series-1',
+				title: 'Afro Samurai',
+				tmdbId: 19544,
+				tvdbId: 79755,
+				imdbId: 'tt0465316',
+				scoringProfileId: 'streamer'
+			})
+		);
 		const missingSeasonEpisodes = [
 			createEpisode({
 				id: 'ep-1',

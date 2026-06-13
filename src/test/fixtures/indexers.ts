@@ -11,7 +11,8 @@ export interface MockIndexer {
 	enableAutomaticSearch: boolean;
 	enableInteractiveSearch: boolean;
 	priority: number;
-	search: ReturnType<typeof vi.fn>;
+	capabilities: Record<string, unknown>;
+	search: (...args: unknown[]) => unknown;
 	grab: ReturnType<typeof vi.fn>;
 	test: ReturnType<typeof vi.fn>;
 	canSearch: ReturnType<typeof vi.fn>;
@@ -28,7 +29,8 @@ export function createMockIndexer(overrides?: Partial<MockIndexer>): MockIndexer
 		enableAutomaticSearch: true,
 		enableInteractiveSearch: true,
 		priority: 25,
-		search: vi.fn().mockResolvedValue([]),
+		capabilities: {},
+		search: async () => [],
 		grab: vi.fn().mockResolvedValue({ success: true }),
 		test: vi.fn().mockResolvedValue(undefined),
 		canSearch: vi.fn().mockReturnValue(true),

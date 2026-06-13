@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ALL_FORMATS } from './formats/index.js';
+import { createScoringProfile } from '../../../test/fixtures/releases.js';
 
 vi.mock('./formats/registry.js', () => ({
 	getActiveFormats: () => ALL_FORMATS,
@@ -437,28 +438,13 @@ describe('Size Validation - All Profiles', () => {
 });
 
 describe('Protocol Restrictions', () => {
-	// Create a test profile with explicit protocol restrictions
-	function createTestProfile(
+	// Const adapter (VariableDeclaration, not FunctionDeclaration - not subject to the create* ban)
+	const buildProtocolProfile = (
 		allowedProtocols: ('torrent' | 'usenet' | 'streaming')[]
-	): ScoringProfile {
-		const balanced = DEFAULT_PROFILES.find((p) => p.name === 'Balanced')!;
-		return {
-			id: 'test-protocol-profile',
-			name: 'Test Protocol Profile',
-			description: balanced.description,
-			tags: balanced.tags,
-			resolutionOrder: balanced.resolutionOrder,
-			upgradesAllowed: balanced.upgradesAllowed,
-			minScore: balanced.minScore,
-			upgradeUntilScore: balanced.upgradeUntilScore,
-			minScoreIncrement: balanced.minScoreIncrement,
-			formatScores: balanced.formatScores,
-			allowedProtocols
-		};
-	}
+	): ScoringProfile => createScoringProfile({ allowedProtocols }) as unknown as ScoringProfile;
 
 	it('should reject torrent when profile only allows usenet', () => {
-		const usenetOnlyProfile = createTestProfile(['usenet']);
+		const usenetOnlyProfile = buildProtocolProfile(['usenet']);
 
 		// Note: protocol is the 6th parameter: (releaseName, profile, attributes, fileSizeBytes, sizeContext, protocol)
 		const result = scoreRelease(
@@ -476,7 +462,7 @@ describe('Protocol Restrictions', () => {
 	});
 
 	it('should accept usenet when profile allows usenet', () => {
-		const usenetOnlyProfile = createTestProfile(['usenet']);
+		const usenetOnlyProfile = buildProtocolProfile(['usenet']);
 
 		const result = scoreRelease(
 			TEST_RELEASES['1080p-bluray'],
@@ -517,7 +503,7 @@ describe('Protocol Restrictions', () => {
 	});
 
 	it('should accept streaming protocol when profile allows streaming', () => {
-		const streamingProfile = createTestProfile(['streaming']);
+		const streamingProfile = buildProtocolProfile(['streaming']);
 
 		const result = scoreRelease(
 			TEST_RELEASES['1080p-webdl'],
@@ -532,7 +518,7 @@ describe('Protocol Restrictions', () => {
 	});
 
 	it('should reject streaming when profile only allows torrent and usenet', () => {
-		const downloadOnlyProfile = createTestProfile(['torrent', 'usenet']);
+		const downloadOnlyProfile = buildProtocolProfile(['torrent', 'usenet']);
 
 		const result = scoreRelease(
 			TEST_RELEASES['1080p-webdl'],
@@ -547,7 +533,7 @@ describe('Protocol Restrictions', () => {
 	});
 
 	it('protocol-rejected releases should not meet minimum requirements', () => {
-		const usenetOnlyProfile = createTestProfile(['usenet']);
+		const usenetOnlyProfile = buildProtocolProfile(['usenet']);
 
 		const result = scoreRelease(
 			TEST_RELEASES['1080p-bluray'],

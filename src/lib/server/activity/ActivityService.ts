@@ -271,66 +271,69 @@ export class ActivityService {
 					'stalled',
 					'seeding',
 					'completed',
-				'postprocessing',
-				'importing'
-			])
-		)
-		.get();
-	return result?.count ?? 0;
-}
-
-async getQueueCardStats(): Promise<{
-	totalCount: number;
-	downloadingCount: number;
-	seedingCount: number;
-	pausedCount: number;
-	failedCount: number;
-}> {
-	const activeFailed = (await db
-			.select({ count: count() })
-			.from(downloadQueue)
-			.where(eq(downloadQueue.status, 'failed'))
-			.get())?.count ?? 0;
-
-	const [queueStats, historyFailed] = await Promise.all([
-		db
-			.select({ status: downloadQueue.status, count: count() })
-			.from(downloadQueue)
-			.where(
-				inArray(downloadQueue.status, [
-					'downloading',
-					'queued',
-					'stalled',
-					'seeding',
-					'completed',
 					'postprocessing',
-					'importing',
-					'paused'
+					'importing'
 				])
 			)
-			.groupBy(downloadQueue.status),
-		db
-			.select({ count: count() })
-			.from(downloadHistory)
-			.where(eq(downloadHistory.status, 'failed'))
-			.get()
-	]);
+			.get();
+		return result?.count ?? 0;
+	}
 
-	const statusMap = new Map(queueStats.map((r) => [r.status, r.count]));
-	const downloadingCount =
-		(statusMap.get('downloading') ?? 0) +
-		(statusMap.get('queued') ?? 0) +
-		(statusMap.get('stalled') ?? 0) +
-		(statusMap.get('completed') ?? 0) +
-		(statusMap.get('postprocessing') ?? 0) +
-		(statusMap.get('importing') ?? 0);
-	const seedingCount = statusMap.get('seeding') ?? 0;
-	const pausedCount = statusMap.get('paused') ?? 0;
-	const failedCount = activeFailed + (historyFailed?.count ?? 0);
-	const totalCount = downloadingCount + seedingCount + pausedCount + failedCount;
+	async getQueueCardStats(): Promise<{
+		totalCount: number;
+		downloadingCount: number;
+		seedingCount: number;
+		pausedCount: number;
+		failedCount: number;
+	}> {
+		const activeFailed =
+			(
+				await db
+					.select({ count: count() })
+					.from(downloadQueue)
+					.where(eq(downloadQueue.status, 'failed'))
+					.get()
+			)?.count ?? 0;
 
-	return { totalCount, downloadingCount, seedingCount, pausedCount, failedCount };
-}
+		const [queueStats, historyFailed] = await Promise.all([
+			db
+				.select({ status: downloadQueue.status, count: count() })
+				.from(downloadQueue)
+				.where(
+					inArray(downloadQueue.status, [
+						'downloading',
+						'queued',
+						'stalled',
+						'seeding',
+						'completed',
+						'postprocessing',
+						'importing',
+						'paused'
+					])
+				)
+				.groupBy(downloadQueue.status),
+			db
+				.select({ count: count() })
+				.from(downloadHistory)
+				.where(eq(downloadHistory.status, 'failed'))
+				.get()
+		]);
+
+		const statusMap = new Map(queueStats.map((r) => [r.status, r.count]));
+		const downloadingCount =
+			(statusMap.get('downloading') ?? 0) +
+			(statusMap.get('queued') ?? 0) +
+			(statusMap.get('stalled') ?? 0) +
+			(statusMap.get('completed') ?? 0) +
+			(statusMap.get('postprocessing') ?? 0) +
+			(statusMap.get('importing') ?? 0);
+		const seedingCount = statusMap.get('seeding') ?? 0;
+		const pausedCount = statusMap.get('paused') ?? 0;
+		const failedCount = activeFailed + (historyFailed?.count ?? 0);
+		const totalCount = downloadingCount + seedingCount + pausedCount + failedCount;
+
+		return { totalCount, downloadingCount, seedingCount, pausedCount, failedCount };
+	}
 
 	async getRetentionDays(): Promise<number> {
 		const row = await db

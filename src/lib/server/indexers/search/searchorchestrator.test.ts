@@ -6,14 +6,13 @@ import {
 	isMovieSearch,
 	type IIndexer,
 	type IndexerCapabilities,
-	type IndexerProtocol,
-	type IndexerAccessType,
 	type SearchCriteria,
 	type TvSearchCriteria,
 	type MovieSearchCriteria,
 	type MusicSearchCriteria,
 	type ReleaseResult
 } from '../types';
+import { createMockIndexer as _createMockIndexer } from '../../../../test/fixtures/indexers.js';
 
 const mockCapabilities: IndexerCapabilities = {
 	search: { available: true, supportedParams: ['q'] },
@@ -29,7 +28,7 @@ const mockCapabilities: IndexerCapabilities = {
 	}
 };
 
-function createMockIndexer(
+function buildIndexer(
 	overrides: {
 		name?: string;
 		baseUrl?: string;
@@ -37,20 +36,14 @@ function createMockIndexer(
 		search?: (criteria: SearchCriteria) => Promise<ReleaseResult[]>;
 	} = {}
 ): IIndexer {
-	return {
+	return _createMockIndexer({
 		id: 'test-indexer',
 		name: overrides.name ?? 'FakeIndexer',
-		definitionId: 'test-definition',
-		protocol: 'torrent' as IndexerProtocol,
-		accessType: 'public' as IndexerAccessType,
-		capabilities: overrides.capabilities ?? mockCapabilities,
+		capabilities: (overrides.capabilities ?? mockCapabilities) as Record<string, unknown>,
 		baseUrl: overrides.baseUrl ?? 'https://example.test',
-		enableAutomaticSearch: true,
-		enableInteractiveSearch: true,
-		search: overrides.search ?? (async (): Promise<ReleaseResult[]> => []),
-		test: async () => {},
+		search: overrides.search ?? (async () => []),
 		canSearch: () => true
-	};
+	}) as unknown as IIndexer;
 }
 
 function createTvCriteria(overrides: Partial<TvSearchCriteria> = {}): TvSearchCriteria {
@@ -108,7 +101,7 @@ describe('SearchOrchestrator.executeMultiTitleTextSearch', () => {
 		const orchestrator = new SearchOrchestrator();
 		const captured: SearchCriteria[] = [];
 
-		const fakeIndexer = createMockIndexer({
+		const fakeIndexer = buildIndexer({
 			search: async (criteria) => {
 				captured.push(criteria);
 				return [];
@@ -135,7 +128,7 @@ describe('SearchOrchestrator.executeMultiTitleTextSearch', () => {
 		const orchestrator = new SearchOrchestrator();
 		const captured: SearchCriteria[] = [];
 
-		const fakeIndexer = createMockIndexer({
+		const fakeIndexer = buildIndexer({
 			search: async (criteria) => {
 				captured.push(criteria);
 				return [];
@@ -159,7 +152,7 @@ describe('SearchOrchestrator.executeMultiTitleTextSearch', () => {
 		const orchestrator = new SearchOrchestrator();
 		const captured: SearchCriteria[] = [];
 
-		const fakeIndexer = createMockIndexer({
+		const fakeIndexer = buildIndexer({
 			search: async (criteria) => {
 				captured.push(criteria);
 				return [];
@@ -184,7 +177,7 @@ describe('SearchOrchestrator.executeMultiTitleTextSearch', () => {
 		const orchestrator = new SearchOrchestrator();
 		const captured: SearchCriteria[] = [];
 
-		const fakeIndexer = createMockIndexer({
+		const fakeIndexer = buildIndexer({
 			search: async (criteria) => {
 				captured.push(criteria);
 				return [];
@@ -207,7 +200,7 @@ describe('SearchOrchestrator.executeMultiTitleTextSearch', () => {
 		const orchestrator = new SearchOrchestrator();
 		const captured: SearchCriteria[] = [];
 
-		const fakeIndexer = createMockIndexer({
+		const fakeIndexer = buildIndexer({
 			search: async (criteria) => {
 				captured.push(criteria);
 				return [];
@@ -243,7 +236,7 @@ describe('SearchOrchestrator.executeMultiTitleTextSearch', () => {
 		const orchestrator = new SearchOrchestrator();
 		const captured: SearchCriteria[] = [];
 
-		const fakeIndexer = createMockIndexer({
+		const fakeIndexer = buildIndexer({
 			name: 'RuTracker.org',
 			search: async (criteria) => {
 				captured.push(criteria);
@@ -277,7 +270,7 @@ describe('SearchOrchestrator.executeMultiTitleTextSearch', () => {
 		const orchestrator = new SearchOrchestrator();
 		const captured: SearchCriteria[] = [];
 
-		const fakeIndexer = createMockIndexer({
+		const fakeIndexer = buildIndexer({
 			name: 'RuTracker.org',
 			baseUrl: 'https://rutracker.org/forum',
 			search: async (criteria) => {
@@ -313,7 +306,7 @@ describe('SearchOrchestrator.executeMultiTitleTextSearch', () => {
 		const orchestrator = new SearchOrchestrator();
 		const captured: SearchCriteria[] = [];
 
-		const fakeIndexer = createMockIndexer({
+		const fakeIndexer = buildIndexer({
 			name: 'RuTracker.org',
 			baseUrl: 'https://rutracker.org/forum',
 			search: async (criteria) => {
@@ -353,7 +346,7 @@ describe('SearchOrchestrator.executeWithTiering', () => {
 		const orchestrator = new SearchOrchestrator();
 		const captured: SearchCriteria[] = [];
 
-		const fakeIndexer = createMockIndexer({
+		const fakeIndexer = buildIndexer({
 			capabilities: {
 				...mockCapabilities,
 				tvSearch: {
@@ -409,7 +402,7 @@ describe('SearchOrchestrator.executeWithTiering', () => {
 		const orchestrator = new SearchOrchestrator();
 		const captured: SearchCriteria[] = [];
 
-		const fakeIndexer = createMockIndexer({
+		const fakeIndexer = buildIndexer({
 			capabilities: {
 				...mockCapabilities,
 				tvSearch: {
@@ -455,7 +448,7 @@ describe('SearchOrchestrator.executeWithTiering', () => {
 		const orchestrator = new SearchOrchestrator();
 		const captured: SearchCriteria[] = [];
 
-		const fakeIndexer = createMockIndexer({
+		const fakeIndexer = buildIndexer({
 			capabilities: {
 				...mockCapabilities,
 				movieSearch: {
@@ -509,7 +502,7 @@ describe('SearchOrchestrator.executeWithTiering', () => {
 		const orchestrator = new SearchOrchestrator();
 		const captured: SearchCriteria[] = [];
 
-		const fakeIndexer = createMockIndexer({
+		const fakeIndexer = buildIndexer({
 			capabilities: {
 				...mockCapabilities,
 				movieSearch: {

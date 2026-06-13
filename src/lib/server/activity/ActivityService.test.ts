@@ -2,12 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { UnifiedActivity } from '$lib/types/activity';
 import { ActivityService } from './ActivityService';
 import type { DownloadHistoryRecord, DownloadQueueRecord } from './types';
-import {
-	applyFilters,
-	sortActivities,
-	buildActivitySummary,
-	applyRequestedStatusFilter
-} from './activity-filters.js';
+import { applyFilters, sortActivities, buildActivitySummary } from './activity-filters.js';
 import { ActivityDeduplicationService } from './ActivityDeduplicationService.js';
 
 function createActivity(id: string, overrides: Partial<UnifiedActivity> = {}): UnifiedActivity {
@@ -471,7 +466,7 @@ describe('ActivityService active dedupe', () => {
 });
 
 describe('ActivityService unified summary', () => {
-	it('counts failed active queue rows in the same active dataset the table uses', () => {
+	it('excludes failed queue rows from the active scope (they belong in History)', () => {
 		const failedQueue = createActivity('queue-failed', {
 			status: 'failed',
 			queueItemId: 'queue-failed-id',
@@ -486,12 +481,12 @@ describe('ActivityService unified summary', () => {
 		const activeUniverse = new ActivityDeduplicationService().dedupeActiveActivities(
 			applyFilters([failedQueue, downloadingQueue], { status: 'all' }, 'active')
 		);
-		const failedOnly = applyRequestedStatusFilter(activeUniverse, { status: 'failed' });
 		const summary = buildActivitySummary(activeUniverse);
 
-		expect(failedOnly.map((activity) => activity.id)).toEqual(['queue-failed']);
-		expect(summary.failedCount).toBe(1);
-		expect(summary.totalCount).toBe(2);
+		// Failed items are no longer part of the active scope - they appear in History
+		expect(activeUniverse.map((activity) => activity.id)).toEqual(['queue-downloading']);
+		expect(summary.failedCount).toBe(0);
+		expect(summary.totalCount).toBe(1);
 		expect(summary.downloadingCount).toBe(1);
 	});
 });
