@@ -23,7 +23,7 @@ export const POST: RequestHandler = async (event) => {
 	const manager = getMediaBrowserManager();
 
 	const testWithIdSchema = mediaBrowserServerTestSchema.partial().extend({
-		persist: z.boolean().optional().default(false)
+		persist: z.boolean().optional().default(true)
 	});
 
 	const text = await request.text();
