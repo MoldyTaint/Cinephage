@@ -84,7 +84,7 @@ export const load: PageServerLoad = async ({ url }) => {
 
 	// Fetch filter options and activity data in parallel — call the service directly
 	// instead of routing through an internal HTTP fetch
-	const [indexerRows, clientRows, activityResult] = await Promise.all([
+	const [indexerRows, clientRows, activityResult, cardStats] = await Promise.all([
 		db
 			.select({ id: indexers.id, name: indexers.name })
 			.from(indexers)
@@ -97,7 +97,8 @@ export const load: PageServerLoad = async ({ url }) => {
 			.orderBy(downloadClients.name),
 		activityService
 			.getActivities(filters, { field: 'time', direction: 'desc' }, { limit: 50, offset: 0 }, tab)
-			.catch(() => null)
+			.catch(() => null),
+		activityService.getQueueCardStats().catch(() => null)
 	]);
 
 	const filterOptions: FilterOptions = {
@@ -113,6 +114,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			total: activityResult.total,
 			hasMore: activityResult.hasMore,
 			summary: activityResult.summary,
+			cardStats,
 			tab,
 			filters,
 			filterOptions
@@ -124,6 +126,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		total: 0,
 		hasMore: false,
 		summary: null,
+		cardStats,
 		tab,
 		filters,
 		filterOptions

@@ -262,10 +262,13 @@
 	}
 
 	function applyQueueCardFilter(status: QueueCardStatusFilter): void {
-		if (activityTab !== 'active') return;
 		const currentStatus = filters.status ?? 'all';
-		if (currentStatus === status) return;
-		applyFilters({ ...filters, status }, 'active');
+		if (currentStatus === status && activityTab === (status === 'failed' ? 'history' : 'active'))
+			return;
+
+		const targetTab: ActivityTab = status === 'failed' ? 'history' : 'active';
+		const tabFilters = normalizeFiltersForTab({ ...filters, status }, targetTab);
+		fetchActivityData(tabFilters, targetTab, { updateUrl: true });
 	}
 
 	function syncActivityUrl(nextFilters: FiltersType, tab: ActivityTab): void {
@@ -481,7 +484,11 @@
 		total = data.total;
 		hasMore = data.hasMore;
 		loadedOffset = data.activities.length;
-		queueStats = parseQueueStats((data.summary ?? null) as Partial<ActivitySummary> | null);
+		if (data.cardStats) {
+			queueStats = data.cardStats as QueueCardStats;
+		} else {
+			queueStats = parseQueueStats((data.summary ?? null) as Partial<ActivitySummary> | null);
+		}
 		filters = initialFilters;
 		setFiltersForTab(nextTab, initialFilters);
 		// Reconcile selections against the new data (untracked to avoid circular deps)
