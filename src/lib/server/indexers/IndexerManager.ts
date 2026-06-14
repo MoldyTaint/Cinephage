@@ -353,17 +353,14 @@ export class IndexerManager {
 		const statusTracker = getPersistentStatusTracker();
 		const enabledChanged = updates.enabled !== undefined && updates.enabled !== existing.enabled;
 		const upstreamChanged =
-			updates.upstreamEnabled !== undefined &&
-			updates.upstreamEnabled !== existing.upstreamEnabled;
+			updates.upstreamEnabled !== undefined && updates.upstreamEnabled !== existing.upstreamEnabled;
 		const orphanedChanged =
 			updates.orphaned !== undefined && updates.orphaned !== existing.orphaned;
 
 		if (enabledChanged || upstreamChanged || orphanedChanged) {
 			const newEnabled = updates.enabled ?? existing.enabled;
 			const newUpstream =
-				updates.upstreamEnabled !== undefined
-					? updates.upstreamEnabled
-					: existing.upstreamEnabled;
+				updates.upstreamEnabled !== undefined ? updates.upstreamEnabled : existing.upstreamEnabled;
 			const newOrphaned = updates.orphaned !== undefined ? updates.orphaned : existing.orphaned;
 			const effectiveEnabled = newEnabled && (newUpstream ?? true) && !newOrphaned;
 			if (effectiveEnabled) {

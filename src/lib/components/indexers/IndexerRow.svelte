@@ -212,7 +212,10 @@
 			<button
 				class="btn btn-ghost btn-xs"
 				onclick={() => onToggle(indexer)}
-				disabled={testing || toggling || reorderMode || (indexer.upstreamEnabled === false && !indexer.orphaned)}
+				disabled={testing ||
+					toggling ||
+					reorderMode ||
+					(indexer.upstreamEnabled === false && !indexer.orphaned)}
 				title={indexer.orphaned
 					? 'Deleted from upstream - click to test connection and restore'
 					: indexer.upstreamEnabled === false

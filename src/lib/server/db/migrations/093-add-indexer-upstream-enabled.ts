@@ -11,9 +11,7 @@ export const migration_v093: MigrationDefinition = {
 		if (!tableExists(sqlite, 'indexers')) return;
 
 		if (!columnExists(sqlite, 'indexers', 'upstream_enabled')) {
-			sqlite
-				.prepare(`ALTER TABLE "indexers" ADD COLUMN "upstream_enabled" integer`)
-				.run();
+			sqlite.prepare(`ALTER TABLE "indexers" ADD COLUMN "upstream_enabled" integer`).run();
 			logger.info('[Migration v093] Added upstream_enabled column to indexers');
 
 			// Backfill from settings JSON for existing Prowlarr-managed indexers.
@@ -29,7 +27,9 @@ export const migration_v093: MigrationDefinition = {
 					 WHERE json_extract("settings", '$.prowlarrEnabled') IS NOT NULL`
 				)
 				.run();
-			logger.info('[Migration v093] Backfilled upstream_enabled from prowlarrEnabled settings field');
+			logger.info(
+				'[Migration v093] Backfilled upstream_enabled from prowlarrEnabled settings field'
+			);
 		}
 	}
 };
