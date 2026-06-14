@@ -150,7 +150,8 @@ export class ActivityService {
 			failedQueueItems,
 			historyCount,
 			monitoringCount,
-			moveTaskCount
+			moveTaskCount,
+			historyFailedCount
 		] = await Promise.all([
 			needsActive
 				? this.fetchActiveDownloads(summaryFilters)
@@ -175,7 +176,8 @@ export class ActivityService {
 				: Promise.resolve(0),
 			(needsActive || needsHistory) && !hasJsOnlyFilters
 				? this.countMoveTasks(scope, filters)
-				: Promise.resolve(0)
+				: Promise.resolve(0),
+			scope === 'active' ? this.countHistoryFailed() : Promise.resolve(0)
 		]);
 
 		// Batch fetch all media info
@@ -193,12 +195,16 @@ export class ActivityService {
 			mediaMaps,
 			monitoringByQueueId
 		);
-		const historyActivities = this.transformHistoryItems(
+		const rawHistoryActivities = this.transformHistoryItems(
 			historyItems,
 			mediaMaps,
 			activeDownloads,
 			failedQueueIndex
 		);
+		const historyActivities = needsHistory
+			? this.deduplicationService.deduplicateHistoryActivities(rawHistoryActivities)
+			: rawHistoryActivities;
+		const historyDeduped = historyActivities.length < rawHistoryActivities.length;
 		const monitoringActivities = this.transformMonitoringItems(monitoringItems, mediaMaps);
 		const moveActivities = this.transformMoveTasks(moveTasks);
 		const activities: UnifiedActivity[] = [
@@ -223,18 +229,19 @@ export class ActivityService {
 
 			if (scope === 'active') {
 				summary = buildActivitySummary(activeUniverse);
-				summary.failedCount = failedQueueItems.length;
+				summary.failedCount = historyFailedCount;
 			}
 		}
 
+		const useFilteredLength = hasJsOnlyFilters || historyDeduped;
 		const total =
 			scope === 'active'
 				? activeFilteredCount
 				: scope === 'history'
-					? hasJsOnlyFilters
+					? useFilteredLength
 						? filtered.length
 						: historyCount + monitoringCount + moveTaskCount
-					: hasJsOnlyFilters
+					: useFilteredLength
 						? filtered.length
 						: activeFilteredCount + historyCount + monitoringCount + moveTaskCount;
 
@@ -286,15 +293,6 @@ export class ActivityService {
 		pausedCount: number;
 		failedCount: number;
 	}> {
-		const activeFailed =
-			(
-				await db
-					.select({ count: count() })
-					.from(downloadQueue)
-					.where(eq(downloadQueue.status, 'failed'))
-					.get()
-			)?.count ?? 0;
-
 		const [queueStats, historyFailed] = await Promise.all([
 			db
 				.select({ status: downloadQueue.status, count: count() })
@@ -329,8 +327,8 @@ export class ActivityService {
 			(statusMap.get('importing') ?? 0);
 		const seedingCount = statusMap.get('seeding') ?? 0;
 		const pausedCount = statusMap.get('paused') ?? 0;
-		const failedCount = activeFailed + (historyFailed?.count ?? 0);
-		const totalCount = downloadingCount + seedingCount + pausedCount + failedCount;
+		const failedCount = historyFailed?.count ?? 0;
+		const totalCount = downloadingCount + seedingCount + pausedCount;
 
 		return { totalCount, downloadingCount, seedingCount, pausedCount, failedCount };
 	}
@@ -409,7 +407,7 @@ export class ActivityService {
 		const taskIdList = Array.from(taskIds);
 		let eligibleHistoryIdList = historyIdList;
 		let eligibleTaskIdList = taskIdList;
-		let skippedRetryableFailed = 0;
+		const skippedRetryableFailed = 0;
 		let skippedRunningTasks = 0;
 
 		if (historyIdList.length > 0) {
@@ -470,41 +468,7 @@ export class ActivityService {
 				}
 			}
 
-			// Fetch all rows (original + siblings) for the protection check
-			const expandedHistoryIdList = Array.from(historyIds);
-			const requestedHistoryRows = await db
-				.select({
-					id: downloadHistory.id,
-					status: downloadHistory.status,
-					downloadId: downloadHistory.downloadId,
-					title: downloadHistory.title,
-					grabbedAt: downloadHistory.grabbedAt
-				})
-				.from(downloadHistory)
-				.where(inArray(downloadHistory.id, expandedHistoryIdList))
-				.all();
-
-			const failedQueueIndex = buildFailedQueueIndex(await this.fetchFailedQueueItems());
-			const protectedHistoryIds = new Set<string>();
-
-			for (const row of requestedHistoryRows) {
-				if (row.status !== 'failed') continue;
-
-				const byDownloadId = row.downloadId
-					? failedQueueIndex.get(`download:${row.downloadId}`)
-					: undefined;
-				const byTitleGrabbed =
-					!byDownloadId && row.title && row.grabbedAt
-						? failedQueueIndex.get(`title:${row.title.toLowerCase()}|grabbed:${row.grabbedAt}`)
-						: undefined;
-
-				if (byDownloadId || byTitleGrabbed) {
-					protectedHistoryIds.add(row.id);
-				}
-			}
-
-			skippedRetryableFailed = protectedHistoryIds.size;
-			eligibleHistoryIdList = expandedHistoryIdList.filter((id) => !protectedHistoryIds.has(id));
+			eligibleHistoryIdList = Array.from(historyIds);
 		}
 
 		if (taskIdList.length > 0) {
@@ -966,6 +930,15 @@ export class ActivityService {
 			.orderBy(desc(downloadHistory.createdAt))
 			.limit(fetchLimit)
 			.all() as DownloadHistoryRecord[];
+	}
+
+	private async countHistoryFailed(): Promise<number> {
+		const result = await db
+			.select({ count: count() })
+			.from(downloadHistory)
+			.where(eq(downloadHistory.status, 'failed'))
+			.get();
+		return result?.count ?? 0;
 	}
 
 	/**

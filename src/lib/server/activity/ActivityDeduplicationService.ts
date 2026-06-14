@@ -214,6 +214,18 @@ export class ActivityDeduplicationService {
 		return candidateRecency < existingRecency;
 	}
 
+	deduplicateHistoryActivities(activities: UnifiedActivity[]): UnifiedActivity[] {
+		const seen = new Map<string, UnifiedActivity>();
+		for (const activity of activities) {
+			const key = `${activity.status}:${this.buildActiveDedupKey(activity)}`;
+			const existing = seen.get(key);
+			if (!existing || activity.startedAt > existing.startedAt) {
+				seen.set(key, activity);
+			}
+		}
+		return [...seen.values()];
+	}
+
 	dedupeActiveActivities(activities: UnifiedActivity[]): UnifiedActivity[] {
 		const dedupedByKey = new Map<string, UnifiedActivity>();
 		const stableOrder: string[] = [];

@@ -52,9 +52,6 @@ export function isHistoryActivity(activity: UnifiedActivity): boolean {
 		activity.id.startsWith('task-');
 	if (!isHistoryRow) return false;
 
-	// Keep failed activities retryable via queue actions; don't allow bulk-delete selection.
-	if (activity.status === 'failed' && activity.queueItemId) return false;
-
 	return true;
 }
 
