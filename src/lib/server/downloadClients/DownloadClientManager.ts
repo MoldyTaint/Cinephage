@@ -500,9 +500,24 @@ export class DownloadClientManager {
 		protocol: DownloadClientProtocol
 	): Promise<Array<{ client: DownloadClient; instance: IDownloadClient }>> {
 		const allClients = await this.getEnabledClients();
-		return allClients.filter(
+		const matched = allClients.filter(
 			({ client }) => IMPLEMENTATION_PROTOCOL_MAP[client.implementation] === protocol
 		);
+		if (matched.length === 0) {
+			logger.warn(
+				{
+					requestedProtocol: protocol,
+					enabledClients: allClients.map((c) => ({
+						name: c.client.name,
+						implementation: c.client.implementation,
+						enabled: c.client.enabled,
+						mappedProtocol: IMPLEMENTATION_PROTOCOL_MAP[c.client.implementation] ?? 'unknown'
+					}))
+				},
+				'No enabled download clients found for protocol'
+			);
+		}
+		return matched;
 	}
 
 	/**

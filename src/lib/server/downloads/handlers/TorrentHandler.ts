@@ -26,6 +26,7 @@ export class TorrentHandler {
 		const clientResult = await clientManager.getClientForProtocol('torrent');
 
 		if (!clientResult) {
+			logger.warn({ title: release.title }, 'No enabled torrent download client configured');
 			return { success: false, error: 'No enabled torrent download client configured' };
 		}
 
@@ -70,6 +71,10 @@ export class TorrentHandler {
 		});
 
 		if (!resolvedDownload.success) {
+			logger.error(
+				{ title: release.title, error: resolvedDownload.error },
+				'Download resolution failed'
+			);
 			return { success: false, error: `Failed to resolve download: ${resolvedDownload.error}` };
 		}
 

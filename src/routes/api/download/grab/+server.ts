@@ -88,6 +88,12 @@ export const POST: RequestHandler = async (event) => {
 		}
 	}
 
+	if (!data.protocol) {
+		return json({ success: false, error: 'protocol is required' } satisfies GrabResponse, {
+			status: 422
+		});
+	}
+
 	const force = data.isAutomatic ? (data.force ?? false) : (data.force ?? true);
 
 	const target = buildTarget(data);
@@ -101,7 +107,7 @@ export const POST: RequestHandler = async (event) => {
 			indexerId: data.indexerId,
 			indexerName: data.indexerName,
 			size: data.size,
-			protocol: data.protocol as 'torrent' | 'usenet' | 'streaming' | undefined,
+			protocol: data.protocol,
 			guid: data.guid,
 			commentsUrl: data.commentsUrl,
 			categories: data.categories,
@@ -136,6 +142,10 @@ export const POST: RequestHandler = async (event) => {
 
 	if (!result.success) {
 		if (result.error) {
+			logger.error(
+				{ title: data.title, error: result.error, decision: result.decision },
+				'[Grab] Handler returned failure'
+			);
 			return json(
 				{
 					success: false,

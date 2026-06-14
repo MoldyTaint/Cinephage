@@ -1044,6 +1044,8 @@ export class UnifiedIndexer implements IIndexer {
 	): Promise<IndexerDownloadResult> {
 		const startTime = Date.now();
 
+		url = this.reconstructDownloadUrl(url);
+
 		this.log.debug({ url: url.substring(0, 100) }, 'Downloading content');
 
 		try {

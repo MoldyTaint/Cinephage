@@ -119,6 +119,14 @@ export class UsenetHandler {
 							};
 						}
 					} else {
+						logger.error(
+							{
+								title: release.title,
+								indexerId: release.indexerId,
+								error: downloadResult.error
+							},
+							'Indexer returned failure when fetching NZB'
+						);
 						return {
 							success: false,
 							error: `Failed to fetch NZB: ${downloadResult.error}`

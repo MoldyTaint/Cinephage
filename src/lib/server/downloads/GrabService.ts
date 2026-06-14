@@ -10,6 +10,9 @@ import { TorrentHandler } from './handlers/TorrentHandler.js';
 import { UsenetHandler } from './handlers/UsenetHandler.js';
 import { StreamingHandler } from './handlers/StreamingHandler.js';
 import { NzbStreamingHandler } from './handlers/NzbStreamingHandler.js';
+import { createChildLogger } from '$lib/logging/index.js';
+
+const logger = createChildLogger({ module: 'GrabService' });
 
 class GrabServiceImpl {
 	private static instance: GrabServiceImpl;
@@ -222,6 +225,10 @@ class GrabServiceImpl {
 				return handler.handle(request, resolved);
 			}
 			default:
+				logger.error(
+					{ protocol, title: request.release.title },
+					'Unknown or missing protocol in grab request'
+				);
 				return {
 					success: false,
 					error: `Unknown protocol: ${protocol ?? 'undefined'}`
