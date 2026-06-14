@@ -28,6 +28,8 @@ export const indexerCreateSchema = z.object({
 	/** Alternative/fallback URLs */
 	alternateUrls: z.array(z.string().url('Must be a valid URL')).default([]),
 	enabled: z.boolean().default(true),
+	/** True when upstream sync detected this indexer no longer exists; cleared on re-appearance */
+	orphaned: z.boolean().optional(),
 	priority: z.number().int().min(1).max(100).default(25),
 	/** User-provided settings for YAML indexers (apiKey, cookie, passkey, etc.) */
 	settings: z

@@ -75,6 +75,7 @@ export const PUT: RequestHandler = async (event) => {
 		const updated = await manager.updateIndexer(params.id, {
 			name: validated.name,
 			enabled: validated.enabled,
+			orphaned: validated.orphaned,
 			baseUrl: validated.baseUrl,
 			alternateUrls: validated.alternateUrls,
 			priority: validated.priority,

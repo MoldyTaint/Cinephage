@@ -3,6 +3,7 @@
 		Loader2,
 		FlaskConical,
 		Lock,
+		RotateCcw,
 		Trash2,
 		Search,
 		Zap,
@@ -127,11 +128,16 @@
 			</button>
 			{#if isProwlarrIndexer()}
 				<span class="badge badge-xs badge-primary">Prowlarr</span>
-				{#if indexer.upstreamEnabled === false}
+				{#if indexer.orphaned}
+					<span class="badge badge-xs badge-error">Deleted</span>
+				{:else if indexer.upstreamEnabled === false}
 					<span class="badge badge-xs badge-warning">Disabled in Prowlarr</span>
 				{/if}
 			{:else if isJackettIndexer()}
 				<span class="badge badge-xs badge-secondary">Jackett</span>
+				{#if indexer.orphaned}
+					<span class="badge badge-xs badge-error">Deleted</span>
+				{/if}
 			{/if}
 		</div>
 	</td>
@@ -206,11 +212,19 @@
 			<button
 				class="btn btn-ghost btn-xs"
 				onclick={() => onToggle(indexer)}
-				disabled={testing || toggling || reorderMode || indexer.upstreamEnabled === false}
-				title={indexer.upstreamEnabled === false ? 'Disabled in Prowlarr — enable it there first' : indexer.enabled ? 'Disable' : 'Enable'}
+				disabled={testing || toggling || reorderMode || (indexer.upstreamEnabled === false && !indexer.orphaned)}
+				title={indexer.orphaned
+					? 'Deleted from upstream - click to test connection and restore'
+					: indexer.upstreamEnabled === false
+						? 'Disabled in Prowlarr - enable it there first'
+						: indexer.enabled
+							? 'Disable'
+							: 'Enable'}
 			>
 				{#if toggling}
 					<Loader2 class="h-4 w-4 animate-spin" />
+				{:else if indexer.orphaned}
+					<RotateCcw class="h-4 w-4 text-error" />
 				{:else if indexer.upstreamEnabled === false}
 					<Lock class="h-4 w-4 text-warning" />
 				{:else if indexer.enabled}

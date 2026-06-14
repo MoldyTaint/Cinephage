@@ -7,6 +7,7 @@
 		FlaskConical,
 		Loader2,
 		Lock,
+		RotateCcw,
 		Search,
 		Zap,
 		ToggleLeft,
@@ -267,11 +268,16 @@
 								</span>
 								{#if isProwlarrIndexer(indexer)}
 									<span class="badge badge-xs badge-primary">Prowlarr</span>
-									{#if indexer.upstreamEnabled === false}
+									{#if indexer.orphaned}
+										<span class="badge badge-xs badge-error">Deleted</span>
+									{:else if indexer.upstreamEnabled === false}
 										<span class="badge badge-xs badge-warning">Disabled in Prowlarr</span>
 									{/if}
 								{:else if isJackettIndexer(indexer)}
 									<span class="badge badge-xs badge-secondary">Jackett</span>
+									{#if indexer.orphaned}
+										<span class="badge badge-xs badge-error">Deleted</span>
+									{/if}
 								{/if}
 							</div>
 						</div>
@@ -340,12 +346,26 @@
 					<button
 						class="btn btn-ghost btn-xs"
 						onclick={() => onToggle(indexer)}
-						disabled={testingIds.has(indexer.id) || togglingIds.has(indexer.id) || reorderMode || indexer.upstreamEnabled === false}
-						title={indexer.upstreamEnabled === false ? 'Disabled in Prowlarr — enable it there first' : indexer.enabled ? 'Disable' : 'Enable'}
-						aria-label={indexer.upstreamEnabled === false ? 'Locked — disabled in Prowlarr' : indexer.enabled ? 'Disable indexer' : 'Enable indexer'}
+						disabled={testingIds.has(indexer.id) || togglingIds.has(indexer.id) || reorderMode || (indexer.upstreamEnabled === false && !indexer.orphaned)}
+						title={indexer.orphaned
+							? 'Deleted from upstream - tap to test connection and restore'
+							: indexer.upstreamEnabled === false
+								? 'Disabled in Prowlarr - enable it there first'
+								: indexer.enabled
+									? 'Disable'
+									: 'Enable'}
+						aria-label={indexer.orphaned
+							? 'Deleted - tap to restore'
+							: indexer.upstreamEnabled === false
+								? 'Locked - disabled in Prowlarr'
+								: indexer.enabled
+									? 'Disable indexer'
+									: 'Enable indexer'}
 					>
 						{#if togglingIds.has(indexer.id)}
 							<Loader2 class="h-4 w-4 animate-spin" />
+						{:else if indexer.orphaned}
+							<RotateCcw class="h-4 w-4 text-error" />
 						{:else if indexer.upstreamEnabled === false}
 							<Lock class="h-4 w-4 text-warning" />
 						{:else if indexer.enabled}

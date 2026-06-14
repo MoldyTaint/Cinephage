@@ -263,18 +263,20 @@ export async function syncJackettIndexers(): Promise<SyncResult> {
 		const ji = indexerId ? jackettById.get(indexerId) : undefined;
 
 		if (!ji) {
-			// Removed from Jackett; remove from Cinephage
+			// No longer in Jackett - soft-mark as orphaned rather than hard-delete.
 			try {
-				await manager.deleteIndexer(indexer.id);
-				result.removed += 1;
-				logger.info(
-					{ indexerName: indexer.name, jackettId: indexerId },
-					'[Jackett] Removed indexer deleted in Jackett'
-				);
+				if (!indexer.orphaned) {
+					await manager.updateIndexer(indexer.id, { enabled: false, orphaned: true });
+					result.removed += 1;
+					logger.info(
+						{ indexerName: indexer.name, jackettId: indexerId },
+						'[Jackett] Orphaned indexer no longer in Jackett'
+					);
+				}
 			} catch (err) {
 				result.failed += 1;
 				result.errors.push(
-					`Remove ${indexer.name}: ${err instanceof Error ? err.message : String(err)}`
+					`Orphan ${indexer.name}: ${err instanceof Error ? err.message : String(err)}`
 				);
 			}
 			continue;
@@ -283,6 +285,8 @@ export async function syncJackettIndexers(): Promise<SyncResult> {
 		// Still exists in Jackett; sync name and API key
 		const updates: Record<string, unknown> = {};
 		if (ji.name !== indexer.name) updates.name = ji.name;
+		// Clear orphaned flag if the indexer has re-appeared in Jackett
+		if (indexer.orphaned) updates.orphaned = false;
 
 		const existingSettings = indexer.settings as Record<string, unknown> | null;
 		const currentKey = existingSettings?.apikey;

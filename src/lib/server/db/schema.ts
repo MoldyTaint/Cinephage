@@ -232,9 +232,13 @@ export const indexers = sqliteTable(
 		// Enable/disable toggle (user preference)
 		enabled: integer('enabled', { mode: 'boolean' }).default(true),
 		// Upstream enabled state mirrored from Prowlarr on each sync.
-		// null = not managed by an upstream source (Jackett, manual) — treated as true.
+		// null = not managed by an upstream source (Jackett, manual) - treated as true.
 		// false = Prowlarr has this indexer disabled; Cinephage locks it out regardless of `enabled`.
 		upstreamEnabled: integer('upstream_enabled', { mode: 'boolean' }),
+		// True when sync detected the indexer is no longer present in the upstream service
+		// (Prowlarr or Jackett). Soft-marks rather than hard-deletes so the user sees a
+		// "Deleted" badge and can manually remove or re-enable after testing.
+		orphaned: integer('orphaned', { mode: 'boolean' }).default(false),
 		// Selected base URL (from definition's urls array)
 		baseUrl: text('base_url').notNull(),
 		// Alternate URLs for failover (JSON array)

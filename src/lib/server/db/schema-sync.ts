@@ -121,7 +121,7 @@ import {
  * Version 89: Add blocked keywords table
  * Version 90: Add durable library job tables
  */
-export const CURRENT_SCHEMA_VERSION = 93;
+export const CURRENT_SCHEMA_VERSION = 94;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{

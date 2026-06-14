@@ -232,6 +232,7 @@ export class IndexerManager {
 				definitionId: config.definitionId,
 				enabled: config.enabled,
 				upstreamEnabled: config.upstreamEnabled ?? null,
+				orphaned: config.orphaned ?? false,
 				baseUrl: config.baseUrl ?? defaultUrl,
 				alternateUrls: config.alternateUrls ?? null,
 				priority: config.priority,
@@ -305,6 +306,7 @@ export class IndexerManager {
 		if (updates.name !== undefined) updateData.name = updates.name;
 		if (updates.enabled !== undefined) updateData.enabled = updates.enabled ? 1 : 0;
 		if (updates.upstreamEnabled !== undefined) updateData.upstreamEnabled = updates.upstreamEnabled;
+		if (updates.orphaned !== undefined) updateData.orphaned = updates.orphaned ? 1 : 0;
 		if (updates.baseUrl !== undefined) updateData.baseUrl = updates.baseUrl;
 		if (updates.alternateUrls !== undefined) updateData.alternateUrls = updates.alternateUrls;
 		if (updates.priority !== undefined) updateData.priority = updates.priority;
@@ -353,13 +355,17 @@ export class IndexerManager {
 		const upstreamChanged =
 			updates.upstreamEnabled !== undefined &&
 			updates.upstreamEnabled !== existing.upstreamEnabled;
+		const orphanedChanged =
+			updates.orphaned !== undefined && updates.orphaned !== existing.orphaned;
 
-		if (enabledChanged || upstreamChanged) {
+		if (enabledChanged || upstreamChanged || orphanedChanged) {
 			const newEnabled = updates.enabled ?? existing.enabled;
-			const newUpstream = updates.upstreamEnabled !== undefined
-				? updates.upstreamEnabled
-				: existing.upstreamEnabled;
-			const effectiveEnabled = newEnabled && (newUpstream ?? true);
+			const newUpstream =
+				updates.upstreamEnabled !== undefined
+					? updates.upstreamEnabled
+					: existing.upstreamEnabled;
+			const newOrphaned = updates.orphaned !== undefined ? updates.orphaned : existing.orphaned;
+			const effectiveEnabled = newEnabled && (newUpstream ?? true) && !newOrphaned;
 			if (effectiveEnabled) {
 				statusTracker.enable(id);
 			} else {
@@ -434,7 +440,9 @@ export class IndexerManager {
 		const configs = await this.getIndexers();
 		// Effective enabled = user toggle AND upstream not locked out.
 		// upstreamEnabled === null means no upstream constraint (Jackett / manual).
-		const enabledConfigs = configs.filter((c) => c.enabled && (c.upstreamEnabled ?? true));
+		const enabledConfigs = configs.filter(
+			(c) => c.enabled && (c.upstreamEnabled ?? true) && !c.orphaned
+		);
 
 		// Separate cached from uncached for batch processing
 		const cached: IIndexer[] = [];
@@ -611,6 +619,7 @@ export class IndexerManager {
 			definitionId: row.definitionId,
 			enabled: !!row.enabled,
 			upstreamEnabled: row.upstreamEnabled ?? null,
+			orphaned: !!row.orphaned,
 			baseUrl: row.baseUrl,
 			alternateUrls: row.alternateUrls ?? [],
 			priority: row.priority ?? 25,

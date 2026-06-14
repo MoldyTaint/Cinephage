@@ -301,14 +301,14 @@ export const POST: RequestHandler = async (event) => {
 
 			if (source) {
 				try {
-					await manager.updateIndexer(indexerId, { enabled: false });
+					await manager.updateIndexer(indexerId, { enabled: false, orphaned: true });
 				} catch {
 					// Ignore - the error response below is still correct
 				}
 				return json(
 					{
 						success: false,
-						error: `Indexer not found in ${source} - it was likely removed. Auto-disabled in Cinephage; it will be removed on the next sync.`
+						error: `Indexer not found in ${source} - it was likely removed. Marked as deleted; enable it to run a connection test and restore it if it comes back.`
 					},
 					{ status: 400 }
 				);

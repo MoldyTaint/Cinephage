@@ -461,6 +461,25 @@
 
 		togglingIds.add(indexer.id);
 		try {
+			// Orphaned indexers: run a silent connection test first.
+			// Pass and we clear orphaned + re-enable; fail and we keep it blocked.
+			if (indexer.orphaned) {
+				toasts.info('Testing connection before restoring...');
+				const passed = await handleTest(indexer, false, false);
+				if (!passed) {
+					toasts.error('Connection test failed - indexer is still unavailable');
+					return;
+				}
+				await updateIndexerById(
+					indexer.id,
+					{ enabled: true, orphaned: false },
+					'Failed to restore indexer'
+				);
+				toasts.success('Connection restored - indexer re-enabled');
+				await invalidateAll();
+				return;
+			}
+
 			await updateIndexerById(
 				indexer.id,
 				{ enabled: !indexer.enabled },

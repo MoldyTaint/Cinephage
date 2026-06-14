@@ -160,18 +160,21 @@ export async function syncProwlarrIndexers(): Promise<SyncResult> {
 		const pi = prowlarrById.get(prowlarrId);
 
 		if (!pi) {
-			// Deleted in Prowlarr - remove from Cinephage
+			// No longer in Prowlarr - soft-mark as orphaned rather than hard-delete.
+			// The UI shows a "Deleted" badge; re-appearing in a future sync clears the flag.
 			try {
-				await manager.deleteIndexer(indexer.id);
-				result.removed += 1;
-				logger.info(
-					{ indexerName: indexer.name, prowlarrId },
-					'[Prowlarr] Removed indexer deleted in Prowlarr'
-				);
+				if (!indexer.orphaned) {
+					await manager.updateIndexer(indexer.id, { enabled: false, orphaned: true });
+					result.removed += 1;
+					logger.info(
+						{ indexerName: indexer.name, prowlarrId },
+						'[Prowlarr] Orphaned indexer no longer in Prowlarr'
+					);
+				}
 			} catch (err) {
 				result.failed += 1;
 				result.errors.push(
-					`Remove ${indexer.name}: ${err instanceof Error ? err.message : String(err)}`
+					`Orphan ${indexer.name}: ${err instanceof Error ? err.message : String(err)}`
 				);
 			}
 			continue;
@@ -183,6 +186,8 @@ export async function syncProwlarrIndexers(): Promise<SyncResult> {
 		const updates: Record<string, unknown> = {};
 		if (pi.name !== indexer.name) updates.name = pi.name;
 		if (pi.enable !== indexer.upstreamEnabled) updates.upstreamEnabled = pi.enable;
+		// If the indexer was previously orphaned but is now back in Prowlarr, clear the flag.
+		if (indexer.orphaned) updates.orphaned = false;
 
 		const existingSettings = indexer.settings as Record<string, unknown> | null;
 		const currentKey = existingSettings?.apikey;

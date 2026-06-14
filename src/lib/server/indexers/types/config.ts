@@ -31,11 +31,17 @@ export interface IndexerConfig {
 	enabled: boolean;
 	/**
 	 * Upstream enabled state mirrored from Prowlarr on each sync.
-	 * null = not managed by Prowlarr (Jackett / manual) — no upstream restriction.
+	 * null = not managed by Prowlarr (Jackett / manual) - no upstream restriction.
 	 * false = Prowlarr has this indexer disabled; search and health polling are locked out
 	 *         regardless of the user's `enabled` preference.
 	 */
 	upstreamEnabled?: boolean | null;
+	/**
+	 * True when sync detected the indexer is no longer present in the upstream service.
+	 * Shows a "Deleted" badge in the UI; excluded from searches.
+	 * Cleared automatically if the indexer re-appears in a subsequent sync.
+	 */
+	orphaned?: boolean;
 	/** Base URL (can override definition default) */
 	baseUrl: string;
 	/** Alternative/fallback URLs (tried in order if primary fails) */

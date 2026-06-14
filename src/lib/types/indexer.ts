@@ -133,6 +133,8 @@ export interface Indexer {
 	enabled: boolean;
 	/** null = not Prowlarr-managed; false = disabled in Prowlarr (locked out in Cinephage) */
 	upstreamEnabled?: boolean | null;
+	/** True when sync detected this indexer no longer exists in the upstream service */
+	orphaned?: boolean;
 	baseUrl: string;
 	/** Alternative/fallback URLs (tried in order if primary fails) */
 	alternateUrls: string[];
