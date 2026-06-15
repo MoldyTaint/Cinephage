@@ -32,7 +32,7 @@
 	"devDependencies": {
 		"@eslint/compat": "^2.1.0",
 		"@eslint/js": "^9.39.2",
-		"@inlang/paraglide-js": "^2.18.2",
+		"@inlang/paraglide-js": "^2.19.0",
 		"@semantic-release/exec": "^7.1.0",
 		"@semantic-release/github": "^12.0.8",
 		"@sveltejs/adapter-node": "^5.5.4",
@@ -42,14 +42,14 @@
 		"@types/adm-zip": "^0.5.8",
 		"@types/better-sqlite3": "^7.6.13",
 		"@types/js-yaml": "^4.0.9",
-		"@types/node": "^25.9.2",
+		"@types/node": "^25.9.3",
 		"@types/parse-torrent": "^5.8.8",
 		"@vitest/browser": "^4.1.8",
 		"@vitest/browser-playwright": "^4.1.5",
 		"@vitest/coverage-v8": "^4.1.5",
 		"daisyui": "^5.5.23",
 		"drizzle-orm": "^0.45.2",
-		"eslint": "^10.4.1",
+		"eslint": "^10.5.0",
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-plugin-svelte": "^3.19.0",
 		"globals": "^17.6.0",
@@ -73,14 +73,14 @@
 		"undici": "^7.25.0"
 	},
 	"optionalDependencies": {
-		"@rollup/rollup-linux-arm64-gnu": "^4.61.1",
-		"@rollup/rollup-linux-x64-gnu": "^4.61.1"
+		"@rollup/rollup-linux-arm64-gnu": "^4.62.0",
+		"@rollup/rollup-linux-x64-gnu": "^4.62.0"
 	},
 	"dependencies": {
-		"@better-auth/api-key": "^1.6.16",
+		"@better-auth/api-key": "^1.6.18",
 		"better-auth": "^1.6.10",
 		"adm-zip": "^0.5.16",
-		"better-sqlite3": "^12.9.0",
+		"better-sqlite3": "^12.10.1",
 		"camoufox-js": "^0.11.0",
 		"cheerio": "^1.2.0",
 		"chokidar": "^5.0.0",
