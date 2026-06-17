@@ -1112,6 +1112,29 @@ export class SearchOrchestrator {
 			}
 
 			if (idReleases.length > 0) {
+				// For anime episode searches, also run an absolute-format text search ("Show 02")
+				// even when the ID search succeeded.  ID search only finds releases catalogued as
+				// season=N/ep=N; releases titled with the absolute episode number are missed.
+				// We bypass executeMultiTitleTextSearch to avoid its early-exit-on-results logic
+				// (which would skip the 'absolute' variant if standard/european/compact returned hits).
+				if (
+					criteria.isAnime &&
+					isTvSearch(criteria) &&
+					criteria.episode !== undefined &&
+					hasTextFallbackSource
+				) {
+					const animeAbsoluteReleases = await this.executeAnimeAbsoluteSearch(
+						indexer,
+						criteria,
+						idReleases
+					);
+					if (animeAbsoluteReleases.length > 0) {
+						return {
+							releases: [...idReleases, ...animeAbsoluteReleases],
+							searchMethod: 'id'
+						};
+					}
+				}
 				return { releases: idReleases, searchMethod: 'id' };
 			}
 
@@ -1369,6 +1392,51 @@ export class SearchOrchestrator {
 			isRuTrackerHost(indexer.baseUrl) &&
 			isRuTrackerIndexerName(indexer.name)
 		);
+	}
+
+	/**
+	 * Send one `absolute`-format text query per title ("Show 02") to catch anime releases
+	 * that use absolute episode numbering rather than S01E02.  Only new GUIDs are returned
+	 * (already-seen GUIDs from the ID search are excluded via `seenReleases`).
+	 */
+	private async executeAnimeAbsoluteSearch(
+		indexer: IIndexer,
+		criteria: SearchCriteria,
+		seenReleases: ReleaseResult[]
+	): Promise<ReleaseResult[]> {
+		const rawTitles =
+			criteria.searchTitles && criteria.searchTitles.length > 0
+				? criteria.searchTitles
+				: criteria.query
+					? [criteria.query]
+					: [];
+
+		const seenGuids = new Set(seenReleases.map((r) => r.guid));
+		const newReleases: ReleaseResult[] = [];
+
+		for (const title of rawTitles.slice(0, 3)) {
+			const absoluteCriteria = createTextOnlyCriteria({
+				...criteria,
+				query: title,
+				preferredEpisodeFormat: 'absolute'
+			});
+			try {
+				const releases = await indexer.search(absoluteCriteria);
+				for (const r of releases) {
+					if (!seenGuids.has(r.guid)) {
+						seenGuids.add(r.guid);
+						newReleases.push(r);
+					}
+				}
+			} catch (err) {
+				logger.debug(
+					{ indexer: indexer.name, title, error: err instanceof Error ? err.message : String(err) },
+					'Anime absolute search variant failed'
+				);
+			}
+		}
+
+		return newReleases;
 	}
 
 	private async executeRuTrackerAutomaticSeasonSearch(
