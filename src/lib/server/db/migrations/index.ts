@@ -94,6 +94,7 @@ import { migration_v093 } from './093-add-indexer-upstream-enabled.js';
 import { migration_v094 } from './094-add-indexer-orphaned.js';
 import { migration_v095 } from './095-drop-provider-choice-columns.js';
 import { migration_v096 } from './096-add-adult-columns.js';
+import { migration_v097 } from './097-add-episode-group-id.js';
 
 export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v002,
@@ -190,5 +191,6 @@ export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v093,
 	migration_v094,
 	migration_v095,
-	migration_v096
+	migration_v096,
+	migration_v097
 ];

@@ -180,6 +180,53 @@ export interface Season {
 	episodes?: Episode[];
 }
 
+export interface GroupEpisode {
+	air_date: string;
+	episode_number: number;
+	id: number;
+	name: string;
+	order: number;
+	season_number: number;
+	show_id: number;
+}
+
+export interface EpisodeGroupGroup {
+	episodes: GroupEpisode[];
+	locked: boolean;
+	name: string;
+}
+
+export interface EpisodeGroup {
+	description: string;
+	episode_count: number;
+	group_count: number;
+	groups: EpisodeGroupGroup[];
+	id: string;
+	name: string;
+	network: { id: number; logo_path: string; name: string; origin_country: string } | null;
+	type: number;
+}
+
+export interface EpisodeGroupSummary {
+	description: string;
+	episode_count: number;
+	group_count: number;
+	id: string;
+	name: string;
+	network: {
+		id: number;
+		logo_path: string;
+		name: string;
+		origin_country: string;
+	} | null;
+	type: number;
+}
+
+export interface EpisodeGroupsResponse {
+	id: number;
+	results: EpisodeGroupSummary[];
+}
+
 export interface TVShow {
 	id: number;
 	name: string;
@@ -236,6 +283,7 @@ export interface TVShowDetails extends Omit<TVShow, 'genre_ids'> {
 	keywords?: {
 		results: Array<{ id: number; name: string }>;
 	};
+	episode_groups?: EpisodeGroupsResponse;
 }
 
 export interface Person {

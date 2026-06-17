@@ -132,6 +132,7 @@ export interface LibrarySeriesPageData {
 		added: string;
 		episodeCount: number | null;
 		episodeFileCount: number | null;
+		episodeGroupId: string | null;
 		percentComplete: number;
 	};
 	tmdbDetails: TVShowDetails | null;
@@ -183,7 +184,8 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 			wantsSubtitles: series.wantsSubtitles,
 			added: series.added,
 			episodeCount: series.episodeCount,
-			episodeFileCount: series.episodeFileCount
+			episodeFileCount: series.episodeFileCount,
+			episodeGroupId: series.episodeGroupId
 		})
 		.from(series)
 		.leftJoin(rootFolders, eq(series.rootFolderId, rootFolders.id))

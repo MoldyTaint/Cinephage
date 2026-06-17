@@ -834,7 +834,8 @@ export const series = sqliteTable(
 		firstAirDate: text('first_air_date'),
 		adult: integer('adult', { mode: 'boolean' }).default(false),
 		adultSource: text('adult_source'),
-		adultConfidence: text('adult_confidence')
+		adultConfidence: text('adult_confidence'),
+		episodeGroupId: text('episode_group_id')
 	},
 	(table) => [
 		index('idx_series_monitored').on(table.monitored),

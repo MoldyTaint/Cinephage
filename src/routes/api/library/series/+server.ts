@@ -16,6 +16,10 @@ import {
 } from '$lib/server/library/LibraryAddService.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { fetchAndStoreSeriesAlternateTitles } from '$lib/server/services/AlternateTitleService.js';
+import {
+	getEffectiveEpisodeGroup,
+	buildSeasonsAndEpisodesFromGroup
+} from '$lib/server/metadata/EpisodeGroupService.js';
 import { ValidationError, isAppError } from '$lib/errors';
 import { logger } from '$lib/logging';
 import { requireAuth } from '$lib/server/auth/authorization.js';
@@ -202,6 +206,12 @@ export const POST: RequestHandler = async (event) => {
 		// Get the language profile if subtitles wanted (shared logic)
 		const languageProfileId = await getLanguageProfileId(wantsSubtitles, tmdbId);
 
+		// Auto-select episode group for correct season ordering (e.g. TVDB order for anime)
+		const { group: episodeGroup, selectedGroupId: episodeGroupId } = await getEffectiveEpisodeGroup(
+			tmdbId,
+			null
+		);
+
 		// Insert series into database
 		const [newSeries] = await db
 			.insert(series)
@@ -230,7 +240,8 @@ export const POST: RequestHandler = async (event) => {
 				episodeCount: totalEpisodes,
 				episodeFileCount: 0,
 				wantsSubtitles,
-				languageProfileId
+				languageProfileId,
+				episodeGroupId
 			})
 			.returning();
 
@@ -247,7 +258,29 @@ export const POST: RequestHandler = async (event) => {
 		});
 
 		// Insert seasons and episodes
-		if (tvDetails.seasons && tvDetails.seasons.length > 0) {
+		if (episodeGroup) {
+			// Use episode group mapping (e.g. TVDB Order, Crunchyroll split)
+			const { seasonValues, episodeValues: groupEpisodeValues } = buildSeasonsAndEpisodesFromGroup(
+				newSeries.id,
+				episodeGroup
+			);
+
+			if (seasonValues.length > 0) {
+				const insertedSeasons = await db.insert(seasons).values(seasonValues).returning();
+				const seasonIdByNumber = new Map(insertedSeasons.map((s) => [s.seasonNumber, s.id]));
+
+				const enrichedEpisodes = groupEpisodeValues.map((ep) => ({
+					...ep,
+					seasonId: seasonIdByNumber.get(ep.seasonNumber!) ?? null,
+					monitored: ep.seasonNumber === 0 ? monitorSpecials : ep.monitored
+				}));
+
+				if (enrichedEpisodes.length > 0) {
+					await db.insert(episodes).values(enrichedEpisodes);
+				}
+			}
+		} else if (tvDetails.seasons && tvDetails.seasons.length > 0) {
+			// Default TMDB ordering
 			for (const s of tvDetails.seasons) {
 				// Determine if this season should be monitored
 				let shouldMonitorSeason = false;
@@ -255,7 +288,6 @@ export const POST: RequestHandler = async (event) => {
 				if (selectedSeasons && selectedSeasons.length > 0) {
 					shouldMonitorSeason = selectedSeasons.includes(s.season_number);
 				} else {
-					// Check if this is specials (season 0) - respect monitorSpecials setting
 					const isSpecials = s.season_number === 0;
 					if (isSpecials && !monitorSpecials) {
 						shouldMonitorSeason = false;
@@ -277,21 +309,18 @@ export const POST: RequestHandler = async (event) => {
 								break;
 							}
 							case 'recent':
-								// For 'recent', monitor all non-specials seasons - episode filtering happens later
 								shouldMonitorSeason = s.season_number > 0 || monitorSpecials;
 								break;
 							case 'none':
 								shouldMonitorSeason = false;
 								break;
 							default:
-								// For 'future', 'missing', 'existing', 'pilot' - episode filtering happens later
 								shouldMonitorSeason = s.season_number > 0 || monitorSpecials;
 								break;
 						}
 					}
 				}
 
-				// Insert the season
 				const [newSeason] = await db
 					.insert(seasons)
 					.values({
@@ -307,18 +336,15 @@ export const POST: RequestHandler = async (event) => {
 					})
 					.returning();
 
-				// Fetch full season details to get episodes
 				try {
 					const fullSeason = await tmdb.getSeason(tmdbId, s.season_number);
 
 					if (fullSeason.episodes && fullSeason.episodes.length > 0) {
-						// Calculate cutoff date for 'recent' monitor type (90 days ago)
 						const recentCutoffDate = new Date();
 						recentCutoffDate.setDate(recentCutoffDate.getDate() - 90);
 						const today = new Date();
 
 						const episodeValues = fullSeason.episodes.map((ep) => {
-							// Determine if this specific episode should be monitored
 							let shouldMonitorEpisode = shouldMonitorSeason;
 
 							if (shouldMonitorSeason && !selectedSeasons?.length) {
@@ -328,20 +354,16 @@ export const POST: RequestHandler = async (event) => {
 
 								switch (monitorType) {
 									case 'pilot':
-										// Only monitor S01E01
 										shouldMonitorEpisode = ep.season_number === 1 && ep.episode_number === 1;
 										break;
 									case 'future':
-										// Only monitor episodes that haven't aired yet
 										shouldMonitorEpisode = !hasAired;
 										break;
 									case 'recent':
-										// Monitor episodes from last 90 days + future episodes
 										shouldMonitorEpisode = !hasAired || isRecent;
 										break;
 									case 'missing':
 									case 'existing':
-										// These are handled at search time based on hasFile status
 										shouldMonitorEpisode = shouldMonitorSeason;
 										break;
 									default:
@@ -368,13 +390,10 @@ export const POST: RequestHandler = async (event) => {
 						await db.insert(episodes).values(episodeValues);
 					}
 
-					// Small delay to avoid TMDB rate limiting
 					await new Promise((resolve) => setTimeout(resolve, 50));
 				} catch {
 					logger.warn(
-						{
-							seasonNumber: s.season_number
-						},
+						{ seasonNumber: s.season_number },
 						'[API] Failed to fetch episodes for season'
 					);
 				}

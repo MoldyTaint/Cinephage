@@ -11,6 +11,7 @@
 	import type { RootFolderWithSpace as RootFolder } from '$lib/types/downloadClient.js';
 	import { getLibraryClassificationSettings } from '$lib/api/settings.js';
 	import { getTmdb } from '$lib/api/discover.js';
+	import { getSeriesEpisodeGroups } from '$lib/api/library.js';
 
 	interface SeriesData {
 		tmdbId: number;
@@ -24,6 +25,8 @@
 		wantsSubtitles: boolean | null;
 		seriesType: string | null;
 		path?: string | null;
+		episodeGroupId?: string | null;
+		id?: string | null;
 	}
 
 	interface QualityProfileOption {
@@ -62,6 +65,7 @@
 		wantsSubtitles: boolean;
 		seriesType: 'standard' | 'anime' | 'daily';
 		folderPath?: string;
+		episodeGroupId?: string | null;
 	}
 
 	let { open, series, qualityProfiles, rootFolders, saving, onClose, onSave }: Props = $props();
@@ -80,6 +84,15 @@
 	let animeRootWarningShown = $state(false);
 	let enforceAnimeSubtype = $state(false);
 	let detectedAnime = $state(false);
+	let episodeGroupOption = $state<string>('');
+	let episodeGroupOptions = $state<
+		Array<{
+			value: string;
+			label: string;
+			type: string;
+		}>
+	>([]);
+	let episodeGroupsLoading = $state(false);
 
 	const requiredMediaSubType = $derived(
 		enforceAnimeSubtype ? (detectedAnime ? ('anime' as const) : ('standard' as const)) : undefined
@@ -118,12 +131,57 @@
 				originalTitle: tvDetails.original_name
 			});
 
-			// Apply detection before enabling enforcement to avoid transient standard-folder re-selection.
 			detectedAnime = nextDetectedAnime;
 			enforceAnimeSubtype = nextEnforceAnimeSubtype;
 		} catch {
 			enforceAnimeSubtype = false;
 			detectedAnime = false;
+		}
+	}
+
+	async function loadEpisodeGroups(seriesId: string) {
+		episodeGroupsLoading = true;
+		try {
+			const data = (await getSeriesEpisodeGroups(seriesId)) as {
+				success?: boolean;
+				episodeGroups?: Array<{ id: string; name: string; type: number }>;
+				selectedGroupId?: string | null;
+			} | null;
+			if (data?.success && Array.isArray(data.episodeGroups)) {
+				episodeGroupOptions = [
+					{ value: '', label: 'Default (TMDB)', type: '' },
+					...data.episodeGroups.map((g) => ({
+						value: g.id,
+						label: g.name,
+						type: getEpisodeGroupTypeLabel(g.type)
+					}))
+				];
+				episodeGroupOption = data.selectedGroupId ?? '';
+			}
+		} catch {
+			episodeGroupOptions = [{ value: '', label: 'Default (TMDB)', type: '' }];
+			episodeGroupOption = '';
+		} finally {
+			episodeGroupsLoading = false;
+		}
+	}
+
+	function getEpisodeGroupTypeLabel(type: number): string {
+		switch (type) {
+			case 1:
+				return 'TVDB Order';
+			case 2:
+				return 'Seasons';
+			case 3:
+				return 'DVD/Blu-ray';
+			case 4:
+				return 'Streaming';
+			case 5:
+				return 'Arcs';
+			case 6:
+				return 'Cours';
+			default:
+				return `Type ${type}`;
 		}
 	}
 
@@ -172,7 +230,11 @@
 			enforceAnimeSubtype = false;
 			detectedAnime = false;
 			folderPath = series.path ?? '';
+			episodeGroupOption = series.episodeGroupId ?? '';
 			void loadAnimeRoutingContext(series.tmdbId);
+			if (series.id) {
+				void loadEpisodeGroups(series.id);
+			}
 		}
 	});
 
@@ -239,7 +301,8 @@
 			seasonFolder,
 			wantsSubtitles,
 			seriesType,
-			...(folderPathChanged && folderPath.trim() ? { folderPath: folderPath.trim() } : {})
+			...(folderPathChanged && folderPath.trim() ? { folderPath: folderPath.trim() } : {}),
+			episodeGroupId: episodeGroupOption || null
 		});
 	}
 </script>
@@ -305,6 +368,39 @@
 			<div class="label">
 				<span class="label-text-alt wrap-break-word whitespace-normal text-base-content/60">
 					{seriesTypeOptions.find((option) => option.value === seriesType)?.description}
+				</span>
+			</div>
+		</div>
+
+		<!-- Episode Ordering -->
+		<div class="form-control">
+			<label class="label" for="episode-group">
+				<span class="label-text font-medium">Episode Ordering</span>
+			</label>
+			{#if episodeGroupsLoading}
+				<select id="episode-group" disabled class="select-bordered select w-full select-sm">
+					<option>Loading...</option>
+				</select>
+			{:else}
+				<select
+					id="episode-group"
+					bind:value={episodeGroupOption}
+					class="select-bordered select w-full select-sm"
+				>
+					{#each episodeGroupOptions as option (option.value)}
+						<option value={option.value}>
+							{option.label}
+							{#if option.type}
+								({option.type})
+							{/if}
+						</option>
+					{/each}
+				</select>
+			{/if}
+			<div class="label">
+				<span class="label-text-alt wrap-break-word whitespace-normal text-base-content/60">
+					Alternative episode ordering from TMDB episode groups. Switching will rebuild all seasons
+					and episodes.
 				</span>
 			</div>
 		</div>

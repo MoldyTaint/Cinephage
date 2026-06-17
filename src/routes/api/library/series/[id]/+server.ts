@@ -28,6 +28,11 @@ import {
 	validateRootFolder,
 	getAnimeSubtypeEnforcement
 } from '$lib/server/library/LibraryAddService.js';
+import {
+	deleteAllSeasonsAndEpisodes,
+	buildSeasonsAndEpisodesFromGroup,
+	getEffectiveEpisodeGroup
+} from '$lib/server/metadata/EpisodeGroupService.js';
 import { mediaMoveService } from '$lib/server/library/MediaMoveService.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { getLibraryScheduler } from '$lib/server/library/library-scheduler.js';
@@ -70,7 +75,8 @@ export const GET: RequestHandler = async ({ params }) => {
 				added: series.added,
 				episodeCount: series.episodeCount,
 				episodeFileCount: series.episodeFileCount,
-				wantsSubtitles: series.wantsSubtitles
+				wantsSubtitles: series.wantsSubtitles,
+				episodeGroupId: series.episodeGroupId
 			})
 			.from(series)
 			.leftJoin(rootFolders, eq(series.rootFolderId, rootFolders.id))
@@ -224,7 +230,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			rootFolderId,
 			wantsSubtitles,
 			languageProfileId,
-			folderPath
+			folderPath,
+			episodeGroupId
 		} = body;
 		const moveFilesOnRootChange = rawBody.moveFilesOnRootChange;
 
@@ -240,7 +247,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 				monitored: series.monitored,
 				scoringProfileId: series.scoringProfileId,
 				wantsSubtitles: series.wantsSubtitles,
-				languageProfileId: series.languageProfileId
+				languageProfileId: series.languageProfileId,
+				episodeGroupId: series.episodeGroupId
 			})
 			.from(series)
 			.where(eq(series.id, params.id));
@@ -384,12 +392,136 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			updateData.path = trimmed;
 		}
 
-		if (Object.keys(updateData).length === 0 && !moveRequest) {
+		if (Object.keys(updateData).length === 0 && !moveRequest && episodeGroupId === undefined) {
 			return json({ success: false, error: 'No valid fields to update' }, { status: 400 });
 		}
 
 		if (Object.keys(updateData).length > 0) {
 			await db.update(series).set(updateData).where(eq(series.id, params.id));
+		}
+
+		// Handle episode group change - requires full season/episode rebuild
+		if (episodeGroupId !== undefined) {
+			const currentGroupId = currentSeries?.episodeGroupId ?? null;
+			const newGroupId = episodeGroupId || null;
+
+			if (newGroupId !== (currentGroupId ?? null)) {
+				logger.info(
+					{
+						seriesId: params.id,
+						oldGroupId: currentGroupId,
+						newGroupId
+					},
+					'Episode group changed, rebuilding seasons and episodes'
+				);
+
+				await db.update(series).set({ episodeGroupId: newGroupId }).where(eq(series.id, params.id));
+
+				await deleteAllSeasonsAndEpisodes(params.id);
+
+				let episodeGroup = null;
+				if (newGroupId) {
+					({ group: episodeGroup } = await getEffectiveEpisodeGroup(
+						currentSeries.tmdbId,
+						newGroupId
+					));
+				}
+
+				if (episodeGroup) {
+					const { seasonValues, episodeValues: groupEpisodeValues } =
+						buildSeasonsAndEpisodesFromGroup(params.id, episodeGroup);
+
+					if (seasonValues.length > 0) {
+						const insertedSeasons = await db.insert(seasons).values(seasonValues).returning();
+						const seasonIdByNumber = new Map(insertedSeasons.map((s) => [s.seasonNumber, s.id]));
+
+						const enrichedEpisodes = groupEpisodeValues.map((ep) => ({
+							...ep,
+							seasonId: seasonIdByNumber.get(ep.seasonNumber!) ?? null
+						}));
+
+						if (enrichedEpisodes.length > 0) {
+							await db.insert(episodes).values(enrichedEpisodes);
+						}
+					}
+				} else {
+					// Reverted to default TMDB ordering - trigger a full refresh via rescan
+					// The getEffectiveEpisodeGroup with null groupId fetches from raw TMDB
+					const tvDetails = await tmdb.getTVShow(currentSeries.tmdbId);
+
+					if (tvDetails.seasons) {
+						for (const s of tvDetails.seasons) {
+							try {
+								const tmdbSeason = await tmdb.getSeason(currentSeries.tmdbId, s.season_number);
+
+								const [newSeason] = await db
+									.insert(seasons)
+									.values({
+										seriesId: params.id,
+										seasonNumber: s.season_number,
+										name: tmdbSeason.name || s.name,
+										overview: tmdbSeason.overview || s.overview,
+										posterPath: tmdbSeason.poster_path || s.poster_path,
+										airDate: tmdbSeason.air_date || s.air_date,
+										episodeCount: tmdbSeason.episodes?.length ?? s.episode_count ?? 0,
+										episodeFileCount: 0,
+										monitored: s.season_number !== 0
+									})
+									.returning();
+
+								if (tmdbSeason.episodes) {
+									const episodeValues = tmdbSeason.episodes.map((ep) => ({
+										seriesId: params.id,
+										seasonId: newSeason.id,
+										tmdbId: ep.id,
+										seasonNumber: ep.season_number,
+										episodeNumber: ep.episode_number,
+										title: ep.name,
+										overview: ep.overview,
+										airDate: ep.air_date,
+										runtime: ep.runtime,
+										monitored: s.season_number !== 0,
+										hasFile: false
+									}));
+
+									if (episodeValues.length > 0) {
+										await db.insert(episodes).values(episodeValues);
+									}
+								}
+
+								await new Promise((resolve) => setTimeout(resolve, 50));
+							} catch {
+								logger.warn(
+									{ seasonNumber: s.season_number },
+									'[API] Failed to fetch season during episode group revert'
+								);
+							}
+						}
+					}
+				}
+
+				// Update series stats after rebuild
+				const allEpisodes = await db
+					.select()
+					.from(episodes)
+					.where(eq(episodes.seriesId, params.id));
+				const today = new Date().toISOString().split('T')[0];
+				const isAired = (ep: typeof episodes.$inferSelect) =>
+					ep.airDate && ep.airDate !== '' && ep.airDate <= today;
+				const airedEpisodes = allEpisodes.filter(isAired);
+				const episodeCount = airedEpisodes.length;
+				const episodeFileCount = airedEpisodes.filter((e) => e.hasFile).length;
+
+				await db
+					.update(series)
+					.set({ episodeCount, episodeFileCount })
+					.where(eq(series.id, params.id));
+
+				// Trigger a library rescan to re-match files
+				if (currentSeries.rootFolderId) {
+					getLibraryScheduler().queueFolderScan(currentSeries.rootFolderId);
+				}
+			}
 		}
 
 		let moveTask:

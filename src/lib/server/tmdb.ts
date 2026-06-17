@@ -6,6 +6,8 @@ import type {
 	MovieDetails,
 	TVShowDetails,
 	Season,
+	EpisodeGroup,
+	EpisodeGroupsResponse,
 	Collection,
 	PersonDetails,
 	PersonCombinedCredits,
@@ -306,6 +308,12 @@ export const tmdb = {
 	},
 	async getSeason(tvId: number, seasonNumber: number): Promise<Season> {
 		return this.fetch(`/tv/${tvId}/season/${seasonNumber}`) as Promise<Season>;
+	},
+	async getEpisodeGroups(tvId: number): Promise<EpisodeGroupsResponse> {
+		return this.fetch(`/tv/${tvId}/episode_groups`) as Promise<EpisodeGroupsResponse>;
+	},
+	async getEpisodeGroup(groupId: string): Promise<EpisodeGroup> {
+		return this.fetch(`/tv/episode_group/${groupId}`) as Promise<EpisodeGroup>;
 	},
 	async getCollection(id: number): Promise<Collection> {
 		return this.fetch(`/collection/${id}`) as Promise<Collection>;

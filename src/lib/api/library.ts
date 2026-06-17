@@ -160,6 +160,10 @@ export async function refreshSeries(seriesId: string) {
 	return apiPost(`/api/library/series/${seriesId}/refresh`);
 }
 
+export async function getSeriesEpisodeGroups(seriesId: string) {
+	return apiGet(`/api/library/series/${seriesId}/episode-groups`);
+}
+
 export async function createMovie(payload: AddMovieRequest) {
 	return apiPost('/api/library/movies', payload);
 }

@@ -17,6 +17,11 @@ import { eq } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
 import { logger } from '$lib/logging';
 import { enrichAnimeMetadata } from '$lib/server/metadata/provider-resolution.js';
+import {
+	getEffectiveEpisodeGroup,
+	buildSeasonsAndEpisodesFromGroup,
+	deleteAllSeasonsAndEpisodes
+} from '$lib/server/metadata/EpisodeGroupService.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import {
@@ -151,59 +156,63 @@ export const POST: RequestHandler = async ({ params, request }) => {
 					})
 					.where(eq(series.id, id));
 
-				// Get existing seasons and episodes to preserve file associations
-				const existingSeasons = await db.select().from(seasons).where(eq(seasons.seriesId, id));
-				const existingEpisodes = await db.select().from(episodes).where(eq(episodes.seriesId, id));
+				// Get the effective episode group and rebuild seasons/episodes
+				const { group: episodeGroup, selectedGroupId: newEpisodeGroupId } =
+					await getEffectiveEpisodeGroup(seriesData.tmdbId, seriesData.episodeGroupId);
 
-				// Create maps for quick lookup
-				const seasonMap = new Map(existingSeasons.map((s) => [s.seasonNumber, s]));
-				const episodeMap = new Map(
-					existingEpisodes.map((e) => [`${e.seasonNumber}-${e.episodeNumber}`, e])
-				);
+				const episodeGroupChanged = newEpisodeGroupId !== (seriesData.episodeGroupId ?? null);
 
-				// Process each season from TMDB
-				const totalSeasons = tmdbSeries.seasons?.length ?? 0;
-				let processedSeasons = 0;
+				if (episodeGroupChanged) {
+					await db
+						.update(series)
+						.set({ episodeGroupId: newEpisodeGroupId })
+						.where(eq(series.id, id));
+				}
 
-				if (tmdbSeries.seasons) {
-					for (const tmdbSeasonInfo of tmdbSeries.seasons) {
-						// Check if request was aborted
-						if (signal.aborted) {
-							return;
+				// Delete existing seasons/episodes and rebuild
+				await deleteAllSeasonsAndEpisodes(id);
+
+				if (episodeGroup) {
+					// Use episode group mapping (e.g. TVDB Order)
+					const { seasonValues, episodeValues: groupEpisodeValues } =
+						buildSeasonsAndEpisodesFromGroup(id, episodeGroup);
+
+					let processedSeasons = 0;
+					const totalSeasons = seasonValues.length;
+
+					if (seasonValues.length > 0) {
+						const insertedSeasons = await db.insert(seasons).values(seasonValues).returning();
+						const seasonIdByNumber = new Map(insertedSeasons.map((s) => [s.seasonNumber, s.id]));
+
+						const enrichedEpisodes = groupEpisodeValues.map((ep) => ({
+							...ep,
+							seasonId: seasonIdByNumber.get(ep.seasonNumber!) ?? null
+						}));
+
+						if (enrichedEpisodes.length > 0) {
+							await db.insert(episodes).values(enrichedEpisodes);
 						}
 
-						try {
-							// Fetch full season details
-							const tmdbSeason = await tmdb.getSeason(
-								seriesData.tmdbId,
-								tmdbSeasonInfo.season_number
-							);
+						processedSeasons = totalSeasons;
+					}
+				} else {
+					// Default TMDB ordering
+					const totalSeasons = tmdbSeries.seasons?.length ?? 0;
+					let processedSeasons = 0;
 
-							const existingSeason = seasonMap.get(tmdbSeasonInfo.season_number);
-							let seasonId: string;
-							let seasonMonitored: boolean;
+					if (tmdbSeries.seasons) {
+						for (const tmdbSeasonInfo of tmdbSeries.seasons) {
+							if (signal.aborted) return;
 
-							if (existingSeason) {
-								// Update existing season
-								seasonId = existingSeason.id;
-								// Default to true for non-specials if monitored is null
-								seasonMonitored = existingSeason.monitored ?? tmdbSeasonInfo.season_number !== 0;
-								await db
-									.update(seasons)
-									.set({
-										name: tmdbSeason.name || tmdbSeasonInfo.name,
-										overview: tmdbSeason.overview || tmdbSeasonInfo.overview,
-										posterPath: tmdbSeason.poster_path || tmdbSeasonInfo.poster_path,
-										airDate: tmdbSeason.air_date || tmdbSeasonInfo.air_date,
-										episodeCount: tmdbSeason.episodes?.length ?? tmdbSeasonInfo.episode_count ?? 0
-									})
-									.where(eq(seasons.id, seasonId));
-							} else {
-								// Create new season - respect monitorNewItems setting
+							try {
+								const tmdbSeason = await tmdb.getSeason(
+									seriesData.tmdbId,
+									tmdbSeasonInfo.season_number
+								);
+
 								const isSpecials = tmdbSeasonInfo.season_number === 0;
 								const monitorSpecials = seriesData.monitorSpecials ?? false;
-								seasonMonitored =
-									seriesData.monitorNewItems === 'all' ? !isSpecials || monitorSpecials : false;
+								const seasonMonitored = !isSpecials || monitorSpecials;
 
 								const [newSeason] = await db
 									.insert(seasons)
@@ -219,69 +228,36 @@ export const POST: RequestHandler = async ({ params, request }) => {
 										monitored: seasonMonitored
 									})
 									.returning();
-								seasonId = newSeason.id;
-							}
 
-							// Process episodes
-							if (tmdbSeason.episodes) {
-								for (const ep of tmdbSeason.episodes) {
-									const key = `${ep.season_number}-${ep.episode_number}`;
-									const existingEpisode = episodeMap.get(key);
+								if (tmdbSeason.episodes) {
+									const episodeValues = tmdbSeason.episodes.map((ep) => ({
+										seriesId: id,
+										seasonId: newSeason.id,
+										tmdbId: ep.id,
+										seasonNumber: ep.season_number,
+										episodeNumber: ep.episode_number,
+										title: ep.name,
+										overview: ep.overview,
+										airDate: ep.air_date,
+										runtime: ep.runtime,
+										monitored: seasonMonitored,
+										hasFile: false
+									}));
 
-									if (existingEpisode) {
-										// Update existing episode (preserve hasFile and monitored)
-										await db
-											.update(episodes)
-											.set({
-												tmdbId: ep.id,
-												title: ep.name,
-												overview: ep.overview,
-												airDate: ep.air_date,
-												runtime: ep.runtime,
-												seasonId: seasonId
-											})
-											.where(eq(episodes.id, existingEpisode.id));
-									} else {
-										// Create new episode - respect monitorNewItems setting
-										const shouldMonitorNewEpisode =
-											seriesData.monitorNewItems === 'all' ? seasonMonitored : false;
-
-										await db.insert(episodes).values({
-											seriesId: id,
-											seasonId,
-											tmdbId: ep.id,
-											seasonNumber: ep.season_number,
-											episodeNumber: ep.episode_number,
-											title: ep.name,
-											overview: ep.overview,
-											airDate: ep.air_date,
-											runtime: ep.runtime,
-											monitored: shouldMonitorNewEpisode,
-											hasFile: false
-										});
+									if (episodeValues.length > 0) {
+										await db.insert(episodes).values(episodeValues);
 									}
 								}
+
+								processedSeasons++;
+
+								await new Promise((resolve) => setTimeout(resolve, 100));
+							} catch {
+								logger.warn(
+									{ seasonNumber: tmdbSeasonInfo.season_number },
+									'[RefreshSeries] Failed to fetch season'
+								);
 							}
-
-							processedSeasons++;
-
-							// Send progress event
-							sendEvent({
-								type: 'progress',
-								seasonNumber: tmdbSeasonInfo.season_number,
-								totalSeasons,
-								message: `Refreshed season ${tmdbSeasonInfo.season_number} (${processedSeasons}/${totalSeasons})`
-							});
-
-							// Small delay to avoid rate limiting
-							await new Promise((resolve) => setTimeout(resolve, 100));
-						} catch {
-							logger.warn(
-								{
-									seasonNumber: tmdbSeasonInfo.season_number
-								},
-								'[RefreshSeries] Failed to fetch season'
-							);
 						}
 					}
 				}

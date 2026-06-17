@@ -50,7 +50,11 @@ export const indexerCreateSchema = z.object({
 		.nullable(), // Decimal as string (e.g., "1.0")
 	seedTime: z.number().int().min(0).optional().nullable(), // Minutes
 	packSeedTime: z.number().int().min(0).optional().nullable(), // Minutes
-	rejectDeadTorrents: z.boolean().default(true) // Reject torrents with 0 seeders
+	rejectDeadTorrents: z.boolean().default(true), // Reject torrents with 0 seeders
+
+	// Usenet settings (stored in protocolSettings JSON)
+	rejectPasswordProtected: z.boolean().default(true),
+	minimumCompletionPercentage: z.number().int().min(0).max(100).default(95)
 });
 
 /**
@@ -1471,7 +1475,9 @@ export const seriesUpdateSchema = z.object({
 		.refine((v) => !v.includes('..') && !v.startsWith('/'), {
 			message: 'Folder path must be a relative name with no path traversal'
 		})
-		.optional()
+		.optional(),
+	/** TMDB episode group ID for alternate season ordering (null = default TMDB ordering) */
+	episodeGroupId: z.string().nullable().optional()
 });
 
 /**

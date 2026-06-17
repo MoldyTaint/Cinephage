@@ -676,6 +676,10 @@
 	async function handleEditSave(editData: SeriesEditData) {
 		isSaving = true;
 		try {
+			const episodeGroupChanged =
+				editData.episodeGroupId !== undefined &&
+				editData.episodeGroupId !== (series.episodeGroupId ?? null);
+
 			const result = await updateSeries(series.id, editData as unknown as Record<string, unknown>);
 
 			series.monitored = editData.monitored;
@@ -683,6 +687,14 @@
 			series.seasonFolder = editData.seasonFolder;
 			series.seriesType = editData.seriesType;
 			series.wantsSubtitles = editData.wantsSubtitles;
+
+			if (episodeGroupChanged) {
+				series.episodeGroupId = editData.episodeGroupId ?? null;
+				// Full page reload needed since all seasons/episodes were rebuilt
+				toasts.info('Episode ordering updated. Reloading page...');
+				window.location.reload();
+				return;
+			}
 
 			if (result?.moveQueued) {
 				toasts.success(
