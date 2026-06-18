@@ -1495,23 +1495,44 @@ export class SearchOrchestrator {
 		const seenGuids = new Set(seenReleases.map((r) => r.guid));
 		const newReleases: ReleaseResult[] = [];
 
-		for (const title of rawTitles.slice(0, 2)) {
-			const packCriteria = createTextOnlyCriteria({
-				...criteria,
-				query: `${title} ${seasonToken} Complete`
-			});
-			try {
-				const releases = await indexer.search(packCriteria);
-				for (const r of releases) {
+		// Each keyword targets a distinct category of season pack title.
+		// Searches fire in parallel so adding more keywords costs no extra latency.
+		const PACK_KEYWORDS = [
+			'Complete',
+			'BluRay',
+			'WEB-DL',
+			'WEBRip',
+			'2160p',
+			'1080p',
+			'Remux',
+			'HDTV'
+		];
+
+		const title = rawTitles[0];
+		const settled = await Promise.allSettled(
+			PACK_KEYWORDS.map((keyword) =>
+				indexer.search(
+					createTextOnlyCriteria({ ...criteria, query: `${title} ${seasonToken} ${keyword}` })
+				)
+			)
+		);
+
+		for (const [i, result] of settled.entries()) {
+			if (result.status === 'fulfilled') {
+				for (const r of result.value) {
 					if (!seenGuids.has(r.guid)) {
 						seenGuids.add(r.guid);
 						newReleases.push(r);
 					}
 				}
-			} catch (err) {
+			} else {
 				logger.debug(
-					{ indexer: indexer.name, title, error: err instanceof Error ? err.message : String(err) },
-					'Season pack supplemental search failed'
+					{
+						indexer: indexer.name,
+						keyword: PACK_KEYWORDS[i],
+						error: result.reason instanceof Error ? result.reason.message : String(result.reason)
+					},
+					'Season pack supplemental search variant failed'
 				);
 			}
 		}
