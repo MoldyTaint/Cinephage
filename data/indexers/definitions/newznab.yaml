@@ -95,6 +95,7 @@ search:
         q: '{{ .Keywords }}'
         apikey: '{{ .Config.apikey }}'
         limit: '100'
+        offset: '{{ .Query.Offset }}'
 
     # General search (includes cat for category filtering)
     - path: /api

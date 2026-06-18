@@ -1135,6 +1135,30 @@ export class SearchOrchestrator {
 						};
 					}
 				}
+
+				// For TV season-only searches, meta-indexers sort by date so season packs
+				// (years old) are buried past position 100. A supplemental text search with
+				// "Complete" in the query narrows the server-side result set to pack-like
+				// titles only, bypassing the date-ordering problem entirely.
+				if (
+					isTvSearch(criteria) &&
+					criteria.season !== undefined &&
+					criteria.episode === undefined &&
+					hasTextFallbackSource
+				) {
+					const packReleases = await this.executeSeasonPackSupplementalSearch(
+						indexer,
+						criteria,
+						idReleases
+					);
+					if (packReleases.length > 0) {
+						return {
+							releases: [...idReleases, ...packReleases],
+							searchMethod: 'id'
+						};
+					}
+				}
+
 				return { releases: idReleases, searchMethod: 'id' };
 			}
 
@@ -1432,6 +1456,62 @@ export class SearchOrchestrator {
 				logger.debug(
 					{ indexer: indexer.name, title, error: err instanceof Error ? err.message : String(err) },
 					'Anime absolute search variant failed'
+				);
+			}
+		}
+
+		return newReleases;
+	}
+
+	/**
+	 * Supplemental season-pack search for season-only TV queries.
+	 *
+	 * Meta-indexers (e.g. NZBHydra2) sort raw results by date descending, so a
+	 * standard ID search returns 100 individual episodes before any season pack
+	 * appears. Adding "Complete" to the keyword narrows the result set server-side:
+	 * underlying indexers only return titles that contain the word, which are almost
+	 * exclusively season packs. The small result count means date-sorting is no
+	 * longer a problem — all matching packs fit within the 100-result limit.
+	 */
+	private async executeSeasonPackSupplementalSearch(
+		indexer: IIndexer,
+		criteria: SearchCriteria,
+		seenReleases: ReleaseResult[]
+	): Promise<ReleaseResult[]> {
+		if (!isTvSearch(criteria) || criteria.season === undefined || criteria.episode !== undefined) {
+			return [];
+		}
+
+		const rawTitles =
+			criteria.searchTitles && criteria.searchTitles.length > 0
+				? criteria.searchTitles
+				: criteria.query
+					? [criteria.query]
+					: [];
+
+		if (rawTitles.length === 0) return [];
+
+		const seasonToken = `S${String(criteria.season).padStart(2, '0')}`;
+		const seenGuids = new Set(seenReleases.map((r) => r.guid));
+		const newReleases: ReleaseResult[] = [];
+
+		for (const title of rawTitles.slice(0, 2)) {
+			const packCriteria = createTextOnlyCriteria({
+				...criteria,
+				query: `${title} ${seasonToken} Complete`
+			});
+			try {
+				const releases = await indexer.search(packCriteria);
+				for (const r of releases) {
+					if (!seenGuids.has(r.guid)) {
+						seenGuids.add(r.guid);
+						newReleases.push(r);
+					}
+				}
+			} catch (err) {
+				logger.debug(
+					{ indexer: indexer.name, title, error: err instanceof Error ? err.message : String(err) },
+					'Season pack supplemental search failed'
 				);
 			}
 		}

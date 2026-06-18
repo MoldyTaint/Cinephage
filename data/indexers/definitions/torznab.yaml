@@ -105,6 +105,7 @@ search:
         cat: '{{ .Categories }}'
         apikey: '{{ .Config.apikey }}'
         limit: '100'
+        offset: '{{ .Query.Offset }}'
 
     # TV fallback (generic search with TV categories)
     - path: ''
