@@ -392,6 +392,27 @@
 				allResults = data.results as ResultsType;
 				currentPage = data.pagination?.page ?? 1;
 			}
+		} else if (data.viewType === 'dashboard' && data.sections) {
+			// Collect all unique items across dashboard sections so debug mode
+			// has a populated ID set to diff against.
+			const seen = new SvelteSet<number>();
+			const combined: ResultsType = [];
+			for (const section of [
+				data.sections.trendingWeek,
+				data.sections.popularMovies,
+				data.sections.popularTV,
+				data.sections.topRatedMovies,
+				data.sections.topRatedTV,
+				data.sections.nowPlaying
+			]) {
+				for (const item of section ?? []) {
+					if (!seen.has((item as { id: number }).id)) {
+						seen.add((item as { id: number }).id);
+						combined.push(item as unknown as ResultsType[number]);
+					}
+				}
+			}
+			allResults = combined;
 		}
 	});
 
