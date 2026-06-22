@@ -9,20 +9,24 @@ import {
 	downloadQueue,
 	downloadHistory,
 	unmatchedFiles,
-	rootFolders
+	rootFolders,
+	indexers,
+	downloadClients,
+	settings
 } from '$lib/server/db/schema';
 import { count, eq, desc, and, inArray, sql, gte, ne } from 'drizzle-orm';
 import {
 	computeMissingMovieAvailabilityCounts,
 	enrichMoviesWithAvailability
 } from './movie-availability.js';
+import type { DashboardStats, RecentlyAddedData } from '$lib/types/dashboard.js';
 
 /**
  * Shared dashboard query functions used by both the page server loader
  * and the SSE stream endpoint to avoid code duplication.
  */
 
-export async function getDashboardStats() {
+export async function getDashboardStats(): Promise<DashboardStats> {
 	const now = new Date();
 	const today = todayDateString();
 	const oneDayAgoIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
@@ -46,7 +50,12 @@ export async function getDashboardStats() {
 		[movieSizeResult],
 		[episodeSizeResult],
 		missingMovieRoots,
-		missingSeriesRoots
+		missingSeriesRoots,
+		freeSpaceResult,
+		indexerCountResult,
+		downloadClientCountResult,
+		rootFolderCountResult,
+		tmdbKeySetting
 	] = await Promise.all([
 		// Base stats (3 queries)
 		db
@@ -171,7 +180,16 @@ export async function getDashboardStats() {
 				SELECT 1 FROM ${rootFolders} rf
 				WHERE rf.id = ${series.rootFolderId} AND rf.media_type != 'tv'
 			)
-		`)
+		`),
+		db
+			.select({
+				totalFree: sql<number>`COALESCE(SUM(${rootFolders.freeSpaceBytes}), 0)`
+			})
+			.from(rootFolders),
+		db.select({ count: count() }).from(indexers),
+		db.select({ count: count() }).from(downloadClients),
+		db.select({ count: count() }).from(rootFolders),
+		db.query.settings.findFirst({ where: eq(settings.key, 'tmdb_api_key') })
 	]);
 
 	// Only sequential step: TMDB availability lookup (depends on missingMoviesForAvailability)
@@ -221,12 +239,19 @@ export async function getDashboardStats() {
 		storage: {
 			movieBytes: movieStorageBytes,
 			tvBytes: tvStorageBytes,
-			totalBytes: movieStorageBytes + tvStorageBytes
+			totalBytes: movieStorageBytes + tvStorageBytes,
+			freeBytes: Number(freeSpaceResult?.[0]?.totalFree || 0)
+		},
+		config: {
+			indexerCount: indexerCountResult?.[0]?.count || 0,
+			downloadClientCount: downloadClientCountResult?.[0]?.count || 0,
+			rootFolderCount: rootFolderCountResult?.[0]?.count || 0,
+			tmdbConfigured: !!tmdbKeySetting
 		}
 	};
 }
 
-export async function getRecentlyAdded() {
+export async function getRecentlyAdded(): Promise<RecentlyAddedData> {
 	const today = todayDateString();
 
 	// Run movie and series branches in parallel - they are independent

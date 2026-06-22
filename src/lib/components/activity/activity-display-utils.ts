@@ -193,6 +193,27 @@ export interface ActivityCategoryTag {
 	variant: string;
 }
 
+export function getCompactStatusLabel(
+	activity: UnifiedActivity,
+	fallbackLabel: string
+): string | undefined {
+	const tag = getActivityCategoryTag(activity);
+	if (tag) return `${tag.label} ${getStatusLabel(activity, fallbackLabel)}`;
+	return getStatusLabel(activity, fallbackLabel);
+}
+
+export function getMobileCompactStatusLabel(
+	activity: UnifiedActivity,
+	fallbackLabel: string
+): string | undefined {
+	if (activity.status === 'search_error') return m.action_search();
+
+	const tag = getActivityCategoryTag(activity);
+	if (tag?.label === m.activity_tag_download()) return getStatusLabel(activity, fallbackLabel);
+	if (tag) return `${tag.label} ${fallbackLabel}`;
+	return getStatusLabel(activity, fallbackLabel);
+}
+
 export function getActivityCategoryTag(
 	activity: Pick<UnifiedActivity, 'taskType' | 'activitySource'>
 ): ActivityCategoryTag | null {

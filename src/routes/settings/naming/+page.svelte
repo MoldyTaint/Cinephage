@@ -22,8 +22,7 @@
 	} from 'lucide-svelte';
 	import type { PageData as GeneratedPageData } from './$types';
 	import { SettingsPage } from '$lib/components/ui/settings';
-	import NamingFormatField from '$lib/components/naming/NamingFormatField.svelte';
-	import TokenPicker from '$lib/components/naming/TokenPicker.svelte';
+	import { NamingFormatField, TokenPicker } from '$lib/components/naming';
 	import { FormInput, FormSelect } from '$lib/components/ui/form';
 	import { ModalWrapper } from '$lib/components/ui/modal';
 	import * as m from '$lib/paraglide/messages.js';
@@ -1106,8 +1105,7 @@
 					id="newPresetDescription"
 					class="textarea-bordered textarea"
 					placeholder={m.settings_naming_presetDescPlaceholder()}
-					bind:value={newPresetDescription}
-				></textarea>
+					bind:value={newPresetDescription}></textarea>
 			</div>
 		</div>
 

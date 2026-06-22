@@ -8,6 +8,7 @@ import {
 } from '$lib/server/dashboard/queries';
 import { getUpcomingItems } from '$lib/server/calendar/queries.js';
 import { getCalendarPreferences } from '$lib/server/settings/calendar-preferences.js';
+import type { DashboardStats } from '$lib/types/dashboard.js';
 
 export const load: PageServerLoad = async () => {
 	try {
@@ -109,9 +110,16 @@ export const load: PageServerLoad = async () => {
 				storage: {
 					movieBytes: 0,
 					tvBytes: 0,
-					totalBytes: 0
+					totalBytes: 0,
+					freeBytes: 0
+				},
+				config: {
+					indexerCount: 0,
+					downloadClientCount: 0,
+					rootFolderCount: 0,
+					tmdbConfigured: false
 				}
-			},
+			} satisfies DashboardStats,
 			recentlyAdded: { movies: [], series: [] },
 			missingEpisodes: [],
 			recentActivity: [],

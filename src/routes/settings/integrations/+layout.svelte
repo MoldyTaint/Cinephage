@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Database, Download, Server, Captions, Languages, Monitor, Archive } from 'lucide-svelte';
-	import SettingsTabNav from '$lib/components/settings/SettingsTabNav.svelte';
+	import { SettingsTabNav } from '$lib/components/settings';
 	import * as m from '$lib/paraglide/messages.js';
 
 	let { children } = $props();

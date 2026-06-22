@@ -16,9 +16,8 @@
 	import { formatBytes } from '$lib/utils/format.js';
 	import {
 		statusConfig,
-		getStatusLabel,
+		getCompactStatusLabel,
 		getResolutionBadge,
-		getActivityCategoryTag,
 		formatRelativeTime,
 		formatTimestamp,
 		getDisplayTime
@@ -63,13 +62,7 @@
 
 	const config = $derived(statusConfig[activity.status] || statusConfig.no_results);
 
-	const compactLabel = $derived.by(() => {
-		const tag = getActivityCategoryTag(activity);
-		const fallbackLabel = config.label;
-		return tag
-			? `${tag.label} ${getStatusLabel(activity, fallbackLabel)}`
-			: getStatusLabel(activity, fallbackLabel);
-	});
+	const compactLabel = $derived(getCompactStatusLabel(activity, config.label));
 </script>
 
 <div class="rounded-xl bg-base-200 p-4">

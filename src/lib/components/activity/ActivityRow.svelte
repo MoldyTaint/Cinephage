@@ -7,9 +7,9 @@
 	import {
 		statusConfig,
 		getCompactProgressLabel,
+		getCompactStatusLabel,
 		getStatusLabel,
 		getResolutionBadge,
-		getActivityCategoryTag,
 		formatRelativeTime,
 		formatTimestamp,
 		getDisplayTime
@@ -48,13 +48,7 @@
 
 	const config = $derived(statusConfig[activity.status] || statusConfig.no_results);
 
-	const compactLabel = $derived.by(() => {
-		const tag = getActivityCategoryTag(activity);
-		const fallbackLabel = config.label;
-		return tag
-			? `${tag.label} ${getStatusLabel(activity, fallbackLabel)}`
-			: getStatusLabel(activity, fallbackLabel);
-	});
+	const compactLabel = $derived(getCompactStatusLabel(activity, config.label));
 
 	const timelineColspan = $derived((compact ? 5 : 10) + (selectionMode ? 1 : 0));
 
