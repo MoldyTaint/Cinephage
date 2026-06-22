@@ -73,6 +73,8 @@
 
 	interface Props {
 		movie: LibraryMovie;
+		librarySlug?: string | null;
+		libraryName?: string | null;
 		tmdbMovie?: MovieDetails | null;
 		defaultRegion?: string;
 		configuredProviders?: { anilist: boolean; mal: boolean };
@@ -92,6 +94,8 @@
 
 	let {
 		movie,
+		librarySlug = null,
+		libraryName = null,
 		tmdbMovie = null,
 		defaultRegion = TMDB.DEFAULT_REGION,
 		configuredProviders = { anilist: false, mal: false },
@@ -258,11 +262,15 @@
 	<!-- Top action bar -->
 	<div class="flex items-center justify-between gap-2">
 		<a
-			href={resolvePath('/library/movies')}
+			href={resolvePath(librarySlug ? `/library/movies?library=${librarySlug}` : '/library/movies')}
 			class="btn btn-ghost btn-sm gap-1.5 text-base-content/60"
 		>
 			<ArrowLeft size={16} />
-			<span class="hidden sm:inline">{m.library_movieHeader_backToLibrary()}</span>
+			<span class="sm:inline"
+				>{libraryName
+					? `${m.library_movieHeader_backToLibrary()} ${libraryName}`
+					: m.library_movieHeader_backToLibrary()}</span
+			>
 		</a>
 		<div class="flex shrink-0 items-center gap-1 sm:gap-2">
 			<MonitorToggle monitored={movie.monitored ?? false} onToggle={onMonitorToggle} size="md" />
