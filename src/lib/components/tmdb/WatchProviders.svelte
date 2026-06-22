@@ -8,10 +8,12 @@
 
 	let {
 		providers,
-		countryCode
+		countryCode,
+		limit = 8
 	}: {
 		providers?: WatchProvidersResponse;
 		countryCode?: string;
+		limit?: number;
 	} = $props();
 
 	const effectiveCountryCode = $derived(
@@ -45,7 +47,7 @@
 
 {#if allProviders.length > 0}
 	<div class="flex flex-wrap items-center gap-1.5">
-		{#each allProviders.slice(0, 8) as provider (provider.provider_id)}
+		{#each allProviders.slice(0, limit) as provider (provider.provider_id)}
 			<div
 				class="h-7 w-7 overflow-hidden rounded bg-base-300 transition-transform hover:scale-110"
 				title={provider.provider_name}
@@ -66,8 +68,8 @@
 				{/if}
 			</div>
 		{/each}
-		{#if allProviders.length > 8}
-			<span class="text-xs text-base-content/50">+{allProviders.length - 8}</span>
+		{#if allProviders.length > limit}
+			<span class="text-xs text-base-content/50">+{allProviders.length - limit}</span>
 		{/if}
 	</div>
 {:else}
