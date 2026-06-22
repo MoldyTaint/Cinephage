@@ -755,6 +755,8 @@
 	<!-- Header -->
 	<LibraryMovieHeader
 		{movie}
+		librarySlug={data.librarySlug}
+		libraryName={data.libraryName}
 		tmdbMovie={data.tmdbDetails}
 		defaultRegion={page.data.defaultRegion}
 		configuredProviders={data.configuredMetadataProviders}
