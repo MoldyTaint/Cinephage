@@ -337,16 +337,26 @@ export const load: PageServerLoad = async ({ url }) => {
 		}
 
 		if (isDefaultViewCheck && page === '1') {
-			// Fetch sections for the dashboard-style view
+			// Fetch sections for the dashboard-style view.
+			// Popular/top-rated use /discover/ endpoints so the keyword blocklist
+			// injection in tmdb.fetch() fires. Trending and now-playing don't
+			// support without_keywords so they remain as dedicated endpoints.
 			const [trendingWeek, popularMovies, popularTV, topRatedMovies, topRatedTV, nowPlayingData] =
 				(await Promise.all([
 					tmdb.fetch('/trending/all/week'),
-					tmdb.fetch('/movie/popular'),
-					tmdb.fetch('/tv/popular'),
-					tmdb.fetch('/movie/top_rated'),
-					tmdb.fetch('/tv/top_rated'),
+					tmdb.fetch('/discover/movie?sort_by=popularity.desc'),
+					tmdb.fetch('/discover/tv?sort_by=popularity.desc'),
+					tmdb.fetch('/discover/movie?sort_by=vote_average.desc&vote_count.gte=300'),
+					tmdb.fetch('/discover/tv?sort_by=vote_average.desc&vote_count.gte=300'),
 					tmdb.getNowPlaying()
 				])) as TmdbPaginatedResult[];
+
+			// Discover endpoints don't tag media_type — add it so downstream
+			// code (library status, filters) can identify the media type.
+			popularMovies.results = popularMovies.results.map((r) => ({ ...r, media_type: 'movie' }));
+			popularTV.results = popularTV.results.map((r) => ({ ...r, media_type: 'tv' }));
+			topRatedMovies.results = topRatedMovies.results.map((r) => ({ ...r, media_type: 'movie' }));
+			topRatedTV.results = topRatedTV.results.map((r) => ({ ...r, media_type: 'tv' }));
 
 			// Enrich all sections with library status and filter blocked media
 			const [

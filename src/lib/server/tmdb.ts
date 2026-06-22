@@ -129,12 +129,17 @@ export const tmdb = {
 		}
 	},
 
-	async fetch(endpoint: string, options: RequestInit = {}, skipFilters = false) {
+	async fetch(
+		endpoint: string,
+		options: RequestInit = {},
+		skipFilters = false,
+		skipKeywordBlocklist = false
+	) {
 		const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 		const isGetRequest = !options.method || options.method === 'GET';
 
 		const { apiKey, filters } = await loadTmdbSettings();
-		const cacheKey = getCacheKey(path, skipFilters, filters?.language);
+		const cacheKey = getCacheKey(path, skipFilters, filters?.language, skipKeywordBlocklist);
 
 		if (isGetRequest) {
 			const cached = tmdbCache.get(cacheKey);
@@ -199,7 +204,7 @@ export const tmdb = {
 					}
 
 					// Apply globally blocked keywords as without_keywords for discover paths
-					if (path.includes('/discover/')) {
+					if (path.includes('/discover/') && !skipKeywordBlocklist) {
 						const { keywordBlocklistService } =
 							await import('$lib/server/settings/KeywordBlocklistService.js');
 						const blockedIds = await keywordBlocklistService.getBlockedKeywordIds();

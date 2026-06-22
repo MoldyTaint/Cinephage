@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { keywordBlocklistService } from '$lib/server/settings/KeywordBlocklistService.js';
 import { addBlockedKeywordSchema, removeBlockedKeywordSchema } from '$lib/validation/schemas.js';
+import { tmdbCache } from '$lib/server/tmdb-cache.js';
 
 export const GET: RequestHandler = async (event) => {
 	const authError = requireAdmin(event);
@@ -34,6 +35,7 @@ export const POST: RequestHandler = async (event) => {
 
 	try {
 		const entry = await keywordBlocklistService.addBlockedKeyword(parsed.data.keywordId);
+		tmdbCache.invalidate('/discover/');
 		return json({ success: true, entry });
 	} catch (err) {
 		return json({ error: 'Failed to add keyword', details: String(err) }, { status: 500 });
@@ -55,5 +57,6 @@ export const DELETE: RequestHandler = async (event) => {
 	}
 
 	await keywordBlocklistService.removeBlockedKeyword(parsed.data.id);
+	tmdbCache.invalidate('/discover/');
 	return json({ success: true });
 };
