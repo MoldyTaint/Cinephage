@@ -88,7 +88,7 @@
 		"dotenv": "^17.4.2",
 		"fast-xml-parser": "^5.7.3",
 		"fflate": "^0.8.2",
-		"guessit-js": "^3.8.1",
+		"guessit-js": "^4.0.0",
 		"iconv-lite": "^0.7.2",
 		"js-yaml": "^4.2.0",
 		"parse-torrent": "^11.0.21",
