@@ -416,7 +416,8 @@
 					value={headersText}
 					oninput={(e) => handleHeadersChange(e.currentTarget.value)}
 					placeholder={`{\n  "Authorization": "Bearer token"\n}`}
-					class="textarea-bordered textarea h-24 font-mono text-xs"></textarea>
+					class="textarea-bordered textarea h-24 font-mono text-xs"
+				></textarea>
 				<p class="mt-1 text-xs text-base-content/60">
 					{m.smartlists_customUrlConfig_headersDescription()}
 				</p>

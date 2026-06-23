@@ -532,7 +532,8 @@
 						id="importMacs"
 						class="textarea-bordered textarea h-32 font-mono text-sm"
 						bind:value={importedMacs}
-						placeholder={m.livetv_portalScanModal_macAddressesPlaceholder()}></textarea>
+						placeholder={m.livetv_portalScanModal_macAddressesPlaceholder()}
+					></textarea>
 					<div class="label py-1">
 						<span class="label-text-alt text-xs">
 							{m.livetv_portalScanModal_macAddressesHint()}

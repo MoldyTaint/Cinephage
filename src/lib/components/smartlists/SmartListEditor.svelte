@@ -485,7 +485,8 @@
 					bind:value={description}
 					placeholder={m.smartlists_editor_descriptionPlaceholder()}
 					class="textarea h-20 w-full resize-none textarea-sm"
-					maxlength={maxDescriptionLength}></textarea>
+					maxlength={maxDescriptionLength}
+				></textarea>
 				<div class="pt-1">
 					<p class="text-xs {descriptionTooLong ? 'text-error' : 'text-base-content/60'}">
 						{description.length}/{maxDescriptionLength}

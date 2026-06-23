@@ -1105,7 +1105,8 @@
 					id="newPresetDescription"
 					class="textarea-bordered textarea"
 					placeholder={m.settings_naming_presetDescPlaceholder()}
-					bind:value={newPresetDescription}></textarea>
+					bind:value={newPresetDescription}
+				></textarea>
 			</div>
 		</div>
 
