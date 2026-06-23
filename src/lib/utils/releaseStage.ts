@@ -1,3 +1,7 @@
+import { RELEASE } from '$lib/config/constants.js';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 export type ReleaseStageKind =
 	| 'availableDigital'
 	| 'availablePhysical'
@@ -6,6 +10,7 @@ export type ReleaseStageKind =
 	| 'physicalUpcoming'
 	| 'streamingUpcoming'
 	| 'inTheaters'
+	| 'released'
 	| 'comingToTheaters'
 	| 'announced';
 
@@ -62,8 +67,10 @@ const UPCOMING_KIND: Record<HomeMedium, ReleaseStageKind> = {
  * theaters, which says nothing about home/digital availability — so a movie is
  * only "Available" when it has a past digital, physical, or TV/streaming
  * release date. A movie whose theatrical date is past but has no home-release
- * date is "In Theaters" (real catalog titles carry their own past home dates
- * and resolve to "Available" on their own).
+ * date is "In Theaters" — until enough time has passed
+ * ({@link RELEASE.THEATRICAL_ONLY_TO_RELEASED_DAYS}, ~3 years), after which it
+ * is presumed generally "Released" (covers older catalog titles TMDB never gave
+ * granular digital/physical dates).
  *
  * Both the display layer (`getSmartReleaseLine`) and the availability layer
  * (`getMovieAvailabilityLevel`) derive from this so they can never contradict.
@@ -89,6 +96,10 @@ export function resolveReleaseStage(
 		const next = earliestFutureHome(digitalMs, physicalMs, tvMs, nowMs);
 		if (next) {
 			return { kind: UPCOMING_KIND[next.type], days: daysUntil(next.ms, nowMs) };
+		}
+		const ageDays = isValid(theatricalMs) ? (nowMs - theatricalMs) / DAY_MS : 0;
+		if (ageDays > RELEASE.THEATRICAL_ONLY_TO_RELEASED_DAYS) {
+			return { kind: 'released' };
 		}
 		return { kind: 'inTheaters' };
 	}

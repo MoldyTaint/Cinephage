@@ -61,10 +61,23 @@ describe('getSmartReleaseLine', () => {
 		expect(result).toEqual({ key: 'inTheaters', variant: 'theaters' });
 	});
 
-	it('ignores TMDB status: past theatrical with no home date is always In Theaters', () => {
+	it('returns released for an old theatrical-only title (past the 3-year fallback)', () => {
 		const result = getSmartReleaseLine(
 			{
 				releaseDate: '1957-04-10',
+				digitalReleaseDate: null,
+				physicalReleaseDate: null,
+				status: 'Released'
+			},
+			now
+		);
+		expect(result).toEqual({ key: 'released', variant: 'released' });
+	});
+
+	it('keeps inTheaters for a recent theatrical-only title (within the 3-year window)', () => {
+		const result = getSmartReleaseLine(
+			{
+				releaseDate: '2025-01-01',
 				digitalReleaseDate: null,
 				physicalReleaseDate: null,
 				status: 'Released'

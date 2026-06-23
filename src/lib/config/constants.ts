@@ -21,6 +21,13 @@ export const RELEASE = {
 	/** Days after theatrical release to treat a movie as "released" when no home-media date is known. */
 	THEATRICAL_TO_RELEASED_DAYS: 90,
 
+	/**
+	 * Days after a theatrical-only release (no digital/physical/TV date ever recorded)
+	 * after which the title is presumed generally released rather than still "In Theaters".
+	 * ~3 years — covers older catalog titles TMDB never gave granular home dates.
+	 */
+	THEATRICAL_ONLY_TO_RELEASED_DAYS: 1095,
+
 	/** Current-year in-library age (days) after which a movie is presumed released (legacy heuristic). */
 	CURRENT_YEAR_LIBRARY_DAYS: 120
 } as const;

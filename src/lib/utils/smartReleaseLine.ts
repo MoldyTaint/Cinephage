@@ -4,6 +4,7 @@ export type ReleaseLineVariant = 'released' | 'upcoming' | 'theaters' | 'announc
 
 export type ReleaseLineKey =
 	| 'inTheaters'
+	| 'released'
 	| 'comingToTheaters'
 	| 'availableDigital'
 	| 'availablePhysical'
@@ -64,6 +65,8 @@ export function getSmartReleaseLine(
 			return { key: 'streamingInDays', params: { days: stage.days ?? 0 }, variant: 'upcoming' };
 		case 'inTheaters':
 			return { key: 'inTheaters', variant: 'theaters' };
+		case 'released':
+			return { key: 'released', variant: 'released' };
 		case 'comingToTheaters':
 			return { key: 'comingToTheaters', params: { days: stage.days ?? 0 }, variant: 'upcoming' };
 		case 'announced':

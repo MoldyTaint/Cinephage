@@ -31,6 +31,7 @@ function stageToLevel(stage: ReleaseStage): MovieAvailabilityLevel {
 		case 'availableDigital':
 		case 'availablePhysical':
 		case 'availableStreaming':
+		case 'released':
 			return 'released';
 		case 'digitalUpcoming':
 		case 'physicalUpcoming':

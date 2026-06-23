@@ -12,6 +12,8 @@ export function formatReleaseLine(result: SmartReleaseLineResult): string {
 	switch (result.key) {
 		case 'inTheaters':
 			return m.common_inTheaters();
+		case 'released':
+			return m.common_released();
 		case 'comingToTheaters':
 			return m.common_comingToTheaters({ days });
 		case 'availableDigital':
