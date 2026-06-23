@@ -624,7 +624,7 @@
 							{/if}
 						</div>
 						<div
-							class="flex w-full items-center gap-1 overflow-x-auto pb-0.5 border-t border-base-content/10 pt-2 sm:w-auto sm:shrink-0 sm:border-0 sm:pt-0 sm:overflow-x-visible sm:pb-0"
+							class="flex w-full items-center gap-1 overflow-x-auto border-t border-base-content/10 pt-2 pb-0.5 sm:w-auto sm:shrink-0 sm:border-0 sm:pt-0 sm:overflow-x-visible sm:pb-0"
 						>
 							{#if movie.tmdbId}
 								<a

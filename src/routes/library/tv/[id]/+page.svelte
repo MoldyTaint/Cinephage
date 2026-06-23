@@ -31,8 +31,7 @@
 	import { apiPostStream } from '$lib/api';
 	import type { SeriesEditData } from '$lib/components/library/SeriesEditModal.svelte';
 	import type { SearchMode } from '$lib/components/search/InteractiveSearchModal.svelte';
-	import { CheckSquare, Download, FileEdit, RefreshCw, X } from 'lucide-svelte';
-	import { formatBytes } from '$lib/utils/format.js';
+	import { CheckSquare, FileEdit, RefreshCw, X } from 'lucide-svelte';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -1743,15 +1742,24 @@
 	/>
 </svelte:head>
 
-<div class="flex w-full flex-col gap-4 px-4 pb-20 md:gap-6 md:overflow-x-hidden md:px-6 lg:px-8">
+<div
+	class="flex w-full flex-col gap-4 px-4 pb-20 sm:pb-0 md:gap-6 md:overflow-x-hidden md:px-6 lg:px-8"
+>
 	<!-- Header -->
 	<LibrarySeriesHeader
 		series={seriesForDisplay}
 		tmdbSeries={data.tmdbDetails}
 		defaultRegion={page.data.defaultRegion}
 		configuredProviders={data.configuredMetadataProviders}
+		librarySlug={data.librarySlug}
+		libraryName={data.libraryName}
 		refreshing={isRefreshing}
 		{refreshProgress}
+		episodeCount={seriesForDisplay.episodeCount}
+		episodeFileCount={seriesForDisplay.episodeFileCount}
+		percentComplete={seriesForDisplay.percentComplete}
+		{totalSeriesSize}
+		{downloadingCount}
 		{missingEpisodeCount}
 		{searchingMissing}
 		{missingSearchProgress}
@@ -1771,29 +1779,9 @@
 	<div class="grid gap-4 lg:grid-cols-2 lg:gap-6 xl:grid-cols-3">
 		<!-- Seasons (takes 2 columns) -->
 		<div class="min-w-0 space-y-4 md:col-span-2 lg:col-span-2">
-			<div class="flex items-center justify-between">
+			<div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
 				<div class="flex items-center gap-3">
 					<h2 class="text-lg font-semibold">{m.library_tvDetail_seasonsHeading()}</h2>
-					<span class="flex flex-wrap items-center gap-2 text-sm text-base-content/70">
-						<span
-							>{seriesForDisplay.episodeFileCount ?? 0} / {seriesForDisplay.episodeCount ?? 0}
-							{m.common_episodes()}</span
-						>
-						{#if seriesForDisplay.percentComplete === 100}
-							<span class="badge badge-sm badge-success">{m.library_seriesHeader_complete()}</span>
-						{:else if seriesForDisplay.percentComplete > 0}
-							<span class="badge badge-sm badge-primary">{seriesForDisplay.percentComplete}%</span>
-						{/if}
-						{#if totalSeriesSize > 0}
-							<span class="badge badge-sm badge-info">{formatBytes(totalSeriesSize)}</span>
-						{/if}
-						{#if downloadingCount > 0}
-							<span class="badge badge-sm font-semibold badge-success">
-								<Download size={14} class="animate-pulse" />
-								<span>{downloadingCount}</span>
-							</span>
-						{/if}
-					</span>
 				</div>
 				<div class="flex gap-1">
 					{#if !isStreamerProfile && syncableSubtitles.length > 0}
