@@ -9,7 +9,8 @@ import {
 } from '$lib/server/metadata/provider-settings.js';
 
 const settingsSchema = z.object({
-	animeEnrichmentEnabled: z.boolean().optional()
+	animeEnrichmentEnabled: z.boolean().optional(),
+	source: z.enum(['cinephage', 'tmdb']).optional()
 });
 
 export const GET: RequestHandler = async (event) => {

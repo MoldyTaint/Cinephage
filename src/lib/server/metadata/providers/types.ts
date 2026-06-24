@@ -40,6 +40,8 @@ export interface MetadataProvider {
 }
 
 export interface MetadataProviderConfig {
-	/** When true, AniList and Jikan run automatically for anime titles to supply alt titles and adult flag. Default: true. */
+	/** When true, AniList and Jikan run automatically for anime titles. Default: true. */
 	animeEnrichmentEnabled: boolean;
+	/** Metadata source: 'cinephage' (default, bundled TMDB+TVDB) or 'tmdb' (own key). */
+	source: 'cinephage' | 'tmdb';
 }

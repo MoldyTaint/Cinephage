@@ -37,7 +37,8 @@ export const load: LayoutServerLoad = async ({ request, locals }) => {
 				configured: !!apiKeySetting
 			},
 			metadataProviders: {
-				animeEnrichmentEnabled: metadataConfig.animeEnrichmentEnabled
+				animeEnrichmentEnabled: metadataConfig.animeEnrichmentEnabled,
+				source: metadataConfig.source
 			}
 		};
 	} catch (err) {
@@ -48,7 +49,8 @@ export const load: LayoutServerLoad = async ({ request, locals }) => {
 			externalUrl: null,
 			tmdb: { hasApiKey: false, configured: false },
 			metadataProviders: {
-				animeEnrichmentEnabled: true
+				animeEnrichmentEnabled: true,
+				source: 'cinephage'
 			},
 			error: 'Failed to load system settings'
 		};
