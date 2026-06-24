@@ -29,7 +29,14 @@ export interface MediaOccupancyOptions {
 	isUpgrade?: boolean;
 }
 
-const BLOCKING_DOWNLOAD_STATUSES = ['queued', 'downloading', 'paused', 'seeding', 'importing'];
+const BLOCKING_DOWNLOAD_STATUSES = [
+	'queued',
+	'downloading',
+	'awaiting',
+	'paused',
+	'seeding',
+	'importing'
+];
 const ALWAYS_BLOCKING_DOWNLOAD_STATUSES = ['queued', 'downloading', 'importing'];
 
 interface LockWaiter {

@@ -49,6 +49,10 @@ function mapQueueStatus(status: string): UnifiedActivity['status'] {
 			return 'imported';
 		case 'removed':
 			return 'removed';
+		case 'awaiting':
+			// Download vanished from client; recovering in the poll loop.
+			// Surface as still-in-progress until it recovers or fails.
+			return 'downloading';
 		default:
 			return 'downloading';
 	}

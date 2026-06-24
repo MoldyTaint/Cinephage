@@ -5,7 +5,7 @@ import { downloadQueue, downloadClients } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
 import { getImportService } from '$lib/server/downloadClients/import';
-import { getContentPath } from '$lib/server/downloadClients/monitoring';
+import { getContentPath, buildTorrentRecoveryPath } from '$lib/server/downloadClients/monitoring';
 import type { DownloadInfo } from '$lib/server/downloadClients/core/interfaces';
 import { logger } from '$lib/logging';
 import { redactUrl } from '$lib/server/utils/urlSecurity';
@@ -282,12 +282,15 @@ export const POST: RequestHandler = async ({ params }) => {
 
 			// If still no path, try filesystem recovery
 			if (!importPathAvailable && client.downloadPathLocal && queueItem.title) {
-				const fsCategory = queueItem.seriesId ? client.tvCategory : client.movieCategory;
-				const folderName = queueItem.outputPath
-					? queueItem.outputPath.replace(/\\/g, '/').split('/').filter(Boolean).pop() ||
-						queueItem.title
-					: queueItem.title;
-				const candidatePath = `${client.downloadPathLocal.replace(/\/+$/, '')}/${fsCategory}/${folderName}`;
+				const fsCategory = (queueItem.seriesId ? client.tvCategory : client.movieCategory) ?? '';
+				// Reuse the shared path reconstruction; fall back to the queue title
+				// when the stored outputPath has no usable last component.
+				const candidatePath =
+					buildTorrentRecoveryPath(
+						queueItem.outputPath || '',
+						client.downloadPathLocal,
+						fsCategory
+					) ?? `${client.downloadPathLocal.replace(/\/+$/, '')}/${fsCategory}/${queueItem.title}`;
 
 				try {
 					const { stat } = await import('fs/promises');

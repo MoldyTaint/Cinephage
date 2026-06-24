@@ -349,17 +349,13 @@ describe('buildTorrentRecoveryPath — export check (currently FAILING)', () => 
 	it('matches the specification for a standard .incomplete → completed mapping', async () => {
 		const mod = await import('./DownloadMonitorService');
 		const fn = (mod as Record<string, unknown>).buildTorrentRecoveryPath as
-			| ((params: RecoveryPathParams) => string)
+			| ((outputPath: string, downloadPathLocal: string, category: string) => string | null)
 			| undefined;
 
 		expect(fn).toBeDefined();
 		if (!fn) return; // Type guard
 
-		const result = fn({
-			outputPath: '/data/downloads/.incomplete/Show.S01E01.1080p',
-			downloadPathLocal: '/data/downloads',
-			category: 'tv'
-		});
+		const result = fn('/data/downloads/.incomplete/Show.S01E01.1080p', '/data/downloads', 'tv');
 		expect(result).toBe('/data/downloads/tv/Show.S01E01.1080p');
 	});
 });

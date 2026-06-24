@@ -178,6 +178,7 @@ export class MonitoringSearchService {
 	private readonly BLOCKING_DOWNLOAD_STATUSES = [
 		'queued',
 		'downloading',
+		'awaiting',
 		'paused',
 		'seeding',
 		'importing'

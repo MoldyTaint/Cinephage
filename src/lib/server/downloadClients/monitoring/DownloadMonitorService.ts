@@ -1378,9 +1378,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		if (queueItem.status === 'awaiting') {
 			const attempts = queueItem.importAttempts || 0;
 			const backoffMinutes = Math.min(5 * Math.pow(2, attempts - 1), 60);
-			const lastAttempt = queueItem.lastAttemptAt
-				? new Date(queueItem.lastAttemptAt).getTime()
-				: 0;
+			const lastAttempt = queueItem.lastAttemptAt ? new Date(queueItem.lastAttemptAt).getTime() : 0;
 			const elapsed = Date.now() - lastAttempt;
 
 			if (elapsed < backoffMinutes * 60_000) {
@@ -1769,6 +1767,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			queuedCount: 0,
 			downloadingCount: 0,
 			stalledCount: 0,
+			awaitingCount: 0,
 			seedingCount: 0,
 			pausedCount: 0,
 			completedCount: 0,
@@ -1794,6 +1793,9 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 					break;
 				case 'stalled':
 					stats.stalledCount++;
+					break;
+				case 'awaiting':
+					stats.awaitingCount++;
 					break;
 				case 'seeding':
 					stats.seedingCount++;

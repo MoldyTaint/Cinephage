@@ -31,6 +31,7 @@ export const ACTIVE_DOWNLOAD_STATUSES = [
 	'queued',
 	'downloading',
 	'stalled',
+	'awaiting',
 	'paused',
 	'completed',
 	'postprocessing',
@@ -315,6 +316,7 @@ export interface QueueStats {
 	queuedCount: number;
 	downloadingCount: number;
 	stalledCount: number;
+	awaitingCount: number;
 	seedingCount: number;
 	pausedCount: number;
 	completedCount: number;
