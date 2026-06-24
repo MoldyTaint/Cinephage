@@ -3,7 +3,7 @@ import { db } from '$lib/server/db';
 import { settings } from '$lib/server/db/schema';
 import { logger } from '$lib/logging';
 import { getStreamingIndexerSettings } from '$lib/server/streaming/settings.js';
-import { isRecord } from './shared.js';
+import { getFirstString, isRecord } from './shared.js';
 
 export const CINEPHAGE_BACKEND_SETTINGS_KEY = 'cinephage_backend';
 const DEFAULT_BASE_URL = 'https://api.cinephage.net';
@@ -33,26 +33,32 @@ async function loadOverrides(): Promise<StoredBackendOverrides> {
 
 	if (!_overridesPromise) {
 		_overridesPromise = (async () => {
-			let overrides: StoredBackendOverrides = {};
-			const row = await db.query.settings.findFirst({
-				where: eq(settings.key, CINEPHAGE_BACKEND_SETTINGS_KEY)
-			});
+			try {
+				let overrides: StoredBackendOverrides = {};
+				const row = await db.query.settings.findFirst({
+					where: eq(settings.key, CINEPHAGE_BACKEND_SETTINGS_KEY)
+				});
 
-			if (row) {
-				try {
-					const parsed = JSON.parse(row.value) as unknown;
-					if (isRecord(parsed) && typeof parsed.baseUrl === 'string') {
-						overrides = { baseUrl: parsed.baseUrl };
+				if (row) {
+					try {
+						const parsed = JSON.parse(row.value) as unknown;
+						if (isRecord(parsed)) {
+							const baseUrl = getFirstString(parsed.baseUrl);
+							if (baseUrl) {
+								overrides = { baseUrl };
+							}
+						}
+					} catch (error) {
+						logger.error({ err: error }, 'Failed to parse cinephage_backend settings');
 					}
-				} catch (error) {
-					logger.error({ err: error }, 'Failed to parse cinephage_backend settings');
 				}
-			}
 
-			_cachedOverrides = overrides;
-			_overridesTimestamp = Date.now();
-			_overridesPromise = null;
-			return overrides;
+				_cachedOverrides = overrides;
+				_overridesTimestamp = Date.now();
+				return overrides;
+			} finally {
+				_overridesPromise = null;
+			}
 		})();
 	}
 

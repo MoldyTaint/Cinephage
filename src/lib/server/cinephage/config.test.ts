@@ -94,4 +94,17 @@ describe('cinephage/config', () => {
 
 		expect(config.baseUrl).toBe('https://staging.example.net');
 	});
+
+	it('falls back to the default baseUrl when the override is blank', async () => {
+		await seedStreamIndexer({ cinephageVersion: '2.0.0', cinephageCommit: 'def4567' });
+		await testDb.db.insert(settings).values({
+			key: 'cinephage_backend',
+			value: JSON.stringify({ baseUrl: '   ' })
+		});
+		invalidateCinephageBackendConfig();
+
+		const config = await getCinephageBackendConfig();
+
+		expect(config.baseUrl).toBe('https://api.cinephage.net');
+	});
 });
