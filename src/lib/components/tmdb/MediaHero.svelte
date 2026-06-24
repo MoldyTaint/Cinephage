@@ -358,7 +358,7 @@
 									? 'text-primary'
 									: 'text-base-content/60'}"
 					>
-						{smartRelease.text}
+						{formatReleaseLine(smartRelease)}
 					</div>
 				{:else if item.status}
 					<div class="mt-1 text-sm text-base-content/60 md:hidden">{item.status}</div>

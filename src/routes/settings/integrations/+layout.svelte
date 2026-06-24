@@ -1,5 +1,13 @@
 <script lang="ts">
-	import { Database, Download, Server, Captions, Languages, Monitor, Archive } from 'lucide-svelte';
+	import {
+		DatabaseSearch,
+		Download,
+		Server,
+		Captions,
+		Languages,
+		Monitor,
+		Archive
+	} from 'lucide-svelte';
 	import { SettingsTabNav } from '$lib/components/settings';
 	import * as m from '$lib/paraglide/messages.js';
 
@@ -9,7 +17,7 @@
 		{
 			href: '/settings/integrations/indexers',
 			label: m.nav_indexers(),
-			icon: Database
+			icon: DatabaseSearch
 		},
 		{
 			href: '/settings/integrations/download-clients',
