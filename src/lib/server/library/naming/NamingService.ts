@@ -18,6 +18,7 @@ import { TemplateEngine } from './template';
 export interface MediaNamingInfo {
 	// Core info
 	title: string;
+	originalTitle?: string;
 	year?: number;
 	tmdbId?: number;
 	tvdbId?: number;

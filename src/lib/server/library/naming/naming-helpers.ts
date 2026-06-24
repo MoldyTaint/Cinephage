@@ -6,7 +6,8 @@ export function buildMovieFolderName(
 	year?: number,
 	tmdbId?: number,
 	collectionName?: string,
-	localizedTitles?: Record<string, string>
+	localizedTitles?: Record<string, string>,
+	originalTitle?: string | null
 ): string {
 	const config = namingSettingsService.getConfigSync();
 	const service = new NamingService(config);
@@ -15,6 +16,7 @@ export function buildMovieFolderName(
 		year,
 		tmdbId,
 		collectionName,
-		localizedTitles
+		localizedTitles,
+		originalTitle: originalTitle ?? undefined
 	});
 }

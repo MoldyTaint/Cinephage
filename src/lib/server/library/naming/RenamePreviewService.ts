@@ -964,6 +964,7 @@ export class RenamePreviewService {
 			// really there, so renamed files will reflect the true audio format.
 			const namingInfo: MediaNamingInfo = {
 				title: movie.title,
+				originalTitle: movie.originalTitle ?? undefined,
 				year: movie.year ?? undefined,
 				tmdbId: movie.tmdbId,
 				imdbId: movie.imdbId ?? undefined,
@@ -1093,6 +1094,7 @@ export class RenamePreviewService {
 			// really there, so renamed files will reflect the true audio format.
 			const namingInfo: MediaNamingInfo = {
 				title: show.title,
+				originalTitle: show.originalTitle ?? undefined,
 				year: show.year ?? undefined,
 				tvdbId: show.tvdbId ?? undefined,
 				tmdbId: show.tmdbId,
