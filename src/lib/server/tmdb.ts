@@ -322,7 +322,7 @@ async function fetchViaCinephageMedia(
 		}
 	}
 
-	const response = await cinephageRequest(url.pathname + url.search);
+	const response = await cinephageRequest(url.pathname + url.search, { skipRateLimiting: true });
 	let data: Record<string, unknown>;
 	try {
 		data = JSON.parse(response.body) as Record<string, unknown>;

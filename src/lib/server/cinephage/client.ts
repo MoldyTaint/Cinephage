@@ -8,6 +8,7 @@ export interface CinephageRequestOptions {
 	headers?: Record<string, string>;
 	signal?: AbortSignal;
 	accept?: string;
+	skipRateLimiting?: boolean;
 }
 
 export interface CinephageRawResponse {
@@ -64,8 +65,16 @@ export async function cinephageRequestWithConfig(
 
 	const response =
 		options.method === 'POST'
-			? await http.post(url, options.body ?? '', { headers, signal: options.signal })
-			: await http.get(url, { headers, signal: options.signal });
+			? await http.post(url, options.body ?? '', {
+					headers,
+					signal: options.signal,
+					skipRateLimiting: options.skipRateLimiting
+				})
+			: await http.get(url, {
+					headers,
+					signal: options.signal,
+					skipRateLimiting: options.skipRateLimiting
+				});
 
 	return { status: response.status, body: response.body, url: response.url };
 }
