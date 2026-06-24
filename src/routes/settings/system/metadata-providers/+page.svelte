@@ -19,7 +19,9 @@
 	// =====================
 	// Source + Cinephage Backend (derived from layout data, refreshed via invalidateAll)
 	// =====================
-	const source = $derived<'cinephage' | 'tmdb'>(data.metadataProviders?.source ?? 'cinephage');
+	const source = $derived(
+		(data.metadataProviders?.source ?? 'cinephage') as 'cinephage' | 'tmdb'
+	);
 	const cinephageConfigured = $derived(data.cinephageBackend?.configured ?? false);
 	const cinephageVersion = $derived(data.cinephageBackend?.version ?? '');
 	const cinephageCommit = $derived(data.cinephageBackend?.commit ?? '');
