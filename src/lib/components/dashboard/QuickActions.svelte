@@ -4,7 +4,7 @@
 		Compass,
 		Download,
 		Activity,
-		TrendingUp,
+		DatabaseSearch,
 		ListTodo,
 		AlertTriangle,
 		Search,
@@ -43,7 +43,7 @@
 					href={resolve('/settings/integrations/indexers')}
 					class="btn min-w-34 justify-center border-warning bg-warning text-warning-content btn-sm hover:border-warning hover:bg-warning/90"
 				>
-					<TrendingUp class="h-4 w-4" />
+					<DatabaseSearch class="h-4 w-4" />
 					{m.dashboard_quickActions_addIndexer()}
 				</a>
 				<a
@@ -104,13 +104,13 @@
 						href={resolve('/settings/integrations/indexers')}
 						class="btn min-w-34 justify-center border-accent bg-accent text-accent-content btn-sm hover:border-accent hover:bg-accent/90"
 					>
-						<TrendingUp class="h-4 w-4" />
+						<DatabaseSearch class="h-4 w-4" />
 						{m.dashboard_quickActions_indexers()}
 					</a>
 				{/if}
 				{#if hasMissingEpisodes}
 					<a
-						href={resolve('/activity')}
+						href={resolve('/settings/tasks')}
 						class="btn min-w-34 justify-center border-warning bg-warning text-warning-content btn-sm hover:border-warning hover:bg-warning/90"
 					>
 						<Search class="h-4 w-4" />
