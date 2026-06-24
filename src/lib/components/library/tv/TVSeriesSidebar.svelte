@@ -1,7 +1,6 @@
 <script lang="ts">
 	import type { LibrarySeries } from '$lib/types/library';
 	import * as m from '$lib/paraglide/messages.js';
-	import { formatDisplayDateShort } from '$lib/utils/format.js';
 
 	interface Props {
 		series: LibrarySeries;
@@ -96,21 +95,9 @@
 					<dd class="sm:text-right">{series.originalTitle}</dd>
 				</div>
 			{/if}
-			{#if series.genres && series.genres.length > 0}
-				<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-					<dt class="text-base-content/60">{m.common_genres()}</dt>
-					<dd class="sm:text-right">{series.genres.join(', ')}</dd>
-				</div>
-			{/if}
 			<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
 				<dt class="text-base-content/60">{m.library_seriesHeader_qualityProfileLabel()}</dt>
 				<dd>{qualityProfileName || m.common_default()}</dd>
-			</div>
-			<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-				<dt class="text-base-content/60">{m.common_added()}</dt>
-				<dd>
-					{formatDisplayDateShort(series.added)}
-				</dd>
 			</div>
 			{#if series.imdbId}
 				<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
@@ -180,14 +167,7 @@
 					</dd>
 				</div>
 			{/each}
-		</dl>
-	</div>
-
-	<!-- Path Info -->
-	<div class="rounded-xl bg-base-200 p-4 md:p-6">
-		<h3 class="mb-3 font-semibold">{m.library_movieDetail_storageHeading()}</h3>
-		<dl class="space-y-2 text-sm">
-			<div>
+			<div class="border-t border-base-content/10 pt-2">
 				<dt class="text-base-content/60">{m.common_path()}</dt>
 				<dd class="mt-1 font-mono text-xs break-all">
 					{seriesStoragePath}

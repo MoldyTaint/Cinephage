@@ -5,7 +5,8 @@ import {
 	rootFolders,
 	scoringProfiles,
 	downloadQueue,
-	subtitles
+	subtitles,
+	libraries
 } from '$lib/server/db/schema.js';
 import { eq, and, inArray } from 'drizzle-orm';
 import { error } from '@sveltejs/kit';
@@ -28,6 +29,8 @@ export interface QueueItemInfo {
 
 export interface LibraryMoviePageData {
 	movie: LibraryMovie;
+	librarySlug: string | null;
+	libraryName: string | null;
 	tmdbDetails: MovieDetails | null;
 	qualityProfiles: QualityProfileSummary[];
 	rootFolders: Array<{
@@ -99,10 +102,15 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 			physicalReleaseDate: movies.physicalReleaseDate,
 			availabilityDelay: movies.availabilityDelay,
 			downloadReleaseDate: movies.downloadReleaseDate,
-			downloadReleaseType: movies.downloadReleaseType
+			downloadReleaseType: movies.downloadReleaseType,
+			libraryId: movies.libraryId,
+			librarySlug: libraries.slug,
+			libraryName: libraries.name,
+			libraryIsDefault: libraries.isDefault
 		})
 		.from(movies)
 		.leftJoin(rootFolders, eq(movies.rootFolderId, rootFolders.id))
+		.leftJoin(libraries, eq(movies.libraryId, libraries.id))
 		.where(eq(movies.id, id));
 
 	if (movieResult.length === 0) {
@@ -290,8 +298,13 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 	});
 	movieWithFiles.providerRefs = enrichedProviderRefs;
 
+	const librarySlug = movie.libraryIsDefault ? null : (movie.librarySlug ?? null);
+	const libraryName = movie.libraryName ?? null;
+
 	return {
 		movie: movieWithFiles,
+		librarySlug,
+		libraryName,
 		tmdbDetails,
 		qualityProfiles: allQualityProfiles,
 		rootFolders: folders,

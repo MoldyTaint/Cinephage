@@ -7,7 +7,8 @@ import {
 	rootFolders,
 	scoringProfiles,
 	downloadQueue,
-	subtitles
+	subtitles,
+	libraries
 } from '$lib/server/db/schema.js';
 import { eq, asc, inArray, and } from 'drizzle-orm';
 import { error } from '@sveltejs/kit';
@@ -152,6 +153,8 @@ export interface LibrarySeriesPageData {
 		anilist: boolean;
 		mal: boolean;
 	};
+	librarySlug: string | null;
+	libraryName: string | null;
 }
 
 export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPageData> => {
@@ -185,10 +188,15 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 			added: series.added,
 			episodeCount: series.episodeCount,
 			episodeFileCount: series.episodeFileCount,
-			episodeGroupId: series.episodeGroupId
+			episodeGroupId: series.episodeGroupId,
+			libraryId: series.libraryId,
+			librarySlug: libraries.slug,
+			libraryName: libraries.name,
+			libraryIsDefault: libraries.isDefault
 		})
 		.from(series)
 		.leftJoin(rootFolders, eq(series.rootFolderId, rootFolders.id))
+		.leftJoin(libraries, eq(series.libraryId, libraries.id))
 		.where(eq(series.id, id));
 
 	if (seriesResult.length === 0) {
@@ -414,6 +422,9 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 		return null;
 	});
 
+	const librarySlug = seriesData.libraryIsDefault ? null : (seriesData.librarySlug ?? null);
+	const libraryName = seriesData.libraryName ?? null;
+
 	return {
 		series: {
 			...seriesData,
@@ -427,6 +438,8 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 		rootFolders: folders,
 		queueItems,
 		isSearching,
-		configuredMetadataProviders
+		configuredMetadataProviders,
+		librarySlug,
+		libraryName
 	};
 };

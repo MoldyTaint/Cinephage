@@ -38,7 +38,7 @@
 	import { goto } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
 	import { createDynamicSSE } from '$lib/sse';
-	import { getFileName, formatDisplayDate } from '$lib/utils/format.js';
+	import { getFileName } from '$lib/utils/format.js';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
@@ -755,6 +755,8 @@
 	<!-- Header -->
 	<LibraryMovieHeader
 		{movie}
+		librarySlug={data.librarySlug}
+		libraryName={data.libraryName}
 		tmdbMovie={data.tmdbDetails}
 		defaultRegion={page.data.defaultRegion}
 		configuredProviders={data.configuredMetadataProviders}
@@ -894,32 +896,9 @@
 							<dd class="sm:text-right">{movie.studios.join(', ')}</dd>
 						</div>
 					{/if}
-					{#if movie.runtime}
-						<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-							<dt class="text-base-content/60">{m.library_movieDetail_runtime()}</dt>
-							<dd>
-								{m.library_movieDetail_runtimeValue({
-									hours: String(Math.floor(movie.runtime / 60)),
-									minutes: String(movie.runtime % 60)
-								})}
-							</dd>
-						</div>
-					{/if}
-					{#if movie.genres && movie.genres.length > 0}
-						<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-							<dt class="text-base-content/60">{m.library_movieDetail_genres()}</dt>
-							<dd class="sm:text-right">{movie.genres.join(', ')}</dd>
-						</div>
-					{/if}
 					<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
 						<dt class="text-base-content/60">{m.library_movieHeader_qualityProfileLabel()}</dt>
 						<dd>{qualityProfileName || m.common_default()}</dd>
-					</div>
-					<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
-						<dt class="text-base-content/60">{m.common_added()}</dt>
-						<dd>
-							{formatDisplayDate(movie.added)}
-						</dd>
 					</div>
 					{#if movie.imdbId}
 						<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
@@ -974,14 +953,7 @@
 							</dd>
 						</div>
 					{/each}
-				</dl>
-			</div>
-
-			<!-- Path Info -->
-			<div class="rounded-xl bg-base-200 p-4 md:p-6">
-				<h3 class="mb-3 font-semibold">{m.library_movieDetail_storageHeading()}</h3>
-				<dl class="space-y-2 text-sm">
-					<div>
+					<div class="border-t border-base-content/10 pt-2">
 						<dt class="text-base-content/60">{m.library_movieDetail_path()}</dt>
 						<dd class="mt-1 font-mono text-xs break-all">
 							{movieStoragePath}

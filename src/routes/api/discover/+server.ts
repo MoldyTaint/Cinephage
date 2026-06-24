@@ -26,7 +26,8 @@ const discoverQuerySchema = z.object({
 	'primary_release_date.lte': z.string().nullable().default(null),
 	'vote_average.gte': z.string().nullable().default(null),
 	certification: z.string().nullable().default(null),
-	exclude_in_library: z.enum(['true', 'false']).optional()
+	exclude_in_library: z.enum(['true', 'false']).optional(),
+	skip_blocked: z.enum(['true', 'false']).optional()
 });
 
 interface TmdbPaginatedResult {
@@ -111,7 +112,8 @@ export const GET: RequestHandler = async ({ url }) => {
 				minDate: params['primary_release_date.gte'],
 				maxDate: params['primary_release_date.lte'],
 				minRating: params['vote_average.gte'],
-				certification: params.certification
+				certification: params.certification,
+				skipKeywordBlocklist: params.skip_blocked === 'true'
 			});
 			results = discoverResult.results;
 			pagination = discoverResult.pagination;

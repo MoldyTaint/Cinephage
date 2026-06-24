@@ -254,7 +254,7 @@
 		class="flex w-full flex-col gap-3 p-4 transition-colors hover:bg-base-200 sm:flex-row sm:items-center sm:justify-between"
 	>
 		<!-- Clickable area for expand/collapse -->
-		<div class="flex w-full flex-wrap items-start gap-3 sm:flex-nowrap sm:items-center">
+		<div class="flex w-full flex-col gap-2 sm:flex-row sm:flex-nowrap sm:items-center">
 			<button
 				class="flex min-w-0 flex-1 items-center gap-3 text-left"
 				onclick={() => {
@@ -309,7 +309,7 @@
 			</button>
 
 			<!-- Action buttons -->
-			<div class="flex shrink-0 items-center gap-2 sm:ml-auto">
+			<div class="flex shrink-0 items-center gap-2 mx-auto sm:mx-0 sm:ml-auto">
 				<!-- Season monitor toggle -->
 				<button
 					class="btn btn-ghost btn-sm {season.monitored

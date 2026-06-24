@@ -8,6 +8,7 @@ import { inArray, eq, and } from 'drizzle-orm';
 export interface LibraryStatus {
 	inLibrary: boolean;
 	hasFile: boolean;
+	monitored?: boolean;
 	mediaType: 'movie' | 'tv' | null;
 	libraryId?: string;
 	releaseDate?: string | null;
@@ -56,6 +57,7 @@ export async function getLibraryStatus(
 				id: movies.id,
 				tmdbId: movies.tmdbId,
 				hasFile: movies.hasFile,
+				monitored: movies.monitored,
 				releaseDate: movies.releaseDate,
 				digitalReleaseDate: movies.digitalReleaseDate,
 				physicalReleaseDate: movies.physicalReleaseDate
@@ -67,6 +69,7 @@ export async function getLibraryStatus(
 			statusMap[movie.tmdbId] = {
 				inLibrary: true,
 				hasFile: movie.hasFile ?? false,
+				monitored: movie.monitored ?? true,
 				mediaType: 'movie',
 				libraryId: movie.id,
 				releaseDate: movie.releaseDate,
@@ -82,6 +85,7 @@ export async function getLibraryStatus(
 			.select({
 				id: series.id,
 				tmdbId: series.tmdbId,
+				monitored: series.monitored,
 				episodeFileCount: series.episodeFileCount
 			})
 			.from(series)
@@ -93,6 +97,7 @@ export async function getLibraryStatus(
 			statusMap[show.tmdbId] = {
 				inLibrary: true,
 				hasFile,
+				monitored: show.monitored ?? true,
 				mediaType: 'tv',
 				libraryId: show.id
 			};
@@ -117,6 +122,7 @@ export async function enrichWithLibraryStatus<T extends { id: number }>(
 	(T & {
 		inLibrary: boolean;
 		hasFile: boolean;
+		monitored?: boolean;
 		libraryId?: string;
 		releaseDate?: string | null;
 		digitalReleaseDate?: string | null;
@@ -136,6 +142,7 @@ export async function enrichWithLibraryStatus<T extends { id: number }>(
 			...item,
 			inLibrary: status?.inLibrary ?? false,
 			hasFile: status?.hasFile ?? false,
+			monitored: status?.monitored,
 			libraryId: status?.libraryId,
 			releaseDate: status?.releaseDate ?? null,
 			digitalReleaseDate: status?.digitalReleaseDate ?? null,

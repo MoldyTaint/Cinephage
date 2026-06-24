@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
+	import { untrack } from 'svelte';
 	import {
 		Check,
 		ChevronDown,
@@ -87,7 +88,7 @@
 	} = $props();
 
 	// Expand match list only when there's no match and no locked route context
-	let showMatchList = $state(!selectedMatch && !routeImportContext);
+	let showMatchList = $state(untrack(() => !selectedMatch && !routeImportContext));
 
 	$effect(() => {
 		showMatchList = !selectedMatch && !routeImportContext;

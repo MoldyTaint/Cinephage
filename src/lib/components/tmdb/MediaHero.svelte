@@ -5,7 +5,22 @@
 	import WatchProviders from './WatchProviders.svelte';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import AddToLibraryModal from '$lib/components/library/AddToLibraryModal.svelte';
-	import { Plus, Check, Clock, Play, Film, ExternalLink, Ban } from 'lucide-svelte';
+	import {
+		Plus,
+		CircleCheckBig,
+		Play,
+		Film,
+		ExternalLink,
+		Ban,
+		X,
+		ChevronLeft,
+		ChevronRight,
+		Maximize2,
+		EyeOff,
+		CircleX
+	} from 'lucide-svelte';
+	import { fade } from 'svelte/transition';
+	import type { Video } from '$lib/types/tmdb';
 	import { formatCurrency, formatLanguage, formatDisplayDateShort } from '$lib/utils/format.js';
 	import { resolvePath } from '$lib/utils/routing';
 	import { SvelteMap } from 'svelte/reactivity';
@@ -24,6 +39,7 @@
 	type MediaDetailsWithLibraryStatus = (MovieDetails | TVShowDetails) & {
 		inLibrary?: boolean;
 		hasFile?: boolean;
+		monitored?: boolean;
 		libraryId?: string;
 	};
 
@@ -32,22 +48,36 @@
 	// Library status state (defaults only, effect syncs from props)
 	let inLibrary = $state(false);
 	let hasFile = $state(false);
+	let monitored = $state(true);
 	let libraryId = $state<string | undefined>(undefined);
 	let showAddModal = $state(false);
 	let showBlockConfirm = $state(false);
+	let activeVideo = $state<Video | null>(null);
+	let activeBackdrop = $state<string | null>(null);
+	let overviewExpanded = $state(false);
+
+	const overviewNeedsExpansion = $derived((item.overview?.length ?? 0) > 250);
+
+	$effect(() => {
+		if (item.id) overviewExpanded = false;
+	});
 
 	// Update state when item changes
 	$effect(() => {
 		inLibrary = item.inLibrary ?? false;
 		hasFile = item.hasFile ?? false;
+		monitored = item.monitored ?? true;
 		libraryId = item.libraryId;
 	});
 
 	const countryCode = $derived(page.data.defaultRegion || TMDB.DEFAULT_REGION);
 
-	function isMovieDetails(
-		item: MediaDetailsWithLibraryStatus
-	): item is MovieDetails & { inLibrary?: boolean; hasFile?: boolean; libraryId?: string } {
+	function isMovieDetails(item: MediaDetailsWithLibraryStatus): item is MovieDetails & {
+		inLibrary?: boolean;
+		hasFile?: boolean;
+		monitored?: boolean;
+		libraryId?: string;
+	} {
 		return 'title' in item;
 	}
 
@@ -173,11 +203,12 @@
 		try {
 			const data = (await getLibraryStatus({ tmdbId: item.id, mediaType })) as {
 				success: boolean;
-				status?: { inLibrary: boolean; hasFile: boolean; libraryId: string };
+				status?: { inLibrary: boolean; hasFile: boolean; monitored?: boolean; libraryId: string };
 			};
 			if (data.success && data.status) {
 				inLibrary = data.status.inLibrary;
 				hasFile = data.status.hasFile;
+				monitored = data.status.monitored ?? true;
 				libraryId = data.status.libraryId;
 			}
 		} catch (e) {
@@ -192,15 +223,68 @@
 		refreshLibraryStatus();
 	}
 
-	function openTrailer() {
-		// Find a YouTube trailer in videos
-		const trailer = item.videos?.results?.find(
-			(v) => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser')
-		);
-		if (trailer) {
-			window.open(`https://www.youtube.com/watch?v=${trailer.key}`, '_blank');
-		}
+	const TYPE_ORDER = ['Trailer', 'Teaser', 'Clip'];
+	const youtubeVideos = $derived(
+		[...(item.videos?.results ?? [])]
+			.filter((v) => v.site === 'YouTube' && TYPE_ORDER.includes(v.type))
+			.sort((a, b) => {
+				const aOrder = TYPE_ORDER.indexOf(a.type);
+				const bOrder = TYPE_ORDER.indexOf(b.type);
+				if (aOrder !== bOrder) return aOrder - bOrder;
+				return Number(b.official) - Number(a.official);
+			})
+			.slice(0, 8)
+	);
+
+	const backdropImages = $derived(
+		[...(item.images?.backdrops ?? [])]
+			.filter((b) => b.iso_639_1 === null)
+			.sort((a, b) => b.vote_average - a.vote_average)
+			.slice(0, 8)
+	);
+
+	const youtubeSearchFallbackUrl = $derived(
+		`https://www.youtube.com/results?search_query=${encodeURIComponent(title + ' trailer')}`
+	);
+
+	const mediaItems = $derived.by(() => {
+		const videos = youtubeVideos.map((v) => ({ type: 'video' as const, data: v }));
+		const supplementCount =
+			videos.length > 0 && videos.length < 3
+				? Math.min(6 - videos.length, backdropImages.length)
+				: 0;
+		const backdrops = backdropImages
+			.slice(0, supplementCount)
+			.map((b) => ({ type: 'backdrop' as const, data: b }));
+		return [...videos, ...backdrops];
+	});
+
+	let carouselContainer = $state<HTMLElement | null>(null);
+	let showLeftArrow = $state(false);
+	let showRightArrow = $state(false);
+
+	function handleCarouselScroll() {
+		if (!carouselContainer) return;
+		showLeftArrow = carouselContainer.scrollLeft > 10;
+		showRightArrow =
+			carouselContainer.scrollLeft <
+			carouselContainer.scrollWidth - carouselContainer.clientWidth - 10;
 	}
+
+	function scrollCarousel(direction: 'left' | 'right') {
+		if (!carouselContainer) return;
+		carouselContainer.scrollBy({
+			left:
+				direction === 'left'
+					? -carouselContainer.clientWidth * 0.75
+					: carouselContainer.clientWidth * 0.75,
+			behavior: 'smooth'
+		});
+	}
+
+	$effect(() => {
+		if (carouselContainer) handleCarouselScroll();
+	});
 </script>
 
 <div class="relative w-full overflow-hidden rounded-xl bg-base-200 shadow-xl">
@@ -211,7 +295,7 @@
 				path={item.backdrop_path}
 				size="original"
 				alt={title}
-				class="h-full w-full object-cover opacity-40 blur-sm"
+				class="h-full w-full object-cover opacity-40"
 			/>
 		{/if}
 		<div class="absolute inset-0 bg-linear-to-t from-base-200 via-base-200/80 to-transparent"></div>
@@ -222,7 +306,7 @@
 	<div class="relative z-10 flex flex-col gap-6 p-6 md:flex-row md:p-8">
 		<!-- Poster -->
 		<div class="hidden shrink-0 sm:block">
-			<div class="w-40 overflow-hidden rounded-lg shadow-lg md:w-48">
+			<div class="w-48 overflow-hidden rounded-lg shadow-lg md:w-56">
 				<TmdbImage
 					path={item.poster_path}
 					size="w342"
@@ -253,8 +337,8 @@
 						<span>{getRuntime(item)}</span>
 					{/if}
 					{#if item.genres && item.genres.length > 0}
-						<span class="hidden sm:inline">•</span>
-						<span class="hidden sm:inline"
+						<span>•</span>
+						<span
 							>{item.genres
 								.slice(0, 3)
 								.map((g) => g.name)
@@ -262,15 +346,51 @@
 						>
 					{/if}
 				</div>
+
+				<!-- Mobile-only release status -->
+				{#if smartRelease}
+					<div
+						class="mt-1 text-sm font-medium md:hidden {smartRelease.variant === 'released'
+							? 'text-success'
+							: smartRelease.variant === 'theaters'
+								? 'text-info'
+								: smartRelease.variant === 'upcoming'
+									? 'text-primary'
+									: 'text-base-content/60'}"
+					>
+						{formatReleaseLine(smartRelease)}
+					</div>
+				{:else if item.status}
+					<div class="mt-1 text-sm text-base-content/60 md:hidden">{item.status}</div>
+				{/if}
 			</div>
 
 			{#if item.tagline}
-				<p class="text-base text-base-content/50 italic">"{item.tagline}"</p>
+				<p class="border-l-2 border-primary pl-3 text-base text-base-content/50 italic">
+					{item.tagline}
+				</p>
 			{/if}
 
 			<!-- Overview -->
 			{#if item.overview}
-				<p class="text-base leading-relaxed text-base-content/90">{item.overview}</p>
+				<div>
+					<p
+						class="text-base leading-relaxed text-base-content/90 {!overviewExpanded &&
+						overviewNeedsExpansion
+							? 'line-clamp-4 sm:line-clamp-none'
+							: ''}"
+					>
+						{item.overview}
+					</p>
+					{#if overviewNeedsExpansion}
+						<button
+							class="mt-1 text-sm text-primary sm:hidden"
+							onclick={() => (overviewExpanded = !overviewExpanded)}
+						>
+							{overviewExpanded ? 'Read less' : 'Read more'}
+						</button>
+					{/if}
+				</div>
 			{/if}
 
 			<!-- Crew -->
@@ -283,6 +403,144 @@
 				</div>
 			{/if}
 
+			<!-- Video clips row / backdrop gallery -->
+			{#if mediaItems.length > 0}
+				<div class="group/carousel relative">
+					{#if showLeftArrow}
+						<button
+							transition:fade={{ duration: 150 }}
+							onclick={() => scrollCarousel('left')}
+							class="absolute -left-2 top-1/2 z-10 -translate-y-1/2 rounded-full bg-base-100/80 p-1 shadow backdrop-blur-sm hover:bg-base-100"
+						>
+							<ChevronLeft size={18} />
+						</button>
+					{/if}
+					{#if showRightArrow}
+						<button
+							transition:fade={{ duration: 150 }}
+							onclick={() => scrollCarousel('right')}
+							class="absolute -right-2 top-1/2 z-10 -translate-y-1/2 rounded-full bg-base-100/80 p-1 shadow backdrop-blur-sm hover:bg-base-100"
+						>
+							<ChevronRight size={18} />
+						</button>
+					{/if}
+					<div
+						bind:this={carouselContainer}
+						onscroll={handleCarouselScroll}
+						class="flex gap-3 overflow-x-auto pb-1 scrollbar-none"
+					>
+						{#each mediaItems as item (item.type === 'video' ? item.data.key : item.data.file_path)}
+							{#if item.type === 'video'}
+								<button
+									class="group shrink-0 w-36 text-left"
+									onclick={() => (activeVideo = item.data)}
+								>
+									<div class="relative aspect-video overflow-hidden rounded-lg bg-base-300">
+										<img
+											src="https://img.youtube.com/vi/{item.data.key}/mqdefault.jpg"
+											alt={item.data.name}
+											class="h-full w-full object-cover transition-opacity group-hover:opacity-75"
+										/>
+										<div class="absolute inset-0 flex items-center justify-center">
+											<div
+												class="rounded-full bg-black/50 p-2 transition-transform group-hover:scale-110"
+											>
+												<Play size={14} class="text-white" />
+											</div>
+										</div>
+									</div>
+									<div class="mt-1 truncate text-xs text-base-content/70">{item.data.name}</div>
+									<div class="text-xs text-base-content/40">{item.data.type}</div>
+								</button>
+							{:else}
+								<button
+									class="group shrink-0 w-36 text-left"
+									onclick={() => (activeBackdrop = item.data.file_path)}
+								>
+									<div class="relative aspect-video overflow-hidden rounded-lg bg-base-300">
+										<TmdbImage
+											path={item.data.file_path}
+											size="w300"
+											alt="Backdrop"
+											class="h-full w-full object-cover transition-opacity group-hover:opacity-75"
+										/>
+										<div
+											class="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100"
+										>
+											<div class="rounded-full bg-black/50 p-2">
+												<Maximize2 size={14} class="text-white" />
+											</div>
+										</div>
+									</div>
+								</button>
+							{/if}
+						{/each}
+					</div>
+				</div>
+			{:else if backdropImages.length > 0}
+				<div class="group/carousel relative">
+					<div class="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
+						{#each backdropImages as backdrop (backdrop.file_path)}
+							<button
+								class="group shrink-0 w-36 text-left"
+								onclick={() => (activeBackdrop = backdrop.file_path)}
+							>
+								<div class="relative aspect-video overflow-hidden rounded-lg bg-base-300">
+									<TmdbImage
+										path={backdrop.file_path}
+										size="w300"
+										alt="Backdrop"
+										class="h-full w-full object-cover transition-opacity group-hover:opacity-75"
+									/>
+									<div
+										class="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100"
+									>
+										<div class="rounded-full bg-black/50 p-2">
+											<Maximize2 size={14} class="text-white" />
+										</div>
+									</div>
+								</div>
+							</button>
+						{/each}
+						<!-- YouTube search card -->
+						<!-- eslint-disable svelte/no-navigation-without-resolve -- External YouTube URL -->
+						<a
+							href={youtubeSearchFallbackUrl}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="group shrink-0 w-36"
+						>
+							<div
+								class="flex aspect-video flex-col items-center justify-center gap-1.5 rounded-lg border border-base-content/10 bg-base-300 p-2 transition-colors group-hover:border-base-content/20 group-hover:bg-base-200"
+							>
+								<Play
+									size={18}
+									class="text-base-content/40 transition-colors group-hover:text-base-content/70"
+								/>
+								<span
+									class="text-center text-xs leading-tight text-base-content/40 transition-colors group-hover:text-base-content/70"
+									>{m.hero_trailer()}</span
+								>
+								<ExternalLink size={10} class="text-base-content/30" />
+							</div>
+						</a>
+						<!-- eslint-enable svelte/no-navigation-without-resolve -->
+					</div>
+				</div>
+			{/if}
+
+			{#if mediaItems.length > 0 || backdropImages.length > 0}
+				<hr class="border-base-content/10" />
+			{/if}
+
+			<!-- Mobile-only: Where to Watch -->
+			{#if item['watch/providers']}
+				<div class="border-b border-base-content/10 pb-3 md:hidden">
+					<div class="mb-1.5 text-xs text-base-content/50">{m.hero_metadata_whereToWatch()}</div>
+					<WatchProviders providers={item['watch/providers']} {countryCode} />
+				</div>
+			{/if}
+
 			<!-- Actions row -->
 			<div class="mt-auto flex flex-wrap items-center justify-between gap-4">
 				<div class="flex flex-wrap items-center gap-2">
@@ -291,13 +549,29 @@
 							<div
 								class="flex items-center gap-2 rounded-lg bg-success/20 px-3 py-1.5 text-sm text-success"
 							>
-								<Check class="h-4 w-4" />
+								<CircleCheckBig class="h-4 w-4" />
 								<span>{m.hero_available()}</span>
 							</div>
 							{#if libraryPageLink}
 								<a
 									href={resolvePath(libraryPageLink)}
-									class="btn gap-1 btn-outline btn-sm btn-success"
+									class="btn gap-1 btn-outline btn-sm btn-primary"
+								>
+									<Film class="h-4 w-4" />
+									{m.hero_viewInLibrary()}
+								</a>
+							{/if}
+						{:else if monitored}
+							<div
+								class="flex items-center gap-2 rounded-lg bg-error/20 px-3 py-1.5 text-sm text-error"
+							>
+								<CircleX class="h-4 w-4" />
+								<span>{m.common_missing()}</span>
+							</div>
+							{#if libraryPageLink}
+								<a
+									href={resolvePath(libraryPageLink)}
+									class="btn gap-1 btn-outline btn-sm btn-primary"
 								>
 									<Film class="h-4 w-4" />
 									{m.hero_viewInLibrary()}
@@ -305,15 +579,15 @@
 							{/if}
 						{:else}
 							<div
-								class="flex items-center gap-2 rounded-lg bg-warning/20 px-3 py-1.5 text-sm text-warning"
+								class="flex items-center gap-2 rounded-lg bg-base-content/10 px-3 py-1.5 text-sm text-base-content/50"
 							>
-								<Clock class="h-4 w-4" />
-								<span>{m.hero_monitored()}</span>
+								<EyeOff class="h-4 w-4" />
+								<span>{m.common_unmonitored()}</span>
 							</div>
 							{#if libraryPageLink}
 								<a
 									href={resolvePath(libraryPageLink)}
-									class="btn gap-1 btn-outline btn-sm btn-warning"
+									class="btn gap-1 btn-outline btn-sm btn-primary"
 								>
 									<Film class="h-4 w-4" />
 									{m.hero_viewInLibrary()}
@@ -327,16 +601,26 @@
 						</button>
 					{/if}
 
-					{#if item.videos?.results?.some((v) => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser'))}
-						<button class="btn gap-1 btn-ghost btn-sm" onclick={openTrailer}>
+					{#if youtubeVideos.length === 0 && backdropImages.length === 0}
+						<!-- eslint-disable svelte/no-navigation-without-resolve -- External YouTube URL -->
+						<a
+							href={youtubeSearchFallbackUrl}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="btn gap-1 btn-ghost btn-sm"
+						>
 							<Play class="h-4 w-4" />
 							{m.hero_trailer()}
-						</button>
+							<ExternalLink size={12} />
+						</a>
+						<!-- eslint-enable svelte/no-navigation-without-resolve -->
 					{/if}
 				</div>
 
 				<!-- External links -->
-				<div class="flex items-center gap-2">
+				<div
+					class="flex w-full items-center gap-2 border-t border-base-content/10 pt-2 sm:w-auto sm:border-0 sm:pt-0"
+				>
 					<button
 						class="btn gap-1 text-error btn-ghost btn-xs"
 						onclick={() => (showBlockConfirm = true)}
@@ -518,6 +802,71 @@
 		</div>
 	</div>
 </div>
+
+<!-- Video player modal -->
+{#if activeVideo}
+	<div
+		role="dialog"
+		aria-modal="true"
+		aria-label={activeVideo.name}
+		tabindex="-1"
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
+		onclick={() => (activeVideo = null)}
+		onkeydown={(e) => e.key === 'Escape' && (activeVideo = null)}
+	>
+		<div role="presentation" class="w-full max-w-4xl" onclick={(e) => e.stopPropagation()}>
+			<div class="mb-3 flex items-center justify-between gap-4">
+				<div>
+					<p class="font-semibold text-white">{activeVideo.name}</p>
+					<p class="text-sm text-white/50">{activeVideo.type}</p>
+				</div>
+				<button
+					class="btn btn-circle btn-ghost btn-sm text-white/70 hover:text-white"
+					onclick={() => (activeVideo = null)}
+				>
+					<X size={18} />
+				</button>
+			</div>
+			<div class="relative w-full overflow-hidden rounded-xl" style="aspect-ratio: 16/9">
+				<iframe
+					src="https://www.youtube-nocookie.com/embed/{activeVideo.key}?autoplay=1"
+					title={activeVideo.name}
+					class="absolute inset-0 h-full w-full"
+					allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+					allowfullscreen
+				></iframe>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Backdrop lightbox -->
+{#if activeBackdrop}
+	<div
+		role="dialog"
+		aria-modal="true"
+		aria-label="Backdrop image"
+		tabindex="-1"
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+		onclick={() => (activeBackdrop = null)}
+		onkeydown={(e) => e.key === 'Escape' && (activeBackdrop = null)}
+	>
+		<button
+			class="absolute right-4 top-4 btn btn-circle btn-ghost btn-sm text-white/70 hover:text-white"
+			onclick={() => (activeBackdrop = null)}
+		>
+			<X size={18} />
+		</button>
+		<div role="presentation" onclick={(e) => e.stopPropagation()}>
+			<TmdbImage
+				path={activeBackdrop}
+				size="original"
+				alt="Backdrop"
+				class="max-h-[90vh] max-w-[90vw] rounded-xl object-contain shadow-2xl"
+			/>
+		</div>
+	</div>
+{/if}
 
 <!-- Add to Library Modal -->
 <AddToLibraryModal

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
+	import { goto, beforeNavigate, afterNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { resolvePath } from '$lib/utils/routing';
 	import { SvelteSet } from 'svelte/reactivity';
@@ -43,6 +43,26 @@
 	import * as m from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
+
+	const SCROLL_KEY = 'cinephage:library:tv:scrollY';
+
+	beforeNavigate(({ to }) => {
+		if (to?.url.pathname.startsWith('/library/tv/')) {
+			localStorage.setItem(SCROLL_KEY, String(window.scrollY));
+		} else {
+			localStorage.removeItem(SCROLL_KEY);
+		}
+	});
+
+	afterNavigate(({ from }) => {
+		if (from?.url.pathname.startsWith('/library/tv/')) {
+			const saved = localStorage.getItem(SCROLL_KEY);
+			if (saved) {
+				requestAnimationFrame(() => window.scrollTo({ top: parseInt(saved), behavior: 'instant' }));
+				localStorage.removeItem(SCROLL_KEY);
+			}
+		}
+	});
 
 	// Selection state
 	let selectedSeries = new SvelteSet<string>();

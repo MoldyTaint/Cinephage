@@ -19,7 +19,6 @@
 		excluded_genre_ids: []
 	});
 	let saving = $state(false);
-	let saveSuccess = $state(false);
 
 	let languages = $derived(data.languages);
 	let regions = $derived(data.countries);
@@ -34,17 +33,13 @@
 				(currentGenreId) => currentGenreId !== genreId
 			);
 		}
-		saveSuccess = false;
 	}
 
 	async function handleSave() {
 		saving = true;
-		saveSuccess = false;
 
 		try {
 			await updateTmdbFilters(filtersState);
-
-			saveSuccess = true;
 			toasts.success(m.settings_filters_updated());
 		} catch (error) {
 			toasts.error(error instanceof Error ? error.message : m.settings_filters_failedToSave());
@@ -77,7 +72,6 @@
 					type="checkbox"
 					class="checkbox checkbox-primary"
 					bind:checked={filtersState.include_adult}
-					onchange={() => (saveSuccess = false)}
 				/>
 				<span class="label-text">{m.settings_filters_includeAdult()}</span>
 			</label>
@@ -102,7 +96,6 @@
 					step="0.1"
 					bind:value={filtersState.min_vote_average}
 					class="input-bordered input w-full"
-					oninput={() => (saveSuccess = false)}
 				/>
 			</div>
 			<div class="form-control">
@@ -115,7 +108,6 @@
 					min="0"
 					bind:value={filtersState.min_vote_count}
 					class="input-bordered input w-full"
-					oninput={() => (saveSuccess = false)}
 				/>
 			</div>
 		</div>
@@ -132,7 +124,6 @@
 					id="language"
 					class="select-bordered select w-full"
 					bind:value={filtersState.language}
-					onchange={() => (saveSuccess = false)}
 				>
 					{#each languages as lang (lang.code)}
 						<option value={lang.code}>{lang.name}</option>
@@ -143,12 +134,7 @@
 				<label class="label" for="region">
 					<span class="label-text">{m.settings_filters_preferredRegion()}</span>
 				</label>
-				<select
-					id="region"
-					class="select-bordered select w-full"
-					bind:value={filtersState.region}
-					onchange={() => (saveSuccess = false)}
-				>
+				<select id="region" class="select-bordered select w-full" bind:value={filtersState.region}>
 					{#each regions as region (region.code)}
 						<option value={region.code}>{region.name}</option>
 					{/each}
@@ -186,12 +172,6 @@
 			</div>
 		{/if}
 	</SettingsSection>
-
-	{#if saveSuccess}
-		<div class="alert alert-success shadow-lg">
-			<span>{m.settings_filters_updatedSuccess()}</span>
-		</div>
-	{/if}
 
 	<div class="flex justify-end">
 		<button class="btn btn-primary" onclick={handleSave} disabled={saving}>

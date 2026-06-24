@@ -348,9 +348,17 @@
 	let isLoadingMore = $state(false);
 	let loadMoreTrigger = $state<HTMLElement>();
 
-	let debugMode = $state(false);
+	let debugMode = $state(
+		typeof localStorage !== 'undefined' && localStorage.getItem('discover_debugMode') === 'true'
+	);
 	let filteredOutResults = $state<ResultsType>([]);
 	let debugLoading = $state(false);
+
+	$effect(() => {
+		if (debugMode && filteredOutResults.length === 0 && !debugLoading) {
+			loadDebugResults();
+		}
+	});
 
 	async function loadDebugResults() {
 		debugLoading = true;
@@ -377,6 +385,7 @@
 
 	function toggleDebug() {
 		debugMode = !debugMode;
+		localStorage.setItem('discover_debugMode', String(debugMode));
 		if (debugMode) {
 			loadDebugResults();
 		} else {
@@ -392,6 +401,27 @@
 				allResults = data.results as ResultsType;
 				currentPage = data.pagination?.page ?? 1;
 			}
+		} else if (data.viewType === 'dashboard' && data.sections) {
+			// Collect all unique items across dashboard sections so debug mode
+			// has a populated ID set to diff against.
+			const seen = new SvelteSet<number>();
+			const combined: ResultsType = [];
+			for (const section of [
+				data.sections.trendingWeek,
+				data.sections.popularMovies,
+				data.sections.popularTV,
+				data.sections.topRatedMovies,
+				data.sections.topRatedTV,
+				data.sections.nowPlaying
+			]) {
+				for (const item of section ?? []) {
+					if (!seen.has((item as { id: number }).id)) {
+						seen.add((item as { id: number }).id);
+						combined.push(item as unknown as ResultsType[number]);
+					}
+				}
+			}
+			allResults = combined;
 		}
 	});
 

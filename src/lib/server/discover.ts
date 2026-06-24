@@ -47,6 +47,7 @@ export interface DiscoverParams {
 	maxDate: string | null;
 	minRating: string | null;
 	certification: string | null;
+	skipKeywordBlocklist?: boolean;
 }
 
 export async function getDiscoverResults(params: DiscoverParams) {
@@ -64,7 +65,8 @@ export async function getDiscoverResults(params: DiscoverParams) {
 		minDate,
 		maxDate,
 		minRating,
-		certification
+		certification,
+		skipKeywordBlocklist = false
 	} = params;
 
 	const fetchOptions = (endpoint: string, p: string = page) => {
@@ -126,8 +128,9 @@ export async function getDiscoverResults(params: DiscoverParams) {
 		return `${endpoint}?${queryParams.toString()}`;
 	};
 
-	const fetchMovies = () => tmdb.fetch(fetchOptions('/discover/movie'));
-	const fetchTV = () => tmdb.fetch(fetchOptions('/discover/tv'));
+	const fetchMovies = () =>
+		tmdb.fetch(fetchOptions('/discover/movie'), {}, false, skipKeywordBlocklist);
+	const fetchTV = () => tmdb.fetch(fetchOptions('/discover/tv'), {}, false, skipKeywordBlocklist);
 
 	let results: (Movie | TVShow)[];
 	let totalPages: number;

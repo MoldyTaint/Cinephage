@@ -7,7 +7,8 @@ const CSP_HEADER = [
 	"font-src 'self'",
 	"media-src 'self' blob: https: http:",
 	"object-src 'none'",
-	"child-src 'self'",
+	"child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com",
+	"frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com",
 	"frame-ancestors 'self'"
 ].join('; ');
 
