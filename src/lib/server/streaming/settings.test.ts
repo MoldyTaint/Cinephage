@@ -40,7 +40,6 @@ describe('streaming/settings', () => {
 			.delete(indexers)
 			.where(eq(indexers.definitionId, CINEPHAGE_STREAM_DEFINITION_ID));
 		await testDb.db.insert(indexers).values({
-			id: 'cinephage-stream-test',
 			name: 'Cinephage Library',
 			definitionId: CINEPHAGE_STREAM_DEFINITION_ID,
 			enabled: true,
@@ -101,8 +100,8 @@ describe('streaming/settings', () => {
 			})
 			.where(eq(indexers.definitionId, CINEPHAGE_STREAM_DEFINITION_ID));
 
-		const settings = await getStreamingIndexerSettings();
-		expect(settings).toMatchObject({
+		const streamSettings = await getStreamingIndexerSettings();
+		expect(streamSettings).toMatchObject({
 			cinephageCommit: 'abc1234567890abcdef',
 			cinephageVersion: '1.0.0',
 			externalHost: 'example.com:3000',

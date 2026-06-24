@@ -33,10 +33,9 @@ vi.mock('$lib/logging', () => ({
 
 const { getCinephageBackendConfig, invalidateCinephageBackendConfig } = await import('./config.js');
 
-async function seedStreamIndexer(settingsJson: Record<string, unknown>) {
+async function seedStreamIndexer(settingsJson: Record<string, string | number | boolean>) {
 	await testDb.db.delete(indexers).where(eq(indexers.definitionId, CINEPHAGE_STREAM_DEFINITION_ID));
 	await testDb.db.insert(indexers).values({
-		id: 'cinephage-stream-test',
 		name: 'Cinephage Library',
 		definitionId: CINEPHAGE_STREAM_DEFINITION_ID,
 		enabled: true,
