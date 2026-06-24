@@ -58,6 +58,17 @@ describe('metadata/provider-settings (source)', () => {
 		expect(config.source).toBe('tmdb');
 	});
 
+	it('honors explicit source=cinephage even when a tmdb_api_key exists', async () => {
+		await testDb.db.insert(settings).values({ key: 'tmdb_api_key', value: 'some-key' });
+		await testDb.db.insert(settings).values({
+			key: 'metadata_providers',
+			value: JSON.stringify({ source: 'cinephage', animeEnrichmentEnabled: true })
+		});
+
+		const config = await getMetadataProviderConfig();
+		expect(config.source).toBe('cinephage');
+	});
+
 	it('persists source via setMetadataProviderConfig', async () => {
 		await setMetadataProviderConfig({ source: 'tmdb' });
 		const config = await getMetadataProviderConfig();

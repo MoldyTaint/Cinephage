@@ -24,12 +24,7 @@ export async function getMetadataProviderConfig(): Promise<MetadataProviderConfi
 
 	if (!row) {
 		const source = await resolveDefaultSource();
-		const config = { ...DEFAULT_PROVIDER_CONFIG, source };
-		await db
-			.insert(settings)
-			.values({ key: PROVIDER_SETTINGS_KEY, value: JSON.stringify(config) })
-			.onConflictDoUpdate({ target: settings.key, set: { value: JSON.stringify(config) } });
-		return config;
+		return { ...DEFAULT_PROVIDER_CONFIG, source };
 	}
 
 	try {
@@ -39,18 +34,10 @@ export async function getMetadataProviderConfig(): Promise<MetadataProviderConfi
 			animeProviderPriority?: unknown;
 		};
 
-		let source: 'cinephage' | 'tmdb' = DEFAULT_PROVIDER_CONFIG.source;
-
-		if (parsed.source === 'tmdb' || parsed.source === 'cinephage') {
-			source = parsed.source;
-		} else {
-			source = await resolveDefaultSource();
-			const updated = JSON.stringify({ ...parsed, source });
-			await db
-				.insert(settings)
-				.values({ key: PROVIDER_SETTINGS_KEY, value: updated })
-				.onConflictDoUpdate({ target: settings.key, set: { value: updated } });
-		}
+		const source =
+			parsed.source === 'tmdb' || parsed.source === 'cinephage'
+				? parsed.source
+				: await resolveDefaultSource();
 
 		return {
 			animeEnrichmentEnabled:
