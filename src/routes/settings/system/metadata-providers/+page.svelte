@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
-	import { ChevronRight, CheckCircle, AlertCircle } from 'lucide-svelte';
+	import { ChevronRight, CheckCircle, AlertCircle, Lock } from 'lucide-svelte';
 	import type { LayoutData } from '../$types';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { invalidateAll, goto } from '$app/navigation';
@@ -19,9 +19,7 @@
 	// =====================
 	// Source + Cinephage Backend (derived from layout data, refreshed via invalidateAll)
 	// =====================
-	const source = $derived(
-		(data.metadataProviders?.source ?? 'cinephage') as 'cinephage' | 'tmdb'
-	);
+	const source = $derived((data.metadataProviders?.source ?? 'cinephage') as 'cinephage' | 'tmdb');
 	const cinephageConfigured = $derived(data.cinephageBackend?.configured ?? false);
 	const cinephageVersion = $derived(data.cinephageBackend?.version ?? '');
 	const cinephageCommit = $derived(data.cinephageBackend?.commit ?? '');
@@ -162,16 +160,17 @@
 		description="Choose where movie and TV metadata comes from. Cinephage bundles TMDB and TVDB — no API keys needed. Or use your own TMDB key."
 	>
 		<div class="flex flex-wrap items-center gap-4">
-			<label class="label cursor-pointer justify-start gap-2">
+			<label class="label justify-start gap-2 cursor-not-allowed opacity-60">
 				<input
 					type="radio"
 					name="metadata-source"
 					class="radio radio-sm"
 					checked={source === 'cinephage'}
-					onchange={() => handleSourceChange('cinephage')}
-					disabled={sourceSaving}
+					disabled
 				/>
-				<span class="label-text font-medium">Cinephage (default)</span>
+				<Lock class="h-3.5 w-3.5 shrink-0 text-base-content/40" />
+				<span class="label-text font-medium">Cinephage</span>
+				<span class="badge badge-ghost badge-sm">Upcoming feature</span>
 			</label>
 			<label class="label cursor-pointer justify-start gap-2">
 				<input

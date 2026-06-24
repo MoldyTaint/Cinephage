@@ -31,10 +31,10 @@ describe('metadata/provider-settings (source)', () => {
 		destroyTestDb(testDb);
 	});
 
-	it('defaults to cinephage source on a fresh install', async () => {
+	it('defaults to tmdb source on a fresh install', async () => {
 		const config = await getMetadataProviderConfig();
 		expect(config.animeEnrichmentEnabled).toBe(true);
-		expect(config.source).toBe('cinephage');
+		expect(config.source).toBe('tmdb');
 	});
 
 	it('migrates an existing install with a tmdb_api_key to source=tmdb', async () => {
@@ -58,15 +58,14 @@ describe('metadata/provider-settings (source)', () => {
 		expect(config.source).toBe('tmdb');
 	});
 
-	it('honors explicit source=cinephage even when a tmdb_api_key exists', async () => {
-		await testDb.db.insert(settings).values({ key: 'tmdb_api_key', value: 'some-key' });
+	it('clamps stored source=cinephage to tmdb (locked)', async () => {
 		await testDb.db.insert(settings).values({
 			key: 'metadata_providers',
 			value: JSON.stringify({ source: 'cinephage', animeEnrichmentEnabled: true })
 		});
 
 		const config = await getMetadataProviderConfig();
-		expect(config.source).toBe('cinephage');
+		expect(config.source).toBe('tmdb');
 	});
 
 	it('persists source via setMetadataProviderConfig', async () => {
