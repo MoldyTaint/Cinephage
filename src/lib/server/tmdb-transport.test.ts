@@ -50,7 +50,7 @@ describe('tmdb source-aware transport', () => {
 			body: JSON.stringify({ id: 27205, title: 'Inception' })
 		});
 
-		const result = (await tmdb.getMovie(27205)) as Record<string, unknown>;
+		const result = (await tmdb.getMovie(27205)) as unknown as Record<string, unknown>;
 
 		expect(result.id).toBe(27205);
 		const calledPath = cinephageRequestMock.mock.calls[0][0] as string;
