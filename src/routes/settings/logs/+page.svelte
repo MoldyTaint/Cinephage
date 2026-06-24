@@ -590,10 +590,6 @@
 {/snippet}
 
 <SettingsPage title={m.settings_logs_heading()} subtitle={m.settings_logs_subtitle()}>
-	{#snippet actions()}
-
-	{/snippet}
-
 	<!-- Log viewer card -->
 	<div class="flex flex-col rounded-xl border border-base-300 bg-base-200">
 		<!-- Toolbar (sticky) -->

@@ -35,6 +35,7 @@
 	import { TMDB } from '$lib/config/constants.js';
 	import { extractReleaseDates } from '$lib/utils/extractReleaseDates.js';
 	import { getSmartReleaseLine } from '$lib/utils/smartReleaseLine.js';
+	import { formatReleaseLine } from '$lib/utils/releaseLineText.js';
 
 	const SOURCE_LABELS: Record<string, string> = {
 		bluray: 'Bluray',
@@ -346,7 +347,7 @@
 										? 'text-primary'
 										: ''}"
 						>
-							{smartRelease.text}
+							{formatReleaseLine(smartRelease)}
 						</div>
 					{:else}
 						<div class="font-medium">{tmdbMovie.status}</div>
