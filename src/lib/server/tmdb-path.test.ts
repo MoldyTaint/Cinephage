@@ -51,6 +51,12 @@ describe('remapToCinephageMedia', () => {
 		);
 	});
 
+	it('handles find with external_source query param', () => {
+		expect(remapToCinephageMedia('/find/tt1375666?external_source=imdb_id')).toBe(
+			'/api/v1/media/find?external_id=tt1375666&source=imdb_id'
+		);
+	});
+
 	it('translates append_to_response to expand and renames watch/providers', () => {
 		expect(
 			remapToCinephageMedia('/movie/27205', 'credits,videos,watch/providers,recommendations')

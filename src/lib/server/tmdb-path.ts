@@ -26,9 +26,16 @@ export function remapToCinephageMedia(tmdbEndpoint: string, appendToResponse?: s
 	const path = tmdbEndpoint.startsWith('/') ? tmdbEndpoint : `/${tmdbEndpoint}`;
 
 	if (path.startsWith(FIND_PREFIX)) {
-		const externalId = path.slice(FIND_PREFIX.length);
-		const query = new URLSearchParams();
+		const queryIndex = path.indexOf('?');
+		const rawPath = queryIndex === -1 ? path : path.slice(0, queryIndex);
+		const externalId = rawPath.slice(FIND_PREFIX.length);
+		const query = new URLSearchParams(queryIndex === -1 ? '' : path.slice(queryIndex + 1));
 		query.set('external_id', externalId);
+		const externalSource = query.get('external_source');
+		if (externalSource) {
+			query.delete('external_source');
+			query.set('source', externalSource);
+		}
 		return `/api/v1/media/find?${query.toString()}`;
 	}
 
