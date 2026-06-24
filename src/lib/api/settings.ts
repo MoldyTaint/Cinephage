@@ -158,6 +158,7 @@ export async function updateTmdbSettings(apiKey: string) {
 
 export interface MetadataProviderSettingsPayload {
 	animeEnrichmentEnabled?: boolean;
+	source?: 'cinephage' | 'tmdb';
 }
 
 export async function getMetadataProviderSettings() {
@@ -284,6 +285,14 @@ export async function getSystemStatus() {
 
 export async function getGithubRelease() {
 	return apiGet('/api/system/github-release');
+}
+
+export async function updateCinephageBackend(payload: { version?: string; commit?: string }) {
+	return apiPut('/api/settings/cinephage-backend', payload);
+}
+
+export async function getCinephageBackendSettings() {
+	return apiGet('/api/settings/cinephage-backend');
 }
 
 export async function getLibraryClassificationSettings() {

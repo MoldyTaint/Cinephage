@@ -17,15 +17,17 @@ export interface CinephageBackendConfig {
 	missing: string[];
 }
 
-interface StoredBackendOverrides {
+interface StoredBackendConfig {
+	version?: string;
+	commit?: string;
 	baseUrl?: string;
 }
 
-let _cachedOverrides: StoredBackendOverrides | null = null;
+let _cachedOverrides: StoredBackendConfig | null = null;
 let _overridesTimestamp = 0;
-let _overridesPromise: Promise<StoredBackendOverrides> | null = null;
+let _overridesPromise: Promise<StoredBackendConfig> | null = null;
 
-async function loadOverrides(): Promise<StoredBackendOverrides> {
+async function loadStoredConfig(): Promise<StoredBackendConfig> {
 	const now = Date.now();
 	if (_cachedOverrides !== null && now - _overridesTimestamp < CONFIG_CACHE_TTL_MS) {
 		return _cachedOverrides;
@@ -34,7 +36,7 @@ async function loadOverrides(): Promise<StoredBackendOverrides> {
 	if (!_overridesPromise) {
 		_overridesPromise = (async () => {
 			try {
-				let overrides: StoredBackendOverrides = {};
+				const config: StoredBackendConfig = {};
 				const row = await db.query.settings.findFirst({
 					where: eq(settings.key, CINEPHAGE_BACKEND_SETTINGS_KEY)
 				});
@@ -44,18 +46,20 @@ async function loadOverrides(): Promise<StoredBackendOverrides> {
 						const parsed = JSON.parse(row.value) as unknown;
 						if (isRecord(parsed)) {
 							const baseUrl = getFirstString(parsed.baseUrl);
-							if (baseUrl) {
-								overrides = { baseUrl };
-							}
+							if (baseUrl) config.baseUrl = baseUrl;
+							const version = getFirstString(parsed.version);
+							if (version) config.version = version;
+							const commit = getFirstString(parsed.commit);
+							if (commit) config.commit = commit;
 						}
 					} catch (error) {
 						logger.error({ err: error }, 'Failed to parse cinephage_backend settings');
 					}
 				}
 
-				_cachedOverrides = overrides;
+				_cachedOverrides = config;
 				_overridesTimestamp = Date.now();
-				return overrides;
+				return config;
 			} finally {
 				_overridesPromise = null;
 			}
@@ -66,14 +70,15 @@ async function loadOverrides(): Promise<StoredBackendOverrides> {
 }
 
 export async function getCinephageBackendConfig(): Promise<CinephageBackendConfig> {
-	const [overrides, streamingSettings] = await Promise.all([
-		loadOverrides(),
+	const [stored, streamingSettings] = await Promise.all([
+		loadStoredConfig(),
 		getStreamingIndexerSettings()
 	]);
 
-	const version = streamingSettings?.cinephageVersion?.trim() || undefined;
-	const commit = streamingSettings?.cinephageCommit?.trim() || undefined;
-	const baseUrl = (overrides.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, '');
+	const version =
+		stored.version?.trim() || streamingSettings?.cinephageVersion?.trim() || undefined;
+	const commit = stored.commit?.trim() || streamingSettings?.cinephageCommit?.trim() || undefined;
+	const baseUrl = (stored.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, '');
 
 	const missing: string[] = [];
 	if (!version) {

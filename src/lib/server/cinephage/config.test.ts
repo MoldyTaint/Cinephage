@@ -106,4 +106,27 @@ describe('cinephage/config', () => {
 
 		expect(config.baseUrl).toBe('https://api.cinephage.net');
 	});
+
+	it('prefers version and commit from the cinephage_backend neutral key', async () => {
+		// Seed the neutral key with version/commit
+		await testDb.db.insert(settings).values({
+			key: 'cinephage_backend',
+			value: JSON.stringify({
+				version: '3.0.0',
+				commit: 'abc1234',
+				baseUrl: 'https://custom.example.net'
+			})
+		});
+		// Also seed streaming settings with DIFFERENT values (should be overridden)
+		await seedStreamIndexer({ cinephageVersion: '2.0.0', cinephageCommit: 'def4567' });
+
+		invalidateCinephageBackendConfig();
+
+		const config = await getCinephageBackendConfig();
+
+		expect(config.version).toBe('3.0.0');
+		expect(config.commit).toBe('abc1234');
+		expect(config.baseUrl).toBe('https://custom.example.net');
+		expect(config.configured).toBe(true);
+	});
 });

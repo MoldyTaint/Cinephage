@@ -7,6 +7,7 @@ import { db } from '$lib/server/db';
 import { settings } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
+import { getCinephageBackendConfig } from '$lib/server/cinephage';
 
 export const load: LayoutServerLoad = async ({ request, locals }) => {
 	// Require authentication
@@ -27,6 +28,7 @@ export const load: LayoutServerLoad = async ({ request, locals }) => {
 		});
 
 		const metadataConfig = await getMetadataProviderConfig();
+		const cinephageConfig = await getCinephageBackendConfig();
 
 		return {
 			mainApiKey,
@@ -39,6 +41,11 @@ export const load: LayoutServerLoad = async ({ request, locals }) => {
 			metadataProviders: {
 				animeEnrichmentEnabled: metadataConfig.animeEnrichmentEnabled,
 				source: metadataConfig.source
+			},
+			cinephageBackend: {
+				configured: cinephageConfig.configured,
+				version: cinephageConfig.version,
+				commit: cinephageConfig.commit
 			}
 		};
 	} catch (err) {
@@ -51,6 +58,9 @@ export const load: LayoutServerLoad = async ({ request, locals }) => {
 			metadataProviders: {
 				animeEnrichmentEnabled: true,
 				source: 'cinephage'
+			},
+			cinephageBackend: {
+				configured: false
 			},
 			error: 'Failed to load system settings'
 		};
