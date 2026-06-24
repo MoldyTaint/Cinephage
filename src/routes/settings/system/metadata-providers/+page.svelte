@@ -7,9 +7,26 @@
 	import { page } from '$app/state';
 	import { ModalWrapper, ModalHeader, ModalFooter } from '$lib/components/ui/modal';
 	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
-	import { updateMetadataProviderSettings, updateTmdbSettings } from '$lib/api/settings.js';
+	import {
+		updateMetadataProviderSettings,
+		updateTmdbSettings,
+		updateCinephageBackend,
+		getGithubRelease
+	} from '$lib/api/settings.js';
 
 	let { data }: { data: LayoutData } = $props();
+
+	// =====================
+	// Source + Cinephage Backend (derived from layout data, refreshed via invalidateAll)
+	// =====================
+	const source = $derived<'cinephage' | 'tmdb'>(data.metadataProviders?.source ?? 'cinephage');
+	const cinephageConfigured = $derived(data.cinephageBackend?.configured ?? false);
+	const cinephageVersion = $derived(data.cinephageBackend?.version ?? '');
+	const cinephageCommit = $derived(data.cinephageBackend?.commit ?? '');
+	let sourceSaving = $state(false);
+	let sourceError = $state<string | null>(null);
+	let autofillSaving = $state(false);
+	let autofillError = $state<string | null>(null);
 
 	// =====================
 	// TMDB Config State
@@ -26,6 +43,38 @@
 	let enrichmentSaving = $state(false);
 	let enrichmentError = $state<string | null>(null);
 	let animeEnrichmentEnabled = $state(false);
+
+	async function handleSourceChange(newSource: 'cinephage' | 'tmdb') {
+		sourceSaving = true;
+		sourceError = null;
+		try {
+			await updateMetadataProviderSettings({ source: newSource });
+			await invalidateAll();
+			toasts.success('Metadata source updated');
+		} catch (error) {
+			sourceError = error instanceof Error ? error.message : 'Failed to update metadata source';
+		} finally {
+			sourceSaving = false;
+		}
+	}
+
+	async function handleAutofill() {
+		autofillSaving = true;
+		autofillError = null;
+		try {
+			const release = await getGithubRelease();
+			if (!release.success || !release.version || !release.commit) {
+				throw new Error('Could not fetch latest release');
+			}
+			await updateCinephageBackend({ version: release.version, commit: release.commit });
+			await invalidateAll();
+			toasts.success('Build identity updated');
+		} catch (error) {
+			autofillError = error instanceof Error ? error.message : 'Failed to fetch release';
+		} finally {
+			autofillSaving = false;
+		}
+	}
 
 	function openTmdbModal() {
 		tmdbApiKey = '';
@@ -107,45 +156,121 @@
 	subtitle={m.settings_system_metadataProviders_subtitle()}
 >
 	<SettingsSection
-		title={m.settings_integrations_tmdbTitle()}
-		description={m.settings_integrations_tmdbDescription()}
+		title="Metadata Source"
+		description="Choose where movie and TV metadata comes from. Cinephage bundles TMDB and TVDB — no API keys needed. Or use your own TMDB key."
 	>
-		<div class="flex items-center gap-3">
-			{#if data.tmdb.hasApiKey}
-				<div class="badge gap-1 badge-success">
-					<CheckCircle class="h-3 w-3" />
-					{m.settings_integrations_configured()}
-				</div>
-			{:else}
-				<div class="badge gap-1 badge-warning">
-					<AlertCircle class="h-3 w-3" />
-					{m.settings_integrations_notConfigured()}
-				</div>
+		<div class="flex flex-wrap items-center gap-4">
+			<label class="label cursor-pointer justify-start gap-2">
+				<input
+					type="radio"
+					name="metadata-source"
+					class="radio radio-sm"
+					checked={source === 'cinephage'}
+					onchange={() => handleSourceChange('cinephage')}
+					disabled={sourceSaving}
+				/>
+				<span class="label-text font-medium">Cinephage (default)</span>
+			</label>
+			<label class="label cursor-pointer justify-start gap-2">
+				<input
+					type="radio"
+					name="metadata-source"
+					class="radio radio-sm"
+					checked={source === 'tmdb'}
+					onchange={() => handleSourceChange('tmdb')}
+					disabled={sourceSaving}
+				/>
+				<span class="label-text font-medium">Use my own TMDB key</span>
+			</label>
+			{#if sourceSaving}
+				<span class="loading loading-spinner loading-xs"></span>
 			{/if}
-			<button onclick={openTmdbModal} class="btn gap-1 btn-sm btn-primary">
-				{data.tmdb.hasApiKey ? m.action_update() : m.action_configure()}
-				<ChevronRight class="h-4 w-4" />
-			</button>
 		</div>
-
-		{#if !data.tmdb.hasApiKey}
-			<div class="alert alert-info">
-				<AlertCircle class="h-5 w-5" />
-				<div>
-					<p class="text-sm">
-						{m.settings_integrations_tmdbApiKeyDescription()}
-						<a
-							href="https://www.themoviedb.org/settings/api"
-							target="_blank"
-							class="link link-primary"
-						>
-							themoviedb.org
-						</a>.
-					</p>
-				</div>
-			</div>
+		{#if sourceError}
+			<div class="alert alert-error mt-2"><span>{sourceError}</span></div>
 		{/if}
 	</SettingsSection>
+
+	{#if source === 'cinephage'}
+		<SettingsSection
+			title="Cinephage Backend"
+			description="Configure the build identity that authorizes this install with the Cinephage API. Click auto-fill to fetch the latest published build."
+		>
+			<div class="flex flex-wrap items-center gap-3">
+				{#if cinephageConfigured}
+					<div class="badge gap-1 badge-success">
+						<CheckCircle class="h-3 w-3" />
+						Configured
+					</div>
+					<span class="text-sm text-base-content/70">
+						v{cinephageVersion}{#if cinephageCommit}
+							({cinephageCommit}){/if}
+					</span>
+				{:else}
+					<div class="badge gap-1 badge-warning">
+						<AlertCircle class="h-3 w-3" />
+						Not configured
+					</div>
+				{/if}
+				<button
+					onclick={handleAutofill}
+					class="btn gap-1 btn-sm btn-primary"
+					disabled={autofillSaving}
+				>
+					{#if autofillSaving}
+						<span class="loading loading-spinner loading-xs"></span>
+					{/if}
+					{autofillSaving ? 'Fetching...' : 'Auto-fill from latest release'}
+				</button>
+			</div>
+			{#if autofillError}
+				<div class="alert alert-error mt-2"><span>{autofillError}</span></div>
+			{/if}
+		</SettingsSection>
+	{/if}
+
+	{#if source === 'tmdb'}
+		<SettingsSection
+			title={m.settings_integrations_tmdbTitle()}
+			description={m.settings_integrations_tmdbDescription()}
+		>
+			<div class="flex items-center gap-3">
+				{#if data.tmdb.hasApiKey}
+					<div class="badge gap-1 badge-success">
+						<CheckCircle class="h-3 w-3" />
+						{m.settings_integrations_configured()}
+					</div>
+				{:else}
+					<div class="badge gap-1 badge-warning">
+						<AlertCircle class="h-3 w-3" />
+						{m.settings_integrations_notConfigured()}
+					</div>
+				{/if}
+				<button onclick={openTmdbModal} class="btn gap-1 btn-sm btn-primary">
+					{data.tmdb.hasApiKey ? m.action_update() : m.action_configure()}
+					<ChevronRight class="h-4 w-4" />
+				</button>
+			</div>
+
+			{#if !data.tmdb.hasApiKey}
+				<div class="alert alert-info">
+					<AlertCircle class="h-5 w-5" />
+					<div>
+						<p class="text-sm">
+							{m.settings_integrations_tmdbApiKeyDescription()}
+							<a
+								href="https://www.themoviedb.org/settings/api"
+								target="_blank"
+								class="link link-primary"
+							>
+								themoviedb.org
+							</a>.
+						</p>
+					</div>
+				</div>
+			{/if}
+		</SettingsSection>
+	{/if}
 
 	<SettingsSection
 		title="Anime Metadata Enrichment"
