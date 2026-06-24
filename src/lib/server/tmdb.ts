@@ -19,6 +19,9 @@ import { createChildLogger } from '$lib/logging';
 const logger = createChildLogger({ logDomain: 'system' as const });
 import { tmdbCache, getCacheKey } from './tmdb-cache';
 import { getBlockedTmdbIdSet } from './library/status.js';
+import { cinephageRequest } from './cinephage/client.js';
+import { getMetadataProviderConfig } from './metadata/provider-settings.js';
+import { remapToCinephageMedia } from './tmdb-path.js';
 
 async function filterBlockedResults(data: unknown): Promise<unknown> {
 	if (data && typeof data === 'object' && 'results' in data && Array.isArray(data.results)) {
@@ -43,6 +46,21 @@ let _cachedApiKey: string | null = null;
 let _cachedFilters: GlobalTmdbFilters | null = null;
 let _settingsCacheTimestamp = 0;
 let _settingsCachePromise: Promise<void> | null = null;
+
+let _cachedSource: 'cinephage' | 'tmdb' | null = null;
+let _sourceTimestamp = 0;
+const _SOURCE_CACHE_TTL_MS = 5 * 60 * 1000;
+
+async function getMetadataSource(): Promise<'cinephage' | 'tmdb'> {
+	const now = Date.now();
+	if (_cachedSource !== null && now - _sourceTimestamp < _SOURCE_CACHE_TTL_MS) {
+		return _cachedSource;
+	}
+	const config = await getMetadataProviderConfig();
+	_cachedSource = config.source;
+	_sourceTimestamp = now;
+	return _cachedSource;
+}
 
 async function loadTmdbSettings(): Promise<{ apiKey: string; filters: GlobalTmdbFilters | null }> {
 	const now = Date.now();
@@ -76,11 +94,7 @@ async function loadTmdbSettings(): Promise<{ apiKey: string; filters: GlobalTmdb
 	}
 	await _settingsCachePromise;
 
-	if (!_cachedApiKey) {
-		throw new Error('TMDB API Key not configured');
-	}
-
-	return { apiKey: _cachedApiKey, filters: _cachedFilters };
+	return { apiKey: _cachedApiKey ?? '', filters: _cachedFilters };
 }
 
 async function fetchWithRetry(url: string, options?: RequestInit, retries = 3): Promise<Response> {
@@ -108,6 +122,203 @@ async function fetchWithRetry(url: string, options?: RequestInit, retries = 3): 
 	return fetch(url, options);
 }
 
+function applyResponseFilters(
+	data: unknown,
+	skipFilters: boolean,
+	filters: GlobalTmdbFilters | null
+): void {
+	if (
+		skipFilters ||
+		!filters ||
+		!data ||
+		typeof data !== 'object' ||
+		!('results' in data) ||
+		!Array.isArray((data as { results: unknown }).results)
+	) {
+		return;
+	}
+
+	interface FilterableItem {
+		vote_average?: number;
+		vote_count?: number;
+		genre_ids?: number[];
+		adult?: boolean;
+	}
+
+	const container = data as { results: FilterableItem[] };
+	container.results = container.results.filter((item) => {
+		if (filters.min_vote_average > 0 && (item.vote_average ?? 0) < filters.min_vote_average) {
+			return false;
+		}
+		if (filters.min_vote_count > 0 && (item.vote_count ?? 0) < filters.min_vote_count) {
+			return false;
+		}
+		if (filters.excluded_genre_ids && filters.excluded_genre_ids.length > 0 && item.genre_ids) {
+			const hasExcludedGenre = item.genre_ids.some((id) => filters.excluded_genre_ids.includes(id));
+			if (hasExcludedGenre) {
+				return false;
+			}
+		}
+		if (!filters.include_adult && item.adult) {
+			return false;
+		}
+		return true;
+	});
+}
+
+async function fetchViaTmdb(
+	path: string,
+	options: RequestInit,
+	skipFilters: boolean,
+	apiKey: string,
+	filters: GlobalTmdbFilters | null
+): Promise<unknown> {
+	const url = new URL(TMDB.BASE_URL + path);
+	url.searchParams.set('api_key', apiKey);
+
+	if (filters && !skipFilters) {
+		if (filters.include_adult !== undefined && !url.searchParams.has('include_adult')) {
+			url.searchParams.set('include_adult', String(filters.include_adult));
+		}
+		if (filters.language && !url.searchParams.has('language')) {
+			url.searchParams.set('language', filters.language);
+		}
+		if (filters.region && !url.searchParams.has('region')) {
+			url.searchParams.set('region', filters.region);
+		}
+		if (filters.region) {
+			if (
+				(path.includes('/discover/') || path.includes('/watch/providers/')) &&
+				!url.searchParams.has('watch_region')
+			) {
+				url.searchParams.set('watch_region', filters.region);
+			}
+			if (path.includes('/discover/') && !url.searchParams.has('certification_country')) {
+				url.searchParams.set('certification_country', filters.region);
+			}
+		}
+		if (path.includes('/discover/')) {
+			if (filters.min_vote_average > 0 && !url.searchParams.has('vote_average.gte')) {
+				url.searchParams.set('vote_average.gte', String(filters.min_vote_average));
+			}
+			if (filters.min_vote_count > 0 && !url.searchParams.has('vote_count.gte')) {
+				url.searchParams.set('vote_count.gte', String(filters.min_vote_count));
+			}
+			if (
+				filters.excluded_genre_ids &&
+				filters.excluded_genre_ids.length > 0 &&
+				!url.searchParams.has('without_genres')
+			) {
+				url.searchParams.set('without_genres', filters.excluded_genre_ids.join(','));
+			}
+			const { keywordBlocklistService } =
+				await import('$lib/server/settings/KeywordBlocklistService.js');
+			const blockedIds = await keywordBlocklistService.getBlockedKeywordIds();
+			if (blockedIds.length > 0) {
+				const existing = url.searchParams.get('without_keywords');
+				const existingIds = existing ? existing.split(',').filter(Boolean) : [];
+				const merged = [...new Set([...existingIds, ...blockedIds.map(String)])];
+				url.searchParams.set('without_keywords', merged.join(','));
+			}
+		}
+	}
+
+	const res = await fetchWithRetry(url.toString(), options);
+
+	if (!res.ok) {
+		let errorMessage = `TMDB Error: ${res.status} ${res.statusText}`;
+		try {
+			const errorBody = await res.json();
+			if (errorBody.status_message) {
+				errorMessage = `TMDB Error: ${errorBody.status_message}`;
+			}
+		} catch {
+			// ignore json parse error
+		}
+		throw new Error(errorMessage);
+	}
+
+	const data = await res.json();
+	applyResponseFilters(data, skipFilters, filters);
+	return data;
+}
+
+async function fetchViaCinephageMedia(
+	endpoint: string,
+	path: string,
+	skipFilters: boolean,
+	filters: GlobalTmdbFilters | null
+): Promise<unknown> {
+	const queryIndex = endpoint.indexOf('?');
+	const plainPath = path.includes('?') ? path.slice(0, path.indexOf('?')) : path;
+	const params = new URLSearchParams(queryIndex === -1 ? '' : endpoint.slice(queryIndex + 1));
+
+	const appendToResponse = params.get('append_to_response');
+	params.delete('append_to_response');
+
+	const externalSource = params.get('external_source');
+	if (externalSource) {
+		params.delete('external_source');
+		params.set('source', externalSource);
+	}
+
+	const remapped = remapToCinephageMedia(plainPath, appendToResponse ?? undefined);
+	const remappedBase = remapped.includes('?') ? remapped.slice(0, remapped.indexOf('?')) : remapped;
+	const url = new URL(`https://api.cinephage.net${remappedBase}`);
+
+	const remapQuery = remapped.includes('?') ? remapped.slice(remapped.indexOf('?') + 1) : '';
+	for (const [key, value] of new URLSearchParams(remapQuery)) {
+		url.searchParams.set(key, value);
+	}
+	for (const [key, value] of params) {
+		if (key === 'api_key') continue;
+		url.searchParams.set(key, value);
+	}
+
+	if (plainPath.includes('/season/') && !url.searchParams.has('source')) {
+		url.searchParams.set('source', 'tmdb');
+	}
+
+	if (filters && !skipFilters) {
+		if (filters.include_adult !== undefined && !url.searchParams.has('include_adult')) {
+			url.searchParams.set('include_adult', String(filters.include_adult));
+		}
+		if (filters.language && !url.searchParams.has('language')) {
+			url.searchParams.set('language', filters.language);
+		}
+		if (remappedBase.includes('/discover/')) {
+			if (filters.region && !url.searchParams.has('watch_region')) {
+				url.searchParams.set('watch_region', filters.region);
+			}
+			if (filters.min_vote_average > 0 && !url.searchParams.has('vote_average.gte')) {
+				url.searchParams.set('vote_average.gte', String(filters.min_vote_average));
+			}
+			if (filters.min_vote_count > 0 && !url.searchParams.has('vote_count.gte')) {
+				url.searchParams.set('vote_count.gte', String(filters.min_vote_count));
+			}
+			if (
+				filters.excluded_genre_ids &&
+				filters.excluded_genre_ids.length > 0 &&
+				!url.searchParams.has('without_genres')
+			) {
+				url.searchParams.set('without_genres', filters.excluded_genre_ids.join(','));
+			}
+		}
+	}
+
+	const response = await cinephageRequest(url.pathname + url.search);
+	const data = JSON.parse(response.body) as Record<string, unknown>;
+
+	if (data.error && !data.status_message) {
+		const errObj = data.error as Record<string, unknown> | string;
+		const message = typeof errObj === 'object' && errObj !== null ? errObj.message : errObj;
+		throw new Error(`Cinephage API Error: ${String(message ?? 'unknown')}`);
+	}
+
+	applyResponseFilters(data, skipFilters, filters);
+	return data;
+}
+
 export const tmdb = {
 	/**
 	 * Invalidate the cached TMDB settings. Call this after updating
@@ -118,6 +329,8 @@ export const tmdb = {
 		_cachedFilters = null;
 		_settingsCacheTimestamp = 0;
 		_settingsCachePromise = null;
+		_cachedSource = null;
+		_sourceTimestamp = 0;
 	},
 
 	async getRegion(): Promise<string> {
@@ -133,8 +346,9 @@ export const tmdb = {
 		const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 		const isGetRequest = !options.method || options.method === 'GET';
 
+		const source = await getMetadataSource();
 		const { apiKey, filters } = await loadTmdbSettings();
-		const cacheKey = getCacheKey(path, skipFilters, filters?.language);
+		const cacheKey = getCacheKey(path, skipFilters, filters?.language, source);
 
 		if (isGetRequest) {
 			const cached = tmdbCache.get(cacheKey);
@@ -144,136 +358,18 @@ export const tmdb = {
 
 			const inFlight = inFlightRequests.get(cacheKey);
 			if (inFlight) {
-				logger.debug({ path }, 'Deduplicating in-flight TMDB request');
+				logger.debug({ path }, 'Deduplicating in-flight metadata request');
 				return filterBlockedResults(await inFlight);
 			}
 		}
 
 		const requestPromise = (async () => {
 			try {
-				const url = new URL(TMDB.BASE_URL + path);
+				const data =
+					source === 'cinephage'
+						? await fetchViaCinephageMedia(endpoint, path, skipFilters, filters)
+						: await fetchViaTmdb(path, options, skipFilters, apiKey, filters);
 
-				// Add API key
-				url.searchParams.set('api_key', apiKey);
-
-				// Apply Global Filters (Pre-request)
-				// Only apply as defaults — caller's explicit params take precedence.
-				if (filters && !skipFilters) {
-					if (filters.include_adult !== undefined && !url.searchParams.has('include_adult')) {
-						url.searchParams.set('include_adult', String(filters.include_adult));
-					}
-					if (filters.language && !url.searchParams.has('language')) {
-						url.searchParams.set('language', filters.language);
-					}
-					if (filters.region && !url.searchParams.has('region')) {
-						url.searchParams.set('region', filters.region);
-					}
-					if (filters.region) {
-						if (
-							(path.includes('/discover/') || path.includes('/watch/providers/')) &&
-							!url.searchParams.has('watch_region')
-						) {
-							url.searchParams.set('watch_region', filters.region);
-						}
-
-						if (path.includes('/discover/') && !url.searchParams.has('certification_country')) {
-							url.searchParams.set('certification_country', filters.region);
-						}
-					}
-
-					// Apply Discover-specific filters — only when caller hasn't set them
-					if (path.includes('/discover/')) {
-						if (filters.min_vote_average > 0 && !url.searchParams.has('vote_average.gte')) {
-							url.searchParams.set('vote_average.gte', String(filters.min_vote_average));
-						}
-						if (filters.min_vote_count > 0 && !url.searchParams.has('vote_count.gte')) {
-							url.searchParams.set('vote_count.gte', String(filters.min_vote_count));
-						}
-						if (
-							filters.excluded_genre_ids &&
-							filters.excluded_genre_ids.length > 0 &&
-							!url.searchParams.has('without_genres')
-						) {
-							url.searchParams.set('without_genres', filters.excluded_genre_ids.join(','));
-						}
-					}
-
-					// Apply globally blocked keywords as without_keywords for discover paths
-					if (path.includes('/discover/')) {
-						const { keywordBlocklistService } =
-							await import('$lib/server/settings/KeywordBlocklistService.js');
-						const blockedIds = await keywordBlocklistService.getBlockedKeywordIds();
-						if (blockedIds.length > 0) {
-							const existing = url.searchParams.get('without_keywords');
-							const existingIds = existing ? existing.split(',').filter(Boolean) : [];
-							const merged = [...new Set([...existingIds, ...blockedIds.map(String)])];
-							url.searchParams.set('without_keywords', merged.join(','));
-						}
-					}
-				}
-
-				const res = await fetchWithRetry(url.toString(), options);
-
-				if (!res.ok) {
-					let errorMessage = `TMDB Error: ${res.status} ${res.statusText}`;
-					try {
-						const errorBody = await res.json();
-						if (errorBody.status_message) {
-							errorMessage = `TMDB Error: ${errorBody.status_message}`;
-						}
-					} catch {
-						// ignore json parse error
-					}
-					throw new Error(errorMessage);
-				}
-
-				const data = await res.json();
-
-				// Apply Global Filters (Post-request / Response Filtering)
-				// This is crucial for Search endpoints which ignore some discover params
-				// Skip filtering when skipFilters=true (used by media matcher to see all results)
-				if (!skipFilters && filters && data.results && Array.isArray(data.results)) {
-					interface FilterableItem {
-						vote_average?: number;
-						vote_count?: number;
-						genre_ids?: number[];
-						adult?: boolean;
-					}
-
-					data.results = data.results.filter((item: FilterableItem) => {
-						// Filter by Score
-						if (
-							filters!.min_vote_average > 0 &&
-							(item.vote_average ?? 0) < filters!.min_vote_average
-						) {
-							return false;
-						}
-						// Filter by Vote Count
-						if (filters!.min_vote_count > 0 && (item.vote_count ?? 0) < filters!.min_vote_count) {
-							return false;
-						}
-						// Filter by Excluded Genres
-						if (
-							filters!.excluded_genre_ids &&
-							filters!.excluded_genre_ids.length > 0 &&
-							item.genre_ids
-						) {
-							const hasExcludedGenre = item.genre_ids.some((id) =>
-								filters!.excluded_genre_ids.includes(id)
-							);
-							if (hasExcludedGenre) {
-								return false;
-							}
-						}
-						// Filter by Adult (Double check)
-						if (!filters!.include_adult && item.adult) {
-							return false;
-						}
-						return true;
-					});
-				}
-
-				// Cache successful response (after filtering)
 				if (isGetRequest) {
 					tmdbCache.set(cacheKey, data, path);
 				}
@@ -286,7 +382,6 @@ export const tmdb = {
 			}
 		})();
 
-		// Store in-flight promise for deduplication (GET requests only)
 		if (isGetRequest) {
 			inFlightRequests.set(cacheKey, requestPromise);
 		}
@@ -430,8 +525,14 @@ export const tmdb = {
 	 */
 	async isConfigured(): Promise<boolean> {
 		try {
+			const source = await getMetadataSource();
+			if (source === 'cinephage') {
+				const { getCinephageBackendConfig } = await import('./cinephage/config.js');
+				const config = await getCinephageBackendConfig();
+				return config.configured;
+			}
 			const { apiKey } = await loadTmdbSettings();
-			return !!apiKey;
+			return typeof apiKey === 'string' && apiKey.length > 0;
 		} catch {
 			return false;
 		}
