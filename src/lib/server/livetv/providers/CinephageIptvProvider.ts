@@ -9,7 +9,7 @@ import { db } from '$lib/server/db';
 import { livetvAccounts, livetvChannels, livetvCategories } from '$lib/server/db/schema';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
-import { getStreamingIndexerSettings } from '$lib/server/streaming/settings.js';
+import { getPlaylist, getChannelCount } from '$lib/server/cinephage';
 import { randomUUID } from 'node:crypto';
 
 const logger = createChildLogger({ logDomain: 'livetv' as const });
@@ -28,8 +28,6 @@ import type {
 	M3uChannelData
 } from '$lib/types/livetv';
 import { recordToAccount } from '../LiveTvAccountManager.js';
-
-const CINEPHAGE_API_BASE = 'https://api.cinephage.net';
 
 /** Parsed playlist entry before grouping */
 interface RawPlaylistEntry {
@@ -90,43 +88,16 @@ export class CinephageIptvProvider implements LiveTvProvider {
 				};
 			}
 
-			const headers = await this.getAuthHeaders();
-
-			const params = new URLSearchParams();
-			params.set('limit', '1');
-			if (config.countries && config.countries.length > 0) {
-				params.set('country', config.countries[0]);
-			}
-
-			const response = await fetch(
-				`${CINEPHAGE_API_BASE}/api/v1/iptv/channels?${params.toString()}`,
-				{
-					headers: { ...headers, Accept: 'application/json' },
-					signal: AbortSignal.timeout(30000)
-				}
-			);
-
-			if (response.status === 401) {
-				return {
-					success: false,
-					error: 'Cinephage API rejected authentication. Verify version and commit.'
-				};
-			}
-
-			if (!response.ok) {
-				return {
-					success: false,
-					error: `Cinephage API returned HTTP ${response.status}`
-				};
-			}
-
-			const data = (await response.json()) as { channels?: unknown[]; total?: number };
+			const total = await getChannelCount({
+				limit: 1,
+				country: config.countries && config.countries.length > 0 ? config.countries[0] : undefined
+			});
 
 			return {
 				success: true,
 				profile: {
 					playbackLimit: 0,
-					channelCount: typeof data.total === 'number' ? data.total : 0,
+					channelCount: total,
 					categoryCount: 0,
 					expiresAt: null,
 					serverTimezone: 'UTC',
@@ -451,58 +422,11 @@ export class CinephageIptvProvider implements LiveTvProvider {
 	// Private Helpers
 	// ============================================================================
 
-	private async getAuthHeaders(): Promise<Record<string, string>> {
-		const settings = await getStreamingIndexerSettings();
-		const version = settings?.cinephageVersion;
-		const commit = settings?.cinephageCommit;
-
-		if (!version || !commit) {
-			throw new Error('Cinephage API not configured: missing cinephageVersion or cinephageCommit');
-		}
-
-		return {
-			'X-Cinephage-Version': version,
-			'X-Cinephage-Commit': commit
-		};
-	}
-
 	private async fetchPlaylist(config: CinephageIptvConfig): Promise<string> {
-		const params = new URLSearchParams();
-
-		if (config.countries && config.countries.length > 0) {
-			for (const country of config.countries) {
-				params.append('country', country);
-			}
-		}
-
-		if (config.categories && config.categories.length > 0) {
-			for (const category of config.categories) {
-				params.append('category', category);
-			}
-		}
-
-		const url = `${CINEPHAGE_API_BASE}/api/v1/iptv/playlist.m3u?${params.toString()}`;
-		const headers = await this.getAuthHeaders();
-
-		const response = await fetch(url, {
-			headers: {
-				...headers,
-				Accept: 'audio/x-mpegurl, text/plain, */*'
-			},
-			signal: AbortSignal.timeout(60000)
+		return getPlaylist({
+			countries: config.countries,
+			categories: config.categories
 		});
-
-		if (!response.ok) {
-			if (response.status === 401) {
-				throw new Error('Cinephage API rejected authentication. Verify version and commit.');
-			}
-			if (response.status === 429) {
-				throw new Error('Cinephage API rate limited the IPTV request.');
-			}
-			throw new Error(`Cinephage API returned HTTP ${response.status}`);
-		}
-
-		return response.text();
 	}
 
 	private parsePlaylist(content: string): GroupedPlaylistEntry[] {

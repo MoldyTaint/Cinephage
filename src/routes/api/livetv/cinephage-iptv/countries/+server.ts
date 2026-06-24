@@ -7,78 +7,27 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { logger } from '$lib/logging';
-import { getStreamingIndexerSettings } from '$lib/server/streaming/settings.js';
+import { getCountries, type CinephageIptvCountry } from '$lib/server/cinephage';
 
-const CINEPHAGE_API_BASE = 'https://api.cinephage.net';
 const CACHE_TTL = 24 * 60 * 60 * 1000;
 
-interface CinephageCountry {
-	code: string;
-	name: string;
-	channel_count?: number;
-	flag?: string | null;
-	languages?: string | null;
-}
-
 interface CachedData {
-	data: CinephageCountry[];
+	data: CinephageIptvCountry[];
 	fetchedAt: number;
 }
 
 let cachedCountries: CachedData | null = null;
 
-async function getAuthHeaders(): Promise<Record<string, string>> {
-	const settings = await getStreamingIndexerSettings();
-	const version = settings?.cinephageVersion;
-	const commit = settings?.cinephageCommit;
-
-	if (!version || !commit) {
-		throw new Error('Cinephage API not configured: missing cinephageVersion or cinephageCommit');
-	}
-
-	return {
-		'X-Cinephage-Version': version,
-		'X-Cinephage-Commit': commit
-	};
-}
-
-async function fetchCinephageCountries(): Promise<CinephageCountry[]> {
-	const headers = await getAuthHeaders();
-
-	const response = await fetch(`${CINEPHAGE_API_BASE}/api/v1/iptv/countries`, {
-		headers: { ...headers, Accept: 'application/json' },
-		signal: AbortSignal.timeout(30000)
-	});
-
-	if (!response.ok) {
-		if (response.status === 401) {
-			throw new Error('Cinephage API rejected authentication');
-		}
-		if (response.status === 429) {
-			throw new Error('Cinephage API rate limited this request');
-		}
-		throw new Error(`Cinephage API returned HTTP ${response.status}`);
-	}
-
-	const data = (await response.json()) as { countries?: CinephageCountry[] };
-
-	if (!data.countries || !Array.isArray(data.countries)) {
-		throw new Error('Unexpected response format from Cinephage API');
-	}
-
-	return data.countries;
-}
-
-async function getCachedCountries(): Promise<CinephageCountry[]> {
+async function getCachedCountries(): Promise<CinephageIptvCountry[]> {
 	if (cachedCountries && Date.now() - cachedCountries.fetchedAt < CACHE_TTL) {
 		return cachedCountries.data;
 	}
 
 	logger.info('[CinephageCountries] Fetching countries data from Cinephage API');
 
-	let countries: CinephageCountry[];
+	let countries: CinephageIptvCountry[];
 	try {
-		countries = await fetchCinephageCountries();
+		countries = await getCountries();
 	} catch (error) {
 		if (cachedCountries) {
 			logger.warn({ err: error }, '[CinephageCountries] Fetch failed, serving stale cache');
@@ -88,7 +37,6 @@ async function getCachedCountries(): Promise<CinephageCountry[]> {
 	}
 
 	countries.sort((a, b) => a.name.localeCompare(b.name));
-
 	cachedCountries = { data: countries, fetchedAt: Date.now() };
 
 	logger.info({ count: countries.length }, '[CinephageCountries] Cached countries data');
