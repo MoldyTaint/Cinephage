@@ -1211,7 +1211,7 @@ describe('RenamePreviewService', () => {
 				};
 
 				const result = service.generateMovieFileName(info);
-				expect(result).toContain('Batman: The Dark Knight');
+				expect(result).toContain('Batman - The Dark Knight');
 				expect(result).toContain('2008');
 				expect(result).toContain('Bluray-1080p');
 				expect(result).toContain('-GROUP');
@@ -1220,8 +1220,7 @@ describe('RenamePreviewService', () => {
 			it('renders {OriginalCleanTitle} in movie file format', () => {
 				const service = new NamingService({
 					...DEFAULT_NAMING_CONFIG,
-					movieFileFormat:
-						'{OriginalCleanTitle} ({Year}) [{QualityFull}]{-{ReleaseGroup}}'
+					movieFileFormat: '{OriginalCleanTitle} ({Year}) [{QualityFull}]{-{ReleaseGroup}}'
 				});
 
 				const info: MediaNamingInfo = {
@@ -1509,5 +1508,4 @@ describe('RenamePreviewService', () => {
 			});
 		});
 	});
-
 });

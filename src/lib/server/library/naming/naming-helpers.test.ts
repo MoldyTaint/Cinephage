@@ -85,14 +85,7 @@ describe('buildMovieFolderName', () => {
 			});
 			namingSettingsService.invalidateCache();
 
-			const result = buildMovieFolderName(
-				'English Title',
-				2024,
-				12345,
-				undefined,
-				undefined,
-				null
-			);
+			const result = buildMovieFolderName('English Title', 2024, 12345, undefined, undefined, null);
 
 			// Should fall back to the English title
 			expect(result).toContain('English Title');

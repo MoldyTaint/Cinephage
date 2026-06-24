@@ -13,7 +13,7 @@ import type { TokenDefinition } from '../types';
  */
 function generateCleanTitle(title: string): string {
 	return title
-		.replace(/[/\\?*"<>|!]/g, '')
+		.replace(/[/\\?*"<>|]/g, '')
 		.replace(/\s+/g, ' ')
 		.trim();
 }

@@ -16,23 +16,16 @@ describe('OriginalTitle token', () => {
 		});
 
 		it('falls back to info.title when originalTitle is undefined', () => {
-			expect(
-				originalTitleToken.render(
-					{ title: 'English Title' },
-					{} as any
-				)
-			).toBe('English Title');
+			expect(originalTitleToken.render({ title: 'English Title' }, {} as any)).toBe(
+				'English Title'
+			);
 		});
 
 		it('returns empty string when both title and originalTitle are empty/undefined', () => {
-			expect(
-				originalTitleToken.render({ title: '' }, {} as any)
-			).toBe('');
+			expect(originalTitleToken.render({ title: '' }, {} as any)).toBe('');
 
 			// When title is explicitly undefined (unlikely but handled)
-			expect(
-				originalTitleToken.render({ title: undefined as any }, {} as any)
-			).toBe('');
+			expect(originalTitleToken.render({ title: undefined as any }, {} as any)).toBe('');
 		});
 
 		it('does NOT support locale format spec', () => {
@@ -41,20 +34,13 @@ describe('OriginalTitle token', () => {
 
 		it('ignores format spec argument even if passed', () => {
 			expect(
-				originalTitleToken.render(
-					{ title: 'Title', originalTitle: 'Original' },
-					{} as any,
-					'ES'
-				)
+				originalTitleToken.render({ title: 'Title', originalTitle: 'Original' }, {} as any, 'ES')
 			).toBe('Original');
 		});
 
 		it('has correct metadata', () => {
 			expect(originalTitleToken.name).toBe('OriginalTitle');
-			expect(originalTitleToken.aliases).toEqual([
-				'SeriesOriginalTitle',
-				'MovieOriginalTitle'
-			]);
+			expect(originalTitleToken.aliases).toEqual(['SeriesOriginalTitle', 'MovieOriginalTitle']);
 			expect(originalTitleToken.category).toBe('core');
 			expect(originalTitleToken.applicability).toEqual(['movie', 'series']);
 		});
@@ -68,7 +54,7 @@ describe('OriginalTitle token', () => {
 		it('renders cleaned info.originalTitle when present — removes special chars but preserves colons', () => {
 			expect(
 				originalCleanTitleToken.render(
-					{ title: 'Fallback', originalTitle: 'The Movie!' },
+					{ title: 'Fallback', originalTitle: 'The Movie?' },
 					{} as any
 				)
 			).toBe('The Movie');
@@ -91,30 +77,18 @@ describe('OriginalTitle token', () => {
 		});
 
 		it('falls back to cleaned info.title when originalTitle is undefined', () => {
-			expect(
-				originalCleanTitleToken.render(
-					{ title: 'The Movie!' },
-					{} as any
-				)
-			).toBe('The Movie');
+			expect(originalCleanTitleToken.render({ title: 'The Movie?' }, {} as any)).toBe('The Movie');
 		});
 
 		it('returns empty string when both title and originalTitle are empty/undefined', () => {
-			expect(
-				originalCleanTitleToken.render({ title: '' }, {} as any)
-			).toBe('');
+			expect(originalCleanTitleToken.render({ title: '' }, {} as any)).toBe('');
 
-			expect(
-				originalCleanTitleToken.render({ title: undefined as any }, {} as any)
-			).toBe('');
+			expect(originalCleanTitleToken.render({ title: undefined as any }, {} as any)).toBe('');
 		});
 
 		it('handles title with only special characters correctly', () => {
 			expect(
-				originalCleanTitleToken.render(
-					{ title: 'Fallback', originalTitle: '!@#$%' },
-					{} as any
-				)
+				originalCleanTitleToken.render({ title: 'Fallback', originalTitle: '?@#$%' }, {} as any)
 			).toBe('@#$%');
 		});
 

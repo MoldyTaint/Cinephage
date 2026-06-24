@@ -35,7 +35,10 @@ export function buildTokensResponse() {
 			{ token: '{SeriesCleanTitle}', description: 'Series title with special chars removed' },
 			{ token: '{Year}', description: 'First air year' },
 			{ token: '{SeriesOriginalTitle}', description: 'Original series title as-is' },
-			{ token: '{SeriesOriginalCleanTitle}', description: 'Original series title with special chars removed' },
+			{
+				token: '{SeriesOriginalCleanTitle}',
+				description: 'Original series title with special chars removed'
+			},
 			...metadata.mediaId
 				.filter((t) => t.name === 'TvdbId' || t.name === 'TmdbId' || t.name === 'SeriesId')
 				.map(formatTokenForApi)
