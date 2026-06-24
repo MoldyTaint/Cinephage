@@ -13,7 +13,7 @@ import type { TokenDefinition } from '../types';
  */
 function generateCleanTitle(title: string): string {
 	return title
-		.replace(/[/\\?*"<>|]/g, '')
+		.replace(/[/\\?*"<>|!]/g, '')
 		.replace(/\s+/g, ' ')
 		.trim();
 }
@@ -51,6 +51,29 @@ export const coreTokens: TokenDefinition[] = [
 				formatSpec && isLanguageCode(formatSpec)
 					? info.localizedTitles?.[formatSpec.toLowerCase()] || info.title
 					: info.title;
+			return title ? generateCleanTitle(title) : '';
+		}
+	},
+	{
+		name: 'OriginalTitle',
+		aliases: ['SeriesOriginalTitle', 'MovieOriginalTitle'],
+		category: 'core',
+		description: 'Original title as-is',
+		applicability: ['movie', 'series'],
+		supportsFormatSpec: false,
+		render: (info) => {
+			return info.originalTitle || info.title || '';
+		}
+	},
+	{
+		name: 'OriginalCleanTitle',
+		aliases: ['SeriesOriginalCleanTitle', 'MovieOriginalCleanTitle'],
+		category: 'core',
+		description: 'Original title with special characters removed',
+		applicability: ['movie', 'series'],
+		supportsFormatSpec: false,
+		render: (info) => {
+			const title = info.originalTitle || info.title || '';
 			return title ? generateCleanTitle(title) : '';
 		}
 	},

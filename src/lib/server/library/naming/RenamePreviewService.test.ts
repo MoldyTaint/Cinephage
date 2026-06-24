@@ -1160,4 +1160,354 @@ describe('RenamePreviewService', () => {
 			expect(folder).toContain('{tmdb-12345}');
 		});
 	});
+
+	describe('OriginalTitle Token — NamingService integration (WP-2)', () => {
+		/**
+		 * These tests verify that when originalTitle is present in MediaNamingInfo,
+		 * the {OriginalTitle} and {OriginalCleanTitle} tokens render correctly
+		 * in movie and series naming formats.
+		 *
+		 * This is the code path exercised by buildMoviePreviewItem()
+		 * and buildEpisodePreviewItem() in RenamePreviewService.
+		 * These tests will FAIL until the originalTitle wiring is added.
+		 */
+
+		describe('Movie naming with originalTitle', () => {
+			it('renders {OriginalTitle} in movie folder format', () => {
+				const service = new NamingService({
+					...DEFAULT_NAMING_CONFIG,
+					movieFolderFormat: '{OriginalTitle} ({Year}) {MediaId}'
+				});
+
+				const info: MediaNamingInfo = {
+					title: 'English Title',
+					originalTitle: 'Crouching Tiger, Hidden Dragon',
+					year: 2000,
+					tmdbId: 146
+				};
+
+				const result = service.generateMovieFolderName(info);
+				expect(result).toContain('Crouching Tiger, Hidden Dragon');
+				expect(result).toContain('2000');
+				expect(result).not.toContain('English Title');
+			});
+
+			it('renders {OriginalTitle} in movie file format', () => {
+				const service = new NamingService({
+					...DEFAULT_NAMING_CONFIG,
+					movieFileFormat: '{OriginalTitle} ({Year}) [{QualityFull}]{-{ReleaseGroup}}'
+				});
+
+				const info: MediaNamingInfo = {
+					title: 'The Dark Knight',
+					originalTitle: 'Batman: The Dark Knight',
+					year: 2008,
+					tmdbId: 155,
+					resolution: '1080p',
+					source: 'Bluray',
+					codec: 'x264',
+					releaseGroup: 'GROUP',
+					originalExtension: '.mkv'
+				};
+
+				const result = service.generateMovieFileName(info);
+				expect(result).toContain('Batman: The Dark Knight');
+				expect(result).toContain('2008');
+				expect(result).toContain('Bluray-1080p');
+				expect(result).toContain('-GROUP');
+			});
+
+			it('renders {OriginalCleanTitle} in movie file format', () => {
+				const service = new NamingService({
+					...DEFAULT_NAMING_CONFIG,
+					movieFileFormat:
+						'{OriginalCleanTitle} ({Year}) [{QualityFull}]{-{ReleaseGroup}}'
+				});
+
+				const info: MediaNamingInfo = {
+					title: 'Star Wars: A New Hope (Fallback)',
+					originalTitle: 'Star Wars',
+					year: 1977,
+					tmdbId: 11,
+					resolution: '2160p',
+					source: 'Remux',
+					codec: 'x265',
+					hdr: 'DV',
+					originalExtension: '.mkv'
+				};
+
+				const result = service.generateMovieFileName(info);
+				expect(result).toContain('Star Wars');
+				expect(result).toContain('1977');
+				expect(result).toContain('Remux-2160p');
+				expect(result).not.toContain('Fallback');
+			});
+
+			it('renders {OriginalCleanTitle} with special chars stripped but colons preserved', () => {
+				const service = new NamingService({
+					...DEFAULT_NAMING_CONFIG,
+					movieFileFormat: '{OriginalCleanTitle} ({Year})'
+				});
+
+				const info: MediaNamingInfo = {
+					title: 'Fallback Title!',
+					originalTitle: 'Film "Name" <Test> |Bad?',
+					year: 2020,
+					tmdbId: 99999,
+					originalExtension: '.mkv'
+				};
+
+				const result = service.generateMovieFileName(info);
+				// Special chars like " < > | ? are removed by clean title
+				expect(result).toContain('Film Name Test Bad');
+				expect(result).not.toContain('"');
+				expect(result).not.toContain('<');
+				expect(result).not.toContain('>');
+				expect(result).not.toContain('|');
+				expect(result).not.toContain('?');
+			});
+
+			it('falls back to title when originalTitle is undefined', () => {
+				const service = new NamingService({
+					...DEFAULT_NAMING_CONFIG,
+					movieFolderFormat: '{OriginalTitle} ({Year})'
+				});
+
+				const info: MediaNamingInfo = {
+					title: 'Only Title Available',
+					year: 2023,
+					tmdbId: 12345
+					// originalTitle intentionally omitted
+				};
+
+				const result = service.generateMovieFolderName(info);
+				expect(result).toContain('Only Title Available');
+				expect(result).toContain('2023');
+			});
+
+			it('falls back to title when originalTitle is explicitly undefined', () => {
+				const service = new NamingService({
+					...DEFAULT_NAMING_CONFIG,
+					movieFolderFormat: '{OriginalCleanTitle} ({Year})'
+				});
+
+				const info: MediaNamingInfo = {
+					title: 'Normal Title',
+					originalTitle: undefined,
+					year: 2023,
+					tmdbId: 12345
+				};
+
+				const result = service.generateMovieFolderName(info);
+				expect(result).toContain('Normal Title');
+			});
+		});
+
+		describe('Series naming with originalTitle', () => {
+			it('renders {OriginalTitle} in series folder format', () => {
+				const service = new NamingService({
+					...DEFAULT_NAMING_CONFIG,
+					seriesFolderFormat: '{OriginalTitle} ({Year}) {SeriesId}'
+				});
+
+				const info: MediaNamingInfo = {
+					title: 'Attack on Titan',
+					originalTitle: 'Shingeki no Kyojin',
+					year: 2013,
+					tvdbId: 267440,
+					tmdbId: 1429
+				};
+
+				const result = service.generateSeriesFolderName(info);
+				expect(result).toContain('Shingeki no Kyojin');
+				expect(result).toContain('2013');
+				expect(result).not.toContain('Attack on Titan');
+			});
+
+			it('renders {OriginalTitle} in episode file format', () => {
+				const service = new NamingService({
+					...DEFAULT_NAMING_CONFIG,
+					episodeFileFormat:
+						'{OriginalTitle} ({Year}) - S{Season:00}E{Episode:00} - {EpisodeCleanTitle} [{QualityFull}]'
+				});
+
+				const info: MediaNamingInfo = {
+					title: 'Demon Slayer',
+					originalTitle: 'Kimetsu no Yaiba',
+					year: 2019,
+					tvdbId: 348225,
+					seasonNumber: 1,
+					episodeNumbers: [1],
+					episodeTitle: 'Cruelty',
+					resolution: '1080p',
+					source: 'Bluray',
+					originalExtension: '.mkv'
+				};
+
+				const result = service.generateEpisodeFileName(info);
+				expect(result).toContain('Kimetsu no Yaiba');
+				expect(result).toContain('S01E01');
+				expect(result).toContain('Cruelty');
+				expect(result).toContain('Bluray-1080p');
+				expect(result).not.toContain('Demon Slayer');
+			});
+
+			it('renders {OriginalCleanTitle} in episode file format', () => {
+				const service = new NamingService({
+					...DEFAULT_NAMING_CONFIG,
+					episodeFileFormat:
+						'{OriginalCleanTitle} ({Year}) - S{Season:00}E{Episode:00} - {EpisodeCleanTitle}'
+				});
+
+				const info: MediaNamingInfo = {
+					title: 'Fullmetal Alchemist: Brotherhood',
+					originalTitle: 'Hagane no Renkinjutsushi: Fullmetal Alchemist',
+					year: 2009,
+					tvdbId: 102261,
+					seasonNumber: 1,
+					episodeNumbers: [1],
+					episodeTitle: 'Fullmetal Alchemist',
+					originalExtension: '.mkv'
+				};
+
+				const result = service.generateEpisodeFileName(info);
+				expect(result).toContain('Hagane no Renkinjutsushi');
+				expect(result).toContain('Fullmetal Alchemist');
+				expect(result).toContain('S01E01');
+			});
+
+			it('renders {OriginalCleanTitle} in series folder format', () => {
+				const service = new NamingService({
+					...DEFAULT_NAMING_CONFIG,
+					seriesFolderFormat: '{OriginalCleanTitle} ({Year})'
+				});
+
+				const info: MediaNamingInfo = {
+					title: 'Cowboy Bebop!',
+					originalTitle: 'Cowboy Bebop (Kauboi Bibappu)',
+					year: 1998,
+					tvdbId: 76885,
+					tmdbId: 1
+				};
+
+				const result = service.generateSeriesFolderName(info);
+				// CleanTitle preserves parens content, strips trailing '!'
+				expect(result).toContain('Cowboy Bebop');
+				expect(result).toContain('Kauboi Bibappu');
+				expect(result).not.toContain('!');
+			});
+
+			it('falls back to title in series when originalTitle is undefined', () => {
+				const service = new NamingService({
+					...DEFAULT_NAMING_CONFIG,
+					seriesFolderFormat: '{OriginalTitle} ({Year})'
+				});
+
+				const info: MediaNamingInfo = {
+					title: 'Breaking Bad',
+					year: 2008,
+					tvdbId: 81189,
+					tmdbId: 1396
+					// originalTitle intentionally omitted
+				};
+
+				const result = service.generateSeriesFolderName(info);
+				expect(result).toContain('Breaking Bad');
+				expect(result).toContain('2008');
+			});
+
+			it('falls back to title in episode when originalTitle is undefined', () => {
+				const service = new NamingService({
+					...DEFAULT_NAMING_CONFIG,
+					episodeFileFormat:
+						'{OriginalTitle} ({Year}) - S{Season:00}E{Episode:00} - {EpisodeCleanTitle}'
+				});
+
+				const info: MediaNamingInfo = {
+					title: 'Game of Thrones',
+					year: 2011,
+					tvdbId: 121361,
+					seasonNumber: 1,
+					episodeNumbers: [1],
+					episodeTitle: 'Winter Is Coming',
+					originalExtension: '.mkv'
+					// originalTitle intentionally omitted
+				};
+
+				const result = service.generateEpisodeFileName(info);
+				expect(result).toContain('Game of Thrones');
+				expect(result).toContain('S01E01');
+				expect(result).toContain('Winter Is Coming');
+			});
+
+			it('renders {OriginalTitle} in anime episode format', () => {
+				const service = new NamingService({
+					...DEFAULT_NAMING_CONFIG,
+					animeEpisodeFormat:
+						'{OriginalTitle} ({Year}) - S{Season:00}E{Episode:00} - {Absolute:000} - {EpisodeCleanTitle} [{QualityFull}]'
+				});
+
+				const info: MediaNamingInfo = {
+					title: 'One Punch Man',
+					originalTitle: 'One Punch Man',
+					year: 2015,
+					tvdbId: 289906,
+					seasonNumber: 1,
+					episodeNumbers: [1],
+					absoluteNumber: 1,
+					episodeTitle: 'The Strongest Man',
+					isAnime: true,
+					resolution: '1080p',
+					source: 'Bluray',
+					bitDepth: '10',
+					originalExtension: '.mkv'
+				};
+
+				const result = service.generateEpisodeFileName(info);
+				expect(result).toContain('One Punch Man');
+				expect(result).toContain('S01E01');
+				expect(result).toContain('001');
+			});
+		});
+
+		describe('Alias tokens render correctly', () => {
+			it('MovieOriginalTitle alias works in movie formats', () => {
+				const service = new NamingService({
+					...DEFAULT_NAMING_CONFIG,
+					movieFileFormat: '{MovieOriginalTitle} ({Year})'
+				});
+
+				const info: MediaNamingInfo = {
+					title: 'Parasite',
+					originalTitle: 'Gisaengchung',
+					year: 2019,
+					tmdbId: 496243,
+					originalExtension: '.mkv'
+				};
+
+				const result = service.generateMovieFileName(info);
+				expect(result).toContain('Gisaengchung');
+				expect(result).not.toContain('Parasite');
+			});
+
+			it('SeriesOriginalTitle alias works in series formats', () => {
+				const service = new NamingService({
+					...DEFAULT_NAMING_CONFIG,
+					seriesFolderFormat: '{SeriesOriginalTitle} ({Year})'
+				});
+
+				const info: MediaNamingInfo = {
+					title: 'My Hero Academia',
+					originalTitle: 'Boku no Hero Academia',
+					year: 2016,
+					tvdbId: 305074,
+					tmdbId: 65930
+				};
+
+				const result = service.generateSeriesFolderName(info);
+				expect(result).toContain('Boku no Hero Academia');
+			});
+		});
+	});
+
 });
