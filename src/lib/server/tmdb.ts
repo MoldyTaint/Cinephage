@@ -173,6 +173,10 @@ async function fetchViaTmdb(
 	apiKey: string,
 	filters: GlobalTmdbFilters | null
 ): Promise<unknown> {
+	if (!apiKey) {
+		throw new Error('TMDB API Key not configured');
+	}
+
 	const url = new URL(TMDB.BASE_URL + path);
 	url.searchParams.set('api_key', apiKey);
 
@@ -290,6 +294,9 @@ async function fetchViaCinephageMedia(
 			if (filters.region && !url.searchParams.has('watch_region')) {
 				url.searchParams.set('watch_region', filters.region);
 			}
+			if (filters.region && !url.searchParams.has('certification_country')) {
+				url.searchParams.set('certification_country', filters.region);
+			}
 			if (filters.min_vote_average > 0 && !url.searchParams.has('vote_average.gte')) {
 				url.searchParams.set('vote_average.gte', String(filters.min_vote_average));
 			}
@@ -303,11 +310,25 @@ async function fetchViaCinephageMedia(
 			) {
 				url.searchParams.set('without_genres', filters.excluded_genre_ids.join(','));
 			}
+			const { keywordBlocklistService } =
+				await import('$lib/server/settings/KeywordBlocklistService.js');
+			const blockedIds = await keywordBlocklistService.getBlockedKeywordIds();
+			if (blockedIds.length > 0) {
+				const existing = url.searchParams.get('without_keywords');
+				const existingIds = existing ? existing.split(',').filter(Boolean) : [];
+				const merged = [...new Set([...existingIds, ...blockedIds.map(String)])];
+				url.searchParams.set('without_keywords', merged.join(','));
+			}
 		}
 	}
 
 	const response = await cinephageRequest(url.pathname + url.search);
-	const data = JSON.parse(response.body) as Record<string, unknown>;
+	let data: Record<string, unknown>;
+	try {
+		data = JSON.parse(response.body) as Record<string, unknown>;
+	} catch {
+		throw new Error('Cinephage API returned a non-JSON response');
+	}
 
 	if (data.error && !data.status_message) {
 		const errObj = data.error as Record<string, unknown> | string;

@@ -7,6 +7,7 @@ import {
 	getMetadataProviderConfig,
 	setMetadataProviderConfig
 } from '$lib/server/metadata/provider-settings.js';
+import { tmdb } from '$lib/server/tmdb.js';
 
 const settingsSchema = z.object({
 	animeEnrichmentEnabled: z.boolean().optional(),
@@ -27,6 +28,7 @@ export const PUT: RequestHandler = async (event) => {
 
 	const parsed = await parseBody(event.request, settingsSchema);
 	const config = await setMetadataProviderConfig(parsed);
+	tmdb.invalidateSettings();
 
 	return json({ success: true, ...config });
 };
