@@ -26,7 +26,8 @@ const http = createIndexerHttp({
 });
 
 function buildUrl(baseUrl: string, path: string, query?: CinephageRequestOptions['query']): string {
-	const url = new URL(`${baseUrl}${path}`);
+	const normalizedBase = baseUrl.replace(/\/$/, '');
+	const url = new URL(`${normalizedBase}${path}`);
 	if (query) {
 		for (const [key, value] of Object.entries(query)) {
 			if (value === undefined) {
@@ -80,10 +81,8 @@ export async function cinephageRequest(
 export async function cinephageHealth(): Promise<boolean> {
 	const config = await getCinephageBackendConfig();
 	try {
-		const response = await http.get(`${config.baseUrl}/api/v1/health`, {
-			headers: { Accept: 'application/json' }
-		});
-		return response.status >= 200 && response.status < 300;
+		await cinephageRequestWithConfig(config, '/api/v1/health');
+		return true;
 	} catch {
 		return false;
 	}

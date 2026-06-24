@@ -72,4 +72,37 @@ describe('cinephage/client', () => {
 			status: 401
 		});
 	});
+
+	it('uses POST and forwards the body when method is POST', async () => {
+		postMock.mockResolvedValue({ status: 200, body: '{}', url: 'x' });
+
+		await cinephageRequestWithConfig(CONFIG, '/api/v1/media/batch', {
+			method: 'POST',
+			body: '{"movies":[1]}'
+		});
+
+		expect(postMock).toHaveBeenCalledWith(
+			'https://api.cinephage.net/api/v1/media/batch',
+			'{"movies":[1]}',
+			expect.objectContaining({ headers: expect.objectContaining({ Accept: 'application/json' }) })
+		);
+		expect(getMock).not.toHaveBeenCalled();
+	});
+
+	it('omits auth headers when version or commit is missing', async () => {
+		getMock.mockResolvedValue({ status: 200, body: '{}', url: 'x' });
+
+		await cinephageRequestWithConfig(
+			{
+				baseUrl: 'https://api.cinephage.net',
+				configured: false,
+				missing: ['cinephageVersion', 'cinephageCommit']
+			},
+			'/api/v1/iptv/countries'
+		);
+
+		const headers = getMock.mock.calls[0][1].headers as Record<string, string>;
+		expect(headers['X-Cinephage-Version']).toBeUndefined();
+		expect(headers['X-Cinephage-Commit']).toBeUndefined();
+	});
 });
