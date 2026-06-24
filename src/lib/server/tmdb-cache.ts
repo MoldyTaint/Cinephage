@@ -180,6 +180,11 @@ export const tmdbCache = new TmdbCache();
 /**
  * Generate a cache key for a TMDB request
  */
-export function getCacheKey(endpoint: string, skipFilters: boolean, language?: string): string {
-	return `tmdb:${endpoint}:${language ?? 'default'}:${skipFilters}`;
+export function getCacheKey(
+	endpoint: string,
+	skipFilters: boolean,
+	language?: string,
+	source?: string
+): string {
+	return `tmdb:${source ?? 'tmdb'}:${endpoint}:${language ?? 'default'}:${skipFilters}`;
 }
