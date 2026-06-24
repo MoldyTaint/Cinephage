@@ -64,7 +64,8 @@ describe('cinephage/endpoints/iptv', () => {
 		expect(playlist).toBe('#EXTM3U\n');
 		expect(requestMock).toHaveBeenCalledWith(READY_CONFIG, '/api/v1/iptv/playlist.m3u', {
 			query: { country: ['US'], category: ['Sports'] },
-			accept: 'audio/x-mpegurl, text/plain, */*'
+			accept: 'audio/x-mpegurl, text/plain, */*',
+			signal: expect.any(AbortSignal)
 		});
 	});
 

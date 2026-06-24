@@ -42,7 +42,8 @@ export async function getPlaylist(params: {
 			country: params.countries && params.countries.length > 0 ? params.countries : undefined,
 			category: params.categories && params.categories.length > 0 ? params.categories : undefined
 		},
-		accept: 'audio/x-mpegurl, text/plain, */*'
+		accept: 'audio/x-mpegurl, text/plain, */*',
+		signal: AbortSignal.timeout(60_000)
 	});
 
 	return response.body;
