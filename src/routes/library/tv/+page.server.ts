@@ -55,6 +55,8 @@ export const load: PageServerLoad = async ({ url }) => {
 				backdropPath: series.backdropPath,
 				status: series.status,
 				network: series.network,
+				airsDay: series.airsDay,
+				airsTime: series.airsTime,
 				genres: series.genres,
 				path: series.path,
 				rootFolderId: series.rootFolderId,

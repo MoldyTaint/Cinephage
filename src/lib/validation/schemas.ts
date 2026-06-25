@@ -315,6 +315,31 @@ export const tmdbApiKeySchema = z
 	.max(64, 'TMDB API key must be at most 64 characters')
 	.regex(/^[a-f0-9]+$/i, 'TMDB API key must be hexadecimal');
 
+// ============================================================
+// TheTVDB Schemas
+// ============================================================
+
+/**
+ * Schema for TheTVDB v4 API key validation.
+ * TVDB v4 keys are UUID-shaped (alphanumeric + hyphens), e.g.
+ * "566a93e6-e044-4a61-bde5-a5a39b651812".
+ */
+export const tvdbApiKeySchema = z
+	.string()
+	.min(16, 'TVDB API key must be at least 16 characters')
+	.max(64, 'TVDB API key must be at most 64 characters')
+	.regex(/^[a-z0-9-]+$/i, 'TVDB API key must be alphanumeric (hyphens allowed)');
+
+/**
+ * Optional subscriber PIN for user-supported TVDB keys.
+ * Free/project keys do not require a PIN; subscriber keys need it for premium
+ * content. Empty string means "no PIN".
+ */
+export const tvdbPinSchema = z
+	.string()
+	.max(128, 'TVDB PIN must be at most 128 characters')
+	.default('');
+
 /**
  * Schema for global TMDB filters.
  */

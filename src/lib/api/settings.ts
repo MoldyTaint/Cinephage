@@ -156,6 +156,14 @@ export async function updateTmdbSettings(apiKey: string) {
 	return apiPut('/api/settings/tmdb', { apiKey });
 }
 
+export async function getTvdbSettings() {
+	return apiGet('/api/settings/tvdb');
+}
+
+export async function updateTvdbSettings(apiKey: string, pin?: string) {
+	return apiPut('/api/settings/tvdb', { apiKey, pin: pin ?? '' });
+}
+
 export interface MetadataProviderSettingsPayload {
 	animeEnrichmentEnabled?: boolean;
 	source?: 'cinephage' | 'tmdb';

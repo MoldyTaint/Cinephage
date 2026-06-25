@@ -839,6 +839,8 @@ export const series = sqliteTable(
 		// Whether to search for subtitles for this series (inherited by episodes by default)
 		wantsSubtitles: integer('wants_subtitles', { mode: 'boolean' }).default(true),
 		firstAirDate: text('first_air_date'),
+		airsDay: text('airs_day', { mode: 'json' }).$type<Record<string, boolean> | null>(),
+		airsTime: text('airs_time'),
 		adult: integer('adult', { mode: 'boolean' }).default(false),
 		adultSource: text('adult_source'),
 		adultConfidence: text('adult_confidence'),

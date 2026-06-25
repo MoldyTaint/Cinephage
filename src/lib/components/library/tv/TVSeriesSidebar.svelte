@@ -35,6 +35,22 @@
 		return `${normalizedRoot}/${normalizedRelative}`;
 	});
 
+	const airDays = $derived.by(() => {
+		if (!series.airsDay) return null;
+		const days = series.airsDay;
+		const names = Object.entries(days)
+			.filter(([, v]) => v)
+			.map(([k]) => k.charAt(0).toUpperCase() + k.slice(1));
+		if (names.length === 0) return null;
+		return names.join(', ');
+	});
+
+	const airSchedule = $derived.by(() => {
+		if (!airDays) return null;
+		if (series.airsTime) return `${airDays} at ${series.airsTime}`;
+		return airDays;
+	});
+
 	const providerLinkRows = $derived.by(() => {
 		const isAnimeItem =
 			(series.rootFolderPath ?? '').toLowerCase().includes('/anime/') ||
@@ -100,6 +116,24 @@
 				<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
 					<dt class="text-base-content/60">{m.common_genres()}</dt>
 					<dd class="sm:text-right">{series.genres.join(', ')}</dd>
+				</div>
+			{/if}
+			{#if airSchedule}
+				<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
+					<dt class="text-base-content/60">{m.common_airs()}</dt>
+					<dd class="sm:text-right">{airSchedule}</dd>
+				</div>
+			{/if}
+			{#if series.network}
+				<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
+					<dt class="text-base-content/60">{m.common_network()}</dt>
+					<dd class="sm:text-right">{series.network}</dd>
+				</div>
+			{/if}
+			{#if series.status}
+				<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
+					<dt class="text-base-content/60">{m.common_status()}</dt>
+					<dd class="sm:text-right">{series.status}</dd>
 				</div>
 			{/if}
 			<div class="flex flex-col gap-0.5 sm:flex-row sm:justify-between">

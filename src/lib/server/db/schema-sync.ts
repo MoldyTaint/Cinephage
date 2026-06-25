@@ -121,7 +121,7 @@ import {
  * Version 89: Add blocked keywords table
  * Version 90: Add durable library job tables
  */
-export const CURRENT_SCHEMA_VERSION = 97;
+export const CURRENT_SCHEMA_VERSION = 99;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -549,6 +549,8 @@ const TABLE_DEFINITIONS: string[] = [
 		"episode_file_count" integer DEFAULT 0,
 		"wants_subtitles" integer DEFAULT true,
 		"first_air_date" text,
+		"airs_day" text,
+		"airs_time" text,
 		"episode_group_id" text
 	)`,
 

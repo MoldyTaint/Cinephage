@@ -15,6 +15,21 @@ export const TMDB = {
 } as const;
 
 /**
+ * TheTVDB API configuration (v4).
+ *
+ * TVDB is used as a TV-only supplementary metadata source: it fills episode
+ * gaps (air dates, runtime, titles, overviews) that TMDB lacks. TMDB remains
+ * the canonical identity/overview/display record.
+ */
+export const TVDB = {
+	/** Base URL for TheTVDB API v4 */
+	BASE_URL: 'https://api4.thetvdb.com/v4',
+
+	/** Default episode season-type slug (aired order) */
+	DEFAULT_SEASON_TYPE: 'official'
+} as const;
+
+/**
  * Movie release-date / availability configuration.
  */
 export const RELEASE = {

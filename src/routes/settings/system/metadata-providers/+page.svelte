@@ -10,6 +10,7 @@
 	import {
 		updateMetadataProviderSettings,
 		updateTmdbSettings,
+		updateTvdbSettings,
 		updateCinephageBackend,
 		getGithubRelease
 	} from '$lib/api/settings.js';
@@ -35,6 +36,15 @@
 	let tmdbApiKey = $state('');
 	let tmdbSaving = $state(false);
 	let tmdbError = $state<string | null>(null);
+
+	// =====================
+	// TVDB Config State
+	// =====================
+	let tvdbModalOpen = $state(false);
+	let tvdbApiKey = $state('');
+	let tvdbPin = $state('');
+	let tvdbSaving = $state(false);
+	let tvdbError = $state<string | null>(null);
 
 	// =====================
 	// Anime Enrichment State
@@ -93,6 +103,42 @@
 		}
 	}
 
+	function openTvdbModal() {
+		tvdbApiKey = '';
+		tvdbPin = '';
+		tvdbError = null;
+		tvdbModalOpen = true;
+	}
+
+	function closeTvdbModal() {
+		tvdbError = null;
+		tvdbModalOpen = false;
+
+		const url = new URL(page.url);
+		if (url.searchParams.get('open') === 'tvdb') {
+			url.searchParams.delete('open');
+			goto(url.toString(), { replaceState: true, noScroll: true });
+		}
+	}
+
+	async function handleTvdbSave() {
+		tvdbSaving = true;
+		tvdbError = null;
+
+		try {
+			await updateTvdbSettings(tvdbApiKey, tvdbPin);
+
+			await invalidateAll();
+			toasts.success(m.settings_integrations_tvdbKeySaved());
+			closeTvdbModal();
+		} catch (error) {
+			tvdbError =
+				error instanceof Error ? error.message : m.settings_integrations_tvdbFailedToSave();
+		} finally {
+			tvdbSaving = false;
+		}
+	}
+
 	function openEnrichmentModal() {
 		enrichmentError = null;
 		animeEnrichmentEnabled = data.metadataProviders?.animeEnrichmentEnabled ?? true;
@@ -143,6 +189,14 @@
 		const shouldOpenTmdbModal = page.url.searchParams.get('open') === 'tmdb';
 		if (shouldOpenTmdbModal && !tmdbModalOpen) {
 			openTmdbModal();
+		}
+	});
+
+	// Open modal if navigated with ?open=tvdb
+	$effect(() => {
+		const shouldOpenTvdbModal = page.url.searchParams.get('open') === 'tvdb';
+		if (shouldOpenTvdbModal && !tvdbModalOpen) {
+			openTvdbModal();
 		}
 	});
 </script>
@@ -274,6 +328,47 @@
 	{/if}
 
 	<SettingsSection
+		title={m.settings_integrations_tvdbTitle()}
+		description={m.settings_integrations_tvdbDescription()}
+	>
+		<div class="flex items-center gap-3">
+			{#if data.tvdb?.hasApiKey}
+				<div class="badge gap-1 badge-success">
+					<CheckCircle class="h-3 w-3" />
+					{m.settings_integrations_configured()}
+				</div>
+			{:else}
+				<div class="badge gap-1 badge-warning">
+					<AlertCircle class="h-3 w-3" />
+					{m.settings_integrations_notConfigured()}
+				</div>
+			{/if}
+			<button onclick={openTvdbModal} class="btn gap-1 btn-sm btn-primary">
+				{data.tvdb?.hasApiKey ? m.action_update() : m.action_configure()}
+				<ChevronRight class="h-4 w-4" />
+			</button>
+		</div>
+
+		{#if !data.tvdb?.hasApiKey}
+			<div class="alert alert-info">
+				<AlertCircle class="h-5 w-5" />
+				<div>
+					<p class="text-sm">
+						{m.settings_integrations_tvdbApiKeyDescription()}
+						<a
+							href="https://www.thetvdb.com/api-information"
+							target="_blank"
+							class="link link-primary"
+						>
+							thetvdb.com
+						</a>.
+					</p>
+				</div>
+			</div>
+		{/if}
+	</SettingsSection>
+
+	<SettingsSection
 		title="Anime Metadata Enrichment"
 		description="When enabled, AniList and MyAnimeList (via Jikan) automatically enrich anime titles with alternate titles and adult classification. No account or API key required."
 	>
@@ -339,6 +434,63 @@
 			{/if}
 		</div>
 		<ModalFooter onCancel={closeTmdbModal} onSave={handleTmdbSave} saving={tmdbSaving} />
+	</form>
+</ModalWrapper>
+
+<!-- TVDB API Key Modal -->
+<ModalWrapper open={tvdbModalOpen} onClose={closeTvdbModal} maxWidth="md">
+	<ModalHeader title={m.settings_integrations_tvdbApiKeyTitle()} onClose={closeTvdbModal} />
+	<form
+		onsubmit={async (event) => {
+			event.preventDefault();
+			await handleTvdbSave();
+		}}
+	>
+		<div class="space-y-4 p-4">
+			<p class="text-sm text-base-content/70">
+				{m.settings_integrations_tvdbApiKeyDescription()}
+				<a href="https://www.thetvdb.com/api-information" target="_blank" class="link link-primary">
+					thetvdb.com
+				</a>.
+			</p>
+			<div class="form-control w-full">
+				<label class="label" for="tvdbApiKey">
+					<span class="label-text">{m.settings_integrations_apiKeyLabel()}</span>
+				</label>
+				<input
+					type="text"
+					id="tvdbApiKey"
+					name="apiKey"
+					bind:value={tvdbApiKey}
+					placeholder={data.tvdb?.hasApiKey
+						? m.settings_integrations_apiKeyPlaceholderExisting()
+						: m.settings_integrations_apiKeyPlaceholderNew()}
+					class="input-bordered input w-full"
+				/>
+			</div>
+			<div class="form-control w-full">
+				<label class="label" for="tvdbPin">
+					<span class="label-text">{m.settings_integrations_tvdbPinLabel()}</span>
+				</label>
+				<input
+					type="password"
+					id="tvdbPin"
+					name="pin"
+					bind:value={tvdbPin}
+					placeholder="••••"
+					class="input-bordered input w-full"
+				/>
+				<p class="text-xs text-base-content/60 mt-1">
+					{m.settings_integrations_tvdbPinDescription()}
+				</p>
+			</div>
+			{#if tvdbError}
+				<div class="alert alert-error">
+					<span>{tvdbError}</span>
+				</div>
+			{/if}
+		</div>
+		<ModalFooter onCancel={closeTvdbModal} onSave={handleTvdbSave} saving={tvdbSaving} />
 	</form>
 </ModalWrapper>
 

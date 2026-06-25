@@ -401,7 +401,7 @@ function isKeyValueSecretEntry(tableName: TableName, row: Record<string, unknown
 	}
 
 	if (tableName === 'settings') {
-		return ['tmdb_api_key'].includes(row.key);
+		return ['tmdb_api_key', 'tvdb_api_key', 'tvdb_api_pin'].includes(row.key);
 	}
 
 	if (tableName === 'captchaSolverSettings') {

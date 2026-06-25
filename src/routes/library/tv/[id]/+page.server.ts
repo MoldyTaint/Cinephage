@@ -120,6 +120,8 @@ export interface LibrarySeriesPageData {
 		backdropPath: string | null;
 		status: string | null;
 		network: string | null;
+		airsDay: Record<string, boolean> | null;
+		airsTime: string | null;
 		genres: string[] | null;
 		path: string;
 		rootFolderId: string | null;
@@ -173,6 +175,8 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 			backdropPath: series.backdropPath,
 			status: series.status,
 			network: series.network,
+			airsDay: series.airsDay,
+			airsTime: series.airsTime,
 			genres: series.genres,
 			path: series.path,
 			rootFolderId: series.rootFolderId,

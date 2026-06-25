@@ -119,6 +119,8 @@ export interface LibrarySeries {
 	backdropPath: string | null;
 	status: string | null;
 	network: string | null;
+	airsDay: Record<string, boolean> | null;
+	airsTime: string | null;
 	genres: string[] | null;
 	path: string | null;
 	rootFolderId: string | null;

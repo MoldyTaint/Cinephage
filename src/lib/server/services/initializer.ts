@@ -7,6 +7,7 @@ import { getDownloadMonitor } from '$lib/server/downloadClients/monitoring';
 import { getImportService } from '$lib/server/downloadClients/import/ImportService.js';
 import { getMonitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
 import { getExternalIdService } from '$lib/server/services/ExternalIdService.js';
+import { getTvdbEpisodeEnrichmentService } from '$lib/server/services/TvdbEpisodeEnrichmentService.js';
 import { getDataRepairService } from '$lib/server/services/DataRepairService.js';
 import { qualityFilter } from '$lib/server/quality';
 import { initializeDatabase } from '$lib/server/db';
@@ -97,6 +98,10 @@ async function initializeServices(): Promise<void> {
 
 			const externalIdService = getExternalIdService();
 			serviceManager.register(externalIdService);
+
+			// TVDB episode gap-filling enrichment (no-op unless a TVDB key is configured)
+			const tvdbEnrichmentService = getTvdbEpisodeEnrichmentService();
+			serviceManager.register(tvdbEnrichmentService);
 
 			const dataRepairService = getDataRepairService();
 			serviceManager.register(dataRepairService);

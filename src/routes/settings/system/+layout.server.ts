@@ -27,6 +27,11 @@ export const load: LayoutServerLoad = async ({ request, locals }) => {
 			where: eq(settings.key, 'tmdb_api_key')
 		});
 
+		// Get TVDB status (used to drive the optional TVDB enrichment section)
+		const tvdbKeySetting = await db.query.settings.findFirst({
+			where: eq(settings.key, 'tvdb_api_key')
+		});
+
 		const metadataConfig = await getMetadataProviderConfig();
 		const cinephageConfig = await getCinephageBackendConfig();
 
@@ -37,6 +42,9 @@ export const load: LayoutServerLoad = async ({ request, locals }) => {
 			tmdb: {
 				hasApiKey: !!apiKeySetting,
 				configured: !!apiKeySetting
+			},
+			tvdb: {
+				hasApiKey: !!tvdbKeySetting
 			},
 			metadataProviders: {
 				animeEnrichmentEnabled: metadataConfig.animeEnrichmentEnabled,
@@ -55,6 +63,7 @@ export const load: LayoutServerLoad = async ({ request, locals }) => {
 			streamingApiKey: null,
 			externalUrl: null,
 			tmdb: { hasApiKey: false, configured: false },
+			tvdb: { hasApiKey: false },
 			metadataProviders: {
 				animeEnrichmentEnabled: true,
 				source: 'cinephage'
