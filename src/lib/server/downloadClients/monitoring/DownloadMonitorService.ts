@@ -126,6 +126,26 @@ const TERMINAL_STATUSES: QueueStatus[] = [...TERMINAL_QUEUE_STATUSES];
 const POST_IMPORT_STATUSES: QueueStatus[] = [...POST_IMPORT_QUEUE_STATUSES];
 
 /**
+ * Build a recovery path for torrent downloads that disappeared from the client.
+ *
+ * When qBittorrent auto-removes a completed torrent, the stored outputPath
+ * still points to the temp/incomplete directory. This computes where the
+ * completed files should be found: {downloadPathLocal}/{category}/{lastComponent}
+ */
+export function buildTorrentRecoveryPath(
+	outputPath: string,
+	downloadPathLocal: string,
+	category: string
+): string | null {
+	const normalizedBase = downloadPathLocal.replace(/\/+$/, '');
+	const normalizedCategory = category.replace(/\/+$/, '').replace(/^\//, '');
+	const parts = outputPath.replace(/\\/g, '/').split('/').filter(Boolean);
+	const lastComponent = parts[parts.length - 1];
+	if (!lastComponent) return null;
+	return `${normalizedBase}/${normalizedCategory}/${lastComponent}`;
+}
+
+/**
  * Convert database row to QueueItem
  */
 function rowToQueueItem(row: typeof downloadQueue.$inferSelect): QueueItem {
@@ -1354,6 +1374,97 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			return;
 		}
 
+		// Awaiting items: exponential backoff retry for vanished downloads
+		if (queueItem.status === 'awaiting') {
+			const attempts = queueItem.importAttempts || 0;
+			const backoffMinutes = Math.min(5 * Math.pow(2, attempts - 1), 60);
+			const lastAttempt = queueItem.lastAttemptAt ? new Date(queueItem.lastAttemptAt).getTime() : 0;
+			const elapsed = Date.now() - lastAttempt;
+
+			if (elapsed < backoffMinutes * 60_000) {
+				return; // Not time yet
+			}
+
+			// Max 12 recovery attempts
+			if (attempts >= 12) {
+				await db
+					.update(downloadQueue)
+					.set({
+						status: 'failed',
+						errorMessage: 'Download removed from client unexpectedly (recovery exhausted)'
+					})
+					.where(eq(downloadQueue.id, queueItem.id));
+
+				const failedItem = await this.getQueueItem(queueItem.id);
+				if (failedItem) {
+					await this.createFailedHistoryRecord(
+						failedItem,
+						'Download removed from client unexpectedly (recovery exhausted)'
+					);
+					this.emit('queue:failed', failedItem);
+					this.emitSSE('queue:failed', failedItem);
+				}
+				return;
+			}
+
+			// Attempt Tier 2 recovery again
+			const category = queueItem.seriesId ? client.tvCategory : client.movieCategory;
+			if (client.downloadPathLocal) {
+				const recoveryPath = buildTorrentRecoveryPath(
+					queueItem.outputPath || '',
+					client.downloadPathLocal,
+					category
+				);
+				if (recoveryPath) {
+					try {
+						await stat(recoveryPath);
+						// Found! Recover.
+						await db
+							.update(downloadQueue)
+							.set({
+								outputPath: recoveryPath,
+								status: 'completed',
+								completedAt: queueItem.completedAt || new Date().toISOString(),
+								errorMessage: null,
+								importAttempts: 0,
+								lastAttemptAt: null
+							})
+							.where(eq(downloadQueue.id, queueItem.id));
+
+						const recoveredItem = await this.getQueueItem(queueItem.id);
+						if (recoveredItem) {
+							this.emit('queue:completed', recoveredItem);
+							this.emitSSE('queue:completed', recoveredItem);
+							const importService = await getImportService();
+							importService.requestImport(recoveredItem.id).catch((err) =>
+								logger.error(
+									{
+										queueId: recoveredItem.id,
+										title: recoveredItem.title,
+										error: err instanceof Error ? err.message : String(err)
+									},
+									'Failed to request import for recovered download'
+								)
+							);
+						}
+						return;
+					} catch {
+						// Still not there, increment and continue
+					}
+				}
+			}
+
+			// Update attempt counter and timestamp
+			await db
+				.update(downloadQueue)
+				.set({
+					importAttempts: attempts + 1,
+					lastAttemptAt: new Date().toISOString()
+				})
+				.where(eq(downloadQueue.id, queueItem.id));
+			return;
+		}
+
 		// Grace period before considering a not-found item truly missing.
 		// Torrent magnets can transiently disappear while metadata is fetched/parsing completes.
 		let gracePeriodMs = MISSING_GRACE_PERIOD_MS;
@@ -1491,7 +1602,114 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			return;
 		}
 
-		// Log what downloads ARE available (for debugging)
+		// Protocol-agnostic recovery: the download vanished from the client.
+		// Tier 1: try stat() on the stored outputPath.
+		if (queueItem.outputPath) {
+			try {
+				await stat(queueItem.outputPath);
+
+				logger.info(
+					{
+						title: queueItem.title,
+						clientName: client.name,
+						outputPath: queueItem.outputPath
+					},
+					'Download missing from client but output path exists, queueing import'
+				);
+
+				const now = new Date().toISOString();
+				await db
+					.update(downloadQueue)
+					.set({
+						status: 'completed',
+						completedAt: queueItem.completedAt ?? now,
+						errorMessage: null
+					})
+					.where(eq(downloadQueue.id, queueItem.id));
+
+				const recoveredItem = await this.getQueueItem(queueItem.id);
+				if (recoveredItem) {
+					this.emit('queue:completed', recoveredItem);
+					this.emitSSE('queue:completed', recoveredItem);
+
+					const importService = await getImportService();
+					importService.requestImport(recoveredItem.id).catch((err) => {
+						logger.error(
+							{
+								queueId: recoveredItem.id,
+								title: recoveredItem.title,
+								error: err instanceof Error ? err.message : String(err)
+							},
+							'Failed to request import for recovered download'
+						);
+					});
+				}
+
+				return;
+			} catch {
+				// Path doesn't exist, try Tier 2
+			}
+		}
+
+		// Tier 2: compute recovery path from client config and stat it
+		const category = queueItem.seriesId ? client.tvCategory : client.movieCategory;
+		if (client.downloadPathLocal) {
+			const recoveryPath = buildTorrentRecoveryPath(
+				queueItem.outputPath || '',
+				client.downloadPathLocal,
+				category
+			);
+			if (recoveryPath) {
+				try {
+					await stat(recoveryPath);
+
+					logger.info(
+						{
+							title: queueItem.title,
+							clientName: client.name,
+							recoveryPath,
+							originalOutputPath: queueItem.outputPath
+						},
+						'Download recovered via client path reconstruction'
+					);
+
+					const now = new Date().toISOString();
+					await db
+						.update(downloadQueue)
+						.set({
+							outputPath: recoveryPath,
+							status: 'completed',
+							completedAt: queueItem.completedAt ?? now,
+							errorMessage: null
+						})
+						.where(eq(downloadQueue.id, queueItem.id));
+
+					const recoveredItem = await this.getQueueItem(queueItem.id);
+					if (recoveredItem) {
+						this.emit('queue:completed', recoveredItem);
+						this.emitSSE('queue:completed', recoveredItem);
+
+						const importService = await getImportService();
+						importService.requestImport(recoveredItem.id).catch((err) => {
+							logger.error(
+								{
+									queueId: recoveredItem.id,
+									title: recoveredItem.title,
+									error: err instanceof Error ? err.message : String(err)
+								},
+								'Failed to request import for recovered download'
+							);
+						});
+					}
+
+					return;
+				} catch {
+					// Recovery path doesn't exist either
+				}
+			}
+		}
+
+		// Both tiers failed — set to awaiting for auto-retry in poll loop
 		logger.warn(
 			{
 				title: queueItem.title,
@@ -1502,26 +1720,17 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				magnetUrl: queueItem.magnetUrl?.substring(0, 60),
 				availableHashes: allDownloads.slice(0, 5).map((d) => d.hash)
 			},
-			'Download disappeared from client unexpectedly'
+			'Download disappeared from client unexpectedly, entering recovery mode'
 		);
 
 		await db
 			.update(downloadQueue)
 			.set({
-				status: 'failed',
-				errorMessage: 'Download removed from client unexpectedly'
+				status: 'awaiting',
+				importAttempts: 1,
+				lastAttemptAt: new Date().toISOString()
 			})
 			.where(eq(downloadQueue.id, queueItem.id));
-
-		const updatedItem = await this.getQueueItem(queueItem.id);
-		if (updatedItem) {
-			await this.createFailedHistoryRecord(
-				updatedItem,
-				updatedItem.errorMessage ?? 'Download removed from client unexpectedly'
-			);
-			this.emit('queue:failed', updatedItem);
-			this.emitSSE('queue:failed', updatedItem);
-		}
 	}
 
 	/**
@@ -1558,6 +1767,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			queuedCount: 0,
 			downloadingCount: 0,
 			stalledCount: 0,
+			awaitingCount: 0,
 			seedingCount: 0,
 			pausedCount: 0,
 			completedCount: 0,
@@ -1583,6 +1793,9 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 					break;
 				case 'stalled':
 					stats.stalledCount++;
+					break;
+				case 'awaiting':
+					stats.awaitingCount++;
 					break;
 				case 'seeding':
 					stats.seedingCount++;

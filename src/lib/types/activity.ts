@@ -86,7 +86,8 @@ export const IMPORT_ERROR_PATTERNS: readonly string[] = [
 	'dangerous files', // "Caution: Found potentially dangerous files: …"
 	'failed to transfer', // "Failed to transfer file: …"
 	'no linked movie', // "No linked movie or series"
-	'no linked series' // "No linked movie or series" (alternate wording)
+	'no linked series', // "No linked movie or series" (alternate wording)
+	'removed from client' // "Download removed from client unexpectedly"
 ];
 
 /**

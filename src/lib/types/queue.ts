@@ -9,6 +9,7 @@ export type QueueStatus =
 	| 'queued' // Added to queue, waiting to start
 	| 'downloading' // Actively downloading
 	| 'stalled' // Download stalled (no seeders/peers available)
+	| 'awaiting' // Download vanished from client, auto-retrying in poll loop
 	| 'paused' // Download paused
 	| 'completed' // Download finished, waiting for import
 	| 'postprocessing' // Download finished, post-processing in progress (usenet extraction/repair)
@@ -30,6 +31,7 @@ export const ACTIVE_DOWNLOAD_STATUSES = [
 	'queued',
 	'downloading',
 	'stalled',
+	'awaiting',
 	'paused',
 	'completed',
 	'postprocessing',
@@ -314,6 +316,7 @@ export interface QueueStats {
 	queuedCount: number;
 	downloadingCount: number;
 	stalledCount: number;
+	awaitingCount: number;
 	seedingCount: number;
 	pausedCount: number;
 	completedCount: number;

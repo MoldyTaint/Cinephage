@@ -4,7 +4,15 @@ import type { MoveTaskRecord } from './types.js';
 export function mapFilterStatusToQueueStatuses(status: string): string[] | null {
 	switch (status) {
 		case 'downloading':
-			return ['downloading', 'queued', 'stalled', 'completed', 'postprocessing', 'importing'];
+			return [
+				'downloading',
+				'queued',
+				'stalled',
+				'awaiting',
+				'completed',
+				'postprocessing',
+				'importing'
+			];
 		case 'seeding':
 			return ['seeding'];
 		case 'paused':

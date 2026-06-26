@@ -5,7 +5,7 @@ import { downloadQueue, downloadClients } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
 import { getImportService } from '$lib/server/downloadClients/import';
-import { getContentPath } from '$lib/server/downloadClients/monitoring';
+import { getContentPath, buildTorrentRecoveryPath } from '$lib/server/downloadClients/monitoring';
 import type { DownloadInfo } from '$lib/server/downloadClients/core/interfaces';
 import { logger } from '$lib/logging';
 import { redactUrl } from '$lib/server/utils/urlSecurity';
@@ -278,6 +278,48 @@ export const POST: RequestHandler = async ({ params }) => {
 					importStatus: importResult.status,
 					queueItem: safeItem
 				});
+			}
+
+			// If still no path, try filesystem recovery
+			if (!importPathAvailable && client.downloadPathLocal && queueItem.title) {
+				const fsCategory = (queueItem.seriesId ? client.tvCategory : client.movieCategory) ?? '';
+				// Reuse the shared path reconstruction; fall back to the queue title
+				// when the stored outputPath has no usable last component.
+				const candidatePath =
+					buildTorrentRecoveryPath(
+						queueItem.outputPath || '',
+						client.downloadPathLocal,
+						fsCategory
+					) ?? `${client.downloadPathLocal.replace(/\/+$/, '')}/${fsCategory}/${queueItem.title}`;
+
+				try {
+					const { stat } = await import('fs/promises');
+					await stat(candidatePath);
+
+					// Found! Update and import
+					await db
+						.update(downloadQueue)
+						.set({
+							outputPath: candidatePath,
+							clientDownloadPath: candidatePath,
+							status: 'completed',
+							completedAt: queueItem.completedAt || new Date().toISOString(),
+							errorMessage: null,
+							importAttempts: 0,
+							lastAttemptAt: new Date().toISOString()
+						})
+						.where(eq(downloadQueue.id, id));
+
+					const importResult = await getImportService().requestImport(id);
+					return json({
+						success: true,
+						message: 'Files located and import initiated',
+						retryMode: 'import',
+						importStatus: importResult.status
+					});
+				} catch {
+					// Not found, fall through to re-download
+				}
 			}
 		}
 

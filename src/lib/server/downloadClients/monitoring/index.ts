@@ -4,6 +4,7 @@
 
 export {
 	DownloadMonitorService,
+	buildTorrentRecoveryPath,
 	downloadMonitor,
 	getDownloadMonitor,
 	resetDownloadMonitor
