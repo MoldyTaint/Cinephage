@@ -210,7 +210,8 @@ export const POST: RequestHandler = async (event) => {
 			year,
 			tmdbId,
 			collectionData?.name,
-			localizedTitles
+			localizedTitles,
+			movieDetails.original_title
 		);
 
 		// Extract external IDs (shared logic)
