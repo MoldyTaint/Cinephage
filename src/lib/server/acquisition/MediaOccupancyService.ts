@@ -37,7 +37,7 @@ const BLOCKING_DOWNLOAD_STATUSES = [
 	'seeding',
 	'importing'
 ];
-const ALWAYS_BLOCKING_DOWNLOAD_STATUSES = ['queued', 'downloading', 'importing'];
+const ALWAYS_BLOCKING_DOWNLOAD_STATUSES = ['queued', 'downloading', 'awaiting', 'importing'];
 
 interface LockWaiter {
 	keys: string[];

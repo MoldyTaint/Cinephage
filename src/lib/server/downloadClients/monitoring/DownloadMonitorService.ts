@@ -1359,6 +1359,47 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 	}
 
 	/**
+	 * Mark a recovered missing download as completed and request import.
+	 * Shared by the initial recovery path and the awaiting backoff retry so
+	 * both tiers behave identically.
+	 */
+	private async completeRecoveredDownload(
+		queueId: string,
+		options: { outputPath?: string; completedAtFallback: string }
+	): Promise<void> {
+		const updates: Partial<typeof downloadQueue.$inferInsert> = {
+			status: 'completed',
+			completedAt: options.completedAtFallback,
+			errorMessage: null,
+			importAttempts: 0,
+			lastAttemptAt: null
+		};
+		if (options.outputPath) {
+			updates.outputPath = options.outputPath;
+		}
+
+		await db.update(downloadQueue).set(updates).where(eq(downloadQueue.id, queueId));
+
+		const recoveredItem = await this.getQueueItem(queueId);
+		if (recoveredItem) {
+			this.emit('queue:completed', recoveredItem);
+			this.emitSSE('queue:completed', recoveredItem);
+
+			const importService = await getImportService();
+			importService.requestImport(recoveredItem.id).catch((err) => {
+				logger.error(
+					{
+						queueId: recoveredItem.id,
+						title: recoveredItem.title,
+						error: err instanceof Error ? err.message : String(err)
+					},
+					'Failed to request import for recovered download'
+				);
+			});
+		}
+	}
+
+	/**
 	 * Handle a download that's no longer in the client
 	 */
 	private async handleMissingDownload(
@@ -1407,7 +1448,23 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				return;
 			}
 
-			// Attempt Tier 2 recovery again
+			const completedAtFallback = queueItem.completedAt || new Date().toISOString();
+
+			// Tier 1: re-check the stored output path. Covers delayed-sync
+			// (e.g. Syncthing/Resilio) where the completed files appear at the
+			// original path after the client already dropped the download. This
+			// works even when the client has no downloadPathLocal configured.
+			if (queueItem.outputPath) {
+				try {
+					await stat(queueItem.outputPath);
+					await this.completeRecoveredDownload(queueItem.id, { completedAtFallback });
+					return;
+				} catch {
+					// Not there yet, try Tier 2
+				}
+			}
+
+			// Tier 2: re-check the reconstructed completed path.
 			const category = queueItem.seriesId ? client.tvCategory : client.movieCategory;
 			if (client.downloadPathLocal) {
 				const recoveryPath = buildTorrentRecoveryPath(
@@ -1418,35 +1475,10 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				if (recoveryPath) {
 					try {
 						await stat(recoveryPath);
-						// Found! Recover.
-						await db
-							.update(downloadQueue)
-							.set({
-								outputPath: recoveryPath,
-								status: 'completed',
-								completedAt: queueItem.completedAt || new Date().toISOString(),
-								errorMessage: null,
-								importAttempts: 0,
-								lastAttemptAt: null
-							})
-							.where(eq(downloadQueue.id, queueItem.id));
-
-						const recoveredItem = await this.getQueueItem(queueItem.id);
-						if (recoveredItem) {
-							this.emit('queue:completed', recoveredItem);
-							this.emitSSE('queue:completed', recoveredItem);
-							const importService = await getImportService();
-							importService.requestImport(recoveredItem.id).catch((err) =>
-								logger.error(
-									{
-										queueId: recoveredItem.id,
-										title: recoveredItem.title,
-										error: err instanceof Error ? err.message : String(err)
-									},
-									'Failed to request import for recovered download'
-								)
-							);
-						}
+						await this.completeRecoveredDownload(queueItem.id, {
+							outputPath: recoveryPath,
+							completedAtFallback
+						});
 						return;
 					} catch {
 						// Still not there, increment and continue
