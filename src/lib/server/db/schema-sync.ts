@@ -121,7 +121,7 @@ import {
  * Version 89: Add blocked keywords table
  * Version 90: Add durable library job tables
  */
-export const CURRENT_SCHEMA_VERSION = 97;
+export const CURRENT_SCHEMA_VERSION = 100;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -219,6 +219,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"max_resolution" text,
 		"allowed_sources" text,
 		"excluded_sources" text,
+		"prevent_downgrades" integer DEFAULT 0,
 		"created_at" text,
 		"updated_at" text
 	)`,

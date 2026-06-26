@@ -2097,6 +2097,7 @@
 	"profile_title": "Perfil de usuario",
 	"profiles_addProfile": "Añadir perfil",
 	"profiles_allowUpgrades_label": "Permitir actualizaciones",
+	"profiles_preventDowngrades_label": "Evitar degradación de resolución",
 	"profiles_copyFrom_builtInLabel": "Perfiles integrados",
 	"profiles_copyFrom_customLabel": "Perfiles personalizados",
 	"profiles_copyFrom_helpCopied": "Las puntuaciones de formato se copiarán del perfil seleccionado",

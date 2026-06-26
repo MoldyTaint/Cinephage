@@ -34,6 +34,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		color: 'text-base-content',
 		category: 'custom' as const,
 		upgradesAllowed: p.upgradesAllowed ?? true,
+		preventDowngrades: p.preventDowngrades ?? false,
 		minScore: p.minScore ?? 0,
 		upgradeUntilScore: p.upgradeUntilScore ?? -1,
 		minScoreIncrement: p.minScoreIncrement ?? 0,

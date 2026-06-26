@@ -84,6 +84,7 @@ export enum RejectionReason {
 	IMPROVEMENT_TOO_SMALL = 'improvement_too_small',
 	ALREADY_AT_CUTOFF = 'already_at_cutoff',
 	UPGRADES_NOT_ALLOWED = 'upgrades_not_allowed',
+	RESOLUTION_DOWNGRADE = 'resolution_downgrade',
 
 	// Availability
 	ALREADY_HAS_FILE = 'already_has_file',

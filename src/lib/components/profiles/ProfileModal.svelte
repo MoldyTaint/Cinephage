@@ -61,6 +61,7 @@
 	let description = $state('');
 	let copyFromId = $state<string>('');
 	let upgradesAllowed = $state(true);
+	let preventDowngrades = $state(false);
 	// Media-specific size limits (string inputs to preserve cursor/editing)
 	let movieMinSizeGbInput = $state('');
 	let movieMaxSizeGbInput = $state('');
@@ -97,6 +98,7 @@
 				description = profile.description || '';
 				copyFromId = ''; // No copy when editing existing profile
 				upgradesAllowed = profile.upgradesAllowed;
+				preventDowngrades = profile.preventDowngrades;
 				movieMinSizeGbInput = stringifyLimit(coerceLimit(profile.movieMinSizeGb));
 				movieMaxSizeGbInput = stringifyLimit(coerceLimit(profile.movieMaxSizeGb));
 				episodeMinSizeMbInput = stringifyLimit(coerceLimit(profile.episodeMinSizeMb));
@@ -110,6 +112,7 @@
 				description = '';
 				copyFromId = defaultCopyFromId;
 				upgradesAllowed = true;
+				preventDowngrades = false;
 				movieMinSizeGbInput = '';
 				movieMaxSizeGbInput = '';
 				episodeMinSizeMbInput = '';
@@ -256,6 +259,7 @@
 
 		if (profile?.isBuiltIn) {
 			onSave({
+				preventDowngrades,
 				movieMinSizeGb: normalizeGbLimit(movieMinSizeGbValue),
 				movieMaxSizeGb: normalizeGbLimit(movieMaxSizeGbValue),
 				episodeMinSizeMb: normalizeMbLimit(episodeMinSizeMbValue),
@@ -271,6 +275,7 @@
 			description: description || undefined,
 			copyFromId: copyFromId || undefined, // Only include if creating new profile
 			upgradesAllowed,
+			preventDowngrades,
 			movieMinSizeGb: normalizeGbLimit(movieMinSizeGbValue),
 			movieMaxSizeGb: normalizeGbLimit(movieMaxSizeGbValue),
 			episodeMinSizeMb: normalizeMbLimit(episodeMinSizeMbValue),
@@ -417,7 +422,7 @@
 				{/if}
 
 				<!-- Options -->
-				<div class="flex gap-4 pt-2">
+				<div class="flex flex-wrap gap-x-4 gap-y-1 pt-2">
 					<label class="label cursor-pointer gap-2">
 						<input
 							type="checkbox"
@@ -426,6 +431,16 @@
 							disabled={isCoreReadonly}
 						/>
 						<span class="label-text">{m.profiles_allowUpgrades_label()}</span>
+					</label>
+
+					<label class="label cursor-pointer gap-2">
+						<input
+							type="checkbox"
+							class="checkbox checkbox-sm"
+							bind:checked={preventDowngrades}
+							disabled={isFullyReadonly}
+						/>
+						<span class="label-text">{m.profiles_preventDowngrades_label()}</span>
 					</label>
 
 					{#if !profile?.isBuiltIn}

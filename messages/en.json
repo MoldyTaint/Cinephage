@@ -2099,6 +2099,7 @@
 	"profile_title": "User Profile",
 	"profiles_addProfile": "Add Profile",
 	"profiles_allowUpgrades_label": "Allow Upgrades",
+	"profiles_preventDowngrades_label": "Prevent resolution downgrades",
 	"profiles_copyFrom_builtInLabel": "Built-in Profiles",
 	"profiles_copyFrom_customLabel": "Custom Profiles",
 	"profiles_copyFrom_helpCopied": "Format scores will be copied from the selected profile",

@@ -1917,6 +1917,7 @@ export const scoringProfileCreateSchema = z.object({
 	description: z.string().max(500).optional(),
 	copyFromId: z.string().optional(),
 	upgradesAllowed: z.boolean().optional(),
+	preventDowngrades: z.boolean().optional(),
 	minScore: z.number().int().optional(),
 	upgradeUntilScore: z.number().int().optional(),
 	minScoreIncrement: z.number().int().optional(),

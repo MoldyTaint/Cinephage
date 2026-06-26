@@ -399,6 +399,7 @@ export const scoringProfiles = sqliteTable('scoring_profiles', {
 	episodeMinSizeMb: real('episode_min_size_mb'),
 	episodeMaxSizeMb: real('episode_max_size_mb'),
 	isBuiltIn: integer('is_built_in', { mode: 'boolean' }).default(false),
+	preventDowngrades: integer('prevent_downgrades', { mode: 'boolean' }).default(false),
 	minResolution: text('min_resolution'),
 	maxResolution: text('max_resolution'),
 	allowedSources: text('allowed_sources', { mode: 'json' }).$type<string[] | null>(),

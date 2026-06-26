@@ -487,6 +487,7 @@ export class QualityFilter {
 			description: row.description ?? '',
 			tags: row.tags ?? [],
 			upgradesAllowed: row.upgradesAllowed ?? true,
+			preventDowngrades: row.preventDowngrades ?? false,
 			minScore: row.minScore ?? 0,
 			upgradeUntilScore: row.upgradeUntilScore ?? -1,
 			minScoreIncrement: row.minScoreIncrement ?? 0,

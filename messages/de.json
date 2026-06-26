@@ -2097,6 +2097,7 @@
 	"profile_title": "Benutzerprofil",
 	"profiles_addProfile": "Profil hinzufügen",
 	"profiles_allowUpgrades_label": "Upgrades erlauben",
+	"profiles_preventDowngrades_label": "Auflösungs-Downgrades verhindern",
 	"profiles_copyFrom_builtInLabel": "Integrierte Profile",
 	"profiles_copyFrom_customLabel": "Benutzerdefinierte Profile",
 	"profiles_copyFrom_helpCopied": "Format-Punktzahlen werden vom ausgewählten Profil kopiert",
