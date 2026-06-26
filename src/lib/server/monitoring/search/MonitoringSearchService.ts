@@ -183,7 +183,12 @@ export class MonitoringSearchService {
 		'seeding',
 		'importing'
 	];
-	private readonly ALWAYS_BLOCKING_DOWNLOAD_STATUSES = ['queued', 'downloading', 'importing'];
+	private readonly ALWAYS_BLOCKING_DOWNLOAD_STATUSES = [
+		'queued',
+		'downloading',
+		'awaiting',
+		'importing'
+	];
 
 	// Cache for season episode counts to avoid N+1 queries
 	// Key: `${seriesId}-${seasonNumber}`, Value: episode count
