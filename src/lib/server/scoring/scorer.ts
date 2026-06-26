@@ -18,6 +18,7 @@ import type {
 import { matchFormats, extractAttributes } from './matcher.js';
 import { getActiveFormats } from './formats/registry.js';
 import { ReleaseParser } from '../indexers/parser/ReleaseParser.js';
+import { RESOLUTION_ORDER } from '../indexers/parser/types.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'indexers' as const });
@@ -167,6 +168,7 @@ export function scoreRelease(
 	return {
 		releaseName,
 		profile: profile.name,
+		resolution: attrs.resolution,
 		totalScore: isBanned ? -Infinity : totalScore,
 		matchedFormats: scoredFormats,
 		breakdown,
@@ -422,6 +424,20 @@ export function isUpgrade(
 		!candidate.meetsMinimum
 	) {
 		return { isUpgrade: false, improvement: 0, existing, candidate };
+	}
+
+	// Check resolution downgrade prevention
+	if (profile.preventDowngrades) {
+		const candidateRes = candidate.resolution;
+		const existingRes = existing.resolution;
+		if (RESOLUTION_ORDER[candidateRes] < RESOLUTION_ORDER[existingRes]) {
+			return {
+				isUpgrade: false,
+				improvement: candidate.totalScore - existing.totalScore,
+				existing,
+				candidate
+			};
+		}
 	}
 
 	const improvement = candidate.totalScore - existing.totalScore;

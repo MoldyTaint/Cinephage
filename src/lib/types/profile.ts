@@ -33,6 +33,7 @@ export interface ScoringProfile {
 	/** Category for grouping in the UI */
 	category?: ProfileCategory;
 	upgradesAllowed: boolean;
+	preventDowngrades: boolean;
 	minScore: number;
 	upgradeUntilScore: number;
 	minScoreIncrement: number;
@@ -69,6 +70,7 @@ export interface ScoringProfileFormData {
 	copyFromId?: string;
 	tags?: string[];
 	upgradesAllowed?: boolean;
+	preventDowngrades?: boolean;
 	minScore?: number;
 	upgradeUntilScore?: number;
 	minScoreIncrement?: number;

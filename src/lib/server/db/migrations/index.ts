@@ -96,6 +96,7 @@ import { migration_v095 } from './095-drop-provider-choice-columns.js';
 import { migration_v096 } from './096-add-adult-columns.js';
 import { migration_v097 } from './097-add-episode-group-id.js';
 import { migration_v098 } from './098-add-indexer-categories.js';
+import { migration_v100 } from './100-add-scoring-profile-prevent-downgrades.js';
 
 export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v002,
@@ -194,5 +195,6 @@ export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v095,
 	migration_v096,
 	migration_v097,
-	migration_v098
+	migration_v098,
+	migration_v100
 ];

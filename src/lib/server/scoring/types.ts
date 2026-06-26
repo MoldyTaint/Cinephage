@@ -286,6 +286,9 @@ export interface ScoringProfile {
 	/** Whether upgrades are allowed */
 	upgradesAllowed: boolean;
 
+	/** Whether to prevent resolution downgrades during upgrades */
+	preventDowngrades: boolean;
+
 	/** Whether this is a default profile */
 	isDefault?: boolean;
 
@@ -430,6 +433,9 @@ export interface ScoringResult {
 
 	/** Profile name used for scoring */
 	profile: string;
+
+	/** Parsed resolution of the release */
+	resolution: Resolution;
 
 	/** Total calculated score */
 	totalScore: number;

@@ -53,6 +53,7 @@ export const GET: RequestHandler = async () => {
 		color: 'text-base-content',
 		category: 'custom' as const,
 		upgradesAllowed: p.upgradesAllowed ?? true,
+		preventDowngrades: p.preventDowngrades ?? false,
 		minScore: p.minScore ?? 0,
 		upgradeUntilScore: p.upgradeUntilScore ?? -1,
 		minScoreIncrement: p.minScoreIncrement ?? 0,
@@ -76,6 +77,7 @@ export const GET: RequestHandler = async () => {
 			color: uiProfile?.color ?? 'text-base-content',
 			category: uiProfile?.category ?? 'quality',
 			upgradesAllowed: p.upgradesAllowed ?? true,
+			preventDowngrades: p.preventDowngrades ?? false,
 			minScore: p.minScore ?? 0,
 			upgradeUntilScore: p.upgradeUntilScore ?? -1,
 			minScoreIncrement: p.minScoreIncrement ?? 0,
@@ -156,6 +158,7 @@ export const POST: RequestHandler = async (event) => {
 			name: data.name,
 			description: data.description,
 			upgradesAllowed: data.upgradesAllowed,
+			preventDowngrades: data.preventDowngrades,
 			minScore: data.minScore,
 			upgradeUntilScore: data.upgradeUntilScore,
 			minScoreIncrement: data.minScoreIncrement,
@@ -220,6 +223,8 @@ export const PUT: RequestHandler = async (event) => {
 		const updateFields: Record<string, unknown> = {
 			updatedAt: new Date().toISOString()
 		};
+		if (updateData.preventDowngrades !== undefined)
+			updateFields.preventDowngrades = updateData.preventDowngrades;
 		if (updateData.formatScores !== undefined) updateFields.formatScores = updateData.formatScores;
 		if (updateData.movieMinSizeGb !== undefined)
 			updateFields.movieMinSizeGb = toNullableNumber(updateData.movieMinSizeGb);
@@ -243,6 +248,7 @@ export const PUT: RequestHandler = async (event) => {
 
 		return json({
 			...builtIn,
+			preventDowngrades: updated.preventDowngrades ?? false,
 			formatScores: updated.formatScores ?? {},
 			movieMinSizeGb: toNullableNumber(updated.movieMinSizeGb),
 			movieMaxSizeGb: toNullableNumber(updated.movieMaxSizeGb),
@@ -280,6 +286,8 @@ export const PUT: RequestHandler = async (event) => {
 	if (updateData.description !== undefined) updateFields.description = updateData.description;
 	if (updateData.upgradesAllowed !== undefined)
 		updateFields.upgradesAllowed = updateData.upgradesAllowed;
+	if (updateData.preventDowngrades !== undefined)
+		updateFields.preventDowngrades = updateData.preventDowngrades;
 	if (updateData.minScore !== undefined) updateFields.minScore = updateData.minScore;
 	if (updateData.upgradeUntilScore !== undefined)
 		updateFields.upgradeUntilScore = updateData.upgradeUntilScore;

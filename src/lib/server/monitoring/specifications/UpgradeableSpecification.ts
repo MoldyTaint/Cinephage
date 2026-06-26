@@ -97,6 +97,12 @@ export class MovieUpgradeableSpecification implements IMonitoringSpecification<M
 
 		if (!comparison.isUpgrade) {
 			// Determine specific reason
+			if (context.profile.preventDowngrades) {
+				// Check if score improved but resolution downgraded
+				if (comparison.improvement > 0) {
+					return reject(RejectionReason.RESOLUTION_DOWNGRADE);
+				}
+			}
 			if (comparison.improvement <= 0) {
 				return reject(RejectionReason.QUALITY_NOT_BETTER);
 			} else if (comparison.improvement < (context.profile.minScoreIncrement || 0)) {
@@ -183,6 +189,12 @@ export class EpisodeUpgradeableSpecification implements IMonitoringSpecification
 
 		if (!comparisonE.isUpgrade) {
 			// Determine specific reason
+			if (context.profile.preventDowngrades) {
+				// Check if score improved but resolution downgraded
+				if (comparisonE.improvement > 0) {
+					return reject(RejectionReason.RESOLUTION_DOWNGRADE);
+				}
+			}
 			if (comparisonE.improvement <= 0) {
 				return reject(RejectionReason.QUALITY_NOT_BETTER);
 			} else if (comparisonE.improvement < (context.profile.minScoreIncrement || 0)) {
