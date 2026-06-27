@@ -1282,6 +1282,10 @@ export const downloadQueue = sqliteTable(
 		addedAt: text('added_at').$defaultFn(() => new Date().toISOString()),
 		// When download started (first saw progress > 0)
 		startedAt: text('started_at'),
+		// When the download first entered the stalled state (drives stalled-timeout
+		// cleanup). Persisted so the timer survives restarts and isn't reset by brief
+		// metaDL ↔ downloading flaps. Cleared only when the download actually progresses.
+		stalledSince: text('stalled_since'),
 		// When download reached 100%
 		completedAt: text('completed_at'),
 		// When import finished

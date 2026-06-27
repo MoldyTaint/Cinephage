@@ -644,11 +644,13 @@
 	error={saveError}
 	stalledTimeoutMinutes={data.stalledDownloadTimeoutMinutes}
 	stalledProgressThreshold={data.stalledDownloadProgressThreshold}
-	onSaveStalledBehavior={async (timeout, threshold) => {
+	stalledBlocklistHours={data.stalledDownloadBlocklistHours}
+	onSaveStalledBehavior={async (timeout, threshold, blocklistHours) => {
 		try {
 			await updateMonitoringSettings({
 				stalledDownloadTimeoutMinutes: timeout,
-				stalledDownloadProgressThreshold: threshold
+				stalledDownloadProgressThreshold: threshold,
+				stalledDownloadBlocklistHours: blocklistHours
 			});
 			toasts.success(m.toast_settings_stalledSettingsUpdated());
 		} catch (e) {

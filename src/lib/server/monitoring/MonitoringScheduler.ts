@@ -94,6 +94,8 @@ export interface MonitoringSettings {
 	// Download behavior
 	stalledDownloadTimeoutMinutes: number;
 	stalledDownloadProgressThreshold: number;
+	// Blocklist duration (hours) for auto-removed stalled releases; 0 = permanent
+	stalledDownloadBlocklistHours: number;
 }
 
 /**
@@ -316,6 +318,9 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 			),
 			stalledDownloadProgressThreshold: parseFloat(
 				settingsMap.get('stalled_download_progress_threshold') || '1'
+			),
+			stalledDownloadBlocklistHours: parseFloat(
+				settingsMap.get('stalled_download_blocklist_hours') || '72'
 			)
 		};
 	}
@@ -394,6 +399,12 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 			updates.push({
 				key: 'stalled_download_progress_threshold',
 				value: String(settings.stalledDownloadProgressThreshold)
+			});
+		}
+		if (settings.stalledDownloadBlocklistHours !== undefined) {
+			updates.push({
+				key: 'stalled_download_blocklist_hours',
+				value: String(settings.stalledDownloadBlocklistHours)
 			});
 		}
 
