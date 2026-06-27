@@ -1342,6 +1342,26 @@ export const downloadQueueTombstones = sqliteTable(
 );
 
 /**
+ * Stalled Orphan Tracking - Records when a torrent in one of our categories that
+ * is NOT actively tracked in the queue was first seen stalled, so the periodic
+ * orphan sweep can apply the stalled timeout to it (and retry deletes that didn't
+ * take, since the row survives until the torrent actually disappears).
+ */
+export const stalledOrphanTracking = sqliteTable(
+	'stalled_orphan_tracking',
+	{
+		downloadClientId: text('download_client_id')
+			.notNull()
+			.references(() => downloadClients.id, { onDelete: 'cascade' }),
+		infoHash: text('info_hash').notNull(),
+		firstStalledAt: text('first_stalled_at')
+			.notNull()
+			.$defaultFn(() => new Date().toISOString())
+	},
+	(table) => [primaryKey({ columns: [table.downloadClientId, table.infoHash] })]
+);
+
+/**
  * Download History - Permanent record of completed/failed downloads
  * Created when a download is imported or permanently fails
  */

@@ -16,7 +16,8 @@ import {
 	downloadClients,
 	monitoringSettings,
 	movies,
-	episodes
+	episodes,
+	stalledOrphanTracking
 } from '$lib/server/db/schema';
 import { eq, and, inArray, not, notInArray, isNull, isNotNull, lte } from 'drizzle-orm';
 import { getDownloadClientManager } from '../DownloadClientManager';
@@ -563,9 +564,27 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				}
 			}
 
+			// Stalled-orphan handling settings (a timeout of 0 disables it). These let the
+			// sweep also remove torrents in our categories that are stuck stalled but not
+			// actively tracked — the completed-orphan logic below only removes finished
+			// torrents, so stalled ones would otherwise linger forever.
+			const stalledTimeoutMinutes = await this.getStalledTimeoutMinutes();
+			const stalledHandlingEnabled = stalledTimeoutMinutes > 0;
+			const stalledTimeoutMs =
+				Math.max(stalledTimeoutMinutes, DownloadMonitorService.MIN_STALLED_TIMEOUT_MINUTES) *
+				60 *
+				1000;
+			const stalledProgressThreshold = await this.getStalledProgressThreshold();
+			const stalledBlocklistHours = await this.getStalledBlocklistHours();
+			const sweepNow = Date.now();
+
 			for (const { client, instance } of enabledClients) {
 				try {
 					const downloads = await instance.getDownloads();
+
+					// Hashes currently stalled in our categories — used to prune stale tracking
+					// rows for torrents that have since recovered or disappeared.
+					const seenStalledHashes = new Set<string>();
 
 					for (const download of downloads) {
 						const hashLower = download.hash.toLowerCase();
@@ -582,6 +601,26 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 							download.category === client.movieCategory;
 
 						if (!isOurCategory) {
+							continue;
+						}
+
+						// Stalled/stuck orphan: not actively tracked but stuck in our category.
+						// Handle it under the stalled timeout instead of the completed-orphan path.
+						if (stalledHandlingEnabled && download.status === 'stalled') {
+							seenStalledHashes.add(hashLower);
+							await this.handleStalledOrphan(
+								client.id,
+								instance,
+								download,
+								{
+									progressThreshold: stalledProgressThreshold,
+									timeoutMs: stalledTimeoutMs,
+									blocklistHours: stalledBlocklistHours,
+									now: sweepNow,
+									dryRun
+								},
+								result
+							);
 							continue;
 						}
 
@@ -640,6 +679,12 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 							}
 						}
 					}
+
+					// Drop tracking rows for torrents that are no longer stalled (recovered)
+					// or have disappeared from the client.
+					if (stalledHandlingEnabled && !dryRun) {
+						await this.pruneStalledOrphanTracking(client.id, seenStalledHashes);
+					}
 				} catch (error) {
 					logger.error(
 						{ err: error, clientName: client.name },
@@ -662,6 +707,175 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		);
 
 		return result;
+	}
+
+	/**
+	 * Handle a single stalled "orphan": a torrent in one of our categories that is
+	 * stuck stalled but is not actively tracked in the queue. Applies the same
+	 * progress-threshold and timeout gates as the queue-based handler, using a
+	 * persisted per-hash timer so the timeout survives restarts. The tracking row is
+	 * deliberately kept after a delete, so a delete that doesn't take effect is retried
+	 * on the next sweep (the row is pruned once the torrent actually disappears).
+	 */
+	private async handleStalledOrphan(
+		clientId: string,
+		instance: IDownloadClient,
+		download: DownloadInfo,
+		opts: {
+			progressThreshold: number;
+			timeoutMs: number;
+			blocklistHours: number;
+			now: number;
+			dryRun: boolean;
+		},
+		result: {
+			removed: { name: string; hash: string; ratio: number }[];
+			skipped: { name: string; hash: string; reason: string }[];
+			errors: { name: string; hash: string; error: string }[];
+		}
+	): Promise<void> {
+		// Above the progress threshold — it got far enough that it might still finish,
+		// so leave it alone (and don't track it).
+		if (download.progress * 100 > opts.progressThreshold) {
+			result.skipped.push({
+				name: download.name,
+				hash: download.hash,
+				reason: 'Stalled above progress threshold'
+			});
+			return;
+		}
+
+		const hashLower = download.hash.toLowerCase();
+		const [tracked] = await db
+			.select({ firstStalledAt: stalledOrphanTracking.firstStalledAt })
+			.from(stalledOrphanTracking)
+			.where(
+				and(
+					eq(stalledOrphanTracking.downloadClientId, clientId),
+					eq(stalledOrphanTracking.infoHash, hashLower)
+				)
+			)
+			.limit(1);
+
+		const firstStalledMs = tracked ? Date.parse(tracked.firstStalledAt) : opts.now;
+		const elapsed = opts.now - firstStalledMs;
+		const timedOut = Number.isFinite(firstStalledMs) && elapsed >= opts.timeoutMs;
+
+		if (opts.dryRun) {
+			if (timedOut) {
+				result.removed.push({
+					name: download.name,
+					hash: download.hash,
+					ratio: download.ratio || 0
+				});
+			} else {
+				result.skipped.push({
+					name: download.name,
+					hash: download.hash,
+					reason: 'Stalled, waiting for timeout'
+				});
+			}
+			return;
+		}
+
+		// Start the timer the first time we see it stalled.
+		if (!tracked) {
+			await db
+				.insert(stalledOrphanTracking)
+				.values({
+					downloadClientId: clientId,
+					infoHash: hashLower,
+					firstStalledAt: new Date(opts.now).toISOString()
+				})
+				.onConflictDoNothing();
+			logger.info(
+				{ name: download.name, hash: download.hash, timeoutMs: opts.timeoutMs },
+				'Tracking stalled orphaned torrent (timer started)'
+			);
+			result.skipped.push({
+				name: download.name,
+				hash: download.hash,
+				reason: 'Stalled, tracking started'
+			});
+			return;
+		}
+
+		if (!timedOut) {
+			result.skipped.push({
+				name: download.name,
+				hash: download.hash,
+				reason: 'Stalled, waiting for timeout'
+			});
+			return;
+		}
+
+		// Timed out: remove from client. Keep the tracking row so a delete that doesn't
+		// take effect is retried on the next sweep.
+		try {
+			await instance.removeDownload(download.hash, true);
+		} catch (removeError) {
+			const message = removeError instanceof Error ? removeError.message : String(removeError);
+			logger.warn(
+				{ name: download.name, hash: download.hash, error: message },
+				'Failed to remove stalled orphaned torrent; will retry next sweep'
+			);
+			result.errors.push({ name: download.name, hash: download.hash, error: message });
+			return;
+		}
+
+		result.removed.push({ name: download.name, hash: download.hash, ratio: download.ratio || 0 });
+		logger.info(
+			{ name: download.name, hash: download.hash, elapsedMinutes: Math.round(elapsed / 60000) },
+			'Removed stalled orphaned torrent'
+		);
+
+		// Blocklist the hash so it isn't immediately re-grabbed (permanent when configured).
+		try {
+			const { blocklistService } =
+				await import('$lib/server/monitoring/specifications/BlocklistSpecification.js');
+			blocklistService.addToBlocklist(
+				{ title: download.name, infoHash: download.hash, protocol: 'torrent' },
+				{
+					reason: 'download_failed',
+					message: 'Stalled orphan auto-removed',
+					expiresInHours: opts.blocklistHours > 0 ? opts.blocklistHours : undefined
+				}
+			);
+		} catch (blocklistError) {
+			logger.warn(
+				{
+					name: download.name,
+					error: blocklistError instanceof Error ? blocklistError.message : String(blocklistError)
+				},
+				'Failed to blocklist stalled orphan'
+			);
+		}
+	}
+
+	/**
+	 * Remove stalled-orphan tracking rows for a client whose hashes are no longer
+	 * stalled (recovered) or are no longer present in the client.
+	 */
+	private async pruneStalledOrphanTracking(
+		clientId: string,
+		seenStalledHashes: Set<string>
+	): Promise<void> {
+		const rows = await db
+			.select({ infoHash: stalledOrphanTracking.infoHash })
+			.from(stalledOrphanTracking)
+			.where(eq(stalledOrphanTracking.downloadClientId, clientId));
+
+		const stale = rows.map((r) => r.infoHash).filter((h) => !seenStalledHashes.has(h));
+		if (stale.length === 0) return;
+
+		await db
+			.delete(stalledOrphanTracking)
+			.where(
+				and(
+					eq(stalledOrphanTracking.downloadClientId, clientId),
+					inArray(stalledOrphanTracking.infoHash, stale)
+				)
+			);
 	}
 
 	/**
