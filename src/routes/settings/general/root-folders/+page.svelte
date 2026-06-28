@@ -81,10 +81,10 @@
 	async function handleValidatePath(
 		path: string,
 		_readOnly = false,
-		_folderId?: string
+		folderId?: string
 	): Promise<PathValidationResult> {
 		try {
-			const payload = await validateRootFolder(path);
+			const payload = await validateRootFolder(path, undefined, folderId);
 			return payload as unknown as PathValidationResult;
 		} catch (error) {
 			return {
