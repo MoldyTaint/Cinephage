@@ -40,8 +40,8 @@ export async function deleteRootFolder(id: string) {
 	return apiDelete(`/api/root-folders/${id}`);
 }
 
-export async function validateRootFolder(path: string, mediaType?: string) {
-	return apiPost('/api/root-folders/validate', { path, mediaType });
+export async function validateRootFolder(path: string, mediaType?: string, folderId?: string) {
+	return apiPost('/api/root-folders/validate', { path, mediaType, folderId });
 }
 
 export async function getLibraries(params?: { mediaType?: string; includeSystem?: boolean }) {
