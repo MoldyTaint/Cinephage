@@ -1,0 +1,40 @@
+{
+	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
+	"extends": [
+		"config:recommended",
+		"group:allNonMajor",
+		":semanticCommitTypeAll(chore)",
+		":dependencyDashboard"
+	],
+	"schedule": ["before 6am on Monday"],
+	"timezone": "UTC",
+	"labels": ["Dependencies"],
+	"assignees": ["MoldyTaint"],
+	"baseBranchPatterns": ["dev"],
+	"packageRules": [
+		{
+			"description": "Automerge patch and minor npm updates after 3-day stability window",
+			"matchUpdateTypes": ["patch", "minor"],
+			"matchCurrentVersion": "!/^0/",
+			"matchManagers": ["npm"],
+			"automerge": true,
+			"minimumReleaseAge": "3 days"
+		},
+		{
+			"description": "Automerge GitHub Actions bumps after 7-day cooldown (supply-chain safety)",
+			"matchManagers": ["github-actions"],
+			"automerge": true,
+			"minimumReleaseAge": "7 days",
+			"pinDigests": true
+		},
+		{
+			"description": "Keep major version bumps manual",
+			"matchUpdateTypes": ["major"],
+			"automerge": false
+		}
+	],
+	"lockFileMaintenance": {
+		"enabled": true,
+		"schedule": ["before 6am on Monday"]
+	}
+}
