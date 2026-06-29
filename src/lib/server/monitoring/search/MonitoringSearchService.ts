@@ -244,6 +244,14 @@ export class MonitoringSearchService {
 		return scored[0].file;
 	}
 
+	// How long a failed download blocks re-grabs for the same media (ms).
+	private readonly FAILED_DOWNLOAD_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
+
+	private isRecentlyFailed(lastAttemptAt: string | null): boolean {
+		if (!lastAttemptAt) return false;
+		return Date.now() - new Date(lastAttemptAt).getTime() < this.FAILED_DOWNLOAD_COOLDOWN_MS;
+	}
+
 	/**
 	 * Check if a movie already has an active download in the queue
 	 */
@@ -253,19 +261,25 @@ export class MonitoringSearchService {
 				id: downloadQueue.id,
 				status: downloadQueue.status,
 				title: downloadQueue.title,
-				importedAt: downloadQueue.importedAt
+				importedAt: downloadQueue.importedAt,
+				lastAttemptAt: downloadQueue.lastAttemptAt
 			})
 			.from(downloadQueue)
 			.where(
 				and(
 					eq(downloadQueue.movieId, movieId),
-					inArray(downloadQueue.status, this.BLOCKING_DOWNLOAD_STATUSES)
+					inArray(downloadQueue.status, [...this.BLOCKING_DOWNLOAD_STATUSES, 'failed'])
 				)
 			);
 
 		const blockingDownload = activeDownloads.find((download) => {
 			if (this.ALWAYS_BLOCKING_DOWNLOAD_STATUSES.includes(download.status)) {
 				return true;
+			}
+
+			// Recently failed downloads block re-grabs to prevent rapid grab-fail cycles.
+			if (download.status === 'failed') {
+				return this.isRecentlyFailed(download.lastAttemptAt);
 			}
 
 			// Legacy/active torrent states: only block if import has not happened yet.
@@ -296,15 +310,17 @@ export class MonitoringSearchService {
 			.select({
 				episodeIds: downloadQueue.episodeIds,
 				status: downloadQueue.status,
-				importedAt: downloadQueue.importedAt
+				importedAt: downloadQueue.importedAt,
+				lastAttemptAt: downloadQueue.lastAttemptAt
 			})
 			.from(downloadQueue)
-			.where(inArray(downloadQueue.status, this.BLOCKING_DOWNLOAD_STATUSES));
+			.where(inArray(downloadQueue.status, [...this.BLOCKING_DOWNLOAD_STATUSES, 'failed']));
 
 		const activeEpisodeIds = new Set<string>();
 		for (const download of activeDownloads) {
 			const isBlocking =
 				this.ALWAYS_BLOCKING_DOWNLOAD_STATUSES.includes(download.status) ||
+				(download.status === 'failed' && this.isRecentlyFailed(download.lastAttemptAt)) ||
 				((download.status === 'paused' || download.status === 'seeding') && !download.importedAt);
 
 			if (!isBlocking) {

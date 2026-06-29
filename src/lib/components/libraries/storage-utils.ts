@@ -1,9 +1,18 @@
 import * as m from '$lib/paraglide/messages.js';
 import { formatDisplayDate } from '$lib/utils/format.js';
 
+export function libraryHref(
+	item: Pick<LibraryBreakdownItem, 'mediaType' | 'slug' | 'isDefault'>
+): string {
+	const base = item.mediaType === 'movie' ? '/library/movies' : '/library/tv';
+	return item.isDefault ? base : `${base}?library=${item.slug}`;
+}
+
 export type LibraryBreakdownItem = {
 	id: string;
 	name: string;
+	slug: string;
+	isDefault: boolean;
 	mediaType: string;
 	mediaSubType: string;
 	itemCount: number;

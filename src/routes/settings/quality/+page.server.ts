@@ -54,6 +54,7 @@ export const load: PageServerLoad = async ({ url }) => {
 
 		return {
 			...p,
+			preventDowngrades: dbProfile?.preventDowngrades ?? p.preventDowngrades,
 			movieMinSizeGb: toNullableNumber(dbProfile?.movieMinSizeGb),
 			movieMaxSizeGb: toNullableNumber(dbProfile?.movieMaxSizeGb),
 			episodeMinSizeMb: toNullableNumber(dbProfile?.episodeMinSizeMb),
