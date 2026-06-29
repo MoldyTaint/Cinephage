@@ -112,6 +112,10 @@ export class CookieStore {
 			updatedAt: new Date()
 		});
 
+		// Skip DB persist for ephemeral test indexers — they have no row in `indexers`
+		// so inserting into `indexerStatus` would violate the FK constraint.
+		if (indexerId.startsWith('test-')) return;
+
 		// Persist to database
 		try {
 			// Check if record exists
