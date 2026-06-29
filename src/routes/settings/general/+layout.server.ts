@@ -1,4 +1,5 @@
 import type { LayoutServerLoad } from './$types';
+import type { LibraryBreakdownItem } from '$lib/components/libraries/storage-utils.js';
 import { sql } from 'drizzle-orm';
 import { getRootFolderService } from '$lib/server/downloadClients/RootFolderService';
 import { getEffectiveAnimeRootFolderEnforcement } from '$lib/server/library/anime-root-enforcement-settings.js';
@@ -17,8 +18,6 @@ import {
 type StorageBreakdownItem = {
 	id: string;
 	name: string;
-	slug?: string;
-	isDefault?: boolean;
 	mediaType: 'movie' | 'tv';
 	mediaSubType: 'standard' | 'anime';
 	usedBytes: number;
@@ -203,7 +202,7 @@ export const load: LayoutServerLoad = async () => {
 		});
 	}
 
-	const libraryBreakdown: StorageBreakdownItem[] = libraries.map((library) => {
+	const libraryBreakdown: LibraryBreakdownItem[] = libraries.map((library) => {
 		const usage = usageByLibrary.get(library.id) ?? { usedBytes: 0, itemCount: 0 };
 		const unmatchedCount = (library.rootFolders ?? []).reduce(
 			(sum, folder) => sum + (unmatchedByRootFolderMap.get(folder.id) ?? 0),
