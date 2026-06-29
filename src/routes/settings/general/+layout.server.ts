@@ -17,6 +17,8 @@ import {
 type StorageBreakdownItem = {
 	id: string;
 	name: string;
+	slug?: string;
+	isDefault?: boolean;
 	mediaType: 'movie' | 'tv';
 	mediaSubType: 'standard' | 'anime';
 	usedBytes: number;
@@ -216,6 +218,8 @@ export const load: LayoutServerLoad = async () => {
 		return {
 			id: library.id,
 			name: library.name,
+			slug: library.slug,
+			isDefault: library.isDefault,
 			mediaType: library.mediaType,
 			mediaSubType: library.mediaSubType,
 			usedBytes: usage.usedBytes,

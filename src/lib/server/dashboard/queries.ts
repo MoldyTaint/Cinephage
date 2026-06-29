@@ -182,7 +182,10 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 				WHERE rf.id = ${series.rootFolderId} AND rf.media_type != 'tv'
 			)
 		`),
-		db.select({ path: rootFolders.path }).from(rootFolders).where(eq(rootFolders.readOnly, false)),
+		db
+			.select({ path: rootFolders.path, freeSpaceBytes: rootFolders.freeSpaceBytes })
+			.from(rootFolders)
+			.where(eq(rootFolders.readOnly, false)),
 		db.select({ count: count() }).from(indexers),
 		db.select({ count: count() }).from(downloadClients),
 		db.select({ count: count() }).from(rootFolders),
@@ -192,19 +195,22 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 	// Deduplicate root folder free space by filesystem device ID so folders
 	// sharing the same physical volume are only counted once.
 	const freeSpaceByDevice = new Map<number, number>();
+	let fallbackFreeBytes = 0;
 	await Promise.all(
-		rootFolderPathsResult.map(async ({ path }) => {
+		rootFolderPathsResult.map(async ({ path, freeSpaceBytes }) => {
 			try {
 				const [fileStat, fsStat] = await Promise.all([stat(path), statfs(path)]);
 				if (!freeSpaceByDevice.has(fileStat.dev)) {
 					freeSpaceByDevice.set(fileStat.dev, fsStat.bfree * fsStat.bsize);
 				}
 			} catch {
-				// Path inaccessible — skip
+				// Path inaccessible — fall back to stored value from DB
+				fallbackFreeBytes += freeSpaceBytes ?? 0;
 			}
 		})
 	);
-	const totalFreeBytes = [...freeSpaceByDevice.values()].reduce((sum, v) => sum + v, 0);
+	const totalFreeBytes =
+		[...freeSpaceByDevice.values()].reduce((sum, v) => sum + v, 0) + fallbackFreeBytes;
 
 	// Only sequential step: TMDB availability lookup (depends on missingMoviesForAvailability)
 	const missingMovieCounts = await computeMissingMovieAvailabilityCounts(
