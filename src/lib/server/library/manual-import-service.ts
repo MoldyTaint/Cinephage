@@ -1269,8 +1269,8 @@ export class ManualImportService {
 	): Promise<void> {
 		await ensureDirectory(dirname(destinationPath));
 		const transferResult = await transferFileWithMode(sourcePath, destinationPath, {
-			importMode: ImportMode.HardlinkOrCopy,
-			canMoveFiles: false,
+			importMode: ImportMode.Auto,
+			canMoveFiles: true,
 			preserveSymlinks
 		});
 
