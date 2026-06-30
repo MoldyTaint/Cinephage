@@ -19,8 +19,7 @@ export const ACTIVE_TAB_STATUSES: NonNullable<FiltersType['status']>[] = [
 	'all',
 	'downloading',
 	'seeding',
-	'paused',
-	'failed'
+	'paused'
 ];
 
 export const HISTORY_TAB_STATUSES: NonNullable<FiltersType['status']>[] = [

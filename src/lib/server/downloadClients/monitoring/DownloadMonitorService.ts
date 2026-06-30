@@ -18,7 +18,7 @@ import {
 	movies,
 	episodes
 } from '$lib/server/db/schema';
-import { eq, and, inArray, not, notInArray } from 'drizzle-orm';
+import { eq, and, inArray, not, notInArray, desc } from 'drizzle-orm';
 import { getDownloadClientManager } from '../DownloadClientManager';
 import { mapClientPathToLocal } from './PathMapping';
 import { extractInfoHash } from '../utils/hashUtils';
@@ -44,6 +44,7 @@ import {
 	type QueueEvent
 } from '$lib/types/queue';
 import { parseEpisodePointerFromTitle } from '$lib/server/downloads/episode-pointer.js';
+import { activityStreamEvents } from '$lib/server/activity/ActivityStreamEvents.js';
 
 // Import service is loaded lazily to avoid circular dependencies
 let importServiceInstance: import('../import').ImportService | null = null;
@@ -931,16 +932,19 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			return;
 		}
 
-		// Get queue items that need polling (exclude terminal, post-import, and failed statuses)
-		// Post-import items are handled by removeCompletedDownloads(), not regular polling
+		// Get queue items that need polling (exclude terminal and post-import statuses).
+		// Failed items are intentionally kept in polling so that transient errors
+		// (e.g. tracker HTTP 500) that self-resolve in the download client are
+		// detected and the status is restored to downloading/completed automatically.
+		// handleMissingDownload() has a safe guard that no-ops for failed items
+		// that are no longer present in the client.
 		const queueItems = await db
 			.select()
 			.from(downloadQueue)
 			.where(
 				and(
 					not(inArray(downloadQueue.status, TERMINAL_STATUSES)),
-					not(inArray(downloadQueue.status, POST_IMPORT_STATUSES)),
-					not(eq(downloadQueue.status, 'failed'))
+					not(inArray(downloadQueue.status, POST_IMPORT_STATUSES))
 				)
 			);
 
@@ -1333,9 +1337,38 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			updates.lastAttemptAt = now;
 		}
 
+		// Clear error state when a previously-failed download recovers
+		// (e.g. tracker HTTP 5xx resolved and qBittorrent resumes the torrent)
+		if (queueItem.status === 'failed' && newStatus !== 'failed') {
+			updates.errorMessage = null;
+			updates.lastAttemptAt = null;
+		}
+
 		// Only update if something changed
 		if (statusChanged || progressChanged || pathChanged) {
 			await db.update(downloadQueue).set(updates).where(eq(downloadQueue.id, queueItem.id));
+
+			// When a failed download recovers, remove the failed history record so it
+			// no longer appears in Activity > History as a permanent failure.
+			if (queueItem.status === 'failed' && newStatus !== 'failed' && queueItem.addedAt) {
+				await db
+					.delete(downloadHistory)
+					.where(
+						and(
+							eq(downloadHistory.status, 'failed'),
+							eq(downloadHistory.title, queueItem.title),
+							eq(downloadHistory.grabbedAt, queueItem.addedAt)
+						)
+					);
+				logger.info(
+					{ title: queueItem.title, newStatus },
+					'Download recovered from failed state, removed failed history record'
+				);
+				activityStreamEvents.emitRefresh({
+					action: 'download_recovered',
+					timestamp: now
+				});
+			}
 
 			// Emit update event
 			const updatedItem = await this.getQueueItem(queueItem.id);
@@ -2796,6 +2829,165 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				'Failed to create failed download history record'
 			);
 		}
+	}
+
+	/**
+	 * Re-link downloads that are active in the client but have no active queue entry,
+	 * by matching against failed download history records (which carry the media
+	 * association from the original grab).
+	 *
+	 * This recovers downloads where the queue entry was cleared (e.g. via "Clear
+	 * Failed") while the torrent/usenet item was still running in the client.
+	 */
+	async relinkOrphanedDownloads(): Promise<{
+		relinked: { title: string; hash: string; mediaType: string }[];
+		skipped: { title: string; hash: string; reason: string }[];
+	}> {
+		const result = {
+			relinked: [] as { title: string; hash: string; mediaType: string }[],
+			skipped: [] as { title: string; hash: string; reason: string }[]
+		};
+
+		const manager = getDownloadClientManager();
+		const enabledClients = await manager.getEnabledClients();
+
+		if (enabledClients.length === 0) return result;
+
+		// Build set of all hashes currently tracked in the active queue
+		const activeQueueItems = await db
+			.select({ downloadId: downloadQueue.downloadId, infoHash: downloadQueue.infoHash })
+			.from(downloadQueue)
+			.where(not(inArray(downloadQueue.status, TERMINAL_STATUSES)));
+
+		const trackedIds = new Set<string>();
+		for (const item of activeQueueItems) {
+			trackedIds.add(item.downloadId.toLowerCase());
+			if (item.infoHash) trackedIds.add(item.infoHash.toLowerCase());
+		}
+
+		for (const { client, instance } of enabledClients) {
+			let downloads: DownloadInfo[];
+			try {
+				downloads = await instance.getDownloads();
+			} catch (error) {
+				logger.warn(
+					{
+						clientName: client.name,
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'Failed to fetch downloads for orphan relink'
+				);
+				continue;
+			}
+
+			for (const download of downloads) {
+				const hashLower = download.hash.toLowerCase();
+
+				// Already tracked in active queue
+				if (trackedIds.has(hashLower)) {
+					result.skipped.push({
+						title: download.name,
+						hash: download.hash,
+						reason: 'already_tracked'
+					});
+					continue;
+				}
+
+				// Only consider downloads in Cinephage-managed categories
+				const isOurCategory =
+					!client.tvCategory ||
+					download.category === client.tvCategory ||
+					download.category === client.movieCategory;
+
+				if (!isOurCategory) continue;
+
+				// Look up a failed history record for this exact download hash
+				const [historyRecord] = await db
+					.select()
+					.from(downloadHistory)
+					.where(
+						and(eq(downloadHistory.downloadId, download.hash), eq(downloadHistory.status, 'failed'))
+					)
+					.orderBy(desc(downloadHistory.grabbedAt))
+					.limit(1);
+
+				if (!historyRecord) {
+					result.skipped.push({
+						title: download.name,
+						hash: download.hash,
+						reason: 'no_history_match'
+					});
+					continue;
+				}
+
+				// Re-create the queue entry from history data
+				const now = new Date().toISOString();
+				const id = randomUUID();
+
+				const outputPath = mapClientPathToLocal(
+					download.contentPath || download.savePath,
+					client.downloadPathLocal,
+					client.downloadPathRemote ?? null,
+					client.tempPathLocal,
+					client.tempPathRemote
+				);
+
+				await db.insert(downloadQueue).values({
+					id,
+					downloadClientId: client.id,
+					downloadId: download.hash,
+					infoHash: download.hash,
+					title: historyRecord.title,
+					indexerId: historyRecord.indexerId,
+					indexerName: historyRecord.indexerName,
+					protocol: historyRecord.protocol || 'torrent',
+					movieId: historyRecord.movieId,
+					seriesId: historyRecord.seriesId,
+					episodeIds: historyRecord.episodeIds,
+					seasonNumber: historyRecord.seasonNumber,
+					quality: historyRecord.quality,
+					size: download.size || historyRecord.size,
+					releaseGroup: historyRecord.releaseGroup,
+					status: 'queued',
+					progress: download.progress.toString(),
+					clientDownloadPath: download.contentPath || download.savePath,
+					outputPath,
+					addedAt: historyRecord.grabbedAt || now,
+					isAutomatic: false,
+					isUpgrade: false
+				});
+
+				// Remove the failed history record — it will be recreated if the
+				// download fails again, or a success record created on import.
+				await db.delete(downloadHistory).where(eq(downloadHistory.id, historyRecord.id));
+
+				const relinkedItem = await this.getQueueItem(id);
+				if (relinkedItem) {
+					this.emit('queue:added', relinkedItem);
+					this.emitSSE('queue:added', relinkedItem);
+				}
+
+				const mediaType = historyRecord.movieId ? 'movie' : 'tv';
+				result.relinked.push({ title: historyRecord.title, hash: download.hash, mediaType });
+
+				logger.info(
+					{ title: historyRecord.title, hash: download.hash, mediaType, queueId: id },
+					'Re-linked orphaned download from history'
+				);
+			}
+		}
+
+		// Force immediate poll to pick up re-linked items and update their statuses
+		if (result.relinked.length > 0) {
+			setTimeout(() => this.forcePoll(), 500);
+		}
+
+		logger.info(
+			{ relinked: result.relinked.length, skipped: result.skipped.length },
+			'Orphan relink complete'
+		);
+
+		return result;
 	}
 }
 

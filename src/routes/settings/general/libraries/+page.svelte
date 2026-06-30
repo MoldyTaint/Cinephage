@@ -229,10 +229,7 @@
 	<title>{m.nav_libraries()}</title>
 </svelte:head>
 
-<SettingsPage
-	title={m.nav_libraries()}
-	subtitle={m.settings_general_librariesDescription()}
->
+<SettingsPage title={m.nav_libraries()} subtitle={m.settings_general_librariesDescription()}>
 	{#snippet actions()}
 		<button
 			type="button"

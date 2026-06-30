@@ -37,6 +37,14 @@ export async function retryQueueItem(id: string): Promise<ApiResponse> {
 	return apiPost(`/api/queue/${id}/retry`);
 }
 
+export async function refreshQueue(): Promise<ApiResponse> {
+	return apiPost('/api/queue/refresh');
+}
+
+export async function relinkOrphans(): Promise<ApiResponse> {
+	return apiPost('/api/queue/relink-orphans');
+}
+
 function buildQuery(params: Record<string, string>): string {
 	const entries = Object.entries(params);
 	return entries.length ? '?' + new URLSearchParams(params).toString() : '';

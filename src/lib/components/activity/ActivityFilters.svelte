@@ -166,8 +166,7 @@
 		{ value: 'all', label: m.common_all() },
 		{ value: 'downloading', label: m.status_downloading() },
 		{ value: 'seeding', label: m.status_seeding() },
-		{ value: 'paused', label: m.status_paused() },
-		{ value: 'failed', label: m.status_failed() }
+		{ value: 'paused', label: m.status_paused() }
 	] as const;
 
 	const historyStatusOptions = [

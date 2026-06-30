@@ -125,7 +125,6 @@
 	<title>{m.nav_blockedMedia()}</title>
 </svelte:head>
 
-
 <SettingsPage title={m.blockedMedia_pageTitle()} subtitle={m.blockedMedia_pageSubtitle()}>
 	<div class="mb-4 flex flex-wrap items-center gap-2">
 		<div class="form-control relative w-full sm:w-56">

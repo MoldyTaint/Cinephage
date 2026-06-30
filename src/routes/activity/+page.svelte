@@ -16,7 +16,9 @@
 		pauseQueueItem,
 		resumeQueueItem,
 		removeQueueItem as removeQueueItemApi,
-		retryQueueItem as retryQueueItemApi
+		retryQueueItem as retryQueueItemApi,
+		refreshQueue,
+		relinkOrphans
 	} from '$lib/api/downloads.js';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import ActivityTable from '$lib/components/activity/ActivityTable.svelte';
@@ -94,6 +96,8 @@
 	let activeConfirmOpen = $state(false);
 	let activeConfirmAction = $state<ActiveBulkAction | null>(null);
 	let activeBulkLoading = $state(false);
+	let refreshQueueLoading = $state(false);
+	let relinkOrphansLoading = $state(false);
 
 	// Filter state - initialize from server data
 	let filters = $state<FiltersType>(createDefaultFilters());
@@ -228,7 +232,18 @@
 		getSelectedQueueIdsByStatus(['downloading', 'seeding'])
 	);
 	const selectedPausedQueueIds = $derived.by(() => getSelectedQueueIdsByStatus(['paused']));
-	const selectedFailedQueueIds = $derived.by(() => getSelectedQueueIdsByStatus(['failed']));
+
+	// Failed downloads live in the History tab. Retry/Remove operate on the
+	// queue item linked from each selected history record via queueItemId.
+	const selectedHistoryFailedQueueIds = $derived.by(() => {
+		const ids: string[] = [];
+		for (const activity of activities) {
+			if (!selectedHistoryIds.has(activity.id)) continue;
+			if (activity.status !== 'failed' || !activity.queueItemId) continue;
+			if (!ids.includes(activity.queueItemId)) ids.push(activity.queueItemId);
+		}
+		return ids;
+	});
 	const selectableHistoryIds = $derived.by(() =>
 		filteredActivities
 			.filter((activity) => isHistoryActivity(activity))
@@ -257,7 +272,7 @@
 				return selectedPausedQueueIds;
 			case 'retry_failed':
 			case 'remove_failed':
-				return selectedFailedQueueIds;
+				return selectedHistoryFailedQueueIds;
 		}
 	}
 
@@ -700,6 +715,43 @@
 		}
 	}
 
+	async function handleRefreshQueue(): Promise<void> {
+		if (refreshQueueLoading) return;
+		refreshQueueLoading = true;
+		try {
+			await refreshQueue();
+			toasts.success(m.toast_activity_refreshed());
+			await refreshActivityData({ force: true });
+		} catch {
+			toasts.error(m.toast_activity_failedToRefresh());
+		} finally {
+			refreshQueueLoading = false;
+		}
+	}
+
+	async function handleRelinkOrphans(): Promise<void> {
+		if (relinkOrphansLoading) return;
+		relinkOrphansLoading = true;
+		try {
+			const result = (await relinkOrphans()) as {
+				success: boolean;
+				relinked?: number;
+				error?: string;
+			};
+			if (!result.success) throw new Error(result.error);
+			if ((result.relinked ?? 0) > 0) {
+				toasts.success(m.toast_activity_relinked({ count: result.relinked! }));
+			} else {
+				toasts.info(m.toast_activity_relinkNone());
+			}
+			await refreshActivityData({ force: true });
+		} catch {
+			toasts.error(m.toast_activity_failedToRelink());
+		} finally {
+			relinkOrphansLoading = false;
+		}
+	}
+
 	async function loadHistorySettings(): Promise<void> {
 		settingsLoading = true;
 		try {
@@ -863,9 +915,13 @@
 		activeConfirmAction ? getActiveBulkActionQueueIds(activeConfirmAction).length : 0
 	);
 
-	const activeConfirmSkippedCount = $derived.by(() =>
-		Math.max(0, selectedActiveIds.size - activeConfirmTargetCount)
-	);
+	const activeConfirmSkippedCount = $derived.by(() => {
+		const isHistoryFailedAction =
+			(activeConfirmAction === 'retry_failed' || activeConfirmAction === 'remove_failed') &&
+			activityTab === 'history';
+		const selectedCount = isHistoryFailedAction ? selectedHistoryIds.size : selectedActiveIds.size;
+		return Math.max(0, selectedCount - activeConfirmTargetCount);
+	});
 
 	const activeConfirmTitle = $derived.by((): string => {
 		switch (activeConfirmAction) {
@@ -1072,7 +1128,14 @@
 	}
 
 	function openActiveConfirm(action: ActiveBulkAction): void {
-		if (activityTab !== 'active' || !activeSelectionMode || activeBulkLoading) return;
+		if (activeBulkLoading) return;
+		if (action === 'pause' || action === 'resume') {
+			if (activityTab !== 'active' || !activeSelectionMode) return;
+		} else {
+			// retry_failed / remove_failed work from the History tab (selection mode)
+			if (activityTab === 'active' && !activeSelectionMode) return;
+			if (activityTab === 'history' && !selectionMode) return;
+		}
 		if (getActiveBulkActionQueueIds(action).length === 0) return;
 
 		activeConfirmAction = action;
@@ -1164,7 +1227,8 @@
 		}
 
 		if (action === 'retry_failed' || action === 'remove_failed') {
-			selectedActiveIds.clear();
+			if (activityTab === 'history') selectedHistoryIds.clear();
+			else selectedActiveIds.clear();
 		}
 	}
 
@@ -1435,20 +1499,6 @@
 						>
 							{m.activity_queue_resumeCount({ count: selectedPausedQueueIds.length })}
 						</button>
-						<button
-							class="btn btn-xs btn-warning"
-							onclick={() => openActiveConfirm('retry_failed')}
-							disabled={activeBulkLoading || selectedFailedQueueIds.length === 0}
-						>
-							{m.activity_queue_retryFailedCount({ count: selectedFailedQueueIds.length })}
-						</button>
-						<button
-							class="btn btn-xs btn-error"
-							onclick={() => openActiveConfirm('remove_failed')}
-							disabled={activeBulkLoading || selectedFailedQueueIds.length === 0}
-						>
-							{m.activity_queue_removeFailedCount({ count: selectedFailedQueueIds.length })}
-						</button>
 						<div class="ml-auto"></div>
 						<button
 							class="btn btn-ghost btn-xs"
@@ -1463,6 +1513,28 @@
 						<span class="text-xs text-base-content/60">
 							{m.activity_queue_bulkHint()}
 						</span>
+						<div class="ml-auto"></div>
+						<div class="divider m-0 divider-horizontal h-6"></div>
+						<button
+							class="btn btn-ghost btn-xs"
+							onclick={handleRefreshQueue}
+							disabled={refreshQueueLoading}
+						>
+							{#if refreshQueueLoading}
+								<Loader2 class="h-3 w-3 animate-spin" />
+							{/if}
+							{m.activity_queue_refresh()}
+						</button>
+						<button
+							class="btn btn-ghost btn-xs"
+							onclick={handleRelinkOrphans}
+							disabled={relinkOrphansLoading}
+						>
+							{#if relinkOrphansLoading}
+								<Loader2 class="h-3 w-3 animate-spin" />
+							{/if}
+							{m.activity_queue_relinkOrphans()}
+						</button>
 					{/if}
 				</div>
 			{/if}
@@ -1533,6 +1605,23 @@
 						{/if}
 						{m.activity_history_deleteSelectedCount({ count: selectedHistoryIds.size })}
 					</button>
+					{#if selectedHistoryFailedQueueIds.length > 0}
+						<div class="divider m-0 divider-horizontal h-6"></div>
+						<button
+							class="btn btn-xs btn-warning"
+							onclick={() => openActiveConfirm('retry_failed')}
+							disabled={activeBulkLoading}
+						>
+							{m.activity_queue_retryFailedCount({ count: selectedHistoryFailedQueueIds.length })}
+						</button>
+						<button
+							class="btn btn-xs btn-error"
+							onclick={() => openActiveConfirm('remove_failed')}
+							disabled={activeBulkLoading}
+						>
+							{m.activity_queue_removeFailedCount({ count: selectedHistoryFailedQueueIds.length })}
+						</button>
+					{/if}
 				{/if}
 				<div class="ml-auto"></div>
 				<button

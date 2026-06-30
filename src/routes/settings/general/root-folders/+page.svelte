@@ -190,10 +190,7 @@
 	<title>{m.nav_rootFolders()}</title>
 </svelte:head>
 
-<SettingsPage
-	title={m.nav_rootFolders()}
-	subtitle={m.settings_general_rootFoldersDescription()}
->
+<SettingsPage title={m.nav_rootFolders()} subtitle={m.settings_general_rootFoldersDescription()}>
 	{#snippet actions()}
 		<button
 			type="button"

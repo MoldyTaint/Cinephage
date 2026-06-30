@@ -201,7 +201,6 @@
 	<title>{m.nav_blockedReleases()}</title>
 </svelte:head>
 
-
 <SettingsPage title={m.blocklist_pageTitle()} subtitle={m.blocklist_pageSubtitle()}>
 	{#snippet actions()}
 		<button class="btn gap-1 btn-ghost btn-sm" onclick={() => (confirmPurgeExpiredOpen = true)}>

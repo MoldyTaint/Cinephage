@@ -167,7 +167,6 @@
 	<title>{m.nav_blockedKeywords()}</title>
 </svelte:head>
 
-
 <SettingsPage
 	title="Blocked Keywords"
 	subtitle="Content matching these TMDB keywords will be hidden from discover and smartlist results."

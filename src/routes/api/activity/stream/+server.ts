@@ -125,7 +125,10 @@ export const GET: RequestHandler = async () => {
 				if (!queueItem) return;
 
 				const prevStatus = lastSentStatus.get(queueItem.id);
-				const statusChanged = prevStatus !== undefined && prevStatus !== queueItem.status;
+				// Treat unknown-previous-status as changed so first update for any
+				// item (e.g. a failed download that recovered since page load) sends
+				// a full activity payload instead of a silent progress-only event.
+				const statusChanged = prevStatus === undefined || prevStatus !== queueItem.status;
 
 				if (statusChanged) {
 					// Status actually changed — send the full activity payload so
@@ -222,14 +225,20 @@ export const GET: RequestHandler = async () => {
 		// Seed active in-progress downloads so activity rows are visible
 		// even if queue:added happened before subscribe.  Send as a single
 		// batch event instead of N individual activity:new messages.
+		// We also populate lastSentStatus for ALL non-terminal items (including
+		// failed/paused/etc.) so that onQueueUpdated can detect status changes
+		// correctly when a download recovers from a failed state.
 		const sendInitialQueueItems = async () => {
 			try {
 				const queueItems = await downloadMonitor.getQueue();
 				const seedActivities: UnifiedActivity[] = [];
 				for (const queueItem of queueItems) {
-					const activity = await queueItemToActivity(queueItem as QueueItem);
+					const qi = queueItem as QueueItem;
+					// Always register the current status so status-change detection works
+					lastSentStatus.set(qi.id, qi.status);
+					// Only seed downloading/seeding items as visible activity rows
+					const activity = await queueItemToActivity(qi);
 					if (activity.status !== 'downloading' && activity.status !== 'seeding') continue;
-					lastSentStatus.set((queueItem as QueueItem).id, (queueItem as QueueItem).status);
 					seedActivities.push(activity);
 				}
 				if (seedActivities.length > 0) {
