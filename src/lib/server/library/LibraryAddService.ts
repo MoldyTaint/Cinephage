@@ -10,7 +10,7 @@
  */
 
 import { db } from '$lib/server/db/index.js';
-import { rootFolders, languageProfiles } from '$lib/server/db/schema.js';
+import { rootFolders, languageProfiles, series } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
 import { qualityFilter } from '$lib/server/quality/index.js';
@@ -241,7 +241,8 @@ export async function triggerMovieSearch(params: {
 				imdbId,
 				title,
 				year,
-				scoringProfileId
+				scoringProfileId,
+				bypassMonitoring: true
 			});
 			return {
 				searched: 1,
@@ -271,7 +272,8 @@ export async function triggerMovieSearch(params: {
 				imdbId,
 				title,
 				year,
-				scoringProfileId
+				scoringProfileId,
+				bypassMonitoring: true
 			})
 			.catch((err) => {
 				logger.warn(
@@ -297,19 +299,50 @@ export async function triggerSeriesSearch(params: {
 }): Promise<SearchOnAddResult> {
 	const { seriesId, tmdbId, title } = params;
 
-	const worker = new SearchWorker({
-		mediaType: 'series',
-		mediaId: seriesId,
-		title,
-		tmdbId,
-		searchFn: async () => {
-			const result = await searchOnAdd.searchForMissingEpisodes(seriesId);
+	async function runSeriesSearch(): Promise<{ searched: number; found: number; grabbed: number }> {
+		const result = await searchOnAdd.searchForMissingEpisodes(seriesId);
+		if (result.summary.searched > 0) {
 			return {
 				searched: result.summary.searched,
 				found: result.summary.found,
 				grabbed: result.summary.grabbed
 			};
 		}
+
+		// No aired episodes found (e.g. newly-added series where all episodes are
+		// future-dated). Fall back to a broader series/pack search so the user
+		// gets a result even before individual episodes have aired.
+		logger.info(
+			{ seriesId, tmdbId, title },
+			'[LibraryAddService] No aired episodes for search-on-add; falling back to series-level search'
+		);
+		const seriesData = await db.query.series.findFirst({ where: eq(series.id, seriesId) });
+		if (!seriesData) {
+			return { searched: 0, found: 0, grabbed: 0 };
+		}
+		const broadResult = await searchOnAdd.searchForSeries({
+			seriesId,
+			tmdbId: seriesData.tmdbId,
+			tvdbId: seriesData.tvdbId,
+			imdbId: seriesData.imdbId,
+			title: seriesData.title,
+			year: seriesData.year ?? undefined,
+			scoringProfileId: seriesData.scoringProfileId ?? undefined,
+			bypassMonitoring: true
+		});
+		return {
+			searched: 1,
+			found: broadResult.success ? 1 : 0,
+			grabbed: broadResult.success ? 1 : 0
+		};
+	}
+
+	const worker = new SearchWorker({
+		mediaType: 'series',
+		mediaId: seriesId,
+		title,
+		tmdbId,
+		searchFn: runSeriesSearch
 	});
 
 	try {
@@ -325,7 +358,7 @@ export async function triggerSeriesSearch(params: {
 			'[LibraryAddService] Could not create search worker, running directly'
 		);
 
-		searchOnAdd.searchForMissingEpisodes(seriesId).catch((err) => {
+		runSeriesSearch().catch((err) => {
 			logger.warn(
 				{
 					seriesId,

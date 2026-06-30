@@ -400,9 +400,9 @@ export const POST: RequestHandler = async (event) => {
 			}
 		}
 
-		// Trigger search if requested and series is monitored (shared logic)
+		// Trigger search if explicitly requested regardless of monitoring state
 		let searchTriggered = false;
-		if (shouldSearch && monitored && monitorType !== 'none') {
+		if (shouldSearch) {
 			const searchResult = await triggerSeriesSearch({
 				seriesId: newSeries.id,
 				tmdbId,

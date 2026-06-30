@@ -183,7 +183,7 @@
 
 	const willBeMonitored = $derived(mediaType === 'tv' ? monitorType !== 'none' : monitored);
 
-	const willSearchOnAdd = $derived(searchOnAdd && willBeMonitored);
+	const willSearchOnAdd = $derived(searchOnAdd);
 
 	$effect(() => {
 		if (open) {
