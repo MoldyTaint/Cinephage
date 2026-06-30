@@ -1528,6 +1528,14 @@ export const libraryScanSchema = z
 /**
  * Schema for manual import execution.
  */
+export const importMethodSchema = z.enum(['move', 'copy']);
+export type ImportMethod = z.infer<typeof importMethodSchema>;
+
+export const fileManagementSchema = z.object({
+	importMode: importMethodSchema.default('move')
+});
+export type FileManagementSettings = z.infer<typeof fileManagementSchema>;
+
 export const manualImportSchema = z
 	.object({
 		sourcePath: z.string().min(1).optional(),
@@ -1538,7 +1546,8 @@ export const manualImportSchema = z
 		rootFolderId: z.string().optional(),
 		libraryId: z.string().optional(),
 		seasonNumber: z.number().int().min(0).optional(),
-		episodeNumber: z.number().int().min(1).optional()
+		episodeNumber: z.number().int().min(1).optional(),
+		importMode: importMethodSchema.optional()
 	})
 	.superRefine((value, ctx) => {
 		if (!value.sourcePath && !value.selectedFilePath) {

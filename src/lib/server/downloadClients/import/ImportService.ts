@@ -56,6 +56,7 @@ import {
 } from '$lib/config/constants';
 import { ImportWorker, workerManager } from '$lib/server/workers';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
+import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
 import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import {
@@ -610,44 +611,49 @@ export class ImportService extends EventEmitter {
 			// Fetch download info from client to determine if we can move files
 			// Seeding torrents can't be moved (canMoveFiles=false) - must use hardlink/copy
 			// Usenet downloads can always be moved (canMoveFiles=true)
-			let canMoveFiles = true; // Default to true (safe for usenet)
+			// The global "Copy" setting overrides to always keep source files.
+			const { importMode: globalImportMode } = await getFileManagementSettings();
+			let canMoveFiles = globalImportMode !== 'copy'; // copy mode = never delete source
 
-			if (client) {
-				try {
-					const clientManager = getDownloadClientManager();
-					const clientInstance = await clientManager.getClientInstance(client.id);
+			if (globalImportMode !== 'copy') {
+				// Only check the download client's seeding state when the user wants moves
+				if (client) {
+					try {
+						const clientManager = getDownloadClientManager();
+						const clientInstance = await clientManager.getClientInstance(client.id);
 
-					if (clientInstance) {
-						const downloadId = queueItem.infoHash || queueItem.downloadId;
-						const downloadInfo = await clientInstance.getDownload(downloadId);
+						if (clientInstance) {
+							const downloadId = queueItem.infoHash || queueItem.downloadId;
+							const downloadInfo = await clientInstance.getDownload(downloadId);
 
-						if (downloadInfo) {
-							canMoveFiles = downloadInfo.canMoveFiles;
-							logger.debug(
-								{
-									canMoveFiles,
-									status: downloadInfo.status,
-									protocol: queueItem.protocol,
-									downloadId
-								},
-								'Determined import mode from download client'
-							);
+							if (downloadInfo) {
+								canMoveFiles = downloadInfo.canMoveFiles;
+								logger.debug(
+									{
+										canMoveFiles,
+										status: downloadInfo.status,
+										protocol: queueItem.protocol,
+										downloadId
+									},
+									'Determined import mode from download client'
+								);
+							}
 						}
+					} catch (err) {
+						logger.warn(
+							{
+								error: err instanceof Error ? err.message : String(err),
+								queueItemId
+							},
+							'Failed to get download info for import mode detection, defaulting to hardlink'
+						);
+						// If we can't determine, prefer hardlink/copy (safer for seeding)
+						canMoveFiles = queueItem.protocol === 'usenet';
 					}
-				} catch (err) {
-					logger.warn(
-						{
-							error: err instanceof Error ? err.message : String(err),
-							queueItemId
-						},
-						'Failed to get download info for import mode detection, defaulting to hardlink'
-					);
-					// If we can't determine, prefer hardlink/copy (safer for seeding)
+				} else {
+					// No client info, use protocol to guess
 					canMoveFiles = queueItem.protocol === 'usenet';
 				}
-			} else {
-				// No client info, use protocol to guess
-				canMoveFiles = queueItem.protocol === 'usenet';
 			}
 
 			// Determine what to import based on linked media
@@ -862,7 +868,9 @@ export class ImportService extends EventEmitter {
 				? 'symlink'
 				: transferResult.mode === 'hardlink'
 					? 'hardlink'
-					: 'copy'
+					: transferResult.mode === 'move'
+						? 'move'
+						: 'copy'
 		);
 		worker.setDestinationPath(destPath);
 
@@ -1456,6 +1464,17 @@ export class ImportService extends EventEmitter {
 				error: transferResult.error
 			};
 		}
+
+		worker.fileTransferred(
+			basename(videoFile.path),
+			transferResult.mode === 'symlink'
+				? 'symlink'
+				: transferResult.mode === 'hardlink'
+					? 'hardlink'
+					: transferResult.mode === 'move'
+						? 'move'
+						: 'copy'
+		);
 
 		// Extract media info (skip STRM probing for streamer profile)
 		const allowStrmProbe = seriesData.scoringProfileId !== 'streamer';
