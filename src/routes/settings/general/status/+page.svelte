@@ -300,11 +300,11 @@
 </script>
 
 <svelte:head>
-	<title>Status</title>
+	<title>{m.nav_storageMaintenance()}</title>
 </svelte:head>
 
 <SettingsPage
-	title="Status"
+	title={m.nav_storageMaintenance()}
 	subtitle="Storage health, library maintenance, and media server analytics"
 >
 	{#snippet actions()}

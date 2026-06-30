@@ -7,6 +7,7 @@
 	import { createProgressiveRenderer } from '$lib/utils/progressive-render.svelte.ts';
 	import { formatBytes } from '$lib/utils/format';
 	import type { PageData } from './$types';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -64,7 +65,7 @@
 </script>
 
 <svelte:head>
-	<title>Media Explorer</title>
+	<title>{m.nav_mediaExplorer()}</title>
 </svelte:head>
 
 <SettingsPage

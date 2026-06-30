@@ -226,11 +226,11 @@
 </script>
 
 <svelte:head>
-	<title>{m.settings_general_tabLibraries()}</title>
+	<title>{m.nav_libraries()}</title>
 </svelte:head>
 
 <SettingsPage
-	title={m.settings_general_tabLibraries()}
+	title={m.nav_libraries()}
 	subtitle={m.settings_general_librariesDescription()}
 >
 	{#snippet actions()}

@@ -217,6 +217,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>{m.nav_languageProfiles()}</title>
+</svelte:head>
+
 <SettingsPage
 	title={m.nav_languageProfiles()}
 	subtitle={m.settings_integrations_languageProfiles_subtitle()}

@@ -187,11 +187,11 @@
 </script>
 
 <svelte:head>
-	<title>{m.settings_general_tabRootFolders()}</title>
+	<title>{m.nav_rootFolders()}</title>
 </svelte:head>
 
 <SettingsPage
-	title={m.settings_general_tabRootFolders()}
+	title={m.nav_rootFolders()}
 	subtitle={m.settings_general_rootFoldersDescription()}
 >
 	{#snippet actions()}

@@ -12,6 +12,7 @@
 	import { formatDisplayDate } from '$lib/utils/format.js';
 	import { SettingsPage } from '$lib/components/ui/settings';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface KeywordResult {
 		id: number;
@@ -161,6 +162,11 @@
 		loadBlockedKeywords();
 	});
 </script>
+
+<svelte:head>
+	<title>{m.nav_blockedKeywords()}</title>
+</svelte:head>
+
 
 <SettingsPage
 	title="Blocked Keywords"
