@@ -344,7 +344,7 @@ class LogHistoryService {
 				const filePath = getLogFilePath(new Date(entry.timestamp));
 				this.rotateIfNeeded(filePath);
 				await new Promise<void>((resolve, reject) => {
-					if (!this.stream) {
+					if (!this.stream || this.stream.destroyed || !this.stream.writable) {
 						reject(new Error('Log history stream is not available'));
 						return;
 					}
