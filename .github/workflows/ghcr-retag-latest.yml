@@ -205,5 +205,5 @@ jobs:
             echo "- Source tag: \`${SOURCE_TAG}\`"
             echo "- Source digest: \`${SOURCE_DIGEST}\`"
             echo "- New latest digest: \`${NEW_LATEST_DIGEST}\`"
-            echo "- Result: ✅ \`latest\` now points to \`${SOURCE_TAG}\`"
+            echo "- Result: \`latest\` now points to \`${SOURCE_TAG}\`"
           } >> "$GITHUB_STEP_SUMMARY"

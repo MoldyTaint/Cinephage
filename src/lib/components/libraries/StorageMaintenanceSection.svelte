@@ -13,7 +13,7 @@
 		formatTimestamp,
 		formatDuration,
 		getScanTone,
-		getServerTypeIcon,
+		getServerTypeBadgeClass,
 		getSyncStatusColor
 	} from './storage-utils.js';
 	import LibraryBreakdownTable from './LibraryBreakdownTable.svelte';
@@ -298,7 +298,7 @@
 		<div class="flex flex-wrap gap-2">
 			{#each serverStatuses as server (server.serverId)}
 				<span class="inline-flex items-center gap-1.5 text-xs text-base-content/70">
-					<span>{getServerTypeIcon(server.serverType)}</span>
+					<span class="badge badge-xs {getServerTypeBadgeClass(server.serverType)}"></span>
 					<span>{server.serverName}</span>
 					<span
 						class="badge badge-xs {getSyncStatusColor(server.lastSyncStatus, server.lastSyncAt)}"

@@ -67,9 +67,9 @@ async function main() {
 		await testTmdbPopularProvider();
 		await testTmdbListProvider();
 		await testProviderRegistry();
-		console.log('\n✅ All tests passed!');
+		console.log('\nAll tests passed!');
 	} catch (error) {
-		console.error('\n❌ Test failed:', error);
+		console.error('\nTest failed:', error);
 		process.exit(1);
 	}
 }

@@ -209,8 +209,13 @@ export function getScanTone(status: string | null | undefined): string {
 	return 'bg-base-300';
 }
 
-export function getServerTypeIcon(type: string): string {
-	return type === 'jellyfin' ? '🟣' : type === 'emby' ? '🟢' : '🟠';
+export function getServerTypeBadgeClass(type: string): string {
+	// DaisyUI semantic colors map to the original purple/green/orange server-type dots.
+	return type === 'jellyfin'
+		? 'badge-primary'
+		: type === 'emby'
+			? 'badge-success'
+			: 'badge-warning';
 }
 
 export function getSyncStatusColor(status: string | null, lastSyncAt: string | null): string {

@@ -844,9 +844,7 @@
 									{:else}
 										<div
 											class="flex h-full w-full items-center justify-center text-base-content/30"
-										>
-											<span class="text-2xl">🎬</span>
-										</div>
+										></div>
 									{/if}
 									{#if collMovie.hasFile}
 										<span
@@ -998,9 +996,7 @@
 									{:else}
 										<div
 											class="flex h-full w-full items-center justify-center text-base-content/30"
-										>
-											<span class="text-2xl">🎬</span>
-										</div>
+										></div>
 									{/if}
 									{#if collMovie.hasFile}
 										<span

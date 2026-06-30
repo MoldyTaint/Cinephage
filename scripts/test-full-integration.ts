@@ -54,7 +54,7 @@ async function testTmdbMetadata() {
 	const { tmdb } = await import('../src/lib/server/tmdb');
 
 	for (const test of TEST_CASES) {
-		console.log(`\n📺 ${test.name} (TMDB: ${test.tmdbId})`);
+		console.log(`\n ${test.name} (TMDB: ${test.tmdbId})`);
 
 		try {
 			if (test.type === 'tv') {
@@ -102,7 +102,7 @@ async function testAniListResolution() {
 	const animeTests = TEST_CASES.filter((t) => t.isAnime);
 
 	for (const test of animeTests) {
-		console.log(`\n🎌 ${test.name}`);
+		console.log(`\n ${test.name}`);
 
 		try {
 			// Get title from TMDB first (like the resolve endpoint does)
@@ -154,7 +154,7 @@ async function testProviderExtraction() {
 	];
 
 	for (const test of testCases) {
-		console.log(`\n🎬 ${test.name}`);
+		console.log(`\n ${test.name}`);
 
 		try {
 			// Fetch TMDB metadata (like resolve endpoint)
@@ -237,7 +237,7 @@ async function testAnimeKaiSpecific() {
 
 	// Test with Attack on Titan
 	const test = TEST_CASES.find((t) => t.name === 'Attack on Titan S1E1')!;
-	console.log(`\n🎌 Testing: ${test.name}`);
+	console.log(`\n Testing: ${test.name}`);
 
 	try {
 		// Get TMDB metadata
@@ -305,7 +305,7 @@ async function main() {
 		console.log('Integration test complete!');
 		console.log('='.repeat(70));
 	} catch (error) {
-		console.error('\n❌ Test failed with error:', error);
+		console.error('\n Test failed with error:', error);
 		process.exit(1);
 	}
 }

@@ -51,14 +51,14 @@ function parseSeasonEpisode(filename: string): { season: number; episode: number
 }
 
 async function main() {
-	console.log('🔧 Starting Library Repair...\n');
+	console.log(' Starting Library Repair...\n');
 
 	let totalFixed = 0;
 
 	// =====================================================
 	// Step 1: Remove duplicate episode_files
 	// =====================================================
-	console.log('📁 Step 1: Removing duplicate episode_files...');
+	console.log(' Step 1: Removing duplicate episode_files...');
 
 	// Find all duplicates grouped by series_id + relative_path
 	const allFiles = await db.select().from(episodeFiles);
@@ -89,13 +89,13 @@ async function main() {
 			}
 		}
 	}
-	console.log(`   ✅ Removed ${duplicatesRemoved} duplicate episode_files\n`);
+	console.log(`    Removed ${duplicatesRemoved} duplicate episode_files\n`);
 	totalFixed += duplicatesRemoved;
 
 	// =====================================================
 	// Step 1B: Remove duplicate movie_files
 	// =====================================================
-	console.log('🎬 Step 1B: Removing duplicate movie_files...');
+	console.log(' Step 1B: Removing duplicate movie_files...');
 
 	const allMovieFiles = await db.select().from(movieFiles);
 	const movieFileGroups = new Map<string, typeof allMovieFiles>();
@@ -125,17 +125,17 @@ async function main() {
 			}
 
 			if (files.length > 2) {
-				console.log(`   ⚠️  Movie had ${files.length} duplicates: ${files[0].relativePath}`);
+				console.log(`     Movie had ${files.length} duplicates: ${files[0].relativePath}`);
 			}
 		}
 	}
-	console.log(`   ✅ Removed ${movieDuplicatesRemoved} duplicate movie_files\n`);
+	console.log(`    Removed ${movieDuplicatesRemoved} duplicate movie_files\n`);
 	totalFixed += movieDuplicatesRemoved;
 
 	// =====================================================
 	// Step 2: Process unmatched_files in known series folders
 	// =====================================================
-	console.log('📂 Step 2: Linking unmatched files in series folders...');
+	console.log(' Step 2: Linking unmatched files in series folders...');
 
 	// Get all series with their root folders
 	const allSeries = await db
@@ -181,7 +181,7 @@ async function main() {
 				// Parse season/episode
 				const parsed = parseSeasonEpisode(filename);
 				if (!parsed) {
-					console.log(`   ⚠️  Could not parse S/E from: ${filename}`);
+					console.log(`     Could not parse S/E from: ${filename}`);
 					continue;
 				}
 
@@ -198,7 +198,7 @@ async function main() {
 					.limit(1);
 
 				if (existing.length > 0) {
-					console.log(`   ⏭️  Already exists: ${relativePath}`);
+					console.log(`     Already exists: ${relativePath}`);
 					// Remove from unmatched since it's already linked
 					await db.delete(unmatchedFiles).where(eq(unmatchedFiles.id, unmatched.id));
 					continue;
@@ -233,20 +233,20 @@ async function main() {
 				await db.delete(unmatchedFiles).where(eq(unmatchedFiles.id, unmatched.id));
 
 				console.log(
-					`   ✅ Linked: ${relativePath} → S${String(parsed.season).padStart(2, '0')}E${String(parsed.episode).padStart(2, '0')}`
+					`    Linked: ${relativePath} → S${String(parsed.season).padStart(2, '0')}E${String(parsed.episode).padStart(2, '0')}`
 				);
 				filesLinked++;
 				break; // Found the series, no need to check others
 			}
 		}
 	}
-	console.log(`   ✅ Linked ${filesLinked} unmatched files to series\n`);
+	console.log(`    Linked ${filesLinked} unmatched files to series\n`);
 	totalFixed += filesLinked;
 
 	// =====================================================
 	// Step 3: Reset hasFile flags based on actual episode_files
 	// =====================================================
-	console.log('🔄 Step 3: Resetting hasFile flags...');
+	console.log(' Step 3: Resetting hasFile flags...');
 
 	// First, set all hasFile to false
 	await db.update(episodes).set({ hasFile: false });
@@ -280,12 +280,12 @@ async function main() {
 		}
 		hasFileUpdated = idsArray.length;
 	}
-	console.log(`   ✅ Set hasFile=true for ${hasFileUpdated} episodes\n`);
+	console.log(`    Set hasFile=true for ${hasFileUpdated} episodes\n`);
 
 	// =====================================================
 	// Step 4: Recalculate series.episode_file_count
 	// =====================================================
-	console.log('📊 Step 4: Recalculating series episode counts...');
+	console.log(' Step 4: Recalculating series episode counts...');
 
 	const allSeriesForUpdate = await db.select({ id: series.id }).from(series);
 
@@ -312,12 +312,12 @@ async function main() {
 			})
 			.where(eq(series.id, s.id));
 	}
-	console.log(`   ✅ Updated ${allSeriesForUpdate.length} series counts\n`);
+	console.log(`    Updated ${allSeriesForUpdate.length} series counts\n`);
 
 	// =====================================================
 	// Step 5: Recalculate seasons.episode_file_count
 	// =====================================================
-	console.log('📅 Step 5: Recalculating season episode counts...');
+	console.log(' Step 5: Recalculating season episode counts...');
 
 	const allSeasons = await db.select().from(seasons);
 
@@ -346,12 +346,12 @@ async function main() {
 			})
 			.where(eq(seasons.id, season.id));
 	}
-	console.log(`   ✅ Updated ${allSeasons.length} season counts\n`);
+	console.log(`    Updated ${allSeasons.length} season counts\n`);
 
 	// =====================================================
 	// Step 6: Recalculate movies.hasFile
 	// =====================================================
-	console.log('🎬 Step 6: Recalculating movie hasFile flags...');
+	console.log(' Step 6: Recalculating movie hasFile flags...');
 
 	// First, set all hasFile to false
 	await db.update(movies).set({ hasFile: false });
@@ -373,12 +373,12 @@ async function main() {
 		}
 		movieHasFileUpdated = idsArray.length;
 	}
-	console.log(`   ✅ Set hasFile=true for ${movieHasFileUpdated} movies\n`);
+	console.log(`    Set hasFile=true for ${movieHasFileUpdated} movies\n`);
 
 	// =====================================================
 	// Step 7: Remove duplicate queue entries (same download)
 	// =====================================================
-	console.log('📥 Step 7: Removing duplicate queue entries...');
+	console.log(' Step 7: Removing duplicate queue entries...');
 
 	const allQueueItems = await db.select().from(downloadQueue);
 	const queueGroups = new Map<string, typeof allQueueItems>();
@@ -408,30 +408,30 @@ async function main() {
 			}
 
 			if (items.length > 2) {
-				console.log(`   ⚠️  Queue had ${items.length} duplicates: ${items[0].title}`);
+				console.log(`     Queue had ${items.length} duplicates: ${items[0].title}`);
 			}
 		}
 	}
-	console.log(`   ✅ Removed ${queueDuplicatesRemoved} duplicate queue entries\n`);
+	console.log(`    Removed ${queueDuplicatesRemoved} duplicate queue entries\n`);
 	totalFixed += queueDuplicatesRemoved;
 
 	// =====================================================
 	// Step 8: Clean up completed/removed download_queue
 	// =====================================================
-	console.log('🗑️  Step 8: Cleaning up completed queue entries...');
+	console.log('  Step 8: Cleaning up completed queue entries...');
 
 	const deletedQueue = await db
 		.delete(downloadQueue)
 		.where(inArray(downloadQueue.status, ['imported', 'removed']))
 		.returning({ id: downloadQueue.id });
 
-	console.log(`   ✅ Removed ${deletedQueue.length} completed queue entries\n`);
+	console.log(`    Removed ${deletedQueue.length} completed queue entries\n`);
 	totalFixed += deletedQueue.length;
 
 	// =====================================================
 	// Step 9: Fetch missing external IDs from TMDB
 	// =====================================================
-	console.log('🔗 Step 9: Fetching missing external IDs from TMDB...');
+	console.log(' Step 9: Fetching missing external IDs from TMDB...');
 
 	// Import TMDB client
 	const { tmdb } = await import('../src/lib/server/tmdb.js');
@@ -463,11 +463,11 @@ async function main() {
 				await db.update(movies).set({ imdbId: externalIds.imdb_id }).where(eq(movies.id, movie.id));
 
 				moviesUpdated++;
-				console.log(`   ✅ Updated movie: ${movie.title} → ${externalIds.imdb_id}`);
+				console.log(`    Updated movie: ${movie.title} → ${externalIds.imdb_id}`);
 			}
 		} catch {
 			movieErrors++;
-			console.log(`   ⚠️  Failed to fetch for movie: ${movie.title}`);
+			console.log(`     Failed to fetch for movie: ${movie.title}`);
 		}
 
 		// Rate limit: 250ms between calls (TMDB allows 40 req/10s)
@@ -509,21 +509,21 @@ async function main() {
 
 				seriesUpdated++;
 				console.log(
-					`   ✅ Updated series: ${show.title} → IMDB: ${updateData.imdbId || 'N/A'}, TVDB: ${updateData.tvdbId || 'N/A'}`
+					`    Updated series: ${show.title} → IMDB: ${updateData.imdbId || 'N/A'}, TVDB: ${updateData.tvdbId || 'N/A'}`
 				);
 			}
 		} catch {
 			seriesErrors++;
-			console.log(`   ⚠️  Failed to fetch for series: ${show.title}`);
+			console.log(`     Failed to fetch for series: ${show.title}`);
 		}
 
 		// Rate limit: 250ms between calls
 		await delay(250);
 	}
 
-	console.log(`   ✅ Updated ${moviesUpdated} movies, ${seriesUpdated} series`);
+	console.log(`    Updated ${moviesUpdated} movies, ${seriesUpdated} series`);
 	if (movieErrors > 0 || seriesErrors > 0) {
-		console.log(`   ⚠️  Errors: ${movieErrors} movies, ${seriesErrors} series\n`);
+		console.log(`     Errors: ${movieErrors} movies, ${seriesErrors} series\n`);
 	} else {
 		console.log('');
 	}
@@ -533,7 +533,7 @@ async function main() {
 	// Summary
 	// =====================================================
 	console.log('═══════════════════════════════════════════════════');
-	console.log('✅ Library repair complete!');
+	console.log(' Library repair complete!');
 	console.log(`   Total items fixed: ${totalFixed}`);
 	console.log('   - Duplicate episode_files removed: ' + duplicatesRemoved);
 	console.log('   - Duplicate movie_files removed: ' + movieDuplicatesRemoved);
@@ -544,12 +544,12 @@ async function main() {
 	console.log('   - Series with external IDs updated: ' + seriesUpdated);
 	console.log('═══════════════════════════════════════════════════\n');
 
-	console.log('📌 Next steps:');
+	console.log(' Next steps:');
 	console.log('   1. Run a library scan to pick up any remaining unmatched files');
 	console.log('   2. Check the UI to verify episode and movie counts are correct');
 }
 
 main().catch((error) => {
-	console.error('❌ Repair failed:', error);
+	console.error(' Repair failed:', error);
 	process.exit(1);
 });

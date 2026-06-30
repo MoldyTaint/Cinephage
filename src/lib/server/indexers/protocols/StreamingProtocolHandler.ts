@@ -289,7 +289,7 @@ export class StreamingProtocolHandler extends BaseProtocolHandler implements ISt
 		if (streaming?.supportsDirectPlay) {
 			details.push({
 				label: 'Direct Play',
-				value: '✓',
+				value: 'Yes',
 				tooltip: 'Supports direct playback without transcoding'
 			});
 		}
