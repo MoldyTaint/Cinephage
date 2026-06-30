@@ -36,6 +36,7 @@
 		TvSeasonSection
 	} from '$lib/components/library/import/types.js';
 	import type { ManualImportRequest } from '$lib/validation/schemas.js';
+	import { getFileManagementSettings } from '$lib/api/settings.js';
 
 	type WizardStep = 1 | 2 | 3 | 4;
 
@@ -84,6 +85,7 @@
 		episodeNumber: number;
 		batchSeasonOverride: number | null;
 		selectedRootFolder: string;
+		importMode: 'move' | 'copy';
 	}
 
 	interface ExecuteResult {
@@ -155,6 +157,7 @@
 	let episodeNumber = $state(1);
 	let batchSeasonOverride = $state<number | null>(null);
 	let selectedRootFolder = $state('');
+	let importMode = $state<'move' | 'copy'>('move');
 	let bulkDestinationBySectionId = $state<Record<string, string>>({});
 	let executingImport = $state(false);
 	let executeResult = $state<ExecuteResult | null>(null);
@@ -457,6 +460,9 @@
 	$effect(() => {
 		loadRootFolders();
 		browse('/');
+		getFileManagementSettings().then((s) => {
+			if (s?.importMode === 'copy') importMode = 'copy';
+		});
 		return () => {
 			disconnectBulkSSE();
 		};
@@ -885,7 +891,8 @@
 			seasonNumber: group.parsedSeason ?? 1,
 			episodeNumber: group.parsedEpisode ?? 1,
 			batchSeasonOverride: group.suggestedSeason ?? null,
-			selectedRootFolder: initialRootFolder ?? ''
+			selectedRootFolder: initialRootFolder ?? '',
+			importMode
 		};
 	}
 
@@ -911,6 +918,7 @@
 		episodeNumber = state.episodeNumber;
 		batchSeasonOverride = state.batchSeasonOverride;
 		selectedRootFolder = state.selectedRootFolder;
+		importMode = state.importMode;
 	}
 
 	function persistActiveGroupState() {
@@ -926,7 +934,8 @@
 				seasonNumber,
 				episodeNumber,
 				batchSeasonOverride,
-				selectedRootFolder
+				selectedRootFolder,
+				importMode
 			}
 		};
 	}
@@ -1654,6 +1663,7 @@
 			mediaType: state.selectedMediaType,
 			tmdbId: state.selectedMatch.tmdbId,
 			importTarget: resolvedImportTarget,
+			importMode: state.importMode,
 			...(resolvedImportTarget === 'new'
 				? { libraryId: state.selectedRootFolder || librariesForType[0]?.id }
 				: {}),
@@ -2414,6 +2424,7 @@
 			bind:importTarget
 			{destinationLibrariesForType}
 			bind:selectedRootFolder
+			bind:importMode
 			{loadingRootFolders}
 			{seasonNumber}
 			{episodeNumber}

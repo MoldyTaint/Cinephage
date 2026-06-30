@@ -22,6 +22,7 @@ import {
 	ImportMode,
 	transferFileWithMode
 } from '$lib/server/downloadClients/import/FileTransfer.js';
+import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
 import {
 	validateRootFolder,
 	getAnimeSubtypeEnforcement,
@@ -94,6 +95,8 @@ export interface ExecuteManualImportRequest {
 	libraryId?: string;
 	seasonNumber?: number;
 	episodeNumber?: number;
+	/** Override the global file management import mode for this specific import */
+	importMode?: 'move' | 'copy';
 }
 
 export interface ExecuteManualImportResult {
@@ -461,7 +464,8 @@ export class ManualImportService {
 			await this.transferSourceFile(
 				sourceFile.path,
 				destinationPath,
-				rootFolder.preserveSymlinks ?? false
+				rootFolder.preserveSymlinks ?? false,
+				request.importMode
 			);
 			const unmatchedId = await this.insertUnmatchedImportRecord({
 				destinationPath,
@@ -533,7 +537,8 @@ export class ManualImportService {
 				await this.transferSourceFile(
 					sourceFile.path,
 					destinationPath,
-					rootFolder.preserveSymlinks ?? false
+					rootFolder.preserveSymlinks ?? false,
+					request.importMode
 				);
 				const unmatchedId = await this.insertUnmatchedImportRecord({
 					destinationPath,
@@ -1265,18 +1270,36 @@ export class ManualImportService {
 	private async transferSourceFile(
 		sourcePath: string,
 		destinationPath: string,
-		preserveSymlinks: boolean
+		preserveSymlinks: boolean,
+		importModeOverride?: 'move' | 'copy'
 	): Promise<void> {
 		await ensureDirectory(dirname(destinationPath));
+
+		const effectiveMode = importModeOverride ?? (await getFileManagementSettings()).importMode;
+		const canMoveFiles = effectiveMode === 'move';
+
 		const transferResult = await transferFileWithMode(sourcePath, destinationPath, {
-			importMode: ImportMode.Auto,
-			canMoveFiles: true,
+			importMode: canMoveFiles ? ImportMode.Auto : ImportMode.HardlinkOrCopy,
+			canMoveFiles,
 			preserveSymlinks
 		});
 
 		if (!transferResult.success) {
 			throw new Error(transferResult.error || 'Failed to transfer source file');
 		}
+
+		const action =
+			transferResult.mode === 'hardlink'
+				? 'Hardlinked'
+				: transferResult.mode === 'move'
+					? 'Moved'
+					: transferResult.mode === 'symlink'
+						? 'Symlinked'
+						: 'Copied';
+		logger.info(
+			{ source: basename(sourcePath), dest: basename(destinationPath), mode: transferResult.mode },
+			`[ManualImport] ${action}: ${basename(sourcePath)}`
+		);
 	}
 
 	private async insertUnmatchedImportRecord(input: {

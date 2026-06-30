@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Library, FolderOpen, Activity } from 'lucide-svelte';
+	import { Library, FolderOpen, Activity, FolderSync } from 'lucide-svelte';
 	import { SettingsTabNav } from '$lib/components/settings';
 	import * as m from '$lib/paraglide/messages.js';
 
@@ -15,6 +15,11 @@
 			href: '/settings/general/root-folders',
 			label: m.settings_general_tabRootFolders(),
 			icon: FolderOpen
+		},
+		{
+			href: '/settings/general/file-management',
+			label: m.settings_general_tabFileManagement(),
+			icon: FolderSync
 		},
 		{
 			href: '/settings/general/status',
