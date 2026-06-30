@@ -147,7 +147,7 @@
 			{m.common_monitored()}
 		</span>
 		<p class="text-xs text-base-content/60">
-			{monitored ? m.library_add_monitoredDescYes() : m.library_add_monitoredDescNo()}
+			{monitored ? m.library_add_movie_monitoredDescYes() : m.library_add_movie_monitoredDescNo()}
 		</p>
 	</div>
 </label>

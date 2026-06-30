@@ -140,9 +140,15 @@
 			{m.library_add_searchImmediately()}
 		</span>
 		<p class="text-xs text-base-content/60">
-			{searchOnAdd
-				? m.library_add_searchImmediatelyDescYes()
-				: m.library_add_searchImmediatelyDescNo()}
+			{#if mediaType === 'movie'}
+				{searchOnAdd
+					? m.library_add_movie_searchImmediatelyDescYes()
+					: m.library_add_movie_searchImmediatelyDescNo()}
+			{:else}
+				{searchOnAdd
+					? m.library_add_searchImmediatelyDescYes()
+					: m.library_add_searchImmediatelyDescNo()}
+			{/if}
 		</p>
 	</div>
 </label>
