@@ -3,6 +3,7 @@ import type { LibraryBreakdownItem } from '$lib/components/libraries/storage-uti
 import { sql } from 'drizzle-orm';
 import { getRootFolderService } from '$lib/server/downloadClients/RootFolderService';
 import { getEffectiveAnimeRootFolderEnforcement } from '$lib/server/library/anime-root-enforcement-settings.js';
+import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService';
 import { db } from '$lib/server/db';
 import {
@@ -49,6 +50,7 @@ export const load: LayoutServerLoad = async () => {
 	const [
 		rootFolders,
 		enforceAnimeSubtype,
+		fileManagementSettings,
 		libraries,
 		movieStats,
 		tvStats,
@@ -64,6 +66,7 @@ export const load: LayoutServerLoad = async () => {
 	] = await Promise.all([
 		rootFolderService.getFolders(),
 		getEffectiveAnimeRootFolderEnforcement(),
+		getFileManagementSettings(),
 		libraryService.listLibraries(),
 		db
 			.select({
@@ -282,6 +285,7 @@ export const load: LayoutServerLoad = async () => {
 	return {
 		rootFolders,
 		enforceAnimeSubtype,
+		symlinkModeEnabled: fileManagementSettings.importMode === 'symlink',
 		libraries,
 		storage: {
 			totalUsedBytes:

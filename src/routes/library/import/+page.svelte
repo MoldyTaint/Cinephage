@@ -980,7 +980,8 @@
 				seasonNumber,
 				episodeNumber,
 				batchSeasonOverride: nextBatchSeasonOverride,
-				selectedRootFolder
+				selectedRootFolder,
+				importMode
 			}
 		};
 	}

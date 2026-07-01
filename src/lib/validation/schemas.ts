@@ -1528,7 +1528,7 @@ export const libraryScanSchema = z
 /**
  * Schema for manual import execution.
  */
-export const importMethodSchema = z.enum(['move', 'copy']);
+export const importMethodSchema = z.enum(['move', 'copy', 'symlink']);
 export type ImportMethod = z.infer<typeof importMethodSchema>;
 
 export const fileManagementSchema = z.object({
@@ -1539,7 +1539,8 @@ export const fileManagementSchema = z.object({
 	recycleEnabled: z.boolean().default(false),
 	extraFileExtensions: z.array(z.string()).default([]),
 	preservePermissions: z.boolean().default(false),
-	chmodFile: z.union([z.string().regex(/^[0-7]{3,4}$/), z.literal('')]).default('')
+	chmodFile: z.union([z.string().regex(/^[0-7]{3,4}$/), z.literal('')]).default(''),
+	autoEnabledPreserveSymlinkFolderIds: z.array(z.string()).default([])
 });
 export type FileManagementSettings = z.infer<typeof fileManagementSchema>;
 

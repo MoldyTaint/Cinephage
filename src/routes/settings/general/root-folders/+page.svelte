@@ -239,6 +239,7 @@
 	folder={editingFolder}
 	saving={folderSaving}
 	error={folderSaveError}
+	symlinkModeEnabled={data.symlinkModeEnabled}
 	onClose={closeFolderModal}
 	onSave={handleFolderSave}
 	onValidatePath={handleValidatePath}

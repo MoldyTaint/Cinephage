@@ -17,21 +17,30 @@
 
 	let { data }: { data: PageData } = $props();
 
+	// svelte-ignore state_referenced_locally -- intentional: form fields capture initial load value; $state initializer does not need to re-run on data changes
 	let importMode = $state<ImportMethod>(data.settings.importMode);
+	// svelte-ignore state_referenced_locally
 	let preferHardlink = $state<boolean>(data.settings.preferHardlink);
+	// svelte-ignore state_referenced_locally
 	let minimumFreeSpaceGb = $state<number>(data.settings.minimumFreeSpaceGb);
+	// svelte-ignore state_referenced_locally
 	let deleteEmptyFolders = $state<boolean>(data.settings.deleteEmptyFolders);
+	// svelte-ignore state_referenced_locally
 	let recycleEnabled = $state<boolean>(data.settings.recycleEnabled);
+	// svelte-ignore state_referenced_locally
 	let extraFileExtensions = $state<string[]>(data.settings.extraFileExtensions);
 
 	// Permissions
 	type PermissionsMode = 'default' | 'preserve' | 'custom';
+	// svelte-ignore state_referenced_locally
 	const initialPermissionsMode: PermissionsMode = data.settings.chmodFile
 		? 'custom'
-		: data.settings.preservePermissions
+		: // svelte-ignore state_referenced_locally
+			data.settings.preservePermissions
 			? 'preserve'
 			: 'default';
 	let permissionsMode = $state<PermissionsMode>(initialPermissionsMode);
+	// svelte-ignore state_referenced_locally
 	let chmodInput = $state(data.settings.chmodFile);
 	const chmodError = $derived(
 		permissionsMode === 'custom' && !/^[0-7]{3,4}$/.test(chmodInput)
@@ -55,9 +64,29 @@
 			}
 			const preservePermissions = permissionsMode === 'preserve';
 			const chmodFile = permissionsMode === 'custom' ? chmodInput : '';
-			await updateFileManagementSettings({ importMode, preferHardlink, minimumFreeSpaceGb, deleteEmptyFolders, recycleEnabled, extraFileExtensions, preservePermissions, chmodFile });
+			const result = (await updateFileManagementSettings({
+				importMode,
+				preferHardlink,
+				minimumFreeSpaceGb,
+				deleteEmptyFolders,
+				recycleEnabled,
+				extraFileExtensions,
+				preservePermissions,
+				chmodFile,
+				autoEnabledPreserveSymlinkFolderIds: data.settings.autoEnabledPreserveSymlinkFolderIds
+			})) as { autoEnabledCount?: number; autoRevertedCount?: number } | undefined;
 			await invalidateAll();
 			toasts.success(m.settings_fileManagement_saved());
+			if (result?.autoEnabledCount) {
+				toasts.warning(
+					m.settings_fileManagement_symlinkPreserveAutoEnabled({ count: result.autoEnabledCount })
+				);
+			}
+			if (result?.autoRevertedCount) {
+				toasts.info(
+					m.settings_fileManagement_symlinkPreserveAutoReverted({ count: result.autoRevertedCount })
+				);
+			}
 		} catch {
 			toasts.error(m.settings_fileManagement_failedToSave());
 		} finally {
@@ -79,7 +108,6 @@
 		description={m.settings_fileManagement_sectionDescription()}
 	>
 		<div class="flex flex-col gap-3">
-
 			<!-- Move option -->
 			<label
 				class="flex cursor-pointer items-start gap-4 rounded-lg border p-4 transition-colors
@@ -127,12 +155,45 @@
 				</div>
 			</label>
 
+			<!-- Symlink option -->
+			<label
+				class="flex cursor-pointer items-start gap-4 rounded-lg border p-4 transition-colors
+					{importMode === 'symlink'
+					? 'border-primary bg-primary/5'
+					: 'border-base-300 hover:border-base-content/30'}"
+			>
+				<input
+					type="radio"
+					name="importMode"
+					value="symlink"
+					class="radio radio-primary mt-0.5 shrink-0"
+					bind:group={importMode}
+				/>
+				<div class="min-w-0 flex-1">
+					<span class="font-medium">{m.settings_fileManagement_symlinkLabel()}</span>
+					<p class="mt-1 text-sm text-base-content/60">
+						{m.settings_fileManagement_symlinkDesc()}
+					</p>
+					<p class="mt-1 text-sm text-base-content/60">
+						<span class="font-medium text-base-content/80"
+							>{m.settings_fileManagement_symlinkDescNote()}</span
+						>
+					</p>
+				</div>
+			</label>
+
 			<!-- Hardlink toggle -->
-			<label class="flex cursor-pointer items-start gap-4 rounded-lg border border-base-300 p-4 transition-colors hover:border-base-content/30 {preferHardlink ? 'border-primary bg-primary/5' : ''}">
+			<label
+				class="flex cursor-pointer items-start gap-4 rounded-lg border border-base-300 p-4 transition-colors hover:border-base-content/30 {preferHardlink &&
+				importMode !== 'symlink'
+					? 'border-primary bg-primary/5'
+					: ''} {importMode === 'symlink' ? 'opacity-40' : ''}"
+			>
 				<input
 					type="checkbox"
 					class="checkbox checkbox-primary mt-0.5 shrink-0"
 					bind:checked={preferHardlink}
+					disabled={importMode === 'symlink'}
 				/>
 				<div class="min-w-0 flex-1">
 					<span class="font-medium">{m.settings_fileManagement_preferHardlinkLabel()}</span>
@@ -175,7 +236,11 @@
 		title={m.settings_fileManagement_folderCleanupSectionTitle()}
 		description={m.settings_fileManagement_folderCleanupSectionDescription()}
 	>
-		<label class="flex cursor-pointer items-start gap-4 rounded-lg border border-base-300 p-4 transition-colors hover:border-base-content/30 {deleteEmptyFolders ? 'border-primary bg-primary/5' : ''}">
+		<label
+			class="flex cursor-pointer items-start gap-4 rounded-lg border border-base-300 p-4 transition-colors hover:border-base-content/30 {deleteEmptyFolders
+				? 'border-primary bg-primary/5'
+				: ''}"
+		>
 			<input
 				type="checkbox"
 				class="checkbox checkbox-primary mt-0.5 shrink-0"
@@ -194,7 +259,11 @@
 		title={m.settings_fileManagement_recycleBinSectionTitle()}
 		description={m.settings_fileManagement_recycleBinSectionDescription()}
 	>
-		<label class="flex cursor-pointer items-start gap-4 rounded-lg border border-base-300 p-4 transition-colors hover:border-base-content/30 {recycleEnabled ? 'border-primary bg-primary/5' : ''}">
+		<label
+			class="flex cursor-pointer items-start gap-4 rounded-lg border border-base-300 p-4 transition-colors hover:border-base-content/30 {recycleEnabled
+				? 'border-primary bg-primary/5'
+				: ''}"
+		>
 			<input
 				type="checkbox"
 				class="checkbox checkbox-primary mt-0.5 shrink-0"
@@ -231,29 +300,68 @@
 	>
 		<div class="flex flex-col gap-3">
 			<!-- Default -->
-			<label class="flex cursor-pointer items-start gap-4 rounded-lg border p-4 transition-colors {permissionsMode === 'default' ? 'border-primary bg-primary/5' : 'border-base-300 hover:border-base-content/30'}">
-				<input type="radio" name="permissionsMode" value="default" class="radio radio-primary mt-0.5 shrink-0" bind:group={permissionsMode} />
+			<label
+				class="flex cursor-pointer items-start gap-4 rounded-lg border p-4 transition-colors {permissionsMode ===
+				'default'
+					? 'border-primary bg-primary/5'
+					: 'border-base-300 hover:border-base-content/30'}"
+			>
+				<input
+					type="radio"
+					name="permissionsMode"
+					value="default"
+					class="radio radio-primary mt-0.5 shrink-0"
+					bind:group={permissionsMode}
+				/>
 				<div class="min-w-0 flex-1">
 					<span class="font-medium">{m.settings_fileManagement_permissionsDefaultLabel()}</span>
-					<p class="mt-1 text-sm text-base-content/60">{m.settings_fileManagement_permissionsDefaultDesc()}</p>
+					<p class="mt-1 text-sm text-base-content/60">
+						{m.settings_fileManagement_permissionsDefaultDesc()}
+					</p>
 				</div>
 			</label>
 
 			<!-- Preserve source -->
-			<label class="flex cursor-pointer items-start gap-4 rounded-lg border p-4 transition-colors {permissionsMode === 'preserve' ? 'border-primary bg-primary/5' : 'border-base-300 hover:border-base-content/30'}">
-				<input type="radio" name="permissionsMode" value="preserve" class="radio radio-primary mt-0.5 shrink-0" bind:group={permissionsMode} />
+			<label
+				class="flex cursor-pointer items-start gap-4 rounded-lg border p-4 transition-colors {permissionsMode ===
+				'preserve'
+					? 'border-primary bg-primary/5'
+					: 'border-base-300 hover:border-base-content/30'}"
+			>
+				<input
+					type="radio"
+					name="permissionsMode"
+					value="preserve"
+					class="radio radio-primary mt-0.5 shrink-0"
+					bind:group={permissionsMode}
+				/>
 				<div class="min-w-0 flex-1">
 					<span class="font-medium">{m.settings_fileManagement_permissionsPreserveLabel()}</span>
-					<p class="mt-1 text-sm text-base-content/60">{m.settings_fileManagement_permissionsPreserveDesc()}</p>
+					<p class="mt-1 text-sm text-base-content/60">
+						{m.settings_fileManagement_permissionsPreserveDesc()}
+					</p>
 				</div>
 			</label>
 
 			<!-- Custom chmod -->
-			<label class="flex cursor-pointer items-start gap-4 rounded-lg border p-4 transition-colors {permissionsMode === 'custom' ? 'border-primary bg-primary/5' : 'border-base-300 hover:border-base-content/30'}">
-				<input type="radio" name="permissionsMode" value="custom" class="radio radio-primary mt-0.5 shrink-0" bind:group={permissionsMode} />
+			<label
+				class="flex cursor-pointer items-start gap-4 rounded-lg border p-4 transition-colors {permissionsMode ===
+				'custom'
+					? 'border-primary bg-primary/5'
+					: 'border-base-300 hover:border-base-content/30'}"
+			>
+				<input
+					type="radio"
+					name="permissionsMode"
+					value="custom"
+					class="radio radio-primary mt-0.5 shrink-0"
+					bind:group={permissionsMode}
+				/>
 				<div class="min-w-0 flex-1">
 					<span class="font-medium">{m.settings_fileManagement_permissionsCustomLabel()}</span>
-					<p class="mt-1 text-sm text-base-content/60">{m.settings_fileManagement_permissionsCustomDesc()}</p>
+					<p class="mt-1 text-sm text-base-content/60">
+						{m.settings_fileManagement_permissionsCustomDesc()}
+					</p>
 					{#if permissionsMode === 'custom'}
 						<div class="mt-3">
 							<input
