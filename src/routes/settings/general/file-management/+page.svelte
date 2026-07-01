@@ -23,9 +23,27 @@
 	let deleteEmptyFolders = $state<boolean>(data.settings.deleteEmptyFolders);
 	let recycleEnabled = $state<boolean>(data.settings.recycleEnabled);
 	let extraFileExtensions = $state<string[]>(data.settings.extraFileExtensions);
+
+	// Permissions
+	type PermissionsMode = 'default' | 'preserve' | 'custom';
+	const initialPermissionsMode: PermissionsMode = data.settings.chmodFile
+		? 'custom'
+		: data.settings.preservePermissions
+			? 'preserve'
+			: 'default';
+	let permissionsMode = $state<PermissionsMode>(initialPermissionsMode);
+	let chmodInput = $state(data.settings.chmodFile);
+	const chmodError = $derived(
+		permissionsMode === 'custom' && !/^[0-7]{3,4}$/.test(chmodInput)
+			? m.settings_fileManagement_permissionsChmodError()
+			: ''
+	);
+	const canSave = $derived(permissionsMode !== 'custom' || !chmodError);
+
 	let saving = $state(false);
 
 	async function save() {
+		if (!canSave) return;
 		saving = true;
 		try {
 			const stripped = extraFileExtensions.filter((e) => BLOCKED_EXTS.has(e.toLowerCase()));
@@ -35,7 +53,9 @@
 					`Removed blocked extensions: ${stripped.join(', ')} — these are dangerous or executable file types that can never be imported.`
 				);
 			}
-			await updateFileManagementSettings({ importMode, preferHardlink, minimumFreeSpaceGb, deleteEmptyFolders, recycleEnabled, extraFileExtensions });
+			const preservePermissions = permissionsMode === 'preserve';
+			const chmodFile = permissionsMode === 'custom' ? chmodInput : '';
+			await updateFileManagementSettings({ importMode, preferHardlink, minimumFreeSpaceGb, deleteEmptyFolders, recycleEnabled, extraFileExtensions, preservePermissions, chmodFile });
 			await invalidateAll();
 			toasts.success(m.settings_fileManagement_saved());
 		} catch {
@@ -205,8 +225,55 @@
 		/>
 	</SettingsSection>
 
+	<SettingsSection
+		title={m.settings_fileManagement_permissionsSectionTitle()}
+		description={m.settings_fileManagement_permissionsSectionDescription()}
+	>
+		<div class="flex flex-col gap-3">
+			<!-- Default -->
+			<label class="flex cursor-pointer items-start gap-4 rounded-lg border p-4 transition-colors {permissionsMode === 'default' ? 'border-primary bg-primary/5' : 'border-base-300 hover:border-base-content/30'}">
+				<input type="radio" name="permissionsMode" value="default" class="radio radio-primary mt-0.5 shrink-0" bind:group={permissionsMode} />
+				<div class="min-w-0 flex-1">
+					<span class="font-medium">{m.settings_fileManagement_permissionsDefaultLabel()}</span>
+					<p class="mt-1 text-sm text-base-content/60">{m.settings_fileManagement_permissionsDefaultDesc()}</p>
+				</div>
+			</label>
+
+			<!-- Preserve source -->
+			<label class="flex cursor-pointer items-start gap-4 rounded-lg border p-4 transition-colors {permissionsMode === 'preserve' ? 'border-primary bg-primary/5' : 'border-base-300 hover:border-base-content/30'}">
+				<input type="radio" name="permissionsMode" value="preserve" class="radio radio-primary mt-0.5 shrink-0" bind:group={permissionsMode} />
+				<div class="min-w-0 flex-1">
+					<span class="font-medium">{m.settings_fileManagement_permissionsPreserveLabel()}</span>
+					<p class="mt-1 text-sm text-base-content/60">{m.settings_fileManagement_permissionsPreserveDesc()}</p>
+				</div>
+			</label>
+
+			<!-- Custom chmod -->
+			<label class="flex cursor-pointer items-start gap-4 rounded-lg border p-4 transition-colors {permissionsMode === 'custom' ? 'border-primary bg-primary/5' : 'border-base-300 hover:border-base-content/30'}">
+				<input type="radio" name="permissionsMode" value="custom" class="radio radio-primary mt-0.5 shrink-0" bind:group={permissionsMode} />
+				<div class="min-w-0 flex-1">
+					<span class="font-medium">{m.settings_fileManagement_permissionsCustomLabel()}</span>
+					<p class="mt-1 text-sm text-base-content/60">{m.settings_fileManagement_permissionsCustomDesc()}</p>
+					{#if permissionsMode === 'custom'}
+						<div class="mt-3">
+							<input
+								type="text"
+								class="input input-bordered w-32 font-mono {chmodError ? 'input-error' : ''}"
+								placeholder={m.settings_fileManagement_permissionsChmodPlaceholder()}
+								bind:value={chmodInput}
+							/>
+							{#if chmodError}
+								<p class="mt-1 text-sm text-error">{chmodError}</p>
+							{/if}
+						</div>
+					{/if}
+				</div>
+			</label>
+		</div>
+	</SettingsSection>
+
 	<div class="flex justify-end">
-		<button class="btn btn-primary" onclick={save} disabled={saving}>
+		<button class="btn btn-primary" onclick={save} disabled={saving || !canSave}>
 			{#if saving}
 				<span class="loading loading-spinner loading-sm"></span>
 			{:else}

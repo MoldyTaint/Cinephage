@@ -1537,7 +1537,9 @@ export const fileManagementSchema = z.object({
 	minimumFreeSpaceGb: z.number().min(0).default(1),
 	deleteEmptyFolders: z.boolean().default(false),
 	recycleEnabled: z.boolean().default(false),
-	extraFileExtensions: z.array(z.string()).default([])
+	extraFileExtensions: z.array(z.string()).default([]),
+	preservePermissions: z.boolean().default(false),
+	chmodFile: z.union([z.string().regex(/^[0-7]{3,4}$/), z.literal('')]).default('')
 });
 export type FileManagementSettings = z.infer<typeof fileManagementSchema>;
 

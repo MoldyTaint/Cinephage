@@ -24,7 +24,8 @@ import {
 	lstat,
 	readlink,
 	symlink,
-	open
+	open,
+	chmod
 } from 'fs/promises';
 import { join, dirname, basename, extname } from 'path';
 import { createChildLogger } from '$lib/logging';
@@ -676,6 +677,32 @@ export async function hasSufficientDiskSpace(
 }
 
 /**
+ * Applies file permissions to `destPath` after a transfer.
+ * Priority: explicit `chmodFile` value > `preservePermissions` (copy from source) > no-op.
+ * Never throws - logs a warning on failure so a permission error never blocks an import.
+ */
+export async function applyFilePermissions(
+	destPath: string,
+	sourcePath: string,
+	preservePermissions: boolean,
+	chmodFile: string
+): Promise<void> {
+	try {
+		if (chmodFile) {
+			await chmod(destPath, parseInt(chmodFile, 8));
+		} else if (preservePermissions) {
+			const sourceStat = await stat(sourcePath);
+			await chmod(destPath, sourceStat.mode & 0o777);
+		}
+	} catch (err) {
+		logger.warn(
+			{ destPath, error: (err as Error).message },
+			'[FileTransfer] Failed to apply file permissions'
+		);
+	}
+}
+
+/**
  * Copies or moves sidecar files (subtitles, NFO, artwork, etc.) from `sourceDir`
  * to `destDir`. Only files whose lowercase extension appears in `extensions` are
  * transferred. The source directory is scanned non-recursively. Files that already
@@ -692,7 +719,8 @@ export async function copyExtraFiles(
 	sourceDir: string,
 	destDir: string,
 	extensions: string[],
-	doMove: boolean
+	doMove: boolean,
+	permissions?: { preservePermissions: boolean; chmodFile: string }
 ): Promise<void> {
 	if (extensions.length === 0) return;
 	const normalizedExts = extensions
@@ -720,6 +748,9 @@ export async function copyExtraFiles(
 				await moveFile(src, dst);
 			} else {
 				await copyFile(src, dst);
+			}
+			if (permissions) {
+				await applyFilePermissions(dst, src, permissions.preservePermissions, permissions.chmodFile);
 			}
 			logger.debug({ src, dst, doMove }, '[FileTransfer] Imported extra file');
 		} catch (err) {

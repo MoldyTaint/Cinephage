@@ -38,6 +38,7 @@ import {
 	removeEmptyDirectories,
 	moveToRecycleBin,
 	copyExtraFiles,
+	applyFilePermissions,
 	ImportMode
 } from './FileTransfer';
 import { getDownloadClientManager } from '../DownloadClientManager';
@@ -115,6 +116,8 @@ interface ImportableFileOptions {
 	recycleEnabled?: boolean;
 	extraFileExtensions?: string[];
 	preferHardlink?: boolean;
+	preservePermissions?: boolean;
+	chmodFile?: string;
 }
 
 /**
@@ -627,13 +630,17 @@ export class ImportService extends EventEmitter {
 				minimumFreeSpaceGb,
 				deleteEmptyFolders,
 				recycleEnabled,
-				extraFileExtensions
+				extraFileExtensions,
+				preservePermissions,
+				chmodFile
 			} = await getFileManagementSettings();
 			importOptions.minimumFreeSpaceGb = minimumFreeSpaceGb;
 			importOptions.deleteEmptyFolders = deleteEmptyFolders;
 			importOptions.recycleEnabled = recycleEnabled;
 			importOptions.extraFileExtensions = extraFileExtensions;
 			importOptions.preferHardlink = preferHardlink;
+			importOptions.preservePermissions = preservePermissions;
+			importOptions.chmodFile = chmodFile;
 			let canMoveFiles = globalImportMode !== 'copy'; // copy mode = never delete source
 
 			if (globalImportMode !== 'copy') {
@@ -913,12 +920,20 @@ export class ImportService extends EventEmitter {
 			await removeEmptyDirectories(dirname(mainFile.path), downloadPath);
 		}
 
+		await applyFilePermissions(
+			destPath,
+			mainFile.path,
+			importOptions.preservePermissions ?? false,
+			importOptions.chmodFile ?? ''
+		);
+
 		if (importOptions.extraFileExtensions?.length) {
 			await copyExtraFiles(
 				dirname(mainFile.path),
 				dirname(destPath),
 				importOptions.extraFileExtensions,
-				transferResult.mode === 'move'
+				transferResult.mode === 'move',
+				{ preservePermissions: importOptions.preservePermissions ?? false, chmodFile: importOptions.chmodFile ?? '' }
 			);
 		}
 
@@ -1549,12 +1564,20 @@ export class ImportService extends EventEmitter {
 			}
 		}
 
+		await applyFilePermissions(
+			destPath,
+			videoFile.path,
+			importOptions?.preservePermissions ?? false,
+			importOptions?.chmodFile ?? ''
+		);
+
 		if (importOptions?.extraFileExtensions?.length) {
 			await copyExtraFiles(
 				dirname(videoFile.path),
 				dirname(destPath),
 				importOptions.extraFileExtensions,
-				transferResult.mode === 'move'
+				transferResult.mode === 'move',
+				{ preservePermissions: importOptions?.preservePermissions ?? false, chmodFile: importOptions?.chmodFile ?? '' }
 			);
 		}
 
