@@ -118,6 +118,7 @@ interface ImportableFileOptions {
 	preferHardlink?: boolean;
 	preservePermissions?: boolean;
 	chmodFile?: string;
+	effectiveImportMode?: ImportMode;
 }
 
 /**
@@ -641,9 +642,12 @@ export class ImportService extends EventEmitter {
 			importOptions.preferHardlink = preferHardlink;
 			importOptions.preservePermissions = preservePermissions;
 			importOptions.chmodFile = chmodFile;
-			let canMoveFiles = globalImportMode !== 'copy'; // copy mode = never delete source
+			let canMoveFiles = globalImportMode === 'move'; // only move mode deletes the source
+			const effectiveImportMode =
+				globalImportMode === 'symlink' ? ImportMode.Symlink : ImportMode.Auto;
+			importOptions.effectiveImportMode = effectiveImportMode;
 
-			if (globalImportMode !== 'copy') {
+			if (globalImportMode === 'move') {
 				// Only check the download client's seeding state when the user wants moves
 				if (client) {
 					try {
@@ -886,7 +890,7 @@ export class ImportService extends EventEmitter {
 		worker.log('info', `Transferring file to: ${destPath} (canMoveFiles=${canMoveFiles})`);
 		const preserveSymlinks = rootFolder.preserveSymlinks ?? false;
 		const transferResult = await transferFileWithMode(mainFile.path, destPath, {
-			importMode: ImportMode.Auto,
+			importMode: importOptions.effectiveImportMode ?? ImportMode.Auto,
 			canMoveFiles,
 			preserveSymlinks,
 			preferHardlink: importOptions.preferHardlink ?? true
@@ -920,12 +924,14 @@ export class ImportService extends EventEmitter {
 			await removeEmptyDirectories(dirname(mainFile.path), downloadPath);
 		}
 
-		await applyFilePermissions(
-			destPath,
-			mainFile.path,
-			importOptions.preservePermissions ?? false,
-			importOptions.chmodFile ?? ''
-		);
+		if (transferResult.mode !== 'symlink') {
+			await applyFilePermissions(
+				destPath,
+				mainFile.path,
+				importOptions.preservePermissions ?? false,
+				importOptions.chmodFile ?? ''
+			);
+		}
 
 		if (importOptions.extraFileExtensions?.length) {
 			await copyExtraFiles(
@@ -933,7 +939,10 @@ export class ImportService extends EventEmitter {
 				dirname(destPath),
 				importOptions.extraFileExtensions,
 				transferResult.mode === 'move',
-				{ preservePermissions: importOptions.preservePermissions ?? false, chmodFile: importOptions.chmodFile ?? '' }
+				{
+					preservePermissions: importOptions.preservePermissions ?? false,
+					chmodFile: importOptions.chmodFile ?? ''
+				}
 			);
 		}
 
@@ -1006,7 +1015,11 @@ export class ImportService extends EventEmitter {
 				// Don't delete the file we just created/updated
 				if (oldFile.id === fileId) continue;
 
-				const deleteResult = await this.deleteMovieFile(oldFile.id, movie.id, importOptions.recycleEnabled);
+				const deleteResult = await this.deleteMovieFile(
+					oldFile.id,
+					movie.id,
+					importOptions.recycleEnabled
+				);
 				if (deleteResult.success) {
 					logger.info(
 						{
@@ -1103,7 +1116,12 @@ export class ImportService extends EventEmitter {
 		});
 
 		// For usenet downloads, delete source folder (no seeding needed)
-		if (queueItem.protocol === 'usenet' && queueItem.outputPath) {
+		// Skip when symlink mode is active — the library symlinks point at the source, so deleting it would break them
+		if (
+			queueItem.protocol === 'usenet' &&
+			queueItem.outputPath &&
+			importOptions.effectiveImportMode !== ImportMode.Symlink
+		) {
 			this.cleanupUsenetSource(queueItem.outputPath).catch((err) => {
 				logger.warn(
 					{
@@ -1370,7 +1388,12 @@ export class ImportService extends EventEmitter {
 			}
 
 			// For usenet downloads, delete source folder (no seeding needed)
-			if (queueItem.protocol === 'usenet' && queueItem.outputPath) {
+			// Skip when symlink mode is active — the library symlinks point at the source, so deleting it would break them
+			if (
+				queueItem.protocol === 'usenet' &&
+				queueItem.outputPath &&
+				importOptions?.effectiveImportMode !== ImportMode.Symlink
+			) {
 				this.cleanupUsenetSource(queueItem.outputPath).catch((err) => {
 					logger.warn(
 						{
@@ -1532,7 +1555,7 @@ export class ImportService extends EventEmitter {
 		// Transfer file using mode based on seeding state
 		const preserveSymlinks = rootFolder.preserveSymlinks ?? false;
 		const transferResult = await transferFileWithMode(videoFile.path, destPath, {
-			importMode: ImportMode.Auto,
+			importMode: importOptions?.effectiveImportMode ?? ImportMode.Auto,
 			canMoveFiles,
 			preserveSymlinks,
 			preferHardlink: importOptions?.preferHardlink ?? true
@@ -1564,12 +1587,14 @@ export class ImportService extends EventEmitter {
 			}
 		}
 
-		await applyFilePermissions(
-			destPath,
-			videoFile.path,
-			importOptions?.preservePermissions ?? false,
-			importOptions?.chmodFile ?? ''
-		);
+		if (transferResult.mode !== 'symlink') {
+			await applyFilePermissions(
+				destPath,
+				videoFile.path,
+				importOptions?.preservePermissions ?? false,
+				importOptions?.chmodFile ?? ''
+			);
+		}
 
 		if (importOptions?.extraFileExtensions?.length) {
 			await copyExtraFiles(
@@ -1577,7 +1602,10 @@ export class ImportService extends EventEmitter {
 				dirname(destPath),
 				importOptions.extraFileExtensions,
 				transferResult.mode === 'move',
-				{ preservePermissions: importOptions?.preservePermissions ?? false, chmodFile: importOptions?.chmodFile ?? '' }
+				{
+					preservePermissions: importOptions?.preservePermissions ?? false,
+					chmodFile: importOptions?.chmodFile ?? ''
+				}
 			);
 		}
 
@@ -1601,6 +1629,8 @@ export class ImportService extends EventEmitter {
 			for (const existingFile of existingFiles) {
 				const hasOverlap = existingFile.episodeIds?.some((id) => episodeIds.includes(id)) ?? false;
 				if (!hasOverlap) continue;
+				// Skip the record for the same destination path — we're updating it in place, not replacing it
+				if (existingFile.relativePath === relativePath) continue;
 				// Always replace .strm placeholders with real video files; replace other files only on explicit upgrade
 				const isStrmPlaceholder =
 					existingFile.relativePath?.toLowerCase().endsWith('.strm') ?? false;
@@ -1708,7 +1738,11 @@ export class ImportService extends EventEmitter {
 		// Delete old files if this was an upgrade
 		if (filesToReplace.length > 0) {
 			for (const oldFileId of filesToReplace) {
-				const deleteResult = await this.deleteEpisodeFile(oldFileId, seriesData.id, importOptions?.recycleEnabled);
+				const deleteResult = await this.deleteEpisodeFile(
+					oldFileId,
+					seriesData.id,
+					importOptions?.recycleEnabled
+				);
 				if (deleteResult.success) {
 					logger.info(
 						{

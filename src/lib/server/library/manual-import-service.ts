@@ -98,7 +98,7 @@ export interface ExecuteManualImportRequest {
 	seasonNumber?: number;
 	episodeNumber?: number;
 	/** Override the global file management import mode for this specific import */
-	importMode?: 'move' | 'copy';
+	importMode?: 'move' | 'copy' | 'symlink';
 }
 
 export interface ExecuteManualImportResult {
@@ -1296,13 +1296,19 @@ export class ManualImportService {
 		sourcePath: string,
 		destinationPath: string,
 		preserveSymlinks: boolean,
-		importModeOverride?: 'move' | 'copy'
+		importModeOverride?: 'move' | 'copy' | 'symlink'
 	): Promise<{ transferMode: string }> {
 		await ensureDirectory(dirname(destinationPath));
 
 		const settings = await getFileManagementSettings();
 		const effectiveMode = importModeOverride ?? settings.importMode;
 		const canMoveFiles = effectiveMode === 'move';
+		const importMode =
+			effectiveMode === 'symlink'
+				? ImportMode.Symlink
+				: canMoveFiles
+					? ImportMode.Auto
+					: ImportMode.HardlinkOrCopy;
 
 		if (settings.minimumFreeSpaceGb > 0) {
 			const destDir = dirname(destinationPath);
@@ -1315,7 +1321,7 @@ export class ManualImportService {
 		}
 
 		const transferResult = await transferFileWithMode(sourcePath, destinationPath, {
-			importMode: canMoveFiles ? ImportMode.Auto : ImportMode.HardlinkOrCopy,
+			importMode,
 			canMoveFiles,
 			preserveSymlinks
 		});

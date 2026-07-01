@@ -23,13 +23,19 @@ import {
 	rename,
 	lstat,
 	readlink,
+	realpath,
 	symlink,
 	open,
 	chmod
 } from 'fs/promises';
 import { join, dirname, basename, extname } from 'path';
 import { createChildLogger } from '$lib/logging';
-import { VIDEO_EXTENSIONS, isVideoFile as isBaseVideoFile, DANGEROUS_EXTENSIONS, EXECUTABLE_EXTENSIONS } from '$lib/config/constants.js';
+import {
+	VIDEO_EXTENSIONS,
+	isVideoFile as isBaseVideoFile,
+	DANGEROUS_EXTENSIONS,
+	EXECUTABLE_EXTENSIONS
+} from '$lib/config/constants.js';
 
 const logger = createChildLogger({ logDomain: 'imports' as const });
 
@@ -69,7 +75,15 @@ export enum ImportMode {
 	 * Try hardlink first, fall back to copy, never delete source
 	 * Use when you explicitly want to preserve source files
 	 */
-	HardlinkOrCopy = 'hardlinkOrCopy'
+	HardlinkOrCopy = 'hardlinkOrCopy',
+
+	/**
+	 * Create a symlink in the library pointing at the source file.
+	 * The source is never moved or deleted. If the source is itself a
+	 * symlink, the library link resolves to the real target via realpath
+	 * to avoid fragile chains.
+	 */
+	Symlink = 'symlink'
 }
 
 /**
@@ -324,6 +338,60 @@ export async function moveFile(source: string, dest: string): Promise<TransferRe
 }
 
 /**
+ * Creates a symlink at `dest` pointing to `source`. If `source` is itself a
+ * symlink, `realpath` is used to resolve the full chain so the library link
+ * points at the real file rather than creating a fragile chain through the
+ * download folder.
+ */
+export async function createSymlinkImport(source: string, dest: string): Promise<TransferResult> {
+	try {
+		await ensureDirectory(dirname(dest));
+
+		// Use lstat (not stat) so we detect and remove dangling symlinks too;
+		// stat follows the link and throws ENOENT if the target is gone, which
+		// would leave the stale symlink in place and cause symlink() to fail with EEXIST.
+		try {
+			await lstat(dest);
+			await unlink(dest);
+		} catch {
+			// dest doesn't exist — nothing to remove
+		}
+
+		// Resolve any symlink chain so the library link is as stable as possible
+		let linkTarget = source;
+		if (await isSymlink(source)) {
+			try {
+				linkTarget = await realpath(source);
+			} catch {
+				// Broken or inaccessible symlink - fall back to the source path directly
+				linkTarget = source;
+			}
+		}
+
+		await symlink(linkTarget, dest);
+
+		let sizeBytes: number | undefined;
+		try {
+			sizeBytes = await getFileSize(source);
+		} catch {
+			// non-fatal
+		}
+
+		logger.debug({ source, dest, linkTarget }, '[FileTransfer] Symlink import created');
+
+		return { success: true, sourcePath: source, destPath: dest, mode: 'symlink', sizeBytes };
+	} catch (error) {
+		return {
+			success: false,
+			sourcePath: source,
+			destPath: dest,
+			mode: 'symlink',
+			error: (error as Error).message
+		};
+	}
+}
+
+/**
  * Transfer a file using ImportMode to determine the transfer strategy.
  * Follows Radarr's pattern for handling seeding torrents vs usenet.
  *
@@ -337,7 +405,12 @@ export async function transferFileWithMode(
 	dest: string,
 	options: TransferOptions = {}
 ): Promise<TransferResult> {
-	const { importMode = ImportMode.Auto, canMoveFiles = true, preserveSymlinks = false, preferHardlink = true } = options;
+	const {
+		importMode = ImportMode.Auto,
+		canMoveFiles = true,
+		preserveSymlinks = false,
+		preferHardlink = true
+	} = options;
 
 	// Determine effective transfer mode based on ImportMode
 	let effectiveMode: ImportMode;
@@ -362,6 +435,7 @@ export async function transferFileWithMode(
 		case ImportMode.Move:
 		case ImportMode.Copy:
 		case ImportMode.HardlinkOrCopy:
+		case ImportMode.Symlink:
 			effectiveMode = importMode;
 			break;
 
@@ -378,6 +452,9 @@ export async function transferFileWithMode(
 
 		case ImportMode.Copy:
 			return transferFile(source, dest, false, preserveSymlinks);
+
+		case ImportMode.Symlink:
+			return createSymlinkImport(source, dest);
 
 		case ImportMode.HardlinkOrCopy:
 		default:
@@ -750,11 +827,19 @@ export async function copyExtraFiles(
 				await copyFile(src, dst);
 			}
 			if (permissions) {
-				await applyFilePermissions(dst, src, permissions.preservePermissions, permissions.chmodFile);
+				await applyFilePermissions(
+					dst,
+					src,
+					permissions.preservePermissions,
+					permissions.chmodFile
+				);
 			}
 			logger.debug({ src, dst, doMove }, '[FileTransfer] Imported extra file');
 		} catch (err) {
-			logger.warn({ src, dst, error: (err as Error).message }, '[FileTransfer] Failed to import extra file');
+			logger.warn(
+				{ src, dst, error: (err as Error).message },
+				'[FileTransfer] Failed to import extra file'
+			);
 		}
 	}
 }
@@ -765,7 +850,9 @@ export async function copyExtraFiles(
  * collide. The original file is removed; the DB record is untouched by this call.
  */
 export async function moveToRecycleBin(filePath: string, rootFolderPath: string): Promise<void> {
-	const normalizedRoot = rootFolderPath.endsWith('/') ? rootFolderPath.slice(0, -1) : rootFolderPath;
+	const normalizedRoot = rootFolderPath.endsWith('/')
+		? rootFolderPath.slice(0, -1)
+		: rootFolderPath;
 	const relativePath = filePath.startsWith(normalizedRoot + '/')
 		? filePath.slice(normalizedRoot.length + 1)
 		: filePath.replace(/^\/+/, '');

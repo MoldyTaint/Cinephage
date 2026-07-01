@@ -61,11 +61,22 @@
 			.map((id) => rootFolderMap.get(id))
 			.filter(Boolean)}
 		<div class="rounded-lg border border-base-300 bg-base-100 overflow-hidden">
+			<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 			<div
 				class="border-l-4 p-3 border-l-[oklch(var(--p))] {libRootFolders.length > 0
 					? 'cursor-pointer select-none active:bg-base-200/40'
 					: ''}"
+				role={libRootFolders.length > 0 ? 'button' : undefined}
+				tabindex={libRootFolders.length > 0 ? 0 : undefined}
 				onclick={libRootFolders.length > 0 ? () => toggle(libItem.id) : undefined}
+				onkeydown={libRootFolders.length > 0
+					? (e) => {
+							if (e.key === 'Enter' || e.key === ' ') {
+								e.preventDefault();
+								toggle(libItem.id);
+							}
+						}
+					: undefined}
 			>
 				<div class="flex items-start justify-between gap-2">
 					<div class="flex items-center gap-1.5 min-w-0">
