@@ -34,6 +34,8 @@ import {
 	ensureDirectory,
 	fileExists,
 	isVideoFile,
+	hasSufficientDiskSpace,
+	removeEmptyDirectories,
 	ImportMode
 } from './FileTransfer';
 import { getDownloadClientManager } from '../DownloadClientManager';
@@ -106,6 +108,8 @@ export interface ImportJobResult {
 interface ImportableFileOptions {
 	allowStrmSmall?: boolean;
 	preferNonStrm?: boolean;
+	minimumFreeSpaceGb?: number;
+	deleteEmptyFolders?: boolean;
 }
 
 /**
@@ -612,7 +616,13 @@ export class ImportService extends EventEmitter {
 			// Seeding torrents can't be moved (canMoveFiles=false) - must use hardlink/copy
 			// Usenet downloads can always be moved (canMoveFiles=true)
 			// The global "Copy" setting overrides to always keep source files.
-			const { importMode: globalImportMode } = await getFileManagementSettings();
+			const {
+				importMode: globalImportMode,
+				minimumFreeSpaceGb,
+				deleteEmptyFolders
+			} = await getFileManagementSettings();
+			importOptions.minimumFreeSpaceGb = minimumFreeSpaceGb;
+			importOptions.deleteEmptyFolders = deleteEmptyFolders;
 			let canMoveFiles = globalImportMode !== 'copy'; // copy mode = never delete source
 
 			if (globalImportMode !== 'copy') {
@@ -838,6 +848,19 @@ export class ImportService extends EventEmitter {
 			);
 		}
 
+		// Check minimum free space on the destination before transferring
+		const minFreeGb = importOptions.minimumFreeSpaceGb ?? 0;
+		if (minFreeGb > 0) {
+			const hasSpace = await hasSufficientDiskSpace(rootFolder.path, minFreeGb);
+			if (!hasSpace) {
+				const msg = `Insufficient disk space on destination: less than ${minFreeGb} GB free`;
+				result.error = msg;
+				worker.log('error', msg);
+				await downloadMonitor.markFailed(queueItem.id, msg);
+				return result;
+			}
+		}
+
 		// Transfer the file FIRST (keep old file until new one is successfully imported)
 		// Use ImportMode.Auto to decide based on canMoveFiles:
 		// - Seeding torrents (canMoveFiles=false): Use hardlink/copy to preserve source
@@ -873,6 +896,10 @@ export class ImportService extends EventEmitter {
 						: 'copy'
 		);
 		worker.setDestinationPath(destPath);
+
+		if (importOptions.deleteEmptyFolders && transferResult.mode === 'move') {
+			await removeEmptyDirectories(dirname(mainFile.path), downloadPath);
+		}
 
 		// Extract media info (skip STRM probing for streamer profile)
 		const allowStrmProbe = movie.scoringProfileId !== 'streamer';
@@ -1142,6 +1169,19 @@ export class ImportService extends EventEmitter {
 			return result;
 		}
 
+		// Check minimum free space on the destination before transferring
+		const minFreeGbSeries = importOptions.minimumFreeSpaceGb ?? 0;
+		if (minFreeGbSeries > 0) {
+			const hasSpace = await hasSufficientDiskSpace(rootFolder.path, minFreeGbSeries);
+			if (!hasSpace) {
+				const msg = `Insufficient disk space on destination: less than ${minFreeGbSeries} GB free`;
+				result.error = msg;
+				worker.log('error', msg);
+				await downloadMonitor.markFailed(queueItem.id, msg);
+				return result;
+			}
+		}
+
 		// Find video files
 		const videoFiles = await this.findImportableFiles(downloadPath, importOptions);
 
@@ -1198,7 +1238,8 @@ export class ImportService extends EventEmitter {
 					rootFolder,
 					queueItem,
 					_canMoveFiles,
-					worker
+					worker,
+					importOptions
 				);
 
 				if (importResult.success) {
@@ -1376,7 +1417,8 @@ export class ImportService extends EventEmitter {
 		rootFolder: typeof rootFolders.$inferSelect,
 		queueItem: typeof downloadQueue.$inferSelect,
 		canMoveFiles: boolean,
-		worker: ImportWorker
+		worker: ImportWorker,
+		importOptions?: ImportableFileOptions
 	): Promise<ImportResult> {
 		const normalizedSeriesType =
 			seriesData.seriesType === 'anime' || seriesData.seriesType === 'daily'
@@ -1477,6 +1519,13 @@ export class ImportService extends EventEmitter {
 						? 'move'
 						: 'copy'
 		);
+
+		if (importOptions?.deleteEmptyFolders && transferResult.mode === 'move') {
+			const downloadPath = queueItem.outputPath ?? queueItem.clientDownloadPath ?? '';
+			if (downloadPath) {
+				await removeEmptyDirectories(dirname(videoFile.path), downloadPath);
+			}
+		}
 
 		// Extract media info (skip STRM probing for streamer profile)
 		const allowStrmProbe = seriesData.scoringProfileId !== 'streamer';

@@ -16,8 +16,10 @@ import {
 	copyFile,
 	mkdir,
 	stat,
+	statfs,
 	readdir,
 	unlink,
+	rmdir,
 	rename,
 	lstat,
 	readlink,
@@ -636,4 +638,68 @@ export async function isVideoFileByMagic(filePath: string): Promise<boolean> {
  */
 export async function findVideoFiles(dir: string): Promise<string[]> {
 	return findFilesRecursive(dir, [...VIDEO_EXTENSIONS, '.strm']);
+}
+
+/**
+ * Returns available disk space in bytes for the filesystem containing `targetPath`.
+ * Throws if the path doesn't exist or statfs fails.
+ */
+export async function getAvailableDiskSpaceBytes(targetPath: string): Promise<number> {
+	const fs = await statfs(targetPath);
+	return fs.bavail * fs.bsize;
+}
+
+/**
+ * Checks whether the filesystem containing `targetPath` has at least
+ * `minimumFreeSpaceGb` GB of free space. Returns false (not enough space) or
+ * true (ok). Never throws - logs a warning and returns true on stat failure so
+ * that a transient error doesn't block every import.
+ */
+export async function hasSufficientDiskSpace(
+	targetPath: string,
+	minimumFreeSpaceGb: number
+): Promise<boolean> {
+	if (minimumFreeSpaceGb <= 0) return true;
+	try {
+		const available = await getAvailableDiskSpaceBytes(targetPath);
+		const minimumBytes = minimumFreeSpaceGb * 1024 * 1024 * 1024;
+		return available >= minimumBytes;
+	} catch (err) {
+		logger.warn(
+			{ targetPath, error: err instanceof Error ? err.message : String(err) },
+			'[FileTransfer] Could not check disk space - allowing import to proceed'
+		);
+		return true;
+	}
+}
+
+/**
+ * Walks up from `startPath` toward `stopAt`, removing each directory that is
+ * empty (no remaining files or subdirectories). Stops before removing `stopAt`
+ * itself. Safe to call after a move; silently skips non-empty dirs.
+ */
+export async function removeEmptyDirectories(startPath: string, stopAt: string): Promise<void> {
+	const normalizedStop = stopAt.endsWith('/') ? stopAt : stopAt + '/';
+	let current = startPath;
+
+	while (current.startsWith(normalizedStop) && current !== stopAt) {
+		let entries: string[];
+		try {
+			const dirEntries = await readdir(current);
+			entries = dirEntries;
+		} catch {
+			break;
+		}
+
+		if (entries.length > 0) break;
+
+		try {
+			await rmdir(current);
+			logger.debug({ dir: current }, '[FileTransfer] Removed empty directory after move');
+		} catch {
+			break;
+		}
+
+		current = current.substring(0, current.lastIndexOf('/')) || '/';
+	}
 }

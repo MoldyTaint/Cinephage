@@ -20,7 +20,9 @@ import {
 import {
 	ensureDirectory,
 	ImportMode,
-	transferFileWithMode
+	transferFileWithMode,
+	hasSufficientDiskSpace,
+	removeEmptyDirectories
 } from '$lib/server/downloadClients/import/FileTransfer.js';
 import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
 import {
@@ -1295,11 +1297,22 @@ export class ManualImportService {
 		destinationPath: string,
 		preserveSymlinks: boolean,
 		importModeOverride?: 'move' | 'copy'
-	): Promise<void> {
+	): Promise<{ transferMode: string }> {
 		await ensureDirectory(dirname(destinationPath));
 
-		const effectiveMode = importModeOverride ?? (await getFileManagementSettings()).importMode;
+		const settings = await getFileManagementSettings();
+		const effectiveMode = importModeOverride ?? settings.importMode;
 		const canMoveFiles = effectiveMode === 'move';
+
+		if (settings.minimumFreeSpaceGb > 0) {
+			const destDir = dirname(destinationPath);
+			const hasSpace = await hasSufficientDiskSpace(destDir, settings.minimumFreeSpaceGb);
+			if (!hasSpace) {
+				throw new Error(
+					`Insufficient disk space on destination: less than ${settings.minimumFreeSpaceGb} GB free`
+				);
+			}
+		}
 
 		const transferResult = await transferFileWithMode(sourcePath, destinationPath, {
 			importMode: canMoveFiles ? ImportMode.Auto : ImportMode.HardlinkOrCopy,
@@ -1323,6 +1336,12 @@ export class ManualImportService {
 			{ source: basename(sourcePath), dest: basename(destinationPath), mode: transferResult.mode },
 			`[ManualImport] ${action}: ${basename(sourcePath)}`
 		);
+
+		if (settings.deleteEmptyFolders && transferResult.mode === 'move') {
+			await removeEmptyDirectories(dirname(sourcePath), resolve(dirname(sourcePath), '..'));
+		}
+
+		return { transferMode: transferResult.mode };
 	}
 
 	private async insertUnmatchedImportRecord(input: {

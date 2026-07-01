@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ArrowRight, FolderSync } from 'lucide-svelte';
+	import { FolderSync } from 'lucide-svelte';
 	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
 	import * as m from '$lib/paraglide/messages.js';
 	import { toasts } from '$lib/stores/toast.svelte';
@@ -11,12 +11,14 @@
 	let { data }: { data: PageData } = $props();
 
 	let importMode = $state<ImportMethod>(data.settings.importMode);
+	let minimumFreeSpaceGb = $state<number>(data.settings.minimumFreeSpaceGb);
+	let deleteEmptyFolders = $state<boolean>(data.settings.deleteEmptyFolders);
 	let saving = $state(false);
 
 	async function save() {
 		saving = true;
 		try {
-			await updateFileManagementSettings({ importMode });
+			await updateFileManagementSettings({ importMode, minimumFreeSpaceGb, deleteEmptyFolders });
 			await invalidateAll();
 			toasts.success(m.settings_fileManagement_saved());
 		} catch {
@@ -40,7 +42,6 @@
 		description={m.settings_fileManagement_sectionDescription()}
 	>
 		<div class="flex flex-col gap-3">
-			<p class="text-sm text-base-content/70">{m.settings_fileManagement_importMethodDesc()}</p>
 
 			<!-- Move option -->
 			<label
@@ -89,16 +90,62 @@
 				</div>
 			</label>
 		</div>
+	</SettingsSection>
 
-		<div class="mt-6 flex justify-end">
-			<button class="btn btn-primary" onclick={save} disabled={saving}>
-				{#if saving}
-					<span class="loading loading-spinner loading-sm"></span>
-				{:else}
-					<FolderSync class="h-4 w-4" />
-				{/if}
-				Save
-			</button>
+	<SettingsSection
+		title={m.settings_fileManagement_diskSpaceSectionTitle()}
+		description={m.settings_fileManagement_diskSpaceSectionDescription()}
+	>
+		<div class="flex flex-col gap-1">
+			<label class="label-text text-sm font-medium" for="minFreeSpace">
+				{m.settings_fileManagement_minimumFreeSpaceLabel()}
+			</label>
+			<p class="text-sm text-base-content/70 mb-2">
+				{m.settings_fileManagement_minimumFreeSpaceDesc()}
+			</p>
+			<div class="flex items-center gap-2">
+				<input
+					id="minFreeSpace"
+					type="number"
+					min="0"
+					step="1"
+					class="input input-bordered w-32"
+					bind:value={minimumFreeSpaceGb}
+				/>
+				<span class="text-sm text-base-content/70">
+					{m.settings_fileManagement_minimumFreeSpaceUnit()}
+				</span>
+			</div>
 		</div>
 	</SettingsSection>
+
+	<SettingsSection
+		title={m.settings_fileManagement_folderCleanupSectionTitle()}
+		description={m.settings_fileManagement_folderCleanupSectionDescription()}
+	>
+		<label class="flex cursor-pointer items-start gap-4 rounded-lg border border-base-300 p-4 transition-colors hover:border-base-content/30 {deleteEmptyFolders ? 'border-primary bg-primary/5' : ''}">
+			<input
+				type="checkbox"
+				class="checkbox checkbox-primary mt-0.5 shrink-0"
+				bind:checked={deleteEmptyFolders}
+			/>
+			<div class="min-w-0 flex-1">
+				<span class="font-medium">{m.settings_fileManagement_deleteEmptyFoldersLabel()}</span>
+				<p class="mt-1 text-sm text-base-content/60">
+					{m.settings_fileManagement_deleteEmptyFoldersDesc()}
+				</p>
+			</div>
+		</label>
+	</SettingsSection>
+
+	<div class="flex justify-end">
+		<button class="btn btn-primary" onclick={save} disabled={saving}>
+			{#if saving}
+				<span class="loading loading-spinner loading-sm"></span>
+			{:else}
+				<FolderSync class="h-4 w-4" />
+			{/if}
+			Save
+		</button>
+	</div>
 </SettingsPage>

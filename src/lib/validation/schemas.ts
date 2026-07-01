@@ -1532,7 +1532,9 @@ export const importMethodSchema = z.enum(['move', 'copy']);
 export type ImportMethod = z.infer<typeof importMethodSchema>;
 
 export const fileManagementSchema = z.object({
-	importMode: importMethodSchema.default('move')
+	importMode: importMethodSchema.default('move'),
+	minimumFreeSpaceGb: z.number().min(0).default(1),
+	deleteEmptyFolders: z.boolean().default(false)
 });
 export type FileManagementSettings = z.infer<typeof fileManagementSchema>;
 
