@@ -18,6 +18,7 @@
 	let { data }: { data: PageData } = $props();
 
 	let importMode = $state<ImportMethod>(data.settings.importMode);
+	let preferHardlink = $state<boolean>(data.settings.preferHardlink);
 	let minimumFreeSpaceGb = $state<number>(data.settings.minimumFreeSpaceGb);
 	let deleteEmptyFolders = $state<boolean>(data.settings.deleteEmptyFolders);
 	let recycleEnabled = $state<boolean>(data.settings.recycleEnabled);
@@ -34,7 +35,7 @@
 					`Removed blocked extensions: ${stripped.join(', ')} — these are dangerous or executable file types that can never be imported.`
 				);
 			}
-			await updateFileManagementSettings({ importMode, minimumFreeSpaceGb, deleteEmptyFolders, recycleEnabled, extraFileExtensions });
+			await updateFileManagementSettings({ importMode, preferHardlink, minimumFreeSpaceGb, deleteEmptyFolders, recycleEnabled, extraFileExtensions });
 			await invalidateAll();
 			toasts.success(m.settings_fileManagement_saved());
 		} catch {
@@ -102,6 +103,21 @@
 					<span class="font-medium">{m.settings_fileManagement_copyLabel()}</span>
 					<p class="mt-1 text-sm text-base-content/60">
 						{m.settings_fileManagement_copyDesc()}
+					</p>
+				</div>
+			</label>
+
+			<!-- Hardlink toggle -->
+			<label class="flex cursor-pointer items-start gap-4 rounded-lg border border-base-300 p-4 transition-colors hover:border-base-content/30 {preferHardlink ? 'border-primary bg-primary/5' : ''}">
+				<input
+					type="checkbox"
+					class="checkbox checkbox-primary mt-0.5 shrink-0"
+					bind:checked={preferHardlink}
+				/>
+				<div class="min-w-0 flex-1">
+					<span class="font-medium">{m.settings_fileManagement_preferHardlinkLabel()}</span>
+					<p class="mt-1 text-sm text-base-content/60">
+						{m.settings_fileManagement_preferHardlinkDesc()}
 					</p>
 				</div>
 			</label>

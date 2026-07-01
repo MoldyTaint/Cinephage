@@ -2271,6 +2271,8 @@
 	"settings_fileManagement_saved": "File management settings saved",
 	"settings_fileManagement_sectionDescription": "Choose how files are transferred when importing media. This applies to both automatic imports from download clients and manual imports.",
 	"settings_fileManagement_sectionTitle": "File Transfer",
+	"settings_fileManagement_preferHardlinkLabel": "Use Hardlinks When Possible",
+	"settings_fileManagement_preferHardlinkDesc": "On the same filesystem, create a hardlink instead of copying. The file appears in both locations instantly with no extra disk usage. Disable if your media server treats hardlinked files as duplicates.",
 	"settings_fileManagement_diskSpaceSectionTitle": "Disk Space",
 	"settings_fileManagement_diskSpaceSectionDescription": "Protect against imports that would fill your drive.",
 	"settings_fileManagement_minimumFreeSpaceLabel": "Minimum Free Space",

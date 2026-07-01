@@ -93,6 +93,8 @@ export interface TransferOptions {
 	canMoveFiles?: boolean;
 	/** Whether to preserve symlinks instead of copying target */
 	preserveSymlinks?: boolean;
+	/** Try hardlink before falling back to copy (default: true). Set false to always copy. */
+	preferHardlink?: boolean;
 }
 
 /**
@@ -334,7 +336,7 @@ export async function transferFileWithMode(
 	dest: string,
 	options: TransferOptions = {}
 ): Promise<TransferResult> {
-	const { importMode = ImportMode.Auto, canMoveFiles = true, preserveSymlinks = false } = options;
+	const { importMode = ImportMode.Auto, canMoveFiles = true, preserveSymlinks = false, preferHardlink = true } = options;
 
 	// Determine effective transfer mode based on ImportMode
 	let effectiveMode: ImportMode;
@@ -378,7 +380,7 @@ export async function transferFileWithMode(
 
 		case ImportMode.HardlinkOrCopy:
 		default:
-			result = await transferFile(source, dest, true, preserveSymlinks);
+			result = await transferFile(source, dest, preferHardlink, preserveSymlinks);
 			break;
 	}
 
