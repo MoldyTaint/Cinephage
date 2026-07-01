@@ -1534,7 +1534,8 @@ export type ImportMethod = z.infer<typeof importMethodSchema>;
 export const fileManagementSchema = z.object({
 	importMode: importMethodSchema.default('move'),
 	minimumFreeSpaceGb: z.number().min(0).default(1),
-	deleteEmptyFolders: z.boolean().default(false)
+	deleteEmptyFolders: z.boolean().default(false),
+	recycleEnabled: z.boolean().default(false)
 });
 export type FileManagementSettings = z.infer<typeof fileManagementSchema>;
 

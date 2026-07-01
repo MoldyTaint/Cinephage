@@ -674,6 +674,24 @@ export async function hasSufficientDiskSpace(
 }
 
 /**
+ * Moves `filePath` into a `.trash` folder at the root of the library, preserving
+ * the path structure beneath `rootFolderPath` so files from different media never
+ * collide. The original file is removed; the DB record is untouched by this call.
+ */
+export async function moveToRecycleBin(filePath: string, rootFolderPath: string): Promise<void> {
+	const normalizedRoot = rootFolderPath.endsWith('/') ? rootFolderPath.slice(0, -1) : rootFolderPath;
+	const relativePath = filePath.startsWith(normalizedRoot + '/')
+		? filePath.slice(normalizedRoot.length + 1)
+		: filePath.replace(/^\/+/, '');
+	const trashPath = join(normalizedRoot, '.trash', relativePath);
+	const result = await moveFile(filePath, trashPath);
+	if (!result.success) {
+		throw new Error(`Failed to move file to recycle bin: ${result.error}`);
+	}
+	logger.info({ from: filePath, to: trashPath }, '[FileTransfer] Moved file to recycle bin');
+}
+
+/**
  * Walks up from `startPath` toward `stopAt`, removing each directory that is
  * empty (no remaining files or subdirectories). Stops before removing `stopAt`
  * itself. Safe to call after a move; silently skips non-empty dirs.
