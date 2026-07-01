@@ -7,6 +7,7 @@
 	import { createProgressiveRenderer } from '$lib/utils/progressive-render.svelte.ts';
 	import { formatBytes } from '$lib/utils/format';
 	import type { PageData } from './$types';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -64,7 +65,7 @@
 </script>
 
 <svelte:head>
-	<title>Media Explorer</title>
+	<title>{m.nav_mediaExplorer()}</title>
 </svelte:head>
 
 <SettingsPage
@@ -72,10 +73,26 @@
 	subtitle="Browse all media with stats, quality info, and playback data"
 >
 	{#snippet actions()}
-		<label class="input input-sm flex items-center gap-2">
-			<Search class="h-4 w-4 opacity-50" />
-			<input type="text" class="grow" placeholder="Search media..." bind:value={searchQuery} />
-		</label>
+		<div class="relative group w-56">
+			<Search
+				class="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-base-content/40 transition-colors group-focus-within:text-primary"
+			/>
+			<input
+				type="text"
+				placeholder="Search media..."
+				class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none transition-all duration-200"
+				bind:value={searchQuery}
+			/>
+			{#if searchQuery}
+				<button
+					class="absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-0.5 text-base-content/40 transition-colors hover:bg-base-300 hover:text-base-content"
+					onclick={() => (searchQuery = '')}
+					aria-label="Clear search"
+				>
+					<X class="h-3.5 w-3.5" />
+				</button>
+			{/if}
+		</div>
 	{/snippet}
 
 	<!-- Stats bar -->

@@ -140,7 +140,7 @@ The repository uses a two-branch delivery model:
 4. Pushes to `main` run semantic-release, create the GitHub Release tag (for example `v0.7.0`), and publish stable Docker images from that release only
 5. Stable Docker tags are `latest` plus semver tags such as `0.7.0`, `0.7`, and `0`
 
-Supporting automation that updates project dependencies, such as the flake lock workflow, intentionally targets `dev`.
+Supporting automation that updates project dependencies intentionally targets `dev`. [Renovate](https://docs.renovatebot.com/) opens version-update PRs against `dev` weekly. Patch and minor npm bumps auto-merge after a 3-day stability window once CI passes; GitHub Actions bumps auto-merge after 7 days. Major version bumps remain manual. The dependency dashboard issue tracks all pending updates. See [`renovate.json`](renovate.json) for the full policy.
 
 ### Commit Types and Version Bumps
 

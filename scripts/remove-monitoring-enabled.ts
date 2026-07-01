@@ -12,15 +12,15 @@ import { monitoringSettings } from '../src/lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 
 async function main() {
-	console.log('🗑️  Removing "enabled" key from monitoring_settings...');
+	console.log('Removing "enabled" key from monitoring_settings...');
 
 	try {
 		await db.delete(monitoringSettings).where(eq(monitoringSettings.key, 'enabled'));
 
-		console.log('✅ Successfully removed "enabled" key');
+		console.log('Successfully removed "enabled" key');
 		console.log('   Monitoring will now always run on server startup');
 	} catch (error) {
-		console.error('❌ Failed to remove "enabled" key:', error);
+		console.error('Failed to remove "enabled" key:', error);
 		process.exit(1);
 	}
 }

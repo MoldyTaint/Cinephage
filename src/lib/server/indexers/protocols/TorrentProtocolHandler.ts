@@ -231,7 +231,7 @@ export class TorrentProtocolHandler extends BaseProtocolHandler implements ITorr
 		if (this.isFreeleech(result)) {
 			details.push({
 				label: 'Freeleech',
-				value: '✓',
+				value: 'Yes',
 				tooltip: 'This torrent does not count against your download ratio'
 			});
 		}
@@ -239,7 +239,7 @@ export class TorrentProtocolHandler extends BaseProtocolHandler implements ITorr
 		if (result.torrent?.isInternal) {
 			details.push({
 				label: 'Internal',
-				value: '✓',
+				value: 'Yes',
 				tooltip: 'Internal tracker release'
 			});
 		}

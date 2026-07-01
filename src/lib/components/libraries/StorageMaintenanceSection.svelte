@@ -13,7 +13,7 @@
 		formatTimestamp,
 		formatDuration,
 		getScanTone,
-		getServerTypeIcon,
+		getServerTypeBadgeClass,
 		getSyncStatusColor
 	} from './storage-utils.js';
 	import LibraryBreakdownTable from './LibraryBreakdownTable.svelte';
@@ -152,17 +152,21 @@
 		<span>{m.settings_general_addFolderFirst()}</span>
 	</div>
 {:else}
-	<div class="card bg-base-200 p-4">
-		<div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:gap-8">
+	<div class="card bg-base-200 p-5">
+		<div class="flex flex-col gap-5 sm:flex-row sm:items-start sm:gap-8">
 			<div class="shrink-0">
-				<div class="text-3xl font-bold">{formatBytes(storage.totalUsedBytes)}</div>
-				<div class="mt-1 text-sm text-base-content/70">
-					{storage.movieCount} movies · {storage.seriesCount} series · {storage.subtitleCount} subtitles
+				<div class="text-4xl font-bold tracking-tight">{formatBytes(storage.totalUsedBytes)}</div>
+				<div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-base-content/60">
+					<span>{storage.movieCount} movies</span>
+					<span class="text-base-content/30">·</span>
+					<span>{storage.seriesCount} series</span>
+					<span class="text-base-content/30">·</span>
+					<span>{storage.subtitleCount} subtitles</span>
 				</div>
 			</div>
-			<div class="flex-1">
-				<div class="flex h-4 overflow-hidden rounded-full bg-base-300">
-					{#if storage.totalUsedBytes > 0}
+			<div class="flex-1 min-w-0">
+				{#if storage.totalUsedBytes > 0}
+					<div class="flex h-3 overflow-hidden rounded-full bg-base-300/60">
 						<div
 							class="h-full bg-primary transition-all"
 							style="width: {typeRatio(storage.moviesUsedBytes)}"
@@ -178,8 +182,8 @@
 							style="width: {typeRatio(storage.subtitlesUsedBytes)}"
 							title={`Subtitles: ${formatBytes(storage.subtitlesUsedBytes)}`}
 						></div>
-					{/if}
-				</div>
+					</div>
+				{/if}
 				<div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-base-content/60">
 					<span class="inline-flex items-center gap-1.5">
 						<span class="inline-block h-2.5 w-2.5 rounded-full bg-primary"></span>
@@ -294,7 +298,7 @@
 		<div class="flex flex-wrap gap-2">
 			{#each serverStatuses as server (server.serverId)}
 				<span class="inline-flex items-center gap-1.5 text-xs text-base-content/70">
-					<span>{getServerTypeIcon(server.serverType)}</span>
+					<span class="badge badge-xs {getServerTypeBadgeClass(server.serverType)}"></span>
 					<span>{server.serverName}</span>
 					<span
 						class="badge badge-xs {getSyncStatusColor(server.lastSyncStatus, server.lastSyncAt)}"

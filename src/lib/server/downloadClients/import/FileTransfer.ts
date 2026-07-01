@@ -16,17 +16,26 @@ import {
 	copyFile,
 	mkdir,
 	stat,
+	statfs,
 	readdir,
 	unlink,
+	rmdir,
 	rename,
 	lstat,
 	readlink,
+	realpath,
 	symlink,
-	open
+	open,
+	chmod
 } from 'fs/promises';
 import { join, dirname, basename, extname } from 'path';
 import { createChildLogger } from '$lib/logging';
-import { VIDEO_EXTENSIONS, isVideoFile as isBaseVideoFile } from '$lib/config/constants.js';
+import {
+	VIDEO_EXTENSIONS,
+	isVideoFile as isBaseVideoFile,
+	DANGEROUS_EXTENSIONS,
+	EXECUTABLE_EXTENSIONS
+} from '$lib/config/constants.js';
 
 const logger = createChildLogger({ logDomain: 'imports' as const });
 
@@ -66,7 +75,15 @@ export enum ImportMode {
 	 * Try hardlink first, fall back to copy, never delete source
 	 * Use when you explicitly want to preserve source files
 	 */
-	HardlinkOrCopy = 'hardlinkOrCopy'
+	HardlinkOrCopy = 'hardlinkOrCopy',
+
+	/**
+	 * Create a symlink in the library pointing at the source file.
+	 * The source is never moved or deleted. If the source is itself a
+	 * symlink, the library link resolves to the real target via realpath
+	 * to avoid fragile chains.
+	 */
+	Symlink = 'symlink'
 }
 
 /**
@@ -91,6 +108,8 @@ export interface TransferOptions {
 	canMoveFiles?: boolean;
 	/** Whether to preserve symlinks instead of copying target */
 	preserveSymlinks?: boolean;
+	/** Try hardlink before falling back to copy (default: true). Set false to always copy. */
+	preferHardlink?: boolean;
 }
 
 /**
@@ -319,6 +338,60 @@ export async function moveFile(source: string, dest: string): Promise<TransferRe
 }
 
 /**
+ * Creates a symlink at `dest` pointing to `source`. If `source` is itself a
+ * symlink, `realpath` is used to resolve the full chain so the library link
+ * points at the real file rather than creating a fragile chain through the
+ * download folder.
+ */
+export async function createSymlinkImport(source: string, dest: string): Promise<TransferResult> {
+	try {
+		await ensureDirectory(dirname(dest));
+
+		// Use lstat (not stat) so we detect and remove dangling symlinks too;
+		// stat follows the link and throws ENOENT if the target is gone, which
+		// would leave the stale symlink in place and cause symlink() to fail with EEXIST.
+		try {
+			await lstat(dest);
+			await unlink(dest);
+		} catch {
+			// dest doesn't exist — nothing to remove
+		}
+
+		// Resolve any symlink chain so the library link is as stable as possible
+		let linkTarget = source;
+		if (await isSymlink(source)) {
+			try {
+				linkTarget = await realpath(source);
+			} catch {
+				// Broken or inaccessible symlink - fall back to the source path directly
+				linkTarget = source;
+			}
+		}
+
+		await symlink(linkTarget, dest);
+
+		let sizeBytes: number | undefined;
+		try {
+			sizeBytes = await getFileSize(source);
+		} catch {
+			// non-fatal
+		}
+
+		logger.debug({ source, dest, linkTarget }, '[FileTransfer] Symlink import created');
+
+		return { success: true, sourcePath: source, destPath: dest, mode: 'symlink', sizeBytes };
+	} catch (error) {
+		return {
+			success: false,
+			sourcePath: source,
+			destPath: dest,
+			mode: 'symlink',
+			error: (error as Error).message
+		};
+	}
+}
+
+/**
  * Transfer a file using ImportMode to determine the transfer strategy.
  * Follows Radarr's pattern for handling seeding torrents vs usenet.
  *
@@ -332,7 +405,12 @@ export async function transferFileWithMode(
 	dest: string,
 	options: TransferOptions = {}
 ): Promise<TransferResult> {
-	const { importMode = ImportMode.Auto, canMoveFiles = true, preserveSymlinks = false } = options;
+	const {
+		importMode = ImportMode.Auto,
+		canMoveFiles = true,
+		preserveSymlinks = false,
+		preferHardlink = true
+	} = options;
 
 	// Determine effective transfer mode based on ImportMode
 	let effectiveMode: ImportMode;
@@ -357,6 +435,7 @@ export async function transferFileWithMode(
 		case ImportMode.Move:
 		case ImportMode.Copy:
 		case ImportMode.HardlinkOrCopy:
+		case ImportMode.Symlink:
 			effectiveMode = importMode;
 			break;
 
@@ -374,9 +453,12 @@ export async function transferFileWithMode(
 		case ImportMode.Copy:
 			return transferFile(source, dest, false, preserveSymlinks);
 
+		case ImportMode.Symlink:
+			return createSymlinkImport(source, dest);
+
 		case ImportMode.HardlinkOrCopy:
 		default:
-			result = await transferFile(source, dest, true, preserveSymlinks);
+			result = await transferFile(source, dest, preferHardlink, preserveSymlinks);
 			break;
 	}
 
@@ -636,4 +718,179 @@ export async function isVideoFileByMagic(filePath: string): Promise<boolean> {
  */
 export async function findVideoFiles(dir: string): Promise<string[]> {
 	return findFilesRecursive(dir, [...VIDEO_EXTENSIONS, '.strm']);
+}
+
+/**
+ * Returns available disk space in bytes for the filesystem containing `targetPath`.
+ * Throws if the path doesn't exist or statfs fails.
+ */
+export async function getAvailableDiskSpaceBytes(targetPath: string): Promise<number> {
+	const fs = await statfs(targetPath);
+	return fs.bavail * fs.bsize;
+}
+
+/**
+ * Checks whether the filesystem containing `targetPath` has at least
+ * `minimumFreeSpaceGb` GB of free space. Returns false (not enough space) or
+ * true (ok). Never throws - logs a warning and returns true on stat failure so
+ * that a transient error doesn't block every import.
+ */
+export async function hasSufficientDiskSpace(
+	targetPath: string,
+	minimumFreeSpaceGb: number
+): Promise<boolean> {
+	if (minimumFreeSpaceGb <= 0) return true;
+	try {
+		const available = await getAvailableDiskSpaceBytes(targetPath);
+		const minimumBytes = minimumFreeSpaceGb * 1024 * 1024 * 1024;
+		return available >= minimumBytes;
+	} catch (err) {
+		logger.warn(
+			{ targetPath, error: err instanceof Error ? err.message : String(err) },
+			'[FileTransfer] Could not check disk space - allowing import to proceed'
+		);
+		return true;
+	}
+}
+
+/**
+ * Applies file permissions to `destPath` after a transfer.
+ * Priority: explicit `chmodFile` value > `preservePermissions` (copy from source) > no-op.
+ * Never throws - logs a warning on failure so a permission error never blocks an import.
+ */
+export async function applyFilePermissions(
+	destPath: string,
+	sourcePath: string,
+	preservePermissions: boolean,
+	chmodFile: string
+): Promise<void> {
+	try {
+		if (chmodFile) {
+			await chmod(destPath, parseInt(chmodFile, 8));
+		} else if (preservePermissions) {
+			const sourceStat = await stat(sourcePath);
+			await chmod(destPath, sourceStat.mode & 0o777);
+		}
+	} catch (err) {
+		logger.warn(
+			{ destPath, error: (err as Error).message },
+			'[FileTransfer] Failed to apply file permissions'
+		);
+	}
+}
+
+/**
+ * Copies or moves sidecar files (subtitles, NFO, artwork, etc.) from `sourceDir`
+ * to `destDir`. Only files whose lowercase extension appears in `extensions` are
+ * transferred. The source directory is scanned non-recursively. Files that already
+ * exist at the destination are skipped with a warning.
+ *
+ * `doMove` mirrors what happened to the main video file: true = move, false = copy.
+ */
+const ALWAYS_BLOCKED_EXTS = new Set<string>([
+	...(DANGEROUS_EXTENSIONS as readonly string[]),
+	...(EXECUTABLE_EXTENSIONS as readonly string[])
+]);
+
+export async function copyExtraFiles(
+	sourceDir: string,
+	destDir: string,
+	extensions: string[],
+	doMove: boolean,
+	permissions?: { preservePermissions: boolean; chmodFile: string }
+): Promise<void> {
+	if (extensions.length === 0) return;
+	const normalizedExts = extensions
+		.map((e) => (e.startsWith('.') ? e.toLowerCase() : `.${e.toLowerCase()}`))
+		.filter((e) => !ALWAYS_BLOCKED_EXTS.has(e));
+	let entries: string[];
+	try {
+		entries = await readdir(sourceDir);
+	} catch {
+		return;
+	}
+	for (const name of entries) {
+		const ext = extname(name).toLowerCase();
+		if (!normalizedExts.includes(ext)) continue;
+		const src = join(sourceDir, name);
+		const dst = join(destDir, name);
+		try {
+			const srcStat = await stat(src);
+			if (!srcStat.isFile()) continue;
+			if (await fileExists(dst)) {
+				logger.debug({ dst }, '[FileTransfer] Extra file already exists at destination, skipping');
+				continue;
+			}
+			if (doMove) {
+				await moveFile(src, dst);
+			} else {
+				await copyFile(src, dst);
+			}
+			if (permissions) {
+				await applyFilePermissions(
+					dst,
+					src,
+					permissions.preservePermissions,
+					permissions.chmodFile
+				);
+			}
+			logger.debug({ src, dst, doMove }, '[FileTransfer] Imported extra file');
+		} catch (err) {
+			logger.warn(
+				{ src, dst, error: (err as Error).message },
+				'[FileTransfer] Failed to import extra file'
+			);
+		}
+	}
+}
+
+/**
+ * Moves `filePath` into a `.trash` folder at the root of the library, preserving
+ * the path structure beneath `rootFolderPath` so files from different media never
+ * collide. The original file is removed; the DB record is untouched by this call.
+ */
+export async function moveToRecycleBin(filePath: string, rootFolderPath: string): Promise<void> {
+	const normalizedRoot = rootFolderPath.endsWith('/')
+		? rootFolderPath.slice(0, -1)
+		: rootFolderPath;
+	const relativePath = filePath.startsWith(normalizedRoot + '/')
+		? filePath.slice(normalizedRoot.length + 1)
+		: filePath.replace(/^\/+/, '');
+	const trashPath = join(normalizedRoot, '.trash', relativePath);
+	const result = await moveFile(filePath, trashPath);
+	if (!result.success) {
+		throw new Error(`Failed to move file to recycle bin: ${result.error}`);
+	}
+	logger.info({ from: filePath, to: trashPath }, '[FileTransfer] Moved file to recycle bin');
+}
+
+/**
+ * Walks up from `startPath` toward `stopAt`, removing each directory that is
+ * empty (no remaining files or subdirectories). Stops before removing `stopAt`
+ * itself. Safe to call after a move; silently skips non-empty dirs.
+ */
+export async function removeEmptyDirectories(startPath: string, stopAt: string): Promise<void> {
+	const normalizedStop = stopAt.endsWith('/') ? stopAt : stopAt + '/';
+	let current = startPath;
+
+	while (current.startsWith(normalizedStop) && current !== stopAt) {
+		let entries: string[];
+		try {
+			const dirEntries = await readdir(current);
+			entries = dirEntries;
+		} catch {
+			break;
+		}
+
+		if (entries.length > 0) break;
+
+		try {
+			await rmdir(current);
+			logger.debug({ dir: current }, '[FileTransfer] Removed empty directory after move');
+		} catch {
+			break;
+		}
+
+		current = current.substring(0, current.lastIndexOf('/')) || '/';
+	}
 }

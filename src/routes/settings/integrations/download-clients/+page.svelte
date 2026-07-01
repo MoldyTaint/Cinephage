@@ -529,6 +529,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>{m.nav_downloadClients()}</title>
+</svelte:head>
+
 <SettingsPage
 	title={m.nav_downloadClients()}
 	subtitle={m.settings_integrations_downloadClients_subtitle()}

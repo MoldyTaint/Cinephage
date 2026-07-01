@@ -158,7 +158,7 @@ export const POST: RequestHandler = async (event) => {
 			name: data.name,
 			description: data.description,
 			upgradesAllowed: data.upgradesAllowed,
-			preventDowngrades: data.preventDowngrades,
+			preventDowngrades: data.preventDowngrades ?? true,
 			minScore: data.minScore,
 			upgradeUntilScore: data.upgradeUntilScore,
 			minScoreIncrement: data.minScoreIncrement,

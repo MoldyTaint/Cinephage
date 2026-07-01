@@ -20,8 +20,11 @@ import {
 import {
 	ensureDirectory,
 	ImportMode,
-	transferFileWithMode
+	transferFileWithMode,
+	hasSufficientDiskSpace,
+	removeEmptyDirectories
 } from '$lib/server/downloadClients/import/FileTransfer.js';
+import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
 import {
 	validateRootFolder,
 	getAnimeSubtypeEnforcement,
@@ -94,6 +97,8 @@ export interface ExecuteManualImportRequest {
 	libraryId?: string;
 	seasonNumber?: number;
 	episodeNumber?: number;
+	/** Override the global file management import mode for this specific import */
+	importMode?: 'move' | 'copy' | 'symlink';
 }
 
 export interface ExecuteManualImportResult {
@@ -185,12 +190,35 @@ export class ManualImportService {
 		const normalizedGroupPath = resolve(groupPath);
 		const sourceFiles = await this.resolveSourceFiles(normalizedGroupPath);
 		const selectedFile = this.selectPrimarySourceFile(sourceFiles);
+		const isStrmFile = extname(selectedFile.path).toLowerCase() === '.strm';
+
 		const fileStem = getMediaParseStem(selectedFile.path);
-		const parsed = parseRelease(fileStem);
-		const tvIdentifier = resolveTvEpisodeIdentifier({
+		const fileParsed = parseRelease(fileStem);
+		const fileTvIdentifier = resolveTvEpisodeIdentifier({
 			filePath: selectedFile.path,
-			parsed
+			parsed: fileParsed
 		});
+
+		// When the selected file is a .strm placeholder (e.g. nzbdav) or has no
+		// recognisable title, the release info lives in the parent folder name instead.
+		// Use dirname(selectedFile.path) so this works whether the group was resolved
+		// as a file path or a folder path.
+		let parsed = fileParsed;
+		let tvIdentifier = fileTvIdentifier;
+		if (isStrmFile || !fileParsed.cleanTitle) {
+			const parentFolderName = basename(dirname(selectedFile.path));
+			const folderStem = getMediaParseStem(parentFolderName);
+			const folderParsed = parseRelease(folderStem);
+			if (folderParsed.cleanTitle && (!fileParsed.cleanTitle || isStrmFile)) {
+				parsed = folderParsed;
+				tvIdentifier = resolveTvEpisodeIdentifier({
+					filePath: selectedFile.path,
+					fileName: parentFolderName,
+					parsed: folderParsed
+				});
+			}
+		}
+
 		const parsedTitle = parsed.cleanTitle || fileStem;
 		const inferredMediaType: MediaType = preferredMediaType || (tvIdentifier ? 'tv' : 'movie');
 		const titleCandidates = this.buildTitleCandidatesForMatching({
@@ -461,7 +489,8 @@ export class ManualImportService {
 			await this.transferSourceFile(
 				sourceFile.path,
 				destinationPath,
-				rootFolder.preserveSymlinks ?? false
+				rootFolder.preserveSymlinks ?? false,
+				request.importMode
 			);
 			const unmatchedId = await this.insertUnmatchedImportRecord({
 				destinationPath,
@@ -533,7 +562,8 @@ export class ManualImportService {
 				await this.transferSourceFile(
 					sourceFile.path,
 					destinationPath,
-					rootFolder.preserveSymlinks ?? false
+					rootFolder.preserveSymlinks ?? false,
+					request.importMode
 				);
 				const unmatchedId = await this.insertUnmatchedImportRecord({
 					destinationPath,
@@ -1265,18 +1295,59 @@ export class ManualImportService {
 	private async transferSourceFile(
 		sourcePath: string,
 		destinationPath: string,
-		preserveSymlinks: boolean
-	): Promise<void> {
+		preserveSymlinks: boolean,
+		importModeOverride?: 'move' | 'copy' | 'symlink'
+	): Promise<{ transferMode: string }> {
 		await ensureDirectory(dirname(destinationPath));
+
+		const settings = await getFileManagementSettings();
+		const effectiveMode = importModeOverride ?? settings.importMode;
+		const canMoveFiles = effectiveMode === 'move';
+		const importMode =
+			effectiveMode === 'symlink'
+				? ImportMode.Symlink
+				: canMoveFiles
+					? ImportMode.Auto
+					: ImportMode.HardlinkOrCopy;
+
+		if (settings.minimumFreeSpaceGb > 0) {
+			const destDir = dirname(destinationPath);
+			const hasSpace = await hasSufficientDiskSpace(destDir, settings.minimumFreeSpaceGb);
+			if (!hasSpace) {
+				throw new Error(
+					`Insufficient disk space on destination: less than ${settings.minimumFreeSpaceGb} GB free`
+				);
+			}
+		}
+
 		const transferResult = await transferFileWithMode(sourcePath, destinationPath, {
-			importMode: ImportMode.HardlinkOrCopy,
-			canMoveFiles: false,
+			importMode,
+			canMoveFiles,
 			preserveSymlinks
 		});
 
 		if (!transferResult.success) {
 			throw new Error(transferResult.error || 'Failed to transfer source file');
 		}
+
+		const action =
+			transferResult.mode === 'hardlink'
+				? 'Hardlinked'
+				: transferResult.mode === 'move'
+					? 'Moved'
+					: transferResult.mode === 'symlink'
+						? 'Symlinked'
+						: 'Copied';
+		logger.info(
+			{ source: basename(sourcePath), dest: basename(destinationPath), mode: transferResult.mode },
+			`[ManualImport] ${action}: ${basename(sourcePath)}`
+		);
+
+		if (settings.deleteEmptyFolders && transferResult.mode === 'move') {
+			await removeEmptyDirectories(dirname(sourcePath), resolve(dirname(sourcePath), '..'));
+		}
+
+		return { transferMode: transferResult.mode };
 	}
 
 	private async insertUnmatchedImportRecord(input: {

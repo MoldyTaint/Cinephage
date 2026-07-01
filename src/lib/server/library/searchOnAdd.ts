@@ -75,6 +75,8 @@ interface SearchForSeriesParams {
 		| 'recent'
 		| 'pilot'
 		| 'none';
+	/** When true, use interactive search source (bypasses automatic-search-disabled restriction) */
+	bypassMonitoring?: boolean;
 }
 
 interface GrabResult {
@@ -513,7 +515,17 @@ class SearchOnAddService {
 	 * would be handled by a separate scheduler.
 	 */
 	async searchForSeries(params: SearchForSeriesParams): Promise<GrabResult> {
-		const { seriesId, tmdbId, tvdbId, imdbId, title, year, scoringProfileId, monitorType } = params;
+		const {
+			seriesId,
+			tmdbId,
+			tvdbId,
+			imdbId,
+			title,
+			year,
+			scoringProfileId,
+			monitorType,
+			bypassMonitoring = false
+		} = params;
 
 		logger.info(
 			{
@@ -534,11 +546,14 @@ class SearchOnAddService {
 
 		try {
 			const indexerManager = await getIndexerManager();
+			const searchSource: 'interactive' | 'automatic' = bypassMonitoring
+				? 'interactive'
+				: 'automatic';
 			const indexerAvailability = evaluateIndexerSearchAvailability(
 				await indexerManager.getIndexers(),
 				{
 					searchType: 'tv',
-					searchSource: 'automatic',
+					searchSource,
 					scoringProfileId: scoringProfileId ?? undefined,
 					getDefinitionCapabilities: (definitionId) =>
 						indexerManager.getDefinitionCapabilities(definitionId)
@@ -570,9 +585,9 @@ class SearchOnAddService {
 				searchTitles: seriesSearchTitles.length > 0 ? seriesSearchTitles : [title]
 			};
 
-			// Perform enriched search to get scored releases (automatic - on add)
+			// Perform enriched search to get scored releases
 			const searchResult = await indexerManager.searchEnhanced(criteria, {
-				searchSource: 'automatic',
+				searchSource,
 				enrichment: {
 					scoringProfileId,
 					filterRejected: true,

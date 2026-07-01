@@ -100,51 +100,58 @@ export function scoreRelease(
 	let sizeRejected = false;
 	let sizeRejectionReason: string | undefined;
 
-	if (fileSizeBytes !== undefined && fileSizeBytes > 0 && sizeContext) {
-		const fileSizeGb = fileSizeBytes / (1024 * 1024 * 1024);
-		const fileSizeMb = fileSizeBytes / (1024 * 1024);
+	if (sizeContext) {
+		const sizeIsUnknown = fileSizeBytes === undefined || fileSizeBytes === 0;
 
 		if (sizeContext.mediaType === 'movie') {
-			// Movie validation (in GB)
 			const minSize = profile.movieMinSizeGb ?? null;
 			const maxSize = profile.movieMaxSizeGb ?? null;
+			const hasLimits = minSize !== null || maxSize !== null;
 
-			if (minSize !== null && fileSizeGb < minSize) {
+			if (hasLimits && sizeIsUnknown) {
 				sizeRejected = true;
-				sizeRejectionReason = `Movie size ${fileSizeGb.toFixed(2)} GB is below minimum ${minSize} GB`;
-			} else if (maxSize !== null && fileSizeGb > maxSize) {
-				sizeRejected = true;
-				sizeRejectionReason = `Movie size ${fileSizeGb.toFixed(2)} GB exceeds maximum ${maxSize} GB`;
-			}
-		} else if (sizeContext.mediaType === 'tv') {
-			// TV validation (in MB per episode)
-			const minSizeMb = profile.episodeMinSizeMb ?? null;
-			const maxSizeMb = profile.episodeMaxSizeMb ?? null;
-
-			let effectiveSizeMb = fileSizeMb;
-
-			if (sizeContext.isSeasonPack) {
-				if (!sizeContext.episodeCount || sizeContext.episodeCount <= 0) {
-					// Skip size validation for season packs with unknown episode count
-					// This allows the release through - user can evaluate size manually
-					// Note: episodeCount should be fetched from TMDB in SearchOrchestrator
-					effectiveSizeMb = -1; // Signal to skip size validation below
-				} else {
-					// Calculate average per episode
-					effectiveSizeMb = fileSizeMb / sizeContext.episodeCount;
+				sizeRejectionReason = 'Release size unknown; cannot verify against configured size limits';
+			} else if (!sizeIsUnknown) {
+				const fileSizeGb = fileSizeBytes! / (1024 * 1024 * 1024);
+				if (minSize !== null && fileSizeGb < minSize) {
+					sizeRejected = true;
+					sizeRejectionReason = `Movie size ${fileSizeGb.toFixed(2)} GB is below minimum ${minSize} GB`;
+				} else if (maxSize !== null && fileSizeGb > maxSize) {
+					sizeRejected = true;
+					sizeRejectionReason = `Movie size ${fileSizeGb.toFixed(2)} GB exceeds maximum ${maxSize} GB`;
 				}
 			}
+		} else if (sizeContext.mediaType === 'tv') {
+			const minSizeMb = profile.episodeMinSizeMb ?? null;
+			const maxSizeMb = profile.episodeMaxSizeMb ?? null;
+			const hasLimits = minSizeMb !== null || maxSizeMb !== null;
 
-			if (!sizeRejected && effectiveSizeMb > 0) {
-				// Only validate size if we have a valid effectiveSizeMb (> 0)
-				// -1 means skip validation (unknown episode count for season pack)
-				const perEp = sizeContext.isSeasonPack ? ' per episode (avg)' : '';
-				if (minSizeMb !== null && effectiveSizeMb < minSizeMb) {
-					sizeRejected = true;
-					sizeRejectionReason = `Episode size ${effectiveSizeMb.toFixed(0)} MB${perEp} is below minimum ${minSizeMb} MB`;
-				} else if (maxSizeMb !== null && effectiveSizeMb > maxSizeMb) {
-					sizeRejected = true;
-					sizeRejectionReason = `Episode size ${effectiveSizeMb.toFixed(0)} MB${perEp} exceeds maximum ${maxSizeMb} MB`;
+			if (hasLimits && sizeIsUnknown) {
+				sizeRejected = true;
+				sizeRejectionReason = 'Release size unknown; cannot verify against configured size limits';
+			} else if (!sizeIsUnknown) {
+				const fileSizeMb = fileSizeBytes! / (1024 * 1024);
+				let effectiveSizeMb = fileSizeMb;
+
+				if (sizeContext.isSeasonPack) {
+					if (!sizeContext.episodeCount || sizeContext.episodeCount <= 0) {
+						// Skip size validation for season packs with unknown episode count.
+						// episodeCount should be fetched from TMDB in SearchOrchestrator.
+						effectiveSizeMb = -1;
+					} else {
+						effectiveSizeMb = fileSizeMb / sizeContext.episodeCount;
+					}
+				}
+
+				if (!sizeRejected && effectiveSizeMb > 0) {
+					const perEp = sizeContext.isSeasonPack ? ' per episode (avg)' : '';
+					if (minSizeMb !== null && effectiveSizeMb < minSizeMb) {
+						sizeRejected = true;
+						sizeRejectionReason = `Episode size ${effectiveSizeMb.toFixed(0)} MB${perEp} is below minimum ${minSizeMb} MB`;
+					} else if (maxSizeMb !== null && effectiveSizeMb > maxSizeMb) {
+						sizeRejected = true;
+						sizeRejectionReason = `Episode size ${effectiveSizeMb.toFixed(0)} MB${perEp} exceeds maximum ${maxSizeMb} MB`;
+					}
 				}
 			}
 		}

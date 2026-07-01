@@ -244,6 +244,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>{m.nav_qualitySettings()}</title>
+</svelte:head>
+
 <SettingsPage title={m.settings_quality_heading()} subtitle={m.settings_quality_subtitle()}>
 	<!-- Tabs -->
 	<div role="tablist" class="tabs-boxed tabs w-fit">

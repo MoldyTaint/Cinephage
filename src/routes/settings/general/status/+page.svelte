@@ -261,10 +261,10 @@
 	async function handleValidatePath(
 		path: string,
 		_readOnly = false,
-		_folderId?: string
+		folderId?: string
 	): Promise<PathValidationResult> {
 		try {
-			const payload = await validateRootFolder(path);
+			const payload = await validateRootFolder(path, undefined, folderId);
 			return payload as unknown as PathValidationResult;
 		} catch (error) {
 			return {
@@ -300,11 +300,11 @@
 </script>
 
 <svelte:head>
-	<title>Status</title>
+	<title>{m.nav_storageMaintenance()}</title>
 </svelte:head>
 
 <SettingsPage
-	title="Status"
+	title={m.nav_storageMaintenance()}
 	subtitle="Storage health, library maintenance, and media server analytics"
 >
 	{#snippet actions()}

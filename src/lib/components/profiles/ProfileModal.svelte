@@ -61,7 +61,7 @@
 	let description = $state('');
 	let copyFromId = $state<string>('');
 	let upgradesAllowed = $state(true);
-	let preventDowngrades = $state(false);
+	let preventDowngrades = $state(true);
 	// Media-specific size limits (string inputs to preserve cursor/editing)
 	let movieMinSizeGbInput = $state('');
 	let movieMaxSizeGbInput = $state('');
@@ -112,7 +112,7 @@
 				description = '';
 				copyFromId = defaultCopyFromId;
 				upgradesAllowed = true;
-				preventDowngrades = false;
+				preventDowngrades = true;
 				movieMinSizeGbInput = '';
 				movieMaxSizeGbInput = '';
 				episodeMinSizeMbInput = '';

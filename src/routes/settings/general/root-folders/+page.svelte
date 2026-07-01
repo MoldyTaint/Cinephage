@@ -81,10 +81,10 @@
 	async function handleValidatePath(
 		path: string,
 		_readOnly = false,
-		_folderId?: string
+		folderId?: string
 	): Promise<PathValidationResult> {
 		try {
-			const payload = await validateRootFolder(path);
+			const payload = await validateRootFolder(path, undefined, folderId);
 			return payload as unknown as PathValidationResult;
 		} catch (error) {
 			return {
@@ -187,13 +187,10 @@
 </script>
 
 <svelte:head>
-	<title>{m.settings_general_tabRootFolders()}</title>
+	<title>{m.nav_rootFolders()}</title>
 </svelte:head>
 
-<SettingsPage
-	title={m.settings_general_tabRootFolders()}
-	subtitle={m.settings_general_rootFoldersDescription()}
->
+<SettingsPage title={m.nav_rootFolders()} subtitle={m.settings_general_rootFoldersDescription()}>
 	{#snippet actions()}
 		<button
 			type="button"
@@ -242,6 +239,7 @@
 	folder={editingFolder}
 	saving={folderSaving}
 	error={folderSaveError}
+	symlinkModeEnabled={data.symlinkModeEnabled}
 	onClose={closeFolderModal}
 	onSave={handleFolderSave}
 	onValidatePath={handleValidatePath}

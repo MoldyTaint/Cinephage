@@ -265,9 +265,9 @@ export const POST: RequestHandler = async (event) => {
 			);
 		});
 
-		// Trigger search if requested and movie is monitored (shared logic)
+		// Trigger search if explicitly requested regardless of monitoring state
 		let searchTriggered = false;
-		if (shouldSearch && monitored) {
+		if (shouldSearch) {
 			const searchResult = await triggerMovieSearch({
 				movieId: newMovie.id,
 				tmdbId,

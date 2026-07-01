@@ -1,9 +1,18 @@
 import * as m from '$lib/paraglide/messages.js';
 import { formatDisplayDate } from '$lib/utils/format.js';
 
+export function libraryHref(
+	item: Pick<LibraryBreakdownItem, 'mediaType' | 'slug' | 'isDefault'>
+): string {
+	const base = item.mediaType === 'movie' ? '/library/movies' : '/library/tv';
+	return item.isDefault ? base : `${base}?library=${item.slug}`;
+}
+
 export type LibraryBreakdownItem = {
 	id: string;
 	name: string;
+	slug: string;
+	isDefault: boolean;
 	mediaType: string;
 	mediaSubType: string;
 	itemCount: number;
@@ -200,8 +209,13 @@ export function getScanTone(status: string | null | undefined): string {
 	return 'bg-base-300';
 }
 
-export function getServerTypeIcon(type: string): string {
-	return type === 'jellyfin' ? '🟣' : type === 'emby' ? '🟢' : '🟠';
+export function getServerTypeBadgeClass(type: string): string {
+	// DaisyUI semantic colors map to the original purple/green/orange server-type dots.
+	return type === 'jellyfin'
+		? 'badge-primary'
+		: type === 'emby'
+			? 'badge-success'
+			: 'badge-warning';
 }
 
 export function getSyncStatusColor(status: string | null, lastSyncAt: string | null): string {

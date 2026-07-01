@@ -19,7 +19,8 @@ import type {
 	NamingPresetUpdate,
 	NamingPreview,
 	LibraryClassificationUpdate,
-	BackupImport
+	BackupImport,
+	FileManagementSettings
 } from '$lib/validation/schemas.js';
 
 import { apiGet, apiPost, apiPut, apiDelete } from './client.js';
@@ -40,8 +41,8 @@ export async function deleteRootFolder(id: string) {
 	return apiDelete(`/api/root-folders/${id}`);
 }
 
-export async function validateRootFolder(path: string, mediaType?: string) {
-	return apiPost('/api/root-folders/validate', { path, mediaType });
+export async function validateRootFolder(path: string, mediaType?: string, folderId?: string) {
+	return apiPost('/api/root-folders/validate', { path, mediaType, folderId });
 }
 
 export async function getLibraries(params?: { mediaType?: string; includeSystem?: boolean }) {
@@ -457,4 +458,12 @@ export async function seedBlockedKeywords(): Promise<{ added: number }> {
 	return apiPost('/api/settings/blocked-keywords', { seed: true }) as Promise<{
 		added: number;
 	}>;
+}
+
+export async function getFileManagementSettings() {
+	return apiGet('/api/settings/file-management');
+}
+
+export async function updateFileManagementSettings(payload: FileManagementSettings) {
+	return apiPut('/api/settings/file-management', payload);
 }

@@ -221,10 +221,10 @@ export function removeHearingImpaired(content: string): string {
 		''
 	);
 
-	// Remove music notes
-	result = result.replace(/♪[^♪]*♪/g, '');
-	result = result.replace(/♫[^♫]*♫/g, '');
-	result = result.replace(/[♪♫]/g, '');
+	// Remove music notes (\u266A = ♪, \u266B = ♫)
+	result = result.replace(/\u266A[^\u266A]*\u266A/g, '');
+	result = result.replace(/\u266B[^\u266B]*\u266B/g, '');
+	result = result.replace(/[\u266A\u266B]/g, '');
 
 	// Remove speaker labels at start of lines (but not mid-sentence)
 	result = result.replace(/^[A-Z][A-Z\s]*:\s*/gm, '');

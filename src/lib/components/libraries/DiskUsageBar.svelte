@@ -40,18 +40,18 @@
 			></div>
 		</div>
 		{#if compact}
-			<div class="mt-1 flex gap-3 text-[10px] text-base-content/50">
+			<div class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-base-content/50">
 				<span class="inline-flex items-center gap-1">
-					<span class="h-2 w-2 rounded-full" style={DISK_SEGMENT_STYLES.cinephage}></span>
-					{formatPercent(getUsedRatio(item))}
+					<span class="h-2 w-2 shrink-0 rounded-full" style={DISK_SEGMENT_STYLES.cinephage}></span>
+					Cinephage {formatPercent(getUsedRatio(item))}
 				</span>
 				<span class="inline-flex items-center gap-1">
-					<span class="h-2 w-2 rounded-full" style={DISK_SEGMENT_STYLES.other}></span>
-					{formatPercent(getNonCinephageRatio(item))}
+					<span class="h-2 w-2 shrink-0 rounded-full" style={DISK_SEGMENT_STYLES.other}></span>
+					Other {formatPercent(getNonCinephageRatio(item))}
 				</span>
 				<span class="inline-flex items-center gap-1">
-					<span class="h-2 w-2 rounded-full" style={DISK_SEGMENT_STYLES.free}></span>
-					{formatPercent(getFreeRatio(item))}
+					<span class="h-2 w-2 shrink-0 rounded-full" style={DISK_SEGMENT_STYLES.free}></span>
+					Free {formatPercent(getFreeRatio(item))}
 				</span>
 			</div>
 		{/if}

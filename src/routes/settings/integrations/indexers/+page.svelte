@@ -511,6 +511,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>{m.nav_indexers()}</title>
+</svelte:head>
+
 <SettingsPage title={m.nav_indexers()} subtitle={m.settings_integrations_indexers_subtitle()}>
 	{#snippet actions()}
 		<button class="btn gap-2 btn-outline btn-sm" onclick={() => (jackettImportOpen = true)}>

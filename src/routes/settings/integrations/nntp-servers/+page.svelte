@@ -389,6 +389,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>{m.nav_nntpServers()}</title>
+</svelte:head>
+
 <SettingsPage title={m.nav_nntpServers()} subtitle={m.settings_integrations_nntpServers_subtitle()}>
 	{#snippet actions()}
 		<button class="btn w-full gap-2 btn-sm btn-primary sm:w-auto" onclick={openAddModal}>

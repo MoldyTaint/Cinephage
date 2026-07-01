@@ -355,7 +355,10 @@
 		</div>
 	{/if}
 
-	<div class="card bg-base-200">
+	<a
+		href={resolve('/settings/general/status')}
+		class="card bg-base-200 transition-colors hover:bg-base-300"
+	>
 		<div class="card-body gap-1.5 p-3">
 			<div class="flex items-center gap-2">
 				<div class="shrink-0 rounded-lg bg-info/10 p-1.5">
@@ -426,5 +429,5 @@
 				<div class="h-1"></div>
 			{/if}
 		</div>
-	</div>
+	</a>
 </div>
