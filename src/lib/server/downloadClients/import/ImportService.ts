@@ -114,6 +114,7 @@ interface ImportableFileOptions {
 	deleteEmptyFolders?: boolean;
 	recycleEnabled?: boolean;
 	extraFileExtensions?: string[];
+	preferHardlink?: boolean;
 }
 
 /**
@@ -622,6 +623,7 @@ export class ImportService extends EventEmitter {
 			// The global "Copy" setting overrides to always keep source files.
 			const {
 				importMode: globalImportMode,
+				preferHardlink,
 				minimumFreeSpaceGb,
 				deleteEmptyFolders,
 				recycleEnabled,
@@ -631,6 +633,7 @@ export class ImportService extends EventEmitter {
 			importOptions.deleteEmptyFolders = deleteEmptyFolders;
 			importOptions.recycleEnabled = recycleEnabled;
 			importOptions.extraFileExtensions = extraFileExtensions;
+			importOptions.preferHardlink = preferHardlink;
 			let canMoveFiles = globalImportMode !== 'copy'; // copy mode = never delete source
 
 			if (globalImportMode !== 'copy') {
@@ -878,7 +881,8 @@ export class ImportService extends EventEmitter {
 		const transferResult = await transferFileWithMode(mainFile.path, destPath, {
 			importMode: ImportMode.Auto,
 			canMoveFiles,
-			preserveSymlinks
+			preserveSymlinks,
+			preferHardlink: importOptions.preferHardlink ?? true
 		});
 
 		if (!transferResult.success) {
@@ -1515,7 +1519,8 @@ export class ImportService extends EventEmitter {
 		const transferResult = await transferFileWithMode(videoFile.path, destPath, {
 			importMode: ImportMode.Auto,
 			canMoveFiles,
-			preserveSymlinks
+			preserveSymlinks,
+			preferHardlink: importOptions?.preferHardlink ?? true
 		});
 
 		if (!transferResult.success) {
