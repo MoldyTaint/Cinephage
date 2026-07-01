@@ -674,6 +674,52 @@ export async function hasSufficientDiskSpace(
 }
 
 /**
+ * Copies or moves sidecar files (subtitles, NFO, artwork, etc.) from `sourceDir`
+ * to `destDir`. Only files whose lowercase extension appears in `extensions` are
+ * transferred. The source directory is scanned non-recursively. Files that already
+ * exist at the destination are skipped with a warning.
+ *
+ * `doMove` mirrors what happened to the main video file: true = move, false = copy.
+ */
+export async function copyExtraFiles(
+	sourceDir: string,
+	destDir: string,
+	extensions: string[],
+	doMove: boolean
+): Promise<void> {
+	if (extensions.length === 0) return;
+	const normalizedExts = extensions.map((e) => (e.startsWith('.') ? e.toLowerCase() : `.${e.toLowerCase()}`));
+	let entries: string[];
+	try {
+		entries = await readdir(sourceDir);
+	} catch {
+		return;
+	}
+	for (const name of entries) {
+		const ext = extname(name).toLowerCase();
+		if (!normalizedExts.includes(ext)) continue;
+		const src = join(sourceDir, name);
+		const dst = join(destDir, name);
+		try {
+			const srcStat = await stat(src);
+			if (!srcStat.isFile()) continue;
+			if (await fileExists(dst)) {
+				logger.debug({ dst }, '[FileTransfer] Extra file already exists at destination, skipping');
+				continue;
+			}
+			if (doMove) {
+				await moveFile(src, dst);
+			} else {
+				await copyFile(src, dst);
+			}
+			logger.debug({ src, dst, doMove }, '[FileTransfer] Imported extra file');
+		} catch (err) {
+			logger.warn({ src, dst, error: (err as Error).message }, '[FileTransfer] Failed to import extra file');
+		}
+	}
+}
+
+/**
  * Moves `filePath` into a `.trash` folder at the root of the library, preserving
  * the path structure beneath `rootFolderPath` so files from different media never
  * collide. The original file is removed; the DB record is untouched by this call.

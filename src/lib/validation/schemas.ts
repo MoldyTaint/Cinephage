@@ -1535,7 +1535,8 @@ export const fileManagementSchema = z.object({
 	importMode: importMethodSchema.default('move'),
 	minimumFreeSpaceGb: z.number().min(0).default(1),
 	deleteEmptyFolders: z.boolean().default(false),
-	recycleEnabled: z.boolean().default(false)
+	recycleEnabled: z.boolean().default(false),
+	extraFileExtensions: z.array(z.string()).default([])
 });
 export type FileManagementSettings = z.infer<typeof fileManagementSchema>;
 
