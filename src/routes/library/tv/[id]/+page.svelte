@@ -1704,6 +1704,7 @@
 				indexerId: release.indexerId,
 				indexerName: release.indexerName,
 				protocol: release.protocol,
+				size: release.size,
 				seriesId: series.id,
 				mediaType: 'tv',
 				seasonNumber,
