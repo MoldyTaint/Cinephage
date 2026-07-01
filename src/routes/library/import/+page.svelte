@@ -85,7 +85,7 @@
 		episodeNumber: number;
 		batchSeasonOverride: number | null;
 		selectedRootFolder: string;
-		importMode: 'move' | 'copy';
+		importMode: 'move' | 'copy' | 'symlink';
 	}
 
 	interface ExecuteResult {
@@ -164,8 +164,8 @@
 	let episodeNumber = $state(1);
 	let batchSeasonOverride = $state<number | null>(null);
 	let selectedRootFolder = $state('');
-	let importMode = $state<'move' | 'copy'>('move');
-	let bulkImportMode = $state<'move' | 'copy'>('move');
+	let importMode = $state<'move' | 'copy' | 'symlink'>('move');
+	let bulkImportMode = $state<'move' | 'copy' | 'symlink'>('move');
 	let importedBulkItems = $state<ImportedBulkItem[]>([]);
 	let bulkDestinationBySectionId = $state<Record<string, string>>({});
 	let executingImport = $state(false);
@@ -470,9 +470,9 @@
 		loadRootFolders();
 		browse('/');
 		getFileManagementSettings().then((s) => {
-			if (s?.importMode === 'copy') {
-				importMode = 'copy';
-				bulkImportMode = 'copy';
+			if (s?.importMode === 'copy' || s?.importMode === 'symlink') {
+				importMode = s.importMode;
+				bulkImportMode = s.importMode;
 			}
 		});
 		return () => {

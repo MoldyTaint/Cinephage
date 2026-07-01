@@ -184,16 +184,14 @@
 
 			<!-- Hardlink toggle -->
 			<label
-				class="flex cursor-pointer items-start gap-4 rounded-lg border border-base-300 p-4 transition-colors hover:border-base-content/30 {preferHardlink &&
-				importMode !== 'symlink'
+				class="flex cursor-pointer items-start gap-4 rounded-lg border border-base-300 p-4 transition-colors hover:border-base-content/30 {preferHardlink
 					? 'border-primary bg-primary/5'
-					: ''} {importMode === 'symlink' ? 'opacity-40' : ''}"
+					: ''}"
 			>
 				<input
 					type="checkbox"
 					class="checkbox checkbox-primary mt-0.5 shrink-0"
 					bind:checked={preferHardlink}
-					disabled={importMode === 'symlink'}
 				/>
 				<div class="min-w-0 flex-1">
 					<span class="font-medium">{m.settings_fileManagement_preferHardlinkLabel()}</span>

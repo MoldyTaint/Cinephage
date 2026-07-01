@@ -838,6 +838,8 @@
 	"library_import_importMethodHeading": "Import Method",
 	"library_import_importMethodMove": "Move",
 	"library_import_importMethodMoveDesc": "Delete originals after import",
+	"library_import_importMethodSymlink": "Symlink",
+	"library_import_importMethodSymlinkDesc": "Create symbolic links to originals",
 	"library_import_importTargetHeading": "Import Target",
 	"library_import_importTargetHint": "Select whether to import into an existing library item or create a new one.",
 	"library_import_importedCount": "{count} imported",
