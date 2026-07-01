@@ -1,5 +1,5 @@
 import { redirect } from '@sveltejs/kit';
 
 export const load = () => {
-	throw redirect(301, '/settings/library/libraries');
+	throw redirect(301, '/settings/library/naming/rename');
 };

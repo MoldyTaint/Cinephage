@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Library, FolderOpen, FileSignature, Shield, Filter } from 'lucide-svelte';
+	import { Library, FolderOpen, FileSignature, Shield, Filter, FolderSync } from 'lucide-svelte';
 	import { SettingsTabNav } from '$lib/components/settings';
 	import * as m from '$lib/paraglide/messages.js';
 
@@ -11,16 +11,21 @@
 			label: m.settings_general_tabLibraries(),
 			icon: Library
 		},
-		{
-			href: '/settings/library/root-folders',
-			label: m.settings_general_tabRootFolders(),
-			icon: FolderOpen
-		},
-		{
-			href: '/settings/library/naming',
-			label: m.nav_naming(),
-			icon: FileSignature
-		},
+	{
+		href: '/settings/library/root-folders',
+		label: m.settings_general_tabRootFolders(),
+		icon: FolderOpen
+	},
+	{
+		href: '/settings/library/file-management',
+		label: m.settings_general_tabFileManagement(),
+		icon: FolderSync
+	},
+	{
+		href: '/settings/library/naming',
+		label: m.nav_naming(),
+		icon: FileSignature
+	},
 		{
 			href: '/settings/library/quality',
 			label: m.nav_qualitySettings(),
