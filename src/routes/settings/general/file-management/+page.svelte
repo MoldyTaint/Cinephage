@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { FolderSync } from 'lucide-svelte';
+	import TagInput from '$lib/components/ui/TagInput.svelte';
 	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
 	import * as m from '$lib/paraglide/messages.js';
 	import { toasts } from '$lib/stores/toast.svelte';
@@ -14,12 +15,13 @@
 	let minimumFreeSpaceGb = $state<number>(data.settings.minimumFreeSpaceGb);
 	let deleteEmptyFolders = $state<boolean>(data.settings.deleteEmptyFolders);
 	let recycleEnabled = $state<boolean>(data.settings.recycleEnabled);
+	let extraFileExtensions = $state<string[]>(data.settings.extraFileExtensions);
 	let saving = $state(false);
 
 	async function save() {
 		saving = true;
 		try {
-			await updateFileManagementSettings({ importMode, minimumFreeSpaceGb, deleteEmptyFolders, recycleEnabled });
+			await updateFileManagementSettings({ importMode, minimumFreeSpaceGb, deleteEmptyFolders, recycleEnabled, extraFileExtensions });
 			await invalidateAll();
 			toasts.success(m.settings_fileManagement_saved());
 		} catch {
@@ -156,6 +158,22 @@
 				</p>
 			</div>
 		</label>
+	</SettingsSection>
+
+	<SettingsSection
+		title={m.settings_fileManagement_extraFilesSectionTitle()}
+		description={m.settings_fileManagement_extraFilesSectionDescription()}
+	>
+		<TagInput
+			bind:values={extraFileExtensions}
+			label={m.settings_fileManagement_extraFilesLabel()}
+			placeholder="e.g. .srt"
+			hint={m.settings_fileManagement_extraFilesHint()}
+			normalize={(v) => {
+				const t = v.trim().toLowerCase();
+				return t.startsWith('.') ? t : `.${t}`;
+			}}
+		/>
 	</SettingsSection>
 
 	<div class="flex justify-end">

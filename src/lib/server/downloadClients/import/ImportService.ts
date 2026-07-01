@@ -37,6 +37,7 @@ import {
 	hasSufficientDiskSpace,
 	removeEmptyDirectories,
 	moveToRecycleBin,
+	copyExtraFiles,
 	ImportMode
 } from './FileTransfer';
 import { getDownloadClientManager } from '../DownloadClientManager';
@@ -112,6 +113,7 @@ interface ImportableFileOptions {
 	minimumFreeSpaceGb?: number;
 	deleteEmptyFolders?: boolean;
 	recycleEnabled?: boolean;
+	extraFileExtensions?: string[];
 }
 
 /**
@@ -622,11 +624,13 @@ export class ImportService extends EventEmitter {
 				importMode: globalImportMode,
 				minimumFreeSpaceGb,
 				deleteEmptyFolders,
-				recycleEnabled
+				recycleEnabled,
+				extraFileExtensions
 			} = await getFileManagementSettings();
 			importOptions.minimumFreeSpaceGb = minimumFreeSpaceGb;
 			importOptions.deleteEmptyFolders = deleteEmptyFolders;
 			importOptions.recycleEnabled = recycleEnabled;
+			importOptions.extraFileExtensions = extraFileExtensions;
 			let canMoveFiles = globalImportMode !== 'copy'; // copy mode = never delete source
 
 			if (globalImportMode !== 'copy') {
@@ -903,6 +907,15 @@ export class ImportService extends EventEmitter {
 
 		if (importOptions.deleteEmptyFolders && transferResult.mode === 'move') {
 			await removeEmptyDirectories(dirname(mainFile.path), downloadPath);
+		}
+
+		if (importOptions.extraFileExtensions?.length) {
+			await copyExtraFiles(
+				dirname(mainFile.path),
+				dirname(destPath),
+				importOptions.extraFileExtensions,
+				transferResult.mode === 'move'
+			);
 		}
 
 		// Extract media info (skip STRM probing for streamer profile)
@@ -1529,6 +1542,15 @@ export class ImportService extends EventEmitter {
 			if (downloadPath) {
 				await removeEmptyDirectories(dirname(videoFile.path), downloadPath);
 			}
+		}
+
+		if (importOptions?.extraFileExtensions?.length) {
+			await copyExtraFiles(
+				dirname(videoFile.path),
+				dirname(destPath),
+				importOptions.extraFileExtensions,
+				transferResult.mode === 'move'
+			);
 		}
 
 		// Extract media info (skip STRM probing for streamer profile)
