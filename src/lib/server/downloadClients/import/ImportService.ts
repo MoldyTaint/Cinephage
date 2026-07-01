@@ -1197,7 +1197,8 @@ export class ImportService extends EventEmitter {
 					seriesData,
 					rootFolder,
 					queueItem,
-					_canMoveFiles
+					_canMoveFiles,
+					worker
 				);
 
 				if (importResult.success) {
@@ -1374,7 +1375,8 @@ export class ImportService extends EventEmitter {
 		seriesData: typeof series.$inferSelect,
 		rootFolder: typeof rootFolders.$inferSelect,
 		queueItem: typeof downloadQueue.$inferSelect,
-		canMoveFiles: boolean
+		canMoveFiles: boolean,
+		worker: ImportWorker
 	): Promise<ImportResult> {
 		const normalizedSeriesType =
 			seriesData.seriesType === 'anime' || seriesData.seriesType === 'daily'
@@ -1492,11 +1494,14 @@ export class ImportService extends EventEmitter {
 		const filesToReplace: string[] = [];
 		const isUpgrade = queueItem.isUpgrade || false;
 
-		if (isUpgrade && existingFiles.length > 0) {
-			// Find files that cover any of the same episodes
+		if (existingFiles.length > 0) {
 			for (const existingFile of existingFiles) {
 				const hasOverlap = existingFile.episodeIds?.some((id) => episodeIds.includes(id)) ?? false;
-				if (hasOverlap) {
+				if (!hasOverlap) continue;
+				// Always replace .strm placeholders with real video files; replace other files only on explicit upgrade
+				const isStrmPlaceholder =
+					existingFile.relativePath?.toLowerCase().endsWith('.strm') ?? false;
+				if (isUpgrade || isStrmPlaceholder) {
 					filesToReplace.push(existingFile.id);
 				}
 			}
@@ -1507,9 +1512,12 @@ export class ImportService extends EventEmitter {
 						seriesId: seriesData.id,
 						seasonNumber: seasonNum,
 						episodeNumbers: episodeNums,
-						filesToReplace
+						filesToReplace,
+						reason: isUpgrade ? 'upgrade' : 'strm-placeholder-replaced'
 					},
-					'Upgrade detected - will replace existing episode file(s)'
+					isUpgrade
+						? 'Upgrade detected - will replace existing episode file(s)'
+						: 'Replacing .strm placeholder with real video file'
 				);
 			}
 		}

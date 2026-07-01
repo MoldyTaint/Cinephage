@@ -1,6 +1,8 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
-	import { Check, X } from 'lucide-svelte';
+	import { Check, X, ExternalLink } from 'lucide-svelte';
+
+	const MAX_LIBRARY_LINKS = 8;
 
 	interface ExecuteResult {
 		success: boolean;
@@ -12,10 +14,19 @@
 		importedPaths?: string[];
 	}
 
+	interface ImportedBulkItem {
+		title: string;
+		year?: number | null;
+		mediaType: 'movie' | 'tv';
+		libraryId?: string | null;
+		href?: string | null;
+	}
+
 	let {
 		executeError = null,
 		executeResult = null,
 		bulkImportSummary = null,
+		importedBulkItems = [],
 		skippedGroupCount = 0,
 		remainingGroupCount = 0,
 		completionLink = null,
@@ -27,6 +38,7 @@
 		executeError: string | null;
 		executeResult: ExecuteResult | null;
 		bulkImportSummary: { importedGroups: number; failedGroups: number } | null;
+		importedBulkItems: ImportedBulkItem[];
 		skippedGroupCount: number;
 		remainingGroupCount: number;
 		completionLink: string | null;
@@ -35,6 +47,30 @@
 		onReset: () => void;
 		onContinueWithNext: () => void;
 	} = $props();
+
+	const uniqueLibraryLinks = $derived.by(() => {
+		if (!importedBulkItems || importedBulkItems.length === 0) return [];
+		const seen = new Set<string>();
+		const result: ImportedBulkItem[] = [];
+		for (const item of importedBulkItems) {
+			const key = item.href ?? item.title;
+			if (!seen.has(key)) {
+				seen.add(key);
+				result.push(item);
+			}
+		}
+		return result;
+	});
+
+	const singleLibraryLink = $derived.by(() => {
+		if (uniqueLibraryLinks.length === 1 && uniqueLibraryLinks[0].href) {
+			return uniqueLibraryLinks[0].href;
+		}
+		return null;
+	});
+
+	const displayedLinks = $derived(uniqueLibraryLinks.slice(0, MAX_LIBRARY_LINKS));
+	const hiddenLinkCount = $derived(Math.max(0, uniqueLibraryLinks.length - MAX_LIBRARY_LINKS));
 </script>
 
 {#if executeError}
@@ -61,7 +97,7 @@
 			</div>
 		</div>
 	</div>
-{:else if executeResult}
+{:else if executeResult || bulkImportSummary}
 	<div class="rounded-xl border border-success/40 bg-success/5 p-5">
 		<div class="flex items-start gap-3">
 			<div class="mt-0.5 rounded-full bg-success/20 p-2">
@@ -87,21 +123,66 @@
 							{m.library_import_bulkSkippedItems({ count: skippedGroupCount })}
 						</p>
 					{/if}
-				{:else}
+				{:else if executeResult}
 					<p class="mt-1 text-sm text-base-content/80">
 						{executeResult.importedCount && executeResult.importedCount > 1
 							? m.library_import_filesImportedPlural({ count: executeResult.importedCount })
 							: m.library_import_fileImportedSingular()}
 					</p>
 				{/if}
-				<div class="mt-3 rounded-lg bg-base-100 p-3 text-sm break-all">
-					<div>
-						<span class="text-base-content/60">{m.library_import_importedPathLabel()}</span>
-						{executeResult.importedPath}
+
+				{#if executeResult}
+					<div class="mt-3 rounded-lg bg-base-100 p-3 text-sm break-all">
+						<div>
+							<span class="text-base-content/60">{m.library_import_importedPathLabel()}</span>
+							{executeResult.importedPath}
+						</div>
 					</div>
-				</div>
+				{/if}
+
+				<!-- Library links for bulk imports -->
+				{#if bulkImportSummary && uniqueLibraryLinks.length > 0}
+					{#if singleLibraryLink}
+						<!-- all items belong to the same library entry -->
+					{:else}
+						<!-- multiple libraries - show a compact list -->
+						<div class="mt-3 rounded-lg bg-base-100 p-3">
+							<p class="mb-2 text-xs font-medium text-base-content/60">
+								{m.library_import_importedItems()}
+							</p>
+							<div class="space-y-1">
+								{#each displayedLinks as item (item.href ?? item.title)}
+									{#if item.href}
+										<a
+											href={item.href}
+											class="flex items-center gap-1.5 rounded px-1 py-0.5 text-sm text-primary hover:underline"
+										>
+											<ExternalLink class="h-3 w-3 shrink-0" />
+											<span class="truncate">{item.title}{item.year ? ` (${item.year})` : ''}</span>
+										</a>
+									{:else}
+										<span class="block truncate px-1 py-0.5 text-sm text-base-content/70">
+											{item.title}{item.year ? ` (${item.year})` : ''}
+										</span>
+									{/if}
+								{/each}
+								{#if hiddenLinkCount > 0}
+									<p class="px-1 pt-1 text-xs text-base-content/50">
+										{m.library_import_andNMore({ count: hiddenLinkCount })}
+									</p>
+								{/if}
+							</div>
+						</div>
+					{/if}
+				{/if}
+
 				<div class="mt-4 flex flex-wrap gap-2">
-					{#if completionLink}
+					<!-- Single-entry "View in Library" (single import OR bulk all-same-library) -->
+					{#if singleLibraryLink && bulkImportSummary}
+						<a class="btn btn-sm btn-primary" href={singleLibraryLink}>
+							{m.library_import_viewInLibrary()}
+						</a>
+					{:else if completionLink}
 						<a class="btn btn-sm btn-primary" href={completionLink}>
 							{bulkImportSummary
 								? m.library_import_viewLastImported()
