@@ -28,7 +28,7 @@ import {
 } from 'fs/promises';
 import { join, dirname, basename, extname } from 'path';
 import { createChildLogger } from '$lib/logging';
-import { VIDEO_EXTENSIONS, isVideoFile as isBaseVideoFile } from '$lib/config/constants.js';
+import { VIDEO_EXTENSIONS, isVideoFile as isBaseVideoFile, DANGEROUS_EXTENSIONS, EXECUTABLE_EXTENSIONS } from '$lib/config/constants.js';
 
 const logger = createChildLogger({ logDomain: 'imports' as const });
 
@@ -681,6 +681,11 @@ export async function hasSufficientDiskSpace(
  *
  * `doMove` mirrors what happened to the main video file: true = move, false = copy.
  */
+const ALWAYS_BLOCKED_EXTS = new Set<string>([
+	...(DANGEROUS_EXTENSIONS as readonly string[]),
+	...(EXECUTABLE_EXTENSIONS as readonly string[])
+]);
+
 export async function copyExtraFiles(
 	sourceDir: string,
 	destDir: string,
@@ -688,7 +693,9 @@ export async function copyExtraFiles(
 	doMove: boolean
 ): Promise<void> {
 	if (extensions.length === 0) return;
-	const normalizedExts = extensions.map((e) => (e.startsWith('.') ? e.toLowerCase() : `.${e.toLowerCase()}`));
+	const normalizedExts = extensions
+		.map((e) => (e.startsWith('.') ? e.toLowerCase() : `.${e.toLowerCase()}`))
+		.filter((e) => !ALWAYS_BLOCKED_EXTS.has(e));
 	let entries: string[];
 	try {
 		entries = await readdir(sourceDir);

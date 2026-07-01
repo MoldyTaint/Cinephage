@@ -8,6 +8,12 @@
 	import { invalidateAll } from '$app/navigation';
 	import type { PageData } from './$types';
 	import type { ImportMethod } from '$lib/validation/schemas.js';
+	import { DANGEROUS_EXTENSIONS, EXECUTABLE_EXTENSIONS } from '$lib/config/constants.js';
+
+	const BLOCKED_EXTS = new Set<string>([
+		...(DANGEROUS_EXTENSIONS as readonly string[]),
+		...(EXECUTABLE_EXTENSIONS as readonly string[])
+	]);
 
 	let { data }: { data: PageData } = $props();
 
@@ -21,6 +27,13 @@
 	async function save() {
 		saving = true;
 		try {
+			const stripped = extraFileExtensions.filter((e) => BLOCKED_EXTS.has(e.toLowerCase()));
+			if (stripped.length > 0) {
+				extraFileExtensions = extraFileExtensions.filter((e) => !BLOCKED_EXTS.has(e.toLowerCase()));
+				toasts.warning(
+					`Removed blocked extensions: ${stripped.join(', ')} — these are dangerous or executable file types that can never be imported.`
+				);
+			}
 			await updateFileManagementSettings({ importMode, minimumFreeSpaceGb, deleteEmptyFolders, recycleEnabled, extraFileExtensions });
 			await invalidateAll();
 			toasts.success(m.settings_fileManagement_saved());
