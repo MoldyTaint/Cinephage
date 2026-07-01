@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { SvelteSet } from 'svelte/reactivity';
 	import * as m from '$lib/paraglide/messages.js';
 	import { Check, X, ExternalLink } from 'lucide-svelte';
 
@@ -50,7 +51,7 @@
 
 	const uniqueLibraryLinks = $derived.by(() => {
 		if (!importedBulkItems || importedBulkItems.length === 0) return [];
-		const seen = new Set<string>();
+		const seen = new SvelteSet<string>();
 		const result: ImportedBulkItem[] = [];
 		for (const item of importedBulkItems) {
 			const key = item.href ?? item.title;

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { SvelteSet } from 'svelte/reactivity';
 	import * as m from '$lib/paraglide/messages.js';
 	import {
 		ArrowUp,
@@ -50,7 +51,7 @@
 		onDetect: (paths?: string[]) => void;
 	} = $props();
 
-	let selectedPaths = $state(new Set<string>());
+	let selectedPaths = new SvelteSet<string>();
 	let browserFilter = $state('');
 
 	const filteredEntries = $derived(
@@ -66,25 +67,24 @@
 	);
 
 	function togglePath(path: string) {
-		const next = new Set(selectedPaths);
-		if (next.has(path)) {
-			next.delete(path);
+		if (selectedPaths.has(path)) {
+			selectedPaths.delete(path);
 		} else {
-			next.add(path);
+			selectedPaths.add(path);
 		}
-		selectedPaths = next;
 	}
 
 	function toggleSelectAll() {
 		if (allSelected) {
-			selectedPaths = new Set();
+			selectedPaths.clear();
 		} else {
-			selectedPaths = new Set(allVisiblePaths);
+			selectedPaths.clear();
+			allVisiblePaths.forEach((p) => selectedPaths.add(p));
 		}
 	}
 
 	function clearSelection() {
-		selectedPaths = new Set();
+		selectedPaths.clear();
 	}
 
 	function handleBrowse(path?: string) {

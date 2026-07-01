@@ -17,7 +17,8 @@
 
 	let { data }: { data: PageData } = $props();
 
-	// svelte-ignore state_referenced_locally -- intentional: form fields capture initial load value; $state initializer does not need to re-run on data changes
+	// Form fields intentionally capture the initial load value once — $state initializer does not need to re-run on data changes
+	// svelte-ignore state_referenced_locally
 	let importMode = $state<ImportMethod>(data.settings.importMode);
 	// svelte-ignore state_referenced_locally
 	let preferHardlink = $state<boolean>(data.settings.preferHardlink);
@@ -33,13 +34,9 @@
 	// Permissions
 	type PermissionsMode = 'default' | 'preserve' | 'custom';
 	// svelte-ignore state_referenced_locally
-	const initialPermissionsMode: PermissionsMode = data.settings.chmodFile
-		? 'custom'
-		: // svelte-ignore state_referenced_locally
-			data.settings.preservePermissions
-			? 'preserve'
-			: 'default';
-	let permissionsMode = $state<PermissionsMode>(initialPermissionsMode);
+	let permissionsMode = $state<PermissionsMode>(
+		data.settings.chmodFile ? 'custom' : data.settings.preservePermissions ? 'preserve' : 'default'
+	);
 	// svelte-ignore state_referenced_locally
 	let chmodInput = $state(data.settings.chmodFile);
 	const chmodError = $derived(
