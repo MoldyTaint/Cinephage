@@ -26,7 +26,8 @@ export const GET: RequestHandler = async (event) => {
 				newEpisodeCheckIntervalHours: status.tasks.newEpisode.intervalHours,
 				cutoffUnmetSearchIntervalHours: status.tasks.cutoffUnmet.intervalHours,
 				stalledDownloadTimeoutMinutes: fullSettings.stalledDownloadTimeoutMinutes,
-				stalledDownloadProgressThreshold: fullSettings.stalledDownloadProgressThreshold
+				stalledDownloadProgressThreshold: fullSettings.stalledDownloadProgressThreshold,
+				stalledDownloadBlocklistHours: fullSettings.stalledDownloadBlocklistHours
 			},
 			status: {
 				tasks: status.tasks
@@ -89,7 +90,8 @@ export const PUT: RequestHandler = async (event) => {
 				newEpisodeCheckIntervalHours: status.tasks.newEpisode.intervalHours,
 				cutoffUnmetSearchIntervalHours: status.tasks.cutoffUnmet.intervalHours,
 				stalledDownloadTimeoutMinutes: fullUpdatedSettings.stalledDownloadTimeoutMinutes,
-				stalledDownloadProgressThreshold: fullUpdatedSettings.stalledDownloadProgressThreshold
+				stalledDownloadProgressThreshold: fullUpdatedSettings.stalledDownloadProgressThreshold,
+				stalledDownloadBlocklistHours: fullUpdatedSettings.stalledDownloadBlocklistHours
 			},
 			status: {
 				tasks: status.tasks

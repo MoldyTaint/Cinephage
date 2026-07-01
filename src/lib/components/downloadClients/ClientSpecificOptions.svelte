@@ -19,6 +19,7 @@
 		tempPathRemote: string;
 		stalledTimeout: number;
 		stalledThreshold: number;
+		stalledBlocklist: number;
 		saveStalledBehaviorSuccess: boolean;
 		isNntpServer: boolean;
 		selectedDefinition: DownloadClientDefinition | null;
@@ -41,6 +42,7 @@
 		tempPathRemote = $bindable(),
 		stalledTimeout = $bindable(),
 		stalledThreshold = $bindable(),
+		stalledBlocklist = $bindable(),
 		saveStalledBehaviorSuccess = $bindable(),
 		isNntpServer,
 		selectedDefinition = null,
@@ -82,9 +84,11 @@
 		>
 	</div>
 	<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-		<div class="form-control">
-			<label class="label py-1" for="stalled-timeout-modal">
-				<span class="label-text">{m.downloadClientModal_stalledTimeout()}</span>
+		<div class="form-control min-w-0">
+			<label class="label px-0 py-1" for="stalled-timeout-modal">
+				<span class="label-text whitespace-nowrap text-xs"
+					>{m.downloadClientModal_stalledTimeout()}</span
+				>
 			</label>
 			<input
 				id="stalled-timeout-modal"
@@ -95,9 +99,11 @@
 				bind:value={stalledTimeout}
 			/>
 		</div>
-		<div class="form-control">
-			<label class="label py-1" for="stalled-threshold-modal">
-				<span class="label-text">{m.downloadClientModal_stalledProgress()}</span>
+		<div class="form-control min-w-0">
+			<label class="label px-0 py-1" for="stalled-threshold-modal">
+				<span class="label-text whitespace-nowrap text-xs"
+					>{m.downloadClientModal_stalledProgress()}</span
+				>
 			</label>
 			<input
 				id="stalled-threshold-modal"
@@ -107,6 +113,21 @@
 				max="100"
 				step="5"
 				bind:value={stalledThreshold}
+			/>
+		</div>
+		<div class="form-control min-w-0 sm:col-span-2">
+			<label class="label px-0 py-1" for="stalled-blocklist-modal">
+				<span class="label-text whitespace-nowrap text-xs"
+					>{m.downloadClientModal_stalledBlocklist()}</span
+				>
+			</label>
+			<input
+				id="stalled-blocklist-modal"
+				type="number"
+				class="input-bordered input input-sm w-full"
+				min="0"
+				step="24"
+				bind:value={stalledBlocklist}
 			/>
 		</div>
 	</div>
@@ -124,6 +145,11 @@
 				timeout: stalledTimeout,
 				threshold: stalledThreshold
 			})}
+			{#if stalledBlocklist === 0}
+				{m.downloadClientModal_stalledBlocklistPermanent()}
+			{:else}
+				{m.downloadClientModal_stalledBlocklistDescription({ hours: stalledBlocklist })}
+			{/if}
 		{/if}
 	</p>
 </div>

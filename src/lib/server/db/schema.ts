@@ -1282,6 +1282,10 @@ export const downloadQueue = sqliteTable(
 		addedAt: text('added_at').$defaultFn(() => new Date().toISOString()),
 		// When download started (first saw progress > 0)
 		startedAt: text('started_at'),
+		// When the download first entered the stalled state (drives stalled-timeout
+		// cleanup). Persisted so the timer survives restarts and isn't reset by brief
+		// metaDL ↔ downloading flaps. Cleared only when the download actually progresses.
+		stalledSince: text('stalled_since'),
 		// When download reached 100%
 		completedAt: text('completed_at'),
 		// When import finished
@@ -1335,6 +1339,26 @@ export const downloadQueueTombstones = sqliteTable(
 			table.remoteId
 		)
 	]
+);
+
+/**
+ * Stalled Orphan Tracking - Records when a torrent in one of our categories that
+ * is NOT actively tracked in the queue was first seen stalled, so the periodic
+ * orphan sweep can apply the stalled timeout to it (and retry deletes that didn't
+ * take, since the row survives until the torrent actually disappears).
+ */
+export const stalledOrphanTracking = sqliteTable(
+	'stalled_orphan_tracking',
+	{
+		downloadClientId: text('download_client_id')
+			.notNull()
+			.references(() => downloadClients.id, { onDelete: 'cascade' }),
+		infoHash: text('info_hash').notNull(),
+		firstStalledAt: text('first_stalled_at')
+			.notNull()
+			.$defaultFn(() => new Date().toISOString())
+	},
+	(table) => [primaryKey({ columns: [table.downloadClientId, table.infoHash] })]
 );
 
 /**
