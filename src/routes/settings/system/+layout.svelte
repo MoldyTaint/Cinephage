@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Server, Film, Shield, Download } from 'lucide-svelte';
+	import { Server, Film, Shield, Download, Zap } from 'lucide-svelte';
 	import { SettingsTabNav } from '$lib/components/settings';
 	import * as m from '$lib/paraglide/messages.js';
 
@@ -25,12 +25,17 @@
 			href: '/settings/system/backup',
 			label: m.nav_backupRestore(),
 			icon: Download
+		},
+		{
+			href: '/settings/system/cinephage',
+			label: m.nav_cinephage(),
+			icon: Zap
 		}
 	];
 </script>
 
 <div class="flex min-h-full flex-col">
-	<SettingsTabNav {navItems} />
+	<SettingsTabNav {navItems} ariaLabel="System settings" />
 
 	<!-- Page content -->
 	<div class="flex-1">
