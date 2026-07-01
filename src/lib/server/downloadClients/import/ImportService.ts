@@ -36,6 +36,7 @@ import {
 	isVideoFile,
 	hasSufficientDiskSpace,
 	removeEmptyDirectories,
+	moveToRecycleBin,
 	ImportMode
 } from './FileTransfer';
 import { getDownloadClientManager } from '../DownloadClientManager';
@@ -110,6 +111,7 @@ interface ImportableFileOptions {
 	preferNonStrm?: boolean;
 	minimumFreeSpaceGb?: number;
 	deleteEmptyFolders?: boolean;
+	recycleEnabled?: boolean;
 }
 
 /**
@@ -619,10 +621,12 @@ export class ImportService extends EventEmitter {
 			const {
 				importMode: globalImportMode,
 				minimumFreeSpaceGb,
-				deleteEmptyFolders
+				deleteEmptyFolders,
+				recycleEnabled
 			} = await getFileManagementSettings();
 			importOptions.minimumFreeSpaceGb = minimumFreeSpaceGb;
 			importOptions.deleteEmptyFolders = deleteEmptyFolders;
+			importOptions.recycleEnabled = recycleEnabled;
 			let canMoveFiles = globalImportMode !== 'copy'; // copy mode = never delete source
 
 			if (globalImportMode !== 'copy') {
@@ -970,7 +974,7 @@ export class ImportService extends EventEmitter {
 				// Don't delete the file we just created/updated
 				if (oldFile.id === fileId) continue;
 
-				const deleteResult = await this.deleteMovieFile(oldFile.id, movie.id);
+				const deleteResult = await this.deleteMovieFile(oldFile.id, movie.id, importOptions.recycleEnabled);
 				if (deleteResult.success) {
 					logger.info(
 						{
@@ -1654,7 +1658,7 @@ export class ImportService extends EventEmitter {
 		// Delete old files if this was an upgrade
 		if (filesToReplace.length > 0) {
 			for (const oldFileId of filesToReplace) {
-				const deleteResult = await this.deleteEpisodeFile(oldFileId, seriesData.id);
+				const deleteResult = await this.deleteEpisodeFile(oldFileId, seriesData.id, importOptions?.recycleEnabled);
 				if (deleteResult.success) {
 					logger.info(
 						{
@@ -2414,7 +2418,8 @@ export class ImportService extends EventEmitter {
 	 */
 	private async deleteMovieFile(
 		fileId: string,
-		movieId: string
+		movieId: string,
+		recycleEnabled?: boolean
 	): Promise<{ success: boolean; error?: string }> {
 		try {
 			// Get file info before deleting
@@ -2449,11 +2454,16 @@ export class ImportService extends EventEmitter {
 			// Build full path
 			const fullPath = join(rootFolder.path, movie.path, fileRecord.relativePath);
 
-			// Delete physical file if it exists
+			// Delete or recycle physical file if it exists
 			try {
 				if (await fileExists(fullPath)) {
-					await unlink(fullPath);
-					logger.info({ fileId, path: fullPath }, 'Deleted old movie file');
+					if (recycleEnabled) {
+						await moveToRecycleBin(fullPath, rootFolder.path);
+						logger.info({ fileId, path: fullPath }, 'Moved old movie file to recycle bin');
+					} else {
+						await unlink(fullPath);
+						logger.info({ fileId, path: fullPath }, 'Deleted old movie file');
+					}
 				}
 			} catch (error) {
 				logger.warn(
@@ -2462,7 +2472,7 @@ export class ImportService extends EventEmitter {
 						path: fullPath,
 						err: error
 					},
-					'Failed to delete physical file (continuing anyway)'
+					'Failed to delete/recycle physical file (continuing anyway)'
 				);
 			}
 
@@ -2491,7 +2501,8 @@ export class ImportService extends EventEmitter {
 	 */
 	private async deleteEpisodeFile(
 		fileId: string,
-		seriesId: string
+		seriesId: string,
+		recycleEnabled?: boolean
 	): Promise<{ success: boolean; error?: string }> {
 		try {
 			// Get file info before deleting
@@ -2526,11 +2537,16 @@ export class ImportService extends EventEmitter {
 			// Build full path
 			const fullPath = join(rootFolder.path, seriesData.path, fileRecord.relativePath);
 
-			// Delete physical file if it exists
+			// Delete or recycle physical file if it exists
 			try {
 				if (await fileExists(fullPath)) {
-					await unlink(fullPath);
-					logger.info({ fileId, path: fullPath }, 'Deleted old episode file');
+					if (recycleEnabled) {
+						await moveToRecycleBin(fullPath, rootFolder.path);
+						logger.info({ fileId, path: fullPath }, 'Moved old episode file to recycle bin');
+					} else {
+						await unlink(fullPath);
+						logger.info({ fileId, path: fullPath }, 'Deleted old episode file');
+					}
 				}
 			} catch (error) {
 				logger.warn(
@@ -2539,7 +2555,7 @@ export class ImportService extends EventEmitter {
 						path: fullPath,
 						err: error
 					},
-					'Failed to delete physical file (continuing anyway)'
+					'Failed to delete/recycle physical file (continuing anyway)'
 				);
 			}
 
