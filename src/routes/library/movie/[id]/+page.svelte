@@ -448,6 +448,7 @@
 				indexerId: release.indexerId,
 				indexerName: release.indexerName,
 				protocol: release.protocol,
+				size: release.size,
 				movieId: movie.id,
 				mediaType: 'movie',
 				streamUsenet: streaming && release.protocol === 'usenet',
