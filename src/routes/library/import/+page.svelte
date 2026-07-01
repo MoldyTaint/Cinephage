@@ -106,6 +106,14 @@
 		year: number | null;
 	}
 
+	interface ImportedBulkItem {
+		title: string;
+		year?: number | null;
+		mediaType: MediaType;
+		libraryId?: string | null;
+		href?: string | null;
+	}
+
 	interface PendingNavigation {
 		href: string;
 		external: boolean;
@@ -117,7 +125,6 @@
 	let preferredMediaType = $state<'auto' | MediaType>('auto');
 
 	let sourcePath = $state('/');
-	let showRootFolders = $state(false);
 	let browserPath = $state('/');
 	let browserEntries = $state<BrowseEntry[]>([]);
 	let browserParentPath = $state<string | null>(null);
@@ -158,6 +165,8 @@
 	let batchSeasonOverride = $state<number | null>(null);
 	let selectedRootFolder = $state('');
 	let importMode = $state<'move' | 'copy'>('move');
+	let bulkImportMode = $state<'move' | 'copy'>('move');
+	let importedBulkItems = $state<ImportedBulkItem[]>([]);
 	let bulkDestinationBySectionId = $state<Record<string, string>>({});
 	let executingImport = $state(false);
 	let executeResult = $state<ExecuteResult | null>(null);
@@ -461,7 +470,10 @@
 		loadRootFolders();
 		browse('/');
 		getFileManagementSettings().then((s) => {
-			if (s?.importMode === 'copy') importMode = 'copy';
+			if (s?.importMode === 'copy') {
+				importMode = 'copy';
+				bulkImportMode = 'copy';
+			}
 		});
 		return () => {
 			disconnectBulkSSE();
@@ -775,7 +787,7 @@
 			const payload = await browseFilesystem(path, {
 				includeFiles: true,
 				fileFilter: 'video',
-				excludeManagedRoots: !showRootFolders
+				excludeManagedRoots: true
 			});
 
 			if (!payload || typeof payload !== 'object') {
@@ -1718,7 +1730,111 @@
 		}, 300);
 	}
 
-	async function runDetection() {
+	function applyDetectionResult(detectedData: DetectionResult) {
+		disconnectBulkSSE();
+		executeResult = null;
+		bulkImportSummary = null;
+		bulkJobId = null;
+		bulkProgress = null;
+		bulkCurrentGroup = null;
+		importedGroupIds = [];
+		skippedGroupIds = [];
+		detectedGroupQuery = '';
+		detectedGroupFilter = 'pending';
+		detectedMediaFilter = 'all';
+		importMediaFilter = 'all';
+		reviewSelectedSeriesSectionId = null;
+		reviewSelectedSeasonSectionKey = null;
+		importSelectedSeriesSectionId = null;
+		importSelectedSeasonSectionKey = null;
+		if (tmdbSearchDebounce) {
+			clearTimeout(tmdbSearchDebounce);
+			tmdbSearchDebounce = null;
+		}
+
+		const groups =
+			Array.isArray(detectedData.groups) && detectedData.groups.length > 0
+				? detectedData.groups
+				: [toDetectionGroup(detectedData)];
+
+		const nextGroupState: Record<string, GroupReviewState> = {};
+		for (const group of groups) {
+			const state = createInitialGroupState(group);
+			const contextMatch = buildRouteContextMatch(group);
+			if (contextMatch) {
+				const mergedMatches = [
+					contextMatch,
+					...state.matchCandidates.filter(
+						(match) =>
+							!(match.mediaType === contextMatch.mediaType && match.tmdbId === contextMatch.tmdbId)
+					)
+				];
+				group.matches = mergedMatches;
+				state.selectedMediaType = contextMatch.mediaType;
+				state.matchCandidates = mergedMatches;
+				state.selectedMatch = contextMatch;
+				state.searchQuery = contextMatch.title;
+				state.importTarget = contextMatch.inLibrary ? 'existing' : 'new';
+			}
+			nextGroupState[group.id] = state;
+		}
+		detection = {
+			...detectedData,
+			groups,
+			totalGroups: groups.length
+		};
+		groupReviewState = nextGroupState;
+		const hasNeedsInputGroups = groups.some((group) => !canImportGroup(group));
+		detectedGroupFilter = hasNeedsInputGroups ? 'pending' : 'ready';
+
+		const preferredGroupId =
+			detectedData.selectedGroupId &&
+			groups.some((group) => group.id === detectedData.selectedGroupId)
+				? detectedData.selectedGroupId
+				: null;
+		const nextSelectedGroupId = findDefaultReviewGroupId(groups, preferredGroupId);
+		selectedGroupId = nextSelectedGroupId;
+		if (nextSelectedGroupId) {
+			loadGroupState(nextSelectedGroupId);
+		}
+		step = 2;
+	}
+
+	async function runDetection(paths?: string[]) {
+		const mediaTypeHint = preferredMediaType !== 'auto' ? preferredMediaType : undefined;
+
+		if (paths && paths.length > 0) {
+			detecting = true;
+			try {
+				const results = await Promise.all(
+					paths.map((p) => detectMedia(p, mediaTypeHint, isFileOnlyContext || undefined))
+				);
+				const mergedGroups: DetectionGroup[] = results.flatMap((r) => {
+					const d = r.data as DetectionResult;
+					return Array.isArray(d.groups) && d.groups.length > 0 ? d.groups : [toDetectionGroup(d)];
+				});
+				if (mergedGroups.length === 0) {
+					toasts.error(m.toast_library_import_detectionFailed());
+					return;
+				}
+				const firstData = results[0].data as DetectionResult;
+				const mergedData: DetectionResult = {
+					...firstData,
+					groups: mergedGroups,
+					totalGroups: mergedGroups.length,
+					selectedGroupId: mergedGroups[0]?.id ?? ''
+				};
+				applyDetectionResult(mergedData);
+			} catch (error) {
+				toasts.error(
+					error instanceof Error ? error.message : m.toast_library_import_detectionFailed()
+				);
+			} finally {
+				detecting = false;
+			}
+			return;
+		}
+
 		if (!sourcePath.trim()) {
 			toasts.error(m.toast_library_import_selectSourcePath());
 			return;
@@ -1726,81 +1842,9 @@
 
 		detecting = true;
 		try {
-			const data = await detectMedia(
-				sourcePath,
-				preferredMediaType !== 'auto' ? preferredMediaType : undefined,
-				isFileOnlyContext || undefined
-			);
+			const data = await detectMedia(sourcePath, mediaTypeHint, isFileOnlyContext || undefined);
 			const detectedData = data.data as DetectionResult;
-			disconnectBulkSSE();
-			executeResult = null;
-			bulkImportSummary = null;
-			bulkJobId = null;
-			bulkProgress = null;
-			bulkCurrentGroup = null;
-			importedGroupIds = [];
-			skippedGroupIds = [];
-			detectedGroupQuery = '';
-			detectedGroupFilter = 'pending';
-			detectedMediaFilter = 'all';
-			importMediaFilter = 'all';
-			reviewSelectedSeriesSectionId = null;
-			reviewSelectedSeasonSectionKey = null;
-			importSelectedSeriesSectionId = null;
-			importSelectedSeasonSectionKey = null;
-			if (tmdbSearchDebounce) {
-				clearTimeout(tmdbSearchDebounce);
-				tmdbSearchDebounce = null;
-			}
-
-			const groups =
-				Array.isArray(detectedData.groups) && detectedData.groups.length > 0
-					? detectedData.groups
-					: [toDetectionGroup(detectedData)];
-
-			const nextGroupState: Record<string, GroupReviewState> = {};
-			for (const group of groups) {
-				const state = createInitialGroupState(group);
-				const contextMatch = buildRouteContextMatch(group);
-				if (contextMatch) {
-					const mergedMatches = [
-						contextMatch,
-						...state.matchCandidates.filter(
-							(match) =>
-								!(
-									match.mediaType === contextMatch.mediaType && match.tmdbId === contextMatch.tmdbId
-								)
-						)
-					];
-					group.matches = mergedMatches;
-					state.selectedMediaType = contextMatch.mediaType;
-					state.matchCandidates = mergedMatches;
-					state.selectedMatch = contextMatch;
-					state.searchQuery = contextMatch.title;
-					state.importTarget = contextMatch.inLibrary ? 'existing' : 'new';
-				}
-				nextGroupState[group.id] = state;
-			}
-			detection = {
-				...detectedData,
-				groups,
-				totalGroups: groups.length
-			};
-			groupReviewState = nextGroupState;
-			const hasNeedsInputGroups = groups.some((group) => !canImportGroup(group));
-			detectedGroupFilter = hasNeedsInputGroups ? 'pending' : 'ready';
-
-			const preferredGroupId =
-				detectedData.selectedGroupId &&
-				groups.some((group) => group.id === detectedData.selectedGroupId)
-					? detectedData.selectedGroupId
-					: null;
-			const nextSelectedGroupId = findDefaultReviewGroupId(groups, preferredGroupId);
-			selectedGroupId = nextSelectedGroupId;
-			if (nextSelectedGroupId) {
-				loadGroupState(nextSelectedGroupId);
-			}
-			step = 2;
+			applyDetectionResult(detectedData);
 		} catch (error) {
 			toasts.error(
 				error instanceof Error ? error.message : m.toast_library_import_detectionFailed()
@@ -1947,7 +1991,6 @@
 		disconnectBulkSSE();
 		preferredMediaType = routeImportContext?.mediaType ?? 'auto';
 		sourcePath = '/';
-		showRootFolders = false;
 		browserPath = '/';
 		browserParentPath = null;
 		browserEntries = [];
@@ -1964,6 +2007,7 @@
 		executeResult = null;
 		executeError = null;
 		bulkImportSummary = null;
+		importedBulkItems = [];
 		bulkJobId = null;
 		bulkProgress = null;
 		bulkCurrentGroup = null;
@@ -2054,7 +2098,10 @@
 
 			try {
 				const payload = buildImportPayload(group);
-				jobs.push({ request: payload, groupName: group.displayName });
+				jobs.push({
+					request: { ...payload, importMode: bulkImportMode },
+					groupName: group.displayName
+				});
 				groupIdMap[group.displayName] = group.id;
 			} catch (error) {
 				toasts.error(
@@ -2126,11 +2173,43 @@
 				executeResult = null;
 				bulkImportSummary = { importedGroups: imported, failedGroups: failed };
 
+				// Collect library links from successfully imported groups
+				const collectedItems: ImportedBulkItem[] = [];
+				for (const groupId of importedGroupIds) {
+					const group = detectionGroups.find((g) => g.id === groupId);
+					if (!group) continue;
+					const state = groupReviewState[groupId];
+					if (!state?.selectedMatch) continue;
+					const match = state.selectedMatch;
+					let libraryId: string | null = null;
+					if (state.importTarget === 'existing' && match.inLibrary && match.libraryId) {
+						libraryId = match.libraryId;
+					} else if (state.importTarget === 'new' && state.selectedRootFolder) {
+						libraryId = state.selectedRootFolder;
+					}
+					const mediaTypePath = state.selectedMediaType === 'movie' ? 'movie' : 'tv';
+					const href = libraryId ? resolvePath(`/library/${mediaTypePath}/${libraryId}`) : null;
+					collectedItems.push({
+						title: match.title,
+						year: match.year ?? null,
+						mediaType: state.selectedMediaType,
+						libraryId,
+						href
+					});
+				}
+				importedBulkItems = collectedItems;
+
 				if (imported === 0 && failed > 0) {
 					toasts.error(progress.errors[0] ?? m.toast_library_import_noGroupsImported());
 					executeError = progress.errors[0] ?? m.toast_library_import_noGroupsImported();
 					step = 4;
 				} else if (imported > 0) {
+					if (isDirectLibraryImportContext && originLibraryLink) {
+						toasts.success(m.toast_library_import_importComplete());
+						bypassNavigationGuard = true;
+						void goto(originLibraryLink);
+						return;
+					}
 					step = 4;
 					if (failed > 0) {
 						toasts.warning(m.toast_library_import_bulkImportPartial({ imported, failed }));
@@ -2251,7 +2330,6 @@
 		<Step1PathSelector
 			bind:preferredMediaType
 			bind:sourcePath
-			bind:showRootFolders
 			{browserPath}
 			{browserParentPath}
 			{browserEntries}
@@ -2261,7 +2339,7 @@
 			{isMediaTypeLockedByContext}
 			{isFileOnlyContext}
 			onBrowse={browse}
-			onDetect={runDetection}
+			onDetect={(paths) => runDetection(paths)}
 		/>
 	{/if}
 
@@ -2358,6 +2436,7 @@
 
 	{#if step === 3 && isMultiGroupReview && detection}
 		<Step3MultiImport
+			bind:importMode={bulkImportMode}
 			{importMovieSections}
 			{importTvSections}
 			{activeImportTvSection}
@@ -2369,7 +2448,7 @@
 			{selectedNeedsInputCount}
 			{readyGroupCount}
 			{skippedGroupCount}
-			executingImport={executingImport && !bulkJobId}
+			{executingImport}
 			canImport={canImportGroup}
 			{getEffectiveMediaType}
 			{getGroupEpisodeInfo}
@@ -2444,6 +2523,7 @@
 			{executeError}
 			{executeResult}
 			{bulkImportSummary}
+			{importedBulkItems}
 			{skippedGroupCount}
 			{remainingGroupCount}
 			{completionLink}

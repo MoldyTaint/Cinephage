@@ -188,12 +188,35 @@ export class ManualImportService {
 		const normalizedGroupPath = resolve(groupPath);
 		const sourceFiles = await this.resolveSourceFiles(normalizedGroupPath);
 		const selectedFile = this.selectPrimarySourceFile(sourceFiles);
+		const isStrmFile = extname(selectedFile.path).toLowerCase() === '.strm';
+
 		const fileStem = getMediaParseStem(selectedFile.path);
-		const parsed = parseRelease(fileStem);
-		const tvIdentifier = resolveTvEpisodeIdentifier({
+		const fileParsed = parseRelease(fileStem);
+		const fileTvIdentifier = resolveTvEpisodeIdentifier({
 			filePath: selectedFile.path,
-			parsed
+			parsed: fileParsed
 		});
+
+		// When the selected file is a .strm placeholder (e.g. nzbdav) or has no
+		// recognisable title, the release info lives in the parent folder name instead.
+		// Use dirname(selectedFile.path) so this works whether the group was resolved
+		// as a file path or a folder path.
+		let parsed = fileParsed;
+		let tvIdentifier = fileTvIdentifier;
+		if (isStrmFile || !fileParsed.cleanTitle) {
+			const parentFolderName = basename(dirname(selectedFile.path));
+			const folderStem = getMediaParseStem(parentFolderName);
+			const folderParsed = parseRelease(folderStem);
+			if (folderParsed.cleanTitle && (!fileParsed.cleanTitle || isStrmFile)) {
+				parsed = folderParsed;
+				tvIdentifier = resolveTvEpisodeIdentifier({
+					filePath: selectedFile.path,
+					fileName: parentFolderName,
+					parsed: folderParsed
+				});
+			}
+		}
+
 		const parsedTitle = parsed.cleanTitle || fileStem;
 		const inferredMediaType: MediaType = preferredMediaType || (tvIdentifier ? 'tv' : 'movie');
 		const titleCandidates = this.buildTitleCandidatesForMatching({
