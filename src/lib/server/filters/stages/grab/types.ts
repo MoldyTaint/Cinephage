@@ -13,7 +13,8 @@ export type RejectionType =
 	| 'media_occupied'
 	| 'blocked_extension'
 	| 'not_upgrade'
-	| 'upgrades_disabled';
+	| 'upgrades_disabled'
+	| 'pending_delay';
 
 export interface ReleaseInfo {
 	title: string;
@@ -25,6 +26,8 @@ export interface ReleaseInfo {
 	size?: number;
 	protocol?: 'torrent' | 'usenet' | 'streaming';
 	category?: string;
+	/** When the release was first published on the indexer */
+	publishDate?: Date;
 }
 
 export interface ExistingFile {
@@ -69,6 +72,8 @@ export interface GrabDecisionOptions {
 	allowSidegrade: boolean;
 	isAutomatic: boolean;
 	isUpgrade?: boolean;
+	/** Skip the delay stage - used when processing a release that has already waited its delay period */
+	skipDelay?: boolean;
 }
 
 export interface GrabDecisionContext {

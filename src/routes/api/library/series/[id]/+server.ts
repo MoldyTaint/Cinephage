@@ -231,6 +231,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			rootFolderId,
 			wantsSubtitles,
 			languageProfileId,
+			delayProfileId,
 			folderPath,
 			episodeGroupId
 		} = body;
@@ -276,6 +277,9 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		}
 		if (scoringProfileId !== undefined) {
 			updateData.scoringProfileId = scoringProfileId;
+		}
+		if (delayProfileId !== undefined) {
+			updateData.delayProfileId = delayProfileId;
 		}
 		if (seasonFolder !== undefined) {
 			updateData.seasonFolder = seasonFolder;

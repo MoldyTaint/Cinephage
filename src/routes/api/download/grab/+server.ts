@@ -107,6 +107,7 @@ export const POST: RequestHandler = async (event) => {
 			indexerId: data.indexerId,
 			indexerName: data.indexerName,
 			size: data.size,
+			publishDate: data.publishDate ? new Date(data.publishDate) : undefined,
 			protocol: data.protocol,
 			guid: data.guid,
 			commentsUrl: data.commentsUrl,

@@ -1,4 +1,5 @@
 import { db } from '$lib/server/db/index.js';
+import { delayProfileService } from '$lib/server/monitoring/specifications/DelaySpecification.js';
 import {
 	movies,
 	movieFiles,
@@ -33,6 +34,16 @@ export interface LibraryMoviePageData {
 	libraryName: string | null;
 	tmdbDetails: MovieDetails | null;
 	qualityProfiles: QualityProfileSummary[];
+	delayProfiles: Array<{
+		id: string;
+		name: string;
+		torrentDelay: number;
+		usenetDelay: number;
+		enabled: boolean | null;
+		preferredProtocol: string | null;
+		bypassIfHighestQuality: boolean | null;
+		bypassIfAboveScore: number | null;
+	}>;
 	rootFolders: Array<{
 		id: string;
 		name: string;
@@ -301,12 +312,15 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 	const librarySlug = movie.libraryIsDefault ? null : (movie.librarySlug ?? null);
 	const libraryName = movie.libraryName ?? null;
 
+	const delayProfiles = await delayProfileService.getProfiles();
+
 	return {
 		movie: movieWithFiles,
 		librarySlug,
 		libraryName,
 		tmdbDetails,
 		qualityProfiles: allQualityProfiles,
+		delayProfiles,
 		rootFolders: folders,
 		queueItem,
 		isSearching,

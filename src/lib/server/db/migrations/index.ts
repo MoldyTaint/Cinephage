@@ -101,6 +101,7 @@ import { migration_v101 } from './101-add-cinephage-api-tables.js';
 import { migration_v102 } from './102-add-indexers-is-built-in.js';
 import { migration_v103 } from './103-migrate-streaming-settings.js';
 import { migration_v104 } from './104-drop-indexer-definitions-table.js';
+import { migration_v105 } from './105-add-delay-profile-assignment.js';
 
 export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v002,
@@ -204,5 +205,6 @@ export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v101,
 	migration_v102,
 	migration_v103,
-	migration_v104
+	migration_v104,
+	migration_v105
 ];

@@ -16,6 +16,7 @@ import { DuplicateHashStage } from './stages/grab/DuplicateHashStage.js';
 import { MediaOccupancyStage } from './stages/grab/MediaOccupancyStage.js';
 import { BlockedExtensionStage } from './stages/grab/BlockedExtensionStage.js';
 import { UpgradeStage } from './stages/grab/UpgradeStage.js';
+import { DelayStage } from './stages/grab/DelayStage.js';
 
 export class GrabDecisionPipeline {
 	private stages = [
@@ -28,7 +29,8 @@ export class GrabDecisionPipeline {
 		new DuplicateHashStage(),
 		new MediaOccupancyStage(),
 		new BlockedExtensionStage(),
-		new UpgradeStage()
+		new UpgradeStage(),
+		new DelayStage()
 	];
 
 	async evaluate(ctx: GrabDecisionContext, options?: { runAll?: boolean }): Promise<GrabDecision> {
@@ -78,7 +80,8 @@ export class GrabDecisionPipeline {
 			duplicateHash: 'duplicate_hash',
 			mediaOccupancy: 'media_occupied',
 			blockedExtension: 'blocked_extension',
-			upgrade: 'not_upgrade'
+			upgrade: 'not_upgrade',
+			delay: 'pending_delay'
 		};
 
 		return map[rejectingStage.name];

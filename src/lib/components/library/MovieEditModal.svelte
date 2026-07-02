@@ -29,10 +29,16 @@
 		genres?: Array<{ id?: number; name?: string }> | null;
 	}
 
+	interface DelayProfileOption {
+		id: string;
+		name: string;
+	}
+
 	interface Props {
 		open: boolean;
 		movie: LibraryMovie;
 		qualityProfiles: QualityProfileOption[];
+		delayProfiles: DelayProfileOption[];
 		rootFolders: RootFolder[];
 		saving: boolean;
 		onClose: () => void;
@@ -42,6 +48,7 @@
 	export interface MovieEditData {
 		monitored: boolean;
 		scoringProfileId: string | null;
+		delayProfileId: string | null;
 		rootFolderId: string | null;
 		moveFilesOnRootChange: boolean;
 		minimumAvailability: string;
@@ -50,11 +57,13 @@
 		folderPath?: string;
 	}
 
-	let { open, movie, qualityProfiles, rootFolders, saving, onClose, onSave }: Props = $props();
+	let { open, movie, qualityProfiles, delayProfiles, rootFolders, saving, onClose, onSave }: Props =
+		$props();
 
 	// Form state (defaults only, effect syncs from props)
 	let monitored = $state(true);
 	let qualityProfileId = $state('');
+	let delayProfileId = $state<string | null>(null);
 	let rootFolderId = $state('');
 	let minimumAvailability = $state('released');
 	let availabilityDelay = $state(0);
@@ -125,6 +134,7 @@
 				movie.scoringProfileId && movie.scoringProfileId !== defaultProfileId
 					? movie.scoringProfileId
 					: '';
+			delayProfileId = (movie as { delayProfileId?: string | null }).delayProfileId ?? null;
 			rootFolderId = movie.rootFolderId ?? '';
 			minimumAvailability = movie.minimumAvailability ?? 'released';
 			availabilityDelay = movie.availabilityDelay ?? 0;
@@ -215,6 +225,7 @@
 		onSave({
 			monitored,
 			scoringProfileId: qualityProfileId || null,
+			delayProfileId,
 			rootFolderId: rootFolderId || null,
 			moveFilesOnRootChange,
 			minimumAvailability,
@@ -289,6 +300,31 @@
 				</span>
 			</div>
 		</div>
+
+		<!-- Delay Profile -->
+		{#if delayProfiles.length > 0}
+			<div class="form-control">
+				<label class="label" for="movie-delay-profile">
+					<span class="label-text font-medium">Delay Profile</span>
+				</label>
+				<select
+					id="movie-delay-profile"
+					bind:value={delayProfileId}
+					class="select-bordered select w-full select-sm"
+				>
+					<option value={null}>None (global default)</option>
+					{#each delayProfiles as profile (profile.id)}
+						<option value={profile.id}>{profile.name}</option>
+					{/each}
+				</select>
+				<div class="label">
+					<span class="label-text-alt wrap-break-word whitespace-normal text-base-content/60">
+						Hold matching releases before grabbing. Configured in Quality Settings &gt; Delay
+						Profiles.
+					</span>
+				</div>
+			</div>
+		{/if}
 
 		<!-- Root Folder -->
 		<div class="form-control">
@@ -432,7 +468,7 @@
 				<span class="text-sm text-base-content/60">{m.library_availabilityDelay_unit()}</span>
 			</div>
 			<div class="label">
-				<span class="label-text-alt text-base-content/60">
+				<span class="label-text-alt wrap-break-word whitespace-normal text-base-content/60">
 					{m.library_availabilityDelay_desc()}
 				</span>
 			</div>

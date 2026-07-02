@@ -193,6 +193,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		moveFilesOnRootChange,
 		wantsSubtitles,
 		languageProfileId,
+		delayProfileId,
 		folderPath
 	} = body;
 
@@ -227,6 +228,9 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	}
 	if (scoringProfileId !== undefined) {
 		updateData.scoringProfileId = scoringProfileId;
+	}
+	if (delayProfileId !== undefined) {
+		updateData.delayProfileId = delayProfileId;
 	}
 	if (minimumAvailability) {
 		updateData.minimumAvailability = minimumAvailability;

@@ -4,6 +4,7 @@ import { db } from '$lib/server/db';
 import { scoringProfiles, customFormats } from '$lib/server/db/schema';
 import { DEFAULT_PROFILES, DEFAULT_RESOLUTION_ORDER, ALL_FORMATS } from '$lib/server/scoring';
 import { toNullableNumber } from '$lib/utils/number.js';
+import { delayProfileService } from '$lib/server/monitoring/specifications/DelaySpecification.js';
 
 // Built-in profile IDs - derived from DEFAULT_PROFILES for single source of truth
 const BUILT_IN_PROFILE_IDS = DEFAULT_PROFILES.map((p) => p.id);
@@ -106,6 +107,8 @@ export const load: PageServerLoad = async ({ url }) => {
 	// Combine formats
 	const allFormats = [...builtInFormats, ...customFormatsList];
 
+	const delayProfiles = await delayProfileService.getProfiles();
+
 	return {
 		activeTab,
 		// Profiles data
@@ -117,6 +120,8 @@ export const load: PageServerLoad = async ({ url }) => {
 			total: allFormats.length,
 			builtIn: builtInFormats.length,
 			custom: customFormatsList.length
-		}
+		},
+		// Delay profiles
+		delayProfiles
 	};
 };

@@ -12,7 +12,7 @@
  */
 
 import { db } from '$lib/server/db/index.js';
-import { delayProfiles, pendingReleases } from '$lib/server/db/schema.js';
+import { delayProfiles, pendingReleases, movies, series } from '$lib/server/db/schema.js';
 import { eq, and, lte, desc } from 'drizzle-orm';
 import { logger } from '$lib/logging/index.js';
 import type { ReleaseCandidate } from './types.js';
@@ -55,51 +55,24 @@ class DelayProfileService {
 	}
 
 	/**
-	 * Calculate delay for a release based on delay profiles
+	 * Calculate delay for a release based on delay profiles.
+	 * Uses publishDate to determine remaining delay (Sonarr-style: delay is from when
+	 * the release was published, not from when we first saw it).
 	 */
 	async calculateDelay(
-		release: ReleaseCandidate & { protocol: string },
+		release: ReleaseCandidate & { protocol: string; publishDate?: Date },
 		options: {
 			movieId?: string;
 			seriesId?: string;
 		}
 	): Promise<DelayResult> {
-		// Get applicable delay profile
 		const profile = await this.getApplicableProfile(options);
 
 		if (!profile || !profile.enabled) {
 			return { shouldDelay: false, delayMinutes: 0, reason: 'No delay profile' };
 		}
 
-		// Check bypass conditions
-		if (profile.bypassIfHighestQuality && release.quality?.resolution === '2160p') {
-			return {
-				shouldDelay: false,
-				delayMinutes: 0,
-				bypassReason: 'Highest quality (4K) - immediate grab'
-			};
-		}
-
-		if (profile.bypassIfAboveScore && release.score >= profile.bypassIfAboveScore) {
-			return {
-				shouldDelay: false,
-				delayMinutes: 0,
-				bypassReason: `Score ${release.score} >= bypass threshold ${profile.bypassIfAboveScore}`
-			};
-		}
-
-		// Calculate base delay from protocol
-		let delayMinutes = release.protocol === 'usenet' ? profile.usenetDelay : profile.torrentDelay;
-
-		// Add quality-based delay if configured
-		if (profile.qualityDelays && release.quality?.resolution) {
-			const qualityDelay = profile.qualityDelays[release.quality.resolution];
-			if (qualityDelay !== undefined) {
-				delayMinutes = Math.max(delayMinutes, qualityDelay);
-			}
-		}
-
-		// Check if preferred protocol (grab immediately)
+		// Bypass: preferred protocol grabs immediately
 		if (profile.preferredProtocol && release.protocol === profile.preferredProtocol) {
 			return {
 				shouldDelay: false,
@@ -108,33 +81,102 @@ class DelayProfileService {
 			};
 		}
 
+		// Bypass: 4K grabs immediately if configured
+		if (profile.bypassIfHighestQuality && release.quality?.resolution === '2160p') {
+			return {
+				shouldDelay: false,
+				delayMinutes: 0,
+				bypassReason: 'Highest quality (4K) - immediate grab'
+			};
+		}
+
+		// Bypass: score above threshold grabs immediately
+		if (profile.bypassIfAboveScore && release.score >= profile.bypassIfAboveScore) {
+			return {
+				shouldDelay: false,
+				delayMinutes: 0,
+				bypassReason: `Score ${release.score} >= bypass threshold ${profile.bypassIfAboveScore}`
+			};
+		}
+
+		// Determine total delay from protocol and optional quality-specific override
+		let delayMinutes = release.protocol === 'usenet' ? profile.usenetDelay : profile.torrentDelay;
+
+		if (profile.qualityDelays && release.quality?.resolution) {
+			const qualityDelay = profile.qualityDelays[release.quality.resolution];
+			if (qualityDelay !== undefined) {
+				delayMinutes = Math.max(delayMinutes, qualityDelay);
+			}
+		}
+
 		if (delayMinutes <= 0) {
 			return { shouldDelay: false, delayMinutes: 0, reason: 'Zero delay configured' };
 		}
 
-		const processAt = new Date(Date.now() + delayMinutes * 60 * 1000);
+		// Calculate remaining delay from the release publish date (Sonarr-style).
+		// If no publishDate is available, delay from now.
+		const referenceTime = release.publishDate ?? new Date();
+		const elapsedMs = Date.now() - referenceTime.getTime();
+		const totalDelayMs = delayMinutes * 60 * 1000;
+		const remainingMs = totalDelayMs - elapsedMs;
+
+		if (remainingMs <= 0) {
+			return {
+				shouldDelay: false,
+				delayMinutes: 0,
+				reason: 'Delay already elapsed since publish date'
+			};
+		}
+
+		const processAt = new Date(Date.now() + remainingMs);
+		const remainingMinutes = Math.ceil(remainingMs / 60_000);
 		return {
 			shouldDelay: true,
-			delayMinutes,
+			delayMinutes: remainingMinutes,
 			processAt,
-			reason: `Delay profile "${profile.name}": ${delayMinutes} minutes`
+			reason: `Delay profile "${profile.name}": waiting ${remainingMinutes} more minutes`
 		};
 	}
 
 	/**
-	 * Get the applicable delay profile for content
+	 * Get the applicable delay profile for content.
+	 * Looks up the delay profile assigned directly to the movie or series,
+	 * falling back to the first enabled profile if none is assigned.
 	 */
-	private async getApplicableProfile(_options: {
+	private async getApplicableProfile(options: {
 		movieId?: string;
 		seriesId?: string;
 	}): Promise<typeof delayProfiles.$inferSelect | null> {
-		// For now, get the first enabled profile by sort order
-		// TODO: Add tag matching for content-specific profiles using _options
+		// Try media-specific assignment first
+		let delayProfileId: string | null | undefined;
+
+		if (options.movieId) {
+			const movie = await db.query.movies.findFirst({
+				where: eq(movies.id, options.movieId),
+				columns: { delayProfileId: true }
+			});
+			delayProfileId = movie?.delayProfileId;
+		} else if (options.seriesId) {
+			const show = await db.query.series.findFirst({
+				where: eq(series.id, options.seriesId),
+				columns: { delayProfileId: true }
+			});
+			delayProfileId = show?.delayProfileId;
+		}
+
+		if (delayProfileId) {
+			const profile = await db.query.delayProfiles.findFirst({
+				where: and(eq(delayProfiles.id, delayProfileId), eq(delayProfiles.enabled, true))
+			});
+			if (profile) return profile;
+		}
+
+		// No media-specific profile — use the first enabled profile (global default)
 		const profiles = await db.query.delayProfiles.findMany({
 			where: eq(delayProfiles.enabled, true),
-			orderBy: [delayProfiles.sortOrder]
+			orderBy: [delayProfiles.sortOrder],
+			limit: 1
 		});
-
 		return profiles[0] ?? null;
 	}
 
@@ -147,6 +189,7 @@ class DelayProfileService {
 			downloadUrl?: string;
 			magnetUrl?: string;
 			indexerId?: string;
+			publishDate?: Date;
 		},
 		options: {
 			movieId?: string;
@@ -180,6 +223,7 @@ class DelayProfileService {
 				protocol: release.protocol,
 				quality: release.quality ?? null,
 				delayProfileId: options.delayProfileId ?? null,
+				publishDate: release.publishDate?.toISOString() ?? null,
 				processAt: options.processAt.toISOString(),
 				status: 'pending'
 			})

@@ -1,4 +1,5 @@
 import { db } from '$lib/server/db/index.js';
+import { delayProfileService } from '$lib/server/monitoring/specifications/DelaySpecification.js';
 import {
 	series,
 	seasons,
@@ -139,6 +140,16 @@ export interface LibrarySeriesPageData {
 	tmdbDetails: TVShowDetails | null;
 	seasons: SeasonWithEpisodes[];
 	qualityProfiles: QualityProfileSummary[];
+	delayProfiles: Array<{
+		id: string;
+		name: string;
+		torrentDelay: number;
+		usenetDelay: number;
+		enabled: boolean | null;
+		preferredProtocol: string | null;
+		bypassIfHighestQuality: boolean | null;
+		bypassIfAboveScore: number | null;
+	}>;
 	rootFolders: Array<{
 		id: string;
 		name: string;
@@ -425,6 +436,8 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 	const librarySlug = seriesData.libraryIsDefault ? null : (seriesData.librarySlug ?? null);
 	const libraryName = seriesData.libraryName ?? null;
 
+	const delayProfiles = await delayProfileService.getProfiles();
+
 	return {
 		series: {
 			...seriesData,
@@ -435,6 +448,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 		tmdbDetails,
 		seasons: seasonsWithEpisodes,
 		qualityProfiles: allQualityProfiles,
+		delayProfiles,
 		rootFolders: folders,
 		queueItems,
 		isSearching,

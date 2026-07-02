@@ -667,7 +667,9 @@ export const movies = sqliteTable(
 		availabilityDelay: integer('availability_delay').notNull().default(0),
 		adult: integer('adult', { mode: 'boolean' }).default(false),
 		adultSource: text('adult_source'),
-		adultConfidence: text('adult_confidence')
+		adultConfidence: text('adult_confidence'),
+		// Delay profile for holding releases before grabbing
+		delayProfileId: text('delay_profile_id')
 	},
 	(table) => [
 		index('idx_movies_monitored_hasfile').on(table.monitored, table.hasFile),
@@ -784,7 +786,9 @@ export const series = sqliteTable(
 		adult: integer('adult', { mode: 'boolean' }).default(false),
 		adultSource: text('adult_source'),
 		adultConfidence: text('adult_confidence'),
-		episodeGroupId: text('episode_group_id')
+		episodeGroupId: text('episode_group_id'),
+		// Delay profile for holding releases before grabbing
+		delayProfileId: text('delay_profile_id')
 	},
 	(table) => [
 		index('idx_series_monitored').on(table.monitored),
@@ -1519,6 +1523,8 @@ export const pendingReleases = sqliteTable('pending_releases', {
 	delayProfileId: text('delay_profile_id').references(() => delayProfiles.id, {
 		onDelete: 'set null'
 	}),
+	// When the release was originally published on the indexer
+	publishDate: text('publish_date'),
 	addedAt: text('added_at').$defaultFn(() => new Date().toISOString()),
 	processAt: text('process_at').notNull(), // When to process this release
 	// Status
