@@ -452,18 +452,33 @@
 						seriesType,
 						seasonFolder,
 						monitoredSeasons: Array.from(monitoredSeasons)
-					})) as unknown as { success: boolean; id?: string };
+					})) as unknown as {
+				success: boolean;
+				id?: string;
+				movie?: { id?: string; searchWarning?: string };
+				series?: { id?: string; searchWarning?: string };
+			};
 
-			toasts.success(`${title} added to library`, {
-				description: willSearchOnAdd ? 'Searching for releases...' : undefined,
-				action: result.id
-					? {
-							label: 'View',
-							href:
-								mediaType === 'movie' ? `/library/movie/${result.id}` : `/library/tv/${result.id}`
-						}
-					: undefined
-			});
+			const mediaId = result.movie?.id ?? result.series?.id ?? result.id;
+			const searchWarning = result.movie?.searchWarning ?? result.series?.searchWarning;
+			const viewAction = mediaId
+				? {
+						label: 'View',
+						href: mediaType === 'movie' ? `/library/movie/${mediaId}` : `/library/tv/${mediaId}`
+					}
+				: undefined;
+
+			if (searchWarning) {
+				toasts.warning(`${title} added to library`, {
+					description: searchWarning,
+					action: viewAction
+				});
+			} else {
+				toasts.success(`${title} added to library`, {
+					description: willSearchOnAdd ? 'Searching for releases...' : undefined,
+					action: viewAction
+				});
+			}
 
 			onClose();
 			onSuccess?.();

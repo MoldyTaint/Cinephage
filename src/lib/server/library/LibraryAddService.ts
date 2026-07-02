@@ -19,6 +19,8 @@ import { SearchWorker, workerManager } from '$lib/server/workers/index.js';
 import { ValidationError, NotFoundError, ExternalServiceError } from '$lib/errors';
 import { createChildLogger } from '$lib/logging';
 import { getEffectiveAnimeRootFolderEnforcement } from './anime-root-enforcement-settings.js';
+import { evaluateIndexerSearchAvailability } from '$lib/server/indexers/search/availability.js';
+import { getIndexerManager } from '$lib/server/indexers/IndexerManager.js';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });
 
@@ -44,6 +46,8 @@ export interface ExternalIds {
 
 export interface SearchOnAddResult {
 	triggered: boolean;
+	/** Set when no indexers are configured for automatic search */
+	searchWarning?: string;
 }
 
 /**
@@ -229,6 +233,22 @@ export async function triggerMovieSearch(params: {
 }): Promise<SearchOnAddResult> {
 	const { movieId, tmdbId, imdbId, title, year, scoringProfileId } = params;
 
+	const indexerManager = await getIndexerManager();
+	const availability = evaluateIndexerSearchAvailability(await indexerManager.getIndexers(), {
+		searchType: 'movie',
+		searchSource: 'automatic',
+		scoringProfileId,
+		getDefinitionCapabilities: (id) => indexerManager.getDefinitionCapabilities(id)
+	});
+
+	if (!availability.ok) {
+		logger.info(
+			{ movieId, code: availability.code },
+			'[LibraryAddService] Skipping on-add search: no automatic indexers available'
+		);
+		return { triggered: false, searchWarning: availability.message };
+	}
+
 	const worker = new SearchWorker({
 		mediaType: 'movie',
 		mediaId: movieId,
@@ -298,6 +318,21 @@ export async function triggerSeriesSearch(params: {
 	title: string;
 }): Promise<SearchOnAddResult> {
 	const { seriesId, tmdbId, title } = params;
+
+	const indexerManager = await getIndexerManager();
+	const availability = evaluateIndexerSearchAvailability(await indexerManager.getIndexers(), {
+		searchType: 'tv',
+		searchSource: 'automatic',
+		getDefinitionCapabilities: (id) => indexerManager.getDefinitionCapabilities(id)
+	});
+
+	if (!availability.ok) {
+		logger.info(
+			{ seriesId, code: availability.code },
+			'[LibraryAddService] Skipping on-add search: no automatic indexers available'
+		);
+		return { triggered: false, searchWarning: availability.message };
+	}
 
 	async function runSeriesSearch(): Promise<{ searched: number; found: number; grabbed: number }> {
 		const result = await searchOnAdd.searchForMissingEpisodes(seriesId);
