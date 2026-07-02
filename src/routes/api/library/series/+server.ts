@@ -402,6 +402,7 @@ export const POST: RequestHandler = async (event) => {
 
 		// Trigger search if explicitly requested regardless of monitoring state
 		let searchTriggered = false;
+		let searchWarning: string | undefined;
 		if (shouldSearch) {
 			const searchResult = await triggerSeriesSearch({
 				seriesId: newSeries.id,
@@ -409,6 +410,7 @@ export const POST: RequestHandler = async (event) => {
 				title: tvDetails.name
 			});
 			searchTriggered = searchResult.triggered;
+			searchWarning = searchResult.searchWarning;
 		}
 
 		return json({
@@ -421,7 +423,8 @@ export const POST: RequestHandler = async (event) => {
 				path: newSeries.path,
 				monitored: newSeries.monitored,
 				episodeCount: newSeries.episodeCount,
-				searchTriggered
+				searchTriggered,
+				searchWarning
 			}
 		});
 	} catch (error) {

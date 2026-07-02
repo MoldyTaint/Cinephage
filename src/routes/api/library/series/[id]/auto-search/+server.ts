@@ -236,7 +236,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 								bypassMonitoring: true,
 								// RuTracker-only setups use episode-only workflow.
 								// Mixed/non-RuTracker setups stay on pack-first behavior.
-								searchStrategy: 'auto'
+								searchStrategy: 'auto',
+								searchSource: 'interactive'
 							});
 							const itemErrors = result.results.map((item) => item.error);
 							const issues = collectAutoSearchIssues([

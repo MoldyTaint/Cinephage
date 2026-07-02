@@ -267,6 +267,7 @@ export const POST: RequestHandler = async (event) => {
 
 		// Trigger search if explicitly requested regardless of monitoring state
 		let searchTriggered = false;
+		let searchWarning: string | undefined;
 		if (shouldSearch) {
 			const searchResult = await triggerMovieSearch({
 				movieId: newMovie.id,
@@ -277,6 +278,7 @@ export const POST: RequestHandler = async (event) => {
 				scoringProfileId
 			});
 			searchTriggered = searchResult.triggered;
+			searchWarning = searchResult.searchWarning;
 		}
 
 		return json({
@@ -288,7 +290,8 @@ export const POST: RequestHandler = async (event) => {
 				year: newMovie.year,
 				path: newMovie.path,
 				monitored: newMovie.monitored,
-				searchTriggered
+				searchTriggered,
+				searchWarning
 			}
 		});
 	} catch (error) {

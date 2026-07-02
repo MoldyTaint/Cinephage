@@ -112,6 +112,8 @@ interface SearchForMissingEpisodesOptions {
 	 * - 'auto': use episode-only only when RuTracker/Kinozal is the sole eligible TV indexer
 	 */
 	searchStrategy?: 'pack-first' | 'episode-only' | 'auto';
+	/** Controls which indexers are eligible; 'automatic' for background/on-add, 'interactive' for user-triggered */
+	searchSource?: 'automatic' | 'interactive';
 }
 
 /** Result for a single item in multi-search operations */
@@ -299,9 +301,7 @@ class SearchOnAddService {
 			logger.debug({ movieId, hasExistingFile }, '[SearchOnAdd] Movie file status');
 
 			const indexerManager = await getIndexerManager();
-			const searchSource: 'interactive' | 'automatic' = bypassMonitoring
-				? 'interactive'
-				: 'automatic';
+			const searchSource: 'interactive' | 'automatic' = 'automatic';
 			const indexerAvailability = evaluateIndexerSearchAvailability(
 				await indexerManager.getIndexers(),
 				{
@@ -546,9 +546,7 @@ class SearchOnAddService {
 
 		try {
 			const indexerManager = await getIndexerManager();
-			const searchSource: 'interactive' | 'automatic' = bypassMonitoring
-				? 'interactive'
-				: 'automatic';
+			const searchSource: 'interactive' | 'automatic' = 'automatic';
 			const indexerAvailability = evaluateIndexerSearchAvailability(
 				await indexerManager.getIndexers(),
 				{
@@ -737,9 +735,7 @@ class SearchOnAddService {
 			logger.debug({ episodeId, hasExistingFile }, '[SearchOnAdd] Episode file status');
 
 			const indexerManager = await getIndexerManager();
-			const searchSource: 'interactive' | 'automatic' = bypassMonitoring
-				? 'interactive'
-				: 'automatic';
+			const searchSource: 'interactive' | 'automatic' = 'automatic';
 			const indexerAvailability = evaluateIndexerSearchAvailability(
 				await indexerManager.getIndexers(),
 				{
@@ -946,9 +942,7 @@ class SearchOnAddService {
 			});
 
 			const indexerManager = await getIndexerManager();
-			const searchSource: 'interactive' | 'automatic' = bypassMonitoring
-				? 'interactive'
-				: 'automatic';
+			const searchSource: 'interactive' | 'automatic' = 'automatic';
 			const indexerAvailability = evaluateIndexerSearchAvailability(
 				await indexerManager.getIndexers(),
 				{
@@ -1097,7 +1091,11 @@ class SearchOnAddService {
 		) => void,
 		options: SearchForMissingEpisodesOptions = {}
 	): Promise<MultiSearchResult> {
-		const { bypassMonitoring = false, searchStrategy = 'pack-first' } = options;
+		const {
+			bypassMonitoring = false,
+			searchStrategy = 'pack-first',
+			searchSource = 'automatic'
+		} = options;
 
 		logger.info(
 			{
@@ -1126,7 +1124,7 @@ class SearchOnAddService {
 			const indexerConfigs = await indexerManager.getIndexers();
 			const indexerAvailability = evaluateIndexerSearchAvailability(indexerConfigs, {
 				searchType: 'tv',
-				searchSource: 'interactive',
+				searchSource,
 				scoringProfileId: seriesData.scoringProfileId ?? undefined,
 				getDefinitionCapabilities: (definitionId) =>
 					indexerManager.getDefinitionCapabilities(definitionId)
@@ -1152,7 +1150,7 @@ class SearchOnAddService {
 			const effectiveSearchStrategy =
 				searchStrategy === 'auto'
 					? this.resolveAutoMissingSearchStrategy(indexerConfigs, {
-							searchSource: 'interactive',
+							searchSource,
 							scoringProfileId: seriesData.scoringProfileId,
 							getDefinitionCapabilities: (definitionId) =>
 								indexerManager.getDefinitionCapabilities(definitionId)
@@ -1433,7 +1431,7 @@ class SearchOnAddService {
 				},
 				episodes: episodesToSearch,
 				scoringProfileId: seriesData.scoringProfileId ?? undefined,
-				searchSource: 'interactive',
+				searchSource,
 				onProgress,
 				completeSeriesThreshold: packThreshold,
 				multiSeasonThreshold: packThreshold,
