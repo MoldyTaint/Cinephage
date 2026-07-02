@@ -280,7 +280,6 @@ class SearchOnAddService {
 			title,
 			year,
 			scoringProfileId,
-			bypassMonitoring = false,
 			onProgress
 		} = params;
 
@@ -523,8 +522,7 @@ class SearchOnAddService {
 			title,
 			year,
 			scoringProfileId,
-			monitorType,
-			bypassMonitoring = false
+			monitorType
 		} = params;
 
 		logger.info(
