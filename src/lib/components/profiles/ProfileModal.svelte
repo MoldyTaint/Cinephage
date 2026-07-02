@@ -2,8 +2,8 @@
 	import type { ScoringProfile, ScoringProfileFormData } from '$lib/types/profile';
 	import type { FormatCategory } from '$lib/types/format';
 	import * as m from '$lib/paraglide/messages.js';
-	import { groupFormatScoresByCategory } from '$lib/types/format';
-	import { X, Save, Info, Loader2, Settings, Layers } from 'lucide-svelte';
+	import { groupFormatScoresByCategory, FORMAT_CATEGORY_LABELS } from '$lib/types/format';
+	import { X, Save, Info, Loader2, Settings, Layers, Search } from 'lucide-svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import { SectionHeader } from '$lib/components/ui/modal';
 	import FormatScoreAccordion from './FormatScoreAccordion.svelte';
@@ -47,6 +47,8 @@
 
 	// Tab state
 	let activeTab = $state<'general' | 'formats'>('general');
+	let requiredFormats = $state<string[]>([]);
+	let requiredFormatSearch = $state('');
 	// Modal title
 	const modalTitle = $derived(
 		mode === 'add'
@@ -106,6 +108,7 @@
 				isDefault = profile.isDefault;
 				// Initialize format scores from profile
 				formatScores = { ...(profile.formatScores ?? {}) };
+				requiredFormats = [...(profile.requiredFormats ?? [])];
 			} else {
 				// Reset form for new profile - use provided default
 				name = '';
@@ -120,14 +123,20 @@
 				isDefault = false;
 				// For new profiles, start with empty scores (copyFrom is handled server-side)
 				formatScores = {};
+				requiredFormats = [];
 			}
 			// Reset to General tab when opening
 			activeTab = 'general';
+			requiredFormatSearch = '';
 		}
 	});
 
 	const maxDescriptionLength = 70;
 	const descriptionTooLong = $derived(description.length > maxDescriptionLength);
+
+	// Derived counts for tab badges and summary chip
+	const scoredFormatCount = $derived(Object.values(formatScores).filter((s) => s !== 0).length);
+	const requiredFormatCount = $derived(requiredFormats.length);
 
 	// Convert Record<string, number> to Map<FormatCategory, FormatScoreEntry[]> for accordion
 	const groupedFormatScores = $derived(() => {
@@ -265,7 +274,8 @@
 				episodeMinSizeMb: normalizeMbLimit(episodeMinSizeMbValue),
 				episodeMaxSizeMb: normalizeMbLimit(episodeMaxSizeMbValue),
 				isDefault,
-				formatScores: filteredFormatScores
+				formatScores: filteredFormatScores,
+				requiredFormats
 			});
 			return;
 		}
@@ -281,8 +291,8 @@
 			episodeMinSizeMb: normalizeMbLimit(episodeMinSizeMbValue),
 			episodeMaxSizeMb: normalizeMbLimit(episodeMaxSizeMbValue),
 			isDefault,
-			// Include format scores (filter out zeros to keep payload lean)
-			formatScores: filteredFormatScores
+			formatScores: filteredFormatScores,
+			requiredFormats
 		});
 	}
 
@@ -604,18 +614,125 @@
 				</div>
 			</div>
 		</div>
+
+		{#if requiredFormatCount > 0 || scoredFormatCount > 0}
+			<button
+				type="button"
+				class="mt-4 flex w-full items-center gap-2 rounded-lg border border-base-300 bg-base-100 px-4 py-2.5 text-sm transition-colors hover:bg-base-200"
+				onclick={() => (activeTab = 'formats')}
+			>
+				<Layers class="h-4 w-4 text-base-content/50" />
+				<span class="flex-1 text-left text-base-content/70">Format configuration</span>
+				{#if scoredFormatCount > 0}
+					<span class="badge badge-primary badge-sm">{scoredFormatCount} scored</span>
+				{/if}
+				{#if requiredFormatCount > 0}
+					<span class="badge badge-warning badge-sm">{requiredFormatCount} required</span>
+				{/if}
+			</button>
+		{/if}
 	{:else if activeTab === 'formats'}
-		<div class="py-2">
+		<div class="space-y-5 py-2">
 			{#if isNewProfile && copyFromId}
-				<div class="mb-4 alert text-sm alert-info">
+				<div class="alert text-sm alert-info">
 					<Info class="h-4 w-4" />
 					<span>
 						{m.profiles_formatScoresCopyInfo()}
 					</span>
 				</div>
 			{/if}
+
+			<!-- Required Formats -->
+			{#if allFormats.length > 0}
+				<div class="rounded-lg border border-base-300 p-4">
+					<p class="text-sm font-medium">Required Formats</p>
+					<p class="mt-0.5 text-xs text-base-content/60">
+						Releases missing any required format are rejected. Leave empty for normal scoring
+						behaviour.
+					</p>
+
+					{#if requiredFormats.length > 0}
+						<div class="mt-3 flex flex-wrap gap-1.5">
+							{#each requiredFormats as id (id)}
+								{@const name = allFormats.find((f) => f.id === id)?.name ?? id}
+								<span class="badge badge-primary gap-1">
+									{name}
+									{#if !isFullyReadonly}
+										<button
+											type="button"
+											class="opacity-70 hover:opacity-100"
+											aria-label="Remove {name}"
+											onclick={() => {
+												requiredFormats = requiredFormats.filter((f) => f !== id);
+											}}
+										>
+											<svg class="h-3 w-3" viewBox="0 0 12 12" fill="currentColor"
+												><path
+													d="M9 3L6 6 3 3l-.7.7L5.3 6.7 2.3 9.7 3 10.4l3-3 3 3 .7-.7-3-3 3-3z"
+												/></svg
+											>
+										</button>
+									{/if}
+								</span>
+							{/each}
+						</div>
+					{/if}
+
+					{#if !isFullyReadonly}
+						{@const filteredAvailable = allFormats.filter(
+							(f) =>
+								!requiredFormats.includes(f.id) &&
+								(requiredFormatSearch === '' ||
+									f.name.toLowerCase().includes(requiredFormatSearch.toLowerCase()))
+						)}
+						<div class="mt-3 space-y-1.5">
+							<div class="group relative">
+								<div class="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2">
+									<Search
+										class="h-4 w-4 text-base-content/40 transition-colors group-focus-within:text-primary"
+									/>
+								</div>
+								<input
+									type="text"
+									class="input w-full rounded-full border-base-content/20 bg-base-200/60 py-2 pr-4 pl-10 text-sm transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+									placeholder="Search formats to require..."
+									bind:value={requiredFormatSearch}
+								/>
+							</div>
+							{#if requiredFormatSearch && filteredAvailable.length > 0}
+								<div class="max-h-40 overflow-y-auto rounded-lg border border-base-300 bg-base-100">
+									{#each filteredAvailable as format (format.id)}
+										<button
+											type="button"
+											class="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-sm hover:bg-base-200"
+											onclick={() => {
+												requiredFormats = [...requiredFormats, format.id];
+												requiredFormatSearch = '';
+											}}
+										>
+											<span>{format.name}</span>
+											<span class="shrink-0 text-xs text-base-content/40"
+												>{FORMAT_CATEGORY_LABELS[
+													format.category as keyof typeof FORMAT_CATEGORY_LABELS
+												] ?? format.category}</span
+											>
+										</button>
+									{/each}
+								</div>
+							{:else if requiredFormatSearch && filteredAvailable.length === 0}
+								<p class="px-1 text-xs text-base-content/50">
+									No formats match "{requiredFormatSearch}"
+								</p>
+							{/if}
+						</div>
+					{/if}
+				</div>
+				<div class="divider my-0"></div>
+			{/if}
+
 			<FormatScoreAccordion
 				formatScores={groupedFormatScores()}
+				{requiredFormats}
 				readonly={isFullyReadonly}
 				onScoreChange={handleScoreChange}
 			/>

@@ -14,7 +14,8 @@ export type RejectionType =
 	| 'blocked_extension'
 	| 'not_upgrade'
 	| 'upgrades_disabled'
-	| 'pending_delay';
+	| 'pending_delay'
+	| 'missing_required_format';
 
 export interface ReleaseInfo {
 	title: string;

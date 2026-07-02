@@ -28,11 +28,12 @@
 
 	interface Props {
 		formatScores: Map<FormatCategory, FormatScoreEntry[]>;
+		requiredFormats?: string[];
 		readonly?: boolean;
 		onScoreChange: (formatId: string, score: number) => void;
 	}
 
-	let { formatScores, readonly = false, onScoreChange }: Props = $props();
+	let { formatScores, requiredFormats = [], readonly = false, onScoreChange }: Props = $props();
 
 	// UI state
 	let searchQuery = $state('');
@@ -80,11 +81,15 @@
 <div class="space-y-4">
 	<!-- Search and expand/collapse -->
 	<div class="flex items-center gap-3">
-		<div class="relative flex-1">
-			<Search class="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/50" />
+		<div class="group relative flex-1">
+			<div class="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2">
+				<Search
+					class="h-4 w-4 text-base-content/40 transition-colors group-focus-within:text-primary"
+				/>
+			</div>
 			<input
 				type="text"
-				class="input-bordered input input-sm w-full pl-9"
+				class="input w-full rounded-full border-base-content/20 bg-base-200/60 py-2 pr-4 pl-10 text-sm transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				placeholder={m.profiles_searchFormats()}
 				bind:value={searchQuery}
 			/>
@@ -106,6 +111,7 @@
 			{@const scores = filteredScores().get(category) || []}
 			{#if scores.length > 0}
 				{@const nonZeroCount = countNonZeroScores(scores)}
+				{@const requiredCount = scores.filter((e) => requiredFormats.includes(e.formatId)).length}
 				<div class="rounded-lg border border-base-300 bg-base-100">
 					<!-- Category header -->
 					<button
@@ -145,6 +151,9 @@
 
 						<span class="flex-1 font-medium">{FORMAT_CATEGORY_LABELS[category]}</span>
 
+						{#if requiredCount > 0}
+							<span class="badge badge-sm badge-warning">{requiredCount} required</span>
+						{/if}
 						{#if nonZeroCount > 0}
 							<span class="badge badge-sm badge-primary"
 								>{m.profiles_scoredCount({ count: nonZeroCount })}</span
@@ -158,6 +167,7 @@
 						<div class="border-t border-base-300">
 							<div class="max-h-80 divide-y divide-base-200 overflow-y-auto">
 								{#each scores as entry (entry.formatId)}
+									{@const isRequired = requiredFormats.includes(entry.formatId)}
 									<div class="hover:bg-base-50 flex items-center gap-3 px-4 py-2">
 										<!-- Format name -->
 										<span class="min-w-0 flex-1 truncate" class:font-medium={entry.score !== 0}>
@@ -165,6 +175,10 @@
 												`format_${entry.formatId}`
 											]?.() || entry.formatName}
 										</span>
+
+										{#if isRequired}
+											<span class="badge badge-warning badge-xs shrink-0">required</span>
+										{/if}
 
 										<!-- Score input -->
 										<input

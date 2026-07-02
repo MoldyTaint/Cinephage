@@ -1972,6 +1972,7 @@ export const scoringProfileCreateSchema = z.object({
 	upgradeUntilScore: z.number().int().optional(),
 	minScoreIncrement: z.number().int().optional(),
 	formatScores: z.record(z.string(), z.number().int()).optional(),
+	requiredFormats: z.array(z.string()).optional(),
 	movieMinSizeGb: z.number().nullable().optional(),
 	movieMaxSizeGb: z.number().nullable().optional(),
 	episodeMinSizeMb: z.number().nullable().optional(),

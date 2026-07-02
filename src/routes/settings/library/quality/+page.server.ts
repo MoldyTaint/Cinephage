@@ -41,6 +41,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		minScoreIncrement: p.minScoreIncrement ?? 0,
 		resolutionOrder: (p.resolutionOrder as Resolution[] | null) ?? DEFAULT_RESOLUTION_ORDER,
 		formatScores: p.formatScores ?? {},
+		requiredFormats: p.requiredFormats ?? [],
 		movieMinSizeGb: toNullableNumber(p.movieMinSizeGb),
 		movieMaxSizeGb: toNullableNumber(p.movieMaxSizeGb),
 		episodeMinSizeMb: toNullableNumber(p.episodeMinSizeMb),
@@ -56,6 +57,8 @@ export const load: PageServerLoad = async ({ url }) => {
 		return {
 			...p,
 			preventDowngrades: dbProfile?.preventDowngrades ?? p.preventDowngrades,
+			formatScores: dbProfile?.formatScores ?? p.formatScores ?? {},
+			requiredFormats: dbProfile?.requiredFormats ?? [],
 			movieMinSizeGb: toNullableNumber(dbProfile?.movieMinSizeGb),
 			movieMaxSizeGb: toNullableNumber(dbProfile?.movieMaxSizeGb),
 			episodeMinSizeMb: toNullableNumber(dbProfile?.episodeMinSizeMb),
