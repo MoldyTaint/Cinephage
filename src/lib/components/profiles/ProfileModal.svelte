@@ -1,5 +1,9 @@
 <script lang="ts">
-	import type { ScoringProfile, ScoringProfileFormData } from '$lib/types/profile';
+	import type {
+		ScoringProfile,
+		ScoringProfileFormData,
+		RequiredFormatEntry
+	} from '$lib/types/profile';
 	import type { FormatCategory } from '$lib/types/format';
 	import * as m from '$lib/paraglide/messages.js';
 	import { groupFormatScoresByCategory, FORMAT_CATEGORY_LABELS } from '$lib/types/format';
@@ -47,7 +51,7 @@
 
 	// Tab state
 	let activeTab = $state<'general' | 'formats'>('general');
-	let requiredFormats = $state<string[]>([]);
+	let requiredFormats = $state<RequiredFormatEntry[]>([]);
 	let requiredFormatSearch = $state('');
 	// Modal title
 	const modalTitle = $derived(
@@ -647,15 +651,33 @@
 				<div class="rounded-lg border border-base-300 p-4">
 					<p class="text-sm font-medium">Required Formats</p>
 					<p class="mt-0.5 text-xs text-base-content/60">
-						Releases missing any required format are rejected. Leave empty for normal scoring
-						behaviour.
+						AND formats must all match. OR formats need at least one match. Leave empty for normal
+						scoring behaviour.
 					</p>
 
 					{#if requiredFormats.length > 0}
 						<div class="mt-3 flex flex-wrap gap-1.5">
-							{#each requiredFormats as id (id)}
-								{@const name = allFormats.find((f) => f.id === id)?.name ?? id}
-								<span class="badge badge-primary gap-1">
+							{#each requiredFormats as entry (entry.id)}
+								{@const name = allFormats.find((f) => f.id === entry.id)?.name ?? entry.id}
+								<span
+									class="badge gap-1"
+									class:badge-primary={entry.op === 'AND'}
+									class:badge-warning={entry.op === 'OR'}
+								>
+									{#if !isFullyReadonly}
+										<button
+											type="button"
+											class="font-mono text-xs opacity-70 hover:opacity-100"
+											aria-label="Toggle operator for {name}"
+											onclick={() => {
+												requiredFormats = requiredFormats.map((e) =>
+													e.id === entry.id ? { ...e, op: e.op === 'AND' ? 'OR' : 'AND' } : e
+												);
+											}}>{entry.op}</button
+										>
+									{:else}
+										<span class="font-mono text-xs opacity-70">{entry.op}</span>
+									{/if}
 									{name}
 									{#if !isFullyReadonly}
 										<button
@@ -663,7 +685,7 @@
 											class="opacity-70 hover:opacity-100"
 											aria-label="Remove {name}"
 											onclick={() => {
-												requiredFormats = requiredFormats.filter((f) => f !== id);
+												requiredFormats = requiredFormats.filter((e) => e.id !== entry.id);
 											}}
 										>
 											<svg class="h-3 w-3" viewBox="0 0 12 12" fill="currentColor"
@@ -681,7 +703,7 @@
 					{#if !isFullyReadonly}
 						{@const filteredAvailable = allFormats.filter(
 							(f) =>
-								!requiredFormats.includes(f.id) &&
+								!requiredFormats.some((e) => e.id === f.id) &&
 								(requiredFormatSearch === '' ||
 									f.name.toLowerCase().includes(requiredFormatSearch.toLowerCase()))
 						)}
@@ -706,7 +728,7 @@
 											type="button"
 											class="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-sm hover:bg-base-200"
 											onclick={() => {
-												requiredFormats = [...requiredFormats, format.id];
+												requiredFormats = [...requiredFormats, { id: format.id, op: 'OR' }];
 												requiredFormatSearch = '';
 											}}
 										>

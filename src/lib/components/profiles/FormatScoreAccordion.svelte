@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import type { FormatCategory } from '$lib/types/format';
+	import type { RequiredFormatEntry } from '$lib/types/profile';
 	import * as m from '$lib/paraglide/messages.js';
 	import {
 		FORMAT_CATEGORY_LABELS,
@@ -28,12 +29,14 @@
 
 	interface Props {
 		formatScores: Map<FormatCategory, FormatScoreEntry[]>;
-		requiredFormats?: string[];
+		requiredFormats?: RequiredFormatEntry[];
 		readonly?: boolean;
 		onScoreChange: (formatId: string, score: number) => void;
 	}
 
 	let { formatScores, requiredFormats = [], readonly = false, onScoreChange }: Props = $props();
+
+	const requiredFormatIds = $derived(new Set(requiredFormats.map((e) => e.id)));
 
 	// UI state
 	let searchQuery = $state('');
@@ -111,7 +114,7 @@
 			{@const scores = filteredScores().get(category) || []}
 			{#if scores.length > 0}
 				{@const nonZeroCount = countNonZeroScores(scores)}
-				{@const requiredCount = scores.filter((e) => requiredFormats.includes(e.formatId)).length}
+				{@const requiredCount = scores.filter((e) => requiredFormatIds.has(e.formatId)).length}
 				<div class="rounded-lg border border-base-300 bg-base-100">
 					<!-- Category header -->
 					<button
@@ -167,7 +170,7 @@
 						<div class="border-t border-base-300">
 							<div class="max-h-80 divide-y divide-base-200 overflow-y-auto">
 								{#each scores as entry (entry.formatId)}
-									{@const isRequired = requiredFormats.includes(entry.formatId)}
+									{@const isRequired = requiredFormatIds.has(entry.formatId)}
 									<div class="hover:bg-base-50 flex items-center gap-3 px-4 py-2">
 										<!-- Format name -->
 										<span class="min-w-0 flex-1 truncate" class:font-medium={entry.score !== 0}>

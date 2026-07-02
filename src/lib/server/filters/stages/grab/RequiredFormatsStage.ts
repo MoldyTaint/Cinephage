@@ -17,14 +17,30 @@ export class RequiredFormatsStage implements DecisionStage<GrabDecisionContext> 
 			(ctx.computed.scoringResult?.matchedFormats ?? []).map((f) => f.format.id)
 		);
 
-		const missing = required.filter((id) => !matched.has(id));
+		const andEntries = required.filter((e) => e.op === 'AND');
+		const orEntries = required.filter((e) => e.op === 'OR');
+
+		const missingAnd = andEntries.filter((e) => !matched.has(e.id));
+		const orSatisfied = orEntries.length === 0 || orEntries.some((e) => matched.has(e.id));
+
+		const missing = [...missingAnd];
+		if (!orSatisfied) {
+			// None of the OR formats matched — report all of them as missing
+			missing.push(...orEntries);
+		}
 
 		if (missing.length > 0) {
-			const names = missing.map((id) => getFormat(id)?.name ?? id).join(', ');
+			const names = missing.map((e) => getFormat(e.id)?.name ?? e.id).join(', ');
+			const orLabel = !orSatisfied
+				? ` (needs at least one of: ${orEntries.map((e) => getFormat(e.id)?.name ?? e.id).join(', ')})`
+				: '';
 			return {
 				accepted: false,
-				reason: `Missing required format${missing.length > 1 ? 's' : ''}: ${names}`,
-				details: { rejectionType: 'missing_required_format', missingFormats: missing }
+				reason: `Missing required format${missing.length > 1 ? 's' : ''}: ${names}${orLabel}`,
+				details: {
+					rejectionType: 'missing_required_format',
+					missingFormats: missing.map((e) => e.id)
+				}
 			};
 		}
 

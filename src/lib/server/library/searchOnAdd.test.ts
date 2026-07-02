@@ -218,7 +218,7 @@ describe('SearchOnAddService.searchForEpisode monitoring behavior', () => {
 		expect(mocks.searchEnhanced).toHaveBeenCalledOnce();
 		expect(mocks.searchEnhanced).toHaveBeenCalledWith(
 			expect.any(Object),
-			expect.objectContaining({ searchSource: 'interactive' })
+			expect.objectContaining({ searchSource: 'automatic' })
 		);
 		expect(mocks.grab).toHaveBeenCalledOnce();
 		expect(result).toMatchObject({
@@ -366,7 +366,7 @@ describe('SearchOnAddService.searchForMovie monitoring behavior', () => {
 		expect(mocks.searchEnhanced).toHaveBeenCalledOnce();
 		expect(mocks.searchEnhanced).toHaveBeenCalledWith(
 			expect.any(Object),
-			expect.objectContaining({ searchSource: 'interactive' })
+			expect.objectContaining({ searchSource: 'automatic' })
 		);
 		expect(mocks.grab).toHaveBeenCalledOnce();
 		expect(result).toMatchObject({
@@ -501,7 +501,7 @@ describe('SearchOnAddService.searchForMissingEpisodes monitoring behavior', () =
 
 		expect(mocks.searchWithMultiSeasonPriority).toHaveBeenCalledWith(
 			expect.objectContaining({
-				searchSource: 'interactive',
+				searchSource: 'automatic',
 				episodes: [
 					expect.objectContaining({
 						id: 'ep-1',
@@ -550,7 +550,7 @@ describe('SearchOnAddService.searchForMissingEpisodes monitoring behavior', () =
 
 		expect(mocks.searchWithMultiSeasonPriority).toHaveBeenCalledWith(
 			expect.objectContaining({
-				searchSource: 'interactive',
+				searchSource: 'automatic',
 				completeSeriesThreshold: 100,
 				multiSeasonThreshold: 100,
 				singleSeasonThreshold: 100,
@@ -595,7 +595,7 @@ describe('SearchOnAddService.searchForMissingEpisodes monitoring behavior', () =
 
 		expect(mocks.searchWithMultiSeasonPriority).toHaveBeenCalledWith(
 			expect.objectContaining({
-				searchSource: 'interactive',
+				searchSource: 'automatic',
 				completeSeriesThreshold: undefined,
 				multiSeasonThreshold: undefined,
 				singleSeasonThreshold: undefined

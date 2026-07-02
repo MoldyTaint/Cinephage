@@ -16,6 +16,15 @@ import type { Resolution } from '$lib/server/scoring/types';
 type ProfileCategory = 'quality' | 'efficient' | 'micro' | 'streaming' | 'custom';
 
 /**
+ * A single entry in the required formats list.
+ * AND entries must all match; OR entries need at least one match.
+ */
+export interface RequiredFormatEntry {
+	id: string;
+	op: 'AND' | 'OR';
+}
+
+/**
  * Base scoring profile structure
  *
  * Profiles are standalone - they define complete format->score mappings
@@ -40,8 +49,8 @@ export interface ScoringProfile {
 	resolutionOrder: Resolution[];
 	/** Format score mappings (formatId -> score). All scores are defined here. */
 	formatScores: Record<string, number>;
-	/** Format IDs that must ALL match for a release to be grabbed. Independent of scoring. */
-	requiredFormats?: string[];
+	/** Required format entries. AND entries all must match; OR entries need at least one match. */
+	requiredFormats?: RequiredFormatEntry[];
 	isDefault: boolean;
 	isBuiltIn?: boolean;
 	// Media-specific file size limits
@@ -78,7 +87,7 @@ export interface ScoringProfileFormData {
 	minScoreIncrement?: number;
 	resolutionOrder?: Resolution[];
 	formatScores?: Record<string, number>;
-	requiredFormats?: string[];
+	requiredFormats?: RequiredFormatEntry[];
 	isDefault?: boolean;
 	movieMinSizeGb?: number | null;
 	movieMaxSizeGb?: number | null;

@@ -365,10 +365,9 @@ export interface ScoringProfile {
 	allowedProtocols?: ('torrent' | 'usenet' | 'streaming')[];
 
 	/**
-	 * Format IDs that must ALL be matched for a release to be grabbed.
-	 * Any release missing even one required format is hard-rejected.
+	 * Required format entries. AND entries must all match; OR entries need at least one match.
 	 */
-	requiredFormats?: string[];
+	requiredFormats?: { id: string; op: 'AND' | 'OR' }[];
 }
 
 /**
