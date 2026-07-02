@@ -345,6 +345,7 @@ export const scoringProfiles = sqliteTable('scoring_profiles', {
 	maxResolution: text('max_resolution'),
 	allowedSources: text('allowed_sources', { mode: 'json' }).$type<string[] | null>(),
 	excludedSources: text('excluded_sources', { mode: 'json' }).$type<string[] | null>(),
+	requiredFormats: text('required_formats', { mode: 'json' }).$type<string[]>(),
 	createdAt: text('created_at').$defaultFn(() => new Date().toISOString()),
 	updatedAt: text('updated_at').$defaultFn(() => new Date().toISOString())
 });

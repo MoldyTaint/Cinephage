@@ -363,6 +363,12 @@ export interface ScoringProfile {
 	 * @default ['torrent', 'usenet', 'streaming'] for streaming profile
 	 */
 	allowedProtocols?: ('torrent' | 'usenet' | 'streaming')[];
+
+	/**
+	 * Format IDs that must ALL be matched for a release to be grabbed.
+	 * Any release missing even one required format is hard-rejected.
+	 */
+	requiredFormats?: string[];
 }
 
 /**

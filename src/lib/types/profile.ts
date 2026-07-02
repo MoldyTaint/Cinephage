@@ -40,6 +40,8 @@ export interface ScoringProfile {
 	resolutionOrder: Resolution[];
 	/** Format score mappings (formatId -> score). All scores are defined here. */
 	formatScores: Record<string, number>;
+	/** Format IDs that must ALL match for a release to be grabbed. Independent of scoring. */
+	requiredFormats?: string[];
 	isDefault: boolean;
 	isBuiltIn?: boolean;
 	// Media-specific file size limits
@@ -76,6 +78,7 @@ export interface ScoringProfileFormData {
 	minScoreIncrement?: number;
 	resolutionOrder?: Resolution[];
 	formatScores?: Record<string, number>;
+	requiredFormats?: string[];
 	isDefault?: boolean;
 	movieMinSizeGb?: number | null;
 	movieMaxSizeGb?: number | null;

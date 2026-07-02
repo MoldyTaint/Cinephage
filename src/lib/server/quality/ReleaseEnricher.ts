@@ -16,6 +16,7 @@ import { tmdbMatcher, TmdbMatcher, type TmdbHint } from './TmdbMatcher.js';
 import type { ScoreComponents } from './types.js';
 import type { ScoringProfile, SizeValidationContext, PackPreference } from '../scoring/index.js';
 import { calculatePackBonus } from '../scoring/types.js';
+import { getFormat } from '../scoring/formats/index.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'indexers' as const });
@@ -267,6 +268,19 @@ export class ReleaseEnricher {
 		// Add protocol-specific rejection (dead torrents, seeder minimums, etc.)
 		if (protocolRejectionReason) {
 			rejections.push(protocolRejectionReason);
+		}
+
+		// Add required formats rejection (soft — release is still grabbable manually)
+		const requiredFormats = profile?.requiredFormats ?? [];
+		if (requiredFormats.length > 0) {
+			const matchedIds = new Set(
+				(quality.scoringResult?.matchedFormats ?? []).map((f) => f.format.id)
+			);
+			const missing = requiredFormats.filter((id) => !matchedIds.has(id));
+			if (missing.length > 0) {
+				const names = missing.map((id) => getFormat(id)?.name ?? id).join(', ');
+				rejections.push(`Missing required format${missing.length > 1 ? 's' : ''}: ${names}`);
+			}
 		}
 
 		const enhanced: EnhancedReleaseResult = {
