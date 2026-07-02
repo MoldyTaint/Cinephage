@@ -1705,7 +1705,10 @@
 				indexerName: release.indexerName,
 				protocol: release.protocol,
 				size: release.size,
-				publishDate: release.publishDate instanceof Date ? release.publishDate.toISOString() : release.publishDate,
+				publishDate:
+					release.publishDate instanceof Date
+						? release.publishDate.toISOString()
+						: release.publishDate,
 				seriesId: series.id,
 				mediaType: 'tv',
 				seasonNumber,

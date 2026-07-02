@@ -273,15 +273,7 @@ class SearchOnAddService {
 	 * - OR release is an upgrade over existing file
 	 */
 	async searchForMovie(params: SearchForMovieParams): Promise<GrabResult> {
-		const {
-			movieId,
-			tmdbId,
-			imdbId,
-			title,
-			year,
-			scoringProfileId,
-			onProgress
-		} = params;
+		const { movieId, tmdbId, imdbId, title, year, scoringProfileId, onProgress } = params;
 
 		logger.info({ movieId, tmdbId, title, year }, '[SearchOnAdd] Starting movie search');
 
@@ -514,16 +506,7 @@ class SearchOnAddService {
 	 * would be handled by a separate scheduler.
 	 */
 	async searchForSeries(params: SearchForSeriesParams): Promise<GrabResult> {
-		const {
-			seriesId,
-			tmdbId,
-			tvdbId,
-			imdbId,
-			title,
-			year,
-			scoringProfileId,
-			monitorType
-		} = params;
+		const { seriesId, tmdbId, tvdbId, imdbId, title, year, scoringProfileId, monitorType } = params;
 
 		logger.info(
 			{
