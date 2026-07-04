@@ -287,10 +287,10 @@ const EPISODE_PATTERNS: Array<{
 	},
 
 	// Standard S##E## format (most common, handles multi-episode)
-	// S01E05, S01E05E06, S01E05-E08, S01E05-08
+	// S01E05, S01E05E06, S01E05-E08, S01E05-08, S01E05v2
 	{
 		pattern:
-			/\bS(\d{1,2})[\s._-]?E(\d{1,3})(?:[\s._-]?E(\d{1,3}))?(?:[\s._-]?E(\d{1,3}))?(?=[\s._-]|$)/i,
+			/\bS(\d{1,2})[\s._-]?E(\d{1,3})(?:[\s._-]?E(\d{1,3}))?(?:[\s._-]?E(\d{1,3}))?(?:v\d+)?(?=[\s._-]|$)/i,
 		extract: (match) => {
 			const season = parseInt(match[1], 10);
 			const episodes: number[] = [parseInt(match[2], 10)];
@@ -315,9 +315,9 @@ const EPISODE_PATTERNS: Array<{
 		}
 	},
 
-	// Alternate format: 1x05, 01x05
+	// Alternate format: 1x05, 01x05, 1x05v2
 	{
-		pattern: /\b(\d{1,2})x(\d{1,3})(?=[\s._-]|$)/i,
+		pattern: /\b(\d{1,2})x(\d{1,3})(?:v\d+)?(?=[\s._-]|$)/i,
 		extract: (match) => {
 			const season = parseInt(match[1], 10);
 			const episodes: number[] = [parseInt(match[2], 10)];

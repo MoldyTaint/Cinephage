@@ -207,6 +207,39 @@ describe('ReleaseParser', () => {
 			expect(result.episode?.episodes).toContain(2);
 		});
 
+		it('should parse episode version suffix without separator (s01e01v2)', () => {
+			const result = parseRelease(
+				'[HorribleSubs] Honzuki no Gekokujou - s01e01v2 [1080p].mkv'
+			);
+
+			expect(result.episode?.season).toBe(1);
+			expect(result.episode?.episodes).toEqual([1]);
+		});
+
+		it('should parse episode version suffixes with dot and hyphen separators', () => {
+			const dotResult = parseRelease(
+				'[HorribleSubs] Honzuki no Gekokujou - s01e01.v2 [1080p].mkv'
+			);
+			const hyphenResult = parseRelease(
+				'[HorribleSubs] Honzuki no Gekokujou - s01e01-v2 [1080p].mkv'
+			);
+
+			expect(dotResult.episode?.season).toBe(1);
+			expect(dotResult.episode?.episodes).toEqual([1]);
+			expect(hyphenResult.episode?.season).toBe(1);
+			expect(hyphenResult.episode?.episodes).toEqual([1]);
+		});
+
+		it('should parse higher episode version numbers (v3, v4, v10)', () => {
+			const v3 = parseRelease('[SubsPlease] Show Title - S01E05v3 [720p].mkv');
+			const v4 = parseRelease('[SubsPlease] Show Title - S01E05v4 [720p].mkv');
+			const v10 = parseRelease('[SubsPlease] Show Title - S01E05v10 [720p].mkv');
+
+			expect(v3.episode?.episodes).toEqual([5]);
+			expect(v4.episode?.episodes).toEqual([5]);
+			expect(v10.episode?.episodes).toEqual([5]);
+		});
+
 		it('should parse season packs', () => {
 			const result = parseRelease('The.Office.US.S01.1080p.BluRay.x264-DEMAND');
 
