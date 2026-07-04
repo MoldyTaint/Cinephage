@@ -908,7 +908,7 @@ export class MediaMatcherService {
 				rootFolder.id,
 				'tv'
 			);
-			const _animeSignal = isLikelyAnimeMedia({
+			const animeSignal = isLikelyAnimeMedia({
 				genres: tmdbSeries.genres,
 				originalLanguage: tmdbSeries.original_language,
 				originCountries: tmdbSeries.origin_country,
@@ -939,6 +939,7 @@ export class MediaMatcherService {
 						path: seriesFolder,
 						libraryId: owningLibrary.id,
 						rootFolderId: rootFolder.id,
+						seriesType: rootFolder.mediaSubType === 'anime' || animeSignal ? 'anime' : 'standard',
 						monitored: rootFolder.defaultMonitored ?? true,
 						languageProfileId: defaultProfileId,
 						wantsSubtitles: defaultProfileId ? true : undefined
