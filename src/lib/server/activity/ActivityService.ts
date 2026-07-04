@@ -1328,20 +1328,13 @@ export class ActivityService {
 			...monitoringItems.filter((m) => m.episodeId).map((m) => m.episodeId!)
 		]);
 
-		// Fetch in parallel
-		const [moviesData, seriesData, episodesData] = await Promise.all([
+		// Fetch movies and episodes in parallel first so we can bridge episode → series
+		const [moviesData, episodesData] = await Promise.all([
 			movieIds.size > 0
 				? db
 						.select({ id: movies.id, title: movies.title, year: movies.year })
 						.from(movies)
 						.where(inArray(movies.id, Array.from(movieIds)))
-						.all()
-				: Promise.resolve([]),
-			seriesIds.size > 0
-				? db
-						.select({ id: series.id, title: series.title, year: series.year })
-						.from(series)
-						.where(inArray(series.id, Array.from(seriesIds)))
 						.all()
 				: Promise.resolve([]),
 			episodeIds.size > 0
@@ -1357,6 +1350,21 @@ export class ActivityService {
 						.all()
 				: Promise.resolve([])
 		]);
+
+		// Include series IDs bridged from episodes whose monitoringHistory row lacks seriesId
+		// (older records written before the source fix was applied)
+		for (const ep of episodesData) {
+			if (ep.seriesId) seriesIds.add(ep.seriesId);
+		}
+
+		const seriesData =
+			seriesIds.size > 0
+				? await db
+						.select({ id: series.id, title: series.title, year: series.year })
+						.from(series)
+						.where(inArray(series.id, Array.from(seriesIds)))
+						.all()
+				: [];
 
 		return {
 			movies: new Map(moviesData.map((m) => [m.id, m])),

@@ -182,8 +182,14 @@ export function resolveMonitoringMediaInfo(
 		};
 	}
 
-	if (mon.seriesId && mediaMaps.series.has(mon.seriesId)) {
-		const s = mediaMaps.series.get(mon.seriesId)!;
+	// Resolve series ID: prefer the stored value, fall back to bridging via episodeId
+	// (older monitoringHistory rows written before seriesId was populated at the source)
+	const resolvedSeriesId =
+		mon.seriesId ??
+		(mon.episodeId ? mediaMaps.episodes.get(mon.episodeId)?.seriesId : undefined);
+
+	if (resolvedSeriesId && mediaMaps.series.has(resolvedSeriesId)) {
+		const s = mediaMaps.series.get(resolvedSeriesId)!;
 		const seasonNumber = mon.seasonNumber ?? undefined;
 
 		if (mon.episodeId && mediaMaps.episodes.has(mon.episodeId)) {
@@ -196,7 +202,7 @@ export function resolveMonitoringMediaInfo(
 						? `${s.title} S${String(seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')}`
 						: `${s.title} E${String(ep.episodeNumber).padStart(2, '0')}`,
 				mediaYear: s.year,
-				seriesId: mon.seriesId,
+				seriesId: resolvedSeriesId,
 				seriesTitle: s.title,
 				seasonNumber,
 				episodeNumber: ep.episodeNumber
@@ -208,7 +214,7 @@ export function resolveMonitoringMediaInfo(
 			mediaId: s.id,
 			mediaTitle: mon.seasonNumber ? `${s.title} Season ${mon.seasonNumber}` : s.title,
 			mediaYear: s.year,
-			seriesId: mon.seriesId,
+			seriesId: resolvedSeriesId,
 			seriesTitle: s.title,
 			seasonNumber
 		};
