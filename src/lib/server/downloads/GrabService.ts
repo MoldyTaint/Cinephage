@@ -46,6 +46,16 @@ class GrabServiceImpl {
 		const decision = await grabDecisionPipeline.evaluate(ctx);
 
 		if (!decision.accepted) {
+			logger.warn(
+				{
+					releaseTitle: release.title,
+					rejectionType: decision.rejectionType,
+					reason: decision.reason,
+					stage: decision.audit.stages.find((s) => !s.skipped && s.result && !s.result.accepted)?.name,
+					target
+				},
+				'[GrabService] Grab rejected by decision pipeline'
+			);
 			return { success: false, decision };
 		}
 
