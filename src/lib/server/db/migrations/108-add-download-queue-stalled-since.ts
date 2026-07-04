@@ -2,7 +2,7 @@ import type { MigrationDefinition } from '../migration-helpers.js';
 import { columnExists } from '../migration-helpers.js';
 
 export const migration_v108: MigrationDefinition = {
-	version: 101,
+	version: 108,
 	name: 'add_download_queue_stalled_since',
 	apply: (sqlite) => {
 		if (!columnExists(sqlite, 'download_queue', 'stalled_since')) {
