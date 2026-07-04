@@ -338,6 +338,82 @@ export class MonitoringSearchService {
 	}
 
 	/**
+	 * Detect and repair movies where hasFile=false but a movieFiles row exists.
+	 * Returns the set of movie IDs that were stale and have been corrected.
+	 */
+	private async repairStaleMovieHasFile(movieIds: string[]): Promise<Set<string>> {
+		if (movieIds.length === 0) return new Set();
+
+		const filesForMovies = await db
+			.select({ movieId: movieFiles.movieId })
+			.from(movieFiles)
+			.where(inArray(movieFiles.movieId, movieIds))
+			.all();
+
+		if (filesForMovies.length === 0) return new Set();
+
+		const staleMovieIds = new Set(filesForMovies.map((f) => f.movieId));
+
+		await db
+			.update(movies)
+			.set({ hasFile: true })
+			.where(inArray(movies.id, Array.from(staleMovieIds)));
+
+		logger.warn(
+			{ movieIds: Array.from(staleMovieIds) },
+			'[MonitoringSearch] Repaired stale hasFile flag: movies had movieFiles rows but hasFile=false. Skipping search for these movies.'
+		);
+
+		return staleMovieIds;
+	}
+
+	/**
+	 * Detect and repair episodes where hasFile=false but an episodeFiles row references them.
+	 * Returns the set of episode IDs that were stale and have been corrected.
+	 */
+	private async repairStaleEpisodeHasFile(
+		episodeIds: string[],
+		seriesIds: string[]
+	): Promise<Set<string>> {
+		if (episodeIds.length === 0 || seriesIds.length === 0) return new Set();
+
+		// Fetch episodeFiles for the affected series, retrieving the episodeIds JSON arrays
+		const filesForSeries = await db
+			.select({ episodeIds: episodeFiles.episodeIds })
+			.from(episodeFiles)
+			.where(inArray(episodeFiles.seriesId, seriesIds))
+			.all();
+
+		if (filesForSeries.length === 0) return new Set();
+
+		// Build the set of episode IDs that already have a file
+		const episodeIdsWithFile = new Set<string>();
+		for (const row of filesForSeries) {
+			if (row.episodeIds) {
+				for (const id of row.episodeIds) {
+					episodeIdsWithFile.add(id);
+				}
+			}
+		}
+
+		const staleEpisodeIds = new Set(episodeIds.filter((id) => episodeIdsWithFile.has(id)));
+
+		if (staleEpisodeIds.size === 0) return new Set();
+
+		await db
+			.update(episodes)
+			.set({ hasFile: true })
+			.where(inArray(episodes.id, Array.from(staleEpisodeIds)));
+
+		logger.warn(
+			{ episodeIds: Array.from(staleEpisodeIds) },
+			'[MonitoringSearch] Repaired stale hasFile flag: episodes had episodeFiles rows but hasFile=false. Skipping search for these episodes.'
+		);
+
+		return staleEpisodeIds;
+	}
+
+	/**
 	 * Pre-load episode counts for all seasons of given series IDs in a single query.
 	 * Call this at the start of a search operation to avoid N+1 queries.
 	 * Only counts aired episodes for accurate completion percentage calculation.
@@ -479,6 +555,9 @@ export class MonitoringSearchService {
 
 			logger.info({ count: missingMovies.length }, '[MonitoringSearch] Found missing movies');
 
+			// Repair any stale hasFile flags before searching (hasFile=false but file row exists)
+			const staleMovieIds = await this.repairStaleMovieHasFile(missingMovies.map((m) => m.id));
+
 			// Filter through specifications
 			const missingSpec = new MovieMissingContentSpecification();
 			const monitoredSpec = new MovieMonitoredSpecification();
@@ -492,6 +571,9 @@ export class MonitoringSearchService {
 					logger.info('[MonitoringSearch] Missing movies search cancelled during processing');
 					throw new TaskCancelledException('search');
 				}
+
+				// Skip movies whose hasFile flag was stale (already repaired above)
+				if (staleMovieIds.has(movie.id)) continue;
 				const context: MovieContext = {
 					movie,
 					profile: movie.scoringProfile ?? undefined
@@ -642,6 +724,13 @@ export class MonitoringSearchService {
 
 			logger.info({ count: missingEpisodes.length }, '[MonitoringSearch] Found missing episodes');
 
+			// Repair any stale hasFile flags before searching (hasFile=false but episodeFiles row exists)
+			const uniqueSeriesIds = [...new Set(missingEpisodes.map((e) => e.seriesId))];
+			const staleEpisodeIds = await this.repairStaleEpisodeHasFile(
+				missingEpisodes.map((e) => e.id),
+				uniqueSeriesIds
+			);
+
 			// Filter through specifications first
 			const missingSpec = new EpisodeMissingContentSpecification();
 			const monitoredSpec = new EpisodeMonitoredSpecification();
@@ -658,6 +747,9 @@ export class MonitoringSearchService {
 					logger.info('[MonitoringSearch] Missing episodes search cancelled during processing');
 					throw new TaskCancelledException('search');
 				}
+
+				// Skip episodes whose hasFile flag was stale (already repaired above)
+				if (staleEpisodeIds.has(episode.id)) continue;
 
 				if (!episode.series) continue;
 
