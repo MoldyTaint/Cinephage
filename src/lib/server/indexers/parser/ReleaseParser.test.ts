@@ -550,6 +550,30 @@ describe('ReleaseParser', () => {
 			const result = extractReleaseGroup('Movie.2023.1080p');
 			expect(result?.group).not.toBe('1080p');
 		});
+
+		it('should extract fansub group from leading brackets', () => {
+			const result = extractReleaseGroup(
+				'[HorribleSubs] Honzuki no Gekokujou - 01 [1080p].mkv'
+			);
+			expect(result?.group).toBe('HorribleSubs');
+		});
+
+		it('should extract hyphenated fansub group from leading brackets', () => {
+			const result = extractReleaseGroup('[Erai-raws] Fullmetal Alchemist - 01 [1080p].mkv');
+			expect(result?.group).toBe('Erai-raws');
+		});
+
+		it('should extract fansub group when episode has version suffix', () => {
+			const result = extractReleaseGroup(
+				'[SubsPlease] Honzuki no Gekokujou - s01e01v2 [1080p].mkv'
+			);
+			expect(result?.group).toBe('SubsPlease');
+		});
+
+		it('should not treat Chinese site prefix as a fansub group', () => {
+			const result = extractReleaseGroup('[www.mkvhome.com] Movie.Title.2023.1080p.mkv');
+			expect(result?.group).not.toBe('wwwmkvhomecom');
+		});
 	});
 
 	describe('Edge Cases', () => {
