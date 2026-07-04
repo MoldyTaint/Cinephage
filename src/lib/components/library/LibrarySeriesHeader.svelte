@@ -33,6 +33,7 @@
 	import { blockMedia } from '$lib/api/settings.js';
 	import { TMDB } from '$lib/config/constants.js';
 	import { resolvePath } from '$lib/utils/routing.js';
+	import { tvdbSeriesUrl } from '$lib/utils/media-link.js';
 
 	interface SeriesData {
 		tmdbId: number;
@@ -490,7 +491,7 @@
 							{/if}
 							{#if series.tvdbId}
 								<a
-									href="https://thetvdb.com/series/{series.tvdbId}"
+									href={tvdbSeriesUrl(series.title)}
 									target="_blank"
 									rel="noopener noreferrer"
 									class="btn shrink-0 gap-1 btn-ghost btn-xs"

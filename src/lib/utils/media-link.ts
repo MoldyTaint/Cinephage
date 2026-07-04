@@ -1,5 +1,19 @@
 import { resolvePath } from '$lib/utils/routing.js';
 
+/**
+ * Build a TVDB series URL using a slug derived from the title.
+ * TVDB changed their URL format from /series/{numericId} to /series/{slug}.
+ * Slugs are the lowercase-hyphenated title with non-alphanumeric
+ * characters replaced, which matches TVDB's own slug generation.
+ */
+export function tvdbSeriesUrl(title: string): string {
+	const slug = title
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '-')
+		.replace(/^-|-$/g, '');
+	return `https://thetvdb.com/series/${slug}`;
+}
+
 export function getMediaLink(activity: {
 	mediaType: string;
 	mediaId: number | string;

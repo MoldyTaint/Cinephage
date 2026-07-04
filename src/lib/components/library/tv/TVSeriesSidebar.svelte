@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { LibrarySeries } from '$lib/types/library';
 	import * as m from '$lib/paraglide/messages.js';
+	import { tvdbSeriesUrl } from '$lib/utils/media-link.js';
 
 	interface Props {
 		series: LibrarySeries;
@@ -132,7 +133,7 @@
 					<dt class="text-base-content/60">{m.library_tvDetail_tvdbId()}</dt>
 					<dd>
 						<a
-							href="https://thetvdb.com/series/{series.tvdbId}"
+							href={tvdbSeriesUrl(series.title)}
 							target="_blank"
 							rel="noopener noreferrer"
 							class="link link-primary"
