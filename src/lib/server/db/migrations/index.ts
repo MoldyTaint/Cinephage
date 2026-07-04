@@ -104,6 +104,8 @@ import { migration_v104 } from './104-drop-indexer-definitions-table.js';
 import { migration_v105 } from './105-add-delay-profile-assignment.js';
 import { migration_v106 } from './106-add-required-formats-to-scoring-profiles.js';
 import { migration_v107 } from './107-migrate-required-formats-to-entries.js';
+import { migration_v108 } from './108-add-download-queue-stalled-since.js';
+import { migration_v109 } from './109-add-stalled-orphan-tracking-table.js';
 
 export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v002,
@@ -210,5 +212,7 @@ export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v104,
 	migration_v105,
 	migration_v106,
-	migration_v107
+	migration_v107,
+	migration_v108,
+	migration_v109
 ];

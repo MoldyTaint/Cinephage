@@ -10,6 +10,7 @@ export const load: PageServerLoad = async () => {
 	return {
 		downloadClients,
 		stalledDownloadTimeoutMinutes: settings.stalledDownloadTimeoutMinutes,
-		stalledDownloadProgressThreshold: settings.stalledDownloadProgressThreshold
+		stalledDownloadProgressThreshold: settings.stalledDownloadProgressThreshold,
+		stalledDownloadBlocklistHours: settings.stalledDownloadBlocklistHours
 	};
 };

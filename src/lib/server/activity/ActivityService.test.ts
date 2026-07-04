@@ -100,6 +100,7 @@ function createQueueRecord(
 		quality: null,
 		addedAt: '2026-02-09T00:00:00.000Z',
 		startedAt: null,
+		stalledSince: null,
 		completedAt: null,
 		importedAt: null,
 		errorMessage: null,

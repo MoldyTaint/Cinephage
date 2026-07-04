@@ -35,7 +35,8 @@ const settings: MonitoringSettings = {
 	subtitleSearchOnImportEnabled: true,
 	subtitleSearchTrigger: 'immediate',
 	stalledDownloadTimeoutMinutes: 60,
-	stalledDownloadProgressThreshold: 0
+	stalledDownloadProgressThreshold: 0,
+	stalledDownloadBlocklistHours: 72
 };
 
 const baseResult = {

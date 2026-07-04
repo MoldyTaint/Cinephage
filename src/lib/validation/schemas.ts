@@ -2136,7 +2136,8 @@ export const monitoringSettingsUpdateSchema = z.object({
 	autoReplaceEnabled: z.boolean().optional(),
 	searchOnMonitorEnabled: z.boolean().optional(),
 	stalledDownloadTimeoutMinutes: z.number().min(0).optional(),
-	stalledDownloadProgressThreshold: z.number().min(0).max(100).optional()
+	stalledDownloadProgressThreshold: z.number().min(0).max(100).optional(),
+	stalledDownloadBlocklistHours: z.number().min(0).optional()
 });
 
 // ============================================================================

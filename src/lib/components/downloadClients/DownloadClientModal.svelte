@@ -54,7 +54,12 @@
 		) => Promise<ConnectionTestResult>;
 		stalledTimeoutMinutes: number;
 		stalledProgressThreshold: number;
-		onSaveStalledBehavior: (timeout: number, threshold: number) => Promise<void>;
+		stalledBlocklistHours: number;
+		onSaveStalledBehavior: (
+			timeout: number,
+			threshold: number,
+			blocklistHours: number
+		) => Promise<void>;
 	}
 
 	let {
@@ -71,6 +76,7 @@
 		onTest,
 		stalledTimeoutMinutes,
 		stalledProgressThreshold,
+		stalledBlocklistHours,
 		onSaveStalledBehavior
 	}: Props = $props();
 
@@ -105,6 +111,7 @@
 
 	let stalledTimeout = $state(0);
 	let stalledThreshold = $state(0);
+	let stalledBlocklist = $state(72);
 	let saveStalledBehaviorSuccess = $state(false);
 
 	let testing = $state(false);
@@ -160,6 +167,7 @@
 		if (open) {
 			stalledTimeout = stalledTimeoutMinutes;
 			stalledThreshold = stalledProgressThreshold;
+			stalledBlocklist = stalledBlocklistHours;
 			saveStalledBehaviorSuccess = false;
 		}
 	});
@@ -168,12 +176,18 @@
 		if (!open) return;
 		const timeout = stalledTimeout;
 		const threshold = stalledThreshold;
+		const blocklistHours = stalledBlocklist;
 
-		if (timeout === stalledTimeoutMinutes && threshold === stalledProgressThreshold) return;
+		if (
+			timeout === stalledTimeoutMinutes &&
+			threshold === stalledProgressThreshold &&
+			blocklistHours === stalledBlocklistHours
+		)
+			return;
 
 		const timer = setTimeout(async () => {
 			try {
-				await onSaveStalledBehavior(timeout, threshold);
+				await onSaveStalledBehavior(timeout, threshold, blocklistHours);
 				saveStalledBehaviorSuccess = true;
 				setTimeout(() => (saveStalledBehaviorSuccess = false), 2000);
 			} catch {
@@ -490,6 +504,7 @@
 						bind:tempPathRemote
 						bind:stalledTimeout
 						bind:stalledThreshold
+						bind:stalledBlocklist
 						bind:saveStalledBehaviorSuccess
 						{isNntpServer}
 						{selectedDefinition}
