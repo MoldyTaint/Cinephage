@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { Sparkles, Loader2 } from 'lucide-svelte';
@@ -13,9 +14,11 @@
 
 	let { data } = $props();
 
-	let config = $state(data.config);
-	let modules = $state(data.modules);
-	let identity = $state(data.identity);
+	// untrack prevents Svelte from treating data.x reads as reactive dependencies
+	// inside $state() initializers. The $effect below re-syncs on data changes.
+	let config = $state(untrack(() => data.config));
+	let modules = $state(untrack(() => data.modules));
+	let identity = $state(untrack(() => data.identity));
 
 	$effect(() => {
 		config = data.config;

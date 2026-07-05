@@ -208,18 +208,14 @@ describe('ReleaseParser', () => {
 		});
 
 		it('should parse episode version suffix without separator (s01e01v2)', () => {
-			const result = parseRelease(
-				'[HorribleSubs] Honzuki no Gekokujou - s01e01v2 [1080p].mkv'
-			);
+			const result = parseRelease('[HorribleSubs] Honzuki no Gekokujou - s01e01v2 [1080p].mkv');
 
 			expect(result.episode?.season).toBe(1);
 			expect(result.episode?.episodes).toEqual([1]);
 		});
 
 		it('should parse episode version suffixes with dot and hyphen separators', () => {
-			const dotResult = parseRelease(
-				'[HorribleSubs] Honzuki no Gekokujou - s01e01.v2 [1080p].mkv'
-			);
+			const dotResult = parseRelease('[HorribleSubs] Honzuki no Gekokujou - s01e01.v2 [1080p].mkv');
 			const hyphenResult = parseRelease(
 				'[HorribleSubs] Honzuki no Gekokujou - s01e01-v2 [1080p].mkv'
 			);
@@ -552,9 +548,7 @@ describe('ReleaseParser', () => {
 		});
 
 		it('should extract fansub group from leading brackets', () => {
-			const result = extractReleaseGroup(
-				'[HorribleSubs] Honzuki no Gekokujou - 01 [1080p].mkv'
-			);
+			const result = extractReleaseGroup('[HorribleSubs] Honzuki no Gekokujou - 01 [1080p].mkv');
 			expect(result?.group).toBe('HorribleSubs');
 		});
 

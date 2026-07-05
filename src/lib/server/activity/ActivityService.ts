@@ -11,6 +11,8 @@ import {
 } from '$lib/server/db/schema';
 import { and, desc, gte, inArray, eq, lte, lt, sql, count, or } from 'drizzle-orm';
 import { upsertQueueTombstoneFromQueueItem } from '$lib/server/downloadClients/monitoring/QueueTombstoneService';
+import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
+import { logger } from '$lib/logging';
 import type { SQL } from 'drizzle-orm';
 import { extractReleaseGroup } from '$lib/server/indexers/parser/patterns/releaseGroup';
 import {
@@ -68,6 +70,7 @@ interface ActivityQueryResult {
 	total: number;
 	hasMore: boolean;
 	summary: ActivitySummary | null;
+	failedCount: number;
 }
 
 export {
@@ -166,7 +169,7 @@ export class ActivityService {
 			needsActive || needsHistory
 				? this.fetchMoveTasks(scope, filters)
 				: Promise.resolve([] as MoveTaskRecord[]),
-			needsActive
+			needsActive || needsHistory
 				? this.fetchFailedQueueItems()
 				: Promise.resolve(
 						[] as Pick<DownloadQueueRecord, 'id' | 'downloadId' | 'title' | 'addedAt' | 'status'>[]
@@ -178,7 +181,7 @@ export class ActivityService {
 			(needsActive || needsHistory) && !hasJsOnlyFilters
 				? this.countMoveTasks(scope, filters)
 				: Promise.resolve(0),
-			scope === 'active' ? this.countHistoryFailed() : Promise.resolve(0)
+			this.countHistoryFailed()
 		]);
 
 		// Batch fetch all media info
@@ -266,7 +269,8 @@ export class ActivityService {
 			activities: paginated,
 			total,
 			hasMore,
-			summary
+			summary,
+			failedCount: historyFailedCount
 		};
 	}
 
@@ -602,7 +606,10 @@ export class ActivityService {
 		};
 	}
 
-	async purgeHistoryOlderThan(retentionDays: number): Promise<PurgeHistoryResult> {
+	async purgeHistoryOlderThan(
+		retentionDays: number,
+		options: { removeFromClient?: boolean } = {}
+	): Promise<PurgeHistoryResult> {
 		const normalizedRetentionDays = parseRetentionDays(retentionDays);
 		const cutoffDate = new Date();
 		cutoffDate.setDate(cutoffDate.getDate() - normalizedRetentionDays);
@@ -643,6 +650,31 @@ export class ActivityService {
 		// Clean up old failed queue items so they can't resurface on the next client sync
 		for (const item of failedQueueItems) {
 			try {
+				if (options.removeFromClient && item.downloadClientId) {
+					const isTorrent = item.protocol === 'torrent';
+					const clientDownloadId = isTorrent
+						? item.infoHash || item.downloadId
+						: item.downloadId || item.infoHash;
+					if (clientDownloadId) {
+						const clientInstance = await getDownloadClientManager().getClientInstance(
+							item.downloadClientId
+						);
+						if (clientInstance) {
+							try {
+								await clientInstance.removeDownload(clientDownloadId, false);
+							} catch (removeErr) {
+								logger.warn(
+									{
+										queueId: item.id,
+										title: item.title,
+										error: removeErr instanceof Error ? removeErr.message : String(removeErr)
+									},
+									'Failed to remove from download client during purge; continuing with local removal'
+								);
+							}
+						}
+					}
+				}
 				await upsertQueueTombstoneFromQueueItem(item, 'local_remove_without_client_delete');
 				await db.delete(downloadQueue).where(eq(downloadQueue.id, item.id));
 			} catch (_err) {
@@ -659,7 +691,7 @@ export class ActivityService {
 		};
 	}
 
-	async purgeAllHistory(): Promise<PurgeHistoryResult> {
+	async purgeAllHistory(options: { removeFromClient?: boolean } = {}): Promise<PurgeHistoryResult> {
 		// Fetch failed queue items before purging so we can tombstone and delete them
 		const failedQueueItems = await db
 			.select()
@@ -688,6 +720,31 @@ export class ActivityService {
 		// Clean up failed queue items so they can't resurface on the next client sync
 		for (const item of failedQueueItems) {
 			try {
+				if (options.removeFromClient && item.downloadClientId) {
+					const isTorrent = item.protocol === 'torrent';
+					const clientDownloadId = isTorrent
+						? item.infoHash || item.downloadId
+						: item.downloadId || item.infoHash;
+					if (clientDownloadId) {
+						const clientInstance = await getDownloadClientManager().getClientInstance(
+							item.downloadClientId
+						);
+						if (clientInstance) {
+							try {
+								await clientInstance.removeDownload(clientDownloadId, false);
+							} catch (removeErr) {
+								logger.warn(
+									{
+										queueId: item.id,
+										title: item.title,
+										error: removeErr instanceof Error ? removeErr.message : String(removeErr)
+									},
+									'Failed to remove from download client during purge; continuing with local removal'
+								);
+							}
+						}
+					}
+				}
 				await upsertQueueTombstoneFromQueueItem(item, 'local_remove_without_client_delete');
 				await db.delete(downloadQueue).where(eq(downloadQueue.id, item.id));
 			} catch (_err) {

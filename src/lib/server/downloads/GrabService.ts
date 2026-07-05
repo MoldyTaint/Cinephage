@@ -51,7 +51,8 @@ class GrabServiceImpl {
 					releaseTitle: release.title,
 					rejectionType: decision.rejectionType,
 					reason: decision.reason,
-					stage: decision.audit.stages.find((s) => !s.skipped && s.result && !s.result.accepted)?.name,
+					stage: decision.audit.stages.find((s) => !s.skipped && s.result && !s.result.accepted)
+						?.name,
 					target
 				},
 				'[GrabService] Grab rejected by decision pipeline'

@@ -185,8 +185,7 @@ export function resolveMonitoringMediaInfo(
 	// Resolve series ID: prefer the stored value, fall back to bridging via episodeId
 	// (older monitoringHistory rows written before seriesId was populated at the source)
 	const resolvedSeriesId =
-		mon.seriesId ??
-		(mon.episodeId ? mediaMaps.episodes.get(mon.episodeId)?.seriesId : undefined);
+		mon.seriesId ?? (mon.episodeId ? mediaMaps.episodes.get(mon.episodeId)?.seriesId : undefined);
 
 	if (resolvedSeriesId && mediaMaps.series.has(resolvedSeriesId)) {
 		const s = mediaMaps.series.get(resolvedSeriesId)!;

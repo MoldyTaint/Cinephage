@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { X, Loader2 } from 'lucide-svelte';
 	import ModalWrapper from './ModalWrapper.svelte';
 	import * as m from '$lib/paraglide/messages.js';
@@ -16,6 +17,7 @@
 		loading?: boolean;
 		onConfirm: () => void;
 		onCancel: () => void;
+		children?: Snippet;
 	}
 
 	let {
@@ -30,7 +32,8 @@
 		confirmVariant = 'primary',
 		loading = false,
 		onConfirm,
-		onCancel
+		onCancel,
+		children
 	}: Props = $props();
 
 	const buttonClass = $derived(
@@ -66,6 +69,10 @@
 		</p>
 	{:else}
 		<p class="py-2">{message}</p>
+	{/if}
+
+	{#if children}
+		{@render children()}
 	{/if}
 
 	<div class="modal-action">

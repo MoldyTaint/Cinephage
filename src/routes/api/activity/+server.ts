@@ -92,7 +92,8 @@ export const GET: RequestHandler = async ({ url }) => {
 			activities: result.activities,
 			total: result.total,
 			hasMore: result.hasMore,
-			summary: result.summary
+			summary: result.summary,
+			failedCount: result.failedCount
 		});
 	} catch (err) {
 		logger.error('Error fetching activity', err instanceof Error ? err : undefined);

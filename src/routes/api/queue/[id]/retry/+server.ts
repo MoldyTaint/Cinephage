@@ -400,6 +400,7 @@ export const POST: RequestHandler = async ({ params }) => {
 	} catch (err) {
 		if (err instanceof Error && 'status' in err) throw err;
 		logger.error('Error retrying download', err instanceof Error ? err : undefined);
-		throw error(500, 'Failed to retry download');
+		const message = err instanceof Error ? err.message : 'Failed to retry download';
+		return json({ success: false, error: message }, { status: 500 });
 	}
 };

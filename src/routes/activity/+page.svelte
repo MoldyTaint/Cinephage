@@ -18,8 +18,7 @@
 		removeQueueItem as removeQueueItemApi,
 		retryQueueItem as retryQueueItemApi,
 		refreshQueue,
-		relinkOrphans,
-		clearFailedQueue
+		relinkOrphans
 	} from '$lib/api/downloads.js';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import ActivityTable from '$lib/components/activity/ActivityTable.svelte';
@@ -94,12 +93,12 @@
 	let deleteSelectedLoading = $state(false);
 	let historyConfirmOpen = $state(false);
 	let historyConfirmAction = $state<HistoryConfirmAction | null>(null);
+	let historyConfirmRemoveFromClient = $state(false);
 	let activeConfirmOpen = $state(false);
 	let activeConfirmAction = $state<ActiveBulkAction | null>(null);
 	let activeBulkLoading = $state(false);
 	let refreshQueueLoading = $state(false);
 	let relinkOrphansLoading = $state(false);
-	let clearFailedLoading = $state(false);
 
 	// Filter state - initialize from server data
 	let filters = $state<FiltersType>(createDefaultFilters());
@@ -305,6 +304,7 @@
 			total?: number;
 			hasMore?: boolean;
 			summary?: Partial<ActivitySummary> | null;
+			failedCount?: number;
 		},
 		options: { append?: boolean } = {}
 	): void {
@@ -316,16 +316,36 @@
 		total = typeof payload.total === 'number' ? payload.total : total;
 		hasMore = typeof payload.hasMore === 'boolean' ? payload.hasMore : false;
 		if (!append) {
-			queueStats = parseQueueStats((payload.summary ?? null) as Partial<ActivitySummary> | null);
+			if (payload.summary != null) {
+				queueStats = parseQueueStats(payload.summary as Partial<ActivitySummary>);
+			} else if (typeof payload.failedCount === 'number') {
+				// History tab: summary is null, but failedCount is always returned.
+				// Update only failedCount so the "Clear All Failed" button stays accurate.
+				queueStats = { ...queueStats, failedCount: payload.failedCount };
+			}
 		}
 	}
 
 	async function fetchActivityData(
 		nextFilters: FiltersType,
 		tab: ActivityTab,
-		options: { offset?: number; append?: boolean; updateUrl?: boolean; force?: boolean; silent?: boolean; limit?: number } = {}
+		options: {
+			offset?: number;
+			append?: boolean;
+			updateUrl?: boolean;
+			force?: boolean;
+			silent?: boolean;
+			limit?: number;
+		} = {}
 	): Promise<void> {
-		const { offset = 0, append = false, updateUrl = false, force = false, silent = false, limit = 50 } = options;
+		const {
+			offset = 0,
+			append = false,
+			updateUrl = false,
+			force = false,
+			silent = false,
+			limit = 50
+		} = options;
 		const normalizedFilters = normalizeFiltersForTab(nextFilters, tab);
 		const requestToken = ++activityRequestToken;
 		const previousActivities = append ? activities : [...activities];
@@ -600,7 +620,13 @@
 			activeSelectionMode = false;
 			selectedActiveIds.clear();
 		}
-		if (activityTab !== 'active' && activeConfirmOpen && !activeBulkLoading) {
+		if (
+			activityTab !== 'active' &&
+			activeConfirmOpen &&
+			!activeBulkLoading &&
+			activeConfirmAction !== 'retry_failed' &&
+			activeConfirmAction !== 'remove_failed'
+		) {
 			activeConfirmOpen = false;
 			activeConfirmAction = null;
 		}
@@ -707,7 +733,9 @@
 		};
 	});
 
-	async function refreshActivityData(options: { force?: boolean; silent?: boolean } = {}): Promise<void> {
+	async function refreshActivityData(
+		options: { force?: boolean; silent?: boolean } = {}
+	): Promise<void> {
 		const { force = false, silent = false } = options;
 		if (refreshInFlight) return;
 		const now = Date.now();
@@ -762,28 +790,6 @@
 			toasts.error(m.toast_activity_failedToRelink());
 		} finally {
 			relinkOrphansLoading = false;
-		}
-	}
-
-	async function handleClearAllFailed(): Promise<void> {
-		if (clearFailedLoading) return;
-		clearFailedLoading = true;
-		try {
-			const result = (await clearFailedQueue()) as {
-				success: boolean;
-				summary?: { cleared: number; total: number };
-				error?: string;
-			};
-			if (!result.success) throw new Error(result.error);
-			const cleared = result.summary?.cleared ?? 0;
-			if (cleared > 0) {
-				toasts.success(m.toast_activity_clearedFailedQueue({ count: cleared }));
-			}
-			await refreshActivityData({ force: true });
-		} catch {
-			toasts.error(m.toast_activity_failedToClearFailed());
-		} finally {
-			clearFailedLoading = false;
 		}
 	}
 
@@ -1023,6 +1029,16 @@
 		}
 	});
 
+	const historyConfirmHasFailedItems = $derived.by((): boolean => {
+		if (historyConfirmAction === 'delete_selected') return selectedHistoryFailedQueueIds.length > 0;
+		return queueStats.failedCount > 0;
+	});
+
+	const historyConfirmFailedClientCount = $derived.by((): number => {
+		if (historyConfirmAction === 'delete_selected') return selectedHistoryFailedQueueIds.length;
+		return queueStats.failedCount;
+	});
+
 	function openHistoryConfirm(action: HistoryConfirmAction): void {
 		if (!canManageHistory) return;
 		if (action === 'purge_all' && (settingsLoading || purgeAllLoading)) return;
@@ -1030,6 +1046,7 @@
 		if (action === 'delete_selected' && (deleteSelectedLoading || selectedHistoryIds.size === 0))
 			return;
 
+		historyConfirmRemoveFromClient = false;
 		historyConfirmAction = action;
 		historyConfirmOpen = true;
 	}
@@ -1038,24 +1055,31 @@
 		if (historyConfirmLoading) return;
 		historyConfirmOpen = false;
 		historyConfirmAction = null;
+		historyConfirmRemoveFromClient = false;
 	}
 
 	async function handleHistoryConfirm(): Promise<void> {
 		if (!historyConfirmAction || historyConfirmLoading) return;
 
+		const removeFromClient = historyConfirmRemoveFromClient;
+
 		if (historyConfirmAction === 'purge_all') {
-			await purgeHistory('all');
+			await purgeHistory('all', { removeFromClient });
 		} else if (historyConfirmAction === 'purge_older_than_retention') {
-			await purgeHistory('older_than_retention');
+			await purgeHistory('older_than_retention', { removeFromClient });
 		} else {
-			await deleteSelectedHistory();
+			await deleteSelectedHistory({ removeFromClient });
 		}
 
 		historyConfirmOpen = false;
 		historyConfirmAction = null;
+		historyConfirmRemoveFromClient = false;
 	}
 
-	async function purgeHistory(action: 'older_than_retention' | 'all'): Promise<void> {
+	async function purgeHistory(
+		action: 'older_than_retention' | 'all',
+		options: { removeFromClient?: boolean } = {}
+	): Promise<void> {
 		if (!canManageHistory) return;
 		if (action === 'older_than_retention' && purgeOlderLoading) return;
 		if (action === 'all' && purgeAllLoading) return;
@@ -1069,7 +1093,7 @@
 		try {
 			let payload;
 			try {
-				payload = await purgeHistoryApi(action);
+				payload = await purgeHistoryApi(action, { removeFromClient: options.removeFromClient });
 			} catch (error) {
 				if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
 					canManageHistory = false;
@@ -1107,10 +1131,24 @@
 		}
 	}
 
-	async function deleteSelectedHistory(): Promise<void> {
+	async function deleteSelectedHistory(
+		options: { removeFromClient?: boolean } = {}
+	): Promise<void> {
 		if (!canManageHistory || deleteSelectedLoading || selectedHistoryIds.size === 0) return;
 
 		deleteSelectedLoading = true;
+
+		// Remove from download client first so the queue records exist when we call the endpoint
+		if (options.removeFromClient && selectedHistoryFailedQueueIds.length > 0) {
+			for (const queueId of selectedHistoryFailedQueueIds) {
+				try {
+					await removeQueueItemApi(queueId, { removeFromClient: true });
+				} catch (_err) {
+					// Best-effort; proceed with history deletion regardless
+				}
+			}
+		}
+
 		try {
 			let payload;
 			try {
@@ -1215,7 +1253,7 @@
 								removeQueueItem(queueId, {
 									refresh: false,
 									closeDetailModal: false,
-									removeFromClient: false
+									removeFromClient: true
 								});
 
 		for (const queueId of queueIds) {
@@ -1662,19 +1700,6 @@
 						</button>
 					{/if}
 				{/if}
-				{#if queueStats.failedCount > 0 && !selectionMode}
-					<div class="divider m-0 divider-horizontal h-6"></div>
-					<button
-						class="btn btn-xs btn-error"
-						onclick={handleClearAllFailed}
-						disabled={clearFailedLoading}
-					>
-						{#if clearFailedLoading}
-							<Loader2 class="h-3 w-3 animate-spin" />
-						{/if}
-						{m.activity_queue_clearAllFailed()}
-					</button>
-				{/if}
 				<div class="ml-auto"></div>
 				<button
 					class="btn btn-xs btn-error"
@@ -1742,7 +1767,26 @@
 	loading={historyConfirmLoading}
 	onConfirm={handleHistoryConfirm}
 	onCancel={closeHistoryConfirm}
-/>
+>
+	{#if historyConfirmHasFailedItems}
+		<label class="mt-2 flex cursor-pointer items-start gap-2 text-sm">
+			<input
+				type="checkbox"
+				class="checkbox checkbox-sm mt-0.5"
+				bind:checked={historyConfirmRemoveFromClient}
+				disabled={historyConfirmLoading}
+			/>
+			<span>
+				{m.activity_history_alsoRemoveFromClient()}
+				<span class="text-base-content/60">
+					({m.activity_history_alsoRemoveFromClientHint({
+						count: historyConfirmFailedClientCount
+					})})
+				</span>
+			</span>
+		</label>
+	{/if}
+</ConfirmationModal>
 
 <ConfirmationModal
 	open={activeConfirmOpen}
