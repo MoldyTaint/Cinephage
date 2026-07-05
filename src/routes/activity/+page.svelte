@@ -18,7 +18,8 @@
 		removeQueueItem as removeQueueItemApi,
 		retryQueueItem as retryQueueItemApi,
 		refreshQueue,
-		relinkOrphans
+		relinkOrphans,
+		clearFailedQueue
 	} from '$lib/api/downloads.js';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import ActivityTable from '$lib/components/activity/ActivityTable.svelte';
@@ -98,6 +99,7 @@
 	let activeBulkLoading = $state(false);
 	let refreshQueueLoading = $state(false);
 	let relinkOrphansLoading = $state(false);
+	let clearFailedLoading = $state(false);
 
 	// Filter state - initialize from server data
 	let filters = $state<FiltersType>(createDefaultFilters());
@@ -116,6 +118,7 @@
 	let refreshInFlight = $state(false);
 	let lastActivityRefreshAt = 0;
 	let activityRequestToken = 0;
+	let refreshDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 	let queueStats = $state<QueueCardStats>(createDefaultQueueCardStats());
 
@@ -320,28 +323,30 @@
 	async function fetchActivityData(
 		nextFilters: FiltersType,
 		tab: ActivityTab,
-		options: { offset?: number; append?: boolean; updateUrl?: boolean; force?: boolean } = {}
+		options: { offset?: number; append?: boolean; updateUrl?: boolean; force?: boolean; silent?: boolean; limit?: number } = {}
 	): Promise<void> {
-		const { offset = 0, append = false, updateUrl = false, force = false } = options;
+		const { offset = 0, append = false, updateUrl = false, force = false, silent = false, limit = 50 } = options;
 		const normalizedFilters = normalizeFiltersForTab(nextFilters, tab);
 		const requestToken = ++activityRequestToken;
 		const previousActivities = append ? activities : [...activities];
 		const previousHasMore = hasMore;
 
 		if (!append) {
-			activities = [];
-			hasMore = false;
+			if (!silent) {
+				activities = [];
+				hasMore = false;
+			}
 		}
 
 		if (append) {
 			isLoadingMore = true;
-		} else {
+		} else if (!silent) {
 			isLoading = true;
 		}
 
 		try {
 			const queryString = buildActivityApiQueryString(normalizedFilters, tab, {
-				limit: 50,
+				limit,
 				offset
 			});
 			const params = Object.fromEntries(new URLSearchParams(queryString));
@@ -683,7 +688,11 @@
 				}
 			},
 			'activity:refresh': () => {
-				void refreshActivityData({ force: true });
+				if (refreshDebounceTimer !== null) clearTimeout(refreshDebounceTimer);
+				refreshDebounceTimer = setTimeout(() => {
+					refreshDebounceTimer = null;
+					void refreshActivityData({ force: true, silent: true });
+				}, 800);
 			}
 		},
 		{
@@ -698,8 +707,8 @@
 		};
 	});
 
-	async function refreshActivityData(options: { force?: boolean } = {}): Promise<void> {
-		const { force = false } = options;
+	async function refreshActivityData(options: { force?: boolean; silent?: boolean } = {}): Promise<void> {
+		const { force = false, silent = false } = options;
 		if (refreshInFlight) return;
 		const now = Date.now();
 		if (!force && now - lastActivityRefreshAt < ACTIVITY_REFRESH_MIN_INTERVAL_MS) {
@@ -708,7 +717,11 @@
 
 		refreshInFlight = true;
 		try {
-			await fetchActivityData(filters, activityTab, { force });
+			// For silent background refreshes, fetch enough items to cover what's
+			// already loaded so we never return fewer items than the user has,
+			// which would otherwise trigger repeated load-more fetches.
+			const silentLimit = silent ? Math.min(Math.max(50, loadedOffset), 500) : undefined;
+			await fetchActivityData(filters, activityTab, { force, silent, limit: silentLimit });
 		} finally {
 			refreshInFlight = false;
 			lastActivityRefreshAt = Date.now();
@@ -749,6 +762,28 @@
 			toasts.error(m.toast_activity_failedToRelink());
 		} finally {
 			relinkOrphansLoading = false;
+		}
+	}
+
+	async function handleClearAllFailed(): Promise<void> {
+		if (clearFailedLoading) return;
+		clearFailedLoading = true;
+		try {
+			const result = (await clearFailedQueue()) as {
+				success: boolean;
+				summary?: { cleared: number; total: number };
+				error?: string;
+			};
+			if (!result.success) throw new Error(result.error);
+			const cleared = result.summary?.cleared ?? 0;
+			if (cleared > 0) {
+				toasts.success(m.toast_activity_clearedFailedQueue({ count: cleared }));
+			}
+			await refreshActivityData({ force: true });
+		} catch {
+			toasts.error(m.toast_activity_failedToClearFailed());
+		} finally {
+			clearFailedLoading = false;
 		}
 	}
 
@@ -813,6 +848,10 @@
 			if (progressFlushFrame !== null) {
 				cancelAnimationFrame(progressFlushFrame);
 				progressFlushFrame = null;
+			}
+			if (refreshDebounceTimer !== null) {
+				clearTimeout(refreshDebounceTimer);
+				refreshDebounceTimer = null;
 			}
 			window.removeEventListener('focus', handleFocus);
 			document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -1622,6 +1661,19 @@
 							{m.activity_queue_removeFailedCount({ count: selectedHistoryFailedQueueIds.length })}
 						</button>
 					{/if}
+				{/if}
+				{#if queueStats.failedCount > 0 && !selectionMode}
+					<div class="divider m-0 divider-horizontal h-6"></div>
+					<button
+						class="btn btn-xs btn-error"
+						onclick={handleClearAllFailed}
+						disabled={clearFailedLoading}
+					>
+						{#if clearFailedLoading}
+							<Loader2 class="h-3 w-3 animate-spin" />
+						{/if}
+						{m.activity_queue_clearAllFailed()}
+					</button>
 				{/if}
 				<div class="ml-auto"></div>
 				<button

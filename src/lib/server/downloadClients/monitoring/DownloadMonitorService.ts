@@ -27,7 +27,8 @@ import {
 	cleanupExpiredQueueTombstones,
 	extendQueueTombstonesFromDownloads,
 	getQueueTombstoneCleanupIntervalMs,
-	isQueueItemSuppressed
+	isQueueItemSuppressed,
+	upsertQueueTombstoneFromQueueItem
 } from './QueueTombstoneService';
 import { createChildLogger } from '$lib/logging';
 
@@ -954,11 +955,12 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			// Actually clear the items
 			for (const item of failedItems) {
 				try {
-					// Mark as removed
-					await db
-						.update(downloadQueue)
-						.set({ status: 'removed' })
-						.where(eq(downloadQueue.id, item.id));
+					// Suppress automatic re-addition from the download client during the
+					// tombstone window. Note: explicit user-initiated relinks (relinkOrphanedDownloads)
+					// bypass the tombstone by design — they use a direct db.insert.
+					await upsertQueueTombstoneFromQueueItem(item, 'local_remove_without_client_delete');
+
+					await db.delete(downloadQueue).where(eq(downloadQueue.id, item.id));
 
 					result.cleared.push({
 						id: item.id,

@@ -45,6 +45,10 @@ export async function relinkOrphans(): Promise<ApiResponse> {
 	return apiPost('/api/queue/relink-orphans');
 }
 
+export async function clearFailedQueue(): Promise<ApiResponse & { cleared?: number }> {
+	return apiPost('/api/queue/clear-failed');
+}
+
 function buildQuery(params: Record<string, string>): string {
 	const entries = Object.entries(params);
 	return entries.length ? '?' + new URLSearchParams(params).toString() : '';

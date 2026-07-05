@@ -10,6 +10,7 @@ import {
 	settings
 } from '$lib/server/db/schema';
 import { and, desc, gte, inArray, eq, lte, lt, sql, count, or } from 'drizzle-orm';
+import { upsertQueueTombstoneFromQueueItem } from '$lib/server/downloadClients/monitoring/QueueTombstoneService';
 import type { SQL } from 'drizzle-orm';
 import { extractReleaseGroup } from '$lib/server/indexers/parser/patterns/releaseGroup';
 import {
@@ -247,10 +248,24 @@ export class ActivityService {
 
 		const paginated = filtered.slice(pagination.offset, pagination.offset + pagination.limit);
 
+		// Derive hasMore from the data we actually fetched rather than the parallel
+		// SQL COUNT. The two run concurrently and can diverge when the download
+		// monitor writes failed/recovered records between them - COUNT can come back
+		// higher than the fetch, producing hasMore=true with nothing left to load
+		// and causing an infinite load-more loop on the client.
+		//
+		// Limitation: fetchHistoryItems caps at 500 rows. Once filtered.length hits
+		// that cap, hasMore correctly signals true up to offset=450 (with limit=50)
+		// but then becomes false at offset=500 even if the DB holds more records.
+		// The old COUNT-based formula was worse here: it produced hasMore=true on
+		// empty pages, causing a loop. The fetch-cap itself is the real fix needed
+		// for datasets over 500 items.
+		const hasMore = filtered.length > pagination.offset + pagination.limit;
+
 		return {
 			activities: paginated,
 			total,
-			hasMore: pagination.offset + paginated.length < total,
+			hasMore,
 			summary
 		};
 	}
@@ -410,18 +425,32 @@ export class ActivityService {
 		const skippedRetryableFailed = 0;
 		let skippedRunningTasks = 0;
 
+		// Collect downloadIds from failed history rows being deleted so we can cascade to queue
+		const failedHistoryDownloadIds = new Set<string>();
+
 		if (historyIdList.length > 0) {
 			// Fetch initial rows to find their dedup group (media link + normalized title)
+			// Also fetch status and downloadId for failed rows so we can cascade-clean queue items
 			const initialRows = await db
 				.select({
 					id: downloadHistory.id,
 					title: downloadHistory.title,
 					movieId: downloadHistory.movieId,
-					seriesId: downloadHistory.seriesId
+					seriesId: downloadHistory.seriesId,
+					status: downloadHistory.status,
+					downloadId: downloadHistory.downloadId,
+					grabbedAt: downloadHistory.grabbedAt
 				})
 				.from(downloadHistory)
 				.where(inArray(downloadHistory.id, historyIdList))
 				.all();
+
+			// Collect downloadIds of failed rows for cascade cleanup
+			for (const row of initialRows) {
+				if (row.status === 'failed' && row.downloadId) {
+					failedHistoryDownloadIds.add(row.downloadId);
+				}
+			}
 
 			// Expand historyIds to include all sibling rows in the same dedup group so
 			// deleting a deduplicated entry removes all underlying DB rows at once
@@ -444,7 +473,9 @@ export class ActivityService {
 						id: downloadHistory.id,
 						title: downloadHistory.title,
 						movieId: downloadHistory.movieId,
-						seriesId: downloadHistory.seriesId
+						seriesId: downloadHistory.seriesId,
+						status: downloadHistory.status,
+						downloadId: downloadHistory.downloadId
 					})
 					.from(downloadHistory)
 					.where(siblingConditions.length === 1 ? siblingConditions[0] : or(...siblingConditions))
@@ -463,6 +494,9 @@ export class ActivityService {
 								normalizeReleaseKey(candidate.title) === targetNormKey);
 						if (sameGroup) {
 							historyIds.add(candidate.id);
+							if (candidate.status === 'failed' && candidate.downloadId) {
+								failedHistoryDownloadIds.add(candidate.downloadId);
+							}
 						}
 					}
 				}
@@ -534,6 +568,29 @@ export class ActivityService {
 				return { deletedDownloadHistory, deletedMonitoringHistory, deletedTaskHistory };
 			});
 
+		// Cascade: clean up failed queue items linked to the deleted history rows
+		if (failedHistoryDownloadIds.size > 0) {
+			const linkedQueueItems = await db
+				.select()
+				.from(downloadQueue)
+				.where(
+					and(
+						eq(downloadQueue.status, 'failed'),
+						inArray(downloadQueue.downloadId, Array.from(failedHistoryDownloadIds))
+					)
+				)
+				.all();
+
+			for (const item of linkedQueueItems) {
+				try {
+					await upsertQueueTombstoneFromQueueItem(item, 'local_remove_without_client_delete');
+					await db.delete(downloadQueue).where(eq(downloadQueue.id, item.id));
+				} catch (_err) {
+					// Best-effort; failures here shouldn't abort the history delete
+				}
+			}
+		}
+
 		return {
 			deletedDownloadHistory,
 			deletedMonitoringHistory,
@@ -550,6 +607,13 @@ export class ActivityService {
 		const cutoffDate = new Date();
 		cutoffDate.setDate(cutoffDate.getDate() - normalizedRetentionDays);
 		const cutoffIso = cutoffDate.toISOString();
+
+		// Fetch failed queue items that are old enough to be purged
+		const failedQueueItems = await db
+			.select()
+			.from(downloadQueue)
+			.where(and(eq(downloadQueue.status, 'failed'), lt(downloadQueue.addedAt, cutoffIso)))
+			.all();
 
 		const { deletedDownloadHistory, deletedMonitoringHistory, deletedTaskHistory } =
 			await db.transaction((tx) => {
@@ -576,6 +640,16 @@ export class ActivityService {
 				return { deletedDownloadHistory, deletedMonitoringHistory, deletedTaskHistory };
 			});
 
+		// Clean up old failed queue items so they can't resurface on the next client sync
+		for (const item of failedQueueItems) {
+			try {
+				await upsertQueueTombstoneFromQueueItem(item, 'local_remove_without_client_delete');
+				await db.delete(downloadQueue).where(eq(downloadQueue.id, item.id));
+			} catch (_err) {
+				// Best-effort; failures here shouldn't abort the purge
+			}
+		}
+
 		return {
 			deletedDownloadHistory,
 			deletedMonitoringHistory,
@@ -586,6 +660,13 @@ export class ActivityService {
 	}
 
 	async purgeAllHistory(): Promise<PurgeHistoryResult> {
+		// Fetch failed queue items before purging so we can tombstone and delete them
+		const failedQueueItems = await db
+			.select()
+			.from(downloadQueue)
+			.where(eq(downloadQueue.status, 'failed'))
+			.all();
+
 		const { deletedDownloadHistory, deletedMonitoringHistory, deletedTaskHistory } =
 			await db.transaction((tx) => {
 				const deletedDownloadHistory = tx.delete(downloadHistory).run().changes;
@@ -603,6 +684,16 @@ export class ActivityService {
 
 				return { deletedDownloadHistory, deletedMonitoringHistory, deletedTaskHistory };
 			});
+
+		// Clean up failed queue items so they can't resurface on the next client sync
+		for (const item of failedQueueItems) {
+			try {
+				await upsertQueueTombstoneFromQueueItem(item, 'local_remove_without_client_delete');
+				await db.delete(downloadQueue).where(eq(downloadQueue.id, item.id));
+			} catch (_err) {
+				// Best-effort; failures here shouldn't abort the purge
+			}
+		}
 
 		return {
 			deletedDownloadHistory,
