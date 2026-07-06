@@ -560,7 +560,70 @@ export const MIGRATION_COLUMN_MAP: Record<number, Array<{ table: string; column:
 		{ table: 'libraries', column: 'id' },
 		{ table: 'movies', column: 'library_id' },
 		{ table: 'series', column: 'library_id' }
-	]
+	],
+	81: [
+		{ table: 'scoring_profiles', column: 'is_built_in' },
+		{ table: 'scoring_profiles', column: 'min_resolution' },
+		{ table: 'scoring_profiles', column: 'max_resolution' },
+		{ table: 'scoring_profiles', column: 'allowed_sources' },
+		{ table: 'scoring_profiles', column: 'excluded_sources' }
+	],
+	83: [
+		{ table: 'movies', column: 'tmdb_collection_id' },
+		{ table: 'movies', column: 'collection_name' }
+	],
+	84: [
+		{ table: 'movies', column: 'release_date' },
+		{ table: 'series', column: 'first_air_date' }
+	],
+	85: [
+		{ table: 'libraries', column: 'metadata_provider' },
+		{ table: 'series', column: 'metadata_provider' },
+		{ table: 'series', column: 'provider_refs' },
+		{ table: 'series', column: 'pinned_external' }
+	],
+	86: [
+		{ table: 'movies', column: 'metadata_provider' },
+		{ table: 'movies', column: 'provider_refs' },
+		{ table: 'movies', column: 'pinned_external' }
+	],
+	88: [
+		{ table: 'root_folders', column: 'skip_folder_patterns' },
+		{ table: 'root_folders', column: 'blocked_video_extensions' }
+	],
+	91: [
+		{ table: 'movies', column: 'download_release_date' },
+		{ table: 'movies', column: 'download_release_type' }
+	],
+	92: [
+		{ table: 'movies', column: 'digital_release_date' },
+		{ table: 'movies', column: 'physical_release_date' },
+		{ table: 'movies', column: 'availability_delay' }
+	],
+	93: [{ table: 'indexers', column: 'upstream_enabled' }],
+	94: [{ table: 'indexers', column: 'orphaned' }],
+	96: [
+		{ table: 'movies', column: 'adult' },
+		{ table: 'movies', column: 'adult_source' },
+		{ table: 'movies', column: 'adult_confidence' },
+		{ table: 'series', column: 'adult' },
+		{ table: 'series', column: 'adult_source' },
+		{ table: 'series', column: 'adult_confidence' }
+	],
+	97: [{ table: 'series', column: 'episode_group_id' }],
+	98: [
+		{ table: 'indexers', column: 'cached_categories' },
+		{ table: 'indexers', column: 'additional_categories' }
+	],
+	100: [{ table: 'scoring_profiles', column: 'prevent_downgrades' }],
+	102: [{ table: 'indexers', column: 'is_built_in' }],
+	105: [
+		{ table: 'pending_releases', column: 'publish_date' },
+		{ table: 'movies', column: 'delay_profile_id' },
+		{ table: 'series', column: 'delay_profile_id' }
+	],
+	106: [{ table: 'scoring_profiles', column: 'required_formats' }],
+	108: [{ table: 'download_queue', column: 'stalled_since' }]
 };
 
 /**
