@@ -228,7 +228,11 @@ export function getRequiredSettings(definition: IndexerDefinition): SettingField
  * Check if a definition requires authentication.
  */
 export function requiresAuth(definition: IndexerDefinition): boolean {
-	return definition.type === 'private' || definition.type === 'semi-private';
+	return (
+		definition.type === 'private' ||
+		definition.type === 'semi-private' ||
+		definition.type === 'selfhosted'
+	);
 }
 
 /**
@@ -331,9 +335,10 @@ export function yamlToUnifiedDefinition(
 	};
 
 	// Map Cardigann type to IndexerAccessType
-	const mapAccessType = (type: string): 'public' | 'private' | 'semi-private' => {
+	const mapAccessType = (type: string): 'public' | 'private' | 'semi-private' | 'selfhosted' => {
 		if (type === 'private') return 'private';
 		if (type === 'semi-private') return 'semi-private';
+		if (type === 'selfhosted') return 'selfhosted';
 		return 'public';
 	};
 

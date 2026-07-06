@@ -279,6 +279,8 @@ export class UnifiedIndexer implements IIndexer {
 				return 'private';
 			case 'semi-private':
 				return 'semi-private';
+			case 'selfhosted':
+				return 'selfhosted';
 			default:
 				return 'public';
 		}

@@ -230,9 +230,10 @@ export class DefinitionLoader {
 	/**
 	 * Map Cardigann type to IndexerAccessType.
 	 */
-	private mapAccessType(type: string): 'public' | 'private' | 'semi-private' {
+	private mapAccessType(type: string): 'public' | 'private' | 'semi-private' | 'selfhosted' {
 		if (type === 'private') return 'private';
 		if (type === 'semi-private') return 'semi-private';
+		if (type === 'selfhosted') return 'selfhosted';
 		return 'public';
 	}
 
@@ -329,7 +330,7 @@ export class DefinitionLoader {
 	/**
 	 * Get definitions by type.
 	 */
-	getByType(type: 'public' | 'private' | 'semi-private'): IndexerDefinition[] {
+	getByType(type: 'public' | 'private' | 'semi-private' | 'selfhosted'): IndexerDefinition[] {
 		return this.getAll().filter((d) => d.type === type);
 	}
 

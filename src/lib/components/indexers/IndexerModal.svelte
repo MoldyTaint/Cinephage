@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, Loader2, Globe, Lock, Zap } from 'lucide-svelte';
+	import { X, Loader2, Globe, Lock, Zap, Server } from 'lucide-svelte';
 	import type { IndexerDefinition, Indexer, IndexerFormData } from '$lib/types/indexer';
 	import { computeUIHints } from '$lib/types/indexer';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
@@ -305,12 +305,16 @@
 							? 'bg-info/10'
 							: selectedDefinition.type === 'public'
 								? 'bg-success/10'
-								: 'bg-warning/10'}"
+								: selectedDefinition.type === 'selfhosted'
+									? 'bg-primary/10'
+									: 'bg-warning/10'}"
 					>
 						{#if isStreaming}
 							<Zap class="h-5 w-5 text-info" />
 						{:else if selectedDefinition.type === 'public'}
 							<Globe class="h-5 w-5 text-success" />
+						{:else if selectedDefinition.type === 'selfhosted'}
+							<Server class="h-5 w-5 text-primary" />
 						{:else}
 							<Lock class="h-5 w-5 text-warning" />
 						{/if}

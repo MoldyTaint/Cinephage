@@ -282,10 +282,7 @@ export class YamlDefinitionLoader {
 		);
 	}
 
-	/**
-	 * Get definitions by type (public, private, semi-private).
-	 */
-	getByType(type: 'public' | 'private' | 'semi-private'): YamlDefinition[] {
+	getByType(type: 'public' | 'private' | 'semi-private' | 'selfhosted'): YamlDefinition[] {
 		return this.getAllDefinitions().filter((def) => def.type === type);
 	}
 

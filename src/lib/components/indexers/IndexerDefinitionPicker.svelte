@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Search, Globe, Lock, Zap } from 'lucide-svelte';
+	import { Search, Globe, Lock, Zap, Server } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { IndexerDefinition } from '$lib/types/indexer';
 
@@ -28,6 +28,7 @@
 		const filtered = filteredDefinitions();
 		return {
 			public: filtered.filter((d) => d.type === 'public' && d.protocol !== 'streaming'),
+			selfHosted: filtered.filter((d) => d.type === 'selfhosted' && d.protocol !== 'streaming'),
 			private: filtered.filter(
 				(d) => (d.type === 'private' || d.type === 'semi-private') && d.protocol !== 'streaming'
 			),
@@ -82,6 +83,47 @@
 					</div>
 					<div class="flex flex-col items-end gap-1">
 						<span class="badge badge-sm badge-success">{m.settings_indexers_badgePublic()}</span>
+					</div>
+				</button>
+			{/each}
+		{/if}
+
+		{#if groupedDefinitions().selfHosted.length > 0}
+			<div class="sticky top-0 z-10 border-b border-base-300 bg-base-200 px-4 py-2">
+				<span class="flex items-center gap-2 text-sm font-medium text-base-content/70">
+					<Server class="h-4 w-4" />
+					{m.settings_indexers_selfHostedIndexers()}
+				</span>
+			</div>
+			{#each groupedDefinitions().selfHosted as def (def.id)}
+				<button
+					type="button"
+					class="flex w-full items-center gap-4 border-b border-base-200 p-4 text-left transition-colors last:border-b-0 hover:bg-base-200"
+					onclick={() => onSelect(def.id)}
+				>
+					<div class="rounded-lg bg-primary/10 p-2">
+						<Server class="h-5 w-5 text-primary" />
+					</div>
+					<div class="min-w-0 flex-1">
+						<div class="flex items-center gap-2">
+							<span class="font-semibold">{def.name}</span>
+							<span class="badge badge-ghost badge-xs">{def.protocol}</span>
+							{#if def.isCustom}
+								<span class="badge badge-ghost badge-xs">{m.common_custom()}</span>
+							{/if}
+						</div>
+						{#if def.description}
+							<p class="mt-0.5 truncate text-sm text-base-content/60">{def.description}</p>
+						{/if}
+					</div>
+					<div class="flex flex-col items-end gap-1">
+						<span class="badge badge-sm badge-primary">{m.settings_indexers_badgeSelfHosted()}</span
+						>
+						{#if def.settings && def.settings.length > 0}
+							<span class="badge badge-ghost badge-xs"
+								>{m.settings_indexers_badgeAuthRequired()}</span
+							>
+						{/if}
 					</div>
 				</button>
 			{/each}

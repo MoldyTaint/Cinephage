@@ -570,7 +570,7 @@ export const yamlDefinitionSchema = z.object({
 	replaces: z.array(z.string()).optional(),
 	name: z.string(),
 	description: z.string().optional(),
-	type: z.enum(['public', 'semi-private', 'private']).default('public'),
+	type: z.enum(['public', 'semi-private', 'private', 'selfhosted']).default('public'),
 	language: z.string().default('en-US'),
 	encoding: z.string().default('UTF-8'),
 	// Protocol type: torrent, usenet, or streaming

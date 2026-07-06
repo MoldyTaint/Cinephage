@@ -1,0 +1,107 @@
+---
+id: prowlarr
+name: Prowlarr
+description: Direct integration with a Prowlarr instance's search API
+type: selfhosted
+protocol: torrent
+language: en-US
+encoding: UTF-8
+requestdelay: 0.1
+
+links:
+  - http://localhost:9696/
+
+settings:
+  - name: apikey
+    type: password
+    label: API Key
+    required: true
+
+caps:
+  modes:
+    search: [q]
+    movie-search: [q, imdbid, tmdbid]
+    tv-search: [q, imdbid, tvdbid, season, ep]
+  categories:
+    '2000': Movies
+    '5000': TV
+    '8000': Other
+
+search:
+  paths:
+    # Movie search
+    - path: api/v1/search
+      method: get
+      categories: [Movies]
+      inputs:
+        query: '{{ .Keywords }}'
+        type: movie
+        imdbId: '{{ .Query.IMDBID }}'
+        tmdbId: '{{ .Query.TMDBID }}'
+        categories: '{{ .Categories }}'
+        apikey: '{{ .Config.apikey }}'
+
+    # TV search
+    - path: api/v1/search
+      method: get
+      categories: [TV]
+      inputs:
+        query: '{{ .Keywords }}'
+        type: tv
+        imdbId: '{{ .Query.IMDBID }}'
+        tvdbId: '{{ .Query.TVDBID }}'
+        seasonNumber: '{{ .Query.Season }}'
+        episodeNumber: '{{ .Query.Ep }}'
+        categories: '{{ .Categories }}'
+        apikey: '{{ .Config.apikey }}'
+
+    # General search
+    - path: api/v1/search
+      method: get
+      inputs:
+        query: '{{ .Keywords }}'
+        type: search
+        categories: '{{ .Categories }}'
+        apikey: '{{ .Config.apikey }}'
+
+  response:
+    type: json
+
+  fields:
+    title:
+      selector: title
+    details:
+      selector: infoUrl
+      optional: true
+    download:
+      selector: downloadUrl
+      optional: true
+      filters:
+        - name: append
+          args: '?apikey=[REDACTED]'
+    guid:
+      selector: guid
+      optional: true
+    date:
+      selector: publishDate
+    size:
+      selector: size
+      optional: true
+    seeders:
+      selector: seeders
+      optional: true
+    leechers:
+      selector: peers
+      optional: true
+    infohash:
+      selector: infoHash
+      optional: true
+    magnet:
+      selector: magnetUrl
+      optional: true
+    category:
+      selector: category
+      optional: true
+    protocol:
+      selector: protocol
+      optional: true

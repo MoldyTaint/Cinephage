@@ -2,7 +2,7 @@
 id: torznab
 name: Torznab
 description: Connect to a self-hosted or third-party Torznab-compatible endpoint
-type: semi-private
+type: selfhosted
 language: en-US
 encoding: UTF-8
 requestdelay: 0.1

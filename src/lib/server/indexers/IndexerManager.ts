@@ -649,8 +649,9 @@ export class IndexerManager {
 		return this.definitionLoader.searchByName(query);
 	}
 
-	/** Get definitions by type */
-	getDefinitionsByType(type: 'public' | 'private' | 'semi-private'): YamlDefinition[] {
+	getDefinitionsByType(
+		type: 'public' | 'private' | 'semi-private' | 'selfhosted'
+	): YamlDefinition[] {
 		return this.definitionLoader.getByType(type);
 	}
 

@@ -2,7 +2,7 @@
 id: newznab
 name: Newznab
 description: Connect to any Newznab-compatible usenet indexer API (NZBgeek, DrunkenSlug, etc.)
-type: private
+type: selfhosted
 language: en-US
 encoding: UTF-8
 protocol: usenet

@@ -116,7 +116,10 @@ export function computeUIHints(
 
 	return {
 		requiresAuth:
-			(definition.type === 'private' || definition.type === 'semi-private') && hasAuthSettings,
+			(definition.type === 'private' ||
+				definition.type === 'semi-private' ||
+				definition.type === 'selfhosted') &&
+			hasAuthSettings,
 		showTorrentSettings: definition.protocol === 'torrent',
 		showUsenetSettings: definition.protocol === 'usenet',
 		isStreaming: definition.protocol === 'streaming'
