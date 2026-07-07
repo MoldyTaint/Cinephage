@@ -16,6 +16,10 @@ settings:
     type: password
     label: API Key
     required: true
+  - name: indexerId
+    type: text
+    label: Indexer ID
+    required: true
 
 caps:
   modes:
@@ -40,6 +44,7 @@ search:
         tmdbId: '{{ .Query.TMDBID }}'
         categories: '{{ .Categories }}'
         apikey: '{{ .Config.apikey }}'
+        indexerIds: '{{ .Config.indexerId }}'
 
     # TV search
     - path: api/v1/search
@@ -54,6 +59,7 @@ search:
         episodeNumber: '{{ .Query.Ep }}'
         categories: '{{ .Categories }}'
         apikey: '{{ .Config.apikey }}'
+        indexerIds: '{{ .Config.indexerId }}'
 
     # General search
     - path: api/v1/search
@@ -63,6 +69,7 @@ search:
         type: search
         categories: '{{ .Categories }}'
         apikey: '{{ .Config.apikey }}'
+        indexerIds: '{{ .Config.indexerId }}'
 
   response:
     type: json

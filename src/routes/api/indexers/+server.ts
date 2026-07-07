@@ -30,6 +30,19 @@ export const POST: RequestHandler = async (event) => {
 
 	const manager = await getIndexerManager();
 
+	// Auto-populate apikey for Prowlarr indexers from connection settings if missing
+	if (validated.definitionId === 'prowlarr' && !validated.settings?.apikey) {
+		const { getProwlarrConnection } =
+			await import('$lib/server/indexers/prowlarr/ProwlarrConnectionService.js');
+		const conn = await getProwlarrConnection();
+		if (conn?.apiKey) {
+			validated.settings = {
+				...(validated.settings ?? {}),
+				apikey: conn.apiKey
+			};
+		}
+	}
+
 	// Verify the definition exists
 	const definition = manager.getDefinition(validated.definitionId);
 	if (!definition) {

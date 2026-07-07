@@ -79,10 +79,36 @@ export function normalizeProwlarrUrl(url: string): string {
 	return url.replace(/\/+$/, '');
 }
 
-export function isIndexerFromConnection(baseUrl: string, prowlarrBase: string): boolean {
-	if (!baseUrl.startsWith(prowlarrBase + '/')) return false;
-	const suffix = baseUrl.slice(prowlarrBase.length + 1).replace(/\/+$/, '');
-	return /^\d+$/.test(suffix);
+export function isIndexerFromConnection(
+	indexerOrBaseUrl: string | { definitionId: string; baseUrl: string },
+	prowlarrBase: string
+): boolean {
+	if (typeof indexerOrBaseUrl === 'object' && indexerOrBaseUrl !== null) {
+		if (indexerOrBaseUrl.definitionId === 'prowlarr') {
+			return normalizeProwlarrUrl(indexerOrBaseUrl.baseUrl) === prowlarrBase;
+		}
+		const baseUrl = indexerOrBaseUrl.baseUrl;
+		if (!baseUrl.startsWith(prowlarrBase + '/')) return false;
+		const suffix = baseUrl.slice(prowlarrBase.length + 1).replace(/\/+$/, '');
+		return /^\d+$/.test(suffix);
+	} else {
+		const baseUrl = String(indexerOrBaseUrl);
+		if (normalizeProwlarrUrl(baseUrl) === prowlarrBase) return true;
+		if (!baseUrl.startsWith(prowlarrBase + '/')) return false;
+		const suffix = baseUrl.slice(prowlarrBase.length + 1).replace(/\/+$/, '');
+		return /^\d+$/.test(suffix);
+	}
+}
+
+export function getProwlarrId(
+	indexer: { definitionId: string; baseUrl: string; settings?: Record<string, any> | null },
+	prowlarrBase: string
+): number {
+	if (indexer.definitionId === 'prowlarr') {
+		return parseInt(String(indexer.settings?.indexerId ?? ''), 10);
+	}
+	const suffix = indexer.baseUrl.slice(prowlarrBase.length + 1).replace(/\/+$/, '');
+	return parseInt(suffix, 10);
 }
 
 export async function fetchProwlarrIndexers(
@@ -150,13 +176,10 @@ export async function syncProwlarrIndexers(): Promise<SyncResult> {
 	const existingIndexers = await manager.getIndexers();
 
 	// Partition: which existing Cinephage indexers came from this Prowlarr instance
-	const managedIndexers = existingIndexers.filter((i) =>
-		isIndexerFromConnection(i.baseUrl, prowlarrBase)
-	);
+	const managedIndexers = existingIndexers.filter((i) => isIndexerFromConnection(i, prowlarrBase));
 
 	for (const indexer of managedIndexers) {
-		const suffix = indexer.baseUrl.slice(prowlarrBase.length + 1).replace(/\/+$/, '');
-		const prowlarrId = parseInt(suffix, 10);
+		const prowlarrId = getProwlarrId(indexer, prowlarrBase);
 		const pi = prowlarrById.get(prowlarrId);
 
 		if (!pi) {
@@ -217,25 +240,27 @@ export async function syncProwlarrIndexers(): Promise<SyncResult> {
 
 	// Add new indexers only when the user has opted in
 	if (conn.syncAddNew) {
-		const managedBaseUrls = new Set(managedIndexers.map((i) => normalizeProwlarrUrl(i.baseUrl)));
+		const managedIds = new Set(managedIndexers.map((i) => getProwlarrId(i, prowlarrBase)));
 
 		for (const pi of prowlarrIndexers) {
-			const baseUrl = `${prowlarrBase}/${pi.id}`;
-			if (managedBaseUrls.has(baseUrl)) continue;
+			if (managedIds.has(pi.id)) continue;
 
 			const protocol = pi.protocol === 'usenet' ? 'usenet' : 'torrent';
-			const definitionId = protocol === 'usenet' ? 'newznab' : 'torznab';
 
 			try {
 				await manager.createIndexer({
 					name: pi.name,
-					definitionId,
-					baseUrl,
+					definitionId: 'prowlarr',
+					baseUrl: conn.url,
 					alternateUrls: [],
 					enabled: true,
 					upstreamEnabled: pi.enable,
 					priority: 25,
-					settings: { apikey: conn.apiKey },
+					settings: {
+						apikey: conn.apiKey,
+						indexerId: String(pi.id),
+						prowlarrEnabled: String(pi.enable)
+					},
 					enableAutomaticSearch: true,
 					enableInteractiveSearch: true,
 					minimumSeeders: 1,
@@ -265,13 +290,10 @@ export async function syncProwlarrIndexers(): Promise<SyncResult> {
 
 		// Re-fetch managed indexers (some may have been removed above)
 		const currentIndexers = await manager.getIndexers();
-		const stillManaged = currentIndexers.filter((i) =>
-			isIndexerFromConnection(i.baseUrl, prowlarrBase)
-		);
+		const stillManaged = currentIndexers.filter((i) => isIndexerFromConnection(i, prowlarrBase));
 
 		for (const indexer of stillManaged) {
-			const suffix = indexer.baseUrl.slice(prowlarrBase.length + 1).replace(/\/+$/, '');
-			const prowlarrId = parseInt(suffix, 10);
+			const prowlarrId = getProwlarrId(indexer, prowlarrBase);
 			const failureInfo = failedByProwlarrId.get(prowlarrId);
 
 			if (failureInfo) {
@@ -318,7 +340,7 @@ export async function propagateProwlarrApiKey(newApiKey: string): Promise<void> 
 	const indexers = await manager.getIndexers();
 
 	for (const indexer of indexers) {
-		if (!isIndexerFromConnection(indexer.baseUrl, prowlarrBase)) continue;
+		if (!isIndexerFromConnection(indexer, prowlarrBase)) continue;
 		const existing = indexer.settings as Record<string, unknown> | null;
 		if ((existing?.apikey ?? '') === newApiKey) continue;
 		await manager.updateIndexer(indexer.id, {
