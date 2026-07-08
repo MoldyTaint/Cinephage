@@ -391,8 +391,9 @@
 		<h3 class="font-semibold">{m.library_import_importMethodHeading()}</h3>
 		<div class="mt-3 grid gap-2 sm:grid-cols-3">
 			<label
-				class="flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors
-					{importMode === 'move' ? 'border-primary bg-primary/5' : 'border-base-300'}"
+				class="flex items-start gap-3 rounded-lg border p-3 transition-colors
+					{importMode === 'move' ? 'border-primary bg-primary/5' : 'border-base-300'}
+					{executingImport ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}"
 			>
 				<input
 					type="radio"
@@ -400,6 +401,7 @@
 					class="radio mt-0.5 radio-primary"
 					value="move"
 					bind:group={importMode}
+					disabled={executingImport}
 				/>
 				<div>
 					<div class="font-medium">{m.library_import_importMethodMove()}</div>
@@ -407,8 +409,9 @@
 				</div>
 			</label>
 			<label
-				class="flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors
-					{importMode === 'copy' ? 'border-primary bg-primary/5' : 'border-base-300'}"
+				class="flex items-start gap-3 rounded-lg border p-3 transition-colors
+					{importMode === 'copy' ? 'border-primary bg-primary/5' : 'border-base-300'}
+					{executingImport ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}"
 			>
 				<input
 					type="radio"
@@ -416,6 +419,7 @@
 					class="radio mt-0.5 radio-primary"
 					value="copy"
 					bind:group={importMode}
+					disabled={executingImport}
 				/>
 				<div>
 					<div class="font-medium">{m.library_import_importMethodCopy()}</div>
@@ -423,8 +427,9 @@
 				</div>
 			</label>
 			<label
-				class="flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors
-					{importMode === 'symlink' ? 'border-primary bg-primary/5' : 'border-base-300'}"
+				class="flex items-start gap-3 rounded-lg border p-3 transition-colors
+					{importMode === 'symlink' ? 'border-primary bg-primary/5' : 'border-base-300'}
+					{executingImport ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}"
 			>
 				<input
 					type="radio"
@@ -432,6 +437,7 @@
 					class="radio mt-0.5 radio-primary"
 					value="symlink"
 					bind:group={importMode}
+					disabled={executingImport}
 				/>
 				<div>
 					<div class="font-medium">{m.library_import_importMethodSymlink()}</div>
