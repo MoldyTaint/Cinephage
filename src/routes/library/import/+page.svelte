@@ -140,6 +140,8 @@
 	let detection = $state<DetectionResult | null>(null);
 	let selectedGroupId = $state<string | null>(null);
 	let importedGroupIds = $state<string[]>([]);
+	// Maps groupId -> real library ID returned by the server after import completes.
+	let importedGroupLibraryIds = $state<Record<string, string>>({});
 	let skippedGroupIds = $state<string[]>([]);
 	let groupReviewState = $state<Record<string, GroupReviewState>>({});
 	let detectedGroupQuery = $state('');
@@ -1739,6 +1741,7 @@
 		bulkProgress = null;
 		bulkCurrentGroup = null;
 		importedGroupIds = [];
+		importedGroupLibraryIds = {};
 		skippedGroupIds = [];
 		detectedGroupQuery = '';
 		detectedGroupFilter = 'pending';
@@ -2015,6 +2018,7 @@
 		importTarget = 'new';
 		selectedGroupId = null;
 		importedGroupIds = [];
+		importedGroupLibraryIds = {};
 		skippedGroupIds = [];
 		groupReviewState = {};
 		selectedRootFolder = '';
@@ -2139,6 +2143,10 @@
 				const groupId = groupIdMap[groupName];
 				if (groupId) {
 					markGroupImported(groupId);
+					const realLibraryId = payload.result?.libraryId as string | undefined;
+					if (realLibraryId) {
+						importedGroupLibraryIds = { ...importedGroupLibraryIds, [groupId]: realLibraryId };
+					}
 				}
 				bulkProgress = { ...payload.progress };
 				bulkCurrentGroup = payload.groupName;
@@ -2183,10 +2191,11 @@
 					if (!state?.selectedMatch) continue;
 					const match = state.selectedMatch;
 					let libraryId: string | null = null;
-					if (state.importTarget === 'existing' && match.inLibrary && match.libraryId) {
+					if (importedGroupLibraryIds[groupId]) {
+						// Prefer the real library ID returned by the server after import.
+						libraryId = importedGroupLibraryIds[groupId];
+					} else if (state.importTarget === 'existing' && match.inLibrary && match.libraryId) {
 						libraryId = match.libraryId;
-					} else if (state.importTarget === 'new' && state.selectedRootFolder) {
-						libraryId = state.selectedRootFolder;
 					}
 					const mediaTypePath = state.selectedMediaType === 'movie' ? 'movie' : 'tv';
 					const href = libraryId ? resolvePath(`/library/${mediaTypePath}/${libraryId}`) : null;
