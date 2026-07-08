@@ -98,16 +98,17 @@ export function getProwlarrId(
 
 /**
  * Returns true if the given indexer was imported from this Prowlarr connection.
- * All Prowlarr-managed indexers use baseUrl = prowlarrBase/{numericId}, regardless
- * of whether definitionId is 'prowlarr', 'torznab', or 'newznab'.
+ * Requires definitionId='prowlarr' AND baseUrl = prowlarrBase/{numericId} so that
+ * unrelated torznab/newznab indexers that happen to share the same host are not
+ * incorrectly claimed as Prowlarr-managed.
  */
 export function isIndexerFromConnection(
-	indexer: { baseUrl: string } | string,
+	indexer: { definitionId: string; baseUrl: string },
 	prowlarrBase: string
 ): boolean {
-	const baseUrl = typeof indexer === 'string' ? indexer : indexer.baseUrl;
-	if (!baseUrl.startsWith(prowlarrBase + '/')) return false;
-	const suffix = baseUrl.slice(prowlarrBase.length + 1).replace(/\/+$/, '');
+	if (indexer.definitionId !== 'prowlarr') return false;
+	if (!indexer.baseUrl.startsWith(prowlarrBase + '/')) return false;
+	const suffix = indexer.baseUrl.slice(prowlarrBase.length + 1).replace(/\/+$/, '');
 	return /^\d+$/.test(suffix);
 }
 

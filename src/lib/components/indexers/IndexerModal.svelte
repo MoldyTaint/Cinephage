@@ -96,6 +96,7 @@
 
 	const isProwlarrManaged = $derived.by(() => {
 		if (mode !== 'edit' || !indexer || !prowlarrBaseUrl) return false;
+		if (indexer.definitionId !== 'prowlarr') return false;
 		const base = prowlarrBaseUrl.replace(/\/+$/, '');
 		if (!indexer.baseUrl.startsWith(base + '/')) return false;
 		const suffix = indexer.baseUrl.slice(base.length + 1).replace(/\/+$/, '');

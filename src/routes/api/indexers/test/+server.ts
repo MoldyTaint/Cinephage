@@ -185,6 +185,7 @@ export const POST: RequestHandler = async (event) => {
 
 	let existingSettings: Record<string, unknown> | undefined;
 	let existingBaseUrl: string | undefined;
+	let existingIndexer: Awaited<ReturnType<typeof manager.getIndexer>> | undefined;
 
 	// If testing an existing saved indexer from overview, verify it exists
 	// so health tracking updates apply only to real indexers.
@@ -201,6 +202,7 @@ export const POST: RequestHandler = async (event) => {
 		}
 		existingSettings = existing.settings;
 		existingBaseUrl = existing.baseUrl;
+		existingIndexer = existing;
 
 		// If Prowlarr has this indexer disabled, skip the test and tell the user where to fix it.
 		if (existing.upstreamEnabled === false) {
@@ -295,7 +297,7 @@ export const POST: RequestHandler = async (event) => {
 			let source: string | null = null;
 			if (prowlarrConn) {
 				const prowlarrBase = normalizeProwlarrUrl(prowlarrConn.url);
-				if (isIndexerFromConnection(existingBaseUrl, prowlarrBase)) source = 'Prowlarr';
+				if (existingIndexer && isIndexerFromConnection(existingIndexer, prowlarrBase)) source = 'Prowlarr';
 			}
 			if (!source && jackettConn2) {
 				const jackettBase = normalizeJackettUrl(jackettConn2.url);

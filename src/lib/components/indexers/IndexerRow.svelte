@@ -61,7 +61,7 @@
 	}: Props = $props();
 
 	function isProwlarrIndexer(): boolean {
-		if (!prowlarrBaseUrl) return false;
+		if (!prowlarrBaseUrl || indexer.definitionId !== 'prowlarr') return false;
 		const base = prowlarrBaseUrl.replace(/\/+$/, '');
 		if (!indexer.baseUrl.startsWith(base + '/')) return false;
 		const suffix = indexer.baseUrl.slice(base.length + 1).replace(/\/+$/, '');
