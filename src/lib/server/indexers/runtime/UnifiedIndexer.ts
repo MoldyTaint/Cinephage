@@ -137,8 +137,14 @@ export class UnifiedIndexer implements IIndexer {
 		this.enableAutomaticSearch = record.enableAutomaticSearch ?? true;
 		this.enableInteractiveSearch = record.enableInteractiveSearch ?? true;
 
-		// Get protocol from definition (no longer hardcoded!)
-		this.protocol = this.mapProtocol(definition.protocol);
+		// settings.protocol overrides the definition for indexers (like prowlarr) that
+		// serve mixed torrent/usenet content under a single definition.
+		const settingsProtocol = settings.protocol;
+		const resolvedProtocol =
+			settingsProtocol === 'usenet' || settingsProtocol === 'torrent'
+				? (settingsProtocol as string)
+				: definition.protocol;
+		this.protocol = this.mapProtocol(resolvedProtocol);
 		this.accessType = this.mapAccessType(definition.type);
 
 		// Build capabilities from definition

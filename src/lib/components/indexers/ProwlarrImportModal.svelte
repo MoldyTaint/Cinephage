@@ -204,6 +204,7 @@
 					settings: {
 						apikey: apiKey,
 						indexerId: String(indexer.id),
+						protocol: indexer.protocol,
 						prowlarrEnabled: String(indexer.enabled)
 					},
 					enableAutomaticSearch: true,

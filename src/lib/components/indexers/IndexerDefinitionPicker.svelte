@@ -14,9 +14,10 @@
 	let searchQuery = $state('');
 
 	const filteredDefinitions = $derived(() => {
-		if (!searchQuery.trim()) return definitions;
+		const pickable = definitions.filter((d) => d.id !== 'prowlarr');
+		if (!searchQuery.trim()) return pickable;
 		const query = searchQuery.toLowerCase();
-		return definitions.filter(
+		return pickable.filter(
 			(d) =>
 				d.name.toLowerCase().includes(query) ||
 				d.description?.toLowerCase().includes(query) ||
@@ -170,7 +171,7 @@
 	</div>
 
 	<p class="text-center text-sm text-base-content/50">
-		{m.settings_indexers_indexersAvailable({ count: definitions.length })}
+		{m.settings_indexers_indexersAvailable({ count: definitions.filter((d) => d.id !== 'prowlarr').length })}
 	</p>
 </div>
 

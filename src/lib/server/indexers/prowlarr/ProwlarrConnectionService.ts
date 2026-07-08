@@ -81,43 +81,33 @@ export function normalizeProwlarrUrl(url: string): string {
 
 /**
  * Extract the numeric Prowlarr indexer ID from an indexer record.
- * New-format indexers store it in settings.indexerId; legacy torznab/newznab
- * indexers encoded it as the last path segment of baseUrl.
+ * All managed Prowlarr indexers encode the ID as the last path segment of baseUrl
+ * (e.g. http://prowlarr:9696/1). The indexerId in settings is a convenience copy.
  */
 export function getProwlarrId(
-	indexer: { definitionId: string; baseUrl: string; settings?: Record<string, unknown> | null },
+	indexer: { baseUrl: string; settings?: Record<string, unknown> | null },
 	prowlarrBase: string
 ): number {
-	if (indexer.definitionId === 'prowlarr') {
-		return parseInt(String(indexer.settings?.indexerId ?? ''), 10);
-	}
+	// Prefer settings.indexerId when present (avoids URL parsing)
+	const fromSettings = parseInt(String(indexer.settings?.indexerId ?? ''), 10);
+	if (!isNaN(fromSettings)) return fromSettings;
+	// Fall back to extracting from the baseUrl path segment
 	const suffix = indexer.baseUrl.slice(prowlarrBase.length + 1).replace(/\/+$/, '');
 	return parseInt(suffix, 10);
 }
 
 /**
  * Returns true if the given indexer was imported from this Prowlarr connection.
- * Handles both the current format (definitionId=prowlarr, baseUrl=prowlarrBase)
- * and the legacy format (definitionId=torznab/newznab, baseUrl=prowlarrBase/{id}).
+ * All Prowlarr-managed indexers use baseUrl = prowlarrBase/{numericId}, regardless
+ * of whether definitionId is 'prowlarr', 'torznab', or 'newznab'.
  */
 export function isIndexerFromConnection(
-	indexer: { definitionId: string; baseUrl: string } | string,
+	indexer: { baseUrl: string } | string,
 	prowlarrBase: string
 ): boolean {
-	if (typeof indexer === 'string') {
-		// Legacy call with raw baseUrl string
-		const baseUrl = indexer;
-		if (normalizeProwlarrUrl(baseUrl) === prowlarrBase) return true;
-		if (!baseUrl.startsWith(prowlarrBase + '/')) return false;
-		const suffix = baseUrl.slice(prowlarrBase.length + 1).replace(/\/+$/, '');
-		return /^\d+$/.test(suffix);
-	}
-	if (indexer.definitionId === 'prowlarr') {
-		return normalizeProwlarrUrl(indexer.baseUrl) === prowlarrBase;
-	}
-	// Legacy torznab/newznab: baseUrl is prowlarrBase/{numericId}
-	if (!indexer.baseUrl.startsWith(prowlarrBase + '/')) return false;
-	const suffix = indexer.baseUrl.slice(prowlarrBase.length + 1).replace(/\/+$/, '');
+	const baseUrl = typeof indexer === 'string' ? indexer : indexer.baseUrl;
+	if (!baseUrl.startsWith(prowlarrBase + '/')) return false;
+	const suffix = baseUrl.slice(prowlarrBase.length + 1).replace(/\/+$/, '');
 	return /^\d+$/.test(suffix);
 }
 
@@ -224,10 +214,14 @@ export async function syncProwlarrIndexers(): Promise<SyncResult> {
 
 		const existingSettings = indexer.settings as Record<string, unknown> | null;
 		const currentKey = existingSettings?.apikey;
-		if (currentKey !== conn.apiKey) {
+		const expectedProtocol = pi.protocol === 'usenet' ? 'usenet' : 'torrent';
+		const needsSettingsUpdate =
+			currentKey !== conn.apiKey || existingSettings?.protocol !== expectedProtocol;
+		if (needsSettingsUpdate) {
 			updates.settings = {
 				...(existingSettings ?? {}),
-				apikey: conn.apiKey
+				apikey: conn.apiKey,
+				protocol: expectedProtocol
 			};
 		}
 
@@ -259,12 +253,16 @@ export async function syncProwlarrIndexers(): Promise<SyncResult> {
 				await manager.createIndexer({
 					name: pi.name,
 					definitionId: 'prowlarr',
-					baseUrl: prowlarrBase,
+					baseUrl: `${prowlarrBase}/${pi.id}`,
 					alternateUrls: [],
 					enabled: true,
 					upstreamEnabled: pi.enable,
 					priority: 25,
-					settings: { apikey: conn.apiKey, indexerId: String(pi.id) },
+					settings: {
+					apikey: conn.apiKey,
+					indexerId: String(pi.id),
+					protocol: pi.protocol === 'usenet' ? 'usenet' : 'torrent'
+				},
 					enableAutomaticSearch: true,
 					enableInteractiveSearch: true,
 					minimumSeeders: 1,

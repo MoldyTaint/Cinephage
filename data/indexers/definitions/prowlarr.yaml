@@ -63,9 +63,9 @@ search:
         type: movie
         imdbId: '{{ .Query.IMDBID }}'
         tmdbId: '{{ .Query.TMDBID }}'
-        categories: '{{ .Categories }}'
         apikey: '{{ .Config.apikey }}'
         indexerIds: '{{ .Config.indexerId }}'
+        $raw: '{{ if .Categories }}categories={{ join .Categories "&categories=" }}{{ end }}'
 
     # TV search — passes TVDB/IMDB IDs, season, and episode when available
     - path: api/v1/search
@@ -78,9 +78,9 @@ search:
         tvdbId: '{{ .Query.TVDBID }}'
         seasonNumber: '{{ .Query.Season }}'
         episodeNumber: '{{ .Query.Ep }}'
-        categories: '{{ .Categories }}'
         apikey: '{{ .Config.apikey }}'
         indexerIds: '{{ .Config.indexerId }}'
+        $raw: '{{ if .Categories }}categories={{ join .Categories "&categories=" }}{{ end }}'
 
     # General keyword search fallback
     - path: api/v1/search
@@ -88,9 +88,9 @@ search:
       inputs:
         query: '{{ .Keywords }}'
         type: search
-        categories: '{{ .Categories }}'
         apikey: '{{ .Config.apikey }}'
         indexerIds: '{{ .Config.indexerId }}'
+        $raw: '{{ if .Categories }}categories={{ join .Categories "&categories=" }}{{ end }}'
 
   response:
     type: json
@@ -116,7 +116,7 @@ search:
       selector: seeders
       optional: true
     leechers:
-      selector: peers
+      selector: leechers
       optional: true
     infohash:
       selector: infoHash

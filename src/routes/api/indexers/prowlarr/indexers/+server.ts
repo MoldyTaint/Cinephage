@@ -66,7 +66,7 @@ export const GET: RequestHandler = async (event) => {
 			enabled: raw.enable === true,
 			protocol,
 			definitionId: 'prowlarr',
-			baseUrl: conn.url,
+			baseUrl: `${base}/${raw.id}`,
 			privacy: typeof raw.privacy === 'string' ? raw.privacy : 'unknown',
 			alreadyImported: existingProwlarrIds.has(raw.id)
 		});

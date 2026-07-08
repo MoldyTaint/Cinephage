@@ -124,7 +124,7 @@ export const POST: RequestHandler = async (event) => {
 			enabled: raw.enable === true,
 			protocol,
 			definitionId: 'prowlarr',
-			baseUrl: prowlarrBase,
+			baseUrl: `${prowlarrBase}/${raw.id}`,
 			privacy: typeof raw.privacy === 'string' ? raw.privacy : 'unknown',
 			alreadyImported: existingProwlarrIds.has(raw.id)
 		});

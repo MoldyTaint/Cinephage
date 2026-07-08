@@ -247,8 +247,13 @@ export class IndexerManager {
 		// Get default URL from YAML definition
 		const defaultUrl = yamlDef.links[0];
 
+		// Prowlarr indexers store their actual protocol in settings so mixed
+		// torrent/usenet indexers get the right protocol settings at creation time.
+		const effectiveProtocol =
+			(config.settings?.protocol as string | undefined) ?? yamlDef.protocol ?? 'torrent';
+
 		// Build protocol settings from config
-		const protocolSettings = this.buildProtocolSettings(config, yamlDef.protocol);
+		const protocolSettings = this.buildProtocolSettings(config, effectiveProtocol);
 
 		// Insert and return the generated ID
 		const result = await db
@@ -656,9 +661,14 @@ export class IndexerManager {
 
 	/** Convert database row to IndexerConfig */
 	private rowToConfig(row: typeof indexersTable.$inferSelect): IndexerConfig {
-		// Get protocol from YAML definition
+		// Get protocol from YAML definition, but allow settings.protocol to override
+		// (used by prowlarr indexers which can be torrent or usenet per-indexer).
 		const definition = this.definitionLoader.get(row.definitionId);
-		const protocol = definition?.protocol ?? 'torrent';
+		const settingsProtocol = (row.settings as Record<string, unknown> | null)?.protocol;
+		const protocol =
+			settingsProtocol === 'usenet' || settingsProtocol === 'torrent'
+				? (settingsProtocol as 'usenet' | 'torrent')
+				: (definition?.protocol ?? 'torrent');
 
 		// Extract torrent-specific settings from protocolSettings JSON
 		const protocolSettings = row.protocolSettings as {
