@@ -234,6 +234,25 @@ export const POST: RequestHandler = async (event) => {
 		} catch {
 			// Warm-up failure is expected when Jackett/FlareSolverr is down; proceed anyway.
 		}
+
+		// Refresh the API key from the current connection config so the test uses
+		// fresh credentials without requiring a manual sync first.
+		const [freshProwlarrConn, freshJackettConn] = await Promise.all([
+			getProwlarrConnection(),
+			getJackettConnection()
+		]);
+		if (freshProwlarrConn) {
+			const prowlarrBase = normalizeProwlarrUrl(freshProwlarrConn.url);
+			if (isIndexerFromConnection(existing, prowlarrBase)) {
+				existingSettings = { ...existingSettings, apikey: freshProwlarrConn.apiKey };
+			}
+		}
+		if (freshJackettConn) {
+			const jackettBase = normalizeJackettUrl(freshJackettConn.url);
+			if (isIndexerFromJackett(existing.baseUrl, jackettBase)) {
+				existingSettings = { ...existingSettings, apikey: freshJackettConn.apiKey };
+			}
+		}
 	}
 
 	try {
