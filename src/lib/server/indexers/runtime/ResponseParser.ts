@@ -593,6 +593,10 @@ export class ResponseParser {
 			? definitionLanguage.toLowerCase().split('-')[0]
 			: undefined;
 
+		// Prowlarr native search returns a per-result protocol field; use it when
+		// present so mixed torrent/usenet results resolve correctly.
+		const resultProtocol = (values['protocol'] as IndexerProtocol | undefined) ?? context.protocol;
+
 		const result: ReleaseResult = {
 			guid: String(guid),
 			title: title,
@@ -601,7 +605,7 @@ export class ResponseParser {
 			size,
 			indexerId: context.indexerId,
 			indexerName: context.indexerName,
-			protocol: context.protocol,
+			protocol: resultProtocol,
 			categories,
 			sourceLanguage
 		};
@@ -713,22 +717,28 @@ export class ResponseParser {
 			return [];
 		}
 
-		// Try to parse as category ID
-		const catId = parseInt(catValue, 10);
-		if (!isNaN(catId)) {
-			// Check if this is a tracker-specific ID that needs mapping
-			// (e.g., OldToons returns "1" which should map to "2000" for Movies)
-			const mappedCats = this.findAllCategoryMappings(catValue);
-			if (mappedCats.length > 0) {
-				categories.push(...mappedCats);
+		// Support comma-separated IDs (e.g. "5000,5030" from Prowlarr JSON arrays
+		// that were stringified before extraction).
+		const parts = catValue.includes(',') ? catValue.split(',') : [catValue];
+
+		for (const part of parts) {
+			const trimmed = part.trim();
+			const catId = parseInt(trimmed, 10);
+			if (!isNaN(catId)) {
+				// Check if this is a tracker-specific ID that needs mapping
+				// (e.g., OldToons returns "1" which should map to "2000" for Movies)
+				const mappedCats = this.findAllCategoryMappings(trimmed);
+				if (mappedCats.length > 0) {
+					categories.push(...mappedCats);
+				} else {
+					// It's already a Newznab category ID, use it directly
+					categories.push(catId as Category);
+				}
 			} else {
-				// It's already a Newznab category ID, use it directly
-				categories.push(catId as Category);
+				// Use category mapping from definition for string values
+				const mappedCats = this.findAllCategoryMappings(trimmed);
+				categories.push(...mappedCats);
 			}
-		} else {
-			// Use category mapping from definition for string values
-			const mappedCats = this.findAllCategoryMappings(catValue);
-			categories.push(...mappedCats);
 		}
 
 		return categories;

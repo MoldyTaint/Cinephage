@@ -25,7 +25,7 @@
 		name: string;
 		enabled: boolean;
 		protocol: 'torrent' | 'usenet';
-		definitionId: 'torznab' | 'newznab';
+		definitionId: 'prowlarr';
 		baseUrl: string;
 		privacy: string;
 		alreadyImported: boolean;
@@ -201,7 +201,11 @@
 					alternateUrls: [],
 					enabled: indexer.enabled,
 					priority: 25,
-					settings: { apikey: apiKey, prowlarrEnabled: String(indexer.enabled) },
+					settings: {
+						apikey: apiKey,
+						indexerId: String(indexer.id),
+						prowlarrEnabled: String(indexer.enabled)
+					},
 					enableAutomaticSearch: true,
 					enableInteractiveSearch: true,
 					minimumSeeders: 1,

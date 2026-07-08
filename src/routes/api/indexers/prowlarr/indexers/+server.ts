@@ -4,7 +4,9 @@ import { requireAdmin } from '$lib/server/auth/authorization.js';
 import {
 	getProwlarrConnection,
 	fetchProwlarrIndexers,
-	normalizeProwlarrUrl
+	normalizeProwlarrUrl,
+	isIndexerFromConnection,
+	getProwlarrId
 } from '$lib/server/indexers/prowlarr/ProwlarrConnectionService.js';
 import { getIndexerManager } from '$lib/server/indexers/IndexerManager.js';
 
@@ -44,15 +46,15 @@ export const GET: RequestHandler = async (event) => {
 
 	const manager = await getIndexerManager();
 	const existingIndexers = await manager.getIndexers();
-	const existingByBaseUrl = new Map(
-		existingIndexers.map((i) => [normalizeProwlarrUrl(i.baseUrl), i])
-	);
+
+	const managedIndexers = existingIndexers.filter((i) => isIndexerFromConnection(i, base));
+	const existingProwlarrIds = new Set(managedIndexers.map((i) => getProwlarrId(i, base)));
+	const existingById = new Map(managedIndexers.map((i) => [getProwlarrId(i, base), i]));
 
 	const indexers = [];
 	for (const raw of rawIndexers) {
 		const protocol = raw.protocol === 'usenet' ? 'usenet' : 'torrent';
-		const baseUrl = `${base}/${raw.id}`;
-		const existing = existingByBaseUrl.get(baseUrl);
+		const existing = existingById.get(raw.id);
 
 		if (existing && existing.name !== raw.name) {
 			await manager.updateIndexer(existing.id, { name: raw.name });
@@ -63,10 +65,10 @@ export const GET: RequestHandler = async (event) => {
 			name: raw.name,
 			enabled: raw.enable === true,
 			protocol,
-			definitionId: protocol === 'usenet' ? 'newznab' : 'torznab',
-			baseUrl,
+			definitionId: 'prowlarr',
+			baseUrl: conn.url,
 			privacy: typeof raw.privacy === 'string' ? raw.privacy : 'unknown',
-			alreadyImported: Boolean(existing)
+			alreadyImported: existingProwlarrIds.has(raw.id)
 		});
 	}
 

@@ -3,7 +3,11 @@ import type { RequestHandler } from './$types';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { z } from 'zod';
 import { getIndexerManager } from '$lib/server/indexers/IndexerManager.js';
-import { normalizeProwlarrUrl } from '$lib/server/indexers/prowlarr/ProwlarrConnectionService.js';
+import {
+	normalizeProwlarrUrl,
+	isIndexerFromConnection,
+	getProwlarrId
+} from '$lib/server/indexers/prowlarr/ProwlarrConnectionService.js';
 
 const requestSchema = z.object({
 	url: z.string().url('Prowlarr URL must be a valid URL'),
@@ -23,7 +27,7 @@ export interface ProwlarrImportIndexer {
 	name: string;
 	enabled: boolean;
 	protocol: 'torrent' | 'usenet';
-	definitionId: 'torznab' | 'newznab';
+	definitionId: 'prowlarr';
 	baseUrl: string;
 	privacy: string;
 	alreadyImported: boolean;
@@ -96,9 +100,11 @@ export const POST: RequestHandler = async (event) => {
 
 	const manager = await getIndexerManager();
 	const existingIndexers = await manager.getIndexers();
-	const existingByBaseUrl = new Map(
-		existingIndexers.map((i) => [normalizeProwlarrUrl(i.baseUrl), i])
-	);
+
+	const prowlarrBase = normalizeProwlarrUrl(prowlarrUrl);
+	const managedIndexers = existingIndexers.filter((i) => isIndexerFromConnection(i, prowlarrBase));
+	const existingProwlarrIds = new Set(managedIndexers.map((i) => getProwlarrId(i, prowlarrBase)));
+	const existingById = new Map(managedIndexers.map((i) => [getProwlarrId(i, prowlarrBase), i]));
 
 	const indexers: ProwlarrImportIndexer[] = [];
 
@@ -106,9 +112,7 @@ export const POST: RequestHandler = async (event) => {
 		if (typeof raw.id !== 'number' || typeof raw.name !== 'string') continue;
 
 		const protocol = raw.protocol === 'usenet' ? 'usenet' : 'torrent';
-		const definitionId = protocol === 'usenet' ? 'newznab' : 'torznab';
-		const baseUrl = `${prowlarrUrl}/${raw.id}`;
-		const existing = existingByBaseUrl.get(baseUrl);
+		const existing = existingById.get(raw.id);
 
 		if (existing && existing.name !== raw.name) {
 			await manager.updateIndexer(existing.id, { name: raw.name });
@@ -119,10 +123,10 @@ export const POST: RequestHandler = async (event) => {
 			name: raw.name,
 			enabled: raw.enable === true,
 			protocol,
-			definitionId,
-			baseUrl,
+			definitionId: 'prowlarr',
+			baseUrl: prowlarrBase,
 			privacy: typeof raw.privacy === 'string' ? raw.privacy : 'unknown',
-			alreadyImported: Boolean(existing)
+			alreadyImported: existingProwlarrIds.has(raw.id)
 		});
 	}
 

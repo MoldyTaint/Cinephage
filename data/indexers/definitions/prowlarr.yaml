@@ -1,0 +1,132 @@
+---
+id: prowlarr
+name: Prowlarr
+description: Direct integration with Prowlarr's native search API
+type: semi-private
+language: en-US
+encoding: UTF-8
+requestdelay: 0.1
+
+links:
+  - http://localhost:9696/
+
+settings:
+  - name: apikey
+    type: password
+    label: API Key
+    required: true
+  - name: indexerId
+    type: text
+    label: Indexer ID
+    required: true
+
+caps:
+  modes:
+    search: [q]
+    movie-search: [q, imdbid, tmdbid]
+    tv-search: [q, imdbid, tvdbid, season, ep]
+  categories:
+    '2000': Movies
+    '2010': Movies/Foreign
+    '2020': Movies/Other
+    '2030': Movies/SD
+    '2040': Movies/HD
+    '2045': Movies/UHD
+    '2050': Movies/BluRay
+    '2060': Movies/3D
+    '2070': Movies/DVD
+    '2080': Movies/WEB-DL
+    '2090': Movies/x265
+    '5000': TV
+    '5010': TV/WEB-DL
+    '5020': TV/Foreign
+    '5030': TV/SD
+    '5040': TV/HD
+    '5045': TV/UHD
+    '5050': TV/Other
+    '5060': TV/Sport
+    '5070': TV/Anime
+    '5080': TV/Documentary
+    '5090': TV/x265
+    '8000': Other
+    '8010': Other/Misc
+    '8020': Other/Hashed
+
+search:
+  paths:
+    # Movie search — passes TMDB/IMDB IDs when available
+    - path: api/v1/search
+      method: get
+      categories: [Movies]
+      inputs:
+        query: '{{ .Keywords }}'
+        type: movie
+        imdbId: '{{ .Query.IMDBID }}'
+        tmdbId: '{{ .Query.TMDBID }}'
+        categories: '{{ .Categories }}'
+        apikey: '{{ .Config.apikey }}'
+        indexerIds: '{{ .Config.indexerId }}'
+
+    # TV search — passes TVDB/IMDB IDs, season, and episode when available
+    - path: api/v1/search
+      method: get
+      categories: [TV]
+      inputs:
+        query: '{{ .Keywords }}'
+        type: tv
+        imdbId: '{{ .Query.IMDBID }}'
+        tvdbId: '{{ .Query.TVDBID }}'
+        seasonNumber: '{{ .Query.Season }}'
+        episodeNumber: '{{ .Query.Ep }}'
+        categories: '{{ .Categories }}'
+        apikey: '{{ .Config.apikey }}'
+        indexerIds: '{{ .Config.indexerId }}'
+
+    # General keyword search fallback
+    - path: api/v1/search
+      method: get
+      inputs:
+        query: '{{ .Keywords }}'
+        type: search
+        categories: '{{ .Categories }}'
+        apikey: '{{ .Config.apikey }}'
+        indexerIds: '{{ .Config.indexerId }}'
+
+  response:
+    type: json
+
+  fields:
+    title:
+      selector: title
+    details:
+      selector: infoUrl
+      optional: true
+    download:
+      selector: downloadUrl
+      optional: true
+    guid:
+      selector: guid
+      optional: true
+    date:
+      selector: publishDate
+    size:
+      selector: size
+      optional: true
+    seeders:
+      selector: seeders
+      optional: true
+    leechers:
+      selector: peers
+      optional: true
+    infohash:
+      selector: infoHash
+      optional: true
+    magnet:
+      selector: magnetUrl
+      optional: true
+    category:
+      selector: category
+      optional: true
+    protocol:
+      selector: protocol
+      optional: true

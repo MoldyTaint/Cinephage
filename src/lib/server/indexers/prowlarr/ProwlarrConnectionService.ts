@@ -79,9 +79,45 @@ export function normalizeProwlarrUrl(url: string): string {
 	return url.replace(/\/+$/, '');
 }
 
-export function isIndexerFromConnection(baseUrl: string, prowlarrBase: string): boolean {
-	if (!baseUrl.startsWith(prowlarrBase + '/')) return false;
-	const suffix = baseUrl.slice(prowlarrBase.length + 1).replace(/\/+$/, '');
+/**
+ * Extract the numeric Prowlarr indexer ID from an indexer record.
+ * New-format indexers store it in settings.indexerId; legacy torznab/newznab
+ * indexers encoded it as the last path segment of baseUrl.
+ */
+export function getProwlarrId(
+	indexer: { definitionId: string; baseUrl: string; settings?: Record<string, unknown> | null },
+	prowlarrBase: string
+): number {
+	if (indexer.definitionId === 'prowlarr') {
+		return parseInt(String(indexer.settings?.indexerId ?? ''), 10);
+	}
+	const suffix = indexer.baseUrl.slice(prowlarrBase.length + 1).replace(/\/+$/, '');
+	return parseInt(suffix, 10);
+}
+
+/**
+ * Returns true if the given indexer was imported from this Prowlarr connection.
+ * Handles both the current format (definitionId=prowlarr, baseUrl=prowlarrBase)
+ * and the legacy format (definitionId=torznab/newznab, baseUrl=prowlarrBase/{id}).
+ */
+export function isIndexerFromConnection(
+	indexer: { definitionId: string; baseUrl: string } | string,
+	prowlarrBase: string
+): boolean {
+	if (typeof indexer === 'string') {
+		// Legacy call with raw baseUrl string
+		const baseUrl = indexer;
+		if (normalizeProwlarrUrl(baseUrl) === prowlarrBase) return true;
+		if (!baseUrl.startsWith(prowlarrBase + '/')) return false;
+		const suffix = baseUrl.slice(prowlarrBase.length + 1).replace(/\/+$/, '');
+		return /^\d+$/.test(suffix);
+	}
+	if (indexer.definitionId === 'prowlarr') {
+		return normalizeProwlarrUrl(indexer.baseUrl) === prowlarrBase;
+	}
+	// Legacy torznab/newznab: baseUrl is prowlarrBase/{numericId}
+	if (!indexer.baseUrl.startsWith(prowlarrBase + '/')) return false;
+	const suffix = indexer.baseUrl.slice(prowlarrBase.length + 1).replace(/\/+$/, '');
 	return /^\d+$/.test(suffix);
 }
 
@@ -150,13 +186,10 @@ export async function syncProwlarrIndexers(): Promise<SyncResult> {
 	const existingIndexers = await manager.getIndexers();
 
 	// Partition: which existing Cinephage indexers came from this Prowlarr instance
-	const managedIndexers = existingIndexers.filter((i) =>
-		isIndexerFromConnection(i.baseUrl, prowlarrBase)
-	);
+	const managedIndexers = existingIndexers.filter((i) => isIndexerFromConnection(i, prowlarrBase));
 
 	for (const indexer of managedIndexers) {
-		const suffix = indexer.baseUrl.slice(prowlarrBase.length + 1).replace(/\/+$/, '');
-		const prowlarrId = parseInt(suffix, 10);
+		const prowlarrId = getProwlarrId(indexer, prowlarrBase);
 		const pi = prowlarrById.get(prowlarrId);
 
 		if (!pi) {
@@ -217,25 +250,21 @@ export async function syncProwlarrIndexers(): Promise<SyncResult> {
 
 	// Add new indexers only when the user has opted in
 	if (conn.syncAddNew) {
-		const managedBaseUrls = new Set(managedIndexers.map((i) => normalizeProwlarrUrl(i.baseUrl)));
+		const managedIds = new Set(managedIndexers.map((i) => getProwlarrId(i, prowlarrBase)));
 
 		for (const pi of prowlarrIndexers) {
-			const baseUrl = `${prowlarrBase}/${pi.id}`;
-			if (managedBaseUrls.has(baseUrl)) continue;
-
-			const protocol = pi.protocol === 'usenet' ? 'usenet' : 'torrent';
-			const definitionId = protocol === 'usenet' ? 'newznab' : 'torznab';
+			if (managedIds.has(pi.id)) continue;
 
 			try {
 				await manager.createIndexer({
 					name: pi.name,
-					definitionId,
-					baseUrl,
+					definitionId: 'prowlarr',
+					baseUrl: prowlarrBase,
 					alternateUrls: [],
 					enabled: true,
 					upstreamEnabled: pi.enable,
 					priority: 25,
-					settings: { apikey: conn.apiKey },
+					settings: { apikey: conn.apiKey, indexerId: String(pi.id) },
 					enableAutomaticSearch: true,
 					enableInteractiveSearch: true,
 					minimumSeeders: 1,
@@ -265,13 +294,10 @@ export async function syncProwlarrIndexers(): Promise<SyncResult> {
 
 		// Re-fetch managed indexers (some may have been removed above)
 		const currentIndexers = await manager.getIndexers();
-		const stillManaged = currentIndexers.filter((i) =>
-			isIndexerFromConnection(i.baseUrl, prowlarrBase)
-		);
+		const stillManaged = currentIndexers.filter((i) => isIndexerFromConnection(i, prowlarrBase));
 
 		for (const indexer of stillManaged) {
-			const suffix = indexer.baseUrl.slice(prowlarrBase.length + 1).replace(/\/+$/, '');
-			const prowlarrId = parseInt(suffix, 10);
+			const prowlarrId = getProwlarrId(indexer, prowlarrBase);
 			const failureInfo = failedByProwlarrId.get(prowlarrId);
 
 			if (failureInfo) {
@@ -318,7 +344,7 @@ export async function propagateProwlarrApiKey(newApiKey: string): Promise<void> 
 	const indexers = await manager.getIndexers();
 
 	for (const indexer of indexers) {
-		if (!isIndexerFromConnection(indexer.baseUrl, prowlarrBase)) continue;
+		if (!isIndexerFromConnection(indexer, prowlarrBase)) continue;
 		const existing = indexer.settings as Record<string, unknown> | null;
 		if ((existing?.apikey ?? '') === newApiKey) continue;
 		await manager.updateIndexer(indexer.id, {
