@@ -50,6 +50,17 @@ caps:
     '5070': TV/Anime
     '5080': TV/Documentary
     '5090': TV/x265
+    '6000': XXX
+    '6010': XXX/DVD
+    '6020': XXX/WMV
+    '6030': XXX/XviD
+    '6040': XXX/x264
+    '6045': XXX/UHD
+    '6050': XXX/Pack
+    '6060': XXX/ImgSet
+    '6070': XXX/Other
+    '6080': XXX/SD
+    '6090': XXX/x265
     '8000': Other
     '8010': Other/Misc
     '8020': Other/Hashed

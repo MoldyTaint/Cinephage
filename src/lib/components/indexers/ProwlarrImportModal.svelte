@@ -189,6 +189,7 @@
 				autoSync,
 				syncIntervalHours,
 				syncAddNew,
+				useAggregateEndpoint: false,
 				lastSyncAt: null,
 				lastSyncResult: null,
 				lastSyncError: null

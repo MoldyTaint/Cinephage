@@ -805,9 +805,19 @@ export class UnifiedIndexer implements IIndexer {
 	 * - Not configured (null in DB) → return criteria unchanged, RequestBuilder fills defaults.
 	 * - Empty restriction [] → set categories to [] so RequestBuilder sends no cat= param (open search).
 	 * - Non-empty restriction → replace categories with the user-selected set.
+	 *
+	 * For Prowlarr native indexers (definitionId='prowlarr'), unrestricted searches
+	 * send no categories so Prowlarr queries all applicable indexers without filtering.
 	 */
 	private applyAdditionalCategories(criteria: SearchCriteria): SearchCriteria {
-		if (!this.categoryRestrictionEnabled) return criteria;
+		if (!this.categoryRestrictionEnabled) {
+			// Prowlarr's native API uses categories= to restrict which indexers participate.
+			// When no restriction is set, omit categories entirely so all indexers are searched.
+			if (this.definition.id === 'prowlarr') {
+				return { ...criteria, categories: [] };
+			}
+			return criteria;
+		}
 		return { ...criteria, categories: this.additionalCategories };
 	}
 

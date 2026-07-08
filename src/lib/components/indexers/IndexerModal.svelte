@@ -227,7 +227,9 @@
 	}
 
 	const isNewznabLike = $derived(
-		selectedDefinitionId === 'newznab' || selectedDefinitionId === 'torznab'
+		selectedDefinitionId === 'newznab' ||
+			selectedDefinitionId === 'torznab' ||
+			selectedDefinitionId === 'prowlarr'
 	);
 
 	function getFormData(): IndexerFormData {
