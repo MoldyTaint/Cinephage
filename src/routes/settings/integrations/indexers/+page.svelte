@@ -66,6 +66,7 @@
 		const prowlarrBase = data.prowlarrConnection?.url?.replace(/\/+$/, '');
 		if (!prowlarrBase || !deleteTarget) return false;
 		if (deleteTarget.definitionId !== 'prowlarr') return false;
+		if ((deleteTarget.settings as Record<string, string> | null)?.aggregate === 'true') return true;
 		if (!deleteTarget.baseUrl.startsWith(prowlarrBase + '/')) return false;
 		const suffix = deleteTarget.baseUrl.slice(prowlarrBase.length + 1).replace(/\/+$/, '');
 		return /^\d+$/.test(suffix);

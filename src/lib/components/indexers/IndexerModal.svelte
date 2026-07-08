@@ -97,6 +97,9 @@
 	const isProwlarrManaged = $derived.by(() => {
 		if (mode !== 'edit' || !indexer || !prowlarrBaseUrl) return false;
 		if (indexer.definitionId !== 'prowlarr') return false;
+		// Aggregate indexer — identified by settings flag
+		if (indexer.settings?.aggregate === 'true') return true;
+		// Individual indexer — baseUrl must end with a numeric Prowlarr ID
 		const base = prowlarrBaseUrl.replace(/\/+$/, '');
 		if (!indexer.baseUrl.startsWith(base + '/')) return false;
 		const suffix = indexer.baseUrl.slice(base.length + 1).replace(/\/+$/, '');
@@ -341,6 +344,7 @@
 
 		<!-- Prowlarr-managed indexer header -->
 		{#if isProwlarrManaged && indexer}
+			{@const isAggregate = indexer.settings?.aggregate === 'true'}
 			<div class="mb-6 flex items-center gap-3 rounded-lg bg-primary/10 px-4 py-3">
 				<div class="rounded-lg bg-primary/20 p-2">
 					<Lock class="h-5 w-5 text-primary" />
@@ -349,10 +353,16 @@
 					<div class="flex items-center gap-2">
 						<span class="font-semibold">{indexer.name}</span>
 						<span class="badge badge-sm badge-primary">Prowlarr</span>
-						<span class="badge badge-ghost badge-sm">{indexer.protocol}</span>
+						{#if isAggregate}
+							<span class="badge badge-ghost badge-sm">Aggregate</span>
+						{:else}
+							<span class="badge badge-ghost badge-sm">{indexer.protocol}</span>
+						{/if}
 					</div>
 					<div class="text-sm text-base-content/60">
-						Name, URL, and authentication are managed by Prowlarr.
+						{isAggregate
+							? 'Searches all enabled Prowlarr indexers. Authentication is managed by Prowlarr.'
+							: 'Name, URL, and authentication are managed by Prowlarr.'}
 					</div>
 				</div>
 			</div>

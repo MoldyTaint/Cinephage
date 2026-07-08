@@ -62,6 +62,7 @@
 
 	function isProwlarrIndexer(): boolean {
 		if (!prowlarrBaseUrl || indexer.definitionId !== 'prowlarr') return false;
+		if (indexer.settings?.aggregate === 'true') return true;
 		const base = prowlarrBaseUrl.replace(/\/+$/, '');
 		if (!indexer.baseUrl.startsWith(base + '/')) return false;
 		const suffix = indexer.baseUrl.slice(base.length + 1).replace(/\/+$/, '');

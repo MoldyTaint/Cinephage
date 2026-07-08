@@ -36,6 +36,7 @@
 		autoSync: boolean;
 		syncIntervalHours: number;
 		syncAddNew: boolean;
+		useAggregateEndpoint: boolean;
 		lastSyncAt: string | null;
 		lastSyncResult: SyncResult | null;
 		lastSyncError: string | null;
@@ -80,14 +81,21 @@
 			autoSync = conn?.autoSync ?? false;
 			syncIntervalHours = conn?.syncIntervalHours ?? 24;
 			syncAddNew = conn?.syncAddNew ?? false;
+			useAggregateEndpoint = conn?.useAggregateEndpoint ?? false;
 			connectError = '';
+			aggregateError = '';
 			syncing = false;
 			syncError = '';
 			importing = false;
 			doneResult = null;
 			confirmingDelete = false;
+			confirmingAggregateEnable = false;
 			indexers = [];
 			selected.clear();
+			prowlarrIndexerCount = null;
+			if (conn?.useAggregateEndpoint) {
+				fetchProwlarrIndexerCount();
+			}
 		}
 	});
 
@@ -108,6 +116,12 @@
 
 	let savingSettings = $state(false);
 	let saveSettingsTimer: ReturnType<typeof setTimeout> | null = null;
+
+	let useAggregateEndpoint = $state(false);
+	let togglingAggregate = $state(false);
+	let aggregateError = $state('');
+	let prowlarrIndexerCount = $state<number | null>(null);
+	let confirmingAggregateEnable = $state(false);
 
 	function scheduleSettingsSave() {
 		if (!connection) return;
@@ -306,6 +320,69 @@
 			}
 		} catch {
 			// ignore
+		}
+	}
+
+	async function fetchProwlarrIndexerCount() {
+		try {
+			const res = await fetch('/api/indexers/prowlarr/indexers');
+			if (res.ok) {
+				const data = await res.json();
+				prowlarrIndexerCount = (data.indexers as ProwlarrIndexer[]).length;
+			}
+		} catch {
+			// best-effort
+		}
+	}
+
+	async function handleAggregateEnable() {
+		togglingAggregate = true;
+		aggregateError = '';
+		confirmingAggregateEnable = false;
+		try {
+			const res = await fetch('/api/indexers/prowlarr/aggregate', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ enable: true })
+			});
+			const data = await res.json();
+			if (!res.ok) {
+				aggregateError = data.error ?? 'Failed to enable aggregate mode.';
+				return;
+			}
+			useAggregateEndpoint = true;
+			await invalidateAll();
+			await fetchProwlarrIndexerCount();
+		} catch {
+			aggregateError = 'Failed to enable aggregate mode.';
+		} finally {
+			togglingAggregate = false;
+		}
+	}
+
+	async function handleAggregateDisable() {
+		togglingAggregate = true;
+		aggregateError = '';
+		try {
+			const res = await fetch('/api/indexers/prowlarr/aggregate', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ enable: false })
+			});
+			const data = await res.json();
+			if (!res.ok) {
+				aggregateError = data.error ?? 'Failed to disable aggregate mode.';
+				return;
+			}
+			useAggregateEndpoint = false;
+			prowlarrIndexerCount = null;
+			await invalidateAll();
+			// Open the import screen so the user can re-add individual indexers
+			await browseAndImport();
+		} catch {
+			aggregateError = 'Failed to disable aggregate mode.';
+		} finally {
+			togglingAggregate = false;
 		}
 	}
 
@@ -570,23 +647,90 @@
 				</div>
 			{/if}
 
-			<div class="flex items-center justify-between">
+			{#if !useAggregateEndpoint}
+				<div class="flex items-center justify-between">
+					<div>
+						<p class="text-sm font-medium">Import new indexers during sync</p>
+						<p class="text-xs text-base-content/60">
+							Automatically add Prowlarr indexers you haven't imported yet
+						</p>
+					</div>
+					<input
+						type="checkbox"
+						class="toggle toggle-primary toggle-sm"
+						checked={syncAddNew}
+						onchange={(e) => {
+							syncAddNew = (e.currentTarget as HTMLInputElement).checked;
+							scheduleSettingsSave();
+						}}
+					/>
+				</div>
+			{/if}
+
+			<div class="divider my-1 text-xs text-base-content/50">Search mode</div>
+
+			<div class="flex items-start justify-between gap-4">
 				<div>
-					<p class="text-sm font-medium">Import new indexers during sync</p>
+					<p class="text-sm font-medium">Use aggregate endpoint</p>
 					<p class="text-xs text-base-content/60">
-						Automatically add Prowlarr indexers you haven't imported yet
+						Search all Prowlarr indexers through a single endpoint instead of managing them
+						individually
 					</p>
 				</div>
 				<input
 					type="checkbox"
-					class="toggle toggle-primary toggle-sm"
-					checked={syncAddNew}
+					class="toggle toggle-primary toggle-sm shrink-0"
+					checked={useAggregateEndpoint}
+					disabled={togglingAggregate}
 					onchange={(e) => {
-						syncAddNew = (e.currentTarget as HTMLInputElement).checked;
-						scheduleSettingsSave();
+						const checked = (e.currentTarget as HTMLInputElement).checked;
+						if (checked) {
+							confirmingAggregateEnable = true;
+						} else {
+							handleAggregateDisable();
+						}
 					}}
 				/>
 			</div>
+
+			{#if useAggregateEndpoint && prowlarrIndexerCount !== null}
+				<div class="rounded-box bg-base-200/60 px-3 py-2 text-xs text-base-content/60">
+					Searching across {prowlarrIndexerCount} indexer{prowlarrIndexerCount !== 1 ? 's' : ''} in
+					Prowlarr
+				</div>
+			{/if}
+
+			{#if confirmingAggregateEnable}
+				<div class="space-y-2 rounded-box border border-warning/30 bg-warning/5 p-3">
+					<p class="text-sm font-medium text-warning">Switch to aggregate mode?</p>
+					<p class="text-xs text-base-content/70">
+						All individually imported Prowlarr indexers will be removed from Cinephage and replaced
+						with a single aggregate indexer. They can be re-imported individually if you switch back.
+					</p>
+					<div class="flex gap-2 pt-1">
+						<button
+							type="button"
+							class="btn btn-xs btn-warning"
+							disabled={togglingAggregate}
+							onclick={handleAggregateEnable}
+						>
+							{#if togglingAggregate}
+								<Loader2 class="h-3.5 w-3.5 animate-spin" />
+							{/if}
+							Yes, switch
+						</button>
+						<button
+							type="button"
+							class="btn btn-ghost btn-xs"
+							onclick={() => (confirmingAggregateEnable = false)}>Cancel</button
+						>
+					</div>
+				</div>
+			{/if}
+
+			{#if aggregateError}
+				<div class="alert py-2 text-sm alert-error">{aggregateError}</div>
+			{/if}
 
 			{#if connectError}
 				<div class="alert py-2 text-sm alert-error">{connectError}</div>
@@ -640,20 +784,22 @@
 			{/if}
 		</div>
 		<div class="flex shrink-0 justify-between gap-2 border-t border-base-300 px-6 py-4">
-			<button
-				type="button"
-				class="btn gap-1.5 btn-ghost btn-sm"
-				disabled={browsingIndexers}
-				onclick={browseAndImport}
-			>
-				{#if browsingIndexers}
-					<Loader2 class="h-4 w-4 animate-spin" />
-					Loading...
-				{:else}
-					<Download class="h-4 w-4" />
-					Browse &amp; import
-				{/if}
-			</button>
+			<div class="tooltip" data-tip={useAggregateEndpoint ? 'Disable aggregate mode to import individual indexers' : ''}>
+				<button
+					type="button"
+					class="btn gap-1.5 btn-ghost btn-sm"
+					disabled={browsingIndexers || useAggregateEndpoint}
+					onclick={browseAndImport}
+				>
+					{#if browsingIndexers}
+						<Loader2 class="h-4 w-4 animate-spin" />
+						Loading...
+					{:else}
+						<Download class="h-4 w-4" />
+						Browse &amp; import
+					{/if}
+				</button>
+			</div>
 			<button type="button" class="btn btn-sm btn-primary" onclick={handleClose}>
 				{#if savingSettings}
 					<Loader2 class="h-4 w-4 animate-spin" />

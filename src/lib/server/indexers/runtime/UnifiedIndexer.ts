@@ -239,7 +239,8 @@ export class UnifiedIndexer implements IIndexer {
 				: definition.links.slice(1),
 			userAgent: 'Cinephage/1.0',
 			rateLimit: rateLimit ?? { requests: 30, periodMs: 60_000 },
-			encoding: definition.encoding
+			encoding: definition.encoding,
+			defaultTimeout: definition.requesttimeout
 		});
 		this.hostRateLimiter = getHostRateLimiter();
 

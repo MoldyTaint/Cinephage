@@ -6,6 +6,8 @@ type: semi-private
 language: en-US
 encoding: UTF-8
 requestdelay: 0.1
+# Prowlarr aggregate search queries all indexers; allow up to 90 seconds for a response
+requesttimeout: 90000
 
 links:
   - http://localhost:9696/
@@ -18,7 +20,7 @@ settings:
   - name: indexerId
     type: text
     label: Indexer ID
-    required: true
+    required: false
 
 caps:
   modes:
@@ -64,8 +66,7 @@ search:
         imdbId: '{{ .Query.IMDBID }}'
         tmdbId: '{{ .Query.TMDBID }}'
         apikey: '{{ .Config.apikey }}'
-        indexerIds: '{{ .Config.indexerId }}'
-        $raw: '{{ if .Categories }}categories={{ join .Categories "&categories=" }}{{ end }}'
+        $raw: '{{ if .Config.indexerId }}indexerIds={{ .Config.indexerId }}&{{ end }}{{ if .Categories }}categories={{ join .Categories "&categories=" }}{{ end }}'
 
     # TV search — passes TVDB/IMDB IDs, season, and episode when available
     - path: api/v1/search
@@ -79,8 +80,7 @@ search:
         seasonNumber: '{{ .Query.Season }}'
         episodeNumber: '{{ .Query.Ep }}'
         apikey: '{{ .Config.apikey }}'
-        indexerIds: '{{ .Config.indexerId }}'
-        $raw: '{{ if .Categories }}categories={{ join .Categories "&categories=" }}{{ end }}'
+        $raw: '{{ if .Config.indexerId }}indexerIds={{ .Config.indexerId }}&{{ end }}{{ if .Categories }}categories={{ join .Categories "&categories=" }}{{ end }}'
 
     # General keyword search fallback
     - path: api/v1/search
@@ -89,8 +89,7 @@ search:
         query: '{{ .Keywords }}'
         type: search
         apikey: '{{ .Config.apikey }}'
-        indexerIds: '{{ .Config.indexerId }}'
-        $raw: '{{ if .Categories }}categories={{ join .Categories "&categories=" }}{{ end }}'
+        $raw: '{{ if .Config.indexerId }}indexerIds={{ .Config.indexerId }}&{{ end }}{{ if .Categories }}categories={{ join .Categories "&categories=" }}{{ end }}'
 
   response:
     type: json

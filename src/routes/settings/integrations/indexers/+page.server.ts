@@ -114,6 +114,7 @@ export const load: PageServerLoad = async () => {
 					autoSync: prowlarrConn.autoSync,
 					syncIntervalHours: prowlarrConn.syncIntervalHours,
 					syncAddNew: prowlarrConn.syncAddNew,
+					useAggregateEndpoint: prowlarrConn.useAggregateEndpoint,
 					lastSyncAt: prowlarrConn.lastSyncAt,
 					lastSyncResult: prowlarrConn.lastSyncResult,
 					lastSyncError: prowlarrConn.lastSyncError

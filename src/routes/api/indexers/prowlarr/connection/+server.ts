@@ -21,7 +21,8 @@ const connectionSchema = z.object({
 	apiKey: z.string().optional(),
 	autoSync: z.boolean().default(false),
 	syncIntervalHours: z.number().int().min(1).max(168).default(24),
-	syncAddNew: z.boolean().default(false)
+	syncAddNew: z.boolean().default(false),
+	useAggregateEndpoint: z.boolean().default(false)
 });
 
 /** GET - return current connection. The API key is never included in the response. */
@@ -38,6 +39,7 @@ export const GET: RequestHandler = async (event) => {
 			autoSync: conn.autoSync,
 			syncIntervalHours: conn.syncIntervalHours,
 			syncAddNew: conn.syncAddNew,
+			useAggregateEndpoint: conn.useAggregateEndpoint,
 			lastSyncAt: conn.lastSyncAt,
 			lastSyncResult: conn.lastSyncResult,
 			lastSyncError: conn.lastSyncError
@@ -66,7 +68,7 @@ export const PUT: RequestHandler = async (event) => {
 		return json({ error: result.error.issues[0]?.message ?? 'Invalid request' }, { status: 400 });
 	}
 
-	const { url: rawUrl, apiKey: providedKey, autoSync, syncIntervalHours, syncAddNew } = result.data;
+	const { url: rawUrl, apiKey: providedKey, autoSync, syncIntervalHours, syncAddNew, useAggregateEndpoint } = result.data;
 	const url = normalizeProwlarrUrl(rawUrl);
 
 	const existing = await getProwlarrConnection();
@@ -107,6 +109,7 @@ export const PUT: RequestHandler = async (event) => {
 		autoSync,
 		syncIntervalHours,
 		syncAddNew,
+		useAggregateEndpoint: existing?.useAggregateEndpoint ?? useAggregateEndpoint,
 		// Preserve sync history when the URL hasn't changed
 		lastSyncAt: existing?.url === url ? (existing.lastSyncAt ?? null) : null,
 		lastSyncResult: existing?.url === url ? (existing.lastSyncResult ?? null) : null,
