@@ -11,6 +11,7 @@ import {
 	normalizeJackettUrl
 } from '$lib/server/indexers/jackett/JackettConnectionService.js';
 import {
+	fetchProwlarrIndexers,
 	getProwlarrConnection,
 	isIndexerFromConnection,
 	normalizeProwlarrUrl
@@ -264,6 +265,22 @@ export const POST: RequestHandler = async (event) => {
 			definition.settings
 		);
 
+		// Aggregate Prowlarr indexer: skip the full fan-out search and do a lightweight
+		// /api/v1/indexer request to verify connectivity and authentication only.
+		if (validated.definitionId === 'prowlarr' && settings.aggregate) {
+			const apiKey = extractApiKey(settings);
+			if (!apiKey) {
+				return json({ success: false, error: 'Prowlarr API key is missing.' }, { status: 400 });
+			}
+			try {
+				await fetchProwlarrIndexers(validated.baseUrl, apiKey);
+				return json({ success: true });
+			} catch (e) {
+				const message = e instanceof Error ? e.message : 'Unable to connect to Prowlarr.';
+				return json({ success: false, error: message }, { status: 400 });
+			}
+		}
+
 		// Torznab validation: auto-discover the correct endpoint if the user entered a bare host URL,
 		// then validate the resolved URL's caps endpoint.
 		if (validated.definitionId === 'torznab') {
@@ -316,7 +333,8 @@ export const POST: RequestHandler = async (event) => {
 			let source: string | null = null;
 			if (prowlarrConn) {
 				const prowlarrBase = normalizeProwlarrUrl(prowlarrConn.url);
-				if (existingIndexer && isIndexerFromConnection(existingIndexer, prowlarrBase)) source = 'Prowlarr';
+				if (existingIndexer && isIndexerFromConnection(existingIndexer, prowlarrBase))
+					source = 'Prowlarr';
 			}
 			if (!source && jackettConn2) {
 				const jackettBase = normalizeJackettUrl(jackettConn2.url);

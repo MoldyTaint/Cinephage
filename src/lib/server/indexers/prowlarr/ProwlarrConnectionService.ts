@@ -374,9 +374,7 @@ export async function syncProwlarrIndexers(): Promise<SyncResult> {
 					);
 				} catch (err) {
 					result.failed += 1;
-					result.errors.push(
-						`Add ${pi.name}: ${err instanceof Error ? err.message : String(err)}`
-					);
+					result.errors.push(`Add ${pi.name}: ${err instanceof Error ? err.message : String(err)}`);
 				}
 			}
 		}

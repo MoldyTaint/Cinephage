@@ -696,8 +696,7 @@
 
 			{#if useAggregateEndpoint && prowlarrIndexerCount !== null}
 				<div class="rounded-box bg-base-200/60 px-3 py-2 text-xs text-base-content/60">
-					Searching across {prowlarrIndexerCount} indexer{prowlarrIndexerCount !== 1 ? 's' : ''} in
-					Prowlarr
+					Searching across {prowlarrIndexerCount} indexer{prowlarrIndexerCount !== 1 ? 's' : ''} in Prowlarr
 				</div>
 			{/if}
 
@@ -706,7 +705,8 @@
 					<p class="text-sm font-medium text-warning">Switch to aggregate mode?</p>
 					<p class="text-xs text-base-content/70">
 						All individually imported Prowlarr indexers will be removed from Cinephage and replaced
-						with a single aggregate indexer. They can be re-imported individually if you switch back.
+						with a single aggregate indexer. They can be re-imported individually if you switch
+						back.
 					</p>
 					<div class="flex gap-2 pt-1">
 						<button
@@ -785,7 +785,12 @@
 			{/if}
 		</div>
 		<div class="flex shrink-0 justify-between gap-2 border-t border-base-300 px-6 py-4">
-			<div class="tooltip" data-tip={useAggregateEndpoint ? 'Disable aggregate mode to import individual indexers' : ''}>
+			<div
+				class="tooltip"
+				data-tip={useAggregateEndpoint
+					? 'Disable aggregate mode to import individual indexers'
+					: ''}
+			>
 				<button
 					type="button"
 					class="btn gap-1.5 btn-ghost btn-sm"

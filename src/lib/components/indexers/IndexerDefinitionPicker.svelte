@@ -171,7 +171,9 @@
 	</div>
 
 	<p class="text-center text-sm text-base-content/50">
-		{m.settings_indexers_indexersAvailable({ count: definitions.filter((d) => d.id !== 'prowlarr').length })}
+		{m.settings_indexers_indexersAvailable({
+			count: definitions.filter((d) => d.id !== 'prowlarr').length
+		})}
 	</p>
 </div>
 

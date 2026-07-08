@@ -68,7 +68,14 @@ export const PUT: RequestHandler = async (event) => {
 		return json({ error: result.error.issues[0]?.message ?? 'Invalid request' }, { status: 400 });
 	}
 
-	const { url: rawUrl, apiKey: providedKey, autoSync, syncIntervalHours, syncAddNew, useAggregateEndpoint } = result.data;
+	const {
+		url: rawUrl,
+		apiKey: providedKey,
+		autoSync,
+		syncIntervalHours,
+		syncAddNew,
+		useAggregateEndpoint
+	} = result.data;
 	const url = normalizeProwlarrUrl(rawUrl);
 
 	const existing = await getProwlarrConnection();
