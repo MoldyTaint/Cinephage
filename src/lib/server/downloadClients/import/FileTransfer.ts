@@ -248,12 +248,12 @@ export async function transferFile(
 					);
 				}
 			} else {
-				logger.debug(
+				logger.info(
 					{
-						source,
-						dest
+						source: basename(source),
+						dest: basename(dest)
 					},
-					'Source and dest on different filesystems, using copy'
+					'Hardlink not possible (source and destination on different filesystems), falling back to copy'
 				);
 			}
 		}

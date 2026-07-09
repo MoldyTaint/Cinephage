@@ -1323,7 +1323,8 @@ export class ManualImportService {
 		const transferResult = await transferFileWithMode(sourcePath, destinationPath, {
 			importMode,
 			canMoveFiles,
-			preserveSymlinks
+			preserveSymlinks,
+			preferHardlink: settings.preferHardlink
 		});
 
 		if (!transferResult.success) {
