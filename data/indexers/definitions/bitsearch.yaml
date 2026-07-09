@@ -9,9 +9,10 @@ type: public
 encoding: UTF-8
 requestdelay: 2
 links:
-  - https://bitsearch.to/
+  - https://bitsearch.eu/
   - https://solidtorrents.eu/
 legacylinks:
+  - https://bitsearch.to/
   - https://bitsearch.nocensor.cloud/
   - https://bitsearch.mrunblock.bond/
   - https://solidtorrents.net/
