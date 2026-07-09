@@ -23,7 +23,20 @@ import { detectChallengeFromPage } from '../detection/ChallengeDetector';
  * Challenge title patterns that indicate an ongoing challenge.
  * Used to detect when challenge is still active vs completed.
  */
-const CHALLENGE_TITLE_PATTERNS = ['Just a moment', 'Checking', 'Please wait', 'DDoS-Guard'];
+const CHALLENGE_TITLE_PATTERNS = [
+	'Just a moment',
+	'Checking',
+	'Please wait',
+	'DDoS-Guard',
+	// Cloudflare challenge titles in other languages
+	'Un instant', // French
+	'Einen Moment', // German
+	'Un momento', // Spanish/Italian
+	'Aguarde', // Portuguese
+	'しばらくお待ち', // Japanese
+	'잠시만', // Korean
+	'请稍候' // Chinese
+];
 
 /**
  * Wait for Cloudflare challenge to complete.
@@ -49,6 +62,27 @@ async function waitForChallengeComplete(page: Page, timeout = 30000): Promise<bo
 				// Wait a bit for page to load after cookie is set
 				await new Promise((r) => setTimeout(r, 1000));
 				return true;
+			}
+
+			// Turnstile: try clicking the checkbox inside the CF challenge iframe.
+			// Camoufox's humanize handles mouse movements but doesn't target Turnstile
+			// specifically — clicking the checkbox widget is needed for managed challenges.
+			try {
+				const frame = page
+					.frames()
+					.find(
+						(f) => f.url().includes('challenges.cloudflare.com') || f.url().includes('turnstile')
+					);
+				if (frame) {
+					const checkbox = frame.locator('input[type="checkbox"]');
+					const isVisible = await checkbox.isVisible({ timeout: 200 }).catch(() => false);
+					if (isVisible) {
+						logger.debug('[CamoufoxSolver] Clicking Turnstile checkbox');
+						await checkbox.click({ timeout: 2000 }).catch(() => null);
+					}
+				}
+			} catch {
+				// Turnstile not present or not interactable — continue waiting
 			}
 		} catch {
 			// Navigation can destroy execution context - this is expected during challenge completion
@@ -338,7 +372,21 @@ export async function browserFetch(
 		// Always wait for challenge completion - Cloudflare challenges may auto-solve
 		// via Camoufox's humanize feature without explicit detection
 		logger.debug('[CamoufoxSolver] Waiting for any challenge to complete');
-		await waitForChallengeComplete(page, timeout - (Date.now() - startTime));
+		const solved = await waitForChallengeComplete(page, timeout - (Date.now() - startTime));
+
+		if (!solved) {
+			return {
+				success: false,
+				body: '',
+				url: request.url,
+				status: 0,
+				headers: {},
+				cookies: [],
+				userAgent: '',
+				error: `Cloudflare bypass failed for ${new URL(request.url).hostname}: challenge not solved within timeout`,
+				timeMs: Date.now() - startTime
+			};
+		}
 
 		// Get the page content
 		const body = await page.content();
