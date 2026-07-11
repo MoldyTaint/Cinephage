@@ -30,6 +30,7 @@ import type { YamlDefinition } from './schema/yamlDefinition';
 import { buildCapabilitiesFromYaml } from './capabilities';
 import {
 	getSearchOrchestrator,
+	clearSearchCache,
 	type SearchOrchestratorOptions,
 	type EnhancedSearchResult
 } from './search/SearchOrchestrator';
@@ -431,6 +432,9 @@ export class IndexerManager {
 			} else {
 				statusTracker.disable(id);
 			}
+			// Search results are cached without awareness of which indexers are enabled.
+			// Clear so the next search reflects the new indexer set.
+			clearSearchCache();
 		}
 		if (updates.priority !== undefined) {
 			statusTracker.setPriority(id, updates.priority);
