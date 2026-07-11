@@ -1741,14 +1741,6 @@ export const grabRequestSchema = z
 		episodeIds: z.array(z.string()).optional(),
 		seasonNumber: z.number().int().optional(),
 		mediaType: z.enum(['movie', 'tv']),
-		quality: z
-			.object({
-				resolution: z.string().optional(),
-				source: z.string().optional(),
-				codec: z.string().optional(),
-				hdr: z.string().optional()
-			})
-			.optional(),
 		isAutomatic: z.boolean().optional(),
 		isUpgrade: z.boolean().optional(),
 		force: z.boolean().optional(),

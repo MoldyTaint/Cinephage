@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 import { requireAuth } from '$lib/server/auth/authorization.js';
 import { grabService } from '$lib/server/downloads/GrabService.js';
 import { parseBody } from '$lib/server/api/validate.js';
-import { grabRequestSchema } from '$lib/validation/schemas.js';
+import { grabRequestSchema, type GrabRequest as GrabRequestBody } from '$lib/validation/schemas.js';
 import type { GrabResponse } from '$lib/types/queue';
 import type { GrabRequest as ServiceGrabRequest } from '$lib/server/downloads/grab-types.js';
 import type { GrabTarget } from '$lib/server/filters/stages/grab/types.js';
@@ -13,6 +13,7 @@ import { db } from '$lib/server/db';
 import { series } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '$lib/logging';
+import { isAppError } from '$lib/errors';
 
 const parser = new ReleaseParser();
 
@@ -20,7 +21,24 @@ export const POST: RequestHandler = async (event) => {
 	const authError = requireAuth(event);
 	if (authError) return authError;
 
-	const data = await parseBody(event.request, grabRequestSchema);
+	let data: GrabRequestBody;
+	try {
+		data = await parseBody(event.request, grabRequestSchema);
+	} catch (error) {
+		// parseBody throws AppError (e.g. ValidationError) on invalid input. Return it with
+		// its real status code instead of letting SvelteKit surface an opaque 500.
+		if (isAppError(error)) {
+			logger.warn(
+				{ logDomain: 'downloads', code: error.code, context: error.context },
+				'[Grab] Rejected: invalid request body'
+			);
+			return json(
+				{ success: false, error: error.message, errorCode: error.code } satisfies GrabResponse,
+				{ status: error.statusCode }
+			);
+		}
+		throw error;
+	}
 
 	if (data.categories && data.categories.length > 0) {
 		const searchType = data.mediaType === 'movie' ? 'movie' : 'tv';

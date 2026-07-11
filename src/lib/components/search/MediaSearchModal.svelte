@@ -175,14 +175,6 @@
 							};
 						})()),
 				streamUsenet: streaming && release.protocol === 'usenet',
-				quality: release.parsed
-					? {
-							resolution: release.parsed.resolution,
-							source: release.parsed.source,
-							codec: release.parsed.codec,
-							hdr: release.parsed.hdr
-						}
-					: undefined,
 				commentsUrl: release.commentsUrl
 			});
 			return { success: result.success, error: result.error, errorCode: result.errorCode };
