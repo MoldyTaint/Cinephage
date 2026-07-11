@@ -2941,6 +2941,11 @@ export class SearchOrchestrator {
 
 		return criteria;
 	}
+
+	clearCache(): void {
+		this.cache.clear();
+		this.enhancedCache.clear();
+	}
 }
 
 /** Singleton instance */
@@ -2957,4 +2962,9 @@ export function getSearchOrchestrator(): SearchOrchestrator {
 /** Reset the singleton (for testing) */
 export function resetSearchOrchestrator(): void {
 	orchestratorInstance = null;
+}
+
+/** Clear all cached search results (call when indexer config changes). */
+export function clearSearchCache(): void {
+	orchestratorInstance?.clearCache();
 }
