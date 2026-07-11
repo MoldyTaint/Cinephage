@@ -1,14 +1,18 @@
 # ==========================================
-# Build Stage
+# Build-deps base (shared by builder + prod-deps to avoid duplicate apt layers)
 # ==========================================
-FROM node:24-trixie-slim AS builder
+FROM node:24-trixie-slim AS build-deps-base
 WORKDIR /app
-
 RUN apt-get update && apt-get install -y --no-install-recommends \
 	python3 \
 	make \
 	g++ \
 	&& rm -rf /var/lib/apt/lists/*
+
+# ==========================================
+# Build Stage
+# ==========================================
+FROM build-deps-base AS builder
 
 COPY package*.json ./
 COPY .npmrc ./
@@ -32,14 +36,7 @@ RUN npm run build
 # ==========================================
 # Production Dependencies Stage
 # ==========================================
-FROM node:24-trixie-slim AS prod-deps
-WORKDIR /app
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-	python3 \
-	make \
-	g++ \
-	&& rm -rf /var/lib/apt/lists/*
+FROM build-deps-base AS prod-deps
 
 COPY package*.json ./
 COPY .npmrc ./
@@ -50,6 +47,7 @@ COPY .npmrc ./
 RUN npm ci --omit=dev --no-audit --no-fund \
 	&& find node_modules -type f -name '*.map' -delete \
 	&& find node_modules -type d \( -name test -o -name tests -o -name __tests__ -o -name docs -o -name doc -o -name examples -o -name example \) -prune -exec rm -rf '{}' + \
+	&& find node_modules -name 'lightningcss-linux-x64-musl' -prune -exec rm -rf '{}' + \
 	&& find node_modules -type d -empty -delete
 
 # ==========================================
