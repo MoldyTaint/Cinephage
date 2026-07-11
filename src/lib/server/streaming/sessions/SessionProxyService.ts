@@ -187,13 +187,79 @@ export class SessionProxyService {
 		session: PlaybackSession,
 		baseUrl: string,
 		apiKey: string | undefined,
-		request: Request
+		_request: Request
 	): Promise<Response> {
 		if (session.sourceType === 'mp4') {
-			return this.renderBinaryResponse(session, session.entryUrl, request, 'video/mp4');
+			return this.renderMp4AsHlsPlaylist(session, baseUrl, apiKey);
 		}
 
 		return this.renderPlaylistResponse(session, session.entryUrl, baseUrl, apiKey, true);
+	}
+
+	private async renderMp4AsHlsPlaylist(
+		session: PlaybackSession,
+		baseUrl: string,
+		apiKey: string | undefined
+	): Promise<Response> {
+		const reachable = await this.probeMp4Reachable(session);
+		if (!reachable) {
+			return new Response(
+				JSON.stringify({ error: 'Upstream stream unavailable', code: 'PLAYBACK_UNAVAILABLE' }),
+				{
+					status: 503,
+					headers: { 'Content-Type': 'application/json' }
+				}
+			);
+		}
+
+		const segmentUrl = new URL(`/api/streaming/session/${session.token}/direct.mp4`, baseUrl);
+		if (apiKey) {
+			segmentUrl.searchParams.set('api_key', apiKey);
+		}
+
+		const playlist = `#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-PLAYLIST-TYPE:VOD
+#EXT-X-TARGETDURATION:86400
+#EXTINF:86400.0,
+${segmentUrl.toString()}
+#EXT-X-ENDLIST
+`;
+
+		return new Response(playlist, {
+			status: 200,
+			headers: {
+				'Content-Type': 'application/vnd.apple.mpegurl',
+				'Access-Control-Allow-Origin': '*',
+				'Access-Control-Allow-Methods': 'GET, OPTIONS',
+				'Access-Control-Allow-Headers': 'Range, Content-Type',
+				'Cache-Control': 'no-cache'
+			}
+		});
+	}
+
+	private async probeMp4Reachable(session: PlaybackSession): Promise<boolean> {
+		try {
+			const headers = buildUpstreamHeaders(session);
+			headers.Range = 'bytes=0-1';
+			const response = await fetchUpstream(session.entryUrl, headers);
+			if (response.body) {
+				await response.body.cancel();
+			}
+			return response.ok || response.status === 206;
+		} catch (error) {
+			logger.warn(
+				{
+					sessionToken: session.token,
+					provider: session.provider,
+					entryUrl: session.entryUrl,
+					err: error,
+					...streamLog
+				},
+				'mp4 reachability probe failed'
+			);
+			return false;
+		}
 	}
 
 	async renderRegisteredResource(
