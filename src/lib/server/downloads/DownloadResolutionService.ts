@@ -90,6 +90,24 @@ class DownloadResolutionService {
 			'Resolving download'
 		);
 
+		// Strategy 0: Public trackers — the API-provided infohash/magnet is the canonical
+		// download method. Their torrent-file endpoints are frequently bot-protected (e.g. YTS
+		// behind Cloudflare) and offer no benefit over a magnet for a public swarm: there is no
+		// private announce URL to preserve. Private/semi-private trackers skip this and fetch the
+		// actual .torrent below so their announce URL is kept intact.
+		if (indexerId && (magnetUrl || infoHash) && (await this.isPublicIndexer(indexerId))) {
+			if (magnetUrl) {
+				const extractedHash = (await extractInfoHashFromMagnet(magnetUrl)) || infoHash || undefined;
+				logger.debug({ title, infoHash: extractedHash }, 'Public tracker: using magnet URL');
+				return { success: true, magnetUrl, infoHash: extractedHash };
+			}
+			if (infoHash) {
+				const builtMagnet = buildMagnetFromInfoHash(infoHash, title);
+				logger.debug({ title, infoHash }, 'Public tracker: built magnet from infoHash');
+				return { success: true, magnetUrl: builtMagnet, infoHash };
+			}
+		}
+
 		// Strategy 1: Fetch torrent file through indexer (preferred)
 		// This is the primary method - it gets the actual .torrent file which
 		// contains the private tracker announce URL needed for private trackers
@@ -154,6 +172,22 @@ class DownloadResolutionService {
 			success: false,
 			error: 'No download URL, magnet URL, or info hash provided'
 		};
+	}
+
+	/**
+	 * Determine whether an indexer is a public tracker. For public trackers the API-provided
+	 * magnet/infohash is the canonical download method — there is no private announce URL to
+	 * preserve, so we avoid their (often bot-protected) torrent-file endpoints.
+	 */
+	private async isPublicIndexer(indexerId: string): Promise<boolean> {
+		try {
+			const indexerManager = await getIndexerManager();
+			const indexer = await indexerManager.getIndexerInstance(indexerId);
+			return indexer?.accessType === 'public';
+		} catch (error) {
+			logger.debug({ err: error, indexerId }, 'Failed to resolve indexer access type');
+			return false;
+		}
 	}
 
 	/**
