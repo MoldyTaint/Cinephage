@@ -129,12 +129,21 @@ export class HostRateLimiter {
 
 		let limiter = this.hostLimiters.get(key);
 		if (!limiter) {
+			this.pruneIdleLimiters();
 			const config = this.hostConfigs.get(key) ?? DEFAULT_HOST_RATE_LIMIT;
 			limiter = new RateLimiter(config);
 			this.hostLimiters.set(key, limiter);
 		}
 
 		return limiter;
+	}
+
+	private pruneIdleLimiters(): void {
+		for (const [key, limiter] of this.hostLimiters) {
+			if (limiter.getCurrentCount() === 0) {
+				this.hostLimiters.delete(key);
+			}
+		}
 	}
 
 	/**

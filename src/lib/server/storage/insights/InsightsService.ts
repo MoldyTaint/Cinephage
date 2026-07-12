@@ -13,6 +13,7 @@ class InsightsService implements BackgroundService {
 	private _error?: Error;
 	private insightsLock = false;
 	private listenersAttached = false;
+	private attachPromise: Promise<void> | null = null;
 	private readonly rules: StorageInsightRule[];
 
 	constructor() {
@@ -45,6 +46,10 @@ class InsightsService implements BackgroundService {
 	}
 
 	async stop(): Promise<void> {
+		if (this.attachPromise) {
+			await this.attachPromise;
+			this.attachPromise = null;
+		}
 		this.detachListeners();
 		this._status = 'pending';
 	}
@@ -52,7 +57,7 @@ class InsightsService implements BackgroundService {
 	private attachListeners(): void {
 		if (this.listenersAttached) return;
 		this.listenersAttached = true;
-		void import('$lib/server/storage/reconciliation/ReconciliationService.js')
+		this.attachPromise = import('$lib/server/storage/reconciliation/ReconciliationService.js')
 			.then(({ getReconciliationService }) => {
 				getReconciliationService().on('reconcileComplete', this.handleTrigger);
 			})

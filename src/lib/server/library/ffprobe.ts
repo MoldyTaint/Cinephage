@@ -203,15 +203,15 @@ export async function isFFprobeAvailable(ffprobePath?: string): Promise<boolean>
 			resolve(false);
 		});
 
-		proc.on('close', (code) => {
-			resolve(code === 0 && output.includes('ffprobe'));
-		});
-
-		// Timeout after 5 seconds
-		setTimeout(() => {
+		const timeoutId = setTimeout(() => {
 			proc.kill();
 			resolve(false);
 		}, 5000);
+
+		proc.on('close', (code) => {
+			clearTimeout(timeoutId);
+			resolve(code === 0 && output.includes('ffprobe'));
+		});
 	});
 }
 
@@ -235,7 +235,13 @@ export async function getFFprobeVersion(ffprobePath?: string): Promise<string | 
 			resolve(null);
 		});
 
+		const timeoutId = setTimeout(() => {
+			proc.kill();
+			resolve(null);
+		}, 5000);
+
 		proc.on('close', (code) => {
+			clearTimeout(timeoutId);
 			if (code === 0) {
 				// Extract version from first line: "ffprobe version X.X.X ..."
 				const match = output.match(/ffprobe version (\S+)/);
@@ -244,11 +250,6 @@ export async function getFFprobeVersion(ffprobePath?: string): Promise<string | 
 				resolve(null);
 			}
 		});
-
-		setTimeout(() => {
-			proc.kill();
-			resolve(null);
-		}, 5000);
 	});
 }
 

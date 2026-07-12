@@ -91,12 +91,22 @@ export class HostConcurrencyLimiter {
 	release(url: string): void {
 		const key = concurrencyKey(url);
 		const current = this.inFlight.get(key) ?? 0;
-		this.inFlight.set(key, Math.max(0, current - 1));
+		const updated = Math.max(0, current - 1);
+		if (updated === 0) {
+			this.inFlight.delete(key);
+		} else {
+			this.inFlight.set(key, updated);
+		}
 
 		const queue = this.queues.get(key);
 		if (queue?.length) {
 			const next = queue.shift();
+			if (queue.length === 0) {
+				this.queues.delete(key);
+			}
 			if (next) next(true);
+		} else if (this.queues.has(key)) {
+			this.queues.delete(key);
 		}
 	}
 

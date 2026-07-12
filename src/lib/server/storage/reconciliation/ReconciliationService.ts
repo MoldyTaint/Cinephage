@@ -40,6 +40,7 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 	private _error?: Error;
 	private reconcileLock = false;
 	private listenersAttached = false;
+	private attachPromise: Promise<void> | null = null;
 
 	get status(): ServiceStatus {
 		return this._status;
@@ -73,6 +74,10 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 	}
 
 	async stop(): Promise<void> {
+		if (this.attachPromise) {
+			await this.attachPromise;
+			this.attachPromise = null;
+		}
 		this.detachListeners();
 		this._status = 'pending';
 	}
@@ -80,31 +85,35 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 	private attachListeners(): void {
 		if (this.listenersAttached) return;
 		this.listenersAttached = true;
-		// Lazy-import to avoid circular deps at module load time
-		void import('$lib/server/library/library-scheduler.js')
-			.then(({ getLibraryScheduler }) => {
-				getLibraryScheduler().on('scanComplete', this.handleTrigger);
-			})
-			.catch((e) => {
-				logger.error('[ReconciliationService] failed to subscribe to scanComplete', e);
-			});
-		void import('$lib/server/mediaServerStats/MediaServerStatsSyncService.js')
-			.then(({ getMediaServerStatsSyncService }) => {
-				getMediaServerStatsSyncService().on('syncComplete', this.handleTrigger);
-			})
-			.catch((e) => {
-				logger.error('[ReconciliationService] failed to subscribe to syncComplete', e);
-			});
-		// Subscribe to library data mutations (movie/series/episode/season CRUD,
-		// root-folder and library changes). The reconcileLock coalesces concurrent
-		// triggers, so a 50-item batch delete produces one reconcile run, not 50.
-		void import('$lib/server/library/LibraryMediaEvents.js')
-			.then(({ libraryMediaEvents }) => {
-				libraryMediaEvents.onLibraryDataChanged(this.handleTrigger);
-			})
-			.catch((e) => {
-				logger.error('[ReconciliationService] failed to subscribe to library:data-changed', e);
-			});
+		// Lazy-import to avoid circular deps at module load time.
+		// Track the combined Promise so stop() can await completion before detaching,
+		// preventing orphaned listeners if stop() is called while imports are in-flight.
+		this.attachPromise = Promise.all([
+			import('$lib/server/library/library-scheduler.js')
+				.then(({ getLibraryScheduler }) => {
+					getLibraryScheduler().on('scanComplete', this.handleTrigger);
+				})
+				.catch((e) => {
+					logger.error('[ReconciliationService] failed to subscribe to scanComplete', e);
+				}),
+			import('$lib/server/mediaServerStats/MediaServerStatsSyncService.js')
+				.then(({ getMediaServerStatsSyncService }) => {
+					getMediaServerStatsSyncService().on('syncComplete', this.handleTrigger);
+				})
+				.catch((e) => {
+					logger.error('[ReconciliationService] failed to subscribe to syncComplete', e);
+				}),
+			// Subscribe to library data mutations (movie/series/episode/season CRUD,
+			// root-folder and library changes). The reconcileLock coalesces concurrent
+			// triggers, so a 50-item batch delete produces one reconcile run, not 50.
+			import('$lib/server/library/LibraryMediaEvents.js')
+				.then(({ libraryMediaEvents }) => {
+					libraryMediaEvents.onLibraryDataChanged(this.handleTrigger);
+				})
+				.catch((e) => {
+					logger.error('[ReconciliationService] failed to subscribe to library:data-changed', e);
+				}),
+		]).then(() => undefined);
 	}
 
 	private detachListeners(): void {
