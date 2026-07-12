@@ -49,6 +49,12 @@ export interface BaseSearchCriteria {
 	isAnime?: boolean;
 	/** True when the title is flagged adult AND the global include_adult toggle is on. Expands categories to include 6xxx. */
 	isAdult?: boolean;
+	/**
+	 * Optional abort signal. Propagated to the underlying HTTP client (and any
+	 * browser-based Cloudflare bypass) so a timed-out or cancelled search stops
+	 * in-flight work — notably closing headless browsers promptly.
+	 */
+	signal?: AbortSignal;
 }
 
 // =============================================================================

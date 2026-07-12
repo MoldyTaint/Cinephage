@@ -100,11 +100,14 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/server.js ./server.js
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/data ./bundled-data
+# Camoufox shadow-unlock addon (loaded at runtime for Cloudflare Turnstile solving)
+COPY --from=builder /app/src/lib/server/captcha/browser/addon ./camoufox-addon
 COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/cinephage-entrypoint
 COPY --chmod=755 docker-script-runner.sh /usr/local/bin/cinephage-script
 RUN ln -sf /usr/local/bin/cinephage-script /usr/local/bin/cine-run
 
 ENV NODE_ENV=production \
+    NODE_OPTIONS="--max-old-space-size=2048" \
     HOST=0.0.0.0 \
     PORT=3000 \
     FFPROBE_PATH=/usr/bin/ffprobe \

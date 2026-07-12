@@ -1000,14 +1000,23 @@ export class SearchOrchestrator {
 			}
 
 			// Execute search with timeout; release concurrency slot when done (success or error)
+			// A per-search AbortController lets us cancel still-in-flight work (and close
+			// any headless browser it spawned) when the timeout wins the race, instead of
+			// leaving it running while the host slot is handed to the next search.
+			const abortController = new AbortController();
+			const searchCriteria: SearchCriteria = { ...criteria, signal: abortController.signal };
+
 			const searchPromise = useTieredSearch
-				? this.executeWithTiering(indexer, criteria)
-				: this.executeSimple(indexer, criteria);
+				? this.executeWithTiering(indexer, searchCriteria)
+				: this.executeSimple(indexer, searchCriteria);
 
 			const { releases, searchMethod } = await Promise.race([
 				searchPromise,
 				this.createTimeoutPromise(timeout)
-			]).finally(() => this.hostConcurrencyLimiter.release(indexer.baseUrl));
+			]).finally(() => {
+				abortController.abort();
+				this.hostConcurrencyLimiter.release(indexer.baseUrl);
+			});
 
 			await this.statusTracker.recordSuccess(indexer.id, Date.now() - startTime);
 

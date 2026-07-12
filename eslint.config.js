@@ -24,6 +24,8 @@ export default defineConfig(
 			// External/separate projects
 			'Flyx-main/**',
 			'Cinephage-Streamer/**',
+			// Browser extension asset shipped as-is (loaded by Camoufox, not app code)
+			'src/lib/server/captcha/browser/addon/**',
 			// Build artifacts
 			'.svelte-kit/**'
 		]

@@ -18,6 +18,7 @@ import type {
 } from '../types';
 import { getCamoufoxManager, type ManagedBrowser } from './CamoufoxManager';
 import { detectChallengeFromPage } from '../detection/ChallengeDetector';
+import { attemptChallengeCheckboxClick } from './CloudflareClickSolver';
 
 /**
  * Challenge title patterns that indicate an ongoing challenge.
@@ -39,71 +40,162 @@ const CHALLENGE_TITLE_PATTERNS = [
 ];
 
 /**
- * Wait for Cloudflare challenge to complete.
- * Returns true if challenge was bypassed.
+ * Cloudflare shows an intermediate "Loading https://<url>" redirect page AFTER
+ * the challenge is passed but BEFORE the real content loads. Treat it as still
+ * in-progress so we don't capture the redirect page as the result.
+ */
+const REDIRECT_TITLE_RE = /^Loading https?:\/\//i;
+
+function isInterstitialTitle(title: string): boolean {
+	return (
+		CHALLENGE_TITLE_PATTERNS.some((pattern) => title.includes(pattern)) ||
+		REDIRECT_TITLE_RE.test(title)
+	);
+}
+
+/** Body markers that indicate the returned HTML is still a Cloudflare challenge page. */
+const CHALLENGE_BODY_MARKERS = [
+	'<title>Just a moment',
+	'challenge-platform',
+	'cf-browser-verification',
+	'cf_chl_opt',
+	'window._cf_chl_opt'
+];
+
+function bodyLooksLikeChallenge(body: string): boolean {
+	if (!body) return false;
+	return CHALLENGE_BODY_MARKERS.some((marker) => body.includes(marker));
+}
+
+/** Best-effort wait for the page to settle after the challenge hands off. */
+async function settlePage(page: Page): Promise<void> {
+	try {
+		await page.waitForLoadState('networkidle', { timeout: 5000 });
+	} catch {
+		// networkidle may never fire on busy pages — best effort only.
+	}
+}
+
+/**
+ * Wait for a Cloudflare challenge to complete.
+ *
+ * Returns true only once the page has moved past both the challenge and the
+ * post-challenge "Loading…" redirect to a real page. A present `cf_clearance`
+ * cookie is treated as success ONLY as a last resort after the timeout, because
+ * Cloudflare sets it mid-challenge (observed on 1337x: cf_clearance appears while
+ * the page still shows "Just a moment…"), so cookie-presence alone is a false
+ * positive for "solved".
  */
 async function waitForChallengeComplete(page: Page, timeout = 30000): Promise<boolean> {
 	const startTime = Date.now();
+	let lastClickAttempt = 0;
 
 	while (Date.now() - startTime < timeout) {
 		try {
-			// Check page title - if it's not a challenge page, we're done
 			const title = await page.title();
-			const isChallengeTitle = CHALLENGE_TITLE_PATTERNS.some((pattern) => title.includes(pattern));
 
-			if (!isChallengeTitle) {
+			if (!isInterstitialTitle(title)) {
+				// Reached the real page — let it settle, then we're done.
+				await settlePage(page);
 				return true;
 			}
 
-			// Check for cf_clearance cookie
-			const cookies = await page.context().cookies();
-			if (cookies.some((c) => c.name === 'cf_clearance')) {
-				logger.debug('[CamoufoxSolver] Got cf_clearance cookie');
-				// Wait a bit for page to load after cookie is set
-				await new Promise((r) => setTimeout(r, 1000));
-				return true;
-			}
-
-			// Turnstile: try clicking the checkbox inside the CF challenge iframe.
-			// Camoufox's humanize handles mouse movements but doesn't target Turnstile
-			// specifically — clicking the checkbox widget is needed for managed challenges.
-			try {
-				const frame = page
-					.frames()
-					.find(
-						(f) => f.url().includes('challenges.cloudflare.com') || f.url().includes('turnstile')
-					);
-				if (frame) {
-					const checkbox = frame.locator('input[type="checkbox"]');
-					const isVisible = await checkbox.isVisible({ timeout: 200 }).catch(() => false);
-					if (isVisible) {
-						logger.debug('[CamoufoxSolver] Clicking Turnstile checkbox');
-						await checkbox.click({ timeout: 2000 }).catch(() => null);
-					}
-				}
-			} catch {
-				// Turnstile not present or not interactable — continue waiting
+			// Still on the interstitial. Managed/Turnstile challenges need a real
+			// trusted click on the checkbox (inside a cross-origin closed shadow DOM),
+			// handled by the click solver. Throttle attempts.
+			if (Date.now() - lastClickAttempt > 3000) {
+				lastClickAttempt = Date.now();
+				await attemptChallengeCheckboxClick(page).catch(() => false);
 			}
 		} catch {
-			// Navigation can destroy execution context - this is expected during challenge completion
-			// Wait briefly and check if we now have the clearance cookie
+			// Navigation can destroy the execution context during hand-off — expected.
+			// Wait briefly and re-loop; the title check confirms the real page.
 			await new Promise((r) => setTimeout(r, 500));
-			try {
-				const cookies = await page.context().cookies();
-				if (cookies.some((c) => c.name === 'cf_clearance')) {
-					logger.debug('[CamoufoxSolver] Got cf_clearance cookie after navigation');
-					return true;
-				}
-			} catch {
-				// Context still unstable, continue waiting
-			}
 		}
 
 		// Wait before next check
 		await new Promise((r) => setTimeout(r, 500));
 	}
 
+	// Timed out without the title clearing. Last resort: a present cf_clearance
+	// cookie lets solve() cache usable cookies even if the page didn't fully load.
+	try {
+		const cookies = await page.context().cookies();
+		if (cookies.some((c) => c.name === 'cf_clearance')) {
+			logger.debug('[CamoufoxSolver] Timed out but cf_clearance present; treating as solved');
+			return true;
+		}
+	} catch {
+		// Context unavailable — fall through to failure.
+	}
+
 	return false;
+}
+
+/**
+ * Resource types blocked to cut browser memory/bandwidth during solving.
+ * Images, media and fonts are never needed to clear a challenge, and rendering
+ * them is a large part of a headless Firefox's RSS.
+ */
+const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font']);
+
+/**
+ * Install a single request-interception handler that (optionally) blocks heavy
+ * media resources and (optionally) rewrites the initial GET navigation into a POST.
+ */
+async function setupPageInterception(
+	page: Page,
+	opts: {
+		blockMedia: boolean;
+		post?: { url: string; body: string; contentType?: string };
+	}
+): Promise<void> {
+	if (!opts.blockMedia && !opts.post) {
+		return;
+	}
+
+	await page.route('**/*', async (route, req) => {
+		if (opts.blockMedia && BLOCKED_RESOURCE_TYPES.has(req.resourceType())) {
+			await route.abort().catch(() => {});
+			return;
+		}
+
+		if (opts.post && req.url() === opts.post.url && req.method() === 'GET') {
+			await route
+				.continue({
+					method: 'POST',
+					postData: opts.post.body,
+					headers: {
+						...req.headers(),
+						'Content-Type': opts.post.contentType || 'application/x-www-form-urlencoded'
+					}
+				})
+				.catch(() => {});
+			return;
+		}
+
+		await route.continue().catch(() => {});
+	});
+}
+
+/**
+ * Wire an AbortSignal to a managed browser so a cancelled/timed-out caller
+ * promptly closes the browser (mirrors Byparr's single-timeout-budget model).
+ * Returns a cleanup function to detach the listener.
+ */
+function attachAbort(
+	signal: AbortSignal | undefined,
+	manager: ReturnType<typeof getCamoufoxManager>,
+	managed: ManagedBrowser
+): () => void {
+	if (!signal) {
+		return () => {};
+	}
+	const onAbort = () => {
+		void manager.closeBrowser(managed);
+	};
+	signal.addEventListener('abort', onAbort, { once: true });
+	return () => signal.removeEventListener('abort', onAbort);
 }
 
 /**
@@ -111,25 +203,36 @@ async function waitForChallengeComplete(page: Page, timeout = 30000): Promise<bo
  */
 export async function solveChallenge(
 	request: SolveRequest,
-	config: { headless: boolean; timeoutSeconds: number }
+	config: { headless: boolean; timeoutSeconds: number; blockMedia?: boolean }
 ): Promise<SolveResult> {
 	const startTime = Date.now();
 	const camoufoxManager = getCamoufoxManager();
 	let managed: ManagedBrowser | null = null;
+	let detachAbort: () => void = () => {};
+
+	if (request.signal?.aborted) {
+		return createErrorResult('Aborted before start', startTime);
+	}
 
 	try {
 		// Extract domain from URL
 		const url = new URL(request.url);
 		const domain = url.hostname;
 
+		const timeout = (request.timeout || config.timeoutSeconds) * 1000;
+
 		// Create browser
 		managed = await camoufoxManager.createBrowserForDomain(domain, {
 			headless: config.headless,
-			proxy: request.proxy
+			proxy: request.proxy,
+			acquireTimeoutMs: timeout
 		});
 
+		detachAbort = attachAbort(request.signal, camoufoxManager, managed);
+
 		const { page, context } = managed;
-		const timeout = (request.timeout || config.timeoutSeconds) * 1000;
+
+		await setupPageInterception(page, { blockMedia: config.blockMedia ?? false });
 
 		// Add any provided cookies
 		if (request.cookies && request.cookies.length > 0) {
@@ -233,6 +336,7 @@ export async function solveChallenge(
 		logger.error({ err: error }, '[CamoufoxSolver] Error solving challenge');
 		return createErrorResult(errorMessage, startTime);
 	} finally {
+		detachAbort();
 		// Always close the browser
 		if (managed) {
 			await camoufoxManager.closeBrowser(managed);
@@ -263,7 +367,7 @@ function createErrorResult(
  */
 export async function testForChallenge(
 	url: string,
-	config: { headless: boolean }
+	config: { headless: boolean; blockMedia?: boolean }
 ): Promise<{ hasChallenge: boolean; type: ChallengeType; confidence: number }> {
 	const camoufoxManager = getCamoufoxManager();
 	let managed: ManagedBrowser | null = null;
@@ -271,8 +375,11 @@ export async function testForChallenge(
 	try {
 		const domain = new URL(url).hostname;
 		managed = await camoufoxManager.createBrowserForDomain(domain, {
-			headless: config.headless
+			headless: config.headless,
+			acquireTimeoutMs: 30000
 		});
+
+		await setupPageInterception(managed.page, { blockMedia: config.blockMedia ?? false });
 
 		const response = await managed.page.goto(url, {
 			timeout: 15000,
@@ -313,11 +420,26 @@ export async function testForChallenge(
  */
 export async function browserFetch(
 	request: BrowserFetchRequest,
-	config: { headless: boolean; timeoutSeconds: number }
+	config: { headless: boolean; timeoutSeconds: number; blockMedia?: boolean }
 ): Promise<BrowserFetchResult> {
 	const startTime = Date.now();
 	const camoufoxManager = getCamoufoxManager();
 	let managed: ManagedBrowser | null = null;
+	let detachAbort: () => void = () => {};
+
+	if (request.signal?.aborted) {
+		return {
+			success: false,
+			body: '',
+			url: request.url,
+			status: 0,
+			headers: {},
+			cookies: [],
+			userAgent: '',
+			error: 'Aborted before start',
+			timeMs: Date.now() - startTime
+		};
+	}
 
 	try {
 		const domain = new URL(request.url).hostname;
@@ -325,33 +447,47 @@ export async function browserFetch(
 
 		managed = await camoufoxManager.createBrowserForDomain(domain, {
 			headless: config.headless,
-			proxy: request.proxy
+			proxy: request.proxy,
+			acquireTimeoutMs: timeout
 		});
+
+		detachAbort = attachAbort(request.signal, camoufoxManager, managed);
 
 		const { page } = managed;
 
-		// For POST requests, we need to intercept and modify the request
-		if (request.method === 'POST' && request.body) {
-			await page.route('**/*', async (route, req) => {
-				if (req.url() === request.url && req.method() === 'GET') {
-					// Convert initial GET to POST
-					await route.continue({
-						method: 'POST',
-						postData: request.body,
-						headers: {
-							...req.headers(),
-							'Content-Type': request.contentType || 'application/x-www-form-urlencoded'
-						}
-					});
-				} else {
-					await route.continue();
-				}
-			});
+		// Block heavy media, and rewrite the initial GET into a POST when needed.
+		await setupPageInterception(page, {
+			blockMedia: config.blockMedia ?? false,
+			post:
+				request.method === 'POST' && request.body
+					? { url: request.url, body: request.body, contentType: request.contentType }
+					: undefined
+		});
+
+		// Deep links (e.g. /search/…) get a much stricter Cloudflare challenge than
+		// the site root and frequently never clear on their own. Warming up on the
+		// origin root first — the way a real user lands on the homepage — establishes
+		// a domain-wide cf_clearance, after which the deep link clears in ~2s in the
+		// same browser session. browserFetch is only ever called under CF protection,
+		// so this warm-up is always appropriate here.
+		const target = new URL(request.url);
+		const isDeepLink = target.pathname !== '/' || target.search !== '';
+		const remaining = () => timeout - (Date.now() - startTime);
+
+		if (isDeepLink && !request.signal?.aborted) {
+			logger.debug({ host: target.hostname }, '[CamoufoxSolver] Warming up on site root');
+			await page
+				.goto(target.origin + '/', {
+					timeout: Math.min(remaining(), 30000),
+					waitUntil: 'domcontentloaded'
+				})
+				.catch(() => {});
+			await waitForChallengeComplete(page, Math.min(remaining(), 30000));
 		}
 
-		// Navigate to the URL
-		const response = await page.goto(request.url, {
-			timeout: Math.min(timeout, 30000),
+		// Navigate to the actual target URL (reusing the warmed session).
+		let response = await page.goto(request.url, {
+			timeout: Math.min(remaining(), 30000),
 			waitUntil: 'domcontentloaded'
 		});
 
@@ -369,10 +505,20 @@ export async function browserFetch(
 			};
 		}
 
-		// Always wait for challenge completion - Cloudflare challenges may auto-solve
-		// via Camoufox's humanize feature without explicit detection
+		// Wait for any challenge to complete (auto-solve or Turnstile hand-off).
 		logger.debug('[CamoufoxSolver] Waiting for any challenge to complete');
-		const solved = await waitForChallengeComplete(page, timeout - (Date.now() - startTime));
+		let solved = await waitForChallengeComplete(page, remaining());
+
+		// Fallback: if a non-deep-link somehow still shows a challenge, try a root
+		// warm-up + retry once (covers sites that challenge even the root path).
+		if (!solved && !isDeepLink && remaining() > 8000 && !request.signal?.aborted) {
+			await waitForChallengeComplete(page, Math.min(remaining(), 20000));
+			const retryResponse = await page
+				.goto(request.url, { timeout: Math.min(remaining(), 30000), waitUntil: 'domcontentloaded' })
+				.catch(() => null);
+			if (retryResponse) response = retryResponse;
+			solved = await waitForChallengeComplete(page, remaining());
+		}
 
 		if (!solved) {
 			return {
@@ -388,9 +534,26 @@ export async function browserFetch(
 			};
 		}
 
-		// Get the page content
-		const body = await page.content();
+		// Get the page content (skipped when the caller only needs clearance cookies)
+		const body = request.returnOnlyCookies ? '' : await page.content();
 		const finalUrl = page.url();
+
+		// Guard against a false success: if we still hold the challenge/interstitial
+		// page (e.g. clearance never actually issued — common on flagged IPs), do NOT
+		// hand the challenge HTML to the caller's parser. Fail honestly instead.
+		if (!request.returnOnlyCookies && bodyLooksLikeChallenge(body)) {
+			return {
+				success: false,
+				body: '',
+				url: request.url,
+				status: 0,
+				headers: {},
+				cookies: [],
+				userAgent: '',
+				error: `Cloudflare bypass failed for ${new URL(request.url).hostname}: challenge page returned`,
+				timeMs: Date.now() - startTime
+			};
+		}
 
 		logger.debug(
 			{
@@ -438,6 +601,7 @@ export async function browserFetch(
 			timeMs: Date.now() - startTime
 		};
 	} finally {
+		detachAbort();
 		if (managed) {
 			await camoufoxManager.closeBrowser(managed);
 		}

@@ -309,7 +309,8 @@ export class IndexerHttp {
 							url,
 							method: options.method,
 							body: options.body?.toString(),
-							timeout: Math.max(options.timeout / 1000, 60)
+							timeout: Math.max(options.timeout / 1000, 60),
+							signal: options.signal
 						});
 
 						if (fetchResult.success) {

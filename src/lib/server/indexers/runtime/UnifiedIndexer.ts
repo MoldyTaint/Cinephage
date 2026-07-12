@@ -480,7 +480,7 @@ export class UnifiedIndexer implements IIndexer {
 				await this.checkRateLimit();
 				await this.hostRateLimiter.waitIfNeeded(request.url);
 
-				const results = await this.executeSearchRequest(request);
+				const results = await this.executeSearchRequest(request, criteria.signal);
 				allResults.push(...results);
 				successfulRequests += 1;
 			} catch (error) {
@@ -512,13 +512,16 @@ export class UnifiedIndexer implements IIndexer {
 	/**
 	 * Execute a single search request
 	 */
-	private async executeSearchRequest(request: {
-		url: string;
-		method: 'GET' | 'POST';
-		headers: Record<string, string>;
-		body?: string | URLSearchParams;
-		searchPath: unknown;
-	}): Promise<ReleaseResult[]> {
+	private async executeSearchRequest(
+		request: {
+			url: string;
+			method: 'GET' | 'POST';
+			headers: Record<string, string>;
+			body?: string | URLSearchParams;
+			searchPath: unknown;
+		},
+		signal?: AbortSignal
+	): Promise<ReleaseResult[]> {
 		this.http.setCookies(this.cookies);
 
 		this.log.debug(
@@ -534,11 +537,13 @@ export class UnifiedIndexer implements IIndexer {
 			request.method === 'POST'
 				? await this.http.post(request.url, request.body!, {
 						headers: request.headers,
-						followRedirects: this.definition.followredirect ?? true
+						followRedirects: this.definition.followredirect ?? true,
+						signal
 					})
 				: await this.http.get(request.url, {
 						headers: request.headers,
-						followRedirects: this.definition.followredirect ?? true
+						followRedirects: this.definition.followredirect ?? true,
+						signal
 					});
 
 		this.log.debug(
