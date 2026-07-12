@@ -83,6 +83,15 @@
 		if (url.length <= maxLength) return url;
 		return url.substring(0, maxLength) + '...';
 	}
+
+	const displayUrl = $derived.by(() => {
+		if (indexer.definitionId === 'jackett') {
+			const trackerId = (indexer.settings as Record<string, unknown> | null)?.trackerId;
+			if (typeof trackerId === 'string' && trackerId)
+				return `${indexer.baseUrl.replace(/\/+$/, '')}/api/v2.0/indexers/${trackerId}/results`;
+		}
+		return indexer.baseUrl;
+	});
 </script>
 
 <tr
@@ -201,9 +210,9 @@
 
 	<!-- URL -->
 	<td class="max-w-50">
-		<div class="tooltip block w-full" data-tip={indexer.baseUrl}>
+		<div class="tooltip block w-full" data-tip={displayUrl}>
 			<span class="block truncate text-sm text-base-content/70">
-				{truncateUrl(indexer.baseUrl)}
+				{truncateUrl(displayUrl)}
 			</span>
 		</div>
 	</td>

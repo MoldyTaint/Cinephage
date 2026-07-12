@@ -33,6 +33,8 @@
 		alternateUrls: string[];
 		prowlarrManaged?: boolean;
 		jackettManaged?: boolean;
+		/** Override URL shown in the read-only managed display (e.g. virtual path for Jackett). */
+		managedDisplayUrl?: string;
 		onNameChange: (value: string) => void;
 		onUrlChange: (value: string) => void;
 		onUrlBlur: () => void;
@@ -78,6 +80,7 @@
 		alternateUrls,
 		prowlarrManaged = false,
 		jackettManaged = false,
+		managedDisplayUrl = undefined,
 		onNameChange,
 		onUrlChange,
 		onUrlBlur,
@@ -313,7 +316,9 @@
 				{/if}
 			</label>
 			{#if prowlarrManaged || jackettManaged}
-				<p class="py-1.5 font-mono text-xs break-all text-base-content/70">{url}</p>
+				<p class="py-1.5 font-mono text-xs break-all text-base-content/70">
+					{managedDisplayUrl ?? url}
+				</p>
 			{:else if definitionUrls.length > 1}
 				<select
 					id="regular-url"
