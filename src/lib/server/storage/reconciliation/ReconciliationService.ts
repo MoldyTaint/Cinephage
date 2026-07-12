@@ -112,7 +112,7 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 				})
 				.catch((e) => {
 					logger.error('[ReconciliationService] failed to subscribe to library:data-changed', e);
-				}),
+				})
 		]).then(() => undefined);
 	}
 
