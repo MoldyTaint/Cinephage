@@ -1811,7 +1811,9 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			// Give a grace period for completed items (SABnzbd queue->history transition time)
 			const completedAt = queueItem.completedAt
 				? new Date(queueItem.completedAt).getTime()
-				: Date.now();
+				: queueItem.addedAt
+					? new Date(queueItem.addedAt).getTime()
+					: Date.now();
 			const timeSinceComplete = Date.now() - completedAt;
 
 			if (timeSinceComplete < COMPLETED_GRACE_PERIOD_MS) {
@@ -3012,6 +3014,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 				this.blockedExtensionCheckedHashes.add(cacheKey);
 			} catch (error) {
+				this.blockedExtensionCheckedHashes.add(cacheKey);
 				logger.warn(
 					{
 						title: item.title,

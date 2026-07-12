@@ -12,7 +12,8 @@ export type CapturedLogDomain =
 	| 'scans'
 	| 'indexers'
 	| 'subtitles'
-	| 'livetv';
+	| 'livetv'
+	| 'downloads';
 
 export const CAPTURED_LOG_LEVELS = ['debug', 'info', 'warn', 'error'] as const;
 
@@ -30,7 +31,8 @@ export const CAPTURED_LOG_DOMAINS = [
 	'scans',
 	'indexers',
 	'subtitles',
-	'livetv'
+	'livetv',
+	'downloads'
 ] as const;
 
 export interface CapturedLogEntry {

@@ -576,7 +576,7 @@ function logWithArgs(
 
 	// Merge pre-sanitized bindings so capture store gets full context.
 	// Per-call fields take priority over bindings (spread order).
-	if (Object.keys(sanitizedBindings).length > 0) {
+	if (pinnedLogger && Object.keys(sanitizedBindings).length > 0) {
 		prepared.payload = { ...sanitizedBindings, ...prepared.payload };
 	}
 

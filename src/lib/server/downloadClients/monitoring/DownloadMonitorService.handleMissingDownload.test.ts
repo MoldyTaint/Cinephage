@@ -236,3 +236,31 @@ describe('handleMissingDownload — awaiting backoff retry', () => {
 		expect(requestImport).not.toHaveBeenCalled();
 	});
 });
+
+describe('handleMissingDownload — completed grace period (addedAt fallback)', () => {
+	it('keeps a recently-added completed item without completedAt inside the grace window', async () => {
+		// No completedAt recorded: the grace period must fall back to addedAt, not Date.now(),
+		// otherwise a genuinely old completion would be treated as fresh forever.
+		const row = await insertQueueRow({
+			status: 'completed',
+			completedAt: null,
+			addedAt: new Date(Date.now() - 60_000).toISOString() // 1 min ago < 5 min grace
+		});
+		await callHandleMissing(row, makeClient());
+
+		const after = await getRow(row.id);
+		expect(after.status).toBe('completed');
+	});
+
+	it('removes a long-completed item without completedAt once the addedAt-based grace lapses', async () => {
+		const row = await insertQueueRow({
+			status: 'completed',
+			completedAt: null,
+			addedAt: new Date(Date.now() - 30 * 60_000).toISOString() // 30 min ago > 5 min grace
+		});
+		await callHandleMissing(row, makeClient());
+
+		const after = await getRow(row.id);
+		expect(after.status).toBe('removed');
+	});
+});
