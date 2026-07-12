@@ -63,6 +63,10 @@ import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'indexers' as const });
 import { tmdb } from '$lib/server/tmdb';
+import { db } from '$lib/server/db/index.js';
+import { movies, series } from '$lib/server/db/schema.js';
+import { eq } from 'drizzle-orm';
+import { blocklistService } from '$lib/server/blocklist/BlocklistService.js';
 import { DANGEROUS_EXTENSIONS, EXECUTABLE_EXTENSIONS } from '$lib/config/constants.js';
 
 /** Options for search orchestration */
@@ -347,7 +351,8 @@ export class SearchOrchestrator {
 		// Filter by season/episode if specified.
 		// Use criteriaWithSource so interactive/automatic behavior is respected.
 		// (season/episode fields are unchanged from original criteria)
-		let filtered = this.filterBySeasonEpisode(deduped, criteriaWithSource);
+		let filtered = await this.filterByBlocklist(deduped, criteriaWithSource);
+		filtered = this.filterBySeasonEpisode(filtered, criteriaWithSource);
 
 		// Filter by category match (reject releases in wrong categories).
 		// Skip for season-only TV searches: the season/episode filter already validated
@@ -535,7 +540,8 @@ export class SearchOrchestrator {
 		}
 
 		// Filter by season/episode if specified
-		let filtered = this.filterBySeasonEpisode(deduped, enrichedCriteria, {
+		let filtered = await this.filterByBlocklist(deduped, enrichedCriteria);
+		filtered = this.filterBySeasonEpisode(filtered, enrichedCriteria, {
 			seasonEpisodeCount,
 			seasonEpisodeCounts
 		});
@@ -2233,6 +2239,52 @@ export class SearchOrchestrator {
 
 			return hasMatchingCategory;
 		});
+	}
+
+	/**
+	 * Filter releases that are in the blocklist (previously blocked due to
+	 * download failures, blocked extensions, or manual actions).
+	 */
+	private async filterByBlocklist(
+		releases: ReleaseResult[],
+		criteria: SearchCriteria
+	): Promise<ReleaseResult[]> {
+		if (releases.length === 0) return releases;
+
+		const searchTmdbId = 'tmdbId' in criteria ? criteria.tmdbId : undefined;
+		let movieId: string | undefined;
+		let seriesId: string | undefined;
+
+		if (isMovieSearch(criteria) && searchTmdbId) {
+			const movie = await db.query.movies.findFirst({
+				where: eq(movies.tmdbId, searchTmdbId),
+				columns: { id: true }
+			});
+			movieId = movie?.id;
+		} else if (isTvSearch(criteria) && searchTmdbId) {
+			const s = await db.query.series.findFirst({
+				where: eq(series.tmdbId, searchTmdbId),
+				columns: { id: true }
+			});
+			seriesId = s?.id;
+		}
+
+		if (!movieId && !seriesId) return releases;
+
+		const { blockedHashes, blockedTitles } = await blocklistService.getBlockedIdentifiers(
+			movieId,
+			seriesId
+		);
+
+		if (blockedHashes.size === 0 && blockedTitles.size === 0) return releases;
+
+		const filtered = releases.filter((release) => {
+			if (release.infoHash && blockedHashes.has(release.infoHash)) return false;
+			if (blockedTitles.has(release.title)) return false;
+			return true;
+		});
+
+		return filtered;
 	}
 
 	/**

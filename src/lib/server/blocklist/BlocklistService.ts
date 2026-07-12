@@ -135,6 +135,27 @@ class BlocklistService {
 		return { blocked: false };
 	}
 
+	async getBlockedIdentifiers(
+		movieId?: string,
+		seriesId?: string
+	): Promise<{ blockedHashes: Set<string>; blockedTitles: Set<string> }> {
+		const now = new Date().toISOString();
+
+		const entries = await db.query.blocklist.findMany({
+			where: and(
+				movieId ? eq(blocklist.movieId, movieId) : undefined,
+				seriesId ? eq(blocklist.seriesId, seriesId) : undefined,
+				or(isNull(blocklist.expiresAt), gt(blocklist.expiresAt, now))
+			),
+			columns: { infoHash: true, sourceTitle: true }
+		});
+
+		const blockedHashes = new Set(entries.map((e) => e.infoHash).filter(Boolean) as string[]);
+		const blockedTitles = new Set(entries.map((e) => e.sourceTitle).filter(Boolean) as string[]);
+
+		return { blockedHashes, blockedTitles };
+	}
+
 	addToBlocklist(release: BlocklistAddRelease, options: BlocklistAddOptions): string {
 		const expiresAt = options.expiresInHours
 			? new Date(Date.now() + options.expiresInHours * 60 * 60 * 1000).toISOString()
