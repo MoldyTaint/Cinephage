@@ -521,7 +521,7 @@ export class UnifiedIndexer implements IIndexer {
 	}): Promise<ReleaseResult[]> {
 		this.http.setCookies(this.cookies);
 
-		this.log.info(
+		this.log.debug(
 			{
 				url: request.url,
 				method: request.method,
@@ -541,7 +541,7 @@ export class UnifiedIndexer implements IIndexer {
 						followRedirects: this.definition.followredirect ?? true
 					});
 
-		this.log.info(
+		this.log.debug(
 			{
 				status: response.status,
 				url: response.url,
@@ -637,7 +637,7 @@ export class UnifiedIndexer implements IIndexer {
 	 * Parse a response into release results
 	 */
 	private parseResponse(content: string, searchPath: unknown): ReleaseResult[] {
-		this.log.info(
+		this.log.debug(
 			{
 				indexer: this.name,
 				contentLength: content.length,
@@ -657,7 +657,7 @@ export class UnifiedIndexer implements IIndexer {
 			}
 		);
 
-		this.log.info(
+		this.log.debug(
 			{
 				indexer: this.name,
 				releasesFound: parseResult.releases.length,

@@ -904,7 +904,7 @@ export class SearchOrchestrator {
 	): Promise<ReleaseResult[]> {
 		const allReleases: ReleaseResult[] = [];
 
-		logger.info(
+		logger.debug(
 			{
 				indexerCount: indexers.length,
 				criteria: { type: criteria.searchType, query: criteria.query }
@@ -921,7 +921,7 @@ export class SearchOrchestrator {
 		for (const settled of allSettled) {
 			if (settled.status === 'fulfilled') {
 				const result = settled.value;
-				logger.info(
+				logger.debug(
 					{
 						indexer: result.indexerName,
 						resultCount: result.results.length,
@@ -937,7 +937,7 @@ export class SearchOrchestrator {
 			}
 		}
 
-		logger.info(
+		logger.debug(
 			{
 				totalReleases: allReleases.length
 			},
@@ -2569,7 +2569,7 @@ export class SearchOrchestrator {
 				// Native-Cyrillic trackers (RuTracker, Kinozal, etc.) attach their own
 				// authoritative IDs — mismatch is definitive, not an aggregator artifact.
 				if (releasePrefersNativeCyrillic) return false;
-				logger.info(
+				logger.debug(
 					{
 						releaseTitle: release.title,
 						releaseTmdbId: release.tmdbId,
@@ -2585,7 +2585,7 @@ export class SearchOrchestrator {
 			if (searchImdbId && release.imdbId) {
 				if (release.imdbId === searchImdbId) return true;
 				if (releasePrefersNativeCyrillic) return false;
-				logger.info(
+				logger.debug(
 					{
 						releaseTitle: release.title,
 						releaseImdbId: release.imdbId,
@@ -2619,7 +2619,7 @@ export class SearchOrchestrator {
 			if (isMovieSearch(criteria) && searchYear) {
 				const parsedRelease = getParsed();
 				if (parsedRelease.year && Math.abs(parsedRelease.year - searchYear) > 1) {
-					logger.info(
+					logger.debug(
 						{
 							releaseTitle: release.title,
 							releaseYear: parsedRelease.year,
@@ -2694,7 +2694,7 @@ export class SearchOrchestrator {
 						((isTvSearch(criteria) && !isEpisodeTarget && !isSeasonTarget) ||
 							(isMovieSearch(criteria) && releasePrefersNativeCyrillic));
 					if (allowInteractiveTitleFallback) {
-						logger.info(
+						logger.debug(
 							{
 								releaseTitle: release.title,
 								parsedTitle: parsedRelease.cleanTitle,
@@ -2716,7 +2716,7 @@ export class SearchOrchestrator {
 						containsEachOther:
 							releaseName.includes(expectedName) || expectedName.includes(releaseName)
 					}));
-					logger.info(
+					logger.debug(
 						{
 							releaseTitle: release.title,
 							parsedTitle: parsedRelease.cleanTitle,
