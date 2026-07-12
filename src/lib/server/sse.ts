@@ -185,6 +185,7 @@ export function createSSEOperationStream(
 	} = {}
 ): Response {
 	const heartbeatIntervalMs = options.heartbeatInterval ?? 30000;
+	let cleanupRef: (() => void) | null = null;
 
 	const stream = new ReadableStream({
 		async start(controller) {
@@ -215,6 +216,7 @@ export function createSSEOperationStream(
 				}
 			};
 
+			cleanupRef = cleanup;
 			request.signal.addEventListener('abort', cleanup, { once: true });
 
 			send('connected', { timestamp: new Date().toISOString() });
@@ -237,7 +239,7 @@ export function createSSEOperationStream(
 			}
 		},
 		cancel() {
-			// Abort handling closes the stream.
+			cleanupRef?.();
 		}
 	});
 
