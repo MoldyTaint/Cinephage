@@ -684,7 +684,7 @@ export class ResponseParser {
 		// External IDs
 		const imdbId = values['imdb'] || values['imdbid'];
 		if (imdbId) {
-			result.imdbId = imdbId.startsWith('tt') ? imdbId : `tt${imdbId}`;
+			result.imdbId = imdbId.startsWith('tt') ? imdbId : `tt${imdbId.padStart(7, '0')}`;
 		}
 
 		const tmdbIdStr = values['tmdb'] || values['tmdbid'];

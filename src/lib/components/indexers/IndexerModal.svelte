@@ -108,11 +108,21 @@
 
 	const isJackettManaged = $derived.by(() => {
 		if (mode !== 'edit' || !indexer || !jackettBaseUrl) return false;
+		if (indexer.definitionId === 'jackett') return true;
 		const base = jackettBaseUrl.replace(/\/+$/, '');
 		return (
 			indexer.baseUrl.startsWith(base + '/api/v2.0/indexers/') &&
 			indexer.baseUrl.includes('/results/torznab')
 		);
+	});
+
+	const displayUrl = $derived.by(() => {
+		if (indexer?.definitionId === 'jackett') {
+			const trackerId = (indexer.settings as Record<string, unknown> | null)?.trackerId;
+			if (typeof trackerId === 'string' && trackerId)
+				return `${indexer.baseUrl.replace(/\/+$/, '')}/api/v2.0/indexers/${trackerId}/results`;
+		}
+		return url;
 	});
 
 	const uiHints = $derived(() => {
@@ -471,6 +481,7 @@
 				{alternateUrls}
 				prowlarrManaged={isProwlarrManaged}
 				jackettManaged={isJackettManaged}
+				managedDisplayUrl={isJackettManaged ? displayUrl : undefined}
 				{additionalCategories}
 				onNameChange={(v) => (name = v)}
 				onUrlChange={(v) => (url = v)}
