@@ -106,9 +106,12 @@
 	let usenetSettingsOpen = $state(false);
 	let categoriesOpen = $state(false);
 
-	// Show the category restriction panel for newznab/torznab/prowlarr definitions
+	// Show the category restriction panel for newznab/torznab/prowlarr/jackett definitions
 	const isNewznabLike = $derived(
-		definition?.id === 'newznab' || definition?.id === 'torznab' || definition?.id === 'prowlarr'
+		definition?.id === 'newznab' ||
+			definition?.id === 'torznab' ||
+			definition?.id === 'prowlarr' ||
+			definition?.id === 'jackett'
 	);
 
 	// Build a parent→children tree from the YAML-defined category map.

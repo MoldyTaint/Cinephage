@@ -1,0 +1,149 @@
+---
+id: jackett
+name: Jackett
+description: Direct integration with Jackett's native JSON search API
+type: semi-private
+language: en-US
+encoding: UTF-8
+requestdelay: 0
+# Per-indexer request; 15 s is generous enough for a single tracker
+requesttimeout: 15000
+
+links:
+  - http://localhost:9117/
+
+settings:
+  - name: apikey
+    type: password
+    label: API Key
+    required: true
+  - name: trackerId
+    type: text
+    label: Tracker ID
+    required: true
+
+caps:
+  modes:
+    search: [q]
+    movie-search: [q]
+    tv-search: [q]
+  categories:
+    '2000': Movies
+    '2010': Movies/Foreign
+    '2020': Movies/Other
+    '2030': Movies/SD
+    '2040': Movies/HD
+    '2045': Movies/UHD
+    '2050': Movies/BluRay
+    '2060': Movies/3D
+    '2070': Movies/DVD
+    '2080': Movies/WEB-DL
+    '2090': Movies/x265
+    '5000': TV
+    '5010': TV/WEB-DL
+    '5020': TV/Foreign
+    '5030': TV/SD
+    '5040': TV/HD
+    '5045': TV/UHD
+    '5050': TV/Other
+    '5060': TV/Sport
+    '5070': TV/Anime
+    '5080': TV/Documentary
+    '5090': TV/x265
+    '6000': XXX
+    '8000': Other
+    '8010': Other/Misc
+
+search:
+  paths:
+    # Movie search — category-filtered
+    - path: api/v2.0/indexers/all/results
+      method: get
+      categories: [Movies]
+      inputs:
+        Query: '{{ .Keywords }}'
+        apikey: '{{ .Config.apikey }}'
+        $raw: 'Tracker[]={{ .Config.trackerId }}{{ if .Categories }}&Category[]={{ join .Categories "&Category[]=" }}{{ end }}'
+
+    # TV search — category-filtered
+    - path: api/v2.0/indexers/all/results
+      method: get
+      categories: [TV]
+      inputs:
+        Query: '{{ .Keywords }}'
+        apikey: '{{ .Config.apikey }}'
+        $raw: 'Tracker[]={{ .Config.trackerId }}{{ if .Categories }}&Category[]={{ join .Categories "&Category[]=" }}{{ end }}'
+
+    # General keyword search fallback
+    - path: api/v2.0/indexers/all/results
+      method: get
+      inputs:
+        Query: '{{ .Keywords }}'
+        apikey: '{{ .Config.apikey }}'
+        $raw: 'Tracker[]={{ .Config.trackerId }}'
+
+  response:
+    type: json
+
+  rows:
+    selector: Results
+
+  fields:
+    title:
+      selector: Title
+    details:
+      selector: Details
+      optional: true
+    download:
+      selector: Link
+      optional: true
+    magnet:
+      selector: MagnetUri
+      optional: true
+    guid:
+      selector: Guid
+      optional: true
+    infohash:
+      selector: InfoHash
+      optional: true
+    date:
+      selector: PublishDate
+    size:
+      selector: Size
+      optional: true
+    seeders:
+      selector: Seeders
+      optional: true
+    leechers:
+      selector: Peers
+      optional: true
+    category:
+      selector: Category[0]
+      optional: true
+    grabs:
+      selector: Grabs
+      optional: true
+    downloadvolumefactor:
+      selector: DownloadVolumeFactor
+      optional: true
+    uploadvolumefactor:
+      selector: UploadVolumeFactor
+      optional: true
+    imdbid:
+      selector: Imdb
+      optional: true
+      filters:
+        - name: re_replace
+          args: ['^0$', '']
+    tmdbid:
+      selector: Tmdb
+      optional: true
+      filters:
+        - name: re_replace
+          args: ['^0$', '']
+    tvdbid:
+      selector: Tvdb
+      optional: true
+      filters:
+        - name: re_replace
+          args: ['^0$', '']

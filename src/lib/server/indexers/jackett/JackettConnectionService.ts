@@ -75,21 +75,36 @@ export function normalizeJackettUrl(url: string): string {
 	return url.replace(/\/+$/, '');
 }
 
-/** Build the Torznab feed URL for a given Jackett indexer ID. */
+/** Build the Torznab feed URL for a given Jackett indexer ID (legacy format). */
 export function jackettIndexerUrl(jackettBase: string, indexerId: string): string {
 	return `${jackettBase}${JACKETT_INDEXERS_PATH}/${indexerId}${TORZNAB_SUFFIX}`;
 }
 
-/** Returns true when baseUrl is a Torznab feed served by this Jackett instance. */
-export function isIndexerFromJackett(baseUrl: string, jackettBase: string): boolean {
+/**
+ * Returns true when the indexer was imported from this Jackett instance.
+ * Checks definitionId first (native format); falls back to URL pattern for
+ * legacy torznab indexers that pre-date migration 121.
+ */
+export function isIndexerFromJackett(
+	indexer: { definitionId?: string; baseUrl: string },
+	jackettBase: string
+): boolean {
+	if (indexer.definitionId === 'jackett') return true;
 	const base = jackettBase.replace(/\/+$/, '');
-	const normalized = baseUrl.replace(/\/+$/, '');
+	const normalized = indexer.baseUrl.replace(/\/+$/, '');
 	const prefix = `${base}${JACKETT_INDEXERS_PATH}/`;
 	return normalized.startsWith(prefix) && normalized.includes(TORZNAB_SUFFIX);
 }
 
-/** Extract the Jackett indexer ID from a stored Cinephage baseUrl. */
-export function extractJackettIndexerId(baseUrl: string, jackettBase: string): string | null {
+/** Extract the Jackett tracker ID from a stored Cinephage indexer (legacy torznab URL or native settings). */
+export function extractJackettIndexerId(
+	baseUrl: string,
+	jackettBase: string,
+	settings?: Record<string, unknown> | null
+): string | null {
+	// New-style: trackerId stored in settings
+	if (settings?.trackerId) return String(settings.trackerId);
+	// Legacy: extract from torznab URL
 	const base = jackettBase.replace(/\/+$/, '');
 	const prefix = `${base}${JACKETT_INDEXERS_PATH}/`;
 	const normalized = baseUrl.replace(/\/+$/, '');
@@ -254,12 +269,11 @@ export async function syncJackettIndexers(): Promise<SyncResult> {
 	const manager = await getIndexerManager();
 	const existingIndexers = await manager.getIndexers();
 
-	const managedIndexers = existingIndexers.filter((i) =>
-		isIndexerFromJackett(i.baseUrl, jackettBase)
-	);
+	const managedIndexers = existingIndexers.filter((i) => isIndexerFromJackett(i, jackettBase));
 
 	for (const indexer of managedIndexers) {
-		const indexerId = extractJackettIndexerId(indexer.baseUrl, jackettBase);
+		const existingSettings = indexer.settings as Record<string, unknown> | null;
+		const indexerId = extractJackettIndexerId(indexer.baseUrl, jackettBase, existingSettings);
 		const ji = indexerId ? jackettById.get(indexerId) : undefined;
 
 		if (!ji) {
@@ -288,7 +302,6 @@ export async function syncJackettIndexers(): Promise<SyncResult> {
 		// Clear orphaned flag if the indexer has re-appeared in Jackett
 		if (indexer.orphaned) updates.orphaned = false;
 
-		const existingSettings = indexer.settings as Record<string, unknown> | null;
 		const currentKey = existingSettings?.apikey;
 		if (currentKey !== conn.apiKey) {
 			updates.settings = { ...(existingSettings ?? {}), apikey: conn.apiKey };
@@ -312,21 +325,26 @@ export async function syncJackettIndexers(): Promise<SyncResult> {
 	}
 
 	if (conn.syncAddNew) {
-		const managedUrls = new Set(managedIndexers.map((i) => normalizeJackettUrl(i.baseUrl)));
+		// Build a set of already-managed tracker IDs (works for both old torznab URLs and new native)
+		const managedTrackerIds = new Set(
+			managedIndexers.map((i) => {
+				const s = i.settings as Record<string, unknown> | null;
+				return extractJackettIndexerId(i.baseUrl, jackettBase, s);
+			})
+		);
 
 		for (const ji of jackettIndexers) {
-			const baseUrl = jackettIndexerUrl(jackettBase, ji.id);
-			if (managedUrls.has(baseUrl)) continue;
+			if (managedTrackerIds.has(ji.id)) continue;
 
 			try {
 				await manager.createIndexer({
 					name: ji.name,
-					definitionId: 'torznab',
-					baseUrl,
+					definitionId: 'jackett',
+					baseUrl: jackettBase,
 					alternateUrls: [],
 					enabled: true,
 					priority: 25,
-					settings: { apikey: conn.apiKey },
+					settings: { apikey: conn.apiKey, trackerId: ji.id },
 					enableAutomaticSearch: true,
 					enableInteractiveSearch: true,
 					minimumSeeders: 1,
@@ -377,7 +395,7 @@ export async function propagateJackettApiKey(newApiKey: string): Promise<void> {
 	const indexers = await manager.getIndexers();
 
 	for (const indexer of indexers) {
-		if (!isIndexerFromJackett(indexer.baseUrl, jackettBase)) continue;
+		if (!isIndexerFromJackett(indexer, jackettBase)) continue;
 		const existing = indexer.settings as Record<string, unknown> | null;
 		if ((existing?.apikey ?? '') === newApiKey) continue;
 		await manager.updateIndexer(indexer.id, {

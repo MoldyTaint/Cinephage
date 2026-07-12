@@ -227,7 +227,8 @@ export const POST: RequestHandler = async (event) => {
 			const jackettConn = await getJackettConnection();
 			if (jackettConn) {
 				const jackettBase = normalizeJackettUrl(jackettConn.url);
-				if (isIndexerFromJackett(existing.baseUrl, jackettBase)) {
+				// Warmup via torznab only applies to legacy format; native indexers use baseUrl = jackettBase
+				if (isIndexerFromJackett(existing, jackettBase) && existing.definitionId !== 'jackett') {
 					const warmupUrl = `${existing.baseUrl}?apikey=${encodeURIComponent(jackettConn.apiKey)}&t=search&q=test`;
 					await fetch(warmupUrl, { signal: AbortSignal.timeout(15000) });
 				}
@@ -250,7 +251,7 @@ export const POST: RequestHandler = async (event) => {
 		}
 		if (freshJackettConn) {
 			const jackettBase = normalizeJackettUrl(freshJackettConn.url);
-			if (isIndexerFromJackett(existing.baseUrl, jackettBase)) {
+			if (isIndexerFromJackett(existing, jackettBase)) {
 				existingSettings = { ...existingSettings, apikey: freshJackettConn.apiKey };
 			}
 		}
@@ -338,7 +339,8 @@ export const POST: RequestHandler = async (event) => {
 			}
 			if (!source && jackettConn2) {
 				const jackettBase = normalizeJackettUrl(jackettConn2.url);
-				if (isIndexerFromJackett(existingBaseUrl, jackettBase)) source = 'Jackett';
+				if (existingIndexer && isIndexerFromJackett(existingIndexer, jackettBase))
+					source = 'Jackett';
 			}
 
 			if (source) {

@@ -71,6 +71,7 @@
 
 	function isJackettIndexer(): boolean {
 		if (!jackettBaseUrl) return false;
+		if (indexer.definitionId === 'jackett') return true;
 		const base = jackettBaseUrl.replace(/\/+$/, '');
 		return (
 			indexer.baseUrl.startsWith(base + '/api/v2.0/indexers/') &&
