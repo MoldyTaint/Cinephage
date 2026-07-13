@@ -502,13 +502,15 @@
 
 	async function handleReorder(indexerIds: string[]) {
 		try {
-			for (const [index, id] of indexerIds.entries()) {
-				await updateIndexerById(id, { priority: index + 1 }, 'Failed to reorder priorities');
-			}
-
-			await invalidateAll();
+			await Promise.all(
+				indexerIds.map((id, index) =>
+					updateIndexerById(id, { priority: index + 1 }, 'Failed to reorder priorities')
+				)
+			);
 		} catch (e) {
 			toasts.error(e instanceof Error ? e.message : 'Failed to reorder priorities');
+		} finally {
+			await invalidateAll();
 		}
 	}
 </script>

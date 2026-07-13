@@ -64,8 +64,10 @@ export const indexerCreateSchema = z.object({
 
 /**
  * Schema for updating an existing indexer.
+ * `.required()` first strips `.default()` wrappers so Zod 4 does not backfill
+ * missing keys with defaults during a partial update. See zod issue #5235.
  */
-export const indexerUpdateSchema = indexerCreateSchema.partial();
+export const indexerUpdateSchema = indexerCreateSchema.required().partial();
 
 /**
  * Schema for testing an indexer connection.
@@ -583,7 +585,7 @@ export const rootFolderCreateSchema = z.object({
 /**
  * Schema for updating a root folder.
  */
-export const rootFolderUpdateSchema = rootFolderCreateSchema.partial();
+export const rootFolderUpdateSchema = rootFolderCreateSchema.required().partial();
 
 // Download Client Type Exports
 export type DownloadClientImplementation = z.infer<typeof downloadClientImplementationSchema>;
@@ -637,7 +639,7 @@ export const libraryCreateSchema = z.object({
 /**
  * Schema for updating a library entity.
  */
-export const libraryUpdateSchema = libraryCreateSchema.partial();
+export const libraryUpdateSchema = libraryCreateSchema.required().partial();
 
 /**
  * Schema for updating library classification settings.
@@ -687,7 +689,7 @@ export const subtitleProviderCreateSchema = z.object({
 /**
  * Schema for updating a subtitle provider.
  */
-export const subtitleProviderUpdateSchema = subtitleProviderCreateSchema.partial();
+export const subtitleProviderUpdateSchema = subtitleProviderCreateSchema.required().partial();
 
 /**
  * Schema for testing a subtitle provider.
@@ -751,7 +753,7 @@ export const languageProfileCreateSchema = z.object({
 /**
  * Schema for updating a language profile.
  */
-export const languageProfileUpdateSchema = languageProfileCreateSchema.partial();
+export const languageProfileUpdateSchema = languageProfileCreateSchema.required().partial();
 
 // ============================================================
 // Subtitle Search Schemas
@@ -992,7 +994,7 @@ export const nntpServerCreateSchema = z.object({
 /**
  * Schema for updating an NNTP server.
  */
-export const nntpServerUpdateSchema = nntpServerCreateSchema.partial();
+export const nntpServerUpdateSchema = nntpServerCreateSchema.required().partial();
 
 /**
  * Schema for testing NNTP connection.
@@ -1076,7 +1078,7 @@ export const mediaBrowserServerCreateSchema = z.object({
 /**
  * Schema for updating a MediaBrowser server.
  */
-export const mediaBrowserServerUpdateSchema = mediaBrowserServerCreateSchema.partial();
+export const mediaBrowserServerUpdateSchema = mediaBrowserServerCreateSchema.required().partial();
 
 /**
  * Schema for testing a MediaBrowser server connection.
@@ -1980,7 +1982,7 @@ export const scoringProfileCreateSchema = z.object({
 	isDefault: z.boolean().optional()
 });
 
-export const scoringProfileUpdateSchema = scoringProfileCreateSchema.partial();
+export const scoringProfileUpdateSchema = scoringProfileCreateSchema.required().partial();
 
 export const scoringProfileUpdateBodySchema = scoringProfileUpdateSchema
 	.extend({

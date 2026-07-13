@@ -384,9 +384,19 @@ export class IndexerManager {
 			updates.rejectPasswordProtected !== undefined ||
 			updates.minimumCompletionPercentage !== undefined
 		) {
-			const currentSettings =
-				(existing as IndexerConfig & { protocolSettings?: Record<string, unknown> })
-					.protocolSettings ?? {};
+			// rowToConfig flattens protocolSettings into top-level config keys, so
+			// rebuild the current snapshot from those. Reading `existing.protocolSettings`
+			// (which is always undefined here) would discard every protocol field the
+			// caller did not override.
+			const currentSettings = {
+				minimumSeeders: existing.minimumSeeders,
+				seedRatio: existing.seedRatio,
+				seedTime: existing.seedTime,
+				packSeedTime: existing.packSeedTime,
+				rejectDeadTorrents: existing.rejectDeadTorrents,
+				rejectPasswordProtected: existing.rejectPasswordProtected,
+				minimumCompletionPercentage: existing.minimumCompletionPercentage
+			};
 			updateData.protocolSettings = {
 				...currentSettings,
 				...(updates.minimumSeeders !== undefined && { minimumSeeders: updates.minimumSeeders }),

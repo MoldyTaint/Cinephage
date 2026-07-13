@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { grabRequestSchema, logDownloadQuerySchema } from './schemas.js';
+import {
+	grabRequestSchema,
+	logDownloadQuerySchema,
+	indexerUpdateSchema,
+	subtitleProviderUpdateSchema,
+	nntpServerUpdateSchema,
+	libraryUpdateSchema,
+	rootFolderUpdateSchema,
+	languageProfileUpdateSchema,
+	mediaBrowserServerUpdateSchema
+} from './schemas.js';
 
 describe('logDownloadQuerySchema', () => {
 	it('accepts export requests up to the supported 5000 row cap', () => {
@@ -78,5 +88,59 @@ describe('grabRequestSchema', () => {
 		const { movieId: _movieId, ...noTarget } = validMovieGrab;
 		const result = grabRequestSchema.safeParse(noTarget);
 		expect(result.success).toBe(false);
+	});
+});
+
+describe('update schemas do not backfill defaults', () => {
+	// Regression: Zod 4 `.partial()` fills missing keys with their `.default()`
+	// values, which causes PATCH/update payloads to overwrite existing config
+	// with defaults. The update schemas use `.required().partial()` to strip
+	// defaults first, so absent keys stay absent. See zod issue #5235.
+	type Parsable = {
+		safeParse: (input: unknown) => { success: boolean; data?: unknown };
+	};
+
+	function expectOnlyProvidedKeys(schema: Parsable, input: Record<string, unknown>) {
+		const result = schema.safeParse(input);
+		expect(result.success).toBe(true);
+		if (!result.success) return;
+		expect(Object.keys(result.data as Record<string, unknown>)).toEqual(Object.keys(input));
+	}
+
+	it('indexerUpdateSchema omits defaulted fields when only `enabled` is sent', () => {
+		const result = indexerUpdateSchema.safeParse({ enabled: false });
+		expect(result.success).toBe(true);
+		if (!result.success) return;
+		expect(result.data).toEqual({ enabled: false });
+		expect(result.data).not.toHaveProperty('priority');
+		expect(result.data).not.toHaveProperty('alternateUrls');
+		expect(result.data).not.toHaveProperty('minimumSeeders');
+		expect(result.data).not.toHaveProperty('enableAutomaticSearch');
+	});
+
+	it('indexerUpdateSchema preserves provided fields and explicit nulls', () => {
+		const result = indexerUpdateSchema.safeParse({ priority: 3, seedRatio: null });
+		expect(result.success).toBe(true);
+		if (!result.success) return;
+		expect(result.data).toEqual({ priority: 3, seedRatio: null });
+	});
+
+	it('indexerUpdateSchema parse({}) yields an empty object', () => {
+		const result = indexerUpdateSchema.safeParse({});
+		expect(result.success).toBe(true);
+		if (!result.success) return;
+		expect(result.data).toEqual({});
+	});
+
+	it.each([
+		['indexerUpdateSchema', indexerUpdateSchema, { enabled: false }],
+		['subtitleProviderUpdateSchema', subtitleProviderUpdateSchema, { enabled: false }],
+		['nntpServerUpdateSchema', nntpServerUpdateSchema, { enabled: false }],
+		['libraryUpdateSchema', libraryUpdateSchema, { isDefault: false }],
+		['rootFolderUpdateSchema', rootFolderUpdateSchema, { isDefault: false }],
+		['languageProfileUpdateSchema', languageProfileUpdateSchema, { isDefault: false }],
+		['mediaBrowserServerUpdateSchema', mediaBrowserServerUpdateSchema, { enabled: false }]
+	])('%s does not synthesize defaults for absent keys', (_name, schema, input) => {
+		expectOnlyProvidedKeys(schema as Parsable, input as Record<string, unknown>);
 	});
 });
