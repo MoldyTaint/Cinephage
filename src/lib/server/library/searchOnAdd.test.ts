@@ -614,6 +614,58 @@ describe('SearchOnAddService.searchForMovie multi-quality buckets', () => {
 		expect(grabbedTitles).toContain('Movie.2024.2160p.UHD.WEB-GROUP');
 		expect(grabbedTitles).toContain('Movie.2024.1080p.WEB-GROUP');
 	});
+
+	it('routes to upgrades when all desired buckets are filled for a multi-quality movie', async () => {
+		mocks.moviesFindFirst.mockResolvedValue({
+			desiredQualities: ['2160p', '1080p'],
+			scoringProfileId: null
+		});
+		mocks.scoringProfilesFindFirst.mockResolvedValue(null);
+		const existing2160pFile = {
+			id: 'file-1',
+			movieId: 'movie-1',
+			relativePath: 'Movie.2024.2160p.mkv',
+			quality: { resolution: '2160p' }
+		};
+		const existing1080pFile = {
+			id: 'file-2',
+			movieId: 'movie-1',
+			relativePath: 'Movie.2024.1080p.mkv',
+			quality: { resolution: '1080p' }
+		};
+		mocks.movieFilesFindFirst.mockResolvedValue(existing2160pFile);
+		mocks.movieFilesFindMany.mockResolvedValue([existing2160pFile, existing1080pFile]);
+		mocks.searchEnhanced.mockResolvedValue({
+			releases: [
+				createSearchRelease({
+					title: 'Movie.2024.2160p.UHD.WEB-GROUP',
+					infoHash: 'hash-2160p-upgrade',
+					downloadUrl: 'stream://movie/1-2160p-upgrade',
+					totalScore: 500,
+					parsed: { resolution: '2160p', source: 'webdl', codec: 'h265', hdr: null }
+				})
+			],
+			rejectedCount: 0
+		});
+		mocks.grab.mockResolvedValue(createGrabResponse());
+
+		const result = await searchOnAdd.searchForMovie({
+			movieId: 'movie-1',
+			tmdbId: 228967,
+			title: 'Test Movie',
+			year: 2024
+		});
+
+		expect(result).toMatchObject({ success: true });
+		expect(mocks.grab).toHaveBeenCalledTimes(1);
+		expect(mocks.grab).toHaveBeenCalledWith(
+			expect.objectContaining({
+				options: expect.objectContaining({ isUpgrade: true })
+			})
+		);
+		const grabbedTitles = mocks.grab.mock.calls.map((c) => c[0].release.title);
+		expect(grabbedTitles).toContain('Movie.2024.2160p.UHD.WEB-GROUP');
+	});
 });
 
 describe('SearchOnAddService.searchForMissingEpisodes monitoring behavior', () => {
