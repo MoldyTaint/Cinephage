@@ -343,12 +343,61 @@ describe('SubtitleSearchService - searchForMovie', () => {
 			const taggedIds = result.results.map((r) => r.movieFileId).sort();
 			expect(taggedIds).toEqual(['file-1080p', 'file-2160p']);
 
+			// Lock the file->batch mapping (robust to processing order): the spy
+			// returns sub-${callIndex} per call, so find which call searched a
+			// given file (by matching filePath) and assert that result carries
+			// that file's movieFileId.
+			for (const file of [
+				{ id: 'file-2160p', marker: '2160p' },
+				{ id: 'file-1080p', marker: '1080p' }
+			]) {
+				const callIdx = searchSpy.mock.calls.findIndex((call) => {
+					const c = call[0] as SubtitleSearchCriteria;
+					return c.filePath?.includes(file.marker) ?? false;
+				});
+				expect(callIdx).toBeGreaterThanOrEqual(0);
+
+				const matching = result.results.find((r) => r.providerSubtitleId === `sub-${callIdx}`);
+				expect(matching, `result for ${file.id} should exist`).toBeTruthy();
+				expect(matching!.movieFileId).toBe(file.id);
+			}
+
 			const firstCriteria = searchSpy.mock.calls[0][0] as SubtitleSearchCriteria;
 			const secondCriteria = searchSpy.mock.calls[1][0] as SubtitleSearchCriteria;
 			expect(firstCriteria.filePath).toContain('.mkv');
 			expect(firstCriteria.fileSize).toBeTypeOf('number');
 			expect(secondCriteria.filePath).toContain('.mkv');
 			expect(secondCriteria.fileSize).toBeTypeOf('number');
+		} finally {
+			searchSpy.mockRestore();
+		}
+	});
+
+	it('continues searching remaining files when one file search throws', async () => {
+		const movieId = await seedRootFolderAndMovie();
+		await testDb.db.insert(movieFiles).values([
+			{ id: 'file-broken', movieId, relativePath: 'Test.Movie.2024.2160p.mkv', size: 1000 },
+			{ id: 'file-ok', movieId, relativePath: 'Test.Movie.2024.1080p.mkv', size: 2000 }
+		]);
+
+		const service = SubtitleSearchService.getInstance();
+		const searchSpy = vi.spyOn(service, 'search').mockImplementation(async (criteria) => {
+			// The file whose path contains '2160p' blows up; the other returns a result.
+			if (criteria.filePath?.includes('2160p')) {
+				throw new Error('unexpected DB error');
+			}
+			return buildAggregatedResult([buildSearchResult({ providerSubtitleId: 'sub-ok' })]);
+		});
+
+		try {
+			const result = await service.searchForMovie(movieId, ['en']);
+
+			expect(searchSpy).toHaveBeenCalledTimes(2);
+			// Only the surviving file produced results; the call did not reject.
+			expect(result.results).toHaveLength(1);
+			expect(result.results[0].providerSubtitleId).toBe('sub-ok');
+			expect(result.results[0].movieFileId).toBe('file-ok');
+			expect(result.totalResults).toBe(1);
 		} finally {
 			searchSpy.mockRestore();
 		}

@@ -72,6 +72,10 @@ export class SubtitleSearchService {
 	 * correct file. For a single-file movie this is exactly one search
 	 * (behavior unchanged). A movie with no files falls back to a single
 	 * metadata-only search.
+	 *
+	 * Note: a movie with N files triggers N provider search rounds
+	 * (intentional - each file deserves hash matching), so provider load
+	 * scales linearly with file count.
 	 */
 	async searchForMovie(
 		movieId: string,
@@ -136,15 +140,30 @@ export class SubtitleSearchService {
 				fileSize: file.size || undefined
 			};
 
-			const batch = await this.search(criteria, { movieId }, options);
+			try {
+				const batch = await this.search(criteria, { movieId }, options);
 
-			// Tag every result in this batch with the originating file id
-			for (const result of batch.results) {
-				result.movieFileId = file.id;
+				// Tag every result in this batch with the originating file id
+				for (const result of batch.results) {
+					result.movieFileId = file.id;
+				}
+
+				allResults.push(...batch.results);
+				providerResults.push(...batch.providerResults);
+			} catch (error) {
+				// Isolate per-file failures: a single file's search error must not
+				// abort the whole movie search. Log and continue so remaining files
+				// still get their (partial) results.
+				logger.warn(
+					{
+						movieId,
+						movieFileId: file.id,
+						relativePath: file.relativePath,
+						err: error
+					},
+					'[Subtitles] Per-file subtitle search failed; continuing with remaining files'
+				);
 			}
-
-			allResults.push(...batch.results);
-			providerResults.push(...batch.providerResults);
 		}
 
 		return {

@@ -300,6 +300,25 @@ describe('SubtitleDownloadService', () => {
 		expect(savedSubtitles[0].movieFileId).toBe(file1080pId);
 	});
 
+	it('gives the explicit movieFileId option precedence over result.movieFileId when both differ', async () => {
+		const { movieId, file2160pId, file1080pId } = await seedMultiFileMovie();
+		const service = SubtitleDownloadService.getInstance();
+
+		// result.movieFileId points to 2160p, but the explicit option forces 1080p.
+		const result = await service.downloadForMovie(
+			movieId,
+			buildSearchResult({ movieFileId: file2160pId }),
+			{ movieFileId: file1080pId }
+		);
+
+		// Sidecar and stored movie_file_id follow the winning (explicit) option.
+		expect(result.path).toContain('Test.Movie.2024.1080p.en.srt');
+
+		const savedSubtitles = await testDb.db.select().from(subtitles);
+		expect(savedSubtitles).toHaveLength(1);
+		expect(savedSubtitles[0].movieFileId).toBe(file1080pId);
+	});
+
 	it('rejects a movieFileId that does not exist', async () => {
 		await seedMultiFileMovie();
 		const service = SubtitleDownloadService.getInstance();
