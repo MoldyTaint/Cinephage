@@ -1,10 +1,12 @@
 import { eq } from 'drizzle-orm';
 import { logger } from '$lib/logging/index.js';
 import { db } from '$lib/server/db/index.js';
-import { movieFiles } from '$lib/server/db/schema.js';
+import { movieFiles, movies, scoringProfiles } from '$lib/server/db/schema.js';
 import { grabService } from '$lib/server/downloads/GrabService.js';
 import { getIndexerManager } from '$lib/server/indexers/IndexerManager.js';
 import { evaluateIndexerSearchAvailability } from '$lib/server/indexers/search/availability';
+import { effectiveBuckets } from '$lib/server/quality/buckets.js';
+import type { Resolution } from '$lib/server/indexers/parser/types.js';
 import type { SearchCriteria } from '$lib/server/indexers/types';
 import { AUTO_GRAB_MIN_SCORE } from './search-utils.js';
 import type { AltTitleRefresher } from './alt-titles.js';
@@ -164,15 +166,11 @@ export async function searchForMovie(
 				}
 
 				const grabError = grabResult.error ?? grabResult.decision?.reason ?? 'Unknown error';
-				onProgress?.('error', `Failed to grab: ${grabError}`, {
-					current: 100,
-					total: 100
-				});
-
-				return {
-					success: false,
-					error: grabError
-				};
+				logger.info(
+					{ movieId, title: release.title, error: grabError },
+					'[SearchOnAdd] Release not grabbed — trying next'
+				);
+				// continue to next release
 			}
 
 			logger.info({ movieId }, '[SearchOnAdd] No upgrades found for movie with existing file');
@@ -183,53 +181,98 @@ export async function searchForMovie(
 			return { success: false, error: 'No upgrades found - existing file quality is sufficient' };
 		}
 
-		// No existing file - grab the top-ranked release
-		const bestRelease = searchResult.releases[0];
-		onProgress?.('grabbing', `Grabbing best release: ${bestRelease.title.substring(0, 50)}...`, {
-			current: 85,
-			total: 100
-		});
+		// No existing file - grab the best release from each desired quality bucket.
+		// A single title search returns releases of all resolutions; a multi-quality
+		// movie should fill every declared bucket, not just the top-scored one.
+		const movieRow = db.query.movies
+			? await db.query.movies.findFirst({
+					where: eq(movies.id, movieId),
+					columns: { desiredQualities: true, scoringProfileId: true }
+				})
+			: null;
+		const profileRow =
+			movieRow?.scoringProfileId && db.query.scoringProfiles
+				? await db.query.scoringProfiles.findFirst({
+						where: eq(scoringProfiles.id, movieRow.scoringProfileId),
+						columns: { minResolution: true, maxResolution: true }
+					})
+				: null;
+		const effective = effectiveBuckets(
+			movieRow?.desiredQualities,
+			profileRow?.minResolution,
+			profileRow?.maxResolution
+		);
+		const multiQuality = effective.length >= 2;
+		const alreadyGrabbed: string[] = [];
+		let lastGrab: GrabResult | null = null;
 
-		const grabResult = await grabService.grab({
-			release: {
-				title: bestRelease.title,
-				infoHash: bestRelease.infoHash,
-				magnetUrl: bestRelease.magnetUrl,
-				downloadUrl: bestRelease.downloadUrl,
-				indexerId: bestRelease.indexerId,
-				indexerName: bestRelease.indexerName,
-				size: bestRelease.size,
-				protocol: bestRelease.protocol as 'torrent' | 'usenet' | 'streaming' | undefined
-			},
-			target: { type: 'movie' as const, movieId },
-			options: {
-				force: false,
-				skipBlocklist: false,
-				allowSidegrade: false,
-				isAutomatic: true,
-				isUpgrade: false
+		for (const release of searchResult.releases) {
+			const res = release.parsed?.resolution as string | undefined;
+			// If multi-quality, only grab one release per desired bucket.
+			if (multiQuality && res && effective.includes(res as Resolution)) {
+				if (alreadyGrabbed.includes(res)) continue;
 			}
-		});
 
-		if (grabResult.success) {
-			onProgress?.('complete', `✓ Grabbed: ${bestRelease.title}`, {
+			onProgress?.('grabbing', `Grabbing: ${release.title.substring(0, 50)}...`, {
+				current: 85,
+				total: 100
+			});
+
+			const grabResult = await grabService.grab({
+				release: {
+					title: release.title,
+					infoHash: release.infoHash,
+					magnetUrl: release.magnetUrl,
+					downloadUrl: release.downloadUrl,
+					indexerId: release.indexerId,
+					indexerName: release.indexerName,
+					size: release.size,
+					protocol: release.protocol as 'torrent' | 'usenet' | 'streaming' | undefined
+				},
+				target: { type: 'movie' as const, movieId },
+				options: {
+					force: false,
+					skipBlocklist: false,
+					allowSidegrade: false,
+					isAutomatic: true,
+					isUpgrade: false
+				}
+			});
+
+			if (grabResult.success) {
+				if (multiQuality && res) alreadyGrabbed.push(res);
+				lastGrab = {
+					success: true,
+					releaseName: release.title,
+					queueItemId: grabResult.download?.queueId
+				};
+				// In single-quality mode, one grab is enough.
+				if (!multiQuality) break;
+				// In multi-quality mode, keep going until all buckets are filled.
+				if (alreadyGrabbed.length >= effective.length) break;
+				continue;
+			}
+
+			lastGrab = {
+				success: false,
+				error: grabResult.error ?? grabResult.decision?.reason ?? 'Unknown error'
+			};
+			if (!multiQuality) break;
+		}
+
+		if (lastGrab?.success) {
+			onProgress?.('complete', `\u2713 Grabbed: ${lastGrab.releaseName}`, {
 				current: 100,
 				total: 100
 			});
 		} else {
-			const grabError = grabResult.error ?? grabResult.decision?.reason ?? 'Unknown error';
-			onProgress?.('error', `Failed to grab: ${grabError}`, {
+			onProgress?.('complete', 'No suitable releases found', {
 				current: 100,
 				total: 100
 			});
 		}
 
-		return {
-			success: grabResult.success,
-			releaseName: grabResult.success ? bestRelease.title : undefined,
-			queueItemId: grabResult.download?.queueId,
-			error: grabResult.error ?? (grabResult.success ? undefined : grabResult.decision?.reason)
-		};
+		return lastGrab ?? { success: false, error: 'No releases found' };
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
 		logger.error({ movieId, err: error }, '[SearchOnAdd] Movie search failed');

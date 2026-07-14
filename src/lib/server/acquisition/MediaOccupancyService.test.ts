@@ -206,6 +206,90 @@ describe('MediaOccupancyService', () => {
 		expect(result.occupied).toBe(false);
 	});
 
+	it('allows a non-upgrade grab for an empty quality bucket in multi-quality mode', async () => {
+		insertMovie({ desiredQualities: ['2160p', '1080p'] });
+		// Existing file fills the 2160p bucket only
+		testDb.db
+			.insert(movieFiles)
+			.values({
+				id: 'file-4k',
+				movieId: 'movie-1',
+				relativePath: 'Test Movie (2026)/Test.Movie.2026.2160p.mkv',
+				quality: { resolution: '2160p' }
+			})
+			.run();
+
+		const result = await mediaOccupancyService.check(
+			{ type: 'movie', movieId: 'movie-1' },
+			{ candidateResolution: '1080p' }
+		);
+
+		expect(result.occupied).toBe(false);
+	});
+
+	it('blocks a non-upgrade grab for an already-filled bucket in multi-quality mode', async () => {
+		insertMovie({ desiredQualities: ['2160p', '1080p'] });
+		testDb.db
+			.insert(movieFiles)
+			.values({
+				id: 'file-4k',
+				movieId: 'movie-1',
+				relativePath: 'Test Movie (2026)/Test.Movie.2026.2160p.mkv',
+				quality: { resolution: '2160p' }
+			})
+			.run();
+
+		const result = await mediaOccupancyService.check(
+			{ type: 'movie', movieId: 'movie-1' },
+			{ candidateResolution: '2160p' }
+		);
+
+		expect(result.occupied).toBe(true);
+		expect(result.reason).toBe('movie_already_has_file');
+	});
+
+	it('blocks a non-upgrade grab for a resolution outside the desired buckets', async () => {
+		insertMovie({ desiredQualities: ['2160p', '1080p'] });
+		testDb.db
+			.insert(movieFiles)
+			.values({
+				id: 'file-4k',
+				movieId: 'movie-1',
+				relativePath: 'Test Movie (2026)/Test.Movie.2026.2160p.mkv',
+				quality: { resolution: '2160p' }
+			})
+			.run();
+
+		const result = await mediaOccupancyService.check(
+			{ type: 'movie', movieId: 'movie-1' },
+			{ candidateResolution: '720p' }
+		);
+
+		expect(result.occupied).toBe(true);
+		expect(result.reason).toBe('movie_already_has_file');
+	});
+
+	it('still blocks a single-quality movie with an existing file', async () => {
+		insertMovie({ hasFile: true });
+		testDb.db
+			.insert(movieFiles)
+			.values({
+				id: 'file-1',
+				movieId: 'movie-1',
+				relativePath: 'Test Movie (2026)/Test.Movie.2026.mkv',
+				quality: { resolution: '1080p' }
+			})
+			.run();
+
+		const result = await mediaOccupancyService.check(
+			{ type: 'movie', movieId: 'movie-1' },
+			{ candidateResolution: '2160p' }
+		);
+
+		expect(result.occupied).toBe(true);
+		expect(result.reason).toBe('movie_already_has_file');
+	});
+
 	it('marks active episode queue items occupied for an upgrade check', async () => {
 		insertDownloadClient();
 		insertSeriesEpisode({ hasFile: true });

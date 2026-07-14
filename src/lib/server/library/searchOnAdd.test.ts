@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
 	episodesFindMany: vi.fn(),
 	seriesFindFirst: vi.fn(),
 	episodeFilesFindMany: vi.fn(),
+	moviesFindFirst: vi.fn().mockResolvedValue(null),
+	scoringProfilesFindFirst: vi.fn().mockResolvedValue(null),
 	searchEnhanced: vi.fn(),
 	grab: vi.fn(),
 	getIndexerManager: vi.fn(),
@@ -23,7 +25,9 @@ vi.mock('$lib/server/db/index.js', () => ({
 			movieFiles: { findFirst: mocks.movieFilesFindFirst },
 			episodes: { findFirst: mocks.episodesFindFirst, findMany: mocks.episodesFindMany },
 			series: { findFirst: mocks.seriesFindFirst },
-			episodeFiles: { findMany: mocks.episodeFilesFindMany }
+			episodeFiles: { findMany: mocks.episodeFilesFindMany },
+			movies: { findFirst: mocks.moviesFindFirst },
+			scoringProfiles: { findFirst: mocks.scoringProfilesFindFirst }
 		}
 	}
 }));

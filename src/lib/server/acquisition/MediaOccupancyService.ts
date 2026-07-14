@@ -8,6 +8,9 @@ import {
 	movies
 } from '$lib/server/db/schema.js';
 import type { GrabTarget } from '$lib/server/filters/stages/grab/types.js';
+import { resolveMovieMultiQuality } from '$lib/server/quality/movie-buckets.js';
+import { getFilledResolutions } from '$lib/server/quality/buckets.js';
+import type { Resolution } from '$lib/server/indexers/parser/types.js';
 
 type OccupancyReason =
 	| 'movie_already_downloading'
@@ -27,6 +30,8 @@ export interface MediaOccupancyResult {
 
 export interface MediaOccupancyOptions {
 	isUpgrade?: boolean;
+	/** Parsed resolution of the candidate release (enables empty-bucket checks). */
+	candidateResolution?: Resolution;
 }
 
 const BLOCKING_DOWNLOAD_STATUSES = [
@@ -87,17 +92,44 @@ class MediaOccupancyServiceImpl {
 			return { occupied: false };
 		}
 
-		const existingFile = await db
-			.select({ id: movieFiles.id })
+		const existingFiles = await db
+			.select({
+				id: movieFiles.id,
+				relativePath: movieFiles.relativePath,
+				size: movieFiles.size,
+				quality: movieFiles.quality
+			})
 			.from(movieFiles)
-			.where(eq(movieFiles.movieId, movieId))
-			.limit(1);
+			.where(eq(movieFiles.movieId, movieId));
 
-		if (existingFile.length > 0) {
+		if (existingFiles.length > 0) {
+			// Multi-quality mode: allow a non-upgrade grab when it targets an empty
+			// resolution bucket (e.g. we already have 2160p, candidate is 1080p).
+			if (options.candidateResolution) {
+				const movieRows = await db
+					.select({
+						desiredQualities: movies.desiredQualities,
+						scoringProfileId: movies.scoringProfileId
+					})
+					.from(movies)
+					.where(eq(movies.id, movieId))
+					.limit(1);
+				const { effective, multiQuality } = await resolveMovieMultiQuality(
+					movieRows[0]?.desiredQualities,
+					movieRows[0]?.scoringProfileId
+				);
+				if (multiQuality && effective.includes(options.candidateResolution)) {
+					const filled = getFilledResolutions(existingFiles);
+					if (!filled.includes(options.candidateResolution)) {
+						return { occupied: false };
+					}
+				}
+			}
+
 			return {
 				occupied: true,
 				reason: 'movie_already_has_file',
-				details: { fileId: existingFile[0].id }
+				details: { fileId: existingFiles[0].id }
 			};
 		}
 

@@ -41,6 +41,7 @@ class GrabServiceImpl {
 			existingFiles,
 			profile: resolved.profile,
 			options,
+			desiredQualities: resolved.desiredQualities,
 			computed: {}
 		};
 
@@ -113,6 +114,7 @@ class GrabServiceImpl {
 		let episodeIds: string[] | undefined;
 		let seasonNumber: number | undefined;
 		let mediaType: 'movie' | 'tv' = 'movie';
+		let movieDesiredQualities: ResolvedContext['desiredQualities'];
 
 		if (target.type === 'movie') {
 			const movie = await db.query.movies.findFirst({ where: eq(movies.id, target.movieId) });
@@ -122,6 +124,7 @@ class GrabServiceImpl {
 			mediaPath = movie.path ?? undefined;
 			movieId = movie.id;
 			mediaType = 'movie';
+			movieDesiredQualities = movie.desiredQualities ?? undefined;
 		} else {
 			seriesId = 'seriesId' in target ? target.seriesId : undefined;
 			const show = seriesId
@@ -165,7 +168,8 @@ class GrabServiceImpl {
 			profile,
 			rootFolderPath,
 			mediaPath,
-			seriesPath: mediaType === 'tv' ? mediaPath : undefined
+			seriesPath: mediaType === 'tv' ? mediaPath : undefined,
+			desiredQualities: movieDesiredQualities
 		};
 	}
 

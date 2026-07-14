@@ -131,8 +131,9 @@ import {
  * Version 109: Add stalled_orphan tracking table
  * Version 110: Add storage_items, storage_item_server_links, storage_insights tables for unified storage tracking
  * Version 111: Add rename_history table for permanent file rename audit trail
+ * Version 123: Add desired_qualities column to movies for multi-quality per-movie support
  */
-export const CURRENT_SCHEMA_VERSION = 122;
+export const CURRENT_SCHEMA_VERSION = 123;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -532,6 +533,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"library_id" text REFERENCES "libraries"("id") ON DELETE SET NULL,
 		"root_folder_id" text REFERENCES "root_folders"("id") ON DELETE SET NULL,
 		"scoring_profile_id" text REFERENCES "scoring_profiles"("id") ON DELETE SET NULL,
+		"desired_qualities" text,
 		"language_profile_id" text,
 		"monitored" integer DEFAULT true,
 		"minimum_availability" text DEFAULT 'released',

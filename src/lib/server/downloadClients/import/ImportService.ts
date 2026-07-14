@@ -28,6 +28,9 @@ import {
 } from '$lib/server/db/schema';
 import { eq, and, or, inArray, gte } from 'drizzle-orm';
 import { downloadMonitor } from '../monitoring/DownloadMonitorService';
+import { resolveMovieMultiQuality } from '$lib/server/quality/movie-buckets.js';
+import { replaceIdsForImport } from '$lib/server/quality/buckets.js';
+import type { Resolution } from '$lib/server/indexers/parser/types.js';
 import {
 	transferFileWithMode,
 	findVideoFiles,
@@ -1000,20 +1003,35 @@ export class ImportService extends EventEmitter {
 			queueItem.protocol as 'torrent' | 'usenet'
 		);
 
-		// NOW delete old files (after successful import - so media is never missing)
+		// NOW delete old files (after successful import - so media is never missing).
+		// In multi-quality mode, only the file(s) in the SAME resolution bucket as
+		// the new file are replaced; other tiers are preserved. Single-quality mode
+		// keeps the existing behavior (replace all on upgrade).
+		const { multiQuality } = await resolveMovieMultiQuality(
+			movie.desiredQualities,
+			movie.scoringProfileId
+		);
+		const newResolution = importedMetadata.quality?.resolution as Resolution | undefined;
+		const replaceIdSet = new Set(
+			replaceIdsForImport(existingFiles, { newResolution, multiQuality, isUpgrade })
+		);
+		replaceIdSet.delete(fileId); // never the just-imported file
+
 		const deletedFileIds: string[] = [];
-		if (existingFiles.length > 0 && isUpgrade) {
+		if (replaceIdSet.size > 0) {
 			logger.info(
 				{
 					movieId: movie.id,
-					existingCount: existingFiles.length
+					existingCount: existingFiles.length,
+					replaceCount: replaceIdSet.size,
+					multiQuality
 				},
 				'Import successful - now deleting old files'
 			);
 
 			for (const oldFile of existingFiles) {
-				// Don't delete the file we just created/updated
-				if (oldFile.id === fileId) continue;
+				// Only delete files selected for replacement by the bucket logic
+				if (!replaceIdSet.has(oldFile.id)) continue;
 
 				const deleteResult = await this.deleteMovieFile(
 					oldFile.id,

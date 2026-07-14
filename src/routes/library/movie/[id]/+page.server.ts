@@ -102,6 +102,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 			rootFolderId: movies.rootFolderId,
 			rootFolderPath: rootFolders.path,
 			scoringProfileId: movies.scoringProfileId,
+			desiredQualities: movies.desiredQualities,
 			monitored: movies.monitored,
 			minimumAvailability: movies.minimumAvailability,
 			wantsSubtitles: movies.wantsSubtitles,
@@ -207,7 +208,9 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 			name: scoringProfiles.name,
 			description: scoringProfiles.description,
 			isDefault: scoringProfiles.isDefault,
-			isBuiltIn: scoringProfiles.isBuiltIn
+			isBuiltIn: scoringProfiles.isBuiltIn,
+			minResolution: scoringProfiles.minResolution,
+			maxResolution: scoringProfiles.maxResolution
 		})
 		.from(scoringProfiles);
 
@@ -221,7 +224,9 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 		name: p.name,
 		description: p.description ?? '',
 		isBuiltIn: !!p.isBuiltIn,
-		isDefault: p.id === resolvedDefaultId
+		isDefault: p.id === resolvedDefaultId,
+		minResolution: p.minResolution ?? null,
+		maxResolution: p.maxResolution ?? null
 	}));
 
 	// Fetch movie root folders for the edit modal

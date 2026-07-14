@@ -1483,6 +1483,11 @@ export const episodeUpdateSchema = z
 export const movieUpdateSchema = z.object({
 	monitored: z.boolean().optional(),
 	scoringProfileId: z.string().nullable().optional(),
+	/** Desired qualities for multi-quality mode (null/empty = single-quality). */
+	desiredQualities: z
+		.array(z.enum(['2160p', '1080p', '720p', '480p']))
+		.nullable()
+		.optional(),
 	minimumAvailability: z.string().min(1).optional(),
 	availabilityDelay: z.number().int().min(0).max(365).optional(),
 	providerRefs: z.partialRecord(z.enum(['tmdb', 'anilist', 'mal']), z.string().min(1)).optional(),
@@ -1616,6 +1621,11 @@ export const addMovieSchema = z.object({
 	tmdbId: z.number().int().positive(),
 	rootFolderId: z.string().min(1),
 	scoringProfileId: z.string().optional(),
+	/** Desired qualities for multi-quality mode (null/empty = single-quality). */
+	desiredQualities: z
+		.array(z.enum(['2160p', '1080p', '720p', '480p']))
+		.nullable()
+		.optional(),
 	monitored: z.boolean().default(true),
 	minimumAvailability: z.enum(['announced', 'inCinemas', 'released']).default('released'),
 	availabilityDelay: z.number().int().min(0).max(365).default(0),

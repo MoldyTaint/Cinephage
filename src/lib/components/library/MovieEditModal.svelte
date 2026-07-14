@@ -19,6 +19,8 @@
 		description: string;
 		isBuiltIn: boolean;
 		isDefault: boolean;
+		minResolution?: string | null;
+		maxResolution?: string | null;
 	}
 
 	interface TmdbMovieDetails {
@@ -48,6 +50,7 @@
 	export interface MovieEditData {
 		monitored: boolean;
 		scoringProfileId: string | null;
+		desiredQualities: string[] | null;
 		delayProfileId: string | null;
 		rootFolderId: string | null;
 		moveFilesOnRootChange: boolean;
@@ -68,6 +71,7 @@
 	let minimumAvailability = $state('released');
 	let availabilityDelay = $state(0);
 	let wantsSubtitles = $state(true);
+	let desiredQualities = $state<string[]>([]);
 	let moveFilesOnRootChange = $state(false);
 	let moveOptionTouched = $state(false);
 	let folderPath = $state('');
@@ -139,6 +143,7 @@
 			minimumAvailability = movie.minimumAvailability ?? 'released';
 			availabilityDelay = movie.availabilityDelay ?? 0;
 			wantsSubtitles = movie.wantsSubtitles ?? true;
+			desiredQualities = [...(movie.desiredQualities ?? [])];
 			moveFilesOnRootChange = false;
 			moveOptionTouched = false;
 			animeRootWarningShown = false;
@@ -214,6 +219,45 @@
 		qualityProfiles.find((p) => p.id === qualityProfileId) ?? defaultProfile
 	);
 
+	// --- Multi-quality resolution picker ---
+	const RESOLUTION_OPTIONS = [
+		{ value: '2160p', label: '2160p (4K)', rank: 4 },
+		{ value: '1080p', label: '1080p (Full HD)', rank: 3 },
+		{ value: '720p', label: '720p (HD)', rank: 2 },
+		{ value: '480p', label: '480p (SD)', rank: 1 }
+	];
+
+	const profileForGating = $derived(
+		qualityProfiles.find((p) => p.id === qualityProfileId) ?? defaultProfile ?? null
+	);
+	const allowedResolutions = $derived.by(() => {
+		const prof = profileForGating;
+		if (!prof) return RESOLUTION_OPTIONS.map((r) => r.value);
+		const minRank = prof.minResolution
+			? (RESOLUTION_OPTIONS.find((r) => r.value === prof.minResolution)?.rank ?? 0)
+			: 0;
+		const maxRank = prof.maxResolution
+			? (RESOLUTION_OPTIONS.find((r) => r.value === prof.maxResolution)?.rank ?? 99)
+			: 99;
+		return RESOLUTION_OPTIONS.filter((r) => r.rank >= minRank && r.rank <= maxRank).map(
+			(r) => r.value
+		);
+	});
+	const multiQualityActive = $derived(
+		desiredQualities.filter((r) => allowedResolutions.includes(r)).length >= 2
+	);
+	const hasOutOfRangeSelection = $derived(
+		desiredQualities.some((r) => !allowedResolutions.includes(r))
+	);
+
+	function toggleResolution(value: string) {
+		if (desiredQualities.includes(value)) {
+			desiredQualities = desiredQualities.filter((r) => r !== value);
+		} else {
+			desiredQualities = [...desiredQualities, value];
+		}
+	}
+
 	const folderPathChanged = $derived(folderPath.trim() !== (movie.path ?? '').trim());
 	const resolvedFolderPath = $derived(
 		selectedRootFolderObj?.path && folderPath.trim()
@@ -225,6 +269,7 @@
 		onSave({
 			monitored,
 			scoringProfileId: qualityProfileId || null,
+			desiredQualities: desiredQualities.length > 0 ? desiredQualities : null,
 			delayProfileId,
 			rootFolderId: rootFolderId || null,
 			moveFilesOnRootChange,
@@ -299,6 +344,48 @@
 					{/if}
 				</span>
 			</div>
+		</div>
+
+		<!-- Desired Qualities (multi-quality mode) -->
+		<div class="form-control">
+			<div class="label">
+				<span class="label-text font-medium">Desired Qualities</span>
+			</div>
+			<div class="flex flex-wrap gap-2">
+				{#each RESOLUTION_OPTIONS as option (option.value)}
+					{@const allowed = allowedResolutions.includes(option.value)}
+					{@const selected = desiredQualities.includes(option.value)}
+					<button
+						type="button"
+						class="btn btn-sm border border-base-300 {selected ? 'btn-primary' : 'btn-ghost'}"
+						class:btn-disabled={!allowed}
+						class:opacity-50={!allowed}
+						aria-pressed={selected}
+						disabled={!allowed}
+						title={allowed ? '' : 'Outside the selected quality profile resolution range'}
+						onclick={() => toggleResolution(option.value)}
+					>
+						{option.label}
+					</button>
+				{/each}
+			</div>
+			<div class="label">
+				<span class="label-text-alt wrap-break-word whitespace-normal text-base-content/60">
+					Select two or more resolutions to keep multiple quality versions of this movie. Fewer than
+					two keeps the default single-best behavior.
+				</span>
+			</div>
+			{#if hasOutOfRangeSelection}
+				<p class="mt-1 text-xs text-warning">
+					Some selected resolutions are outside the current quality profile's range and will be
+					ignored until the profile allows them.
+				</p>
+			{/if}
+			{#if multiQualityActive}
+				<p class="mt-1 text-xs text-success">
+					Multi-quality mode active: each resolution is downloaded and upgraded independently.
+				</p>
+			{/if}
 		</div>
 
 		<!-- Delay Profile -->

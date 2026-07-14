@@ -72,6 +72,7 @@ export const GET: RequestHandler = async ({ params }) => {
 				rootFolderId: movies.rootFolderId,
 				rootFolderPath: rootFolders.path,
 				scoringProfileId: movies.scoringProfileId,
+				desiredQualities: movies.desiredQualities,
 				languageProfileId: movies.languageProfileId,
 				monitored: movies.monitored,
 				minimumAvailability: movies.minimumAvailability,
@@ -186,6 +187,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	const {
 		monitored,
 		scoringProfileId,
+		desiredQualities,
 		minimumAvailability,
 		availabilityDelay,
 		providerRefs,
@@ -228,6 +230,9 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	}
 	if (scoringProfileId !== undefined) {
 		updateData.scoringProfileId = scoringProfileId;
+	}
+	if (desiredQualities !== undefined) {
+		updateData.desiredQualities = desiredQualities;
 	}
 	if (delayProfileId !== undefined) {
 		updateData.delayProfileId = delayProfileId;

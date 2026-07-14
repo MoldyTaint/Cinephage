@@ -87,6 +87,8 @@ export interface LibraryMovie {
 	rootFolderPath: string | null;
 	missingRootFolder?: boolean;
 	scoringProfileId: string | null;
+	/** Desired qualities for multi-quality mode (null/empty = single-quality). */
+	desiredQualities?: string[] | null;
 	monitored: boolean | null;
 	minimumAvailability: string | null;
 	wantsSubtitles: boolean | null;
@@ -191,4 +193,6 @@ export interface QualityProfileSummary {
 	description: string;
 	isBuiltIn: boolean;
 	isDefault: boolean;
+	minResolution?: string | null;
+	maxResolution?: string | null;
 }
