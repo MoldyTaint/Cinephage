@@ -17,6 +17,7 @@ import {
 	extractAudioCodec,
 	extractContainer
 } from '$lib/server/storage/reconciliation/matchers.js';
+import { aggregateMovieRows } from './aggregate-movies.js';
 
 export type MediaExplorerItem = {
 	id: string;
@@ -80,9 +81,11 @@ export const load: PageServerLoad = async ({ url, parent }) => {
 					hasFile: movies.hasFile,
 					added: movies.added,
 					posterPath: movies.posterPath,
+					fileId: movieFiles.id,
 					fileSize: movieFiles.size,
 					quality: movieFiles.quality,
-					mediaInfo: movieFiles.mediaInfo
+					mediaInfo: movieFiles.mediaInfo,
+					relativePath: movieFiles.relativePath
 				})
 				.from(movies)
 				.leftJoin(movieFiles, sql`${movieFiles.movieId} = ${movies.id}`),
@@ -149,42 +152,51 @@ export const load: PageServerLoad = async ({ url, parent }) => {
 
 	const allItems: MediaExplorerItem[] = [];
 
-	const seenMovieIds = new Set<string>();
-	for (const row of movieRows) {
-		if (seenMovieIds.has(row.id)) continue;
-		seenMovieIds.add(row.id);
+	for (const movie of aggregateMovieRows(movieRows)) {
+		const lib = movie.libraryId ? libraryMap.get(movie.libraryId) : null;
+		const rf = movie.rootFolderId ? rootFolderMap.get(movie.rootFolderId) : null;
+		const plays = movie.tmdbId ? playStatsMap.get(movie.tmdbId) : undefined;
 
-		const lib = row.libraryId ? libraryMap.get(row.libraryId) : null;
-		const rf = row.rootFolderId ? rootFolderMap.get(row.rootFolderId) : null;
-		const plays = row.tmdbId ? playStatsMap.get(row.tmdbId) : undefined;
+		const bestQuality = movie.bestQuality as {
+			resolution?: string;
+			codec?: string;
+			hdr?: string;
+		} | null;
+		const bestMediaInfo = movie.bestMediaInfo as {
+			height?: number;
+			videoCodec?: string;
+			videoHdrFormat?: string;
+			audioCodec?: string;
+			containerFormat?: string;
+		} | null;
 
 		allItems.push({
-			id: row.id,
-			tmdbId: row.tmdbId,
-			title: row.title,
-			year: row.year ?? null,
+			id: movie.id,
+			tmdbId: movie.tmdbId ?? 0,
+			title: movie.title,
+			year: movie.year ?? null,
 			mediaType: 'movie',
 			mediaSubType: lib?.mediaSubType === 'anime' ? 'anime' : 'standard',
-			libraryId: row.libraryId ?? null,
+			libraryId: movie.libraryId ?? null,
 			libraryName: lib?.name ?? '',
-			rootFolderId: row.rootFolderId ?? null,
+			rootFolderId: movie.rootFolderId ?? null,
 			rootFolderName: rf?.name ?? null,
-			monitored: row.monitored ?? true,
-			hasFile: row.hasFile ?? false,
-			fileSize: row.fileSize ?? 0,
-			resolution: extractResolution(row.quality, row.mediaInfo),
-			videoCodec: extractVideoCodec(row.quality, row.mediaInfo),
-			hdrFormat: extractHdrFormat(row.quality, row.mediaInfo),
-			audioCodec: extractAudioCodec(row.mediaInfo),
-			containerFormat: extractContainer(row.mediaInfo),
-			addedAt: row.added ?? null,
+			monitored: movie.monitored ?? true,
+			hasFile: movie.hasFile ?? false,
+			fileSize: movie.totalFileSize,
+			resolution: extractResolution(bestQuality, bestMediaInfo),
+			videoCodec: extractVideoCodec(bestQuality, bestMediaInfo),
+			hdrFormat: extractHdrFormat(bestQuality, bestMediaInfo),
+			audioCodec: extractAudioCodec(bestMediaInfo),
+			containerFormat: extractContainer(bestMediaInfo),
+			addedAt: movie.added ?? null,
 			playCount: Number(plays?.playCount ?? 0),
 			lastPlayedDate: plays?.lastPlayedDate ?? null,
 			isPlayed: Boolean(plays?.isPlayed),
 			playedPercentage: plays?.playedPercentage ?? null,
 			episodeCount: null,
 			episodeFileCount: null,
-			posterPath: row.posterPath ?? null
+			posterPath: movie.posterPath ?? null
 		});
 	}
 
