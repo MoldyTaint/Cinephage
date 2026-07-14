@@ -66,14 +66,16 @@ export class SubtitleDownloadService {
 			throw new Error(`Movie not found: ${movieId}`);
 		}
 
-		// Resolve the target movie file: a specific file when movieFileId is provided
-		// (multi-quality support), otherwise fall back to the first file.
+		// Resolve the target movie file. Explicit option wins, then the
+		// movieFileId tagged on the search result (per-file search), then the
+		// first file as a final fallback.
+		const targetMovieFileId = options?.movieFileId ?? result.movieFileId;
 		let file;
-		if (options?.movieFileId) {
+		if (targetMovieFileId) {
 			const specificFile = await db
 				.select()
 				.from(movieFiles)
-				.where(and(eq(movieFiles.id, options.movieFileId), eq(movieFiles.movieId, movieId)))
+				.where(and(eq(movieFiles.id, targetMovieFileId), eq(movieFiles.movieId, movieId)))
 				.limit(1);
 			file = specificFile[0];
 		} else {
@@ -82,8 +84,8 @@ export class SubtitleDownloadService {
 		}
 		if (!file) {
 			throw new Error(
-				options?.movieFileId
-					? `No file found for movie ${movieId} with movieFileId ${options.movieFileId}`
+				targetMovieFileId
+					? `No file found for movie ${movieId} with movieFileId ${targetMovieFileId}`
 					: `No file found for movie: ${movieId}`
 			);
 		}
@@ -108,7 +110,7 @@ export class SubtitleDownloadService {
 		// Download and save
 		return this.downloadAndSave(result, {
 			movieId,
-			movieFileId: options?.movieFileId ?? null,
+			movieFileId: targetMovieFileId ?? null,
 			mediaPath,
 			videoFileName: basename(file.relativePath),
 			format: result.format,

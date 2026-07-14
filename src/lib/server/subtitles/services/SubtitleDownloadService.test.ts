@@ -284,6 +284,22 @@ describe('SubtitleDownloadService', () => {
 		expect(savedSubtitles.find((s) => s.movieFileId === file1080pId)).toBeTruthy();
 	});
 
+	it('uses result.movieFileId when no explicit movieFileId option is provided', async () => {
+		const { movieId, file1080pId } = await seedMultiFileMovie();
+		const service = SubtitleDownloadService.getInstance();
+
+		const result = await service.downloadForMovie(
+			movieId,
+			buildSearchResult({ movieFileId: file1080pId })
+		);
+
+		expect(result.path).toContain('Test.Movie.2024.1080p.en.srt');
+
+		const savedSubtitles = await testDb.db.select().from(subtitles);
+		expect(savedSubtitles).toHaveLength(1);
+		expect(savedSubtitles[0].movieFileId).toBe(file1080pId);
+	});
+
 	it('rejects a movieFileId that does not exist', async () => {
 		await seedMultiFileMovie();
 		const service = SubtitleDownloadService.getInstance();

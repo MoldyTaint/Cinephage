@@ -65,6 +65,13 @@ export class SubtitleSearchService {
 
 	/**
 	 * Search for subtitles for a movie
+	 *
+	 * Runs one search per movie file so each quality tier gets its own
+	 * hash-matchable results. Every result in a file's batch is tagged with
+	 * that file's id, which SubtitleDownloadService uses to target the
+	 * correct file. For a single-file movie this is exactly one search
+	 * (behavior unchanged). A movie with no files falls back to a single
+	 * metadata-only search.
 	 */
 	async searchForMovie(
 		movieId: string,
@@ -78,36 +85,74 @@ export class SubtitleSearchService {
 			throw new Error(`Movie not found: ${movieId}`);
 		}
 
-		// Get movie file for hash calculation
+		// Get all movie files (one search per file)
 		const files = await db.select().from(movieFiles).where(eq(movieFiles.movieId, movieId));
-		const file = files[0];
 
-		// Get root folder path
-		let filePath: string | undefined;
-		if (file && movie[0].rootFolderId) {
+		// Resolve root folder path once (shared by all files of this movie)
+		let rootPath: string | undefined;
+		if (movie[0].rootFolderId) {
 			const rootFolder = await db
 				.select()
 				.from(rootFolders)
 				.where(eq(rootFolders.id, movie[0].rootFolderId))
 				.limit(1);
 			if (rootFolder[0]) {
-				filePath = join(rootFolder[0].path, movie[0].path, file.relativePath);
+				rootPath = rootFolder[0].path;
 			}
 		}
 
-		// Build search criteria
-		const criteria: SubtitleSearchCriteria = {
-			title: movie[0].title,
-			originalTitle: movie[0].originalTitle || undefined,
-			year: movie[0].year || undefined,
-			imdbId: movie[0].imdbId || undefined,
-			tmdbId: movie[0].tmdbId,
-			languages,
-			filePath,
-			fileSize: file?.size || undefined
-		};
+		// No files: metadata-only search (backward compatible, no movieFileId tag)
+		if (files.length === 0) {
+			const criteria: SubtitleSearchCriteria = {
+				title: movie[0].title,
+				originalTitle: movie[0].originalTitle || undefined,
+				year: movie[0].year || undefined,
+				imdbId: movie[0].imdbId || undefined,
+				tmdbId: movie[0].tmdbId,
+				languages
+			};
+			return this.search(criteria, { movieId }, options);
+		}
 
-		return this.search(criteria, { movieId }, options);
+		// Per-file search: each file gets its own hash matching.
+		// Duplicate provider results across files are expected and correct:
+		// each file gets its own subtitle row/sidecar, and findExistingSubtitle
+		// already scopes by movieFileId so there is no cross-file clobber.
+		const startTime = Date.now();
+		const allResults: SubtitleSearchResult[] = [];
+		const providerResults: AggregatedSearchResult['providerResults'] = [];
+
+		for (const file of files) {
+			const filePath = rootPath ? join(rootPath, movie[0].path, file.relativePath) : undefined;
+
+			const criteria: SubtitleSearchCriteria = {
+				title: movie[0].title,
+				originalTitle: movie[0].originalTitle || undefined,
+				year: movie[0].year || undefined,
+				imdbId: movie[0].imdbId || undefined,
+				tmdbId: movie[0].tmdbId,
+				languages,
+				filePath,
+				fileSize: file.size || undefined
+			};
+
+			const batch = await this.search(criteria, { movieId }, options);
+
+			// Tag every result in this batch with the originating file id
+			for (const result of batch.results) {
+				result.movieFileId = file.id;
+			}
+
+			allResults.push(...batch.results);
+			providerResults.push(...batch.providerResults);
+		}
+
+		return {
+			results: allResults,
+			totalResults: allResults.length,
+			searchTimeMs: Date.now() - startTime,
+			providerResults
+		};
 	}
 
 	/**
