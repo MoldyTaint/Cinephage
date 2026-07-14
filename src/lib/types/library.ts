@@ -4,6 +4,9 @@
 
 import { pickBestMovieFile } from '$lib/shared/best-file.js';
 
+/** Desired quality tiers selectable for multi-quality mode. */
+export type DesiredQuality = '2160p' | '1080p' | '720p' | '480p';
+
 export interface Subtitle {
 	id: string;
 	language: string;
@@ -90,7 +93,7 @@ export interface LibraryMovie {
 	missingRootFolder?: boolean;
 	scoringProfileId: string | null;
 	/** Desired qualities for multi-quality mode (null/empty = single-quality). */
-	desiredQualities?: string[] | null;
+	desiredQualities?: DesiredQuality[] | null;
 	monitored: boolean | null;
 	minimumAvailability: string | null;
 	wantsSubtitles: boolean | null;

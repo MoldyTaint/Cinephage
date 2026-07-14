@@ -2,6 +2,7 @@
 	import { Calendar, Eye } from 'lucide-svelte';
 	import { DesiredQualitiesPicker } from '$lib/components/library';
 	import * as m from '$lib/paraglide/messages.js';
+	import type { DesiredQuality } from '$lib/types/library.js';
 
 	export type MinimumAvailability = 'announced' | 'inCinemas' | 'released';
 
@@ -24,7 +25,7 @@
 		minimumAvailability: MinimumAvailability;
 		availabilityDelay: number;
 		monitored: boolean;
-		desiredQualities: string[];
+		desiredQualities: DesiredQuality[];
 		minResolution?: string | null;
 		maxResolution?: string | null;
 		collection: CollectionInfo | null;

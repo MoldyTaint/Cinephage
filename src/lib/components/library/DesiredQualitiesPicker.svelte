@@ -1,13 +1,15 @@
 <script lang="ts">
+	import type { DesiredQuality } from '$lib/types/library.js';
+
 	interface Props {
-		desiredQualities: string[];
+		desiredQualities: DesiredQuality[];
 		minResolution?: string | null;
 		maxResolution?: string | null;
 	}
 
 	let { desiredQualities = $bindable(), minResolution, maxResolution }: Props = $props();
 
-	const RESOLUTION_OPTIONS = [
+	const RESOLUTION_OPTIONS: { value: DesiredQuality; label: string; rank: number }[] = [
 		{ value: '2160p', label: '2160p (4K)', rank: 4 },
 		{ value: '1080p', label: '1080p (Full HD)', rank: 3 },
 		{ value: '720p', label: '720p (HD)', rank: 2 },
@@ -32,7 +34,7 @@
 		desiredQualities.some((r) => !allowedResolutions.includes(r))
 	);
 
-	function toggleResolution(value: string) {
+	function toggleResolution(value: DesiredQuality) {
 		if (desiredQualities.includes(value)) {
 			desiredQualities = desiredQualities.filter((r) => r !== value);
 		} else {

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { X, FolderOpen } from 'lucide-svelte';
 	import { FolderBrowser, DesiredQualitiesPicker } from '$lib/components/library';
-	import type { LibraryMovie } from '$lib/types/library';
+	import type { LibraryMovie, DesiredQuality } from '$lib/types/library';
 	import { ModalWrapper, ModalFooter } from '$lib/components/ui/modal';
 	import { FormCheckbox } from '$lib/components/ui/form';
 	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
@@ -50,7 +50,7 @@
 	export interface MovieEditData {
 		monitored: boolean;
 		scoringProfileId: string | null;
-		desiredQualities: string[] | null;
+		desiredQualities: DesiredQuality[] | null;
 		delayProfileId: string | null;
 		rootFolderId: string | null;
 		moveFilesOnRootChange: boolean;
@@ -71,7 +71,7 @@
 	let minimumAvailability = $state('released');
 	let availabilityDelay = $state(0);
 	let wantsSubtitles = $state(true);
-	let desiredQualities = $state<string[]>([]);
+	let desiredQualities = $state<DesiredQuality[]>([]);
 	let moveFilesOnRootChange = $state(false);
 	let moveOptionTouched = $state(false);
 	let folderPath = $state('');

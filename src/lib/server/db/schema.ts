@@ -12,7 +12,7 @@ import { relations, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import type { ProtocolSettings } from '$lib/server/indexers/types/index.js';
 import type { NewznabCategory } from '$lib/server/indexers/newznab/types.js';
-import type { Resolution } from '$lib/server/indexers/parser/types.js';
+import type { DesiredQuality } from '$lib/types/library.js';
 
 // ============================================================================
 // Better Auth Tables
@@ -659,7 +659,7 @@ export const movies = sqliteTable(
 		// When >= 2 effective buckets, the movie maintains independent files per
 		// resolution tier; upgrades only replace the same-resolution file.
 		// null/empty/<2 = single-quality mode (current behavior).
-		desiredQualities: text('desired_qualities', { mode: 'json' }).$type<Resolution[]>(),
+		desiredQualities: text('desired_qualities', { mode: 'json' }).$type<DesiredQuality[]>(),
 		// Language profile for subtitle preferences (deferred reference - languageProfiles defined later)
 		languageProfileId: text('language_profile_id'),
 		// Whether to monitor for upgrades

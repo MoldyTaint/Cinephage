@@ -6,6 +6,7 @@
 	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
 	import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 	import type { RootFolderWithSpaceAndDefault as RootFolder } from '$lib/types/downloadClient.js';
+	import type { DesiredQuality } from '$lib/types/library.js';
 	import type { MinimumAvailability } from './add/MovieAddOptions.svelte';
 	import type { MonitorType, MonitorNewItems, SeriesType } from './add/SeriesAddOptions.svelte';
 	import AddMovieForm from './AddMovieForm.svelte';
@@ -117,7 +118,7 @@
 	let minimumAvailability = $state<MinimumAvailability>('released');
 	let availabilityDelay = $state(0);
 	let monitored = $state(true);
-	let desiredQualities = $state<string[]>([]);
+	let desiredQualities = $state<DesiredQuality[]>([]);
 
 	let monitorType = $state<MonitorType>('all');
 	let monitorNewItems = $state<MonitorNewItems>('all');
@@ -454,10 +455,7 @@
 						...basePayload,
 						minimumAvailability,
 						availabilityDelay,
-						desiredQualities:
-							desiredQualities.length > 0
-								? (desiredQualities as Array<'2160p' | '1080p' | '720p' | '480p'>)
-								: undefined
+						desiredQualities: desiredQualities.length > 0 ? desiredQualities : null
 					})
 				: await createSeries({
 						...basePayload,

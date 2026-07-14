@@ -2,6 +2,7 @@
 	import CommonOptions from './add/CommonOptions.svelte';
 	import MovieAddOptions, { type MinimumAvailability } from './add/MovieAddOptions.svelte';
 	import type { RootFolderWithSpaceAndDefault as RootFolder } from '$lib/types/downloadClient.js';
+	import type { DesiredQuality } from '$lib/types/library.js';
 
 	interface ScoringProfile {
 		id: string;
@@ -41,7 +42,7 @@
 		minimumAvailability: MinimumAvailability;
 		availabilityDelay: number;
 		monitored: boolean;
-		desiredQualities: string[];
+		desiredQualities: DesiredQuality[];
 		collection: CollectionInfo | null;
 		addEntireCollection: boolean;
 		error: string | null;
