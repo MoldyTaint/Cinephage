@@ -2,6 +2,8 @@
  * Library types for movies and TV series in the local library
  */
 
+import { pickBestMovieFile } from '$lib/shared/best-file.js';
+
 export interface Subtitle {
 	id: string;
 	language: string;
@@ -179,8 +181,11 @@ export function getBestQualityFromFiles(files: MovieFile[]): {
 		return { quality: null, hdr: null };
 	}
 
-	// Get the first file (typically there's only one)
-	const file = files[0];
+	// Pick the best file (downloaded > strm, then higher resolution, then size)
+	const file = pickBestMovieFile(files);
+	if (!file) {
+		return { quality: null, hdr: null };
+	}
 	return {
 		quality: getQualityDisplay(file.quality),
 		hdr: getHdrDisplay(file.mediaInfo)

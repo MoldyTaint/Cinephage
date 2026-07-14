@@ -2,6 +2,7 @@
 	import type { LibraryMovie } from '$lib/types/library';
 	import type { MovieDetails, ReleaseDate } from '$lib/types/tmdb';
 	import { getBestQualityFromFiles } from '$lib/types/library';
+	import { pickBestMovieFile } from '$lib/shared/best-file.js';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
 	import CrewList from '$lib/components/tmdb/CrewList.svelte';
 	import WatchProviders from '$lib/components/tmdb/WatchProviders.svelte';
@@ -160,6 +161,7 @@
 		return links;
 	});
 	const bestQuality = $derived(getBestQualityFromFiles(movie.files));
+	const bestFile = $derived(pickBestMovieFile(movie.files));
 	const isStreamerProfile = $derived(movie.scoringProfileId === 'streamer');
 	const fileStatus = $derived.by(() => {
 		if (movie.hasFile) return 'downloaded';
@@ -416,10 +418,10 @@
 					</div>
 				{/if}
 
-				{#if movie.hasFile && movie.files[0]?.quality?.source}
+				{#if movie.hasFile && bestFile?.quality?.source}
 					<div>
 						<div class="text-xs text-base-content/50">Source</div>
-						<div class="font-medium">{formatSource(movie.files[0].quality.source)}</div>
+						<div class="font-medium">{formatSource(bestFile.quality.source)}</div>
 					</div>
 				{/if}
 
@@ -602,13 +604,13 @@
 									<span class="font-medium">{unreleasedLabel}</span>
 								</div>
 							{/if}
-							{#if movie.hasFile && movie.files.length > 0}
+							{#if movie.hasFile && bestFile}
 								{#if isStreamerProfile}
 									<span class="badge badge-sm badge-secondary">{m.status_streaming()}</span>
 								{:else}
 									<QualityBadge
-										quality={movie.files[0].quality}
-										mediaInfo={movie.files[0].mediaInfo}
+										quality={bestFile.quality}
+										mediaInfo={bestFile.mediaInfo}
 										size="md"
 									/>
 								{/if}
