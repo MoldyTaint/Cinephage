@@ -75,6 +75,61 @@ describe('DuplicateItemsRule', () => {
 		expect(findings[0].title).toContain('Duplicate');
 	});
 
+	it('does not flag a multi-quality movie with files at different resolutions', async () => {
+		await testDb.db
+			.insert(movies)
+			.values(createMovie({ id: 'm-mq', tmdbId: 300, title: 'Multi-Quality Movie' }));
+		await testDb.db.insert(movieFiles).values([
+			createMovieFile({
+				id: 'mf-mq-1',
+				movieId: 'm-mq',
+				relativePath: 'multi-2160p.mkv',
+				quality: { resolution: '2160p' }
+			}) as typeof movieFiles.$inferInsert,
+			createMovieFile({
+				id: 'mf-mq-2',
+				movieId: 'm-mq',
+				relativePath: 'multi-1080p.mkv',
+				quality: { resolution: '1080p' }
+			}) as typeof movieFiles.$inferInsert
+		]);
+
+		const findings = await rule.evaluate({
+			db: testDb.db as RuleContext['db'],
+			now: '2026-07-01T00:00:00.000Z'
+		});
+
+		expect(findings).toHaveLength(0);
+	});
+
+	it('flags a movie with two files at the same resolution', async () => {
+		await testDb.db
+			.insert(movies)
+			.values(createMovie({ id: 'm-sr', tmdbId: 400, title: 'Same Resolution Movie' }));
+		await testDb.db.insert(movieFiles).values([
+			createMovieFile({
+				id: 'mf-sr-1',
+				movieId: 'm-sr',
+				relativePath: 'dup-a.mkv',
+				quality: { resolution: '1080p' }
+			}) as typeof movieFiles.$inferInsert,
+			createMovieFile({
+				id: 'mf-sr-2',
+				movieId: 'm-sr',
+				relativePath: 'dup-b.mkv',
+				quality: { resolution: '1080p' }
+			}) as typeof movieFiles.$inferInsert
+		]);
+
+		const findings = await rule.evaluate({
+			db: testDb.db as RuleContext['db'],
+			now: '2026-07-01T00:00:00.000Z'
+		});
+
+		expect(findings).toHaveLength(1);
+		expect(findings[0].itemCount).toBe(1);
+	});
+
 	it('returns zero findings when no duplicates exist', async () => {
 		await testDb.db
 			.insert(movies)

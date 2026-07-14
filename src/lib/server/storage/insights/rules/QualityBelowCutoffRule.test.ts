@@ -132,6 +132,43 @@ describe('QualityBelowCutoffRule', () => {
 		expect(findings).toHaveLength(0);
 	});
 
+	it('does not flag a multi-quality movie whose best file meets the cutoff', async () => {
+		await testDb.db.insert(scoringProfiles).values({
+			id: 'profile-mq',
+			name: 'Test Profile',
+			minResolution: '2160p'
+		});
+		await testDb.db.insert(movies).values(
+			createMovie({
+				id: 'm-mq',
+				tmdbId: 500,
+				title: 'Multi-Quality',
+				scoringProfileId: 'profile-mq'
+			})
+		);
+		await testDb.db.insert(movieFiles).values([
+			createMovieFile({
+				id: 'mf-mq-1',
+				movieId: 'm-mq',
+				relativePath: 'multi-2160p.mkv',
+				quality: { resolution: '2160p' }
+			}) as typeof movieFiles.$inferInsert,
+			createMovieFile({
+				id: 'mf-mq-2',
+				movieId: 'm-mq',
+				relativePath: 'multi-1080p.mkv',
+				quality: { resolution: '1080p' }
+			}) as typeof movieFiles.$inferInsert
+		]);
+
+		const findings = await rule.evaluate({
+			db: testDb.db as RuleContext['db'],
+			now: '2026-07-01T00:00:00.000Z'
+		});
+
+		expect(findings).toHaveLength(0);
+	});
+
 	it('does not flag movies with no scoring profile', async () => {
 		await testDb.db
 			.insert(movies)
