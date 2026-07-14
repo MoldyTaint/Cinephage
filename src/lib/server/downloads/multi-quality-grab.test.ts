@@ -53,15 +53,10 @@ vi.mock('$lib/server/quality/QualityFilter.js', () => ({
 // occupied - the exact scenario the bucket-aware fix must not over-block.
 vi.mock('./handlers/TorrentHandler.js', () => ({
 	TorrentHandler: class {
-		async handle(
-			request: { release: { title: string } },
-			resolved: { movieId?: string }
-		) {
+		async handle(request: { release: { title: string } }, resolved: { movieId?: string }) {
 			const { db } = await import('$lib/server/db/index.js');
 			const { downloadQueue } = await import('$lib/server/db/schema.js');
-			const { ReleaseParser } = await import(
-				'$lib/server/indexers/parser/ReleaseParser.js'
-			);
+			const { ReleaseParser } = await import('$lib/server/indexers/parser/ReleaseParser.js');
 			const parser = new ReleaseParser();
 			const parsed = parser.parse(request.release.title);
 			const id = `queue-${resolved.movieId}-${parsed.resolution}`;
