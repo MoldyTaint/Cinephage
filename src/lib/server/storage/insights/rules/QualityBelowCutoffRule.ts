@@ -38,6 +38,9 @@ export class QualityBelowCutoffRule implements StorageInsightRule {
 			profileName: string | null;
 		};
 
+		const resolutionOf = (quality: unknown): string =>
+			(quality as { resolution?: string } | null)?.resolution ?? 'unknown';
+
 		// Movies: join movies → movie_files → scoring_profiles
 		const movieRows = ctx.db
 			.select({
@@ -60,15 +63,14 @@ export class QualityBelowCutoffRule implements StorageInsightRule {
 		// candidate when a higher tier already satisfies the profile.
 		const bestPerMovie = new Map<string, MovieRow>();
 		for (const row of movieRows) {
-			const res = (row.quality as { resolution?: string } | null)?.resolution ?? 'unknown';
+			const res = resolutionOf(row.quality);
 			const ordinal = RESOLUTION_ORDER[res] ?? 0;
 			const current = bestPerMovie.get(row.movieId);
 			if (!current) {
 				bestPerMovie.set(row.movieId, row);
 				continue;
 			}
-			const currentRes =
-				(current.quality as { resolution?: string } | null)?.resolution ?? 'unknown';
+			const currentRes = resolutionOf(current.quality);
 			const currentOrdinal = RESOLUTION_ORDER[currentRes] ?? 0;
 			if (ordinal > currentOrdinal) {
 				bestPerMovie.set(row.movieId, row);
@@ -96,7 +98,7 @@ export class QualityBelowCutoffRule implements StorageInsightRule {
 
 		const belowCutoff = allRows.filter((row) => {
 			if (!row.minResolution) return false;
-			const fileRes = (row.quality as { resolution?: string } | null)?.resolution ?? 'unknown';
+			const fileRes = resolutionOf(row.quality);
 			const fileOrdinal = RESOLUTION_ORDER[fileRes] ?? 0;
 			const cutoffOrdinal = RESOLUTION_ORDER[row.minResolution] ?? 0;
 			return fileOrdinal < cutoffOrdinal;
@@ -115,8 +117,7 @@ export class QualityBelowCutoffRule implements StorageInsightRule {
 					items: belowCutoff.map((r) => ({
 						tmdbId: r.tmdbId,
 						title: r.title,
-						currentResolution:
-							(r.quality as { resolution?: string } | null)?.resolution ?? 'unknown',
+						currentResolution: resolutionOf(r.quality),
 						minResolution: r.minResolution
 					}))
 				},

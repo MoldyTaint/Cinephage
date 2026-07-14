@@ -59,6 +59,7 @@ export class DuplicateItemsRule implements StorageInsightRule {
 
 		const duplicates = [...movieMap.values()]
 			.map((entry) => {
+				// fileCount is the max same-resolution dup count (not total files); name kept for frontend.
 				const maxSameResolution = Math.max(...entry.buckets.values());
 				return {
 					tmdbId: entry.tmdbId,
