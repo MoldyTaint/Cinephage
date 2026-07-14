@@ -169,4 +169,64 @@ describe('SubtitleScannerService scanMovieSubtitles movie-file linking', () => {
 		expect(savedSubtitles).toHaveLength(1);
 		expect(savedSubtitles[0].movieFileId).toBeNull();
 	});
+
+	it('links a sidecar whose videoFileName differs only in case from the movie file', async () => {
+		await seedRootFolderAndMovie();
+		await seedMovieFile('movie-file-2160p', 'Movie.2024.2160p.mkv');
+
+		const service = SubtitleScannerService.getInstance();
+		vi.spyOn(service, 'discoverSubtitles').mockResolvedValue([buildSidecar('MOVIE.2024.2160P')]);
+
+		const result = await service.scanMovieSubtitles(MOVIE_ID);
+
+		expect(result.registered).toBe(1);
+
+		const savedSubtitles = await testDb.db.select().from(subtitles);
+		expect(savedSubtitles).toHaveLength(1);
+		expect(savedSubtitles[0].movieFileId).toBe('movie-file-2160p');
+	});
+
+	it('registers a sidecar with null movieFileId when the movie has no movie files', async () => {
+		await seedRootFolderAndMovie();
+
+		const service = SubtitleScannerService.getInstance();
+		vi.spyOn(service, 'discoverSubtitles').mockResolvedValue([buildSidecar('Movie.2024.2160p')]);
+
+		const result = await service.scanMovieSubtitles(MOVIE_ID);
+
+		expect(result.registered).toBe(1);
+		expect(result.errors).toHaveLength(0);
+
+		const savedSubtitles = await testDb.db.select().from(subtitles);
+		expect(savedSubtitles).toHaveLength(1);
+		expect(savedSubtitles[0].movieFileId).toBeNull();
+	});
+
+	it('registers a sidecar with null movieFileId when videoFileName is undefined', async () => {
+		await seedRootFolderAndMovie();
+		await seedMovieFile('movie-file-2160p', 'Movie.2024.2160p.mkv');
+
+		const service = SubtitleScannerService.getInstance();
+		vi.spyOn(service, 'discoverSubtitles').mockResolvedValue([
+			{
+				path: `${ROOT_PATH}/Test Movie (2024)/unknown.en.srt`,
+				relativePath: 'unknown.en.srt',
+				size: 100,
+				language: 'en',
+				isForced: false,
+				isHearingImpaired: false,
+				format: 'srt' as const,
+				videoFileName: undefined
+			}
+		]);
+
+		const result = await service.scanMovieSubtitles(MOVIE_ID);
+
+		expect(result.registered).toBe(1);
+		expect(result.errors).toHaveLength(0);
+
+		const savedSubtitles = await testDb.db.select().from(subtitles);
+		expect(savedSubtitles).toHaveLength(1);
+		expect(savedSubtitles[0].movieFileId).toBeNull();
+	});
 });
