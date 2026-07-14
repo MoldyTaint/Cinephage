@@ -73,7 +73,7 @@ export class SubtitleDownloadService {
 			const specificFile = await db
 				.select()
 				.from(movieFiles)
-				.where(eq(movieFiles.id, options.movieFileId))
+				.where(and(eq(movieFiles.id, options.movieFileId), eq(movieFiles.movieId, movieId)))
 				.limit(1);
 			file = specificFile[0];
 		} else {
@@ -81,7 +81,11 @@ export class SubtitleDownloadService {
 			file = files[0];
 		}
 		if (!file) {
-			throw new Error(`No file found for movie: ${movieId}`);
+			throw new Error(
+				options?.movieFileId
+					? `No file found for movie ${movieId} with movieFileId ${options.movieFileId}`
+					: `No file found for movie: ${movieId}`
+			);
 		}
 
 		// Get root folder

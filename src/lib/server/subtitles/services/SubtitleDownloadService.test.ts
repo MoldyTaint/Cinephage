@@ -283,4 +283,46 @@ describe('SubtitleDownloadService', () => {
 		expect(savedSubtitles.find((s) => s.id === 'existing-2160p-sub')).toBeTruthy();
 		expect(savedSubtitles.find((s) => s.movieFileId === file1080pId)).toBeTruthy();
 	});
+
+	it('rejects a movieFileId that does not exist', async () => {
+		await seedMultiFileMovie();
+		const service = SubtitleDownloadService.getInstance();
+
+		await expect(
+			service.downloadForMovie('movie-1', buildSearchResult(), {
+				movieFileId: 'nonexistent-file-id'
+			})
+		).rejects.toThrow('No file found for movie movie-1 with movieFileId nonexistent-file-id');
+
+		expect(providerDownloadMock).not.toHaveBeenCalled();
+	});
+
+	it('rejects a movieFileId belonging to a different movie', async () => {
+		const { file1080pId } = await seedMultiFileMovie();
+
+		const rootFolderId = 'root-movie-2';
+		const movie2Id = 'movie-2';
+		await testDb.db.insert(rootFolders).values({
+			id: rootFolderId,
+			name: 'Movies 2',
+			path: `${ROOT_PATH}-2`,
+			mediaType: 'movie'
+		});
+		await testDb.db.insert(movies).values({
+			id: movie2Id,
+			tmdbId: 102,
+			title: 'Other Movie',
+			path: 'Other Movie (2024)',
+			rootFolderId
+		});
+
+		const service = SubtitleDownloadService.getInstance();
+		await expect(
+			service.downloadForMovie(movie2Id, buildSearchResult(), {
+				movieFileId: file1080pId
+			})
+		).rejects.toThrow(`No file found for movie ${movie2Id} with movieFileId ${file1080pId}`);
+
+		expect(providerDownloadMock).not.toHaveBeenCalled();
+	});
 });
