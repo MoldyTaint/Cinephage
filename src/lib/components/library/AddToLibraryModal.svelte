@@ -46,6 +46,8 @@
 		description?: string;
 		isBuiltIn: boolean;
 		isDefault?: boolean;
+		minResolution?: string | null;
+		maxResolution?: string | null;
 	}
 
 	interface Season {
@@ -115,6 +117,7 @@
 	let minimumAvailability = $state<MinimumAvailability>('released');
 	let availabilityDelay = $state(0);
 	let monitored = $state(true);
+	let desiredQualities = $state<string[]>([]);
 
 	let monitorType = $state<MonitorType>('all');
 	let monitorNewItems = $state<MonitorNewItems>('all');
@@ -194,6 +197,7 @@
 			wantsSubtitles = true;
 			minimumAvailability = 'released';
 			availabilityDelay = 0;
+			desiredQualities = [];
 			monitorType = 'all';
 			monitorNewItems = 'all';
 			monitorSpecials = false;
@@ -446,7 +450,15 @@
 			};
 
 			const result = (mediaType === 'movie'
-				? await createMovie({ ...basePayload, minimumAvailability, availabilityDelay })
+				? await createMovie({
+						...basePayload,
+						minimumAvailability,
+						availabilityDelay,
+						desiredQualities:
+							desiredQualities.length > 0
+								? (desiredQualities as Array<'2160p' | '1080p' | '720p' | '480p'>)
+								: undefined
+					})
 				: await createSeries({
 						...basePayload,
 						monitorType,
@@ -588,6 +600,7 @@
 				bind:minimumAvailability
 				bind:availabilityDelay
 				bind:monitored
+				bind:desiredQualities
 				bind:addEntireCollection
 			/>
 		{:else}

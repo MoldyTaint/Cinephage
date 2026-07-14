@@ -9,6 +9,8 @@
 		description?: string;
 		isBuiltIn: boolean;
 		isDefault?: boolean;
+		minResolution?: string | null;
+		maxResolution?: string | null;
 	}
 
 	interface CollectionPart {
@@ -39,6 +41,7 @@
 		minimumAvailability: MinimumAvailability;
 		availabilityDelay: number;
 		monitored: boolean;
+		desiredQualities: string[];
 		collection: CollectionInfo | null;
 		addEntireCollection: boolean;
 		error: string | null;
@@ -63,6 +66,7 @@
 		minimumAvailability = $bindable(),
 		availabilityDelay = $bindable(),
 		monitored = $bindable(),
+		desiredQualities = $bindable(),
 		collection,
 		addEntireCollection = $bindable(),
 		error,
@@ -72,6 +76,8 @@
 		onWantsSubtitlesInput,
 		onMonitoredInput
 	}: Props = $props();
+
+	const selectedProfileObj = $derived(scoringProfiles.find((p) => p.id === selectedScoringProfile));
 </script>
 
 <div class="space-y-5">
@@ -131,6 +137,9 @@
 		bind:minimumAvailability
 		bind:availabilityDelay
 		bind:monitored
+		bind:desiredQualities
+		minResolution={selectedProfileObj?.minResolution}
+		maxResolution={selectedProfileObj?.maxResolution}
 		{collection}
 		bind:addEntireCollection
 	/>

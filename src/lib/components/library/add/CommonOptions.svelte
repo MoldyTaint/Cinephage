@@ -12,6 +12,8 @@
 		description?: string;
 		isBuiltIn: boolean;
 		isDefault?: boolean;
+		minResolution?: string | null;
+		maxResolution?: string | null;
 	}
 
 	interface Props {
