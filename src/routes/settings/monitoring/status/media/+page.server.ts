@@ -157,22 +157,9 @@ export const load: PageServerLoad = async ({ url, parent }) => {
 		const rf = movie.rootFolderId ? rootFolderMap.get(movie.rootFolderId) : null;
 		const plays = movie.tmdbId ? playStatsMap.get(movie.tmdbId) : undefined;
 
-		const bestQuality = movie.bestQuality as {
-			resolution?: string;
-			codec?: string;
-			hdr?: string;
-		} | null;
-		const bestMediaInfo = movie.bestMediaInfo as {
-			height?: number;
-			videoCodec?: string;
-			videoHdrFormat?: string;
-			audioCodec?: string;
-			containerFormat?: string;
-		} | null;
-
 		allItems.push({
 			id: movie.id,
-			tmdbId: movie.tmdbId ?? 0,
+			tmdbId: movie.tmdbId,
 			title: movie.title,
 			year: movie.year ?? null,
 			mediaType: 'movie',
@@ -184,11 +171,11 @@ export const load: PageServerLoad = async ({ url, parent }) => {
 			monitored: movie.monitored ?? true,
 			hasFile: movie.hasFile ?? false,
 			fileSize: movie.totalFileSize,
-			resolution: extractResolution(bestQuality, bestMediaInfo),
-			videoCodec: extractVideoCodec(bestQuality, bestMediaInfo),
-			hdrFormat: extractHdrFormat(bestQuality, bestMediaInfo),
-			audioCodec: extractAudioCodec(bestMediaInfo),
-			containerFormat: extractContainer(bestMediaInfo),
+			resolution: extractResolution(movie.bestQuality, movie.bestMediaInfo),
+			videoCodec: extractVideoCodec(movie.bestQuality, movie.bestMediaInfo),
+			hdrFormat: extractHdrFormat(movie.bestQuality, movie.bestMediaInfo),
+			audioCodec: extractAudioCodec(movie.bestMediaInfo),
+			containerFormat: extractContainer(movie.bestMediaInfo),
 			addedAt: movie.added ?? null,
 			playCount: Number(plays?.playCount ?? 0),
 			lastPlayedDate: plays?.lastPlayedDate ?? null,

@@ -1,8 +1,9 @@
 import { selectBestFile, type BucketFile } from '$lib/server/quality/buckets.js';
+import type { movieFiles } from '$lib/server/db/schema.js';
 
 export interface MovieJoinedRow {
 	id: string;
-	tmdbId: number | null;
+	tmdbId: number;
 	title: string;
 	year: number | null;
 	libraryId: string | null;
@@ -14,8 +15,8 @@ export interface MovieJoinedRow {
 	// per-file fields (one row per movieFile):
 	fileId: string | null;
 	fileSize: number | null;
-	quality: unknown;
-	mediaInfo: unknown;
+	quality: typeof movieFiles.$inferSelect.quality;
+	mediaInfo: typeof movieFiles.$inferSelect.mediaInfo;
 	relativePath: string | null;
 }
 
@@ -24,8 +25,8 @@ export interface AggregatedMovie extends Omit<
 	'fileId' | 'fileSize' | 'quality' | 'mediaInfo' | 'relativePath'
 > {
 	totalFileSize: number;
-	bestQuality: unknown;
-	bestMediaInfo: unknown;
+	bestQuality: typeof movieFiles.$inferSelect.quality;
+	bestMediaInfo: typeof movieFiles.$inferSelect.mediaInfo;
 }
 
 /**
@@ -47,20 +48,22 @@ export function aggregateMovieRows(rows: MovieJoinedRow[]): AggregatedMovie[] {
 
 	const result: AggregatedMovie[] = [];
 	for (const group of groups.values()) {
+		// All rows for a movie share movie-level fields, so any row is fine;
+		// the query has no ORDER BY but this is safe.
 		const first = group[0];
 
-		const bucketFiles: BucketFile[] = [];
+		const candidateFiles: BucketFile[] = [];
 		for (const row of group) {
 			if (row.fileId === null) continue;
-			bucketFiles.push({
+			candidateFiles.push({
 				id: row.fileId,
 				relativePath: row.relativePath ?? '',
-				quality: row.quality as { resolution?: string } | null,
+				quality: row.quality,
 				size: row.fileSize
 			});
 		}
 
-		const best = selectBestFile(bucketFiles);
+		const best = selectBestFile(candidateFiles);
 		const bestRow = best ? group.find((r) => r.fileId === best.id) : undefined;
 
 		let totalFileSize = 0;

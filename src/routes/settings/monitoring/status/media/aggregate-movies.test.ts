@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { aggregateMovieRows, type MovieJoinedRow } from './aggregate-movies.js';
 
 const movieRow = (overrides: Partial<MovieJoinedRow> & { id: string }): MovieJoinedRow => ({
-	tmdbId: null,
+	tmdbId: 0,
 	title: 'Untitled',
 	year: null,
 	libraryId: null,
@@ -49,6 +49,27 @@ describe('aggregateMovieRows', () => {
 		expect(result[0].totalFileSize).toBe(9000);
 		expect((result[0].bestQuality as { resolution?: string })?.resolution).toBe('2160p');
 		expect(result[0].bestMediaInfo).toEqual({ videoCodec: 'hevc' });
+	});
+
+	it('returns the single file quality and size for a movie with one file', () => {
+		const rows: MovieJoinedRow[] = [
+			movieRow({
+				id: 'm1',
+				title: 'Solo',
+				fileId: 'f1',
+				fileSize: 4096,
+				quality: { resolution: '1080p' },
+				mediaInfo: { videoCodec: 'h264' },
+				relativePath: 'solo.mkv'
+			})
+		];
+
+		const result = aggregateMovieRows(rows);
+
+		expect(result).toHaveLength(1);
+		expect(result[0].totalFileSize).toBe(4096);
+		expect(result[0].bestQuality?.resolution).toBe('1080p');
+		expect(result[0].bestMediaInfo).toEqual({ videoCodec: 'h264' });
 	});
 
 	it('returns null quality/mediaInfo and zero size for a movie with no file rows', () => {
