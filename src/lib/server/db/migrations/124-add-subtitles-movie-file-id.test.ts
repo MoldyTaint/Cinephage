@@ -148,4 +148,12 @@ describe('migration 124: add-subtitles-movie-file-id', () => {
 		migration.apply(sqlite);
 		expect(() => migration.apply(sqlite)).not.toThrow();
 	});
+
+	it('creates the idx_subtitles_movie_file index', () => {
+		migration.apply(sqlite);
+		const indexes = sqlite
+			.prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='subtitles'")
+			.all() as Array<{ name: string }>;
+		expect(indexes.map((i) => i.name)).toContain('idx_subtitles_movie_file');
+	});
 });

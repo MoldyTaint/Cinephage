@@ -18,7 +18,7 @@ export const migration_v124: MigrationDefinition = {
 	version: 124,
 	name: 'add_subtitles_movie_file_id',
 	apply: (sqlite) => {
-		if (!columnExists(sqlite, 'subtitles', 'movie_file_id')) {
+		if (tableExists(sqlite, 'subtitles') && !columnExists(sqlite, 'subtitles', 'movie_file_id')) {
 			sqlite.prepare(`ALTER TABLE subtitles ADD COLUMN movie_file_id text`).run();
 			logger.info('[SchemaSync] Added movie_file_id column to subtitles');
 		}
@@ -43,6 +43,14 @@ export const migration_v124: MigrationDefinition = {
 					'[SchemaSync] Backfilled movie_file_id for unambiguous movie subtitles'
 				);
 			}
+		}
+
+		if (tableExists(sqlite, 'subtitles')) {
+			sqlite
+				.prepare(
+					`CREATE INDEX IF NOT EXISTS "idx_subtitles_movie_file" ON "subtitles" ("movie_file_id")`
+				)
+				.run();
 		}
 	}
 };
