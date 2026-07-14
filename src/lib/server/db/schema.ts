@@ -317,8 +317,6 @@ export const scoringProfiles = sqliteTable('scoring_profiles', {
 	minScore: integer('min_score').default(0),
 	// Score threshold to stop upgrading (-1 = never stop)
 	upgradeUntilScore: integer('upgrade_until_score').default(-1),
-	isBuiltin: integer('is_builtin', { mode: 'boolean' }).default(false),
-	mediaType: text('media_type'),
 	// Minimum score improvement to trigger upgrade
 	minScoreIncrement: integer('min_score_increment').default(0),
 	// Resolution fallback order as JSON array (highest priority first)

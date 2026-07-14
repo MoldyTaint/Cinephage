@@ -118,6 +118,7 @@ import { migration_v118 } from './118-add-scan-mode-to-delay-profiles.js';
 import { migration_v119 } from './119-backfill-release-group-from-title.js';
 import { migration_v120 } from './120-migrate-prowlarr-indexers-to-native.js';
 import { migration_v121 } from './121-migrate-jackett-indexers-to-native.js';
+import { migration_v122 } from './122-remove-quality-scaffolding-defaults.js';
 
 export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v002,
@@ -238,5 +239,6 @@ export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v118,
 	migration_v119,
 	migration_v120,
-	migration_v121
+	migration_v121,
+	migration_v122
 ];
