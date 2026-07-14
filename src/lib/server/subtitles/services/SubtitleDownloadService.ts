@@ -57,7 +57,8 @@ export class SubtitleDownloadService {
 	 */
 	async downloadForMovie(
 		movieId: string,
-		result: SubtitleSearchResult
+		result: SubtitleSearchResult,
+		options?: { movieFileId?: string }
 	): Promise<SubtitleDownloadResult> {
 		// Get movie and file info
 		const movie = await db.select().from(movies).where(eq(movies.id, movieId)).limit(1);
@@ -65,8 +66,20 @@ export class SubtitleDownloadService {
 			throw new Error(`Movie not found: ${movieId}`);
 		}
 
-		const files = await db.select().from(movieFiles).where(eq(movieFiles.movieId, movieId));
-		const file = files[0];
+		// Resolve the target movie file: a specific file when movieFileId is provided
+		// (multi-quality support), otherwise fall back to the first file.
+		let file;
+		if (options?.movieFileId) {
+			const specificFile = await db
+				.select()
+				.from(movieFiles)
+				.where(eq(movieFiles.id, options.movieFileId))
+				.limit(1);
+			file = specificFile[0];
+		} else {
+			const files = await db.select().from(movieFiles).where(eq(movieFiles.movieId, movieId));
+			file = files[0];
+		}
 		if (!file) {
 			throw new Error(`No file found for movie: ${movieId}`);
 		}
@@ -91,6 +104,7 @@ export class SubtitleDownloadService {
 		// Download and save
 		return this.downloadAndSave(result, {
 			movieId,
+			movieFileId: options?.movieFileId ?? null,
 			mediaPath,
 			videoFileName: basename(file.relativePath),
 			format: result.format,
@@ -230,6 +244,7 @@ export class SubtitleDownloadService {
 		options: {
 			movieId?: string;
 			episodeId?: string;
+			movieFileId?: string | null;
 			mediaPath: string;
 			videoFileName: string;
 			format: SubtitleFormat;
@@ -309,7 +324,8 @@ export class SubtitleDownloadService {
 			options.episodeId,
 			normalizedLanguage,
 			result.isForced,
-			result.isHearingImpaired
+			result.isHearingImpaired,
+			options.movieFileId
 		);
 
 		let wasUpgrade = false;
@@ -335,6 +351,7 @@ export class SubtitleDownloadService {
 			id: subtitleId,
 			movieId: options.movieId,
 			episodeId: options.episodeId,
+			movieFileId: options.movieFileId ?? null,
 			relativePath: subtitleFileName,
 			language: normalizedLanguage,
 			isForced: result.isForced,
@@ -474,13 +491,18 @@ export class SubtitleDownloadService {
 
 	/**
 	 * Find existing subtitle with same language/flags
+	 *
+	 * When movieFileId is provided, the search is scoped to subtitles linked to
+	 * that specific movie file so that subtitles for different quality tiers
+	 * (e.g. 2160p vs 1080p) do not clobber each other.
 	 */
 	private async findExistingSubtitle(
 		movieId: string | undefined,
 		episodeId: string | undefined,
 		language: string,
 		isForced: boolean,
-		isHi: boolean
+		isHi: boolean,
+		movieFileId?: string | null
 	): Promise<typeof subtitles.$inferSelect | null> {
 		const normalizedLanguage = normalizeLanguageCode(language);
 		const languageValues =
@@ -497,6 +519,9 @@ export class SubtitleDownloadService {
 		}
 		if (episodeId) {
 			conditions.push(eq(subtitles.episodeId, episodeId));
+		}
+		if (movieFileId) {
+			conditions.push(eq(subtitles.movieFileId, movieFileId));
 		}
 
 		const existing = await db

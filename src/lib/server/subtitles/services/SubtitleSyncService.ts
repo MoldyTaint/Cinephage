@@ -367,7 +367,11 @@ export class SubtitleSyncService {
 				.select()
 				.from(movieFiles)
 				.where(eq(movieFiles.movieId, subtitle.movieId));
-			const file = files[0];
+			// Use the specific file the subtitle is linked to when set (multi-quality
+			// support), otherwise fall back to the first file (legacy behavior).
+			const file = subtitle.movieFileId
+				? files.find((f) => f.id === subtitle.movieFileId)
+				: files[0];
 
 			const rootFolder = movie[0].rootFolderId
 				? await db

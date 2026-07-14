@@ -109,6 +109,54 @@ async function seedMovie(): Promise<string> {
 	return movieId;
 }
 
+async function seedMultiFileMovie(): Promise<{
+	movieId: string;
+	file2160pId: string;
+	file1080pId: string;
+}> {
+	const rootFolderId = 'root-movie';
+	const movieId = 'movie-1';
+	const providerId = 'provider-1';
+
+	await testDb.db.insert(subtitleProviders).values({
+		id: providerId,
+		name: 'Test Provider',
+		implementation: 'opensubtitles',
+		enabled: true,
+		priority: 1,
+		requestsPerMinute: 60
+	});
+
+	await testDb.db.insert(rootFolders).values({
+		id: rootFolderId,
+		name: 'Movies',
+		path: ROOT_PATH,
+		mediaType: 'movie'
+	});
+
+	await testDb.db.insert(movies).values({
+		id: movieId,
+		tmdbId: 101,
+		title: 'Test Movie',
+		path: 'Test Movie (2024)',
+		rootFolderId
+	});
+
+	await testDb.db.insert(movieFiles).values({
+		id: 'movie-file-2160p',
+		movieId,
+		relativePath: 'Test.Movie.2024.2160p.mkv'
+	});
+
+	await testDb.db.insert(movieFiles).values({
+		id: 'movie-file-1080p',
+		movieId,
+		relativePath: 'Test.Movie.2024.1080p.mkv'
+	});
+
+	return { movieId, file2160pId: 'movie-file-2160p', file1080pId: 'movie-file-1080p' };
+}
+
 describe('SubtitleDownloadService', () => {
 	beforeEach(async () => {
 		testDb.db.delete(subtitleHistory).run();
@@ -193,5 +241,46 @@ describe('SubtitleDownloadService', () => {
 			{ subtitleId: result.subtitleId, error: 'alass sync failed' },
 			'Automatic subtitle sync failed after download'
 		);
+	});
+
+	it('links a downloaded subtitle to the specified movie file and names the sidecar after it', async () => {
+		const { movieId, file1080pId } = await seedMultiFileMovie();
+		const service = SubtitleDownloadService.getInstance();
+
+		const result = await service.downloadForMovie(movieId, buildSearchResult(), {
+			movieFileId: file1080pId
+		});
+
+		expect(result.path).toContain('Test.Movie.2024.1080p.en.srt');
+
+		const savedSubtitles = await testDb.db.select().from(subtitles);
+		expect(savedSubtitles).toHaveLength(1);
+		expect(savedSubtitles[0].movieFileId).toBe(file1080pId);
+	});
+
+	it('does not clobber an existing subtitle linked to a different movie file', async () => {
+		const { movieId, file2160pId, file1080pId } = await seedMultiFileMovie();
+
+		await testDb.db.insert(subtitles).values({
+			id: 'existing-2160p-sub',
+			movieId,
+			movieFileId: file2160pId,
+			relativePath: 'Test.Movie.2024.2160p.en.srt',
+			language: 'en',
+			format: 'srt'
+		});
+
+		const service = SubtitleDownloadService.getInstance();
+		const result = await service.downloadForMovie(movieId, buildSearchResult(), {
+			movieFileId: file1080pId
+		});
+
+		expect(result.wasUpgrade).toBe(false);
+		expect(result.replacedSubtitleId).toBeUndefined();
+
+		const savedSubtitles = await testDb.db.select().from(subtitles);
+		expect(savedSubtitles).toHaveLength(2);
+		expect(savedSubtitles.find((s) => s.id === 'existing-2160p-sub')).toBeTruthy();
+		expect(savedSubtitles.find((s) => s.movieFileId === file1080pId)).toBeTruthy();
 	});
 });
