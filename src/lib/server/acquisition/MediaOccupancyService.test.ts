@@ -290,6 +290,59 @@ describe('MediaOccupancyService', () => {
 		expect(result.reason).toBe('movie_already_has_file');
 	});
 
+	describe('multi-quality active-download bucket isolation', () => {
+		it('does not block a different resolution bucket when another is downloading', async () => {
+			insertDownloadClient();
+			insertMovie({ desiredQualities: ['2160p', '1080p'] });
+			testDb.db
+				.insert(downloadQueue)
+				.values({
+					id: 'queue-1',
+					downloadClientId: 'client-1',
+					downloadId: 'remote-1',
+					title: 'Test.Movie.2026.2160p',
+					movieId: 'movie-1',
+					status: 'queued',
+					protocol: 'torrent',
+					quality: { resolution: '2160p' }
+				})
+				.run();
+
+			const result = await mediaOccupancyService.check(
+				{ type: 'movie', movieId: 'movie-1' },
+				{ candidateResolution: '1080p' }
+			);
+
+			expect(result).toEqual({ occupied: false });
+		});
+
+		it('still blocks the resolution bucket that is already downloading', async () => {
+			insertDownloadClient();
+			insertMovie({ desiredQualities: ['2160p', '1080p'] });
+			testDb.db
+				.insert(downloadQueue)
+				.values({
+					id: 'queue-1',
+					downloadClientId: 'client-1',
+					downloadId: 'remote-1',
+					title: 'Test.Movie.2026.2160p',
+					movieId: 'movie-1',
+					status: 'queued',
+					protocol: 'torrent',
+					quality: { resolution: '2160p' }
+				})
+				.run();
+
+			const result = await mediaOccupancyService.check(
+				{ type: 'movie', movieId: 'movie-1' },
+				{ candidateResolution: '2160p' }
+			);
+
+			expect(result.occupied).toBe(true);
+			expect(result.reason).toBe('movie_already_downloading');
+		});
+	});
+
 	it('marks active episode queue items occupied for an upgrade check', async () => {
 		insertDownloadClient();
 		insertSeriesEpisode({ hasFile: true });
