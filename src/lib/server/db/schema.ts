@@ -1788,6 +1788,11 @@ export const subtitles = sqliteTable(
 		// Link to media (one must be set)
 		movieId: text('movie_id').references(() => movies.id, { onDelete: 'cascade' }),
 		episodeId: text('episode_id').references(() => episodes.id, { onDelete: 'cascade' }),
+		// Link to a specific movie file (multi-quality: one subtitle per resolution tier).
+		// Nullable: null for legacy subtitles or episode subtitles.
+		movieFileId: text('movie_file_id').references(() => movieFiles.id, {
+			onDelete: 'set null'
+		}),
 
 		// File info
 		relativePath: text('relative_path').notNull(),
@@ -2238,6 +2243,10 @@ export const subtitlesRelations = relations(subtitles, ({ one }) => ({
 	episode: one(episodes, {
 		fields: [subtitles.episodeId],
 		references: [episodes.id]
+	}),
+	movieFile: one(movieFiles, {
+		fields: [subtitles.movieFileId],
+		references: [movieFiles.id]
 	}),
 	provider: one(subtitleProviders, {
 		fields: [subtitles.providerId],

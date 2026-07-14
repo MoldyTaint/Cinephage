@@ -132,8 +132,9 @@ import {
  * Version 110: Add storage_items, storage_item_server_links, storage_insights tables for unified storage tracking
  * Version 111: Add rename_history table for permanent file rename audit trail
  * Version 123: Add desired_qualities column to movies for multi-quality per-movie support
+ * Version 124: Add movie_file_id to subtitles for per-file subtitle association
  */
-export const CURRENT_SCHEMA_VERSION = 123;
+export const CURRENT_SCHEMA_VERSION = 124;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -885,6 +886,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"id" text PRIMARY KEY NOT NULL,
 		"movie_id" text REFERENCES "movies"("id") ON DELETE CASCADE,
 		"episode_id" text REFERENCES "episodes"("id") ON DELETE CASCADE,
+		"movie_file_id" text REFERENCES "movie_files"("id") ON DELETE SET NULL,
 		"relative_path" text NOT NULL,
 		"language" text NOT NULL,
 		"is_forced" integer DEFAULT false,
