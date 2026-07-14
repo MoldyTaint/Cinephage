@@ -341,6 +341,30 @@ describe('MediaOccupancyService', () => {
 			expect(result.occupied).toBe(true);
 			expect(result.reason).toBe('movie_already_downloading');
 		});
+
+		it('does not block a bucket when an active download has no parseable resolution', async () => {
+			insertDownloadClient();
+			insertMovie({ desiredQualities: ['2160p', '1080p'] });
+			testDb.db
+				.insert(downloadQueue)
+				.values({
+					id: 'queue-1',
+					downloadClientId: 'client-1',
+					downloadId: 'remote-1',
+					title: 'Test.Movie.2026',
+					movieId: 'movie-1',
+					status: 'queued',
+					protocol: 'torrent'
+				})
+				.run();
+
+			const result = await mediaOccupancyService.check(
+				{ type: 'movie', movieId: 'movie-1' },
+				{ candidateResolution: '1080p' }
+			);
+
+			expect(result).toEqual({ occupied: false });
+		});
 	});
 
 	it('marks active episode queue items occupied for an upgrade check', async () => {

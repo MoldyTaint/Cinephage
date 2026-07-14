@@ -284,6 +284,8 @@ class MediaOccupancyServiceImpl {
 				return false;
 			}
 
+			// A download with no parseable resolution is treated as bucket-unknown,
+			// so it does not match any specific bucket filter below.
 			if (resolution && (download.quality?.resolution ?? undefined) !== resolution) {
 				return false;
 			}
