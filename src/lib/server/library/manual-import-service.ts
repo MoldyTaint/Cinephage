@@ -811,7 +811,8 @@ export class ManualImportService {
 					imdbId: series.imdbId,
 					tvdbId: series.tvdbId,
 					seasonFolder: series.seasonFolder,
-					rootFolderId: series.rootFolderId
+					rootFolderId: series.rootFolderId,
+					seriesType: series.seriesType
 				})
 				.from(series)
 				.where(eq(series.tmdbId, request.tmdbId))
@@ -844,7 +845,9 @@ export class ManualImportService {
 					year: show.year ?? undefined,
 					tmdbId: request.tmdbId,
 					tvdbId: show.tvdbId ?? undefined,
-					imdbId: show.imdbId ?? undefined
+					imdbId: show.imdbId ?? undefined,
+					isAnime: show.seriesType === 'anime',
+					isDaily: show.seriesType === 'daily'
 				}
 			};
 		}
@@ -900,7 +903,8 @@ export class ManualImportService {
 				year,
 				tmdbId: request.tmdbId,
 				tvdbId: externalIds.tvdb_id ?? undefined,
-				imdbId: externalIds.imdb_id ?? undefined
+				imdbId: externalIds.imdb_id ?? undefined,
+				isAnime: isAnimeMedia
 			}
 		};
 	}
