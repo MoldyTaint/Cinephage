@@ -468,14 +468,18 @@
 		navigation.cancel();
 	});
 
+	let defaultImportFolder = $state<string | undefined>(undefined);
+
 	$effect(() => {
 		loadRootFolders();
-		browse('/');
 		getFileManagementSettings().then((s) => {
 			if (s?.importMode === 'copy' || s?.importMode === 'symlink') {
 				importMode = s.importMode;
 				bulkImportMode = s.importMode;
 			}
+			const startPath = s?.defaultImportFolder?.trim() || '/';
+			defaultImportFolder = startPath;
+			browse(startPath);
 		});
 		return () => {
 			disconnectBulkSSE();
@@ -2034,7 +2038,7 @@
 			clearTimeout(tmdbSearchDebounce);
 			tmdbSearchDebounce = null;
 		}
-		void browse('/');
+		void browse(defaultImportFolder ?? '/');
 	}
 
 	async function executeImportFlow() {

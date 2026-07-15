@@ -1590,7 +1590,8 @@ export const fileManagementSchema = z.object({
 	extraFileExtensions: z.array(z.string()).default([]),
 	preservePermissions: z.boolean().default(false),
 	chmodFile: z.union([z.string().regex(/^[0-7]{3,4}$/), z.literal('')]).default(''),
-	autoEnabledPreserveSymlinkFolderIds: z.array(z.string()).default([])
+	autoEnabledPreserveSymlinkFolderIds: z.array(z.string()).default([]),
+	defaultImportFolder: z.string().optional()
 });
 export type FileManagementSettings = z.infer<typeof fileManagementSchema>;
 
