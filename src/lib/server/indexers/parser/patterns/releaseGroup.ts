@@ -71,7 +71,9 @@ const INDEXER_PREFIXES = [
  */
 const ANIME_GROUP_PATTERNS = [
 	// Standard anime fansub: "[SubsPlease]" or "[Erai-raws]"
-	/^\[([a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?)\]/
+	/^\[([a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?)\]/,
+	// Parenthesised fansub: "(Hi10)" or "(Hi10P)"
+	/^\(([a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?)\)/
 ];
 
 /**
