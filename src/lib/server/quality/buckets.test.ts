@@ -8,6 +8,7 @@ import {
 	selectBestFile,
 	fileIdsToReplace,
 	replaceIdsForImport,
+	redundantFileIds,
 	MULTI_QUALITY_MIN_BUCKETS,
 	type BucketFile
 } from './buckets.js';
@@ -209,5 +210,41 @@ describe('replaceIdsForImport', () => {
 		expect(
 			replaceIdsForImport(files, { newResolution: '2160p', multiQuality: false, isUpgrade: false })
 		).toEqual([]);
+	});
+});
+
+describe('redundantFileIds', () => {
+	it('returns empty for no files', () => {
+		expect(redundantFileIds([], ['2160p', '1080p'])).toEqual([]);
+	});
+
+	it('multi-quality: returns only files whose resolution is not desired', () => {
+		const files = [file('4k', '2160p'), file('1080', '1080p'), file('720', '720p')];
+		expect(redundantFileIds(files, ['2160p', '1080p'])).toEqual(['720']);
+	});
+
+	it('multi-quality: never flags unknown or missing resolutions', () => {
+		const files = [
+			file('4k', '2160p'),
+			file('720', '720p'),
+			file('unk', 'unknown'),
+			file('miss', undefined)
+		];
+		expect(redundantFileIds(files, ['2160p', '1080p'])).toEqual(['720']);
+	});
+
+	it('single-quality: returns every file except the best (highest resolution wins)', () => {
+		const files = [file('1080', '1080p'), file('720', '720p')];
+		expect(redundantFileIds(files, [])).toEqual(['720']);
+	});
+
+	it('single-quality: with a single effective tier keeps one (the non-best)', () => {
+		const files = [file('a', '1080p'), file('b', '1080p')];
+		expect(redundantFileIds(files, ['1080p'])).toHaveLength(1);
+	});
+
+	it('multi-quality: returns nothing when all files fit the desired tiers', () => {
+		const files = [file('4k', '2160p'), file('1080', '1080p')];
+		expect(redundantFileIds(files, ['2160p', '1080p'])).toEqual([]);
 	});
 });

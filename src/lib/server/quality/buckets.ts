@@ -158,6 +158,37 @@ export function fileIdsToReplace(
 }
 
 /**
+ * IDs of existing files that are "redundant" — they don't fit the movie's
+ * desired-quality tiers. Used to surface cleanup opportunities (insight) and
+ * to power opt-in removal on desiredQualities changes. Never auto-deleted.
+ *
+ *  - Multi-quality (effective length >= 2): files whose KNOWN resolution is
+ *    NOT in `effective` (a tier the user no longer desires).
+ *  - Single-quality (effective length < 2, incl. null/[]): every file EXCEPT
+ *    the `selectBestFile` winner (e.g. a 720p file next to a 1080p "best").
+ *
+ * Unknown-resolution files are NEVER flagged (we don't auto-classify what we
+ * can't identify).
+ */
+export function redundantFileIds<T extends BucketFile>(
+	files: T[],
+	effective: Resolution[]
+): string[] {
+	if (files.length === 0) return [];
+	if (isMultiQualityMode(effective)) {
+		return files
+			.filter((f) => {
+				const r = f.quality?.resolution as Resolution | undefined;
+				if (!r || r === 'unknown') return false;
+				return !effective.includes(r);
+			})
+			.map((f) => f.id);
+	}
+	const best = selectBestFile(files);
+	return files.filter((f) => f.id !== best?.id).map((f) => f.id);
+}
+
+/**
  * Decide which existing file IDs to delete when importing a new file. Unifies
  * the import/upgrade replace policy so ImportService and StreamingHandler share
  * one tested decision:
