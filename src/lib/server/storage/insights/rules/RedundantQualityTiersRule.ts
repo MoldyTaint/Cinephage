@@ -110,7 +110,7 @@ export class RedundantQualityTiersRule implements StorageInsightRule {
 				type: this.type,
 				severity: 'info',
 				scope: 'global',
-				title: `Redundant quality files`,
+				title: 'Redundant quality files',
 				summary: `${total} movie${total === 1 ? ' has' : 's have'} files that no longer fit the desired quality tiers. Review them to reclaim space.`,
 				details: {
 					items: redundant.map((d) => ({

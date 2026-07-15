@@ -185,7 +185,13 @@ export function redundantFileIds<T extends BucketFile>(
 			.map((f) => f.id);
 	}
 	const best = selectBestFile(files);
-	return files.filter((f) => f.id !== best?.id).map((f) => f.id);
+	return files
+		.filter((f) => f.id !== best?.id)
+		.filter((f) => {
+			const r = f.quality?.resolution as Resolution | undefined;
+			return !!r && r !== 'unknown';
+		})
+		.map((f) => f.id);
 }
 
 /**

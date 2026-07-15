@@ -238,9 +238,19 @@ describe('redundantFileIds', () => {
 		expect(redundantFileIds(files, [])).toEqual(['720']);
 	});
 
-	it('single-quality: with a single effective tier keeps one (the non-best)', () => {
+	it('single-quality: flags all but the best when multiple files share the effective tier', () => {
 		const files = [file('a', '1080p'), file('b', '1080p')];
 		expect(redundantFileIds(files, ['1080p'])).toHaveLength(1);
+	});
+
+	it('single-quality: never flags an unknown-resolution file even when non-best', () => {
+		const files = [file('1080', '1080p'), file('unk', 'unknown')];
+		expect(redundantFileIds(files, [])).toEqual([]);
+	});
+
+	it('single-quality: flags nothing when every file is unknown-resolution', () => {
+		const files = [file('a', 'unknown'), file('b', 'unknown')];
+		expect(redundantFileIds(files, [])).toEqual([]);
 	});
 
 	it('multi-quality: returns nothing when all files fit the desired tiers', () => {
