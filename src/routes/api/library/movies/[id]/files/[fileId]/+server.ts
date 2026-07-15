@@ -51,7 +51,10 @@ export const DELETE: RequestHandler = async ({ params }) => {
 			try {
 				const { recycleEnabled } = await getFileManagementSettings();
 				await deletePhysicalFile(fullPath, recycleEnabled, file.rootFolderPath);
-				logger.debug({ fullPath, recycleEnabled }, '[API] Deleted movie file');
+				logger.debug(
+					{ fullPath, recycleEnabled },
+					'[API] Removed movie file (recycled if enabled)'
+				);
 			} catch {
 				logger.warn({ fullPath }, '[API] Could not delete movie file from disk');
 			}

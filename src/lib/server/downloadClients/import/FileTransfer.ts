@@ -928,8 +928,9 @@ export async function moveToRecycleBin(filePath: string, rootFolderPath: string)
 /**
  * Delete (or recycle, when enabled) a physical file. Centralizes the
  * recycle-vs-unlink decision so every movie-file delete path honors the
- * global recycleEnabled setting consistently. Filesystem errors are caught
- * and logged (returns void; callers handle DB state independently).
+ * global recycleEnabled setting consistently. No-op when the file is missing.
+ * Filesystem errors PROPAGATE — callers are expected to catch (each delete
+ * path wraps this in its own try/catch and continues with DB cleanup).
  */
 export async function deletePhysicalFile(
 	filePath: string,
