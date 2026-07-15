@@ -40,6 +40,7 @@ import {
 	hasSufficientDiskSpace,
 	removeEmptyDirectories,
 	moveToRecycleBin,
+	deletePhysicalFile,
 	copyExtraFiles,
 	applyFilePermissions,
 	ImportMode
@@ -2563,15 +2564,7 @@ export class ImportService extends EventEmitter {
 
 			// Delete or recycle physical file if it exists
 			try {
-				if (await fileExists(fullPath)) {
-					if (recycleEnabled) {
-						await moveToRecycleBin(fullPath, rootFolder.path);
-						logger.info({ fileId, path: fullPath }, 'Moved old movie file to recycle bin');
-					} else {
-						await unlink(fullPath);
-						logger.info({ fileId, path: fullPath }, 'Deleted old movie file');
-					}
-				}
+				await deletePhysicalFile(fullPath, !!recycleEnabled, rootFolder.path);
 			} catch (error) {
 				logger.warn(
 					{

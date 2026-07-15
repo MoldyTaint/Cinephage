@@ -7,8 +7,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { moveFile, fileExists } from './FileTransfer';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { moveFile, fileExists, deletePhysicalFile } from './FileTransfer';
+import { mkdtemp, writeFile, rm, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { stat } from 'node:fs/promises';
@@ -166,5 +166,50 @@ describe('moveFile safety guards', () => {
 			const s = await stat(dest);
 			expect(s.size).toBe(17);
 		});
+	});
+});
+
+describe('deletePhysicalFile', () => {
+	let tmpDir: string;
+
+	beforeEach(async () => {
+		tmpDir = await mkdtemp(join(tmpdir(), 'cinephage-deletephysical-'));
+	});
+
+	afterEach(async () => {
+		await rm(tmpDir, { recursive: true, force: true });
+	});
+
+	it('unlinks the file when recycleEnabled is false', async () => {
+		const filePath = join(tmpDir, 'movie.mkv');
+		await writeFile(filePath, 'content');
+
+		await deletePhysicalFile(filePath, false, tmpDir);
+
+		expect(await fileExists(filePath)).toBe(false);
+		// recycle bin must NOT have been created
+		expect(await fileExists(join(tmpDir, '.trash'))).toBe(false);
+	});
+
+	it('moves the file to the recycle bin when recycleEnabled is true', async () => {
+		const moviesDir = join(tmpDir, 'Movies');
+		await mkdir(moviesDir, { recursive: true });
+		const filePath = join(moviesDir, 'movie.mkv');
+		await writeFile(filePath, 'content');
+
+		await deletePhysicalFile(filePath, true, tmpDir);
+
+		// original gone
+		expect(await fileExists(filePath)).toBe(false);
+		// recycle bin preserves path structure beneath root folder
+		const trashPath = join(tmpDir, '.trash', 'Movies', 'movie.mkv');
+		expect(await fileExists(trashPath)).toBe(true);
+	});
+
+	it('is a no-op when the file does not exist', async () => {
+		const missing = join(tmpDir, 'nope.mkv');
+
+		await expect(deletePhysicalFile(missing, false, tmpDir)).resolves.toBeUndefined();
+		await expect(deletePhysicalFile(missing, true, tmpDir)).resolves.toBeUndefined();
 	});
 });

@@ -6,6 +6,8 @@ import { getLibraryRelativePath } from '$lib/server/library/media-paths.js';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
 import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
 import { fileExists, importService } from '$lib/server/downloadClients/import/index.js';
+import { deletePhysicalFile } from '$lib/server/downloadClients/import/FileTransfer.js';
+import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
 import { eventBuffer } from '$lib/server/sse/EventBuffer.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 import { createChildLogger } from '$lib/logging/index.js';
@@ -676,13 +678,13 @@ export class StreamingHandler {
 			})
 		);
 
+		const { recycleEnabled } = await getFileManagementSettings();
+
 		for (const oldFile of existingFiles) {
 			if (!replaceIds.has(oldFile.id)) continue;
 			const oldFilePath = join(rootFolderPath, moviePath, oldFile.relativePath);
 			try {
-				if (await fileExists(oldFilePath)) {
-					await unlink(oldFilePath);
-				}
+				await deletePhysicalFile(oldFilePath, recycleEnabled, rootFolderPath);
 			} catch {
 				// non-critical
 			}
