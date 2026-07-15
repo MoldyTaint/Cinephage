@@ -748,6 +748,7 @@ export class MediaMatcherService {
 				rootFolder.id,
 				'movie'
 			);
+			const wantsSubtitles = owningLibrary.defaultWantsSubtitles;
 			const _animeSignal = isLikelyAnimeMedia({
 				genres: tmdbMovie.genres,
 				originalLanguage: tmdbMovie.original_language,
@@ -779,8 +780,8 @@ export class MediaMatcherService {
 						rootFolderId: rootFolder.id,
 						hasFile: true,
 						monitored: rootFolder.defaultMonitored ?? true,
-						languageProfileId: defaultProfileId,
-						wantsSubtitles: defaultProfileId ? true : undefined
+						languageProfileId: wantsSubtitles ? defaultProfileId : null,
+						wantsSubtitles
 					})
 					.returning();
 
@@ -908,6 +909,7 @@ export class MediaMatcherService {
 				rootFolder.id,
 				'tv'
 			);
+			const wantsSubtitles = owningLibrary.defaultWantsSubtitles;
 			const animeSignal = isLikelyAnimeMedia({
 				genres: tmdbSeries.genres,
 				originalLanguage: tmdbSeries.original_language,
@@ -941,8 +943,8 @@ export class MediaMatcherService {
 						rootFolderId: rootFolder.id,
 						seriesType: rootFolder.mediaSubType === 'anime' || animeSignal ? 'anime' : 'standard',
 						monitored: rootFolder.defaultMonitored ?? true,
-						languageProfileId: defaultProfileId,
-						wantsSubtitles: defaultProfileId ? true : undefined
+						languageProfileId: wantsSubtitles ? defaultProfileId : null,
+						wantsSubtitles
 					})
 					.returning();
 
