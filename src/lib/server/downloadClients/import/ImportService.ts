@@ -1135,10 +1135,12 @@ export class ImportService extends EventEmitter {
 		});
 
 		// For usenet downloads, delete source folder (no seeding needed)
-		// Skip when symlink mode is active — the library symlinks point at the source, so deleting it would break them
+		// Skip when symlink mode is active; the library symlinks point at the source, so deleting it would break them
+		// Skip when canMoveFiles=false; user has configured copy mode and wants to keep the source
 		if (
 			queueItem.protocol === 'usenet' &&
 			queueItem.outputPath &&
+			canMoveFiles &&
 			importOptions.effectiveImportMode !== ImportMode.Symlink
 		) {
 			this.cleanupUsenetSource(queueItem.outputPath).catch((err) => {
@@ -1167,7 +1169,7 @@ export class ImportService extends EventEmitter {
 		queueItem: typeof downloadQueue.$inferSelect,
 		worker: ImportWorker,
 		importOptions: ImportableFileOptions,
-		_canMoveFiles: boolean
+		canMoveFiles: boolean
 	): Promise<ImportJobResult> {
 		const result: ImportJobResult = {
 			success: false,
@@ -1310,7 +1312,7 @@ export class ImportService extends EventEmitter {
 					seriesData,
 					rootFolder,
 					queueItem,
-					_canMoveFiles,
+					canMoveFiles,
 					worker,
 					importOptions
 				);
@@ -1406,11 +1408,12 @@ export class ImportService extends EventEmitter {
 				});
 			}
 
-			// For usenet downloads, delete source folder (no seeding needed)
-			// Skip when symlink mode is active — the library symlinks point at the source, so deleting it would break them
+			// Skip when symlink mode is active; the library symlinks point at the source, so deleting it would break them
+			// Skip when canMoveFiles=false; user has configured copy mode and wants to keep the source
 			if (
 				queueItem.protocol === 'usenet' &&
 				queueItem.outputPath &&
+				canMoveFiles &&
 				importOptions?.effectiveImportMode !== ImportMode.Symlink
 			) {
 				this.cleanupUsenetSource(queueItem.outputPath).catch((err) => {
