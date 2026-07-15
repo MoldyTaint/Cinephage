@@ -131,8 +131,9 @@ import {
  * Version 109: Add stalled_orphan tracking table
  * Version 110: Add storage_items, storage_item_server_links, storage_insights tables for unified storage tracking
  * Version 111: Add rename_history table for permanent file rename audit trail
+ * Version 122: Add api_token and remove_after_import columns to download_clients (debrid support)
  */
-export const CURRENT_SCHEMA_VERSION = 119;
+export const CURRENT_SCHEMA_VERSION = 122;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -262,6 +263,8 @@ const TABLE_DEFINITIONS: string[] = [
 		"password" text,
 		"url_base" text,
 		"mount_mode" text,
+		"api_token" text,
+		"remove_after_import" integer DEFAULT 0,
 		"movie_category" text DEFAULT 'movies',
 		"tv_category" text DEFAULT 'tv',
 		"recent_priority" text DEFAULT 'normal',

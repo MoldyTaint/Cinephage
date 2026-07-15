@@ -146,7 +146,8 @@
 
 	async function handleGrab(
 		release: Release,
-		streaming?: boolean
+		streaming?: boolean,
+		acquisitionProtocol: 'default' | 'torrent' | 'debrid' = 'default'
 	): Promise<{ success: boolean; error?: string; errorCode?: string }> {
 		try {
 			const result = await grabRelease({
@@ -175,7 +176,8 @@
 							};
 						})()),
 				streamUsenet: streaming && release.protocol === 'usenet',
-				commentsUrl: release.commentsUrl
+				commentsUrl: release.commentsUrl,
+				acquisitionProtocol
 			});
 			return { success: result.success, error: result.error, errorCode: result.errorCode };
 		} catch (e) {

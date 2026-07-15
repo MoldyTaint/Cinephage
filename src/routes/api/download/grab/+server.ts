@@ -14,6 +14,7 @@ import { series } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '$lib/logging';
 import { isAppError } from '$lib/errors';
+import { getDefaultAcquisitionProtocol } from '$lib/server/settings/acquisition.js';
 
 const parser = new ReleaseParser();
 
@@ -155,7 +156,9 @@ export const POST: RequestHandler = async (event) => {
 			isAutomatic: data.isAutomatic ?? false,
 			downloadClientId: undefined,
 			isUpgrade: data.isUpgrade,
-			streamUsenet: data.streamUsenet
+			streamUsenet: data.streamUsenet,
+			acquisitionProtocol:
+				data.acquisitionProtocol ?? (data.isAutomatic ? getDefaultAcquisitionProtocol() : 'default')
 		}
 	};
 

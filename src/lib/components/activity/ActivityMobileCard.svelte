@@ -17,6 +17,7 @@
 	import {
 		statusConfig,
 		getCompactStatusLabel,
+		supportsQueuePauseResume,
 		getResolutionBadge,
 		formatRelativeTime,
 		formatTimestamp,
@@ -185,7 +186,7 @@
 
 	{#if activity.queueItemId}
 		<div class="mt-3 flex flex-wrap gap-2">
-			{#if activity.status === 'downloading' || activity.status === 'seeding'}
+			{#if supportsQueuePauseResume(activity) && (activity.status === 'downloading' || activity.status === 'seeding')}
 				<button
 					class="btn btn-ghost btn-xs"
 					onclick={() => onQueueAction('pause')}
@@ -194,7 +195,7 @@
 					<Pause class="h-3.5 w-3.5" />
 					{m.action_pause()}
 				</button>
-			{:else if activity.status === 'paused'}
+			{:else if supportsQueuePauseResume(activity) && activity.status === 'paused'}
 				<button
 					class="btn btn-ghost btn-xs"
 					onclick={() => onQueueAction('resume')}

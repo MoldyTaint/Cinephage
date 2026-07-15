@@ -42,6 +42,8 @@ export interface DownloadClientFormState {
 	maxConnections: number;
 	priority: number;
 	implementation: DownloadClientImplementation;
+	apiToken?: string;
+	removeAfterImport?: boolean;
 }
 
 export function serializeDownloadClientForm(
@@ -69,6 +71,20 @@ export function serializeDownloadClientForm(
 		if (mode === 'edit' && isBlankOrRedacted(formState.password?.trim())) {
 			delete (data as unknown as Record<string, unknown>).password;
 		}
+		return data;
+	}
+
+	if (formState.implementation === 'realdebrid' || formState.implementation === 'torbox') {
+		const data: DownloadClientFormData = {
+			name: normalizedName,
+			implementation: formState.implementation,
+			enabled: formState.enabled,
+			priority: formState.priority,
+			removeAfterImport: formState.removeAfterImport ?? false
+		};
+		const apiToken = formState.apiToken?.trim();
+		if (!(mode === 'edit' && (isBlankOrRedacted(apiToken) || apiToken === '********')) && apiToken)
+			data.apiToken = apiToken;
 		return data;
 	}
 

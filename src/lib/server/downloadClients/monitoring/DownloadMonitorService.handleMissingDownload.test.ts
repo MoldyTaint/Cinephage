@@ -60,6 +60,8 @@ function makeClient(overrides: Partial<DownloadClient> = {}): DownloadClient {
 		port: 8080,
 		useSsl: false,
 		hasPassword: false,
+		hasApiToken: false,
+		removeAfterImport: false,
 		movieCategory: 'movies',
 		tvCategory: 'tv',
 		recentPriority: 'normal',

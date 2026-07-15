@@ -46,10 +46,11 @@
 	let confirmBulkDeleteOpen = $state(false);
 	let testingId = $state<string | null>(null);
 	let bulkLoading = $state(false);
+	let defaultAcquisitionProtocol = $state<'torrent' | 'debrid'>('torrent');
 	let selectedIds = new SvelteSet<string>();
 
 	interface DownloadClientPageFilters {
-		protocol: 'all' | 'torrent' | 'usenet';
+		protocol: 'all' | 'torrent' | 'usenet' | 'debrid';
 		status: 'all' | 'enabled' | 'disabled';
 		search: string;
 	}
@@ -69,6 +70,28 @@
 		column: 'name',
 		direction: 'asc'
 	});
+
+	$effect(() => {
+		defaultAcquisitionProtocol = data.defaultAcquisitionProtocol;
+	});
+
+	const debridAvailable = $derived(
+		data.downloadClients.some(
+			(client) =>
+				(client.implementation === 'realdebrid' || client.implementation === 'torbox') &&
+				client.enabled &&
+				client.hasApiToken
+		)
+	);
+
+	async function saveDefaultAcquisitionProtocol() {
+		const response = await fetch('/api/settings/acquisition', {
+			method: 'PUT',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ defaultAcquisitionProtocol })
+		});
+		if (!response.ok) toasts.error(m.common_failedToSave());
+	}
 
 	interface NntpServerFormData {
 		name: string;
@@ -94,12 +117,15 @@
 
 	function getClientProtocol(
 		implementation: UnifiedClientItem['implementation']
-	): 'torrent' | 'usenet' {
+	): 'torrent' | 'usenet' | 'debrid' {
 		switch (implementation) {
 			case 'sabnzbd':
 			case 'nzbget':
 			case 'nntp':
 				return 'usenet';
+			case 'realdebrid':
+			case 'torbox':
+				return 'debrid';
 			default:
 				return 'torrent';
 		}
@@ -127,7 +153,7 @@
 				return (
 					client.name.toLowerCase().includes(query) ||
 					client.implementation.toLowerCase().includes(query) ||
-					client.host.toLowerCase().includes(query) ||
+					client.host?.toLowerCase().includes(query) ||
 					hostAndPort.toLowerCase().includes(query) ||
 					client.movieCategory?.toLowerCase().includes(query) ||
 					client.tvCategory?.toLowerCase().includes(query)
@@ -257,8 +283,11 @@
 
 		const dcFormData = formData as DownloadClientFormData;
 		const hasPasswordOverride = !isBlankOrRedacted(dcFormData.password?.trim());
+		const hasTokenOverride = !isBlankOrRedacted(dcFormData.apiToken?.trim());
 		const fallbackId =
-			modalMode === 'edit' && editingClient && !hasPasswordOverride ? editingClient.id : undefined;
+			modalMode === 'edit' && editingClient && !hasPasswordOverride && !hasTokenOverride
+				? editingClient.id
+				: undefined;
 
 		try {
 			return await testNewDownloadClient({
@@ -270,7 +299,8 @@
 				urlBase: dcFormData.urlBase,
 				mountMode: dcFormData.mountMode,
 				username: dcFormData.username || null,
-				password: dcFormData.password || null
+				password: dcFormData.password || null,
+				apiToken: dcFormData.apiToken || null
 			} as DownloadClientTest);
 		} catch (e) {
 			return {
@@ -583,6 +613,13 @@
 			>
 				{m.settings_integrations_downloadClients_usenet()}
 			</button>
+			<button
+				class="btn join-item flex-1 btn-sm sm:flex-none"
+				class:btn-active={filters.protocol === 'debrid'}
+				onclick={() => updateFilter('protocol', 'debrid')}
+			>
+				{m.settings_integrations_downloadClients_debrid()}
+			</button>
 		</div>
 
 		<div class="join w-full sm:w-auto">
@@ -608,6 +645,24 @@
 				{m.common_disabled()}
 			</button>
 		</div>
+	</div>
+
+	<div class="mb-4 rounded-lg border border-base-300 bg-base-100 p-4">
+		<label class="label py-1" for="defaultAcquisitionProtocol">
+			<span class="label-text font-medium">{m.acquisition_defaultPreference()}</span>
+		</label>
+		<select
+			id="defaultAcquisitionProtocol"
+			class="select-bordered select select-sm"
+			bind:value={defaultAcquisitionProtocol}
+			onchange={saveDefaultAcquisitionProtocol}
+		>
+			<option value="torrent">{m.acquisition_torrent()}</option>
+			<option value="debrid" disabled={!debridAvailable}>{m.acquisition_debrid()}</option>
+		</select>
+		{#if !debridAvailable}<p class="mt-2 text-xs text-base-content/60">
+				{m.acquisition_debridUnavailableReason()}
+			</p>{/if}
 	</div>
 
 	{#if selectedIds.size > 0}

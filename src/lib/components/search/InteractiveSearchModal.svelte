@@ -76,7 +76,8 @@
 		onClose: () => void;
 		onGrab: (
 			release: Release,
-			streaming?: boolean
+			streaming?: boolean,
+			acquisitionProtocol?: 'default' | 'torrent' | 'debrid'
 		) => Promise<{ success: boolean; error?: string; errorCode?: string }>;
 	}
 
@@ -105,12 +106,30 @@
 	let grabbingIds = new SvelteSet<string>();
 	let grabbedIds = new SvelteSet<string>();
 	let streamingIds = new SvelteSet<string>();
+	let acquisitionProtocol = $state<'default' | 'torrent' | 'debrid'>('default');
+	let debridAvailable = $state(false);
 	let grabErrors = new SvelteMap<string, string>();
 	let searchTriggered = $state(false);
 	let blockedIds = new SvelteSet<string>();
 	let blockModalOpen = $state(false);
 	let releaseToBlock = $state<Release | null>(null);
 	let blocking = $state(false);
+
+	$effect(() => {
+		if (!open) return;
+		void fetch('/api/download-clients')
+			.then((response) => response.json())
+			.then(
+				(clients: Array<{ implementation: string; enabled: boolean; hasApiToken: boolean }>) => {
+					debridAvailable = clients.some(
+						(client) =>
+							(client.implementation === 'realdebrid' || client.implementation === 'torbox') &&
+							client.enabled &&
+							client.hasApiToken
+					);
+				}
+			);
+	});
 
 	let usenetStreamingState = $state<
 		'unknown' | 'available' | 'noConfiguredServers' | 'noEnabledServers' | 'unavailable'
@@ -400,7 +419,7 @@
 		grabErrors.delete(key);
 
 		try {
-			const result = await onGrab(release, streaming);
+			const result = await onGrab(release, streaming, acquisitionProtocol);
 			if (result.success) {
 				grabbedIds.add(key);
 			} else {
@@ -458,6 +477,21 @@
 >
 	<div class="shrink-0">
 		<SearchHeader {title} {searchMode} {searching} onRefresh={performSearch} {onClose} />
+		<div class="mb-2 flex items-center gap-2">
+			<label class="text-sm" for="acquisitionProtocol">{m.acquisition_acquireVia()}</label>
+			<select
+				id="acquisitionProtocol"
+				class="select-bordered select select-xs"
+				bind:value={acquisitionProtocol}
+			>
+				<option value="default">{m.acquisition_default()}</option>
+				<option value="torrent">{m.acquisition_torrent()}</option>
+				<option value="debrid" disabled={!debridAvailable}>{m.acquisition_debrid()}</option>
+			</select>
+			{#if !debridAvailable}<span class="text-xs text-base-content/60"
+					>{m.acquisition_debridUnavailableReason()}</span
+				>{/if}
+		</div>
 
 		{#if meta}
 			<SearchStats

@@ -3611,6 +3611,7 @@
 	"status_healthy": "Saludable",
 	"status_idle": "Inactivo",
 	"status_imported": "Importado",
+	"status_materializing": "Materializando",
 	"status_insights_subtitle": "Issues detected across your library and media servers",
 	"status_insights_title": "Storage Insights",
 	"status_libraries_subtitle": "Manage your media libraries and their root folders",
@@ -4118,5 +4119,17 @@
 	"unmatched_pagination_perPage25": "25 por página",
 	"unmatched_pagination_perPage50": "50 por página",
 	"unmatched_pagination_showing": "Mostrando {start} - {end} de {total} archivos",
-	"validation_maxChars": "Máx. {max} caracteres."
+	"validation_maxChars": "Máx. {max} caracteres.",
+	"downloadClient_realdebrid": "Real-Debrid",
+	"downloadClient_torbox": "TorBox",
+	"downloadClient_protocol_debrid": "Debrid",
+	"downloadClient_apiToken": "Token de API",
+	"downloadClient_removeAfterImport": "Eliminar del proveedor después de importar",
+	"settings_integrations_downloadClients_debrid": "Debrid",
+	"acquisition_acquireVia": "Adquirir mediante",
+	"acquisition_default": "Predeterminado",
+	"acquisition_torrent": "Torrent",
+	"acquisition_debrid": "Debrid",
+	"acquisition_debridUnavailableReason": "Añade y habilita un cliente debrid con un token de API para usar la adquisición debrid.",
+	"acquisition_defaultPreference": "Adquisición torrent predeterminada"
 }

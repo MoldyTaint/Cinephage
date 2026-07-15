@@ -7,6 +7,7 @@ import {
 	encryptBackupPayload,
 	type EncryptedBackupPayload
 } from '$lib/server/crypto/backupCrypto.js';
+import { decryptDebridToken, encryptDebridToken } from '$lib/server/crypto/debridTokenCrypto.js';
 import { db } from '$lib/server/db';
 import { getCookieStore } from '$lib/server/indexers/auth/CookieStore.js';
 import {
@@ -159,7 +160,9 @@ const SECRET_KEY_NAMES = new Set([
 	'cookies',
 	'proxy_username',
 	'proxy_password',
-	'headers'
+	'headers',
+	'api_token',
+	'apitoken'
 ]);
 
 const TABLES: TableBackupConfig[] = [
@@ -544,6 +547,10 @@ function buildManifest(data: Record<string, unknown[]>): ConfigurationBackupMani
 }
 
 export class ConfigurationBackupService {
+	private async readTableRows(config: TableBackupConfig): Promise<Record<string, unknown>[]> {
+		return (await db.select().from(config.table)) as Record<string, unknown>[];
+	}
+
 	async exportConfig(
 		passphrase: string,
 		options: ExportConfigOptions = {}
@@ -554,7 +561,35 @@ export class ConfigurationBackupService {
 		};
 
 		for (const config of TABLES) {
-			const rows = (await db.select().from(config.table)) as Record<string, unknown>[];
+			let rows: Record<string, unknown>[];
+			try {
+				rows = await this.readTableRows(config);
+			} catch (error) {
+				if (config.name === 'downloadClients') {
+					logger.error(
+						{
+							table: config.name,
+							component: 'ConfigurationBackupService',
+							logDomain: 'settings'
+						},
+						'Configuration backup failed while reading required table'
+					);
+					throw new ValidationError(`Configuration backup failed while reading ${config.name}`);
+				}
+				// Table may not exist (e.g. dropped by a migration but still in the
+				// schema definition). Skip it gracefully.
+				logger.debug(
+					{
+						err: error,
+						table: config.name,
+						component: 'ConfigurationBackupService',
+						logDomain: 'settings'
+					},
+					'Skipping table during backup export (table may not exist)'
+				);
+				data[config.name] = [];
+				continue;
+			}
 			const sanitizedRows: Record<string, unknown>[] = [];
 			const tableSecrets: Record<string, unknown> = {};
 
@@ -571,6 +606,24 @@ export class ConfigurationBackupService {
 				sanitizedRows.push(extracted.sanitized as Record<string, unknown>);
 				if (extracted.secret !== undefined) {
 					tableSecrets[recordKey] = extracted.secret;
+				}
+
+				// Debrid token portable transform: decrypt the at-rest encrypted
+				// token and store the plaintext in the backup secrets payload so
+				// it can be re-encrypted with a different auth secret on restore.
+				// If decryption fails, fail the backup closed rather than silently
+				// dropping the credential.
+				if (config.name === 'downloadClients' && row.apiToken) {
+					const plaintext = decryptDebridToken(row.apiToken as string);
+					if (plaintext === null) {
+						throw new ValidationError(
+							`Failed to decrypt debrid token for client ${recordKey}; backup aborted`
+						);
+					}
+					const existingSecret = (tableSecrets[recordKey] as Record<string, unknown>) ?? {};
+					existingSecret.apiToken = plaintext;
+					existingSecret.apiTokenPlaintext = true;
+					tableSecrets[recordKey] = existingSecret;
 				}
 			}
 
@@ -644,6 +697,7 @@ export class ConfigurationBackupService {
 				(section) => section.tableNames
 			)
 		);
+		if (selectedSections.has('downloads')) selectedTableNames.add('settings');
 		const warnings: string[] = [];
 		let decryptedSecrets: BackupSecretPayload;
 		try {
@@ -667,7 +721,14 @@ export class ConfigurationBackupService {
 				continue;
 			}
 
-			const rawRows = backup.data[config.name] ?? [];
+			const rawRows =
+				config.name === 'settings' &&
+				selectedSections.has('downloads') &&
+				!selectedSections.has('system')
+					? (backup.data[config.name] ?? []).filter(
+							(row) => (row as Record<string, unknown>).key === 'default_acquisition_protocol'
+						)
+					: (backup.data[config.name] ?? []);
 			if (!Array.isArray(rawRows) || rawRows.length === 0) {
 				continue;
 			}
@@ -683,7 +744,36 @@ export class ConfigurationBackupService {
 				const row = rawRow as Record<string, unknown>;
 				const recordKey = config.getRecordKey(row);
 				const restoredWithSecrets = deepMergeRecord(row, tableSecrets[recordKey]);
-				return restoreExistingSensitiveValues(restoredWithSecrets, existingRowMap.get(recordKey));
+				const restored = restoreExistingSensitiveValues(
+					restoredWithSecrets,
+					existingRowMap.get(recordKey)
+				);
+
+				// Debrid token portable transform: re-encrypt the plaintext token
+				// from the backup secrets with the destination auth secret before
+				// writing to the DB. We use explicit metadata in the backup secrets
+				// payload (apiTokenPlaintext: true) to decide. If that flag is absent
+				// and the value looks like ciphertext, preserve it as-is; otherwise
+				// treat it as plaintext and re-encrypt it.
+				if (config.name === 'downloadClients') {
+					const restoredRecord = restored as Record<string, unknown>;
+					const secretEntry = tableSecrets[recordKey] as Record<string, unknown> | undefined;
+					if (typeof restoredRecord.apiToken === 'string' && restoredRecord.apiToken.length > 0) {
+						const isPlaintextFromSecrets = secretEntry?.apiTokenPlaintext === true;
+						if (isPlaintextFromSecrets) {
+							restoredRecord.apiToken = encryptDebridToken(restoredRecord.apiToken);
+						} else {
+							const parts = restoredRecord.apiToken.split(':');
+							const looksEncrypted =
+								parts.length === 3 && parts.every((p) => /^[0-9a-f]+$/i.test(p));
+							if (!looksEncrypted) {
+								restoredRecord.apiToken = encryptDebridToken(restoredRecord.apiToken);
+							}
+						}
+					}
+				}
+
+				return restored;
 			});
 
 			preparedTables.push({

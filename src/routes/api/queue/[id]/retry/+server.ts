@@ -10,8 +10,27 @@ import type { DownloadInfo } from '$lib/server/downloadClients/core/interfaces';
 import { logger } from '$lib/logging';
 import { redactUrl } from '$lib/server/utils/urlSecurity';
 import { matchesImportError } from '$lib/types/activity.js';
+import { DebridHandler } from '$lib/server/downloads/handlers/DebridHandler.js';
 
 const MAX_IMPORT_ATTEMPTS = 10;
+const AMBIGUOUS_SUBMISSION_MARKER = '[ambiguous_submission]';
+const DEBRID_CONFIGURATION_ERROR =
+	'Stored API token is unavailable. Re-enter the token and try again.';
+
+function isDebridConfigurationFailure(value: unknown): boolean {
+	if (value && typeof value === 'object') {
+		const kind = (value as { kind?: unknown }).kind;
+		if (kind === 'configuration' || kind === 'authentication') return true;
+	}
+
+	const message = value instanceof Error ? value.message : String(value ?? '');
+	return /api token|stored token|credential|no enabled debrid download client/i.test(message);
+}
+
+function isAmbiguousDebridSubmission(value: unknown): boolean {
+	const message = value instanceof Error ? value.message : String(value ?? '');
+	return message.toLowerCase().includes(AMBIGUOUS_SUBMISSION_MARKER);
+}
 
 function normalizeReleaseKey(value: string | null | undefined): string {
 	if (!value) return '';
@@ -132,6 +151,50 @@ export const POST: RequestHandler = async ({ params }) => {
 		// Only allow retrying failed downloads
 		if (queueItem.status !== 'failed') {
 			throw error(400, `Cannot retry download with status: ${queueItem.status}`);
+		}
+
+		if (queueItem.protocol === 'debrid') {
+			let result: Awaited<ReturnType<DebridHandler['retry']>>;
+			try {
+				result = await new DebridHandler().retry(queueItem);
+			} catch (retryError) {
+				if (isAmbiguousDebridSubmission(retryError)) {
+					return json(
+						{
+							success: false,
+							error: 'Provider submission outcome is unknown; automatic retry was refused.'
+						},
+						{ status: 409 }
+					);
+				}
+				if (isDebridConfigurationFailure(retryError)) {
+					return json({ success: false, error: DEBRID_CONFIGURATION_ERROR }, { status: 400 });
+				}
+				throw retryError;
+			}
+
+			if (!result.success) {
+				const message = result.error || 'Debrid retry failed';
+				const status = isAmbiguousDebridSubmission(message)
+					? 409
+					: isDebridConfigurationFailure(message)
+						? 400
+						: 500;
+				return json({ success: false, error: message }, { status });
+			}
+
+			const updatedItem = await db
+				.select()
+				.from(downloadQueue)
+				.where(eq(downloadQueue.id, id))
+				.get();
+
+			return json({
+				success: true,
+				message: 'Download retry initiated',
+				retryMode: 'debrid',
+				queueItem: toSafeQueueItem(updatedItem)
+			});
 		}
 
 		// Check if max import attempts exceeded

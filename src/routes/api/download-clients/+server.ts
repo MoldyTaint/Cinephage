@@ -1,9 +1,13 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
-import { downloadClientCreateSchema } from '$lib/validation/schemas';
+import {
+	downloadClientCreateSchema,
+	type DownloadClientCreateDiscriminated
+} from '$lib/validation/schemas';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { parseBody } from '$lib/server/api/validate.js';
+import type { DownloadClientInput } from '$lib/types/downloadClient';
 
 /**
  * GET /api/download-clients
@@ -27,34 +31,50 @@ export const POST: RequestHandler = async (event) => {
 	if (authError) return authError;
 
 	const { request } = event;
-	const validated = await parseBody(request, downloadClientCreateSchema);
+	const validated = (await parseBody(
+		request,
+		downloadClientCreateSchema
+	)) as DownloadClientCreateDiscriminated;
 
 	const manager = getDownloadClientManager();
 
-	const created = await manager.createClient({
+	const commonInput: DownloadClientInput = {
 		name: validated.name,
 		implementation: validated.implementation,
 		enabled: validated.enabled,
-		host: validated.host,
-		port: validated.port,
-		useSsl: validated.useSsl,
-		urlBase: validated.urlBase,
-		mountMode: validated.mountMode,
-		username: validated.username,
-		password: validated.password,
-		movieCategory: validated.movieCategory,
-		tvCategory: validated.tvCategory,
-		recentPriority: validated.recentPriority,
-		olderPriority: validated.olderPriority,
-		initialState: validated.initialState,
-		seedRatioLimit: validated.seedRatioLimit,
-		seedTimeLimit: validated.seedTimeLimit,
-		downloadPathLocal: validated.downloadPathLocal,
-		downloadPathRemote: validated.downloadPathRemote,
-		tempPathLocal: validated.tempPathLocal,
-		tempPathRemote: validated.tempPathRemote,
-		priority: validated.priority
-	});
+		priority: validated.priority,
+		apiToken: validated.apiToken,
+		removeAfterImport: validated.removeAfterImport
+	};
+
+	let input: DownloadClientInput;
+	if ('host' in validated) {
+		input = {
+			...commonInput,
+			host: validated.host,
+			port: validated.port,
+			useSsl: validated.useSsl,
+			urlBase: validated.urlBase,
+			mountMode: validated.mountMode,
+			username: validated.username,
+			password: validated.password,
+			movieCategory: validated.movieCategory,
+			tvCategory: validated.tvCategory,
+			recentPriority: validated.recentPriority,
+			olderPriority: validated.olderPriority,
+			initialState: validated.initialState,
+			seedRatioLimit: validated.seedRatioLimit,
+			seedTimeLimit: validated.seedTimeLimit,
+			downloadPathLocal: validated.downloadPathLocal,
+			downloadPathRemote: validated.downloadPathRemote,
+			tempPathLocal: validated.tempPathLocal,
+			tempPathRemote: validated.tempPathRemote
+		};
+	} else {
+		input = commonInput;
+	}
+
+	const created = await manager.createClient(input);
 
 	return json({ success: true, client: created });
 };
