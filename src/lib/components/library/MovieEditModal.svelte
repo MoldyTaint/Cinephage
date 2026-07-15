@@ -6,6 +6,7 @@
 	import { FormCheckbox } from '$lib/components/ui/form';
 	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
 	import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
+	import { effectiveResolutions, redundantMovieFileIds } from '$lib/shared/best-file.js';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { formatBytes } from '$lib/utils/format.js';
@@ -58,6 +59,7 @@
 		availabilityDelay: number;
 		wantsSubtitles: boolean;
 		folderPath?: string;
+		removeUnwantedFiles?: boolean;
 	}
 
 	let { open, movie, qualityProfiles, delayProfiles, rootFolders, saving, onClose, onSave }: Props =
@@ -74,6 +76,7 @@
 	let desiredQualities = $state<DesiredQuality[]>([]);
 	let moveFilesOnRootChange = $state(false);
 	let moveOptionTouched = $state(false);
+	let removeUnwantedFiles = $state(false);
 	let folderPath = $state('');
 	let showFolderPicker = $state(false);
 	let animeRootWarningShown = $state(false);
@@ -146,6 +149,7 @@
 			desiredQualities = [...(movie.desiredQualities ?? [])];
 			moveFilesOnRootChange = false;
 			moveOptionTouched = false;
+			removeUnwantedFiles = false;
 			animeRootWarningShown = false;
 			enforceAnimeSubtype = false;
 			detectedAnime = false;
@@ -194,6 +198,12 @@
 		}
 	});
 
+	$effect(() => {
+		if (!open || !showRemoveUnwantedFiles) {
+			removeUnwantedFiles = false;
+		}
+	});
+
 	const availabilityOptions = [
 		{
 			value: 'announced',
@@ -224,6 +234,24 @@
 		qualityProfiles.find((p) => p.id === qualityProfileId) ?? defaultProfile ?? null
 	);
 
+	// --- Opt-in removal of now-redundant quality tiers (edit only) ---
+	const effectiveDesiredResolutions = $derived(
+		effectiveResolutions(
+			desiredQualities,
+			profileForGating?.minResolution,
+			profileForGating?.maxResolution
+		)
+	);
+	const redundantFileIdList = $derived(
+		redundantMovieFileIds(movie.files, effectiveDesiredResolutions)
+	);
+	const desiredQualitiesShrank = $derived(
+		(movie.desiredQualities ?? []).some((r) => !desiredQualities.includes(r))
+	);
+	const showRemoveUnwantedFiles = $derived(
+		desiredQualitiesShrank && redundantFileIdList.length > 0
+	);
+
 	const folderPathChanged = $derived(folderPath.trim() !== (movie.path ?? '').trim());
 	const resolvedFolderPath = $derived(
 		selectedRootFolderObj?.path && folderPath.trim()
@@ -242,7 +270,8 @@
 			minimumAvailability,
 			availabilityDelay,
 			wantsSubtitles,
-			...(folderPathChanged && folderPath.trim() ? { folderPath: folderPath.trim() } : {})
+			...(folderPathChanged && folderPath.trim() ? { folderPath: folderPath.trim() } : {}),
+			...(showRemoveUnwantedFiles && removeUnwantedFiles ? { removeUnwantedFiles: true } : {})
 		});
 	}
 </script>
@@ -318,6 +347,16 @@
 			minResolution={profileForGating?.minResolution}
 			maxResolution={profileForGating?.maxResolution}
 		/>
+
+		{#if showRemoveUnwantedFiles}
+			<FormCheckbox
+				bind:checked={removeUnwantedFiles}
+				label="Remove {redundantFileIdList.length} file(s) for resolutions you no longer want"
+				description="(sent to recycle bin if enabled)"
+				variant="toggle"
+				color="warning"
+			/>
+		{/if}
 
 		<!-- Delay Profile -->
 		{#if delayProfiles.length > 0}

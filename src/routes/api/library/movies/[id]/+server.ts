@@ -35,6 +35,10 @@ import { getLibraryEntityService } from '$lib/server/library/LibraryEntityServic
 import { getLibraryScheduler } from '$lib/server/library/library-scheduler.js';
 import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
 import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
+import { importService } from '$lib/server/downloadClients/import/index.js';
+import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
+import { redundantFileIds } from '$lib/server/quality/buckets.js';
+import { resolveMovieMultiQuality } from '$lib/server/quality/movie-buckets.js';
 
 function isAnimeMovieSignal(input: {
 	rootFolderPath: string | null;
@@ -193,6 +197,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		providerRefs,
 		rootFolderId,
 		moveFilesOnRootChange,
+		removeUnwantedFiles,
 		wantsSubtitles,
 		languageProfileId,
 		delayProfileId,
@@ -207,6 +212,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			path: movies.path,
 			rootFolderId: movies.rootFolderId,
 			scoringProfileId: movies.scoringProfileId,
+			desiredQualities: movies.desiredQualities,
 			wantsSubtitles: movies.wantsSubtitles,
 			languageProfileId: movies.languageProfileId,
 			hasFile: movies.hasFile
@@ -360,6 +366,48 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 
 	if (Object.keys(updateData).length > 0) {
 		await db.update(movies).set(updateData).where(eq(movies.id, params.id));
+	}
+
+	// Opt-in removal of now-redundant quality tiers when desiredQualities shrank.
+	// The redundant set is recomputed SERVER-side authoritatively (never trust
+	// the client): load current files, resolve effective buckets against the
+	// movie's scoring profile, then delete via the gold-standard delete path.
+	if (removeUnwantedFiles === true) {
+		const reconcileDesired =
+			desiredQualities !== undefined ? desiredQualities : (currentMovie?.desiredQualities ?? null);
+		const reconcileProfileId =
+			scoringProfileId !== undefined ? scoringProfileId : (currentMovie?.scoringProfileId ?? null);
+
+		const { effective: reconcileEffective } = await resolveMovieMultiQuality(
+			reconcileDesired,
+			reconcileProfileId
+		);
+
+		const existingMovieFiles = await db
+			.select({
+				id: movieFiles.id,
+				relativePath: movieFiles.relativePath,
+				quality: movieFiles.quality,
+				size: movieFiles.size
+			})
+			.from(movieFiles)
+			.where(eq(movieFiles.movieId, params.id));
+
+		const redundantIds = redundantFileIds(existingMovieFiles, reconcileEffective);
+		if (redundantIds.length > 0) {
+			const fileManagement = await getFileManagementSettings();
+			for (const redundantId of redundantIds) {
+				await importService.deleteMovieFile(redundantId, params.id, fileManagement.recycleEnabled);
+			}
+			logger.info(
+				{
+					movieId: params.id,
+					count: redundantIds.length,
+					recycleEnabled: fileManagement.recycleEnabled
+				},
+				'[API] Removed redundant quality files on desiredQualities change'
+			);
+		}
 	}
 
 	let moveTask:

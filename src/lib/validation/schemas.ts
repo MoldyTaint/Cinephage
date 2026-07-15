@@ -1496,6 +1496,9 @@ export const movieUpdateSchema = z.object({
 	wantsSubtitles: z.boolean().optional(),
 	languageProfileId: z.string().nullable().optional(),
 	delayProfileId: z.string().nullable().optional(),
+	/** Edit-only: opt-in removal of files for resolutions no longer in
+	 *  desiredQualities. Server recomputes the redundant set authoritatively. */
+	removeUnwantedFiles: z.boolean().optional(),
 	/** Relative folder name within the root folder (e.g. "Brokenwood Mysteries"). Used to
 	 *  correct a drifted DB path without touching files on disk. */
 	folderPath: z

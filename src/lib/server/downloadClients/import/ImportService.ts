@@ -2516,9 +2516,14 @@ export class ImportService extends EventEmitter {
 	}
 
 	/**
-	 * Delete a movie file (both database record and physical file)
+	 * Delete a movie file (both database record and physical file).
+	 *
+	 * Public so other edit-time flows (e.g. removing now-redundant quality tiers
+	 * on a desiredQualities change) can reuse the gold-standard delete path:
+	 * resolves the full path, recycles-or-unlinks, cleans the DB row, and emits
+	 * the `file:deleted` SSE event.
 	 */
-	private async deleteMovieFile(
+	async deleteMovieFile(
 		fileId: string,
 		movieId: string,
 		recycleEnabled?: boolean

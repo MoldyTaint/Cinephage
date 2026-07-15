@@ -48,3 +48,75 @@ function scoreFile(f: RankableMovieFile): number {
 	const sizeMb = (f.size ?? 0) / (1024 * 1024);
 	return typeBonus + resRank * 1000 + Math.min(sizeMb, 100);
 }
+
+/**
+ * Minimum effective resolutions to activate multi-quality behavior. Mirrors
+ * MULTI_QUALITY_MIN_BUCKETS in `src/lib/server/quality/buckets.ts`.
+ */
+const MULTI_QUALITY_MIN_BUCKETS = 2;
+
+/**
+ * Client-safe mirror of the server
+ * {@link import('$lib/server/quality/buckets.js').effectiveBuckets}: clamps the
+ * desired resolutions to the scoring profile's resolution range using
+ * RESOLUTION_RANK, dropping unknown/unrecognized values and deduping while
+ * preserving declared order.
+ */
+export function effectiveResolutions(
+	desired: string[] | null | undefined,
+	minResolution?: string | null,
+	maxResolution?: string | null
+): string[] {
+	if (!desired || desired.length === 0) return [];
+	const min = minResolution ? (RESOLUTION_RANK[minResolution] ?? -Infinity) : -Infinity;
+	const max = maxResolution ? (RESOLUTION_RANK[maxResolution] ?? Infinity) : Infinity;
+
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (const r of desired) {
+		if (r === 'unknown' || seen.has(r)) continue;
+		seen.add(r);
+		const rank = RESOLUTION_RANK[r];
+		if (rank === undefined) continue;
+		if (rank < min || rank > max) continue;
+		out.push(r);
+	}
+	return out;
+}
+
+/**
+ * Client-safe mirror of the server
+ * {@link import('$lib/server/quality/buckets.js').redundantFileIds}. Returns the
+ * IDs of existing files that don't fit the movie's effective desired-quality
+ * tiers:
+ *  - Multi-quality (effective length >= 2): files whose KNOWN resolution is NOT
+ *    in `effective`.
+ *  - Single-quality (effective length < 2, incl. empty): every file EXCEPT the
+ *    {@link pickBestMovieFile} winner.
+ *
+ * Unknown-resolution files are NEVER flagged.
+ */
+export function redundantMovieFileIds<T extends RankableMovieFile & { id: string }>(
+	files: T[] | null | undefined,
+	effective: string[]
+): string[] {
+	if (!files || files.length === 0) return [];
+	if (effective.length >= MULTI_QUALITY_MIN_BUCKETS) {
+		const wanted = new Set(effective);
+		return files
+			.filter((f) => {
+				const r = f.quality?.resolution;
+				if (!r || r === 'unknown') return false;
+				return !wanted.has(r);
+			})
+			.map((f) => f.id);
+	}
+	const best = pickBestMovieFile(files);
+	return files
+		.filter((f) => f.id !== best?.id)
+		.filter((f) => {
+			const r = f.quality?.resolution;
+			return !!r && r !== 'unknown';
+		})
+		.map((f) => f.id);
+}
