@@ -149,7 +149,6 @@
 			desiredQualities = [...(movie.desiredQualities ?? [])];
 			moveFilesOnRootChange = false;
 			moveOptionTouched = false;
-			removeUnwantedFiles = false;
 			animeRootWarningShown = false;
 			enforceAnimeSubtype = false;
 			detectedAnime = false;
@@ -245,11 +244,11 @@
 	const redundantFileIdList = $derived(
 		redundantMovieFileIds(movie.files, effectiveDesiredResolutions)
 	);
-	const desiredQualitiesShrank = $derived(
+	const desiredQualitiesReduced = $derived(
 		(movie.desiredQualities ?? []).some((r) => !desiredQualities.includes(r))
 	);
 	const showRemoveUnwantedFiles = $derived(
-		desiredQualitiesShrank && redundantFileIdList.length > 0
+		desiredQualitiesReduced && redundantFileIdList.length > 0
 	);
 
 	const folderPathChanged = $derived(folderPath.trim() !== (movie.path ?? '').trim());

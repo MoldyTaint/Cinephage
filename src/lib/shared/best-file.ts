@@ -56,11 +56,15 @@ function scoreFile(f: RankableMovieFile): number {
 const MULTI_QUALITY_MIN_BUCKETS = 2;
 
 /**
- * Client-safe mirror of the server
+ * Approximate client-side mirror of the server
  * {@link import('$lib/server/quality/buckets.js').effectiveBuckets}: clamps the
  * desired resolutions to the scoring profile's resolution range using
  * RESOLUTION_RANK, dropping unknown/unrecognized values and deduping while
  * preserving declared order.
+ *
+ * Keep in sync with `src/lib/server/quality/buckets.ts` `effectiveBuckets`;
+ * differs only for unrecognized resolution strings (dropped here), which don't
+ * occur for typed input.
  */
 export function effectiveResolutions(
 	desired: string[] | null | undefined,

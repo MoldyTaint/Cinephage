@@ -372,40 +372,83 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	// The redundant set is recomputed SERVER-side authoritatively (never trust
 	// the client): load current files, resolve effective buckets against the
 	// movie's scoring profile, then delete via the gold-standard delete path.
+	let removedCount = 0;
+	const reconcileFailures: string[] = [];
 	if (removeUnwantedFiles === true) {
-		const reconcileDesired =
-			desiredQualities !== undefined ? desiredQualities : (currentMovie?.desiredQualities ?? null);
-		const reconcileProfileId =
-			scoringProfileId !== undefined ? scoringProfileId : (currentMovie?.scoringProfileId ?? null);
+		try {
+			const reconcileDesired =
+				desiredQualities !== undefined
+					? desiredQualities
+					: (currentMovie?.desiredQualities ?? null);
+			const reconcileProfileId =
+				scoringProfileId !== undefined
+					? scoringProfileId
+					: (currentMovie?.scoringProfileId ?? null);
 
-		const { effective: reconcileEffective } = await resolveMovieMultiQuality(
-			reconcileDesired,
-			reconcileProfileId
-		);
+			const { effective: reconcileEffective } = await resolveMovieMultiQuality(
+				reconcileDesired,
+				reconcileProfileId
+			);
 
-		const existingMovieFiles = await db
-			.select({
-				id: movieFiles.id,
-				relativePath: movieFiles.relativePath,
-				quality: movieFiles.quality,
-				size: movieFiles.size
-			})
-			.from(movieFiles)
-			.where(eq(movieFiles.movieId, params.id));
+			const existingMovieFiles = await db
+				.select({
+					id: movieFiles.id,
+					relativePath: movieFiles.relativePath,
+					quality: movieFiles.quality,
+					size: movieFiles.size
+				})
+				.from(movieFiles)
+				.where(eq(movieFiles.movieId, params.id));
 
-		const redundantIds = redundantFileIds(existingMovieFiles, reconcileEffective);
-		if (redundantIds.length > 0) {
-			const fileManagement = await getFileManagementSettings();
-			for (const redundantId of redundantIds) {
-				await importService.deleteMovieFile(redundantId, params.id, fileManagement.recycleEnabled);
+			const redundantIds = redundantFileIds(existingMovieFiles, reconcileEffective);
+			if (redundantIds.length > 0) {
+				const fileManagement = await getFileManagementSettings();
+				for (const redundantId of redundantIds) {
+					const deleteResult = await importService.deleteMovieFile(
+						redundantId,
+						params.id,
+						fileManagement.recycleEnabled
+					);
+					if (deleteResult.success) {
+						removedCount++;
+					} else {
+						reconcileFailures.push(deleteResult.error ?? 'Unknown error');
+					}
+				}
+				logger.info(
+					{
+						movieId: params.id,
+						attempted: redundantIds.length,
+						removed: removedCount,
+						failed: reconcileFailures.length,
+						recycleEnabled: fileManagement.recycleEnabled
+					},
+					'[API] Removed redundant quality files on desiredQualities change'
+				);
+				if (reconcileFailures.length > 0) {
+					logger.warn(
+						{
+							movieId: params.id,
+							failures: reconcileFailures
+						},
+						'[API] Some redundant quality file deletions failed'
+					);
+				}
 			}
-			logger.info(
+		} catch (error) {
+			logger.error(
 				{
 					movieId: params.id,
-					count: redundantIds.length,
-					recycleEnabled: fileManagement.recycleEnabled
+					err: error instanceof Error ? error : undefined
 				},
-				'[API] Removed redundant quality files on desiredQualities change'
+				'[API] Failed to reconcile redundant quality files'
+			);
+			return json(
+				{
+					success: false,
+					error: error instanceof Error ? error.message : 'Failed to remove unwanted files'
+				},
+				{ status: 500 }
 			);
 		}
 	}
@@ -496,11 +539,19 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		getLibraryScheduler().queueFolderScan(currentMovie.rootFolderId);
 	}
 
+	const failedCount = reconcileFailures.length;
 	return json({
 		success: true,
 		moveQueued: Boolean(moveTask),
 		moveTaskId: moveTask?.taskId,
-		moveTaskHistoryId: moveTask?.historyId
+		moveTaskHistoryId: moveTask?.historyId,
+		removedCount,
+		...(failedCount > 0
+			? {
+					failedCount,
+					warning: `Removed ${removedCount}, ${failedCount} failed`
+				}
+			: {})
 	});
 };
 
