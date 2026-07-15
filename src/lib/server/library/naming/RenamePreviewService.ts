@@ -27,7 +27,7 @@ import { NamingService, type MediaNamingInfo } from './NamingService';
 import { namingSettingsService } from './NamingSettingsService';
 import { moveFile, fileExists } from '$lib/server/downloadClients/import/FileTransfer';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
-import { rename, stat } from 'node:fs/promises';
+import { rename, stat, readdir, rmdir } from 'node:fs/promises';
 import { chooseBestParsedRelease } from './preview-metadata';
 import {
 	getMediaBrowserManager,
@@ -421,8 +421,6 @@ export class RenamePreviewService {
 		);
 
 		// Group items by mediaId for parallel processing.
-		// Folder renames are NOT performed here — files are renamed within
-		// their existing parent folder.
 		const groups = new Map<string, RenamePreviewItem[]>();
 		for (const item of renameMap.values()) {
 			const group = groups.get(item.mediaId) || [];
@@ -478,6 +476,23 @@ export class RenamePreviewService {
 					const renameResult = await this.executeFileRename(item);
 					groupResult.push(renameResult);
 					await this.writeRenameHistory(item, renameResult.success, renameResult.error);
+				}
+
+				// After all files in this group are processed, handle any folder rename.
+				// A folder rename occurs when at least one file successfully moved to a
+				// new parent path. We update the DB path record, move remaining extra
+				// files (artwork, nfo, etc.) to the new folder, and clean up empty dirs.
+				const successfulFolderChange = items.find((item) => {
+					const matched = groupResult.find((r) => r.fileId === item.fileId);
+					return matched?.success && item.currentParentPath !== item.newParentPath;
+				});
+				if (successfulFolderChange && firstItem) {
+					await this.applyFolderRename(
+						mediaId,
+						firstItem.mediaType as 'movie' | 'episode',
+						successfulFolderChange.currentParentPath,
+						successfulFolderChange.newParentPath
+					);
 				}
 
 				return groupResult;
@@ -1033,6 +1048,105 @@ export class RenamePreviewService {
 				newPath: item.newFullPath,
 				error: error instanceof Error ? error.message : 'Unknown error'
 			};
+		}
+	}
+
+	/**
+	 * After file renames move media into a new parent folder:
+	 * 1. Update movie.path / series.path in the DB so the library entry reflects the new location.
+	 * 2. Move any remaining files (artwork, nfo, subtitles, etc.) from the old folder to the new one.
+	 * 3. Remove the old folder tree if it is now empty.
+	 */
+	private async applyFolderRename(
+		mediaId: string,
+		mediaType: 'movie' | 'episode',
+		oldParentPath: string,
+		newParentPath: string
+	): Promise<void> {
+		try {
+			let rootFolderId: string | undefined;
+			if (mediaType === 'movie') {
+				const movie = db.select().from(movies).where(eq(movies.id, mediaId)).get();
+				rootFolderId = movie?.rootFolderId ?? undefined;
+			} else {
+				const show = db.select().from(series).where(eq(series.id, mediaId)).get();
+				rootFolderId = show?.rootFolderId ?? undefined;
+			}
+			if (!rootFolderId) return;
+
+			const rootFolder = db
+				.select()
+				.from(rootFolders)
+				.where(eq(rootFolders.id, rootFolderId))
+				.get();
+			if (!rootFolder) return;
+
+			const rootFolderPath = rootFolder.path;
+			const oldFolder = join(rootFolderPath, oldParentPath);
+			const newFolder = join(rootFolderPath, newParentPath);
+
+			// 1. Update DB path record so the library entry shows the correct folder.
+			if (mediaType === 'movie') {
+				db.update(movies).set({ path: newParentPath }).where(eq(movies.id, mediaId)).run();
+			} else {
+				db.update(series).set({ path: newParentPath }).where(eq(series.id, mediaId)).run();
+			}
+
+			logger.info(
+				{ mediaId, mediaType, from: oldFolder, to: newFolder },
+				'[RenamePreviewService] Folder path updated in DB after file renames'
+			);
+
+			// 2. Move any remaining files from the old folder root to the new folder root.
+			// These are extra files (artwork, nfo, subs) not covered by the file renames.
+			try {
+				const entries = await readdir(oldFolder, { withFileTypes: true });
+				for (const entry of entries) {
+					if (!entry.isFile()) continue;
+					const src = join(oldFolder, entry.name);
+					const dest = join(newFolder, entry.name);
+					if (await fileExists(dest)) continue; // don't overwrite
+					try {
+						await rename(src, dest);
+					} catch {
+						// Cross-device: fall back to copy+delete via moveFile
+						await moveFile(src, dest);
+					}
+				}
+			} catch {
+				// Old folder may not exist or be unreadable — not fatal.
+			}
+
+			// 3. Remove the old folder tree if empty (handles empty season subfolders for series).
+			await this.tryRemoveEmptyDir(oldFolder);
+		} catch (error) {
+			logger.warn(
+				{
+					mediaId,
+					mediaType,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[RenamePreviewService] applyFolderRename cleanup failed (non-fatal)'
+			);
+		}
+	}
+
+	/**
+	 * Recursively remove a directory only if it is entirely empty.
+	 * Descends into subdirectories first so empty trees are cleaned bottom-up.
+	 * Directories that still contain files are left untouched.
+	 */
+	private async tryRemoveEmptyDir(dirPath: string): Promise<void> {
+		try {
+			const entries = await readdir(dirPath, { withFileTypes: true });
+			for (const entry of entries) {
+				if (entry.isDirectory()) {
+					await this.tryRemoveEmptyDir(join(dirPath, entry.name));
+				}
+			}
+			await rmdir(dirPath); // no-op fails silently if not empty
+		} catch {
+			// Directory has remaining files or doesn't exist — both are fine.
 		}
 	}
 
