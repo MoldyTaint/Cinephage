@@ -28,7 +28,6 @@ import { namingSettingsService } from './NamingSettingsService';
 import { moveFile, fileExists } from '$lib/server/downloadClients/import/FileTransfer';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
 import { rename, stat } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
 import { chooseBestParsedRelease } from './preview-metadata';
 import {
 	getMediaBrowserManager,
@@ -52,45 +51,6 @@ import type {
 	RenamePreviewResult,
 	RenameExecuteResult
 } from '$lib/library/naming/types.js';
-
-/**
- * Detect whether a .strm file points at Cinephage's own streaming session endpoint
- * (vs an NZB/usenet streaming .strm which must keep its real codec/quality metadata).
- */
-function isCinephageStreamingStrm(
-	rootFolderPath: string,
-	parentPath: string | null | undefined,
-	relativePath: string
-): boolean {
-	if (extname(relativePath).toLowerCase() !== '.strm') return false;
-	try {
-		const fullPath = join(rootFolderPath, parentPath ?? '', relativePath);
-		const content = readFileSync(fullPath, 'utf8').trim();
-		return content.includes('/api/streaming/session/');
-	} catch {
-		return false;
-	}
-}
-
-/**
- * Strip codec/quality/release-group from a Cinephage-native .strm naming info.
- * Streaming pointers carry no real codec/quality — the .strm extension and its
- * URL content identify the source. NZB .strm files keep their real metadata.
- */
-function applyCinephageStrmOverrides(info: MediaNamingInfo): MediaNamingInfo {
-	return {
-		...info,
-		releaseGroup: undefined,
-		resolution: undefined,
-		source: undefined,
-		codec: undefined,
-		hdr: undefined,
-		bitDepth: undefined,
-		audioCodec: undefined,
-		audioChannels: undefined,
-		audioLanguages: undefined
-	};
-}
 
 /**
  * Create an empty preview result
@@ -1310,12 +1270,6 @@ export class RenamePreviewService {
 				originalExtension: extname(file.relativePath)
 			};
 
-			// Cinephage-native .strm pointers carry no real codec/quality — strip those
-			// and stamp the Cinephage Streaming identifier. NZB .strm files are left as-is.
-			if (isCinephageStreamingStrm(rootFolderPath, movie.path, file.relativePath)) {
-				Object.assign(namingInfo, applyCinephageStrmOverrides(namingInfo));
-			}
-
 			// Generate new filename and folder name
 			const newFolderName = this.namingService.generateMovieFolderName(namingInfo);
 			const newFileName = this.namingService.generateMovieFileName(namingInfo);
@@ -1472,12 +1426,6 @@ export class RenamePreviewService {
 				repack: parsedFromFilename.repack,
 				originalExtension: extname(file.relativePath)
 			};
-
-			// Cinephage-native .strm pointers carry no real codec/quality — strip those
-			// and stamp the Cinephage Streaming identifier. NZB .strm files are left as-is.
-			if (isCinephageStreamingStrm(rootFolderPath, show.path, file.relativePath)) {
-				Object.assign(namingInfo, applyCinephageStrmOverrides(namingInfo));
-			}
 
 			// Generate new filename and folder name
 			const newFolderName = this.namingService.generateSeriesFolderName(namingInfo);

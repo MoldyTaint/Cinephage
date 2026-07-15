@@ -867,20 +867,12 @@ export class DiskScanService extends EventEmitter {
 					return false;
 				}
 
-				const isStrmFile = file.path.endsWith('.strm');
-				const quality = isStrmFile
-					? {
-							resolution: undefined,
-							source: 'Streaming',
-							codec: undefined,
-							hdr: undefined
-						}
-					: {
-							resolution: parsed.resolution ?? undefined,
-							source: parsed.source ?? undefined,
-							codec: parsed.codec ?? undefined,
-							hdr: parsed.hdr ?? undefined
-						};
+				const quality = {
+					resolution: parsed.resolution ?? undefined,
+					source: parsed.source ?? undefined,
+					codec: parsed.codec ?? undefined,
+					hdr: parsed.hdr ?? undefined
+				};
 
 				await db.insert(episodeFiles).values({
 					seriesId: s.id,
@@ -889,7 +881,7 @@ export class DiskScanService extends EventEmitter {
 					relativePath,
 					size: file.size,
 					dateAdded: new Date().toISOString(),
-					releaseGroup: isStrmFile ? 'Streaming' : (parsed.releaseGroup ?? undefined),
+					releaseGroup: parsed.releaseGroup ?? undefined,
 					releaseType: episodeNums.length > 1 ? 'multiEpisode' : 'singleEpisode',
 					quality
 				});
