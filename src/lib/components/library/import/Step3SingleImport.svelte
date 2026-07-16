@@ -10,6 +10,7 @@
 		mediaType: MediaType;
 		mediaSubType?: string | null;
 		isDefault?: boolean;
+		isDefaultFolder?: boolean;
 		defaultRootFolderId?: string | null;
 		defaultRootFolderPath?: string | null;
 	}
