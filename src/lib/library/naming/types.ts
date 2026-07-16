@@ -66,6 +66,7 @@ export interface RenameExecuteResult {
 		newPath: string;
 		error?: string;
 	}>;
+	warnings?: string[];
 }
 
 /**
