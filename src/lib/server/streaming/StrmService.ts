@@ -655,6 +655,17 @@ export class StrmService {
 						skippedMissingMetadata += 1;
 						continue;
 					}
+					// Only update strm files that already contain a Cinephage streaming URL.
+					// Use parseStrmFileUrl for strict pattern matching so user strm files
+					// with unrelated URLs (nzbdav, Jellyfin, etc.) are never overwritten.
+					try {
+						const existing = readFileSync(fullPath, 'utf8').trim();
+						if (!this.parseStrmFileUrl(existing)) {
+							continue;
+						}
+					} catch {
+						continue;
+					}
 					strmFiles.add(fullPath);
 					// Map file path to movie info for direct URL generation
 					this.strayFilePaths.set(fullPath, {
@@ -672,6 +683,17 @@ export class StrmService {
 				}
 				const fullPath = this.resolveMediaPath(row.rootPath, row.parentPath, row.relativePath);
 				if (existsSync(fullPath)) {
+					// Only update strm files that already contain a Cinephage streaming URL.
+					// Use parseStrmFileUrl for strict pattern matching so user strm files
+					// with unrelated URLs (nzbdav, Jellyfin, etc.) are never overwritten.
+					try {
+						const existing = readFileSync(fullPath, 'utf8').trim();
+						if (!this.parseStrmFileUrl(existing)) {
+							continue;
+						}
+					} catch {
+						continue;
+					}
 					strmFiles.add(fullPath);
 					// Map file path to episode info for direct URL generation
 					this.strayFilePaths.set(fullPath, {

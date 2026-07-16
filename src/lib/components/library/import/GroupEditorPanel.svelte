@@ -339,6 +339,11 @@
 					{/if}
 				</div>
 				{#if selectedMatch}
+					{#if !showMatchList}
+						<span class="truncate text-sm font-medium text-base-content/80 flex-1 min-w-0">
+							{selectedMatch.title}{selectedMatch.year ? ` (${selectedMatch.year})` : ''}
+						</span>
+					{/if}
 					<button
 						type="button"
 						class="btn shrink-0 btn-ghost btn-xs"

@@ -748,6 +748,7 @@ export class MediaMatcherService {
 				rootFolder.id,
 				'movie'
 			);
+			const wantsSubtitles = owningLibrary.defaultWantsSubtitles;
 			const _animeSignal = isLikelyAnimeMedia({
 				genres: tmdbMovie.genres,
 				originalLanguage: tmdbMovie.original_language,
@@ -779,8 +780,8 @@ export class MediaMatcherService {
 						rootFolderId: rootFolder.id,
 						hasFile: true,
 						monitored: rootFolder.defaultMonitored ?? true,
-						languageProfileId: defaultProfileId,
-						wantsSubtitles: defaultProfileId ? true : undefined
+						languageProfileId: wantsSubtitles ? defaultProfileId : null,
+						wantsSubtitles
 					})
 					.returning();
 
@@ -908,6 +909,7 @@ export class MediaMatcherService {
 				rootFolder.id,
 				'tv'
 			);
+			const wantsSubtitles = owningLibrary.defaultWantsSubtitles;
 			const animeSignal = isLikelyAnimeMedia({
 				genres: tmdbSeries.genres,
 				originalLanguage: tmdbSeries.original_language,
@@ -941,8 +943,8 @@ export class MediaMatcherService {
 						rootFolderId: rootFolder.id,
 						seriesType: rootFolder.mediaSubType === 'anime' || animeSignal ? 'anime' : 'standard',
 						monitored: rootFolder.defaultMonitored ?? true,
-						languageProfileId: defaultProfileId,
-						wantsSubtitles: defaultProfileId ? true : undefined
+						languageProfileId: wantsSubtitles ? defaultProfileId : null,
+						wantsSubtitles
 					})
 					.returning();
 
@@ -1031,6 +1033,27 @@ export class MediaMatcherService {
 		const seasonNumber = resolvedSeason;
 		const episodeNumber = resolvedEpisode;
 
+		// Re-parse the filename to detect all episodes for multi-episode files (e.g. S01E01-E02).
+		// parsedEpisode only stores the first episode number, so we always re-derive the full set.
+		const allEpisodeNumbers = (() => {
+			const stem = getMediaParseStem(file.path);
+			const reparsed = parseRelease(stem);
+			const tvId = resolveTvEpisodeIdentifier({
+				filePath: file.path,
+				parsed: reparsed,
+				seasonHint: seasonNumber
+			});
+			if (
+				tvId?.numbering === 'standard' &&
+				tvId.seasonNumber === seasonNumber &&
+				tvId.episodeNumbers.length > 1 &&
+				tvId.episodeNumbers.includes(episodeNumber)
+			) {
+				return tvId.episodeNumbers;
+			}
+			return [episodeNumber];
+		})();
+
 		// Fetch season details from TMDB (needed for both season and episode metadata)
 		let tmdbSeason: Awaited<ReturnType<typeof tmdb.getSeason>> | null = null;
 		try {
@@ -1080,49 +1103,74 @@ export class MediaMatcherService {
 			}
 		}
 
-		// Find episode details from TMDB season data
-		const tmdbEpisode = tmdbSeason?.episodes?.find((e) => e.episode_number === episodeNumber);
+		// Ensure all episodes covered by this file exist and have hasFile: true.
+		// For multi-episode files (e.g. S03E21-E22) allEpisodeNumbers has all numbers;
+		// single-episode files have only one entry.
+		const episodeMonitored = (rootFolder.defaultMonitored ?? true) && seasonNumber !== 0;
+		const allEpisodeIds: string[] = [];
+		let primaryEpisode: typeof episodes.$inferSelect | undefined;
 
-		// Ensure episode exists
-		let [episode] = await db
-			.select()
-			.from(episodes)
-			.where(
-				and(
-					eq(episodes.seriesId, seriesId),
-					eq(episodes.seasonNumber, seasonNumber),
-					eq(episodes.episodeNumber, episodeNumber)
-				)
-			);
+		for (const epNum of allEpisodeNumbers) {
+			const tmdbEp = tmdbSeason?.episodes?.find((e) => e.episode_number === epNum);
 
-		if (!episode) {
-			// Create episode entry with TMDB metadata if available
-			[episode] = await db
-				.insert(episodes)
-				.values({
-					seriesId,
-					seasonId: season.id,
-					seasonNumber,
-					episodeNumber,
-					title: tmdbEpisode?.name ?? undefined,
-					overview: tmdbEpisode?.overview ?? undefined,
-					airDate: tmdbEpisode?.air_date ?? undefined,
-					runtime: tmdbEpisode?.runtime ?? undefined,
-					hasFile: true,
-					monitored: (rootFolder.defaultMonitored ?? true) && seasonNumber !== 0
-				})
-				.returning();
-		} else {
-			// Update hasFile (and fill in missing metadata if we have it)
-			const updates: Record<string, unknown> = { hasFile: true };
-			if (tmdbEpisode && !episode.title) {
-				updates.title = tmdbEpisode.name;
-				updates.overview = tmdbEpisode.overview;
-				updates.airDate = tmdbEpisode.air_date;
-				updates.runtime = tmdbEpisode.runtime;
+			let [ep] = await db
+				.select()
+				.from(episodes)
+				.where(
+					and(
+						eq(episodes.seriesId, seriesId),
+						eq(episodes.seasonNumber, seasonNumber),
+						eq(episodes.episodeNumber, epNum)
+					)
+				);
+
+			if (!ep) {
+				[ep] = await db
+					.insert(episodes)
+					.values({
+						seriesId,
+						seasonId: season.id,
+						seasonNumber,
+						episodeNumber: epNum,
+						title: tmdbEp?.name ?? undefined,
+						overview: tmdbEp?.overview ?? undefined,
+						airDate: tmdbEp?.air_date ?? undefined,
+						runtime: tmdbEp?.runtime ?? undefined,
+						hasFile: true,
+						monitored: episodeMonitored
+					})
+					.returning();
+			} else {
+				const updates: Record<string, unknown> = { hasFile: true };
+				if (tmdbEp && !ep.title) {
+					updates.title = tmdbEp.name;
+					updates.overview = tmdbEp.overview;
+					updates.airDate = tmdbEp.air_date;
+					updates.runtime = tmdbEp.runtime;
+				}
+				await db.update(episodes).set(updates).where(eq(episodes.id, ep.id));
 			}
-			await db.update(episodes).set(updates).where(eq(episodes.id, episode.id));
+
+			allEpisodeIds.push(ep.id);
+			if (epNum === episodeNumber) {
+				primaryEpisode = ep;
+			}
 		}
+
+		// Fallback: if primary episode wasn't matched by number (shouldn't happen), use first
+		const episode =
+			primaryEpisode ??
+			(await db
+				.select()
+				.from(episodes)
+				.where(
+					and(
+						eq(episodes.seriesId, seriesId),
+						eq(episodes.seasonNumber, seasonNumber),
+						eq(episodes.episodeNumber, episodeNumber)
+					)
+				)
+				.then((rows) => rows[0]));
 
 		// Parse quality from the original filename (preserves quality markers)
 		const originalFilename = basename(file.path, extname(file.path));
@@ -1132,7 +1180,7 @@ export class MediaMatcherService {
 		await this.upsertEpisodeFileByPath({
 			seriesId,
 			seasonNumber,
-			episodeIds: [episode.id],
+			episodeIds: allEpisodeIds,
 			relativePath: relativePath.replace(seriesFolder + '/', ''),
 			size: file.size,
 			mediaInfo,
@@ -1150,16 +1198,18 @@ export class MediaMatcherService {
 		// Update series stats
 		await this.updateSeriesStats(seriesId);
 
-		// Trigger subtitle search if enabled (after metadata is fetched)
-		this.triggerSubtitleSearch('episode', episode.id).catch((err) => {
-			logger.warn(
-				{
-					episodeId: episode.id,
-					error: err instanceof Error ? err.message : String(err)
-				},
-				'[MediaMatcher] Failed to trigger subtitle search for episode'
-			);
-		});
+		// Trigger subtitle search for the primary episode if enabled
+		if (episode) {
+			this.triggerSubtitleSearch('episode', episode.id).catch((err) => {
+				logger.warn(
+					{
+						episodeId: episode!.id,
+						error: err instanceof Error ? err.message : String(err)
+					},
+					'[MediaMatcher] Failed to trigger subtitle search for episode'
+				);
+			});
+		}
 	}
 
 	/**

@@ -229,8 +229,8 @@ function getCodecDisplayName(codecName?: string): string | undefined {
 	// Audio codecs
 	const audioCodecMap: Record<string, string> = {
 		aac: 'AAC',
-		ac3: 'AC3',
-		eac3: 'E-AC3',
+		ac3: 'DD',
+		eac3: 'DD+',
 		truehd: 'TrueHD',
 		dts: 'DTS',
 		'dts-hd': 'DTS-HD',

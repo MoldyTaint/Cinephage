@@ -387,8 +387,8 @@ describe('NamingService', () => {
 			{ input: 'dtsx', expected: 'DTS-X' },
 			{ input: 'flac', expected: 'FLAC' },
 			{ input: 'aac', expected: 'AAC' },
-			{ input: 'ac3', expected: 'AC3' },
-			{ input: 'eac3', expected: 'EAC3' }
+			{ input: 'ac3', expected: 'DD' },
+			{ input: 'eac3', expected: 'DD+' }
 		];
 
 		testCases.forEach(({ input, expected }) => {

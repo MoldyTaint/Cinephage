@@ -468,14 +468,18 @@
 		navigation.cancel();
 	});
 
+	let defaultImportFolder = $state<string | undefined>(undefined);
+
 	$effect(() => {
 		loadRootFolders();
-		browse('/');
 		getFileManagementSettings().then((s) => {
 			if (s?.importMode === 'copy' || s?.importMode === 'symlink') {
 				importMode = s.importMode;
 				bulkImportMode = s.importMode;
 			}
+			const startPath = s?.defaultImportFolder?.trim() || '/';
+			defaultImportFolder = startPath;
+			browse(startPath);
 		});
 		return () => {
 			disconnectBulkSSE();
@@ -1977,6 +1981,9 @@
 			'';
 		batchSeasonOverride = nextType === 'tv' ? (activeGroup?.suggestedSeason ?? null) : null;
 		persistActiveGroupState();
+		if (searchQuery.trim().length >= 2) {
+			searchTmdb();
+		}
 	}
 
 	function goToStep(targetStep: WizardStep) {
@@ -2034,7 +2041,7 @@
 			clearTimeout(tmdbSearchDebounce);
 			tmdbSearchDebounce = null;
 		}
-		void browse('/');
+		void browse(defaultImportFolder ?? '/');
 	}
 
 	async function executeImportFlow() {
@@ -2377,6 +2384,7 @@
 					{getEffectiveMediaType}
 					{formatMediaTypeLabel}
 					{canImportGroup}
+					getGroupSelectedMatch={(group) => getGroupState(group).selectedMatch}
 					{hasUnknownSeasonItems}
 					{getSectionSeasonOverride}
 					{getSkippableSeasonGroups}

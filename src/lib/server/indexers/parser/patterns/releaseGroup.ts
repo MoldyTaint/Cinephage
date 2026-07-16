@@ -71,7 +71,9 @@ const INDEXER_PREFIXES = [
  */
 const ANIME_GROUP_PATTERNS = [
 	// Standard anime fansub: "[SubsPlease]" or "[Erai-raws]"
-	/^\[([a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?)\]/
+	/^\[([a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?)\]/,
+	// Parenthesised fansub: "(Hi10)" or "(Hi10P)"
+	/^\(([a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?)\)/
 ];
 
 /**
@@ -204,7 +206,7 @@ function stripIndexerPrefixes(title: string): string {
 export function extractReleaseGroup(title: string): ReleaseGroupMatch | null {
 	// Remove file extension if present (handles both ".mkv" and " mkv" formats)
 	// The space-separated format occurs after ReleaseParser.normalizeTitle() replaces dots with spaces
-	let cleanTitle = title.replace(/[.\s](mkv|mp4|avi|m4v|webm)$/i, '');
+	let cleanTitle = title.replace(/[.\s](mkv|mp4|avi|m4v|webm|strm)$/i, '');
 
 	// Check for anime fansub groups at START of title before stripping any prefixes,
 	// because the catch-all INDEXER_PREFIXES pattern strips any [...] block and would

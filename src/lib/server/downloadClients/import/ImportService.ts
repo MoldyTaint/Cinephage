@@ -852,7 +852,9 @@ export class ImportService extends EventEmitter {
 
 		// Build destination path
 		const movieFolder = join(rootFolder.path, movie.path);
-		const destFileName = this.buildMovieFileName(movie, mainFile.path, queueItem);
+		const allowStrmProbe = movie.scoringProfileId !== 'streamer';
+		const mediaInfo = await mediaInfoService.extractMediaInfo(mainFile.path, { allowStrmProbe });
+		const destFileName = this.buildMovieFileName(movie, mainFile.path, queueItem, mediaInfo);
 		const destPath = join(movieFolder, destFileName);
 
 		// Check for existing file (upgrade scenario)
@@ -949,10 +951,6 @@ export class ImportService extends EventEmitter {
 				}
 			);
 		}
-
-		// Extract media info (skip STRM probing for streamer profile)
-		const allowStrmProbe = movie.scoringProfileId !== 'streamer';
-		const mediaInfo = await mediaInfoService.extractMediaInfo(destPath, { allowStrmProbe });
 
 		const importedMetadata = this.buildImportedMetadata(queueItem, mainFile.path, mediaInfo);
 
@@ -1135,10 +1133,12 @@ export class ImportService extends EventEmitter {
 		});
 
 		// For usenet downloads, delete source folder (no seeding needed)
-		// Skip when symlink mode is active — the library symlinks point at the source, so deleting it would break them
+		// Skip when symlink mode is active; the library symlinks point at the source, so deleting it would break them
+		// Skip when canMoveFiles=false; user has configured copy mode and wants to keep the source
 		if (
 			queueItem.protocol === 'usenet' &&
 			queueItem.outputPath &&
+			canMoveFiles &&
 			importOptions.effectiveImportMode !== ImportMode.Symlink
 		) {
 			this.cleanupUsenetSource(queueItem.outputPath).catch((err) => {
@@ -1167,7 +1167,7 @@ export class ImportService extends EventEmitter {
 		queueItem: typeof downloadQueue.$inferSelect,
 		worker: ImportWorker,
 		importOptions: ImportableFileOptions,
-		_canMoveFiles: boolean
+		canMoveFiles: boolean
 	): Promise<ImportJobResult> {
 		const result: ImportJobResult = {
 			success: false,
@@ -1310,7 +1310,7 @@ export class ImportService extends EventEmitter {
 					seriesData,
 					rootFolder,
 					queueItem,
-					_canMoveFiles,
+					canMoveFiles,
 					worker,
 					importOptions
 				);
@@ -1406,11 +1406,12 @@ export class ImportService extends EventEmitter {
 				});
 			}
 
-			// For usenet downloads, delete source folder (no seeding needed)
-			// Skip when symlink mode is active — the library symlinks point at the source, so deleting it would break them
+			// Skip when symlink mode is active; the library symlinks point at the source, so deleting it would break them
+			// Skip when canMoveFiles=false; user has configured copy mode and wants to keep the source
 			if (
 				queueItem.protocol === 'usenet' &&
 				queueItem.outputPath &&
+				canMoveFiles &&
 				importOptions?.effectiveImportMode !== ImportMode.Symlink
 			) {
 				this.cleanupUsenetSource(queueItem.outputPath).catch((err) => {
@@ -1551,6 +1552,8 @@ export class ImportService extends EventEmitter {
 		// Build destination path
 		const seriesFolder = join(rootFolder.path, seriesData.path);
 
+		const allowStrmProbe = seriesData.scoringProfileId !== 'streamer';
+		const mediaInfo = await mediaInfoService.extractMediaInfo(videoFile.path, { allowStrmProbe });
 		const destFileName = this.buildEpisodeFileName(
 			seriesData,
 			seasonNum,
@@ -1559,7 +1562,8 @@ export class ImportService extends EventEmitter {
 			queueItem,
 			firstEpisode?.title ?? undefined,
 			absoluteNumber,
-			firstEpisode?.airDate ?? undefined
+			firstEpisode?.airDate ?? undefined,
+			mediaInfo
 		);
 		const relativePath = this.buildEpisodeRelativePath(
 			seriesData.seasonFolder ?? true,
@@ -1628,9 +1632,6 @@ export class ImportService extends EventEmitter {
 			);
 		}
 
-		// Extract media info (skip STRM probing for streamer profile)
-		const allowStrmProbe = seriesData.scoringProfileId !== 'streamer';
-		const mediaInfo = await mediaInfoService.extractMediaInfo(destPath, { allowStrmProbe });
 		const importedMetadata = this.buildImportedMetadata(queueItem, videoFile.path, mediaInfo);
 
 		const episodeIds = matchingEpisodes.map((ep) => ep.id);
@@ -2172,23 +2173,33 @@ export class ImportService extends EventEmitter {
 			: destFileName;
 	}
 
+	private formatAudioChannels(channels?: number): string | undefined {
+		if (!channels) return undefined;
+		const map: Record<number, string> = { 1: '1.0', 2: '2.0', 6: '5.1', 8: '7.1' };
+		return map[channels] ?? `${channels}.0`;
+	}
+
 	/**
 	 * Build a movie filename using the naming service
 	 */
 	private buildMovieFileName(
 		movie: typeof movies.$inferSelect,
 		sourcePath: string,
-		queueItem: typeof downloadQueue.$inferSelect
+		queueItem: typeof downloadQueue.$inferSelect,
+		mediaInfo?: Awaited<ReturnType<typeof mediaInfoService.extractMediaInfo>>
 	): string {
 		const parsed = this.parser.parse(queueItem.title);
+		const fromRelease = releaseToNamingInfo(parsed, sourcePath);
 
-		// Build naming info from movie and parsed release
 		const namingInfo: MediaNamingInfo = {
 			title: movie.title,
 			year: movie.year ?? undefined,
 			tmdbId: movie.tmdbId,
 			imdbId: movie.imdbId ?? undefined,
-			...releaseToNamingInfo(parsed, sourcePath)
+			...fromRelease,
+			bitDepth: mediaInfo?.videoBitDepth?.toString() ?? fromRelease.bitDepth,
+			audioCodec: mediaInfo?.audioCodec ?? fromRelease.audioCodec,
+			audioChannels: this.formatAudioChannels(mediaInfo?.audioChannels) ?? fromRelease.audioChannels
 		};
 
 		return this.getNamingService().generateMovieFileName(namingInfo);
@@ -2205,17 +2216,18 @@ export class ImportService extends EventEmitter {
 		queueItem: typeof downloadQueue.$inferSelect,
 		episodeTitle?: string,
 		absoluteNumber?: number,
-		airDate?: string
+		airDate?: string,
+		mediaInfo?: Awaited<ReturnType<typeof mediaInfoService.extractMediaInfo>>
 	): string {
 		const parsed = this.parser.parse(queueItem.title);
 		const isAnime = seriesData.seriesType === 'anime';
 		const isDaily = seriesData.seriesType === 'daily';
+		const fromRelease = releaseToNamingInfo(parsed, sourcePath);
 
-		// Build naming info from series and parsed release
-		// IMPORTANT: Spread releaseToNamingInfo FIRST, then override with explicit values
-		// This prevents season pack parsing from overwriting per-file episode numbers
+		// IMPORTANT: Spread releaseToNamingInfo FIRST, then override with explicit values.
+		// This prevents season pack parsing from overwriting per-file episode numbers.
 		const namingInfo: MediaNamingInfo = {
-			...releaseToNamingInfo(parsed, sourcePath),
+			...fromRelease,
 			title: seriesData.title,
 			year: seriesData.year ?? undefined,
 			tvdbId: seriesData.tvdbId ?? undefined,
@@ -2225,7 +2237,10 @@ export class ImportService extends EventEmitter {
 			absoluteNumber,
 			airDate,
 			isAnime,
-			isDaily
+			isDaily,
+			bitDepth: mediaInfo?.videoBitDepth?.toString() ?? fromRelease.bitDepth,
+			audioCodec: mediaInfo?.audioCodec ?? fromRelease.audioCodec,
+			audioChannels: this.formatAudioChannels(mediaInfo?.audioChannels) ?? fromRelease.audioChannels
 		};
 
 		return this.getNamingService().generateEpisodeFileName(namingInfo);

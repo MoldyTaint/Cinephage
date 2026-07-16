@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { FolderSync } from 'lucide-svelte';
+	import FolderBrowser from '$lib/components/library/FolderBrowser.svelte';
 	import TagInput from '$lib/components/ui/TagInput.svelte';
 	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
 	import * as m from '$lib/paraglide/messages.js';
@@ -30,6 +31,10 @@
 	let recycleEnabled = $state<boolean>(data.settings.recycleEnabled);
 	// svelte-ignore state_referenced_locally
 	let extraFileExtensions = $state<string[]>(data.settings.extraFileExtensions);
+
+	// svelte-ignore state_referenced_locally
+	let defaultImportFolder = $state<string>(data.settings.defaultImportFolder ?? '');
+	let showFolderBrowser = $state(false);
 
 	// Permissions
 	type PermissionsMode = 'default' | 'preserve' | 'custom';
@@ -70,7 +75,8 @@
 				extraFileExtensions,
 				preservePermissions,
 				chmodFile,
-				autoEnabledPreserveSymlinkFolderIds: data.settings.autoEnabledPreserveSymlinkFolderIds
+				autoEnabledPreserveSymlinkFolderIds: data.settings.autoEnabledPreserveSymlinkFolderIds,
+				defaultImportFolder: defaultImportFolder.trim() || undefined
 			})) as { autoEnabledCount?: number; autoRevertedCount?: number } | undefined;
 			await invalidateAll();
 			toasts.success(m.settings_fileManagement_saved());
@@ -372,6 +378,60 @@
 					{/if}
 				</div>
 			</label>
+		</div>
+	</SettingsSection>
+
+	<SettingsSection
+		title={m.settings_fileManagement_defaultImportFolderSectionTitle()}
+		description={m.settings_fileManagement_defaultImportFolderSectionDescription()}
+	>
+		<div class="flex flex-col gap-1">
+			<label class="label-text text-sm font-medium" for="defaultImportFolder">
+				{m.settings_fileManagement_defaultImportFolderLabel()}
+			</label>
+			<p class="text-sm text-base-content/70 mb-2">
+				{m.settings_fileManagement_defaultImportFolderDesc()}
+			</p>
+			<div class="flex items-center gap-2">
+				<input
+					id="defaultImportFolder"
+					type="text"
+					class="input input-bordered flex-1"
+					placeholder={m.settings_fileManagement_defaultImportFolderPlaceholder()}
+					bind:value={defaultImportFolder}
+				/>
+				<button
+					type="button"
+					class="btn btn-outline btn-sm"
+					onclick={() => (showFolderBrowser = !showFolderBrowser)}
+				>
+					{m.settings_fileManagement_defaultImportFolderBrowse()}
+				</button>
+				{#if defaultImportFolder}
+					<button
+						type="button"
+						class="btn btn-ghost btn-sm"
+						onclick={() => {
+							defaultImportFolder = '';
+							showFolderBrowser = false;
+						}}
+					>
+						{m.settings_fileManagement_defaultImportFolderClear()}
+					</button>
+				{/if}
+			</div>
+			{#if showFolderBrowser}
+				<div class="mt-3">
+					<FolderBrowser
+						value={defaultImportFolder || '/'}
+						onSelect={(path) => {
+							defaultImportFolder = path;
+							showFolderBrowser = false;
+						}}
+						onCancel={() => (showFolderBrowser = false)}
+					/>
+				</div>
+			{/if}
 		</div>
 	</SettingsSection>
 

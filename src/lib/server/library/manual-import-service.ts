@@ -209,7 +209,11 @@ export class ManualImportService {
 			const parentFolderName = basename(dirname(selectedFile.path));
 			const folderStem = getMediaParseStem(parentFolderName);
 			const folderParsed = parseRelease(folderStem);
-			if (folderParsed.cleanTitle && (!fileParsed.cleanTitle || isStrmFile)) {
+			if (
+				folderParsed.cleanTitle &&
+				this.isMeaningfulTitleCandidate(folderParsed.cleanTitle) &&
+				(!fileParsed.cleanTitle || isStrmFile)
+			) {
 				parsed = folderParsed;
 				tvIdentifier = resolveTvEpisodeIdentifier({
 					filePath: selectedFile.path,
@@ -327,11 +331,66 @@ export class ManualImportService {
 		return sanitized;
 	}
 
+	// Generic container/library folder names that should never be used as TMDB search terms.
+	// These match common download client, media server, and root library folder conventions.
+	private static readonly GENERIC_FOLDER_NAMES = new Set([
+		'movies',
+		'movie',
+		'films',
+		'film',
+		'tv',
+		'tvshows',
+		'tv shows',
+		'shows',
+		'series',
+		'episodes',
+		'anime',
+		'animation',
+		'cartoons',
+		'downloads',
+		'download',
+		'completed',
+		'complete',
+		'completed-downloads',
+		'incomplete',
+		'downloading',
+		'seeding',
+		'media',
+		'videos',
+		'video',
+		'content',
+		'incoming',
+		'unsorted',
+		'import',
+		'imports',
+		'manual',
+		'nzb',
+		'nzbdav',
+		'usenet',
+		'torrents',
+		'torrent',
+		'blackhole',
+		'watch',
+		'auto',
+		'mnt',
+		'mount',
+		'data',
+		'storage',
+		'external',
+		'volume',
+		'plex',
+		'jellyfin',
+		'emby',
+		'kodi',
+		'library'
+	]);
+
 	private isMeaningfulTitleCandidate(candidate: string): boolean {
 		const trimmed = candidate.trim();
 		if (trimmed.length < 2) return false;
 		if (/^\d+$/.test(trimmed)) return false;
 		if (/^(?:s\d{1,3}|season\s*\d{1,3})$/i.test(trimmed)) return false;
+		if (ManualImportService.GENERIC_FOLDER_NAMES.has(trimmed.toLowerCase())) return false;
 		return true;
 	}
 
@@ -811,7 +870,8 @@ export class ManualImportService {
 					imdbId: series.imdbId,
 					tvdbId: series.tvdbId,
 					seasonFolder: series.seasonFolder,
-					rootFolderId: series.rootFolderId
+					rootFolderId: series.rootFolderId,
+					seriesType: series.seriesType
 				})
 				.from(series)
 				.where(eq(series.tmdbId, request.tmdbId))
@@ -844,7 +904,9 @@ export class ManualImportService {
 					year: show.year ?? undefined,
 					tmdbId: request.tmdbId,
 					tvdbId: show.tvdbId ?? undefined,
-					imdbId: show.imdbId ?? undefined
+					imdbId: show.imdbId ?? undefined,
+					isAnime: show.seriesType === 'anime',
+					isDaily: show.seriesType === 'daily'
 				}
 			};
 		}
@@ -900,7 +962,8 @@ export class ManualImportService {
 				year,
 				tmdbId: request.tmdbId,
 				tvdbId: externalIds.tvdb_id ?? undefined,
-				imdbId: externalIds.imdb_id ?? undefined
+				imdbId: externalIds.imdb_id ?? undefined,
+				isAnime: isAnimeMedia
 			}
 		};
 	}
