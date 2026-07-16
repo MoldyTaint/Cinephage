@@ -37,6 +37,7 @@
 	} from '$lib/components/library/import/types.js';
 	import type { ManualImportRequest } from '$lib/validation/schemas.js';
 	import { getFileManagementSettings } from '$lib/api/settings.js';
+	import { SvelteSet } from 'svelte/reactivity';
 
 	type WizardStep = 1 | 2 | 3 | 4;
 
@@ -64,8 +65,10 @@
 		mediaType: MediaType;
 		mediaSubType?: string | null;
 		isDefault?: boolean;
+		isDefaultFolder?: boolean;
 		defaultRootFolderId?: string | null;
 		defaultRootFolderPath?: string | null;
+		rootFolders?: { id: string; name: string; path: string }[];
 	}
 
 	interface DetectionResult extends DetectionGroup {
@@ -775,8 +778,17 @@
 					typeof librariesPayload === 'object' &&
 					Array.isArray((librariesPayload as { libraries?: DestinationLibrary[] }).libraries)
 				) {
-					destinationLibraries =
-						(librariesPayload as { libraries?: DestinationLibrary[] }).libraries ?? [];
+					destinationLibraries = (
+						(librariesPayload as { libraries?: DestinationLibrary[] }).libraries ?? []
+					).map((lib) => ({
+						...lib,
+						rootFolders:
+							(
+								lib as DestinationLibrary & {
+									rootFolders?: { id: string; name: string; path: string }[];
+								}
+							).rootFolders ?? []
+					}));
 				}
 			}
 		} catch {
@@ -1071,21 +1083,49 @@
 		match: MatchResult | null = null
 	): DestinationLibrary[] {
 		const allowedFolders = getWritableRootFoldersForType(mediaType, match);
-		if (allowedFolders.length === 0) {
-			return [];
-		}
+		if (allowedFolders.length === 0) return [];
 
 		const allowedRootFolderIds = new Set(allowedFolders.map((folder) => folder.id));
-		const eligibleLibraries = destinationLibraries.filter((library) => {
-			if (library.mediaType !== mediaType) return false;
-			if (!library.defaultRootFolderId) return false;
-			return allowedRootFolderIds.has(library.defaultRootFolderId);
-		});
+		const result: DestinationLibrary[] = [];
 
-		return eligibleLibraries.sort((a, b) => {
-			const defaultOrder = Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault));
-			if (defaultOrder !== 0) return defaultOrder;
-			return a.name.localeCompare(b.name);
+		for (const library of destinationLibraries) {
+			if (library.mediaType !== mediaType) continue;
+
+			// Expand each allowed root folder of this library into its own option.
+			// This lets users pick any root folder, not just the library default.
+			const eligibleFolders = (library.rootFolders ?? []).filter((rf) =>
+				allowedRootFolderIds.has(rf.id)
+			);
+
+			if (eligibleFolders.length > 0) {
+				for (const rf of eligibleFolders) {
+					result.push({
+						...library,
+						id: rf.id,
+						defaultRootFolderId: rf.id,
+						defaultRootFolderPath: rf.path,
+						isDefaultFolder: rf.id === library.defaultRootFolderId
+					});
+				}
+			} else if (
+				library.defaultRootFolderId &&
+				allowedRootFolderIds.has(library.defaultRootFolderId)
+			) {
+				// Fallback when rootFolders array is absent but defaultRootFolderId is valid
+				result.push({ ...library, id: library.defaultRootFolderId, isDefaultFolder: true });
+			}
+		}
+
+		return result.sort((a, b) => {
+			// Prefer: default library first, then default folder within library, then alphabetical
+			const libDefault = Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault));
+			if (libDefault !== 0) return libDefault;
+			const folderDefault = Number(Boolean(b.isDefaultFolder)) - Number(Boolean(a.isDefaultFolder));
+			if (folderDefault !== 0) return folderDefault;
+			return (
+				a.name.localeCompare(b.name) ||
+				(a.defaultRootFolderPath ?? '').localeCompare(b.defaultRootFolderPath ?? '')
+			);
 		});
 	}
 
@@ -1472,7 +1512,9 @@
 
 		if (groups.length === 0) return [];
 
-		const allowedLibraryIds: string[] = [];
+		const seenIds = new SvelteSet<string>();
+		const result: DestinationLibrary[] = [];
+
 		for (const group of groups) {
 			const state = getGroupState(group);
 			const groupLibraries = getAvailableDestinationLibrariesForType(
@@ -1480,15 +1522,15 @@
 				state.selectedMatch
 			);
 			for (const library of groupLibraries) {
-				if (!allowedLibraryIds.includes(library.id)) {
-					allowedLibraryIds.push(library.id);
+				if (!seenIds.has(library.id)) {
+					seenIds.add(library.id);
+					result.push(library);
 				}
 			}
 		}
 
-		return destinationLibraries
+		return result
 			.filter((library) => library.mediaType === section.mediaType)
-			.filter((library) => allowedLibraryIds.includes(library.id))
 			.sort((a, b) => {
 				const defaultOrder = Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault));
 				if (defaultOrder !== 0) return defaultOrder;
@@ -1684,7 +1726,7 @@
 			importTarget: resolvedImportTarget,
 			importMode: state.importMode,
 			...(resolvedImportTarget === 'new'
-				? { libraryId: state.selectedRootFolder || librariesForType[0]?.id }
+				? { rootFolderId: state.selectedRootFolder || librariesForType[0]?.id }
 				: {}),
 			...(state.selectedMediaType === 'tv' && !isBatchTv
 				? { seasonNumber: state.seasonNumber, episodeNumber: state.episodeNumber }
