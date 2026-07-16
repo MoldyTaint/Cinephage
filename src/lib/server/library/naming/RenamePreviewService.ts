@@ -390,7 +390,8 @@ export class RenamePreviewService {
 			processed: 0,
 			succeeded: 0,
 			failed: 0,
-			results: []
+			results: [],
+			warnings: []
 		};
 
 		if (fileIds.length === 0) {
@@ -487,12 +488,21 @@ export class RenamePreviewService {
 					return matched?.success && item.currentParentPath !== item.newParentPath;
 				});
 				if (successfulFolderChange && firstItem) {
-					await this.applyFolderRename(
+					const originalStem = basename(
+						successfulFolderChange.currentFullPath,
+						extname(successfulFolderChange.currentFullPath)
+					);
+					const folderWarnings = await this.applyFolderRename(
 						mediaId,
 						firstItem.mediaType as 'movie' | 'episode',
 						successfulFolderChange.currentParentPath,
-						successfulFolderChange.newParentPath
+						successfulFolderChange.newParentPath,
+						originalStem
 					);
+					if (folderWarnings.length > 0) {
+						result.warnings ??= [];
+						result.warnings.push(...folderWarnings);
+					}
 				}
 
 				return groupResult;
@@ -1057,12 +1067,32 @@ export class RenamePreviewService {
 	 * 2. Move any remaining files (artwork, nfo, subtitles, etc.) from the old folder to the new one.
 	 * 3. Remove the old folder tree if it is now empty.
 	 */
+	// Extensions that identify companion files (artwork, metadata, subtitles).
+	// Used for stem-matched carry when the media file lives in the root folder.
+	private static readonly COMPANION_EXTENSIONS = new Set([
+		'.nfo',
+		'.jpg',
+		'.jpeg',
+		'.png',
+		'.webp',
+		'.tbn',
+		'.srt',
+		'.sub',
+		'.ass',
+		'.ssa',
+		'.vtt',
+		'.sup',
+		'.idx'
+	]);
+
 	private async applyFolderRename(
 		mediaId: string,
 		mediaType: 'movie' | 'episode',
 		oldParentPath: string,
-		newParentPath: string
-	): Promise<void> {
+		newParentPath: string,
+		originalFileStem: string
+	): Promise<string[]> {
+		const warnings: string[] = [];
 		try {
 			let rootFolderId: string | undefined;
 			if (mediaType === 'movie') {
@@ -1072,18 +1102,19 @@ export class RenamePreviewService {
 				const show = db.select().from(series).where(eq(series.id, mediaId)).get();
 				rootFolderId = show?.rootFolderId ?? undefined;
 			}
-			if (!rootFolderId) return;
+			if (!rootFolderId) return warnings;
 
 			const rootFolder = db
 				.select()
 				.from(rootFolders)
 				.where(eq(rootFolders.id, rootFolderId))
 				.get();
-			if (!rootFolder) return;
+			if (!rootFolder) return warnings;
 
 			const rootFolderPath = rootFolder.path;
 			const oldFolder = join(rootFolderPath, oldParentPath);
 			const newFolder = join(rootFolderPath, newParentPath);
+			const isRootFolder = resolve(oldFolder) === resolve(rootFolderPath);
 
 			// 1. Update DB path record so the library entry shows the correct folder.
 			if (mediaType === 'movie') {
@@ -1093,32 +1124,66 @@ export class RenamePreviewService {
 			}
 
 			logger.info(
-				{ mediaId, mediaType, from: oldFolder, to: newFolder },
+				{ mediaId, mediaType, from: oldFolder, to: newFolder, isRootFolder },
 				'[RenamePreviewService] Folder path updated in DB after file renames'
 			);
 
-			// 2. Move any remaining files from the old folder root to the new folder root.
-			// These are extra files (artwork, nfo, subs) not covered by the file renames.
+			// 2. Move companion files from the old folder to the new folder.
+			// When the media file is in a dedicated subfolder, carry everything (the
+			// whole folder belongs to this title). When it is in the root folder,
+			// only carry files whose names start with the original media file's stem
+			// to avoid carrying unrelated files into this title's new subfolder.
 			try {
 				const entries = await readdir(oldFolder, { withFileTypes: true });
+				const unmatchedCompanions: string[] = [];
+
 				for (const entry of entries) {
 					if (!entry.isFile()) continue;
+
+					if (isRootFolder) {
+						const entryStem = basename(entry.name, extname(entry.name));
+						const entryExt = extname(entry.name).toLowerCase();
+						const stemMatches = entryStem.startsWith(originalFileStem);
+
+						if (!stemMatches) {
+							// Track companion-extension files we couldn't safely match.
+							if (RenamePreviewService.COMPANION_EXTENSIONS.has(entryExt)) {
+								unmatchedCompanions.push(entry.name);
+							}
+							continue;
+						}
+					}
+
 					const src = join(oldFolder, entry.name);
 					const dest = join(newFolder, entry.name);
-					if (await fileExists(dest)) continue; // don't overwrite
+					if (await fileExists(dest)) continue;
 					try {
 						await rename(src, dest);
 					} catch {
-						// Cross-device: fall back to copy+delete via moveFile
 						await moveFile(src, dest);
 					}
+				}
+
+				if (unmatchedCompanions.length > 0) {
+					warnings.push(
+						`Some companion files could not be automatically matched to "${originalFileStem}" ` +
+							`and were left in the root folder: ${unmatchedCompanions.join(', ')}. ` +
+							`Move them manually if needed.`
+					);
+					logger.info(
+						{ mediaId, unmatchedCompanions },
+						'[RenamePreviewService] Unmatched companion files left in root folder'
+					);
 				}
 			} catch {
 				// Old folder may not exist or be unreadable — not fatal.
 			}
 
 			// 3. Remove the old folder tree if empty (handles empty season subfolders for series).
-			await this.tryRemoveEmptyDir(oldFolder);
+			// Skip when the old folder is the root — never remove the root folder.
+			if (!isRootFolder) {
+				await this.tryRemoveEmptyDir(oldFolder);
+			}
 		} catch (error) {
 			logger.warn(
 				{
@@ -1129,6 +1194,7 @@ export class RenamePreviewService {
 				'[RenamePreviewService] applyFolderRename cleanup failed (non-fatal)'
 			);
 		}
+		return warnings;
 	}
 
 	/**

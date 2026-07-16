@@ -28,6 +28,7 @@
 	let reorganizing = $state(false);
 	let error = $state<string | null>(null);
 	let success = $state<string | null>(null);
+	let renameWarnings = $state<string[]>([]);
 	let preview = $state<RenamePreviewResult | null>(null);
 	let executeResult = $state<RenameExecuteResult | null>(null);
 
@@ -80,6 +81,7 @@
 		executing = true;
 		error = null;
 		success = null;
+		renameWarnings = [];
 
 		try {
 			const response = await executeRename(
@@ -92,6 +94,10 @@
 			}
 
 			executeResult = response as unknown as RenameExecuteResult;
+
+			if (executeResult?.warnings?.length) {
+				renameWarnings = executeResult.warnings;
+			}
 
 			if (executeResult && executeResult.succeeded > 0) {
 				success = m.settings_naming_rename_successCount({ count: executeResult.succeeded });
@@ -281,6 +287,17 @@
 		<div class="mb-4 alert alert-success">
 			<CheckCircle class="h-5 w-5" />
 			<span>{success}</span>
+		</div>
+	{/if}
+
+	{#if renameWarnings.length > 0}
+		<div class="mb-4 space-y-2">
+			{#each renameWarnings as warning (warning)}
+				<div class="alert alert-warning">
+					<AlertTriangle class="h-5 w-5 shrink-0" />
+					<span class="text-sm">{warning}</span>
+				</div>
+			{/each}
 		</div>
 	{/if}
 
