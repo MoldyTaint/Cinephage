@@ -2381,6 +2381,7 @@
 					{getEffectiveMediaType}
 					{formatMediaTypeLabel}
 					{canImportGroup}
+					getGroupSelectedMatch={(group) => getGroupState(group).selectedMatch}
 					{hasUnknownSeasonItems}
 					{getSectionSeasonOverride}
 					{getSkippableSeasonGroups}
