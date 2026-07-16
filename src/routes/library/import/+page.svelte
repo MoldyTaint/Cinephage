@@ -1981,6 +1981,9 @@
 			'';
 		batchSeasonOverride = nextType === 'tv' ? (activeGroup?.suggestedSeason ?? null) : null;
 		persistActiveGroupState();
+		if (searchQuery.trim().length >= 2) {
+			searchTmdb();
+		}
 	}
 
 	function goToStep(targetStep: WizardStep) {

@@ -481,7 +481,7 @@ export async function seedBlockedKeywords(): Promise<{ added: number }> {
 }
 
 export async function getFileManagementSettings() {
-	return apiGet('/api/settings/file-management');
+	return apiGet<FileManagementSettings>('/api/settings/file-management');
 }
 
 export async function updateFileManagementSettings(payload: FileManagementSettings) {
