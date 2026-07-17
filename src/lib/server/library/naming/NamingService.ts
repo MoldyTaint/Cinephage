@@ -337,7 +337,9 @@ export function releaseToNamingInfo(
 		releaseGroup?: string;
 		isProper?: boolean;
 		isRepack?: boolean;
+		is3d?: boolean;
 		edition?: string;
+		languages?: string[];
 		episode?: { season?: number; episodes?: number[]; absoluteEpisode?: number };
 	},
 	originalPath?: string
@@ -350,9 +352,11 @@ export function releaseToNamingInfo(
 		bitDepth: parsed.bitDepth !== 'unknown' ? (parsed.bitDepth ?? undefined) : undefined,
 		audioCodec: parsed.audioCodec ?? undefined,
 		audioChannels: parsed.audioChannels !== 'unknown' ? parsed.audioChannels : undefined,
+		audioLanguages: parsed.languages && parsed.languages.length > 0 ? parsed.languages : undefined,
 		releaseGroup: parsed.releaseGroup,
 		proper: parsed.isProper,
 		repack: parsed.isRepack,
+		is3D: parsed.is3d,
 		edition: parsed.edition,
 		seasonNumber: parsed.episode?.season,
 		episodeNumbers: parsed.episode?.episodes,

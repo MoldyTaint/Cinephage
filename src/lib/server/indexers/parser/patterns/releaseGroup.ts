@@ -21,8 +21,8 @@ const GROUP_BLACKLIST = [
 	/^(web|webdl|webrip|bluray|brrip|bdrip|remux)-\d{3,4}p$/i,
 	// Codecs
 	/^(x264|x265|h264|h265|hevc|avc|av1|xvid|divx)$/i,
-	// Sources
-	/^(bluray|bdrip|brrip|webrip|webdl|hdtv|dvdrip|remux|web)$/i,
+	// Sources (including partial tokens that appear inside compound source names like WEB-DL)
+	/^(bluray|bdrip|brrip|webrip|webdl|hdtv|dvdrip|remux|web|dl|rip|br|bd)$/i,
 	// Audio
 	/^(aac|ac3|dts|truehd|atmos|flac|mp3|opus|dd|dd\+|ddp|5\.1|7\.1|2\.0)$/i,
 	// Common endings

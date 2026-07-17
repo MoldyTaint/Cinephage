@@ -834,7 +834,12 @@ export class MediaMatcherService {
 
 		// Parse quality from the original filename (preserves quality markers)
 		const originalFilename = basename(file.path, extname(file.path));
-		const parsedQuality = parseRelease(originalFilename);
+		// Strip trailing brackets containing non-ASCII chars (e.g. OriginalTitle suffix) before
+		// parsing so the release group immediately preceding them is detected correctly
+		const parseableFilename = originalFilename
+			.replace(/(\s*\[[^\]]*\P{ASCII}[^\]]*\])+$/u, '')
+			.trim();
+		const parsedQuality = parseRelease(parseableFilename || originalFilename);
 
 		// Create movie file entry with proper sceneName, releaseGroup, and quality data
 		await db.insert(movieFiles).values({
@@ -1174,7 +1179,12 @@ export class MediaMatcherService {
 
 		// Parse quality from the original filename (preserves quality markers)
 		const originalFilename = basename(file.path, extname(file.path));
-		const parsedQuality = parseRelease(originalFilename);
+		// Strip trailing brackets containing non-ASCII chars (e.g. OriginalTitle suffix) before
+		// parsing so the release group immediately preceding them is detected correctly
+		const parseableFilename = originalFilename
+			.replace(/(\s*\[[^\]]*\P{ASCII}[^\]]*\])+$/u, '')
+			.trim();
+		const parsedQuality = parseRelease(parseableFilename || originalFilename);
 
 		// Create/update episode file entry with proper sceneName, releaseGroup, and quality data
 		await this.upsertEpisodeFileByPath({
