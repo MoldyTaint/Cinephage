@@ -2193,13 +2193,20 @@ export class ImportService extends EventEmitter {
 
 		const namingInfo: MediaNamingInfo = {
 			title: movie.title,
+			originalTitle: movie.originalTitle ?? undefined,
 			year: movie.year ?? undefined,
 			tmdbId: movie.tmdbId,
 			imdbId: movie.imdbId ?? undefined,
+			collectionName: movie.collectionName ?? undefined,
 			...fromRelease,
 			bitDepth: mediaInfo?.videoBitDepth?.toString() ?? fromRelease.bitDepth,
 			audioCodec: mediaInfo?.audioCodec ?? fromRelease.audioCodec,
-			audioChannels: this.formatAudioChannels(mediaInfo?.audioChannels) ?? fromRelease.audioChannels
+			audioChannels:
+				this.formatAudioChannels(mediaInfo?.audioChannels) ?? fromRelease.audioChannels,
+			audioLanguages:
+				mediaInfo?.audioLanguages && mediaInfo.audioLanguages.length > 0
+					? mediaInfo.audioLanguages
+					: fromRelease.audioLanguages
 		};
 
 		return this.getNamingService().generateMovieFileName(namingInfo);
@@ -2229,8 +2236,11 @@ export class ImportService extends EventEmitter {
 		const namingInfo: MediaNamingInfo = {
 			...fromRelease,
 			title: seriesData.title,
+			originalTitle: seriesData.originalTitle ?? undefined,
 			year: seriesData.year ?? undefined,
+			tmdbId: seriesData.tmdbId ?? undefined,
 			tvdbId: seriesData.tvdbId ?? undefined,
+			imdbId: seriesData.imdbId ?? undefined,
 			seasonNumber: seasonNum,
 			episodeNumbers: episodeNums,
 			episodeTitle,
@@ -2240,7 +2250,12 @@ export class ImportService extends EventEmitter {
 			isDaily,
 			bitDepth: mediaInfo?.videoBitDepth?.toString() ?? fromRelease.bitDepth,
 			audioCodec: mediaInfo?.audioCodec ?? fromRelease.audioCodec,
-			audioChannels: this.formatAudioChannels(mediaInfo?.audioChannels) ?? fromRelease.audioChannels
+			audioChannels:
+				this.formatAudioChannels(mediaInfo?.audioChannels) ?? fromRelease.audioChannels,
+			audioLanguages:
+				mediaInfo?.audioLanguages && mediaInfo.audioLanguages.length > 0
+					? mediaInfo.audioLanguages
+					: fromRelease.audioLanguages
 		};
 
 		return this.getNamingService().generateEpisodeFileName(namingInfo);

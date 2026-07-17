@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { readdir, stat, unlink } from 'node:fs/promises';
-import { eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray } from 'drizzle-orm';
 import { db } from '$lib/server/db/index.js';
-import { movies, rootFolders, series, unmatchedFiles } from '$lib/server/db/schema.js';
+import { episodes, movies, rootFolders, series, unmatchedFiles } from '$lib/server/db/schema.js';
 import { tmdb } from '$lib/server/tmdb.js';
 import { createChildLogger } from '$lib/logging';
 
@@ -568,7 +568,10 @@ export class ManualImportService {
 				throw new Error('Cannot import to read-only root folder');
 			}
 
-			const episodeTitleCache = new Map<number, Map<number, string | undefined>>();
+			const episodeMetaCache = new Map<
+				number,
+				Map<number, { title?: string; absoluteNumber?: number; airDate?: string }>
+			>();
 			const tvFiles = this.selectTvSourceFiles(sourceFiles);
 			const destinationSet = new Set<string>();
 
@@ -588,11 +591,13 @@ export class ManualImportService {
 					);
 				}
 
-				const episodeTitle = await this.getEpisodeTitleCached(
+				const episodeMeta = await this.getEpisodeMetaCached(
 					request.tmdbId,
 					fileMapping.seasonNumber,
 					fileMapping.episodeNumber,
-					episodeTitleCache
+					episodeMetaCache,
+					tvContext.existingSeriesDbId,
+					tvContext.tmdbSeriesSeasons
 				);
 				const namingInfo = await this.buildEpisodeNamingInfo(
 					sourceFile.path,
@@ -600,7 +605,9 @@ export class ManualImportService {
 					tvContext.namingInfoBase,
 					fileMapping.seasonNumber,
 					fileMapping.episodeNumber,
-					episodeTitle
+					episodeMeta.title,
+					episodeMeta.absoluteNumber,
+					episodeMeta.airDate
 				);
 				const destinationPath = this.buildEpisodeDestinationPath(
 					rootFolder.path,
@@ -763,9 +770,11 @@ export class ManualImportService {
 				.select({
 					id: movies.id,
 					title: movies.title,
+					originalTitle: movies.originalTitle,
 					year: movies.year,
 					path: movies.path,
 					imdbId: movies.imdbId,
+					collectionName: movies.collectionName,
 					rootFolderId: movies.rootFolderId
 				})
 				.from(movies)
@@ -795,9 +804,11 @@ export class ManualImportService {
 				folderName: movie.path,
 				namingInfoBase: {
 					title: movie.title,
+					originalTitle: movie.originalTitle ?? undefined,
 					year: movie.year ?? undefined,
 					tmdbId: request.tmdbId,
-					imdbId: movie.imdbId ?? undefined
+					imdbId: movie.imdbId ?? undefined,
+					collectionName: movie.collectionName ?? undefined
 				}
 			};
 		}
@@ -847,9 +858,11 @@ export class ManualImportService {
 			folderName,
 			namingInfoBase: {
 				title: tmdbMovie.title,
+				originalTitle: tmdbMovie.original_title || undefined,
 				year,
 				tmdbId: request.tmdbId,
-				imdbId: externalIds.imdb_id ?? undefined
+				imdbId: externalIds.imdb_id ?? undefined,
+				collectionName: tmdbMovie.belongs_to_collection?.name ?? undefined
 			}
 		};
 	}
@@ -859,12 +872,15 @@ export class ManualImportService {
 		seriesFolderName: string;
 		useSeasonFolders: boolean;
 		namingInfoBase: MediaNamingInfo;
+		existingSeriesDbId?: string;
+		tmdbSeriesSeasons?: Array<{ season_number: number; episode_count: number }>;
 	}> {
 		if (request.importTarget === 'existing') {
 			const [show] = await db
 				.select({
 					id: series.id,
 					title: series.title,
+					originalTitle: series.originalTitle,
 					year: series.year,
 					path: series.path,
 					imdbId: series.imdbId,
@@ -899,8 +915,10 @@ export class ManualImportService {
 				rootFolder,
 				seriesFolderName: show.path,
 				useSeasonFolders: show.seasonFolder ?? true,
+				existingSeriesDbId: show.id,
 				namingInfoBase: {
 					title: show.title,
+					originalTitle: show.originalTitle ?? undefined,
 					year: show.year ?? undefined,
 					tmdbId: request.tmdbId,
 					tvdbId: show.tvdbId ?? undefined,
@@ -957,13 +975,15 @@ export class ManualImportService {
 			rootFolder,
 			seriesFolderName,
 			useSeasonFolders: true,
+			tmdbSeriesSeasons: tvShow.seasons,
 			namingInfoBase: {
 				title: tvShow.name,
+				originalTitle: tvShow.original_name || undefined,
 				year,
 				tmdbId: request.tmdbId,
 				tvdbId: externalIds.tvdb_id ?? undefined,
 				imdbId: externalIds.imdb_id ?? undefined,
-				isAnime: isAnimeMedia
+				isAnime: rootFolder.mediaSubType === 'anime' || isAnimeMedia
 			}
 		};
 	}
@@ -987,35 +1007,95 @@ export class ManualImportService {
 		throw new Error('Destination library is required for new imports');
 	}
 
-	private async getEpisodeTitle(
-		tmdbId: number,
-		seasonNumber: number,
-		episodeNumber: number
-	): Promise<string | undefined> {
-		try {
-			const tmdbSeason = await tmdb.getSeason(tmdbId, seasonNumber);
-			return tmdbSeason.episodes?.find((ep) => ep.episode_number === episodeNumber)?.name;
-		} catch {
-			return undefined;
-		}
-	}
-
-	private async getEpisodeTitleCached(
+	private async getEpisodeMeta(
 		tmdbId: number,
 		seasonNumber: number,
 		episodeNumber: number,
-		cache: Map<number, Map<number, string | undefined>>
-	): Promise<string | undefined> {
-		const cachedSeason = cache.get(seasonNumber);
-		if (cachedSeason && cachedSeason.has(episodeNumber)) {
-			return cachedSeason.get(episodeNumber);
+		existingSeriesDbId?: string,
+		tmdbSeriesSeasons?: Array<{ season_number: number; episode_count: number }>
+	): Promise<{ title?: string; absoluteNumber?: number; airDate?: string }> {
+		let absoluteNumber: number | undefined;
+
+		if (existingSeriesDbId) {
+			// Walk all episodes in order (same algorithm as RenamePreviewService.buildAbsoluteEpisodeFallbackMap)
+			// so null absolute numbers are filled in sequentially rather than dropped.
+			const allEps = await db
+				.select({
+					seasonNumber: episodes.seasonNumber,
+					episodeNumber: episodes.episodeNumber,
+					absoluteEpisodeNumber: episodes.absoluteEpisodeNumber
+				})
+				.from(episodes)
+				.where(and(eq(episodes.seriesId, existingSeriesDbId), gt(episodes.seasonNumber, 0)))
+				.orderBy(asc(episodes.seasonNumber), asc(episodes.episodeNumber));
+
+			let lastAbsolute = 0;
+			for (const ep of allEps) {
+				if (ep.absoluteEpisodeNumber != null && ep.absoluteEpisodeNumber > 0) {
+					lastAbsolute = ep.absoluteEpisodeNumber;
+				} else {
+					lastAbsolute++;
+				}
+				if (ep.seasonNumber === seasonNumber && ep.episodeNumber === episodeNumber) {
+					absoluteNumber = lastAbsolute;
+					break;
+				}
+			}
 		}
 
-		const episodeTitle = await this.getEpisodeTitle(tmdbId, seasonNumber, episodeNumber);
-		const seasonCache = cache.get(seasonNumber) ?? new Map<number, string | undefined>();
-		seasonCache.set(episodeNumber, episodeTitle);
+		try {
+			const tmdbSeason = await tmdb.getSeason(tmdbId, seasonNumber);
+			const ep = tmdbSeason.episodes?.find((e) => e.episode_number === episodeNumber);
+
+			// For new series: TMDB absolute_episode_number is the primary source.
+			// If absent, compute from the series season list (already fetched with the show).
+			if (absoluteNumber === undefined) {
+				absoluteNumber = ep?.absolute_episode_number ?? undefined;
+
+				if (absoluteNumber === undefined && tmdbSeriesSeasons) {
+					const priorEpisodeCount = tmdbSeriesSeasons
+						.filter((s) => s.season_number > 0 && s.season_number < seasonNumber)
+						.reduce((sum, s) => sum + s.episode_count, 0);
+					absoluteNumber = priorEpisodeCount + episodeNumber;
+				}
+			}
+
+			return {
+				title: ep?.name,
+				absoluteNumber,
+				airDate: ep?.air_date || undefined
+			};
+		} catch {
+			return { absoluteNumber };
+		}
+	}
+
+	private async getEpisodeMetaCached(
+		tmdbId: number,
+		seasonNumber: number,
+		episodeNumber: number,
+		cache: Map<number, Map<number, { title?: string; absoluteNumber?: number; airDate?: string }>>,
+		existingSeriesDbId?: string,
+		tmdbSeriesSeasons?: Array<{ season_number: number; episode_count: number }>
+	): Promise<{ title?: string; absoluteNumber?: number; airDate?: string }> {
+		const cachedSeason = cache.get(seasonNumber);
+		if (cachedSeason?.has(episodeNumber)) {
+			return cachedSeason.get(episodeNumber)!;
+		}
+
+		const meta = await this.getEpisodeMeta(
+			tmdbId,
+			seasonNumber,
+			episodeNumber,
+			existingSeriesDbId,
+			tmdbSeriesSeasons
+		);
+		const seasonCache =
+			cache.get(seasonNumber) ??
+			new Map<number, { title?: string; absoluteNumber?: number; airDate?: string }>();
+		seasonCache.set(episodeNumber, meta);
 		cache.set(seasonNumber, seasonCache);
-		return episodeTitle;
+		return meta;
 	}
 
 	private async resolveDetectionGroupPaths(pathValue: string): Promise<string[]> {
@@ -1466,7 +1546,9 @@ export class ManualImportService {
 		namingInfoBase: MediaNamingInfo,
 		seasonNumber: number,
 		episodeNumber: number,
-		episodeTitle?: string
+		episodeTitle?: string,
+		absoluteNumber?: number,
+		airDate?: string
 	): Promise<MediaNamingInfo> {
 		const probedInfo = await this.probeMediaInfoForNaming(sourceFilePath);
 		return this.enrichNamingInfo(
@@ -1474,7 +1556,9 @@ export class ManualImportService {
 				...namingInfoBase,
 				seasonNumber,
 				episodeNumbers: [episodeNumber],
-				episodeTitle
+				episodeTitle,
+				absoluteNumber,
+				airDate
 			},
 			parsed,
 			sourceFilePath,
@@ -1487,8 +1571,10 @@ export class ManualImportService {
 		height?: number;
 		videoCodec?: string;
 		videoHdrFormat?: string;
+		videoBitDepth?: number;
 		audioCodec?: string;
 		audioChannels?: number;
+		audioLanguages?: string[];
 	} | null> {
 		try {
 			return await mediaInfoService.extractMediaInfo(sourceFilePath, { allowStrmProbe: true });
@@ -1513,8 +1599,10 @@ export class ManualImportService {
 			height?: number;
 			videoCodec?: string;
 			videoHdrFormat?: string;
+			videoBitDepth?: number;
 			audioCodec?: string;
 			audioChannels?: number;
+			audioLanguages?: string[];
 		} | null
 	): MediaNamingInfo {
 		const parsedNamingInfo = releaseToNamingInfo(parsed, sourceFilePath);
@@ -1522,8 +1610,10 @@ export class ManualImportService {
 		const parsedResolution = this.normalizeMetadataToken(parsedNamingInfo.resolution);
 		const parsedCodec = this.normalizeMetadataToken(parsedNamingInfo.codec);
 		const parsedHdr = this.normalizeMetadataToken(parsedNamingInfo.hdr);
+		const parsedBitDepth = this.normalizeMetadataToken(parsedNamingInfo.bitDepth);
 		const parsedAudioCodec = this.normalizeMetadataToken(parsedNamingInfo.audioCodec);
 		const parsedAudioChannels = this.normalizeMetadataToken(parsedNamingInfo.audioChannels);
+		const parsedReleaseGroup = this.normalizeMetadataToken(parsedNamingInfo.releaseGroup);
 
 		return {
 			...parsedNamingInfo,
@@ -1531,11 +1621,22 @@ export class ManualImportService {
 			resolution: parsedResolution ?? this.mapMediaInfoResolution(probedInfo),
 			codec: parsedCodec ?? this.mapMediaInfoCodec(probedInfo?.videoCodec),
 			hdr: parsedHdr ?? this.mapMediaInfoHdr(probedInfo?.videoHdrFormat),
+			bitDepth: parsedBitDepth ?? this.mapMediaInfoBitDepth(probedInfo?.videoBitDepth),
 			audioCodec: parsedAudioCodec ?? this.normalizeMetadataToken(probedInfo?.audioCodec),
 			audioChannels:
 				parsedAudioChannels ?? this.mapMediaInfoAudioChannels(probedInfo?.audioChannels),
+			audioLanguages:
+				probedInfo?.audioLanguages && probedInfo.audioLanguages.length > 0
+					? probedInfo.audioLanguages
+					: parsedNamingInfo.audioLanguages,
+			releaseGroup: parsedReleaseGroup,
 			originalExtension: extname(sourceFilePath)
 		};
+	}
+
+	private mapMediaInfoBitDepth(bitDepth?: number): string | undefined {
+		if (!bitDepth || bitDepth <= 0) return undefined;
+		return `${bitDepth}`;
 	}
 
 	private normalizeMetadataToken(value?: string | null): string | undefined {
