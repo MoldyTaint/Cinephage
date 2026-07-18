@@ -1,0 +1,146 @@
+---
+# TheRARBG - Native Cinephage Definition
+# HTML scraper for therarbg.to (get-posts listing pages)
+# Magnet links are not on the listing page, only on the /post-detail/ page,
+# so this uses a two-stage download (details page -> extract magnet), same
+# pattern as limetorrents.yaml.
+
+id: therarbg
+name: TheRARBG
+description: 'TheRARBG is a public torrent index covering Movies, TV, Anime, Music, Books, Games, Apps and XXX'
+language: en-US
+type: public
+encoding: UTF-8
+protocol: torrent
+requestdelay: 2
+
+links:
+  - https://therarbg.to/
+
+legacylinks:
+  - https://therarbg.com/
+  - https://t-rb.org/
+
+caps:
+  categories:
+    '2000': Movies
+    '5000': TV
+    '5070': TV/Anime
+    '3000': Audio
+    '7000': Books
+    '1000': PC
+    '4000': PC/Games
+    '6000': XXX
+    '8000': Other
+
+  categorymappings:
+    - id: Movies
+      cat: '2000'
+      desc: Movies
+      default: true
+    - id: TV
+      cat: '5000'
+      desc: TV
+    - id: Anime
+      cat: '5070'
+      desc: Anime
+    - id: Music
+      cat: '3000'
+      desc: Music
+    - id: Books
+      cat: '7000'
+      desc: Books
+    - id: Apps
+      cat: '1000'
+      desc: Apps
+    - id: Games
+      cat: '4000'
+      desc: Games
+    - id: XXX
+      cat: '6000'
+      desc: XXX
+    - id: Documentaries
+      cat: '8000'
+      desc: Documentaries
+    - id: Other
+      cat: '8000'
+      desc: Other
+
+  modes:
+    search: [q]
+    tv-search: [q, season, ep]
+    movie-search: [q]
+    music-search: [q]
+    book-search: [q]
+
+settings:
+  - name: info_flaresolverr
+    type: info
+    label: FlareSolverr
+    default: 'This site may require FlareSolverr to be configured if it is behind Cloudflare protection.'
+
+# Magnet is not present on the listing/search page - only on the post-detail
+# page. "download" points to the post-detail URL (from fields.download below);
+# Jackett/Cardigann fetches that page and applies these selectors to pull the
+# actual magnet link out of it.
+download:
+  selectors:
+    - selector: a[href^="magnet:?xt"]
+      attribute: href
+
+search:
+  paths:
+    # https://therarbg.to/get-posts/keywords:ubuntu:order:-se:paginate_by:100/
+    - path: 'get-posts/keywords:{{ .Keywords }}:order:-se:paginate_by:100/'
+
+  keywordsfilters:
+    - name: re_replace
+      args: ['\.', ' ']
+    - name: re_replace
+      args: ['\s+', ' ']
+    - name: trim
+
+  rows:
+    # Every result row has a link to a /post-detail/ page - anchor on that
+    # rather than a specific table/class, since row markup can vary by section.
+    selector: 'table tr:has(a[href^="/post-detail/"])'
+
+  fields:
+    title:
+      selector: 'td:nth-child(2) a[href^="/post-detail/"]'
+
+    details:
+      selector: 'td:nth-child(2) a[href^="/post-detail/"]'
+      attribute: href
+
+    # Same URL as details - the download block above fetches this page and
+    # extracts the real magnet link from it.
+    download:
+      selector: 'td:nth-child(2) a[href^="/post-detail/"]'
+      attribute: href
+
+    category:
+      selector: 'td:nth-child(3) a'
+      optional: true
+      default: Movies
+
+    date:
+      selector: 'td:nth-child(4)'
+      filters:
+        - name: dateparse
+          args: 'YYYY-MM-DD'
+
+    size:
+      selector: 'td:nth-child(6)'
+
+    seeders:
+      selector: 'td:nth-child(7)'
+
+    leechers:
+      selector: 'td:nth-child(8)'
+
+    downloadvolumefactor:
+      text: '0'
+
+    uploadvolumefactor:
+      text: '1'
