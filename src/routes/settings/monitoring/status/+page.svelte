@@ -671,13 +671,27 @@
 								{#each groupedItems as group (group.key)}
 									{@const isGroupExpanded = expandedGroupKey === group.key}
 									{@const showGroupActions = s && s.insightType === 'orphaned-files'}
+									{@const flatItem = group.count === 1 ? group.items[0] : null}
+									{@const isFlatExpanded = flatItem !== null && expandedItemId === flatItem.id}
+									{@const flatItemLoading = flatItem !== null && actionLoading.has(flatItem.id)}
 									<div
 										role="button"
 										tabindex="0"
 										class="w-full text-left rounded-lg border border-base-300 bg-base-200/50 px-3 py-2.5 hover:bg-base-200 transition-colors cursor-pointer"
-										onclick={() => (expandedGroupKey = isGroupExpanded ? null : group.key)}
+										onclick={() => {
+											if (flatItem) {
+												expandedItemId = isFlatExpanded ? null : flatItem.id;
+											} else {
+												expandedGroupKey = isGroupExpanded ? null : group.key;
+											}
+										}}
 										onkeydown={(e) => {
-											if (e.key === 'Enter') expandedGroupKey = isGroupExpanded ? null : group.key;
+											if (e.key !== 'Enter') return;
+											if (flatItem) {
+												expandedItemId = isFlatExpanded ? null : flatItem.id;
+											} else {
+												expandedGroupKey = isGroupExpanded ? null : group.key;
+											}
 										}}
 									>
 										<div class="flex items-center gap-3">
@@ -691,8 +705,10 @@
 													{group.label}
 												</div>
 											</div>
-											<span class="badge badge-sm">{group.count}</span>
-											{#if showGroupActions}
+											{#if group.count > 1}
+												<span class="badge badge-sm">{group.count}</span>
+											{/if}
+											{#if showGroupActions && !flatItem}
 												<button
 													class="btn btn-xs btn-ghost text-error"
 													onclick={(e) => {
@@ -708,8 +724,83 @@
 												</button>
 											{/if}
 										</div>
+										<!-- Inline remediation for flat (single) items -->
+										{#if flatItem && isFlatExpanded && s}
+											<div class="mt-2 border-t border-base-300 pt-2">
+												<p class="text-xs text-base-content/70">
+													{getRemediation(s.insightType, flatItem)}
+												</p>
+												<div class="mt-2 flex gap-1">
+													{#if s.insightType === 'quality-below-cutoff'}
+														<button
+															class="btn btn-xs btn-ghost"
+															onclick={(e) => { e.stopPropagation(); handleAutoSearch(flatItem); }}
+															disabled={flatItemLoading}
+														>
+															{#if flatItemLoading}<span class="loading loading-spinner loading-xs"></span>{/if}
+															<Search class="h-3 w-3" /> Auto
+														</button>
+													{/if}
+													{#if s.insightType === 'missing-from-media-server'}
+														<button
+															class="btn btn-xs btn-ghost"
+															onclick={(e) => { e.stopPropagation(); handleAutoSearch(flatItem); }}
+															disabled={flatItemLoading}
+														>
+															{#if flatItemLoading}<span class="loading loading-spinner loading-xs"></span>{/if}
+															<Search class="h-3 w-3" /> Auto
+														</button>
+														<button
+															class="btn btn-xs btn-ghost"
+															onclick={(e) => { e.stopPropagation(); handleInteractiveSearch(flatItem); }}
+														>
+															Interactive
+														</button>
+													{/if}
+													{#if s.insightType === 'unplayed'}
+														<button
+															class="btn btn-xs btn-ghost"
+															onclick={(e) => { e.stopPropagation(); handleUnmonitor(flatItem); }}
+															disabled={flatItemLoading}
+														>
+															{#if flatItemLoading}<span class="loading loading-spinner loading-xs"></span>{/if}
+															Unmonitor
+														</button>
+														<button
+															class="btn btn-xs btn-ghost text-error"
+															onclick={(e) => { e.stopPropagation(); handleRemoveFromLibrary(flatItem); }}
+															disabled={flatItemLoading}
+														>
+															{#if flatItemLoading}<span class="loading loading-spinner loading-xs"></span>{/if}
+															Remove
+														</button>
+													{/if}
+													{#if s.insightType === 'broken-paths'}
+														<button
+															class="btn btn-xs btn-ghost text-error"
+															onclick={(e) => { e.stopPropagation(); handleRemoveFromLibrary(flatItem); }}
+															disabled={flatItemLoading}
+														>
+															{#if flatItemLoading}<span class="loading loading-spinner loading-xs"></span>{/if}
+															Remove
+														</button>
+													{/if}
+													{#if s.insightType === 'orphaned-files'}
+														<button
+															class="btn btn-xs btn-ghost text-error"
+															onclick={(e) => { e.stopPropagation(); handleDeleteOrphaned(flatItem); }}
+															disabled={flatItemLoading}
+														>
+															{#if flatItemLoading}<span class="loading loading-spinner loading-xs"></span>{/if}
+															Delete
+														</button>
+													{/if}
+												</div>
+											</div>
+										{/if}
 									</div>
-									{#if isGroupExpanded}
+									<!-- Sub-item list only for grouped items (count > 1) -->
+									{#if !flatItem && isGroupExpanded}
 										<div class="space-y-1 pl-6">
 											{#each group.items as item (item.id)}
 												{@const isExpanded = expandedItemId === item.id}
@@ -731,9 +822,7 @@
 															</div>
 														</div>
 														{#if item.sizeBytes}
-															<span class="text-xs text-base-content/50"
-																>{formatBytes(item.sizeBytes)}</span
-															>
+															<span class="text-xs text-base-content/50">{formatBytes(item.sizeBytes)}</span>
 														{/if}
 													</div>
 													{#if isExpanded && s}
@@ -745,38 +834,25 @@
 																{#if s.insightType === 'quality-below-cutoff'}
 																	<button
 																		class="btn btn-xs btn-ghost"
-																		onclick={(e) => {
-																			e.stopPropagation();
-																			handleAutoSearch(item);
-																		}}
+																		onclick={(e) => { e.stopPropagation(); handleAutoSearch(item); }}
 																		disabled={itemLoading}
 																	>
-																		{#if itemLoading}<span
-																				class="loading loading-spinner loading-xs"
-																			></span>{/if}
+																		{#if itemLoading}<span class="loading loading-spinner loading-xs"></span>{/if}
 																		<Search class="h-3 w-3" /> Auto
 																	</button>
 																{/if}
 																{#if s.insightType === 'missing-from-media-server'}
 																	<button
 																		class="btn btn-xs btn-ghost"
-																		onclick={(e) => {
-																			e.stopPropagation();
-																			handleAutoSearch(item);
-																		}}
+																		onclick={(e) => { e.stopPropagation(); handleAutoSearch(item); }}
 																		disabled={itemLoading}
 																	>
-																		{#if itemLoading}<span
-																				class="loading loading-spinner loading-xs"
-																			></span>{/if}
+																		{#if itemLoading}<span class="loading loading-spinner loading-xs"></span>{/if}
 																		<Search class="h-3 w-3" /> Auto
 																	</button>
 																	<button
 																		class="btn btn-xs btn-ghost"
-																		onclick={(e) => {
-																			e.stopPropagation();
-																			handleInteractiveSearch(item);
-																		}}
+																		onclick={(e) => { e.stopPropagation(); handleInteractiveSearch(item); }}
 																	>
 																		Interactive
 																	</button>
@@ -784,58 +860,38 @@
 																{#if s.insightType === 'unplayed'}
 																	<button
 																		class="btn btn-xs btn-ghost"
-																		onclick={(e) => {
-																			e.stopPropagation();
-																			handleUnmonitor(item);
-																		}}
+																		onclick={(e) => { e.stopPropagation(); handleUnmonitor(item); }}
 																		disabled={itemLoading}
 																	>
-																		{#if itemLoading}<span
-																				class="loading loading-spinner loading-xs"
-																			></span>{/if}
+																		{#if itemLoading}<span class="loading loading-spinner loading-xs"></span>{/if}
 																		Unmonitor
 																	</button>
 																	<button
 																		class="btn btn-xs btn-ghost text-error"
-																		onclick={(e) => {
-																			e.stopPropagation();
-																			handleRemoveFromLibrary(item);
-																		}}
+																		onclick={(e) => { e.stopPropagation(); handleRemoveFromLibrary(item); }}
 																		disabled={itemLoading}
 																	>
-																		{#if itemLoading}<span
-																				class="loading loading-spinner loading-xs"
-																			></span>{/if}
+																		{#if itemLoading}<span class="loading loading-spinner loading-xs"></span>{/if}
 																		Remove
 																	</button>
 																{/if}
 																{#if s.insightType === 'broken-paths'}
 																	<button
 																		class="btn btn-xs btn-ghost text-error"
-																		onclick={(e) => {
-																			e.stopPropagation();
-																			handleRemoveFromLibrary(item);
-																		}}
+																		onclick={(e) => { e.stopPropagation(); handleRemoveFromLibrary(item); }}
 																		disabled={itemLoading}
 																	>
-																		{#if itemLoading}<span
-																				class="loading loading-spinner loading-xs"
-																			></span>{/if}
+																		{#if itemLoading}<span class="loading loading-spinner loading-xs"></span>{/if}
 																		Remove
 																	</button>
 																{/if}
 																{#if s.insightType === 'orphaned-files'}
 																	<button
 																		class="btn btn-xs btn-ghost text-error"
-																		onclick={(e) => {
-																			e.stopPropagation();
-																			handleDeleteOrphaned(item);
-																		}}
+																		onclick={(e) => { e.stopPropagation(); handleDeleteOrphaned(item); }}
 																		disabled={itemLoading}
 																	>
-																		{#if itemLoading}<span
-																				class="loading loading-spinner loading-xs"
-																			></span>{/if}
+																		{#if itemLoading}<span class="loading loading-spinner loading-xs"></span>{/if}
 																		Delete
 																	</button>
 																{/if}

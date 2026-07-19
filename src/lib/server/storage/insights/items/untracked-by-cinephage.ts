@@ -21,7 +21,10 @@ export const untrackedByCinephageResolver: InsightItemResolver = async ({ db, pa
 			id: storageItems.id,
 			title: storageItems.title,
 			tmdbId: storageItems.tmdbId,
-			itemType: storageItems.itemType
+			itemType: storageItems.itemType,
+			seriesName: storageItems.seriesName,
+			seasonNumber: storageItems.seasonNumber,
+			episodeNumber: storageItems.episodeNumber
 		})
 		.from(storageItems)
 		.where(
@@ -58,19 +61,28 @@ export const untrackedByCinephageResolver: InsightItemResolver = async ({ db, pa
 	}
 
 	return {
-		items: rows.map((row) => ({
-			id: `ut-${row.id}`,
-			kind: row.itemType === 'movie' ? ('movie' as const) : ('episode' as const),
-			title: row.title,
-			badges: [{ label: 'Not tracked', tone: 'info' as const }],
-			href: row.tmdbId
-				? movieMap.has(row.tmdbId)
-					? `/library/movie/${movieMap.get(row.tmdbId)}`
-					: seriesMap.has(row.tmdbId)
-						? `/library/tv/${seriesMap.get(row.tmdbId)}`
-						: undefined
-				: undefined
-		})),
+		items: rows.map((row) => {
+			const isEpisode = row.itemType !== 'movie';
+			const seasonLabel = `S${String(row.seasonNumber ?? 0).padStart(2, '0')}`;
+			const episodeLabel = `E${String(row.episodeNumber ?? 0).padStart(2, '0')}`;
+			const episodeTitle = isEpisode
+				? `${seasonLabel}${episodeLabel} · ${row.title}`
+				: row.title;
+			return {
+				id: `ut-${row.id}`,
+				kind: isEpisode ? ('episode' as const) : ('movie' as const),
+				title: isEpisode ? episodeTitle : row.title,
+				subtitle: isEpisode ? (row.seriesName ?? row.title) : undefined,
+				badges: [{ label: 'Not tracked', tone: 'info' as const }],
+				href: row.tmdbId
+					? movieMap.has(row.tmdbId)
+						? `/library/movie/${movieMap.get(row.tmdbId)}`
+						: seriesMap.has(row.tmdbId)
+							? `/library/tv/${seriesMap.get(row.tmdbId)}`
+							: undefined
+					: undefined
+			};
+		}),
 		total
 	};
 };
