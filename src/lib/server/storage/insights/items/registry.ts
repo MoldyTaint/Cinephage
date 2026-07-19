@@ -9,6 +9,7 @@ import { orphanedFilesResolver } from './orphaned-files.js';
 import { untrackedByCinephageResolver } from './untracked-by-cinephage.js';
 import { missingFromMediaServerResolver } from './missing-from-media-server.js';
 import { filenameDuplicatesResolver } from './filename-duplicates.js';
+import { redundantQualityTiersResolver } from './redundant-quality-tiers.js';
 
 /**
  * Registry of per-type item resolvers.
@@ -40,3 +41,4 @@ registerInsightItemResolver('orphaned-files', orphanedFilesResolver);
 registerInsightItemResolver('untracked-by-cinephage', untrackedByCinephageResolver);
 registerInsightItemResolver('missing-from-media-server', missingFromMediaServerResolver);
 registerInsightItemResolver('filename-duplicates', filenameDuplicatesResolver);
+registerInsightItemResolver('redundant-quality-tiers', redundantQualityTiersResolver);

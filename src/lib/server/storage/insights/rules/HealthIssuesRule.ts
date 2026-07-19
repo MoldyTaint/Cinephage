@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { count, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { libraries, libraryScanHistory, rootFolders } from '$lib/server/db/schema';
 import type { StorageInsightRule, RuleContext, InsightFinding } from '../types.js';
 
@@ -81,20 +81,21 @@ export class HealthIssuesRule implements StorageInsightRule {
 		}
 
 		// 4. Libraries without root folder (warning)
-		const libCount =
-			ctx.db
-				.select({ count: count() })
-				.from(libraries)
-				.where(sql`${libraries.defaultRootFolderId} IS NULL AND ${libraries.isSystem} = 0`)
-				.get()?.count ?? 0;
+		const libsWithoutFolder = ctx.db
+			.select({ id: libraries.id })
+			.from(libraries)
+			.where(sql`${libraries.defaultRootFolderId} IS NULL AND ${libraries.isSystem} = 0`)
+			.all();
 
-		if (libCount > 0) {
+		if (libsWithoutFolder.length > 0) {
+			const libCount = libsWithoutFolder.length;
 			findings.push({
 				type: this.type,
 				severity: 'warning',
 				scope: 'global',
 				title: `Libraries without a root folder`,
 				summary: `${libCount} librar${libCount === 1 ? 'y' : 'ies'} ${libCount === 1 ? 'has' : 'have'} no default root folder configured. New additions won't know where to go.`,
+				details: { libraryIds: libsWithoutFolder.map((l) => l.id) },
 				itemCount: libCount
 			});
 		}

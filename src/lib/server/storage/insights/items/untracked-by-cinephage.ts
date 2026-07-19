@@ -65,9 +65,7 @@ export const untrackedByCinephageResolver: InsightItemResolver = async ({ db, pa
 			const isEpisode = row.itemType !== 'movie';
 			const seasonLabel = `S${String(row.seasonNumber ?? 0).padStart(2, '0')}`;
 			const episodeLabel = `E${String(row.episodeNumber ?? 0).padStart(2, '0')}`;
-			const episodeTitle = isEpisode
-				? `${seasonLabel}${episodeLabel} · ${row.title}`
-				: row.title;
+			const episodeTitle = isEpisode ? `${seasonLabel}${episodeLabel} · ${row.title}` : row.title;
 			return {
 				id: `ut-${row.id}`,
 				kind: isEpisode ? ('episode' as const) : ('movie' as const),
