@@ -56,7 +56,6 @@
 	let retention = $state<HistoryRetentionSettings | null>(null);
 	let forecast = $state<StorageForecast | null>(null);
 	let retentionSaving = $state(false);
-	let retentionOpen = $state(false);
 	let insightsOpen = $state(false);
 
 	type Insight = {
@@ -476,63 +475,124 @@
 		serverStatuses={data.serverStatuses}
 		onOpenInsight={handleDashboardInsightClick}
 	/>
-</SettingsPage>
-<details class="mt-4" bind:open={retentionOpen}>
-	<summary class="cursor-pointer text-sm font-medium text-base-content/60 hover:text-base-content"
-		>History Retention</summary
-	>
-	<div class="mt-3 rounded-lg border bg-base-200 p-4">
-		{#if retention}
-			<div class="flex flex-wrap items-end gap-4">
-				<div class="form-control">
-					<label class="label py-0 text-xs" for="h-file">File history</label>
-					<input
-						id="h-file"
-						type="number"
-						class="input input-bordered input-xs w-20"
-						bind:value={retention.fileHistoryDays}
-						min="0"
-						max="3650"
-					/> <span class="text-xs text-base-content/50">days</span>
-				</div>
-				<div class="form-control">
-					<label class="label py-0 text-xs" for="h-lib">Library history</label>
-					<input
-						id="h-lib"
-						type="number"
-						class="input input-bordered input-xs w-20"
-						bind:value={retention.libraryHistoryDays}
-						min="0"
-						max="3650"
-					/> <span class="text-xs text-base-content/50">days</span>
-				</div>
-				<div class="form-control">
-					<label class="label py-0 text-xs" for="h-scan">Scan history</label>
-					<input
-						id="h-scan"
-						type="number"
-						class="input input-bordered input-xs w-20"
-						bind:value={retention.scanHistoryDays}
-						min="0"
-						max="3650"
-					/> <span class="text-xs text-base-content/50">days</span>
-				</div>
-				<button
-					class="btn btn-ghost btn-xs"
-					onclick={handleSaveRetention}
-					disabled={retentionSaving}>Save</button
-				>
+
+	<!-- History Retention -->
+	<div class="card bg-base-200">
+		<div class="card-body gap-4">
+			<div>
+				<h2 class="text-base font-semibold">{m.settings_history_title()}</h2>
+				<p class="mt-0.5 text-sm text-base-content/60">{m.settings_history_description()}</p>
 			</div>
-			{#if forecast}
-				<div class="mt-2 text-xs text-base-content/50">
-					~{formatBytes(forecast.currentEstimatedBytes)} now, ~{formatBytes(
-						forecast.projectedBytes30d
-					)} in 30d
+
+			{#if retention}
+				<div class="divide-y divide-base-300">
+					<div class="flex items-center justify-between gap-4 py-3">
+						<div>
+							<div class="text-sm font-medium">{m.settings_history_file_days()}</div>
+							<div class="text-xs text-base-content/50">{m.settings_history_file_days_help()}</div>
+						</div>
+						<div class="flex shrink-0 items-center gap-2">
+							<input
+								id="h-file"
+								type="number"
+								class="input input-sm input-bordered w-20"
+								bind:value={retention.fileHistoryDays}
+								min="0"
+								max="3650"
+							/>
+							<span class="w-8 text-sm text-base-content/50">days</span>
+						</div>
+					</div>
+
+					<div class="flex items-center justify-between gap-4 py-3">
+						<div>
+							<div class="text-sm font-medium">{m.settings_history_library_days()}</div>
+							<div class="text-xs text-base-content/50">
+								{m.settings_history_library_days_help()}
+							</div>
+						</div>
+						<div class="flex shrink-0 items-center gap-2">
+							<input
+								id="h-lib"
+								type="number"
+								class="input input-sm input-bordered w-20"
+								bind:value={retention.libraryHistoryDays}
+								min="0"
+								max="3650"
+							/>
+							<span class="w-8 text-sm text-base-content/50">days</span>
+						</div>
+					</div>
+
+					<div class="flex items-center justify-between gap-4 py-3">
+						<div>
+							<div class="text-sm font-medium">{m.settings_history_scan_days()}</div>
+							<div class="text-xs text-base-content/50">{m.settings_history_scan_days_help()}</div>
+						</div>
+						<div class="flex shrink-0 items-center gap-2">
+							<input
+								id="h-scan"
+								type="number"
+								class="input input-sm input-bordered w-20"
+								bind:value={retention.scanHistoryDays}
+								min="0"
+								max="3650"
+							/>
+							<span class="w-8 text-sm text-base-content/50">days</span>
+						</div>
+					</div>
+				</div>
+
+				{#if forecast}
+					<div>
+						<div class="mb-2 text-xs font-medium uppercase tracking-wide text-base-content/50">
+							{m.settings_history_forecast()}
+						</div>
+						<div class="grid grid-cols-3 gap-3">
+							<div class="rounded-lg bg-base-300 px-4 py-3">
+								<div class="text-xs text-base-content/50">
+									{m.settings_history_forecast_current()}
+								</div>
+								<div class="mt-0.5 text-sm font-semibold">
+									{formatBytes(forecast.currentEstimatedBytes)}
+								</div>
+							</div>
+							<div class="rounded-lg bg-base-300 px-4 py-3">
+								<div class="text-xs text-base-content/50">{m.settings_history_forecast_30d()}</div>
+								<div class="mt-0.5 text-sm font-semibold">
+									{formatBytes(forecast.projectedBytes30d)}
+								</div>
+							</div>
+							<div class="rounded-lg bg-base-300 px-4 py-3">
+								<div class="text-xs text-base-content/50">{m.settings_history_forecast_90d()}</div>
+								<div class="mt-0.5 text-sm font-semibold">
+									{formatBytes(forecast.projectedBytes90d)}
+								</div>
+							</div>
+						</div>
+					</div>
+				{/if}
+
+				<div class="flex justify-end">
+					<button
+						class="btn btn-primary btn-sm"
+						onclick={handleSaveRetention}
+						disabled={retentionSaving}
+					>
+						{#if retentionSaving}
+							<span class="loading loading-spinner loading-xs"></span>
+						{/if}
+						Save
+					</button>
+				</div>
+			{:else}
+				<div class="flex items-center justify-center py-8">
+					<span class="loading loading-spinner loading-sm text-base-content/30"></span>
 				</div>
 			{/if}
-		{/if}
+		</div>
 	</div>
-</details>
+</SettingsPage>
 
 {#if insightsOpen}
 	<dialog
