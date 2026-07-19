@@ -1,0 +1,256 @@
+---
+# DigitalCore Private Torrent Tracker (JSON API)
+# Auth via X-API-KEY header; API endpoint verified live (returns a proper
+# 401 "Authentication Required" without a key). Text-only searching - the
+# site's IMDb search parameter is unreliable, so queries go through
+# searchText exclusively.
+id: digitalcore
+name: DigitalCore
+description: DigitalCore is a private torrent tracker for 0-day / general content (JSON API)
+language: en-US
+type: private
+encoding: UTF-8
+protocol: torrent
+requestdelay: 2
+
+links:
+  - https://digitalcore.club/
+  - https://prxy.digitalcore.club/
+
+caps:
+  categorymappings:
+    - id: 2
+      cat: Movies/SD
+      desc: Movies/SD
+    - id: 1
+      cat: Movies/DVD
+      desc: Movies/DVDR
+    - id: 5
+      cat: Movies/HD
+      desc: Movies/720p
+    - id: 6
+      cat: Movies/HD
+      desc: Movies/1080p
+    - id: 4
+      cat: Movies/UHD
+      desc: Movies/2160p
+    - id: 3
+      cat: Movies/BluRay
+      desc: Movies/BluRay
+    - id: 38
+      cat: Movies/UHD
+      desc: Movies/BluRay/UHD
+    - id: 7
+      cat: Movies/HD
+      desc: Movies/PACKS
+    - id: 10
+      cat: TV/SD
+      desc: TV/SD
+    - id: 11
+      cat: TV/SD
+      desc: TV/DVDR
+    - id: 8
+      cat: TV/HD
+      desc: TV/720p
+    - id: 9
+      cat: TV/HD
+      desc: TV/1080p
+    - id: 13
+      cat: TV/UHD
+      desc: TV/2160p
+    - id: 14
+      cat: TV/HD
+      desc: TV/BluRay
+    - id: 12
+      cat: TV/HD
+      desc: TV/PACKS
+    - id: 15
+      cat: TV/Sport
+      desc: TV/SPORTS
+    - id: 17
+      cat: Other
+      desc: Unknown
+    - id: 18
+      cat: PC/0day
+      desc: Apps/0DAY
+    - id: 20
+      cat: PC/ISO
+      desc: Apps/PC
+    - id: 21
+      cat: PC/Mac
+      desc: Apps/Mac
+    - id: 33
+      cat: PC
+      desc: Apps/Tutorials
+    - id: 22
+      cat: Audio/MP3
+      desc: Music/MP3
+    - id: 23
+      cat: Audio/Lossless
+      desc: Music/FLAC
+    - id: 24
+      cat: Audio/Video
+      desc: Music/MTV
+    - id: 29
+      cat: Audio
+      desc: Music/PACKS
+    - id: 39
+      cat: Audio/Video
+      desc: Music/DVD
+    - id: 40
+      cat: Audio/Video
+      desc: Music/BluRay
+    - id: 25
+      cat: PC/Games
+      desc: Games/PC
+    - id: 27
+      cat: PC/Mac
+      desc: Games/Mac
+    - id: 26
+      cat: Console
+      desc: Games/Consoles
+    - id: 43
+      cat: Console
+      desc: Games/ROMS
+    - id: 44
+      cat: Audio/Audiobook
+      desc: Audiobooks
+    - id: 28
+      cat: Books/EBook
+      desc: Ebooks
+
+  modes:
+    search: [q]
+    tv-search: [q, season, ep]
+    movie-search: [q]
+    music-search: [q]
+    book-search: [q]
+
+settings:
+  - name: apikey
+    type: password
+    label: API Key
+  - name: freeleech
+    type: checkbox
+    label: Search freeleech only
+    default: false
+  - name: p2p_releases_only
+    type: checkbox
+    label: Search P2P releases only
+    default: false
+  - name: unrar_releases_only
+    type: checkbox
+    label: Search UNRAR releases only
+    default: false
+  - name: sort
+    type: select
+    label: Sort
+    default: d
+    options:
+      d: created
+      up: seeders
+      s: size
+      n: title
+  - name: type
+    type: select
+    label: Order
+    default: desc
+    options:
+      desc: desc
+      asc: asc
+
+search:
+  paths:
+    - path: api/v1/torrents?dead=true&extendedDead=true&extendedSearch=false&freeleech={{ if .Config.freeleech }}true{{ else }}false{{ end }}&index=0&limit=100&order={{ .Config.type }}&p2p={{ if .Config.p2p_releases_only }}true{{ else }}false{{ end }}&page=search&searchText={{ .Keywords }}&section=all&sort={{ .Config.sort }}&stereoscopic=false&unrar={{ if .Config.unrar_releases_only }}true{{ else }}false{{ end }}&watchview=false{{ range .Categories }}&categories[]={{ . }}{{ end }}
+      method: get
+
+  response:
+    type: json
+
+  headers:
+    X-API-KEY:
+      - '{{ .Config.apikey }}'
+    Accept:
+      - application/json
+    User-Agent:
+      - Cinephage/1.0
+    X-Requested-With:
+      - XMLHttpRequest
+
+  rows:
+    selector: $
+
+  fields:
+    category:
+      selector: category
+
+    title:
+      selector: name
+
+    details:
+      selector: id
+      filters:
+        - name: prepend
+          args: /torrent/
+        - name: append
+          args: /
+
+    download:
+      selector: id
+      filters:
+        - name: prepend
+          args: /api/v1/torrents/download/
+
+    imdbid:
+      selector: imdbid2
+      optional: true
+
+    date:
+      selector: added
+      filters:
+        - name: append
+          args: ' +02:00'
+        - name: dateparse
+          args: YYYY-MM-DD HH:mm:ss Z
+
+    size:
+      selector: size
+
+    files:
+      selector: numfiles
+      optional: true
+
+    grabs:
+      selector: times_completed
+      optional: true
+
+    seeders:
+      selector: seeders
+      optional: true
+
+    leechers:
+      selector: leechers
+      optional: true
+
+    downloadvolumefactor:
+      selector: frileech
+      optional: true
+      case:
+        '0': '1'
+        '1': '0'
+        '*': '1'
+
+    uploadvolumefactor:
+      text: '1'
+
+    minimumratio:
+      text: '1.0'
+
+    minimumseedtime:
+      text: '432000'
+
+    guid:
+      selector: id
+      filters:
+        - name: prepend
+          args: digitalcore-

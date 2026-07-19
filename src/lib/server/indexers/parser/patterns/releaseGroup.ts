@@ -21,8 +21,8 @@ const GROUP_BLACKLIST = [
 	/^(web|webdl|webrip|bluray|brrip|bdrip|remux)-\d{3,4}p$/i,
 	// Codecs
 	/^(x264|x265|h264|h265|hevc|avc|av1|xvid|divx)$/i,
-	// Sources
-	/^(bluray|bdrip|brrip|webrip|webdl|hdtv|dvdrip|remux|web)$/i,
+	// Sources (including partial tokens that appear inside compound source names like WEB-DL)
+	/^(bluray|bdrip|brrip|webrip|webdl|hdtv|dvdrip|remux|web|dl|rip|br|bd)$/i,
 	// Audio
 	/^(aac|ac3|dts|truehd|atmos|flac|mp3|opus|dd|dd\+|ddp|5\.1|7\.1|2\.0)$/i,
 	// Common endings
@@ -71,7 +71,9 @@ const INDEXER_PREFIXES = [
  */
 const ANIME_GROUP_PATTERNS = [
 	// Standard anime fansub: "[SubsPlease]" or "[Erai-raws]"
-	/^\[([a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?)\]/
+	/^\[([a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?)\]/,
+	// Parenthesised fansub: "(Hi10)" or "(Hi10P)"
+	/^\(([a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?)\)/
 ];
 
 /**
@@ -204,7 +206,7 @@ function stripIndexerPrefixes(title: string): string {
 export function extractReleaseGroup(title: string): ReleaseGroupMatch | null {
 	// Remove file extension if present (handles both ".mkv" and " mkv" formats)
 	// The space-separated format occurs after ReleaseParser.normalizeTitle() replaces dots with spaces
-	let cleanTitle = title.replace(/[.\s](mkv|mp4|avi|m4v|webm)$/i, '');
+	let cleanTitle = title.replace(/[.\s](mkv|mp4|avi|m4v|webm|strm)$/i, '');
 
 	// Check for anime fansub groups at START of title before stripping any prefixes,
 	// because the catch-all INDEXER_PREFIXES pattern strips any [...] block and would

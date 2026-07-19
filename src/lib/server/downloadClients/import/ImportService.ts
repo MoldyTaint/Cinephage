@@ -28,6 +28,9 @@ import {
 } from '$lib/server/db/schema';
 import { eq, and, or, inArray, gte } from 'drizzle-orm';
 import { downloadMonitor } from '../monitoring/DownloadMonitorService';
+import { resolveMovieMultiQuality } from '$lib/server/quality/movie-buckets.js';
+import { replaceIdsForImport } from '$lib/server/quality/buckets.js';
+import type { Resolution } from '$lib/server/indexers/parser/types.js';
 import {
 	transferFileWithMode,
 	findVideoFiles,
@@ -37,6 +40,7 @@ import {
 	hasSufficientDiskSpace,
 	removeEmptyDirectories,
 	moveToRecycleBin,
+	deletePhysicalFile,
 	copyExtraFiles,
 	applyFilePermissions,
 	ImportMode
@@ -45,7 +49,11 @@ import { getDownloadClientManager } from '../DownloadClientManager';
 import { unlink, rm } from 'fs/promises';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
 import { mediaInfoService, MediaInfoService } from '$lib/server/library/media-info';
-import { NamingService } from '$lib/server/library/naming/NamingService';
+import {
+	NamingService,
+	releaseToNamingInfo,
+	type MediaNamingInfo
+} from '$lib/server/library/naming/NamingService';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService';
 import { createChildLogger } from '$lib/logging';
 import { todayDateString } from '$lib/utils/format.js';
@@ -68,7 +76,6 @@ import {
 	type ResolvedTvEpisodeIdentifier
 } from '$lib/server/library/tv-episode-resolver.js';
 import { isImportedQueueStatus, type QueueStatus } from '$lib/types/queue';
-import { LibraryDestinationPlanner } from './LibraryDestinationPlanner';
 
 const logger = createChildLogger({ logDomain: 'imports' as const });
 
@@ -845,15 +852,11 @@ export class ImportService extends EventEmitter {
 		}
 
 		// Build destination path
-		const destination = this.getDestinationPlanner().planMovie({
-			rootPath: rootFolder.path,
-			mediaPath: movie.path,
-			media: movie,
-			sourcePath: mainFile.path,
-			releaseTitle: queueItem.title
-		});
-		const destFileName = destination.fileName;
-		const destPath = destination.finalPath;
+		const movieFolder = join(rootFolder.path, movie.path);
+		const allowStrmProbe = movie.scoringProfileId !== 'streamer';
+		const mediaInfo = await mediaInfoService.extractMediaInfo(mainFile.path, { allowStrmProbe });
+		const destFileName = this.buildMovieFileName(movie, mainFile.path, queueItem, mediaInfo);
+		const destPath = join(movieFolder, destFileName);
 
 		// Check for existing file (upgrade scenario)
 		const existingFiles = await db
@@ -864,7 +867,7 @@ export class ImportService extends EventEmitter {
 		const isUpgrade = queueItem.isUpgrade || false;
 
 		// Log upgrade detection but DON'T delete old files yet - wait until new file is imported
-		if (existingFiles.some((file) => file.relativePath !== destination.relativePath) && isUpgrade) {
+		if (existingFiles.some((file) => file.relativePath !== destFileName) && isUpgrade) {
 			logger.info(
 				{
 					movieId: movie.id,
@@ -950,10 +953,6 @@ export class ImportService extends EventEmitter {
 			);
 		}
 
-		// Extract media info (skip STRM probing for streamer profile)
-		const allowStrmProbe = movie.scoringProfileId !== 'streamer';
-		const mediaInfo = await mediaInfoService.extractMediaInfo(destPath, { allowStrmProbe });
-
 		const importedMetadata = this.buildImportedMetadata(queueItem, mainFile.path, mediaInfo);
 
 		// Create or update file record (deduplication)
@@ -1000,20 +999,35 @@ export class ImportService extends EventEmitter {
 			queueItem.protocol as 'torrent' | 'usenet'
 		);
 
-		// NOW delete old files (after successful import - so media is never missing)
+		// NOW delete old files (after successful import - so media is never missing).
+		// In multi-quality mode, only the file(s) in the SAME resolution bucket as
+		// the new file are replaced; other tiers are preserved. Single-quality mode
+		// keeps the existing behavior (replace all on upgrade).
+		const { multiQuality } = await resolveMovieMultiQuality(
+			movie.desiredQualities,
+			movie.scoringProfileId
+		);
+		const newResolution = importedMetadata.quality?.resolution as Resolution | undefined;
+		const replaceIdSet = new Set(
+			replaceIdsForImport(existingFiles, { newResolution, multiQuality, isUpgrade })
+		);
+		replaceIdSet.delete(fileId); // never the just-imported file
+
 		const deletedFileIds: string[] = [];
-		if (existingFiles.length > 0 && isUpgrade) {
+		if (replaceIdSet.size > 0) {
 			logger.info(
 				{
 					movieId: movie.id,
-					existingCount: existingFiles.length
+					existingCount: existingFiles.length,
+					replaceCount: replaceIdSet.size,
+					multiQuality
 				},
 				'Import successful - now deleting old files'
 			);
 
 			for (const oldFile of existingFiles) {
-				// Don't delete the file we just created/updated
-				if (oldFile.id === fileId) continue;
+				// Only delete files selected for replacement by the bucket logic
+				if (!replaceIdSet.has(oldFile.id)) continue;
 
 				const deleteResult = await this.deleteMovieFile(
 					oldFile.id,
@@ -1116,10 +1130,12 @@ export class ImportService extends EventEmitter {
 		});
 
 		// For usenet downloads, delete source folder (no seeding needed)
-		// Skip when symlink mode is active — the library symlinks point at the source, so deleting it would break them
+		// Skip when symlink mode is active; the library symlinks point at the source, so deleting it would break them
+		// Skip when canMoveFiles=false; user has configured copy mode and wants to keep the source
 		if (
 			queueItem.protocol === 'usenet' &&
 			queueItem.outputPath &&
+			canMoveFiles &&
 			importOptions.effectiveImportMode !== ImportMode.Symlink
 		) {
 			this.cleanupUsenetSource(queueItem.outputPath).catch((err) => {
@@ -1148,7 +1164,7 @@ export class ImportService extends EventEmitter {
 		queueItem: typeof downloadQueue.$inferSelect,
 		worker: ImportWorker,
 		importOptions: ImportableFileOptions,
-		_canMoveFiles: boolean
+		canMoveFiles: boolean
 	): Promise<ImportJobResult> {
 		const result: ImportJobResult = {
 			success: false,
@@ -1291,7 +1307,7 @@ export class ImportService extends EventEmitter {
 					seriesData,
 					rootFolder,
 					queueItem,
-					_canMoveFiles,
+					canMoveFiles,
 					worker,
 					importOptions
 				);
@@ -1387,11 +1403,12 @@ export class ImportService extends EventEmitter {
 				});
 			}
 
-			// For usenet downloads, delete source folder (no seeding needed)
-			// Skip when symlink mode is active — the library symlinks point at the source, so deleting it would break them
+			// Skip when symlink mode is active; the library symlinks point at the source, so deleting it would break them
+			// Skip when canMoveFiles=false; user has configured copy mode and wants to keep the source
 			if (
 				queueItem.protocol === 'usenet' &&
 				queueItem.outputPath &&
+				canMoveFiles &&
 				importOptions?.effectiveImportMode !== ImportMode.Symlink
 			) {
 				this.cleanupUsenetSource(queueItem.outputPath).catch((err) => {
@@ -1507,21 +1524,27 @@ export class ImportService extends EventEmitter {
 			this.getFallbackAbsoluteEpisodeNumber(seriesEpisodes, firstEpisode?.id);
 
 		// Build destination path
-		const destination = this.getDestinationPlanner().planEpisode({
-			rootPath: rootFolder.path,
-			mediaPath: seriesData.path,
-			media: seriesData,
-			seasonNumber: seasonNum,
-			episodeNumbers: episodeNums,
-			episodeTitle: firstEpisode?.title ?? undefined,
+		const seriesFolder = join(rootFolder.path, seriesData.path);
+
+		const allowStrmProbe = seriesData.scoringProfileId !== 'streamer';
+		const mediaInfo = await mediaInfoService.extractMediaInfo(videoFile.path, { allowStrmProbe });
+		const destFileName = this.buildEpisodeFileName(
+			seriesData,
+			seasonNum,
+			episodeNums,
+			videoFile.path,
+			queueItem,
+			firstEpisode?.title ?? undefined,
 			absoluteNumber,
-			airDate: firstEpisode?.airDate ?? undefined,
-			useSeasonFolders: seriesData.seasonFolder ?? true,
-			sourcePath: videoFile.path,
-			releaseTitle: queueItem.title
-		});
-		const relativePath = destination.relativePath;
-		const destPath = destination.finalPath;
+			firstEpisode?.airDate ?? undefined,
+			mediaInfo
+		);
+		const relativePath = this.buildEpisodeRelativePath(
+			seriesData.seasonFolder ?? true,
+			seasonNum,
+			destFileName
+		);
+		const destPath = join(seriesFolder, relativePath);
 
 		// Ensure season folder exists
 		await ensureDirectory(dirname(destPath));
@@ -1583,9 +1606,6 @@ export class ImportService extends EventEmitter {
 			);
 		}
 
-		// Extract media info (skip STRM probing for streamer profile)
-		const allowStrmProbe = seriesData.scoringProfileId !== 'streamer';
-		const mediaInfo = await mediaInfoService.extractMediaInfo(destPath, { allowStrmProbe });
 		const importedMetadata = this.buildImportedMetadata(queueItem, videoFile.path, mediaInfo);
 
 		const episodeIds = matchingEpisodes.map((ep) => ep.id);
@@ -2074,8 +2094,100 @@ export class ImportService extends EventEmitter {
 		return new NamingService(config);
 	}
 
-	private getDestinationPlanner(): LibraryDestinationPlanner {
-		return new LibraryDestinationPlanner(this.getNamingService());
+	private buildSeasonFolderName(seasonNumber: number): string {
+		return this.getNamingService().generateSeasonFolderName(seasonNumber);
+	}
+
+	private buildEpisodeRelativePath(
+		useSeasonFolders: boolean,
+		seasonNumber: number,
+		destFileName: string
+	): string {
+		return useSeasonFolders
+			? join(this.buildSeasonFolderName(seasonNumber), destFileName)
+			: destFileName;
+	}
+
+	private formatAudioChannels(channels?: number): string | undefined {
+		if (!channels) return undefined;
+		const map: Record<number, string> = { 1: '1.0', 2: '2.0', 6: '5.1', 8: '7.1' };
+		return map[channels] ?? `${channels}.0`;
+	}
+
+	private buildMovieFileName(
+		movie: typeof movies.$inferSelect,
+		sourcePath: string,
+		queueItem: typeof downloadQueue.$inferSelect,
+		mediaInfo?: Awaited<ReturnType<typeof mediaInfoService.extractMediaInfo>>
+	): string {
+		const parsed = this.parser.parse(queueItem.title);
+		const fromRelease = releaseToNamingInfo(parsed, sourcePath);
+
+		const namingInfo: MediaNamingInfo = {
+			title: movie.title,
+			originalTitle: movie.originalTitle ?? undefined,
+			year: movie.year ?? undefined,
+			tmdbId: movie.tmdbId,
+			imdbId: movie.imdbId ?? undefined,
+			collectionName: movie.collectionName ?? undefined,
+			...fromRelease,
+			bitDepth: mediaInfo?.videoBitDepth?.toString() ?? fromRelease.bitDepth,
+			audioCodec: mediaInfo?.audioCodec ?? fromRelease.audioCodec,
+			audioChannels:
+				this.formatAudioChannels(mediaInfo?.audioChannels) ?? fromRelease.audioChannels,
+			audioLanguages:
+				mediaInfo?.audioLanguages && mediaInfo.audioLanguages.length > 0
+					? mediaInfo.audioLanguages
+					: fromRelease.audioLanguages
+		};
+
+		return this.getNamingService().generateMovieFileName(namingInfo);
+	}
+
+	private buildEpisodeFileName(
+		seriesData: typeof series.$inferSelect,
+		seasonNum: number,
+		episodeNums: number[],
+		sourcePath: string,
+		queueItem: typeof downloadQueue.$inferSelect,
+		episodeTitle?: string,
+		absoluteNumber?: number,
+		airDate?: string,
+		mediaInfo?: Awaited<ReturnType<typeof mediaInfoService.extractMediaInfo>>
+	): string {
+		const parsed = this.parser.parse(queueItem.title);
+		const isAnime = seriesData.seriesType === 'anime';
+		const isDaily = seriesData.seriesType === 'daily';
+		const fromRelease = releaseToNamingInfo(parsed, sourcePath);
+
+		// IMPORTANT: Spread releaseToNamingInfo FIRST, then override with explicit values.
+		// This prevents season pack parsing from overwriting per-file episode numbers.
+		const namingInfo: MediaNamingInfo = {
+			...fromRelease,
+			title: seriesData.title,
+			originalTitle: seriesData.originalTitle ?? undefined,
+			year: seriesData.year ?? undefined,
+			tmdbId: seriesData.tmdbId ?? undefined,
+			tvdbId: seriesData.tvdbId ?? undefined,
+			imdbId: seriesData.imdbId ?? undefined,
+			seasonNumber: seasonNum,
+			episodeNumbers: episodeNums,
+			episodeTitle,
+			absoluteNumber,
+			airDate,
+			isAnime,
+			isDaily,
+			bitDepth: mediaInfo?.videoBitDepth?.toString() ?? fromRelease.bitDepth,
+			audioCodec: mediaInfo?.audioCodec ?? fromRelease.audioCodec,
+			audioChannels:
+				this.formatAudioChannels(mediaInfo?.audioChannels) ?? fromRelease.audioChannels,
+			audioLanguages:
+				mediaInfo?.audioLanguages && mediaInfo.audioLanguages.length > 0
+					? mediaInfo.audioLanguages
+					: fromRelease.audioLanguages
+		};
+
+		return this.getNamingService().generateEpisodeFileName(namingInfo);
 	}
 
 	private getFallbackAbsoluteEpisodeNumber(
@@ -2364,7 +2476,12 @@ export class ImportService extends EventEmitter {
 	}
 
 	/**
-	 * Delete a movie file (both database record and physical file)
+	 * Delete a movie file (both database record and physical file).
+	 *
+	 * Public so other edit-time flows (e.g. removing now-redundant quality tiers
+	 * on a desiredQualities change) can reuse the gold-standard delete path:
+	 * resolves the full path, recycles-or-unlinks, cleans the DB row, and emits
+	 * the `file:deleted` SSE event.
 	 */
 	async deleteMovieFile(
 		fileId: string,
@@ -2406,15 +2523,7 @@ export class ImportService extends EventEmitter {
 
 			// Delete or recycle physical file if it exists
 			try {
-				if (await fileExists(fullPath)) {
-					if (recycleEnabled) {
-						await moveToRecycleBin(fullPath, rootFolder.path);
-						logger.info({ fileId, path: fullPath }, 'Moved old movie file to recycle bin');
-					} else {
-						await unlink(fullPath);
-						logger.info({ fileId, path: fullPath }, 'Deleted old movie file');
-					}
-				}
+				await deletePhysicalFile(fullPath, !!recycleEnabled, rootFolder.path);
 			} catch (error) {
 				logger.warn(
 					{

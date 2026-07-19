@@ -14,7 +14,8 @@ export class MediaOccupancyStage implements DecisionStage<GrabDecisionContext> {
 
 	async evaluate(ctx: GrabDecisionContext): Promise<StageResult> {
 		const result = await mediaOccupancyService.check(ctx.target, {
-			isUpgrade: ctx.options.isUpgrade
+			isUpgrade: ctx.options.isUpgrade,
+			candidateResolution: ctx.computed.scoringResult?.resolution
 		});
 
 		if (!result.occupied) {

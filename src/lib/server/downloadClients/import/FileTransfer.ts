@@ -926,6 +926,27 @@ export async function moveToRecycleBin(filePath: string, rootFolderPath: string)
 }
 
 /**
+ * Delete (or recycle, when enabled) a physical file. Centralizes the
+ * recycle-vs-unlink decision so every movie-file delete path honors the
+ * global recycleEnabled setting consistently. No-op when the file is missing.
+ * Filesystem errors PROPAGATE — callers are expected to catch (each delete
+ * path wraps this in its own try/catch and continues with DB cleanup).
+ */
+export async function deletePhysicalFile(
+	filePath: string,
+	recycleEnabled: boolean,
+	rootFolderPath: string
+): Promise<void> {
+	if (await fileExists(filePath)) {
+		if (recycleEnabled) {
+			await moveToRecycleBin(filePath, rootFolderPath);
+		} else {
+			await unlink(filePath);
+		}
+	}
+}
+
+/**
  * Walks up from `startPath` toward `stopAt`, removing each directory that is
  * empty (no remaining files or subdirectories). Stops before removing `stopAt`
  * itself. Safe to call after a move; silently skips non-empty dirs.

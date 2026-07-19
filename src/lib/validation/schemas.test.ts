@@ -9,7 +9,9 @@ import {
 	libraryUpdateSchema,
 	rootFolderUpdateSchema,
 	languageProfileUpdateSchema,
-	mediaBrowserServerUpdateSchema
+	mediaBrowserServerUpdateSchema,
+	movieUpdateSchema,
+	addMovieSchema
 } from './schemas.js';
 
 describe('logDownloadQuerySchema', () => {
@@ -142,5 +144,31 @@ describe('update schemas do not backfill defaults', () => {
 		['mediaBrowserServerUpdateSchema', mediaBrowserServerUpdateSchema, { enabled: false }]
 	])('%s does not synthesize defaults for absent keys', (_name, schema, input) => {
 		expectOnlyProvidedKeys(schema as Parsable, input as Record<string, unknown>);
+	});
+});
+
+describe('movie desiredQualities', () => {
+	it('movieUpdateSchema accepts a valid resolution array', () => {
+		const result = movieUpdateSchema.safeParse({ desiredQualities: ['2160p', '1080p'] });
+		expect(result.success).toBe(true);
+	});
+
+	it('movieUpdateSchema accepts null (opt out of multi-quality)', () => {
+		const result = movieUpdateSchema.safeParse({ desiredQualities: null });
+		expect(result.success).toBe(true);
+	});
+
+	it('movieUpdateSchema rejects unsupported resolutions', () => {
+		const result = movieUpdateSchema.safeParse({ desiredQualities: ['1440p'] });
+		expect(result.success).toBe(false);
+	});
+
+	it('addMovieSchema accepts desiredQualities', () => {
+		const result = addMovieSchema.safeParse({
+			tmdbId: 1,
+			rootFolderId: 'rf-1',
+			desiredQualities: ['2160p', '1080p', '720p']
+		});
+		expect(result.success).toBe(true);
 	});
 });

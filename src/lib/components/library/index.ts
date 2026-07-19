@@ -4,6 +4,7 @@ export { default as QualityBadge } from './QualityBadge.svelte';
 export { default as ScoreBadge } from './ScoreBadge.svelte';
 export { default as ScoreDetailModal } from './ScoreDetailModal.svelte';
 export { default as MonitorToggle } from './MonitorToggle.svelte';
+export { default as DesiredQualitiesPicker } from './DesiredQualitiesPicker.svelte';
 export { default as StatusIndicator } from './StatusIndicator.svelte';
 export { default as AutoSearchStatus } from './AutoSearchStatus.svelte';
 export { default as FileCard } from './FileCard.svelte';

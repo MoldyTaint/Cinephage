@@ -14,7 +14,8 @@ export type InsightType =
 	| 'quality-below-cutoff'
 	| 'broken-paths'
 	| 'health-issues'
-	| 'filename-duplicates';
+	| 'filename-duplicates'
+	| 'redundant-quality-tiers';
 
 export type InsightSeverity = 'info' | 'warning' | 'critical';
 export type InsightScope = 'global' | 'library' | 'root_folder' | 'item';

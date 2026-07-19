@@ -19,12 +19,12 @@ function database(): Database.Database {
 
 afterEach(() => databases.splice(0).forEach((sqlite) => sqlite.close()));
 
-describe('migration 122: debrid client columns', () => {
+describe('migration 125: debrid client columns', () => {
 	it('is registered in schema and drift metadata', () => {
-		const migration = MIGRATIONS.find(({ version }) => version === 122);
+		const migration = MIGRATIONS.find(({ version }) => version === 125);
 		expect(migration?.name).toMatch(/debrid/i);
-		expect(CURRENT_SCHEMA_VERSION).toBeGreaterThanOrEqual(122);
-		expect(MIGRATION_COLUMN_MAP[122]).toEqual([
+		expect(CURRENT_SCHEMA_VERSION).toBeGreaterThanOrEqual(125);
+		expect(MIGRATION_COLUMN_MAP[125]).toEqual([
 			{ table: 'download_clients', column: 'api_token' },
 			{ table: 'download_clients', column: 'remove_after_import' }
 		]);
@@ -40,7 +40,7 @@ describe('migration 122: debrid client columns', () => {
 			)
 			.run();
 
-		const migration = MIGRATIONS.find(({ version }) => version === 122)!;
+		const migration = MIGRATIONS.find(({ version }) => version === 125)!;
 		expect(() => migration.apply(sqlite)).not.toThrow();
 		expect(() => migration.apply(sqlite)).not.toThrow();
 		expect(columnExists(sqlite, 'download_clients', 'api_token')).toBe(true);
@@ -48,7 +48,7 @@ describe('migration 122: debrid client columns', () => {
 		expect(
 			sqlite.prepare(`SELECT name FROM download_clients WHERE id = 'legacy'`).pluck().get()
 		).toBe('Legacy qBit');
-		expect(getSchemaVersion(sqlite)).toBeGreaterThanOrEqual(122);
+		expect(getSchemaVersion(sqlite)).toBeGreaterThanOrEqual(125);
 	});
 
 	it('marks drift failed so the missing columns can be reapplied', () => {
@@ -59,10 +59,10 @@ describe('migration 122: debrid client columns', () => {
 
 		detectAndFixSchemaDrift(sqlite);
 		expect(
-			sqlite.prepare('SELECT success FROM schema_migrations WHERE version = 122').pluck().get()
+			sqlite.prepare('SELECT success FROM schema_migrations WHERE version = 125').pluck().get()
 		).toBe(0);
 
-		MIGRATIONS.find(({ version }) => version === 122)!.apply(sqlite);
+		MIGRATIONS.find(({ version }) => version === 125)!.apply(sqlite);
 		expect(columnExists(sqlite, 'download_clients', 'api_token')).toBe(true);
 		expect(columnExists(sqlite, 'download_clients', 'remove_after_import')).toBe(true);
 	});

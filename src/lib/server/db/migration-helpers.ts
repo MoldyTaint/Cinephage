@@ -566,7 +566,7 @@ export const MIGRATION_COLUMN_MAP: Record<number, Array<{ table: string; column:
 		{ table: 'movies', column: 'library_id' },
 		{ table: 'series', column: 'library_id' }
 	],
-	122: [
+	125: [
 		{ table: 'download_clients', column: 'api_token' },
 		{ table: 'download_clients', column: 'remove_after_import' }
 	]

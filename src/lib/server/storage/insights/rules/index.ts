@@ -8,6 +8,7 @@ import { HealthIssuesRule } from './HealthIssuesRule.js';
 import { QualityBelowCutoffRule } from './QualityBelowCutoffRule.js';
 import { BrokenPathsRule } from './BrokenPathsRule.js';
 import { FilenameDuplicateRule } from './FilenameDuplicateRule.js';
+import { RedundantQualityTiersRule } from './RedundantQualityTiersRule.js';
 
 // Rules are added in Tasks 5-12. Each new rule is appended to this array.
 export const ALL_RULES: StorageInsightRule[] = [
@@ -19,5 +20,6 @@ export const ALL_RULES: StorageInsightRule[] = [
 	new HealthIssuesRule(),
 	new QualityBelowCutoffRule(),
 	new BrokenPathsRule(),
-	new FilenameDuplicateRule()
+	new FilenameDuplicateRule(),
+	new RedundantQualityTiersRule()
 ];

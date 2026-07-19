@@ -131,9 +131,11 @@ import {
  * Version 109: Add stalled_orphan tracking table
  * Version 110: Add storage_items, storage_item_server_links, storage_insights tables for unified storage tracking
  * Version 111: Add rename_history table for permanent file rename audit trail
- * Version 122: Add api_token and remove_after_import columns to download_clients (debrid support)
+ * Version 123: Add desired_qualities column to movies for multi-quality per-movie support
+ * Version 124: Add movie_file_id to subtitles for per-file subtitle association
+ * Version 125: Add api_token and remove_after_import columns to download_clients (debrid support)
  */
-export const CURRENT_SCHEMA_VERSION = 122;
+export const CURRENT_SCHEMA_VERSION = 125;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -535,6 +537,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"library_id" text REFERENCES "libraries"("id") ON DELETE SET NULL,
 		"root_folder_id" text REFERENCES "root_folders"("id") ON DELETE SET NULL,
 		"scoring_profile_id" text REFERENCES "scoring_profiles"("id") ON DELETE SET NULL,
+		"desired_qualities" text,
 		"language_profile_id" text,
 		"monitored" integer DEFAULT true,
 		"minimum_availability" text DEFAULT 'released',
@@ -886,6 +889,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"id" text PRIMARY KEY NOT NULL,
 		"movie_id" text REFERENCES "movies"("id") ON DELETE CASCADE,
 		"episode_id" text REFERENCES "episodes"("id") ON DELETE CASCADE,
+		"movie_file_id" text REFERENCES "movie_files"("id") ON DELETE SET NULL,
 		"relative_path" text NOT NULL,
 		"language" text NOT NULL,
 		"is_forced" integer DEFAULT false,
@@ -1449,6 +1453,7 @@ const INDEX_DEFINITIONS: string[] = [
 	`CREATE INDEX IF NOT EXISTS "idx_monitoring_history_episode" ON "monitoring_history" ("episode_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_subtitles_movie" ON "subtitles" ("movie_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_subtitles_episode" ON "subtitles" ("episode_id")`,
+	`CREATE INDEX IF NOT EXISTS "idx_subtitles_movie_file" ON "subtitles" ("movie_file_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_smart_lists_enabled" ON "smart_lists" ("enabled")`,
 	`CREATE INDEX IF NOT EXISTS "idx_smart_lists_next_refresh" ON "smart_lists" ("next_refresh_time")`,
 	`CREATE INDEX IF NOT EXISTS "idx_smart_lists_media_type" ON "smart_lists" ("media_type")`,

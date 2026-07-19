@@ -154,6 +154,7 @@ export interface MovieDetails extends Omit<Movie, 'genre_ids'> {
 export interface Episode {
 	air_date: string;
 	episode_number: number;
+	absolute_episode_number?: number;
 	id: number;
 	name: string;
 	overview: string;

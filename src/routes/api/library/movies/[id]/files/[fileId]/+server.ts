@@ -3,10 +3,12 @@ import type { RequestHandler } from './$types.js';
 import { db } from '$lib/server/db/index.js';
 import { movies, movieFiles, rootFolders } from '$lib/server/db/schema.js';
 import { eq, and } from 'drizzle-orm';
-import { unlink, rmdir } from 'node:fs/promises';
+import { rmdir } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { logger } from '$lib/logging';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
+import { deletePhysicalFile } from '$lib/server/downloadClients/import/FileTransfer.js';
+import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
 
 /**
  * DELETE /api/library/movies/[id]/files/[fileId]
@@ -43,12 +45,16 @@ export const DELETE: RequestHandler = async ({ params }) => {
 			);
 		}
 
-		// Delete file from disk
+		// Delete (or recycle) file from disk
 		if (file.rootFolderPath && file.moviePath && file.relativePath) {
 			const fullPath = join(file.rootFolderPath, file.moviePath, file.relativePath);
 			try {
-				await unlink(fullPath);
-				logger.debug({ fullPath }, '[API] Deleted movie file');
+				const { recycleEnabled } = await getFileManagementSettings();
+				await deletePhysicalFile(fullPath, recycleEnabled, file.rootFolderPath);
+				logger.debug(
+					{ fullPath, recycleEnabled },
+					'[API] Removed movie file (recycled if enabled)'
+				);
 			} catch {
 				logger.warn({ fullPath }, '[API] Could not delete movie file from disk');
 			}

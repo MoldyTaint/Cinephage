@@ -5,6 +5,7 @@ import type {
 	GrabDecisionOptions
 } from '$lib/server/filters/stages/grab/types.js';
 import type { ScoringProfile } from '$lib/server/scoring/types.js';
+import type { Resolution } from '$lib/server/indexers/parser/types.js';
 
 export type { GrabDecision, GrabTarget, ReleaseInfo, GrabDecisionOptions };
 
@@ -49,6 +50,8 @@ export interface ResolvedContext {
 	rootFolderPath?: string;
 	mediaPath?: string;
 	seriesPath?: string;
+	/** Per-movie desired qualities (multi-quality mode). Movies only. */
+	desiredQualities?: Resolution[];
 }
 
 export interface HandlerResult {

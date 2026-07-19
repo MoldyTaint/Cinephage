@@ -564,6 +564,16 @@ describe('ReleaseParser', () => {
 			expect(result?.group).toBe('SubsPlease');
 		});
 
+		it('should extract fansub group from leading parentheses', () => {
+			const result = extractReleaseGroup('(Hi10) Anime Title - 01 [1080p].mkv');
+			expect(result?.group).toBe('Hi10');
+		});
+
+		it('should extract hyphenated fansub group from leading parentheses', () => {
+			const result = extractReleaseGroup('(Hi10-P) Anime Title - 01 [1080p].mkv');
+			expect(result?.group).toBe('Hi10-P');
+		});
+
 		it('should not treat Chinese site prefix as a fansub group', () => {
 			const result = extractReleaseGroup('[www.mkvhome.com] Movie.Title.2023.1080p.mkv');
 			expect(result?.group).not.toBe('wwwmkvhomecom');

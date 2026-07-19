@@ -1,8 +1,8 @@
 import type { MigrationDefinition } from '../migration-helpers.js';
 import { columnExists } from '../migration-helpers.js';
 
-export const migration_v122: MigrationDefinition = {
-	version: 122,
+export const migration_v125: MigrationDefinition = {
+	version: 125,
 	name: 'add_debrid_client_columns',
 	apply: (sqlite) => {
 		if (!columnExists(sqlite, 'download_clients', 'api_token')) {

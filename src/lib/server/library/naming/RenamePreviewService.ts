@@ -27,8 +27,7 @@ import { NamingService, type MediaNamingInfo } from './NamingService';
 import { namingSettingsService } from './NamingSettingsService';
 import { moveFile, fileExists } from '$lib/server/downloadClients/import/FileTransfer';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
-import { rename, stat } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
+import { rename, stat, readdir, rmdir } from 'node:fs/promises';
 import { chooseBestParsedRelease } from './preview-metadata';
 import {
 	getMediaBrowserManager,
@@ -52,45 +51,6 @@ import type {
 	RenamePreviewResult,
 	RenameExecuteResult
 } from '$lib/library/naming/types.js';
-
-/**
- * Detect whether a .strm file points at Cinephage's own streaming session endpoint
- * (vs an NZB/usenet streaming .strm which must keep its real codec/quality metadata).
- */
-function isCinephageStreamingStrm(
-	rootFolderPath: string,
-	parentPath: string | null | undefined,
-	relativePath: string
-): boolean {
-	if (extname(relativePath).toLowerCase() !== '.strm') return false;
-	try {
-		const fullPath = join(rootFolderPath, parentPath ?? '', relativePath);
-		const content = readFileSync(fullPath, 'utf8').trim();
-		return content.includes('/api/streaming/session/');
-	} catch {
-		return false;
-	}
-}
-
-/**
- * Strip codec/quality/release-group from a Cinephage-native .strm naming info.
- * Streaming pointers carry no real codec/quality — the .strm extension and its
- * URL content identify the source. NZB .strm files keep their real metadata.
- */
-function applyCinephageStrmOverrides(info: MediaNamingInfo): MediaNamingInfo {
-	return {
-		...info,
-		releaseGroup: undefined,
-		resolution: undefined,
-		source: undefined,
-		codec: undefined,
-		hdr: undefined,
-		bitDepth: undefined,
-		audioCodec: undefined,
-		audioChannels: undefined,
-		audioLanguages: undefined
-	};
-}
 
 /**
  * Create an empty preview result
@@ -430,7 +390,8 @@ export class RenamePreviewService {
 			processed: 0,
 			succeeded: 0,
 			failed: 0,
-			results: []
+			results: [],
+			warnings: []
 		};
 
 		if (fileIds.length === 0) {
@@ -461,8 +422,6 @@ export class RenamePreviewService {
 		);
 
 		// Group items by mediaId for parallel processing.
-		// Folder renames are NOT performed here — files are renamed within
-		// their existing parent folder.
 		const groups = new Map<string, RenamePreviewItem[]>();
 		for (const item of renameMap.values()) {
 			const group = groups.get(item.mediaId) || [];
@@ -518,6 +477,32 @@ export class RenamePreviewService {
 					const renameResult = await this.executeFileRename(item);
 					groupResult.push(renameResult);
 					await this.writeRenameHistory(item, renameResult.success, renameResult.error);
+				}
+
+				// After all files in this group are processed, handle any folder rename.
+				// A folder rename occurs when at least one file successfully moved to a
+				// new parent path. We update the DB path record, move remaining extra
+				// files (artwork, nfo, etc.) to the new folder, and clean up empty dirs.
+				const successfulFolderChange = items.find((item) => {
+					const matched = groupResult.find((r) => r.fileId === item.fileId);
+					return matched?.success && item.currentParentPath !== item.newParentPath;
+				});
+				if (successfulFolderChange && firstItem) {
+					const originalStem = basename(
+						successfulFolderChange.currentFullPath,
+						extname(successfulFolderChange.currentFullPath)
+					);
+					const folderWarnings = await this.applyFolderRename(
+						mediaId,
+						firstItem.mediaType as 'movie' | 'episode',
+						successfulFolderChange.currentParentPath,
+						successfulFolderChange.newParentPath,
+						originalStem
+					);
+					if (folderWarnings.length > 0) {
+						result.warnings ??= [];
+						result.warnings.push(...folderWarnings);
+					}
 				}
 
 				return groupResult;
@@ -1076,6 +1061,161 @@ export class RenamePreviewService {
 		}
 	}
 
+	/**
+	 * After file renames move media into a new parent folder:
+	 * 1. Update movie.path / series.path in the DB so the library entry reflects the new location.
+	 * 2. Move any remaining files (artwork, nfo, subtitles, etc.) from the old folder to the new one.
+	 * 3. Remove the old folder tree if it is now empty.
+	 */
+	// Extensions that identify companion files (artwork, metadata, subtitles).
+	// Used for stem-matched carry when the media file lives in the root folder.
+	private static readonly COMPANION_EXTENSIONS = new Set([
+		'.nfo',
+		'.jpg',
+		'.jpeg',
+		'.png',
+		'.webp',
+		'.tbn',
+		'.srt',
+		'.sub',
+		'.ass',
+		'.ssa',
+		'.vtt',
+		'.sup',
+		'.idx'
+	]);
+
+	private async applyFolderRename(
+		mediaId: string,
+		mediaType: 'movie' | 'episode',
+		oldParentPath: string,
+		newParentPath: string,
+		originalFileStem: string
+	): Promise<string[]> {
+		const warnings: string[] = [];
+		try {
+			let rootFolderId: string | undefined;
+			if (mediaType === 'movie') {
+				const movie = db.select().from(movies).where(eq(movies.id, mediaId)).get();
+				rootFolderId = movie?.rootFolderId ?? undefined;
+			} else {
+				const show = db.select().from(series).where(eq(series.id, mediaId)).get();
+				rootFolderId = show?.rootFolderId ?? undefined;
+			}
+			if (!rootFolderId) return warnings;
+
+			const rootFolder = db
+				.select()
+				.from(rootFolders)
+				.where(eq(rootFolders.id, rootFolderId))
+				.get();
+			if (!rootFolder) return warnings;
+
+			const rootFolderPath = rootFolder.path;
+			const oldFolder = join(rootFolderPath, oldParentPath);
+			const newFolder = join(rootFolderPath, newParentPath);
+			const isRootFolder = resolve(oldFolder) === resolve(rootFolderPath);
+
+			// 1. Update DB path record so the library entry shows the correct folder.
+			if (mediaType === 'movie') {
+				db.update(movies).set({ path: newParentPath }).where(eq(movies.id, mediaId)).run();
+			} else {
+				db.update(series).set({ path: newParentPath }).where(eq(series.id, mediaId)).run();
+			}
+
+			logger.info(
+				{ mediaId, mediaType, from: oldFolder, to: newFolder, isRootFolder },
+				'[RenamePreviewService] Folder path updated in DB after file renames'
+			);
+
+			// 2. Move companion files from the old folder to the new folder.
+			// When the media file is in a dedicated subfolder, carry everything (the
+			// whole folder belongs to this title). When it is in the root folder,
+			// only carry files whose names start with the original media file's stem
+			// to avoid carrying unrelated files into this title's new subfolder.
+			try {
+				const entries = await readdir(oldFolder, { withFileTypes: true });
+				const unmatchedCompanions: string[] = [];
+
+				for (const entry of entries) {
+					if (!entry.isFile()) continue;
+
+					if (isRootFolder) {
+						const entryStem = basename(entry.name, extname(entry.name));
+						const entryExt = extname(entry.name).toLowerCase();
+						const stemMatches = entryStem.startsWith(originalFileStem);
+
+						if (!stemMatches) {
+							// Track companion-extension files we couldn't safely match.
+							if (RenamePreviewService.COMPANION_EXTENSIONS.has(entryExt)) {
+								unmatchedCompanions.push(entry.name);
+							}
+							continue;
+						}
+					}
+
+					const src = join(oldFolder, entry.name);
+					const dest = join(newFolder, entry.name);
+					if (await fileExists(dest)) continue;
+					try {
+						await rename(src, dest);
+					} catch {
+						await moveFile(src, dest);
+					}
+				}
+
+				if (unmatchedCompanions.length > 0) {
+					warnings.push(
+						`Some companion files could not be automatically matched to "${originalFileStem}" ` +
+							`and were left in the root folder: ${unmatchedCompanions.join(', ')}. ` +
+							`Move them manually if needed.`
+					);
+					logger.info(
+						{ mediaId, unmatchedCompanions },
+						'[RenamePreviewService] Unmatched companion files left in root folder'
+					);
+				}
+			} catch {
+				// Old folder may not exist or be unreadable — not fatal.
+			}
+
+			// 3. Remove the old folder tree if empty (handles empty season subfolders for series).
+			// Skip when the old folder is the root — never remove the root folder.
+			if (!isRootFolder) {
+				await this.tryRemoveEmptyDir(oldFolder);
+			}
+		} catch (error) {
+			logger.warn(
+				{
+					mediaId,
+					mediaType,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[RenamePreviewService] applyFolderRename cleanup failed (non-fatal)'
+			);
+		}
+		return warnings;
+	}
+
+	/**
+	 * Recursively remove a directory only if it is entirely empty.
+	 * Descends into subdirectories first so empty trees are cleaned bottom-up.
+	 * Directories that still contain files are left untouched.
+	 */
+	private async tryRemoveEmptyDir(dirPath: string): Promise<void> {
+		try {
+			const entries = await readdir(dirPath, { withFileTypes: true });
+			for (const entry of entries) {
+				if (entry.isDirectory()) {
+					await this.tryRemoveEmptyDir(join(dirPath, entry.name));
+				}
+			}
+			await rmdir(dirPath); // no-op fails silently if not empty
+		} catch {
+			// Directory has remaining files or doesn't exist — both are fine.
+		}
+	}
+
 	private async reconcileTouchedMedia(
 		movieIds: Set<string>,
 		seriesIds: Set<string>
@@ -1310,12 +1450,6 @@ export class RenamePreviewService {
 				originalExtension: extname(file.relativePath)
 			};
 
-			// Cinephage-native .strm pointers carry no real codec/quality — strip those
-			// and stamp the Cinephage Streaming identifier. NZB .strm files are left as-is.
-			if (isCinephageStreamingStrm(rootFolderPath, movie.path, file.relativePath)) {
-				Object.assign(namingInfo, applyCinephageStrmOverrides(namingInfo));
-			}
-
 			// Generate new filename and folder name
 			const newFolderName = this.namingService.generateMovieFolderName(namingInfo);
 			const newFileName = this.namingService.generateMovieFileName(namingInfo);
@@ -1472,12 +1606,6 @@ export class RenamePreviewService {
 				repack: parsedFromFilename.repack,
 				originalExtension: extname(file.relativePath)
 			};
-
-			// Cinephage-native .strm pointers carry no real codec/quality — strip those
-			// and stamp the Cinephage Streaming identifier. NZB .strm files are left as-is.
-			if (isCinephageStreamingStrm(rootFolderPath, show.path, file.relativePath)) {
-				Object.assign(namingInfo, applyCinephageStrmOverrides(namingInfo));
-			}
 
 			// Generate new filename and folder name
 			const newFolderName = this.namingService.generateSeriesFolderName(namingInfo);

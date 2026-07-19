@@ -1,4 +1,5 @@
 import type { ScoringProfile, ScoringResult } from '$lib/server/scoring/types.js';
+import type { Resolution } from '$lib/server/indexers/parser/types.js';
 import type { DecisionAudit } from '../../types.js';
 
 export type UpgradeStatus = 'new' | 'upgrade' | 'sidegrade' | 'downgrade' | 'blocked' | 'rejected';
@@ -83,6 +84,8 @@ export interface GrabDecisionContext {
 	existingFiles: ExistingFile[];
 	profile: ScoringProfile;
 	options: GrabDecisionOptions;
+	/** Per-movie desired qualities (multi-quality mode). Movies only. */
+	desiredQualities?: Resolution[];
 	computed: {
 		scoringResult?: ScoringResult;
 		candidateScore?: number;

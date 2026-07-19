@@ -2,10 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
 	movieFilesFindFirst: vi.fn(),
+	movieFilesFindMany: vi.fn(),
 	episodesFindFirst: vi.fn(),
 	episodesFindMany: vi.fn(),
 	seriesFindFirst: vi.fn(),
 	episodeFilesFindMany: vi.fn(),
+	moviesFindFirst: vi.fn().mockResolvedValue(null),
+	scoringProfilesFindFirst: vi.fn().mockResolvedValue(null),
 	searchEnhanced: vi.fn(),
 	grab: vi.fn(),
 	getIndexerManager: vi.fn(),
@@ -20,10 +23,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock('$lib/server/db/index.js', () => ({
 	db: {
 		query: {
-			movieFiles: { findFirst: mocks.movieFilesFindFirst },
+			movieFiles: { findFirst: mocks.movieFilesFindFirst, findMany: mocks.movieFilesFindMany },
 			episodes: { findFirst: mocks.episodesFindFirst, findMany: mocks.episodesFindMany },
 			series: { findFirst: mocks.seriesFindFirst },
-			episodeFiles: { findMany: mocks.episodeFilesFindMany }
+			episodeFiles: { findMany: mocks.episodeFilesFindMany },
+			movies: { findFirst: mocks.moviesFindFirst },
+			scoringProfiles: { findFirst: mocks.scoringProfilesFindFirst }
 		}
 	}
 }));
@@ -338,6 +343,7 @@ describe('SearchOnAddService.searchForMovie monitoring behavior', () => {
 		mocks.fetchAndStoreMovieAlternateTitles.mockResolvedValue(0);
 		mocks.fetchAndStoreSeriesAlternateTitles.mockResolvedValue(0);
 		mocks.movieFilesFindFirst.mockResolvedValue(undefined);
+		mocks.movieFilesFindMany.mockResolvedValue([]);
 		mocks.grab.mockResolvedValue(createGrabResponse());
 	});
 
@@ -506,6 +512,222 @@ describe('SearchOnAddService.searchForSeries pack targets', () => {
 			})
 		);
 		expect(result.success).toBe(true);
+	});
+});
+
+describe('SearchOnAddService.searchForMovie multi-quality buckets', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		resetAlternateTitleRefreshCache();
+		mocks.getIndexerManager.mockResolvedValue(createIndexerManagerMock());
+		mocks.getMovieSearchTitles.mockResolvedValue([]);
+		mocks.getSeriesSearchTitles.mockResolvedValue([]);
+		mocks.fetchAndStoreMovieAlternateTitles.mockResolvedValue(0);
+		mocks.fetchAndStoreSeriesAlternateTitles.mockResolvedValue(0);
+		mocks.movieFilesFindFirst.mockResolvedValue(undefined);
+		mocks.movieFilesFindMany.mockResolvedValue([]);
+		mocks.moviesFindFirst.mockResolvedValue(null);
+		mocks.scoringProfilesFindFirst.mockResolvedValue(null);
+		mocks.grab.mockResolvedValue(createGrabResponse());
+	});
+
+	it('grabs only desired resolution buckets for a new multi-quality movie', async () => {
+		mocks.moviesFindFirst.mockResolvedValue({
+			desiredQualities: ['2160p', '1080p'],
+			scoringProfileId: null
+		});
+		mocks.scoringProfilesFindFirst.mockResolvedValue(null);
+		mocks.movieFilesFindFirst.mockResolvedValue(null);
+		mocks.movieFilesFindMany.mockResolvedValue([]);
+		mocks.searchEnhanced.mockResolvedValue({
+			releases: [
+				createSearchRelease({
+					title: 'Movie.2024.720p.WEB-GROUP',
+					infoHash: 'hash-720p',
+					downloadUrl: 'stream://movie/1-720p',
+					parsed: { resolution: '720p', source: 'webdl', codec: 'h264', hdr: null }
+				}),
+				createSearchRelease({
+					title: 'Movie.2024.2160p.UHD.WEB-GROUP',
+					infoHash: 'hash-2160p',
+					downloadUrl: 'stream://movie/1-2160p',
+					parsed: { resolution: '2160p', source: 'webdl', codec: 'h265', hdr: null }
+				}),
+				createSearchRelease({
+					title: 'Movie.2024.1080p.WEB-GROUP',
+					infoHash: 'hash-1080p',
+					downloadUrl: 'stream://movie/1-1080p',
+					parsed: { resolution: '1080p', source: 'webdl', codec: 'h264', hdr: null }
+				})
+			],
+			rejectedCount: 0
+		});
+		mocks.grab.mockResolvedValue(createGrabResponse());
+
+		const result = await searchOnAdd.searchForMovie({
+			movieId: 'movie-1',
+			tmdbId: 228967,
+			title: 'Test Movie',
+			year: 2024
+		});
+
+		expect(result).toMatchObject({ success: true });
+		expect(mocks.grab).toHaveBeenCalledTimes(2);
+		const grabbedTitles = mocks.grab.mock.calls.map((c) => c[0].release.title);
+		expect(grabbedTitles).toContain('Movie.2024.2160p.UHD.WEB-GROUP');
+		expect(grabbedTitles).toContain('Movie.2024.1080p.WEB-GROUP');
+		expect(grabbedTitles).not.toContain('Movie.2024.720p.WEB-GROUP');
+	});
+
+	it('fills empty quality bucket for partially-filled multi-quality movie', async () => {
+		mocks.moviesFindFirst.mockResolvedValue({
+			desiredQualities: ['2160p', '1080p'],
+			scoringProfileId: null
+		});
+		mocks.scoringProfilesFindFirst.mockResolvedValue(null);
+		const existing2160pFile = {
+			id: 'file-1',
+			movieId: 'movie-1',
+			relativePath: 'Movie.2024.2160p.mkv',
+			quality: { resolution: '2160p' }
+		};
+		mocks.movieFilesFindFirst.mockResolvedValue(existing2160pFile);
+		mocks.movieFilesFindMany.mockResolvedValue([existing2160pFile]);
+		mocks.searchEnhanced.mockResolvedValue({
+			releases: [
+				createSearchRelease({
+					title: 'Movie.2024.1080p.WEB-GROUP',
+					infoHash: 'hash-1080p',
+					downloadUrl: 'stream://movie/1-1080p',
+					parsed: { resolution: '1080p', source: 'webdl', codec: 'h264', hdr: null }
+				}),
+				createSearchRelease({
+					title: 'Movie.2024.720p.WEB-GROUP',
+					infoHash: 'hash-720p',
+					downloadUrl: 'stream://movie/1-720p',
+					parsed: { resolution: '720p', source: 'webdl', codec: 'h264', hdr: null }
+				})
+			],
+			rejectedCount: 0
+		});
+		mocks.grab.mockResolvedValue(createGrabResponse());
+
+		const result = await searchOnAdd.searchForMovie({
+			movieId: 'movie-1',
+			tmdbId: 228967,
+			title: 'Test Movie',
+			year: 2024
+		});
+
+		expect(result).toMatchObject({ success: true });
+		expect(mocks.grab).toHaveBeenCalledTimes(1);
+		expect(mocks.grab).toHaveBeenCalledWith(
+			expect.objectContaining({
+				options: expect.objectContaining({ isUpgrade: false })
+			})
+		);
+		const grabbedTitles = mocks.grab.mock.calls.map((c) => c[0].release.title);
+		expect(grabbedTitles).toContain('Movie.2024.1080p.WEB-GROUP');
+		expect(grabbedTitles).not.toContain('Movie.2024.720p.WEB-GROUP');
+	});
+
+	it('fills all desired buckets even when an existing file has an undesired resolution', async () => {
+		mocks.moviesFindFirst.mockResolvedValue({
+			desiredQualities: ['2160p', '1080p'],
+			scoringProfileId: null
+		});
+		mocks.scoringProfilesFindFirst.mockResolvedValue(null);
+		const existingUndesiredFile = {
+			id: 'file-stale',
+			movieId: 'movie-1',
+			relativePath: 'Movie.2024.720p.mkv',
+			quality: { resolution: '720p' }
+		};
+		mocks.movieFilesFindFirst.mockResolvedValue(existingUndesiredFile);
+		mocks.movieFilesFindMany.mockResolvedValue([existingUndesiredFile]);
+		mocks.searchEnhanced.mockResolvedValue({
+			releases: [
+				createSearchRelease({
+					title: 'Movie.2024.2160p.UHD.WEB-GROUP',
+					infoHash: 'hash-2160p',
+					downloadUrl: 'stream://movie/1-2160p',
+					parsed: { resolution: '2160p', source: 'webdl', codec: 'h265', hdr: null }
+				}),
+				createSearchRelease({
+					title: 'Movie.2024.1080p.WEB-GROUP',
+					infoHash: 'hash-1080p',
+					downloadUrl: 'stream://movie/1-1080p',
+					parsed: { resolution: '1080p', source: 'webdl', codec: 'h264', hdr: null }
+				})
+			],
+			rejectedCount: 0
+		});
+		mocks.grab.mockResolvedValue(createGrabResponse());
+
+		const result = await searchOnAdd.searchForMovie({
+			movieId: 'movie-1',
+			tmdbId: 228967,
+			title: 'Test Movie',
+			year: 2024
+		});
+
+		expect(result).toMatchObject({ success: true });
+		expect(mocks.grab).toHaveBeenCalledTimes(2);
+		const grabbedTitles = mocks.grab.mock.calls.map((c) => c[0].release.title);
+		expect(grabbedTitles).toContain('Movie.2024.2160p.UHD.WEB-GROUP');
+		expect(grabbedTitles).toContain('Movie.2024.1080p.WEB-GROUP');
+	});
+
+	it('routes to upgrades when all desired buckets are filled for a multi-quality movie', async () => {
+		mocks.moviesFindFirst.mockResolvedValue({
+			desiredQualities: ['2160p', '1080p'],
+			scoringProfileId: null
+		});
+		mocks.scoringProfilesFindFirst.mockResolvedValue(null);
+		const existing2160pFile = {
+			id: 'file-1',
+			movieId: 'movie-1',
+			relativePath: 'Movie.2024.2160p.mkv',
+			quality: { resolution: '2160p' }
+		};
+		const existing1080pFile = {
+			id: 'file-2',
+			movieId: 'movie-1',
+			relativePath: 'Movie.2024.1080p.mkv',
+			quality: { resolution: '1080p' }
+		};
+		mocks.movieFilesFindFirst.mockResolvedValue(existing2160pFile);
+		mocks.movieFilesFindMany.mockResolvedValue([existing2160pFile, existing1080pFile]);
+		mocks.searchEnhanced.mockResolvedValue({
+			releases: [
+				createSearchRelease({
+					title: 'Movie.2024.2160p.UHD.WEB-GROUP',
+					infoHash: 'hash-2160p-upgrade',
+					downloadUrl: 'stream://movie/1-2160p-upgrade',
+					totalScore: 500,
+					parsed: { resolution: '2160p', source: 'webdl', codec: 'h265', hdr: null }
+				})
+			],
+			rejectedCount: 0
+		});
+		mocks.grab.mockResolvedValue(createGrabResponse());
+
+		const result = await searchOnAdd.searchForMovie({
+			movieId: 'movie-1',
+			tmdbId: 228967,
+			title: 'Test Movie',
+			year: 2024
+		});
+
+		expect(result).toMatchObject({ success: true });
+		expect(mocks.grab).toHaveBeenCalledTimes(1);
+		expect(mocks.grab).toHaveBeenCalledWith(
+			expect.objectContaining({
+				options: expect.objectContaining({ isUpgrade: true })
+			})
+		);
+		const grabbedTitles = mocks.grab.mock.calls.map((c) => c[0].release.title);
+		expect(grabbedTitles).toContain('Movie.2024.2160p.UHD.WEB-GROUP');
 	});
 });
 

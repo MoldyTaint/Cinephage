@@ -29,9 +29,22 @@ export class QualityBelowCutoffRule implements StorageInsightRule {
 	readonly type = 'quality-below-cutoff' as const;
 
 	async evaluate(ctx: RuleContext): Promise<InsightFinding[]> {
+		type MovieRow = {
+			movieId: string;
+			title: string | null;
+			tmdbId: number | null;
+			quality: unknown;
+			minResolution: string | null;
+			profileName: string | null;
+		};
+
+		const resolutionOf = (quality: unknown): string =>
+			(quality as { resolution?: string } | null)?.resolution ?? 'unknown';
+
 		// Movies: join movies → movie_files → scoring_profiles
 		const movieRows = ctx.db
 			.select({
+				movieId: movies.id,
 				title: movies.title,
 				tmdbId: movies.tmdbId,
 				quality: movieFiles.quality,
@@ -42,9 +55,31 @@ export class QualityBelowCutoffRule implements StorageInsightRule {
 			.innerJoin(movieFiles, sql`${movieFiles.movieId} = ${movies.id}`)
 			.leftJoin(scoringProfiles, sql`${scoringProfiles.id} = ${movies.scoringProfileId}`)
 			.where(sql`${movies.tmdbId} IS NOT NULL`)
-			.all();
+			.all() as MovieRow[];
+
+		// Multi-quality mode: a movie may have several movie_files at DIFFERENT
+		// resolutions. Only the BEST file per movie should be evaluated against the
+		// cutoff — an intentional lower-resolution tier is not a below-cutoff
+		// candidate when a higher tier already satisfies the profile.
+		const bestPerMovie = new Map<string, MovieRow>();
+		for (const row of movieRows) {
+			const res = resolutionOf(row.quality);
+			const ordinal = RESOLUTION_ORDER[res] ?? 0;
+			const current = bestPerMovie.get(row.movieId);
+			if (!current) {
+				bestPerMovie.set(row.movieId, row);
+				continue;
+			}
+			const currentRes = resolutionOf(current.quality);
+			const currentOrdinal = RESOLUTION_ORDER[currentRes] ?? 0;
+			if (ordinal > currentOrdinal) {
+				bestPerMovie.set(row.movieId, row);
+			}
+		}
+		const dedupedMovieRows = [...bestPerMovie.values()];
 
 		// Episodes: join series → episode_files → scoring_profiles
+		// (multi-quality is a movie-only feature; episodes are left unchanged)
 		const episodeRows = ctx.db
 			.select({
 				title: series.title,
@@ -59,11 +94,11 @@ export class QualityBelowCutoffRule implements StorageInsightRule {
 			.where(sql`${series.tmdbId} IS NOT NULL`)
 			.all();
 
-		const allRows = [...movieRows, ...episodeRows];
+		const allRows = [...dedupedMovieRows, ...episodeRows];
 
 		const belowCutoff = allRows.filter((row) => {
 			if (!row.minResolution) return false;
-			const fileRes = (row.quality as { resolution?: string } | null)?.resolution ?? 'unknown';
+			const fileRes = resolutionOf(row.quality);
 			const fileOrdinal = RESOLUTION_ORDER[fileRes] ?? 0;
 			const cutoffOrdinal = RESOLUTION_ORDER[row.minResolution] ?? 0;
 			return fileOrdinal < cutoffOrdinal;
@@ -82,8 +117,7 @@ export class QualityBelowCutoffRule implements StorageInsightRule {
 					items: belowCutoff.map((r) => ({
 						tmdbId: r.tmdbId,
 						title: r.title,
-						currentResolution:
-							(r.quality as { resolution?: string } | null)?.resolution ?? 'unknown',
+						currentResolution: resolutionOf(r.quality),
 						minResolution: r.minResolution
 					}))
 				},

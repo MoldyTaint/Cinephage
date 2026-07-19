@@ -118,7 +118,10 @@ import { migration_v118 } from './118-add-scan-mode-to-delay-profiles.js';
 import { migration_v119 } from './119-backfill-release-group-from-title.js';
 import { migration_v120 } from './120-migrate-prowlarr-indexers-to-native.js';
 import { migration_v121 } from './121-migrate-jackett-indexers-to-native.js';
-import { migration_v122 } from './122-add-debrid-client-columns.js';
+import { migration_v122 } from './122-remove-quality-scaffolding-defaults.js';
+import { migration_v123 } from './123-add-movies-desired-qualities.js';
+import { migration_v124 } from './124-add-subtitles-movie-file-id.js';
+import { migration_v125 } from './125-add-debrid-client-columns.js';
 
 export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v002,
@@ -240,5 +243,8 @@ export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v119,
 	migration_v120,
 	migration_v121,
-	migration_v122
+	migration_v122,
+	migration_v123,
+	migration_v124,
+	migration_v125
 ];

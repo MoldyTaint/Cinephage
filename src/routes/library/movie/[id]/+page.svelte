@@ -450,6 +450,7 @@
 			// Update local state
 			movie.monitored = editData.monitored;
 			movie.scoringProfileId = editData.scoringProfileId;
+			movie.desiredQualities = editData.desiredQualities;
 			movie.minimumAvailability = editData.minimumAvailability;
 			movie.availabilityDelay = editData.availabilityDelay;
 			movie.wantsSubtitles = editData.wantsSubtitles;

@@ -379,7 +379,7 @@ async function runLiveTests(
 	// Dynamically import modules
 	const { YamlDefinitionLoader } =
 		await import('../src/lib/server/indexers/loader/YamlDefinitionLoader.js');
-	const { YamlIndexer } = await import('../src/lib/server/indexers/runtime/YamlIndexer.js');
+	const { UnifiedIndexer } = await import('../src/lib/server/indexers/runtime/UnifiedIndexer.js');
 
 	// Load all definitions
 	const loader = new YamlDefinitionLoader();
@@ -450,7 +450,7 @@ async function runLiveTests(
 			`  ${c.cyan}Testing ${c.bold}${definition.name}${c.reset}${c.cyan} (${defResult.type}/${defResult.protocol})${c.reset}`
 		);
 
-		const result = await testIndexerLive(definition, YamlIndexer, options);
+		const result = await testIndexerLive(definition, UnifiedIndexer, options);
 		results.push(result);
 
 		// Show results
@@ -482,7 +482,7 @@ async function runLiveTests(
 
 async function testIndexerLive(
 	definition: Record<string, unknown>,
-	YamlIndexer: new (config: unknown) => {
+	IndexerClass: new (config: unknown) => {
 		search(criteria: unknown): Promise<unknown[]>;
 		test?(): Promise<void>;
 		capabilities: {
@@ -503,24 +503,33 @@ async function testIndexerLive(
 	};
 
 	try {
-		// Create synthetic config
-		const config = {
+		// Create synthetic indexer record (mirrors the indexers table shape)
+		const now = new Date().toISOString();
+		const record = {
 			id: `test-${definition.id}`,
 			name: definition.name as string,
 			definitionId: definition.id as string,
-			baseUrl: ((definition.links as string[]) ?? [])[0] || '',
-			alternateUrls: [],
-			protocol: (definition.protocol as string) ?? 'torrent',
 			enabled: true,
+			upstreamEnabled: null,
+			orphaned: false,
+			isBuiltIn: false,
+			baseUrl: ((definition.links as string[]) ?? [])[0] || '',
+			alternateUrls: [] as string[],
 			priority: 50,
 			enableAutomaticSearch: true,
 			enableInteractiveSearch: true,
-			settings: {}
+			settings: {},
+			protocolSettings: null,
+			cachedCategories: null,
+			additionalCategories: null,
+			createdAt: now,
+			updatedAt: now
 		};
 
 		// Create indexer instance
-		const indexer = new YamlIndexer({
-			config,
+		const indexer = new IndexerClass({
+			record,
+			settings: {},
 			definition
 		});
 

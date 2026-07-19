@@ -1531,6 +1531,11 @@ export const episodeUpdateSchema = z
 export const movieUpdateSchema = z.object({
 	monitored: z.boolean().optional(),
 	scoringProfileId: z.string().nullable().optional(),
+	/** Desired qualities for multi-quality mode (null/empty = single-quality). */
+	desiredQualities: z
+		.array(z.enum(['2160p', '1080p', '720p', '480p']))
+		.nullable()
+		.optional(),
 	minimumAvailability: z.string().min(1).optional(),
 	availabilityDelay: z.number().int().min(0).max(365).optional(),
 	providerRefs: z.partialRecord(z.enum(['tmdb', 'anilist', 'mal']), z.string().min(1)).optional(),
@@ -1539,6 +1544,9 @@ export const movieUpdateSchema = z.object({
 	wantsSubtitles: z.boolean().optional(),
 	languageProfileId: z.string().nullable().optional(),
 	delayProfileId: z.string().nullable().optional(),
+	/** Edit-only: opt-in removal of files for resolutions no longer in
+	 *  desiredQualities. Server recomputes the redundant set authoritatively. */
+	removeUnwantedFiles: z.boolean().optional(),
 	/** Relative folder name within the root folder (e.g. "Brokenwood Mysteries"). Used to
 	 *  correct a drifted DB path without touching files on disk. */
 	folderPath: z
@@ -1630,7 +1638,8 @@ export const fileManagementSchema = z.object({
 	extraFileExtensions: z.array(z.string()).default([]),
 	preservePermissions: z.boolean().default(false),
 	chmodFile: z.union([z.string().regex(/^[0-7]{3,4}$/), z.literal('')]).default(''),
-	autoEnabledPreserveSymlinkFolderIds: z.array(z.string()).default([])
+	autoEnabledPreserveSymlinkFolderIds: z.array(z.string()).default([]),
+	defaultImportFolder: z.string().optional()
 });
 export type FileManagementSettings = z.infer<typeof fileManagementSchema>;
 
@@ -1664,6 +1673,11 @@ export const addMovieSchema = z.object({
 	tmdbId: z.number().int().positive(),
 	rootFolderId: z.string().min(1),
 	scoringProfileId: z.string().optional(),
+	/** Desired qualities for multi-quality mode (null/empty = single-quality). */
+	desiredQualities: z
+		.array(z.enum(['2160p', '1080p', '720p', '480p']))
+		.nullable()
+		.optional(),
 	monitored: z.boolean().default(true),
 	minimumAvailability: z.enum(['announced', 'inCinemas', 'released']).default('released'),
 	availabilityDelay: z.number().int().min(0).max(365).default(0),

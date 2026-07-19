@@ -12,6 +12,7 @@ import { relations, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import type { ProtocolSettings } from '$lib/server/indexers/types/index.js';
 import type { NewznabCategory } from '$lib/server/indexers/newznab/types.js';
+import type { DesiredQuality } from '$lib/types/library.js';
 
 // ============================================================================
 // Better Auth Tables
@@ -317,8 +318,6 @@ export const scoringProfiles = sqliteTable('scoring_profiles', {
 	minScore: integer('min_score').default(0),
 	// Score threshold to stop upgrading (-1 = never stop)
 	upgradeUntilScore: integer('upgrade_until_score').default(-1),
-	isBuiltin: integer('is_builtin', { mode: 'boolean' }).default(false),
-	mediaType: text('media_type'),
 	// Minimum score improvement to trigger upgrade
 	minScoreIncrement: integer('min_score_increment').default(0),
 	// Resolution fallback order as JSON array (highest priority first)
@@ -662,6 +661,11 @@ export const movies = sqliteTable(
 		scoringProfileId: text('scoring_profile_id').references(() => scoringProfiles.id, {
 			onDelete: 'set null'
 		}),
+		// Desired qualities for multi-quality mode (e.g. ['2160p', '1080p']).
+		// When >= 2 effective buckets, the movie maintains independent files per
+		// resolution tier; upgrades only replace the same-resolution file.
+		// null/empty/<2 = single-quality mode (current behavior).
+		desiredQualities: text('desired_qualities', { mode: 'json' }).$type<DesiredQuality[]>(),
 		// Language profile for subtitle preferences (deferred reference - languageProfiles defined later)
 		languageProfileId: text('language_profile_id'),
 		// Whether to monitor for upgrades
@@ -1790,6 +1794,11 @@ export const subtitles = sqliteTable(
 		// Link to media (one must be set)
 		movieId: text('movie_id').references(() => movies.id, { onDelete: 'cascade' }),
 		episodeId: text('episode_id').references(() => episodes.id, { onDelete: 'cascade' }),
+		// Link to a specific movie file (multi-quality: one subtitle per resolution tier).
+		// Nullable: null for legacy subtitles or episode subtitles.
+		movieFileId: text('movie_file_id').references(() => movieFiles.id, {
+			onDelete: 'set null'
+		}),
 
 		// File info
 		relativePath: text('relative_path').notNull(),
@@ -2240,6 +2249,10 @@ export const subtitlesRelations = relations(subtitles, ({ one }) => ({
 	episode: one(episodes, {
 		fields: [subtitles.episodeId],
 		references: [episodes.id]
+	}),
+	movieFile: one(movieFiles, {
+		fields: [subtitles.movieFileId],
+		references: [movieFiles.id]
 	}),
 	provider: one(subtitleProviders, {
 		fields: [subtitles.providerId],

@@ -1,0 +1,141 @@
+---
+# BT4G Public DHT Search Engine
+# Uses the XML/RSS endpoint instead of HTML parsing. The RSS <link> element
+# carries the magnet URI directly, and <description> packs
+# "Title<br>Size<br>Category<br>Infohash" - size and infohash are extracted
+# from it via re_replace (guarded by definitions/bt4g.test.ts).
+# RSS provides no seed/leech data, so seeders/leechers are static placeholders.
+id: bt4g
+name: BT4G
+description: BT4G is a public DHT search engine (XML/RSS endpoint)
+language: en-US
+type: public
+encoding: UTF-8
+protocol: torrent
+requestdelay: 3
+
+links:
+  - https://bt4gprx.com/
+  - https://bt4g.com/
+
+caps:
+  categories:
+    '2000': Movies
+    '5000': TV
+    '3000': Audio
+    '8000': Other
+
+  categorymappings:
+    - id: movie
+      cat: '2000'
+      desc: Movies
+      default: true
+    - id: movie
+      cat: '5000'
+      desc: TV
+    - id: audio
+      cat: '3000'
+      desc: Audio
+    - id: doc
+      cat: '8000'
+      desc: Documents
+    - id: app
+      cat: '8000'
+      desc: Applications
+    - id: other
+      cat: '8000'
+      desc: Other
+
+  modes:
+    search: [q]
+    movie-search: [q]
+    tv-search: [q, season, ep]
+
+settings:
+  - name: category
+    type: select
+    label: Search category
+    default: movie
+    options:
+      all: All
+      movie: Movies and TV
+      audio: Audio
+      doc: Documents
+      app: Applications
+      other: Other
+  - name: orderby
+    type: select
+    label: Sort
+    default: seeders
+    options:
+      relevance: Relevance
+      size: Size
+      seeders: Seeders
+      time: Time
+
+search:
+  paths:
+    - path: search?q={{ .Keywords }}&orderby={{ .Config.orderby }}&category={{ .Config.category }}&p=1&page=rss
+      method: get
+
+  response:
+    type: xml
+
+  headers:
+    Accept:
+      - application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8
+    User-Agent:
+      - Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36
+
+  rows:
+    selector: channel > item
+    filters:
+      - name: notcontains
+        args: mnsn.click
+
+  fields:
+    title:
+      selector: title
+
+    details:
+      selector: guid
+
+    # <link> carries the magnet URI directly
+    download:
+      selector: link
+
+    date:
+      selector: pubDate
+      optional: true
+
+    size:
+      selector: description
+      optional: true
+      filters:
+        - name: re_replace
+          args:
+            - (?is)^.*?<br\s*/?>\s*([^<]+).*$
+            - $1
+        - name: trim
+
+    infohash:
+      selector: description
+      optional: true
+      filters:
+        - name: re_replace
+          args:
+            - (?is)^.*<br\s*/?>\s*([a-fA-F0-9]{40})\s*$
+            - $1
+
+    # RSS feed exposes no swarm data
+    seeders:
+      text: '1'
+
+    leechers:
+      text: '0'
+
+    downloadvolumefactor:
+      text: '0'
+
+    uploadvolumefactor:
+      text: '1'
