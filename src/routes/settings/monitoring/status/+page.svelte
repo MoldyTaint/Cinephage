@@ -57,6 +57,10 @@
 	let forecast = $state<StorageForecast | null>(null);
 	let retentionSaving = $state(false);
 	let insightsOpen = $state(false);
+	let scanStarting = $state(false);
+	let syncStarting = $state(false);
+	const isScanning = $derived(layoutState.scanInProgress || scanStarting);
+	const isSyncing = $derived(layoutState.mediaServerSyncing || syncStarting);
 
 	type Insight = {
 		id: string;
@@ -395,21 +399,24 @@
 
 	async function triggerLibraryScan(rootFolderId?: string) {
 		resetScanState();
+		scanStarting = true;
 		try {
 			await scanLibrary(rootFolderId ? { rootFolderId } : { fullScan: true });
 		} catch (error) {
 			scanError = error instanceof Error ? error.message : m.settings_general_failedToStartScan();
+		} finally {
+			scanStarting = false;
 		}
 	}
 
 	async function triggerServerSync() {
-		// Just kick off the sync. The layout's /api/media-server-stats/sync/status
-		// SSE drives layoutState.mediaServerSyncing and calls invalidateAll() on
-		// completion (after the reconcile -> insights chain fires).
+		syncStarting = true;
 		try {
 			await syncMediaServerStats();
 		} catch (error) {
 			toasts.error(error instanceof Error ? error.message : m.status_sync_failed());
+		} finally {
+			syncStarting = false;
 		}
 	}
 </script>
@@ -425,9 +432,9 @@
 				type="button"
 				class="btn btn-sm btn-primary gap-2"
 				onclick={() => void triggerLibraryScan()}
-				disabled={layoutState.scanInProgress || data.rootFolders.length === 0}
+				disabled={isScanning || data.rootFolders.length === 0}
 			>
-				{#if layoutState.scanInProgress}
+				{#if isScanning}
 					<RefreshCw class="h-4 w-4 animate-spin" />
 					{m.settings_general_scanning()}
 				{:else}
@@ -440,10 +447,10 @@
 					type="button"
 					class="btn btn-outline btn-sm gap-2"
 					onclick={() => void triggerServerSync()}
-					disabled={layoutState.mediaServerSyncing}
+					disabled={isSyncing}
 				>
-					<RefreshCw class="h-4 w-4 {layoutState.mediaServerSyncing ? 'animate-spin' : ''}" />
-					Sync Servers
+					<RefreshCw class="h-4 w-4 {isSyncing ? 'animate-spin' : ''}" />
+					{isSyncing ? 'Syncing...' : 'Sync Servers'}
 				</button>
 			{/if}
 			{#if activeInsights.length > 0 || dismissedInsights.length > 0}
