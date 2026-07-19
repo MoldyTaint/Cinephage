@@ -97,14 +97,14 @@
 
 <tr class="group hover:bg-base-200/50 {task.isRunning ? 'bg-primary/5' : ''}">
 	<!-- Task Name -->
-	<td>
+	<td class="max-w-0">
 		<div class="flex items-center gap-3">
 			<div class="min-w-0 flex-1">
 				<div class="truncate font-medium">
 					{(m as unknown as Record<string, () => string>)[`task_name_${camelCaseId}`]?.() ??
 						task.name}
 				</div>
-				<div class="truncate text-sm text-base-content/60">
+				<div class="text-sm text-base-content/60">
 					{(m as unknown as Record<string, () => string>)[`task_desc_${camelCaseId}`]?.() ??
 						task.description}
 				</div>
