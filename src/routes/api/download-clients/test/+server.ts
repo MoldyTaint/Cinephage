@@ -1,12 +1,21 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
-import { downloadClientTestSchema } from '$lib/validation/schemas';
+import { downloadClientImplementationSchema } from '$lib/validation/schemas';
 import { toFriendlyDownloadClientError } from '$lib/downloadClients/errorMessages';
 import { z } from 'zod';
 
-const downloadClientTestWithIdSchema = downloadClientTestSchema.extend({
-	id: z.string().min(1).optional().nullable()
+const downloadClientTestWithIdSchema = z.object({
+	id: z.string().min(1).optional().nullable(),
+	implementation: downloadClientImplementationSchema,
+	host: z.string().min(1, 'Host is required').optional(),
+	port: z.number().int().min(1).max(65535).optional(),
+	useSsl: z.boolean().default(false),
+	urlBase: z.string().max(200).optional().nullable(),
+	mountMode: z.enum(['nzbdav', 'altmount']).optional().nullable(),
+	username: z.string().optional().nullable(),
+	password: z.string().optional().nullable(),
+	apiToken: z.string().optional().nullable()
 });
 
 /**
@@ -39,31 +48,35 @@ export const POST: RequestHandler = async ({ request }) => {
 	const manager = getDownloadClientManager();
 
 	try {
+		const isDebridTest =
+			validated.implementation === 'realdebrid' || validated.implementation === 'torbox';
 		const hasPasswordOverride =
 			typeof validated.password === 'string' && validated.password.trim().length > 0;
 
 		const testResult =
 			validated.id && !hasPasswordOverride
 				? await manager.testClientWithCredentialFallback(validated.id, {
-						host: validated.host,
-						port: validated.port,
-						useSsl: validated.useSsl,
-						urlBase: validated.urlBase,
-						mountMode: validated.mountMode,
-						username: validated.username,
-						password: validated.password,
-						implementation: validated.implementation
-					})
-				: await manager.testClient({
-						host: validated.host,
-						port: validated.port,
+						host: validated.host ?? '',
+						port: validated.port ?? 0,
 						useSsl: validated.useSsl,
 						urlBase: validated.urlBase,
 						mountMode: validated.mountMode,
 						username: validated.username,
 						password: validated.password,
 						implementation: validated.implementation,
-						apiKey: validated.implementation === 'sabnzbd' ? validated.password : undefined
+						apiToken: isDebridTest ? validated.apiToken : undefined
+					})
+				: await manager.testClient({
+						host: validated.host ?? '',
+						port: validated.port ?? 0,
+						useSsl: validated.useSsl,
+						urlBase: validated.urlBase,
+						mountMode: validated.mountMode,
+						username: validated.username,
+						password: validated.password,
+						implementation: validated.implementation,
+						apiKey: validated.implementation === 'sabnzbd' ? validated.password : undefined,
+						apiToken: isDebridTest ? validated.apiToken : undefined
 					});
 
 		if (!testResult.success) {

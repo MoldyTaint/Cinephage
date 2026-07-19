@@ -37,6 +37,7 @@
 	import type { ActivityStreamEvents } from '$lib/types/sse/events/activity-events.js';
 	import { Activity, Loader2 } from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import { supportsQueuePauseResume } from '$lib/components/activity/activity-display-utils.js';
 	import {
 		ACTIVITY_REFRESH_MIN_INTERVAL_MS,
 		type ActivityTab,
@@ -221,6 +222,7 @@
 		for (const activity of activities) {
 			if (!selectedActiveIds.has(activity.id)) continue;
 			if (!isActiveQueueActivity(activity) || !activity.queueItemId) continue;
+			if (!supportsQueuePauseResume(activity)) continue;
 			if (!statuses.includes(activity.status)) continue;
 			if (!queueIds.includes(activity.queueItemId)) {
 				queueIds.push(activity.queueItemId);

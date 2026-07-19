@@ -71,7 +71,8 @@ import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import {
 	getMediaParseStem,
 	matchEpisodesByIdentifier,
-	resolveTvEpisodeIdentifier,
+	matchEpisodesFromQueueContext as matchEpisodesFromQueueContextShared,
+	resolveEpisodeIdentifierWithFallback as resolveEpisodeIdentifierWithFallbackShared,
 	type ResolvedTvEpisodeIdentifier
 } from '$lib/server/library/tv-episode-resolver.js';
 import { isImportedQueueStatus, type QueueStatus } from '$lib/types/queue';
@@ -866,7 +867,7 @@ export class ImportService extends EventEmitter {
 		const isUpgrade = queueItem.isUpgrade || false;
 
 		// Log upgrade detection but DON'T delete old files yet - wait until new file is imported
-		if (existingFiles.length > 0 && isUpgrade) {
+		if (existingFiles.some((file) => file.relativePath !== destFileName) && isUpgrade) {
 			logger.info(
 				{
 					movieId: movie.id,
@@ -958,11 +959,7 @@ export class ImportService extends EventEmitter {
 		const relativePath = destFileName;
 
 		// Check if a file record already exists for this path (prevent duplicates)
-		const existingFileRecord = await db
-			.select()
-			.from(movieFiles)
-			.where(and(eq(movieFiles.movieId, movie.id), eq(movieFiles.relativePath, relativePath)))
-			.limit(1);
+		const existingFileRecord = existingFiles.filter((file) => file.relativePath === relativePath);
 
 		const fileData = {
 			movieId: movie.id,
@@ -1440,54 +1437,31 @@ export class ImportService extends EventEmitter {
 		queueItem: Pick<typeof downloadQueue.$inferSelect, 'title' | 'seasonNumber'>,
 		seriesType: 'standard' | 'anime' | 'daily'
 	): ResolvedTvEpisodeIdentifier | null {
-		const seasonHint = queueItem.seasonNumber ?? undefined;
-		const candidates: Array<{
-			source: 'file' | 'queueTitle' | 'parentFolder';
-			value?: string | null;
-		}> = [
-			{ source: 'file', value: videoFilePath },
-			{ source: 'queueTitle', value: queueItem.title },
-			{ source: 'parentFolder', value: basename(dirname(videoFilePath)) }
-		];
-		const seenStems = new Set<string>();
+		const result = resolveEpisodeIdentifierWithFallbackShared(
+			videoFilePath,
+			{
+				title: queueItem.title,
+				seasonNumber: queueItem.seasonNumber
+			},
+			seriesType
+		);
 
-		for (const candidate of candidates) {
-			if (!candidate.value) continue;
-			const stem = getMediaParseStem(candidate.value);
-			const normalizedStem = stem.trim().toLowerCase();
-			if (!normalizedStem || seenStems.has(normalizedStem)) {
-				continue;
-			}
-			seenStems.add(normalizedStem);
-
-			const parsed = this.parser.parse(stem);
-			const identifier = resolveTvEpisodeIdentifier({
-				filePath: videoFilePath,
-				fileName: stem,
-				parsed,
-				seasonHint,
-				seriesType
-			});
-
-			if (!identifier) {
-				continue;
-			}
-
-			if (candidate.source !== 'file') {
-				logger.info(
-					{
-						sourcePath: videoFilePath,
-						fallbackSource: candidate.source,
-						fallbackToken: stem
-					},
-					'[ImportService] Resolved episode identifier from fallback context'
-				);
-			}
-
-			return identifier;
+		if (!result) {
+			return null;
 		}
 
-		return null;
+		if (result.source !== 'file') {
+			logger.info(
+				{
+					sourcePath: videoFilePath,
+					fallbackSource: result.source,
+					fallbackToken: result.stem
+				},
+				'[ImportService] Resolved episode identifier from fallback context'
+			);
+		}
+
+		return result.identifier;
 	}
 
 	private async importEpisodeFile(
@@ -1674,15 +1648,8 @@ export class ImportService extends EventEmitter {
 				);
 			}
 		}
-
 		// Check if a file record already exists for this path (prevent duplicates)
-		const existingFileRecord = await db
-			.select()
-			.from(episodeFiles)
-			.where(
-				and(eq(episodeFiles.seriesId, seriesData.id), eq(episodeFiles.relativePath, relativePath))
-			)
-			.limit(1);
+		const existingFileRecord = existingFiles.filter((file) => file.relativePath === relativePath);
 
 		let fileId: string;
 		const fileData = {
@@ -1811,46 +1778,14 @@ export class ImportService extends EventEmitter {
 		queueItem: Pick<typeof downloadQueue.$inferSelect, 'episodeIds' | 'seasonNumber'>,
 		identifier: ResolvedTvEpisodeIdentifier
 	): Array<typeof episodes.$inferSelect> {
-		if (identifier.numbering !== 'standard') {
-			return [];
-		}
-
-		const queuedEpisodeIds = queueItem.episodeIds ?? [];
-		if (queuedEpisodeIds.length === 0) {
-			return [];
-		}
-
-		const targetSeason = queueItem.seasonNumber ?? identifier.seasonNumber;
-		if (targetSeason === undefined || targetSeason === null) {
-			return [];
-		}
-
-		// Require season alignment before applying relative index mapping.
-		if (identifier.seasonNumber !== targetSeason) {
-			return [];
-		}
-
-		const queuedEpisodesInSeason = seriesEpisodes
-			.filter(
-				(episode) => queuedEpisodeIds.includes(episode.id) && episode.seasonNumber === targetSeason
-			)
-			.sort((a, b) => a.episodeNumber - b.episodeNumber);
-
-		if (queuedEpisodesInSeason.length === 0) {
-			return [];
-		}
-
-		const resolved = identifier.episodeNumbers
-			.map((episodeNumber) => queuedEpisodesInSeason[episodeNumber - 1])
-			.filter((episode): episode is typeof episodes.$inferSelect => Boolean(episode));
-
-		if (resolved.length !== identifier.episodeNumbers.length) {
-			return [];
-		}
-
-		// Deduplicate in case a release token repeats an episode number.
-		const uniqueById = new Map(resolved.map((episode) => [episode.id, episode]));
-		return [...uniqueById.values()];
+		return matchEpisodesFromQueueContextShared(
+			seriesEpisodes,
+			{
+				episodeIds: queueItem.episodeIds,
+				seasonNumber: queueItem.seasonNumber
+			},
+			identifier
+		);
 	}
 
 	/**
@@ -2179,9 +2114,6 @@ export class ImportService extends EventEmitter {
 		return map[channels] ?? `${channels}.0`;
 	}
 
-	/**
-	 * Build a movie filename using the naming service
-	 */
 	private buildMovieFileName(
 		movie: typeof movies.$inferSelect,
 		sourcePath: string,
@@ -2212,9 +2144,6 @@ export class ImportService extends EventEmitter {
 		return this.getNamingService().generateMovieFileName(namingInfo);
 	}
 
-	/**
-	 * Build an episode filename using the naming service
-	 */
 	private buildEpisodeFileName(
 		seriesData: typeof series.$inferSelect,
 		seasonNum: number,
@@ -2629,7 +2558,7 @@ export class ImportService extends EventEmitter {
 	/**
 	 * Delete an episode file (both database record and physical file)
 	 */
-	private async deleteEpisodeFile(
+	async deleteEpisodeFile(
 		fileId: string,
 		seriesId: string,
 		recycleEnabled?: boolean
@@ -2732,10 +2661,7 @@ export class ImportService extends EventEmitter {
 	 * Trigger subtitle search for newly imported media
 	 * Runs asynchronously and doesn't block import completion
 	 */
-	private async triggerSubtitleSearch(
-		mediaType: 'movie' | 'episode',
-		mediaId: string
-	): Promise<void> {
+	async triggerSubtitleSearch(mediaType: 'movie' | 'episode', mediaId: string): Promise<void> {
 		try {
 			// Check if subtitle search on import is enabled
 			const settings = await monitoringScheduler.getSettings();
@@ -2778,7 +2704,7 @@ export class ImportService extends EventEmitter {
 	/**
 	 * Trigger subtitle search for episodes associated with imported episode files
 	 */
-	private async triggerSubtitleSearchForEpisodeFiles(fileIds: string[]): Promise<void> {
+	async triggerSubtitleSearchForEpisodeFiles(fileIds: string[]): Promise<void> {
 		// Check if subtitle search on import is enabled
 		const settings = await monitoringScheduler.getSettings();
 		if (!settings.subtitleSearchOnImportEnabled) {

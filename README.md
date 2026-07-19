@@ -112,8 +112,9 @@ Dynamic content discovery with auto-add to library. Import from IMDb, Trakt, TMD
 ## Requirements
 
 - **TMDB API Key** — Free at [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api)
-- **Download Client** (optional) — qBittorrent, SABnzbd, or NZBGet
+- **Download Client** (optional) — qBittorrent, SABnzbd, NZBGet, Real-Debrid, or TorBox
   - Or use streaming mode — no download client needed
+  - Real-Debrid and TorBox accept torrent releases, materialize ready files directly into the resolved library destination, and can optionally remove provider items after a durable import.
 
 ## Quick Start
 

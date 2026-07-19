@@ -3611,6 +3611,7 @@
 	"status_healthy": "Gesund",
 	"status_idle": "Leerlauf",
 	"status_imported": "Importiert",
+	"status_materializing": "Materialisierung",
 	"status_insights_subtitle": "Issues detected across your library and media servers",
 	"status_insights_title": "Storage Insights",
 	"status_libraries_subtitle": "Manage your media libraries and their root folders",
@@ -4118,5 +4119,17 @@
 	"unmatched_pagination_perPage25": "25 pro Seite",
 	"unmatched_pagination_perPage50": "50 pro Seite",
 	"unmatched_pagination_showing": "Zeige {start} - {end} von {total} Dateien",
-	"validation_maxChars": "Max. {max} Zeichen."
+	"validation_maxChars": "Max. {max} Zeichen.",
+	"downloadClient_realdebrid": "Real-Debrid",
+	"downloadClient_torbox": "TorBox",
+	"downloadClient_protocol_debrid": "Debrid",
+	"downloadClient_apiToken": "API-Token",
+	"downloadClient_removeAfterImport": "Nach dem Import beim Anbieter entfernen",
+	"settings_integrations_downloadClients_debrid": "Debrid",
+	"acquisition_acquireVia": "Beziehen über",
+	"acquisition_default": "Standard",
+	"acquisition_torrent": "Torrent",
+	"acquisition_debrid": "Debrid",
+	"acquisition_debridUnavailableReason": "Fügen Sie einen Debrid-Client mit API-Token hinzu und aktivieren Sie ihn, um Debrid zu verwenden.",
+	"acquisition_defaultPreference": "Standardmäßiger Torrent-Bezug"
 }

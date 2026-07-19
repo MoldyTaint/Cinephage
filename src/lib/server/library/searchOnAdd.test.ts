@@ -452,6 +452,69 @@ describe('SearchOnAddService.searchForMovie monitoring behavior', () => {
 	});
 });
 
+describe('SearchOnAddService.searchForSeries pack targets', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		resetAlternateTitleRefreshCache();
+		mocks.getIndexerManager.mockResolvedValue(createIndexerManagerMock());
+		mocks.getSeriesSearchTitles.mockResolvedValue(['The Wire']);
+		mocks.fetchAndStoreSeriesAlternateTitles.mockResolvedValue(0);
+		mocks.searchEnhanced.mockResolvedValue({
+			releases: [
+				createSearchRelease({
+					title: 'The.Wire.2002.Complete.Series.S01-S05.720p.WEB.x264-GROUP',
+					infoHash: 'abc123',
+					downloadUrl: 'https://example.test/download/series'
+				})
+			],
+			rejectedCount: 0
+		});
+		mocks.grab.mockResolvedValue(createGrabResponse());
+	});
+
+	it('passes missing series episode IDs to a complete-series pack grab', async () => {
+		mocks.episodesFindMany.mockResolvedValue([
+			createEpisode({
+				id: 'wire-s01e01',
+				seriesId: 'series-wire',
+				seasonNumber: 1,
+				episodeNumber: 1,
+				hasFile: false,
+				monitored: true
+			}),
+			createEpisode({
+				id: 'wire-s05e10',
+				seriesId: 'series-wire',
+				seasonNumber: 5,
+				episodeNumber: 10,
+				hasFile: false,
+				monitored: true
+			})
+		]);
+
+		const result = await searchOnAdd.searchForSeries({
+			seriesId: 'series-wire',
+			tmdbId: 1438,
+			tvdbId: 79126,
+			imdbId: 'tt0306414',
+			title: 'The Wire',
+			year: 2002,
+			monitorType: 'all'
+		});
+
+		expect(mocks.grab).toHaveBeenCalledWith(
+			expect.objectContaining({
+				target: {
+					type: 'series',
+					seriesId: 'series-wire',
+					episodeIds: ['wire-s01e01', 'wire-s05e10']
+				}
+			})
+		);
+		expect(result.success).toBe(true);
+	});
+});
+
 describe('SearchOnAddService.searchForMovie multi-quality buckets', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();

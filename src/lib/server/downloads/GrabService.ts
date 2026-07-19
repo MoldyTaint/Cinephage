@@ -1,8 +1,15 @@
 import { grabDecisionPipeline } from '$lib/server/filters/GrabDecisionPipeline.js';
 import { qualityFilter } from '$lib/server/quality/QualityFilter.js';
 import { db } from '$lib/server/db/index.js';
-import { movies, series, movieFiles, episodeFiles, rootFolders } from '$lib/server/db/schema.js';
-import { eq } from 'drizzle-orm';
+import {
+	movies,
+	series,
+	episodes,
+	movieFiles,
+	episodeFiles,
+	rootFolders
+} from '$lib/server/db/schema.js';
+import { and, eq, ne } from 'drizzle-orm';
 import type { GrabRequest, GrabResult, ResolvedContext, HandlerResult } from './grab-types.js';
 import type { GrabDecisionContext, ExistingFile } from '$lib/server/filters/stages/grab/types.js';
 import { mediaOccupancyService } from '$lib/server/acquisition/MediaOccupancyService.js';
@@ -10,6 +17,8 @@ import { TorrentHandler } from './handlers/TorrentHandler.js';
 import { UsenetHandler } from './handlers/UsenetHandler.js';
 import { StreamingHandler } from './handlers/StreamingHandler.js';
 import { NzbStreamingHandler } from './handlers/NzbStreamingHandler.js';
+import { DebridHandler } from './handlers/DebridHandler.js';
+import { getDefaultAcquisitionProtocol } from '$lib/server/settings/acquisition.js';
 import { createChildLogger } from '$lib/logging/index.js';
 import { grabRejectionLogLevel } from './grab-rejection-log-level.js';
 
@@ -143,6 +152,18 @@ class GrabServiceImpl {
 				episodeIds = target.episodeIds;
 			} else {
 				episodeIds = target.episodeIds;
+				if (episodeIds.length === 0 && seriesId) {
+					const conditions = [
+						eq(episodes.seriesId, seriesId),
+						eq(episodes.hasFile, false),
+						ne(episodes.seasonNumber, 0)
+					];
+					if (request.options.isAutomatic) conditions.push(eq(episodes.monitored, true));
+					const missingEpisodes = await db.query.episodes.findMany({
+						where: and(...conditions)
+					});
+					episodeIds = missingEpisodes.map((episode) => episode.id);
+				}
 			}
 		}
 
@@ -242,6 +263,26 @@ class GrabServiceImpl {
 		resolved: ResolvedContext
 	): Promise<HandlerResult> {
 		const protocol = request.release.protocol;
+		const requestedAcquisition = request.options.acquisitionProtocol;
+
+		if (requestedAcquisition === 'debrid' && protocol !== 'torrent') {
+			return {
+				success: false,
+				error: 'Debrid acquisition requires a torrent release'
+			};
+		}
+
+		if (protocol === 'torrent') {
+			const acquisitionProtocol =
+				requestedAcquisition === 'default'
+					? getDefaultAcquisitionProtocol()
+					: (requestedAcquisition ??
+						(request.options.isAutomatic ? getDefaultAcquisitionProtocol() : 'torrent'));
+
+			if (acquisitionProtocol === 'debrid') {
+				return new DebridHandler().handle(request, resolved);
+			}
+		}
 
 		switch (protocol) {
 			case 'torrent': {

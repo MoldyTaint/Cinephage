@@ -489,6 +489,12 @@ export const downloadClients = sqliteTable('download_clients', {
 	urlBase: text('url_base'),
 	mountMode: text('mount_mode'),
 
+	// Debrid provider settings (realdebrid, torbox)
+	// Encrypted API token (encrypted with debridTokenCrypto, distinct from apiKeyCrypto)
+	apiToken: text('api_token'),
+	// Whether to remove the torrent from the debrid provider after import
+	removeAfterImport: integer('remove_after_import', { mode: 'boolean' }).default(false),
+
 	// Category settings (separate for movie/tv)
 	movieCategory: text('movie_category').default('movies'),
 	tvCategory: text('tv_category').default('tv'),
@@ -1268,7 +1274,7 @@ export const downloadQueue = sqliteTable(
 		// Original download/magnet URL
 		downloadUrl: text('download_url'),
 		magnetUrl: text('magnet_url'),
-		// Protocol: 'torrent' | 'usenet' | 'streaming'
+		// Queue lifecycle owner: 'torrent' | 'usenet' | 'streaming' | 'debrid'
 		protocol: text('protocol').notNull().default('torrent'),
 
 		// Linked media (at least one should be set)
@@ -1280,7 +1286,7 @@ export const downloadQueue = sqliteTable(
 		seasonNumber: integer('season_number'),
 
 		// Status tracking
-		// 'queued' | 'downloading' | 'paused' | 'completed' | 'importing' | 'imported' | 'failed' | 'seeding' | 'removed'
+		// 'queued' | 'downloading' | 'paused' | 'completed' | 'postprocessing' | 'importing' | 'imported' | 'failed' | 'seeding' | 'removed'
 		status: text('status').notNull().default('queued'),
 		// Download progress (0.0 - 1.0)
 		progress: text('progress').default('0'), // Stored as text for decimal precision

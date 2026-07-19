@@ -397,7 +397,12 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			const activeQueueItems = await db
 				.select()
 				.from(downloadQueue)
-				.where(not(inArray(downloadQueue.status, TERMINAL_STATUSES)));
+				.where(
+					and(
+						not(inArray(downloadQueue.status, TERMINAL_STATUSES)),
+						not(eq(downloadQueue.protocol, 'debrid'))
+					)
+				);
 
 			// Build sets of known download IDs and info hashes for quick lookup
 			const knownDownloadIds = new Set<string>();
@@ -559,7 +564,12 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			const activeQueueItems = await db
 				.select()
 				.from(downloadQueue)
-				.where(not(inArray(downloadQueue.status, TERMINAL_STATUSES)));
+				.where(
+					and(
+						not(inArray(downloadQueue.status, TERMINAL_STATUSES)),
+						not(eq(downloadQueue.protocol, 'debrid'))
+					)
+				);
 
 			const knownHashes = new Set<string>();
 			// "Actively tracked" = a genuinely in-flight row. A hash whose only rows are
@@ -1178,7 +1188,8 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			.where(
 				and(
 					not(inArray(downloadQueue.status, TERMINAL_STATUSES)),
-					not(inArray(downloadQueue.status, POST_IMPORT_STATUSES))
+					not(inArray(downloadQueue.status, POST_IMPORT_STATUSES)),
+					not(eq(downloadQueue.protocol, 'debrid'))
 				)
 			);
 
@@ -2243,6 +2254,58 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 	}
 
 	/**
+	 * Complete a previously persisted debrid submission intent.
+	 *
+	 * Submission owns queue identity; the dedicated debrid poller owns provider
+	 * polling and materialization.
+	 */
+	async completeDebridSubmission(id: string, providerItemId: string): Promise<QueueItem | null> {
+		await db
+			.update(downloadQueue)
+			.set({
+				downloadId: providerItemId,
+				status: 'queued',
+				progress: '0',
+				downloadSpeed: 0,
+				uploadSpeed: 0,
+				eta: null,
+				errorMessage: null,
+				startedAt: null,
+				completedAt: null,
+				lastAttemptAt: new Date().toISOString()
+			})
+			.where(and(eq(downloadQueue.id, id), eq(downloadQueue.protocol, 'debrid')));
+
+		const item = await this.getQueueItem(id);
+		if (item) {
+			this.emit('queue:updated', item);
+			this.emitSSE('queue:updated', item);
+		}
+		return item;
+	}
+
+	/** Re-arm an existing failed debrid row as the durable intent for retry. */
+	async prepareDebridSubmissionIntent(id: string, infoHash: string): Promise<QueueItem | null> {
+		await db
+			.update(downloadQueue)
+			.set({
+				downloadId: `debrid-intent:${infoHash.toLowerCase()}`,
+				status: 'queued',
+				progress: '0',
+				errorMessage: null,
+				lastAttemptAt: new Date().toISOString()
+			})
+			.where(and(eq(downloadQueue.id, id), eq(downloadQueue.protocol, 'debrid')));
+
+		const item = await this.getQueueItem(id);
+		if (item) {
+			this.emit('queue:updated', item);
+			this.emitSSE('queue:updated', item);
+		}
+		return item;
+	}
+
+	/**
 	 * Remove an item from the queue and optionally from the client
 	 */
 	async removeFromQueue(
@@ -2479,17 +2542,17 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 	 * but torrent is still seeding. removeCompletedDownloads() will set to 'imported'
 	 * and delete when seeding requirements are met.
 	 *
-	 * For usenet: Sets status to 'imported' directly (no seeding needed).
+	 * For usenet and debrid: Sets status to 'imported' directly (no seeding needed).
 	 */
 	async markImported(
 		id: string,
 		importedPath: string,
-		protocol?: 'torrent' | 'usenet'
+		protocol?: 'torrent' | 'usenet' | 'debrid'
 	): Promise<void> {
 		const now = new Date().toISOString();
 
 		// For torrents, use 'seeding-imported' to show it's imported but still seeding
-		// For usenet, use 'imported' directly (no seeding)
+		// For usenet and debrid, use 'imported' directly (no seeding)
 		const status = protocol === 'torrent' ? 'seeding-imported' : 'imported';
 
 		await db
@@ -2670,7 +2733,13 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		await db
 			.update(downloadQueue)
 			.set({ stalledSince: new Date(now).toISOString() })
-			.where(and(eq(downloadQueue.status, 'stalled'), isNull(downloadQueue.stalledSince)));
+			.where(
+				and(
+					eq(downloadQueue.status, 'stalled'),
+					isNull(downloadQueue.stalledSince),
+					not(eq(downloadQueue.protocol, 'debrid'))
+				)
+			);
 
 		// Find stalled items whose persisted stall start has exceeded the timeout.
 		const cutoff = new Date(now - timeoutMs).toISOString();
@@ -2681,7 +2750,8 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				and(
 					eq(downloadQueue.status, 'stalled'),
 					isNotNull(downloadQueue.stalledSince),
-					lte(downloadQueue.stalledSince, cutoff)
+					lte(downloadQueue.stalledSince, cutoff),
+					not(eq(downloadQueue.protocol, 'debrid'))
 				)
 			);
 
@@ -3149,7 +3219,12 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		const activeQueueItems = await db
 			.select({ downloadId: downloadQueue.downloadId, infoHash: downloadQueue.infoHash })
 			.from(downloadQueue)
-			.where(not(inArray(downloadQueue.status, TERMINAL_STATUSES)));
+			.where(
+				and(
+					not(inArray(downloadQueue.status, TERMINAL_STATUSES)),
+					not(eq(downloadQueue.protocol, 'debrid'))
+				)
+			);
 
 		const trackedIds = new Set<string>();
 		for (const item of activeQueueItems) {

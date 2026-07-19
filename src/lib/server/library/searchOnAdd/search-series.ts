@@ -6,6 +6,9 @@ import { getIndexerManager } from '$lib/server/indexers/IndexerManager.js';
 import { evaluateIndexerSearchAvailability } from '$lib/server/indexers/search/availability';
 import { grabService } from '$lib/server/downloads/GrabService.js';
 import { logger } from '$lib/logging/index.js';
+import { db } from '$lib/server/db/index.js';
+import { episodes } from '$lib/server/db/schema.js';
+import { and, eq, ne } from 'drizzle-orm';
 import type { SearchForSeriesParams, GrabResult, SearchCriteria } from './types.js';
 import type { AltTitleRefresher } from './alt-titles.js';
 
@@ -15,7 +18,17 @@ export async function searchForSeries(
 	params: SearchForSeriesParams,
 	altTitles: AltTitleRefresher
 ): Promise<GrabResult> {
-	const { seriesId, tmdbId, tvdbId, imdbId, title, year, scoringProfileId, monitorType } = params;
+	const {
+		seriesId,
+		tmdbId,
+		tvdbId,
+		imdbId,
+		title,
+		year,
+		scoringProfileId,
+		monitorType,
+		bypassMonitoring = false
+	} = params;
 
 	logger.info(
 		{
@@ -109,6 +122,23 @@ export async function searchForSeries(
 			return { success: true };
 		}
 
+		const episodeConditions = [
+			eq(episodes.seriesId, seriesId),
+			eq(episodes.hasFile, false),
+			ne(episodes.seasonNumber, 0)
+		];
+		if (!bypassMonitoring) episodeConditions.push(eq(episodes.monitored, true));
+		const episodeIds = (await db.query.episodes.findMany({ where: and(...episodeConditions) })).map(
+			(episode) => episode.id
+		);
+		if (episodeIds.length === 0) {
+			logger.info(
+				{ seriesId },
+				'[SearchOnAdd] Series pack search has no missing episodes to target'
+			);
+			return { success: false, error: 'Series has no missing episodes to search' };
+		}
+
 		for (const release of searchResult.releases) {
 			const grabResult = await grabService.grab({
 				release: {
@@ -124,7 +154,7 @@ export async function searchForSeries(
 				target: {
 					type: 'series' as const,
 					seriesId,
-					episodeIds: []
+					episodeIds
 				},
 				options: {
 					force: false,

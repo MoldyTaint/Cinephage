@@ -133,8 +133,9 @@ import {
  * Version 111: Add rename_history table for permanent file rename audit trail
  * Version 123: Add desired_qualities column to movies for multi-quality per-movie support
  * Version 124: Add movie_file_id to subtitles for per-file subtitle association
+ * Version 125: Add api_token and remove_after_import columns to download_clients (debrid support)
  */
-export const CURRENT_SCHEMA_VERSION = 124;
+export const CURRENT_SCHEMA_VERSION = 125;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -264,6 +265,8 @@ const TABLE_DEFINITIONS: string[] = [
 		"password" text,
 		"url_base" text,
 		"mount_mode" text,
+		"api_token" text,
+		"remove_after_import" integer DEFAULT 0,
 		"movie_category" text DEFAULT 'movies',
 		"tv_category" text DEFAULT 'tv',
 		"recent_priority" text DEFAULT 'normal',

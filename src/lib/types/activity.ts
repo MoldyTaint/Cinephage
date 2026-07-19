@@ -170,12 +170,14 @@ export interface UnifiedActivity {
 	// Source info
 	indexerId: string | null;
 	indexerName: string | null;
-	protocol: 'torrent' | 'usenet' | 'streaming' | null;
+	protocol: 'torrent' | 'usenet' | 'streaming' | 'debrid' | null;
 	downloadClientId?: string | null;
 	downloadClientName?: string | null;
 
 	// Status
 	status: ActivityStatus;
+	/** Raw queue lifecycle status retained for protocol-specific presentation. */
+	queueStatus?: string;
 	statusReason?: string;
 	downloadProgress?: number; // 0-100 for in-progress
 
@@ -208,7 +210,7 @@ export interface ActivityFilters {
 	search?: string;
 	startDate?: string;
 	endDate?: string;
-	protocol?: 'torrent' | 'usenet' | 'streaming' | 'all';
+	protocol?: 'torrent' | 'usenet' | 'streaming' | 'debrid' | 'all';
 	indexer?: string;
 	releaseGroup?: string;
 	resolution?: string;

@@ -1,6 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
+import { getDefaultAcquisitionProtocol } from '$lib/server/settings/acquisition.js';
 
 export const load: PageServerLoad = async () => {
 	const downloadClientManager = getDownloadClientManager();
@@ -11,6 +12,7 @@ export const load: PageServerLoad = async () => {
 		downloadClients,
 		stalledDownloadTimeoutMinutes: settings.stalledDownloadTimeoutMinutes,
 		stalledDownloadProgressThreshold: settings.stalledDownloadProgressThreshold,
-		stalledDownloadBlocklistHours: settings.stalledDownloadBlocklistHours
+		stalledDownloadBlocklistHours: settings.stalledDownloadBlocklistHours,
+		defaultAcquisitionProtocol: getDefaultAcquisitionProtocol()
 	};
 };

@@ -72,6 +72,9 @@ export const statusConfig: Record<
  * {@link statusConfig}.
  */
 export function getStatusLabel(activity: UnifiedActivity, fallbackLabel?: string): string {
+	if (isDebridMaterializing(activity)) {
+		return m.status_materializing();
+	}
 	if (activity.status === 'failed' && isImportFailedActivity(activity)) {
 		return m.activity_importFailed();
 	}
@@ -80,6 +83,17 @@ export function getStatusLabel(activity: UnifiedActivity, fallbackLabel?: string
 		if (taskLabel) return m.activity_taskError({ task: taskLabel });
 	}
 	return fallbackLabel ?? statusConfig[activity.status]?.label ?? activity.status;
+}
+
+export function isDebridMaterializing(
+	activity: Pick<UnifiedActivity, 'protocol' | 'queueStatus'>
+): boolean {
+	return activity.protocol === 'debrid' && activity.queueStatus === 'postprocessing';
+}
+
+/** Debrid providers do not expose pause or resume operations. */
+export function supportsQueuePauseResume(activity: Pick<UnifiedActivity, 'protocol'>): boolean {
+	return activity.protocol !== 'debrid';
 }
 
 /**

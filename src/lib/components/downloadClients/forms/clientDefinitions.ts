@@ -86,5 +86,28 @@ export const clientDefinitions: DownloadClientDefinition[] = [
 		supportsCategories: false,
 		supportsPriority: false,
 		supportsSeedingLimits: false
+	},
+	// Debrid providers
+	{
+		id: 'realdebrid',
+		name: 'Real-Debrid',
+		description: 'Real-Debrid torrent acquisition provider',
+		defaultPort: 443,
+		protocol: 'debrid',
+		supportsCategories: false,
+		supportsPriority: false,
+		supportsSeedingLimits: false,
+		isDebrid: true
+	},
+	{
+		id: 'torbox',
+		name: 'TorBox',
+		description: 'TorBox torrent acquisition provider',
+		defaultPort: 443,
+		protocol: 'debrid',
+		supportsCategories: false,
+		supportsPriority: false,
+		supportsSeedingLimits: false,
+		isDebrid: true
 	}
 ];

@@ -5,6 +5,7 @@
 	import {
 		statusConfig,
 		getStatusLabel,
+		isDebridMaterializing,
 		getActivityCategoryTag,
 		formatRelativeTime,
 		type ActivityCategoryTag
@@ -63,7 +64,7 @@
 				? 'animate-spin'
 				: ''}"
 		/>
-		{#if activity.status === 'downloading' && activity.downloadProgress !== undefined}
+		{#if activity.status === 'downloading' && activity.downloadProgress !== undefined && !isDebridMaterializing(activity)}
 			{activity.downloadProgress}%
 		{:else if mobileCompactLabel && compactLabel}
 			<span class="sm:hidden">{mobileCompactLabel}</span>

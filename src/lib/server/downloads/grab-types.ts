@@ -20,6 +20,7 @@ export interface GrabRequest {
 	options: GrabDecisionOptions & {
 		downloadClientId?: number | string;
 		streamUsenet?: boolean;
+		acquisitionProtocol?: 'default' | 'torrent' | 'debrid';
 	};
 }
 

@@ -92,6 +92,8 @@
 	let mountMode = $state<'nzbdav' | 'altmount' | ''>('');
 	let username = $state('');
 	let password = $state('');
+	let apiToken = $state('');
+	let removeAfterImport = $state(false);
 
 	let movieCategory = $state('movies');
 	let tvCategory = $state('tv');
@@ -134,6 +136,8 @@
 		selectedDefinition?.protocol === 'usenet' && selectedDefinition?.id === 'sabnzbd'
 	);
 	const isNntpServer = $derived(implementation === 'nntp');
+	const isDebrid = $derived(selectedDefinition?.isDebrid === true);
+	const hasApiToken = $derived((client as DownloadClient | undefined)?.hasApiToken ?? false);
 	const isSabnzbd = $derived(implementation === 'sabnzbd');
 	const isMountModeClient = $derived(
 		isSabnzbd && (mountMode === 'nzbdav' || mountMode === 'altmount')
@@ -218,6 +222,7 @@
 			mountMode = storedMountMode === 'altmount' || storedMountMode === 'nzbdav' ? 'nzbdav' : '';
 			username = client?.username ?? '';
 			password = '';
+			apiToken = '';
 
 			const dcClient = client as DownloadClient | undefined;
 			movieCategory = dcClient?.movieCategory ?? 'movies';
@@ -225,6 +230,7 @@
 			recentPriority = dcClient?.recentPriority ?? 'normal';
 			olderPriority = dcClient?.olderPriority ?? 'normal';
 			initialState = dcClient?.initialState ?? 'start';
+			removeAfterImport = dcClient?.removeAfterImport ?? false;
 			downloadPathLocal = dcClient?.downloadPathLocal ?? '';
 			downloadPathRemote = dcClient?.downloadPathRemote ?? '';
 			tempPathLocal = dcClient?.tempPathLocal ?? '';
@@ -294,7 +300,9 @@
 			tempPathRemote,
 			maxConnections,
 			priority,
-			implementation: implementation as DownloadClientImplementation
+			implementation: implementation as DownloadClientImplementation,
+			apiToken,
+			removeAfterImport
 		};
 		return serializeDownloadClientForm(formState, isNntpServer, mode);
 	}
@@ -324,8 +332,11 @@
 			implementation &&
 			name.trim() &&
 			name.trim().length <= MAX_NAME_LENGTH &&
-			host.trim() &&
-			isValidPort(port)
+			(isDebrid
+				? mode === 'edit'
+					? hasApiToken || !!apiToken.trim()
+					: !!apiToken.trim()
+				: host.trim() && isValidPort(port))
 		);
 	}
 
@@ -368,7 +379,7 @@
 		showFolderBrowser = true;
 	}
 
-	function getProtocolLabel(protocol: 'torrent' | 'usenet' | 'nntp'): string {
+	function getProtocolLabel(protocol: 'torrent' | 'usenet' | 'nntp' | 'debrid'): string {
 		switch (protocol) {
 			case 'torrent':
 				return m.downloadClient_protocol_torrent();
@@ -376,6 +387,8 @@
 				return m.downloadClient_protocol_usenet();
 			case 'nntp':
 				return m.downloadClient_protocol_nntp();
+			case 'debrid':
+				return m.downloadClient_protocol_debrid();
 		}
 	}
 
@@ -443,10 +456,10 @@
 			<div class="mb-6 flex items-center justify-between rounded-lg bg-base-200 px-4 py-3">
 				<div class="flex items-center gap-3">
 					<div class="font-semibold">{selectedDefinition.name}</div>
-					<div class="badge badge-ghost badge-sm">
-						{m.common_port()}
-						{selectedDefinition.defaultPort}
-					</div>
+					{#if !selectedDefinition.isDebrid}<div class="badge badge-ghost badge-sm">
+							{m.common_port()}
+							{selectedDefinition.defaultPort}
+						</div>{/if}
 				</div>
 				<button type="button" class="btn btn-ghost btn-sm" onclick={() => (implementation = '')}>
 					{m.action_change()}
@@ -463,59 +476,105 @@
 				/>
 			</div>
 		{:else}
-			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
+			{#if isDebrid}
 				<div class="space-y-4">
-					<ClientFormFields
-						bind:name
-						bind:host
-						bind:port
-						bind:useSsl
-						bind:enabled
-						bind:username
-						bind:password
-						bind:urlBase
-						bind:urlBaseEnabled
-						bind:mountMode
-						{isNntpServer}
-						{usesApiKey}
-						{isSabnzbd}
-						{mode}
-						{hasPassword}
-						selectedDefinitionName={selectedDefinition?.name ?? ''}
-						maxNameLength={MAX_NAME_LENGTH}
-						{nameTooLong}
-						{urlBasePlaceholder}
-						onSslChange={handleSslChange}
-					/>
+					<div class="form-control">
+						<label class="label py-1" for="name">{m.common_name()}</label>
+						<input
+							id="name"
+							class="input-bordered input input-sm"
+							bind:value={name}
+							maxlength={MAX_NAME_LENGTH}
+						/>
+					</div>
+					<div class="form-control">
+						<label class="label py-1" for="apiToken">{m.downloadClient_apiToken()}</label>
+						<input
+							id="apiToken"
+							type="password"
+							class="input-bordered input input-sm"
+							bind:value={apiToken}
+							placeholder={mode === 'edit' && hasApiToken ? '********' : ''}
+						/>
+					</div>
+					<div class="form-control">
+						<label class="label py-1" for="priority">{m.common_priority()}</label>
+						<input
+							id="priority"
+							type="number"
+							min="1"
+							class="input-bordered input input-sm"
+							bind:value={priority}
+						/>
+					</div>
+					<label class="label cursor-pointer justify-start gap-2"
+						><input
+							type="checkbox"
+							class="checkbox checkbox-sm"
+							bind:checked={enabled}
+						/>{m.common_enabled()}</label
+					>
+					<label class="label cursor-pointer justify-start gap-2"
+						><input
+							type="checkbox"
+							class="checkbox checkbox-sm"
+							bind:checked={removeAfterImport}
+						/>{m.downloadClient_removeAfterImport()}</label
+					>
 				</div>
+			{:else}<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
+					<div class="space-y-4">
+						<ClientFormFields
+							bind:name
+							bind:host
+							bind:port
+							bind:useSsl
+							bind:enabled
+							bind:username
+							bind:password
+							bind:urlBase
+							bind:urlBaseEnabled
+							bind:mountMode
+							{isNntpServer}
+							{usesApiKey}
+							{isSabnzbd}
+							{mode}
+							{hasPassword}
+							selectedDefinitionName={selectedDefinition?.name ?? ''}
+							maxNameLength={MAX_NAME_LENGTH}
+							{nameTooLong}
+							{urlBasePlaceholder}
+							onSslChange={handleSslChange}
+						/>
+					</div>
 
-				<div class="space-y-4">
-					<ClientSpecificOptions
-						bind:maxConnections
-						bind:priority
-						bind:movieCategory
-						bind:tvCategory
-						bind:recentPriority
-						bind:olderPriority
-						bind:initialState
-						bind:downloadPathLocal
-						bind:downloadPathRemote
-						bind:tempPathLocal
-						bind:tempPathRemote
-						bind:stalledTimeout
-						bind:stalledThreshold
-						bind:stalledBlocklist
-						bind:saveStalledBehaviorSuccess
-						{isNntpServer}
-						{selectedDefinition}
-						{usesApiKey}
-						{isMountModeClient}
-						onBrowse={openFolderBrowser}
-					/>
-				</div>
-			</div>
+					<div class="space-y-4">
+						<ClientSpecificOptions
+							bind:maxConnections
+							bind:priority
+							bind:movieCategory
+							bind:tvCategory
+							bind:recentPriority
+							bind:olderPriority
+							bind:initialState
+							bind:downloadPathLocal
+							bind:downloadPathRemote
+							bind:tempPathLocal
+							bind:tempPathRemote
+							bind:stalledTimeout
+							bind:stalledThreshold
+							bind:stalledBlocklist
+							bind:saveStalledBehaviorSuccess
+							{isNntpServer}
+							{selectedDefinition}
+							{usesApiKey}
+							{isMountModeClient}
+							onBrowse={openFolderBrowser}
+						/>
+					</div>
+				</div>{/if}
 
-			{#if !isNntpServer}
+			{#if !isNntpServer && !isDebrid}
 				<div class="mt-6">
 					<DownloadClientSettings
 						section="paths"

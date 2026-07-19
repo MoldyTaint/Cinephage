@@ -426,7 +426,9 @@ export const downloadClientImplementationSchema = z.enum([
 	'rtorrent',
 	'aria2',
 	'nzbget',
-	'sabnzbd'
+	'sabnzbd',
+	'realdebrid',
+	'torbox'
 ]);
 
 /**
@@ -439,15 +441,27 @@ export const downloadPrioritySchema = z.enum(['normal', 'high', 'force']);
  */
 export const downloadInitialStateSchema = z.enum(['start', 'pause', 'force']);
 
-/**
- * Schema for creating a new download client.
- */
-export const downloadClientCreateSchema = z.object({
-	name: z.string().min(1, 'Name is required').max(100, 'Name must be 100 characters or less'),
-	implementation: downloadClientImplementationSchema,
-	enabled: z.boolean().default(true),
+const DEBRID_IMPLEMENTATIONS = ['realdebrid', 'torbox'] as const;
+const NON_DEBRID_IMPLEMENTATIONS = [
+	'qbittorrent',
+	'transmission',
+	'deluge',
+	'rtorrent',
+	'aria2',
+	'sabnzbd',
+	'nzbget'
+] as const;
+function isDebridImplementation(implementation: string): boolean {
+	return DEBRID_IMPLEMENTATIONS.includes(implementation as (typeof DEBRID_IMPLEMENTATIONS)[number]);
+}
 
-	// Connection settings
+const downloadClientBaseFields = {
+	name: z.string().min(1, 'Name is required').max(100, 'Name must be 100 characters or less'),
+	enabled: z.boolean().default(true),
+	priority: z.number().int().min(1).max(100).default(1)
+};
+
+const nonDebridDownloadClientFields = {
 	host: z.string().min(1, 'Host is required'),
 	port: z.number().int().min(1, 'Port must be at least 1').max(65535, 'Port must be at most 65535'),
 	useSsl: z.boolean().default(false),
@@ -455,90 +469,115 @@ export const downloadClientCreateSchema = z.object({
 	mountMode: z.enum(['nzbdav', 'altmount']).optional().nullable(),
 	username: z.string().optional().nullable(),
 	password: z.string().optional().nullable(),
-
-	// Category settings
 	movieCategory: z.string().min(1).default('movies'),
 	tvCategory: z.string().min(1).default('tv'),
-
-	// Priority settings
 	recentPriority: downloadPrioritySchema.default('normal'),
 	olderPriority: downloadPrioritySchema.default('normal'),
 	initialState: downloadInitialStateSchema.default('start'),
-
-	// Seeding limits
 	seedRatioLimit: z
 		.string()
 		.regex(/^\d+(\.\d+)?$/, 'Must be a valid decimal number (e.g., "1.0", "2.5")')
 		.optional()
 		.nullable(),
 	seedTimeLimit: z.number().int().min(0).optional().nullable(),
-
-	// Path mapping
 	downloadPathLocal: z.string().optional().nullable(),
 	downloadPathRemote: z.string().optional().nullable(),
 	tempPathLocal: z.string().optional().nullable(),
-	tempPathRemote: z.string().optional().nullable(),
+	tempPathRemote: z.string().optional().nullable()
+};
 
-	priority: z.number().int().min(1).max(100).default(1)
+const debridDownloadClientCreateSchema = z
+	.object({
+		...downloadClientBaseFields,
+		implementation: z.enum(DEBRID_IMPLEMENTATIONS),
+		apiToken: z.string().optional().nullable(),
+		removeAfterImport: z.boolean().default(false)
+	})
+	.strict();
+
+const nonDebridDownloadClientCreateSchema = z
+	.object({
+		...downloadClientBaseFields,
+		implementation: z.enum(NON_DEBRID_IMPLEMENTATIONS),
+		...nonDebridDownloadClientFields,
+		apiToken: z.never().optional(),
+		removeAfterImport: z.never().optional()
+	})
+	.strict();
+
+export const downloadClientCreateSchema = z.union([
+	debridDownloadClientCreateSchema,
+	nonDebridDownloadClientCreateSchema
+]);
+
+export type DownloadClientCreateDiscriminated =
+	| z.infer<typeof debridDownloadClientCreateSchema>
+	| z.infer<typeof nonDebridDownloadClientCreateSchema>;
+const debridDownloadClientUpdateSchema = debridDownloadClientCreateSchema.partial();
+const nonDebridDownloadClientUpdateSchema = nonDebridDownloadClientCreateSchema.partial();
+export const downloadClientUpdateSchema = z.union([
+	debridDownloadClientUpdateSchema,
+	nonDebridDownloadClientUpdateSchema
+]);
+
+const DEBRID_ONLY_UPDATE_FIELDS = ['apiToken', 'removeAfterImport'] as const;
+const NON_DEBRID_ONLY_UPDATE_FIELDS = [
+	'host',
+	'port',
+	'useSsl',
+	'urlBase',
+	'mountMode',
+	'username',
+	'password',
+	'movieCategory',
+	'tvCategory',
+	'recentPriority',
+	'olderPriority',
+	'initialState',
+	'seedRatioLimit',
+	'seedTimeLimit',
+	'downloadPathLocal',
+	'downloadPathRemote',
+	'tempPathLocal',
+	'tempPathRemote'
+] as const;
+
+export function downloadClientUpdateSchemaForImplementation(storedImplementation: string) {
+	const storedIsDebrid = isDebridImplementation(storedImplementation);
+	const forbiddenFields = storedIsDebrid
+		? NON_DEBRID_ONLY_UPDATE_FIELDS
+		: DEBRID_ONLY_UPDATE_FIELDS;
+
+	return downloadClientUpdateSchema.superRefine((data, context) => {
+		if (data.implementation !== undefined && data.implementation !== storedImplementation) {
+			context.addIssue({
+				code: 'custom',
+				message: 'Download client implementation cannot be changed'
+			});
+		}
+		for (const field of forbiddenFields) {
+			if (field in data) {
+				context.addIssue({
+					code: 'custom',
+					path: [field],
+					message: `Field is not valid for ${storedImplementation}`
+				});
+			}
+		}
+	});
+}
+
+export type DownloadClientUpdateDiscriminated =
+	| z.infer<typeof debridDownloadClientUpdateSchema>
+	| z.infer<typeof nonDebridDownloadClientUpdateSchema>;
+
+const debridDownloadClientTestSchema = z.object({
+	implementation: z.enum(DEBRID_IMPLEMENTATIONS),
+	apiToken: z.string().optional().nullable()
 });
 
-/**
- * Schema for updating an existing download client.
- */
-export const downloadClientUpdateSchema = z.object({
-	name: z
-		.string()
-		.min(1, 'Name is required')
-		.max(100, 'Name must be 100 characters or less')
-		.optional(),
-	implementation: downloadClientImplementationSchema.optional(),
-	enabled: z.boolean().optional(),
-
-	// Connection settings
-	host: z.string().min(1, 'Host is required').optional(),
-	port: z
-		.number()
-		.int()
-		.min(1, 'Port must be at least 1')
-		.max(65535, 'Port must be at most 65535')
-		.optional(),
-	useSsl: z.boolean().optional(),
-	urlBase: z.string().max(200).optional().nullable(),
-	mountMode: z.enum(['nzbdav', 'altmount']).optional().nullable(),
-	username: z.string().optional().nullable(),
-	password: z.string().optional().nullable(),
-
-	// Category settings
-	movieCategory: z.string().min(1).optional(),
-	tvCategory: z.string().min(1).optional(),
-
-	// Priority settings
-	recentPriority: downloadPrioritySchema.optional(),
-	olderPriority: downloadPrioritySchema.optional(),
-	initialState: downloadInitialStateSchema.optional(),
-
-	// Seeding limits
-	seedRatioLimit: z
-		.string()
-		.regex(/^\d+(\.\d+)?$/, 'Must be a valid decimal number (e.g., "1.0", "2.5")')
-		.optional()
-		.nullable(),
-	seedTimeLimit: z.number().int().min(0).optional().nullable(),
-
-	// Path mapping
-	downloadPathLocal: z.string().optional().nullable(),
-	downloadPathRemote: z.string().optional().nullable(),
-	tempPathLocal: z.string().optional().nullable(),
-	tempPathRemote: z.string().optional().nullable(),
-
-	priority: z.number().int().min(1).max(100).optional()
-});
-
-/**
- * Schema for testing download client connection.
- */
-export const downloadClientTestSchema = z.object({
-	implementation: downloadClientImplementationSchema,
+const nonDebridDownloadClientTestSchema = z.object({
+	implementation: z.enum(NON_DEBRID_IMPLEMENTATIONS),
 	host: z.string().min(1, 'Host is required'),
 	port: z.number().int().min(1).max(65535),
 	useSsl: z.boolean().default(false),
@@ -547,6 +586,15 @@ export const downloadClientTestSchema = z.object({
 	username: z.string().optional().nullable(),
 	password: z.string().optional().nullable()
 });
+
+export const downloadClientTestSchema = z.union([
+	debridDownloadClientTestSchema,
+	nonDebridDownloadClientTestSchema
+]);
+
+export type DownloadClientTestDiscriminated =
+	| z.infer<typeof debridDownloadClientTestSchema>
+	| z.infer<typeof nonDebridDownloadClientTestSchema>;
 
 // ============================================================
 // Root Folder Schemas
@@ -1760,7 +1808,8 @@ export const grabRequestSchema = z
 		isAutomatic: z.boolean().optional(),
 		isUpgrade: z.boolean().optional(),
 		force: z.boolean().optional(),
-		streamUsenet: z.boolean().optional()
+		streamUsenet: z.boolean().optional(),
+		acquisitionProtocol: z.enum(['default', 'torrent', 'debrid']).optional()
 	})
 	.refine((data) => data.downloadUrl || data.magnetUrl, {
 		message: 'Either downloadUrl or magnetUrl is required',

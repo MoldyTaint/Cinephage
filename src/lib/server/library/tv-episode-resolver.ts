@@ -1,4 +1,4 @@
-import { basename, extname, resolve } from 'node:path';
+import { basename, dirname, extname, resolve } from 'node:path';
 import { parseRelease } from '$lib/server/indexers/parser/ReleaseParser.js';
 import type { ParsedRelease } from '$lib/server/indexers/parser/types.js';
 
@@ -224,4 +224,131 @@ export function matchEpisodesByIdentifier<T extends EpisodeRecordLike>(
 				(episode) => episode.absoluteEpisodeNumber === identifier.absoluteEpisode
 			);
 	}
+}
+
+interface QueueEpisodeRecordLike extends EpisodeRecordLike {
+	id: string;
+}
+
+interface QueueContextLike {
+	/** Original release/torrent title, used as an identifier fallback source. */
+	title?: string | null;
+	/** Season number from the queue, used as a parse hint. */
+	seasonNumber?: number | null;
+	/** Ordered episode ids queued for this release. */
+	episodeIds?: readonly string[] | null;
+}
+
+/**
+ * Resolve a TV episode identifier by trying the file stem, then the queue
+ * title, then the parent folder stem. This mirrors ImportService's fallback
+ * chain so obfuscated provider basenames resolve exactly as conventional
+ * import would resolve them.
+ *
+ * The caller owns any logging; this function is side-effect free and returns
+ * the winning candidate source plus the stem that produced the identifier so
+ * ImportService can preserve its existing fallback diagnostics.
+ */
+export function resolveEpisodeIdentifierWithFallback(
+	videoFilePath: string,
+	queueContext: QueueContextLike,
+	seriesType: SeriesType
+): {
+	identifier: ResolvedTvEpisodeIdentifier;
+	source: 'file' | 'queueTitle' | 'parentFolder';
+	stem: string;
+} | null {
+	const seasonHint = queueContext.seasonNumber ?? undefined;
+	const candidates: Array<{
+		source: 'file' | 'queueTitle' | 'parentFolder';
+		value?: string | null;
+	}> = [
+		{ source: 'file', value: videoFilePath },
+		{ source: 'queueTitle', value: queueContext.title },
+		{ source: 'parentFolder', value: basename(dirname(videoFilePath)) }
+	];
+	const seenStems = new Set<string>();
+
+	for (const candidate of candidates) {
+		if (!candidate.value) continue;
+		const stem = getMediaParseStem(candidate.value);
+		const normalizedStem = stem.trim().toLowerCase();
+		if (!normalizedStem || seenStems.has(normalizedStem)) {
+			continue;
+		}
+		seenStems.add(normalizedStem);
+
+		const parsed: ParsedRelease = parseRelease(stem);
+		const identifier = resolveTvEpisodeIdentifier({
+			filePath: videoFilePath,
+			fileName: stem,
+			parsed,
+			seasonHint,
+			seriesType
+		});
+
+		if (!identifier) {
+			continue;
+		}
+
+		return { identifier, source: candidate.source, stem };
+	}
+
+	return null;
+}
+
+/**
+ * Queue-context fallback matching: when direct identifier matching misses,
+ * interpret the parsed episode numbers as 1-based indices into the queued
+ * episodes of the target season (sorted by episode number). This mirrors
+ * ImportService's relative-index mapping for releases whose file numbering
+ * does not line up with the library's episode numbers.
+ *
+ * Only standard numbering is eligible; absolute/daily identifiers return [].
+ */
+export function matchEpisodesFromQueueContext<T extends QueueEpisodeRecordLike>(
+	seriesEpisodes: readonly T[],
+	queueItem: QueueContextLike,
+	identifier: ResolvedTvEpisodeIdentifier
+): T[] {
+	if (identifier.numbering !== 'standard') {
+		return [];
+	}
+
+	const queuedEpisodeIds = queueItem.episodeIds ?? [];
+	if (queuedEpisodeIds.length === 0) {
+		return [];
+	}
+
+	const targetSeason = queueItem.seasonNumber ?? identifier.seasonNumber;
+	if (targetSeason === undefined || targetSeason === null) {
+		return [];
+	}
+
+	// Require season alignment before applying relative index mapping.
+	if (identifier.seasonNumber !== targetSeason) {
+		return [];
+	}
+
+	const queuedEpisodesInSeason = seriesEpisodes
+		.filter(
+			(episode) => queuedEpisodeIds.includes(episode.id) && episode.seasonNumber === targetSeason
+		)
+		.sort((a, b) => a.episodeNumber - b.episodeNumber);
+
+	if (queuedEpisodesInSeason.length === 0) {
+		return [];
+	}
+
+	const resolved = identifier.episodeNumbers
+		.map((episodeNumber) => queuedEpisodesInSeason[episodeNumber - 1])
+		.filter((episode): episode is T => Boolean(episode));
+
+	if (resolved.length !== identifier.episodeNumbers.length) {
+		return [];
+	}
+
+	// Deduplicate in case a release token repeats an episode number.
+	const uniqueById = new Map(resolved.map((episode) => [episode.id, episode]));
+	return [...uniqueById.values()];
 }
