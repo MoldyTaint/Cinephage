@@ -275,6 +275,14 @@ export class RenamePreviewService {
 			}
 		}
 
+		// Warn when the folder template uses {Collection} but this movie has no
+		// collection data — the token resolves to empty string, so the preview
+		// will show the movie moving OUT of its collection folder.
+		const namingConfig = namingSettingsService.getConfigSync();
+		if (namingConfig.movieFolderFormat?.includes('{Collection}') && !movie.collectionName) {
+			result.missingCollectionData = true;
+		}
+
 		const files = db.select().from(movieFiles).where(eq(movieFiles.movieId, movieId)).all();
 
 		for (const file of files) {
