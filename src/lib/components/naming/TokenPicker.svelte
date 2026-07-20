@@ -54,6 +54,7 @@
 
 	const categoryOrder = [
 		'movie',
+		'collection',
 		'series',
 		'episode',
 		'quality',
@@ -167,24 +168,26 @@
 
 <div class="space-y-4">
 	<!-- Search -->
-	<div class="form-control">
-		<div class="relative">
-			<Search class="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/50" />
-			<input
-				type="text"
-				placeholder={m.naming_tokenSearchPlaceholder()}
-				class="input-bordered input input-sm w-full pl-9"
-				bind:value={searchQuery}
-			/>
-			{#if searchQuery}
-				<button
-					class="btn absolute top-1/2 right-2 btn-circle -translate-y-1/2 btn-ghost btn-xs"
-					onclick={() => (searchQuery = '')}
-				>
-					×
-				</button>
-			{/if}
-		</div>
+	<div class="form-control relative">
+		<Search
+			class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/40"
+		/>
+		<input
+			type="text"
+			placeholder={m.naming_tokenSearchPlaceholder()}
+			class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-8 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+			bind:value={searchQuery}
+		/>
+		{#if searchQuery}
+			<button
+				type="button"
+				class="absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-0.5 text-base-content/40 hover:text-base-content"
+				onclick={() => (searchQuery = '')}
+				aria-label="Clear search"
+			>
+				×
+			</button>
+		{/if}
 	</div>
 
 	<!-- Category Tabs -->
@@ -228,7 +231,7 @@
 	{/if}
 
 	<!-- Token Grid -->
-	<div class="max-h-[400px] space-y-3 overflow-y-auto pr-1">
+	<div class="max-h-100 space-y-3 overflow-y-auto pr-1">
 		{#if searchQuery}
 			<!-- Search Results -->
 			{#each getFilteredCategories() as category (category.name)}
