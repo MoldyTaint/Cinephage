@@ -107,8 +107,6 @@ export interface TmdbPopularConfig {
 export interface TmdbListConfig {
 	/** TMDb list ID */
 	listId: string;
-	/** Maximum pages to fetch */
-	maxPages?: number;
 }
 
 /**
