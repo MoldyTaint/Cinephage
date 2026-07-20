@@ -109,6 +109,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 			added: movies.added,
 			hasFile: movies.hasFile,
 			tmdbCollectionId: movies.tmdbCollectionId,
+			collectionName: movies.collectionName,
 			releaseDate: movies.releaseDate,
 			digitalReleaseDate: movies.digitalReleaseDate,
 			physicalReleaseDate: movies.physicalReleaseDate,

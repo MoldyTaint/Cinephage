@@ -324,6 +324,27 @@ export const tmdb = {
 		return this.fetch(`/collection/${id}`) as Promise<Collection>;
 	},
 
+	async searchCollections(query: string): Promise<
+		{
+			id: number;
+			name: string;
+			poster_path: string | null;
+			backdrop_path: string | null;
+			overview: string;
+		}[]
+	> {
+		const result = (await this.fetch(`/search/collection?query=${encodeURIComponent(query)}`)) as {
+			results: {
+				id: number;
+				name: string;
+				poster_path: string | null;
+				backdrop_path: string | null;
+				overview: string;
+			}[];
+		};
+		return result.results ?? [];
+	},
+
 	async getPerson(id: number): Promise<PersonDetails> {
 		return this.fetch(
 			`/person/${id}?append_to_response=combined_credits,external_ids`

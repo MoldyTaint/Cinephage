@@ -201,7 +201,9 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		wantsSubtitles,
 		languageProfileId,
 		delayProfileId,
-		folderPath
+		folderPath,
+		tmdbCollectionId,
+		collectionName
 	} = body;
 
 	// Capture current state before update (for subtitle trigger detection)
@@ -358,6 +360,13 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			}
 		}
 		updateData.path = trimmed;
+	}
+
+	if (tmdbCollectionId !== undefined) {
+		updateData.tmdbCollectionId = tmdbCollectionId;
+	}
+	if (collectionName !== undefined) {
+		updateData.collectionName = collectionName;
 	}
 
 	if (Object.keys(updateData).length === 0 && !moveRequest) {

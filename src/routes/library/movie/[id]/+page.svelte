@@ -444,6 +444,9 @@
 
 	async function handleEditSave(editData: MovieEditData) {
 		isSaving = true;
+		const collectionChanged =
+			editData.tmdbCollectionId !== movie.tmdbCollectionId ||
+			editData.collectionName !== movie.collectionName;
 		try {
 			const result = await updateMovie(movie.id, editData as unknown as Record<string, unknown>);
 
@@ -454,6 +457,8 @@
 			movie.minimumAvailability = editData.minimumAvailability;
 			movie.availabilityDelay = editData.availabilityDelay;
 			movie.wantsSubtitles = editData.wantsSubtitles;
+			movie.tmdbCollectionId = editData.tmdbCollectionId ?? null;
+			movie.collectionName = editData.collectionName ?? null;
 
 			if (result?.moveQueued) {
 				toasts.success(m.library_movieDetail_moveQueued());
@@ -464,6 +469,10 @@
 			}
 
 			isEditModalOpen = false;
+
+			if (collectionChanged) {
+				isRenameModalOpen = true;
+			}
 		} catch (error) {
 			showActionError(m.toast_library_movieDetail_failedToUpdate(), error);
 		} finally {

@@ -1555,7 +1555,10 @@ export const movieUpdateSchema = z.object({
 		.refine((v) => !v.includes('..') && !v.startsWith('/'), {
 			message: 'Folder path must be a relative name with no path traversal'
 		})
-		.optional()
+		.optional(),
+	/** Override the TMDB collection assignment for this movie. */
+	tmdbCollectionId: z.number().int().positive().nullable().optional(),
+	collectionName: z.string().min(1).nullable().optional()
 });
 
 /**

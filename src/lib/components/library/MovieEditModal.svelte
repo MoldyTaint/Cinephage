@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, FolderOpen } from 'lucide-svelte';
+	import { X, FolderOpen, Layers, Pencil, Trash2, Search, RefreshCw } from 'lucide-svelte';
 	import { FolderBrowser, DesiredQualitiesPicker } from '$lib/components/library';
 	import type { LibraryMovie, DesiredQuality } from '$lib/types/library';
 	import { ModalWrapper, ModalFooter } from '$lib/components/ui/modal';
@@ -60,6 +60,8 @@
 		wantsSubtitles: boolean;
 		folderPath?: string;
 		removeUnwantedFiles?: boolean;
+		tmdbCollectionId?: number | null;
+		collectionName?: string | null;
 	}
 
 	let { open, movie, qualityProfiles, delayProfiles, rootFolders, saving, onClose, onSave }: Props =
@@ -79,6 +81,15 @@
 	let removeUnwantedFiles = $state(false);
 	let folderPath = $state('');
 	let showFolderPicker = $state(false);
+	let collectionId = $state<number | null>(null);
+	let collectionName = $state<string | null>(null);
+	let collectionSearchOpen = $state(false);
+	let collectionQuery = $state('');
+	let collectionResults = $state<
+		{ id: number; name: string; poster_path: string | null; overview: string }[]
+	>([]);
+	let collectionSearching = $state(false);
+	let collectionSearchTimer: ReturnType<typeof setTimeout> | null = null;
 	let animeRootWarningShown = $state(false);
 	let enforceAnimeSubtype = $state(false);
 	let detectedAnime = $state(false);
@@ -153,6 +164,8 @@
 			enforceAnimeSubtype = false;
 			detectedAnime = false;
 			folderPath = movie.path ?? '';
+			collectionId = movie.tmdbCollectionId ?? null;
+			collectionName = movie.collectionName ?? null;
 			void loadAnimeRoutingContext(movie.tmdbId);
 		}
 	});
@@ -258,6 +271,38 @@
 			: null
 	);
 
+	function handleCollectionQueryInput() {
+		if (collectionSearchTimer) clearTimeout(collectionSearchTimer);
+		const q = collectionQuery.trim();
+		if (!q) {
+			collectionResults = [];
+			return;
+		}
+		collectionSearchTimer = setTimeout(async () => {
+			collectionSearching = true;
+			try {
+				const res = await fetch(`/api/tmdb/collection/search?q=${encodeURIComponent(q)}`);
+				if (res.ok) collectionResults = await res.json();
+			} finally {
+				collectionSearching = false;
+			}
+		}, 350);
+	}
+
+	function pickCollection(id: number, name: string) {
+		collectionId = id;
+		collectionName = name;
+		collectionSearchOpen = false;
+		collectionQuery = '';
+		collectionResults = [];
+	}
+
+	function openCollectionSearch() {
+		collectionSearchOpen = true;
+		collectionQuery = '';
+		collectionResults = [];
+	}
+
 	function handleSave() {
 		onSave({
 			monitored,
@@ -270,7 +315,9 @@
 			availabilityDelay,
 			wantsSubtitles,
 			...(folderPathChanged && folderPath.trim() ? { folderPath: folderPath.trim() } : {}),
-			...(showRemoveUnwantedFiles && removeUnwantedFiles ? { removeUnwantedFiles: true } : {})
+			...(showRemoveUnwantedFiles && removeUnwantedFiles ? { removeUnwantedFiles: true } : {}),
+			tmdbCollectionId: collectionId,
+			collectionName
 		});
 	}
 </script>
@@ -485,6 +532,128 @@
 				{/if}
 			</div>
 		{/if}
+
+		<!-- Collection -->
+		<div class="form-control">
+			<div class="label">
+				<span class="label-text font-medium">Collection</span>
+			</div>
+
+			{#if collectionSearchOpen}
+				<!-- Inline search -->
+				<div class="rounded-lg border border-base-300 bg-base-200 p-3 space-y-2">
+					<div class="relative">
+						<Search
+							class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/40"
+						/>
+						<input
+							type="text"
+							placeholder="Search TMDB collections..."
+							class="input input-sm w-full rounded-full border-base-content/20 bg-base-100 pl-9 pr-8 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200/60 focus:border-primary/50 focus:bg-base-200/60 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+							bind:value={collectionQuery}
+							oninput={handleCollectionQueryInput}
+						/>
+						{#if collectionSearching}
+							<RefreshCw
+								class="pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-base-content/40"
+							/>
+						{:else if collectionQuery}
+							<button
+								type="button"
+								class="absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-0.5 text-base-content/40 hover:text-base-content"
+								onclick={() => {
+									collectionQuery = '';
+									collectionResults = [];
+								}}
+								aria-label="Clear search">×</button
+							>
+						{/if}
+					</div>
+					{#if collectionResults.length > 0}
+						<ul class="max-h-48 overflow-y-auto space-y-1">
+							{#each collectionResults as col (col.id)}
+								<li>
+									<button
+										type="button"
+										class="flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm hover:bg-base-300 transition-colors"
+										onclick={() => pickCollection(col.id, col.name)}
+									>
+										<div class="h-10 w-7 shrink-0 overflow-hidden rounded bg-base-300">
+											{#if col.poster_path}
+												<img
+													src="https://image.tmdb.org/t/p/w92{col.poster_path}"
+													alt={col.name}
+													class="h-full w-full object-cover"
+													loading="lazy"
+												/>
+											{:else}
+												<div class="flex h-full w-full items-center justify-center">
+													<Layers class="h-3 w-3 text-base-content/20" />
+												</div>
+											{/if}
+										</div>
+										<span class="truncate font-medium">{col.name}</span>
+									</button>
+								</li>
+							{/each}
+						</ul>
+					{:else if collectionQuery.trim() && !collectionSearching}
+						<p class="text-center text-xs text-base-content/50 py-2">No collections found</p>
+					{/if}
+					<button
+						type="button"
+						class="btn btn-ghost btn-xs w-full"
+						onclick={() => {
+							collectionSearchOpen = false;
+							collectionQuery = '';
+							collectionResults = [];
+						}}
+					>
+						Cancel
+					</button>
+				</div>
+			{:else}
+				<!-- Current value display -->
+				<div
+					class="flex items-center gap-2 rounded-lg border border-base-300 bg-base-200 px-3 py-2 text-sm"
+				>
+					<Layers class="h-4 w-4 shrink-0 text-primary" />
+					<span
+						class="min-w-0 flex-1 truncate {collectionName ? '' : 'italic text-base-content/40'}"
+					>
+						{collectionName ?? 'No collection assigned'}
+					</span>
+					{#if collectionName}
+						<button
+							type="button"
+							class="btn btn-ghost btn-xs text-error"
+							onclick={() => {
+								collectionId = null;
+								collectionName = null;
+							}}
+							title="Remove collection"
+						>
+							<Trash2 class="h-3.5 w-3.5" />
+						</button>
+					{/if}
+					<button
+						type="button"
+						class="btn btn-ghost btn-xs"
+						onclick={openCollectionSearch}
+						title="Change collection"
+					>
+						<Pencil class="h-3.5 w-3.5" />
+					</button>
+				</div>
+			{/if}
+
+			<div class="label">
+				<span class="label-text-alt wrap-break-word whitespace-normal text-base-content/60">
+					Used by the <code class="font-mono">{'{Collection}'}</code> naming token to organize movies
+					into collection folders.
+				</span>
+			</div>
+		</div>
 
 		<!-- Minimum Availability -->
 		<div class="form-control">
