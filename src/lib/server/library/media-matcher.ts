@@ -641,6 +641,8 @@ export class MediaMatcherService {
 					reason
 				});
 			}
+			// Yield between files so the event loop stays responsive under heavy matching load.
+			await new Promise<void>((resolve) => setImmediate(resolve));
 		}
 
 		return { results, hasMore };

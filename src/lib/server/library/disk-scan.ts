@@ -415,6 +415,10 @@ export class DiskScanService extends EventEmitter {
 				if (this.scanAborted) {
 					throw new Error('Scan was cancelled');
 				}
+
+				// Yield to the event loop between batches so HTTP requests and
+				// logging can be served even when scanning a large library.
+				await new Promise<void>((resolve) => setImmediate(resolve));
 			}
 
 			progress.filesFound = filesFound;
