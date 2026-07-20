@@ -136,6 +136,9 @@ export class LibraryJobWorker extends EventEmitter implements BackgroundService 
 
 					const reloaded = await this.jobService.getJob(queuedJob.id);
 					if (reloaded?.cancelRequested) break;
+
+					// Yield between pages so the event loop stays responsive.
+					await new Promise<void>((resolve) => setImmediate(resolve));
 				}
 				await this.jobService.markCompleted(queuedJob.id, {
 					phase: 'done',
@@ -186,6 +189,10 @@ export class LibraryJobWorker extends EventEmitter implements BackgroundService 
 				await new Promise<void>((resolve) => {
 					this.loopTimer = setTimeout(resolve, 1000);
 				});
+			} else {
+				// Yield before picking up the next job so the event loop can
+				// serve HTTP requests and flush logs between jobs.
+				await new Promise<void>((resolve) => setImmediate(resolve));
 			}
 		}
 	}
