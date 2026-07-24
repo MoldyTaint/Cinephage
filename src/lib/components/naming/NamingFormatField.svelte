@@ -94,7 +94,7 @@
 			<textarea
 				{id}
 				bind:this={inputRef}
-				class="textarea min-h-[120px] w-full resize-y textarea-ghost font-mono text-sm leading-relaxed [font-variant-ligatures:none] focus:bg-base-200/50"
+				class="textarea min-h-30 w-full resize-y textarea-ghost font-mono text-sm leading-relaxed [font-variant-ligatures:none] focus:bg-base-200/50"
 				{placeholder}
 				aria-label={label}
 				aria-describedby={describedBy}
