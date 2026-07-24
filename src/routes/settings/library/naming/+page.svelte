@@ -387,6 +387,10 @@
 		FORMAT_FIELDS.filter((field) => (validationResults[field]?.warnings.length ?? 0) > 0)
 	);
 	const canSave = $derived(!saving && hasChanges && invalidFormatFields.length === 0);
+	const movieFolderUsesBackslash = $derived(config.movieFolderFormat.includes('\\'));
+	const seriesFolderUsesBackslash = $derived(
+		config.seriesFolderFormat.includes('\\') || config.seasonFolderFormat.includes('\\')
+	);
 
 	$effect(() => {
 		const currentSignature = `${selectedServerPresetId}|${selectedStylePresetId}|${selectedDetailPresetId}`;
@@ -831,6 +835,32 @@
 								onReset={() => resetField('movieFolderFormat')}
 								onFocus={handleFieldFocus}
 							/>
+							{#if movieFolderUsesBackslash}
+								<div
+									class="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-base-content/75"
+								>
+									<Info class="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+									<span
+										>Backslash <code class="rounded bg-base-300 px-1 font-mono text-xs">\</code> is
+										treated as an illegal character and will be <strong>stripped</strong> from
+										folder names, merging the segments into one. Use
+										<code class="rounded bg-base-300 px-1 font-mono text-xs">/</code> instead; it creates
+										subfolders correctly on all platforms.</span
+									>
+								</div>
+							{:else}
+								<div
+									class="flex items-start gap-2 rounded-lg border border-info/30 bg-info/10 px-3 py-2 text-sm text-base-content/75"
+								>
+									<Info class="mt-0.5 h-4 w-4 shrink-0 text-info" />
+									<span
+										>Use <code class="rounded bg-base-300 px-1 font-mono text-xs">/</code> to create
+										subfolders; it works correctly on all platforms. Backslash
+										<code class="rounded bg-base-300 px-1 font-mono text-xs">\</code> is treated as an
+										illegal character and will be stripped from folder names.</span
+									>
+								</div>
+							{/if}
 							<NamingFormatField
 								id="movieFileFormat"
 								label={m.settings_naming_fileFormat()}
@@ -893,6 +923,32 @@
 								onReset={() => resetField('seasonFolderFormat')}
 								onFocus={handleFieldFocus}
 							/>
+							{#if seriesFolderUsesBackslash}
+								<div
+									class="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-base-content/75"
+								>
+									<Info class="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+									<span
+										>Backslash <code class="rounded bg-base-300 px-1 font-mono text-xs">\</code> is
+										treated as an illegal character and will be <strong>stripped</strong> from
+										folder names, merging the segments into one. Use
+										<code class="rounded bg-base-300 px-1 font-mono text-xs">/</code> instead; it creates
+										subfolders correctly on all platforms.</span
+									>
+								</div>
+							{:else}
+								<div
+									class="flex items-start gap-2 rounded-lg border border-info/30 bg-info/10 px-3 py-2 text-sm text-base-content/75"
+								>
+									<Info class="mt-0.5 h-4 w-4 shrink-0 text-info" />
+									<span
+										>Use <code class="rounded bg-base-300 px-1 font-mono text-xs">/</code> to create
+										subfolders; it works correctly on all platforms. Backslash
+										<code class="rounded bg-base-300 px-1 font-mono text-xs">\</code> is treated as an
+										illegal character and will be stripped from folder names.</span
+									>
+								</div>
+							{/if}
 							<NamingFormatField
 								id="episodeFileFormat"
 								label={m.settings_naming_standardEpisode()}
