@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<Container version="2">
+	<Name>cinephage</Name>
+	<Repository>ghcr.io/moldytaint/cinephage:latest</Repository>
+	<Registry>https://ghcr.io</Registry>
+	<Network>bridge</Network>
+	<Privileged>false</Privileged>
+	<Shell>bash</Shell>
+	<Support>https://github.com/MoldyTaint/Cinephage/issues</Support>
+	<Project>https://github.com/MoldyTaint/Cinephage</Project>
+	<Overview>
+Cinephage is a self-hosted media management application — automated movie/TV library management, quality upgrades, subtitle sync, and streaming.
+
+**Setup:** On first launch, visit the WebUI to create your admin account.
+	</Overview>
+	<Category>MediaApp:Video</Category>
+	<WebUI>http://[IP]:[PORT:3000]</WebUI>
+	<Icon>https://raw.githubusercontent.com/MoldyTaint/Cinephage/main/deploy/unraid/icon.png</Icon>
+	<TemplateURL>https://raw.githubusercontent.com/MoldyTaint/Cinephage/main/deploy/unraid/cinephage.xml</TemplateURL>
+	<ExtraParams>--shm-size=256m</ExtraParams>
+	<Config Name="WebUI Port" Target="3000" Default="3000" Mode="tcp" Description="Web UI port" Type="Port" Display="always" Required="true" Mask="false"/>
+	<Config Name="Config" Target="/config" Default="/mnt/user/appdata/cinephage" Mode="rw" Description="Configuration and app data" Type="Path" Display="always" Required="true" Mask="false"/>
+	<Config Name="Media" Target="/media" Default="/mnt/user/media" Mode="rw" Description="Media library" Type="Path" Display="always" Required="false" Mask="false"/>
+	<Config Name="Downloads" Target="/downloads" Default="/mnt/user/downloads" Mode="rw" Description="Download directory" Type="Path" Display="always" Required="false" Mask="false"/>
+	<Config Name="Auth Secret" Target="BETTER_AUTH_SECRET" Default="" Mode="" Description="Required: Authentication secret (generate with: openssl rand -base64 32)" Type="Variable" Display="always" Required="true" Mask="true"/>
+	<Config Name="Timezone" Target="TZ" Default="UTC" Mode="" Description="Timezone (e.g. America/New_York)" Type="Variable" Display="always" Required="false" Mask="false"/>
+	<Config Name="PUID" Target="PUID" Default="1000" Mode="" Description="User ID for file ownership" Type="Variable" Display="advanced" Required="false" Mask="false"/>
+	<Config Name="PGID" Target="PGID" Default="1000" Mode="" Description="Group ID for file ownership" Type="Variable" Display="advanced" Required="false" Mask="false"/>
+</Container>
