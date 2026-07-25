@@ -30,9 +30,20 @@
 	} from '$lib/api/library.js';
 	import { apiGetStream } from '$lib/api';
 	import type { MovieEditData } from '$lib/components/library/MovieEditModal.svelte';
-	import { FileEdit, Loader2, RefreshCw, Captions } from 'lucide-svelte';
+	import {
+		FileEdit,
+		Loader2,
+		RefreshCw,
+		Captions,
+		Layers,
+		Plus,
+		Zap,
+		Eye,
+		EyeOff,
+		Info
+	} from 'lucide-svelte';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
 	import { createDynamicSSE } from '$lib/sse';
 	import { getFileName } from '$lib/utils/format.js';
@@ -128,10 +139,12 @@
 				movie.files = [...movie.files, payload.file];
 			}
 			movie.hasFile = movie.files.length > 0;
+			invalidateAll();
 		},
 		'file:removed': (payload) => {
 			movie.files = movie.files.filter((f) => f.id !== payload.fileId);
 			movie.hasFile = movie.files.length > 0;
+			invalidateAll();
 		}
 	});
 
@@ -194,6 +207,81 @@
 	let scoreLoading = $state(false);
 	let scoreFetched = $state(false);
 	let collectionSubtitleAutoSearching = $state(false);
+	let collectionSearching = $state(false);
+	let trackPanelOpen = $state(false);
+	let trackAction = $state<'monitor-search' | 'monitor' | 'add'>('monitor-search');
+	let tracking = $state(false);
+	let addingPart = $state<{ tmdbId: number; title: string } | null>(null);
+	let hoveredPartTmdbId = $state<number | null>(null);
+	let addPartAction = $state<'monitor-search' | 'monitor' | 'add'>('monitor-search');
+	let addingPartLoading = $state(false);
+
+	const collectionParts = $derived(
+		(data.collection?.parts ?? []).filter((p) => p.tmdbId !== movie.tmdbId)
+	);
+	const missingParts = $derived(collectionParts.filter((p) => !p.inLibrary));
+	const trackedMissingFile = $derived(collectionParts.filter((p) => p.inLibrary && !p.hasFile));
+	const trackedMissingSubtitles = $derived(
+		collectionParts.filter((p) => p.inLibrary && p.hasFile && !p.hasSubtitles)
+	);
+
+	async function handleAddPart() {
+		if (!addingPart || !movie.rootFolderId) return;
+		addingPartLoading = true;
+		try {
+			const res = await fetch('/api/library/movies', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					tmdbId: addingPart.tmdbId,
+					rootFolderId: movie.rootFolderId,
+					scoringProfileId: movie.scoringProfileId ?? undefined,
+					monitored: addPartAction !== 'add',
+					searchOnAdd: addPartAction === 'monitor-search',
+					minimumAvailability: 'released',
+					availabilityDelay: 0,
+					wantsSubtitles: true
+				})
+			});
+			const result = await res.json();
+			if (!res.ok) throw new Error(result.error ?? 'Failed to add movie');
+			toasts.success(`${addingPart.title} added to library`);
+			addingPart = null;
+			await invalidateAll();
+		} catch (err) {
+			showActionError('Failed to add movie', err);
+		} finally {
+			addingPartLoading = false;
+		}
+	}
+
+	async function handleTrackCollection() {
+		if (!data.collection || !movie.rootFolderId) return;
+		tracking = true;
+		try {
+			const res = await fetch(`/api/library/collections/${data.collection.tmdbId}/track`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					rootFolderId: movie.rootFolderId,
+					scoringProfileId: movie.scoringProfileId ?? undefined,
+					monitored: trackAction !== 'add',
+					searchOnAdd: trackAction === 'monitor-search'
+				})
+			});
+			const result = await res.json();
+			if (!res.ok) throw new Error(result.error ?? 'Failed to add collection');
+			if (result.added > 0) {
+				toasts.success(`Added ${result.added} movie${result.added === 1 ? '' : 's'} to library`);
+				trackPanelOpen = false;
+				await invalidateAll();
+			}
+		} catch (err) {
+			showActionError('Failed to add collection', err);
+		} finally {
+			tracking = false;
+		}
+	}
 
 	const subtitleProgress = createSubtitleProgress();
 
@@ -629,6 +717,32 @@
 		}
 	}
 
+	async function handleCollectionSearch(): Promise<void> {
+		if (trackedMissingFile.length === 0) return;
+		collectionSearching = true;
+		let searched = 0;
+		try {
+			await Promise.all(
+				trackedMissingFile
+					.filter((p) => p.movieId)
+					.map((p) =>
+						fetch(`/api/library/movies/${p.movieId}/auto-search`, { method: 'POST' })
+							.then((r) => {
+								if (r.ok) searched++;
+							})
+							.catch(() => {})
+					)
+			);
+			if (searched > 0) {
+				toasts.success(`Triggered search for ${searched} movie${searched > 1 ? 's' : ''}`);
+			}
+		} catch (error) {
+			showActionError('Failed to trigger search', error);
+		} finally {
+			collectionSearching = false;
+		}
+	}
+
 	function handleSubtitleDownloaded(subtitle: {
 		id: string;
 		language: string;
@@ -785,70 +899,274 @@
 				/>
 			</div>
 
-			{#if data.collectionMovies && data.collectionMovies.length > 0}
-				<div class="mt-4 hidden rounded-xl bg-base-200 p-4 md:mt-6 md:block md:p-6">
-					<div class="mb-4 flex items-center justify-between">
-						<h2 class="text-lg font-semibold">
-							{m.library_movieDetail_otherMoviesInCollection()}
-						</h2>
-						<button
-							class="btn gap-2 btn-ghost btn-sm"
-							onclick={handleCollectionSubtitleAutoSearch}
-							disabled={collectionSubtitleAutoSearching}
-							title="Auto-download subtitles for all movies in collection"
-						>
-							{#if collectionSubtitleAutoSearching}
-								<Loader2 size={16} class="animate-spin" />
-							{:else}
-								<Captions size={16} />
-							{/if}
-						</button>
-					</div>
-					<div class="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
-						{#each data.collectionMovies as collMovie (collMovie.id)}
-							<a
-								href={resolvePath(`/library/movie/${collMovie.id}`)}
-								class="flex min-w-0 flex-col items-center gap-1.5 rounded-lg p-2 transition-colors hover:bg-base-300"
-							>
-								<div class="relative aspect-2/3 w-full overflow-hidden rounded bg-base-300">
-									{#if collMovie.posterPath}
-										<img
-											src="https://image.tmdb.org/t/p/w185{collMovie.posterPath}"
-											alt={collMovie.title}
-											class="h-full w-full object-cover"
-											loading="lazy"
-										/>
+			{#if data.collection}
+				{@const col = data.collection}
+				<div class="mt-4 hidden rounded-xl bg-base-200 md:mt-6 md:block">
+					<!-- Header -->
+					<div class="flex items-center justify-between p-4 md:p-6 pb-3">
+						<div class="flex items-center gap-2">
+							<Layers class="h-4 w-4 text-primary shrink-0" />
+							<h2 class="text-lg font-semibold">
+								Part of <span class="text-primary">{col.name}</span>
+							</h2>
+						</div>
+						<div class="flex items-center gap-1">
+							{#if trackedMissingFile.length > 0}
+								<button
+									class="btn btn-ghost btn-sm gap-2"
+									onclick={handleCollectionSearch}
+									disabled={collectionSearching}
+									title="Search for missing movies in this collection"
+								>
+									{#if collectionSearching}
+										<Loader2 size={16} class="animate-spin" />
 									{:else}
-										<div
-											class="flex h-full w-full items-center justify-center text-base-content/30"
-										></div>
+										<Zap size={16} />
 									{/if}
-									{#if collMovie.hasFile}
-										<span
-											class="absolute right-0.5 bottom-0.5 rounded-full bg-success/80 p-0.5 text-success-content"
-										>
-											<svg
-												xmlns="http://www.w3.org/2000/svg"
-												class="h-2.5 w-2.5"
-												fill="none"
-												viewBox="0 0 24 24"
-												stroke="currentColor"
-												stroke-width="3"
-											>
-												<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-											</svg>
-										</span>
+								</button>
+							{/if}
+							{#if trackedMissingSubtitles.length > 0}
+								<button
+									class="btn btn-ghost btn-sm gap-2"
+									onclick={handleCollectionSubtitleAutoSearch}
+									disabled={collectionSubtitleAutoSearching}
+									title="Auto-download missing subtitles for movies in this collection"
+								>
+									{#if collectionSubtitleAutoSearching}
+										<Loader2 size={16} class="animate-spin" />
+									{:else}
+										<Captions size={16} />
 									{/if}
-								</div>
-								<span class="line-clamp-2 text-center text-xs leading-tight font-medium">
-									{collMovie.title}
-								</span>
-								{#if collMovie.year}
-									<span class="text-[10px] text-base-content/50">{collMovie.year}</span>
-								{/if}
-							</a>
-						{/each}
+								</button>
+							{/if}
+						</div>
 					</div>
+
+					<!-- Parts grid -->
+					<div class="px-4 md:px-6 pb-4">
+						<div class="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
+							{#each collectionParts as part (part.tmdbId)}
+								{#if part.inLibrary && part.movieId}
+									<a
+										href={resolvePath(`/library/movie/${part.movieId}`)}
+										class="flex min-w-0 flex-col items-center gap-1.5 rounded-lg p-2 transition-colors hover:bg-base-300"
+									>
+										<div class="relative aspect-2/3 w-full overflow-hidden rounded bg-base-300">
+											{#if part.posterPath}
+												<img
+													src="https://image.tmdb.org/t/p/w185{part.posterPath}"
+													alt={part.title}
+													class="h-full w-full object-cover"
+													loading="lazy"
+												/>
+											{/if}
+											{#if part.hasFile}
+												<span
+													class="absolute right-0.5 bottom-0.5 rounded-full bg-success/80 p-0.5 text-success-content"
+												>
+													<svg
+														xmlns="http://www.w3.org/2000/svg"
+														class="h-2.5 w-2.5"
+														fill="none"
+														viewBox="0 0 24 24"
+														stroke="currentColor"
+														stroke-width="3"
+													>
+														<path
+															stroke-linecap="round"
+															stroke-linejoin="round"
+															d="M5 13l4 4L19 7"
+														/>
+													</svg>
+												</span>
+											{/if}
+										</div>
+										<span class="line-clamp-2 text-center text-xs leading-tight font-medium"
+											>{part.title}</span
+										>
+										{#if part.year}<span class="text-[10px] text-base-content/50">{part.year}</span
+											>{/if}
+									</a>
+								{:else}
+									<div
+										role="group"
+										class="flex min-w-0 flex-col items-center gap-1.5 rounded-lg p-2 transition-colors hover:bg-base-300/60"
+										onmouseenter={() => (hoveredPartTmdbId = part.tmdbId)}
+										onmouseleave={() => (hoveredPartTmdbId = null)}
+									>
+										<div class="relative aspect-2/3 w-full overflow-hidden rounded bg-base-300">
+											{#if part.posterPath}
+												<img
+													src="https://image.tmdb.org/t/p/w185{part.posterPath}"
+													alt={part.title}
+													class="h-full w-full object-cover opacity-40 transition-opacity {hoveredPartTmdbId ===
+													part.tmdbId
+														? 'opacity-60'
+														: ''}"
+													loading="lazy"
+												/>
+											{:else}
+												<div class="h-full w-full opacity-40"></div>
+											{/if}
+											<div
+												class="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/20 transition-opacity {hoveredPartTmdbId ===
+												part.tmdbId
+													? 'opacity-100'
+													: 'opacity-0'}"
+											>
+												<button
+													type="button"
+													class="rounded-full bg-primary p-1.5 text-primary-content shadow-lg hover:bg-primary/80"
+													title="Add to library"
+													onclick={() => {
+														addingPart = { tmdbId: part.tmdbId, title: part.title };
+														addPartAction = 'monitor-search';
+														trackPanelOpen = false;
+													}}
+												>
+													<Plus class="h-3.5 w-3.5" />
+												</button>
+												<a
+													href={resolvePath(`/discover/movie/${part.tmdbId}`)}
+													class="rounded-full bg-base-100/80 p-1.5 text-base-content shadow-lg hover:bg-base-100"
+													title="View in Discover"
+												>
+													<Info class="h-3.5 w-3.5" />
+												</a>
+											</div>
+										</div>
+										<span
+											class="line-clamp-2 text-center text-xs leading-tight font-medium text-base-content/50"
+											>{part.title}</span
+										>
+										{#if part.year}<span class="text-[10px] text-base-content/40">{part.year}</span
+											>{/if}
+									</div>
+								{/if}
+							{/each}
+						</div>
+					</div>
+
+					<!-- Bottom panel: per-movie add or track-all -->
+					{#if addingPart || missingParts.length > 0}
+						<div class="border-t border-base-300 px-4 md:px-6 py-4">
+							{#if addingPart}
+								<!-- Per-movie add panel -->
+								<div class="space-y-4">
+									<div class="flex items-center justify-between">
+										<p class="text-sm font-medium">
+											Add <span class="text-primary">{addingPart.title}</span>
+										</p>
+										<button class="btn btn-ghost btn-xs" onclick={() => (addingPart = null)}
+											>✕</button
+										>
+									</div>
+									<div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+										{#each [{ value: 'monitor-search', Icon: Zap, label: 'Monitor & Search', desc: 'Add and start searching for releases immediately' }, { value: 'monitor', Icon: Eye, label: 'Monitor Only', desc: 'Add and monitor for releases automatically' }, { value: 'add', Icon: EyeOff, label: 'Add Unmonitored', desc: 'Add without automatic searching or monitoring' }] as opt (opt)}
+											<button
+												type="button"
+												class="flex items-start gap-3 rounded-xl border-2 p-3 text-left transition-colors {addPartAction ===
+												opt.value
+													? 'border-primary bg-primary/5'
+													: 'border-base-300 hover:border-base-content/30 hover:bg-base-300/40'}"
+												onclick={() => (addPartAction = opt.value as typeof addPartAction)}
+											>
+												<div
+													class="mt-0.5 shrink-0 rounded-lg p-1.5 {addPartAction === opt.value
+														? 'bg-primary/15 text-primary'
+														: 'bg-base-300 text-base-content/50'}"
+												>
+													<opt.Icon class="h-4 w-4" />
+												</div>
+												<div class="min-w-0">
+													<p class="text-sm font-semibold leading-tight">{opt.label}</p>
+													<p class="mt-0.5 text-xs text-base-content/55 leading-snug">{opt.desc}</p>
+												</div>
+											</button>
+										{/each}
+									</div>
+									<div class="flex gap-2">
+										<button
+											class="btn btn-primary btn-sm gap-2"
+											onclick={handleAddPart}
+											disabled={addingPartLoading}
+										>
+											{#if addingPartLoading}<Loader2
+													class="h-3.5 w-3.5 animate-spin"
+												/>{:else}<Plus class="h-3.5 w-3.5" />{/if}
+											Confirm
+										</button>
+										<button class="btn btn-ghost btn-sm" onclick={() => (addingPart = null)}
+											>Cancel</button
+										>
+									</div>
+								</div>
+							{:else if !trackPanelOpen}
+								<button
+									class="btn btn-primary btn-sm gap-2"
+									onclick={() => (trackPanelOpen = true)}
+								>
+									<Plus class="h-4 w-4" />
+									Add collection
+									<span class="badge badge-primary-content badge-sm"
+										>{missingParts.length} missing</span
+									>
+								</button>
+							{:else}
+								<div class="space-y-4">
+									<p class="text-sm text-base-content/70">
+										{missingParts.length} movie{missingParts.length === 1 ? '' : 's'} from this collection
+										{missingParts.length === 1 ? 'is' : 'are'} not in your library. How would you like
+										to add {missingParts.length === 1 ? 'it' : 'them'}?
+									</p>
+
+									<div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+										{#each [{ value: 'monitor-search', Icon: Zap, label: 'Monitor & Search', desc: 'Add and start searching for releases immediately' }, { value: 'monitor', Icon: Eye, label: 'Monitor Only', desc: 'Add and monitor for releases automatically' }, { value: 'add', Icon: EyeOff, label: 'Add Unmonitored', desc: 'Add without automatic searching or monitoring' }] as opt (opt)}
+											<button
+												type="button"
+												class="flex items-start gap-3 rounded-xl border-2 p-3 text-left transition-colors {trackAction ===
+												opt.value
+													? 'border-primary bg-primary/5'
+													: 'border-base-300 hover:border-base-content/30 hover:bg-base-300/40'}"
+												onclick={() => (trackAction = opt.value as typeof trackAction)}
+											>
+												<div
+													class="mt-0.5 shrink-0 rounded-lg p-1.5 {trackAction === opt.value
+														? 'bg-primary/15 text-primary'
+														: 'bg-base-300 text-base-content/50'}"
+												>
+													<opt.Icon class="h-4 w-4" />
+												</div>
+												<div class="min-w-0">
+													<p class="text-sm font-semibold leading-tight">{opt.label}</p>
+													<p class="mt-0.5 text-xs text-base-content/55 leading-snug">{opt.desc}</p>
+												</div>
+											</button>
+										{/each}
+									</div>
+
+									<div class="flex gap-2">
+										<button
+											class="btn btn-primary btn-sm gap-2"
+											onclick={handleTrackCollection}
+											disabled={tracking}
+										>
+											{#if tracking}
+												<Loader2 class="h-3.5 w-3.5 animate-spin" />
+												Adding...
+											{:else}
+												<Plus class="h-3.5 w-3.5" />
+												Confirm
+											{/if}
+										</button>
+										<button class="btn btn-ghost btn-sm" onclick={() => (trackPanelOpen = false)}>
+											Cancel
+										</button>
+									</div>
+								</div>
+							{/if}
+						</div>
+					{/if}
 				</div>
 			{/if}
 		</div>
@@ -937,70 +1255,261 @@
 				</dl>
 			</div>
 
-			{#if data.collectionMovies && data.collectionMovies.length > 0}
-				<div class="rounded-xl bg-base-200 p-4 md:hidden">
-					<div class="mb-4 flex items-center justify-between">
-						<h2 class="text-lg font-semibold">
-							{m.library_movieDetail_otherMoviesInCollection()}
-						</h2>
-						<button
-							class="btn gap-2 btn-ghost btn-sm"
-							onclick={handleCollectionSubtitleAutoSearch}
-							disabled={collectionSubtitleAutoSearching}
-							title="Auto-download subtitles for all movies in collection"
-						>
-							{#if collectionSubtitleAutoSearching}
-								<Loader2 size={16} class="animate-spin" />
-							{:else}
-								<Captions size={16} />
-							{/if}
-						</button>
-					</div>
-					<div class="-mx-1 flex max-w-full gap-3 overflow-x-auto overscroll-x-contain px-1 pb-2">
-						{#each data.collectionMovies as collMovie (collMovie.id)}
-							<a
-								href={resolvePath(`/library/movie/${collMovie.id}`)}
-								class="flex w-24 shrink-0 flex-col items-center gap-1.5 rounded-lg p-2 transition-colors hover:bg-base-300"
-							>
-								<div class="relative aspect-2/3 w-full overflow-hidden rounded bg-base-300">
-									{#if collMovie.posterPath}
-										<img
-											src="https://image.tmdb.org/t/p/w185{collMovie.posterPath}"
-											alt={collMovie.title}
-											class="h-full w-full object-cover"
-											loading="lazy"
-										/>
+			{#if data.collection}
+				{@const col = data.collection}
+				<div class="rounded-xl bg-base-200 md:hidden">
+					<div class="flex items-center justify-between p-4 pb-3">
+						<div class="flex items-center gap-2 min-w-0">
+							<Layers class="h-4 w-4 text-primary shrink-0" />
+							<h2 class="text-base font-semibold truncate">
+								Part of <span class="text-primary">{col.name}</span>
+							</h2>
+						</div>
+						<div class="flex items-center gap-1 shrink-0">
+							{#if trackedMissingFile.length > 0}
+								<button
+									class="btn btn-ghost btn-sm gap-2"
+									onclick={handleCollectionSearch}
+									disabled={collectionSearching}
+									title="Search for missing movies in this collection"
+								>
+									{#if collectionSearching}
+										<Loader2 size={16} class="animate-spin" />
 									{:else}
-										<div
-											class="flex h-full w-full items-center justify-center text-base-content/30"
-										></div>
+										<Zap size={16} />
 									{/if}
-									{#if collMovie.hasFile}
-										<span
-											class="absolute right-0.5 bottom-0.5 rounded-full bg-success/80 p-0.5 text-success-content"
-										>
-											<svg
-												xmlns="http://www.w3.org/2000/svg"
-												class="h-2.5 w-2.5"
-												fill="none"
-												viewBox="0 0 24 24"
-												stroke="currentColor"
-												stroke-width="3"
+								</button>
+							{/if}
+							{#if trackedMissingSubtitles.length > 0}
+								<button
+									class="btn btn-ghost btn-sm gap-2"
+									onclick={handleCollectionSubtitleAutoSearch}
+									disabled={collectionSubtitleAutoSearching}
+									title="Auto-download missing subtitles for movies in this collection"
+								>
+									{#if collectionSubtitleAutoSearching}
+										<Loader2 size={16} class="animate-spin" />
+									{:else}
+										<Captions size={16} />
+									{/if}
+								</button>
+							{/if}
+						</div>
+					</div>
+
+					<!-- Horizontal scroll strip -->
+					<div class="-mx-1 flex max-w-full gap-3 overflow-x-auto overscroll-x-contain px-3 pb-3">
+						{#each collectionParts as part (part.tmdbId)}
+							{#if part.inLibrary && part.movieId}
+								<a
+									href={resolvePath(`/library/movie/${part.movieId}`)}
+									class="flex w-24 shrink-0 flex-col items-center gap-1.5 rounded-lg p-2 transition-colors hover:bg-base-300"
+								>
+									<div class="relative aspect-2/3 w-full overflow-hidden rounded bg-base-300">
+										{#if part.posterPath}
+											<img
+												src="https://image.tmdb.org/t/p/w185{part.posterPath}"
+												alt={part.title}
+												class="h-full w-full object-cover"
+												loading="lazy"
+											/>
+										{/if}
+										{#if part.hasFile}
+											<span
+												class="absolute right-0.5 bottom-0.5 rounded-full bg-success/80 p-0.5 text-success-content"
 											>
-												<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-											</svg>
-										</span>
-									{/if}
+												<svg
+													xmlns="http://www.w3.org/2000/svg"
+													class="h-2.5 w-2.5"
+													fill="none"
+													viewBox="0 0 24 24"
+													stroke="currentColor"
+													stroke-width="3"
+												>
+													<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+												</svg>
+											</span>
+										{/if}
+									</div>
+									<span class="line-clamp-2 text-center text-xs leading-tight font-medium"
+										>{part.title}</span
+									>
+									{#if part.year}<span class="text-[10px] text-base-content/50">{part.year}</span
+										>{/if}
+								</a>
+							{:else}
+								<div
+									role="group"
+									class="flex w-24 shrink-0 flex-col items-center gap-1.5 rounded-lg p-2 transition-colors hover:bg-base-300/60"
+									onmouseenter={() => (hoveredPartTmdbId = part.tmdbId)}
+									onmouseleave={() => (hoveredPartTmdbId = null)}
+								>
+									<div class="relative aspect-2/3 w-full overflow-hidden rounded bg-base-300">
+										{#if part.posterPath}
+											<img
+												src="https://image.tmdb.org/t/p/w185{part.posterPath}"
+												alt={part.title}
+												class="h-full w-full object-cover opacity-40 transition-opacity {hoveredPartTmdbId ===
+												part.tmdbId
+													? 'opacity-60'
+													: ''}"
+												loading="lazy"
+											/>
+										{:else}
+											<div class="h-full w-full opacity-40"></div>
+										{/if}
+										<div
+											class="absolute inset-0 flex items-center justify-center gap-1 bg-black/20 transition-opacity {hoveredPartTmdbId ===
+											part.tmdbId
+												? 'opacity-100'
+												: 'opacity-0'}"
+										>
+											<button
+												type="button"
+												class="rounded-full bg-primary p-1.5 text-primary-content shadow-lg hover:bg-primary/80"
+												onclick={() => {
+													addingPart = { tmdbId: part.tmdbId, title: part.title };
+													addPartAction = 'monitor-search';
+													trackPanelOpen = false;
+												}}
+												title="Add to library"
+											>
+												<Plus class="h-3 w-3" />
+											</button>
+											<a
+												href={resolvePath(`/discover/movie/${part.tmdbId}`)}
+												class="rounded-full bg-base-100/80 p-1.5 text-base-content shadow-lg hover:bg-base-100"
+												title="View in Discover"
+											>
+												<Info class="h-3 w-3" />
+											</a>
+										</div>
+									</div>
+									<span
+										class="line-clamp-2 text-center text-xs leading-tight font-medium text-base-content/50"
+										>{part.title}</span
+									>
+									{#if part.year}<span class="text-[10px] text-base-content/40">{part.year}</span
+										>{/if}
 								</div>
-								<span class="line-clamp-2 text-center text-xs leading-tight font-medium">
-									{collMovie.title}
-								</span>
-								{#if collMovie.year}
-									<span class="text-[10px] text-base-content/50">{collMovie.year}</span>
-								{/if}
-							</a>
+							{/if}
 						{/each}
 					</div>
+
+					<!-- Mobile bottom panel: per-movie add or track-all -->
+					{#if addingPart || missingParts.length > 0}
+						<div class="border-t border-base-300 p-4">
+							{#if addingPart}
+								<div class="space-y-4">
+									<div class="flex items-center justify-between">
+										<p class="text-sm font-medium">
+											Add <span class="text-primary">{addingPart.title}</span>
+										</p>
+										<button class="btn btn-ghost btn-xs" onclick={() => (addingPart = null)}
+											>✕</button
+										>
+									</div>
+									<div class="flex flex-col gap-2">
+										{#each [{ value: 'monitor-search', Icon: Zap, label: 'Monitor & search', desc: 'Add and start searching for releases immediately' }, { value: 'monitor', Icon: Eye, label: 'Monitor only', desc: 'Add and wait for future releases automatically' }, { value: 'add', Icon: EyeOff, label: 'Add unmonitored', desc: 'Add without automatic searching or monitoring' }] as opt (opt)}
+											<button
+												type="button"
+												class="flex items-start gap-3 rounded-xl border-2 p-3 text-left transition-colors {addPartAction ===
+												opt.value
+													? 'border-primary bg-primary/5'
+													: 'border-base-300 hover:border-base-content/30'}"
+												onclick={() => (addPartAction = opt.value as typeof addPartAction)}
+											>
+												<div
+													class="mt-0.5 shrink-0 rounded-lg p-1.5 {addPartAction === opt.value
+														? 'bg-primary/15 text-primary'
+														: 'bg-base-300 text-base-content/50'}"
+												>
+													<opt.Icon class="h-4 w-4" />
+												</div>
+												<div class="min-w-0">
+													<p class="text-sm font-semibold leading-tight">{opt.label}</p>
+													<p class="mt-0.5 text-xs text-base-content/55 leading-snug">{opt.desc}</p>
+												</div>
+											</button>
+										{/each}
+									</div>
+									<div class="flex gap-2">
+										<button
+											class="btn btn-primary btn-sm flex-1 gap-2"
+											onclick={handleAddPart}
+											disabled={addingPartLoading}
+										>
+											{#if addingPartLoading}<Loader2
+													class="h-3.5 w-3.5 animate-spin"
+												/>{:else}<Plus class="h-3.5 w-3.5" />{/if}
+											Confirm
+										</button>
+										<button class="btn btn-ghost btn-sm" onclick={() => (addingPart = null)}
+											>Cancel</button
+										>
+									</div>
+								</div>
+							{:else if !trackPanelOpen}
+								<button
+									class="btn btn-primary btn-sm w-full gap-2"
+									onclick={() => (trackPanelOpen = true)}
+								>
+									<Plus class="h-4 w-4" />
+									Add collection
+									<span class="badge badge-primary-content badge-sm"
+										>{missingParts.length} missing</span
+									>
+								</button>
+							{:else}
+								<div class="space-y-4">
+									<p class="text-sm text-base-content/70">
+										{missingParts.length} movie{missingParts.length === 1 ? '' : 's'} from this collection
+										{missingParts.length === 1 ? 'is' : 'are'} not in your library. How would you like
+										to add {missingParts.length === 1 ? 'it' : 'them'}?
+									</p>
+									<div class="flex flex-col gap-2">
+										{#each [{ value: 'monitor-search', Icon: Zap, label: 'Monitor & search', desc: 'Add and start searching for releases immediately' }, { value: 'monitor', Icon: Eye, label: 'Monitor only', desc: 'Add and wait for future releases automatically' }, { value: 'add', Icon: EyeOff, label: 'Add unmonitored', desc: 'Add without automatic searching or monitoring' }] as opt (opt)}
+											<button
+												type="button"
+												class="flex items-start gap-3 rounded-xl border-2 p-3 text-left transition-colors {trackAction ===
+												opt.value
+													? 'border-primary bg-primary/5'
+													: 'border-base-300 hover:border-base-content/30'}"
+												onclick={() => (trackAction = opt.value as typeof trackAction)}
+											>
+												<div
+													class="mt-0.5 shrink-0 rounded-lg p-1.5 {trackAction === opt.value
+														? 'bg-primary/15 text-primary'
+														: 'bg-base-300 text-base-content/50'}"
+												>
+													<opt.Icon class="h-4 w-4" />
+												</div>
+												<div class="min-w-0">
+													<p class="text-sm font-semibold leading-tight">{opt.label}</p>
+													<p class="mt-0.5 text-xs text-base-content/55 leading-snug">{opt.desc}</p>
+												</div>
+											</button>
+										{/each}
+									</div>
+									<div class="flex gap-2">
+										<button
+											class="btn btn-primary btn-sm flex-1 gap-2"
+											onclick={handleTrackCollection}
+											disabled={tracking}
+										>
+											{#if tracking}<Loader2 class="h-3.5 w-3.5 animate-spin" />{:else}<Plus
+													class="h-3.5 w-3.5"
+												/>{/if}
+											Confirm
+										</button>
+										<button class="btn btn-ghost btn-sm" onclick={() => (trackPanelOpen = false)}
+											>Cancel</button
+										>
+									</div>
+								</div>
+							{/if}
+						</div>
+					{/if}
 				</div>
 			{/if}
 		</div>

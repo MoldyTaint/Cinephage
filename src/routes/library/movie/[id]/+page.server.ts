@@ -28,6 +28,26 @@ export interface QueueItemInfo {
 	progress: number | null;
 }
 
+export interface CollectionPart {
+	tmdbId: number;
+	title: string;
+	year: number | null;
+	posterPath: string | null;
+	releaseDate: string | null;
+	inLibrary: boolean;
+	movieId: string | null;
+	hasFile: boolean | null;
+	hasSubtitles: boolean;
+}
+
+export interface CollectionInfo {
+	tmdbId: number;
+	name: string;
+	posterPath: string | null;
+	backdropPath: string | null;
+	parts: CollectionPart[];
+}
+
 export interface LibraryMoviePageData {
 	movie: LibraryMovie;
 	librarySlug: string | null;
@@ -58,14 +78,7 @@ export interface LibraryMoviePageData {
 		anilist: boolean;
 		mal: boolean;
 	};
-	collectionMovies: {
-		id: string;
-		title: string;
-		year: number | null;
-		posterPath: string | null;
-		hasFile: boolean | null;
-		monitored: boolean | null;
-	}[];
+	collection: CollectionInfo | null;
 }
 
 function isAnimeMovieSignal(input: {
@@ -269,27 +282,67 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 				}
 			: null;
 
-	let collectionMovies: {
-		id: string;
-		title: string;
-		year: number | null;
-		posterPath: string | null;
-		hasFile: boolean | null;
-		monitored: boolean | null;
-	}[] = [];
+	let collection: CollectionInfo | null = null;
 	if (movie.tmdbCollectionId) {
-		collectionMovies = await db
-			.select({
-				id: movies.id,
-				title: movies.title,
-				year: movies.year,
-				posterPath: movies.posterPath,
-				hasFile: movies.hasFile,
-				monitored: movies.monitored
-			})
-			.from(movies)
-			.where(eq(movies.tmdbCollectionId, movie.tmdbCollectionId));
-		collectionMovies = collectionMovies.filter((m) => m.id !== movie.id);
+		const [tmdbCollection, libraryMembers] = await Promise.all([
+			tmdb.getCollection(movie.tmdbCollectionId).catch((err) => {
+				logger.warn(
+					{
+						collectionId: movie.tmdbCollectionId,
+						error: err instanceof Error ? err.message : String(err)
+					},
+					'[LibraryMovie] Failed to fetch TMDB collection'
+				);
+				return null;
+			}),
+			db
+				.select({
+					id: movies.id,
+					tmdbId: movies.tmdbId,
+					hasFile: movies.hasFile
+				})
+				.from(movies)
+				.where(eq(movies.tmdbCollectionId, movie.tmdbCollectionId))
+		]);
+
+		if (tmdbCollection) {
+			const libraryByTmdbId = new Map(libraryMembers.map((m) => [m.tmdbId, m]));
+
+			const libraryMovieIds = libraryMembers.map((m) => m.id);
+			const subtitleMovieIds =
+				libraryMovieIds.length > 0
+					? new Set(
+							(
+								await db
+									.selectDistinct({ movieId: subtitles.movieId })
+									.from(subtitles)
+									.where(inArray(subtitles.movieId, libraryMovieIds))
+							).map((r) => r.movieId)
+						)
+					: new Set<string>();
+
+			const parts: CollectionPart[] = (tmdbCollection.parts ?? []).map((part) => {
+				const lib = libraryByTmdbId.get(part.id);
+				return {
+					tmdbId: part.id,
+					title: part.title,
+					year: part.release_date ? new Date(part.release_date).getFullYear() : null,
+					posterPath: part.poster_path,
+					releaseDate: part.release_date ?? null,
+					inLibrary: !!lib,
+					movieId: lib?.id ?? null,
+					hasFile: lib?.hasFile ?? null,
+					hasSubtitles: lib ? subtitleMovieIds.has(lib.id) : false
+				};
+			});
+			collection = {
+				tmdbId: tmdbCollection.id,
+				name: tmdbCollection.name,
+				posterPath: tmdbCollection.poster_path,
+				backdropPath: tmdbCollection.backdrop_path,
+				parts
+			};
+		}
 	}
 
 	const isSearching = isMovieSearching(id);
@@ -331,6 +384,6 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 		queueItem,
 		isSearching,
 		configuredMetadataProviders,
-		collectionMovies
+		collection
 	};
 };
