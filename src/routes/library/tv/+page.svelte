@@ -700,13 +700,23 @@
 			</div>
 		{:else if filteredSeries.length === 0 && searchQuery}
 			<!-- Search Empty State -->
-			<div class="flex flex-col items-center justify-center py-20 text-center opacity-50">
-				<Search class="mb-4 h-16 w-16" />
-				<p class="text-2xl font-bold">{m.library_tv_noSearchMatch({ query: searchQuery })}</p>
-				<p class="mt-2">{m.library_tv_tryDifferentSearch()}</p>
-				<button class="btn mt-6 btn-ghost" onclick={() => (searchQuery = '')}>
-					{m.library_tv_clearSearchBtn()}
-				</button>
+			<div class="flex flex-col items-center justify-center py-20 text-center">
+				<div class="opacity-50">
+					<Search class="mb-4 h-16 w-16 mx-auto" />
+					<p class="text-2xl font-bold">{m.library_tv_noSearchMatch({ query: searchQuery })}</p>
+					<p class="mt-2">{m.library_tv_tryDifferentSearch()}</p>
+				</div>
+				<div class="mt-6 flex gap-3">
+					<button class="btn btn-ghost" onclick={() => (searchQuery = '')}>
+						{m.library_tv_clearSearchBtn()}
+					</button>
+					<a
+						href={resolvePath(`/discover?type=tv&q=${encodeURIComponent(searchQuery)}`)}
+						class="btn btn-primary"
+					>
+						Search in Discover
+					</a>
+				</div>
 			</div>
 		{:else if data.series.length === 0}
 			<!-- Empty State -->
