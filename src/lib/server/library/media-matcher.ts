@@ -641,8 +641,9 @@ export class MediaMatcherService {
 					reason
 				});
 			}
-			// Yield between files so the event loop stays responsive under heavy matching load.
-			await new Promise<void>((resolve) => setImmediate(resolve));
+			// Small delay between files; matches processAllUnmatched and keeps the event loop
+			// responsive on systems where ffprobe I/O can saturate a NAS-backed volume.
+			await new Promise<void>((resolve) => setTimeout(resolve, 250));
 		}
 
 		return { results, hasMore };
