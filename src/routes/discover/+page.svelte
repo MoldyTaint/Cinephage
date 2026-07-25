@@ -354,8 +354,9 @@
 	let filteredOutResults = $state<ResultsType>([]);
 	let debugLoading = $state(false);
 
+	let debugResultsLoaded = $state(false);
 	$effect(() => {
-		if (debugMode && filteredOutResults.length === 0 && !debugLoading) {
+		if (debugMode && !debugResultsLoaded && !debugLoading) {
 			loadDebugResults();
 		}
 	});
@@ -380,6 +381,7 @@
 			toasts.error('Failed to load debug results');
 		} finally {
 			debugLoading = false;
+			debugResultsLoaded = true;
 		}
 	}
 
@@ -387,9 +389,11 @@
 		debugMode = !debugMode;
 		localStorage.setItem('discover_debugMode', String(debugMode));
 		if (debugMode) {
+			debugResultsLoaded = false;
 			loadDebugResults();
 		} else {
 			filteredOutResults = [];
+			debugResultsLoaded = false;
 		}
 	}
 
