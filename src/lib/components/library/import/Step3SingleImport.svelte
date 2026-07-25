@@ -277,7 +277,13 @@
 						{/if}
 					{:else}
 						<span class="text-base-content/60">{m.library_import_summaryEpisode()}</span>
-						S{seasonNumber}E{episodeNumber}
+						{#if activeGroup.parsedEpisodes && activeGroup.parsedEpisodes.length > 1}
+							S{seasonNumber}E{activeGroup.parsedEpisodes[0]}-E{activeGroup.parsedEpisodes[
+								activeGroup.parsedEpisodes.length - 1
+							]}
+						{:else}
+							S{seasonNumber}E{episodeNumber}
+						{/if}
 					{/if}
 				</div>
 			{/if}

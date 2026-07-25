@@ -898,6 +898,7 @@
 			parsedYear: result.parsedYear,
 			parsedSeason: result.parsedSeason,
 			parsedEpisode: result.parsedEpisode,
+			parsedEpisodes: result.parsedEpisodes,
 			inferredMediaType: result.inferredMediaType,
 			matches: result.matches ?? []
 		};

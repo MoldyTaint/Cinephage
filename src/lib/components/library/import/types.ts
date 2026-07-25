@@ -27,6 +27,7 @@ export interface DetectionGroup {
 	parsedYear?: number;
 	parsedSeason?: number;
 	parsedEpisode?: number;
+	parsedEpisodes?: number[];
 	inferredMediaType: MediaType;
 	matches?: MatchResult[];
 }
