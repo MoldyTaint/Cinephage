@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { SvelteMap, SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
-	import { Download, Loader2, Search, CalendarSync, CalendarClock, X } from 'lucide-svelte';
+	import { Download, Loader2, Search, CalendarSync, CalendarClock, X, Trash2 } from 'lucide-svelte';
+	import { ConfirmationModal } from '$lib/components/ui/modal';
 
 	import * as m from '$lib/paraglide/messages.js';
 	import { SettingsPage } from '$lib/components/ui/settings';
@@ -403,6 +404,30 @@
 		}
 	}
 
+	let clearingLogs = $state(false);
+	let clearConfirmOpen = $state(false);
+
+	async function executeClearAllLogs(): Promise<void> {
+		clearingLogs = true;
+		try {
+			const res = await fetch('/api/settings/logs/history', { method: 'DELETE' });
+			const payload = await res.json();
+			if (!payload.success) throw new Error(payload.error ?? 'Failed to clear logs');
+			entries = [];
+			pendingLiveEntries = [];
+			historyTotal = 0;
+			historyHasMore = false;
+			historyPagesLoaded.clear();
+			selectedEntryId = null;
+			toasts.success('Log history cleared');
+		} catch (error) {
+			toasts.error(error instanceof Error ? error.message : 'Failed to clear log history');
+		} finally {
+			clearingLogs = false;
+			clearConfirmOpen = false;
+		}
+	}
+
 	async function saveRetentionDays(): Promise<void> {
 		retentionSaving = true;
 		try {
@@ -759,6 +784,19 @@
 					<span class="sm:inline">Export</span>
 				</button>
 
+				<button
+					class="btn text-xs btn-ghost btn-sm text-error"
+					onclick={() => (clearConfirmOpen = true)}
+					disabled={clearingLogs}
+				>
+					{#if clearingLogs}
+						<Loader2 class="h-3.5 w-3.5 animate-spin" />
+					{:else}
+						<Trash2 class="h-3.5 w-3.5" />
+					{/if}
+					<span class="sm:inline">Clear all</span>
+				</button>
+
 				{#if hasActiveFilters}
 					<button class="btn gap-1 text-error btn-ghost btn-xs" onclick={resetFilters}>
 						<X class="h-3 w-3" />
@@ -957,3 +995,14 @@
 		{@render inspectorBody(selectedEntry)}
 	</div>
 {/if}
+
+<ConfirmationModal
+	open={clearConfirmOpen}
+	title="Clear all logs"
+	message="This will permanently delete all log history and cannot be undone."
+	confirmLabel="Clear all"
+	confirmVariant="error"
+	loading={clearingLogs}
+	onConfirm={executeClearAllLogs}
+	onCancel={() => (clearConfirmOpen = false)}
+/>

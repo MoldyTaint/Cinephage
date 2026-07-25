@@ -392,6 +392,21 @@ class LogHistoryService {
 		return result.entries;
 	}
 
+	async clearAllFiles(): Promise<void> {
+		if (!existsSync(LOGS_DIR)) return;
+		const directory = await opendir(LOGS_DIR);
+		for await (const entry of directory) {
+			if (!entry.isFile()) continue;
+			if (!parseLogFileDate(entry.name)) continue;
+			const filePath = join(LOGS_DIR, entry.name);
+			if (filePath === this.currentFilePath) {
+				this.closeStream();
+				this.currentFilePath = null;
+			}
+			await unlink(filePath);
+		}
+	}
+
 	async cleanupOldFiles(retentionDays?: number): Promise<void> {
 		const resolvedRetention = retentionDays ?? (await this.getRetentionDays());
 		if (!existsSync(LOGS_DIR)) return;
