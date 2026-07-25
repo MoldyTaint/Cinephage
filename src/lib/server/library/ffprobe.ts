@@ -180,6 +180,44 @@ const DEFAULT_PROBE_SIZE = 50_000_000; // 50MB - needed for proper HDR metadata 
 const DEFAULT_FFPROBE_PATH = process.env.FFPROBE_PATH || 'ffprobe';
 
 // =============================================================================
+// Concurrency limiter
+// =============================================================================
+
+// Caps simultaneous ffprobe processes at 1. On NAS-backed Docker volumes (e.g.
+// TerraStation OS), ffprobe enters an uninterruptible D-state wait on file I/O.
+// SIGKILL cannot terminate D-state processes, so timed-out probes accumulate as
+// zombie processes that continue to saturate the NAS I/O queue. A semaphore of 1
+// ensures at most one probe is running at any time, bounding the blast radius to
+// a single hung process even when the scan processes many files.
+class Semaphore {
+	private slots: number;
+	private readonly queue: Array<() => void> = [];
+
+	constructor(limit: number) {
+		this.slots = limit;
+	}
+
+	acquire(): Promise<void> {
+		if (this.slots > 0) {
+			this.slots--;
+			return Promise.resolve();
+		}
+		return new Promise<void>((resolve) => this.queue.push(resolve));
+	}
+
+	release(): void {
+		const next = this.queue.shift();
+		if (next) {
+			next();
+		} else {
+			this.slots++;
+		}
+	}
+}
+
+const ffprobeSemaphore = new Semaphore(Number(process.env.FFPROBE_CONCURRENCY ?? 1));
+
+// =============================================================================
 // FFprobe Executor
 // =============================================================================
 
@@ -305,70 +343,75 @@ export async function runFFprobe(
 
 	args.push(filePath);
 
-	return new Promise((resolve) => {
-		const proc = spawn(ffprobePath, args, {
-			stdio: ['ignore', 'pipe', 'pipe']
-		});
+	await ffprobeSemaphore.acquire();
+	try {
+		return await new Promise((resolve) => {
+			const proc = spawn(ffprobePath, args, {
+				stdio: ['ignore', 'pipe', 'pipe']
+			});
 
-		let stdout = '';
-		let stderr = '';
+			let stdout = '';
+			let stderr = '';
 
-		proc.stdout.on('data', (data) => {
-			stdout += data.toString();
-		});
+			proc.stdout.on('data', (data) => {
+				stdout += data.toString();
+			});
 
-		proc.stderr.on('data', (data) => {
-			stderr += data.toString();
-		});
+			proc.stderr.on('data', (data) => {
+				stderr += data.toString();
+			});
 
-		proc.on('error', (err) => {
-			logger.error({ err }, '[FFprobe] Failed to spawn');
-			resolve(null);
-		});
+			proc.on('error', (err) => {
+				logger.error({ err }, '[FFprobe] Failed to spawn');
+				resolve(null);
+			});
 
-		proc.on('close', (code) => {
-			if (code !== 0) {
-				const isRemote = /^https?:\/\//i.test(filePath);
-				if (isRemote) {
-					const stderrText = stderr.trim();
-					// STRM URL probes often fail and fall back to placeholder media info.
-					// Silence expected remote failures unless ffprobe emitted useful diagnostics.
-					if (stderrText) {
-						logger.debug(
-							{
-								code,
-								stderr: stderrText
-							},
-							'[FFprobe] Remote probe exited with non-zero code'
-						);
+			proc.on('close', (code) => {
+				if (code !== 0) {
+					const isRemote = /^https?:\/\//i.test(filePath);
+					if (isRemote) {
+						const stderrText = stderr.trim();
+						// STRM URL probes often fail and fall back to placeholder media info.
+						// Silence expected remote failures unless ffprobe emitted useful diagnostics.
+						if (stderrText) {
+							logger.debug(
+								{
+									code,
+									stderr: stderrText
+								},
+								'[FFprobe] Remote probe exited with non-zero code'
+							);
+						}
+					} else {
+						logger.error({ code, stderr }, '[FFprobe] Exited with non-zero code');
 					}
-				} else {
-					logger.error({ code, stderr }, '[FFprobe] Exited with non-zero code');
+					resolve(null);
+					return;
 				}
+
+				try {
+					const output = JSON.parse(stdout) as FFprobeOutput;
+					resolve(output);
+				} catch (err) {
+					logger.error({ err }, '[FFprobe] Failed to parse JSON output');
+					resolve(null);
+				}
+			});
+
+			// Timeout handler
+			const timeoutId = setTimeout(() => {
+				logger.error({ timeout, filePath }, '[FFprobe] Timeout');
+				proc.kill('SIGKILL');
 				resolve(null);
-				return;
-			}
+			}, timeout);
 
-			try {
-				const output = JSON.parse(stdout) as FFprobeOutput;
-				resolve(output);
-			} catch (err) {
-				logger.error({ err }, '[FFprobe] Failed to parse JSON output');
-				resolve(null);
-			}
+			proc.on('close', () => {
+				clearTimeout(timeoutId);
+			});
 		});
-
-		// Timeout handler
-		const timeoutId = setTimeout(() => {
-			logger.error({ timeout, filePath }, '[FFprobe] Timeout');
-			proc.kill('SIGKILL');
-			resolve(null);
-		}, timeout);
-
-		proc.on('close', () => {
-			clearTimeout(timeoutId);
-		});
-	});
+	} finally {
+		ffprobeSemaphore.release();
+	}
 }
 
 /**
