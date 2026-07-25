@@ -611,10 +611,12 @@ export class MultiSeasonSearchStrategy {
 				return { grabbed: false, episodesCovered: [] };
 			}
 
-			// Filter to complete series packs
+			// Filter to complete series packs.
+			// Use || (not ??) because isCompleteSeries is always a boolean (never undefined),
+			// so ?? would never fall through to the seasons-length fallback.
 			const completeSeriesPacks = searchResult.releases.filter((release) => {
 				return (
-					release.parsed.episode?.isCompleteSeries ??
+					release.parsed.episode?.isCompleteSeries ||
 					(release.parsed.episode?.isSeasonPack &&
 						release.parsed.episode?.seasons?.length === seasonNumbers.length)
 				);
@@ -736,16 +738,17 @@ export class MultiSeasonSearchStrategy {
 			const indexerManager = await getIndexerManager();
 			const searchTitles = await getSeriesSearchTitles(seriesData.id);
 
-			// Search with season filter to get packs
+			// Search without a season filter so filterBySeasonEpisode does not strip
+			// multi-season packs before Phase 2's own range check sees them.
+			// A season-scoped query causes the orchestrator to keep only single-season
+			// packs, discarding exactly the releases we want here.
 			const criteria: SearchCriteria = {
 				searchType: 'tv',
 				query: seriesData.title,
 				tmdbId: seriesData.tmdbId,
 				tvdbId: seriesData.tvdbId ?? undefined,
 				imdbId: seriesData.imdbId ?? undefined,
-				season: startSeason,
 				searchTitles
-				// Note: We search for start season and filter for multi-season packs
 			};
 
 			const searchResult = await indexerManager.searchEnhanced(criteria, {

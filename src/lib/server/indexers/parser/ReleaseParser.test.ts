@@ -398,6 +398,30 @@ describe('ReleaseParser', () => {
 			expect(result.episode?.episodes?.length).toBe(22);
 		});
 
+		it('should parse S01-S07 with language/source tags as complete series', () => {
+			const result = parseRelease('The.Mentalist.S01-S07.ITA.DLMUX.x264');
+
+			expect(result.episode?.isSeasonPack).toBe(true);
+			expect(result.episode?.isCompleteSeries).toBe(true);
+			expect(result.episode?.seasons).toEqual([1, 2, 3, 4, 5, 6, 7]);
+		});
+
+		it('should parse S01-07 (no second S prefix) with language tags as complete series', () => {
+			const result = parseRelease('The.Mentalist.S01-07.ITA.WEBRIP.x264');
+
+			expect(result.episode?.isSeasonPack).toBe(true);
+			expect(result.episode?.isCompleteSeries).toBe(true);
+			expect(result.episode?.seasons).toEqual([1, 2, 3, 4, 5, 6, 7]);
+		});
+
+		it('should parse localized title with year range and bracketed S01-S07 as complete series', () => {
+			const result = parseRelease('Mentalista - The Mentalist 2008-2015 [S01-S07]');
+
+			expect(result.episode?.isSeasonPack).toBe(true);
+			expect(result.episode?.isCompleteSeries).toBe(true);
+			expect(result.episode?.seasons).toEqual([1, 2, 3, 4, 5, 6, 7]);
+		});
+
 		it('should parse 1x05 format', () => {
 			const result = parseRelease('House.1x05.720p.WEB-DL.AAC2.0.H264-BTN');
 
