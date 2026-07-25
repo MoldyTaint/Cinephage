@@ -70,6 +70,7 @@ interface ManualImportDetectionData {
 	parsedYear?: number;
 	parsedSeason?: number;
 	parsedEpisode?: number;
+	parsedEpisodes?: number[];
 	inferredMediaType: MediaType;
 	matches: ManualImportMatch[];
 }
@@ -266,6 +267,10 @@ export class ManualImportService {
 					: tvIdentifier?.numbering === 'absolute'
 						? tvIdentifier.absoluteEpisode
 						: undefined,
+			parsedEpisodes:
+				tvIdentifier?.numbering === 'standard' && tvIdentifier.episodeNumbers.length > 1
+					? tvIdentifier.episodeNumbers
+					: undefined,
 			inferredMediaType,
 			matches: enrichedMatches
 		};
@@ -591,10 +596,11 @@ export class ManualImportService {
 					);
 				}
 
+				const primaryEpisodeNumber = fileMapping.episodeNumbers[0];
 				const episodeMeta = await this.getEpisodeMetaCached(
 					request.tmdbId,
 					fileMapping.seasonNumber,
-					fileMapping.episodeNumber,
+					primaryEpisodeNumber,
 					episodeMetaCache,
 					tvContext.existingSeriesDbId,
 					tvContext.tmdbSeriesSeasons
@@ -604,7 +610,7 @@ export class ManualImportService {
 					parsed,
 					tvContext.namingInfoBase,
 					fileMapping.seasonNumber,
-					fileMapping.episodeNumber,
+					fileMapping.episodeNumbers,
 					episodeMeta.title,
 					episodeMeta.absoluteNumber,
 					episodeMeta.airDate
@@ -638,7 +644,7 @@ export class ManualImportService {
 					parsedTitle: parsed.cleanTitle || sourceBaseName,
 					parsedYear: parsed.year,
 					parsedSeason: fileMapping.seasonNumber,
-					parsedEpisode: fileMapping.episodeNumber,
+					parsedEpisode: primaryEpisodeNumber,
 					tmdbId: request.tmdbId
 				});
 
@@ -646,7 +652,7 @@ export class ManualImportService {
 				unmatchedIds.push(unmatchedId);
 				episodeMapping[unmatchedId] = {
 					season: fileMapping.seasonNumber,
-					episode: fileMapping.episodeNumber
+					episode: primaryEpisodeNumber
 				};
 			}
 		}
@@ -1411,7 +1417,7 @@ export class ManualImportService {
 		request: ExecuteManualImportRequest,
 		totalFiles: number,
 		sourceFilePath: string
-	): { seasonNumber: number; episodeNumber: number } | null {
+	): { seasonNumber: number; episodeNumbers: number[] } | null {
 		const resolved = resolveTvEpisodeIdentifier({
 			filePath: sourceFilePath,
 			parsed,
@@ -1421,7 +1427,7 @@ export class ManualImportService {
 		if (resolved?.numbering === 'standard') {
 			return {
 				seasonNumber: resolved.seasonNumber,
-				episodeNumber: resolved.episodeNumbers[0]
+				episodeNumbers: resolved.episodeNumbers
 			};
 		}
 
@@ -1431,7 +1437,7 @@ export class ManualImportService {
 
 		return {
 			seasonNumber: request.seasonNumber ?? 1,
-			episodeNumber: request.episodeNumber ?? 1
+			episodeNumbers: request.episodeNumber != null ? [request.episodeNumber] : [1]
 		};
 	}
 
@@ -1545,7 +1551,7 @@ export class ManualImportService {
 		parsed: ReturnType<typeof parseRelease>,
 		namingInfoBase: MediaNamingInfo,
 		seasonNumber: number,
-		episodeNumber: number,
+		episodeNumbers: number[],
 		episodeTitle?: string,
 		absoluteNumber?: number,
 		airDate?: string
@@ -1555,7 +1561,7 @@ export class ManualImportService {
 			{
 				...namingInfoBase,
 				seasonNumber,
-				episodeNumbers: [episodeNumber],
+				episodeNumbers,
 				episodeTitle,
 				absoluteNumber,
 				airDate
