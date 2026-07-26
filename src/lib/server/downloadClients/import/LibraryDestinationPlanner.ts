@@ -16,9 +16,11 @@ interface MoviePlanInput {
 	mediaPath: string;
 	media: {
 		title: string;
+		originalTitle?: string | null;
 		year?: number | null;
 		tmdbId: number;
 		imdbId?: string | null;
+		collectionName?: string | null;
 	};
 	sourcePath: string;
 	releaseTitle: string;
@@ -29,8 +31,11 @@ interface EpisodePlanInput {
 	mediaPath: string;
 	media: {
 		title: string;
+		originalTitle?: string | null;
 		year?: number | null;
+		tmdbId?: number | null;
 		tvdbId?: number | null;
+		imdbId?: string | null;
 		seriesType?: string | null;
 	};
 	seasonNumber: number;
@@ -64,9 +69,11 @@ export class LibraryDestinationPlanner {
 		const fileName = this.safeSegment(
 			this.naming.generateMovieFileName({
 				title: input.media.title,
+				originalTitle: input.media.originalTitle ?? undefined,
 				year: input.media.year ?? undefined,
 				tmdbId: input.media.tmdbId,
 				imdbId: input.media.imdbId ?? undefined,
+				collectionName: input.media.collectionName ?? undefined,
 				...releaseToNamingInfo(parsed, input.sourcePath)
 			})
 		);
@@ -84,8 +91,11 @@ export class LibraryDestinationPlanner {
 			this.naming.generateEpisodeFileName({
 				...releaseToNamingInfo(parsed, input.sourcePath),
 				title: input.media.title,
+				originalTitle: input.media.originalTitle ?? undefined,
 				year: input.media.year ?? undefined,
+				tmdbId: input.media.tmdbId ?? undefined,
 				tvdbId: input.media.tvdbId ?? undefined,
+				imdbId: input.media.imdbId ?? undefined,
 				seasonNumber: input.seasonNumber,
 				episodeNumbers: input.episodeNumbers,
 				episodeTitle: input.episodeTitle,

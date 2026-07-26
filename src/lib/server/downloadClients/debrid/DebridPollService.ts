@@ -375,9 +375,11 @@ export class DebridPollService implements BackgroundService {
 					movie: {
 						id: movie.id,
 						title: movie.title,
+						originalTitle: movie.originalTitle ?? null,
 						year: movie.year ?? null,
 						tmdbId: movie.tmdbId,
 						imdbId: movie.imdbId ?? null,
+						collectionName: movie.collectionName ?? null,
 						path: movie.path
 					}
 				}
@@ -405,8 +407,11 @@ export class DebridPollService implements BackgroundService {
 				series: {
 					id: show.id,
 					title: show.title,
+					originalTitle: show.originalTitle ?? null,
 					year: show.year ?? null,
+					tmdbId: show.tmdbId ?? null,
 					tvdbId: show.tvdbId ?? null,
+					imdbId: show.imdbId ?? null,
 					path: show.path,
 					seriesType: show.seriesType ?? null,
 					seasonFolder: show.seasonFolder ?? null

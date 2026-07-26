@@ -855,8 +855,11 @@ export class ManualImportService {
 			: undefined;
 		const folderName = this.namingService.generateMovieFolderName({
 			title: tmdbMovie.title,
+			originalTitle: tmdbMovie.original_title || undefined,
 			year,
-			tmdbId: request.tmdbId
+			tmdbId: request.tmdbId,
+			imdbId: externalIds.imdb_id ?? undefined,
+			collectionName: tmdbMovie.belongs_to_collection?.name ?? undefined
 		});
 
 		return {
@@ -972,9 +975,11 @@ export class ManualImportService {
 			: undefined;
 		const seriesFolderName = this.namingService.generateSeriesFolderName({
 			title: tvShow.name,
+			originalTitle: tvShow.original_name || undefined,
 			year,
 			tmdbId: request.tmdbId,
-			tvdbId: externalIds.tvdb_id ?? undefined
+			tvdbId: externalIds.tvdb_id ?? undefined,
+			imdbId: externalIds.imdb_id ?? undefined
 		});
 
 		return {
