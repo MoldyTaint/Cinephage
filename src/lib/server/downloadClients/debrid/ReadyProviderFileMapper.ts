@@ -26,9 +26,11 @@ interface MovieContext {
 	movie: {
 		id: string;
 		title: string;
+		originalTitle?: string | null;
 		year?: number | null;
 		tmdbId: number;
 		imdbId?: string | null;
+		collectionName?: string | null;
 		path: string;
 	};
 }
@@ -47,8 +49,11 @@ interface SeriesContext {
 	series: {
 		id: string;
 		title: string;
+		originalTitle?: string | null;
 		year?: number | null;
+		tmdbId?: number | null;
 		tvdbId?: number | null;
+		imdbId?: string | null;
 		path: string;
 		seriesType?: string | null;
 		seasonFolder?: boolean | null;

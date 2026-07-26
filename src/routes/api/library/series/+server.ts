@@ -32,13 +32,23 @@ import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
  * Generate a folder name for a series using the naming service
  * Uses database naming configuration instead of defaults
  */
-function generateSeriesFolderName(title: string, year?: number, tvdbId?: number): string {
+function generateSeriesFolderName(
+	title: string,
+	year?: number,
+	tvdbId?: number,
+	tmdbId?: number,
+	imdbId?: string,
+	originalTitle?: string
+): string {
 	const config = namingSettingsService.getConfigSync();
 	const namingService = new NamingService(config);
 	const info: MediaNamingInfo = {
 		title,
+		originalTitle,
 		year,
-		tvdbId
+		tvdbId,
+		tmdbId,
+		imdbId
 	};
 	return namingService.generateSeriesFolderName(info);
 }
@@ -193,7 +203,14 @@ export const POST: RequestHandler = async (event) => {
 		const year = tvDetails.first_air_date
 			? new Date(tvDetails.first_air_date).getFullYear()
 			: undefined;
-		const folderName = generateSeriesFolderName(tvDetails.name, year, tvdbId ?? undefined);
+		const folderName = generateSeriesFolderName(
+			tvDetails.name,
+			year,
+			tvdbId ?? undefined,
+			tmdbId,
+			imdbId ?? undefined,
+			tvDetails.original_name ?? undefined
+		);
 
 		// Calculate total episode count (including specials if monitorSpecials is enabled)
 		const totalEpisodes =

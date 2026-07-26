@@ -831,15 +831,19 @@ export class SmartListService {
 					? new Date(movieDetails.release_date).getFullYear()
 					: undefined;
 
+				const { imdbId } = await fetchMovieExternalIds(item.tmdbId);
+
 				const config = namingSettingsService.getConfigSync();
 				const namingService = new NamingService(config);
 				const folderName = namingService.generateMovieFolderName({
 					title: movieDetails.title,
+					originalTitle: movieDetails.original_title,
 					year,
-					tmdbId: item.tmdbId
+					tmdbId: item.tmdbId,
+					imdbId,
+					collectionName: movieDetails.belongs_to_collection?.name ?? undefined
 				} as MediaNamingInfo);
 
-				const { imdbId } = await fetchMovieExternalIds(item.tmdbId);
 				const languageProfileId = await getLanguageProfileId(wantsSubtitles, item.tmdbId);
 				const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
 					list.rootFolderId,
@@ -929,8 +933,11 @@ export class SmartListService {
 				const namingService = new NamingService(config);
 				const folderName = namingService.generateSeriesFolderName({
 					title: seriesDetails.name,
+					originalTitle: seriesDetails.original_name,
 					year,
-					tvdbId
+					tvdbId,
+					tmdbId: item.tmdbId,
+					imdbId
 				} as MediaNamingInfo);
 
 				const languageProfileId = await getLanguageProfileId(wantsSubtitles, item.tmdbId);
@@ -1433,16 +1440,19 @@ export class SmartListService {
 				const year = movieDetails.release_date
 					? new Date(movieDetails.release_date).getFullYear()
 					: undefined;
+				// Extract external IDs before folder name so all tokens are available
+				const { imdbId } = await fetchMovieExternalIds(item.tmdbId);
+
 				const config = namingSettingsService.getConfigSync();
 				const namingService = new NamingService(config);
 				const folderName = namingService.generateMovieFolderName({
 					title: movieDetails.title,
+					originalTitle: movieDetails.original_title,
 					year,
-					tmdbId: item.tmdbId
+					tmdbId: item.tmdbId,
+					imdbId,
+					collectionName: movieDetails.belongs_to_collection?.name ?? undefined
 				} as MediaNamingInfo);
-
-				// Extract external IDs
-				const { imdbId } = await fetchMovieExternalIds(item.tmdbId);
 
 				// Get the language profile if subtitles wanted
 				const languageProfileId = await getLanguageProfileId(wantsSubtitles, item.tmdbId);
@@ -1587,8 +1597,11 @@ export class SmartListService {
 				const namingService = new NamingService(config);
 				const folderName = namingService.generateSeriesFolderName({
 					title: seriesDetails.name,
+					originalTitle: seriesDetails.original_name,
 					year,
-					tvdbId
+					tvdbId,
+					tmdbId: item.tmdbId,
+					imdbId
 				} as MediaNamingInfo);
 
 				// Get the language profile if subtitles wanted

@@ -629,17 +629,21 @@ export class RenamePreviewService {
 				const movie = db.select().from(movies).where(eq(movies.id, mediaId)).get()!;
 				newFolderName = naming.generateMovieFolderName({
 					title: movie.title,
+					originalTitle: movie.originalTitle ?? undefined,
 					year: movie.year ?? undefined,
 					tmdbId: movie.tmdbId,
-					imdbId: movie.imdbId ?? undefined
+					imdbId: movie.imdbId ?? undefined,
+					collectionName: movie.collectionName ?? undefined
 				});
 			} else {
 				const show = db.select().from(series).where(eq(series.id, mediaId)).get()!;
 				newFolderName = naming.generateSeriesFolderName({
 					title: show.title,
+					originalTitle: show.originalTitle ?? undefined,
 					year: show.year ?? undefined,
 					tvdbId: show.tvdbId ?? undefined,
-					tmdbId: show.tmdbId
+					tmdbId: show.tmdbId,
+					imdbId: show.imdbId ?? undefined
 				});
 			}
 
