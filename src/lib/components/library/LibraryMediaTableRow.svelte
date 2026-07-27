@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { LibraryMovie, LibrarySeries } from '$lib/types/library';
+	import { displayTitle } from '$lib/types/library';
 	import {
 		CheckCircle2,
 		XCircle,
@@ -123,7 +124,7 @@
 			href={resolvePath(`/library/${mediaType}/${item.id}`)}
 			class="block max-w-xs truncate text-base font-medium hover:text-primary"
 		>
-			{item.title}
+			{displayTitle(item)}
 		</a>
 		{#if itemIsMovie && 'collectionName' in item && item.collectionName}
 			<span class="mt-0.5 badge badge-outline badge-xs">{item.collectionName}</span>

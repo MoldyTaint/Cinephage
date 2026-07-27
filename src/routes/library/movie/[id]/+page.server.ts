@@ -132,7 +132,9 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 			libraryId: movies.libraryId,
 			librarySlug: libraries.slug,
 			libraryName: libraries.name,
-			libraryIsDefault: libraries.isDefault
+			libraryIsDefault: libraries.isDefault,
+			metadataLanguage: movies.metadataLanguage,
+			preferOriginalTitle: movies.preferOriginalTitle
 		})
 		.from(movies)
 		.leftJoin(rootFolders, eq(movies.rootFolderId, rootFolders.id))

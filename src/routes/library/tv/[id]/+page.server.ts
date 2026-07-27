@@ -136,6 +136,8 @@ export interface LibrarySeriesPageData {
 		episodeFileCount: number | null;
 		episodeGroupId: string | null;
 		percentComplete: number;
+		metadataLanguage?: string | null;
+		preferOriginalTitle?: boolean | null;
 	};
 	tmdbDetails: TVShowDetails | null;
 	seasons: SeasonWithEpisodes[];
@@ -203,7 +205,9 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 			libraryId: series.libraryId,
 			librarySlug: libraries.slug,
 			libraryName: libraries.name,
-			libraryIsDefault: libraries.isDefault
+			libraryIsDefault: libraries.isDefault,
+			metadataLanguage: series.metadataLanguage,
+			preferOriginalTitle: series.preferOriginalTitle
 		})
 		.from(series)
 		.leftJoin(rootFolders, eq(series.rootFolderId, rootFolders.id))

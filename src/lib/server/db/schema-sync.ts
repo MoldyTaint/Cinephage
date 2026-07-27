@@ -134,8 +134,9 @@ import {
  * Version 123: Add desired_qualities column to movies for multi-quality per-movie support
  * Version 124: Add movie_file_id to subtitles for per-file subtitle association
  * Version 125: Add api_token and remove_after_import columns to download_clients (debrid support)
+ * Version 126: Add metadata_language and prefer_original_title columns to movies and series tables
  */
-export const CURRENT_SCHEMA_VERSION = 125;
+export const CURRENT_SCHEMA_VERSION = 126;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -554,7 +555,9 @@ const TABLE_DEFINITIONS: string[] = [
 		"download_release_type" text,
 		"digital_release_date" text,
 		"physical_release_date" text,
-		"availability_delay" integer NOT NULL DEFAULT 0
+		"availability_delay" integer NOT NULL DEFAULT 0,
+		"metadata_language" text,
+		"prefer_original_title" integer DEFAULT 0
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS "movie_files" (
@@ -602,7 +605,9 @@ const TABLE_DEFINITIONS: string[] = [
 		"episode_file_count" integer DEFAULT 0,
 		"wants_subtitles" integer DEFAULT true,
 		"first_air_date" text,
-		"episode_group_id" text
+		"episode_group_id" text,
+		"metadata_language" text,
+		"prefer_original_title" integer DEFAULT 0
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS "seasons" (

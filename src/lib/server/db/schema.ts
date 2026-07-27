@@ -695,7 +695,11 @@ export const movies = sqliteTable(
 		adultSource: text('adult_source'),
 		adultConfidence: text('adult_confidence'),
 		// Delay profile for holding releases before grabbing
-		delayProfileId: text('delay_profile_id')
+		delayProfileId: text('delay_profile_id'),
+		// Metadata language override (null = inherit global, 'original' = use original_language)
+		metadataLanguage: text('metadata_language'),
+		// Display flag: use originalTitle instead of title in all UI
+		preferOriginalTitle: integer('prefer_original_title', { mode: 'boolean' }).default(false)
 	},
 	(table) => [
 		index('idx_movies_monitored_hasfile').on(table.monitored, table.hasFile),
@@ -819,7 +823,11 @@ export const series = sqliteTable(
 		adultConfidence: text('adult_confidence'),
 		episodeGroupId: text('episode_group_id'),
 		// Delay profile for holding releases before grabbing
-		delayProfileId: text('delay_profile_id')
+		delayProfileId: text('delay_profile_id'),
+		// Metadata language override (null = inherit global, 'original' = use original_language)
+		metadataLanguage: text('metadata_language'),
+		// Display flag: use originalTitle instead of title in all UI
+		preferOriginalTitle: integer('prefer_original_title', { mode: 'boolean' }).default(false)
 	},
 	(table) => [
 		index('idx_series_monitored').on(table.monitored),

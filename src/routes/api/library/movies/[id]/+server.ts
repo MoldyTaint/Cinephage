@@ -39,6 +39,7 @@ import { importService } from '$lib/server/downloadClients/import/index.js';
 import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
 import { redundantFileIds } from '$lib/server/quality/buckets.js';
 import { resolveMovieMultiQuality } from '$lib/server/quality/movie-buckets.js';
+import { refreshMovieMetadata } from '$lib/server/metadata/metadata-refresh.js';
 
 function isAnimeMovieSignal(input: {
 	rootFolderPath: string | null;
@@ -86,7 +87,9 @@ export const GET: RequestHandler = async ({ params }) => {
 				releaseDate: movies.releaseDate,
 				digitalReleaseDate: movies.digitalReleaseDate,
 				physicalReleaseDate: movies.physicalReleaseDate,
-				availabilityDelay: movies.availabilityDelay
+				availabilityDelay: movies.availabilityDelay,
+				metadataLanguage: movies.metadataLanguage,
+				preferOriginalTitle: movies.preferOriginalTitle
 			})
 			.from(movies)
 			.leftJoin(rootFolders, eq(movies.rootFolderId, rootFolders.id))
@@ -203,7 +206,9 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		delayProfileId,
 		folderPath,
 		tmdbCollectionId,
-		collectionName
+		collectionName,
+		metadataLanguage,
+		preferOriginalTitle
 	} = body;
 
 	// Capture current state before update (for subtitle trigger detection)
@@ -217,7 +222,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			desiredQualities: movies.desiredQualities,
 			wantsSubtitles: movies.wantsSubtitles,
 			languageProfileId: movies.languageProfileId,
-			hasFile: movies.hasFile
+			hasFile: movies.hasFile,
+			metadataLanguage: movies.metadataLanguage
 		})
 		.from(movies)
 		.where(eq(movies.id, params.id));
@@ -368,6 +374,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	if (collectionName !== undefined) {
 		updateData.collectionName = collectionName;
 	}
+	if (metadataLanguage !== undefined) {
+		updateData.metadataLanguage = metadataLanguage;
+	}
+	if (typeof preferOriginalTitle === 'boolean') {
+		updateData.preferOriginalTitle = preferOriginalTitle;
+	}
 
 	if (Object.keys(updateData).length === 0 && !moveRequest) {
 		return json({ success: false, error: 'No valid fields to update' }, { status: 400 });
@@ -375,6 +387,18 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 
 	if (Object.keys(updateData).length > 0) {
 		await db.update(movies).set(updateData).where(eq(movies.id, params.id));
+	}
+
+	// Refresh metadata from TMDB when language override changes
+	const languageChanged =
+		metadataLanguage !== undefined && metadataLanguage !== (currentMovie?.metadataLanguage ?? null);
+	if (languageChanged) {
+		refreshMovieMetadata(params.id).catch((err) => {
+			logger.error(
+				{ movieId: params.id, err },
+				'[API] Background metadata refresh on language change failed'
+			);
+		});
 	}
 
 	// Opt-in removal of now-redundant quality tiers when desiredQualities shrank.

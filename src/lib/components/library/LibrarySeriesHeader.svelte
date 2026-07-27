@@ -1,6 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import type { TVShowDetails } from '$lib/types/tmdb';
+	import { displayTitle } from '$lib/types/library';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
 	import CrewList from '$lib/components/tmdb/CrewList.svelte';
 	import WatchProviders from '$lib/components/tmdb/WatchProviders.svelte';
@@ -40,6 +41,8 @@
 		imdbId: string | null;
 		providerRefs?: Partial<Record<'tmdb' | 'anilist' | 'mal', string>> | null;
 		title: string;
+		originalTitle?: string | null;
+		preferOriginalTitle?: boolean | null;
 		year: number | null;
 		overview: string | null;
 		status: string | null;
@@ -347,7 +350,7 @@
 				<div class="flex min-w-0 flex-1 flex-col gap-4">
 					<div class="min-w-0">
 						<h1 class="text-2xl font-bold md:text-3xl">
-							{series.title}
+							{displayTitle(series)}
 							{#if series.year}
 								<span class="font-normal text-base-content/60">({series.year})</span>
 							{/if}

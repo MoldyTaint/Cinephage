@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { LibraryMovie } from '$lib/types/library';
 	import type { MovieDetails, ReleaseDate } from '$lib/types/tmdb';
-	import { getBestQualityFromFiles } from '$lib/types/library';
+	import { getBestQualityFromFiles, displayTitle } from '$lib/types/library';
 	import { pickBestMovieFile } from '$lib/shared/best-file.js';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
 	import CrewList from '$lib/components/tmdb/CrewList.svelte';
@@ -500,7 +500,7 @@
 				<div class="flex min-w-0 flex-1 flex-col gap-4">
 					<div class="min-w-0">
 						<h1 class="text-2xl font-bold md:text-3xl">
-							{movie.title}
+							{displayTitle(movie)}
 							{#if movie.year}
 								<span class="font-normal text-base-content/60">({movie.year})</span>
 							{/if}

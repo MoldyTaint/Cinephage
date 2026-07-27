@@ -108,6 +108,8 @@ export interface LibraryMovie {
 	hasFile: boolean | null;
 	tmdbCollectionId?: number | null;
 	collectionName?: string | null;
+	metadataLanguage?: string | null;
+	preferOriginalTitle?: boolean | null;
 	files: MovieFile[];
 	subtitles?: Subtitle[];
 }
@@ -140,6 +142,8 @@ export interface LibrarySeries {
 	episodeFileCount: number | null;
 	percentComplete: number;
 	totalSize?: number;
+	metadataLanguage?: string | null;
+	preferOriginalTitle?: boolean | null;
 }
 
 export type LibraryItem = LibraryMovie | LibrarySeries;
@@ -203,4 +207,13 @@ export interface QualityProfileSummary {
 	isDefault: boolean;
 	minResolution?: string | null;
 	maxResolution?: string | null;
+}
+
+export function displayTitle(item: {
+	title: string;
+	originalTitle?: string | null;
+	preferOriginalTitle?: boolean | null;
+}): string {
+	if (item.preferOriginalTitle && item.originalTitle) return item.originalTitle;
+	return item.title;
 }

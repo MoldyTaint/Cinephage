@@ -1558,7 +1558,11 @@ export const movieUpdateSchema = z.object({
 		.optional(),
 	/** Override the TMDB collection assignment for this movie. */
 	tmdbCollectionId: z.number().int().positive().nullable().optional(),
-	collectionName: z.string().min(1).nullable().optional()
+	collectionName: z.string().min(1).nullable().optional(),
+	/** Per-item TMDB language override (null = inherit global, 'original' = use original_language) */
+	metadataLanguage: z.string().nullable().optional(),
+	/** Display originalTitle instead of localized title in the UI */
+	preferOriginalTitle: z.boolean().optional()
 });
 
 /**
@@ -1583,7 +1587,11 @@ export const seriesUpdateSchema = z.object({
 		})
 		.optional(),
 	/** TMDB episode group ID for alternate season ordering (null = default TMDB ordering) */
-	episodeGroupId: z.string().nullable().optional()
+	episodeGroupId: z.string().nullable().optional(),
+	/** Per-item TMDB language override (null = inherit global, 'original' = use original_language) */
+	metadataLanguage: z.string().nullable().optional(),
+	/** Display originalTitle instead of localized title in the UI */
+	preferOriginalTitle: z.boolean().optional()
 });
 
 /**
