@@ -47,6 +47,9 @@
 	const GITHUB_URL = 'https://github.com/MoldyTaint/Cinephage';
 	const DISCORD_URL = 'https://discord.gg/scGCBTSWEt';
 
+	const GITHUB_URL = 'https://github.com/MoldyTaint/Cinephage';
+	const DISCORD_URL = 'https://discord.gg/scGCBTSWEt';
+
 	type MenuChildItem = {
 		href: string;
 		label: () => string;

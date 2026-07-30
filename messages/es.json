@@ -2134,6 +2134,7 @@
 	"profileModal_streamingProfileInfo": "Los perfiles de streaming usan fuentes externas, así que los límites de tamaño no son configurables.",
 	"profiles_addProfile": "Añadir perfil",
 	"profiles_allowUpgrades_label": "Permitir actualizaciones",
+	"profiles_preventDowngrades_label": "Evitar degradación de resolución",
 	"profiles_copyFrom_builtInLabel": "Perfiles integrados",
 	"profiles_copyFrom_customLabel": "Perfiles personalizados",
 	"profiles_copyFrom_helpCopied": "Las puntuaciones de formato se copiarán del perfil seleccionado",
